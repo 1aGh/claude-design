@@ -1,75 +1,132 @@
 ---
-description: Spawn design-critic subagent — UX (7 vrstev) + Design System compliance pass na aktivním canvasu, inline review (žádné nested agenty)
+description: Spawn critic panel (or single agent / all critics) na aktivním canvasu — design + a11y + až 7 specialistů (graphic, brand, typography, motion, copy, frontend, info-architecture). Default = orchestrator routes panel based on canvas content + feedback.
+argument-hint: "[--agent <name>] [--all] [--panel]"
 ---
 
-# /design:critic — UX + DS critique active canvas
+# /design:critic — review active canvas
 
-Spustí `design-critic` subagenta na aktivní canvas (`_active.json`). Subagent dělá **dvě paralelní review pass IN-LINE** (čte `ux-designer` a `design-system-guard` jako frameworks, bez recurse):
+Spustí jednoho nebo víc `*-critic` subagentů na aktivní canvas (`_active.json`). Každý critic emituje **JSON verdict block** na konci svého reportu — orchestrator parsuje a (pokud >1 critic) píše konsolidační `<NNN>-PANEL.md`.
 
-- **UX pass** — 7 vrstev: task → IA → states → interaction → microcopy → cross-platform → a11y
-- **DS pass** — token compliance, hard-stops (no glass, no gradient, no pastel, no emoji, lucide stroke 1.5, IBM Plex headings, Inter body, JetBrains Mono nums, …)
+Tento command **nepouští auto-fix loop** — to dělají `/design` a `/design:new` po každém editu. `/design:critic` je čistá review akce; pro auto-fix s víc iteracemi použij `/design "<feedback>" --perfect`.
 
-Merged report do `.ai/design/_history/<slug>/critique/<NNN>-design-critic.md` (gitignored).
+## Modes
+
+| Flag | Behavior |
+|---|---|
+| (none) | **Routed panel** — orchestrator vybere critics podle obsahu canvasu + posledního feedbacku (viz `skills/design/SKILL.md` "Critic panel routing"). Vždy zahrnuje `design-critic` + `a11y-critic`, dál podmíněně. |
+| `--agent <name>` | Jen jeden specialista. Dostupní: `design-critic`, `graphic-design-critic`, `brand-critic`, `typography-critic`, `motion-critic`, `a11y-critic`, `copy-critic`, `frontend-critic`, `info-architecture-critic`. |
+| `--all` | Všech 9 critics paralelně. Heavy — utratí 9× tool calls. Použij pro "exhaustive polish before handoff". |
+| `--panel` | Alias for default (no flag). |
 
 ## Postup
 
-Vyvolej skill `design` se vstupem: `critic`.
+Vyvolej skill `design` se vstupem: `critic <flags>`.
 
-Skill:
-1. Server lifecycle check.
-2. Read `.ai/design/_active.json` → canvas path + slug.
-3. Pokud nejnovější screenshot pro tenhle canvas chybí, capture full-page přes agent-browser (HTTP server URL).
-4. **Spawn `design-critic` subagent** s parametry:
-   - `subagent_type: "design-critic"`
-   - `description: "Critique active canvas <slug>"`
-   - `prompt:` strukturovaný — obsahuje:
-     - `html_path` (canvas)
-     - `screenshot_path` (latest)
-     - `brief_path` (pokud session, jinak null)
-     - `matched_component_path` (resolved z manifestu; jinak null)
-     - `matched_chat_path` (pokud session, jinak null)
-     - `output_path` (`.ai/design/_history/<slug>/critique/<NNN>-design-critic.md`)
-     - `iter_n` (counter v history dir)
-     - `slug`
-5. Subagent zapíše merged report. Vrátí short TL;DR.
-6. Skill ho přepošle uživateli + cestu k full reportu.
+### 1. Server lifecycle check + read active state
 
-## Co očekávat v reportu
+Standard (viz `/design`).
 
-```markdown
-# Design Critic — <slug> iteration NNN
+### 2. Capture screenshot if missing
 
-## TL;DR
-**Blockers: X** · Suggestions: Y · Parity OK: yes/no
+Pokud nejnovější screenshot pro canvas chybí, capture full-page přes agent-browser (HTTP server URL, ne `file://`).
 
-## Blockers (must fix before /design:handoff)
-1. **[UX · a11y]** <issue> — <line/element ref>
-2. **[DS · tokens]** <issue> — <line/element ref>
-…
+Pokud `_active.json.selected` set, capture i element-scoped (`--selector "<selected.selector>"`).
 
-## Suggestions
-…
+### 3. Pick panel
 
-## Pass A — UX review (7 layers)
-…
+```bash
+ARGS="$@"
+if [[ "$ARGS" == *"--agent "* ]]; then
+  PANEL=( $(extract --agent value) )
+elif [[ "$ARGS" == *"--all"* ]]; then
+  PANEL=(design-critic graphic-design-critic brand-critic typography-critic motion-critic a11y-critic copy-critic frontend-critic info-architecture-critic)
+else
+  # Routed panel — see skills/design/SKILL.md "Critic panel routing"
+  PANEL=( $(route_panel "$CANVAS" "$LAST_FEEDBACK" "$SELECTED") )
+fi
+```
 
-## Pass B — Design-system compliance
-…
+### 4. Spawn critics in parallel
 
-## Inputs
-- HTML: <path>
-- Screenshot: <path>
-- ...
+**One message with N `Agent` tool calls** (parallel execution). Each call:
+
+```
+subagent_type: "<critic-name>"
+description: "Critique active canvas <slug>"
+prompt: structured payload (canvas_path, screenshot_path, feedback, selected, config, output_path, iter_n)
+```
+
+`output_path` = `<designRoot>/_history/<slug>/critique/<NNN>-<critic>.md` (NNN auto-incremented).
+
+### 5. Parse verdicts
+
+Each critic emits a JSON verdict block at the end of its report:
+
+```json
+{ "agent": "...", "iter": N, "blockers": X, "warnings": Y, "top_blockers": [...], "passed": (X==0) }
+```
+
+Orchestrator parses each via `tail` + `jq` or by reading the report and grepping for the last fenced `json` block.
+
+### 6. Consolidate (if > 1 critic)
+
+Write `<designRoot>/_history/<slug>/critique/<NNN>-PANEL.md` (schema in `skills/design/SKILL.md` "Panel consolidation report"):
+
+- TL;DR (total blockers/warnings, verdict)
+- Blockers grouped by category, sorted by count
+- Per-critic table with link to individual report
+- Top blockers across panel (sorted: a11y > ds-tokens > others)
+- Final JSON verdict block (panel-level)
+
+### 7. Print summary
+
+```
+✓ Panel run on: <canvas>
+  Critics ({N}): {list}
+  Total blockers: X · Total warnings: Y
+  Verdict: {pass | fix-and-retry}
+
+  Top blockers:
+  1. [{agent}/{category}] L{N} — {summary}
+  …
+
+  Reports: <designRoot>/_history/<slug>/critique/NNN-*
+  Panel: <designRoot>/_history/<slug>/critique/NNN-PANEL.md
+
+  Next:
+  - If blockers > 0: /design "Address: <top blocker summary>" — or /design "..." --perfect to auto-fix in a loop.
+  - If blockers == 0: /design:handoff [--target <label>] when ready.
 ```
 
 ## Failure modes
 
-- **`_active.json` chybí / null** → fail: "Otevři canvas v browseru first."
-- **`ux-designer/SKILL.md` nečitelný** → critic dělá review z paměti frameworku, flagne degradaci v reportu.
-- **`design-system-guard.md` AND tokens CSS nečitelný** → fail loud (bez authoritative tokens nelze posuzovat compliance).
-- **Screenshot nelze zachytit** → critic běží jen na HTML source, flagne "Visual evidence: HTML source only".
+| Symptom | Action |
+|---|---|
+| `_active.json` chybí / null | fail: "Otevři canvas v browseru first." |
+| Screenshot nelze zachytit (agent-browser unavailable) | critic běží jen na HTML source, každý critic flagne "Visual evidence: HTML source only" v hlavičce reportu. |
+| Tokens CSS nečitelný | `design-critic` + `a11y-critic` faili (potřebují tokens pro kompliance + contrast). Ostatní critics pokračují. |
+| Critic spawn fail | report critic jako "agent unavailable" v PANEL.md, pokračuj s ostatními. |
+| `--agent <unknown>` | fail s list of available critics. |
 
-## Doporučení po reportu
+## Tipy
 
-- `blockers > 0` → `/design "Address: <top blocker>"` (najprv ten kritický).
-- `blockers == 0` → `/design:handoff [--target apps/web|apps/mobile]`.
+- **Targeted critique** — Cmd+klikni element v canvasu, pak `/design:critic`. Routing zúží panel na ten element + critics dostanou `selected` v promptu pro element-scoped review.
+- **Fast iteration loop** — `/design "..."` (default = 2-iter auto-critic) je rychlejší než `/design:critic` + ruční follow-up. `/design:critic` je standalone audit.
+- **Pre-handoff polish** — `/design:critic --all` pro exhaustivní review, pak `/design "..." --perfect` pokud blockers, pak `/design:handoff`.
+- **Single discipline** — `/design:critic --agent typography-critic` pro pure type review (žádné UX / DS / a11y noise).
+
+## Discoverability — co jednotlivé critics dělají
+
+| Critic | Doména |
+|---|---|
+| `design-critic` | Holistic UX (7-layer walk) + design-system compliance (tokens, hard-stops). Default + auto-baseline. |
+| `graphic-design-critic` | Composition, hierarchy, balance, density, rhythm, white-space, gestalt. |
+| `brand-critic` | Logo integrity, asset ladder, voice/tone alignment, photography style, brand drift. |
+| `typography-critic` | Pairings, scale ladder, leading, measure, tracking, numerals, vertical rhythm, fallbacks. |
+| `motion-critic` | Duration tokens, easing, choreography, prefers-reduced-motion, compositor properties. |
+| `a11y-critic` | WCAG 2.1 AA — contrast, keyboard, focus, landmarks, labels, touch targets, ARIA. **Always in panel.** |
+| `copy-critic` | Microcopy, action verbs, empty/error states, tone, casing, i18n readiness. |
+| `frontend-critic` | JSX patterns, semantic HTML, hooks, keys, performance gotchas, hydration. |
+| `info-architecture-critic` | Nav depth, hierarchy, taxonomy, findability, URL hygiene, cross-surface consistency. |
+
+Full critic prompts: `.claude/plugins/design/agents/<name>.md`.

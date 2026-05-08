@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Design Plugin — per-repo config",
+  "description": "Per-repo configuration consumed by the design plugin's dev-server, slash commands, and skills. Place at <repo>/.design/config.json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "designRoot"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Short repo / product name. Shown in server header and as a token in skill prompts."
+    },
+    "projectLabel": {
+      "type": "string",
+      "description": "Long label for the design browser (window title and big H1). Defaults to <name> + ' Design'."
+    },
+    "designRoot": {
+      "type": "string",
+      "description": "Repo-relative root where canvas + design system files live. Default convention: '.design' (top-level, alongside .git, .claude, etc.). Older repos may use '.ai/design'.",
+      "default": ".design"
+    },
+    "canvasGroups": {
+      "type": "array",
+      "description": "Top-level groupings shown in the file tree. Each entry maps a folder under designRoot to a sidebar section.",
+      "items": {
+        "type": "object",
+        "required": ["label", "path"],
+        "properties": {
+          "label": { "type": "string" },
+          "path":  { "type": "string", "description": "Folder under designRoot to scan for .html canvases." }
+        },
+        "additionalProperties": false
+      },
+      "default": [
+        { "label": "Design system", "path": "system" },
+        { "label": "Canvases",      "path": "ui" }
+      ]
+    },
+    "rootClass": {
+      "type": "string",
+      "description": "Body / canvas root CSS class that the project's tokens are scoped under. Generated canvases use <body class=\"<rootClass>\">.",
+      "default": "app"
+    },
+    "themeDefault": {
+      "type": "string",
+      "enum": ["dark", "light"],
+      "description": "Default theme attribute (data-theme) for new canvases.",
+      "default": "dark"
+    },
+    "tokensCssRel": {
+      "type": "string",
+      "description": "Path to the design system CSS, relative to designRoot. New canvases <link> to this file.",
+      "default": "system/colors_and_type.css"
+    },
+    "teamAccentDefault": {
+      "type": ["string", "null"],
+      "description": "Optional default value for data-team attribute on new canvases. Set to null if the project doesn't use multi-team accent overrides."
+    },
+    "handoffTargets": {
+      "type": "array",
+      "description": "Where /design:handoff can migrate canvases to. Empty array disables handoff.",
+      "items": {
+        "type": "object",
+        "required": ["label", "path"],
+        "properties": {
+          "label":    { "type": "string" },
+          "path":     { "type": "string", "description": "Repo-relative target dir." },
+          "platform": { "type": "string", "enum": ["web", "mobile", "desktop", "other"] }
+        },
+        "additionalProperties": false
+      },
+      "default": []
+    },
+    "newCanvasDir": {
+      "type": "string",
+      "description": "Default folder (under designRoot) where /design:new scaffolds new canvas .html files.",
+      "default": "ui"
+    },
+    "newComponentDir": {
+      "type": "string",
+      "description": "Default folder (under designRoot) where /design:new puts shared component .jsx files.",
+      "default": "ui/components"
+    }
+  }
+}

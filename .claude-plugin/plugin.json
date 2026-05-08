@@ -1,12 +1,10 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "design",
-  "version": "0.2.0",
-  "description": "Local Claude-Design clone for Dugmate. Canvas-first iteration on .ai/design/ui/ mocks, element selection via Cmd+Click, auto-managed dev server with WebSocket active-state tracking. Slash commands: /design:design /design:new /design:rollback /design:screenshot /design:critic /design:handoff /design:browse.",
+  "version": "0.3.0",
+  "description": "Local Claude-Design clone — canvas-first iteration on HTML mocks under <designRoot> (default `.design/`), element selection via Cmd+Click, auto-managed dev server with React UI and WebSocket active-state tracking. Auto-critic panel after every edit; --perfect mode for N-iteration polish. Continuous README+INDEX maintenance — no zip exports, repo IS the handoff. Per-repo config at .design/config.json. Commands: /design /design:new /design:rollback /design:screenshot /design:critic /design:docs /design:handoff /design:browse.",
   "author": {
-    "name": "Dugmate",
-    "email": "michal.dovrtel@studyfi.com"
+    "name": "design plugin"
   },
-  "homepage": "https://github.com/1aGh/dugmate",
-  "keywords": ["design", "ui", "design-system", "frontend", "playground", "claude-design", "dugmate"]
+  "keywords": ["design", "ui", "design-system", "frontend", "canvas", "claude-design", "playground", "iteration"]
 }

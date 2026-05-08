@@ -1,21 +1,18 @@
 ---
-description: Spustí lokální Dugmate Design browser — file tree všech mocků + tabbed iframe preview na volném portu
+description: Spustí lokální design browser — file tree všech canvasů + tabbed iframe preview na volném portu
 argument-hint: "[--port <n>]"
 ---
 
 # /design:browse — local design canvas
 
-Spustí mini Node server (zero deps) co skenuje:
-- **Design system** — tokens preview + ui kits desktop/mobile (`.ai/design/system/project/...`)
-- **UI kit** — full canvas mocks (`.ai/design/ui/project/Dugmate Studio.html`, `Dugmate Mobile.html`, …)
+Spustí mini Node server (zero deps) co skenuje project's design root (`<designRoot>` z `.design/config.json`, default `.design/`) a vyrobí v prohlížeči 2-pane UI:
 
-a vyrobí v prohlížeči 2-pane UI:
-- **Levý sloupec** — file tree (collapsible podle skill / dir hierarchy)
+- **Levý sloupec** — file tree (collapsible podle hierarchie + group labels z configu)
 - **Pravá strana** — tabbed iframe preview, jako v editoru
 - **Inspector overlay** uvnitř každého canvasu (Cmd+hover highlight, Cmd+click select, Esc clear)
-- **Status bar** — aktivní soubor + selection (`.ai/design/_active.json`)
+- **Status bar** — aktivní soubor + selection (`<designRoot>/_active.json`)
 
-Server auto-najde volný port od **4321** a otevře default browser. Idempotent: pokud už běží, jen vypíše URL. `Ctrl+C` v terminálu zastaví.
+Server čte `<repo>/.design/config.json` při bootu. Auto-najde volný port od **4321** a otevře default browser. Idempotent: pokud už běží, jen vypíše URL. `Ctrl+C` v terminálu zastaví.
 
 **Vstup `$ARGUMENTS`:** `[--port <n>]`
 
@@ -24,21 +21,35 @@ Server auto-najde volný port od **4321** a otevře default browser. Idempotent:
 ## Postup
 
 ```bash
-pnpm design:browse                                    # default — najde volný port od 4321, otevře browser
-PORT=4400 pnpm design:browse                          # vynutit konkrétní port
-pnpm design:headless                                  # bez auto-open (CI / SSH)
-
-# přímé spuštění (pokud bys neměl pnpm po ruce):
+# Direct boot:
 node .claude/plugins/design/dev-server/server.mjs
+
+# With explicit port:
+PORT=4400 node .claude/plugins/design/dev-server/server.mjs
+
+# Headless (no auto-open browser, useful in CI / SSH):
+NO_OPEN=1 node .claude/plugins/design/dev-server/server.mjs
 ```
+
+Repo může mít wrapper script v `package.json` (např. `pnpm design:browse`) — pokud existuje, použij ho. Jinak přímé spuštění výše.
 
 ## Co server podporuje
 
-- **Live re-scan** — `↻ tree` button v UI re-skenuje disk (nebo Cmd+R / F5).
+- **Live re-scan** — `↻ tree` button v UI re-skenuje disk (nebo Cmd+R / F5 na index page).
 - **Per-tab reload** — `↻ active` button (nebo Cmd+R uvnitř UI) reloadne jen aktivní iframe, ne celou aplikaci.
 - **Open in system browser** — `↗ system` link otevře aktivní mock v novém tabu (užitečné pro DevTools, screenshots).
 - **Keyboard:** `Cmd+W` zavře aktivní tab, `Cmd+R` reloadne aktivní iframe.
 - **Path safety:** server odmítne všechno mimo repo root.
+
+## Server endpoints
+
+| Endpoint | Účel |
+|---|---|
+| `/` | UI (file tree + tabs + inspector) |
+| `/_health` | Health check `{ ok, app, project, pid, port }` |
+| `/_active` | Current `_active.json` content |
+| `/_config` | Resolved per-repo config (echoed from `.design/config.json` + defaults) |
+| `/_ws` | WebSocket pro tab/selection state |
 
 ## Kdy /design:browse vs `open <file>`
 
@@ -50,5 +61,6 @@ Orchestrator (`/design`, `/design:new`, atd.) sám server auto-startne pokud neb
 ## Failure modes
 
 - **Port 4321–4420 všechny obsazené** → server vyhodí `no free port`. Spusť s `PORT=<volný>`.
-- **Node < 18** → top-level `await` nefunguje. Repo má nyní Node 24, ale pokud bys měl starší, fail loud.
-- **Spaces v názvech (např. `Dugmate Studio.html`)** — server URL-decoduje, link generation enkóduje. Funguje.
+- **Node < 18** → top-level `await` nefunguje. Server vyžaduje Node 18+.
+- **Spaces v názvech souborů** — server URL-decoduje, link generation enkóduje. Funguje.
+- **`.design/config.json` chybí nebo invalid** — server warne v logu a použije defaults.

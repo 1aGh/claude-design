@@ -1,72 +1,59 @@
 ---
 name: ui-kit
-description: Reference UI prototypes for every Dugmate surface — desktop (Rail, TopBar, VideoPlayer, PlaybookEditor, Chat, LiveControlRoom, TeamHub, Calendar, ScoutInbox, ScoutDiscovery, SocialFeed/Explore/DM/Profile, PublicProfile, TapeLibrary, WatchParty, HighlightComposer, Surfaces) and mobile (Home, TeamHub, Playbook, FilmRoom, Chrome). Auto-load when designing or implementing any Dugmate screen. Content lives in .ai/design/ui/ — this skill is a pointer.
+description: Reference UI prototypes and shared components for the project's surfaces (desktop / mobile / tablet). Auto-load when designing or implementing any UI for this repo. Content lives in the project's design root (default `.design/ui/`) — this skill is a pointer.
 ---
 
-# Dugmate UI kit — pointer skill
+# UI kit — pointer skill
 
-This skill is a **thin pointer**. The actual UI-kit content lives at:
+This skill is a **thin pointer**. The actual UI-kit content lives under the project's design root, defined in `<repo>/.design/config.json`:
 
 ```
-.ai/design/ui/
+<designRoot>/ui/
+  ├── project/
+  │   ├── <ProjectName> Studio.html      # multi-artboard desktop canvas (composer)
+  │   ├── <ProjectName> Mobile.html      # multi-artboard mobile canvas (composer)
+  │   ├── <Other Canvas>.html            # additional canvas projects
+  │   ├── components/*.jsx               # shared desktop components
+  │   └── components/mobile/*.jsx        # shared mobile components
+  ├── chats/                             # iteration transcripts per surface (if migrated from Claude Design)
+  └── README.md                          # canvas catalog
 ```
 
-This skill is non-user-invocable. Auto-loads when Claude is doing UI work for any of the surfaces below. The user-facing entry point is the `design` orchestrator skill.
+The canvas runtime itself (`DesignCanvas`, `DCSection`, `DCArtboard`, `DCPostIt`, `TweaksPanel`, `useTweaks`) is **NOT** copied per-project — it lives in `.claude/plugins/design/dev-server/runtime/` and is auto-injected by the dev server into every served HTML. Canvases reference these as window globals after babel compiles them. New canvases must not bundle a local copy.
 
-## What's where
+This skill is non-user-invocable. Auto-loads when Claude is doing UI work. The user-facing entry point is the `design` orchestrator skill.
 
-| Path (from repo root) | Contents |
-|---|---|
-| `.ai/design/ui/project/Dugmate Studio.html` | Desktop composer — mounts the full Studio app |
-| `.ai/design/ui/project/Dugmate Mobile.html` | Mobile composer — mounts the iOS-frame mobile app |
-| `.ai/design/ui/project/Calendar Screen.html` | Standalone calendar surface |
-| `.ai/design/ui/project/design-canvas.jsx` | Canvas wrapper + section layout |
-| `.ai/design/ui/project/tweaks-panel.jsx` | The Claude-Design-style tweaks panel (slider patterns) |
-| `.ai/design/ui/project/.design-canvas.state.json` | Canvas section labels (provenance for which screen serves which goal) |
-| `.ai/design/ui/project/components/*.jsx` | 20 desktop components (manifest below) |
-| `.ai/design/ui/project/components/mobile/*.jsx` | 5 mobile components (Home, TeamHub, Playbook, FilmRoom, Chrome) |
-| `.ai/design/ui/project/ds/colors_and_type.css` | Local copy of design tokens (kept in sync with `.ai/design/system/project/colors_and_type.css`) |
-| `.ai/design/ui/project/uploads/dugmate-prd.md` | Snapshot of PRD as it was when these screens were designed |
-| `.ai/design/ui/project/screenshots/` | (empty — placeholder) |
-| `.ai/design/ui/chats/chat1…chat9.md` | Iteration history per surface — **read first** if touching that surface |
-| `.ai/design/ui/_HANDOFF-BUNDLE-README.md` | Original Claude Design handoff metadata |
+## Canon: canvas-first, multi-artboard
 
-## Component → chat transcript map
+Every project canvas under `<designRoot>/ui/project/` follows the same shape:
 
-When iterating a surface, the matching chat transcript is the source of truth for "what the user actually wanted". Always read it before regenerating.
+1. **`DesignCanvas`** wrapper — Figma-style infinite canvas (panable / zoomable).
+2. **`DCSection`** blocks — labeled groups of related screens.
+3. **`DCArtboard`** instances — individual screens, each wrapped in the project's app shell where applicable.
 
-| Surface | Chat transcript | Topic |
-|---|---|---|
-| TeamHub, Studio, Rail, TopBar | `.ai/design/ui/chats/chat1.md` | Football Command Center (foundation) |
-| Comments | `.ai/design/ui/chats/chat2.md`, `chat5.md`, `chat6.md` | Comment UI evolution |
-| WatchParty | `.ai/design/ui/chats/chat3.md` | Watch Party screen |
-| Calendar | `.ai/design/ui/chats/chat4.md` | Calendar with events |
-| Scout (Marketplace, Inbox, Discovery, Social*) | `.ai/design/ui/chats/chat7.md` | Scout marketplace + social layer |
-| TeamHub admin | `.ai/design/ui/chats/chat8.md` | Správa klubu |
-| Mobile (all) | `.ai/design/ui/chats/chat9.md` | Mobilní aplikace návrh |
-
-## Desktop component manifest (`.ai/design/ui/project/components/`)
-
-`Calendar.jsx · Chat.jsx · HighlightComposer.jsx · LiveControlRoom.jsx · PlaybookEditor.jsx · PublicProfile.jsx · Rail.jsx · ScoutDiscovery.jsx · ScoutInbox.jsx · SocialDM.jsx · SocialExplore.jsx · SocialFeed.jsx · SocialProfile.jsx · Surfaces.jsx · TapeLibrary.jsx · TeamHub.jsx · TopBar.jsx · VideoPlayer.jsx · WatchParty.jsx · ios-frame.jsx`
-
-## Mobile component manifest (`.ai/design/ui/project/components/mobile/`)
-
-`MobileHome.jsx · MobileTeamHub.jsx · MobilePlaybook.jsx · MobileFilmRoom.jsx · MobileChrome.jsx`
+Standalone single-page HTML wrappers (one screen, no canvas) are an anti-pattern and should be migrated when found. New screens always go into an existing canvas as a new `DCArtboard`, or a new canvas project file via `/design:new`.
 
 ## How the orchestrator uses this skill
 
-When `design` is asked to start a session for a known surface (e.g. `TeamHub mobile`), it:
-1. Resolves surface → component file (`.ai/design/ui/project/components/mobile/MobileTeamHub.jsx`)
-2. Resolves surface → chat transcript (`.ai/design/ui/chats/chat9.md` — all-mobile chat)
-3. Reads both, plus tokens from `.ai/design/system/project/colors_and_type.css`
-4. Hands the union to `frontend-design` as the aesthetic+layout brief
-5. Diffs the regeneration against the original to flag intentional vs. accidental drift
+When `design` is asked to start work on a known surface:
 
-For unknown / new surfaces, the orchestrator skips the component-mapping step but still loads tokens + layout idioms from one similar reference (`Surfaces.jsx` is a good starter).
+1. Lists canvas files in `<designRoot>/ui/project/` and matches by name.
+2. Resolves component file (e.g. `<designRoot>/ui/project/components/<Surface>.jsx`) if the canvas references one.
+3. Reads any matching iteration transcript in `<designRoot>/ui/chats/` — that's the source of truth for what the user actually wanted.
+4. Loads tokens from `<designRoot>/<tokensCssRel>`.
+5. Hands the union as the aesthetic + layout brief to `frontend-design` (for new canvases) or applies inline edits (for `/design "<feedback>"`).
 
-## Migration provenance
+For unknown surfaces, the orchestrator skips component-mapping but still loads tokens + finds one similar reference canvas to learn the project's idioms.
 
-- Source: `.ai/design-import/ui/dugmate-ui/` (gitignored Claude Design export, May 5 2026)
-- All `project/` and `chats/` content preserved byte-exact
-- Outer Claude-Design handoff README preserved as `.ai/design/ui/_HANDOFF-BUNDLE-README.md`
-- This `SKILL.md` is the pointer for Claude Code's skill discovery
+## What you must never do
+
+- **Never bypass the canvas pattern.** New screens go inside `DesignCanvas` artboards, not as new top-level HTML pages.
+- **Never edit the migrated `chats/` transcripts** — they're historical record.
+- **Never assume desktop and mobile share components** — each platform has its own subdir under `components/`.
+
+## Cross-links
+
+- Canvas catalog: `<designRoot>/ui/README.md` (if present)
+- Per-repo config: `.design/config.json`
+- Sibling skill: `design-system` (tokens, type, color)
+- Sibling skill: `design` (orchestrator)

@@ -5,9 +5,9 @@ A Claude Code plugin that gives Dugmate the same iterative design workflow Anthr
 ## What it gives you
 
 - **Canvas-first iteration.** `/design "<feedback>"` edits the file you have **active in the browser tab** — not a new session. Like Claude Design's canvas: open `Dugmate Mobile.html`, click into it, then say "presence dot 8px in roster" → that file is mutated in place. Sessions only spawn on explicit `/design:new`.
-- **Active state via WebSocket.** A local Node dev server (zero deps, ~600 LOC) tracks which tab the user is focused on and writes `.ai/design/_active.json`. The orchestrator reads it before every command.
-- **Auto-snapshot before every edit.** `.ai/design/_history/<file-slug>/<NNN>-<ts>.bak` (gitignored). Undo via `/design:rollback`.
-- **Auto-server lifecycle.** Every command checks `.ai/design/_server.json`; if no server running, auto-starts in background. Never spawns a duplicate.
+- **Active state via WebSocket.** A local Node dev server (zero deps, ~600 LOC) tracks which tab the user is focused on and writes `<designRoot>/_active.json` (default `.design/_active.json`). The orchestrator reads it before every command.
+- **Auto-snapshot before every edit.** `<designRoot>/_history/<file-slug>/<NNN>-<ts>.bak` (gitignored). Undo via `/design:rollback`.
+- **Auto-server lifecycle.** Every command checks `<designRoot>/_server.json`; if no server running, auto-starts in background. Never spawns a duplicate.
 - **Three-engine orchestration.** First-pass generation (sessions only) uses `frontend-design`. Slider exploration uses `playground`. Critique uses `ux-designer` + `design-system-guard` patterns inline (no nested agents).
 - **Native handoff.** `/design:handoff` migrates active canvas to `apps/web` or `apps/mobile` (Next.js / Expo + Tailwind + shadcn / NativeWind).
 
@@ -16,17 +16,17 @@ A Claude Code plugin that gives Dugmate the same iterative design workflow Anthr
 | Skill | Purpose |
 |---|---|
 | `design` | The orchestrator. Server lifecycle, active-canvas detection, snapshot protocol, command routing, engine chaining. |
-| `design-system` | **Pointer** → content lives at `.ai/design/system/` (tokens, specimens, ui kits desktop+mobile). |
-| `ui-kit` | **Pointer** → content lives at `.ai/design/ui/` (full surface mocks, chat history). |
+| `design-system` | **Pointer** → content lives at `<designRoot>/system/` (tokens, specimens, ui kits desktop+mobile). |
+| `ui-kit` | **Pointer** → content lives at `<designRoot>/ui/` (full surface mocks, chat history). |
 
-The plugin's `skills/` folder is just `SKILL.md` shells. The actual design content lives in `.ai/design/`. See `.ai/design/README.md`.
+The plugin's `skills/` folder is just `SKILL.md` shells. The actual design content lives at `<designRoot>` (default `.design/`). See `.design/README.md`.
 
 ## Commands
 
 | Command | Effect |
 |---|---|
 | **`/design "<feedback>"`** | **Default.** Edit the active canvas in place. If the user has Cmd+Clicked an element, edit is scoped to that element only. Auto-snapshot before every edit. |
-| `/design:new <Name> "<brief>" [--component] [--mobile]` | Scaffold a NEW canvas file in `.ai/design/ui/project/<Name>.html` (or `components/<PascalName>.jsx`) via `frontend-design` with Dugmate envelope. |
+| `/design:new <Name> "<brief>" [--component] [--mobile]` | Scaffold a NEW canvas file in `<designRoot>/<newCanvasDir>/<Name>.html` (or `<newComponentDir>/<PascalName>.jsx`) via `frontend-design` with project envelope. |
 | `/design:rollback [--steps N] [--list]` | Restore last snapshot of active canvas. `--list` to inspect history. |
 | `/design:screenshot [--area] [--selector]` | Capture active canvas via agent-browser (HTTP server URL). |
 | `/design:critic` | Spawn `design-critic` subagent — UX (7-layer) + DS compliance pass inline against active canvas. |
@@ -35,7 +35,7 @@ The plugin's `skills/` folder is just `SKILL.md` shells. The actual design conte
 
 ## Subagent
 
-- `design-critic` — performs UX 7-layer review + DS compliance protocol **inline** (reads `ux-designer/SKILL.md` + `design-system-guard.md` as frameworks, no nested invocation). Writes merged report to `.ai/design/_history/<slug>/critique/<NNN>-design-critic.md`.
+- `design-critic` — performs UX 7-layer review + DS compliance protocol **inline** (reads `ux-designer/SKILL.md` + `design-system-guard.md` as frameworks, no nested invocation). Writes merged report to `<designRoot>/_history/<slug>/critique/<NNN>-design-critic.md`.
 
 ## Dependencies
 
@@ -60,10 +60,10 @@ All gitignored:
 
 | File | Owner | Purpose |
 |---|---|---|
-| `.ai/design/_server.json` | dev-server | `{ pid, port, url, started }` — orchestrator reads to detect running instance. Removed on SIGINT. |
-| `.ai/design/_active.json` | dev-server (via WebSocket) | `{ active, open_tabs, last_change, session_started }` — frontend pushes on every tab click. |
-| `.ai/design/_server.log` | shell | nohup output when orchestrator auto-starts server in background. |
-| `.ai/design/_history/<slug>/` | orchestrator | snapshot stack per canvas. Format: `<NNN>-<YYYYMMDDTHHMMSS>.bak`. |
+| `<designRoot>/_server.json` | dev-server | `{ pid, port, url, started }` — orchestrator reads to detect running instance. Removed on SIGINT. |
+| `<designRoot>/_active.json` | dev-server (via WebSocket) | `{ active, open_tabs, last_change, session_started }` — frontend pushes on every tab click. |
+| `<designRoot>/_server.log` | shell | nohup output when orchestrator auto-starts server in background. |
+| `<designRoot>/_history/<slug>/` | orchestrator | snapshot stack per canvas. Format: `<NNN>-<YYYYMMDDTHHMMSS>.bak`. |
 
 ## Canvas-first flow (typical)
 
@@ -75,8 +75,8 @@ pnpm design
 
 # 3. Iterate
 /design "Add 8px presence dot before each roster row name (--status-success when online)"
-  → reads _active.json → ".ai/design/ui/project/Dugmate Mobile.html"
-  → snapshots to .ai/design/_history/dugmate-mobile-html/001-20260506T223100.bak
+  → reads _active.json → ".design/ui/project/Dugmate Mobile.html"
+  → snapshots to .design/_history/dugmate-mobile-html/001-20260506T223100.bak
   → edits file in place
   → reload iframe (Cmd+R)
 
@@ -105,10 +105,10 @@ pnpm design
 
 ## Element selection (pin-to-element edits)
 
-The dev server injects a tiny inspector overlay into every served HTML in `.ai/design/`. Inside any canvas iframe:
+The dev server injects a tiny inspector overlay into every served HTML under `<designRoot>`. Inside any canvas iframe:
 
 - **Cmd / Ctrl / Alt + hover** → element under the cursor highlights cyan + label shows tag/class
-- **Cmd + click** → select that element (cyan outline + glow). The selection is pushed to `.ai/design/_active.json.selected` over WebSocket
+- **Cmd + click** → select that element (cyan outline + glow). The selection is pushed to `<designRoot>/_active.json.selected` over WebSocket
 - **Esc** (with iframe focused) or `×` button in the status bar → clear selection
 - **Switching tabs** auto-clears selection (selection is per-canvas)
 
@@ -116,7 +116,7 @@ When `_active.json.selected` is set, the next `/design "<feedback>"` is **scoped
 
 ## Sessions are not a thing anymore
 
-There used to be `.ai/design-sessions/<slug>/iterations/NNN.html`. Retired. New surfaces = new files in `.ai/design/ui/project/<Name>.html` via `/design:new`. Iteration history = `.ai/design/_history/<slug>/<NNN>-<ts>.bak` snapshots (gitignored, restored via `/design:rollback`).
+There used to be `.ai/design-sessions/<slug>/iterations/NNN.html`. Retired. New surfaces = new files in `<designRoot>/<newCanvasDir>/<Name>.html` via `/design:new`. Iteration history = `<designRoot>/_history/<slug>/<NNN>-<ts>.bak` snapshots (gitignored, restored via `/design:rollback`).
 
 ## License
 

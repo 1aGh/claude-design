@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Canvas metadata sidecar",
+  "description": "Per-canvas .meta.json sidecar that mirrors Claude Design's `.design-canvas.state.json` pattern. Stores section + artboard labels, brief, and provenance separate from the HTML so file tree and handoff bundle can render rich descriptions without parsing JSX.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["title", "sections"],
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Canvas project title (e.g. 'Match Recap' or 'Sparta Studio'). Shown as H1 in handoff bundle."
+    },
+    "subtitle": {
+      "type": "string",
+      "description": "One-line description of the canvas project's purpose."
+    },
+    "brief": {
+      "type": "string",
+      "description": "The full brief that produced this canvas (from /design:new). Preserved for handoff."
+    },
+    "platform": {
+      "type": "string",
+      "enum": ["desktop", "mobile", "tablet", "responsive", "tv", "watch", "other"],
+      "description": "Primary intended platform for this canvas project."
+    },
+    "created": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO timestamp when /design:new generated the canvas."
+    },
+    "last_modified": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO timestamp of the last /design edit."
+    },
+    "sections": {
+      "type": "array",
+      "description": "Top-level sections inside the canvas (DCSection wrapper instances). Order matches reading order in the canvas.",
+      "items": {
+        "type": "object",
+        "required": ["id", "label"],
+        "additionalProperties": false,
+        "properties": {
+          "id":       { "type": "string", "description": "Stable slug for the section (matches DCSection id prop)." },
+          "label":    { "type": "string", "description": "Human-readable section title." },
+          "subtitle": { "type": "string", "description": "Optional one-line subtitle / brief for the section." },
+          "artboards": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "label"],
+              "additionalProperties": false,
+              "properties": {
+                "id":       { "type": "string", "description": "Stable slug (matches DCArtboard id prop)." },
+                "label":    { "type": "string", "description": "Artboard title shown in canvas + handoff." },
+                "subtitle": { "type": "string", "description": "Optional short description." },
+                "platform": { "type": "string", "enum": ["desktop", "mobile", "tablet", "watch", "tv"] },
+                "width":    { "type": "number", "description": "Design width in CSS px." },
+                "height":   { "type": "number", "description": "Design height in CSS px." },
+                "screen_route": { "type": "string", "description": "Production route this artboard maps to (e.g. '/team/[id]/roster'). Optional — used by /design:handoff." }
+              }
+            }
+          }
+        }
+      }
+    },
+    "iteration_count": {
+      "type": "integer",
+      "description": "Total /design iterations applied to this canvas. Maintained by the orchestrator."
+    },
+    "tokens_used": {
+      "type": "array",
+      "description": "CSS variables referenced by the canvas (auto-extracted on each /design edit). Used by /design:handoff to know which tokens the canvas depends on.",
+      "items": { "type": "string" }
+    }
+  }
+}

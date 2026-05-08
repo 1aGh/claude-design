@@ -1,65 +1,51 @@
 ---
 name: design-system
-description: Background design-system knowledge for Dugmate — tokens, type, color, radii, shadows, density, layout constants, sport glyphs, and reference HTML specimens. Auto-load whenever generating, reviewing, or migrating UI for Dugmate (web or mobile). Content lives in .ai/design/system/ — this skill is a pointer.
+description: Background design-system knowledge — tokens, type, color, radii, shadows, density, layout constants, and reference HTML specimens. Auto-load whenever generating, reviewing, or migrating UI for this repo. Content lives in the project's design root (default `.design/system/`) — this skill is a pointer.
 ---
 
-# Dugmate design system — pointer skill
+# Design system — pointer skill
 
-This skill is a **thin pointer**. The actual design-system content lives at:
+This skill is a **thin pointer**. The actual design-system content lives under the project's design root, defined in `<repo>/.design/config.json`:
 
 ```
-.ai/design/system/
+<designRoot>/system/
+  └── <project>/
+      ├── colors_and_type.css       # tokens (authoritative)
+      ├── README.md                 # design philosophy, hard-stops, content rules
+      ├── preview/                  # browsable specimen pages
+      ├── ui_kits/                  # reference component composers (desktop / mobile)
+      └── assets/                   # logos, icons, sport/brand glyphs
 ```
 
-The split: this `SKILL.md` is metadata that Claude Code auto-loads when relevant; the heavy content (tokens, specimens, ui kits, assets, chats) is tracked as project content under `.ai/design/`. See `.ai/design/README.md` for the full layout and rationale.
+The split: this `SKILL.md` is metadata that Claude Code auto-loads when relevant; the heavy content (tokens, specimens, ui kits, assets) is tracked as project content under `<designRoot>`.
 
-This skill is non-user-invocable. Auto-loads when Claude is doing design work for Dugmate. The user-facing orchestrator is the sibling `design` skill.
+This skill is non-user-invocable. Auto-loads when Claude is doing design work for the project. The user-facing orchestrator is the sibling `design` skill.
 
-## Where things live
+## How to use it
 
-| What | Path (from repo root) |
-|---|---|
-| Full design philosophy, content rules, hard-stops | `.ai/design/system/project/README.md` |
-| **Design tokens (CSS vars) — authoritative** | `.ai/design/system/project/colors_and_type.css` |
-| Original Claude Design skill descriptor (historical) | `.ai/design/system/project/SKILL.md` |
-| Specimen pages (colors, type, components, motion, elevation, …) | `.ai/design/system/project/preview/*.html` |
-| Desktop UI kit (Rail, TopBar, VideoPlayer, PlaybookEditor, Chat, LiveControlRoom, Surfaces, tweaks-panel) | `.ai/design/system/project/ui_kits/desktop/` |
-| Mobile UI kit (MobileApp, ios-frame) | `.ai/design/system/project/ui_kits/mobile/` |
-| Logos + sport glyphs | `.ai/design/system/project/assets/` |
-| Sketches + scraps | `.ai/design/system/project/scraps/` |
-| Original chat history (2 transcripts: Avatar kontrast, shadcn Setup) | `.ai/design/system/chats/` |
-| Bundle handoff README (from Claude Design) | `.ai/design/system/_HANDOFF-BUNDLE-README.md` |
+When you're generating, reviewing, or migrating UI:
 
-## When to read what
+1. **Resolve `designRoot`** from `.design/config.json` (or fall back to `.design`).
+2. **Read the tokens CSS** at `<designRoot>/<tokensCssRel>` (config field, default `system/colors_and_type.css`). These are the only legal colors / fonts / radii / shadows.
+3. **Read the project README** at `<designRoot>/system/<project>/README.md` (if present) — it contains the project-specific aesthetic, hard-stop rules, and rationale that override anything generic you'd otherwise default to.
+4. **Browse specimens** at `<designRoot>/system/<project>/preview/` — concrete examples of legal swatches, typography pairings, density ladders.
+5. **Reference UI kits** at `<designRoot>/system/<project>/ui_kits/{desktop,mobile}/` — idiomatic component compositions to learn the project's patterns.
 
-- **Generating a new screen** → read `.ai/design/system/project/colors_and_type.css` (tokens) + the relevant `.ai/design/system/project/ui_kits/{desktop,mobile}/*.jsx` for layout idioms.
-- **Reviewing token compliance** → read `.ai/design/system/project/colors_and_type.css` + `.ai/design/system/project/preview/colors-*.html` to know the legal palette.
-- **Picking radii / shadows / spacing** → `.ai/design/system/project/README.md` "v2 shadcn-style refresh" section is authoritative.
-- **Matching brand voice / iconography stroke** → `.ai/design/system/project/README.md` content fundamentals + `.ai/design/system/project/assets/sport-glyphs/`.
+## What you must never do
 
-## Hard rules (excerpted; full list in `.ai/design/system/project/README.md`)
+- **Never invent tokens.** If a color, font, radius, or shadow isn't in the tokens CSS, ask the user before adding it.
+- **Never mix tokens between projects.** Each repo has its own design system; don't copy values from another project's tokens you've seen in a different session.
+- **Never silently restyle a canvas to a different aesthetic** — token usage is a hard-stop violation that fails `/design:critic`.
 
-1. **Dark by default.** Surfaces ladder: `--bg-0` page → `--bg-4` hover.
-2. **Radii ladder:** xs 2 / sm 4 / md 6 / lg 8 / xl 12 / pill 999. Cards use `--radius-lg`, buttons `--radius-md`, chips `--radius-sm` or `--radius-pill`.
-3. **Type:** IBM Plex Sans 600/700 for headings, Inter 400/500/600/700 for body, JetBrains Mono for timecodes/scores/IDs. `font-variant-numeric: tabular-nums` everywhere it matters.
-4. **Accent is the only customizable token.** Override per team via `.team-cyan|indigo|emerald|rose` or `[data-team="<name>"]`. Never override neutrals.
-5. **Lucide-style line icons, 1.5 stroke.** No filled, no colorful, no emoji in chrome.
-6. **Live / on-air states are highest visual priority** — `#FF3B30`, never muted.
-7. **Cards have borders + bg shift, never shadows.** Shadows only for floating overlays.
-8. **Sub-100ms response.** Skeletons not spinners. Optimistic UI.
+## Companion skills
+
+- `design` — user-facing orchestrator (canvas-first iteration loop)
+- `ui-kit` — pointer to project-specific reference surfaces / components
+- `frontend-design` (external plugin) — generates new canvas files using these tokens
 
 ## Cross-links
 
-- Design system v2 changelog → `.ai/design/system/project/README.md` (top of file)
-- Token CSS → `.ai/design/system/project/colors_and_type.css`
-- Live specimen browsable → `pnpm design:browse` (or `open .ai/design/system/project/preview/colors-surfaces.html`)
-- Desktop UI kit composer → `.ai/design/system/project/ui_kits/desktop/index.html` (mounts all kits in one page via Babel/UMD React)
-- Mobile UI kit composer → `.ai/design/system/project/ui_kits/mobile/index.html`
-- Layout rationale + provenance → `.ai/design/README.md`
-
-## Migration provenance
-
-- Source: `.ai/design-import/ds/dugmate-design-system/` (gitignored Claude Design export, May 5 2026)
-- Migrated 1:1 with no content edits
-- Outer Claude-Design handoff README preserved as `.ai/design/system/_HANDOFF-BUNDLE-README.md`
-- This `SKILL.md` is the pointer for Claude Code's skill discovery
+- Tokens (authoritative): `<designRoot>/<tokensCssRel>`
+- Live specimen browse: dev server at `http://localhost:<port>/<designRoot>/system/...`
+- Layout rationale: `<designRoot>/README.md` (if present)
+- Per-repo config: `.design/config.json`
