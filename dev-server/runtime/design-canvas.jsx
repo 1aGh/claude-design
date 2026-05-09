@@ -513,6 +513,30 @@ function DCArtboardFrame({ sectionId, artboard, label, order, onRename, onReorde
   const { id: rawId, label: rawLabel, width = 260, height = 480, children, style = {} } = artboard.props;
   const id = rawId ?? rawLabel;
   const ref = React.useRef(null);
+  const cardRef = React.useRef(null);
+
+  // Lazy-mount via IntersectionObserver. React-heavy artboards (FilmRoom video,
+  // PlaybookEditor with route lines, scrollable lists, etc.) cost a lot to
+  // commit on initial mount. Off-screen artboards render only a placeholder
+  // div with the same dimensions; React content mounts when the artboard
+  // first scrolls into view, then stays mounted (no flicker on subsequent
+  // zoom-outs). This is the same pattern tldraw / Figma use.
+  //
+  // rootMargin: artboards mount slightly before entering viewport so users
+  // never see a placeholder during normal panning.
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => {
+    if (mounted || !cardRef.current) return;
+    if (typeof IntersectionObserver === 'undefined') { setMounted(true); return; }
+    const obs = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) {
+        setMounted(true);
+        obs.disconnect();
+      }
+    }, { rootMargin: '400px 400px 400px 400px' });
+    obs.observe(cardRef.current);
+    return () => obs.disconnect();
+  }, [mounted]);
 
   // Live drag-reorder: dragged card sticks to cursor; siblings slide into
   // their would-be slots in real time via transforms. DOM order only
@@ -606,9 +630,11 @@ function DCArtboardFrame({ sectionId, artboard, label, order, onRename, onReorde
       <button className="dc-expand" onClick={onFocus} onPointerDown={(e) => e.stopPropagation()} title="Focus">
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M7 1h4v4M5 11H1V7M11 1L7.5 4.5M1 11l3.5-3.5"/></svg>
       </button>
-      <div className="dc-card"
+      <div ref={cardRef} className="dc-card"
         style={{ borderRadius: 2, boxShadow: '0 1px 3px rgba(0,0,0,.08),0 4px 16px rgba(0,0,0,.06)', overflow: 'hidden', width, height, background: '#fff', ...style }}>
-        {children || <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#bbb', fontSize: 13, fontFamily: DC.font }}>{id}</div>}
+        {mounted
+          ? (children || <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#bbb', fontSize: 13, fontFamily: DC.font }}>{id}</div>)
+          : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cdc6bf', fontSize: 12, fontFamily: DC.font, letterSpacing: 0.4 }}>{label || id}</div>}
       </div>
     </div>
   );

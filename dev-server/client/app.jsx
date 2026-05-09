@@ -201,8 +201,9 @@ function Cheatsheet() {
         <ul>
           <li><kbd>⌘</kbd> + hover <span>highlight</span></li>
           <li><kbd>⌘</kbd> + click <span>select</span></li>
-          <li><kbd>⌘⇧</kbd> + click <span>select + comment</span></li>
-          <li><kbd>⌘C</kbd> after select <span>comment</span></li>
+          <li><kbd>⌘C</kbd> + click <span>select + comment</span></li>
+          <li><kbd>⌘⇧</kbd> + click <span>select + comment (alt)</span></li>
+          <li><kbd>⌘C</kbd> after select <span>comment selected</span></li>
           <li><kbd>Esc</kbd> in canvas <span>clear</span></li>
         </ul>
       </details>

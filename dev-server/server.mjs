@@ -574,6 +574,7 @@ const INSPECTOR_SCRIPT = `
   var lastHover = null;
   var lastSelected = null;
   var modifierDown = false;
+  var cKeyDown = false;       // true while user holds C — turns next click into select+comment
   var commentsCache = [];
   var focusedPinId = null;
 
@@ -648,6 +649,7 @@ const INSPECTOR_SCRIPT = `
 
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Meta') modifierDown = true;
+    if ((e.key === 'c' || e.key === 'C') && (e.metaKey || e.ctrlKey)) cKeyDown = true;
     if (e.key === 'Escape') {
       if (lastHover) lastHover.classList.remove('dgn-insp-hover');
       if (lastSelected) lastSelected.classList.remove('dgn-insp-selected');
@@ -655,8 +657,7 @@ const INSPECTOR_SCRIPT = `
       hideLabel();
       try { window.parent.postMessage({ dgn: 'clear-select' }, '*'); } catch(e) {}
     }
-    // Cmd+C — when the iframe has focus, the parent's window keydown listener
-    // never fires. Forward the shortcut so the parent can open the composer.
+    // Cmd+C without click — open composer for already-selected element
     if ((e.metaKey || e.ctrlKey) && (e.key === 'c' || e.key === 'C') && !e.shiftKey && !e.altKey) {
       if (lastSelected) {
         e.preventDefault();
@@ -670,9 +671,11 @@ const INSPECTOR_SCRIPT = `
       if (lastHover) { lastHover.classList.remove('dgn-insp-hover'); lastHover = null; }
       hideLabel();
     }
+    if (e.key === 'c' || e.key === 'C') cKeyDown = false;
   }, true);
   document.addEventListener('blur', function() {
     modifierDown = false;
+    cKeyDown = false;
     if (lastHover) { lastHover.classList.remove('dgn-insp-hover'); lastHover = null; }
     hideLabel();
   }, true);
@@ -706,11 +709,12 @@ const INSPECTOR_SCRIPT = `
     el.classList.add('dgn-insp-selected');
     var info = elInfo(el);
     try { window.parent.postMessage({ dgn: 'select', selection: info }, '*'); } catch(err) {}
-    // Cmd+Shift+click = open comment composer for this element
-    if (e.shiftKey) {
+    // Comment-while-clicking: ⌘⇧+click OR ⌘+click while holding C → select + composer
+    var commentNow = e.shiftKey || cKeyDown;
+    if (commentNow) {
       try { window.parent.postMessage({ dgn: 'comment-compose', selection: info }, '*'); } catch(err) {}
     }
-    showLabel((e.shiftKey ? 'comment: ' : 'selected: ') + info.tag + (info.classes ? '.' + info.classes.split(/\\s+/).slice(0,2).join('.') : ''), e.clientX, e.clientY);
+    showLabel((commentNow ? 'comment: ' : 'selected: ') + info.tag + (info.classes ? '.' + info.classes.split(/\\s+/).slice(0,2).join('.') : ''), e.clientX, e.clientY);
     setTimeout(hideLabel, 1500);
   }, true);
 
