@@ -27,16 +27,36 @@ selected           # JSON of the selected element if scoped, else null
 config             # contents of .design/config.json (rootClass, tokensCssRel, etc.)
 output_path        # where to write the report (typically <designRoot>/_history/<slug>/critique/<NNN>-design-critic.md)
 iter_n             # iteration number (1 if first run)
+opt_out_scope      # one of "palette" | "aesthetic" | "full" — see SKILL.md "Opt-out scope". Default "palette" if missing.
 ```
+
+## Opt-out scope handling
+
+`opt_out_scope` widens the user's permission to diverge from the project DS. Adjust DS-rule severity in the verdict accordingly:
+
+| Scope | Effect on YOUR DS-rule findings (Pass B) |
+|---|---|
+| `palette` *(default)* | No change. Full DS enforcement — palette tokens, type, radii, gradients, icons, accents. |
+| `aesthetic` | Downgrade these DS-rule blockers to **warnings**: gradients/glass/pastel/neumorphism (banned aesthetics), off-ladder radii, alt heading-font usage, decorative emoji/SVG flags in chrome. **Keep as blockers**: hardcoded color values not derivable from the canvas-local namespace, missing tokens link, missing rootClass envelope, status-color misuse, contrast/legibility issues that overlap with a11y. |
+| `full` | Downgrade ALL DS-rule blockers (Pass B) to warnings. **Keep as blockers**: missing tokens link / rootClass envelope (these are validation-contract concerns, not DS-rule); anything that overlaps a11y (contrast on real text, focus indicators, semantic landmarks). |
+
+**A11y findings are NOT subject to opt-out.** When you find contrast / focus / semantic / motion / touch-target violations in Pass A's a11y subsection, those stay blockers regardless of `opt_out_scope`. The opt-out covers stylistic DS rules, not WCAG.
+
+**Tag every blocker / warning with `category`** so the orchestrator's auto-fix loop can filter by scope. Allowed values: `a11y | ds | ds-tokens | ds-radii | ds-aesthetic | ds-icons | ds-typography | ds-status | ds-accent | ux | ia | microcopy`. Use the most specific tag (e.g. `ds-aesthetic` for gradient findings, not generic `ds`). Generic `ds` is reserved for findings that don't fit a sub-category.
+
+**Footer line** at the end of the verdict: include `"opt_out_applied": "<scope>"` and `"ds_blockers_downgraded": N` (count of findings that would have been blockers under `palette` but were downgraded under the active scope). This makes the downgrade auditable.
 
 ## Pre-flight
 
 1. **Read inputs.** Canvas + tokens CSS (`<designRoot>/<config.tokensCssRel>`). If tokens CSS unreadable, fail loud — without authoritative tokens you can't judge compliance.
-2. **Capture screenshot if missing.**
+2. **Capture screenshot if missing.** `agent-browser screenshot` does not take a URL arg; navigate first, then screenshot with positional path:
    ```bash
-   agent-browser screenshot "<server_url>/<canvas_path>" --output "<screenshots/NNN.full.png>"
+   agent-browser navigate "<server_url>/<canvas_path>" >/dev/null
+   sleep 1.5
+   agent-browser screenshot --full -- "<screenshots/NNN.full.png>"
+   ls -la "<screenshots/NNN.full.png>" >/dev/null 2>&1 || echo "⚠ screenshot not written"
    ```
-   If `selected` is set, also capture an element-scoped screenshot (`--selector "<selected.selector>"`).
+   If `selected` is set, also capture an element-scoped screenshot: `agent-browser screenshot "<selected.selector>" -- "<screenshots/NNN.element.png>"`. The `--output <path>` flag form does NOT work — CLI silently treats it as positional.
 3. **Load review frameworks** (read these once, apply yourself — no nested invocations):
    - Project's `ux-designer` skill if present (`.claude/skills/ux-designer/SKILL.md` or plugin equivalent). If missing, apply the 7-layer framework from memory: task → IA → states → interaction → microcopy → cross-platform → a11y.
    - Project's a11y rules skill (`<project>-a11y-rules` or `dugmate-a11y-rules` style) if present.
@@ -159,6 +179,8 @@ glass: pass/fail · gradient: pass/fail · pastel: pass/fail · neumorphism: pas
     { "category": "a11y", "line": 245, "summary": "Color contrast 3.1:1 on .meta — needs ≥ 4.5:1", "fix": "Switch to var(--fg-1)." },
     { "category": "ds-tokens", "line": 312, "summary": "Hardcoded #FF6B6B in inline style", "fix": "Use var(--presence-1)." }
   ],
+  "opt_out_applied": "palette",
+  "ds_blockers_downgraded": 0,
   "passed": (X == 0)
 }
 ```

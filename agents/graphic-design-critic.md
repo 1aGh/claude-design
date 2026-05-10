@@ -11,10 +11,26 @@ You critique. You **never** edit. You **never** spawn other agents.
 ## Inputs
 
 ```
-canvas_path / screenshot_path / feedback / selected / config / output_path / iter_n
+canvas_path / screenshot_path / feedback / selected / config / output_path / iter_n / opt_out_scope
 ```
 
-(See `design-critic.md` for the shared input contract.)
+(See `design-critic.md` for the shared input contract + opt-out semantics.)
+
+## Opt-out scope handling
+
+`opt_out_scope` widens the user's permission to diverge from the project DS. Adjust severity for findings that are **DS-rule based** (e.g. "off-ladder type scale", "non-token spacing", "alt heading font"):
+
+| Scope | Effect |
+|---|---|
+| `palette` *(default)* | No change. Score the project DS bar. |
+| `aesthetic` | Downgrade DS-rule blockers (off-ladder type scale, off-ladder spacing, alt type pairings) to warnings. **Keep as blockers**: visual hierarchy that doesn't read, composition lopsidedness, white-space accidents — those are universal graphic-design concerns regardless of which DS the canvas claims allegiance to. |
+| `full` | Downgrade ALL DS-rule findings to warnings. Score against the canvas's own internal coherence — is the off-DS choice intentional and consistent across artboards? |
+
+**A11y findings stay blockers** (you mostly don't generate them, but if you note "tiny secondary text dwarfed by hero" that overlaps a contrast finding, keep it as blocker).
+
+Tag every finding with `category` (per `design-critic.md` schema). Use `ds-typography` / `ds-spacing` / `ds-radii` for DS-rule findings; use `ux-hierarchy` / `ux-balance` / `ux-rhythm` for universal graphic-design findings.
+
+Footer: emit `"opt_out_applied": "<scope>"` and `"ds_blockers_downgraded": N`.
 
 ## Pre-flight
 

@@ -1,6 +1,6 @@
 ---
-description: Iteruj na aktivním canvasu — Claude přečte soubor co máš v browseru otevřený a aplikuje feedback IN PLACE. Default: po editu auto-spustí critic panel; přidej --perfect [N] pro N iterací auto-fixu, nebo --no-critic pro skip.
-argument-hint: "\"<feedback>\" [--screenshot <path>] [--perfect [N]] [--no-critic]"
+description: Iteruj na aktivním canvasu — Claude přečte soubor co máš v browseru otevřený a aplikuje feedback IN PLACE. Default: po editu auto-spustí critic panel; přidej --perfect [N] pro N iterací auto-fixu, nebo --no-critic pro skip. --opt-out=<scope> přepíše scope ze sidecaru pro tuhle iteraci.
+argument-hint: "\"<feedback>\" [--screenshot <path>] [--perfect [N]] [--no-critic] [--opt-out=palette|aesthetic|full]"
 ---
 
 # /design — iteruj na active canvasu
@@ -9,10 +9,11 @@ Default flow design pluginu. Edituje **soubor co máš právě otevřený v brow
 
 Project-specific hodnoty (designRoot, rootClass, tokens path, themeDefault) přicházejí z `<repo>/.design/config.json`. Orchestrator je čte přes server `/_config` endpoint (nebo přímo ze souboru).
 
-**Vstup `$ARGUMENTS`:** `"<feedback>" [--screenshot <path>]`
+**Vstup `$ARGUMENTS`:** `"<feedback>" [--screenshot <path>] [--opt-out=palette|aesthetic|full]`
 
 - `<feedback>` — verbatim co se má změnit. Konkrétně: "presence dot 8px u každého hráče v rosteru", "tighter row density", "remove avatar from chat header".
 - `--screenshot <path>` — volitelně cesta k anotovanému obrázku. Claude ho přečte jako image input.
+- `--opt-out=palette|aesthetic|full` — override scope pro tuhle iteraci a persist do `.meta.json`. Pokud chybí, čte se ze sidecaru `<canvas>.meta.json` field `opt_out_scope` (default `palette`). Viz SKILL.md "Opt-out scope".
 
 **Příklady:**
 ```
@@ -131,25 +132,49 @@ grep -qE "(^| )(class|className)=\"$ROOT_CLASS([\" ])" "$ACTIVE" || RESTORE=1
 
 If `RESTORE=1`, copy back the snapshot and report drift to user. Don't leave broken HTML.
 
-### 7. Auto-critic + auto-fix loop (default — opt out with `--no-critic`)
+### 7. Post-write reality check — confirmation screenshot
 
-**See `skills/design/SKILL.md` "Auto-critic loop" for the full algorithm.** Summary:
+**Always fires, regardless of `--no-critic`.** Reality check (does the file render?), ne quality check.
 
-- `--no-critic` → skip step 7 entirely (just print "Edited.").
-- default → run **2 iterations max** of (panel critic → auto-fix → panel critic). Exit on `blockers == 0` OR divergence (blockers count went up — restore best snapshot) OR max reached.
-- `--perfect [N]` (default N=5) → same loop with N iterations.
-- `--perfect --all` → use every critic instead of routed panel.
+```bash
+PORT=$(jq -r .port "$DESIGN_ROOT/_server.json")
+URL="http://localhost:$PORT/$ACTIVE"               # URL-escape spaces as %20
+SLUG=...   # already computed
+OUT="$DESIGN_ROOT/_history/$SLUG/$NNN-baseline.png"
 
-Each loop iteration:
-1. Pick critic panel (routing rules in SKILL.md).
-2. Spawn panel in parallel via N `Agent` calls in one message.
-3. Parse JSON verdicts, write `<NNN>-PANEL.md` consolidation.
-4. Track best snapshot (lowest blockers count seen so far).
-5. If passed → exit. If divergent → restore best, exit. If max → restore best, exit.
-6. Else build fix prompt from top 3 blockers (sorted: a11y > ds-tokens > others), snapshot, edit, validate.
-7. Append to `<designRoot>/_history/<slug>/chat.md` (iteration transcript).
+# Two-step: navigate, then screenshot. agent-browser screenshot does NOT take
+# a URL arg — its signature is `screenshot [selector] [path]`. Path is
+# positional with `--` separator; `--output <path>` silently fails (CLI treats
+# it as a literal positional and reports success without writing the file).
+agent-browser navigate "$URL" >/dev/null
+sleep 1.5
+agent-browser screenshot --full -- "$OUT"
+ls -la "$OUT" >/dev/null 2>&1 || echo "⚠ baseline screenshot not written"
+```
 
-### 8. Refresh docs (auto)
+Screenshot path je referenced v final print + chat.md row. Pokud render blank → warn `⚠ canvas rendered blank — likely JSX error`, neabortuj (file exists, user může otevřít manually).
+
+Detaily: SKILL.md "Post-write reality check".
+
+### 8. Auto-critic + auto-fix loop (default — opt out with `--no-critic`)
+
+**Resolve opt-out scope first.** Order: (1) `--opt-out=<scope>` flag in `$ARGUMENTS` wins; (2) else read `<active>.meta.json` `opt_out_scope` field; (3) else default `palette`. Pass the resolved scope to every critic in the panel via the input envelope. Each critic adjusts severity per its own spec — `design-critic` / `graphic-design-critic` / `typography-critic` / `signature-moment-critic` downgrade matching DS-rule blockers to warnings; `a11y-critic` / `frontend-critic` / `copy-critic` ignore the parameter (their blockers are universal). Persist the resolved scope back to `.meta.json` if it changed.
+
+**See `skills/design/SKILL.md` "Auto-critic loop" + "Opt-out scope" for full spec.** Klíčové:
+
+| Flag | max_iter | aspiration_target | Panel | Use |
+|---|---|---|---|---|
+| (default) | 4 | 4.0 / 5 | routed (incl. `signature-moment-critic` když feedback obsahuje polish/nicer/elegant cues) | každé /design — solid-for-review |
+| `--no-critic` | 0 | n/a | (skip) | quick / dirty edit |
+| `--perfect [N]` | N (default 8) | 4.5 / 5 | routed | extended polish, broader scope |
+| `--perfect --all` | N | 4.5 / 5 | every critic incl. aspiration | exhaustive / portfolio-grade |
+| `--opt-out=<scope>` | (orthogonal) | (orthogonal) | (orthogonal) | Override scope for this iteration. `palette` (default) / `aesthetic` (palette + gradients/radii free) / `full` (DS advisory). A11y enforced regardless. Persists to `.meta.json`. |
+
+Default loop **multi-axis** stop condition: `correctness == 0 AND aspiration ≥ 4.0 AND specificity == "pass" AND no_gains_for_1_round`. Když plateau → exit `stable-but-bland` s diagnostic (lowest 2 axes), místo silent success na "blockers == 0 ale bland."
+
+Each iteration: pick panel → spawn parallel via Agent calls → parse JSON verdicts → write NNN-PANEL.md → check exit conditions → auto-fix top 3 blockers → repeat. Track best snapshot, restore on divergence.
+
+### 9. Refresh docs (auto)
 
 After auto-critic loop completes (or `--no-critic` skipped it), call the **incremental docs refresh** described in `skills/design/SKILL.md` "Continuous docs maintenance":
 
@@ -159,16 +184,22 @@ After auto-critic loop completes (or `--no-critic` skipped it), call the **incre
 
 Failure here is non-fatal — print warning, don't restore the canvas. (User can run `/design:docs --full` to recover.)
 
-### 9. Tell user
+### 10. Tell user
 
 ```
 ✓ Edited: <path>
   Snapshot: <hist>/NNN-ts.bak (rollback with /design:rollback)
   Lines changed: <range>
+  Baseline: <hist>/NNN-baseline.png
 
-  Critic panel ({list}): blockers {X} · warnings {Y} · {verdict}
-  {if --perfect, list iterations: "iter 1 → iter 2 → iter 3 (final)"}
+  Critic panel ({list}):
+    correctness: {X} blockers · {Y} warnings
+    {if signature-moment-critic in panel:}
+    aspiration: {n}/5 (signature {n}, brand {n}, fidelity {n}, restraint {n}, neg-space {n}) · specificity: {pass|fail}
+    verdict: {solid | stable-but-bland | max-reached | divergent | validation-failed}
+  {if iter > 1 or --perfect, list iterations: "iter 1 → iter 2 → iter 3 (final)"}
   {if restored: "↺ restored to iter K (best result)"}
+  {if stable-but-bland: "Lowest axes: <list>. Targeted feedback would lift these."}
 
   Docs: <designRoot>/INDEX.md updated, iter {N}.
 

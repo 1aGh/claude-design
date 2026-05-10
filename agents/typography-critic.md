@@ -10,7 +10,23 @@ You critique. You **never** edit. You **never** spawn other agents.
 
 ## Inputs
 
-Standard contract (see `design-critic.md`).
+Standard contract (see `design-critic.md`) — including `opt_out_scope`.
+
+## Opt-out scope handling
+
+`opt_out_scope` adjusts severity for DS-rule typography findings:
+
+| Scope | Effect |
+|---|---|
+| `palette` *(default)* | No change. Heading must use `--font-heading`, body `--font-sans`, scale on `--fs-*` ladder. |
+| `aesthetic` | Downgrade to warnings: alt heading font (e.g. SF Pro instead of project's IBM Plex Sans), alt body font, off-ladder font-sizes inside the canvas-local namespace. **Keep as blockers**: text dwarfed by chrome, leading too tight to read, paragraph measure absurd (>90 chars or <40 chars), missing fallback chains, color contrast on text. |
+| `full` | Downgrade ALL font-family + scale-ladder findings to warnings. Score against typographic craft only — pairing personality, leading rhythm, measure, optical alignment. |
+
+**A11y-overlapping findings stay blockers** at every scope (text contrast, minimum readable size, focus indicator on form labels).
+
+Tag findings with `category`: use `ds-typography` for DS-rule (downgradable), `type-craft` for craft (universal — pairings, leading, measure, hyphenation, widows/orphans).
+
+Footer: emit `"opt_out_applied": "<scope>"` and `"ds_blockers_downgraded": N`.
 
 ## Pre-flight
 

@@ -21,6 +21,69 @@ You are the orchestrator for local design-iteration. The mental model: **the pro
 
 If `.design/config.json` is missing, the dev server returns sensible defaults; the orchestrator falls back to those — see `/_config` endpoint on the dev server.
 
+## Opt-out scope — palette / aesthetic / full
+
+When a user invokes `/design:new` or `/design` with `--opt-out=<scope>` (or signals an opt-out in plain language — "opt-out design system", "modern color scheme", "different feel"), the orchestrator picks one of three scopes. The scope flows into the auto-critic loop and gets persisted on the canvas's `.meta.json`.
+
+| Scope | What's relaxed (vs. project DS) | Critics that downgrade matching DS-rule blockers → warnings | Critics that stay strict |
+|---|---|---|---|
+| `palette` *(default)* | Palette only — local namespace overrides colors. Type / radii / icons / aesthetic still enforced. | (none) | all |
+| `aesthetic` | Palette + decorative aesthetic — gradients, off-ladder radii, alternate type pairings, decorative SVG/emoji glyphs allowed inside the namespace. | `design-critic`, `graphic-design-critic`, `typography-critic`, `signature-moment-critic` (does *not* penalize accent/gradient choices as "restraint" violations) | `a11y-critic`, `frontend-critic`, `copy-critic`, `motion-critic` (motion duration tokens still apply), `info-architecture-critic`, `brand-critic` |
+| `full` | DS treated as advisory. Type / radii / aesthetic up to canvas. | `design-critic`, `graphic-design-critic`, `typography-critic`, `signature-moment-critic`, `info-architecture-critic`, `brand-critic` (only for *DS-rule* findings, not asset integrity), `motion-critic` (DS motion-token rule downgraded; reduced-motion stays strict) | `a11y-critic`, `frontend-critic`, `copy-critic` |
+
+### Validation envelope — kept at every scope
+
+`<link rel="stylesheet" href="<tokensCssRel>">` and `<body class="<rootClass>" data-theme=…>` survive every opt-out. Step-6 validation greps for them and rolls back the snapshot if missing. The opt-out widens the critic *judgement bar*; it does not strip the file's structural envelope.
+
+### A11y is independent of opt-out
+
+WCAG hard-stops (contrast, semantics, focus, motion-respect, touch targets, form labels) apply at every scope. `a11y-critic` and `frontend-critic` do not honor `opt_out_scope` — their blockers stay blockers. Treating a11y as a separate axis is the only safe way to offer broader visual exploration.
+
+### Iter-1 checkpoint when scope > palette
+
+When `opt_out_scope ∈ {aesthetic, full}` is in effect, after the post-write reality-check screenshot but **before spawning iter-1 critics**, surface a one-shot `AskUserQuestion`:
+
+```
+Iter 1 ready (opt_out_scope = <scope>). Pick:
+  (a) Run the auto-fix loop now — fixes a11y; downgrades DS blockers per scope.
+  (b) Show me iter 1, I'll send specific feedback (skip auto-loop this round).
+  (c) A11y-only check — skip aspiration + DS, just verify accessibility.
+```
+
+This fires only when the user opted into a wider scope. The default `palette` scope keeps the existing contract (auto-loop runs unconditionally). The point is: when the user signaled exploration, give them iter-1 cheaply before the loop reshapes it for compliance.
+
+### Inferring scope from plain language
+
+If the user invokes `/design:new` with brief text containing opt-out signals but no explicit `--opt-out=` flag, the orchestrator may **propose** a scope based on phrasing (vibrant/modern/playful/exploratory → `aesthetic`; product-foreign domain → `aesthetic`; "fully off-system" / "different brand" → `full`), but must **surface a one-shot AskUserQuestion before kicking off the auto-fix loop**:
+
+```
+I read your "<opt-out phrase>" as opt_out_scope = <inferred>. Pick:
+  (a) palette  — DS aesthetic still enforced (default)
+  (b) aesthetic — palette + gradients/radii/type free
+  (c) full      — DS advisory only
+A11y enforced regardless.
+```
+
+If the user is in Auto Mode (AskUserQuestion denied), default to `palette` and flag the assumption explicitly in the print step (`opt_out_scope = palette (auto-picked because Auto Mode; user signaled "<phrase>" — explicit --opt-out=aesthetic|full would have widened)`).
+
+### Persisting scope on the canvas
+
+After the user picks (or in Auto Mode default), write the scope to the canvas's `.meta.json`:
+
+```jsonc
+{
+  "title": "...",
+  "opt_out_scope": "palette" | "aesthetic" | "full",
+  ...
+}
+```
+
+Subsequent `/design` iterations on the same canvas read this field and apply the same scope **automatically** — no re-asking on every edit. To change scope mid-flow: `/design "<feedback>" --opt-out=<new-scope>` overrides for that iteration and persists the new value.
+
+### Propagating scope to critic agents
+
+The orchestrator passes `opt_out_scope: <scope>` in every critic's input envelope. The 4 design-stack critics (`design-critic`, `signature-moment-critic`, `graphic-design-critic`, `typography-critic`) read it and adjust verdict severity. Each verdict's top_blockers MUST be tagged with `category` (one of `a11y | ds | frontend | aspiration | brand | copy | motion | ia | type`). The auto-fix loop filters `category: ds`-tagged blockers per scope before counting them toward the SOLID stop condition. See per-critic specs for downgrade rules.
+
 ## Hard contract — non-negotiable
 
 1. **Active canvas + (optional) selected element come first.** Before any edit, read `<designRoot>/_active.json`. If `active` is null or the dev server is not running, ensure the server is up and ask the user to open something in the browser.
@@ -165,7 +228,73 @@ Default. Edits the active canvas inline.
    - `<body class="<rootClass>" data-theme="…">` still present (rootClass from config)
    - No new hardcoded `#hex` colors, no new `font-family` not using `var(--font-*)`
    - If validation fails, restore from snapshot and report what went wrong.
-8. **Tell the user.** Print: file edited, line range changed, snapshot id, "reload iframe (Cmd+R inside the canvas tab)".
+8. **Confirmation screenshot — always, regardless of `--no-critic`.** See "Post-write reality check" below.
+9. **Tell the user.** Print: file edited, line range changed, snapshot id, screenshot path, "reload iframe (Cmd+R inside the canvas tab)".
+
+### Post-write reality check — confirmation screenshot
+
+**Always fires after a successful edit / generate, regardless of `--no-critic`.** This is reality check (does the file render?), not quality check (is it good?). It's cheap, it costs one agent-browser call, and it's the baseline both critics and rollback compare against.
+
+```bash
+SLUG=...                                 # already computed for snapshots
+HIST=<designRoot>/_history/$SLUG
+PORT=$(jq -r .port <designRoot>/_server.json)
+URL="http://localhost:$PORT/<canvas_path>"        # URL-escape spaces as %20
+OUT="$HIST/$NNN-baseline.png"
+
+# Two-step: navigate first, then screenshot. agent-browser screenshot does NOT
+# accept a URL argument — its signature is `screenshot [selector] [path]`.
+agent-browser navigate "$URL" >/dev/null 2>&1
+sleep 1.5                                          # let React+Babel mount
+
+# IMPORTANT: path MUST be passed as positional arg with `--` separator.
+# `--output <path>` does NOT work — the CLI silently treats `--output` as a
+# literal positional and reports "✓ Screenshot saved to --output" without
+# writing the file. Always verify with `ls -la "$OUT"` after the call.
+agent-browser screenshot --full -- "$OUT"
+ls -la "$OUT" >/dev/null 2>&1 || echo "⚠ screenshot file not written"
+```
+
+Why this matters:
+
+- **Babel-standalone runtime errors don't surface as HTTP errors** — the file serves 200 even if JSX fails to mount. Without a render check, "wrote 600 lines + 200 OK" is a false positive.
+- **Critics already auto-capture if missing**, but `--no-critic` skips the entire loop. Without this step, the user sees no visual confirmation when they explicitly opt out of critique.
+- **Rollback diffs need a baseline.** Comparing screenshots across snapshots is only useful if every snapshot has one.
+
+**Lazy-mount + pan-zoom caveat (canvases since commit 7a00561).** `DesignCanvas` has its own pan/zoom viewport and lazy-mounts artboards as they enter view. A single full-page screenshot at default viewport height captures only what's currently positioned in the canvas viewport — typically 1–3 artboards out of 6+. For canvases with > 3 artboards, **per-artboard element screenshots are the reliable unit**:
+
+1. **Per-artboard element screenshots (PREFERRED for canvases with > 3 artboards):** loop over `[data-dc-slot="<id>"]` selectors. Element screenshots ignore the canvas's pan/zoom and capture just the artboard's bounding box. Each gets its own file — higher fidelity and easier diff than one tall image.
+
+   ```bash
+   # Read artboard ids from the canvas's .meta.json (sidecar, written by /design:new)
+   META="${ACTIVE%.html}.meta.json"
+   for ID in $(jq -r '.sections[].artboards[].id' "$META" 2>/dev/null); do
+     agent-browser eval "document.querySelector('[data-dc-slot=\"$ID\"]').scrollIntoView({block:'center'})" >/dev/null
+     sleep 0.6                                                # let lazy-mount commit
+     agent-browser screenshot "[data-dc-slot=\"$ID\"]" "$HIST/$NNN-baseline-$ID.png"
+   done
+   ```
+
+   The selector is the **first** positional arg, the path is the **second** — no `--` separator needed in this form.
+
+2. **Eval-then-scroll + full snapshot (fallback for ≤ 3 artboards):** when the canvas fits the viewport, the simpler full-page approach works.
+
+   ```bash
+   agent-browser eval "document.querySelectorAll('[data-dc-slot]').forEach(el => el.scrollIntoView())" >/dev/null
+   sleep 2
+   agent-browser screenshot --full -- "$OUT"
+   ```
+
+   For multi-artboard canvases this captures only the visible viewport (DesignCanvas's pan/zoom world is *not* the document scroll), so state in the report: `Baseline: 000-baseline.png (visible viewport only — DesignCanvas pan/zoom limit; per-artboard snapshots recommended for full coverage)`.
+
+**Why per-artboard wins for canvases (retro 2026-05-09).** During the iOS Bikeshare Signup session, full-page snapshots showed only 1 of 6 artboards because DesignCanvas pans/zooms its world independently of document scroll. `[data-dc-slot]` element screenshots captured all 6 cleanly. Promote per-artboard to default for canvases generated by `/design:new`.
+
+Failure handling:
+- `agent-browser` reports success but file is empty / missing → CLI flag-vs-positional bug (see syntax note above). Re-run with `-- "$path"` form.
+- Screenshot capture timeout (5s default) → warn but don't fail the edit. The file already exists; the user can open it manually.
+- Screenshot dimensions zero / file empty → server is rendering blank — strong signal of a JSX error. Mark the report as `⚠ canvas rendered blank — likely JSX error, check console`. Do NOT auto-rollback (the file might be intentionally minimal).
+
+Output is gitignored (lives under `_history/`), and is referenced from the iteration's chat.md row as `**Baseline:** {path}`.
 
 ### Scoped edit prompt (when `selected` is set)
 
@@ -195,7 +324,7 @@ Use the Edit tool with `old_string` matching a unique substring of the selected 
 
 ### `/design:new <name> "<brief>"` — scaffold new canvas project
 
-Creates a brand-new HTML canvas file in `<designRoot>/<newCanvasDir>/<Name>.html` (or `<newComponentDir>/<Name>.jsx` if the user explicitly says component). Generated via the `frontend-design` plugin, scoped to the project's design system.
+Creates a brand-new HTML canvas file in `<designRoot>/<newCanvasDir>/<Name>.html` (or `<newComponentDir>/<Name>.jsx` if the user explicitly says component). Generated via the `frontend-design` Skill (preferred) or the orchestrator's direct authoring (documented fallback) — see "Generation invocation" in Cross-skill calls.
 
 **The new file MUST be a multi-artboard canvas project**, not a single-page wrapper. It uses the `DesignCanvas` + `DCSection` + `DCArtboard` pattern (see existing examples in `<designRoot>/ui/`) so multiple screens live in one panable canvas. A bare single-page wrapper is an anti-pattern unless the user explicitly says so.
 
@@ -203,9 +332,13 @@ Creates a brand-new HTML canvas file in `<designRoot>/<newCanvasDir>/<Name>.html
    - For canvas project: title-case with optional spaces (`Match Recap`, `Scout Radar`). File: `<Name>.html`.
    - For shared component: PascalCase (`MatchRecap`). File: `<newComponentDir>/<Name>.jsx`.
 2. Reject if file already exists. Suggest `<Name> v2`.
-3. Generate via `Skill(skill: "frontend-design:frontend-design", args: <envelope>)` — see "Generation envelope" below.
-4. Validate output (link to tokens, correct rootClass, no hardcoded values, includes at least one `DCArtboard`).
-5. Write the file. Print path + "click on it in the browser tree to make it active, then iterate with /design".
+3. **Build the envelope** following "Envelope discipline" — creative brief, not wireframe spec. Include the aspiration directives 9–14 verbatim. Reference at least one existing canvas as wrapper pattern.
+4. **Generate** via the preferred path; fall back transparently if the Skill is unavailable. Always note which path was taken in the final report.
+5. Validate output (link to tokens, correct rootClass, no hardcoded values, includes at least one `DCArtboard`).
+6. Write the file.
+7. **Post-write reality check** — capture confirmation screenshot (see "Post-write reality check" above). Same guarantees as `/design`: always fires, even with `--no-critic`. For canvases with > 3 artboards, scroll all artboards into view first (see "Lazy-mount caveat") or explicitly state in the report that the snapshot covers only the first ~3.
+8. **Auto-critic loop — `/design:new` defaults to `--perfect`** (max 8 iter, target 4.5/5, full panel: signature-moment + design + frontend + a11y). Higher bar than `/design` because new canvases are high-leverage scaffolds. Opt-out flags: `--quick` (signature-moment only, 2 iter), `--no-critic` (skip), `--perfect-iter N` (override iter count). See "Default flow vs. --perfect" table for the full matrix and "Auto-critic loop" for stop conditions.
+9. Print path + generation path used + screenshot path + critic mode + verdict + "click on it in the browser tree to make it active, then iterate with /design".
 
 ### `/design:rollback [--steps N] [--list]` — undo
 
@@ -223,10 +356,15 @@ Restores the last snapshot of the active canvas. With `--steps N`, restores N ba
 Operates on `_active.json`. Default `area = "full"`. Output goes to `_history/<slug>/screenshots/<NNN>-<area>.png` (gitignored).
 
 ```bash
-agent-browser screenshot "<server_url>/<active_path>" --output "<out>" [--selector "<css>"]
+# Two-step pattern — agent-browser screenshot does NOT take a URL arg.
+agent-browser navigate "<server_url>/<active_path>" >/dev/null
+sleep 1
+agent-browser screenshot ["<css selector>"] -- "<out>"   # path is positional with `--` separator
 ```
 
 Use the dev server's URL (`http://localhost:<port>/<designRoot>/...`), not `file://` — the server handles relative imports correctly.
+
+The `--output <path>` flag form does NOT work — the CLI silently treats `--output` as a literal positional. Always use `-- "<path>"` and verify the file exists with `ls -la` after.
 
 If `_active.json.selected` is set and the user passed no `--selector`, default the screenshot selector to the selected element's `selector`. The screenshot will be just the focused element.
 
@@ -281,6 +419,7 @@ HAS_USER_STRINGS=$(grep -cE ">[A-Z][a-zA-Z ]{3,}<|placeholder=|aria-label=|title
 |---|---|---|
 | `design-critic` | ✓ | (always — holistic baseline) |
 | `a11y-critic` | ✓ | (always — a11y is universal) |
+| `signature-moment-critic` |   | **Always for `/design:new`** initial generation. On `/design`: feedback mentions `polish|nicer|elegant|iconic|signature|portfolio|memorable|creative` OR canvas is in `<newCanvasDir>` and `iteration_count < 5`. This is the aspiration axis — measures *presence of greatness*, not absence of badness. |
 | `typography-critic` |   | `HAS_TYPE_HEAVY > 5` OR feedback mentions `font|type|leading|measure|tracking|hierarchy` |
 | `motion-critic` |   | `HAS_ANIM > 0` OR feedback mentions `animation|transition|motion|prefers-reduced` |
 | `brand-critic` |   | `HAS_LOGO > 0` OR feedback mentions `brand|logo|voice|tone|asset|illustration|photography` |
@@ -291,11 +430,15 @@ HAS_USER_STRINGS=$(grep -cE ">[A-Z][a-zA-Z ]{3,}<|placeholder=|aria-label=|title
 
 If the routing produces just `design-critic + a11y-critic` (minimum panel), that's fine — those two cover most baseline-quality cases. The conditional ones fire when the canvas / feedback genuinely calls for them.
 
+**Why `signature-moment-critic` is its own axis:** the other critics are *correctness* gates. Without an aspiration gate, the auto-fix loop converges on "all checks green" — which is exactly competent stock. `signature-moment-critic` measures composition, brand prominence, mock fidelity, restraint, negative space, and a specificity gate (no Lorem / placeholder content). It's the difference between a canvas that *passes* and one a designer would *screenshot*.
+
 The **selected element** narrows the same routing — if `_active.json.selected` is set, run grep on the selected element's outerHTML instead of the whole canvas. (Targeted critique = targeted panel.)
 
 ### Spawning the panel
 
 The orchestrator spawns the picked critics **in parallel** with one message containing N `Agent` tool calls. Each critic writes its own report; the orchestrator parses each JSON verdict, aggregates, and writes `<NNN>-PANEL.md`.
+
+**Every Agent invocation MUST pass `opt_out_scope`** in the prompt — read from the canvas's `<active>.meta.json` `opt_out_scope` field, or override from `--opt-out=<scope>` flag, or default `palette`. Critics that honor the scope (design-stack) will downgrade their DS-rule findings; critics that ignore it (a11y / frontend / copy) emit `"opt_out_applied": "n/a"` for auditability. The auto-fix loop's SOLID stop condition reads each critic's post-downgrade `blockers` count — so honoring scope at critic level naturally flows into the loop's exit logic without separate filter code.
 
 ### Panel consolidation report
 
@@ -356,71 +499,129 @@ _{ISO ts} · canvas: `{path}` · critics: design-critic, a11y-critic, ... · tot
 
 After every successful edit/generate, the orchestrator runs auto-critic by default. The user can opt out with `--no-critic`, or escalate with `--perfect [N]`.
 
+The default loop is **multi-axis** — it does not exit just on "blockers == 0", because correctness ≠ aspiration. It exits when the canvas is **solid for review**: correctness blockers cleared AND aspiration ≥ threshold AND no further gains in the last round (stable). If those can't be reached, it surfaces with a diagnostic, not silent.
+
+### Stop-condition vocabulary
+
+The loop tracks two quality axes per iteration, both produced by the panel:
+
+- **`correctness_blockers`** — sum of `blockers` across non-aspiration critics (`design-critic`, `a11y-critic`, `typography-critic`, …). Drives correctness gate.
+- **`aspiration_score`** — `signature-moment-critic.aspiration_score` (0–5 normalized). Drives aspiration gate. If `signature-moment-critic` is not in the panel, treat aspiration_score as 5 (auto-pass, axis not measured).
+- **`specificity`** — `signature-moment-critic.specificity` (`pass | fail`). Hard gate — fail blocks success even if everything else is green.
+
+### Default thresholds
+
+```
+SOLID = correctness_blockers == 0
+        AND aspiration_score >= 4.0
+        AND specificity == "pass"
+        AND no_gains_for_1_round   # stable — last fix didn't move scores
+```
+
 ### Algorithm
 
 ```
-max_iter = 2 (default flow) | N (--perfect, default 5)
-prev_blockers = ∞
+# Tunable per mode (see "Default flow vs. --perfect" table)
+max_iter            = 4 (default flow) | N (--perfect, default 8)
+aspiration_target   = 4.0 (default flow) | 4.5 (--perfect)
+divergence_tolerance = 1 (default flow) | 2 (--perfect)
+
+prev = { correctness: ∞, aspiration: 0 }
 best_snapshot = none
-best_blockers = ∞
+best_score = -∞               # weighted: -correctness + aspiration
+diverge_count = 0
+no_gains_count = 0
 
 # Always append iteration 0 to chat.md (initial edit / generate)
 append_to_chat_md(iter=0, feedback, selected, snapshot_id, edit_summary, critic_verdict=null)
 
 for iter in 1..max_iter:
   # 1. Run critic panel (routing logic above)
-  panel = pick_panel(canvas, feedback, selected)
+  panel = pick_panel(canvas, feedback, selected)   # routing forces signature-moment-critic for /design:new
   spawn panel in parallel
-  parse JSON verdicts → aggregate → total_blockers
+  parse JSON verdicts → aggregate
   write iter NNN-PANEL.md
 
-  # 2. Update best-snapshot tracking
-  if total_blockers < best_blockers:
-    best_blockers = total_blockers
-    best_snapshot = current_snapshot_id (NNN-ts.bak)
+  correctness = sum_blockers_across(panel except signature-moment-critic)
+  aspiration  = signature-moment-critic.aspiration_score (or 5 if not in panel)
+  specificity = signature-moment-critic.specificity      (or "pass" if not in panel)
 
-  # 3. Append this iteration to chat.md
+  # 2. Update best-snapshot tracking — composite score
+  current_score = -correctness * 10 + aspiration   # correctness dominates aspiration
+  if current_score > best_score:
+    best_score = current_score
+    best_snapshot = current_snapshot_id
+
+  # 3. Track gain delta
+  gained = (correctness < prev.correctness) OR (aspiration > prev.aspiration + 0.1)
+  if !gained:
+    no_gains_count += 1
+  else:
+    no_gains_count = 0
+
+  # 4. Append this iteration to chat.md
   append_to_chat_md(iter, feedback, selected, snapshot_id, edit_summary, critic_verdict)
 
-  # 4. Exit conditions (in order)
-  if total_blockers == 0:
-    refresh_docs()                  # see "Continuous docs maintenance" — required
-    print "✓ panel clean"
+  # 5. Exit conditions (in order)
+  if correctness == 0 AND aspiration >= aspiration_target AND specificity == "pass" AND no_gains_count >= 1:
+    refresh_docs()
+    print "✓ solid — correctness clean, aspiration {aspiration}/5, stable"
     exit success
 
+  if correctness == 0 AND specificity == "pass" AND no_gains_count >= 2:
+    # Correctness is clean and we're stuck on aspiration — surface diagnostic, don't loop forever
+    refresh_docs()
+    print "⚠ stable but {aspiration}/5 (target {aspiration_target}) — surfacing for review"
+    print "  Lowest axes: {top 2 axes from signature-moment-critic with score < target}"
+    exit stable-but-bland
+
   if iter == max_iter:
-    print "⚠ max iterations reached, {best_blockers} blockers remain"
-    if best_snapshot != current:
+    if best_snapshot != current_snapshot:
       restore best_snapshot
-      print "↺ restored to best (iter {best_iter}, {best_blockers} blockers)"
-    refresh_docs()                  # always refresh, even on imperfect exit
+      print "↺ restored to best (iter {best_iter}, correctness {best.c}, aspiration {best.a}/5)"
+    refresh_docs()
+    print "⚠ max iterations reached"
     exit max-reached
 
-  # 5. Divergence check — stop-loss
-  if total_blockers > prev_blockers:
-    print "✗ divergence: blockers went {prev_blockers} → {total_blockers}; stopping"
-    restore best_snapshot
-    refresh_docs()
-    exit divergent
+  # 6. Divergence — both axes worsening
+  diverged = (correctness > prev.correctness) AND (aspiration < prev.aspiration - 0.3)
+  if diverged:
+    diverge_count += 1
+    if diverge_count >= divergence_tolerance:
+      restore best_snapshot
+      refresh_docs()
+      print "✗ divergence: scores worsened {diverge_count}× — restored to best"
+      exit divergent
+  else:
+    diverge_count = 0
 
-  # 6. Auto-fix — craft prompt from top blockers
-  fix_prompt = build_fix_prompt(top_blockers_across_panel, max=3)
+  # 7. Auto-fix — craft prompt from top blockers (correctness + aspiration mixed, sorted)
+  fix_prompt = build_fix_prompt(
+    top_blockers_across_panel,         # combines correctness blockers AND aspiration top_blockers
+    max = 3,
+    sort_by = "severity"               # severity: a11y > ds-tokens > specificity > signature > restraint > others
+  )
   snapshot canvas
-  apply edit (Edit tool, scoped to top blocker if line N is set)
+  apply edit (Edit tool, scoped to top blocker if line N is set; canvas-wide for aspiration fixes)
   validate (tokens link, rootClass)
   if validation fails:
     restore from snapshot
     refresh_docs()
     exit validation-failed
 
-  prev_blockers = total_blockers
+  prev = { correctness, aspiration }
 
 # refresh_docs() is the function spec'd in "Continuous docs maintenance" below.
-# It is wired in at every loop exit point — success, max-reached, divergent, validation-failed.
-# Even --no-critic (loop skipped entirely) calls refresh_docs() once after the single edit.
+# It is wired in at every loop exit point — success, stable-but-bland, max-reached,
+# divergent, validation-failed. Even --no-critic (loop skipped entirely) calls
+# refresh_docs() once after the single edit.
 ```
 
 **No exit path skips `refresh_docs()`** — that's what makes the design root self-documenting. The only way it gets stale is if the user invokes `Edit` directly on a canvas file outside `/design`, in which case `/design:docs --full` is the recovery.
+
+### Why "stable-but-bland" exists as an exit
+
+If correctness is clean but aspiration plateaus below target for 2 rounds, the loop stops trying to fix. Iterating on a stuck score burns tokens and risks divergence — and the orchestrator has no creative judgment to break the plateau. The right move is surface the canvas to the user with the lowest axes named, so they can give targeted feedback (e.g. "rework the welcome hero — one big shape + overlap, not card stack"). This converts an autonomous-loop limit into a productive handoff, instead of false success.
 
 ### Building the fix prompt
 
@@ -439,14 +640,32 @@ Apply ONLY these fixes. Preserve existing tokens, rootClass, and structure. Afte
 
 The orchestrator uses Edit tool with old_string scoped to the line range from the verdict.
 
-### Default flow vs. `--perfect`
+### Default flow vs. `--perfect` — different defaults per command
 
-| Flag | max_iter | Critic panel | Auto-fix | Use case |
-|---|---|---|---|---|
-| (none) | 2 | routed panel | yes | every /design and /design:new — baseline quality gate |
-| `--no-critic` | 0 | (skip) | no | quick / dirty edit |
-| `--perfect [N]` | N (default 5) | routed panel | yes | "make this right" — N iterations of edit→panel→fix |
-| `--perfect --all` | N | every critic | yes | exhaustive polish |
+Two commands, two defaults. **The defaults differ because the leverage differs**:
+
+- `/design "<feedback>"` is incremental — small edit on existing canvas. Default = solid-for-review (max 4 iter, aspiration 4.0). User can iterate cheaply, so over-investing in any one edit is waste.
+- `/design:new` is high-leverage scaffold — sets the canvas trajectory for all future iteration. Default = portfolio-grade (`--perfect`: max 8 iter, aspiration 4.5, full panel). Cheap to do right once; expensive to refactor zpětně.
+
+| Command + flag | max_iter | aspiration_target | Critic panel | Auto-fix | Use case |
+|---|---|---|---|---|---|
+| `/design` (none) | 4 | 4.0 / 5 | routed panel (signature-moment-critic added when polish/nicer/elegant cues in feedback) | yes | typical incremental edit — solid-for-review |
+| `/design --perfect [N]` | N (default 8) | 4.5 / 5 | routed panel including signature-moment-critic | yes | "make this right" — extended polish on existing canvas |
+| `/design --perfect --all` | N | 4.5 / 5 | **every critic** | yes | exhaustive polish |
+| `/design --no-critic` | 0 | n/a | (skip) | no | quick / dirty edit |
+| **`/design:new` (none — DEFAULT = `--perfect`)** | **8** | **4.5 / 5** | **signature-moment + design + frontend + a11y (if interactive)** | **yes** | **standard new canvas — portfolio-grade scaffold** |
+| `/design:new --perfect-iter N` | N | 4.5 / 5 | same as default | yes | larger / smaller canvases co potřebují víc / míň iterací |
+| `/design:new --perfect --all` | 8 | 4.5 / 5 | **every critic** | yes | exhaustive — portfolio + comprehensive coverage |
+| `/design:new --quick` | 2 | 4.0 / 5 | signature-moment-critic only | yes | throwaway exploration / proof-of-concept |
+| `/design:new --no-critic` | 0 | n/a | (skip) | no | testing / debug — just verify file generates |
+
+**Distinguishing the modes in one line:**
+- **`/design` default** = "is this solid enough that the user can productively review it?" → loop until aspiration ≥ 4 + correctness clean + stable.
+- **`/design:new` default (= `--perfect`)** = "is this a scaffold worth iterating from?" → loop until aspiration ≥ 4.5 + correctness clean + stable, OR exit `stable-but-bland` with diagnostic. New canvases get the higher bar by default because they set the trajectory for all future iteration.
+- **`--perfect` on `/design`** = "treat this incremental edit like a scaffold — broader knobs, higher target."
+- **`--quick` on `/design:new`** = "this is a throwaway exploration, don't burn 40 critic calls." Explicit opt-out from default contract.
+
+All modes share the same exit conditions (`SOLID`, `stable-but-bland`, `max-reached`, `divergent`, `validation-failed`) — different `max_iter` / `aspiration_target` / panel just give the loop different rope before tripping them.
 
 ### Per-canvas metadata sidecar
 
@@ -561,7 +780,7 @@ Idempotent: if already running, prints URL. Otherwise starts. Useful manually; o
 
 ## Generation envelope (frontend-design — for `/design:new`)
 
-The envelope adapts to per-repo config. Read `.design/config.json` (or call `/_config` endpoint) and inject the right values:
+The envelope adapts to per-repo config. Read `.design/config.json` (or call `/_config` endpoint) and inject the right values. **Critical: the envelope is a creative brief, NOT a wireframe spec.** See "Envelope discipline" below before authoring one.
 
 ```
 You are generating a NEW canvas project for the {CFG.name} repo.
@@ -573,7 +792,7 @@ Read the project's design system before generating:
 
 DO NOT pick fonts, colors, radii, or shadows. Use the CSS variables defined in the tokens file. Use only fonts the tokens CSS already imports.
 
-Reference layouts (read these before generating):
+Reference layouts (read at least one for the wrapper pattern):
 {matched existing canvas paths, picked by similarity}
 
 Output: a single self-contained HTML file at <target_path>. The file MUST:
@@ -586,11 +805,42 @@ Output: a single self-contained HTML file at <target_path>. The file MUST:
 7. NO inline images / icons that aren't sourced from the project's assets folder.
 8. DO NOT bundle / reference `design-canvas.jsx` or `tweaks-panel.jsx` — the dev server provides them as a single source of truth at `/_runtime/*` and auto-injects them into every served HTML. `DesignCanvas`, `DCSection`, `DCArtboard`, `DCPostIt`, `TweaksPanel`, and `useTweaks` are available as window globals after babel compiles them.
 
+## Aspiration directives (always include — these drive the signature-moment-critic axes)
+
+9. **One signature compositional moment per artboard.** A memorable visual: oversized hero shape, geometric overlap (e.g. card + circle crossing the edge), bold negative space, photographic anchor, or typographic statement at 40px+. Form-letter "icon + headline + body + button" stacks fail this axis.
+10. **Brand mark featured at human scale on at least one screen.** Not a 16px corner mark — a wordmark or lockup ≥ 32px in a hero/anchor position.
+11. **Realistic mock fidelity, not placeholder rectangles.** Real iOS keyboards have predictive bars and key labels. Real maps have street geometry. Real charts have axis labels. Gray boxes labeled "img" fail this axis.
+12. **Restrained color discipline.** Per artboard: 1 primary fill, accent ≤ 3 instances, ≤ 3 type weights, no more than 2 chromatic surfaces. Loud beats subtle once; subtle beats loud everywhere.
+13. **Generous negative space.** Hero elements get ≥ 32 px breathing room from artboard edge. Content density target ≤ 60 % per screen; ≤ 40 % for editorial / hero screens.
+14. **Specific content, not placeholders.** Real-feeling names (Maya Chen, Pavel Novák), real phone formats (+420 777 123 456), real prices ("$4 / day"), real station names. NEVER use "Lorem", "John Doe", "555-0199", "$XX", or ALL-CAPS placeholder labels.
+
 User brief:
 {the brief}
 
-Apply ONLY the brief. Do not editorialize the design system.
+Plan the artboards based on the brief — typically 1–6 DCArtboards in 1 DCSection, but follow what the brief asks for. The brief tells you WHAT to build; the aspiration directives above tell you HOW WELL.
 ```
+
+## Envelope discipline — don't over-prescribe
+
+Generative skills (frontend-design, design-system) produce best work when given **constraints + intent**, not a shopping list. When the orchestrator builds the envelope:
+
+✅ **DO:**
+- Set the vibe ("studio-grade onboarding, light theme, breathable, editorial")
+- Reference 1–2 existing canvases ("look at `<Mobile.html>` for the bezel pattern, `<Studio.html>` for grid")
+- List 2–3 hard requirements (tokens link, body class, artboard count target)
+- State the **aspiration directives 9–14 verbatim** — those are non-negotiable quality drivers
+- Identify ONE signature moment intent per screen if the brief implies it ("welcome must have a memorable compositional anchor")
+- Leave element-level decisions to the generator
+
+❌ **DON'T:**
+- Dictate "3 permission cards with location pin in orange and bell icon in blue"
+- Pre-decide button counts, exact copy, padding values, specific component compositions
+- List every UI primitive that should appear on each screen
+- Translate the brief into a wireframe spec — the generator should do that
+
+**Test:** if the envelope reads like a wireframe spec, it's too prescriptive. If it reads like a designer brief to a senior IC, it's right. A good envelope is ~30–50 lines including the boilerplate; an over-prescriptive one is 100+.
+
+**Why this matters:** prescriptive envelopes lock the generator to *exactly what was dictated* — competent stock, no creative leap. The signature-moment-critic axis can't be hit if the envelope already pre-decided every element. Less prompting → more invention.
 
 ### Canvas runtime — single source of truth
 
@@ -608,11 +858,43 @@ If you're authoring a new helper that should be shared across all canvases (e.g.
 
 | Need | How | Notes |
 |---|---|---|
-| Generate new canvas (for `/design:new`) | `Skill(skill: "frontend-design:frontend-design", args: <envelope>)` | Required for `/design:new`. Envelope adapts to repo config. |
+| Generate new canvas (for `/design:new`) | See "Generation invocation" below — try Skill, fall back transparently | Required for `/design:new`. Envelope adapts to repo config. |
 | Slider explorer | `Skill(skill: "playground:playground", args: <envelope>)` | Optional, only when feedback mentions playground/explorer/tweak/slider. |
 | Screenshot canvas | `Bash: agent-browser screenshot ...` | Use server URL, not `file://`. |
-| Spawn specialist critic | `Agent(subagent_type: "design-critic" \| "graphic-critic" \| ..., ...)` | Subagents run inline (no nested agents). |
+| Spawn specialist critic | `Agent(subagent_type: "design-critic" \| "signature-moment-critic" \| ..., ...)` | Subagents run inline (no nested agents). Critics are exposed as `Agent` types from the design plugin. |
 | Server lifecycle | `Bash: curl + nohup` | See "Server lifecycle" section. |
+
+### Generation invocation — Skill with documented fallback
+
+`/design:new` and any other code-generation step that needs creative-design output should try **in this order**:
+
+1. **Preferred** — `Skill(skill: "frontend-design:frontend-design", args: <envelope>)`
+   - Creative-design specialist. Project-tone awareness, opinionated layout choices.
+2. **Fallback** — direct generation via the orchestrator using Read + Write + Edit tools, with the same envelope as the prompt
+   - Use when the Skill is unavailable, errors out, or returns the equivalent of "Skill type not found / Agent type 'frontend-design:frontend-design' not found"
+   - The orchestrator authors the HTML directly. Quality may be one generation lower (no specialist invocation tone).
+3. **Never silently fall back.** Always note which path was taken in the final report. The user must see whether the canvas was generated by the specialist or the orchestrator-as-author. Example wording in the print step:
+
+   ```
+   Generation: frontend-design specialist (preferred path)
+   ```
+   or
+   ```
+   Generation: orchestrator-direct (frontend-design Skill unavailable — quality may be 1 generation lower; consider /plugin install frontend-design@claude-plugins-official)
+   ```
+
+The signature-moment-critic axes will surface quality differences regardless of generation path, but transparency lets the user decide whether to retry after installing the missing skill.
+
+#### Why call the Skill even when the executing model is the same
+
+Common orchestrator anti-pattern: "the Skill just routes back to me — same model executes, no quality delta. I'll skip it." **This is wrong, and skipping the attempt is a process violation.** Even when the same model ultimately produces the HTML, the Skill provides:
+
+- **Specialist tone scaffolding** — system prompt biased toward creative-design conventions, layout opinionatedness, restraint defaults that bare orchestrator-direct authoring lacks
+- **Prior creative exemplars** in the Skill's context window — the model "remembers" what good canvas work looks like
+- **Fenced creative scope** — the Skill is allowed to choose layouts, the orchestrator is supposed to be coordinating; calling the Skill puts the right hat on
+- **Auditability** — final print "Generation: frontend-design specialist" tells the user the preferred path actually fired, vs. silent fallback
+
+**Rule:** always attempt the Skill first. Predicting "it won't help" before observing is the violation, not the quality delta itself. If the Skill errors, that's a fallback case (documented). If you skipped without trying, the final print would lie about the path taken. Try, observe, fall back transparently if it fails.
 
 ## Failure modes
 
@@ -628,6 +910,7 @@ If you're authoring a new helper that should be shared across all canvases (e.g.
 | Snapshot fails | Refuse to proceed. |
 | Edit produces HTML missing tokens link or correct rootClass | Restore from snapshot, report drift. |
 | Edit produces HTML with hardcoded colors / non-token fonts | Restore + report. |
+| Edit produces JSX inline-style with bare `var(--x)` (unquoted) | Babel parses `var(--x)` as a JS function call; canvas mounts blank. **Lint before write:** `grep -nE "style=\\{\\{[^}]*: var\\(" "$ACTIVE"` should return zero hits. If it doesn't, restore the snapshot and re-issue the edit with quoted CSS strings (`'var(--x)'`) or literal numbers from the radius/size ladder. Retro 2026-05-09 introduced this bug during an opt-out rewrite. |
 | `.design/config.json` missing | Use defaults from server `/_config`; warn user once that they're using defaults. |
 
 ## What NOT to do

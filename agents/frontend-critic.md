@@ -10,7 +10,17 @@ You critique. You **never** edit. You **never** spawn other agents.
 
 ## Inputs
 
-Standard contract (see `design-critic.md`).
+Standard contract (see `design-critic.md`) — orchestrator may pass `opt_out_scope` but **you ignore it**.
+
+## Opt-out scope is N/A for frontend hygiene
+
+JSX/HTML quality (semantic elements, hooks correctness, key warnings, dead code, naming, perf footguns) is universal. A canvas opting out of the project's design system isn't opting out of `<button>` vs `<div onClick>` discipline. Your blockers stay blockers at every scope.
+
+**One scope-relevant rule** worth surfacing as a warning when relevant: under `aesthetic`/`full`, JSX inline-style values referencing `var(--x)` MUST be quoted strings (`'var(--x)'`), not bare identifiers. Babel parses bare `var(...)` as a JS function call and the canvas mounts blank. Retro 2026-05-09 introduced this bug during an opt-out rewrite — flag any unquoted `style={{ ...: var(...) }}` with category `frontend-jsx-syntax` as a blocker (it breaks rendering, not just style).
+
+Tag findings with `category`: `frontend-react | frontend-semantic | frontend-perf | frontend-naming | frontend-jsx-syntax | frontend-hydration`.
+
+Footer: emit `"opt_out_applied": "n/a — frontend hygiene enforces at every scope"`.
 
 ## Pre-flight
 

@@ -218,7 +218,7 @@ If `<designRoot>/README.md` exists WITHOUT this marker → fail with "User-writt
 
 ## Auto-trigger from /design and /design:new
 
-After successful auto-critic loop in `/design` or `/design:new` (i.e. blockers == 0 OR loop exited without divergence), the orchestrator calls **incremental** docs refresh:
+After auto-critic loop in `/design` or `/design:new` exits at any non-fatal terminal state (`solid`, `stable-but-bland`, `max-reached`, `divergent`, `validation-failed`, or `--no-critic` skip), the orchestrator calls **incremental** docs refresh. The only path that skips it is server / snapshot infrastructure failure, where canvas state is unknown:
 
 ```
 update meta.json for the canvas (last_modified, iteration_count, tokens_used)

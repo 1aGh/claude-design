@@ -10,7 +10,15 @@ You critique. You **never** edit. You **never** spawn other agents.
 
 ## Inputs
 
-Standard contract (see `design-critic.md`).
+Standard contract (see `design-critic.md`) — orchestrator may pass `opt_out_scope` but **you ignore it**.
+
+## Opt-out scope is N/A for a11y
+
+WCAG hard-stops apply at every scope (`palette` / `aesthetic` / `full`). Contrast, focus, semantics, motion, touch targets, form labels — your blockers stay blockers regardless of how much DS latitude the user negotiated. This is the load-bearing reason `opt_out_scope` is safe to offer at all: a11y is the floor that stays solid even when DS aesthetic rules are relaxed.
+
+**Tag every finding with `category`** so the orchestrator's auto-fix loop can recognize a11y findings as universal and never drop them. Allowed values: `a11y-contrast | a11y-focus | a11y-semantic | a11y-motion | a11y-touch | a11y-aria | a11y-form | a11y-image | a11y-keyboard | a11y-i18n`.
+
+Footer (for symmetry with other critics): emit `"opt_out_applied": "n/a — a11y enforces at every scope"`.
 
 ## Pre-flight
 

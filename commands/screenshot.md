@@ -29,7 +29,13 @@ Skill:
 3. Sestaví URL: `http://localhost:<port>/<active-path>` (HTTP, ne file:// — relativní imports tokenů jen tak fungují).
 4. Spočítá `<slug>` z active path. `mkdir -p .design/_history/<slug>/screenshots/`.
 5. Pojmenuje výstup `<NNN>-<area>.png` kde `<NNN>` je další číslo v sekvenci pro daný area.
-6. Spustí: `agent-browser screenshot "<url>" --output "<out>" [--selector "<css>"]`.
+6. Spustí dvoukrokově (`agent-browser screenshot` nepřijímá URL arg — signature je `screenshot [selector] [path]`):
+   ```bash
+   agent-browser navigate "<url>" >/dev/null
+   sleep 1
+   agent-browser screenshot ["<css selector>"] -- "<out>"   # path positional s `--` separátorem
+   ```
+   `--output <path>` flag forma NEFUNGUJE — CLI tiše bere `--output` jako literal positional a hlásí success bez zápisu souboru. Vždy verifikuj `ls -la "<out>"` po volání.
 7. Vypíše path uživateli.
 
 ## Tip — annotation loop pro pin-comments (Claude Design style)
