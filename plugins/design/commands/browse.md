@@ -21,15 +21,17 @@ Server čte `<repo>/.design/config.json` při bootu. Auto-najde volný port od *
 ## Postup
 
 ```bash
-# Direct boot:
-node ${CLAUDE_PLUGIN_ROOT}/dev-server/server.mjs
+# Direct boot (server čte $CLAUDE_PROJECT_DIR pokud je nastaveno, jinak cwd):
+node ${CLAUDE_PLUGIN_ROOT}/dev-server/server.mjs --root "$CLAUDE_PROJECT_DIR"
 
 # With explicit port:
-PORT=4400 node ${CLAUDE_PLUGIN_ROOT}/dev-server/server.mjs
+PORT=4400 node ${CLAUDE_PLUGIN_ROOT}/dev-server/server.mjs --root "$CLAUDE_PROJECT_DIR"
 
 # Headless (no auto-open browser, useful in CI / SSH):
-NO_OPEN=1 node ${CLAUDE_PLUGIN_ROOT}/dev-server/server.mjs
+NO_OPEN=1 node ${CLAUDE_PLUGIN_ROOT}/dev-server/server.mjs --root "$CLAUDE_PROJECT_DIR"
 ```
+
+`--root` je explicitní volba — pokud chybí, server fallbackne na `$CLAUDE_PROJECT_DIR` a pak na `process.cwd()`. Vždy ukazuje na **uživatelův projekt**, ne na install dir pluginu (`${CLAUDE_PLUGIN_ROOT}` slouží jen k lokaci `server.mjs`).
 
 Repo může mít wrapper script v `package.json` (např. `pnpm design:browse`) — pokud existuje, použij ho. Jinak přímé spuštění výše.
 

@@ -103,13 +103,14 @@ The dev server is the source of truth for "what is the user looking at right now
    - `curl -fs http://localhost:<port>/_health` (responds with `{"app":"design",…}`)
    - If both pass: server is up, use this URL.
    - If either fails: stale info file, treat as not running.
-2. **If not running, auto-start.** Spawn in the background:
+2. **If not running, auto-start.** Spawn in the background, passing the user's repo root explicitly (the plugin is installed centrally and serves *any* repo — never assume `__dirname`):
    ```bash
    nohup node ${CLAUDE_PLUGIN_ROOT}/dev-server/server.mjs \
-     > <designRoot>/_server.log 2>&1 &
+     --root "$CLAUDE_PROJECT_DIR" \
+     > "$CLAUDE_PROJECT_DIR/<designRoot>/_server.log" 2>&1 &
    disown
    ```
-   Then poll `_server.json` + `/_health` for up to ~10 seconds. If it doesn't come up, fail with the log path.
+   If `$CLAUDE_PROJECT_DIR` is empty (regular Bash tool runs may not have it), server falls back to `process.cwd()` — still the user's repo because the Bash tool inherits the project CWD. Then poll `_server.json` + `/_health` for up to ~10 seconds. If it doesn't come up, fail with the log path.
 3. **Browser** — server auto-opens on its own boot (unless `NO_OPEN=1`). The orchestrator does not open browsers.
 
 **Never start a second instance** if `_server.json` says one is alive on a port that responds to `/_health`.

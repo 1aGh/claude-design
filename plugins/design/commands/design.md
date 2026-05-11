@@ -55,7 +55,7 @@ fi
 
 # Start if needed
 if [ -n "$NEEDS_START" ]; then
-  nohup node ${CLAUDE_PLUGIN_ROOT}/dev-server/server.mjs > "$DESIGN_ROOT/_server.log" 2>&1 &
+  nohup node ${CLAUDE_PLUGIN_ROOT}/dev-server/server.mjs --root "${CLAUDE_PROJECT_DIR:-$PWD}" > "$DESIGN_ROOT/_server.log" 2>&1 &
   disown
   for i in 1 2 3 4 5 6 7 8 9 10; do
     sleep 1

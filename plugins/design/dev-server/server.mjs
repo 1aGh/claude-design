@@ -22,7 +22,26 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const REPO_ROOT = path.resolve(__dirname, '../../../..');
+// Resolve the user's project root (where .design/ lives), NOT the plugin install dir.
+// Priority: explicit --root arg > $CLAUDE_PROJECT_DIR (hooks) > process.cwd() (Bash tool / pnpm).
+// Never uses __dirname — the plugin can be installed centrally and serve any repo.
+function resolveRepoRoot() {
+  const i = process.argv.indexOf('--root');
+  if (i !== -1 && process.argv[i + 1]) return path.resolve(process.argv[i + 1]);
+  if (process.env.CLAUDE_PROJECT_DIR) return path.resolve(process.env.CLAUDE_PROJECT_DIR);
+  return process.cwd();
+}
+
+const REPO_ROOT = resolveRepoRoot();
+
+// Fail loud if launched from a directory that has no .design/ — otherwise the server
+// would silently fall back to defaults and serve nothing useful, masking the real
+// problem (user ran `node server.mjs` from $HOME, or CLAUDE_PROJECT_DIR is wrong).
+if (!fsSync.existsSync(path.join(REPO_ROOT, '.design'))) {
+  console.error(`  error: no .design/ directory at ${REPO_ROOT}`);
+  console.error(`  Run from your project root, set $CLAUDE_PROJECT_DIR, or pass --root <path>.`);
+  process.exit(1);
+}
 
 // ---------- Config ----------
 
