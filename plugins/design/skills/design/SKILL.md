@@ -7,7 +7,7 @@ description: Local Claude-Design clone — canvas-first design iteration. Iterat
 
 You are the orchestrator for local design-iteration. The mental model: **the project has a fixed set of canvas files** under `<designRoot>/system/...` (design system specimens) and `<designRoot>/ui/...` (project surfaces). The user opens one in the browser, optionally selects a specific element with Cmd+Click, then says what they want changed. You read state from disk, snapshot, edit in place.
 
-**Per-repo config.** All project-specific values come from `<repo>/.design/config.json` (schema at `.claude/plugins/design/dev-server/config.schema.json`). Key fields you need:
+**Per-repo config.** All project-specific values come from `<repo>/.design/config.json` (schema at `${CLAUDE_PLUGIN_ROOT}/dev-server/config.schema.json`). Key fields you need:
 
 | Field | What you use it for |
 |---|---|
@@ -105,7 +105,7 @@ The dev server is the source of truth for "what is the user looking at right now
    - If either fails: stale info file, treat as not running.
 2. **If not running, auto-start.** Spawn in the background:
    ```bash
-   nohup node .claude/plugins/design/dev-server/server.mjs \
+   nohup node ${CLAUDE_PLUGIN_ROOT}/dev-server/server.mjs \
      > <designRoot>/_server.log 2>&1 &
    disown
    ```
@@ -669,7 +669,7 @@ All modes share the same exit conditions (`SOLID`, `stable-but-bland`, `max-reac
 
 ### Per-canvas metadata sidecar
 
-Every canvas project under `<designRoot>/<newCanvasDir>/` has a sibling `<Canvas>.meta.json` (schema: `.claude/plugins/design/dev-server/canvas-meta.schema.json`). It captures things that aren't readable from the HTML alone — section/artboard labels, brief, platform, iteration count, tokens used.
+Every canvas project under `<designRoot>/<newCanvasDir>/` has a sibling `<Canvas>.meta.json` (schema: `${CLAUDE_PLUGIN_ROOT}/dev-server/canvas-meta.schema.json`). It captures things that aren't readable from the HTML alone — section/artboard labels, brief, platform, iteration count, tokens used.
 
 **`/design:new`** bootstraps the sidecar from the brief:
 
@@ -844,7 +844,7 @@ Generative skills (frontend-design, design-system) produce best work when given 
 
 ### Canvas runtime — single source of truth
 
-The DesignCanvas / DCSection / DCArtboard / DCPostIt + TweaksPanel + useTweaks helpers live in **`.claude/plugins/design/dev-server/runtime/`** (one file per concern). The dev server:
+The DesignCanvas / DCSection / DCArtboard / DCPostIt + TweaksPanel + useTweaks helpers live in **`${CLAUDE_PLUGIN_ROOT}/dev-server/runtime/`** (one file per concern). The dev server:
 
 1. Serves them at `/_runtime/<file>` (e.g. `/_runtime/design-canvas.jsx`).
 2. Auto-injects `<script type="text/babel" src="/_runtime/design-canvas.jsx">` (and tweaks-panel) into every HTML served from `<designRoot>/`.

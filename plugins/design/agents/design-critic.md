@@ -60,7 +60,7 @@ opt_out_scope      # one of "palette" | "aesthetic" | "full" — see SKILL.md "O
 3. **Load review frameworks** (read these once, apply yourself — no nested invocations):
    - Project's `ux-designer` skill if present (`.claude/skills/ux-designer/SKILL.md` or plugin equivalent). If missing, apply the 7-layer framework from memory: task → IA → states → interaction → microcopy → cross-platform → a11y.
    - Project's a11y rules skill (`<project>-a11y-rules` or `dugmate-a11y-rules` style) if present.
-   - The plugin's `design-system` pointer skill (`.claude/plugins/design/skills/design-system/SKILL.md`).
+   - The plugin's `design-system` pointer skill (`${CLAUDE_PLUGIN_ROOT}/skills/design-system/SKILL.md`).
    - The project tokens CSS (authoritative palette + type + radii + shadows).
 
 ## Two-pass review — both inline

@@ -22,13 +22,13 @@ Server čte `<repo>/.design/config.json` při bootu. Auto-najde volný port od *
 
 ```bash
 # Direct boot:
-node .claude/plugins/design/dev-server/server.mjs
+node ${CLAUDE_PLUGIN_ROOT}/dev-server/server.mjs
 
 # With explicit port:
-PORT=4400 node .claude/plugins/design/dev-server/server.mjs
+PORT=4400 node ${CLAUDE_PLUGIN_ROOT}/dev-server/server.mjs
 
 # Headless (no auto-open browser, useful in CI / SSH):
-NO_OPEN=1 node .claude/plugins/design/dev-server/server.mjs
+NO_OPEN=1 node ${CLAUDE_PLUGIN_ROOT}/dev-server/server.mjs
 ```
 
 Repo může mít wrapper script v `package.json` (např. `pnpm design:browse`) — pokud existuje, použij ho. Jinak přímé spuštění výše.

@@ -131,4 +131,4 @@ Write `<designRoot>/_history/<slug>/critique/<NNN>-PANEL.md` (schema in `skills/
 | `info-architecture-critic` | Nav depth, hierarchy, taxonomy, findability, URL hygiene, cross-surface consistency. |
 | `signature-moment-critic` | **Aspiration axis** — měří *presence of greatness*, ne absence of badness. 5 axes (signature compositional moment per artboard, brand prominence, mock fidelity, restraint, negative space) + specificity gate (no Lorem / placeholders). **Always in panel pro `/design:new` a polish-cued `/design`.** Zavírá gap mezi "passes correctness" a "would screenshot for portfolio". |
 
-Full critic prompts: `.claude/plugins/design/agents/<name>.md`.
+Full critic prompts: `${CLAUDE_PLUGIN_ROOT}/agents/<name>.md`.

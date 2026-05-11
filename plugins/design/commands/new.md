@@ -242,7 +242,7 @@ This exists because the user signaled exploration — they should get to see ite
 | Mode | max_iter | aspiration_target | Minimum panel |
 |---|---:|---:|---|
 | **Default (= `--perfect`)** | **8** | **4.5 / 5** | `signature-moment-critic` + `design-critic` + `frontend-critic` + `a11y-critic` (if interactive) |
-| `--perfect --all` | 8 | 4.5 / 5 | **every** critic in `.claude/plugins/design/agents/` |
+| `--perfect --all` | 8 | 4.5 / 5 | **every** critic in `${CLAUDE_PLUGIN_ROOT}/agents/` |
 | `--perfect-iter N` | N | 4.5 / 5 | same minimum panel as default |
 | `--quick` | 2 | 4.0 / 5 | `signature-moment-critic` only |
 | `--no-critic` | 0 | n/a | (skip loop entirely) |

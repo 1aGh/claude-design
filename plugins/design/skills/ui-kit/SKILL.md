@@ -19,7 +19,7 @@ This skill is a **thin pointer**. The actual UI-kit content lives under the proj
   └── README.md                          # canvas catalog
 ```
 
-The canvas runtime itself (`DesignCanvas`, `DCSection`, `DCArtboard`, `DCPostIt`, `TweaksPanel`, `useTweaks`) is **NOT** copied per-project — it lives in `.claude/plugins/design/dev-server/runtime/` and is auto-injected by the dev server into every served HTML. Canvases reference these as window globals after babel compiles them. New canvases must not bundle a local copy.
+The canvas runtime itself (`DesignCanvas`, `DCSection`, `DCArtboard`, `DCPostIt`, `TweaksPanel`, `useTweaks`) is **NOT** copied per-project — it lives in `${CLAUDE_PLUGIN_ROOT}/dev-server/runtime/` and is auto-injected by the dev server into every served HTML. Canvases reference these as window globals after babel compiles them. New canvases must not bundle a local copy.
 
 This skill is non-user-invocable. Auto-loads when Claude is doing UI work. The user-facing entry point is the `design` orchestrator skill.
 

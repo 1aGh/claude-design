@@ -79,7 +79,7 @@ Template (adapted with project specifics):
     └── components/                     # shared component .jsx files
 ```
 
-The plugin runs a local dev server (`node .claude/plugins/design/dev-server/server.mjs`) that scans this folder, renders canvases in iframes, and tracks the active tab + element selection in `_active.json` (gitignored). Iterations are persisted in `_history/<slug>/` (gitignored): snapshots, critic reports, screenshots, and a chat transcript.
+The plugin runs a local dev server (`node ${CLAUDE_PLUGIN_ROOT}/dev-server/server.mjs`) that scans this folder, renders canvases in iframes, and tracks the active tab + element selection in `_active.json` (gitignored). Iterations are persisted in `_history/<slug>/` (gitignored): snapshots, critic reports, screenshots, and a chat transcript.
 
 ## What you should do — IMPORTANT
 
