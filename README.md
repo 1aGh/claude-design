@@ -118,6 +118,46 @@ When `_active.json.selected` is set, the next `/design "<feedback>"` is **scoped
 
 There used to be `.ai/design-sessions/<slug>/iterations/NNN.html`. Retired. New surfaces = new files in `<designRoot>/<newCanvasDir>/<Name>.html` via `/design:new`. Iteration history = `<designRoot>/_history/<slug>/<NNN>-<ts>.bak` snapshots (gitignored, restored via `/design:rollback`).
 
+## Install
+
+This repo is both a **single-plugin marketplace** and the plugin itself. Add it to Claude Code:
+
+### From GitHub (when published)
+
+```
+/plugin marketplace add <owner>/<repo>
+/plugin install design@claude-design
+```
+
+Updates: bump `version` in `.claude-plugin/plugin.json`, push, then in Claude Code:
+
+```
+/plugin marketplace update claude-design
+```
+
+### Local path (for development of this plugin itself)
+
+```
+/plugin marketplace add /Users/iagh/git/claude-design
+/plugin install design@claude-design
+```
+
+## Local development loop
+
+Working on the plugin's own commands/agents/skills/dev-server:
+
+1. **Edit in place** at `/Users/iagh/git/claude-design/`. The local marketplace points at this directory, so every edit is the live source.
+2. **Reload after edits:**
+   - Commands / agents / skills metadata changes → `/plugin marketplace update claude-design` then `/reload-plugins` (or restart Claude Code).
+   - `dev-server/` code → kill any running server (`lsof -i :<port>` → `kill`) and let the next `/design` invocation auto-restart it. The server is spawned on demand by the plugin.
+3. **Test in isolation:** open Claude Code from a scratch project (`cd /tmp && claude`) so the plugin's behavior isn't entangled with the parent repo's `.claude/`.
+4. **Two-checkout debug:** if you want to compare against the bundled copy in another repo (e.g. `dugmate/.claude/plugins/design/`), keep both marketplaces added — Claude resolves `design@claude-design` from the active marketplace. Disable one with `/plugin` UI to switch.
+5. **Plugin smoke test:** `node dev-server/server.mjs --root /tmp/design-test --port 4310` boots the server standalone so you can iterate on `dev-server/client/` HTML without going through the slash command.
+
+## Versioning
+
+Semver in `.claude-plugin/plugin.json`. Without it, every commit SHA counts as a new version — bump it deliberately when shipping user-visible changes.
+
 ## License
 
-Internal Dugmate plugin. Not for redistribution.
+TBD — currently extracted from a Dugmate-internal context. Choose a license before publishing publicly (MIT recommended for plugin distribution).

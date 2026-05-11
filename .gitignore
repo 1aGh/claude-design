@@ -1,0 +1,6 @@
+node_modules/
+*.log
+.DS_Store
+
+# dev-server runtime artifacts (anything the server writes outside the plugin)
+dev-server/.cache/

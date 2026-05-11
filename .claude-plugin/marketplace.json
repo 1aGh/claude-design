@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "claude-design",
+  "description": "Local Claude-Design clone — canvas-first iteration on HTML/JSX mocks with auto-managed dev server, element-pin Cmd+Click edits, and chained UX/DS critique.",
+  "owner": {
+    "name": "1aGh",
+    "email": "michal.dovrtel@studyfi.com"
+  },
+  "plugins": [
+    {
+      "name": "design",
+      "source": ".",
+      "category": "design",
+      "description": "Canvas-first iteration on HTML mocks under <designRoot> (default `.design/`), element selection via Cmd+Click, auto-managed dev server. Commands: /design /design:new /design:rollback /design:screenshot /design:critic /design:docs /design:handoff /design:browse."
+    }
+  ]
+}
