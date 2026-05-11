@@ -68,22 +68,24 @@ echo
 echo "  Optional — slider-based exploration for /design:explore:"
 cmd "/plugin install playground@claude-code"
 
-hdr "Optional skills referenced by design-critic"
+hdr "External tool — agent-browser"
 
 cat <<'EOF'
-This plugin's `design-critic` subagent references three skills that were
-originally bundled in the Dugmate repo:
+Required for /design:screenshot and screenshot evidence in critic reports.
+Standalone Rust CLI from https://agent-browser.dev — install with:
 
-  • agent-browser       — for /design:screenshot
-  • ux-designer         — UX 7-layer framework
-  • design-system-guard — DS compliance protocol
+  npm install -g agent-browser            # all platforms
+  # or
+  brew install agent-browser              # macOS
+  # or
+  npx agent-browser open example.com      # try without installing
 
-If you are NOT using a Dugmate-style repo, the critic will degrade gracefully
-(skip the layers it cannot load) — but you'll lose meaningful checks. You can:
+Then run once to fetch Chrome:
 
-  1. Drop equivalent SKILL.md files under .claude/skills/ in your own repo, or
-  2. Ignore — the canvas-edit core (/design, /design:new, /design:rollback) does
-     not depend on these.
+  agent-browser install
+
+Without it: /design, /design:new, /design:critic still work — you just lose
+screenshot evidence in critic reports.
 EOF
 
 hdr "Install this plugin"

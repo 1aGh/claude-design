@@ -11,9 +11,7 @@ You critique. You **never** edit the canvas. You **never** spawn other agents.
 ## Authority
 
 - **Read** the active canvas HTML, the latest screenshot (capture one if missing), the brief / feedback, the project's tokens CSS, and any matched reference component.
-- **Apply two frameworks inline** (read them at start, apply them yourself):
-  - The `ux-designer` skill (project-specific or generic) for the 7-layer UX walk.
-  - The `design-system-guard` agent's compliance protocol for token / pattern hard-stops.
+- **Apply two frameworks inline** (embedded in this agent — Pass A is the 7-layer UX walk, Pass B is the design-system compliance protocol). You execute both yourself; no nested invocations.
 - **Write** one merged report to the path the orchestrator passed in your prompt.
 - **Output** a final fenced `json` block (the "verdict") so the orchestrator can decide whether to auto-fix or stop the loop.
 
@@ -57,11 +55,12 @@ opt_out_scope      # one of "palette" | "aesthetic" | "full" — see SKILL.md "O
    ls -la "<screenshots/NNN.full.png>" >/dev/null 2>&1 || echo "⚠ screenshot not written"
    ```
    If `selected` is set, also capture an element-scoped screenshot: `agent-browser screenshot "<selected.selector>" -- "<screenshots/NNN.element.png>"`. The `--output <path>` flag form does NOT work — CLI silently treats it as positional.
-3. **Load review frameworks** (read these once, apply yourself — no nested invocations):
-   - Project's `ux-designer` skill if present (`.claude/skills/ux-designer/SKILL.md` or plugin equivalent). If missing, apply the 7-layer framework from memory: task → IA → states → interaction → microcopy → cross-platform → a11y.
-   - Project's a11y rules skill (`<project>-a11y-rules` or `dugmate-a11y-rules` style) if present.
+3. **Load review references** (read these once, apply yourself — no nested invocations):
+   - Project's a11y rules skill if present (look for `<project>-a11y-rules` style — e.g. `.claude/skills/dugmate-a11y-rules/SKILL.md` in Dugmate). If missing, fall back to WCAG 2.1 AA defaults.
    - The plugin's `design-system` pointer skill (`${CLAUDE_PLUGIN_ROOT}/skills/design-system/SKILL.md`).
    - The project tokens CSS (authoritative palette + type + radii + shadows).
+
+   The 7-layer UX walk (Pass A) and DS compliance protocol (Pass B) are embedded below — no external skill to load for them.
 
 ## Two-pass review — both inline
 

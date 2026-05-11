@@ -27,17 +27,23 @@ Run these slash commands inside Claude Code — they bring in the official Anthr
 
 Runtime requirements: **Node ≥ 20** (the bundled dev server uses `node:http` + WebSocket, zero npm deps).
 
-Three skills the critic references are **optional** — without them the canvas-edit core still works, you just lose specific features:
+### External tool — `agent-browser`
 
-| Skill | Effect if missing |
-|---|---|
-| `agent-browser` | `/design:screenshot` fails (no other path is affected) |
-| `ux-designer` | `design-critic` falls back to embedded 7-layer heuristics |
-| `design-system-guard` | `design-critic` skips DS-compliance protocol layer |
+Required for `/design:screenshot` and for canvas screenshots auto-captured by the critic. It's a standalone Rust CLI distributed at <https://agent-browser.dev>:
 
-To restore them, drop equivalent `SKILL.md` / agent files under `.claude/skills/` (or `.claude/agents/`) in your own repo. They are referenced by name — no path coupling.
+```sh
+npm install -g agent-browser     # all platforms
+# or
+brew install agent-browser       # macOS
+# or
+npx agent-browser open example.com   # try without installing
 
-If you prefer a guided env check instead, clone the repo and run `./scripts/install.sh` — it verifies Node and prints the exact commands above for your current shell.
+agent-browser install            # one-time: downloads Chrome
+```
+
+The rest of the plugin works without it — `/design`, `/design:new`, `/design:critic` all run fine; you just won't get screenshot evidence in critic reports.
+
+If you prefer a guided env check, clone the repo and run `./scripts/install.sh` — it verifies Node and prints the exact slash commands for your current shell.
 
 ## What it gives you
 
@@ -45,7 +51,7 @@ If you prefer a guided env check instead, clone the repo and run `./scripts/inst
 - **Active state via WebSocket.** A local Node dev server (zero deps, ~600 LOC) tracks which tab the user is focused on and writes `<designRoot>/_active.json` (default `.design/_active.json`). The orchestrator reads it before every command.
 - **Auto-snapshot before every edit.** `<designRoot>/_history/<file-slug>/<NNN>-<ts>.bak` (gitignored). Undo via `/design:rollback`.
 - **Auto-server lifecycle.** Every command checks `<designRoot>/_server.json`; if no server running, auto-starts in background. Never spawns a duplicate.
-- **Three-engine orchestration.** First-pass generation (sessions only) uses `frontend-design`. Slider exploration uses `playground`. Critique uses `ux-designer` + `design-system-guard` patterns inline (no nested agents).
+- **Three-engine orchestration.** First-pass generation (sessions only) uses `frontend-design`. Slider exploration uses `playground`. Critique is fully embedded in the plugin's `design-critic` (7-layer UX walk + DS-compliance protocol inline) and a panel of nine specialty critics (`a11y`, `brand`, `copy`, `frontend`, `graphic-design`, `info-architecture`, `motion`, `signature-moment`, `typography`).
 - **Native handoff.** `/design:handoff` migrates active canvas to `apps/web` or `apps/mobile` (Next.js / Expo + Tailwind + shadcn / NativeWind).
 
 ## Skills (auto-loaded by Claude when relevant)
@@ -72,24 +78,9 @@ The plugin's `skills/` folder is just `SKILL.md` shells. The actual design conte
 
 ## Subagent
 
-- `design-critic` — performs UX 7-layer review + DS compliance protocol **inline** (reads `ux-designer/SKILL.md` + `design-system-guard.md` as frameworks, no nested invocation). Writes merged report to `<designRoot>/_history/<slug>/critique/<NNN>-design-critic.md`.
+- `design-critic` — performs UX 7-layer review + DS compliance protocol **inline** (both frameworks are embedded in the agent prompt — no external skill loads). Writes merged report to `<designRoot>/_history/<slug>/critique/<NNN>-design-critic.md`.
 
-## Dependencies
-
-- **`frontend-design`** plugin (Anthropic) — required by `/design:new` for new-canvas generation.
-- **`playground`** plugin (Anthropic) — optional, for slider explorers (`/plugin install playground@claude-plugins-official`).
-- **`agent-browser`** skill (Dugmate repo) — for screenshots.
-- **`ux-designer`** skill (Dugmate repo) — UX framework `design-critic` reads.
-- **`design-system-guard`** subagent file (Dugmate repo) — DS protocol `design-critic` reads.
-
-## NPM scripts
-
-| Script | Effect |
-|---|---|
-| `pnpm design` / `design:browse` | Boot local browser server (auto-opens browser). |
-| `pnpm design:headless` | Boot without auto-open (CI / SSH). |
-
-`PORT=4400 pnpm design` to override port (default: first free from 4321).
+Specialty critics co-located in `plugins/design/agents/`: `a11y-critic`, `brand-critic`, `copy-critic`, `frontend-critic`, `graphic-design-critic`, `info-architecture-critic`, `motion-critic`, `signature-moment-critic`, `typography-critic`. Routed by `design-critic`'s panel mode or invoked directly via `/design:critic --agent <name>`.
 
 ## Server runtime files
 
