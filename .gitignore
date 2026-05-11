@@ -4,3 +4,11 @@ node_modules/
 
 # dev-server runtime artifacts (anything the server writes outside the plugin)
 dev-server/.cache/
+
+# AI workflow runtime — committed templates live in .ai/templates/
+.ai/state/HANDOFF.md
+.ai/device/
+.ai/browser/
+.ai/scenarios/**/baseline-staging/
+.ai/logs/
+.claude/settings.local.json
