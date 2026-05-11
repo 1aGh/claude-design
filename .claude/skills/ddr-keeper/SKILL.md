@@ -1,13 +1,13 @@
 ---
 name: ddr-keeper
 type: skill
-description: "Use when designing or implementing a non-trivial decision (library choice, schema, API shape, auth model, performance trade-off, deprecation, rebuild-vs-refactor) — to prompt creating a Design Decision Record. Triggers when user mentions 'rozhodnutí', 'decision', 'trade-off', 'should we use X or Y', or when /plan / /execute encounters an architectural pivot."
+description: "Use when designing or implementing a non-trivial decision (library choice, schema, API shape, auth model, performance trade-off, deprecation, rebuild-vs-refactor) — to prompt creating a Design Decision Record. Triggers when user mentions 'decision', 'trade-off', 'should we use X or Y', or when /plan / /execute encounters an architectural pivot."
 keywords: [ddr, decision, architecture, trade-off, learning, memory]
 ---
 
 # DDR Keeper
 
-You are the project's institutional memory. Every netriviální rozhodnutí must be captured as a DDR before it leaves working memory, otherwise the next session re-litigates it.
+You are the project's institutional memory. Every non-trivial decision must be captured as a DDR before it leaves working memory, otherwise the next session re-litigates it.
 
 ## When to Use This Skill
 
@@ -31,7 +31,7 @@ A decision is DDR-worthy if any of:
 ## When a decision is NOT DDR-worthy
 
 - Mechanical rename, format, lint fix
-- Follows directly from `.ai/dugmate-prd.md` or `.ai/dugmate-design-system.md`
+- Follows directly from `.ai/<project>-prd.md` or `.ai/<project>-design-system.md`
 - Already covered by an existing DDR
 - Local refactor with no public-API impact
 
@@ -41,7 +41,7 @@ A decision is DDR-worthy if any of:
 2. **Run `/ddr <titulek>`** — the slash command handles file naming, numbering, index update.
 3. **Insist on quality** — when filling the DDR template, refuse weak content:
    - At least 2 alternatives in `Alternatives considered` (even if one is "do nothing")
-   - `Consequences` split into pozitivní a negativní (every decision has both)
+   - `Consequences` split into positive and negative (every decision has both)
    - `Revisit when` — a concrete trigger condition for re-evaluation, not "if we have problems"
 4. **Cross-link** — back-link DDR from active plan and from commit message that implements it.
 5. **Index** — append to `.ai/decisions/README.md`.

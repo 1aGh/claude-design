@@ -1,76 +1,76 @@
 ---
 name: verify
 type: command
-description: "Lehká verifikace dotčených souborů během /execute — type/lint/dotčené testy + agent-browser/agent-device smoke pro UI změny"
+description: "Light verification of touched files during /execute — type/lint/affected tests + agent-browser/agent-device smoke for UI changes"
 keywords: [verify, check, smoke, edit-verify, agent-browser, agent-device]
 ---
 
-# /verify — fokusovaná kontrola
+# /verify — focused check
 
-Použij během `/execute` po každém tasku (Edit-Verify Loop). Pro plný cross-platform sweep před mergem použij `/validate`.
+Use during `/execute` after each task (Edit-Verify Loop). For a full cross-platform sweep before merge, use `/validate`.
 
-## Postup
+## Process
 
-1. **Zjisti scope:**
+1. **Determine scope:**
    ```bash
    git diff --name-only             # uncommitted
-   git diff --name-only main...HEAD # vůči main
+   git diff --name-only main...HEAD # vs main
    ```
-   Klasifikuj soubory:
-   - `.ts/.tsx/.js/.jsx` zdrojové → static checks + browser smoke (pokud UI)
-   - `.test.*` → spustit dotčené testy
+   Classify files:
+   - `.ts/.tsx/.js/.jsx` source → static checks + browser smoke (if UI)
+   - `.test.*` → run affected tests
    - `.css/styles` → static check + visual smoke (agent-browser screenshot)
-   - RN soubory (`apps/mobile/`, `apps/native/` apod.) → agent-device smoke
-   - Pure backend / config → jen static checks
+   - RN files (`apps/mobile/`, `apps/native/`, etc.) → agent-device smoke
+   - Pure backend / config → static checks only
 
-2. **Static checks (vždy):**
-   - Type-check (jen dotčené projekty pokud monorepo)
-   - Lint na dotčené soubory
-   - Dotčené unit/integration testy
+2. **Static checks (always):**
+   - Type-check (only affected projects if monorepo)
+   - Lint on affected files
+   - Affected unit/integration tests
 
-3. **Web UI smoke (pokud diff obsahuje web zdrojáky):**
+3. **Web UI smoke (if diff contains web sources):**
    ```bash
    # Quick smoke — agent-browser, web-desktop only, < 30s
-   agent-browser open http://localhost:4000/<route-relevantní-pro-task>
+   agent-browser open http://localhost:4000/<route-relevant-to-task>
    agent-browser snapshot -c             # compact snapshot, context-cheap
    agent-browser screenshot .ai/device/verify/$(date +%s)-<task>.png
    ```
-   - Smoke ověří: stránka loadne bez crash, klíčové elementy z plánu jsou v snapshot
-   - **Není** plné scenario — pro to je `/validate`. Tady catch obvious 500s, missing imports, runtime crashes.
+   - Smoke verifies: page loads without crash, key elements from the plan are in the snapshot
+   - **Not** a full scenario — that's `/validate`. Here we catch obvious 500s, missing imports, runtime crashes.
 
-4. **Native smoke (pokud diff obsahuje RN zdrojáky):**
+4. **Native smoke (if diff contains RN sources):**
    ```bash
    IPHONE_UDID=$(xcrun simctl list devices booted -j | python3 -c "import json,sys;d=json.load(sys.stdin)['devices'];print(next((dev['udid'] for k,v in d.items() if 'iOS' in k for dev in v if 'iPhone' in dev['name']), ''))")
-   agent-device --platform ios open com.dugmate.<bundle> --udid $IPHONE_UDID
+   agent-device --platform ios open com.<project>.<bundle> --udid $IPHONE_UDID
    agent-device snapshot -i              # accessibility snapshot
    agent-device screenshot .ai/device/verify/$(date +%s)-ios.png
    ```
-   - Smoke = app starts, navigace na dotčený screen funguje, žádný red-screen / crash dialog
+   - Smoke = app starts, navigation to affected screen works, no red-screen / crash dialog
 
-5. **Subagenty (volitelné, pro UI tasky doporučené):**
-   - `a11y-auditor` — rychlý a11y check dotčených UI souborů
-   - `design-system-guard` — soulad s `.ai/dugmate-design-system.md`
+5. **Subagents (optional, recommended for UI tasks):**
+   - `a11y-auditor` — quick a11y check of affected UI files
+   - `design-system-guard` — conformance with the project design system
 
-6. **Hlášení:**
+6. **Report:**
    ```
    ✓ types: pass
    ✓ lint: pass (3 files)
    ✓ tests: 12/12 pass
    ✓ web-desktop smoke: page loads, key elements present
-   ⚠ a11y: 1 warning — Button on screen X chybí accessible name
+   ⚠ a11y: 1 warning — Button on screen X missing accessible name
    ```
 
-7. Pokud něco selže, navrhni fix nebo se vrať do edit-verify smyčky `/execute` (max 3 iterace per task).
+7. If something fails, propose a fix or return to the edit-verify loop in `/execute` (max 3 iterations per task).
 
-## Co /verify NEDĚLÁ
+## What /verify does NOT do
 
-- Cross-platform parity check — to je `/validate` job (spawn `scenario-runner` subagent přes 5 platform).
-- Full test suite (jen dotčené testy).
-- Build celého projektu — jen tam, kde se přímo dotklo.
-- Bundle size / performance regression — to je `/validate`.
+- Cross-platform parity check — that's a `/validate` job (spawn the `scenario-runner` subagent across 5 platforms).
+- Full test suite (only affected tests).
+- Build of the whole project — only where directly touched.
+- Bundle size / performance regression — that's `/validate`.
 
 ## Idiom
 
-`/verify` je **vnitřní smyčka** během práce. Spouštěj často, klidně po každé úpravě. **Levné.** Cca 15–60 s podle scope.
+`/verify` is the **inner loop** during work. Run often, even after every edit. **Cheap.** Roughly 15–60s depending on scope.
 
-`/validate` je **vnější brána** před mergem. Spouštěj jednou před `/done`. **Drahé** (cross-platform scenario, full pipeline). Cca 5–15 min podle počtu platform.
+`/validate` is the **outer gate** before merge. Run once before `/done`. **Expensive** (cross-platform scenario, full pipeline). Roughly 5–15 min depending on platform count.

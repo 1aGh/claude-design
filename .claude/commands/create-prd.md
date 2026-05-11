@@ -162,31 +162,31 @@ As a <user> I want <goal> so that <benefit>
 ## Validation
 
 1. **Static**: `<pm> lint`, `tsc -b`, `<pm> build`, `<pm> test`
-2. **Cross-platform scenario**: spawn `scenario-runner` subagent přes 5 platforem (web-desktop, web-mobile, ios-phone, ios-tablet, android-phone)
-3. **A11y**: spawn `a11y-auditor` subagent (pokud UI)
-4. **Design system**: spawn `design-system-guard` subagent (pokud UI)
+2. **Cross-platform scenario**: spawn the `scenario-runner` subagent across 5 platforms (web-desktop, web-mobile, ios-phone, ios-tablet, android-phone)
+3. **A11y**: spawn the `a11y-auditor` subagent (if UI)
+4. **Design system**: spawn the `design-system-guard` subagent (if UI)
 
 ---
 
 ## Scenario Coverage
 
-| Scenario | Pokrývá user flow | Status |
-|----------|-------------------|--------|
-| `<scenario-name>` | <kroky> | 🆕 new |
+| Scenario | Covers user flow | Status |
+|----------|------------------|--------|
+| `<scenario-name>` | <steps> | 🆕 new |
 
 ---
 
 ## Acceptance Criteria
 
-- [ ] All tasks completed, `/validate` projde (incl. `scenario-runner` parity)
-- [ ] Scenario(s) pass 5/5 platforms (nebo DDR pro záměrnou divergenci)
-- [ ] DDRs zapsané pro architekturní rozhodnutí
+- [ ] All tasks completed, `/validate` passes (incl. `scenario-runner` parity)
+- [ ] Scenario(s) pass 5/5 platforms (or DDR for intentional divergence)
+- [ ] DDRs recorded for architectural decisions
 - [ ] ...
 ```
 
 **Rules for phase generation:**
 
-- **Design phase (optional):** If wireframes / mockups in Claude Design (https://claude.ai/design/) jsou referencovány nebo PRD obsahuje screen briefs vyžadující vizuální exploraci, insert a "Design" phase before Scaffold to capture URLs and finalize design decisions. Skip jinak.
+- **Design phase (optional):** If wireframes / mockups in Claude Design (https://claude.ai/design/) are referenced or the PRD contains screen briefs requiring visual exploration, insert a "Design" phase before Scaffold to capture URLs and finalize design decisions. Skip otherwise.
 - **Scaffold phase:** The first code phase should always be "Scaffold" (routing, layout, dependencies, mock data)
 - Analyze dependencies between phases — which must run sequentially vs. in parallel
 - Each phase plan should be self-contained with enough context to run via `/execute`

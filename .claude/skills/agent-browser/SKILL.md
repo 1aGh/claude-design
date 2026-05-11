@@ -5,7 +5,7 @@ allowed-tools: Bash(agent-browser:*), Bash(npx agent-browser:*)
 hidden: true
 ---
 
-# agent-browser — StudyFi conventions
+# agent-browser — conventions
 
 Fast Rust CLI for Chrome/Chromium via CDP. **Default for any browser work** — Playwright MCP is fallback only. Benchmarked ~10× cheaper in context tokens for the same scenario.
 
@@ -43,9 +43,9 @@ Every `agent-browser` command then auto-uses that profile dir. The dir is create
 
 If you can't / don't want to use Claude settings, just `export AGENT_BROWSER_PROFILE=~/.agent-browser/work-profile` in your shell rc.
 
-### 3. First login to StudyFi (one-time, manual)
+### 3. First login to the app (one-time, manual)
 
-Make sure `pnpm dev` is running (web on `http://localhost:3000`). Then:
+Make sure your dev server is running (e.g. `pnpm dev` on `http://localhost:3000`). Then:
 
 ```bash
 agent-browser close --all                                # fresh daemon picks up the profile env
@@ -69,7 +69,7 @@ If you see `Create Account` / `Log In` buttons → the profile didn't save. Re-r
 
 ### 5. (Optional) Log into other services the same way
 
-Repeat step 3 with any URL — GitHub web, ClickUp, Linear, prod StudyFi, etc. Each service's auth lands in the same profile and survives.
+Repeat step 3 with any URL — GitHub web, ClickUp, Linear, your production site, etc. Each service's auth lands in the same profile and survives.
 
 ---
 
@@ -77,9 +77,9 @@ Repeat step 3 with any URL — GitHub web, ClickUp, Linear, prod StudyFi, etc. E
 
 ### 1. Persistent profile (already configured)
 
-Env var `AGENT_BROWSER_PROFILE=~/.agent-browser/work-profile` is set in `.claude/settings.local.json` (each user's local copy). Every command auto-uses it — **no re-login between sessions**. The profile collects Auth0 cookies for `localhost:3000` (StudyFi) and any other site after a manual login (see "First-time setup" above).
+Env var `AGENT_BROWSER_PROFILE=~/.agent-browser/work-profile` is set in `.claude/settings.local.json` (each user's local copy). Every command auto-uses it — **no re-login between sessions**. The profile collects auth cookies for `localhost:3000` and any other site after a manual login (see "First-time setup" above).
 
-**If you need to log in to a new service (StudyFi prod, GitHub, etc.):**
+**If you need to log in to a new service (production, GitHub, etc.):**
 
 ```bash
 agent-browser close --all                       # ensure profile is freshly loaded
@@ -163,6 +163,8 @@ agent-browser close --all && agent-browser open …   # nuclear reset (re-spawns
 
 Use this for: responsive layout checks, mobile-only UI flows, touch targets verification, PWA testing. **Use `-p ios` (real Mobile Safari via WebDriverAgent)** only when you specifically need WebKit quirks (Safari-only bugs, iOS-Safari PWA install behavior); emulated Chrome is faster and covers 95% of mobile-web bugs. Mobile Safari requires extra setup beyond this skill — see `agent-browser skills get core --full` for the WebDriverAgent flow.
 
+
+
 ### 7. `find` for semantic locators (no snapshot needed)
 
 Skip the snapshot+ref dance for known elements:
@@ -184,7 +186,7 @@ Refs are still preferred for AI loops (deterministic, fast), but `find` is ideal
 
 ## Auth strategies — pick the right one
 
-### A. Persistent profile (default, used by StudyFi)
+### A. Persistent profile (default)
 
 **Best for**: OAuth/SSO flows (Auth0, Google, GitHub OAuth), 2FA, magic links, anything that hates being re-driven by automation.
 
@@ -197,7 +199,7 @@ agent-browser --headed open https://app.example.com/login
 agent-browser open https://app.example.com/dashboard
 ```
 
-**Use this for**: StudyFi (dev + prod), any service the user has personal SSO with.
+**Use this for**: your app (dev + prod), any service the user has personal SSO with.
 
 ### B. Auth vault (saved credentials)
 
@@ -252,7 +254,7 @@ Combine with `--profile` per session for persistent multi-account: copy `work-pr
 
 | Service                        | Strategy                               |
 | ------------------------------ | -------------------------------------- |
-| StudyFi dev / prod (Auth0)     | A. Persistent profile (already set up) |
+| Your app dev / prod (OAuth/SSO)| A. Persistent profile (already set up) |
 | GitHub web (gh.io login)       | A. Persistent profile                  |
 | ClickUp / Linear / Notion      | A. Persistent profile                  |
 | Internal admin with form login | B. Auth vault                          |
@@ -275,7 +277,7 @@ Refs (`@e1`, `@e2`, ...) are **fresh per snapshot** — they go stale the moment
 
 ---
 
-## StudyFi-specific recipes
+## Recipes
 
 ### Quick smoke test of localhost:3000
 
@@ -283,9 +285,9 @@ Refs (`@e1`, `@e2`, ...) are **fresh per snapshot** — they go stale the moment
 agent-browser open http://localhost:3000/app
 agent-browser snapshot -i -c                         # confirm logged in (sidebar visible)
 agent-browser screenshot .ai/browser/screenshots/smoke-1-home.png
-agent-browser click @e12                             # Komunity (refs vary, re-check)
-agent-browser wait --text "Doporučení"
-agent-browser screenshot .ai/browser/screenshots/smoke-2-komunity.png
+agent-browser click @e12                             # primary nav (refs vary, re-check)
+agent-browser wait --text "<expected heading>"
+agent-browser screenshot .ai/browser/screenshots/smoke-2-page.png
 ```
 
 ### Capture network for a feature debug
@@ -373,6 +375,8 @@ Always use `eval --stdin` (heredoc) for any JS with quotes or backticks — inli
 ## Troubleshooting
 
 **"Ref not found: @eN"** — page changed since snapshot. Re-snapshot.
+
+
 
 **Element exists but not in snapshot** — off-screen or not yet rendered. `scroll down 1000` then re-snapshot, or `wait --text "..."`.
 

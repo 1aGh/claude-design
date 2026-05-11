@@ -123,8 +123,8 @@ If the review verdict is **PASS** or **PASS WITH SUGGESTIONS** (no CRITICAL find
 ```
 Task tool → subagent_type: code-simplifier
 prompt: "Refactor uncommitted files (git diff --name-only HEAD)
-         for clarity. Honor CLAUDE.md, dugmate-testing-rules,
-         dugmate-a11y-rules, dugmate-responsive-rules.
+         for clarity. Honor CLAUDE.md and any project rule
+         skills (testing-rules, a11y-rules, responsive-rules).
          Preserve all behavior. Skip tests, scenarios, and
          hot-path files explicitly DDR-flagged for perf."
 ```

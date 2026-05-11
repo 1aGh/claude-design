@@ -1,9 +1,9 @@
 ---
 name: plan
 type: command
-description: "Create a context-rich feature implementation plan grounded in dugmate-prd.md and dugmate-design-system.md"
+description: "Create a context-rich feature implementation plan grounded in the project PRD and design system"
 keywords:
-  [plan, feature, design, architecture, specification, dugmate, blocks, components]
+  [plan, feature, design, architecture, specification, blocks, components]
 argument-hint: "feature description"
 ---
 
@@ -73,17 +73,17 @@ If the domain is ambiguous, ask:
 
 > **Which area does this feature primarily affect?**
 
-### Design System Reference (Dugmate)
+### Design System Reference
 
 For any UI feature, the **two source-of-truth documents** are:
 
-1. `.ai/dugmate-design-system.md` — Look & feel: dark-first, team color jako jediný customizable token, Inter pro UI / monospace pro čísla/timecody, Lucide line ikony, žádný gradient/glass/pastel/neumorphism, sub-100ms response, density-per-platform.
-2. `.ai/dugmate-prd.md` §5 — Per-screen briefs (Video Player, Playbook Editor, Team Hub, Chat, Player Profile, Onboarding, Live Stream Control Room, Watch Party, Migration Wizard, HUD Editor, Developer Portal).
+1. The project design system document (e.g. `.ai/<project>-design-system.md`) — Look & feel directives: typography, color tokens, iconography, motion, density-per-platform, response-time targets.
+2. The project PRD (e.g. `.ai/<project>-prd.md`) — Per-screen briefs and feature scope.
 
-Pokud feature dotýká UI, **vždy** čti tyto dva soubory. Také:
+If the feature touches UI, **always** read both files. Also:
 
-- Hledej v existujícím kódu (přes `.ai/context/codebase-map.md` pokud existuje) komponenty, které lze znovu použít. Žádný custom build, dokud se nevyčerpá registry.
-- Designy z Claude Design (https://claude.ai/design/) jsou vstup do plánu — odkazuj URL v sekci **Design Decisions**.
+- Search existing code (via `.ai/context/codebase-map.md` if it exists) for components that can be reused. No custom build until the registry is exhausted.
+- Designs from Claude Design (https://claude.ai/design/) are an input to the plan — reference URLs in the **Design Decisions** section.
 
 ## Planning Process
 
@@ -115,27 +115,27 @@ Before writing any tasks, search the design system for **every UI element** the 
 For each UI element mentioned in the feature:
 
 1. **Search existing components:**
-   - Grep `.ai/context/codebase-map.md` (pokud existuje) a `src/components/`, `components/`, `apps/*/components/` pro analogické komponenty
-   - Pokud nalezeno → reference v plánu, uveď cestu
-   - Pokud ne → custom scaffold task; zkonzultuj `.ai/dugmate-design-system.md` za invarianty
+   - Grep `.ai/context/codebase-map.md` (if it exists) and `src/components/`, `components/`, `apps/*/components/` for analogous components
+   - If found → reference in the plan, include the path
+   - If not → custom scaffold task; consult the project design system for invariants
 
 2. **Search existing blocks/screens:**
-   - Existující screen layouty v repu (po `/done` na předchozí featuře). Zkontroluj `apps/*/screens/`, `apps/*/pages/`, `apps/*/(routes)/`
-   - PRD §5 (screen briefs) je referenční mapa, kde jsme co plánovali
+   - Existing screen layouts in the repo (after `/done` on a previous feature). Check `apps/*/screens/`, `apps/*/pages/`, `apps/*/(routes)/`
+   - PRD screen briefs are the reference map of what was planned where
 
 3. **Icons:**
-   - Lucide line ikony (single stroke width). Sport-specific glyfy musí být ve stejné rodině (puk, míč, helmet, set marker — line, ne emoji)
-   - Záznam: exact import names z používané icon knihovny
+   - Use the project icon system (e.g. Lucide line icons, single stroke width). Domain-specific glyphs must stay in the same family (line, not emoji)
+   - Record: exact import names from the icon library in use
 
 4. **Identify tokens & typography:**
-   - Mapuj barevné potřeby na semantic tokens (`bg-background`, `text-foreground`, `bg-primary` = team color slot, `border-border`)
-   - Numerické / temporální obsahy → monospace role; UI text → Inter
-   - **Žádné hardcoded barvy** (hex/rgb/hsl) v komponentách. Žádný gradient. Žádný blur mimo video overlays.
+   - Map color needs to semantic tokens (e.g. `bg-background`, `text-foreground`, `bg-primary`, `border-border`)
+   - Numeric / temporal content → monospace role; UI text → primary UI typeface
+   - **No hardcoded colors** (hex/rgb/hsl) in components. Follow the project design system for gradient/blur restrictions.
 
 5. **Density per platform:**
    - Mobile = breathing room, 44×44 tap targets, palm-friendly
-   - Tablet = sideline tool — větší tap targety, dense
-   - Desktop = command center, Linear-like density, keyboard-first (Cmd-K)
+   - Tablet = larger tap targets, dense
+   - Desktop = command center, dense, keyboard-first (Cmd-K)
 
 #### Record Results
 
@@ -219,7 +219,7 @@ As a <user> I want <goal> so that <benefit>
 
 | Component | Source          | Notes        |
 | --------- | --------------- | ------------ |
-| `<name>`  | `<repo path>`   | [why chosen, jak rozšířit] |
+| `<name>`  | `<repo path>`   | [why chosen, how to extend] |
 
 ### Existing screens / blocks reused
 
@@ -227,13 +227,13 @@ As a <user> I want <goal> so that <benefit>
 | ----------------------- | ---------------------- | ------------------------- |
 | `<name>`                | `<repo path>`          | [using as-is / extending] |
 
-> Pokud nic existujícího nesedí: "No matching block found — building custom (viz Custom Components Needed)."
+> If nothing existing fits: "No matching block found — building custom (see Custom Components Needed)."
 
 ### Icons
 
 | Icon         | Library            | Size  | Usage        |
 | ------------ | ------------------ | ----- | ------------ |
-| `<Name>`     | Lucide line        | 16/20/24 | [kde použito] |
+| `<Name>`     | Lucide line        | 16/20/24 | [where used] |
 
 ### Tokens
 
@@ -277,44 +277,44 @@ Run these commands to confirm zero regressions:
 2. **Types**: `<pm> typecheck`
 3. **Tests**: `<pm> test`
 4. **Build**: `<pm> build`
-5. **Cross-platform scenario** (UI tasky): spawn `scenario-runner` subagent. Spustí `agent-browser` (web-desktop, web-mobile) + `agent-device` (ios-phone, ios-tablet, android-phone) podle `.claude/skills/scenario/SKILL.md`. Vyžaduje 0 blockers a parity OK napříč non-skipped platformami.
-6. **Design System Guard**: spawn `design-system-guard` subagent — ověří soulad s `.ai/dugmate-design-system.md` proti scenario screenshotům
-7. **A11y**: spawn `a11y-auditor` subagent — live axe-core run přes agent-browser nad dotčenými routes
-8. **Manual**: [specific edge cases nebo flows, které scenario nepokrývá]
+5. **Cross-platform scenario** (UI tasks): spawn the `scenario-runner` subagent. Runs `agent-browser` (web-desktop, web-mobile) + `agent-device` (ios-phone, ios-tablet, android-phone) per `.claude/skills/scenario/SKILL.md`. Requires 0 blockers and parity OK across non-skipped platforms.
+6. **Design System Guard**: spawn the `design-system-guard` subagent — verifies conformance with the project design system against scenario screenshots
+7. **A11y**: spawn the `a11y-auditor` subagent — live axe-core run via agent-browser over affected routes
+8. **Manual**: [specific edge cases or flows the scenario doesn't cover]
 
 ---
 
-## Scenario Coverage (UI tasky — povinné)
+## Scenario Coverage (UI tasks — required)
 
-> Pro UI featuru musí existovat alespoň jedno cross-platform scenario v `.ai/scenarios/`. Scenario je hlavní validation backbone.
+> For a UI feature there must be at least one cross-platform scenario in `.ai/scenarios/`. Scenarios are the primary validation backbone.
 
-**Existující scenarios pokrývající dotčené flows:**
+**Existing scenarios covering affected flows:**
 
-| Scenario | Pokrývá | Status |
-|----------|---------|--------|
+| Scenario | Covers | Status |
+|----------|--------|--------|
 | `<name>` | <user flow> | ✅ existing / 🆕 new |
 
-**Nová scenarios k vytvoření** (pokud existující nestačí):
+**New scenarios to create** (if existing ones are insufficient):
 
-- `<scenario-name>` — flow: <kroky 1..N>, persona: <Coach/Player/Scout/Manager z PRD §2>, fixtures: <co potřebujeme seedovat>
+- `<scenario-name>` — flow: <steps 1..N>, persona: <from PRD personas>, fixtures: <what needs to be seeded>
 
-`/done` spustí `scenario-runner` přes 5 platforem. Scenario, kterému chybí runners, blokuje `/done`.
+`/done` runs `scenario-runner` across 5 platforms. A scenario missing runners blocks `/done`.
 
 ---
 
 ## Acceptance Criteria
 
 - [ ] All tasks completed
-- [ ] `/verify` projde po každém tasku (Edit-Verify Loop, max 3 iterace)
-- [ ] `/validate` projde celkově:
+- [ ] `/verify` passes after each task (Edit-Verify Loop, max 3 iterations)
+- [ ] `/validate` passes overall:
   - [ ] Static (types, lint, format)
   - [ ] Tests (full suite)
   - [ ] Build
-  - [ ] **`scenario-runner`: 0 blockers, parity_ok=true** napříč 5 platformami (nebo DDR vysvětlující záměrnou divergenci)
+  - [ ] **`scenario-runner`: 0 blockers, parity_ok=true** across 5 platforms (or a DDR explaining intentional divergence)
   - [ ] `design-system-guard` subagent: 0 blockers
-  - [ ] `a11y-auditor` subagent: 0 blockers (UI tasky)
-- [ ] Scenario report linkovaný v PR description
-- [ ] Žádné DDR-worthy rozhodnutí nezůstává nezapsané
+  - [ ] `a11y-auditor` subagent: 0 blockers (UI tasks)
+- [ ] Scenario report linked in PR description
+- [ ] No DDR-worthy decision left unrecorded
 - [ ] Code follows project conventions, no regressions
 ```
 

@@ -21,16 +21,16 @@ This skill complements `workflow-orchestration` (which covers the protocol of ph
 **Status:** ready | in-progress | paused | blocked | done
 **Started:** <YYYY-MM-DD>
 **Updated:** <YYYY-MM-DD HH:MM>
-**Active task:** <one-liner z plánu nebo "—">
-**Active plan:** <.ai/plans/<x>.plan.md nebo "—">
+**Active task:** <one-liner from the plan or "—">
+**Active plan:** <.ai/plans/<x>.plan.md or "—">
 
 ## Decisions
 
-<bullet list — krátké sumáře, plné DDRs žijí v .ai/decisions/>
+<bullet list — short summaries; full DDRs live in .ai/decisions/>
 
 ## Blockers
 
-<bullet list — co stojí v cestě, kdo to musí rozhodnout>
+<bullet list — what is in the way, who must decide it>
 
 ## History
 
@@ -39,43 +39,43 @@ This skill complements `workflow-orchestration` (which covers the protocol of ph
 | <YYYY-MM-DD HH:MM> | <phase> | <one-liner> |
 ```
 
-## Pravidla
+## Rules
 
-1. **Každá phase change → nový history řádek.** History je append-only — žádný řádek se nepřepisuje, neodstraňuje, ani nemění pořadí.
-2. **Updated field updni při každé editaci.** Slouží `/status` a `/resume` k detekci stale state.
-3. **Pause path:** Phase → `paused`, Status → `paused`, current `Active task` zachovej (ne smaž). Detail je v `.ai/state/HANDOFF.md`.
-4. **Done path:** Phase → `done`, Status → `done`, Active task → `—`, Active plan → `—`. Plán se přesouvá do `.ai/plans/archive/`.
-5. **Blocked:** Phase zůstává původní, Status → `blocked`, Blockers sekce dostane bullet s konkrétem.
+1. **Every phase change → a new history row.** History is append-only — no row gets rewritten, removed, or reordered.
+2. **Update the Updated field on every edit.** `/status` and `/resume` use it to detect stale state.
+3. **Pause path:** Phase → `paused`, Status → `paused`, keep the current `Active task` (do not clear it). Details go in `.ai/state/HANDOFF.md`.
+4. **Done path:** Phase → `done`, Status → `done`, Active task → `—`, Active plan → `—`. The plan moves to `.ai/plans/archive/`.
+5. **Blocked:** Phase stays the same, Status → `blocked`, the Blockers section gets a bullet with the specifics.
 
-## HANDOFF.md (jen když paused)
+## HANDOFF.md (only while paused)
 
-Přechodný soubor. Vzniká v `/pause`, mizí v `/resume`. **Nikdy se necommituje samostatně** — je v `.gitignore`. Pokud se objeví v gitu, je to leak.
+A transient file. Created on `/pause`, removed on `/resume`. **Never committed standalone** — it lives in `.gitignore`. If it appears in git, that is a leak.
 
-Použij `.ai/templates/HANDOFF.md` jako základ. Klíčové sekce:
+Use `.ai/templates/HANDOFF.md` as the base. Key sections:
 
 - Active feature
-- Last task (s status)
-- Next step (konkrétní příkaz / soubor / řádek)
+- Last task (with status)
+- Next step (concrete command / file / line)
 - Open questions / blockers
 - Files touched (uncommitted)
-- Recent thinking (1–2 odstavce — trail of thought)
+- Recent thinking (1–2 paragraphs — trail of thought)
 
 ## Anti-patterns
 
-- ❌ Ruční editace History bez phase change.
-- ❌ Smazání History řádků kvůli "úklidu" — to je institucionální amnézie.
-- ❌ STATE.md committovaný se status `in-progress` na main branch — buď je práce hotová (`done`), nebo je v PR.
-- ❌ HANDOFF.md committovaný — je gitignored z důvodu.
-- ❌ Více aktivních plánů současně bez explicitního důvodu — když chceš streetovat dvě věci paralelně, použij branche, ne jeden state.
+- ❌ Hand-editing History without a phase change.
+- ❌ Deleting History rows to "clean up" — that is institutional amnesia.
+- ❌ STATE.md committed with status `in-progress` on the main branch — either work is `done`, or it lives in a PR.
+- ❌ HANDOFF.md committed — it is gitignored for a reason.
+- ❌ Multiple active plans at once without an explicit reason — if you want to drive two things in parallel, use branches, not one state.
 
 ## Integration
 
-| Command | Co dělá s STATE.md |
-|---------|---------------------|
+| Command | What it does with STATE.md |
+|---------|----------------------------|
 | `/plan` | Phase → `planning`, Active plan → `<path>`, history row |
 | `/execute` | Phase → `execution`, Active task per task, history row per completed task |
 | `/done` | Phase + Status → `done`, plan archived, final history row |
-| `/pause` | Status → `paused`, Active task zachován, vytvoří HANDOFF.md |
-| `/resume` | Status → `in-progress`, smaže HANDOFF.md, history row |
-| `/status` | Read-only — vrátí summary |
-| `/ddr` | Append do `## Decisions` (jen sumář, full DDR v `.ai/decisions/`) |
+| `/pause` | Status → `paused`, Active task kept, creates HANDOFF.md |
+| `/resume` | Status → `in-progress`, removes HANDOFF.md, history row |
+| `/status` | Read-only — returns summary |
+| `/ddr` | Appends to `## Decisions` (summary only, full DDR in `.ai/decisions/`) |

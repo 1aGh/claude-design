@@ -1,82 +1,82 @@
 ---
-description: Uzavři featuru — /validate gate (incl. cross-platform scenario) → DDR sweep → commit → push → PR → retro → archivace
-argument-hint: "<volitelně: cesta k plánu>"
+description: Close out a feature — /validate gate (incl. cross-platform scenario) → DDR sweep → commit → push → PR → retro → archive
+argument-hint: "<optional: path to plan>"
 ---
 
-# /done — uzavři featuru
+# /done — close out a feature
 
-Tohle je **finální brána**. Spouští se po `/execute`, když všechny tasky padly. Sjednocuje verification, commit a push do jediné akce.
+This is the **final gate**. Run it after `/execute` when all tasks pass. It consolidates verification, commit, and push into a single action.
 
-Vstup: `$ARGUMENTS` — volitelně cesta k plan souboru. Pokud chybí, použij ten z `.ai/state/STATE.md`.
+Input: `$ARGUMENTS` — optionally a path to the plan file. If missing, use the one from `.ai/state/STATE.md`.
 
-## Postup
+## Process
 
-### 1. Spusť `/validate` (hard gate)
+### 1. Run `/validate` (hard gate)
 
-`/validate` provede statickou analýzu, testy, build, **cross-platform scenario** (`scenario-runner` subagent přes 5 platforem), a11y audit, design konzistenci, decision drift check.
+`/validate` performs static analysis, tests, build, **cross-platform scenario** (`scenario-runner` subagent across 5 platforms), a11y audit, design consistency, and decision drift check.
 
-Pokud cokoli z `/validate` selže → zastav. Vrať se do `/execute` opravit. Po fixu znovu `/done`.
+If anything in `/validate` fails → stop. Return to `/execute` to fix. After the fix, run `/done` again.
 
-**Klíčový gate:** scenario report musí mít `blockers == 0` AND `parity_ok == true` (nebo jasné DDR vysvětlující záměrnou divergenci).
+**Key gate:** the scenario report must have `blockers == 0` AND `parity_ok == true` (or a clear DDR explaining intentional divergence).
 
 ### 2. Acceptance criteria check
 
-Projdi `## Acceptance Criteria` v plánu, každé kritérium odškrtni nebo flagni. Klíčově:
+Walk through `## Acceptance Criteria` in the plan, check off or flag each criterion. Key items:
 
-- [ ] Všechny tasky completed
-- [ ] `/validate` projde (incl. scenario, a11y, design system)
-- [ ] Žádné DDR-worthy rozhodnutí nezůstalo nezapsané
-- [ ] Scenario report linkovaný v PR description
+- [ ] All tasks completed
+- [ ] `/validate` passes (incl. scenario, a11y, design system)
+- [ ] No DDR-worthy decision left unrecorded
+- [ ] Scenario report linked in PR description
 
-Pokud kritérium nelze splnit, **nepřeskakuj** — zapiš blocker do STATE.md a /pause.
+If a criterion can't be met, **don't skip** — record a blocker in STATE.md and /pause.
 
-### 3. Zaznamenej rozhodnutí (DDR sweep)
+### 3. Record decisions (DDR sweep)
 
-Projdi `## Decisions to record` v plánu. Pro každý nezapsaný bod spusť `/ddr` (nebo to udělej inline). **Žádné rozhodnutí se neztratí.** `ddr-keeper` skill poskytuje quality gate.
+Walk through `## Decisions to record` in the plan. For each unrecorded item run `/ddr` (or do it inline). **No decision is lost.** The `ddr-keeper` skill provides a quality gate.
 
 ### 4. Code review (`/code-review`)
 
-Spusť `/code-review` na uncommitted changes. Tahle verze sequence-uje:
+Run `/code-review` on uncommitted changes. This version sequences:
 
-1. Audit pass — najde correctness / quality / security / convention findings.
-2. `code-simplifier` subagent pass — auto-fixne stylistické issues (clarity, nesting, naming).
-3. Recheck — re-run static checks + týkané testy. Pokud simplifier něco rozbil, revert.
+1. Audit pass — finds correctness / quality / security / convention findings.
+2. `code-simplifier` subagent pass — auto-fixes stylistic issues (clarity, nesting, naming).
+3. Recheck — re-run static checks + affected tests. If the simplifier broke something, revert.
 
 **Hard gate:**
 
-- Verdict `NEEDS FIXES` (CRITICAL findings) → zastav. Vrať se do `/execute` opravit. `/done` znovu po fixu.
-- Verdict `PASS` nebo `PASS WITH SUGGESTIONS` → pokračuj na commit.
+- Verdict `NEEDS FIXES` (CRITICAL findings) → stop. Return to `/execute` to fix. Re-run `/done` after the fix.
+- Verdict `PASS` or `PASS WITH SUGGESTIONS` → continue to commit.
 
-Review report v `.ai/logs/code-reviews/<branch-name>.md` se commit-uje s feature changes (linkovaný v PR description).
+The review report at `.ai/logs/code-reviews/<branch-name>.md` is committed with the feature changes (linked in the PR description).
 
 ### 5. Commit
 
 Conventional commit. Format:
 
 ```
-<type>(<scope>): <imperativní shrnutí>
+<type>(<scope>): <imperative summary>
 
-<tělo: co a proč, ne jak>
+<body: what and why, not how>
 
 Refs: .ai/plans/<x>.plan.md
-DDRs: .ai/decisions/DDR-<NNN>.md (pokud byly vytvořeny)
+DDRs: .ai/decisions/DDR-<NNN>.md (if any were created)
 Scenario: .ai/device/scenario-runs/<name>/<ts>/report.md
 ```
 
 - Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `ci`.
-- **Stage konkrétní soubory**, ne `git add -A` (tajemství / mimo-scope změny).
-- **NIKDY** `--no-verify` ani `--amend`, pokud to user neřekl.
+- **Stage specific files**, not `git add -A` (secrets / out-of-scope changes).
+- **NEVER** use `--no-verify` or `--amend` unless the user asked for it.
 
-### 6. Push & PR (volitelně — zeptej se)
+### 6. Push & PR (optional — ask)
 
-_"Zveřejnit branch a otevřít PR?"_ — pokud ano:
+_"Publish the branch and open a PR?"_ — if yes:
 
 - `git push -u origin <branch>`
-- `gh pr create` s tělem:
+- `gh pr create` with body:
 
 ```markdown
 ## Summary
-<2–3 bullety co se změnilo>
+<2–3 bullets of what changed>
 
 ## Cross-platform validation
 - Scenario: `<name>`
@@ -86,35 +86,35 @@ _"Zveřejnit branch a otevřít PR?"_ — pokud ano:
 
 ## Linked
 - Plan: .ai/plans/<x>.plan.md
-- PRD: <§ parent nebo cesta>
-- DDRs: <seznam>
+- PRD: <§ parent or path>
+- DDRs: <list>
 
 ## Test plan
-- [ ] Spustit `/scenario <name>` lokálně proti checked-out branchi
+- [ ] Run `/scenario <name>` locally against the checked-out branch
 - [ ] Spot-check screenshots in scenario report
-- [ ] <případné manual edge cases>
+- [ ] <any manual edge cases>
 ```
 
-### 7. Retro & archivace
+### 7. Retro & archive
 
-- Append `## Retro` odstavec na konec plánu. 3–5 bulletů: co fungovalo / co ne / co změnit v `/plan` nebo `/execute` příště. Tohle je learning loop — příští `/plan` to čte.
-- Pokud byly nečekané pivoty, parity gaps, blockery nebo přepsání plánu → zvaž samostatný DDR ("co jsme se naučili o této doméně") nebo full `/retro`.
-- Přesuň plán do `.ai/plans/archive/<x>.plan.md`.
+- Append a `## Retro` section to the end of the plan. 3–5 bullets: what worked / what didn't / what to change in `/plan` or `/execute` next time. This is the learning loop — the next `/plan` reads it.
+- If there were unexpected pivots, parity gaps, blockers, or plan rewrites → consider a standalone DDR ("what we learned about this domain") or a full `/retro`.
+- Move the plan to `.ai/plans/archive/<x>.plan.md`.
 - STATE.md → phase + status `done`, history row `done | <date> | <one-liner>`. Active task → `—`. Active plan → `—`.
 
-### 8. Hlášení
+### 8. Report
 
 ```
 ✓ Done: <feature name>
   Validate: ✓ all gates passed
   Scenario: 5/5 platforms PASS — <report path>
   Code review: ✓ <verdict> — .ai/logs/code-reviews/<branch>.md
-  Simplifier: <files touched / skipped> 
+  Simplifier: <files touched / skipped>
   Commit: <hash> <subject>
-  PR: <URL nebo "—">
+  PR: <URL or "—">
   DDRs recorded: <N>
   Plan archived: .ai/plans/archive/<x>.plan.md
   Time in execution: <approx>
 ```
 
-Návrh: _"Spustit /status pro přehled stavu projektu, nebo /retro pro process retrospective?"_
+Suggest: _"Run /status for a project overview, or /retro for a process retrospective?"_

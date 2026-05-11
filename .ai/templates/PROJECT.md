@@ -1,13 +1,13 @@
 # Project
 
-> Machine-readable project identity. Commands čtou tenhle soubor pro auto-konfiguraci. Generuje se při bootstrap, pak se manuálně udržuje.
+> Machine-readable project identity. Commands read this file for auto-configuration. Generated on bootstrap, then maintained manually.
 
 ## Identity
 
-- name: dugmate
+- name: <PROJECT_NAME>
 - org: TODO
 - repo: TODO
-- description: Mobile/tablet-first sport platforma (video analýza + playbook + team mgmt + social + live broadcast). Viz `.ai/dugmate-prd.md`.
+- description: TODO. See `.ai/<project>-prd.md` if present.
 
 ## Tracking
 
@@ -16,7 +16,7 @@
 
 ## Stack
 
-> Vyplň, jakmile vznikne první kód. Pre-implementation můžeš nechat TODO.
+> Fill in once the first code exists. Pre-implementation, leave as TODO.
 
 - language: TODO
 - framework: TODO
@@ -31,11 +31,11 @@
 
 - branching: TODO (github-flow | trunk-based | gitflow)
 - commits: conventional
-- prohibited: žádné gradient/glass/pastel UI; viz `.ai/dugmate-design-system.md`
+- prohibited: TODO — list project-specific design or code constraints (see `.ai/<project>-design-system.md` if present)
 
 ## Local Layout
 
-> Per-developer paths. Necommitovat skutečné hodnoty — drž v `PROJECT.local.md` (untracked).
+> Per-developer paths. Do not commit real values — keep them in `PROJECT.local.md` (untracked).
 
 - workspace-root: TODO
 - env-file: TODO

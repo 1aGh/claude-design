@@ -1,6 +1,6 @@
 # Workflow State
 
-> Šablona. Workflow-state skill drží schéma a pravidla — viz `.claude/skills/workflow-state/SKILL.md`.
+> Template. The workflow-state skill owns the schema and rules — see `.claude/skills/workflow-state/SKILL.md`.
 
 **Workflow:** ad-hoc | feature-delivery
 **Phase:** intake | planning | execution | verification | done | paused | blocked
@@ -12,7 +12,7 @@
 
 ## Decisions
 
-- (none — full DDRs žijí v `.ai/decisions/`)
+- (none — full DDRs live in `.ai/decisions/`)
 
 ## Blockers
 

@@ -1,20 +1,20 @@
 # Design Decision Records
 
-Trvalý log architekturních a produktových rozhodnutí pro claude-design. Každý DDR je samostatný markdown podle šablony v `.claude/commands/ddr.md`.
+Permanent log of architectural and product decisions for claude-design. Each DDR is a standalone markdown file following the template in `.claude/commands/ddr.md`.
 
 ## Index
 
-> Append-only. Nejnovější nahoře.
+> Append-only. Newest at the top.
 
-<!-- DDRs go here, formát:
-- [DDR-NNN: Titulek](DDR-NNN-titulek.md) — YYYY-MM-DD, tags
+<!-- DDRs go here, format:
+- [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
 
-## Pravidla
+## Rules
 
-- **Numbering:** zero-padded, 3 číslice, sekvenční (DDR-001, DDR-002, …).
-- **Status:** `Accepted` jakmile commitnuto. `Proposed` jen v PR. `Superseded by DDR-NNN` když nahrazeno.
-- **Nemažeme.** Superseded DDRs zůstávají — to je trail jak jsme se sem dostali.
-- **Cross-link:** plán + commit + nový kód, který implementuje, by měly DDR linkovat.
+- **Numbering:** zero-padded, three digits, sequential (DDR-001, DDR-002, …).
+- **Status:** `Accepted` once committed. `Proposed` only inside an open PR. `Superseded by DDR-NNN` when replaced.
+- **We never delete.** Superseded DDRs stay — they're the trail of how we got here.
+- **Cross-link:** the plan, the commit, and the new code that implements the decision should all link the DDR.
 
-Jak vytvořit: `/ddr <titulek>`. Jak najít související: čti tento index, případně `grep -l <tag> .ai/decisions/*.md`.
+How to create one: `/ddr <title>`. How to find related ones: read this index, or `grep -l <tag> .ai/decisions/*.md`.

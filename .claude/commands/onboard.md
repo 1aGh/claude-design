@@ -19,7 +19,7 @@ AI_COMMANDS_DIR="${REPO_ROOT}/.claude/commands"
 Check if `.claude/commands/` exists:
 
 - **If missing** → Print guidance and continue (pointer generation in Step 6 will be skipped):
-  > **Slash commands not found.** Restoruj `.claude/commands/` z gitu nebo z `ai-loop/` backup, pak re-spusť onboard.
+  > **Slash commands not found.** Restore `.claude/commands/` from git or from the `ai-loop/` backup, then re-run onboard.
 - **If present** → Count commands and note the count for later:
   ```bash
   CMD_COUNT="$(find "${AI_COMMANDS_DIR}" -name '*.md' -type f | wc -l | tr -d ' ')"
@@ -163,7 +163,7 @@ Present interactive questions for values that require human input. Use the ask q
 6. **Team members** — if auto-detected from GitHub (Step 2h), present the list for confirmation. Otherwise ask for a comma-separated list of usernames.
 7. **Related repos** — comma-separated list (or `none`)
 8. **Proxy constraints** — e.g., `GODEBUG=x509negativeserial=1` (or `none`)
-9. **Prohibited packages** — packages, které **nesmí** vstoupit do projektu (or `none`)
+9. **Prohibited packages** — packages that **must not** enter the project (or `none`)
 10. **Branching model** — `github-flow` | `trunk-based` | `gitflow`
 
 ### Catch-All: Any Auto-Detection Failures
@@ -518,7 +518,7 @@ HAS_WORKFLOWS="$(find .ai/workflows -name '*.md' 2>/dev/null | wc -l | tr -d ' '
 HAS_POLICIES="$(find .ai/policies -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
 HAS_SKILLS="$(find .claude/skills -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')"
 HAS_TEMPLATES="$(find .ai/templates -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
-HAS_RULES="$(find .claude/skills -maxdepth 1 -name 'dugmate-*-rules' -type d 2>/dev/null | wc -l | tr -d ' ')"
+HAS_RULES="$(find .claude/skills -maxdepth 1 -name '*-rules' -type d 2>/dev/null | wc -l | tr -d ' ')"
 ```
 
 Print the announcement only for capabilities that are present (count > 0):

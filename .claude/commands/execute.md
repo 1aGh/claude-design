@@ -71,15 +71,15 @@ For EACH task in "Tasks":
 
 > **Pattern reference:** See `.ai/docs/patterns.md` — Pattern 1: Edit-Verify Loop
 
-After implementing the task, run `/verify` to confirm correctness. `/verify` automaticky:
+After implementing the task, run `/verify` to confirm correctness. `/verify` automatically:
 
-1. Spustí static checks (type-check, lint, dotčené testy)
-2. Pro UI tasky: spawn agent-browser smoke (web) nebo agent-device smoke (RN)
-3. Volitelně spawn `a11y-auditor` + `design-system-guard` subagenty
+1. Runs static checks (type-check, lint, affected tests)
+2. For UI tasks: spawns agent-browser smoke (web) or agent-device smoke (RN)
+3. Optionally spawns the `a11y-auditor` + `design-system-guard` subagents
 
-**Smyčka:**
+**Loop:**
 
-1. **Verify:** spusť `/verify`.
+1. **Verify:** run `/verify`.
 2. **If pass:** Continue to the next task.
 3. **If fail:**
    a. Read error output carefully — identify the **root cause**, not just the symptom.
@@ -92,32 +92,32 @@ After implementing the task, run `/verify` to confirm correctness. `/verify` aut
    - Recommend manual intervention with specific guidance.
    - Mark this task as `❌ BLOCKED` in the output report.
 
-**Pokud task introduces UI změny, ale dotčený screen nemá scenario v `.ai/scenarios/`:**
+**If a task introduces UI changes but the affected screen has no scenario in `.ai/scenarios/`:**
 
-- Flagni v output reportu: _"UI task X dotýká screen Y, který nemá scenario coverage. Doporučení: po posledním tasku spustit `/scenario new <name>`."_
-- Nezastavuj execute kvůli tomu (scenario je primárně job `/validate`/`/done`), ale upozorni, ať `/done` má co spustit.
+- Flag in the output report: _"UI task X touches screen Y, which has no scenario coverage. Recommendation: after the last task run `/scenario new <name>`."_
+- Don't stop execute over this (scenario is primarily a `/validate`/`/done` job), but flag it so `/done` has something to run.
 
 #### d. Polish pass (`code-simplifier`)
 
-Po pass `/verify`, před checkpointem, spawn `code-simplifier` subagent přes Task tool **na soubory dotčené v tomto tasku** (ne celý diff sezení).
+After `/verify` passes, before the checkpoint, spawn the `code-simplifier` subagent via the Task tool **on files touched in this task** (not the full session diff).
 
 ```
 Task tool → subagent_type: code-simplifier
 prompt: "Refactor <list of files modified in this task> for clarity.
-         Honor CLAUDE.md, dugmate-testing-rules, dugmate-a11y-rules.
+         Honor CLAUDE.md and project rules.
          Preserve all behavior. Do NOT touch tests or scenarios."
 ```
 
-**Po simplifier pass znovu spusť `/verify`** (lehký smoke). Pokud rozbije test/typecheck:
+**After the simplifier pass run `/verify` again** (light smoke). If it breaks test/typecheck:
 
-- Iteration counter z Edit-Verify Loop **se NEresetuje** — máš stále max 3.
-- Pokud pass selže a máš < 3 iterations použito, pokus se fix; jinak revert simplifier diff (`git checkout -- <files>`) a pokračuj s pre-simplifier verzí.
+- The Edit-Verify Loop iteration counter does **NOT** reset — you still have max 3.
+- If the pass fails and you've used < 3 iterations, try to fix; otherwise revert the simplifier diff (`git checkout -- <files>`) and continue with the pre-simplifier version.
 
-**Skip simplifier pass když:**
+**Skip the simplifier pass when:**
 
-- Task je hot-path performance kód (DDR-flagged, např. `packages/sync` delta sync).
-- Task je čistě config/infra (lockfile, GH actions, env).
-- Task je < ~30 řádků diff (overhead > value).
+- The task is hot-path performance code (DDR-flagged).
+- The task is purely config/infra (lockfile, GH actions, env).
+- The task is < ~30 lines of diff (overhead > value).
 
 #### e. Checkpoint progress
 
@@ -135,12 +135,12 @@ Persist checkpoint state in `.ai/state/STATE.md` under a `## Execution Progress`
 
 ### 4. Final Validation (suggest, don't run)
 
-Po posledním tasku **nespouštěj** plný `/validate` automaticky — to je drahé (cross-platform scenario, 5–15 min). Místo toho:
+After the last task, **do not** auto-run a full `/validate` — it's expensive (cross-platform scenario, 5–15 min). Instead:
 
-- Souhrn co bylo hotovo
-- Připomeň: _"Plán dokončen. Spustit /done pro plný `/validate` (incl. cross-platform scenario) → commit → PR?"_
+- Summarize what was done
+- Prompt: _"Plan complete. Run /done for full `/validate` (incl. cross-platform scenario) → commit → PR?"_
 
-Pokud user řekne ano, `/done` převezme řízení.
+If the user says yes, `/done` takes over.
 
 ## Output Report
 
@@ -166,7 +166,7 @@ For each completed task, list:
 
 ### Next step
 
-> **Plán dokončen.** Spustit `/done` (full `/validate` → commit → PR) nebo nejdřív `/scenario new` pro chybějící coverage?
+> **Plan complete.** Run `/done` (full `/validate` → commit → PR) or first `/scenario new` for missing coverage?
 
 ### Tests Added
 

@@ -7,11 +7,11 @@ keywords: [health, check, diagnose, verify, ai, system, status]
 
 # AI Health: System Diagnostic
 
-> Verify, že je `.claude/` + `.ai/` infrastruktura kompletní. Reportuje pass/warn/fail s remediation kroky.
+> Verify that the `.claude/` + `.ai/` infrastructure is complete. Reports pass/warn/fail with remediation steps.
 
 ## Process
 
-Spusť každý check v pořadí. Sesbírej výsledky do summary tabulky.
+Run each check in order. Collect results into a summary table.
 
 ### Check 1: Slash commands
 
@@ -20,10 +20,10 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 CMD_DIR="${REPO_ROOT}/.claude/commands"
 ```
 
-- **Pass:** `$CMD_DIR` existuje a obsahuje ≥ 5 `.md` souborů (minimum: create-prd, plan, execute, done, context)
-- **Fail:** Adresář chybí nebo je pod-naplněný
+- **Pass:** `$CMD_DIR` exists and contains ≥ 5 `.md` files (minimum: create-prd, plan, execute, done, context)
+- **Fail:** Directory missing or under-populated
 
-**Remediation:** Restoruj z `ai-loop/` backup nebo z gitu (`git checkout HEAD -- .claude/commands`).
+**Remediation:** Restore from the `ai-loop/` backup or from git (`git checkout HEAD -- .claude/commands`).
 
 ### Check 2: Skills
 
@@ -31,11 +31,11 @@ CMD_DIR="${REPO_ROOT}/.claude/commands"
 SKILLS_DIR="${REPO_ROOT}/.claude/skills"
 ```
 
-- **Pass:** Adresář existuje a obsahuje ≥ 1 podadresář s `SKILL.md`
-- **Warn:** Adresář existuje, ale je prázdný
-- **Fail:** Adresář chybí
+- **Pass:** Directory exists and contains ≥ 1 subdirectory with `SKILL.md`
+- **Warn:** Directory exists but is empty
+- **Fail:** Directory missing
 
-**Remediation:** Skills jsou auto-loading expertise. Bez nich pojedou commands, ale bez doménového detailu.
+**Remediation:** Skills are auto-loading expertise. Without them commands still run, but without domain detail.
 
 ### Check 3: Subagents
 
@@ -43,10 +43,10 @@ SKILLS_DIR="${REPO_ROOT}/.claude/skills"
 AGENTS_DIR="${REPO_ROOT}/.claude/agents"
 ```
 
-- **Pass:** Adresář existuje s ≥ 1 `.md` souborem
-- **Warn:** Adresář prázdný — subagenti pro a11y / design-system / test-coverage chybí
+- **Pass:** Directory exists with ≥ 1 `.md` file
+- **Warn:** Directory empty — subagents for a11y / design-system / test-coverage are missing
 
-**Remediation:** Subagenti drží robustnost. Restoruj nebo vytvoř.
+**Remediation:** Subagents hold robustness. Restore or create.
 
 ### Check 4: CLAUDE.md
 
@@ -54,17 +54,17 @@ AGENTS_DIR="${REPO_ROOT}/.claude/agents"
 CLAUDE_FILE="${REPO_ROOT}/CLAUDE.md"
 ```
 
-- **Pass:** Soubor existuje a je neprázdný
-- **Fail:** Soubor chybí
+- **Pass:** File exists and is non-empty
+- **Fail:** File missing
 
-**Remediation:** `CLAUDE.md` je root-level guidance pro budoucí Claude session. Spusť `/init` pokud chybí.
+**Remediation:** `CLAUDE.md` is root-level guidance for future Claude sessions. Run `/init` if missing.
 
 ### Check 5: PRD + Design System
 
-- **Pass:** `.ai/dugmate-prd.md` + `.ai/dugmate-design-system.md` existují a jsou neprázdné
-- **Fail:** Jeden nebo oba chybí
+- **Pass:** `.ai/<project>-prd.md` + `.ai/<project>-design-system.md` exist and are non-empty
+- **Fail:** One or both missing
 
-**Remediation:** Tyto dva dokumenty jsou source-of-truth pro produkt. Bez nich nelze plánovat.
+**Remediation:** These two documents are the source-of-truth for the product. Without them you cannot plan.
 
 ### Check 6: Codebase Map (warm cache)
 
@@ -72,12 +72,12 @@ CLAUDE_FILE="${REPO_ROOT}/CLAUDE.md"
 MAP_FILE="${REPO_ROOT}/.ai/context/codebase-map.md"
 ```
 
-- **Pass:** Soubor existuje a byl updatovaný v posledních 7 dnech
-- **Warn:** Soubor existuje, ale starší než 7 dní (potenciálně stale)
-- **Fail:** Soubor chybí
-- **N/A:** Repo zatím nemá kód (planning phase)
+- **Pass:** File exists and was updated in the last 7 days
+- **Warn:** File exists but is older than 7 days (potentially stale)
+- **Fail:** File missing
+- **N/A:** Repo has no code yet (planning phase)
 
-**Remediation:** `/map-codebase` snímek vygeneruje / refreshne.
+**Remediation:** `/map-codebase` generates / refreshes the snapshot.
 
 ### Check 7: Workflow State
 
@@ -85,8 +85,8 @@ MAP_FILE="${REPO_ROOT}/.ai/context/codebase-map.md"
 STATE_FILE="${REPO_ROOT}/.ai/state/STATE.md"
 ```
 
-- **Pass:** Soubor existuje (workflow state inicializovaný)
-- **Warn:** Soubor chybí — commands poběží, ale `/pause` a `/resume` neuchovají kontext
+- **Pass:** File exists (workflow state initialized)
+- **Warn:** File missing — commands still run, but `/pause` and `/resume` will not preserve context
 
 **Remediation:** `cp .ai/templates/STATE.md .ai/state/STATE.md`
 
@@ -96,10 +96,10 @@ STATE_FILE="${REPO_ROOT}/.ai/state/STATE.md"
 DDR_DIR="${REPO_ROOT}/.ai/decisions"
 ```
 
-- **Pass:** Adresář existuje s `README.md` indexem
-- **Warn:** Adresář chybí — DDR learning loop není aktivní
+- **Pass:** Directory exists with `README.md` index
+- **Warn:** Directory missing — DDR learning loop is not active
 
-**Remediation:** `mkdir -p .ai/decisions` + zkopíruj README.md template.
+**Remediation:** `mkdir -p .ai/decisions` + copy the README.md template.
 
 ## Output Report
 
@@ -118,6 +118,6 @@ DDR_DIR="${REPO_ROOT}/.ai/decisions"
 
 ### Summary
 
-- **Healthy:** Všechny checks projdou — AI infrastruktura je plně operační
-- **Needs attention:** Warnings — funguje, ale není ideální
-- **Needs repair:** Failures — postupuj podle remediation kroků
+- **Healthy:** All checks pass — AI infrastructure is fully operational
+- **Needs attention:** Warnings — works, but not ideal
+- **Needs repair:** Failures — follow the remediation steps

@@ -9,7 +9,7 @@ hidden: true
 
 This is the **minimal** version. It encodes patterns proven on the flashcards-review-first-3 run; it does NOT yet auto-author scenarios from a description. You write per-platform bash for each scenario; the skill provides the layout, the platform matrix, and the report shape.
 
-For full background on tooling: `.claude/skills/agent-browser/SKILL.md`, `.claude/skills/agent-device/SKILL.md`. For battle-tested gotchas: `~/.claude/projects/-Volumes-D-git-AI-StudyMate/memory/agent_tools_lessons.md`.
+For full background on tooling: `.claude/skills/agent-browser/SKILL.md`, `.claude/skills/agent-device/SKILL.md`.
 
 ---
 
@@ -17,13 +17,13 @@ For full background on tooling: `.claude/skills/agent-browser/SKILL.md`, `.claud
 
 | Platform      | Tool          | Bootstrap                                                             | Status       |
 | ------------- | ------------- | --------------------------------------------------------------------- | ------------ |
-| web-desktop   | agent-browser | default viewport (1280×800)                                           | ✅ proven    |
-| web-mobile    | agent-browser | `agent-browser set device "iPhone 16"` (393×852, iOS Safari UA)       | ✅ proven    |
-| ios-phone     | agent-device  | `agent-device --platform ios --udid <iPhone16ProUDID>`                | ✅ proven    |
-| ios-tablet    | agent-device  | boot iPad sim: `xcrun simctl boot "iPad Air 11-inch (M3)"` + `--udid` | 🚧 wire next |
-| android-phone | agent-device  | start AVD: `agent-device boot --platform android --device <AVD-name>` | 🚧 wire next |
+| web-desktop   | agent-browser | default viewport (1280×800)                                           | proven       |
+| web-mobile    | agent-browser | `agent-browser set device "iPhone 16"` (393×852, iOS Safari UA)       | proven       |
+| ios-phone     | agent-device  | `agent-device --platform ios --udid <iPhone16ProUDID>`                | proven       |
+| ios-tablet    | agent-device  | boot iPad sim: `xcrun simctl boot "iPad Air 11-inch (M3)"` + `--udid` | wire next    |
+| android-phone | agent-device  | start AVD: `agent-device boot --platform android --device <AVD-name>` | wire next    |
 
-**Default platform set** for a new scenario: **`web-desktop, web-mobile, ios-phone, ios-tablet, android-phone`** (5 platforms). Web-tablet was intentionally dropped — the StudyFi web app is responsive and uses the same bottom-tab UX at iPad-Pro viewport as at iPhone-16 viewport, so web-mobile already covers tablet web. Add it back only when a tablet-specific layout exists. Platforms not booted are skipped with a `result.txt` reason — do not fail the whole run.
+**Default platform set** for a new scenario: **`web-desktop, web-mobile, ios-phone, ios-tablet, android-phone`** (5 platforms). Web-tablet was intentionally dropped — the web app is responsive and uses the same bottom-tab UX at iPad-Pro viewport as at iPhone-16 viewport, so web-mobile already covers tablet web. Add it back only when a tablet-specific layout exists. Platforms not booted are skipped with a `result.txt` reason — do not fail the whole run.
 
 ---
 
@@ -54,7 +54,7 @@ Run output lives under `.ai/device/scenario-runs/` (already gitignored as part o
     └── android-phone/
 ```
 
-The committed `runners/` + `README.md` are optional; for one-shot scenarios just inline the bash via Heredoc. **Do NOT** write run outputs to `.ai/scenarios/<name>/runs/` (the previous convention was dropped in commit `aa141c22b`).
+The committed `runners/` + `README.md` are optional; for one-shot scenarios just inline the bash via heredoc. **Do NOT** write run outputs to `.ai/scenarios/<name>/runs/`.
 
 ---
 
@@ -98,16 +98,16 @@ Selector OR chains for resilience: `'id="x" || label="Y" || text="Z"'` (single a
 
 ## Shareable mobile-UX scenario body
 
-StudyFi web is responsive — at iPhone-16 viewport the same bottom-tab-bar UX appears that the native iOS/Android apps use. The body of any scenario after the tab-bar tap is **shared** across web-mobile, ios-phone, ios-tablet, and android-phone. Only the tab-bar tap differs per platform:
+When the web app is responsive — at iPhone-16 viewport the same bottom-tab-bar UX appears that the native iOS/Android apps use — the body of any scenario after the tab-bar tap is **shared** across web-mobile, ios-phone, ios-tablet, and android-phone. Only the tab-bar tap differs per platform:
 
-| Platform      | Tab-bar Předměty tap                                                                                                    |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| web-mobile    | `agent-browser eval 'document.querySelectorAll("button.flex-1")[1].click()'`                                            |
-| ios-phone     | `agent-device --platform ios --udid <iphone-udid> press 200 813` (points, fallback)                                     |
-| ios-tablet    | `agent-device --platform ios --udid <ipad-udid> press 384 1180` (points, **re-measure on first run**)                   |
-| android-phone | `agent-device --platform android --serial <emulator-serial> find "Předměty" click` (auto-resolves to hittable ancestor) |
+| Platform      | Tab-bar tap                                                                                                                |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| web-mobile    | `agent-browser eval 'document.querySelectorAll("button.flex-1")[1].click()'`                                               |
+| ios-phone     | `agent-device --platform ios --udid <iphone-udid> press 200 813` (points, fallback)                                        |
+| ios-tablet    | `agent-device --platform ios --udid <ipad-udid> press 384 1180` (points, **re-measure on first run**)                      |
+| android-phone | `agent-device --platform android --serial <emulator-serial> find "<TabLabel>" click` (auto-resolves to hittable ancestor)  |
 
-When testIDs are added (see follow-ups below), all four become: `find "Předměty" click`.
+When testIDs are added (see follow-ups below), all four become: `find "<TabLabel>" click`.
 
 ---
 
@@ -164,8 +164,8 @@ wait
 
 `runs/<timestamp>/report.md` is the single thing the human reads. Required sections, in this order:
 
-1. **TL;DR table** — one row per platform: result (✅ PASS / ❌ FAIL / ⏭ SKIPPED), steps reached, tooling.
-2. **Counter-delta verification** — the strongest cross-platform parity signal. One row per platform, columns for each numeric counter that should have moved (e.g. `🌟 Zvládnuté Δ`, `zbývá Δ`). Identical deltas across rows = scenario verified.
+1. **TL;DR table** — one row per platform: result (PASS / FAIL / SKIPPED), steps reached, tooling.
+2. **Counter-delta verification** — the strongest cross-platform parity signal. One row per platform, columns for each numeric counter that should have moved (e.g. `mastered Δ`, `remaining Δ`). Identical deltas across rows = scenario verified.
 3. **Per-step pivot table** — **rows = platforms, columns = step thumbnails** (markdown image embeds). Lets the human eyeball cross-platform parity in one glance instead of scrolling a 10-row table sideways.
 4. **What surprised us** — non-obvious findings (UX differences, broken expectations, unexpected counter math, mid-run state changes).
 5. **Recommended follow-ups** — prioritized list of codebase changes that would make the scenario more reliable (e.g. missing testIDs).
@@ -185,14 +185,12 @@ The wide path-listing (per-step file paths per platform) goes in a collapsed `<d
 
 ## Counter delta
 
-| Platform    | `🌟 Zvládnuté` Δ | `zbývá` Δ |
-| ----------- | ---------------- | --------- |
-| web-desktop | +3               | −3        |
-| web-mobile  | +3               | −3        |
-| ...         | ...              | ...       |
+| Platform    | `mastered` Δ | `remaining` Δ |
+| ----------- | ------------ | ------------- |
+| web-desktop | +3           | −3            |
+| web-mobile  | +3           | −3            |
+| ...         | ...          | ...           |
 ```
-
-Latest reference run: `.ai/device/scenario-runs/flashcards-review-first-3/2026-04-30-0059/report.md`.
 
 ---
 
@@ -204,11 +202,11 @@ Latest reference run: `.ai/device/scenario-runs/flashcards-review-first-3/2026-0
 
 1. `mkdir -p .ai/scenarios/<name>/runners`
 2. Write `README.md` with the user-flow description, fixtures (subject/chapter/account), expected end state.
-3. Adapt the `runners/` from `flashcards-review-first-3/` (if it's been re-committed) — replace selectors per scenario.
+3. Adapt existing runners if any — replace selectors per scenario.
 4. First run: pilot interactively, screenshot per step, debug. Use `agent-device --save-script` to record native flows automatically:
 
    ```bash
-   agent-device open com.studyfi.StudyFiMobile --platform ios --udid $UDID --session pilot \
+   agent-device open <bundle-id> --platform ios --udid $UDID --session pilot \
      --save-script .ai/scenarios/<name>/runners/ios-phone.ad
    # … drive scenario interactively …
    agent-device --session pilot close
@@ -219,12 +217,6 @@ Latest reference run: `.ai/device/scenario-runs/flashcards-review-first-3/2026-0
 5. Once stable, commit `runners/` + `README.md`. Subsequent runs are reproducible.
 
 agent-browser has no equivalent record/replay — author web variants as bash directly.
-
----
-
-## Currently known scenarios
-
-- `flashcards-review-first-3` — open Matematika → Algebra → Všechny sady → Procházet → flip+mark 3 cards as Zvládnuté. Last verified 2026-04-30 on web-desktop, web-mobile, ios-phone (4/4 PASS at the time, web-tablet PASS too but dropped from default set since). ios-tablet + android-phone runners not yet wired.
 
 ---
 
@@ -243,6 +235,6 @@ agent-browser has no equivalent record/replay — author web variants as bash di
 
 These would let scenario runs become much simpler — replace coordinate fallbacks and DOM-class hooks with proper selectors:
 
-1. **Mobile tab-bar `testID`** (web + native) — `tab-home`, `tab-subjects`, `tab-chat`, `tab-community`. Removes the `button.flex-1[1]` and `(200, 813)` / `(384, 1180)` hacks.
-2. **Subject + chapter list-item `testID`** — `subject-{id}`, `chapter-{id}`. Removes regex grep over snapshot text (which breaks on i18n + counter prefixes like `"5 Algebra"` vs `"0 Algebra"`).
-3. **Flashcard action button `testID`** — `flashcard-mark-hard`, `-practice`, `-known`. Removes the emoji-prefix selector (`🌟`).
+1. **Mobile tab-bar `testID`** (web + native) — e.g. `tab-home`, `tab-subjects`, `tab-chat`, `tab-community`. Removes the `button.flex-1[1]` and `(200, 813)` / `(384, 1180)` hacks.
+2. **List-item `testID`** — e.g. `subject-{id}`, `chapter-{id}`. Removes regex grep over snapshot text (which breaks on i18n + counter prefixes).
+3. **Action button `testID`** — e.g. `flashcard-mark-hard`, `-practice`, `-known`. Removes emoji-prefix selectors.

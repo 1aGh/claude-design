@@ -1,21 +1,21 @@
 # HANDOFF
 
-> Přechodný soubor. Vzniká v `/pause`, mizí v `/resume`. Necommitovat samostatně.
+> Transient file. Created on `/pause`, removed on `/resume`. Do not commit standalone.
 
 **Created:** YYYY-MM-DD HH:MM
-**Reason:** <proč pauza — end of session, context switch, blocker>
+**Reason:** <why paused — end of session, context switch, blocker>
 
 ## Active feature
 
-<název + cesta k plánu>
+<name + path to plan>
 
 ## Last task
 
-<T<n>: popis, status>
+<T<n>: description, status>
 
 ## Next step
 
-Konkrétní akce. Příkaz, soubor, řádek. Tak konkrétní, aby resumer mohl rovnou pokračovat.
+A concrete action. Command, file, line. Specific enough that the resumer can pick up directly.
 
 ## Open questions / blockers
 
@@ -29,4 +29,4 @@ Konkrétní akce. Příkaz, soubor, řádek. Tak konkrétní, aby resumer mohl r
 
 ## Recent thinking
 
-1–2 odstavce. Trail of thought, aby resumer pochytil směr myšlení.
+1–2 paragraphs. Trail of thought, so the resumer can pick up the direction.
