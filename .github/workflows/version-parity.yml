@@ -1,0 +1,22 @@
+name: Version parity check
+
+on:
+  pull_request:
+    paths:
+      - 'package.json'
+      - 'plugins/design/.claude-plugin/plugin.json'
+  push:
+    branches: [main]
+    paths:
+      - 'package.json'
+      - 'plugins/design/.claude-plugin/plugin.json'
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: bash scripts/check-version-parity.sh
