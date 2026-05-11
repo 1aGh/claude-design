@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "design",
-      "source": ".",
+      "source": "./plugins/design",
       "category": "design",
       "description": "Canvas-first iteration on HTML mocks under <designRoot> (default `.design/`), element selection via Cmd+Click, auto-managed dev server. Commands: /design /design:new /design:rollback /design:screenshot /design:critic /design:docs /design:handoff /design:browse."
     }
