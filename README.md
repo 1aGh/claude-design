@@ -120,6 +120,14 @@ There used to be `.ai/design-sessions/<slug>/iterations/NNN.html`. Retired. New 
 
 ## Install
 
+Run the env check + dependency checklist:
+
+```sh
+./scripts/install.sh
+```
+
+It verifies Node ≥ 20 and prints the exact `/plugin install …` slash commands you need (these run inside Claude Code, not in your shell).
+
 This repo is both a **single-plugin marketplace** and the plugin itself. Add it to Claude Code:
 
 ### From GitHub (when published)
@@ -160,4 +168,4 @@ Semver in `.claude-plugin/plugin.json`. Without it, every commit SHA counts as a
 
 ## License
 
-TBD — currently extracted from a Dugmate-internal context. Choose a license before publishing publicly (MIT recommended for plugin distribution).
+MIT — see [LICENSE](./LICENSE).

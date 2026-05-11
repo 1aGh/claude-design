@@ -4,7 +4,8 @@
   "version": "0.3.0",
   "description": "Local Claude-Design clone — canvas-first iteration on HTML mocks under <designRoot> (default `.design/`), element selection via Cmd+Click, auto-managed dev server with React UI and WebSocket active-state tracking. Auto-critic panel after every edit; --perfect mode for N-iteration polish. Continuous README+INDEX maintenance — no zip exports, repo IS the handoff. Per-repo config at .design/config.json. Commands: /design /design:new /design:rollback /design:screenshot /design:critic /design:docs /design:handoff /design:browse.",
   "author": {
-    "name": "design plugin"
+    "name": "1aGh"
   },
+  "license": "MIT",
   "keywords": ["design", "ui", "design-system", "frontend", "canvas", "claude-design", "playground", "iteration"]
 }

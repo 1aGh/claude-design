@@ -3,8 +3,7 @@
   "name": "claude-design",
   "description": "Local Claude-Design clone — canvas-first iteration on HTML/JSX mocks with auto-managed dev server, element-pin Cmd+Click edits, and chained UX/DS critique.",
   "owner": {
-    "name": "1aGh",
-    "email": "michal.dovrtel@studyfi.com"
+    "name": "1aGh"
   },
   "plugins": [
     {
