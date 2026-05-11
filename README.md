@@ -2,6 +2,43 @@
 
 A Claude Code plugin that gives Dugmate the same iterative design workflow Anthropic's Claude Design provides — but **fully local, git-tracked, canvas-first, and chained against existing Dugmate skills**.
 
+## Quick start
+
+One-liner inside Claude Code:
+
+```
+/plugin marketplace add 1aGh/claude-design && /plugin install design@claude-design
+```
+
+Then `/reload-plugins`, run `/design:browse` to open the local canvas browser, click into a `.design/<your-mock>.html`, and iterate with `/design "<feedback>"`.
+
+## Dependencies
+
+Run these slash commands inside Claude Code — they bring in the official Anthropic plugins this one chains against:
+
+```
+# Required — needed by /design:new (first-pass canvas generation)
+/plugin marketplace add anthropics/claude-code
+/plugin install frontend-design@claude-code
+
+# Optional — slider variant exploration
+/plugin install playground@claude-code
+```
+
+Runtime requirements: **Node ≥ 20** (the bundled dev server uses `node:http` + WebSocket, zero npm deps).
+
+Three skills the critic references are **optional** — without them the canvas-edit core still works, you just lose specific features:
+
+| Skill | Effect if missing |
+|---|---|
+| `agent-browser` | `/design:screenshot` fails (no other path is affected) |
+| `ux-designer` | `design-critic` falls back to embedded 7-layer heuristics |
+| `design-system-guard` | `design-critic` skips DS-compliance protocol layer |
+
+To restore them, drop equivalent `SKILL.md` / agent files under `.claude/skills/` (or `.claude/agents/`) in your own repo. They are referenced by name — no path coupling.
+
+If you prefer a guided env check instead, clone the repo and run `./scripts/install.sh` — it verifies Node and prints the exact commands above for your current shell.
+
 ## What it gives you
 
 - **Canvas-first iteration.** `/design "<feedback>"` edits the file you have **active in the browser tab** — not a new session. Like Claude Design's canvas: open `Dugmate Mobile.html`, click into it, then say "presence dot 8px in roster" → that file is mutated in place. Sessions only spawn on explicit `/design:new`.
@@ -118,35 +155,23 @@ When `_active.json.selected` is set, the next `/design "<feedback>"` is **scoped
 
 There used to be `.ai/design-sessions/<slug>/iterations/NNN.html`. Retired. New surfaces = new files in `<designRoot>/<newCanvasDir>/<Name>.html` via `/design:new`. Iteration history = `<designRoot>/_history/<slug>/<NNN>-<ts>.bak` snapshots (gitignored, restored via `/design:rollback`).
 
-## Install
+## Updates
 
-Run the env check + dependency checklist:
-
-```sh
-./scripts/install.sh
-```
-
-It verifies Node ≥ 20 and prints the exact `/plugin install …` slash commands you need (these run inside Claude Code, not in your shell).
-
-This repo is both a **single-plugin marketplace** and the plugin itself. Add it to Claude Code:
-
-### From GitHub (when published)
-
-```
-/plugin marketplace add <owner>/<repo>
-/plugin install design@claude-design
-```
-
-Updates: bump `version` in `.claude-plugin/plugin.json`, push, then in Claude Code:
+Bump `version` in `plugins/design/.claude-plugin/plugin.json`, push to `main`, then in Claude Code:
 
 ```
 /plugin marketplace update claude-design
+/plugin install design@claude-design
 ```
 
-### Local path (for development of this plugin itself)
+Without a `version` bump every commit SHA counts as a new version. Bump deliberately when shipping user-visible changes.
+
+## Install from a local path (plugin developers)
+
+Cloned this repo and want the marketplace to live off your working tree?
 
 ```
-/plugin marketplace add /Users/iagh/git/claude-design
+/plugin marketplace add /absolute/path/to/claude-design
 /plugin install design@claude-design
 ```
 
@@ -160,11 +185,7 @@ Working on the plugin's own commands/agents/skills/dev-server:
    - `dev-server/` code → kill any running server (`lsof -i :<port>` → `kill`) and let the next `/design` invocation auto-restart it. The server is spawned on demand by the plugin.
 3. **Test in isolation:** open Claude Code from a scratch project (`cd /tmp && claude`) so the plugin's behavior isn't entangled with the parent repo's `.claude/`.
 4. **Two-checkout debug:** if you want to compare against the bundled copy in another repo (e.g. `dugmate/.claude/plugins/design/`), keep both marketplaces added — Claude resolves `design@claude-design` from the active marketplace. Disable one with `/plugin` UI to switch.
-5. **Plugin smoke test:** `node dev-server/server.mjs --root /tmp/design-test --port 4310` boots the server standalone so you can iterate on `dev-server/client/` HTML without going through the slash command.
-
-## Versioning
-
-Semver in `.claude-plugin/plugin.json`. Without it, every commit SHA counts as a new version — bump it deliberately when shipping user-visible changes.
+5. **Plugin smoke test:** `node plugins/design/dev-server/server.mjs --root /tmp/design-test --port 4310` boots the server standalone so you can iterate on `dev-server/client/` HTML without going through the slash command.
 
 ## License
 
