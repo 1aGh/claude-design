@@ -1,0 +1,40 @@
+{
+  "name": "claude-design",
+  "version": "0.3.2",
+  "description": "Canvas-first design iteration. Standalone Node dev server + Claude Code plugin for live design iteration on HTML mocks under .design/ — element selection, snapshots, auto-critic panel, per-repo config.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "claude-design-server": "plugins/design/dev-server/server.mjs"
+  },
+  "scripts": {
+    "start": "node plugins/design/dev-server/server.mjs",
+    "dev": "node plugins/design/dev-server/server.mjs --port 4399"
+  },
+  "files": [
+    "plugins/design/dev-server",
+    "LICENSE",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/1aGh/claude-design.git"
+  },
+  "homepage": "https://github.com/1aGh/claude-design#readme",
+  "bugs": {
+    "url": "https://github.com/1aGh/claude-design/issues"
+  },
+  "license": "MIT",
+  "author": "1aGh",
+  "keywords": [
+    "claude-code",
+    "claude-design",
+    "design-tools",
+    "design-system",
+    "dev-server",
+    "canvas",
+    "frontend"
+  ]
+}
