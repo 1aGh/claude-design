@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": ["Read", "Edit", "Write", "Bash", "WebFetch", "WebSearch"],
+    "deny": [
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(**/secrets/**)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)"
+    ],
+    "defaultMode": "bypassPermissions"
+  },
+  "enabledPlugins": {
+    "pixijs-skills@pixijs-skills": true
+  }
+}
