@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# Bumps version in package.json AND plugins/design/.claude-plugin/plugin.json
-# together. Use this instead of `npm version` so the two files never drift.
+# Bumps version in package.json AND every plugin's .claude-plugin/plugin.json
+# together. Use this instead of `npm version` so files never drift.
+#
+# Plugins covered:
+#   - plugins/design/.claude-plugin/plugin.json
+#   - plugins/flow/.claude-plugin/plugin.json
 #
 # Usage:
-#   scripts/bump-version.sh patch    # 0.3.2 → 0.3.3
-#   scripts/bump-version.sh minor    # 0.3.2 → 0.4.0
-#   scripts/bump-version.sh major    # 0.3.2 → 1.0.0
+#   scripts/bump-version.sh patch    # 0.4.0 → 0.4.1
+#   scripts/bump-version.sh minor    # 0.4.0 → 0.5.0
+#   scripts/bump-version.sh major    # 0.4.0 → 1.0.0
 #   scripts/bump-version.sh 1.2.3    # explicit version
 #
 # After bumping, this script does NOT commit, tag, or push — review the diff,
@@ -15,7 +19,10 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 PKG_PATH="$ROOT/package.json"
-PLUGIN_PATH="$ROOT/plugins/design/.claude-plugin/plugin.json"
+PLUGIN_PATHS=(
+  "$ROOT/plugins/design/.claude-plugin/plugin.json"
+  "$ROOT/plugins/flow/.claude-plugin/plugin.json"
+)
 
 if [ $# -ne 1 ]; then
   echo "usage: $0 <patch|minor|major|X.Y.Z>" >&2
@@ -45,9 +52,12 @@ esac
 
 echo "$CURRENT → $NEW"
 
+PATHS_JOINED=$(printf "'%s'," "$PKG_PATH" "${PLUGIN_PATHS[@]}")
+PATHS_JOINED="${PATHS_JOINED%,}"
+
 node -e "
   const fs = require('fs');
-  for (const p of ['$PKG_PATH', '$PLUGIN_PATH']) {
+  for (const p of [$PATHS_JOINED]) {
     const j = JSON.parse(fs.readFileSync(p, 'utf8'));
     j.version = '$NEW';
     fs.writeFileSync(p, JSON.stringify(j, null, 2) + '\n');
