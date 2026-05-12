@@ -6,10 +6,11 @@ USAGE
 
 COMMANDS
   init [--name <project>] [--force] [--dry-run]
-        Scaffold .ai/ workspace into the current repo from the flow plugin
-        skeleton. Idempotent — never overwrites existing files unless --force.
-        --name sets the project name in workflows.config.json (defaults to
-        the current directory basename).
+        Scaffold the .ai/ second-brain workspace into the current repo from
+        the flow plugin skeleton. Idempotent — never overwrites existing
+        files unless --force. --name sets the project name in
+        workflows.config.json (defaults to the current directory basename).
+        Does NOT write CLAUDE.md — use Claude Code's built-in /init for that.
 
   config show
   config get <dotted.key>
@@ -30,6 +31,12 @@ EXAMPLES
   mdcc config set platforms '["web-desktop","web-mobile"]'
   mdcc config get motion.complex
   mdcc design serve --port 4399
+
+NOTES
+  'mdcc init' does mechanical scaffolding of .ai/ only.
+  For interactive stack detection and workflows.config.json population,
+  run '/flow:onboard' inside Claude Code — it calls 'mdcc init' as
+  its first step. For CLAUDE.md, run Anthropic's built-in '/init'.
 
 DOCS
   https://github.com/1aGh/md-claude

@@ -1,5 +1,5 @@
-import { resolve, basename, join } from 'node:path';
-import { stat, writeFile, readFile } from 'node:fs/promises';
+import { resolve, basename } from 'node:path';
+import { stat } from 'node:fs/promises';
 import { parseArgs } from '../lib/argv.mjs';
 import { copyTree } from '../lib/copy-tree.mjs';
 
@@ -54,21 +54,16 @@ export async function run({ args, pkgRoot }) {
     },
   });
 
-  // PROJECT.md at repo root — separate from .ai/ skeleton, since it's an
-  // identity file, not workspace state.
-  const projectMdSrc = resolve(skeleton, 'templates', 'PROJECT.md');
-  const projectMdDest = resolve(cwd, 'PROJECT.md');
-  const projectMdExists = await pathExists(projectMdDest);
-  if (!projectMdExists || flags.force) {
-    const content = (await readFile(projectMdSrc, 'utf8')).replaceAll('<PROJECT_NAME>', projectName);
-    if (!flags['dry-run']) await writeFile(projectMdDest, content);
-    result.created.push('PROJECT.md (repo root)');
-  } else {
-    result.skipped.push('PROJECT.md (repo root)');
-  }
+  // Note: we do NOT scaffold CLAUDE.md here. That's the job of Claude Code's
+  // built-in `/init` command, which analyzes the codebase and writes a
+  // <200-line CLAUDE.md tailored to the project. `mdcc init` only owns
+  // .ai/ — the second-brain workspace.
+
+  const claudeMdExists = await pathExists(resolve(cwd, 'CLAUDE.md'))
+    || await pathExists(resolve(cwd, '.claude', 'CLAUDE.md'));
 
   printSummary(result);
-  printNextSteps(projectName);
+  printNextSteps(projectName, claudeMdExists);
 }
 
 function isValidName(s) {
@@ -91,13 +86,19 @@ function printSummary({ created, replaced, skipped }) {
   }
 }
 
-function printNextSteps(name) {
+function printNextSteps(name, claudeMdExists) {
   process.stdout.write(`\nNext steps:\n`);
-  process.stdout.write(`  1. Edit PROJECT.md — fill in stack and identity.\n`);
-  process.stdout.write(`  2. Create .ai/${name}-prd.md with your product brief.\n`);
-  process.stdout.write(`  3. Create .ai/${name}-design-system.md if you have one.\n`);
-  process.stdout.write(`  4. Tweak .ai/workflows.config.json — add platforms, boundaries.\n`);
-  process.stdout.write(`  5. In Claude Code: /plugin marketplace add 1aGh/md-claude\n`);
+  process.stdout.write(`  1. In Claude Code: /plugin marketplace add 1aGh/md-claude\n`);
   process.stdout.write(`                     /plugin install flow@md-claude\n`);
-  process.stdout.write(`  6. Then try /flow:status or /flow:onboard.\n`);
+  if (!claudeMdExists) {
+    process.stdout.write(`  2. /init — generate a CLAUDE.md tailored to your codebase\n`);
+    process.stdout.write(`     (Anthropic's built-in command — analyzes stack, writes <200 lines).\n`);
+    process.stdout.write(`  3. /flow:onboard — populates .ai/workflows.config.json with detected\n`);
+    process.stdout.write(`     stack (platforms, tracker, language, …).\n`);
+  } else {
+    process.stdout.write(`  2. /flow:onboard — populates .ai/workflows.config.json with detected\n`);
+    process.stdout.write(`     stack. CLAUDE.md already exists; /init would suggest improvements.\n`);
+  }
+  process.stdout.write(`  4. Create .ai/${name}-prd.md with your product brief.\n`);
+  process.stdout.write(`  5. /flow:status to see where you are; /flow:plan to start work.\n`);
 }

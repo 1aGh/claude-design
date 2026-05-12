@@ -63,4 +63,6 @@ We pick **<option>** because:
    - [DDR-<NNN>: <Title>](DDR-<NNN>-<slug>.md) — <YYYY-MM-DD>, <tags>
    ```
 
-5. **Report** — _"DDR-<NNN> recorded. Link it in the active plan / commit message."_
+5. **CLAUDE.md sweep** — if the decision encodes a behavioral rule for future code (a "we always do X" / "we never do Y" clause), invoke the `claude-md-keeper` skill: propose a one-line addition to CLAUDE.md so future sessions follow the rule without re-reading the DDR. Skip silently if the DDR is purely architectural with no behavioral change (e.g. "we picked Postgres over MySQL" alone is not a CLAUDE.md rule; "we always use Drizzle for queries, never raw SQL" is).
+
+6. **Report** — _"DDR-<NNN> recorded. Link it in the active plan / commit message."_

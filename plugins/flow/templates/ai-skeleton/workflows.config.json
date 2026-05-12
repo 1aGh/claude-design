@@ -9,6 +9,22 @@
     "codebaseMap": ".ai/context/codebase-map.md"
   },
   "platforms": ["web-desktop"],
+  "stack": {
+    "language": "unknown",
+    "framework": "unknown",
+    "packageManager": "unknown",
+    "buildTool": "none",
+    "monorepo": false,
+    "ci": "unknown",
+    "tests": "unknown",
+    "css": "unknown",
+    "router": "unknown"
+  },
+  "conventions": {
+    "branchingModel": "github-flow",
+    "commits": "conventional",
+    "prohibited": []
+  },
   "boundaries": {
     "realtime":  [],
     "video":     [],

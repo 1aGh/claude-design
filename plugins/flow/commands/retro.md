@@ -45,7 +45,7 @@ For each bad divergence:
 
 ### Step 4: Recommend improvements
 
-- Rules updates (`CLAUDE.md` → **Rules** section)
+- **CLAUDE.md updates** — invoke the `claude-md-keeper` skill: scan the divergences for "agent made the same mistake N times" patterns. For each, propose a one-line CLAUDE.md rule that would have prevented the corrections. Show the user; let them accept/edit/decline. Keep CLAUDE.md ≤200 lines (move older rules to `.claude/rules/<topic>.md` if needed).
 - Plan command improvements
 - Execute command improvements
 - New commands to automate repeated manual steps

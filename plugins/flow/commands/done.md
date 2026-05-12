@@ -107,6 +107,14 @@ Read `integrations.tracker` from `.ai/workflows.config.json`. If `provider` is n
 
 If `provider === "none"` or no MCP available → skip this step entirely. The command stays useful without any tracker.
 
+### 6c. CLAUDE.md debrief (optional)
+
+Invoke the `claude-md-keeper` skill with the feature's plan + commit diff as context:
+
+> One-line check: did this feature introduce a new convention, build step, or "always do X" rule that belongs in CLAUDE.md? (Each line in CLAUDE.md is in every future session's context, so be sparing — only rules that will save the next agent from a re-correction.)
+
+If the user lists items, propose CLAUDE.md additions (or moves to `.claude/rules/<topic>.md` for path-scoped rules). Keep file ≤200 lines. Skip silently if no relevant change.
+
 ### 7. Retro & archive
 
 - Append a `## Retro` section to the end of the plan. 3–5 bullets: what worked / what didn't / what to change in `/plan` or `/execute` next time. This is the learning loop — the next `/plan` reads it.

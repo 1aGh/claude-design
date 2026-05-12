@@ -60,7 +60,7 @@ mkdir -p .ai/state
 
 Write `.ai/state/HANDOFF.md` using the template from `.ai/templates/HANDOFF.md`, filling in all fields from the gathered context:
 
-- **Project:** from `CLAUDE.md` / `PROJECT.md` or repo name
+- **Project:** from `.ai/workflows.config.json` → `name` (or repo basename as fallback)
 - **Branch:** from `git branch --show-current`
 - **PR:** from `gh pr view --json url -q .url 2>/dev/null` or "none"
 - **Last session:** current timestamp

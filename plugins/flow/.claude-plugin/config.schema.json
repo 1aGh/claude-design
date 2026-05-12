@@ -65,6 +65,50 @@
       "type": "string",
       "description": "Native app bundle ID prefix (e.g. `com.acme.myapp`). Used by `/verify` and `/scenario` when launching native builds. Omit for web-only projects."
     },
+    "stack": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Auto-detected technology stack snapshot. Populated by /flow:onboard, refreshed by /flow:map-codebase. Flow commands read this for routing decisions (e.g. which test runner to invoke, whether to gate on monorepo workspace builds). Use `unknown` when detection fails — never invent a value.",
+      "properties": {
+        "language":       { "type": "string", "description": "Primary language: typescript | javascript | python | go | rust | java | kotlin | swift | ruby | php | unknown" },
+        "framework":      { "type": "string", "description": "Primary UI/app framework: next.js | vite | remix | sveltekit | astro | nuxt | expo | spring-boot | django | rails | express | fastapi | none | unknown" },
+        "packageManager": { "type": "string", "description": "pnpm | yarn | npm | bun | cargo | go | pip | poetry | uv | maven | gradle | unknown" },
+        "buildTool":      { "type": "string", "description": "turbo | nx | lerna | rush | make | bazel | none | unknown" },
+        "monorepo":       { "type": "boolean", "description": "True if pnpm-workspace.yaml, turbo.json, nx.json, lerna.json, or rush.json is present." },
+        "ci":             { "type": "string", "description": "github-actions | gitlab-ci | jenkins | azure-devops | circleci | bitbucket | none | unknown" },
+        "tests":          { "type": "string", "description": "vitest | jest | playwright | cypress | rspec | pytest | go-test | cargo-test | junit | none | unknown" },
+        "css":            { "type": "string", "description": "tailwind | css-modules | styled-components | emotion | vanilla-extract | sass | plain-css | none | unknown" },
+        "router":         { "type": "string", "description": "next-app | next-pages | react-router | tanstack-router | expo-router | sveltekit-router | none | unknown" }
+      }
+    },
+    "conventions": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Team conventions that flow commands enforce or display. Auto-detected where possible (e.g. `commits` from commitlint.config.*); otherwise asked once in /flow:onboard. Document non-obvious 'why' in `.ai/decisions/` as DDRs.",
+      "properties": {
+        "branchingModel": {
+          "type": "string",
+          "enum": ["github-flow", "trunk-based", "gitflow", "release-branch", "other"],
+          "description": "How feature branches relate to main. Drives /flow:done's push + PR behavior."
+        },
+        "commits": {
+          "type": "string",
+          "enum": ["conventional", "gitmoji", "free-form"],
+          "default": "conventional",
+          "description": "Commit message style. /flow:done formats commits to match."
+        },
+        "prohibited": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Packages, libraries, or APIs the project rejects (e.g. `lodash` because we use native ES; `moment` because we use date-fns). Flow commands flag accidental introduction."
+        },
+        "proxy": {
+          "type": "string",
+          "description": "Network constraint that commands must respect (e.g. `GODEBUG=x509negativeserial=1` for orgs with old certs)."
+        }
+      }
+    },
     "boundaries": {
       "type": "object",
       "additionalProperties": false,

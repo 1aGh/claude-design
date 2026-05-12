@@ -71,8 +71,9 @@ For monorepos, also check workspace root and key app `package.json` files.
 
 ### 6. Read Project Constraints
 
-- Read `CLAUDE.md` for hard rules, prohibited packages, and conventions
-- Read `PROJECT.md` if it exists for identity and team info
+- Read `CLAUDE.md` (or `.claude/CLAUDE.md`) for hard rules, prohibited packages, and conventions
+- Read `.ai/workflows.config.json` for structured identity, platforms, tracker, boundaries
+- Read any `.claude/rules/*.md` for path-scoped constraints
 - Read any `.ai/docs/rules.md` for app-scoped constraints
 
 ### 7. Write Output

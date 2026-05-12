@@ -27,32 +27,28 @@ REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || git r
 
 ## Process
 
-### 1. Read Project Identity (if available)
-
-Check for `PROJECT.md` at the repo root:
+### 1. Read project identity (structured + prose)
 
 ```bash
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-PROJECT_FILE="${REPO_ROOT}/PROJECT.md"
 ```
 
-If `PROJECT.md` exists, read it first to understand:
+Two complementary sources — read both when present:
 
-- **Identity** — project name, org, repo
-- **Stack** — language, framework, build tool, package manager, monorepo status
-- **Tracking** — which system (GitHub, ADO, Jira) and project/board IDs
-- **Team** — members and board links
-- **Constraints** — proxy settings, prohibited packages, branching and commit conventions
+- **`.ai/workflows.config.json`** — structured machine-readable identity (`name`, `platforms`, `boundaries`, `integrations.tracker`, `motion`, `responsive`, …). Source of truth for command-driven lookups.
+- **`CLAUDE.md`** (or `.claude/CLAUDE.md`) — prose Claude reads every session: conventions, build commands, prohibited packages, "always do X" rules. Auto-loaded; you may already have its content in context.
 
-> `PROJECT.md` provides machine-readable identity. `CLAUDE.md` (Step 3) provides detailed behavioral rules. They are complementary, not replacements.
+If `.ai/workflows.config.json` does not exist:
 
-If `PROJECT.md` does not exist:
+> ⚠️ No flow workspace found. Run `/flow:onboard` to scaffold `.ai/` and populate the config. Continuing with `CLAUDE.md` and auto-detection only.
 
-> ⚠️ No PROJECT.md found. Run `onboard` to create one for richer project integration. Continuing with CLAUDE.md and auto-detection.
+If `CLAUDE.md` does not exist:
+
+> ⚠️ No CLAUDE.md found. Run Anthropic's built-in `/init` to generate one tailored to your codebase. Continuing with auto-detection only.
 
 ### 2. Ask: What area are you working on?
 
-If the project is a monorepo (detected from `PROJECT.md` → `monorepo: true`, or from `pnpm-workspace.yaml`, `lerna.json`, `nx.json`, `turbo.json`):
+If the project is a monorepo (detected from `pnpm-workspace.yaml`, `lerna.json`, `nx.json`, `turbo.json`, or `.ai/workflows.config.json` has signals of multiple platforms):
 
 Present a picker using the `ask_user_question` tool listing the apps/packages from the workspace config.
 
