@@ -320,6 +320,29 @@
             "mcp": { "type": "string" },
             "defaults": { "type": "object", "additionalProperties": true }
           }
+        },
+        "changelog": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Release-note / changelog tooling. Used by /flow:validate and /flow:done to remind (soft warning) about missing release notes, by /flow:release-changelog to author entries, and by /flow:release to walk the project-owned release runbook. Phase 3 implements the `changesets` provider; other enum values are accepted but treated as no-op until their providers land.",
+          "properties": {
+            "provider": {
+              "type": "string",
+              "enum": ["changesets", "git-cliff", "conventional", "custom", "none"],
+              "default": "none"
+            },
+            "scope": {
+              "type": "string",
+              "description": "Optional package scope for monorepos — e.g. \"@1agh/md-claude\". Passed to provider commands when they need to target a workspace member."
+            },
+            "releaseGuide": {
+              "type": "string",
+              "default": ".ai/release-guide.md",
+              "description": "Path (repo-relative) to the project-owned release runbook that /flow:release walks step-by-step. The runbook is plain Markdown — H2 sections become steps, ```bash``` blocks become candidate commands (run only after user confirmation). Scaffolded with a provider-appropriate stub during /flow:onboard."
+            },
+            "mcp": { "type": "string" },
+            "defaults": { "type": "object", "additionalProperties": true }
+          }
         }
       }
     }

@@ -292,17 +292,27 @@ Execute in order. Each task is atomic.
 
 ## Acceptance criteria
 
-- [ ] `integrations.changelog.{provider, scope, releaseGuide, mcp, defaults}` lives in the schema, mirroring `tracker`.
-- [ ] Skeleton config defaults to `{"changelog": {"provider": "none"}}`.
-- [ ] `/flow:release-changelog` works against this repo (changesets, prior init) and a scratch repo (bootstrap path); exits cleanly for `none` and unimplemented providers.
-- [ ] `/flow:validate` emits a **non-blocking** warning when provider = `changesets` and no changeset is present.
-- [ ] `/flow:done` emits the same warning at close-out, with an override path.
-- [ ] `/flow:onboard` auto-detects provider from filesystem markers, asks Q7 with pre-fill, scaffolds `release-guide.md` with the right provider stub.
-- [ ] `/flow:release` exists, parses the runbook at `integrations.changelog.releaseGuide`, walks steps with explicit per-command confirmation, never auto-runs.
-- [ ] Skeleton `release-guide.md` template exists with provider-specific stubs for `changesets`, `git-cliff`, `conventional`; `custom`/`none` leave clear TODOs.
-- [ ] `cli/commands/init.mjs` swaps the provider stub during copy (joins the `TEMPLATED` list).
-- [ ] No bare `changeset` strings leak in `execute.md` / `quick.md` — both reference the provider abstraction.
-- [ ] DDR-keeper skill flags provider-choice as a DDR-worthy decision.
-- [ ] Future providers (`git-cliff`, `conventional`, `custom`) are reachable via config but stub to a clear "not yet implemented" message in `/flow:release-changelog` — no silent failure. `/flow:release` works for **all** providers because the runbook is user-authored.
-- [ ] Flow⇄design seam (handoff sweep, design-canvas detection in `/flow:plan`) explicitly out of scope — Phase 11.
-- [ ] Docs pages either land in Phase 3 or tracked as carry-over to Phase 2.
+- [x] `integrations.changelog.{provider, scope, releaseGuide, mcp, defaults}` lives in the schema, mirroring `tracker`.
+- [x] Skeleton config defaults to `{"changelog": {"provider": "none"}}`.
+- [x] `/flow:release-changelog` works against this repo (changesets, prior init) and a scratch repo (bootstrap path); exits cleanly for `none` and unimplemented providers.
+- [x] `/flow:validate` emits a **non-blocking** warning when provider = `changesets` and no changeset is present.
+- [x] `/flow:done` emits the same warning at close-out, with an override path.
+- [x] `/flow:onboard` auto-detects provider from filesystem markers, asks Q7 with pre-fill, scaffolds `release-guide.md` with the right provider stub.
+- [x] `/flow:release` exists, parses the runbook at `integrations.changelog.releaseGuide`, walks steps with explicit per-command confirmation, never auto-runs.
+- [x] Skeleton `release-guide.md` template exists with provider-specific stubs for `changesets`, `git-cliff`, `conventional`; `custom`/`none` leave clear TODOs.
+- [x] `cli/commands/init.mjs` swaps the provider stub during copy (joins the `TEMPLATED` list).
+- [x] No bare `changeset` strings leak in `execute.md` / `quick.md` — both reference the provider abstraction.
+- [x] DDR-keeper skill flags provider-choice as a DDR-worthy decision.
+- [x] Future providers (`git-cliff`, `conventional`, `custom`) are reachable via config but stub to a clear "not yet implemented" message in `/flow:release-changelog` — no silent failure. `/flow:release` works for **all** providers because the runbook is user-authored.
+- [x] Flow⇄design seam (handoff sweep, design-canvas detection in `/flow:plan`) explicitly out of scope — Phase 11.
+- [ ] Docs pages either land in Phase 3 or **tracked as carry-over to Phase 2** (deferred).
+
+---
+
+## Retro
+
+- **Naming-as-investment paid off.** Shipping `/flow:release` + `/flow:release-changelog` with the final Phase-13 names from day one avoided a rename pass and made the parent/child relationship visible to users from the first install. The plan's v7 re-scope (catching the `validate`/`validate-a11y` precedent) was the single highest-leverage decision in this phase.
+- **Provider-agnostic walker emerged late but cleanly.** Initial draft assumed `/flow:release` would dispatch on provider like `/flow:release-changelog`. Realizing the runbook itself is the right abstraction layer (recorded as DDR-003) cut the surface area dramatically: adding a new provider is now a 4-line entry in `CHANGELOG_STUBS`, not a new code path in `release.md`. Next time, ask "what's the user's authored artifact in this domain?" before committing to provider-dispatch.
+- **`mdcc init --provider` propagating in two places.** The CLI now seeds both `integrations.changelog.provider` (config) and the runbook stub (release-guide.md). Worth a one-line note in `cli/commands/init.mjs` if a third propagation target shows up — until then, the inline conditional reads fine.
+- **Scenario gap noted, not blocking.** Six new "scenarios" listed in the plan but none authored — these would target plugin-internal CLI/command behaviour (not user-facing UI), which the existing scenario-runner is not shaped for. Action item for `/flow:plan` next time: only list scenarios for surfaces the runner can actually exercise; describe plugin-internal verification as a "Validation matrix" inside the relevant command file (as `release-changelog.md` does) instead.
+- **No tests = honest comms required.** Repo has no test suite by design (`CLAUDE.md` line: "There is no test suite, lint config, or build step"). `/execute` and `/done` both said so explicitly rather than claiming coverage that doesn't exist. Keep this discipline — it's the only safeguard.

@@ -65,6 +65,26 @@ The subagent **must use screenshots from the scenario report** as primary eviden
 - DDR-worthy decision in the diff (new library, new top-level dir, schema change) without a DDR? Suggest `/ddr`.
 - Scenario report without identical counter-delta across platforms and no DDR explaining why → blocker.
 
+### 7b. Changelog hygiene (**non-blocking**)
+
+> Soft gate. Emits a warning when a user-visible change ships without a release-note entry. **Never** promotes itself to a hard gate without a DDR — opt-in vs. opt-out is a per-team call, recorded in `integrations.changelog.provider`.
+
+Read provider from `.ai/workflows.config.json` → `integrations.changelog.provider` and dispatch:
+
+```
+IF provider === "changesets":
+  diff = git diff --name-only HEAD~1..HEAD -- .changeset/
+  IF no new .changeset/*.md added since HEAD~1:
+    EMIT warning: "⚠️  No changeset since HEAD~1 → run /flow:release-changelog or override"
+    MARK validate result as "passed with warnings" (not blocked)
+ELIF provider IN (git-cliff, conventional, custom):
+  EMIT note: "[validate] changelog: provider `<name>` not yet implemented — skipping (TODO)"
+ELSE (none):
+  skip silently
+```
+
+For multi-commit branches use `git merge-base main HEAD` as the diff base instead of `HEAD~1` so squash/rebase noise doesn't false-positive.
+
 ### 8. Report
 
 ```
