@@ -1,0 +1,49 @@
+# `.ai/` — Index
+
+> Second-brain map. Auto-maintained by `/flow:status` and `/flow:context`. Hand-edit additions are welcome.
+
+## Identity
+
+- name: `<PROJECT_NAME>` — see `PROJECT.md` in repo root
+- PRD: `.ai/<project>-prd.md`
+- design system: `.ai/<project>-design-system.md`
+- config: `.ai/workflows.config.json`
+
+## Active work
+
+> Updated by `/flow:status`. The single most useful screen for "where am I?".
+
+- current phase: see `state/STATE.md`
+- active plan: see `state/STATE.md` → Active plan
+- last touched: see `state/STATE.md` → Updated
+
+## Recent decisions
+
+> Last 5 DDRs. Full index in `decisions/README.md`.
+
+- (none yet — write one with `/flow:ddr <title>`)
+
+## Recent plans
+
+> Last 5 plans. Archive in `plans/archive/`.
+
+- (none yet — write one with `/flow:plan <feature>`)
+
+## Recent scenarios
+
+> Most recent run per scenario. Drill into `scenarios/<id>/` for the full history.
+
+- (none yet — run with `/flow:scenario <flow>`)
+
+## Where to find things
+
+| I want to know… | Look at |
+| --------------- | ------- |
+| What's the project's design rules? | `.ai/<project>-design-system.md` |
+| What are we building? | `.ai/<project>-prd.md` |
+| What did we decide and why? | `decisions/DDR-*.md` |
+| What was the plan for feature X? | `plans/<feature>.md` or `plans/archive/` |
+| How did scenario Y last run? | `scenarios/<flow>/<latest-date>/report.md` |
+| What's the codebase architecture? | `context/codebase-map.md` |
+| Where is the running TODO? | `state/STATE.md` → History tail |
+| Why is the workflow paused? | `state/HANDOFF.md` (if exists) |

@@ -24,13 +24,21 @@ REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || git r
 
 ## Prerequisites
 
-- RCA document exists at `logs/rca/issue-$ARGUMENTS.md`
+- RCA document exists at `logs/rca/issue-$ARGUMENTS.md` (produced by `/flow:bug-rca`)
+
+## Tracker context
+
+Read `integrations.tracker.provider` from `.ai/workflows.config.json`:
+
+- **`github` or unset** → use `gh issue view $ARGUMENTS --repo "$REPO"` (below) for live context.
+- **Any other provider** → resolve via the MCP tool named in `integrations.tracker.mcp` (e.g. `mcp__claude_ai_ClickUp_clickup_get_task`). Pass `integrations.tracker.defaults` through untouched.
+- **`none`** → rely on the RCA document only; the human-provided text is the source of truth.
 
 ## RCA Document to Reference
 
 Read RCA: `logs/rca/issue-$ARGUMENTS.md`
 
-**Optional — View GitHub issue for context:**
+**Optional — View GitHub issue for context (when provider is `github`):**
 
 ```bash
 export GODEBUG=x509negativeserial=1
@@ -90,10 +98,20 @@ After all validations pass, ask:
 
 > **Fix validated. Ready to commit?**
 
-If confirmed, follow `.claude/commands/commit.md` steps.
+If confirmed, commit using a conventional `fix:` subject that references the ticket (e.g. `fix(auth): handle null session — refs #123`).
 
 After commit, ask:
 
 > **Committed. Ready to push and create a PR?**
 
-If confirmed, follow `.claude/commands/push.md` steps.
+If confirmed, `git push -u origin <branch>` and `gh pr create` with the RCA summary in the body.
+
+### Tracker sync (optional)
+
+If `integrations.tracker.provider !== "none"` and the matching MCP tool is available, ask:
+
+> **Mark ticket `$ARGUMENTS` as fixed in `<provider>` and link the PR?**
+
+If yes → call `<integrations.tracker.mcp>_*_update_task` (or provider equivalent) with `defaults.doneStatus` and a comment containing the PR URL and commit hash. Pass `defaults` through untouched.
+
+If `provider === "github"`, the PR's `Closes #$ARGUMENTS` already takes care of the link — no extra step needed.

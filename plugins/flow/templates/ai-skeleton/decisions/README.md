@@ -1,6 +1,6 @@
 # Design Decision Records
 
-Permanent log of architectural and product decisions for md-claude. Each DDR is a standalone markdown file following the template in `plugins/flow/commands/ddr.md` (installed as `/flow:ddr`).
+Permanent log of architectural and product decisions. Each DDR is a standalone markdown file following the template in the flow plugin's `commands/ddr.md`.
 
 ## Index
 

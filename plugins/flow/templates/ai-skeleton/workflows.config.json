@@ -1,0 +1,51 @@
+{
+  "$schema": "../../plugins/flow/.claude-plugin/config.schema.json",
+  "name": "PROJECT_NAME",
+  "language": "en",
+  "theme": "agnostic",
+  "paths": {
+    "prd": ".ai/PROJECT_NAME-prd.md",
+    "designSystem": ".ai/PROJECT_NAME-design-system.md",
+    "codebaseMap": ".ai/context/codebase-map.md"
+  },
+  "platforms": ["web-desktop"],
+  "boundaries": {
+    "realtime":  [],
+    "video":     [],
+    "api":       [],
+    "db":        [],
+    "auth":      [],
+    "telemetry": [],
+    "payments":  []
+  },
+  "motion": {
+    "micro": 300,
+    "page": 500,
+    "complex": 1000,
+    "customPulses": {}
+  },
+  "responsive": {
+    "approach": "mobile-first",
+    "densityMap": {
+      "web-desktop": "cozy"
+    },
+    "breakpoints": { "sm": 480, "md": 768, "lg": 1024, "xl": 1280, "2xl": 1536 }
+  },
+  "ux": {
+    "responseTargetMs": 100,
+    "bilingual": []
+  },
+  "skills": {
+    "motionRules":     { "enabled": true },
+    "responsiveRules": { "enabled": true },
+    "a11yRules":       { "enabled": true },
+    "testingRules":    { "enabled": true },
+    "debuggingRules":  { "enabled": true }
+  },
+  "integrations": {
+    "tracker":   { "provider": "none" },
+    "analytics": { "provider": "none" },
+    "ci":        { "provider": "none" },
+    "design":    { "provider": "none" }
+  }
+}

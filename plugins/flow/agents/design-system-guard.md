@@ -23,9 +23,9 @@ agent-browser snapshot -c   # element tree for grepping semantic tokens
 
 `.ai/<project>-design-system.md` — the whole thing. It's short. Binding.
 
-`.claude/skills/<project>-motion-rules/SKILL.md` — animation hard-stops (compositor-only, prefers-reduced-motion, motion tokens).
+`motion-rules` skill (bundled in flow plugin) — animation hard-stops (compositor-only, prefers-reduced-motion, motion tokens). Reads `motion` from `.ai/workflows.config.json`.
 
-`.claude/skills/<project>-responsive-rules/SKILL.md` — mobile-first, container queries, fluid typography.
+`responsive-rules` skill (bundled in flow plugin) — mobile-first, container queries, fluid typography, density-per-platform. Reads `platforms` + `responsive` from `.ai/workflows.config.json`.
 
 ## Hard rules (must catch)
 

@@ -95,6 +95,18 @@ _"Publish the branch and open a PR?"_ — if yes:
 - [ ] <any manual edge cases>
 ```
 
+### 6b. Sync tracker (optional)
+
+Read `integrations.tracker` from `.ai/workflows.config.json`. If `provider` is not `none` and an MCP tool with the matching `mcp` prefix is available:
+
+- Look at the plan front matter or `STATE.md` for a ticket ID (e.g. `tracker: ABC123` or `clickup: 86c7vx11y`).
+- Ask the user: _"Mark ticket `<id>` as done in `<provider>` and link this PR?"_
+  - If **yes** → call `<mcp>_*_update_task` (or provider equivalent) with the done status from `defaults.doneStatus` and append a comment with the PR URL + commit hash. Generic command — pass `integrations.tracker.defaults` through untouched; the MCP server interprets it.
+  - If **no** → skip silently.
+- If no ticket ID is recorded but a tracker is configured → ask: _"Create a tracker ticket for this work?"_ (rare on `/done` — usually tickets exist before; offer only if PR has no `Closes #` reference).
+
+If `provider === "none"` or no MCP available → skip this step entirely. The command stays useful without any tracker.
+
 ### 7. Retro & archive
 
 - Append a `## Retro` section to the end of the plan. 3–5 bullets: what worked / what didn't / what to change in `/plan` or `/execute` next time. This is the learning loop — the next `/plan` reads it.
@@ -112,6 +124,7 @@ _"Publish the branch and open a PR?"_ — if yes:
   Simplifier: <files touched / skipped>
   Commit: <hash> <subject>
   PR: <URL or "—">
+  Tracker: <ticket id @ provider, status updated | "—">
   DDRs recorded: <N>
   Plan archived: .ai/plans/archive/<x>.plan.md
   Time in execution: <approx>

@@ -30,7 +30,19 @@ Read `.claude/agents/root-cause-analysis-log.agent.md` if it exists, and apply i
 
 ## Investigation Process
 
+### 0. Resolve the ticket source
+
+Read `integrations.tracker.provider` from `.ai/workflows.config.json`:
+
+- **`github` or unset** → continue with step 1 (GitHub CLI flow below).
+- **Any other provider** (`clickup`, `linear`, `jira`, `notion`, …) → fetch the ticket via the configured MCP tool. Resolve the tool name from `integrations.tracker.mcp` (e.g. `mcp__claude_ai_ClickUp_clickup_get_task` for ClickUp). Pass through `defaults` (list IDs, custom field names) untouched — the MCP server interprets them. Map the fetched ticket's title, description, comments, and status onto the same investigation slots as the GitHub flow.
+- **`none`** → ask the user to paste the issue description manually.
+
+The rest of this command treats "issue" generically — whatever source you resolved.
+
 ### 1. Fetch GitHub Issue Details
+
+> Skip this section if the tracker provider is not `github`.
 
 ```bash
 export GODEBUG=x509negativeserial=1
