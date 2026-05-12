@@ -1,0 +1,91 @@
+{
+  "$schema": "https://raw.githubusercontent.com/1aGh/md-claude/main/plugins/flow/.claude-plugin/config.schema.json",
+  "name": "md-claude",
+  "language": "en",
+  "theme": "agnostic",
+  "paths": {
+    "prd": ".ai/md-claude-prd.md",
+    "designSystem": ".ai/md-claude-design-system.md",
+    "codebaseMap": ".ai/context/codebase-map.md"
+  },
+  "platforms": [],
+  "stack": {
+    "language": "javascript",
+    "framework": "none",
+    "packageManager": "npm",
+    "buildTool": "none",
+    "monorepo": false,
+    "ci": "github-actions",
+    "tests": "none",
+    "css": "none",
+    "router": "none"
+  },
+  "conventions": {
+    "branchingModel": "github-flow",
+    "commits": "conventional",
+    "prohibited": []
+  },
+  "boundaries": {
+    "realtime": [],
+    "video": [],
+    "api": [],
+    "db": [],
+    "auth": [],
+    "telemetry": [],
+    "payments": []
+  },
+  "motion": {
+    "micro": 300,
+    "page": 500,
+    "complex": 1000,
+    "customPulses": {}
+  },
+  "responsive": {
+    "approach": "mobile-first",
+    "densityMap": {
+      "web-desktop": "cozy"
+    },
+    "breakpoints": {
+      "sm": 480,
+      "md": 768,
+      "lg": 1024,
+      "xl": 1280,
+      "2xl": 1536
+    }
+  },
+  "ux": {
+    "responseTargetMs": 100,
+    "bilingual": []
+  },
+  "skills": {
+    "motionRules": {
+      "enabled": true
+    },
+    "responsiveRules": {
+      "enabled": true
+    },
+    "a11yRules": {
+      "enabled": true
+    },
+    "testingRules": {
+      "enabled": true
+    },
+    "debuggingRules": {
+      "enabled": true
+    }
+  },
+  "integrations": {
+    "tracker": {
+      "provider": "github"
+    },
+    "analytics": {
+      "provider": "none"
+    },
+    "ci": {
+      "provider": "none"
+    },
+    "design": {
+      "provider": "none"
+    }
+  }
+}
