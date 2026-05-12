@@ -40,7 +40,7 @@ Make Claude Code a first-class environment for **end-to-end product development*
 ### ✅ In scope (v0.x → v1.0)
 
 - ✅ Contribute infrastructure — `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, PR / issue templates, dependabot, branch-protection docs, basic CI quality gates beyond version parity.
-- ✅ Changesets bootstrapped in **this** repo + a **reusable `/flow:changeset` command** for downstream repos to opt into the same release model.
+- ✅ Changesets bootstrapped in **this** repo + a **reusable `integrations.changelog` abstraction** (`/flow:release-changelog` for authoring, `/flow:release` for walking a project-owned release runbook) for downstream repos to opt into Changesets, git-cliff, conventional-changelog, or roll their own.
 - ✅ Docs site (Fumadocs) at `docs.md-claude.dev` (or `site/` deployed) — CLI reference, every workflow command, config schema docs with copy-paste examples. AI-readable so future agents can self-onboard.
 - ✅ `flow` ↔ `design` automatic integration — flow plans auto-detect `.design/` and pull canvas references; `/flow:done` surfaces `/design:handoff` when canvases exist.
 - ✅ Canvas v2 rendering engine — replace iframe-only model with a hybrid Canvas2D / WebGL layer for FigJam-grade pan / zoom / smooth scrolling at 60fps on 1k+ elements.
@@ -146,7 +146,7 @@ md-claude/
                 ├─ Phase 2: Docs site (Fumadocs)
                 │  (parallel with Phase 3 after Phase 1)
                 │
-                ├─ Phase 3: /flow:changeset (slim — flow⇄design moved to Phase 11)
+                ├─ Phase 3: integrations.changelog + /flow:release-changelog + /flow:release
                 │  (parallel with Phase 2)
                 │
                 └─ Phase 4: Canvas v2 rendering engine + infinite canvas
@@ -171,7 +171,7 @@ Phase 12 (v1.3+ conditional): In-canvas CSS editor + layers panel (extracted fro
 | ----- | ----------- | ---------- | ------------- | ---- |
 | 1 | Contribute infra + Changesets + monorepo (incl. hub workspace reservation) | — | — | ✅ |
 | 2 | Docs site (Fumadocs) | 1 | 3 | ✅ |
-| 3 | `/flow:changeset` (slim) | 1 | 2 | ✅ |
+| 3 | `integrations.changelog` + `/flow:release-changelog` + `/flow:release` | 1 | 2 | ✅ |
 | 4 | Canvas v2 rendering engine + infinite canvas | 1 | — | ✅ |
 | 5 | Multi-DS (gen-time, as attachment) + draw tools | 4 | 6 | ✅ |
 | 6 | Comments + presentation + export | 4 | 5 | ✅ |
@@ -218,7 +218,7 @@ Phase 12 (v1.3+ conditional): In-canvas CSS editor + layers panel (extracted fro
 
 ### Configuration evolution
 
-- `.ai/workflows.config.json` — extend with `integrations.changesets`, `integrations.docsSite`.
+- `.ai/workflows.config.json` — extend with `integrations.changelog` (provider + scope + releaseGuide), `integrations.docsSite`.
 - `.design/config.json` — extend with `designSystems[]` (array, not just root path), `collab.enabled`, `comments.enabled`, `acp.enabled`, `exporters.formats[]`.
 
 ### Release process (v1.0 onwards)

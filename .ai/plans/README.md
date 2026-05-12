@@ -31,8 +31,8 @@ Feature implementation plans. One file per feature; the active multi-phase roadm
                 ▼                  ▼                  ▼
         ┌───────────────┐  ┌───────────────┐  ┌──────────────────┐
         │ Phase 2:      │  │ Phase 3:      │  │ Phase 4:         │
-        │ Docs site     │  │ /flow:changeset│  │ Canvas v2 engine │
-        │ (Fumadocs)    │  │ (slim)        │  │ + infinite canvas│
+        │ Docs site     │  │ release-       │ │ Canvas v2 engine │
+        │ (Fumadocs)    │  │ changelog/cut  │ │ + infinite canvas│
         └───────────────┘  └───────────────┘  └────────┬─────────┘
                                                        │
                           ┌────────────────────────────┴───────────────┐
@@ -85,7 +85,8 @@ v1.3+ (conditional on user-feedback survey)
 | ---- | ----- | ---- | ---------------- | ---- | ------- |
 | 1 | Contribute infra + Changesets + monorepo | `phase-1-contribute-infra-changesets.md` | — | v1.0 | `/flow:execute .ai/plans/phase-1-contribute-infra-changesets.md` |
 | 2 | Docs site (Fumadocs) | `phase-2-docs-site-fumadocs.md` | with Phase 3 | v1.0 | `/flow:execute .ai/plans/phase-2-docs-site-fumadocs.md` |
-| 3 | `/flow:changeset` (slim) | `phase-3-flow-changeset.md` | with Phase 2 | v1.0 | `/flow:execute .ai/plans/phase-3-flow-changeset.md` |
+| 3 | `integrations.changelog` + `/flow:release-changelog` + `/flow:release` | `phase-3-flow-changelog.md` | with Phase 2 | v1.0 | `/flow:execute .ai/plans/phase-3-flow-changelog.md` |
+| 13 | Flow command categorization (naming + index, no subfolders) | `phase-13-flow-command-categorization.md` | with Phase 2 | v1.0 | `/flow:execute .ai/plans/phase-13-flow-command-categorization.md` |
 | 4 | Canvas v2 rendering engine | `phase-4-canvas-v2-rendering-engine.md` | — | v1.0 | `/flow:execute .ai/plans/phase-4-canvas-v2-rendering-engine.md` |
 | 5 | Multi-DS + draw tools | `phase-5-multi-ds-and-draw-tools.md` | with Phase 6 | v1.0 | `/flow:execute .ai/plans/phase-5-multi-ds-and-draw-tools.md` |
 | 6 | Comments + presentation + export | `phase-6-comments-presentation-export.md` | with Phase 5 | v1.0 | `/flow:execute .ai/plans/phase-6-comments-presentation-export.md` |
@@ -114,13 +115,13 @@ v1.3+ (conditional on user-feedback survey)
 
 > **What to build:** `site/` Next.js workspace (excluded from default `pnpm install` via `--filter`). Author core MDX pages (getting-started, cli, flow, design, config, recipes/{nextjs,expo,monorepo}). Auto-generate command + schema reference from `plugins/*/commands/*.md` frontmatter and `config.schema.json`. Enable Fumadocs search; add `llms.txt`. Deploy via Vercel (DDR for hosting choice). Link from README; de-duplicate.
 
-### Phase 3 — `/flow:changeset` (slim)
+### Phase 3 — `integrations.changelog` + `/flow:release-changelog` + `/flow:release`
 
 ```
-/flow:execute .ai/plans/phase-3-flow-changeset.md
+/flow:execute .ai/plans/phase-3-flow-changelog.md
 ```
 
-> **What to build:** New `/flow:changeset` command (interactive type / summary / scope; bootstraps Changesets if missing). Extend `config.schema.json` with `integrations.changesets`. `/flow:done` warns on missing changeset (soft gate). Flow⇄design seam **moved to Phase 11** — not part of this phase.
+> **What to build:** Generic `integrations.changelog` block in `config.schema.json` (provider enum: `changesets` | `git-cliff` | `conventional` | `custom` | `none`; sibling of `tracker` / `analytics` / `ci` / `design`). New `/flow:release-changelog` command authors entries (Changesets provider implemented; others stub with TODO). New `/flow:release` walks a project-owned `.ai/release-guide.md` runbook step-by-step with `[run]/[skip]/[edit]/[abort]` confirmations. `/flow:onboard` (renamed to `/flow:setup-onboard` in Phase 13) auto-detects provider from filesystem markers, asks Q7, scaffolds provider-appropriate runbook stub. `/flow:validate` + `/flow:done` add non-blocking changelog-hygiene warnings. `/flow:execute` + `/flow:quick` de-hardcoded. Commands ship under `release-*` group per Phase 13 naming convention. Flow⇄design seam **moved to Phase 11**.
 
 ### Phase 4 — Canvas v2 rendering engine
 

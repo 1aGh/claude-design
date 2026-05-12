@@ -79,9 +79,10 @@
     "analytics": { "provider": "none" },            // pre-v1.0
     "ci":        { "provider": "github-actions" }, // pre-v1.0
     "design":    { "provider": "md-claude" },       // pre-v1.0
-    "changesets": {                                 // Phase 3 — `/flow:changeset` gate
-      "enabled": true,
-      "scope": "."
+    "changelog": {                                  // Phase 3 — `/flow:release-changelog` + `/flow:release` gate
+      "provider": "changesets",                     // changesets | git-cliff | conventional | custom | none
+      "scope": "@1agh/md-claude",
+      "releaseGuide": ".ai/release-guide.md"
     }
   }
 }
@@ -243,7 +244,7 @@ For "which phase adds this field" lookup:
 
 - **pre-v1.0:** name, language, theme, paths.{prd, designSystem, codebaseMap}, platforms, motion, responsive, ux, skills.*, integrations.{tracker, analytics, ci, design}, all `.design/config.json` fields except those marked below
 - **Phase 1:** stack.*, conventions.*, `.design/dev-server/package.json` workspace stub
-- **Phase 3:** `integrations.changesets.{enabled, scope}`
+- **Phase 3:** `integrations.changelog.{provider, scope, releaseGuide, mcp, defaults}`
 - **Phase 4:** `.design/config.json.layout`, per-canvas `<slug>.layout.json`
 - **Phase 5:** `.design/config.json.designSystems[]`, `defaultDesignSystem`, per-canvas `<slug>.annotations.svg`, `.meta.json.designSystem`
 - **Phase 6:** `.design/_comments/<slug>.json`, `.meta.json.presentation`
