@@ -42,7 +42,7 @@ Optional: `/plugin install design@md-claude` if you want the design canvas there
 ### 2. Install the CLI globally
 
 ```sh
-npm i -g md-claude
+npm i -g @1agh/md-claude
 ```
 
 ### 3. Scaffold the missing `.ai/` pieces

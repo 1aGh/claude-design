@@ -29,8 +29,8 @@ Then `/reload-plugins` and you should see `/design`, `/design:*`, `/flow:plan`, 
 ### 3. Install the CLI
 
 ```sh
-# From npm (once published):
-npm i -g md-claude
+# From npm:
+npm i -g @1agh/md-claude
 
 # Or directly from GitHub:
 npm i -g github:1aGh/md-claude
@@ -228,7 +228,7 @@ Bump version with `scripts/bump-version.sh` (keeps `package.json` and `plugins/d
 
 ## Releasing
 
-The npm package (`md-claude`) and the Claude Code plugins (`design@md-claude`, `flow@md-claude`) share the same version.
+The npm package (`@1agh/md-claude`) and the Claude Code plugins (`design@md-claude`, `flow@md-claude`) share the same version.
 
 ```sh
 scripts/bump-version.sh patch          # or minor / major / X.Y.Z
