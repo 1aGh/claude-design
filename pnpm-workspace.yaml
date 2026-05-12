@@ -1,0 +1,9 @@
+packages:
+  - site
+  - plugins/design/dev-server
+  - plugins/design/hub
+# pnpm 9+ requires explicit opt-in for postinstall scripts.
+# Biome ships native binaries via @biomejs/cli-* optional deps; the postinstall
+# is the official install path. Enable.
+allowBuilds:
+  '@biomejs/biome': true

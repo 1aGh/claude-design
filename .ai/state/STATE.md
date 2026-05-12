@@ -3,12 +3,13 @@
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
 **Workflow:** feature-delivery — md-claude v1.0 roadmap
-**Phase:** planning
-**Status:** ready
+**Phase:** Phase 1 — contribute-infra + Changesets
+**Status:** in-progress
 **Started:** 2026-05-12
 **Updated:** 2026-05-12
-**Active task:** —
-**Active plan:** `.ai/plans/phase-1-contribute-infra-changesets.md` (next to execute)
+**Active task:** Task 0 — Monorepo + workspace bootstrap
+**Active plan:** `.ai/plans/phase-1-contribute-infra-changesets.md`
+**Branch:** `infra/phase-1-contribute-changesets`
 
 ## Loaded skills (skill-loader)
 
@@ -46,3 +47,19 @@ Consider `/flow:make-skill-template` for **fumadocs** and **hocuspocus** if thei
 | 2026-05-12 | planning | Architecture pivot: user wants federated self-hostable hub, not LAN-peer-to-peer. Research overwritten (`.ai/docs/research-collab.md`, 1145 lines, new). **PartyKit rejected** (`partyserver` is CF-Workers-only). **Hocuspocus adopted** (MIT, Node-native, production-tested for TipTap Collab). Phase 9 renumbered → Phase 10 (v1.2 structured CRDT). New Phase 9 = self-hostable hub + bidirectional file sync (`mdcc hub serve|deploy`, `mdcc design link`). v1.1 ship target. |
 | 2026-05-12 | planning | `/flow:maintain-docs` Step 3b → `flow:skill-loader` loaded `yjs` + `playwright-testing` skills from `terminal-skills` MCP. Fumadocs/Hocuspocus/Next.js framework still gaps (no MCP match) — recorded above under "Loaded skills". |
 | 2026-05-12 | planning | Audit pass (2 Explore agents): 93% consistency, 16/16 user requirements covered. User decisions: (1) Phase 7 (ACP) → icebox; (2) apply all doc fixes now. Plus 3 scope refinements: (a) Phase 3 split — flow⇄design seam extracted to new Phase 11; (b) Phase 5 multi-DS reinterpretation (DS-as-attachment to `/design:new`, not runtime switcher) + extract layers + in-canvas CSS to new Phase 12 (end-of-roadmap extra feature); (c) Phase 8 file renamed `partykit` → `yjs-lan`. Phase 1 reserves `plugins/design/hub/` workspace. New `.ai/docs/config-schema.md` consolidates evolving config. Phase 9 gains migration section from Phase 8 LAN. |
+| 2026-05-12 | Phase 1 | Started `/flow:execute phase-1`. Branch `infra/phase-1-contribute-changesets` cut from `main`. |
+
+## Execution Progress
+
+### Phase 1 — Tasks
+
+- [x] Task 0: Monorepo + workspace bootstrap ✅ tarball shape clean (41 files), parity OK
+- [ ] Task 1: CONTRIBUTING + CoC + SECURITY
+- [ ] Task 2: PR + issue templates
+- [ ] Task 3: Wire Dependabot
+- [ ] Task 4: Bootstrap Changesets
+- [ ] Task 5: Version wrapper preserving parity
+- [ ] Task 6: Quality CI workflow + argv test
+- [ ] Task 7: Update publish workflow
+- [ ] Task 8: GitHub repo via gh CLI (gated)
+- [ ] Task 9: Update README

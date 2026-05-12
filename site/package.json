@@ -1,0 +1,7 @@
+{
+  "name": "@md-claude/site",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Workspace slot reserved for Phase 2 (v1.0) — Fumadocs documentation site. Empty until then.",
+  "type": "module"
+}

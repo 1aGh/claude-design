@@ -1,0 +1,11 @@
+{
+  "name": "@md-claude/dev-server",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Internal workspace for the canvas dev server. Source ships via the @1agh/md-claude tarball; this package.json never publishes.",
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs"
+  }
+}

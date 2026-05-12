@@ -1,0 +1,7 @@
+{
+  "name": "@md-claude/hub",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Workspace slot reserved for Phase 9 (v1.1) self-hostable Yjs sync hub. Empty until then.",
+  "type": "module"
+}
