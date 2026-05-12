@@ -4,11 +4,12 @@
 
 **Workflow:** feature-delivery — md-claude v1.0 roadmap
 **Phase:** Phase 1 — contribute-infra + Changesets
-**Status:** in-progress
+**Status:** done
 **Started:** 2026-05-12
 **Updated:** 2026-05-12
-**Active task:** Task 0 — Monorepo + workspace bootstrap
-**Active plan:** `.ai/plans/phase-1-contribute-infra-changesets.md`
+**Active task:** —
+**Active plan:** —
+**Last archived plan:** `.ai/plans/archive/phase-1-contribute-infra-changesets.md`
 **Branch:** `infra/phase-1-contribute-changesets`
 
 ## Loaded skills (skill-loader)
@@ -30,7 +31,8 @@ Consider `/flow:make-skill-template` for **fumadocs** and **hocuspocus** if thei
 
 ## Decisions
 
-- (none yet — DDRs land per phase under `.ai/decisions/`)
+- DDR-001 Monorepo with single npm publisher (Phase 1)
+- DDR-002 Release flow via Changesets, with parity-preserving wrapper (Phase 1)
 
 ## Blockers
 
@@ -48,18 +50,21 @@ Consider `/flow:make-skill-template` for **fumadocs** and **hocuspocus** if thei
 | 2026-05-12 | planning | `/flow:maintain-docs` Step 3b → `flow:skill-loader` loaded `yjs` + `playwright-testing` skills from `terminal-skills` MCP. Fumadocs/Hocuspocus/Next.js framework still gaps (no MCP match) — recorded above under "Loaded skills". |
 | 2026-05-12 | planning | Audit pass (2 Explore agents): 93% consistency, 16/16 user requirements covered. User decisions: (1) Phase 7 (ACP) → icebox; (2) apply all doc fixes now. Plus 3 scope refinements: (a) Phase 3 split — flow⇄design seam extracted to new Phase 11; (b) Phase 5 multi-DS reinterpretation (DS-as-attachment to `/design:new`, not runtime switcher) + extract layers + in-canvas CSS to new Phase 12 (end-of-roadmap extra feature); (c) Phase 8 file renamed `partykit` → `yjs-lan`. Phase 1 reserves `plugins/design/hub/` workspace. New `.ai/docs/config-schema.md` consolidates evolving config. Phase 9 gains migration section from Phase 8 LAN. |
 | 2026-05-12 | Phase 1 | Started `/flow:execute phase-1`. Branch `infra/phase-1-contribute-changesets` cut from `main`. |
+| 2026-05-12 | Phase 1 | Tasks 1–9 + DDR-001/002 landed. Local CI smoke green (lint/test/parity/tarball/changeset-status). Awaiting `/flow:done`. |
+| 2026-05-12 | done | `/flow:done` — Phase 1 closeout. Plan archived; retro recorded; reverted out-of-scope biome JSX reformat at review gate. Next: Phase 2 (Fumadocs docs site) or Phase 3 (flow ↔ design changeset). |
 
 ## Execution Progress
 
 ### Phase 1 — Tasks
 
-- [x] Task 0: Monorepo + workspace bootstrap ✅ tarball shape clean (41 files), parity OK
-- [ ] Task 1: CONTRIBUTING + CoC + SECURITY
-- [ ] Task 2: PR + issue templates
-- [ ] Task 3: Wire Dependabot
-- [ ] Task 4: Bootstrap Changesets
-- [ ] Task 5: Version wrapper preserving parity
-- [ ] Task 6: Quality CI workflow + argv test
-- [ ] Task 7: Update publish workflow
-- [ ] Task 8: GitHub repo via gh CLI (gated)
-- [ ] Task 9: Update README
+- [x] Task 0: Monorepo + workspace bootstrap ✅ tarball shape clean (42 files), parity OK
+- [x] Task 1: CONTRIBUTING + CoC + SECURITY ✅ (CoC links Contributor Covenant 2.1)
+- [x] Task 2: PR + issue templates ✅ (PULL_REQUEST_TEMPLATE.md + ISSUE_TEMPLATE/{bug,feature,docs,config}.yml)
+- [x] Task 3: Wire Dependabot ✅ (.github/dependabot.yml — npm + actions, weekly, grouped)
+- [x] Task 4: Bootstrap Changesets ✅ (config + Phase 1 changeset queued; status reports minor)
+- [x] Task 5: Version wrapper preserving parity ✅ (scripts/changesets-version.sh)
+- [x] Task 6: Quality CI workflow + argv test ✅ (biome + 7 argv tests passing; dev-server JSX excluded — pre-existing debt)
+- [x] Task 7: Update publish workflow ✅ (build → publish → GH Release from CHANGELOG)
+- [x] Task 8: GitHub repo via gh CLI ✅ (script + JSON payloads + CODEOWNERS + auto-merge-dependabot workflow). Script not yet **applied** to live repo (gated — needs maintainer to run).
+- [x] Task 9: Update README ✅ (Workspaces section, reauthored Releasing, new Repo administration section)
+- [x] DDR sweep: DDR-001 + DDR-002 written

@@ -1,0 +1,56 @@
+name: Feature request
+description: Suggest a new capability or improvement.
+title: "feat: <short summary>"
+labels: ["type:feat", "needs:triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. The more grounded it is in a real user need,
+        the easier it is to prioritize.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the user need or friction first — the solution second.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How you imagine this working. Sketch CLI flags, command syntax, file shape, etc.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Have you considered another approach? Why does this one win?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface?
+      options:
+        - design plugin
+        - flow plugin
+        - mdcc CLI
+        - docs site
+        - release / CI
+        - other
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Links, prior art in other tools, screenshots, etc.
+    validations:
+      required: false

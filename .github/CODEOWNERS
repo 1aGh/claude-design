@@ -1,0 +1,3 @@
+# Default owner — every PR auto-requests @1aGh for review.
+# Patterns can be added later for per-area ownership (e.g. plugins/flow/ vs cli/).
+* @1aGh

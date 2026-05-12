@@ -14,15 +14,25 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      id-token: write  # for npm provenance
+      contents: write       # release creation
+      id-token: write       # npm provenance
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # full history so changesets can read CHANGELOG context
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
 
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
 
       - name: Verify version parity
         run: bash scripts/check-version-parity.sh
@@ -38,7 +48,13 @@ jobs:
           fi
           echo "tag matches package.json: $PKG_VER"
 
-      - name: Publish
+      - name: Build
+        run: pnpm build
+
+      - name: Verify tarball shape
+        run: bash scripts/check-tarball-shape.sh
+
+      - name: Publish to npm
         run: |
           if [ "${{ inputs.dry-run }}" = "true" ]; then
             npm publish --access public --provenance --dry-run
@@ -47,3 +63,25 @@ jobs:
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') && inputs.dry-run != true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          NOTES_FILE=""
+          if [ -f CHANGELOG.md ]; then
+            # Extract the section for this version (between "## $VER" and the next "## ")
+            awk -v ver="$VER" '
+              $0 ~ "^## "ver"($| )" { found=1; next }
+              found && /^## / { exit }
+              found { print }
+            ' CHANGELOG.md > .release-notes.md
+            if [ -s .release-notes.md ]; then NOTES_FILE=".release-notes.md"; fi
+          fi
+          if [ -n "$NOTES_FILE" ]; then
+            gh release create "$GITHUB_REF_NAME" --title "v$VER" --notes-file "$NOTES_FILE"
+          else
+            gh release create "$GITHUB_REF_NAME" --title "v$VER" --generate-notes
+          fi

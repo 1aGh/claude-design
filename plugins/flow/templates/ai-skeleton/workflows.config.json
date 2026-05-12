@@ -26,13 +26,13 @@
     "prohibited": []
   },
   "boundaries": {
-    "realtime":  [],
-    "video":     [],
-    "api":       [],
-    "db":        [],
-    "auth":      [],
+    "realtime": [],
+    "video": [],
+    "api": [],
+    "db": [],
+    "auth": [],
     "telemetry": [],
-    "payments":  []
+    "payments": []
   },
   "motion": {
     "micro": 300,
@@ -52,16 +52,16 @@
     "bilingual": []
   },
   "skills": {
-    "motionRules":     { "enabled": true },
+    "motionRules": { "enabled": true },
     "responsiveRules": { "enabled": true },
-    "a11yRules":       { "enabled": true },
-    "testingRules":    { "enabled": true },
-    "debuggingRules":  { "enabled": true }
+    "a11yRules": { "enabled": true },
+    "testingRules": { "enabled": true },
+    "debuggingRules": { "enabled": true }
   },
   "integrations": {
-    "tracker":   { "provider": "none" },
+    "tracker": { "provider": "none" },
     "analytics": { "provider": "none" },
-    "ci":        { "provider": "none" },
-    "design":    { "provider": "none" }
+    "ci": { "provider": "none" },
+    "design": { "provider": "none" }
   }
 }

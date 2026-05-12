@@ -1,5 +1,5 @@
-import { resolve, basename } from 'node:path';
 import { stat } from 'node:fs/promises';
+import { basename, resolve } from 'node:path';
 import { parseArgs } from '../lib/argv.mjs';
 import { copyTree } from '../lib/copy-tree.mjs';
 
@@ -11,7 +11,7 @@ const TEMPLATED = ['workflows.config.json', 'README.md', 'INDEX.md'];
 export async function run({ args, pkgRoot }) {
   const { flags } = parseArgs(args, { booleans: ['force', 'dry-run', 'help'] });
   if (flags.help) {
-    process.stdout.write(`mdcc init [--name <project>] [--force] [--dry-run]\n`);
+    process.stdout.write('mdcc init [--name <project>] [--force] [--dry-run]\n');
     return;
   }
 
@@ -28,11 +28,11 @@ export async function run({ args, pkgRoot }) {
     throw new Error(`skeleton not found at ${skeleton}. Reinstall mdcc.`);
   }
 
-  process.stdout.write(`mdcc init\n`);
+  process.stdout.write('mdcc init\n');
   process.stdout.write(`  project name: ${projectName}\n`);
   process.stdout.write(`  scaffold target: ${aiDir}\n`);
-  if (flags['dry-run']) process.stdout.write(`  mode: dry-run\n`);
-  if (flags.force) process.stdout.write(`  mode: force (overwrites)\n`);
+  if (flags['dry-run']) process.stdout.write('  mode: dry-run\n');
+  if (flags.force) process.stdout.write('  mode: force (overwrites)\n');
 
   const result = await copyTree(skeleton, aiDir, {
     force: !!flags.force,
@@ -59,8 +59,9 @@ export async function run({ args, pkgRoot }) {
   // <200-line CLAUDE.md tailored to the project. `mdcc init` only owns
   // .ai/ — the second-brain workspace.
 
-  const claudeMdExists = await pathExists(resolve(cwd, 'CLAUDE.md'))
-    || await pathExists(resolve(cwd, '.claude', 'CLAUDE.md'));
+  const claudeMdExists =
+    (await pathExists(resolve(cwd, 'CLAUDE.md'))) ||
+    (await pathExists(resolve(cwd, '.claude', 'CLAUDE.md')));
 
   printSummary(result);
   printNextSteps(projectName, claudeMdExists);
@@ -71,14 +72,19 @@ function isValidName(s) {
 }
 
 async function pathExists(p) {
-  try { await stat(p); return true; } catch { return false; }
+  try {
+    await stat(p);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function printSummary({ created, replaced, skipped }) {
   process.stdout.write(`\n  ${created.length} created`);
   if (replaced.length) process.stdout.write(`, ${replaced.length} replaced`);
   if (skipped.length) process.stdout.write(`, ${skipped.length} skipped`);
-  process.stdout.write(`\n`);
+  process.stdout.write('\n');
   if (process.env.MDCC_DEBUG) {
     for (const c of created) process.stdout.write(`    + ${c}\n`);
     for (const r of replaced) process.stdout.write(`    ~ ${r}\n`);
@@ -87,18 +93,26 @@ function printSummary({ created, replaced, skipped }) {
 }
 
 function printNextSteps(name, claudeMdExists) {
-  process.stdout.write(`\nNext steps:\n`);
-  process.stdout.write(`  1. In Claude Code: /plugin marketplace add 1aGh/md-claude\n`);
-  process.stdout.write(`                     /plugin install flow@md-claude\n`);
+  process.stdout.write('\nNext steps:\n');
+  process.stdout.write('  1. In Claude Code: /plugin marketplace add 1aGh/md-claude\n');
+  process.stdout.write('                     /plugin install flow@md-claude\n');
   if (!claudeMdExists) {
-    process.stdout.write(`  2. /init — generate a CLAUDE.md tailored to your codebase\n`);
-    process.stdout.write(`     (Anthropic's built-in command — analyzes stack, writes <200 lines).\n`);
-    process.stdout.write(`  3. /flow:onboard — populates .ai/workflows.config.json with detected\n`);
-    process.stdout.write(`     stack (platforms, tracker, language, …).\n`);
+    process.stdout.write('  2. /init — generate a CLAUDE.md tailored to your codebase\n');
+    process.stdout.write(
+      `     (Anthropic's built-in command — analyzes stack, writes <200 lines).\n`
+    );
+    process.stdout.write(
+      '  3. /flow:onboard — populates .ai/workflows.config.json with detected\n'
+    );
+    process.stdout.write('     stack (platforms, tracker, language, …).\n');
   } else {
-    process.stdout.write(`  2. /flow:onboard — populates .ai/workflows.config.json with detected\n`);
-    process.stdout.write(`     stack. CLAUDE.md already exists; /init would suggest improvements.\n`);
+    process.stdout.write(
+      '  2. /flow:onboard — populates .ai/workflows.config.json with detected\n'
+    );
+    process.stdout.write(
+      '     stack. CLAUDE.md already exists; /init would suggest improvements.\n'
+    );
   }
   process.stdout.write(`  4. Create .ai/${name}-prd.md with your product brief.\n`);
-  process.stdout.write(`  5. /flow:status to see where you are; /flow:plan to start work.\n`);
+  process.stdout.write('  5. /flow:status to see where you are; /flow:plan to start work.\n');
 }

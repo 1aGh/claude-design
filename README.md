@@ -2,6 +2,8 @@
 
 A personal marketplace of Claude Code plugins by Michal Dovrtěl (`1aGh`). Two plugins today, plus an `mdcc` CLI for scaffolding and running the bundled dev tooling.
 
+> Contributing? See [CONTRIBUTING.md](./CONTRIBUTING.md). Security? See [SECURITY.md](./SECURITY.md).
+
 | Plugin | What it does |
 | ------ | ------------ |
 | **`design`** | Canvas-first iteration on HTML/JSX mocks under `.design/` — element selection via Cmd+Click, auto-managed dev server, chained UX/DS critique. |
@@ -216,9 +218,32 @@ agent-browser install                # one-time: downloads Chrome
 
 If you skip `agent-browser`, the rest of the plugin still works — you just won't get screenshot evidence in critic reports.
 
+## Workspaces
+
+The repo is a **pnpm workspace monorepo** with one published npm package (`@1agh/md-claude`). Internal workspaces are `"private": true` and never publish:
+
+| Workspace | Purpose |
+| --------- | ------- |
+| `.` (root) | The single npm publisher — CLI, dev-server entry, plugin templates that ship to npm. |
+| `site/` | Docs site (Phase 2 — v1.x). |
+| `plugins/design/dev-server/` | Zero-dep Node dev server + browser client. Bundled output (`dist/`) is the only thing in the npm tarball. |
+| `plugins/design/hub/` | Reserved for the v1.1 federated hub (Phase 9). |
+
+Common scripts at the root:
+
+```sh
+pnpm install          # bootstrap everything
+pnpm dev              # boot the design dev server
+pnpm dev:site         # docs site dev server
+pnpm build            # build every workspace that defines `build`
+pnpm lint             # biome over the whole repo
+pnpm test             # node --test over cli/**/*.test.mjs
+pnpm changeset        # add a changeset for the next release
+```
+
 ## Updating
 
-Bump version with `scripts/bump-version.sh` (keeps `package.json` and `plugins/design/.claude-plugin/plugin.json` in lockstep — CI enforces parity via `.github/workflows/version-parity.yml`). Push to `main`, then in Claude Code:
+In Claude Code, after a new version lands on the marketplace:
 
 ```
 /plugin marketplace update md-claude
@@ -228,23 +253,43 @@ Bump version with `scripts/bump-version.sh` (keeps `package.json` and `plugins/d
 
 ## Releasing
 
-The npm package (`@1agh/md-claude`) and the Claude Code plugins (`design@md-claude`, `flow@md-claude`) share the same version.
+The npm package (`@1agh/md-claude`) and the Claude Code plugins (`design@md-claude`, `flow@md-claude`) share one version. The standard release path is **Changesets**:
 
 ```sh
-scripts/bump-version.sh patch          # or minor / major / X.Y.Z
-scripts/check-version-parity.sh        # asserts files match
-git commit -am "chore: release vX.Y.Z"
-git tag vX.Y.Z
+# 1. Each PR with shipped behavior includes a changeset
+pnpm changeset
+
+# 2. When ready to release, the maintainer runs:
+pnpm version            # = bash scripts/changesets-version.sh
+                        #   → consumes .changeset/*.md
+                        #   → bumps package.json + CHANGELOG
+                        #   → propagates version to plugin manifests
+                        #   → re-runs scripts/check-version-parity.sh
+
+git commit -am "chore: release v$(node -p "require('./package.json').version")"
+git tag "v$(node -p "require('./package.json').version")"
 git push --follow-tags
 ```
 
-The `v*` tag triggers `.github/workflows/publish.yml`, which re-runs the parity check, verifies the tag matches `package.json`, and publishes with `--access public --provenance`.
+The `v*` tag triggers `.github/workflows/publish.yml`, which re-runs the parity check, verifies the tag matches `package.json`, builds workspaces, publishes with `--access public --provenance`, and creates a GitHub Release using the CHANGELOG entry for that version.
+
+`scripts/bump-version.sh patch|minor|major|X.Y.Z` remains as a manual fallback for emergency hotfixes outside the Changesets flow.
 
 ### One-time setup (project owner)
 
 1. Create an **Automation** token at <https://www.npmjs.com/settings/~/tokens>.
 2. GitHub repo → **Settings → Secrets → Actions** → `NPM_TOKEN`.
 3. `id-token: write` is already enabled in `publish.yml` for npm provenance.
+
+## Repo administration
+
+Branch protection, merge mode, labels, CODEOWNERS, and Discussions categories are all encoded in `scripts/setup-github.sh`. Re-runnable, idempotent — the script is the source of truth:
+
+```sh
+bash scripts/setup-github.sh   # needs gh CLI logged in with repo admin scope
+```
+
+Reads `scripts/github/main-protection.json` + `scripts/github/labels.json`.
 
 ## Local development (plugin authors)
 

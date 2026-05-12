@@ -70,15 +70,42 @@
       "additionalProperties": false,
       "description": "Auto-detected technology stack snapshot. Populated by /flow:onboard, refreshed by /flow:map-codebase. Flow commands read this for routing decisions (e.g. which test runner to invoke, whether to gate on monorepo workspace builds). Use `unknown` when detection fails — never invent a value.",
       "properties": {
-        "language":       { "type": "string", "description": "Primary language: typescript | javascript | python | go | rust | java | kotlin | swift | ruby | php | unknown" },
-        "framework":      { "type": "string", "description": "Primary UI/app framework: next.js | vite | remix | sveltekit | astro | nuxt | expo | spring-boot | django | rails | express | fastapi | none | unknown" },
-        "packageManager": { "type": "string", "description": "pnpm | yarn | npm | bun | cargo | go | pip | poetry | uv | maven | gradle | unknown" },
-        "buildTool":      { "type": "string", "description": "turbo | nx | lerna | rush | make | bazel | none | unknown" },
-        "monorepo":       { "type": "boolean", "description": "True if pnpm-workspace.yaml, turbo.json, nx.json, lerna.json, or rush.json is present." },
-        "ci":             { "type": "string", "description": "github-actions | gitlab-ci | jenkins | azure-devops | circleci | bitbucket | none | unknown" },
-        "tests":          { "type": "string", "description": "vitest | jest | playwright | cypress | rspec | pytest | go-test | cargo-test | junit | none | unknown" },
-        "css":            { "type": "string", "description": "tailwind | css-modules | styled-components | emotion | vanilla-extract | sass | plain-css | none | unknown" },
-        "router":         { "type": "string", "description": "next-app | next-pages | react-router | tanstack-router | expo-router | sveltekit-router | none | unknown" }
+        "language": {
+          "type": "string",
+          "description": "Primary language: typescript | javascript | python | go | rust | java | kotlin | swift | ruby | php | unknown"
+        },
+        "framework": {
+          "type": "string",
+          "description": "Primary UI/app framework: next.js | vite | remix | sveltekit | astro | nuxt | expo | spring-boot | django | rails | express | fastapi | none | unknown"
+        },
+        "packageManager": {
+          "type": "string",
+          "description": "pnpm | yarn | npm | bun | cargo | go | pip | poetry | uv | maven | gradle | unknown"
+        },
+        "buildTool": {
+          "type": "string",
+          "description": "turbo | nx | lerna | rush | make | bazel | none | unknown"
+        },
+        "monorepo": {
+          "type": "boolean",
+          "description": "True if pnpm-workspace.yaml, turbo.json, nx.json, lerna.json, or rush.json is present."
+        },
+        "ci": {
+          "type": "string",
+          "description": "github-actions | gitlab-ci | jenkins | azure-devops | circleci | bitbucket | none | unknown"
+        },
+        "tests": {
+          "type": "string",
+          "description": "vitest | jest | playwright | cypress | rspec | pytest | go-test | cargo-test | junit | none | unknown"
+        },
+        "css": {
+          "type": "string",
+          "description": "tailwind | css-modules | styled-components | emotion | vanilla-extract | sass | plain-css | none | unknown"
+        },
+        "router": {
+          "type": "string",
+          "description": "next-app | next-pages | react-router | tanstack-router | expo-router | sveltekit-router | none | unknown"
+        }
       }
     },
     "conventions": {
@@ -114,13 +141,13 @@
       "additionalProperties": false,
       "description": "Integration boundaries the project crosses. debugging-rules and testing-rules treat these as no-mock zones and demand evidence at the seam.",
       "properties": {
-        "realtime":  { "type": "array", "items": { "type": "string" }, "default": [] },
-        "video":     { "type": "array", "items": { "type": "string" }, "default": [] },
-        "api":       { "type": "array", "items": { "type": "string" }, "default": [] },
-        "db":        { "type": "array", "items": { "type": "string" }, "default": [] },
-        "auth":      { "type": "array", "items": { "type": "string" }, "default": [] },
+        "realtime": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "video": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "api": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "db": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "auth": { "type": "array", "items": { "type": "string" }, "default": [] },
         "telemetry": { "type": "array", "items": { "type": "string" }, "default": [] },
-        "payments":  { "type": "array", "items": { "type": "string" }, "default": [] }
+        "payments": { "type": "array", "items": { "type": "string" }, "default": [] }
       }
     },
     "motion": {
@@ -128,9 +155,24 @@
       "additionalProperties": false,
       "description": "Motion duration budgets in milliseconds. motion-rules enforces these as hard ceilings.",
       "properties": {
-        "micro":   { "type": "integer", "minimum": 0, "default": 300,  "description": "Hover, focus, tooltip, icon swap." },
-        "page":    { "type": "integer", "minimum": 0, "default": 500,  "description": "Route transition, modal open." },
-        "complex": { "type": "integer", "minimum": 0, "default": 1000, "description": "Multi-step orchestrations, hero choreography." },
+        "micro": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 300,
+          "description": "Hover, focus, tooltip, icon swap."
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 500,
+          "description": "Route transition, modal open."
+        },
+        "complex": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 1000,
+          "description": "Multi-step orchestrations, hero choreography."
+        },
         "customPulses": {
           "type": "object",
           "description": "Named long-running ambient animations (e.g. `liveIndicator: 1500`). Exempt from the page/complex caps because they're loops, not transitions.",
@@ -187,11 +229,31 @@
       "additionalProperties": false,
       "description": "Per-skill toggles. Each enforcement skill respects its own `enabled` flag (default `true`).",
       "properties": {
-        "motionRules":     { "type": "object", "properties": { "enabled": { "type": "boolean", "default": true } }, "additionalProperties": false },
-        "responsiveRules": { "type": "object", "properties": { "enabled": { "type": "boolean", "default": true } }, "additionalProperties": false },
-        "a11yRules":       { "type": "object", "properties": { "enabled": { "type": "boolean", "default": true } }, "additionalProperties": false },
-        "testingRules":    { "type": "object", "properties": { "enabled": { "type": "boolean", "default": true } }, "additionalProperties": false },
-        "debuggingRules":  { "type": "object", "properties": { "enabled": { "type": "boolean", "default": true } }, "additionalProperties": false }
+        "motionRules": {
+          "type": "object",
+          "properties": { "enabled": { "type": "boolean", "default": true } },
+          "additionalProperties": false
+        },
+        "responsiveRules": {
+          "type": "object",
+          "properties": { "enabled": { "type": "boolean", "default": true } },
+          "additionalProperties": false
+        },
+        "a11yRules": {
+          "type": "object",
+          "properties": { "enabled": { "type": "boolean", "default": true } },
+          "additionalProperties": false
+        },
+        "testingRules": {
+          "type": "object",
+          "properties": { "enabled": { "type": "boolean", "default": true } },
+          "additionalProperties": false
+        },
+        "debuggingRules": {
+          "type": "object",
+          "properties": { "enabled": { "type": "boolean", "default": true } },
+          "additionalProperties": false
+        }
       }
     },
     "integrations": {
@@ -206,7 +268,16 @@
           "properties": {
             "provider": {
               "type": "string",
-              "enum": ["clickup", "linear", "github", "jira", "notion", "asana", "shortcut", "none"],
+              "enum": [
+                "clickup",
+                "linear",
+                "github",
+                "jira",
+                "notion",
+                "asana",
+                "shortcut",
+                "none"
+              ],
               "default": "none"
             },
             "mcp": {
@@ -226,7 +297,7 @@
           "description": "Product analytics provider (PostHog, Amplitude, Mixpanel, …). Currently informational — surfaces in scenario reports and DDRs as context.",
           "properties": {
             "provider": { "type": "string", "default": "none" },
-            "mcp":      { "type": "string" },
+            "mcp": { "type": "string" },
             "defaults": { "type": "object", "additionalProperties": true }
           }
         },
@@ -236,7 +307,7 @@
           "description": "CI / deploy provider (GitHub Actions, Vercel, Netlify, EAS, …). Used by /flow:validate to know where to look for build status.",
           "properties": {
             "provider": { "type": "string", "default": "none" },
-            "mcp":      { "type": "string" },
+            "mcp": { "type": "string" },
             "defaults": { "type": "object", "additionalProperties": true }
           }
         },
@@ -246,7 +317,7 @@
           "description": "Design source-of-truth (Figma, Penpot, Sketch, …). Used by /flow:plan when the planning input references design.",
           "properties": {
             "provider": { "type": "string", "default": "none" },
-            "mcp":      { "type": "string" },
+            "mcp": { "type": "string" },
             "defaults": { "type": "object", "additionalProperties": true }
           }
         }

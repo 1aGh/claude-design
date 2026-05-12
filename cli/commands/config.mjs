@@ -1,4 +1,4 @@
-import { readFile, writeFile, stat } from 'node:fs/promises';
+import { readFile, stat, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { parseArgs } from '../lib/argv.mjs';
 
@@ -13,7 +13,7 @@ export async function run({ args }) {
   }
   if (sub === 'show') {
     const cfg = await loadConfig();
-    process.stdout.write(JSON.stringify(cfg, null, 2) + '\n');
+    process.stdout.write(`${JSON.stringify(cfg, null, 2)}\n`);
     return;
   }
   if (sub === 'get') {
@@ -22,11 +22,11 @@ export async function run({ args }) {
     const cfg = await loadConfig();
     const v = getPath(cfg, key);
     if (v === undefined) {
-      process.stderr.write(`(unset)\n`);
+      process.stderr.write('(unset)\n');
       process.exit(1);
     }
-    if (typeof v === 'object') process.stdout.write(JSON.stringify(v, null, 2) + '\n');
-    else process.stdout.write(String(v) + '\n');
+    if (typeof v === 'object') process.stdout.write(`${JSON.stringify(v, null, 2)}\n`);
+    else process.stdout.write(`${String(v)}\n`);
     return;
   }
   if (sub === 'set') {
@@ -66,7 +66,7 @@ async function loadConfig() {
 
 async function saveConfig(cfg) {
   const path = resolve(process.cwd(), CONFIG_PATH);
-  await writeFile(path, JSON.stringify(cfg, null, 2) + '\n');
+  await writeFile(path, `${JSON.stringify(cfg, null, 2)}\n`);
 }
 
 function getPath(obj, dotted) {

@@ -41,9 +41,15 @@
         "required": ["id", "label"],
         "additionalProperties": false,
         "properties": {
-          "id":       { "type": "string", "description": "Stable slug for the section (matches DCSection id prop)." },
-          "label":    { "type": "string", "description": "Human-readable section title." },
-          "subtitle": { "type": "string", "description": "Optional one-line subtitle / brief for the section." },
+          "id": {
+            "type": "string",
+            "description": "Stable slug for the section (matches DCSection id prop)."
+          },
+          "label": { "type": "string", "description": "Human-readable section title." },
+          "subtitle": {
+            "type": "string",
+            "description": "Optional one-line subtitle / brief for the section."
+          },
           "artboards": {
             "type": "array",
             "items": {
@@ -51,13 +57,25 @@
               "required": ["id", "label"],
               "additionalProperties": false,
               "properties": {
-                "id":       { "type": "string", "description": "Stable slug (matches DCArtboard id prop)." },
-                "label":    { "type": "string", "description": "Artboard title shown in canvas + handoff." },
+                "id": {
+                  "type": "string",
+                  "description": "Stable slug (matches DCArtboard id prop)."
+                },
+                "label": {
+                  "type": "string",
+                  "description": "Artboard title shown in canvas + handoff."
+                },
                 "subtitle": { "type": "string", "description": "Optional short description." },
-                "platform": { "type": "string", "enum": ["desktop", "mobile", "tablet", "watch", "tv"] },
-                "width":    { "type": "number", "description": "Design width in CSS px." },
-                "height":   { "type": "number", "description": "Design height in CSS px." },
-                "screen_route": { "type": "string", "description": "Production route this artboard maps to (e.g. '/team/[id]/roster'). Optional — used by /design:handoff." }
+                "platform": {
+                  "type": "string",
+                  "enum": ["desktop", "mobile", "tablet", "watch", "tv"]
+                },
+                "width": { "type": "number", "description": "Design width in CSS px." },
+                "height": { "type": "number", "description": "Design height in CSS px." },
+                "screen_route": {
+                  "type": "string",
+                  "description": "Production route this artboard maps to (e.g. '/team/[id]/roster'). Optional — used by /design:handoff."
+                }
               }
             }
           }

@@ -179,3 +179,38 @@ This phase has no UI deliverable — no cross-platform scenario applies. Smoke c
 - [ ] `scripts/setup-github.sh` applied: branch protection on `main`, squash-only merge, auto-merge enabled, delete-branch-on-merge, labels seeded, CODEOWNERS in place, Dependabot auto-merge workflow active.
 - [ ] `NPM_TOKEN` secret confirmed present (or warning logged) via `gh secret list`.
 - [ ] README updated; no stale "scripts/bump-version.sh" as the primary release path (now secondary / manual fallback). New "Workspaces" subsection in README documents `pnpm dev`, `pnpm build`, `pnpm dev:site`. New "Repo administration" subsection points at `scripts/setup-github.sh`.
+
+---
+
+## Status (closeout 2026-05-12)
+
+All 10 tasks landed. Local CI smoke green: `pnpm lint` clean, 7/7 tests pass, parity OK, tarball shape OK (42 files), Changesets queued for `@1agh/md-claude` minor bump.
+
+Acceptance criteria — **met:**
+
+- pnpm workspaces + root in workspace list + `scripts/check-tarball-shape.sh` invariant.
+- Contributing trio (`CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`).
+- PR template + 4 issue templates (bug / feature / docs / + config router).
+- Dependabot config (`npm` + `github-actions`, weekly, grouped).
+- Changesets bootstrapped (`access: public`, root in workspace, status detects @1agh/md-claude).
+- `scripts/changesets-version.sh` wrapper.
+- `quality.yml` workflow (lint + test + tarball + parity) + `biome.json` + `cli/lib/argv.test.mjs`.
+- `publish.yml` rewired through `pnpm version` + adds GitHub Release from CHANGELOG.
+- `setup-github.sh` + JSON payloads + CODEOWNERS + `auto-merge-dependabot.yml`.
+- README updated (Workspaces, reauthored Releasing, Repo administration).
+- DDR-001 (monorepo-single-publisher) + DDR-002 (changesets-release-flow).
+
+Acceptance criteria — **deferred:**
+
+- *Dependabot opens its first PR* — happens after merge.
+- *`quality.yml` green on a real PR* — happens when this PR opens.
+- *`scripts/setup-github.sh` applied to live repo* — gated; maintainer runs it post-merge (script is idempotent).
+- *NPM_TOKEN secret check via `gh secret list`* — secret already exists (existing `publish.yml` has been using it).
+
+## Retro
+
+- **Filter-blocked output:** initial attempt at the full Contributor Covenant 2.1 text in `CODE_OF_CONDUCT.md` hit Anthropic output filtering (the enumerated harassment examples pattern-match safety rules even in canonical anti-harassment context). Pivoted to a short file that **links** to the canonical Covenant — standard practice in many OSS projects. Same lesson for SECURITY.md: keep it terse, avoid "exploit/attack-vector/PoC" phrasing. → For future docs work, prefer link-to-canonical over inline for boilerplate text bodies with sensitive-looking content.
+- **Biome scope creep:** `pnpm biome check --write --unsafe .` reformatted pre-existing dev-server JSX/CSS (≈2400 lines) before the ignore list landed. Reverted the JSX/CSS reformat at the `/done` review gate; kept the small `cli/**` auto-fixes (in scope for the Biome introduction). → Next time we adopt a formatter on a legacy codebase: write the `ignore` list **first**, run `--write` second.
+- **Pre-existing a11y debt:** ignoring `plugins/design/dev-server/{client,runtime,server.mjs}` was the right call for Phase 1, but the debt (~80 errors: `useButtonType`, `useKeyWithClickEvents`, `noSvgWithoutTitle`, …) is now documented and load-bearing for any future dev-server work. → Worth a dedicated "dev-server a11y pass" issue.
+- **Workspaces gotcha:** Changesets needs the root package listed in `pnpm-workspace.yaml` (`"."`) because we use single-publisher monorepo mode. Caught by `pnpm changeset status` (`Found changeset … for package … which is not in the workspace`), fixed in one line + a clarifying comment. → Document this pattern in the docs site (Phase 2) — non-obvious enough that the next person hitting it will lose 15 minutes.
+- **DDR pacing was right:** authored two DDRs at the end of Phase 1 instead of mid-execute. Both are about decisions that were already made in planning — Phase 1 just materialized them, so the DDRs read as confirmations not pivots. Good cadence.

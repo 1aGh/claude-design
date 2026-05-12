@@ -1,0 +1,48 @@
+version: 2
+
+updates:
+  # npm — root + workspaces
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Prague
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+      include: scope
+    labels:
+      - "type:chore"
+      - "scope:infra"
+    groups:
+      patch-and-minor:
+        update-types:
+          - patch
+          - minor
+      majors:
+        update-types:
+          - major
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Prague
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(actions)"
+      include: scope
+    labels:
+      - "type:chore"
+      - "scope:infra"
+    groups:
+      actions:
+        update-types:
+          - patch
+          - minor
+          - major

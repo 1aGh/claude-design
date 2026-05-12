@@ -1,7 +1,7 @@
 #!/usr/bin/env node
+import { dirname, resolve } from 'node:path';
 // mdcc — md-claude CLI. Scaffold .ai workspace, run dev servers, manage config.
 import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -9,10 +9,10 @@ const CLI_ROOT = resolve(__dirname, '..');
 const PKG_ROOT = resolve(CLI_ROOT, '..');
 
 const COMMANDS = {
-  init:    () => import('../commands/init.mjs'),
-  config:  () => import('../commands/config.mjs'),
-  design:  () => import('../commands/design.mjs'),
-  help:    () => import('../commands/help.mjs'),
+  init: () => import('../commands/init.mjs'),
+  config: () => import('../commands/config.mjs'),
+  design: () => import('../commands/design.mjs'),
+  help: () => import('../commands/help.mjs'),
   version: () => import('../commands/version.mjs'),
 };
 
@@ -40,6 +40,6 @@ async function main(argv) {
 
 main(process.argv).catch((err) => {
   process.stderr.write(`mdcc: ${err.message}\n`);
-  if (process.env.MDCC_DEBUG) process.stderr.write(err.stack + '\n');
+  if (process.env.MDCC_DEBUG) process.stderr.write(`${err.stack}\n`);
   process.exit(1);
 });

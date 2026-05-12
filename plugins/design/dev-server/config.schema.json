@@ -27,13 +27,16 @@
         "required": ["label", "path"],
         "properties": {
           "label": { "type": "string" },
-          "path":  { "type": "string", "description": "Folder under designRoot to scan for .html canvases." }
+          "path": {
+            "type": "string",
+            "description": "Folder under designRoot to scan for .html canvases."
+          }
         },
         "additionalProperties": false
       },
       "default": [
         { "label": "Design system", "path": "system" },
-        { "label": "Canvases",      "path": "ui" }
+        { "label": "Canvases", "path": "ui" }
       ]
     },
     "rootClass": {
@@ -63,8 +66,8 @@
         "type": "object",
         "required": ["label", "path"],
         "properties": {
-          "label":    { "type": "string" },
-          "path":     { "type": "string", "description": "Repo-relative target dir." },
+          "label": { "type": "string" },
+          "path": { "type": "string", "description": "Repo-relative target dir." },
           "platform": { "type": "string", "enum": ["web", "mobile", "desktop", "other"] }
         },
         "additionalProperties": false

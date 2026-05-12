@@ -5,11 +5,13 @@ on:
     paths:
       - 'package.json'
       - 'plugins/design/.claude-plugin/plugin.json'
+      - 'plugins/flow/.claude-plugin/plugin.json'
   push:
     branches: [main]
     paths:
       - 'package.json'
       - 'plugins/design/.claude-plugin/plugin.json'
+      - 'plugins/flow/.claude-plugin/plugin.json'
 
 jobs:
   parity:

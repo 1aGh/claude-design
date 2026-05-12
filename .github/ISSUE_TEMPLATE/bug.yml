@@ -1,0 +1,90 @@
+name: Bug report
+description: Something is broken or behaves unexpectedly.
+title: "fix: <short summary>"
+labels: ["type:fix", "needs:triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. A focused repro is the single
+        most important thing you can include — it usually decides whether a fix
+        ships in days or weeks.
+
+        For **security** issues, do not file here — see [SECURITY.md](../blob/main/SECURITY.md).
+
+  - type: input
+    id: version
+    attributes:
+      label: md-claude version
+      description: Output of `mdcc --version` (or the `version` field in `package.json` / plugin manifest).
+      placeholder: "0.5.0"
+    validations:
+      required: true
+
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: Output of `node --version`.
+      placeholder: "v20.11.0"
+    validations:
+      required: true
+
+  - type: input
+    id: claude-code
+    attributes:
+      label: Claude Code version (if relevant)
+      description: From the desktop app About panel, or `claude --version`.
+      placeholder: "Desktop 1.x / CLI 0.x"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface?
+      options:
+        - design plugin (commands / dev server)
+        - flow plugin (commands / skills / agents)
+        - mdcc CLI
+        - docs site
+        - release / CI
+        - other
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: |
+        Exact commands or steps. Smallest possible repo / file set. Paste output verbatim — do not paraphrase errors.
+      placeholder: |
+        1. `mdcc init`
+        2. `/design "make the hero darker"`
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What actually happened?
+      description: Include error output, stack traces, screenshots if relevant.
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: OS, shell, related config, things you already tried.
+    validations:
+      required: false

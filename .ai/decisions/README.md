@@ -10,6 +10,9 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
 
+- [DDR-002: Release flow via Changesets, with a wrapper preserving plugin parity](DDR-002-changesets-release-flow.md) — 2026-05-12, infra/release/changesets
+- [DDR-001: Monorepo with a single npm publisher](DDR-001-monorepo-single-publisher.md) — 2026-05-12, infra/monorepo/packaging
+
 ## Rules
 
 - **Numbering:** zero-padded, three digits, sequential (DDR-001, DDR-002, …).

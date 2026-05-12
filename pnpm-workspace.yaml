@@ -1,4 +1,7 @@
 packages:
+  # The root package (@1agh/md-claude) is the sole npm publisher.
+  # Listed here so Changesets can resolve it as a workspace member.
+  - "."
   - site
   - plugins/design/dev-server
   - plugins/design/hub
