@@ -17,13 +17,13 @@ jobs:
       contents: write       # release creation
       id-token: write       # npm provenance
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0    # full history so changesets can read CHANGELOG context
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '22'    # pnpm 11 requires Node >=22.13
           registry-url: 'https://registry.npmjs.org'
