@@ -27,6 +27,18 @@ Transform a feature request into a **context-rich implementation plan** that ena
 
 **We do NOT write code in this phase.** We research, analyze, and plan.
 
+## Step 0 — Resolve tech-stack skills
+
+> Run **before** scenario assessment so any library named in `$ARGUMENTS` (or implied by the feature) has loaded expertise during research.
+
+Invoke `Skill(flow:skill-loader)` with the feature description as input. The skill will:
+
+1. Diff libraries named in `$ARGUMENTS` (and currently loaded codebase context) against the skills already visible in this session.
+2. For any gap, fetch the matching skill via the `terminal-skills` MCP (or fall back to WebFetch on official docs).
+3. Record the resolved set in `.ai/state/STATE.md`.
+
+Skip only if **every** library the feature touches is already covered by a loaded built-in skill. When in doubt — invoke it. Cheap.
+
 ## Scope Check
 
 If the feature involves a repeatable pattern (e.g., "add docs for all components"), ask:

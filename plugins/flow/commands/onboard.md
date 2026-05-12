@@ -172,6 +172,18 @@ TRACKER_HINT="none"
 [[ "$REMOTE_URL" == *github.com* ]] && TRACKER_HINT="github"
 ```
 
+## Step 2b: Resolve tech-stack skills
+
+> Runs **after** auto-detect (Step 2) so the detected stack is the input — and **before** we propagate values to `workflows.config.json` (Step 4), so any decisions captured there can lean on real library knowledge.
+
+Invoke `Skill(flow:skill-loader)` with the detected stack as input (framework, language, ORM, CSS approach, plus any non-trivial dependency from `package.json` / `pyproject.toml` / `Cargo.toml` / `go.mod`). The skill will:
+
+1. Diff each material dependency against skills already loaded in this session.
+2. For each gap, fetch the matching skill via the `terminal-skills` MCP (or fall back to WebFetch on official docs).
+3. Persist the resolved set in `.ai/state/STATE.md` so future sessions in this repo don't re-resolve.
+
+Onboarding is the one-shot moment to do this thoroughly — every later command (`/flow:plan`, `/flow:execute`) only patches gaps incrementally.
+
 ## Step 3: Ask only what we can't auto-detect
 
 Ask for these — everything else has a sensible auto-detected or default value:
