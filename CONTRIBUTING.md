@@ -136,24 +136,6 @@ Three checks must be green before merge (configured in branch protection):
 
 Run them locally before pushing — much faster than a CI round-trip.
 
-## Recommended branch protection (for forks / mirrors)
-
-If you fork md-claude and want the same guarantees, the canonical setup is encoded in `scripts/setup-github.sh`. Re-run it against your fork:
-
-```sh
-bash scripts/setup-github.sh   # idempotent; needs gh CLI logged in with repo admin scope
-```
-
-It applies, on `main`:
-
-- Required status checks: `Version parity check`, `Quality (lint+test+links)`.
-- Required reviews: 1, dismiss stale on push, require conversation resolution.
-- Linear history, no force push, no deletion.
-- Squash-merge only, delete branch on merge, auto-merge enabled.
-- Seeds the standard label set (`type:*`, `scope:*`, `priority:*`, `good first issue`, …).
-
-The script is the source of truth — read it before changing any of these settings by hand in the GitHub UI.
-
 ## Reporting bugs
 
 Open an issue using the **Bug** template. Include a minimal repro, your Node version, your Claude Code version, and what you expected vs. what happened.
