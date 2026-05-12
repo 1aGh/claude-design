@@ -10,18 +10,16 @@ permissions:
 
 jobs:
   quality:
-    name: Lint + test + tarball shape
+    name: Quality (lint+test+links)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
-        with:
-          version: 11
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'    # pnpm 11 requires Node >=22.13 (engines.node ">=20" is the CLI runtime constraint, not the build constraint)
           cache: pnpm
 
       - name: Install

@@ -1,20 +1,17 @@
 name: Version parity check
 
+# No paths filter — this is a required status check, so it must run on every
+# PR. Removing the filter would skip the check on most PRs and leave them
+# blocked forever (a required check that never runs is never satisfied).
+# The script is fast (<5s) so unconditional execution is fine.
 on:
   pull_request:
-    paths:
-      - 'package.json'
-      - 'plugins/design/.claude-plugin/plugin.json'
-      - 'plugins/flow/.claude-plugin/plugin.json'
   push:
     branches: [main]
-    paths:
-      - 'package.json'
-      - 'plugins/design/.claude-plugin/plugin.json'
-      - 'plugins/flow/.claude-plugin/plugin.json'
 
 jobs:
   parity:
+    name: Version parity check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

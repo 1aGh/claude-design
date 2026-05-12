@@ -281,16 +281,6 @@ The `v*` tag triggers `.github/workflows/publish.yml`, which re-runs the parity 
 2. GitHub repo → **Settings → Secrets → Actions** → `NPM_TOKEN`.
 3. `id-token: write` is already enabled in `publish.yml` for npm provenance.
 
-## Repo administration
-
-Branch protection, merge mode, labels, CODEOWNERS, and Discussions categories are all encoded in `scripts/setup-github.sh`. Re-runnable, idempotent — the script is the source of truth:
-
-```sh
-bash scripts/setup-github.sh   # needs gh CLI logged in with repo admin scope
-```
-
-Reads `scripts/github/main-protection.json` + `scripts/github/labels.json`.
-
 ## Local development (plugin authors)
 
 ```
