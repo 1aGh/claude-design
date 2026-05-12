@@ -57,7 +57,7 @@
     "scaffold"
   ],
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
+    "@biomejs/biome": "^2.4.15",
     "@changesets/cli": "^2.27.10"
   }
 }
