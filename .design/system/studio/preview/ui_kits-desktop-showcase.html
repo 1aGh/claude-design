@@ -300,15 +300,36 @@ NOTES:
       padding: 4px 10px;
       color: var(--fg-1); text-decoration: none;
       border-radius: var(--radius-sm);
+      border: 1px solid transparent;
       cursor: pointer;
-      transition: background var(--dur-flip) var(--ease-out), color var(--dur-flip) var(--ease-out);
+      position: relative;
+      transition:
+        background var(--dur-flip) var(--ease-out),
+        color var(--dur-flip) var(--ease-out),
+        border-color var(--dur-flip) var(--ease-out);
     }
     .tree li > a:hover { background: var(--bg-2); color: var(--fg-0); }
-    .tree li > a.is-active { background: var(--accent); color: var(--accent-fg); font-weight: 600; }
+
+    /* Active nav item — Linear/Cron-style decent. Subtle accent-tinted bg + accent
+     * text + 2px accent bar on the left. No solid fill, no white text, no glow. */
+    .tree li > a.is-active {
+      background: oklch(from var(--accent) l c h / 0.10);
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .tree li > a.is-active::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0; bottom: 0;
+      width: 2px;
+      background: var(--accent);
+      border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+    }
     .tree li > a .glyph { color: var(--fg-2); width: 14px; display: inline-block; text-align: center; }
-    .tree li > a.is-active .glyph { color: var(--accent-fg); }
+    .tree li > a.is-active .glyph { color: var(--accent); }
     .tree li > a .badge { margin-left: auto; font-size: 10px; color: var(--fg-2); }
-    .tree li > a.is-active .badge { color: var(--accent-fg); opacity: 0.75; }
+    .tree li > a.is-active .badge { color: var(--accent); opacity: 0.85; }
     .tree ul { list-style: none; padding-left: 16px; margin: 0; }
     .tree .leaf { padding-left: 22px; }
 

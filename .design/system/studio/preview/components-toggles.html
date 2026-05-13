@@ -11,53 +11,56 @@ NOTES: switch + seg come from `_components.css`. Checkbox + radio defined inline
 <link rel="stylesheet" href="./_layout.css">
 <link rel="stylesheet" href="./_components.css">
 <style>
+  /* Checkbox — 20px hardware switch. Raised bay (bg-3 + visible border)
+   * so the unchecked state reads on any parent surface, not just bg-1. */
   .checkbox {
-    width: 18px; height: 18px;
-    border: 1px solid oklch(from var(--bg-0) calc(l - 0.04) c h);
-    background: oklch(from var(--bg-0) calc(l - 0.02) c h);
+    width: 20px; height: 20px;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-3);
     border-radius: var(--radius-xs);
     display: inline-grid; place-items: center;
     cursor: pointer; vertical-align: middle;
-    font-family: var(--font-mono); font-size: 12px;
+    font-family: var(--font-mono); font-size: 14px;
+    line-height: 1;
     color: transparent;
-    box-shadow: inset 0 2px 3px oklch(0% 0 0 / 0.50), 0 1px 0 oklch(100% 0 0 / 0.04);
+    box-shadow: inset 0 1px 2px oklch(0% 0 0 / 0.30);
     transition: background var(--dur-flip) var(--ease-out), border-color var(--dur-flip) var(--ease-out);
   }
+  .checkbox:hover { border-color: var(--fg-2); }
   .checkbox.is-on {
-    background: linear-gradient(180deg, oklch(from var(--accent) calc(l + 0.04) c h), var(--accent));
+    background: var(--accent);
     border-color: oklch(from var(--accent) calc(l - 0.20) c h);
     color: var(--accent-fg);
     font-weight: 800;
-    box-shadow:
-      inset 0 1px 0 oklch(100% 0 0 / 0.25),
-      0 1px 0 oklch(from var(--accent) calc(l - 0.22) c h),
-      0 0 8px var(--accent-glow);
+    box-shadow: none;
   }
   .checkbox.is-indeterminate {
-    background: linear-gradient(180deg, oklch(from var(--accent) calc(l + 0.04) c h), var(--accent));
+    background: var(--accent);
     border-color: oklch(from var(--accent) calc(l - 0.20) c h);
+    box-shadow: none;
   }
   .checkbox.is-indeterminate::after {
-    content: ''; width: 9px; height: 2px;
+    content: ''; width: 10px; height: 2px;
     background: var(--accent-fg); border-radius: 1px;
   }
 
+  /* Radio — 20px disc. Same raised-bay treatment for visibility. */
   .radio {
-    width: 18px; height: 18px;
-    border: 1px solid oklch(from var(--bg-0) calc(l - 0.04) c h);
-    background: oklch(from var(--bg-0) calc(l - 0.02) c h);
+    width: 20px; height: 20px;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-3);
     border-radius: 50%;
     display: inline-block; position: relative;
     cursor: pointer; vertical-align: middle;
-    box-shadow: inset 0 2px 3px oklch(0% 0 0 / 0.50);
+    box-shadow: inset 0 1px 2px oklch(0% 0 0 / 0.30);
     transition: border-color var(--dur-flip) var(--ease-out);
   }
-  .radio.is-on { border-color: var(--accent); box-shadow: inset 0 2px 3px oklch(0% 0 0 / 0.50), 0 0 6px var(--accent-glow); }
+  .radio:hover { border-color: var(--fg-2); }
+  .radio.is-on { border-color: var(--accent); }
   .radio.is-on::after {
-    content: ''; position: absolute; inset: 3px;
-    background: linear-gradient(135deg, oklch(from var(--accent) calc(l + 0.05) c h), var(--accent));
+    content: ''; position: absolute; inset: 4px;
+    background: var(--accent);
     border-radius: 50%;
-    box-shadow: 0 0 4px var(--accent-glow);
   }
 
   .toggle-row {
@@ -85,7 +88,7 @@ NOTES: switch + seg come from `_components.css`. Checkbox + radio defined inline
   <p class="lede">Four shapes, one anatomy thesis — recessed bay, raised chip on active. Switch (settings), checkbox (multi-select), radio (mutual exclusion), segmented (view modes). All four use <code>--accent</code> with glow on the "on" state.</p>
 
   <h2>Switch</h2>
-  <p>Chunky hardware toggle — recessed track + raised thumb with gradient highlight. The thumb literally moves left→right; the track lights plasma when on.</p>
+  <p>Recessed track + raised thumb. The thumb moves left→right; the track flips to plasma when on. No glow, no gradient — the state change is the signal.</p>
   <div class="tile" style="max-width: 560px;">
     <div class="toggle-row"><span class="label">Auto-snapshot on edit<span class="sub">enables /design:rollback</span></span><span class="switch is-on"></span></div>
     <div class="toggle-row"><span class="label">Run a11y critic on save<span class="sub">slows save by ~200ms</span></span><span class="switch is-on"></span></div>
@@ -94,7 +97,7 @@ NOTES: switch + seg come from `_components.css`. Checkbox + radio defined inline
   </div>
 
   <h2>Checkbox</h2>
-  <p>Recessed square bay → plasma slab with white check on activation. Indeterminate state shows a phosphor minus instead of the check.</p>
+  <p>20px raised tile on <code>--bg-3</code> with a visible border, so the unchecked state reads on any parent surface. Solid plasma fill with a bold check on activation. Indeterminate shows a white minus.</p>
   <div class="row">
     <label class="opt"><span class="checkbox is-on">✓</span> graphic-design</label>
     <label class="opt"><span class="checkbox is-on">✓</span> typography</label>
@@ -103,7 +106,7 @@ NOTES: switch + seg come from `_components.css`. Checkbox + radio defined inline
   </div>
 
   <h2>Radio</h2>
-  <p>Recessed disc → plasma inner with glow. Inset ring rather than outer border to keep the field flat.</p>
+  <p>20px raised disc. Plasma border on the track plus a solid plasma inner dot signal selection — no halo, no inner gradient.</p>
   <div class="row">
     <label class="opt"><span class="radio is-on"></span> plasma (default)</label>
     <label class="opt"><span class="radio"></span> amber</label>
@@ -112,7 +115,7 @@ NOTES: switch + seg come from `_components.css`. Checkbox + radio defined inline
   </div>
 
   <h2>Segmented</h2>
-  <p>Recessed bay with the active button raised + plasma fill + accent glow. Unselected buttons sit flush with the floor.</p>
+  <p>Recessed bay with the active button raised on a 1px rim of plasma. Unselected buttons sit flush with the floor — selection is the only state change.</p>
   <div class="row">
     <div class="seg"><button class="is-on">canvases</button><button>inspector</button><button>system</button></div>
     <div class="seg"><button class="is-on">cozy</button><button>compact</button></div>

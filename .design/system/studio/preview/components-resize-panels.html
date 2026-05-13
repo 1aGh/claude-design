@@ -11,8 +11,27 @@ WHEN SCAFFOLDED: IF platform includes desktop
   .pane.left { background: var(--bg-1); border-right: 1px solid var(--border-subtle); }
   .pane.left .label { color: var(--fg-2); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 var(--space-2); }
   .pane.left ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 2px; }
-  .pane.left li { padding: 3px 8px; border-radius: var(--radius-sm); }
-  .pane.left li.active { background: var(--accent); color: var(--accent-fg); }
+  .pane.left li {
+    padding: 3px 8px;
+    border-radius: var(--radius-sm);
+    position: relative;
+  }
+  /* Active nav — Linear/Cron-style decent: accent-tinted bg + accent text + 2px
+   * accent bar on the left. Same anatomy as the showcase sidebar.            */
+  .pane.left li.active {
+    background: oklch(from var(--accent) l c h / 0.10);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .pane.left li.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0; bottom: 0;
+    width: 2px;
+    background: var(--accent);
+    border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+  }
   .pane.right { background: var(--bg-0); display: grid; place-items: center; }
   .handle { background: var(--border-subtle); cursor: col-resize; position: relative; transition: background var(--dur-flip) var(--ease-out); }
   .handle:hover { background: var(--accent); }
