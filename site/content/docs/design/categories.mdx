@@ -1,0 +1,78 @@
+---
+title: Command categories
+description: Slash-command groups for the design plugin — daily + setup. Mirrors plugins/design/CATEGORIES.md.
+---
+
+The design plugin organizes its slash commands into two groups: `daily` (verb-as-complete-action, called every iteration cycle) and `setup-*` (one-shot bootstrapping operations).
+
+Mirrors the flow plugin's [categorization](https://github.com/1aGh/md-claude/blob/main/plugins/flow/CATEGORIES.md) pattern. Claude Code doesn't support slash-command subdirectory namespacing — the `<group>-<verb>` prefix is the working substitute. Typing `/design:setup-` autocompletes only the three setup verbs.
+
+## daily
+
+Default verbs. No prefix.
+
+| Command | What it does |
+| ------- | ------------ |
+| `/design:edit "<feedback>"` | Iterate on the active canvas with auto-critic loop |
+| `/design:new "<Name>" "<brief>"` | Scaffold a new multi-artboard canvas project |
+| `/design:critic` | Spawn the critic panel (or single agent / all critics) |
+| `/design:browse` | Boot the local dev server |
+| `/design:rollback` | Undo the last edit (snapshot-based) |
+| `/design:screenshot` | Capture a screenshot of the active canvas |
+| `/design:handoff` | Migrate the active canvas to a production target |
+| `/design:help` | Print the grouped command index |
+
+The bare `/design` form is a **one-version compat stub** that redirects to `/design:edit`. It will be removed in the next minor version. Don't cross-reference it in new docs.
+
+## setup-*
+
+One-shot bootstrapping operations.
+
+| Command | What it does |
+| ------- | ------------ |
+| `/design:setup-onboard` | Initialize the project environment (deps check, install hints, skeleton `.design/config.json`). Mirrors `/flow:setup-onboard`. |
+| `/design:setup-ds <name> "[brief]"` | Create a design system (first one, additional, or re-bootstrap with `--force`). Thin wrapper → skill `design-system` in bootstrap mode. |
+| `/design:setup-docs [--full]` | Refresh `.design/README.md` + `INDEX.md`. Auto-runs after `/design:edit` and `/design:new`; manual trigger to force a refresh. |
+
+Why three setup verbs:
+
+- **`setup-onboard`** is project-level — runs **once** per repo to prepare the ground (dependency hints, CLAUDE.md / `.ai/` recommendations, skeleton config). Auto-invoked when other commands hit a missing `.design/config.json`.
+- **`setup-ds`** is per-DS — runs **once per design system** (first one for a project, or every time you add a marketing-vs-admin-vs-mobile DS). Auto-invokes `setup-onboard` first if config is missing.
+- **`setup-docs`** is per-canvas-event — auto-runs after every `/design:edit` and `/design:new`. Manual trigger when you want to force a regeneration.
+
+## Naming convention
+
+Commands within a group prefix the group name with a dash separator:
+
+```
+/design:setup-onboard          ← group "setup", verb "onboard"
+/design:setup-ds               ← group "setup", verb "ds"
+/design:setup-docs             ← group "setup", verb "docs"
+```
+
+Daily commands have no prefix:
+
+```
+/design:edit                   ← daily
+/design:new                    ← daily
+```
+
+This makes autocomplete predictable.
+
+## Rename history
+
+| Old | New | When | Why |
+| --- | --- | ---- | --- |
+| `/design` | `/design:edit` | v0.8 | Verb-as-action; resolves naming collision with skill `design` |
+| `/design:docs` | `/design:setup-docs` | v0.8 | Categorization to `setup-*` group |
+
+The bare `/design` form is preserved as a compat stub for one minor version, then removed.
+
+## Adding a new command
+
+1. Pick the group from the table above. If none fits, propose a new group in `plugins/design/CATEGORIES.md` (with prose justification) before adding the file.
+2. Create `plugins/design/commands/<group>-<verb>.md` (or `<verb>.md` for `daily`).
+3. Set frontmatter: `name: <verb-or-group-verb>`, `category: <group>`, `description: <one-liner>`, `argument-hint:` if any.
+4. `/design:help` picks it up automatically — no manual catalog update needed.
+
+The auto-generated reference pages under `/docs/reference/design/` are produced by `site/scripts/build-command-reference.mjs` from each command file's frontmatter on every `pnpm prebuild`.

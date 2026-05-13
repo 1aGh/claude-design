@@ -1,8 +1,8 @@
 ---
 name: critic
 category: daily
-description: Spawn critic panel (or single agent / all critics) na aktivním canvasu — design + a11y + až 7 specialistů (graphic, brand, typography, motion, copy, frontend, info-architecture). Default = orchestrator routes panel based on canvas content + feedback. Honors opt_out_scope from canvas .meta.json or --opt-out= flag.
-argument-hint: "[--agent <name>] [--all] [--panel] [--opt-out=palette|aesthetic|full]"
+description: Spawn critic panel (or single agent / all critics) na aktivním canvasu — design + a11y + až 7 specialistů (graphic, brand, typography, motion, copy, frontend, info-architecture). Default = orchestrator routes panel based on canvas content + feedback. Honors opt_out_scope from canvas .meta.json or --opt-out= flag. Use --system-only to audit the design system itself (structural completeness) instead of the active canvas.
+argument-hint: "[--agent <name>] [--all] [--panel] [--system-only [--ds=<name>] [--all-ds]] [--opt-out=palette|aesthetic|full]"
 ---
 
 # /design:critic — review active canvas
@@ -20,6 +20,7 @@ Tento command **nepouští auto-fix loop** — to dělají `/design:edit` a `/de
 | `--all` | Všech 9 critics paralelně. Heavy — utratí 9× tool calls. Použij pro "exhaustive polish before handoff". |
 | `--panel` | Alias for default (no flag). |
 | `--opt-out=<scope>` | Override the canvas's persisted scope for this critique only. Without this flag, scope is read from `<active>.meta.json` `opt_out_scope` (default `palette`). Passes to every spawned critic — design-stack critics downgrade matching DS-rule blockers per scope; a11y / frontend / copy critics ignore it. See SKILL.md "Opt-out scope". |
+| `--system-only` | **Audit the design system itself, not the active canvas.** Spawns only `design-system-completeness-critic` against `<designRoot>/system/<ds>/`. The critic applies 3-tier rules (Core / Conventional / Free-form) calibrated by `config.json.completenessProfile` + `activeFamilies[]`. Combine with `--ds=<name>` to scope to one DS in a multi-DS project, or `--all-ds` to audit every entry in `designSystems[]`. Default target is `config.defaultDesignSystem` (single-DS layouts: `project`). |
 
 ## Postup
 
@@ -34,6 +35,27 @@ Standard (viz `/design:edit`).
 Pokud nejnovější screenshot pro canvas chybí, capture full-page přes agent-browser (HTTP server URL, ne `file://`).
 
 Pokud `_active.json.selected` set, capture i element-scoped (`--selector "<selected.selector>"`).
+
+### 2b. Short-circuit for `--system-only`
+
+If `--system-only` is present, **skip canvas-screenshot logic and skip the panel-routing logic**. Spawn only `design-system-completeness-critic`:
+
+```
+subagent_type: design-system-completeness-critic
+prompt: structured payload (config_path, ds_name, ds_root, output_path, all_ds)
+```
+
+`ds_name` resolution:
+1. `--ds=<name>` flag if present
+2. else `config.defaultDesignSystem`
+3. else first entry in `designSystems[]`
+4. else fail with "no design system configured — run /design:setup-ds first"
+
+When `--all-ds` is set, pass `all_ds: true` so the critic produces per-DS sections in the report (one block per entry in `designSystems[]` + a cross-DS summary).
+
+Output goes to `<designRoot>/_history/_system/<NNN>-completeness-{ds-or-all}.md` (separate from canvas-scoped reports because there's no canvas slug).
+
+After the critic returns, print the verdict summary and exit — `--system-only` runs are standalone, not part of an auto-fix loop.
 
 ### 3. Pick panel
 
@@ -132,5 +154,6 @@ Write `<designRoot>/_history/<slug>/critique/<NNN>-PANEL.md` (schema in `skills/
 | `frontend-critic` | JSX patterns, semantic HTML, hooks, keys, performance gotchas, hydration. |
 | `info-architecture-critic` | Nav depth, hierarchy, taxonomy, findability, URL hygiene, cross-surface consistency. |
 | `signature-moment-critic` | **Aspiration axis** — měří *presence of greatness*, ne absence of badness. 5 axes (signature compositional moment per artboard, brand prominence, mock fidelity, restraint, negative space) + specificity gate (no Lorem / placeholders). **Always in panel pro `/design:new` a polish-cued `/design:edit`.** Zavírá gap mezi "passes correctness" a "would screenshot for portfolio". |
+| `design-system-completeness-critic` | **Structural completeness of the design system itself** — tokens, philosophy, specimens, shape. 3-tier rules (Core blocker / Conventional warning gated by `activeFamilies` + `completenessProfile` / Free-form acknowledged). **Spawned only via `--system-only`** (or auto-run at the end of skill `design-system` bootstrap flow). NOT included in canvas critic panels — different scope. |
 
 Full critic prompts: `${CLAUDE_PLUGIN_ROOT}/agents/<name>.md`.

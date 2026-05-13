@@ -67,7 +67,7 @@ Consider `/flow:make-skill-template` for **fumadocs** and **hocuspocus** if thei
 
 ## Execution Progress
 
-### design-system-init — Phase 0–2 skeleton (this execute)
+### design-system-init — Phase 0–6 complete (this execute)
 
 - [x] Phase 0: rename `/design` → `/design:edit` + compat stub + plugin sweep ✅
 - [x] Phase 1A: inspiration library skeleton (24 files at `plugins/design/templates/design-system-inspiration/`) ✅
@@ -75,17 +75,16 @@ Consider `/flow:make-skill-template` for **fumadocs** and **hocuspocus** if thei
 - [x] Phase 2A: setup-docs rename, `category:` on all 12 commands, new commands (`help`, `setup-ds`, `setup-onboard`), `CATEGORIES.md` ✅
 - [x] Phase 2B: missing-state hooks in `edit.md` + `new.md` (auto-invoke onboard → bootstrap) ✅
 - [x] Phase 2C: `mdcc design init` CLI subcommand (Core scaffold from inspiration library) ✅; schema extended forward-compat (Phase 3/4 fields) ✅
-- [ ] Phase 3 (adaptive completeness-critic) — deferred to follow-up `/flow:execute`
-- [ ] Phase 4 (multi-DS canvas wiring) — deferred to follow-up
-- [ ] Phase 5 (CLAUDE.md "Design system bootstrap" section) — deferred to follow-up
-- [ ] Phase 6 (Fumadocs site sync — `/design` → `/design:edit` sweep + new pages) — deferred to follow-up
+- [x] Phase 3: `design-system-completeness-critic` agent (3-tier rules — Core/Conventional/Free-form, adaptive by `activeFamilies` + `completenessProfile`); `commands/critic.md` += `--system-only` flag + short-circuit; skill bootstrap flow wires the critic at scaffold end ✅
+- [x] Phase 4: multi-DS canvas wiring — `canvas-meta.schema.json` += `designSystem` + `opt_out_scope` fields; `commands/new.md` parses `--ds=` flag with validation + fail-with-hint on unknown DS; `flow:design-system-guard` scoped to canvas DS (reads `.meta.json.designSystem`) ✅
+- [x] Phase 5: CLAUDE.md "Design system bootstrap" section (8 rules: onboard-before-bootstrap, one-skill-owns-DS, 3-sub-modes, inspiration-not-substrate, dynamic-scaffold-count, literal-project-dirname, 3-tier-compliance, daily-verb-is-edit) ✅
+- [x] Phase 6: Fumadocs narrative pages — `design/bootstrap.mdx`, `design/categories.mdx`, `design/multi-ds.mdx`; `design.mdx` → `design/index.mdx` (folder pattern); `cli.mdx` += `mdcc design init` section ✅
 
-**Carry-over for next execute:**
+**Open carry-over for follow-up release:**
 
-- The bootstrap skill **calls** `design-system-completeness-critic` but the agent doesn't exist yet (Phase 3 deliverable). Skill currently passes through silently when missing — acceptable for skeleton, must land before next release.
-- `setup-ds.md` references multi-DS `additional-ds` + `re-bootstrap` modes; works for single-DS today, multi-DS canvas wiring (per-canvas `.meta.json.designSystem`, `--ds=` validation in `/design:new`) is Phase 4.
-- Site docs still reference `/design` → must be swept in Phase 6.
-- Inspiration library is **skeleton only** (Core 10 + Universal 6 = 16 specimens out of the ~62-file full library planned). `foundations/`, `status/`, `audience-*/`, `platform-*/`, `theme-*/`, `patterns/`, `meta/` are intentionally empty for follow-up phases — `_MAPPING.md` documents the full shape.
+- Inspiration library is **skeleton only** (Core 10 + Universal 6 = 16 specimens populated). `foundations/` (8), `status/` (3), `audience-*/` (5–6 per branch), `platform-*/` (2–5), `theme-both/` (1), `patterns/` (6), `meta/` (4) — total ~38 additional reference files — are stubs documented in `_MAPPING.md` but not yet authored. Single-DS minimum-viable scaffold works today; richer scaffold awaits next library pass.
+- Site `categories.mdx` mentions `--all-ds` for the critic — flag exists in critic.md spec but the actual loop logic in the critic agent's pre-flight is described, not yet runtime-tested against a real multi-DS project (no production multi-DS users yet).
+- Version bump (Phases 0–6 ship together as v0.8 minor) — separate cycle.
 
 ### Phase 2 — Tasks (Fumadocs docs site)
 

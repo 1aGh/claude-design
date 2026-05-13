@@ -23,6 +23,15 @@ agent-browser snapshot -c   # element tree for grepping semantic tokens
 
 `.ai/<project>-design-system.md` — the whole thing. It's short. Binding.
 
+**If the project uses the `design` plugin** (`.design/config.json` exists), also read the per-DS source of truth:
+
+1. Read `.design/config.json` → `designSystems[]`, `defaultDesignSystem`, `tokensCssRel`.
+2. For each changed canvas / production file you're about to audit:
+   - If a sibling `.meta.json` exists, read its `designSystem` field. That names which DS to enforce.
+   - Else fall back to `config.defaultDesignSystem`, then to single-DS layout (`system/project/`).
+3. Load that DS's `colors_and_type.css` (tokens) + `README.md` (philosophy + hard rules) + `SKILL.md`. **Tokens from one DS do not blend with another** — a canvas declared against `marketing` MUST NOT use admin's accent.
+4. In **multi-DS projects**, audit each changed file against its DECLARED DS only. Cross-DS contamination (a canvas with `designSystem: marketing` referencing admin's tokens) is itself a blocker.
+
 `motion-rules` skill (bundled in flow plugin) — animation hard-stops (compositor-only, prefers-reduced-motion, motion tokens). Reads `motion` from `.ai/workflows.config.json`.
 
 `responsive-rules` skill (bundled in flow plugin) — mobile-first, container queries, fluid typography, density-per-platform. Reads `platforms` + `responsive` from `.ai/workflows.config.json`.
@@ -43,6 +52,8 @@ These are the typical rules a design-system doc encodes. Adjust to match the pro
 10. **No stock photography as placeholder backgrounds.** Hero with Unsplash placeholder → blocker.
 11. **Mobile tap targets ≥ 44×44 px** (cross-checks with motion archetype).
 12. **prefers-reduced-motion fallback** required for every animation (cross-checks with motion archetype).
+13. **Per-canvas DS attribution** (multi-DS projects only): `<canvas>.meta.json.designSystem` MUST name a DS that exists in `config.designSystems[]`. Missing field in a multi-DS project → warning (canvas drift); unknown DS slug → blocker (cross-DS contamination).
+14. **No cross-DS token use** (multi-DS projects only): a canvas declared against DS `<X>` MUST only reference tokens from `<X>/colors_and_type.css`. Token names that exist in another DS but not in the declared one → blocker.
 
 ## Soft rules (warn)
 

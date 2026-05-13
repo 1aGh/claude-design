@@ -1,0 +1,120 @@
+---
+title: Multi-DS — multiple design systems in one project
+description: How to declare multiple design systems under .design/system/ and route canvases to the right one.
+---
+
+Some products need more than one design system in the same repo — a marketing site that doesn't share the admin tool's pro-tool density, an iOS app that diverges from a desktop dashboard, an enterprise variant with corporate-brand constraints.
+
+The design plugin handles this as **per-DS folders under `<designRoot>/system/`** with **per-canvas attribution** via `.meta.json.designSystem`. The completeness-critic, the design-system-guard subagent (in flow), and the read-side of skill `design-system` all scope to the canvas's declared DS — tokens from one DS never blend into another.
+
+## When to use multi-DS
+
+Reach for it when:
+
+- Two surfaces of the same product have **incompatible visual languages** (e.g., a marketing site with gradients + decorative type vs. an admin tool with dense rows + tabular nums).
+- The team needs **separate token sets** (e.g., a sub-brand with its own accent ladder).
+- A specific platform (iOS, watchOS) has **platform-native constraints** that don't fit the desktop DS.
+
+Avoid it when:
+
+- The difference is a single token override (a different `--accent` for one section). Use canvas-level `opt_out_scope: aesthetic` or a documented theme variant instead.
+- The split is "one-time experiment". A second DS adds maintenance cost — keep it for permanent divergences.
+
+## Single-DS vs. multi-DS layout
+
+**Single-DS** (the default — one DS per project):
+
+```
+.design/
+├── config.json                  # designSystems: [{name: "project", path: "system/project"}], defaultDesignSystem: "project"
+└── system/project/              # literal "project", not the slug of the project name
+    ├── README.md
+    ├── SKILL.md
+    ├── colors_and_type.css
+    └── preview/
+```
+
+**Multi-DS** (opt-in):
+
+```
+.design/
+├── config.json                  # designSystems: [{marketing}, {admin}], defaultDesignSystem: "admin"
+└── system/
+    ├── marketing/
+    │   ├── README.md
+    │   ├── SKILL.md
+    │   ├── colors_and_type.css
+    │   └── preview/
+    └── admin/
+        ├── README.md
+        ├── SKILL.md
+        ├── colors_and_type.css
+        └── preview/
+```
+
+## Adding a second DS
+
+```
+> /design:setup-ds marketing "consumer-facing marketing site for product launch"
+```
+
+The skill detects `additional-ds` mode (config exists, `marketing` not in `designSystems[]`), runs reduced discovery, offers an inheritance picker (typography, voice, iconography, motion — multi-select), and scaffolds `system/marketing/` next to the existing DS.
+
+After scaffold:
+
+```jsonc
+// .design/config.json
+{
+  "designSystems": [
+    { "name": "project",   "path": "system/project",   "description": "Pro-tool admin DS" },
+    { "name": "marketing", "path": "system/marketing", "description": "Consumer marketing DS" }
+  ],
+  "defaultDesignSystem": "project"
+}
+```
+
+## Creating canvases against a specific DS
+
+```
+> /design:new "Marketing Hero" "Landing hero with feature grid" --ds=marketing
+```
+
+The command:
+
+1. Validates `--ds=marketing` against `config.designSystems[].name`. Unknown DS → fail with hint to `/design:setup-ds marketing "<brief>"` (clean separation — `new` doesn't create DSes).
+2. Resolves marketing's tokens + component HTML, passes them as context to `frontend-design`.
+3. Writes `designSystem: "marketing"` into the canvas's `.meta.json`.
+
+Subsequent `/design:edit` iterations on that canvas inherit the `marketing` scope automatically.
+
+## How subagents stay scoped
+
+- **Skill `design-system` (read mode)** loads only the canvas's declared DS — never blends.
+- **`design-system-completeness-critic`** scopes to one DS at a time, or runs per-DS sections when invoked with `--all-ds`.
+- **`flow:design-system-guard`** reads `<canvas>.meta.json.designSystem` first, then enforces only that DS's rules. Cross-DS token use (a canvas declared against `marketing` referencing `admin`'s `--accent`) is a blocker.
+
+## Re-bootstrapping one DS
+
+Same `--force` pattern as single-DS:
+
+```
+> /design:setup-ds marketing --force
+```
+
+Runs `re-bootstrap` mode against just `marketing`, leaving `admin` untouched.
+
+## Reserved DS names
+
+The completeness-critic refuses to register a DS named `preview`, `assets`, `ui_kits` (those are reserved subdir names inside each DS). Pick semantic names: `marketing`, `admin`, `consumer-mobile`, `enterprise`, etc.
+
+## Migration
+
+There's no tooling to migrate a legacy single-DS layout into multi-DS. If you need to:
+
+1. `mv .design/system/<old> .design/system/<new-canonical-name>` (e.g., `mv system/project system/admin`).
+2. Update `config.json.designSystems[]` and `defaultDesignSystem`.
+3. Update `config.tokensCssRel` to point at the renamed path.
+4. For each existing canvas, set `.meta.json.designSystem` to the canonical name.
+5. Run `/design:critic --system-only --all-ds` to verify.
+
+No production users had multi-DS at v0.8, so no migration tooling ships.

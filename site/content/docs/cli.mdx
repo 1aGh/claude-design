@@ -67,6 +67,36 @@ Equivalent to invoking `claude-design-server` directly (which is the second bin 
 
 The server **fails loud** if launched from a directory without a `.design/` folder. That's deliberate — it stops you from accidentally serving the wrong project.
 
+## `mdcc design init`
+
+Non-interactive scaffold helper for the design plugin. Writes Core files from the design-system-inspiration library into `.design/` in the current repo.
+
+```bash
+mdcc design init [--name <slug>] [--ds <name>] [--force] [--dry-run]
+                 [--no-discovery | --discovery-payload <path>]
+```
+
+**Refuses to run interactively.** Full discovery requires Claude Code — use `/design:setup-ds <name>` there. The CLI helper exists for CI / scripted contexts:
+
+- `--no-discovery` — scaffold Core only (~10 files: README, INDEX, config.json, tokens, 9 specimens) with Recommended defaults (Inter + IBM Plex + JetBrains Mono, indigo accent, dark theme, `standard` profile).
+- `--discovery-payload <path>` — read pre-computed answers + tokens from JSON and scaffold Core + derived specimens deterministically. This is the path skill `design-system` (bootstrap mode) uses when shelling out from Claude Code.
+- `--name <slug>` — project name token. Defaults to the current directory basename.
+- `--ds <name>` — design system name (kebab-case). Defaults to `project` (single-DS convention).
+- `--force` — overwrite an existing `system/<ds>/`. Off by default.
+
+```bash
+# Quick CI scaffold (Core only)
+mdcc design init --no-discovery --name acme
+
+# Re-bootstrap an existing DS
+mdcc design init --no-discovery --name acme --force
+
+# Skill-driven scaffold from a payload file
+mdcc design init --discovery-payload /tmp/discovery.json --name acme
+```
+
+For everything beyond a Core scaffold (audience-specific specimens, platform-conditional adds, brand-color discovery), use `/design:setup-ds` inside Claude Code.
+
 ## `mdcc version` / `mdcc help`
 
 What they say on the tin.

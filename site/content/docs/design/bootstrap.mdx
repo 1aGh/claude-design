@@ -1,0 +1,104 @@
+---
+title: Bootstrap a design system
+description: How to scaffold .design/ in a new project — from cold-start to a usable system with tokens, philosophy, and specimens.
+---
+
+The `design` plugin treats `.design/` as the project's living design source. Bootstrapping it produces the four artifacts every subsequent command depends on: tokens, philosophy, specimens, and `config.json`.
+
+Two paths reach the same result:
+
+1. **Inside Claude Code** (recommended) — interactive discovery, project-flavored output, full specimen library.
+2. **From the terminal** (CI / scripted) — `mdcc design init --no-discovery` with Recommended defaults.
+
+## Path 1 — inside Claude Code
+
+```
+> /design:setup-ds project "team scouting + match-day pro tool for amateur clubs"
+```
+
+What happens:
+
+1. **Onboard runs first** (if `.design/config.json` is missing). `/design:setup-onboard` does dependency pre-flight (Node ≥ 20, git), writes a skeleton config with empty `designSystems: []`, and prints install hints for soft deps (agent-browser, mdcc, CLAUDE.md / `.ai/` recommendations).
+2. **Skill `design-system` loads in bootstrap mode.** It detects `first-bootstrap` (no DS yet) and runs an 8-question discovery split across two `AskUserQuestion` rounds — identity (audience, platforms, theme) + brand (mood references, brand color, typography, content tone).
+3. **Direction confirmation.** The skill echoes a two-sentence proposed direction. You say yes or correct it.
+4. **Mapping → file set.** The skill consults `_MAPPING.md` to compute which specimens to scaffold based on the discovery answers. A consumer marketing site gets ~12 specimens; a pro-tool with multiplayer gets ~22.
+5. **Generation.** Tokens are derived from the brand color (OKLCH-converted, with hover / active / fg auto-computed). The README, SKILL.md, INDEX, and config are generated from `.tpl` templates. Each specimen is **generated fresh** using the inspiration library as reference — not copied verbatim, never with placeholder copy.
+6. **Completeness-critic auto-runs.** 3-tier rules (Core blocker / Conventional warning / Free-form acknowledged) calibrated by `completenessProfile`. The scaffold completes when there are no blockers.
+7. **Next steps printed.**
+
+Alternative entries (all triggered transparently):
+
+- `/design:edit "<feedback>"` against a fresh repo → skill `design-system` auto-loads in bootstrap mode with the feedback as the Q1 product one-liner.
+- `/design:new "<Name>" "<brief>"` against a fresh repo → same auto-bootstrap with `$BRIEF` as Q1, then the canvas creation proceeds with the freshly-scaffolded tokens.
+
+## Path 2 — from the terminal
+
+For CI, scripted setup, or "just give me a starting point I'll edit by hand":
+
+```bash
+cd /path/to/repo
+mdcc design init --no-discovery --name acme
+```
+
+Produces ~16 files using Recommended defaults:
+
+```
+.design/
+├── README.md
+├── INDEX.md
+├── config.json
+└── system/project/
+    ├── README.md
+    ├── SKILL.md
+    ├── colors_and_type.css
+    └── preview/
+        ├── _layout.css
+        ├── colors-text.html
+        ├── colors-surfaces.html
+        ├── colors-accent.html
+        ├── type-scale.html
+        ├── spacing-scale.html
+        ├── motion.html
+        ├── components-buttons.html
+        ├── components-cards.html
+        └── components-inputs.html
+```
+
+After the Core scaffold, open Claude Code and run `/design:setup-ds project "<one-line product brief>" --force` to re-run with the full 8-question discovery — you'll get a richer, project-flavored result.
+
+## Adding a second design system
+
+Multi-DS opt-in (e.g., a marketing DS sibling to your admin DS):
+
+```
+> /design:setup-ds marketing "consumer-facing marketing site for product launch"
+```
+
+The skill detects `additional-ds` mode (config exists, `marketing` not in `designSystems[]`), runs reduced discovery (7 Qs + Q_purpose + an inheritance picker), and scaffolds `system/marketing/` alongside the existing DS. Subsequent `/design:new --ds=marketing "<Name>" "<brief>"` creates canvases scoped to that DS.
+
+See [Multi-DS](/docs/design/multi-ds) for the full multi-DS workflow.
+
+## Re-bootstrapping
+
+To rerun discovery on an existing DS (after a product pivot, brand refresh, etc.):
+
+```
+> /design:setup-ds project --force
+```
+
+The skill detects `re-bootstrap` mode and pre-fills all 8 questions with the current values. Hit enter to keep each, or change to re-generate the affected files. Without `--force`, the command refuses with a list of safer alternatives (`/design:edit` for incremental, `/design:setup-ds <new-name>` for a sibling DS).
+
+## What the bootstrap produces
+
+| File | Role |
+| ---- | ---- |
+| `.design/README.md` | Orchestration layer — read by any agent picking up the repo |
+| `.design/INDEX.md` | Canvas catalog (auto-maintained by `/design:setup-docs`) |
+| `.design/config.json` | Per-repo plugin config — tokens path, theme, DS list, profile |
+| `.design/system/<ds>/README.md` | Philosophy layer — audience, mood, voice, hard rules |
+| `.design/system/<ds>/SKILL.md` | Read-skill metadata loaded by any agent iterating on a canvas |
+| `.design/system/<ds>/colors_and_type.css` | Authoritative tokens (OKLCH, one-accent rule, reduced-motion guard) |
+| `.design/system/<ds>/preview/` | Browsable specimens — at least 8 in `standard` profile |
+| `.design/system/<ds>/assets/{logos,glyphs}/` | Brand assets (may start empty) |
+
+Browse them: `mdcc design serve` → `http://localhost:4399`.

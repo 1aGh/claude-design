@@ -158,7 +158,17 @@ Write `<designRoot>/config.json` with `extensions: []`, `completenessProfile: "s
 
 Write `<designRoot>/system/<ds>/SKILL.md` with `name: ${ds}-design` (or similar slug derived from the project label).
 
-**Run completeness-critic** (when present — Phase 3 of the bootstrap plan adds it). Exit non-zero only if it returns blockers.
+**Run completeness-critic.** Spawn `design-system-completeness-critic` as a subagent with:
+
+```
+config_path: <repo>/.design/config.json
+ds_name:     <target_ds>
+ds_root:     <designRoot>/system/<target_ds>/
+output_path: <designRoot>/_history/_system/000-bootstrap-completeness.md
+all_ds:      false
+```
+
+The critic emits a JSON verdict. If it returns **blockers**, the bootstrap flow surfaces them in the next-step block and recommends the user re-run with `--force` after addressing each. Warnings are listed in the completion message but do NOT block. Tier 3 (free-form) acknowledgements are listed informationally.
 
 ### Post-Flight (slim)
 

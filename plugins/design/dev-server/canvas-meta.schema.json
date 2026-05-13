@@ -88,8 +88,19 @@
     },
     "tokens_used": {
       "type": "array",
-      "description": "CSS variables referenced by the canvas (auto-extracted on each /design edit). Used by /design:handoff to know which tokens the canvas depends on.",
+      "description": "CSS variables referenced by the canvas (auto-extracted on each /design:edit). Used by /design:handoff to know which tokens the canvas depends on.",
       "items": { "type": "string" }
+    },
+    "designSystem": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Which design system this canvas was built against. Kebab-case slug matching a name in config.designSystems[]. Read by skill 'design-system' (read mode) + design-system-completeness-critic + flow's design-system-guard to scope rules to the right tokens / philosophy. Optional in single-DS projects (falls back to config.defaultDesignSystem); REQUIRED in multi-DS projects to avoid cross-DS contamination."
+    },
+    "opt_out_scope": {
+      "type": "string",
+      "enum": ["palette", "aesthetic", "full"],
+      "description": "Persisted DS opt-out scope for this canvas. Subsequent /design:edit iterations inherit this; --opt-out=<scope> on the flag overrides for that iteration and persists the new value. a11y is enforced at every scope.",
+      "default": "palette"
     }
   }
 }

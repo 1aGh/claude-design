@@ -33,7 +33,7 @@ Opt-out flagy (pro vědomé výjimky):
 
 **Mode není volitelný-on opt-in.** Mode je **opt-out**. Když user nechce platit cost, musí explicitně říct `--quick` nebo `--no-critic`. Ticha je souhlas s plným loopem.
 
-**Vstup `$ARGUMENTS`:** `<Name> "<brief>" [--component] [--mobile] [--quick | --no-critic] [--perfect-iter N]`
+**Vstup `$ARGUMENTS`:** `<Name> "<brief>" [--component] [--mobile] [--quick | --no-critic] [--perfect-iter N] [--ds=<name>]`
 
 - `<Name>` — Title-Case s mezerami (`Match Recap`, `Scout Radar`) pro full-screen canvas projekt.
   - PascalCase (`MatchRecap`) když je to komponenta s `--component`.
@@ -41,6 +41,7 @@ Opt-out flagy (pro vědomé výjimky):
 - `--component` — vytvoří `<designRoot>/<newComponentDir>/<PascalName>.jsx` místo top-level HTML. Komponenty se mountují uvnitř canvas artboardů.
 - `--mobile` — naznačí mobile aesthetic v promptu (mobile chrome, single column). Default = desktop. Pokud název obsahuje "Mobile" / "iOS" / "Android", auto-detect.
 - `--quick` | `--no-critic` | `--perfect-iter N` — viz tabulka výše.
+- `--ds=<name>` — pick which design system this canvas uses (multi-DS projects). Must match a name in `config.json.designSystems[]`. Default = `config.defaultDesignSystem`, falling back to `project` for single-DS layouts. **Unknown DS fails with hint to `/design:setup-ds <name>` — no fallback prompt** (clean separation: `new` does canvases, `setup-ds` does DS creation).
 - `--opt-out=palette|aesthetic|full` — opt out z project DS rules. **Default = `palette`** (tokens link + rootClass envelope kept; local namespaced palette overrides colors only; type/radii/aesthetic still enforced). `aesthetic` = palette + gradients/off-ladder radii/alt type pairings/decorative SVGs allowed. `full` = DS treated as advisory. **A11y enforced at every scope.** Plain-language opt-out signals in the brief ("opt-out design system", "modern color scheme", "different feel", "fully off-system") trigger an inferred scope + one-shot AskUserQuestion before the loop kicks off — see SKILL.md "Opt-out scope" + "Iter-1 checkpoint when scope > palette".
 
 **Backwards compat:** `--perfect` a `--perfect --all` jsou stále accepted (no-op pro samotný `--perfect`, `--all` rozšiřuje panel na **every** critic v `agents/`). User co píše `--perfect` explicitně dostane co očekává.
@@ -52,6 +53,7 @@ Opt-out flagy (pro vědomé výjimky):
 /design:new "Scout Radar Mobile" "Radar/sonar circular sweep finder — single full-screen canvas s 2 artboardy: scanning + result list" --mobile
 /design:new MatchRecap "..." --component                   # komponenta v components/
 /design:new "iOS Bikeshare Signup" "5-screen iOS signup flow, modern blue+orange palette" --mobile --opt-out=aesthetic
+/design:new "Marketing Hero" "Landing hero with feature grid" --ds=marketing
 ```
 
 ## Postup
@@ -74,13 +76,13 @@ fi
 
 | State | Action |
 |---|---|
-| `HAS_DS=true` | Skip to step 1. If `--ds=<name>` was passed, validate it against `config.json.designSystems[].name`. Unknown DS → fail with hint to `/design:setup-ds <name> "[brief]"`. |
+| `HAS_DS=true` | Skip to step 1. **If `--ds=<name>` was passed**, validate it against `config.json.designSystems[].name`. Unknown DS → fail with:<br/>`Error: design system "<name>" not found in config.json.designSystems[].`<br/>`Available: <list>`<br/>`To create: /design:setup-ds <name> "<brief>"`<br/>**No fallback prompt** — clean separation between canvas creation (`new`) and DS creation (`setup-ds`). Resolve the DS's tokens + component HTML and pass as context to `frontend-design`. Write the chosen `designSystem` name into the new canvas's `.meta.json`. |
 | `HAS_DS=false`, `CONFIG_PRESENT=false` | Print `→ Running /design:setup-onboard to initialize project…` and invoke `/design:setup-onboard --skip-prompts`. Then invoke `Skill design-system` with `mode_hint=bootstrap`, `target_ds=project`, `brief=$BRIEF`. After bootstrap returns, continue to step 1 and create the canvas with the freshly-scaffolded tokens. |
 | `HAS_DS=false`, `CONFIG_PRESENT=true` | Invoke `Skill design-system` with `mode_hint=bootstrap`, `target_ds=project`, `brief=$BRIEF` directly. After bootstrap returns, continue to step 1. |
 
 The skill treats `$BRIEF` as the answer to discovery Question 1 (product one-liner) and runs the full 8-question discovery, scaffolds the DS, runs the completeness-critic, and returns. The canvas creation then proceeds with the project's actual tokens (not a default placeholder set).
 
-### 1. Resolve config
+### 1. Resolve config + DS
 
 Vyvolej skill `design` se vstupem: `new $ARGUMENTS`.
 
@@ -96,6 +98,28 @@ TOKENS_REL=$(jq -r '.tokensCssRel // "system/colors_and_type.css"' "$CFG")
 NEW_CANVAS_DIR=$(jq -r '.newCanvasDir // "ui/project"' "$CFG")
 NEW_COMPONENT_DIR=$(jq -r '.newComponentDir // "ui/project/components"' "$CFG")
 TEAM_DEFAULT=$(jq -r '.teamAccentDefault // empty' "$CFG")
+
+# Resolve target DS (multi-DS aware)
+DS_FLAG=$(grep -oE -- '--ds=[a-z][a-z0-9-]*' <<< "$ARGS" | cut -d= -f2)
+DEFAULT_DS=$(jq -r '.defaultDesignSystem // "project"' "$CFG")
+TARGET_DS="${DS_FLAG:-$DEFAULT_DS}"
+
+# Validate against designSystems[]
+KNOWN=$(jq -r '.designSystems // [] | map(.name) | join(",")' "$CFG")
+if [[ -n "$DS_FLAG" ]]; then
+  if ! jq -e --arg ds "$DS_FLAG" '.designSystems // [] | any(.name == $ds)' "$CFG" > /dev/null; then
+    echo "Error: design system \"$DS_FLAG\" not found in config.json.designSystems[]."
+    echo "Available: ${KNOWN:-<none>}"
+    echo "To create: /design:setup-ds $DS_FLAG \"<brief>\""
+    exit 1
+  fi
+fi
+
+# Resolve DS-specific paths
+DS_TOKENS=$(jq -r --arg ds "$TARGET_DS" '.designSystems[] | select(.name == $ds) | .path + "/colors_and_type.css" // empty' "$CFG")
+DS_ROOT=$(jq -r --arg ds "$TARGET_DS"   '.designSystems[] | select(.name == $ds) | .path // empty' "$CFG")
+# Fallback to single-DS layout if designSystems[] is empty
+[[ -z "$DS_ROOT" ]] && DS_ROOT="system/project" && DS_TOKENS="$TOKENS_REL"
 ```
 
 ### 2. Server lifecycle check (auto-start pokud chybí)
@@ -294,7 +318,7 @@ Bootstrap a chat transcript: write `<DESIGN_ROOT>/_history/<slug>/chat.md` with 
 ### 11. Bootstrap docs
 
 For a new canvas:
-1. Write `<DESIGN_ROOT>/<NEW_CANVAS_DIR>/<Name>.meta.json` from the brief (title, subtitle from one-line, brief, platform from --mobile flag, sections+artboards extracted from generated JSX, **`opt_out_scope` from step 4**). Subsequent `/design:edit` iterations on this canvas read the field and inherit the scope automatically — no re-asking on every edit.
+1. Write `<DESIGN_ROOT>/<NEW_CANVAS_DIR>/<Name>.meta.json` from the brief (title, subtitle from one-line, brief, platform from --mobile flag, sections+artboards extracted from generated JSX, **`opt_out_scope` from step 4**, **`designSystem: $TARGET_DS` from step 1**). Subsequent `/design:edit` iterations on this canvas read these fields and inherit the scope + DS automatically — no re-asking on every edit. In multi-DS projects, the `designSystem` field is what `flow:design-system-guard` and `design-system-completeness-critic` use to scope their checks to the right DS.
 2. **If `<DESIGN_ROOT>/INDEX.md` doesn't exist** → invoke `/design:setup-docs --full` (regenerates both INDEX.md and README.md from all canvases). **Do NOT improvise a hand-written INDEX.md** — `/design:setup-docs` is the source of truth and the AUTO-MAINTAINED marker depends on it. Improvised INDEX gets overwritten on next `/design:setup-docs` run, and any rows added by hand are lost.
 3. **Else** (INDEX.md exists) → add a row to `<DESIGN_ROOT>/INDEX.md` for the new canvas (or invoke `/design:setup-docs` without `--full` to do the incremental update for you).
 4. If `<DESIGN_ROOT>/README.md` doesn't exist after step 2, generate it via `/design:setup-docs --full` flow.

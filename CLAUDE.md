@@ -47,7 +47,7 @@ It writes three runtime files into `<designRoot>/` that the orchestrator (`/desi
 | File | Role |
 | ---- | ---- |
 | `_server.json` | `{ pid, port, url, started }` — orchestrator uses this to detect a live instance instead of starting a duplicate. |
-| `_active.json` | `{ active, open_tabs, selected, last_change }` — the injected inspector pushes the user's currently-selected element here over WebSocket so `/design "<feedback>"` can scope edits. |
+| `_active.json` | `{ active, open_tabs, selected, last_change }` — the injected inspector pushes the user's currently-selected element here over WebSocket so `/design:edit "<feedback>"` can scope edits. |
 | `_history/<slug>/` | Auto-snapshot stack per canvas, consumed by `/design:rollback`. |
 
 These files are user-facing runtime state — when changing the server, keep the schemas backwards-compatible or update both producer and the consuming commands (`plugins/design/commands/*.md`) in the same change.
@@ -72,7 +72,41 @@ Every flow command/skill is project-agnostic. They read `.ai/workflows.config.js
 
 ### Published npm surface
 
-`package.json` `files` is intentionally minimal — only `cli/`, `plugins/design/dev-server/`, `plugins/flow/templates/`, the flow config schema, `LICENSE`, and `README.md` ship to npm. The plugin commands/agents/skills (`plugins/*/commands/`, etc.) are **NOT** published via npm — they reach users through the Claude Code plugin marketplace mechanism (`/plugin install`). When adding a new top-level directory that the CLI needs at runtime, add it to `files` or `mdcc` will break for end users.
+`package.json` `files` is intentionally minimal — only `cli/`, `plugins/design/dev-server/`, `plugins/design/templates/`, `plugins/flow/templates/`, the flow config schema, `LICENSE`, and `README.md` ship to npm. The plugin commands/agents/skills (`plugins/*/commands/`, etc.) are **NOT** published via npm — they reach users through the Claude Code plugin marketplace mechanism (`/plugin install`). When adding a new top-level directory that the CLI needs at runtime, add it to `files` or `mdcc` will break for end users.
+
+## Design system bootstrap (`.design/`)
+
+When the user asks you to scaffold a design system for ANY project, do not improvise. The design plugin has TWO setup commands plus skill-driven bootstrap:
+
+- **`/design:setup-onboard`** — project-level environment init (deps check, install hints, CLAUDE.md / .ai/ offers, writes skeleton `.design/config.json` with `designSystems: []`). Mirrors `/flow:setup-onboard`. **Does NOT create a DS.** Auto-invoked transparently when other commands hit a missing `.design/config.json`.
+- **`/design:setup-ds <name> "[brief]"`** — dedicated command for creating a DS (first or additional). Auto-invokes `setup-onboard` first if needed.
+- **Auto-load skill `design-system` (BOOTSTRAP mode)** when `/design:edit "..."` or `/design:new "..."` is invoked against a `<designRoot>/system/` that has no DS yet.
+
+Eight rules govern the result:
+
+- **Onboard before bootstrap.** `/design:setup-onboard` is the gate: it runs dependency pre-flight, surfaces install hints, and writes a skeleton `.design/config.json` with empty `designSystems: []`. Only after that does `/design:setup-ds` (or auto-load) run DS bootstrap. Onboard is auto-invoked transparently when other commands detect a missing config.
+
+- **One skill owns DS work.** Skill `design-system` (`plugins/design/skills/design-system/SKILL.md`) has TWO modes: READ (default — load active canvas's DS context for iteration) and BOOTSTRAP (create / extend / re-bootstrap). Mode is auto-detected on invocation. **There is NO separate `init` skill.** If you see one, delete it — it's WIP residue.
+
+- **Three bootstrap sub-modes.** `first-bootstrap` (no config exists, or `designSystems[]` empty), `additional-ds` (config exists, new name), `re-bootstrap` (existing DS, requires `--force`). Each runs different discovery (full 8-Q vs reduced 7-Q + Q_purpose + inheritance picker vs pre-filled 8-Q).
+
+- **Inspiration library, not substrate.** The template at `plugins/design/templates/design-system-inspiration/` is a REFERENCE inventory. Skill (bootstrap mode) reads it as "this is what a good specimen looks like", then GENERATES project-flavored files based on discovery answers. Do not naively copy reference files; do not include placeholder copy ("Lorem", "Click here", "Acme Corp.") in scaffolded output.
+
+- **Dynamic scaffold count.** A project gets 10–22 specimens out of the library (currently 16 specimens populated — Core 10 + Universal 6 — full ~62-file library lands in follow-up phases). Selection driven by `_MAPPING.md` based on discovery answers. Marketing sites get fewer; pro-tools with multiplayer get more. Use `config.json`'s `activeFamilies[]` to know what's in scope.
+
+- **Single-DS default dirname is the literal `project`.** Multi-DS opt-in uses `system/<name>/` (kebab-case slug matching a `config.designSystems[]` entry). Never use `system/<slug-of-project-name>/` — that's the D2 divergence the completeness-critic flags as a blocker (Tier 1, C2).
+
+- **Three-tier compliance.** `design-system-completeness-critic` enforces three tiers: Core (blocker, regardless of profile), Conventional (warning, gated by `activeFamilies` + `completenessProfile`), Free-form (no check, acknowledged). Lets the system stay extensible without weakening compliance. Profile knob (`completenessProfile: minimal | standard | strict`) lives in `config.json`.
+
+- **Daily verb is `/design:edit`, not `/design`.** The bare `/design` form is a one-version compat stub that redirects (will be removed in next minor). Cross-reference future docs with `/design:edit` only. The renamed verbs are: `/design:edit` (was `/design`), `/design:setup-docs` (was `/design:docs`).
+
+Reference: `/Volumes/D/git/dugmate/.design/system/project/` (the canonical real-world example).
+Library: `plugins/design/templates/design-system-inspiration/`.
+Skill: `plugins/design/skills/design-system/SKILL.md`.
+Completeness-critic: `plugins/design/agents/design-system-completeness-critic.md`.
+Slash commands: `plugins/design/commands/{setup-onboard,setup-ds,setup-docs,help}.md`.
+Per-DS canvas attribution: `<canvas>.meta.json.designSystem` (kebab-case slug; multi-DS projects only).
+Categories catalog: `plugins/design/CATEGORIES.md`.
 
 ## Release flow
 
