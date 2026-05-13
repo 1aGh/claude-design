@@ -207,7 +207,7 @@ Create `.ai/plans/README.md` with:
 
 ### 6. Initialize Workflow State
 
-If `.ai/state/STATE.md` does not already exist, initialize it so that session-continuity commands (`pause-work`, `resume-work`) work from the start:
+If `.ai/state/STATE.md` does not already exist, initialize it so that session-continuity commands (`/flow:pause`, `/flow:resume`) work from the start:
 
 1. Create the directory: `mkdir -p .ai/state`
 2. If `.ai/templates/STATE.md` exists, copy it to `.ai/state/STATE.md`; otherwise create a minimal state file.

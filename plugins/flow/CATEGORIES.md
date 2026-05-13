@@ -30,7 +30,7 @@ Verb-as-complete-action. Terse names. Includes `validate` and `release` which al
 | `/flow:validate` | Full validation pipeline (static + tests + build + scenario + a11y + design). | Before `/flow:done` or on demand. |
 | `/flow:status` | Unified situational awareness — where you are, what's next. | Resuming a session. |
 | `/flow:pause` | Snapshot state, write HANDOFF.md, ready for context switch. | Stepping away mid-task. |
-| `/flow:resume-task` | Resume a previously paused workflow. | Coming back from a pause. |
+| `/flow:resume` | Resume a previously paused workflow. | Coming back from a pause. |
 | `/flow:scenario` | Cross-platform UI scenario across 5 platforms. | Manual smoke / validation. |
 | `/flow:quick` | Fast-path for trivial changes — skip plan cycle. | One-line hotfix, doc nudge. |
 | `/flow:release` | Walk the project's release runbook with explicit confirmation per step. | Cutting a release. |

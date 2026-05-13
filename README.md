@@ -1,6 +1,6 @@
 # md-claude — Claude Code marketplace
 
-A personal marketplace of Claude Code plugins by Michal Dovrtěl (`1aGh`). Two plugins today, plus an `mdcc` CLI for scaffolding and running the bundled dev tooling.
+A personal marketplace of Claude Code plugins. Two plugins today, plus an `mdcc` CLI for scaffolding and running the bundled dev tooling.
 
 > Contributing? See [CONTRIBUTING.md](./CONTRIBUTING.md). Security? See [SECURITY.md](./SECURITY.md).
 
@@ -9,7 +9,7 @@ A personal marketplace of Claude Code plugins by Michal Dovrtěl (`1aGh`). Two p
 | **`design`** | Canvas-first iteration on HTML/JSX mocks under `.design/` — element selection via Cmd+Click, auto-managed dev server, chained UX/DS critique. |
 | **`flow`** | Generic agentic workflow loop with a second-brain `.ai/` workspace. `/flow:plan`, `/flow:execute`, `/flow:utils-verify`, `/flow:validate`, `/flow:done`, `/flow:setup-onboard`, `/flow:record-ddr`, `/flow:scenario`, …. Project-agnostic via `<project>` placeholders + per-repo `.ai/workflows.config.json`. |
 
-Plus the **`mdcc`** CLI (Michal Dovrtěl Claude Code) — `mdcc init` scaffolds a fresh `.ai/` workspace from the flow plugin skeleton; `mdcc design serve` boots the design dev server.
+Plus the **`mdcc`** CLI — `mdcc init` scaffolds a fresh `.ai/` workspace from the flow plugin skeleton; `mdcc design serve` boots the design dev server.
 
 ## Quick start
 
@@ -85,7 +85,7 @@ Commands are grouped by category. Non-daily commands use a `<group>-<verb>` pref
 | `/flow:done` | Close out feature: validate → DDR sweep → commit → push → PR → retro → archive. |
 | `/flow:status` | Where am I? Active phase, plan, blockers. |
 | `/flow:scenario <flow>` | Cross-platform UI scenario run with screenshots. |
-| `/flow:pause` / `/flow:resume-task` | Session continuity via `HANDOFF.md`. |
+| `/flow:pause` / `/flow:resume` | Session continuity via `HANDOFF.md`. |
 | `/flow:quick` | Fast path for trivial changes (skip the full plan cycle). |
 | `/flow:release` | Walk the project's release runbook with confirmation per step. |
 | `/flow:help` | Live, grouped command index. |

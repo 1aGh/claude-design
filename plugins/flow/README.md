@@ -10,7 +10,7 @@ Generic agentic workflow loop with a second-brain `.ai/` workspace. Project-agno
 
 | Group | Count | What it does |
 | ----- | ----- | ------------ |
-| **daily** | 11 | Every-cycle workflow: `plan`, `execute`, `done`, `validate`, `release`, `status`, `pause`, `resume-task`, `scenario`, `quick`, `help`. |
+| **daily** | 11 | Every-cycle workflow: `plan`, `execute`, `done`, `validate`, `release`, `status`, `pause`, `resume`, `scenario`, `quick`, `help`. |
 | **setup-*** | 4 | One-shot bootstrapping: `setup-onboard`, `setup-prd`, `setup-codebase-map`, `setup-context`. |
 | **validate-*** | 2 | Specialized validators: `validate-a11y`, `validate-visual`. |
 | **bug-*** | 2 | Incident workflow: `bug-rca`, `bug-fix`. |

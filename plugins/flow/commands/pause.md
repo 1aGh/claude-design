@@ -103,7 +103,7 @@ Output a brief summary to the user:
   Handoff: .ai/state/HANDOFF.md
   State:   .ai/state/STATE.md
 
-  Resume later with `resume-work`.
+  Resume later with `/flow:resume`.
 ```
 
 ## Output
@@ -117,4 +117,4 @@ Two files written:
 
 - You can share `.ai/state/HANDOFF.md` with another developer for pair handoff
 - The handoff includes enough context to resume without reading the full plan
-- Run `resume-work` to pick up where you left off
+- Run `/flow:resume` to pick up where you left off
