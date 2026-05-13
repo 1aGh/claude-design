@@ -16,7 +16,7 @@
       "name": "flow",
       "source": "./plugins/flow",
       "category": "workflow",
-      "description": "Generic agentic workflow loop — /flow:plan, /flow:execute, /flow:verify, /flow:validate, /flow:done, /flow:onboard, /flow:status, /flow:pause, /flow:resume, /flow:ddr, /flow:retro, /flow:scenario, /flow:bug-fix, /flow:quick, /flow:code-review. Project-agnostic via `<project>` placeholders + per-repo `.ai/workflows.config.json`. Bundled subagents (a11y-auditor, design-system-guard, scenario-runner, test-coverage) and skills (workflow-state, ddr-keeper, scenario, agent-browser, agent-device, codebase-intelligence, a11y-checker, question-protocol, make-skill-template). Use `mdcc init` to scaffold `.ai/` skeleton."
+      "description": "Generic agentic workflow loop — 29 slash commands across 9 categories. Daily verbs: /flow:plan, /flow:execute, /flow:done, /flow:validate, /flow:status, /flow:pause, /flow:resume-task, /flow:scenario, /flow:quick, /flow:release, /flow:help. Grouped specializations follow a `<group>-<verb>` prefix: setup-* (onboard, prd, codebase-map, context), bug-* (rca, fix), record-* (ddr, retro, execution), maintain-* (clean, docs, ai-health, discover), validate-* (a11y, visual), review-code, release-changelog, utils-verify. Type /flow:help for the live index. Project-agnostic via `<project>` placeholders + per-repo `.ai/workflows.config.json`. Bundled subagents (a11y-auditor, design-system-guard, scenario-runner, test-coverage) and skills (workflow-state, ddr-keeper, scenario, agent-browser, agent-device, codebase-intelligence, a11y-checker, question-protocol, make-skill-template). Use `mdcc init` to scaffold `.ai/` skeleton."
     }
   ]
 }

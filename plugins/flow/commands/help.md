@@ -14,7 +14,6 @@ Print every `/flow:*` command grouped by its `category:` frontmatter field. Use 
 
 Walk `plugins/flow/commands/*.md`. For each file, parse its YAML frontmatter and collect `name`, `category`, and `description`.
 
-- Skip files whose `category` is `deprecated` from the main listing — surface them in the **Rename history** footer instead.
 - If a file has no `category`, list it under `(uncategorized)` at the bottom so the gap is visible.
 
 ### 2. Group + order
@@ -45,25 +44,7 @@ For each group, print:
 | /flow:<name>     | <description>                        |
 ```
 
-### 4. Footer — rename history
-
-If any `category: deprecated` stubs exist, print a final section:
-
-```
-## Rename history (compat stubs)
-
-These old slash names still work but redirect to the new names. The stubs are removed in v0.7.0.
-
-| Old           | New                  |
-| ------------- | -------------------- |
-| /flow:ddr     | /flow:record-ddr     |
-| /flow:retro   | /flow:record-retro   |
-| …             | …                    |
-```
-
-Source each row from the stub's `description:` field (parse the `/flow:<new-name>` reference).
-
-### 5. Pointer
+### 4. Pointer
 
 Close with:
 
@@ -76,3 +57,4 @@ For group definitions and the canonical catalog, see `plugins/flow/CATEGORIES.md
 - This command is **read-only**. It never edits files — it just scans frontmatter and renders the table.
 - Source of truth for the command list is the **frontmatter on disk** (no drift). `CATEGORIES.md` supplies group ordering + group prose.
 - If a new command is added without `category:`, `/flow:help` will surface it under `(uncategorized)` — that's the signal to fill in the field.
+- The Phase 13 renames shipped under compat stubs in v0.6.0 and were removed in v0.6.1. Old slash names (`/flow:ddr`, `/flow:onboard`, …) no longer resolve. See `plugins/flow/CATEGORIES.md` for the historical mapping.

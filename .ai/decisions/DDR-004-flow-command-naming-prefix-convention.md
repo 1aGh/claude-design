@@ -31,7 +31,7 @@ Adopt **both**, with the naming convention as load-bearing:
 2. **`category:` frontmatter field.** Required on every live command. Value matches the filename prefix and is one of nine canonical groups: `daily`, `utils`, `setup`, `validate`, `bug`, `record`, `maintain`, `review`, `release`. Compat stubs use `category: deprecated`.
 3. **Canonical catalog at `plugins/flow/CATEGORIES.md`.** One section per group, member list, rename history footer.
 4. **`/flow:help` aggregator.** Reads `category:` frontmatter at run-time and renders the grouped index — no drift between catalog and reality.
-5. **Backwards-compatible stubs** under the 11 old filenames. Each stub has `category: deprecated` and a one-line redirect message naming the new slash command.
+5. **Backwards-compatible stubs** under the 11 old filenames in `v0.6.0` only. Each stub had `category: deprecated` and a one-line redirect message naming the new slash command. Stubs were **removed in `v0.6.1`** (~one day after v0.6.0 shipped) because no traffic had hit them — the grace window was kept symbolic, not load-bearing. See "Compat-stub removal target" below.
 
 Prefix-based autocomplete (`/flow:bug-` → `bug-rca` + `bug-fix`) is the working substitute for nested namespacing. Typing `/flow:setup-` narrows to setup-* only, `/flow:record-` to record-* only, etc.
 
@@ -39,15 +39,19 @@ Prefix-based autocomplete (`/flow:bug-` → `bug-rca` + `bug-fix`) is the workin
 
 **Strict consistency wins over recognized-acronym exception.** DDR is an established acronym in software architecture, so `record-ddr` reads "Record Design Decision Record" — a stutter. We accepted it. Every non-daily command gets a group prefix; no exceptions. The stutter is the cost of zero-exception consistency. Documented in `CATEGORIES.md` footnote.
 
-### Compat-stub removal target
+### Compat-stub removal target (actual: v0.6.1)
 
-**The 11 deprecated stubs ship through v0.6.x and are removed in v0.7.0.** That includes:
+**The 11 deprecated stubs shipped in v0.6.0 only and were removed in v0.6.1** (~one day later). Removed stubs:
 
 - `verify.md`, `onboard.md`, `create-prd.md`, `map-codebase.md`, `context.md`, `ddr.md`, `retro.md`, `execution-report.md`, `ai-health.md`, `discover.md`, `code-review.md`
 
-Each stub file carries a `<!-- TODO: remove this stub after v0.7.0 ships -->` comment so the removal sweep is mechanical.
+The original plan (in earlier revisions of this DDR) was to keep stubs through the `0.6.x` line and remove in `0.7.0`. The early-removal decision was made because:
 
-Phase 13 itself shipped as the minor bump (`0.5.0` → `0.6.0`), so the stubs live through the `0.6.x` line. They are removed in the next minor (`0.7.0`), whose expected ETA is **mid-to-late 2026**, coinciding with Phase 4 (canvas v2 rendering) shipping. If Phase 4 slips past 2026 Q4, revisit this date in a follow-up DDR rather than letting the stubs linger indefinitely.
+- v0.6.0 had been on npm for under a day; no observed traffic to old slash names.
+- The repo is the only known consumer; carry costs (40-file `commands/` directory, confusion in `/flow:help` rendering) outweighed the symbolic grace window.
+- Acceptable risk profile: anyone typing `/flow:ddr` in v0.6.1 will get a "command not found" instead of a redirect message; that's a one-time mental remap, not a workflow break, since the new names are documented in `CATEGORIES.md`, this DDR, and `/flow:help`.
+
+**Future renames** in the flow plugin should follow the same pattern unless there is a known external consumer base: ship the rename in one release with stubs, remove stubs in the next patch. If a known consumer base ever exists, restore the full minor-grace-window discipline via a follow-up DDR.
 
 ## Consequences
 
@@ -61,7 +65,7 @@ Phase 13 itself shipped as the minor bump (`0.5.0` → `0.6.0`), so the stubs li
 **Negative**
 
 - `record-ddr` reads "Record Design Decision Record" stutter (accepted cost; see Acronym rule above).
-- 11 compat stubs add file-count noise to `commands/` until v0.7.0.
+- 11 compat stubs added file-count noise to `commands/` for one release (v0.6.0); removed in v0.6.1.
 - Anyone reading old `.ai/plans/` or release notes will see `/flow:onboard` / `/flow:ddr` / etc. and need to mentally remap. The rename-history tables in `CATEGORIES.md` and `/flow:help` mitigate this.
 
 **Future-locked**
@@ -82,7 +86,7 @@ Phase 13 (this DDR's parent plan) executed:
 
 - 11 `git mv` renames under `plugins/flow/commands/`.
 - `category:` frontmatter added to every live command; `name:` normalized to match filename.
-- 11 deprecated stubs authored.
+- 11 deprecated stubs authored in v0.6.0 and removed in v0.6.1.
 - `/flow:help` aggregator authored.
 - `CATEGORIES.md`, `plugins/flow/README.md`, root `README.md`, `CLAUDE.md` updated.
 - Full reference sweep across the repo including hidden directories (`.ai/`, `.github/`, `plugins/flow/.claude-plugin/`).

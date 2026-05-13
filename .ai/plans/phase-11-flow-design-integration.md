@@ -39,7 +39,7 @@ Four wired-up integrations:
 - **Affected files:**
   - `plugins/flow/commands/plan.md` (extend — design-canvas detection step)
   - `plugins/flow/commands/done.md` (extend — handoff sweep step)
-  - `plugins/flow/commands/map-codebase.md` (extend — design artifacts section)
+  - `plugins/flow/commands/setup-codebase-map.md` (extend — design artifacts section)
   - `plugins/flow/skills/codebase-intelligence/SKILL.md` (extend — design awareness)
   - `plugins/flow/skills/ddr-keeper/SKILL.md` (extend — canvas-reference prompt)
   - `plugins/flow/.claude-plugin/config.schema.json` (extend with `paths.designRoot`, default `.design`)

@@ -1,5 +1,7 @@
 # Phase 3: `integrations.changelog` + `/flow:release-changelog` + `/flow:release` (downstream-reusable)
 
+> **Archived note (2026-05-13, post-Phase-13 rename):** This plan references `plugins/flow/commands/onboard.md` in several places. That file was renamed to `setup-onboard.md` in Phase 13 and shipped under the new path in v0.6.0. Any path reference below pointing to `onboard.md` should be read as "the file now at `setup-onboard.md`". See [DDR-004](../../decisions/DDR-004-flow-command-naming-prefix-convention.md) for the rename rationale and [`plugins/flow/CATEGORIES.md`](../../../plugins/flow/CATEGORIES.md) for the full rename mapping.
+
 > **Re-scoped 2026-05-12 (v7).** Final naming follows the established `validate` parent/group pattern: the `<verb>` parent lives in `daily`, the `<verb>-<specialization>` members live in the prefix group.
 >
 > - **`/flow:release`** (`category: daily`) — walks the release runbook (the verb-action "do the release"). Parent.

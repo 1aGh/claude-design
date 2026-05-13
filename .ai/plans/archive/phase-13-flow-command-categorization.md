@@ -1,5 +1,7 @@
 # Phase 13: Flow command categorization (strict prefix naming, no subfolders)
 
+> **Archived note (2026-05-13, post-release):** Phase 13 shipped as part of `v0.6.0`. The 11 backwards-compat stubs described in Task 5 below shipped in v0.6.0 only and were **removed in v0.6.1** (~one day later, no observed traffic to old names). The compat-stub references in this plan are accurate to original intent at planning time; for the actual removal timeline see [`DDR-004`](../../decisions/DDR-004-flow-command-naming-prefix-convention.md). The rename history table in [`plugins/flow/CATEGORIES.md`](../../../plugins/flow/CATEGORIES.md) is the canonical mapping for anyone looking up an old slash name.
+
 > **Research finding (2026-05-12):** Subfolder-based slash-command namespacing is **not supported** by Claude Code.
 >
 > - `.claude/commands/<group>/cmd.md` — [Issue #2422](https://github.com/anthropics/claude-code/issues/2422) closed as "not planned"; [Issue #44678](https://github.com/anthropics/claude-code/issues/44678) is an open feature request (April 2026) with no implementation.

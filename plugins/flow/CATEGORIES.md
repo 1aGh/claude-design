@@ -110,7 +110,7 @@ Sibling of daily `/flow:release` (the runbook walker).
 
 ## Rename history (Phase 13)
 
-Old name → new name. Backwards-compat stubs ship under the old filename and redirect on invocation. **Stubs are removed in v0.7.0.**
+Old name → new name. Backwards-compat stubs shipped under the old filenames in **v0.6.0** and were **removed in v0.6.1** (early removal — the stubs were under a day old in production and had no observed traffic). The old slash names no longer resolve.
 
 | Old | New | Group | Reason |
 | --- | --- | ----- | ------ |
@@ -128,4 +128,4 @@ Old name → new name. Backwards-compat stubs ship under the old filename and re
 
 ### Footnote — "Record Design Decision Record" stutter
 
-`/flow:record-ddr` doubles up "Record" because DDR is an established acronym ("Design Decision Record"). The Phase 13 convention is **strict consistency over recognized-acronym exception** — every non-daily command gets a group prefix, no exceptions. The stutter is the cost.
+`/flow:record-ddr` doubles up "Record" because DDR is an established acronym ("Design Decision Record"). The Phase 13 convention (see [DDR-004](../../.ai/decisions/DDR-004-flow-command-naming-prefix-convention.md)) is **strict consistency over recognized-acronym exception** — every non-daily command gets a group prefix, no exceptions. The stutter is the cost.
