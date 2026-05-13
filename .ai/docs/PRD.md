@@ -41,7 +41,7 @@ Make Claude Code a first-class environment for **end-to-end product development*
 
 - ✅ Contribute infrastructure — `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, PR / issue templates, dependabot, branch-protection docs, basic CI quality gates beyond version parity.
 - ✅ Changesets bootstrapped in **this** repo + a **reusable `integrations.changelog` abstraction** (`/flow:release-changelog` for authoring, `/flow:release` for walking a project-owned release runbook) for downstream repos to opt into Changesets, git-cliff, conventional-changelog, or roll their own.
-- ✅ Docs site (Fumadocs) at `md-claude.iagh.com` (subdomain of team-owned `iagh.com`) — CLI reference, every workflow command, config schema docs with copy-paste examples. AI-readable so future agents can self-onboard.
+- ✅ Docs site (Fumadocs) at `md-claude.iagh.cz` (subdomain of team-owned `iagh.cz`) — CLI reference, every workflow command, config schema docs with copy-paste examples. AI-readable so future agents can self-onboard.
 - ✅ `flow` ↔ `design` automatic integration — flow plans auto-detect `.design/` and pull canvas references; `/flow:done` surfaces `/design:handoff` when canvases exist.
 - ✅ Canvas v2 rendering engine — replace iframe-only model with a hybrid Canvas2D / WebGL layer for FigJam-grade pan / zoom / smooth scrolling at 60fps on 1k+ elements.
 - ✅ FigJam-style infinite canvas — free-form screen positioning, multi-screen layouts, zoom-to-fit, mini-map.
@@ -50,7 +50,7 @@ Make Claude Code a first-class environment for **end-to-end product development*
 - ✅ Presentation mode — full-screen slideshow walkthrough of selected canvases with keyboard nav.
 - ✅ Exporters — PDF (multi-page), PNG (per canvas or screen), HTML (zip with inlined assets), `.canva` (best-effort archive).
 - ✅ Draw / annotation tools — circle / arrow / freehand pen overlay layer per canvas, persisted as SVG sidecar.
-- ✅ Live collaboration **— "Ambient multiplayer"** (local-first, v1.0 LAN scope) — Yjs + Awareness over the existing dev server. Multi-cursor + presence + selection sync + CRDT-backed comment / annotation sync; **HTML co-editing NOT in v1.0** (see v1.2 below — Phase 10). AI agent (`/design`) emits "I'm editing this canvas" awareness banner during runs. Participants pair via LAN URL + shared token, or user-provided Tailscale / Cloudflare Tunnel. v1.1 (Phase 9) adds a self-hostable hub (`mdcc hub deploy`) + bidirectional file sync so peers across the internet collaborate without VPN. Architecture grounded in `.ai/docs/research-collab.md`.
+- ✅ Live collaboration **— "Ambient multiplayer"** (local-first, v1.0 LAN scope) — Yjs + Awareness over the existing dev server. Multi-cursor + presence + selection sync + CRDT-backed comment / annotation sync; **HTML co-editing NOT in v1.0** (see v1.2 below — Phase 10). AI agent (`/design:edit`) emits "I'm editing this canvas" awareness banner during runs. Participants pair via LAN URL + shared token, or user-provided Tailscale / Cloudflare Tunnel. v1.1 (Phase 9) adds a self-hostable hub (`mdcc hub deploy`) + bidirectional file sync so peers across the internet collaborate without VPN. Architecture grounded in `.ai/docs/research-collab.md`.
 
 ### ❌ Out of scope (v1.0)
 
@@ -64,7 +64,7 @@ Make Claude Code a first-class environment for **end-to-end product development*
 - ❌ Real-time co-editing of the same HTML node (structured CRDT over DOM tree) — **scheduled for v1.2 as Phase 10** (`.ai/plans/phase-10-structured-crdt-html-coediting.md`), only if v1.1 surfaces real-world incidents of garbled inspector edits. v1.1 hub mode treats HTML body as opaque `Y.Text` (no element-level merge); structured CRDT is the v1.2 upgrade. Decision trigger: ≥3 user reports of clobber after Phase 9 ships.
 - ❌ Hosted SaaS hub. **v1.1 hub is always self-hosted** — `mdcc hub deploy fly|docker|systemd|tailscale|cloudflare` recipes, user owns the box. No "md-claude cloud" managed offering.
 - ❌ ACP local chat sidebar in v1.0 — **moved to icebox 2026-05-12** (`.ai/plans/phase-7-acp-chat-sidebar.md`). Inherent local-per-peer limitation + marginal value-add in hub federation. Re-evaluate at v1.1+ if user feedback validates browser-based agent chat as a designer need.
-- ❌ In-canvas CSS editor + layers panel in v1.0 — **deferred to Phase 12** (end-of-roadmap, v1.3+ conditional). Value uncertain vs. `/design "<feedback>"` AI loop; gate on user-feedback survey. Plan retained at `.ai/plans/phase-12-in-canvas-css-and-layers.md`.
+- ❌ In-canvas CSS editor + layers panel in v1.0 — **deferred to Phase 12** (end-of-roadmap, v1.3+ conditional). Value uncertain vs. `/design:edit "<feedback>"` AI loop; gate on user-feedback survey. Plan retained at `.ai/plans/phase-12-in-canvas-css-and-layers.md`.
 - ❌ Flow ↔ design integration in v1.0 core — extracted to **Phase 11** (separate work, late v1.0 or early v1.1 ship). `.ai/plans/phase-11-flow-design-integration.md`. Reasoning: most useful when canvas + DS structure is mature post Phase 4-6 and ideally Phase 8.
 - ❌ Backwards-compat shim for v0.x dev-server runtime files — v1.0 may rev `_server.json` / `_active.json` schemas.
 
@@ -75,7 +75,7 @@ Make Claude Code a first-class environment for **end-to-end product development*
 3. **Designer pairing with a developer.** "As a designer reviewing a canvas, I want to drop a pin-comment on a button, @mention the dev, see them present a fix in real-time via cursors, and resolve the thread — so that we don't switch to Slack mid-review."
 4. **Product owner doing stakeholder review.** "As a PO, I want presentation mode that walks stakeholders through 6 canvases full-screen — so that we don't need a separate Loom recording."
 5. **Designer handing off to engineering.** "As a designer, I want `/design:handoff` to convert the active canvas into production code under `apps/web/` mapped to my project's component library — so that I don't write code translations by hand."
-6. **Solo dev tweaking a component.** "As a developer reviewing a canvas, I want to Cmd+click a button, change its `border-radius` and `padding` in a side panel, and have the source HTML update — so that small tweaks don't require a full `/design "feedback"` round-trip."
+6. **Solo dev tweaking a component.** "As a developer reviewing a canvas, I want to Cmd+click a button, change its `border-radius` and `padding` in a side panel, and have the source HTML update — so that small tweaks don't require a full `/design:edit "feedback"` round-trip."
 7. **Team adopting md-claude.** "As a tech lead, I want a docs site with copy-paste config recipes for monorepos / Expo / Next.js — so that I can convince two skeptical engineers to install the marketplace without a 30-minute walkthrough."
 8. **Plugin author releasing v1.1.** "As Michal, I want `scripts/bump-version.sh` + `pnpm changeset publish` to do the same thing — so that contributors don't have to learn my custom release flow."
 
@@ -89,7 +89,7 @@ md-claude/
 ├── cli/                                # mdcc CLI (entry: bin/mdcc.mjs)
 ├── plugins/
 │   ├── design/                         # canvas-first iteration plugin
-│   │   ├── commands/                   # /design, /design:new, …
+│   │   ├── commands/                   # /design:edit, /design:new, …
 │   │   ├── agents/                     # 10 critic agents
 │   │   ├── skills/                     # 3 skills (design, design-system, ui-kit)
 │   │   └── dev-server/                 # zero-dep Node http+ws + React client

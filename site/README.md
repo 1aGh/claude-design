@@ -49,7 +49,7 @@ Client-side via Orama. New MDX files are picked up on next build — no manual i
 
 ## Deploy
 
-Target: **Vercel** (project [`md-claude`](https://vercel.com/iagh/md-claude) in team `iagh`). Custom domain: `md-claude.iagh.com`. See [DDR-005](../.ai/decisions/DDR-005-docs-site-stack-and-hosting.md) for the why.
+Target: **Vercel** (project [`md-claude`](https://vercel.com/iagh/md-claude) in team `iagh`). Custom domain: `md-claude.iagh.cz`. See [DDR-005](../.ai/decisions/DDR-005-docs-site-stack-and-hosting.md) for the why.
 
 Vercel's **native GitHub integration** handles deploys — push to `main` ships production; PRs get automatic preview URLs (commented on the PR). No GitHub Actions workflow needed.
 
@@ -62,8 +62,8 @@ Vercel's **native GitHub integration** handles deploys — push to `main` ships 
 | Build Command | `next build` |
 | Install Command | autodetected (pnpm) |
 | Production Branch | `main` |
-| Custom Domain | `md-claude.iagh.com` (A record → `76.76.21.21`) |
-| Env (production) | `NEXT_PUBLIC_SITE_URL=https://md-claude.iagh.com` |
+| Custom Domain | `md-claude.iagh.cz` (auto-managed — `iagh.cz` uses Vercel nameservers) |
+| Env (production) | `NEXT_PUBLIC_SITE_URL=https://md-claude.iagh.cz` |
 
 ### Auto-generated reference content
 

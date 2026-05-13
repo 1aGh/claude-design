@@ -2,7 +2,7 @@
 
 A personal marketplace of Claude Code plugins. Two plugins today, plus an `mdcc` CLI for scaffolding and running the bundled dev tooling.
 
-> **📚 Full docs: https://md-claude.iagh.com** (or browse the source under [`site/content/docs/`](./site/content/docs/) until the public URL lands).
+> **📚 Full docs: https://md-claude.iagh.cz** (or browse the source under [`site/content/docs/`](./site/content/docs/) until the public URL lands).
 > Contributing? See [CONTRIBUTING.md](./CONTRIBUTING.md). Security? See [SECURITY.md](./SECURITY.md).
 
 | Plugin | What it does |
@@ -27,7 +27,7 @@ Plus the **`mdcc`** CLI — `mdcc init` scaffolds a fresh `.ai/` workspace from 
 /plugin install flow@md-claude
 ```
 
-Then `/reload-plugins` and you should see `/design`, `/design:*`, `/flow:plan`, `/flow:execute`, etc.
+Then `/reload-plugins` and you should see `/design:edit`, `/design:*`, `/flow:plan`, `/flow:execute`, etc.
 
 ### 3. Install the CLI
 
@@ -72,7 +72,7 @@ Then inside Claude Code (with `flow@md-claude` installed):
 
 User-facing docs live in two places — the README points you the right way:
 
-- **Reference** (every command, every config key, recipes for Next.js / Expo / monorepo) → [`site/content/docs/`](./site/content/docs/) (served at https://md-claude.iagh.com once Vercel is wired — see [DDR-005](.ai/decisions/DDR-005-docs-site-stack-and-hosting.md)).
+- **Reference** (every command, every config key, recipes for Next.js / Expo / monorepo) → [`site/content/docs/`](./site/content/docs/) (served at https://md-claude.iagh.cz once Vercel is wired — see [DDR-005](.ai/decisions/DDR-005-docs-site-stack-and-hosting.md)).
 - **Quickstart** + **contributor info** → this README.
 
 The docs site auto-generates per-command pages from `plugins/{flow,design}/commands/*.md` frontmatter and a typed schema reference from `plugins/flow/.claude-plugin/config.schema.json`. Adding a new command → docs update on next build.
@@ -155,7 +155,7 @@ Working on plugin internals:
 1. **Edit in place** — the local marketplace points at your working tree.
 2. **Reload after edits:**
    - Commands / agents / skills → `/plugin marketplace update md-claude` then `/reload-plugins`.
-   - Dev server code → kill the running process (`lsof -i :<port>` → `kill`) and let the next `/design` invocation auto-restart.
+   - Dev server code → kill the running process (`lsof -i :<port>` → `kill`) and let the next `/design:edit` invocation auto-restart.
 3. **Test in isolation** — open Claude Code from a scratch project (`cd /tmp && claude`) so plugins aren't entangled with this repo's own `.ai/`.
 4. **Dogfood** — md-claude itself uses `flow` for plan/execute/done. Once `flow` is installed against this marketplace, you can drive its own development with `/flow:plan`, `/flow:execute`, etc.
 

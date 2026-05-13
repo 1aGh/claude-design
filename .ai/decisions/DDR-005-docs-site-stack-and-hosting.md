@@ -34,7 +34,7 @@ Fumadocs wins on:
 
 ### Hosting
 
-- **Vercel (chosen).** Native Next.js support (zero config), free tier easily covers a docs site, GitHub integration auto-detects `site/` on push to `main`. Custom domain `md-claude.iagh.com` (subdomain of the team-owned `iagh.com`) — Vercel manages TLS automatically once the DNS CNAME is in place.
+- **Vercel (chosen).** Native Next.js support (zero config), free tier easily covers a docs site, GitHub integration auto-detects `site/` on push to `main`. Custom domain `md-claude.iagh.cz` (subdomain of the team-owned `iagh.cz`, registered on Vercel with Vercel nameservers) — DNS + TLS are fully auto-managed, no manual record setup.
 - **Cloudflare Pages.** Cheaper at scale and we already trust Cloudflare for DNS. But Next.js App Router requires `@cloudflare/next-on-pages` adapter, which adds friction and lags Next.js releases by 1–2 minor versions. We'd hit edges fast with Next 16.
 - **GitHub Pages.** Free, but Next.js App Router on GitHub Pages requires `output: 'export'`, which kills server routes — and we use them (`/api/search`, `/llms.txt` route handler, `/og/docs/*` image generation). Static-only Fumadocs is possible but defeats the point.
 
@@ -65,7 +65,7 @@ Defaults win on: time-to-launch, low maintenance, and "boring docs are good docs
   - Allowing `esbuild` + `sharp` build scripts via `pnpm-workspace.yaml` `allowBuilds`. Documented why in inline comments.
 - **Deploy uses Vercel's native GitHub integration**, not a GitHub Actions workflow. Project `md-claude` in team `iagh` (`prj_m7AcjciDt81MgD69xuCEGTgoPXiw`) has `rootDirectory: site` set via API; Vercel auto-detects Next.js and runs `next build` from there. Push to `main` ships production; PRs get preview URLs commented automatically. The earlier `.github/workflows/site-deploy.yml` was deleted as redundant once native integration was wired.
 - **Vercel only uploads `site/` siblings, not the monorepo parents.** This breaks the auto-gen scripts (`build-{command,schema}-reference.mjs`) which read `../../plugins/`. Mitigation: the generated `content/docs/reference/` is **committed** to the repo, and the scripts no-op gracefully when source dirs aren't reachable (e.g. on Vercel). Maintainers run `pnpm --filter @md-claude/site gen:reference` after editing plugin command files and commit the diff.
-- DNS: `iagh.com` is registered with a third-party DNS provider (`alaskanstar.com` nameservers). Subdomain `md-claude.iagh.com` is wired via a single A record → `76.76.21.21` on the external provider; Vercel issues TLS automatically once propagation completes. `metadataBase` resolves via `NEXT_PUBLIC_SITE_URL` env var set on the Vercel project (production environment).
+- DNS: `iagh.cz` is registered with Vercel and uses Vercel nameservers, so `md-claude.iagh.cz` was verified the moment it was attached to the project — no external A/CNAME record needed. `metadataBase` resolves via `NEXT_PUBLIC_SITE_URL` env var set on the Vercel project (production environment). (We initially attempted `md-claude.iagh.com` — that domain is on third-party DNS `alaskanstar.com` and would have required a manual A → `76.76.21.21`. Switched to `iagh.cz` to avoid the friction.)
 - If Vercel ever becomes a constraint (cost, vendor lock-in, regional restrictions), the escape hatch is to switch the deploy workflow target only — the Fumadocs site itself is just Next.js and ports to any Node 20+ host.
 
 ## When to revisit
