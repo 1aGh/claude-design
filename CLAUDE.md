@@ -98,7 +98,7 @@ Eight rules govern the result:
 
 - **Three-tier compliance.** `design-system-completeness-critic` enforces three tiers: Core (blocker, regardless of profile), Conventional (warning, gated by `activeFamilies` + `completenessProfile`), Free-form (no check, acknowledged). Lets the system stay extensible without weakening compliance. Profile knob (`completenessProfile: minimal | standard | strict`) lives in `config.json`.
 
-- **Daily verb is `/design:edit`, not `/design`.** The bare `/design` form is a one-version compat stub that redirects (will be removed in next minor). Cross-reference future docs with `/design:edit` only. The renamed verbs are: `/design:edit` (was `/design`), `/design:setup-docs` (was `/design:docs`).
+- **Daily verb is `/design:edit`, not `/design`.** The bare `/design` form was a v0.8 one-version compat stub; **removed in v0.9**. Cross-reference docs with `/design:edit` only. Renamed verbs: `/design:edit` (was `/design` in v0.8), `/design:setup-docs` (was `/design:docs` in v0.8).
 
 Reference: `/Volumes/D/git/dugmate/.design/system/project/` (the canonical real-world example).
 Library: `plugins/design/templates/design-system-inspiration/`.

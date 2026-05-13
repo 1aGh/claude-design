@@ -1,0 +1,63 @@
+<!--
+SPECIMEN: audience-consumer-marketing-card
+DEMONSTRATES: generous padding, large typography, prominent CTA, optional eyebrow + image slot
+COMPOSITION: 3 marketing-card variants — feature card, pricing tier, testimonial-adjacent — each at consumer density
+COPY VOICE: consumer-friendly but specific ("Real-time match insights", not "Powerful analytics")
+WHEN SCAFFOLDED: audience-consumer
+NOTES: Consumer density = more padding (--space-5/6 inside cards), bigger type (--type-lg / --type-xl for headlines), one clear CTA. Avoid sentence-cap headlines longer than 6 words.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Audience — consumer marketing card</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .mcard { background: var(--bg-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: var(--space-5); display: grid; gap: 12px; max-width: 360px; }
+    .mcard .eyebrow { font-size: var(--type-xs); text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); font-weight: 600; }
+    .mcard .title { font-family: var(--font-display); font-size: var(--type-xl); line-height: var(--lh-xl); font-weight: 600; margin: 0; }
+    .mcard .body { color: var(--fg-1); margin: 0; }
+    .mcard .cta { background: var(--accent); color: var(--accent-fg); border: 0; padding: 10px 18px; border-radius: var(--radius-md); font: inherit; font-weight: 500; cursor: pointer; align-self: start; }
+    .mcard .hero { height: 120px; border-radius: var(--radius-md); background: linear-gradient(135deg, var(--accent) 0%, oklch(from var(--accent) calc(l - 0.15) c h) 100%); }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Marketing card</h1>
+    <p class="lede">Generous breathing room, one CTA. The eyebrow names the category at low visual weight; the title carries the proposition.</p>
+
+    <div class="row" style="gap: 24px; align-items: start;">
+      <div class="mcard">
+        <span class="eyebrow">New in 2.0</span>
+        <h2 class="title">Real-time match insights</h2>
+        <p class="body">See who's hot, who's not, and who needs a sub — without leaving the sideline.</p>
+        <button class="cta">Try it free</button>
+      </div>
+
+      <div class="mcard">
+        <div class="hero"></div>
+        <span class="eyebrow">For clubs</span>
+        <h2 class="title">Plan a season in a week</h2>
+        <p class="body">Squad lists, fixture sync, training notes — every coach on one shared view.</p>
+        <button class="cta">See a demo</button>
+      </div>
+
+      <div class="mcard" style="border-color: var(--accent);">
+        <span class="eyebrow" style="color: var(--accent);">Most popular</span>
+        <h2 class="title">Club</h2>
+        <div style="display: flex; align-items: baseline; gap: 4px;">
+          <span style="font-family: var(--font-display); font-size: var(--type-3xl); font-weight: 600;">$24</span>
+          <span style="color: var(--fg-2);">/month per team</span>
+        </div>
+        <ul style="margin: 0; padding-left: 18px; color: var(--fg-1);">
+          <li>Up to 5 squads</li>
+          <li>Full season archive</li>
+          <li>Match recap exports</li>
+        </ul>
+        <button class="cta">Start free trial</button>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

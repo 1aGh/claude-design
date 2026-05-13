@@ -1,0 +1,63 @@
+<!--
+SPECIMEN: platform-desktop-resize-panels
+DEMONSTRATES: split-pane resizer, hover state on the drag handle, snap-to-default, min-width constraints
+COMPOSITION: 3-pane layout (sidebar | main | inspector) with visible drag handles
+COPY VOICE: terse pane labels
+WHEN SCAFFOLDED: platform-desktop
+NOTES: Drag handle is a 4px-wide invisible hit area centered on a 1px visible border. Cursor: col-resize. On double-click, snap to default width. Min width prevents collapse-to-zero (better UX than allowing zero).
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Platform desktop — resize panels</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .layout { display: grid; grid-template-columns: 220px 4px 1fr 4px 280px; height: 360px; background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md); overflow: hidden; }
+    .pane { padding: 12px 16px; overflow: auto; }
+    .pane.sidebar { background: var(--bg-1); border-right: 1px solid var(--border-subtle); }
+    .pane.main { background: var(--bg-0); }
+    .pane.inspector { background: var(--bg-1); border-left: 1px solid var(--border-subtle); }
+    .resizer { background: var(--border-subtle); cursor: col-resize; transition: background var(--dur-flip) var(--ease-out); }
+    .resizer:hover { background: var(--accent); }
+    .pane h4 { font-size: var(--type-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-2); margin: 0 0 8px; }
+    .pane ul { margin: 0; padding-left: 16px; color: var(--fg-1); font-size: var(--type-sm); }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Resizable panels</h1>
+    <p class="lede">3-pane desktop layout with drag-resize handles. Each handle is a 1px visible border with a 4px hit area; cursor changes to <code>col-resize</code> on hover. Double-click snaps to default width.</p>
+
+    <div class="layout">
+      <aside class="pane sidebar">
+        <h4>Squad</h4>
+        <ul>
+          <li>Roster</li>
+          <li>Bench</li>
+          <li>Reserves</li>
+        </ul>
+      </aside>
+      <div class="resizer" title="Drag to resize · double-click to reset"></div>
+      <main class="pane main">
+        <h4>Match recap · vs. Sparta U17</h4>
+        <p style="color: var(--fg-1); margin: 4px 0 0;">Final 3-1 · captain hat-trick · auto-saved 19:42</p>
+      </main>
+      <div class="resizer" title="Drag to resize · double-click to reset"></div>
+      <aside class="pane inspector">
+        <h4>Inspector</h4>
+        <p style="color: var(--fg-1); font-size: var(--type-sm); margin: 0;">Selected: Kim Park · #9</p>
+        <ul>
+          <li>24 matches</li>
+          <li>14 goals · 5 assists</li>
+        </ul>
+      </aside>
+    </div>
+
+    <footer class="legend">
+      <p>Min widths: sidebar 180px, inspector 240px, main flex (no max). Persisting widths to localStorage is the user's friend — restoring last layout on reload removes a constant tax.</p>
+    </footer>
+  </main>
+</body>
+</html>

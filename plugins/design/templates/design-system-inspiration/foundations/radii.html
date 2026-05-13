@@ -1,0 +1,40 @@
+<!--
+SPECIMEN: foundations-radii
+DEMONSTRATES: --radius-xs, --radius-sm, --radius-md, --radius-lg, --radius-xl, --radius-pill
+COMPOSITION: 6 swatch tiles showing the radii ladder + applied to a real surface (card, button, pill)
+COPY VOICE: terse role labels
+WHEN SCAFFOLDED: foundations (almost always — every project has radii)
+NOTES: Pair this with components-buttons + components-cards which consume these. Pill must be 999px or `9999px`, never `calc(100%)`.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Foundations — radii</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Radii</h1>
+    <p class="lede">Six steps from sharp inline pills to soft hero shapes. Stick to the ladder — every off-token corner radius is visual noise.</p>
+
+    <div class="grid">
+      <div class="swatch"><div style="height: 64px; background: var(--accent); border-radius: var(--radius-xs);"></div><div class="meta"><strong>--radius-xs</strong>inline chip</div></div>
+      <div class="swatch"><div style="height: 64px; background: var(--accent); border-radius: var(--radius-sm);"></div><div class="meta"><strong>--radius-sm</strong>buttons, inputs</div></div>
+      <div class="swatch"><div style="height: 64px; background: var(--accent); border-radius: var(--radius-md);"></div><div class="meta"><strong>--radius-md</strong>cards, panels</div></div>
+      <div class="swatch"><div style="height: 64px; background: var(--accent); border-radius: var(--radius-lg);"></div><div class="meta"><strong>--radius-lg</strong>dialogs</div></div>
+      <div class="swatch"><div style="height: 64px; background: var(--accent); border-radius: var(--radius-xl);"></div><div class="meta"><strong>--radius-xl</strong>hero shapes</div></div>
+      <div class="swatch"><div style="height: 64px; width: 64px; background: var(--accent); border-radius: var(--radius-pill); margin: 0 auto;"></div><div class="meta"><strong>--radius-pill</strong>avatars, pills</div></div>
+    </div>
+
+    <h2>In context</h2>
+    <div class="row">
+      <button style="background: var(--accent); color: var(--accent-fg); border: 0; padding: 8px 14px; border-radius: var(--radius-sm);">Button (sm)</button>
+      <div style="background: var(--bg-1); border: 1px solid var(--border-default); padding: 14px 18px; border-radius: var(--radius-md);">Card (md)</div>
+      <span style="background: var(--accent); color: var(--accent-fg); padding: 2px 10px; border-radius: var(--radius-pill); font-size: var(--type-xs);">Pill</span>
+      <div style="width: 32px; height: 32px; background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-pill);"></div>
+    </div>
+  </main>
+</body>
+</html>

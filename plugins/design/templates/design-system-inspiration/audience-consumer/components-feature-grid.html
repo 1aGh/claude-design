@@ -1,0 +1,62 @@
+<!--
+SPECIMEN: audience-consumer-feature-grid
+DEMONSTRATES: 3-column feature grid, icon-headline-body pattern, balanced visual weight
+COMPOSITION: 6 features in a 3x2 grid, each with icon + 2-4 word title + 1-sentence body
+COPY VOICE: title is the benefit ("Sync with the club"), body is the proof ("Auto-pushes match recaps to your team channel.")
+WHEN SCAFFOLDED: audience-consumer
+NOTES: Icons are 24px on top, never inline with the title. Keep titles ≤ 4 words. Bodies ≤ 16 words. Don't list 9 features — pick the top 6 that actually differentiate.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Audience — consumer feature grid</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .feature { display: grid; gap: 8px; padding: 20px; background: var(--bg-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+    .feature .icon { width: 36px; height: 36px; background: oklch(from var(--accent) l c h / 0.15); color: var(--accent); border-radius: var(--radius-sm); display: inline-flex; align-items: center; justify-content: center; }
+    .feature .title { font-family: var(--font-display); font-size: var(--type-md); font-weight: 600; margin: 4px 0 0; }
+    .feature .body { color: var(--fg-1); font-size: var(--type-sm); margin: 0; }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Feature grid</h1>
+    <p class="lede">Six features, no more. Icon + 2–4-word title + one-sentence body. Each title is the benefit; each body is the proof.</p>
+
+    <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px;">
+      <div class="feature">
+        <span class="icon">⚡</span>
+        <h3 class="title">Real-time match view</h3>
+        <p class="body">See goals, subs, and cards as they happen. No refresh needed.</p>
+      </div>
+      <div class="feature">
+        <span class="icon">📋</span>
+        <h3 class="title">One-tap roster sync</h3>
+        <p class="body">Pull from the league, push to your team chat in two taps.</p>
+      </div>
+      <div class="feature">
+        <span class="icon">📊</span>
+        <h3 class="title">Season-long stats</h3>
+        <p class="body">Track goals, minutes, and clean sheets without a spreadsheet.</p>
+      </div>
+      <div class="feature">
+        <span class="icon">🎯</span>
+        <h3 class="title">Match recap card</h3>
+        <p class="body">Shareable summary auto-built when the final whistle blows.</p>
+      </div>
+      <div class="feature">
+        <span class="icon">🏃</span>
+        <h3 class="title">Training planner</h3>
+        <p class="body">Drag-and-drop drills, share the session, mark attendance.</p>
+      </div>
+      <div class="feature">
+        <span class="icon">🔔</span>
+        <h3 class="title">Smart notifications</h3>
+        <p class="body">Only the things you asked for. No "5 highlights you missed."</p>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

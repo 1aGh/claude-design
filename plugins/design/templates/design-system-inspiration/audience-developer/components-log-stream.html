@@ -1,0 +1,62 @@
+<!--
+SPECIMEN: audience-developer-log-stream
+DEMONSTRATES: dense log rows with timestamp + level pill + payload, filter UI, sticky bottom (live tail)
+COMPOSITION: log viewer with 8 rows mixing levels (DEBUG / INFO / WARN / ERROR), filter chips, auto-scroll indicator
+COPY VOICE: real log messages with structured fields ([http] GET /api/x 200 12ms), no Lorem
+WHEN SCAFFOLDED: audience-developer
+NOTES: Timestamps in --font-mono with tabular nums for alignment. Levels are tiny pills (not full badges). Payload uses copyable inline code styling.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Audience — developer log stream</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .logs { background: var(--bg-0); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 12px; font-family: var(--font-mono); font-size: 12px; line-height: 1.6; max-width: 760px; max-height: 320px; overflow-y: auto; }
+    .log-row { display: grid; grid-template-columns: 92px 64px 1fr; gap: 12px; align-items: center; }
+    .log-row.is-hl { background: oklch(from var(--accent) l c h / 0.08); }
+    .ts { color: var(--fg-2); font-variant-numeric: tabular-nums; }
+    .lvl { display: inline-block; padding: 0 6px; border-radius: var(--radius-xs); font-size: 10px; text-align: center; line-height: 14px; }
+    .lvl.debug { background: var(--bg-3); color: var(--fg-2); }
+    .lvl.info  { background: oklch(from var(--status-info) l c h / 0.2); color: var(--status-info); }
+    .lvl.warn  { background: oklch(from var(--status-warn) l c h / 0.2); color: var(--status-warn); }
+    .lvl.error { background: oklch(from var(--status-error) l c h / 0.2); color: var(--status-error); }
+    .filter-row { display: flex; gap: 6px; margin: 0 0 12px; flex-wrap: wrap; }
+    .chip { background: var(--bg-3); border: 1px solid var(--border-default); padding: 3px 10px; border-radius: var(--radius-pill); font-size: var(--type-xs); cursor: pointer; }
+    .chip.is-active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Log stream</h1>
+    <p class="lede">Dense, monospaced, color-coded by level. Tail-mode auto-scrolls to the bottom; clicking a row pauses auto-scroll. Filters narrow by level / service / search.</p>
+
+    <h2>Filters</h2>
+    <div class="filter-row">
+      <span class="chip is-active">All</span>
+      <span class="chip">debug</span>
+      <span class="chip is-active">info</span>
+      <span class="chip is-active">warn</span>
+      <span class="chip is-active">error</span>
+      <span class="chip">[http]</span>
+      <span class="chip">[sync]</span>
+    </div>
+
+    <h2>Stream (live tail)</h2>
+    <div class="logs">
+      <div class="log-row"><span class="ts">12:14:02.103</span><span class="lvl info">INFO</span><span>[http] GET /api/roster 200 12ms</span></div>
+      <div class="log-row"><span class="ts">12:14:02.241</span><span class="lvl info">INFO</span><span>[sync] pulled 24 players for season 2026</span></div>
+      <div class="log-row"><span class="ts">12:14:02.388</span><span class="lvl debug">DBUG</span><span>[cache] hit ratio 0.82 (last 1m)</span></div>
+      <div class="log-row"><span class="ts">12:14:03.022</span><span class="lvl warn">WARN</span><span>[sync] retry attempt 2 for league_api.fetch_fixtures()</span></div>
+      <div class="log-row is-hl"><span class="ts">12:14:03.512</span><span class="lvl error">ERR</span><span>[sync] league_api timeout after 30000ms (will retry in 30s)</span></div>
+      <div class="log-row"><span class="ts">12:14:04.107</span><span class="lvl info">INFO</span><span>[http] POST /api/match 201 47ms (match_id=8421)</span></div>
+      <div class="log-row"><span class="ts">12:14:04.215</span><span class="lvl info">INFO</span><span>[ws] client subscribed: roster.8421</span></div>
+      <div class="log-row"><span class="ts">12:14:04.832</span><span class="lvl debug">DBUG</span><span>[render] canvas frame 14 (16.4ms)</span></div>
+    </div>
+
+    <p style="color: var(--fg-2); font-size: var(--type-xs); margin-top: 8px;">Live · 8 visible · paused on hover</p>
+  </main>
+</body>
+</html>

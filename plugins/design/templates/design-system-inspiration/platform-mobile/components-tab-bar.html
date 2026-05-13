@@ -1,0 +1,57 @@
+<!--
+SPECIMEN: platform-mobile-tab-bar
+DEMONSTRATES: bottom tab bar with 4-5 tabs, icon + label, active state via accent color (not background fill), safe-area padding for home indicator
+COMPOSITION: mobile frame with 5-tab bar, one tab active; second frame shows 4-tab variant (more common for simpler apps)
+COPY VOICE: 1-word tab labels ("Roster", "Stats", "Profile") — never 2-3 word labels
+WHEN SCAFFOLDED: platform-mobile
+NOTES: Tab labels stay always-visible (Material 3 / iOS HIG agree on this). Active state uses --accent for icon + label color, not for the background. Bottom safe-area = 34px on iPhone (home indicator).
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Platform mobile — tab bar</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .mobile-frame { width: 320px; height: 520px; background: var(--bg-0); border: 1px solid var(--border-strong); border-radius: 32px; position: relative; overflow: hidden; }
+    .status-bar { height: 44px; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; color: var(--fg-1); font-size: var(--type-xs); }
+    .body { height: calc(100% - 44px - 84px); padding: 16px 20px; }
+    .tab-bar { position: absolute; bottom: 0; left: 0; right: 0; display: flex; background: var(--bg-1); border-top: 1px solid var(--border-default); padding: 8px 0 34px; }
+    .tab { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px; color: var(--fg-2); font-size: var(--type-xs); cursor: pointer; }
+    .tab.is-active { color: var(--accent); }
+    .tab svg { color: currentColor; }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Tab bar</h1>
+    <p class="lede">Bottom tabs on mobile. Labels stay always visible — never hide them, no matter how small the screen. Active state colors icon + label with the accent; never fills the background.</p>
+
+    <div class="row" style="gap: 24px; align-items: flex-start;">
+      <div class="mobile-frame">
+        <div class="status-bar"><span>9:41</span><span>●</span></div>
+        <div class="body"><h3 style="margin: 0;">Roster</h3><p style="color: var(--fg-1); margin: 4px 0 0;">24 players · 12 available</p></div>
+        <nav class="tab-bar">
+          <div class="tab is-active"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h18M3 12h18M3 18h18"/></svg><span>Roster</span></div>
+          <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 18V8M9 18V4M15 18v-7M21 18V12"/></svg><span>Stats</span></div>
+          <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg><span>Match</span></div>
+          <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg><span>Inbox</span></div>
+          <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg><span>Profile</span></div>
+        </nav>
+      </div>
+
+      <div class="mobile-frame">
+        <div class="status-bar"><span>9:41</span><span>●</span></div>
+        <div class="body"><h3 style="margin: 0;">Match</h3></div>
+        <nav class="tab-bar">
+          <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 12l9-8 9 8M5 10v10h14V10"/></svg><span>Home</span></div>
+          <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg><span>Search</span></div>
+          <div class="tab is-active"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg><span>Match</span></div>
+          <div class="tab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-7 8-7s8 3 8 7"/></svg><span>Me</span></div>
+        </nav>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

@@ -1,0 +1,89 @@
+<!--
+SPECIMEN: audience-pro-components-list
+DEMONSTRATES: dense list rows, selection state, hover preview, J/K keyboard hints, multi-select
+COMPOSITION: vertical list with avatar + primary + meta + actions, in idle / hover / selected states + sticky header
+COPY VOICE: terse, dense — pro tools assume reading speed
+WHEN SCAFFOLDED: audience-pro (only when Q2 = pro tool)
+NOTES: Row height stays tight (~36-44px). J/K hints surface only on focus, not on hover. Avoid bg gradients — pro users read fast and high-contrast surfaces beat decorative ones.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Audience — pro list</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .list { background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md); overflow: hidden; max-width: 640px; }
+    .list-header { display: grid; grid-template-columns: 24px 1fr 80px 64px 80px; gap: 12px; align-items: center; padding: 6px 12px; background: var(--bg-2); border-bottom: 1px solid var(--border-default); font-size: var(--type-xs); color: var(--fg-1); text-transform: uppercase; letter-spacing: 0.04em; position: sticky; top: 0; }
+    .row { display: grid; grid-template-columns: 24px 1fr 80px 64px 80px; gap: 12px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--border-subtle); font-size: var(--type-sm); cursor: pointer; }
+    .row:hover { background: var(--bg-3); }
+    .row.is-selected { background: var(--bg-4); }
+    .row .avatar { width: 24px; height: 24px; background: var(--bg-3); border-radius: 50%; }
+    .row .name { color: var(--fg-0); }
+    .row .meta { color: var(--fg-2); font-size: var(--type-xs); }
+    .row .num { color: var(--fg-1); font-variant-numeric: tabular-nums; text-align: right; }
+    kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 4px; background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-xs); font-family: var(--font-mono); font-size: 10px; color: var(--fg-1); }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>List (pro tool)</h1>
+    <p class="lede">Dense rows with predictable column slots. Pro users navigate by keyboard — surface <kbd>J</kbd>/<kbd>K</kbd> hints in the footer, not the rows themselves. Selection uses <code>--bg-4</code>; never the accent (rows aren't navigation).</p>
+
+    <h2>Roster — 5 players</h2>
+    <div class="list">
+      <div class="list-header">
+        <span></span>
+        <span>Player</span>
+        <span style="text-align: right;">Pos</span>
+        <span style="text-align: right;">Mat</span>
+        <span style="text-align: right;">Goals</span>
+      </div>
+      <div class="row is-selected">
+        <div class="avatar"></div>
+        <div><span class="name">Kim Park</span> <span class="meta">#9 · captain</span></div>
+        <span class="num">FWD</span>
+        <span class="num">24</span>
+        <span class="num">14</span>
+      </div>
+      <div class="row">
+        <div class="avatar"></div>
+        <div><span class="name">Jonas Weber</span> <span class="meta">#14</span></div>
+        <span class="num">MID</span>
+        <span class="num">22</span>
+        <span class="num">3</span>
+      </div>
+      <div class="row">
+        <div class="avatar"></div>
+        <div><span class="name">Marta Silva</span> <span class="meta">#4</span></div>
+        <span class="num">DEF</span>
+        <span class="num">23</span>
+        <span class="num">1</span>
+      </div>
+      <div class="row">
+        <div class="avatar"></div>
+        <div><span class="name">Liam Chen</span> <span class="meta">#1</span></div>
+        <span class="num">GK</span>
+        <span class="num">19</span>
+        <span class="num">0</span>
+      </div>
+      <div class="row">
+        <div class="avatar"></div>
+        <div><span class="name">Sara Novak</span> <span class="meta">#11</span></div>
+        <span class="num">FWD</span>
+        <span class="num">20</span>
+        <span class="num">8</span>
+      </div>
+    </div>
+
+    <h2>Keyboard footer</h2>
+    <div class="row" style="display: flex; gap: 16px; color: var(--fg-2); font-size: var(--type-xs); padding: 8px 12px;">
+      <span><kbd>J</kbd><kbd>K</kbd> navigate</span>
+      <span><kbd>X</kbd> select</span>
+      <span><kbd>⏎</kbd> open</span>
+      <span><kbd>⌘K</kbd> palette</span>
+    </div>
+  </main>
+</body>
+</html>

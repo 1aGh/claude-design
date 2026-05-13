@@ -1,0 +1,68 @@
+<!--
+SPECIMEN: audience-consumer-banner
+DEMONSTRATES: page-level info / warn / error / promo banners, dismissible variant, position at top of page
+COMPOSITION: 4 banner types stacked, each with icon + body + CTA + optional dismiss button
+COPY VOICE: terse — banners interrupt; respect the user's attention
+WHEN SCAFFOLDED: audience-consumer
+NOTES: Banner sits above the page chrome (not inside a card). Always dismissible UNLESS it's a system error blocking action. Don't stack more than one promo banner at once.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Audience — consumer banner</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .banner { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-radius: var(--radius-sm); margin: 0 0 12px; font-size: var(--type-sm); }
+    .banner .icon { flex-shrink: 0; }
+    .banner .body { flex: 1; }
+    .banner .actions { display: flex; gap: 8px; align-items: center; }
+    .banner button { background: transparent; border: 0; color: inherit; font: inherit; padding: 4px 10px; border-radius: var(--radius-xs); cursor: pointer; opacity: 0.85; }
+    .banner button:hover { opacity: 1; background: oklch(0 0 0 / 0.15); }
+    .banner .dismiss { font-size: 18px; line-height: 1; padding: 2px 6px; }
+    .banner--info { background: oklch(from var(--status-info) l c h / 0.18); color: var(--status-info); border: 1px solid var(--status-info); }
+    .banner--warn { background: oklch(from var(--status-warn) l c h / 0.18); color: var(--status-warn); border: 1px solid var(--status-warn); }
+    .banner--error { background: oklch(from var(--status-error) l c h / 0.18); color: var(--status-error); border: 1px solid var(--status-error); }
+    .banner--promo { background: oklch(from var(--accent) l c h / 0.18); color: var(--accent); border: 1px solid var(--accent); }
+    .banner strong { color: inherit; }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Banners</h1>
+    <p class="lede">Page-level announcements. They sit above content (not inside a card) and respect the user's attention — terse copy, single CTA, dismissible unless they block action.</p>
+
+    <div class="banner banner--info">
+      <span class="icon">ⓘ</span>
+      <div class="body"><strong>New:</strong> match recap cards now include xG. <a href="#" style="color: inherit; text-decoration: underline;">See what changed</a>.</div>
+      <div class="actions"><button class="dismiss" aria-label="Dismiss">×</button></div>
+    </div>
+
+    <div class="banner banner--warn">
+      <span class="icon">⚠</span>
+      <div class="body"><strong>Heads up:</strong> league sync is paused while the federation updates their endpoint. Manual entry still works.</div>
+      <div class="actions"><button>Status page</button></div>
+    </div>
+
+    <div class="banner banner--error">
+      <span class="icon">⚠</span>
+      <div class="body"><strong>Couldn't load the roster.</strong> The league API is returning errors. We're retrying every 30s.</div>
+      <div class="actions"><button>Retry now</button></div>
+    </div>
+
+    <div class="banner banner--promo">
+      <span class="icon">★</span>
+      <div class="body"><strong>2 weeks free</strong> on the Club plan when you import your squad before Sunday.</div>
+      <div class="actions">
+        <button>Try Club</button>
+        <button class="dismiss" aria-label="Dismiss">×</button>
+      </div>
+    </div>
+
+    <footer class="legend">
+      <p>Error banners are usually NOT dismissible — they block meaningful work, so dismissing them hides a real problem. Info, warn, and promo banners should always have an × close button.</p>
+    </footer>
+  </main>
+</body>
+</html>

@@ -25,7 +25,7 @@ Default verbs. No prefix. Members:
 | `/design:handoff` | Migrate the active canvas to a production target |
 | `/design:help` | Print this grouped index |
 
-The bare `/design` form is a **one-version compat stub** that redirects to `/design:edit`. It will be removed in the next minor version. Don't cross-reference it in new docs.
+The bare `/design` form was a one-version compat stub in v0.8 that redirected to `/design:edit`. **Removed in v0.9** — only `/design:edit` resolves now.
 
 ### setup — One-shot bootstrapping operations
 
@@ -66,10 +66,9 @@ This makes autocomplete predictable — typing `/design:setup-` shows only the t
 
 | Old | New | When | Why |
 |---|---|---|---|
-| `/design` | `/design:edit` | v0.8 (this plan) | Verb-as-action; resolves naming collision with skill `design` |
-| `/design:docs` | `/design:setup-docs` | v0.8 (this plan) | Categorization to `setup-*` group |
-
-The bare `/design` form is preserved as a compat stub for one minor version, then removed.
+| `/design` | `/design:edit` | v0.8 | Verb-as-action; resolves naming collision with skill `design` |
+| `/design:docs` | `/design:setup-docs` | v0.8 | Categorization to `setup-*` group |
+| `/design` (compat stub) | removed | v0.9 | One-version compat retired per the v0.8 contract |
 
 ## Adding a new command
 

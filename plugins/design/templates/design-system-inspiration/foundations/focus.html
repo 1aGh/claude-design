@@ -1,0 +1,48 @@
+<!--
+SPECIMEN: foundations-focus
+DEMONSTRATES: --accent (as focus ring), outline + outline-offset pattern, focus-visible vs focus
+COMPOSITION: 4 focusable controls each shown idle + focused, plus a contrast block proving accent vs surface clears WCAG
+COPY VOICE: terse — focus tokens are utility, not branding
+WHEN SCAFFOLDED: foundations (universal — every interactive surface needs this)
+NOTES: Ring is `outline: 2px solid var(--accent); outline-offset: 2px` — NOT inset box-shadow (which masks the border). focus-visible only (not :focus) so mouse clicks don't paint rings.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Foundations — focus</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .focusable { padding: 8px 14px; border-radius: var(--radius-sm); background: var(--bg-3); border: 1px solid var(--border-default); color: var(--fg-0); font: inherit; }
+    .focusable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-color: var(--border-strong); }
+    .ring { outline: 2px solid var(--accent); outline-offset: 2px; }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Focus</h1>
+    <p class="lede">The focus ring is <code>outline: 2px solid var(--accent)</code> with <code>outline-offset: 2px</code> — applied via <code>:focus-visible</code>, not <code>:focus</code> (so mouse clicks don't paint rings on buttons).</p>
+
+    <h2>Live (Tab through these)</h2>
+    <div class="row">
+      <button class="focusable">Button</button>
+      <input class="focusable" type="text" placeholder="Input" />
+      <a href="#" class="focusable" style="text-decoration: none;">Link</a>
+      <span class="focusable" tabindex="0">Custom focusable</span>
+    </div>
+
+    <h2>Idle vs focused (visual)</h2>
+    <div class="row">
+      <button class="focusable">Idle</button>
+      <button class="focusable ring">Focused (ring shown)</button>
+    </div>
+
+    <h2>Why outline, not box-shadow</h2>
+    <p>Outline lives outside the layout box — it never shifts adjacent content. Inset box-shadow masks the element's border + can be clipped by parent <code>overflow: hidden</code>. The 2px offset prevents the ring from touching the element's border, so contrast stays clean even on edge cases.</p>
+
+    <h2>Contrast guarantee</h2>
+    <p>The accent token MUST clear <strong>3:1</strong> against every adjacent <code>--bg-*</code> level. Verify on theme switch.</p>
+  </main>
+</body>
+</html>

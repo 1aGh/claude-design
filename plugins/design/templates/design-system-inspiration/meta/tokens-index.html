@@ -1,0 +1,80 @@
+<!--
+SPECIMEN: meta-tokens-index
+DEMONSTRATES: full visual TOC of every token family in colors_and_type.css — colors, type, spacing, motion, radii
+COMPOSITION: 5 sections, each a grid of swatches/samples for one token family, with the var() name visible
+COPY VOICE: literal token names + their semantic role
+WHEN SCAFFOLDED: meta (universal — every project benefits from a single overview page)
+NOTES: This is the dev-server's landing page if no canvas is selected. Acts as a token catalog the design-system-completeness-critic can grep for known tokens. Don't hardcode any non-token values here.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Meta — tokens index</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .token-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin: 0 0 32px; }
+    .tok { display: grid; gap: 4px; padding: 8px; background: var(--bg-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); font-size: var(--type-xs); }
+    .tok .sample { height: 24px; border-radius: var(--radius-xs); }
+    .tok code { color: var(--fg-1); font-size: 10px; }
+    .tok .role { color: var(--fg-2); font-size: 10px; }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Tokens index</h1>
+    <p class="lede">Visual catalog of every token in <code>colors_and_type.css</code>. Useful as a landing page in the dev server, and as a check that nothing's been added inline without being promoted to a token.</p>
+
+    <h2>Surfaces</h2>
+    <div class="token-grid">
+      <div class="tok"><div class="sample" style="background: var(--bg-0);"></div><code>--bg-0</code><span class="role">page</span></div>
+      <div class="tok"><div class="sample" style="background: var(--bg-1);"></div><code>--bg-1</code><span class="role">card</span></div>
+      <div class="tok"><div class="sample" style="background: var(--bg-2);"></div><code>--bg-2</code><span class="role">nested</span></div>
+      <div class="tok"><div class="sample" style="background: var(--bg-3);"></div><code>--bg-3</code><span class="role">input</span></div>
+      <div class="tok"><div class="sample" style="background: var(--bg-4);"></div><code>--bg-4</code><span class="role">pressed</span></div>
+    </div>
+
+    <h2>Text</h2>
+    <div class="token-grid">
+      <div class="tok"><div class="sample" style="background: var(--fg-0);"></div><code>--fg-0</code><span class="role">primary</span></div>
+      <div class="tok"><div class="sample" style="background: var(--fg-1);"></div><code>--fg-1</code><span class="role">secondary</span></div>
+      <div class="tok"><div class="sample" style="background: var(--fg-2);"></div><code>--fg-2</code><span class="role">muted</span></div>
+      <div class="tok"><div class="sample" style="background: var(--fg-3);"></div><code>--fg-3</code><span class="role">disabled</span></div>
+    </div>
+
+    <h2>Accent + status</h2>
+    <div class="token-grid">
+      <div class="tok"><div class="sample" style="background: var(--accent);"></div><code>--accent</code><span class="role">primary</span></div>
+      <div class="tok"><div class="sample" style="background: var(--accent-hover);"></div><code>--accent-hover</code></div>
+      <div class="tok"><div class="sample" style="background: var(--accent-active);"></div><code>--accent-active</code></div>
+      <div class="tok"><div class="sample" style="background: var(--status-success);"></div><code>--status-success</code></div>
+      <div class="tok"><div class="sample" style="background: var(--status-warn);"></div><code>--status-warn</code></div>
+      <div class="tok"><div class="sample" style="background: var(--status-error);"></div><code>--status-error</code></div>
+      <div class="tok"><div class="sample" style="background: var(--status-info);"></div><code>--status-info</code></div>
+    </div>
+
+    <h2>Radii</h2>
+    <div class="token-grid">
+      <div class="tok"><div class="sample" style="background: var(--accent); border-radius: var(--radius-xs);"></div><code>--radius-xs</code></div>
+      <div class="tok"><div class="sample" style="background: var(--accent); border-radius: var(--radius-sm);"></div><code>--radius-sm</code></div>
+      <div class="tok"><div class="sample" style="background: var(--accent); border-radius: var(--radius-md);"></div><code>--radius-md</code></div>
+      <div class="tok"><div class="sample" style="background: var(--accent); border-radius: var(--radius-lg);"></div><code>--radius-lg</code></div>
+      <div class="tok"><div class="sample" style="background: var(--accent); border-radius: var(--radius-xl);"></div><code>--radius-xl</code></div>
+    </div>
+
+    <h2>Type scale</h2>
+    <div style="display: grid; gap: 6px; margin: 0 0 32px;">
+      <div style="font-size: var(--type-xs); line-height: var(--lh-xs);">--type-xs · The quick brown fox</div>
+      <div style="font-size: var(--type-sm); line-height: var(--lh-sm);">--type-sm · The quick brown fox</div>
+      <div style="font-size: var(--type-base); line-height: var(--lh-base);">--type-base · The quick brown fox</div>
+      <div style="font-size: var(--type-md); line-height: var(--lh-md);">--type-md · The quick brown fox</div>
+      <div style="font-size: var(--type-lg); line-height: var(--lh-lg);">--type-lg · The quick brown fox</div>
+      <div style="font-size: var(--type-xl); line-height: var(--lh-xl);">--type-xl · The quick brown fox</div>
+    </div>
+
+    <h2>Motion</h2>
+    <p style="color: var(--fg-1);"><code>--dur-flip</code> · <code>--dur-panel</code> · <code>--dur-route</code> · <code>--dur-soft</code> · <code>--ease-out</code> · <code>--ease-in-out</code> — see <a href="../core/preview/motion.html">motion specimen</a> for live demos.</p>
+  </main>
+</body>
+</html>

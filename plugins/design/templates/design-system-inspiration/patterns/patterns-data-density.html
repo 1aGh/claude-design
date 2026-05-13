@@ -1,0 +1,61 @@
+<!--
+SPECIMEN: pattern-data-density
+DEMONSTRATES: same data rendered at 3 densities — sparse (consumer), default (pro), compact (admin)
+COMPOSITION: same 5-row dataset shown in 3 visual densities, with the same tokens but different padding/typography
+COPY VOICE: identical strings across all three (only density differs)
+WHEN SCAFFOLDED: patterns (cross-audience — useful for any project that has multiple surface densities)
+NOTES: Density is mostly --space-* + --type-* choices. Don't change tokens — change which tokens you reach for. Sparse uses --space-4/5 + --type-md; default uses --space-2/3 + --type-sm; compact uses --space-1/2 + --type-xs.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Pattern — data density</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .density-card { background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 16px; max-width: 480px; margin: 0 0 24px; }
+    .density-card h3 { margin: 0 0 12px; font-size: var(--type-sm); color: var(--fg-2); text-transform: uppercase; letter-spacing: 0.04em; }
+
+    .sparse .row    { padding: 16px 0; border-bottom: 1px solid var(--border-subtle); font-size: var(--type-md); }
+    .default .row   { padding: 8px 0; border-bottom: 1px solid var(--border-subtle); font-size: var(--type-sm); }
+    .compact .row   { padding: 4px 0; border-bottom: 1px solid var(--border-subtle); font-size: var(--type-xs); font-family: var(--font-mono); }
+    .row:last-child { border-bottom: 0; }
+    .row { display: grid; grid-template-columns: 1fr 60px 60px; gap: 12px; align-items: center; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; color: var(--fg-1); }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Data density</h1>
+    <p class="lede">Same dataset, three densities. Density isn't a token — it's a pattern of which tokens you choose. Sparse for consumer dashboards, default for working surfaces, compact for power-user admin views.</p>
+
+    <div class="density-card sparse">
+      <h3>Sparse · consumer</h3>
+      <div class="row"><span>Kim Park · #9</span><span class="num">24</span><span class="num">14</span></div>
+      <div class="row"><span>Jonas Weber · #14</span><span class="num">22</span><span class="num">3</span></div>
+      <div class="row"><span>Marta Silva · #4</span><span class="num">23</span><span class="num">1</span></div>
+    </div>
+
+    <div class="density-card default">
+      <h3>Default · pro</h3>
+      <div class="row"><span>Kim Park · #9</span><span class="num">24</span><span class="num">14</span></div>
+      <div class="row"><span>Jonas Weber · #14</span><span class="num">22</span><span class="num">3</span></div>
+      <div class="row"><span>Marta Silva · #4</span><span class="num">23</span><span class="num">1</span></div>
+      <div class="row"><span>Liam Chen · #1</span><span class="num">19</span><span class="num">0</span></div>
+      <div class="row"><span>Sara Novak · #11</span><span class="num">20</span><span class="num">8</span></div>
+    </div>
+
+    <div class="density-card compact">
+      <h3>Compact · admin</h3>
+      <div class="row"><span>kpark   #9</span><span class="num">24</span><span class="num">14</span></div>
+      <div class="row"><span>jweber  #14</span><span class="num">22</span><span class="num">3</span></div>
+      <div class="row"><span>msilva  #4</span><span class="num">23</span><span class="num">1</span></div>
+      <div class="row"><span>lchen   #1</span><span class="num">19</span><span class="num">0</span></div>
+      <div class="row"><span>snovak  #11</span><span class="num">20</span><span class="num">8</span></div>
+    </div>
+
+    <footer class="legend"><p>Compact uses --font-mono for the names — they're identifiers in this density, not display strings. The padding choice is doing the work, not the font.</p></footer>
+  </main>
+</body>
+</html>

@@ -1,0 +1,78 @@
+<!--
+SPECIMEN: pattern-auth
+DEMONSTRATES: sign-in, sign-up, forgot-password screens; oauth provider buttons; magic link variant
+COMPOSITION: 3 auth screens side-by-side with consistent shell (logo + title + form + footer link)
+COPY VOICE: terse + literal ("Sign in", "Create account", "Send reset link")
+WHEN SCAFFOLDED: patterns (universal — most products need auth)
+NOTES: Single-column always (don't make people scroll horizontally to log in). OAuth buttons go above the email/password split with an "or continue with email" divider. Forgot link goes below the form, not inline with the password field.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Pattern — auth</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .auth { background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-lg); padding: 32px; max-width: 360px; margin: 0; box-shadow: var(--shadow-md); }
+    .auth .logo { width: 36px; height: 36px; background: var(--accent); border-radius: var(--radius-sm); margin: 0 0 20px; }
+    .auth h2 { margin: 0 0 6px; font-family: var(--font-display); font-size: var(--type-xl); font-weight: 600; }
+    .auth .sub { color: var(--fg-1); margin: 0 0 20px; font-size: var(--type-sm); }
+    .auth input { background: var(--bg-3); color: var(--fg-0); border: 1px solid var(--border-default); padding: 10px 12px; border-radius: var(--radius-sm); font: inherit; width: 100%; margin: 0 0 10px; box-sizing: border-box; }
+    .auth button.primary { background: var(--accent); color: var(--accent-fg); border: 0; padding: 10px 16px; border-radius: var(--radius-sm); font: inherit; width: 100%; cursor: pointer; }
+    .auth .oauth { display: flex; gap: 8px; margin: 0 0 14px; }
+    .auth .oauth button { flex: 1; background: var(--bg-3); border: 1px solid var(--border-default); color: var(--fg-0); padding: 8px 10px; border-radius: var(--radius-sm); font: inherit; cursor: pointer; }
+    .divider { display: flex; align-items: center; gap: 12px; color: var(--fg-2); font-size: var(--type-xs); margin: 0 0 14px; }
+    .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border-subtle); }
+    .footer { margin-top: 16px; text-align: center; font-size: var(--type-sm); color: var(--fg-2); }
+    .footer a { color: var(--accent); text-decoration: none; }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Auth screens</h1>
+    <p class="lede">Sign-in, sign-up, forgot-password — single-column, OAuth above email split, footer link below the primary action.</p>
+
+    <div class="row" style="gap: 16px; align-items: flex-start;">
+      <div class="auth">
+        <div class="logo"></div>
+        <h2>Sign in</h2>
+        <p class="sub">Welcome back — pick up where you left off.</p>
+        <div class="oauth">
+          <button>Continue with Google</button>
+          <button>SSO</button>
+        </div>
+        <div class="divider">or continue with email</div>
+        <input type="email" placeholder="Email" value="kim@fc-riverside.club" />
+        <input type="password" placeholder="Password" value="••••••••" />
+        <button class="primary">Sign in</button>
+        <div class="footer">Forgot password? · <a href="#">Reset it</a></div>
+      </div>
+
+      <div class="auth">
+        <div class="logo"></div>
+        <h2>Create account</h2>
+        <p class="sub">Two minutes. Then your squad is in.</p>
+        <div class="oauth">
+          <button>Continue with Google</button>
+        </div>
+        <div class="divider">or sign up with email</div>
+        <input type="text" placeholder="Full name" />
+        <input type="email" placeholder="Email" />
+        <input type="password" placeholder="Password (8+ chars)" />
+        <button class="primary">Create account</button>
+        <div class="footer">Already have an account? · <a href="#">Sign in</a></div>
+      </div>
+
+      <div class="auth">
+        <div class="logo"></div>
+        <h2>Reset password</h2>
+        <p class="sub">We'll email you a one-time link.</p>
+        <input type="email" placeholder="Email" />
+        <button class="primary">Send reset link</button>
+        <div class="footer">Remember it? · <a href="#">Sign in</a></div>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

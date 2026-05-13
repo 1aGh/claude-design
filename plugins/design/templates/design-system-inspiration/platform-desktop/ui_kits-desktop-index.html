@@ -1,0 +1,55 @@
+<!--
+SPECIMEN: platform-desktop-ui-kits-index
+DEMONSTRATES: cover page for desktop UI kit — lists all desktop-specific specimens with thumbnails
+COMPOSITION: index page with desktop specimens (resize-panels) + cross-references to universal (tables, dialogs, etc.)
+COPY VOICE: terse — this is an index, not a tutorial
+WHEN SCAFFOLDED: platform-desktop
+NOTES: Desktop kit is smaller than mobile because most desktop UX lives in /universal/ (tables, dialogs, tooltips work on desktop natively). Only desktop-only patterns (resizable panels, command-palette, keyboard shortcuts) get their own specimens.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>UI kits — desktop</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .kit-card { background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 16px; text-decoration: none; color: inherit; display: grid; gap: 8px; transition: background var(--dur-flip) var(--ease-out), border-color var(--dur-flip) var(--ease-out); }
+    .kit-card:hover { background: var(--bg-2); border-color: var(--border-strong); }
+    .kit-card .thumb { height: 96px; background: var(--bg-3); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; color: var(--fg-2); font-family: var(--font-mono); font-size: var(--type-xs); }
+    .kit-card .title { font-weight: 500; }
+    .kit-card .body { color: var(--fg-1); font-size: var(--type-sm); margin: 0; }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Desktop UI kit</h1>
+    <p class="lede">Desktop-specific patterns. Most desktop UX uses the <code>universal/</code> specimens (tables, dialogs, tooltips, tabs); this kit covers only what's truly desktop-only — resizable layouts and the keyboard-first density patterns.</p>
+
+    <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));">
+      <a href="./components-resize-panels.html" class="kit-card">
+        <div class="thumb">▤ │ ▤ │ ▤</div>
+        <span class="title">Resizable panels</span>
+        <p class="body">3-pane split with drag handles and snap-to-default.</p>
+      </a>
+      <a href="../audience-pro/components-command-palette.html" class="kit-card">
+        <div class="thumb">⌘K</div>
+        <span class="title">Command palette</span>
+        <p class="body">Keyboard-first action launcher (shared with pro tool kit).</p>
+      </a>
+      <a href="../audience-pro/components-shortcuts-overlay.html" class="kit-card">
+        <div class="thumb">?</div>
+        <span class="title">Shortcuts overlay</span>
+        <p class="body">Press ? to surface; grouped table of bindings.</p>
+      </a>
+      <a href="../universal/components-tables.html" class="kit-card">
+        <div class="thumb">≡≡≡</div>
+        <span class="title">Tables</span>
+        <p class="body">Dense data table (shared with universal).</p>
+      </a>
+    </div>
+
+    <footer class="legend"><p>Add to this kit only if the pattern doesn't make sense on mobile (drag-resize, multi-window, hover-only). Otherwise it belongs in <code>universal/</code>.</p></footer>
+  </main>
+</body>
+</html>

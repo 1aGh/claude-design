@@ -1,0 +1,46 @@
+<!--
+SPECIMEN: foundations-elevation
+DEMONSTRATES: --shadow-sm, --shadow-md, --shadow-lg
+COMPOSITION: 3 floating cards + a "no shadow" baseline showing what flat looks like
+COPY VOICE: terse role labels
+WHEN SCAFFOLDED: foundations (almost always)
+NOTES: Shadows are reserved for floating UI (popovers, dropdowns, dialogs). Stationary cards use border + bg step, NOT shadow. Misuse is the #1 visual-noise tell.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Foundations — elevation</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Elevation</h1>
+    <p class="lede">Three levels of shadow — and one explicit zero. Shadow is reserved for things that <em>float</em> above the page (popovers, dropdowns, dialogs). Stationary cards use border + bg step, not shadow.</p>
+
+    <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));">
+      <div style="background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 24px; text-align: center;">
+        <strong style="display: block;">flat</strong>
+        <code style="color: var(--fg-2);">border + bg-1</code>
+      </div>
+      <div style="background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 24px; text-align: center; box-shadow: var(--shadow-sm);">
+        <strong style="display: block;">--shadow-sm</strong>
+        <code style="color: var(--fg-2);">hover lift</code>
+      </div>
+      <div style="background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 24px; text-align: center; box-shadow: var(--shadow-md);">
+        <strong style="display: block;">--shadow-md</strong>
+        <code style="color: var(--fg-2);">popover, menu</code>
+      </div>
+      <div style="background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 24px; text-align: center; box-shadow: var(--shadow-lg);">
+        <strong style="display: block;">--shadow-lg</strong>
+        <code style="color: var(--fg-2);">dialog, sheet</code>
+      </div>
+    </div>
+
+    <footer class="legend">
+      <p>If a card sits on the page surface and doesn't move, no shadow. Shadows imply "floats above" — use them when that's literally true.</p>
+    </footer>
+  </main>
+</body>
+</html>

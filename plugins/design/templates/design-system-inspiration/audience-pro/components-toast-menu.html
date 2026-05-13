@@ -1,0 +1,80 @@
+<!--
+SPECIMEN: audience-pro-toast-menu
+DEMONSTRATES: bottom-anchored toast notifications, contextual menu (right-click / button-triggered), action chain on toast
+COMPOSITION: 3 toast variants (success / pending / error w/ retry) + a right-click context menu with keyboard shortcut hints
+COPY VOICE: terse, actionable ("Saved", "Retry", "Undo") — never "Successful!"
+WHEN SCAFFOLDED: audience-pro
+NOTES: Toast is auto-dismissed for success (4s), persistent for error (until user acts). Context menus include keyboard shortcuts in the right column — power users learn through repetition.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Audience — pro toast + menu</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .toast { background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md); box-shadow: var(--shadow-md); padding: 10px 14px; display: flex; align-items: center; gap: 12px; max-width: 360px; font-size: var(--type-sm); }
+    .toast .icon { width: 18px; height: 18px; flex-shrink: 0; }
+    .toast .body { flex: 1; }
+    .toast .actions { display: flex; gap: 8px; }
+    .toast button { background: transparent; border: 0; color: var(--accent); font: inherit; font-size: var(--type-sm); padding: 2px 6px; border-radius: var(--radius-xs); cursor: pointer; }
+    .toast button:hover { background: var(--bg-3); }
+    .menu { background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md); box-shadow: var(--shadow-md); padding: 4px; width: 220px; }
+    .menu-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-radius: var(--radius-sm); cursor: pointer; font-size: var(--type-sm); }
+    .menu-item:hover { background: var(--bg-3); }
+    .menu-item.is-destructive:hover { background: var(--status-error); color: var(--accent-fg); }
+    .menu .shortcut { color: var(--fg-2); font-family: var(--font-mono); font-size: var(--type-xs); }
+    .menu-sep { height: 1px; background: var(--border-subtle); margin: 4px -4px; }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Toast + context menu</h1>
+    <p class="lede">Toasts auto-dismiss for success (4s) but stay sticky for errors until the user acts. Context menus show keyboard shortcuts on the right so power users learn the binding while they use the mouse.</p>
+
+    <h2>Toasts</h2>
+    <div style="display: grid; gap: 12px; margin: 16px 0;">
+      <div class="toast" style="border-color: var(--status-success);">
+        <span class="icon" style="color: var(--status-success);">✓</span>
+        <div class="body">
+          <strong>Match recap saved.</strong>
+          <div style="color: var(--fg-1); font-size: var(--type-xs);">Shared with the captain.</div>
+        </div>
+        <div class="actions">
+          <button>Undo</button>
+        </div>
+      </div>
+      <div class="toast">
+        <span class="icon" style="color: var(--status-warn);">⟳</span>
+        <div class="body">
+          <strong>Syncing roster…</strong>
+          <div style="color: var(--fg-1); font-size: var(--type-xs);">3 of 24 done.</div>
+        </div>
+      </div>
+      <div class="toast" style="border-color: var(--status-error);">
+        <span class="icon" style="color: var(--status-error);">×</span>
+        <div class="body">
+          <strong>Couldn't reach the league API.</strong>
+          <div style="color: var(--fg-1); font-size: var(--type-xs);">We'll retry in 30s.</div>
+        </div>
+        <div class="actions">
+          <button>Retry now</button>
+        </div>
+      </div>
+    </div>
+
+    <h2>Context menu (right-click / button)</h2>
+    <div class="menu">
+      <div class="menu-item">Open player <span class="shortcut">⏎</span></div>
+      <div class="menu-item">Edit profile <span class="shortcut">E</span></div>
+      <div class="menu-item">Toggle availability <span class="shortcut">A</span></div>
+      <div class="menu-sep"></div>
+      <div class="menu-item">Copy ID <span class="shortcut">⌘C</span></div>
+      <div class="menu-item">Duplicate <span class="shortcut">⌘D</span></div>
+      <div class="menu-sep"></div>
+      <div class="menu-item is-destructive">Remove from roster <span class="shortcut">⌫</span></div>
+    </div>
+  </main>
+</body>
+</html>

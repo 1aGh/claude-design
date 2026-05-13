@@ -1,0 +1,73 @@
+<!--
+SPECIMEN: meta-i18n
+DEMONSTRATES: RTL support, long-text overflow handling, pluralization patterns, lang attribute
+COMPOSITION: 4 sections — RTL flip (Hebrew/Arabic sample), text overflow (ellipsis vs wrap), pluralization (1 / N / 0), lang attribute usage
+COPY VOICE: real translation candidates from CMS
+WHEN SCAFFOLDED: meta (when project supports i18n)
+NOTES: RTL is `dir="rtl"` on the parent — the layout flips automatically with logical properties (margin-inline-start, etc.). Long-text overflow needs a strategy per surface — ellipsis for chips, wrap for body. Pluralization always covers 0 case (often the most distinct copy).
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Meta — i18n</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .demo-card { background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 16px; margin: 0 0 16px; max-width: 480px; }
+    .demo-card .lbl { font-size: var(--type-xs); color: var(--fg-2); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .chip { background: var(--bg-3); border: 1px solid var(--border-default); padding: 4px 12px; border-radius: var(--radius-pill); display: inline-block; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+    .rtl { direction: rtl; }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Internationalization</h1>
+    <p class="lede">Four project-specific i18n patterns — RTL flip, text overflow strategy, pluralization, and the <code>lang</code> attribute.</p>
+
+    <h2>RTL — layout flips automatically</h2>
+    <div class="demo-card">
+      <div class="lbl">English (ltr)</div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <span style="width: 32px; height: 32px; background: var(--bg-3); border-radius: 50%;"></span>
+        <div><strong>Kim Park</strong><div style="color: var(--fg-1); font-size: var(--type-sm);">#9 · captain</div></div>
+      </div>
+    </div>
+    <div class="demo-card rtl" lang="ar">
+      <div class="lbl">Arabic (rtl)</div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <span style="width: 32px; height: 32px; background: var(--bg-3); border-radius: 50%;"></span>
+        <div><strong>كيم بارك</strong><div style="color: var(--fg-1); font-size: var(--type-sm);">‏#9 · القائد</div></div>
+      </div>
+    </div>
+
+    <h2>Long-text overflow</h2>
+    <div class="demo-card">
+      <div class="lbl">Chips — ellipsis at 160px</div>
+      <span class="chip">Forward</span>
+      <span class="chip">Defender</span>
+      <span class="chip">Mittelfeldspieler</span>
+      <span class="chip">Aanvallende middenvelder</span>
+    </div>
+    <div class="demo-card">
+      <div class="lbl">Body — wraps freely</div>
+      <p style="margin: 0; color: var(--fg-1); line-height: 1.5;">Speeleranzahl ist begrenzt auf maximal 24 Spieler pro Kader; Ersatzspieler werden separat geführt.</p>
+    </div>
+
+    <h2>Pluralization (0 / 1 / N)</h2>
+    <div class="demo-card">
+      <p style="margin: 0 0 8px;"><strong>Empty:</strong> No players in this squad — invite some.</p>
+      <p style="margin: 0 0 8px;"><strong>One:</strong> 1 player on the bench.</p>
+      <p style="margin: 0;"><strong>Many:</strong> 7 players on the bench.</p>
+    </div>
+
+    <h2><code>lang</code> attribute</h2>
+    <p>Set on <code>&lt;html&gt;</code> globally; override per section when content language differs. Browsers + screen readers use this for hyphenation, quotation marks, and pronunciation.</p>
+    <pre style="background: var(--bg-0); padding: 12px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-default); font-family: var(--font-mono); font-size: 12px;">&lt;html lang="en"&gt;
+  &lt;blockquote lang="fr"&gt;
+    Le football est un jeu simple.
+  &lt;/blockquote&gt;
+&lt;/html&gt;</pre>
+  </main>
+</body>
+</html>

@@ -50,4 +50,4 @@ For group definitions and the canonical catalog, see `plugins/design/CATEGORIES.
 - This command is **read-only**. It never edits files — it just scans frontmatter and renders the table.
 - Source of truth for the command list is the **frontmatter on disk** (no drift). `CATEGORIES.md` supplies group ordering + group prose.
 - If a new command is added without `category:`, `/design:help` will surface it under `(uncategorized)` — that's the signal to fill in the field.
-- The bare `/design` form is a one-version compat stub that redirects to `/design:edit`. It will be removed in the next minor version; cross-reference future docs with `/design:edit` only.
+- The bare `/design` compat stub (v0.8) was removed in v0.9 — only `/design:edit` resolves now.

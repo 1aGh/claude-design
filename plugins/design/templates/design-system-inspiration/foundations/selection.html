@@ -1,0 +1,45 @@
+<!--
+SPECIMEN: foundations-selection
+DEMONSTRATES: ::selection pseudo, multi-select row state, range selection
+COMPOSITION: paragraph with explicit text selection sample + multi-select list with shift+click range + checked state
+COPY VOICE: real product strings (player names, match notes)
+WHEN SCAFFOLDED: foundations (universal — every text surface + list has selection)
+NOTES: ::selection bg uses --accent at low opacity (oklch with 0.3 alpha) for readability with foreground. Row selection uses --bg-4 (the pressed-state token). Never use accent for row selection — rows aren't navigation.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Foundations — selection</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .demo-text ::selection,
+    .demo-text::selection { background: oklch(from var(--accent) l c h / 0.32); color: var(--fg-0); }
+    .multi-row { display: flex; gap: 12px; padding: 8px 12px; align-items: center; border-radius: var(--radius-sm); cursor: pointer; }
+    .multi-row.is-selected { background: var(--bg-4); }
+    .multi-row.is-range    { background: var(--bg-3); }
+    .multi-row .check { width: 16px; height: 16px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); display: inline-flex; align-items: center; justify-content: center; }
+    .multi-row.is-selected .check, .multi-row.is-range .check { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Selection</h1>
+    <p class="lede">Two distinct concepts share the word "selection": text selection in flowing content, and multi-select in lists. They use different visual languages — text gets a tinted accent overlay, rows get the neutral pressed-state surface.</p>
+
+    <h2>Text selection</h2>
+    <p class="demo-text">Drag-select this paragraph. The highlight is the accent color at low opacity (32%) — readable on top of the body text. Selection works across line breaks and adapts to dark / light theme without manual tuning because OKLCH carries the alpha cleanly.</p>
+
+    <h2>Multi-select rows</h2>
+    <div style="background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 8px; max-width: 360px;">
+      <div class="multi-row is-selected"><span class="check">✓</span> Kim Park · #9 forward</div>
+      <div class="multi-row is-range"><span class="check">✓</span> Jonas Weber · #14 midfield</div>
+      <div class="multi-row is-range"><span class="check">✓</span> Marta Silva · #4 defender</div>
+      <div class="multi-row is-range"><span class="check">✓</span> Liam Chen · #1 goalkeeper</div>
+      <div class="multi-row"><span class="check"></span> Sara Novak · #11 forward</div>
+    </div>
+    <p style="color: var(--fg-2); font-size: var(--type-xs); margin-top: 8px;">Click selects (--bg-4); Shift+Click extends a range (--bg-3); Esc clears.</p>
+  </main>
+</body>
+</html>

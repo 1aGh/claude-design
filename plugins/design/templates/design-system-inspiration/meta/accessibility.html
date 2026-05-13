@@ -1,0 +1,62 @@
+<!--
+SPECIMEN: meta-accessibility
+DEMONSTRATES: focus order example, semantic HTML samples, ARIA role example, screen-reader-only text, skip-link
+COMPOSITION: 5 sections showing one a11y pattern each with HTML excerpts
+COPY VOICE: technical but plain
+WHEN SCAFFOLDED: meta (universal)
+NOTES: This is the project's a11y reference page. Don't list WCAG criteria — those are universal. List PROJECT-specific patterns (skip-link target, focus-trap conventions, sr-only utility class).
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Meta — accessibility</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+    .skip-link { position: absolute; top: -100px; left: 8px; padding: 8px 12px; background: var(--accent); color: var(--accent-fg); border-radius: var(--radius-sm); transition: top var(--dur-flip); z-index: 999; }
+    .skip-link:focus { top: 8px; }
+    pre { background: var(--bg-0); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 12px 14px; font-family: var(--font-mono); font-size: 12px; line-height: 1.6; color: var(--fg-0); overflow-x: auto; }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <a href="#main" class="skip-link">Skip to main content</a>
+  <main id="main" class="specimen">
+    <h1>Accessibility</h1>
+    <p class="lede">Project-specific a11y patterns. WCAG criteria are universal — this page covers <em>how this project applies them</em>: skip-link target, focus-trap convention, screen-reader-only utility, semantic landmarks.</p>
+
+    <h2>Skip link</h2>
+    <p>The first focusable element on every page jumps to <code>#main</code>. Tab once on any page to reveal it.</p>
+    <pre>&lt;a href="#main" class="skip-link"&gt;Skip to main content&lt;/a&gt;
+&lt;main id="main"&gt; … &lt;/main&gt;</pre>
+
+    <h2>Screen-reader-only text</h2>
+    <p>Use the <code>.sr-only</code> utility for content that screen readers should hear but sighted users don't need to see.</p>
+    <pre>&lt;button&gt;
+  &lt;svg aria-hidden="true"&gt;…&lt;/svg&gt;
+  &lt;span class="sr-only"&gt;Open menu&lt;/span&gt;
+&lt;/button&gt;</pre>
+
+    <h2>Semantic landmarks</h2>
+    <p>Every page MUST have one <code>&lt;main&gt;</code>, one <code>&lt;h1&gt;</code>. Nav inside <code>&lt;nav aria-label="…"&gt;</code>, complementary content inside <code>&lt;aside&gt;</code>.</p>
+    <pre>&lt;header&gt;…&lt;/header&gt;
+&lt;nav aria-label="Primary"&gt;…&lt;/nav&gt;
+&lt;main id="main"&gt;
+  &lt;h1&gt;Page title&lt;/h1&gt;
+  …
+&lt;/main&gt;
+&lt;aside&gt;…&lt;/aside&gt;
+&lt;footer&gt;…&lt;/footer&gt;</pre>
+
+    <h2>Focus trap (modals)</h2>
+    <p>Modal dialogs use <code>role="dialog" aria-modal="true"</code> and trap Tab focus inside. Esc closes. After close, focus returns to the trigger.</p>
+
+    <h2>ARIA live regions</h2>
+    <p>Use <code>aria-live="polite"</code> on status updates (notifications, count badges that change). Use <code>aria-live="assertive"</code> only for true emergencies (form errors blocking submit).</p>
+
+    <h2>Focus indicators</h2>
+    <p>Every focusable element has a visible focus indicator via <code>:focus-visible</code> — see <a href="../foundations/focus.html">foundations/focus</a>. Never <code>outline: none</code> without a replacement.</p>
+  </main>
+</body>
+</html>

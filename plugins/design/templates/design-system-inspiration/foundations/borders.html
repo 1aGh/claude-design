@@ -1,0 +1,39 @@
+<!--
+SPECIMEN: foundations-borders
+DEMONSTRATES: --border-subtle, --border-default, --border-strong, --accent, --status-error
+COMPOSITION: 5 stacked panels demonstrating border weights + colored border states (accent, error)
+COPY VOICE: terse role labels
+WHEN SCAFFOLDED: foundations (universal)
+NOTES: Borders derive from --bg-1 via oklch(from var(--bg-1) calc(l + N) c h) — see colors_and_type.css. Match the visual weight to the role: subtle for ambient, strong for active selection, accent for primary CTA outlines, error for validation.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Foundations — borders</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Borders</h1>
+    <p class="lede">Three weights for separation hierarchy, plus accent + error states. Borders derive from the surface bg in OKLCH so they stay visually consistent across themes.</p>
+
+    <div style="display: grid; gap: 12px; margin: 24px 0; max-width: 480px;">
+      <div style="padding: 12px 16px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md);"><strong>Subtle</strong> · ambient separation</div>
+      <div style="padding: 12px 16px; border: 1px solid var(--border-default); border-radius: var(--radius-md);"><strong>Default</strong> · standard card / input outline</div>
+      <div style="padding: 12px 16px; border: 1px solid var(--border-strong); border-radius: var(--radius-md);"><strong>Strong</strong> · hover, selection, focus surrounds</div>
+      <div style="padding: 12px 16px; border: 1px solid var(--accent); border-radius: var(--radius-md);"><strong>Accent</strong> · primary CTA outline / focus ring base</div>
+      <div style="padding: 12px 16px; border: 1px solid var(--status-error); border-radius: var(--radius-md);"><strong>Error</strong> · validation fail / destructive confirm</div>
+    </div>
+
+    <h2>In context — input states</h2>
+    <div class="row" style="gap: 12px;">
+      <input type="text" value="default" style="background: var(--bg-3); color: var(--fg-0); border: 1px solid var(--border-default); padding: 6px 10px; border-radius: var(--radius-sm); font: inherit;" />
+      <input type="text" value="hover" style="background: var(--bg-3); color: var(--fg-0); border: 1px solid var(--border-strong); padding: 6px 10px; border-radius: var(--radius-sm); font: inherit;" />
+      <input type="text" value="focused" style="background: var(--bg-3); color: var(--fg-0); border: 1px solid var(--border-strong); padding: 6px 10px; border-radius: var(--radius-sm); font: inherit; outline: 2px solid var(--accent); outline-offset: 2px;" />
+      <input type="text" value="error" style="background: var(--bg-3); color: var(--fg-0); border: 1px solid var(--status-error); padding: 6px 10px; border-radius: var(--radius-sm); font: inherit;" />
+    </div>
+  </main>
+</body>
+</html>

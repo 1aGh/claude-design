@@ -1,0 +1,70 @@
+<!--
+SPECIMEN: pattern-form-layouts
+DEMONSTRATES: 4 form layout patterns — single column, two column, inline labels, floating labels
+COMPOSITION: 4 mini-forms each demonstrating one layout strategy
+COPY VOICE: real product fields (Email, Squad role, Birth year, …)
+WHEN SCAFFOLDED: patterns (universal — every project has forms)
+NOTES: Single-column is the default — easiest to scan, works on mobile. Two-column only for closely-related pairs (first / last name). Inline labels for compact admin tables. Floating labels for short forms with strong design opinions.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Pattern — form layouts</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .form { background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 20px; max-width: 480px; margin: 0 0 24px; }
+    .field { display: grid; gap: 4px; margin: 0 0 14px; }
+    .field label { font-size: var(--type-sm); color: var(--fg-1); }
+    .field input, .field select { background: var(--bg-3); color: var(--fg-0); border: 1px solid var(--border-default); padding: 8px 10px; border-radius: var(--radius-sm); font: inherit; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0 0 14px; }
+    .inline-field { display: grid; grid-template-columns: 140px 1fr; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border-subtle); }
+    .inline-field:last-child { border-bottom: 0; }
+    .float-field { position: relative; margin: 0 0 14px; }
+    .float-field input { width: 100%; padding: 18px 10px 6px; box-sizing: border-box; }
+    .float-field label { position: absolute; top: 12px; left: 10px; font-size: var(--type-sm); color: var(--fg-2); transition: all var(--dur-flip) var(--ease-out); pointer-events: none; }
+    .float-field.is-filled label, .float-field input:focus + label { top: 4px; font-size: 10px; color: var(--accent); }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Form layouts</h1>
+    <p class="lede">Single-column is the default. The other three (two-column, inline-label, floating-label) exist for specific contexts.</p>
+
+    <h2>1. Single column (default)</h2>
+    <form class="form">
+      <div class="field"><label>Email</label><input type="email" value="kim@fc-riverside.club" /></div>
+      <div class="field"><label>Squad role</label><input type="text" value="Captain" /></div>
+      <div class="field"><label>Birth year</label><input type="text" value="2005" /></div>
+      <button style="background: var(--accent); color: var(--accent-fg); border: 0; padding: 8px 14px; border-radius: var(--radius-sm); font: inherit; margin-top: 4px;">Save</button>
+    </form>
+
+    <h2>2. Two column (related pairs)</h2>
+    <form class="form">
+      <div class="two-col">
+        <div class="field"><label>First name</label><input type="text" value="Kim" /></div>
+        <div class="field"><label>Last name</label><input type="text" value="Park" /></div>
+      </div>
+      <div class="two-col">
+        <div class="field"><label>City</label><input type="text" value="Prague" /></div>
+        <div class="field"><label>Postal code</label><input type="text" value="11000" /></div>
+      </div>
+    </form>
+
+    <h2>3. Inline labels (settings panel)</h2>
+    <form class="form">
+      <div class="inline-field"><label style="font-size: var(--type-sm); color: var(--fg-1);">Notifications</label><div><input type="checkbox" checked /> Match results</div></div>
+      <div class="inline-field"><label style="font-size: var(--type-sm); color: var(--fg-1);">Theme</label><select><option>System</option><option>Dark</option><option>Light</option></select></div>
+      <div class="inline-field"><label style="font-size: var(--type-sm); color: var(--fg-1);">Time zone</label><select><option>Europe/Prague</option></select></div>
+    </form>
+
+    <h2>4. Floating labels (compact, short forms)</h2>
+    <form class="form">
+      <div class="float-field is-filled"><input type="text" value="kim@fc-riverside.club" id="ff1" /><label for="ff1">Email</label></div>
+      <div class="float-field is-filled"><input type="text" value="••••••••" id="ff2" /><label for="ff2">Password</label></div>
+      <button style="background: var(--accent); color: var(--accent-fg); border: 0; padding: 8px 14px; border-radius: var(--radius-sm); font: inherit; width: 100%;">Sign in</button>
+    </form>
+  </main>
+</body>
+</html>

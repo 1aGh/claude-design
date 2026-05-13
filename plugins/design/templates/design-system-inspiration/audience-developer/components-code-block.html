@@ -1,0 +1,71 @@
+<!--
+SPECIMEN: audience-developer-code-block
+DEMONSTRATES: code block with syntax-color stub (using token palette), language label, copy button, line numbers (optional)
+COMPOSITION: 3 code blocks — bash (no syntax), js (with token-colored keywords), JSON (key/value coloring); each with header + copy
+COPY VOICE: real code, real package names, real file paths
+WHEN SCAFFOLDED: audience-developer
+NOTES: Syntax highlighting uses the token palette — --status-info (blue) for keywords, --accent (project color) for strings, --status-success (green) for numbers, --fg-2 (muted) for comments. Don't pull in a separate syntax-color palette — reuse what the system has.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Audience — developer code block</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .code-block { background: var(--bg-0); border: 1px solid var(--border-default); border-radius: var(--radius-md); margin: 0 0 16px; max-width: 720px; overflow: hidden; }
+    .code-header { display: flex; justify-content: space-between; align-items: center; padding: 6px 12px; background: var(--bg-2); border-bottom: 1px solid var(--border-default); font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); }
+    .code-header button { background: transparent; border: 0; color: var(--fg-1); font: inherit; font-size: var(--type-xs); padding: 2px 8px; border-radius: var(--radius-xs); cursor: pointer; }
+    .code-header button:hover { background: var(--bg-3); color: var(--fg-0); }
+    pre { margin: 0; padding: 12px 14px; font-family: var(--font-mono); font-size: 12px; line-height: 1.6; color: var(--fg-0); overflow-x: auto; }
+    .kw  { color: var(--status-info); }
+    .str { color: var(--accent); }
+    .num { color: var(--status-success); }
+    .cmt { color: var(--fg-2); }
+    .fn  { color: var(--status-warn); }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Code blocks</h1>
+    <p class="lede">Code blocks reuse the status palette for syntax tokens — blue for keywords, accent for strings, green for numbers, muted for comments. No separate theme.</p>
+
+    <div class="code-block">
+      <div class="code-header"><span>bash</span><button>copy</button></div>
+      <pre><span class="cmt"># Install + scaffold</span>
+npm i -g @1agh/md-claude
+mdcc design init --no-discovery --name acme
+cd acme &amp;&amp; claude
+<span class="cmt"># Inside Claude Code:</span>
+<span class="cmt">#   /design:setup-ds project "team scouting tool"</span></pre>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span>typescript</span><button>copy</button></div>
+      <pre><span class="kw">import</span> { copyTree } <span class="kw">from</span> <span class="str">'../lib/copy-tree.mjs'</span>;
+
+<span class="kw">async function</span> <span class="fn">runInit</span>({ args, pkgRoot }) {
+  <span class="kw">const</span> { flags } = <span class="fn">parseArgs</span>(args, {
+    booleans: [<span class="str">'force'</span>, <span class="str">'dry-run'</span>, <span class="str">'no-discovery'</span>],
+  });
+  <span class="kw">if</span> (!flags[<span class="str">'no-discovery'</span>]) <span class="kw">return</span> <span class="fn">refuseInteractive</span>();
+  <span class="kw">return</span> <span class="fn">scaffoldCore</span>({ designDir, dsName, payload });
+}</pre>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><span>json</span><button>copy</button></div>
+      <pre>{
+  <span class="str">"name"</span>: <span class="str">"acme"</span>,
+  <span class="str">"version"</span>: <span class="str">"0.8.0"</span>,
+  <span class="str">"completenessProfile"</span>: <span class="str">"standard"</span>,
+  <span class="str">"activeFamilies"</span>: [<span class="str">"accent"</span>, <span class="str">"status"</span>],
+  <span class="str">"designSystems"</span>: [
+    { <span class="str">"name"</span>: <span class="str">"project"</span>, <span class="str">"path"</span>: <span class="str">"system/project"</span> }
+  ]
+}</pre>
+    </div>
+  </main>
+</body>
+</html>

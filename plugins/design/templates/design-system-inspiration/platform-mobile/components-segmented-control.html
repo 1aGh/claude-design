@@ -1,0 +1,51 @@
+<!--
+SPECIMEN: platform-mobile-segmented-control
+DEMONSTRATES: iOS-style segmented control (pill background, active segment with bg + shadow), 2/3/4-segment variants
+COMPOSITION: 3 segmented controls (2-segment toggle, 3-segment date range, 4-segment filter) on mobile chrome
+COPY VOICE: 1-word labels ("Today", "Week", "Month", "All time")
+WHEN SCAFFOLDED: platform-mobile (and desktop where Apple-aesthetic matters)
+NOTES: Background of the unselected track is --bg-3; active segment is --bg-1 (lifts forward via small shadow). Border between segments is implicit (track padding does the work). Animate transform on the active indicator, not background.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Platform mobile — segmented control</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .seg { display: inline-flex; background: var(--bg-3); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 3px; gap: 2px; }
+    .seg button { background: transparent; border: 0; color: var(--fg-1); font: inherit; font-size: var(--type-sm); padding: 5px 14px; border-radius: calc(var(--radius-md) - 3px); cursor: pointer; transition: background var(--dur-flip) var(--ease-out); }
+    .seg button.is-active { background: var(--bg-1); color: var(--fg-0); box-shadow: var(--shadow-sm); font-weight: 500; }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Segmented control</h1>
+    <p class="lede">Pill-tracked, active segment lifts forward with a soft shadow. Use for view-mode switches (List / Grid), date ranges (Today / Week / Month), and filter sets — never for primary actions.</p>
+
+    <h2>2-segment toggle</h2>
+    <div class="seg">
+      <button class="is-active">List</button>
+      <button>Grid</button>
+    </div>
+
+    <h2>3-segment date range</h2>
+    <div class="seg">
+      <button>Today</button>
+      <button class="is-active">Week</button>
+      <button>Month</button>
+    </div>
+
+    <h2>4-segment filter</h2>
+    <div class="seg">
+      <button class="is-active">All</button>
+      <button>Live</button>
+      <button>Upcoming</button>
+      <button>Past</button>
+    </div>
+
+    <footer class="legend"><p>If you have 5+ segments, switch to <code>components-tabs</code> — segmented controls degrade in usability past 4. Tabs scroll; segmented controls don't.</p></footer>
+  </main>
+</body>
+</html>

@@ -1,0 +1,74 @@
+<!--
+SPECIMEN: audience-pro-presence
+DEMONSTRATES: --presence-online, --presence-away, --presence-offline; presence dot on avatar, presence cursor + label
+COMPOSITION: 4 avatars with presence dots (online / away / offline / idle) + a "live cursors" mockup with 3 simultaneous users
+COPY VOICE: real names, real timestamps
+WHEN SCAFFOLDED: presence family (IF "presence" ∈ activeFamilies — typically pro tools with multiplayer)
+NOTES: Presence dot is 8px circle bottom-right of 32-40px avatars (anchor on the visual bottom-right, not on a math grid). Cursor labels are subtle (pill at 11px, low opacity bg). Don't blink presence — too noisy in a busy view.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Presence — colors</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .avatar { position: relative; width: 40px; height: 40px; background: var(--bg-3); border: 1px solid var(--border-default); border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: var(--fg-1); font-size: var(--type-sm); }
+    .avatar .dot { position: absolute; bottom: -1px; right: -1px; width: 10px; height: 10px; border: 2px solid var(--bg-0); border-radius: 50%; }
+    .avatar-block { display: grid; gap: 6px; justify-items: center; }
+    .avatar-block .label { font-size: var(--type-xs); color: var(--fg-2); }
+    .canvas-frame { position: relative; background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 24px; min-height: 200px; overflow: hidden; }
+    .cursor { position: absolute; display: flex; align-items: flex-start; gap: 2px; pointer-events: none; }
+    .cursor svg { color: inherit; }
+    .cursor-label { background: currentColor; color: var(--accent-fg); font-size: 11px; padding: 1px 6px; border-radius: var(--radius-pill); margin-top: 12px; margin-left: 4px; }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Presence</h1>
+    <p class="lede">Three presence states — online (green), away (amber), offline (muted). For multiplayer pro tools where "who's looking right now" matters.</p>
+
+    <h2>Presence dots on avatars</h2>
+    <div class="row" style="gap: 32px;">
+      <div class="avatar-block">
+        <div class="avatar">KP<div class="dot" style="background: var(--presence-online);"></div></div>
+        <div class="label">online</div>
+      </div>
+      <div class="avatar-block">
+        <div class="avatar">JW<div class="dot" style="background: var(--presence-away);"></div></div>
+        <div class="label">away (idle 5m)</div>
+      </div>
+      <div class="avatar-block">
+        <div class="avatar">MS<div class="dot" style="background: var(--presence-offline);"></div></div>
+        <div class="label">offline</div>
+      </div>
+      <div class="avatar-block">
+        <div class="avatar">LC</div>
+        <div class="label">unknown</div>
+      </div>
+    </div>
+
+    <h2>Live cursors (multiplayer)</h2>
+    <div class="canvas-frame">
+      <div class="cursor" style="top: 20%; left: 30%; color: oklch(64% 0.20 264);">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3 L21 12 L13 14 L11 22 Z"/></svg>
+        <span class="cursor-label">Kim</span>
+      </div>
+      <div class="cursor" style="top: 55%; left: 60%; color: oklch(68% 0.18 145);">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3 L21 12 L13 14 L11 22 Z"/></svg>
+        <span class="cursor-label">Marta</span>
+      </div>
+      <div class="cursor" style="top: 70%; left: 18%; color: oklch(72% 0.15 50);">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3 L21 12 L13 14 L11 22 Z"/></svg>
+        <span class="cursor-label">Jonas</span>
+      </div>
+      <div style="position: absolute; bottom: 12px; left: 12px; color: var(--fg-2); font-size: var(--type-xs);">3 viewers</div>
+    </div>
+
+    <footer class="legend">
+      <p>Cursor color is per-user, not a token — derived from a stable hash of the user ID into an OKLCH lightness/chroma band. Stays consistent across sessions.</p>
+    </footer>
+  </main>
+</body>
+</html>

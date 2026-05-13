@@ -1,0 +1,74 @@
+<!--
+SPECIMEN: status-skeletons
+DEMONSTRATES: pulse animation on placeholder shapes, skeleton vs spinner choice, respects prefers-reduced-motion
+COMPOSITION: skeleton for list row, card, paragraph + side-by-side comparison with spinner
+COPY VOICE: N/A (no copy — these are loading placeholders)
+WHEN SCAFFOLDED: status family (almost always — every async UI loads something)
+NOTES: Skeleton wins over spinner for content where the shape is predictable (lists, cards, articles). Spinner is only acceptable when you literally don't know the dimensions yet (file upload, indeterminate work). Pulse uses opacity, not background-color — compositor-only.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Status — skeletons</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .skel { background: var(--bg-3); border-radius: var(--radius-sm); animation: pulse var(--dur-soft) ease-in-out infinite alternate; }
+    @keyframes pulse { from { opacity: 0.5; } to { opacity: 1; } }
+    @media (prefers-reduced-motion: reduce) { .skel { animation: none; opacity: 0.7; } }
+    .spinner { width: 24px; height: 24px; border: 2px solid var(--bg-3); border-top-color: var(--accent); border-radius: 50%; animation: spin var(--dur-route) linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Skeletons</h1>
+    <p class="lede">Use a skeleton when the rendered shape is predictable — list rows, cards, paragraphs. Use a spinner only when dimensions are unknown (file uploads, indeterminate work). Both respect <code>prefers-reduced-motion: reduce</code>.</p>
+
+    <h2>List skeleton</h2>
+    <div style="background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 12px; max-width: 480px;">
+      <div style="display: flex; gap: 12px; align-items: center; padding: 8px 0;">
+        <div class="skel" style="width: 32px; height: 32px; border-radius: 50%;"></div>
+        <div style="flex: 1; display: grid; gap: 6px;">
+          <div class="skel" style="height: 12px; width: 60%;"></div>
+          <div class="skel" style="height: 10px; width: 40%;"></div>
+        </div>
+      </div>
+      <div style="display: flex; gap: 12px; align-items: center; padding: 8px 0;">
+        <div class="skel" style="width: 32px; height: 32px; border-radius: 50%;"></div>
+        <div style="flex: 1; display: grid; gap: 6px;">
+          <div class="skel" style="height: 12px; width: 50%;"></div>
+          <div class="skel" style="height: 10px; width: 30%;"></div>
+        </div>
+      </div>
+      <div style="display: flex; gap: 12px; align-items: center; padding: 8px 0;">
+        <div class="skel" style="width: 32px; height: 32px; border-radius: 50%;"></div>
+        <div style="flex: 1; display: grid; gap: 6px;">
+          <div class="skel" style="height: 12px; width: 70%;"></div>
+          <div class="skel" style="height: 10px; width: 35%;"></div>
+        </div>
+      </div>
+    </div>
+
+    <h2>Card skeleton</h2>
+    <div style="background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 16px; max-width: 320px; display: grid; gap: 12px;">
+      <div class="skel" style="height: 18px; width: 60%;"></div>
+      <div class="skel" style="height: 12px; width: 100%;"></div>
+      <div class="skel" style="height: 12px; width: 85%;"></div>
+      <div class="skel" style="height: 32px; width: 96px; border-radius: var(--radius-sm);"></div>
+    </div>
+
+    <h2>Spinner — when dimensions are unknown</h2>
+    <div style="background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 32px; display: flex; align-items: center; gap: 12px; max-width: 320px;">
+      <div class="spinner"></div>
+      <span style="color: var(--fg-1);">Uploading match video…</span>
+    </div>
+
+    <footer class="legend">
+      <p>Don't animate background-color on the skel — animation: opacity (or transform) is compositor-only and respects reduced-motion cleanly.</p>
+    </footer>
+  </main>
+</body>
+</html>

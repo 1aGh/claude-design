@@ -1,0 +1,85 @@
+<!--
+SPECIMEN: audience-pro-shortcuts-overlay
+DEMONSTRATES: ? key cheat-sheet overlay, grouped sections, kbd primitives in dense table
+COMPOSITION: 4-column overlay with sections (Navigation / Editing / View / Other) and ~16 shortcuts total
+COPY VOICE: terse action-verb descriptions, never repeating the key in the label
+WHEN SCAFFOLDED: audience-pro
+NOTES: The ? key is the discovery trigger. Overlay is full-screen with a dark veil. Layout adapts to short / tall screens — sections wrap.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Audience — pro shortcuts overlay</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .overlay-frame { position: relative; background: var(--bg-0); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 32px; overflow: hidden; }
+    .veil { position: absolute; inset: 0; background: oklch(0 0 0 / 0.5); }
+    .overlay { position: relative; background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); padding: 24px; max-width: 720px; margin: 0 auto; }
+    .overlay h2 { margin: 0 0 16px; font-size: var(--type-lg); }
+    .sections { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; }
+    .section h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-2); margin: 0 0 8px; }
+    .section dl { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; margin: 0; font-size: var(--type-sm); }
+    .section dt { color: var(--fg-1); }
+    .section dd { margin: 0; }
+    kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 4px; background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-xs); font-family: var(--font-mono); font-size: 10px; color: var(--fg-0); margin-left: 2px; }
+    .overlay-footer { display: flex; justify-content: space-between; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-subtle); color: var(--fg-2); font-size: var(--type-xs); }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Shortcuts overlay</h1>
+    <p class="lede">Press <kbd>?</kbd> from anywhere to surface this. Pro users want this on demand, not pinned in a sidebar — discovery without permanent UI weight.</p>
+
+    <div class="overlay-frame">
+      <div class="veil"></div>
+      <div class="overlay">
+        <h2>Keyboard shortcuts</h2>
+        <div class="sections">
+          <div class="section">
+            <h3>Navigation</h3>
+            <dl>
+              <dt>Command palette</dt><dd><kbd>⌘</kbd><kbd>K</kbd></dd>
+              <dt>Quick search</dt><dd><kbd>/</kbd></dd>
+              <dt>Toggle sidebar</dt><dd><kbd>⌘</kbd><kbd>B</kbd></dd>
+              <dt>Next / prev tab</dt><dd><kbd>⌥</kbd><kbd>→</kbd></dd>
+            </dl>
+          </div>
+          <div class="section">
+            <h3>Editing</h3>
+            <dl>
+              <dt>Save</dt><dd><kbd>⌘</kbd><kbd>S</kbd></dd>
+              <dt>Undo / redo</dt><dd><kbd>⌘</kbd><kbd>Z</kbd></dd>
+              <dt>Duplicate</dt><dd><kbd>⌘</kbd><kbd>D</kbd></dd>
+              <dt>Delete</dt><dd><kbd>⌫</kbd></dd>
+            </dl>
+          </div>
+          <div class="section">
+            <h3>View</h3>
+            <dl>
+              <dt>Zoom in / out</dt><dd><kbd>⌘</kbd><kbd>+</kbd></dd>
+              <dt>Reset zoom</dt><dd><kbd>⌘</kbd><kbd>0</kbd></dd>
+              <dt>Toggle theme</dt><dd><kbd>⌘</kbd><kbd>⇧</kbd><kbd>T</kbd></dd>
+              <dt>Full screen</dt><dd><kbd>⌃</kbd><kbd>⌘</kbd><kbd>F</kbd></dd>
+            </dl>
+          </div>
+          <div class="section">
+            <h3>Other</h3>
+            <dl>
+              <dt>Show shortcuts</dt><dd><kbd>?</kbd></dd>
+              <dt>Open settings</dt><dd><kbd>⌘</kbd><kbd>,</kbd></dd>
+              <dt>Sign out</dt><dd><kbd>⌘</kbd><kbd>⇧</kbd><kbd>Q</kbd></dd>
+              <dt>Dismiss this</dt><dd><kbd>⎋</kbd></dd>
+            </dl>
+          </div>
+        </div>
+        <div class="overlay-footer">
+          <span>Press <kbd>⎋</kbd> to close</span>
+          <span>16 shortcuts</span>
+        </div>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

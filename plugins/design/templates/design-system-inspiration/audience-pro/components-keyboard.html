@@ -1,0 +1,51 @@
+<!--
+SPECIMEN: audience-pro-keyboard
+DEMONSTRATES: <kbd> styling, key combos with `+` separators, OS-aware modifier symbols (⌘ vs Ctrl)
+COMPOSITION: kbd primitives at 3 sizes + common combo recipes + inline-in-paragraph usage
+COPY VOICE: literal key names, no spelling-out ("Cmd+K" not "Command-K")
+WHEN SCAFFOLDED: audience-pro
+NOTES: Use Mac symbols (⌘ ⇧ ⌥ ⌃ ⌫ ⏎ ⎋) on macOS, spell out on Windows/Linux. JS detects platform; the visual style is identical. Single keys use single <kbd>; combos chain with `+` (visible separator, not part of the kbd).
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Audience — pro keyboard</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; padding: 0 5px; height: 20px; background: var(--bg-3); border: 1px solid var(--border-default); border-bottom-width: 2px; border-radius: var(--radius-xs); font-family: var(--font-mono); font-size: 11px; color: var(--fg-0); }
+    kbd.lg { min-width: 24px; height: 26px; font-size: 13px; padding: 0 8px; }
+    kbd.sm { min-width: 14px; height: 16px; font-size: 9px; padding: 0 4px; }
+    .combo { display: inline-flex; align-items: center; gap: 2px; }
+    .combo .plus { color: var(--fg-2); font-size: var(--type-xs); padding: 0 1px; }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Keyboard primitives</h1>
+    <p class="lede">The <code>&lt;kbd&gt;</code> element with project-specific styling. Use Mac symbols (⌘ ⇧ ⌥ ⌃) on macOS and spell out on other platforms — the visual style is identical. Combos chain individual <code>&lt;kbd&gt;</code>s with a "+" separator.</p>
+
+    <h2>Sizes</h2>
+    <div class="row" style="gap: 16px; align-items: end;">
+      <kbd class="lg">⌘</kbd>
+      <kbd>K</kbd>
+      <kbd class="sm">⌫</kbd>
+    </div>
+
+    <h2>Common combos</h2>
+    <table style="width: 100%; max-width: 480px; border-collapse: collapse;">
+      <tr><td style="padding: 8px 0; color: var(--fg-1);">Command palette</td><td style="padding: 8px 0;"><span class="combo"><kbd>⌘</kbd><span class="plus">+</span><kbd>K</kbd></span></td></tr>
+      <tr><td style="padding: 8px 0; color: var(--fg-1);">Quick search</td><td style="padding: 8px 0;"><span class="combo"><kbd>/</kbd></span></td></tr>
+      <tr><td style="padding: 8px 0; color: var(--fg-1);">New canvas</td><td style="padding: 8px 0;"><span class="combo"><kbd>⌘</kbd><span class="plus">+</span><kbd>⇧</kbd><span class="plus">+</span><kbd>N</kbd></span></td></tr>
+      <tr><td style="padding: 8px 0; color: var(--fg-1);">Toggle sidebar</td><td style="padding: 8px 0;"><span class="combo"><kbd>⌘</kbd><span class="plus">+</span><kbd>B</kbd></span></td></tr>
+      <tr><td style="padding: 8px 0; color: var(--fg-1);">Save</td><td style="padding: 8px 0;"><span class="combo"><kbd>⌘</kbd><span class="plus">+</span><kbd>S</kbd></span></td></tr>
+      <tr><td style="padding: 8px 0; color: var(--fg-1);">Close tab</td><td style="padding: 8px 0;"><span class="combo"><kbd>⌘</kbd><span class="plus">+</span><kbd>W</kbd></span></td></tr>
+      <tr><td style="padding: 8px 0; color: var(--fg-1);">Cancel</td><td style="padding: 8px 0;"><span class="combo"><kbd>⎋</kbd></span></td></tr>
+    </table>
+
+    <h2>In flowing copy</h2>
+    <p style="max-width: 60ch;">Press <span class="combo"><kbd>⌘</kbd><span class="plus">+</span><kbd>K</kbd></span> from anywhere in the app to open the command palette. Use <kbd>J</kbd> and <kbd>K</kbd> to navigate the results, <kbd>⏎</kbd> to run the selected action, or <kbd>⎋</kbd> to dismiss without choosing.</p>
+  </main>
+</body>
+</html>

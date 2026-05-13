@@ -1,0 +1,57 @@
+<!--
+SPECIMEN: audience-developer-monospace-table
+DEMONSTRATES: tabular-nums alignment, monospace mixed with proportional, status pills inline with data
+COMPOSITION: process table (PID / cmd / mem / cpu) — 8 rows, monospaced numbers, color-coded by status
+COPY VOICE: real process names, real numbers
+WHEN SCAFFOLDED: audience-developer
+NOTES: Use --font-mono ONLY for numeric / id / hash columns. Text columns stay --font-body for readability. font-variant-numeric: tabular-nums is mandatory on numeric columns.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Audience — developer monospace table</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .ptable { width: 100%; max-width: 720px; background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md); border-collapse: collapse; overflow: hidden; font-size: var(--type-sm); }
+    .ptable th, .ptable td { padding: 6px 12px; border-bottom: 1px solid var(--border-subtle); text-align: left; }
+    .ptable th { background: var(--bg-2); color: var(--fg-1); font-weight: 500; font-size: var(--type-xs); text-transform: uppercase; letter-spacing: 0.04em; }
+    .ptable tr:last-child td { border-bottom: 0; }
+    .ptable tr:hover td { background: var(--bg-3); }
+    .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+    .num  { text-align: right; }
+    .ok   { color: var(--status-success); }
+    .high { color: var(--status-warn); }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Monospace data table</h1>
+    <p class="lede">Numeric columns use <code>--font-mono</code> + <code>font-variant-numeric: tabular-nums</code> for column alignment. Text columns stay in the body font for legibility — never make a whole table monospace.</p>
+
+    <table class="ptable">
+      <thead>
+        <tr>
+          <th class="mono num">PID</th>
+          <th>Command</th>
+          <th class="mono num">RSS</th>
+          <th class="mono num">CPU%</th>
+          <th>Status</th>
+          <th>Uptime</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="mono num">12382</td><td>node server.mjs</td><td class="mono num">142.0M</td><td class="mono num ok">2.4</td><td><span class="ok">running</span></td><td class="mono">2h 14m</td></tr>
+        <tr><td class="mono num">12390</td><td>postgres</td><td class="mono num">512.8M</td><td class="mono num ok">0.8</td><td><span class="ok">running</span></td><td class="mono">14d</td></tr>
+        <tr><td class="mono num">12421</td><td>redis-server</td><td class="mono num">28.4M</td><td class="mono num ok">0.1</td><td><span class="ok">running</span></td><td class="mono">14d</td></tr>
+        <tr><td class="mono num">12502</td><td>nginx worker</td><td class="mono num">16.2M</td><td class="mono num ok">0.0</td><td><span class="ok">running</span></td><td class="mono">7d</td></tr>
+        <tr><td class="mono num">14224</td><td>scenario-runner</td><td class="mono num">1.4G</td><td class="mono num high">68.2</td><td><span class="high">busy</span></td><td class="mono">3m 12s</td></tr>
+        <tr><td class="mono num">14502</td><td>esbuild watch</td><td class="mono num">82.0M</td><td class="mono num ok">0.4</td><td><span class="ok">idle</span></td><td class="mono">42m</td></tr>
+        <tr><td class="mono num">14820</td><td>agent-browser</td><td class="mono num">256.2M</td><td class="mono num ok">1.2</td><td><span class="ok">running</span></td><td class="mono">8m</td></tr>
+        <tr><td class="mono num">15014</td><td>fumadocs-mdx</td><td class="mono num">48.8M</td><td class="mono num ok">0.0</td><td><span class="ok">idle</span></td><td class="mono">12s</td></tr>
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>

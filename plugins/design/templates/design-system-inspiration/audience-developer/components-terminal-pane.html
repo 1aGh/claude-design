@@ -1,0 +1,67 @@
+<!--
+SPECIMEN: audience-developer-terminal-pane
+DEMONSTRATES: monospace stack, ANSI-style color tokens, prompt char ($/>), output line types
+COMPOSITION: terminal pane with bash prompt + command + multi-line output + cursor + scrollback
+COPY VOICE: real shell commands, real output (no fake $ ls Desktop)
+WHEN SCAFFOLDED: audience-developer
+NOTES: Uses --font-mono throughout. Foreground colors map to status semantics (--status-success for ✓, --status-error for ✗). Cursor blinks via opacity (respect prefers-reduced-motion).
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Audience — developer terminal pane</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .terminal { background: var(--bg-0); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 16px; font-family: var(--font-mono); font-size: 13px; line-height: 1.5; color: var(--fg-0); max-width: 720px; overflow-x: auto; }
+    .terminal .prompt { color: var(--accent); }
+    .terminal .path   { color: var(--status-info); }
+    .terminal .ok     { color: var(--status-success); }
+    .terminal .err    { color: var(--status-error); }
+    .terminal .meta   { color: var(--fg-2); }
+    .terminal .cursor { display: inline-block; width: 7px; height: 14px; background: var(--fg-0); vertical-align: text-bottom; animation: blink 1s steps(2, end) infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) { .terminal .cursor { animation: none; } }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Terminal pane</h1>
+    <p class="lede">Monospace stack, ANSI-mapped status colors, blinking cursor (motion-respect). Foreground roles use the status palette so terminals stay readable across themes.</p>
+
+    <div class="terminal">
+      <div><span class="path">~/code/md-claude</span> <span class="prompt">$</span> mdcc design init --no-discovery --name acme</div>
+      <div>  project name: acme</div>
+      <div>  ds name:      project</div>
+      <div>  scaffold target: /private/tmp/acme/.design</div>
+      <div>  mode: --no-discovery (Recommended defaults, Core only)</div>
+      <div>&nbsp;</div>
+      <div>  <span class="ok">✓</span> 16 created</div>
+      <div>&nbsp;</div>
+      <div><span class="meta">Next steps:</span></div>
+      <div>  This is the Core-only scaffold (~10 files) using Recommended defaults.</div>
+      <div>  For audience-specific specimens, use Claude Code:</div>
+      <div>    cd /private/tmp/acme &amp;&amp; claude</div>
+      <div>    /design:setup-ds project "&lt;one-line product brief&gt;"</div>
+      <div>&nbsp;</div>
+      <div><span class="path">~/code/md-claude</span> <span class="prompt">$</span> ls .design/system/project/preview/ | wc -l</div>
+      <div>      10</div>
+      <div><span class="path">~/code/md-claude</span> <span class="prompt">$</span> <span class="cursor"></span></div>
+    </div>
+
+    <h2>Error state</h2>
+    <div class="terminal">
+      <div><span class="path">~/code/md-claude</span> <span class="prompt">$</span> mdcc design init</div>
+      <div class="err">mdcc design init: interactive bootstrap requires Claude Code.</div>
+      <div>&nbsp;</div>
+      <div>  Inside Claude Code:</div>
+      <div>    /design:setup-ds &lt;name&gt;           — full discovery + scaffold (recommended)</div>
+      <div>    /design:setup-onboard             — just prepare the env (no DS yet)</div>
+      <div>&nbsp;</div>
+      <div><span class="path">~/code/md-claude</span> <span class="prompt">$</span> echo $?</div>
+      <div>2</div>
+    </div>
+  </main>
+</body>
+</html>

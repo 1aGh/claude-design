@@ -1,0 +1,71 @@
+<!--
+SPECIMEN: pattern-onboarding
+DEMONSTRATES: welcome screen, 3-step tour, dismissible coachmarks
+COMPOSITION: welcome card + 3-step horizontal flow + tooltip-style coachmark on an inline element
+COPY VOICE: friendly imperative ("Connect your league account") — never "Welcome to the future of…"
+WHEN SCAFFOLDED: patterns (universal — most consumer apps have onboarding)
+NOTES: Onboarding ≤ 3 steps. More than that = product complexity to fix, not UI to add. Skip button always present in top-right. Progress dots show position; don't number 1/3 unless steps are non-linear.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Pattern — onboarding</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .ob-card { background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-lg); padding: 32px; max-width: 480px; position: relative; box-shadow: var(--shadow-md); margin: 0 0 24px; }
+    .ob-card .skip { position: absolute; top: 16px; right: 16px; background: transparent; border: 0; color: var(--fg-2); font: inherit; font-size: var(--type-sm); cursor: pointer; }
+    .ob-card h2 { margin: 0 0 8px; font-family: var(--font-display); font-size: var(--type-xl); font-weight: 600; }
+    .ob-card p { color: var(--fg-1); margin: 0 0 20px; }
+    .ob-card .actions { display: flex; justify-content: space-between; align-items: center; }
+    .dots { display: flex; gap: 6px; }
+    .dots .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fg-3); }
+    .dots .dot.is-active { background: var(--accent); }
+    .coachmark-frame { position: relative; background: var(--bg-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 32px; min-height: 200px; }
+    .coachmark-target { background: var(--bg-3); border: 1px solid var(--border-default); padding: 8px 12px; border-radius: var(--radius-sm); display: inline-block; outline: 2px solid var(--accent); outline-offset: 4px; }
+    .coachmark { position: absolute; background: var(--bg-1); border: 1px solid var(--border-default); box-shadow: var(--shadow-md); padding: 12px 14px; border-radius: var(--radius-md); width: 220px; }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Onboarding</h1>
+    <p class="lede">Three forms — welcome screen, multi-step tour, inline coachmark. Cap onboarding at 3 steps; more than that signals product complexity to simplify, not a longer flow to design.</p>
+
+    <h2>Welcome screen</h2>
+    <div class="ob-card">
+      <button class="skip">Skip</button>
+      <h2>Welcome to Sideline</h2>
+      <p>Three quick steps to get your squad set up. Should take about a minute.</p>
+      <div class="actions">
+        <div class="dots"><span class="dot is-active"></span><span class="dot"></span><span class="dot"></span></div>
+        <button style="background: var(--accent); color: var(--accent-fg); border: 0; padding: 8px 16px; border-radius: var(--radius-sm); font: inherit;">Let's go</button>
+      </div>
+    </div>
+
+    <h2>Step 2 of 3</h2>
+    <div class="ob-card">
+      <button class="skip">Skip</button>
+      <h2>Connect your league account</h2>
+      <p>We'll pull your fixtures and rosters automatically. You can do this later from Settings.</p>
+      <div class="actions">
+        <div class="dots"><span class="dot"></span><span class="dot is-active"></span><span class="dot"></span></div>
+        <div style="display: flex; gap: 8px;">
+          <button style="background: transparent; color: var(--fg-1); border: 0; padding: 8px 16px; font: inherit;">Do it later</button>
+          <button style="background: var(--accent); color: var(--accent-fg); border: 0; padding: 8px 16px; border-radius: var(--radius-sm); font: inherit;">Connect</button>
+        </div>
+      </div>
+    </div>
+
+    <h2>Inline coachmark</h2>
+    <div class="coachmark-frame">
+      <p style="margin: 0 0 12px; color: var(--fg-1);">After you create a canvas, the inspector lives here →</p>
+      <span class="coachmark-target">Inspector</span>
+      <div class="coachmark" style="top: 90px; left: 180px;">
+        <strong>Cmd+click to scope edits</strong>
+        <p style="color: var(--fg-1); font-size: var(--type-sm); margin: 4px 0 0;">Click any element to focus your next edit on just that piece.</p>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

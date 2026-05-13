@@ -1,0 +1,80 @@
+<!--
+SPECIMEN: audience-consumer-testimonial
+DEMONSTRATES: quote typography, attribution shape (name + role + photo placeholder), pull-quote vs in-flow variants
+COMPOSITION: pull-quote (large) + grid of 3 in-flow testimonials + featured testimonial with rating
+COPY VOICE: specific, in-the-user's-words (no marketing-paraphrased praise)
+WHEN SCAFFOLDED: audience-consumer
+NOTES: Real testimonial copy beats invented ones — placeholder text here is a sentence the actual user said. Use --type-lg for pull-quote, --type-base for in-flow, --type-md for featured.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Audience — consumer testimonial</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .tcard { background: var(--bg-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 20px; display: grid; gap: 12px; }
+    .tcard .quote { color: var(--fg-0); margin: 0; }
+    .attr { display: flex; align-items: center; gap: 10px; }
+    .attr .avatar { width: 36px; height: 36px; background: var(--bg-3); border-radius: 50%; }
+    .attr .meta { font-size: var(--type-sm); }
+    .attr .name { color: var(--fg-0); font-weight: 500; }
+    .attr .role { color: var(--fg-2); font-size: var(--type-xs); }
+    .stars { color: var(--status-warn); letter-spacing: 2px; font-size: var(--type-sm); }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Testimonials</h1>
+    <p class="lede">Use real quotes from real users. Specific outcomes ("cut my prep time by half on match days") beat generic praise ("amazing app!"). Three densities for three placements: pull-quote, in-flow grid, featured.</p>
+
+    <h2>Pull-quote</h2>
+    <figure style="border-left: 3px solid var(--accent); padding: 8px 20px; margin: 0;">
+      <blockquote class="quote" style="font-family: var(--font-display); font-size: var(--type-2xl); line-height: var(--lh-2xl); margin: 0;">"It's the first sideline tool that doesn't make me look at my phone during the match."</blockquote>
+      <figcaption class="attr" style="margin-top: 12px;">
+        <div class="avatar"></div>
+        <div class="meta">
+          <div class="name">Sam Park</div>
+          <div class="role">Coach, FC Riverside U17</div>
+        </div>
+      </figcaption>
+    </figure>
+
+    <h2>In-flow grid</h2>
+    <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));">
+      <div class="tcard">
+        <p class="quote" style="font-size: var(--type-base);">"Cut my match prep time by half. Captain gets the brief on the way to the bus."</p>
+        <div class="attr">
+          <div class="avatar"></div>
+          <div class="meta"><div class="name">Marta Silva</div><div class="role">Assistant coach</div></div>
+        </div>
+      </div>
+      <div class="tcard">
+        <p class="quote" style="font-size: var(--type-base);">"The roster sync killed a Monday morning admin loop I'd been doing for three years."</p>
+        <div class="attr">
+          <div class="avatar"></div>
+          <div class="meta"><div class="name">Jonas Weber</div><div class="role">Club secretary</div></div>
+        </div>
+      </div>
+      <div class="tcard">
+        <p class="quote" style="font-size: var(--type-base);">"Match recap export goes straight into the club WhatsApp. Parents stopped asking 'what happened?'"</p>
+        <div class="attr">
+          <div class="avatar"></div>
+          <div class="meta"><div class="name">Liam Chen</div><div class="role">Team manager</div></div>
+        </div>
+      </div>
+    </div>
+
+    <h2>Featured (with rating)</h2>
+    <div class="tcard" style="max-width: 480px; border-color: var(--border-default);">
+      <div class="stars">★★★★★</div>
+      <p class="quote" style="font-size: var(--type-md); line-height: var(--lh-md);">"I've tried four club apps. This is the first one that the parents and the players actually open. The match recap with the shareable card is the killer feature."</p>
+      <div class="attr">
+        <div class="avatar"></div>
+        <div class="meta"><div class="name">Sara Novak</div><div class="role">Club president, Sparta U15</div></div>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

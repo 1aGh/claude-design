@@ -1,0 +1,39 @@
+<!--
+SPECIMEN: audience-consumer-empty-state-generous
+DEMONSTRATES: oversized empty state with illustration slot, headline, supporting sentence, primary + optional secondary CTA
+COMPOSITION: full-bleed empty state with 80-120px breathing room around content
+COPY VOICE: warm and specific — names what's missing ("No match recaps yet"), suggests a clear first action
+WHEN SCAFFOLDED: audience-consumer (generous variant; pro tools use the universal/empty-state.html)
+NOTES: Generous version takes more vertical space (~480px min height) — used on dashboards, not nested panes. Illustration is a 96px decorative SVG, not a stock photo.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Audience — consumer empty state (generous)</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Empty state — generous</h1>
+    <p class="lede">For consumer dashboards where the empty state IS the screen. More breathing room, a friendly headline, and a clear next step — never just "Nothing here yet."</p>
+
+    <div style="background: var(--bg-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 80px 40px; text-align: center; max-width: 600px;">
+      <div style="width: 96px; height: 96px; background: oklch(from var(--accent) l c h / 0.1); border-radius: var(--radius-pill); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; margin: 0 auto 24px;">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+      </div>
+      <h2 style="font-family: var(--font-display); font-size: var(--type-2xl); font-weight: 600; margin: 0 0 8px;">No match recaps yet</h2>
+      <p style="color: var(--fg-1); font-size: var(--type-md); line-height: var(--lh-md); max-width: 40ch; margin: 0 auto 24px;">When your team plays its first match, the recap will land here automatically — with goals, ratings, and a shareable card for the club channel.</p>
+      <div style="display: flex; justify-content: center; gap: 12px;">
+        <button style="background: var(--accent); color: var(--accent-fg); border: 0; padding: 10px 20px; border-radius: var(--radius-md); font: inherit; font-weight: 500; cursor: pointer;">Log a match</button>
+        <button style="background: transparent; color: var(--fg-1); border: 1px solid var(--border-default); padding: 10px 20px; border-radius: var(--radius-md); font: inherit; cursor: pointer;">See a demo recap</button>
+      </div>
+    </div>
+
+    <footer class="legend" style="margin-top: 48px;">
+      <p>This is the version you want on a marketing-flavored dashboard. For dense pro tools, use <code>universal/empty-state.html</code> — same idea, tighter spacing.</p>
+    </footer>
+  </main>
+</body>
+</html>

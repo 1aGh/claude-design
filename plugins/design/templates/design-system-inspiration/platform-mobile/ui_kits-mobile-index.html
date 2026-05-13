@@ -1,0 +1,58 @@
+<!--
+SPECIMEN: platform-mobile-ui-kits-index
+DEMONSTRATES: cover page for mobile UI kit — lists all mobile-specific specimens with thumbnails + links
+COMPOSITION: index page with 5 mobile specimens (bottom-sheet, pull-to-refresh, tab-bar, segmented-control, …) each as a thumbnail card
+COPY VOICE: terse — this is an index, not a tutorial
+WHEN SCAFFOLDED: platform-mobile (only when project actually has mobile)
+NOTES: This is the "ui_kits/mobile/index.html" entry point that the dev server links to. Each card links to a sub-specimen.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>UI kits — mobile</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .kit-card { background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 16px; text-decoration: none; color: inherit; display: grid; gap: 8px; transition: background var(--dur-flip) var(--ease-out), border-color var(--dur-flip) var(--ease-out); }
+    .kit-card:hover { background: var(--bg-2); border-color: var(--border-strong); }
+    .kit-card .thumb { height: 96px; background: var(--bg-3); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; color: var(--fg-2); font-size: var(--type-xs); }
+    .kit-card .title { font-weight: 500; }
+    .kit-card .body { color: var(--fg-1); font-size: var(--type-sm); margin: 0; }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Mobile UI kit</h1>
+    <p class="lede">Mobile-specific patterns — gestures, native chrome, safe areas. Browse + open each specimen below in the dev server.</p>
+
+    <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));">
+      <a href="./components-bottom-sheet.html" class="kit-card">
+        <div class="thumb">▭▭▭</div>
+        <span class="title">Bottom sheet</span>
+        <p class="body">Drag handle, snap points, safe-area padding.</p>
+      </a>
+      <a href="./components-pull-to-refresh.html" class="kit-card">
+        <div class="thumb">↓ ↻</div>
+        <span class="title">Pull to refresh</span>
+        <p class="body">Idle / pulling / refreshing states.</p>
+      </a>
+      <a href="./components-tab-bar.html" class="kit-card">
+        <div class="thumb">▢▢▣▢▢</div>
+        <span class="title">Tab bar</span>
+        <p class="body">4–5 bottom tabs with always-visible labels.</p>
+      </a>
+      <a href="./components-segmented-control.html" class="kit-card">
+        <div class="thumb">▢▣▢</div>
+        <span class="title">Segmented control</span>
+        <p class="body">2–4 mutually exclusive options.</p>
+      </a>
+      <a href="../universal/components-dialogs.html" class="kit-card">
+        <div class="thumb">⬚</div>
+        <span class="title">Dialogs</span>
+        <p class="body">Modal, sheet, alert (shared with universal).</p>
+      </a>
+    </div>
+  </main>
+</body>
+</html>

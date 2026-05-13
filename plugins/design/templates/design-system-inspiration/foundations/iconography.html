@@ -1,0 +1,73 @@
+<!--
+SPECIMEN: foundations-iconography
+DEMONSTRATES: SVG icon family, stroke width consistency, sizing scale (16/20/24), color inheritance via currentColor
+COMPOSITION: 4 sample Lucide-style icons at 3 sizes each, plus icon-in-button context
+COPY VOICE: terse — icon names + roles
+WHEN SCAFFOLDED: foundations (universal — every project picks an icon family)
+NOTES: Use ONE family (Lucide / Phosphor / Heroicons) — never mix. Stroke width is constant (1.5px Lucide default, 1px Lucide thin, etc.). Color via currentColor inherits from parent. Filled vs outline is a per-state choice, not a per-icon choice.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Foundations — iconography</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .icon-row { display: flex; gap: 24px; align-items: flex-end; margin: 24px 0; flex-wrap: wrap; }
+    .icon-tile { display: grid; gap: 6px; justify-items: center; }
+    .icon-tile svg { color: var(--fg-0); display: block; }
+    .icon-tile .label { font-size: var(--type-xs); color: var(--fg-1); }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Iconography</h1>
+    <p class="lede">Lucide outline, 1.5px stroke, three sizes. One family, one stroke weight — mixing icon sets is the fastest way to make a system feel cheap. Color inherits from <code>currentColor</code> so icons follow their parent's foreground.</p>
+
+    <h2>Sizes (16 / 20 / 24)</h2>
+    <div class="icon-row">
+      <div class="icon-tile">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l2-2 4 4 8-8 4 4"/></svg>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l2-2 4 4 8-8 4 4"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l2-2 4 4 8-8 4 4"/></svg>
+        <span class="label">trending</span>
+      </div>
+      <div class="icon-tile">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+        <span class="label">clock</span>
+      </div>
+      <div class="icon-tile">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
+        <span class="label">search</span>
+      </div>
+      <div class="icon-tile">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+        <span class="label">filter</span>
+      </div>
+    </div>
+
+    <h2>In button context</h2>
+    <div class="row">
+      <button style="background: var(--accent); color: var(--accent-fg); border: 0; padding: 8px 14px; border-radius: var(--radius-sm); display: inline-flex; align-items: center; gap: 6px; font: inherit;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
+        Search
+      </button>
+      <button style="background: var(--bg-3); color: var(--fg-0); border: 1px solid var(--border-default); padding: 8px 14px; border-radius: var(--radius-sm); display: inline-flex; align-items: center; gap: 6px; font: inherit;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+        Filter
+      </button>
+    </div>
+
+    <footer class="legend">
+      <p>Color inherits from text — never hardcode <code>stroke="#000"</code>. Use <code>color: var(--fg-0)</code> on the parent + <code>stroke="currentColor"</code> on the SVG.</p>
+    </footer>
+  </main>
+</body>
+</html>

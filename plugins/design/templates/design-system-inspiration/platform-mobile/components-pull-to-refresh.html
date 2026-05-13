@@ -1,0 +1,74 @@
+<!--
+SPECIMEN: platform-mobile-pull-to-refresh
+DEMONSTRATES: 3 states of pull-to-refresh — idle, pulling (threshold), refreshing
+COMPOSITION: mobile-frame mock × 3 states with chevron / spinner indicator
+COPY VOICE: silent or 1-word ("Refreshing")
+WHEN SCAFFOLDED: platform-mobile
+NOTES: Threshold is ~80px pull. Indicator (chevron) rotates 180° when crossed. After release, spinner replaces chevron until data loads. Don't auto-fire — user gesture only.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Platform mobile — pull to refresh</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .mobile-frame { width: 280px; height: 480px; background: var(--bg-0); border: 1px solid var(--border-strong); border-radius: 32px; position: relative; overflow: hidden; }
+    .status-bar { height: 44px; display: flex; align-items: center; padding: 0 20px; color: var(--fg-1); font-size: var(--type-xs); justify-content: space-between; }
+    .ptr-indicator { display: flex; justify-content: center; align-items: center; height: 60px; color: var(--fg-2); font-size: var(--type-xs); flex-direction: column; gap: 4px; }
+    .ptr-indicator svg { transition: transform var(--dur-flip) var(--ease-out); }
+    .ptr-indicator.is-pull svg { transform: rotate(180deg); color: var(--accent); }
+    .ptr-content { padding: 12px 20px; }
+    .ptr-content .item { padding: 12px 0; border-bottom: 1px solid var(--border-subtle); }
+    .ptr-content .item:last-child { border-bottom: 0; }
+    .spinner { width: 18px; height: 18px; border: 2px solid var(--bg-3); border-top-color: var(--accent); border-radius: 50%; animation: spin var(--dur-route) linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Pull to refresh</h1>
+    <p class="lede">Three states: idle (no indicator), pulling past threshold (chevron rotated, accent color, "Release to refresh"), refreshing (spinner replaces chevron until done).</p>
+
+    <div class="row" style="gap: 16px; align-items: flex-start;">
+      <div class="mobile-frame">
+        <div class="status-bar"><span>9:41</span><span>●</span></div>
+        <div class="ptr-content">
+          <div class="item">Match recap · 19:42</div>
+          <div class="item">Roster updated · 18:15</div>
+          <div class="item">Captain assigned · 17:30</div>
+        </div>
+        <div style="position: absolute; bottom: 12px; left: 0; right: 0; text-align: center; color: var(--fg-2); font-size: var(--type-xs);">idle</div>
+      </div>
+
+      <div class="mobile-frame">
+        <div class="status-bar"><span>9:41</span><span>●</span></div>
+        <div class="ptr-indicator is-pull">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+          <span style="color: var(--accent);">Release to refresh</span>
+        </div>
+        <div class="ptr-content" style="margin-top: 12px;">
+          <div class="item">Match recap · 19:42</div>
+          <div class="item">Roster updated · 18:15</div>
+        </div>
+        <div style="position: absolute; bottom: 12px; left: 0; right: 0; text-align: center; color: var(--fg-2); font-size: var(--type-xs);">pulling past threshold</div>
+      </div>
+
+      <div class="mobile-frame">
+        <div class="status-bar"><span>9:41</span><span>●</span></div>
+        <div class="ptr-indicator">
+          <div class="spinner"></div>
+          <span>Refreshing</span>
+        </div>
+        <div class="ptr-content" style="margin-top: 12px;">
+          <div class="item">Match recap · 19:42</div>
+          <div class="item">Roster updated · 18:15</div>
+        </div>
+        <div style="position: absolute; bottom: 12px; left: 0; right: 0; text-align: center; color: var(--fg-2); font-size: var(--type-xs);">refreshing</div>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

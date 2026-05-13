@@ -1,0 +1,57 @@
+<!--
+SPECIMEN: audience-developer-type-mono
+DEMONSTRATES: --font-mono usage roles — code blocks, IDs, hashes, timestamps, kbd, inline code
+COMPOSITION: 6 mono-typography roles each with a real-world example
+COPY VOICE: real strings (hashes, timestamps, IDs)
+WHEN SCAFFOLDED: audience-developer (mono family — promoted from foundations when developer-flavored). Also when "mono" ∈ activeFamilies (Q7 chose mono pairing).
+NOTES: Mono should NEVER carry body copy — it's role-typed for things that look like data. Use --font-mono at smaller sizes (12-13px) than --font-body (14px) because monospace reads denser.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Type — mono</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .mono { font-family: var(--font-mono); }
+    kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 4px; background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-xs); font-family: var(--font-mono); font-size: 10px; }
+    code { background: var(--bg-3); padding: 1px 5px; border-radius: var(--radius-xs); font-family: var(--font-mono); font-size: 12px; color: var(--fg-0); }
+    .role { display: grid; grid-template-columns: 140px 1fr; gap: 16px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--border-subtle); }
+    .role:last-child { border-bottom: 0; }
+    .role .label { color: var(--fg-2); font-size: var(--type-xs); text-transform: uppercase; letter-spacing: 0.04em; }
+    .role .demo { font-size: var(--type-sm); color: var(--fg-0); }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Monospace typography</h1>
+    <p class="lede">Mono is role-typed. Use it for code, IDs, hashes, timestamps, keyboard shortcuts, and command names. Never for body copy — it reads denser and slower.</p>
+
+    <div class="role">
+      <span class="label">Inline code</span>
+      <span class="demo">Run <code>mdcc design init --no-discovery</code> in your repo root.</span>
+    </div>
+    <div class="role">
+      <span class="label">Hashes / IDs</span>
+      <span class="demo mono">commit e7d7773 · 0x4f8a2c · uuid 7a3e-9f1c-…</span>
+    </div>
+    <div class="role">
+      <span class="label">Timestamps</span>
+      <span class="demo mono">2026-05-13 12:14:02.103Z</span>
+    </div>
+    <div class="role">
+      <span class="label">Keyboard</span>
+      <span class="demo"><kbd>⌘</kbd> + <kbd>K</kbd> opens the command palette.</span>
+    </div>
+    <div class="role">
+      <span class="label">File paths</span>
+      <span class="demo mono">~/code/md-claude/.design/system/project/colors_and_type.css</span>
+    </div>
+    <div class="role">
+      <span class="label">Numeric tables</span>
+      <span class="demo mono" style="font-variant-numeric: tabular-nums;">142.0M · 28.4M · 1.4G · 16.2M</span>
+    </div>
+  </main>
+</body>
+</html>

@@ -1,0 +1,45 @@
+<!--
+SPECIMEN: foundations-opacity
+DEMONSTRATES: opacity scale (0.4 / 0.6 / 0.8 / 1.0), disabled state, overlay veil
+COMPOSITION: 4-step opacity ladder + disabled-button + modal-veil sample
+COPY VOICE: terse
+WHEN SCAFFOLDED: foundations (universal)
+NOTES: Disabled = opacity 0.5 + pointer-events: none, NOT a separate token color. Veil = oklch(0 0 0 / 0.4–0.6) over the page. No --opacity-* tokens — opacity is a base value, not a token.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Foundations — opacity</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Opacity</h1>
+    <p class="lede">A short ladder — light / medium / heavy / disabled. Used for overlays and the disabled state. Opacity isn't a token (it's a value); the ladder exists to keep usage consistent.</p>
+
+    <div class="grid">
+      <div class="swatch"><div style="height: 64px; background: var(--accent); opacity: 0.4;"></div><div class="meta"><strong>0.4</strong>light overlay</div></div>
+      <div class="swatch"><div style="height: 64px; background: var(--accent); opacity: 0.6;"></div><div class="meta"><strong>0.6</strong>medium veil</div></div>
+      <div class="swatch"><div style="height: 64px; background: var(--accent); opacity: 0.8;"></div><div class="meta"><strong>0.8</strong>heavy veil</div></div>
+      <div class="swatch"><div style="height: 64px; background: var(--accent); opacity: 1.0;"></div><div class="meta"><strong>1.0</strong>opaque</div></div>
+    </div>
+
+    <h2>Disabled state</h2>
+    <div class="row">
+      <button style="background: var(--accent); color: var(--accent-fg); border: 0; padding: 8px 14px; border-radius: var(--radius-sm);">Save</button>
+      <button style="background: var(--accent); color: var(--accent-fg); border: 0; padding: 8px 14px; border-radius: var(--radius-sm); opacity: 0.5; cursor: not-allowed;">Save (disabled)</button>
+    </div>
+
+    <h2>Modal veil</h2>
+    <div style="position: relative; background: var(--bg-0); padding: 32px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); margin: 16px 0; min-height: 160px; overflow: hidden;">
+      <div style="position: absolute; inset: 0; background: oklch(0 0 0 / 0.5);"></div>
+      <div style="position: relative; background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 16px; max-width: 320px; box-shadow: var(--shadow-lg);">
+        <strong>Modal on top of veil</strong>
+        <p style="color: var(--fg-1); margin: 4px 0 0;">Veil = oklch(0 0 0 / 0.5) over page surface.</p>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

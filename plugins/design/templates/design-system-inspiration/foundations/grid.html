@@ -1,0 +1,51 @@
+<!--
+SPECIMEN: foundations-grid
+DEMONSTRATES: --layout-max-w, --layout-gutter, column grid, responsive breakpoints
+COMPOSITION: visible 12-col grid overlay + a real layout (header + main + aside) at the grid + breakpoint table
+COPY VOICE: terse role labels
+WHEN SCAFFOLDED: foundations (default for desktop and tablet projects; mobile uses single-column)
+NOTES: 12-column flexible grid with --layout-gutter spacing. Breakpoints: sm 480, md 768, lg 1024, xl 1280. Mobile-first — desktop layouts opt INTO the grid via min-width media queries.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Foundations — grid</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .grid-overlay { display: grid; grid-template-columns: repeat(12, 1fr); gap: var(--layout-gutter); max-width: var(--layout-max-w); margin: 16px auto; padding: 8px; background: var(--bg-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+    .grid-overlay > div { background: var(--accent); opacity: 0.2; height: 40px; border-radius: var(--radius-xs); }
+    .layout { display: grid; grid-template-columns: 1fr 280px; gap: var(--layout-gutter); max-width: var(--layout-max-w); margin: 16px auto; }
+    .layout > * { background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 16px; }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Grid</h1>
+    <p class="lede">12-column flexible grid scoped by <code>--layout-max-w</code> with <code>--layout-gutter</code> spacing. Mobile-first: layouts start single-column and opt INTO multi-column via min-width queries.</p>
+
+    <h2>12-column overlay</h2>
+    <div class="grid-overlay">
+      <div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
+    </div>
+
+    <h2>Real layout — main + aside</h2>
+    <div class="layout">
+      <div><strong>Main content area</strong><p style="color: var(--fg-1);">Spans flexibly — fills whatever the side panel doesn't claim.</p></div>
+      <div><strong>Side panel</strong><p style="color: var(--fg-1); font-size: var(--type-sm);">Fixed 280px on desktop; stacks below main on mobile.</p></div>
+    </div>
+
+    <h2>Breakpoints</h2>
+    <table style="width: 100%; max-width: 480px; background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md); border-collapse: collapse; overflow: hidden;">
+      <thead><tr><th style="text-align: left; padding: 8px 12px; background: var(--bg-2); border-bottom: 1px solid var(--border-default);">Token</th><th style="text-align: left; padding: 8px 12px; background: var(--bg-2); border-bottom: 1px solid var(--border-default);">Width</th><th style="text-align: left; padding: 8px 12px; background: var(--bg-2); border-bottom: 1px solid var(--border-default);">Used for</th></tr></thead>
+      <tbody>
+        <tr><td style="padding: 8px 12px; border-bottom: 1px solid var(--border-subtle);"><code>sm</code></td><td style="padding: 8px 12px; border-bottom: 1px solid var(--border-subtle);">≥ 480px</td><td style="padding: 8px 12px; border-bottom: 1px solid var(--border-subtle); color: var(--fg-1);">Large phone, two-up grids</td></tr>
+        <tr><td style="padding: 8px 12px; border-bottom: 1px solid var(--border-subtle);"><code>md</code></td><td style="padding: 8px 12px; border-bottom: 1px solid var(--border-subtle);">≥ 768px</td><td style="padding: 8px 12px; border-bottom: 1px solid var(--border-subtle); color: var(--fg-1);">Tablet, side panels appear</td></tr>
+        <tr><td style="padding: 8px 12px; border-bottom: 1px solid var(--border-subtle);"><code>lg</code></td><td style="padding: 8px 12px; border-bottom: 1px solid var(--border-subtle);">≥ 1024px</td><td style="padding: 8px 12px; border-bottom: 1px solid var(--border-subtle); color: var(--fg-1);">Desktop</td></tr>
+        <tr><td style="padding: 8px 12px;"><code>xl</code></td><td style="padding: 8px 12px;">≥ 1280px</td><td style="padding: 8px 12px; color: var(--fg-1);">Wide desktop, dual-aside layouts</td></tr>
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>

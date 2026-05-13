@@ -1,0 +1,71 @@
+<!--
+SPECIMEN: meta-presence-multiplayer
+DEMONSTRATES: forward-pointer to v1.x multiplayer features — live cursors with labels, awareness pills, conflict-free type indicators
+COMPOSITION: full mockup of a shared canvas with 3 cursors + awareness rail + typing indicator
+COPY VOICE: real names, real "X is editing" strings
+WHEN SCAFFOLDED: meta + presence family (typically v1.1+ projects with Yjs)
+NOTES: This is a forward-pointer specimen showing what the multiplayer UX looks like once Phase 8 (Yjs LAN) lands. The cursor color is per-user (hashed from user ID into an OKLCH band). Don't blink cursors — too noisy.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Meta — presence multiplayer</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .canvas-frame { position: relative; background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 32px; min-height: 320px; overflow: hidden; }
+    .cursor { position: absolute; display: flex; align-items: flex-start; gap: 2px; pointer-events: none; }
+    .cursor-label { background: currentColor; color: var(--accent-fg); font-size: 11px; padding: 1px 6px; border-radius: var(--radius-pill); margin-top: 12px; margin-left: 4px; white-space: nowrap; }
+    .awareness-rail { position: absolute; top: 12px; right: 12px; display: flex; align-items: center; gap: 4px; }
+    .av-chip { display: flex; align-items: center; gap: 4px; background: var(--bg-2); border: 1px solid var(--border-default); padding: 3px 8px; border-radius: var(--radius-pill); font-size: var(--type-xs); }
+    .av-chip .dot { width: 6px; height: 6px; border-radius: 50%; }
+    .typing { position: absolute; bottom: 12px; left: 12px; background: var(--bg-2); border: 1px solid var(--border-default); padding: 4px 10px; border-radius: var(--radius-pill); font-size: var(--type-xs); color: var(--fg-1); display: flex; align-items: center; gap: 6px; }
+    .typing .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--status-success); animation: pulse 1s ease-in-out infinite; }
+    @keyframes pulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+    @media (prefers-reduced-motion: reduce) { .typing .pulse { animation: none; } }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Presence — multiplayer</h1>
+    <p class="lede">Forward-pointer to what multiplayer looks like when Yjs lands (v1.1+). Three concepts compose: live cursors with labels, an awareness rail listing who's connected, and a typing indicator when someone's editing a field.</p>
+
+    <div class="canvas-frame">
+      <div class="awareness-rail">
+        <div class="av-chip"><span class="dot" style="background: oklch(64% 0.20 264);"></span>Kim</div>
+        <div class="av-chip"><span class="dot" style="background: oklch(68% 0.18 145);"></span>Marta</div>
+        <div class="av-chip"><span class="dot" style="background: oklch(72% 0.15 50);"></span>Jonas</div>
+      </div>
+
+      <h3 style="margin: 0 0 8px;">Match recap · vs. Sparta U17</h3>
+      <p style="color: var(--fg-1); margin: 0 0 16px;">Three editors live — every change syncs in milliseconds via Yjs CRDT.</p>
+
+      <div style="background: var(--bg-3); padding: 8px 12px; border-radius: var(--radius-sm); margin-bottom: 8px;">Final score: <strong>3 - 1</strong></div>
+      <div style="background: var(--bg-3); padding: 8px 12px; border-radius: var(--radius-sm); margin-bottom: 8px;">Captain Kim — hat-trick (12', 38', 67')</div>
+      <div style="background: var(--bg-3); padding: 8px 12px; border-radius: var(--radius-sm); margin-bottom: 8px; outline: 2px solid oklch(68% 0.18 145); outline-offset: -1px;">Squad rating: <strong>B+</strong> <em style="color: var(--fg-2);">(Marta is editing)</em></div>
+
+      <div class="cursor" style="top: 70px; left: 40%; color: oklch(64% 0.20 264);">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3 L21 12 L13 14 L11 22 Z"/></svg>
+        <span class="cursor-label">Kim</span>
+      </div>
+      <div class="cursor" style="top: 180px; left: 70%; color: oklch(68% 0.18 145);">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3 L21 12 L13 14 L11 22 Z"/></svg>
+        <span class="cursor-label">Marta · typing</span>
+      </div>
+      <div class="cursor" style="top: 220px; left: 15%; color: oklch(72% 0.15 50);">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3 L21 12 L13 14 L11 22 Z"/></svg>
+        <span class="cursor-label">Jonas</span>
+      </div>
+
+      <div class="typing">
+        <span class="pulse"></span>Marta is editing the squad rating
+      </div>
+    </div>
+
+    <footer class="legend">
+      <p>Per-user color is hashed from the user ID into a stable OKLCH band — same user, same color across sessions. Don't store the color; derive it.</p>
+    </footer>
+  </main>
+</body>
+</html>

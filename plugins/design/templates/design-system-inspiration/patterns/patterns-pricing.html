@@ -1,0 +1,83 @@
+<!--
+SPECIMEN: pattern-pricing
+DEMONSTRATES: 3-tier pricing table with feature list, highlighted "popular" tier, monthly/annual toggle
+COMPOSITION: monthly/annual segmented control + 3 pricing cards (Free / Club / Federation) + comparison row
+COPY VOICE: outcome-named features ("Unlimited rosters", "Match recap exports") — never feature dumps
+WHEN SCAFFOLDED: patterns (consumer + marketing flavored)
+NOTES: 3 tiers is the sweet spot (decision paralysis past 4). Middle tier is usually "popular" — pre-selected. Feature list = positive checks (no "Limited to 3 squads" — phrase as "Up to 3 squads"). Match the accent on the popular card border.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Pattern — pricing</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .seg { display: inline-flex; background: var(--bg-3); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 3px; gap: 2px; margin: 0 0 24px; }
+    .seg button { background: transparent; border: 0; color: var(--fg-1); font: inherit; font-size: var(--type-sm); padding: 5px 14px; border-radius: calc(var(--radius-md) - 3px); cursor: pointer; }
+    .seg button.is-active { background: var(--bg-1); color: var(--fg-0); box-shadow: var(--shadow-sm); font-weight: 500; }
+    .tier { background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-lg); padding: 24px; display: grid; gap: 16px; }
+    .tier.popular { border-color: var(--accent); position: relative; }
+    .tier.popular::before { content: 'Most popular'; position: absolute; top: -10px; left: 24px; background: var(--accent); color: var(--accent-fg); padding: 2px 10px; border-radius: var(--radius-pill); font-size: 11px; font-weight: 500; }
+    .tier .name { font-family: var(--font-display); font-size: var(--type-lg); font-weight: 600; }
+    .tier .price { display: flex; align-items: baseline; gap: 4px; }
+    .tier .price .num { font-family: var(--font-display); font-size: var(--type-3xl); font-weight: 600; }
+    .tier .price .per { color: var(--fg-2); }
+    .tier ul { margin: 0; padding-left: 0; list-style: none; color: var(--fg-1); font-size: var(--type-sm); display: grid; gap: 6px; }
+    .tier li::before { content: '✓'; color: var(--status-success); margin-right: 8px; }
+    .tier .cta { background: var(--accent); color: var(--accent-fg); border: 0; padding: 10px 14px; border-radius: var(--radius-sm); font: inherit; font-weight: 500; cursor: pointer; }
+    .tier:not(.popular) .cta { background: var(--bg-3); color: var(--fg-0); border: 1px solid var(--border-default); }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Pricing</h1>
+    <p class="lede">Three tiers — Free, Club, Federation. Middle tier pre-marked as "Most popular". Toggle for monthly vs annual.</p>
+
+    <div class="seg">
+      <button>Monthly</button>
+      <button class="is-active">Annual <span style="color: var(--accent);">−20%</span></button>
+    </div>
+
+    <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px;">
+      <div class="tier">
+        <div class="name">Free</div>
+        <div class="price"><span class="num">$0</span><span class="per">/month</span></div>
+        <ul>
+          <li>1 squad</li>
+          <li>5 match recaps / month</li>
+          <li>Roster sync (manual)</li>
+        </ul>
+        <button class="cta">Get started</button>
+      </div>
+
+      <div class="tier popular">
+        <div class="name">Club</div>
+        <div class="price"><span class="num">$19</span><span class="per">/month</span></div>
+        <ul>
+          <li>Up to 5 squads</li>
+          <li>Unlimited match recaps</li>
+          <li>League sync (automatic)</li>
+          <li>Match recap exports</li>
+          <li>Email + chat support</li>
+        </ul>
+        <button class="cta">Start 14-day trial</button>
+      </div>
+
+      <div class="tier">
+        <div class="name">Federation</div>
+        <div class="price"><span class="num">Custom</span></div>
+        <ul>
+          <li>Everything in Club</li>
+          <li>Unlimited squads</li>
+          <li>Custom league integrations</li>
+          <li>SSO + audit log</li>
+          <li>Dedicated support</li>
+        </ul>
+        <button class="cta">Talk to sales</button>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

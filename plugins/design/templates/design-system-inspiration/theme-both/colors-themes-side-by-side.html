@@ -1,0 +1,59 @@
+<!--
+SPECIMEN: theme-both-side-by-side
+DEMONSTRATES: dark + light themes rendered side-by-side, same UI in both, theme-switch token contract
+COMPOSITION: 2-column side-by-side of a card showing buttons + text + tokens; left = dark, right = light
+COPY VOICE: identical strings in both panes (only theme differs)
+WHEN SCAFFOLDED: theme-both (only when Q4 = both equal)
+NOTES: Both themes use the SAME tokens (--bg-0..4 etc.); only their OKLCH values differ. The HTML structure is shared — only the data-theme attribute switches. Test this specimen by toggling data-theme on the body and verifying nothing else changes.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Theme — both equal</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .pane { padding: 24px; border-radius: var(--radius-md); border: 1px solid var(--border-default); }
+    .card { background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 16px; display: grid; gap: 12px; }
+    .card h3 { margin: 0; }
+    .card .meta { color: var(--fg-2); font-size: var(--type-sm); }
+    .btn-primary { background: var(--accent); color: var(--accent-fg); border: 0; padding: 8px 14px; border-radius: var(--radius-sm); font: inherit; }
+    .btn-secondary { background: var(--bg-3); color: var(--fg-0); border: 1px solid var(--border-default); padding: 8px 14px; border-radius: var(--radius-sm); font: inherit; }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Themes — side by side</h1>
+    <p class="lede">The exact same UI rendered in both themes. Tokens carry the difference; the HTML structure is identical. If a component renders differently across themes (beyond color), that's a token-resolution bug, not a per-theme design.</p>
+
+    <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 16px;">
+      <div class="pane app" data-theme="dark" style="background: oklch(16% 0.012 245); color: oklch(96% 0.008 245);">
+        <h2 style="margin: 0 0 16px;">Dark</h2>
+        <div class="card">
+          <h3>Match recap</h3>
+          <p class="meta">vs. Sparta U17 · 3-1</p>
+          <div class="row" style="gap: 8px;">
+            <button class="btn-primary">View</button>
+            <button class="btn-secondary">Share</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="pane app" data-theme="light" style="background: oklch(98% 0.005 245); color: oklch(20% 0.012 245);">
+        <h2 style="margin: 0 0 16px;">Light</h2>
+        <div class="card" style="background: oklch(95% 0.005 245); border-color: oklch(82% 0.010 245);">
+          <h3>Match recap</h3>
+          <p class="meta" style="color: oklch(48% 0.012 245);">vs. Sparta U17 · 3-1</p>
+          <div class="row" style="gap: 8px;">
+            <button class="btn-primary">View</button>
+            <button class="btn-secondary" style="background: oklch(91% 0.005 245); color: oklch(20% 0.012 245); border-color: oklch(78% 0.010 245);">Share</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="legend"><p>Inline OKLCH values here are just for the specimen; real projects swap them via <code>[data-theme="light"]</code> selectors in <code>colors_and_type.css</code>. The cascade carries every component without per-component theme overrides.</p></footer>
+  </main>
+</body>
+</html>

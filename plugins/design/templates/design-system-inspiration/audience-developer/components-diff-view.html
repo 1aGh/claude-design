@@ -1,0 +1,65 @@
+<!--
+SPECIMEN: audience-developer-diff-view
+DEMONSTRATES: side-by-side + unified diff, +/- gutter, line numbers, syntax-tinted lines
+COMPOSITION: unified diff showing 6 lines of context + 2 removed + 3 added, plus a side-by-side variant header
+COPY VOICE: real code diff (JS/TS), real file paths
+WHEN SCAFFOLDED: audience-developer
+NOTES: Use opacity-modulated --status-success (added) and --status-error (removed) — never fully saturated. Tabular nums on line numbers. Don't word-wrap; horizontal scroll if needed.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Audience — developer diff view</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .diff { background: var(--bg-0); border: 1px solid var(--border-default); border-radius: var(--radius-md); font-family: var(--font-mono); font-size: 12px; line-height: 1.6; max-width: 760px; overflow-x: auto; }
+    .diff-header { padding: 8px 12px; border-bottom: 1px solid var(--border-default); background: var(--bg-2); display: flex; justify-content: space-between; }
+    .diff-header strong { color: var(--fg-0); }
+    .diff-line { display: grid; grid-template-columns: 36px 36px 14px 1fr; gap: 0; padding: 0 12px; align-items: center; }
+    .diff-line .ln { color: var(--fg-3); font-variant-numeric: tabular-nums; text-align: right; padding-right: 6px; }
+    .diff-line .sign { width: 14px; text-align: center; }
+    .diff-line code { color: inherit; }
+    .diff-line.is-add { background: oklch(from var(--status-success) l c h / 0.10); }
+    .diff-line.is-add .sign { color: var(--status-success); }
+    .diff-line.is-rem { background: oklch(from var(--status-error) l c h / 0.10); }
+    .diff-line.is-rem .sign { color: var(--status-error); }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Diff view</h1>
+    <p class="lede">Unified view by default — denser, easier to read in PR contexts. Side-by-side is reserved for paired comparison (theme variants, before / after of a rename).</p>
+
+    <h2>Unified</h2>
+    <div class="diff">
+      <div class="diff-header">
+        <strong>cli/commands/design.mjs</strong>
+        <span style="color: var(--fg-2);">+3 −2</span>
+      </div>
+      <div class="diff-line"><span class="ln">42</span><span class="ln">42</span><span class="sign"> </span><code>  if (sub === 'serve') {</code></div>
+      <div class="diff-line"><span class="ln">43</span><span class="ln">43</span><span class="sign"> </span><code>    return runServe({ args, pkgRoot });</code></div>
+      <div class="diff-line"><span class="ln">44</span><span class="ln">44</span><span class="sign"> </span><code>  }</code></div>
+      <div class="diff-line is-rem"><span class="ln">45</span><span class="ln"></span><span class="sign">-</span><code>  // TODO: init subcommand</code></div>
+      <div class="diff-line is-rem"><span class="ln">46</span><span class="ln"></span><span class="sign">-</span><code>  return null;</code></div>
+      <div class="diff-line is-add"><span class="ln"></span><span class="ln">45</span><span class="sign">+</span><code>  if (sub === 'init') {</code></div>
+      <div class="diff-line is-add"><span class="ln"></span><span class="ln">46</span><span class="sign">+</span><code>    return runInit({ args, pkgRoot });</code></div>
+      <div class="diff-line is-add"><span class="ln"></span><span class="ln">47</span><span class="sign">+</span><code>  }</code></div>
+      <div class="diff-line"><span class="ln">47</span><span class="ln">48</span><span class="sign"> </span><code>}</code></div>
+    </div>
+
+    <h2>Side-by-side header (paired)</h2>
+    <div class="diff" style="display: grid; grid-template-columns: 1fr 1fr;">
+      <div class="diff-header" style="border-right: 1px solid var(--border-default);">
+        <strong>system/project/colors_and_type.css <span style="color: var(--fg-2);">(before)</span></strong>
+      </div>
+      <div class="diff-header">
+        <strong>system/marketing/colors_and_type.css <span style="color: var(--fg-2);">(after)</span></strong>
+      </div>
+      <div class="diff-line is-rem" style="border-right: 1px solid var(--border-default);"><span class="ln">12</span><span class="ln"></span><span class="sign">-</span><code>--accent: oklch(64% 0.18 264);</code></div>
+      <div class="diff-line is-add"><span class="ln"></span><span class="ln">12</span><span class="sign">+</span><code>--accent: oklch(68% 0.22 25);</code></div>
+    </div>
+  </main>
+</body>
+</html>
