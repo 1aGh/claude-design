@@ -1,0 +1,62 @@
+<!--
+SPECIMEN: type-scale
+DEMONSTRATES: --type-xs..3xl, --lh-xs..3xl, --font-display, --font-body
+COMPOSITION: 8-step ladder with size + line-height labels + realistic copy at each step
+COPY VOICE: real product strings at each step — no Lorem
+WHEN SCAFFOLDED: always (Core)
+NOTES: Each step should have a distinct semantic role. Don't use 8 levels in one screen; the ladder is for picking the right one per region.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Type — scale</title>
+  <link rel="stylesheet" href="../colors_and_type.css" />
+  <link rel="stylesheet" href="./_layout.css" />
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Type scale</h1>
+    <p class="lede">Eight steps, modular but irregular — sizes chosen for legible separation, not strict geometric progression. Use display font (<code>--font-display</code>) at <code>--type-xl</code> and above; body font for everything below.</p>
+
+    <div style="display: grid; gap: 16px; margin: 24px 0;">
+      <div>
+        <span style="display: block; font-family: var(--font-display); font-size: var(--type-3xl); line-height: var(--lh-3xl); font-weight: 600;">Match Recap</span>
+        <code style="color: var(--fg-2);">--type-3xl / --lh-3xl · display</code>
+      </div>
+      <div>
+        <span style="display: block; font-family: var(--font-display); font-size: var(--type-2xl); line-height: var(--lh-2xl); font-weight: 600;">Hat-trick from the captain</span>
+        <code style="color: var(--fg-2);">--type-2xl / --lh-2xl · display</code>
+      </div>
+      <div>
+        <span style="display: block; font-family: var(--font-display); font-size: var(--type-xl); line-height: var(--lh-xl); font-weight: 600;">Section heading</span>
+        <code style="color: var(--fg-2);">--type-xl / --lh-xl · display</code>
+      </div>
+      <div>
+        <span style="display: block; font-size: var(--type-lg); line-height: var(--lh-lg); font-weight: 500;">Sub-section heading</span>
+        <code style="color: var(--fg-2);">--type-lg / --lh-lg · body</code>
+      </div>
+      <div>
+        <span style="display: block; font-size: var(--type-md); line-height: var(--lh-md);">Lead paragraph or callout text that needs slightly more presence than body copy.</span>
+        <code style="color: var(--fg-2);">--type-md / --lh-md · body</code>
+      </div>
+      <div>
+        <span style="display: block; font-size: var(--type-base); line-height: var(--lh-base);">Body copy. Default reading size — every block of text in flowing layout starts here.</span>
+        <code style="color: var(--fg-2);">--type-base / --lh-base · body</code>
+      </div>
+      <div>
+        <span style="display: block; font-size: var(--type-sm); line-height: var(--lh-sm); color: var(--fg-1);">Secondary text. Captions, meta, dense table rows.</span>
+        <code style="color: var(--fg-2);">--type-sm / --lh-sm · body</code>
+      </div>
+      <div>
+        <span style="display: block; font-size: var(--type-xs); line-height: var(--lh-xs); color: var(--fg-2);">Tiny. Pill labels, timestamps, footnotes.</span>
+        <code style="color: var(--fg-2);">--type-xs / --lh-xs · body</code>
+      </div>
+    </div>
+
+    <footer class="legend">
+      <p>Picking from the ladder: don't use more than 3 sizes in one section. Hierarchy comes from contrast (size jump ≥ 2 steps), not from gradient.</p>
+    </footer>
+  </main>
+</body>
+</html>

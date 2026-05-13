@@ -1,0 +1,82 @@
+<!--
+SPECIMEN: components-inputs
+DEMONSTRATES: --bg-3, --border-default, --border-strong, --accent (focus ring), --fg-0..2, --status-error, --radius-sm, --space-2/3
+COMPOSITION: text / textarea / select / search — each in idle, focused, error, disabled states
+COPY VOICE: real labels and helper text ("Player name", "Match notes", "Squad role") — never "Enter text here"
+WHEN SCAFFOLDED: always (Core)
+NOTES: Focus ring is --accent at 2px outline-offset 2px (NOT box-shadow inset). Error state colors the border + helper text. Labels are above, helper text below — never inside the input.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Components — inputs</title>
+  <link rel="stylesheet" href="../colors_and_type.css" />
+  <link rel="stylesheet" href="./_layout.css" />
+  <style>
+    .field { display: grid; gap: 4px; max-width: 320px; margin-bottom: 16px; }
+    .field label { color: var(--fg-1); font-size: var(--type-sm); }
+    .field .helper { color: var(--fg-2); font-size: var(--type-xs); }
+    .field.is-error .helper { color: var(--status-error); }
+    .input, .select { background: var(--bg-3); color: var(--fg-0); border: 1px solid var(--border-default); padding: 8px 10px; border-radius: var(--radius-sm); font: inherit; transition: border-color var(--dur-flip) var(--ease-out); }
+    .input:focus, .select:focus { outline: 2px solid var(--accent); outline-offset: 2px; border-color: var(--border-strong); }
+    .field.is-error .input, .field.is-error .select { border-color: var(--status-error); }
+    .input[disabled] { opacity: 0.5; cursor: not-allowed; }
+    .row-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Inputs</h1>
+    <p class="lede">Text, textarea, select, search. Labels above, helper text below. The focus ring is always <code>--accent</code> at 2px outline-offset 2px — never an inset box-shadow, because that masks the border.</p>
+
+    <h2>States</h2>
+    <div class="row-fields">
+      <div class="field">
+        <label for="i1">Player name</label>
+        <input id="i1" class="input" type="text" value="Captain Kim" />
+        <span class="helper">Idle</span>
+      </div>
+      <div class="field">
+        <label for="i2">Squad role</label>
+        <input id="i2" class="input" type="text" value="Forward" style="outline: 2px solid var(--accent); outline-offset: 2px; border-color: var(--border-strong);" />
+        <span class="helper">Focused</span>
+      </div>
+      <div class="field is-error">
+        <label for="i3">Jersey number</label>
+        <input id="i3" class="input" type="text" value="0" />
+        <span class="helper">Must be between 1 and 99.</span>
+      </div>
+      <div class="field">
+        <label for="i4">Birth year</label>
+        <input id="i4" class="input" type="text" value="1998" disabled />
+        <span class="helper">Disabled (synced from registration)</span>
+      </div>
+    </div>
+
+    <h2>Textarea</h2>
+    <div class="field" style="max-width: 480px;">
+      <label for="t1">Match notes</label>
+      <textarea id="t1" class="input" rows="4" style="resize: vertical;">First-half tempo lifted after the press change; second-half rotation kept legs fresh.</textarea>
+      <span class="helper">Visible to the squad only.</span>
+    </div>
+
+    <h2>Select</h2>
+    <div class="field">
+      <label for="s1">Match outcome</label>
+      <select id="s1" class="select">
+        <option>Win</option>
+        <option>Draw</option>
+        <option>Loss</option>
+      </select>
+    </div>
+
+    <h2>Search</h2>
+    <div class="field" style="max-width: 360px;">
+      <label for="q1">Find a player</label>
+      <input id="q1" class="input" type="search" placeholder="Name, number, or position" />
+      <span class="helper">Fuzzy match across all squads.</span>
+    </div>
+  </main>
+</body>
+</html>

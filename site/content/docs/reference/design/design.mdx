@@ -1,28 +1,28 @@
 ---
 title: /design:design
-description: "Iteruj na aktivním canvasu — Claude přečte soubor co máš v browseru otevřený a aplikuje feedback IN PLACE. Default: po editu auto-spustí critic panel; přidej --perfect [N] pro N iterací auto-fixu, nebo --no-critic pro skip. --opt-out=<scope> přepíše scope ze sidecaru pro tuhle iteraci."
+description: "Renamed to /design:edit. This stub will be removed in the next minor version. Forwarding arguments…"
 ---
 
 | Property | Value |
 | -------- | ----- |
 | **Command** | `/design:design` |
-| **Category** | `uncategorized` (daily) |
-| **Argument hint** | `\"<feedback>\" [--screenshot <path>] [--perfect [N]] [--no-critic] [--opt-out=palette\|aesthetic\|full]` |
+| **Category** | `daily` (daily) |
+| **Argument hint** | `\"<feedback>\" [...]` |
 | **Source** | [`plugins/design/commands/design.md`](https://github.com/1aGh/md-claude/blob/main/plugins/design/commands/design.md) |
 
 ## Description
 
-Iteruj na aktivním canvasu — Claude přečte soubor co máš v browseru otevřený a aplikuje feedback IN PLACE. Default: po editu auto-spustí critic panel; přidej --perfect [N] pro N iterací auto-fixu, nebo --no-critic pro skip. --opt-out=&lt;scope> přepíše scope ze sidecaru pro tuhle iteraci.
+Renamed to /design:edit. This stub will be removed in the next minor version. Forwarding arguments…
 
 ## Invocation
 
 ```text
-/design:design \"<feedback>\" [--screenshot <path>] [--perfect [N]] [--no-critic] [--opt-out=palette|aesthetic|full]
+/design:design \"<feedback>\" [...]
 ```
 
 ## Summary
 
-Default flow design pluginu. Edituje **soubor co máš právě otevřený v browser tabu** — ne nový session, ne nový file. Jako Claude Design canvas — řekneš "přidej tady presence dot", a presence dot se objeví v aktivním canvasu.
+This command was renamed to **`/design:edit`** to remove the naming collision with the `design` skill.
 
 ## Source of truth
 

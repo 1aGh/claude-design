@@ -78,7 +78,7 @@ After the user picks (or in Auto Mode default), write the scope to the canvas's 
 }
 ```
 
-Subsequent `/design` iterations on the same canvas read this field and apply the same scope **automatically** — no re-asking on every edit. To change scope mid-flow: `/design "<feedback>" --opt-out=<new-scope>` overrides for that iteration and persists the new value.
+Subsequent `/design:edit` iterations on the same canvas read this field and apply the same scope **automatically** — no re-asking on every edit. To change scope mid-flow: `/design:edit "<feedback>" --opt-out=<new-scope>` overrides for that iteration and persists the new value.
 
 ### Propagating scope to critic agents
 
@@ -88,7 +88,7 @@ The orchestrator passes `opt_out_scope: <scope>` in every critic's input envelop
 
 1. **Active canvas + (optional) selected element come first.** Before any edit, read `<designRoot>/_active.json`. If `active` is null or the dev server is not running, ensure the server is up and ask the user to open something in the browser.
 2. **Snapshot before edit.** Every edit copies the current file to `<designRoot>/_history/<file-slug>/<NNN>-<timestamp>.bak` before applying changes. Never skip. This is the undo stack.
-3. **In-place edit is the only edit mode.** `/design "<feedback>"` mutates the file under `<designRoot>`. There are no immutable iteration files.
+3. **In-place edit is the only edit mode.** `/design:edit "<feedback>"` mutates the file under `<designRoot>`. There are no immutable iteration files.
 4. **Selection narrows scope.** If `_active.json.selected` is set, the edit applies to that element / region only. Reach outside the selection only if the feedback explicitly says so ("…and update the chrome too").
 5. **Tokens stay locked.** Every edit must respect the project's tokens CSS (`<designRoot>/<tokensCssRel>`). No hardcoded colors / fonts / radii. No removing the `<link>` to tokens. No removing `<body class="<rootClass>" data-theme="…">`.
 6. **Never edit `<designRoot>/_server.json`, `<designRoot>/_active.json`, or `_history/`.** Those are runtime state owned by the dev server / orchestrator side-effects.
@@ -174,7 +174,7 @@ The dev-server UI lets the user drop comments on individual elements (Cmd+Shift+
 - WebSocket inbound from clients: `{type:"comments-add", payload:{...}}`, `{type:"comments-patch", id, patch:{status:"resolved"|"open", text?}}`, `{type:"comments-delete", id}`, `{type:"comments-request", file}`
 - WebSocket outbound (broadcast): `{type:"comments", file, comments}` — sent on every change
 
-**Orchestrator behaviour for `/design "<feedback>"`:**
+**Orchestrator behaviour for `/design:edit "<feedback>"`:**
 
 1. **Always read** `<designRoot>/_comments/<slug>.json` for the active canvas before deciding scope.
 2. **Empty / generic feedback** (`""`, `"polish"`, `"fix open comments"`, `"address feedback"`) + open comments exist → iterate over each open comment as a separate scoped edit (use comment.selector + dom_path like a normal selection); resolve each after a successful edit.
@@ -214,7 +214,7 @@ Snapshots are gitignored. Don't commit them. If snapshot fails (disk full / perm
 
 ## Command routing
 
-### `/design "<feedback>" [--screenshot <path>]` — primary flow
+### `/design:edit "<feedback>" [--screenshot <path>]` — primary flow
 
 Default. Edits the active canvas inline.
 
@@ -496,7 +496,7 @@ _{ISO ts} · canvas: `{path}` · critics: design-critic, a11y-critic, ... · tot
 ```
 ```
 
-## Auto-critic loop — default behavior of /design and /design:new
+## Auto-critic loop — default behavior of /design:edit and /design:new
 
 After every successful edit/generate, the orchestrator runs auto-critic by default. The user can opt out with `--no-critic`, or escalate with `--perfect [N]`.
 
@@ -618,7 +618,7 @@ for iter in 1..max_iter:
 # refresh_docs() once after the single edit.
 ```
 
-**No exit path skips `refresh_docs()`** — that's what makes the design root self-documenting. The only way it gets stale is if the user invokes `Edit` directly on a canvas file outside `/design`, in which case `/design:docs --full` is the recovery.
+**No exit path skips `refresh_docs()`** — that's what makes the design root self-documenting. The only way it gets stale is if the user invokes `Edit` directly on a canvas file outside `/design:edit`, in which case `/design:setup-docs --full` is the recovery.
 
 ### Why "stable-but-bland" exists as an exit
 
@@ -645,15 +645,15 @@ The orchestrator uses Edit tool with old_string scoped to the line range from th
 
 Two commands, two defaults. **The defaults differ because the leverage differs**:
 
-- `/design "<feedback>"` is incremental — small edit on existing canvas. Default = solid-for-review (max 4 iter, aspiration 4.0). User can iterate cheaply, so over-investing in any one edit is waste.
+- `/design:edit "<feedback>"` is incremental — small edit on existing canvas. Default = solid-for-review (max 4 iter, aspiration 4.0). User can iterate cheaply, so over-investing in any one edit is waste.
 - `/design:new` is high-leverage scaffold — sets the canvas trajectory for all future iteration. Default = portfolio-grade (`--perfect`: max 8 iter, aspiration 4.5, full panel). Cheap to do right once; expensive to refactor zpětně.
 
 | Command + flag | max_iter | aspiration_target | Critic panel | Auto-fix | Use case |
 |---|---|---|---|---|---|
-| `/design` (none) | 4 | 4.0 / 5 | routed panel (signature-moment-critic added when polish/nicer/elegant cues in feedback) | yes | typical incremental edit — solid-for-review |
-| `/design --perfect [N]` | N (default 8) | 4.5 / 5 | routed panel including signature-moment-critic | yes | "make this right" — extended polish on existing canvas |
-| `/design --perfect --all` | N | 4.5 / 5 | **every critic** | yes | exhaustive polish |
-| `/design --no-critic` | 0 | n/a | (skip) | no | quick / dirty edit |
+| `/design:edit` (none) | 4 | 4.0 / 5 | routed panel (signature-moment-critic added when polish/nicer/elegant cues in feedback) | yes | typical incremental edit — solid-for-review |
+| `/design:edit --perfect [N]` | N (default 8) | 4.5 / 5 | routed panel including signature-moment-critic | yes | "make this right" — extended polish on existing canvas |
+| `/design:edit --perfect --all` | N | 4.5 / 5 | **every critic** | yes | exhaustive polish |
+| `/design:edit --no-critic` | 0 | n/a | (skip) | no | quick / dirty edit |
 | **`/design:new` (none — DEFAULT = `--perfect`)** | **8** | **4.5 / 5** | **signature-moment + design + frontend + a11y (if interactive)** | **yes** | **standard new canvas — portfolio-grade scaffold** |
 | `/design:new --perfect-iter N` | N | 4.5 / 5 | same as default | yes | larger / smaller canvases co potřebují víc / míň iterací |
 | `/design:new --perfect --all` | 8 | 4.5 / 5 | **every critic** | yes | exhaustive — portfolio + comprehensive coverage |
@@ -661,9 +661,9 @@ Two commands, two defaults. **The defaults differ because the leverage differs**
 | `/design:new --no-critic` | 0 | n/a | (skip) | no | testing / debug — just verify file generates |
 
 **Distinguishing the modes in one line:**
-- **`/design` default** = "is this solid enough that the user can productively review it?" → loop until aspiration ≥ 4 + correctness clean + stable.
+- **`/design:edit` default** = "is this solid enough that the user can productively review it?" → loop until aspiration ≥ 4 + correctness clean + stable.
 - **`/design:new` default (= `--perfect`)** = "is this a scaffold worth iterating from?" → loop until aspiration ≥ 4.5 + correctness clean + stable, OR exit `stable-but-bland` with diagnostic. New canvases get the higher bar by default because they set the trajectory for all future iteration.
-- **`--perfect` on `/design`** = "treat this incremental edit like a scaffold — broader knobs, higher target."
+- **`--perfect` on `/design:edit`** = "treat this incremental edit like a scaffold — broader knobs, higher target."
 - **`--quick` on `/design:new`** = "this is a throwaway exploration, don't burn 40 critic calls." Explicit opt-out from default contract.
 
 All modes share the same exit conditions (`SOLID`, `stable-but-bland`, `max-reached`, `divergent`, `validation-failed`) — different `max_iter` / `aspiration_target` / panel just give the loop different rope before tripping them.
@@ -692,7 +692,7 @@ Every canvas project under `<designRoot>/<newCanvasDir>/` has a sibling `<Canvas
 }
 ```
 
-**`/design`** updates the sidecar after every successful edit:
+**`/design:edit`** updates the sidecar after every successful edit:
 - `last_modified` ← now
 - `iteration_count` ++
 - `tokens_used` ← `grep -oE 'var\(--[a-z0-9-]+\)' <canvas> | sort -u`
@@ -743,7 +743,7 @@ The orchestrator calls **`refresh_docs()`** at every exit of the auto-critic loo
 
 Both files are **committed** (not gitignored) — they're project documentation, not runtime state.
 
-**`/design:docs --full`** triggers full regeneration (rewrite both files from scratch). Used when:
+**`/design:setup-docs --full`** triggers full regeneration (rewrite both files from scratch). Used when:
 - Project name / config changed
 - New `handoffTargets[]` added
 - User wants to "snap back" after manual edits
@@ -751,12 +751,12 @@ Both files are **committed** (not gitignored) — they're project documentation,
 **Auto-marker safeguard.** Both `README.md` and `INDEX.md` carry an HTML comment marker:
 
 ```html
-<!-- AUTO-MAINTAINED by /design:docs — do not edit by hand. -->
+<!-- AUTO-MAINTAINED by /design:setup-docs — do not edit by hand. -->
 ```
 
 Before overwriting, the orchestrator checks the marker. If `<designRoot>/README.md` exists *without* the marker, it's a user-authored README and the refresh refuses (asks user to rename). This protects user content.
 
-**No exit path skips `refresh_docs()`** in `/design` and `/design:new`:
+**No exit path skips `refresh_docs()`** in `/design:edit` and `/design:new`:
 
 | Exit reason | refresh_docs called? |
 |---|---|
@@ -765,7 +765,7 @@ Before overwriting, the orchestrator checks the marker. If `<designRoot>/README.
 | Divergent (blockers went up) — restored snapshot | ✓ yes |
 | Validation failed — restored snapshot | ✓ yes |
 | `--no-critic` (loop skipped) | ✓ yes (once, after the single edit) |
-| Server / snapshot infrastructure failure | ✗ no (canvas state unknown — manual `/design:docs --full` required) |
+| Server / snapshot infrastructure failure | ✗ no (canvas state unknown — manual `/design:setup-docs --full` required) |
 
 ### `/design:handoff [--target <label>] [--force]` — production migration
 
@@ -922,4 +922,4 @@ Common orchestrator anti-pattern: "the Skill just routes back to me — same mod
 - Never reach outside the selected element when `selected` is set, unless feedback explicitly says so.
 - Never commit `_server.json`, `_active.json`, or `_history/` (gitignored — verify).
 - Never spawn nested subagents from a critic — critics run reviews inline.
-- **Never scaffold a single-page HTML canvas via `/design:new`** — always use the multi-artboard `DesignCanvas` pattern. Single screens live as a `DCArtboard` inside an existing project canvas (use `/design "<add a new artboard for X>"` on the active canvas, not `/design:new`).
+- **Never scaffold a single-page HTML canvas via `/design:new`** — always use the multi-artboard `DesignCanvas` pattern. Single screens live as a `DCArtboard` inside an existing project canvas (use `/design:edit "<add a new artboard for X>"` on the active canvas, not `/design:new`).

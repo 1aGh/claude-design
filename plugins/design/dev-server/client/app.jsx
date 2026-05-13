@@ -220,10 +220,10 @@ function Cheatsheet() {
       <details>
         <summary>Slash commands</summary>
         <ul className="cmds">
-          <li><code>/design "<i>feedback</i>"</code><span>edit + 4-iter multi-axis loop</span></li>
-          <li><code>/design "<i>…</i>" --perfect</code><span>8-iter polish (4.5/5 aspiration)</span></li>
-          <li><code>/design "<i>…</i>" --no-critic</code><span>raw edit, skip loop</span></li>
-          <li><code>/design "<i>…</i>" --opt-out=<i>scope</i></code><span>override DS scope (palette/aesthetic/full)</span></li>
+          <li><code>/design:edit "<i>feedback</i>"</code><span>edit + 4-iter multi-axis loop</span></li>
+          <li><code>/design:edit "<i>…</i>" --perfect</code><span>8-iter polish (4.5/5 aspiration)</span></li>
+          <li><code>/design:edit "<i>…</i>" --no-critic</code><span>raw edit, skip loop</span></li>
+          <li><code>/design:edit "<i>…</i>" --opt-out=<i>scope</i></code><span>override DS scope (palette/aesthetic/full)</span></li>
           <li><code>/design:new "<i>Name</i>" "<i>brief</i>"</code><span>scaffold canvas</span></li>
           <li><code>/design:new "<i>…</i>" --opt-out=aesthetic</code><span>scaffold off-system canvas (gradients/radii/type free)</span></li>
           <li><code>/design:critic</code><span>review panel (routed)</span></li>
@@ -231,7 +231,7 @@ function Cheatsheet() {
           <li><code>/design:critic --agent signature-moment-critic</code><span>aspiration axis only</span></li>
           <li><code>/design:rollback</code><span>undo last edit</span></li>
           <li><code>/design:screenshot</code><span>capture canvas</span></li>
-          <li><code>/design:docs</code><span>refresh README + INDEX</span></li>
+          <li><code>/design:setup-docs</code><span>refresh README + INDEX</span></li>
           <li><code>/design:handoff</code><span>migrate to apps/</span></li>
         </ul>
       </details>
@@ -242,7 +242,7 @@ function Cheatsheet() {
           <li><strong>aesthetic</strong> <span>palette + gradients/off-ladder radii/alt type/decorative SVG flags allowed.</span></li>
           <li><strong>full</strong> <span>DS treated as advisory. Type/radii/aesthetic up to canvas.</span></li>
           <li><em>A11y enforced at every scope</em> <span>contrast, focus, semantics, motion, touch targets — never relaxed.</span></li>
-          <li>Persisted on canvas's <code>.meta.json</code> <code>opt_out_scope</code> field — subsequent <code>/design</code> iterations inherit.</li>
+          <li>Persisted on canvas's <code>.meta.json</code> <code>opt_out_scope</code> field — subsequent <code>/design:edit</code> iterations inherit.
           <li>Inferred from brief ("modern", "vibrant", "off-system") with one-shot AskUserQuestion before iter-1 critics fire.</li>
         </ul>
       </details>
@@ -263,7 +263,7 @@ function Cheatsheet() {
           <li>Open canvas tab</li>
           <li><kbd>⌘</kbd>+click element</li>
           <li>Status bar shows ● selector</li>
-          <li>Run <code>/design "<i>change just this</i>"</code></li>
+          <li>Run <code>/design:edit "<i>change just this</i>"</code></li>
           <li>Reload iframe (<kbd>⌘R</kbd>)</li>
         </ol>
       </details>

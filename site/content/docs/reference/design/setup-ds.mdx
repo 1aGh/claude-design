@@ -1,0 +1,31 @@
+---
+title: /design:setup-ds
+description: "Create a new design system (first one, an additional one alongside an existing DS, or re-bootstrap an existing one with --force). Thin wrapper that loads skill `design-system` in bootstrap mode with the given target. Auto-invokes /design:setup-onboard first if .design/config.json is missing."
+---
+
+| Property | Value |
+| -------- | ----- |
+| **Command** | `/design:setup-ds` |
+| **Category** | `setup` |
+| **Argument hint** | `<name> [\"<brief>\"] [--force]` |
+| **Source** | [`plugins/design/commands/setup-ds.md`](https://github.com/1aGh/md-claude/blob/main/plugins/design/commands/setup-ds.md) |
+
+## Description
+
+Create a new design system (first one, an additional one alongside an existing DS, or re-bootstrap an existing one with --force). Thin wrapper that loads skill `design-system` in bootstrap mode with the given target. Auto-invokes /design:setup-onboard first if .design/config.json is missing.
+
+## Invocation
+
+```text
+/design:setup-ds <name> [\"<brief>\"] [--force]
+```
+
+## Summary
+
+Dedicated entry point for **creating a design system** in this project. Three modes the underlying skill auto-detects:
+
+## Source of truth
+
+This page is auto-generated from the command's frontmatter. The exact prompt Claude runs — including directives, edge-case handling, and tool-routing logic — lives in the source file:
+
+[**`plugins/design/commands/setup-ds.md`**](https://github.com/1aGh/md-claude/blob/main/plugins/design/commands/setup-ds.md) → read it for the full behavior.

@@ -1,0 +1,66 @@
+<!--
+SPECIMEN: motion
+DEMONSTRATES: --dur-flip, --dur-panel, --dur-route, --dur-soft, --ease-out, --ease-in-out, prefers-reduced-motion guard
+COMPOSITION: 4 motion role cards with live hover/transition demos
+COPY VOICE: role-named ("flip", "panel slide", "route enter", "soft fade")
+WHEN SCAFFOLDED: always (Core)
+NOTES: Each example must use a compositor-only property (transform, opacity) — never layout-dirty (width/top). The reduced-motion guard must short-circuit all to 1ms.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Motion</title>
+  <link rel="stylesheet" href="../colors_and_type.css" />
+  <link rel="stylesheet" href="./_layout.css" />
+  <style>
+    .motion-card { background: var(--bg-1); padding: 20px; border-radius: var(--radius-md); border: 1px solid var(--border-default); display: flex; flex-direction: column; gap: 12px; }
+    .motion-card .demo { height: 80px; background: var(--bg-2); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+    .motion-card:hover .flip-target  { transform: translateY(-12px); }
+    .motion-card:hover .panel-target { transform: translateX(0); }
+    .motion-card:hover .route-target { opacity: 1; transform: scale(1); }
+    .motion-card:hover .soft-target  { opacity: 1; }
+    .flip-target  { transition: transform var(--dur-flip) var(--ease-out); background: var(--accent); width: 32px; height: 32px; border-radius: var(--radius-sm); }
+    .panel-target { transition: transform var(--dur-panel) var(--ease-in-out); background: var(--accent); width: 64px; height: 32px; border-radius: var(--radius-sm); transform: translateX(-80px); }
+    .route-target { transition: opacity var(--dur-route) var(--ease-out), transform var(--dur-route) var(--ease-out); background: var(--accent); width: 64px; height: 32px; border-radius: var(--radius-sm); opacity: 0; transform: scale(0.92); }
+    .soft-target  { transition: opacity var(--dur-soft)  var(--ease-out); background: var(--accent); width: 64px; height: 32px; border-radius: var(--radius-sm); opacity: 0; }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Motion</h1>
+    <p class="lede">Four durations × two eases — every animation in the system maps to one of these tokens. Hover over each card to play the canonical motion for that role.</p>
+
+    <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));">
+      <div class="motion-card">
+        <strong>Flip</strong>
+        <div class="demo"><div class="flip-target"></div></div>
+        <code style="color: var(--fg-2);">--dur-flip · --ease-out</code>
+        <span style="color: var(--fg-1); font-size: var(--type-sm);">Small, snappy. Press-down, hover lift.</span>
+      </div>
+      <div class="motion-card">
+        <strong>Panel slide</strong>
+        <div class="demo"><div class="panel-target"></div></div>
+        <code style="color: var(--fg-2);">--dur-panel · --ease-in-out</code>
+        <span style="color: var(--fg-1); font-size: var(--type-sm);">Drawer / sidebar entry.</span>
+      </div>
+      <div class="motion-card">
+        <strong>Route enter</strong>
+        <div class="demo"><div class="route-target"></div></div>
+        <code style="color: var(--fg-2);">--dur-route · --ease-out</code>
+        <span style="color: var(--fg-1); font-size: var(--type-sm);">Page transition. Opacity + tiny scale.</span>
+      </div>
+      <div class="motion-card">
+        <strong>Soft fade</strong>
+        <div class="demo"><div class="soft-target"></div></div>
+        <code style="color: var(--fg-2);">--dur-soft · --ease-out</code>
+        <span style="color: var(--fg-1); font-size: var(--type-sm);">Toast, tooltip, soft reveal.</span>
+      </div>
+    </div>
+
+    <footer class="legend">
+      <p><code>@media (prefers-reduced-motion: reduce)</code> short-circuits every duration to 1ms. Never use <code>!important</code> to override — the cascade carries.</p>
+    </footer>
+  </main>
+</body>
+</html>

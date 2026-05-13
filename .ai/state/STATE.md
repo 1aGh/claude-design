@@ -63,8 +63,29 @@ Consider `/flow:make-skill-template` for **fumadocs** and **hocuspocus** if thei
 | 2026-05-13 | Phase 2 | `/flow:execute phase-2` — scoped to Task 1–2 only (scaffold + core MDX) per user. Hosting choice: Vercel (DDR-005 to record at /flow:done). Tasks 3 (auto-gen command ref), 4 (schema renderer), 5 (search + llms.txt), 6 (deploy), 7 (README dedup) deferred to follow-up execute. |
 | 2026-05-13 | Phase 2 | Commit `c81da3b` lands Task 1–2. Continued execute → Task 3–7 in one pass. Auto-gen command reference (37 pages) + schema reference + robots.txt + metadataBase fix + DDR-005 + site-deploy.yml workflow (inert pending Vercel secrets) + README trim 339→164. Build green; lint clean. Awaiting `/flow:done` for retro + archive. |
 | 2026-05-13 | done | `/flow:done` Phase 2 — DDR-005 recorded (Fumadocs + Vercel + accept DS defaults), patch changeset authored (`.changeset/phase-2-docs-site.md`), retro appended (what worked / didn't / change-next-time / carry-overs), plan archived to `.ai/plans/archive/phase-2-docs-site-fumadocs.md`. Next: Phase 4–10 from the v1.0 roadmap (Phase 5 dep on Phase 4; Phase 11 dep on Phase 3 + 4; Phase 6/8/9/10 sequential). |
+| 2026-05-13 | design-system-init | `/flow:execute` design-system-init.md — scoped to Phase 0–2 skeleton (Phase 3 critic, Phase 4 multi-DS, Phase 5 CLAUDE.md, Phase 6 docs site deferred). Phase 0 rename `/design`→`/design:edit` + compat stub + sweep (22 files). Phase 1A inspiration library skeleton (Core 10 + Universal 6 + `_README` + `_MAPPING` = 24 files at `plugins/design/templates/design-system-inspiration/`). Phase 1B extended `skills/design-system/SKILL.md` with Bootstrap flow + Mode-detection sections; `package.json` files += templates; `cli/lib/copy-tree.mjs` += rename hook. Phase 2A: `commands/docs.md` → `setup-docs.md`, `category:` on all 12 commands, new `help.md` + `setup-ds.md` + `setup-onboard.md` + `CATEGORIES.md`. Phase 2B: pre-flight bootstrap-detection hooks in `edit.md` + `new.md`. Phase 2C: `mdcc design init [--no-discovery / --discovery-payload]` subcommand (smoke-tested in `/tmp/scratch-design` — 16 files scaffolded, config schema-valid). Schema extended with `extensions`, `completenessProfile`, `activeFamilies`, `designSystems[]`, `defaultDesignSystem` (forward-compat for Phase 3/4). |
 
 ## Execution Progress
+
+### design-system-init — Phase 0–2 skeleton (this execute)
+
+- [x] Phase 0: rename `/design` → `/design:edit` + compat stub + plugin sweep ✅
+- [x] Phase 1A: inspiration library skeleton (24 files at `plugins/design/templates/design-system-inspiration/`) ✅
+- [x] Phase 1B: SKILL.md `design-system` extended with Bootstrap flow + Mode-detection; copy-tree rename hook; `package.json` files += templates ✅
+- [x] Phase 2A: setup-docs rename, `category:` on all 12 commands, new commands (`help`, `setup-ds`, `setup-onboard`), `CATEGORIES.md` ✅
+- [x] Phase 2B: missing-state hooks in `edit.md` + `new.md` (auto-invoke onboard → bootstrap) ✅
+- [x] Phase 2C: `mdcc design init` CLI subcommand (Core scaffold from inspiration library) ✅; schema extended forward-compat (Phase 3/4 fields) ✅
+- [ ] Phase 3 (adaptive completeness-critic) — deferred to follow-up `/flow:execute`
+- [ ] Phase 4 (multi-DS canvas wiring) — deferred to follow-up
+- [ ] Phase 5 (CLAUDE.md "Design system bootstrap" section) — deferred to follow-up
+- [ ] Phase 6 (Fumadocs site sync — `/design` → `/design:edit` sweep + new pages) — deferred to follow-up
+
+**Carry-over for next execute:**
+
+- The bootstrap skill **calls** `design-system-completeness-critic` but the agent doesn't exist yet (Phase 3 deliverable). Skill currently passes through silently when missing — acceptable for skeleton, must land before next release.
+- `setup-ds.md` references multi-DS `additional-ds` + `re-bootstrap` modes; works for single-DS today, multi-DS canvas wiring (per-canvas `.meta.json.designSystem`, `--ds=` validation in `/design:new`) is Phase 4.
+- Site docs still reference `/design` → must be swept in Phase 6.
+- Inspiration library is **skeleton only** (Core 10 + Universal 6 = 16 specimens out of the ~62-file full library planned). `foundations/`, `status/`, `audience-*/`, `platform-*/`, `theme-*/`, `patterns/`, `meta/` are intentionally empty for follow-up phases — `_MAPPING.md` documents the full shape.
 
 ### Phase 2 — Tasks (Fumadocs docs site)
 

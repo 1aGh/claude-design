@@ -1,9 +1,11 @@
 ---
-description: Refresh designRoot/README.md + INDEX.md — Claude-Design-compatible "READ THIS FIRST" docs that live in the design root and stay current. Auto-runs after /design and /design:new; manual trigger when you want to force a refresh.
+name: setup-docs
+category: setup
+description: Refresh designRoot/README.md + INDEX.md — Claude-Design-compatible "READ THIS FIRST" docs that live in the design root and stay current. Auto-runs after /design:edit and /design:new; manual trigger when you want to force a refresh.
 argument-hint: "[--full]"
 ---
 
-# /design:docs — refresh design root docs
+# /design:setup-docs — refresh design root docs
 
 The plugin runs in the **same repo** where the implementation lives. There's no zip / external bundle — `<designRoot>/` itself IS the always-current handoff target.
 
@@ -14,7 +16,7 @@ This command (re)generates two top-level files in `<designRoot>/`:
 
 Both files are committed (not gitignored) — they're project documentation, not runtime state.
 
-**Auto-runs at the end of `/design` and `/design:new`** (after auto-critic loop completes). Manual trigger via this command when you want to force a refresh outside of those flows.
+**Auto-runs at the end of `/design:edit` and `/design:new`** (after auto-critic loop completes). Manual trigger via this command when you want to force a refresh outside of those flows.
 
 ## Vstup `$ARGUMENTS`
 
@@ -26,7 +28,7 @@ Both files are committed (not gitignored) — they're project documentation, not
 
 ## Postup
 
-Vyvolej skill `design` se vstupem: `docs $ARGUMENTS`.
+Vyvolej skill `design` se vstupem: `setup-docs $ARGUMENTS`.
 
 ### 1. Resolve config
 
@@ -61,7 +63,7 @@ Template (adapted with project specifics):
 
 ```
 {DESIGN_ROOT}/
-├── README.md                 # this file (auto-maintained by /design:docs)
+├── README.md                 # this file (auto-maintained by /design:setup-docs)
 ├── INDEX.md                  # canvas catalog (auto-maintained)
 ├── config.json               # per-repo plugin config
 ├── system/                   # design system: tokens, assets, ui kits, README
@@ -122,15 +124,17 @@ Use `/design:handoff [--target <label>]` to migrate the active canvas to one of 
 
 | Command | Purpose |
 |---|---|
-| `/design "<feedback>"` | Edit active canvas in place (auto-critic loop runs after) |
-| `/design "<…>" --perfect` | Same, with up to 5 polish iterations |
+| `/design:edit "<feedback>"` | Edit active canvas in place (auto-critic loop runs after) |
+| `/design:edit "<…>" --perfect` | Same, with up to 8 polish iterations |
 | `/design:new "<Name>" "<brief>"` | Scaffold a new canvas project |
 | `/design:critic` | Run review panel (orchestrator-routed; or `--agent <name>` / `--all`) |
 | `/design:rollback` | Undo last edit |
 | `/design:screenshot` | Capture canvas / selected element |
-| `/design:docs` | Refresh this README + INDEX (auto-runs after /design and /design:new) |
+| `/design:setup-docs` | Refresh this README + INDEX (auto-runs after /design:edit and /design:new) |
+| `/design:setup-ds <name>` | Create another design system |
 | `/design:handoff` | Migrate active canvas to a handoff target |
 | `/design:browse` | Boot the local dev server |
+| `/design:help` | Grouped command index |
 
 ## Last updated
 
@@ -142,7 +146,7 @@ Use `/design:handoff [--target <label>]` to migrate the active canvas to one of 
 ```markdown
 # Canvas index — {NAME}
 
-_Auto-maintained by `/design:docs`. Last updated {ISO}._
+_Auto-maintained by `/design:setup-docs`. Last updated {ISO}._
 
 ## All canvases
 
@@ -199,13 +203,13 @@ write INDEX.md.tmp ; mv INDEX.md.tmp INDEX.md
 
 ### 6. Verify both files have the auto-marker
 
-The orchestrator embeds a marker in each generated file so subsequent `/design:docs` runs know it's safe to overwrite (vs. user-written README that we shouldn't clobber):
+The orchestrator embeds a marker in each generated file so subsequent `/design:setup-docs` runs know it's safe to overwrite (vs. user-written README that we shouldn't clobber):
 
 ```html
-<!-- AUTO-MAINTAINED by /design:docs — do not edit by hand. Add notes to system/<project>/README.md or INDEX.md sections that aren't auto-generated. -->
+<!-- AUTO-MAINTAINED by /design:setup-docs — do not edit by hand. Add notes to system/<project>/README.md or INDEX.md sections that aren't auto-generated. -->
 ```
 
-If `<designRoot>/README.md` exists WITHOUT this marker → fail with "User-written README.md found. Move it or rename it before running /design:docs."
+If `<designRoot>/README.md` exists WITHOUT this marker → fail with "User-written README.md found. Move it or rename it before running /design:setup-docs."
 
 ### 7. Print
 
@@ -239,7 +243,7 @@ Full regeneration only when `--full` passed or when meta.json schema changes.
 | Chat transcript missing | INDEX entry shows "no iteration history". |
 | `_history/<slug>/screenshots/` empty | INDEX entry omits "Latest screenshot" line. |
 
-## What `/design:docs` does NOT do
+## What `/design:setup-docs` does NOT do
 
 - **No commits.** Files land in `<designRoot>/`; user commits when ready.
 - **No `.zip`** — docs live next to canvases, in same repo, in same commit.

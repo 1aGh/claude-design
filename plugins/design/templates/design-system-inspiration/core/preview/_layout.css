@@ -1,0 +1,88 @@
+/* Shared specimen chrome — copy as-is into every project's preview/_layout.css.
+ *
+ * Provides the page frame, swatch grid, and label styling for the demo pages.
+ * Specimen content uses var(--*) tokens; this file uses neutral base styles so
+ * the chrome works regardless of theme.
+ */
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-body, system-ui, sans-serif);
+  font-size: var(--type-base, 14px);
+  line-height: var(--lh-base, 20px);
+  color: var(--fg-0, #e8eaed);
+  background: var(--bg-0, #0a0c10);
+}
+
+.specimen {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 32px 24px 80px;
+}
+
+.specimen h1 {
+  font-family: var(--font-display, var(--font-body, system-ui, sans-serif));
+  font-size: var(--type-2xl, 28px);
+  line-height: var(--lh-2xl, 36px);
+  margin: 0 0 8px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.specimen .lede {
+  color: var(--fg-1, #b6bac4);
+  font-size: var(--type-md, 16px);
+  line-height: var(--lh-md, 22px);
+  margin: 0 0 32px;
+  max-width: 60ch;
+}
+
+.specimen h2 {
+  font-family: var(--font-display, var(--font-body, system-ui, sans-serif));
+  font-size: var(--type-lg, 18px);
+  line-height: var(--lh-lg, 26px);
+  margin: 32px 0 12px;
+  font-weight: 600;
+}
+
+.specimen p { margin: 0 0 12px; max-width: 70ch; color: var(--fg-1); }
+.specimen code { font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px; }
+
+.grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  margin: 0 0 24px;
+}
+
+.swatch {
+  border-radius: var(--radius-md, 8px);
+  overflow: hidden;
+  border: 1px solid var(--border-default, rgba(255,255,255,0.1));
+  background: var(--bg-1, #14171c);
+}
+
+.swatch .chip { height: 64px; }
+.swatch .meta { padding: 10px 12px; font-size: var(--type-xs, 12px); color: var(--fg-1); }
+.swatch .meta strong { display: block; color: var(--fg-0); font-size: var(--type-sm, 13px); margin-bottom: 2px; }
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin: 0 0 24px;
+}
+
+.divider { height: 1px; background: var(--border-subtle); margin: 24px 0; }
+
+footer.legend {
+  margin-top: 64px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+}

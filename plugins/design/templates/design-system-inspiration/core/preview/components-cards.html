@@ -1,0 +1,79 @@
+<!--
+SPECIMEN: components-cards
+DEMONSTRATES: --bg-1, --bg-2, --border-subtle, --border-default, --radius-lg, --shadow-sm, --shadow-md, --space-3/4/5
+COMPOSITION: 3 card variants — flat (default), elevated, interactive — with realistic product content
+COPY VOICE: real product strings — match recap, scout report, team note — never placeholder
+WHEN SCAFFOLDED: always (Core)
+NOTES: Card hierarchy comes from border + bg step, not shadow alone. Reserve shadow for floating elements (popovers, dropdowns), not stationary cards.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Components — cards</title>
+  <link rel="stylesheet" href="../colors_and_type.css" />
+  <link rel="stylesheet" href="./_layout.css" />
+  <style>
+    .card { background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-lg); padding: var(--space-4); display: grid; gap: var(--space-3); }
+    .card--elevated { box-shadow: var(--shadow-md); }
+    .card--interactive { transition: background var(--dur-flip) var(--ease-out), border-color var(--dur-flip) var(--ease-out); cursor: pointer; }
+    .card--interactive:hover { background: var(--bg-2); border-color: var(--border-strong); }
+    .card .head { display: flex; justify-content: space-between; align-items: center; }
+    .card .meta { color: var(--fg-2); font-size: var(--type-sm); }
+    .card .title { font-family: var(--font-display); font-size: var(--type-lg); font-weight: 600; line-height: var(--lh-lg); }
+    .pill { background: var(--accent); color: var(--accent-fg); padding: 2px 8px; border-radius: var(--radius-pill); font-size: var(--type-xs); }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Cards</h1>
+    <p class="lede">Three card patterns: flat for stationary content, elevated for dialogs and overlays, interactive for clickable list rows. Hierarchy comes from the border + bg step; shadow signals "floats above the page".</p>
+
+    <h2>Flat (default)</h2>
+    <div class="card" style="max-width: 360px;">
+      <div class="head">
+        <span class="title">Match recap</span>
+        <span class="meta">19:42</span>
+      </div>
+      <p style="margin: 0; color: var(--fg-1);">Hat-trick from the captain. Squad rating B+.</p>
+      <div class="row" style="gap: var(--space-2);">
+        <button style="background: var(--accent); color: var(--accent-fg); border: 0; padding: 6px 12px; border-radius: var(--radius-sm); font: inherit;">View</button>
+        <button style="background: var(--bg-3); color: var(--fg-0); border: 1px solid var(--border-default); padding: 6px 12px; border-radius: var(--radius-sm); font: inherit;">Share</button>
+      </div>
+    </div>
+
+    <h2>Elevated (overlay)</h2>
+    <div class="card card--elevated" style="max-width: 360px;">
+      <div class="head">
+        <span class="title">Confirm delete</span>
+      </div>
+      <p style="margin: 0; color: var(--fg-1);">This will remove "Scout Radar Mobile" and its iteration history. Cannot be undone.</p>
+      <div class="row" style="justify-content: flex-end; gap: var(--space-2);">
+        <button style="background: transparent; color: var(--fg-1); border: 0; padding: 6px 12px; border-radius: var(--radius-sm); font: inherit;">Cancel</button>
+        <button style="background: var(--status-error); color: var(--accent-fg); border: 0; padding: 6px 12px; border-radius: var(--radius-sm); font: inherit;">Delete</button>
+      </div>
+    </div>
+
+    <h2>Interactive (list row)</h2>
+    <div style="display: grid; gap: var(--space-2); max-width: 480px;">
+      <div class="card card--interactive">
+        <div class="head">
+          <div>
+            <div class="title">Roster: starting XI</div>
+            <div class="meta">11 players · last edited 2h ago</div>
+          </div>
+          <span class="pill">draft</span>
+        </div>
+      </div>
+      <div class="card card--interactive">
+        <div class="head">
+          <div>
+            <div class="title">Bench shortlist</div>
+            <div class="meta">7 players · synced</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

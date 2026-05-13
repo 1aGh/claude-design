@@ -1,4 +1,6 @@
 ---
+name: browse
+category: daily
 description: Spustí lokální design browser — file tree všech canvasů + tabbed iframe preview na volném portu
 argument-hint: "[--port <n>]"
 ---
@@ -56,9 +58,9 @@ Repo může mít wrapper script v `package.json` (např. `pnpm design:browse`) �
 ## Kdy /design:browse vs `open <file>`
 
 - **`open <file>`** — rychlé jednorázové prohlédnutí jednoho souboru přes `file://`. **Žádný inspector overlay, žádný `_active.json` tracking.**
-- **`/design:browse`** — když chceš orchestrátor s `/design "<feedback>"` flow. Tab tracking, element selection (Cmd+click), inspector overlay, snapshots — to vše jede přes server.
+- **`/design:browse`** — když chceš orchestrátor s `/design:edit "<feedback>"` flow. Tab tracking, element selection (Cmd+click), inspector overlay, snapshots — to vše jede přes server.
 
-Orchestrator (`/design`, `/design:new`, atd.) sám server auto-startne pokud neběží — `/design:browse` je jen explicit boot pro browsing-only use case.
+Orchestrator (`/design:edit`, `/design:new`, atd.) sám server auto-startne pokud neběží — `/design:browse` je jen explicit boot pro browsing-only use case.
 
 ## Failure modes
 

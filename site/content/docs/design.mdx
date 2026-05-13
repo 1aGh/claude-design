@@ -5,20 +5,25 @@ description: The /design:* slash commands — canvas-first iteration on HTML/JSX
 
 The `design` plugin treats the **canvas as the working surface**. Each canvas is an HTML or JSX file under `.design/<project-or-feature>/`; commands iterate **in place** on the active canvas (the one open in your browser tab), so feedback like "move the CTA up" lands on the file you're looking at — not a new mock somewhere else.
 
-A zero-dep Node dev server injects an inspector overlay so **Cmd+Click any element** to scope the next `/design "<feedback>"` to that selection. The server tracks active tab + selected element via WebSocket and writes `<designRoot>/_active.json` for the slash commands to read.
+A zero-dep Node dev server injects an inspector overlay so **Cmd+Click any element** to scope the next `/design:edit "<feedback>"` to that selection. The server tracks active tab + selected element via WebSocket and writes `<designRoot>/_active.json` for the slash commands to read.
 
-## The eight commands
+## The twelve commands
+
+Eight daily verbs (no prefix) + three setup verbs (`setup-*` group). Plus a one-version compat stub at `/design` that redirects to `/design:edit`.
 
 | Command | What it does |
 | ------- | ------------ |
-| `/design:new <Name> "<brief>"` | Scaffold a new multi-artboard canvas. Default `--perfect` (8 iterations, full critic panel, target 4.5/5). Opt out with `--quick`, `--no-critic`, `--opt-out=palette|aesthetic|full`. |
-| `/design "<feedback>"` | Iterate on the active canvas in place. Default: auto-runs critic panel after the edit. Add `--perfect [N]` for N iterations of auto-fix, `--no-critic` to skip. |
+| `/design:new <Name> "<brief>"` | Scaffold a new multi-artboard canvas. Default `--perfect` (8 iterations, full critic panel, target 4.5/5). Opt out with `--quick`, `--no-critic`, `--opt-out=palette\|aesthetic\|full`. |
+| `/design:edit "<feedback>"` | Iterate on the active canvas in place. Default: auto-runs critic panel after the edit. Add `--perfect [N]` for N iterations of auto-fix, `--no-critic` to skip. |
 | `/design:critic [--agent <name>] [--all] [--panel]` | Spawn a critic panel (or single agent) against the active canvas — design + a11y + up to 7 specialists (graphic, brand, typography, motion, copy, frontend, info-architecture). |
 | `/design:screenshot [--area <name>] [--selector <css>]` | Capture screenshot of the active canvas via agent-browser (HTTP URL, not `file://`) — for visual review, `/design:critic`, or annotation loops. |
 | `/design:rollback [--steps N] [--list]` | Revert the last snapshot of the active canvas. Auto-snapshot stack lives at `<designRoot>/_history/<slug>/`. |
 | `/design:browse [--port <n>]` | Boot a local design browser — file tree of all canvases + tabbed iframe preview on a free port. |
 | `/design:handoff [--target <label>] [--force]` | Migrate the active canvas (`_active.json`) to production code (target chosen from `.design/config.json` → `handoffTargets`). |
-| `/design:docs [--full]` | Refresh `<designRoot>/README.md` + `INDEX.md` — "READ THIS FIRST" docs that live in the design root and stay current. Auto-runs after `/design` and `/design:new`. |
+| `/design:help` | List all design commands grouped by category. |
+| `/design:setup-onboard` | One-time project init: dependency pre-flight, install hints, skeleton `.design/config.json`. Mirrors `/flow:setup-onboard`. Auto-invoked when other commands hit a missing config. |
+| `/design:setup-ds <name> "[brief]"` | Create a design system (first one, additional, or re-bootstrap with `--force`). Thin wrapper → skill `design-system` in bootstrap mode. |
+| `/design:setup-docs [--full]` | Refresh `<designRoot>/README.md` + `INDEX.md` — "READ THIS FIRST" docs that live in the design root and stay current. Auto-runs after `/design:edit` and `/design:new`. |
 
 ## Dev server runtime files
 
@@ -27,19 +32,21 @@ The server writes three runtime files into `<designRoot>/` that orchestrator com
 | File | Role |
 | ---- | ---- |
 | `_server.json` | `{ pid, port, url, started }` — so the orchestrator detects a live instance instead of spawning a duplicate. |
-| `_active.json` | `{ active, open_tabs, selected, last_change }` — the inspector pushes the user's currently-selected element here over WebSocket so `/design "<feedback>"` knows what to scope to. |
+| `_active.json` | `{ active, open_tabs, selected, last_change }` — the inspector pushes the user's currently-selected element here over WebSocket so `/design:edit "<feedback>"` knows what to scope to. |
 | `_history/<slug>/` | Auto-snapshot stack per canvas, consumed by `/design:rollback`. |
 
 These are user-facing runtime state — schemas are kept backwards-compatible across releases.
 
 ## When to use which
 
+- **Bootstrap a new project** → `/design:setup-onboard`, then `/design:setup-ds <name> "<brief>"`
 - **Generating new** mock → `/design:new`
-- **Iterating** on what's on screen → `/design`
+- **Iterating** on what's on screen → `/design:edit`
 - **Second opinion** without editing → `/design:critic`
 - **Locked-in design** → `/design:handoff` migrates it to production code
 - **Undo** → `/design:rollback`
 - **Browse all canvases** at once → `/design:browse`
+- **Forgotten a command name** → `/design:help`
 
 ## Design system
 

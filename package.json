@@ -29,6 +29,7 @@
   "files": [
     "cli",
     "plugins/design/dev-server",
+    "plugins/design/templates",
     "plugins/flow/templates",
     "plugins/flow/.claude-plugin/config.schema.json",
     "LICENSE",

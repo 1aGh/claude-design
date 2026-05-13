@@ -1,4 +1,6 @@
 ---
+name: handoff
+category: daily
 description: Migrate aktivní canvas (`_active.json`) do production kódu (target z `.design/config.json` handoffTargets)
 argument-hint: "[--target <label>] [--force]"
 ---
@@ -27,7 +29,7 @@ Tokens se mapují na repo's design tokens package (pokud existuje v `packages/de
 Než handoff poběží, skill ověří:
 1. **Server běží + `_active.json` má active canvas** (auto-start serveru pokud chybí).
 2. **`handoffTargets` v configu není prázdný** — pokud ano, fail "No handoff targets configured in `.design/config.json`."
-3. **Latest critique pro tenhle canvas má `blockers == 0`** — pokud ne, fail s návrhem `/design "Address: <top blocker>"` first.
+3. **Latest critique pro tenhle canvas má `blockers == 0`** — pokud ne, fail s návrhem `/design:edit "Address: <top blocker>"` first.
    - Override: `--force` (pouze když user explicitně řekne "ship despite blockers").
 4. **Target path z configu existuje v repu** — fail pokud ne.
 
@@ -109,7 +111,7 @@ Zapiš `<DESIGN_ROOT>/_history/<slug>/handoff/<NNN>-handoff-report.md` (gitignor
 - **Latest critique má blockers a `--force` nebyl předán** → fail s top blocker quote.
 - **Target dir neexistuje** → fail.
 - **`handoffTargets` v configu prázdný** → fail s návrhem doplnit config.
-- **HTML použil token, který není v project tokens CSS** → fail (regression v iteraci, oprav přes `/design`).
+- **HTML použil token, který není v project tokens CSS** → fail (regression v iteraci, oprav přes `/design:edit`).
 - **Frameworkové dependencies chybí v target adresáři** → fail s install command.
 
 Po úspěšném handoff vidíš v terminálu summary + path k handoff-report.md.

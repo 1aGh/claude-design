@@ -1,9 +1,11 @@
 ---
+name: edit
+category: daily
 description: Iteruj na aktivním canvasu — Claude přečte soubor co máš v browseru otevřený a aplikuje feedback IN PLACE. Default: po editu auto-spustí critic panel; přidej --perfect [N] pro N iterací auto-fixu, nebo --no-critic pro skip. --opt-out=<scope> přepíše scope ze sidecaru pro tuhle iteraci.
 argument-hint: "\"<feedback>\" [--screenshot <path>] [--perfect [N]] [--no-critic] [--opt-out=palette|aesthetic|full]"
 ---
 
-# /design — iteruj na active canvasu
+# /design:edit — iteruj na active canvasu
 
 Default flow design pluginu. Edituje **soubor co máš právě otevřený v browser tabu** — ne nový session, ne nový file. Jako Claude Design canvas — řekneš "přidej tady presence dot", a presence dot se objeví v aktivním canvasu.
 
@@ -17,16 +19,42 @@ Project-specific hodnoty (designRoot, rootClass, tokens path, themeDefault) při
 
 **Příklady:**
 ```
-/design "Presence dot 8px (--status-success) before each roster player name"
-/design "Tighter density on Roster section — padding 8/12 instead of 12/16"
-/design "Match this layout exactly" --screenshot /Users/me/Downloads/anotated.png
+/design:edit "Presence dot 8px (--status-success) before each roster player name"
+/design:edit "Tighter density on Roster section — padding 8/12 instead of 12/16"
+/design:edit "Match this layout exactly" --screenshot /Users/me/Downloads/anotated.png
 ```
 
 ## Postup
 
-Vyvolej skill `design` se vstupem `$ARGUMENTS`.
+### 0. Pre-flight: bootstrap detection
+
+Before any edit work, check whether the project has a usable design system.
+
+```bash
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+# Config present?
+CONFIG_PRESENT=false
+[[ -f "$REPO_ROOT/.design/config.json" ]] && CONFIG_PRESENT=true
+
+# Any DS dir present? (single-DS layout: system/project/; multi-DS: system/<name>/)
+HAS_DS=false
+if [[ -d "$REPO_ROOT/.design/system" ]] && find "$REPO_ROOT/.design/system" -mindepth 1 -maxdepth 1 -type d | grep -q .; then
+  HAS_DS=true
+fi
+```
+
+| State | Action |
+|---|---|
+| `HAS_DS=true` | Skip to step 1; normal edit-in-place flow. |
+| `HAS_DS=false`, `CONFIG_PRESENT=false` | Print `→ Running /design:setup-onboard to initialize project…` and invoke `/design:setup-onboard --skip-prompts`. Then invoke `Skill design-system` with `mode_hint=bootstrap`, `target_ds=project`, `brief=$ARGUMENTS`. After bootstrap returns, continue to step 1. |
+| `HAS_DS=false`, `CONFIG_PRESENT=true` | Invoke `Skill design-system` with `mode_hint=bootstrap`, `target_ds=project`, `brief=$ARGUMENTS` directly (config exists; skill detects `first-bootstrap` because `designSystems[]` is empty). After bootstrap returns, continue to step 1. |
+
+The skill treats `$ARGUMENTS` (the feedback the user passed to `/design:edit`) as the answer to discovery Question 1 (product one-liner) and runs Round 1 Q2–Q4 + Round 2 Q5–Q8, confirms direction, and scaffolds before returning here. After scaffold, the active canvas may be unset (user hasn't opened anything yet) — in that case, fall through to step 1's "no active canvas" error path, which now points the user at `/design:new` to scaffold their first canvas.
 
 ### 1. Resolve config
+
+Vyvolej skill `design` se vstupem `$ARGUMENTS`.
 
 ```bash
 # Read per-repo config (or query running server's /_config)
@@ -164,7 +192,7 @@ Detaily: SKILL.md "Post-write reality check".
 
 | Flag | max_iter | aspiration_target | Panel | Use |
 |---|---|---|---|---|
-| (default) | 4 | 4.0 / 5 | routed (incl. `signature-moment-critic` když feedback obsahuje polish/nicer/elegant cues) | každé /design — solid-for-review |
+| (default) | 4 | 4.0 / 5 | routed (incl. `signature-moment-critic` když feedback obsahuje polish/nicer/elegant cues) | každé /design:edit — solid-for-review |
 | `--no-critic` | 0 | n/a | (skip) | quick / dirty edit |
 | `--perfect [N]` | N (default 8) | 4.5 / 5 | routed | extended polish, broader scope |
 | `--perfect --all` | N | 4.5 / 5 | every critic incl. aspiration | exhaustive / portfolio-grade |
@@ -182,7 +210,7 @@ After auto-critic loop completes (or `--no-critic` skipped it), call the **incre
 2. Update `<designRoot>/INDEX.md` row for this canvas.
 3. Update `<designRoot>/README.md` "Last updated" line.
 
-Failure here is non-fatal — print warning, don't restore the canvas. (User can run `/design:docs --full` to recover.)
+Failure here is non-fatal — print warning, don't restore the canvas. (User can run `/design:setup-docs --full` to recover.)
 
 ### 10. Tell user
 
@@ -218,10 +246,10 @@ Failure here is non-fatal — print warning, don't restore the canvas. (User can
 
 ## Tipy
 
-- **Pin-to-element edit** — drž **Cmd** (nebo Alt) v canvasu, najeď myší — element se zvýrazní. **Cmd+klikni** ho označ. Status bar dole ukáže `● selector — text`. Další `/design "<feedback>"` edituje **jen ten element**, ne celý soubor.
+- **Pin-to-element edit** — drž **Cmd** (nebo Alt) v canvasu, najeď myší — element se zvýrazní. **Cmd+klikni** ho označ. Status bar dole ukáže `● selector — text`. Další `/design:edit "<feedback>"` edituje **jen ten element**, ne celý soubor.
 - **Esc uvnitř canvasu** zruší selection. Nebo `×` button ve status baru.
 - **Tab switch zruší selection** automaticky (selection je per-canvas).
 - **Refresh canvas** — Cmd+R uvnitř iframe. Pokud nefunguje, klikni na "↻ active" v headeru.
-- **Anotovaný screenshot** — `/design:screenshot` → otevřeš PNG v Preview → zakroužkuješ → `/design "..." --screenshot <path>`. Selection-aware screenshot je default pokud máš element označený.
+- **Anotovaný screenshot** — `/design:screenshot` → otevřeš PNG v Preview → zakroužkuješ → `/design:edit "..." --screenshot <path>`. Selection-aware screenshot je default pokud máš element označený.
 
-Po editu pokračuj `/design "<další feedback>"`, `/design:screenshot`, `/design:critic`, nebo `/design:handoff`. `/design:rollback` pokud editace nedopadla.
+Po editu pokračuj `/design:edit "<další feedback>"`, `/design:screenshot`, `/design:critic`, nebo `/design:handoff`. `/design:rollback` pokud editace nedopadla.

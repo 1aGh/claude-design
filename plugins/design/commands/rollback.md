@@ -1,11 +1,13 @@
 ---
-description: Vrať poslední snapshot aktivního canvasu (undo poslední /design edit). --steps N pro víc kroků zpět.
+name: rollback
+category: daily
+description: Vrať poslední snapshot aktivního canvasu (undo poslední /design:edit). --steps N pro víc kroků zpět.
 argument-hint: "[--steps N] [--list]"
 ---
 
 # /design:rollback — undo edit
 
-Restoruje předchozí stav active canvasu z `.design/_history/<slug>/`. Každý `/design "<feedback>"` udělal snapshot **před** editem; rollback ten snapshot vrátí.
+Restoruje předchozí stav active canvasu z `.design/_history/<slug>/`. Každý `/design:edit "<feedback>"` udělal snapshot **před** editem; rollback ten snapshot vrátí.
 
 **Vstup `$ARGUMENTS`:** `[--steps N] [--list]`
 
@@ -36,7 +38,7 @@ Skill:
 
 ## Failure modes
 
-- **Žádný history pro active canvas** → fail: "No snapshots in `.design/_history/<slug>/`. Žádný `/design` edit ještě neběžel."
+- **Žádný history pro active canvas** → fail: "No snapshots in `.design/_history/<slug>/`. Žádný `/design:edit` ještě neběžel."
 - **`--steps N` > history count** → fail s actual count + nabídka `--steps <max>`.
 
 ## Tipy

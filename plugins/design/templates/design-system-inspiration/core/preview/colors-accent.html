@@ -1,0 +1,48 @@
+<!--
+SPECIMEN: colors-accent
+DEMONSTRATES: --accent, --accent-hover, --accent-active, --accent-fg
+COMPOSITION: 4-state swatch grid + contextual button + link sample, demonstrating one-accent rule
+COPY VOICE: action verbs ("Save", "Confirm", "Continue") — never "Click here" / "Get Started"
+WHEN SCAFFOLDED: always (Core)
+NOTES: This is THE place to demonstrate one-accent rule. The card should NOT show any --accent2 variant. accent-fg must clear WCAG AA against the accent background.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Colors — accent</title>
+  <link rel="stylesheet" href="../colors_and_type.css" />
+  <link rel="stylesheet" href="./_layout.css" />
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Accent</h1>
+    <p class="lede">One accent family — four states. The one-accent rule means: when something needs attention, the answer is always this color, never a competing second hue. Sub-states cover hover, active, and the readable foreground that sits on top of it.</p>
+
+    <div class="grid">
+      <div class="swatch"><div class="chip" style="background: var(--accent);"></div><div class="meta"><strong>--accent</strong>Idle</div></div>
+      <div class="swatch"><div class="chip" style="background: var(--accent-hover);"></div><div class="meta"><strong>--accent-hover</strong>Hover</div></div>
+      <div class="swatch"><div class="chip" style="background: var(--accent-active);"></div><div class="meta"><strong>--accent-active</strong>Pressed</div></div>
+      <div class="swatch"><div class="chip" style="background: var(--accent-fg); border: 1px solid var(--border-default);"></div><div class="meta"><strong>--accent-fg</strong>Foreground</div></div>
+    </div>
+
+    <h2>In use</h2>
+    <div class="row">
+      <button style="background: var(--accent); color: var(--accent-fg); border: 0; padding: 8px 16px; border-radius: var(--radius-md); font: inherit; cursor: pointer; transition: background var(--dur-flip) var(--ease-out);">Save changes</button>
+      <a href="#" style="color: var(--accent); text-decoration: none; border-bottom: 1px solid currentColor;">Read the docs</a>
+      <span style="background: var(--accent); color: var(--accent-fg); padding: 2px 8px; border-radius: var(--radius-pill); font-size: var(--type-xs);">new</span>
+    </div>
+
+    <h2>Hover &amp; active visual</h2>
+    <div class="row">
+      <div style="background: var(--accent); color: var(--accent-fg); padding: 8px 16px; border-radius: var(--radius-md);">idle</div>
+      <div style="background: var(--accent-hover); color: var(--accent-fg); padding: 8px 16px; border-radius: var(--radius-md);">hover</div>
+      <div style="background: var(--accent-active); color: var(--accent-fg); padding: 8px 16px; border-radius: var(--radius-md);">active</div>
+    </div>
+
+    <footer class="legend">
+      <p>The one-accent rule: no <code>--accent2</code>. Calls-to-attention should compete with each other through hierarchy and size, not through parallel hues.</p>
+    </footer>
+  </main>
+</body>
+</html>

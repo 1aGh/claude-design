@@ -1,14 +1,18 @@
 {
   "title": "Design commands",
   "pages": [
-    "design",
-    "new",
-    "---uncategorized---",
     "browse",
     "critic",
-    "docs",
+    "design",
+    "edit",
     "handoff",
+    "help",
+    "new",
     "rollback",
-    "screenshot"
+    "screenshot",
+    "---setup---",
+    "setup-docs",
+    "setup-ds",
+    "setup-onboard"
   ]
 }

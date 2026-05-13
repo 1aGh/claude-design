@@ -1,0 +1,74 @@
+<!--
+SPECIMEN: components-callout
+DEMONSTRATES: --bg-1, --bg-2, --border-subtle, --status-info, --status-warn, --status-error, --status-success, --fg-0..1
+COMPOSITION: 4 variants (note / tip / warning / error) — each with icon + title + body inline
+COPY VOICE: title is the takeaway ("Heads up:", "Tip:", "Action required:", "Couldn't save"). Body explains in one short sentence.
+WHEN SCAFFOLDED: universal (default-on)
+NOTES: Callout is INLINE content — not a toast (transient) and not an alert (modal). Used for in-flow context. Border-left in the status color; bg stays neutral so callouts stack without competing.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Components — callout</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .callout { background: var(--bg-1); border: 1px solid var(--border-subtle); border-left-width: 3px; border-radius: var(--radius-md); padding: 12px 16px; margin: 0 0 12px; display: flex; gap: 12px; align-items: flex-start; }
+    .callout .icon { font-size: 16px; line-height: 1; padding-top: 1px; }
+    .callout .body { flex: 1; }
+    .callout .head { font-weight: 600; margin: 0 0 2px; color: var(--fg-0); }
+    .callout .text { margin: 0; color: var(--fg-1); font-size: var(--type-sm); }
+    .callout--note    { border-left-color: var(--status-info); }
+    .callout--tip     { border-left-color: var(--status-success); }
+    .callout--warning { border-left-color: var(--status-warn); }
+    .callout--error   { border-left-color: var(--status-error); }
+    .callout--note    .icon { color: var(--status-info); }
+    .callout--tip     .icon { color: var(--status-success); }
+    .callout--warning .icon { color: var(--status-warn); }
+    .callout--error   .icon { color: var(--status-error); }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Callouts</h1>
+    <p class="lede">Inline notes, tips, warnings, and errors. Use callouts to surface context that's relevant where the user is looking — neither a transient toast nor a blocking modal.</p>
+
+    <div class="callout callout--note">
+      <span class="icon" aria-hidden="true">i</span>
+      <div class="body">
+        <p class="head">Heads up</p>
+        <p class="text">Match results sync to the club channel once the captain confirms.</p>
+      </div>
+    </div>
+
+    <div class="callout callout--tip">
+      <span class="icon" aria-hidden="true">★</span>
+      <div class="body">
+        <p class="head">Tip</p>
+        <p class="text">Drag a player from the bench onto a roster row to swap them in.</p>
+      </div>
+    </div>
+
+    <div class="callout callout--warning">
+      <span class="icon" aria-hidden="true">!</span>
+      <div class="body">
+        <p class="head">Action required</p>
+        <p class="text">Two players have expired medical clearances. Update before the next match.</p>
+      </div>
+    </div>
+
+    <div class="callout callout--error">
+      <span class="icon" aria-hidden="true">×</span>
+      <div class="body">
+        <p class="head">Couldn't save</p>
+        <p class="text">Connection dropped. We'll retry in 30s, or you can save manually.</p>
+      </div>
+    </div>
+
+    <footer class="legend">
+      <p>Title leads with the takeaway ("Action required") so a skimming reader doesn't need the body. Use the body for the one-sentence explanation, not for elaborating the warning.</p>
+    </footer>
+  </main>
+</body>
+</html>

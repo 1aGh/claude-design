@@ -1,0 +1,53 @@
+<!--
+SPECIMEN: spacing-scale
+DEMONSTRATES: --space-0..8 (4px base)
+COPY VOICE: terse role labels ("inline", "stack", "section gutter")
+COMPOSITION: 9 horizontal bars sized to each space token, plus realistic stack/inline examples
+WHEN SCAFFOLDED: always (Core)
+NOTES: Scale is 4-px base, non-linear at top end (24/32/48/64). Use --space-2/3 for inline gaps, --space-4/5 for stack gaps, --space-6+ for section gutters.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Spacing scale</title>
+  <link rel="stylesheet" href="../colors_and_type.css" />
+  <link rel="stylesheet" href="./_layout.css" />
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Spacing</h1>
+    <p class="lede">4-pixel base scale, non-linear at the top end to keep section gutters readable on large screens. Use small steps for inline content; large steps for section separations.</p>
+
+    <h2>Scale</h2>
+    <div style="display: grid; gap: 8px; margin: 16px 0;">
+      <div style="display: flex; gap: 12px; align-items: center;"><span style="background: var(--accent); height: 8px; width: 0;"></span><code style="color: var(--fg-2); width: 80px;">--space-0</code><span style="color: var(--fg-1);">0px · reset</span></div>
+      <div style="display: flex; gap: 12px; align-items: center;"><span style="background: var(--accent); height: 8px; width: 4px;"></span><code style="color: var(--fg-2); width: 80px;">--space-1</code><span style="color: var(--fg-1);">4px · hairline gap</span></div>
+      <div style="display: flex; gap: 12px; align-items: center;"><span style="background: var(--accent); height: 8px; width: 8px;"></span><code style="color: var(--fg-2); width: 80px;">--space-2</code><span style="color: var(--fg-1);">8px · inline gap</span></div>
+      <div style="display: flex; gap: 12px; align-items: center;"><span style="background: var(--accent); height: 8px; width: 12px;"></span><code style="color: var(--fg-2); width: 80px;">--space-3</code><span style="color: var(--fg-1);">12px · padding default</span></div>
+      <div style="display: flex; gap: 12px; align-items: center;"><span style="background: var(--accent); height: 8px; width: 16px;"></span><code style="color: var(--fg-2); width: 80px;">--space-4</code><span style="color: var(--fg-1);">16px · stack gap</span></div>
+      <div style="display: flex; gap: 12px; align-items: center;"><span style="background: var(--accent); height: 8px; width: 24px;"></span><code style="color: var(--fg-2); width: 80px;">--space-5</code><span style="color: var(--fg-1);">24px · section gap</span></div>
+      <div style="display: flex; gap: 12px; align-items: center;"><span style="background: var(--accent); height: 8px; width: 32px;"></span><code style="color: var(--fg-2); width: 80px;">--space-6</code><span style="color: var(--fg-1);">32px · section gutter</span></div>
+      <div style="display: flex; gap: 12px; align-items: center;"><span style="background: var(--accent); height: 8px; width: 48px;"></span><code style="color: var(--fg-2); width: 80px;">--space-7</code><span style="color: var(--fg-1);">48px · page gutter</span></div>
+      <div style="display: flex; gap: 12px; align-items: center;"><span style="background: var(--accent); height: 8px; width: 64px;"></span><code style="color: var(--fg-2); width: 80px;">--space-8</code><span style="color: var(--fg-1);">64px · hero spacing</span></div>
+    </div>
+
+    <h2>In use — inline</h2>
+    <div class="row" style="background: var(--bg-1); padding: var(--space-3); border-radius: var(--radius-md); gap: var(--space-2);">
+      <span style="background: var(--accent); color: var(--accent-fg); padding: 2px 8px; border-radius: var(--radius-pill); font-size: var(--type-xs);">live</span>
+      <span style="color: var(--fg-0);">Captain · 92'</span>
+      <span style="color: var(--fg-2);">hat-trick</span>
+    </div>
+
+    <h2>In use — stack</h2>
+    <div style="background: var(--bg-1); padding: var(--space-4); border-radius: var(--radius-md); display: grid; gap: var(--space-4);">
+      <div><strong>Match summary</strong></div>
+      <div style="color: var(--fg-1);">Auto-saved 19:42 · 3 highlights</div>
+      <div class="row" style="gap: var(--space-2);">
+        <button style="background: var(--accent); color: var(--accent-fg); border: 0; padding: 6px 12px; border-radius: var(--radius-sm);">View</button>
+        <button style="background: var(--bg-3); color: var(--fg-0); border: 1px solid var(--border-default); padding: 6px 12px; border-radius: var(--radius-sm);">Share</button>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

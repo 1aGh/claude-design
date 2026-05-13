@@ -1,18 +1,18 @@
 ---
 title: /design:rollback
-description: "Vrať poslední snapshot aktivního canvasu (undo poslední /design edit). --steps N pro víc kroků zpět."
+description: "Vrať poslední snapshot aktivního canvasu (undo poslední /design:edit). --steps N pro víc kroků zpět."
 ---
 
 | Property | Value |
 | -------- | ----- |
 | **Command** | `/design:rollback` |
-| **Category** | `uncategorized` |
+| **Category** | `daily` |
 | **Argument hint** | `[--steps N] [--list]` |
 | **Source** | [`plugins/design/commands/rollback.md`](https://github.com/1aGh/md-claude/blob/main/plugins/design/commands/rollback.md) |
 
 ## Description
 
-Vrať poslední snapshot aktivního canvasu (undo poslední /design edit). --steps N pro víc kroků zpět.
+Vrať poslední snapshot aktivního canvasu (undo poslední /design:edit). --steps N pro víc kroků zpět.
 
 ## Invocation
 
@@ -22,7 +22,7 @@ Vrať poslední snapshot aktivního canvasu (undo poslední /design edit). --ste
 
 ## Summary
 
-Restoruje předchozí stav active canvasu z `.design/_history/&lt;slug>/`. Každý `/design "&lt;feedback>"` udělal snapshot **před** editem; rollback ten snapshot vrátí.
+Restoruje předchozí stav active canvasu z `.design/_history/&lt;slug>/`. Každý `/design:edit "&lt;feedback>"` udělal snapshot **před** editem; rollback ten snapshot vrátí.
 
 ## Source of truth
 

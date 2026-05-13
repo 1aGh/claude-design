@@ -1,0 +1,49 @@
+<!--
+SPECIMEN: colors-surfaces
+DEMONSTRATES: --bg-0, --bg-1, --bg-2, --bg-3, --bg-4, --border-subtle, --border-default
+COMPOSITION: 5 swatches showing surface ladder, plus stacked panel illustration showing depth in real use
+COPY VOICE: terse labels
+WHEN SCAFFOLDED: always (Core)
+NOTES: --bg-0 is deepest, --bg-4 is highest. Each step should add ~4% lightness in OKLCH. Borders derive from --bg-1 via oklch(from var(--bg-1) calc(l + N) c h).
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Colors — surfaces</title>
+  <link rel="stylesheet" href="../colors_and_type.css" />
+  <link rel="stylesheet" href="./_layout.css" />
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Surface colors</h1>
+    <p class="lede">Five layers of background, deepest to highest. Use the lowest layer for the page; step up one level for cards / panels, two levels for nested controls, three for popovers and overlays.</p>
+
+    <div class="grid">
+      <div class="swatch"><div class="chip" style="background: var(--bg-0);"></div><div class="meta"><strong>--bg-0</strong>Page</div></div>
+      <div class="swatch"><div class="chip" style="background: var(--bg-1);"></div><div class="meta"><strong>--bg-1</strong>Card</div></div>
+      <div class="swatch"><div class="chip" style="background: var(--bg-2);"></div><div class="meta"><strong>--bg-2</strong>Nested</div></div>
+      <div class="swatch"><div class="chip" style="background: var(--bg-3);"></div><div class="meta"><strong>--bg-3</strong>Input</div></div>
+      <div class="swatch"><div class="chip" style="background: var(--bg-4);"></div><div class="meta"><strong>--bg-4</strong>Pressed</div></div>
+    </div>
+
+    <h2>Stacked example</h2>
+    <div style="background: var(--bg-0); padding: 24px; border-radius: var(--radius-lg); border: 1px solid var(--border-subtle);">
+      <div style="background: var(--bg-1); padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border-default);">
+        <strong>Card on page</strong> · <span style="color: var(--fg-1)">--bg-1 inside --bg-0</span>
+        <div style="background: var(--bg-2); padding: 12px; margin-top: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+          <strong>Nested panel</strong> · <span style="color: var(--fg-1)">--bg-2 inside --bg-1</span>
+          <input type="text" placeholder="--bg-3 for inputs" style="background: var(--bg-3); border: 1px solid var(--border-default); color: var(--fg-0); padding: 6px 10px; border-radius: var(--radius-sm); margin-top: 8px; display: block; width: 200px;" />
+        </div>
+      </div>
+    </div>
+
+    <h2>Borders</h2>
+    <div class="row">
+      <div style="padding: 12px 16px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md);">subtle</div>
+      <div style="padding: 12px 16px; border: 1px solid var(--border-default); border-radius: var(--radius-md);">default</div>
+      <div style="padding: 12px 16px; border: 1px solid var(--border-strong); border-radius: var(--radius-md);">strong</div>
+    </div>
+  </main>
+</body>
+</html>

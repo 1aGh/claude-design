@@ -1,0 +1,81 @@
+<!--
+SPECIMEN: components-dialogs
+DEMONSTRATES: --bg-1, --bg-2, --border-default, --shadow-lg, --radius-lg, --space-4/5, --dur-route
+COMPOSITION: modal / sheet / alert — each with title, body, primary + secondary actions
+COPY VOICE: terse and unambiguous in titles ("Remove player?"), neutral body ("This will...", not "Are you sure..."), action-verb confirm ("Remove", not "OK")
+WHEN SCAFFOLDED: universal (default-on)
+NOTES: Modal blocks the page; sheet slides from edge; alert is for irreversible destructive actions. Always pair primary action with a clear cancel.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Components — dialogs</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .dialog-frame { background: var(--bg-0); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: var(--space-4); margin-bottom: 24px; position: relative; overflow: hidden; min-height: 220px; }
+    .dialog-frame .veil { position: absolute; inset: 0; background: rgba(0,0,0,0.4); }
+    .dialog { background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); padding: var(--space-5); width: 360px; position: relative; }
+    .dialog .title { font-family: var(--font-display); font-size: var(--type-lg); font-weight: 600; line-height: var(--lh-lg); margin: 0 0 8px; }
+    .dialog .body  { color: var(--fg-1); margin: 0 0 var(--space-4); }
+    .dialog .actions { display: flex; justify-content: flex-end; gap: 8px; }
+    .dialog-modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+    .dialog-sheet { position: absolute; right: var(--space-3); top: var(--space-3); bottom: var(--space-3); width: 320px; border-radius: var(--radius-md); }
+    .btn { padding: 6px 12px; border-radius: var(--radius-sm); border: 1px solid transparent; font: inherit; cursor: pointer; }
+    .btn--primary { background: var(--accent); color: var(--accent-fg); }
+    .btn--secondary { background: transparent; color: var(--fg-1); }
+    .btn--destructive { background: var(--status-error); color: var(--accent-fg); }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Dialogs</h1>
+    <p class="lede">Modals interrupt the flow for confirmation or input. Sheets slide from an edge for related details that don't need full attention. Alerts are reserved for destructive, irreversible actions.</p>
+
+    <h2>Modal</h2>
+    <div class="dialog-frame">
+      <div class="veil"></div>
+      <div class="dialog dialog-modal" role="dialog" aria-modal="true" aria-labelledby="modal-t">
+        <p class="title" id="modal-t">Save match recap</p>
+        <p class="body">The current draft will be saved to your team archive and shared with the captain.</p>
+        <div class="actions">
+          <button class="btn btn--secondary">Cancel</button>
+          <button class="btn btn--primary">Save recap</button>
+        </div>
+      </div>
+    </div>
+
+    <h2>Sheet</h2>
+    <div class="dialog-frame">
+      <div class="veil" style="background: rgba(0,0,0,0.25);"></div>
+      <aside class="dialog dialog-sheet" role="dialog" aria-labelledby="sheet-t">
+        <p class="title" id="sheet-t">Player details</p>
+        <p class="body">#9 · Forward · Captain</p>
+        <p style="color: var(--fg-2); font-size: var(--type-sm); margin: 0 0 12px;">21 matches · 14 goals · 3 assists</p>
+        <div class="actions">
+          <button class="btn btn--secondary">Close</button>
+          <button class="btn btn--primary">Edit profile</button>
+        </div>
+      </aside>
+    </div>
+
+    <h2>Alert (destructive)</h2>
+    <div class="dialog-frame">
+      <div class="veil"></div>
+      <div class="dialog dialog-modal" role="alertdialog" aria-labelledby="alert-t" aria-describedby="alert-b">
+        <p class="title" id="alert-t">Remove "Scout Radar Mobile"?</p>
+        <p class="body" id="alert-b">This deletes the canvas and its iteration history. Cannot be undone.</p>
+        <div class="actions">
+          <button class="btn btn--secondary">Cancel</button>
+          <button class="btn btn--destructive">Remove canvas</button>
+        </div>
+      </div>
+    </div>
+
+    <footer class="legend">
+      <p>Title phrasing: ask the consequential question ("Remove player?"), don't restate the action ("Confirm removal"). Body explains the outcome, not the question. Confirm uses the verb ("Remove"), not "OK / Yes".</p>
+    </footer>
+  </main>
+</body>
+</html>

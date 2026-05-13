@@ -1,0 +1,74 @@
+<!--
+SPECIMEN: components-tooltips
+DEMONSTRATES: --bg-2, --fg-0, --border-default, --radius-sm, --shadow-md, --dur-soft
+COMPOSITION: 4 placement variants (top / right / bottom / left) + popover (richer content)
+COPY VOICE: tooltip = single short phrase, no period ("Open in editor"). Popover = headline + 1–2 supporting sentences.
+WHEN SCAFFOLDED: universal (default-on)
+NOTES: Tooltips trigger after ~400ms hover. Never required to convey information — they augment, not replace. Popover can be triggered by click and contain interactive content.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Components — tooltips</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    .tooltip-host { position: relative; display: inline-block; margin: 32px 16px; }
+    .tooltip { position: absolute; background: var(--bg-2); color: var(--fg-0); padding: 6px 10px; border-radius: var(--radius-sm); font-size: var(--type-xs); white-space: nowrap; box-shadow: var(--shadow-md); border: 1px solid var(--border-default); pointer-events: none; }
+    .tooltip--top    { bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); }
+    .tooltip--bottom { top: calc(100% + 6px);    left: 50%; transform: translateX(-50%); }
+    .tooltip--left   { right: calc(100% + 6px);  top: 50%;  transform: translateY(-50%); }
+    .tooltip--right  { left: calc(100% + 6px);   top: 50%;  transform: translateY(-50%); }
+    .anchor { background: var(--bg-3); border: 1px solid var(--border-default); padding: 8px 12px; border-radius: var(--radius-sm); }
+    .popover { background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md); box-shadow: var(--shadow-md); padding: 14px; width: 240px; }
+    .popover .head { font-weight: 600; margin: 0 0 4px; }
+    .popover .body { color: var(--fg-1); font-size: var(--type-sm); margin: 0 0 10px; }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Tooltips &amp; popovers</h1>
+    <p class="lede">Tooltips are single-line hints that appear on hover or focus, never required to convey essential info. Popovers carry richer content and can be triggered by click.</p>
+
+    <h2>Placement</h2>
+    <div class="row" style="gap: 48px;">
+      <div class="tooltip-host">
+        <span class="anchor">top</span>
+        <span class="tooltip tooltip--top">Open in editor</span>
+      </div>
+      <div class="tooltip-host">
+        <span class="anchor">right</span>
+        <span class="tooltip tooltip--right">Duplicate canvas</span>
+      </div>
+      <div class="tooltip-host">
+        <span class="anchor">bottom</span>
+        <span class="tooltip tooltip--bottom">Available offline</span>
+      </div>
+      <div class="tooltip-host">
+        <span class="anchor">left</span>
+        <span class="tooltip tooltip--left">Last synced 2h ago</span>
+      </div>
+    </div>
+
+    <h2>Popover</h2>
+    <div style="margin-top: 80px;">
+      <div class="tooltip-host">
+        <button class="anchor" style="cursor: pointer;">Match settings</button>
+        <div class="popover tooltip--bottom" style="position: absolute; left: 0; transform: none;">
+          <p class="head">Visibility</p>
+          <p class="body">Who can read this match recap before it's shared with the club.</p>
+          <div class="row" style="gap: 8px;">
+            <button style="background: var(--accent); color: var(--accent-fg); border: 0; padding: 4px 10px; border-radius: var(--radius-sm); font: inherit;">Squad only</button>
+            <button style="background: transparent; color: var(--fg-1); border: 0; padding: 4px 10px; border-radius: var(--radius-sm); font: inherit;">Public</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="legend" style="margin-top: 120px;">
+      <p>Never put essential information in a tooltip — keyboard users hovering over a trigger should not be required to read it. Tooltips augment labeled controls; they don't replace labels.</p>
+    </footer>
+  </main>
+</body>
+</html>

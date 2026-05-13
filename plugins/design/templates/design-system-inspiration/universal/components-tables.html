@@ -1,0 +1,101 @@
+<!--
+SPECIMEN: components-tables
+DEMONSTRATES: --bg-1, --bg-2, --bg-3, --bg-4, --border-subtle, --border-default, --fg-0..2, --space-2/3, --radius-md
+COMPOSITION: sortable header, sticky first column, row selection, empty / loading / error states
+COPY VOICE: column labels in noun-form ("Player", "Goals", "Synced"); date labels relative when fresh ("2m ago"), absolute when older ("Apr 12")
+WHEN SCAFFOLDED: universal (default-on)
+NOTES: Header is bg-2 with sortable indicator. Row hover is bg-3, selected is bg-4. Sticky header for tall tables; sticky first column only for wide tables.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Components — tables</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    table { width: 100%; border-collapse: collapse; background: var(--bg-1); border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border-default); font-size: var(--type-sm); }
+    th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border-subtle); }
+    th { background: var(--bg-2); font-weight: 500; color: var(--fg-1); position: sticky; top: 0; }
+    th[aria-sort] { cursor: pointer; }
+    th[aria-sort="ascending"]::after  { content: ' ↑'; color: var(--accent); }
+    th[aria-sort="descending"]::after { content: ' ↓'; color: var(--accent); }
+    tr:last-child td { border-bottom: 0; }
+    tr:hover td { background: var(--bg-3); }
+    tr.is-selected td { background: var(--bg-4); }
+    .meta { color: var(--fg-2); font-size: var(--type-xs); }
+    .num { font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Tables</h1>
+    <p class="lede">Dense rows, sortable headers, row selection. The header uses <code>--bg-2</code> and sticks on tall scrolls. Hover uses <code>--bg-3</code>, selected uses <code>--bg-4</code> — never the accent (rows aren't navigation).</p>
+
+    <h2>Populated</h2>
+    <div style="max-height: 280px; overflow: auto; border-radius: var(--radius-md);">
+      <table>
+        <thead>
+          <tr>
+            <th></th>
+            <th aria-sort="ascending">Player</th>
+            <th>Position</th>
+            <th class="num">Matches</th>
+            <th class="num">Goals</th>
+            <th>Synced</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="is-selected">
+            <td><input type="checkbox" checked /></td>
+            <td>Kim Park</td>
+            <td>Forward</td>
+            <td class="num">24</td>
+            <td class="num">14</td>
+            <td class="meta">2m ago</td>
+          </tr>
+          <tr>
+            <td><input type="checkbox" /></td>
+            <td>Jonas Weber</td>
+            <td>Midfield</td>
+            <td class="num">22</td>
+            <td class="num">3</td>
+            <td class="meta">12m ago</td>
+          </tr>
+          <tr>
+            <td><input type="checkbox" /></td>
+            <td>Marta Silva</td>
+            <td>Defender</td>
+            <td class="num">23</td>
+            <td class="num">1</td>
+            <td class="meta">Apr 12</td>
+          </tr>
+          <tr>
+            <td><input type="checkbox" /></td>
+            <td>Liam Chen</td>
+            <td>Goalkeeper</td>
+            <td class="num">19</td>
+            <td class="num">0</td>
+            <td class="meta">Apr 11</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Empty</h2>
+    <div style="background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 32px; text-align: center;">
+      <p style="margin: 0 0 4px; color: var(--fg-0);">No matches yet</p>
+      <p style="margin: 0 0 16px; color: var(--fg-2); font-size: var(--type-sm);">When you log your first match, it'll show up here.</p>
+      <button style="background: var(--accent); color: var(--accent-fg); border: 0; padding: 6px 12px; border-radius: var(--radius-sm); font: inherit;">Log a match</button>
+    </div>
+
+    <h2>Loading</h2>
+    <table>
+      <thead><tr><th>Player</th><th>Position</th><th>Goals</th></tr></thead>
+      <tbody>
+        <tr><td colspan="3" style="text-align: center; color: var(--fg-2); padding: 24px;">Loading roster…</td></tr>
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>

@@ -1,0 +1,52 @@
+<!--
+SPECIMEN: colors-text
+DEMONSTRATES: --fg-0, --fg-1, --fg-2, --fg-3
+COMPOSITION: 4 swatches × 1 row + sample paragraph showing hierarchy in context
+COPY VOICE: short labels, no marketing puffery ("Primary", "Secondary", "Muted", "Disabled")
+WHEN SCAFFOLDED: always (Core)
+NOTES: Sample paragraph reuses each level to show how the hierarchy reads. --fg-3 must pass WCAG AA at 14px against --bg-1.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Colors — text</title>
+  <link rel="stylesheet" href="../colors_and_type.css" />
+  <link rel="stylesheet" href="./_layout.css" />
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Text colors</h1>
+    <p class="lede">Four levels of foreground, designed for hierarchy. Use <code>--fg-0</code> for the primary message in a region; lower numbers for supporting context and metadata.</p>
+
+    <div class="grid">
+      <div class="swatch">
+        <div class="chip" style="background: var(--fg-0); height: 64px;"></div>
+        <div class="meta"><strong>--fg-0</strong>Primary</div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background: var(--fg-1); height: 64px;"></div>
+        <div class="meta"><strong>--fg-1</strong>Secondary</div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background: var(--fg-2); height: 64px;"></div>
+        <div class="meta"><strong>--fg-2</strong>Muted</div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background: var(--fg-3); height: 64px;"></div>
+        <div class="meta"><strong>--fg-3</strong>Disabled</div>
+      </div>
+    </div>
+
+    <h2>In context</h2>
+    <p style="color: var(--fg-0)"><strong>Match recap ready.</strong> Hat-trick from the captain; team rating B+.</p>
+    <p style="color: var(--fg-1)">Auto-saved at 19:42. View the breakdown or share with the squad.</p>
+    <p style="color: var(--fg-2)">Last 7 matches available in the archive.</p>
+    <p style="color: var(--fg-3)">Stats sync paused (no connection).</p>
+
+    <footer class="legend">
+      <p><code>--fg-3</code> contrast against <code>--bg-1</code> must clear WCAG AA at 14px. Verify on every theme.</p>
+    </footer>
+  </main>
+</body>
+</html>

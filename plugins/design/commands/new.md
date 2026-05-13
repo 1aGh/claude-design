@@ -1,19 +1,21 @@
 ---
+name: new
+category: daily
 description: Vytvoř nový multi-artboard canvas projekt přes frontend-design — generic envelope adaptovaný podle .design/config.json. Default = --perfect (8 iter, full panel, target 4.5/5). Opt out přes --quick nebo --no-critic. Opt out z DS přes --opt-out=palette|aesthetic|full.
-argument-hint: "<Name> \"<brief>\" [--component] [--mobile] [--quick | --no-critic] [--perfect-iter N] [--opt-out=palette|aesthetic|full]"
+argument-hint: "<Name> \"<brief>\" [--component] [--mobile] [--quick | --no-critic] [--perfect-iter N] [--opt-out=palette|aesthetic|full] [--ds=<name>]"
 ---
 
 # /design:new — scaffold nový canvas projekt
 
 Vytvoří **nový multi-artboard canvas soubor** v `<designRoot>/<newCanvasDir>/<Name>.html` přes `frontend-design` plugin. Generic envelope se adaptuje podle `<repo>/.design/config.json` (rootClass, themeDefault, tokensCssRel, …).
 
-**Canvas projekt = `DesignCanvas` + jedna nebo více `DCSection` + jeden nebo více `DCArtboard`** (Figma-style scrollable infinite canvas). Single-page wrapper je anti-pattern; nový screen patří jako další `DCArtboard` do existujícího canvasu (přes `/design "<add new artboard for X>"` ne přes `/design:new`).
+**Canvas projekt = `DesignCanvas` + jedna nebo více `DCSection` + jeden nebo více `DCArtboard`** (Figma-style scrollable infinite canvas). Single-page wrapper je anti-pattern; nový screen patří jako další `DCArtboard` do existujícího canvasu (přes `/design:edit "<add new artboard for X>"` ne přes `/design:new`).
 
 **Sessions už neexistují.** Nová plocha = nový soubor v `<designRoot>/<newCanvasDir>/`. Žádný `.ai/design-sessions/` adresář, žádné `iterations/NNN.html`. Iterace je in-place edit s `_history/` snapshoty.
 
 ## Default = `--perfect`
 
-`/design:new` je **high-leverage moment** — initial scaffold sets the canvas trajectory pro všechny budoucí `/design "<feedback>"` iterace. Levné nedotáhnout, drahé refactorovat zpětně. Proto je critic panel **vždy on, vždy plný, vždy target portfolio-grade**:
+`/design:new` je **high-leverage moment** — initial scaffold sets the canvas trajectory pro všechny budoucí `/design:edit "<feedback>"` iterace. Levné nedotáhnout, drahé refactorovat zpětně. Proto je critic panel **vždy on, vždy plný, vždy target portfolio-grade**:
 
 - **max 8 iterations** auto-fix loop
 - **aspiration target 4.5 / 5**
@@ -54,9 +56,33 @@ Opt-out flagy (pro vědomé výjimky):
 
 ## Postup
 
-Vyvolej skill `design` se vstupem: `new $ARGUMENTS`.
+### 0. Pre-flight: bootstrap detection
+
+Before scaffolding a canvas, check whether the project has a usable design system.
+
+```bash
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+CONFIG_PRESENT=false
+[[ -f "$REPO_ROOT/.design/config.json" ]] && CONFIG_PRESENT=true
+
+HAS_DS=false
+if [[ -d "$REPO_ROOT/.design/system" ]] && find "$REPO_ROOT/.design/system" -mindepth 1 -maxdepth 1 -type d | grep -q .; then
+  HAS_DS=true
+fi
+```
+
+| State | Action |
+|---|---|
+| `HAS_DS=true` | Skip to step 1. If `--ds=<name>` was passed, validate it against `config.json.designSystems[].name`. Unknown DS → fail with hint to `/design:setup-ds <name> "[brief]"`. |
+| `HAS_DS=false`, `CONFIG_PRESENT=false` | Print `→ Running /design:setup-onboard to initialize project…` and invoke `/design:setup-onboard --skip-prompts`. Then invoke `Skill design-system` with `mode_hint=bootstrap`, `target_ds=project`, `brief=$BRIEF`. After bootstrap returns, continue to step 1 and create the canvas with the freshly-scaffolded tokens. |
+| `HAS_DS=false`, `CONFIG_PRESENT=true` | Invoke `Skill design-system` with `mode_hint=bootstrap`, `target_ds=project`, `brief=$BRIEF` directly. After bootstrap returns, continue to step 1. |
+
+The skill treats `$BRIEF` as the answer to discovery Question 1 (product one-liner) and runs the full 8-question discovery, scaffolds the DS, runs the completeness-critic, and returns. The canvas creation then proceeds with the project's actual tokens (not a default placeholder set).
 
 ### 1. Resolve config
+
+Vyvolej skill `design` se vstupem: `new $ARGUMENTS`.
 
 Načti `.design/config.json`:
 
@@ -74,7 +100,7 @@ TEAM_DEFAULT=$(jq -r '.teamAccentDefault // empty' "$CFG")
 
 ### 2. Server lifecycle check (auto-start pokud chybí)
 
-Stejné jako u `/design`.
+Stejné jako u `/design:edit`.
 
 ### 3. Validate name + resolve target path
 
@@ -222,7 +248,7 @@ Detaily a failure handling: SKILL.md "Post-write reality check".
 
 ### 10. Auto-critic + auto-fix loop (default = `--perfect`)
 
-**Same loop algorithm as `/design`** — see SKILL.md "Auto-critic loop". Klíčový rozdíl: `/design:new` má **vyšší výchozí laťku** než `/design "<feedback>"`, protože scaffold je high-leverage.
+**Same loop algorithm as `/design:edit`** — see SKILL.md "Auto-critic loop". Klíčový rozdíl: `/design:new` má **vyšší výchozí laťku** než `/design:edit "<feedback>"`, protože scaffold je high-leverage.
 
 **Iter-1 checkpoint — fires only when `opt_out_scope ∈ {aesthetic, full}`.** Before spawning iter-1 critics (after the post-write reality-check screenshots), surface a one-shot AskUserQuestion:
 
@@ -268,11 +294,11 @@ Bootstrap a chat transcript: write `<DESIGN_ROOT>/_history/<slug>/chat.md` with 
 ### 11. Bootstrap docs
 
 For a new canvas:
-1. Write `<DESIGN_ROOT>/<NEW_CANVAS_DIR>/<Name>.meta.json` from the brief (title, subtitle from one-line, brief, platform from --mobile flag, sections+artboards extracted from generated JSX, **`opt_out_scope` from step 4**). Subsequent `/design` iterations on this canvas read the field and inherit the scope automatically — no re-asking on every edit.
-2. **If `<DESIGN_ROOT>/INDEX.md` doesn't exist** → invoke `/design:docs --full` (regenerates both INDEX.md and README.md from all canvases). **Do NOT improvise a hand-written INDEX.md** — `/design:docs` is the source of truth and the AUTO-MAINTAINED marker depends on it. Improvised INDEX gets overwritten on next `/design:docs` run, and any rows added by hand are lost.
-3. **Else** (INDEX.md exists) → add a row to `<DESIGN_ROOT>/INDEX.md` for the new canvas (or invoke `/design:docs` without `--full` to do the incremental update for you).
-4. If `<DESIGN_ROOT>/README.md` doesn't exist after step 2, generate it via `/design:docs --full` flow.
-5. Update `<DESIGN_ROOT>/README.md` "Last updated" line. **This step is non-skippable** — if you used `/design:docs --full` in step 2, it's done; if you wrote the INDEX row by hand, you must update README too.
+1. Write `<DESIGN_ROOT>/<NEW_CANVAS_DIR>/<Name>.meta.json` from the brief (title, subtitle from one-line, brief, platform from --mobile flag, sections+artboards extracted from generated JSX, **`opt_out_scope` from step 4**). Subsequent `/design:edit` iterations on this canvas read the field and inherit the scope automatically — no re-asking on every edit.
+2. **If `<DESIGN_ROOT>/INDEX.md` doesn't exist** → invoke `/design:setup-docs --full` (regenerates both INDEX.md and README.md from all canvases). **Do NOT improvise a hand-written INDEX.md** — `/design:setup-docs` is the source of truth and the AUTO-MAINTAINED marker depends on it. Improvised INDEX gets overwritten on next `/design:setup-docs` run, and any rows added by hand are lost.
+3. **Else** (INDEX.md exists) → add a row to `<DESIGN_ROOT>/INDEX.md` for the new canvas (or invoke `/design:setup-docs` without `--full` to do the incremental update for you).
+4. If `<DESIGN_ROOT>/README.md` doesn't exist after step 2, generate it via `/design:setup-docs --full` flow.
+5. Update `<DESIGN_ROOT>/README.md` "Last updated" line. **This step is non-skippable** — if you used `/design:setup-docs --full` in step 2, it's done; if you wrote the INDEX row by hand, you must update README too.
 
 ### 12. Print
 
@@ -297,10 +323,10 @@ For a new canvas:
   {if baseline screenshot covers only some artboards: "Baseline: 000-baseline.png (first 3 artboards only — lazy-mount limit; rest unverified)"}
 
   Docs: <designRoot>/INDEX.md added entry; <designRoot>/README.md updated.
-  {if INDEX.md was missing and /design:docs --full was invoked: "Docs: bootstrapped via /design:docs --full"}
+  {if INDEX.md was missing and /design:setup-docs --full was invoked: "Docs: bootstrapped via /design:setup-docs --full"}
 
   Klikni na něj v browser file tree (autorefresh přes ↻ tree v UI), stane se aktivním.
-  Iteruj přes /design "<feedback>".
+  Iteruj přes /design:edit "<feedback>".
 ```
 
 ## Co `/design:new` NEDělá
@@ -337,7 +363,7 @@ Default `/design:new` = `--perfect` (8 iter, target 4.5/5, routed panel). Honest
 2. **If session token budget je viditelně omezený** (context > 60% full, user dříve v session flagol token concerns, nebo conversation has > ~150k tokens už spotřebovaných) → **before** starting loop, surface a one-shot AskUserQuestion:
    > "`/design:new` runs `--perfect` by default (~40 subagent calls, 150–300k tokens, 5–15 min). Tvůj context je už 65% full. Pick: (a) plný `--perfect` (default — drahé ale dotažené), (b) `--quick` (signature-moment only, ~2 iter, ~30k tokens), (c) `--no-critic` (jen generate + render check, ~5k tokens)."
 
-3. **Never silently downgrade** — pokud chceš méně, **explicit flag**: `--quick` nebo `--no-critic`. Token-saving shortcut bez user opt-in / opt-in question = **process violation**. Stejný pattern jako `/execute` Edit-Verify Loop — contract je contract.
+3. **Never silently downgrade** — pokud chceš méně, **explicit flag**: `--quick` nebo `--no-critic`. Token-saving shortcut bez user opt-in / opt-in question = **process violation**. Stejný pattern jako `/flow:execute` Edit-Verify Loop — contract je contract.
 
 4. **If user explicitly chose downgrade** (option b/c v question above, OR explicit `--quick` / `--no-critic` flag) → state it explicitly v final printu:
    > `Critic panel (--quick mode per user choice): signature-moment-critic only, max 2 iter`

@@ -1,0 +1,31 @@
+---
+title: /design:setup-onboard
+description: "One-time project-level environment init for the design plugin. Detects missing dependencies (node ≥ 20, git, agent-browser, mdcc), prints install hints for soft deps, offers to run /init for CLAUDE.md and /flow:setup-onboard for .ai/, and writes a skeleton .design/config.json. Does NOT create a design system — use /design:setup-ds <name> for that. Mirrors /flow:setup-onboard."
+---
+
+| Property | Value |
+| -------- | ----- |
+| **Command** | `/design:setup-onboard` |
+| **Category** | `setup` |
+| **Argument hint** | `[--skip-prompts]` |
+| **Source** | [`plugins/design/commands/setup-onboard.md`](https://github.com/1aGh/md-claude/blob/main/plugins/design/commands/setup-onboard.md) |
+
+## Description
+
+One-time project-level environment init for the design plugin. Detects missing dependencies (node ≥ 20, git, agent-browser, mdcc), prints install hints for soft deps, offers to run /init for CLAUDE.md and /flow:setup-onboard for .ai/, and writes a skeleton .design/config.json. Does NOT create a design system — use /design:setup-ds &lt;name> for that. Mirrors /flow:setup-onboard.
+
+## Invocation
+
+```text
+/design:setup-onboard [--skip-prompts]
+```
+
+## Summary
+
+Project-level environment init for the `design` plugin. Mirrors `/flow:setup-onboard` in shape and purpose: detect what's already in place, print actionable install / next-step hints for what's missing, and write the minimal skeleton config so subsequent commands have something to read.
+
+## Source of truth
+
+This page is auto-generated from the command's frontmatter. The exact prompt Claude runs — including directives, edge-case handling, and tool-routing logic — lives in the source file:
+
+[**`plugins/design/commands/setup-onboard.md`**](https://github.com/1aGh/md-claude/blob/main/plugins/design/commands/setup-onboard.md) → read it for the full behavior.

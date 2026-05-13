@@ -1,0 +1,83 @@
+<!--
+SPECIMEN: components-buttons
+DEMONSTRATES: --accent, --accent-hover, --accent-active, --accent-fg, --bg-1..4, --fg-0..2, --border-default, --radius-md, --dur-flip, --ease-out
+COMPOSITION: 4 variants × 5 states grid (primary / secondary / ghost / destructive × idle / hover / active / disabled / loading)
+COPY VOICE: action verbs, no marketing puffery ("Save", "Delete", not "Get Started Now!")
+WHEN SCAFFOLDED: always (Core)
+NOTES: Loading state uses --accent-fg color on accent bg with a pulsing dot — never spinner-only. Disabled uses --fg-3 + reduced opacity, no hover.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Components — buttons</title>
+  <link rel="stylesheet" href="../colors_and_type.css" />
+  <link rel="stylesheet" href="./_layout.css" />
+  <style>
+    .btn { font: inherit; padding: 8px 14px; border-radius: var(--radius-md); border: 1px solid transparent; cursor: pointer; transition: background var(--dur-flip) var(--ease-out), border-color var(--dur-flip) var(--ease-out); display: inline-flex; align-items: center; gap: 8px; }
+    .btn--primary       { background: var(--accent);        color: var(--accent-fg); }
+    .btn--primary:hover { background: var(--accent-hover); }
+    .btn--primary.is-active, .btn--primary:active { background: var(--accent-active); }
+    .btn--secondary    { background: var(--bg-3); color: var(--fg-0); border-color: var(--border-default); }
+    .btn--secondary:hover { background: var(--bg-4); }
+    .btn--ghost        { background: transparent; color: var(--fg-0); }
+    .btn--ghost:hover  { background: var(--bg-2); }
+    .btn--destructive  { background: var(--status-error); color: var(--accent-fg); }
+    .btn[disabled], .btn.is-disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn.is-loading::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: pulse 1s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 0.4; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1.2); } }
+    @media (prefers-reduced-motion: reduce) { .btn.is-loading::after { animation: none; } }
+    .col { display: grid; gap: 12px; align-items: start; }
+    .grid-states { display: grid; grid-template-columns: 120px repeat(5, max-content); gap: 12px; align-items: center; margin: 16px 0; }
+    .grid-states > .head { font-size: var(--type-xs); color: var(--fg-2); text-transform: uppercase; letter-spacing: 0.04em; }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <h1>Buttons</h1>
+    <p class="lede">Four variants, five states. Primary carries the accent; secondary uses neutral surface + border; ghost is invisible until interaction; destructive uses status-error for irreversible actions.</p>
+
+    <div class="grid-states">
+      <span class="head"></span><span class="head">Idle</span><span class="head">Hover</span><span class="head">Active</span><span class="head">Disabled</span><span class="head">Loading</span>
+      <span style="color: var(--fg-1);">Primary</span>
+      <button class="btn btn--primary">Save</button>
+      <button class="btn btn--primary" style="background: var(--accent-hover);">Save</button>
+      <button class="btn btn--primary is-active">Save</button>
+      <button class="btn btn--primary" disabled>Save</button>
+      <button class="btn btn--primary is-loading">Saving</button>
+
+      <span style="color: var(--fg-1);">Secondary</span>
+      <button class="btn btn--secondary">Cancel</button>
+      <button class="btn btn--secondary" style="background: var(--bg-4);">Cancel</button>
+      <button class="btn btn--secondary" style="background: var(--bg-4); border-color: var(--border-strong);">Cancel</button>
+      <button class="btn btn--secondary" disabled>Cancel</button>
+      <button class="btn btn--secondary is-loading">Cancel</button>
+
+      <span style="color: var(--fg-1);">Ghost</span>
+      <button class="btn btn--ghost">More</button>
+      <button class="btn btn--ghost" style="background: var(--bg-2);">More</button>
+      <button class="btn btn--ghost" style="background: var(--bg-3);">More</button>
+      <button class="btn btn--ghost" disabled>More</button>
+      <button class="btn btn--ghost is-loading">More</button>
+
+      <span style="color: var(--fg-1);">Destructive</span>
+      <button class="btn btn--destructive">Delete</button>
+      <button class="btn btn--destructive" style="filter: brightness(1.05);">Delete</button>
+      <button class="btn btn--destructive" style="filter: brightness(0.95);">Delete</button>
+      <button class="btn btn--destructive" disabled>Delete</button>
+      <button class="btn btn--destructive is-loading">Deleting</button>
+    </div>
+
+    <h2>With icon</h2>
+    <div class="row">
+      <button class="btn btn--primary"><span aria-hidden="true">↑</span>Upload</button>
+      <button class="btn btn--secondary"><span aria-hidden="true">↓</span>Download</button>
+      <button class="btn btn--ghost"><span aria-hidden="true">⌄</span>Filter</button>
+    </div>
+
+    <footer class="legend">
+      <p>Loading state: keep the verb in the label, not "Loading…". "Saving", "Deleting", "Uploading" tells the user which action is in flight.</p>
+    </footer>
+  </main>
+</body>
+</html>

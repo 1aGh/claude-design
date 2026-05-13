@@ -6,8 +6,16 @@ import { basename, join, relative } from 'node:path';
 // - .gitkeep files are copied as empty dirs only when the dir is otherwise empty
 // - if `transform({ srcPath, destPath, contents })` is provided, runs it before write
 //   for files matching `transformGlob` (substring match on srcPath).
+// - if `rename(name)` is provided, rewrites entry filenames before computing dest
+//   (used to strip `.tpl` suffix during design-system scaffold).
 export async function copyTree(src, dest, opts = {}) {
-  const { force = false, dryRun = false, transform = null, transformMatch = () => false } = opts;
+  const {
+    force = false,
+    dryRun = false,
+    transform = null,
+    transformMatch = () => false,
+    rename = (name) => name,
+  } = opts;
   const stats = { created: [], skipped: [], replaced: [] };
 
   async function walk(srcDir, destDir) {
@@ -15,7 +23,8 @@ export async function copyTree(src, dest, opts = {}) {
     const entries = await readdir(srcDir, { withFileTypes: true });
     for (const entry of entries) {
       const srcPath = join(srcDir, entry.name);
-      const destPath = join(destDir, entry.name);
+      const destName = entry.isDirectory() ? entry.name : rename(entry.name);
+      const destPath = join(destDir, destName);
       if (entry.isDirectory()) {
         await walk(srcPath, destPath);
         continue;

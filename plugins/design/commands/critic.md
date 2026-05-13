@@ -1,4 +1,6 @@
 ---
+name: critic
+category: daily
 description: Spawn critic panel (or single agent / all critics) na aktivním canvasu — design + a11y + až 7 specialistů (graphic, brand, typography, motion, copy, frontend, info-architecture). Default = orchestrator routes panel based on canvas content + feedback. Honors opt_out_scope from canvas .meta.json or --opt-out= flag.
 argument-hint: "[--agent <name>] [--all] [--panel] [--opt-out=palette|aesthetic|full]"
 ---
@@ -7,7 +9,7 @@ argument-hint: "[--agent <name>] [--all] [--panel] [--opt-out=palette|aesthetic|
 
 Spustí jednoho nebo víc `*-critic` subagentů na aktivní canvas (`_active.json`). Každý critic emituje **JSON verdict block** na konci svého reportu — orchestrator parsuje a (pokud >1 critic) píše konsolidační `<NNN>-PANEL.md`.
 
-Tento command **nepouští auto-fix loop** — to dělají `/design` a `/design:new` po každém editu. `/design:critic` je čistá review akce; pro auto-fix s víc iteracemi použij `/design "<feedback>" --perfect`.
+Tento command **nepouští auto-fix loop** — to dělají `/design:edit` a `/design:new` po každém editu. `/design:critic` je čistá review akce; pro auto-fix s víc iteracemi použij `/design:edit "<feedback>" --perfect`.
 
 ## Modes
 
@@ -25,7 +27,7 @@ Vyvolej skill `design` se vstupem: `critic <flags>`.
 
 ### 1. Server lifecycle check + read active state
 
-Standard (viz `/design`).
+Standard (viz `/design:edit`).
 
 ### 2. Capture screenshot if missing
 
@@ -95,7 +97,7 @@ Write `<designRoot>/_history/<slug>/critique/<NNN>-PANEL.md` (schema in `skills/
   Panel: <designRoot>/_history/<slug>/critique/NNN-PANEL.md
 
   Next:
-  - If blockers > 0: /design "Address: <top blocker summary>" — or /design "..." --perfect to auto-fix in a loop.
+  - If blockers > 0: /design:edit "Address: <top blocker summary>" — or /design:edit "..." --perfect to auto-fix in a loop.
   - If blockers == 0: /design:handoff [--target <label>] when ready.
 ```
 
@@ -112,8 +114,8 @@ Write `<designRoot>/_history/<slug>/critique/<NNN>-PANEL.md` (schema in `skills/
 ## Tipy
 
 - **Targeted critique** — Cmd+klikni element v canvasu, pak `/design:critic`. Routing zúží panel na ten element + critics dostanou `selected` v promptu pro element-scoped review.
-- **Fast iteration loop** — `/design "..."` (default = 4-iter multi-axis auto-critic with stable-but-bland exit) je rychlejší než `/design:critic` + ruční follow-up. `/design:critic` je standalone audit (žádný auto-fix).
-- **Pre-handoff polish** — `/design:critic --all` pro exhaustivní review, pak `/design "..." --perfect` pokud blockers, pak `/design:handoff`.
+- **Fast iteration loop** — `/design:edit "..."` (default = 4-iter multi-axis auto-critic with stable-but-bland exit) je rychlejší než `/design:critic` + ruční follow-up. `/design:critic` je standalone audit (žádný auto-fix).
+- **Pre-handoff polish** — `/design:critic --all` pro exhaustivní review, pak `/design:edit "..." --perfect` pokud blockers, pak `/design:handoff`.
 - **Single discipline** — `/design:critic --agent typography-critic` pro pure type review (žádné UX / DS / a11y noise).
 
 ## Discoverability — co jednotlivé critics dělají
@@ -129,6 +131,6 @@ Write `<designRoot>/_history/<slug>/critique/<NNN>-PANEL.md` (schema in `skills/
 | `copy-critic` | Microcopy, action verbs, empty/error states, tone, casing, i18n readiness. |
 | `frontend-critic` | JSX patterns, semantic HTML, hooks, keys, performance gotchas, hydration. |
 | `info-architecture-critic` | Nav depth, hierarchy, taxonomy, findability, URL hygiene, cross-surface consistency. |
-| `signature-moment-critic` | **Aspiration axis** — měří *presence of greatness*, ne absence of badness. 5 axes (signature compositional moment per artboard, brand prominence, mock fidelity, restraint, negative space) + specificity gate (no Lorem / placeholders). **Always in panel pro `/design:new` a polish-cued `/design`.** Zavírá gap mezi "passes correctness" a "would screenshot for portfolio". |
+| `signature-moment-critic` | **Aspiration axis** — měří *presence of greatness*, ne absence of badness. 5 axes (signature compositional moment per artboard, brand prominence, mock fidelity, restraint, negative space) + specificity gate (no Lorem / placeholders). **Always in panel pro `/design:new` a polish-cued `/design:edit`.** Zavírá gap mezi "passes correctness" a "would screenshot for portfolio". |
 
 Full critic prompts: `${CLAUDE_PLUGIN_ROOT}/agents/<name>.md`.

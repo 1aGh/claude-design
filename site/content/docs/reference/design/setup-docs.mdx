@@ -1,0 +1,31 @@
+---
+title: /design:setup-docs
+description: "Refresh designRoot/README.md + INDEX.md — Claude-Design-compatible \"READ THIS FIRST\" docs that live in the design root and stay current. Auto-runs after /design:edit and /design:new; manual trigger when you want to force a refresh."
+---
+
+| Property | Value |
+| -------- | ----- |
+| **Command** | `/design:setup-docs` |
+| **Category** | `setup` |
+| **Argument hint** | `[--full]` |
+| **Source** | [`plugins/design/commands/setup-docs.md`](https://github.com/1aGh/md-claude/blob/main/plugins/design/commands/setup-docs.md) |
+
+## Description
+
+Refresh designRoot/README.md + INDEX.md — Claude-Design-compatible "READ THIS FIRST" docs that live in the design root and stay current. Auto-runs after /design:edit and /design:new; manual trigger when you want to force a refresh.
+
+## Invocation
+
+```text
+/design:setup-docs [--full]
+```
+
+## Summary
+
+The plugin runs in the **same repo** where the implementation lives. There's no zip / external bundle — `&lt;designRoot>/` itself IS the always-current handoff target.
+
+## Source of truth
+
+This page is auto-generated from the command's frontmatter. The exact prompt Claude runs — including directives, edge-case handling, and tool-routing logic — lives in the source file:
+
+[**`plugins/design/commands/setup-docs.md`**](https://github.com/1aGh/md-claude/blob/main/plugins/design/commands/setup-docs.md) → read it for the full behavior.

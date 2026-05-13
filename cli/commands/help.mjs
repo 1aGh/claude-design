@@ -23,6 +23,14 @@ COMMANDS
         Start the design plugin's dev server in the current repo. Equivalent
         to invoking 'claude-design-server'. Forwards all remaining args.
 
+  design init [--name <slug>] [--ds <name>] [--force] [--dry-run]
+              [--no-discovery | --discovery-payload <path>]
+        Non-interactive scaffold helper for the design plugin. Writes Core
+        files into .design/ using the design-system-inspiration library.
+        Refuses to run interactively — use Claude Code's /design:setup-ds for
+        full discovery. --no-discovery uses Recommended defaults; --discovery-
+        payload reads pre-computed answers from JSON.
+
   help              Print this help.
   version           Print the installed version.
 
@@ -31,6 +39,7 @@ EXAMPLES
   mdcc config set platforms '["web-desktop","web-mobile"]'
   mdcc config get motion.complex
   mdcc design serve --port 4399
+  mdcc design init --no-discovery --name acme-app
 
 NOTES
   'mdcc init' does mechanical scaffolding of .ai/ only.

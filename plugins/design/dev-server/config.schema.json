@@ -83,6 +83,62 @@
       "type": "string",
       "description": "Default folder (under designRoot) where /design:new puts shared component .jsx files.",
       "default": "ui/components"
+    },
+    "extensions": {
+      "type": "array",
+      "description": "User-added directories the docs renderer / completeness-critic should track but not validate against the standard schema. Each entry maps a folder (under the DS) to a label.",
+      "items": {
+        "type": "object",
+        "required": ["label", "path"],
+        "properties": {
+          "label": { "type": "string" },
+          "path": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "default": []
+    },
+    "completenessProfile": {
+      "type": "string",
+      "enum": ["minimal", "standard", "strict"],
+      "description": "Severity profile for the design-system-completeness-critic. 'minimal' = Core blockers only; 'standard' = Core + most Conventional checks; 'strict' = all checks incl. voice/tone/hard-stops in README.",
+      "default": "standard"
+    },
+    "activeFamilies": {
+      "type": "array",
+      "description": "Token families this project has in scope. Computed during /design:setup-ds. The completeness-critic uses this to gate Conventional checks (e.g. type-mono specimen only required when 'mono' is here).",
+      "items": {
+        "type": "string",
+        "enum": ["accent", "status", "presence", "mono"]
+      },
+      "default": ["accent"]
+    },
+    "designSystems": {
+      "type": "array",
+      "description": "Design systems available in this project. Single-DS projects have one entry; multi-DS projects (marketing vs. admin vs. mobile) list each here. Each canvas's .meta.json declares which DS it uses via the 'designSystem' field.",
+      "items": {
+        "type": "object",
+        "required": ["name", "path"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "description": "Kebab-case slug. Used to match canvas .meta.json.designSystem references."
+          },
+          "path": {
+            "type": "string",
+            "description": "Folder under designRoot (e.g. 'system/marketing')."
+          },
+          "description": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "default": []
+    },
+    "defaultDesignSystem": {
+      "type": ["string", "null"],
+      "description": "Name of the DS used when a canvas's .meta.json has no 'designSystem' field. For single-DS projects, this is the only DS. For multi-DS, pick the most common.",
+      "default": null
     }
   }
 }

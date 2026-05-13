@@ -1,4 +1,6 @@
 ---
+name: screenshot
+category: daily
 description: Capture screenshot aktivního canvasu přes agent-browser (HTTP server URL, ne file://) — pro visual review, /design:critic, nebo annotation loop
 argument-hint: "[--area <name>] [--selector <css>]"
 ---
@@ -45,7 +47,7 @@ Pokud chceš anotovat konkrétní místo:
 1. `/design:screenshot --area <focus>` (`--selector` pro výřez).
 2. Otevři PNG v Preview / CleanShot / Figma.
 3. Zakroužkuj / anotuj / popiš → ulož.
-4. `/design "<konkrétní feedback>" --screenshot <cesta-k-anotovanému-obrázku>`.
+4. `/design:edit "<konkrétní feedback>" --screenshot <cesta-k-anotovanému-obrázku>`.
 
 Tohle je nejbližší ekvivalent Claude Design pinned-comments workflow — ručně řízený, ale plně funkční.
 
@@ -62,4 +64,4 @@ Tohle je nejbližší ekvivalent Claude Design pinned-comments workflow — ruč
 - Nemodifikuje `_active.json`.
 - Nezapisuje do `_history/` snapshotů (jen do `_history/<slug>/screenshots/`).
 
-Default-screenshotuj často — je to free, image input je nepostradatelný pro `/design "..." --screenshot` annotation loop a pro `/design:critic`.
+Default-screenshotuj často — je to free, image input je nepostradatelný pro `/design:edit "..." --screenshot` annotation loop a pro `/design:critic`.

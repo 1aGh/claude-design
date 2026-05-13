@@ -41,7 +41,7 @@ When `design` is asked to start work on a known surface:
 2. Resolves component file (e.g. `<designRoot>/ui/project/components/<Surface>.jsx`) if the canvas references one.
 3. Reads any matching iteration transcript in `<designRoot>/ui/chats/` — that's the source of truth for what the user actually wanted.
 4. Loads tokens from `<designRoot>/<tokensCssRel>`.
-5. Hands the union as the aesthetic + layout brief to `frontend-design` (for new canvases) or applies inline edits (for `/design "<feedback>"`).
+5. Hands the union as the aesthetic + layout brief to `frontend-design` (for new canvases) or applies inline edits (for `/design:edit "<feedback>"`).
 
 For unknown surfaces, the orchestrator skips component-mapping but still loads tokens + finds one similar reference canvas to learn the project's idioms.
 

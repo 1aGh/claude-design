@@ -8,7 +8,7 @@
 // On boot, writes <designRoot>/_server.json (port + pid + url) so the orchestrator
 // can detect a running instance instead of accidentally starting a second one.
 // Tabs in the UI push their active state over WebSocket; server persists to
-// <designRoot>/_active.json so /design "<feedback>" knows which canvas to edit.
+// <designRoot>/_active.json so /design:edit "<feedback>" knows which canvas to edit.
 
 import http from 'node:http';
 import fs from 'node:fs/promises';
