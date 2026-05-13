@@ -173,6 +173,21 @@ Minimum scaffold:
 
 These don't need to be world-class illustrations — the goal is "claim has an artifact". Better placeholders than empty dirs.
 
+### Claim → receipt (machine-checkable contract)
+
+The bootstrap flow MUST run a claim scan against the freshly-authored README + SKILL.md BEFORE emitting the scaffold roster. Every match in the left column requires the corresponding row in the roster as a `pending` file. After scaffold, the completeness-critic re-verifies this table and flags any mismatch.
+
+| claim substring | required receiving file(s) in roster | rewrite alternative |
+|---|---|---|
+| `wordmark`, `logotype` | `universal/logo.html` + `assets/logos/wordmark.svg` | strip the claim from README + SKILL |
+| `mark` (when not part of `wordmark`) | `universal/logo.html` + `assets/logos/mark.svg` | strip the claim |
+| `glyph`, `terminal-glyph` | `foundations/iconography.html` + ≥ 1 `assets/glyphs/*.svg` | strip the claim from README + SKILL |
+| `mascot`, `character` | `assets/logos/mark.svg` OR `assets/illustrations/<name>.svg` (no dedicated specimen template — generate a placeholder SVG) | strip the claim |
+| `illustration` | `assets/illustrations/<name>.svg` (no template — placeholder) | strip the claim |
+| `hedgehog`, named-creature claims | `assets/logos/mark.svg` or matching illustration | strip the claim |
+
+The bootstrap roster emission step (in SKILL.md → "Pre-scaffold — claim scan + emit `_scaffold-roster.yaml`") consults this table; missing receiving files = the row goes into the roster as `pending`. Studio-2 retro BAD-4 caught the failure mode where `assets/glyphs/` was left empty despite the README claiming terminal glyphs lived there — this table is the structural fix.
+
 ## Computed `activeFamilies[]`
 
 The skill computes this array based on discovery answers + audience-conditional logic. Used by the completeness-critic to scope checks.
