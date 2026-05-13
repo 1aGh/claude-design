@@ -2,6 +2,7 @@
 
 A personal marketplace of Claude Code plugins. Two plugins today, plus an `mdcc` CLI for scaffolding and running the bundled dev tooling.
 
+> **📚 Full docs: https://docs.md-claude.dev** (or browse the source under [`site/content/docs/`](./site/content/docs/) until the public URL lands).
 > Contributing? See [CONTRIBUTING.md](./CONTRIBUTING.md). Security? See [SECURITY.md](./SECURITY.md).
 
 | Plugin | What it does |
@@ -54,9 +55,9 @@ mdcc init                          # scaffold .ai/ second-brain workspace
 Then inside Claude Code (with `flow@md-claude` installed):
 
 ```
-/init             # Anthropic's built-in — generates CLAUDE.md tailored to your codebase
-/flow:setup-onboard     # populates .ai/workflows.config.json with detected stack
-/flow:status      # confirm everything wired up
+/init                  # Anthropic's built-in — generates CLAUDE.md tailored to your codebase
+/flow:setup-onboard    # populates .ai/workflows.config.json with detected stack
+/flow:status           # confirm everything wired up
 ```
 
 `/init` writes the `CLAUDE.md` Claude auto-loads every session (conventions, build commands, gotchas). `/flow:setup-onboard` handles the structured workspace config — they're complementary, not duplicates.
@@ -65,193 +66,16 @@ Then inside Claude Code (with `flow@md-claude` installed):
 
 - **Node ≥ 20** — for the dev server and CLI. Zero npm runtime deps.
 - **Claude Code** — desktop app, CLI, or IDE extension.
-- Optional: **`agent-browser`** for design screenshot evidence (see below).
+- Optional: **`agent-browser`** for design screenshot evidence.
 
-## The `flow` plugin — agentic workflow loop
+## What's where
 
-A project-agnostic workflow harness. Every command resolves the `<project>` placeholder from `.ai/workflows.config.json` so the same plugin works across repos without forking.
+User-facing docs live in two places — the README points you the right way:
 
-### Commands
+- **Reference** (every command, every config key, recipes for Next.js / Expo / monorepo) → [`site/content/docs/`](./site/content/docs/) (served at https://docs.md-claude.dev once Vercel is wired — see [DDR-005](.ai/decisions/DDR-005-docs-site-stack-and-hosting.md)).
+- **Quickstart** + **contributor info** → this README.
 
-Commands are grouped by category. Non-daily commands use a `<group>-<verb>` prefix so autocomplete (e.g. `/flow:bug-`, `/flow:setup-`) narrows by group. See [`plugins/flow/CATEGORIES.md`](./plugins/flow/CATEGORIES.md) for the canonical catalog, or type **`/flow:help`** inside Claude Code for the live, auto-generated grouped index.
-
-**daily** — every-cycle workflow
-
-| Command | Purpose |
-| ------- | ------- |
-| `/flow:plan <prd>` | Generate a feature plan with task list. |
-| `/flow:execute <plan>` | Work the plan, tick tasks. |
-| `/flow:validate` | Full gate: tests + build + scenario + a11y + design consistency. |
-| `/flow:done` | Close out feature: validate → DDR sweep → commit → push → PR → retro → archive. |
-| `/flow:status` | Where am I? Active phase, plan, blockers. |
-| `/flow:scenario <flow>` | Cross-platform UI scenario run with screenshots. |
-| `/flow:pause` / `/flow:resume` | Session continuity via `HANDOFF.md`. |
-| `/flow:quick` | Fast path for trivial changes (skip the full plan cycle). |
-| `/flow:release` | Walk the project's release runbook with confirmation per step. |
-| `/flow:help` | Live, grouped command index. |
-
-**setup-*** — one-shot bootstrapping
-
-| Command | Purpose |
-| ------- | ------- |
-| `/flow:setup-onboard` | Scaffold `.ai/`, auto-detect stack, populate `.ai/workflows.config.json`, defer to `/init` for `CLAUDE.md`. |
-| `/flow:setup-prd <feature>` | Draft a PRD into `.ai/plans/`. |
-| `/flow:setup-codebase-map` / `/flow:setup-context` | Snapshot / prime the codebase context. |
-
-**bug-*** — incident workflow
-
-| Command | Purpose |
-| ------- | ------- |
-| `/flow:bug-rca` / `/flow:bug-fix` | Root-cause analysis then targeted fix from a GitHub issue. |
-
-**record-*** — knowledge capture
-
-| Command | Purpose |
-| ------- | ------- |
-| `/flow:record-ddr <title>` | Record a Design Decision Record. |
-| `/flow:record-retro` | Implementation-vs-plan retrospective. |
-| `/flow:record-execution` | Implementation report for system review. |
-
-**maintain-*** — hygiene
-
-| Command | Purpose |
-| ------- | ------- |
-| `/flow:maintain-clean` / `/flow:maintain-docs` | Periodic upkeep. |
-| `/flow:maintain-ai-health` | Diagnose the workflow infrastructure itself. |
-| `/flow:maintain-discover` | Search AI capabilities by natural-language task description. |
-
-**validate-*** / **review-*** / **release-*** / **utils-*** — specialized
-
-| Command | Purpose |
-| ------- | ------- |
-| `/flow:validate-a11y` / `/flow:validate-visual` | Targeted validators (called by `/flow:validate` or directly). |
-| `/flow:review-code` | Pre-commit self-review. |
-| `/flow:release-changelog` | Author a changelog entry for the configured provider. |
-| `/flow:utils-verify` | Light per-file validation during `/flow:execute`. |
-
-> **Naming convention.** Daily commands stay terse (`plan`, `execute`, `done`). Every other command uses `<group>-<verb>` so the group is visible in the name and prefix autocomplete is meaningful. Subdirectory namespacing (`/flow:bugs:fix`) is not supported by Claude Code as of v1.x — the strict prefix is the working substitute.
-
-### Subagents (auto-spawned)
-
-- `scenario-runner` — orchestrates cross-platform scenarios.
-- `a11y-auditor` — WCAG 2.1 AA pass over changed UI.
-- `design-system-guard` — compares rendered UI to the project's design system doc.
-- `test-coverage` — flags untested logic paths.
-
-### Skills (auto-loaded knowledge)
-
-`workflow-state`, `ddr-keeper`, `scenario`, `agent-browser`, `agent-device`, `codebase-intelligence`, `a11y-checker`, `question-protocol`, `make-skill-template`.
-
-### `.ai/` workspace
-
-`mdcc init` scaffolds:
-
-```
-.ai/
-├── README.md                        — guide
-├── INDEX.md                         — second-brain map
-├── workflows.config.json            — per-repo config (validated against config.schema.json)
-├── state/STATE.md                   — workflow state (single source of truth)
-├── plans/                           — feature plans + archive/
-├── decisions/                       — DDRs (append-only)
-├── reviews/                         — code reviews + retros
-├── scenarios/                       — cross-platform UI scenario specs + run reports
-├── logs/                            — system audit logs
-├── context/                         — codebase snapshots
-├── business/, docs/, dev-logs/      — hand-curated knowledge
-├── browser/, device/, design-import/ — automation evidence buckets
-└── templates/                       — copy-paste starters
-```
-
-Plus `CLAUDE.md` at the repo root (project conventions, auto-loaded every session — generated by Anthropic's built-in `/init`) and optionally `.ai/<project>-prd.md` + `.ai/<project>-design-system.md`.
-
-### Config
-
-`.ai/workflows.config.json` — schema at `plugins/flow/.claude-plugin/config.schema.json`. Sections: `name`, `language`, `theme`, `paths`, `platforms`, `bundleIdPrefix`, `boundaries` (realtime / video / api / db / auth / telemetry / payments), `motion` (duration ceilings), `responsive` (breakpoints, density map), `ux` (response targets, bilingual codes), `skills` (per-skill enable toggles), `integrations` (tracker / analytics / ci / design — lightweight pointers with free-form `defaults`; see [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md)).
-
-Read/write via the CLI:
-
-```sh
-mdcc config show
-mdcc config get motion.complex
-mdcc config set platforms '["web-desktop","web-mobile","ios-phone"]'
-```
-
-## The `design` plugin — canvas-first iteration
-
-A local Claude-Design clone: iterate on HTML mocks in your repo's `.design/` folder with live element selection, automatic snapshots, and an inline critic panel.
-
-### Commands
-
-| Command | Effect |
-| ------- | ------ |
-| `/design "<feedback>"` | **Default.** Edit the active canvas in place. If a Cmd+Click selection is active, edit scopes to that element only. Auto-snapshot before every edit. |
-| `/design:new <Name> "<brief>" [--component] [--mobile]` | Scaffold a NEW canvas (`.html`) or component (`.jsx`) via `frontend-design`. |
-| `/design:rollback [--steps N] [--list]` | Restore last snapshot. |
-| `/design:screenshot [--area] [--selector]` | Capture via agent-browser. |
-| `/design:critic` | Spawn `design-critic` subagent — UX (7-layer) + DS compliance. |
-| `/design:handoff [--target]` | Convert active canvas into production code (`apps/web` or `apps/mobile`). |
-| `/design:browse` | Boot/show the dev server (idempotent). |
-| `/design:docs` | Maintain canvas README + INDEX. |
-
-### Dev server
-
-```sh
-mdcc design serve                    # auto-port from 4321
-mdcc design serve --port 4399        # explicit port
-mdcc design serve --root /path/to/repo
-# or the legacy bin:
-claude-design-server
-```
-
-In a project's `package.json` it's idiomatic to wrap it:
-
-```json
-{ "scripts": { "design": "mdcc design serve" } }
-```
-
-The server resolves the project root in this order: `--root <path>` arg → `$CLAUDE_PROJECT_DIR` env → `process.cwd()`.
-
-### Element selection (pin-to-element edits)
-
-The dev server injects an inspector overlay into every served HTML under `<designRoot>`:
-
-- **Cmd / Ctrl / Alt + hover** → highlight + label.
-- **Cmd + click** → select element; push to `<designRoot>/_active.json.selected` via WebSocket.
-- **Esc** or `×` in the status bar → clear.
-
-When a selection is active, the next `/design "<feedback>"` is **scoped** to that element only — the orchestrator builds a prompt with CSS selector, dom path, outerHTML, bounds.
-
-### Server runtime files (all gitignored)
-
-| File | Purpose |
-| ---- | ------- |
-| `<designRoot>/_server.json` | `{ pid, port, url, started }` — orchestrator detects running instance. |
-| `<designRoot>/_active.json` | `{ active, open_tabs, selected, last_change }` — frontend pushes on every tab click. |
-| `<designRoot>/_server.log` | nohup output when auto-started in background. |
-| `<designRoot>/_history/<slug>/` | snapshot stack per canvas. |
-
-### Dependencies
-
-Run inside Claude Code:
-
-```
-# Required — needed by /design:new (first-pass canvas generation)
-/plugin marketplace add anthropics/claude-code
-/plugin install frontend-design@claude-code
-
-# Optional — slider variant exploration
-/plugin install playground@claude-code
-```
-
-Plus the external `agent-browser` CLI for `/design:screenshot`:
-
-```sh
-npm install -g agent-browser
-agent-browser install                # one-time: downloads Chrome
-```
-
-If you skip `agent-browser`, the rest of the plugin still works — you just won't get screenshot evidence in critic reports.
+The docs site auto-generates per-command pages from `plugins/{flow,design}/commands/*.md` frontmatter and a typed schema reference from `plugins/flow/.claude-plugin/config.schema.json`. Adding a new command → docs update on next build.
 
 ## Workspaces
 
@@ -260,7 +84,7 @@ The repo is a **pnpm workspace monorepo** with one published npm package (`@1agh
 | Workspace | Purpose |
 | --------- | ------- |
 | `.` (root) | The single npm publisher — CLI, dev-server entry, plugin templates that ship to npm. |
-| `site/` | Docs site (Phase 2 — v1.x). |
+| `site/` | Docs site — Fumadocs + Next.js, deployed to Vercel ([DDR-005](.ai/decisions/DDR-005-docs-site-stack-and-hosting.md)). |
 | `plugins/design/dev-server/` | Zero-dep Node dev server + browser client. Bundled output (`dist/`) is the only thing in the npm tarball. |
 | `plugins/design/hub/` | Reserved for the v1.1 federated hub (Phase 9). |
 
@@ -275,6 +99,8 @@ pnpm lint             # biome over the whole repo
 pnpm test             # node --test over cli/**/*.test.mjs
 pnpm changeset        # add a changeset for the next release
 ```
+
+The site workspace's Next.js dependencies are heavy — contributors fixing plugin code can keep working with `pnpm install --filter '!@md-claude/site'` to skip them.
 
 ## Updating
 

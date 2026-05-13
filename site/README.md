@@ -49,4 +49,28 @@ Client-side via Orama. New MDX files are picked up on next build — no manual i
 
 ## Deploy
 
-Vercel (DDR-005 pending). The `site-deploy.yml` workflow ships with Phase 2 Task 6.
+Target: **Vercel** (production branch `main`, preview deploys on every PR touching `site/**`). See [DDR-005](../.ai/decisions/DDR-005-docs-site-stack-and-hosting.md) for the why.
+
+The deploy workflow lives at `.github/workflows/site-deploy.yml`. It's **inert** until a maintainer wires three repo secrets:
+
+```text
+VERCEL_TOKEN       — https://vercel.com/account/tokens
+VERCEL_ORG_ID      — `vercel link` writes it to .vercel/project.json
+VERCEL_PROJECT_ID  — same source
+```
+
+### One-time maintainer setup
+
+```bash
+# In the site/ directory of a fresh clone:
+cd site
+pnpm dlx vercel@latest link        # interactive — pick the org + project
+cat .vercel/project.json           # copy orgId + projectId
+
+# Then in https://vercel.com/account/tokens, mint a token, name it
+# "github-actions-md-claude". Add all three values as repo secrets at
+# https://github.com/1aGh/md-claude/settings/secrets/actions
+```
+
+After that, every push to `main` that touches `site/**` (or the plugin command sources the docs site auto-generates from) deploys to production; every PR gets a preview comment with the URL.
+
