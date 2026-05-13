@@ -48,16 +48,6 @@ Then auto-invoke `/design:init --skip-prompts` so the user isn't double-prompted
 
 If config exists, skip onboard.
 
-### Step 1.5 — Cache inspiration library inventory
-
-Before the skill runs any `find` calls against the inspiration library, capture the library tree once and hold it in context:
-
-```sh
-ls -R plugins/design/templates/design-system-inspiration/ | head -200
-```
-
-This avoids the false-negative template-drop the studio-2 retro caught (BAD-6) where `find` from the wrong cwd returned exit-code-1 and a template (`audience-developer/type-mono.html`) was incorrectly classified as missing. Subsequent `find` calls during scaffold MUST use absolute paths anchored at the repo root.
-
 ### Step 2 — Invoke skill `design-system` in bootstrap mode
 
 Call `Skill design-system` with the input envelope:
