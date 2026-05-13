@@ -242,7 +242,7 @@ function Cheatsheet() {
           <li><strong>aesthetic</strong> <span>palette + gradients/off-ladder radii/alt type/decorative SVG flags allowed.</span></li>
           <li><strong>full</strong> <span>DS treated as advisory. Type/radii/aesthetic up to canvas.</span></li>
           <li><em>A11y enforced at every scope</em> <span>contrast, focus, semantics, motion, touch targets — never relaxed.</span></li>
-          <li>Persisted on canvas's <code>.meta.json</code> <code>opt_out_scope</code> field — subsequent <code>/design:edit</code> iterations inherit.
+          <li>Persisted on canvas's <code>.meta.json</code> <code>opt_out_scope</code> field — subsequent <code>/design:edit</code> iterations inherit.</li>
           <li>Inferred from brief ("modern", "vibrant", "off-system") with one-shot AskUserQuestion before iter-1 critics fire.</li>
         </ul>
       </details>
