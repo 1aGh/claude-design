@@ -77,7 +77,7 @@ Native app bundle ID prefix (e.g. `com.acme.myapp`). Used by `/flow:utils-verify
 
 **Type:** `object`
 
-Auto-detected technology stack snapshot. Populated by /flow:setup-onboard, refreshed by /flow:setup-codebase-map. Flow commands read this for routing decisions (e.g. which test runner to invoke, whether to gate on monorepo workspace builds). Use `unknown` when detection fails — never invent a value.
+Auto-detected technology stack snapshot. Populated by /flow:init, refreshed by /flow:setup-codebase-map. Flow commands read this for routing decisions (e.g. which test runner to invoke, whether to gate on monorepo workspace builds). Use `unknown` when detection fails — never invent a value.
 
 ### `stack.language`
 
@@ -137,7 +137,7 @@ next-app | next-pages | react-router | tanstack-router | expo-router | sveltekit
 
 **Type:** `object`
 
-Team conventions that flow commands enforce or display. Auto-detected where possible (e.g. `commits` from commitlint.config.*); otherwise asked once in /flow:setup-onboard. Document non-obvious 'why' in `.ai/decisions/` as DDRs.
+Team conventions that flow commands enforce or display. Auto-detected where possible (e.g. `commits` from commitlint.config.*); otherwise asked once in /flow:init. Document non-obvious 'why' in `.ai/decisions/` as DDRs.
 
 ### `conventions.branchingModel`
 
@@ -453,7 +453,7 @@ Optional package scope for monorepos — e.g. "@1agh/md-claude". Passed to provi
 
 **Type:** `string` · **Default:** `".ai/release-guide.md"`
 
-Path (repo-relative) to the project-owned release runbook that /flow:release walks step-by-step. The runbook is plain Markdown — H2 sections become steps, ```bash``` blocks become candidate commands (run only after user confirmation). Scaffolded with a provider-appropriate stub during /flow:setup-onboard.
+Path (repo-relative) to the project-owned release runbook that /flow:release walks step-by-step. The runbook is plain Markdown — H2 sections become steps, ```bash``` blocks become candidate commands (run only after user confirmation). Scaffolded with a provider-appropriate stub during /flow:init.
 
 #### `integrations.changelog.mcp`
 

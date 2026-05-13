@@ -1,12 +1,12 @@
 ---
-name: setup-onboard
+name: flow:init
 category: setup
 type: command
 description: Scaffold the .ai/ workspace, auto-detect project stack, populate workflows.config.json, and ensure CLAUDE.md exists (via /init).
 keywords: [init, setup, onboard, project, configure, bootstrap, scaffold, workspace, mdcc, claude.md]
 ---
 
-# /flow:setup-onboard — Bootstrap the flow workspace
+# /flow:init — Bootstrap the flow workspace
 
 Sets up everything the `flow` plugin needs to operate on a new (or existing) repo. Does **not** duplicate Claude Code's built-in `/init` — defers to it for `CLAUDE.md`. Owns three things:
 
@@ -28,7 +28,7 @@ fi
 ```
 
 - **Available** → `> Found mdcc ($MDCC_VERSION). Will scaffold .ai/ in Step 1.`
-- **Missing** → `> mdcc not on PATH. Run \`npm i -g md-claude\` then re-run /flow:setup-onboard. Continuing in degraded mode — config-file population in Step 3 will be manual.`
+- **Missing** → `> mdcc not on PATH. Run \`npm i -g md-claude\` then re-run /flow:init. Continuing in degraded mode — config-file population in Step 3 will be manual.`
 
 ## Pre-Flight B: `CLAUDE.md` exists?
 
@@ -290,7 +290,7 @@ if [[ "$ANSWER_CHANGELOG" != "none" && ! -f "$REPO_ROOT/.ai/release-guide.md" ]]
 fi
 ```
 
-If `$ANSWER_CHANGELOG == "none"` and no runbook exists, **skip** — the user can re-run `/flow:setup-onboard` later (or create the file manually) once they pick a provider. Leave a one-line note in the Step 6 report so the gap is visible.
+If `$ANSWER_CHANGELOG == "none"` and no runbook exists, **skip** — the user can re-run `/flow:init` later (or create the file manually) once they pick a provider. Leave a one-line note in the Step 6 report so the gap is visible.
 
 ### 4e. What we DON'T touch
 
@@ -310,7 +310,7 @@ If `$ANSWER_CHANGELOG == "none"` and no runbook exists, **skip** — the user ca
 ## Step 6: Report
 
 ```
-✓ /flow:setup-onboard complete
+✓ /flow:init complete
 
 Workspace
   .ai/ skeleton:               <scaffolded | already present | skipped (no mdcc)>

@@ -3,7 +3,7 @@
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
 **Workflow:** feature-delivery — md-claude v1.0 roadmap
-**Phase:** design-system-init (Phase 0–6) — **done**
+**Phase:** plugin-namespace-and-init-rename — **done** (ad-hoc, no plan)
 **Status:** done
 **Started:** 2026-05-12
 **Updated:** 2026-05-13
@@ -65,6 +65,8 @@ Consider `/flow:make-skill-template` for **fumadocs** and **hocuspocus** if thei
 | 2026-05-13 | done | `/flow:done` Phase 2 — DDR-005 recorded (Fumadocs + Vercel + accept DS defaults), patch changeset authored (`.changeset/phase-2-docs-site.md`), retro appended (what worked / didn't / change-next-time / carry-overs), plan archived to `.ai/plans/archive/phase-2-docs-site-fumadocs.md`. Next: Phase 4–10 from the v1.0 roadmap (Phase 5 dep on Phase 4; Phase 11 dep on Phase 3 + 4; Phase 6/8/9/10 sequential). |
 | 2026-05-13 | design-system-init | `/flow:execute` design-system-init.md — scoped to Phase 0–2 skeleton first, then user requested continuation through Phase 6. Commit `e7d7773` (Phase 0–2): rename `/design`→`/design:edit` + compat stub + sweep (22 files), inspiration library skeleton (24 files), skill `design-system` Bootstrap+Mode-detection sections, 3 new commands (setup-onboard/setup-ds/help) + CATEGORIES.md, pre-flight bootstrap hooks in edit/new, `mdcc design init` CLI subcommand (smoke-tested). Commit `852a25a` (Phase 3–6): `design-system-completeness-critic` agent w/ 3-tier rules + `--system-only` flag, multi-DS canvas wiring (canvas-meta `designSystem` field + `--ds=` flag w/ fail-on-unknown + flow:design-system-guard scoped to canvas DS), CLAUDE.md "Design system bootstrap" section (8 rules), Fumadocs narrative pages (bootstrap.mdx, categories.mdx, multi-ds.mdx, mdcc design init in cli.mdx). |
 | 2026-05-13 | done | `/flow:done` design-system-init — validate green (passed with warnings, no hard fails), changeset authored (minor bump @1agh/md-claude), `.changeset/{config.json,README.md}` restored from git history (deleted post-v0.7.0), retro appended to plan with 5 "what worked" / 4 "what didn't" / 4 "change next time" bullets + carry-over list, plan archived to `.ai/plans/archive/design-system-init.md`. Open carry-overs: inspirational library expansion (~38 unwritten reference files), multi-DS `--all-ds` critic runtime testing, version bump to v0.8 (separate cycle). Total: 83 files net, ~3,600 insertions across 3 commits on `main` (no branch). |
+| 2026-05-13 | ad-hoc | Plugin namespace + `setup-onboard` → `init` rename. No plan file; started from a `/flow:quick` trigger after a user-reported autocomplete collision between `/flow:resume` and the native `/resume`. Discovered Claude Code [#22063](https://github.com/anthropics/claude-code/issues/22063): plugin commands with `name:` frontmatter lose namespace prefix, registering as bare slugs. Workaround: prefix `name:` explicitly with `<plugin>:`. Verified empirically on `resume.md` first (autocomplete showed namespaced `/flow:resume`), then propagated to 77 plugin files (49 flow + 25 design + 3 incidental). Also renamed `/flow:setup-onboard` → `/flow:init` and `/design:setup-onboard` → `/design:init` (bare-verb exception to DDR-004's `<group>-<verb>` rule, mirroring Claude Code built-in `/init`). |
+| 2026-05-13 | done | `/flow:done` plugin-namespace + init rename — commit 1 (`444afa5`) namespace fix (74 files), commit 2 follows with rename + cross-refs + DDR-006 + changeset. Total: 108 files net, ~190 insertions across 2 commits on `main`. No plan to archive (ad-hoc trigger). |
 
 ## Execution Progress
 

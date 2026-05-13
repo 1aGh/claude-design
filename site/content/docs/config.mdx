@@ -66,7 +66,7 @@ Drives the `/flow:scenario` matrix and `responsive-rules` density mapping. Valid
 
 ### `stack`
 
-Auto-detected by `/flow:setup-onboard` and refreshed by `/flow:setup-codebase-map`. Used for routing decisions — which test runner, whether to gate on workspace builds.
+Auto-detected by `/flow:init` and refreshed by `/flow:setup-codebase-map`. Used for routing decisions — which test runner, whether to gate on workspace builds.
 
 ```json
 {
@@ -214,7 +214,7 @@ The release-note tooling. Used by `/flow:validate` and `/flow:done` for soft war
 
 Currently only the `changesets` provider has a full implementation; `git-cliff` / `conventional` / `custom` / `none` are accepted but treated as no-op until their providers land.
 
-The **release runbook** (`releaseGuide`) is plain Markdown — `H2` sections become steps, `bash` blocks become candidate commands (run only after user confirmation). Scaffolded with a provider-appropriate stub during `/flow:setup-onboard`.
+The **release runbook** (`releaseGuide`) is plain Markdown — `H2` sections become steps, `bash` blocks become candidate commands (run only after user confirmation). Scaffolded with a provider-appropriate stub during `/flow:init`.
 
 ## Validation
 

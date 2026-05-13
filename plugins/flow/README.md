@@ -11,7 +11,7 @@ Generic agentic workflow loop with a second-brain `.ai/` workspace. Project-agno
 | Group | Count | What it does |
 | ----- | ----- | ------------ |
 | **daily** | 11 | Every-cycle workflow: `plan`, `execute`, `done`, `validate`, `release`, `status`, `pause`, `resume`, `scenario`, `quick`, `help`. |
-| **setup-*** | 4 | One-shot bootstrapping: `setup-onboard`, `setup-prd`, `setup-codebase-map`, `setup-context`. |
+| **setup-*** | 4 | One-shot bootstrapping: `init`, `setup-prd`, `setup-codebase-map`, `setup-context`. |
 | **validate-*** | 2 | Specialized validators: `validate-a11y`, `validate-visual`. |
 | **bug-*** | 2 | Incident workflow: `bug-rca`, `bug-fix`. |
 | **record-*** | 3 | Knowledge capture: `record-ddr`, `record-retro`, `record-execution`. |
@@ -25,7 +25,7 @@ Generic agentic workflow loop with a second-brain `.ai/` workspace. Project-agno
 | Type | Pattern | Examples |
 | ---- | ------- | -------- |
 | **Daily** (called every feature cycle) | terse verb, no prefix | `plan`, `execute`, `done`, `validate`, `release` |
-| **Everything else** | `<group>-<verb>` | `bug-fix`, `setup-onboard`, `record-ddr`, `maintain-clean` |
+| **Everything else** | `<group>-<verb>` | `bug-fix`, `setup-prd`, `record-ddr`, `maintain-clean` |
 
 The prefix is **load-bearing**: Claude Code does not support subdirectory namespacing for slash commands ([issue #2422](https://github.com/anthropics/claude-code/issues/2422)), so the `<group>-` prefix is what makes `/flow:bug-` autocomplete to only the bug-* commands. Every non-daily command carries a `category:` frontmatter field that matches its prefix — `/flow:help` reads those fields to render the grouped index.
 

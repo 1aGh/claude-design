@@ -27,7 +27,7 @@
 
   "platforms": ["web-desktop"],         // pre-v1.0; influences scenario-runner platform matrix
 
-  "stack": {                            // Phase 1 — auto-detected by /flow:setup-onboard
+  "stack": {                            // Phase 1 — auto-detected by /flow:init
     "language": "javascript",
     "framework": "none",
     "packageManager": "npm",

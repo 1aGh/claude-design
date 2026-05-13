@@ -8,7 +8,7 @@ A personal marketplace of Claude Code plugins. Two plugins today, plus an `mdcc`
 | Plugin | What it does |
 | ------ | ------------ |
 | **`design`** | Canvas-first iteration on HTML/JSX mocks under `.design/` — element selection via Cmd+Click, auto-managed dev server, chained UX/DS critique. |
-| **`flow`** | Generic agentic workflow loop with a second-brain `.ai/` workspace. `/flow:plan`, `/flow:execute`, `/flow:utils-verify`, `/flow:validate`, `/flow:done`, `/flow:setup-onboard`, `/flow:record-ddr`, `/flow:scenario`, …. Project-agnostic via `<project>` placeholders + per-repo `.ai/workflows.config.json`. |
+| **`flow`** | Generic agentic workflow loop with a second-brain `.ai/` workspace. `/flow:plan`, `/flow:execute`, `/flow:utils-verify`, `/flow:validate`, `/flow:done`, `/flow:init`, `/flow:record-ddr`, `/flow:scenario`, …. Project-agnostic via `<project>` placeholders + per-repo `.ai/workflows.config.json`. |
 
 Plus the **`mdcc`** CLI — `mdcc init` scaffolds a fresh `.ai/` workspace from the flow plugin skeleton; `mdcc design serve` boots the design dev server.
 
@@ -56,11 +56,11 @@ Then inside Claude Code (with `flow@md-claude` installed):
 
 ```
 /init                  # Anthropic's built-in — generates CLAUDE.md tailored to your codebase
-/flow:setup-onboard    # populates .ai/workflows.config.json with detected stack
+/flow:init    # populates .ai/workflows.config.json with detected stack
 /flow:status           # confirm everything wired up
 ```
 
-`/init` writes the `CLAUDE.md` Claude auto-loads every session (conventions, build commands, gotchas). `/flow:setup-onboard` handles the structured workspace config — they're complementary, not duplicates.
+`/init` writes the `CLAUDE.md` Claude auto-loads every session (conventions, build commands, gotchas). `/flow:init` handles the structured workspace config — they're complementary, not duplicates.
 
 ## Runtime requirements
 

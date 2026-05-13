@@ -3,7 +3,7 @@ title: Flow commands
 description: All 30 /flow:* slash commands, grouped by lifecycle. Daily verbs stay terse; everything else uses a group-verb prefix.
 ---
 
-The `flow` plugin's commands follow a strict naming convention: **daily** verbs called every feature cycle stay terse (`plan`, `execute`, `done`, `validate`, `release`). Everything else uses `<group>-<verb>` (e.g. `setup-onboard`, `bug-rca`, `record-ddr`).
+The `flow` plugin's commands follow a strict naming convention: **daily** verbs called every feature cycle stay terse (`plan`, `execute`, `done`, `validate`, `release`). Everything else uses `<group>-<verb>` (e.g. `setup-prd`, `bug-rca`, `record-ddr`).
 
 The full canonical catalog is [`plugins/flow/CATEGORIES.md`](https://github.com/1aGh/md-claude/blob/main/plugins/flow/CATEGORIES.md). Live grouped index is one slash command away: `/flow:help`.
 
@@ -29,7 +29,7 @@ Run once per project (or once per major restructure).
 
 | Command | What it does |
 | ------- | ------------ |
-| `/flow:setup-onboard` | Scaffold `.ai/`, auto-detect stack, populate `workflows.config.json`, defer to `/init` for `CLAUDE.md`. |
+| `/flow:init` | Scaffold `.ai/`, auto-detect stack, populate `workflows.config.json`, defer to `/init` for `CLAUDE.md`. |
 | `/flow:setup-prd` | Draft a PRD + auto-generate phase plans + execution README. |
 | `/flow:setup-codebase-map` | Snapshot architecture into `.ai/context/` for cross-session reuse. |
 | `/flow:setup-context` | Prime the agent with the codebase map + `CLAUDE.md`. |

@@ -18,7 +18,7 @@ Two paths reach the same result:
 
 What happens:
 
-1. **Onboard runs first** (if `.design/config.json` is missing). `/design:setup-onboard` does dependency pre-flight (Node ≥ 20, git), writes a skeleton config with empty `designSystems: []`, and prints install hints for soft deps (agent-browser, mdcc, CLAUDE.md / `.ai/` recommendations).
+1. **Onboard runs first** (if `.design/config.json` is missing). `/design:init` does dependency pre-flight (Node ≥ 20, git), writes a skeleton config with empty `designSystems: []`, and prints install hints for soft deps (agent-browser, mdcc, CLAUDE.md / `.ai/` recommendations).
 2. **Skill `design-system` loads in bootstrap mode.** It detects `first-bootstrap` (no DS yet) and runs an 8-question discovery split across two `AskUserQuestion` rounds — identity (audience, platforms, theme) + brand (mood references, brand color, typography, content tone).
 3. **Direction confirmation.** The skill echoes a two-sentence proposed direction. You say yes or correct it.
 4. **Mapping → file set.** The skill consults `_MAPPING.md` to compute which specimens to scaffold based on the discovery answers. A consumer marketing site gets ~12 specimens; a pro-tool with multiplayer gets ~22.

@@ -10,8 +10,8 @@
     "rollback",
     "screenshot",
     "---setup---",
+    "init",
     "setup-docs",
-    "setup-ds",
-    "setup-onboard"
+    "setup-ds"
   ]
 }

@@ -78,13 +78,13 @@ Every flow command/skill is project-agnostic. They read `.ai/workflows.config.js
 
 When the user asks you to scaffold a design system for ANY project, do not improvise. The design plugin has TWO setup commands plus skill-driven bootstrap:
 
-- **`/design:setup-onboard`** — project-level environment init (deps check, install hints, CLAUDE.md / .ai/ offers, writes skeleton `.design/config.json` with `designSystems: []`). Mirrors `/flow:setup-onboard`. **Does NOT create a DS.** Auto-invoked transparently when other commands hit a missing `.design/config.json`.
-- **`/design:setup-ds <name> "[brief]"`** — dedicated command for creating a DS (first or additional). Auto-invokes `setup-onboard` first if needed.
+- **`/design:init`** — project-level environment init (deps check, install hints, CLAUDE.md / .ai/ offers, writes skeleton `.design/config.json` with `designSystems: []`). Mirrors `/flow:init`. **Does NOT create a DS.** Auto-invoked transparently when other commands hit a missing `.design/config.json`.
+- **`/design:setup-ds <name> "[brief]"`** — dedicated command for creating a DS (first or additional). Auto-invokes `init` first if needed.
 - **Auto-load skill `design-system` (BOOTSTRAP mode)** when `/design:edit "..."` or `/design:new "..."` is invoked against a `<designRoot>/system/` that has no DS yet.
 
 Eight rules govern the result:
 
-- **Onboard before bootstrap.** `/design:setup-onboard` is the gate: it runs dependency pre-flight, surfaces install hints, and writes a skeleton `.design/config.json` with empty `designSystems: []`. Only after that does `/design:setup-ds` (or auto-load) run DS bootstrap. Onboard is auto-invoked transparently when other commands detect a missing config.
+- **Onboard before bootstrap.** `/design:init` is the gate: it runs dependency pre-flight, surfaces install hints, and writes a skeleton `.design/config.json` with empty `designSystems: []`. Only after that does `/design:setup-ds` (or auto-load) run DS bootstrap. Onboard is auto-invoked transparently when other commands detect a missing config.
 
 - **One skill owns DS work.** Skill `design-system` (`plugins/design/skills/design-system/SKILL.md`) has TWO modes: READ (default — load active canvas's DS context for iteration) and BOOTSTRAP (create / extend / re-bootstrap). Mode is auto-detected on invocation. **There is NO separate `init` skill.** If you see one, delete it — it's WIP residue.
 
@@ -104,7 +104,7 @@ Reference: `/Volumes/D/git/dugmate/.design/system/project/` (the canonical real-
 Library: `plugins/design/templates/design-system-inspiration/`.
 Skill: `plugins/design/skills/design-system/SKILL.md`.
 Completeness-critic: `plugins/design/agents/design-system-completeness-critic.md`.
-Slash commands: `plugins/design/commands/{setup-onboard,setup-ds,setup-docs,help}.md`.
+Slash commands: `plugins/design/commands/{init,setup-ds,setup-docs,help}.md`.
 Per-DS canvas attribution: `<canvas>.meta.json.designSystem` (kebab-case slug; multi-DS projects only).
 Categories catalog: `plugins/design/CATEGORIES.md`.
 

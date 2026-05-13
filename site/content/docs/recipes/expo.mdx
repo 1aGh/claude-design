@@ -23,12 +23,12 @@ npm i -g @1agh/md-claude
 mdcc init --name my-rn-app
 ```
 
-## 2. Run `/flow:setup-onboard`
+## 2. Run `/flow:init`
 
 Inside Claude Code:
 
 ```text
-/flow:setup-onboard
+/flow:init
 ```
 
 For an Expo app you'll typically end up with:
@@ -92,7 +92,7 @@ Output: a markdown report under `.ai/scenarios/<name>/report.md` with per-step s
 ## Gotchas
 
 - **Metro hot reload.** Flow doesn't manage Metro. Start it yourself (`npx expo start`); the agent-device skill connects to whatever's running.
-- **EAS Build / release.** `/flow:release` walks `releaseGuide` — for Expo, your runbook will reference `eas build --platform all` and the EAS dashboard. Auto-detected during `setup-onboard` when an `eas.json` is found.
+- **EAS Build / release.** `/flow:release` walks `releaseGuide` — for Expo, your runbook will reference `eas build --platform all` and the EAS dashboard. Auto-detected during `init` when an `eas.json` is found.
 - **Design plugin still useful** for things like in-app web views, settings screens that are also web pages, or landing-page mocks of the marketing site that fronts the app.
 
 ## Next

@@ -30,14 +30,14 @@ One-shot bootstrapping operations.
 
 | Command | What it does |
 | ------- | ------------ |
-| `/design:setup-onboard` | Initialize the project environment (deps check, install hints, skeleton `.design/config.json`). Mirrors `/flow:setup-onboard`. |
+| `/design:init` | Initialize the project environment (deps check, install hints, skeleton `.design/config.json`). Mirrors `/flow:init`. |
 | `/design:setup-ds <name> "[brief]"` | Create a design system (first one, additional, or re-bootstrap with `--force`). Thin wrapper → skill `design-system` in bootstrap mode. |
 | `/design:setup-docs [--full]` | Refresh `.design/README.md` + `INDEX.md`. Auto-runs after `/design:edit` and `/design:new`; manual trigger to force a refresh. |
 
 Why three setup verbs:
 
-- **`setup-onboard`** is project-level — runs **once** per repo to prepare the ground (dependency hints, CLAUDE.md / `.ai/` recommendations, skeleton config). Auto-invoked when other commands hit a missing `.design/config.json`.
-- **`setup-ds`** is per-DS — runs **once per design system** (first one for a project, or every time you add a marketing-vs-admin-vs-mobile DS). Auto-invokes `setup-onboard` first if config is missing.
+- **`init`** is project-level — runs **once** per repo to prepare the ground (dependency hints, CLAUDE.md / `.ai/` recommendations, skeleton config). Auto-invoked when other commands hit a missing `.design/config.json`.
+- **`setup-ds`** is per-DS — runs **once per design system** (first one for a project, or every time you add a marketing-vs-admin-vs-mobile DS). Auto-invokes `init` first if config is missing.
 - **`setup-docs`** is per-canvas-event — auto-runs after every `/design:edit` and `/design:new`. Manual trigger when you want to force a regeneration.
 
 ## Naming convention
@@ -45,7 +45,6 @@ Why three setup verbs:
 Commands within a group prefix the group name with a dash separator:
 
 ```
-/design:setup-onboard          ← group "setup", verb "onboard"
 /design:setup-ds               ← group "setup", verb "ds"
 /design:setup-docs             ← group "setup", verb "docs"
 ```
@@ -53,6 +52,7 @@ Commands within a group prefix the group name with a dash separator:
 Daily commands have no prefix:
 
 ```
+/design:init                   ← daily
 /design:edit                   ← daily
 /design:new                    ← daily
 ```

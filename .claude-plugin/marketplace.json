@@ -10,7 +10,7 @@
       "name": "design",
       "source": "./plugins/design",
       "category": "design",
-      "description": "Canvas-first iteration on HTML mocks under <designRoot> (default `.design/`), element selection via Cmd+Click, auto-managed dev server. Daily verbs: /design:edit /design:new /design:rollback /design:screenshot /design:critic /design:browse /design:handoff /design:help. Setup: /design:setup-onboard /design:setup-ds /design:setup-docs."
+      "description": "Canvas-first iteration on HTML mocks under <designRoot> (default `.design/`), element selection via Cmd+Click, auto-managed dev server. Daily verbs: /design:edit /design:new /design:rollback /design:screenshot /design:critic /design:browse /design:handoff /design:help. Setup: /design:init /design:setup-ds /design:setup-docs."
     },
     {
       "name": "flow",

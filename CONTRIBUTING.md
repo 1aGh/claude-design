@@ -15,7 +15,7 @@ cd md-claude
 pnpm install
 
 # 3. Make changes
-$EDITOR plugins/flow/commands/setup-onboard.md   # example
+$EDITOR plugins/flow/commands/init.md   # example
 
 # 4. Add a changeset describing the user-visible impact
 pnpm changeset

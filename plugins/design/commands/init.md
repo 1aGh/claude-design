@@ -1,13 +1,13 @@
 ---
-name: setup-onboard
+name: design:init
 category: setup
-description: One-time project-level environment init for the design plugin. Detects missing dependencies (node ≥ 20, git, agent-browser, mdcc), prints install hints for soft deps, offers to run /init for CLAUDE.md and /flow:setup-onboard for .ai/, and writes a skeleton .design/config.json. Does NOT create a design system — use /design:setup-ds <name> for that. Mirrors /flow:setup-onboard.
+description: One-time project-level environment init for the design plugin. Detects missing dependencies (node ≥ 20, git, agent-browser, mdcc), prints install hints for soft deps, offers to run /init for CLAUDE.md and /flow:init for .ai/, and writes a skeleton .design/config.json. Does NOT create a design system — use /design:setup-ds <name> for that. Mirrors /flow:init.
 argument-hint: "[--skip-prompts]"
 ---
 
-# /design:setup-onboard — bootstrap the design plugin's environment
+# /design:init — bootstrap the design plugin's environment
 
-Project-level environment init for the `design` plugin. Mirrors `/flow:setup-onboard` in shape and purpose: detect what's already in place, print actionable install / next-step hints for what's missing, and write the minimal skeleton config so subsequent commands have something to read.
+Project-level environment init for the `design` plugin. Mirrors `/flow:init` in shape and purpose: detect what's already in place, print actionable install / next-step hints for what's missing, and write the minimal skeleton config so subsequent commands have something to read.
 
 This command does **not** create a design system. That's `/design:setup-ds <name> "[brief]"`'s job. This one only prepares the ground.
 
@@ -57,7 +57,7 @@ Pre-flight summary
   mdcc          ✓ v0.7.0                    ← scaffold via CLI available
   agent-browser ✗ missing                   ← needed for screenshot + 5 critics
   CLAUDE.md     ✗ missing                   ← /init recommended
-  .ai/          ✗ missing                   ← /flow:setup-onboard recommended
+  .ai/          ✗ missing                   ← /flow:init recommended
   .design/      ✗ missing                   ← will create skeleton
   config.json   ✗ missing                   ← will create skeleton
 
@@ -99,7 +99,7 @@ What should I help with next? (multi-select; "none" is fine)
   [ ] Print `npm i -g agent-browser` install hint (needed for screenshot + 5 critics)
   [ ] Print `npm i -g @1agh/md-claude` install hint (faster scaffold via CLI helper)
   [ ] Run `/init` to generate CLAUDE.md (recommended — agents need it)
-  [ ] Run `/flow:setup-onboard` to scaffold .ai/ workspace (enables /flow:plan to see the design system)
+  [ ] Run `/flow:init` to scaffold .ai/ workspace (enables /flow:plan to see the design system)
   [ ] None — I'll handle setup myself
 ```
 
@@ -108,7 +108,7 @@ What should I help with next? (multi-select; "none" is fine)
 - **agent-browser hint** → print `npm i -g agent-browser` + one-liner on what it unlocks (screenshot, auto-loop, axe-core a11y).
 - **mdcc hint** → print `npm i -g @1agh/md-claude` + note about `mdcc design serve` and `mdcc design init`.
 - **Run /init** → print "Run `/init` now — Anthropic's built-in command analyzes the codebase and writes CLAUDE.md." (cannot programmatically invoke another slash command from inside one).
-- **Run /flow:setup-onboard** → print "Run `/flow:setup-onboard` now to scaffold `.ai/` workspace."
+- **Run /flow:init** → print "Run `/flow:init` now to scaffold `.ai/` workspace."
 - **None** → skip.
 
 Skip the soft-dep block entirely if everything is green.
@@ -135,9 +135,9 @@ Next:
 | `.design/config.json` present, invoked directly by user | Re-run pre-flight summary + offer post-flight prompts again ("re-check environment") |
 | `.design/config.json` present, auto-invoked by another command | No-op short-circuit: print "environment already initialized" and exit |
 
-## What `/design:setup-onboard` does NOT do
+## What `/design:init` does NOT do
 
 - **No DS creation.** Use `/design:setup-ds <name> "[brief]"`.
 - **No CLAUDE.md generation.** That's Anthropic's built-in `/init` — we only surface the recommendation.
-- **No `.ai/` scaffold.** That's `/flow:setup-onboard` — we only surface the recommendation.
+- **No `.ai/` scaffold.** That's `/flow:init` — we only surface the recommendation.
 - **No npm installs.** Soft-dep install hints are printed for the user to copy/paste — we never auto-install.

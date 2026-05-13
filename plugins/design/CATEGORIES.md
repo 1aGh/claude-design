@@ -4,7 +4,10 @@
 
 ## Why categorization
 
-Claude Code's slash-command UI doesn't support subdirectory namespacing (issue [#2422](https://github.com/anthropics/claude-code/issues/2422), closed not-planned; [#44678](https://github.com/anthropics/claude-code/issues/44678) is the open feature request). The working substitute is a **strict `<group>-<verb>` prefix** — typing `/design:setup-` autocompletes only the `setup-*` members.
+Claude Code's slash-command UI doesn't support subdirectory namespacing (issue [#2422](https://github.com/anthropics/claude-code/issues/2422), closed not-planned; [#44678](https://github.com/anthropics/claude-code/issues/44678) is the open feature request). Two working substitutes:
+
+1. **Plugin namespace in `name:` frontmatter** — every command's `name:` field is the fully-qualified slash name (`design:edit`, not `edit`). Without this prefix, Claude Code registers the command as a bare slug (e.g. `/edit`) and it collides with built-ins / loses the namespaced autocomplete row.
+2. **Strict `<group>-<verb>` filename prefix** — typing `/design:setup-` autocompletes only the `setup-*` members.
 
 Mirrors the flow plugin's pattern (`plugins/flow/CATEGORIES.md`).
 
@@ -33,14 +36,14 @@ Members:
 
 | Command | Description |
 |---|---|
-| `/design:setup-onboard` | Initialize the project environment (deps check, install hints, skeleton `.design/config.json`). Mirrors `/flow:setup-onboard`. |
+| `/design:init` | Initialize the project environment (deps check, install hints, skeleton `.design/config.json`). Mirrors `/flow:init`. |
 | `/design:setup-ds` | Create a design system (first one, additional, or re-bootstrap with `--force`). Thin wrapper → skill `design-system` in bootstrap mode. |
 | `/design:setup-docs` | Refresh `.design/README.md` + `INDEX.md`. Auto-runs after `/design:edit` and `/design:new`; manual trigger to force a refresh. |
 
 Why three setup verbs:
 
-- **`setup-onboard`** is project-level — runs **once** per repo to prepare the ground (dependency hints, CLAUDE.md / .ai/ recommendations, skeleton config). Auto-invoked when other commands hit a missing `.design/config.json`.
-- **`setup-ds`** is per-DS — runs **once per design system** (first one for a project, or every time you add a marketing-vs-admin-vs-mobile DS). Auto-invokes `setup-onboard` first if config is missing.
+- **`init`** is project-level — runs **once** per repo to prepare the ground (dependency hints, CLAUDE.md / .ai/ recommendations, skeleton config). Auto-invoked when other commands hit a missing `.design/config.json`. Bare-verb filename is an exception to the `<group>-<verb>` rule — it mirrors Claude Code's built-in `/init`.
+- **`setup-ds`** is per-DS — runs **once per design system** (first one for a project, or every time you add a marketing-vs-admin-vs-mobile DS). Auto-invokes `init` first if config is missing.
 - **`setup-docs`** is per-canvas-event — auto-runs after every `/design:edit` and `/design:new`. Manual trigger when you want to force a regeneration.
 
 ## Naming convention
@@ -48,10 +51,11 @@ Why three setup verbs:
 Commands within a group prefix the group name with a dash separator:
 
 ```
-/design:setup-onboard          ← group "setup", verb "onboard"
 /design:setup-ds               ← group "setup", verb "ds"
 /design:setup-docs             ← group "setup", verb "docs"
 ```
+
+Exception: `/design:init` is a bare verb (no `setup-` prefix) because it mirrors Claude Code's built-in `/init` and is the recognized bootstrap entry point.
 
 Daily commands have no prefix:
 
@@ -69,11 +73,12 @@ This makes autocomplete predictable — typing `/design:setup-` shows only the t
 | `/design` | `/design:edit` | v0.8 | Verb-as-action; resolves naming collision with skill `design` |
 | `/design:docs` | `/design:setup-docs` | v0.8 | Categorization to `setup-*` group |
 | `/design` (compat stub) | removed | v0.9 | One-version compat retired per the v0.8 contract |
+| `/design:setup-onboard` | `/design:init` | post-v0.9 | Bare-verb alias mirroring Claude Code's built-in `/init`; namespaced via `name: design:init` frontmatter |
 
 ## Adding a new command
 
 1. Pick the group from the table above. If none fits, propose a new group in this file (with prose justification) before adding the file.
 2. Create `plugins/design/commands/<group>-<verb>.md` (or `<verb>.md` for `daily`).
-3. Set frontmatter: `name: <verb-or-group-verb>`, `category: <group>`, `description: <one-liner>`, `argument-hint: <if any>`.
+3. Set frontmatter: `name: design:<verb-or-group-verb>` (e.g. `design:setup-foo`), `category: <group>`, `description: <one-liner>`, `argument-hint: <if any>`.
 4. `/design:help` picks it up automatically — no manual catalog update needed.
 5. Add an entry to the relevant section of this file if the group prose needs explanation.

@@ -7,13 +7,14 @@
 | Type | Pattern | Examples |
 | ---- | ------- | -------- |
 | **Daily** (called every feature cycle) | terse verb, no prefix | `plan`, `execute`, `done`, `validate`, `release` |
-| **Everything else** | `<group>-<verb>` | `bug-fix`, `setup-onboard`, `record-ddr`, `maintain-clean` |
+| **Everything else** | `<group>-<verb>` | `bug-fix`, `setup-prd`, `record-ddr`, `maintain-clean` |
+| **Recognized bootstrap verb** | bare verb, no group prefix | `init` (mirrors Claude Code's built-in `/init`) |
 
 Rules:
 
 1. The `category:` frontmatter field must match one of the nine groups below.
-2. Non-daily filenames **must** start with the group name + dash. The `name:` field equals the filename (sans `.md`).
-3. Slash-command namespacing via subdirectories is **not supported by Claude Code** ([issue #2422](https://github.com/anthropics/claude-code/issues/2422), [open feature request #44678](https://github.com/anthropics/claude-code/issues/44678)). Prefix autocomplete (`/flow:bug-` → `bug-rca` + `bug-fix`) is the working substitute.
+2. Non-daily filenames **must** start with the group name + dash (the bare verb `init` is the lone exception). The `name:` frontmatter field is the fully-qualified slash name — `flow:<filename-sans-md>` (e.g. `flow:bug-fix`, `flow:setup-prd`). Explicit prefixing is required to keep the namespaced form in autocomplete and avoid collisions with built-in Claude Code commands like `/resume`.
+3. Slash-command namespacing via subdirectories is **not supported by Claude Code** ([issue #2422](https://github.com/anthropics/claude-code/issues/2422), [open feature request #44678](https://github.com/anthropics/claude-code/issues/44678)). Prefixing the `name:` frontmatter field with `flow:` is the working substitute — typing `/flow:bug-` then narrows autocomplete to `bug-rca` + `bug-fix`.
 4. Run `/flow:help` for the live, auto-generated grouped index.
 
 ## Groups
@@ -50,7 +51,7 @@ Operations that run once per project (or once per major restructure).
 
 | Command | Description | Typical trigger |
 | ------- | ----------- | --------------- |
-| `/flow:setup-onboard` | Scaffold `.ai/`, auto-detect stack, populate `workflows.config.json`, defer to `/init` for CLAUDE.md. | First-time setup in a repo. |
+| `/flow:init` | Scaffold `.ai/`, auto-detect stack, populate `workflows.config.json`, defer to `/init` for CLAUDE.md. | First-time setup in a repo. |
 | `/flow:setup-prd` | Draft a PRD + auto-generated phase plans + execution README. | Starting a multi-phase initiative. |
 | `/flow:setup-codebase-map` | Snapshot the architecture into `.ai/context/` for cross-session reuse. | After a big refactor, or when context drifts. |
 | `/flow:setup-context` | Prime the agent with the codebase map + CLAUDE.md. | Beginning of a session. |
@@ -115,7 +116,8 @@ Old name → new name. Backwards-compat stubs shipped under the old filenames in
 | Old | New | Group | Reason |
 | --- | --- | ----- | ------ |
 | `/flow:verify` | `/flow:utils-verify` | utils | Verify is a sub-step of `/flow:execute`, not a top-level command. |
-| `/flow:onboard` | `/flow:setup-onboard` | setup | One-shot bootstrapping. |
+| `/flow:onboard` | `/flow:setup-onboard` | setup | One-shot bootstrapping (Phase 13 group prefix). |
+| `/flow:setup-onboard` | `/flow:init` | setup | Renamed to match Claude Code's built-in `/init` verb; namespaced via `name: flow:init` frontmatter. |
 | `/flow:create-prd` | `/flow:setup-prd` | setup | One-shot bootstrapping (PRD + phase plans). |
 | `/flow:map-codebase` | `/flow:setup-codebase-map` | setup | Bootstrapping context for cross-session reuse. |
 | `/flow:context` | `/flow:setup-context` | setup | Bootstrapping session-start priming. |

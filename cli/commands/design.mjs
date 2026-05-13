@@ -94,7 +94,7 @@ async function runInit({ args, pkgRoot }) {
 
   Inside Claude Code:
     /design:setup-ds <name>           — full discovery + scaffold (recommended)
-    /design:setup-onboard             — just prepare the env (no DS yet)
+    /design:init             — just prepare the env (no DS yet)
 
   From the CLI (non-interactive only):
     mdcc design init --no-discovery [--name <slug>]
