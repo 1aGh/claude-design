@@ -52,7 +52,7 @@ If any `category: deprecated` stubs exist, print a final section:
 ```
 ## Rename history (compat stubs)
 
-These old slash names still work but redirect to the new names. The stubs are removed in v0.6.0.
+These old slash names still work but redirect to the new names. The stubs are removed in v0.7.0.
 
 | Old           | New                  |
 | ------------- | -------------------- |

@@ -41,13 +41,13 @@ Prefix-based autocomplete (`/flow:bug-` → `bug-rca` + `bug-fix`) is the workin
 
 ### Compat-stub removal target
 
-**The 11 deprecated stubs ship for one minor version and are removed in v0.6.0.** That includes:
+**The 11 deprecated stubs ship through v0.6.x and are removed in v0.7.0.** That includes:
 
 - `verify.md`, `onboard.md`, `create-prd.md`, `map-codebase.md`, `context.md`, `ddr.md`, `retro.md`, `execution-report.md`, `ai-health.md`, `discover.md`, `code-review.md`
 
-Each stub file carries a `<!-- TODO: remove this stub after v0.6.0 ships -->` comment so the removal sweep is mechanical.
+Each stub file carries a `<!-- TODO: remove this stub after v0.7.0 ships -->` comment so the removal sweep is mechanical.
 
-The next minor bump after Phase 13 (currently `0.5.0`) is `0.6.0`. The expected ETA is **mid-to-late 2026**, coinciding with Phase 4 (canvas v2 rendering) shipping. If Phase 4 slips past 2026 Q4, revisit this date in a follow-up DDR rather than letting the stubs linger indefinitely.
+Phase 13 itself shipped as the minor bump (`0.5.0` → `0.6.0`), so the stubs live through the `0.6.x` line. They are removed in the next minor (`0.7.0`), whose expected ETA is **mid-to-late 2026**, coinciding with Phase 4 (canvas v2 rendering) shipping. If Phase 4 slips past 2026 Q4, revisit this date in a follow-up DDR rather than letting the stubs linger indefinitely.
 
 ## Consequences
 
@@ -61,7 +61,7 @@ The next minor bump after Phase 13 (currently `0.5.0`) is `0.6.0`. The expected 
 **Negative**
 
 - `record-ddr` reads "Record Design Decision Record" stutter (accepted cost; see Acronym rule above).
-- 11 compat stubs add file-count noise to `commands/` until v0.6.0.
+- 11 compat stubs add file-count noise to `commands/` until v0.7.0.
 - Anyone reading old `.ai/plans/` or release notes will see `/flow:onboard` / `/flow:ddr` / etc. and need to mentally remap. The rename-history tables in `CATEGORIES.md` and `/flow:help` mitigate this.
 
 **Future-locked**

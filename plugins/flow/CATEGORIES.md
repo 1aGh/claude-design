@@ -110,7 +110,7 @@ Sibling of daily `/flow:release` (the runbook walker).
 
 ## Rename history (Phase 13)
 
-Old name → new name. Backwards-compat stubs ship under the old filename and redirect on invocation. **Stubs are removed in v0.6.0.**
+Old name → new name. Backwards-compat stubs ship under the old filename and redirect on invocation. **Stubs are removed in v0.7.0.**
 
 | Old | New | Group | Reason |
 | --- | --- | ----- | ------ |

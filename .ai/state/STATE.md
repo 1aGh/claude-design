@@ -34,7 +34,7 @@ Consider `/flow:make-skill-template` for **fumadocs** and **hocuspocus** if thei
 - DDR-001 Monorepo with single npm publisher (Phase 1)
 - DDR-002 Release flow via Changesets, with parity-preserving wrapper (Phase 1)
 - DDR-003 `/flow:release` walks user-authored runbook instead of dispatching on provider (Phase 3)
-- DDR-004 Flow commands use `<group>-<verb>` prefix; compat stubs removed in v0.6.0 (Phase 13)
+- DDR-004 Flow commands use `<group>-<verb>` prefix; compat stubs ship through v0.6.x, removed in v0.7.0 (Phase 13)
 
 ## Blockers
 
@@ -68,7 +68,7 @@ Consider `/flow:make-skill-template` for **fumadocs** and **hocuspocus** if thei
 - [x] Task 2: 11 `git mv` renames + `name:` field updates ✅
 - [x] Task 3: `category:` frontmatter on all 29 live commands; `name:` normalized to match filenames ✅
 - [x] Task 4: Reference sweep (18 files updated, 0 stale refs remaining outside plan/CATEGORIES/archive/help.md) ✅
-- [x] Task 5: 11 backwards-compat stubs under old filenames, scheduled for removal in v0.6.0 ✅
+- [x] Task 5: 11 backwards-compat stubs under old filenames, scheduled for removal in v0.7.0 ✅
 - [x] Task 6: `/flow:help` aggregator command authored ✅
 - [x] Task 7: Root `README.md` regrouped + `plugins/flow/README.md` created with naming convention ✅
 - [x] Task 8: `CLAUDE.md` — new "Flow command naming" subsection under Architecture ✅
