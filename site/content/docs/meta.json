@@ -1,0 +1,14 @@
+{
+  "title": "md-claude",
+  "pages": [
+    "index",
+    "getting-started",
+    "---Reference---",
+    "cli",
+    "flow",
+    "design",
+    "config",
+    "---Recipes---",
+    "recipes"
+  ]
+}

@@ -1,0 +1,129 @@
+---
+title: Monorepo recipe
+description: Drop-in setup for a pnpm / Turbo / Nx workspace — scope flow + design to a single package or run them at the root.
+---
+
+Assumed: pnpm workspace, possibly Turbo or Nx on top. Multiple deployable apps + shared packages.
+
+## Two valid layouts
+
+**Option A — root-level `.ai/`** (recommended for cross-package work).
+
+```
+my-monorepo/
+├── .ai/                          # one workspace covers everything
+├── apps/
+│   ├── web/                      # Next.js app
+│   └── api/                      # Hono/Express service
+├── packages/
+│   ├── ui/                       # shared component library
+│   └── db/                       # shared Drizzle schema
+├── pnpm-workspace.yaml
+└── turbo.json
+```
+
+**Option B — per-package `.ai/`** (only if packages are owned by different teams with diverging conventions).
+
+```
+my-monorepo/
+├── apps/
+│   ├── web/
+│   │   └── .ai/                  # web team's workspace
+│   └── api/
+│       └── .ai/                  # api team's workspace
+└── packages/ui/
+    └── .ai/                      # design-system team's workspace
+```
+
+Most teams want Option A. Pick B only if you've already split into autonomous package teams.
+
+## Option A setup
+
+```bash
+cd my-monorepo
+npm i -g @1agh/md-claude
+mdcc init --name my-monorepo
+```
+
+Inside Claude Code at the repo root:
+
+```text
+/flow:setup-onboard
+```
+
+You'll end up with something like:
+
+```json
+{
+  "name": "my-monorepo",
+  "stack": {
+    "language": "typescript",
+    "framework": "next.js",
+    "packageManager": "pnpm",
+    "buildTool": "turbo",
+    "monorepo": true,
+    "ci": "github-actions",
+    "tests": "vitest"
+  },
+  "boundaries": {
+    "api": ["openai"],
+    "db": ["postgres"],
+    "auth": ["clerk"]
+  }
+}
+```
+
+`stack.monorepo: true` and `stack.buildTool: "turbo"` flip flow into monorepo mode:
+
+- `/flow:utils-verify` runs `turbo run lint test --filter=...changed` instead of running globally.
+- `/flow:validate` runs `turbo run build` and gates on it.
+- `/flow:done` honors Turbo's affected-graph when deciding what tests to run.
+
+## Changeset releases
+
+For a monorepo, the typical changelog provider is **Changesets**, scoped to specific publishable packages.
+
+```bash
+mdcc config set integrations.changelog.provider changesets
+mdcc config set integrations.changelog.scope "@acme/web"
+```
+
+`/flow:release-changelog` will then drop entries into `.changeset/*.md` and `/flow:release` will walk the changesets-flavored release runbook (auto-scaffolded into `.ai/release-guide.md`).
+
+If you publish multiple packages, set `scope` to the most-frequently-released one — the others are still released, you just don't have to pass `--filter` every time.
+
+## Design plugin in a monorepo
+
+If you've installed the `design` plugin, the canonical place for design canvases is **`.design/` at the repo root**, with subdirectories per app or feature:
+
+```
+.design/
+├── system/                       # shared tokens
+├── ui/                           # shared component prototypes
+├── web/                          # canvases for apps/web
+│   ├── home-hero/
+│   └── pricing-table/
+└── admin/                        # canvases for apps/admin
+```
+
+The dev server resolves the design root via `--root` arg → `$CLAUDE_PROJECT_DIR` → `cwd`. From any package directory, set:
+
+```bash
+export CLAUDE_PROJECT_DIR=$(git rev-parse --show-toplevel)
+mdcc design serve --port 4399
+```
+
+…or boot it from the repo root.
+
+## Gotchas
+
+- **One `CLAUDE.md` at root + per-package overrides.** The root `CLAUDE.md` covers cross-cutting concerns (commit conventions, branch model). Per-package `CLAUDE.md` (placed in `apps/web/`, `apps/api/`, etc.) override or extend it.
+- **`workflows.config.json` is *not* hierarchical.** Pick Option A or Option B, don't mix. The flow plugin reads exactly one config from the directory you invoke it in.
+- **Turbo cache.** Flow doesn't manage Turbo's cache. If `/flow:utils-verify` reports a stale failure, `pnpm turbo run lint --force` and re-verify.
+- **PR scopes.** Conventional commits for monorepos benefit from a scope: `feat(web): …`, `fix(ui): …`. `/flow:done` formats commits to match `conventions.commits` but won't auto-pick the scope — you can add it when prompted.
+
+## Next
+
+- [Next.js recipe](/docs/recipes/nextjs)
+- [Expo recipe](/docs/recipes/expo)
+- [`workflows.config.json` reference](/docs/config)

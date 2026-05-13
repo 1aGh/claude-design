@@ -3,12 +3,12 @@
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
 **Workflow:** feature-delivery — md-claude v1.0 roadmap
-**Phase:** Phase 13 — flow command categorization
-**Status:** done
+**Phase:** Phase 2 — Docs site (Fumadocs)
+**Status:** in-progress
 **Started:** 2026-05-12
 **Updated:** 2026-05-13
-**Active task:** —
-**Active plan:** —
+**Active task:** Task 1–2 (scaffold + core MDX). Tasks 3–7 deferred to follow-up execute.
+**Active plan:** `.ai/plans/phase-2-docs-site-fumadocs.md`
 **Last archived plan:** `.ai/plans/archive/phase-13-flow-command-categorization.md`
 **Branch:** `main`
 
@@ -59,8 +59,20 @@ Consider `/flow:make-skill-template` for **fumadocs** and **hocuspocus** if thei
 | 2026-05-13 | Phase 13 | `/flow:execute` Phase 13 — 11 renames, 11 compat stubs (remove v0.6.0), category: frontmatter on 29 live commands, /flow:help aggregator, CATEGORIES.md catalog, README + plugin README + CLAUDE.md updates, 18-file reference sweep clean. 40 files in commands/ (29 live + 11 stubs). |
 | 2026-05-13 | Phase 13 | Post-validate triple audit (3× Explore agents) caught a hidden-dir gap — original `rg` sweep skipped `.ai/`, `.github/`, `plugins/flow/.claude-plugin/`. Patched 22 leftover refs across 14 hidden-path files (`.ai/{README,INDEX}.md`, `.ai/{decisions,reviews,logs,context}/README.md`, `.ai/docs/{PRD,config-schema}.md`, `.ai/plans/{README,phase-11-…}.md`, `.ai/state/STATE.md`, `plugins/flow/.claude-plugin/config.schema.json`, `.github/ISSUE_TEMPLATE/docs.yml`). Final `rg --hidden` sweep clean. |
 | 2026-05-13 | done | `/flow:done` Phase 13 — DDR-004 recorded (naming convention + v0.6.0 stub removal target), retro appended, plan archived to `.ai/plans/archive/phase-13-…`. Local commit only (no push, per user). |
+| 2026-05-13 | Phase 2 | `/flow:execute phase-2` — scoped to Task 1–2 only (scaffold + core MDX) per user. Hosting choice: Vercel (DDR-005 to record at /flow:done). Tasks 3 (auto-gen command ref), 4 (schema renderer), 5 (search + llms.txt), 6 (deploy), 7 (README dedup) deferred to follow-up execute. |
 
 ## Execution Progress
+
+### Phase 2 — Tasks (Fumadocs docs site)
+
+- [x] Task 1: Scaffold Fumadocs in `site/` ✅ — manual `npm create fumadocs-app` by user, then integrated into pnpm workspace (`@md-claude/site`), `esbuild`+`sharp` allow-listed, `pnpm --filter @md-claude/site build` green (33 static routes incl. llms.txt + og)
+- [x] Task 2: Author core MDX pages ✅ — `index`, `getting-started`, `cli`, `flow`, `design`, `config`, `recipes/{nextjs,expo,monorepo}` + sidebar `meta.json`s; home page updated from "Hello World" to project landing; placeholder `test.mdx` removed
+- [ ] Task 3: Auto-generate command reference from plugin frontmatter — **deferred**
+- [ ] Task 4: Render config schema as typed MDX — **deferred** (some prose coverage already in `config.mdx`)
+- [ ] Task 5: Search + `llms.txt` — **partial** (Fumadocs CLI scaffolded `/llms.txt`, `/llms-full.txt`, `/llms.mdx/docs/*` routes by default; just needs `searchOptions` review on deploy)
+- [ ] Task 6: Deploy to Vercel + DNS — **deferred** (needs DDR-005 + maintainer credentials)
+- [ ] Task 7: README de-dup vs docs site — **deferred**
+
 
 ### Phase 13 — Tasks (flow command categorization)
 

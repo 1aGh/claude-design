@@ -1,0 +1,221 @@
+---
+title: workflows.config.json
+description: Per-repo configuration consumed by the flow plugin's commands, skills, and subagents.
+---
+
+Lives at `.ai/workflows.config.json`. Missing file → sensible defaults. Missing keys → same. The only required key is `name`.
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/1aGh/md-claude/main/plugins/flow/.claude-plugin/config.schema.json",
+  "name": "my-app",
+  "language": "en",
+  "theme": "agnostic",
+  "platforms": ["web-desktop"]
+}
+```
+
+Set keys from the CLI or by hand:
+
+```bash
+mdcc config set platforms '["web-desktop","web-mobile"]'
+mdcc config set motion.complex 1200
+mdcc config get integrations.tracker.provider
+```
+
+## Sections
+
+### `name` (required)
+
+```json
+{ "name": "my-app" }
+```
+
+Resolves the `<project>` placeholder in commands and file paths — `.ai/<project>-prd.md` becomes `.ai/my-app-prd.md`.
+
+### `language` / `theme`
+
+```json
+{ "language": "en", "theme": "agnostic" }
+```
+
+- `language` — ISO 639-1 (`en`, `cs`, …). Cosmetic; only signals preferred tone in plans + reviews.
+- `theme` — `dark` | `light` | `agnostic`. Drives theme-first contrast checks in the a11y skill.
+
+### `paths`
+
+```json
+{
+  "paths": {
+    "prd": ".ai/my-app-prd.md",
+    "designSystem": ".ai/my-app-design-system.md",
+    "codebaseMap": ".ai/context/codebase-map.md"
+  }
+}
+```
+
+Override only if your project's canonical files differ from the defaults.
+
+### `platforms`
+
+```json
+{ "platforms": ["web-desktop", "web-mobile", "ios-phone"] }
+```
+
+Drives the `/flow:scenario` matrix and `responsive-rules` density mapping. Valid values: `web-desktop`, `web-mobile`, `ios-phone`, `ios-tablet`, `android-phone`, `android-tablet`, `macos`, `windows`, `linux`.
+
+### `stack`
+
+Auto-detected by `/flow:setup-onboard` and refreshed by `/flow:setup-codebase-map`. Used for routing decisions — which test runner, whether to gate on workspace builds.
+
+```json
+{
+  "stack": {
+    "language": "typescript",
+    "framework": "next.js",
+    "packageManager": "pnpm",
+    "buildTool": "turbo",
+    "monorepo": true,
+    "ci": "github-actions",
+    "tests": "vitest",
+    "css": "tailwind",
+    "router": "next-app"
+  }
+}
+```
+
+Use `unknown` when detection fails — never invent.
+
+### `conventions`
+
+```json
+{
+  "conventions": {
+    "branchingModel": "github-flow",
+    "commits": "conventional",
+    "prohibited": ["lodash", "moment"]
+  }
+}
+```
+
+- `branchingModel` — drives `/flow:done`'s push + PR behavior. Enum: `github-flow`, `trunk-based`, `gitflow`, `release-branch`, `other`.
+- `commits` — `conventional`, `gitmoji`, `free-form`. `/flow:done` formats commits to match.
+- `prohibited` — packages, libs, or APIs the project rejects. Flow commands flag accidental introduction.
+
+### `boundaries`
+
+Integration boundaries the project crosses. The `debugging-rules` and `testing-rules` skills treat these as **no-mock zones** and demand real evidence at the seam.
+
+```json
+{
+  "boundaries": {
+    "realtime": ["websocket"],
+    "video": [],
+    "api": ["openai", "stripe"],
+    "db": ["postgres", "redis"],
+    "auth": ["clerk"],
+    "telemetry": ["posthog"],
+    "payments": ["stripe"]
+  }
+}
+```
+
+### `motion`
+
+Hard ceilings in milliseconds. `motion-rules` enforces these.
+
+```json
+{
+  "motion": {
+    "micro": 300,
+    "page": 500,
+    "complex": 1000,
+    "customPulses": { "liveIndicator": 1500 }
+  }
+}
+```
+
+`customPulses` are exempt from the page/complex caps — they're loops, not transitions.
+
+### `responsive`
+
+```json
+{
+  "responsive": {
+    "approach": "mobile-first",
+    "densityMap": {
+      "web-desktop": "command-center",
+      "web-mobile": "palm-friendly",
+      "ios-phone": "palm-friendly"
+    },
+    "breakpoints": { "sm": 480, "md": 768, "lg": 1024, "xl": 1280, "2xl": 1536 }
+  }
+}
+```
+
+`densityMap` values: `command-center`, `sideline-tool`, `palm-friendly`, `cozy`, `compact`, or custom string.
+
+### `ux`
+
+```json
+{
+  "ux": {
+    "responseTargetMs": 100,
+    "bilingual": ["cs", "en"]
+  }
+}
+```
+
+`responseTargetMs` is a user-perceived ceiling for primary interactions. `bilingual` is an ISO 639-1 array — empty = monolingual.
+
+### `skills`
+
+Per-skill toggles. Each enforcement skill respects its own `enabled` flag (default `true`).
+
+```json
+{
+  "skills": {
+    "motionRules": { "enabled": true },
+    "responsiveRules": { "enabled": true },
+    "a11yRules": { "enabled": true },
+    "testingRules": { "enabled": true },
+    "debuggingRules": { "enabled": true }
+  }
+}
+```
+
+### `integrations`
+
+Lightweight pointers to external services. Generic commands read `provider` and decide whether to offer integration actions; project-specific shape (list IDs, custom fields, etc.) lives in `defaults`.
+
+```json
+{
+  "integrations": {
+    "tracker": {
+      "provider": "linear",
+      "mcp": "mcp__linear",
+      "defaults": { "teamId": "ENG", "projectId": "phase-2" }
+    },
+    "analytics": { "provider": "posthog" },
+    "ci": { "provider": "vercel" },
+    "design": { "provider": "figma", "mcp": "mcp__figma" },
+    "changelog": {
+      "provider": "changesets",
+      "scope": "@acme/web",
+      "releaseGuide": ".ai/release-guide.md"
+    }
+  }
+}
+```
+
+#### `integrations.changelog`
+
+The release-note tooling. Used by `/flow:validate` and `/flow:done` for soft warnings about missing release notes, by `/flow:release-changelog` to author entries, and by `/flow:release` to walk the project-owned release runbook.
+
+Currently only the `changesets` provider has a full implementation; `git-cliff` / `conventional` / `custom` / `none` are accepted but treated as no-op until their providers land.
+
+The **release runbook** (`releaseGuide`) is plain Markdown — `H2` sections become steps, `bash` blocks become candidate commands (run only after user confirmation). Scaffolded with a provider-appropriate stub during `/flow:setup-onboard`.
+
+## Validation
+
+The full JSON Schema lives at [`plugins/flow/.claude-plugin/config.schema.json`](https://github.com/1aGh/md-claude/blob/main/plugins/flow/.claude-plugin/config.schema.json). Reference it via `$schema` for editor autocomplete + diagnostics.

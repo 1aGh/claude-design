@@ -1,0 +1,84 @@
+---
+title: Getting Started
+description: Install the marketplace and scaffold your first project in under five minutes.
+---
+
+## 1. Install the marketplace
+
+Inside Claude Code, run:
+
+```text
+/plugin marketplace add 1aGh/md-claude
+/plugin install design@md-claude
+/plugin install flow@md-claude
+```
+
+You can install just one if you only need one. `/plugin marketplace update md-claude` pulls future releases.
+
+## 2. Install the CLI (optional but recommended)
+
+```bash
+npm i -g @1agh/md-claude
+# or use it without global install:
+npx @1agh/md-claude --help
+```
+
+This gives you the `mdcc` binary. It's the easiest way to scaffold the `.ai/` workspace and boot the design dev server. See [CLI](/docs/cli).
+
+## 3. Scaffold a new project
+
+In a fresh repo (or an existing one):
+
+```bash
+mdcc init --name my-app
+```
+
+This copies the `.ai/` skeleton from the flow plugin into your repo:
+
+```
+.ai/
+├── workflows.config.json   # the only file you usually edit
+├── decisions/              # DDRs (Design Decision Records)
+├── plans/                  # phase plans + archive
+├── state/                  # STATE.md, HANDOFF.md
+├── docs/                   # PRD, codebase map
+├── retros/                 # post-feature retros
+└── scenarios/              # cross-platform UI scenarios
+```
+
+For richer setup (auto-detect stack, pick branching model, pick changelog provider), run `/flow:setup-onboard` inside Claude Code instead — it calls `mdcc init` first, then asks the right questions.
+
+For `CLAUDE.md` — use Claude Code's built-in `/init`. Don't write it by hand.
+
+## 4. Try a slash command
+
+Three good first commands:
+
+| Command | What it does |
+| ------- | ------------ |
+| `/flow:status` | Tells you where you are in any active phase. Safe to run anywhere. |
+| `/flow:plan "<feature>"` | Drafts a phase plan grounded in your PRD + design system. |
+| `/design:new <Name> "<brief>"` | Scaffolds a new design canvas under `.design/<name>/` and iterates on it. |
+
+After the plan lands, `/flow:execute .ai/plans/<plan>.md` walks the implementation; `/flow:done` validates, commits, opens a PR, and archives the plan.
+
+## 5. Inspect the design dev server (optional)
+
+If you've installed the `design` plugin and you have a `.design/` directory:
+
+```bash
+mdcc design serve --port 4399
+# → http://localhost:4399
+```
+
+The server injects an inspector overlay into every HTML canvas — Cmd+Click any element to scope `/design "<feedback>"` to that selection.
+
+## Next steps
+
+<Cards>
+  <Card title="`mdcc` CLI reference" href="/docs/cli" />
+  <Card title="Flow commands by category" href="/docs/flow" />
+  <Card title="Design commands" href="/docs/design" />
+  <Card title="`workflows.config.json` reference" href="/docs/config" />
+  <Card title="Next.js recipe" href="/docs/recipes/nextjs" />
+</Cards>

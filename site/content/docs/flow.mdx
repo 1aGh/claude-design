@@ -1,0 +1,98 @@
+---
+title: Flow commands
+description: All 30 /flow:* slash commands, grouped by lifecycle. Daily verbs stay terse; everything else uses a group-verb prefix.
+---
+
+The `flow` plugin's commands follow a strict naming convention: **daily** verbs called every feature cycle stay terse (`plan`, `execute`, `done`, `validate`, `release`). Everything else uses `<group>-<verb>` (e.g. `setup-onboard`, `bug-rca`, `record-ddr`).
+
+The full canonical catalog is [`plugins/flow/CATEGORIES.md`](https://github.com/1aGh/md-claude/blob/main/plugins/flow/CATEGORIES.md). Live grouped index is one slash command away: `/flow:help`.
+
+## Daily — every-cycle workflow
+
+| Command | What it does |
+| ------- | ------------ |
+| `/flow:plan "<feature>"` | Context-rich feature plan grounded in PRD + design system. |
+| `/flow:execute [plan-path]` | Execute an implementation plan task-by-task with an Edit-Verify loop. |
+| `/flow:done` | `/validate` gate → DDR sweep → commit → push → PR → retro → archive. |
+| `/flow:validate` | Full pipeline: static + tests + build + scenario + a11y + design. |
+| `/flow:status` | Where you are, what's next. Safe to run anywhere. |
+| `/flow:pause` | Snapshot state, write `HANDOFF.md`, ready for context switch. |
+| `/flow:resume` | Resume from a previous `/flow:pause`. |
+| `/flow:scenario` | Cross-platform UI scenario across 5 platforms. |
+| `/flow:quick` | Trivial-change fast-path — skip plan cycle, go edit → verify → commit. |
+| `/flow:release` | Walk the project's release runbook step-by-step with explicit confirmation. |
+| `/flow:help` | Auto-generated grouped index (built from frontmatter). |
+
+## Setup — one-shot bootstrapping
+
+Run once per project (or once per major restructure).
+
+| Command | What it does |
+| ------- | ------------ |
+| `/flow:setup-onboard` | Scaffold `.ai/`, auto-detect stack, populate `workflows.config.json`, defer to `/init` for `CLAUDE.md`. |
+| `/flow:setup-prd` | Draft a PRD + auto-generate phase plans + execution README. |
+| `/flow:setup-codebase-map` | Snapshot architecture into `.ai/context/` for cross-session reuse. |
+| `/flow:setup-context` | Prime the agent with the codebase map + `CLAUDE.md`. |
+
+## Validate — specialized validators
+
+Called by the `/flow:validate` parent or directly when you want only one check.
+
+| Command | What it does |
+| ------- | ------------ |
+| `/flow:validate-a11y` | Accessibility audit (WCAG 2.1 AA). |
+| `/flow:validate-visual` | Visual regression check with screenshots. |
+
+## Bug — incident workflow
+
+| Command | What it does |
+| ------- | ------------ |
+| `/flow:bug-rca <issue-id>` | Analyze and document root cause for a GitHub issue. |
+| `/flow:bug-fix <issue-id>` | Implement the fix from the RCA document. |
+
+## Record — knowledge capture
+
+Append-only artifacts future sessions read.
+
+| Command | What it does |
+| ------- | ------------ |
+| `/flow:record-ddr "<title>"` | Record a Design Decision Record. |
+| `/flow:record-retro` | Implementation-vs-plan retrospective after `/flow:done`. |
+| `/flow:record-execution` | Generate an implementation report for system review. |
+
+## Maintain — hygiene
+
+Cleanup, freshness, infrastructure health.
+
+| Command | What it does |
+| ------- | ------------ |
+| `/flow:maintain-clean` | Clean stale artifacts, logs, temp files. |
+| `/flow:maintain-docs` | Scan for stale references across docs and content. |
+| `/flow:maintain-ai-health` | Diagnose health of the AI infrastructure (commands, skills, agents, state). |
+| `/flow:maintain-discover "<task>"` | Search AI capabilities by natural-language task description. |
+
+## Review — pre-commit / pre-PR
+
+| Command | What it does |
+| ------- | ------------ |
+| `/flow:review-code` | Pre-commit self-review of uncommitted changes. |
+
+## Release — release-time
+
+Sibling of daily `/flow:release` (the runbook walker).
+
+| Command | What it does |
+| ------- | ------------ |
+| `/flow:release-changelog` | Author a changelog entry using the configured provider (Changesets, git-cliff, …). |
+
+## Utils — sub-commands
+
+Internal verbs called from inside other commands. Not primary user actions, but exposed as slash commands so they can be invoked standalone when debugging.
+
+| Command | What it does |
+| ------- | ------------ |
+| `/flow:utils-verify` | Light per-file check during `/flow:execute`'s Edit-Verify Loop. |
+
+## Naming history
+
+The `<group>-<verb>` prefix landed in **v0.6.0** (Phase 13). Eleven commands were renamed; the backwards-compat stubs lived for ~24h and were removed in **v0.6.1**. See [DDR-004](https://github.com/1aGh/md-claude/blob/main/.ai/decisions/DDR-004-flow-command-naming-prefix-convention.md) for the rationale.

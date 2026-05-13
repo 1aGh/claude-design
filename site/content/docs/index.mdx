@@ -1,0 +1,55 @@
+---
+title: md-claude
+description: A Claude Code marketplace shipping two plugins (design + flow) and the mdcc CLI.
+---
+
+`md-claude` is a [Claude Code](https://claude.ai/code) marketplace by Michal Dovrtěl. It ships two plugins plus an npm-published CLI, all under one version.
+
+- **`design`** — canvas-first iteration on HTML / JSX mocks under a project's `.design/` directory. Zero-dep dev server with a Cmd+Click inspector overlay so Claude knows which element you're feedback-ing on.
+- **`flow`** — a generic agentic workflow loop with a second-brain `.ai/` workspace. Project-agnostic via a per-repo `workflows.config.json` — same plugin runs in your Next.js app, Expo RN, Go service, anything.
+- **`mdcc`** — small CLI to scaffold the `.ai/` workspace, read/write config, and boot the design dev server.
+
+## Pick a direction
+
+<Cards>
+  <Card
+    title="Getting Started"
+    href="/docs/getting-started"
+    description="Install the marketplace, scaffold your first project."
+  />
+  <Card
+    title="`mdcc` CLI"
+    href="/docs/cli"
+    description="Subcommands: init, config, design serve."
+  />
+  <Card
+    title="Flow commands"
+    href="/docs/flow"
+    description="The 30 slash commands that drive plan → execute → done."
+  />
+  <Card
+    title="Design commands"
+    href="/docs/design"
+    description="`/design`, `/design:new`, `/design:critic`, and friends."
+  />
+  <Card
+    title="Config reference"
+    href="/docs/config"
+    description="Every key in `.ai/workflows.config.json` with examples."
+  />
+  <Card
+    title="Recipes"
+    href="/docs/recipes/nextjs"
+    description="Drop-in setups for Next.js, Expo, and pnpm monorepos."
+  />
+</Cards>
+
+## Why both plugins together?
+
+The two plugins share a worldview: **Claude Code is the IDE; the repo is the source of truth.** Decisions get written to `.ai/decisions/`. Plans get archived to `.ai/plans/archive/`. Design mocks live in `.design/` next to the production code they precede. Nothing lives only in a chat scroll.
+
+You can install just one — the marketplace lets you pick `design`, `flow`, or both.
+
+## License + source
+
+MIT. Source at [github.com/1aGh/md-claude](https://github.com/1aGh/md-claude).

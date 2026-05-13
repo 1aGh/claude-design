@@ -18,7 +18,9 @@
       "plugins/design/dev-server/runtime/**",
       "plugins/design/dev-server/server.mjs",
       "site/.next/**",
+      "site/.source/**",
       "site/out/**",
+      "site/next-env.d.ts",
       "pnpm-lock.yaml"
     ]
   },

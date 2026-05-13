@@ -1,0 +1,84 @@
+---
+title: mdcc CLI
+description: The npm-published binary that scaffolds the .ai/ workspace, edits workflows.config.json, and boots the design dev server.
+---
+
+```bash
+npm i -g @1agh/md-claude    # installs `mdcc` (alias: `claude-design-server`)
+# or:
+npx @1agh/md-claude <cmd>
+```
+
+`mdcc` is intentionally small. It does mechanical scaffolding and config; the *interesting* setup work happens inside Claude Code via `/flow:setup-onboard`, which calls `mdcc init` as step one.
+
+## `mdcc init`
+
+Scaffold the `.ai/` second-brain workspace into the current repo.
+
+```bash
+mdcc init [--name <project>] [--force] [--dry-run]
+```
+
+- `--name <project>` — project slug for the `<project>` placeholder used by flow templates (e.g. `.ai/<project>-prd.md`). Defaults to the current directory basename.
+- `--force` — overwrite existing files. Off by default; `init` is idempotent.
+- `--dry-run` — print what would be written without touching the filesystem.
+
+The skeleton lives at `plugins/flow/templates/ai-skeleton/`. `mdcc init` does string templating during the copy:
+
+- Replaces `PROJECT_NAME` placeholders with `--name`'s value.
+- Rewrites the `$schema` ref in `workflows.config.json` from a relative path to the absolute GitHub raw URL (so it resolves after `npm install`).
+
+Does **not** write `CLAUDE.md`. Use Claude Code's built-in `/init` for that.
+
+## `mdcc config`
+
+Read or write keys in `.ai/workflows.config.json` from the terminal.
+
+```bash
+mdcc config show
+mdcc config get <dotted.key>
+mdcc config set <dotted.key> <value>
+```
+
+- `show` — pretty-print the whole config.
+- `get` — print a single key. Dotted path: `mdcc config get motion.complex`.
+- `set` — write a key. Values that parse as JSON (numbers, booleans, arrays, objects) are stored typed:
+
+```bash
+mdcc config set platforms '["web-desktop","web-mobile"]'
+mdcc config set motion.complex 1200
+mdcc config set theme dark
+```
+
+Validates known keys against the flow plugin's `config.schema.json`. Unknown keys are written as-is but warned.
+
+## `mdcc design serve`
+
+Boot the design dev server in the current repo.
+
+```bash
+mdcc design serve [--port N] [--root <path>]
+```
+
+Equivalent to invoking `claude-design-server` directly (which is the second bin shipped by `@1agh/md-claude`). All remaining args are forwarded to the server.
+
+- `--port` — listen on a specific port (default `4399`; falls back to a random free port if taken).
+- `--root` — serve a different repo. By default uses `$CLAUDE_PROJECT_DIR`, then `process.cwd()`.
+
+The server **fails loud** if launched from a directory without a `.design/` folder. That's deliberate — it stops you from accidentally serving the wrong project.
+
+## `mdcc version` / `mdcc help`
+
+What they say on the tin.
+
+```bash
+mdcc version
+mdcc help
+```
+
+## Where the source lives
+
+- `cli/bin/mdcc.mjs` — argv parser + subcommand dispatch.
+- `cli/commands/{init,config,design,help,version}.mjs` — one file per subcommand.
+
+Pure ESM, no deps beyond Node 20+. PRs welcome at [github.com/1aGh/md-claude](https://github.com/1aGh/md-claude).

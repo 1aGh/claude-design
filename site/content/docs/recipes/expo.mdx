@@ -1,0 +1,101 @@
+---
+title: Expo (React Native) recipe
+description: Drop-in setup for an Expo + React Native app — native scenarios via flow:scenario, agent-device automation.
+---
+
+Assumed: existing Expo SDK 51+ app, pnpm/npm/yarn, TypeScript.
+
+## 1. Install the marketplace + CLI
+
+In Claude Code:
+
+```text
+/plugin marketplace add 1aGh/md-claude
+/plugin install flow@md-claude
+```
+
+The `design` plugin is **optional** for native — its canvas-first loop targets HTML/JSX in the browser. For Expo, design typically lives upstream in Figma + flow's `agent-device` automation for native verification.
+
+In your terminal:
+
+```bash
+npm i -g @1agh/md-claude
+mdcc init --name my-rn-app
+```
+
+## 2. Run `/flow:setup-onboard`
+
+Inside Claude Code:
+
+```text
+/flow:setup-onboard
+```
+
+For an Expo app you'll typically end up with:
+
+```json
+{
+  "name": "my-rn-app",
+  "language": "en",
+  "platforms": ["ios-phone", "ios-tablet", "android-phone"],
+  "bundleIdPrefix": "com.acme.myrnapp",
+  "stack": {
+    "language": "typescript",
+    "framework": "expo",
+    "packageManager": "pnpm",
+    "monorepo": false,
+    "ci": "github-actions",
+    "tests": "jest",
+    "router": "expo-router"
+  },
+  "responsive": {
+    "approach": "mobile-first",
+    "densityMap": {
+      "ios-phone": "palm-friendly",
+      "ios-tablet": "cozy",
+      "android-phone": "palm-friendly"
+    }
+  }
+}
+```
+
+`bundleIdPrefix` is required for native scenarios — `/flow:utils-verify` and `/flow:scenario` use it to launch builds on the simulator.
+
+## 3. Scenarios on a simulator
+
+Scenarios are scripted user flows that run across your declared `platforms`. For native variants, flow uses the `agent-device` automation skill (XCUITest under the hood for iOS, UIAutomator for Android).
+
+Author a new scenario:
+
+```text
+/flow:scenario new review-first-3-flashcards
+```
+
+Run it:
+
+```text
+/flow:scenario review-first-3-flashcards
+```
+
+Output: a markdown report under `.ai/scenarios/<name>/report.md` with per-step screenshots from each platform.
+
+## 4. Try the loop
+
+```text
+/flow:plan "<feature>"
+/flow:execute
+/flow:done
+```
+
+`/flow:utils-verify` (called inside `/flow:execute`'s Edit-Verify loop) will spawn an `agent-device` smoke against the current simulator for UI tasks, in addition to running your Jest tests.
+
+## Gotchas
+
+- **Metro hot reload.** Flow doesn't manage Metro. Start it yourself (`npx expo start`); the agent-device skill connects to whatever's running.
+- **EAS Build / release.** `/flow:release` walks `releaseGuide` — for Expo, your runbook will reference `eas build --platform all` and the EAS dashboard. Auto-detected during `setup-onboard` when an `eas.json` is found.
+- **Design plugin still useful** for things like in-app web views, settings screens that are also web pages, or landing-page mocks of the marketing site that fronts the app.
+
+## Next
+
+- [Flow commands](/docs/flow)
+- [`workflows.config.json` reference](/docs/config)

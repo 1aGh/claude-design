@@ -8,5 +8,11 @@ packages:
 # pnpm 9+ requires explicit opt-in for postinstall scripts.
 # Biome ships native binaries via @biomejs/cli-* optional deps; the postinstall
 # is the official install path. Enable.
+# esbuild + sharp are pulled in by site/ (Next.js 16 + Tailwind v4):
+#   - esbuild: Next.js dev server bundling
+#   - sharp:   Next.js image optimization (`next/image`)
+# Both ship native binaries via the same postinstall pattern.
 allowBuilds:
   '@biomejs/biome': true
+  esbuild: true
+  sharp: true
