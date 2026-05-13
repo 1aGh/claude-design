@@ -1,0 +1,302 @@
+<!--
+SPECIMEN: ui_kits/desktop/index
+DEMONSTRATES: every Core token composed into a realistic desktop product surface — nav + sidebar + multi-view content + status bar + theme/accent parameterization
+COMPOSITION: full-bleed desktop shell (1400px+) with:
+  - top nav (56px): brand wordmark · view-mode segmented · search · theme toggle · accent picker · user avatar
+  - left sidebar (240px): section heading + collapsible nav tree, active item highlighted by --accent
+  - main content (fluid): switchable between 3 screens — "Roster", "Activity", "Settings"
+  - status bar (28px): mono indicators (port, version, sync state)
+  - vanilla JS view switcher + theme switcher + [data-team="cyan|indigo|emerald|rose"] accent parameterization
+COPY VOICE: real product strings — team-sports flavored for portability across scaffolds; substitute for project context during scaffold
+WHEN SCAFFOLDED: always-on (Universal). Adapt every "Roster" / "Activity" / "Squadron" string and every screen's content to project context. KEEP the chrome shape — nav + sidebar + 3 switchable screens + status bar is the canonical "DS in use" composition.
+NOTES:
+  - The EDITMODE-BEGIN/END markers around DEFAULTS let Claude Code edit defaults in-place without parsing JS (dugmate convention — adopted here for ui_kits).
+  - Theme toggle flips data-theme on <html>; accent picker flips data-team. The token CSS must define [data-team="..."] selectors to back this. If your tokens don't, the picker is decorative.
+  - This is THE single highest-leverage file in the bootstrap output. A reader who only opens one specimen should be able to understand the DS by reading this.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark" data-team="default">
+<head>
+  <meta charset="utf-8" />
+  <title>UI kit · desktop · index</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    body { padding: 0; margin: 0; }
+    .specimen { max-width: none; margin: 0; padding: 0; }
+
+    .app-shell {
+      display: grid;
+      grid-template-rows: 56px 1fr 28px;
+      grid-template-columns: 240px 1fr;
+      grid-template-areas:
+        "topnav  topnav"
+        "sidebar main"
+        "status  status";
+      min-height: 100vh;
+    }
+
+    /* ─── Top nav ─── */
+    .topnav { grid-area: topnav; display: flex; align-items: center; gap: var(--space-4); padding: 0 var(--space-4); background: var(--bg-1); border-bottom: 1px solid var(--border-subtle); }
+    .brand { display: flex; align-items: center; gap: var(--space-2); font-family: var(--font-display); font-weight: 600; font-size: var(--type-md); letter-spacing: var(--tracking-display, -0.022em); color: var(--fg-0); }
+    .brand .mark { width: 20px; height: 20px; background: var(--accent); border-radius: var(--radius-sm); display: grid; place-items: center; color: var(--accent-fg); font-family: var(--font-mono); font-weight: 700; font-size: 11px; }
+    .segmented { display: inline-flex; background: var(--bg-2); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 2px; gap: 2px; margin-left: var(--space-3); }
+    .segmented > button { background: transparent; border: 0; color: var(--fg-1); padding: 5px 12px; border-radius: calc(var(--radius-md) - 2px); cursor: pointer; font: inherit; font-size: var(--type-sm); font-family: var(--font-mono); transition: background var(--dur-flip) var(--ease-out), color var(--dur-flip) var(--ease-out); }
+    .segmented > button.is-on { background: var(--accent); color: var(--accent-fg); font-weight: 500; }
+    .topnav .spacer { flex: 1; }
+    .search { background: var(--bg-3); border: 1px solid var(--border-default); color: var(--fg-1); padding: 6px 10px; border-radius: var(--radius-sm); font: inherit; font-size: var(--type-sm); width: 220px; font-family: var(--font-mono); }
+    .icon-btn { width: 32px; height: 32px; display: grid; place-items: center; background: transparent; border: 1px solid var(--border-subtle); color: var(--fg-1); cursor: pointer; border-radius: var(--radius-sm); transition: background var(--dur-flip) var(--ease-out); font-family: var(--font-mono); font-size: 14px; }
+    .icon-btn:hover { background: var(--bg-2); color: var(--fg-0); }
+    .accent-picker { display: flex; gap: 4px; padding: 0 var(--space-2); border-left: 1px solid var(--border-subtle); border-right: 1px solid var(--border-subtle); margin: 0 var(--space-2); height: 32px; align-items: center; }
+    .accent-swatch { width: 16px; height: 16px; border-radius: var(--radius-pill); border: 2px solid transparent; cursor: pointer; transition: transform var(--dur-flip) var(--ease-out); padding: 0; }
+    .accent-swatch:hover { transform: scale(1.15); }
+    .accent-swatch.is-on { border-color: var(--fg-0); }
+    .avatar { width: 28px; height: 28px; border-radius: var(--radius-pill); background: var(--accent); border: 1px solid var(--border-default); display: grid; place-items: center; color: var(--accent-fg); font-size: var(--type-xs); font-weight: 600; font-family: var(--font-mono); }
+
+    /* ─── Sidebar ─── */
+    .sidebar { grid-area: sidebar; background: var(--bg-1); border-right: 1px solid var(--border-subtle); padding: var(--space-4) var(--space-2); overflow-y: auto; }
+    .sidebar h3 { font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-2); margin: 0 0 var(--space-2); padding: 0 var(--space-2); }
+    .sidebar ul { list-style: none; padding: 0; margin: 0 0 var(--space-4); }
+    .sidebar li a { display: flex; align-items: center; gap: var(--space-2); padding: 6px 10px; color: var(--fg-1); text-decoration: none; border-radius: var(--radius-sm); font-size: var(--type-sm); cursor: pointer; transition: background var(--dur-flip) var(--ease-out), color var(--dur-flip) var(--ease-out); }
+    .sidebar li a:hover { background: var(--bg-2); color: var(--fg-0); }
+    .sidebar li a.is-active { background: var(--accent); color: var(--accent-fg); font-weight: 500; }
+    .sidebar li a .count { margin-left: auto; font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); }
+    .sidebar li a.is-active .count { color: var(--accent-fg); opacity: 0.75; }
+
+    /* ─── Main + screens ─── */
+    .main { grid-area: main; background: var(--bg-0); padding: var(--space-6) var(--space-6); overflow-y: auto; }
+    .screen { display: none; }
+    .screen.is-on { display: block; }
+    .hero { display: flex; justify-content: space-between; align-items: flex-end; gap: var(--space-5); margin: 0 0 var(--space-6); padding-bottom: var(--space-4); border-bottom: 1px solid var(--border-subtle); }
+    .hero h1 { font-family: var(--font-display); font-size: var(--type-3xl); line-height: var(--lh-3xl); letter-spacing: var(--tracking-display, -0.022em); font-weight: 600; margin: 0 0 var(--space-2); color: var(--fg-0); }
+    .hero .lede { color: var(--fg-1); font-size: var(--type-md); line-height: var(--lh-md); margin: 0; max-width: 60ch; }
+    .hero .actions { display: flex; gap: var(--space-2); flex-shrink: 0; }
+    .btn { font: inherit; font-weight: 500; padding: 7px 14px; border-radius: var(--radius-md); border: 1px solid transparent; cursor: pointer; transition: background var(--dur-flip) var(--ease-out); }
+    .btn--primary { background: var(--accent); color: var(--accent-fg); }
+    .btn--primary:hover { background: var(--accent-hover); }
+    .btn--secondary { background: var(--bg-2); color: var(--fg-0); border-color: var(--border-default); }
+    .btn--secondary:hover { background: var(--bg-3); }
+
+    /* Roster cards */
+    .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--space-3); }
+    .card { background: var(--bg-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: var(--space-4); display: grid; gap: var(--space-2); transition: border-color var(--dur-flip) var(--ease-out), transform var(--dur-flip) var(--ease-out); }
+    .card:hover { border-color: var(--border-default); transform: translateY(-1px); }
+    .card .head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); }
+    .card .title { font-family: var(--font-display); font-weight: 600; font-size: var(--type-md); line-height: var(--lh-md); color: var(--fg-0); }
+    .card .meta { color: var(--fg-2); font-size: var(--type-xs); font-family: var(--font-mono); }
+    .card .body { color: var(--fg-1); font-size: var(--type-sm); margin: 0; line-height: var(--lh-sm); }
+    .pill { background: var(--accent); color: var(--accent-fg); padding: 1px 7px; border-radius: var(--radius-pill); font-size: var(--type-xs); font-family: var(--font-mono); font-weight: 500; }
+    .pill--ghost { background: transparent; color: var(--fg-1); border: 1px solid var(--border-default); }
+
+    /* Activity table */
+    .activity { background: var(--bg-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); overflow: hidden; }
+    .activity-row { display: grid; grid-template-columns: 32px 1fr auto; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-subtle); align-items: center; transition: background var(--dur-flip) var(--ease-out); }
+    .activity-row:last-child { border-bottom: 0; }
+    .activity-row:hover { background: var(--bg-2); }
+    .activity-row .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .activity-row .dot.success { background: var(--status-success); }
+    .activity-row .dot.info    { background: var(--status-info); }
+    .activity-row .dot.warn    { background: var(--status-warn); }
+    .activity-row .text { color: var(--fg-0); font-size: var(--type-sm); }
+    .activity-row .text .who { color: var(--fg-1); }
+    .activity-row .when { color: var(--fg-2); font-family: var(--font-mono); font-size: var(--type-xs); }
+
+    /* Settings */
+    .settings { display: grid; gap: var(--space-4); max-width: 640px; }
+    .setting-row { display: flex; justify-content: space-between; align-items: center; padding: var(--space-3) var(--space-4); background: var(--bg-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+    .setting-row .title { font-weight: 500; color: var(--fg-0); font-size: var(--type-sm); }
+    .setting-row .sub { color: var(--fg-2); font-size: var(--type-xs); margin-top: 2px; font-family: var(--font-mono); }
+
+    /* Switch (settings) */
+    .switch { position: relative; width: 36px; height: 20px; background: var(--bg-4); border-radius: var(--radius-pill); transition: background var(--dur-flip) var(--ease-out); cursor: pointer; border: 1px solid var(--border-default); }
+    .switch::after { content: ''; position: absolute; top: 1px; left: 1px; width: 16px; height: 16px; background: var(--fg-0); border-radius: 50%; transition: transform var(--dur-flip) var(--ease-out); }
+    .switch.is-on { background: var(--accent); border-color: var(--accent); }
+    .switch.is-on::after { transform: translateX(16px); background: var(--accent-fg); }
+
+    /* ─── Status bar ─── */
+    .status { grid-area: status; display: flex; align-items: center; gap: var(--space-4); padding: 0 var(--space-4); background: var(--bg-1); border-top: 1px solid var(--border-subtle); font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); }
+    .status .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--status-success); }
+    .status .accent-text { color: var(--accent); }
+    .status .spacer { flex: 1; }
+  </style>
+</head>
+<body class="app">
+  <main class="specimen">
+    <div class="app-shell">
+      <!-- TOP NAV -->
+      <header class="topnav">
+        <a class="brand"><span class="mark">S</span>Squadron</a>
+        <div class="segmented" role="group" aria-label="View density">
+          <button class="is-on" data-density="cozy">cozy</button>
+          <button data-density="compact">compact</button>
+        </div>
+        <div class="spacer"></div>
+        <input class="search" type="search" placeholder="search… (⌘ K)" />
+        <div class="accent-picker" role="group" aria-label="Accent">
+          <button class="accent-swatch is-on" data-team="default" style="background: var(--accent);" aria-label="default"></button>
+          <button class="accent-swatch" data-team="cyan" style="background: oklch(72% 0.16 220);" aria-label="cyan"></button>
+          <button class="accent-swatch" data-team="emerald" style="background: oklch(70% 0.16 150);" aria-label="emerald"></button>
+          <button class="accent-swatch" data-team="violet" style="background: oklch(64% 0.20 300);" aria-label="violet"></button>
+        </div>
+        <button class="icon-btn" id="theme-toggle" title="Toggle theme">☾</button>
+        <div class="avatar" aria-label="Kim Park">KP</div>
+      </header>
+
+      <!-- SIDEBAR -->
+      <aside class="sidebar">
+        <h3>Workspace</h3>
+        <ul>
+          <li><a class="is-active" data-screen="roster">Roster<span class="count">11</span></a></li>
+          <li><a data-screen="activity">Activity<span class="count">23</span></a></li>
+          <li><a data-screen="settings">Settings<span class="count">—</span></a></li>
+        </ul>
+        <h3>Saved views</h3>
+        <ul>
+          <li><a>Forwards U21<span class="count">5</span></a></li>
+          <li><a>Last 5 matches<span class="count">5</span></a></li>
+          <li><a>Free agents<span class="count">23</span></a></li>
+        </ul>
+      </aside>
+
+      <!-- MAIN -->
+      <section class="main">
+        <!-- Screen 1: Roster -->
+        <div class="screen is-on" data-screen="roster">
+          <div class="hero">
+            <div>
+              <h1>Roster</h1>
+              <p class="lede">Eleven players selected for this weekend's match against the Greens. Two open slots remain — drag from Reserves to fill.</p>
+            </div>
+            <div class="actions">
+              <button class="btn btn--secondary">Share</button>
+              <button class="btn btn--primary">Publish lineup</button>
+            </div>
+          </div>
+          <div class="card-grid">
+            <article class="card"><div class="head"><span class="title">Kim Park</span><span class="pill">captain</span></div><p class="meta">#9 · Forward · age 27</p><p class="body">24 matches · 14 goals · 3 assists. Top scorer this season.</p></article>
+            <article class="card"><div class="head"><span class="title">Jonas Weber</span><span class="pill pill--ghost">starter</span></div><p class="meta">#8 · Midfield · age 24</p><p class="body">22 matches · 3 goals · 9 assists. Tempo setter.</p></article>
+            <article class="card"><div class="head"><span class="title">Marta Silva</span><span class="pill pill--ghost">starter</span></div><p class="meta">#4 · Defender · age 29</p><p class="body">23 matches · 1 goal · clean sheets in 11.</p></article>
+            <article class="card"><div class="head"><span class="title">Liam Chen</span><span class="pill pill--ghost">starter</span></div><p class="meta">#1 · Goalkeeper · age 31</p><p class="body">19 matches · 0.84 goals conceded per match.</p></article>
+            <article class="card"><div class="head"><span class="title">Amara Okafor</span><span class="pill pill--ghost">starter</span></div><p class="meta">#10 · Winger · age 22</p><p class="body">18 matches · 6 goals · 11 assists. Fastest player on roster.</p></article>
+            <article class="card"><div class="head"><span class="title">Open slot</span><span class="pill pill--ghost">draft</span></div><p class="meta">— · — · —</p><p class="body">Drag a player from Reserves to fill this position.</p></article>
+          </div>
+        </div>
+
+        <!-- Screen 2: Activity -->
+        <div class="screen" data-screen="activity">
+          <div class="hero">
+            <div>
+              <h1>Activity</h1>
+              <p class="lede">Every roster change, sync event, and squad note across the team. Filter by author, action, or date.</p>
+            </div>
+            <div class="actions">
+              <button class="btn btn--secondary">Export CSV</button>
+            </div>
+          </div>
+          <div class="activity">
+            <div class="activity-row"><span class="dot success"></span><span class="text"><strong>Kim Park</strong> <span class="who">confirmed match availability</span></span><span class="when">2m ago</span></div>
+            <div class="activity-row"><span class="dot info"></span><span class="text"><strong>Coach Reyes</strong> <span class="who">moved Marta Silva to starter</span></span><span class="when">12m ago</span></div>
+            <div class="activity-row"><span class="dot warn"></span><span class="text"><strong>Jonas Weber</strong> <span class="who">flagged a fitness concern</span></span><span class="when">1h ago</span></div>
+            <div class="activity-row"><span class="dot success"></span><span class="text"><strong>System</strong> <span class="who">auto-saved roster draft</span></span><span class="when">2h ago</span></div>
+            <div class="activity-row"><span class="dot info"></span><span class="text"><strong>Amara Okafor</strong> <span class="who">updated medical clearance</span></span><span class="when">3h ago</span></div>
+            <div class="activity-row"><span class="dot success"></span><span class="text"><strong>Coach Reyes</strong> <span class="who">published lineup for Sun 14:00 match</span></span><span class="when">yesterday</span></div>
+          </div>
+        </div>
+
+        <!-- Screen 3: Settings -->
+        <div class="screen" data-screen="settings">
+          <div class="hero">
+            <div>
+              <h1>Settings</h1>
+              <p class="lede">Workspace preferences for the active roster. Changes apply immediately and sync across devices.</p>
+            </div>
+          </div>
+          <div class="settings">
+            <div class="setting-row">
+              <div><div class="title">Auto-snapshot on edit</div><div class="sub">enables /rollback</div></div>
+              <span class="switch is-on" role="switch" aria-checked="true"></span>
+            </div>
+            <div class="setting-row">
+              <div><div class="title">Send anonymized usage data</div><div class="sub">helps improve the design tools</div></div>
+              <span class="switch" role="switch" aria-checked="false"></span>
+            </div>
+            <div class="setting-row">
+              <div><div class="title">Run a11y critic on save</div><div class="sub">slows save by ~200ms</div></div>
+              <span class="switch is-on" role="switch" aria-checked="true"></span>
+            </div>
+            <div class="setting-row">
+              <div><div class="title">Beta features</div><div class="sub">org admin only</div></div>
+              <span class="switch" role="switch" aria-checked="false"></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- STATUS BAR -->
+      <footer class="status">
+        <span class="dot" aria-hidden="true"></span>
+        <span>synced · 19:42:08</span>
+        <span class="spacer"></span>
+        <span>v0.12.3</span>
+        <span class="accent-text">match-day mode</span>
+        <span>11 / 11 confirmed</span>
+      </footer>
+    </div>
+  </main>
+
+  <script>
+    /* EDITMODE-BEGIN — agents may edit these defaults in-place */
+    const DEFAULTS = {
+      screen: 'roster',
+      density: 'cozy',
+      team: 'default',
+      theme: 'dark'
+    };
+    /* EDITMODE-END */
+
+    const root = document.documentElement;
+
+    // Theme toggle
+    root.setAttribute('data-theme', DEFAULTS.theme);
+    root.setAttribute('data-team',  DEFAULTS.team);
+    document.getElementById('theme-toggle').addEventListener('click', () => {
+      const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+    });
+
+    // Accent picker
+    document.querySelectorAll('.accent-swatch').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.accent-swatch').forEach(b => b.classList.remove('is-on'));
+        btn.classList.add('is-on');
+        root.setAttribute('data-team', btn.dataset.team);
+      });
+    });
+
+    // View switcher
+    document.querySelectorAll('.sidebar a[data-screen]').forEach(link => {
+      link.addEventListener('click', e => {
+        e.preventDefault();
+        const target = link.dataset.screen;
+        document.querySelectorAll('.sidebar a[data-screen]').forEach(a => a.classList.toggle('is-active', a === link));
+        document.querySelectorAll('.screen').forEach(s => s.classList.toggle('is-on', s.dataset.screen === target));
+      });
+    });
+
+    // Density toggle (segmented)
+    document.querySelectorAll('.segmented > button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        btn.parentElement.querySelectorAll('button').forEach(b => b.classList.toggle('is-on', b === btn));
+      });
+    });
+
+    // Settings switches
+    document.querySelectorAll('.switch').forEach(sw => {
+      sw.addEventListener('click', () => {
+        sw.classList.toggle('is-on');
+        sw.setAttribute('aria-checked', sw.classList.contains('is-on'));
+      });
+    });
+  </script>
+</body>
+</html>

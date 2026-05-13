@@ -1,0 +1,42 @@
+<!--
+SPECIMEN: logo
+DEMONSTRATES: brand wordmark + mark in their canonical contexts (dark frame, light frame, mark-only)
+COMPOSITION: 3 framed presentations — wordmark on --bg-1 (dark), wordmark on white (light), mark glyph alone
+COPY VOICE: tiny labels under each frame ("Wordmark — dark", "Wordmark — light", "Mark — glyph")
+WHEN SCAFFOLDED: conditional — scaffold IF assets/logos/ contains at least one *.svg (otherwise the specimen has nothing to display). The skill should ALSO generate a minimal placeholder SVG at scaffold time if a wordmark claim exists in copy.
+NOTES:
+  - The asset files referenced are placeholder paths — the skill rewrites these to point at the actual SVGs in assets/logos/ at scaffold time.
+  - If no wordmark exists yet, skip this specimen entirely rather than rendering a broken-image placeholder.
+  - Light frame uses an explicit white bg so the light-variant wordmark contrast is verifiable.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <title>Logo</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    body { padding: 24px; display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+    .frame { padding: 18px 22px; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-1); }
+    .light { background: #ffffff; }
+    .label { font-family: var(--font-mono); font-size: 11px; font-weight: 500; color: var(--fg-2); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 10px; display: block; }
+  </style>
+</head>
+<body class="app">
+  <div>
+    <div class="frame"><img src="../assets/logos/wordmark.svg" alt="" style="display: block; height: 28px;" /></div>
+    <span class="label">Wordmark — dark</span>
+  </div>
+  <div>
+    <div class="frame light"><img src="../assets/logos/wordmark-light.svg" alt="" style="display: block; height: 28px;" /></div>
+    <span class="label">Wordmark — light</span>
+  </div>
+  <div>
+    <div class="frame" style="display: flex; align-items: center; justify-content: center; height: 64px; width: 64px; padding: 0;">
+      <img src="../assets/logos/mark.svg" alt="" style="display: block; width: 36px; height: 36px;" />
+    </div>
+    <span class="label">Mark — glyph</span>
+  </div>
+</body>
+</html>

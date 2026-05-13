@@ -44,7 +44,7 @@ When you're generating, reviewing, or migrating UI:
 4. **Read the DS README** at `<designRoot>/<resolvedDsPath>/README.md` — it contains the project-specific aesthetic, hard-stop rules, and rationale that override anything generic you'd otherwise default to.
 5. **Read the DS SKILL.md** at `<designRoot>/<resolvedDsPath>/SKILL.md` — terse load-bearing summary the agent should treat as authoritative for hard rules + voice.
 6. **Browse specimens** at `<designRoot>/<resolvedDsPath>/preview/` — concrete examples of legal swatches, typography pairings, density ladders, component compositions.
-7. **Reference UI kits** at `<designRoot>/<resolvedDsPath>/ui_kits/{desktop,mobile}/` (when present) — idiomatic component compositions to learn the project's patterns.
+7. **Reference UI kits** at `<designRoot>/<resolvedDsPath>/preview/ui_kits-{desktop,mobile}-{index,showcase}.html` (when present) — `index` is the catalog/launcher, `showcase` is the full product mock with theme/accent switching. These flatten into the `preview/` dir at scaffold time; the source convention in the inspiration library is `platform-<platform>/ui_kits-<platform>-*.html`.
 
 ### Multi-DS lookup pattern
 
@@ -147,16 +147,89 @@ Compute `activeFamilies[]`:
 - `presence` — IF audience = pro tool AND Q1 mentions multiplayer / live / collab
 - `mono` — IF audience = developer tool, OR Q7 includes a monospace pairing
 
+### Accent color heuristic (Q6 "pick for me")
+
+When the user lets the skill pick the OKLCH accent, **read the mood cues in Q1 + Q5 + Q6 label before picking lightness**:
+
+| Mood cue | Target L | Target C | Notes |
+|---|---|---|---|
+| "burnt", "lava", "warm", "hedgehog", "amber", "rust", "fire" | **L 60–66** | C 0.16–0.20 | Saturated but not bright — reads as deep, not candy |
+| "electric", "vibrant", "neon", "highlighter" | L 72–80 | C 0.18–0.24 | Bright, sits forward on dark |
+| "muted", "earthy", "natural", "stone" | L 55–62 | C 0.08–0.13 | Low chroma; reads quiet |
+| "pastel", "soft", "creamy" | L 75–85 | C 0.08–0.12 | High L, low C |
+| default (no mood cue) | L 68–72 | C 0.14–0.18 | Mid-range, "tasteful default" |
+
+**Why this exists:** the studio bootstrap (2026-05-13) picked `oklch(72% 0.18 55)` for an "amber/lava PostHog-warmth" brief; the result rendered as candy/pumpkin orange because L was too high for the "burnt" cue. See `.ai/logs/system-reviews/setup-ds-studio-review.md`. Always **screenshot the accent in context** (step 7 below) before declaring the color final.
+
+### Namespace + parameterization patterns (when to use)
+
+The reference templates use a `.app` root class on `<body>` for namespacing. Two patterns the skill can opt into for richer DSes:
+
+**1. `.{project-slug}` root scoping (dugmate-style).** When the DS is meant to be **reusable across multiple host apps** (e.g. embedded as a widget, shared across a monorepo, or shipped as a standalone CSS bundle), scope every selector under a project-named class:
+
+```css
+.dugmate          { /* base reset + body font */ }
+.dugmate h1, .dugmate h2 { font-family: var(--font-display); }
+.dugmate .btn--primary  { background: var(--accent); }
+```
+
+This prevents token leakage when the DS coexists with another design system on the same page. The trade-off: every selector gains a prefix, and consumers must wrap their app in `<div class="dugmate">`. Set `config.json.rootClass` to the project slug if you opt in.
+
+**Default:** single-DS projects use `class="app"` — simple, no prefix needed.
+
+**2. `[data-team="<accent-variant>"]` retint (dugmate-style team accents).** When the DS supports **multiple branded variants** (per-team color in a sports app, per-tenant color in B2B, per-product color in a portfolio), declare each variant as an attribute selector that overrides the accent family:
+
+```css
+[data-team="cyan"]    { --accent: oklch(72% 0.16 220); --accent-hover: oklch(68% 0.16 220); --accent-fg: oklch(14% 0.04 220); }
+[data-team="emerald"] { --accent: oklch(70% 0.16 150); --accent-hover: oklch(66% 0.16 150); --accent-fg: oklch(14% 0.04 150); }
+```
+
+This honors the one-accent rule (only `--accent*` family is overridden, never adds `--accent2`), but lets the live UI pick from a small palette. The `platform-desktop/ui_kits-desktop-showcase.html` reference template includes an accent picker that flips `data-team` on `<html>`.
+
+**Default:** skip this section unless the discovery brief explicitly mentions "per-team", "per-tenant", or "multi-brand". Most DSes don't need it.
+
+**3. `[data-theme="dark|light"]` parameterization.** Always emit at least `[data-theme="dark"]` (or `[data-theme="light"]`, whichever is the default). When `config.json.themeDefault == "both"`, emit both blocks with identical token shapes but different surface/text values. The completeness-critic V18 enforces this.
+
 ### Scaffold (dynamic)
+
+The inspiration library at `plugins/design/templates/design-system-inspiration/` has **11 category dirs** holding **~67 reference HTML specimens**. The skill walks the categories below in this order, picks files matching the project profile, and **GENERATES** project-flavored versions in `system/<ds>/preview/`. **Scaffold output is flat** — category prefixes (`foundations/`, `audience-developer/`, etc.) live only in the library; the scaffolded files all land directly under `preview/`. See `_MAPPING.md` for the full inventory and gating rules.
 
 For each file in the computed set:
 
-- **Core files** (README.philosophy.md, README.orchestration.md, SKILL.md, INDEX.md, config.json, colors_and_type.css): substitute placeholders from the discovery payload into the `.tpl` files in `templates/design-system-inspiration/core/`. If `mdcc` is available on PATH, shell out to `mdcc design init --discovery-payload <path>` (which uses the CLI's copy-tree helper). Else inline Write.
-- **Specimen files** (under `core/preview/` and `universal/`): read the corresponding reference in the inspiration library, then **GENERATE a fresh project-flavored version** — same layout/composition, project's tokens, project's copy voice. **No placeholder copy** ("Lorem Solutions Inc.", "Click here", etc.) in the output.
+- **Core files** (under `core/`): substitute placeholders from the discovery payload into the `.tpl` files. If `mdcc` is available on PATH, shell out to `mdcc design init --discovery-payload <path>`. Else inline Write.
+- **Specimen files** (under all preview-bearing dirs): read the corresponding reference in the inspiration library, then **GENERATE a fresh project-flavored version** — same layout/composition, project's tokens, project's copy voice. **No placeholder copy** ("Lorem Solutions Inc.", "Click here", etc.) in the output.
+
+Scaffold sources (walk in order, apply gate, generate):
+
+1. **`core/preview/*`** — always-on. 10 preview specimens (colors-{text,surfaces,accent}, type-scale, spacing-scale, motion, components-{buttons,cards,inputs}) + `_layout.css` chrome.
+2. **`foundations/*`** — always-on for any `completenessProfile != minimal`. 8 specimens: borders, elevation, focus, grid, iconography, opacity, radii, selection. **Re-curate iconography** to project domain (developer → terminal/file/branch; consumer → home/search; pro → roster/calendar).
+3. **`universal/*`** — always-on. 6 components (toggles, dialogs, tooltips, tables, callout, empty-state) + `logo.html` IF wordmark/logotype claim exists.
+4. **`status/*`** — IF `"status" ∈ activeFamilies` (default-on). 3 files: colors-status, components-status, skeletons.
+5. **`audience-<q2>/*`** — gated on Q2 audience. Pick exactly ONE of audience-developer / audience-pro / audience-consumer. 5–6 files each.
+6. **`platform-<q3>/*`** — gated on Q3 platforms. desktop is default-on (2 components + 2 ui_kit entries). mobile adds 4 components + 2 ui_kit entries.
+7. **`theme-both/*`** — IF Q4 theme = `both equal`. 1 file: colors-themes-side-by-side.
+8. **`patterns/*`** and **`meta/*`** — opt-in only. Not auto-scaffolded; user requests them explicitly via `/design:new` or `config.extensions[]`.
+
+**ui_kit handling** — `platform-<platform>/ui_kits-<platform>-{index,showcase}.html` is **not optional** for any in-scope platform. The two files serve distinct roles:
+- `ui_kits-<platform>-index.html` — **catalog/launcher** (links to platform-specific specimens)
+- `ui_kits-<platform>-showcase.html` — **full product mock** (multi-screen + theme/accent picker — the highest-leverage "DS in use" artifact)
+
+Both flatten into `system/<ds>/preview/` at scaffold time. **Never scaffold a platform-* directory as an empty stub.** Empty `ui_kits/<platform>/` is the regression the studio bootstrap produced — completeness-critic V12/V13 enforces non-emptiness.
+
+Typical output: 18–30 scaffolded files (10 core + 8 foundations + 6 universal + 5–6 audience + 2–4 platform/ui_kit + 0–3 conditional family). See `_MAPPING.md` "Typical scaffold sizes" for per-profile counts.
 
 Write `<designRoot>/config.json` with `extensions: []`, `completenessProfile: "standard"`, computed `activeFamilies[]`, and the new DS entry in `designSystems[]`.
 
 Write `<designRoot>/system/<ds>/SKILL.md` with `name: ${ds}-design` (or similar slug derived from the project label).
+
+### Copy claim → asset receipt
+
+Before finishing scaffold, **scan the generated README + SKILL.md + specimen ledes for these substrings**: `mascot`, `glyph`, `logotype`, `wordmark`, `illustration`, `hedgehog`, `character`. For every match:
+
+- If `assets/glyphs/` is empty AND no `*.svg` exists in `assets/`, **generate at least one minimal SVG** to back the claim. A simple geometric mark (8–16 lines of SVG) is enough — the goal is "claim has an artifact behind it", not "world-class illustration".
+- Alternative: rewrite the copy to remove the claim if no asset is reasonable. Never let "hedgehog mascot energy" survive in copy with an empty `assets/glyphs/`.
+
+This catches the self-injected-puffery drift the studio bootstrap produced.
 
 **Run completeness-critic.** Spawn `design-system-completeness-critic` as a subagent with:
 
@@ -169,6 +242,51 @@ all_ds:      false
 ```
 
 The critic emits a JSON verdict. If it returns **blockers**, the bootstrap flow surfaces them in the next-step block and recommends the user re-run with `--force` after addressing each. Warnings are listed in the completion message but do NOT block. Tier 3 (free-form) acknowledgements are listed informationally.
+
+### Visual sanity check (mandatory — agent-browser screenshots)
+
+> **This step exists because completeness-critic is structural only.** It cannot see that the rendered output looks like a generic shadcn page. The screenshots feed the aesthetic critics in the next step AND give the user a fast visual proof.
+
+**If `agent-browser` is not on PATH**, surface this as a warning in the next-step block ("install agent-browser for visual verification") and skip to the aesthetic critic step using only the source HTML — but make the gap explicit to the user.
+
+When available:
+
+1. **Boot the dev server** (or reuse if running). Read `<designRoot>/_server.json` for a live port; otherwise spawn `node plugins/design/dev-server/server.mjs --root <repo>` on the first free port from 4321 with `NO_OPEN=1`. Wait 1.5s, hit `/_health`, confirm `project` matches.
+2. **Screenshot 3 signature specimens** to `<designRoot>/_history/_system/000-bootstrap-screenshots/`:
+   - `colors-accent.png` — proves the accent color renders as intended
+   - `empty-state.png` — proves the brand/personality moment (mascot, copy voice) lands
+   - `ui_kits-desktop-showcase.png` — proves the DS works on a real product surface (the multi-screen showcase, not the catalog launcher)
+
+   ```bash
+   agent-browser open "http://localhost:<port>/.design/system/<ds>/preview/colors-accent.html"
+   agent-browser screenshot "<designRoot>/_history/_system/000-bootstrap-screenshots/colors-accent.png"
+   # … repeat for the other two
+   ```
+
+3. **Read each screenshot back** with the `Read` tool so they're in your visual context. Direct visual scrutiny BEFORE you spawn the aesthetic critics — if the accent is obviously the wrong hue or the layout is obviously broken, fix it in source NOW rather than asking critics to confirm what you can already see.
+
+### Aesthetic critic panel (mandatory)
+
+> **The completeness-critic does not catch aesthetic gaps.** It returns `pass` for shadcn-generic output. This step is non-negotiable, especially when discovery captured strong references (PostHog, Zed, Linear, Figma, Affinity, Vercel, Raycast, etc.).
+
+Spawn these critics **in parallel** (single message, multiple Agent calls) on one signature specimen — default target is `colors-accent.html` (the accent showcase). When the bootstrap produced a `ui_kits-desktop-showcase.html` (the full product mock), run a second pass on it too — it's the highest-fidelity "DS in use" artifact and the most useful target for graphic-design + signature-moment evaluation.
+
+| Critic | Subagent type | What it catches |
+|---|---|---|
+| `signature-moment-critic` | `design:design:signature-moment-critic` | Brand prominence, hero moments, mock fidelity, specificity — the "is this portfolio-worthy?" axis |
+| `graphic-design-critic` | `design:design:graphic-design-critic` | Composition, hierarchy, balance, density, rhythm, white-space discipline |
+| `typography-critic` | `design:design:typography-critic` | Add when DS has dedicated `type-mono.html` or display-typography moments |
+| `copy-critic` | `design:design:copy-critic` | Add when discovery Q8 chose a distinctive voice (hacker flair / B2B formal / explanatory-friendly) — catches claim-vs-content drift |
+
+**Surface their verdicts in the next-step block.** Use this threshold matrix:
+
+| Outcome | Action |
+|---|---|
+| All critics pass, aspiration_score ≥ 3.5 | Print "Bootstrap complete — aesthetic check passed" |
+| Any graphic-design blocker, OR aspiration_score < 3.0 | Print "Bootstrap complete with aesthetic warnings — DS scaffold is structurally valid but does NOT match the brief's quality bar yet. Run `/design:edit` on the flagged specimens before calling this done." Surface the top 3 blockers verbatim. |
+| Both completeness AND aesthetic critics flagged blockers | Print "Bootstrap produced a structurally broken AND aesthetically weak DS. Recommend `/design:setup-ds <name> --force` after revising the brief." |
+
+**Never silently report "Bootstrap complete" when aspiration_score < 3.0.** That's the regression mode the studio bootstrap landed in.
 
 ### Post-Flight (slim)
 
@@ -183,8 +301,28 @@ Everything else (CLAUDE.md, .ai/, agent-browser install hints) was handled durin
 ```
 Bootstrap complete. .design/ scaffolded at <repo>/.design/system/<ds>/.
   <N> specimen pages under preview/ (audience: <Q2>, platforms: <Q3>)
+  <M> ui_kit compositions under ui_kits/ (the "DS in use" artifacts)
   config.json: 14 fields populated (incl. extensions, completenessProfile, activeFamilies, designSystems[])
-  completeness-critic: 0 blockers, <N> warnings
+
+Structural gate — design-system-completeness-critic:
+  <N> blockers, <N> warnings
+
+Aesthetic gate — critic panel (run on <signature specimen>):
+  signature-moment:    aspiration <X.Y>/5  (blockers: <N>, warnings: <N>)
+  graphic-design:      <N> blockers, <N> warnings
+  typography:          <N> blockers, <N> warnings    [if applicable]
+  copy:                <N> blockers, <N> warnings    [if applicable]
+
+Visual proof — screenshots saved to .design/_history/_system/000-bootstrap-screenshots/:
+  colors-accent.png · empty-state.png · ui_kits-desktop-index.png
+
+[IF aspiration < 3.0 OR any graphic-design blocker:]
+⚠ Aesthetic gate did NOT pass. The DS is structurally valid but does not match the brief's quality bar.
+  Top blockers:
+    1. <blocker 1 summary>
+    2. <blocker 2 summary>
+    3. <blocker 3 summary>
+  Recommended: /design:edit "<specific fix>" --perfect, then re-run /design:critic to confirm.
 
 Daily verbs:
   /design:edit "<feedback>"   — iterate on a specimen

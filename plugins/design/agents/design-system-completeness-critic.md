@@ -65,7 +65,21 @@ ACCENT_FAMILIES=$(grep -oE '^\s*--accent[a-z0-9-]*\b' "$TOKENS" | sed 's/-fg$//;
 [[ "$ACCENT_FAMILIES" -le 1 ]] || echo "C7 fail: multiple accent families detected"
 ```
 
-(The grep for C7 normalizes `--accent`, `--accent-hover`, `--accent-active`, `--accent-fg` to one family. `--accent2` / `--accent-secondary` count as separate families → fail.)
+(The grep for C7 normalizes `--accent`, `--accent-hover`, `--accent-active`, `--accent-fg`, `--accent-glow`, `--accent-edge` to one family. `--accent2` / `--accent-secondary` count as separate families → fail.)
+
+**Run V20 via `grep`:**
+
+```bash
+# Claim → asset receipt: scan README + SKILL.md for brand-asset claims; require backing files.
+CLAIM_RE='mascot|glyph|logotype|wordmark|illustration|hedgehog|character'
+CLAIMS=$(grep -lEi "$CLAIM_RE" "$DS_ROOT/README.md" "$DS_ROOT/SKILL.md" 2>/dev/null | wc -l)
+if [[ "$CLAIMS" -gt 0 ]]; then
+  ASSETS=$(find "$DS_ROOT/assets/glyphs" "$DS_ROOT/assets/logos" -type f \( -name '*.svg' -o -name '*.png' -o -name '*.webp' -o -name '*.jpg' \) 2>/dev/null | wc -l)
+  if [[ "$ASSETS" -eq 0 ]]; then
+    echo "V20 warn: copy claims a mascot/glyph/wordmark/illustration but assets/{glyphs,logos}/ is empty"
+  fi
+fi
+```
 
 ## Tier 2 — Conventional (warning, gated)
 
@@ -81,17 +95,25 @@ Profile gate: `minimal` skips all of Tier 2; `standard` runs everything except V
 | V6 | `<ds_root>/preview/spacing-scale.html` exists | standard+ | always |
 | V7 | `<ds_root>/preview/components-*.html` exists (≥3 components) | standard+ | always |
 | V8 | `<ds_root>/preview/motion.html` exists | standard+ | always |
-| V9 | `<ds_root>/preview/status-*.html` OR `colors-status.html` exists | standard+ | IF `"status" ∈ activeFamilies` |
+| V9 | `<ds_root>/preview/colors-status.html` (or `status-*.html`) exists | standard+ | IF `"status" ∈ activeFamilies` |
 | V10 | `<ds_root>/preview/colors-presence.html` exists | standard+ | IF `"presence" ∈ activeFamilies` |
 | V11 | `<ds_root>/preview/type-mono.html` exists | standard+ | IF `"mono" ∈ activeFamilies` |
-| V12 | `<ds_root>/ui_kits/desktop/` exists and is non-empty | standard+ | IF `"desktop" ∈ inferred platforms (heuristic from README)` |
-| V13 | `<ds_root>/ui_kits/mobile/` exists and is non-empty | standard+ | IF `"mobile" ∈ inferred platforms` |
+| V11a | `<ds_root>/preview/radii.html` exists | standard+ | always — foundations |
+| V11b | `<ds_root>/preview/elevation.html` exists | standard+ | always — foundations |
+| V11c | `<ds_root>/preview/iconography.html` exists | standard+ | always — foundations |
+| V11d | `<ds_root>/preview/focus.html` exists | standard+ | always — foundations (focus-visible token + ring discipline) |
+| V11e | `<ds_root>/preview/skeletons.html` exists | standard+ | IF `"status" ∈ activeFamilies` (lives in status/ family) |
+| V11f | `<ds_root>/preview/components-status.html` exists | standard+ | IF `"status" ∈ activeFamilies` |
+| V11g | `<ds_root>/preview/logo.html` exists | standard+ | IF wordmark/logotype claim in README/SKILL.md OR `assets/logos/*.svg` exists |
+| V12 | `<ds_root>/preview/ui_kits-desktop-showcase.html` exists (full product mock, NOT just the catalog `ui_kits-desktop-index.html`) | standard+ | IF `"desktop" ∈ inferred platforms` (default-on); missing → warning |
+| V13 | `<ds_root>/preview/ui_kits-mobile-showcase.html` exists | standard+ | IF `"mobile" ∈ inferred platforms`; missing → warning |
 | V14 | `<ds_root>/assets/{logos,glyphs}/` exists (may be empty) | standard+ | always |
 | V15 | `config.json` has all the bootstrap fields (`extensions`, `completenessProfile`, `activeFamilies`, `designSystems`, `defaultDesignSystem`) | standard+ | per missing → 1 warning |
 | V16 | `<ds_root>/README.md` has sections matching `## Voice`, `## Hard rules`, `## Hard-stops` (any 2 of 3) | **strict only** | always |
 | V17 | Tokens CSS has `@media (prefers-reduced-motion: reduce)` guard | standard+ | always |
 | V18 | Tokens CSS has both `dark` and `light` blocks | standard+ | IF `config.themeDefault == "both"` (currently encoded informally — check by looking for both `[data-theme="dark"]` and `[data-theme="light"]` selectors) |
 | V19 | `activeFamilies[]` is non-empty | standard+ | always — empty array is almost always a misconfiguration |
+| V20 | **Claim → asset receipt.** If `<ds_root>/README.md` or `<ds_root>/SKILL.md` contains the substrings `mascot`, `glyph`, `logotype`, `wordmark`, `illustration`, `hedgehog`, or `character`, then `<ds_root>/assets/glyphs/` OR `<ds_root>/assets/logos/` MUST contain at least one file (`*.svg`, `*.png`, `*.webp`). Empty assets dirs while README claims a mascot/illustration is the "self-injected puffery" anti-pattern. | standard+ | per match → 1 warning |
 
 **Warning, not blocker.** The bootstrap flow can still succeed with up to ~10 Conventional warnings — they surface as "consider polishing X" in the post-flight, not as a hard-stop.
 

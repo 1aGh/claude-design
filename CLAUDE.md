@@ -88,7 +88,7 @@ When the user asks you to scaffold a design system for ANY project, do not impro
 - **`/design:setup-ds <name> "[brief]"`** — dedicated command for creating a DS (first or additional). Auto-invokes `init` first if needed.
 - **Auto-load skill `design-system` (BOOTSTRAP mode)** when `/design:edit "..."` or `/design:new "..."` is invoked against a `<designRoot>/system/` that has no DS yet.
 
-Eight rules govern the result:
+Nine rules govern the result:
 
 - **Onboard before bootstrap.** `/design:init` is the gate: it runs dependency pre-flight, surfaces install hints, and writes a skeleton `.design/config.json` with empty `designSystems: []`. Only after that does `/design:setup-ds` (or auto-load) run DS bootstrap. Onboard is auto-invoked transparently when other commands detect a missing config.
 
@@ -98,11 +98,13 @@ Eight rules govern the result:
 
 - **Inspiration library, not substrate.** The template at `plugins/design/templates/design-system-inspiration/` is a REFERENCE inventory. Skill (bootstrap mode) reads it as "this is what a good specimen looks like", then GENERATES project-flavored files based on discovery answers. Do not naively copy reference files; do not include placeholder copy ("Lorem", "Click here", "Acme Corp.") in scaffolded output.
 
-- **Dynamic scaffold count.** A project gets 10–22 specimens out of the library (currently 16 specimens populated — Core 10 + Universal 6 — full ~62-file library lands in follow-up phases). Selection driven by `_MAPPING.md` based on discovery answers. Marketing sites get fewer; pro-tools with multiplayer get more. Use `config.json`'s `activeFamilies[]` to know what's in scope.
+- **Dynamic scaffold count.** A project gets 11–24 specimens out of the library (Core 10 preview + Universal 6 preview + 1–2 `ui_kits/<platform>/index.html` always-on compositions). Selection driven by `_MAPPING.md` based on discovery answers. Marketing sites get fewer; pro-tools with multiplayer get more. Use `config.json`'s `activeFamilies[]` to know what's in scope.
 
 - **Single-DS default dirname is the literal `project`.** Multi-DS opt-in uses `system/<name>/` (kebab-case slug matching a `config.designSystems[]` entry). Never use `system/<slug-of-project-name>/` — that's the D2 divergence the completeness-critic flags as a blocker (Tier 1, C2).
 
 - **Three-tier compliance.** `design-system-completeness-critic` enforces three tiers: Core (blocker, regardless of profile), Conventional (warning, gated by `activeFamilies` + `completenessProfile`), Free-form (no check, acknowledged). Lets the system stay extensible without weakening compliance. Profile knob (`completenessProfile: minimal | standard | strict`) lives in `config.json`.
+
+- **Bootstrap success ≠ DS success.** `design-system-completeness-critic` is **structural-only** — it cannot catch shadcn-generic aesthetics, missing brand prominence, claim-without-artifact drift, or layouts that read as "lonely centered column in a dark void". The bootstrap flow therefore ALSO auto-runs (a) `agent-browser` screenshots of 3 signature specimens into `<designRoot>/_history/_system/000-bootstrap-screenshots/`, and (b) an aesthetic critic panel — at minimum `signature-moment-critic` + `graphic-design-critic` — on `colors-accent.html` and `ui_kits/desktop/index.html`. Aspiration_score < 3.0 OR any graphic-design blocker surfaces as a **named warning** in the next-step block, NOT as a silent pass. See `.ai/logs/system-reviews/setup-ds-studio-review.md` (2026-05-13) for the canonical incident this rule patches; the bootstrap flow shipped pre-fix and produced a "structurally valid + aesthetically weak" output that scored 2.3/5 on signature-moment and 0/5 on brand prominence.
 
 - **Daily verb is `/design:edit`, not `/design`.** The bare `/design` form was a v0.8 one-version compat stub; **removed in v0.9**. Cross-reference docs with `/design:edit` only. Renamed verbs: `/design:edit` (was `/design` in v0.8), `/design:setup-docs` (was `/design:docs` in v0.8).
 

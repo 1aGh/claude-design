@@ -1,0 +1,237 @@
+<!--
+SPECIMEN: ui_kits/mobile/index
+DEMONSTRATES: Core tokens in a mobile product surface (375 × 812, iPhone-class artboard)
+COMPOSITION: full-bleed mobile screen with top bar (status + nav), main scroll content (header + card list), bottom tab bar
+  - top bar (48px tall):     back chevron + screen title centered + action button right
+  - main content:            section header + scrollable card list with realistic data rows
+  - bottom tab bar (64px):   3–4 tabs with icon + label; active tab uses --accent
+COPY VOICE: real product strings — same family-flavored copy as desktop counterpart; substitute during scaffold
+WHEN SCAFFOLDED: conditional on Q3 platforms ∈ {mobile + desktop, tablet-first}
+NOTES:
+  - Touch targets ≥ 44×44 — the tab bar items and the action button are sized accordingly.
+  - The card list is the primary content pattern on mobile; cards are full-width with 16px gutters.
+  - Bottom tab bar uses --bg-1 with a 1px top border in --border-subtle; the active tab is the only place --accent fills a region.
+  - This is a single-screen artboard, not a multi-screen flow — the bootstrap output shows the DS on one mobile surface to prove tokens compose at this size.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>UI kit · mobile · index</title>
+  <link rel="stylesheet" href="../core/colors_and_type.css" />
+  <link rel="stylesheet" href="../core/preview/_layout.css" />
+  <style>
+    body { padding: 0; margin: 0; background: oklch(8% 0.005 60); display: grid; place-items: start center; min-height: 100vh; }
+    .specimen { max-width: none; margin: 0; padding: var(--space-5) 0; }
+
+    .artboard {
+      width: 375px;
+      height: 812px;
+      background: var(--bg-0);
+      border: 1px solid var(--border-default);
+      border-radius: 40px;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: 48px 1fr 64px;
+      box-shadow: var(--shadow-lg);
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: 0 var(--space-3);
+      background: var(--bg-1);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .icon-btn {
+      min-width: 44px;
+      min-height: 44px;
+      display: grid;
+      place-items: center;
+      background: transparent;
+      border: 0;
+      color: var(--fg-1);
+      cursor: pointer;
+      border-radius: var(--radius-sm);
+      transition: background var(--dur-flip) var(--ease-out);
+      font-family: var(--font-mono);
+      font-size: var(--type-md);
+    }
+    .icon-btn:hover { background: var(--bg-2); color: var(--fg-0); }
+    .topbar .title {
+      flex: 1;
+      text-align: center;
+      font-family: var(--font-display);
+      font-size: var(--type-md);
+      font-weight: 600;
+      letter-spacing: var(--tracking-display);
+      color: var(--fg-0);
+    }
+
+    .main {
+      overflow-y: auto;
+      padding: var(--space-3);
+    }
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin: 0 0 var(--space-3);
+      padding: 0 var(--space-2);
+    }
+    .section-head h2 {
+      font-family: var(--font-display);
+      font-size: var(--type-lg);
+      line-height: var(--lh-lg);
+      letter-spacing: var(--tracking-display);
+      font-weight: 600;
+      margin: 0;
+      color: var(--fg-0);
+    }
+    .section-head .meta {
+      font-family: var(--font-mono);
+      font-size: var(--type-xs);
+      color: var(--fg-2);
+    }
+
+    .row-card {
+      background: var(--bg-1);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: var(--space-3) var(--space-4);
+      margin: 0 0 var(--space-2);
+      display: grid;
+      grid-template-columns: 36px 1fr auto;
+      align-items: center;
+      gap: var(--space-3);
+      transition: background var(--dur-flip) var(--ease-out);
+    }
+    .row-card:hover { background: var(--bg-2); }
+    .row-card .avatar {
+      width: 36px; height: 36px;
+      border-radius: var(--radius-pill);
+      background: var(--bg-3);
+      border: 1px solid var(--border-default);
+      display: grid; place-items: center;
+      color: var(--fg-0);
+      font-size: var(--type-xs);
+      font-weight: 600;
+      font-family: var(--font-mono);
+    }
+    .row-card .name { color: var(--fg-0); font-size: var(--type-sm); font-weight: 500; }
+    .row-card .sub  { color: var(--fg-2); font-size: var(--type-xs); font-family: var(--font-mono); }
+    .row-card .stat { color: var(--accent); font-family: var(--font-mono); font-size: var(--type-sm); font-weight: 500; min-width: 44px; text-align: right; }
+
+    .tabbar {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      background: var(--bg-1);
+      border-top: 1px solid var(--border-subtle);
+    }
+    .tab {
+      display: grid;
+      justify-items: center;
+      gap: 2px;
+      padding: var(--space-2) 0;
+      background: transparent;
+      border: 0;
+      cursor: pointer;
+      color: var(--fg-2);
+      font: inherit;
+      transition: color var(--dur-flip) var(--ease-out);
+    }
+    .tab .icon { font-family: var(--font-mono); font-size: var(--type-md); }
+    .tab .label { font-size: var(--type-xs); font-family: var(--font-mono); letter-spacing: var(--tracking-caps); text-transform: uppercase; }
+    .tab.is-active { color: var(--accent); }
+  </style>
+</head>
+<body class="app" data-theme="dark">
+  <main class="specimen">
+    <div class="artboard">
+      <header class="topbar">
+        <button class="icon-btn" aria-label="Back">←</button>
+        <div class="title">Squad</div>
+        <button class="icon-btn" aria-label="Filter">⌄</button>
+      </header>
+
+      <section class="main">
+        <div class="section-head">
+          <h2>Starting XI</h2>
+          <span class="meta">11 / 11</span>
+        </div>
+
+        <article class="row-card">
+          <div class="avatar">KP</div>
+          <div>
+            <div class="name">Kim Park</div>
+            <div class="sub">#9 · forward · captain</div>
+          </div>
+          <div class="stat">14 g</div>
+        </article>
+        <article class="row-card">
+          <div class="avatar">JW</div>
+          <div>
+            <div class="name">Jonas Weber</div>
+            <div class="sub">#8 · midfield</div>
+          </div>
+          <div class="stat">9 a</div>
+        </article>
+        <article class="row-card">
+          <div class="avatar">MS</div>
+          <div>
+            <div class="name">Marta Silva</div>
+            <div class="sub">#4 · defender</div>
+          </div>
+          <div class="stat">11 cs</div>
+        </article>
+        <article class="row-card">
+          <div class="avatar">LC</div>
+          <div>
+            <div class="name">Liam Chen</div>
+            <div class="sub">#1 · goalkeeper</div>
+          </div>
+          <div class="stat">0.84</div>
+        </article>
+        <article class="row-card">
+          <div class="avatar">AO</div>
+          <div>
+            <div class="name">Amara Okafor</div>
+            <div class="sub">#10 · winger</div>
+          </div>
+          <div class="stat">6 g</div>
+        </article>
+
+        <div class="section-head" style="margin-top: var(--space-5);">
+          <h2>Bench</h2>
+          <span class="meta">7 ready</span>
+        </div>
+        <article class="row-card">
+          <div class="avatar">RA</div>
+          <div>
+            <div class="name">Rita Alvares</div>
+            <div class="sub">#15 · midfield</div>
+          </div>
+          <div class="stat">2 g</div>
+        </article>
+        <article class="row-card">
+          <div class="avatar">TK</div>
+          <div>
+            <div class="name">Tom Kwon</div>
+            <div class="sub">#16 · defender</div>
+          </div>
+          <div class="stat">0 g</div>
+        </article>
+      </section>
+
+      <nav class="tabbar">
+        <button class="tab is-active"><span class="icon" aria-hidden="true">⌘</span><span class="label">Squad</span></button>
+        <button class="tab"><span class="icon" aria-hidden="true">▦</span><span class="label">Matches</span></button>
+        <button class="tab"><span class="icon" aria-hidden="true">⟐</span><span class="label">Scout</span></button>
+        <button class="tab"><span class="icon" aria-hidden="true">≡</span><span class="label">More</span></button>
+      </nav>
+    </div>
+  </main>
+</body>
+</html>
