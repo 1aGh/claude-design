@@ -54,11 +54,17 @@ These files are user-facing runtime state — when changing the server, keep the
 
 The server fails loud if launched from a directory without `.design/` rather than serving an empty UI — preserve this behaviour, it's load-bearing for debugging "wrong project root" cases.
 
-### Flow command naming
+### Plugin command naming
 
-Every non-daily `/flow:*` command uses a `<group>-<verb>` prefix; daily-cycle commands stay terse. Categories are declared in each command's `category:` frontmatter field and catalogued in [`plugins/flow/CATEGORIES.md`](./plugins/flow/CATEGORIES.md). `/flow:help` renders the live grouped index from frontmatter.
+Two conventions apply to every command, skill, and agent under `plugins/{flow,design}/`. See [DDR-004](./.ai/decisions/DDR-004-flow-command-naming-prefix-convention.md) (group-prefix filename) and [DDR-006](./.ai/decisions/DDR-006-plugin-namespace-in-name-frontmatter.md) (plugin-namespace in `name:`).
 
-Subdirectory namespacing for slash commands is **not supported by Claude Code** ([issue #2422](https://github.com/anthropics/claude-code/issues/2422) closed not-planned, [#44678](https://github.com/anthropics/claude-code/issues/44678) open feature request). The strict prefix is the working substitute — typing `/flow:bug-` autocompletes only the bug-* members. When adding a new command, pick its group from `CATEGORIES.md`, name the file `<group>-<verb>.md`, and set `name:`, `category:`, `description:` in the frontmatter. Daily-promotion (no prefix) is reserved for verbs called every feature cycle.
+**1. `name:` frontmatter MUST be `<plugin>:<slug>`.** Every file declares its fully-qualified slash name in the `name:` field — e.g. `name: flow:resume`, `name: design:edit`, `name: flow:a11y-auditor`. **Without the explicit `<plugin>:` prefix**, Claude Code registers the bare slug and collides with built-ins like `/resume` or `/init` — see Claude Code [issue #22063](https://github.com/anthropics/claude-code/issues/22063). This is load-bearing — forgetting the prefix is a silent regression. Both `/flow:help` and `/design:help` parse `name:` and render `/<name>` directly (no template-side prefix).
+
+**2. Non-daily filenames use `<group>-<verb>`.** Daily verbs (called every feature cycle) stay terse — `plan`, `execute`, `done`, `validate`, etc. Everything else gets a group prefix matching the command's `category:` field — `bug-fix`, `setup-prd`, `record-ddr`, `maintain-clean`. Categories are catalogued in [`plugins/flow/CATEGORIES.md`](./plugins/flow/CATEGORIES.md) and [`plugins/design/CATEGORIES.md`](./plugins/design/CATEGORIES.md). The strict prefix substitutes for the subdirectory namespacing that Claude Code [doesn't support](https://github.com/anthropics/claude-code/issues/2422) (closed not-planned; [#44678](https://github.com/anthropics/claude-code/issues/44678) is the open feature request) — typing `/flow:bug-` autocompletes only `bug-*` members.
+
+**Lone exception:** `init` (both `/flow:init` and `/design:init`) is a bare-verb that mirrors Claude Code's built-in `/init`. The plugin-namespace prefix (`flow:` / `design:`) keeps them unambiguous against the built-in, so the filename doesn't need a `setup-` group prefix. Documented in both `CATEGORIES.md` files. No other bare-verb exceptions without a DDR.
+
+When adding a new command/skill/agent: pick the group from `CATEGORIES.md`, name the file `<group>-<verb>.md`, and set frontmatter `name: <plugin>:<filename-sans-md>`, `category:`, `description:`.
 
 ### Flow plugin: `<project>` placeholder convention
 
