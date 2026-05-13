@@ -114,6 +114,8 @@ Twelve rules govern the result:
 
 - **Daily verb is `/design:edit`, not `/design`.** The bare `/design` form was a v0.8 one-version compat stub; **removed in v0.9**. Cross-reference docs with `/design:edit` only. Renamed verbs: `/design:edit` (was `/design` in v0.8), `/design:setup-docs` (was `/design:docs` in v0.8).
 
+- **`/design:edit` screenshots BEFORE the edit when a selection is captured.** If `_active.json.selected` is non-null, OR the feedback names a specific UI element / asks for a screenshot, OR the feedback compares ≥ 2 surfaces, the orchestrator MUST fire `agent-browser open + screenshot --full` and `Read` the PNG before any Edit call. Selection JSON describes WHAT (selector + outerHTML + bounds); only the screenshot describes WHERE-IN-CONTEXT. Spec step is `plugins/design/commands/edit.md` step 3.5. Skipping this rule produced the studio iter-4 sidebar-active "mismash" — 3 follow-up rollback iterations on a single nav-item style. See `.ai/logs/system-reviews/design-edit-screenshot-habits-review.md`.
+
 Reference: `/Volumes/D/git/dugmate/.design/system/project/` (the canonical real-world example).
 Library: `plugins/design/templates/design-system-inspiration/`.
 Skill: `plugins/design/skills/design-system/SKILL.md`.

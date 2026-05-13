@@ -323,6 +323,8 @@ Apply the change to that element only — match the selector / dom path. Do NOT 
 
 Use the Edit tool with `old_string` matching a unique substring of the selected element's HTML. If the outerHTML appears multiple times verbatim, fall back to the longer dom-path match (find the parent context that disambiguates).
 
+**Selection screenshot is mandatory** before building the scoped prompt. The selection JSON gives you WHAT (selector + outerHTML + bounds); only a screenshot gives you WHERE-IN-CONTEXT (neighbors, alignment, the visual conversation the element is part of). Fire `agent-browser open + screenshot --full` and `Read` the PNG into your context BEFORE the Edit tool call. See `/design:edit` step 3.5 for the canonical bash snippet. Editing from JSON describe alone is *tapping in the dark*; the studio iter-4 sidebar-active-item incident (3 rollback iterations before landing) is the canonical cost of skipping. Reference: `.ai/logs/system-reviews/design-edit-screenshot-habits-review.md`.
+
 ### `/design:new <name> "<brief>"` — scaffold new canvas project
 
 Creates a brand-new HTML canvas file in `<designRoot>/<newCanvasDir>/<Name>.html` (or `<newComponentDir>/<Name>.jsx` if the user explicitly says component). Generated via the `frontend-design` Skill (preferred) or the orchestrator's direct authoring (documented fallback) — see "Generation invocation" in Cross-skill calls.

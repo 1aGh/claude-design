@@ -127,6 +127,35 @@ jq --arg id "$ID" 'map(if .id == $id then .status = "resolved" | .resolved_at = 
   "$COMMENTS_FILE" > "$COMMENTS_FILE.tmp" && mv "$COMMENTS_FILE.tmp" "$COMMENTS_FILE"
 ```
 
+### 3.5 Pre-edit context screenshot — **mandatory when any of**:
+
+- `SEL_VALID=1` (inspector captured an element in this canvas)
+- Feedback contains "screenshot" / "udelej si screenshot" / "take a screenshot" (the user asks for one)
+- Feedback names a specific UI element by class, role, or component name ("the active item", "search input", "tooltip")
+- Feedback compares ≥ 2 surfaces ("X doesn't match Y", "both files", "showcase and resize-panels") — screenshot **each named file**
+
+```bash
+PORT=$(jq -r .port "$DESIGN_ROOT/_server.json")
+URL="http://localhost:$PORT/$ACTIVE"
+SLUG=...   # already computed in step 3
+HIST="$DESIGN_ROOT/_history/$SLUG"
+mkdir -p "$HIST"
+N=$(printf "%03d" $(($(ls "$HIST" 2>/dev/null | wc -l) + 1)))
+OUT="$HIST/$N-context.png"
+
+agent-browser open "$URL" >/dev/null
+sleep 1.5
+agent-browser screenshot --full -- "$OUT"
+```
+
+**Then `Read` the PNG into the conversation** with the Read tool. The selection JSON gives you WHAT (selector + outerHTML + bounds); the screenshot gives you WHERE-IN-CONTEXT (neighbors, alignment, the visual conversation the element is part of). Editing from JSON alone is *tapping in the dark* — the bounds tell you where the box is, not what's next to it.
+
+**Multi-surface feedback:** screenshot EACH named file before editing any of them. Compare them visually first, then edit. This is non-negotiable when the user's feedback explicitly names a parity claim ("A is not the same as B").
+
+**Skip ONLY when** none of the four triggers fire — i.e. a canvas-wide cosmetic tweak with no selection and no explicit element reference. In that case, the post-write reality-check screenshot (step 7) is sufficient.
+
+Cost of the screenshot: ~5s + one tool call. Cost of skipping when needed: 2–3 follow-up iterations to roll back a bad edit. See `.ai/logs/system-reviews/design-edit-screenshot-habits-review.md` for the studio iter-4 incident this rule patches.
+
 ### 4. Snapshot before edit
 
 ```bash
