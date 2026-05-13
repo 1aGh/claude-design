@@ -1,0 +1,40 @@
+<!--
+SPECIMEN: grid — desktop shell layout (56 nav / 248 sidebar / fluid main / 28 status)
+WHEN SCAFFOLDED: foundations
+NOTES: The canonical "DS in use" skeleton. Echoes ui_kits-desktop-showcase.html but distills the layout to a grid mock.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>Grid — studio</title><link rel="stylesheet" href="../colors_and_type.css"><link rel="stylesheet" href="./_layout.css">
+<style>
+  .shell-mock { display: grid; grid-template-rows: var(--layout-nav-h) 1fr var(--layout-status-h); grid-template-columns: var(--layout-sidebar-w) 1fr; grid-template-areas: "nav nav" "side main" "stat stat"; height: 360px; background: var(--bg-0); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); overflow: hidden; }
+  .shell-mock > div { display: grid; place-items: center; font-family: var(--font-mono); font-size: 11px; letter-spacing: var(--tracking-mono); color: var(--fg-1); position: relative; }
+  .shell-mock > div .lbl { padding: 4px 10px; background: var(--bg-1); border: 1px dashed var(--border-default); border-radius: var(--radius-sm); color: var(--fg-2); font-size: 10px; }
+  .shell-mock .nav  { grid-area: nav; background: var(--bg-1); border-bottom: 1px solid var(--border-subtle); }
+  .shell-mock .side { grid-area: side; background: var(--bg-1); border-right: 1px solid var(--border-subtle); }
+  .shell-mock .main { grid-area: main; background: var(--bg-0); }
+  .shell-mock .stat { grid-area: stat; background: var(--bg-1); border-top: 1px solid var(--border-subtle); }
+  .dim-row { display: flex; gap: var(--space-3); font-family: var(--font-mono); font-size: 11px; color: var(--fg-2); letter-spacing: var(--tracking-mono); margin-top: var(--space-3); flex-wrap: wrap; }
+  .dim-row span { background: var(--bg-1); border: 1px solid var(--border-subtle); padding: 4px 10px; border-radius: var(--radius-sm); }
+  .dim-row span strong { color: var(--accent); }
+</style></head><body class="app">
+<main class="specimen">
+  <p class="crumb">foundations / grid</p>
+  <h1>Grid</h1>
+  <p class="lede">The desktop shell skeleton: <code>56px</code> top nav · <code>248px</code> sidebar · fluid main · <code>28px</code> status bar. Every screen in the dev-server fits this grid. Tokens for each dimension live in <code>colors_and_type.css</code>.</p>
+
+  <div class="shell-mock">
+    <div class="nav"><span class="lbl">nav · --layout-nav-h · 56</span></div>
+    <div class="side"><span class="lbl">sidebar · --layout-sidebar-w · 248</span></div>
+    <div class="main"><span class="lbl">main · fluid · max-w 1280</span></div>
+    <div class="stat"><span class="lbl">status · --layout-status-h · 28</span></div>
+  </div>
+
+  <div class="dim-row">
+    <span>nav <strong>56px</strong></span>
+    <span>sidebar <strong>248px</strong></span>
+    <span>main <strong>max-w 1280px · gutter 16</strong></span>
+    <span>status <strong>28px</strong></span>
+  </div>
+
+  <footer class="legend"><p>Don't change these on a per-screen basis. The grid is the agreement — sidebar always 248px so a returning user's muscle memory survives.</p></footer>
+</main></body></html>

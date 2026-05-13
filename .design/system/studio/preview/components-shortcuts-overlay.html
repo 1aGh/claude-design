@@ -1,0 +1,96 @@
+<!--
+SPECIMEN: components-shortcuts-overlay
+DEMONSTRATES: full-screen overlay listing every keyboard shortcut — grouped, mono, with section dividers and a dismissal hint
+COMPOSITION: backdrop with vignette, centered panel, 3-column grouping, kbd-pair conventions
+WHEN SCAFFOLDED: IF audience = pro tool
+NOTES: This is the second-most-visible pro-tool signal after command palette. Trigger: ? key.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>Shortcuts overlay — studio</title><link rel="stylesheet" href="../colors_and_type.css"><link rel="stylesheet" href="./_layout.css">
+<style>
+  .overlay-stage { padding: var(--space-5); background:
+    radial-gradient(800px 400px at 50% 0%, var(--accent-soft), transparent 60%),
+    var(--bg-0);
+    border-radius: var(--radius-xl); border: 1px solid var(--border-subtle);
+    position: relative; min-height: 480px;
+  }
+  .overlay-stage::before { content: ''; position: absolute; inset: 0; background: oklch(0% 0 0 / 0.4); border-radius: var(--radius-xl); }
+  .overlay { position: relative; background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-lg); box-shadow: var(--shadow-xl); max-width: 720px; margin: 0 auto; overflow: hidden; }
+  .overlay .head { display: flex; justify-content: space-between; align-items: center; padding: var(--space-3) var(--space-5); border-bottom: 1px solid var(--border-subtle); }
+  .overlay .head h2 { font-family: var(--font-display); font-size: var(--type-md); font-weight: 600; margin: 0; letter-spacing: -0.005em; color: var(--fg-0); }
+  .overlay .head h2::before { content: none; }
+  .overlay .head .close { font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); border: 1px solid var(--border-default); padding: 3px 8px; border-radius: var(--radius-xs); letter-spacing: var(--tracking-mono); }
+  .overlay .grid { padding: var(--space-4) var(--space-5); display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4) var(--space-7); margin: 0; }
+  .overlay .group h3 { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-2); margin: 0 0 var(--space-2); font-weight: 600; padding-bottom: 6px; border-bottom: 1px solid var(--border-subtle); display: block; }
+  .overlay .group h3::before { content: none; }
+  .overlay .group ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
+  .overlay .group li { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; font-size: var(--type-xs); color: var(--fg-1); }
+  .overlay .group li .name { font-family: var(--font-body); }
+  .overlay .group li .keys { display: flex; gap: 3px; }
+  .overlay .group li .keys kbd { font-family: var(--font-mono); font-size: 10px; padding: 1px 5px; border: 1px solid var(--border-default); background: var(--bg-2); border-radius: var(--radius-xs); color: var(--fg-0); letter-spacing: var(--tracking-mono); }
+  .overlay .footer { display: flex; justify-content: space-between; padding: var(--space-3) var(--space-5); background: var(--bg-2); border-top: 1px solid var(--border-subtle); font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); letter-spacing: var(--tracking-mono); }
+  .overlay .footer .accent-text { color: var(--accent); }
+</style>
+</head>
+<body class="app">
+<main class="specimen">
+  <p class="crumb">components / shortcuts-overlay</p>
+  <h1>Shortcuts overlay</h1>
+  <p class="lede">Hit <kbd>?</kbd> anywhere in studio to see every shortcut. Three groups — Navigate, Edit, System — because more than three columns starts feeling like a manual instead of a reminder.</p>
+
+  <div class="overlay-stage">
+    <div class="overlay" role="dialog" aria-label="Keyboard shortcuts">
+      <header class="head">
+        <h2>Keyboard shortcuts</h2>
+        <span class="close">esc</span>
+      </header>
+      <div class="grid">
+        <div class="group">
+          <h3>navigate</h3>
+          <ul>
+            <li><span class="name">Open command palette</span><span class="keys"><kbd>⌘</kbd><kbd>K</kbd></span></li>
+            <li><span class="name">Search canvases</span><span class="keys"><kbd>⌘</kbd><kbd>P</kbd></span></li>
+            <li><span class="name">Next tab</span><span class="keys"><kbd>⌘</kbd><kbd>]</kbd></span></li>
+            <li><span class="name">Previous tab</span><span class="keys"><kbd>⌘</kbd><kbd>[</kbd></span></li>
+            <li><span class="name">Close tab</span><span class="keys"><kbd>⌘</kbd><kbd>W</kbd></span></li>
+            <li><span class="name">Focus sidebar</span><span class="keys"><kbd>⌘</kbd><kbd>1</kbd></span></li>
+          </ul>
+        </div>
+        <div class="group">
+          <h3>edit</h3>
+          <ul>
+            <li><span class="name">New canvas</span><span class="keys"><kbd>⌘</kbd><kbd>N</kbd></span></li>
+            <li><span class="name">Rollback active canvas</span><span class="keys"><kbd>⌘</kbd><kbd>Z</kbd></span></li>
+            <li><span class="name">Toggle inspector</span><span class="keys"><kbd>⌘</kbd><kbd>⇧</kbd><kbd>I</kbd></span></li>
+            <li><span class="name">Cmd-click to select</span><span class="keys"><kbd>⌘</kbd><kbd>click</kbd></span></li>
+            <li><span class="name">Apply /design:edit</span><span class="keys"><kbd>⌘</kbd><kbd>↵</kbd></span></li>
+          </ul>
+        </div>
+        <div class="group">
+          <h3>system</h3>
+          <ul>
+            <li><span class="name">Run completeness critic</span><span class="keys"><kbd>⌘</kbd><kbd>⇧</kbd><kbd>A</kbd></span></li>
+            <li><span class="name">Edit tokens CSS</span><span class="keys"><kbd>⌘</kbd><kbd>⇧</kbd><kbd>T</kbd></span></li>
+            <li><span class="name">Toggle reduced-motion preview</span><span class="keys"><kbd>⌘</kbd><kbd>⇧</kbd><kbd>M</kbd></span></li>
+          </ul>
+        </div>
+        <div class="group">
+          <h3>chrome</h3>
+          <ul>
+            <li><span class="name">Show this overlay</span><span class="keys"><kbd>?</kbd></span></li>
+            <li><span class="name">Cycle accent (plasma / amber / cyan / emerald)</span><span class="keys"><kbd>⌘</kbd><kbd>⇧</kbd><kbd>C</kbd></span></li>
+            <li><span class="name">Quit dev-server</span><span class="keys"><kbd>⌘</kbd><kbd>Q</kbd></span></li>
+          </ul>
+        </div>
+      </div>
+      <footer class="footer">
+        <span>studio v0.1.0 · 18 shortcuts</span>
+        <span class="accent-text">? to reopen anytime</span>
+      </footer>
+    </div>
+  </div>
+
+  <footer class="legend">
+    <p>Every shortcut listed here actually works in studio. Don't ship aspirational shortcuts — if a kbd combo appears in this overlay, it must be wired up.</p>
+  </footer>
+</main></body></html>

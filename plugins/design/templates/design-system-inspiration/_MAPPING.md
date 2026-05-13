@@ -142,6 +142,26 @@ If the user mentions onboarding or auth flows in Q1, the skill MAY proactively i
 | Q8 content tone | explanatory-friendly | copy voice: helpful sentence-fragments, second-person |
 | Q8 content tone | formal-B2B | copy voice: complete sentences, third-person, no exclamation marks |
 
+## Pro-designer inputs (discovery Round 3)
+
+| Q | Answer | Effect on scaffold |
+|---|---|---|
+| Q9 signature treatment | `gradient discipline (Affinity)` | `_layout.css` body bg = soft accent halo top-right + light bottom vignette; `--shadow-glow` halo on signature cards |
+| Q9 signature treatment | `CRT scanlines + phosphor glow` | `_layout.css` body bg = repeating-linear-gradient scanlines; h1 text-shadow with `oklch(from --accent l c h / 0.20)`; body::before SVG film-grain (~6% opacity, overlay blend); body::after slow CRT-roll animation gated behind reduced-motion |
+| Q9 signature treatment | `glassmorphism` | `.specimen` + cards get `backdrop-filter: blur(20px) saturate(140%)` + low-alpha bg; tokens add `--glass-tint` |
+| Q9 signature treatment | `brutalism (hard edges)` | radii collapse to `0/2/4`; shadows removed except focus ring; borders bumped to `--border-strong`; thicker outlines on key elements |
+| Q9 signature treatment | `soft-shadow depth ladder` | shadow ladder stretched — `--shadow-md/lg/xl` get longer offsets and softer blurs; cards float higher; hover state lifts more |
+| Q9 signature treatment | `neumorphism (inset shadows)` | tokens add `--shadow-inset-sm/md`; inputs + toggles use inset-shadow surfaces; never inside chrome with text on it (accessibility) |
+| Q9 signature treatment | `none / restrained` | no body-level treatment; `_layout.css` stays minimal; chrome reads like Zed-flat |
+| Q10 hard NOs | any picks | each guardrail surfaced in DS README "Hard rules"; sub-agents read this list and enforce ("no animations" → no transitions; "no gradients" → no linear-gradient / radial-gradient anywhere; "no emoji" → no emoji glyphs in any scaffolded HTML, use lucide-style SVG instead) |
+| Q11 iconography vibe | `terminal glyphs` | iconography.html scaffolds 12 ASCII-leaning 1px-stroke icons (▦ ⌬ ⌕ ⌘ ▾ ▸ ●); generated SVG glyphs use 1px stroke + rounded caps; no emoji anywhere |
+| Q11 iconography vibe | `product icons (lucide rounded)` | lucide default set, 1.5px stroke, 20px grid; balanced product nouns derived from Q1+Q2 |
+| Q11 iconography vibe | `industry-specific` | iconography.html curated to project domain (sports → balls/jerseys; recipes → utensils/bowls; finance → charts/cards); driven by domain nouns extracted from Q1 |
+| Q11 iconography vibe | `flat-illustrative` | filled (not stroked) icons; Phosphor/Heroicons-style; larger sizes default (24/32) |
+| Q12 density | `dense pro-tool` | base `--space-*` shrinks (most padding lands on space-2/3); buttons 7px vertical; tables compact; sidebar 220-248px |
+| Q12 density | `balanced` | default `--space-*`; buttons 8px vertical; sidebar 248-280px |
+| Q12 density | `roomy SaaS` | base padding bumps (most lands on space-4/5); buttons 10-12px vertical; sidebar 280-320px; type-scale slightly bumped |
+
 ## Brand asset minimums (always-on)
 
 When the README/SKILL.md/specimen copy makes a brand claim (`mascot`, `wordmark`, `logotype`, `glyph`, `illustration`, `hedgehog`, `character`), the skill MUST generate at least one minimal SVG to back the claim. The completeness-critic V20 enforces this.
@@ -176,14 +196,44 @@ The skill computes this array based on discovery answers + audience-conditional 
 
 Variance comes from audience-* (5–6 files), platform-mobile (4–6 files including ui_kit), and conditional families (status, mono, presence).
 
+## Fan-out batching (dependency_closure)
+
+The skill batches scaffold writes by dependency closure so independent files can be written in parallel by sub-agents. Three tiers:
+
+| `dependency_closure` | Meaning | Batch | Authored by |
+|---|---|---|---|
+| `root` | The dependency root — tokens, `_layout.css`, READMEs, SKILL.md, `config.json`. Nothing else can be written until these exist. | **A** | main agent, serial |
+| `tokens-only` | Pure token-and-chrome specimens (colors-*, type-*, spacing-scale, motion, radii, elevation, focus, iconography, borders, grid, opacity, selection). No reference-template reading required to generate — token CSS + Q5/Q9 mood are enough. | **B** | parallel sub-agents (3–4 slices of 3–5 files each) |
+| `tokens + chrome + template` | Components and compositions (components-*, empty-state, logo, audience-* specimens, platform-* showcases). Each needs the matching reference template from the inspiration library to understand the demonstration intent. | **C** | parallel sub-agents (3–5 slices of 2–4 files each) |
+| `index` | The catalog launcher (`ui_kits-*-index.html`) that links every peer. Written LAST after all peers exist. | **A (post)** | main agent, serial |
+
+| Dir | `dependency_closure` |
+|---|---|
+| `core/colors_and_type.css.tpl`, `core/SKILL.md.tpl`, `core/README.*.tpl`, `core/config.json.tpl`, `core/preview/_layout.css` | `root` |
+| `core/preview/colors-{text,surfaces,accent}.html`, `type-scale.html`, `spacing-scale.html`, `motion.html` | `tokens-only` |
+| `foundations/*.html` | `tokens-only` |
+| `core/preview/components-{buttons,cards,inputs}.html` | `tokens + chrome + template` |
+| `universal/*.html`, `universal/empty-state.html.tpl`, `universal/logo.html` | `tokens + chrome + template` |
+| `status/*.html` | `tokens + chrome + template` |
+| `audience-*/*.html` | `tokens + chrome + template` |
+| `platform-*/components-*.html` | `tokens + chrome + template` |
+| `platform-*/ui_kits-*-showcase.html` | `tokens + chrome + template` |
+| `platform-*/ui_kits-*-index.html` | `index` (written last) |
+| `theme-both/*.html` | `tokens-only` |
+
+The skill emits `<designRoot>/_history/_system/000-scaffold-roster.yaml` with one row per file (path / batch / deps / status). Sub-agents update `status: pending → written` as they go. See `SKILL.md` "Pre-scaffold — emit `_scaffold-roster.yaml`".
+
 ## Rules the agent MUST honor
 
-1. **Never copy a specimen verbatim.** Read SPECIMEN comment → understand the demonstration → generate a fresh, project-flavored equivalent.
+1. **Never copy a specimen verbatim.** Read SPECIMEN comment → understand the demonstration → generate a fresh, project-flavored equivalent. **Target 1.5×–6× the reference LOC** for signature specimens (accent, empty-state, ui_kits-showcase, logo). Token-swap-only output is a scaffold regression; the skill's `Creativity rubric` (in SKILL.md "Scaffold (3-batch fan-out)") names the gold-standards and anti-examples.
 2. **No placeholder copy in output.** "Lorem Solutions Inc.", "Click here", "Acme Corp." MUST NOT appear in the scaffolded files. Use discovery answers to derive project-specific copy.
-3. **Tokens only.** No hardcoded hex / px / rem in scaffolded files (outside the shared `_layout.css` chrome).
+3. **Tokens only.** No hardcoded hex / px / rem / em-letter-spacing in scaffolded files (outside the shared `_layout.css` chrome). Typography-critic catches off-ladder px and returns a blocker — see the studio 2026-05-13 re-bootstrap retro.
 4. **Always include the SPECIMEN header** in the scaffolded file (carry it across) so future reads can identify what each specimen demonstrates.
 5. **Honor `activeFamilies[]`.** Skip families the project didn't opt into (no presence specimens for solo-author projects; no mono for non-developer audiences unless Q7 chose a mono pairing).
 6. **Always scaffold at least the platform ui_kit showcase.** The "DS in use" composition is the single most useful artifact for a designer or stakeholder to evaluate the system. Skipping it makes the DS look like a token inventory instead of a product surface. `ui_kits-<platform>-showcase.html` is the canonical filename inside `system/<ds>/preview/`.
 7. **Claim → asset receipt.** If discovery answers include mascot / illustration / logotype cues (Q5 mentions a brand with distinctive mascot, or Q1 implies "character"), generate at least one minimal SVG into `assets/glyphs/` or `assets/logos/` to back the claim. Never let scaffolded copy say "hedgehog mascot energy" with an empty assets dir.
-8. **Re-curate the iconography family.** `foundations/iconography.html` ships with a generic Lucide-style set (trending, clock, search, filter). The skill MUST replace these with icons relevant to the project's domain at scaffold time: developer tool → terminal/file/branch/commit; consumer → home/search/notification; pro tool → roster/calendar/analytics. Keep the same SPECIMEN header + size scale + stroke conventions.
+8. **Re-curate the iconography family.** `foundations/iconography.html` ships with a generic Lucide-style set (trending, clock, search, filter). The skill MUST replace these with icons relevant to Q11 vibe + project's domain at scaffold time: developer tool → terminal/file/branch/commit; consumer → home/search/notification; pro tool → roster/calendar/analytics. Keep the same SPECIMEN header + size scale + stroke conventions.
 9. **Scaffold output is flat.** All category dirs in the inspiration library (`foundations/`, `status/`, `audience-*/`, `platform-*/`, `theme-both/`, `patterns/`, `meta/`, `universal/`) flatten into `system/<ds>/preview/<filename>.html` in the scaffold output. The category prefix lives only in the library, not in the project tree.
+10. **Honor the Q10 hard-NO list.** Each NO picked in discovery becomes a guardrail every sub-agent reads before writing. "No animations" → no `transition` / `@keyframes` outside reduced-motion fallback. "No gradients" → no `linear-gradient` / `radial-gradient` in any output. "No emoji in chrome" → SVG glyphs only. Hard NOs override the Q9 signature treatment when they conflict (e.g. `glassmorphism` + `no gradients` = use solid translucent fill, no gradient backdrop).
+11. **Honor the Q12 density preference.** `dense pro-tool` collapses default padding by one step; `roomy SaaS` bumps it by one. The default values in `_layout.css` `.specimen` + the `--space-*` usage conventions in components MUST reflect the chosen density.
+12. **Reconcile the roster.** After Batch C completes, the main agent reads `_scaffold-roster.yaml`, asserts every row has `status: written`, and rejects the bootstrap as incomplete otherwise — never silently "complete" a bootstrap with pending rows.

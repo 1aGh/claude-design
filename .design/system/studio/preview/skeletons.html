@@ -1,0 +1,52 @@
+<!--
+SPECIMEN: skeletons
+DEMONSTRATES: skeleton loaders — shimmer pattern, layouts that match the real content shape
+COMPOSITION: list skeleton, card skeleton, page skeleton (showcase-shaped), shimmer animation
+WHEN SCAFFOLDED: IF status ∈ activeFamilies (skeletons are loading state, which is status-adjacent)
+NOTES: Shimmer uses --dur-soft (420ms) so it doesn't compete with hover transitions. Honors reduced-motion.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>Skeletons — studio</title><link rel="stylesheet" href="../colors_and_type.css"><link rel="stylesheet" href="./_layout.css">
+<style>
+  .skel { background: linear-gradient(90deg, var(--bg-2) 0%, var(--bg-3) 50%, var(--bg-2) 100%); background-size: 200% 100%; animation: shimmer 1.6s ease-in-out infinite; border-radius: var(--radius-sm); }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  @media (prefers-reduced-motion: reduce) { .skel { animation: none; background: var(--bg-2); } }
+
+  .row-skel { background: var(--bg-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: var(--space-3); display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }
+  .row-skel .avatar { width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; }
+  .row-skel .lines { flex: 1; display: grid; gap: 6px; }
+  .row-skel .lines .l { height: 10px; }
+  .row-skel .lines .l.short { width: 30%; }
+  .row-skel .lines .l.long { width: 80%; }
+
+  .card-skel { background: var(--bg-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: var(--space-4); }
+  .card-skel .thumb { height: 100px; border-radius: var(--radius-md); margin-bottom: var(--space-3); }
+  .card-skel .title-line { height: 16px; width: 50%; margin-bottom: var(--space-2); }
+  .card-skel .body-line { height: 10px; }
+  .card-skel .body-line + .body-line { margin-top: 6px; }
+</style>
+</head>
+<body class="app">
+<main class="specimen">
+  <p class="crumb">components / skeletons</p>
+  <h1>Skeletons</h1>
+  <p class="lede">Skeleton loaders match the shape of the real content. The shimmer animates at <code>--dur-soft</code> (420ms) so it sits below hover-speed motion. Reduced-motion freezes the shimmer.</p>
+
+  <h2>List skeleton</h2>
+  <div style="max-width: 480px;">
+    <div class="row-skel"><div class="skel avatar"></div><div class="lines"><div class="skel l long"></div><div class="skel l short"></div></div></div>
+    <div class="row-skel"><div class="skel avatar"></div><div class="lines"><div class="skel l long"></div><div class="skel l short"></div></div></div>
+    <div class="row-skel"><div class="skel avatar"></div><div class="lines"><div class="skel l long"></div><div class="skel l short"></div></div></div>
+  </div>
+
+  <h2>Card grid</h2>
+  <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--space-3);">
+    <div class="card-skel"><div class="skel thumb"></div><div class="skel title-line"></div><div class="skel body-line"></div><div class="skel body-line" style="width: 70%;"></div></div>
+    <div class="card-skel"><div class="skel thumb"></div><div class="skel title-line"></div><div class="skel body-line"></div><div class="skel body-line" style="width: 70%;"></div></div>
+    <div class="card-skel"><div class="skel thumb"></div><div class="skel title-line"></div><div class="skel body-line"></div><div class="skel body-line" style="width: 70%;"></div></div>
+  </div>
+
+  <footer class="legend">
+    <p>Skeletons are not a placeholder — they're a promise. The shape MUST match the real content; a square skeleton for a circular avatar is worse than no skeleton.</p>
+  </footer>
+</main></body></html>

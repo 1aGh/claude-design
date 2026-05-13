@@ -1,0 +1,59 @@
+<!--
+SPECIMEN: components-toast-menu
+DEMONSTRATES: transient toast notifications + right-click context menu — both with --bg-2 surface, --border-default, --shadow-md
+WHEN SCAFFOLDED: IF audience = pro tool
+-->
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>Toast + menu — studio</title><link rel="stylesheet" href="../colors_and_type.css"><link rel="stylesheet" href="./_layout.css">
+<style>
+  .stage { position: relative; height: 320px; background:
+    repeating-linear-gradient(0deg, transparent 0 31px, var(--border-subtle) 31px 32px),
+    repeating-linear-gradient(90deg, transparent 0 31px, var(--border-subtle) 31px 32px),
+    var(--bg-1);
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: var(--space-3);
+  }
+  .toast { position: absolute; bottom: 12px; right: 12px; background: var(--bg-2); border: 1px solid var(--border-default); border-radius: var(--radius-md); box-shadow: var(--shadow-md); padding: var(--space-3) var(--space-4); display: flex; align-items: center; gap: 10px; min-width: 320px; }
+  .toast .icon { font-family: var(--font-mono); font-size: 16px; color: var(--status-success); }
+  .toast .text { flex: 1; }
+  .toast .text strong { color: var(--fg-0); font-size: var(--type-sm); display: block; }
+  .toast .text .sub { color: var(--fg-2); font-family: var(--font-mono); font-size: 10px; letter-spacing: var(--tracking-mono); margin-top: 2px; }
+  .toast .action { color: var(--accent); font-family: var(--font-mono); font-size: 11px; letter-spacing: var(--tracking-mono); border: 0; background: transparent; cursor: pointer; font-weight: 600; }
+  .toast .close { color: var(--fg-2); font-family: var(--font-mono); font-size: 14px; background: transparent; border: 0; cursor: pointer; padding: 0 4px; }
+
+  .menu { position: absolute; top: 24px; left: 24px; background: var(--bg-2); border: 1px solid var(--border-default); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); min-width: 220px; overflow: hidden; padding: 4px 0; }
+  .menu .item { display: flex; align-items: center; gap: 10px; padding: 6px 12px; cursor: pointer; transition: background var(--dur-flip) var(--ease-out); }
+  .menu .item:hover { background: var(--bg-3); }
+  .menu .item:hover.danger { background: oklch(from var(--status-error) l c h / 0.10); color: var(--status-error); }
+  .menu .item .glyph { font-family: var(--font-mono); font-size: 12px; color: var(--fg-2); width: 14px; }
+  .menu .item .name { font-size: var(--type-sm); color: var(--fg-0); flex: 1; }
+  .menu .item .kbd { font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); letter-spacing: var(--tracking-mono); }
+  .menu .item.danger .name { color: var(--status-error); }
+  .menu .item.danger .glyph { color: var(--status-error); }
+  .menu .divider { height: 1px; background: var(--border-subtle); margin: 4px 0; }
+</style></head><body class="app">
+<main class="specimen">
+  <p class="crumb">components / toast + menu</p>
+  <h1>Toast &amp; menu</h1>
+  <p class="lede">Two transient surfaces — toast (auto-dismissing, bottom-right) and context menu (right-click, near cursor). Both use <code>--bg-2</code> on a <code>--border-default</code> outline, with <code>--shadow-md</code> for toast and <code>--shadow-lg</code> for menu.</p>
+
+  <div class="stage">
+    <div class="menu" role="menu" aria-label="Canvas context menu">
+      <div class="item"><span class="glyph">↗</span><span class="name">Open in browser</span><span class="kbd">⌘ ↵</span></div>
+      <div class="item"><span class="glyph">⎘</span><span class="name">Duplicate canvas</span><span class="kbd">⌘ D</span></div>
+      <div class="item"><span class="glyph">↺</span><span class="name">Rollback last edit</span><span class="kbd">⌘ Z</span></div>
+      <div class="divider"></div>
+      <div class="item"><span class="glyph">⌬</span><span class="name">Run /design:critic</span><span class="kbd">⌘ ⇧ A</span></div>
+      <div class="item"><span class="glyph">▦</span><span class="name">Open in inspector</span><span class="kbd">⌘ ⇧ I</span></div>
+      <div class="divider"></div>
+      <div class="item danger"><span class="glyph">⌫</span><span class="name">Delete canvas</span><span class="kbd">⌘ ⌫</span></div>
+    </div>
+    <div class="toast">
+      <span class="icon">●</span>
+      <div class="text"><strong>Lineup published.</strong><div class="sub">match starts 14:00 · 11/11 confirmed</div></div>
+      <button class="action">undo</button>
+      <button class="close" aria-label="dismiss">×</button>
+    </div>
+  </div>
+
+  <footer class="legend"><p>Toast dismisses on its own at <code>--dur-soft × 8</code> (≈3.4s). Action button extends the lifetime by another <code>--dur-soft × 8</code> on hover so the user can read it.</p></footer>
+</main></body></html>

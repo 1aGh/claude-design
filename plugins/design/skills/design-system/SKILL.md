@@ -87,7 +87,7 @@ fi
 
 Hard-stops: missing Node → abort with install hint; missing git → abort with `run git init first`; no write permission → abort.
 
-### Discovery (Round 1 + Round 2 + confirm)
+### Discovery (Round 1 + Round 2 + Round 3 + confirm)
 
 **Detect target first.**
 
@@ -96,7 +96,9 @@ Hard-stops: missing Node → abort with install hint; missing git → abort with
 - For `additional-ds`: target dirname is the kebab-case slug of the user-provided name (`<name>`).
 - For `re-bootstrap`: target is the existing `system/<name>/` dir; refuse unless `--force`.
 
-#### `first-bootstrap` (8 Qs across 2 rounds)
+#### `first-bootstrap` (12 Qs across 3 rounds)
+
+> **Why 12, not 8.** The 8-Q baseline gets you a working DS; it does not get you a pro-grade DS. Round 3 (Q9–Q12) captures the inputs a pro designer would gather from a stakeholder before opening Figma: signature treatment, hard-NO list, iconography vibe, density preference. The retro on the studio 2026-05-13 re-bootstrap (`.ai/logs/system-reviews/setup-ds-studio-rebootstrap-review.md`) recommends Round 3 as the cheapest single intervention to lift output from "structurally valid" to "portfolio-worthy". Opt out via the slash command's `--quick` flag if the user explicitly wants the 8-Q baseline.
 
 **Round 1 — Identity** (4 Qs via one AskUserQuestion call):
 
@@ -112,12 +114,19 @@ Hard-stops: missing Node → abort with install hint; missing git → abort with
 - Q7 typography (Inter+Plex+JetBrains / Geist+GeistMono / system+JetBrainsMono)
 - Q8 content tone (direct-terse / explanatory-friendly / formal-B2B)
 
-**Confirm.** Echo 2-sentence proposed direction. Wait for explicit yes / corrections. On "no", restart Round 2 only (max 2 retries before "scaffold-with-current and iterate via /design:edit").
+**Round 3 — Pro-designer inputs** (4 Qs via a third AskUserQuestion call):
 
-#### `additional-ds` (8 Qs, different shape)
+- **Q9 signature visual treatment** — single select: `none / restrained` · `gradient discipline (Affinity)` · `CRT scanlines + phosphor glow` · `glassmorphism (frosted blur)` · `brutalism (hard edges, no shadows)` · `soft-shadow depth ladder (Stripe / Notion)` · `neumorphism (inset shadows)` · `pick-for-me`. Pre-fill the Recommended from Q5 mood (e.g. "Affinity" mood → "gradient discipline"). The chosen treatment is baked into `_layout.css` chrome (body background, h1 text-shadow, sectioning rules) AND surfaces in at least one signature specimen (typically `colors-accent.html` brand-spotlight + `ui_kits-*-showcase.html` hero).
+- **Q10 hard NO list** — multi-select: `no decorative gradients` · `no animations beyond hover` · `no emoji in chrome` · `no rounded corners > 12px` · `no centered hero layouts` · `no marketing-style CTAs` · `anything goes (skip)`. Every checked item becomes a guardrail surfaced in the DS README and the per-DS SKILL.md. Sub-agents authoring specimens MUST read this list before writing.
+- **Q11 iconography vibe** — single select: `terminal glyphs (1px stroke, ASCII-leaning — Zed/Raycast)` · `product icons (lucide rounded, balanced — Linear/Notion)` · `industry-specific (sports/recipes/finance — domain nouns dominant)` · `flat-illustrative (Phosphor / Heroicons solid)` · `pick-for-me`. Drives `iconography.html` specimen content + the 3–5 example SVGs scaffolded into `assets/glyphs/`.
+- **Q12 density preference** — single select: `dense pro-tool (Affinity / Linear / Zed — chrome at space-2/3, dense tables)` · `balanced (Figma / Vercel — chrome at space-3/4)` · `roomy SaaS (Stripe / Notion — chrome at space-4/5, more whitespace)` · `pick-for-me (derive from Q2 audience)`. Sets `--space-*` usage conventions and the default padding values in `_layout.css`.
+
+**Confirm.** Echo a **3-sentence** proposed direction (one sentence per round: identity + brand + visual signature). Wait for explicit yes / corrections. On "no", restart the affected round (max 2 retries each before "scaffold-with-current and iterate via /design:edit").
+
+#### `additional-ds` (12 Qs, different shape)
 
 - **Q_purpose** — "What is this DS for, distinct from your existing DS?" (replaces Q1)
-- Q2–Q8 same as first-bootstrap (with "Inherit from `<existing-ds>`" Recommended option on Q7 and Q8)
+- Q2–Q12 same as first-bootstrap (with "Inherit from `<existing-ds>`" Recommended option on Q7, Q8, Q11, Q12)
 
 After Q8, surface an **inheritance picker** (multiSelect AskUserQuestion):
 
@@ -132,9 +141,9 @@ Inherit from <existing-ds>? (multi-select; "None" = define fresh)
 
 Inherited values are pre-baked into the new DS's `colors_and_type.css`; discovery answers for inherited fields are ignored.
 
-#### `re-bootstrap` (8 Qs, pre-filled)
+#### `re-bootstrap` (12 Qs, pre-filled)
 
-Read `system/<ds>/colors_and_type.css` + `system/<ds>/README.md` to pre-fill answers. User hits enter on each to keep current; only changed answers cause re-generation of affected files.
+Read `system/<ds>/colors_and_type.css` + `system/<ds>/README.md` + `_layout.css` to pre-fill answers (Round 3 derived from `_layout.css` body background + body::before/::after presence + iconography.html curation). User hits enter on each to keep current; only changed answers cause re-generation of affected files.
 
 ### Mapping → file set
 
@@ -190,14 +199,195 @@ This honors the one-accent rule (only `--accent*` family is overridden, never ad
 
 **3. `[data-theme="dark|light"]` parameterization.** Always emit at least `[data-theme="dark"]` (or `[data-theme="light"]`, whichever is the default). When `config.json.themeDefault == "both"`, emit both blocks with identical token shapes but different surface/text values. The completeness-critic V18 enforces this.
 
-### Scaffold (dynamic)
+### Pre-scaffold — emit `_scaffold-roster.yaml`
 
-The inspiration library at `plugins/design/templates/design-system-inspiration/` has **11 category dirs** holding **~67 reference HTML specimens**. The skill walks the categories below in this order, picks files matching the project profile, and **GENERATES** project-flavored versions in `system/<ds>/preview/`. **Scaffold output is flat** — category prefixes (`foundations/`, `audience-developer/`, etc.) live only in the library; the scaffolded files all land directly under `preview/`. See `_MAPPING.md` for the full inventory and gating rules.
+Before any file is written, the main agent emits a **roster** to `<designRoot>/_history/_system/000-scaffold-roster.yaml`. The roster lists every file the scaffold will produce, plus its dependency closure and batch assignment. **The roster is the contract.** Sub-agents write their slice, then update `status: written` on each row. Main agent reconciles at the end — any row stuck in `pending` is a regression flag.
 
-For each file in the computed set:
+```yaml
+# 000-scaffold-roster.yaml — emitted before scaffold; sub-agents update status as they write
+discovery:
+  product: "{{Q1 product one-liner}}"
+  audience: "{{Q2}}"
+  platforms: ["{{Q3}}"]
+  theme_default: "{{Q4}}"
+  mood: "{{Q5}}"
+  accent_oklch: "{{Q6 → computed OKLCH}}"
+  typography: "{{Q7}}"
+  voice: "{{Q8}}"
+  signature_treatment: "{{Q9}}"
+  hard_nos: ["{{Q10 picks}}"]
+  iconography_vibe: "{{Q11}}"
+  density: "{{Q12}}"
+files:
+  # Batch A — main agent writes serially (tokens are the dependency root)
+  - { path: "colors_and_type.css",       batch: A, deps: [], status: pending }
+  - { path: "README.md",                 batch: A, deps: [tokens], status: pending }
+  - { path: "SKILL.md",                  batch: A, deps: [tokens], status: pending }
+  - { path: "preview/_layout.css",       batch: A, deps: [tokens, Q9], status: pending }  # signature treatment lives here
+  - { path: "../../README.md",           batch: A, deps: [], status: pending }            # designRoot orchestration README
+  - { path: "../../INDEX.md",            batch: A, deps: [], status: pending }
+  - { path: "../../config.json",         batch: A, deps: [], status: pending }
+  # Batch B — fan out (token-only specimens; depend only on tokens + chrome)
+  - { path: "preview/colors-text.html",      batch: B, deps: [tokens, chrome],          status: pending }
+  - { path: "preview/colors-surfaces.html",  batch: B, deps: [tokens, chrome],          status: pending }
+  - { path: "preview/colors-accent.html",    batch: B, deps: [tokens, chrome],          status: pending, signature: true }
+  - { path: "preview/type-scale.html",       batch: B, deps: [tokens, chrome],          status: pending }
+  - { path: "preview/spacing-scale.html",    batch: B, deps: [tokens, chrome],          status: pending }
+  - { path: "preview/motion.html",           batch: B, deps: [tokens, chrome],          status: pending }
+  - { path: "preview/radii.html",            batch: B, deps: [tokens, chrome],          status: pending }
+  - { path: "preview/elevation.html",        batch: B, deps: [tokens, chrome],          status: pending }
+  - { path: "preview/focus.html",            batch: B, deps: [tokens, chrome],          status: pending }
+  - { path: "preview/iconography.html",      batch: B, deps: [tokens, chrome, Q11],     status: pending }
+  - { path: "preview/borders.html",          batch: B, deps: [tokens, chrome],          status: pending }
+  - { path: "preview/grid.html",             batch: B, deps: [tokens, chrome, Q3],      status: pending }
+  - { path: "preview/opacity.html",          batch: B, deps: [tokens, chrome],          status: pending }
+  - { path: "preview/selection.html",        batch: B, deps: [tokens, chrome],          status: pending }
+  # Batch C — fan out (components + compositions; depend on tokens + chrome + reference template)
+  - { path: "preview/components-buttons.html",      batch: C, deps: [tokens, chrome, template], status: pending }
+  - { path: "preview/components-cards.html",        batch: C, deps: [tokens, chrome, template], status: pending }
+  - { path: "preview/components-inputs.html",       batch: C, deps: [tokens, chrome, template], status: pending }
+  - { path: "preview/components-toggles.html",      batch: C, deps: [tokens, chrome, template], status: pending }
+  - { path: "preview/components-dialogs.html",      batch: C, deps: [tokens, chrome, template], status: pending }
+  - { path: "preview/components-tooltips.html",     batch: C, deps: [tokens, chrome, template], status: pending }
+  - { path: "preview/components-tables.html",       batch: C, deps: [tokens, chrome, template], status: pending }
+  - { path: "preview/components-callout.html",      batch: C, deps: [tokens, chrome, template], status: pending }
+  - { path: "preview/empty-state.html",             batch: C, deps: [tokens, chrome, template], status: pending, signature: true }
+  - { path: "preview/logo.html",                    batch: C, deps: [tokens, chrome, assets], status: pending, signature: true }
+  # … gated entries appended based on Q2/Q3 (audience-pro/*, audience-developer/*, status/*, presence, etc.)
+  # … always ends with the highest-leverage composition:
+  - { path: "preview/ui_kits-desktop-showcase.html", batch: C, deps: [tokens, chrome, template, ALL], status: pending, signature: true }
+  - { path: "preview/ui_kits-desktop-index.html",    batch: C, deps: [ALL specimens written], status: pending }   # written LAST so it can link to peers
+# Batch B fan-out groups — sub-agents claim these slices
+fanout:
+  - { batch: B, slice: "color tokens",        files: [colors-text, colors-surfaces, colors-accent] }
+  - { batch: B, slice: "type + spacing",      files: [type-scale, spacing-scale] }
+  - { batch: B, slice: "motion + foundations a", files: [motion, radii, elevation, focus] }
+  - { batch: B, slice: "foundations b",       files: [iconography, borders, grid, opacity, selection] }
+  - { batch: C, slice: "core components",     files: [components-buttons, components-cards, components-inputs] }
+  - { batch: C, slice: "universal a",         files: [components-toggles, components-dialogs, components-tooltips] }
+  - { batch: C, slice: "universal b",         files: [components-tables, components-callout] }
+  - { batch: C, slice: "brand + voice",       files: [empty-state, logo] }
+  - { batch: C, slice: "audience-pro",        files: [components-command-palette, components-shortcuts-overlay, …] }   # only if Q2 = pro
+  # … plus other gated slices
+```
 
-- **Core files** (under `core/`): substitute placeholders from the discovery payload into the `.tpl` files. If `mdcc` is available on PATH, shell out to `mdcc design init --discovery-payload <path>`. Else inline Write.
-- **Specimen files** (under all preview-bearing dirs): read the corresponding reference in the inspiration library, then **GENERATE a fresh project-flavored version** — same layout/composition, project's tokens, project's copy voice. **No placeholder copy** ("Lorem Solutions Inc.", "Click here", etc.) in the output.
+Reconciliation rule: after Batch C completes, the main agent reads the roster, asserts every row is `written`, and rejects the bootstrap as incomplete otherwise. The `ui_kits-*-index.html` is always last because it links every peer — written after the rest by the main agent, not a sub-agent.
+
+### Scaffold (3-batch fan-out)
+
+The inspiration library at `plugins/design/templates/design-system-inspiration/` has **11 category dirs** holding **~67 reference HTML specimens**. The skill walks the categories, picks files matching the project profile, and **GENERATES** project-flavored versions in `system/<ds>/preview/`. **Scaffold output is flat** — category prefixes live only in the library; the scaffolded files all land directly under `preview/`. See `_MAPPING.md` for the full inventory, gating rules, and the `dependency_closure` column that drives batching.
+
+**Scaffold is fan-out work, not serial work.** Independent file writes are pure leaves of a DAG: every specimen depends only on `colors_and_type.css` + `_layout.css` (chrome) + zero or one reference template. Serial scaffold of 25–30 specimens in the main agent burns context and produces quality drift (early specimens get full creative attention; late specimens get token-swapped). Fan-out fixes both: 5–8 sub-agents in parallel, each with a fresh attention budget per specimen slice.
+
+#### Batch A — main agent writes serially
+
+The dependency root. Main agent writes these **in order, alone** because every later file imports them.
+
+1. `colors_and_type.css` — tokens. Substitute discovery values (accent OKLCH, fonts, density-derived `--space-*` defaults, Q9-derived shadow/treatment tokens like `--shadow-glow` or `--scanline-alpha`).
+2. `<designRoot>/system/<ds>/preview/_layout.css` — chrome. **Bakes Q9 signature treatment into the body background + h1 treatment.** Examples:
+   - Q9 = `gradient discipline` → soft accent halo at top-right, light vignette at bottom
+   - Q9 = `CRT scanlines + phosphor glow` → repeating-linear-gradient scanlines + h1 text-shadow with accent glow + body::before SVG film-grain + body::after CRT roll animation (reduced-motion safe)
+   - Q9 = `glassmorphism` → backdrop-filter blur on cards; `.specimen` gets a faint frosted backdrop
+   - Q9 = `brutalism` → no shadows at all; thick `--border-strong` outlines; sharp corners override on key elements
+   - Q9 = `soft-shadow depth ladder` → richer `--shadow-md/lg` with longer offsets; cards float higher
+   - The treatment is **the project's first impression** — every specimen inherits it via `_layout.css`.
+3. **`<designRoot>/system/<ds>/preview/_components.css`** — shared component anatomy. **Emit when Q9 ≠ `none / restrained` AND the signature treatment repeats across 3+ components** (typical: bevel on button + tile + segmented + switch; recessed bay on input + checkbox + radio). Promotes `.btn`, `.tile`, `.input`, `.switch`, `.seg`, `.pill`, `.led` etc. out of per-specimen `<style>` blocks into one authoritative file. Specimens then carry only their demonstration-specific CSS inline. **Skip** when Q9 = `none / restrained` AND Q12 = `roomy SaaS` — inline styles are fine and `_components.css` adds noise. Sub-agents in Batch C MUST receive this file (when present) as part of their reference bundle and reference its class names instead of re-implementing the anatomy. Studio 2026-05-13 example: `.btn` (4 variants + 3 sizes + bevel math), `.tile` (gradient fill + phosphor corner + lift on hover), `.input` (recessed bay + inset shadow), `.switch` (chunky hardware toggle), `.seg` (recessed bay + raised chip), `.led` (the primary-CTA power-on dot) — all live in `_components.css`; specimens consume them.
+4. `<designRoot>/system/<ds>/README.md` — philosophy (substitutes mood references + hard-NOs from Q10 + signature treatment summary + voice block).
+5. `<designRoot>/system/<ds>/SKILL.md` — the per-DS skill pointer.
+6. **`<designRoot>/README.md`** — designRoot orchestration README. **Mandatory Tier 1 file** per `_MAPPING.md`; missing this is the most common bootstrap blocker.
+7. **`<designRoot>/INDEX.md`** — canvas + specimen index.
+8. `<designRoot>/config.json` — per-repo plugin config with all 14 fields populated.
+
+After Batch A writes, the main agent reads the freshly-written `colors_and_type.css` + `_layout.css` + `_components.css` (when emitted) back into context — those files are passed verbatim to every Batch B/C sub-agent as authoritative reference.
+
+#### Batches B + C — parallel fan-out via sub-agents
+
+Group the remaining files into **5–8 slices** (per the `fanout:` block of the roster). For each slice, spawn one `general-purpose` sub-agent. **Fire all slices in a single message** (multiple Agent tool calls in parallel) — that's the whole point.
+
+**Sub-agent prompt template** (use verbatim, substitute the slice details):
+
+```
+You are scaffolding part of a design system. Write {{N}} specimen HTML files in
+parallel with other sub-agents. Each file lands at the absolute path listed.
+
+PROJECT
+- name: {{project_label}}
+- DS slug: {{ds_dirname}}
+- one-liner: {{Q1}}
+- audience: {{Q2}} · platforms: {{Q3}} · theme default: {{Q4}}
+- voice: {{Q8}} ("{{voice_one_line_summary}}")
+- signature treatment: {{Q9}} ({{Q9_one_line_summary}})
+- hard NOs: {{Q10 csv}}
+- iconography vibe: {{Q11}}
+- density: {{Q12}}
+
+REFERENCES (verbatim — read first, do not skim)
+- TOKENS (authoritative):     {{absolute path to colors_and_type.css}}
+- CHROME (signature):         {{absolute path to _layout.css}}
+- DS README (hard rules):     {{absolute path to system/<ds>/README.md}}
+- _MAPPING.md gating rules:   {{absolute path to _MAPPING.md}}
+- inspiration library root:   {{absolute path to plugins/design/templates/design-system-inspiration/}}
+
+YOUR SLICE — write these {{N}} files (absolute paths):
+1. {{abs path 1}}  — reference template: {{abs path to inspiration template 1}}
+2. {{abs path 2}}  — reference template: {{abs path to inspiration template 2}}
+… (etc.)
+
+CREATIVITY RUBRIC — do NOT token-swap. RESTRUCTURE.
+- Read the reference template. Understand the SPECIMEN comment header (what it
+  demonstrates). Then write a project-flavored equivalent of 1.5×–6× the reference
+  LOC. Same demonstration intent, ORIGINAL composition, project's voice, project's
+  domain nouns.
+- Every specimen earns at least ONE compositional choice that's not in the
+  template. Examples that landed well in the studio 2026-05-13 re-bootstrap (use
+  these as gold standard, in the same `_history/` folder):
+    - colors-accent.html (48 LOC template → 238 LOC): added a brand-spotlight
+      hero with masked gradient border, a "wrong" anti-pattern teaching device,
+      chroma annotations on swatches.
+    - empty-state.html (34 → 217): added a "Voice — keep or kill" panel comparing
+      good vs corporate copy side by side; added a variants grid for search-empty
+      and inspector-empty.
+    - ui_kits-desktop-showcase.html (302 → 1052): replaced the template's
+      sports-roster screens with project-specific reality; added a live-cursor
+      presence layer + a token-row inspector panel.
+  Anti-example from the same run: components-buttons.html (83 → 105) — kept the
+  template's fake-state grid almost verbatim. **Don't do this.** Add icon-only
+  + kbd-hint variants, push hierarchy contrast, surface the signature treatment
+  on the primary's hover state.
+- Copy is project-specific. NO "Lorem", NO "Acme Corp.", NO "Get Started". Use
+  the project's actual nouns ({{domain_nouns}}). Match the voice — {{Q8 voice}}.
+- Tokens only. No hardcoded hex / px / rem. If you reach for an off-ladder
+  value, STOP and use the nearest `var(--*)` token. The typography-critic
+  catches off-ladder px and will return a blocker.
+- Hard NOs from Q10 are guardrails. {{if "no animations" in hard_nos: "Do not add hover/active transitions; static states only."}} {{if "no gradients" in hard_nos: "No linear-gradient / radial-gradient anywhere."}} (etc.)
+- Carry the SPECIMEN comment header from the reference template at the top of
+  your output so future agents can identify what each file demonstrates.
+
+WHEN DONE
+After writing all {{N}} files, update each row in
+{{absolute path to _scaffold-roster.yaml}} (status: pending → status: written),
+then return a one-line confirmation per file.
+```
+
+Sub-agents are stateless — give each a complete brief, do not assume shared context. Three-line confirmation back is enough; the roster is the source of truth.
+
+#### Sequencing
+
+```
+Batch A (main agent, serial)         ← ~7 files, 2-3 minutes
+  ↓ blocks all of B + C
+Batch B (5 sub-agents, parallel)     ← ~12-14 files in ~4-6 minutes wall-clock
+Batch C (3-5 sub-agents, parallel)   ← ~10-15 files in ~4-6 minutes wall-clock
+  ↓ blocks ui_kits-*-index.html
+Index files (main agent, serial)     ← 1-2 files linking every peer; written LAST
+```
+
+Batch B and Batch C can also fire **simultaneously** — they have disjoint dependency sets. The wall-clock total drops to ~4-6 minutes vs the 15-25 minutes of serial scaffold.
+
+For each file in the computed set the sub-agent:
+
+- **Core `.tpl` files** (under inspiration `core/`): substitute placeholders from the discovery payload. If `mdcc` is available on PATH, shell out to `mdcc design init --discovery-payload <path>`. Else inline Write.
+- **Specimen files**: read the corresponding reference in the inspiration library, then **RESTRUCTURE** following the creativity rubric above. **No placeholder copy** in the output, ever.
 
 Scaffold sources (walk in order, apply gate, generate):
 
@@ -248,6 +438,18 @@ The critic emits a JSON verdict. If it returns **blockers**, the bootstrap flow 
 > **This step exists because completeness-critic is structural only.** It cannot see that the rendered output looks like a generic shadcn page. The screenshots feed the aesthetic critics in the next step AND give the user a fast visual proof.
 
 **If `agent-browser` is not on PATH**, surface this as a warning in the next-step block ("install agent-browser for visual verification") and skip to the aesthetic critic step using only the source HTML — but make the gap explicit to the user.
+
+**agent-browser CLI cheat-sheet** (it is NOT Playwright):
+
+| Goal | Command |
+|---|---|
+| Open a URL | `agent-browser open "<url>"` |
+| Full-page screenshot | `agent-browser screenshot --full <abs-path.png>` |
+| Wait for content | `agent-browser wait <selector-or-ms>` |
+| Resize viewport | not a top-level command — use `agent-browser eval "window.resizeTo(W, H)"` or pass `--viewport WxH` when supported by your build |
+| Help on any cmd | `agent-browser <cmd> --help` |
+
+The studio 2026-05-13 re-bootstrap wasted a Bash turn calling `agent-browser resize` (invalid). Don't.
 
 When available:
 

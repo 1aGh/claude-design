@@ -1,0 +1,136 @@
+<!--
+SPECIMEN: components-command-palette
+DEMONSTRATES: command palette — keyboard-driven, mono-forward, grouped results, hint icons, fuzzy match highlight
+COMPOSITION: open palette dialog with section dividers, recent + suggestions, accent-highlighted active row, kbd hint footer
+WHEN SCAFFOLDED: IF audience = pro tool. THE highest-leverage audience-pro specimen.
+NOTES: This is studio's most visible "pro-tool prestige" signal. Affinity has one, Figma has one, Raycast IS one.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>Command palette — studio</title><link rel="stylesheet" href="../colors_and_type.css"><link rel="stylesheet" href="./_layout.css">
+<style>
+  .palette-stage { padding: var(--space-7) var(--space-5); background:
+    radial-gradient(1000px 400px at 50% 0%, var(--accent-soft), transparent 60%),
+    var(--bg-0);
+    border-radius: var(--radius-xl); border: 1px solid var(--border-subtle);
+    display: grid; place-items: start center;
+  }
+  .palette { width: 560px; max-width: 100%; background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-lg); box-shadow: var(--shadow-xl), 0 0 0 1px var(--accent-soft); overflow: hidden; }
+  .palette .search-row { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border-subtle); }
+  .palette .search-row .icon { font-family: var(--font-mono); font-size: 18px; color: var(--accent); }
+  .palette .search-row input { background: transparent; border: 0; outline: 0; color: var(--fg-0); font: inherit; font-size: var(--type-md); flex: 1; }
+  .palette .search-row input::placeholder { color: var(--fg-2); }
+  .palette .search-row .esc { font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); border: 1px solid var(--border-default); padding: 2px 6px; border-radius: var(--radius-xs); letter-spacing: var(--tracking-mono); }
+
+  .palette .section { padding: 8px 0; border-bottom: 1px solid var(--border-subtle); }
+  .palette .section:last-of-type { border-bottom: 0; }
+  .palette .section-label { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-2); padding: 6px 16px; }
+  .palette .item { display: flex; align-items: center; gap: 12px; padding: 8px 16px; cursor: pointer; transition: background var(--dur-flip) var(--ease-out); }
+  .palette .item:hover { background: var(--bg-2); }
+  .palette .item.active { background: var(--accent); color: var(--accent-fg); }
+  .palette .item.active .icon, .palette .item.active .desc, .palette .item.active .kbd-grp kbd { color: var(--accent-fg); }
+  .palette .item.active .kbd-grp kbd { border-color: oklch(0% 0 0 / 0.25); background: oklch(0% 0 0 / 0.18); }
+  .palette .item .icon { font-family: var(--font-mono); font-size: 14px; color: var(--fg-2); width: 18px; text-align: center; }
+  .palette .item .text { flex: 1; }
+  .palette .item .name { font-size: var(--type-sm); color: inherit; }
+  .palette .item .name .match { color: var(--accent); font-weight: 600; }
+  .palette .item.active .name .match { color: var(--accent-fg); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  .palette .item .desc { font-family: var(--font-mono); font-size: 11px; color: var(--fg-2); letter-spacing: var(--tracking-mono); margin-top: 2px; }
+  .palette .item .kbd-grp { display: flex; gap: 4px; }
+  .palette .item .kbd-grp kbd { font-family: var(--font-mono); font-size: 10px; padding: 1px 5px; border: 1px solid var(--border-default); background: var(--bg-2); border-radius: var(--radius-xs); color: var(--fg-1); letter-spacing: var(--tracking-mono); }
+
+  .palette .footer { padding: 10px 16px; background: var(--bg-2); border-top: 1px solid var(--border-subtle); display: flex; gap: var(--space-4); align-items: center; }
+  .palette .footer .hint { display: inline-flex; gap: 4px; align-items: center; font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); letter-spacing: var(--tracking-mono); }
+  .palette .footer .hint kbd { font-family: var(--font-mono); font-size: 9px; padding: 1px 4px; border: 1px solid var(--border-default); background: var(--bg-1); border-radius: var(--radius-xs); }
+  .palette .footer .spacer { flex: 1; }
+  .palette .footer .scope { color: var(--accent); font-family: var(--font-mono); font-size: 10px; letter-spacing: var(--tracking-mono); }
+</style>
+</head>
+<body class="app">
+<main class="specimen">
+  <p class="crumb">components / command-palette</p>
+  <h1>Command palette</h1>
+  <p class="lede">The keyboard-driven entry point for everything in studio. Cmd+K opens it; arrow keys move; enter runs. Fuzzy match underlines the typed substring. Grouped sections — Recent, Canvas, System — so power users can predict scope.</p>
+
+  <div class="palette-stage">
+    <div class="palette" role="dialog" aria-label="Command palette">
+      <div class="search-row">
+        <span class="icon">⌕</span>
+        <input value="dev" placeholder="type to search canvases, components, tokens, commands…" />
+        <span class="esc">esc</span>
+      </div>
+
+      <div class="section">
+        <p class="section-label">recent</p>
+        <div class="item active">
+          <span class="icon">▦</span>
+          <div class="text">
+            <div class="name">Open <span class="match">dev</span>-server-shell</div>
+            <div class="desc">.design/ui/dev-server-shell.html · open in tab</div>
+          </div>
+          <div class="kbd-grp"><kbd>↵</kbd></div>
+        </div>
+        <div class="item">
+          <span class="icon">$</span>
+          <div class="text">
+            <div class="name">Run <span class="match">dev</span>-server</div>
+            <div class="desc">mdcc design serve --port 4321</div>
+          </div>
+          <div class="kbd-grp"><kbd>⌘</kbd><kbd>R</kbd></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-label">canvas</p>
+        <div class="item">
+          <span class="icon">+</span>
+          <div class="text">
+            <div class="name">New canvas</div>
+            <div class="desc">scaffold a fresh HTML mock under .design/ui/</div>
+          </div>
+          <div class="kbd-grp"><kbd>⌘</kbd><kbd>N</kbd></div>
+        </div>
+        <div class="item">
+          <span class="icon">↺</span>
+          <div class="text">
+            <div class="name">Rollback active canvas</div>
+            <div class="desc">undo last /design:edit · 12 snapshots available</div>
+          </div>
+          <div class="kbd-grp"><kbd>⌘</kbd><kbd>Z</kbd></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <p class="section-label">system</p>
+        <div class="item">
+          <span class="icon">⌬</span>
+          <div class="text">
+            <div class="name">Run /design:critic --system-only</div>
+            <div class="desc">structural audit · last ran 2m ago · 0 blockers</div>
+          </div>
+          <div class="kbd-grp"><kbd>⌘</kbd><kbd>⇧</kbd><kbd>A</kbd></div>
+        </div>
+        <div class="item">
+          <span class="icon">⚙</span>
+          <div class="text">
+            <div class="name">Edit colors_and_type.css</div>
+            <div class="desc">.design/system/studio/colors_and_type.css</div>
+          </div>
+          <div class="kbd-grp"><kbd>⌘</kbd><kbd>⇧</kbd><kbd>T</kbd></div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <span class="hint"><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+        <span class="hint"><kbd>↵</kbd> open</span>
+        <span class="hint"><kbd>⌘</kbd><kbd>↵</kbd> open in new tab</span>
+        <span class="spacer"></span>
+        <span class="scope">studio / md-claude</span>
+      </div>
+    </div>
+  </div>
+
+  <footer class="legend">
+    <p>The palette is mono-forward because everything inside it is a name (a path, a command, a kbd combo). The one sans element is the section label — chrome speaks mono, structure speaks sans.</p>
+    <p>Active row uses solid <code>--accent</code> background, not <code>--accent-soft</code>. The palette is a moment of focus; the background should commit.</p>
+  </footer>
+</main></body></html>

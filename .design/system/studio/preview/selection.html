@@ -1,0 +1,36 @@
+<!--
+SPECIMEN: selection — text-selection styling
+WHEN SCAFFOLDED: foundations
+NOTES: Selection picks up --accent-soft as background + --fg-0 text. Load-bearing in a pro-tool surface where users select code snippets, file paths, token names constantly.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>Selection — studio</title><link rel="stylesheet" href="../colors_and_type.css"><link rel="stylesheet" href="./_layout.css">
+<style>
+  ::selection { background: oklch(from var(--accent) l c h / 0.30); color: var(--fg-0); }
+  .demo { background: var(--bg-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: var(--space-5); max-width: 720px; }
+  .demo p { color: var(--fg-1); font-size: var(--type-sm); line-height: var(--lh-md); margin: 0 0 var(--space-2); }
+  .demo p code { background: var(--bg-2); color: var(--accent); padding: 1px 6px; border-radius: var(--radius-xs); border: 1px solid var(--border-subtle); }
+  .demo .pre { font-family: var(--font-mono); font-size: var(--type-xs); background: var(--bg-0); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: var(--space-3); margin-top: var(--space-3); letter-spacing: var(--tracking-mono); color: var(--fg-0); white-space: pre-wrap; }
+  .demo .pre .key { color: var(--accent); }
+  .demo .pre .str { color: var(--status-success); }
+
+  .pre-selected { background: oklch(from var(--accent) l c h / 0.30) !important; color: var(--fg-0) !important; }
+</style></head><body class="app">
+<main class="specimen">
+  <p class="crumb">foundations / selection</p>
+  <h1>Selection</h1>
+  <p class="lede">Studio's selection styling uses <code>--accent</code> at 30% alpha for the background and <code>--fg-0</code> for text. Try it — select any text on this page.</p>
+
+  <div class="demo">
+    <p>Plasma carries every clickable surface in studio. Amber is reserved for moments. When you find yourself reaching for amber inside a button, you've already lost the argument.</p>
+    <p>Common selections in the dev-server: file paths (<code>.design/system/studio/colors_and_type.css</code>), token names (<code>--accent-soft</code>), kbd combos (<kbd>⌘</kbd><kbd>K</kbd>).</p>
+    <div class="pre"><span class="key">--accent</span>: <span class="str">oklch(68% 0.22 285)</span>;
+<span class="key">--accent-fg</span>: <span class="str">oklch(14% 0.040 285)</span>;
+<span class="key">--brand-amber</span>: <span class="str">oklch(64% 0.18 50)</span>;</div>
+  </div>
+
+  <h2>Pre-selected example</h2>
+  <p>For agents that can't synthesize a real selection, this paragraph contains a <span class="pre-selected">pre-highlighted span</span> showing the active selection appearance.</p>
+
+  <footer class="legend"><p>Don't override <code>::selection</code> on a per-component basis. The selection style is a project-wide agreement — overriding it inside a code block makes copy-paste feel like a different app for two seconds.</p></footer>
+</main></body></html>

@@ -1,0 +1,84 @@
+<!--
+SPECIMEN: colors-presence
+DEMONSTRATES: --presence-{online,away,busy,offline} state dots + --presence-c1..5 multi-cursor hues for collaborative editing
+COMPOSITION: state-dot row, multi-cursor wheel, in-context (file tree + canvas) example
+WHEN SCAFFOLDED: IF presence ∈ activeFamilies (audience=pro AND multiplayer hint in brief). studio = yes (Figma cursor charm).
+NOTES: Presence cursor hues are sampled from the spotlight wheel so they read as a family. Amber appears here as one cursor — borrowing the brand for a single collaborator slot.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>Presence — studio</title><link rel="stylesheet" href="../colors_and_type.css"><link rel="stylesheet" href="./_layout.css">
+<style>
+  .state-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-3); }
+  .state-card { background: var(--bg-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: var(--space-4); display: grid; place-items: center; gap: var(--space-2); }
+  .state-card .dot { width: 14px; height: 14px; border-radius: 50%; }
+  .state-card .name { font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-mono); color: var(--fg-0); font-weight: 600; }
+  .state-card .desc { font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); letter-spacing: var(--tracking-mono); text-align: center; }
+
+  .cursor-wheel { display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--space-3); }
+  .cursor-tile { background: var(--bg-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: var(--space-3); display: grid; place-items: center; gap: var(--space-2); }
+  .cursor-tile .cur svg { display: block; }
+  .cursor-tile .label { font-family: var(--font-mono); font-size: 11px; padding: 1px 6px; border-radius: var(--radius-xs); color: oklch(8% 0 0); font-weight: 600; }
+
+  .multi-stage { background: var(--bg-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: var(--space-5); position: relative; min-height: 220px; overflow: hidden; }
+  .multi-stage .doc { background: var(--bg-2); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: var(--space-3); }
+  .multi-stage .doc .l { height: 10px; background: var(--bg-3); border-radius: 999px; margin-bottom: 6px; }
+  .multi-stage .doc .l.s { width: 30%; }
+  .multi-stage .doc .l.m { width: 60%; }
+  .multi-stage .doc .l.l { width: 90%; }
+  .live-cursor { position: absolute; pointer-events: none; font-family: var(--font-mono); font-size: 11px; }
+  .live-cursor svg { display: block; }
+  .live-cursor .label { background: currentColor; color: oklch(8% 0 0); padding: 1px 6px; border-radius: var(--radius-xs); font-weight: 600; margin-top: 2px; display: inline-block; box-shadow: 0 4px 12px oklch(0% 0 0 / 0.4); }
+</style>
+</head>
+<body class="app">
+<main class="specimen">
+  <p class="crumb">tokens / colors / presence</p>
+  <h1>Presence</h1>
+  <p class="lede">Studio supports multiplayer editing — the dev-server tracks open tabs across collaborators and renders live cursors with name labels. Four state dots cover availability; five cursor hues cover the squad. The fifth slot is amber, because the brand color earns a seat at the table.</p>
+
+  <h2>State dots</h2>
+  <div class="state-grid">
+    <div class="state-card"><div class="dot" style="background: var(--presence-online); box-shadow: 0 0 8px var(--presence-online);"></div><div class="name">online</div><div class="desc">--presence-online<br/>= --status-success</div></div>
+    <div class="state-card"><div class="dot" style="background: var(--presence-away);"></div><div class="name">away</div><div class="desc">--presence-away<br/>= --status-warn</div></div>
+    <div class="state-card"><div class="dot" style="background: var(--presence-busy);"></div><div class="name">busy</div><div class="desc">--presence-busy<br/>= --status-error</div></div>
+    <div class="state-card"><div class="dot" style="background: var(--presence-offline);"></div><div class="name">offline</div><div class="desc">--presence-offline<br/>= --fg-3</div></div>
+  </div>
+
+  <h2>Collaborator hues</h2>
+  <p>Five distinct hues sampled across the spectrum. Assigned round-robin to collaborators on connect. The cursor labels invert on the hue for contrast.</p>
+  <div class="cursor-wheel">
+    <div class="cursor-tile"><div class="cur" style="color: var(--presence-c1);"><svg width="20" height="26" viewBox="0 0 20 26" fill="currentColor"><path d="M2 2 L18 13 L11 14 L7 22 Z" stroke="oklch(8% 0 0)" stroke-width="1.5"/></svg></div><span class="label" style="background: var(--presence-c1);">amara</span></div>
+    <div class="cursor-tile"><div class="cur" style="color: var(--presence-c2);"><svg width="20" height="26" viewBox="0 0 20 26" fill="currentColor"><path d="M2 2 L18 13 L11 14 L7 22 Z" stroke="oklch(8% 0 0)" stroke-width="1.5"/></svg></div><span class="label" style="background: var(--presence-c2);">jonas</span></div>
+    <div class="cursor-tile"><div class="cur" style="color: var(--presence-c3);"><svg width="20" height="26" viewBox="0 0 20 26" fill="currentColor"><path d="M2 2 L18 13 L11 14 L7 22 Z" stroke="oklch(8% 0 0)" stroke-width="1.5"/></svg></div><span class="label" style="background: var(--presence-c3);">marta</span></div>
+    <div class="cursor-tile"><div class="cur" style="color: var(--presence-c4);"><svg width="20" height="26" viewBox="0 0 20 26" fill="currentColor"><path d="M2 2 L18 13 L11 14 L7 22 Z" stroke="oklch(8% 0 0)" stroke-width="1.5"/></svg></div><span class="label" style="background: var(--presence-c4);">kim</span></div>
+    <div class="cursor-tile"><div class="cur" style="color: var(--presence-c5);"><svg width="20" height="26" viewBox="0 0 20 26" fill="currentColor"><path d="M2 2 L18 13 L11 14 L7 22 Z" stroke="oklch(8% 0 0)" stroke-width="1.5"/></svg></div><span class="label" style="background: var(--presence-c5); color: var(--brand-amber-fg);">liam</span></div>
+  </div>
+
+  <h2>In a live canvas</h2>
+  <div class="multi-stage">
+    <div class="doc">
+      <p style="font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; color: var(--fg-2); margin: 0 0 var(--space-2); letter-spacing: 0.06em;">.design/ui/dev-server-shell.html</p>
+      <div class="l l"></div>
+      <div class="l m"></div>
+      <div class="l m"></div>
+      <div class="l s"></div>
+      <div class="l l"></div>
+    </div>
+    <div class="live-cursor" style="top: 28%; left: 22%; color: var(--presence-c2);">
+      <svg width="14" height="18" viewBox="0 0 14 18" fill="currentColor"><path d="M1 1 L13 9 L7 10 L4 16 Z" stroke="oklch(8% 0 0)" stroke-width="1"/></svg>
+      <span class="label">jonas</span>
+    </div>
+    <div class="live-cursor" style="top: 58%; right: 16%; color: var(--presence-c3);">
+      <svg width="14" height="18" viewBox="0 0 14 18" fill="currentColor"><path d="M1 1 L13 9 L7 10 L4 16 Z" stroke="oklch(8% 0 0)" stroke-width="1"/></svg>
+      <span class="label">marta</span>
+    </div>
+    <div class="live-cursor" style="top: 70%; left: 50%; color: var(--presence-c5);">
+      <svg width="14" height="18" viewBox="0 0 14 18" fill="currentColor"><path d="M1 1 L13 9 L7 10 L4 16 Z" stroke="oklch(8% 0 0)" stroke-width="1"/></svg>
+      <span class="label" style="color: var(--brand-amber-fg);">liam</span>
+    </div>
+  </div>
+
+  <footer class="legend">
+    <p>The 5-slot wheel rotates as users connect. Slot 5 is amber so the brand makes a cameo whenever a fifth collaborator joins — a small Affinity wink.</p>
+  </footer>
+</main></body></html>

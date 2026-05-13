@@ -1,0 +1,81 @@
+<!--
+SPECIMEN: components-dialogs
+DEMONSTRATES: modal dialog + drawer + confirm — three flavors with consistent header/body/footer pattern
+WHEN SCAFFOLDED: universal
+-->
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>Dialogs — studio</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="stylesheet" href="./_layout.css">
+<link rel="stylesheet" href="./_components.css">
+<style>
+  .scrim-stage { padding: var(--space-5); background: var(--bg-0); border: 1px solid var(--border-subtle); border-radius: var(--radius-xl); position: relative; min-height: 400px; }
+  .scrim-stage::before { content: ''; position: absolute; inset: 0; background: oklch(0% 0 0 / 0.55); border-radius: var(--radius-xl); }
+  .dialog { position: relative; max-width: 480px; margin: 60px auto 0; background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-lg); box-shadow: var(--shadow-xl); overflow: hidden; }
+  .dialog .head { padding: var(--space-4) var(--space-5) 0; }
+  .dialog .head h2 { font-family: var(--font-display); font-size: var(--type-lg); margin: 0 0 6px; font-weight: 600; color: var(--fg-0); letter-spacing: -0.005em; }
+  .dialog .head h2::before { content: none; }
+  .dialog .head .lede { color: var(--fg-1); font-size: var(--type-sm); margin: 0 0 var(--space-4); }
+  .dialog .body { padding: 0 var(--space-5) var(--space-4); color: var(--fg-1); font-size: var(--type-sm); }
+  .dialog .body code { background: var(--bg-2); }
+  .dialog .footer { display: flex; gap: 8px; padding: var(--space-3) var(--space-5); background: var(--bg-2); border-top: 1px solid var(--border-subtle); justify-content: flex-end; }
+  /* Dialog buttons consume from _components.css */
+
+  .drawer-stage { position: relative; min-height: 340px; background: var(--bg-0); border: 1px solid var(--border-subtle); border-radius: var(--radius-xl); overflow: hidden; padding: var(--space-3); }
+  .drawer-stage::before { content: ''; position: absolute; inset: 0; background: oklch(0% 0 0 / 0.4); }
+  .drawer { position: absolute; top: 0; right: 0; bottom: 0; width: 420px; background: var(--bg-1); border-left: 1px solid var(--border-default); box-shadow: var(--shadow-xl); display: grid; grid-template-rows: auto 1fr auto; }
+  .drawer .head { padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: baseline; }
+  .drawer .head h2 { margin: 0; font-family: var(--font-display); font-size: var(--type-md); font-weight: 600; color: var(--fg-0); }
+  .drawer .head h2::before { content: none; }
+  .drawer .head .esc { font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); border: 1px solid var(--border-default); padding: 2px 6px; border-radius: var(--radius-xs); }
+  .drawer .body { padding: var(--space-4) var(--space-5); overflow-y: auto; color: var(--fg-1); font-size: var(--type-sm); }
+  .drawer .footer { padding: var(--space-3) var(--space-5); background: var(--bg-2); border-top: 1px solid var(--border-subtle); display: flex; gap: 8px; justify-content: flex-end; }
+</style></head><body class="app">
+<main class="specimen">
+  <p class="crumb">components / dialogs</p>
+  <h1>Dialogs</h1>
+  <p class="lede">Three flavors. Modal for confirm-style decisions. Drawer for side-panel inspection. Destructive for actions you can't undo. All share head / body / footer scaffolding.</p>
+
+  <h2>Modal (confirm)</h2>
+  <div class="scrim-stage">
+    <div class="dialog">
+      <div class="head">
+        <h2>Publish lineup?</h2>
+        <p class="lede">Once published, the roster is read-only for substitutes until kick-off. You can still flag fitness concerns from the activity tab.</p>
+      </div>
+      <div class="body">
+        <p style="margin: 0;">11 / 11 confirmed. Match starts in <code>2h 34m</code> against the Greens.</p>
+      </div>
+      <div class="footer">
+        <button class="btn btn--ghost">cancel</button>
+        <button class="btn btn--primary"><span class="icon-led" aria-hidden="true"></span>publish lineup</button>
+      </div>
+    </div>
+  </div>
+
+  <h2>Drawer</h2>
+  <div class="drawer-stage">
+    <div class="drawer">
+      <div class="head"><h2>Inspector — .btn--primary</h2><span class="esc">esc</span></div>
+      <div class="body">
+        <p style="font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); letter-spacing: var(--tracking-mono); margin: 0 0 var(--space-3);">.canvas-card &gt; .head &gt; .btn--primary</p>
+        <p>Background uses <code>var(--accent)</code>. Foreground uses <code>var(--accent-fg)</code>. Contrast ratio is 8.7 : 1 — comfortably above WCAG AAA (7 : 1).</p>
+        <p style="font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); letter-spacing: var(--tracking-mono); margin-top: var(--space-3);">14 properties · 3 tokens used</p>
+      </div>
+      <div class="footer"><button class="btn btn--ghost">copy selector</button><button class="btn btn--secondary">edit in colors_and_type.css</button></div>
+    </div>
+  </div>
+
+  <h2>Destructive</h2>
+  <div class="scrim-stage" style="min-height: 240px;">
+    <div class="dialog" style="margin-top: 30px;">
+      <div class="head">
+        <h2 style="color: var(--status-error);">Delete this canvas?</h2>
+        <p class="lede"><code>marketing-hero.html</code> will be moved to <code>_history/</code> with 14 days retention. Rollback after that needs git.</p>
+      </div>
+      <div class="footer"><button class="btn btn--ghost">cancel</button><button class="btn btn--destructive">delete canvas</button></div>
+    </div>
+  </div>
+
+  <footer class="legend"><p>Destructive confirms always say what's being deleted by name. "Delete canvas?" is wrong; "Delete <code>marketing-hero.html</code>?" is right.</p></footer>
+</main></body></html>

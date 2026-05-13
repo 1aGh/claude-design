@@ -1,0 +1,35 @@
+<!--
+SPECIMEN: components-list
+DEMONSTRATES: dense list — rows with leading icon + multi-line text + trailing meta + selection
+WHEN SCAFFOLDED: IF audience = pro tool
+-->
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>List — studio</title><link rel="stylesheet" href="../colors_and_type.css"><link rel="stylesheet" href="./_layout.css">
+<style>
+  .list { background: var(--bg-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); overflow: hidden; max-width: 640px; }
+  .row-i { display: grid; grid-template-columns: 28px 1fr auto; gap: var(--space-3); padding: 10px 14px; border-bottom: 1px solid var(--border-subtle); align-items: center; transition: background var(--dur-flip) var(--ease-out); cursor: pointer; }
+  .row-i:last-child { border-bottom: 0; }
+  .row-i:hover { background: var(--bg-2); }
+  .row-i.selected { background: var(--accent-soft); }
+  .row-i.selected .name { color: var(--fg-0); }
+  .row-i .glyph { font-family: var(--font-mono); font-size: 14px; color: var(--fg-2); text-align: center; }
+  .row-i.selected .glyph { color: var(--accent); }
+  .row-i .name { font-size: var(--type-sm); color: var(--fg-0); font-weight: 500; }
+  .row-i .sub { font-family: var(--font-mono); font-size: 11px; color: var(--fg-2); margin-top: 2px; letter-spacing: var(--tracking-mono); }
+  .row-i .trailing { font-family: var(--font-mono); font-size: 11px; color: var(--fg-2); letter-spacing: var(--tracking-mono); text-align: right; }
+  .row-i .trailing .dot { color: var(--status-success); margin-right: 4px; }
+</style></head><body class="app">
+<main class="specimen">
+  <p class="crumb">components / list</p>
+  <h1>List</h1>
+  <p class="lede">Dense, mono-trailing, selectable. Used for canvas inventories, search results, file tree leafs. One selection at a time; multi-select only when explicit.</p>
+
+  <div class="list">
+    <div class="row-i selected"><span class="glyph">▦</span><div><div class="name">dev-server-shell</div><div class="sub">.design/ui/dev-server-shell.html</div></div><span class="trailing">28 specimens<br/>14:08:22</span></div>
+    <div class="row-i"><span class="glyph">▦</span><div><div class="name">docs-landing</div><div class="sub">.design/ui/docs-landing.html</div></div><span class="trailing">draft<br/>13:55:01</span></div>
+    <div class="row-i"><span class="glyph">▦</span><div><div class="name">marketing-hero</div><div class="sub">.design/ui/marketing-hero.html</div></div><span class="trailing"><span class="dot">●</span>passed<br/>13:42:17</span></div>
+    <div class="row-i"><span class="glyph">▦</span><div><div class="name">empty-state</div><div class="sub">.design/ui/empty-state.html</div></div><span class="trailing">3 iter<br/>12:30:08</span></div>
+  </div>
+
+  <footer class="legend"><p>Selected row uses <code>--accent-soft</code> as background, not solid <code>--accent</code> — that's reserved for full-attention surfaces (active sidebar nav, palette active row).</p></footer>
+</main></body></html>

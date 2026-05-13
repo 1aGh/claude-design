@@ -1,0 +1,35 @@
+{
+  "$schema": "https://raw.githubusercontent.com/1aGh/md-claude/main/plugins/design/dev-server/config.schema.json",
+  "name": "md-claude",
+  "projectLabel": "md-claude",
+  "designRoot": ".design",
+  "canvasGroups": [
+    { "label": "Design system", "path": "system" },
+    { "label": "UI kit",        "path": "ui" }
+  ],
+  "rootClass": "app",
+  "themeDefault": "dark",
+  "tokensCssRel": "system/studio/colors_and_type.css",
+  "teamAccentDefault": null,
+  "handoffTargets": [
+    {
+      "name": "Dev-server docs",
+      "description": "Inline HTML / CSS surface served by the design dev-server itself (file tree + canvas iframe + inspector).",
+      "kind": "static-html",
+      "destinationHint": "plugins/design/dev-server/server.mjs (inlined HTML / CSS)"
+    }
+  ],
+  "newCanvasDir": "ui/studio",
+  "newComponentDir": "ui/studio/components",
+  "extensions": [],
+  "completenessProfile": "standard",
+  "activeFamilies": ["accent", "status", "presence", "mono", "brand"],
+  "designSystems": [
+    {
+      "name": "studio",
+      "path": "system/studio",
+      "description": "Dev-tool restraint × pro-tool prestige × PostHog warmth in copy. Plasma accent for component chrome; --brand-amber as marketing-only spotlight. Dark-only, desktop-only, Geist + Geist Mono. Serves the md-claude docs site and the dev-server UI."
+    }
+  ],
+  "defaultDesignSystem": "studio"
+}

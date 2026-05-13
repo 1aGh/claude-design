@@ -1,0 +1,45 @@
+<!--
+SPECIMEN: colors-surfaces
+DEMONSTRATES: --bg-0..4 + --border-{subtle,default,strong} — the 5-step elevation ladder + 3-step border ladder, both with violet undertone
+COMPOSITION: stacked swatches showing the elevation feel, plus a real nested chrome example (panel → card → input)
+WHEN SCAFFOLDED: always (Core)
+NOTES: Borders are derived via oklch(from var(--bg-1) calc(l + 0.04) c h) — they automatically track the bg ladder.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>Surfaces — studio</title><link rel="stylesheet" href="../colors_and_type.css"><link rel="stylesheet" href="./_layout.css"></head>
+<body class="app">
+<main class="specimen">
+  <p class="crumb">tokens / colors / surfaces</p>
+  <h1>Surfaces</h1>
+  <p class="lede">Five steps from page (<code>--bg-0</code>) to active state (<code>--bg-4</code>). The lightness gap is tight on purpose — studio's elevation reads through borders and shadows, not through dramatic bg jumps. Affinity does this; PostHog does this; we do this.</p>
+
+  <h2>Elevation ladder</h2>
+  <div class="grid">
+    <div class="swatch"><div class="chip" style="background: var(--bg-0);"></div><div class="meta"><strong>--bg-0</strong>page · L 13</div></div>
+    <div class="swatch"><div class="chip" style="background: var(--bg-1);"></div><div class="meta"><strong>--bg-1</strong>panel / sidebar / card · L 17</div></div>
+    <div class="swatch"><div class="chip" style="background: var(--bg-2);"></div><div class="meta"><strong>--bg-2</strong>popover / nested · L 20</div></div>
+    <div class="swatch"><div class="chip" style="background: var(--bg-3);"></div><div class="meta"><strong>--bg-3</strong>input bg · L 23</div></div>
+    <div class="swatch"><div class="chip" style="background: var(--bg-4);"></div><div class="meta"><strong>--bg-4</strong>hover / pressed · L 28</div></div>
+  </div>
+
+  <h2>Borders</h2>
+  <p>Borders derive from <code>--bg-1</code> using <code>oklch(from … calc(l + 0.04 / 0.08 / 0.14) c h)</code>. They track the surface so chrome stays coherent if you swap theme.</p>
+  <div class="grid">
+    <div class="swatch"><div class="chip" style="background: var(--bg-1); border: 1px solid var(--border-subtle); box-sizing: border-box;"></div><div class="meta"><strong>--border-subtle</strong>nested separators</div></div>
+    <div class="swatch"><div class="chip" style="background: var(--bg-1); border: 1px solid var(--border-default); box-sizing: border-box;"></div><div class="meta"><strong>--border-default</strong>card / input / chip</div></div>
+    <div class="swatch"><div class="chip" style="background: var(--bg-1); border: 1px solid var(--border-strong); box-sizing: border-box;"></div><div class="meta"><strong>--border-strong</strong>focused panel</div></div>
+  </div>
+
+  <h2>In use — nested chrome</h2>
+  <div style="background: var(--bg-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: var(--space-4);">
+    <p style="font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); margin: 0 0 var(--space-3); letter-spacing: var(--tracking-mono);">panel · bg-1</p>
+    <div style="background: var(--bg-2); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: var(--space-3);">
+      <p style="font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); margin: 0 0 var(--space-2); letter-spacing: var(--tracking-mono);">popover · bg-2</p>
+      <input style="background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-sm); color: var(--fg-0); padding: 6px 10px; font: inherit; font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-mono); width: 100%;" placeholder="input · bg-3" />
+    </div>
+  </div>
+
+  <footer class="legend">
+    <p>Don't reach for a 6th bg. If you need more depth, use a shadow (<code>--shadow-md</code>) or an accent glow (<code>--shadow-glow</code>). More bg steps means weaker hierarchy.</p>
+  </footer>
+</main></body></html>

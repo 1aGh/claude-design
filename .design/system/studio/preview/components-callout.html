@@ -1,0 +1,62 @@
+<!--
+SPECIMEN: components-callout
+DEMONSTRATES: inline callouts — info, note, warn, success — for docs prose
+WHEN SCAFFOLDED: universal
+NOTES: Used in long-form docs reading. Eyebrow uses mono; body uses sans. Left border in the status hue.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>Callouts — studio</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="stylesheet" href="./_layout.css">
+<link rel="stylesheet" href="./_components.css">
+<style>
+  .call { border-left: 3px solid; border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); margin: 0 0 var(--space-3); display: flex; gap: var(--space-3); align-items: flex-start; max-width: 720px; }
+  .call .glyph { font-family: var(--font-mono); font-size: 16px; line-height: 22px; flex-shrink: 0; }
+  .call .text { flex: 1; }
+  .call .eyebrow { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 4px; font-weight: 600; }
+  .call .body { color: var(--fg-1); font-size: var(--type-sm); line-height: var(--lh-md); margin: 0; }
+  .call .body code { background: var(--bg-2); color: var(--accent); border: 1px solid var(--border-subtle); padding: 1px 6px; border-radius: var(--radius-xs); }
+
+  .call.info  { background: oklch(from var(--status-info) l c h / 0.06); border-color: var(--status-info); }
+  .call.info  .glyph, .call.info  .eyebrow { color: var(--status-info); }
+  .call.note  { background: var(--accent-soft); border-color: var(--accent); }
+  .call.note  .glyph, .call.note  .eyebrow { color: var(--accent); }
+  .call.warn  { background: oklch(from var(--status-warn) l c h / 0.08); border-color: var(--status-warn); }
+  .call.warn  .glyph, .call.warn  .eyebrow { color: var(--status-warn); }
+  .call.success { background: oklch(from var(--status-success) l c h / 0.06); border-color: var(--status-success); }
+  .call.success .glyph, .call.success .eyebrow { color: var(--status-success); }
+  .call.brand { background: linear-gradient(135deg, oklch(from var(--brand-amber) l c h / 0.10), transparent 60%); border-color: var(--brand-amber); }
+  .call.brand .glyph, .call.brand .eyebrow { color: var(--brand-amber); }
+</style></head><body class="app">
+<main class="specimen">
+  <p class="crumb">components / callout</p>
+  <h1>Callout</h1>
+  <p class="lede">Inline boxes used in long-form docs. Five flavors — info, note, warn, success, and a brand-amber variant reserved for hero/landing content. Eyebrow is mono; body is sans; the left border carries the hue.</p>
+
+  <div class="call info">
+    <span class="glyph">→</span>
+    <div class="text"><p class="eyebrow">info</p><p class="body">studio runs as a local dev-server. There's no cloud component, no telemetry, no account. Your <code>.design/</code> directory is the source of truth.</p></div>
+  </div>
+
+  <div class="call note">
+    <span class="glyph">●</span>
+    <div class="text"><p class="eyebrow">note</p><p class="body">Cmd-click any element in a canvas iframe to scope the next <code>/design:edit</code> to that element. The inspector overlay highlights what the next edit will target.</p></div>
+  </div>
+
+  <div class="call warn">
+    <span class="glyph">▲</span>
+    <div class="text"><p class="eyebrow">warn</p><p class="body">Don't reach for <code>--accent2</code>. The one-accent rule prevents drift; if you find yourself needing a parallel accent, the answer is <code>--brand-amber</code> on a marketing surface, not in chrome.</p></div>
+  </div>
+
+  <div class="call success">
+    <span class="glyph">●</span>
+    <div class="text"><p class="eyebrow">passed</p><p class="body">aspiration_score ≥ 4.0 — the canvas earned its place in <code>_history/</code>. Run <code>/design:handoff</code> when you're ready to migrate the markup into production code.</p></div>
+  </div>
+
+  <div class="call brand">
+    <span class="glyph">✦</span>
+    <div class="text"><p class="eyebrow">studio principle</p><p class="body"><strong style="color: var(--fg-0);">Iterate against the artifact, not the abstraction.</strong> Looking at the live mock is faster than arguing about specs. studio's whole shape is built around that bias.</p></div>
+  </div>
+
+  <footer class="legend"><p>The brand callout is reserved for docs-landing and the studio README. Don't ship it in dev-server chrome — that's exactly the kind of amber leak the chrome rule prevents.</p></footer>
+</main></body></html>

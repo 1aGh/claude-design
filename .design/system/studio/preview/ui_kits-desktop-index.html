@@ -1,0 +1,95 @@
+<!--
+SPECIMEN: ui_kits-desktop-index
+DEMONSTRATES: a catalog/launcher page that links to every desktop-relevant specimen. The companion to ui_kits-desktop-showcase.html.
+COMPOSITION: section-grouped grid of thumbnails + names + brief descriptions
+WHEN SCAFFOLDED: always-on for desktop platform
+-->
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>UI kit · desktop · catalog — studio</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="stylesheet" href="./_layout.css">
+<link rel="stylesheet" href="./_components.css">
+<style>
+  .group-head { display: flex; align-items: baseline; gap: var(--space-3); margin: var(--space-7) 0 var(--space-3); padding-bottom: var(--space-2); border-bottom: 1px solid var(--border-subtle); }
+  .group-head:first-of-type { margin-top: var(--space-4); }
+  .group-head h2 { margin: 0; font-family: var(--font-display); font-size: var(--type-lg); font-weight: 600; color: var(--fg-0); letter-spacing: -0.005em; }
+  .group-head h2::before { content: none; }
+  .group-head .count { font-family: var(--font-mono); font-size: 11px; color: var(--fg-2); letter-spacing: var(--tracking-mono); margin-left: auto; }
+  .cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--space-3); }
+  /* Catalog cards reuse the .tile + .is-hoverable anatomy from _components.css */
+  .cat-card { text-decoration: none; color: var(--fg-0); padding: var(--space-3); display: grid; gap: var(--space-2); }
+  .cat-card .thumb { height: 88px; background:
+    repeating-linear-gradient(0deg, oklch(0% 0 0 / 0.18) 0 1px, transparent 1px 3px),
+    linear-gradient(135deg, var(--bg-2), var(--bg-3));
+    border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); position: relative; overflow: hidden; box-shadow: inset 0 0 20px oklch(0% 0 0 / 0.25); }
+  .cat-card .thumb::after { content: ''; position: absolute; inset: 12px; background: linear-gradient(135deg, transparent 60%, var(--accent-glow)); border-radius: 4px; }
+  .cat-card .name { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-0); letter-spacing: var(--tracking-mono); font-weight: 700; }
+  .cat-card .desc { font-size: 11px; color: var(--fg-2); line-height: 16px; }
+</style></head><body class="app">
+<main class="specimen">
+  <p class="crumb">ui kit / desktop / catalog</p>
+  <h1>Desktop catalog</h1>
+  <p class="lede">Every specimen studio ships for the desktop surface, grouped by family. The <code>ui_kits-desktop-showcase.html</code> is the canonical "DS in use" composition — start there. The rest are reference material for a single token family or component class.</p>
+
+  <div class="group-head"><h2>Foundations</h2><span class="count">11 specimens</span></div>
+  <div class="cat-grid">
+    <a class="tile is-hoverable cat-card" href="./colors-accent.html"><div class="thumb"></div><span class="name">colors-accent</span><span class="desc">plasma + brand-amber policy demo</span></a>
+    <a class="tile is-hoverable cat-card" href="./colors-text.html"><div class="thumb"></div><span class="name">colors-text</span><span class="desc">fg-0..3 ladder</span></a>
+    <a class="tile is-hoverable cat-card" href="./colors-surfaces.html"><div class="thumb"></div><span class="name">colors-surfaces</span><span class="desc">bg-0..4 + borders</span></a>
+    <a class="tile is-hoverable cat-card" href="./type-scale.html"><div class="thumb"></div><span class="name">type-scale</span><span class="desc">8-step + display tier</span></a>
+    <a class="tile is-hoverable cat-card" href="./type-mono.html"><div class="thumb"></div><span class="name">type-mono</span><span class="desc">Geist Mono as display surface</span></a>
+    <a class="tile is-hoverable cat-card" href="./spacing-scale.html"><div class="thumb"></div><span class="name">spacing-scale</span><span class="desc">4px base · 8 steps</span></a>
+    <a class="tile is-hoverable cat-card" href="./motion.html"><div class="thumb"></div><span class="name">motion</span><span class="desc">4 durations · 3 easings</span></a>
+    <a class="tile is-hoverable cat-card" href="./radii.html"><div class="thumb"></div><span class="name">radii</span><span class="desc">xs..xl + pill</span></a>
+    <a class="tile is-hoverable cat-card" href="./elevation.html"><div class="thumb"></div><span class="name">elevation</span><span class="desc">4 ambient + 2 glow shadows</span></a>
+    <a class="tile is-hoverable cat-card" href="./focus.html"><div class="thumb"></div><span class="name">focus</span><span class="desc">--ring on every surface</span></a>
+    <a class="tile is-hoverable cat-card" href="./iconography.html"><div class="thumb"></div><span class="name">iconography</span><span class="desc">lucide · domain set</span></a>
+  </div>
+
+  <div class="group-head"><h2>Components — core</h2><span class="count">3 specimens</span></div>
+  <div class="cat-grid">
+    <a class="tile is-hoverable cat-card" href="./components-buttons.html"><div class="thumb"></div><span class="name">buttons</span><span class="desc">4 variants × 3 sizes × 6 states</span></a>
+    <a class="tile is-hoverable cat-card" href="./components-cards.html"><div class="thumb"></div><span class="name">cards</span><span class="desc">5 card shapes</span></a>
+    <a class="tile is-hoverable cat-card" href="./components-inputs.html"><div class="thumb"></div><span class="name">inputs</span><span class="desc">text · search · textarea · select</span></a>
+  </div>
+
+  <div class="group-head"><h2>Components — universal</h2><span class="count">5 specimens</span></div>
+  <div class="cat-grid">
+    <a class="tile is-hoverable cat-card" href="./components-toggles.html"><div class="thumb"></div><span class="name">toggles</span><span class="desc">switch · checkbox · radio · segmented</span></a>
+    <a class="tile is-hoverable cat-card" href="./components-dialogs.html"><div class="thumb"></div><span class="name">dialogs</span><span class="desc">modal · drawer · destructive</span></a>
+    <a class="tile is-hoverable cat-card" href="./components-tooltips.html"><div class="thumb"></div><span class="name">tooltips</span><span class="desc">near-black chrome above chrome</span></a>
+    <a class="tile is-hoverable cat-card" href="./components-tables.html"><div class="thumb"></div><span class="name">tables</span><span class="desc">dense · mono numerals · sortable</span></a>
+    <a class="tile is-hoverable cat-card" href="./components-callout.html"><div class="thumb"></div><span class="name">callout</span><span class="desc">info · note · warn · success · brand</span></a>
+  </div>
+
+  <div class="group-head"><h2>Pro-tool surfaces</h2><span class="count">6 specimens</span></div>
+  <div class="cat-grid">
+    <a class="tile is-hoverable cat-card" href="./components-command-palette.html"><div class="thumb"></div><span class="name">command-palette</span><span class="desc">cmd-K · grouped · fuzzy match</span></a>
+    <a class="tile is-hoverable cat-card" href="./components-shortcuts-overlay.html"><div class="thumb"></div><span class="name">shortcuts-overlay</span><span class="desc">? key · 18 shortcuts</span></a>
+    <a class="tile is-hoverable cat-card" href="./components-keyboard.html"><div class="thumb"></div><span class="name">keyboard</span><span class="desc">kbd conventions</span></a>
+    <a class="tile is-hoverable cat-card" href="./components-list.html"><div class="thumb"></div><span class="name">list</span><span class="desc">dense · multi-line · selectable</span></a>
+    <a class="tile is-hoverable cat-card" href="./components-toast-menu.html"><div class="thumb"></div><span class="name">toast + menu</span><span class="desc">transient surfaces</span></a>
+    <a class="tile is-hoverable cat-card" href="./components-resize-panels.html"><div class="thumb"></div><span class="name">resize-panels</span><span class="desc">split-pane · drag handle</span></a>
+  </div>
+
+  <div class="group-head"><h2>Status &amp; presence</h2><span class="count">4 specimens</span></div>
+  <div class="cat-grid">
+    <a class="tile is-hoverable cat-card" href="./colors-status.html"><div class="thumb"></div><span class="name">colors-status</span><span class="desc">success · warn · error · info</span></a>
+    <a class="tile is-hoverable cat-card" href="./components-status.html"><div class="thumb"></div><span class="name">components-status</span><span class="desc">pills · dots · banners</span></a>
+    <a class="tile is-hoverable cat-card" href="./skeletons.html"><div class="thumb"></div><span class="name">skeletons</span><span class="desc">shimmer · reduced-motion safe</span></a>
+    <a class="tile is-hoverable cat-card" href="./colors-presence.html"><div class="thumb"></div><span class="name">colors-presence</span><span class="desc">5 cursor hues · state dots</span></a>
+  </div>
+
+  <div class="group-head"><h2>Brand</h2><span class="count">2 specimens</span></div>
+  <div class="cat-grid">
+    <a class="tile is-hoverable cat-card" href="./logo.html"><div class="thumb"></div><span class="name">logo</span><span class="desc">wordmark + mark + no-go zone</span></a>
+    <a class="tile is-hoverable cat-card" href="./empty-state.html"><div class="thumb"></div><span class="name">empty-state</span><span class="desc">voice moment · brand-amber glow</span></a>
+  </div>
+
+  <div class="group-head"><h2>Composition</h2><span class="count">1 specimen</span></div>
+  <div class="cat-grid">
+    <a class="tile tile--signature is-hoverable cat-card" href="./ui_kits-desktop-showcase.html"><div class="thumb"></div><span class="name" style="color: var(--accent);">ui_kits-desktop-showcase</span><span class="desc">the canonical "DS in use" composition · start here</span></a>
+  </div>
+
+  <footer class="legend"><p>32 specimens · single source of truth at <code>../colors_and_type.css</code>. If you add a new specimen, link it from this catalog so studio stays browsable.</p></footer>
+</main></body></html>

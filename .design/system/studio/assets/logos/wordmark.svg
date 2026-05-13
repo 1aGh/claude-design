@@ -1,0 +1,18 @@
+<!--
+  studio wordmark — "studio" set in Geist 600 with -0.022em tracking, plasma slash,
+  mono subscript "/md-claude". OKLCH source values for portability.
+
+  Note: SVG renders the wordmark with a system Geist fallback. If Geist isn't installed
+  on the rendering surface, it falls back to system-ui — keep the lockup recognizable
+  via the mark color, not the typeface alone.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="56" viewBox="0 0 320 56" role="img" aria-label="studio / md-claude">
+  <style>
+    .word { font-family: Geist, Inter, system-ui, sans-serif; font-size: 32px; font-weight: 600; letter-spacing: -0.022em; fill: oklch(96% 0.005 285); }
+    .slash { font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; font-size: 28px; font-weight: 500; fill: oklch(68% 0.22 285); letter-spacing: 0.01em; }
+    .sub { font-family: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace; font-size: 13px; font-weight: 400; fill: oklch(58% 0.010 285); letter-spacing: 0.01em; }
+  </style>
+  <text x="0" y="38" class="word">studio</text>
+  <text x="110" y="38" class="slash">/</text>
+  <text x="128" y="36" class="sub">md-claude</text>
+</svg>

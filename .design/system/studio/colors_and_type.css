@@ -1,0 +1,179 @@
+/*
+ * studio — design tokens
+ *
+ * The authoritative token file for md-claude's design system.
+ * Every specimen in preview/ links to this; production code (docs site
+ * + dev-server UI) should consume the same values.
+ *
+ * Contract
+ * ────────
+ * - OKLCH for every color (better gamut control than HSL/hex)
+ * - One accent family in components (--accent / hover / active / fg)
+ * - Brand spotlight (--brand-amber) reserved for marketing surfaces ONLY
+ *   (docs hero, signature-moment art, brand banner) — never in dev-server chrome
+ * - Theme: dark only (single block; no [data-theme="light"])
+ * - Motion uses --dur-* + --ease-* tokens; reduced-motion guard at the bottom
+ * - 8-step type ladder, 4px-base spacing
+ *
+ * Mood DNA: Zed restraint × Affinity prestige × PostHog warmth in copy
+ */
+
+:root,
+.app[data-theme="dark"] {
+  /* ─── Surfaces (deepest → highest, faint violet undertone) ─────────── */
+  --bg-0: oklch(13% 0.010 285);   /* page bg                                */
+  --bg-1: oklch(17% 0.012 285);   /* panel / sidebar / card bg              */
+  --bg-2: oklch(20% 0.014 285);   /* popover / nested panel                 */
+  --bg-3: oklch(23% 0.016 285);   /* input bg / subtle row hover            */
+  --bg-4: oklch(28% 0.018 285);   /* hover / pressed                        */
+  --bg-inverse: oklch(96% 0.005 285); /* light surface on dark for inversion */
+
+  /* ─── Borders (derived from bg-1 lightness ladder) ─────────────────── */
+  --border-subtle:  oklch(from var(--bg-1) calc(l + 0.04) c h);
+  --border-default: oklch(from var(--bg-1) calc(l + 0.08) c h);
+  --border-strong:  oklch(from var(--bg-1) calc(l + 0.14) c h);
+
+  /* ─── Text (paperwhite with violet ghost so it sits on bg-0) ────────── */
+  --fg-0: oklch(96% 0.005 285);   /* primary text                            */
+  --fg-1: oklch(78% 0.008 285);   /* secondary text / lede                   */
+  --fg-2: oklch(58% 0.010 285);   /* tertiary / muted / mono meta            */
+  --fg-3: oklch(38% 0.012 285);   /* disabled                                */
+
+  /* ─── Accent (PLASMA — primary; one family rule for components) ─────── */
+  --accent:        oklch(68% 0.22 285);
+  --accent-hover:  oklch(63% 0.22 285);
+  --accent-active: oklch(58% 0.22 285);
+  --accent-fg:     oklch(14% 0.040 285);   /* deep violet-black on plasma   */
+  --accent-soft:   oklch(from var(--accent) l c h / 0.12);  /* tinted bg     */
+  --accent-glow:   oklch(from var(--accent) l c h / 0.25);  /* shadow glow   */
+
+  /* ─── Brand spotlight (AMBER — marketing surfaces only) ─────────────── */
+  /* Use ONLY in docs hero / signature-moment / brand banner. NEVER in     */
+  /* dev-server chrome or component states. Linter (when added) will flag  */
+  /* --brand-amber inside components-*.html as a brand-rule violation.     */
+  --brand-amber:        oklch(64% 0.18 50);
+  --brand-amber-hover:  oklch(60% 0.18 50);
+  --brand-amber-fg:     oklch(14% 0.050 50);
+  --brand-amber-glow:   oklch(from var(--brand-amber) l c h / 0.28);
+
+  /* ─── Status family (accent ≠ status; status uses its own hues) ─────── */
+  --status-success: oklch(70% 0.18 145);
+  --status-warn:    oklch(78% 0.16  85);
+  --status-error:   oklch(64% 0.21  25);
+  --status-info:    oklch(68% 0.12 200);   /* teal-leaning, away from plasma */
+
+  /* ─── Presence (multi-cursor / activity dots) ───────────────────────── */
+  --presence-online:  var(--status-success);
+  --presence-away:    var(--status-warn);
+  --presence-busy:    var(--status-error);
+  --presence-offline: var(--fg-3);
+  /* Per-collaborator cursor hues — sampled from the spotlight wheel */
+  --presence-c1: oklch(72% 0.16 220);   /* cyan        */
+  --presence-c2: oklch(70% 0.16 150);   /* emerald     */
+  --presence-c3: oklch(72% 0.18  20);   /* coral       */
+  --presence-c4: oklch(74% 0.18 320);   /* rose-violet */
+  --presence-c5: var(--brand-amber);    /* amber       */
+
+  /* ─── Shadows (Affinity-deep, plus an accent glow for moments) ──────── */
+  --shadow-sm:    0 1px 2px oklch(0% 0 0 / 0.30);
+  --shadow-md:    0 4px 16px oklch(0% 0 0 / 0.40);
+  --shadow-lg:    0 16px 48px oklch(0% 0 0 / 0.50);
+  --shadow-xl:    0 32px 96px oklch(0% 0 0 / 0.60);
+  --shadow-glow:  0 0 32px var(--accent-glow);
+  --shadow-glow-amber: 0 0 32px var(--brand-amber-glow);
+
+  /* ─── Radii (Zed × Affinity — tight, mostly under 12px) ─────────────── */
+  --radius-xs:   3px;
+  --radius-sm:   5px;
+  --radius-md:   7px;
+  --radius-lg:  11px;
+  --radius-xl:  16px;
+  --radius-pill: 999px;
+
+  /* ─── Spacing (4px base) ────────────────────────────────────────────── */
+  --space-0:  0;
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* ─── Typography (Geist + Geist Mono, with strong fallback chain) ──── */
+  --font-display: 'Geist', 'Inter', 'SF Pro Display', system-ui, sans-serif;
+  --font-body:    'Geist', 'Inter', 'SF Pro Text', system-ui, sans-serif;
+  --font-mono:    'Geist Mono', 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, 'Menlo', monospace;
+
+  --tracking-display: -0.022em;   /* tight display headings */
+  --tracking-body:     0em;
+  --tracking-mono:     0.01em;    /* tiny relaxation for mono labels */
+
+  /* 8-step type scale */
+  --type-xs:   12px;  --lh-xs:   16px;
+  --type-sm:   13px;  --lh-sm:   18px;
+  --type-base: 14px;  --lh-base: 20px;
+  --type-md:   16px;  --lh-md:   22px;
+  --type-lg:   18px;  --lh-lg:   26px;
+  --type-xl:   22px;  --lh-xl:   30px;
+  --type-2xl:  30px;  --lh-2xl:  38px;
+  --type-3xl:  44px;  --lh-3xl:  52px;
+  --type-display: 64px; --lh-display: 68px;   /* hero only; one-off */
+
+  /* ─── Motion (Zed-fast for chrome, Affinity-luxurious for moments) ──── */
+  --dur-flip:  120ms;   /* button hover, segmented toggle, link        */
+  --dur-panel: 220ms;   /* sidebar reveal, popover, dialog enter       */
+  --dur-route: 280ms;   /* page transition, screen swap                */
+  --dur-soft:  420ms;   /* ambient glow pulse, presence cursor settle  */
+  --ease-out:    cubic-bezier(0.22, 1,    0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0,    0.35, 1);
+  --ease-spring: cubic-bezier(0.16, 1.18, 0.34, 1);   /* one playful curve */
+
+  /* ─── Layout ────────────────────────────────────────────────────────── */
+  --layout-max-w:   1280px;
+  --layout-gutter:  var(--space-4);
+  --layout-nav-h:    56px;
+  --layout-status-h: 28px;
+  --layout-sidebar-w: 248px;
+
+  /* ─── Focus ring (always visible, never invisible) ──────────────────── */
+  --ring: 0 0 0 2px var(--bg-0), 0 0 0 4px var(--accent);
+}
+
+/* Per-accent override (decorative — keep one-family rule). The picker in   */
+/* ui_kits-desktop-showcase.html flips data-team on <html>.                  */
+[data-team="amber"] {
+  --accent:        var(--brand-amber);
+  --accent-hover:  var(--brand-amber-hover);
+  --accent-active: oklch(56% 0.18 50);
+  --accent-fg:     var(--brand-amber-fg);
+  --accent-soft:   oklch(from var(--brand-amber) l c h / 0.12);
+  --accent-glow:   var(--brand-amber-glow);
+  --shadow-glow:   var(--shadow-glow-amber);
+}
+[data-team="cyan"] {
+  --accent:        oklch(72% 0.16 220);
+  --accent-hover:  oklch(68% 0.16 220);
+  --accent-active: oklch(64% 0.16 220);
+  --accent-fg:     oklch(14% 0.04 220);
+  --accent-soft:   oklch(72% 0.16 220 / 0.12);
+  --accent-glow:   oklch(72% 0.16 220 / 0.25);
+}
+[data-team="emerald"] {
+  --accent:        oklch(70% 0.16 150);
+  --accent-hover:  oklch(66% 0.16 150);
+  --accent-active: oklch(62% 0.16 150);
+  --accent-fg:     oklch(14% 0.04 150);
+  --accent-soft:   oklch(70% 0.16 150 / 0.12);
+  --accent-glow:   oklch(70% 0.16 150 / 0.25);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root, .app[data-theme="dark"] {
+    --dur-flip:  1ms;
+    --dur-panel: 1ms;
+    --dur-route: 1ms;
+    --dur-soft:  1ms;
+  }
+}

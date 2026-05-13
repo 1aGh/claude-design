@@ -1,0 +1,58 @@
+<!--
+SPECIMEN: components-resize-panels
+DEMONSTRATES: split-pane with drag handle — the dev-server's file-tree + canvas-iframe layout
+WHEN SCAFFOLDED: IF platform includes desktop
+-->
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>Resize panels — studio</title><link rel="stylesheet" href="../colors_and_type.css"><link rel="stylesheet" href="./_layout.css">
+<style>
+  .split { display: grid; grid-template-columns: 240px 4px 1fr; height: 320px; background: var(--bg-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); overflow: hidden; }
+  .pane { padding: var(--space-3); font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-mono); color: var(--fg-1); overflow: auto; }
+  .pane.left { background: var(--bg-1); border-right: 1px solid var(--border-subtle); }
+  .pane.left .label { color: var(--fg-2); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 var(--space-2); }
+  .pane.left ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 2px; }
+  .pane.left li { padding: 3px 8px; border-radius: var(--radius-sm); }
+  .pane.left li.active { background: var(--accent); color: var(--accent-fg); }
+  .pane.right { background: var(--bg-0); display: grid; place-items: center; }
+  .handle { background: var(--border-subtle); cursor: col-resize; position: relative; transition: background var(--dur-flip) var(--ease-out); }
+  .handle:hover { background: var(--accent); }
+  .handle::after { content: '⋮'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: var(--fg-2); font-family: var(--font-mono); font-size: 14px; }
+  .handle:hover::after { color: var(--accent-fg); }
+  .preview-frame { background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: var(--space-4); max-width: 280px; box-shadow: var(--shadow-md); }
+  .preview-frame .l { height: 8px; background: var(--bg-3); border-radius: 999px; margin-bottom: 6px; }
+  .preview-frame .l.s { width: 30%; background: var(--accent); }
+  .preview-frame .l.m { width: 70%; }
+</style></head><body class="app">
+<main class="specimen">
+  <p class="crumb">components / resize-panels</p>
+  <h1>Resize panels</h1>
+  <p class="lede">The dev-server's split layout — file tree on the left, canvas iframe on the right. Drag the handle to resize. Handle is invisible until hover, then plasma. Width persists per project in <code>_active.json</code>.</p>
+
+  <div class="split">
+    <aside class="pane left">
+      <p class="label">canvases</p>
+      <ul>
+        <li class="active">▦ dev-server-shell</li>
+        <li>▦ docs-landing</li>
+        <li>▦ marketing-hero</li>
+        <li>▦ empty-state</li>
+      </ul>
+      <p class="label" style="margin-top: var(--space-3);">system</p>
+      <ul>
+        <li>⌬ studio · 28 specimens</li>
+      </ul>
+    </aside>
+    <div class="handle" role="separator" aria-orientation="vertical" aria-label="Resize"></div>
+    <main class="pane right">
+      <div class="preview-frame">
+        <div class="l l s"></div>
+        <div class="l l m"></div>
+        <div class="l l m"></div>
+        <div class="l l" style="width: 50%;"></div>
+        <div class="l l" style="height: 36px; background: var(--accent); width: 40%; margin-top: var(--space-3);"></div>
+      </div>
+    </main>
+  </div>
+
+  <footer class="legend"><p>Minimum file-tree width: 200px. Below that, the tree truncates and the handle locks. Maximum: 50% of the shell width — beyond that, the canvas is too small to be useful.</p></footer>
+</main></body></html>

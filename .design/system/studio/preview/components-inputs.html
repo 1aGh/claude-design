@@ -1,0 +1,119 @@
+<!--
+SPECIMEN: components-inputs
+DEMONSTRATES: studio's recessed input anatomy — sunken bay (inset 2px 4px shadow + darker bg), uppercase mono labels, focus = plasma ring + glow halo
+COMPOSITION: text · prefix/suffix · states (error/success) · textarea · select
+COPY VOICE: lowercase mono inputs (paths, ports, tokens). Sans body in textarea (long-form). Uppercase mono labels.
+WHEN SCAFFOLDED: always (Core)
+NOTES:
+  - All input anatomy from `_components.css` `.input` (and `.input--textarea` for the long-form variant). Field shell + label from `.field` / `.field-label`.
+  - The phosphor cursor on the search-wrap input lives inline here (page-specific) — not promoted to _components because not every input wants it.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>Inputs — studio</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="stylesheet" href="./_layout.css">
+<link rel="stylesheet" href="./_components.css">
+<style>
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-3); max-width: 720px; }
+  .input-wrap { position: relative; display: flex; align-items: center; }
+  .input-wrap .prefix, .input-wrap .suffix {
+    position: absolute; color: var(--fg-2);
+    font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-mono);
+    pointer-events: none; z-index: 2;
+  }
+  .input-wrap .prefix { left: 10px; }
+  .input-wrap .suffix {
+    right: 8px; background: var(--bg-1);
+    border: 1px solid var(--border-default); padding: 1px 6px;
+    border-radius: var(--radius-xs); font-size: 10px; color: var(--fg-2);
+  }
+  .input.has-prefix { padding-left: 30px; }
+  .input.has-suffix { padding-right: 36px; }
+
+  .help {
+    font-family: var(--font-mono); font-size: 10px;
+    color: var(--fg-2); letter-spacing: var(--tracking-mono);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .help.is-error { color: var(--status-error); }
+  .help.is-success { color: var(--status-success); }
+  .help code { background: var(--bg-2); color: var(--accent); padding: 1px 4px; border-radius: var(--radius-xs); border: 1px solid var(--border-subtle); }
+
+  .select {
+    -webkit-appearance: none; appearance: none;
+    padding-right: 32px; cursor: pointer;
+    background-image: linear-gradient(45deg, transparent 50%, var(--fg-2) 50%), linear-gradient(135deg, var(--fg-2) 50%, transparent 50%);
+    background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%;
+    background-size: 5px 5px;
+    background-repeat: no-repeat;
+  }
+</style>
+</head>
+<body class="app">
+<main class="specimen">
+  <p class="crumb">components / inputs</p>
+  <h1>Inputs</h1>
+  <p class="lede">Inputs are <strong>recessed bays</strong> — inset 2px 4px shadow on a slightly-darker-than-page surface. Focus state = plasma ring + glow halo. Mono labels uppercase; mono inputs lowercase. Long-form textarea switches to body sans, because long-form mono is hostile.</p>
+
+  <h2>Basic</h2>
+  <div class="field-row">
+    <div class="field">
+      <label class="field-label">port <span class="required">required</span></label>
+      <div class="input-wrap"><input class="input" value="4321"></div>
+      <p class="help">default 4321. studio finds the next free port if taken.</p>
+    </div>
+    <div class="field">
+      <label class="field-label">design root <span class="optional">optional</span></label>
+      <div class="input-wrap"><span class="prefix">/</span><input class="input has-prefix" value="Volumes/D/git/claude-design/.design"></div>
+      <p class="help">falls back to $CLAUDE_PROJECT_DIR if blank</p>
+    </div>
+  </div>
+
+  <h2>With prefix / suffix</h2>
+  <div class="field-row">
+    <div class="field">
+      <label class="field-label">canvas name</label>
+      <div class="input-wrap"><span class="prefix">▦</span><input class="input has-prefix has-suffix" value="dev-server-shell"><span class="suffix">.html</span></div>
+      <p class="help">kebab-case · used as filename + slug in _history</p>
+    </div>
+    <div class="field">
+      <label class="field-label">search</label>
+      <div class="input-wrap"><span class="prefix">⌕</span><input class="input has-prefix has-suffix" placeholder="canvases, components, tokens…"><span class="suffix">⌘ K</span></div>
+      <p class="help">type slash for a token query: <code>/--accent</code></p>
+    </div>
+  </div>
+
+  <h2>States</h2>
+  <div class="field-row">
+    <div class="field">
+      <label class="field-label">token name <span style="color: var(--status-error);">invalid</span></label>
+      <div class="input-wrap"><input class="input is-error" value="--accent2"></div>
+      <p class="help is-error"><span class="led led--error" style="width: 6px; height: 6px;"></span><code>--accent2</code> violates the one-accent rule. use <code>--accent</code> or extend <code>--brand-*</code>.</p>
+    </div>
+    <div class="field">
+      <label class="field-label">token name <span style="color: var(--status-success);">ok</span></label>
+      <div class="input-wrap"><input class="input is-success" value="--accent-tertiary"></div>
+      <p class="help is-success"><span class="led" style="width: 6px; height: 6px;"></span>variant of <code>--accent</code> — passes the one-family rule</p>
+    </div>
+  </div>
+
+  <h2>Textarea</h2>
+  <p>Long-form switches to body sans (16px line-height). Mono for 30+ words of prose is a slow read.</p>
+  <div class="field" style="max-width: 720px;">
+    <label class="field-label">feedback for /design:edit</label>
+    <textarea class="input input--textarea" placeholder="cmd-click on an element first, then tell studio what to change about it. real sentences welcome — &quot;move this 8px to the right and turn it amber&quot; is fine.">make the sidebar narrower (220px instead of 248) and switch the active-canvas highlight from --accent to --accent-soft with a 2px left border in --accent. less shouty.</textarea>
+    <p class="help">studio scopes the edit to the currently-selected element. plain English works.</p>
+  </div>
+
+  <h2>Select</h2>
+  <div class="field-row">
+    <div class="field"><label class="field-label">theme</label><select class="input select"><option>dark (default)</option><option disabled>light (not in scope)</option></select></div>
+    <div class="field"><label class="field-label">accent</label><select class="input select"><option>plasma (default)</option><option>amber</option><option>cyan</option><option>emerald</option></select></div>
+  </div>
+
+  <footer class="legend">
+    <p>Don't pair a sans label with a mono input. The whole field reads as chrome — keep the type discipline.</p>
+    <p>Inputs at 7px vertical padding; buttons next to inputs at 6px vertical padding (same effective height after the button's border). Mismatch is visible and ugly.</p>
+    <p>Recessed feel comes from <code>inset 0 2px 4px oklch(0% 0 0 / 0.50)</code> + a 2% darker base. Don't flatten this — the input is supposed to look pressed-in, not raised.</p>
+  </footer>
+</main></body></html>

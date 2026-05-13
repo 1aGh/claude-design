@@ -1,0 +1,38 @@
+<!--
+SPECIMEN: components-keyboard
+DEMONSTRATES: kbd styling — single keys, key pairs, sequences, inline + standalone
+WHEN SCAFFOLDED: IF audience = pro tool
+-->
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>Keyboard — studio</title><link rel="stylesheet" href="../colors_and_type.css"><link rel="stylesheet" href="./_layout.css">
+<style>
+  .kbd { font-family: var(--font-mono); font-size: 11px; padding: 2px 6px; border: 1px solid var(--border-default); border-bottom-width: 2px; background: var(--bg-2); border-radius: var(--radius-xs); color: var(--fg-0); letter-spacing: var(--tracking-mono); display: inline-flex; align-items: center; min-width: 18px; justify-content: center; }
+  .kbd-grp { display: inline-flex; gap: 3px; }
+  .kbd-grp .plus { color: var(--fg-2); align-self: center; font-size: 10px; }
+  .row-line { display: flex; align-items: center; padding: 10px 0; border-bottom: 1px dashed var(--border-subtle); }
+  .row-line .name { flex: 1; color: var(--fg-1); }
+  .lg .kbd { font-size: 14px; padding: 4px 10px; min-width: 28px; }
+</style></head><body class="app">
+<main class="specimen">
+  <p class="crumb">components / keyboard</p>
+  <h1>Keyboard</h1>
+  <p class="lede">kbd is mono, slightly raised (2px bottom border), and uses the symbol set — <kbd class="kbd">⌘</kbd> not "Cmd", <kbd class="kbd">↵</kbd> not "Enter", <kbd class="kbd">⌫</kbd> not "Backspace".</p>
+
+  <h2>Single keys</h2>
+  <div class="row"><span class="kbd">⌘</span><span class="kbd">⇧</span><span class="kbd">⌥</span><span class="kbd">⌃</span><span class="kbd">↵</span><span class="kbd">⌫</span><span class="kbd">⎋</span><span class="kbd">↑</span><span class="kbd">↓</span><span class="kbd">←</span><span class="kbd">→</span><span class="kbd">K</span><span class="kbd">esc</span><span class="kbd">tab</span></div>
+
+  <h2>Inline in copy</h2>
+  <p>Hit <span class="kbd-grp"><span class="kbd">⌘</span><span class="kbd">K</span></span> to open the palette. Use <span class="kbd-grp"><span class="kbd">↑</span><span class="kbd">↓</span></span> to navigate; <span class="kbd-grp"><span class="kbd">↵</span></span> to run.</p>
+
+  <h2>In a list</h2>
+  <div style="background: var(--bg-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: var(--space-3) var(--space-4); max-width: 480px;">
+    <div class="row-line"><span class="name">Open command palette</span><span class="kbd-grp"><span class="kbd">⌘</span><span class="kbd">K</span></span></div>
+    <div class="row-line"><span class="name">Toggle inspector</span><span class="kbd-grp"><span class="kbd">⌘</span><span class="kbd">⇧</span><span class="kbd">I</span></span></div>
+    <div class="row-line" style="border: 0;"><span class="name">Show shortcuts</span><span class="kbd-grp"><span class="kbd">?</span></span></div>
+  </div>
+
+  <h2>Large (onboarding)</h2>
+  <div class="row lg"><span class="kbd">⌘</span><span style="color: var(--fg-2);">+</span><span class="kbd">K</span><span style="color: var(--fg-1); font-size: var(--type-sm); margin-left: 8px;">opens the palette</span></div>
+
+  <footer class="legend"><p>Don't mix sentence-case and symbol forms. <kbd class="kbd">⌘</kbd><kbd class="kbd">K</kbd> is correct; "Cmd+K" is not. The symbol is the kbd.</p></footer>
+</main></body></html>

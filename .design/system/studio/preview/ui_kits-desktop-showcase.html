@@ -1,0 +1,1208 @@
+<!--
+SPECIMEN: ui_kits-desktop-showcase
+DEMONSTRATES: every Core token composed into a realistic dev-server product surface — nav + sidebar (file tree) + multi-view canvas + status bar + theme/accent parameterization
+COMPOSITION: full-bleed desktop shell (1280px+) with:
+  - top nav (56px): wordmark · view-mode segmented · search · accent picker · run indicator · avatar
+  - left sidebar (248px): file tree of canvases in this design root; active node highlighted in --accent
+  - main (fluid): switchable between 3 screens — "Canvases" (overview list), "Inspector" (single-canvas preview + element panel), "System" (DS audit)
+  - status bar (28px): mono indicators (port, build sha, sync state, active mode)
+  - vanilla JS view switcher + accent picker (plasma / amber / cyan / emerald) + density toggle
+COPY VOICE: md-claude flavored — real strings from the dev-server's actual UX. No "Lorem", no "Get Started". Status bar speaks in mono.
+WHEN SCAFFOLDED: always-on. The single highest-leverage file in the bootstrap output.
+NOTES:
+  - The EDITMODE-BEGIN/END markers around DEFAULTS let Claude Code edit defaults in-place.
+  - Accent picker flips data-team on <html>; the tokens CSS defines [data-team="amber|cyan|emerald"] selectors to back this. Plasma is the default and lives on :root.
+  - Amber appears EXACTLY ONCE in this file as a chrome accent — via the accent picker option — because that's how a brand spotlight enters chrome (as a user-chosen variant), not as decoration. The "brand spotlight" use of amber lives in marketing-only files (docs hero, logo.html, empty-state hero).
+  - Status bar in mono is non-negotiable. File paths, port numbers, durations — all mono.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark" data-team="default">
+<head>
+  <meta charset="utf-8" />
+  <title>UI kit · desktop · showcase — studio</title>
+  <link rel="stylesheet" href="../colors_and_type.css" />
+  <link rel="stylesheet" href="./_layout.css" />
+  <style>
+    body { padding: 0; margin: 0; background: var(--bg-0); }
+    .specimen { max-width: none; margin: 0; padding: 0; }
+
+    .app-shell {
+      display: grid;
+      grid-template-rows: var(--layout-nav-h) 1fr var(--layout-status-h);
+      grid-template-columns: var(--layout-sidebar-w) 1fr;
+      grid-template-areas:
+        "topnav  topnav"
+        "sidebar main"
+        "status  status";
+      min-height: 100vh;
+      color: var(--fg-0);
+    }
+
+    /* ─── Top nav ─── */
+    .topnav {
+      grid-area: topnav;
+      display: flex; align-items: center; gap: var(--space-3);
+      padding: 0 var(--space-5) 0 var(--space-4);
+      background:
+        repeating-linear-gradient(0deg, oklch(0% 0 0 / 0.14) 0 1px, transparent 1px 3px),
+        var(--bg-1);
+      border-bottom: 1px solid var(--border-default);
+      box-shadow: inset 0 -1px 0 oklch(0% 0 0 / 0.3);
+    }
+    .brand {
+      display: flex; align-items: center; gap: var(--space-2);
+      font-family: var(--font-display);
+      font-weight: 600; font-size: var(--type-md);
+      letter-spacing: var(--tracking-display);
+      color: var(--fg-0);
+      text-decoration: none;
+    }
+    .brand .mark {
+      width: 22px; height: 22px;
+      background: var(--accent);
+      border-radius: var(--radius-sm);
+      display: grid; place-items: center;
+      color: var(--accent-fg);
+      font-family: var(--font-mono);
+      font-weight: 700; font-size: 11px;
+      position: relative;
+      box-shadow: var(--shadow-glow);
+    }
+    .brand .mark::after {
+      content: '';
+      position: absolute;
+      inset: 4px;
+      border-radius: 2px;
+      background: var(--brand-amber);
+      transform: rotate(45deg) scale(0.55);
+    }
+    .brand .label { display: inline-flex; align-items: baseline; gap: 4px; }
+    .brand .label .slash { color: var(--accent); font-family: var(--font-mono); font-weight: 500; }
+    .brand .label .sub { color: var(--fg-2); font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-mono); }
+
+    /* Segmented — recessed bay with selected chip raising up like a physical button.
+     * The unselected segments sit FLUSH with the bay floor (no bg). */
+    .segmented {
+      display: inline-flex;
+      background: oklch(from var(--bg-0) calc(l - 0.02) c h);
+      border: 1px solid oklch(from var(--bg-0) calc(l - 0.04) c h);
+      border-radius: var(--radius-sm);
+      padding: 3px; gap: 2px;
+      margin-left: var(--space-4);
+      box-shadow:
+        inset 0 2px 4px oklch(0% 0 0 / 0.50),
+        0 1px 0 oklch(100% 0 0 / 0.04);
+    }
+    .segmented > button {
+      background: transparent; border: 1px solid transparent;
+      color: var(--fg-1);
+      padding: 4px 12px 5px;
+      border-radius: var(--radius-xs);
+      cursor: pointer; font: inherit;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      letter-spacing: var(--tracking-mono);
+      font-weight: 600;
+      transition: background var(--dur-flip) var(--ease-out), color var(--dur-flip) var(--ease-out);
+    }
+    .segmented > button:hover { color: var(--fg-0); }
+    .segmented > button.is-on {
+      background: linear-gradient(180deg, oklch(from var(--accent) calc(l + 0.04) c h), var(--accent));
+      color: var(--accent-fg);
+      font-weight: 700;
+      border-color: oklch(from var(--accent) calc(l - 0.20) c h);
+      box-shadow:
+        0 1px 0 oklch(from var(--accent) calc(l - 0.22) c h),
+        0 2px 6px var(--accent-glow),
+        inset 0 1px 0 oklch(100% 0 0 / 0.25);
+    }
+
+    .topnav .spacer { flex: 1; }
+
+    /* Recessed search — sunken bay with inset shadow; phosphor cursor lives on the wrap */
+    .search {
+      background: oklch(from var(--bg-0) calc(l - 0.02) c h);
+      border: 1px solid oklch(from var(--bg-0) calc(l - 0.04) c h);
+      color: var(--fg-0);
+      padding: 6px 10px 7px 28px;
+      border-radius: var(--radius-xs);
+      font: inherit;
+      font-size: var(--type-xs);
+      font-family: var(--font-mono);
+      letter-spacing: var(--tracking-mono);
+      width: 280px;
+      position: relative;
+      box-shadow:
+        inset 0 2px 4px oklch(0% 0 0 / 0.50),
+        inset 0 -1px 0 oklch(100% 0 0 / 0.04),
+        0 1px 0 oklch(100% 0 0 / 0.04);
+    }
+    .search:focus { outline: 0; box-shadow:
+      inset 0 2px 4px oklch(0% 0 0 / 0.50),
+      0 0 0 1px var(--accent),
+      0 0 12px var(--accent-glow); }
+    .search-wrap { position: relative; }
+    .search-wrap::before {
+      content: '⌕';
+      position: absolute; left: 9px; top: 50%; transform: translateY(-50%);
+      color: var(--fg-2); font-family: var(--font-mono); font-size: 14px;
+      pointer-events: none;
+    }
+    /* Blinking phosphor cursor — only visible when search is empty / unfocused (placeholder shown) */
+    .search-wrap::after {
+      content: '';
+      position: absolute; left: 32px; top: 50%; transform: translateY(-50%);
+      width: 1px; height: 12px;
+      background: var(--accent);
+      box-shadow: 0 0 6px var(--accent);
+      animation: cursor-blink 1.06s steps(2, end) infinite;
+      pointer-events: none;
+    }
+    .search-wrap:focus-within::after { display: none; }
+    @keyframes cursor-blink { 50% { opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) { .search-wrap::after { animation: none; } }
+
+    .search-wrap .kbd-hint {
+      position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+      font-family: var(--font-mono); font-size: 10px;
+      color: var(--fg-2);
+      background: var(--bg-2);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-xs);
+      padding: 1px 5px;
+      pointer-events: none;
+    }
+
+    /* Collapsed accent picker — single current-accent puck with a chevron.
+     * Click to expand the popover (only one colored dot in chrome at rest). */
+    .accent-picker {
+      position: relative;
+      margin: 0 var(--space-2);
+      height: 32px;
+    }
+    .accent-trigger {
+      display: inline-flex; align-items: center; gap: 6px;
+      height: 32px; padding: 0 10px 0 8px;
+      background: var(--bg-2);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: background var(--dur-flip) var(--ease-out), border-color var(--dur-flip) var(--ease-out);
+      font: inherit;
+    }
+    .accent-trigger:hover { background: var(--bg-3); border-color: var(--border-default); }
+    .accent-trigger .puck {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 1px oklch(0% 0 0 / 0.4), 0 0 8px var(--accent-glow);
+    }
+    .accent-trigger .chev {
+      font-family: var(--font-mono); font-size: 9px; color: var(--fg-2);
+      letter-spacing: var(--tracking-mono); line-height: 1;
+    }
+    .accent-popover {
+      position: absolute; top: calc(100% + 6px); right: 0;
+      background: var(--bg-2);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-lg);
+      padding: 6px;
+      display: none;
+      gap: 4px;
+      flex-direction: column;
+      min-width: 132px;
+      z-index: 10;
+    }
+    .accent-popover.is-open { display: flex; }
+    .accent-popover .opt {
+      display: flex; align-items: center; gap: 8px;
+      padding: 4px 8px;
+      border-radius: var(--radius-xs);
+      background: transparent; border: 0; color: var(--fg-1);
+      font: inherit; font-family: var(--font-mono);
+      font-size: 11px; letter-spacing: var(--tracking-mono);
+      cursor: pointer; text-align: left;
+      transition: background var(--dur-flip) var(--ease-out), color var(--dur-flip) var(--ease-out);
+    }
+    .accent-popover .opt:hover { background: var(--bg-3); color: var(--fg-0); }
+    .accent-popover .opt.is-on { color: var(--accent); }
+    .accent-popover .opt .dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      box-shadow: inset 0 0 0 1px oklch(0% 0 0 / 0.4);
+    }
+
+    .run-indicator {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px;
+      background: oklch(from var(--status-success) l c h / 0.12);
+      border: 1px solid oklch(from var(--status-success) l c h / 0.30);
+      color: var(--status-success);
+      border-radius: var(--radius-pill);
+      font-family: var(--font-mono);
+      font-size: var(--type-xs);
+      letter-spacing: var(--tracking-mono);
+    }
+    .run-indicator .pulse {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--status-success);
+      box-shadow: 0 0 8px var(--status-success);
+      animation: pulse var(--dur-soft) var(--ease-in-out) infinite alternate;
+    }
+    @keyframes pulse { from { opacity: 0.5; } to { opacity: 1; } }
+
+    /* Avatar — chunky hardware ID badge with phosphor outer ring */
+    .avatar {
+      width: 30px; height: 30px;
+      border-radius: var(--radius-sm);
+      background: linear-gradient(135deg, oklch(from var(--accent) calc(l + 0.05) c h), var(--accent-active));
+      border: 1px solid oklch(from var(--accent) calc(l - 0.20) c h);
+      display: grid; place-items: center;
+      color: var(--accent-fg);
+      font-size: 11px; font-weight: 700;
+      font-family: var(--font-mono);
+      letter-spacing: 0.04em;
+      box-shadow:
+        0 1px 0 oklch(from var(--accent) calc(l - 0.22) c h),
+        0 0 0 2px var(--bg-0),
+        0 0 0 3px oklch(from var(--accent) l c h / 0.30),
+        inset 0 1px 0 oklch(100% 0 0 / 0.20);
+    }
+
+    /* ─── Sidebar (file tree) ─── */
+    .sidebar {
+      grid-area: sidebar;
+      background: var(--bg-1);
+      border-right: 1px solid var(--border-subtle);
+      padding: var(--space-4) var(--space-2);
+      overflow-y: auto;
+      font-family: var(--font-mono);
+      font-size: var(--type-xs);
+      letter-spacing: var(--tracking-mono);
+    }
+    .sidebar h3 {
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--fg-2);
+      margin: 0 0 var(--space-2);
+      padding: 0 var(--space-3);
+      font-weight: 600;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .sidebar h3 .count { color: var(--fg-2); font-weight: 400; }
+
+    .tree { list-style: none; padding: 0; margin: 0 0 var(--space-4); }
+    .tree li > a {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 10px;
+      color: var(--fg-1); text-decoration: none;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: background var(--dur-flip) var(--ease-out), color var(--dur-flip) var(--ease-out);
+    }
+    .tree li > a:hover { background: var(--bg-2); color: var(--fg-0); }
+    .tree li > a.is-active { background: var(--accent); color: var(--accent-fg); font-weight: 600; }
+    .tree li > a .glyph { color: var(--fg-2); width: 14px; display: inline-block; text-align: center; }
+    .tree li > a.is-active .glyph { color: var(--accent-fg); }
+    .tree li > a .badge { margin-left: auto; font-size: 10px; color: var(--fg-2); }
+    .tree li > a.is-active .badge { color: var(--accent-fg); opacity: 0.75; }
+    .tree ul { list-style: none; padding-left: 16px; margin: 0; }
+    .tree .leaf { padding-left: 22px; }
+
+    .sidebar .ds-pill {
+      display: flex; align-items: center; gap: 8px;
+      margin: var(--space-3) var(--space-2) 0;
+      padding: var(--space-2) var(--space-3);
+      background: var(--bg-2);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+    }
+    .sidebar .ds-pill .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+    }
+    .sidebar .ds-pill .name { color: var(--fg-0); font-weight: 600; font-size: 11px; }
+    .sidebar .ds-pill .sub { color: var(--fg-2); font-size: 10px; margin-left: auto; }
+
+    /* ─── Main ─── */
+    .main {
+      grid-area: main;
+      background: var(--bg-0);
+      padding: var(--space-6) var(--space-7);
+      overflow-y: auto;
+    }
+    .screen { display: none; }
+    .screen.is-on { display: block; }
+
+    .hero {
+      display: flex; justify-content: space-between; align-items: flex-end;
+      gap: var(--space-5);
+      margin: 0 0 var(--space-6);
+      padding-bottom: var(--space-4);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .hero h1 {
+      font-family: var(--font-display);
+      font-size: var(--type-3xl);
+      line-height: var(--lh-3xl);
+      letter-spacing: var(--tracking-display);
+      font-weight: 600;
+      margin: 0 0 var(--space-1);
+      color: var(--fg-0);
+      /* Phosphor halo — CRT-flavored retro accent on every hero title */
+      text-shadow: 0 0 28px oklch(from var(--accent) l c h / 0.22);
+    }
+    .hero .lede {
+      color: var(--fg-1);
+      font-size: var(--type-md);
+      line-height: var(--lh-md);
+      margin: 0;
+      max-width: 60ch;
+    }
+    .hero .actions { display: flex; gap: var(--space-2); flex-shrink: 0; }
+    .hero .crumb {
+      font-family: var(--font-mono);
+      font-size: var(--type-xs);
+      letter-spacing: var(--tracking-mono);
+      color: var(--fg-2);
+      margin: 0 0 var(--space-1);
+    }
+    .hero .crumb .accent-text { color: var(--accent); }
+
+    /* ─── Buttons — chunky hardware bevels (Affinity-prestige + retro hardware) ───
+     * Anatomy: 1px outer dark rim · 1px top highlight (inset) · 2px bottom shadow (drop)
+     *        · chunky radius (--radius-sm) · monospace label tracking
+     * Active state PRESSES: drop shadow collapses, button moves +1px down.
+     */
+    .btn {
+      font: inherit; font-weight: 600;
+      padding: 6px 14px 7px;
+      border-radius: var(--radius-sm);
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition:
+        background var(--dur-flip) var(--ease-out),
+        box-shadow var(--dur-flip) var(--ease-out),
+        transform var(--dur-flip) var(--ease-out);
+      display: inline-flex; align-items: center; gap: 8px;
+      letter-spacing: var(--tracking-mono);
+      font-family: var(--font-mono);
+      font-size: var(--type-xs);
+      text-transform: lowercase;
+      position: relative;
+    }
+    .btn .icon { font-family: var(--font-mono); font-size: 13px; line-height: 1; }
+    .btn .icon-led {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent-fg);
+      box-shadow: 0 0 0 1px oklch(0% 0 0 / 0.3), 0 0 4px oklch(100% 0 0 / 0.4);
+      flex-shrink: 0;
+    }
+    .btn:focus-visible { outline: 0; box-shadow:
+      0 0 0 2px var(--bg-0), 0 0 0 4px var(--accent),
+      0 2px 0 oklch(0% 0 0 / 0.5), inset 0 1px 0 oklch(100% 0 0 / 0.18); }
+
+    /* PRIMARY — plasma slab with LED dot */
+    .btn--primary {
+      background: linear-gradient(180deg, oklch(from var(--accent) calc(l + 0.04) c h), var(--accent));
+      color: var(--accent-fg);
+      border-color: oklch(from var(--accent) calc(l - 0.20) c h);
+      box-shadow:
+        0 2px 0 oklch(from var(--accent) calc(l - 0.22) c h),  /* bottom rim — the "depth" */
+        0 4px 12px oklch(0% 0 0 / 0.45),                        /* outer drop */
+        inset 0 1px 0 oklch(100% 0 0 / 0.30),                   /* top highlight */
+        inset 0 -1px 0 oklch(0% 0 0 / 0.25);                    /* bottom inset */
+    }
+    .btn--primary:hover {
+      background: linear-gradient(180deg, oklch(from var(--accent-hover) calc(l + 0.04) c h), var(--accent-hover));
+      box-shadow:
+        0 2px 0 oklch(from var(--accent) calc(l - 0.22) c h),
+        0 4px 16px var(--accent-glow),
+        inset 0 1px 0 oklch(100% 0 0 / 0.30),
+        inset 0 -1px 0 oklch(0% 0 0 / 0.25);
+    }
+    .btn--primary:active {
+      background: var(--accent-active);
+      transform: translateY(2px);
+      box-shadow:
+        0 0 0 oklch(from var(--accent) calc(l - 0.22) c h),
+        0 1px 4px oklch(0% 0 0 / 0.4),
+        inset 0 1px 2px oklch(0% 0 0 / 0.40);
+    }
+
+    /* SECONDARY — sunken bay; reads as physical-hardware tile */
+    .btn--secondary {
+      background: linear-gradient(180deg, var(--bg-3), var(--bg-2));
+      color: var(--fg-0);
+      border-color: oklch(from var(--bg-1) calc(l + 0.18) c h);
+      box-shadow:
+        0 2px 0 oklch(0% 0 0 / 0.40),
+        0 3px 6px oklch(0% 0 0 / 0.30),
+        inset 0 1px 0 oklch(100% 0 0 / 0.06),
+        inset 0 -1px 0 oklch(0% 0 0 / 0.30);
+    }
+    .btn--secondary:hover {
+      background: linear-gradient(180deg, var(--bg-4), var(--bg-3));
+      border-color: oklch(from var(--bg-1) calc(l + 0.22) c h);
+    }
+    .btn--secondary:active {
+      transform: translateY(2px);
+      box-shadow:
+        0 0 0 oklch(0% 0 0 / 0.40),
+        inset 0 1px 3px oklch(0% 0 0 / 0.50);
+    }
+
+    /* GHOST — wire-frame variant; chunky border, no fill */
+    .btn--ghost {
+      background: transparent;
+      color: var(--fg-1);
+      border-color: var(--border-default);
+      box-shadow:
+        0 2px 0 oklch(0% 0 0 / 0.20),
+        inset 0 1px 0 oklch(100% 0 0 / 0.04);
+    }
+    .btn--ghost:hover {
+      background: var(--bg-2);
+      color: var(--fg-0);
+      border-color: var(--border-strong);
+    }
+    .btn--ghost:active {
+      transform: translateY(2px);
+      box-shadow:
+        0 0 0 oklch(0% 0 0 / 0.20),
+        inset 0 1px 2px oklch(0% 0 0 / 0.30);
+    }
+
+    /* Canvas grid */
+    .canvas-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-3);
+    }
+    @media (max-width: 1100px) { .canvas-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 720px)  { .canvas-grid { grid-template-columns: 1fr; } }
+    /* Canvas cards — hardware-tile bevel. 1px top highlight + 1px outer dark rim +
+     * inset bottom shadow + a notched top-left "tab" via clip-path. Reads as a
+     * physical module slotted into the dashboard. */
+    .canvas-card {
+      background: linear-gradient(180deg, oklch(from var(--bg-1) calc(l + 0.02) c h), var(--bg-1));
+      border: 1px solid oklch(from var(--bg-1) calc(l + 0.10) c h);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      display: grid; gap: var(--space-3);
+      transition: border-color var(--dur-flip) var(--ease-out),
+                  transform var(--dur-flip) var(--ease-out),
+                  box-shadow var(--dur-panel) var(--ease-out);
+      position: relative;
+      overflow: hidden;
+      box-shadow:
+        0 1px 0 oklch(100% 0 0 / 0.04) inset,
+        0 -1px 0 oklch(0% 0 0 / 0.30) inset,
+        0 2px 0 oklch(0% 0 0 / 0.30),
+        0 6px 16px oklch(0% 0 0 / 0.30);
+    }
+    .canvas-card::before {
+      /* Phosphor corner indicator — top-left punctuation, reads as a hardware ID label */
+      content: '';
+      position: absolute;
+      left: 0; top: 0;
+      width: 24px; height: 4px;
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+      opacity: 0.6;
+    }
+    .canvas-card:hover {
+      border-color: oklch(from var(--bg-1) calc(l + 0.18) c h);
+      transform: translateY(-2px);
+      box-shadow:
+        0 1px 0 oklch(100% 0 0 / 0.06) inset,
+        0 -1px 0 oklch(0% 0 0 / 0.30) inset,
+        0 4px 0 oklch(0% 0 0 / 0.30),
+        0 12px 28px oklch(0% 0 0 / 0.40);
+    }
+    .canvas-card:hover::before { opacity: 1; }
+    /* Canvas card thumbs — each thumb is a mini CRT preview of WHAT THAT CANVAS IS,
+     * not a generic skeleton. Scanline overlay shared across all three. */
+    .canvas-card .thumb {
+      height: 124px;
+      background:
+        repeating-linear-gradient(0deg, oklch(0% 0 0 / 0.18) 0 1px, transparent 1px 3px),
+        linear-gradient(135deg, var(--bg-2), var(--bg-3));
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border-subtle);
+      position: relative;
+      overflow: hidden;
+      box-shadow: inset 0 0 24px oklch(0% 0 0 / 0.30);
+    }
+    .canvas-card .thumb::after {
+      /* Subtle phosphor sweep across each thumb */
+      content: '';
+      position: absolute; left: -30%; top: 0; bottom: 0; width: 40%;
+      background: linear-gradient(90deg, transparent, oklch(from var(--accent) l c h / 0.10), transparent);
+      transform: skewX(-12deg);
+      animation: thumb-sweep 5s linear infinite;
+      pointer-events: none;
+    }
+    @keyframes thumb-sweep { from { left: -30%; } to { left: 130%; } }
+    @media (prefers-reduced-motion: reduce) { .canvas-card .thumb::after { animation: none; opacity: 0; } }
+
+    /* Variant 1 — dev-server-shell: a 3-col split (file tree | canvas | inspector) */
+    .thumb.thumb-shell {
+      display: grid;
+      grid-template-columns: 24% 1fr 26%;
+      gap: 0;
+    }
+    .thumb-shell .pane { padding: 10px 6px; display: flex; flex-direction: column; gap: 3px; }
+    .thumb-shell .pane.left { background: oklch(0% 0 0 / 0.18); }
+    .thumb-shell .pane.right { background: oklch(0% 0 0 / 0.14); }
+    .thumb-shell .pane .li {
+      height: 4px;
+      background: var(--fg-2);
+      border-radius: 1px;
+      opacity: 0.5;
+    }
+    .thumb-shell .pane .li:nth-child(1) { width: 70%; }
+    .thumb-shell .pane .li:nth-child(2) { width: 55%; background: var(--accent); opacity: 0.9; }
+    .thumb-shell .pane .li:nth-child(3) { width: 65%; }
+    .thumb-shell .pane .li:nth-child(4) { width: 40%; }
+    .thumb-shell .pane.center { display: grid; place-items: center; padding: 10px; }
+    .thumb-shell .pane.center .card-mini {
+      width: 70%; height: 60%;
+      background: linear-gradient(135deg, var(--accent), var(--accent-active));
+      border-radius: 3px;
+      box-shadow: 0 0 12px var(--accent-glow);
+    }
+
+    /* Variant 2 — docs-landing: long-form column with hero + body lines + amber accent bar */
+    .thumb.thumb-docs {
+      padding: 12px;
+      display: flex; flex-direction: column; gap: 4px;
+      background:
+        radial-gradient(180px 80px at 80% 20%, oklch(from var(--brand-amber) l c h / 0.20), transparent 70%),
+        repeating-linear-gradient(0deg, oklch(0% 0 0 / 0.18) 0 1px, transparent 1px 3px),
+        linear-gradient(135deg, var(--bg-2), var(--bg-3));
+    }
+    .thumb-docs .eyebrow { width: 18%; height: 4px; background: var(--brand-amber); border-radius: 1px; }
+    .thumb-docs .h { width: 70%; height: 10px; background: var(--fg-0); border-radius: 2px; opacity: 0.8; margin-top: 4px; }
+    .thumb-docs .h.short { width: 45%; }
+    .thumb-docs .p { width: 90%; height: 4px; background: var(--fg-2); border-radius: 1px; opacity: 0.5; }
+    .thumb-docs .p.short { width: 60%; }
+    .thumb-docs .amber-bar { height: 4px; width: 35%; background: linear-gradient(90deg, var(--brand-amber), transparent); border-radius: 1px; margin-top: auto; }
+
+    /* Variant 3 — marketing-hero: centered headline + amber burst behind */
+    .thumb.thumb-hero {
+      display: grid; place-items: center; padding: 12px;
+      background:
+        radial-gradient(80px 80px at 35% 50%, oklch(from var(--brand-amber) l c h / 0.36), transparent 70%),
+        radial-gradient(120px 120px at 70% 50%, oklch(from var(--accent) l c h / 0.20), transparent 70%),
+        repeating-linear-gradient(0deg, oklch(0% 0 0 / 0.18) 0 1px, transparent 1px 3px),
+        linear-gradient(135deg, var(--bg-2), var(--bg-3));
+    }
+    .thumb-hero .lines2 { display: grid; gap: 6px; justify-items: center; width: 100%; }
+    .thumb-hero .lines2 .h { width: 60%; height: 10px; background: var(--fg-0); border-radius: 2px; }
+    .thumb-hero .lines2 .h.x { width: 38%; background: var(--brand-amber); }
+    .thumb-hero .lines2 .cta { width: 28%; height: 8px; background: var(--accent); border-radius: var(--radius-pill); margin-top: 4px; box-shadow: 0 0 8px var(--accent-glow); }
+    .canvas-card .head {
+      display: flex; justify-content: space-between; align-items: baseline;
+      gap: var(--space-3);
+    }
+    .canvas-card .title {
+      font-family: var(--font-display);
+      font-weight: 600; font-size: var(--type-md);
+      line-height: var(--lh-md);
+      color: var(--fg-0);
+      letter-spacing: -0.005em;
+    }
+    .canvas-card .meta {
+      color: var(--fg-2);
+      font-size: 10px;
+      font-family: var(--font-mono);
+      letter-spacing: var(--tracking-mono);
+      display: flex; gap: 8px;
+    }
+    .canvas-card .meta .dot { color: var(--accent); }
+    .canvas-card .body {
+      color: var(--fg-1);
+      font-size: var(--type-sm);
+      margin: 0; line-height: var(--lh-sm);
+    }
+    /* Pills — "license plate" feel: sharper corners (radius-xs), inset shadow + thin
+     * top highlight + tracking-uppercase. Distinctive hardware-tag vibe. */
+    .pill {
+      background:
+        linear-gradient(180deg, oklch(from var(--accent) l c h / 0.20), oklch(from var(--accent) l c h / 0.10));
+      color: var(--accent);
+      padding: 2px 9px 3px;
+      border-radius: var(--radius-xs);
+      font-size: 10px;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      border: 1px solid oklch(from var(--accent) l c h / 0.40);
+      box-shadow:
+        inset 0 1px 0 oklch(100% 0 0 / 0.08),
+        inset 0 -1px 0 oklch(0% 0 0 / 0.30),
+        0 1px 0 oklch(0% 0 0 / 0.25);
+    }
+    .pill--success {
+      background: linear-gradient(180deg, oklch(from var(--status-success) l c h / 0.22), oklch(from var(--status-success) l c h / 0.10));
+      color: var(--status-success);
+      border-color: oklch(from var(--status-success) l c h / 0.40);
+    }
+    .pill--warn {
+      background: linear-gradient(180deg, oklch(from var(--status-warn) l c h / 0.22), oklch(from var(--status-warn) l c h / 0.10));
+      color: var(--status-warn);
+      border-color: oklch(from var(--status-warn) l c h / 0.40);
+    }
+    .pill--ghost {
+      background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+      color: var(--fg-1);
+      border-color: var(--border-default);
+    }
+
+    /* Inspector view */
+    .inspector {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: var(--space-4);
+      height: calc(100vh - var(--layout-nav-h) - var(--layout-status-h) - 56px);
+    }
+    .canvas-frame {
+      background: var(--bg-1);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      position: relative;
+      display: grid;
+      grid-template-rows: 32px 1fr;
+    }
+    /* Retro CRT window title bar — diagonal-stripe pattern + chunky inset, like classic
+     * desktop window chrome. The bracket buttons stand in for [-][□][×]. */
+    .canvas-frame .toolbar {
+      display: flex; align-items: center; gap: 6px;
+      padding: 0 var(--space-3);
+      background:
+        repeating-linear-gradient(135deg, oklch(0% 0 0 / 0.20) 0 3px, transparent 3px 6px),
+        linear-gradient(180deg, var(--bg-3), var(--bg-2));
+      border-bottom: 1px solid var(--border-default);
+      box-shadow: inset 0 1px 0 oklch(100% 0 0 / 0.04), inset 0 -1px 0 oklch(0% 0 0 / 0.4);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: var(--tracking-mono);
+      color: var(--fg-2);
+      position: relative;
+    }
+    .canvas-frame .toolbar .traffic {
+      display: flex; gap: 2px; margin-right: 10px;
+      background: var(--bg-1);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-xs);
+      padding: 2px 4px;
+    }
+    .canvas-frame .toolbar .traffic span {
+      width: 14px; height: 14px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--fg-1);
+      display: grid; place-items: center;
+      background: oklch(0% 0 0 / 0.18);
+      border-radius: 1px;
+      font-weight: 700;
+    }
+    .canvas-frame .toolbar .traffic span:hover { color: var(--fg-0); background: var(--bg-4); }
+    .canvas-frame .toolbar .url {
+      flex: 1;
+      background: var(--bg-1);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-xs);
+      padding: 3px 8px;
+      color: var(--fg-1);
+      box-shadow: inset 0 1px 0 oklch(0% 0 0 / 0.30);
+    }
+    .canvas-frame .toolbar .url .accent-text { color: var(--accent); }
+    .canvas-frame .toolbar .dim {
+      background: var(--bg-1);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-xs);
+      padding: 3px 8px;
+      color: var(--fg-2);
+    }
+    .canvas-frame .stage {
+      background:
+        repeating-linear-gradient(0deg, transparent 0 31px, var(--border-subtle) 31px 32px),
+        repeating-linear-gradient(90deg, transparent 0 31px, var(--border-subtle) 31px 32px),
+        var(--bg-0);
+      display: grid; place-items: center;
+      padding: var(--space-5);
+      position: relative;
+    }
+    .canvas-frame .stage .mock-card {
+      background: var(--bg-1);
+      border: 2px solid var(--accent);
+      box-shadow: var(--shadow-lg), var(--shadow-glow);
+      border-radius: var(--radius-lg);
+      padding: var(--space-5);
+      max-width: 380px;
+      position: relative;
+    }
+    .canvas-frame .stage .mock-card h4 {
+      font-family: var(--font-display);
+      font-size: var(--type-lg);
+      letter-spacing: var(--tracking-display);
+      font-weight: 600;
+      margin: 0 0 var(--space-1);
+      color: var(--fg-0);
+    }
+    .canvas-frame .stage .mock-card p {
+      color: var(--fg-1);
+      font-size: var(--type-sm);
+      margin: 0 0 var(--space-3);
+    }
+    .canvas-frame .stage .mock-card .accent-bar {
+      height: 4px;
+      background: linear-gradient(90deg, var(--accent), var(--brand-amber));
+      border-radius: var(--radius-pill);
+      margin: var(--space-3) 0;
+    }
+    .canvas-frame .stage .mock-card .selection-marker {
+      position: absolute;
+      top: -8px; left: -8px; right: -8px; bottom: -8px;
+      border: 1px dashed var(--accent);
+      border-radius: calc(var(--radius-lg) + 8px);
+      pointer-events: none;
+    }
+    .canvas-frame .stage .cursor {
+      position: absolute;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      pointer-events: none;
+    }
+    .canvas-frame .stage .cursor svg { display: block; }
+    .canvas-frame .stage .cursor .label {
+      background: currentColor;
+      color: oklch(8% 0 0);
+      padding: 1px 6px;
+      border-radius: var(--radius-xs);
+      font-weight: 600;
+      margin-top: 2px;
+      display: inline-block;
+    }
+
+    .inspector-panel {
+      background: var(--bg-1);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      overflow-y: auto;
+    }
+    .inspector-panel .panel-head {
+      padding: var(--space-3) var(--space-4);
+      border-bottom: 1px solid var(--border-subtle);
+      font-family: var(--font-mono);
+      font-size: var(--type-xs);
+      letter-spacing: var(--tracking-mono);
+      color: var(--fg-2);
+      text-transform: uppercase;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .inspector-panel .panel-head strong { color: var(--fg-0); text-transform: none; font-weight: 600; font-size: var(--type-sm); }
+    .inspector-panel .row { display: flex; justify-content: space-between; padding: 6px var(--space-4); margin: 0; align-items: center; border-bottom: 1px dashed var(--border-subtle); }
+    .inspector-panel .row:last-child { border-bottom: 0; }
+    .inspector-panel .row .key { color: var(--fg-2); font-family: var(--font-mono); font-size: 11px; letter-spacing: var(--tracking-mono); }
+    .inspector-panel .row .val { color: var(--fg-0); font-family: var(--font-mono); font-size: 11px; letter-spacing: var(--tracking-mono); }
+    .inspector-panel .row .val .swatch-chip { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: middle; margin-right: 4px; border: 1px solid var(--border-default); }
+    .inspector-panel .actions { padding: var(--space-3) var(--space-4); display: flex; gap: 6px; border-top: 1px solid var(--border-subtle); }
+
+    /* System view */
+    .system-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: var(--space-3);
+    }
+    .system-card {
+      background: var(--bg-1);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: var(--space-4);
+    }
+    .system-card .label {
+      font-family: var(--font-mono);
+      font-size: var(--type-xs);
+      letter-spacing: var(--tracking-mono);
+      color: var(--fg-2);
+      text-transform: uppercase;
+      margin: 0 0 var(--space-2);
+    }
+    .system-card .stat {
+      font-family: var(--font-mono);
+      font-size: var(--type-2xl);
+      line-height: 1;
+      color: var(--fg-0);
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .system-card .stat .accent { color: var(--accent); }
+    .system-card .sub {
+      color: var(--fg-2);
+      font-size: var(--type-xs);
+      margin: var(--space-2) 0 0;
+      font-family: var(--font-mono);
+      letter-spacing: var(--tracking-mono);
+    }
+    .system-card .sub .ok { color: var(--status-success); }
+    .system-card .sub .warn { color: var(--status-warn); }
+    .system-card .meter {
+      height: 4px;
+      background: var(--bg-3);
+      border-radius: var(--radius-pill);
+      margin: var(--space-2) 0 0;
+      overflow: hidden;
+    }
+    .system-card .meter .fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: var(--radius-pill);
+    }
+
+    /* ─── Status bar — retro CRT bezel ─── */
+    .status {
+      grid-area: status;
+      display: flex; align-items: center; gap: var(--space-4);
+      padding: 0 var(--space-4);
+      background:
+        repeating-linear-gradient(0deg, oklch(0% 0 0 / 0.14) 0 1px, transparent 1px 3px),
+        linear-gradient(180deg, var(--bg-1), var(--bg-2));
+      border-top: 1px solid var(--border-default);
+      box-shadow: inset 0 1px 0 oklch(100% 0 0 / 0.05), inset 0 -1px 4px oklch(0% 0 0 / 0.5);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: var(--tracking-mono);
+      color: var(--fg-2);
+    }
+    .status .item.live::before {
+      content: '';
+      display: inline-block;
+      width: 2px; height: 9px;
+      background: var(--accent);
+      box-shadow: 0 0 6px var(--accent);
+      margin-right: 6px;
+      animation: cursor-blink 1.06s steps(2, end) infinite;
+    }
+    @keyframes cursor-blink { 50% { opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) { .status .item.live::before { animation: none; } }
+    .status .item { display: inline-flex; align-items: center; gap: 6px; }
+    .status .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--status-success); box-shadow: 0 0 6px var(--status-success); }
+    .status .accent-text { color: var(--accent); }
+    .status .spacer { flex: 1; }
+    .status .branch { color: var(--fg-1); }
+  </style>
+</head>
+<body class="app">
+  <main class="specimen">
+    <div class="app-shell">
+
+      <!-- TOP NAV -->
+      <header class="topnav">
+        <a class="brand" href="#">
+          <span class="mark">s</span>
+          <span class="label">studio<span class="slash">/</span><span class="sub">md-claude</span></span>
+        </a>
+        <div class="segmented" role="group" aria-label="View mode">
+          <button class="is-on" data-view="canvases">canvases</button>
+          <button data-view="inspector">inspector</button>
+          <button data-view="system">system</button>
+        </div>
+        <div class="spacer"></div>
+        <div class="search-wrap">
+          <input class="search" type="search" placeholder="search canvases, components, tokens…" aria-label="Search" />
+          <span class="kbd-hint">⌘ K</span>
+        </div>
+        <div class="accent-picker">
+          <button class="accent-trigger" id="accent-trigger" aria-haspopup="menu" aria-expanded="false" aria-label="Accent">
+            <span class="puck" aria-hidden="true"></span>
+            <span class="chev">▾</span>
+          </button>
+          <div class="accent-popover" id="accent-popover" role="menu" aria-label="Accent">
+            <button class="opt is-on" data-team="default" role="menuitemradio" aria-checked="true"><span class="dot" style="background: oklch(68% 0.22 285);"></span>plasma</button>
+            <button class="opt" data-team="amber" role="menuitemradio" aria-checked="false"><span class="dot" style="background: oklch(64% 0.18 50);"></span>amber</button>
+            <button class="opt" data-team="cyan" role="menuitemradio" aria-checked="false"><span class="dot" style="background: oklch(72% 0.16 220);"></span>cyan</button>
+            <button class="opt" data-team="emerald" role="menuitemradio" aria-checked="false"><span class="dot" style="background: oklch(70% 0.16 150);"></span>emerald</button>
+          </div>
+        </div>
+        <div class="run-indicator" title="dev-server running on :4321">
+          <span class="pulse"></span><span>:4321</span>
+        </div>
+        <div class="avatar" aria-label="md">md</div>
+      </header>
+
+      <!-- SIDEBAR (file tree) -->
+      <aside class="sidebar">
+        <h3>Workspace<span class="count">.design/</span></h3>
+        <ul class="tree">
+          <li><a><span class="glyph">▾</span>system<span class="badge">1</span></a>
+            <ul>
+              <li><a class="leaf"><span class="glyph">⌬</span>studio<span class="badge">28</span></a></li>
+            </ul>
+          </li>
+          <li><a><span class="glyph">▾</span>ui<span class="badge">3</span></a>
+            <ul>
+              <li><a class="is-active leaf"><span class="glyph">▦</span>dev-server-shell</a></li>
+              <li><a class="leaf"><span class="glyph">▦</span>docs-landing</a></li>
+              <li><a class="leaf"><span class="glyph">▦</span>marketing-hero</a></li>
+            </ul>
+          </li>
+          <li><a><span class="glyph">▸</span>_history<span class="badge">42</span></a></li>
+        </ul>
+
+        <h3>Open tabs<span class="count">3</span></h3>
+        <ul class="tree">
+          <li><a class="is-active leaf"><span class="glyph">●</span>dev-server-shell</a></li>
+          <li><a class="leaf"><span class="glyph">○</span>docs-landing</a></li>
+          <li><a class="leaf"><span class="glyph">○</span>marketing-hero</a></li>
+        </ul>
+
+        <div class="ds-pill">
+          <span class="dot"></span>
+          <span class="name">studio</span>
+          <span class="sub">v0.1.0</span>
+        </div>
+      </aside>
+
+      <!-- MAIN -->
+      <section class="main">
+
+        <!-- ─── Screen 1: Canvases ─── -->
+        <div class="screen is-on" data-view="canvases">
+          <div class="hero">
+            <div>
+              <div class="crumb">.design / <span class="accent-text">ui</span></div>
+              <h1>Canvases</h1>
+              <p class="lede">Three live mocks under this design root. Cmd+Click any element in the preview to scope the next <code>/design:edit</code> to it.</p>
+            </div>
+            <div class="actions">
+              <button class="btn btn--ghost"><span class="icon">⌘</span>open in browser</button>
+              <button class="btn btn--primary"><span class="icon-led" aria-hidden="true"></span>new canvas</button>
+            </div>
+          </div>
+          <div class="canvas-grid">
+
+            <article class="canvas-card">
+              <div class="thumb thumb-shell">
+                <div class="pane left"><div class="li"></div><div class="li"></div><div class="li"></div><div class="li"></div></div>
+                <div class="pane center"><div class="card-mini"></div></div>
+                <div class="pane right"><div class="li"></div><div class="li"></div><div class="li"></div><div class="li"></div></div>
+              </div>
+              <div class="head"><span class="title">dev-server-shell</span><span class="pill">active</span></div>
+              <p class="meta"><span class="dot">●</span> .design/ui/dev-server-shell.html <span>·</span> 14:08:22</p>
+              <p class="body">File tree + tabbed iframe + status bar. The composition this whole system was built for.</p>
+            </article>
+
+            <article class="canvas-card">
+              <div class="thumb thumb-docs">
+                <div class="eyebrow"></div>
+                <div class="h"></div>
+                <div class="h short"></div>
+                <div class="p"></div>
+                <div class="p short"></div>
+                <div class="amber-bar"></div>
+              </div>
+              <div class="head"><span class="title">docs-landing</span><span class="pill pill--ghost">draft</span></div>
+              <p class="meta"><span class="dot">●</span> .design/ui/docs-landing.html <span>·</span> 13:55:01</p>
+              <p class="body">Long-form documentation hero. Amber spotlight in the hero gradient — the canonical place amber lives.</p>
+            </article>
+
+            <article class="canvas-card">
+              <div class="thumb thumb-hero">
+                <div class="lines2"><div class="h"></div><div class="h x"></div><div class="cta"></div></div>
+              </div>
+              <div class="head"><span class="title">marketing-hero</span><span class="pill pill--success">passed crit</span></div>
+              <p class="meta"><span class="dot">●</span> .design/ui/marketing-hero.html <span>·</span> 13:42:17</p>
+              <p class="body">aspiration 4.2/5. graphic-design 0 blockers. The signature-moment-critic stopped grumbling two iterations ago.</p>
+            </article>
+
+          </div>
+        </div>
+
+        <!-- ─── Screen 2: Inspector ─── -->
+        <div class="screen" data-view="inspector">
+          <div class="hero">
+            <div>
+              <div class="crumb">.design / ui / <span class="accent-text">dev-server-shell</span></div>
+              <h1>Inspector</h1>
+              <p class="lede">A selection on the canvas resolves to a token + computed style snapshot. Cmd+Click an element in the iframe to scope <code>/design:edit</code> to that node.</p>
+            </div>
+            <div class="actions">
+              <button class="btn btn--ghost">reload iframe</button>
+              <button class="btn btn--primary"><span class="icon-led" aria-hidden="true"></span>apply edit</button>
+            </div>
+          </div>
+
+          <div class="inspector">
+            <div class="canvas-frame">
+              <div class="toolbar">
+                <div class="traffic" aria-label="window controls"><span>−</span><span>□</span><span>×</span></div>
+                <div class="url">localhost:4321/.design/ui/<span class="accent-text">dev-server-shell.html</span></div>
+                <span class="dim">1280 × 800</span>
+              </div>
+              <div class="stage">
+                <div class="mock-card">
+                  <div class="selection-marker" aria-hidden="true"></div>
+                  <h4>Match-day mode</h4>
+                  <p>Roster snapshot taken at 19:42:08. Eleven confirmed; two open slots remain.</p>
+                  <div class="accent-bar"></div>
+                  <button class="btn btn--primary" style="width: 100%; justify-content: center;"><span class="icon-led" aria-hidden="true"></span>publish lineup</button>
+                </div>
+                <div class="cursor" style="top: 24%; left: 18%; color: var(--presence-c2);">
+                  <svg width="14" height="18" viewBox="0 0 14 18" fill="currentColor"><path d="M1 1 L13 9 L7 10 L4 16 Z" stroke="oklch(8% 0 0)" stroke-width="1"/></svg>
+                  <span class="label">jonas</span>
+                </div>
+                <div class="cursor" style="top: 56%; right: 14%; color: var(--presence-c3);">
+                  <svg width="14" height="18" viewBox="0 0 14 18" fill="currentColor"><path d="M1 1 L13 9 L7 10 L4 16 Z" stroke="oklch(8% 0 0)" stroke-width="1"/></svg>
+                  <span class="label">marta</span>
+                </div>
+              </div>
+            </div>
+
+            <aside class="inspector-panel">
+              <div class="panel-head"><strong>.btn--primary</strong><span>selected</span></div>
+              <div class="row"><span class="key">background</span><span class="val"><span class="swatch-chip" style="background: var(--accent);"></span>var(--accent)</span></div>
+              <div class="row"><span class="key">color</span><span class="val"><span class="swatch-chip" style="background: var(--accent-fg);"></span>var(--accent-fg)</span></div>
+              <div class="row"><span class="key">padding</span><span class="val">7px 14px</span></div>
+              <div class="row"><span class="key">radius</span><span class="val">var(--radius-md)</span></div>
+              <div class="row"><span class="key">font</span><span class="val">Geist 500</span></div>
+              <div class="row"><span class="key">transition</span><span class="val">background 120ms</span></div>
+              <div class="row"><span class="key">contrast</span><span class="val"><span style="color: var(--status-success);">●</span> 8.7 : 1</span></div>
+
+              <div class="panel-head" style="margin-top: var(--space-3);"><strong>tokens</strong><span>3 used</span></div>
+              <div class="row"><span class="key">--accent</span><span class="val"><span class="swatch-chip" style="background: var(--accent);"></span>plasma</span></div>
+              <div class="row"><span class="key">--accent-fg</span><span class="val"><span class="swatch-chip" style="background: var(--accent-fg);"></span>violet-black</span></div>
+              <div class="row"><span class="key">--radius-md</span><span class="val">7px</span></div>
+
+              <div class="actions">
+                <button class="btn btn--ghost" style="flex: 1; font-size: var(--type-xs);">Copy selector</button>
+                <button class="btn btn--secondary" style="flex: 1; font-size: var(--type-xs);">Edit token</button>
+              </div>
+            </aside>
+          </div>
+        </div>
+
+        <!-- ─── Screen 3: System ─── -->
+        <div class="screen" data-view="system">
+          <div class="hero">
+            <div>
+              <div class="crumb">system / <span class="accent-text">studio</span></div>
+              <h1>System health</h1>
+              <p class="lede">A live audit of the design system. The completeness-critic ran 2 minutes ago; aesthetic critics ran on the showcase last build.</p>
+            </div>
+            <div class="actions">
+              <button class="btn btn--ghost">re-run critics</button>
+              <button class="btn btn--primary"><span class="icon-led" aria-hidden="true"></span>export report</button>
+            </div>
+          </div>
+          <div class="system-grid">
+            <div class="system-card">
+              <p class="label">Specimens</p>
+              <p class="stat">28 <span class="accent">/ 28</span></p>
+              <p class="sub"><span class="ok">●</span> all required scaffolded</p>
+              <div class="meter"><div class="fill" style="width: 100%;"></div></div>
+            </div>
+            <div class="system-card">
+              <p class="label">Completeness gate</p>
+              <p class="stat">0 <span style="color: var(--fg-2); font-size: var(--type-sm);">blockers</span></p>
+              <p class="sub"><span class="ok">●</span> 2 warnings · Tier 2</p>
+              <div class="meter"><div class="fill" style="width: 100%;"></div></div>
+            </div>
+            <div class="system-card">
+              <p class="label">Aesthetic gate</p>
+              <p class="stat">4.1<span style="color: var(--fg-2); font-size: var(--type-md);">/5</span></p>
+              <p class="sub">signature-moment · last build</p>
+              <div class="meter"><div class="fill" style="width: 82%;"></div></div>
+            </div>
+            <div class="system-card">
+              <p class="label">Token families</p>
+              <p class="stat">5</p>
+              <p class="sub">accent · status · presence · mono · brand</p>
+            </div>
+            <div class="system-card">
+              <p class="label">Contrast (WCAG AA)</p>
+              <p class="stat">100<span style="color: var(--fg-2); font-size: var(--type-md);">%</span></p>
+              <p class="sub"><span class="ok">●</span> 32 pairings checked</p>
+              <div class="meter"><div class="fill" style="width: 100%;"></div></div>
+            </div>
+            <div class="system-card">
+              <p class="label">Motion budget</p>
+              <p class="stat">120<span style="color: var(--fg-2); font-size: var(--type-md);">ms</span></p>
+              <p class="sub">flip · prefers-reduced respected</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- STATUS BAR -->
+      <footer class="status">
+        <span class="item live"><span class="dot" aria-hidden="true"></span>synced</span>
+        <span class="item"><span class="branch">main</span> @ 0b15512</span>
+        <span class="item">14:08:22</span>
+        <span class="spacer"></span>
+        <span class="item">studio v0.1.0</span>
+        <span class="item accent-text">match-day mode</span>
+        <span class="item">3 tabs · 1 selection</span>
+      </footer>
+    </div>
+  </main>
+
+  <script>
+    /* EDITMODE-BEGIN — agents may edit these defaults in-place */
+    const DEFAULTS = {
+      view:  'canvases',     // 'canvases' | 'inspector' | 'system'
+      team:  'default',      // 'default' (plasma) | 'amber' | 'cyan' | 'emerald'
+      theme: 'dark'          // dark only — light variant intentionally absent
+    };
+    /* EDITMODE-END */
+
+    const root = document.documentElement;
+    root.setAttribute('data-theme', DEFAULTS.theme);
+    root.setAttribute('data-team',  DEFAULTS.team);
+
+    // View switcher (segmented)
+    document.querySelectorAll('.segmented > button[data-view]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = btn.dataset.view;
+        document.querySelectorAll('.segmented > button[data-view]').forEach(b => b.classList.toggle('is-on', b === btn));
+        document.querySelectorAll('.screen').forEach(s => s.classList.toggle('is-on', s.dataset.view === target));
+      });
+    });
+
+    // Collapsed accent picker — trigger toggles popover; options flip data-team on <html>
+    const accentTrigger = document.getElementById('accent-trigger');
+    const accentPopover = document.getElementById('accent-popover');
+    accentTrigger.addEventListener('click', e => {
+      e.stopPropagation();
+      const open = accentPopover.classList.toggle('is-open');
+      accentTrigger.setAttribute('aria-expanded', open);
+    });
+    document.addEventListener('click', e => {
+      if (!accentPopover.contains(e.target) && e.target !== accentTrigger) {
+        accentPopover.classList.remove('is-open');
+        accentTrigger.setAttribute('aria-expanded', 'false');
+      }
+    });
+    accentPopover.querySelectorAll('.opt').forEach(opt => {
+      opt.addEventListener('click', () => {
+        accentPopover.querySelectorAll('.opt').forEach(o => { o.classList.remove('is-on'); o.setAttribute('aria-checked', 'false'); });
+        opt.classList.add('is-on');
+        opt.setAttribute('aria-checked', 'true');
+        root.setAttribute('data-team', opt.dataset.team);
+        accentPopover.classList.remove('is-open');
+        accentTrigger.setAttribute('aria-expanded', 'false');
+      });
+    });
+  </script>
+</body>
+</html>

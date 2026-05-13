@@ -2,32 +2,37 @@
 name: design:setup-ds
 category: setup
 description: Create a new design system (first one, an additional one alongside an existing DS, or re-bootstrap an existing one with --force). Thin wrapper that loads skill `design-system` in bootstrap mode with the given target. Auto-invokes /design:init first if .design/config.json is missing.
-argument-hint: "<name> [\"<brief>\"] [--force]"
+argument-hint: "<name> [\"<brief>\"] [--force] [--quick]"
 ---
 
 # /design:setup-ds — create / extend a design system
 
 Dedicated entry point for **creating a design system** in this project. Three modes the underlying skill auto-detects:
 
-- **first-bootstrap** — `.design/config.json` does not exist (or `designSystems[]` is empty). The agent runs the full 8-question discovery, scaffolds `system/<name>/`, and writes `config.json` with `designSystems: [{ name, path, description }]`.
-- **additional-ds** — `config.json` exists and `<name>` is **not** in `designSystems[]`. The agent runs 7 questions + Q_purpose + inheritance picker, then scaffolds `system/<name>/` next to the existing DS.
-- **re-bootstrap** — `<name>` already exists in `designSystems[]` AND `--force` was passed. The agent pre-fills 8 questions with the current values and re-generates affected files.
+- **first-bootstrap** — `.design/config.json` does not exist (or `designSystems[]` is empty). The agent runs the full 12-question discovery (3 rounds — identity / brand / pro-designer inputs), scaffolds `system/<name>/`, and writes `config.json` with `designSystems: [{ name, path, description }]`.
+- **additional-ds** — `config.json` exists and `<name>` is **not** in `designSystems[]`. The agent runs 11 questions + Q_purpose + inheritance picker, then scaffolds `system/<name>/` next to the existing DS.
+- **re-bootstrap** — `<name>` already exists in `designSystems[]` AND `--force` was passed. The agent pre-fills 12 questions with the current values and re-generates affected files.
 
 This command **does NOT create a canvas** — use `/design:new` for that. It also does NOT prepare the project environment (deps, CLAUDE.md, .ai/) — that's `/design:init`'s job.
 
 ## Arguments
 
 - `<name>` — required. Kebab-case slug (`marketing`, `admin`, `consumer-mobile`, …). For the first DS in a single-DS project, the literal value `project` is the conventional default.
-- `<brief>` — optional. One-line description used to pre-answer Q1 (first-bootstrap) or Q_purpose (additional-ds). If absent, the skill asks the question interactively.
+- `<brief>` — optional. One-line description used to pre-answer Q1 (first-bootstrap) or Q_purpose (additional-ds). If absent, the skill asks the question interactively. **A rich brief (a paragraph naming references + audience + voice) materially lowers the discovery round count** — strong briefs get pre-filled Recommended options that the user just confirms.
 - `--force` — required for re-bootstrap of an existing DS. Without it, an existing-DS target produces an error pointing at the right verb (`/design:edit` for incremental change, `/design:setup-ds <new-name>` to add a sibling DS).
+- `--quick` — opt out of Round 3 (pro-designer inputs). Discovery falls back to the 8-Q baseline. Output is structurally valid but typically scores ~3.5/5 aspiration instead of the 4.0+/5 the 12-Q flow targets. Use when scaffolding a throwaway DS or when the user explicitly wants the fast path.
 
 ## Examples
 
 ```
 /design:setup-ds project "team scouting + match-day pro tool"
 /design:setup-ds marketing "consumer-facing marketing site for product launch"
-/design:setup-ds admin --force
+/design:setup-ds admin --force                                          # re-bootstrap
+/design:setup-ds quickdraft "throwaway exploration" --quick             # skip Round 3
+/design:setup-ds studio "docs + dev-server, vibe: Zed × Affinity × PostHog warmth × Figma canvas, dark-first, mono-forward, signature CRT-glow on dark"
 ```
+
+A rich brief (last example) carries enough mood + voice + visual-treatment cues that most Recommended pre-fills land on the first try; user just confirms.
 
 ## Process
 
@@ -52,6 +57,7 @@ mode: bootstrap
 target_ds: <name>
 brief:     <brief or empty>
 force:     true|false
+quick:     true|false           # --quick → skip Round 3, fall back to 8-Q baseline
 ```
 
 The skill detects the sub-mode internally (first-bootstrap / additional-ds / re-bootstrap) based on `.design/config.json` state.
@@ -61,12 +67,16 @@ The skill detects the sub-mode internally (first-bootstrap / additional-ds / re-
 See `plugins/design/skills/design-system/SKILL.md` "Bootstrap flow" for the canonical spec. Briefly:
 
 1. Pre-Flight (light) — node ≥ 20, git, write permission, config exists (else auto-onboard).
-2. Discovery — 2 rounds of AskUserQuestion (4 Qs each).
-3. Confirm direction — 2-sentence echo; user yes / corrects / retries Round 2.
-4. Mapping — consult `_MAPPING.md` to compute file set + `activeFamilies[]`.
-5. Scaffold — generate project-flavored files using `design-system-inspiration/` as reference (NOT a literal substrate).
-6. Completeness-critic — auto-run; exit non-zero only on blockers.
-7. Post-flight — print next-step block.
+2. Discovery — **3 rounds** of AskUserQuestion (4 Qs each): identity → brand → pro-designer inputs. `--quick` skips Round 3.
+3. Confirm direction — **3-sentence echo** (one per round); user yes / corrects / retries affected round.
+4. Mapping — consult `_MAPPING.md` for file set, `activeFamilies[]`, and per-file `dependency_closure` (drives batching).
+5. **Pre-scaffold roster** — emit `_history/_system/000-scaffold-roster.yaml` listing every file with `batch: A|B|C` + `status: pending`.
+6. **Scaffold (fan-out)** — Batch A by main agent (tokens + chrome + READMEs + config); Batches B + C **fired in parallel via sub-agents** (5–8 slices). Sub-agents read tokens CSS + chrome + reference template, then RESTRUCTURE per the creativity rubric. Each updates its rows to `status: written`.
+7. Reconcile — main agent reads roster, asserts no pending rows remain.
+8. Copy-claim → asset-receipt sweep, then auto-run completeness-critic.
+9. Visual sanity — agent-browser screenshots of 3 signature specimens.
+10. **Aesthetic critic panel** — signature-moment + graphic-design + typography + copy fired in parallel on signature specimens. Honest verdicts surface in the completion block.
+11. Post-flight — print next-step block.
 
 ### Step 4 — Return
 

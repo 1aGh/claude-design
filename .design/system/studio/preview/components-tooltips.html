@@ -1,0 +1,35 @@
+<!--
+SPECIMEN: components-tooltips
+DEMONSTRATES: tooltip variants — default, with kbd hint, with code value, light + dark surface
+WHEN SCAFFOLDED: universal
+-->
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>Tooltips — studio</title><link rel="stylesheet" href="../colors_and_type.css"><link rel="stylesheet" href="./_layout.css">
+<style>
+  .stage { background: var(--bg-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: var(--space-6); display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-6) var(--space-7); place-items: center; min-height: 220px; }
+  .anchor { padding: 8px 14px; background: var(--bg-2); border: 1px solid var(--border-default); border-radius: var(--radius-md); color: var(--fg-0); font-family: var(--font-mono); font-size: var(--type-xs); position: relative; cursor: default; letter-spacing: var(--tracking-mono); }
+  .tip { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); background: oklch(8% 0.005 285); color: oklch(98% 0 0); padding: 5px 9px; border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: 11px; letter-spacing: var(--tracking-mono); white-space: nowrap; border: 1px solid var(--border-default); box-shadow: var(--shadow-md); display: flex; gap: 8px; align-items: center; }
+  .tip::after { content: ''; position: absolute; left: 50%; top: 100%; transform: translateX(-50%); border: 4px solid transparent; border-top-color: oklch(8% 0.005 285); }
+  .tip kbd { font-family: var(--font-mono); font-size: 10px; padding: 0 4px; border: 1px solid oklch(40% 0 0); border-radius: 2px; background: oklch(0% 0 0 / 0.4); }
+  .tip .accent { color: var(--accent); }
+
+  .tip.large { padding: 8px 12px; flex-direction: column; align-items: flex-start; gap: 4px; max-width: 220px; white-space: normal; }
+  .tip.large .title { color: oklch(98% 0 0); font-weight: 600; font-size: var(--type-xs); }
+  .tip.large .body { color: oklch(78% 0 0); font-family: var(--font-body); font-size: 11px; letter-spacing: 0; line-height: 16px; }
+</style></head><body class="app">
+<main class="specimen">
+  <p class="crumb">components / tooltips</p>
+  <h1>Tooltips</h1>
+  <p class="lede">Tooltips sit on a near-black surface, regardless of theme — they're chrome above chrome. Always include a kbd hint when one exists; never repeat the visible label as the tooltip.</p>
+
+  <div class="stage">
+    <div class="anchor">⌘<div class="tip">Open palette<kbd>⌘ K</kbd></div></div>
+    <div class="anchor">▦<div class="tip">Open in inspector<kbd>⌘ ⇧ I</kbd></div></div>
+    <div class="anchor">+<div class="tip">New canvas<kbd>⌘ N</kbd></div></div>
+    <div class="anchor">⌫<div class="tip" style="border-color: oklch(from var(--status-error) l c h / 0.4);"><span style="color: var(--status-error);">Delete canvas</span><kbd>⌘ ⌫</kbd></div></div>
+    <div class="anchor">⌬<div class="tip large"><span class="title">Run critic</span><span class="body">design-system-completeness-critic runs structural checks on the active DS. Last run: 2m ago, <span class="accent">0 blockers</span>.</span></div></div>
+    <div class="anchor">--accent<div class="tip"><span class="accent">●</span>oklch(68% 0.22 285)</div></div>
+  </div>
+
+  <footer class="legend"><p>Tooltip is monochrome by rule. Color appears only when carrying status (the destructive case above, the accent dot for a token swatch). Otherwise: paperwhite text on near-black.</p></footer>
+</main></body></html>

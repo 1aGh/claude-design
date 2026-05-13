@@ -1,0 +1,26 @@
+<!--
+SPECIMEN: borders — --border-subtle / -default / -strong, all derived via oklch(from --bg-1)
+WHEN SCAFFOLDED: foundations
+-->
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>Borders — studio</title><link rel="stylesheet" href="../colors_and_type.css"><link rel="stylesheet" href="./_layout.css">
+<style>
+  .b-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); }
+  .b-tile { background: var(--bg-1); border-radius: var(--radius-lg); padding: var(--space-4); display: grid; place-items: center; gap: 6px; min-height: 140px; }
+  .b-tile.subtle  { border: 1px solid var(--border-subtle); }
+  .b-tile.default { border: 1px solid var(--border-default); }
+  .b-tile.strong  { border: 1px solid var(--border-strong); }
+  .b-tile .name { font-family: var(--font-mono); font-size: 11px; color: var(--fg-0); letter-spacing: var(--tracking-mono); font-weight: 600; }
+  .b-tile .desc { font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); letter-spacing: var(--tracking-mono); text-align: center; max-width: 24ch; }
+</style></head><body class="app">
+<main class="specimen">
+  <p class="crumb">foundations / borders</p>
+  <h1>Borders</h1>
+  <p class="lede">Three border tiers derived from <code>--bg-1</code> via <code>oklch(from var(--bg-1) calc(l + N) c h)</code>. The derivation tracks the surface so the chrome stays coherent if the theme shifts.</p>
+  <div class="b-grid">
+    <div class="b-tile subtle"><span class="name">--border-subtle</span><span class="desc">+0.04 L · row dividers, nested separators</span></div>
+    <div class="b-tile default"><span class="name">--border-default</span><span class="desc">+0.08 L · card, input, chip, panel</span></div>
+    <div class="b-tile strong"><span class="name">--border-strong</span><span class="desc">+0.14 L · focused panel, hover</span></div>
+  </div>
+  <footer class="legend"><p>Don't add a 4th tier. If a border needs to stand out more, reach for <code>--accent</code> on the border-color, not a new <code>--border-*</code> token.</p></footer>
+</main></body></html>

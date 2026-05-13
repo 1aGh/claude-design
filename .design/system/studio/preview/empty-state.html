@@ -1,0 +1,205 @@
+<!--
+SPECIMEN: empty-state
+DEMONSTRATES: --bg-1, --fg-0..2, --accent, --accent-fg, --brand-amber (ambient glow only), --radius-md, --space-5/7
+COMPOSITION: empty state that earns its space — terminal-glyph mark, situation-naming title, supporting sentence that names the next action, primary CTA + secondary CTA, plus a footer hint with kbd
+COPY VOICE: warm hacker — names the missing thing, suggests the next move with a verb, mono in the kbd hint
+WHEN SCAFFOLDED: universal (default-on). One of the brand-voice moments — readers feel the personality here.
+NOTES:
+  - The amber glow behind the mark is the ONE place amber is allowed inside a universal specimen — because empty-states are an identity surface, not chrome.
+  - The CTA is plasma, the hint is mono. Don't pair amber CTA with the amber glow — that's amber doing two jobs.
+  - The "∅" mark is set in Geist Mono. The studio uses mono glyphs as ASCII art, not emoji.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark" data-team="default">
+<head>
+  <meta charset="utf-8" />
+  <title>Empty state — studio</title>
+  <link rel="stylesheet" href="../colors_and_type.css" />
+  <link rel="stylesheet" href="./_layout.css" />
+  <link rel="stylesheet" href="./_components.css" />
+  <style>
+    .empty-stage {
+      max-width: 560px;
+      margin: 0 0 var(--space-6);
+      padding: var(--space-7) var(--space-6) var(--space-6);
+      background:
+        radial-gradient(360px 180px at 50% 20%, oklch(from var(--brand-amber) l c h / 0.10), transparent 70%),
+        var(--bg-1);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-xl);
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .empty-stage .glyph-frame {
+      width: 64px; height: 64px;
+      margin: 0 auto var(--space-4);
+      border-radius: var(--radius-lg);
+      background: var(--bg-2);
+      border: 1px solid var(--border-default);
+      display: grid; place-items: center;
+      box-shadow: var(--shadow-glow-amber), inset 0 1px 0 oklch(100% 0 0 / 0.04);
+      position: relative;
+    }
+    .empty-stage .glyph-frame .glyph {
+      font-family: var(--font-mono);
+      font-size: 28px;
+      color: var(--fg-1);
+      line-height: 1;
+    }
+    .empty-stage .glyph-frame::after {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      border-radius: var(--radius-lg);
+      pointer-events: none;
+      background: linear-gradient(180deg, oklch(from var(--brand-amber) l c h / 0.3), transparent 60%);
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+              mask-composite: exclude;
+      padding: 1px;
+    }
+    .empty-stage h2 {
+      font-family: var(--font-display);
+      font-size: var(--type-xl);
+      line-height: var(--lh-xl);
+      letter-spacing: var(--tracking-display);
+      font-weight: 600;
+      margin: 0 0 var(--space-2);
+      color: var(--fg-0);
+    }
+    .empty-stage h2::before { content: none; }
+    .empty-stage p {
+      color: var(--fg-1);
+      margin: 0 auto var(--space-5);
+      max-width: 44ch;
+      font-size: var(--type-sm);
+      line-height: var(--lh-md);
+    }
+    .empty-stage .actions {
+      display: flex; gap: var(--space-2); justify-content: center; flex-wrap: wrap;
+      margin-bottom: var(--space-4);
+    }
+    /* Empty-state CTAs consume from _components.css; no local definitions needed. */
+
+    .empty-stage .hint {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--fg-2);
+      letter-spacing: var(--tracking-mono);
+    }
+
+    /* Variants */
+    .variants { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+    .variant-card {
+      background: var(--bg-1);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: var(--space-5);
+      text-align: center;
+    }
+    .variant-card .glyph-mini {
+      width: 36px; height: 36px;
+      margin: 0 auto var(--space-3);
+      border-radius: var(--radius-md);
+      background: var(--bg-2);
+      border: 1px solid var(--border-default);
+      display: grid; place-items: center;
+      font-family: var(--font-mono);
+      font-size: var(--type-md);
+      color: var(--fg-2);
+    }
+    .variant-card h3 {
+      font-family: var(--font-display);
+      font-size: var(--type-md);
+      font-weight: 600;
+      letter-spacing: -0.005em;
+      margin: 0 0 var(--space-1);
+      color: var(--fg-0);
+    }
+    .variant-card p {
+      color: var(--fg-2);
+      font-size: var(--type-xs);
+      margin: 0 0 var(--space-3);
+    }
+    .variant-card .link { color: var(--accent); text-decoration: none; font-family: var(--font-mono); font-size: 11px; letter-spacing: var(--tracking-mono); border-bottom: 1px solid currentColor; }
+
+    .anti-pattern {
+      background: var(--bg-1);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: var(--space-4) var(--space-5);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-4);
+    }
+    .anti-pattern .cell h4 { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-2); margin: 0 0 var(--space-2); display: flex; align-items: center; gap: 6px; }
+    .anti-pattern .cell .ok::before { content: '●'; color: var(--status-success); }
+    .anti-pattern .cell .no::before { content: '●'; color: var(--status-error); }
+    .anti-pattern .cell p { color: var(--fg-1); font-size: var(--type-sm); margin: 0; line-height: var(--lh-md); }
+    .anti-pattern .cell .copy { color: var(--fg-0); }
+    .anti-pattern .cell .copy.bad { color: var(--fg-2); text-decoration: line-through; text-decoration-color: var(--status-error); }
+  </style>
+</head>
+<body class="app">
+  <main class="specimen">
+    <p class="crumb">universal / empty-state</p>
+    <h1>Empty state</h1>
+    <p class="lede">Empty states are an opportunity. Don't waste them on "Nothing here yet" — name the thing that's missing, then offer the next step in a verb.</p>
+
+    <h2>Canonical</h2>
+    <p>The studio dev-server's empty state for a fresh project. Specific subject, action verb, mono kbd hint.</p>
+
+    <section class="empty-stage" aria-labelledby="es-title">
+      <div class="glyph-frame" aria-hidden="true">
+        <span class="glyph">∅</span>
+      </div>
+      <h2 id="es-title">No canvases in this project yet</h2>
+      <p>A canvas is an HTML mock under <code>.design/ui/</code>. Start with a marketing hero, a dev-server shell, or any sketch — <code>/design:new</code> will scaffold the file for you.</p>
+      <div class="actions">
+        <button class="btn btn--primary btn--lg"><span class="icon-led" aria-hidden="true"></span>new canvas</button>
+        <button class="btn btn--ghost btn--lg">import html</button>
+      </div>
+      <span class="hint">or hit <kbd>⌘</kbd><kbd>N</kbd> from anywhere</span>
+    </section>
+
+    <h2>Variants</h2>
+    <p>The same shape adapts to different missing-things. The voice stays warm; the noun changes.</p>
+
+    <div class="variants">
+      <div class="variant-card">
+        <div class="glyph-mini">⌕</div>
+        <h3>No matches for "plasma button"</h3>
+        <p>Try <code>--accent</code> or browse the components family in the sidebar.</p>
+        <a class="link" href="#">show all components →</a>
+      </div>
+      <div class="variant-card">
+        <div class="glyph-mini">▾</div>
+        <h3>Inspector is empty</h3>
+        <p>Cmd-click an element in the canvas iframe to scope <code>/design:edit</code> to it.</p>
+        <a class="link" href="#">read the workflow →</a>
+      </div>
+    </div>
+
+    <h2>Voice — keep or kill</h2>
+    <div class="anti-pattern">
+      <div class="cell">
+        <h4 class="ok">keep</h4>
+        <p class="copy">"No canvases in this project yet. Start with <code>/design:new</code>."</p>
+        <p style="color: var(--fg-2); font-size: var(--type-xs); margin-top: var(--space-2);">Names the thing. Offers a verb. Mono command makes the next step concrete.</p>
+      </div>
+      <div class="cell">
+        <h4 class="no">kill</h4>
+        <p class="copy bad">"Welcome to studio! Looks like there's nothing here. Get started by creating something!"</p>
+        <p style="color: var(--fg-2); font-size: var(--type-xs); margin-top: var(--space-2);">Three exclamation marks. Two filler clauses. Names nothing. The reader has to guess what "something" means.</p>
+      </div>
+    </div>
+
+    <footer class="legend">
+      <p>Empty-state copy survives years. Spend the time to write a real sentence: "Log your first match" beats "Get started" every time.</p>
+      <p>If the missing thing is a list, use a singular noun ("No canvases yet"). If it's a search result, quote the query ("No matches for 'plasma button'"). Always say what's missing — never start with "Nothing here".</p>
+    </footer>
+  </main>
+</body>
+</html>

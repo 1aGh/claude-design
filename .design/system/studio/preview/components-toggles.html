@@ -1,0 +1,126 @@
+<!--
+SPECIMEN: components-toggles
+DEMONSTRATES: studio's retro toggle anatomy — switch (chunky hardware toggle), checkbox (recessed bay with plasma fill on check), radio (inset ring), segmented (recessed bay with active chip raised)
+COMPOSITION: switch row (3 settings) · checkbox row (4 critics) · radio row (4 accents) · segmented (view + density)
+WHEN SCAFFOLDED: universal
+NOTES: switch + seg come from `_components.css`. Checkbox + radio defined inline because they're shape-distinct and only this specimen demos them.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>Toggles — studio</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="stylesheet" href="./_layout.css">
+<link rel="stylesheet" href="./_components.css">
+<style>
+  .checkbox {
+    width: 18px; height: 18px;
+    border: 1px solid oklch(from var(--bg-0) calc(l - 0.04) c h);
+    background: oklch(from var(--bg-0) calc(l - 0.02) c h);
+    border-radius: var(--radius-xs);
+    display: inline-grid; place-items: center;
+    cursor: pointer; vertical-align: middle;
+    font-family: var(--font-mono); font-size: 12px;
+    color: transparent;
+    box-shadow: inset 0 2px 3px oklch(0% 0 0 / 0.50), 0 1px 0 oklch(100% 0 0 / 0.04);
+    transition: background var(--dur-flip) var(--ease-out), border-color var(--dur-flip) var(--ease-out);
+  }
+  .checkbox.is-on {
+    background: linear-gradient(180deg, oklch(from var(--accent) calc(l + 0.04) c h), var(--accent));
+    border-color: oklch(from var(--accent) calc(l - 0.20) c h);
+    color: var(--accent-fg);
+    font-weight: 800;
+    box-shadow:
+      inset 0 1px 0 oklch(100% 0 0 / 0.25),
+      0 1px 0 oklch(from var(--accent) calc(l - 0.22) c h),
+      0 0 8px var(--accent-glow);
+  }
+  .checkbox.is-indeterminate {
+    background: linear-gradient(180deg, oklch(from var(--accent) calc(l + 0.04) c h), var(--accent));
+    border-color: oklch(from var(--accent) calc(l - 0.20) c h);
+  }
+  .checkbox.is-indeterminate::after {
+    content: ''; width: 9px; height: 2px;
+    background: var(--accent-fg); border-radius: 1px;
+  }
+
+  .radio {
+    width: 18px; height: 18px;
+    border: 1px solid oklch(from var(--bg-0) calc(l - 0.04) c h);
+    background: oklch(from var(--bg-0) calc(l - 0.02) c h);
+    border-radius: 50%;
+    display: inline-block; position: relative;
+    cursor: pointer; vertical-align: middle;
+    box-shadow: inset 0 2px 3px oklch(0% 0 0 / 0.50);
+    transition: border-color var(--dur-flip) var(--ease-out);
+  }
+  .radio.is-on { border-color: var(--accent); box-shadow: inset 0 2px 3px oklch(0% 0 0 / 0.50), 0 0 6px var(--accent-glow); }
+  .radio.is-on::after {
+    content: ''; position: absolute; inset: 3px;
+    background: linear-gradient(135deg, oklch(from var(--accent) calc(l + 0.05) c h), var(--accent));
+    border-radius: 50%;
+    box-shadow: 0 0 4px var(--accent-glow);
+  }
+
+  .toggle-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 0;
+    font-size: var(--type-sm); color: var(--fg-0);
+  }
+  .toggle-row .label { flex: 1; }
+  .toggle-row .label .sub {
+    font-family: var(--font-mono); font-size: 10px;
+    color: var(--fg-2); letter-spacing: var(--tracking-mono);
+    display: block; margin-top: 2px;
+  }
+
+  label.opt {
+    display: inline-flex; gap: 8px; align-items: center;
+    cursor: pointer; font-size: var(--type-sm); color: var(--fg-0);
+  }
+</style>
+</head>
+<body class="app">
+<main class="specimen">
+  <p class="crumb">components / toggles</p>
+  <h1>Toggles</h1>
+  <p class="lede">Four shapes, one anatomy thesis — recessed bay, raised chip on active. Switch (settings), checkbox (multi-select), radio (mutual exclusion), segmented (view modes). All four use <code>--accent</code> with glow on the "on" state.</p>
+
+  <h2>Switch</h2>
+  <p>Chunky hardware toggle — recessed track + raised thumb with gradient highlight. The thumb literally moves left→right; the track lights plasma when on.</p>
+  <div class="tile" style="max-width: 560px;">
+    <div class="toggle-row"><span class="label">Auto-snapshot on edit<span class="sub">enables /design:rollback</span></span><span class="switch is-on"></span></div>
+    <div class="toggle-row"><span class="label">Run a11y critic on save<span class="sub">slows save by ~200ms</span></span><span class="switch is-on"></span></div>
+    <div class="toggle-row"><span class="label">Send anonymized usage data<span class="sub">helps improve studio</span></span><span class="switch"></span></div>
+    <div class="toggle-row"><span class="label">Beta features<span class="sub">org admin only</span></span><span class="switch"></span></div>
+  </div>
+
+  <h2>Checkbox</h2>
+  <p>Recessed square bay → plasma slab with white check on activation. Indeterminate state shows a phosphor minus instead of the check.</p>
+  <div class="row">
+    <label class="opt"><span class="checkbox is-on">✓</span> graphic-design</label>
+    <label class="opt"><span class="checkbox is-on">✓</span> typography</label>
+    <label class="opt"><span class="checkbox is-indeterminate"></span> signature-moment</label>
+    <label class="opt"><span class="checkbox"></span> copy</label>
+  </div>
+
+  <h2>Radio</h2>
+  <p>Recessed disc → plasma inner with glow. Inset ring rather than outer border to keep the field flat.</p>
+  <div class="row">
+    <label class="opt"><span class="radio is-on"></span> plasma (default)</label>
+    <label class="opt"><span class="radio"></span> amber</label>
+    <label class="opt"><span class="radio"></span> cyan</label>
+    <label class="opt"><span class="radio"></span> emerald</label>
+  </div>
+
+  <h2>Segmented</h2>
+  <p>Recessed bay with the active button raised + plasma fill + accent glow. Unselected buttons sit flush with the floor.</p>
+  <div class="row">
+    <div class="seg"><button class="is-on">canvases</button><button>inspector</button><button>system</button></div>
+    <div class="seg"><button class="is-on">cozy</button><button>compact</button></div>
+    <div class="seg"><button>dev</button><button class="is-on">preview</button><button>handoff</button></div>
+  </div>
+
+  <footer class="legend">
+    <p>Don't mix switch and checkbox in the same group — switches are stateful settings, checkboxes are batch selections. Different jobs, different shapes.</p>
+    <p>Segmented is for ≤ 4 mutually exclusive options. Beyond that, use a select or tabs — packing 5+ chips into a segmented breaks the affordance.</p>
+  </footer>
+</main></body></html>

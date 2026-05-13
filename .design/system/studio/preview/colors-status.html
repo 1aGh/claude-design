@@ -1,0 +1,43 @@
+<!--
+SPECIMEN: colors-status
+DEMONSTRATES: --status-success, --status-warn, --status-error, --status-info (semantic, not branded — structural use only)
+COMPOSITION: 4 swatches + contextual usage (pill, dot, banner)
+WHEN SCAFFOLDED: IF status ∈ activeFamilies (default-on)
+NOTES: Status info is teal-leaning (200°) rather than blue, to stay out of the plasma hue family.
+-->
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><title>Status — studio</title><link rel="stylesheet" href="../colors_and_type.css"><link rel="stylesheet" href="./_layout.css"></head>
+<body class="app">
+<main class="specimen">
+  <p class="crumb">tokens / colors / status</p>
+  <h1>Status</h1>
+  <p class="lede">Four semantic hues — never used for branding, only for state. Success is grass-green, warn is amber-yellow (not <code>--brand-amber</code>; close enough hue, different saturation, different role), error is hot-red, info is teal (shifted away from plasma).</p>
+
+  <div class="grid">
+    <div class="swatch"><div class="chip" style="background: var(--status-success);"></div><div class="meta"><strong>--status-success</strong>oklch 70 0.18 145</div></div>
+    <div class="swatch"><div class="chip" style="background: var(--status-warn);"></div><div class="meta"><strong>--status-warn</strong>oklch 78 0.16 85</div></div>
+    <div class="swatch"><div class="chip" style="background: var(--status-error);"></div><div class="meta"><strong>--status-error</strong>oklch 64 0.21 25</div></div>
+    <div class="swatch"><div class="chip" style="background: var(--status-info);"></div><div class="meta"><strong>--status-info</strong>oklch 68 0.12 200</div></div>
+  </div>
+
+  <h2>Pills</h2>
+  <div class="row">
+    <span style="background: oklch(from var(--status-success) l c h / 0.14); color: var(--status-success); border: 1px solid oklch(from var(--status-success) l c h / 0.30); padding: 2px 10px; border-radius: var(--radius-pill); font-family: var(--font-mono); font-size: 11px; letter-spacing: var(--tracking-mono); font-weight: 600; text-transform: uppercase;">passed</span>
+    <span style="background: oklch(from var(--status-warn) l c h / 0.14); color: var(--status-warn); border: 1px solid oklch(from var(--status-warn) l c h / 0.30); padding: 2px 10px; border-radius: var(--radius-pill); font-family: var(--font-mono); font-size: 11px; letter-spacing: var(--tracking-mono); font-weight: 600; text-transform: uppercase;">warnings</span>
+    <span style="background: oklch(from var(--status-error) l c h / 0.14); color: var(--status-error); border: 1px solid oklch(from var(--status-error) l c h / 0.30); padding: 2px 10px; border-radius: var(--radius-pill); font-family: var(--font-mono); font-size: 11px; letter-spacing: var(--tracking-mono); font-weight: 600; text-transform: uppercase;">blockers</span>
+    <span style="background: oklch(from var(--status-info) l c h / 0.14); color: var(--status-info); border: 1px solid oklch(from var(--status-info) l c h / 0.30); padding: 2px 10px; border-radius: var(--radius-pill); font-family: var(--font-mono); font-size: 11px; letter-spacing: var(--tracking-mono); font-weight: 600; text-transform: uppercase;">info</span>
+  </div>
+
+  <h2>Banner</h2>
+  <div style="background: oklch(from var(--status-warn) l c h / 0.10); border: 1px solid oklch(from var(--status-warn) l c h / 0.40); border-radius: var(--radius-lg); padding: var(--space-3) var(--space-4); display: flex; align-items: flex-start; gap: var(--space-3); max-width: 640px;">
+    <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--status-warn); box-shadow: 0 0 8px var(--status-warn); margin-top: 8px; flex-shrink: 0;"></span>
+    <div>
+      <p style="font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--status-warn); margin: 0 0 4px; font-weight: 600;">2 aesthetic warnings · last build</p>
+      <p style="color: var(--fg-1); font-size: var(--type-sm); margin: 0;">graphic-design flagged hierarchy on <code>marketing-hero.html</code> and copy-critic flagged a missing verb in <code>empty-state.html</code>. Run <code>/design:critic</code> for the full report.</p>
+    </div>
+  </div>
+
+  <footer class="legend">
+    <p>Status hues never appear on brand surfaces (the docs hero, the mark). They live in chrome — pills, banners, dots, log lines.</p>
+  </footer>
+</main></body></html>

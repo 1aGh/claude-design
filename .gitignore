@@ -5,6 +5,13 @@ node_modules/
 # dev-server runtime artifacts (anything the server writes outside the plugin)
 dev-server/.cache/
 
+# .design/ runtime — server pid/port, active-tab state, snapshot history
+# (source-of-truth files like config.json / README.md / INDEX.md / system/ ARE committed)
+.design/_server.json
+.design/_active.json
+.design/_history/
+.design/_comments/
+
 # AI workflow runtime — committed templates live in .ai/templates/
 .ai/state/HANDOFF.md
 .ai/device/
