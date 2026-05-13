@@ -165,14 +165,10 @@ function printNextSteps(name, claudeMdExists) {
     process.stdout.write(
       `     (Anthropic's built-in command — analyzes stack, writes <200 lines).\n`
     );
-    process.stdout.write(
-      '  3. /flow:init — populates .ai/workflows.config.json with detected\n'
-    );
+    process.stdout.write('  3. /flow:init — populates .ai/workflows.config.json with detected\n');
     process.stdout.write('     stack (platforms, tracker, language, …).\n');
   } else {
-    process.stdout.write(
-      '  2. /flow:init — populates .ai/workflows.config.json with detected\n'
-    );
+    process.stdout.write('  2. /flow:init — populates .ai/workflows.config.json with detected\n');
     process.stdout.write(
       '     stack. CLAUDE.md already exists; /init would suggest improvements.\n'
     );
