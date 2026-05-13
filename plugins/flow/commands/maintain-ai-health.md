@@ -1,5 +1,5 @@
 ---
-name: maintain-ai-health
+name: flow:maintain-ai-health
 category: maintain
 type: command
 description: Diagnose health of the AI infrastructure in this project — commands, skills, agents, state, codebase map

@@ -1,5 +1,5 @@
 ---
-name: setup-docs
+name: design:setup-docs
 category: setup
 description: Refresh designRoot/README.md + INDEX.md — Claude-Design-compatible "READ THIS FIRST" docs that live in the design root and stay current. Auto-runs after /design:edit and /design:new; manual trigger when you want to force a refresh.
 argument-hint: "[--full]"

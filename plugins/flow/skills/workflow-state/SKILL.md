@@ -1,5 +1,5 @@
 ---
-name: workflow-state
+name: flow:workflow-state
 type: skill
 description: "Use when running /plan, /execute, /done, /pause, /resume — anything that mutates `.ai/state/STATE.md` or `.ai/state/HANDOFF.md`. Ensures phase transitions, history rows, and active-task fields stay consistent so cross-session continuity works."
 keywords: [state, workflow, phase, handoff, continuity, session]

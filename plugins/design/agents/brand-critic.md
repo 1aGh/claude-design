@@ -1,5 +1,5 @@
 ---
-name: brand-critic
+name: design:brand-critic
 description: Brand-voice and asset review — logo placement, mark integrity, asset ladder, photography/illustration style consistency, voice/tone alignment with brand POV. Use when /design:critic --agent brand-critic, or auto-routed when canvas contains logos / brand assets / hero imagery / marketing copy. Reads brand assets folder and project README for the POV.
 tools: Read, Write, Bash, Glob, Grep
 ---

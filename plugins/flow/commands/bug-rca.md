@@ -1,5 +1,5 @@
 ---
-name: bug-rca
+name: flow:bug-rca
 category: bug
 type: command
 description: Analyze and document root cause for a GitHub issue

@@ -1,5 +1,5 @@
 ---
-name: design-system
+name: design:design-system
 description: Owns all design-system work. (1) READ mode (default) — loads the active canvas's declared DS (tokens, philosophy, hard-stops) so the agent iterates against the correct context. (2) BOOTSTRAP mode — runs when invoked via /design:setup-ds, or auto-loaded by /design:edit / /design:new on a missing target. Hard-deps pre-flight, 8-question discovery (2 rounds of AskUserQuestion) in one of 3 sub-modes (first-bootstrap / additional-ds / re-bootstrap), consults _MAPPING.md to compute scaffold set, generates project-flavored files using design-system-inspiration as reference, runs design-system-completeness-critic, and prints next-step block.
 user-invocable: true
 ---
@@ -67,7 +67,7 @@ When `config.json.designSystems[]` has more than one entry:
 
 ### Pre-Flight (light)
 
-Bootstrap-mode Pre-Flight is **minimal** — checks only hard deps + presence of skeleton config. Rich environment onboarding (soft dep hints, install offers, CLAUDE.md / .ai/ recommendations) is the responsibility of `/design:setup-onboard` (which the bootstrap entry-point auto-invokes when needed).
+Bootstrap-mode Pre-Flight is **minimal** — checks only hard deps + presence of skeleton config. Rich environment onboarding (soft dep hints, install offers, CLAUDE.md / .ai/ recommendations) is the responsibility of `/design:init` (which the bootstrap entry-point auto-invokes when needed).
 
 ```bash
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
@@ -78,10 +78,10 @@ NODE_OK=false; command -v node &>/dev/null && \
 GIT_OK=false; git -C "$REPO_ROOT" rev-parse &>/dev/null && GIT_OK=true
 [[ -w "$REPO_ROOT" ]] || WRITE_OK=false
 
-# Skeleton config check — if missing, auto-invoke setup-onboard first
+# Skeleton config check — if missing, auto-invoke init first
 if [[ ! -f "$REPO_ROOT/.design/config.json" ]]; then
-  echo "→ .design/config.json missing. Running /design:setup-onboard first…"
-  # Slash command body auto-invokes /design:setup-onboard; skill proceeds after it returns.
+  echo "→ .design/config.json missing. Running /design:init first…"
+  # Slash command body auto-invokes /design:init; skill proceeds after it returns.
 fi
 ```
 
@@ -172,11 +172,11 @@ The critic emits a JSON verdict. If it returns **blockers**, the bootstrap flow 
 
 ### Post-Flight (slim)
 
-Bootstrap-mode Post-Flight is **slim** — only DS-specific follow-ups (no environment offers; those belong to `setup-onboard`):
+Bootstrap-mode Post-Flight is **slim** — only DS-specific follow-ups (no environment offers; those belong to `init`):
 
 - Optionally surface a one-shot AskUserQuestion offering `mdcc design serve` if not already running, so the user can browse the freshly-generated specimens.
 
-Everything else (CLAUDE.md, .ai/, agent-browser install hints) was handled during `setup-onboard` BEFORE bootstrap ran.
+Everything else (CLAUDE.md, .ai/, agent-browser install hints) was handled during `init` BEFORE bootstrap ran.
 
 ### Always-print next steps
 

@@ -1,5 +1,5 @@
 ---
-name: setup-context
+name: flow:setup-context
 category: setup
 type: command
 description: Prime agent with codebase understanding for the current project
@@ -41,7 +41,7 @@ Two complementary sources — read both when present:
 
 If `.ai/workflows.config.json` does not exist:
 
-> ⚠️ No flow workspace found. Run `/flow:setup-onboard` to scaffold `.ai/` and populate the config. Continuing with `CLAUDE.md` and auto-detection only.
+> ⚠️ No flow workspace found. Run `/flow:init` to scaffold `.ai/` and populate the config. Continuing with `CLAUDE.md` and auto-detection only.
 
 If `CLAUDE.md` does not exist:
 

@@ -1,5 +1,5 @@
 ---
-name: debugging-rules
+name: flow:debugging-rules
 description: Hard-stops for debugging — root-cause first, evidence before fixes, no symptom patches, 4-phase systematic approach, 3-strike architectural review. Reads `boundaries.*` from `.ai/workflows.config.json` to know which seams to instrument. Use on any bug, test failure, /flow:utils-verify failure, scenario blocker, or unexpected behavior, before proposing fixes. Applies during /flow:execute Edit-Verify Loop, /flow:bug-rca, /flow:bug-fix, and incident response.
 user-invocable: false
 ---

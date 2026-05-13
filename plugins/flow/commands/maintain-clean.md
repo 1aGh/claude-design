@@ -1,5 +1,5 @@
 ---
-name: maintain-clean
+name: flow:maintain-clean
 category: maintain
 type: command
 description: Clean stale artifacts, logs, and temporary files

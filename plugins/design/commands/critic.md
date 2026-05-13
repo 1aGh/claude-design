@@ -1,5 +1,5 @@
 ---
-name: critic
+name: design:critic
 category: daily
 description: Spawn critic panel (or single agent / all critics) na aktivním canvasu — design + a11y + až 7 specialistů (graphic, brand, typography, motion, copy, frontend, info-architecture). Default = orchestrator routes panel based on canvas content + feedback. Honors opt_out_scope from canvas .meta.json or --opt-out= flag. Use --system-only to audit the design system itself (structural completeness) instead of the active canvas.
 argument-hint: "[--agent <name>] [--all] [--panel] [--system-only [--ds=<name>] [--all-ds]] [--opt-out=palette|aesthetic|full]"

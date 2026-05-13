@@ -1,5 +1,5 @@
 ---
-name: info-architecture-critic
+name: design:info-architecture-critic
 description: Information architecture review — navigation depth, content hierarchy, taxonomy, breadcrumbs, page-relationship coherence, sitemap consistency, naming clarity, findability, search/filter affordances. Use when /design:critic --agent info-architecture-critic, or auto-routed when canvas has navigation, multi-section layouts, search, filters, or routes/breadcrumbs.
 tools: Read, Write, Bash, Glob, Grep
 ---

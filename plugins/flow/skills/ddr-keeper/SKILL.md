@@ -1,5 +1,5 @@
 ---
-name: ddr-keeper
+name: flow:ddr-keeper
 type: skill
 description: "Use when designing or implementing a non-trivial decision (library choice, schema, API shape, auth model, performance trade-off, deprecation, rebuild-vs-refactor) — to prompt creating a Design Decision Record. Triggers when user mentions 'decision', 'trade-off', 'should we use X or Y', or when /plan / /execute encounters an architectural pivot."
 keywords: [ddr, decision, architecture, trade-off, learning, memory]

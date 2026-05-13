@@ -1,5 +1,5 @@
 ---
-name: release-changelog
+name: flow:release-changelog
 type: command
 category: release
 description: Author a changelog entry using the project's configured changelog provider.
@@ -21,7 +21,7 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 CONFIG="$REPO_ROOT/.ai/workflows.config.json"
 
 if [[ ! -f "$CONFIG" ]]; then
-  echo "No .ai/workflows.config.json — run /flow:setup-onboard first."
+  echo "No .ai/workflows.config.json — run /flow:init first."
   exit 1
 fi
 
@@ -35,7 +35,7 @@ SCOPE="$(jq -r '.integrations.changelog.scope // empty' "$CONFIG")"
 
 ```
 No changelog provider configured. Set `integrations.changelog.provider`
-in `.ai/workflows.config.json` (e.g. `changesets`), or run /flow:setup-onboard
+in `.ai/workflows.config.json` (e.g. `changesets`), or run /flow:init
 to auto-detect.
 ```
 

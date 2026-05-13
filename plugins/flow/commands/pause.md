@@ -1,5 +1,5 @@
 ---
-name: pause
+name: flow:pause
 category: daily
 type: command
 description: Pause the current workflow, write HANDOFF.md and update STATE.md for session continuity

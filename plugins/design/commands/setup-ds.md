@@ -1,7 +1,7 @@
 ---
-name: setup-ds
+name: design:setup-ds
 category: setup
-description: Create a new design system (first one, an additional one alongside an existing DS, or re-bootstrap an existing one with --force). Thin wrapper that loads skill `design-system` in bootstrap mode with the given target. Auto-invokes /design:setup-onboard first if .design/config.json is missing.
+description: Create a new design system (first one, an additional one alongside an existing DS, or re-bootstrap an existing one with --force). Thin wrapper that loads skill `design-system` in bootstrap mode with the given target. Auto-invokes /design:init first if .design/config.json is missing.
 argument-hint: "<name> [\"<brief>\"] [--force]"
 ---
 
@@ -13,7 +13,7 @@ Dedicated entry point for **creating a design system** in this project. Three mo
 - **additional-ds** — `config.json` exists and `<name>` is **not** in `designSystems[]`. The agent runs 7 questions + Q_purpose + inheritance picker, then scaffolds `system/<name>/` next to the existing DS.
 - **re-bootstrap** — `<name>` already exists in `designSystems[]` AND `--force` was passed. The agent pre-fills 8 questions with the current values and re-generates affected files.
 
-This command **does NOT create a canvas** — use `/design:new` for that. It also does NOT prepare the project environment (deps, CLAUDE.md, .ai/) — that's `/design:setup-onboard`'s job.
+This command **does NOT create a canvas** — use `/design:new` for that. It also does NOT prepare the project environment (deps, CLAUDE.md, .ai/) — that's `/design:init`'s job.
 
 ## Arguments
 
@@ -36,10 +36,10 @@ This command **does NOT create a canvas** — use `/design:new` for that. It als
 Read `<repo>/.design/config.json`. If it doesn't exist:
 
 ```
-→ .design/config.json missing. Running /design:setup-onboard first to initialize the project…
+→ .design/config.json missing. Running /design:init first to initialize the project…
 ```
 
-Then auto-invoke `/design:setup-onboard --skip-prompts` so the user isn't double-prompted. After it returns, continue.
+Then auto-invoke `/design:init --skip-prompts` so the user isn't double-prompted. After it returns, continue.
 
 If config exists, skip onboard.
 
@@ -88,5 +88,5 @@ The skill prints its "Bootstrap complete" block. This command body has no Post-f
 ## What `/design:setup-ds` does NOT do
 
 - **No canvas creation.** Use `/design:new "<Name>" "<brief>" --ds=<this-name>`.
-- **No environment init.** That's `/design:setup-onboard` (auto-invoked here when needed).
+- **No environment init.** That's `/design:init` (auto-invoked here when needed).
 - **No incremental edits to an existing DS.** That's `/design:edit "<feedback>"` against a specimen file, or hand-editing `colors_and_type.css` directly.

@@ -1,5 +1,5 @@
 ---
-name: frontend-critic
+name: design:frontend-critic
 description: Frontend code-quality review of the canvas JSX/HTML — semantic HTML, React patterns (keys, hooks, prop drilling), accessibility primitives, hydration concerns, naming, dead code, idiomatic CSS-in-JS / inline styles, performance gotchas. Use when /design:critic --agent frontend-critic, or auto-routed when the iteration touched JSX heavily (new components, big diffs, render logic). Not concerned with visual design.
 tools: Read, Write, Bash, Glob, Grep
 ---

@@ -1,5 +1,5 @@
 ---
-name: screenshot
+name: design:screenshot
 category: daily
 description: Capture screenshot aktivního canvasu přes agent-browser (HTTP server URL, ne file://) — pro visual review, /design:critic, nebo annotation loop
 argument-hint: "[--area <name>] [--selector <css>]"

@@ -1,5 +1,5 @@
 ---
-name: scenario
+name: flow:scenario
 description: Run a user-flow scenario (e.g. "review first 3 flashcards") across web-desktop, web-mobile, ios-phone, ios-tablet, android-phone — capture per-step screenshots and produce a markdown report for human review. Triggers when the user asks to "test this flow", "run a scenario", "verify the X journey on all platforms", or wants a side-by-side cross-platform smoke test. Wraps agent-browser (web variants via device emulation) + agent-device (native iOS/Android via XCUITest/UIAutomator).
 allowed-tools: Bash(agent-browser:*), Bash(agent-device:*), Bash(xcrun simctl:*), Bash(adb:*)
 hidden: true

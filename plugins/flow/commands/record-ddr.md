@@ -1,5 +1,5 @@
 ---
-name: record-ddr
+name: flow:record-ddr
 category: record
 description: Record a Design Decision Record — an architectural/product decision for the future
 argument-hint: "<short decision title>"

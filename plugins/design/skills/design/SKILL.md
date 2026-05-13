@@ -1,5 +1,5 @@
 ---
-name: design
+name: design:design
 description: Local Claude-Design clone — canvas-first design iteration. Iterates IN PLACE on existing HTML mocks under the project's design root (default `.design/`). Use when the user gives design feedback (add/change/move/remove something), wants to capture, critique, hand off, or rollback. `/design:new` scaffolds a new canvas. Talks to a local dev server (auto-started if missing) that tracks the active tab AND the user's currently selected element via injected inspector.
 ---
 

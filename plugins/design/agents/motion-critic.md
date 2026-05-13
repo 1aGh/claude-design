@@ -1,5 +1,5 @@
 ---
-name: motion-critic
+name: design:motion-critic
 description: Animation and motion-design review — duration tokens, easing curves, choreography, prefers-reduced-motion respect, compositor-only properties (transform/opacity over layout-dirty), entry/exit symmetry, sub-100ms response. Use when /design:critic --agent motion-critic, or auto-routed when canvas has @keyframes / transitions / drag interactions / route changes / presence cursors / live-update animations.
 tools: Read, Write, Bash, Glob, Grep
 ---

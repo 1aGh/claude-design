@@ -1,5 +1,5 @@
 ---
-name: motion-rules
+name: flow:motion-rules
 description: Animation and motion design hard-stops — duration tokens, easing curves, prefers-reduced-motion, compositor-friendly properties, motion choreography. Reads ceilings from `.ai/workflows.config.json` → `motion`. Use when adding/reviewing transitions, page transitions, presence cursors, HUD overlays, or any animated UI.
 user-invocable: false
 ---

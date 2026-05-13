@@ -1,5 +1,5 @@
 ---
-name: rollback
+name: design:rollback
 category: daily
 description: Vrať poslední snapshot aktivního canvasu (undo poslední /design:edit). --steps N pro víc kroků zpět.
 argument-hint: "[--steps N] [--list]"

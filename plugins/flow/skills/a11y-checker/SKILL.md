@@ -1,5 +1,5 @@
 ---
-name: a11y-checker
+name: flow:a11y-checker
 type: skill
 description: "Run accessibility audits on UI components and pages. Use when checking WCAG compliance, validating color contrast, verifying ARIA attributes, or before publishing components. Covers eslint-plugin-jsx-a11y, axe-core, keyboard navigation, and screen reader compatibility."
 keywords:

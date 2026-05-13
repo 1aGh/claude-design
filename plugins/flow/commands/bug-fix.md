@@ -1,5 +1,5 @@
 ---
-name: bug-fix
+name: flow:bug-fix
 category: bug
 type: command
 description: Implement fix from RCA document for GitHub issue

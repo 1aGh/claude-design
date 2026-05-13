@@ -1,5 +1,5 @@
 ---
-name: release
+name: flow:release
 type: command
 category: daily
 description: Walk the project's release runbook step by step with explicit confirmation per command.
@@ -25,7 +25,7 @@ GUIDE="$REPO_ROOT/$GUIDE_PATH"
 
 if [[ ! -f "$GUIDE" ]]; then
   echo "No release guide found at $GUIDE_PATH."
-  echo "Run /flow:setup-onboard to scaffold one, or create the file manually."
+  echo "Run /flow:init to scaffold one, or create the file manually."
   echo "(The runbook is plain Markdown — see plugins/flow/templates/ai-skeleton/release-guide.md for the structure.)"
   exit 1
 fi

@@ -1,5 +1,5 @@
 ---
-name: setup-codebase-map
+name: flow:setup-codebase-map
 category: setup
 type: command
 description: Snapshot the project's architecture into a persistent codebase map for cross-session reuse

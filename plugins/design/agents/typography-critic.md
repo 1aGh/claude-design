@@ -1,5 +1,5 @@
 ---
-name: typography-critic
+name: design:typography-critic
 description: Pure typography review — pairings, scale ladder, leading / measure / tracking, vertical rhythm, hyphenation, widows/orphans, numerals (tabular vs. proportional), kerning hints, fallback chains. Use when /design:critic --agent typography-critic, or auto-routed when canvas is text-heavy (article, table, settings, long lists). Reads project tokens + applies typographic best practices.
 tools: Read, Write, Bash, Glob, Grep
 ---

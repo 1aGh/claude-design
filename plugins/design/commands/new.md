@@ -1,5 +1,5 @@
 ---
-name: new
+name: design:new
 category: daily
 description: Vytvoř nový multi-artboard canvas projekt přes frontend-design — generic envelope adaptovaný podle .design/config.json. Default = --perfect (8 iter, full panel, target 4.5/5). Opt out přes --quick nebo --no-critic. Opt out z DS přes --opt-out=palette|aesthetic|full.
 argument-hint: "<Name> \"<brief>\" [--component] [--mobile] [--quick | --no-critic] [--perfect-iter N] [--opt-out=palette|aesthetic|full] [--ds=<name>]"
@@ -77,7 +77,7 @@ fi
 | State | Action |
 |---|---|
 | `HAS_DS=true` | Skip to step 1. **If `--ds=<name>` was passed**, validate it against `config.json.designSystems[].name`. Unknown DS → fail with:<br/>`Error: design system "<name>" not found in config.json.designSystems[].`<br/>`Available: <list>`<br/>`To create: /design:setup-ds <name> "<brief>"`<br/>**No fallback prompt** — clean separation between canvas creation (`new`) and DS creation (`setup-ds`). Resolve the DS's tokens + component HTML and pass as context to `frontend-design`. Write the chosen `designSystem` name into the new canvas's `.meta.json`. |
-| `HAS_DS=false`, `CONFIG_PRESENT=false` | Print `→ Running /design:setup-onboard to initialize project…` and invoke `/design:setup-onboard --skip-prompts`. Then invoke `Skill design-system` with `mode_hint=bootstrap`, `target_ds=project`, `brief=$BRIEF`. After bootstrap returns, continue to step 1 and create the canvas with the freshly-scaffolded tokens. |
+| `HAS_DS=false`, `CONFIG_PRESENT=false` | Print `→ Running /design:init to initialize project…` and invoke `/design:init --skip-prompts`. Then invoke `Skill design-system` with `mode_hint=bootstrap`, `target_ds=project`, `brief=$BRIEF`. After bootstrap returns, continue to step 1 and create the canvas with the freshly-scaffolded tokens. |
 | `HAS_DS=false`, `CONFIG_PRESENT=true` | Invoke `Skill design-system` with `mode_hint=bootstrap`, `target_ds=project`, `brief=$BRIEF` directly. After bootstrap returns, continue to step 1. |
 
 The skill treats `$BRIEF` as the answer to discovery Question 1 (product one-liner) and runs the full 8-question discovery, scaffolds the DS, runs the completeness-critic, and returns. The canvas creation then proceeds with the project's actual tokens (not a default placeholder set).

@@ -1,5 +1,5 @@
 ---
-name: done
+name: flow:done
 category: daily
 description: Close out a feature — /validate gate (incl. cross-platform scenario) → DDR sweep → commit → push → PR → retro → archive
 argument-hint: "<optional: path to plan>"

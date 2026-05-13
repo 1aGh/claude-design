@@ -1,5 +1,5 @@
 ---
-name: browse
+name: design:browse
 category: daily
 description: Spustí lokální design browser — file tree všech canvasů + tabbed iframe preview na volném portu
 argument-hint: "[--port <n>]"

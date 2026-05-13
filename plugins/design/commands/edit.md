@@ -1,5 +1,5 @@
 ---
-name: edit
+name: design:edit
 category: daily
 description: Iteruj na aktivním canvasu — Claude přečte soubor co máš v browseru otevřený a aplikuje feedback IN PLACE. Default: po editu auto-spustí critic panel; přidej --perfect [N] pro N iterací auto-fixu, nebo --no-critic pro skip. --opt-out=<scope> přepíše scope ze sidecaru pro tuhle iteraci.
 argument-hint: "\"<feedback>\" [--screenshot <path>] [--perfect [N]] [--no-critic] [--opt-out=palette|aesthetic|full]"
@@ -47,7 +47,7 @@ fi
 | State | Action |
 |---|---|
 | `HAS_DS=true` | Skip to step 1; normal edit-in-place flow. |
-| `HAS_DS=false`, `CONFIG_PRESENT=false` | Print `→ Running /design:setup-onboard to initialize project…` and invoke `/design:setup-onboard --skip-prompts`. Then invoke `Skill design-system` with `mode_hint=bootstrap`, `target_ds=project`, `brief=$ARGUMENTS`. After bootstrap returns, continue to step 1. |
+| `HAS_DS=false`, `CONFIG_PRESENT=false` | Print `→ Running /design:init to initialize project…` and invoke `/design:init --skip-prompts`. Then invoke `Skill design-system` with `mode_hint=bootstrap`, `target_ds=project`, `brief=$ARGUMENTS`. After bootstrap returns, continue to step 1. |
 | `HAS_DS=false`, `CONFIG_PRESENT=true` | Invoke `Skill design-system` with `mode_hint=bootstrap`, `target_ds=project`, `brief=$ARGUMENTS` directly (config exists; skill detects `first-bootstrap` because `designSystems[]` is empty). After bootstrap returns, continue to step 1. |
 
 The skill treats `$ARGUMENTS` (the feedback the user passed to `/design:edit`) as the answer to discovery Question 1 (product one-liner) and runs Round 1 Q2–Q4 + Round 2 Q5–Q8, confirms direction, and scaffolds before returning here. After scaffold, the active canvas may be unset (user hasn't opened anything yet) — in that case, fall through to step 1's "no active canvas" error path, which now points the user at `/design:new` to scaffold their first canvas.

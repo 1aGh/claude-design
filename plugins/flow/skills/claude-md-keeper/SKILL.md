@@ -1,5 +1,5 @@
 ---
-name: claude-md-keeper
+name: flow:claude-md-keeper
 description: Keep CLAUDE.md fresh as project conventions evolve. Use when /flow:record-retro, /flow:record-ddr, or /flow:done detects a change that should land in CLAUDE.md (new convention emerged, deprecation, build command change, "always do X" rule). Read-only by default; proposes edits, doesn't apply them.
 user-invocable: false
 ---

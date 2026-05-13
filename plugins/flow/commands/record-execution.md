@@ -1,5 +1,5 @@
 ---
-name: record-execution
+name: flow:record-execution
 category: record
 type: command
 description: Generate implementation report for system review

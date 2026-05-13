@@ -1,5 +1,5 @@
 ---
-name: handoff
+name: design:handoff
 category: daily
 description: Migrate aktivní canvas (`_active.json`) do production kódu (target z `.design/config.json` handoffTargets)
 argument-hint: "[--target <label>] [--force]"

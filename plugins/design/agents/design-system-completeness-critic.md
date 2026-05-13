@@ -1,5 +1,5 @@
 ---
-name: design-system-completeness-critic
+name: design:design-system-completeness-critic
 description: Validates a design system at `<designRoot>/system/<ds>/` against a 3-tier rule set — Core (blocker, always), Conventional (warning, gated by activeFamilies + completenessProfile), Free-form (no check, acknowledged). Auto-runs at end of skill `design-system` bootstrap flow; opt-in via /design:critic --system-only. Reports per-DS in multi-DS projects. Reads tree + tokens CSS + config; never edits.
 tools: Read, Bash, Glob, Grep
 ---

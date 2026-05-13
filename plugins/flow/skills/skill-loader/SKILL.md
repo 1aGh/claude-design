@@ -1,7 +1,7 @@
 ---
-name: skill-loader
+name: flow:skill-loader
 type: skill
-description: 'Resolve expertise gaps for a tech stack by mapping each library/framework to the best available Claude skill — prefer existing built-in skills (auto-loaded plugins) or matching agents, otherwise fetch via the `terminal-skills` MCP. Use when starting work on an unfamiliar library (yjs, drizzle, hono, tRPC, Convex, Effect, etc.), when /flow:setup-onboard runs, when package.json contains a tech with no matching loaded skill, when a /plan or /execute references a library you have no documented expertise on, or when the user explicitly asks for skills/expertise on a specific technology.'
+description: 'Resolve expertise gaps for a tech stack by mapping each library/framework to the best available Claude skill — prefer existing built-in skills (auto-loaded plugins) or matching agents, otherwise fetch via the `terminal-skills` MCP. Use when starting work on an unfamiliar library (yjs, drizzle, hono, tRPC, Convex, Effect, etc.), when /flow:init runs, when package.json contains a tech with no matching loaded skill, when a /plan or /execute references a library you have no documented expertise on, or when the user explicitly asks for skills/expertise on a specific technology.'
 keywords: [skills, terminal-skills, tech-stack, library, framework, expertise, auto-load, mcp, yjs, dependency, onboarding]
 ---
 
@@ -14,7 +14,7 @@ This skill does **not** invent expertise. It **routes** to expertise — either 
 ## When to Use This Skill
 
 - A new library is added to `package.json` / `pyproject.toml` / `Cargo.toml` / etc.
-- `/flow:setup-onboard` or `/flow:setup-context` is bootstrapping a new repo.
+- `/flow:init` or `/flow:setup-context` is bootstrapping a new repo.
 - A `/flow:plan` or `/flow:execute` step names a library you have no documented expertise on.
 - The user says something like _"we'll use yjs for the CRDT layer"_ or _"add drizzle"_.
 - You are about to write non-trivial code against an unfamiliar API.
@@ -113,7 +113,7 @@ This skill should fire automatically (not wait for explicit invocation) when ANY
 
 - A diff/PR adds a new top-level dependency.
 - The current prompt names a library that does not appear in the system-reminder skills list.
-- `/flow:setup-onboard` or `/flow:setup-context` is running and is about to write the codebase map.
+- `/flow:init` or `/flow:setup-context` is running and is about to write the codebase map.
 - A `/flow:plan` step references a library API that you cannot describe from memory with high confidence.
 
 When in doubt, **load before writing code**. The cost of an extra MCP call is much lower than the cost of hallucinated API surface that fails review.
@@ -134,7 +134,7 @@ User: "Add a yjs-backed shared document to the canvas inspector."
 ### Example B — onboarding to a repo with drizzle + hono
 
 ```
-/flow:setup-onboard
+/flow:init
 ```
 
 1. Read `package.json` → detect `drizzle-orm`, `hono`, `zod`.
