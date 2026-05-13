@@ -125,21 +125,27 @@ Hard-stops: missing Node → abort with install hint; missing git → abort with
 
 #### `additional-ds` (12 Qs, different shape)
 
+**Sequence (load-bearing — DO NOT batch the picker with the confirm at the end):**
+
+```
+Q_purpose → Round 1 (Q2–Q4) → Round 2 (Q5–Q8) → INHERITANCE PICKER → Round 3 (Q9–Q12, with picks pre-filled from inherited DS where applicable) → 3-sentence confirm
+```
+
 - **Q_purpose** — "What is this DS for, distinct from your existing DS?" (replaces Q1)
 - Q2–Q12 same as first-bootstrap (with "Inherit from `<existing-ds>`" Recommended option on Q7, Q8, Q11, Q12)
 
-After Q8, surface an **inheritance picker** (multiSelect AskUserQuestion):
+**Inheritance picker — fires AFTER Q8, BEFORE Round 3** (multiSelect AskUserQuestion). Position is load-bearing because Round 3 questions overlap inheritance-eligible fields (Q11 iconography especially); deferring the picker until after Round 3 lets users answer Q11 only to have the answer silently overridden by inheritance. The retro `setup-ds-studio-2-review.md` (BAD-7) caught this drift.
 
 ```
 Inherit from <existing-ds>? (multi-select; "None" = define fresh)
   [x] Typography (font_display, font_body, font_mono)
   [ ] Voice / content tone
-  [ ] Iconography family
+  [ ] Iconography family            ← if checked, Q11 in Round 3 is skipped + value taken from inherited DS
   [x] Motion durations
   [ ] None
 ```
 
-Inherited values are pre-baked into the new DS's `colors_and_type.css`; discovery answers for inherited fields are ignored.
+Inherited values are pre-baked into the new DS's `colors_and_type.css`; discovery answers for inherited fields are ignored. If `Iconography family` is inherited, **skip Q11 in Round 3**.
 
 #### `re-bootstrap` (12 Qs, pre-filled)
 
@@ -199,9 +205,13 @@ This honors the one-accent rule (only `--accent*` family is overridden, never ad
 
 **3. `[data-theme="dark|light"]` parameterization.** Always emit at least `[data-theme="dark"]` (or `[data-theme="light"]`, whichever is the default). When `config.json.themeDefault == "both"`, emit both blocks with identical token shapes but different surface/text values. The completeness-critic V18 enforces this.
 
-### Pre-scaffold — emit `_scaffold-roster.yaml`
+### Pre-scaffold — claim scan + emit `_scaffold-roster.yaml`
 
-Before any file is written, the main agent emits a **roster** to `<designRoot>/_history/_system/000-scaffold-roster.yaml`. The roster lists every file the scaffold will produce, plus its dependency closure and batch assignment. **The roster is the contract.** Sub-agents write their slice, then update `status: written` on each row. Main agent reconciles at the end — any row stuck in `pending` is a regression flag.
+**Step 1 — Claim scan (mandatory before roster).** Read the draft README + SKILL.md you're about to author for this DS. `grep` the prose for these substrings: `mascot`, `glyph`, `logotype`, `wordmark`, `illustration`, `hedgehog`, `character`, `mark`. For every match, ensure the receiving file (logo.html for wordmark/mark, ≥1 `assets/glyphs/*.svg` for glyph, etc.) is **listed as a `pending` row in the roster you're about to emit**. See `_MAPPING.md` "Claim → receipt" for the canonical claim→file table. This pre-emission scan is what prevents the `assets/glyphs/` empty-directory regression the studio-2 retro flagged (BAD-4).
+
+**Step 2 — Emit `_scaffold-roster.yaml`.** The main agent writes the roster to `<designRoot>/_history/_system/<ds>-000-scaffold-roster.yaml`. The roster lists every file the scaffold will produce, plus its dependency closure and batch assignment. **The roster is the contract.** Sub-agents write their slice, then update `status: written` (with a `loc: <N>` field) on each row. Main agent reconciles at the end — any row stuck in `pending` is a regression flag.
+
+**Roster mutation rule.** Sub-agents may ONLY flip existing rows' `status` and add `loc`. They MUST NOT add new rows. If a sub-agent discovers a missing claim during its slice (e.g. wordmark referenced but no logo.html in roster), it returns the gap as a one-line note in its completion message; the main agent adds the row in the next reconcile pass. This rule prevents the silent contract-drift the studio-2 retro caught (BAD-1).
 
 ```yaml
 # 000-scaffold-roster.yaml — emitted before scaffold; sub-agents update status as they write
@@ -327,6 +337,20 @@ REFERENCES (verbatim — read first, do not skim)
 - DS README (hard rules):     {{absolute path to system/<ds>/README.md}}
 - _MAPPING.md gating rules:   {{absolute path to _MAPPING.md}}
 - inspiration library root:   {{absolute path to plugins/design/templates/design-system-inspiration/}}
+{{if peer_DS_references_attached:}}
+- PEER DS gold-standard:      {{absolute paths to system/<peer-ds>/preview/<file>.html}}
+{{endif}}
+
+DOMAIN_NOUNS (authoritative — every specimen MUST use only these nouns)
+{{domain_nouns}}    # e.g. for studio-2: canvas, specimen, dev-server, inspector, file-tree, scanline, phosphor, _active.json
+{{if peer_DS_references_attached:}}
+DOMAIN NOUN PURGE — peer DS references are COMPOSITION REFERENCES ONLY. The peer
+DS uses different domain nouns (e.g. studio uses lineup/roster/player from a
+sports-stack mock). When restructuring from a peer reference, search-and-replace
+EVERY peer-DS noun in your output with a noun from this DS's DOMAIN_NOUNS list.
+A single peer-DS noun surviving in your output is a copy-critic blocker (see
+retro setup-ds-studio-2-review.md, BAD-3: "publish lineup" leaked from studio).
+{{endif}}
 
 YOUR SLICE — write these {{N}} files (absolute paths):
 1. {{abs path 1}}  — reference template: {{abs path to inspiration template 1}}
@@ -363,10 +387,26 @@ CREATIVITY RUBRIC — do NOT token-swap. RESTRUCTURE.
 - Carry the SPECIMEN comment header from the reference template at the top of
   your output so future agents can identify what each file demonstrates.
 
+ANTI-PATTERNS (graphic-design-critic blockers — guaranteed rejection)
+- Multiplayer cursors / annotation pins / presence avatars MUST anchor to
+  SPECIFIC content (a toolbar button, a list row, a panel, a swatch). Pins
+  floating over canvas void are a fail mode. If you don't have content for a
+  pin to anchor, REDUCE the pin count to match available anchor count. (Caught
+  on studio-2 showcase, retro BAD-8.)
+- Cropmarks / signature framing devices must be visually thicker than internal
+  panel borders, otherwise they read as "another panel" not "this is the
+  staging frame".
+- Sections in long specimens (≥ 4 sections) must vary in vertical weight — the
+  hero / signature section earns 25–30%, not equal share with policy sections.
+
 WHEN DONE
-After writing all {{N}} files, update each row in
-{{absolute path to _scaffold-roster.yaml}} (status: pending → status: written),
-then return a one-line confirmation per file.
+After writing all {{N}} files:
+  1. Update each row in {{absolute path to _scaffold-roster.yaml}}: change
+     `status: pending` → `status: written, loc: <line-count>`.
+  2. **Do NOT add new rows.** If you discover a missing claim (e.g. wordmark
+     referenced but no logo.html in roster), include "ROSTER GAP: <description>"
+     in your completion message. The main agent reconciles new rows.
+  3. Return a one-line confirmation per file with LOC.
 ```
 
 Sub-agents are stateless — give each a complete brief, do not assume shared context. Three-line confirmation back is enough; the roster is the source of truth.
@@ -453,17 +493,19 @@ The studio 2026-05-13 re-bootstrap wasted a Bash turn calling `agent-browser res
 
 When available:
 
-1. **Boot the dev server** (or reuse if running). Read `<designRoot>/_server.json` for a live port; otherwise spawn `node plugins/design/dev-server/server.mjs --root <repo>` on the first free port from 4321 with `NO_OPEN=1`. Wait 1.5s, hit `/_health`, confirm `project` matches.
-2. **Screenshot 3 signature specimens** to `<designRoot>/_history/_system/000-bootstrap-screenshots/`:
+1. **No dev server needed for raw-canvas screenshots.** Use `file://` URLs directly. The dev server's `http://localhost:<port>/...` URL wraps the canvas in browse chrome (file tree + tabbed iframe), and aesthetic critics will score that wrapping as part of the design — caught on the studio-2 bootstrap retro (BAD-2). `file://` bypasses the wrapping and gives the critics a clean canvas to score.
+2. **Screenshot 3 signature specimens** to `<designRoot>/_history/_system/<ds>-000-bootstrap-screenshots/`:
    - `colors-accent.png` — proves the accent color renders as intended
    - `empty-state.png` — proves the brand/personality moment (mascot, copy voice) lands
    - `ui_kits-desktop-showcase.png` — proves the DS works on a real product surface (the multi-screen showcase, not the catalog launcher)
 
    ```bash
-   agent-browser open "http://localhost:<port>/.design/system/<ds>/preview/colors-accent.html"
-   agent-browser screenshot "<designRoot>/_history/_system/000-bootstrap-screenshots/colors-accent.png"
+   agent-browser open "file://<absolute-repo-root>/<designRoot>/system/<ds>/preview/colors-accent.html"
+   agent-browser screenshot --full "<designRoot>/_history/_system/<ds>-000-bootstrap-screenshots/colors-accent.png"
    # … repeat for the other two
    ```
+
+   **Only fall back to the dev-server URL** if the canvas hard-depends on a server-side feature (rare). If you must use the server URL, append `?raw=1` (planned dev-server enhancement; until shipped, accept that the screenshot will include browse chrome and warn the critics in their prompt that the dev-server UI surrounds the canvas).
 
 3. **Read each screenshot back** with the `Read` tool so they're in your visual context. Direct visual scrutiny BEFORE you spawn the aesthetic critics — if the accent is obviously the wrong hue or the layout is obviously broken, fix it in source NOW rather than asking critics to confirm what you can already see.
 
@@ -477,8 +519,8 @@ Spawn these critics **in parallel** (single message, multiple Agent calls) on on
 |---|---|---|
 | `signature-moment-critic` | `design:design:signature-moment-critic` | Brand prominence, hero moments, mock fidelity, specificity — the "is this portfolio-worthy?" axis |
 | `graphic-design-critic` | `design:design:graphic-design-critic` | Composition, hierarchy, balance, density, rhythm, white-space discipline |
-| `typography-critic` | `design:design:typography-critic` | Add when DS has dedicated `type-mono.html` or display-typography moments |
-| `copy-critic` | `design:design:copy-critic` | Add when discovery Q8 chose a distinctive voice (hacker flair / B2B formal / explanatory-friendly) — catches claim-vs-content drift |
+| `typography-critic` | `design:design:typography-critic` | **Always run during bootstrap.** Type decisions (font choice, scale, mono pairing) are always non-trivial enough to warrant a sanity pass. Cost: one parallel sub-agent. Opt-out only via `--no-typography-critic`. (Was conditional pre-studio-2-retro — BAD-5 caught the trigger condition was too fuzzy.) |
+| `copy-critic` | `design:design:copy-critic` | **Always run during bootstrap.** Voice + claim-vs-content drift slip past completeness-critic by definition. Sub-agent peer-reference cross-contamination (e.g. "publish lineup" leaking from studio's sports-stack) is caught here. |
 
 **Surface their verdicts in the next-step block.** Use this threshold matrix:
 
