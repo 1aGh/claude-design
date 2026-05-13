@@ -25,7 +25,8 @@ const CHANGELOG_STUBS = {
     PUBLISH: '# TODO: fill in your publish command (npm publish / cargo publish / …)',
   },
   conventional: {
-    VERSION: 'npm version <major|minor|patch>   # writes CHANGELOG.md if conventional-changelog wired',
+    VERSION:
+      'npm version <major|minor|patch>   # writes CHANGELOG.md if conventional-changelog wired',
     TAG: 'git push --follow-tags',
     PUBLISH: 'npm publish',
   },
