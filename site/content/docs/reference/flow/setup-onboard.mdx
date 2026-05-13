@@ -1,0 +1,31 @@
+---
+title: /flow:setup-onboard
+description: "Scaffold the .ai/ workspace, auto-detect project stack, populate workflows.config.json, and ensure CLAUDE.md exists (via /init)."
+---
+
+| Property | Value |
+| -------- | ----- |
+| **Command** | `/flow:setup-onboard` |
+| **Category** | `setup` |
+| **Argument hint** | _(none)_ |
+| **Source** | [`plugins/flow/commands/setup-onboard.md`](https://github.com/1aGh/md-claude/blob/main/plugins/flow/commands/setup-onboard.md) |
+
+## Description
+
+Scaffold the .ai/ workspace, auto-detect project stack, populate workflows.config.json, and ensure CLAUDE.md exists (via /init).
+
+## Invocation
+
+```text
+/flow:setup-onboard
+```
+
+## Summary
+
+Sets up everything the `flow` plugin needs to operate on a new (or existing) repo. Does **not** duplicate Claude Code's built-in `/init` — defers to it for `CLAUDE.md`. Owns three things:
+
+## Source of truth
+
+This page is auto-generated from the command's frontmatter. The exact prompt Claude runs — including directives, edge-case handling, and tool-routing logic — lives in the source file:
+
+[**`plugins/flow/commands/setup-onboard.md`**](https://github.com/1aGh/md-claude/blob/main/plugins/flow/commands/setup-onboard.md) → read it for the full behavior.

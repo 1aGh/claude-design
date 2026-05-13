@@ -1,0 +1,31 @@
+---
+title: /flow:pause
+description: "Pause the current workflow, write HANDOFF.md and update STATE.md for session continuity"
+---
+
+| Property | Value |
+| -------- | ----- |
+| **Command** | `/flow:pause` |
+| **Category** | `daily` (daily) |
+| **Argument hint** | _(none)_ |
+| **Source** | [`plugins/flow/commands/pause.md`](https://github.com/1aGh/md-claude/blob/main/plugins/flow/commands/pause.md) |
+
+## Description
+
+Pause the current workflow, write HANDOFF.md and update STATE.md for session continuity
+
+## Invocation
+
+```text
+/flow:pause
+```
+
+## Summary
+
+Safely pause the current workflow with full context preserved. Writes a handoff artifact and updates workflow state so the next session (or another developer) can pick up exactly where you left off.
+
+## Source of truth
+
+This page is auto-generated from the command's frontmatter. The exact prompt Claude runs — including directives, edge-case handling, and tool-routing logic — lives in the source file:
+
+[**`plugins/flow/commands/pause.md`**](https://github.com/1aGh/md-claude/blob/main/plugins/flow/commands/pause.md) → read it for the full behavior.

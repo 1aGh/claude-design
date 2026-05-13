@@ -1,0 +1,31 @@
+---
+title: /design:critic
+description: "Spawn critic panel (or single agent / all critics) na aktivním canvasu — design + a11y + až 7 specialistů (graphic, brand, typography, motion, copy, frontend, info-architecture). Default = orchestrator routes panel based on canvas content + feedback. Honors opt_out_scope from canvas .meta.json or --opt-out= flag."
+---
+
+| Property | Value |
+| -------- | ----- |
+| **Command** | `/design:critic` |
+| **Category** | `uncategorized` |
+| **Argument hint** | `[--agent <name>] [--all] [--panel] [--opt-out=palette\|aesthetic\|full]` |
+| **Source** | [`plugins/design/commands/critic.md`](https://github.com/1aGh/md-claude/blob/main/plugins/design/commands/critic.md) |
+
+## Description
+
+Spawn critic panel (or single agent / all critics) na aktivním canvasu — design + a11y + až 7 specialistů (graphic, brand, typography, motion, copy, frontend, info-architecture). Default = orchestrator routes panel based on canvas content + feedback. Honors opt_out_scope from canvas .meta.json or --opt-out= flag.
+
+## Invocation
+
+```text
+/design:critic [--agent <name>] [--all] [--panel] [--opt-out=palette|aesthetic|full]
+```
+
+## Summary
+
+Spustí jednoho nebo víc `*-critic` subagentů na aktivní canvas (`_active.json`). Každý critic emituje **JSON verdict block** na konci svého reportu — orchestrator parsuje a (pokud >1 critic) píše konsolidační `&lt;NNN>-PANEL.md`.
+
+## Source of truth
+
+This page is auto-generated from the command's frontmatter. The exact prompt Claude runs — including directives, edge-case handling, and tool-routing logic — lives in the source file:
+
+[**`plugins/design/commands/critic.md`**](https://github.com/1aGh/md-claude/blob/main/plugins/design/commands/critic.md) → read it for the full behavior.

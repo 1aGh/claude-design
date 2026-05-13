@@ -1,0 +1,31 @@
+---
+title: /design:rollback
+description: "Vrať poslední snapshot aktivního canvasu (undo poslední /design edit). --steps N pro víc kroků zpět."
+---
+
+| Property | Value |
+| -------- | ----- |
+| **Command** | `/design:rollback` |
+| **Category** | `uncategorized` |
+| **Argument hint** | `[--steps N] [--list]` |
+| **Source** | [`plugins/design/commands/rollback.md`](https://github.com/1aGh/md-claude/blob/main/plugins/design/commands/rollback.md) |
+
+## Description
+
+Vrať poslední snapshot aktivního canvasu (undo poslední /design edit). --steps N pro víc kroků zpět.
+
+## Invocation
+
+```text
+/design:rollback [--steps N] [--list]
+```
+
+## Summary
+
+Restoruje předchozí stav active canvasu z `.design/_history/&lt;slug>/`. Každý `/design "&lt;feedback>"` udělal snapshot **před** editem; rollback ten snapshot vrátí.
+
+## Source of truth
+
+This page is auto-generated from the command's frontmatter. The exact prompt Claude runs — including directives, edge-case handling, and tool-routing logic — lives in the source file:
+
+[**`plugins/design/commands/rollback.md`**](https://github.com/1aGh/md-claude/blob/main/plugins/design/commands/rollback.md) → read it for the full behavior.

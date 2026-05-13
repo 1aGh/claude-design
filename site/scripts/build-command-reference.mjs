@@ -110,10 +110,26 @@ function relativeSourcePath(plugin, name) {
 async function emitPlugin(plugin) {
   const sourceDir = join(repoRoot, plugin.sourceDir);
   const targetDir = join(docsRoot, plugin.slug);
+
+  let files;
+  try {
+    files = (await readdir(sourceDir)).filter((f) => f.endsWith('.md'));
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      // Source plugins/ tree isn't here (e.g. Vercel deploy uploads only site/).
+      // The committed `content/docs/reference/<slug>/` already has the
+      // last-regenerated MDX; leave it alone and skip.
+      console.log(
+        `[command-reference] ${plugin.slug}: source ${plugin.sourceDir} not found — skipping (using committed reference)`
+      );
+      return 0;
+    }
+    throw err;
+  }
+
   await rm(targetDir, { recursive: true, force: true });
   await mkdir(targetDir, { recursive: true });
 
-  const files = (await readdir(sourceDir)).filter((f) => f.endsWith('.md'));
   files.sort();
 
   const pages = [];

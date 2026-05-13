@@ -1,0 +1,31 @@
+---
+title: /flow:resume
+description: "Resume a previously paused workflow from HANDOFF.md and STATE.md"
+---
+
+| Property | Value |
+| -------- | ----- |
+| **Command** | `/flow:resume` |
+| **Category** | `daily` (daily) |
+| **Argument hint** | _(none)_ |
+| **Source** | [`plugins/flow/commands/resume.md`](https://github.com/1aGh/md-claude/blob/main/plugins/flow/commands/resume.md) |
+
+## Description
+
+Resume a previously paused workflow from HANDOFF.md and STATE.md
+
+## Invocation
+
+```text
+/flow:resume
+```
+
+## Summary
+
+Resume a previously paused workflow from where it left off. Reads the handoff and state artifacts, verifies branch context, and announces the resumption brief so you can pick up immediately.
+
+## Source of truth
+
+This page is auto-generated from the command's frontmatter. The exact prompt Claude runs — including directives, edge-case handling, and tool-routing logic — lives in the source file:
+
+[**`plugins/flow/commands/resume.md`**](https://github.com/1aGh/md-claude/blob/main/plugins/flow/commands/resume.md) → read it for the full behavior.

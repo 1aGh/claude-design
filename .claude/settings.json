@@ -1,13 +1,6 @@
 {
   "permissions": {
-    "allow": [
-      "Read",
-      "Edit",
-      "Write",
-      "Bash",
-      "WebFetch",
-      "WebSearch"
-    ],
+    "allow": ["Read", "Edit", "Write", "Bash", "WebFetch", "WebSearch"],
     "deny": [
       "Read(.env)",
       "Read(.env.*)",

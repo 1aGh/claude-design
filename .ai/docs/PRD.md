@@ -41,7 +41,7 @@ Make Claude Code a first-class environment for **end-to-end product development*
 
 - ✅ Contribute infrastructure — `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, PR / issue templates, dependabot, branch-protection docs, basic CI quality gates beyond version parity.
 - ✅ Changesets bootstrapped in **this** repo + a **reusable `integrations.changelog` abstraction** (`/flow:release-changelog` for authoring, `/flow:release` for walking a project-owned release runbook) for downstream repos to opt into Changesets, git-cliff, conventional-changelog, or roll their own.
-- ✅ Docs site (Fumadocs) at `docs.md-claude.dev` (or `site/` deployed) — CLI reference, every workflow command, config schema docs with copy-paste examples. AI-readable so future agents can self-onboard.
+- ✅ Docs site (Fumadocs) at `md-claude.iagh.com` (subdomain of team-owned `iagh.com`) — CLI reference, every workflow command, config schema docs with copy-paste examples. AI-readable so future agents can self-onboard.
 - ✅ `flow` ↔ `design` automatic integration — flow plans auto-detect `.design/` and pull canvas references; `/flow:done` surfaces `/design:handoff` when canvases exist.
 - ✅ Canvas v2 rendering engine — replace iframe-only model with a hybrid Canvas2D / WebGL layer for FigJam-grade pan / zoom / smooth scrolling at 60fps on 1k+ elements.
 - ✅ FigJam-style infinite canvas — free-form screen positioning, multi-screen layouts, zoom-to-fit, mini-map.

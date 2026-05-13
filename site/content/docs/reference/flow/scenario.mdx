@@ -1,0 +1,31 @@
+---
+title: /flow:scenario
+description: "Run a cross-platform UI scenario (5 platforms: web-desktop, web-mobile, ios-phone, ios-tablet, android-phone) — screenshot proof + markdown report"
+---
+
+| Property | Value |
+| -------- | ----- |
+| **Command** | `/flow:scenario` |
+| **Category** | `daily` (daily) |
+| **Argument hint** | `<scenario-name> \| new <scenario-name>` |
+| **Source** | [`plugins/flow/commands/scenario.md`](https://github.com/1aGh/md-claude/blob/main/plugins/flow/commands/scenario.md) |
+
+## Description
+
+Run a cross-platform UI scenario (5 platforms: web-desktop, web-mobile, ios-phone, ios-tablet, android-phone) — screenshot proof + markdown report
+
+## Invocation
+
+```text
+/flow:scenario <scenario-name> | new <scenario-name>
+```
+
+## Summary
+
+**This is the validation backbone.** For every UI feature there must be at least one scenario that verifies it across 5 platforms. Web-only or native-only features use a subset.
+
+## Source of truth
+
+This page is auto-generated from the command's frontmatter. The exact prompt Claude runs — including directives, edge-case handling, and tool-routing logic — lives in the source file:
+
+[**`plugins/flow/commands/scenario.md`**](https://github.com/1aGh/md-claude/blob/main/plugins/flow/commands/scenario.md) → read it for the full behavior.

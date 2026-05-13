@@ -18,7 +18,7 @@ Allow: /
 User-agent: Google-Extended
 Allow: /
 
-Sitemap: https://docs.md-claude.dev/sitemap.xml
+Sitemap: https://md-claude.iagh.com/sitemap.xml
 `;
 
 export function GET() {

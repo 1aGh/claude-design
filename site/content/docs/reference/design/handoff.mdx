@@ -1,0 +1,31 @@
+---
+title: /design:handoff
+description: "Migrate aktivní canvas (`_active.json`) do production kódu (target z `.design/config.json` handoffTargets)"
+---
+
+| Property | Value |
+| -------- | ----- |
+| **Command** | `/design:handoff` |
+| **Category** | `uncategorized` |
+| **Argument hint** | `[--target <label>] [--force]` |
+| **Source** | [`plugins/design/commands/handoff.md`](https://github.com/1aGh/md-claude/blob/main/plugins/design/commands/handoff.md) |
+
+## Description
+
+Migrate aktivní canvas (`_active.json`) do production kódu (target z `.design/config.json` handoffTargets)
+
+## Invocation
+
+```text
+/design:handoff [--target <label>] [--force]
+```
+
+## Summary
+
+Konvertuje aktivní canvas do production kódu repa. Cíle (target paths + platform) jsou v `.design/config.json` v poli `handoffTargets[]` — typicky `apps/web` a/nebo `apps/mobile`, ale jakákoliv konvence repa.
+
+## Source of truth
+
+This page is auto-generated from the command's frontmatter. The exact prompt Claude runs — including directives, edge-case handling, and tool-routing logic — lives in the source file:
+
+[**`plugins/design/commands/handoff.md`**](https://github.com/1aGh/md-claude/blob/main/plugins/design/commands/handoff.md) → read it for the full behavior.

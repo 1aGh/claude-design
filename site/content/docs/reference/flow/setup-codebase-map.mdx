@@ -1,0 +1,31 @@
+---
+title: /flow:setup-codebase-map
+description: "Snapshot the project's architecture into a persistent codebase map for cross-session reuse"
+---
+
+| Property | Value |
+| -------- | ----- |
+| **Command** | `/flow:setup-codebase-map` |
+| **Category** | `setup` |
+| **Argument hint** | _(none)_ |
+| **Source** | [`plugins/flow/commands/setup-codebase-map.md`](https://github.com/1aGh/md-claude/blob/main/plugins/flow/commands/setup-codebase-map.md) |
+
+## Description
+
+Snapshot the project's architecture into a persistent codebase map for cross-session reuse
+
+## Invocation
+
+```text
+/flow:setup-codebase-map
+```
+
+## Summary
+
+Produce a structured snapshot of the project's architecture, stack, conventions, and key files. The output is written to `.ai/context/codebase-map.md` so that other commands (`plan-feature`, `execute`, `verify-work`) can read it instead of re-discovering the repo from scratch every session.
+
+## Source of truth
+
+This page is auto-generated from the command's frontmatter. The exact prompt Claude runs — including directives, edge-case handling, and tool-routing logic — lives in the source file:
+
+[**`plugins/flow/commands/setup-codebase-map.md`**](https://github.com/1aGh/md-claude/blob/main/plugins/flow/commands/setup-codebase-map.md) → read it for the full behavior.

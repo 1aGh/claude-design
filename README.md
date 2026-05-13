@@ -2,7 +2,7 @@
 
 A personal marketplace of Claude Code plugins. Two plugins today, plus an `mdcc` CLI for scaffolding and running the bundled dev tooling.
 
-> **📚 Full docs: https://docs.md-claude.dev** (or browse the source under [`site/content/docs/`](./site/content/docs/) until the public URL lands).
+> **📚 Full docs: https://md-claude.iagh.com** (or browse the source under [`site/content/docs/`](./site/content/docs/) until the public URL lands).
 > Contributing? See [CONTRIBUTING.md](./CONTRIBUTING.md). Security? See [SECURITY.md](./SECURITY.md).
 
 | Plugin | What it does |
@@ -72,7 +72,7 @@ Then inside Claude Code (with `flow@md-claude` installed):
 
 User-facing docs live in two places — the README points you the right way:
 
-- **Reference** (every command, every config key, recipes for Next.js / Expo / monorepo) → [`site/content/docs/`](./site/content/docs/) (served at https://docs.md-claude.dev once Vercel is wired — see [DDR-005](.ai/decisions/DDR-005-docs-site-stack-and-hosting.md)).
+- **Reference** (every command, every config key, recipes for Next.js / Expo / monorepo) → [`site/content/docs/`](./site/content/docs/) (served at https://md-claude.iagh.com once Vercel is wired — see [DDR-005](.ai/decisions/DDR-005-docs-site-stack-and-hosting.md)).
 - **Quickstart** + **contributor info** → this README.
 
 The docs site auto-generates per-command pages from `plugins/{flow,design}/commands/*.md` frontmatter and a typed schema reference from `plugins/flow/.claude-plugin/config.schema.json`. Adding a new command → docs update on next build.

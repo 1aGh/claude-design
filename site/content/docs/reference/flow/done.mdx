@@ -1,0 +1,31 @@
+---
+title: /flow:done
+description: "Close out a feature — /validate gate (incl. cross-platform scenario) → DDR sweep → commit → push → PR → retro → archive"
+---
+
+| Property | Value |
+| -------- | ----- |
+| **Command** | `/flow:done` |
+| **Category** | `daily` (daily) |
+| **Argument hint** | `<optional: path to plan>` |
+| **Source** | [`plugins/flow/commands/done.md`](https://github.com/1aGh/md-claude/blob/main/plugins/flow/commands/done.md) |
+
+## Description
+
+Close out a feature — /validate gate (incl. cross-platform scenario) → DDR sweep → commit → push → PR → retro → archive
+
+## Invocation
+
+```text
+/flow:done <optional: path to plan>
+```
+
+## Summary
+
+This is the **final gate**. Run it after `/execute` when all tasks pass. It consolidates verification, commit, and push into a single action.
+
+## Source of truth
+
+This page is auto-generated from the command's frontmatter. The exact prompt Claude runs — including directives, edge-case handling, and tool-routing logic — lives in the source file:
+
+[**`plugins/flow/commands/done.md`**](https://github.com/1aGh/md-claude/blob/main/plugins/flow/commands/done.md) → read it for the full behavior.

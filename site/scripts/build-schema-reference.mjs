@@ -98,7 +98,18 @@ function renderProperty(key, schema, dottedPath, depth, lines) {
 }
 
 async function main() {
-  const raw = await readFile(schemaPath, 'utf8');
+  let raw;
+  try {
+    raw = await readFile(schemaPath, 'utf8');
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      console.log(
+        '[schema-reference] source config.schema.json not found — skipping (using committed reference)'
+      );
+      return;
+    }
+    throw err;
+  }
   const schema = JSON.parse(raw);
 
   const lines = [

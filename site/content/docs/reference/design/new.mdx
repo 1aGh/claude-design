@@ -1,0 +1,31 @@
+---
+title: /design:new
+description: "Vytvoř nový multi-artboard canvas projekt přes frontend-design — generic envelope adaptovaný podle .design/config.json. Default = --perfect (8 iter, full panel, target 4.5/5). Opt out přes --quick nebo --no-critic. Opt out z DS přes --opt-out=palette|aesthetic|full."
+---
+
+| Property | Value |
+| -------- | ----- |
+| **Command** | `/design:new` |
+| **Category** | `uncategorized` (daily) |
+| **Argument hint** | `<Name> \"<brief>\" [--component] [--mobile] [--quick \| --no-critic] [--perfect-iter N] [--opt-out=palette\|aesthetic\|full]` |
+| **Source** | [`plugins/design/commands/new.md`](https://github.com/1aGh/md-claude/blob/main/plugins/design/commands/new.md) |
+
+## Description
+
+Vytvoř nový multi-artboard canvas projekt přes frontend-design — generic envelope adaptovaný podle .design/config.json. Default = --perfect (8 iter, full panel, target 4.5/5). Opt out přes --quick nebo --no-critic. Opt out z DS přes --opt-out=palette|aesthetic|full.
+
+## Invocation
+
+```text
+/design:new <Name> \"<brief>\" [--component] [--mobile] [--quick | --no-critic] [--perfect-iter N] [--opt-out=palette|aesthetic|full]
+```
+
+## Summary
+
+Vytvoří **nový multi-artboard canvas soubor** v `&lt;designRoot>/&lt;newCanvasDir>/&lt;Name>.html` přes `frontend-design` plugin. Generic envelope se adaptuje podle `&lt;repo>/.design/config.json` (rootClass, themeDefault, tokensCssRel, …).
+
+## Source of truth
+
+This page is auto-generated from the command's frontmatter. The exact prompt Claude runs — including directives, edge-case handling, and tool-routing logic — lives in the source file:
+
+[**`plugins/design/commands/new.md`**](https://github.com/1aGh/md-claude/blob/main/plugins/design/commands/new.md) → read it for the full behavior.

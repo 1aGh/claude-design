@@ -1,0 +1,31 @@
+---
+title: /flow:release-changelog
+description: "Author a changelog entry using the project's configured changelog provider."
+---
+
+| Property | Value |
+| -------- | ----- |
+| **Command** | `/flow:release-changelog` |
+| **Category** | `release` |
+| **Argument hint** | _(none)_ |
+| **Source** | [`plugins/flow/commands/release-changelog.md`](https://github.com/1aGh/md-claude/blob/main/plugins/flow/commands/release-changelog.md) |
+
+## Description
+
+Author a changelog entry using the project's configured changelog provider.
+
+## Invocation
+
+```text
+/flow:release-changelog
+```
+
+## Summary
+
+Provider-dispatched authoring command. Reads `integrations.changelog.provider` from `.ai/workflows.config.json` and routes to the right tool. Phase 3 implements the `changesets` provider end-to-end; other enum values stub to a "not yet implemented" message.
+
+## Source of truth
+
+This page is auto-generated from the command's frontmatter. The exact prompt Claude runs — including directives, edge-case handling, and tool-routing logic — lives in the source file:
+
+[**`plugins/flow/commands/release-changelog.md`**](https://github.com/1aGh/md-claude/blob/main/plugins/flow/commands/release-changelog.md) → read it for the full behavior.

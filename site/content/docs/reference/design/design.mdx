@@ -1,0 +1,31 @@
+---
+title: /design:design
+description: "Iteruj na aktivním canvasu — Claude přečte soubor co máš v browseru otevřený a aplikuje feedback IN PLACE. Default: po editu auto-spustí critic panel; přidej --perfect [N] pro N iterací auto-fixu, nebo --no-critic pro skip. --opt-out=<scope> přepíše scope ze sidecaru pro tuhle iteraci."
+---
+
+| Property | Value |
+| -------- | ----- |
+| **Command** | `/design:design` |
+| **Category** | `uncategorized` (daily) |
+| **Argument hint** | `\"<feedback>\" [--screenshot <path>] [--perfect [N]] [--no-critic] [--opt-out=palette\|aesthetic\|full]` |
+| **Source** | [`plugins/design/commands/design.md`](https://github.com/1aGh/md-claude/blob/main/plugins/design/commands/design.md) |
+
+## Description
+
+Iteruj na aktivním canvasu — Claude přečte soubor co máš v browseru otevřený a aplikuje feedback IN PLACE. Default: po editu auto-spustí critic panel; přidej --perfect [N] pro N iterací auto-fixu, nebo --no-critic pro skip. --opt-out=&lt;scope> přepíše scope ze sidecaru pro tuhle iteraci.
+
+## Invocation
+
+```text
+/design:design \"<feedback>\" [--screenshot <path>] [--perfect [N]] [--no-critic] [--opt-out=palette|aesthetic|full]
+```
+
+## Summary
+
+Default flow design pluginu. Edituje **soubor co máš právě otevřený v browser tabu** — ne nový session, ne nový file. Jako Claude Design canvas — řekneš "přidej tady presence dot", a presence dot se objeví v aktivním canvasu.
+
+## Source of truth
+
+This page is auto-generated from the command's frontmatter. The exact prompt Claude runs — including directives, edge-case handling, and tool-routing logic — lives in the source file:
+
+[**`plugins/design/commands/design.md`**](https://github.com/1aGh/md-claude/blob/main/plugins/design/commands/design.md) → read it for the full behavior.

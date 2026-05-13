@@ -1,0 +1,31 @@
+---
+title: /design:screenshot
+description: "Capture screenshot aktivního canvasu přes agent-browser (HTTP server URL, ne file://) — pro visual review, /design:critic, nebo annotation loop"
+---
+
+| Property | Value |
+| -------- | ----- |
+| **Command** | `/design:screenshot` |
+| **Category** | `uncategorized` |
+| **Argument hint** | `[--area <name>] [--selector <css>]` |
+| **Source** | [`plugins/design/commands/screenshot.md`](https://github.com/1aGh/md-claude/blob/main/plugins/design/commands/screenshot.md) |
+
+## Description
+
+Capture screenshot aktivního canvasu přes agent-browser (HTTP server URL, ne file://) — pro visual review, /design:critic, nebo annotation loop
+
+## Invocation
+
+```text
+/design:screenshot [--area <name>] [--selector <css>]
+```
+
+## Summary
+
+Otevře aktivní canvas (`_active.json`) v agent-browseru (přes HTTP, ne file://), zachytí screenshot, uloží do `.design/_history/&lt;slug>/screenshots/&lt;NNN>-&lt;area>.png` (gitignored).
+
+## Source of truth
+
+This page is auto-generated from the command's frontmatter. The exact prompt Claude runs — including directives, edge-case handling, and tool-routing logic — lives in the source file:
+
+[**`plugins/design/commands/screenshot.md`**](https://github.com/1aGh/md-claude/blob/main/plugins/design/commands/screenshot.md) → read it for the full behavior.

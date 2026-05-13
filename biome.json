@@ -19,6 +19,7 @@
       "plugins/design/dev-server/server.mjs",
       "site/.next/**",
       "site/.source/**",
+      "site/.vercel/**",
       "site/content/docs/reference/**",
       "site/out/**",
       "site/next-env.d.ts",

@@ -1,0 +1,465 @@
+---
+title: workflows.config.json — schema
+description: Auto-generated reference of every key in .ai/workflows.config.json — type, default, allowed values, description.
+---
+
+Auto-generated from [`plugins/flow/.claude-plugin/config.schema.json`](https://github.com/1aGh/md-claude/blob/main/plugins/flow/.claude-plugin/config.schema.json). Re-runs on every site build.
+
+For prose with examples, see the [hand-written config guide](/docs/config).
+
+Per-repo configuration consumed by the flow plugin's commands, skills, and subagents. Place at &lt;repo>/.ai/workflows.config.json. Missing file = sensible defaults; missing keys = same.
+
+**Required keys:** `name`
+
+---
+
+## `name`
+
+**Type:** `string`
+
+Short project / product name. Resolves the `&lt;project>` placeholder in commands and file paths (e.g. `.ai/&lt;project>-prd.md` → `.ai/&lt;name>-prd.md`).
+
+## `language`
+
+**Type:** `string` · **Default:** `"en"`
+
+Primary language used in plans, decisions, and review notes. ISO 639-1 (e.g. `en`, `cs`). Cosmetic — does not change plugin behaviour, only signals the team's preferred tone.
+
+## `theme`
+
+**Type:** enum: `"dark"` │ `"light"` │ `"agnostic"` · **Default:** `"agnostic"`
+
+Default theme target. `dark` and `light` enable theme-first contrast validation in a11y-rules; `agnostic` checks both.
+
+**Allowed values:**
+
+- `"dark"`
+- `"light"`
+- `"agnostic"`
+
+## `paths`
+
+**Type:** `object`
+
+Where to find canonical project context files. Defaults follow `&lt;project>` placeholder convention.
+
+### `paths.prd`
+
+**Type:** `string`
+
+Project requirements / product brief. Default: `.ai/&lt;name>-prd.md`.
+
+### `paths.designSystem`
+
+**Type:** `string`
+
+Design system reference. Default: `.ai/&lt;name>-design-system.md`.
+
+### `paths.codebaseMap`
+
+**Type:** `string` · **Default:** `".ai/context/codebase-map.md"`
+
+Living codebase snapshot. Default: `.ai/context/codebase-map.md`.
+
+## `platforms`
+
+**Type:** `enum("web-desktop", "web-mobile", "ios-phone", "ios-tablet", "android-phone", "android-tablet", "macos", "windows", "linux")[]` · **Default:** `["web-desktop"]` · **Unique items**
+
+Platform variants the project ships to. Drives scenario-runner matrix and responsive-rules density mapping.
+
+## `bundleIdPrefix`
+
+**Type:** `string`
+
+Native app bundle ID prefix (e.g. `com.acme.myapp`). Used by `/flow:utils-verify` and `/flow:scenario` when launching native builds. Omit for web-only projects.
+
+## `stack`
+
+**Type:** `object`
+
+Auto-detected technology stack snapshot. Populated by /flow:setup-onboard, refreshed by /flow:setup-codebase-map. Flow commands read this for routing decisions (e.g. which test runner to invoke, whether to gate on monorepo workspace builds). Use `unknown` when detection fails — never invent a value.
+
+### `stack.language`
+
+**Type:** `string`
+
+Primary language: typescript | javascript | python | go | rust | java | kotlin | swift | ruby | php | unknown
+
+### `stack.framework`
+
+**Type:** `string`
+
+Primary UI/app framework: next.js | vite | remix | sveltekit | astro | nuxt | expo | spring-boot | django | rails | express | fastapi | none | unknown
+
+### `stack.packageManager`
+
+**Type:** `string`
+
+pnpm | yarn | npm | bun | cargo | go | pip | poetry | uv | maven | gradle | unknown
+
+### `stack.buildTool`
+
+**Type:** `string`
+
+turbo | nx | lerna | rush | make | bazel | none | unknown
+
+### `stack.monorepo`
+
+**Type:** `boolean`
+
+True if pnpm-workspace.yaml, turbo.json, nx.json, lerna.json, or rush.json is present.
+
+### `stack.ci`
+
+**Type:** `string`
+
+github-actions | gitlab-ci | jenkins | azure-devops | circleci | bitbucket | none | unknown
+
+### `stack.tests`
+
+**Type:** `string`
+
+vitest | jest | playwright | cypress | rspec | pytest | go-test | cargo-test | junit | none | unknown
+
+### `stack.css`
+
+**Type:** `string`
+
+tailwind | css-modules | styled-components | emotion | vanilla-extract | sass | plain-css | none | unknown
+
+### `stack.router`
+
+**Type:** `string`
+
+next-app | next-pages | react-router | tanstack-router | expo-router | sveltekit-router | none | unknown
+
+## `conventions`
+
+**Type:** `object`
+
+Team conventions that flow commands enforce or display. Auto-detected where possible (e.g. `commits` from commitlint.config.*); otherwise asked once in /flow:setup-onboard. Document non-obvious 'why' in `.ai/decisions/` as DDRs.
+
+### `conventions.branchingModel`
+
+**Type:** enum: `"github-flow"` │ `"trunk-based"` │ `"gitflow"` │ `"release-branch"` │ `"other"`
+
+How feature branches relate to main. Drives /flow:done's push + PR behavior.
+
+**Allowed values:**
+
+- `"github-flow"`
+- `"trunk-based"`
+- `"gitflow"`
+- `"release-branch"`
+- `"other"`
+
+### `conventions.commits`
+
+**Type:** enum: `"conventional"` │ `"gitmoji"` │ `"free-form"` · **Default:** `"conventional"`
+
+Commit message style. /flow:done formats commits to match.
+
+**Allowed values:**
+
+- `"conventional"`
+- `"gitmoji"`
+- `"free-form"`
+
+### `conventions.prohibited`
+
+**Type:** `string[]` · **Default:** `[]`
+
+Packages, libraries, or APIs the project rejects (e.g. `lodash` because we use native ES; `moment` because we use date-fns). Flow commands flag accidental introduction.
+
+### `conventions.proxy`
+
+**Type:** `string`
+
+Network constraint that commands must respect (e.g. `GODEBUG=x509negativeserial=1` for orgs with old certs).
+
+## `boundaries`
+
+**Type:** `object`
+
+Integration boundaries the project crosses. debugging-rules and testing-rules treat these as no-mock zones and demand evidence at the seam.
+
+### `boundaries.realtime`
+
+**Type:** `string[]` · **Default:** `[]`
+
+### `boundaries.video`
+
+**Type:** `string[]` · **Default:** `[]`
+
+### `boundaries.api`
+
+**Type:** `string[]` · **Default:** `[]`
+
+### `boundaries.db`
+
+**Type:** `string[]` · **Default:** `[]`
+
+### `boundaries.auth`
+
+**Type:** `string[]` · **Default:** `[]`
+
+### `boundaries.telemetry`
+
+**Type:** `string[]` · **Default:** `[]`
+
+### `boundaries.payments`
+
+**Type:** `string[]` · **Default:** `[]`
+
+## `motion`
+
+**Type:** `object`
+
+Motion duration budgets in milliseconds. motion-rules enforces these as hard ceilings.
+
+### `motion.micro`
+
+**Type:** `integer` · **Default:** `300` · **Min:** `0`
+
+Hover, focus, tooltip, icon swap.
+
+### `motion.page`
+
+**Type:** `integer` · **Default:** `500` · **Min:** `0`
+
+Route transition, modal open.
+
+### `motion.complex`
+
+**Type:** `integer` · **Default:** `1000` · **Min:** `0`
+
+Multi-step orchestrations, hero choreography.
+
+### `motion.customPulses`
+
+**Type:** `object` · **Default:** `{}`
+
+Named long-running ambient animations (e.g. `liveIndicator: 1500`). Exempt from the page/complex caps because they're loops, not transitions.
+
+## `responsive`
+
+**Type:** `object`
+
+Responsive layout knobs. responsive-rules reads this to enforce density-per-platform.
+
+### `responsive.approach`
+
+**Type:** enum: `"mobile-first"` │ `"desktop-first"` · **Default:** `"mobile-first"`
+
+**Allowed values:**
+
+- `"mobile-first"`
+- `"desktop-first"`
+
+### `responsive.densityMap`
+
+**Type:** `object` · **Default:** `{}`
+
+Maps each entry in `platforms` to a density preset (`command-center` | `sideline-tool` | `palm-friendly` | `cozy` | `compact` | custom). responsive-rules uses this to flag wrong density per platform.
+
+### `responsive.breakpoints`
+
+**Type:** `object` · **Default:** `{"sm":480,"md":768,"lg":1024,"xl":1280,"2xl":1536}`
+
+Named breakpoint tokens (px). Override only if project differs from defaults.
+
+## `ux`
+
+**Type:** `object`
+
+UX hard targets surfaced to design-system-guard and any project-local UX critic.
+
+### `ux.responseTargetMs`
+
+**Type:** `integer` · **Default:** `100` · **Min:** `0`
+
+User-perceived response time ceiling for primary interactions.
+
+### `ux.bilingual`
+
+**Type:** `string[]` · **Default:** `[]`
+
+ISO 639-1 codes the UI ships in (e.g. `["cs", "en"]`). Empty = monolingual.
+
+## `skills`
+
+**Type:** `object`
+
+Per-skill toggles. Each enforcement skill respects its own `enabled` flag (default `true`).
+
+### `skills.motionRules`
+
+**Type:** `object`
+
+#### `skills.motionRules.enabled`
+
+**Type:** `boolean` · **Default:** `true`
+
+### `skills.responsiveRules`
+
+**Type:** `object`
+
+#### `skills.responsiveRules.enabled`
+
+**Type:** `boolean` · **Default:** `true`
+
+### `skills.a11yRules`
+
+**Type:** `object`
+
+#### `skills.a11yRules.enabled`
+
+**Type:** `boolean` · **Default:** `true`
+
+### `skills.testingRules`
+
+**Type:** `object`
+
+#### `skills.testingRules.enabled`
+
+**Type:** `boolean` · **Default:** `true`
+
+### `skills.debuggingRules`
+
+**Type:** `object`
+
+#### `skills.debuggingRules.enabled`
+
+**Type:** `boolean` · **Default:** `true`
+
+## `integrations`
+
+**Type:** `object`
+
+Lightweight pointers to external services the project plugs into. Generic commands read `provider` and decide whether to offer integration actions; project-specific shape (list IDs, custom field names, milestone hierarchies) lives in `defaults`. Document non-obvious conventions in `.ai/decisions/` as DDRs.
+
+### `integrations.tracker`
+
+**Type:** `object`
+
+Issue / task tracker. Used by /flow:done, /flow:bug-rca, /flow:bug-fix to optionally create or update tickets.
+
+#### `integrations.tracker.provider`
+
+**Type:** enum: `"clickup"` │ `"linear"` │ `"github"` │ `"jira"` │ `"notion"` │ `"asana"` │ `"shortcut"` │ `"none"` · **Default:** `"none"`
+
+**Allowed values:**
+
+- `"clickup"`
+- `"linear"`
+- `"github"`
+- `"jira"`
+- `"notion"`
+- `"asana"`
+- `"shortcut"`
+- `"none"`
+
+#### `integrations.tracker.mcp`
+
+**Type:** `string`
+
+MCP tool name prefix used to call the provider (e.g. `mcp__claude_ai_ClickUp`, `mcp__github`). Generic commands resolve tool names by appending the operation (`&lt;mcp>_&lt;op>`). Omit if no MCP server is configured — commands will print payloads for manual handling.
+
+#### `integrations.tracker.defaults`
+
+**Type:** `object`
+
+Free-form project-specific defaults (list IDs, milestone names, custom field IDs, status labels, …). Generic commands pass this object through to MCP calls untouched. Schema-free on purpose — your tracker's idiosyncrasies belong here, not in the plugin.
+
+### `integrations.analytics`
+
+**Type:** `object`
+
+Product analytics provider (PostHog, Amplitude, Mixpanel, …). Currently informational — surfaces in scenario reports and DDRs as context.
+
+#### `integrations.analytics.provider`
+
+**Type:** `string` · **Default:** `"none"`
+
+#### `integrations.analytics.mcp`
+
+**Type:** `string`
+
+#### `integrations.analytics.defaults`
+
+**Type:** `object`
+
+### `integrations.ci`
+
+**Type:** `object`
+
+CI / deploy provider (GitHub Actions, Vercel, Netlify, EAS, …). Used by /flow:validate to know where to look for build status.
+
+#### `integrations.ci.provider`
+
+**Type:** `string` · **Default:** `"none"`
+
+#### `integrations.ci.mcp`
+
+**Type:** `string`
+
+#### `integrations.ci.defaults`
+
+**Type:** `object`
+
+### `integrations.design`
+
+**Type:** `object`
+
+Design source-of-truth (Figma, Penpot, Sketch, …). Used by /flow:plan when the planning input references design.
+
+#### `integrations.design.provider`
+
+**Type:** `string` · **Default:** `"none"`
+
+#### `integrations.design.mcp`
+
+**Type:** `string`
+
+#### `integrations.design.defaults`
+
+**Type:** `object`
+
+### `integrations.changelog`
+
+**Type:** `object`
+
+Release-note / changelog tooling. Used by /flow:validate and /flow:done to remind (soft warning) about missing release notes, by /flow:release-changelog to author entries, and by /flow:release to walk the project-owned release runbook. Phase 3 implements the `changesets` provider; other enum values are accepted but treated as no-op until their providers land.
+
+#### `integrations.changelog.provider`
+
+**Type:** enum: `"changesets"` │ `"git-cliff"` │ `"conventional"` │ `"custom"` │ `"none"` · **Default:** `"none"`
+
+**Allowed values:**
+
+- `"changesets"`
+- `"git-cliff"`
+- `"conventional"`
+- `"custom"`
+- `"none"`
+
+#### `integrations.changelog.scope`
+
+**Type:** `string`
+
+Optional package scope for monorepos — e.g. "@1agh/md-claude". Passed to provider commands when they need to target a workspace member.
+
+#### `integrations.changelog.releaseGuide`
+
+**Type:** `string` · **Default:** `".ai/release-guide.md"`
+
+Path (repo-relative) to the project-owned release runbook that /flow:release walks step-by-step. The runbook is plain Markdown — H2 sections become steps, ```bash``` blocks become candidate commands (run only after user confirmation). Scaffolded with a provider-appropriate stub during /flow:setup-onboard.
+
+#### `integrations.changelog.mcp`
+
+**Type:** `string`
+
+#### `integrations.changelog.defaults`
+
+**Type:** `object`
+
