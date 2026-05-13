@@ -191,7 +191,7 @@ Commands that benefit from codebase context should:
 1. Check if `.ai/context/codebase-map.md` exists
 2. If it does, read the relevant sections (don't re-analyze)
 3. If it doesn't, either:
-   - Suggest running `map-codebase` first
+   - Suggest running `/flow:setup-codebase-map` first
    - Fall back to ad-hoc analysis (slower but functional)
 
 ### Commands That Read the Snapshot

@@ -89,12 +89,12 @@ Zapiš `<DESIGN_ROOT>/_history/<slug>/handoff/<NNN>-handoff-report.md` (gitignor
 - Files created / modified (relativní paths)
 - Tokens referenced + new tokens added
 - Open critique items carried over (pokud `--force` byl použit)
-- Next steps (run `/verify`, manual smoke test)
+- Next steps (run `/flow:utils-verify`, manual smoke test)
 
 ### 8. Návrh navazujících commands
 
-- `/verify` — smoke + a11y na nové cestě (pokud existuje verify skill v repu)
-- `/code-review` — pre-commit self-review (pokud existuje)
+- `/flow:utils-verify` — smoke + a11y na nové cestě (pokud existuje verify skill v repu)
+- `/flow:review-code` — pre-commit self-review (pokud existuje)
 - `/scenario new <slug>` — pokud surface ještě nemá cross-platform scenario
 
 ## What handoff DOES NOT do

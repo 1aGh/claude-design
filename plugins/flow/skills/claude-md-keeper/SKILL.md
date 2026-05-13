@@ -1,6 +1,6 @@
 ---
 name: claude-md-keeper
-description: Keep CLAUDE.md fresh as project conventions evolve. Use when /flow:retro, /flow:ddr, or /flow:done detects a change that should land in CLAUDE.md (new convention emerged, deprecation, build command change, "always do X" rule). Read-only by default; proposes edits, doesn't apply them.
+description: Keep CLAUDE.md fresh as project conventions evolve. Use when /flow:record-retro, /flow:record-ddr, or /flow:done detects a change that should land in CLAUDE.md (new convention emerged, deprecation, build command change, "always do X" rule). Read-only by default; proposes edits, doesn't apply them.
 user-invocable: false
 ---
 
@@ -38,7 +38,7 @@ Concretely:
 
 This skill is *not* user-invocable. It's read by commands at three points in the loop:
 
-### 1. During `/flow:ddr`
+### 1. During `/flow:record-ddr`
 
 When the user records a DDR, ask:
 
@@ -53,7 +53,7 @@ When the user records a DDR, ask:
 
 Skip the prompt if the DDR is purely architectural (no behavioral change for future code-writing — e.g. "we chose Postgres over MySQL"). Trigger when the DDR includes a "we always do X" or "we never do Y" clause.
 
-### 2. During `/flow:retro`
+### 2. During `/flow:record-retro`
 
 After analyzing the implementation vs. plan, scan for "Claude made the same mistake N times" patterns. If found:
 

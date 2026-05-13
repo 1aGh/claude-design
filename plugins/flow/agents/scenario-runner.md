@@ -1,6 +1,6 @@
 ---
 name: scenario-runner
-description: Use when /verify, /validate, or /done need cross-platform UI verification of a feature. Orchestrates agent-browser (web variants) + agent-device (native iOS/Android) scenarios, captures screenshots per step, produces a markdown report with TL;DR, counter-delta parity, and per-step pivot table. Returns report path; does not edit code.
+description: Use when /flow:utils-verify, /flow:validate, or /flow:done need cross-platform UI verification of a feature. Orchestrates agent-browser (web variants) + agent-device (native iOS/Android) scenarios, captures screenshots per step, produces a markdown report with TL;DR, counter-delta parity, and per-step pivot table. Returns report path; does not edit code.
 tools: Bash, Read, Write, Glob
 ---
 
@@ -67,7 +67,7 @@ Return this JSON-ish block:
 }
 ```
 
-Caller (`/verify` / `/validate` / `/done`) decides go/no-go based on `blockers` and `parity_ok`.
+Caller (`/flow:utils-verify` / `/validate` / `/done`) decides go/no-go based on `blockers` and `parity_ok`.
 
 ## Anti-patterns
 

@@ -1,5 +1,6 @@
 ---
-name: bug/rca
+name: bug-rca
+category: bug
 type: command
 description: Analyze and document root cause for a GitHub issue
 keywords: [bug, root-cause, analysis, investigate, debug, diagnose]

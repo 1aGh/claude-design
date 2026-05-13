@@ -35,7 +35,7 @@ EXAMPLES
 NOTES
   'mdcc init' does mechanical scaffolding of .ai/ only.
   For interactive stack detection and workflows.config.json population,
-  run '/flow:onboard' inside Claude Code — it calls 'mdcc init' as
+  run '/flow:setup-onboard' inside Claude Code — it calls 'mdcc init' as
   its first step. For CLAUDE.md, run Anthropic's built-in '/init'.
 
 DOCS

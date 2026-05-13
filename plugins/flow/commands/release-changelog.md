@@ -21,7 +21,7 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 CONFIG="$REPO_ROOT/.ai/workflows.config.json"
 
 if [[ ! -f "$CONFIG" ]]; then
-  echo "No .ai/workflows.config.json — run /flow:onboard first."
+  echo "No .ai/workflows.config.json — run /flow:setup-onboard first."
   exit 1
 fi
 
@@ -35,7 +35,7 @@ SCOPE="$(jq -r '.integrations.changelog.scope // empty' "$CONFIG")"
 
 ```
 No changelog provider configured. Set `integrations.changelog.provider`
-in `.ai/workflows.config.json` (e.g. `changesets`), or run /flow:onboard
+in `.ai/workflows.config.json` (e.g. `changesets`), or run /flow:setup-onboard
 to auto-detect.
 ```
 
@@ -145,4 +145,4 @@ Exit 0. **Do not** attempt provider-specific dispatch — this is the holding pa
 
 - The provider abstraction is in `.ai/workflows.config.json` — never hardcode "changesets" anywhere in this command's prose other than inside the `changesets` branch.
 - This command is non-destructive. It writes one new file under `.changeset/`. It never edits existing files (including `CHANGELOG.md`) — that's `<pm> changeset version`'s job, run by `/flow:release` (or CI on tag push).
-- If you need to switch providers later, write a DDR (`/flow:ddr "switch changelog provider"`) before changing `integrations.changelog.provider`.
+- If you need to switch providers later, write a DDR (`/flow:record-ddr "switch changelog provider"`) before changing `integrations.changelog.provider`.

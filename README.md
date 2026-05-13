@@ -7,7 +7,7 @@ A personal marketplace of Claude Code plugins by Michal Dovrtěl (`1aGh`). Two p
 | Plugin | What it does |
 | ------ | ------------ |
 | **`design`** | Canvas-first iteration on HTML/JSX mocks under `.design/` — element selection via Cmd+Click, auto-managed dev server, chained UX/DS critique. |
-| **`flow`** | Generic agentic workflow loop with a second-brain `.ai/` workspace. `/flow:plan`, `/flow:execute`, `/flow:verify`, `/flow:validate`, `/flow:done`, `/flow:onboard`, `/flow:ddr`, `/flow:scenario`, …. Project-agnostic via `<project>` placeholders + per-repo `.ai/workflows.config.json`. |
+| **`flow`** | Generic agentic workflow loop with a second-brain `.ai/` workspace. `/flow:plan`, `/flow:execute`, `/flow:utils-verify`, `/flow:validate`, `/flow:done`, `/flow:setup-onboard`, `/flow:record-ddr`, `/flow:scenario`, …. Project-agnostic via `<project>` placeholders + per-repo `.ai/workflows.config.json`. |
 
 Plus the **`mdcc`** CLI (Michal Dovrtěl Claude Code) — `mdcc init` scaffolds a fresh `.ai/` workspace from the flow plugin skeleton; `mdcc design serve` boots the design dev server.
 
@@ -55,11 +55,11 @@ Then inside Claude Code (with `flow@md-claude` installed):
 
 ```
 /init             # Anthropic's built-in — generates CLAUDE.md tailored to your codebase
-/flow:onboard     # populates .ai/workflows.config.json with detected stack
+/flow:setup-onboard     # populates .ai/workflows.config.json with detected stack
 /flow:status      # confirm everything wired up
 ```
 
-`/init` writes the `CLAUDE.md` Claude auto-loads every session (conventions, build commands, gotchas). `/flow:onboard` handles the structured workspace config — they're complementary, not duplicates.
+`/init` writes the `CLAUDE.md` Claude auto-loads every session (conventions, build commands, gotchas). `/flow:setup-onboard` handles the structured workspace config — they're complementary, not duplicates.
 
 ## Runtime requirements
 
@@ -73,28 +73,63 @@ A project-agnostic workflow harness. Every command resolves the `<project>` plac
 
 ### Commands
 
+Commands are grouped by category. Non-daily commands use a `<group>-<verb>` prefix so autocomplete (e.g. `/flow:bug-`, `/flow:setup-`) narrows by group. See [`plugins/flow/CATEGORIES.md`](./plugins/flow/CATEGORIES.md) for the canonical catalog, or type **`/flow:help`** inside Claude Code for the live, auto-generated grouped index.
+
+**daily** — every-cycle workflow
+
 | Command | Purpose |
 | ------- | ------- |
-| `/flow:onboard` | Scaffold `.ai/` (via `mdcc init`), auto-detect stack, populate `.ai/workflows.config.json`, defer to `/init` for `CLAUDE.md`. |
-| `/flow:status` | Where am I? Active phase, plan, blockers. |
-| `/flow:create-prd <feature>` | Draft a PRD into `.ai/plans/`. |
 | `/flow:plan <prd>` | Generate a feature plan with task list. |
 | `/flow:execute <plan>` | Work the plan, tick tasks. |
-| `/flow:verify` | Light per-file validation during execution. |
 | `/flow:validate` | Full gate: tests + build + scenario + a11y + design consistency. |
 | `/flow:done` | Close out feature: validate → DDR sweep → commit → push → PR → retro → archive. |
-| `/flow:pause` / `/flow:resume` | Session continuity via `HANDOFF.md`. |
-| `/flow:ddr <title>` | Record a Design Decision Record. |
-| `/flow:retro` | Implementation-vs-plan retrospective. |
+| `/flow:status` | Where am I? Active phase, plan, blockers. |
 | `/flow:scenario <flow>` | Cross-platform UI scenario run with screenshots. |
-| `/flow:bug-rca` / `/flow:bug-fix` | Root-cause analysis then targeted fix from a GitHub issue. |
-| `/flow:code-review` | Pre-commit self-review. |
+| `/flow:pause` / `/flow:resume-task` | Session continuity via `HANDOFF.md`. |
 | `/flow:quick` | Fast path for trivial changes (skip the full plan cycle). |
-| `/flow:map-codebase` / `/flow:context` | Refresh / prime the codebase snapshot. |
-| `/flow:ai-health` | Diagnose the workflow infrastructure itself. |
-| `/flow:discover` | Search AI capabilities by natural-language task description. |
+| `/flow:release` | Walk the project's release runbook with confirmation per step. |
+| `/flow:help` | Live, grouped command index. |
+
+**setup-*** — one-shot bootstrapping
+
+| Command | Purpose |
+| ------- | ------- |
+| `/flow:setup-onboard` | Scaffold `.ai/`, auto-detect stack, populate `.ai/workflows.config.json`, defer to `/init` for `CLAUDE.md`. |
+| `/flow:setup-prd <feature>` | Draft a PRD into `.ai/plans/`. |
+| `/flow:setup-codebase-map` / `/flow:setup-context` | Snapshot / prime the codebase context. |
+
+**bug-*** — incident workflow
+
+| Command | Purpose |
+| ------- | ------- |
+| `/flow:bug-rca` / `/flow:bug-fix` | Root-cause analysis then targeted fix from a GitHub issue. |
+
+**record-*** — knowledge capture
+
+| Command | Purpose |
+| ------- | ------- |
+| `/flow:record-ddr <title>` | Record a Design Decision Record. |
+| `/flow:record-retro` | Implementation-vs-plan retrospective. |
+| `/flow:record-execution` | Implementation report for system review. |
+
+**maintain-*** — hygiene
+
+| Command | Purpose |
+| ------- | ------- |
 | `/flow:maintain-clean` / `/flow:maintain-docs` | Periodic upkeep. |
-| `/flow:execution-report` / `/flow:validate-a11y` / `/flow:validate-visual` | Targeted variants. |
+| `/flow:maintain-ai-health` | Diagnose the workflow infrastructure itself. |
+| `/flow:maintain-discover` | Search AI capabilities by natural-language task description. |
+
+**validate-*** / **review-*** / **release-*** / **utils-*** — specialized
+
+| Command | Purpose |
+| ------- | ------- |
+| `/flow:validate-a11y` / `/flow:validate-visual` | Targeted validators (called by `/flow:validate` or directly). |
+| `/flow:review-code` | Pre-commit self-review. |
+| `/flow:release-changelog` | Author a changelog entry for the configured provider. |
+| `/flow:utils-verify` | Light per-file validation during `/flow:execute`. |
+
+> **Naming convention.** Daily commands stay terse (`plan`, `execute`, `done`). Every other command uses `<group>-<verb>` so the group is visible in the name and prefix autocomplete is meaningful. Subdirectory namespacing (`/flow:bugs:fix`) is not supported by Claude Code as of v1.x — the strict prefix is the working substitute.
 
 ### Subagents (auto-spawned)
 

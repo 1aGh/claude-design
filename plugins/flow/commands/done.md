@@ -1,4 +1,6 @@
 ---
+name: done
+category: daily
 description: Close out a feature — /validate gate (incl. cross-platform scenario) → DDR sweep → commit → push → PR → retro → archive
 argument-hint: "<optional: path to plan>"
 ---
@@ -32,11 +34,11 @@ If a criterion can't be met, **don't skip** — record a blocker in STATE.md and
 
 ### 3. Record decisions (DDR sweep)
 
-Walk through `## Decisions to record` in the plan. For each unrecorded item run `/ddr` (or do it inline). **No decision is lost.** The `ddr-keeper` skill provides a quality gate.
+Walk through `## Decisions to record` in the plan. For each unrecorded item run `/flow:record-ddr` (or do it inline). **No decision is lost.** The `ddr-keeper` skill provides a quality gate.
 
-### 4. Code review (`/code-review`)
+### 4. Code review (`/flow:review-code`)
 
-Run `/code-review` on uncommitted changes. This version sequences:
+Run `/flow:review-code` on uncommitted changes. This version sequences:
 
 1. Audit pass — finds correctness / quality / security / convention findings.
 2. `code-simplifier` subagent pass — auto-fixes stylistic issues (clarity, nesting, naming).
@@ -139,7 +141,7 @@ If the user lists items, propose CLAUDE.md additions (or moves to `.claude/rules
 ### 7. Retro & archive
 
 - Append a `## Retro` section to the end of the plan. 3–5 bullets: what worked / what didn't / what to change in `/plan` or `/execute` next time. This is the learning loop — the next `/plan` reads it.
-- If there were unexpected pivots, parity gaps, blockers, or plan rewrites → consider a standalone DDR ("what we learned about this domain") or a full `/retro`.
+- If there were unexpected pivots, parity gaps, blockers, or plan rewrites → consider a standalone DDR ("what we learned about this domain") or a full `/flow:record-retro`.
 - Move the plan to `.ai/plans/archive/<x>.plan.md`.
 - STATE.md → phase + status `done`, history row `done | <date> | <one-liner>`. Active task → `—`. Active plan → `—`.
 
@@ -159,4 +161,4 @@ If the user lists items, propose CLAUDE.md additions (or moves to `.claude/rules
   Time in execution: <approx>
 ```
 
-Suggest: _"Run /status for a project overview, or /retro for a process retrospective?"_
+Suggest: _"Run /flow:status for a project overview, or /flow:record-retro for a process retrospective?"_

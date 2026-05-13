@@ -1,5 +1,6 @@
 ---
 name: validate
+category: daily
 type: command
 description: "Full validation pipeline — static + tests + build + cross-platform scenario (5 platforms) + a11y + design consistency"
 keywords: [validate, full, pipeline, scenario, cross-platform, a11y, design-system]
@@ -62,7 +63,7 @@ The subagent **must use screenshots from the scenario report** as primary eviden
 ### 7. Doc / decision drift
 
 - Active plan without a `## Retro` section after `/done`? Flag.
-- DDR-worthy decision in the diff (new library, new top-level dir, schema change) without a DDR? Suggest `/ddr`.
+- DDR-worthy decision in the diff (new library, new top-level dir, schema change) without a DDR? Suggest `/flow:record-ddr`.
 - Scenario report without identical counter-delta across platforms and no DDR explaining why → blocker.
 
 ### 7b. Changelog hygiene (**non-blocking**)

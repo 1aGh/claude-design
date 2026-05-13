@@ -63,12 +63,12 @@
     },
     "bundleIdPrefix": {
       "type": "string",
-      "description": "Native app bundle ID prefix (e.g. `com.acme.myapp`). Used by `/verify` and `/scenario` when launching native builds. Omit for web-only projects."
+      "description": "Native app bundle ID prefix (e.g. `com.acme.myapp`). Used by `/flow:utils-verify` and `/flow:scenario` when launching native builds. Omit for web-only projects."
     },
     "stack": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Auto-detected technology stack snapshot. Populated by /flow:onboard, refreshed by /flow:map-codebase. Flow commands read this for routing decisions (e.g. which test runner to invoke, whether to gate on monorepo workspace builds). Use `unknown` when detection fails — never invent a value.",
+      "description": "Auto-detected technology stack snapshot. Populated by /flow:setup-onboard, refreshed by /flow:setup-codebase-map. Flow commands read this for routing decisions (e.g. which test runner to invoke, whether to gate on monorepo workspace builds). Use `unknown` when detection fails — never invent a value.",
       "properties": {
         "language": {
           "type": "string",
@@ -111,7 +111,7 @@
     "conventions": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Team conventions that flow commands enforce or display. Auto-detected where possible (e.g. `commits` from commitlint.config.*); otherwise asked once in /flow:onboard. Document non-obvious 'why' in `.ai/decisions/` as DDRs.",
+      "description": "Team conventions that flow commands enforce or display. Auto-detected where possible (e.g. `commits` from commitlint.config.*); otherwise asked once in /flow:setup-onboard. Document non-obvious 'why' in `.ai/decisions/` as DDRs.",
       "properties": {
         "branchingModel": {
           "type": "string",
@@ -338,7 +338,7 @@
             "releaseGuide": {
               "type": "string",
               "default": ".ai/release-guide.md",
-              "description": "Path (repo-relative) to the project-owned release runbook that /flow:release walks step-by-step. The runbook is plain Markdown — H2 sections become steps, ```bash``` blocks become candidate commands (run only after user confirmation). Scaffolded with a provider-appropriate stub during /flow:onboard."
+              "description": "Path (repo-relative) to the project-owned release runbook that /flow:release walks step-by-step. The runbook is plain Markdown — H2 sections become steps, ```bash``` blocks become candidate commands (run only after user confirmation). Scaffolded with a provider-appropriate stub during /flow:setup-onboard."
             },
             "mcp": { "type": "string" },
             "defaults": { "type": "object", "additionalProperties": true }

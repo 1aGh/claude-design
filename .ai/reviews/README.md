@@ -1,6 +1,6 @@
 # Reviews
 
-Code-review snapshots and retrospectives. Output of `/flow:code-review` and `/flow:retro`.
+Code-review snapshots and retrospectives. Output of `/flow:review-code` and `/flow:record-retro`.
 
 ## File naming
 
@@ -9,7 +9,7 @@ Code-review snapshots and retrospectives. Output of `/flow:code-review` and `/fl
 
 ## What goes here
 
-- Findings from pre-commit `/flow:code-review` (verdicts, suggestions, follow-ups).
+- Findings from pre-commit `/flow:review-code` (verdicts, suggestions, follow-ups).
 - Retro notes after `/flow:done` — what worked, what didn't, what to change in the workflow loop itself.
 
 These are durable. Don't truncate; later retros benefit from older patterns.

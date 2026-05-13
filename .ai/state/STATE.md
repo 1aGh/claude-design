@@ -3,13 +3,13 @@
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
 **Workflow:** feature-delivery — md-claude v1.0 roadmap
-**Phase:** Phase 3 — flow changelog integration + /flow:release
+**Phase:** Phase 13 — flow command categorization
 **Status:** done
 **Started:** 2026-05-12
-**Updated:** 2026-05-12
+**Updated:** 2026-05-13
 **Active task:** —
 **Active plan:** —
-**Last archived plan:** `.ai/plans/archive/phase-3-flow-changelog.md`
+**Last archived plan:** `.ai/plans/archive/phase-13-flow-command-categorization.md`
 **Branch:** `main`
 
 ## Loaded skills (skill-loader)
@@ -34,6 +34,7 @@ Consider `/flow:make-skill-template` for **fumadocs** and **hocuspocus** if thei
 - DDR-001 Monorepo with single npm publisher (Phase 1)
 - DDR-002 Release flow via Changesets, with parity-preserving wrapper (Phase 1)
 - DDR-003 `/flow:release` walks user-authored runbook instead of dispatching on provider (Phase 3)
+- DDR-004 Flow commands use `<group>-<verb>` prefix; compat stubs removed in v0.6.0 (Phase 13)
 
 ## Blockers
 
@@ -55,8 +56,24 @@ Consider `/flow:make-skill-template` for **fumadocs** and **hocuspocus** if thei
 | 2026-05-12 | done | `/flow:done` — Phase 1 closeout. Plan archived; retro recorded; reverted out-of-scope biome JSX reformat at review gate. Next: Phase 2 (Fumadocs docs site) or Phase 3 (flow ↔ design changeset). |
 | 2026-05-12 | Phase 3 | `/flow:execute phase-3` — schema + `/flow:release-changelog` + `/flow:release` + onboard auto-detect + de-hardcode + DDR-003. Worked directly on `main` (no branch cut, user's choice). Docs pages (Task 11) deferred to Phase 2. |
 | 2026-05-12 | done | `/flow:done` Phase 3 — DDR-003 written, changeset queued (minor), retro recorded, plan archived. CLAUDE.md debrief skipped (no new convention). Next: Phase 2 (docs site) or any of Phase 4–10. |
+| 2026-05-13 | Phase 13 | `/flow:execute` Phase 13 — 11 renames, 11 compat stubs (remove v0.6.0), category: frontmatter on 29 live commands, /flow:help aggregator, CATEGORIES.md catalog, README + plugin README + CLAUDE.md updates, 18-file reference sweep clean. 40 files in commands/ (29 live + 11 stubs). |
+| 2026-05-13 | Phase 13 | Post-validate triple audit (3× Explore agents) caught a hidden-dir gap — original `rg` sweep skipped `.ai/`, `.github/`, `plugins/flow/.claude-plugin/`. Patched 22 leftover refs across 14 hidden-path files (`.ai/{README,INDEX}.md`, `.ai/{decisions,reviews,logs,context}/README.md`, `.ai/docs/{PRD,config-schema}.md`, `.ai/plans/{README,phase-11-…}.md`, `.ai/state/STATE.md`, `plugins/flow/.claude-plugin/config.schema.json`, `.github/ISSUE_TEMPLATE/docs.yml`). Final `rg --hidden` sweep clean. |
+| 2026-05-13 | done | `/flow:done` Phase 13 — DDR-004 recorded (naming convention + v0.6.0 stub removal target), retro appended, plan archived to `.ai/plans/archive/phase-13-…`. Local commit only (no push, per user). |
 
 ## Execution Progress
+
+### Phase 13 — Tasks (flow command categorization)
+
+- [x] Task 1: `plugins/flow/CATEGORIES.md` — canonical catalog with 9 groups, naming convention, rename history ✅
+- [x] Task 2: 11 `git mv` renames + `name:` field updates ✅
+- [x] Task 3: `category:` frontmatter on all 29 live commands; `name:` normalized to match filenames ✅
+- [x] Task 4: Reference sweep (18 files updated, 0 stale refs remaining outside plan/CATEGORIES/archive/help.md) ✅
+- [x] Task 5: 11 backwards-compat stubs under old filenames, scheduled for removal in v0.6.0 ✅
+- [x] Task 6: `/flow:help` aggregator command authored ✅
+- [x] Task 7: Root `README.md` regrouped + `plugins/flow/README.md` created with naming convention ✅
+- [x] Task 8: `CLAUDE.md` — new "Flow command naming" subsection under Architecture ✅
+- [x] Task 9: Phase 3 alignment verified (`release-changelog` + `release` ship at final names) ✅
+- [ ] Task 10: Phase 2 docs-site flow page — **carry-over** (out of scope here)
 
 ### Phase 3 — Tasks (flow changelog integration + /flow:release)
 
@@ -68,7 +85,7 @@ Consider `/flow:make-skill-template` for **fumadocs** and **hocuspocus** if thei
 - [x] Task 6: DDR-keeper SKILL.md — provider-choice is DDR-worthy ✅
 - [x] Task 7: De-hardcoded `changeset` in `execute.md:179` + `quick.md:37` ✅ (grep clean)
 - [x] Task 8: `release-guide.md` template + `mdcc init --provider` propagation ✅ (smoke-tested 4 providers)
-- [x] Task 9: `/flow:onboard` Q7 auto-detect + scaffold ✅
+- [x] Task 9: `/flow:setup-onboard` Q7 auto-detect + scaffold ✅
 - [x] Task 10: `/flow:release` runbook walker ✅
 - [ ] Task 11: Docs pages — **deferred** (Phase 2 site dependency, tracked as carry-over)
 

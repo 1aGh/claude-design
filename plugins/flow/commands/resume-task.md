@@ -1,5 +1,6 @@
 ---
-name: resume-work
+name: resume-task
+category: daily
 type: command
 description: Resume a previously paused workflow from HANDOFF.md and STATE.md
 keywords: [resume, continue, pick-up, restore, session, handoff]
@@ -82,7 +83,7 @@ Compare the **Last session** timestamp in HANDOFF.md to the current date.
 
 > ⚠️ This handoff is from <date> (<N> days ago). The codebase may have changed significantly.
 >
-> Recommended: Run `map-codebase` to refresh context, then review the handoff against current state.
+> Recommended: Run `/flow:setup-codebase-map` to refresh context, then review the handoff against current state.
 
 Proceed after the warning — don't block.
 

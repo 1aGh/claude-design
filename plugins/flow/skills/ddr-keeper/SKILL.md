@@ -39,7 +39,7 @@ A decision is DDR-worthy if any of:
 ## Process
 
 1. **Recognize** — when conversation hits a DDR-worthy moment, pause and explicitly say so: _"This is DDR-worthy — let's capture it before we move on."_
-2. **Run `/ddr <titulek>`** — the slash command handles file naming, numbering, index update.
+2. **Run `/flow:record-ddr <titulek>`** — the slash command handles file naming, numbering, index update.
 3. **Insist on quality** — when filling the DDR template, refuse weak content:
    - At least 2 alternatives in `Alternatives considered` (even if one is "do nothing")
    - `Consequences` split into positive and negative (every decision has both)
@@ -65,6 +65,6 @@ When a previous DDR is contradicted by a new one:
 ## Integration with other commands
 
 - `/plan` — when generating the plan, populate `## Decisions to record` for any DDR-worthy fork. Don't write the DDR yet — just flag.
-- `/execute` — if a pivot from the plan happens, halt and run `/ddr` before continuing.
+- `/execute` — if a pivot from the plan happens, halt and run `/flow:record-ddr` before continuing.
 - `/done` — sweep `## Decisions to record`. Every unrecorded item must become a DDR before commit.
-- `/retro` — after a feature ships, look for repeated decisions that should be promoted to DDR rules.
+- `/flow:record-retro` — after a feature ships, look for repeated decisions that should be promoted to DDR rules.

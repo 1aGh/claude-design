@@ -1,5 +1,6 @@
 ---
-name: maintain/clean
+name: maintain-clean
+category: maintain
 type: command
 description: Clean stale artifacts, logs, and temporary files
 keywords: [clean, maintenance, artifacts, stale, prune, housekeeping]

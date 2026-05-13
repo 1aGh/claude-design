@@ -1,5 +1,6 @@
 ---
 name: plan
+category: daily
 type: command
 description: "Create a context-rich feature implementation plan grounded in the project PRD and design system"
 keywords:
@@ -317,7 +318,7 @@ Run these commands to confirm zero regressions:
 ## Acceptance Criteria
 
 - [ ] All tasks completed
-- [ ] `/verify` passes after each task (Edit-Verify Loop, max 3 iterations)
+- [ ] `/flow:utils-verify` passes after each task (Edit-Verify Loop, max 3 iterations)
 - [ ] `/validate` passes overall:
   - [ ] Static (types, lint, format)
   - [ ] Tests (full suite)

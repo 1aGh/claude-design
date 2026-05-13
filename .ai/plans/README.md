@@ -121,7 +121,7 @@ v1.3+ (conditional on user-feedback survey)
 /flow:execute .ai/plans/phase-3-flow-changelog.md
 ```
 
-> **What to build:** Generic `integrations.changelog` block in `config.schema.json` (provider enum: `changesets` | `git-cliff` | `conventional` | `custom` | `none`; sibling of `tracker` / `analytics` / `ci` / `design`). New `/flow:release-changelog` command authors entries (Changesets provider implemented; others stub with TODO). New `/flow:release` walks a project-owned `.ai/release-guide.md` runbook step-by-step with `[run]/[skip]/[edit]/[abort]` confirmations. `/flow:onboard` (renamed to `/flow:setup-onboard` in Phase 13) auto-detects provider from filesystem markers, asks Q7, scaffolds provider-appropriate runbook stub. `/flow:validate` + `/flow:done` add non-blocking changelog-hygiene warnings. `/flow:execute` + `/flow:quick` de-hardcoded. Commands ship under `release-*` group per Phase 13 naming convention. Flow⇄design seam **moved to Phase 11**.
+> **What to build:** Generic `integrations.changelog` block in `config.schema.json` (provider enum: `changesets` | `git-cliff` | `conventional` | `custom` | `none`; sibling of `tracker` / `analytics` / `ci` / `design`). New `/flow:release-changelog` command authors entries (Changesets provider implemented; others stub with TODO). New `/flow:release` walks a project-owned `.ai/release-guide.md` runbook step-by-step with `[run]/[skip]/[edit]/[abort]` confirmations. `/flow:setup-onboard` auto-detects provider from filesystem markers, asks Q7, scaffolds provider-appropriate runbook stub. `/flow:validate` + `/flow:done` add non-blocking changelog-hygiene warnings. `/flow:execute` + `/flow:quick` de-hardcoded. Commands ship under `release-*` group per Phase 13 naming convention. Flow⇄design seam **moved to Phase 11**.
 
 ### Phase 4 — Canvas v2 rendering engine
 
@@ -195,7 +195,7 @@ v1.3+ (conditional on user-feedback survey)
 
 ## Validation commands
 
-After every phase: `/flow:verify` for touched files; before merge: `/flow:validate` for the full gate (lint + tests + build + scenarios + a11y + DS).
+After every phase: `/flow:utils-verify` for touched files; before merge: `/flow:validate` for the full gate (lint + tests + build + scenarios + a11y + DS).
 
 Before tagging `v1.0.0`:
 

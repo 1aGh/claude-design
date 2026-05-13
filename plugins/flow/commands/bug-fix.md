@@ -1,5 +1,6 @@
 ---
-name: bug/fix
+name: bug-fix
+category: bug
 type: command
 description: Implement fix from RCA document for GitHub issue
 keywords: [bug, fix, implement, github-issue, rca, patch]

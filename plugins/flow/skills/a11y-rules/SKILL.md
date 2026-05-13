@@ -1,6 +1,6 @@
 ---
 name: a11y-rules
-description: WCAG 2.1 AA hard-stops — color contrast, keyboard navigation, semantic HTML, form labels, focus indicators, touch targets, motion, skip nav, landmarks. Reads `theme` and `ux.bilingual` from `.ai/workflows.config.json`. Use when auditing accessibility (a11y-auditor subagent), reviewing UI changes during /flow:verify and /flow:validate, or when writing components that touch user input, focus, or screen-reader semantics.
+description: WCAG 2.1 AA hard-stops — color contrast, keyboard navigation, semantic HTML, form labels, focus indicators, touch targets, motion, skip nav, landmarks. Reads `theme` and `ux.bilingual` from `.ai/workflows.config.json`. Use when auditing accessibility (a11y-auditor subagent), reviewing UI changes during /flow:utils-verify and /flow:validate, or when writing components that touch user input, focus, or screen-reader semantics.
 user-invocable: false
 ---
 

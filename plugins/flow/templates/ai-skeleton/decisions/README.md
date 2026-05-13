@@ -17,4 +17,4 @@ Permanent log of architectural and product decisions. Each DDR is a standalone m
 - **We never delete.** Superseded DDRs stay — they're the trail of how we got here.
 - **Cross-link:** the plan, the commit, and the new code that implements the decision should all link the DDR.
 
-How to create one: `/flow:ddr <title>`. How to find related ones: read this index, or `grep -l <tag> .ai/decisions/*.md`.
+How to create one: `/flow:record-ddr <title>`. How to find related ones: read this index, or `grep -l <tag> .ai/decisions/*.md`.

@@ -1,6 +1,6 @@
 ---
 name: a11y-auditor
-description: Use proactively after UI changes (during /verify and /validate) to audit accessibility — keyboard reach, ARIA, contrast, focus indicators, screen reader fluency. Uses agent-browser for live axe-core scans where possible. Reports findings without making changes unless asked.
+description: Use proactively after UI changes (during /flow:utils-verify and /flow:validate) to audit accessibility — keyboard reach, ARIA, contrast, focus indicators, screen reader fluency. Uses agent-browser for live axe-core scans where possible. Reports findings without making changes unless asked.
 tools: Read, Bash, Grep, Glob
 ---
 

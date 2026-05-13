@@ -1,6 +1,6 @@
 # `.ai/` — Index
 
-> Second-brain map. Auto-maintained by `/flow:status` and `/flow:context`. Hand-edit additions are welcome.
+> Second-brain map. Auto-maintained by `/flow:status` and `/flow:setup-context`. Hand-edit additions are welcome.
 
 ## Identity
 
@@ -22,7 +22,7 @@
 
 > Last 5 DDRs. Full index in `decisions/README.md`.
 
-- (none yet — write one with `/flow:ddr <title>`)
+- (none yet — write one with `/flow:record-ddr <title>`)
 
 ## Recent plans
 

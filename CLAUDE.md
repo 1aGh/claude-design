@@ -54,6 +54,12 @@ These files are user-facing runtime state — when changing the server, keep the
 
 The server fails loud if launched from a directory without `.design/` rather than serving an empty UI — preserve this behaviour, it's load-bearing for debugging "wrong project root" cases.
 
+### Flow command naming
+
+Every non-daily `/flow:*` command uses a `<group>-<verb>` prefix; daily-cycle commands stay terse. Categories are declared in each command's `category:` frontmatter field and catalogued in [`plugins/flow/CATEGORIES.md`](./plugins/flow/CATEGORIES.md). `/flow:help` renders the live grouped index from frontmatter.
+
+Subdirectory namespacing for slash commands is **not supported by Claude Code** ([issue #2422](https://github.com/anthropics/claude-code/issues/2422) closed not-planned, [#44678](https://github.com/anthropics/claude-code/issues/44678) open feature request). The strict prefix is the working substitute — typing `/flow:bug-` autocompletes only the bug-* members. When adding a new command, pick its group from `CATEGORIES.md`, name the file `<group>-<verb>.md`, and set `name:`, `category:`, `description:` in the frontmatter. Daily-promotion (no prefix) is reserved for verbs called every feature cycle.
+
 ### Flow plugin: `<project>` placeholder convention
 
 Every flow command/skill is project-agnostic. They read `.ai/workflows.config.json` to resolve a `<project>` placeholder and feature toggles (`boundaries.*`, `motion.*`, `responsive.*`, `skills.*`, `integrations.*`). When adding or editing flow content under `plugins/flow/`, **do not hardcode this repo's specifics** — the same plugin runs against arbitrary downstream repos. Reach for the config; if a knob doesn't exist, extend `plugins/flow/.claude-plugin/config.schema.json` rather than hardcoding.

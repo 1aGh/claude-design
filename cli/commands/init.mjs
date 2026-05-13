@@ -87,7 +87,7 @@ export async function run({ args, pkgRoot }) {
           '"$schema": "https://raw.githubusercontent.com/1aGh/md-claude/main/plugins/flow/.claude-plugin/config.schema.json"'
         );
         // Propagate --provider into integrations.changelog.provider so the
-        // first /flow:onboard run doesn't have to ask for what the user
+        // first /flow:setup-onboard run doesn't have to ask for what the user
         // already told us at CLI time.
         if (provider !== 'none') {
           out = out.replace(
@@ -166,12 +166,12 @@ function printNextSteps(name, claudeMdExists) {
       `     (Anthropic's built-in command — analyzes stack, writes <200 lines).\n`
     );
     process.stdout.write(
-      '  3. /flow:onboard — populates .ai/workflows.config.json with detected\n'
+      '  3. /flow:setup-onboard — populates .ai/workflows.config.json with detected\n'
     );
     process.stdout.write('     stack (platforms, tracker, language, …).\n');
   } else {
     process.stdout.write(
-      '  2. /flow:onboard — populates .ai/workflows.config.json with detected\n'
+      '  2. /flow:setup-onboard — populates .ai/workflows.config.json with detected\n'
     );
     process.stdout.write(
       '     stack. CLAUDE.md already exists; /init would suggest improvements.\n'

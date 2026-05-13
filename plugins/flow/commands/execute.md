@@ -1,5 +1,6 @@
 ---
 name: execute
+category: daily
 type: command
 description: Execute an implementation plan
 keywords: [implement, plan, build, run, feature]
@@ -71,7 +72,7 @@ For EACH task in "Tasks":
 
 > **Pattern reference:** See `.ai/docs/patterns.md` — Pattern 1: Edit-Verify Loop
 
-After implementing the task, run `/verify` to confirm correctness. `/verify` automatically:
+After implementing the task, run `/flow:utils-verify` to confirm correctness. `/flow:utils-verify` automatically:
 
 1. Runs static checks (type-check, lint, affected tests)
 2. For UI tasks: spawns agent-browser smoke (web) or agent-device smoke (RN)
@@ -79,12 +80,12 @@ After implementing the task, run `/verify` to confirm correctness. `/verify` aut
 
 **Loop:**
 
-1. **Verify:** run `/verify`.
+1. **Verify:** run `/flow:utils-verify`.
 2. **If pass:** Continue to the next task.
 3. **If fail:**
    a. Read error output carefully — identify the **root cause**, not just the symptom.
    b. Apply targeted fix (do NOT make unrelated changes).
-   c. Re-run `/verify`.
+   c. Re-run `/flow:utils-verify`.
    d. Repeat up to **3 iterations total** for this task.
 4. **If 3 iterations exhausted without success:**
    - **STOP** — do not continue to the next task.
@@ -99,7 +100,7 @@ After implementing the task, run `/verify` to confirm correctness. `/verify` aut
 
 #### d. Polish pass (`code-simplifier`)
 
-After `/verify` passes, before the checkpoint, spawn the `code-simplifier` subagent via the Task tool **on files touched in this task** (not the full session diff).
+After `/flow:utils-verify` passes, before the checkpoint, spawn the `code-simplifier` subagent via the Task tool **on files touched in this task** (not the full session diff).
 
 ```
 Task tool → subagent_type: code-simplifier
@@ -108,7 +109,7 @@ prompt: "Refactor <list of files modified in this task> for clarity.
          Preserve all behavior. Do NOT touch tests or scenarios."
 ```
 
-**After the simplifier pass run `/verify` again** (light smoke). If it breaks test/typecheck:
+**After the simplifier pass run `/flow:utils-verify` again** (light smoke). If it breaks test/typecheck:
 
 - The Edit-Verify Loop iteration counter does **NOT** reset — you still have max 3.
 - If the pass fails and you've used < 3 iterations, try to fix; otherwise revert the simplifier diff (`git checkout -- <files>`) and continue with the pre-simplifier version.

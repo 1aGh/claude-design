@@ -1,5 +1,6 @@
 ---
-name: validate/visual
+name: validate-visual
+category: validate
 type: command
 description: Visual regression check with screenshots
 keywords: [visual, screenshot, regression, ui, compare, snapshot]

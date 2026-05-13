@@ -134,7 +134,7 @@ Inside Claude Code with `dugmate` open:
 
 ```
 /flow:status            # should resolve to dugmate's .ai/state/STATE.md
-/flow:ai-health         # should print "5 dugmate-* skills found" etc.
+/flow:maintain-ai-health         # should print "5 dugmate-* skills found" etc.
 ```
 
 Then try a small loop end-to-end on a throwaway branch:

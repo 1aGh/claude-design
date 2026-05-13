@@ -1,5 +1,6 @@
 ---
 name: status
+category: daily
 type: command
 description: Unified situational awareness — show exactly where you are and what to do next
 keywords: [status, where, state, awareness, branch, progress]

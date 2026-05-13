@@ -78,4 +78,4 @@ Use `.ai/templates/HANDOFF.md` as the base. Key sections:
 | `/pause` | Status → `paused`, Active task kept, creates HANDOFF.md |
 | `/resume` | Status → `in-progress`, removes HANDOFF.md, history row |
 | `/status` | Read-only — returns summary |
-| `/ddr` | Appends to `## Decisions` (summary only, full DDR in `.ai/decisions/`) |
+| `/flow:record-ddr` | Appends to `## Decisions` (summary only, full DDR in `.ai/decisions/`) |

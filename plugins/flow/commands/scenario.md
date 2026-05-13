@@ -1,5 +1,6 @@
 ---
 name: scenario
+category: daily
 type: command
 description: "Run a cross-platform UI scenario (5 platforms: web-desktop, web-mobile, ios-phone, ios-tablet, android-phone) — screenshot proof + markdown report"
 keywords: [scenario, validate, e2e, smoke, cross-platform, agent-browser, agent-device]
@@ -67,7 +68,7 @@ A scenario is **production-ready** when:
 ## Integration
 
 - **`/plan`** — Acceptance Criteria for a UI task must name at least one scenario.
-- **`/execute`** — during the Edit-Verify loop (max 3 iterations) it runs an agent-browser smoke for web after each edit, but a full scenario only in `/verify`.
-- **`/verify`** — if the feature has UI touch, runs the relevant scenario (web-desktop + web-mobile minimum, native only if the feature touches RN code).
+- **`/execute`** — during the Edit-Verify loop (max 3 iterations) it runs an agent-browser smoke for web after each edit, but a full scenario only in `/flow:utils-verify`.
+- **`/flow:utils-verify`** — if the feature has UI touch, runs the relevant scenario (web-desktop + web-mobile minimum, native only if the feature touches RN code).
 - **`/validate`** — always full scenario across all 5 platforms.
 - **`/done`** — requires a passing scenario report as a gate. The report URL goes into the PR description.

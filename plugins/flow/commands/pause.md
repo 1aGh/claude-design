@@ -1,5 +1,6 @@
 ---
-name: pause-work
+name: pause
+category: daily
 type: command
 description: Pause the current workflow, write HANDOFF.md and update STATE.md for session continuity
 keywords: [pause, stop, save, session, handoff, continuity, break]

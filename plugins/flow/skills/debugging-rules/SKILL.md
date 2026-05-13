@@ -1,6 +1,6 @@
 ---
 name: debugging-rules
-description: Hard-stops for debugging — root-cause first, evidence before fixes, no symptom patches, 4-phase systematic approach, 3-strike architectural review. Reads `boundaries.*` from `.ai/workflows.config.json` to know which seams to instrument. Use on any bug, test failure, /flow:verify failure, scenario blocker, or unexpected behavior, before proposing fixes. Applies during /flow:execute Edit-Verify Loop, /flow:bug-rca, /flow:bug-fix, and incident response.
+description: Hard-stops for debugging — root-cause first, evidence before fixes, no symptom patches, 4-phase systematic approach, 3-strike architectural review. Reads `boundaries.*` from `.ai/workflows.config.json` to know which seams to instrument. Use on any bug, test failure, /flow:utils-verify failure, scenario blocker, or unexpected behavior, before proposing fixes. Applies during /flow:execute Edit-Verify Loop, /flow:bug-rca, /flow:bug-fix, and incident response.
 user-invocable: false
 ---
 
@@ -24,7 +24,7 @@ If you haven't completed Phase 1, you cannot propose fixes.
 
 Use for **any** technical issue:
 
-- `/flow:verify` failures during `/flow:execute` Edit-Verify Loop
+- `/flow:utils-verify` failures during `/flow:execute` Edit-Verify Loop
 - `/flow:validate` failures (typecheck, test, build, scenario, a11y, design-system)
 - Scenario report blockers or parity gaps across platforms
 - Test failures
@@ -132,7 +132,7 @@ Fix the root cause, not the symptom:
 
 | Trigger | Action |
 |---|---|
-| `/flow:verify` fails during `/flow:execute` | Apply Phase 1 before the iteration counter increments. Symptom fixes burn iterations. |
+| `/flow:utils-verify` fails during `/flow:execute` | Apply Phase 1 before the iteration counter increments. Symptom fixes burn iterations. |
 | `/flow:validate` blocker (scenario, a11y, design) | Phase 1 evidence gathering before fix attempt. Cross-platform divergence often points to a config / build / env delta. |
 | GitHub issue triage | `/flow:bug-rca` produces an RCA document = Phase 1 + 2 output. `/flow:bug-fix` continues with Phase 4 (failing test → minimal fix). |
 | 3+ failed fix attempts | Stop, write a DDR proposing an architectural change. Don't attempt fix #4. |
@@ -216,4 +216,4 @@ From debugging sessions across many projects:
 - `testing-rules` — TDD iron law (failing test before fix in Phase 4 step 1)
 - `/flow:bug-rca` — formal RCA flow for GitHub issues (Phase 1 + 2 codified)
 - `/flow:bug-fix` — implementation of the RCA-identified fix (Phase 4)
-- `/flow:verify`, `/flow:validate` — gates that surface bugs early
+- `/flow:utils-verify`, `/flow:validate` — gates that surface bugs early

@@ -246,7 +246,7 @@ The user asked for additional improvements beyond their list. Captured here as "
 10. **Component → canvas reverse generator** — point at `src/components/Button.tsx` and produce a canvas demonstrating its variants.
 11. **Privacy-respecting telemetry** (DNT honored, no PII, opt-in) for understanding which commands actually get used.
 12. **Theme switcher in canvas chrome** — preview light / dark / high-contrast variants side-by-side.
-13. **Performance budget enforcement** at canvas level (FPS / paint time) and code level (bundle size deltas) surfaced in `/flow:verify`.
+13. **Performance budget enforcement** at canvas level (FPS / paint time) and code level (bundle size deltas) surfaced in `/flow:utils-verify`.
 14. **Localization of canvas content** — i18n keys baked into HTML, switcher in chrome.
 15. **Conflict-resolution UI** for when two agents edit the same canvas simultaneously (until full CRDT lands).
 16. **AR / spatial canvas mode** — pinch / zoom on iPad with Apple Pencil for whiteboard-style ideation.

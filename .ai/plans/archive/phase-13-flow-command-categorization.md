@@ -298,3 +298,14 @@ The 10 renames extend this pattern to every non-daily command.
 ## Confidence
 
 **7/10** — More moving parts than the original v1 (10 renames + 10 stubs + Phase 3 coordination). Mechanically simple per file, but lots of files to touch and many cross-references to sweep. Risk = missing a stale `/flow:<old-name>` reference somewhere in a skill or scenario. Mitigation: Task 4's rg sweep is exhaustive.
+
+---
+
+## Retro
+
+- **Worked:** The strict prefix convention paid for itself instantly — typing `/flow:bug-` or `/flow:setup-` in autocomplete now narrows visibly. The `category:` frontmatter + `/flow:help` aggregator means new commands appear in the index without any catalog edit. `CATEGORIES.md` rename-history table cleanly absorbs the historical references that would otherwise pollute the sweep.
+- **Didn't work the first time:** My initial reference sweep used `rg --type md` without `--hidden`, which silently skipped every dot-prefixed directory — `.ai/`, `.github/`, `plugins/flow/.claude-plugin/`. The `/flow:validate` step reported "0 stale refs" but missed 22 user-facing references across 14 files (`.ai/README.md`, `.ai/INDEX.md`, `.ai/docs/PRD.md`, the config schema, the GitHub issue template, etc.). Only the user-triggered triple-audit (three parallel Explore agents) caught this. **Lesson: any future repo-wide sweep MUST use `rg --hidden -uu` or equivalent.**
+- **Plan/execute lessons:** The plan said "8 groups" in the section header but the table listed 9 — a typo that propagated for a beat before I noticed. Future plans: assert the count in two places programmatically (e.g. "table below has N rows, verify wc -l").
+- **Acronym carve-out tempted us:** Renaming `ddr` to `record-ddr` makes "Record Design Decision Record". The plan locked strict consistency early — without that, we'd have an exception list bikeshed forever. The footnote in `CATEGORIES.md` documents the trade.
+- **Audit-first beats verify-first.** The 3× parallel auditor pass found more in 30 seconds than my own `rg` could after two manual sweeps, because each auditor was given an orthogonal scope and no shared context. Worth repeating on any future refactor of this size.
+

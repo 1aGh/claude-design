@@ -25,7 +25,7 @@ Four wired-up integrations:
 
 **B. `/flow:done` handoff sweep.** Before the commit step, scan `<designRoot>/**/*.meta.json` for `status: ready-for-handoff`. If any: print the list; prompt "Run `/design:handoff` on these N canvases before closing? [Y/n/select]". On Y: dispatch handoff per canvas in sequence; on success, update each meta (`status: handed-off`, `handoffCommit: <sha>`).
 
-**C. `codebase-intelligence` skill awareness.** Skill output (saved to `.ai/context/codebase-map.md`) now includes a "Design artifacts" section: list of canvases per DS, recent activity, declared statuses. Refresh on `/flow:map-codebase`.
+**C. `codebase-intelligence` skill awareness.** Skill output (saved to `.ai/context/codebase-map.md`) now includes a "Design artifacts" section: list of canvases per DS, recent activity, declared statuses. Refresh on `/flow:setup-codebase-map`.
 
 **D. `ddr-keeper` skill prompt.** When a DDR is being created for a UX-affecting decision (heuristic: keywords like "UI", "layout", "color", "interaction"), ask "Does this DDR reference a canvas? [path or N]". Recorded as `relatedCanvas:` field in the DDR frontmatter.
 
@@ -86,7 +86,7 @@ Four wired-up integrations:
   - settings.html (DS: main, status: in-review, last edit: 2026-04-14)
   ...
   ```
-- **Validate:** Re-run `/flow:map-codebase`; snapshot includes design section.
+- **Validate:** Re-run `/flow:setup-codebase-map`; snapshot includes design section.
 
 ### Task 5: `ddr-keeper` canvas-reference prompt
 
@@ -118,7 +118,7 @@ Four wired-up integrations:
 |----------|------------------|--------|
 | `feature-with-canvas-plan` | Canvas tagged `dark-mode` → `/flow:plan dark-mode` → plan references canvas + screenshot inline | 🆕 new |
 | `done-handoff-sweep` | 2 canvases `ready-for-handoff` → `/flow:done` prompts → user accepts → handoff runs → metas update | 🆕 new |
-| `map-codebase-design-section` | Project with `.design/` → `/flow:map-codebase` → snapshot includes design artifacts | 🆕 new |
+| `map-codebase-design-section` | Project with `.design/` → `/flow:setup-codebase-map` → snapshot includes design artifacts | 🆕 new |
 | `ddr-with-canvas-reference` | Author UI-related DDR → skill prompts for canvas → DDR records `relatedCanvas` | 🆕 new |
 
 ---
