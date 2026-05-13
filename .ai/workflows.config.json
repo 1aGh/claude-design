@@ -12,11 +12,11 @@
   "stack": {
     "language": "javascript",
     "framework": "none",
-    "packageManager": "npm",
+    "packageManager": "pnpm",
     "buildTool": "none",
-    "monorepo": false,
+    "monorepo": true,
     "ci": "github-actions",
-    "tests": "none",
+    "tests": "node-test",
     "css": "none",
     "router": "none"
   },
@@ -86,6 +86,11 @@
     },
     "design": {
       "provider": "none"
+    },
+    "changelog": {
+      "provider": "changesets",
+      "releaseGuide": ".ai/release-guide.md",
+      "scope": "@1agh/md-claude"
     }
   }
 }
