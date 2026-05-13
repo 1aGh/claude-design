@@ -1,5 +1,7 @@
 # Phase 7: ACP local chat sidebar — ICEBOX (deferred, v1.1+ if validated)
 
+> **TODO when de-iceboxed (added 2026-05-13):** the bare `/design "<feedback>"` quick-action reference around line ~32 needs to become `/design:edit "<feedback>"`. The command `/design` was renamed to `/design:edit` in `.ai/plans/design-system-init.md` Phase 0; compat stub may or may not still exist depending on minor-version ladder at revive-time.
+
 > **Moved to icebox 2026-05-12.** v1.0 ships without browser-based agent chat; the terminal Claude Code session remains the primary agent interaction. Rationale:
 >
 > - ACP is inherently **local-per-peer** — the agent (Claude Code) must run on the same machine as the peer. The hub (Phase 9) cannot proxy ACP messages cross-peer, so in hub federation each peer needs their own Claude Code session running locally to use this sidebar.
