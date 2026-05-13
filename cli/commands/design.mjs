@@ -175,19 +175,35 @@ async function runInit({ args, pkgRoot }) {
   }
 
   printSummary(stats);
-  printNextSteps({ projectName, dsName, payloadProvided: !!flags['discovery-payload'] });
+  printNextSteps({ dsName, payloadProvided: !!flags['discovery-payload'] });
 }
 
 function buildCorePlan({ inspirationRoot, designDir, dsName }) {
   const src = (p) => resolve(inspirationRoot, 'core', p);
   const dsRoot = resolve(designDir, 'system', dsName);
   return [
-    { src: src('README.orchestration.md.tpl'), dest: resolve(designDir, 'README.md'), transform: 'placeholder' },
-    { src: src('INDEX.md.tpl'),                dest: resolve(designDir, 'INDEX.md'),  transform: 'placeholder' },
-    { src: src('config.json.tpl'),             dest: resolve(designDir, 'config.json'),transform: 'placeholder' },
-    { src: src('README.philosophy.md.tpl'),    dest: resolve(dsRoot, 'README.md'),    transform: 'placeholder' },
-    { src: src('SKILL.md.tpl'),                dest: resolve(dsRoot, 'SKILL.md'),     transform: 'placeholder' },
-    { src: src('colors_and_type.css.tpl'),     dest: resolve(dsRoot, 'colors_and_type.css'), transform: 'placeholder' },
+    {
+      src: src('README.orchestration.md.tpl'),
+      dest: resolve(designDir, 'README.md'),
+      transform: 'placeholder',
+    },
+    { src: src('INDEX.md.tpl'), dest: resolve(designDir, 'INDEX.md'), transform: 'placeholder' },
+    {
+      src: src('config.json.tpl'),
+      dest: resolve(designDir, 'config.json'),
+      transform: 'placeholder',
+    },
+    {
+      src: src('README.philosophy.md.tpl'),
+      dest: resolve(dsRoot, 'README.md'),
+      transform: 'placeholder',
+    },
+    { src: src('SKILL.md.tpl'), dest: resolve(dsRoot, 'SKILL.md'), transform: 'placeholder' },
+    {
+      src: src('colors_and_type.css.tpl'),
+      dest: resolve(dsRoot, 'colors_and_type.css'),
+      transform: 'placeholder',
+    },
   ];
 }
 
@@ -234,7 +250,8 @@ function defaultPayload({ projectName, dsName }) {
     voice_tone_summary: 'direct-terse',
     iconography_summary: 'Lucide, 1.5px stroke.',
     hard_rules_from_system_readme: '_(see system/<ds>/README.md Hard rules section)_',
-    hard_rules_block: '- WCAG 2.1 AA contrast\n- No off-token colors / radii / spacings\n- Real product strings only — no placeholder copy',
+    hard_rules_block:
+      '- WCAG 2.1 AA contrast\n- No off-token colors / radii / spacings\n- Real product strings only — no placeholder copy',
     iso_timestamp: new Date().toISOString(),
     // Token defaults (dark theme, neutral indigo accent)
     bg_0_oklch: 'oklch(16% 0.012 245)',
@@ -262,7 +279,7 @@ function defaultPayload({ projectName, dsName }) {
     dur_soft: '320ms',
     // Empty-state template fields
     empty_subject: 'items',
-    empty_supporting: 'When you create your first one, it\'ll show up here.',
+    empty_supporting: "When you create your first one, it'll show up here.",
     empty_cta: 'Create',
   };
 }
@@ -313,7 +330,7 @@ function printSummary({ created, replaced, skipped }) {
   }
 }
 
-function printNextSteps({ projectName, dsName, payloadProvided }) {
+function printNextSteps({ dsName, payloadProvided }) {
   process.stdout.write('\nNext steps:\n');
   if (!payloadProvided) {
     process.stdout.write(
@@ -330,5 +347,5 @@ function printNextSteps({ projectName, dsName, payloadProvided }) {
   process.stdout.write(
     `  Then: /design:edit "<feedback>" to iterate on a specimen, or /design:new "<Name>" "<brief>" --ds=${dsName} for a canvas.\n`
   );
-  process.stdout.write(`  Browse: mdcc design serve\n`);
+  process.stdout.write('  Browse: mdcc design serve\n');
 }

@@ -3,13 +3,13 @@
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
 **Workflow:** feature-delivery — md-claude v1.0 roadmap
-**Phase:** design-system-init (Phase 0–4)
-**Status:** in-progress
+**Phase:** design-system-init (Phase 0–6) — **done**
+**Status:** done
 **Started:** 2026-05-12
 **Updated:** 2026-05-13
-**Active task:** `.ai/plans/design-system-init.md`
-**Active plan:** `.ai/plans/design-system-init.md`
-**Last archived plan:** `.ai/plans/archive/phase-2-docs-site-fumadocs.md`
+**Active task:** —
+**Active plan:** —
+**Last archived plan:** `.ai/plans/archive/design-system-init.md`
 **Branch:** `main`
 
 ## Loaded skills (skill-loader)
@@ -63,7 +63,8 @@ Consider `/flow:make-skill-template` for **fumadocs** and **hocuspocus** if thei
 | 2026-05-13 | Phase 2 | `/flow:execute phase-2` — scoped to Task 1–2 only (scaffold + core MDX) per user. Hosting choice: Vercel (DDR-005 to record at /flow:done). Tasks 3 (auto-gen command ref), 4 (schema renderer), 5 (search + llms.txt), 6 (deploy), 7 (README dedup) deferred to follow-up execute. |
 | 2026-05-13 | Phase 2 | Commit `c81da3b` lands Task 1–2. Continued execute → Task 3–7 in one pass. Auto-gen command reference (37 pages) + schema reference + robots.txt + metadataBase fix + DDR-005 + site-deploy.yml workflow (inert pending Vercel secrets) + README trim 339→164. Build green; lint clean. Awaiting `/flow:done` for retro + archive. |
 | 2026-05-13 | done | `/flow:done` Phase 2 — DDR-005 recorded (Fumadocs + Vercel + accept DS defaults), patch changeset authored (`.changeset/phase-2-docs-site.md`), retro appended (what worked / didn't / change-next-time / carry-overs), plan archived to `.ai/plans/archive/phase-2-docs-site-fumadocs.md`. Next: Phase 4–10 from the v1.0 roadmap (Phase 5 dep on Phase 4; Phase 11 dep on Phase 3 + 4; Phase 6/8/9/10 sequential). |
-| 2026-05-13 | design-system-init | `/flow:execute` design-system-init.md — scoped to Phase 0–2 skeleton (Phase 3 critic, Phase 4 multi-DS, Phase 5 CLAUDE.md, Phase 6 docs site deferred). Phase 0 rename `/design`→`/design:edit` + compat stub + sweep (22 files). Phase 1A inspiration library skeleton (Core 10 + Universal 6 + `_README` + `_MAPPING` = 24 files at `plugins/design/templates/design-system-inspiration/`). Phase 1B extended `skills/design-system/SKILL.md` with Bootstrap flow + Mode-detection sections; `package.json` files += templates; `cli/lib/copy-tree.mjs` += rename hook. Phase 2A: `commands/docs.md` → `setup-docs.md`, `category:` on all 12 commands, new `help.md` + `setup-ds.md` + `setup-onboard.md` + `CATEGORIES.md`. Phase 2B: pre-flight bootstrap-detection hooks in `edit.md` + `new.md`. Phase 2C: `mdcc design init [--no-discovery / --discovery-payload]` subcommand (smoke-tested in `/tmp/scratch-design` — 16 files scaffolded, config schema-valid). Schema extended with `extensions`, `completenessProfile`, `activeFamilies`, `designSystems[]`, `defaultDesignSystem` (forward-compat for Phase 3/4). |
+| 2026-05-13 | design-system-init | `/flow:execute` design-system-init.md — scoped to Phase 0–2 skeleton first, then user requested continuation through Phase 6. Commit `e7d7773` (Phase 0–2): rename `/design`→`/design:edit` + compat stub + sweep (22 files), inspiration library skeleton (24 files), skill `design-system` Bootstrap+Mode-detection sections, 3 new commands (setup-onboard/setup-ds/help) + CATEGORIES.md, pre-flight bootstrap hooks in edit/new, `mdcc design init` CLI subcommand (smoke-tested). Commit `852a25a` (Phase 3–6): `design-system-completeness-critic` agent w/ 3-tier rules + `--system-only` flag, multi-DS canvas wiring (canvas-meta `designSystem` field + `--ds=` flag w/ fail-on-unknown + flow:design-system-guard scoped to canvas DS), CLAUDE.md "Design system bootstrap" section (8 rules), Fumadocs narrative pages (bootstrap.mdx, categories.mdx, multi-ds.mdx, mdcc design init in cli.mdx). |
+| 2026-05-13 | done | `/flow:done` design-system-init — validate green (passed with warnings, no hard fails), changeset authored (minor bump @1agh/md-claude), `.changeset/{config.json,README.md}` restored from git history (deleted post-v0.7.0), retro appended to plan with 5 "what worked" / 4 "what didn't" / 4 "change next time" bullets + carry-over list, plan archived to `.ai/plans/archive/design-system-init.md`. Open carry-overs: inspirational library expansion (~38 unwritten reference files), multi-DS `--all-ds` critic runtime testing, version bump to v0.8 (separate cycle). Total: 83 files net, ~3,600 insertions across 3 commits on `main` (no branch). |
 
 ## Execution Progress
 

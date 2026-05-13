@@ -5,9 +5,12 @@
  * the chrome works regardless of theme.
  */
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
-html, body {
+html,
+body {
   margin: 0;
   padding: 0;
   font-family: var(--font-body, system-ui, sans-serif);
@@ -48,8 +51,15 @@ html, body {
   font-weight: 600;
 }
 
-.specimen p { margin: 0 0 12px; max-width: 70ch; color: var(--fg-1); }
-.specimen code { font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px; }
+.specimen p {
+  margin: 0 0 12px;
+  max-width: 70ch;
+  color: var(--fg-1);
+}
+.specimen code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+}
 
 .grid {
   display: grid;
@@ -61,13 +71,24 @@ html, body {
 .swatch {
   border-radius: var(--radius-md, 8px);
   overflow: hidden;
-  border: 1px solid var(--border-default, rgba(255,255,255,0.1));
+  border: 1px solid var(--border-default, rgba(255, 255, 255, 0.1));
   background: var(--bg-1, #14171c);
 }
 
-.swatch .chip { height: 64px; }
-.swatch .meta { padding: 10px 12px; font-size: var(--type-xs, 12px); color: var(--fg-1); }
-.swatch .meta strong { display: block; color: var(--fg-0); font-size: var(--type-sm, 13px); margin-bottom: 2px; }
+.swatch .chip {
+  height: 64px;
+}
+.swatch .meta {
+  padding: 10px 12px;
+  font-size: var(--type-xs, 12px);
+  color: var(--fg-1);
+}
+.swatch .meta strong {
+  display: block;
+  color: var(--fg-0);
+  font-size: var(--type-sm, 13px);
+  margin-bottom: 2px;
+}
 
 .row {
   display: flex;
@@ -77,7 +98,11 @@ html, body {
   margin: 0 0 24px;
 }
 
-.divider { height: 1px; background: var(--border-subtle); margin: 24px 0; }
+.divider {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 24px 0;
+}
 
 footer.legend {
   margin-top: 64px;

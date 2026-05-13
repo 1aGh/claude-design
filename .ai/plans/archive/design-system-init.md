@@ -1575,3 +1575,37 @@ Captured here so the plan signals what was considered but deferred. None of thes
 - `/Volumes/D/git/claude-design/.ai/plans/phase-5-multi-ds-and-draw-tools.md` → slim to `phase-5-draw-tools.md`
 - `/Volumes/D/git/claude-design/.ai/plans/phase-7-acp-chat-sidebar.md` (TODO note)
 - `/Volumes/D/git/claude-design/.ai/plans/phase-6-comments-presentation-export.md` (coordination note)
+
+---
+
+## Retro
+
+_Closed out 2026-05-13 via `/flow:done`. Three commits on `main`: `e7d7773` (Phase 0–2 skeleton), `852a25a` (Phase 3–6), plus the close-out commit. 83 files net change, ~3,600 insertions._
+
+### What worked
+
+- **Three-paralle Explore audit caught everything.** After Phase 0–2 landed, three parallel `Explore` agents (plugin internals, site+hidden dirs, flow+templates) found all 17 stale `/design`/`/design:docs` refs across 4 files in a single sweep — zero remained after the fix pass. Cheaper than serial sweep + more thorough than a single big sweep.
+- **Forward-compat schema decision saved Phase 3/4.** Adding `extensions`, `completenessProfile`, `activeFamilies`, `designSystems[]`, `defaultDesignSystem` to `config.schema.json` during Phase 2C (when only `mdcc design init` needed them) meant Phase 3 (critic) and Phase 4 (multi-DS) could reference these fields without revisiting schema. Worth ~30 min of forward-thinking; saved a schema-versioning thread later.
+- **Inspiration library as reference, not substrate** is the right metaphor. The `_MAPPING.md` contract + per-specimen `<!-- SPECIMEN: … -->` comment header made it tractable to write 16 files in one pass and trust that the bootstrap-mode agent could read them as "this is what good looks like" without naive copy.
+- **Plan-frontmatter `decisions:` instead of separate DDRs.** For load-bearing internal decisions (Variant B skill, 3-tier model, literal `project` dirname, compat stub policy), recording them in the plan's frontmatter `decisions:` block kept the design narrative coherent without exploding DDR count. /validate flagged this as DDR drift — acceptable trade-off for this scope, but if any of these load-bearing decisions are queried by 6 months later sessions, promote them to standalone DDRs then.
+- **User scope-down at start.** Asking "Phase 0–2 skeleton vs all 6 phases" before starting unlocked a clean two-commit shape (skeleton, then 3–6 completing) instead of one mega-commit. The "skeleton first, then continue" framing also made each phase's deferred state explicit in STATE.md.
+
+### What didn't
+
+- **`copyTree` rename hook didn't fit the actual need.** Phase 1B added a `rename(name)` hook to `cli/lib/copy-tree.mjs` for `.tpl` suffix stripping. But Phase 2C's `mdcc design init` had to remap entire directory shapes (`core/README.philosophy.md.tpl` → `system/<ds>/README.md`), which `rename` couldn't do — it only rewrites the basename. Ended up using an explicit copy plan instead, leaving the rename hook on `copy-tree.mjs` unused by current callers. Either a future caller will use it, or it should be deleted next time we touch the file.
+- **Biome ignored the new file's stylistic conventions.** Lines like `'  Browse: mdcc design serve\n'` were written with template-literal backticks by reflex (`` `  Browse: mdcc design serve\n` ``) and only caught at `/validate` time. Could be fixed by running biome auto-fix more often during execution, not just at validation.
+- **D2 divergence rule (system/`<project>` literal vs `<projectslug>`) is non-obvious.** Easy for an agent (or human) to write `system/dugmate/` because "dugmate is the project". The completeness-critic catches this at scaffold time, but it took explicit prose in `_MAPPING.md`, the critic spec, AND CLAUDE.md to communicate. Suggests the literal-dirname rule deserves to be the **first** thing the bootstrap-mode agent reads.
+- **`.changeset/` was missing on disk.** The dir got deleted after v0.7.0 consumed all queued changesets — at `/flow:done` time I had to manually restore `config.json` + `README.md` from git history before authoring a new changeset. The `.changeset/` infra (config + README) should survive release consumption.
+
+### Change next time
+
+- **In `/flow:plan`** — when a plan adds config-schema fields needed by later phases, add them in the same commit. Don't defer schema work until "the phase that uses it" — schema is cheap to add, expensive to retrofit. (Did this organically here in Phase 2C; want it as plan-template policy.)
+- **In `/flow:execute`** — run `biome check --write` (auto-fix) every ~10 file writes, not just at validation. Catches stylistic drift while the diff is still mentally cheap to revisit.
+- **In `/flow:done`** — restore `.changeset/{config.json,README.md}` automatically if they're missing post-release. The `config.json` is invariant (committed across releases); only the `*.md` changeset entries are consumed. Add a check that `.changeset/config.json` exists before authoring a new entry; restore from git if missing.
+- **Inspirational library** — explicitly carry-over the ~38 unwritten reference files (foundations / status / audience-pro / audience-consumer / audience-developer / platform-mobile / platform-desktop / theme-both / patterns / meta) as a follow-up plan, not just a STATE.md note. Single-DS minimum works today, but full library polish is the next visible UX win.
+
+### Carry-overs (tracked in STATE.md)
+
+- **Inspirational library expansion** — ~38 reference files documented in `_MAPPING.md` but not authored. Single-DS scaffold works today; richer scaffold awaits next library pass.
+- **Multi-DS `--all-ds` critic mode** — spec written, runtime testing awaits the first real multi-DS production project.
+- **Version bump** — Phases 0–6 ship together as v0.8 minor; `scripts/bump-version.sh minor` + changelog consumption as a separate release cycle.
