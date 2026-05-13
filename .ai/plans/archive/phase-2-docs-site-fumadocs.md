@@ -104,5 +104,40 @@ Set up `site/` as a separate workspace with Fumadocs. Auto-generate command refe
 - [ ] Three recipes (Next.js, Expo, monorepo) work end-to-end against fresh repos.
 - [ ] Search returns relevant results for "changeset", "scenario", "canvas selection".
 - [ ] `llms.txt` present and crawlable.
-- [ ] DDR: hosting choice (Vercel vs Cloudflare Pages vs GitHub Pages).
-- [ ] README de-duplicated; canonical reference lives in docs site.
+- [x] DDR: hosting choice (Vercel vs Cloudflare Pages vs GitHub Pages). → [DDR-005](../decisions/DDR-005-docs-site-stack-and-hosting.md)
+- [x] README de-duplicated; canonical reference lives in docs site. (339 → 164 lines)
+
+**Status:** ✅ implemented (commits `c81da3b` + `b22aa9e`). 5/8 acceptance criteria fully ✓, 1 partial (builds ✓ / deploys deferred until Vercel secrets), 2 deferred for post-deploy smoke (search relevance + recipes end-to-end).
+
+---
+
+## Retro
+
+### What worked
+
+- **Scoping Task 1–2 first, then sweeping 3–7 in one pass.** Stopping for review after the scaffold gave the user a chance to inspect the workspace integration before committing to the auto-gen scripts. The full second sweep was then fast because the bones were trusted.
+- **Auto-gen generators paid for themselves immediately.** Writing `build-command-reference.mjs` + `build-schema-reference.mjs` cost ~200 lines of code and removed any "MDX page maintenance" tax forever — every new command surfaces a page automatically, with the source as single source of truth. Hand-writing per-command pages would have been worse on day one and rotted from there.
+- **Fumadocs default scaffold did more than the plan asked.** The CLI ships `/llms.txt` + `/llms-full.txt` + `/llms.mdx/docs/*` + `/og/docs/*` + Orama search out of the box — Task 5 ended up being ~30 lines of metadata + a `robots.txt` route, not a custom search backend. Worth ~half a day saved.
+- **DDR-005 written *before* deploy attempt.** The decision doc captured why Vercel + Fumadocs defaults are the right call, including the carry-overs (DNS, secrets). When the user later wires Vercel, they read DDR-005 and know what's intentional vs. provisional.
+
+### What didn't
+
+- **`create-fumadocs-app` clack prompts blocked non-interactive scaffolding.** Even with every flag set, the CLI prompts on `og-image` and `ai-chat` regardless of flag presence/value. Piped stdin (`printf '\n\n\n' |`) was ignored. Wasted ~5 minutes before the user did the scaffold manually. Should have asked first.
+- **biome ignore patterns were discovered iteratively.** First lint run hit `.next/build/**`, then `.source/**`, then `next-env.d.ts`, then the auto-generated `content/docs/reference/**`. Each turn was an Edit + re-run. Pre-flight: list "build artifact dirs" up-front when integrating any new framework workspace.
+- **MDX-as-JSX gotcha cost a build cycle.** `<repo>` and `<scope>` placeholders in command/schema descriptions are valid Markdown text but invalid MDX (parsed as JSX tags). Both generators now HTML-escape `<` on output. Should be in a project rule: "any MDX generator must escape `<` in non-fenced prose."
+- **Initial Bash `cd` persistence surprised me.** A `cd site && pnpm types:check` in one turn leaked shell cwd into subsequent turns, so a follow-up `pnpm lint` ran from `site/` and emitted misleading "site treats itself as root" output. Lesson: prefer `pnpm --filter` over `cd` for subdirectory commands, or always `cd /Volumes/.../<root>` explicitly.
+
+### What to change next time
+
+- **For framework scaffolds with interactive CLIs, ask up-front about the manual-vs-CLI choice and let the user do it.** Don't burn turns on stdin tricks.
+- **Pre-flight a "lint ignore list" with the framework's standard build artifact dirs** (`.next`, `.source`, `dist`, `out`, `next-env.d.ts`, `.changeset`) before the first lint run.
+- **Auto-gen scripts get an explicit "MDX escape pass" by default.** Add to the project rule list (or codify in `.claude/skills/` if this happens again).
+- **When operating on `main` with no issue number,** explicitly note in STATE.md that no story/issue exists — `/flow:status`'s "issue detection" picked up nothing and that's fine, but it should be intentional, not silent.
+
+### Carry-overs (separate follow-ups, not Phase 2)
+
+- Design plugin commands lack `category:` frontmatter → all 8 fall under "uncategorized" in the auto-gen reference. Cosmetic fix: 8 one-line edits + maybe a `plugins/design/CATEGORIES.md` mirroring the flow one.
+- Recipes (Next.js / Expo / monorepo) are documented but **not end-to-end smoke-tested** against fresh repos. Plan acceptance criterion 4 is technically open. Will close after a manual sanity pass post-deploy.
+- Search relevance — Orama is wired but the plan calls for verifying that "changeset", "scenario", "canvas selection" return relevant results. Needs a running prod URL.
+- Vercel secrets + DNS — out of scope for this execute; handed off in DDR-005.
+

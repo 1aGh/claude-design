@@ -4,12 +4,12 @@
 
 **Workflow:** feature-delivery — md-claude v1.0 roadmap
 **Phase:** Phase 2 — Docs site (Fumadocs)
-**Status:** in-progress (Task 1–7 implemented; Task 6 deploy is wired but inert pending Vercel secrets)
+**Status:** done (Task 1–7 implemented; deploy wired-but-inert pending maintainer Vercel secrets — captured in DDR-005)
 **Started:** 2026-05-12
 **Updated:** 2026-05-13
 **Active task:** —
-**Active plan:** `.ai/plans/phase-2-docs-site-fumadocs.md`
-**Last archived plan:** `.ai/plans/archive/phase-13-flow-command-categorization.md`
+**Active plan:** —
+**Last archived plan:** `.ai/plans/archive/phase-2-docs-site-fumadocs.md`
 **Branch:** `main`
 
 ## Loaded skills (skill-loader)
@@ -62,6 +62,7 @@ Consider `/flow:make-skill-template` for **fumadocs** and **hocuspocus** if thei
 | 2026-05-13 | done | `/flow:done` Phase 13 — DDR-004 recorded (naming convention + v0.6.0 stub removal target), retro appended, plan archived to `.ai/plans/archive/phase-13-…`. Local commit only (no push, per user). |
 | 2026-05-13 | Phase 2 | `/flow:execute phase-2` — scoped to Task 1–2 only (scaffold + core MDX) per user. Hosting choice: Vercel (DDR-005 to record at /flow:done). Tasks 3 (auto-gen command ref), 4 (schema renderer), 5 (search + llms.txt), 6 (deploy), 7 (README dedup) deferred to follow-up execute. |
 | 2026-05-13 | Phase 2 | Commit `c81da3b` lands Task 1–2. Continued execute → Task 3–7 in one pass. Auto-gen command reference (37 pages) + schema reference + robots.txt + metadataBase fix + DDR-005 + site-deploy.yml workflow (inert pending Vercel secrets) + README trim 339→164. Build green; lint clean. Awaiting `/flow:done` for retro + archive. |
+| 2026-05-13 | done | `/flow:done` Phase 2 — DDR-005 recorded (Fumadocs + Vercel + accept DS defaults), patch changeset authored (`.changeset/phase-2-docs-site.md`), retro appended (what worked / didn't / change-next-time / carry-overs), plan archived to `.ai/plans/archive/phase-2-docs-site-fumadocs.md`. Next: Phase 4–10 from the v1.0 roadmap (Phase 5 dep on Phase 4; Phase 11 dep on Phase 3 + 4; Phase 6/8/9/10 sequential). |
 
 ## Execution Progress
 
