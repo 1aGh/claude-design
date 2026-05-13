@@ -27,6 +27,7 @@ A decision is DDR-worthy if any of:
 - Deprecating or replacing an existing approach
 - A pivot during `/execute` that diverges from the plan
 - Convention for a new pattern that other features will copy
+- Choosing a changelog provider (e.g. switching from Changesets to git-cliff) — `integrations.changelog.provider` affects every contributor's release workflow; record the trade-off and the **Revisit when** trigger
 
 ## When a decision is NOT DDR-worthy
 

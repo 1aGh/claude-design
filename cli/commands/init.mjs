@@ -6,12 +6,42 @@ import { copyTree } from '../lib/copy-tree.mjs';
 const PLACEHOLDER = 'PROJECT_NAME';
 // Files in the skeleton that contain the project-name placeholder and should
 // be templated on copy.
-const TEMPLATED = ['workflows.config.json', 'README.md', 'INDEX.md'];
+const TEMPLATED = ['workflows.config.json', 'README.md', 'INDEX.md', 'release-guide.md'];
+
+// Per-provider command substitutions for release-guide.md. Keys map to the
+// `# CHANGELOG_PROVIDER_*_CMD` placeholders inside the skeleton's bash blocks.
+// `null` = leave the placeholder + a "# TODO" comment in place.
+const CHANGELOG_STUBS = {
+  changesets: {
+    VERSION:
+      'pnpm changeset version   # bumps package.json versions + writes CHANGELOG.md from .changeset/*.md',
+    TAG: 'git tag "v$(jq -r .version package.json)" && git push --follow-tags',
+    PUBLISH:
+      'pnpm changeset publish   # or: CI handles publish on tag — see .github/workflows/publish.yml',
+  },
+  'git-cliff': {
+    VERSION: 'git cliff --bump --tag --output CHANGELOG.md',
+    TAG: 'git push --follow-tags',
+    PUBLISH: '# TODO: fill in your publish command (npm publish / cargo publish / …)',
+  },
+  conventional: {
+    VERSION:
+      'npm version <major|minor|patch>   # writes CHANGELOG.md if conventional-changelog wired',
+    TAG: 'git push --follow-tags',
+    PUBLISH: 'npm publish',
+  },
+  custom: null,
+  none: null,
+};
+
+const VALID_PROVIDERS = new Set(['changesets', 'git-cliff', 'conventional', 'custom', 'none']);
 
 export async function run({ args, pkgRoot }) {
   const { flags } = parseArgs(args, { booleans: ['force', 'dry-run', 'help'] });
   if (flags.help) {
-    process.stdout.write('mdcc init [--name <project>] [--force] [--dry-run]\n');
+    process.stdout.write(
+      'mdcc init [--name <project>] [--provider <changesets|git-cliff|conventional|custom|none>] [--force] [--dry-run]\n'
+    );
     return;
   }
 
@@ -22,6 +52,12 @@ export async function run({ args, pkgRoot }) {
   if (!isValidName(projectName)) {
     throw new Error(`invalid --name "${projectName}" (must match [a-z0-9._-]+)`);
   }
+  const provider = (flags.provider || 'none').trim();
+  if (!VALID_PROVIDERS.has(provider)) {
+    throw new Error(
+      `invalid --provider "${provider}" (must be one of: ${[...VALID_PROVIDERS].join(', ')})`
+    );
+  }
 
   const skeletonExists = await pathExists(skeleton);
   if (!skeletonExists) {
@@ -31,6 +67,7 @@ export async function run({ args, pkgRoot }) {
   process.stdout.write('mdcc init\n');
   process.stdout.write(`  project name: ${projectName}\n`);
   process.stdout.write(`  scaffold target: ${aiDir}\n`);
+  process.stdout.write(`  changelog provider: ${provider}\n`);
   if (flags['dry-run']) process.stdout.write('  mode: dry-run\n');
   if (flags.force) process.stdout.write('  mode: force (overwrites)\n');
 
@@ -49,6 +86,33 @@ export async function run({ args, pkgRoot }) {
           '"$schema": "../../plugins/flow/.claude-plugin/config.schema.json"',
           '"$schema": "https://raw.githubusercontent.com/1aGh/md-claude/main/plugins/flow/.claude-plugin/config.schema.json"'
         );
+        // Propagate --provider into integrations.changelog.provider so the
+        // first /flow:onboard run doesn't have to ask for what the user
+        // already told us at CLI time.
+        if (provider !== 'none') {
+          out = out.replace(
+            '"changelog": { "provider": "none" }',
+            `"changelog": { "provider": "${provider}" }`
+          );
+        }
+      }
+      // release-guide.md — swap in provider-specific bash for the version /
+      // tag / publish steps. `custom` / `none` leave the placeholders + TODO
+      // comments intact so the user fills them in by hand.
+      if (srcPath.endsWith('release-guide.md')) {
+        const stub = CHANGELOG_STUBS[provider];
+        if (stub) {
+          out = out
+            .replace('# CHANGELOG_PROVIDER_VERSION_CMD', stub.VERSION)
+            .replace('# CHANGELOG_PROVIDER_TAG_CMD', stub.TAG)
+            .replace('# CHANGELOG_PROVIDER_PUBLISH_CMD', stub.PUBLISH);
+        } else {
+          // custom / none — keep placeholders, append explicit TODO
+          out = out.replaceAll(
+            /# CHANGELOG_PROVIDER_(\w+)_CMD/g,
+            '# CHANGELOG_PROVIDER_$1_CMD\n# TODO: fill in for your project'
+          );
+        }
       }
       return out;
     },

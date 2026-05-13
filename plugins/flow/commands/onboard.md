@@ -170,6 +170,13 @@ ls "$REPO_ROOT"/commitlint.config.* &>/dev/null || COMMITS="free-form"
 # Tracker hint — does this repo have a GitHub remote?
 TRACKER_HINT="none"
 [[ "$REMOTE_URL" == *github.com* ]] && TRACKER_HINT="github"
+
+# Changelog provider hint — auto-detect from filesystem markers.
+# Order matters: most specific marker wins.
+CHANGELOG_PROVIDER="none"
+[[ -f "$REPO_ROOT/.changeset/config.json" ]] && CHANGELOG_PROVIDER="changesets"
+[[ "$CHANGELOG_PROVIDER" == "none" && ( -f "$REPO_ROOT/cliff.toml" || -f "$REPO_ROOT/.git-cliff.toml" ) ]] && CHANGELOG_PROVIDER="git-cliff"
+[[ "$CHANGELOG_PROVIDER" == "none" && "$COMMITS" == "conventional" && -f "$REPO_ROOT/CHANGELOG.md" ]] && CHANGELOG_PROVIDER="conventional"
 ```
 
 ## Step 2b: Resolve tech-stack skills
@@ -196,6 +203,7 @@ Ask for these — everything else has a sensible auto-detected or default value:
 4. **Tracker provider** — pre-fill with `$TRACKER_HINT`. Options: `github` | `clickup` | `linear` | `jira` | `notion` | `asana` | `shortcut` | `none`.
 5. **Branching model** — `github-flow` | `trunk-based` | `gitflow` | `release-branch`. Can't be reliably auto-detected; pre-fill `github-flow` as the most common.
 6. **Prohibited packages / libraries** — comma-separated list, or `none`. Example: `lodash` (we use native ES), `moment` (we use date-fns), `axios` (we use fetch).
+7. **Changelog provider** — pre-fill with `$CHANGELOG_PROVIDER`. Options: `changesets` | `git-cliff` | `conventional` | `custom` | `none`. Auto-detected from `.changeset/config.json` (changesets), `cliff.toml` / `.git-cliff.toml` (git-cliff), or `CHANGELOG.md` + conventional commits (conventional). If the monorepo signals at Step 2 are true (`$MONOREPO == "true"`), also ask for an optional **package scope** (e.g. `@1agh/md-claude`) — passed to `/flow:release-changelog` when authoring entries.
 
 **Ask only when detection failed (`unknown`):**
 
@@ -217,6 +225,9 @@ mdcc config set name "$ANSWER_NAME"
 mdcc config set language "$ANSWER_LANGUAGE"
 mdcc config set theme "$ANSWER_THEME"
 mdcc config set integrations.tracker.provider "$ANSWER_TRACKER"
+mdcc config set integrations.changelog.provider "$ANSWER_CHANGELOG"
+mdcc config set integrations.changelog.releaseGuide ".ai/release-guide.md"
+[[ -n "$ANSWER_CHANGELOG_SCOPE" ]] && mdcc config set integrations.changelog.scope "$ANSWER_CHANGELOG_SCOPE"
 ```
 
 ### 4b. Stack snapshot
@@ -268,6 +279,18 @@ if [[ -n "$BUNDLE_ID" ]]; then
 fi
 ```
 
+### 4f. Scaffold the release runbook
+
+If `$ANSWER_CHANGELOG != "none"` and `.ai/release-guide.md` doesn't already exist, the runbook was already scaffolded by `mdcc init` in Step 1 (when invoked with `--provider`). If Step 1 ran without `--provider` (legacy path), re-emit it now:
+
+```bash
+if [[ "$ANSWER_CHANGELOG" != "none" && ! -f "$REPO_ROOT/.ai/release-guide.md" ]]; then
+  mdcc init --name "$ANSWER_NAME" --provider "$ANSWER_CHANGELOG" --force
+fi
+```
+
+If `$ANSWER_CHANGELOG == "none"` and no runbook exists, **skip** — the user can re-run `/flow:onboard` later (or create the file manually) once they pick a provider. Leave a one-line note in the Step 6 report so the gap is visible.
+
 ### 4e. What we DON'T touch
 
 - `motion`, `responsive.densityMap`, `responsive.breakpoints`, `boundaries`, `ux`, `skills` — these are intentional choices the user makes after the project starts taking shape. Plugin skills work with defaults until the user tunes them.
@@ -317,7 +340,10 @@ Conventions
 
 Integrations
   tracker.provider:            $ANSWER_TRACKER
-  (configure mcp + defaults via `mdcc config set integrations.tracker.*`)
+  changelog.provider:          $ANSWER_CHANGELOG
+  changelog.scope:             $ANSWER_CHANGELOG_SCOPE (if monorepo)
+  release-guide:               .ai/release-guide.md <scaffolded | skipped (provider = none)>
+  (configure mcp + defaults via `mdcc config set integrations.<key>.*`)
 
 CLAUDE.md
   status:                      <present at <path> | missing — run /init>

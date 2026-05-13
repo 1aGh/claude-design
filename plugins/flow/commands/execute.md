@@ -176,7 +176,7 @@ For each completed task, list:
 
 After all validations pass, ask:
 
-> **All validations passed. Ready to commit?** I'll create a conventional commit with a changeset if needed.
+> **All validations passed. Ready to commit?** I'll create a conventional commit with a changelog entry if your project's `integrations.changelog.provider` calls for one (run `/flow:release-changelog` to author).
 
 If the user confirms, execute the commit workflow (follow `.claude/commands/commit.md` steps).
 

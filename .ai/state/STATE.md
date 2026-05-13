@@ -3,14 +3,14 @@
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
 **Workflow:** feature-delivery — md-claude v1.0 roadmap
-**Phase:** Phase 1 — contribute-infra + Changesets
+**Phase:** Phase 3 — flow changelog integration + /flow:release
 **Status:** done
 **Started:** 2026-05-12
 **Updated:** 2026-05-12
 **Active task:** —
 **Active plan:** —
-**Last archived plan:** `.ai/plans/archive/phase-1-contribute-infra-changesets.md`
-**Branch:** `infra/phase-1-contribute-changesets`
+**Last archived plan:** `.ai/plans/archive/phase-3-flow-changelog.md`
+**Branch:** `main`
 
 ## Loaded skills (skill-loader)
 
@@ -33,6 +33,7 @@ Consider `/flow:make-skill-template` for **fumadocs** and **hocuspocus** if thei
 
 - DDR-001 Monorepo with single npm publisher (Phase 1)
 - DDR-002 Release flow via Changesets, with parity-preserving wrapper (Phase 1)
+- DDR-003 `/flow:release` walks user-authored runbook instead of dispatching on provider (Phase 3)
 
 ## Blockers
 
@@ -52,8 +53,24 @@ Consider `/flow:make-skill-template` for **fumadocs** and **hocuspocus** if thei
 | 2026-05-12 | Phase 1 | Started `/flow:execute phase-1`. Branch `infra/phase-1-contribute-changesets` cut from `main`. |
 | 2026-05-12 | Phase 1 | Tasks 1–9 + DDR-001/002 landed. Local CI smoke green (lint/test/parity/tarball/changeset-status). Awaiting `/flow:done`. |
 | 2026-05-12 | done | `/flow:done` — Phase 1 closeout. Plan archived; retro recorded; reverted out-of-scope biome JSX reformat at review gate. Next: Phase 2 (Fumadocs docs site) or Phase 3 (flow ↔ design changeset). |
+| 2026-05-12 | Phase 3 | `/flow:execute phase-3` — schema + `/flow:release-changelog` + `/flow:release` + onboard auto-detect + de-hardcode + DDR-003. Worked directly on `main` (no branch cut, user's choice). Docs pages (Task 11) deferred to Phase 2. |
+| 2026-05-12 | done | `/flow:done` Phase 3 — DDR-003 written, changeset queued (minor), retro recorded, plan archived. CLAUDE.md debrief skipped (no new convention). Next: Phase 2 (docs site) or any of Phase 4–10. |
 
 ## Execution Progress
+
+### Phase 3 — Tasks (flow changelog integration + /flow:release)
+
+- [x] Task 1: Schema — `integrations.changelog` (provider/scope/releaseGuide/mcp/defaults) ✅
+- [x] Task 2: Skeleton default `{changelog: {provider: none}}` ✅
+- [x] Task 3: `/flow:release-changelog` command (changesets impl + stub for others) ✅
+- [x] Task 4: `/flow:validate` Step 7b — non-blocking changelog hygiene ✅
+- [x] Task 5: `/flow:done` Step 4b — overridable changelog reminder ✅
+- [x] Task 6: DDR-keeper SKILL.md — provider-choice is DDR-worthy ✅
+- [x] Task 7: De-hardcoded `changeset` in `execute.md:179` + `quick.md:37` ✅ (grep clean)
+- [x] Task 8: `release-guide.md` template + `mdcc init --provider` propagation ✅ (smoke-tested 4 providers)
+- [x] Task 9: `/flow:onboard` Q7 auto-detect + scaffold ✅
+- [x] Task 10: `/flow:release` runbook walker ✅
+- [ ] Task 11: Docs pages — **deferred** (Phase 2 site dependency, tracked as carry-over)
 
 ### Phase 1 — Tasks
 

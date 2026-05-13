@@ -62,6 +62,7 @@
     "tracker": { "provider": "none" },
     "analytics": { "provider": "none" },
     "ci": { "provider": "none" },
-    "design": { "provider": "none" }
+    "design": { "provider": "none" },
+    "changelog": { "provider": "none" }
   }
 }

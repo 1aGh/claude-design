@@ -34,7 +34,7 @@ If any criterion fails, redirect:
 - Database schema changes
 - Changes that affect CI/CD configuration
 - Security-sensitive changes (auth, permissions, secrets)
-- Changes that require a changeset
+- Changes that need a release-note entry (per `integrations.changelog.provider`) — `/flow:quick` skips changelog authoring; route through `/flow:plan` instead, or run `/flow:release-changelog` post-merge.
 
 If the change falls into any of these categories, stop and redirect to `plan-feature`.
 

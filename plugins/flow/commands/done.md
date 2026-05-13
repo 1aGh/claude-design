@@ -49,6 +49,27 @@ Run `/code-review` on uncommitted changes. This version sequences:
 
 The review report at `.ai/logs/code-reviews/<branch-name>.md` is committed with the feature changes (linked in the PR description).
 
+### 4b. Changelog reminder (soft gate, overridable)
+
+> Same provider-dispatch shape as `/flow:validate` Step 7b. Non-blocking, but at `/done` it's an explicit prompt rather than a passive warning — closing out the feature is the right moment to remember the release note.
+
+Read `integrations.changelog.provider` from `.ai/workflows.config.json`.
+
+```
+IF provider === "changesets":
+  diff = git diff --name-only $(git merge-base main HEAD)..HEAD -- .changeset/
+  IF no new .changeset/*.md on the branch:
+    PROMPT: "No changeset detected on this branch. Run /flow:release-changelog before closing? [y/N]"
+    IF y → run /flow:release-changelog, then loop back here once authored.
+    IF N → record override reason ("user-visible? <reason>") in the PR description under `## Notes`.
+ELIF provider IN (git-cliff, conventional, custom):
+  PRINT: "[done] changelog: provider `<name>` not yet implemented — author your release note manually."
+ELSE (none):
+  skip silently
+```
+
+The override path is intentional: not every PR ships user-visible change (chore, infra, internal refactor). The reminder exists so the team makes that call **consciously**, not by forgetting.
+
 ### 5. Commit
 
 Conventional commit. Format:
