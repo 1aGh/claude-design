@@ -1,5 +1,18 @@
 # @1agh/md-claude
 
+## 0.12.0
+
+### Minor Changes
+
+- **design:** add `ux-research-agent` for unbiased discovery + strip brand precedents from the plugin.
+
+  The design-system bootstrap questionnaire previously showed the same hardcoded option ladder (mood / signature / iconography / density / typography / voice) to every project regardless of domain, and plugin docs seeded the orchestrator with brand-name precedents (Linear/Figma/Stripe/Vercel/etc. in CLAUDE.md retros, `_MAPPING.md` fixed answers, agent examples) that got parrotted back into brief proposals.
+
+  - New `design:ux-research-agent` with two modes — `discovery` (called from `/design:setup-ds` Round 0) and `ux-patterns` (called from `/design:new`). Runs 6–8 WebSearch queries across abstract source-type categories (awards / case-studies / indie portfolios / non-English regions / lateral industries / niche publications / heritage) and emits a payload the questionnaire consumes verbatim.
+  - Discovery Q5/Q6/Q7/Q8 are now payload-sourced (were hardcoded "stable across projects"). Q9/Q11/Q12 keep their scaffold logic via effect-family classification in `_MAPPING.md`, but the answer pool is payload-generated per project.
+  - Brand-precedent purge: removed brand-name lists from `CLAUDE.md`, `SKILL.md` retro examples, `_MAPPING.md` hardcoded answer tables, `/design:setup-ds` example invocation, and `brand-critic` / `typography-critic` prose. Runtime config at `plugins/design/agents/_ux-research-config.json` holds only the abstract WebSearch source-type categories.
+  - Cache uses brief-hash exact match (sha8 of brief verbatim) so reworded briefs get fresh research instead of fuzzy-matched cache reuse.
+
 ## 0.11.0
 
 ### Minor Changes
