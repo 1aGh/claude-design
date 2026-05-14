@@ -82,6 +82,7 @@ Industrial-catalogue mood · Paper & Ink palette · Berkeley-forward mono · har
 | Canvas | DS | Platform | Artboards | Phase coverage | Notes |
 |---|---|---|---:|---|---|
 | `ui/Canvas Viewport.html` ★ | project | desktop | 10 | 3.5 / 4 / 5 / 6 / 8 / 12 | Dev-server canvas meta-design — every viewport state v1.0 → v1.3 (infinite canvas, draw, pin-comments, presentation, live collab, inspector + layers, project+DS tree, DS view, comments list). [Sidecar](./ui/Canvas%20Viewport.meta.json) · [Envelope](./_history/canvas-viewport/000-envelope.md) |
+| `ui/Docs Site.html` ★ | project | desktop | 4 | docs / marketing | Re-skin of fumadocs site under MDCC-DSN/01 — marketplace landing (catalog SKU grid + install snippet) + standalone docs (3-pane shell, `/design:new` article, cmd-K palette modal). [Sidecar](./ui/Docs%20Site.meta.json) · [Envelope](./_history/docs-site/000-envelope.md) |
 
 ## Research + history
 

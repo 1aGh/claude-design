@@ -1,0 +1,23 @@
+{
+  "title": "Docs Site",
+  "subtitle": "marketplace landing + standalone docs · re-skinned fumadocs (site/) under MDCC-DSN/01",
+  "brief": "udelej navrh docs site. Vychazej z fumadocs co tam je ted ale priprav landing page a pak samostatny docs",
+  "platform": "desktop",
+  "designSystem": "project",
+  "opt_out_scope": "palette",
+  "sections": [
+    {
+      "id": "docs-site",
+      "title": "Docs site · MDCC redesign",
+      "artboards": [
+        { "id": "landing",      "label": "DS-01 · MARKETPLACE LANDING",    "width": 1440, "height": 900 },
+        { "id": "docs-index",   "label": "DS-02 · DOCS · INDEX",           "width": 1440, "height": 900 },
+        { "id": "docs-article", "label": "DS-03 · DOCS · ARTICLE",         "width": 1440, "height": 900 },
+        { "id": "cmd-k",        "label": "DS-04 · CMD-K · GLOBAL PALETTE", "width": 1440, "height": 900 }
+      ]
+    }
+  ],
+  "created": "2026-05-15",
+  "envelope_path": ".design/_history/docs-site/000-envelope.md",
+  "ux_research_payload": ".design/_history/_system/project-73477bbc-domain-research-ux-patterns.json"
+}

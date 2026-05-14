@@ -84,6 +84,33 @@ Shadows are absent. `--shadow-sm/md/lg` are all `none`. `--shadow-focus` is the 
 
 ---
 
+## Token usage guide
+
+The pillar table above lists what the tokens *are*. This table lists what they're *for* — the role each token plays in the composition. Read it before reaching for `--accent-active` to silence a contrast warning, or `--bg-3` to "make the panel pop". Sibling tokens carry role conventions, not just lightness deltas.
+
+| Token | Use for | Don't use for |
+|---|---|---|
+| `--accent` (light: 56% L · dark: 72% L) | Brand stamps, decorative borders, large-text CTAs (≥ 18px or ≥ 14px bold), filled buttons, h2 numerals, syntax-highlight accents, callout-tip rules | Body-text links on paper (fails 4.5:1) |
+| `--accent-hover` (50% / 78%) | Hover state for `--accent`-filled elements (button bg on hover, stamp on hover) | Static / non-interactive surfaces |
+| `--accent-active` (44% / 84%) | Body-text links on paper, breadcrumb tail, ≤ 12px SKU labels, sidebar active-item text — anywhere brand-on-paper text needs ≥ 4.5:1 | Solid fills, decorative stamps, button backgrounds (loses brand recognition — reads as "different brand color than the DS") |
+| `--accent-fg` (98% / 14%) | Paper-on-stamp text — text inside `--accent`-filled buttons / chips | Anywhere outside an accent-filled surface |
+| `--accent-tint` (92% / 28%) | Faint cell wash for accent-tagged rows / callout strips | Active / focused states (too low-contrast) |
+| `--fg-0` (20% / 94%) | Primary ink — body text on paper, headings | Borders (use `--border-strong` for structural rules) |
+| `--fg-1` (38% / 78%) | Secondary text, footer meta, sub-headers | Body paragraphs (washes out long-form reading) |
+| `--fg-2` (52% / 60%) | Tertiary text, captions, code comments, muted labels | Headings, primary content |
+| `--fg-3` (68% / 44%) | `:disabled` state ONLY (placeholder, disabled labels) | Live text (fails 4.5:1) |
+| `--bg-0` (97.5% / 13%) | Page background — the paper / phosphor canvas | Cards, panels (those want a tone shift) |
+| `--bg-1` (95.5% / 17%) | Card / panel background — first elevation step | Page bg, deeply nested popovers |
+| `--bg-2` (93% / 20%) | Nested panel / popover bg — second elevation step | Page bg, primary cards |
+| `--bg-3` / `--bg-4` (89.5–85% / 24–28%) | Hover / pressed surface states; subtle row-hover; input bg when fields need to read as "wells" | Static panels (reads as a hover state stuck on) |
+| `--border-subtle` (86% / 28%) | Faint group separators, low-emphasis dividers inside dense lists | Anywhere a rule should be visible (vanishes on `--bg-1`) |
+| `--border-default` (74% / 40%) | Card borders, panel dividers, input edges, the catalog-grid 1px lattice | Signature h2 underlines, hero rules (use `--border-strong`) |
+| `--border-strong` (48% / 58%) | Signature 1px structural rules — h2 underline, hero divider, top-nav border, SKU header rule | Subtle group dividers (overpowers the field) |
+
+**Why this table exists.** Without a role map, a11y mass-migrations swap `--accent` → `--accent-active` to chase contrast across every site of use — including fills, where contrast was never the issue. The result reads as "DS drift" even though both ends of the swap are tokens. See the Docs Site retro at `.ai/logs/system-reviews/docs-site-design-generation-review.md` for the incident this table patches. The `design-system-keeper` agent reads this section as its audit source.
+
+---
+
 ## Voice — the htmx-grain
 
 The microcopy register is **Irreverent developer voice**. The visual layout is catalog-grade serious; the words sit on top of it like Justine Tunney annotating a U.S. Graphics catalog.
