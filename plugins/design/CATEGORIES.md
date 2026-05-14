@@ -24,7 +24,7 @@ Default verbs. No prefix. Members:
 | `/design:critic` | Spawn the critic panel (or single agent / all critics) |
 | `/design:browse` | Boot the local dev server |
 | `/design:rollback` | Undo the last edit (snapshot-based) |
-| `/design:screenshot` | Capture a screenshot of the active canvas |
+| `/design:screenshot` | Capture a screenshot of the active canvas (`--full`/`--screen <id>`/`--element <id>`/`--all-screens`/`--selector <css>`) |
 | `/design:handoff` | Migrate the active canvas to a production target |
 | `/design:help` | Print this grouped index |
 
@@ -74,6 +74,7 @@ This makes autocomplete predictable — typing `/design:setup-` shows only the t
 | `/design:docs` | `/design:setup-docs` | v0.8 | Categorization to `setup-*` group |
 | `/design` (compat stub) | removed | v0.9 | One-version compat retired per the v0.8 contract |
 | `/design:setup-onboard` | `/design:init` | post-v0.9 | Bare-verb alias mirroring Claude Code's built-in `/init`; namespaced via `name: design:init` frontmatter |
+| `/design:screenshot` flags expanded | `--full` only → `+ --screen/--element/--all-screens/--selector` | Phase 13 | Stable element IDs (`data-dc-screen`/`data-dc-element`) plus canonical helper `dev-server/bin/screenshot.sh` (agent-browser primary, playwright fallback). Inline `agent-browser navigate + screenshot` bash blocks removed across commands/agents/skills. |
 
 ## Adding a new command
 

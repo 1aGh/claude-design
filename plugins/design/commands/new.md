@@ -60,18 +60,10 @@ Opt-out flagy (pro vědomé výjimky):
 
 ### 0. Pre-flight: bootstrap detection
 
-Before scaffolding a canvas, check whether the project has a usable design system.
+Before scaffolding a canvas, check whether the project has a usable design system. Canonical recipe is `${CLAUDE_PLUGIN_ROOT}/dev-server/bin/bootstrap-check.sh` — exits 0 (ready) / 10 (needs `/design:init`) / 11 (needs `/design:setup-ds`). Use `--shell-export` to populate `HAS_DS`/`CONFIG_PRESENT`/`KNOWN_DS`/`DEFAULT_DS`/`REPO_ROOT`/`BOOTSTRAP_EXIT`:
 
 ```bash
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-
-CONFIG_PRESENT=false
-[[ -f "$REPO_ROOT/.design/config.json" ]] && CONFIG_PRESENT=true
-
-HAS_DS=false
-if [[ -d "$REPO_ROOT/.design/system" ]] && find "$REPO_ROOT/.design/system" -mindepth 1 -maxdepth 1 -type d | grep -q .; then
-  HAS_DS=true
-fi
+eval "$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/bootstrap-check.sh" --shell-export)"
 ```
 
 | State | Action |
@@ -124,7 +116,11 @@ DS_ROOT=$(jq -r --arg ds "$TARGET_DS"   '.designSystems[] | select(.name == $ds)
 
 ### 2. Server lifecycle check (auto-start pokud chybí)
 
-Stejné jako u `/design:edit`.
+```bash
+PORT=$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/server-up.sh" --root "$REPO_ROOT")
+```
+
+Helper detekuje běžící server (PID + `curl /_health`), startuje znovu pokud stale, poll-uje 10 s. Stdout = port; diagnostic na stderr.
 
 ### 3. Validate name + resolve target path
 
@@ -293,36 +289,36 @@ Pokud validation fails, do not write. Re-prompt jednou s konkrétním fix-list. 
 
 **Always fires, regardless of `--no-critic`.** Reality check, ne quality check. Capture přes agent-browser na server URL (ne `file://`).
 
-**Per-artboard element screenshots are the default for `/design:new`** because new canvases are typically multi-artboard (3–8) and DesignCanvas's pan/zoom viewport means a single full-page snapshot misses everything outside the visible viewport. Read artboard ids from the just-written `.meta.json` (step 11 writes it; for the reality-check screenshot we infer ids from the generated JSX — `grep -oE 'DCArtboard id="[^"]*"' "$ACTIVE"`).
+**Per-artboard element screenshots are the default for `/design:new`** because new canvases are typically multi-artboard (3–8) and DesignCanvas's pan/zoom viewport means a single full-page snapshot misses everything outside the visible viewport. The canonical screenshot helper handles navigation, mount-poll, per-screen loop, and the agent-browser CLI gotchas in one call:
 
 ```bash
-PORT=$(jq -r .port "$DESIGN_ROOT/_server.json")
-URL="http://localhost:$PORT/$ACTIVE"                       # URL-escape spaces as %20
 HIST="$DESIGN_ROOT/_history/$SLUG"
 mkdir -p "$HIST"
 
-agent-browser navigate "$URL" >/dev/null 2>&1
-sleep 1.5                                                  # let React+Babel mount the canvas
-
-# Per-artboard loop — selector is the FIRST positional arg, path is the SECOND.
-# No `--` separator needed in this form (that was for the `--full` mode).
-for ID in $(grep -oE 'DCArtboard id="[^"]+"' "$ACTIVE" | sed -E 's/.*id="([^"]+)".*/\1/'); do
-  agent-browser eval "document.querySelector('[data-dc-slot=\"$ID\"]').scrollIntoView({block:'center'})" >/dev/null
-  sleep 0.6
-  agent-browser screenshot "[data-dc-slot=\"$ID\"]" "$HIST/000-baseline-$ID.png"
-done
-ls -la "$HIST"/000-baseline-*.png >/dev/null 2>&1 || echo "⚠ no baseline screenshots written"
+bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" \
+  --all-screens \
+  --out-dir "$HIST" \
+  --timeout 10 \
+  || echo "⚠ baseline screenshots failed — see screenshot.sh stderr above"
 ```
 
-**Why per-artboard wins for canvases (retro 2026-05-09).** During the iOS Bikeshare Signup session, full-page snapshots showed only 1 of 6 artboards because DesignCanvas pans/zooms its world independently of document scroll. `[data-dc-slot]` element screenshots captured all 6 cleanly. See SKILL.md "Post-write reality check" for the full explanation.
+The helper:
+
+- Resolves URL from `_server.json` + `_active.json` (no manual port/URL math).
+- Polls for `[data-dc-screen]`/`[data-dc-slot]` mount up to `--timeout`s (Babel/React canvases need 2–4 s).
+- Scrolls each artboard into view (defeats `DesignCanvas` pan/zoom lazy-mount) and captures `<HIST>/<NNN>-screen-<id>.png`.
+- Picks engine `agent-browser` > `playwright` fallback automatically.
+- Stdout = written paths (one per line); diagnostic + engine choice in stderr.
+
+**Why per-artboard wins for canvases (retro 2026-05-09).** During the iOS Bikeshare Signup session, full-page snapshots showed only 1 of 6 artboards because DesignCanvas pans/zooms its world independently of document scroll. `[data-dc-screen]` element screenshots captured all 6 cleanly. See SKILL.md "Post-write reality check" for the full explanation.
 
 **Fallback for ≤ 3 artboards** (cheaper, single image):
 
 ```bash
-agent-browser screenshot --full -- "$HIST/000-baseline.png"
+bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --full --out "$HIST/000-baseline.png"
 ```
 
-State which approach was used in the print step. `--full` form REQUIRES the `--` separator (without it, the path is silently dropped — see Failure modes).
+State which approach was used in the print step (engine choice + per-screen vs. full is logged on the helper's stderr).
 
 Pokud blank render / timeout → warn `⚠ canvas rendered blank — likely JSX error`. Don't auto-rollback. Path tohoto screenshotu jde do final print + chat.md iteration 0 row.
 
@@ -428,7 +424,7 @@ For a new canvas:
 - **`frontend-design` Skill nedostupný** → **NE fail** — fall back to orchestrator-direct generation (viz krok 6). Final print MUSÍ flagnout `Generation: orchestrator-direct fallback` + suggestion `/plugin install frontend-design@claude-plugins-official` pro lepší kvalitu příští spuštění.
 - **Generated HTML porušuje validaci** (chybí tokens, hardcoded colors, single-page wrapper bez DCArtboard, …) → re-prompt jednou. Pokud zase rozbité, fail s detail.
 - **Post-write screenshot fails / canvas renders blank** → warn `⚠ canvas rendered blank — likely JSX error` ale neabortuj. Soubor existuje, user ho může otevřít manually + zjistit error v console.
-- **`agent-browser` reportuje "✓ Screenshot saved" ale soubor neexistuje** → CLI flag-vs-positional bug. Zkontroluj že příkaz používá `agent-browser screenshot --full -- "$PATH"` (positional s `--` separátorem), ne `--output "$PATH"`. Re-run s correct syntax.
+- **Screenshot reports success but file is missing** → použij canonical helper `dev-server/bin/screenshot.sh`. Helper detekuje silent-fail (PNG < 1 KB) a exit-codes 3. Inline `agent-browser screenshot …` voláním napřímo se vyhni — má CLI quirky kolem `--full` separátoru a `--output` které helper řeší za tebe.
 
 ### `--perfect` cost when budget tight
 

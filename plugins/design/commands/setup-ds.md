@@ -85,7 +85,7 @@ See `plugins/design/skills/design-system/SKILL.md` "Bootstrap flow" for the cano
 6. **Scaffold (fan-out)** — Batch A by main agent (tokens + chrome + READMEs + config); Batches B + C **fired in parallel via sub-agents** (5–8 slices). Sub-agents read tokens CSS + chrome + reference template, then RESTRUCTURE per the creativity rubric. Each updates its rows to `status: written`.
 7. Reconcile — main agent reads roster, asserts no pending rows remain.
 8. Copy-claim → asset-receipt sweep, then auto-run completeness-critic.
-9. Visual sanity — agent-browser screenshots of 3 signature specimens.
+9. Visual sanity — 3 signature specimen screenshots via `dev-server/bin/screenshot.sh`.
 10. **Aesthetic critic panel** — signature-moment + graphic-design + typography + copy fired in parallel on signature specimens. Honest verdicts surface in the completion block.
 11. Post-flight — print next-step block.
 

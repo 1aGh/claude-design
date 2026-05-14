@@ -10,6 +10,10 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
 
+- [DDR-008: `plugins/design/dev-server/bin/` is the canonical home for shared bash helpers](DDR-008-dev-server-bin-canonical-helper-home.md) — 2026-05-15, design/dev-server/bash/helpers/dry/ci/npm-distribution
+- [DDR-007: Stable element-id schema — paired `data-dc-screen` + `data-dc-element` attributes on canvas content](DDR-007-stable-element-id-schema-data-dc-attrs.md) — 2026-05-15, design/runtime/inspector/screenshots/critics/comments/schema
+- [DDR-006: Plugin commands/skills/agents declare `name: <plugin>:<slug>` in frontmatter](DDR-006-plugin-namespace-in-name-frontmatter.md) — 2026-05-13, flow/design/plugin-design/slash-commands/naming/deprecation
+- [DDR-005: Docs site stack and hosting — Fumadocs + Vercel](DDR-005-docs-site-stack-and-hosting.md) — 2026-05-13, infra/docs/fumadocs/vercel
 - [DDR-004: Flow commands use `<group>-<verb>` prefix; subdirectory namespacing is not viable](DDR-004-flow-command-naming-prefix-convention.md) — 2026-05-13, flow/naming/plugin-design/slash-commands/ux/deprecation
 - [DDR-003: `/flow:release` walks a user-authored runbook instead of dispatching on provider](DDR-003-release-runbook-vs-provider-dispatch.md) — 2026-05-12, flow/release/changelog/design-pattern
 - [DDR-002: Release flow via Changesets, with a wrapper preserving plugin parity](DDR-002-changesets-release-flow.md) — 2026-05-12, infra/release/changesets

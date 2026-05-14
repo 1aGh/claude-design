@@ -54,6 +54,20 @@ These files are user-facing runtime state — when changing the server, keep the
 
 The server fails loud if launched from a directory without `.design/` rather than serving an empty UI — preserve this behaviour, it's load-bearing for debugging "wrong project root" cases.
 
+### Dev-server helpers (`plugins/design/dev-server/bin/`)
+
+Single source of truth for the bash recipes that used to be duplicated across `/design:new`, `/design:edit`, `/design:screenshot`, `/design:setup-ds`, and every critic agent:
+
+| Helper | Purpose | Callers |
+| ------ | ------- | ------- |
+| `screenshot.sh` | Capture screenshots — `--full` / `--screen <id>` / `--element <id>` / `--selector <css>` / `--all-screens`. agent-browser primary, `npx playwright` fallback. | `/design:screenshot`, `/design:new` step 9 (per-artboard reality check), `/design:edit` steps 3.5 + 7, design-system bootstrap visual sanity, design + signature-moment critics. |
+| `bootstrap-check.sh` | Detect `.design/config.json` + DS folders. Exits 0 / 10 / 11. Modes: default / `--json` / `--shell-export`. | `/design:new`, `/design:edit` pre-flight (step 0). |
+| `server-up.sh` | PID + `/_health` check, respawn on stale, poll 10 s, stdout = port. | `/design:new`, `/design:edit`, `/design:screenshot` server lifecycle (step 2). |
+| `slug.sh` | Normalize `<active-relative-path>` → kebab slug for `_history/<slug>/`. | `/design:edit` step 3 + anywhere `_history/<slug>/` is computed. |
+| `_screenshot-playwright.mjs` | Element-scoped playwright fallback shim (called by `screenshot.sh` only). | `screenshot.sh` when `agent-browser` is unavailable. |
+
+When the CLI needs anything else at runtime on end-user machines, add it here and remember to add the directory to `package.json` `files` (the helpers ship via npm, not via the plugin marketplace).
+
 ### Plugin command naming
 
 Two conventions apply to every command, skill, and agent under `plugins/{flow,design}/`. See [DDR-004](./.ai/decisions/DDR-004-flow-command-naming-prefix-convention.md) (group-prefix filename) and [DDR-006](./.ai/decisions/DDR-006-plugin-namespace-in-name-frontmatter.md) (plugin-namespace in `name:`).

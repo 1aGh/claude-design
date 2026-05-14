@@ -96,24 +96,13 @@ The orchestrator passes `opt_out_scope: <scope>` in every critic's input envelop
 
 ## Server lifecycle — every command starts here
 
-The dev server is the source of truth for "what is the user looking at right now". Each command must, in order:
+The dev server is the source of truth for "what is the user looking at right now". Canonical recipe is `${CLAUDE_PLUGIN_ROOT}/dev-server/bin/server-up.sh` — it checks `_server.json`, verifies PID + `/_health`, respawns if stale, polls 10 s, and prints the port on stdout:
 
-1. **Check if running.** Read `<designRoot>/_server.json`. If it exists, read `pid`, `port`, `url`. Verify with:
-   - `kill -0 <pid>` (process alive?)
-   - `curl -fs http://localhost:<port>/_health` (responds with `{"app":"design",…}`)
-   - If both pass: server is up, use this URL.
-   - If either fails: stale info file, treat as not running.
-2. **If not running, auto-start.** Spawn in the background, passing the user's repo root explicitly (the plugin is installed centrally and serves *any* repo — never assume `__dirname`):
-   ```bash
-   nohup node ${CLAUDE_PLUGIN_ROOT}/dev-server/server.mjs \
-     --root "$CLAUDE_PROJECT_DIR" \
-     > "$CLAUDE_PROJECT_DIR/<designRoot>/_server.log" 2>&1 &
-   disown
-   ```
-   If `$CLAUDE_PROJECT_DIR` is empty (regular Bash tool runs may not have it), server falls back to `process.cwd()` — still the user's repo because the Bash tool inherits the project CWD. Then poll `_server.json` + `/_health` for up to ~10 seconds. If it doesn't come up, fail with the log path.
-3. **Browser** — server auto-opens on its own boot (unless `NO_OPEN=1`). The orchestrator does not open browsers.
+```bash
+PORT=$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/server-up.sh" --root "$REPO_ROOT")
+```
 
-**Never start a second instance** if `_server.json` says one is alive on a port that responds to `/_health`.
+Diagnostic goes to stderr (`✓ server alive pid=… port=…` / `→ starting dev server …` / `✗ server start timeout`). The helper passes the user's repo root explicitly — the plugin is installed centrally and serves *any* repo, never assume `__dirname`. **Never start a second instance** by hand; `server-up.sh` is idempotent and the only sanctioned path. Server auto-opens the browser on its own boot (unless `NO_OPEN=1`).
 
 ## Active state schema
 
@@ -234,66 +223,37 @@ Default. Edits the active canvas inline.
 
 ### Post-write reality check — confirmation screenshot
 
-**Always fires after a successful edit / generate, regardless of `--no-critic`.** This is reality check (does the file render?), not quality check (is it good?). It's cheap, it costs one agent-browser call, and it's the baseline both critics and rollback compare against.
+**Always fires after a successful edit / generate, regardless of `--no-critic`.** This is reality check (does the file render?), not quality check (is it good?). It's cheap, costs one helper call, and is the baseline both critics and rollback compare against.
+
+Single source of truth is `${CLAUDE_PLUGIN_ROOT}/dev-server/bin/screenshot.sh`. It resolves URL from `_server.json` + `_active.json`, polls for canvas mount (Babel/React takes 2–4 s), selects engine (`agent-browser` > `playwright` fallback), and emits diagnostic on stderr.
 
 ```bash
-SLUG=...                                 # already computed for snapshots
-HIST=<designRoot>/_history/$SLUG
-PORT=$(jq -r .port <designRoot>/_server.json)
-URL="http://localhost:$PORT/<canvas_path>"        # URL-escape spaces as %20
+HIST="<designRoot>/_history/$SLUG"
 OUT="$HIST/$NNN-baseline.png"
-
-# Two-step: navigate first, then screenshot. agent-browser screenshot does NOT
-# accept a URL argument — its signature is `screenshot [selector] [path]`.
-agent-browser navigate "$URL" >/dev/null 2>&1
-sleep 1.5                                          # let React+Babel mount
-
-# IMPORTANT: path MUST be passed as positional arg with `--` separator.
-# `--output <path>` does NOT work — the CLI silently treats `--output` as a
-# literal positional and reports "✓ Screenshot saved to --output" without
-# writing the file. Always verify with `ls -la "$OUT"` after the call.
-agent-browser screenshot --full -- "$OUT"
-ls -la "$OUT" >/dev/null 2>&1 || echo "⚠ screenshot file not written"
+bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --full --out "$OUT"
 ```
 
-Why this matters:
+Why this step matters:
 
 - **Babel-standalone runtime errors don't surface as HTTP errors** — the file serves 200 even if JSX fails to mount. Without a render check, "wrote 600 lines + 200 OK" is a false positive.
 - **Critics already auto-capture if missing**, but `--no-critic` skips the entire loop. Without this step, the user sees no visual confirmation when they explicitly opt out of critique.
 - **Rollback diffs need a baseline.** Comparing screenshots across snapshots is only useful if every snapshot has one.
 
-**Lazy-mount + pan-zoom caveat (canvases since commit 7a00561).** `DesignCanvas` has its own pan/zoom viewport and lazy-mounts artboards as they enter view. A single full-page screenshot at default viewport height captures only what's currently positioned in the canvas viewport — typically 1–3 artboards out of 6+. For canvases with > 3 artboards, **per-artboard element screenshots are the reliable unit**:
+**Lazy-mount + pan-zoom caveat (canvases since commit 7a00561).** `DesignCanvas` has its own pan/zoom viewport and lazy-mounts artboards as they enter view. A single full-page screenshot at default viewport height captures only what's currently positioned in the canvas viewport — typically 1–3 artboards out of 6+. For canvases with > 3 artboards, **per-screen element screenshots are the reliable unit** — use `--all-screens`:
 
-1. **Per-artboard element screenshots (PREFERRED for canvases with > 3 artboards):** loop over `[data-dc-slot="<id>"]` selectors. Element screenshots ignore the canvas's pan/zoom and capture just the artboard's bounding box. Each gets its own file — higher fidelity and easier diff than one tall image.
+```bash
+bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" \
+  --all-screens --out-dir "$HIST" --timeout 10
+```
 
-   ```bash
-   # Read artboard ids from the canvas's .meta.json (sidecar, written by /design:new)
-   META="${ACTIVE%.html}.meta.json"
-   for ID in $(jq -r '.sections[].artboards[].id' "$META" 2>/dev/null); do
-     agent-browser eval "document.querySelector('[data-dc-slot=\"$ID\"]').scrollIntoView({block:'center'})" >/dev/null
-     sleep 0.6                                                # let lazy-mount commit
-     agent-browser screenshot "[data-dc-slot=\"$ID\"]" "$HIST/$NNN-baseline-$ID.png"
-   done
-   ```
+The helper queries `[data-dc-screen],[data-dc-slot]` in the live DOM, scrolls each artboard into view (defeats `DesignCanvas` pan/zoom lazy-mount), and writes `<NNN>-screen-<id>.png` per artboard. Output paths go to stdout (one per line), engine choice + per-screen status on stderr.
 
-   The selector is the **first** positional arg, the path is the **second** — no `--` separator needed in this form.
-
-2. **Eval-then-scroll + full snapshot (fallback for ≤ 3 artboards):** when the canvas fits the viewport, the simpler full-page approach works.
-
-   ```bash
-   agent-browser eval "document.querySelectorAll('[data-dc-slot]').forEach(el => el.scrollIntoView())" >/dev/null
-   sleep 2
-   agent-browser screenshot --full -- "$OUT"
-   ```
-
-   For multi-artboard canvases this captures only the visible viewport (DesignCanvas's pan/zoom world is *not* the document scroll), so state in the report: `Baseline: 000-baseline.png (visible viewport only — DesignCanvas pan/zoom limit; per-artboard snapshots recommended for full coverage)`.
-
-**Why per-artboard wins for canvases (retro 2026-05-09).** During the iOS Bikeshare Signup session, full-page snapshots showed only 1 of 6 artboards because DesignCanvas pans/zooms its world independently of document scroll. `[data-dc-slot]` element screenshots captured all 6 cleanly. Promote per-artboard to default for canvases generated by `/design:new`.
+**Why per-screen wins for canvases (retro 2026-05-09).** During the iOS Bikeshare Signup session, full-page snapshots showed only 1 of 6 artboards because DesignCanvas pans/zooms its world independently of document scroll. `[data-dc-screen]` element screenshots captured all 6 cleanly. The `--all-screens` mode is the default for `/design:new`.
 
 Failure handling:
-- `agent-browser` reports success but file is empty / missing → CLI flag-vs-positional bug (see syntax note above). Re-run with `-- "$path"` form.
-- Screenshot capture timeout (5s default) → warn but don't fail the edit. The file already exists; the user can open it manually.
-- Screenshot dimensions zero / file empty → server is rendering blank — strong signal of a JSX error. Mark the report as `⚠ canvas rendered blank — likely JSX error, check console`. Do NOT auto-rollback (the file might be intentionally minimal).
+- Helper returns exit code 3 → capture failed (empty PNG, selector miss, or engine error). Surface stderr to the user — don't pretend the baseline exists.
+- Mount timeout → warn but don't fail the edit. The file already exists; the user can open it manually. Increase `--timeout` for heavy-JS canvases.
+- Both engines unavailable → helper exits 1; surface install hint (`agent-browser` or `playwright`) without rolling back the edit.
 
 Output is gitignored (lives under `_history/`), and is referenced from the iteration's chat.md row as `**Baseline:** {path}`.
 
@@ -323,7 +283,7 @@ Apply the change to that element only — match the selector / dom path. Do NOT 
 
 Use the Edit tool with `old_string` matching a unique substring of the selected element's HTML. If the outerHTML appears multiple times verbatim, fall back to the longer dom-path match (find the parent context that disambiguates).
 
-**Selection screenshot is mandatory** before building the scoped prompt. The selection JSON gives you WHAT (selector + outerHTML + bounds); only a screenshot gives you WHERE-IN-CONTEXT (neighbors, alignment, the visual conversation the element is part of). Fire `agent-browser open + screenshot --full` and `Read` the PNG into your context BEFORE the Edit tool call. See `/design:edit` step 3.5 for the canonical bash snippet. Editing from JSON describe alone is *tapping in the dark*; the studio iter-4 sidebar-active-item incident (3 rollback iterations before landing) is the canonical cost of skipping. Reference: `.ai/logs/system-reviews/design-edit-screenshot-habits-review.md`.
+**Selection screenshot is mandatory** before building the scoped prompt. The selection JSON gives you WHAT (selector + outerHTML + bounds); only a screenshot gives you WHERE-IN-CONTEXT (neighbors, alignment, the visual conversation the element is part of). Call `bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --full --out "<out>"` (plus an `--element <id>` shot when the selector contains `data-dc-element="…"`) and `Read` the PNG into your context BEFORE the Edit tool call. See `/design:edit` step 3.5 for the canonical snippet. Editing from JSON describe alone is *tapping in the dark*; the studio iter-4 sidebar-active-item incident (3 rollback iterations before landing) is the canonical cost of skipping. Reference: `.ai/logs/system-reviews/design-edit-screenshot-habits-review.md`.
 
 ### `/design:new <name> "<brief>"` — scaffold new canvas project
 
@@ -354,22 +314,21 @@ Restores the last snapshot of the active canvas. With `--steps N`, restores N ba
 5. Copy chosen snapshot back over the canvas file.
 6. Print: which snapshot restored, current snapshot count.
 
-### `/design:screenshot [--area <name>] [--selector <css>]` — capture
+### `/design:screenshot` — capture
 
-Operates on `_active.json`. Default `area = "full"`. Output goes to `_history/<slug>/screenshots/<NNN>-<area>.png` (gitignored).
+Operates on `_active.json`. Output goes to `_history/<slug>/screenshots/<NNN>-<area>.png` (gitignored). Flags: `--screen <id>`, `--element <id>`, `--selector <css>`, `--full` (default), `--all-screens`, `--area <label>`.
+
+All paths funnel through the canonical helper:
 
 ```bash
-# Two-step pattern — agent-browser screenshot does NOT take a URL arg.
-agent-browser navigate "<server_url>/<active_path>" >/dev/null
-sleep 1
-agent-browser screenshot ["<css selector>"] -- "<out>"   # path is positional with `--` separator
+bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --full --out "<out>"
+bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --screen <id> --out "<out>"
+bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --all-screens --out-dir "<dir>"
 ```
 
-Use the dev server's URL (`http://localhost:<port>/<designRoot>/...`), not `file://` — the server handles relative imports correctly.
+The helper picks `agent-browser` first, falls back to `npx playwright`, polls for canvas mount, and verifies PNG size > 0 before returning. Inline `agent-browser navigate + screenshot` blocks are deprecated — use the helper everywhere.
 
-The `--output <path>` flag form does NOT work — the CLI silently treats `--output` as a literal positional. Always use `-- "<path>"` and verify the file exists with `ls -la` after.
-
-If `_active.json.selected` is set and the user passed no `--selector`, default the screenshot selector to the selected element's `selector`. The screenshot will be just the focused element.
+If `_active.json.selected` is set and the user passed no flag, default to `--element <id>` when the selected element has `data-dc-element="…"`, otherwise fall through to `--selector "<saved-selector>"`. The screenshot is scoped to the focused element.
 
 ### `/design:critic` — review by specialist agents
 
@@ -816,6 +775,7 @@ Output: a single self-contained HTML file at <target_path>. The file MUST:
 12. **Restrained color discipline.** Per artboard: 1 primary fill, accent ≤ 3 instances, ≤ 3 type weights, no more than 2 chromatic surfaces. Loud beats subtle once; subtle beats loud everywhere.
 13. **Generous negative space.** Hero elements get ≥ 32 px breathing room from artboard edge. Content density target ≤ 60 % per screen; ≤ 40 % for editorial / hero screens.
 14. **Specific content, not placeholders.** Real-feeling names (Maya Chen, Pavel Novák), real phone formats (+420 777 123 456), real prices ("$4 / day"), real station names. NEVER use "Lorem", "John Doe", "555-0199", "$XX", or ALL-CAPS placeholder labels.
+15. **Element tagging for stable handles.** Every named region (hero, nav, card, list-row, form-field, CTA) gets `data-dc-element="<kebab-id>"`. The id is role-prefixed and brief-specific — e.g. `cta-get-started`, `card-hero`, `list-row-roster`, `field-email`, `nav-item-profile`. Artboards already get `data-dc-screen="<id>"` from the `DCArtboard` runtime; you only need to tag inner elements. This makes screenshots (`screenshot.sh --element <id>`), critic verdicts ("the `card-hero` block uses three different type weights"), and user comments stable across iterations — no fragile `:nth-child` selectors.
 
 User brief:
 {the brief}
@@ -863,7 +823,7 @@ If you're authoring a new helper that should be shared across all canvases (e.g.
 |---|---|---|
 | Generate new canvas (for `/design:new`) | See "Generation invocation" below — try Skill, fall back transparently | Required for `/design:new`. Envelope adapts to repo config. |
 | Slider explorer | `Skill(skill: "playground:playground", args: <envelope>)` | Optional, only when feedback mentions playground/explorer/tweak/slider. |
-| Screenshot canvas | `Bash: agent-browser screenshot ...` | Use server URL, not `file://`. |
+| Screenshot canvas | `Bash: bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --full --out "<out>"` | Helper resolves URL from `_server.json` + `_active.json`. Never call `agent-browser` directly. |
 | Spawn specialist critic | `Agent(subagent_type: "design-critic" \| "signature-moment-critic" \| ..., ...)` | Subagents run inline (no nested agents). Critics are exposed as `Agent` types from the design plugin. |
 | Server lifecycle | `Bash: curl + nohup` | See "Server lifecycle" section. |
 

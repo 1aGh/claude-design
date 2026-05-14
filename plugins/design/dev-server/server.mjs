@@ -617,6 +617,10 @@ const INSPECTOR_SCRIPT = `
     if (!(el instanceof Element)) return '';
     var path = [];
     while (el && el.nodeType === 1 && path.length < 8) {
+      var dscEl = el.getAttribute && el.getAttribute('data-dc-element');
+      if (dscEl) { path.unshift('[data-dc-element="' + dscEl + '"]'); break; }
+      var dscSc = el.getAttribute && el.getAttribute('data-dc-screen');
+      if (dscSc) { path.unshift('[data-dc-screen="' + dscSc + '"]'); break; }
       var sel = el.nodeName.toLowerCase();
       if (el.id) { sel = '#' + el.id; path.unshift(sel); break; }
       var cls = realClasses(el).slice(0, 2);
@@ -634,9 +638,13 @@ const INSPECTOR_SCRIPT = `
     var hops = [];
     while (el && el.nodeType === 1 && hops.length < 8) {
       var label = el.nodeName.toLowerCase();
-      if (el.id) label += '#' + el.id;
+      var dEl = el.getAttribute && el.getAttribute('data-dc-element');
+      var dSc = el.getAttribute && el.getAttribute('data-dc-screen');
+      if (dEl) label += '[data-dc-element="' + dEl + '"]';
+      else if (dSc) label += '[data-dc-screen="' + dSc + '"]';
+      else if (el.id) label += '#' + el.id;
       var cls = realClasses(el).slice(0, 2);
-      if (cls.length) label += '.' + cls.join('.');
+      if (cls.length && !dEl && !dSc) label += '.' + cls.join('.');
       hops.unshift(label);
       el = el.parentElement;
     }

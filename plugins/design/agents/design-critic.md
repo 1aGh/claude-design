@@ -47,14 +47,15 @@ opt_out_scope      # one of "palette" | "aesthetic" | "full" — see SKILL.md "O
 ## Pre-flight
 
 1. **Read inputs.** Canvas + tokens CSS (`<designRoot>/<config.tokensCssRel>`). If tokens CSS unreadable, fail loud — without authoritative tokens you can't judge compliance.
-2. **Capture screenshot if missing.** `agent-browser screenshot` does not take a URL arg; navigate first, then screenshot with positional path:
+2. **Capture screenshot if missing.** Use the canonical helper — it resolves URL, polls for canvas mount, and picks engine (`agent-browser` > `playwright` fallback):
    ```bash
-   agent-browser navigate "<server_url>/<canvas_path>" >/dev/null
-   sleep 1.5
-   agent-browser screenshot --full -- "<screenshots/NNN.full.png>"
-   ls -la "<screenshots/NNN.full.png>" >/dev/null 2>&1 || echo "⚠ screenshot not written"
+   bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --full --out "<screenshots/NNN.full.png>"
    ```
-   If `selected` is set, also capture an element-scoped screenshot: `agent-browser screenshot "<selected.selector>" -- "<screenshots/NNN.element.png>"`. The `--output <path>` flag form does NOT work — CLI silently treats it as positional.
+   If `selected` is set, also capture an element-scoped screenshot. Prefer `--element <id>` when the saved selector contains `data-dc-element="…"`; otherwise pass the full selector via `--selector`:
+   ```bash
+   bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --element "<id>" --out "<screenshots/NNN.element.png>"
+   ```
+   The orchestrator may have passed `screenshots.full` / `screenshots.screens` / `screenshots.element` paths in the input envelope — if so, read those directly and skip the capture step.
 3. **Load review references** (read these once, apply yourself — no nested invocations):
    - Project's a11y rules skill if present (look for `<project>-a11y-rules` style — e.g. `.claude/skills/dugmate-a11y-rules/SKILL.md` in Dugmate). If missing, fall back to WCAG 2.1 AA defaults.
    - The plugin's `design-system` pointer skill (`${CLAUDE_PLUGIN_ROOT}/skills/design-system/SKILL.md`).

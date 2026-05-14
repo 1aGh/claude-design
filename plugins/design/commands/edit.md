@@ -28,20 +28,10 @@ Project-specific hodnoty (designRoot, rootClass, tokens path, themeDefault) při
 
 ### 0. Pre-flight: bootstrap detection
 
-Before any edit work, check whether the project has a usable design system.
+Before any edit work, check whether the project has a usable design system. Canonical recipe — `${CLAUDE_PLUGIN_ROOT}/dev-server/bin/bootstrap-check.sh` — populates `HAS_DS`, `CONFIG_PRESENT`, `REPO_ROOT`, `KNOWN_DS`, `DEFAULT_DS`, `BOOTSTRAP_EXIT`:
 
 ```bash
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-
-# Config present?
-CONFIG_PRESENT=false
-[[ -f "$REPO_ROOT/.design/config.json" ]] && CONFIG_PRESENT=true
-
-# Any DS dir present? (single-DS layout: system/project/; multi-DS: system/<name>/)
-HAS_DS=false
-if [[ -d "$REPO_ROOT/.design/system" ]] && find "$REPO_ROOT/.design/system" -mindepth 1 -maxdepth 1 -type d | grep -q .; then
-  HAS_DS=true
-fi
+eval "$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/bootstrap-check.sh" --shell-export)"
 ```
 
 | State | Action |
@@ -67,30 +57,10 @@ TOKENS_REL=$(jq -r '.tokensCssRel // "system/colors_and_type.css"' "$CFG" 2>/dev
 ### 2. Server lifecycle (vždy první)
 
 ```bash
-# Check
-if [ -f "$DESIGN_ROOT/_server.json" ]; then
-  PID=$(jq -r .pid  "$DESIGN_ROOT/_server.json")
-  PORT=$(jq -r .port "$DESIGN_ROOT/_server.json")
-  if kill -0 $PID 2>/dev/null && curl -fs http://localhost:$PORT/_health > /dev/null; then
-    echo "✓ server running pid=$PID port=$PORT"
-  else
-    rm -f "$DESIGN_ROOT/_server.json"
-    NEEDS_START=1
-  fi
-else
-  NEEDS_START=1
-fi
-
-# Start if needed
-if [ -n "$NEEDS_START" ]; then
-  nohup node ${CLAUDE_PLUGIN_ROOT}/dev-server/server.mjs --root "${CLAUDE_PROJECT_DIR:-$PWD}" > "$DESIGN_ROOT/_server.log" 2>&1 &
-  disown
-  for i in 1 2 3 4 5 6 7 8 9 10; do
-    sleep 1
-    [ -f "$DESIGN_ROOT/_server.json" ] && curl -fs http://localhost:$(jq -r .port "$DESIGN_ROOT/_server.json")/_health > /dev/null && break
-  done
-fi
+PORT=$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/server-up.sh" --root "$REPO_ROOT")
 ```
+
+Helper detekuje běžící server (PID + `curl /_health`), startuje znovu při stale, poll-uje 10 s, stdout = port. Diagnostic na stderr (`✓ server alive pid=… port=…` / `→ starting dev server …`).
 
 ### 3. Read active canvas + selected element + open comments
 
@@ -107,9 +77,8 @@ SEL_VALID=$([[ -n "$SELECTED" && "$SEL_FILE" == "$ACTIVE" ]] && echo 1 || echo 0
 # inline (server keeps it in sync), so this is a single read.
 OPEN_COMMENTS=$(jq -c '[(.active_comments // [])[] | select(.status != "resolved")]' "$DESIGN_ROOT/_active.json" 2>/dev/null || echo '[]')
 
-# Slug + COMMENTS_FILE for the resolve path lower (write directly to authoritative storage).
-SLUG_PATH="${ACTIVE#$DESIGN_ROOT/}"
-SLUG=$(echo "$SLUG_PATH" | tr '/' '-' | tr ' ' '_' | tr '[:upper:]' '[:lower:]' | sed 's/\.html$//' | sed 's/^\.\+//')
+# Slug + COMMENTS_FILE for the resolve path (single source of truth: dev-server/bin/slug.sh).
+SLUG=$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/slug.sh" "${ACTIVE#$DESIGN_ROOT/}")
 COMMENTS_FILE="$DESIGN_ROOT/_comments/$SLUG.json"
 ```
 
@@ -135,17 +104,20 @@ jq --arg id "$ID" 'map(if .id == $id then .status = "resolved" | .resolved_at = 
 - Feedback compares ≥ 2 surfaces ("X doesn't match Y", "both files", "showcase and resize-panels") — screenshot **each named file**
 
 ```bash
-PORT=$(jq -r .port "$DESIGN_ROOT/_server.json")
-URL="http://localhost:$PORT/$ACTIVE"
-SLUG=...   # already computed in step 3
 HIST="$DESIGN_ROOT/_history/$SLUG"
 mkdir -p "$HIST"
 N=$(printf "%03d" $(($(ls "$HIST" 2>/dev/null | wc -l) + 1)))
 OUT="$HIST/$N-context.png"
 
-agent-browser open "$URL" >/dev/null
-sleep 1.5
-agent-browser screenshot --full -- "$OUT"
+# Canonical helper — auto-resolves URL from _server.json + _active.json,
+# polls for canvas mount, picks engine (agent-browser > playwright fallback).
+bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --full --out "$OUT"
+
+# If the selected element has a data-dc-element="<id>", grab a focused crop too:
+if [ "$SEL_VALID" = "1" ] && [[ "$(jq -r '.selected.selector // empty' "$DESIGN_ROOT/_active.json")" == *"data-dc-element="* ]]; then
+  EL_ID=$(jq -r '.selected.selector' "$DESIGN_ROOT/_active.json" | sed -nE 's/.*data-dc-element="([^"]+)".*/\1/p')
+  bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --element "$EL_ID" --out "$HIST/$N-context-element.png"
+fi
 ```
 
 **Then `Read` the PNG into the conversation** with the Read tool. The selection JSON gives you WHAT (selector + outerHTML + bounds); the screenshot gives you WHERE-IN-CONTEXT (neighbors, alignment, the visual conversation the element is part of). Editing from JSON alone is *tapping in the dark* — the bounds tell you where the box is, not what's next to it.
@@ -194,20 +166,12 @@ If `RESTORE=1`, copy back the snapshot and report drift to user. Don't leave bro
 **Always fires, regardless of `--no-critic`.** Reality check (does the file render?), ne quality check.
 
 ```bash
-PORT=$(jq -r .port "$DESIGN_ROOT/_server.json")
-URL="http://localhost:$PORT/$ACTIVE"               # URL-escape spaces as %20
-SLUG=...   # already computed
 OUT="$DESIGN_ROOT/_history/$SLUG/$NNN-baseline.png"
-
-# Two-step: navigate, then screenshot. agent-browser screenshot does NOT take
-# a URL arg — its signature is `screenshot [selector] [path]`. Path is
-# positional with `--` separator; `--output <path>` silently fails (CLI treats
-# it as a literal positional and reports success without writing the file).
-agent-browser navigate "$URL" >/dev/null
-sleep 1.5
-agent-browser screenshot --full -- "$OUT"
-ls -la "$OUT" >/dev/null 2>&1 || echo "⚠ baseline screenshot not written"
+bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --full --out "$OUT" \
+  || echo "⚠ baseline screenshot not written"
 ```
+
+Helper resolvuje URL z `_server.json` + `_active.json`, poll-uje pro canvas mount, vybírá engine (agent-browser > playwright fallback). Diagnostic na stderr.
 
 Screenshot path je referenced v final print + chat.md row. Pokud render blank → warn `⚠ canvas rendered blank — likely JSX error`, neabortuj (file exists, user může otevřít manually).
 

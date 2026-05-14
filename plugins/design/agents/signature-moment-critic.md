@@ -61,18 +61,15 @@ Mock fidelity is also slightly affected — under `aesthetic`/`full`, an emoji f
 
 ## Pre-flight
 
-1. **Read inputs.** Canvas + tokens CSS. Screenshot is essential here — your axes are mostly visual. If missing, capture (`agent-browser screenshot` does not take a URL arg; navigate first):
+1. **Read inputs.** Canvas + tokens CSS. Screenshot is essential here — your axes are mostly visual. If missing, capture via the canonical helper — it resolves URL, scrolls each artboard into view (defeats `DesignCanvas` lazy-mount), and picks engine:
    ```bash
-   agent-browser navigate "<server_url>/<canvas_path>" >/dev/null
-   sleep 1.5
-   # Lazy-mount: scroll all artboards into view so they actually mount before snapshot.
-   agent-browser eval "document.querySelectorAll('[data-artboard-id]').forEach(el => el.scrollIntoView())" >/dev/null
-   sleep 2
-   agent-browser screenshot --full -- "<screenshots/NNN-aspiration.full.png>"
-   ls -la "<screenshots/NNN-aspiration.full.png>" >/dev/null 2>&1 || echo "⚠ screenshot not written"
+   bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --full --out "<screenshots/NNN-aspiration.full.png>"
    ```
-   `--output <path>` flag form does NOT work — CLI treats it as positional and silently fails. Always use `-- "<path>"` and verify with `ls -la`.
-2. **Capture per-artboard screenshots if the canvas is multi-artboard** — one per `<DCArtboard id="…">`. Use the artboard's bounding rect via `agent-browser screenshot "[data-artboard-id='<id>']" -- "<screenshots/NNN-<id>.png>"` (selector is positional first arg, path second). Since DesignCanvas lazy-mounts (commit 7a00561), you MUST scroll each artboard into view before screenshotting it — otherwise selector matches nothing.
+2. **Capture per-artboard screenshots when the canvas is multi-artboard** — one per `<DCArtboard id="…">`. The helper iterates `[data-dc-screen]` / `[data-dc-slot]` automatically:
+   ```bash
+   bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --all-screens --out-dir "<screenshots-dir>"
+   ```
+   Each artboard gets its own `<NNN>-screen-<id>.png`. The orchestrator may have passed `screenshots.screens` map in the input envelope — read those directly and skip the capture.
 3. **Identify canvas type** — onboarding / dashboard / form / list / settings / marketing / pricing. Affects axis weighting (e.g. marketing canvases need higher signature-moment than settings).
 
 ## Six axes — score each 0–5

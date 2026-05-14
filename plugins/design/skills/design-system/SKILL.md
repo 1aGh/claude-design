@@ -527,41 +527,31 @@ all_ds:      false
 
 The critic emits a JSON verdict. If it returns **blockers**, the bootstrap flow surfaces them in the next-step block and recommends the user re-run with `--force` after addressing each. Warnings are listed in the completion message but do NOT block. Tier 3 (free-form) acknowledgements are listed informationally.
 
-### Visual sanity check (mandatory — agent-browser screenshots)
+### Visual sanity check (mandatory — canonical screenshot helper)
 
 > **This step exists because completeness-critic is structural only.** It cannot see that the rendered output looks like a generic public-component-library template. The screenshots feed the aesthetic critics in the next step AND give the user a fast visual proof.
 
-**If `agent-browser` is not on PATH**, surface this as a warning in the next-step block ("install agent-browser for visual verification") and skip to the aesthetic critic step using only the source HTML — but make the gap explicit to the user.
+Use the canonical screenshot helper — `${CLAUDE_PLUGIN_ROOT}/dev-server/bin/screenshot.sh`. It auto-detects `agent-browser` and falls back to `npx playwright` so the step doesn't silently skip when one engine is missing. If both are unavailable, surface a warning in the next-step block ("install agent-browser or playwright for visual verification") and continue with source-HTML-only review — make the gap explicit.
 
-**agent-browser CLI cheat-sheet** (it is NOT Playwright):
+**1. No dev server needed for raw-canvas screenshots.** Use `file://` URLs via the helper's `--url` flag. The dev server's `http://localhost:<port>/...` URL wraps the canvas in browse chrome (file tree + tabbed iframe), and aesthetic critics would score that wrapping as part of the design — caught on the studio-2 bootstrap retro (BAD-2). `file://` bypasses the wrapping and gives the critics a clean canvas to score.
 
-| Goal | Command |
-|---|---|
-| Open a URL | `agent-browser open "<url>"` |
-| Full-page screenshot | `agent-browser screenshot --full <abs-path.png>` |
-| Wait for content | `agent-browser wait <selector-or-ms>` |
-| Resize viewport | not a top-level command — use `agent-browser eval "window.resizeTo(W, H)"` or pass `--viewport WxH` when supported by your build |
-| Help on any cmd | `agent-browser <cmd> --help` |
+**2. Screenshot 3 signature specimens** to `<designRoot>/_history/_system/<ds>-000-bootstrap-screenshots/`:
 
-The studio 2026-05-13 re-bootstrap wasted a Bash turn calling `agent-browser resize` (invalid). Don't.
+- `colors-accent.png` — proves the accent color renders as intended
+- `empty-state.png` — proves the brand/personality moment (mascot, copy voice) lands
+- `ui_kits-desktop-showcase.png` — proves the DS works on a real product surface (the multi-screen showcase, not the catalog launcher)
 
-When available:
+```bash
+OUT_DIR="<designRoot>/_history/_system/<ds>-000-bootstrap-screenshots"
+mkdir -p "$OUT_DIR"
+for specimen in colors-accent empty-state ui_kits-desktop-showcase; do
+  bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" \
+    --url "file://<absolute-repo-root>/<designRoot>/system/<ds>/preview/${specimen}.html" \
+    --full --out "$OUT_DIR/${specimen}.png"
+done
+```
 
-1. **No dev server needed for raw-canvas screenshots.** Use `file://` URLs directly. The dev server's `http://localhost:<port>/...` URL wraps the canvas in browse chrome (file tree + tabbed iframe), and aesthetic critics will score that wrapping as part of the design — caught on the studio-2 bootstrap retro (BAD-2). `file://` bypasses the wrapping and gives the critics a clean canvas to score.
-2. **Screenshot 3 signature specimens** to `<designRoot>/_history/_system/<ds>-000-bootstrap-screenshots/`:
-   - `colors-accent.png` — proves the accent color renders as intended
-   - `empty-state.png` — proves the brand/personality moment (mascot, copy voice) lands
-   - `ui_kits-desktop-showcase.png` — proves the DS works on a real product surface (the multi-screen showcase, not the catalog launcher)
-
-   ```bash
-   agent-browser open "file://<absolute-repo-root>/<designRoot>/system/<ds>/preview/colors-accent.html"
-   agent-browser screenshot --full "<designRoot>/_history/_system/<ds>-000-bootstrap-screenshots/colors-accent.png"
-   # … repeat for the other two
-   ```
-
-   **Only fall back to the dev-server URL** if the canvas hard-depends on a server-side feature (rare). If you must use the server URL, append `?raw=1` (planned dev-server enhancement; until shipped, accept that the screenshot will include browse chrome and warn the critics in their prompt that the dev-server UI surrounds the canvas).
-
-3. **Read each screenshot back** with the `Read` tool so they're in your visual context. Direct visual scrutiny BEFORE you spawn the aesthetic critics — if the accent is obviously the wrong hue or the layout is obviously broken, fix it in source NOW rather than asking critics to confirm what you can already see.
+**3. Read each screenshot back** with the `Read` tool so they're in your visual context. Direct visual scrutiny BEFORE you spawn the aesthetic critics — if the accent is obviously the wrong hue or the layout is obviously broken, fix it in source NOW rather than asking critics to confirm what you can already see.
 
 ### Aesthetic critic panel (mandatory)
 

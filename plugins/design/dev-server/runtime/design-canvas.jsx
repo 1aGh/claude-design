@@ -604,6 +604,7 @@ function DCArtboardFrame({ sectionId, artboard, label, order, onRename, onReorde
     <div
       ref={ref}
       data-dc-slot={id}
+      data-dc-screen={id}
       style={{
         position: 'relative',
         flexShrink: 0,

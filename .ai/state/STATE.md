@@ -3,13 +3,13 @@
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
 **Workflow:** feature-delivery — md-claude v1.0 roadmap
-**Phase:** plugin-namespace-and-init-rename — **done** (ad-hoc, no plan)
+**Phase:** phase-13-stable-element-ids-and-canonical-screenshots — **done**
 **Status:** done
 **Started:** 2026-05-12
-**Updated:** 2026-05-13
+**Updated:** 2026-05-15
 **Active task:** —
 **Active plan:** —
-**Last archived plan:** `.ai/plans/archive/design-system-init.md`
+**Last archived plan:** `.ai/plans/archive/phase-13-stable-element-ids-and-canonical-screenshots.md`
 **Branch:** `main`
 
 ## Loaded skills (skill-loader)
@@ -36,6 +36,9 @@ Consider `/flow:make-skill-template` for **fumadocs** and **hocuspocus** if thei
 - DDR-003 `/flow:release` walks user-authored runbook instead of dispatching on provider (Phase 3)
 - DDR-004 Flow commands use `<group>-<verb>` prefix; compat stubs shipped in v0.6.0, removed in v0.6.1 (Phase 13)
 - DDR-005 Docs site stack — Fumadocs + Vercel; accept Fumadocs DS defaults (Phase 2)
+- DDR-006 Plugin commands/skills/agents declare `name: <plugin>:<slug>` in frontmatter (ad-hoc, 2026-05-13)
+- DDR-007 Stable element-id schema — `data-dc-screen` + `data-dc-element` (Phase 13, 2026-05-15)
+- DDR-008 `plugins/design/dev-server/bin/` is the canonical home for shared bash helpers (Phase 13, 2026-05-15)
 
 ## Blockers
 
@@ -67,8 +70,22 @@ Consider `/flow:make-skill-template` for **fumadocs** and **hocuspocus** if thei
 | 2026-05-13 | done | `/flow:done` design-system-init — validate green (passed with warnings, no hard fails), changeset authored (minor bump @1agh/md-claude), `.changeset/{config.json,README.md}` restored from git history (deleted post-v0.7.0), retro appended to plan with 5 "what worked" / 4 "what didn't" / 4 "change next time" bullets + carry-over list, plan archived to `.ai/plans/archive/design-system-init.md`. Open carry-overs: inspirational library expansion (~38 unwritten reference files), multi-DS `--all-ds` critic runtime testing, version bump to v0.8 (separate cycle). Total: 83 files net, ~3,600 insertions across 3 commits on `main` (no branch). |
 | 2026-05-13 | ad-hoc | Plugin namespace + `setup-onboard` → `init` rename. No plan file; started from a `/flow:quick` trigger after a user-reported autocomplete collision between `/flow:resume` and the native `/resume`. Discovered Claude Code [#22063](https://github.com/anthropics/claude-code/issues/22063): plugin commands with `name:` frontmatter lose namespace prefix, registering as bare slugs. Workaround: prefix `name:` explicitly with `<plugin>:`. Verified empirically on `resume.md` first (autocomplete showed namespaced `/flow:resume`), then propagated to 77 plugin files (49 flow + 25 design + 3 incidental). Also renamed `/flow:setup-onboard` → `/flow:init` and `/design:setup-onboard` → `/design:init` (bare-verb exception to DDR-004's `<group>-<verb>` rule, mirroring Claude Code built-in `/init`). |
 | 2026-05-13 | done | `/flow:done` plugin-namespace + init rename — commit 1 (`444afa5`) namespace fix (74 files), commit 2 follows with rename + cross-refs + DDR-006 + changeset. Total: 108 files net, ~190 insertions across 2 commits on `main`. No plan to archive (ad-hoc trigger). |
+| 2026-05-15 | Phase 13 | `/flow:execute` Phase 13 started — stable element IDs (`data-dc-screen`/`data-dc-element`) + canonical screenshot pipeline (`screenshot.sh`) + 3 cheap helpers (`bootstrap-check.sh`, `server-up.sh`, `slug.sh`) + `data-artboard-id` selector bug fix. 22 tasks in 4 waves. |
+| 2026-05-15 | Phase 13 | All 22 tasks completed in single execute pass. 14 files modified, 5 new helpers in `dev-server/bin/` (244 lines deleted, 212 added — net ~30 line reduction despite adding ~600 LOC of helpers because callers shrank dramatically). Grep audit clean: 0 inline `agent-browser` invocations, 0 server-lifecycle bash, 0 slug bash, 0 stale `data-artboard` selectors. Live smoke green against `Canvas Viewport.html`. Awaiting `/flow:done`. |
+| 2026-05-15 | done | `/flow:done` Phase 13 — validate green with soft warnings → addressed (DDR-007 element schema, DDR-008 bin/ helper home, minor changeset for Phase 13). Retro appended. Plan archived to `.ai/plans/archive/phase-13-stable-element-ids-and-canonical-screenshots.md`. Local commit on `main`, no push (per session). |
 
 ## Execution Progress
+
+### Phase 13 — Stable element IDs + canonical screenshots + cheap helpers — execute complete (2026-05-15)
+
+- [x] Wave A: runtime + inspector (Tasks 1, 2) — `data-dc-screen` on DCArtboard; inspector `cssPath`/`domPath` prefer data-dc-* attrs ✅
+- [x] Wave B: helpers (Tasks 3, 4, 15, 16, 17) — `screenshot.sh` + `_screenshot-playwright.mjs` + `bootstrap-check.sh` + `server-up.sh` + `slug.sh` self-test green ✅
+- [x] Wave C: callers refactor (Tasks 5–13, 18, 19, 20) — `screenshot.md` / `new.md` / `edit.md` / `setup-ds` SKILL / design SKILL / 2 critics / CATEGORIES.md / CLAUDE.md; envelope directive 15 (element tagging); `data-artboard-id` selector sweep ✅
+- [x] Wave D: packaging + audit (Tasks 21, 22) — npm pack ships all 5 helpers via existing `files: ["plugins/design/dev-server"]` (no edit needed); grep audit zero hits for screenshot/bootstrap/server/slug inline duplicates ✅
+
+Live smoke against repo (`Canvas Viewport.html`, 10 artboards): `screenshot.sh --all-screens` captured 10/10 PNGs (55 KB first); `--full` 5 KB; `--screen idle` 42 KB; `bootstrap-check.sh` 0/10/11 exit codes verified across 3 project states; `server-up.sh` alive-detect + stale-respawn green.
+
+Manual smoke deferred: end-to-end `/design:setup-ds → new → edit` in scratch project (Task 22 plan-step) — recommended pre-`/done`.
 
 ### design-system-init — Phase 0–6 complete (this execute)
 

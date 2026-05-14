@@ -1,24 +1,34 @@
 ---
 name: design:screenshot
 category: daily
-description: Capture screenshot aktivního canvasu přes agent-browser (HTTP server URL, ne file://) — pro visual review, /design:critic, nebo annotation loop
-argument-hint: "[--area <name>] [--selector <css>]"
+description: Capture screenshot aktivního canvasu — full, jednoho screenu, elementu, nebo všech screens v smyčce. Wrapper přes `dev-server/bin/screenshot.sh` (agent-browser primárně, playwright fallback).
+argument-hint: "[--screen|--element <id> | --selector <css> | --full | --all-screens] [--area <n>]"
 ---
 
 # /design:screenshot — capture active canvas
 
-Otevře aktivní canvas (`_active.json`) v agent-browseru (přes HTTP, ne file://), zachytí screenshot, uloží do `.design/_history/<slug>/screenshots/<NNN>-<area>.png` (gitignored).
+Otevře aktivní canvas (`_active.json`) přes server URL (ne `file://`), zachytí screenshot, uloží do `.design/_history/<slug>/screenshots/<NNN>-<area>.png` (gitignored).
 
-**Vstup `$ARGUMENTS`:** `[--area <name>] [--selector <css>]`
+Single source of truth pro screenshot logiku je `${CLAUDE_PLUGIN_ROOT}/dev-server/bin/screenshot.sh`. Tento command jen mapuje slash-command flagy na helper a vyřeší cestu output souboru.
 
-- `--area <name>` — label pro screenshot (default `full`). Příklady: `roster-row`, `top-bar`, `presence-dots`.
-- `--selector <css>` — jen výřez podle CSS selectoru. Předá se agent-browseru.
+**Vstup `$ARGUMENTS`:**
+
+| Flag | Co dělá |
+|---|---|
+| `--full` *(default)* | Celá stránka. |
+| `--screen <id>` | Jen artboard s `data-dc-screen="<id>"` (Phase 13 konvence) nebo `data-dc-slot="<id>"` (legacy). |
+| `--element <id>` | Jen element s `data-dc-element="<id>"`. |
+| `--selector <css>` | Vlastní CSS selektor (power-user — preferuj `--screen`/`--element` kde to jde). |
+| `--all-screens` | Smyčka přes všechny artboardy, ukládá `<NNN>-screen-<id>.png` do screenshots dir. |
+| `--area <name>` | Label pro single-shot výstup (default `full`). Příklady: `roster-row`, `top-bar`. |
 
 **Příklady:**
 ```
 /design:screenshot
-/design:screenshot --area roster-row --selector ".roster-row:nth-child(1)"
-/design:screenshot --area presence-dots
+/design:screenshot --screen onboarding-welcome
+/design:screenshot --element cta-primary
+/design:screenshot --all-screens
+/design:screenshot --selector ".roster-row:nth-child(1)" --area roster-row
 ```
 
 ## Postup
@@ -26,37 +36,38 @@ Otevře aktivní canvas (`_active.json`) v agent-browseru (přes HTTP, ne file:/
 Vyvolej skill `design` se vstupem: `screenshot $ARGUMENTS`.
 
 Skill:
-1. Server lifecycle check (auto-start pokud chybí).
-2. Read `.design/_active.json` → cesta k canvasu + server `port`.
-3. Sestaví URL: `http://localhost:<port>/<active-path>` (HTTP, ne file:// — relativní imports tokenů jen tak fungují).
-4. Spočítá `<slug>` z active path. `mkdir -p .design/_history/<slug>/screenshots/`.
-5. Pojmenuje výstup `<NNN>-<area>.png` kde `<NNN>` je další číslo v sekvenci pro daný area.
-6. Spustí dvoukrokově (`agent-browser screenshot` nepřijímá URL arg — signature je `screenshot [selector] [path]`):
+
+1. **Server lifecycle** — `PORT=$(${CLAUDE_PLUGIN_ROOT}/dev-server/bin/server-up.sh)`.
+2. **Parse args** — extrahuj jeden ze single-shot módů, `--all-screens`, `--area`.
+3. **Compute slug** — `SLUG=$(${CLAUDE_PLUGIN_ROOT}/dev-server/bin/slug.sh "${ACTIVE#$DESIGN_ROOT/}")`.
+4. **Output path:**
+   - Single-shot: `OUT="$DESIGN_ROOT/_history/$SLUG/screenshots/$(NNN)-$AREA.png"`, kde `NNN` je další v sekvenci pro daný area (žádné colliding názvy).
+   - `--all-screens`: `OUT_DIR="$DESIGN_ROOT/_history/$SLUG/screenshots/"`; helper sám vytvoří `NNN-screen-<id>.png`.
+5. **Volání helperu:**
    ```bash
-   agent-browser navigate "<url>" >/dev/null
-   sleep 1
-   agent-browser screenshot ["<css selector>"] -- "<out>"   # path positional s `--` separátorem
+   bash "${CLAUDE_PLUGIN_ROOT}/dev-server/bin/screenshot.sh" \
+     --screen "$SCREEN_ID" --out "$OUT"
+   # nebo
+   bash "${CLAUDE_PLUGIN_ROOT}/dev-server/bin/screenshot.sh" \
+     --all-screens --out-dir "$OUT_DIR"
    ```
-   `--output <path>` flag forma NEFUNGUJE — CLI tiše bere `--output` jako literal positional a hlásí success bez zápisu souboru. Vždy verifikuj `ls -la "<out>"` po volání.
-7. Vypíše path uživateli.
+   Helper sám resolvuje URL ze `_server.json` + `_active.json` a zvolí engine (`agent-browser` > `playwright` fallback). Diagnostic jde do stderr, written paths do stdout — composable.
+6. **Print uživateli** cestu(y) k PNG. Pokud `--all-screens` napsal < 1 file (capture failed), surface failure místo silent OK.
 
 ## Tip — annotation loop pro pin-comments (Claude Design style)
 
 Pokud chceš anotovat konkrétní místo:
 
-1. `/design:screenshot --area <focus>` (`--selector` pro výřez).
-2. Otevři PNG v libovolném image-vieweru / annotation toolu.
-3. Zakroužkuj / anotuj / popiš → ulož.
-4. `/design:edit "<konkrétní feedback>" --screenshot <cesta-k-anotovanému-obrázku>`.
-
-Tohle je nejbližší ekvivalent Claude Design pinned-comments workflow — ručně řízený, ale plně funkční.
+1. `/design:screenshot --element <id>` nebo `--selector <css>` pro výřez.
+2. Otevři PNG v Preview / annotation toolu → zakroužkuj → ulož.
+3. `/design:edit "<konkrétní feedback>" --screenshot <cesta-k-anotovanému-obrázku>`.
 
 ## Failure modes
 
-- **`agent-browser` skill nedostupný** → fail s cestou `.claude/skills/agent-browser/`.
-- **`_active.json` chybí / null** → fail: "Otevři canvas v browseru first."
-- **Server neodpovídá na `/_health`** → fail loud, log path k debug.
-- **`--selector` nematchne** → agent-browser vrátí prázdný screenshot; skill detekuje (size < 1KB) a fail s návrhem opravit selector.
+- **`_active.json` chybí / `active = null`** → helper failuje s "open one in browser first".
+- **Server neodpovídá na `/_health`** → `server-up.sh` exit 1 s pointem na `$DESIGN_ROOT/_server.log`.
+- **Selector nematchne** → helper detekuje (PNG < 1 KB nebo error z agent-browser), exit 3 s diagnostic. NEdělá silent "success".
+- **`agent-browser` skill nedostupný** → helper auto-fallback na `npx playwright` (první run instaluje Chromium ~150 MB).
 
 ## Co `/design:screenshot` NEdělá
 
