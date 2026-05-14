@@ -9,7 +9,7 @@ argument-hint: "<Name> \"<brief>\" [--component] [--mobile] [--quick | --no-crit
 
 Vytvoří **nový multi-artboard canvas soubor** v `<designRoot>/<newCanvasDir>/<Name>.html` přes `frontend-design` plugin. Generic envelope se adaptuje podle `<repo>/.design/config.json` (rootClass, themeDefault, tokensCssRel, …).
 
-**Canvas projekt = `DesignCanvas` + jedna nebo více `DCSection` + jeden nebo více `DCArtboard`** (Figma-style scrollable infinite canvas). Single-page wrapper je anti-pattern; nový screen patří jako další `DCArtboard` do existujícího canvasu (přes `/design:edit "<add new artboard for X>"` ne přes `/design:new`).
+**Canvas projekt = `DesignCanvas` + jedna nebo více `DCSection` + jeden nebo více `DCArtboard`** (panable / zoomable infinite-canvas pattern). Single-page wrapper je anti-pattern; nový screen patří jako další `DCArtboard` do existujícího canvasu (přes `/design:edit "<add new artboard for X>"` ne přes `/design:new`).
 
 **Sessions už neexistují.** Nová plocha = nový soubor v `<designRoot>/<newCanvasDir>/`. Žádný `.ai/design-sessions/` adresář, žádné `iterations/NNN.html`. Iterace je in-place edit s `_history/` snapshoty.
 
@@ -158,11 +158,59 @@ fi
 
 The resolved `SCOPE` is persisted on the canvas's `.meta.json` `opt_out_scope` field (step 11) and passed to every critic in the auto-fix loop (step 10).
 
+### 4.5. UX patterns research (cache-first)
+
+> **Why this step exists.** Without domain-aware UX research, `frontend-design` invents the IA from scratch for every canvas — leading to generic shapes (5-tab nav, dashboard-card grid, modal-overlay flows) regardless of whether the brief is a recipe app, a sports tracker, or a scientific tool. The `ux-research-agent` (mode `ux-patterns`) builds a domain-aware behavioral pool — typical IA, screen anatomy, common flows, interaction patterns, current UX trends — and `frontend-design` consumes it as part of its reference bundle. **Visual identity is NOT in scope here — the DS owns that, /design:new always uses the finished DS.** The research is purely about **good UX patterns** for the domain.
+
+**Cache key:** `<DESIGN_ROOT>/_history/_system/<TARGET_DS>-<BRIEF_SHA8>-domain-research-ux-patterns.json`. The cache includes the brief hash — two canvases in the same DS with different briefs get separate cache files. The match is exact (hash, not fuzzy semantic similarity); rewording a brief produces a fresh cache key.
+
+```bash
+BRIEF_SHA8=$(printf '%s' "$BRIEF" | shasum -a 256 | cut -c1-8)
+PAYLOAD="$DESIGN_ROOT/_history/_system/$TARGET_DS-$BRIEF_SHA8-domain-research-ux-patterns.json"
+
+if [[ -f "$PAYLOAD" ]]; then
+  echo "→ UX patterns cache hit (brief-hash match: $BRIEF_SHA8) — reusing $PAYLOAD"
+else
+  echo "→ No cache for brief-hash $BRIEF_SHA8 — running fresh research"
+fi
+```
+
+**Spawn the agent (only when needed):**
+
+```
+Agent(
+  description: "UX patterns research for <Name>",
+  subagent_type: "design:ux-research-agent",
+  prompt: <<EOF
+brief:          "<verbatim user brief>"
+caller:         "new-canvas"
+mode:           "ux-patterns"
+context_paths:
+  existing_ds_tokens:  "<abs path to DS_TOKENS>"
+  existing_ds_readme:  "<abs path to system/<TARGET_DS>/README.md>"
+  cached_payload:      "<abs path to PAYLOAD if exists, else empty>"
+output_path:    "<abs path to PAYLOAD>"
+researched_at:  "<current ISO date>"
+EOF
+)
+```
+
+Wall time ~30–60s when fresh; ~0s on cache hit (the agent reads the cache, validates, returns immediately).
+
+**Read the payload back** with the `Read` tool into your context. It will be passed to `frontend-design` in step 6 as part of the reference bundle alongside the envelope.
+
+**Failure handling:**
+- Agent fails entirely (no payload written) → **do not block scaffold**. Surface a warning in the final print (`UX patterns research failed — frontend-design generation proceeded without domain pool; quality may regress to generic-template default`) and continue with envelope-only generation.
+- Payload reports `fallback_used: true` → continue normally but surface in final print (`UX patterns research fell back to LLM-knowledge mode — review canvas IA carefully`).
+- `/design:edit` does NOT run this step. Edit stays rýchlý — research is on-demand only via `--research` flag (future, not currently shipped).
+
 ### 5. Build envelope
 
 **Discipline:** envelope je *creative brief*, ne *wireframe spec*. Viz `skills/design/SKILL.md` → "Envelope discipline". Stručně: vibe + 1–2 reference canvases + aspiration directives 9–14 verbatim + brief. **Ne** dictate elements, button counts, copy, paddings.
 
 Adaptuj generic envelope ze SKILL.md "Generation envelope" s konkrétními config hodnotami z kroku 1. **Aspiration directives 9–14 musí být v envelope verbatim** — to je co drive signature-moment-critic axes (signature moment, brand prominence, mock fidelity, restraint, negative space, specificity).
+
+**Append UX pattern reference bundle** (from step 4.5 payload): include in the envelope a `## UX patterns reference` section listing payload `information_architecture_patterns[0].label` (the Recommended IA pattern), `typical_screen_anatomy.regions[]` as a region checklist, `common_flows[].id` as flow names the canvas might depict, `interaction_patterns[].label` as patterns to honor, and `anti_patterns[].pattern` as patterns to avoid. These are **reference**, not prescription — `frontend-design` interprets, doesn't dictate. If step 4.5 failed and no payload exists, skip this section and note in the envelope's footer (`UX pattern research unavailable — generation proceeds on DS + brief alone`).
 
 **Test envelope kvality před spuštěním generation:**
 - Reads jako brief seniornímu IC? ✓
@@ -193,11 +241,21 @@ Generation path: {to be filled in step 6}
 - <ref 1>
 - <ref 2>
 
+## UX patterns reference (from ux-research-agent step 4.5)
+- IA pattern (Recommended): <payload.information_architecture_patterns[recommended].label>
+- Typical screen anatomy regions: <payload.typical_screen_anatomy.regions[].id, csv>
+- Common flows the canvas might depict: <payload.common_flows[].id, csv>
+- Interaction patterns to honor: <payload.interaction_patterns[].label, csv>
+- Anti-patterns to avoid: <payload.anti_patterns[].pattern, csv>
+- Reference products (for IA / behavior, NOT visual): <payload.reference_products[].name, csv>
+- [if step 4.5 skipped/failed: "UX pattern research unavailable — generation proceeds on DS + brief alone."]
+
 ## Constraints
 - rootClass: <ROOT_CLASS>
 - tokens: <TOKENS_REL>
 - platform: <mobile | desktop>
 - opt_out_scope: <palette | aesthetic | full>   ← from step 4, propagated into the generation prompt so the generator knows how much DS latitude it has
+- ux_research_payload: <abs path or empty>      ← from step 4.5, passed to frontend-design as a reference bundle
 
 ## Opt-out interpretation (only when scope > palette)
 - aesthetic: gradients, off-ladder radii, alt type pairings, decorative SVG/emoji are PERMITTED inside the canvas-local namespace. Tokens link + rootClass envelope still required.
@@ -335,6 +393,7 @@ For a new canvas:
 
   Mode: {--perfect (default) | --perfect-iter N | --quick | --no-critic}
   Opt-out scope: {palette (default) | aesthetic | full} {if inferred from brief: "(inferred from brief — user confirmed via AskUserQuestion)"}
+  UX research: {cache hit — reusing <date> | fresh — <N>s wall-clock | fallback (LLM-knowledge) — review IA | unavailable — generation on DS + brief only}
   Critic panel ({default = signature-moment + design + frontend + a11y; --quick = signature-moment only;
                 --perfect --all = full set; --no-critic = (none)}; scope-downgraded blockers tagged as warnings):
     correctness: {X} blockers · {Y} warnings

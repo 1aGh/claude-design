@@ -19,7 +19,7 @@ Standard contract (see `design-critic.md`) — including `opt_out_scope`.
 | Scope | Effect |
 |---|---|
 | `palette` *(default)* | No change. Heading must use `--font-heading`, body `--font-sans`, scale on `--fs-*` ladder. |
-| `aesthetic` | Downgrade to warnings: alt heading font (e.g. SF Pro instead of project's IBM Plex Sans), alt body font, off-ladder font-sizes inside the canvas-local namespace. **Keep as blockers**: text dwarfed by chrome, leading too tight to read, paragraph measure absurd (>90 chars or <40 chars), missing fallback chains, color contrast on text. |
+| `aesthetic` | Downgrade to warnings: alt heading font (a different font family used in place of the project's `--font-heading`), alt body font, off-ladder font-sizes inside the canvas-local namespace. **Keep as blockers**: text dwarfed by chrome, leading too tight to read, paragraph measure absurd (>90 chars or <40 chars), missing fallback chains, color contrast on text. |
 | `full` | Downgrade ALL font-family + scale-ladder findings to warnings. Score against typographic craft only — pairing personality, leading rhythm, measure, optical alignment. |
 
 **A11y-overlapping findings stay blockers** at every scope (text contrast, minimum readable size, focus indicator on form labels).
@@ -90,7 +90,7 @@ Footer: emit `"opt_out_applied": "<scope>"` and `"ds_blockers_downgraded": N`.
 - Truncation — does `text-overflow: ellipsis` work because there's `overflow: hidden` + `white-space: nowrap` (often forgotten)?
 
 ### 10. Fallback chains
-- Font stack has system fallbacks in case the primary font fails to load (`'Inter', ui-sans-serif, system-ui, …`).
+- Font stack has system fallbacks in case the primary font fails to load (`'Project-Sans', ui-sans-serif, system-ui, …`).
 - No FOUC / FOIT — `font-display: swap` (or similar) on @font-face.
 
 ## Report format

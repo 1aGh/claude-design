@@ -25,14 +25,15 @@ This command **does NOT create a canvas** — use `/design:new` for that. It als
 ## Examples
 
 ```
-/design:setup-ds project "team scouting + match-day pro tool"
-/design:setup-ds marketing "consumer-facing marketing site for product launch"
+/design:setup-ds project "<one-line description of what this project / tool / product is, who it's for, and what reading mode (long-form vs. dense-pro vs. consumer-friendly)>"
+/design:setup-ds marketing "<one-line description of the marketing surface — audience, primary action, channel>"
 /design:setup-ds admin --force                                          # re-bootstrap
-/design:setup-ds quickdraft "throwaway exploration" --quick             # skip Round 3
-/design:setup-ds studio "docs + dev-server, vibe: Zed × Affinity × PostHog warmth × Figma canvas, dark-first, mono-forward, signature CRT-glow on dark"
+/design:setup-ds quickdraft "<one-line description>" --quick            # skip Round 3
 ```
 
-A rich brief (last example) carries enough mood + voice + visual-treatment cues that most Recommended pre-fills land on the first try; user just confirms.
+**Brief content guidance — what helps the research agent, what biases it:**
+- ✅ Domain (`recipe management`, `match-day scouting`, `lab-equipment scheduling`), audience hypothesis, primary reading mode, platform hypothesis, voice direction in abstract terms (`terse / warm-editorial / formal`).
+- ❌ Do NOT name reference products in the brief (e.g. `vibe: <BrandA> × <BrandB> warmth × <BrandC> canvas`). Brand-name briefs short-circuit the research agent's job and re-introduce the bias the agent exists to fix. The agent's job is to *discover* references for your domain — give it the domain, let it surface the references.
 
 ## Process
 

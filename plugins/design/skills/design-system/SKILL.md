@@ -1,6 +1,6 @@
 ---
 name: design:design-system
-description: Owns all design-system work. (1) READ mode (default) — loads the active canvas's declared DS (tokens, philosophy, hard-stops) so the agent iterates against the correct context. (2) BOOTSTRAP mode — runs when invoked via /design:setup-ds, or auto-loaded by /design:edit / /design:new on a missing target. Hard-deps pre-flight, 8-question discovery (2 rounds of AskUserQuestion) in one of 3 sub-modes (first-bootstrap / additional-ds / re-bootstrap), consults _MAPPING.md to compute scaffold set, generates project-flavored files using design-system-inspiration as reference, runs design-system-completeness-critic, and prints next-step block.
+description: Owns all design-system work. (1) READ mode (default) — loads the active canvas's declared DS (tokens, philosophy, hard-stops) so the agent iterates against the correct context. (2) BOOTSTRAP mode — runs when invoked via /design:setup-ds, or auto-loaded by /design:edit / /design:new on a missing target. Hard-deps pre-flight, spawns `design:ux-research-agent` in `discovery` mode (Round 0 — domain reference pool from WebSearch), then runs 12-question discovery (3 rounds of AskUserQuestion with options sourced from research payload) in one of 3 sub-modes (first-bootstrap / additional-ds / re-bootstrap), consults _MAPPING.md to compute scaffold set, generates project-flavored files using design-system-inspiration as reference, runs design-system-completeness-critic, and prints next-step block.
 user-invocable: true
 ---
 
@@ -87,7 +87,7 @@ fi
 
 Hard-stops: missing Node → abort with install hint; missing git → abort with `run git init first`; no write permission → abort.
 
-### Discovery (Round 1 + Round 2 + Round 3 + confirm)
+### Discovery (Round 0 + Round 1 + Round 2 + Round 3 + confirm)
 
 **Detect target first.**
 
@@ -96,43 +96,89 @@ Hard-stops: missing Node → abort with install hint; missing git → abort with
 - For `additional-ds`: target dirname is the kebab-case slug of the user-provided name (`<name>`).
 - For `re-bootstrap`: target is the existing `system/<name>/` dir; refuse unless `--force`.
 
-#### `first-bootstrap` (12 Qs across 3 rounds)
+#### Round 0 — domain research (NEW — runs before any AskUserQuestion)
 
-> **Why 12, not 8.** The 8-Q baseline gets you a working DS; it does not get you a pro-grade DS. Round 3 (Q9–Q12) captures the inputs a pro designer would gather from a stakeholder before opening Figma: signature treatment, hard-NO list, iconography vibe, density preference. The retro on the studio 2026-05-13 re-bootstrap (`.ai/logs/system-reviews/setup-ds-studio-rebootstrap-review.md`) recommends Round 3 as the cheapest single intervention to lift output from "structurally valid" to "portfolio-worthy". Opt out via the slash command's `--quick` flag if the user explicitly wants the 8-Q baseline.
+> **Why Round 0 exists.** Pre-research the discovery questionnaire used a hardcoded option ladder for every project — the same set of mood / signature / iconography / density references regardless of whether the brief was about cooking, sports, science, finance, or a niche craft. The questionnaire pretended to do UX research while actually showing the user the same options every run. Round 0 fixes this by spawning the `design:ux-research-agent` BEFORE the first question is asked. The agent runs 6–8 WebSearch queries across abstract source-type categories (awards / case-studies / indie portfolios / non-English regions / lateral industries / niche publications / heritage references) and surfaces whatever real products fit the brief — no pre-set brand preferences or denylists, no allow-listed reference pool. The questionnaire structure (order, count, intent) is unchanged; only the **option labels** become domain-researched.
 
-**Round 1 — Identity** (4 Qs via one AskUserQuestion call):
+**Procedure:**
 
-- Q1 product one-liner (sketch / reuse from PRD / skip)
-- Q2 audience (pro tool / consumer app / developer tool)
-- Q3 platforms (desktop only / mobile + desktop / tablet-first)
-- Q4 theme default (dark / light / both equal)
+1. **Resolve `brief`.** Order of precedence: `$ARGUMENTS` brief (e.g. `/design:setup-ds project "recipe scaling and substitution tool"`) → existing `<designRoot>/system/<ds>/README.md` "What this DS is for" line (re-bootstrap mode) → caller-provided `$BRIEF` from `/design:edit` / `/design:new` auto-load → empty (fall back to a single AskUserQuestion to capture the one-liner; this is Q1 batched alone). If brief is captured here, **Q1 is already answered** and Round 1 starts at Q2.
 
-**Round 2 — Brand + content** (4 Qs via a second AskUserQuestion call):
+2. **Check cache.** Compute the brief hash: `BRIEF_SHA8=$(printf '%s' "$BRIEF" | shasum -a 256 | cut -c1-8)`. Look for `<designRoot>/_history/_system/<ds>-${BRIEF_SHA8}-domain-research-discovery.json`. If present, **read it and reuse — skip step 3**. Print: `Round 0 cache hit — reusing prior research from <researched_at> (brief-hash match: <BRIEF_SHA8>)`. **The hash match is exact, not fuzzy** — two briefs whose hashes differ get fresh research, even if they're "in the same domain", because the caller wrote a different brief and that intent matters. Re-bootstrap with `--force` ALWAYS re-researches regardless of cache (the domain may have moved in the intervening year — the agent surfaces fresh trends).
 
-- Q5 mood references (Linear+Figma+posthog / Stripe+Vercel+Notion / Zed+Raycast+Arc)
-- Q6 brand color (pick-for-me / I have a hex / cyan|indigo|emerald|amber default)
-- Q7 typography (Inter+Plex+JetBrains / Geist+GeistMono / system+JetBrainsMono)
-- Q8 content tone (direct-terse / explanatory-friendly / formal-B2B)
+3. **Spawn `design:ux-research-agent`** via the `Agent` tool with `subagent_type: "design:ux-research-agent"`. Inputs:
+   ```
+   brief:           <resolved brief>
+   caller:          "setup-ds"
+   mode:            "discovery"
+   context_paths:
+     existing_ds_tokens:  <abs path or empty>
+     existing_ds_readme:  <abs path or empty>
+     cached_payload:      <abs path to <ds>-<BRIEF_SHA8>-domain-research-discovery.json — only if it exists>
+   output_path:     <designRoot>/_history/_system/<ds>-<BRIEF_SHA8>-domain-research-discovery.json
+   researched_at:   <current ISO date>
+   ```
+   The agent runs WebSearch + WebFetch, builds a domain-relevant reference pool, writes the payload, returns a one-line confirmation. Wall time ~30–60s.
 
-**Round 3 — Pro-designer inputs** (4 Qs via a third AskUserQuestion call):
+4. **Read the payload.** Use `Read` on `output_path`. Bind the relevant arrays into the AskUserQuestion options for the rounds below.
 
-- **Q9 signature visual treatment** — single select: `none / restrained` · `gradient discipline (Affinity)` · `CRT scanlines + phosphor glow` · `glassmorphism (frosted blur)` · `brutalism (hard edges, no shadows)` · `soft-shadow depth ladder (Stripe / Notion)` · `neumorphism (inset shadows)` · `pick-for-me`. Pre-fill the Recommended from Q5 mood (e.g. "Affinity" mood → "gradient discipline"). The chosen treatment is baked into `_layout.css` chrome (body background, h1 text-shadow, sectioning rules) AND surfaces in at least one signature specimen (typically `colors-accent.html` brand-spotlight + `ui_kits-*-showcase.html` hero).
-- **Q10 hard NO list** — multi-select: `no decorative gradients` · `no animations beyond hover` · `no emoji in chrome` · `no rounded corners > 12px` · `no centered hero layouts` · `no marketing-style CTAs` · `anything goes (skip)`. Every checked item becomes a guardrail surfaced in the DS README and the per-DS SKILL.md. Sub-agents authoring specimens MUST read this list before writing.
-- **Q11 iconography vibe** — single select: `terminal glyphs (1px stroke, ASCII-leaning — Zed/Raycast)` · `product icons (lucide rounded, balanced — Linear/Notion)` · `industry-specific (sports/recipes/finance — domain nouns dominant)` · `flat-illustrative (Phosphor / Heroicons solid)` · `pick-for-me`. Drives `iconography.html` specimen content + the 3–5 example SVGs scaffolded into `assets/glyphs/`.
-- **Q12 density preference** — single select: `dense pro-tool (Affinity / Linear / Zed — chrome at space-2/3, dense tables)` · `balanced (Figma / Vercel — chrome at space-3/4)` · `roomy SaaS (Stripe / Notion — chrome at space-4/5, more whitespace)` · `pick-for-me (derive from Q2 audience)`. Sets `--space-*` usage conventions and the default padding values in `_layout.css`.
+5. **Handle thin-research fallback.** If the payload sets `fallback_used: true`, the agent had thin WebSearch results and filled with LLM-knowledge. Use the payload anyway, but **surface a one-line warning in the final next-step block** ("Round 0 fell back to LLM-knowledge mode for this niche domain — review options carefully"). If the agent itself failed (no payload file written), fall back to the **hardcoded option ladders** in the "Fallback option ladders" section at the end of this file — and surface a warning.
+
+#### `first-bootstrap` (12 Qs across 3 rounds, options sourced from Round 0 payload)
+
+> **Why 12, not 8.** The 8-Q baseline gets you a working DS; it does not get you a pro-grade DS. Round 3 (Q9–Q12) captures the inputs a pro designer would gather from a stakeholder before starting visual exploration: signature treatment, hard-NO list, iconography vibe, density preference. Round 3 is the cheapest single intervention to lift output from "structurally valid" to "portfolio-worthy". Opt out via the slash command's `--quick` flag if the user explicitly wants the 8-Q baseline.
+
+> **Options come from the Round 0 payload.** For every Q where the payload provides domain-relevant choices (Q5, Q9, Q10, Q11, Q12), populate AskUserQuestion `options[]` from the payload arrays — `mood_clusters[]`, `signature_treatment_options[]`, `suggested_hard_NOs[]` + `anti_references[]`, `iconography_vibe_options[]`, `density_options[]`. Each option's `label` is the payload `.label`. Each option's `description` cites the anchor products from the payload. The option flagged `recommended: true` in the payload becomes the FIRST option in the AskUserQuestion list with `(Recommended)` appended to its label (per the AskUserQuestion tool convention). **Always end the list with a `pick-for-me` option** so the user can defer the call.
+
+**Round 1 — Identity** (4 Qs via one AskUserQuestion call — **structural inputs only; options are universally stable**):
+
+- Q1 product one-liner — pre-filled from `brief` if captured in Round 0 step 1; otherwise sketch / reuse from PRD / skip
+- Q2 audience — `pro tool` / `consumer app` / `developer tool`. Pre-fill Recommended from payload `audience_hypothesis`.
+- Q3 platforms — `desktop only` / `mobile + desktop` / `tablet-first`. Pre-fill Recommended from payload `platform_hypothesis`.
+- Q4 theme default — `dark` / `light` / `both equal`
+
+**Round 2 — Brand + content** (4 Qs via a second AskUserQuestion call — **ALL options payload-sourced; do NOT hardcode the SaaS ladder**):
+
+- **Q5 mood references** — single select. **Options sourced from payload `mood_clusters[]`.** Each option's `label` = cluster `label` (composed from its 3 anchor product names from the payload); `description` = cluster `one_line`. Always 3 options + `pick-for-me`. The cluster flagged `recommended: true` in the payload becomes the FIRST option with `(Recommended)` appended. **The payload's option labels are authoritative — do not curate them, do not substitute alternative anchors, do not "polish" the descriptions.** If you see the same anchor names across multiple unrelated projects, that's a research-breadth issue the agent's audit trail (`research_quality_notes`) should reveal — re-running the research with a tighter brief usually surfaces different references.
+- **Q6 brand color** — single select. **Options sourced from payload `color_oklch_options[]`.** Each option's `label` = the payload option label (e.g. `cool-clinical L 58–62 C 0.08–0.11 H 200–230`). Each option's `description` = `domain_rationale` (one sentence — why this range fits this domain's heritage). Always 3 payload-sourced options + `I have a hex` (user pastes) + `pick-for-me` (skill picks within the Recommended option's OKLCH range). **NEVER offer "cyan/indigo/emerald/amber default" — those are bias-bait placeholders** that surface in every project regardless of domain. A finance dashboard wants a different range than a children's app than a recipe app; the payload encodes that.
+- **Q7 typography** — single select. **Options sourced from payload `typography_pairing_options[]`.** Each option's `label` = pairing label (categorical, e.g. `editorial-serif + grotesque-sans`); `description` = `domain_rationale` (why this pairing fits the domain's reading mode). Always 3 payload-sourced options + `pick-for-me`. A long-form reading product wants different type than a dense pro-tool dashboard than a consumer mobile app; the payload encodes that based on what the research surfaced.
+- **Q8 content tone** — single select. **Options sourced from payload `voice_tone_options[]`.** Each option's `label` = tone label with anchor product name from the payload (e.g. `<voice-id> (anchor: <real-product-from-payload>)`); `description` = list of characteristics + `sample_microcopy` from the payload (so the user sees the voice, not just hears the label). Always 3 payload-sourced options + `pick-for-me`. **Do NOT hardcode generic tone labels** ("direct-terse README-grade" / "explanatory-friendly" / "formal-B2B") as universal options — voice is domain-coupled, and the payload anchors each tone to a real product the agent surfaced. If the same 3 voice tones come back across multiple runs in different domains, the payload is broken.
+
+**Round 3 — Pro-designer inputs** (4 Qs via a third AskUserQuestion call, **options sourced from Round 0 payload**):
+
+- **Q9 signature visual treatment** — single select. **Options sourced from payload `signature_treatment_options[]`.** Always 3 domain-relevant options + `none / restrained` (universal opt-out) + `pick-for-me`. Recommended pre-fill from payload `recommended: true`. The chosen treatment is baked into `_layout.css` chrome (body background, h1 text-shadow, sectioning rules) AND surfaces in at least one signature specimen (typically `colors-accent.html` brand-spotlight + `ui_kits-*-showcase.html` hero).
+- **Q10 hard NO list** — multi-select. **Options assembled from payload `suggested_hard_NOs[]` AND payload `anti_references[]`** (one suggested NO per anti-reference, derived from its `why_to_avoid` field). The list is a checklist — user picks any subset. Recommended pre-checks the suggested NOs that are clear domain consensus (e.g. for recipe: "no popup recipe-introduction text" is consensus). Universal options always appended: `no decorative gradients` · `no animations beyond hover` · `anything goes (skip)`. Every checked item becomes a guardrail surfaced in the DS README and the per-DS SKILL.md. Sub-agents authoring specimens MUST read this list before writing.
+- **Q11 iconography vibe** — single select. **Options sourced from payload `iconography_vibe_options[]`.** Always 3 domain-relevant options + `pick-for-me`. Recommended from payload `recommended: true`. Drives `iconography.html` specimen content + the 3–5 example SVGs scaffolded into `assets/glyphs/`.
+- **Q12 density preference** — single select. **Options sourced from payload `density_options[]`.** Always 3 domain-relevant options + `pick-for-me (derive from Q2 audience)`. Recommended from payload `recommended: true`. Sets `--space-*` usage conventions and the default padding values in `_layout.css`.
 
 **Confirm.** Echo a **3-sentence** proposed direction (one sentence per round: identity + brand + visual signature). Wait for explicit yes / corrections. On "no", restart the affected round (max 2 retries each before "scaffold-with-current and iterate via /design:edit").
+
+#### Fallback option ladders (used ONLY when Round 0 payload is missing or `fallback_used == true`)
+
+**These are emergency-only options when the ux-research-agent failed entirely** (no payload file written) — they intentionally reference the SaaS-tool ladder because at this point we've already lost the domain-research battle and only need to keep the questionnaire functional. If you find yourself reaching for this section regularly, the agent is the bug — fix the agent, don't normalize the fallback. **ALWAYS surface a prominent warning in the final next-step block when fallback was used**, including a recommendation to re-run with `--force` after addressing whatever caused the agent to fail.
+
+- **Q5 mood fallback:** `dashboard-pragmatic / documentation-editorial / terminal-pro / pick-for-me` (the labels intentionally do NOT include product names — the agent's job is to provide product anchors; if the agent failed, the skill refuses to invent them)
+- **Q6 color fallback:** `pick-for-me (skill chooses OKLCH per Q2 audience heuristic)` / `I have a hex` — **no preset OKLCH options without research**, because every preset becomes the default bias
+- **Q7 typography fallback:** `pick-for-me (skill chooses per Q1 reading-mode heuristic)` — no preset pairings without research
+- **Q8 content tone fallback:** `direct-terse` / `explanatory-friendly` / `formal-B2B` / `pick-for-me` (labels only — no anchor products; agent's job)
+- **Q9 signature treatment fallback:** `none / restrained` · `gradient discipline` · `CRT scanlines + phosphor glow` · `glassmorphism (frosted blur)` · `brutalism (hard edges, no shadows)` · `soft-shadow depth ladder` · `neumorphism (inset shadows)` · `pick-for-me`
+- **Q10 hard NOs fallback:** `no decorative gradients` · `no animations beyond hover` · `no emoji in chrome` · `no rounded corners > 12px` · `no centered hero layouts` · `no marketing-style CTAs` · `anything goes (skip)`
+- **Q11 iconography fallback:** `terminal glyphs (1px stroke, ASCII-leaning)` · `product icons (rounded, balanced)` · `industry-specific (domain nouns dominant)` · `flat-illustrative (solid silhouettes)` · `pick-for-me`
+- **Q12 density fallback:** `dense pro-tool (chrome at space-2/3, dense tables)` · `balanced (chrome at space-3/4)` · `roomy (chrome at space-4/5, more whitespace)` · `pick-for-me (derive from Q2 audience)`
+
+Note that the fallback labels **deliberately do not name products**. Product naming in the fallback was the original bias source — every fallback run was effectively a recycled questionnaire. The fallback now degrades to abstract labels so the user knows immediately something is wrong (no anchor names = no research happened).
 
 #### `additional-ds` (12 Qs, different shape)
 
 **Sequence (load-bearing — DO NOT batch the picker with the confirm at the end):**
 
 ```
-Q_purpose → Round 1 (Q2–Q4) → Round 2 (Q5–Q8) → INHERITANCE PICKER → Round 3 (Q9–Q12, with picks pre-filled from inherited DS where applicable) → 3-sentence confirm
+Q_purpose → Round 0 (research the new DS's domain — NOT the existing one) → Round 1 (Q2–Q4) → Round 2 (Q5–Q8) → INHERITANCE PICKER → Round 3 (Q9–Q12, with picks pre-filled from inherited DS where applicable) → 3-sentence confirm
 ```
 
-- **Q_purpose** — "What is this DS for, distinct from your existing DS?" (replaces Q1)
-- Q2–Q12 same as first-bootstrap (with "Inherit from `<existing-ds>`" Recommended option on Q7, Q8, Q11, Q12)
+- **Q_purpose** — "What is this DS for, distinct from your existing DS?" (replaces Q1). Answer becomes the `brief` input for Round 0.
+- **Round 0** — same procedure as `first-bootstrap`. Cache key includes the DS slug, so each additional DS gets its own research payload (a "marketing" DS researches marketing-site design; an "admin" DS researches B2B-admin patterns).
+- Q2–Q12 same as first-bootstrap (with "Inherit from `<existing-ds>`" Recommended option on Q7, Q8, Q11, Q12; payload-sourced options on Q5, Q9, Q10, Q11, Q12)
 
 **Inheritance picker — fires AFTER Q8, BEFORE Round 3** (multiSelect AskUserQuestion). Position is load-bearing because Round 3 questions overlap inheritance-eligible fields (Q11 iconography especially); deferring the picker until after Round 3 lets users answer Q11 only to have the answer silently overridden by inheritance. The retro `setup-ds-studio-2-review.md` (BAD-7) caught this drift.
 
@@ -150,6 +196,8 @@ Inherited values are pre-baked into the new DS's `colors_and_type.css`; discover
 #### `re-bootstrap` (12 Qs, pre-filled)
 
 Read `system/<ds>/colors_and_type.css` + `system/<ds>/README.md` + `_layout.css` to pre-fill answers (Round 3 derived from `_layout.css` body background + body::before/::after presence + iconography.html curation). User hits enter on each to keep current; only changed answers cause re-generation of affected files.
+
+**Round 0 in re-bootstrap mode** — ALWAYS re-research (`--force` implies a year may have passed; cached payload is stale by definition). Brief is reconstructed from the existing DS README's "What this DS is for" line. The fresh payload may surface new domain references that the original bootstrap didn't have access to; those new references update the option labels in Round 2/3, so even a "keep all current answers" pass shows the user what's changed in the domain since the original bootstrap.
 
 ### Mapping → file set
 
@@ -174,7 +222,7 @@ When the user lets the skill pick the OKLCH accent, **read the mood cues in Q1 +
 | "pastel", "soft", "creamy" | L 75–85 | C 0.08–0.12 | High L, low C |
 | default (no mood cue) | L 68–72 | C 0.14–0.18 | Mid-range, "tasteful default" |
 
-**Why this exists:** the studio bootstrap (2026-05-13) picked `oklch(72% 0.18 55)` for an "amber/lava PostHog-warmth" brief; the result rendered as candy/pumpkin orange because L was too high for the "burnt" cue. See `.ai/logs/system-reviews/setup-ds-studio-review.md`. Always **screenshot the accent in context** (step 7 below) before declaring the color final.
+**Why this exists:** picking accent OKLCH from mood cues alone (without checking lightness for the cue) is a known failure mode — e.g. "burnt / lava / warm" briefs default to high-L oranges that render as candy / pumpkin rather than the deep, technical warmth the mood word implied. Always **screenshot the accent in context** (step 7 below) before declaring the color final.
 
 ### Namespace + parameterization patterns (when to use)
 
@@ -228,6 +276,10 @@ discovery:
   hard_nos: ["{{Q10 picks}}"]
   iconography_vibe: "{{Q11}}"
   density: "{{Q12}}"
+round_0_research:
+  payload_path: "{{abs path to <ds>-domain-research-discovery.json}}"
+  fallback_used: {{bool from payload}}
+  reference_products_picked_as_mood_anchors: ["{{anchor1}}", "{{anchor2}}", "{{anchor3}}"]   # the 3 anchors from the user's Q5 cluster pick — passed to Batch C sub-agents as gold-standards
 files:
   # Batch A — main agent writes serially (tokens are the dependency root)
   - { path: "colors_and_type.css",       batch: A, deps: [], status: pending }
@@ -301,7 +353,7 @@ The dependency root. Main agent writes these **in order, alone** because every l
    - Q9 = `brutalism` → no shadows at all; thick `--border-strong` outlines; sharp corners override on key elements
    - Q9 = `soft-shadow depth ladder` → richer `--shadow-md/lg` with longer offsets; cards float higher
    - The treatment is **the project's first impression** — every specimen inherits it via `_layout.css`.
-3. **`<designRoot>/system/<ds>/preview/_components.css`** — shared component anatomy. **Emit when Q9 ≠ `none / restrained` AND the signature treatment repeats across 3+ components** (typical: bevel on button + tile + segmented + switch; recessed bay on input + checkbox + radio). Promotes `.btn`, `.tile`, `.input`, `.switch`, `.seg`, `.pill`, `.led` etc. out of per-specimen `<style>` blocks into one authoritative file. Specimens then carry only their demonstration-specific CSS inline. **Skip** when Q9 = `none / restrained` AND Q12 = `roomy SaaS` — inline styles are fine and `_components.css` adds noise. Sub-agents in Batch C MUST receive this file (when present) as part of their reference bundle and reference its class names instead of re-implementing the anatomy. Studio 2026-05-13 example: `.btn` (4 variants + 3 sizes + bevel math), `.tile` (gradient fill + phosphor corner + lift on hover), `.input` (recessed bay + inset shadow), `.switch` (chunky hardware toggle), `.seg` (recessed bay + raised chip), `.led` (the primary-CTA power-on dot) — all live in `_components.css`; specimens consume them.
+3. **`<designRoot>/system/<ds>/preview/_components.css`** — shared component anatomy. **Emit when Q9 family ≠ `none` AND the signature treatment repeats across 3+ components** (typical: a bevel pattern on button + tile + segmented + switch; a recessed-bay pattern on input + checkbox + radio). Promotes `.btn`, `.tile`, `.input`, `.switch`, `.seg`, `.pill`, etc. out of per-specimen `<style>` blocks into one authoritative file. Specimens then carry only their demonstration-specific CSS inline. **Skip** when Q9 family = `none` AND Q12 family = `roomy` — inline styles are fine and `_components.css` adds noise. Sub-agents in Batch C MUST receive this file (when present) as part of their reference bundle and reference its class names instead of re-implementing the anatomy.
 4. `<designRoot>/system/<ds>/README.md` — philosophy (substitutes mood references + hard-NOs from Q10 + signature treatment summary + voice block).
 5. `<designRoot>/system/<ds>/SKILL.md` — the per-DS skill pointer.
 6. **`<designRoot>/README.md`** — designRoot orchestration README. **Mandatory Tier 1 file** per `_MAPPING.md`; missing this is the most common bootstrap blocker.
@@ -342,14 +394,15 @@ REFERENCES (verbatim — read first, do not skim)
 {{endif}}
 
 DOMAIN_NOUNS (authoritative — every specimen MUST use only these nouns)
-{{domain_nouns}}    # e.g. for studio-2: canvas, specimen, dev-server, inspector, file-tree, scanline, phosphor, _active.json
+{{domain_nouns}}    # the 5–10 nouns from discovery payload's domain_nouns field — project-native vocabulary the specimen must use
 {{if peer_DS_references_attached:}}
 DOMAIN NOUN PURGE — peer DS references are COMPOSITION REFERENCES ONLY. The peer
-DS uses different domain nouns (e.g. studio uses lineup/roster/player from a
-sports-stack mock). When restructuring from a peer reference, search-and-replace
-EVERY peer-DS noun in your output with a noun from this DS's DOMAIN_NOUNS list.
-A single peer-DS noun surviving in your output is a copy-critic blocker (see
-retro setup-ds-studio-2-review.md, BAD-3: "publish lineup" leaked from studio).
+DS uses different domain nouns (a peer DS built for a different product domain
+will have nouns specific to that domain). When restructuring from a peer reference,
+search-and-replace EVERY peer-DS noun in your output with a noun from this DS's
+DOMAIN_NOUNS list. A single peer-DS noun surviving in your output is a copy-critic
+blocker — leaked domain nouns from a peer reference (e.g. "publish <peer-noun>"
+surviving into this DS's specimen) is the regression mode this purge step prevents.
 {{endif}}
 
 YOUR SLICE — write these {{N}} files (absolute paths):
@@ -364,20 +417,21 @@ CREATIVITY RUBRIC — do NOT token-swap. RESTRUCTURE.
   domain nouns.
 - Every specimen earns at least ONE compositional choice that's not in the
   template. Examples that landed well in the studio 2026-05-13 re-bootstrap (use
-  these as gold standard, in the same `_history/` folder):
-    - colors-accent.html (48 LOC template → 238 LOC): added a brand-spotlight
+  these as gold-standard creativity moves):
+    - colors-accent.html (48 LOC template → ~5× LOC): added a brand-spotlight
       hero with masked gradient border, a "wrong" anti-pattern teaching device,
       chroma annotations on swatches.
-    - empty-state.html (34 → 217): added a "Voice — keep or kill" panel comparing
-      good vs corporate copy side by side; added a variants grid for search-empty
-      and inspector-empty.
-    - ui_kits-desktop-showcase.html (302 → 1052): replaced the template's
-      sports-roster screens with project-specific reality; added a live-cursor
-      presence layer + a token-row inspector panel.
-  Anti-example from the same run: components-buttons.html (83 → 105) — kept the
-  template's fake-state grid almost verbatim. **Don't do this.** Add icon-only
-  + kbd-hint variants, push hierarchy contrast, surface the signature treatment
-  on the primary's hover state.
+    - empty-state.html (~6× LOC): added a "Voice — keep or kill" panel
+      comparing good vs corporate copy side by side; added a variants grid for
+      multiple empty-state cases.
+    - ui_kits-<platform>-showcase.html (~3× LOC): replaced the template's
+      generic mock screens with project-specific reality from the discovery
+      payload's domain_nouns; added a live-presence layer + a token-row
+      inspector panel where the brief warranted it.
+  Anti-example: a components-buttons.html at 1.3× the template LOC that kept
+  the template's fake-state grid almost verbatim. **Don't do this.** Add
+  icon-only + kbd-hint variants, push hierarchy contrast, surface the signature
+  treatment on the primary's hover state.
 - Copy is project-specific. NO "Lorem", NO "Acme Corp.", NO "Get Started". Use
   the project's actual nouns ({{domain_nouns}}). Match the voice — {{Q8 voice}}.
 - Tokens only. No hardcoded hex / px / rem. If you reach for an off-ladder
@@ -475,7 +529,7 @@ The critic emits a JSON verdict. If it returns **blockers**, the bootstrap flow 
 
 ### Visual sanity check (mandatory — agent-browser screenshots)
 
-> **This step exists because completeness-critic is structural only.** It cannot see that the rendered output looks like a generic shadcn page. The screenshots feed the aesthetic critics in the next step AND give the user a fast visual proof.
+> **This step exists because completeness-critic is structural only.** It cannot see that the rendered output looks like a generic public-component-library template. The screenshots feed the aesthetic critics in the next step AND give the user a fast visual proof.
 
 **If `agent-browser` is not on PATH**, surface this as a warning in the next-step block ("install agent-browser for visual verification") and skip to the aesthetic critic step using only the source HTML — but make the gap explicit to the user.
 
@@ -511,7 +565,7 @@ When available:
 
 ### Aesthetic critic panel (mandatory)
 
-> **The completeness-critic does not catch aesthetic gaps.** It returns `pass` for shadcn-generic output. This step is non-negotiable, especially when discovery captured strong references (PostHog, Zed, Linear, Figma, Affinity, Vercel, Raycast, etc.).
+> **The completeness-critic does not catch aesthetic gaps.** It returns `pass` for generic public-component-library output. This step is non-negotiable, especially when discovery captured strong references in the research payload.
 
 Spawn these critics **in parallel** (single message, multiple Agent calls) on one signature specimen — default target is `colors-accent.html` (the accent showcase). When the bootstrap produced a `ui_kits-desktop-showcase.html` (the full product mock), run a second pass on it too — it's the highest-fidelity "DS in use" artifact and the most useful target for graphic-design + signature-moment evaluation.
 
@@ -547,6 +601,12 @@ Bootstrap complete. .design/ scaffolded at <repo>/.design/system/<ds>/.
   <N> specimen pages under preview/ (audience: <Q2>, platforms: <Q3>)
   <M> ui_kit compositions under ui_kits/ (the "DS in use" artifacts)
   config.json: 14 fields populated (incl. extensions, completenessProfile, activeFamilies, designSystems[])
+
+Round 0 research:
+  Payload: <designRoot>/_history/_system/<ds>-domain-research-discovery.json
+  Reference anchors (user picked Q5 cluster): <anchor1>, <anchor2>, <anchor3>
+  [if fallback_used: "⚠ Research fell back to LLM-knowledge mode for this niche domain — review the payload manually before trusting the option pool"]
+  [if cache hit: "Reused cached research from <date>"]
 
 Structural gate — design-system-completeness-critic:
   <N> blockers, <N> warnings
@@ -591,4 +651,6 @@ Daily verbs:
 - Tokens (authoritative, post-scaffold): `<designRoot>/<tokensCssRel>` (single-DS) or `<designRoot>/system/<ds>/colors_and_type.css` (multi-DS)
 - Live specimen browse: dev server at `http://localhost:<port>/<designRoot>/system/...`
 - Per-repo config: `.design/config.json`
-- Completeness-critic (when added): `plugins/design/agents/design-system-completeness-critic.md`
+- Completeness-critic: `plugins/design/agents/design-system-completeness-critic.md`
+- Round 0 research agent: `plugins/design/agents/ux-research-agent.md` (mode `discovery`)
+- Round 0 payload cache: `<designRoot>/_history/_system/<ds>-<brief-sha8>-domain-research-discovery.json` (brief-hash in key — different briefs in same DS get separate cache files)

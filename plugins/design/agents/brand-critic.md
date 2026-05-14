@@ -51,13 +51,13 @@ Standard contract (see `design-critic.md`).
 
 ### 6. Photography / illustration style
 - If hero imagery is present: is it on-brand (saturation, mood, framing, subjects)?
-- Stock-photo "smell test" — does it look like a default Unsplash search result, or like the project's curated visual library?
-- Illustrations: line style, palette, character treatment — consistent or pulled from random Figma kits?
+- Stock-photo "smell test" — does it look like a default stock-library search result, or like the project's curated visual library?
+- Illustrations: line style, palette, character treatment — consistent or pulled from random third-party kits?
 
 ### 7. Brand drift signals
 - Generic AI-generated aesthetic creeping in (over-rounded everything, gradient overlays, soft drop-shadows on every card).
-- "Just shadcn defaults" with no brand customization showing through.
-- Patterns that look like a different product (Stripe-y, Linear-y, Notion-y) without intent.
+- "Just default public-component-library tokens" with no brand customization showing through.
+- Patterns that read as another company's product (mimicking a recognizable competitor's visual signature) without intent.
 
 ## Report format
 

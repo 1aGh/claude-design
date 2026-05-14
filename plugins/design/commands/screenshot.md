@@ -45,7 +45,7 @@ Skill:
 Pokud chceš anotovat konkrétní místo:
 
 1. `/design:screenshot --area <focus>` (`--selector` pro výřez).
-2. Otevři PNG v Preview / CleanShot / Figma.
+2. Otevři PNG v libovolném image-vieweru / annotation toolu.
 3. Zakroužkuj / anotuj / popiš → ulož.
 4. `/design:edit "<konkrétní feedback>" --screenshot <cesta-k-anotovanému-obrázku>`.
 

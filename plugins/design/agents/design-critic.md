@@ -85,7 +85,7 @@ For each, cite the offending line range and the rule violated:
 - **Surfaces ladder** — `--bg-0` … `--bg-N` ladder; misuse (raised content on bottom layer, etc.) → suggestion.
 - **Radii ladder** — fixed scale from tokens. Off-ladder radii → blocker.
 - **Cards** — border + bg shift over shadow (project default unless tokens say otherwise). Shadow only for floating overlays.
-- **Icons** — line stroke style consistent with project (Lucide-style, fixed stroke width is the default). Filled / multicolored / emoji in chrome → blocker.
+- **Icons** — line stroke style consistent with project (thin-stroke outline, single-weight / fixed-width is the default). Filled / multicolored / emoji in chrome → blocker.
 - **Status colors (live / error / on-air)** — fixed palette per tokens; never muted. Misuse → blocker.
 - **Accent neutrality** — only the accent token (and its `-hover/-active/-fg`) is overridden per "team" or theme variant. Retinted neutrals → blocker.
 - **Banned aesthetics** — glass morphism, decorative gradients, pastel backgrounds, neumorphism, 3D, mascots. Defaults are off; if project README explicitly opts in, allow. Otherwise → blocker.

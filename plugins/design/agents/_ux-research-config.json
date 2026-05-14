@@ -1,0 +1,54 @@
+{
+  "_comment": "Runtime config for design:ux-research-agent. The agent reads this file at the start of every run via the Read tool. This config holds PROCESS DISCIPLINE — abstract source-type categories for WebSearch breadth — NOT brand precedents (no 'always prefer X' or 'never use Y' lists). The agent's job is to research the brief's domain freely and surface whatever real, domain-relevant products fit. Whether those references include well-known SaaS brands or niche specialty publications depends entirely on what the brief actually needs.",
+
+  "websearch_diversity_categories": {
+    "_rationale": "A single direct-domain query returns one listicle. To make research genuinely broad (not just deep in one direction), agent runs 6–8 queries spread across these abstract source-type categories. The categories name TYPES of sources (awards, case studies, portfolios, heritage), not specific platforms — the agent picks the venues at runtime per domain. Each query's outcome is logged in payload.research_quality_notes for transparency, so a future reader can see whether breadth was actually achieved or whether the agent reached for the same source type 8 times in a row.",
+
+    "categories": [
+      {
+        "id": "direct-domain",
+        "query_pattern": "<domain> app design 2026",
+        "intent": "Aspirational current products in the domain — the baseline 'what's out there'."
+      },
+      {
+        "id": "design-awards",
+        "query_pattern": "<domain> design awards <year>",
+        "intent": "Award-recognized work — surfaces visually distinctive picks that the top-of-search listicles miss."
+      },
+      {
+        "id": "case-studies",
+        "query_pattern": "<domain> UX case study <year>",
+        "intent": "Annotated deep-dives over surface-level lists. Best signal-to-noise for understanding the WHY behind a design."
+      },
+      {
+        "id": "indie-portfolios",
+        "query_pattern": "independent <domain> app, solo developer <domain>, bootstrapped <domain>",
+        "intent": "Counterweight to mega-SaaS / venture-backed default surfacing. Indie and small-studio work often has stronger creative direction than the funded incumbents."
+      },
+      {
+        "id": "non-english",
+        "query_pattern": "<domain> app Japan / Europe / Korea / Latin-America",
+        "intent": "Cultural diversity of design language. USA-coastal SaaS aesthetics are one tradition among many — Japanese density / European editorial / Korean motion / Latin-American color often offer language the English search results don't surface."
+      },
+      {
+        "id": "lateral-industry",
+        "query_pattern": "What other industry solves a similar UX problem? E.g. step-by-step tutorial lateralizes from cooking → woodworking → chemistry.",
+        "intent": "Behavioral patterns transfer across industries. The best reference for a recipe app might be a chemistry-lab notebook; the best reference for a sports tracker might be a music sequencer. Lateral search finds these."
+      },
+      {
+        "id": "niche-publications",
+        "query_pattern": "<domain> editorial design, <domain> small studio website, <domain> print magazine",
+        "intent": "Specialty publications carry visual languages that mass-market product design abandoned. Often the richest aesthetic vocabulary in the domain."
+      },
+      {
+        "id": "heritage",
+        "query_pattern": "vintage <domain>, <domain> pre-digital reference, <domain> 1990s design",
+        "intent": "Pre-Web visual languages predating modern product-design defaults. A vintage <domain> magazine or trade publication often holds the cleanest expression of the domain's aesthetic identity."
+      }
+    ]
+  },
+
+  "_future_extensions": {
+    "iteration_history": "Reserved for future: track briefs already researched + their payload signatures, so subsequent runs in the same project see 'we already covered ground X in run Y' and can intentionally explore Z this time. Not implemented yet — agent's current cache strategy (per-brief-hash file) is sufficient for single-iteration runs."
+  }
+}

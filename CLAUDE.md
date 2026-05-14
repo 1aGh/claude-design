@@ -80,53 +80,18 @@ Every flow command/skill is project-agnostic. They read `.ai/workflows.config.js
 
 `package.json` `files` is intentionally minimal — only `cli/`, `plugins/design/dev-server/`, `plugins/design/templates/`, `plugins/flow/templates/`, the flow config schema, `LICENSE`, and `README.md` ship to npm. The plugin commands/agents/skills (`plugins/*/commands/`, etc.) are **NOT** published via npm — they reach users through the Claude Code plugin marketplace mechanism (`/plugin install`). When adding a new top-level directory that the CLI needs at runtime, add it to `files` or `mdcc` will break for end users.
 
-## Design system bootstrap (`.design/`)
+## Design plugin
 
-When the user asks you to scaffold a design system for ANY project, do not improvise. The design plugin has TWO setup commands plus skill-driven bootstrap:
+Design-system bootstrap, canvas iteration, and research-agent rules are owned by the plugin itself. When the user invokes `/design:*` or asks about design work, **load the plugin's own docs as the authoritative source** — do not rely on (or extrapolate from) summaries in this CLAUDE.md.
 
-- **`/design:init`** — project-level environment init (deps check, install hints, CLAUDE.md / .ai/ offers, writes skeleton `.design/config.json` with `designSystems: []`). Mirrors `/flow:init`. **Does NOT create a DS.** Auto-invoked transparently when other commands hit a missing `.design/config.json`.
-- **`/design:setup-ds <name> "[brief]"`** — dedicated command for creating a DS (first or additional). Auto-invokes `init` first if needed.
-- **Auto-load skill `design-system` (BOOTSTRAP mode)** when `/design:edit "..."` or `/design:new "..."` is invoked against a `<designRoot>/system/` that has no DS yet.
+Entry points (load these when relevant, in this order):
+- `plugins/design/skills/design-system/SKILL.md` — the canonical bootstrap + iteration spec (modes, sub-modes, discovery rounds, scaffold flow, fallback ladders)
+- `plugins/design/agents/ux-research-agent.md` — domain research subagent (the source of truth for what option pools the questionnaire shows)
+- `plugins/design/commands/{init,setup-ds,setup-docs,new,edit,help}.md` — slash-command flows
+- `plugins/design/agents/*-critic.md` — critic panel definitions
+- `plugins/design/CATEGORIES.md` — command catalog and naming convention
 
-Twelve rules govern the result:
-
-- **Onboard before bootstrap.** `/design:init` is the gate: it runs dependency pre-flight, surfaces install hints, and writes a skeleton `.design/config.json` with empty `designSystems: []`. Only after that does `/design:setup-ds` (or auto-load) run DS bootstrap. Onboard is auto-invoked transparently when other commands detect a missing config.
-
-- **One skill owns DS work.** Skill `design-system` (`plugins/design/skills/design-system/SKILL.md`) has TWO modes: READ (default — load active canvas's DS context for iteration) and BOOTSTRAP (create / extend / re-bootstrap). Mode is auto-detected on invocation. **There is NO separate `init` skill.** If you see one, delete it — it's WIP residue.
-
-- **Three bootstrap sub-modes.** `first-bootstrap` (no config exists, or `designSystems[]` empty), `additional-ds` (config exists, new name), `re-bootstrap` (existing DS, requires `--force`). Each runs different discovery (full 12-Q in 3 rounds vs 11-Q + Q_purpose + inheritance picker vs pre-filled 12-Q). `--quick` opts out of Round 3 and falls back to the 8-Q baseline.
-
-- **Discovery has 3 rounds, not 2.** Round 1 = identity (Q1–Q4: one-liner, audience, platforms, theme). Round 2 = brand + content (Q5–Q8: mood, color, type, voice). Round 3 = pro-designer inputs (Q9 signature visual treatment, Q10 hard-NO list, Q11 iconography vibe, Q12 density). Round 3 is what separates "structurally valid" output from "portfolio-worthy". Confirm step echoes a 3-sentence direction (one per round). See SKILL.md "Discovery (Round 1 + Round 2 + Round 3 + confirm)" for the option ladders.
-
-- **Specimen scaffold is fan-out work, not serial work.** After Batch A (tokens, `_layout.css`, READMEs, SKILL.md, `config.json`) is written serially by the main agent, Batches B (token-only specimens) and C (component + composition specimens) MUST fan out across 5–8 `general-purpose` sub-agents in parallel — one Agent call per slice, all fired in a single message. Sub-agents read tokens + chrome + the matching reference template, then RESTRUCTURE per the creativity rubric (target 1.5×–6× the reference LOC; never token-swap). The `_history/_system/000-scaffold-roster.yaml` is the contract — sub-agents flip rows from `pending` to `written`. Main agent reconciles at the end. Serial scaffold produces quality drift (late specimens get cut corners) and is the regression mode the `setup-ds-studio-rebootstrap-review.md` retro flagged.
-
-- **Inspiration library, not substrate.** The template at `plugins/design/templates/design-system-inspiration/` is a REFERENCE inventory. Skill (bootstrap mode) reads it as "this is what a good specimen looks like", then GENERATES project-flavored files based on discovery answers. Do not naively copy reference files; do not include placeholder copy ("Lorem", "Click here", "Acme Corp.") in scaffolded output.
-
-- **Dynamic scaffold count.** A project gets 11–24 specimens out of the library (Core 10 preview + Universal 6 preview + 1–2 `ui_kits/<platform>/index.html` always-on compositions). Selection driven by `_MAPPING.md` based on discovery answers. Marketing sites get fewer; pro-tools with multiplayer get more. Use `config.json`'s `activeFamilies[]` to know what's in scope.
-
-- **Single-DS default dirname is the literal `project`.** Multi-DS opt-in uses `system/<name>/` (kebab-case slug matching a `config.designSystems[]` entry). Never use `system/<slug-of-project-name>/` — that's the D2 divergence the completeness-critic flags as a blocker (Tier 1, C2).
-
-- **Three-tier compliance.** `design-system-completeness-critic` enforces three tiers: Core (blocker, regardless of profile), Conventional (warning, gated by `activeFamilies` + `completenessProfile`), Free-form (no check, acknowledged). Lets the system stay extensible without weakening compliance. Profile knob (`completenessProfile: minimal | standard | strict`) lives in `config.json`.
-
-- **Bootstrap success ≠ DS success.** `design-system-completeness-critic` is **structural-only** — it cannot catch shadcn-generic aesthetics, missing brand prominence, claim-without-artifact drift, or layouts that read as "lonely centered column in a dark void". The bootstrap flow therefore ALSO auto-runs (a) `agent-browser` screenshots of 3 signature specimens into `<designRoot>/_history/_system/000-bootstrap-screenshots/`, and (b) an aesthetic critic panel — at minimum `signature-moment-critic` + `graphic-design-critic` — on `colors-accent.html` and `ui_kits/desktop/index.html`. Aspiration_score < 3.0 OR any graphic-design blocker surfaces as a **named warning** in the next-step block, NOT as a silent pass. See `.ai/logs/system-reviews/setup-ds-studio-review.md` (2026-05-13) for the canonical incident this rule patches; the bootstrap flow shipped pre-fix and produced a "structurally valid + aesthetically weak" output that scored 2.3/5 on signature-moment and 0/5 on brand prominence.
-
-- **Specimens RESTRUCTURE, they don't token-swap.** The inspiration library is a reference inventory, not a substrate. Sub-agents writing specimens must target 1.5×–6× the reference LOC and earn at least one compositional choice that's NOT in the template (a teaching anti-pattern panel, a brand-spotlight hero, an inspector-pane composition, a 3-screen showcase, a "voice keep-or-kill" comparison — see `.ai/logs/system-reviews/setup-ds-studio-rebootstrap-review.md` "Creativity audit" for the gold-standards from the studio re-bootstrap). Token-swap-only output (e.g. components-buttons.html at 1.3× the template) is the regression mode the retro flagged — quality drift from serial scaffold under context pressure. Fan-out + per-slice creativity rubric in the sub-agent prompt is the fix.
-
-- **Peer-DS references are COMPOSITION-ONLY; purge their domain nouns.** When a sub-agent's reference bundle includes a peer DS as gold-standard (e.g. `studio/preview/ui_kits-desktop-showcase.html` referenced from a `studio-2` slice), the peer's compositional choices are inherited but its DOMAIN NOUNS (e.g. studio's sports-stack nouns `lineup`/`roster`/`player`) MUST be replaced with this DS's nouns from the discovery payload's `domain_nouns` field. Studio-2 retro `setup-ds-studio-2-review.md` BAD-3 caught this drift — `"publish lineup"` leaked into the studio-2 showcase from a studio peer reference. Sub-agent prompt template in `SKILL.md` requires an explicit "DOMAIN NOUN PURGE" instruction when peer references are attached.
-
-- **Bootstrap screenshots use `file://` URLs, never the dev-server URL.** `agent-browser open http://localhost:<port>/...` against the dev server returns the browse page which embeds the canvas in an iframe inside file-tree + tabbed chrome. Aesthetic critics will score that browse chrome as part of the design. Studio-2 retro BAD-2: graphic-design-critic flagged "artboard 70% empty void" because what it saw was dev-server's empty workspace tab wrapping the studio-2 iframe, not the canvas. Always: `agent-browser open file://<abs-path>/.design/system/<ds>/preview/<file>.html`.
-
-- **Daily verb is `/design:edit`, not `/design`.** The bare `/design` form was a v0.8 one-version compat stub; **removed in v0.9**. Cross-reference docs with `/design:edit` only. Renamed verbs: `/design:edit` (was `/design` in v0.8), `/design:setup-docs` (was `/design:docs` in v0.8).
-
-- **`/design:edit` screenshots BEFORE the edit when a selection is captured.** If `_active.json.selected` is non-null, OR the feedback names a specific UI element / asks for a screenshot, OR the feedback compares ≥ 2 surfaces, the orchestrator MUST fire `agent-browser open + screenshot --full` and `Read` the PNG before any Edit call. Selection JSON describes WHAT (selector + outerHTML + bounds); only the screenshot describes WHERE-IN-CONTEXT. Spec step is `plugins/design/commands/edit.md` step 3.5. Skipping this rule produced the studio iter-4 sidebar-active "mismash" — 3 follow-up rollback iterations on a single nav-item style. See `.ai/logs/system-reviews/design-edit-screenshot-habits-review.md`.
-
-Reference: `/Volumes/D/git/dugmate/.design/system/project/` (the canonical real-world example).
-Library: `plugins/design/templates/design-system-inspiration/`.
-Skill: `plugins/design/skills/design-system/SKILL.md`.
-Completeness-critic: `plugins/design/agents/design-system-completeness-critic.md`.
-Slash commands: `plugins/design/commands/{init,setup-ds,setup-docs,help}.md`.
-Per-DS canvas attribution: `<canvas>.meta.json.designSystem` (kebab-case slug; multi-DS projects only).
-Categories catalog: `plugins/design/CATEGORIES.md`.
+When working on a brief the user provided via `/design:setup-ds` or `/design:new`: pass their input **verbatim** to the skill / agent. Do not paraphrase, polish, or augment the brief with "vibe references". Do not propose option ladders that name specific products (brand-name suggestions at the brief-capture stage are the bias source the research agent exists to eliminate). The plugin's own docs handle option generation via the `design:ux-research-agent` — your job is to invoke the right slash command with the user's input intact.
 
 ## Release flow
 

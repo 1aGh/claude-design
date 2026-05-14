@@ -57,7 +57,7 @@ Template (adapted with project specifics):
 
 > **CODING AGENTS: READ THIS FIRST.**
 >
-> This folder is the project's living design source. It's NOT a snapshot — it's continuously maintained as the team iterates on UI in this repo. When in doubt, trust the contents of this folder over any older PDF / Figma / mockup snapshot.
+> This folder is the project's living design source. It's NOT a snapshot — it's continuously maintained as the team iterates on UI in this repo. When in doubt, trust the contents of this folder over any older design-tool snapshot or exported mockup.
 
 ## What's here
 

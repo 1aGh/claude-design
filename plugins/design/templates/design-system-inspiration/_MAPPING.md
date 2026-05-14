@@ -128,39 +128,62 @@ If the user mentions onboarding or auth flows in Q1, the skill MAY proactively i
 
 ## Aesthetic inputs (discovery Round 2)
 
-| Q | Answer | Effect on scaffold |
+Round 2 answers (Q5 mood, Q6 color, Q7 typography, Q8 voice) are **payload-driven** — the `design:ux-research-agent` discovers domain-relevant options per project. Token values (font families, OKLCH ranges, voice characteristics) come from the chosen payload option, NOT from a hardcoded mapping table.
+
+| Q | Answer source | Effect on scaffold |
 |---|---|---|
-| Q5 mood | Linear / Figma / posthog | iconography `lucide`, radii `xs:4 sm:6 md:8`, motion `flip:140ms ease-out` |
-| Q5 mood | Stripe / Vercel / Notion | iconography `phosphor` or `heroicons`, radii `md:12`, motion `flip:200ms` |
-| Q5 mood | Zed / Raycast / Arc | iconography `lucide thin (1px)`, radii `md:6 pill:full`, motion `flip:120ms` |
-| Q6 brand color | "pick for me" | skill picks OKLCH derived from Q5 mood + cue ladder (see SKILL.md "Accent color heuristic") |
-| Q6 brand color | explicit hex | skill converts to OKLCH, derives hover (−2L) / active (−4L) / fg |
-| Q7 typography | Inter + IBM Plex + JetBrains Mono | default — battle-tested pairs |
-| Q7 typography | Geist + Geist Mono | single-family; reduced hierarchy |
-| Q7 typography | system + JetBrains Mono | minimal pairing |
-| Q8 content tone | direct-terse | copy voice: action verbs only, no marketing puffery |
-| Q8 content tone | explanatory-friendly | copy voice: helpful sentence-fragments, second-person |
-| Q8 content tone | formal-B2B | copy voice: complete sentences, third-person, no exclamation marks |
+| Q5 mood | payload `mood_clusters[selected]` | Drives aesthetic decisions in `_layout.css` chrome + `_components.css` defaults. No fixed iconography/radii/motion mapping — those land in their own Q11 / Q9 / motion tokens. |
+| Q6 brand color | payload `color_oklch_options[selected]` | OKLCH range from the chosen option becomes `--accent` family. If user picked "I have a hex" → skill converts to OKLCH, derives hover (−2L) / active (−4L) / fg. If user picked "pick-for-me" → skill picks within the Recommended option's OKLCH range, validated against the mood cue ladder in SKILL.md "Accent color heuristic". |
+| Q7 typography | payload `typography_pairing_options[selected]` | `display_family`, `body_family`, `mono_family` from the chosen option are written verbatim into `colors_and_type.css` `--font-display / --font-body / --font-mono` tokens. |
+| Q8 content tone | payload `voice_tone_options[selected]` | The selected option's `characteristics[]` go into the DS README "Voice" section; the `sample_microcopy` becomes the reference example sub-agents read before writing specimen copy. |
 
 ## Pro-designer inputs (discovery Round 3)
 
-| Q | Answer | Effect on scaffold |
+Round 3 answers (Q9 signature treatment, Q10 hard-NOs, Q11 iconography, Q12 density) are **payload-driven** — the `design:ux-research-agent` surfaces project-specific options. **This table is NOT a list of valid user-facing answers** (the agent's payload generates those per-project from research). Instead, this is the **vocabulary of scaffold effect families** that every payload option MUST classify itself into via a `family` field. The agent picks options that fit the brief, names them per-project (e.g. `<treatment-id> (anchor: <real-product>)`), and tags each with one of these family IDs so the scaffold knows what CSS / asset behavior to apply.
+
+### Q9 signature treatment — effect families
+
+Every `signature_treatment_options[i]` in the payload MUST set `family` to one of these IDs. The scaffold then applies the corresponding `_layout.css` / token changes regardless of how the option was labeled.
+
+| Family ID | Scaffold effect (what `_layout.css` / tokens do when this family is chosen) |
+|---|---|
+| `chrome-glow` | Body bg = soft accent halo + faint vignette; `--shadow-glow` halo on signature cards. Subtle, accent-anchored ambient warmth. |
+| `body-pattern` | Body bg = repeating pattern (scanlines, dot grid, hatch, noise overlay) at low opacity; `body::before` SVG film/grain; optional `body::after` slow animation gated behind reduced-motion. Heavier, atmospheric. |
+| `frosted-blur` | `.specimen` + cards get `backdrop-filter: blur(20px) saturate(140%)` + low-alpha bg; tokens add a frosted-tint variable. Translucent depth. |
+| `hard-edges` | Radii collapse to `0/2/4`; shadows removed except focus ring; borders bumped to `--border-strong`; thicker outlines on key elements. Brutalist / no-nonsense. |
+| `depth-stretch` | Shadow ladder stretched — `--shadow-md/lg/xl` get longer offsets and softer blurs; cards float higher; hover state lifts more. Soft-floaty depth. |
+| `inset-recess` | Tokens add `--shadow-inset-sm/md`; inputs + toggles use inset-shadow surfaces; never inside chrome with text on it (accessibility). Hardware-toggle / recessed feel. |
+| `none` | No body-level treatment; `_layout.css` stays minimal; chrome reads flat. The opt-out value. |
+
+The agent may also propose treatments outside this catalog — when it does, it must either map them to the closest family OR flag in `research_quality_notes` that a new family ID is needed (which then becomes a spec-change conversation, not a silent extension).
+
+### Q10 hard NOs — sub-agent guardrails
+
+| Q | Answer source | Effect on scaffold |
 |---|---|---|
-| Q9 signature treatment | `gradient discipline (Affinity)` | `_layout.css` body bg = soft accent halo top-right + light bottom vignette; `--shadow-glow` halo on signature cards |
-| Q9 signature treatment | `CRT scanlines + phosphor glow` | `_layout.css` body bg = repeating-linear-gradient scanlines; h1 text-shadow with `oklch(from --accent l c h / 0.20)`; body::before SVG film-grain (~6% opacity, overlay blend); body::after slow CRT-roll animation gated behind reduced-motion |
-| Q9 signature treatment | `glassmorphism` | `.specimen` + cards get `backdrop-filter: blur(20px) saturate(140%)` + low-alpha bg; tokens add `--glass-tint` |
-| Q9 signature treatment | `brutalism (hard edges)` | radii collapse to `0/2/4`; shadows removed except focus ring; borders bumped to `--border-strong`; thicker outlines on key elements |
-| Q9 signature treatment | `soft-shadow depth ladder` | shadow ladder stretched — `--shadow-md/lg/xl` get longer offsets and softer blurs; cards float higher; hover state lifts more |
-| Q9 signature treatment | `neumorphism (inset shadows)` | tokens add `--shadow-inset-sm/md`; inputs + toggles use inset-shadow surfaces; never inside chrome with text on it (accessibility) |
-| Q9 signature treatment | `none / restrained` | no body-level treatment; `_layout.css` stays minimal; chrome reads like Zed-flat |
-| Q10 hard NOs | any picks | each guardrail surfaced in DS README "Hard rules"; sub-agents read this list and enforce ("no animations" → no transitions; "no gradients" → no linear-gradient / radial-gradient anywhere; "no emoji" → no emoji glyphs in any scaffolded HTML, use lucide-style SVG instead) |
-| Q11 iconography vibe | `terminal glyphs` | iconography.html scaffolds 12 ASCII-leaning 1px-stroke icons (▦ ⌬ ⌕ ⌘ ▾ ▸ ●); generated SVG glyphs use 1px stroke + rounded caps; no emoji anywhere |
-| Q11 iconography vibe | `product icons (lucide rounded)` | lucide default set, 1.5px stroke, 20px grid; balanced product nouns derived from Q1+Q2 |
-| Q11 iconography vibe | `industry-specific` | iconography.html curated to project domain (sports → balls/jerseys; recipes → utensils/bowls; finance → charts/cards); driven by domain nouns extracted from Q1 |
-| Q11 iconography vibe | `flat-illustrative` | filled (not stroked) icons; Phosphor/Heroicons-style; larger sizes default (24/32) |
-| Q12 density | `dense pro-tool` | base `--space-*` shrinks (most padding lands on space-2/3); buttons 7px vertical; tables compact; sidebar 220-248px |
-| Q12 density | `balanced` | default `--space-*`; buttons 8px vertical; sidebar 248-280px |
-| Q12 density | `roomy SaaS` | base padding bumps (most lands on space-4/5); buttons 10-12px vertical; sidebar 280-320px; type-scale slightly bumped |
+| Q10 hard NOs | payload `suggested_hard_NOs[]` + `anti_references[]` (user-picked subset, multi-select) | Each picked guardrail surfaced in DS README "Hard rules"; sub-agents read this list and enforce — "no animations" → no `transition` / `@keyframes` outside reduced-motion fallback; "no gradients" → no `linear-gradient` / `radial-gradient` anywhere; "no emoji" → no emoji glyphs in any scaffolded HTML (use stroke SVG glyphs instead). Hard NOs override the Q9 signature treatment when they conflict (e.g. `frosted-blur` + "no gradients" = use solid translucent fill, no gradient backdrop). |
+
+### Q11 iconography — effect families
+
+Every `iconography_vibe_options[i]` in the payload MUST set `family` to one of these IDs.
+
+| Family ID | Scaffold effect (`iconography.html` content + `assets/glyphs/` SVG style) |
+|---|---|
+| `thin-stroke-geometric` | `iconography.html` scaffolds 12 ASCII-leaning 1px-stroke icons; generated SVG glyphs use 1px stroke + rounded caps; no emoji anywhere. Terminal / IDE heritage. |
+| `outline-product` | Default outline icon set at 1.5–2px stroke on a 20–24px grid; balanced product nouns derived from Q1+Q2. The most common "rounded outline" family. |
+| `industry-specific` | `iconography.html` curated to project domain (the agent's `domain_nouns` from the payload drives glyph selection); each domain noun gets a custom SVG. |
+| `filled-solid` | Filled (not stroked) icons; larger sizes default (24/32). High-contrast presence. |
+| `photographic` | Iconography replaced by photographic thumbnails (e.g. ingredient photos as IDs); `assets/glyphs/` remains nominal; thumbnail scaffolding lives in components. |
+
+### Q12 density — effect families
+
+Every `density_options[i]` in the payload MUST set `family` to one of these IDs.
+
+| Family ID | Scaffold effect (`--space-*` defaults + component padding) |
+|---|---|
+| `dense` | Base `--space-*` shrinks (most padding lands on space-2/3); buttons 7px vertical; tables compact; sidebar 220–248px. Pro-tool / data-heavy. |
+| `balanced` | Default `--space-*`; buttons 8px vertical; sidebar 248–280px. Mid-range. |
+| `roomy` | Base padding bumps (most lands on space-4/5); buttons 10–12px vertical; sidebar 280–320px; type-scale slightly bumped. Consumer / reading-friendly. |
 
 ## Brand asset minimums (always-on)
 

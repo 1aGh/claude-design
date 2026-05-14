@@ -27,7 +27,7 @@ This skill is non-user-invocable. Auto-loads when Claude is doing UI work. The u
 
 Every project canvas under `<designRoot>/ui/project/` follows the same shape:
 
-1. **`DesignCanvas`** wrapper — Figma-style infinite canvas (panable / zoomable).
+1. **`DesignCanvas`** wrapper — panable / zoomable infinite-canvas pattern.
 2. **`DCSection`** blocks — labeled groups of related screens.
 3. **`DCArtboard`** instances — individual screens, each wrapped in the project's app shell where applicable.
 
