@@ -1,0 +1,340 @@
+/*
+ * md-claude — specimen chrome · MDCC-DSN/01-CHROME
+ *
+ * Shared frame for every preview/*.html specimen. The chrome IS the signature:
+ * catalog part-numbers (MDCC-XXX/NN) framed by 1px ink hairlines, mono-typed
+ * eyebrows, hard-edges everywhere. No drop-shadows, no rounded-3xl, no glow.
+ *
+ * Layout anatomy (top → bottom of every specimen):
+ *   ┌───────────────────────────────────────────────────────────────┐
+ *   │ .specimen-hd  — part-number row + breadcrumb + theme toggle   │
+ *   ├───────────────────────────────────────────────────────────────┤
+ *   │ .specimen-title — h1 + lede                                   │
+ *   │ .specimen-meta  — published / family / status row             │
+ *   ├───────────────────────────────────────────────────────────────┤
+ *   │ .specimen body — h2 sections, demonstration content           │
+ *   ├───────────────────────────────────────────────────────────────┤
+ *   │ .specimen-ft  — colophon / cross-refs                         │
+ *   └───────────────────────────────────────────────────────────────┘
+ */
+
+@import url("../colors_and_type.css");
+
+* { box-sizing: border-box; }
+*::selection { background: var(--accent); color: var(--accent-fg); }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-body);
+  font-size: var(--type-base);
+  line-height: var(--lh-base);
+  color: var(--fg-0);
+  background: var(--bg-0);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* Hairline grid lines anchored to bg-0; very subtle in light, slightly more
+     visible on phosphor. Decorative-but-disciplined catalog grain. */
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, var(--border-subtle) 0%, transparent) 0 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--border-subtle) 0%, transparent) 0 1px, transparent 1px);
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ─── Specimen head — catalog part-number frame ──────────────────────── */
+.specimen-hd {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-6);
+  border-bottom: var(--rule-strong);
+  background: var(--bg-0);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-sku);
+  text-transform: uppercase;
+  color: var(--fg-1);
+  position: sticky;
+  top: 0;
+  z-index: 9;
+}
+.specimen-hd .sku {
+  font-weight: 600;
+  color: var(--fg-0);
+  letter-spacing: var(--tracking-sku);
+}
+.specimen-hd .crumbs {
+  color: var(--fg-2);
+  display: flex;
+  gap: var(--space-3);
+  font-weight: 400;
+}
+.specimen-hd .crumbs span + span::before {
+  content: "/";
+  margin-right: var(--space-3);
+  color: var(--fg-3);
+}
+.specimen-hd a {
+  color: var(--fg-1);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--border-default);
+}
+.specimen-hd a:hover { color: var(--fg-0); border-bottom-color: var(--accent); }
+
+.theme-toggle {
+  display: inline-flex;
+  border: var(--rule-thin);
+  background: var(--bg-1);
+}
+.theme-toggle button {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-sku);
+  color: var(--fg-2);
+  cursor: pointer;
+  transition: color var(--dur-flip) var(--ease-out);
+}
+.theme-toggle button[aria-pressed="true"] {
+  background: var(--fg-0);
+  color: var(--bg-0);
+}
+.theme-toggle button + button { border-left: var(--rule-thin); }
+.theme-toggle button:hover { color: var(--fg-0); }
+
+/* ─── Title block ────────────────────────────────────────────────────── */
+.specimen {
+  max-width: var(--layout-max-w);
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-6) var(--space-9);
+  flex: 1;
+}
+
+.specimen-title { margin: 0 0 var(--space-3); }
+.specimen-title h1 {
+  font-family: var(--font-display);
+  font-size: var(--type-3xl);
+  line-height: var(--lh-3xl);
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg-0);
+}
+.specimen-title .lede {
+  font-size: var(--type-md);
+  line-height: var(--lh-md);
+  color: var(--fg-1);
+  margin: var(--space-3) 0 0;
+  max-width: var(--layout-prose);
+}
+
+.specimen-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  align-items: baseline;
+  margin: var(--space-5) 0 var(--space-6);
+  padding: var(--space-3) 0;
+  border-top: var(--rule-thin);
+  border-bottom: var(--rule-thin);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.specimen-meta dt { display: inline; color: var(--fg-3); margin-right: var(--space-2); }
+.specimen-meta dt::after { content: ":"; margin-left: 2px; }
+.specimen-meta dd { display: inline; margin: 0; color: var(--fg-1); font-weight: 500; }
+.specimen-meta dt, .specimen-meta dd { letter-spacing: inherit; }
+
+/* ─── Section headings ──────────────────────────────────────────────── */
+.specimen h2 {
+  font-family: var(--font-display);
+  font-size: var(--type-xs);
+  line-height: var(--lh-xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-sku);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  margin: var(--space-7) 0 var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: var(--rule-strong);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.specimen h2::before {
+  content: attr(data-no) " · ";
+  color: var(--accent);
+  margin-right: var(--space-3);
+  font-weight: 700;
+}
+.specimen h2 .h2-aside {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: var(--tracking-normal);
+  color: var(--fg-3);
+  font-size: var(--type-xs);
+}
+
+.specimen h3 {
+  font-family: var(--font-display);
+  font-size: var(--type-sm);
+  line-height: var(--lh-sm);
+  margin: var(--space-5) 0 var(--space-2);
+  font-weight: 600;
+  color: var(--fg-0);
+  letter-spacing: var(--tracking-normal);
+}
+
+.specimen p {
+  margin: 0 0 var(--space-4);
+  max-width: var(--layout-prose);
+  color: var(--fg-1);
+  line-height: var(--lh-md);
+}
+
+.specimen a {
+  color: var(--fg-0);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--accent);
+}
+.specimen a:hover { background: var(--accent); color: var(--accent-fg); text-decoration: none; }
+
+.specimen code,
+.specimen kbd,
+.specimen pre {
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+}
+.specimen :not(pre) > code {
+  background: var(--mono-cell-bg);
+  color: var(--mono-cell-fg);
+  padding: 1px 6px;
+  border: 1px solid var(--mono-rule);
+}
+.specimen pre {
+  background: var(--mono-cell-bg);
+  border: var(--rule-thin);
+  padding: var(--space-4) var(--space-5);
+  overflow-x: auto;
+  line-height: var(--lh-base);
+}
+
+/* ─── Grids + rows for swatches and demonstrations ───────────────────── */
+.grid {
+  display: grid;
+  gap: 0;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  margin: 0 0 var(--space-6);
+  border: var(--rule-thin);
+}
+.grid > * { border: var(--rule-thin); margin: -1px 0 0 -1px; }
+
+.swatch { background: var(--bg-1); display: flex; flex-direction: column; }
+.swatch .chip { height: 88px; border-bottom: var(--rule-thin); }
+.swatch .meta {
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--type-xs);
+  font-family: var(--font-mono);
+  color: var(--fg-2);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+.swatch .meta strong {
+  display: block;
+  color: var(--fg-0);
+  font-weight: 600;
+  font-size: var(--type-sm);
+  letter-spacing: var(--tracking-normal);
+}
+.swatch .meta .oklch {
+  font-size: 10px;
+  color: var(--fg-3);
+  text-align: right;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: center;
+  margin: 0 0 var(--space-5);
+}
+
+.divider {
+  height: 1px;
+  background: var(--border-default);
+  margin: var(--space-6) 0;
+  position: relative;
+}
+.divider::after {
+  content: attr(data-label);
+  position: absolute;
+  top: 50%;
+  left: var(--space-5);
+  transform: translateY(-50%);
+  background: var(--bg-0);
+  padding: 0 var(--space-3);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-sku);
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+/* ─── Footer / colophon ──────────────────────────────────────────────── */
+.specimen-ft {
+  margin-top: var(--space-9);
+  padding-top: var(--space-5);
+  border-top: var(--rule-strong);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-3);
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+.specimen-ft .colo-block strong { color: var(--fg-1); font-weight: 600; letter-spacing: var(--tracking-sku); }
+.specimen-ft .colo-block { display: flex; gap: var(--space-3); align-items: baseline; }
+
+/* ─── Anti-pattern callouts ──────────────────────────────────────────── */
+.anti, .pro {
+  border: var(--rule-thin);
+  border-left: 4px solid var(--status-error);
+  background: var(--bg-1);
+  padding: var(--space-4);
+  margin: var(--space-4) 0;
+}
+.anti::before, .pro::before {
+  content: "× DON'T";
+  display: block;
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-sku);
+  color: var(--status-error);
+  font-weight: 700;
+  margin-bottom: var(--space-2);
+}
+.pro {
+  border-left-color: var(--status-success);
+}
+.pro::before { content: "✓ DO"; color: var(--status-success); }
+
+/* Reduced-motion already handled in tokens; double-belt for chrome hovers. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}

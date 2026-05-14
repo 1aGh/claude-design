@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- glyph · canvas · 16×16 · 1px stroke · mono-baseline -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" role="img" aria-label="canvas">
+  <g fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="square">
+    <rect x="2" y="3" width="12" height="10"/>
+    <line x1="2" y1="6" x2="14" y2="6"/>
+    <circle cx="4" cy="4.5" r="0.4" fill="currentColor" stroke="none"/>
+    <circle cx="6" cy="4.5" r="0.4" fill="currentColor" stroke="none"/>
+    <circle cx="8" cy="4.5" r="0.4" fill="currentColor" stroke="none"/>
+    <rect x="4" y="8" width="4" height="3"/>
+  </g>
+</svg>

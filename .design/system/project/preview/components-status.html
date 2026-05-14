@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en" class="mdcc">
+<head>
+<meta charset="utf-8">
+<title>MDCC-DSN/01.components-status — md-claude</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- SPECIMEN: status pills / dots / inline indicators with semantic colors. -->
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="stylesheet" href="./_layout.css">
+<link rel="stylesheet" href="./_components.css">
+</head>
+<body>
+<header class="specimen-hd"><span class="sku">MDCC-DSN/01.components-status</span><span class="crumbs"><span>md-claude</span><span>design system</span><span>status</span><span>components</span></span><span class="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+<main class="specimen">
+  <section class="specimen-title"><h1>Status indicators</h1><p class="lede">Badges (outline + solid), dots, inline label-value pairs. All squared corners. The semantic color does the talking; no decorative iconography.</p></section>
+  <dl class="specimen-meta"><div><dt>Variants</dt><dd>badge · badge--solid · dot · inline-state</dd></div></dl>
+
+  <h2 data-no="01">Outline badges</h2>
+  <div class="row">
+    <span class="badge badge--success">live</span>
+    <span class="badge badge--warn">beta</span>
+    <span class="badge badge--error">failed</span>
+    <span class="badge badge--info">tip</span>
+    <span class="badge badge--accent">featured</span>
+  </div>
+
+  <h2 data-no="02">Solid badges</h2>
+  <div class="row">
+    <span class="badge badge--success badge--solid" style="color:var(--bg-0);background:var(--status-success);border-color:var(--status-success)">v0.12.0</span>
+    <span class="badge badge--warn badge--solid" style="color:var(--bg-0);background:var(--status-warn);border-color:var(--status-warn)">beta</span>
+    <span class="badge badge--error badge--solid" style="color:var(--bg-0);background:var(--status-error);border-color:var(--status-error)">install failed</span>
+    <span class="badge badge--accent badge--solid">FEATURED</span>
+  </div>
+
+  <h2 data-no="03">Dots <span class="h2-aside">inline 8px chip</span></h2>
+  <div style="display:flex;flex-direction:column;gap:var(--space-3);font-size:var(--type-sm)">
+    <div><span class="dot dot--success"></span> <code>MDCC-DSN/01</code> installed · v0.12.0</div>
+    <div><span class="dot dot--warn"></span> <code>MDCC-FLW/02</code> update available · v0.11.0 → v0.12.0</div>
+    <div><span class="dot dot--error"></span> <code>MDCC-CLI/03</code> install failed · permission denied</div>
+    <div><span class="dot dot--info"></span> <code>MDCC-DOC/04</code> pinned · won't auto-update</div>
+  </div>
+
+  <h2 data-no="04">Status with timestamp</h2>
+  <table class="cat" style="margin-top:var(--space-4);width:100%;border-collapse:collapse;border:1px solid var(--border-default)">
+    <thead><tr><th style="text-align:left;padding:var(--space-3) var(--space-4);background:var(--bg-2);border-bottom:1px solid var(--border-strong);font-family:var(--font-mono);font-size:var(--type-xs);letter-spacing:var(--tracking-sku);text-transform:uppercase;color:var(--fg-2)">Step</th><th style="text-align:left;padding:var(--space-3) var(--space-4);background:var(--bg-2);border-bottom:1px solid var(--border-strong);font-family:var(--font-mono);font-size:var(--type-xs);letter-spacing:var(--tracking-sku);text-transform:uppercase;color:var(--fg-2)">State</th><th style="text-align:left;padding:var(--space-3) var(--space-4);background:var(--bg-2);border-bottom:1px solid var(--border-strong);font-family:var(--font-mono);font-size:var(--type-xs);letter-spacing:var(--tracking-sku);text-transform:uppercase;color:var(--fg-2)">At</th></tr></thead>
+    <tbody>
+      <tr><td style="padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border-subtle);font-family:var(--font-mono);font-size:var(--type-sm);color:var(--fg-1)">/design:setup-ds project</td><td style="padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border-subtle)"><span class="badge badge--success">ok</span></td><td style="padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border-subtle);color:var(--fg-2);font-family:var(--font-mono);font-size:var(--type-sm)">2026-05-14 09:24</td></tr>
+      <tr><td style="padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border-subtle);font-family:var(--font-mono);font-size:var(--type-sm);color:var(--fg-1)">Round 0 research</td><td style="padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border-subtle)"><span class="badge badge--success">ok</span></td><td style="padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border-subtle);color:var(--fg-2);font-family:var(--font-mono);font-size:var(--type-sm)">2026-05-14 09:27</td></tr>
+      <tr><td style="padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border-subtle);font-family:var(--font-mono);font-size:var(--type-sm);color:var(--fg-1)">Batch A scaffold</td><td style="padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border-subtle)"><span class="badge badge--success">ok</span></td><td style="padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border-subtle);color:var(--fg-2);font-family:var(--font-mono);font-size:var(--type-sm)">2026-05-14 09:42</td></tr>
+      <tr><td style="padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border-subtle);font-family:var(--font-mono);font-size:var(--type-sm);color:var(--fg-1)">Batch B+C fan-out</td><td style="padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border-subtle)"><span class="badge badge--warn">slow</span></td><td style="padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border-subtle);color:var(--fg-2);font-family:var(--font-mono);font-size:var(--type-sm)">2026-05-14 09:55</td></tr>
+      <tr><td style="padding:var(--space-3) var(--space-4);font-family:var(--font-mono);font-size:var(--type-sm);color:var(--fg-1)">Aesthetic critic panel</td><td style="padding:var(--space-3) var(--space-4)"><span class="badge">pending</span></td><td style="padding:var(--space-3) var(--space-4);color:var(--fg-3);font-family:var(--font-mono);font-size:var(--type-sm)">—</td></tr>
+    </tbody>
+  </table>
+
+  <footer class="specimen-ft"><div class="colo-block"><strong>MDCC-DSN/01</strong><span>· components-status</span></div><div class="colo-block"><span>md-claude · v0.12.0</span></div></footer>
+</main>
+<script>(function(){const r=document.documentElement;const i=localStorage.getItem('mdcc-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');r.setAttribute('data-theme',i);document.querySelectorAll('.theme-toggle button').forEach(b=>{b.setAttribute('aria-pressed',b.dataset.theme===i?'true':'false');b.addEventListener('click',()=>{const t=b.dataset.theme;r.setAttribute('data-theme',t);localStorage.setItem('mdcc-theme',t);document.querySelectorAll('.theme-toggle button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.theme===t?'true':'false'));});});})();</script>
+</body>
+</html>

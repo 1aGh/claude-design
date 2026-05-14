@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en" class="mdcc">
+<head>
+<meta charset="utf-8">
+<title>MDCC-DSN/01.spacing-scale — md-claude</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- SPECIMEN: 4px-base spacing scale (--space-0..--space-9) with usage notes. -->
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="stylesheet" href="./_layout.css">
+<link rel="stylesheet" href="./_components.css">
+<style>
+  .space-row{display:grid;grid-template-columns:120px 64px 1fr 1fr;gap:var(--space-4);align-items:center;padding:var(--space-3) 0;border-bottom:1px solid var(--border-subtle);}
+  .space-row .label{font-family:var(--font-mono);font-size:var(--type-xs);letter-spacing:var(--tracking-sku);text-transform:uppercase;color:var(--fg-2);}
+  .space-row .px{font-family:var(--font-mono);font-size:var(--type-sm);color:var(--fg-1);text-align:right;}
+  .space-row .bar{height:14px;background:var(--accent);}
+  .space-row .use{font-size:var(--type-sm);color:var(--fg-1);}
+</style>
+</head>
+<body>
+<header class="specimen-hd">
+  <span class="sku">MDCC-DSN/01.spacing-scale</span>
+  <span class="crumbs"><span>md-claude</span><span>design system</span><span>spacing</span><span>scale</span></span>
+  <span class="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span>
+</header>
+<main class="specimen">
+  <section class="specimen-title">
+    <h1>Spacing</h1>
+    <p class="lede">4px base, ten steps. Balanced-docs density means chrome lives on <code>--space-3</code> / <code>--space-4</code> (8 / 12px). If you reach for an in-between value, the answer is the nearest token, not a new one.</p>
+  </section>
+  <dl class="specimen-meta">
+    <div><dt>Base</dt><dd>4px</dd></div>
+    <div><dt>Steps</dt><dd>10</dd></div>
+    <div><dt>Density</dt><dd>Balanced</dd></div>
+  </dl>
+
+  <h2 data-no="01">The scale <span class="h2-aside">--space-0 → --space-9</span></h2>
+  <div class="space-row"><span class="label">--space-0</span><span class="px">0px</span><span></span><span class="use">Reset. Margin/padding zeroing.</span></div>
+  <div class="space-row"><span class="label">--space-1</span><span class="px">2px</span><span class="bar" style="width:2px"></span><span class="use">Inline gap inside a chip (badge text + dot).</span></div>
+  <div class="space-row"><span class="label">--space-2</span><span class="px">4px</span><span class="bar" style="width:4px"></span><span class="use">Tile-hd row gap, badge padding.</span></div>
+  <div class="space-row"><span class="label">--space-3</span><span class="px">8px</span><span class="bar" style="width:8px"></span><span class="use">Chrome padding default. Card row gap, button vertical padding.</span></div>
+  <div class="space-row"><span class="label">--space-4</span><span class="px">12px</span><span class="bar" style="width:12px"></span><span class="use">Tile-bd padding, input padding, h3 → body gap.</span></div>
+  <div class="space-row"><span class="label">--space-5</span><span class="px">16px</span><span class="bar" style="width:16px"></span><span class="use">Card padding, button horizontal padding, meta-row gap.</span></div>
+  <div class="space-row"><span class="label">--space-6</span><span class="px">24px</span><span class="bar" style="width:24px"></span><span class="use">Specimen gutter (left/right), .specimen padding-top.</span></div>
+  <div class="space-row"><span class="label">--space-7</span><span class="px">32px</span><span class="bar" style="width:32px"></span><span class="use">h2 section margin-top (rhythm beat).</span></div>
+  <div class="space-row"><span class="label">--space-8</span><span class="px">48px</span><span class="bar" style="width:48px"></span><span class="use">Hero/stamp inner padding, long-form section break.</span></div>
+  <div class="space-row"><span class="label">--space-9</span><span class="px">64px</span><span class="bar" style="width:64px"></span><span class="use">Specimen-bottom, footer separation. The "we're done" pause.</span></div>
+
+  <h2 data-no="02">In a tile <span class="h2-aside">balanced-docs anatomy</span></h2>
+  <div class="tile" style="max-width:420px">
+    <div class="tile-hd"><span class="sku">MDCC-DSN/01</span><span>v0.12.0</span></div>
+    <div class="tile-bd">
+      <h3>design</h3>
+      <p>Canvas-first iteration on HTML mocks. Auto-runs the critic panel after every edit.</p>
+      <ul style="margin:0;padding-left:var(--space-5);font-size:var(--type-sm)">
+        <li>zero-dep dev-server</li>
+        <li>Cmd+Click inspector overlay</li>
+        <li>snapshot stack per canvas</li>
+      </ul>
+    </div>
+    <div class="tile-ft"><span>FEATURED</span><span>Published 2026-05</span></div>
+  </div>
+  <p style="margin-top:var(--space-3);color:var(--fg-2);font-size:var(--type-xs);letter-spacing:var(--tracking-wide);text-transform:uppercase">tile-hd padding · space-3/space-4 · tile-bd · space-4/space-5 · tile-ft · space-3/space-4</p>
+
+  <h2 data-no="03">When not to use <span class="h2-aside">no in-between values</span></h2>
+  <div class="anti"><p style="margin:0">Don't write <code>padding: 10px</code> because "12 is too much, 8 is too little". Pick the surrounding context's rhythm — chrome at space-3/4, content at space-4/5. The ladder is 4px-stepped on purpose.</p></div>
+
+  <footer class="specimen-ft">
+    <div class="colo-block"><strong>MDCC-DSN/01</strong><span>· spacing-scale</span></div>
+    <div class="colo-block"><span>md-claude · v0.12.0</span></div>
+  </footer>
+</main>
+<script>(function(){const r=document.documentElement;const i=localStorage.getItem('mdcc-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');r.setAttribute('data-theme',i);document.querySelectorAll('.theme-toggle button').forEach(b=>{b.setAttribute('aria-pressed',b.dataset.theme===i?'true':'false');b.addEventListener('click',()=>{const t=b.dataset.theme;r.setAttribute('data-theme',t);localStorage.setItem('mdcc-theme',t);document.querySelectorAll('.theme-toggle button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.theme===t?'true':'false'));});});})();</script>
+</body>
+</html>

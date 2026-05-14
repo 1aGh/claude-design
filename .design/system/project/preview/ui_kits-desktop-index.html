@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en" class="mdcc">
+<head>
+<meta charset="utf-8">
+<title>MDCC-DSN/01 — md-claude · catalog index</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- SPECIMEN: catalog launcher — index of every peer specimen. Written LAST. -->
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="stylesheet" href="./_layout.css">
+<link rel="stylesheet" href="./_components.css">
+<style>
+  .group { margin: var(--space-7) 0; }
+  .group h2 { margin-top: 0; }
+  .cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0; border: 1px solid var(--border-default); }
+  .cat-card {
+    border: 1px solid var(--border-default);
+    margin: -1px 0 0 -1px;
+    background: var(--bg-1);
+    padding: var(--space-4);
+    display: flex; flex-direction: column; gap: var(--space-2);
+    text-decoration: none;
+    color: var(--fg-0);
+    transition: background var(--dur-flip) var(--ease-out);
+  }
+  .cat-card:hover { background: var(--bg-2); }
+  .cat-card .hd { display: flex; justify-content: space-between; align-items: baseline; }
+  .cat-card .hd .sku-bit { font-family: var(--font-mono); font-size: 10px; letter-spacing: var(--tracking-sku); text-transform: uppercase; color: var(--fg-2); }
+  .cat-card .hd .star { color: var(--accent); font-size: 10px; letter-spacing: var(--tracking-sku); font-weight: 700; }
+  .cat-card .name { font-family: var(--font-display); font-size: var(--type-md); font-weight: 600; color: var(--fg-0); margin: 0; }
+  .cat-card .desc { font-size: var(--type-xs); color: var(--fg-2); margin: 0; }
+  .cat-card.signature { border-left: 4px solid var(--accent); margin-left: 0; padding-left: calc(var(--space-4) - 3px); }
+</style>
+</head>
+<body>
+<header class="specimen-hd"><span class="sku">MDCC-DSN/01 · INDEX</span><span class="crumbs"><span>md-claude</span><span>design system</span><span>desktop</span><span>index</span></span><span class="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+<main class="specimen">
+  <section class="specimen-title">
+    <h1>Catalog index</h1>
+    <p class="lede">Every specimen in MDCC-DSN/01, grouped by family. Click a card to open the canvas. Signature pieces (★) carry an accent left edge. The showcase (★★) is the highest-leverage "DS in use" composition.</p>
+  </section>
+  <dl class="specimen-meta">
+    <div><dt>Specimens</dt><dd>36</dd></div>
+    <div><dt>Signature</dt><dd>4 (colors-accent · empty-state · logo · ui_kits-desktop-showcase)</dd></div>
+    <div><dt>Audience</dt><dd>developer tool</dd></div>
+  </dl>
+
+  <section class="group">
+    <h2 data-no="00">Showcase <span class="h2-aside">DS in use</span></h2>
+    <div class="cat-grid">
+      <a class="cat-card signature" href="./ui_kits-desktop-showcase.html">
+        <div class="hd"><span class="sku-bit">MDCC-DSN/01.SHOWCASE</span><span class="star">★★</span></div>
+        <div class="name">Desktop showcase</div>
+        <p class="desc">Full mdcc-design-server mock: titlebar + file-tree + tabbed iframe + inspector pins + status bar. Accent picker.</p>
+      </a>
+    </div>
+  </section>
+
+  <section class="group">
+    <h2 data-no="01">Tokens · color</h2>
+    <div class="cat-grid">
+      <a class="cat-card" href="./colors-text.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.COLORS-TEXT</span></div><div class="name">Ink ladder</div><p class="desc">--fg-0..--fg-3 on every surface. Pair checks.</p></a>
+      <a class="cat-card" href="./colors-surfaces.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.COLORS-SURFACES</span></div><div class="name">Surface ladder</div><p class="desc">--bg-0..--bg-4 + borders. Depth-via-rules.</p></a>
+      <a class="cat-card signature" href="./colors-accent.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.COLORS-ACCENT</span><span class="star">★</span></div><div class="name">Accent — amber-rust</div><p class="desc">One color, five tokens, the catalog stamp.</p></a>
+      <a class="cat-card" href="./colors-status.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.COLORS-STATUS</span></div><div class="name">Status family</div><p class="desc">success / warn / error / info.</p></a>
+      <a class="cat-card" href="./colors-themes-side-by-side.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.COLORS-THEMES</span></div><div class="name">Paper vs phosphor</div><p class="desc">Both themes, same content, side-by-side.</p></a>
+    </div>
+  </section>
+
+  <section class="group">
+    <h2 data-no="02">Tokens · type / space / motion</h2>
+    <div class="cat-grid">
+      <a class="cat-card" href="./type-scale.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.TYPE-SCALE</span></div><div class="name">Type ladder</div><p class="desc">8-step Berkeley Mono + tracking ladder.</p></a>
+      <a class="cat-card" href="./type-mono.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.TYPE-MONO</span></div><div class="name">Mono type</div><p class="desc">Weights, identifiers, ch grid, tabular nums.</p></a>
+      <a class="cat-card" href="./spacing-scale.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.SPACING-SCALE</span></div><div class="name">Spacing</div><p class="desc">10 steps, 4px base.</p></a>
+      <a class="cat-card" href="./motion.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.MOTION</span></div><div class="name">Motion</div><p class="desc">4 durations, hover-only. Route = 1ms.</p></a>
+    </div>
+  </section>
+
+  <section class="group">
+    <h2 data-no="03">Foundations</h2>
+    <div class="cat-grid">
+      <a class="cat-card" href="./borders.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.BORDERS</span></div><div class="name">Borders</div><p class="desc">1px hairlines · 3 weights.</p></a>
+      <a class="cat-card" href="./elevation.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.ELEVATION</span></div><div class="name">Elevation</div><p class="desc">No shadow ladder — bg-shift only.</p></a>
+      <a class="cat-card" href="./focus.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.FOCUS</span></div><div class="name">Focus ring</div><p class="desc">2px accent on :focus-visible.</p></a>
+      <a class="cat-card" href="./grid.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.GRID</span></div><div class="name">Grid</div><p class="desc">12-col + auto-fill tile grid.</p></a>
+      <a class="cat-card" href="./iconography.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.ICONOGRAPHY</span></div><div class="name">Iconography</div><p class="desc">20+ Unicode glyphs + 4 SVG noun glyphs.</p></a>
+      <a class="cat-card" href="./opacity.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.OPACITY</span></div><div class="name">Opacity</div><p class="desc">4 levels: default / armed / disabled / scrim.</p></a>
+      <a class="cat-card" href="./radii.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.RADII</span></div><div class="name">Radii</div><p class="desc">Hard-edges. 0 / 2 / 4 only.</p></a>
+      <a class="cat-card" href="./selection.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.SELECTION</span></div><div class="name">Selection</div><p class="desc">::selection in accent + file-tree row.</p></a>
+    </div>
+  </section>
+
+  <section class="group">
+    <h2 data-no="04">Components · universal</h2>
+    <div class="cat-grid">
+      <a class="cat-card" href="./components-buttons.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.BUTTONS</span></div><div class="name">Buttons</div><p class="desc">4 variants · 3 sizes · kbd hints.</p></a>
+      <a class="cat-card" href="./components-cards.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.CARDS</span></div><div class="name">Cards &amp; tiles</div><p class="desc">Catalog SKU tiles + plain cards.</p></a>
+      <a class="cat-card" href="./components-inputs.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.INPUTS</span></div><div class="name">Inputs</div><p class="desc">Field anatomy + states.</p></a>
+      <a class="cat-card" href="./components-toggles.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.TOGGLES</span></div><div class="name">Toggles</div><p class="desc">Switch · check · radio · segmented.</p></a>
+      <a class="cat-card" href="./components-dialogs.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.DIALOGS</span></div><div class="name">Dialogs</div><p class="desc">Modal + side drawer.</p></a>
+      <a class="cat-card" href="./components-tooltips.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.TOOLTIPS</span></div><div class="name">Tooltips</div><p class="desc">Inverted chip, no blur.</p></a>
+      <a class="cat-card" href="./components-tables.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.TABLES</span></div><div class="name">Tables</div><p class="desc">Plugin catalog row anatomy.</p></a>
+      <a class="cat-card" href="./components-callout.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.CALLOUT</span></div><div class="name">Callouts</div><p class="desc">5 flavors · 4px left rule.</p></a>
+      <a class="cat-card signature" href="./empty-state.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.EMPTY-STATE</span><span class="star">★</span></div><div class="name">Empty states</div><p class="desc">Voice "keep or kill" + 6 variants.</p></a>
+      <a class="cat-card signature" href="./logo.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.LOGO</span><span class="star">★</span></div><div class="name">Wordmark + glyphs</div><p class="desc">Mark anatomy + 4 SVG domain glyphs.</p></a>
+    </div>
+  </section>
+
+  <section class="group">
+    <h2 data-no="05">Status family</h2>
+    <div class="cat-grid">
+      <a class="cat-card" href="./components-status.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.COMPONENTS-STATUS</span></div><div class="name">Status indicators</div><p class="desc">Pills · dots · inline state rows.</p></a>
+      <a class="cat-card" href="./skeletons.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.SKELETONS</span></div><div class="name">Skeletons</div><p class="desc">Flat rectangles. No shimmer.</p></a>
+    </div>
+  </section>
+
+  <section class="group">
+    <h2 data-no="06">Audience · developer</h2>
+    <div class="cat-grid">
+      <a class="cat-card" href="./components-code-block.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.CODE-BLOCK</span></div><div class="name">Code block</div><p class="desc">Header + line-rail + syntax tints.</p></a>
+      <a class="cat-card" href="./components-diff-view.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.DIFF-VIEW</span></div><div class="name">Diff view</div><p class="desc">Add/del gutters, color-mix tint.</p></a>
+      <a class="cat-card" href="./components-log-stream.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.LOG-STREAM</span></div><div class="name">Log stream</div><p class="desc">timestamp · level · message · tags.</p></a>
+      <a class="cat-card" href="./components-monospace-table.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.MONO-TABLE</span></div><div class="name">Mono table</div><p class="desc">Tabular-nums data grid.</p></a>
+      <a class="cat-card" href="./components-terminal-pane.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.TERMINAL-PANE</span></div><div class="name">Terminal pane</div><p class="desc">Prompt + cursor (solid, not blinking).</p></a>
+    </div>
+  </section>
+
+  <section class="group">
+    <h2 data-no="07">Platform · desktop</h2>
+    <div class="cat-grid">
+      <a class="cat-card" href="./components-resize-panels.html"><div class="hd"><span class="sku-bit">MDCC-DSN/01.RESIZE-PANELS</span></div><div class="name">Resize panels</div><p class="desc">Tree + main split. Draggable gutter.</p></a>
+    </div>
+  </section>
+
+  <footer class="specimen-ft"><div class="colo-block"><strong>MDCC-DSN/01</strong><span>· ui_kits-desktop-index · 36 specimens</span></div><div class="colo-block"><span>md-claude · v0.12.0</span></div></footer>
+</main>
+<script>(function(){const r=document.documentElement;const i=localStorage.getItem('mdcc-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');r.setAttribute('data-theme',i);document.querySelectorAll('.theme-toggle button').forEach(b=>{b.setAttribute('aria-pressed',b.dataset.theme===i?'true':'false');b.addEventListener('click',()=>{const t=b.dataset.theme;r.setAttribute('data-theme',t);localStorage.setItem('mdcc-theme',t);document.querySelectorAll('.theme-toggle button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.theme===t?'true':'false'));});});})();</script>
+</body>
+</html>

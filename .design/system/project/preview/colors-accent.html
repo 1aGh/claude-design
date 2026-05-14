@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en" class="mdcc">
+<head>
+<meta charset="utf-8">
+<title>MDCC-DSN/01.colors-accent — md-claude</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- SPECIMEN: SIGNATURE — the accent family (amber-rust catalog stamp).
+     Demonstrates --accent / --accent-hover / --accent-active / --accent-fg / --accent-tint,
+     the brand-spotlight stamp composition, anti-pattern callouts, OKLCH annotations. -->
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="stylesheet" href="./_layout.css">
+<link rel="stylesheet" href="./_components.css">
+<style>
+  .stamp {
+    border: 4px solid var(--accent);
+    padding: var(--space-7) var(--space-8);
+    background: var(--bg-0);
+    position: relative;
+    margin: var(--space-5) 0 var(--space-6);
+    max-width: 720px;
+  }
+  .stamp::before, .stamp::after {
+    content: "";
+    position: absolute;
+    inset: 6px;
+    border: 1px solid var(--accent);
+    pointer-events: none;
+  }
+  .stamp .stamp-eyebrow {
+    font-family: var(--font-mono);
+    font-size: var(--type-xs);
+    letter-spacing: var(--tracking-sku);
+    color: var(--accent);
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+  .stamp .stamp-headline {
+    font-family: var(--font-display);
+    font-size: var(--type-2xl);
+    line-height: var(--lh-2xl);
+    margin: var(--space-3) 0;
+    color: var(--fg-0);
+    letter-spacing: var(--tracking-tight);
+    font-weight: 700;
+  }
+  .stamp .stamp-body { color: var(--fg-1); max-width: 56ch; margin: 0 0 var(--space-4); }
+  .stamp .stamp-meta {
+    display: flex; gap: var(--space-5); font-family: var(--font-mono);
+    font-size: var(--type-xs); letter-spacing: var(--tracking-wide);
+    text-transform: uppercase; color: var(--fg-2);
+    border-top: 1px solid var(--accent); padding-top: var(--space-3);
+  }
+  .stamp .stamp-meta strong { color: var(--accent); font-weight: 700; }
+  .accent-row { display: flex; gap: var(--space-5); align-items: center; margin: var(--space-4) 0; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<header class="specimen-hd">
+  <span class="sku">MDCC-DSN/01.colors-accent</span>
+  <span class="crumbs"><span>md-claude</span><span>design system</span><span>color</span><span>accent</span></span>
+  <span class="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span>
+</header>
+<main class="specimen">
+  <section class="specimen-title">
+    <h1>Accent — amber-rust</h1>
+    <p class="lede">One color. Five tokens. The accent never carries identity by itself — it joins the mono spine and the 1px hairlines to do the work. If your eye lands on the accent before the typography, the typography lost.</p>
+  </section>
+  <dl class="specimen-meta">
+    <div><dt>Published</dt><dd>2026-05-14</dd></div>
+    <div><dt>Family</dt><dd>Accent (one)</dd></div>
+    <div><dt>Light OKLCH</dt><dd>56% 0.170 50</dd></div>
+    <div><dt>Dark OKLCH</dt><dd>72% 0.160 55</dd></div>
+  </dl>
+
+  <h2 data-no="01">The stamp <span class="h2-aside">brand-spotlight</span></h2>
+  <p>This is the accent at its loudest: the catalog stamp. Use it once per page — opening a plugin page, anchoring a marketplace hero, marking the "this is the thing" moment in a showcase.</p>
+  <div class="stamp">
+    <div class="stamp-eyebrow">MDCC-DSN/01 · PUBLISHED 2026-05-14</div>
+    <h3 class="stamp-headline">md-claude design system</h3>
+    <p class="stamp-body">A catalog-disciplined, mono-everywhere DS for the marketplace and the dev-server canvas. Berkeley-forward, hard-edges, paper-and-phosphor. The accent is a stamp, not a fill.</p>
+    <div class="stamp-meta">
+      <span><strong>Mood</strong> Industrial Catalogue</span>
+      <span><strong>Voice</strong> htmx-grain</span>
+      <span><strong>Density</strong> Balanced</span>
+    </div>
+  </div>
+
+  <h2 data-no="02">The family <span class="h2-aside">five tokens, one hue</span></h2>
+  <div class="grid">
+    <div class="swatch">
+      <div class="chip" style="background:var(--accent);height:96px"></div>
+      <div class="meta"><strong>--accent</strong><span class="oklch">56/0.170/50</span></div>
+      <div style="padding:var(--space-3) var(--space-4);font-size:var(--type-xs);color:var(--fg-2);border-top:1px solid var(--border-subtle)">Primary buttons. The stamp. Active tab indicators.</div>
+    </div>
+    <div class="swatch">
+      <div class="chip" style="background:var(--accent-hover);height:96px"></div>
+      <div class="meta"><strong>--accent-hover</strong><span class="oklch">−4 L</span></div>
+      <div style="padding:var(--space-3) var(--space-4);font-size:var(--type-xs);color:var(--fg-2);border-top:1px solid var(--border-subtle)">Hover state of <code>--accent</code>.</div>
+    </div>
+    <div class="swatch">
+      <div class="chip" style="background:var(--accent-active);height:96px"></div>
+      <div class="meta"><strong>--accent-active</strong><span class="oklch">−8 L</span></div>
+      <div style="padding:var(--space-3) var(--space-4);font-size:var(--type-xs);color:var(--fg-2);border-top:1px solid var(--border-subtle)">Pressed / armed state.</div>
+    </div>
+    <div class="swatch">
+      <div class="chip" style="background:var(--accent-fg);height:96px;border-bottom:1px solid var(--border-default)"></div>
+      <div class="meta"><strong>--accent-fg</strong><span class="oklch">paper</span></div>
+      <div style="padding:var(--space-3) var(--space-4);font-size:var(--type-xs);color:var(--fg-2);border-top:1px solid var(--border-subtle)">Foreground over <code>--accent</code> (button labels, stamp text).</div>
+    </div>
+    <div class="swatch">
+      <div class="chip" style="background:var(--accent-tint);height:96px"></div>
+      <div class="meta"><strong>--accent-tint</strong><span class="oklch">low-sat wash</span></div>
+      <div style="padding:var(--space-3) var(--space-4);font-size:var(--type-xs);color:var(--fg-2);border-top:1px solid var(--border-subtle)">Cell highlight (selected file-tree row), focus-bg under inputs.</div>
+    </div>
+  </div>
+
+  <h2 data-no="03">In context <span class="h2-aside">buttons / links / tile-accent</span></h2>
+  <div class="accent-row">
+    <button class="btn btn--primary">Install plugin</button>
+    <button class="btn btn--primary"><span>Open canvas</span><span class="kbd">⌘O</span></button>
+    <button class="btn">Cancel</button>
+    <a href="#" style="color:var(--fg-0);text-decoration:underline;text-decoration-color:var(--accent);text-underline-offset:4px">A link with accent underline</a>
+  </div>
+  <div class="accent-row">
+    <span class="badge badge--accent">MDCC-DSN/01</span>
+    <span class="badge badge--accent badge--solid">v0.12.0</span>
+    <span class="sku">MDCC-FLW/02</span>
+    <span class="sku sku--accent">FEATURED</span>
+  </div>
+  <div class="tile tile--accent" style="max-width:480px">
+    <div class="tile-hd"><span class="sku">MDCC-DSN/01</span><span>v0.12.0</span></div>
+    <div class="tile-bd">
+      <h3>design</h3>
+      <p>Canvas-first iteration on HTML mocks. Zero-dep dev-server. Cmd+Click inspector. Snapshot stack per canvas.</p>
+    </div>
+    <div class="tile-ft"><span>FEATURED</span><span>·</span><span>Published 2026-05</span></div>
+  </div>
+
+  <h2 data-no="04">When NOT to use <span class="h2-aside">accent is a stamp, not a fill</span></h2>
+  <div class="anti">
+    <p style="margin:0 0 var(--space-2)"><strong>Don't fill page bgs or hero panels with accent.</strong> The stamp metaphor only works because the accent is rare. Fill a whole page with it and it becomes the chrome, not the signal.</p>
+    <p style="margin:0">Don't introduce a second accent ("but we need a status-accent for warnings!"). Status has its own family (<code>--status-warn</code>). The accent is the brand. Keep it singular.</p>
+  </div>
+  <div class="pro">
+    <p style="margin:0"><strong>Do use accent as the underline color for body links</strong> (with <code>text-decoration-color: var(--accent)</code>). The link text stays <code>--fg-0</code>; the accent reads as a margin note rather than a fill. This is the canonical "accent in long-form" treatment.</p>
+  </div>
+
+  <h2 data-no="05">Per-theme variance <span class="h2-aside">brighter on dark, deeper on paper</span></h2>
+  <p>The accent shifts L between themes so it stays readable but never glares. Paper (L 56) reads as deep amber-rust ink. Phosphor (L 72) reads as a brighter sodium-amber that doesn't get lost on dark canvas. Hue tilts very slightly (50→55) — same family, calibrated for the surface.</p>
+
+  <footer class="specimen-ft">
+    <div class="colo-block"><strong>MDCC-DSN/01</strong><span>· colors-accent · ★ signature</span></div>
+    <div class="colo-block"><span>md-claude · v0.12.0</span></div>
+  </footer>
+</main>
+<script>(function(){const r=document.documentElement;const i=localStorage.getItem('mdcc-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');r.setAttribute('data-theme',i);document.querySelectorAll('.theme-toggle button').forEach(b=>{b.setAttribute('aria-pressed',b.dataset.theme===i?'true':'false');b.addEventListener('click',()=>{const t=b.dataset.theme;r.setAttribute('data-theme',t);localStorage.setItem('mdcc-theme',t);document.querySelectorAll('.theme-toggle button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.theme===t?'true':'false'));});});})();</script>
+</body>
+</html>

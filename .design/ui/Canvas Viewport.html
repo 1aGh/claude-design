@@ -1,0 +1,3038 @@
+<!doctype html>
+<html lang="en" class="mdcc" data-theme="light">
+<head>
+<meta charset="utf-8">
+<title>Canvas Viewport — MDCC-DSN/01 · v1.0 → v1.3 states</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="../system/project/colors_and_type.css">
+<script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  /* ─── Canvas-internal classes — all token-driven ───────────────────── */
+
+  /* artboard base — paper-stock with hairline */
+  .ab {
+    width: 100%;
+    height: 100%;
+    background: var(--bg-0);
+    color: var(--fg-0);
+    font-family: var(--font-mono);
+    font-size: var(--type-sm);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* SKU header strip — every artboard wears one */
+  .ab-sku {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-3) var(--space-5);
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--fg-0);
+    font-size: var(--type-xs);
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    color: var(--fg-1);
+    flex-shrink: 0;
+  }
+  .ab-sku b { color: var(--fg-0); font-weight: 700; }
+  .ab-sku .right { display: flex; gap: var(--space-5); color: var(--fg-3); }
+  .ab-sku .right .ok { color: var(--status-success); }
+  .ab-sku .right .warn { color: var(--accent); }
+
+  /* :focus-visible — wire the DS-provided focus token (was unreferenced) */
+  .ab :focus-visible,
+  .ab :focus-visible > * { outline: none; box-shadow: var(--shadow-focus); }
+
+  /* Generic interactive defaults — reset for our <button type="button" class="..."> elements */
+  .ab button { font-family: inherit; cursor: pointer; }
+
+  /* world — the infinite-canvas grid background */
+  .ab-world {
+    flex: 1;
+    position: relative;       /* anchor for absolutely-positioned children (wm, .fc, .mm, toolbars) */
+    overflow: hidden;
+    background-color: var(--bg-1);
+    background-image:
+      linear-gradient(var(--border-subtle) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border-subtle) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  /* faux-canvas — the inner artboard rendering */
+  .fc {
+    position: absolute;
+    background: var(--bg-0);
+    border: 1px solid var(--fg-0);
+    box-shadow: 6px 6px 0 var(--fg-0);
+    padding: var(--space-4);
+    font-size: 10px;
+    line-height: 14px;
+    color: var(--fg-1);
+    overflow: hidden;
+  }
+  .fc-label {
+    font-size: 9px;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    color: var(--fg-2);              /* was fg-3 — AA contrast over paper */
+    margin-bottom: var(--space-2);
+    display: flex;
+    justify-content: space-between;
+  }
+  .fc-label b { color: var(--fg-0); font-weight: 600; }
+  .fc-row { height: 6px; background: var(--bg-3); margin-bottom: 4px; border-radius: 0; }
+  .fc-row.shorter { width: 60%; }
+  .fc-row.shortest { width: 35%; }
+  .fc-row.title { background: var(--fg-0); height: 8px; width: 50%; margin-bottom: 8px; }
+  .fc-row.accent { background: var(--accent); height: 8px; width: 40%; }
+  .fc-btn {
+    display: inline-block;
+    padding: 3px 8px;
+    background: var(--accent);
+    color: var(--accent-fg);
+    font-size: 8px;
+    font-weight: 600;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    margin-right: 4px;
+    margin-top: 4px;
+  }
+  .fc-btn.ghost { background: var(--bg-0); color: var(--fg-0); border: 1px solid var(--fg-0); }
+
+  /* mini-map — bottom-right anchor */
+  .mm {
+    position: absolute;
+    bottom: var(--space-4);
+    right: var(--space-4);
+    width: 196px;
+    height: 132px;
+    background: var(--bg-0);
+    border: 1px solid var(--fg-0);
+    box-shadow: 4px 4px 0 var(--fg-0);
+    padding: 6px;
+    overflow: hidden;
+  }
+  .mm-hd {
+    font-size: 9px;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    color: var(--fg-2);
+    margin-bottom: 4px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .mm-world { position: relative; width: 100%; height: calc(100% - 14px); background: var(--bg-2); }
+  .mm-ab { position: absolute; background: var(--bg-0); border: 1px solid var(--fg-1); }
+  .mm-vp { position: absolute; border: 2px solid var(--accent); background: transparent; pointer-events: none; }
+
+  /* zoom toolbar — floating bottom-center */
+  .zoom-tb {
+    position: absolute;
+    bottom: var(--space-4);
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    border: 1px solid var(--fg-0);
+    background: var(--bg-0);
+    box-shadow: 4px 4px 0 var(--fg-0);
+    font-size: var(--type-xs);
+    letter-spacing: var(--tracking-sku);
+  }
+  .zoom-tb button {
+    background: transparent;
+    border: 0;
+    border-right: 1px solid var(--border-default);
+    padding: 6px 12px;
+    font-family: var(--font-mono);
+    font-size: var(--type-xs);
+    color: var(--fg-0);
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-sku);
+  }
+  .zoom-tb button:last-child { border-right: 0; }
+  .zoom-tb button:hover { background: var(--bg-2); }
+  .zoom-tb button.active { background: var(--fg-0); color: var(--bg-0); }
+
+  /* wordmark — artboard #1 brand mark */
+  .wm {
+    position: absolute;
+    top: var(--space-5);
+    left: var(--space-6);
+    font-family: var(--font-display);
+    font-weight: 700;
+    line-height: 1;
+    color: var(--fg-0);
+  }
+  .wm .glyph { font-size: 40px; letter-spacing: var(--tracking-tight); display: block; }
+  .wm .sub {
+    font-size: var(--type-xs);
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    color: var(--fg-2);
+    font-weight: 500;
+    margin-top: var(--space-3);
+    display: flex;
+    gap: var(--space-4);
+    align-items: center;
+  }
+  .wm .sub b { color: var(--accent); font-weight: 700; }
+  .wm .sub .sep { color: var(--fg-3); }
+
+  /* selection halo — accent 2px outline + corner ticks */
+  .sel-halo {
+    position: absolute;
+    border: 2px solid var(--accent);
+    pointer-events: none;
+    z-index: 5;
+  }
+  .sel-halo::before, .sel-halo::after,
+  .sel-halo > i::before, .sel-halo > i::after {
+    content: "";
+    position: absolute;
+    width: 8px; height: 8px;
+    background: var(--accent);
+  }
+  .sel-halo::before { top: -3px; left: -3px; }
+  .sel-halo::after { top: -3px; right: -3px; }
+  .sel-halo > i::before { bottom: -3px; left: -3px; position: absolute; }
+  .sel-halo > i::after { bottom: -3px; right: -3px; position: absolute; }
+
+  /* draw toolbar — left edge */
+  .draw-tb {
+    position: absolute;
+    top: 50%;
+    left: var(--space-5);
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--fg-0);
+    background: var(--bg-0);
+    box-shadow: 4px 4px 0 var(--fg-0);
+    z-index: 6;
+  }
+  .draw-tb button {
+    width: 44px;        /* WCAG 2.2 SC 2.5.8 — 44×44 touch target */
+    height: 44px;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--border-default);
+    color: var(--fg-1);
+    font-family: var(--font-mono);
+    font-size: var(--type-sm);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .draw-tb button:focus-visible { box-shadow: var(--shadow-focus); }
+  .draw-tb button:last-child { border-bottom: 0; }
+  .draw-tb button:hover { background: var(--bg-2); color: var(--fg-0); }
+  .draw-tb button.active { background: var(--accent); color: var(--accent-fg); }
+
+  /* color picker popover */
+  .cpop {
+    position: absolute;
+    left: 58px;
+    background: var(--bg-0);
+    border: 1px solid var(--fg-0);
+    box-shadow: 4px 4px 0 var(--fg-0);
+    padding: var(--space-3);
+    z-index: 7;
+    display: grid;
+    grid-template-columns: repeat(3, 44px);   /* widen to fit 44px swatches */
+    gap: 6px;
+    width: auto;
+  }
+  .cpop .sw { width: 44px; height: 44px; padding: 0; border: 1px solid var(--fg-0); cursor: pointer; }
+  .cpop .sw:focus-visible { box-shadow: var(--shadow-focus); }
+  .cpop .sw.active { outline: 2px solid var(--fg-0); outline-offset: 2px; }
+
+  /* hand-drawn annotation overlay (SVG) — draw mode */
+  .hd-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+
+  /* shortcuts hint chip */
+  .kb-hint {
+    position: absolute;
+    bottom: var(--space-4);
+    left: var(--space-5);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    background: var(--bg-0);
+    border: 1px solid var(--fg-0);
+    box-shadow: 3px 3px 0 var(--fg-0);
+    font-size: var(--type-xs);
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    color: var(--fg-1);
+  }
+  .kb-hint kbd {
+    display: inline-block;
+    padding: 1px 6px;
+    background: var(--fg-0);
+    color: var(--bg-0);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .kb-hint .esc { background: var(--bg-2); color: var(--fg-0); border: 1px solid var(--fg-0); }
+
+  /* pin — element-anchored comment marker (as <button type="button">, keyboard reachable) */
+  .pin {
+    position: absolute;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: var(--accent-tint);
+    border: 2px solid var(--accent);
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 4;
+  }
+  .pin.closed { background: var(--bg-0); }
+  .pin.unread::after {
+    content: attr(data-unread);
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    background: var(--accent);
+    color: var(--accent-fg);
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 4px;
+    border: 1px solid var(--fg-0);
+    line-height: 1;
+  }
+
+  /* thread panel — floating */
+  .thread {
+    position: absolute;
+    width: 360px;
+    background: var(--bg-0);
+    border: 1px solid var(--fg-0);
+    box-shadow: 6px 6px 0 var(--fg-0);
+    z-index: 5;
+    font-family: var(--font-mono);
+  }
+  .thread-hd {
+    padding: var(--space-3) var(--space-4);
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--fg-0);
+    font-size: var(--type-xs);
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--fg-0);
+  }
+  .thread-hd b { color: var(--accent); font-weight: 700; }
+  .thread-hd .resolve {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    background: var(--bg-0);
+    border: 1px solid var(--fg-0);
+    padding: 2px 8px;
+    cursor: pointer;
+    letter-spacing: var(--tracking-sku);
+    color: var(--fg-0);
+  }
+  .thread-msg {
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: var(--type-sm);
+    color: var(--fg-1);
+  }
+  .thread-msg .author {
+    display: flex;
+    gap: var(--space-3);
+    align-items: baseline;
+    margin-bottom: var(--space-2);
+    font-size: var(--type-xs);
+  }
+  .thread-msg .author b { color: var(--fg-0); font-weight: 600; }
+  .thread-msg .author .ts { color: var(--fg-2); }   /* was fg-3 — informational ts, needs AA */
+  .thread-msg .mention { color: var(--accent); font-weight: 600; }
+  .thread-msg .body { line-height: var(--lh-sm); }
+  .thread-msg .body code { background: var(--mono-cell-bg); padding: 1px 4px; color: var(--mono-cell-fg); }
+
+  .thread-input {
+    position: relative;
+    padding: var(--space-3) var(--space-4);
+    background: var(--bg-1);
+    border-top: 1px solid var(--fg-0);
+  }
+  .thread-input input {
+    width: 100%;
+    padding: 6px 8px;
+    background: var(--bg-0);
+    border: 1px solid var(--border-strong);   /* was border-default — AA UI ratio */
+    font-family: var(--font-mono);
+    font-size: var(--type-sm);
+    color: var(--fg-0);
+    box-sizing: border-box;
+  }
+  .thread-input input:focus { outline: none; border-color: var(--accent); }
+  .thread-input input:focus-visible { box-shadow: var(--shadow-focus); }
+  .thread-input .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: var(--space-2);
+    font-size: 10px;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    color: var(--fg-2);                       /* was fg-3 — informational */
+  }
+  .thread-input .row b { color: var(--accent); }
+  .thread-input .reply-btn {
+    background: var(--accent);
+    color: var(--accent-fg);
+    border: 1px solid var(--accent);
+    padding: 3px 10px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: var(--tracking-sku);
+    cursor: pointer;
+  }
+
+  /* @-mention dropdown */
+  .mention-dd {
+    position: absolute;
+    left: var(--space-4);
+    bottom: 100%;
+    background: var(--bg-0);
+    border: 1px solid var(--fg-0);
+    box-shadow: 4px 4px 0 var(--fg-0);
+    width: 280px;
+    margin-bottom: 4px;
+    font-size: var(--type-sm);
+  }
+  .mention-dd .item {
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--border-subtle);
+    color: var(--fg-1);
+    display: flex;
+    justify-content: space-between;
+  }
+  .mention-dd .item:last-child { border-bottom: 0; }
+  .mention-dd .item.sel { background: var(--accent); color: var(--accent-fg); }
+  .mention-dd .item.sel .em { color: var(--accent-fg); }
+  .mention-dd .item b { font-weight: 600; color: inherit; }
+  .mention-dd .em { color: var(--fg-2); font-size: 10px; }   /* was fg-3 — email is informational */
+
+  /* presentation mode overlay */
+  .pres-counter {
+    position: absolute;
+    bottom: var(--space-6);
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-4);
+    background: var(--bg-0);
+    border: 1px solid var(--fg-0);
+    box-shadow: 4px 4px 0 var(--fg-0);
+    font-family: var(--font-mono);
+    font-size: var(--type-sm);
+    color: var(--fg-0);
+  }
+  .pres-counter .arrow {
+    width: 44px; height: 44px;    /* WCAG 2.2 SC 2.5.8 */
+    padding: 0;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-1);
+    color: var(--fg-0);
+    font-family: var(--font-mono);
+    font-size: var(--type-md);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    font-weight: 700;
+  }
+  .pres-counter .arrow:hover { background: var(--bg-2); }
+  .pres-counter .arrow:focus-visible { box-shadow: var(--shadow-focus); }
+  .pres-counter .count {
+    font-weight: 700;
+    letter-spacing: var(--tracking-wide);
+    padding: 0 var(--space-3);
+    font-variant-numeric: tabular-nums;
+  }
+  .pres-counter .esc {
+    margin-left: var(--space-3);
+    padding: 2px 6px;
+    background: var(--bg-2);
+    border: 1px solid var(--fg-0);
+    font-size: 10px;
+    letter-spacing: var(--tracking-sku);
+  }
+
+  .pres-toggles {
+    position: absolute;
+    top: var(--space-5);
+    right: var(--space-5);
+    display: flex;
+    gap: var(--space-3);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    color: var(--fg-2);
+  }
+  .pres-toggles .chip {
+    padding: 3px 8px;
+    background: var(--bg-0);
+    border: 1px solid var(--border-default);
+  }
+  .pres-toggles .chip .x { color: var(--status-error); margin-right: 4px; }
+
+  /* soft-lock banner — collab artboard signature moment (flows above SKU bar) */
+  .lock-banner {
+    background: var(--accent);
+    color: var(--accent-fg);
+    padding: var(--space-3) var(--space-5);
+    font-family: var(--font-mono);
+    font-size: var(--type-md);
+    font-weight: 700;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 2px solid var(--fg-0);
+    flex-shrink: 0;
+  }
+  .lock-banner .bolt {
+    font-size: var(--type-lg);
+    line-height: 1;
+  }
+  .lock-banner .countdown {
+    font-variant-numeric: tabular-nums;
+    background: var(--fg-0);
+    color: var(--accent);
+    padding: 3px 8px;
+    font-size: var(--type-sm);
+  }
+
+  /* remote cursor */
+  .rcursor {
+    position: absolute;
+    pointer-events: none;
+    z-index: 7;
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .rcursor svg { width: 18px; height: 18px; flex-shrink: 0; }
+  .rcursor .nametag {
+    margin-top: 12px;
+    padding: 2px 6px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    color: var(--accent-fg);
+    line-height: 1.2;
+    border: 1px solid var(--fg-0);
+  }
+
+  /* participant avatars chrome */
+  .participants {
+    position: absolute;
+    top: 52px;
+    right: var(--space-5);
+    display: flex;
+    gap: 0;
+    z-index: 6;
+  }
+  .participants .avatar {
+    width: 44px;          /* WCAG 2.2 SC 2.5.8 — 44×44 touch target */
+    height: 44px;
+    padding: 0;
+    border: 1px solid var(--fg-0);
+    margin-left: -3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: var(--type-sm);
+    font-weight: 700;
+    color: var(--accent-fg);
+    position: relative;
+    cursor: pointer;
+  }
+  .participants .avatar:focus-visible { box-shadow: var(--shadow-focus); z-index: 2; }
+  .participants .avatar:first-child { margin-left: 0; }
+  .participants .follow-pill {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 4px;
+    padding: 3px 10px;
+    background: var(--bg-0);
+    border: 1px solid var(--fg-0);
+    box-shadow: 3px 3px 0 var(--fg-0);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    color: var(--fg-0);
+    white-space: nowrap;
+  }
+
+  /* typing indicator on pin */
+  .typing-dot {
+    position: absolute;
+    bottom: -22px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 2px 6px;
+    background: var(--bg-0);
+    border: 1px solid var(--fg-0);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    color: var(--fg-2);
+    white-space: nowrap;
+  }
+
+  /* inspector + layers (3-column) */
+  .three-col { display: grid; grid-template-columns: 240px 1fr 280px; height: 100%; }
+  .col-layers, .col-inspector {
+    background: var(--bg-1);
+    border-right: 1px solid var(--fg-0);
+    overflow-y: auto;
+    font-family: var(--font-mono);
+    font-size: var(--type-xs);
+  }
+  .col-inspector { border-right: 0; border-left: 1px solid var(--fg-0); }
+  .col-hd {
+    padding: var(--space-3) var(--space-4);
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--fg-0);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 10px;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    color: var(--fg-0);
+    font-weight: 700;
+  }
+  .col-hd kbd {
+    background: var(--fg-0);
+    color: var(--bg-0);
+    padding: 1px 6px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0;
+  }
+
+  .tree-row-l {
+    padding: 3px var(--space-3);
+    color: var(--fg-1);
+    cursor: pointer;
+    white-space: nowrap;
+    font-size: var(--type-xs);
+    line-height: 18px;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .tree-row-l:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+  .tree-row-l .gly { color: var(--fg-2); width: 10px; display: inline-block; }   /* was fg-3 — disclosure glyph readable */
+  .tree-row-l .tag { color: var(--status-info); }
+  .tree-row-l .cls { color: var(--fg-0); }
+  .tree-row-l:hover { background: var(--bg-2); }
+  .tree-row-l.hover { background: var(--bg-2); color: var(--fg-0); }
+  .tree-row-l.sel { background: var(--accent); color: var(--accent-fg); }
+  .tree-row-l.sel .gly,
+  .tree-row-l.sel .tag,
+  .tree-row-l.sel .cls { color: var(--accent-fg); }
+
+  .insp-grp {
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .insp-grp h5 {
+    margin: 0 0 var(--space-3);
+    font-size: 10px;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    color: var(--fg-2);
+    font-weight: 600;
+  }
+  .insp-row {
+    display: grid;
+    grid-template-columns: 86px 1fr 16px;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 3px 0;
+    font-size: var(--type-xs);
+  }
+  .insp-row .k { color: var(--fg-2); }    /* property name — AA contrast over panel bg */
+  .insp-row .val {
+    background: var(--mono-cell-bg);
+    padding: 2px 6px;
+    color: var(--fg-0);
+    border: 1px solid var(--border-subtle);
+    text-align: left;
+    font-variant-numeric: tabular-nums;
+  }
+  .insp-row .val.tok { color: var(--accent); }
+  .insp-row .drag {
+    color: var(--fg-2);
+    cursor: ns-resize;
+    text-align: center;
+    line-height: 1;
+  }
+
+  .insp-strategy {
+    padding: var(--space-3) var(--space-4);
+    background: var(--bg-2);
+    border-top: 1px solid var(--fg-0);
+    margin-top: auto;
+  }
+  .insp-strategy h5 {
+    margin: 0 0 var(--space-2);
+    font-size: 10px;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    color: var(--fg-2);
+    font-weight: 600;
+  }
+  .insp-strategy .opts {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .insp-strategy .opt {
+    padding: 6px 8px;
+    font-size: 10px;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    border: 1px solid var(--border-default);
+    background: var(--bg-1);
+    color: var(--fg-1);
+    cursor: pointer;
+    text-align: left;
+    font-family: var(--font-mono);
+  }
+  .insp-strategy .opt:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+  .insp-strategy .opt.active {
+    background: var(--accent);
+    color: var(--accent-fg);
+    border-color: var(--accent);
+  }
+
+  /* canvas-column inside inspector artboard */
+  .col-canvas {
+    background-color: var(--bg-1);
+    background-image:
+      linear-gradient(var(--border-subtle) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border-subtle) 1px, transparent 1px);
+    background-size: 24px 24px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* radar mock for ScoutRadar inside zoomed/draw artboards */
+  .radar {
+    position: relative;          /* was absolute — let flex layout reserve space */
+    flex-shrink: 0;
+    width: 220px;
+    height: 220px;
+    border: 1px solid var(--fg-0);
+    border-radius: 50%;
+    background: var(--bg-1);
+  }
+  .radar::before, .radar::after {
+    content: "";
+    position: absolute;
+    inset: 14%;
+    border: 1px solid var(--border-default);
+    border-radius: 50%;
+  }
+  .radar::after { inset: 32%; }
+  .radar .sweep {
+    position: absolute;
+    inset: 0;
+    background: conic-gradient(from 0deg, var(--accent) 0%, transparent 30%, transparent 100%);
+    opacity: 0.45;
+    border-radius: 50%;
+  }
+  .radar .blip {
+    position: absolute;
+    width: 6px; height: 6px;
+    background: var(--accent);
+  }
+
+  /* mini-paper-canvas (presentation mode hero) */
+  .pres-stage {
+    position: absolute;
+    inset: 32px 48px 80px 48px;
+    background: var(--bg-0);
+    border: 1px solid var(--fg-0);
+    box-shadow: 8px 8px 0 var(--fg-0);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: var(--space-9);
+  }
+  .pres-stage .eyebrow {
+    font-size: var(--type-xs);
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 700;
+    margin-bottom: var(--space-4);
+  }
+  .pres-stage h1 {
+    font-family: var(--font-display);
+    font-size: 56px;
+    line-height: 1.05;
+    letter-spacing: var(--tracking-tight);
+    margin: 0 0 var(--space-5);
+    color: var(--fg-0);
+    font-weight: 700;
+    max-width: 18ch;
+  }
+  .pres-stage h1 .stamp {
+    display: inline-block;
+    background: var(--accent);
+    color: var(--accent-fg);
+    padding: 0 var(--space-3);
+  }
+  .pres-stage p {
+    font-size: var(--type-md);
+    line-height: var(--lh-md);
+    color: var(--fg-1);
+    margin: 0 0 var(--space-6);
+    max-width: 56ch;
+  }
+  .pres-stage .cta {
+    display: flex;
+    gap: var(--space-3);
+  }
+  .pres-stage .cta button {
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: var(--type-sm);
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    padding: var(--space-3) var(--space-5);
+    border: 0;
+  }
+  .pres-stage .cta .btn-fill {
+    background: var(--fg-0);
+    color: var(--bg-0);
+  }
+  .pres-stage .cta .btn-ghost {
+    background: var(--bg-0);
+    color: var(--fg-0);
+    border: 1px solid var(--fg-0);
+  }
+  .pres-stage .cta button:focus-visible { box-shadow: var(--shadow-focus); }
+  .pres-stage .sku-cap {
+    position: absolute;
+    top: var(--space-4);
+    left: var(--space-5);
+    font-size: 10px;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    color: var(--fg-2);                /* was fg-3 — SKU caption carries info */
+  }
+
+  /* faded mock content blocks (lighter than the active artboard's) */
+  .ghost-row { height: 6px; background: var(--bg-3); margin-bottom: 4px; }
+  .ghost-row.short { width: 55%; }
+  .ghost-row.shortest { width: 32%; }
+
+  /* draw — color-picker swatches */
+  .sw-rust { background: var(--accent); }
+  .sw-success { background: var(--status-success); }
+  .sw-warn { background: var(--status-warn); }
+  .sw-error { background: var(--status-error); }
+  .sw-info { background: var(--status-info); }
+  .sw-ink { background: var(--fg-0); }
+
+  /* avatar tints */
+  .av-you { background: var(--fg-0); color: var(--bg-0); }
+  .av-alice { background: var(--status-info); color: var(--bg-0); }
+  .av-daniel { background: var(--status-success); color: var(--bg-0); }
+
+  /* ─── DESKTOP-APP MENUBAR — classic File · View · Tools · Selection · Help ──
+     shadcn / radix pattern. Minimalist text labels on the left; one dropdown
+     can be "open" per artboard to demo the menu UX. Right side carries the
+     current artboard's status row (CV stamp + file + indicators).
+     ──────────────────────────────────────────────────────────────────────── */
+  .mb {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    padding: 0;
+    height: 30px;
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--fg-0);
+    font-family: var(--font-mono);
+    font-size: var(--type-xs);
+    flex-shrink: 0;
+    position: relative;
+  }
+  .mb-brand {
+    padding: 0 var(--space-4);
+    border-right: 1px solid var(--border-default);
+    display: flex;
+    align-items: center;
+    font-weight: 700;
+    color: var(--fg-0);
+    font-size: 11px;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+  }
+  .mb-brand .dot {
+    width: 8px;
+    height: 8px;
+    background: var(--accent);
+    margin-right: 6px;
+  }
+  .mb-menus {
+    display: flex;
+    align-items: stretch;
+  }
+  .mb-menu {
+    padding: 0 12px;
+    background: transparent;
+    border: 0;
+    font-family: var(--font-mono);
+    font-size: var(--type-xs);
+    color: var(--fg-1);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    height: 100%;
+    white-space: nowrap;
+  }
+  .mb-menu:hover { background: var(--bg-3); color: var(--fg-0); }
+  .mb-menu[aria-expanded="true"] {
+    background: var(--accent);
+    color: var(--accent-fg);
+    font-weight: 600;
+  }
+  .mb-menu:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--accent); }
+  .mb-spacer { flex: 1; }
+  .mb-status {
+    padding: 0 var(--space-4);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    color: var(--fg-2);
+    font-size: 10px;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    border-left: 1px solid var(--border-default);
+  }
+  .mb-status .cv-stamp {
+    background: var(--fg-0);
+    color: var(--bg-0);
+    padding: 2px 6px;
+    font-weight: 700;
+    font-size: 10px;
+  }
+  .mb-status .file { color: var(--fg-1); }
+  .mb-status .file b { color: var(--fg-0); }
+  .mb-status .sep {
+    width: 1px;
+    height: 14px;
+    background: var(--border-default);
+    display: inline-block;
+  }
+  .mb-status .ok { color: var(--status-success); }
+  .mb-status .warn { color: var(--accent); }
+  .mb-status b { color: var(--fg-0); }
+
+  /* Dropdown panel — opens below a menu item */
+  .mb-dropdown {
+    position: absolute;
+    top: 30px;
+    background: var(--bg-0);
+    border: 1px solid var(--fg-0);
+    box-shadow: 6px 6px 0 var(--fg-0);
+    min-width: 260px;
+    z-index: 20;
+    font-family: var(--font-mono);
+    font-size: var(--type-xs);
+    text-transform: none;
+    letter-spacing: 0;
+    padding: 4px 0;
+  }
+  .mb-dd-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 12px;
+    color: var(--fg-1);
+    cursor: pointer;
+    gap: var(--space-5);
+  }
+  .mb-dd-item .lbl { flex: 1; }
+  .mb-dd-item .kbd {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-2);
+    letter-spacing: 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .mb-dd-item:hover,
+  .mb-dd-item.hover {
+    background: var(--accent);
+    color: var(--accent-fg);
+  }
+  .mb-dd-item:hover .kbd,
+  .mb-dd-item.hover .kbd { color: var(--accent-fg); }
+  .mb-dd-item.checked .lbl::before { content: "✓ "; color: var(--accent); margin-right: 2px; }
+  .mb-dd-item.hover.checked .lbl::before,
+  .mb-dd-item:hover.checked .lbl::before { color: var(--accent-fg); }
+  .mb-dd-item.disabled { color: var(--fg-3); cursor: default; }
+  .mb-dd-item.disabled:hover { background: transparent; color: var(--fg-3); }
+  .mb-dd-sep {
+    height: 1px;
+    background: var(--border-default);
+    margin: 4px 0;
+  }
+  .mb-dd-hd {
+    padding: 4px 12px 2px;
+    font-size: 10px;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    color: var(--fg-3);
+    font-weight: 600;
+  }
+
+  /* ─── CV-08 · Project + DS tree (file-tree panel) ───────────────────── */
+  .tree-panel {
+    position: absolute;
+    top: var(--space-5);
+    left: var(--space-5);
+    width: 320px;
+    height: calc(100% - var(--space-7));
+    background: var(--bg-1);
+    border: 1px solid var(--fg-0);
+    box-shadow: 6px 6px 0 var(--fg-0);
+    display: flex;
+    flex-direction: column;
+    font-family: var(--font-mono);
+    font-size: var(--type-xs);
+    overflow: hidden;
+  }
+  .tree-panel-hd {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-3) var(--space-4);
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--fg-0);
+    font-size: 10px;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    color: var(--fg-0);
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .tree-panel-hd .ct { color: var(--fg-2); }
+  .tree-panel-search {
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border-default);
+    flex-shrink: 0;
+  }
+  .tree-panel-search input {
+    width: 100%;
+    padding: 6px 8px;
+    background: var(--bg-0);
+    border: 1px solid var(--border-strong);
+    font-family: var(--font-mono);
+    font-size: var(--type-xs);
+    color: var(--fg-0);
+    box-sizing: border-box;
+  }
+  .tree-panel-search input::placeholder { color: var(--fg-2); }
+  .tree-panel-search input:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+  .tree-panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-2) 0;
+  }
+  .tp-section-hd {
+    padding: var(--space-3) var(--space-4) 4px;
+    font-size: 10px;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    color: var(--fg-2);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .tp-section-hd .pill {
+    padding: 1px 5px;
+    background: var(--bg-2);
+    border: 1px solid var(--border-default);
+    font-size: 9px;
+    color: var(--fg-1);
+  }
+  .tp-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px var(--space-4);
+    color: var(--fg-1);
+    white-space: nowrap;
+    cursor: pointer;
+    line-height: 18px;
+    font-size: var(--type-xs);
+  }
+  .tp-row .glyph { color: var(--fg-2); width: 12px; flex-shrink: 0; text-align: center; }
+  .tp-row .name { flex: 1; }
+  .tp-row .badge {
+    font-size: 9px;
+    padding: 0 5px;
+    background: var(--accent);
+    color: var(--accent-fg);
+    letter-spacing: var(--tracking-sku);
+    line-height: 14px;
+  }
+  .tp-row.dir { color: var(--fg-0); font-weight: 600; }
+  .tp-row.modified .name::after { content: " ●"; color: var(--accent); }
+  .tp-row.sel { background: var(--accent); color: var(--accent-fg); }
+  .tp-row.sel .glyph { color: var(--accent-fg); }
+  .tp-row.sel .badge { background: var(--bg-0); color: var(--accent); }
+  .tp-row:not(.sel):hover { background: var(--bg-2); color: var(--fg-0); }
+  .tp-row.star::after { content: " ★"; color: var(--accent); margin-left: 4px; }
+
+  /* Right-side "selected file" preview pane next to tree (CV-08) */
+  .tree-detail {
+    position: absolute;
+    left: 364px;
+    top: var(--space-5);
+    right: var(--space-5);
+    height: calc(100% - var(--space-7));
+    background: var(--bg-0);
+    border: 1px solid var(--fg-0);
+    box-shadow: 6px 6px 0 var(--fg-0);
+    padding: var(--space-6);
+    overflow: auto;
+    font-family: var(--font-mono);
+    font-size: var(--type-xs);
+  }
+  .td-eyebrow {
+    font-size: 10px;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 700;
+    margin-bottom: var(--space-3);
+  }
+  .td-title {
+    font-family: var(--font-display);
+    font-size: var(--type-xl);
+    color: var(--fg-0);
+    font-weight: 700;
+    letter-spacing: var(--tracking-tight);
+    margin: 0 0 var(--space-3);
+  }
+  .td-meta {
+    display: grid;
+    grid-template-columns: 100px 1fr;
+    gap: var(--space-3);
+    margin-bottom: var(--space-5);
+    padding-bottom: var(--space-4);
+    border-bottom: 1px solid var(--border-default);
+  }
+  .td-meta dt { color: var(--fg-2); margin: 0; }
+  .td-meta dd { color: var(--fg-0); margin: 0; }
+  .td-stamp {
+    border: 2px solid var(--accent);
+    padding: var(--space-3) var(--space-4);
+    background: var(--bg-1);
+    position: relative;
+    margin-bottom: var(--space-4);
+  }
+  .td-stamp::after {
+    content: "";
+    position: absolute;
+    inset: 2px;
+    border: 1px solid var(--accent);
+    pointer-events: none;
+  }
+  .td-stamp .stamp-sku {
+    font-size: 10px;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 700;
+  }
+  .td-stamp .stamp-title {
+    font-family: var(--font-display);
+    font-size: var(--type-md);
+    color: var(--fg-0);
+    margin: var(--space-2) 0 0;
+    font-weight: 700;
+  }
+
+  /* ─── CV-09 · Design system view (specimen grid + token preview) ────── */
+  .dsv {
+    height: 100%;
+    background: var(--bg-0);
+    overflow-y: auto;
+    padding: var(--space-7) var(--space-7) var(--space-9);
+    font-family: var(--font-mono);
+  }
+  .dsv-hd {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: baseline;
+    gap: var(--space-5);
+    border-bottom: 2px solid var(--fg-0);
+    padding-bottom: var(--space-4);
+    margin-bottom: var(--space-6);
+  }
+  .dsv-sku {
+    font-size: var(--type-lg);
+    font-weight: 700;
+    letter-spacing: var(--tracking-sku);
+    color: var(--fg-0);
+  }
+  .dsv-title {
+    font-family: var(--font-display);
+    font-size: var(--type-md);
+    color: var(--fg-1);
+  }
+  .dsv-meta {
+    display: flex;
+    gap: var(--space-4);
+    font-size: 10px;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    color: var(--fg-2);
+  }
+  .dsv-meta b { color: var(--accent); }
+
+  .dsv-section {
+    margin-bottom: var(--space-7);
+  }
+  .dsv-section h3 {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    color: var(--fg-2);
+    margin: 0 0 var(--space-3);
+    padding-bottom: var(--space-2);
+    border-bottom: 1px solid var(--border-default);
+    display: flex;
+    justify-content: space-between;
+  }
+  .dsv-section h3 .num { color: var(--fg-1); font-weight: 600; }
+
+  /* token swatch grid */
+  .dsv-tokens {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 0;
+    border: 1px solid var(--border-default);
+  }
+  .dsv-tok {
+    border-right: 1px solid var(--border-default);
+    border-bottom: 1px solid var(--border-default);
+    background: var(--bg-1);
+    padding: 0;
+  }
+  .dsv-tok:nth-child(6n) { border-right: 0; }
+  .dsv-tok .swatch { height: 56px; }
+  .dsv-tok .label {
+    padding: var(--space-2) var(--space-3);
+    font-size: 10px;
+    color: var(--fg-1);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .dsv-tok .label b { color: var(--fg-0); font-weight: 600; }
+  .dsv-tok .label .oklch { color: var(--fg-2); font-size: 9px; font-variant-numeric: tabular-nums; }
+
+  /* type ladder */
+  .dsv-type {
+    display: grid;
+    grid-template-columns: 60px 1fr 80px;
+    gap: var(--space-4);
+    align-items: baseline;
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--border-subtle);
+    font-family: var(--font-mono);
+  }
+  .dsv-type .px { color: var(--fg-2); font-size: 10px; letter-spacing: var(--tracking-sku); text-transform: uppercase; }
+  .dsv-type .sample { color: var(--fg-0); }
+  .dsv-type .tok { color: var(--accent); font-size: 10px; text-align: right; }
+
+  /* specimen thumbnail grid */
+  .dsv-thumbs {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-4);
+  }
+  .dsv-thumb {
+    background: var(--bg-1);
+    border: 1px solid var(--border-default);
+    padding: var(--space-3);
+  }
+  .dsv-thumb .preview {
+    height: 80px;
+    background: var(--bg-0);
+    border: 1px solid var(--border-subtle);
+    margin-bottom: var(--space-3);
+    position: relative;
+    overflow: hidden;
+  }
+  .dsv-thumb .preview-rows { padding: 8px; }
+  .dsv-thumb .preview-rows > div {
+    height: 4px;
+    background: var(--bg-3);
+    margin-bottom: 3px;
+  }
+  .dsv-thumb .preview-rows > div.title { background: var(--fg-0); width: 50%; height: 6px; }
+  .dsv-thumb .preview-rows > div.short { width: 70%; }
+  .dsv-thumb .preview-rows > div.shortest { width: 40%; }
+  .dsv-thumb .preview-rows .accent { background: var(--accent); width: 30%; }
+  .dsv-thumb .name {
+    font-size: 10px;
+    color: var(--fg-0);
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+  .dsv-thumb .desc {
+    font-size: 9px;
+    color: var(--fg-2);
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+  }
+  .dsv-thumb.star { border-color: var(--accent); }
+  .dsv-thumb.star .name::after { content: " ★"; color: var(--accent); }
+
+  /* ─── CV-10 · Comments SIDEBAR (right dock, ~360px) ─────────────────── */
+  .cl-shell {
+    height: 100%;
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    background: var(--bg-1);
+  }
+  /* Left: faux-canvas (the thing being commented on) */
+  .cl-context {
+    background-color: var(--bg-1);
+    background-image:
+      linear-gradient(var(--border-subtle) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border-subtle) 1px, transparent 1px);
+    background-size: 24px 24px;
+    position: relative;
+    overflow: hidden;
+    padding: var(--space-6);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+  }
+  /* Right: the sidebar itself */
+  .cl {
+    width: 380px;
+    height: 100%;
+    background: var(--bg-1);
+    border-left: 1px solid var(--fg-0);
+    display: flex;
+    flex-direction: column;
+    font-family: var(--font-mono);
+  }
+  .cl-hd {
+    padding: var(--space-3) var(--space-4);
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--fg-0);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+    gap: var(--space-2);
+  }
+  .cl-hd .title {
+    font-family: var(--font-display);
+    font-size: var(--type-md);
+    font-weight: 700;
+    color: var(--fg-0);
+    letter-spacing: var(--tracking-tight);
+  }
+  .cl-hd .total {
+    font-size: 10px;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    color: var(--fg-2);
+    text-align: right;
+    line-height: 1.4;
+  }
+  .cl-hd .total b { color: var(--fg-0); }
+
+  .cl-tabs {
+    display: flex;
+    gap: 0;
+    background: var(--bg-1);
+    border-bottom: 1px solid var(--fg-0);
+    flex-shrink: 0;
+  }
+  .cl-tab {
+    flex: 1;
+    padding: var(--space-3) var(--space-3);
+    background: var(--bg-1);
+    border: 0;
+    border-right: 1px solid var(--border-default);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    color: var(--fg-2);
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    align-items: baseline;
+  }
+  .cl-tab:last-child { border-right: 0; }
+  .cl-tab:hover { background: var(--bg-2); color: var(--fg-0); }
+  .cl-tab:focus-visible { outline: none; box-shadow: var(--shadow-focus); z-index: 2; }
+  .cl-tab .cnt {
+    padding: 1px 6px;
+    background: var(--bg-3);
+    color: var(--fg-1);
+    font-size: 10px;
+    letter-spacing: 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .cl-tab[aria-selected="true"] {
+    background: var(--bg-0);
+    color: var(--fg-0);
+    font-weight: 700;
+    border-bottom: 2px solid var(--accent);
+    padding-bottom: calc(var(--space-3) - 2px);
+  }
+  .cl-tab[aria-selected="true"] .cnt {
+    background: var(--accent);
+    color: var(--accent-fg);
+  }
+
+  .cl-body {
+    flex: 1;
+    overflow-y: auto;
+    background: var(--bg-0);
+  }
+  .cl-item {
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border-subtle);
+    cursor: pointer;
+  }
+  .cl-item:hover { background: var(--bg-1); }
+  .cl-item.resolved { opacity: 0.6; }
+  .cl-item .row1 {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: var(--space-2);
+    font-size: 10px;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    color: var(--fg-2);
+  }
+  .cl-item .file { color: var(--fg-0); font-weight: 700; }
+  .cl-item .sel-path { color: var(--accent); font-size: 10px; }
+  .cl-item .author-row {
+    display: flex;
+    gap: var(--space-3);
+    align-items: baseline;
+    margin-bottom: var(--space-2);
+    font-size: var(--type-xs);
+  }
+  .cl-item .author-row b { color: var(--fg-0); font-weight: 600; }
+  .cl-item .author-row .ts { color: var(--fg-2); }
+  .cl-item .body {
+    font-size: var(--type-sm);
+    color: var(--fg-1);
+    line-height: var(--lh-sm);
+  }
+  .cl-item .body .mention { color: var(--accent); font-weight: 600; }
+  .cl-item .body code {
+    background: var(--mono-cell-bg);
+    padding: 0 4px;
+    color: var(--mono-cell-fg);
+    font-size: 12px;
+  }
+  .cl-item .meta {
+    display: flex;
+    gap: var(--space-4);
+    margin-top: var(--space-3);
+    font-size: 10px;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    color: var(--fg-2);
+    align-items: center;
+  }
+  .cl-item .meta .pill {
+    padding: 2px 6px;
+    border: 1px solid var(--border-default);
+    background: var(--bg-1);
+    color: var(--fg-1);
+  }
+  .cl-item .meta .pill.open { background: var(--accent-tint); border-color: var(--accent); color: var(--accent); }
+  .cl-item .meta .pill.resolved { background: var(--bg-2); color: var(--status-success); border-color: var(--status-success); }
+  .cl-item .meta .replies { color: var(--fg-1); }
+  .cl-item.expanded {
+    background: var(--bg-1);
+    border-left: 2px solid var(--accent);
+    padding-left: calc(var(--space-4) - 2px);
+  }
+  .cl-thread {
+    margin-top: var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    background: var(--bg-0);
+    border: 1px solid var(--border-default);
+  }
+  .cl-thread .reply {
+    padding: var(--space-2) 0;
+    border-bottom: 1px dashed var(--border-subtle);
+    font-size: var(--type-xs);
+  }
+  .cl-thread .reply:last-child { border-bottom: 0; }
+  .cl-thread .reply b { color: var(--fg-0); font-weight: 600; }
+  .cl-thread .reply .ts { color: var(--fg-2); margin-left: 6px; }
+  .cl-thread .reply .text { color: var(--fg-1); margin-top: 2px; }
+  .cl-thread .actions {
+    display: flex;
+    gap: var(--space-3);
+    margin-top: var(--space-3);
+  }
+  .cl-thread .actions button {
+    padding: 4px 10px;
+    background: var(--bg-0);
+    border: 1px solid var(--fg-0);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: var(--tracking-sku);
+    text-transform: uppercase;
+    color: var(--fg-0);
+    cursor: pointer;
+  }
+  .cl-thread .actions button.primary {
+    background: var(--accent);
+    color: var(--accent-fg);
+    border-color: var(--accent);
+  }
+  .cl-thread .actions button:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+// All components are pure render functions — no React state needed for a static mock.
+
+// ─────────────────────────────────────────────────────────────────────
+// MENUBAR — classic desktop-app pattern (File · View · Tools · Selection · Help)
+// Minimalist text labels in the top-left; one menu can be "open" per artboard
+// to demo the dropdown UX with keyboard shortcuts on the right of each item.
+// Modeled on shadcn/ui Menubar (radix primitive).
+// ─────────────────────────────────────────────────────────────────────
+
+const MENU_NAMES = ['File', 'Edit', 'View', 'Selection', 'Tools', 'Help'];
+
+function MenuShortcut({ children }) {
+  // Tiny kbd-style chip for menu shortcuts, right-aligned in each row.
+  return <span className="kbd">{children}</span>;
+}
+
+function FileDropdown() {
+  return (
+    <div className="mb-dropdown" role="menu" aria-label="File" style={{ left: '92px' }}>
+      <div role="menuitem" className="mb-dd-item"><span className="lbl">New Canvas…</span><MenuShortcut>⌘ N</MenuShortcut></div>
+      <div role="menuitem" className="mb-dd-item"><span className="lbl">Open Project…</span><MenuShortcut>⌘ O</MenuShortcut></div>
+      <div role="menuitem" className="mb-dd-item"><span className="lbl">Reveal in Finder</span><MenuShortcut>⌥ ⌘ R</MenuShortcut></div>
+      <div role="separator" className="mb-dd-sep" />
+      <div role="menuitem" className="mb-dd-item"><span className="lbl">Save Snapshot</span><MenuShortcut>⌘ S</MenuShortcut></div>
+      <div role="menuitem" className="mb-dd-item"><span className="lbl">Rollback</span><MenuShortcut>⌘ Z</MenuShortcut></div>
+      <div role="separator" className="mb-dd-sep" />
+      <div role="menuitem" className="mb-dd-item"><span className="lbl">Export…</span><MenuShortcut>⇧ ⌘ E</MenuShortcut></div>
+      <div role="menuitem" className="mb-dd-item"><span className="lbl">Handoff to Production</span><MenuShortcut>⇧ ⌘ H</MenuShortcut></div>
+    </div>
+  );
+}
+
+function ViewDropdown({ active = {} }) {
+  // The "checked" items reflect the artboard's current state — e.g. CV-08
+  // has `tree: true` so "Project Tree" gets the checkmark. The "hover"
+  // class on one row demonstrates the keyboard-focused / pointer-hover state.
+  return (
+    <div className="mb-dropdown" role="menu" aria-label="View" style={{ left: '146px' }}>
+      <div className="mb-dd-hd">Panels</div>
+      <div role="menuitemcheckbox" aria-checked={!!active.tree}      className={'mb-dd-item' + (active.tree ? ' checked hover' : '')}><span className="lbl">Project Tree</span><MenuShortcut>T</MenuShortcut></div>
+      <div role="menuitemcheckbox" aria-checked={!!active.layers}    className={'mb-dd-item' + (active.layers ? ' checked' : '')}><span className="lbl">Layers Panel</span><MenuShortcut>L</MenuShortcut></div>
+      <div role="menuitemcheckbox" aria-checked={!!active.inspector} className={'mb-dd-item' + (active.inspector ? ' checked' : '')}><span className="lbl">Inspector</span><MenuShortcut>I</MenuShortcut></div>
+      <div role="menuitemcheckbox" aria-checked={!!active.comments}  className={'mb-dd-item' + (active.comments ? ' checked' : '')}><span className="lbl">Comments Sidebar</span><MenuShortcut>C</MenuShortcut></div>
+      <div role="separator" className="mb-dd-sep" />
+      <div className="mb-dd-hd">Zoom</div>
+      <div role="menuitem" className="mb-dd-item"><span className="lbl">Zoom In</span><MenuShortcut>⌘ +</MenuShortcut></div>
+      <div role="menuitem" className="mb-dd-item"><span className="lbl">Zoom Out</span><MenuShortcut>⌘ −</MenuShortcut></div>
+      <div role="menuitem" className="mb-dd-item"><span className="lbl">Fit to Screen</span><MenuShortcut>⇧ ⌘ 0</MenuShortcut></div>
+      <div role="menuitem" className="mb-dd-item"><span className="lbl">Actual Size · 100 %</span><MenuShortcut>⌘ 0</MenuShortcut></div>
+      <div role="separator" className="mb-dd-sep" />
+      <div role="menuitemcheckbox" aria-checked={!!active.annotations} className={'mb-dd-item' + (active.annotations ? ' checked' : '')}><span className="lbl">Annotations</span><MenuShortcut>⇧ ⌘ A</MenuShortcut></div>
+      <div role="menuitem" className={'mb-dd-item' + (active.present ? ' checked' : '')}><span className="lbl">Presentation Mode</span><MenuShortcut>P</MenuShortcut></div>
+    </div>
+  );
+}
+
+function ToolsDropdown({ active = {} }) {
+  return (
+    <div className="mb-dropdown" role="menu" aria-label="Tools" style={{ left: '252px' }}>
+      <div className="mb-dd-hd">Draw</div>
+      <div role="menuitemradio" aria-checked={active.tool === 'pen'} className={'mb-dd-item' + (active.tool === 'pen' ? ' checked hover' : '')}><span className="lbl">Pen</span><MenuShortcut>B</MenuShortcut></div>
+      <div role="menuitemradio" aria-checked={false} className="mb-dd-item"><span className="lbl">Rectangle</span><MenuShortcut>R</MenuShortcut></div>
+      <div role="menuitemradio" aria-checked={false} className="mb-dd-item"><span className="lbl">Arrow</span><MenuShortcut>A</MenuShortcut></div>
+      <div role="menuitemradio" aria-checked={false} className="mb-dd-item"><span className="lbl">Eraser</span><MenuShortcut>E</MenuShortcut></div>
+      <div role="menuitemradio" aria-checked={false} className="mb-dd-item"><span className="lbl">Select</span><MenuShortcut>V</MenuShortcut></div>
+      <div role="separator" className="mb-dd-sep" />
+      <div role="menuitem" className="mb-dd-item"><span className="lbl">Color Picker…</span><MenuShortcut>⇧ C</MenuShortcut></div>
+      <div role="separator" className="mb-dd-sep" />
+      <div className="mb-dd-hd">Comments</div>
+      <div role="menuitem" className="mb-dd-item"><span className="lbl">Drop Pin Here</span><MenuShortcut>⌘ ⇧ K</MenuShortcut></div>
+      <div role="menuitem" className="mb-dd-item disabled"><span className="lbl">Resolve Selected</span><MenuShortcut>⌘ ⇧ ↩</MenuShortcut></div>
+    </div>
+  );
+}
+
+function Menubar({ cv, file, right, openMenu, viewState = {}, toolState = {} }) {
+  return (
+    <header className="mb" role="menubar" aria-label="Application menubar">
+      <span className="mb-brand"><span className="dot" aria-hidden="true" />mdcc</span>
+      <nav className="mb-menus" aria-label="Application menus">
+        {MENU_NAMES.map(name => {
+          const key = name.toLowerCase();
+          const open = openMenu === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              className="mb-menu"
+              role="menuitem"
+              aria-haspopup="menu"
+              aria-expanded={open}
+            >
+              {name}
+            </button>
+          );
+        })}
+      </nav>
+      {openMenu === 'file'  && <FileDropdown />}
+      {openMenu === 'view'  && <ViewDropdown active={viewState} />}
+      {openMenu === 'tools' && <ToolsDropdown active={toolState} />}
+      <div className="mb-spacer" />
+      <div className="mb-status">
+        <span className="cv-stamp">{cv}</span>
+        <span className="file">{file}</span>
+        {right}
+      </div>
+    </header>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Faux-canvas content components — what the user would "see" inside an
+// artboard if they had it open in the dev-server. Each rendering is a
+// realistic silhouette of a real screen, NOT a gray placeholder rectangle.
+// ─────────────────────────────────────────────────────────────────────
+
+function FCRoster() {
+  return (
+    <>
+      <div className="fc-label"><b>ui/ScoutRadar.html</b><span>1280·820</span></div>
+      <div className="fc-row title" />
+      <div className="fc-row shorter" />
+      <div className="fc-row shortest" />
+      <div className="fc-row shorter" style={{ marginTop: '12px' }} />
+      <div className="fc-row" />
+      <div style={{ marginTop: '10px' }}>
+        <span className="fc-btn">LOCK</span>
+        <span className="fc-btn ghost">SKIP</span>
+      </div>
+    </>
+  );
+}
+
+function FCRecap() {
+  return (
+    <>
+      <div className="fc-label"><b>ui/MatchRecap.html</b><span>1280·820</span></div>
+      <div className="fc-row title" />
+      <div className="fc-row" />
+      <div className="fc-row shorter" />
+      <div style={{ display: 'flex', gap: '4px', marginTop: '8px' }}>
+        <div style={{ flex: 1, height: '30px', background: 'var(--accent-tint)', border: '1px solid var(--accent)' }} />
+        <div style={{ flex: 1, height: '30px', background: 'var(--bg-2)', border: '1px solid var(--border-default)' }} />
+      </div>
+      <div className="fc-row accent" style={{ marginTop: '8px' }} />
+    </>
+  );
+}
+
+function FCOnboard({ idx }) {
+  return (
+    <>
+      <div className="fc-label"><b>ui/Onboarding.html</b><span>· {idx}/5</span></div>
+      <div className="fc-row title" />
+      <div className="fc-row" />
+      <div className="fc-row shorter" />
+      <div className="fc-row shortest" />
+      <div style={{ marginTop: '10px' }}>
+        <span className="fc-btn">CONTINUE</span>
+      </div>
+    </>
+  );
+}
+
+function FCHero() {
+  return (
+    <>
+      <div className="fc-label"><b>ui/MarketingHero.html</b><span>desktop · 1280</span></div>
+      <div style={{ height: '14px', background: 'var(--fg-0)', width: '70%', marginBottom: '6px' }} />
+      <div style={{ height: '14px', background: 'var(--fg-0)', width: '45%', marginBottom: '8px' }} />
+      <div className="fc-row" />
+      <div className="fc-row shorter" />
+      <div style={{ marginTop: '10px' }}>
+        <span className="fc-btn">GET STARTED</span>
+      </div>
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Mini-map — appears bottom-right of canvas viewport. World shows the
+// same artboard layout as the parent artboard (in scaled-down form).
+// `vp` (viewport) overlay marks the visible portion when zoomed-in.
+// ─────────────────────────────────────────────────────────────────────
+
+function MiniMap({ viewport, label = 'WORLD MAP' }) {
+  // Decorative chrome — the artboard SKU row already announces zoom state to SR.
+  return (
+    <div className="mm" aria-hidden="true">
+      <div className="mm-hd"><span>{label}</span><span>6 / 6</span></div>
+      <div className="mm-world">
+        <div className="mm-ab" style={{ left: '6%',  top: '10%', width: '28%', height: '24%' }} />
+        <div className="mm-ab" style={{ left: '40%', top: '8%',  width: '24%', height: '20%' }} />
+        <div className="mm-ab" style={{ left: '70%', top: '14%', width: '22%', height: '22%' }} />
+        <div className="mm-ab" style={{ left: '12%', top: '46%', width: '20%', height: '34%' }} />
+        <div className="mm-ab" style={{ left: '38%', top: '52%', width: '24%', height: '30%' }} />
+        <div className="mm-ab" style={{ left: '68%', top: '50%', width: '26%', height: '34%' }} />
+        {viewport && <div className="mm-vp" style={viewport} />}
+      </div>
+    </div>
+  );
+}
+
+function ZoomToolbar({ active = '42%' }) {
+  return (
+    <div className="zoom-tb" role="toolbar" aria-label="zoom">
+      <button type="button" title="zoom out">−</button>
+      <button type="button" title="zoom level" className="active">{active}</button>
+      <button type="button" title="zoom in">+</button>
+      <button type="button" title="fit to screen">[ ]</button>
+      <button type="button" title="actual size">1:1</button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 1 · IDLE INFINITE CANVAS
+// ─────────────────────────────────────────────────────────────────────
+
+function ArtboardIdle() {
+  return (
+    <div className="ab">
+      <Menubar
+        cv="CV-01"
+        file={<>idle · <b>fit to screen</b></>}
+        right={<><span>ZOOM <b>42%</b></span><span className="sep" /><span>WORLD 0, 0</span><span className="sep" /><span className="ok">● 6 ARTBOARDS</span></>}
+      />
+      <div className="ab-world">
+        <div className="wm" aria-label="brand mark">
+          <span className="glyph">mdcc-design-server</span>
+          <span className="sub">
+            <span>CANVAS · MDCC-DSN/01</span>
+            <span className="sep">/</span>
+            <b>v1.0.0</b>
+            <span className="sep">/</span>
+            <span>localhost:4399</span>
+          </span>
+        </div>
+
+        {/* Free-form artboard layout */}
+        <div className="fc" style={{ left: '74px',  top: '160px', width: '256px', height: '180px' }}><FCRoster /></div>
+        <div className="fc" style={{ left: '360px', top: '136px', width: '232px', height: '160px' }}><FCRecap /></div>
+        <div className="fc" style={{ left: '624px', top: '180px', width: '208px', height: '180px' }}><FCOnboard idx="1" /></div>
+        <div className="fc" style={{ left: '624px', top: '386px', width: '208px', height: '160px' }}><FCOnboard idx="2" /></div>
+        <div className="fc" style={{ left: '360px', top: '328px', width: '232px', height: '220px' }}><FCRoster /></div>
+        <div className="fc" style={{ left: '74px',  top: '372px', width: '256px', height: '180px' }}><FCHero /></div>
+
+        <MiniMap />
+        <ZoomToolbar active="42%" />
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 2 · ZOOMED-IN VIEWPORT
+// ─────────────────────────────────────────────────────────────────────
+
+function ArtboardZoomed() {
+  return (
+    <div className="ab">
+      <Menubar
+        cv="CV-02"
+        file={<><b>ui/ScoutRadar.html</b> · zoomed</>}
+        right={<><span>ZOOM <b>100%</b></span><span className="sep" /><span>WORLD 248, 412</span><span className="sep" /><span className="warn">● button.btn-primary</span></>}
+      />
+      <div className="ab-world">
+        {/* Single artboard zoomed in — fills most of the world */}
+        <div
+          className="fc"
+          style={{ left: '76px', top: '60px', width: '880px', height: '600px', padding: '0' }}
+        >
+          <div style={{ padding: '24px 28px', borderBottom: '1px solid var(--fg-0)', background: 'var(--bg-1)' }}>
+            <div className="fc-label" style={{ fontSize: '11px' }}>
+              <b>ui/ScoutRadar.html</b>
+              <span>SCOUT · LIVE TARGET</span>
+            </div>
+            <div style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: '26px',
+              fontWeight: 700,
+              color: 'var(--fg-0)',
+              letterSpacing: 'var(--tracking-tight)',
+              marginTop: '8px'
+            }}>
+              Scout · 3 targets in range
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '28px', padding: '28px' }}>
+            <div className="radar">
+              <div className="sweep" />
+              <div className="blip" style={{ top: '32%', left: '58%' }} />
+              <div className="blip" style={{ top: '58%', left: '40%' }} />
+              <div className="blip" style={{ top: '40%', left: '74%' }} />
+            </div>
+            <div style={{ flex: 1, paddingTop: '8px' }}>
+              <div style={{
+                fontSize: '11px',
+                letterSpacing: 'var(--tracking-sku)',
+                textTransform: 'uppercase',
+                color: 'var(--fg-2)',
+                marginBottom: '12px'
+              }}>
+                Detected · 2026-05-14T22:13:04
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '8px', fontSize: '13px', color: 'var(--fg-1)' }}>
+                <span style={{ color: 'var(--fg-0)', fontWeight: 600 }}>Pavel Novák</span><span style={{ color: 'var(--fg-3)' }}>+420 777 123 456</span>
+                <span style={{ color: 'var(--fg-0)', fontWeight: 600 }}>Maya Chen</span><span style={{ color: 'var(--fg-3)' }}>+1 415 246 0142</span>
+                <span style={{ color: 'var(--fg-0)', fontWeight: 600 }}>Alice Tanaka</span><span style={{ color: 'var(--fg-3)' }}>+44 20 7946 0118</span>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', marginTop: '24px', position: 'relative' }}>
+                <button type="button"
+                  style={{
+                    padding: '8px 16px',
+                    background: 'var(--accent)',
+                    color: 'var(--accent-fg)',
+                    border: '1px solid var(--accent)',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '12px',
+                    letterSpacing: 'var(--tracking-sku)',
+                    textTransform: 'uppercase',
+                    fontWeight: 600
+                  }}
+                >
+                  Lock target
+                </button>
+                <span className="sel-halo" style={{ inset: '-6px 102px -6px -6px' }}><i /></span>
+                <button type="button"
+                  style={{
+                    padding: '8px 16px',
+                    background: 'var(--bg-0)',
+                    color: 'var(--fg-0)',
+                    border: '1px solid var(--fg-0)',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '12px',
+                    letterSpacing: 'var(--tracking-sku)',
+                    textTransform: 'uppercase'
+                  }}
+                >
+                  Release
+                </button>
+              </div>
+              <div style={{
+                marginTop: '20px',
+                paddingTop: '12px',
+                borderTop: '1px solid var(--border-subtle)',
+                fontSize: '11px',
+                color: 'var(--fg-3)',
+                letterSpacing: 'var(--tracking-sku)',
+                textTransform: 'uppercase'
+              }}>
+                Selected · main &gt; section.hero &gt; div.controls &gt; button.btn-primary
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <MiniMap viewport={{ left: '8%', top: '6%', width: '54%', height: '70%' }} label="VIEW · 100%" />
+        <ZoomToolbar active="100%" />
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 3 · DRAW MODE ACTIVE
+// ─────────────────────────────────────────────────────────────────────
+
+function ArtboardDraw() {
+  return (
+    <div className="ab">
+      <Menubar
+        cv="CV-03"
+        file={<><b>ui/MatchRecap.html</b> · pen mode</>}
+        openMenu="tools"
+        toolState={{ tool: 'pen' }}
+        right={<><span>STROKE · <b>ACCENT</b></span><span className="sep" /><span>3 ANNOTATIONS</span><span className="sep" /><span className="warn">● UNSAVED</span></>}
+      />
+      <div className="ab-world">
+        {/* The canvas being annotated */}
+        <div
+          className="fc"
+          style={{ left: '120px', top: '64px', width: '820px', height: '600px', padding: '0' }}
+        >
+          <div style={{ padding: '24px 28px', borderBottom: '1px solid var(--fg-0)', background: 'var(--bg-1)' }}>
+            <div className="fc-label" style={{ fontSize: '11px' }}>
+              <b>ui/MatchRecap.html</b>
+              <span>POST-GAME · 2026-05-14</span>
+            </div>
+            <div style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: '26px',
+              fontWeight: 700,
+              color: 'var(--fg-0)',
+              letterSpacing: 'var(--tracking-tight)',
+              marginTop: '8px'
+            }}>
+              Match Recap · Game 14
+            </div>
+          </div>
+          <div style={{ padding: '28px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+              <div style={{ padding: '20px', border: '1px solid var(--border-default)', background: 'var(--bg-1)' }}>
+                <div style={{ fontSize: '11px', letterSpacing: 'var(--tracking-sku)', color: 'var(--fg-2)', textTransform: 'uppercase' }}>Final</div>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: '40px', fontWeight: 700, color: 'var(--fg-0)', lineHeight: 1, marginTop: '6px' }}>
+                  3 <span style={{ color: 'var(--fg-2)' }}>·</span> 2
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--fg-3)', marginTop: '6px' }}>vs. Brno United</div>
+              </div>
+              <div style={{ padding: '20px', border: '1px solid var(--border-default)', background: 'var(--bg-1)' }}>
+                <div style={{ fontSize: '11px', letterSpacing: 'var(--tracking-sku)', color: 'var(--fg-2)', textTransform: 'uppercase' }}>Streak</div>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: '40px', fontWeight: 700, color: 'var(--accent)', lineHeight: 1, marginTop: '6px' }}>W-4</div>
+                <div style={{ fontSize: '11px', color: 'var(--fg-3)', marginTop: '6px' }}>longest this season</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button type="button"
+                style={{
+                  padding: '6px 12px',
+                  background: 'var(--accent)',
+                  color: 'var(--accent-fg)',
+                  border: '1px solid var(--accent)',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '12px',
+                  letterSpacing: 'var(--tracking-sku)',
+                  textTransform: 'uppercase'
+                }}
+              >
+                Share recap
+              </button>
+              <button type="button"
+                style={{
+                  padding: '6px 12px',
+                  background: 'var(--bg-0)',
+                  color: 'var(--fg-0)',
+                  border: '1px solid var(--fg-0)',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '12px',
+                  letterSpacing: 'var(--tracking-sku)',
+                  textTransform: 'uppercase'
+                }}
+              >
+                Export PDF
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Hand-drawn annotation overlay — SVG decorative; copy is duplicated in
+            the SR-readable status row above, so we hide this from assistive tech. */}
+        <svg className="hd-overlay" viewBox="0 0 1280 760" preserveAspectRatio="none" aria-hidden="true">
+          {/* Wobbly circle around the "Share recap" button */}
+          <path
+            d="M 247 624 C 238 612, 245 600, 262 596 C 281 591, 310 591, 340 594 C 372 597, 398 605, 402 618 C 405 631, 388 642, 370 643 C 348 645, 312 646, 290 644 C 268 642, 252 636, 247 624 Z"
+            fill="none"
+            stroke="var(--accent)"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          {/* Arrow pointing from button to handwritten label */}
+          <path
+            d="M 410 628 L 484 644"
+            stroke="var(--accent)"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            fill="none"
+          />
+          <path
+            d="M 484 644 L 472 638 M 484 644 L 472 652"
+            stroke="var(--accent)"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            fill="none"
+          />
+          {/* "fix padding" — hand-lettered */}
+          <text
+            x="494" y="652"
+            fontFamily="var(--font-display)"
+            fontSize="18"
+            fontWeight="700"
+            fill="var(--accent)"
+            style={{ letterSpacing: '0.04em' }}
+          >
+            fix padding
+          </text>
+
+          {/* Second annotation — circle around stat card */}
+          <path
+            d="M 196 256 C 184 232, 188 212, 218 198 C 248 184, 350 184, 410 198 C 470 212, 484 240, 472 264 C 460 288, 412 308, 348 308 C 284 308, 208 280, 196 256 Z"
+            fill="none"
+            stroke="var(--accent)"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <text
+            x="220" y="184"
+            fontFamily="var(--font-display)"
+            fontSize="16"
+            fontWeight="700"
+            fill="var(--accent)"
+          >
+            wrong radius — should be 4
+          </text>
+          <path
+            d="M 320 192 L 308 204"
+            stroke="var(--accent)"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            fill="none"
+          />
+        </svg>
+
+        {/* Draw toolbar */}
+        <div className="draw-tb" role="toolbar" aria-label="draw tools">
+          <button type="button" className="active" title="pen — B">B</button>
+          <button type="button" title="rectangle — R">R</button>
+          <button type="button" title="arrow — A">A</button>
+          <button type="button" title="eraser — E">E</button>
+          <button type="button" title="color picker">
+            <span style={{ display: 'inline-block', width: '14px', height: '14px', background: 'var(--accent)', border: '1px solid var(--fg-0)' }} />
+          </button>
+          <button type="button" title="select — V">V</button>
+          <button type="button" title="presentation toggle — P">P</button>
+        </div>
+
+        {/* Color picker popover — opens next to color button */}
+        <div className="cpop" role="radiogroup" aria-label="Annotation stroke color" style={{ top: '50%', transform: 'translateY(86px)' }}>
+          <button type="button" role="radio" aria-checked="true"  aria-label="Amber-rust (current)" className="sw sw-rust active" />
+          <button type="button" role="radio" aria-checked="false" aria-label="Success green"        className="sw sw-success" />
+          <button type="button" role="radio" aria-checked="false" aria-label="Warning amber"        className="sw sw-warn" />
+          <button type="button" role="radio" aria-checked="false" aria-label="Error red"            className="sw sw-error" />
+          <button type="button" role="radio" aria-checked="false" aria-label="Info blue"            className="sw sw-info" />
+          <button type="button" role="radio" aria-checked="false" aria-label="Ink (black)"          className="sw sw-ink" />
+        </div>
+
+        {/* Shortcut hint chip */}
+        <div className="kb-hint">
+          <kbd>B</kbd><kbd>R</kbd><kbd>A</kbd><kbd>E</kbd><kbd>V</kbd>
+          <span>—</span>
+          <kbd className="esc">ESC</kbd>
+          <span>TO EXIT</span>
+        </div>
+
+        <MiniMap />
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 4 · PIN-COMMENT THREAD
+// ─────────────────────────────────────────────────────────────────────
+
+function ArtboardPin() {
+  return (
+    <div className="ab">
+      <Menubar
+        cv="CV-04"
+        file={<><b>ui/Onboarding.html</b> · pin · thread open</>}
+        right={<><span>2 PINS</span><span className="sep" /><span>1 UNREAD</span><span className="sep" /><span className="warn">● OPEN</span></>}
+      />
+      <div className="ab-world">
+        {/* The canvas with pins on it */}
+        <div
+          className="fc"
+          style={{ left: '64px', top: '60px', width: '560px', height: '620px', padding: '0' }}
+        >
+          <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--fg-0)', background: 'var(--bg-1)' }}>
+            <div className="fc-label" style={{ fontSize: '11px' }}>
+              <b>ui/Onboarding.html</b>
+              <span>STEP 3 · PERMISSIONS</span>
+            </div>
+            <div style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: '20px',
+              fontWeight: 700,
+              color: 'var(--fg-0)',
+              letterSpacing: 'var(--tracking-tight)',
+              marginTop: '6px'
+            }}>
+              Grant permissions
+            </div>
+          </div>
+          <div style={{ padding: '24px', position: 'relative' }}>
+            <div style={{ padding: '14px 16px', border: '1px solid var(--border-default)', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: '13px', color: 'var(--fg-0)', fontWeight: 600 }}>Location</div>
+                <div style={{ fontSize: '11px', color: 'var(--fg-3)' }}>find scooters near you</div>
+              </div>
+              <div style={{ width: '32px', height: '18px', background: 'var(--accent)', position: 'relative' }}>
+                <div style={{ position: 'absolute', right: '2px', top: '2px', width: '14px', height: '14px', background: 'var(--bg-0)' }} />
+              </div>
+            </div>
+            <div style={{ padding: '14px 16px', border: '1px solid var(--border-default)', marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: '13px', color: 'var(--fg-0)', fontWeight: 600 }}>Notifications</div>
+                <div style={{ fontSize: '11px', color: 'var(--fg-3)' }}>ride status + receipts</div>
+              </div>
+              <div style={{ width: '32px', height: '18px', background: 'var(--bg-3)', position: 'relative' }}>
+                <div style={{ position: 'absolute', left: '2px', top: '2px', width: '14px', height: '14px', background: 'var(--bg-0)' }} />
+              </div>
+            </div>
+            <button type="button"
+              style={{
+                padding: '10px 18px',
+                background: 'var(--accent)',
+                color: 'var(--accent-fg)',
+                border: '1px solid var(--accent)',
+                fontFamily: 'var(--font-mono)',
+                fontSize: '12px',
+                letterSpacing: 'var(--tracking-sku)',
+                textTransform: 'uppercase',
+                fontWeight: 600,
+                position: 'relative'
+              }}
+            >
+              Continue
+            </button>
+
+            {/* Open pin — anchored to the right edge of the Continue button */}
+            <button type="button" className="pin" aria-label="Open thread on button.btn-primary" style={{ left: '140px', top: '180px' }}>M</button>
+
+            {/* Closed pin on the Notifications toggle row — 2 unread replies */}
+            <button type="button" className="pin closed unread" data-unread="2" aria-label="Comment thread on Notifications — 2 unread" style={{ right: '32px', top: '116px' }}>P</button>
+          </div>
+        </div>
+
+        {/* Floating thread panel */}
+        <div className="thread" style={{ left: '676px', top: '120px' }}>
+          <div className="thread-hd">
+            <span><b>button.btn-primary</b> · 2 REPLIES</span>
+            <button type="button" className="resolve">RESOLVE ✓</button>
+          </div>
+          <div className="thread-msg">
+            <div className="author">
+              <b>Maya Chen</b>
+              <span className="ts">2m ago</span>
+            </div>
+            <div className="body">
+              <span className="mention">@claude</span> this padding feels cramped — try <code>12 16</code> instead of <code>8 12</code>. Make it match the spec.
+            </div>
+          </div>
+          <div className="thread-msg">
+            <div className="author">
+              <b>Claude</b>
+              <span className="ts">just now</span>
+              <span style={{ color: 'var(--status-success)', fontSize: '10px', letterSpacing: 'var(--tracking-sku)', textTransform: 'uppercase' }}>● APPLIED</span>
+            </div>
+            <div className="body">
+              applied. snapshot <code>048-T2127</code>. ready to review.
+            </div>
+          </div>
+          <div className="thread-input">
+            <div className="mention-dd">
+              <div className="item sel"><span><b>@maya</b> Maya Chen</span><span className="em">maya@studyfi.com</span></div>
+              <div className="item"><span><b>@pavel</b> Pavel Novák</span><span className="em">pavel@studyfi.com</span></div>
+              <div className="item"><span><b>@daniel</b> Daniel Reyes</span><span className="em">daniel@studyfi.com</span></div>
+            </div>
+            <input type="text" defaultValue="@" aria-label="reply" />
+            <div className="row">
+              <span>WRITE · <b>@</b> TO MENTION</span>
+              <button type="button" className="reply-btn">REPLY</button>
+            </div>
+          </div>
+        </div>
+
+        <MiniMap />
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 5 · PRESENTATION MODE
+// ─────────────────────────────────────────────────────────────────────
+
+function ArtboardPresentation() {
+  return (
+    <div className="ab">
+      <Menubar
+        cv="CV-05"
+        file={<><b>ui/MarketingHero.html</b> · presenting</>}
+        right={<><span>FULL-BLEED</span><span className="sep" /><span>CHROME OFF</span><span className="sep" /><span className="ok">● 3 / 6</span></>}
+      />
+      <div className="ab-world" style={{ background: 'var(--bg-2)', backgroundImage: 'none' }}>
+        <div className="pres-stage">
+          <span className="sku-cap">ui/MarketingHero.html · 3 / 6</span>
+          <div className="eyebrow">md-claude · v1.0 · published 2026-05-14</div>
+          <h1>
+            One canvas.<br />
+            Every screen.<br />
+            <span className="stamp">Iterate in place.</span>
+          </h1>
+          <p>
+            The infinite canvas for repo-local design iteration. Free-form artboards,
+            pin-comments, draw annotations, live cursors, and a Cmd+click inspector — all
+            shipped with the plugin. No SaaS. The dev-server runs on localhost.
+          </p>
+          <div className="cta">
+            <button type="button" className="btn-fill">Install plugin</button>
+            <button type="button" className="btn-ghost">Read the docs</button>
+          </div>
+        </div>
+
+        <div className="pres-toggles">
+          <span className="chip"><span className="x">☒</span>COMMENTS</span>
+          <span className="chip"><span className="x">☒</span>ANNOTATIONS</span>
+        </div>
+
+        <div className="pres-counter" role="group" aria-label="Presentation navigation">
+          <button type="button" className="arrow" aria-label="Previous canvas">←</button>
+          <span className="count" aria-live="polite">3 / 6</span>
+          <button type="button" className="arrow" aria-label="Next canvas">→</button>
+          <span className="esc" aria-label="Press Escape to exit presentation">ESC</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 6 · LIVE COLLAB SESSION
+// ─────────────────────────────────────────────────────────────────────
+
+function RemoteCursor({ x, y, color, name }) {
+  // `color` is a CSS-var string (e.g. 'var(--status-info)') — applied via style
+  // so it resolves against tokens instead of being a hardcoded OKLCH literal.
+  return (
+    <div className="rcursor" style={{ left: `${x}px`, top: `${y}px` }} aria-hidden="true">
+      <svg viewBox="0 0 16 16" style={{ fill: color }}>
+        <path d="M 2 1 L 13 8 L 7 9 L 4 14 Z" stroke="var(--fg-0)" strokeWidth="0.8" />
+      </svg>
+      <span className="nametag" style={{ background: color }}>{name}</span>
+    </div>
+  );
+}
+
+function ArtboardCollab() {
+  return (
+    <div className="ab">
+      {/* Soft-lock banner — flows ABOVE the SKU bar; boldest typographic moment in the canvas */}
+      <div className="lock-banner" role="status" aria-live="polite">
+        <span>
+          <span className="bolt" aria-hidden="true">⚡</span>{' '}CLAUDE IS EDITING THIS CANVAS · YOUR CHANGES MAY CONFLICT
+        </span>
+        <span className="countdown">08s</span>
+      </div>
+
+      <Menubar
+        cv="CV-06"
+        file={<><b>ui/Onboarding.html</b> · live · 3 peers</>}
+        right={<><span>3 PEERS</span><span className="sep" /><span>AI · ACTIVE</span><span className="sep" /><span className="warn">● SOFT-LOCK</span></>}
+      />
+
+      <div className="ab-world">
+        {/* The shared canvas */}
+        <div
+          className="fc"
+          style={{ left: '120px', top: '90px', width: '720px', height: '540px', padding: '0' }}
+        >
+          <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--fg-0)', background: 'var(--bg-1)' }}>
+            <div className="fc-label" style={{ fontSize: '11px' }}>
+              <b>ui/Onboarding.html</b>
+              <span>STEP 4 · IDENTITY</span>
+            </div>
+            <div style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: '20px',
+              fontWeight: 700,
+              color: 'var(--fg-0)',
+              letterSpacing: 'var(--tracking-tight)',
+              marginTop: '6px'
+            }}>
+              Verify identity
+            </div>
+          </div>
+          <div style={{ padding: '24px', position: 'relative' }}>
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ fontSize: '11px', letterSpacing: 'var(--tracking-sku)', textTransform: 'uppercase', color: 'var(--fg-2)', marginBottom: '6px' }}>Full name</div>
+              <div style={{ padding: '10px 12px', border: '1px solid var(--accent)', background: 'var(--bg-0)', fontSize: '13px', color: 'var(--fg-0)', position: 'relative' }}>
+                Maya Chen
+                {/* Remote selection halo — Alice's blue */}
+                <span style={{ position: 'absolute', inset: '-3px', border: '2px solid var(--status-info)', pointerEvents: 'none' }}>
+                  <span style={{ position: 'absolute', top: '-18px', left: '0', background: 'var(--status-info)', color: 'var(--bg-0)', fontFamily: 'var(--font-mono)', fontSize: '9px', fontWeight: 600, padding: '2px 5px', letterSpacing: 'var(--tracking-sku)' }}>ALICE</span>
+                </span>
+              </div>
+            </div>
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ fontSize: '11px', letterSpacing: 'var(--tracking-sku)', textTransform: 'uppercase', color: 'var(--fg-2)', marginBottom: '6px' }}>Phone</div>
+              <div style={{ padding: '10px 12px', border: '1px solid var(--border-default)', background: 'var(--bg-0)', fontSize: '13px', color: 'var(--fg-0)' }}>
+                +1 415 246 0142
+              </div>
+            </div>
+            <div style={{ marginBottom: '24px' }}>
+              <div style={{ fontSize: '11px', letterSpacing: 'var(--tracking-sku)', textTransform: 'uppercase', color: 'var(--fg-2)', marginBottom: '6px' }}>Birth year</div>
+              <div style={{ padding: '10px 12px', border: '1px solid var(--border-default)', background: 'var(--bg-0)', fontSize: '13px', color: 'var(--fg-0)' }}>
+                1992
+              </div>
+            </div>
+            <button type="button"
+              style={{
+                padding: '10px 18px',
+                background: 'var(--accent)',
+                color: 'var(--accent-fg)',
+                border: '1px solid var(--accent)',
+                fontFamily: 'var(--font-mono)',
+                fontSize: '12px',
+                letterSpacing: 'var(--tracking-sku)',
+                textTransform: 'uppercase',
+                fontWeight: 600
+              }}
+            >
+              Verify &amp; continue
+            </button>
+
+            {/* Pin with typing indicator — Maya is currently typing a reply */}
+            <button type="button" className="pin" aria-label="Open thread on form — Maya is typing" style={{ right: '24px', top: '24px' }}>M
+              <span className="typing-dot" aria-live="polite">MAYA TYPING…</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Remote cursors — fill via tokens so theme switch picks up dark variants */}
+        <RemoteCursor x={524} y={326} color="var(--status-info)"    name="ALICE"  />
+        <RemoteCursor x={748} y={482} color="var(--status-success)" name="DANIEL" />
+
+        {/* Participant avatars chrome */}
+        <div className="participants" role="group" aria-label="Connected peers — click to follow">
+          <button type="button" className="avatar av-you" aria-label="You (host)">Y</button>
+          <button type="button" className="avatar av-alice" aria-label="Alice Tanaka — follow viewport">A</button>
+          <button type="button" className="avatar av-daniel" aria-label="Daniel Reyes — follow viewport" aria-expanded="true">
+            D
+            <span className="follow-pill" role="tooltip">FOLLOW DANIEL</span>
+          </button>
+        </div>
+
+        <MiniMap />
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 7 · INSPECTOR + LAYERS (Phase 12)
+// ─────────────────────────────────────────────────────────────────────
+
+function ArtboardInspector() {
+  return (
+    <div className="ab">
+      <Menubar
+        cv="CV-07"
+        file={<><b>ui/ScoutRadar.html</b> · inspector + layers</>}
+        right={<><span>SELECTED · <b>button.btn-primary</b></span><span className="sep" /><span>STRATEGY · SMART-DETECT</span><span className="sep" /><span className="warn">● V1.3+</span></>}
+      />
+      <div style={{ flex: 1, overflow: 'hidden' }}>
+        <div className="three-col">
+          {/* LEFT — Layers (tree pattern: aria-tree + treeitems, keyboard reachable) */}
+          <aside className="col-layers" aria-labelledby="layers-hd">
+            <div className="col-hd" id="layers-hd">
+              <span>LAYERS · ScoutRadar.html</span>
+              <kbd>L</kbd>
+            </div>
+            <div role="tree" aria-label="DOM tree — ui/ScoutRadar.html">
+              <div role="treeitem" tabIndex={-1} aria-expanded="true"  aria-level="1" className="tree-row-l"><span className="gly" aria-hidden="true">▾</span><span className="tag">&lt;body</span><span className="cls"> .mdcc&gt;</span></div>
+              <div role="treeitem" tabIndex={-1} aria-expanded="true"  aria-level="2" className="tree-row-l" style={{ paddingLeft: '20px' }}><span className="gly" aria-hidden="true">▾</span><span className="tag">&lt;main</span><span className="cls"> .app&gt;</span></div>
+              <div role="treeitem" tabIndex={-1} aria-expanded="true"  aria-level="3" className="tree-row-l" style={{ paddingLeft: '34px' }}><span className="gly" aria-hidden="true">▾</span><span className="tag">&lt;header</span><span className="cls"> .topbar&gt;</span></div>
+              <div role="treeitem" tabIndex={-1}                          aria-level="4" className="tree-row-l" style={{ paddingLeft: '48px' }}><span className="gly" aria-hidden="true">·</span><span className="tag">&lt;h1</span><span className="cls"> .title&gt;</span></div>
+              <div role="treeitem" tabIndex={-1} aria-expanded="true"  aria-level="3" className="tree-row-l" style={{ paddingLeft: '34px' }}><span className="gly" aria-hidden="true">▾</span><span className="tag">&lt;section</span><span className="cls"> .hero&gt;</span></div>
+              <div role="treeitem" tabIndex={-1}                          aria-level="4" className="tree-row-l" style={{ paddingLeft: '48px' }}><span className="gly" aria-hidden="true">·</span><span className="tag">&lt;div</span><span className="cls"> .radar&gt;</span></div>
+              <div role="treeitem" tabIndex={-1} aria-expanded="true"  aria-level="4" className="tree-row-l" style={{ paddingLeft: '48px' }}><span className="gly" aria-hidden="true">▾</span><span className="tag">&lt;div</span><span className="cls"> .controls&gt;</span></div>
+              <div role="treeitem" tabIndex={0}  aria-selected="true"  aria-level="5" className="tree-row-l sel" style={{ paddingLeft: '62px' }}><span className="gly" aria-hidden="true">·</span><span className="tag">&lt;button</span><span className="cls"> .btn-primary&gt;</span></div>
+              <div role="treeitem" tabIndex={-1}                          aria-level="5" className="tree-row-l hover" style={{ paddingLeft: '62px' }}><span className="gly" aria-hidden="true">·</span><span className="tag">&lt;button</span><span className="cls"> .btn-ghost&gt;</span></div>
+              <div role="treeitem" tabIndex={-1} aria-expanded="false" aria-level="3" className="tree-row-l" style={{ paddingLeft: '34px' }}><span className="gly" aria-hidden="true">▸</span><span className="tag">&lt;section</span><span className="cls"> .roster&gt;</span></div>
+              <div role="treeitem" tabIndex={-1} aria-expanded="false" aria-level="3" className="tree-row-l" style={{ paddingLeft: '34px' }}><span className="gly" aria-hidden="true">▸</span><span className="tag">&lt;footer</span><span className="cls"> .status&gt;</span></div>
+            </div>
+          </aside>
+
+          {/* CENTER — canvas with selected element */}
+          <div className="col-canvas">
+            <div
+              className="fc"
+              style={{
+                position: 'absolute',
+                left: '50%',
+                top: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: '420px',
+                height: '320px',
+                padding: '20px'
+              }}
+            >
+              <div className="fc-label" style={{ fontSize: '11px' }}>
+                <b>ui/ScoutRadar.html</b>
+                <span>·</span>
+              </div>
+              <div className="ghost-row" style={{ height: '8px', width: '60%', background: 'var(--fg-0)', marginBottom: '12px' }} />
+              <div className="ghost-row" />
+              <div className="ghost-row short" />
+              <div className="ghost-row shortest" style={{ marginBottom: '20px' }} />
+
+              <div style={{ display: 'flex', gap: '8px', position: 'relative' }}>
+                <button type="button"
+                  style={{
+                    padding: '8px 14px',
+                    background: 'var(--accent)',
+                    color: 'var(--accent-fg)',
+                    border: '1px solid var(--accent)',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '11px',
+                    letterSpacing: 'var(--tracking-sku)',
+                    textTransform: 'uppercase',
+                    fontWeight: 600
+                  }}
+                >
+                  Lock target
+                </button>
+                <span className="sel-halo" style={{ inset: '-6px 78px -6px -6px' }}><i /></span>
+                <button type="button"
+                  style={{
+                    padding: '8px 14px',
+                    background: 'var(--bg-0)',
+                    color: 'var(--fg-0)',
+                    border: '1px solid var(--fg-0)',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '11px',
+                    letterSpacing: 'var(--tracking-sku)',
+                    textTransform: 'uppercase'
+                  }}
+                >
+                  Skip
+                </button>
+              </div>
+
+              <div style={{
+                position: 'absolute',
+                bottom: '12px',
+                left: '20px',
+                fontSize: '9px',
+                letterSpacing: 'var(--tracking-sku)',
+                textTransform: 'uppercase',
+                color: 'var(--fg-3)'
+              }}>
+                main &gt; .hero &gt; .controls &gt; button.btn-primary
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT — Inspector */}
+          <aside className="col-inspector" style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="col-hd">
+              <span>INSPECTOR · btn-primary</span>
+              <kbd>I</kbd>
+            </div>
+
+            <div className="insp-grp">
+              <h5>Layout</h5>
+              <div className="insp-row"><span className="k">padding</span><span className="val">12 16</span><span className="drag" aria-hidden="true">⇕</span></div>
+              <div className="insp-row"><span className="k">margin</span><span className="val">0</span><span className="drag" aria-hidden="true">⇕</span></div>
+              <div className="insp-row"><span className="k">width</span><span className="val">auto</span><span className="drag" aria-hidden="true">⇕</span></div>
+              <div className="insp-row"><span className="k">height</span><span className="val">32</span><span className="drag" aria-hidden="true">⇕</span></div>
+              <div className="insp-row"><span className="k">display</span><span className="val">inline-flex</span><span className="drag" aria-hidden="true">⇕</span></div>
+            </div>
+
+            <div className="insp-grp">
+              <h5>Visual</h5>
+              <div className="insp-row"><span className="k">background</span><span className="val tok">var(--accent)</span><span className="drag" aria-hidden="true">⇕</span></div>
+              <div className="insp-row"><span className="k">color</span><span className="val tok">var(--accent-fg)</span><span className="drag" aria-hidden="true">⇕</span></div>
+              <div className="insp-row"><span className="k">border-radius</span><span className="val">4</span><span className="drag" aria-hidden="true">⇕</span></div>
+            </div>
+
+            <div className="insp-grp">
+              <h5>Type</h5>
+              <div className="insp-row"><span className="k">font-size</span><span className="val">13</span><span className="drag" aria-hidden="true">⇕</span></div>
+              <div className="insp-row"><span className="k">font-weight</span><span className="val">500</span><span className="drag" aria-hidden="true">⇕</span></div>
+            </div>
+
+            <div className="insp-strategy">
+              <h5 id="strategy-hd">Source rewrite</h5>
+              <div className="opts" role="radiogroup" aria-labelledby="strategy-hd">
+                <button type="button" role="radio" aria-checked="false" className="opt">Inline style</button>
+                <button type="button" role="radio" aria-checked="false" className="opt">Utility class</button>
+                <button type="button" role="radio" aria-checked="true"  className="opt active">Smart-detect ✓</button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 8 · PROJECT + DS TREE
+// ─────────────────────────────────────────────────────────────────────
+
+function ArtboardTree() {
+  return (
+    <div className="ab">
+      <Menubar
+        cv="CV-08"
+        file={<>project tree · <b>studyfi-bikeshare</b></>}
+        openMenu="view"
+        viewState={{ tree: true }}
+        right={<><span>42 / 42 FILES</span><span className="sep" /><span>3 MODIFIED</span><span className="sep" /><span className="ok">● STUDYFI</span></>}
+      />
+      <div className="ab-world" style={{ backgroundColor: 'var(--bg-1)' }}>
+        {/* LEFT — file tree panel */}
+        <aside className="tree-panel" aria-labelledby="tp-hd">
+          <div className="tree-panel-hd" id="tp-hd">
+            <span>FILES</span>
+            <span className="ct">42 / 42</span>
+          </div>
+          <div className="tree-panel-search">
+            <input type="search" placeholder="filter (⌘F)" defaultValue="" aria-label="Filter files" />
+          </div>
+          <div className="tree-panel-body" role="tree" aria-label="Project file tree">
+            {/* Project root */}
+            <div className="tp-section-hd"><span>PROJECT</span><span className="pill">studyfi-bikeshare</span></div>
+            <div role="treeitem" aria-level="1" aria-expanded="true" tabIndex={-1} className="tp-row dir"><span className="glyph" aria-hidden="true">▾</span><span className="name">.design</span></div>
+            <div role="treeitem" aria-level="2"                            tabIndex={-1} className="tp-row"     style={{ paddingLeft: '32px' }}><span className="glyph" aria-hidden="true">·</span><span className="name">README.md</span></div>
+            <div role="treeitem" aria-level="2"                            tabIndex={-1} className="tp-row"     style={{ paddingLeft: '32px' }}><span className="glyph" aria-hidden="true">·</span><span className="name">INDEX.md</span></div>
+            <div role="treeitem" aria-level="2"                            tabIndex={-1} className="tp-row"     style={{ paddingLeft: '32px' }}><span className="glyph" aria-hidden="true">·</span><span className="name">config.json</span></div>
+
+            {/* Design system */}
+            <div className="tp-section-hd" style={{ marginTop: '8px' }}><span>DESIGN SYSTEM · project</span><span className="pill">MDCC-DSN/01</span></div>
+            <div role="treeitem" aria-level="2" aria-expanded="true"  tabIndex={-1} className="tp-row dir" style={{ paddingLeft: '32px' }}><span className="glyph" aria-hidden="true">▾</span><span className="name">system/project</span></div>
+            <div role="treeitem" aria-level="3"                            tabIndex={-1} className="tp-row"     style={{ paddingLeft: '48px' }}><span className="glyph" aria-hidden="true">·</span><span className="name">README.md</span></div>
+            <div role="treeitem" aria-level="3"                            tabIndex={-1} className="tp-row"     style={{ paddingLeft: '48px' }}><span className="glyph" aria-hidden="true">·</span><span className="name">SKILL.md</span></div>
+            <div role="treeitem" aria-level="3"                            tabIndex={-1} className="tp-row"     style={{ paddingLeft: '48px' }}><span className="glyph" aria-hidden="true">·</span><span className="name">colors_and_type.css</span></div>
+            <div role="treeitem" aria-level="3" aria-expanded="true"  tabIndex={-1} className="tp-row dir" style={{ paddingLeft: '48px' }}><span className="glyph" aria-hidden="true">▾</span><span className="name">preview</span></div>
+            <div role="treeitem" aria-level="4"                            tabIndex={-1} className="tp-row star"     style={{ paddingLeft: '64px' }}><span className="glyph" aria-hidden="true">·</span><span className="name">colors-accent.html</span></div>
+            <div role="treeitem" aria-level="4"                            tabIndex={-1} className="tp-row"     style={{ paddingLeft: '64px' }}><span className="glyph" aria-hidden="true">·</span><span className="name">type-scale.html</span></div>
+            <div role="treeitem" aria-level="4"                            tabIndex={-1} className="tp-row modified" style={{ paddingLeft: '64px' }}><span className="glyph" aria-hidden="true">·</span><span className="name">components-buttons.html</span></div>
+            <div role="treeitem" aria-level="4"                            tabIndex={-1} className="tp-row star"     style={{ paddingLeft: '64px' }}><span className="glyph" aria-hidden="true">·</span><span className="name">empty-state.html</span></div>
+            <div role="treeitem" aria-level="4"                            tabIndex={-1} className="tp-row star"     style={{ paddingLeft: '64px' }}><span className="glyph" aria-hidden="true">·</span><span className="name">logo.html</span></div>
+            <div role="treeitem" aria-level="4"                            tabIndex={-1} className="tp-row star"     style={{ paddingLeft: '64px' }}><span className="glyph" aria-hidden="true">·</span><span className="name">ui_kits-desktop-showcase.html</span></div>
+
+            {/* UI canvases */}
+            <div className="tp-section-hd" style={{ marginTop: '8px' }}><span>UI CANVASES</span><span className="pill">7</span></div>
+            <div role="treeitem" aria-level="2" aria-expanded="true"  tabIndex={-1} className="tp-row dir" style={{ paddingLeft: '32px' }}><span className="glyph" aria-hidden="true">▾</span><span className="name">ui</span></div>
+            <div role="treeitem" aria-level="3" aria-selected="true"  tabIndex={0}  className="tp-row sel" style={{ paddingLeft: '48px' }}><span className="glyph" aria-hidden="true">▸</span><span className="name">Canvas Viewport.html</span><span className="badge" aria-label="3 unread comments">3</span></div>
+            <div role="treeitem" aria-level="3"                            tabIndex={-1} className="tp-row modified" style={{ paddingLeft: '48px' }}><span className="glyph" aria-hidden="true">·</span><span className="name">ScoutRadar.html</span></div>
+            <div role="treeitem" aria-level="3"                            tabIndex={-1} className="tp-row" style={{ paddingLeft: '48px' }}><span className="glyph" aria-hidden="true">·</span><span className="name">MatchRecap.html</span></div>
+            <div role="treeitem" aria-level="3"                            tabIndex={-1} className="tp-row modified" style={{ paddingLeft: '48px' }}><span className="glyph" aria-hidden="true">·</span><span className="name">Onboarding.html</span></div>
+            <div role="treeitem" aria-level="3"                            tabIndex={-1} className="tp-row" style={{ paddingLeft: '48px' }}><span className="glyph" aria-hidden="true">·</span><span className="name">MarketingHero.html</span></div>
+
+            {/* Runtime state (gitignored — but visible in tree) */}
+            <div className="tp-section-hd" style={{ marginTop: '8px' }}><span>RUNTIME · GITIGNORED</span><span className="pill">5</span></div>
+            <div role="treeitem" aria-level="2"                            tabIndex={-1} className="tp-row" style={{ paddingLeft: '32px', color: 'var(--fg-2)' }}><span className="glyph" aria-hidden="true">·</span><span className="name">_active.json</span></div>
+            <div role="treeitem" aria-level="2"                            tabIndex={-1} className="tp-row" style={{ paddingLeft: '32px', color: 'var(--fg-2)' }}><span className="glyph" aria-hidden="true">·</span><span className="name">_server.json</span></div>
+            <div role="treeitem" aria-level="2" aria-expanded="false" tabIndex={-1} className="tp-row dir" style={{ paddingLeft: '32px', color: 'var(--fg-2)' }}><span className="glyph" aria-hidden="true">▸</span><span className="name">_history</span></div>
+            <div role="treeitem" aria-level="2" aria-expanded="false" tabIndex={-1} className="tp-row dir" style={{ paddingLeft: '32px', color: 'var(--fg-2)' }}><span className="glyph" aria-hidden="true">▸</span><span className="name">_comments</span></div>
+          </div>
+        </aside>
+
+        {/* RIGHT — selected file preview / metadata */}
+        <div className="tree-detail">
+          <div className="td-eyebrow">UI CANVAS · ui/Canvas Viewport.html</div>
+          <h2 className="td-title">Canvas Viewport — 7 artboards</h2>
+
+          <dl className="td-meta">
+            <dt>Design system</dt><dd>project (MDCC-DSN/01)</dd>
+            <dt>Created</dt><dd>2026-05-14 · 21:22 UTC</dd>
+            <dt>Last edit</dt><dd>2026-05-15 · 06:18 UTC · iter 2</dd>
+            <dt>Tokens used</dt><dd>38 distinct CSS vars</dd>
+            <dt>Critic score</dt><dd style={{ color: 'var(--status-success)' }}>● 4.6 / 5 · 0 blockers</dd>
+            <dt>Snapshots</dt><dd>3 (rollback available)</dd>
+            <dt>Comments</dt><dd>3 open · 12 resolved</dd>
+          </dl>
+
+          <div className="td-stamp">
+            <div className="stamp-sku">MDCC-DSN/01 · CV-CANVAS-VIEWPORT · PUBLISHED 2026-05-15</div>
+            <h3 className="stamp-title">Meta-design of the dev-server canvas itself</h3>
+            <p style={{ margin: '8px 0 0', color: 'var(--fg-1)', fontSize: '12px', maxWidth: '54ch', lineHeight: 1.55 }}>
+              Every distinct viewport state v1.0 → v1.3 will ship — infinite canvas, draw tools,
+              pin-comments, presentation mode, live collab, inspector + layers, file tree, DS view,
+              comments list. Synthesized from .ai/plans/phase-{`{4,5,6,8,12}`}.md.
+            </p>
+          </div>
+
+          <h3 style={{ fontSize: '10px', letterSpacing: 'var(--tracking-sku)', textTransform: 'uppercase', color: 'var(--fg-2)', margin: '24px 0 8px', paddingBottom: '6px', borderBottom: '1px solid var(--border-default)' }}>Artboards · 10</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px', fontSize: '11px', color: 'var(--fg-1)' }}>
+            <span><b style={{ color: 'var(--accent)' }}>CV-01</b> · IDLE INFINITE CANVAS</span><span style={{ color: 'var(--fg-3)' }}>Phase 4</span>
+            <span><b style={{ color: 'var(--accent)' }}>CV-02</b> · ZOOMED-IN VIEWPORT</span><span style={{ color: 'var(--fg-3)' }}>Phase 4</span>
+            <span><b style={{ color: 'var(--accent)' }}>CV-03</b> · DRAW MODE · PEN</span><span style={{ color: 'var(--fg-3)' }}>Phase 5</span>
+            <span><b style={{ color: 'var(--accent)' }}>CV-04</b> · PIN-COMMENT THREAD</span><span style={{ color: 'var(--fg-3)' }}>Phase 6</span>
+            <span><b style={{ color: 'var(--accent)' }}>CV-05</b> · PRESENTATION MODE</span><span style={{ color: 'var(--fg-3)' }}>Phase 6</span>
+            <span><b style={{ color: 'var(--accent)' }}>CV-06</b> · LIVE COLLAB SESSION</span><span style={{ color: 'var(--fg-3)' }}>Phase 8</span>
+            <span><b style={{ color: 'var(--accent)' }}>CV-07</b> · INSPECTOR + LAYERS</span><span style={{ color: 'var(--fg-3)' }}>Phase 12</span>
+            <span><b style={{ color: 'var(--accent)' }}>CV-08</b> · PROJECT + DS TREE <span style={{ color: 'var(--status-success)' }}>← you are here</span></span><span style={{ color: 'var(--fg-3)' }}>Phase 3.5</span>
+            <span><b style={{ color: 'var(--accent)' }}>CV-09</b> · DESIGN SYSTEM VIEW</span><span style={{ color: 'var(--fg-3)' }}>Phase 3.5</span>
+            <span><b style={{ color: 'var(--accent)' }}>CV-10</b> · COMMENTS LIST · TABS</span><span style={{ color: 'var(--fg-3)' }}>Phase 3.5 / 6</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 9 · DESIGN SYSTEM VIEW
+// ─────────────────────────────────────────────────────────────────────
+
+function ArtboardDSView() {
+  return (
+    <div className="ab">
+      <Menubar
+        cv="CV-09"
+        file={<><b>system/project</b> · MDCC-DSN/01</>}
+        right={<><span>38 SPECIMENS</span><span className="sep" /><span>2 THEMES</span><span className="sep" /><span className="ok">● COMPLETE · 5/5</span></>}
+      />
+      <div className="ab-world" style={{ backgroundColor: 'var(--bg-0)', backgroundImage: 'none' }}>
+        <div className="dsv">
+          <div className="dsv-hd">
+            <span className="dsv-sku">MDCC-DSN/01</span>
+            <span className="dsv-title">md-claude · the project design system</span>
+            <div className="dsv-meta">
+              <span>PROFILE · <b>STANDARD</b></span>
+              <span>FAMILIES · <b>accent · status · mono</b></span>
+              <span>THEMES · <b>2</b></span>
+            </div>
+          </div>
+
+          <section className="dsv-section">
+            <h3><span>Surfaces · paper ladder</span><span className="num">--bg-0 → --bg-4</span></h3>
+            <div className="dsv-tokens">
+              <div className="dsv-tok"><div className="swatch" style={{ background: 'var(--bg-0)' }} /><div className="label"><b>--bg-0</b><span className="oklch">97.5% 78</span></div></div>
+              <div className="dsv-tok"><div className="swatch" style={{ background: 'var(--bg-1)' }} /><div className="label"><b>--bg-1</b><span className="oklch">95.5% 78</span></div></div>
+              <div className="dsv-tok"><div className="swatch" style={{ background: 'var(--bg-2)' }} /><div className="label"><b>--bg-2</b><span className="oklch">93.0% 78</span></div></div>
+              <div className="dsv-tok"><div className="swatch" style={{ background: 'var(--bg-3)' }} /><div className="label"><b>--bg-3</b><span className="oklch">89.5% 78</span></div></div>
+              <div className="dsv-tok"><div className="swatch" style={{ background: 'var(--bg-4)' }} /><div className="label"><b>--bg-4</b><span className="oklch">85.0% 78</span></div></div>
+              <div className="dsv-tok"><div className="swatch" style={{ background: 'var(--accent)' }} /><div className="label"><b>--accent</b><span className="oklch">56% 50</span></div></div>
+            </div>
+          </section>
+
+          <section className="dsv-section">
+            <h3><span>Type ladder · Berkeley mono</span><span className="num">8 steps · --type-xs → --type-3xl</span></h3>
+            <div className="dsv-type"><span className="px">11px</span><span className="sample" style={{ fontSize: '11px' }}>The quick brown fox jumps over the lazy dog</span><span className="tok">--type-xs</span></div>
+            <div className="dsv-type"><span className="px">12px</span><span className="sample" style={{ fontSize: '12px' }}>The quick brown fox jumps over the lazy dog</span><span className="tok">--type-sm</span></div>
+            <div className="dsv-type"><span className="px">13px</span><span className="sample" style={{ fontSize: '13px' }}>The quick brown fox jumps over the lazy dog</span><span className="tok">--type-base</span></div>
+            <div className="dsv-type"><span className="px">15px</span><span className="sample" style={{ fontSize: '15px' }}>The quick brown fox jumps over the lazy</span><span className="tok">--type-md</span></div>
+            <div className="dsv-type"><span className="px">18px</span><span className="sample" style={{ fontSize: '18px' }}>The quick brown fox jumps over</span><span className="tok">--type-lg</span></div>
+            <div className="dsv-type"><span className="px">22px</span><span className="sample" style={{ fontSize: '22px', fontWeight: 600 }}>The quick brown fox jumps</span><span className="tok">--type-xl</span></div>
+            <div className="dsv-type"><span className="px">28px</span><span className="sample" style={{ fontSize: '28px', fontWeight: 700 }}>The quick brown fox</span><span className="tok">--type-2xl</span></div>
+            <div className="dsv-type" style={{ borderBottom: 0 }}><span className="px">40px</span><span className="sample" style={{ fontSize: '40px', fontWeight: 700, letterSpacing: 'var(--tracking-tight)' }}>The quick brown</span><span className="tok">--type-3xl</span></div>
+          </section>
+
+          <section className="dsv-section">
+            <h3><span>Specimens · preview gallery</span><span className="num">★ signature · ★★ highest-leverage</span></h3>
+            <div className="dsv-thumbs">
+              <div className="dsv-thumb star">
+                <div className="preview"><div className="preview-rows"><div className="title" /><div className="short" /><div className="shortest" /><div className="accent" /></div></div>
+                <div className="name">colors-accent</div>
+                <div className="desc">accent · amber-rust</div>
+              </div>
+              <div className="dsv-thumb">
+                <div className="preview"><div className="preview-rows"><div className="title" /><div /><div /><div className="short" /></div></div>
+                <div className="name">type-scale</div>
+                <div className="desc">8-step mono ladder</div>
+              </div>
+              <div className="dsv-thumb">
+                <div className="preview" style={{ padding: '12px' }}>
+                  <div style={{ width: '50px', height: '20px', background: 'var(--accent)', marginBottom: '4px' }} />
+                  <div style={{ width: '40px', height: '18px', background: 'var(--bg-0)', border: '1px solid var(--fg-0)' }} />
+                </div>
+                <div className="name">components-buttons</div>
+                <div className="desc">primary · ghost · quiet</div>
+              </div>
+              <div className="dsv-thumb star">
+                <div className="preview"><div className="preview-rows"><div className="title" /><div className="short" /><div /><div /></div></div>
+                <div className="name">empty-state</div>
+                <div className="desc">voice · DO / DON'T</div>
+              </div>
+              <div className="dsv-thumb star">
+                <div className="preview" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px' }}>
+                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, color: 'var(--fg-0)', letterSpacing: 'var(--tracking-tight)' }}>md-claude</span>
+                </div>
+                <div className="name">logo</div>
+                <div className="desc">wordmark · glyph</div>
+              </div>
+              <div className="dsv-thumb">
+                <div className="preview" style={{ padding: '6px' }}>
+                  <div style={{ height: '8px', background: 'var(--fg-0)', marginBottom: '4px' }} />
+                  <div style={{ display: 'flex', gap: '2px' }}>
+                    <div style={{ width: '14px', height: '50px', background: 'var(--bg-2)', border: '1px solid var(--border-default)' }} />
+                    <div style={{ flex: 1, height: '50px', background: 'var(--bg-1)', border: '1px solid var(--border-default)' }} />
+                  </div>
+                </div>
+                <div className="name">components-resize-panels</div>
+                <div className="desc">tree + main split</div>
+              </div>
+              <div className="dsv-thumb">
+                <div className="preview" style={{ padding: '8px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '2px' }}>
+                    <div style={{ height: '12px', background: 'var(--bg-2)' }} /><div style={{ height: '12px', background: 'var(--bg-2)' }} /><div style={{ height: '12px', background: 'var(--bg-2)' }} />
+                    <div style={{ height: '12px', background: 'var(--bg-3)' }} /><div style={{ height: '12px', background: 'var(--bg-3)' }} /><div style={{ height: '12px', background: 'var(--bg-3)' }} />
+                    <div style={{ height: '12px', background: 'var(--bg-2)' }} /><div style={{ height: '12px', background: 'var(--bg-2)' }} /><div style={{ height: '12px', background: 'var(--bg-2)' }} />
+                  </div>
+                </div>
+                <div className="name">components-monospace-table</div>
+                <div className="desc">tabular-nums grid</div>
+              </div>
+              <div className="dsv-thumb star">
+                <div className="preview" style={{ padding: '4px', display: 'grid', gridTemplateColumns: '16px 1fr 12px', gap: '2px' }}>
+                  <div style={{ background: 'var(--bg-2)', height: '52px' }} />
+                  <div style={{ background: 'var(--bg-0)', height: '52px', border: '1px solid var(--border-default)' }}>
+                    <div style={{ height: '6px', background: 'var(--fg-0)', margin: '4px' }} />
+                  </div>
+                  <div style={{ background: 'var(--bg-2)', height: '52px' }} />
+                </div>
+                <div className="name">ui_kits-desktop-showcase</div>
+                <div className="desc">★★ DS in use</div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 10 · COMMENTS LIST · TABS (all / open / resolved)
+// ─────────────────────────────────────────────────────────────────────
+
+function ArtboardCommentsList() {
+  return (
+    <div className="ab">
+      <Menubar
+        cv="CV-10"
+        file={<><b>ui/Onboarding.html</b> · comments sidebar</>}
+        right={<><span>15 TOTAL · 3 UNREAD</span><span className="sep" /><span>4 CANVASES</span><span className="sep" /><span className="warn">● 8 OPEN</span></>}
+      />
+      <div className="ab-world" style={{ backgroundColor: 'var(--bg-1)', backgroundImage: 'none' }}>
+        <div className="cl-shell">
+          {/* LEFT — the canvas the user is reviewing (context for the comments) */}
+          <div className="cl-context">
+            <div
+              className="fc"
+              style={{ position: 'relative', width: '720px', height: '560px', padding: '0', boxShadow: '6px 6px 0 var(--fg-0)' }}
+            >
+              <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--fg-0)', background: 'var(--bg-1)' }}>
+                <div className="fc-label" style={{ fontSize: '11px' }}>
+                  <b>ui/Canvas Viewport.html</b>
+                  <span>· CV-04 · PIN-COMMENT THREAD</span>
+                </div>
+                <div style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: '22px',
+                  fontWeight: 700,
+                  color: 'var(--fg-0)',
+                  letterSpacing: 'var(--tracking-tight)',
+                  marginTop: '6px'
+                }}>
+                  Grant permissions
+                </div>
+              </div>
+              <div style={{ padding: '24px', position: 'relative' }}>
+                <div style={{ padding: '14px 16px', border: '1px solid var(--border-default)', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: '13px', color: 'var(--fg-0)', fontWeight: 600 }}>Location</div>
+                    <div style={{ fontSize: '11px', color: 'var(--fg-2)' }}>find scooters near you</div>
+                  </div>
+                  <div style={{ width: '32px', height: '18px', background: 'var(--accent)', position: 'relative' }}>
+                    <div style={{ position: 'absolute', right: '2px', top: '2px', width: '14px', height: '14px', background: 'var(--bg-0)' }} />
+                  </div>
+                </div>
+                <div style={{ padding: '14px 16px', border: '1px solid var(--border-default)', marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: '13px', color: 'var(--fg-0)', fontWeight: 600 }}>Notifications</div>
+                    <div style={{ fontSize: '11px', color: 'var(--fg-2)' }}>ride status + receipts</div>
+                  </div>
+                  <div style={{ width: '32px', height: '18px', background: 'var(--bg-3)', position: 'relative' }}>
+                    <div style={{ position: 'absolute', left: '2px', top: '2px', width: '14px', height: '14px', background: 'var(--bg-0)' }} />
+                  </div>
+                </div>
+                <div style={{ position: 'relative', display: 'inline-block' }}>
+                  <button
+                    type="button"
+                    style={{
+                      padding: '10px 18px',
+                      background: 'var(--accent)',
+                      color: 'var(--accent-fg)',
+                      border: '1px solid var(--accent)',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '12px',
+                      letterSpacing: 'var(--tracking-sku)',
+                      textTransform: 'uppercase',
+                      fontWeight: 600
+                    }}
+                  >
+                    Continue
+                  </button>
+                  {/* Pin tying sidebar's expanded item back to the on-canvas anchor */}
+                  <button type="button" className="pin" aria-label="Open thread on Continue button" style={{ left: '116px', top: '4px' }}>M</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT — the comments sidebar */}
+          <aside className="cl" aria-labelledby="cl-hd-title">
+            <header className="cl-hd">
+              <span className="title" id="cl-hd-title">Comments</span>
+              <span className="total">15 TOTAL<br /><b>4</b> CANVASES</span>
+            </header>
+            <div className="cl-tabs" role="tablist" aria-label="Comment filter">
+              <button type="button" role="tab" aria-selected="false" className="cl-tab"><span>ALL</span><span className="cnt">15</span></button>
+              <button type="button" role="tab" aria-selected="true"  className="cl-tab"><span>OPEN</span><span className="cnt">8</span></button>
+              <button type="button" role="tab" aria-selected="false" className="cl-tab"><span>RESOLVED</span><span className="cnt">7</span></button>
+            </div>
+            <div className="cl-body" role="tabpanel" aria-label="Open comments">
+            {/* Expanded item — thread visible */}
+            <article className="cl-item expanded">
+              <div className="row1">
+                <span><span className="file">ui/Canvas Viewport.html</span> · CV-04</span>
+                <span className="sel-path">button.btn-primary</span>
+              </div>
+              <div className="author-row">
+                <b>Maya Chen</b>
+                <span className="ts">2m ago</span>
+                <span>· 2 replies</span>
+              </div>
+              <div className="body">
+                <span className="mention">@claude</span> this padding feels cramped — try <code>12 16</code> instead of <code>8 12</code>. Make it match the spec.
+              </div>
+              <div className="meta">
+                <span className="pill open">● OPEN</span>
+                <span className="replies">2 REPLIES · 1 UNREAD</span>
+                <span>·</span>
+                <span>SNAPSHOT 048</span>
+              </div>
+              <div className="cl-thread">
+                <div className="reply">
+                  <b>Claude</b><span className="ts">1m ago</span>
+                  <div className="text">applied. snapshot <code>048-T2127</code>. ready to review.</div>
+                </div>
+                <div className="reply">
+                  <b>Maya Chen</b><span className="ts">just now · drafting</span>
+                  <div className="text" style={{ color: 'var(--fg-2)', fontStyle: 'italic' }}>typing…</div>
+                </div>
+                <div className="actions">
+                  <button type="button" className="primary">Reply</button>
+                  <button type="button">Resolve ✓</button>
+                  <button type="button">Open in canvas →</button>
+                </div>
+              </div>
+            </article>
+
+            {/* Other open items */}
+            <article className="cl-item">
+              <div className="row1">
+                <span><span className="file">ui/ScoutRadar.html</span></span>
+                <span className="sel-path">section.hero &gt; h1.title</span>
+              </div>
+              <div className="author-row">
+                <b>Pavel Novák</b>
+                <span className="ts">18m ago</span>
+              </div>
+              <div className="body">
+                Heading should be <code>--type-2xl</code>, not <code>--type-xl</code>. Reads small at desktop breakpoint.
+              </div>
+              <div className="meta">
+                <span className="pill open">● OPEN</span>
+                <span className="replies">0 REPLIES</span>
+              </div>
+            </article>
+
+            <article className="cl-item">
+              <div className="row1">
+                <span><span className="file">ui/Onboarding.html</span> · STEP 3</span>
+                <span className="sel-path">div.toggle-row:nth-child(2)</span>
+              </div>
+              <div className="author-row">
+                <b>Daniel Reyes</b>
+                <span className="ts">1h ago</span>
+                <span>· 3 replies</span>
+              </div>
+              <div className="body">
+                <span className="mention">@maya</span> notifications copy is too long — "ride status + receipts" → just "ride updates"?
+              </div>
+              <div className="meta">
+                <span className="pill open">● OPEN</span>
+                <span className="replies">3 REPLIES · 2 UNREAD</span>
+              </div>
+            </article>
+
+            <article className="cl-item">
+              <div className="row1">
+                <span><span className="file">ui/MatchRecap.html</span></span>
+                <span className="sel-path">button.share-recap</span>
+              </div>
+              <div className="author-row">
+                <b>Alice Tanaka</b>
+                <span className="ts">3h ago</span>
+              </div>
+              <div className="body">
+                fix padding · drawn annotation
+              </div>
+              <div className="meta">
+                <span className="pill open">● OPEN</span>
+                <span className="replies">0 REPLIES</span>
+                <span>·</span>
+                <span style={{ color: 'var(--accent)' }}>FROM DRAW LAYER</span>
+              </div>
+            </article>
+
+            <article className="cl-item">
+              <div className="row1">
+                <span><span className="file">ui/MarketingHero.html</span></span>
+                <span className="sel-path">h1 .stamp</span>
+              </div>
+              <div className="author-row">
+                <b>Pavel Novák</b>
+                <span className="ts">yesterday</span>
+                <span>· 1 reply</span>
+              </div>
+              <div className="body">
+                The stamp block on "Iterate in place." should bleed off the right edge — feels too contained.
+              </div>
+              <div className="meta">
+                <span className="pill open">● OPEN</span>
+                <span className="replies">1 REPLY</span>
+              </div>
+            </article>
+
+            {/* Resolved (shown muted, visible because cl-body shows tab=OPEN but kept for visual texture) */}
+            <article className="cl-item resolved">
+              <div className="row1">
+                <span><span className="file">ui/Canvas Viewport.html</span> · CV-02</span>
+                <span className="sel-path">div.radar</span>
+              </div>
+              <div className="author-row">
+                <b>Maya Chen</b>
+                <span className="ts">6h ago</span>
+                <span>· resolved by Claude</span>
+              </div>
+              <div className="body">
+                Radar circle overlapping the names column — give it <code>position: relative</code>.
+              </div>
+              <div className="meta">
+                <span className="pill resolved">✓ RESOLVED</span>
+                <span className="replies">1 REPLY</span>
+              </div>
+            </article>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// App — DesignCanvas with one section containing 10 artboards
+// ─────────────────────────────────────────────────────────────────────
+
+function App() {
+  return (
+    <DesignCanvas>
+      <DCSection
+        id="states"
+        title="Canvas viewport states"
+        subtitle="v1.0 → v1.3 ship · synthesized from .ai/plans/phase-{3.5,4,5,6,8,12}.md"
+      >
+        <DCArtboard id="idle"         label="CV-01 · IDLE INFINITE CANVAS"  width={1280} height={820}><ArtboardIdle /></DCArtboard>
+        <DCArtboard id="zoomed"       label="CV-02 · ZOOMED-IN VIEWPORT"    width={1280} height={820}><ArtboardZoomed /></DCArtboard>
+        <DCArtboard id="draw"         label="CV-03 · DRAW MODE · PEN"       width={1280} height={820}><ArtboardDraw /></DCArtboard>
+        <DCArtboard id="pin"          label="CV-04 · PIN-COMMENT THREAD"    width={1280} height={820}><ArtboardPin /></DCArtboard>
+        <DCArtboard id="presentation" label="CV-05 · PRESENTATION MODE"     width={1280} height={820}><ArtboardPresentation /></DCArtboard>
+        <DCArtboard id="collab"       label="CV-06 · LIVE COLLAB SESSION"   width={1280} height={820}><ArtboardCollab /></DCArtboard>
+        <DCArtboard id="inspector"    label="CV-07 · INSPECTOR + LAYERS"    width={1280} height={820}><ArtboardInspector /></DCArtboard>
+        <DCArtboard id="tree"         label="CV-08 · PROJECT + DS TREE"     width={1280} height={820}><ArtboardTree /></DCArtboard>
+        <DCArtboard id="dsview"       label="CV-09 · DESIGN SYSTEM VIEW"    width={1280} height={820}><ArtboardDSView /></DCArtboard>
+        <DCArtboard id="comments"     label="CV-10 · COMMENTS LIST · TABS"  width={1280} height={820}><ArtboardCommentsList /></DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en" class="mdcc">
+<head>
+<meta charset="utf-8">
+<title>MDCC-DSN/01.focus — md-claude</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- SPECIMEN: focus ring + keyboard focus on every interactive element. -->
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="stylesheet" href="./_layout.css">
+<link rel="stylesheet" href="./_components.css">
+</head>
+<body>
+<header class="specimen-hd"><span class="sku">MDCC-DSN/01.focus</span><span class="crumbs"><span>md-claude</span><span>design system</span><span>foundation</span><span>focus</span></span><span class="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+<main class="specimen">
+  <section class="specimen-title"><h1>Focus ring</h1><p class="lede">2px solid accent. Same color, same thickness, every focusable thing — buttons, inputs, links, toggles, switches, tabs. Press <kbd>Tab</kbd>. You can see where you are.</p></section>
+  <dl class="specimen-meta"><div><dt>Token</dt><dd>--shadow-focus · 0 0 0 2px var(--accent)</dd></div><div><dt>Trigger</dt><dd>:focus-visible</dd></div></dl>
+
+  <h2 data-no="01">Try it</h2>
+  <p style="color:var(--fg-2);font-size:var(--type-sm)">Press <kbd>Tab</kbd> repeatedly. Every stop is the same ring.</p>
+  <div class="row">
+    <button class="btn btn--primary">Install</button>
+    <button class="btn">Inspect</button>
+    <button class="btn btn--ghost">Cancel</button>
+    <a href="#" style="color:var(--fg-0);text-decoration:underline;text-decoration-color:var(--accent);text-underline-offset:3px">A link</a>
+    <input class="input" placeholder="An input" style="max-width:200px">
+    <span class="switch" tabindex="0" role="switch" aria-checked="false"></span>
+    <span class="switch" tabindex="0" role="switch" aria-checked="true"></span>
+    <input type="checkbox" class="check" checked>
+    <input type="radio" class="radio" name="r" checked>
+  </div>
+
+  <h2 data-no="02">Why the accent <span class="h2-aside">contrast over hue</span></h2>
+  <p>The amber-rust accent has high contrast against both paper and phosphor surfaces, so the ring stays visible in both themes without per-theme overrides. The 2px width is the WCAG floor (3:1 against the surface it sits over).</p>
+
+  <h2 data-no="03">When NOT to use</h2>
+  <div class="anti"><p style="margin:0">Don't replace <code>:focus-visible</code> with <code>:focus</code> — that lights up the ring on every mouse click. <code>:focus-visible</code> only shows the ring when the user is keyboarding, which is what they actually need.</p></div>
+
+  <footer class="specimen-ft"><div class="colo-block"><strong>MDCC-DSN/01</strong><span>· focus</span></div><div class="colo-block"><span>md-claude · v0.12.0</span></div></footer>
+</main>
+<script>(function(){const r=document.documentElement;const i=localStorage.getItem('mdcc-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');r.setAttribute('data-theme',i);document.querySelectorAll('.theme-toggle button').forEach(b=>{b.setAttribute('aria-pressed',b.dataset.theme===i?'true':'false');b.addEventListener('click',()=>{const t=b.dataset.theme;r.setAttribute('data-theme',t);localStorage.setItem('mdcc-theme',t);document.querySelectorAll('.theme-toggle button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.theme===t?'true':'false'));});});})();</script>
+</body>
+</html>

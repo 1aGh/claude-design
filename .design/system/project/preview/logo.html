@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en" class="mdcc">
+<head>
+<meta charset="utf-8">
+<title>MDCC-DSN/01.logo — md-claude</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- SPECIMEN: SIGNATURE — wordmark + 4 domain-noun glyphs. Construction rules. -->
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="stylesheet" href="./_layout.css">
+<link rel="stylesheet" href="./_components.css">
+<style>
+  .stage{padding:var(--space-9) var(--space-7);border:1px solid var(--border-strong);background:var(--bg-1);text-align:center;margin:var(--space-5) 0}
+  .stage img{max-width:480px;height:auto;color:var(--fg-0)}
+  .stage-dark{background:var(--bg-0)}
+  .stage-dark.mdcc{display:block}
+  .gly-card{padding:var(--space-5);border:1px solid var(--border-default);background:var(--bg-1);text-align:center}
+  .gly-card img{width:48px;height:48px;color:var(--fg-0);margin-bottom:var(--space-3)}
+  .gly-card code{display:block;font-size:var(--type-xs);color:var(--fg-2)}
+  .gly-card strong{display:block;color:var(--fg-0);font-size:var(--type-sm);margin-bottom:var(--space-2)}
+  .construct{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-5);margin:var(--space-5) 0}
+  .construct .card{padding:var(--space-5)}
+  .construct ul{padding-left:var(--space-5);color:var(--fg-1);font-size:var(--type-sm)}
+</style>
+</head>
+<body>
+<header class="specimen-hd"><span class="sku">MDCC-DSN/01.logo</span><span class="crumbs"><span>md-claude</span><span>design system</span><span>brand</span><span>logo</span></span><span class="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+<main class="specimen">
+  <section class="specimen-title"><h1>Wordmark &amp; glyphs</h1><p class="lede">The mark is a single typeset of <code>MD-CLAUDE</code> in Berkeley Mono with one amber-rust terminal block — the catalog stamp dot. No drawn icon. The wordmark IS the mark. Below: four domain-noun SVG glyphs for the marketplace + dev-server surface.</p></section>
+  <dl class="specimen-meta"><div><dt>Files</dt><dd>1 wordmark · 4 glyphs</dd></div><div><dt>Construction</dt><dd>Berkeley Mono · 0.04em tracking · accent dot</dd></div><div><dt>Reusable</dt><dd>currentColor → host context tints</dd></div></dl>
+
+  <h2 data-no="01">Wordmark</h2>
+  <div class="stage">
+    <img src="../assets/logos/wordmark.svg" alt="md-claude wordmark">
+  </div>
+
+  <h2 data-no="02">Glyphs <span class="h2-aside">four domain nouns</span></h2>
+  <div class="grid" style="grid-template-columns:repeat(4,1fr);gap:0">
+    <div class="gly-card"><img src="../assets/glyphs/plugin.svg" alt=""><strong>plugin</strong><code>assets/glyphs/plugin.svg</code></div>
+    <div class="gly-card"><img src="../assets/glyphs/canvas.svg" alt=""><strong>canvas</strong><code>assets/glyphs/canvas.svg</code></div>
+    <div class="gly-card"><img src="../assets/glyphs/slash-command.svg" alt=""><strong>slash-command</strong><code>assets/glyphs/slash-command.svg</code></div>
+    <div class="gly-card"><img src="../assets/glyphs/file-tree.svg" alt=""><strong>file-tree</strong><code>assets/glyphs/file-tree.svg</code></div>
+  </div>
+
+  <h2 data-no="03">Construction rules</h2>
+  <div class="construct">
+    <div class="card">
+      <h3 class="card-title">Wordmark</h3>
+      <ul>
+        <li>Always set in Berkeley Mono (or the same stack fallback)</li>
+        <li>Letter-spacing <code>0.04em</code> — wider than body, tighter than SKU labels</li>
+        <li>The accent block is <code>--accent</code> at 6×6px relative to the 22px cap height</li>
+        <li>Don't render the wordmark smaller than 14px cap height — the block disappears</li>
+        <li>Don't recolor the block to anything other than <code>--accent</code></li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 class="card-title">Glyphs</h3>
+      <ul>
+        <li>16×16 grid · 1px stroke · <code>stroke-linecap: square</code></li>
+        <li><code>fill="none"</code> by default — fills only when the domain noun calls for solid (e.g. a filled play arrow)</li>
+        <li><code>stroke="currentColor"</code> — host context tints</li>
+        <li>Dropped inline with mono text: <code>width: 16px; height: 16px; vertical-align: -3px;</code></li>
+        <li>New domain noun → new SVG file, added to <code>iconography.html</code></li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 data-no="04">When NOT to use</h2>
+  <div class="anti"><p style="margin:0">Don't pair the wordmark with a separate icon mark. The wordmark IS the mark. Don't put a "circle-M monogram" next to it — that's a different brand.</p></div>
+  <div class="pro"><p style="margin:0">When you need a square avatar / favicon, use the accent block alone at 16×16 — it reads as "the dot from the wordmark", which is the only mark this DS has.</p></div>
+
+  <footer class="specimen-ft"><div class="colo-block"><strong>MDCC-DSN/01</strong><span>· logo · ★ signature</span></div><div class="colo-block"><span>md-claude · v0.12.0</span></div></footer>
+</main>
+<script>(function(){const r=document.documentElement;const i=localStorage.getItem('mdcc-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');r.setAttribute('data-theme',i);document.querySelectorAll('.theme-toggle button').forEach(b=>{b.setAttribute('aria-pressed',b.dataset.theme===i?'true':'false');b.addEventListener('click',()=>{const t=b.dataset.theme;r.setAttribute('data-theme',t);localStorage.setItem('mdcc-theme',t);document.querySelectorAll('.theme-toggle button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.theme===t?'true':'false'));});});})();</script>
+</body>
+</html>

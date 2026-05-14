@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en" class="mdcc">
+<head>
+<meta charset="utf-8">
+<title>MDCC-DSN/01.components-resize-panels — md-claude</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- SPECIMEN: resizable file-tree + main pane (the dev-server's anatomy). -->
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="stylesheet" href="./_layout.css">
+<link rel="stylesheet" href="./_components.css">
+<style>
+  .split{display:grid;grid-template-columns:260px 6px 1fr;border:1px solid var(--border-default);background:var(--bg-1);min-height:380px;font-family:var(--font-mono);font-size:var(--type-sm)}
+  .split .pane{background:var(--bg-1);padding:var(--space-3) 0;overflow-y:auto}
+  .split .gutter{background:var(--bg-2);border-left:1px solid var(--border-default);border-right:1px solid var(--border-default);cursor:col-resize;position:relative}
+  .split .gutter::after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:1px;height:24px;background:var(--border-strong)}
+  .split .tree-row{padding:3px var(--space-4);color:var(--fg-1);white-space:nowrap;cursor:pointer}
+  .split .tree-row:hover{background:var(--bg-2);color:var(--fg-0)}
+  .split .tree-row.sel{background:var(--accent);color:var(--accent-fg)}
+  .split .tree-row.dir{color:var(--fg-0);font-weight:600}
+  .split .body{padding:var(--space-5);}
+</style>
+</head>
+<body>
+<header class="specimen-hd"><span class="sku">MDCC-DSN/01.components-resize-panels</span><span class="crumbs"><span>md-claude</span><span>design system</span><span>platform-desktop</span><span>resize</span></span><span class="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+<main class="specimen">
+  <section class="specimen-title"><h1>Resize panels</h1><p class="lede">Two-pane split with a draggable gutter — the dev-server's left-tree + right-iframe anatomy. Tree uses Unicode disclosure glyphs (<code>▾</code> / <code>▸</code>) inline, selected row carries the accent stamp.</p></section>
+  <dl class="specimen-meta"><div><dt>Layout</dt><dd>260px / 6 / 1fr</dd></div><div><dt>Min/max</dt><dd>180–480 / 6 / —</dd></div></dl>
+
+  <h2 data-no="01">File-tree + main pane</h2>
+  <div class="split">
+    <div class="pane">
+      <div class="tree-row dir">▾ .design/</div>
+      <div class="tree-row" style="padding-left:var(--space-6)">README.md</div>
+      <div class="tree-row" style="padding-left:var(--space-6)">INDEX.md</div>
+      <div class="tree-row" style="padding-left:var(--space-6)">config.json</div>
+      <div class="tree-row dir" style="padding-left:var(--space-6)">▾ system/project/</div>
+      <div class="tree-row" style="padding-left:var(--space-8)">README.md</div>
+      <div class="tree-row" style="padding-left:var(--space-8)">SKILL.md</div>
+      <div class="tree-row" style="padding-left:var(--space-8)">colors_and_type.css</div>
+      <div class="tree-row dir" style="padding-left:var(--space-8)">▾ preview/</div>
+      <div class="tree-row" style="padding-left:var(--space-9)">colors-text.html</div>
+      <div class="tree-row" style="padding-left:var(--space-9)">colors-surfaces.html</div>
+      <div class="tree-row sel" style="padding-left:var(--space-9)">colors-accent.html</div>
+      <div class="tree-row" style="padding-left:var(--space-9)">type-scale.html</div>
+      <div class="tree-row" style="padding-left:var(--space-9)">spacing-scale.html</div>
+      <div class="tree-row" style="padding-left:var(--space-9)">motion.html</div>
+      <div class="tree-row dir" style="padding-left:var(--space-9)">▸ components-*.html</div>
+      <div class="tree-row dir" style="padding-left:var(--space-9)">▸ foundations</div>
+      <div class="tree-row dir" style="padding-left:var(--space-6)">▸ ui/</div>
+    </div>
+    <div class="gutter" role="separator" aria-orientation="vertical"></div>
+    <div class="body">
+      <div class="eyebrow" style="margin-bottom:var(--space-3)">PREVIEW · MDCC-DSN/01.colors-accent</div>
+      <p style="color:var(--fg-1);margin:0 0 var(--space-3)">→ iframe would render here in the real dev-server.</p>
+      <p style="color:var(--fg-2);font-size:var(--type-xs);margin:0">resize the gutter ← / → to give the iframe more room. min tree width 180px, max 480px.</p>
+    </div>
+  </div>
+
+  <footer class="specimen-ft"><div class="colo-block"><strong>MDCC-DSN/01</strong><span>· components-resize-panels</span></div><div class="colo-block"><span>md-claude · v0.12.0</span></div></footer>
+</main>
+<script>(function(){const r=document.documentElement;const i=localStorage.getItem('mdcc-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');r.setAttribute('data-theme',i);document.querySelectorAll('.theme-toggle button').forEach(b=>{b.setAttribute('aria-pressed',b.dataset.theme===i?'true':'false');b.addEventListener('click',()=>{const t=b.dataset.theme;r.setAttribute('data-theme',t);localStorage.setItem('mdcc-theme',t);document.querySelectorAll('.theme-toggle button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.theme===t?'true':'false'));});});})();</script>
+</body>
+</html>

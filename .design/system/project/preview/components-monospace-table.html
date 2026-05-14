@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en" class="mdcc">
+<head>
+<meta charset="utf-8">
+<title>MDCC-DSN/01.components-monospace-table — md-claude</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- SPECIMEN: data-grade monospace table — tabular numerics, aligned columns. -->
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="stylesheet" href="./_layout.css">
+<link rel="stylesheet" href="./_components.css">
+<style>
+  table.mono{width:100%;border-collapse:collapse;border:1px solid var(--border-default);font-family:var(--font-mono);font-size:var(--type-sm)}
+  table.mono th{text-align:left;padding:var(--space-2) var(--space-4);background:var(--bg-2);border-bottom:1px solid var(--border-strong);font-weight:600;font-size:var(--type-xs);letter-spacing:var(--tracking-sku);text-transform:uppercase;color:var(--fg-2)}
+  table.mono td{padding:var(--space-2) var(--space-4);border-bottom:1px solid var(--border-subtle);color:var(--fg-1);vertical-align:top}
+  table.mono td.num{text-align:right;font-variant-numeric:tabular-nums;color:var(--fg-0)}
+  table.mono td.id{color:var(--fg-0);font-weight:500}
+  table.mono tr:hover td{background:var(--bg-2)}
+  table.mono tr.head td{font-weight:600;color:var(--fg-0);background:var(--bg-2);border-top:1px solid var(--border-strong);text-transform:uppercase;letter-spacing:var(--tracking-wide);font-size:var(--type-xs)}
+</style>
+</head>
+<body>
+<header class="specimen-hd"><span class="sku">MDCC-DSN/01.components-monospace-table</span><span class="crumbs"><span>md-claude</span><span>design system</span><span>dev</span><span>mono-table</span></span><span class="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+<main class="specimen">
+  <section class="specimen-title"><h1>Monospace table</h1><p class="lede">Pure data grid. Tabular numerics (<code>font-variant-numeric: tabular-nums</code>) so column rule lines up. Header rows split data into logical groups without a separator block.</p></section>
+  <dl class="specimen-meta"><div><dt>Numerals</dt><dd>tabular-nums</dd></div><div><dt>Density</dt><dd>compact (--space-2 vertical)</dd></div></dl>
+
+  <h2 data-no="01">Scaffold roster (excerpt)</h2>
+  <table class="mono">
+    <thead><tr><th>file</th><th>batch</th><th>deps</th><th class="num">loc</th><th>status</th></tr></thead>
+    <tbody>
+      <tr class="head"><td colspan="5">Batch A · main agent · serial</td></tr>
+      <tr><td class="id">colors_and_type.css</td><td>A</td><td>—</td><td class="num">156</td><td><span class="badge badge--success">written</span></td></tr>
+      <tr><td class="id">preview/_layout.css</td><td>A</td><td>tokens, Q9</td><td class="num">232</td><td><span class="badge badge--success">written</span></td></tr>
+      <tr><td class="id">preview/_components.css</td><td>A</td><td>tokens, Q9</td><td class="num">273</td><td><span class="badge badge--success">written</span></td></tr>
+      <tr><td class="id">system/project/README.md</td><td>A</td><td>tokens</td><td class="num">165</td><td><span class="badge badge--success">written</span></td></tr>
+      <tr class="head"><td colspan="5">Batch B · token-only fan-out · parallel</td></tr>
+      <tr><td class="id">preview/colors-text.html</td><td>B</td><td>tokens, chrome</td><td class="num">102</td><td><span class="badge badge--success">written</span></td></tr>
+      <tr><td class="id">preview/colors-accent.html ★</td><td>B</td><td>tokens, chrome</td><td class="num">145</td><td><span class="badge badge--success">written</span></td></tr>
+      <tr><td class="id">preview/type-scale.html</td><td>B</td><td>tokens, chrome</td><td class="num">96</td><td><span class="badge badge--success">written</span></td></tr>
+      <tr><td class="id">preview/iconography.html</td><td>B</td><td>tokens, chrome, Q11</td><td class="num">114</td><td><span class="badge badge--success">written</span></td></tr>
+      <tr class="head"><td colspan="5">Batch C · template fan-out · parallel</td></tr>
+      <tr><td class="id">preview/components-buttons.html</td><td>C</td><td>tokens, chrome, _comp, tpl</td><td class="num">88</td><td><span class="badge badge--success">written</span></td></tr>
+      <tr><td class="id">preview/empty-state.html ★</td><td>C</td><td>tokens, chrome, _comp, tpl</td><td class="num">132</td><td><span class="badge badge--success">written</span></td></tr>
+      <tr><td class="id">preview/logo.html ★</td><td>C</td><td>tokens, chrome, assets</td><td class="num">98</td><td><span class="badge badge--success">written</span></td></tr>
+      <tr><td class="id">preview/ui_kits-desktop-showcase.html ★★</td><td>C</td><td>tokens, chrome, _comp, ALL</td><td class="num">—</td><td><span class="badge badge--warn">pending</span></td></tr>
+    </tbody>
+  </table>
+
+  <h2 data-no="02">Why tabular numerics</h2>
+  <p>Berkeley Mono ships with proportional numerics by default. Adding <code>font-variant-numeric: tabular-nums</code> forces every digit to the same advance — so "loc 145" and "loc 96" stack column-aligned without a fractional-pixel jitter.</p>
+
+  <footer class="specimen-ft"><div class="colo-block"><strong>MDCC-DSN/01</strong><span>· components-monospace-table</span></div><div class="colo-block"><span>md-claude · v0.12.0</span></div></footer>
+</main>
+<script>(function(){const r=document.documentElement;const i=localStorage.getItem('mdcc-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');r.setAttribute('data-theme',i);document.querySelectorAll('.theme-toggle button').forEach(b=>{b.setAttribute('aria-pressed',b.dataset.theme===i?'true':'false');b.addEventListener('click',()=>{const t=b.dataset.theme;r.setAttribute('data-theme',t);localStorage.setItem('mdcc-theme',t);document.querySelectorAll('.theme-toggle button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.theme===t?'true':'false'));});});})();</script>
+</body>
+</html>

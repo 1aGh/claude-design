@@ -1,5 +1,15 @@
 # Phase 3.5: Dev-server UI/UX refresh (shell only — viewport stays)
 
+> **STATUS UPDATE — 2026-05-15** · Plan written against `studio` DS; project pivoted to **`project` DS (MDCC-DSN/01 — industrial-catalogue, Paper & Ink, Berkeley-mono, hard-edges)**. Design-stage tasks 1–2 are now **partially fulfilled** by [`/Volumes/D/git/claude-design/.design/ui/Canvas Viewport.html`](../../.design/ui/Canvas%20Viewport.html) (10 artboards). Implementation tasks 4–10 still pending. See "Tasks" section below for the per-task delta — original checkboxes preserved, current state annotated inline.
+>
+> **Coverage delta against original Task 1 + Task 2:**
+> - Shell-overview at desktop → **partial** (CV-01 IDLE INFINITE CANVAS shows viewport + minimap + zoom toolbar + brand wordmark; no full app chrome with header + tabs + statusbar surrounding it)
+> - Sidebar-tree-states (collapsed / search / active / unread) → **done** (CV-08 PROJECT + DS TREE shows search input, disclosure glyphs ▾▸, hover/active row in accent, modified dot, unread badge "3" on active file row, multi-section grouping PROJECT / DS / UI / RUNTIME)
+> - Tabs + statusbar (states matrix) → **not covered** (separate canvas needed)
+> - System view + right-side comments panel → **done** as 2 separate canvases (CV-09 DESIGN SYSTEM VIEW shows token ladder + type ladder + specimen gallery; CV-10 COMMENTS LIST · TABS shows all/open/resolved filter with expanded thread)
+>
+> **What remains for design stage to count as fully done:** one more canvas covering the **tabs-row + status-bar states matrix** (active tab / unsaved dot / scrolling overflow; status-bar slots for active path / unread / connection / theme). Could be added as CV-11 to the existing Canvas Viewport file via `/design:edit "add CV-11 · TABS + STATUS BAR STATES"`, OR scaffolded as a separate canvas. Plus a full app-chrome mock that wraps CV-01 with the surrounding header / tabs / sidebar shell.
+
 ## Description
 
 Refresh the dev-server's **shell chrome** — header, sidebars, file tree, tabs, status bar, system view, comments panel — driven by new `.design/ui/studio/` mocks authored with the design agent against the existing `studio` design system. Theme + typography migrate from the placeholder "universal zinc grayscale" tokens (`--u-*` in `client/styles.css`) to the studio DS (Geist + Geist Mono, amber/lava accent, Zed/Raycast/Arc precision).
@@ -122,14 +132,21 @@ Three stages, gated by review:
 
 Execute in order. Stop at the gate after Task 4 — design review before any code change.
 
-### Task 1: CREATE shell-overview canvas
+### Task 1: CREATE shell-overview canvas — `[~]` PARTIAL (project DS, not studio)
+
+> **2026-05-15:** CV-01 IDLE INFINITE CANVAS in `ui/Canvas Viewport.html` covers the **inner viewport** (world + brand wordmark + minimap + zoom toolbar + status row). A full app-chrome wrapper (header / tabs / sidebar surrounding the viewport) is **NOT** in scope for that artboard — would need a separate CV-11 mock that puts CV-01 inside the chrome frame.
 
 - **Do:** `/design:new "Full dev-server shell at desktop — header (logo, project selector, theme toggle, settings), left sidebar (search + collapsible tree with active row + unread badges), main viewport area (placeholder rectangle labelled 'canvas — phase 4'), status bar (active canvas path mono, separator, unread count, separator, connection dot + 'live'). Studio DS, dark theme."`
 - **Pattern:** Mirror density from `.design/system/studio/preview/components-tables.html`. 13px base, 4/8/12/16 spacing, 6px radii on inner cards, 1px borders.
 - **Gotcha:** Studio DS opts out of gradients/glass/pastel — no shadows beyond 1-layer subtle inset on hover.
 - **Validate:** Critic panel ≥ 4.5/5 after `--perfect` loop. No Lorem in copy.
 
-### Task 2: CREATE sidebar / tabs+statusbar / system+comments mocks
+### Task 2: CREATE sidebar / tabs+statusbar / system+comments mocks — `[~]` 2/3 PARTIAL (project DS)
+
+> **2026-05-15:** Three sub-mocks were intended (sidebar-tree-states · tabs-statusbar · system+comments). Current state:
+> - ✅ **sidebar-tree-states** → CV-08 PROJECT + DS TREE in `ui/Canvas Viewport.html` covers search input, multi-section grouping (PROJECT / DS / UI / RUNTIME), disclosure glyphs ▾▸, hover/active row in accent, modified dot, unread badge, selected file detail pane on right
+> - ❌ **tabs-statusbar** → NOT covered (separate canvas pending). States needed: active tab + accent underline, unsaved dot, tab-overflow scroll, statusbar slots (active path / unread count / connection dot / theme toggle).
+> - ✅ **system+comments** → split across CV-09 (DS VIEW: tokens, type ladder, specimens) + CV-10 (COMMENTS LIST: ALL / OPEN / RESOLVED tabs with expanded thread + open-state pills)
 
 - **Do:** Three more `/design:new` runs for the remaining matrices (states matrix grids — collapsed, search-active, hover, selected, with-unread-badge, empty).
 - **Validate:** Each ≥ 4.5/5. Visual consistency check across the 4 mocks (`/design:critic --agent graphic-design-critic` on the latest).
@@ -211,7 +228,7 @@ Execute in order. Stop at the gate after Task 4 — design review before any cod
 ## Acceptance Criteria
 
 - [ ] All 10 tasks completed
-- [ ] 4 design mocks live in `.design/ui/studio/` and signed off
+- [~] 4 design mocks live in `.design/ui/studio/` and signed off — **partial; pivoted to `project` DS:** 3 of 4 mock surfaces covered in `ui/Canvas Viewport.html` (CV-08 sidebar-tree, CV-09 system view, CV-10 comments list); tabs-statusbar states matrix + full app-chrome wrapper still missing. Sign-off pending.
 - [ ] `styles.css` contains zero hardcoded hex literals after Task 5
 - [ ] `app.jsx` `Viewport` component is byte-identical pre/post phase (diff = 0 in that subtree)
 - [ ] `design-system-guard` subagent: 0 blockers vs studio DS

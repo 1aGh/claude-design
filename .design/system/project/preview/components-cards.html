@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en" class="mdcc">
+<head>
+<meta charset="utf-8">
+<title>MDCC-DSN/01.components-cards — md-claude</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- SPECIMEN: tile (catalog SKU card) + plain card variants. -->
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="stylesheet" href="./_layout.css">
+<link rel="stylesheet" href="./_components.css">
+</head>
+<body>
+<header class="specimen-hd">
+  <span class="sku">MDCC-DSN/01.components-cards</span>
+  <span class="crumbs"><span>md-claude</span><span>design system</span><span>components</span><span>cards</span></span>
+  <span class="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span>
+</header>
+<main class="specimen">
+  <section class="specimen-title">
+    <h1>Cards &amp; tiles</h1>
+    <p class="lede">A plugin is a catalog product. A canvas is a plate in the catalog. Both get a tile — SKU at the top-left, version at the top-right, body in the middle, footnote at the bottom. Plain cards (no part-number bar) are for everything else.</p>
+  </section>
+  <dl class="specimen-meta">
+    <div><dt>Variants</dt><dd>tile · tile--accent · card · card--inset</dd></div>
+    <div><dt>Used for</dt><dd>plugins · canvas previews · spec callouts</dd></div>
+  </dl>
+
+  <h2 data-no="01">Tile (catalog SKU)</h2>
+  <div class="grid" style="grid-template-columns:repeat(2,1fr);gap:0">
+    <div class="tile">
+      <div class="tile-hd"><span class="sku">MDCC-DSN/01</span><span>v0.12.0</span></div>
+      <div class="tile-bd">
+        <h3>design</h3>
+        <p>Canvas-first iteration on HTML/JSX mocks under <code>.design/</code>. Zero-dep Node dev-server. Cmd+Click element inspector. Snapshot stack per canvas.</p>
+        <ul>
+          <li>10+ slash commands (/design:edit, /design:new, /design:critic, …)</li>
+          <li>auto-iterating critic panel</li>
+          <li>file-tree + iframe preview browser</li>
+        </ul>
+      </div>
+      <div class="tile-ft"><span>FEATURED</span><span>Published 2026-05</span></div>
+    </div>
+    <div class="tile tile--accent">
+      <div class="tile-hd"><span class="sku">MDCC-FLW/02</span><span>v0.12.0</span></div>
+      <div class="tile-bd">
+        <h3>flow</h3>
+        <p>Generic agentic workflow loop with the second-brain <code>.ai/</code> workspace. Project-agnostic via <code>&lt;project&gt;</code> placeholders + per-repo <code>workflows.config.json</code>.</p>
+        <ul>
+          <li>plan → execute → done lifecycle</li>
+          <li>cross-platform scenario runner</li>
+          <li>a11y + design-system guards</li>
+        </ul>
+      </div>
+      <div class="tile-ft"><span>NEW</span><span>Published 2026-05</span></div>
+    </div>
+  </div>
+
+  <h2 data-no="02">Plain card</h2>
+  <div class="grid" style="grid-template-columns:repeat(2,1fr);gap:0">
+    <div class="card">
+      <h3 class="card-title">What you get</h3>
+      <p>The marketplace is a static index plus a CLI. Install once with <code>mdcc init</code>, then <code>/plugin install</code> from inside Claude Code.</p>
+    </div>
+    <div class="card card--inset">
+      <h3 class="card-title">What it costs</h3>
+      <p>Free. Open source. Bring your own Claude Code. (No, there's no enterprise tier. Stop asking.)</p>
+    </div>
+  </div>
+
+  <h2 data-no="03">When NOT to use</h2>
+  <div class="anti"><p style="margin:0">Don't add <code>box-shadow</code> to make a tile "float". The 1px hairlines + the SKU-bar's <code>--bg-2</code> already separate it from the page. Shadow breaks the signature.</p></div>
+
+  <footer class="specimen-ft">
+    <div class="colo-block"><strong>MDCC-DSN/01</strong><span>· components-cards</span></div>
+    <div class="colo-block"><span>md-claude · v0.12.0</span></div>
+  </footer>
+</main>
+<script>(function(){const r=document.documentElement;const i=localStorage.getItem('mdcc-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');r.setAttribute('data-theme',i);document.querySelectorAll('.theme-toggle button').forEach(b=>{b.setAttribute('aria-pressed',b.dataset.theme===i?'true':'false');b.addEventListener('click',()=>{const t=b.dataset.theme;r.setAttribute('data-theme',t);localStorage.setItem('mdcc-theme',t);document.querySelectorAll('.theme-toggle button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.theme===t?'true':'false'));});});})();</script>
+</body>
+</html>

@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en" class="mdcc">
+<head>
+<meta charset="utf-8">
+<title>MDCC-DSN/01.empty-state — md-claude</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- SPECIMEN: SIGNATURE — voice + brand moment. Multiple empty-state variants
+     + Voice "keep or kill" comparison panel showing htmx-grain vs corporate. -->
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="stylesheet" href="./_layout.css">
+<link rel="stylesheet" href="./_components.css">
+<style>
+  .empty{border:1px solid var(--border-default);background:var(--bg-1);padding:var(--space-7) var(--space-6);text-align:center;}
+  .empty .eyebrow{margin-bottom:var(--space-3);color:var(--accent)}
+  .empty h3{font-size:var(--type-xl);margin:0 0 var(--space-3);color:var(--fg-0)}
+  .empty p{color:var(--fg-1);max-width:50ch;margin:0 auto var(--space-5)}
+  .voice-cmp{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--border-strong);margin:var(--space-5) 0}
+  .voice-cmp > div{padding:var(--space-5);}
+  .voice-cmp > .keep{border-right:1px solid var(--border-strong);background:var(--bg-1)}
+  .voice-cmp > .kill{background:var(--bg-1);opacity:0.65;}
+  .voice-cmp .head{font-family:var(--font-mono);font-size:var(--type-xs);letter-spacing:var(--tracking-sku);text-transform:uppercase;margin-bottom:var(--space-3)}
+  .voice-cmp .keep .head{color:var(--status-success)}
+  .voice-cmp .kill .head{color:var(--status-error);text-decoration:line-through;}
+  .voice-cmp blockquote{margin:0;font-size:var(--type-md);line-height:var(--lh-md);color:var(--fg-0)}
+  .variants{display:grid;grid-template-columns:repeat(2,1fr);gap:0;border:1px solid var(--border-default)}
+  .variants > .empty{border:0;border-left:1px solid var(--border-default);border-top:1px solid var(--border-default);margin:-1px 0 0 -1px}
+</style>
+</head>
+<body>
+<header class="specimen-hd"><span class="sku">MDCC-DSN/01.empty-state</span><span class="crumbs"><span>md-claude</span><span>design system</span><span>universal</span><span>empty-state</span></span><span class="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+<main class="specimen">
+  <section class="specimen-title"><h1>Empty states</h1><p class="lede">An empty state in this DS is a voice exam. If the copy says "Get Started" or "No items yet", you failed. If it tells the reader exactly what they're looking at and how to make it not-empty in two sentences, you passed.</p></section>
+  <dl class="specimen-meta"><div><dt>Family</dt><dd>universal</dd></div><div><dt>Voice</dt><dd>htmx-grain direct fragments</dd></div></dl>
+
+  <h2 data-no="01">The canonical empty state</h2>
+  <div class="empty">
+    <div class="eyebrow">MARKETPLACE · NO INSTALLED PLUGINS</div>
+    <h3>You haven't installed anything yet</h3>
+    <p><code>mdcc install MDCC-DSN/01</code> grabs the design plugin. <code>MDCC-FLW/02</code> grabs flow. Pick one. Type the command. Come back here in five seconds.</p>
+    <div style="display:flex;gap:var(--space-3);justify-content:center">
+      <button class="btn btn--primary">Browse catalog</button>
+      <a href="#" style="font-size:var(--type-sm);color:var(--fg-1);align-self:center;text-decoration:underline;text-decoration-color:var(--accent);text-underline-offset:4px">or read the docs first</a>
+    </div>
+  </div>
+
+  <h2 data-no="02">Voice — keep or kill</h2>
+  <p>Two empty-state messages for the same screen. One earns its place. The other is what a Series-A pitch deck would write. Read both. Notice which one tells you anything.</p>
+  <div class="voice-cmp">
+    <div class="keep">
+      <div class="head">✓ KEEP</div>
+      <blockquote>No snapshots yet. /design:edit "&lt;feedback&gt;" makes one automatically. /design:rollback brings the last one back.</blockquote>
+    </div>
+    <div class="kill">
+      <div class="head">✗ KILL</div>
+      <blockquote>Get started by creating your first beautiful snapshot. Our intuitive workflow makes it effortless to preserve your design moments. Try it now!</blockquote>
+    </div>
+  </div>
+  <p style="color:var(--fg-2);font-size:var(--type-sm);margin-top:var(--space-3)">If you can replace "snapshots" with "items" / "documents" / "users" without changing meaning, you wrote the kill version. Specific nouns. Direct verbs. Real commands. No exclamation marks.</p>
+
+  <h2 data-no="03">Variants <span class="h2-aside">six common cases</span></h2>
+  <div class="variants">
+    <div class="empty">
+      <div class="eyebrow">NO MATCH</div>
+      <h3>No plugins match "&lt;query&gt;"</h3>
+      <p>The catalog has 5 plugins. Drop the filter, expand the search, or submit a PR with the one you wish existed.</p>
+    </div>
+    <div class="empty">
+      <div class="eyebrow">NO ACCESS</div>
+      <h3>That canvas is private</h3>
+      <p>Or it was deleted. Or the snapshot id doesn't match a known plate. Try <code>mdcc design --list</code>.</p>
+    </div>
+    <div class="empty">
+      <div class="eyebrow">FIRST RUN</div>
+      <h3>No canvases under .design/ui/</h3>
+      <p><code>/design:new "&lt;Name&gt;" "&lt;brief&gt;"</code> scaffolds one. It writes an HTML file using these tokens. The dev-server picks it up automatically.</p>
+    </div>
+    <div class="empty">
+      <div class="eyebrow">OFFLINE</div>
+      <h3>Dev-server isn't running</h3>
+      <p>Start it with <code>mdcc design serve</code>. Or run <code>/design:browse</code> from inside Claude Code — it does the same thing.</p>
+    </div>
+    <div class="empty">
+      <div class="eyebrow">DELETED</div>
+      <h3>Snapshot purged</h3>
+      <p>Older than 30 days and unreferenced. <code>_history/&lt;slug&gt;/</code> is auto-pruned. Bring it back from git or accept the loss.</p>
+    </div>
+    <div class="empty">
+      <div class="eyebrow">PERMISSION</div>
+      <h3>Can't write to .design/</h3>
+      <p>The working directory isn't writable. Check ownership. Or run from a directory you own. The dev-server fails loud rather than guess.</p>
+    </div>
+  </div>
+
+  <h2 data-no="04">When NOT to use</h2>
+  <div class="anti"><p style="margin:0">Don't add a hero illustration ("a friendly sketch of someone holding a clipboard"). The catalog aesthetic doesn't render personality through pictures. The copy does.</p></div>
+  <div class="pro"><p style="margin:0">Do use the eyebrow + h3 + body + 1-2 actions pattern. Eyebrow = state label (in accent). h3 = the answer. Body = one short paragraph. Action = a real command, ideally callable from where the user is.</p></div>
+
+  <footer class="specimen-ft"><div class="colo-block"><strong>MDCC-DSN/01</strong><span>· empty-state · ★ signature</span></div><div class="colo-block"><span>md-claude · v0.12.0</span></div></footer>
+</main>
+<script>(function(){const r=document.documentElement;const i=localStorage.getItem('mdcc-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');r.setAttribute('data-theme',i);document.querySelectorAll('.theme-toggle button').forEach(b=>{b.setAttribute('aria-pressed',b.dataset.theme===i?'true':'false');b.addEventListener('click',()=>{const t=b.dataset.theme;r.setAttribute('data-theme',t);localStorage.setItem('mdcc-theme',t);document.querySelectorAll('.theme-toggle button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.theme===t?'true':'false'));});});})();</script>
+</body>
+</html>

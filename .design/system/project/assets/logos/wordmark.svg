@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- md-claude wordmark · MDCC-DSN/01-MARK -->
+<!-- Berkeley-mono uppercase set, all-caps with accent terminal dot. Pure SVG text
+     so it inherits font stack and renders at any size; the dot is the only mark. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 32" width="240" height="32" role="img" aria-label="md-claude">
+  <style>
+    .mark text {
+      font-family: 'Berkeley Mono', 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      fill: currentColor;
+    }
+    .mark .dot { fill: var(--accent, oklch(56% 0.170 50)); }
+  </style>
+  <g class="mark">
+    <text x="0" y="24">MD-CLAUDE</text>
+    <rect class="dot" x="218" y="20" width="6" height="6"/>
+  </g>
+</svg>

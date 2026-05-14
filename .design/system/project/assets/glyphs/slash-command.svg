@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- glyph · slash-command · 16×16 · 1px stroke · mono-baseline -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" role="img" aria-label="slash-command">
+  <g fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="square">
+    <rect x="1.5" y="3.5" width="13" height="9"/>
+    <text x="3.5" y="11" font-family="'Berkeley Mono','JetBrains Mono',ui-monospace,monospace" font-size="8" font-weight="700" fill="currentColor" stroke="none">/_</text>
+  </g>
+</svg>

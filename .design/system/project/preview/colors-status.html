@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en" class="mdcc">
+<head>
+<meta charset="utf-8">
+<title>MDCC-DSN/01.colors-status — md-claude</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- SPECIMEN: status color family — success / warn / error / info. -->
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="stylesheet" href="./_layout.css">
+<link rel="stylesheet" href="./_components.css">
+</head>
+<body>
+<header class="specimen-hd"><span class="sku">MDCC-DSN/01.colors-status</span><span class="crumbs"><span>md-claude</span><span>design system</span><span>color</span><span>status</span></span><span class="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+<main class="specimen">
+  <section class="specimen-title"><h1>Status family</h1><p class="lede">Four semantic colors. Distinct from <code>--accent</code> (which is brand, not status). The amber-warn is hue-shifted from accent so they can co-exist without bleeding into each other.</p></section>
+  <dl class="specimen-meta"><div><dt>Tokens</dt><dd>4 · success/warn/error/info</dd></div><div><dt>Hue separation</dt><dd>warn-accent ≥ 35° tilt</dd></div></dl>
+
+  <h2 data-no="01">Swatches</h2>
+  <div class="grid">
+    <div class="swatch"><div class="chip" style="background:var(--status-success);height:88px"></div><div class="meta"><strong>--status-success</strong><span class="oklch">L 48 / 72 · H 145</span></div><div style="padding:var(--space-3) var(--space-4);font-size:var(--type-xs);color:var(--fg-2)">install ok · validation pass · published live</div></div>
+    <div class="swatch"><div class="chip" style="background:var(--status-warn);height:88px"></div><div class="meta"><strong>--status-warn</strong><span class="oklch">L 64 / 80 · H 88</span></div><div style="padding:var(--space-3) var(--space-4);font-size:var(--type-xs);color:var(--fg-2)">beta · deprecated · "we should look at this"</div></div>
+    <div class="swatch"><div class="chip" style="background:var(--status-error);height:88px"></div><div class="meta"><strong>--status-error</strong><span class="oklch">L 50 / 68 · H 25</span></div><div style="padding:var(--space-3) var(--space-4);font-size:var(--type-xs);color:var(--fg-2)">install failed · validation block · 500</div></div>
+    <div class="swatch"><div class="chip" style="background:var(--status-info);height:88px"></div><div class="meta"><strong>--status-info</strong><span class="oklch">L 50 / 72 · H 230</span></div><div style="padding:var(--space-3) var(--space-4);font-size:var(--type-xs);color:var(--fg-2)">tip · neutral notice · "fyi"</div></div>
+  </div>
+
+  <h2 data-no="02">In context</h2>
+  <div class="row">
+    <span class="badge badge--success">live</span>
+    <span class="badge badge--warn">beta</span>
+    <span class="badge badge--error">failed</span>
+    <span class="badge badge--info">tip</span>
+    <span class="badge badge--accent">featured</span>
+  </div>
+  <div class="row">
+    <span class="dot dot--success"></span><span>installed</span>
+    <span class="dot dot--warn"></span><span>update available</span>
+    <span class="dot dot--error"></span><span>install failed</span>
+    <span class="dot dot--info"></span><span>pinned</span>
+  </div>
+
+  <h2 data-no="03">Why hue-shift the warn</h2>
+  <p>The accent is amber-rust (H 50). The warn is shifted to amber-yellow (H 88) — close enough to feel "in the same family" of warm hues, but distinct enough that a status pill never reads as a brand stamp. If they were the same H, every warning would look like a feature.</p>
+
+  <footer class="specimen-ft"><div class="colo-block"><strong>MDCC-DSN/01</strong><span>· colors-status</span></div><div class="colo-block"><span>md-claude · v0.12.0</span></div></footer>
+</main>
+<script>(function(){const r=document.documentElement;const i=localStorage.getItem('mdcc-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');r.setAttribute('data-theme',i);document.querySelectorAll('.theme-toggle button').forEach(b=>{b.setAttribute('aria-pressed',b.dataset.theme===i?'true':'false');b.addEventListener('click',()=>{const t=b.dataset.theme;r.setAttribute('data-theme',t);localStorage.setItem('mdcc-theme',t);document.querySelectorAll('.theme-toggle button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.theme===t?'true':'false'));});});})();</script>
+</body>
+</html>

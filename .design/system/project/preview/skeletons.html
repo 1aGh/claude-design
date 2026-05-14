@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en" class="mdcc">
+<head>
+<meta charset="utf-8">
+<title>MDCC-DSN/01.skeletons — md-claude</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- SPECIMEN: skeleton loading placeholders — flat bg-2 blocks, no shimmer. -->
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="stylesheet" href="./_layout.css">
+<link rel="stylesheet" href="./_components.css">
+<style>
+  .skel{background:var(--bg-2);height:14px;border-radius:0;border:1px solid var(--border-subtle);display:block;}
+  .skel-tall{height:24px}
+  .skel-block{height:120px}
+</style>
+</head>
+<body>
+<header class="specimen-hd"><span class="sku">MDCC-DSN/01.skeletons</span><span class="crumbs"><span>md-claude</span><span>design system</span><span>status</span><span>skeletons</span></span><span class="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+<main class="specimen">
+  <section class="specimen-title"><h1>Skeletons</h1><p class="lede">Flat <code>--bg-2</code> rectangles with a hairline border. No shimmer animation — the catalog hard-NO on "animations beyond hover" applies. Skeletons say "loading", not "look at me".</p></section>
+  <dl class="specimen-meta"><div><dt>Token</dt><dd>--bg-2 fill · --border-subtle outline</dd></div><div><dt>Animation</dt><dd>none — by design</dd></div></dl>
+
+  <h2 data-no="01">Tile skeleton</h2>
+  <div class="grid" style="grid-template-columns:repeat(2,1fr);gap:0">
+    <div class="tile">
+      <div class="tile-hd"><span class="skel" style="width:80px"></span><span class="skel" style="width:50px"></span></div>
+      <div class="tile-bd">
+        <span class="skel skel-tall" style="width:60%;margin-bottom:var(--space-3)"></span>
+        <span class="skel" style="width:90%;margin-bottom:var(--space-2)"></span>
+        <span class="skel" style="width:85%;margin-bottom:var(--space-2)"></span>
+        <span class="skel" style="width:70%"></span>
+      </div>
+      <div class="tile-ft"><span class="skel" style="width:60px"></span><span class="skel" style="width:80px"></span></div>
+    </div>
+    <div class="tile">
+      <div class="tile-hd"><span class="skel" style="width:80px"></span><span class="skel" style="width:50px"></span></div>
+      <div class="tile-bd">
+        <span class="skel skel-tall" style="width:60%;margin-bottom:var(--space-3)"></span>
+        <span class="skel" style="width:90%;margin-bottom:var(--space-2)"></span>
+        <span class="skel" style="width:85%;margin-bottom:var(--space-2)"></span>
+        <span class="skel" style="width:70%"></span>
+      </div>
+      <div class="tile-ft"><span class="skel" style="width:60px"></span><span class="skel" style="width:80px"></span></div>
+    </div>
+  </div>
+
+  <h2 data-no="02">Table skeleton</h2>
+  <div style="border:1px solid var(--border-default)">
+    <div style="display:grid;grid-template-columns:120px 1fr 80px 80px 100px;gap:var(--space-4);padding:var(--space-3) var(--space-4);background:var(--bg-2);border-bottom:1px solid var(--border-strong)">
+      <span class="skel" style="width:60px"></span><span class="skel" style="width:120px"></span><span class="skel" style="width:50px"></span><span class="skel" style="width:50px"></span><span class="skel" style="width:80px"></span>
+    </div>
+    <div style="display:grid;grid-template-columns:120px 1fr 80px 80px 100px;gap:var(--space-4);padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border-subtle)"><span class="skel"></span><span class="skel" style="width:80%"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span></div>
+    <div style="display:grid;grid-template-columns:120px 1fr 80px 80px 100px;gap:var(--space-4);padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border-subtle)"><span class="skel"></span><span class="skel" style="width:70%"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span></div>
+    <div style="display:grid;grid-template-columns:120px 1fr 80px 80px 100px;gap:var(--space-4);padding:var(--space-3) var(--space-4)"><span class="skel"></span><span class="skel" style="width:90%"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span></div>
+  </div>
+
+  <h2 data-no="03">When NOT to use</h2>
+  <div class="anti"><p style="margin:0">Don't add a <code>@keyframes shimmer</code> on these blocks. The static rectangle is the answer. If something's loading slow enough to need a shimmer, surface the actual progress (badge: <code>fetching · 2.4s</code>).</p></div>
+
+  <footer class="specimen-ft"><div class="colo-block"><strong>MDCC-DSN/01</strong><span>· skeletons</span></div><div class="colo-block"><span>md-claude · v0.12.0</span></div></footer>
+</main>
+<script>(function(){const r=document.documentElement;const i=localStorage.getItem('mdcc-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');r.setAttribute('data-theme',i);document.querySelectorAll('.theme-toggle button').forEach(b=>{b.setAttribute('aria-pressed',b.dataset.theme===i?'true':'false');b.addEventListener('click',()=>{const t=b.dataset.theme;r.setAttribute('data-theme',t);localStorage.setItem('mdcc-theme',t);document.querySelectorAll('.theme-toggle button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.theme===t?'true':'false'));});});})();</script>
+</body>
+</html>

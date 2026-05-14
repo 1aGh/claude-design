@@ -1,0 +1,28 @@
+{
+  "$schema": "https://raw.githubusercontent.com/1aGh/md-claude/main/plugins/design/dev-server/config.schema.json",
+  "name": "md-claude",
+  "designRoot": ".design",
+  "rootClass": "mdcc",
+  "canvasGroups": [
+    { "label": "Design system", "path": "system" },
+    { "label": "UI kit", "path": "ui" }
+  ],
+  "extensions": [],
+  "completenessProfile": "standard",
+  "activeFamilies": ["accent", "status", "mono"],
+  "designSystems": [
+    {
+      "name": "project",
+      "path": "system/project",
+      "description": "MDCC-DSN/01 — industrial-catalogue mood, Paper & Ink palette + amber-rust accent, Berkeley-forward mono everywhere, hard-edges (1px hairlines + SKU framing), htmx-grain voice over a U.S. Graphics catalog spine. Two-theme (paper-light + phosphor-dark equal-status).",
+      "tokensCssRel": "system/project/colors_and_type.css",
+      "rootClass": "mdcc",
+      "themeDefault": "light",
+      "themes": ["light", "dark"],
+      "newCanvasDir": "ui",
+      "newComponentDir": "system/project/preview"
+    }
+  ],
+  "defaultDesignSystem": "project",
+  "handoffTargets": []
+}
