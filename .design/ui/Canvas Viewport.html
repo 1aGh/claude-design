@@ -1551,6 +1551,14 @@
 <script type="text/babel" data-presets="react">
 // All components are pure render functions — no React state needed for a static mock.
 
+// Tweak defaults — the host (dev server) rewrites this JSON block in place when
+// the floating Tweaks panel mutates a value. Keep the block strictly machine-
+// rewritable: one object literal, no expressions, sandwiched between the
+// EDITMODE markers below.
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "theme": "light"
+}/*EDITMODE-END*/;
+
 // ─────────────────────────────────────────────────────────────────────
 // MENUBAR — classic desktop-app pattern (File · View · Tools · Selection · Help)
 // Minimalist text labels in the top-left; one menu can be "open" per artboard
@@ -3010,25 +3018,54 @@ function ArtboardCommentsList() {
 // ─────────────────────────────────────────────────────────────────────
 
 function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+  // Propagate the theme tweak to the root <html class="mdcc">. The token CSS
+  // keys all surface colors off [data-theme="light"] / [data-theme="dark"], so
+  // flipping this attribute re-tints every artboard in the world at once.
+  React.useEffect(() => {
+    document.documentElement.dataset.theme = t.theme;
+  }, [t.theme]);
+
+  // The dev-server host doesn't (yet) render a Tweaks toggle in its toolbar,
+  // so the shared TweaksPanel runtime — which gates rendering on
+  // __activate_edit_mode from window.parent — never opens. Self-activate on
+  // mount so the floating panel is visible immediately. User can still close
+  // with the X (panel keeps its own open state after dismiss).
+  React.useEffect(() => {
+    window.postMessage({ type: '__activate_edit_mode' }, '*');
+  }, []);
+
   return (
-    <DesignCanvas>
-      <DCSection
-        id="states"
-        title="Canvas viewport states"
-        subtitle="v1.0 → v1.3 ship · synthesized from .ai/plans/phase-{3.5,4,5,6,8,12}.md"
-      >
-        <DCArtboard id="idle"         label="CV-01 · IDLE INFINITE CANVAS"  width={1280} height={820}><ArtboardIdle /></DCArtboard>
-        <DCArtboard id="zoomed"       label="CV-02 · ZOOMED-IN VIEWPORT"    width={1280} height={820}><ArtboardZoomed /></DCArtboard>
-        <DCArtboard id="draw"         label="CV-03 · DRAW MODE · PEN"       width={1280} height={820}><ArtboardDraw /></DCArtboard>
-        <DCArtboard id="pin"          label="CV-04 · PIN-COMMENT THREAD"    width={1280} height={820}><ArtboardPin /></DCArtboard>
-        <DCArtboard id="presentation" label="CV-05 · PRESENTATION MODE"     width={1280} height={820}><ArtboardPresentation /></DCArtboard>
-        <DCArtboard id="collab"       label="CV-06 · LIVE COLLAB SESSION"   width={1280} height={820}><ArtboardCollab /></DCArtboard>
-        <DCArtboard id="inspector"    label="CV-07 · INSPECTOR + LAYERS"    width={1280} height={820}><ArtboardInspector /></DCArtboard>
-        <DCArtboard id="tree"         label="CV-08 · PROJECT + DS TREE"     width={1280} height={820}><ArtboardTree /></DCArtboard>
-        <DCArtboard id="dsview"       label="CV-09 · DESIGN SYSTEM VIEW"    width={1280} height={820}><ArtboardDSView /></DCArtboard>
-        <DCArtboard id="comments"     label="CV-10 · COMMENTS LIST · TABS"  width={1280} height={820}><ArtboardCommentsList /></DCArtboard>
-      </DCSection>
-    </DesignCanvas>
+    <>
+      <DesignCanvas>
+        <DCSection
+          id="states"
+          title="Canvas viewport states"
+          subtitle="v1.0 → v1.3 ship · synthesized from .ai/plans/phase-{3.5,4,5,6,8,12}.md"
+        >
+          <DCArtboard id="idle"         label="CV-01 · IDLE INFINITE CANVAS"  width={1280} height={820}><ArtboardIdle /></DCArtboard>
+          <DCArtboard id="zoomed"       label="CV-02 · ZOOMED-IN VIEWPORT"    width={1280} height={820}><ArtboardZoomed /></DCArtboard>
+          <DCArtboard id="draw"         label="CV-03 · DRAW MODE · PEN"       width={1280} height={820}><ArtboardDraw /></DCArtboard>
+          <DCArtboard id="pin"          label="CV-04 · PIN-COMMENT THREAD"    width={1280} height={820}><ArtboardPin /></DCArtboard>
+          <DCArtboard id="presentation" label="CV-05 · PRESENTATION MODE"     width={1280} height={820}><ArtboardPresentation /></DCArtboard>
+          <DCArtboard id="collab"       label="CV-06 · LIVE COLLAB SESSION"   width={1280} height={820}><ArtboardCollab /></DCArtboard>
+          <DCArtboard id="inspector"    label="CV-07 · INSPECTOR + LAYERS"    width={1280} height={820}><ArtboardInspector /></DCArtboard>
+          <DCArtboard id="tree"         label="CV-08 · PROJECT + DS TREE"     width={1280} height={820}><ArtboardTree /></DCArtboard>
+          <DCArtboard id="dsview"       label="CV-09 · DESIGN SYSTEM VIEW"    width={1280} height={820}><ArtboardDSView /></DCArtboard>
+          <DCArtboard id="comments"     label="CV-10 · COMMENTS LIST · TABS"  width={1280} height={820}><ArtboardCommentsList /></DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+      <TweaksPanel title="Canvas tweaks">
+        <TweakSection label="Appearance" />
+        <TweakRadio
+          label="Theme"
+          value={t.theme}
+          options={['light', 'dark']}
+          onChange={(v) => setTweak('theme', v)}
+        />
+      </TweaksPanel>
+    </>
   );
 }
 
