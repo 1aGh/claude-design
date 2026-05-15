@@ -46,6 +46,17 @@ Why three setup verbs:
 - **`setup-ds`** is per-DS — runs **once per design system** (first one for a project, or every time you add a marketing-vs-admin-vs-mobile DS). Auto-invokes `init` first if config is missing.
 - **`setup-docs`** is per-canvas-event — auto-runs after every `/design:edit` and `/design:new`. Manual trigger when you want to force a regeneration.
 
+## Auto-routed audit agents (NOT user-invocable)
+
+Some files under `plugins/design/agents/` are read-only audit agents auto-routed by the orchestrator — they are **not** user-invocable slash commands and do **not** appear in `/design:help`. Their frontmatter intentionally omits `category:` so they stay out of the catalog. Documented here for discoverability:
+
+| Agent | Routed by | What it audits |
+|---|---|---|
+| `design-system-keeper` | `/design:new` step 9.5 (always) + `/design:edit` step 7.5 (when diff ≥ 10 lines or new class root) + `/design:edit` step 8a (DS-drift fast-path) | DS fidelity to priors — pattern reinvention scan + token-usage audit against the DS README's `## Token usage guide` section. Read-only; warnings unless ≥ 5 token mismatches OR ≥ 3 pattern reinventions stack. Skip with `--skip-ds-keeper`. See [DDR-010](../../.ai/decisions/DDR-010-design-system-keeper-agent.md). |
+| `design-system-completeness-critic` | `skill design-system` bootstrap end + `/design:critic --system-only` | Structural completeness of the DS itself (3-tier rule set: Core blockers / Conventional warnings / Free-form acknowledged). Per-DS in multi-DS projects. |
+
+Both agents declare their fully-qualified `name:` frontmatter (`design:design-system-keeper`, `design:design-system-completeness-critic`) per [DDR-006](../../.ai/decisions/DDR-006-plugin-namespace-in-name-frontmatter.md). Even though they're auto-routed, the namespace prefix prevents accidental collision when Claude Code lists agents by bare slug.
+
 ## Naming convention
 
 Commands within a group prefix the group name with a dash separator:

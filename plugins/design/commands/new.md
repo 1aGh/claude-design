@@ -30,6 +30,7 @@ Opt-out flagy (pro vědomé výjimky):
 | `--quick` | 1 critic (`signature-moment-critic`) + max 2 fix iter, žádný plný panel | Throwaway exploration ("can we even render a chart canvas?"), proof-of-concept |
 | `--no-critic` | Skip auto-critic loop entirely (jen generate + reality-check) | Testovací / debug runs, kde jen ověřuješ že file vznikne |
 | `--perfect-iter N` | Override max iterations (default 8) | Velké canvasy (10+ artboardů) co potřebují víc iterací; nebo malé kde 4 stačí |
+| `--skip-ds-keeper` | Skip the `design-system-keeper` precheck (step 9.5) | Známě-experimentální canvasy kde reinvention je intent; debug runs |
 
 **Mode není volitelný-on opt-in.** Mode je **opt-out**. Když user nechce platit cost, musí explicitně říct `--quick` nebo `--no-critic`. Ticha je souhlas s plným loopem.
 
@@ -214,6 +215,44 @@ Adaptuj generic envelope ze SKILL.md "Generation envelope" s konkrétními confi
 - Délka ~30–50 řádků? ✓ (~100+ = over-prescriptive)
 - Aspiration directives přítomny? ✓ povinné
 - Reference 1–2 existing canvases? ✓ povinné
+- `## Pattern priors` section populated (or explicitly empty for first-canvas case)? ✓ povinné
+
+#### 5a. Collect pattern priors (for the envelope's `## Pattern priors` section)
+
+```bash
+# Existing canvases in this DS — same dir as the target, .meta.json.designSystem matches.
+PRIORS_DIR="$DESIGN_ROOT/$NEW_CANVAS_DIR"
+PRIOR_CANVASES=$(find "$PRIORS_DIR" -maxdepth 2 -name "*.html" -not -name "$(basename "$TARGET_PATH")")
+
+PRIORS_LIST=""
+for c in $PRIOR_CANVASES; do
+  META="$(dirname "$c")/$(basename "$c" .html).meta.json"
+  # Filter to canvases in the same DS (multi-DS aware). Single-DS layouts have no
+  # designSystem field on the meta — accept those too (treat as same DS).
+  CANVAS_DS=$(jq -r '.designSystem // "project"' "$META" 2>/dev/null || echo "project")
+  [[ "$CANVAS_DS" != "$TARGET_DS" ]] && continue
+
+  # Class roots — both className="..." (JSX) and class="..." (HTML).
+  CLASSES=$(grep -oE '(className|class)="[^"]+"' "$c" \
+              | sed -E 's/^(className|class)="//; s/"$//' \
+              | tr ' ' '\n' \
+              | grep -E '^[a-z][a-z0-9-]+$' \
+              | sort -u | tr '\n' ',' | sed 's/,$//')
+  SUB=$(jq -r '.subtitle // ""' "$META" 2>/dev/null || echo "")
+  PRIORS_LIST+="- $c ($SUB) — class roots: $CLASSES"$'\n'
+done
+
+# Preview components — DS-supplied component library.
+PRIOR_PREVIEW=$(ls "$DS_ROOT/preview/components-"*.html 2>/dev/null)
+PREVIEW_LIST=""
+for p in $PRIOR_PREVIEW; do
+  ROLE=$(grep -oE '<title>[^<]+</title>' "$p" | head -1 | sed -E 's|</?title>||g')
+  [ -z "$ROLE" ] && ROLE=$(basename "$p" .html | sed 's/components-//; s/-/ /g')
+  PREVIEW_LIST+="- $(basename "$p") — $ROLE"$'\n'
+done
+```
+
+The `PRIORS_LIST` and `PREVIEW_LIST` strings are interpolated verbatim into the envelope's `## Pattern priors` section (step 5b heredoc). If both are empty, write a one-line note ("First canvas in this DS — no priors to lift from.") and continue.
 
 #### 5b. Persist envelope as audit artifact
 
@@ -236,6 +275,22 @@ Generation path: {to be filled in step 6}
 ## Reference canvases
 - <ref 1>
 - <ref 2>
+
+## Pattern priors — existing canvases to study before inventing
+
+For any compositional element (card, panel, snippet, toolbar, sidebar, modal, button, badge), FIRST check if any prior listed below has the same shape. If yes, **lift it** — same class names, same paddings, same border treatment. Reinventing is the exception, not the default — leave a one-line JSX comment in the new canvas explaining what your variant does that the prior didn't.
+
+The `design-system-keeper` agent (step 9.5) audits compliance with this directive after generation. Surfaced reinventions feed into the critic panel as additional context.
+
+### Existing canvases (same DS, with class roots)
+<for each .html in <DESIGN_ROOT>/<NEW_CANVAS_DIR>/ matching this DS, NOT the new canvas — see step 5 collection recipe>
+- <path> (<.meta.json.subtitle>) — class roots: <comma-separated list extracted via the recipe>
+
+### Existing preview components (DS library, with role)
+<for each .html in <DS_ROOT>/preview/components-*.html — see step 5 collection recipe>
+- <filename> — <one-line role from the file's title or first heading>
+
+(If neither list has entries, this is the first canvas in this DS — Pattern priors is empty; the generator works from the DS readme + UX research alone.)
 
 ## UX patterns reference (from ux-research-agent step 4.5)
 - IA pattern (Recommended): <payload.information_architecture_patterns[recommended].label>
@@ -323,6 +378,55 @@ State which approach was used in the print step (engine choice + per-screen vs. 
 Pokud blank render / timeout → warn `⚠ canvas rendered blank — likely JSX error`. Don't auto-rollback. Path tohoto screenshotu jde do final print + chat.md iteration 0 row.
 
 Detaily a failure handling: SKILL.md "Post-write reality check".
+
+### 9.5. Design-system keeper precheck
+
+**Auto-routed by default** — between the post-write reality-check screenshots (step 9) and the critic panel (step 10). Skip with `--skip-ds-keeper` if the user has explicitly opted out (rare — primarily known-experimental canvases or debug runs).
+
+The `design-system-keeper` agent runs two read-only passes — pattern-reinvention scan + token-usage audit — over the just-generated canvas. Findings are warnings (not blockers) by default; the agent self-promotes to blocker only when ≥ 5 token mismatches OR ≥ 3 pattern reinventions stack on this canvas (mass-drift signals). Findings feed into the critic panel as additional context — the panel's own critics can promote to their own blockers if the surrounding context warrants.
+
+**Spawn in parallel with step 10** — the panel doesn't wait on ds-keeper to start; both run concurrently, the orchestrator merges verdicts at the end of the iteration. This keeps the wall-clock cost of the precheck near-zero relative to the panel.
+
+```bash
+# Skip if --skip-ds-keeper flag was passed.
+if grep -q -- '--skip-ds-keeper' <<< "$ARGS"; then
+  echo "→ ds-keeper precheck skipped per --skip-ds-keeper flag"
+else
+  HIST="$DESIGN_ROOT/_history/$SLUG"
+  N_KEEPER=$(printf "%03d" $(($(ls "$HIST" 2>/dev/null | wc -l) + 1)))
+  KEEPER_OUT="$HIST/$N_KEEPER-ds-keeper.md"
+
+  # Collect existing canvases in the same DS (excludes the new canvas).
+  EXISTING_JSON=$(find "$DESIGN_ROOT/$NEW_CANVAS_DIR" -maxdepth 2 -name "*.html" \
+                    -not -path "*$TARGET_PATH*" \
+                    | jq -R . | jq -sc .)
+fi
+```
+
+```
+# Spawn ds-keeper in parallel with the critic panel (step 10) — single message, multiple Agent calls.
+Agent(
+  description: "DS keeper precheck for <Name>",
+  subagent_type: "design:design-system-keeper",
+  prompt: <<EOF
+canvas_path:             "<abs path to TARGET_PATH>"
+ds_root:                 "<abs path to DS_ROOT>"
+existing_canvases:       <EXISTING_JSON>
+preview_components_root: "<abs path to DS_ROOT/preview>"
+token_guide_path:        "<abs path to DS_ROOT/README.md>"
+output_path:             "<abs path to KEEPER_OUT>"
+iter_n:                  1
+EOF
+)
+```
+
+The agent writes its report to `<HIST>/<NNN>-ds-keeper.md` and returns a JSON verdict. The orchestrator merges the verdict's `top_warnings` into the iter-1 critic-panel summary so the user sees one consolidated view.
+
+**If ds-keeper self-promoted to blocker** (≥ 5 token mismatches OR ≥ 3 pattern reinventions stacked) → the orchestrator surfaces this in the iter-1 print as `ds-keeper: BLOCKER (mass drift detected — see <KEEPER_OUT>)` and the auto-fix loop's first iteration prioritizes ds-keeper findings before any other critic's blockers. This catches mass-drift early — before the panel chases symptom-level fixes.
+
+**Failure handling:**
+- Agent fails entirely (no report written) → **do not block the panel**. Surface a warning in the final print (`ds-keeper precheck failed — DS-fidelity audit unavailable for this iteration`) and let the panel proceed.
+- Report written but verdict JSON malformed → treat as no findings, surface report path in the final print so the user can read it manually.
 
 ### 10. Auto-critic + auto-fix loop (default = `--perfect`)
 
