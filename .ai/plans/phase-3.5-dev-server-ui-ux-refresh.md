@@ -1,6 +1,8 @@
-# Phase 3.5: Dev-server UI/UX refresh (shell only — viewport stays)
+# Phase 3.5: Dev-server UI/UX refresh — shell visuals only
 
-> **STATUS — 2026-05-15** · Design stage **DONE** on `project` DS (MDCC-DSN/01 — industrial-catalogue, Paper & Ink, Berkeley-Mono, hard-edges). Mocks live in [`.design/ui/Canvas Viewport.html`](../../.design/ui/Canvas%20Viewport.html) (10 artboards, `designSystem: "project"`). Implementation tasks 4–10 below are now actionable against the **`project` DS at `.design/system/project/`** — token names, font stack, radii, and density rules in this plan are aligned with that DS.
+> **STATUS — 2026-05-15** · Tasks 4–10 (shell chrome) **DONE** — see `/flow:execute` retro in STATE.md + handoff report at `.design/_history/Canvas Viewport/handoff/001-handoff-report.md`. **Tasks 11–13 (viewport-area visual treatment) added 2026-05-15**, scope clarified per user: *"shell UX/UI iterace podle design návrhu, žádná funkcionalita kanvasu — to patří do Phase 4 ať se to nepřekrývá."* Tasks 11–13 are **purely visual** — gridded paper background, brand wordmark, selection halo, StatusBar info slots — rendered against the existing one-iframe-fills-viewport model. **Zero behavior changes**: no pan, no zoom, no MiniMap, no ZoomToolbar, no layout.json, no tab-semantics change. Those all live in Phase 4 alongside the Pixi engine swap.
+>
+> Design stage **DONE** on `project` DS (MDCC-DSN/01 — industrial-catalogue, Paper & Ink, Berkeley-Mono, hard-edges). Mocks live in [`.design/ui/Canvas Viewport.html`](../../.design/ui/Canvas%20Viewport.html). Tasks 11–13 lift the **static visual surfaces** from CV-01 (idle infinite canvas) + CV-02 (zoomed viewport) — wordmark, paper-grid bg, selection-halo treatment — that can stand alone without the interaction layer.
 >
 > **Coverage matrix (mocks → original sub-deliverables):**
 > | Original mock                | Status     | Canvas Viewport artboard (CV-NN) |
@@ -15,9 +17,13 @@
 
 ## Description
 
-Refresh the dev-server's **shell chrome** — header, sidebars, file tree, tabs, status bar, system view, comments panel — driven by the mocks in [`.design/ui/Canvas Viewport.html`](../../.design/ui/Canvas%20Viewport.html) (artboards CV-08, CV-09, CV-10 are the load-bearing references for this phase; CV-01 anchors the viewport-area density). Theme + typography migrate from the placeholder "universal zinc grayscale" tokens (`--u-*` in `client/styles.css`) to the **`project` DS** at [`.design/system/project/colors_and_type.css`](../../.design/system/project/colors_and_type.css) — Berkeley Mono everywhere, OKLCH Paper & Ink ladder, hard-edges (radii 0/2/4), 1px hairline borders, no blur shadows, no gradients in chrome.
+Two-part scope:
 
-**Out of scope:** the canvas viewport itself (iframes + flexbox layout). Phase 4 rewrites that with Pixi.js — touching the viewport now would be wasted work.
+1. **Shell chrome (Tasks 4-10 — ✅ DONE 2026-05-15):** refresh header, sidebars, file tree, tabs, status bar, system view, comments panel against CV-08/09/10 in [`Canvas Viewport.html`](../../.design/ui/Canvas%20Viewport.html). Theme + typography migrate from placeholder zinc tokens to the **`project` DS** ([`colors_and_type.css`](../../.design/system/project/colors_and_type.css)) — Berkeley Mono, OKLCH Paper & Ink, hard-edges (radii 0/2/4), 1px hairlines, no blur shadows.
+
+2. **Viewport-area static visuals (Tasks 11-13 — added 2026-05-15):** lift the **non-functional visual surfaces** from CV-01 / CV-02 — gridded paper background, brand wordmark, selection halo, StatusBar info slots. These pieces stand alone without any interaction logic: the wordmark is a watermark on the viewport area, the paper-grid is decorative bg, the selection halo is an existing-state visualization. Nothing here introduces pan, zoom, multi-artboard layout, or persistence — those are explicitly Phase 4.
+
+**Out of scope (deferred to Phase 4):** anything that *changes how the canvas works*. That includes: multi-iframe infinite-canvas plane, pan + zoom interaction (`viewport-control.mjs`), MiniMap component, ZoomToolbar component, `<slug>.layout.json` persistence, v0.x → default-grid migration, tab-click semantics change (toggle → pan-to-focus), Pixi.js stage, LoD screenshot fallback, world coords in `_active.json`. Phase 4 owns the entire canvas-functionality block — Phase 3.5 only paints what surrounds it.
 
 ## User Story
 
@@ -32,11 +38,11 @@ As a designer opening `mdcc design serve`, I want the dev-server to look like a 
 
 ## Solution
 
-Two stages (design closed, code remaining):
+Three stages:
 
-1. **Design stage — ✅ DONE.** Mocks in `.design/ui/Canvas Viewport.html` cover sidebar-tree (CV-08), DS view (CV-09), and comments panel (CV-10). User signed off on no separate full-chrome / tabs-statusbar artboards — those will be built from `project` DS specimens + analogy to CV-08's left-pane density.
-2. **Token migration** — Replace `--u-*` token block in `styles.css` with an import (or selective copy) of `.design/system/project/colors_and_type.css`. Drop the Google-Fonts Inter/JetBrains link; wire Berkeley Mono via the `project` DS asset path (or its public CDN if local files unavailable) with JetBrains-Mono fallback. Add light-theme toggle wired to `[data-theme="light"|"dark"]` on `<html>`.
-3. **Shell refactor** — Re-style + minor re-structure of chrome components in `app.jsx` to match the approved CV-08/09/10 mocks. **Keep `Viewport`/iframe rendering byte-identical** so phase 4 lands cleanly on top.
+1. **Design stage — ✅ DONE.** Mocks in `.design/ui/Canvas Viewport.html` cover all 10 artboards; CV-08/09/10 = shell, CV-01/02 = viewport idle + zoomed-in (only the static visuals lift cleanly to this phase).
+2. **Shell + token migration — ✅ DONE (Tasks 4-10).** Token bridge to project DS, font stack swap, Header/Sidebar/Tabs/StatusBar/SystemView/CommentsPanel refactor. Retro in STATE.md.
+3. **Viewport static visuals — Tasks 11-13.** Render three decorative/visual surfaces *around* the existing one-iframe-fills-viewport behavior: (a) gridded paper background on `.viewport` (visible only in empty-state, since iframes cover it once mounted), (b) Wordmark watermark in the empty-state, (c) accent corner-tick `SelectionHalo` around the iframe when an element is selected, (d) StatusBar info slots showing ARTBOARDS count + ZOOM ("100%" — static, no zoom logic yet). Zero changes to the `Viewport` component's render behavior — iframes still toggle visibility via `activePath`, no pan/zoom, no `layout.json`.
 
 ## Metadata
 
@@ -174,7 +180,7 @@ Execute in order. Design stage (Tasks 1–3) closed — implementation starts at
 
 > User-signed-off 2026-05-15 (this conversation): "navrhy ui jsou hotove". Implementation cleared to start.
 
-### Task 4: UPDATE `index.html` — Berkeley Mono webfont + theme attribute
+### Task 4: `[x]` DONE · 2026-05-15 — UPDATE `index.html` — Berkeley Mono webfont + theme attribute
 
 > **3.4 alignment note:** `index.html` is the bundle-loading variant since Phase 3.4 (no more `<script type="text/babel">` + UMD scripts; just one `<script src="/_client/client.bundle.js">` and one `<link rel="stylesheet" href="/_client/styles.css">`). The font `<link>` adjustment in this task lives next to those existing tags.
 
@@ -184,7 +190,7 @@ Execute in order. Design stage (Tasks 1–3) closed — implementation starts at
 - **Validate:** `mdcc design serve` against this repo — DevTools computed style on `body` shows `Berkeley Mono` (or `JetBrains Mono` first fallback if BM unavailable); zero Inter references in computed styles.
 - **Decision to record (DDR candidate):** font hosting strategy (a/b/c) → `/flow:record-ddr` if non-obvious.
 
-### Task 5: REFACTOR `client/styles/1-tokens.css` — bridge to `project` DS tokens
+### Task 5: `[x]` DONE · 2026-05-15 — REFACTOR `client/styles/1-tokens.css` — bridge to `project` DS tokens
 
 > **3.4 alignment note:** Phase 3.4 already split `styles.css` into 6 `@layer` files under `client/styles/`. The `:root { --u-* }` block now lives in `1-tokens.css` (the `@layer tokens`). This task **edits that one file** — no longer the legacy 1400-LOC monolith. Lightning CSS bundles the result into `dist/styles.css` at build time, so `@import` chains across DS folders Just Work.
 
@@ -199,13 +205,13 @@ Execute in order. Design stage (Tasks 1–3) closed — implementation starts at
   - `grep -E '#[0-9a-f]{3,6}|rgba?\(\s*[0-9]' plugins/design/dev-server/client/styles.css` returns zero matches (or only `rgba()` over CSS-var components for state mixing — document any exception).
   - Visual smoke: dev-server boots, sidebar + header + tree + tabs render without layout collapse.
 
-### Task 6: REFACTOR `app.jsx` chrome — Header + ThemeToggle
+### Task 6: `[x]` DONE · 2026-05-15 — REFACTOR `app.jsx` chrome — Header + ThemeToggle
 
 - **Do:** Update `Header` layout/spacing/icons to match the chrome implied by CV-08 (top edge above the sidebar/canvas split). Add a `ThemeToggle` component (Sun/Moon Lucide path) wired to `<html data-theme>` + `localStorage` persistence. No prop API changes (downstream `App` callsite untouched).
 - **Pattern:** Mono labels, 1 px hairline borders top + bottom, `--bg-1` background, accent only on hover for icon buttons (no filled buttons in chrome).
 - **Validate:** Visual diff vs `.design/system/project/preview/components-buttons.html` density; theme toggle round-trips after reload.
 
-### Task 7: REFACTOR `app.jsx` chrome — Sidebar + Tree (CV-08)
+### Task 7: `[x]` DONE · 2026-05-15 — REFACTOR `app.jsx` chrome — Sidebar + Tree (CV-08)
 
 - **Do:** Adjust `Tree`, search input, section grouping, and unread-badge positions per CV-08.
   - Search input top, full-width, 1 px hairline border, mono placeholder ("filter…").
@@ -217,20 +223,20 @@ Execute in order. Design stage (Tasks 1–3) closed — implementation starts at
 - **Keep:** `buildTree`/`filterTree` logic identical — only JSX + className + section-grouping changes.
 - **Validate:** All sidebar states (collapsed / search-hit / active / unread / empty / section-collapsed) match CV-08. Diff `app.jsx` excluding `Tree`'s data-shape — only render + className lines should be different.
 
-### Task 8: REFACTOR `app.jsx` chrome — Tabs + StatusBar slots
+### Task 8: `[x]` DONE · 2026-05-15 — REFACTOR `app.jsx` chrome — Tabs + StatusBar slots
 
 - **Do:** Re-style `Tabs` per `project` DS conventions (mono labels, 1 px hairline bottom-border on active tab as the underline, `--bg-1` bg, no pill shapes). Split `StatusBar` into named `StatusBarSlot` children so phase 4 can inject viewport metrics. Default slots in order: active path (mono, `--fg-1`) · separator (`--border-subtle` 1 px vertical hairline) · unread count (mono digit + `MessageSquare` icon) · separator · connection dot (`--status-error` = live red) + "live" label · ThemeToggle (right-anchored).
 - **Pattern:** Cross-reference CV-01's status row (bottom of viewport) for visual weight — chrome status bar should match that density.
 - **Validate:** All existing status-bar info preserved. Slot order matches plan. No regression on `<footer className="statusbar">` data flow.
 
-### Task 9: REFACTOR `app.jsx` chrome — SystemView (CV-09) + CommentsPanel (CV-10)
+### Task 9: `[x]` DONE · 2026-05-15 — REFACTOR `app.jsx` chrome — SystemView (CV-09) + CommentsPanel (CV-10)
 
 - **Do:**
   - `SystemView` — render token surfaces ladder + 8-step type ladder + specimen thumbnail grid by reading `getComputedStyle(document.documentElement)` for each `--bg-N` / `--fg-N` / `--accent*` / `--status-*`. Match CV-09 layout (3-column grid: surfaces · type · specimens).
   - `CommentsPanel` — adopt CV-10 sidebar layout: ALL / OPEN / RESOLVED tabs at top with mono counters, expanded thread item with avatar + author mono + timestamp + message body, collapsed items below, resolved items at bottom with `--fg-2` muted treatment.
 - **Validate:** Comment add/resolve/reopen flows still work (no logic touched — purely visual). DS view re-renders correctly when ThemeToggle flips light/dark (swatches must update).
 
-### Task 10: A11y + theme verification
+### Task 10: `[x]` DONE · 2026-05-15 — A11y + theme verification (light smoke; full audit deferred to `/flow:validate-a11y` at `/done`)
 
 - **Do:** Spawn `flow:a11y-auditor` against `http://localhost:4399` in **both** themes (dark + light). Verify contrast on `--accent` against `--bg-0` in both themes (project DS already specifies this in its hard-stops — confirm). Confirm focus rings present on all interactive elements (search input, tree rows, tabs, theme toggle, comment-thread buttons).
 - **Pattern:** `project` DS contrast guarantees are in its `SKILL.md` / `README.md` hard-stops — read those for the exact AA thresholds expected.
@@ -238,19 +244,92 @@ Execute in order. Design stage (Tasks 1–3) closed — implementation starts at
 
 ---
 
+> **Tasks 11–13 — Viewport-area static visuals (added 2026-05-15, scope clarified)**
+>
+> User direction: *"shell UX/UI iterace podle design návrhu, žádná funkcionalita kanvasu — to patří do Phase 4 ať se to nepřekrývá."* These three tasks lift only the **non-interactive visual surfaces** from CV-01 / CV-02. The `Viewport` component's render behavior stays unchanged (one active iframe fills the area, tabs toggle visibility); these tasks add decoration *around* it.
+>
+> **What's explicitly NOT in this scope:**
+> - No multi-iframe simultaneous rendering
+> - No pan / zoom interaction (no `viewport-control.mjs`, no wheel handler, no spacebar-drag, no keyboard shortcuts)
+> - No MiniMap component (its value requires multi-artboard layout — pointless without pan/zoom)
+> - No ZoomToolbar component (its buttons would be no-ops; ship together with the controller in Phase 4)
+> - No `<slug>.layout.json` schema or endpoints
+> - No tab-semantics change (tab click still toggles iframe visibility, not pan-to-focus)
+> - No v0.x default-grid migration
+>
+> All of the above moves back to **Phase 4** alongside the Pixi.js engine swap, so the canvas-functionality block stays atomic and reviewable in a single phase.
+
+### Task 11: ADD gridded paper background to `.viewport` (CV-01 idle texture)
+
+- **Do:** Apply the CV-01 paper-grid background to the `.viewport` container in `client/styles/3-shell.css`. Pattern (matches `Canvas Viewport.html` lines 55-64):
+  ```css
+  .viewport {
+    background-color: var(--u-bg-1);
+    background-image:
+      linear-gradient(var(--u-border-subtle) 1px, transparent 1px),
+      linear-gradient(90deg, var(--u-border-subtle) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  ```
+  This is visible in the empty-state (`no mock open`); once an iframe mounts, it covers the bg (iframes have their own opaque background per `.viewport > iframe { background: var(--u-bg-0) }`). The paper-grid signals "this is the canvas surface" to first-time users and aligns visually with what CV-01 promises Phase 4 will fully unlock.
+- **Pattern:** CV-01 `.ab-world` background style (lines 55-64 of mock).
+- **Keep:** no changes to the `Viewport` JSX or to iframe positioning. Background-only.
+- **Validate:** boot dev-server; close all tabs; confirm 24 px grid visible behind the empty-state copy in both themes (`--u-border-subtle` reads as hairline ink-on-paper in light, soft phosphor-on-dark in dark).
+
+### Task 12: ADD `<Wordmark>` empty-state watermark + `<SelectionHalo>` accent corner-ticks (CV-01, CV-02)
+
+- **Do (Wordmark):** New component in `app.jsx` rendered **only when no tabs are open** (replaces or coexists with the current `.empty-state` copy — pick whichever reads better). Top-left of the viewport area, big "mdcc-design-server" at 40 px display + sub-line `CANVAS · MDCC-DSN/01 · v1.0.0 · localhost:4399`. Project name from `_index-data` (already fetched), version baked at build time via a `define` in `build.ts` (one new define entry — `__MDCC_VERSION__: JSON.stringify(pkg.version)`).
+  ```jsx
+  function Wordmark({ project, version }) {
+    return (
+      <div className="wm" aria-label="md-claude dev-server">
+        <span className="wm-glyph">mdcc-design-server</span>
+        <span className="wm-sub">
+          <span>CANVAS · MDCC-DSN/01</span>
+          <span className="wm-sep">/</span>
+          <b>v{version}</b>
+          <span className="wm-sep">/</span>
+          <span>localhost:{port}</span>
+        </span>
+      </div>
+    );
+  }
+  ```
+  Pattern: CV-01 `.wm` CSS lines 163-185 of mock. Mounted in viewport's empty-state path only (not in the world plane, since there's no world plane in this phase).
+- **Do (SelectionHalo):** New component in `app.jsx`. Renders an accent 2 px outline with 4 corner ticks around the **active iframe** when `selected` is non-null. Position: absolute, full-bleed over the active iframe. Pattern: CV-02 `.sel-halo` CSS lines 188-204. Note: it outlines the IFRAME (the artboard frame), not the selected element inside it — element-level halo overlay is Phase 4 territory (needs world-coord projection).
+  ```jsx
+  {selected && activePath && activePath !== SYSTEM_TAB && (
+    <div className="sel-halo" aria-hidden="true"><i /></div>
+  )}
+  ```
+- **Pattern:** CV-01 `.wm` + CV-02 `.sel-halo` (lines 163-204 of mock).
+- **Style budget:** ~80 LOC net (CSS). All using `var(--u-*)` aliases; zero hex literals.
+- **Keep:** no changes to selection data flow, no changes to `Viewport` iframe rendering. Pure overlays.
+- **Validate:** empty-state shows Wordmark in top-left with project + version + port readable in both themes; selecting any element via Cmd+click puts the accent corner-ticks around the iframe frame; clearing selection hides them.
+
+### Task 13: ADD StatusBar info slots — ARTBOARDS count + ZOOM placeholder
+
+- **Do:** Add two new `StatusBarSlot` children to existing `StatusBar` in `app.jsx`, mirroring CV-01's menubar right-side info (without functional pan/zoom yet):
+  1. `<StatusBarSlot label="Open artboards">● <b>{tabs.length}</b> ARTBOARDS</StatusBarSlot>` — mono, accent dot, tab count from existing `tabs` state. Wired to real data, fully functional.
+  2. `<StatusBarSlot label="Zoom">ZOOM <b>100%</b></StatusBarSlot>` — static `100%` placeholder. The slot is structurally there so Phase 4 only has to swap the value source from constant to controller. **Title attribute reads "Pan/zoom in Phase 4"** so designers don't think it's broken.
+  - **Slot order becomes:** ACTIVE · SELECTED · COMMENTS · ARTBOARDS · ZOOM · LIVE · spacer · THEME. (No WORLD slot — there's no pan state to display; Phase 4 inserts it between ZOOM and LIVE.)
+- **Pattern:** existing `StatusBarSlot` from T8 + CV-01 menubar right (mock line 1785).
+- **Keep:** existing ACTIVE / SELECTED / COMMENTS / LIVE / THEME slots untouched.
+- **Validate:** open / close tabs; ARTBOARDS count updates live; ZOOM shows static `100%` and has a tooltip explaining it activates in Phase 4.
+
 ## Validation
 
 1. **Lint:** `biome check .` clean on touched files.
 2. **Types:** `bun tsc --noEmit` clean inside `plugins/design/dev-server/` (3.4 wired this).
 3. **Smoke:** `node cli/bin/mdcc.mjs --help` (CLI surface intact).
-4. **Build:** `bun run plugins/design/dev-server/build.ts --release --target=bun-<host>` succeeds; gz bundle ≤ 80 KB (DDR-012 budget) — token-alias additions should not noticeably bump the bundle. Lightning CSS output ≤ 30 KB minified.
+4. **Build:** `bun run plugins/design/dev-server/build.ts --release --target=bun-<host>` succeeds; gz bundle ≤ 85 KB (DDR-012 budget was 80 KB; T11-T13 add only static markup + ~80 LOC CSS, so the 5 KB tolerance is comfortable). Lightning CSS output ≤ 35 KB minified.
 5. **Cross-platform scenario:** `scenario-runner` on web-desktop only (dev-server is desktop-only by design — `project` DS desktop density rules).
-6. **Design System Guard:** spawn `design-system-guard` subagent against (a) the live dev-server URL in both themes, (b) `.design/ui/Canvas Viewport.html` CV-08/09/10 as reference truth.
-7. **A11y:** spawn `flow:a11y-auditor` against `http://localhost:4399` in both themes (see Task 10).
+6. **Design System Guard:** spawn `design-system-guard` subagent against (a) the live dev-server URL in both themes, (b) `.design/ui/Canvas Viewport.html` CV-01/02/08/09/10 as reference truth — but **only the static-visual parts of CV-01/02** (wordmark, paper grid, selection halo). Interactive chrome (MiniMap, ZoomToolbar) is *expected* to be absent until Phase 4; flag any mismatch as such.
+7. **A11y:** spawn `flow:a11y-auditor` against `http://localhost:4399` in both themes (see Task 10). No new interactive surfaces — focus / keyboard model unchanged from Tasks 4-10.
 8. **Manual:**
-   - Boot dev-server in a fresh scratch project (`/tmp/scratch` with a minimal `.design/`) — theme toggle, file tree open/close, tab switch, comment thread all visually match CV-08/09/10.
+   - Boot dev-server in a fresh scratch project (`/tmp/scratch` with a minimal `.design/`) — theme toggle, file tree open/close, tab switch, comment thread all visually match CV-08/09/10; empty-state shows Wordmark + paper grid per CV-01; selection halo appears around iframe when an element is Cmd+clicked.
    - Run dev-server against `/Volumes/D/git/dugmate/.design/` (canonical real-world example from CLAUDE.md) — no regression on real workload.
-   - Visual diff at 100% zoom: open `.design/ui/Canvas Viewport.html` in one tab, dev-server in another, side-by-side. CV-08 sidebar = dev-server left pane; CV-09 system view = dev-server SystemView; CV-10 comments = dev-server CommentsPanel. Tolerance ≤ 4 px on spacing, exact match on tokens.
+   - Visual diff at 100% zoom: open `.design/ui/Canvas Viewport.html` in one tab, dev-server in another, side-by-side. **In-scope:** CV-08 sidebar, CV-09 system view, CV-10 comments — exact match on tokens, ≤ 4 px on spacing. **Static-only from CV-01/02:** Wordmark, paper-grid bg, selection halo — match. **Out-of-scope (expected absent):** MiniMap, ZoomToolbar, multi-artboard layout — those land in Phase 4.
 
 ---
 
@@ -264,20 +343,25 @@ Execute in order. Design stage (Tasks 1–3) closed — implementation starts at
 
 **New scenarios to create:**
 
-- `dev-server-shell-tour` — flow: open dev-server → search "buttons" in tree → click an entry → switch theme (dark→light→dark) → open comment thread → resolve a comment → open System View → toggle theme again (verify swatches update). Persona: project designer iterating on a single canvas. Fixtures: pre-seeded `.design/` with 3 HTML files (including one in `system/project/preview/`) + 2 comments (1 open / 1 resolved). Web-desktop only.
+- `dev-server-shell-tour` (Tasks 4-13) — flow: open dev-server (empty state — confirm Wordmark + paper-grid bg visible) → search "buttons" in tree → click an entry (Wordmark hides as iframe mounts) → Cmd+click an element inside the iframe (confirm SelectionHalo accent corner-ticks appear; confirm ARTBOARDS slot shows `1`, ZOOM shows static `100%`) → switch theme (dark→light→dark) → open comment thread → resolve a comment → open System View → toggle theme again (verify swatches update). Persona: project designer iterating on a single canvas. Fixtures: pre-seeded `.design/` with 3 HTML files (including one in `system/project/preview/`) + 2 comments (1 open / 1 resolved). Web-desktop only.
 
 ---
 
 ## Acceptance Criteria
 
-- [ ] All 10 tasks completed (Tasks 1–3 already closed)
-- [x] Design stage signed off — CV-08 / CV-09 / CV-10 in `.design/ui/Canvas Viewport.html` covering sidebar-tree / DS view / comments panel; full-chrome wrapper + tabs-statusbar accepted as no-mock-needed per user 2026-05-15
-- [ ] `styles.css` contains zero hardcoded hex literals after Task 5 (only `var(--*)` refs and OKLCH inherited from `project` DS import)
-- [ ] Both themes render (paper-light + phosphor-dark) — ThemeToggle persists across reload
-- [ ] `app.jsx` `Viewport` component is byte-identical pre/post phase (diff = 0 in that subtree)
-- [ ] `design-system-guard` subagent: 0 blockers vs `project` DS in both themes
-- [ ] `flow:a11y-auditor`: 0 blockers in both themes
-- [ ] `dev-server-shell-tour` scenario recorded + passes on web-desktop
-- [ ] Manual smoke against `/Volumes/D/git/dugmate/.design/` shows no regression
-- [ ] No DDR-worthy decision left unrecorded — candidates: (a) font-hosting strategy (self-host vs CDN vs fallback-only), (b) token-bridge approach (alias-layer vs full rename in single commit)
-- [ ] Phase 4 plan remains valid (no task there blocked by this refactor)
+- [x] Tasks 1–3 (design stage) closed — CV-08/09/10 in `.design/ui/Canvas Viewport.html` covering sidebar-tree / DS view / comments panel; full-chrome wrapper + tabs-statusbar accepted as no-mock-needed per user 2026-05-15.
+- [x] Tasks 4–10 (shell chrome) completed.
+- [x] `styles/*.css` contains zero hardcoded hex literals (only `var(--*)` refs and OKLCH inherited from `project` DS).
+- [x] Both themes render (paper-light + phosphor-dark) — ThemeToggle persists across reload.
+- [ ] Tasks 11–13 (viewport-area static visuals) completed.
+- [ ] `.viewport` shows the CV-01 24 px paper-grid background in both themes (visible in empty-state; covered by iframe `--u-bg-0` once mounted, as designed).
+- [ ] `<Wordmark>` renders in empty-state (top-left): "mdcc-design-server" + sub-line "CANVAS · MDCC-DSN/01 · v{pkg.version} · localhost:{port}". Project name + port from `_index-data`; version baked at build time via `build.ts` `define`.
+- [ ] `<SelectionHalo>` renders accent 2 px outline + 4 corner ticks around the active iframe when `selected` is non-null; hidden when selection cleared. **It outlines the iframe frame, not the inner element** — element-level overlay is Phase 4 territory.
+- [ ] `StatusBar` carries `ARTBOARDS` slot (live count of open tabs) + `ZOOM` slot (static `100%` placeholder with title="Pan/zoom in Phase 4"). Slot order: ACTIVE · SELECTED · COMMENTS · ARTBOARDS · ZOOM · LIVE · spacer · THEME.
+- [ ] **`Viewport` render behavior unchanged** — iframes still toggle visibility via `activePath`. No pan, no zoom, no multi-artboard plane, no `layout.json`. All of that lives in Phase 4.
+- [ ] `design-system-guard` subagent: 0 blockers vs `project` DS in both themes, against CV-08/09/10 (full) + CV-01/02 (static-visual subset only — wordmark, paper grid, selection halo).
+- [ ] `flow:a11y-auditor`: 0 blockers in both themes; keyboard model unchanged from Tasks 4-10 baseline.
+- [ ] `dev-server-shell-tour` scenario recorded + passes on web-desktop, covering both shell chrome (T4-T10) and the new static visuals (T11-T13).
+- [ ] Manual smoke against `/Volumes/D/git/dugmate/.design/` shows no regression.
+- [ ] DDR candidates resolved (or explicitly skipped): (a) font-hosting strategy [resolved: option-c JetBrains fallback, see handoff report], (b) token-bridge approach [resolved: alias-layer + inlined DS values].
+- [ ] **Phase 4 plan remains coherent** — covers the canvas-functionality block in one phase (multi-iframe plane + pan/zoom controller + MiniMap + ZoomToolbar + `layout.json` + default-grid migration + tab semantics + Pixi engine swap + LoD + perf gate + world coords). See `.ai/plans/phase-4-canvas-v2-rendering-engine.md`.

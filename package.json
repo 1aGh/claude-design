@@ -1,78 +1,78 @@
 {
-  "name": "@1agh/md-claude",
-  "version": "0.12.0",
-  "description": "Marketplace of Claude Code plugins by Michal Dovrtěl: `design` (canvas-first design iteration) + `flow` (generic agentic workflow loop with .ai second brain). Ships `mdcc` CLI to scaffold workspace, run the design dev server, and manage configs.",
-  "type": "module",
-  "engines": {
-    "node": ">=20",
-    "pnpm": ">=9",
-    "bun": ">=1.3"
-  },
-  "packageManager": "pnpm@11.0.4",
-  "bin": {
-    "mdcc": "cli/bin/mdcc.mjs",
-    "mdcc-safe": "cli/cli-wrapper.cjs",
-    "claude-design-server": "plugins/design/dev-server/server.mjs"
-  },
-  "scripts": {
-    "start": "bun run plugins/design/dev-server/server.ts",
-    "dev": "bun run plugins/design/dev-server/server.ts --port 4399",
-    "dev:site": "pnpm --filter @md-claude/site dev",
-    "build": "pnpm -r --if-present run build",
-    "build:binary": "bun run plugins/design/dev-server/build.ts --release",
-    "test": "node --test --test-reporter=spec cli/**/*.test.mjs",
-    "test:dev-server": "cd plugins/design/dev-server && bun test",
-    "lint": "biome check .",
-    "format": "biome format --write .",
-    "changeset": "changeset",
-    "changeset:version": "bash scripts/changesets-version.sh",
-    "release": "pnpm build && changeset publish",
-    "mdcc": "node cli/bin/mdcc.mjs",
-    "postinstall": "node cli/install.cjs",
-    "prepublishOnly": "bash scripts/check-version-parity.sh"
-  },
-  "optionalDependencies": {
-    "@1agh/md-claude-darwin-arm64": "0.12.0",
-    "@1agh/md-claude-darwin-x64": "0.12.0",
-    "@1agh/md-claude-linux-x64": "0.12.0",
-    "@1agh/md-claude-linux-arm64": "0.12.0",
-    "@1agh/md-claude-linux-x64-musl": "0.12.0",
-    "@1agh/md-claude-linux-arm64-musl": "0.12.0",
-    "@1agh/md-claude-win32-x64": "0.12.0"
-  },
-  "files": [
-    "cli",
-    "plugins/design/dev-server",
-    "plugins/design/templates",
-    "plugins/flow/templates",
-    "plugins/flow/.claude-plugin/config.schema.json",
-    "LICENSE",
-    "README.md"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/1aGh/md-claude.git"
-  },
-  "homepage": "https://github.com/1aGh/md-claude#readme",
-  "bugs": {
-    "url": "https://github.com/1aGh/md-claude/issues"
-  },
-  "license": "MIT",
-  "author": "Michal Dovrtěl (1aGh)",
-  "keywords": [
-    "claude-code",
-    "claude-marketplace",
-    "claude-plugin",
-    "mdcc",
-    "md-claude",
-    "agentic-workflow",
-    "design-tools",
-    "design-system",
-    "dev-server",
-    "scaffold"
-  ],
-  "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
-    "@changesets/cli": "^2.27.10"
-  }
+	"name": "@1agh/md-claude",
+	"version": "0.12.0",
+	"description": "Marketplace of Claude Code plugins by Michal Dovrtěl: `design` (canvas-first design iteration) + `flow` (generic agentic workflow loop with .ai second brain). Ships `mdcc` CLI to scaffold workspace, run the design dev server, and manage configs.",
+	"type": "module",
+	"engines": {
+		"node": ">=20",
+		"pnpm": ">=9",
+		"bun": ">=1.3"
+	},
+	"packageManager": "pnpm@11.0.4",
+	"bin": {
+		"mdcc": "cli/bin/mdcc.mjs",
+		"mdcc-safe": "cli/cli-wrapper.cjs",
+		"claude-design-server": "plugins/design/dev-server/server.mjs"
+	},
+	"scripts": {
+		"start": "bun run plugins/design/dev-server/server.ts",
+		"dev": "bun run plugins/design/dev-server/server.ts --port 4399",
+		"dev:site": "pnpm --filter @md-claude/site dev --port 4398",
+		"build": "pnpm -r --if-present run build",
+		"build:binary": "bun run plugins/design/dev-server/build.ts --release",
+		"test": "node --test --test-reporter=spec cli/**/*.test.mjs",
+		"test:dev-server": "cd plugins/design/dev-server && bun test",
+		"lint": "biome check .",
+		"format": "biome format --write .",
+		"changeset": "changeset",
+		"changeset:version": "bash scripts/changesets-version.sh",
+		"release": "pnpm build && changeset publish",
+		"mdcc": "node cli/bin/mdcc.mjs",
+		"postinstall": "node cli/install.cjs",
+		"prepublishOnly": "bash scripts/check-version-parity.sh"
+	},
+	"optionalDependencies": {
+		"@1agh/md-claude-darwin-arm64": "0.12.0",
+		"@1agh/md-claude-darwin-x64": "0.12.0",
+		"@1agh/md-claude-linux-x64": "0.12.0",
+		"@1agh/md-claude-linux-arm64": "0.12.0",
+		"@1agh/md-claude-linux-x64-musl": "0.12.0",
+		"@1agh/md-claude-linux-arm64-musl": "0.12.0",
+		"@1agh/md-claude-win32-x64": "0.12.0"
+	},
+	"files": [
+		"cli",
+		"plugins/design/dev-server",
+		"plugins/design/templates",
+		"plugins/flow/templates",
+		"plugins/flow/.claude-plugin/config.schema.json",
+		"LICENSE",
+		"README.md"
+	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/1aGh/md-claude.git"
+	},
+	"homepage": "https://github.com/1aGh/md-claude#readme",
+	"bugs": {
+		"url": "https://github.com/1aGh/md-claude/issues"
+	},
+	"license": "MIT",
+	"author": "Michal Dovrtěl (1aGh)",
+	"keywords": [
+		"claude-code",
+		"claude-marketplace",
+		"claude-plugin",
+		"mdcc",
+		"md-claude",
+		"agentic-workflow",
+		"design-tools",
+		"design-system",
+		"dev-server",
+		"scaffold"
+	],
+	"devDependencies": {
+		"@biomejs/biome": "^1.9.4",
+		"@changesets/cli": "^2.27.10"
+	}
 }
