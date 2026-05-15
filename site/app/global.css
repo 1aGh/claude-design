@@ -834,11 +834,8 @@ nav[data-fd-pager],
   background: var(--bg-3);
 }
 
-/* Hide lucide glyphs inside the search dialog — same DS rule as the
-   sidebar. Scoped to fumadocs's own `bg-fd-popover` shell so we don't
-   nuke icons in other dialogs. */
-[role="dialog"].bg-fd-popover svg,
-[data-fd-search] svg,
-[data-fd-search-dialog] svg {
-  display: none;
-}
+/* Item 4 (Lucide glyphs in cmd-K) — DEFERRED.
+   The broad selector below hid load-bearing icons in the SearchTrigger and
+   ThemeSwitch buttons (both use only an SVG glyph as their child), which
+   made the buttons appear empty/unclickable. Re-add this rule once we have
+   a stable selector that targets ONLY the cmd-K result-row icons. */
