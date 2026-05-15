@@ -20,6 +20,7 @@
       "site/.next/**",
       "site/.source/**",
       "site/.vercel/**",
+      "site/app/mdcc-tokens.css",
       "site/content/docs/reference/**",
       "site/out/**",
       "site/next-env.d.ts",

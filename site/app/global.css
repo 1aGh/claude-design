@@ -21,31 +21,31 @@ html.dark .mdcc {
   --bg-1: oklch(17% 0.014 60);
   --bg-2: oklch(20% 0.016 60);
   --bg-3: oklch(24% 0.018 60);
-  --bg-4: oklch(28% 0.020 60);
+  --bg-4: oklch(28% 0.02 60);
 
-  --border-subtle:  oklch(28% 0.018 60);
+  --border-subtle: oklch(28% 0.018 60);
   --border-default: oklch(40% 0.022 60);
-  --border-strong:  oklch(58% 0.026 60);
+  --border-strong: oklch(58% 0.026 60);
 
   --fg-0: oklch(94% 0.014 80);
   --fg-1: oklch(78% 0.014 80);
   --fg-2: oklch(60% 0.012 80);
-  --fg-3: oklch(44% 0.010 80);
+  --fg-3: oklch(44% 0.01 80);
 
-  --accent:        oklch(72% 0.160 55);
-  --accent-hover:  oklch(78% 0.160 55);
-  --accent-active: oklch(84% 0.160 55);
-  --accent-fg:     oklch(14% 0.020 50);
-  --accent-tint:   oklch(28% 0.060 55);
+  --accent: oklch(72% 0.16 55);
+  --accent-hover: oklch(78% 0.16 55);
+  --accent-active: oklch(84% 0.16 55);
+  --accent-fg: oklch(14% 0.02 50);
+  --accent-tint: oklch(28% 0.06 55);
 
   --status-success: oklch(72% 0.16 145);
-  --status-warn:    oklch(80% 0.16  88);
-  --status-error:   oklch(68% 0.20  25);
-  --status-info:    oklch(72% 0.13 230);
+  --status-warn: oklch(80% 0.16 88);
+  --status-error: oklch(68% 0.2 25);
+  --status-info: oklch(72% 0.13 230);
 
-  --mono-cell-bg:   oklch(20% 0.016 60);
-  --mono-cell-fg:   oklch(88% 0.014 60);
-  --mono-rule:      oklch(32% 0.020 60);
+  --mono-cell-bg: oklch(20% 0.016 60);
+  --mono-cell-fg: oklch(88% 0.014 60);
+  --mono-rule: oklch(32% 0.02 60);
 
   --shadow-focus: 0 0 0 2px var(--accent);
   color-scheme: dark;
@@ -87,10 +87,8 @@ html > body[data-scroll-locked] {
 }
 
 body {
-  font-family:
-    'Berkeley Mono', 'TX-02', 'JetBrains Mono',
-    var(--font-mdcc-mono),
-    'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: "Berkeley Mono", "TX-02", "JetBrains Mono", var(--font-mdcc-mono), "IBM Plex Mono",
+    ui-monospace, SFMono-Regular, Menlo, monospace;
   font-feature-settings: "ss01", "ss20"; /* JetBrains Mono: zero with slash */
   background: var(--color-fd-background);
   color: var(--color-fd-foreground);
@@ -135,8 +133,7 @@ html.dark .mdcc-sku {
   font-size: var(--type-sm);
   letter-spacing: var(--tracking-normal);
   border-bottom: 1px solid transparent;
-  transition: color var(--dur-flip) var(--ease-out),
-              border-color var(--dur-flip) var(--ease-out);
+  transition: color var(--dur-flip) var(--ease-out), border-color var(--dur-flip) var(--ease-out);
 }
 .mdcc-nav-link:hover {
   color: var(--fg-0);
@@ -185,7 +182,9 @@ html.dark .mdcc-sku {
   padding: var(--space-8) 0;
 }
 @media (max-width: 880px) {
-  .mdcc-hero { grid-template-columns: 1fr; }
+  .mdcc-hero {
+    grid-template-columns: 1fr;
+  }
 }
 
 .mdcc-hero-copy h1 {
@@ -281,7 +280,9 @@ html.dark .mdcc-sku {
   cursor: pointer;
   transition: background var(--dur-flip) var(--ease-out);
 }
-.mdcc-install-copy:hover { background: var(--bg-3); }
+.mdcc-install-copy:hover {
+  background: var(--bg-3);
+}
 
 .mdcc-cta-primary,
 .mdcc-cta-ghost {
@@ -294,14 +295,15 @@ html.dark .mdcc-sku {
   letter-spacing: var(--tracking-normal);
   text-decoration: none;
   border: 1px solid var(--accent);
-  transition: background var(--dur-flip) var(--ease-out),
-              color var(--dur-flip) var(--ease-out);
+  transition: background var(--dur-flip) var(--ease-out), color var(--dur-flip) var(--ease-out);
 }
 .mdcc-cta-primary {
   background: var(--accent);
   color: var(--accent-fg);
 }
-.mdcc-cta-primary:hover { background: var(--accent-hover); }
+.mdcc-cta-primary:hover {
+  background: var(--accent-hover);
+}
 .mdcc-cta-ghost {
   background: transparent;
   color: var(--fg-0);
@@ -341,7 +343,9 @@ html.dark .mdcc-sku {
   background: var(--bg-0);
 }
 @media (max-width: 880px) {
-  .mdcc-cat-grid { grid-template-columns: 1fr; }
+  .mdcc-cat-grid {
+    grid-template-columns: 1fr;
+  }
 }
 .mdcc-cat-card {
   margin: -1px 0 0 -1px;
@@ -355,7 +359,9 @@ html.dark .mdcc-sku {
   text-decoration: none;
   transition: background var(--dur-panel) var(--ease-out);
 }
-.mdcc-cat-card:hover { background: var(--bg-1); }
+.mdcc-cat-card:hover {
+  background: var(--bg-1);
+}
 .mdcc-cat-card-head {
   display: flex;
   align-items: center;
@@ -394,7 +400,9 @@ html.dark .mdcc-sku {
   letter-spacing: var(--tracking-wide);
 }
 @media (max-width: 720px) {
-  .mdcc-meta-footer { grid-template-columns: repeat(2, 1fr); }
+  .mdcc-meta-footer {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 .mdcc-meta-footer dt {
   text-transform: uppercase;
@@ -429,8 +437,12 @@ html.dark .mdcc-sku {
   color: var(--fg-2);
   text-decoration: none;
 }
-.mdcc-sku-breadcrumb a:hover { color: var(--fg-0); }
-.mdcc-sku-breadcrumb .sep { color: var(--fg-3); }
+.mdcc-sku-breadcrumb a:hover {
+  color: var(--fg-0);
+}
+.mdcc-sku-breadcrumb .sep {
+  color: var(--fg-3);
+}
 
 /* CSS counters for h2 numbering in docs body. We target the fumadocs DocsBody
    article — `[data-fd-page]` is the typical wrapper; if absent fall back to
@@ -494,7 +506,9 @@ article.prose h2::before,
   text-underline-offset: 2px;
   text-decoration-color: var(--border-default);
 }
-.mdcc-page-meta a:hover { text-decoration-color: var(--accent); }
+.mdcc-page-meta a:hover {
+  text-decoration-color: var(--accent);
+}
 
 /* Sidebar re-skin (fumadocs default selectors) */
 #nd-sidebar {
@@ -513,7 +527,9 @@ article.prose h2::before,
   border-left: 1px solid var(--accent);
   background: var(--accent-tint) !important;
 }
-#nd-sidebar a[data-active="true"]::before { display: none; }
+#nd-sidebar a[data-active="true"]::before {
+  display: none;
+}
 /* Hide lucide icons in sidebar items (DS hard NO: no emoji/icons in chrome) */
 #nd-sidebar a > svg,
 #nd-sidebar [data-button] > svg {
@@ -556,9 +572,8 @@ nav[data-fd-pager],
 .mdcc-code {
   border: 1px solid var(--mono-rule);
   background: var(--bg-1);
-  font-family:
-    'Berkeley Mono', 'TX-02', 'JetBrains Mono',
-    var(--font-mdcc-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: "Berkeley Mono", "TX-02", "JetBrains Mono", var(--font-mdcc-mono), ui-monospace,
+    SFMono-Regular, Menlo, monospace;
   font-size: var(--type-sm);
   line-height: var(--lh-md);
   margin: var(--space-5) 0;
@@ -588,8 +603,13 @@ nav[data-fd-pager],
   text-transform: uppercase;
   letter-spacing: var(--tracking-wide);
 }
-.mdcc-code-copy:hover { color: var(--fg-0); border-color: var(--border-default); }
-.mdcc-code-copy[data-copied="true"] { color: var(--status-success); }
+.mdcc-code-copy:hover {
+  color: var(--fg-0);
+  border-color: var(--border-default);
+}
+.mdcc-code-copy[data-copied="true"] {
+  color: var(--status-success);
+}
 .mdcc-code-body {
   padding: var(--space-4);
   overflow-x: auto;
@@ -608,9 +628,8 @@ nav[data-fd-pager],
   padding: 1px 4px;
   border: 1px solid var(--mono-rule);
   border-radius: var(--radius-xs);
-  font-family:
-    'Berkeley Mono', 'TX-02', 'JetBrains Mono',
-    var(--font-mdcc-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: "Berkeley Mono", "TX-02", "JetBrains Mono", var(--font-mdcc-mono), ui-monospace,
+    SFMono-Regular, Menlo, monospace;
   font-size: 0.92em;
 }
 
@@ -631,25 +650,40 @@ nav[data-fd-pager],
   line-height: var(--lh-base);
   color: var(--fg-1);
 }
-.mdcc-callout-body { font-size: var(--type-sm); line-height: var(--lh-md); }
-.mdcc-callout-body > *:first-child { margin-top: 0; }
-.mdcc-callout-body > *:last-child { margin-bottom: 0; }
+.mdcc-callout-body {
+  font-size: var(--type-sm);
+  line-height: var(--lh-md);
+}
+.mdcc-callout-body > *:first-child {
+  margin-top: 0;
+}
+.mdcc-callout-body > *:last-child {
+  margin-bottom: 0;
+}
 .mdcc-callout[data-type="note"] {
   border-left-color: var(--status-info);
 }
-.mdcc-callout[data-type="note"] .mdcc-callout-glyph { color: var(--status-info); }
+.mdcc-callout[data-type="note"] .mdcc-callout-glyph {
+  color: var(--status-info);
+}
 .mdcc-callout[data-type="warn"] {
   border-left-color: var(--status-warn);
 }
-.mdcc-callout[data-type="warn"] .mdcc-callout-glyph { color: var(--status-warn); }
+.mdcc-callout[data-type="warn"] .mdcc-callout-glyph {
+  color: var(--status-warn);
+}
 .mdcc-callout[data-type="danger"] {
   border-left-color: var(--status-error);
 }
-.mdcc-callout[data-type="danger"] .mdcc-callout-glyph { color: var(--status-error); }
+.mdcc-callout[data-type="danger"] .mdcc-callout-glyph {
+  color: var(--status-error);
+}
 .mdcc-callout[data-type="tip"] {
   border-left-color: var(--status-success);
 }
-.mdcc-callout[data-type="tip"] .mdcc-callout-glyph { color: var(--status-success); }
+.mdcc-callout[data-type="tip"] .mdcc-callout-glyph {
+  color: var(--status-success);
+}
 
 /* ─────────────────────────────────────────────────────────────────────────
    Cmd-K palette — re-skin Orama dialog

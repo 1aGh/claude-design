@@ -9,9 +9,9 @@
 //
 // First invocation may install chromium (~150 MB). Subsequent runs reuse cache.
 
-import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { chromium } from 'playwright';
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((acc, cur, i, all) => {
@@ -22,7 +22,9 @@ const args = Object.fromEntries(
 
 const { url, selector, out, timeout = '8' } = args;
 if (!url || !out) {
-  console.error('usage: _screenshot-playwright.mjs --url <url> [--selector <css>] --out <path> [--timeout 8]');
+  console.error(
+    'usage: _screenshot-playwright.mjs --url <url> [--selector <css>] --out <path> [--timeout 8]'
+  );
   process.exit(2);
 }
 

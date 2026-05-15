@@ -20,7 +20,11 @@ const docsRoot = resolve(__dirname, '../content/docs');
 
 const sh = (cmd, fallback = '') => {
   try {
-    return execSync(cmd, { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    return execSync(cmd, {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
   } catch {
     return fallback;
   }
@@ -74,7 +78,9 @@ async function buildPageUpdatedMap() {
 const pkg = JSON.parse(await readFile(resolve(repoRoot, 'package.json'), 'utf8'));
 
 const lastTagDate =
-  sh("git for-each-ref --sort=-creatordate --count=1 --format='%(creatordate:short)' refs/tags/v*") ||
+  sh(
+    "git for-each-ref --sort=-creatordate --count=1 --format='%(creatordate:short)' refs/tags/v*"
+  ) ||
   sh('git log -1 --format=%cs -- package.json') ||
   new Date().toISOString().slice(0, 10);
 
@@ -85,8 +91,7 @@ const contributors = contributorsRaw
   ? contributorsRaw
       .split('\n')
       .filter(Boolean)
-      .filter((line) => !/\[bot\]/i.test(line))
-      .length
+      .filter((line) => !/\[bot\]/i.test(line)).length
   : 0;
 
 const stats = {
@@ -129,5 +134,5 @@ console.log(
     `        design: ${designP.commands}c / ${designP.skills}s / ${designP.agents}a · ` +
     `flow: ${flowP.commands}c / ${flowP.skills}s / ${flowP.agents}a · ` +
     `mdcc: ${stats.plugins.mdcc.subcommands}sub\n` +
-    `        page-updated entries: ${Object.keys(stats.pageUpdated).length}`,
+    `        page-updated entries: ${Object.keys(stats.pageUpdated).length}`
 );
