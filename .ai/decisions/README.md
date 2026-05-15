@@ -10,6 +10,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
 
+- [DDR-009: Bun runtime authoritative for `plugins/design/dev-server/` (no Node fallback)](DDR-009-bun-runtime-authoritative-for-dev-server.md) — 2026-05-15, design/dev-server/runtime/bun/distribution/perf/lock-in/npm/ci/phase-3.4
 - [DDR-008: `plugins/design/dev-server/bin/` is the canonical home for shared bash helpers](DDR-008-dev-server-bin-canonical-helper-home.md) — 2026-05-15, design/dev-server/bash/helpers/dry/ci/npm-distribution
 - [DDR-007: Stable element-id schema — paired `data-dc-screen` + `data-dc-element` attributes on canvas content](DDR-007-stable-element-id-schema-data-dc-attrs.md) — 2026-05-15, design/runtime/inspector/screenshots/critics/comments/schema
 - [DDR-006: Plugin commands/skills/agents declare `name: <plugin>:<slug>` in frontmatter](DDR-006-plugin-namespace-in-name-frontmatter.md) — 2026-05-13, flow/design/plugin-design/slash-commands/naming/deprecation

@@ -40,6 +40,8 @@ There is **no test suite, lint config, or build step** in this repo — the plug
 
 ### Dev server runtime contract (`plugins/design/dev-server/server.mjs`)
 
+> **Runtime migration ahead — [DDR-009](.ai/decisions/DDR-009-bun-runtime-authoritative-for-dev-server.md) (2026-05-15):** Phase 3.4 ([`.ai/plans/phase-3.4-architecture-refactor.md`](.ai/plans/phase-3.4-architecture-refactor.md)) migrates this server to **Bun authoritatively** (`Bun.serve` + `Bun.file` + `Bun.write` + `Bun.spawn` + `bun:test`), distributed as per-platform `bun --compile` standalone binaries via npm `optionalDependencies` sub-packages (mirroring `@anthropic-ai/claude-code`). No Node fallback. **When writing new dev-server code, reach for `Bun.*` APIs instead of `node:http` / `node:fs.readFile` / `node:child_process.spawn`** — `node:path` and `node:url` stay (Bun supports them identically). Tests under `plugins/design/dev-server/` use `bun:test`, not `node --test` (the `cli/` shim stays Node). The description below documents the current pre-migration state; update it once Task 7 of Phase 3.4 lands.
+
 The server is zero-dep (`node:http` + `node:crypto` for WS handshake) and resolves the **target repo root** in this order: `--root <path>` arg → `$CLAUDE_PROJECT_DIR` → `process.cwd()`. It deliberately never uses `__dirname` for the project root, because the plugin can be installed centrally (npm global) and serve any repo.
 
 It writes three runtime files into `<designRoot>/` that the orchestrator (`/design` slash command) relies on:
@@ -106,6 +108,8 @@ Entry points (load these when relevant, in this order):
 - `plugins/design/CATEGORIES.md` — command catalog and naming convention
 
 When working on a brief the user provided via `/design:setup-ds` or `/design:new`: pass their input **verbatim** to the skill / agent. Do not paraphrase, polish, or augment the brief with "vibe references". Do not propose option ladders that name specific products (brand-name suggestions at the brief-capture stage are the bias source the research agent exists to eliminate). The plugin's own docs handle option generation via the `design:ux-research-agent` — your job is to invoke the right slash command with the user's input intact.
+
+**Pattern priors come first.** When working under a project DS that has existing canvases or preview components, those files ARE the design spec, not the generic DS readme. Before scaffolding new compositional elements (cards, panels, modals, snippets), grep the existing canvas set and preview library for similar shapes. Lifting is the default; reinventing is the exception and needs a one-line comment explaining why a prior didn't fit. Applies to `/design:new` (envelope construction) and `/design:edit` (when adding new components). The `design-system-keeper` agent enforces this — see `plugins/design/agents/design-system-keeper.md` and DDR-010.
 
 ## Release flow
 
