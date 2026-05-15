@@ -44,7 +44,7 @@ Two stages (design closed, code remaining):
 - **Complexity:** Medium
 - **App/Package:** `plugins/design/dev-server/` (shell only)
 - **Affected Systems:** dev-server client (React UI), project DS consumers
-- **Depends on:** **Phase 3.4** (Bun runtime + `build.ts` orchestrator + Preact + 7-module server split + `client/styles/` `@layer` architecture + per-platform binary distribution) must land first. This phase consumes 3.4's bundled `index.html`, the Lightning-CSS-emitted `dist/styles.css`, and the existing `1-tokens.css` `@layer` for the DS import.
+- **Depends on:** **Phase 3.4** (Bun runtime + `build.ts` orchestrator + React 19 unified runtime per DDR-012 + 7-module server split + `client/styles/` `@layer` architecture + per-platform binary distribution) must land first. This phase consumes 3.4's bundled `index.html`, the Lightning-CSS-emitted `dist/styles.css`, and the existing `1-tokens.css` `@layer` for the DS import.
 - **Dependencies (npm):** `project` DS already bootstrapped (`.design/system/project/`); no new npm deps; Berkeley Mono webfont (or self-hosted asset under `.design/system/project/assets/`).
 - **Blocks:** phase-4 (will land on refreshed shell — viewport rewrite stays clean)
 

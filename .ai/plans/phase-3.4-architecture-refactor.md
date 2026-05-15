@@ -1,12 +1,14 @@
 # Phase 3.4: Dev-server architecture refactor (performance pre-cleanup)
 
+> **PIVOTED 2026-05-15** — runtime simplified from "Preact for shell + React 19 for canvases (hybrid)" to **"React 19 everywhere"** (DDR-012, pending). The Preact bundle+RAM win on the shell didn't justify the dual-runtime complexity (two `jsxImportSource` configs, two bundle paths, conditional mount API, `meta.runtime` field, per-runtime handoff audit, future-phase cognitive tax). Performance budgets **relaxed** below to absorb React 19's footprint while keeping the v1 "tip-top" narrative (cold-start to HTTP 200 < 100 ms unchanged; bundle gz < 80 KB up from 60; idle RAM < 80 MB up from 50; first paint < 350 ms up from 250). Files-to-Create + Task 4 simplified accordingly; DDR list re-themed; Phase 3.5 + Phase 3.6 updated in lockstep.
+
 > **Goal:** make the dev-server tip-top — fast, low-RAM, no jank — **before** any feature work lands. This pulls the architectural decisions out of Phase 4 so Phase 4 can stay focused on the Pixi.js canvas + render engine.
 >
 > **Source of architectural research:** [`.ai/docs/research-runtime.md`](../docs/research-runtime.md) (runtime choice) + external deep-research on perf-oriented local dev-tool architecture (2026-05-15, captured inline in this plan's "Research" section).
 
 ## Description
 
-Refactor the dev-server's shell to a build-pipeline-driven, **Bun-runtime-authoritative** architecture targeting concrete performance budgets. Concretely: migrate server source to `Bun.serve` / `Bun.file` / `Bun.write` (drops `node:http` + the handwritten WS upgrade — Bun's `serve` handles both natively), modularize the 1288-LOC `server.mjs` into typed `.ts` modules, swap React-UMD-via-babel-standalone for Preact-via-`preact/compat`, organize `styles.css` into CSS `@layer`s with Lightning CSS at build time, add custom WS-driven HMR over the existing inspector socket, harden memory hygiene (Bun heap-snapshot-based leak detection + `FinalizationRegistry` for iframe state), lazy-mount iframes via IntersectionObserver, and **ship as a `bun build --compile` standalone binary per platform** (darwin-arm64 / darwin-x64 / linux-x64 / win32-x64), distributed via npm `optionalDependencies` sub-packages (esbuild-style pattern). End-user prereq drops from "Node 20+ installed" → "nothing" — `npm i -g @1agh/md-claude` installs only the matching platform's ~70 MB binary; running `mdcc design serve` launches that binary directly.
+Refactor the dev-server's shell to a build-pipeline-driven, **Bun-runtime-authoritative** architecture targeting concrete performance budgets. Concretely: migrate server source to `Bun.serve` / `Bun.file` / `Bun.write` (drops `node:http` + the handwritten WS upgrade — Bun's `serve` handles both natively), modularize the 1288-LOC `server.mjs` into typed `.ts` modules, swap React-UMD-via-babel-standalone for **`Bun.build`-produced React 19 bundle** (single runtime for shell + canvases — see DDR-012), organize `styles.css` into CSS `@layer`s with Lightning CSS at build time, add custom WS-driven HMR over the existing inspector socket, harden memory hygiene (Bun heap-snapshot-based leak detection + `FinalizationRegistry` for iframe state), lazy-mount iframes via IntersectionObserver, and **ship as a `bun build --compile` standalone binary per platform** (darwin-arm64 / darwin-x64 / linux-x64 / win32-x64), distributed via npm `optionalDependencies` sub-packages (esbuild-style pattern). End-user prereq drops from "Node 20+ installed" → "nothing" — `npm i -g @1agh/md-claude` installs only the matching platform's ~70 MB binary; running `mdcc design serve` launches that binary directly.
 
 **This is a runtime-authoritative migration, not a build-target migration.** Source code uses Bun APIs (`Bun.serve`, `Bun.file`, `Bun.write`, `Bun.spawn`, `Bun.password`, `bun:test`); there is no Node fallback. Trade-off accepted per DDR-009: maximal cold-start + WS perf + zero-end-user-prereq distribution in exchange for Bun tail-risk + lock-in.
 
@@ -37,8 +39,8 @@ As a designer running `mdcc design serve` for hours on my laptop, I want to inst
 Four-stack rewrite, additive (no end-user behavior change), ordered to land independently:
 
 1. **Bun runtime authority + server modular split (TypeScript)** — Migrate `server.mjs` to a `.ts` module set: `server.ts` (entry + `Bun.serve` lifecycle) · `http.ts` (route fetch handler) · `ws.ts` (Bun.serve native WebSocket handler — replaces handwritten upgrade) · `api.ts` (`/api/*` handlers) · `inspect.ts` (active-canvas + selected-element protocol) · `history.ts` (snapshot stack) · `fs-watch.ts` (Bun's `fs.watch` recursive). All file I/O via `Bun.file` / `Bun.write`; all subprocess calls via `Bun.spawn`; tests in `bun:test`.
-2. **Bundler + compile pipeline** — `build.ts` driving (a) `Bun.build` for the **client** (JSX, esbuild-compatible, IIFE for the browser, Preact aliased) + (b) `bun build --compile --target=bun-<platform>` for the **server** (produces standalone binary). Lightning CSS still handles `client/styles/`. Output: `dist/client.bundle.js`, `dist/styles.css`, `dist/mdcc-<platform>` (binary). Per-platform CI matrix in GitHub Actions.
-3. **Framework swap (client)** — Alias React → `preact/compat` so the existing JSX compiles unchanged into ~5 KB-gzip runtime. Drop babel-standalone + unpkg React script tags from `index.html`; load `Bun.build`-produced bundle.
+2. **Bundler + compile pipeline** — `build.ts` driving (a) `Bun.build` for the **client** (JSX, esbuild-compatible, IIFE for the browser, **React 19 from npm**, tree-shaken) + (b) `bun build --compile --target=bun-<platform>` for the **server** (produces standalone binary). Lightning CSS still handles `client/styles/`. Output: `dist/client.bundle.js` (shell + shared React 19 runtime), `dist/styles.css`, `dist/mdcc-<platform>` (binary). Per-platform CI matrix in GitHub Actions.
+3. **Framework swap (client)** — Drop babel-standalone + UMD React from `index.html`; load `Bun.build`-produced bundle that ships **React 19 from npm** tree-shaken (~25-35 KB gz after Bun.build dead-code elimination — shell uses ~30 % of React's surface). The React 19 runtime bundle is shared between the shell (loaded at `/`) and Phase 3.6's canvas TSX route (loaded at `/ui/:slug`) — one runtime, one mental model, per DDR-012.
 4. **Client perf hardening** — Custom WS-driven HMR reusing the existing inspector socket (parent-only patches; iframes never reload). CSS rewrite into `@layer reset, tokens, layout, shell, components, utilities` with Lightning CSS handling OKLCH fallbacks + minification. IntersectionObserver-based lazy mount of artboard iframes with `content-visibility: auto` on wrappers. `FinalizationRegistry` + `WeakRef` for iframe-scoped state cleanup (Bun's JSCore GC behavior verified against the 8 h soak).
 
 5. **Distribution** — npm package `@1agh/md-claude` ships a tiny JS shim (`cli/bin/mdcc.mjs`, < 5 KB) that detects platform + `exec`s the matching per-platform binary, fetched via `optionalDependencies`: `@1agh/md-claude-darwin-arm64`, `@1agh/md-claude-darwin-x64`, `@1agh/md-claude-linux-x64`, `@1agh/md-claude-win32-x64`. End-user `npm i -g @1agh/md-claude` installs the shim + only their platform's ~70 MB binary. Pattern lifted from `esbuild` / `@swc/core` / `@biomejs/biome` (all live this way in production).
@@ -50,8 +52,8 @@ Four-stack rewrite, additive (no end-user behavior change), ordered to land inde
 - **App/Package:** `plugins/design/dev-server/` + `cli/` end-to-end + CI release pipeline
 - **Affected Systems:** dev-server server, dev-server client, mdcc CLI, build pipeline, GitHub Actions release workflow, npm tarball composition (single → multi-package)
 - **New runtime:** **Bun ≥ 1.3** (authoritative). Source uses `Bun.*` APIs. No Node fallback. Node 20+ is no longer a runtime; only `cli/bin/mdcc.mjs` (the shim) runs on whatever the user's `npm exec` resolves to (typically Node, but trivial so doesn't matter).
-- **New build-time deps:** `bun` (CI-only, installed via `curl -fsSL https://bun.sh/install | bash`), `@types/bun`, `preact ^10`, `lightningcss ^1.27`. **Dropped:** `esbuild` (replaced by `Bun.build`), `@parcel/watcher` (replaced by Bun's recursive `fs.watch`), handwritten WS upgrade code (replaced by `Bun.serve` websocket handler).
-- **Blocks:** Phase 3.5 (shell visual refresh — lands on the new bundle + Preact), **Phase 3.6** (canvas TSX format — needs `Bun.Transpiler`, `Bun.hash`, `Bun.serve` routes API + `inspect.ts` injected-script seam), Phase 4 (canvas v2 — lands on the binary + smaller render scheduler footprint), **Phase 12** (in-canvas CSS editor + layers — transitively via 3.6's `_locator.json` contract), every subsequent phase
+- **New build-time deps:** `bun` (CI-only, installed via `curl -fsSL https://bun.sh/install | bash`), `@types/bun`, `react ^19`, `react-dom ^19`, `lightningcss ^1.27`. **Dropped:** `esbuild` (replaced by `Bun.build`), `@parcel/watcher` (replaced by Bun's recursive `fs.watch`), handwritten WS upgrade code (replaced by `Bun.serve` websocket handler), Preact (decided against; see DDR-012).
+- **Blocks:** Phase 3.5 (shell visual refresh — lands on the new bundle + React 19), **Phase 3.6** (canvas TSX format — needs `Bun.Transpiler`, `Bun.hash`, `Bun.serve` routes API + `inspect.ts` injected-script seam + shared React 19 runtime), Phase 4 (canvas v2 — lands on the binary), **Phase 12** (in-canvas CSS editor + layers — transitively via 3.6's `_locator.json` contract), every subsequent phase
 
 ## Performance budgets (acceptance gates)
 
@@ -60,10 +62,10 @@ Four-stack rewrite, additive (no end-user behavior change), ordered to land inde
 | Metric | Target | How measured | Rationale |
 | --- | --- | --- | --- |
 | Cold start: process spawn → HTTP `/` 200 | **< 100 ms** | `time mdcc design serve --port 4399 &; curl localhost:4399/_health` | Bun standalone binary baseline |
-| Cold start: process spawn → first paint of file tree | **< 250 ms** | server logs `started`, client logs `first-paint` via `performance.timeOrigin` | "feels native" threshold |
-| Initial client bundle size (gz) | **< 60 KB** | `du -sh dist/client.bundle.js.gz` after `Bun.build` + Lightning CSS minify | Without Pixi (Phase 4 adds ~120 KB more) |
+| Cold start: process spawn → first paint of file tree | **< 350 ms** | server logs `started`, client logs `first-paint` via `performance.timeOrigin` | "feels native" threshold; relaxed from 250 ms to absorb React 19 vs Preact delta (DDR-012) |
+| Initial client bundle size (gz) | **< 80 KB** | `du -sh dist/client.bundle.js.gz` after `Bun.build` + Lightning CSS minify | Shell + React 19 tree-shaken; relaxed from 60 KB. Pixi (Phase 4) adds ~120 KB more |
 | Standalone binary size per platform | **< 80 MB** (gzipped tarball entry ~40 MB) | `du -sh dist/mdcc-<platform>` after `bun build --compile` | Bun runtime + JSCore + bundled JS |
-| Idle RAM (8 h session, 1 canvas open, no interaction) | **< 50 MB resident** | `ps -o rss` snapshots every 60 s | Bun JSCore is ~30-40 % lower than V8 |
+| Idle RAM (8 h session, 1 canvas open, no interaction) | **< 80 MB resident** | `ps -o rss` snapshots every 60 s | Relaxed from 50 MB to absorb React 19 vs Preact delta. Bun JSCore is still ~30-40 % lower than V8 baseline — 80 MB cap is conservative for an 8h session |
 | Peak RAM (10 canvases open + 1 h pan-zoom — measured AFTER Phase 4 lands; gated only on the Phase 3.4 baseline subset here) | **< 150 MB resident** | same harness | Bounded growth |
 | Theme toggle paint | **< 16 ms** | `requestAnimationFrame` delta after `data-theme` flip | One frame budget |
 | Tree open/collapse | **< 8 ms** | Performance API mark + measure | Half-frame for 60 fps room |
@@ -83,7 +85,7 @@ If any of these regress in a later phase, the offending change is reverted befor
 ### Must-Read Files
 
 - `plugins/design/dev-server/server.mjs` (1288 LOC) — full file. Identify hot paths + boundaries for the modular split.
-- `plugins/design/dev-server/client/app.jsx` (1000 LOC) — full file. Inventory React-specific APIs that need `preact/compat` shims (`useId`, `Suspense`, concurrent features, `flushSync`, refs).
+- `plugins/design/dev-server/client/app.jsx` (1000 LOC) — full file. Now runs natively on React 19 (no compat shim needed); rewrite is mostly removing the React UMD globals + adopting esm imports.
 - `plugins/design/dev-server/client/styles.css` (1400 LOC) — for the `@layer` split + Lightning CSS audit.
 - `plugins/design/dev-server/client/index.html` — script tags to remove; bundle tag to add.
 - `plugins/design/dev-server/runtime/design-canvas.jsx` (39 KB) + `runtime/tweaks-panel.jsx` (18 KB) — **audit before refactor.** Likely meta-design canvases from commits `b200e59` ("stable element IDs + canonical screenshot pipeline + shared bash helpers") + `5864f71` ("meta-design of dev-server canvas viewport states"). If they're design artifacts they belong under `.design/ui/`; if they're runtime code, modularize them. DDR required.
@@ -122,7 +124,7 @@ If any of these regress in a later phase, the offending change is reverted befor
   - `active-state.test.ts` — `_active.json` write/read roundtrip.
   - `history-rollback.test.ts` — snapshot stack + restore.
   - `fs-watch.test.ts` — recursive `fs.watch` fires on file change (tempdir fixture).
-  - `bundle-smoke.test.ts` — `dist/client.bundle.js` exists, parses as JS, contains a Preact marker.
+  - `bundle-smoke.test.ts` — `dist/client.bundle.js` exists, parses as JS, contains a React 19 marker.
   - `binary-smoke.test.ts` — `dist/mdcc-<platform>` exists, `chmod +x`, spawns and exits 0 on `--version`.
 - `plugins/design/dev-server/.npmignore` — exclude `test/`, `client/`, `*.ts` source — only `dist/` + `bin/` + `package.json` ship. **Note:** the dev-server workspace package is NOT published independently; it's bundled into the per-platform sub-packages below.
 - `cli/bin/mdcc.exe` — 500-byte ASCII shell stub (Claude-Code-pattern). The actual binary is hardlinked over this file by postinstall. Bin entry in root `package.json`.
@@ -137,15 +139,15 @@ If any of these regress in a later phase, the offending change is reverted befor
 - `packages/md-claude-win32-x64/package.json` + binary — Windows x64.
 - `.github/workflows/build-binaries.yml` — release-tag-triggered matrix workflow: `runs-on: [macos-14, macos-13, ubuntu-22.04, ubuntu-22.04-arm, ubuntu-22.04 (Alpine container), windows-2022]`, each installs Bun, builds the binary, uploads as a GitHub Release asset + publishes the per-platform sub-package to npm with `--provenance`.
 - `.ai/decisions/DDR-009-bun-runtime-authoritative.md` — flipped from prior "Stay Node" recommendation. Cites research-runtime.md as superseded by Option-B decision (2026-05-15).
-- `.ai/decisions/DDR-010-preact-compat-for-shell.md` — React → Preact via compat alias.
-- `.ai/decisions/DDR-011-server-modular-split-typescript.md` — module boundaries + TypeScript adoption.
-- `.ai/decisions/DDR-012-css-layer-architecture.md` — `@layer` ordering rationale.
-- `.ai/decisions/DDR-013-per-platform-binary-distribution.md` — `optionalDependencies` sub-package pattern; why not single tarball; CI release-matrix design.
-- `.ai/decisions/DDR-014-runtime-folder-purpose.md` — outcome of the `runtime/` audit.
+- `.ai/decisions/DDR-012-react-19-unified-runtime.md` — **React 19 everywhere** (supersedes the prior "Preact via compat for shell" draft). Records the three-draft pivot + the bundle/RAM-vs-complexity trade-off + the relaxed performance budgets.
+- `.ai/decisions/DDR-013-server-modular-split-typescript.md` — module boundaries + TypeScript adoption.
+- `.ai/decisions/DDR-014-css-layer-architecture.md` — `@layer` ordering rationale.
+- `.ai/decisions/DDR-015-per-platform-binary-distribution.md` — `optionalDependencies` sub-package pattern; why not single tarball; CI release-matrix design.
+- `.ai/decisions/DDR-016-runtime-folder-purpose.md` — outcome of the `runtime/` audit.
 
 ### Documentation (external — opened during research)
 
-- [Preact official site](https://preactjs.com/) — drop-in compat surface.
+- [React 19 release notes](https://react.dev/blog/2024/12/05/react-19) — features available natively (no compat layer needed).
 - [esbuild getting started](https://esbuild.github.io/getting-started/) — IIFE + ESM dual output.
 - [Lightning CSS](https://lightningcss.dev/) — `@layer` support + OKLCH fallbacks + minification.
 - [`@parcel/watcher`](https://github.com/parcel-bundler/watcher) — native macOS FSEvents wrapper; used by Tailwind/Nx/Nuxt.
@@ -156,7 +158,7 @@ If any of these regress in a later phase, the offending change is reverted befor
 
 ### Patterns to Follow
 
-- Keep zero-runtime-dependency philosophy on the **server** side: `@parcel/watcher` is the *only* runtime dep we accept (justified by macOS FSEvents reliability — see DDR-013). All other new deps (`esbuild`, `lightningcss`, `preact`) are `devDependencies` consumed at build time and inlined into `dist/`.
+- Keep zero-runtime-dependency philosophy on the **server** side: Bun's recursive `fs.watch` replaces `@parcel/watcher` (Bun's macOS FSEvents wrapper is reliable). All new deps (`react ^19`, `react-dom ^19`, `lightningcss`) are `devDependencies` consumed at build time and bundled into `dist/` by `Bun.build`.
 - Build-then-publish, never publish-then-build. `prepublishOnly` already runs version parity; extend it to also run `pnpm --filter dev-server build` so a fresh `dist/` lands in every tarball.
 - Inline all build-time deps via esbuild `--bundle`. End user's `node_modules/@1agh/md-claude/` after `npm i -g` contains the bundle + bins, nothing more.
 
@@ -169,9 +171,9 @@ If any of these regress in a later phase, the offending change is reverted befor
 ### TL;DR — 4 biggest wins
 
 1. **Bun-compile standalone binary** removes the "Node installed?" prereq entirely. 4× HTTP, 1.7× WS, 40 % less RAM per socket — and cold-start ~10-30 ms instead of ~50-100 ms.
-2. **Kill babel-standalone + UMD React → ship `Bun.build`-produced Preact bundle.** ~110 KB gzip → ~5 KB gzip + native Preact memory profile (~30–40 % lower vs React 18). First paint drops from ~1.5 s to ~250 ms.
+2. **Kill babel-standalone + UMD React → ship `Bun.build`-produced React 19 bundle.** ~110 KB gz (babel-standalone CDN parsed in-browser) → ~25-35 KB gz (React 19 tree-shaken by `Bun.build`). First paint drops from ~1.5 s to ~350 ms. Single runtime shared with Phase 3.6 canvases (DDR-012).
 3. **Lazy-mount iframes via `IntersectionObserver` + `content-visibility: auto`.** ~80 % less initial render work; frees the main thread so Phase 4's Pixi pan/zoom stays at 60 fps.
-4. **Bun `--smol` flag + `FinalizationRegistry` for iframe-injected inspector state.** Prevents the 300–500 MB 8 h-session creep; idle RAM target drops from < 80 MB to < 50 MB.
+4. **Bun `--smol` flag + `FinalizationRegistry` for iframe-injected inspector state.** Prevents the 300–500 MB 8 h-session creep; idle RAM target lands at < 80 MB (relaxed from earlier draft per DDR-012).
 
 ### Runtime decision — Bun authoritative (revised 2026-05-15)
 
@@ -193,16 +195,17 @@ Prior research (`.ai/docs/research-runtime.md`, 2026-05-12) recommended "Stay No
 
 ### UI framework
 
-- React 18 UMD (current): 40 KB core gz + 150 KB babel-standalone parse.
-- Preact + `preact/compat`: 5 KB gz total, drop-in JSX, ~30–40 % lower RAM.
+- React 18 UMD (current): 40 KB core gz + 150 KB babel-standalone parse cost.
+- Preact + `preact/compat`: 5 KB gz total, drop-in JSX, ~30–40 % lower RAM — but agent codegen surface + Radix/shadcn handoff path want native React; dual-runtime complexity compounds.
+- React 19 via `Bun.build` (npm `react` + `react-dom`, tree-shaken): ~25-35 KB gz, no compat shim, agent training-data parity, shadcn registry handoff parity.
 - Solid / Svelte: faster runtime but full rewrite.
-- **Decision:** Preact via `preact/compat`. Migration is an esbuild alias config + ~20 lines of compat shims in `app.jsx` (audit Task 3). DDR-010.
+- **Decision:** **React 19 everywhere — shell + canvases unified** (DDR-012). The Preact bundle/RAM win didn't justify dual-runtime complexity (see DDR-012's rationale section). Bundle is tree-shaken; Phase 3.6 canvases reuse the same runtime bundle.
 
 ### CSS strategy
 
 - Hand-rolled (current): 1400 LOC, unstructured.
 - Lightning CSS: Rust, native `@layer` support, OKLCH→fallback automatic, microsecond rebuilds. Used by Tailwind v4 Oxide engine.
-- **Decision:** Lightning CSS at build time + `@layer reset, tokens, layout, shell, components, utilities`. Zero runtime cost, free fallbacks. DDR-012. Source: [lightningcss.dev](https://lightningcss.dev/).
+- **Decision:** Lightning CSS at build time + `@layer reset, tokens, layout, shell, components, utilities`. Zero runtime cost, free fallbacks. DDR-014. Source: [lightningcss.dev](https://lightningcss.dev/).
 
 ### File watching
 
@@ -239,7 +242,7 @@ Prior research (`.ai/docs/research-runtime.md`, 2026-05-12) recommended "Stay No
 
 ### Cross-cutting risks
 
-- React → Preact: audit `useId`, `Suspense`, `flushSync` usage. Concurrent-only features need shims or removal.
+- React 19 ecosystem: validate that `app.jsx`'s existing React 18-pattern code transpiles cleanly under React 19 (no breaking changes expected; `useId`/`Suspense`/`flushSync`/concurrent features all forward-compat). No compat shim needed.
 - Adding a build step breaks "edit `app.jsx` and reload" → mitigated by `--watch` mode in dev.
 - **Bun lock-in (DDR-015):** no Node fallback. If a Bun release breaks our hot path, we pin to prior known-good Bun until upstream fixes. Mitigation: nightly CI perf-canary job runs against `bun-latest`; any > 5 % regression on the perf-harness budgets opens a tracking issue.
 - **Per-platform binary publishing matrix:** four sub-packages (`@1agh/md-claude-darwin-arm64` etc.) must publish atomically per release tag. Mitigation: `.github/workflows/build-binaries.yml` uses `npm publish --provenance` on all five packages (main + 4 sub) in a single workflow with `needs:` dependencies; any failure aborts the whole publish.
@@ -260,14 +263,14 @@ Prior research (`.ai/docs/research-runtime.md`, 2026-05-12) recommended "Stay No
   - **(c)** Mixed — split per-file.
 - **Pattern:** Check git log on both files; check what `app.jsx`'s `<Viewport>` mounts; check whether `server.mjs` serves them.
 - **Gotcha:** Commit history hints they're meta-design (`5864f71` = "meta-design of dev-server canvas viewport states"). Don't assume — verify.
-- **Validate:** DDR-014 written with the chosen path; file tree moved; no broken references.
+- **Validate:** DDR-016 written with the chosen path; file tree moved; no broken references.
 
 ### Task 2: ADD Bun toolchain + deps + npm scripts
 
 - **Do:**
   - **CI/dev prereq:** install Bun via `curl -fsSL https://bun.sh/install | bash` in CI runner setup; document in CONTRIBUTING.md that local development requires Bun ≥ 1.3.
   - In `plugins/design/dev-server/package.json`:
-    - `devDependencies`: `@types/bun ^1`, `bun-types ^1`, `preact ^10.24`, `lightningcss ^1.27`.
+    - `devDependencies`: `@types/bun ^1`, `bun-types ^1`, `react ^19`, `react-dom ^19`, `@types/react ^19`, `@types/react-dom ^19`, `lightningcss ^1.27`.
     - `dependencies`: **none** (Bun + binary self-contained; client deps are bundled).
     - `scripts`: `"build": "bun run build.ts"`, `"build:watch": "bun run --watch build.ts"`, `"test": "bun test"`, `"typecheck": "bun tsc --noEmit"`.
   - Root `package.json`: add `"engines": { "bun": ">=1.3" }` alongside the existing Node engine (Node still needed for the `mdcc.mjs` shim and the rest of the npm tooling).
@@ -278,7 +281,7 @@ Prior research (`.ai/docs/research-runtime.md`, 2026-05-12) recommended "Stay No
 ### Task 3: ADD `build.ts` — Bun-driven build orchestrator
 
 - **Do:** Write `build.ts` driving three steps:
-  - **(a) Client bundle:** `await Bun.build({ entrypoints: ['client/app.jsx'], outdir: 'dist', target: 'browser', format: 'iife', minify: true, sourcemap: env === 'dev' ? 'inline' : 'none', define: { 'process.env.NODE_ENV': JSON.stringify(env) } })`. JSX is auto-detected by Bun. Preact aliasing via `tsconfig.json` `paths`: `{ "react": ["preact/compat"], "react-dom": ["preact/compat"] }`.
+  - **(a) Client bundle:** `await Bun.build({ entrypoints: ['client/app.jsx'], outdir: 'dist', target: 'browser', format: 'iife', minify: true, sourcemap: env === 'dev' ? 'inline' : 'none', define: { 'process.env.NODE_ENV': JSON.stringify(env) } })`. JSX is auto-detected by Bun; `jsxImportSource: "react"` is the default. No alias config — npm `react` + `react-dom` resolve natively. Tree-shaking yields ~25-35 KB gz (React 19 + ReactDOM + shell code).
   - **(b) CSS bundle (Lightning CSS, called from `build.ts` via `lightningcss` API):** input `client/styles/_index.css` → `dist/styles.css`, minified, OKLCH fallbacks emitted, `@layer` flattening preserved.
   - **(c) Server binary per platform:** for each `target` in `['bun-darwin-arm64', 'bun-darwin-x64', 'bun-linux-x64', 'bun-windows-x64']`, spawn `Bun.spawn(['bun', 'build', '--compile', '--target=' + target, '--outfile=dist/mdcc-' + platformSlug(target), 'server.ts'])`. In dev mode (`--watch`), skip compile and just run `bun --watch server.ts` for hot iteration.
   - **Watch mode** (`--watch`): client and CSS contexts re-run on file change; server runs via `bun --watch server.ts` so iteration is sub-second. On rebuild, broadcast `{ type: 'module-update', path, hash }` over the inspector WS (Task 9).
@@ -287,18 +290,14 @@ Prior research (`.ai/docs/research-runtime.md`, 2026-05-12) recommended "Stay No
 - **Gotcha 2:** `Bun.build` can't resolve `.css` `@import` chains outside `client/`. Lightning CSS handles that in step (b).
 - **Validate:** `bun run build.ts` produces `dist/client.bundle.js` (~50–60 KB gz target) + `dist/styles.css` + `dist/mdcc-<current-platform>`. `./dist/mdcc-darwin-arm64 design serve --port 4399` boots in < 100 ms.
 
-### Task 4: ADD `client/preact-shim.mjs` + audit React-isms in `app.jsx`
+### Task 4: MIGRATE `app.jsx` from React UMD to React 19 esm imports
 
-- **Do:** Grep `app.jsx` for: `useId`, `Suspense`, `lazy`, `flushSync`, `createRoot`, `hydrateRoot`, `useDeferredValue`, `useTransition`, `useSyncExternalStore`. For each present API: confirm `preact/compat` exposes it (most do — `useId`, `Suspense`, `lazy`, `createRoot`, `useSyncExternalStore` all work). For gaps (`flushSync`, `useTransition`, `useDeferredValue`) — refactor to remove if non-critical, or polyfill if used (rare in shell code).
-- **Do:** Write `client/preact-shim.mjs`:
-  ```js
-  import { h, Fragment } from 'preact';
-  export { h, Fragment };
-  ```
-  esbuild's `inject` makes `h` + `Fragment` available globally for JSX-classic output.
-- **Pattern:** Preact's own [`preact/compat` docs](https://preactjs.com/guide/v10/switching-to-preact/) — mostly behaves as a React drop-in.
-- **Gotcha:** React 18's `act` test-helper isn't shimmed — irrelevant here (no React tests).
-- **Validate:** Bundle builds with no warnings; manual smoke-test boots dev-server, file tree renders, theme toggle works, comment thread opens — same as before, just lighter.
+- **Do:** Replace `app.jsx`'s reliance on `window.React` / `window.ReactDOM` UMD globals with explicit imports: `import { useState, useEffect, ... } from 'react'`; `import { createRoot } from 'react-dom/client'`. `Bun.build` resolves these to the npm packages and tree-shakes unused surface. JSX `jsxImportSource: "react"` is Bun's default — no extra config.
+- **Do:** Update the mount call site to use `createRoot(domNode).render(<App />)` (React 18+ API; works under React 19).
+- **Pattern:** Standard React 19 esm pattern. `Bun.build` handles bundling; nothing exotic.
+- **Gotcha:** If `app.jsx` does `React.createElement(...)` instead of JSX in any spot, those calls need `import { createElement } from 'react'`. Grep first.
+- **Gotcha 2:** React 19 removed `ReactDOM.render` (the React 18 legacy API). If `app.jsx` uses it (it might — current shell is React-18-shape), switch to `createRoot`. Five-minute change.
+- **Validate:** `Bun.build` succeeds with no warnings; manual smoke-test boots dev-server, file tree renders, theme toggle works, comment thread opens — same behavior as the current Babel-standalone version, just on real React 19 with tree-shaken bundle.
 
 ### Task 5: UPDATE `index.html` — drop unpkg scripts, load bundle
 
@@ -345,7 +344,7 @@ Prior research (`.ai/docs/research-runtime.md`, 2026-05-12) recommended "Stay No
 - **Pattern:** Bun runtime docs on `--smol` + `Bun.gc()` + standard `FinalizationRegistry` usage.
 - **Gotcha:** `FinalizationRegistry` callbacks are not guaranteed; if a callback MUST run, also wire an explicit `cleanupFn` invoked on the `iframe:closed` WS event. The registry is the safety net, not the primary path.
 - **Gotcha 2:** Bun's `Bun.gc(true)` (sync) is expensive — only call in tests or the > 384 MB emergency branch, never per-request.
-- **Validate:** 8 h soak test (Task 11's harness) → idle RAM stays < 50 MB. Open/close 20 canvases in sequence → resident RSS returns to within 5 MB of baseline after 60 s. `Bun.gc(true)` in a test confirms no FinalizationRegistry callbacks pending.
+- **Validate:** 8 h soak test (Task 11's harness) → idle RAM stays < 80 MB. Open/close 20 canvases in sequence → resident RSS returns to within 5 MB of baseline after 60 s. `Bun.gc(true)` in a test confirms no FinalizationRegistry callbacks pending.
 
 ### Task 9: ADD `client/hmr.mjs` — WS-driven HMR (parent shell only)
 
@@ -356,7 +355,7 @@ Prior research (`.ai/docs/research-runtime.md`, 2026-05-12) recommended "Stay No
   - Server-side: `build.mjs --watch` writes a manifest to `dist/.hmr-manifest.json` after each rebuild; `fs-watch.mjs` watches `dist/` and broadcasts `module-update` over WS to all clients.
   - On full-page state changes (e.g. token block in `1-tokens.css` changed) → live-reload via CSS-only path (re-fetch `dist/styles.css`); never reload the document.
 - **Pattern:** [Vite HMR API](https://vite.dev/guide/api-hmr) — adapt the `accept`/`dispose`/`invalidate` triad to your custom socket.
-- **Gotcha:** Preact's component identity changes on dynamic re-import. Use a `keepAlive` `WeakMap<componentKey, instance>` to preserve local state across patches for known-safe components (Tree, Tabs, Header).
+- **Gotcha:** React 19's Fast Refresh keeps component identity stable on dynamic re-import IF the component is module-level + named. Use the existing React Fast Refresh runtime (Bun ships it for HMR; opt in via `import.meta.hot.accept()` in the patched modules). For shell components (Tree, Tabs, Header) this works out of the box.
 - **Gotcha 2:** First implementation should be CSS-only HMR (zero risk) + full-page reload for JSX. Add JSX patching incrementally.
 - **Validate:** Edit `client/app.jsx`'s `Header` component (e.g. swap an icon path), save → toolbar updates in < 200 ms, inspector WS connection stays alive, selected element in canvas iframe is still selected.
 
@@ -471,26 +470,26 @@ Prior research (`.ai/docs/research-runtime.md`, 2026-05-12) recommended "Stay No
 > Each DDR is short (≤ 100 lines), follows `.ai/decisions/README.md` schema. Land each in the same commit as the matching task — or batch at the end if cheaper.
 
 - **~~DDR-009~~:** ✅ Already written 2026-05-15 — [`DDR-009-bun-runtime-authoritative-for-dev-server.md`](../decisions/DDR-009-bun-runtime-authoritative-for-dev-server.md). Captures both the Bun-authoritative runtime choice AND the no-Node-fallback consequence (originally drafted as a separate DDR-015 in this plan; consolidated since the fallback acceptance is inseparable from the runtime choice).
-- **DDR-010:** Preact via `preact/compat` for the shell. Migration path + audited React APIs + bundle-size before/after.
-- **DDR-011:** Server modular split into seven TypeScript files on `Bun.serve`. Module-boundary contract + state ownership rules + why TS now.
-- **DDR-012:** CSS `@layer` architecture: `reset, tokens, layout, shell, components, utilities`. Why this order; how token import works.
-- **DDR-013:** Per-platform binary distribution via npm `optionalDependencies` sub-packages with postinstall-hardlink (Claude-Code pattern). Why not single fat tarball; CI release-matrix design; precedent (`@anthropic-ai/claude-code` + Bun npm package).
-- **DDR-014:** `runtime/` folder purpose (outcome of Task 1).
+- **DDR-012:** **React 19 everywhere — shell + canvases unified.** Three-draft pivot (Preact-only → hybrid → unified React 19) + the bundle/RAM-vs-complexity trade-off + the relaxed performance budgets. Supersedes the implicit Preact-shell assumption in earlier drafts of this plan.
+- **DDR-013:** Server modular split into seven TypeScript files on `Bun.serve`. Module-boundary contract + state ownership rules + why TS now.
+- **DDR-014:** CSS `@layer` architecture: `reset, tokens, layout, shell, components, utilities`. Why this order; how token import works.
+- **DDR-015:** Per-platform binary distribution via npm `optionalDependencies` sub-packages with postinstall-hardlink (Claude-Code pattern). Why not single fat tarball; CI release-matrix design; precedent (`@anthropic-ai/claude-code` + Bun npm package).
+- **DDR-016:** `runtime/` folder purpose (outcome of Task 1).
 
 ### Task 15: UPDATE Phase 4 plan — remove Task 2 (build dist bundles) + add Bun runtime note
 
 - **Do:** Edit `.ai/plans/phase-4-canvas-v2-rendering-engine.md`:
   - Delete Task 2 ("Build the dist bundles (client + server)") — moved here as Task 3 (Bun build orchestrator) + Task 12 (sub-packages) + Task 13 (CI matrix).
-  - Update Task 1 ("Perf-prototype before committing to Pixi") so it explicitly runs **against** the new build pipeline (Bun.build + Preact), not against babel-standalone.
+  - Update Task 1 ("Perf-prototype before committing to Pixi") so it explicitly runs **against** the new build pipeline (Bun.build + React 19), not against babel-standalone.
   - Update "Runtime-agnostic constraint" section (lines 22-24) — **no longer applicable**, runtime is now Bun authoritative. Remove the `node:*` purity constraint; Pixi.js code in Phase 4 can use Bun APIs in the build orchestrator but the client code stays browser-only.
-  - Update "Depends on" → "Phase 3.4 (architecture refactor — Bun runtime + build pipeline + Preact + perf budgets)".
+  - Update "Depends on" → "Phase 3.4 (architecture refactor — Bun runtime + build pipeline + React 19 + perf budgets)".
   - Update "Affected files" — remove `build.mjs` (now `build.ts` created here) and the bundler-related package.json edits.
 - **Validate:** Phase 4 plan reads as "pure rendering": Pixi shootout → stage + viewport controller → iframe positioning sync → layout persistence → minimap → migration → schema. No bundler talk, no runtime-agnostic constraint.
 
 ### Task 16: UPDATE Phase 3.5 plan — point at new pipeline
 
 - **Do:** Edit `.ai/plans/phase-3.5-dev-server-ui-ux-refresh.md`:
-  - "Dependencies" → add "Phase 3.4 must land first (Bun runtime + build pipeline + Preact + token import path)".
+  - "Dependencies" → add "Phase 3.4 must land first (Bun runtime + build pipeline + React 19 + token import path)".
   - Task 4 (Berkeley Mono webfont) — note that `index.html` is now the bundle-loading variant; the `<link>` goes there.
   - Task 5 (token bridge) — note that tokens already arrive via Lightning CSS `@import` in `1-tokens.css`; the bridge work becomes "ensure `--u-*` aliases live in the same layer".
 - **Validate:** Phase 3.5 still scopes the visual refresh; no overlap with this plan.
@@ -504,7 +503,7 @@ Prior research (`.ai/docs/research-runtime.md`, 2026-05-12) recommended "Stay No
 3. **Tests:**
    - `bun test plugins/design/dev-server/test/**/*.test.ts` — all 7 green on every CI runner.
    - `node --test --test-reporter=spec cli/**/*.test.mjs` — existing CLI tests still green (shim is Node).
-4. **Build:** `bun run plugins/design/dev-server/build.ts --release --target=bun-<host-platform>` succeeds; `dist/client.bundle.js.gz` < 60 KB; `dist/mdcc-<platform>` is a valid executable < 80 MB.
+4. **Build:** `bun run plugins/design/dev-server/build.ts --release --target=bun-<host-platform>` succeeds; `dist/client.bundle.js.gz` < 80 KB; `dist/mdcc-<platform>` is a valid executable < 80 MB.
 5. **Smoke:** `./dist/mdcc-<platform> design serve --port 4399 --root /tmp/scratch-design` boots in < 100 ms; `curl localhost:4399/_health` returns 200.
 6. **Perf harness:** Task 11's harness runs end-to-end, records baseline, all budgets in the table pass.
 7. **Cross-platform scenario:** `scenario-runner` web-desktop only (dev-server is desktop-only).
@@ -527,14 +526,14 @@ Prior research (`.ai/docs/research-runtime.md`, 2026-05-12) recommended "Stay No
 | **Windows binary edge cases** (Bun-Windows is youngest tier) | Explicit `binary-smoke.test.ts` on Windows; if release-blocking, ship the 3 working platforms and label Windows "preview" with GitHub Releases binary download as fallback. |
 | **npm `optionalDependencies` resolution surprises** (esbuild has historically hit edge cases) | Shim has clear error message + diagnostic; documented installation troubleshooting in README. |
 | **Tarball size hits npm warnings** (per-platform ~30-40 MB gz × 4) | Below npm's hard cap (~250 MB). Documented as expected; main package itself is < 1 MB. |
-| Preact `compat` mismatch on a React-only API in `app.jsx` | Task 4's audit pass; fall back to React UMD bundle if a critical API is unshim-able (cost: ~35 KB more gz, still better than babel-standalone). |
+| React 19 ecosystem regression on `app.jsx` (unlikely — React 18→19 is largely additive) | Run `Bun.build` over current `app.jsx` early in Task 4; type-check + smoke-test before moving to Task 5. React 18 LTS available as a 10-minute pin-fallback if a blocking regression surfaces. |
 | HMR JSX patching breaks component state | Land CSS-only HMR first (Task 9 Gotcha 2); JSX patching incremental + keyed by component identity. |
-| Bun's recursive `fs.watch` regression on macOS | Falls back to manual polling in `fs-watch.ts` if `fs.watch` errors; documented in DDR-011. |
+| Bun's recursive `fs.watch` regression on macOS | Falls back to manual polling in `fs-watch.ts` if `fs.watch` errors; documented in DDR-013. |
 | Build step breaks "edit-and-reload" muscle memory | `bun --watch server.ts` for server + custom HMR for client keep the loop fast; document in README. |
 | Lightning CSS rejects a token expression | Pin LCSS version + capture build log on first cut. |
 | Perf budgets are aspirational, miss on real hardware | Budgets are gates per task; if a task can't hit its budget, replan before continuing. |
 | Pulling Task 2 out of Phase 4 destabilizes Phase 4's task numbering | Task 15 explicitly re-numbers and re-grounds. |
-| `runtime/` folder turns out to be load-bearing | Task 1 is the audit gate; nothing else proceeds until DDR-014 lands. |
+| `runtime/` folder turns out to be load-bearing | Task 1 is the audit gate; nothing else proceeds until DDR-016 lands. |
 
 ---
 
@@ -552,15 +551,15 @@ Prior research (`.ai/docs/research-runtime.md`, 2026-05-12) recommended "Stay No
 
 - [ ] All 16 tasks completed; perf harness records all budgets met (see Performance Budgets table)
 - [ ] `npm i -g @1agh/md-claude` on a clean machine **without Node installed beyond `node` to run the shim** results in a working `mdcc design serve` (the shim then execs the platform binary)
-- [ ] React UMD + babel-standalone removed from `index.html`; cold start to HTTP 200 < 100 ms; cold start to first paint < 250 ms
-- [ ] Bundle: `du -sh dist/client.bundle.js.gz` < 60 KB
+- [ ] React UMD + babel-standalone removed from `index.html`; cold start to HTTP 200 < 100 ms; cold start to first paint < 350 ms (relaxed per DDR-012)
+- [ ] Bundle: `du -sh dist/client.bundle.js.gz` < 80 KB (relaxed per DDR-012)
 - [ ] Per-platform binary: `du -sh dist/mdcc` < 80 MB for all seven platform builds (darwin-arm64, darwin-x64, linux-x64, linux-arm64, linux-x64-musl, linux-arm64-musl, win32-x64)
 - [ ] postinstall-hardlink pattern: after `npm i -g @1agh/md-claude`, invoking `mdcc` is a direct exec of the native binary (no Node process resident — verify via `ps`)
 - [ ] `--ignore-scripts` fallback works via `mdcc-safe` bin
 - [ ] Rosetta 2 detection: x64 Node on Apple Silicon resolves to arm64 binary
 - [ ] musl detection: Alpine container install resolves to the `-musl` variant
 - [ ] `server.mjs` rewritten to 7 `.ts` modules on `Bun.serve`, none > 300 LOC, no ESM cycles, `bun tsc --noEmit` passes
-- [ ] Bun `--smol` flag honored in compiled binary; 8 h soak < 50 MB RSS
+- [ ] Bun `--smol` flag honored in compiled binary; 8 h soak < 80 MB RSS (relaxed per DDR-012)
 - [ ] `FinalizationRegistry` + `WeakRef` cover iframe-scoped state; open/close 20 canvases → RSS returns to baseline within 60 s; `Bun.gc(true)` test confirms no pending callbacks
 - [ ] CSS `@layer` architecture: 6 layers, declared once in `_index.css`; Lightning CSS produces single minified `dist/styles.css`
 - [ ] Bun's recursive `fs.watch` covers `.design/` macOS rename events reliably (no `@parcel/watcher` dep)
@@ -573,5 +572,5 @@ Prior research (`.ai/docs/research-runtime.md`, 2026-05-12) recommended "Stay No
 - [ ] `cli/bin/mdcc.exe` is the 500-byte stub; `cli/install.cjs` (postinstall) + `cli/cli-wrapper.cjs` (--ignore-scripts fallback) both ship
 - [ ] Phase 4 plan updated (Task 2 removed, runtime-agnostic constraint removed); Phase 3.5 plan updated (depends on Phase 3.4)
 - [ ] No DDR-worthy decision left unrecorded
-- [ ] Phase 3.5 still works as planned (token import path stable, Preact compat with shell components)
+- [ ] Phase 3.5 still works as planned (token import path stable, React 19 compat with shell components — additive only)
 - [ ] Phase 4 still works as planned (Pixi.js drops into the new build pipeline cleanly; Bun runtime executes the server)

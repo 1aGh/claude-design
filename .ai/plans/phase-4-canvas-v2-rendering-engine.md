@@ -26,10 +26,10 @@ Hybrid renderer: `<canvas>` overlay (Pixi.js) draws the **viewport frame** — a
 
 - **Type:** Major refactor (rendering rewrite)
 - **Complexity:** High
-- **Depends on:** **Phase 3.4** (Bun runtime + `build.ts` orchestrator + per-platform binary distribution + Preact + 7-module server split + `@layer` CSS) and **Phase 3.5** (shell visual refresh + tokens) must land before this phase starts.
+- **Depends on:** **Phase 3.4** (Bun runtime + `build.ts` orchestrator + per-platform binary distribution + React 19 + 7-module server split + `@layer` CSS) and **Phase 3.5** (shell visual refresh + tokens) must land before this phase starts.
 - **Parallel with:** —
 - **Affected files:**
-  - `plugins/design/dev-server/client/app.jsx` (split into `Canvas/`, `Viewport/`, `Toolbar/` subtrees — built on the Preact+Bun.build pipeline from 3.4)
+  - `plugins/design/dev-server/client/app.jsx` (split into `Canvas/`, `Viewport/`, `Toolbar/` subtrees — built on the React 19+Bun.build pipeline from 3.4)
   - `plugins/design/dev-server/client/canvas/` (new — Pixi.js stage, viewport controller, artboard renderer; written in TS per the 3.4 convention)
   - `plugins/design/dev-server/client/styles/4-components.css` (canvas overlay styles — into the existing `@layer components` from 3.4; no new layer)
   - `plugins/design/dev-server/api.ts` (new endpoint `GET/PUT /api/layout/<slug>` — added to the 3.4 module split, not the old `server.mjs`)
@@ -43,7 +43,7 @@ Hybrid renderer: `<canvas>` overlay (Pixi.js) draws the **viewport frame** — a
 
 ### Task 1: Perf-prototype before committing to Pixi
 
-- **Do:** Build a throwaway test page **inside the Phase 3.4 build pipeline** (Bun.build + Preact, no babel-standalone) rendering 100 artboards (100×100 div each, faked content) under three approaches: (a) plain DOM transforms, (b) Pixi.js WebGL, (c) Canvas2D ImageData blit. Measure FPS while panning + zooming. DDR the result.
+- **Do:** Build a throwaway test page **inside the Phase 3.4 build pipeline** (Bun.build + React 19, no babel-standalone) rendering 100 artboards (100×100 div each, faked content) under three approaches: (a) plain DOM transforms, (b) Pixi.js WebGL, (c) Canvas2D ImageData blit. Measure FPS while panning + zooming. DDR the result.
 - **Pattern:** Same harness `Vercel/turbo` uses for their dependency-graph viz.
 - **Validate:** Decision recorded with FPS numbers. If Pixi loses by >20%, fall back to plain DOM + virtualization.
 
@@ -83,9 +83,9 @@ Hybrid renderer: `<canvas>` overlay (Pixi.js) draws the **viewport frame** — a
 
 ## Validation
 
-1. **Static:** `bun run plugins/design/dev-server/build.ts --release` succeeds; bundle size ≤ 400 KB gz (canvas v2 budget — adds ~120 KB on top of the ~60 KB Phase 3.4 baseline for the chrome).
+1. **Static:** `bun run plugins/design/dev-server/build.ts --release` succeeds; bundle size ≤ 400 KB gz (canvas v2 budget — adds ~120 KB on top of the ~80 KB Phase 3.4 baseline for the React 19 shell + chrome).
 2. **Types:** `bun tsc --noEmit` passes on `client/canvas/*.ts` and any new files in the 7-module server split.
-3. **Perf bench:** Repeatable harness measures FPS over 100 artboards × 30 nodes — must hold ≥ 55 fps on an M1 MacBook Air. Re-runs the Phase 3.4 perf harness to confirm no regression on the shell budgets (cold start < 100 ms, idle RAM < 50 MB).
+3. **Perf bench:** Repeatable harness measures FPS over 100 artboards × 30 nodes — must hold ≥ 55 fps on an M1 MacBook Air. Re-runs the Phase 3.4 perf harness to confirm no regression on the shell budgets (cold start < 100 ms HTTP-200, idle RAM < 80 MB).
 4. **Cross-platform scenario:** Spawn `scenario-runner` for `canvas-pan-zoom-50-artboards` across `web-desktop` + `web-mobile` (mobile is degraded mode — accept).
 5. **A11y:** Spawn `a11y-auditor` against the toolbar + minimap UI.
 6. **Backward compat:** Open three v0.x sample projects; verify auto-layout migration works.
@@ -101,7 +101,7 @@ Hybrid renderer: `<canvas>` overlay (Pixi.js) draws the **viewport frame** — a
 
 ## Acceptance criteria
 
-- [ ] Phase 3.4 already landed (Bun runtime + `build.ts` + Preact + per-platform binary distribution + 7-module server split + `@layer` CSS); this phase consumes that.
+- [ ] Phase 3.4 already landed (Bun runtime + `build.ts` + React 19 + per-platform binary distribution + 7-module server split + `@layer` CSS); this phase consumes that.
 - [ ] Pixi.js dropped into the existing `Bun.build` pipeline as a regular dependency — no new bundler, no new build script.
 - [ ] Pixi.js viewport renders artboards as rectangles + matches iframe positions.
 - [ ] Pan / zoom / pinch / spacebar-drag work and feel responsive.

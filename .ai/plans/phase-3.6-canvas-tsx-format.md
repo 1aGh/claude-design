@@ -8,9 +8,9 @@
 
 Replace the current canvas format — single-file HTML with inline `<style>` (~50 KB hand-rolled CSS) + `<script type="text/babel">` JSX + React 18 UMD + Babel-standalone UMD, reference canvas weighing **74 KB / 1838 LOC** — with **`.tsx` files** transpiled server-side by Bun and mounted into a shared `_shell.html` harness. Concretely:
 
-- One canvas = one `.tsx` file (default-export Preact component). No per-canvas HTML, no per-canvas `<style>` block. Existing `_tokens.css` + `_components.css` stay as-is — they're the DS, not boilerplate.
-- Dev-server transpiles TSX on GET via `Bun.Transpiler({ loader: "tsx", jsxImportSource: "preact" })`, ETag'd from `Bun.hash(source)`, in-memory cached.
-- A two-pass transform injects a stable `data-cd-id` attribute on every JSX element + writes a sidecar `_locator.json` that maps each ID to `(canvas, line, col, jsxPath, componentName)`. `oxc-parser` produces the AST in ~1–3 ms per 80 KB; `magic-string` does the byte-range inserts. This makes element identity a build-time invariant — phase-12 inspector reads the map, doesn't introspect Preact internals.
+- One canvas = one `.tsx` file (default-export **React 19** component — single runtime, see "Runtime choice" decision). No per-canvas HTML, no per-canvas `<style>` block. Existing `_tokens.css` + `_components.css` stay as-is — they're the DS, not boilerplate.
+- Dev-server transpiles TSX on GET via `Bun.Transpiler({ loader: "tsx", jsxImportSource: "react" })`, ETag'd from `Bun.hash(source)`, in-memory cached.
+- A two-pass transform injects a stable `data-cd-id` attribute on every JSX element + writes a sidecar `_locator.json` that maps each ID to `(canvas, line, col, jsxPath, componentName)`. `oxc-parser` produces the AST in ~1–3 ms per 80 KB; `magic-string` does the byte-range inserts. This makes element identity a build-time invariant — phase-12 inspector reads the map, doesn't introspect React internals.
 - HMR uses Bun 1.3's `import.meta.hot` (Vite-compatible) plus React Fast Refresh, served over `/_bun_hmr`. The dev-server's own inspector WebSocket carries selection / inspector-edit events on its existing channel.
 - A Bun macro pre-wraps each canvas in a `<DCArtboard>`/`<DesignCanvas>` envelope before transpile, so authored TSX stays free of boilerplate (mirrors current `/design:new` envelope).
 - `/design:handoff` emits a `<Slug>.registry.json` sidecar per shadcn's `registry-item.json` schema (resolved `dependencies` + `registryDependencies` + the canvas TSX as `files[0].content`). Production target runs `bunx shadcn add file://./<Slug>.registry.json`.
@@ -21,7 +21,7 @@ Replace the current canvas format — single-file HTML with inline `<style>` (~5
 **Out of scope:**
 - The actual phase-12 layers panel + inspector UI — this phase only ships the *format* + the `_locator.json` contract that phase-12 reads. No UI work.
 - Phase-10 Yjs CRDT integration — this phase delivers range-based edits (a precondition) but does not wire Yjs.
-- Motion library swap (Framer Motion → Motion v5+) under Preact — open upstream issue (`motiondivision/motion#1369`). Canvases that need motion get a per-canvas escape hatch flag in their `.meta.json` that opts the canvas into React-mode transpile; production motion lib swap is its own decision.
+- Motion library packaging — works natively under React 19 (single runtime, per DDR-012). No escape hatch, no per-canvas opt-in.
 - `/design:critic` script changes — critics already read screenshots, not source code; format-change is transparent to them.
 
 ## User Story
@@ -44,11 +44,11 @@ As Claude editing `.design/ui/Docs Site.html` for the third time in a session, I
 
 Four-piece refactor. Each piece is one task block below.
 
-**A. Canvas format = `.tsx` + shared `_shell.html` + injected `data-cd-id`.** New canvas authoring shape (`/design:new` and `/design:edit` both honor it). Shared boot HTML lives once at `<designRoot>/_shell.html`, never per-canvas. Canvas `.tsx` is a default-export Preact FC. The Bun dev-server's TSX route runs a **two-pass transform**: (1) `oxc-parser` parse + `magic-string` byte-range insert of `data-cd-id="<8-char-base32>"` on every JSX element where `id = base32(blake3(componentName + ":" + preOrderIndex)).slice(0, 8)`; (2) `Bun.Transpiler.transformSync()` for JSX→JS lowering with `jsxImportSource: "preact"`. Output is `text/javascript`, ETag'd from `Bun.hash(post-pass-1 source)`, in-memory cached per `(canvasPath, mtime)`. The same pass emits `_locator.json` (one entry per ID) atomically with the transpile result.
+**A. Canvas format = `.tsx` + shared `_shell.html` + injected `data-cd-id`.** New canvas authoring shape (`/design:new` and `/design:edit` both honor it). Shared boot HTML lives once at `<designRoot>/_shell.html`, never per-canvas. Canvas `.tsx` is a default-export **React 19 FC** (single runtime — see "Runtime choice" decision). The Bun dev-server's TSX route runs a **two-pass transform**: (1) `oxc-parser` parse + `magic-string` byte-range insert of `data-cd-id="<8-char-base32>"` on every JSX element where `id = base32(blake3(componentName + ":" + preOrderIndex)).slice(0, 8)`; (2) `Bun.Transpiler.transformSync()` for JSX→JS lowering with `jsxImportSource: "react"`. Output is `text/javascript`, ETag'd from `Bun.hash(post-pass-1 source)`, in-memory cached per `(canvasPath, mtime)`. The same pass emits `_locator.json` (one entry per ID) atomically with the transpile result.
 
 **B. Inspector contract upgrade.** Inspector overlay (already injected into iframe by `inspect.ts` per Phase 3.4) reads `element.dataset.cdId` instead of computing a CSS selector. Selection events sent over the WS carry `{ id, canvas }` only; the dev-server resolves to source location via `_locator.json` lookup. `_active.json.selected` schema migrates from `{ selector, path }` to `{ id, canvas }` — version-stamped (`v: 2`) with backwards-compat read for v1 selectors during the grace period.
 
-**C. Handoff via `<Slug>.registry.json` sidecar.** `/design:handoff` generates a sidecar conforming to [shadcn registry-item.json schema](https://ui.shadcn.com/schema/registry-item.json) — `name = slug`, `type = "registry:block"`, `files[0] = { path: "components/<slug>.tsx", content: <tsx source>, type: "registry:component" }`, `dependencies = ["preact", "lucide-react", ...]` resolved from canvas's actual imports, `registryDependencies` from canvas's `@/components/ui/*` imports. Target project consumes via `bunx shadcn add file://./<Slug>.registry.json`. `.design/config.json.handoffTargets` no longer empty — registry path is the universal target.
+**C. Handoff via `<Slug>.registry.json` sidecar.** `/design:handoff` generates a sidecar conforming to [shadcn registry-item.json schema](https://ui.shadcn.com/schema/registry-item.json) — `name = slug`, `type = "registry:block"`, `files[0] = { path: "components/<slug>.tsx", content: <tsx source>, type: "registry:component" }`, `dependencies = ["react", "react-dom", "lucide-react", ...]` resolved from canvas's actual imports, `registryDependencies` from canvas's `@/components/ui/*` imports. Target project consumes via `bunx shadcn add file://./<Slug>.registry.json`. `.design/config.json.handoffTargets` no longer empty — registry path is the universal target. Zero runtime-translation needed: the canvas was authored under React 19, target project runs React 19.
 
 **D. One-shot HTML → TSX codemod.** Migrate every existing canvas (`ui/Docs Site.html`, `ui/Canvas Viewport.html`, every `system/project/preview/*.html`) in one pass. Codemod extracts the `<script type="text/babel">` body, strips the inline `<style>` block (preserved as `<Slug>.module.css` *only if* `meta.css_mode === "modules"`; the MDCC-DSN/01 default mode is `"inline"`, in which case the inline styles get extracted to the bespoke `_components.css` only when no equivalent class already exists — otherwise dropped), rewrites `React.useState` → `import { useState } from "react"`, drops the React UMD + Babel script tags, writes `<Slug>.tsx` and `<Slug>.meta.json` next to it. Old `.html` moves to `_history/_migration-2026-05-15/`.
 
@@ -70,7 +70,7 @@ Four-piece refactor. Each piece is one task block below.
 - **Dependencies**:
   - **Hard-blocks-on Phase 3.4** (Bun-runtime dev-server). This phase ships TSX route handler that uses `Bun.Transpiler` + `Bun.serve` `routes` + Bun.hash + Bun.write. No Node fallback. **Do not start until 3.4 lands `dist/mdcc-<platform>` binaries.**
   - New build-time deps in `plugins/design/dev-server/package.json`: `oxc-parser ^0.30`, `magic-string ^0.30`, `blake3-wasm ^2.1` (or `Bun.hash` with documented seed — see Task 1 decision). All NAPI / pure-JS; all run under Bun.
-  - New runtime deps for canvases: `preact ^10`, `preact/compat` (already pinned by Phase 3.4). Canvases default `import { useState } from "react"` resolves to `preact/compat` via Bun's tsconfig `paths`.
+  - New runtime deps for canvases: `react ^19`, `react-dom ^19` (pre-bundled via `Bun.build` into `/_canvas-runtime/react.bundle.js`, served by the dev-server route; shared with shell per DDR-012 React-19-everywhere). No Preact dep anywhere in the dev-server.
   - Optional per-DS: `bun-plugin-tailwind ^0.1` (only when DS opts into Tailwind utilities — MDCC-DSN/01 does NOT).
 - **Blocks**: Phase 12 (in-canvas CSS editor + layers panel — needs `_locator.json` to exist), Phase 10 (Yjs structured CRDT — needs range-based edit pipe to exist).
 - **Does NOT block**: Phase 3.5 (shell UI refresh, independent), Phase 4 (Pixi canvas, independent — renders the file tree, not the canvases themselves), Phase 5–9 (build on hardened shell).
@@ -98,7 +98,7 @@ If any of these regress in a later phase, the offending change is reverted befor
 - `plugins/design/commands/edit.md` (248 LOC) — `/design:edit` step list; in-place edit semantics; `_history/<slug>/` snapshot rules. The AST-aware edit path lives here.
 - `plugins/design/commands/handoff.md` — currently a stub since `handoffTargets: []`. This phase fills it in.
 - `plugins/design/dev-server/server.mjs` (the pre-3.4 version) — current selector-based inspector protocol. **After 3.4 lands**, read `plugins/design/dev-server/inspect.ts` instead (the migrated module).
-- `plugins/design/dev-server/canvas-meta.schema.json` — current `.meta.json` schema. Extend with `css_mode`, `motion_runtime`, `data-cd-id-version`.
+- `plugins/design/dev-server/canvas-meta.schema.json` — current `.meta.json` schema. Extend with `css_mode`, `data-cd-id-version`. **No `runtime` field** — React 19 is universal per DDR-012.
 - `plugins/design/dev-server/config.schema.json` (lines 30–80) — `tokensCssRel`, `rootClass`, `newCanvasDir` defaults. New fields for `handoffTargets` registry path.
 - `plugins/design/dev-server/bin/screenshot.sh` — URL-driven, takes the canvas URL. After format flip, server URL = `http://host:port/?canvas=<slug>` not `file://`. No script change.
 - `plugins/design/dev-server/bin/slug.sh` — normalize `<active-relative-path>` to kebab slug. Already extension-agnostic.
@@ -116,10 +116,10 @@ If any of these regress in a later phase, the offending change is reverted befor
 - `plugins/design/dev-server/locator.ts` (new — ~80 LOC) — `LocatorMap` type (`Record<string, { canvas: string; line: number; col: number; jsxPath: string[]; componentName: string }>`) + on-disk writer (`writeLocator(canvas: string, map: LocatorMap)` → atomic write to `<designRoot>/_locator.json` under a per-canvas key).
 - `plugins/design/dev-server/canvas-edit.ts` (new — ~150 LOC) — AST-aware edit helpers consumed by `/design:edit` when feedback names a specific element. Exports `editAttribute(canvas: string, id: string, attr: string, value: string): Promise<void>` (className change, inline style insert, style-prop value swap). Uses the same `oxc-parser` + `magic-string` pair as the pipeline.
 - `plugins/design/dev-server/handoff.ts` (new — ~100 LOC) — emits `<Slug>.registry.json`. Reads canvas TSX, walks imports via `Bun.Transpiler.scanImports()`, resolves npm deps vs `@/components/ui/*` shadcn deps, writes the file.
-- `plugins/design/templates/_shell.html` (new — ~30 LOC) — shared boot harness. Loads `<link rel="stylesheet" href="/tokens.css">` + `<link rel="stylesheet" href="/_components.css">` + Bun's HMR client + a `<script type="module">` that imports `/ui/${slug}.tsx?canvas=${slug}` and mounts via Preact `render(<Canvas />, root)`. Used by `/design:new` to write the `_shell.html` into `<designRoot>/` on first canvas creation (one-shot, idempotent).
+- `plugins/design/templates/_shell.html` (new — ~30 LOC) — shared boot harness. Loads `<link rel="stylesheet" href="/tokens.css">` + `<link rel="stylesheet" href="/_components.css">` + Bun's HMR client + a `<script type="module">` that imports `/_canvas-runtime/react.bundle.js` (single React 19 bundle, cached) + `/ui/${slug}.tsx?canvas=${slug}` + mounts via `createRoot(root).render(<Canvas />)`. Used by `/design:new` to write the `_shell.html` into `<designRoot>/` on first canvas creation (one-shot, idempotent).
 - `plugins/design/templates/canvas.tsx.template` (new) — `/design:new` scaffold target. Replaces the current `<!doctype html>` HTML scaffold. Contains envelope-driven JSX skeleton + a one-line comment header.
 - `scripts/migrate-canvases.ts` (new, repo-root — ~250 LOC) — Task 8 codemod. Reads every `.design/**/*.html`, extracts the JSX from `<script type="text/babel">`, extracts the `<style>` block, writes paired `.tsx` + `.meta.json` + (optionally) `.module.css` files. Old `.html` files move to `_history/_migration-2026-05-15/`. Dry-run mode + per-file diff output.
-- `.ai/decisions/DDR-015-canvas-tsx-format.md` — records the decision + the three research rounds + Tailwind-opt-in (not default) choice + motion-Preact escape hatch.
+- `.ai/decisions/DDR-017-canvas-tsx-format.md` — records the decision + the three research rounds + Tailwind-opt-in (not default) choice + motion-Preact escape hatch.
 
 ### Documentation (external — opened during research)
 
@@ -213,12 +213,16 @@ Existing canvases have ~50 KB inline `<style>` blocks scoped to the artboard roo
 
 The codemod prints a per-canvas diff so the choice can be reviewed and overridden before the migration commit.
 
-### Motion library posture: **per-canvas escape hatch, default off**
+### Runtime choice: **React 19 everywhere — shell + canvases unified (DDR-012)**
 
-- Default canvases run under Preact + `preact/compat` (Phase 3.4 alias). Motion v5+ does not work through this alias (open upstream issue `motiondivision/motion#1369`).
-- Canvases that need motion declare `meta.motion_runtime: "react-19"`. The dev-server's TSX route detects this flag and switches that canvas's bundle path to React 19 UMD (loaded once, cached). Other canvases stay on Preact.
-- This is an escape hatch, not the default — most canvases are static or use CSS transitions only (existing reality).
-- DDR-015 documents the trade-off + the upstream issue it tracks. When the upstream lands, escape hatch is removed in a future minor.
+> **Pivoted 2026-05-15** through three drafts: (1) "Preact for shell, undecided canvas" → (2) "Preact shell, React 19 canvas with per-canvas opt-in" → (3) **"React 19 everywhere; drop Preact entirely."** Each pivot was driven by evidence:
+>
+> - The Preact-for-shell win (bundle, idle RAM) is real but the **absolute numbers don't justify the complexity** of running two runtimes side-by-side. Real-world bundle delta after `Bun.build` tree-shake: ~25-35 KB gz extra for React. Idle-RAM delta: ~20-30 MB. Both are comfortable inside the relaxed "tip-top" v1 narrative budgets (see Phase 3.4 budget table — relaxed 2026-05-15).
+> - Two runtimes = two `jsxImportSource` configs + two bundle paths + conditional mount API + per-canvas runtime field + per-runtime handoff audit + every future Phase (4 Pixi, 8 collab, 12 in-canvas editor) carrying that complexity. Cognitive load compounds.
+> - shadcn / Radix handoff parity, agent training-data alignment, motion library native support, React 19 features (`use()`, `<form action>`, `useActionState`, async transitions) — all the canvas-side arguments — now also apply to **any future shell extraction**. If a shell component ever gets lifted into a canvas or a downstream project, React-throughout means zero translation.
+> - Claude Code itself uses React (Ink renders React tree to terminal). Anthropic engineers chose React over Preact for the parent product. We follow.
+
+**All canvases AND the shell run under React 19.** No `meta.runtime` field, no per-canvas runtime switching, no compat shim. `Bun.Transpiler({ loader: "tsx", jsxImportSource: "react" })` — single config. `Bun.build` produces one shared React 19 runtime bundle (`/_canvas-runtime/react.bundle.js`, ~25-35 KB gz post tree-shake) shared by shell + every canvas in the session. Mount via `createRoot(root).render(<Canvas />)`. Handoff dependencies always `["react", "react-dom", ...]`. **DDR-012 records the unification + supersedes Phase 3.4's earlier Preact-shell draft.** The canvas TSX format itself is recorded separately in DDR-017.
 
 ### Handoff target: **shadcn registry-item.json sidecar**
 
@@ -235,9 +239,9 @@ The codemod prints a per-canvas diff so the choice can be reviewed and overridde
 
 Execute in order. Each is atomic + testable.
 
-### Task 0 — ARCHIVE research + ADD DDR-015
+### Task 0 — ARCHIVE research + ADD DDR-017
 
-- **Do**: Save all three research-round reports verbatim to `_history/_system/canvas-format-research-2026-05-15/{round-1-generic.md, round-2-bun-native.md, round-3-phase-12.md}`. Write `.ai/decisions/DDR-015-canvas-tsx-format.md` per `.ai/decisions/template.md`: context (status quo pain points), decision (TSX + two-pass transform + shadcn registry handoff), alternatives considered (Tailwind-everywhere, v0-mode CDN, multi-file project), consequences (Phase 3.4 hard-block, motion-Preact gap, bespoke CSS preserved).
+- **Do**: Save all three research-round reports verbatim to `_history/_system/canvas-format-research-2026-05-15/{round-1-generic.md, round-2-bun-native.md, round-3-phase-12.md}`. Write `.ai/decisions/DDR-017-canvas-tsx-format.md` per `.ai/decisions/template.md`: context (status quo pain points), decision (TSX + two-pass transform + shadcn registry handoff), alternatives considered (Tailwind-everywhere, v0-mode CDN, multi-file project), consequences (Phase 3.4 hard-block, motion-Preact gap, bespoke CSS preserved).
 - **Validate**: DDR opens cleanly + cross-links to this plan.
 
 ### Task 1 — CREATE `canvas-pipeline.ts` (two-pass transform)
@@ -277,14 +281,14 @@ Execute in order. Each is atomic + testable.
 
 ### Task 6 — CREATE `templates/_shell.html` + `templates/canvas.tsx.template` + UPDATE `/design:new`
 
-- **Do**: Write `_shell.html` per the dataflow diagram in DDR-015. Update `/design:new` step 8 ("Write target file") to write `<Slug>.tsx` (not `.html`) + ensure `<designRoot>/_shell.html` exists (idempotent write on first canvas in a project). Update step 7 ("Validate output") for the new target: `default export` present, `import` statements present, no `<!doctype` (that's `_shell.html`'s job). Update the envelope (step 5b) to generate TSX-shaped output, not HTML.
-- **Pattern**: Frontend-design skill already accepts framework hint — pass `target: "tsx-preact"` in the envelope. Validate the generated TSX parses via `oxc-parser` before writing (one extra pre-flight check in step 8).
+- **Do**: Write `_shell.html` per the dataflow diagram in DDR-017. Update `/design:new` step 8 ("Write target file") to write `<Slug>.tsx` (not `.html`) + ensure `<designRoot>/_shell.html` exists (idempotent write on first canvas in a project). Update step 7 ("Validate output") for the new target: `default export` present, `import` statements present, no `<!doctype` (that's `_shell.html`'s job). Update the envelope (step 5b) to generate TSX-shaped output, not HTML.
+- **Pattern**: Frontend-design skill already accepts framework hint — pass `target: "tsx-react"` in the envelope. Validate the generated TSX parses via `oxc-parser` before writing (one extra pre-flight check in step 8).
 - **Gotcha**: Existing `_active.json.selected.v=1` writes-from-canvas (from before this phase) may be in flight. Step 4 of `/design:new` clears `_active` for the new canvas.
 - **Validate**: `/design:new "Test Canvas" "Single hero with CTA — basic smoke test"` writes `.design/ui/Test Canvas.tsx` + `.design/ui/Test Canvas.meta.json` + `.design/_shell.html` (if missing) + opens in browser via screenshot helper.
 
 ### Task 7 — CREATE `handoff.ts` + UPDATE `/design:handoff`
 
-- **Do**: Implement `emitRegistryItem(canvas: string): Promise<RegistryItem>` per the [registry-item.json schema](https://ui.shadcn.com/schema/registry-item.json). Walk imports via `Bun.Transpiler.scanImports()`, classify as `dependencies` (npm specifier) vs `registryDependencies` (`@/components/ui/*` resolves to shadcn primitive name) vs ignored (`react`, `preact/compat` — implicit). `files[0] = { path: "components/<slug>.tsx", content: <strippedTsx>, type: "registry:component" }` where `<strippedTsx>` = canvas source with the `data-cd-id` attributes AST-removed (those are dev-time inspector scaffolding; production has no business with them — same `oxc-parser` + `magic-string` pair used to inject them). Populate `description` from `.meta.json.subtitle` (one-line). Wire `/design:handoff` step list to call this + print the resulting `<Slug>.registry.json` path + a copyable `bunx shadcn add file://<path>` command. **CSS bundling is Task 12's job, not this task's** — Task 7 ships the structural skeleton; Task 12 fills in `cssVars` + bundled-CSS `files[]` entries.
+- **Do**: Implement `emitRegistryItem(canvas: string): Promise<RegistryItem>` per the [registry-item.json schema](https://ui.shadcn.com/schema/registry-item.json). Walk imports via `Bun.Transpiler.scanImports()`, classify as `dependencies` (npm specifier — `react` + `react-dom` always present; promoted to declared deps) vs `registryDependencies` (`@/components/ui/*` resolves to shadcn primitive name). `files[0] = { path: "components/<slug>.tsx", content: <strippedTsx>, type: "registry:component" }` where `<strippedTsx>` = canvas source with the `data-cd-id` attributes AST-removed (those are dev-time inspector scaffolding; production has no business with them — same `oxc-parser` + `magic-string` pair used to inject them). Populate `description` from `.meta.json.subtitle` (one-line). Wire `/design:handoff` step list to call this + print the resulting `<Slug>.registry.json` path + a copyable `bunx shadcn add file://<path>` command. **CSS bundling is Task 12's job, not this task's** — Task 7 ships the structural skeleton; Task 12 fills in `cssVars` + bundled-CSS `files[]` entries.
 - **Pattern**: Schema reference: pull the JSON schema down (Task 0's research artifacts include the URL); validate the emitted file against it before writing.
 - **Gotcha**: `cssVars` block stays empty in this task — Task 12 fills it. If you ship the registry-item without Task 12, the consumer still gets the `<slug>.tsx` file cleanly; the bespoke className references will just fail to style until the user copies the CSS manually. That's an acceptable interim state — but Task 12 closes the gap.
 - **Validate**: `bunx shadcn add file:///tmp/test-canvas.registry.json` in a scratch Next.js + shadcn project lands the canvas as `components/test-canvas.tsx`, dependencies install cleanly, **no `data-cd-id` attributes survive into the dropped file** (grep the result).
@@ -305,7 +309,7 @@ Execute in order. Each is atomic + testable.
 
 ### Task 10 — UPDATE `.design/config.json.handoffTargets` + canvas-meta.schema.json
 
-- **Do**: Add `handoffTargets: [{ label: "shadcn registry", path: "registry:item", platform: "web" }]` to `.design/config.json`. Extend `canvas-meta.schema.json` with `css_mode` (enum: `"inline" | "tailwind" | "modules"`), `motion_runtime` (enum: `"preact" | "react-19"`, default `"preact"`), `data-cd-id-version` (integer, current = 1 — for future ID-scheme migrations). Update `config.schema.json` to document the registry-item handoff target.
+- **Do**: Add `handoffTargets: [{ label: "shadcn registry", path: "registry:item", platform: "web" }]` to `.design/config.json`. Extend `canvas-meta.schema.json` with `css_mode` (enum: `"inline" | "tailwind" | "modules"`), `data-cd-id-version` (integer, current = 1 — for future ID-scheme migrations). **No `runtime` field** — React 19 is universal per DDR-012. Update `config.schema.json` to document the registry-item handoff target.
 - **Pattern**: JSON Schema additions — `default` per field, `description` per field. Both schemas live under `plugins/design/dev-server/`.
 - **Gotcha**: Existing `.design/ui/*.meta.json` files (post-Task 8 migration) need `css_mode: "inline"` retro-injected. Migration script (Task 8) writes it.
 - **Validate**: `bun run mdcc config get handoffTargets` returns the registry target. AJV-validate a sample meta.json against the new schema.
@@ -333,7 +337,7 @@ Execute in order. Each is atomic + testable.
    * @opt_out     palette
    * @artboards   landing | docs-index | docs-article | cmd-k
    * @brief       udelej navrh docs site — fumadocs re-skin + landing
-   * @stack       Preact (preact/compat) · TSX · Bun-transpile · css_mode=inline
+   * @stack       React 19 · TSX · Bun-transpile · css_mode=inline
    * @history     .design/_history/docs-site/
    * @handoff     bunx shadcn add file://./Docs\ Site.registry.json
    */
@@ -388,16 +392,16 @@ Run these commands to confirm zero regressions:
 
 | Risk | Likelihood | Mitigation |
 | --- | --- | --- |
-| `bun-plugin-tailwind` 0.1.x is unstable mid-canvas | Med (v0.1.x is young) | MDCC-DSN/01 defaults to `css_mode: "inline"` — plugin path doesn't run. Tailwind-mode canvases (future DS opt-in) carry the risk; flag explicitly in DDR-015. |
-| Motion + Preact open issue (`motiondivision/motion#1369`) blocks an aesthetic-critic recommendation | Med | Per-canvas `motion_runtime: "react-19"` escape hatch. Cost = small React bundle delta per motion-canvas. Acceptable. |
-| `data-cd-id` renumbers on sibling insert → selection jumps mid-edit | High (it's the design) | Documented in DDR-015. Phase-12 inspector resolves selections via `(componentName, jsxPath)` fallback when ID is stale. Phase-10 Yjs binding adds Awareness layer that survives content-level conflicts. **This phase ships the foundation, not the recovery layer.** |
+| `bun-plugin-tailwind` 0.1.x is unstable mid-canvas | Med (v0.1.x is young) | MDCC-DSN/01 defaults to `css_mode: "inline"` — plugin path doesn't run. Tailwind-mode canvases (future DS opt-in) carry the risk; flag explicitly in DDR-017. |
+| Motion library + Radix portals — Preact-compat edge cases | **N/A (resolved)** | DDR-012 chose React 19 everywhere. Motion + Radix run natively. The risk is closed. |
+| `data-cd-id` renumbers on sibling insert → selection jumps mid-edit | High (it's the design) | Documented in DDR-017. Phase-12 inspector resolves selections via `(componentName, jsxPath)` fallback when ID is stale. Phase-10 Yjs binding adds Awareness layer that survives content-level conflicts. **This phase ships the foundation, not the recovery layer.** |
 | Codemod produces broken TSX for one of the existing canvases (e.g. `Canvas Viewport.html` with heavy React.useState usage) | Med (Canvas Viewport is the most complex existing canvas) | Codemod dry-run mode + per-canvas opt-out flag. Migration commits canvas-by-canvas; broken outputs roll back independently. Manual touch-up budgeted (~1 day for the two heavy canvases). |
 | oxc-parser API breaking change between versions | Low (mature; npm v0.30+) | Pin exact version in `package.json`. Renovate-bot PRs reviewed manually. |
 | Bun.Transpiler.transformSync output diverges from `@babel/preset-react` for an obscure JSX edge case | Low (Bun is esbuild-compatible) | Tests at Task 11 cover the migrated canvas roster. Edge cases caught + escalated to a Bun upstream issue if found. |
 | `_locator.json` corruption under concurrent transpiles | Low (mutex per file) | Atomic-write pattern + Mutex in Task 2. Test in Task 2 covers it. |
 | Existing users' `.design/` corpora break on upgrade | High if no codemod | Codemod (Task 8) runs once per project. Migration guide + the `_history/_migration-2026-05-15/` backup directory let users diff + roll back. |
 | Phase 3.4 slips → this phase blocked | High dependency | This plan does not start until 3.4 lands `dist/mdcc-<platform>`. No work-in-parallel that pre-commits API decisions. |
-| **Preact-for-canvases creates a handoff runtime mismatch** — canvases run under `preact/compat` in the dev-server, but production targets (Next.js, Vite + React 18/19) run real React. Preact-isms (synchronous setState batching, ref propagation through `forwardRef`, some Suspense edge cases, Radix portals via shadcn) occasionally diverge. The canvas could render "fine" locally but break in target. **Especially risky** because shadcn primitives (Radix-based) are the recommended handoff target and Radix uses React-specific internals. | Med | **Three mitigations + one explicit decision gate.** (1) `motion_runtime: "react-19"` flag per canvas (Task 6) — opt-out path already exists. (2) For canvases that import shadcn `@/components/ui/*`, default the flag to `react-19` automatically (Task 6 inference). (3) Task 11 regression includes a "render under real React via esm.sh in CI" smoke for the migrated canvas roster — catches Preact-only regressions. (4) **Decision gate at Task 6**: if shadcn primitives fail under preact/compat in a non-trivial way for the reference `Docs Site.tsx`, flip the default to React 19 for ALL canvases and treat Preact as the opt-in (reverses Phase 3.4's default — that's a DDR amendment, not a plan rewrite, because Phase 3.4's Preact decision was for the dev-server *shell*, not for canvases). The plan stays Preact-first for now because Phase 3.4 needs to land first and we'll know Preact's behavior in this codebase only after that. |
+| ~~Preact-for-canvases creates a handoff runtime mismatch~~ | **N/A (resolved by DDR-012)** | This risk row drove the runtime decision through three drafts. End state: React 19 everywhere; canvases and target React projects share the same runtime semantics. Inversion failure mode no longer exists. Row preserved as historical context — the analysis that resolved this risk shaped the plan. |
 
 ---
 
@@ -425,7 +429,7 @@ Skip the 5-platform matrix — dev-server has no mobile/native surface.
   - [ ] `design-system-guard` subagent: 0 blockers against migrated canvases
   - [ ] `a11y-auditor` subagent: 0 blockers (a11y baseline from Phase 3.4 carried forward)
 - [ ] Performance budgets met (per the gates table above)
-- [ ] DDR-015 written + cross-linked
+- [ ] DDR-017 written + cross-linked
 - [ ] All existing canvases migrated; originals preserved under `_history/_migration-2026-05-15/`
 - [ ] `/design:handoff` emits valid `<Slug>.registry.json` for at least one canvas; `bunx shadcn add` round-trips into a scratch project **with self-contained CSS** (no manual copy step required) **and no `data-cd-id` attrs in the dropped file**
 - [ ] Every migrated canvas has a generated JSDoc header projecting `.meta.json` — verify `head -15` on each `.design/ui/*.tsx`
