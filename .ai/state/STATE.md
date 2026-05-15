@@ -3,12 +3,12 @@
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
 **Workflow:** feature-delivery — md-claude v1.0 roadmap
-**Phase:** feature-docs-site-mdcc-skin — **execute-complete**
-**Status:** awaiting-done
+**Phase:** phase-3.4-architecture-refactor (active) ∥ feature-docs-site-mdcc-skin (awaiting-done, parallel)
+**Status:** in-progress
 **Started:** 2026-05-12
 **Updated:** 2026-05-15
-**Active task:** —
-**Active plan:** `.ai/plans/feature-docs-site-mdcc-skin.md`
+**Active task:** Phase 3.4 — DDR groundwork + Task 1 audit + Task 2 deps (this session)
+**Active plan:** `.ai/plans/phase-3.4-architecture-refactor.md` (Phase 3.4 primary); `.ai/plans/feature-docs-site-mdcc-skin.md` (running in parallel, awaiting `/flow:done`)
 **Last archived plan:** `.ai/plans/archive/phase-14-design-system-keeper-pattern-priors.md`
 **Branch:** `main`
 
@@ -40,6 +40,11 @@ Consider `/flow:make-skill-template` for **fumadocs** and **hocuspocus** if thei
 - DDR-007 Stable element-id schema — `data-dc-screen` + `data-dc-element` (Phase 13, 2026-05-15)
 - DDR-008 `plugins/design/dev-server/bin/` is the canonical home for shared bash helpers (Phase 13, 2026-05-15)
 - DDR-010 `design-system-keeper` agent — read-only DS-fidelity audit between generation and the critic panel (Phase 14, 2026-05-15) [DDR-009 was claimed by the bun-runtime DDR mid-session]
+- DDR-011 Re-skin fumadocs via `--color-fd-*` overrides; do NOT fork (feature-docs-site-mdcc-skin, 2026-05-15)
+- DDR-012 React 19 everywhere — shell and canvases share a single runtime (Phase 3.4, 2026-05-15)
+- DDR-013 Server modular split into seven TypeScript modules on `Bun.serve` (Phase 3.4, 2026-05-15)
+- DDR-014 CSS `@layer reset, tokens, layout, shell, components, utilities` + Lightning CSS at build time (Phase 3.4, 2026-05-15)
+- DDR-016 `plugins/design/dev-server/runtime/` is the canvas-runtime library home — runtime code, not meta-design (Phase 3.4 Task 1 audit, 2026-05-15)
 
 ## Blockers
 
@@ -76,6 +81,7 @@ Consider `/flow:make-skill-template` for **fumadocs** and **hocuspocus** if thei
 | 2026-05-15 | done | `/flow:done` Phase 13 — validate green with soft warnings → addressed (DDR-007 element schema, DDR-008 bin/ helper home, minor changeset for Phase 13). Retro appended. Plan archived to `.ai/plans/archive/phase-13-stable-element-ids-and-canonical-screenshots.md`. Local commit on `main`, no push (per session). |
 | 2026-05-15 | Phase 14 | `/flow:execute` Phase 14 — design-system-keeper agent + pattern priors envelope + token-usage doctrine. 7 tasks: T1 Token usage guide section in DS README, T2 new agent (read-only `Read,Bash,Glob,Grep`), T3 `commands/new.md` envelope `## Pattern priors` + step 9.5 invocation, T4 `commands/edit.md` step 7.5 (conditional) + step 8a DS-drift fast-path + `--skip-ds-keeper` flag, T5 CLAUDE.md pattern-lift rule (127 lines), T6 DDR-010 (DDR-009 collision with bun-runtime DDR caught at validation, renamed), T7 CATEGORIES.md auto-routed-agents cross-reference section. T1 + T5 bundled into user's parallel commits (`3d663e6`, `16af2b6`); remaining 5 files committed by `/flow:done`. |
 | 2026-05-15 | done | `/flow:done` Phase 14 — DDR-010 written, retro appended (3 wins / 3 misses / 3 process improvements), action checklist in retro source ticked to `[x]`, plan archived to `.ai/plans/archive/phase-14-design-system-keeper-pattern-priors.md`. Open carry-over: scratch-project smoke run of `/design:new` to verify ds-keeper fires + reports findings on a deliberately-drifty input. |
+| 2026-05-15 | Phase 3.4 | `/flow:execute` Phase 3.4 — scoped to fundament-only per user: DDR-012 pivot (React 19 unified, supersedes hybrid Preact+React draft), Task 1 audit (runtime/ verdict = canvas-runtime library, not meta-design — DDR-016), Task 2 (Bun toolchain + react/lightningcss devDeps + scripts), DDR-013 (server modular split + TS), DDR-014 (CSS @layer + Lightning CSS). 5 DDRs landed + dev-server/package.json + root engines.bun=>=1.3 + STATE.md updated. Tasks 3-16 deferred to follow-up execute sessions. Parallel to feature-docs-site-mdcc-skin (awaiting-done). |
 
 ## Execution Progress
 
@@ -192,3 +198,46 @@ Manual smoke deferred: end-to-end `/design:setup-ds → new → edit` in scratch
 - [x] Task 8: GitHub repo via gh CLI ✅ (script + JSON payloads + CODEOWNERS + auto-merge-dependabot workflow). Script not yet **applied** to live repo (gated — needs maintainer to run).
 - [x] Task 9: Update README ✅ (Workspaces section, reauthored Releasing, new Repo administration section)
 - [x] DDR sweep: DDR-001 + DDR-002 written
+
+### phase-3.4-architecture-refactor — fundament partial (2026-05-15)
+
+> Scope this session: DDR groundwork + Task 1 audit + Task 2 deps. Tasks 3-16 (build pipeline, client migration, server rewrite, CSS @layer files, HMR, lazy iframes, perf harness, postinstall pattern, CI matrix, plan updates) deferred to follow-up `/flow:execute` sessions.
+
+- [x] **DDR-012** — React 19 everywhere ✅ (`.ai/decisions/DDR-012-react-19-unified-runtime.md` — supersedes the hybrid Preact+React assumption; relaxes perf budgets to bundle < 80 KB, RAM < 80 MB, first paint < 350 ms)
+- [x] **Task 1** — Audit `runtime/` folder ✅ (verdict: canvas-runtime library injected into user HTML pages via `/_runtime/*`, NOT meta-design. Plan hypothesis re: commit `5864f71` was wrong — actual origin is `b200e59`.) → **DDR-016** landed
+- [x] **Task 2** — Bun toolchain deps ✅ (`plugins/design/dev-server/package.json` rewritten — `@types/bun`, `react ^19`, `react-dom ^19`, `@types/react ^19`, `@types/react-dom ^19`, `lightningcss ^1.27` in devDependencies; `build`/`build:watch`/`test`/`typecheck` scripts; root `package.json` `engines.bun = ">=1.3"`. No `pnpm install` / `bun install` run yet — defer to Task 3 session to avoid lockfile drift mid-refactor.) Bun 1.3.3 verified locally.
+- [x] **DDR-013** — Server modular split + TypeScript ✅ (`.ai/decisions/DDR-013-server-modular-split-typescript.md` — 7 modules (`server.ts`, `http.ts`, `ws.ts`, `api.ts`, `inspect.ts`, `history.ts`, `fs-watch.ts`) + `mem.ts` auxiliary; ≤ 300 LOC each; Context-object communication; no module-level mutable state)
+- [x] **DDR-014** — CSS @layer architecture ✅ (`.ai/decisions/DDR-014-css-layer-architecture.md` — `reset, tokens, layout, shell, components, utilities`; Lightning CSS at build time; DS token import via `1-tokens.css`)
+- [x] **DDR-016** — `runtime/` folder verdict ✅ (`.ai/decisions/DDR-016-runtime-folder-purpose.md` — canvas-runtime library; renamed `.jsx` → `.tsx` in Task 7; IIFE bundle registers `window.*` globals for backward-compat with user HTML pages)
+- [x] **DDR README + DDR-009 update** ✅ (DDR-README index now lists DDR-012/013/014/016; DDR-009's "Companion DDRs" footer renumbered from the old DDR-010..014 numbering to actual DDR-012..016)
+- [ ] **Task 3** — `build.ts` Bun-driven build orchestrator (deferred)
+- [ ] **Task 4** — `app.jsx` UMD React → React 19 esm imports (deferred)
+- [ ] **Task 5** — `index.html` drop unpkg, load bundle (deferred)
+- [ ] **Task 6** — `styles.css` → `client/styles/` `@layer` files + Lightning CSS pipeline (deferred)
+- [ ] **Task 7** — `server.mjs` 1288 LOC → 7 TypeScript modules on `Bun.serve` (deferred — largest task)
+- [ ] **Task 8** — `mem.ts` heap discipline + FinalizationRegistry (deferred)
+- [ ] **Task 9** — `client/hmr.mjs` WS-driven HMR (deferred)
+- [ ] **Task 10** — `client/iframe-lazy.mjs` IntersectionObserver mount (deferred)
+- [ ] **Task 11** — perf harness + 7 `bun:test` smoke tests (deferred)
+- [ ] **Task 12** — Claude-Code-style postinstall-hardlink distribution (deferred)
+- [ ] **Task 13** — `.github/workflows/build-binaries.yml` 7-platform matrix (deferred)
+- [ ] **Task 14** — remaining DDR: **DDR-015** (per-platform binary distribution) — pending, lands with Task 12-13
+- [ ] **Task 15** — update Phase 4 plan (remove Task 2 "build dist bundles", remove runtime-agnostic constraint) (deferred)
+- [ ] **Task 16** — update Phase 3.5 plan (depend on Phase 3.4 build pipeline, note tokens already arrive via Lightning CSS) (deferred)
+
+**Verification status this session:** No `bun run build.ts` exists yet (Task 3); no tests run; JSON syntax + Bun 1.3.3 install verified. Edit-Verify Loop is N/A — work is purely additive paper artifacts (DDRs) + a `package.json` rewrite with no runtime callers yet.
+
+**Files modified:**
+
+- `.ai/decisions/DDR-009-bun-runtime-authoritative-for-dev-server.md` — companion-DDRs footer renumbered
+- `.ai/decisions/README.md` — index updated for DDR-012/013/014/016
+- `.ai/state/STATE.md` — Phase header + Decisions list + History row + this section
+
+**Files created:**
+
+- `.ai/decisions/DDR-012-react-19-unified-runtime.md`
+- `.ai/decisions/DDR-013-server-modular-split-typescript.md`
+- `.ai/decisions/DDR-014-css-layer-architecture.md`
+- `.ai/decisions/DDR-016-runtime-folder-purpose.md`
+- `plugins/design/dev-server/package.json` — full rewrite (was 12-line stub)
+- `package.json` — root `engines.bun: ">=1.3"` added

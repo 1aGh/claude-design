@@ -470,11 +470,11 @@ Prior research (`.ai/docs/research-runtime.md`, 2026-05-12) recommended "Stay No
 > Each DDR is short (≤ 100 lines), follows `.ai/decisions/README.md` schema. Land each in the same commit as the matching task — or batch at the end if cheaper.
 
 - **~~DDR-009~~:** ✅ Already written 2026-05-15 — [`DDR-009-bun-runtime-authoritative-for-dev-server.md`](../decisions/DDR-009-bun-runtime-authoritative-for-dev-server.md). Captures both the Bun-authoritative runtime choice AND the no-Node-fallback consequence (originally drafted as a separate DDR-015 in this plan; consolidated since the fallback acceptance is inseparable from the runtime choice).
-- **DDR-012:** **React 19 everywhere — shell + canvases unified.** Three-draft pivot (Preact-only → hybrid → unified React 19) + the bundle/RAM-vs-complexity trade-off + the relaxed performance budgets. Supersedes the implicit Preact-shell assumption in earlier drafts of this plan.
-- **DDR-013:** Server modular split into seven TypeScript files on `Bun.serve`. Module-boundary contract + state ownership rules + why TS now.
-- **DDR-014:** CSS `@layer` architecture: `reset, tokens, layout, shell, components, utilities`. Why this order; how token import works.
-- **DDR-015:** Per-platform binary distribution via npm `optionalDependencies` sub-packages with postinstall-hardlink (Claude-Code pattern). Why not single fat tarball; CI release-matrix design; precedent (`@anthropic-ai/claude-code` + Bun npm package).
-- **DDR-016:** `runtime/` folder purpose (outcome of Task 1).
+- **~~DDR-012~~:** ✅ Landed 2026-05-15 — [`DDR-012-react-19-unified-runtime.md`](../decisions/DDR-012-react-19-unified-runtime.md). React 19 everywhere — shell + canvases unified. Three-draft pivot (Preact-only → hybrid → unified React 19) + the bundle/RAM-vs-complexity trade-off + the relaxed performance budgets.
+- **~~DDR-013~~:** ✅ Landed 2026-05-15 — [`DDR-013-server-modular-split-typescript.md`](../decisions/DDR-013-server-modular-split-typescript.md). Server modular split into seven TypeScript modules on `Bun.serve`. Module-boundary contract + state ownership rules + why TS now.
+- **~~DDR-014~~:** ✅ Landed 2026-05-15 — [`DDR-014-css-layer-architecture.md`](../decisions/DDR-014-css-layer-architecture.md). CSS `@layer` architecture: `reset, tokens, layout, shell, components, utilities`. Why this order; how token import works.
+- **DDR-015:** Per-platform binary distribution via npm `optionalDependencies` sub-packages with postinstall-hardlink (Claude-Code pattern). Why not single fat tarball; CI release-matrix design; precedent (`@anthropic-ai/claude-code` + Bun npm package). _Pending — lands with Task 12-13._
+- **~~DDR-016~~:** ✅ Landed 2026-05-15 — [`DDR-016-runtime-folder-purpose.md`](../decisions/DDR-016-runtime-folder-purpose.md). `runtime/` folder is the canvas-runtime library home (Task 1 audit verdict: not meta-design, not shell chrome; injected into user HTML pages via `/_runtime/*`).
 
 ### Task 15: UPDATE Phase 4 plan — remove Task 2 (build dist bundles) + add Bun runtime note
 

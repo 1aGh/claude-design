@@ -115,4 +115,9 @@ This DDR encodes two rules future code must follow:
 - **Phase 4:** [`.ai/plans/phase-4-canvas-v2-rendering-engine.md`](../plans/phase-4-canvas-v2-rendering-engine.md) — consumes the Bun runtime; "runtime-agnostic constraint" section there was removed when this DDR landed
 - **Supersedes (in part):** [`.ai/docs/research-runtime.md`](../docs/research-runtime.md) — research conclusion stays valid as workload analysis, but its top-line recommendation ("Stay Node, Bun side-channel") is superseded by Option C
 - **Precedent (external):** `@anthropic-ai/claude-code@2.1.142` npm tarball — investigated 2026-05-15
-- **Companion DDRs (will be written as Phase 3.4 tasks land):** DDR-010 (Preact `compat`), DDR-011 (server modular split + TS), DDR-012 (`@layer` CSS), DDR-013 (per-platform binary distribution with postinstall-hardlink, mirroring Claude Code), DDR-014 (`runtime/` folder audit verdict)
+- **Companion DDRs (renumbered after DDR-010/011 landed for other concerns; written as Phase 3.4 tasks land):**
+  - [DDR-012](./DDR-012-react-19-unified-runtime.md) — React 19 unified runtime (supersedes the earlier Preact-`compat` draft; landed 2026-05-15 with the pivot)
+  - [DDR-013](./DDR-013-server-modular-split-typescript.md) — server modular split into 7 TypeScript modules on `Bun.serve` (landed 2026-05-15)
+  - [DDR-014](./DDR-014-css-layer-architecture.md) — `@layer` CSS architecture with Lightning CSS (landed 2026-05-15)
+  - DDR-015 — per-platform binary distribution with postinstall-hardlink, mirroring Claude Code (pending; lands with Phase 3.4 Task 12-13)
+  - [DDR-016](./DDR-016-runtime-folder-purpose.md) — `runtime/` folder audit verdict (landed 2026-05-15)
