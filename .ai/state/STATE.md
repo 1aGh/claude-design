@@ -3,11 +3,11 @@
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
 **Workflow:** feature-delivery — md-claude v1.0 roadmap
-**Phase:** phase-3.4-architecture-refactor (active) ∥ feature-docs-site-mdcc-skin (awaiting-done, parallel)
+**Phase:** phase-3.4-architecture-refactor (active — Tasks 3–16 complete, awaiting `/flow:done`) ∥ feature-docs-site-mdcc-skin (awaiting-done, parallel)
 **Status:** in-progress
 **Started:** 2026-05-12
 **Updated:** 2026-05-15
-**Active task:** Phase 3.4 — DDR groundwork + Task 1 audit + Task 2 deps (this session)
+**Active task:** Phase 3.4 — Tasks 3-16 implementation pass complete (build pipeline, React 19 migration, CSS @layer split, 7-module server.ts rewrite, mem.ts, HMR, lazy iframes, perf harness + 7 smoke tests, postinstall-hardlink distribution, build-binaries CI matrix, DDR-015, Phase 4 + 3.5 plan updates)
 **Active plan:** `.ai/plans/phase-3.4-architecture-refactor.md` (Phase 3.4 primary); `.ai/plans/feature-docs-site-mdcc-skin.md` (running in parallel, awaiting `/flow:done`)
 **Last archived plan:** `.ai/plans/archive/phase-14-design-system-keeper-pattern-priors.md`
 **Branch:** `main`
@@ -44,6 +44,7 @@ Consider `/flow:make-skill-template` for **fumadocs** and **hocuspocus** if thei
 - DDR-012 React 19 everywhere — shell and canvases share a single runtime (Phase 3.4, 2026-05-15)
 - DDR-013 Server modular split into seven TypeScript modules on `Bun.serve` (Phase 3.4, 2026-05-15)
 - DDR-014 CSS `@layer reset, tokens, layout, shell, components, utilities` + Lightning CSS at build time (Phase 3.4, 2026-05-15)
+- DDR-015 Per-platform Bun binary distribution via npm `optionalDependencies` sub-packages with postinstall-hardlink (Phase 3.4 Tasks 12-13, 2026-05-15)
 - DDR-016 `plugins/design/dev-server/runtime/` is the canvas-runtime library home — runtime code, not meta-design (Phase 3.4 Task 1 audit, 2026-05-15)
 
 ## Blockers
@@ -82,6 +83,7 @@ Consider `/flow:make-skill-template` for **fumadocs** and **hocuspocus** if thei
 | 2026-05-15 | Phase 14 | `/flow:execute` Phase 14 — design-system-keeper agent + pattern priors envelope + token-usage doctrine. 7 tasks: T1 Token usage guide section in DS README, T2 new agent (read-only `Read,Bash,Glob,Grep`), T3 `commands/new.md` envelope `## Pattern priors` + step 9.5 invocation, T4 `commands/edit.md` step 7.5 (conditional) + step 8a DS-drift fast-path + `--skip-ds-keeper` flag, T5 CLAUDE.md pattern-lift rule (127 lines), T6 DDR-010 (DDR-009 collision with bun-runtime DDR caught at validation, renamed), T7 CATEGORIES.md auto-routed-agents cross-reference section. T1 + T5 bundled into user's parallel commits (`3d663e6`, `16af2b6`); remaining 5 files committed by `/flow:done`. |
 | 2026-05-15 | done | `/flow:done` Phase 14 — DDR-010 written, retro appended (3 wins / 3 misses / 3 process improvements), action checklist in retro source ticked to `[x]`, plan archived to `.ai/plans/archive/phase-14-design-system-keeper-pattern-priors.md`. Open carry-over: scratch-project smoke run of `/design:new` to verify ds-keeper fires + reports findings on a deliberately-drifty input. |
 | 2026-05-15 | Phase 3.4 | `/flow:execute` Phase 3.4 — scoped to fundament-only per user: DDR-012 pivot (React 19 unified, supersedes hybrid Preact+React draft), Task 1 audit (runtime/ verdict = canvas-runtime library, not meta-design — DDR-016), Task 2 (Bun toolchain + react/lightningcss devDeps + scripts), DDR-013 (server modular split + TS), DDR-014 (CSS @layer + Lightning CSS). 5 DDRs landed + dev-server/package.json + root engines.bun=>=1.3 + STATE.md updated. Tasks 3-16 deferred to follow-up execute sessions. Parallel to feature-docs-site-mdcc-skin (awaiting-done). |
+| 2026-05-15 | Phase 3.4 | `/flow:execute` Phase 3.4 follow-up — Tasks 3-16 implementation pass in one session. Highlights: `build.ts` Bun-driven orchestrator (client + Lightning CSS + per-platform compile + --watch HMR broadcast); React 18 UMD → React 19 esm in `app.jsx` (216 KB raw / 69 KB gz under 80 KB budget); `index.html` rewritten to bundle-loading (no more babel-standalone CDN); `styles.css` split into 6 `@layer` files under `client/styles/`; `server.mjs` (1288 LOC) rewritten as 7 TypeScript modules on `Bun.serve` (server.ts/http.ts/ws.ts/api.ts/inspect.ts/history.ts/fs-watch.ts + context.ts + mem.ts auxiliary; 1963 total LOC; bun tsc --noEmit clean); native WS handlers (drops handwritten RFC-6455 upgrade); `mem.ts` FinalizationRegistry + heap-watch; `client/hmr.mjs` CSS-only live reload; `client/iframe-lazy.mjs` IntersectionObserver lazy mount + content-visibility wrappers; 7 `bun:test` smoke tests (8 pass) + perf harness; postinstall-hardlink distribution pattern (`cli/install.cjs` writes side-channel file `cli/.platform-binary-path`, `design.mjs` execs binary direct — pragmatic deviation documented in DDR-015 since full bun-CLI port is deferred); 7 sub-package manifests under `packages/md-claude-<slug>/`; root `package.json` `optionalDependencies` pin all 7; `mdcc-safe` `--ignore-scripts` fallback; `.github/workflows/build-binaries.yml` 7-platform fail-fast matrix with `publish-main needs: build-binaries`; `scripts/check-version-parity.sh` + `bump-version.sh` extended to cover sub-packages + optionalDependencies pin parity; DDR-015 written; Phase 4 + Phase 3.5 plan footers reconciled with the new pipeline. Live smoke: server.ts boots in < 200 ms on this repo, all endpoints return correct JSON, `mdcc-darwin-arm64` standalone binary compiles in ~100 ms (57 MB; under 80 MB budget). |
 
 ## Execution Progress
 
@@ -210,20 +212,41 @@ Manual smoke deferred: end-to-end `/design:setup-ds → new → edit` in scratch
 - [x] **DDR-014** — CSS @layer architecture ✅ (`.ai/decisions/DDR-014-css-layer-architecture.md` — `reset, tokens, layout, shell, components, utilities`; Lightning CSS at build time; DS token import via `1-tokens.css`)
 - [x] **DDR-016** — `runtime/` folder verdict ✅ (`.ai/decisions/DDR-016-runtime-folder-purpose.md` — canvas-runtime library; renamed `.jsx` → `.tsx` in Task 7; IIFE bundle registers `window.*` globals for backward-compat with user HTML pages)
 - [x] **DDR README + DDR-009 update** ✅ (DDR-README index now lists DDR-012/013/014/016; DDR-009's "Companion DDRs" footer renumbered from the old DDR-010..014 numbering to actual DDR-012..016)
-- [ ] **Task 3** — `build.ts` Bun-driven build orchestrator (deferred)
-- [ ] **Task 4** — `app.jsx` UMD React → React 19 esm imports (deferred)
-- [ ] **Task 5** — `index.html` drop unpkg, load bundle (deferred)
-- [ ] **Task 6** — `styles.css` → `client/styles/` `@layer` files + Lightning CSS pipeline (deferred)
-- [ ] **Task 7** — `server.mjs` 1288 LOC → 7 TypeScript modules on `Bun.serve` (deferred — largest task)
-- [ ] **Task 8** — `mem.ts` heap discipline + FinalizationRegistry (deferred)
-- [ ] **Task 9** — `client/hmr.mjs` WS-driven HMR (deferred)
-- [ ] **Task 10** — `client/iframe-lazy.mjs` IntersectionObserver mount (deferred)
-- [ ] **Task 11** — perf harness + 7 `bun:test` smoke tests (deferred)
-- [ ] **Task 12** — Claude-Code-style postinstall-hardlink distribution (deferred)
-- [ ] **Task 13** — `.github/workflows/build-binaries.yml` 7-platform matrix (deferred)
-- [ ] **Task 14** — remaining DDR: **DDR-015** (per-platform binary distribution) — pending, lands with Task 12-13
-- [ ] **Task 15** — update Phase 4 plan (remove Task 2 "build dist bundles", remove runtime-agnostic constraint) (deferred)
-- [ ] **Task 16** — update Phase 3.5 plan (depend on Phase 3.4 build pipeline, note tokens already arrive via Lightning CSS) (deferred)
+- [x] **Task 3** — `build.ts` Bun-driven orchestrator ✅ (client `Bun.build` IIFE + Lightning CSS + per-platform `bun build --compile` + `--watch` HMR broadcast + `--dry-run` smoke)
+- [x] **Task 4** — `app.jsx` UMD React → React 19 esm ✅ (`import { ... } from 'react'` + `createRoot` from `react-dom/client`; release bundle 216 KB raw / 69 KB gz — under 80 KB budget)
+- [x] **Task 5** — `index.html` bundle-loading ✅ (no more unpkg babel-standalone / UMD)
+- [x] **Task 6** — `client/styles/` 6 `@layer` files + Lightning CSS ✅ (0-reset / 1-tokens / 2-layout / 3-shell / 4-components / 5-utilities; `_index.css` declares layer order; output 25 KB minified)
+- [x] **Task 7** — `server.mjs` → 7 TS modules on `Bun.serve` ✅ (server.ts/http.ts/ws.ts/api.ts/inspect.ts/history.ts/fs-watch.ts + context.ts factory base + mem.ts; 1963 LOC total; `bun tsc --noEmit` clean; native WS drops handwritten RFC-6455 upgrade; live boot returns correct JSON on /_health /_config /_index-data /_system-data)
+- [x] **Task 8** — `mem.ts` ✅ (FinalizationRegistry + WeakMapById + startHeapWatch with warn/panic thresholds; --smol embedded into `bun build --compile`)
+- [x] **Task 9** — `client/hmr.mjs` ✅ (CSS-only path zero-risk reload via `<link>` cache-busting; JSX path full-page reload until react-refresh-runtime is wired in Phase 3.5)
+- [x] **Task 10** — `client/iframe-lazy.mjs` ✅ (IntersectionObserver mount + content-visibility wrapper + 30s-idle detach + state stash)
+- [x] **Task 11** — perf harness + 7 `bun:test` smokes ✅ (server-lifecycle / ws-handshake / active-state / history-rollback (2 tests) / fs-watch / bundle-smoke / binary-smoke; `bun test` = 8 pass 0 fail in 1.6 s; `test/perf-harness.ts` measures cold start + gz bundle + WS p50/p99)
+- [x] **Task 12** — postinstall-hardlink distribution ✅ (pragmatic deviation per DDR-015 — `cli/install.cjs` writes `cli/.platform-binary-path` side channel, `design.mjs` execs binary directly for `mdcc design serve` hot path; `mdcc.exe` stub + `mdcc-safe` (`cli/cli-wrapper.cjs`) fallback for `--ignore-scripts`; 7 sub-packages under `packages/md-claude-<slug>/`; root `optionalDependencies` pins all 7; full bun-CLI port deferred to Phase 3.5/3.6)
+- [x] **Task 13** — `.github/workflows/build-binaries.yml` ✅ (7-platform fail-fast matrix on v*.*.* tags incl. Alpine musl variants + Windows; `publish-main needs: build-binaries`; npm provenance on every sub-package + main)
+- [x] **Task 14** — DDR-015 written ✅ (per-platform binary distribution rationale + alternatives + Claude-Code precedent + pragmatic-partial deviation footer)
+- [x] **Task 15** — Phase 4 plan reconciled ✅ (already had Phase 3.4 dependency from prior session; verified no stale references to `runtime-agnostic constraint` or `build.mjs`; relaxed Phase 3.4 budget references to DDR-012 values)
+- [x] **Task 16** — Phase 3.5 plan reconciled ✅ (Task 4 note about bundle-loading index.html; Task 5 retargeted to `client/styles/1-tokens.css` `@layer tokens`; Validation section bumped — biome/tsc/build are now actual gates, not "skip")
+
+**Files added (Tasks 3-16):**
+
+- `plugins/design/dev-server/build.ts`, `tsconfig.json`, `context.ts`, `server.ts`, `http.ts`, `ws.ts`, `api.ts`, `inspect.ts`, `history.ts`, `fs-watch.ts`, `mem.ts`
+- `plugins/design/dev-server/client/styles/{0-reset,1-tokens,2-layout,3-shell,4-components,5-utilities,_index}.css`
+- `plugins/design/dev-server/client/{hmr,iframe-lazy}.mjs`
+- `plugins/design/dev-server/test/{_helpers,server-lifecycle,ws-handshake,active-state,history-rollback,fs-watch,bundle-smoke,binary-smoke}.{ts,test.ts}` + `perf-harness.ts`
+- `packages/md-claude-{darwin-arm64,darwin-x64,linux-x64,linux-arm64,linux-x64-musl,linux-arm64-musl,win32-x64}/{package.json,README.md}` (7 sub-packages)
+- `cli/{install.cjs,cli-wrapper.cjs,bin/mdcc.exe}` (postinstall + safe-mode bin + 500-byte stub)
+- `.github/workflows/build-binaries.yml`
+- `.ai/decisions/DDR-015-per-platform-binary-distribution.md`
+
+**Files modified (Tasks 3-16):**
+
+- `plugins/design/dev-server/client/{app.jsx,index.html}` (React 19 esm; bundle-loading)
+- `plugins/design/dev-server/package.json` (typescript + bun-types added)
+- `package.json` (root: `bin.mdcc-safe`, `postinstall`, `optionalDependencies` × 7, `start`/`dev` use `bun run server.ts`, `build:binary` + `test:dev-server` scripts)
+- `cli/commands/design.mjs` (side-channel binary path resolution for `mdcc design serve`)
+- `scripts/{check-version-parity.sh,bump-version.sh}` (sub-package + optionalDependencies pin parity)
+- `.ai/decisions/README.md` (DDR-015 indexed)
+- `.ai/plans/{phase-4-canvas-v2-rendering-engine,phase-3.5-dev-server-ui-ux-refresh}.md` (3.4 alignment notes)
 
 **Verification status this session:** No `bun run build.ts` exists yet (Task 3); no tests run; JSON syntax + Bun 1.3.3 install verified. Edit-Verify Loop is N/A — work is purely additive paper artifacts (DDRs) + a `package.json` rewrite with no runtime callers yet.
 

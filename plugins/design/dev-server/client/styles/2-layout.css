@@ -1,0 +1,12 @@
+/* @layer layout — top-level grid only. */
+@layer layout {
+/* ----- App shell ----- */
+.app {
+  display: grid;
+  grid-template-columns: var(--u-sidebar-w) 1fr;
+  height: 100vh;
+}
+.app.with-rsidebar {
+  grid-template-columns: var(--u-sidebar-w) 1fr var(--u-rsidebar-w);
+}
+}

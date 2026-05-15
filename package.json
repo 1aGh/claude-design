@@ -11,21 +11,34 @@
   "packageManager": "pnpm@11.0.4",
   "bin": {
     "mdcc": "cli/bin/mdcc.mjs",
+    "mdcc-safe": "cli/cli-wrapper.cjs",
     "claude-design-server": "plugins/design/dev-server/server.mjs"
   },
   "scripts": {
-    "start": "node plugins/design/dev-server/server.mjs",
-    "dev": "node plugins/design/dev-server/server.mjs --port 4399",
+    "start": "bun run plugins/design/dev-server/server.ts",
+    "dev": "bun run plugins/design/dev-server/server.ts --port 4399",
     "dev:site": "pnpm --filter @md-claude/site dev",
     "build": "pnpm -r --if-present run build",
+    "build:binary": "bun run plugins/design/dev-server/build.ts --release",
     "test": "node --test --test-reporter=spec cli/**/*.test.mjs",
+    "test:dev-server": "cd plugins/design/dev-server && bun test",
     "lint": "biome check .",
     "format": "biome format --write .",
     "changeset": "changeset",
     "changeset:version": "bash scripts/changesets-version.sh",
     "release": "pnpm build && changeset publish",
     "mdcc": "node cli/bin/mdcc.mjs",
+    "postinstall": "node cli/install.cjs",
     "prepublishOnly": "bash scripts/check-version-parity.sh"
+  },
+  "optionalDependencies": {
+    "@1agh/md-claude-darwin-arm64": "0.12.0",
+    "@1agh/md-claude-darwin-x64": "0.12.0",
+    "@1agh/md-claude-linux-x64": "0.12.0",
+    "@1agh/md-claude-linux-arm64": "0.12.0",
+    "@1agh/md-claude-linux-x64-musl": "0.12.0",
+    "@1agh/md-claude-linux-arm64-musl": "0.12.0",
+    "@1agh/md-claude-win32-x64": "0.12.0"
   },
   "files": [
     "cli",

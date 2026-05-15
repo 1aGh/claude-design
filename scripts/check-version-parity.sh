@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Ensures package.json and every plugin's .claude-plugin/plugin.json carry the
-# same version. All files must move together — the npm CLI and the Claude Code
-# plugins ship under one release line.
+# Ensures package.json, every plugin's .claude-plugin/plugin.json, and every
+# per-platform sub-package (DDR-015) carry the same version. All files must
+# move together — the npm CLI, the Claude Code plugins, and the platform
+# binaries ship under one release line.
 #
-# Plugins covered:
-#   - plugins/design/.claude-plugin/plugin.json
-#   - plugins/flow/.claude-plugin/plugin.json
+# Also enforces that the main package's `optionalDependencies` pin every
+# sub-package to that same version (otherwise npm won't fetch the matching
+# binary at install time).
 #
 # Run before tagging, before publishing, and in CI.
 set -euo pipefail
@@ -15,6 +16,15 @@ PKG_PATH="$ROOT/package.json"
 PLUGIN_PATHS=(
   "$ROOT/plugins/design/.claude-plugin/plugin.json"
   "$ROOT/plugins/flow/.claude-plugin/plugin.json"
+)
+SUBPACKAGE_PATHS=(
+  "$ROOT/packages/md-claude-darwin-arm64/package.json"
+  "$ROOT/packages/md-claude-darwin-x64/package.json"
+  "$ROOT/packages/md-claude-linux-x64/package.json"
+  "$ROOT/packages/md-claude-linux-arm64/package.json"
+  "$ROOT/packages/md-claude-linux-x64-musl/package.json"
+  "$ROOT/packages/md-claude-linux-arm64-musl/package.json"
+  "$ROOT/packages/md-claude-win32-x64/package.json"
 )
 
 if [ ! -f "$PKG_PATH" ]; then
@@ -40,6 +50,36 @@ for plugin in "${PLUGIN_PATHS[@]}"; do
   fi
 done
 
+for sub in "${SUBPACKAGE_PATHS[@]}"; do
+  # Sub-packages may not yet exist on older branches — skip in that case.
+  [ ! -f "$sub" ] && continue
+  SUB_VER=$(node -p "require('$sub').version")
+  if [ "$PKG_VER" != "$SUB_VER" ]; then
+    rel="${sub#$ROOT/}"
+    echo "error: version mismatch" >&2
+    printf "  %-50s %s\n" "package.json:" "$PKG_VER" >&2
+    printf "  %-50s %s\n" "$rel:" "$SUB_VER" >&2
+    mismatches=$((mismatches + 1))
+  fi
+done
+
+# optionalDependencies pin parity — every @1agh/md-claude-* entry must equal PKG_VER.
+mismatches=$((mismatches + $(node -e "
+  const j = require('$PKG_PATH');
+  const od = j.optionalDependencies || {};
+  let n = 0;
+  for (const [k, v] of Object.entries(od)) {
+    if (!k.startsWith('@1agh/md-claude-')) continue;
+    if (v !== j.version) {
+      console.error('error: optionalDependencies pin mismatch:');
+      console.error('  package.json version:', j.version);
+      console.error('  ' + k + ':', v);
+      n++;
+    }
+  }
+  console.log(n);
+")))
+
 if [ $mismatches -gt 0 ]; then
   echo "" >&2
   echo "Bump all files to the same version before release:" >&2
@@ -53,4 +93,7 @@ echo "version parity OK: $PKG_VER"
 echo "  package.json"
 for plugin in "${PLUGIN_PATHS[@]}"; do
   echo "  ${plugin#$ROOT/}"
+done
+for sub in "${SUBPACKAGE_PATHS[@]}"; do
+  [ -f "$sub" ] && echo "  ${sub#$ROOT/}"
 done

@@ -50,12 +50,47 @@ function usage() {
 
 async function runServe({ args, pkgRoot }) {
   const forwarded = args.slice(args.indexOf('serve') + 1);
-  const serverPath = resolve(pkgRoot, 'plugins', 'design', 'dev-server', 'server.mjs');
 
-  const child = spawn(process.execPath, [serverPath, ...forwarded], {
-    stdio: 'inherit',
-    env: process.env,
+  // Resolution order:
+  //   1. Side-channel from postinstall (cli/.platform-binary-path) — direct
+  //      native exec, zero Node startup tax. DDR-015.
+  //   2. Bun + server.ts (local dev or postinstall-skipped install).
+  //   3. Legacy server.mjs on Node — last-resort fallback for boxes without
+  //      bun. Should only fire mid-migration; removed in v1.0.
+  const sideChannel = resolve(pkgRoot, 'cli', '.platform-binary-path');
+  let binPath = null;
+  try {
+    const { readFileSync, existsSync } = await import('node:fs');
+    if (existsSync(sideChannel)) {
+      const candidate = readFileSync(sideChannel, 'utf8').trim();
+      if (candidate && existsSync(candidate)) binPath = candidate;
+    }
+  } catch {
+    /* fall through */
+  }
+
+  if (binPath) {
+    const child = spawn(binPath, forwarded, { stdio: 'inherit', env: process.env });
+    child.on('exit', (code) => process.exit(code ?? 0));
+    child.on('error', (err) => {
+      process.stderr.write(`mdcc design serve (binary ${binPath}): ${err.message}\n`);
+      process.exit(1);
+    });
+    return;
+  }
+
+  const tsEntry = resolve(pkgRoot, 'plugins', 'design', 'dev-server', 'server.ts');
+  const mjsEntry = resolve(pkgRoot, 'plugins', 'design', 'dev-server', 'server.mjs');
+
+  const hasBun = await new Promise((res) => {
+    const probe = spawn('bun', ['--version'], { stdio: 'ignore' });
+    probe.on('error', () => res(false));
+    probe.on('exit', (code) => res(code === 0));
   });
+
+  const child = hasBun
+    ? spawn('bun', ['run', tsEntry, ...forwarded], { stdio: 'inherit', env: process.env })
+    : spawn(process.execPath, [mjsEntry, ...forwarded], { stdio: 'inherit', env: process.env });
   child.on('exit', (code) => process.exit(code ?? 0));
   child.on('error', (err) => {
     process.stderr.write(`mdcc design serve: ${err.message}\n`);

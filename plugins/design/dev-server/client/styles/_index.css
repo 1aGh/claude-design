@@ -1,0 +1,24 @@
+/* Dev-server shell — Lightning-CSS-bundled entry (DDR-014).
+ *
+ * Layer cascade order (declared once, in this file):
+ *   reset      — minimal base + box-sizing.
+ *   tokens     — design tokens (--u-*) for the dev-server shell.
+ *   layout     — top-level grid (.app).
+ *   shell      — chrome chrome: sidebar, header, status bar, viewport frame.
+ *   components — system view, tokens grid, comments, gallery.
+ *   utilities  — reserved for Phase 3.5 helpers.
+ *
+ * Each individual file wraps its declarations in its own `@layer <name> { ... }`.
+ * Lightning CSS merges identically-named layers in source order on bundle.
+ *
+ * Phase 3.5 will swap `1-tokens.css` for a DS-driven token import.
+ */
+
+@layer reset, tokens, layout, shell, components, utilities;
+
+@import url('./0-reset.css');
+@import url('./1-tokens.css');
+@import url('./2-layout.css');
+@import url('./3-shell.css');
+@import url('./4-components.css');
+@import url('./5-utilities.css');

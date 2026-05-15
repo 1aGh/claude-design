@@ -1,9 +1,10 @@
-// Design plugin local browser — React UI
-// Loaded via Babel-standalone + react@18.3.1 + react-dom@18.3.1 UMD (zero build step).
+// Design plugin local browser — React UI.
+// Bundled via Bun.build (DDR-009/012) — IIFE, tree-shaken, React 19 from npm.
 // Renders: file tree, tabs, viewport (iframes), status bar, design-system view, comments.
-// Universal — no project tokens needed; styling lives in styles.css.
+// Universal — no project tokens needed; styling lives in client/styles/.
 
-const { useState, useEffect, useRef, useMemo, useCallback, Fragment } = React;
+import { useState, useEffect, useRef, useMemo, useCallback, Fragment } from 'react';
+import { createRoot } from 'react-dom/client';
 
 const SYSTEM_TAB = '__system__';
 
@@ -747,6 +748,30 @@ function App() {
     try { el.contentWindow.postMessage({ dgn: 'comments-set', comments: list }, '*'); } catch {}
   }, [activePath, commentsByFile]);
 
+  // ----- Comment composer helpers -----
+  // Declared BEFORE the inbound-message useEffect that references them — under
+  // ES build (no var-style hoisting) these are real TDZ violations otherwise.
+  const startDraftFor = useCallback((sel) => {
+    const file = (sel && sel.file) || activePath;
+    if (!file || file === SYSTEM_TAB) return;
+    setDraft({
+      file,
+      selector: sel?.selector || '',
+      dom_path: sel?.dom_path || [],
+      tag: sel?.tag || '',
+      classes: sel?.classes || '',
+      bounds: sel?.bounds || null,
+      html: sel?.html || '',
+      text: '',
+    });
+    setFocusedCommentId(null);
+  }, [activePath]);
+
+  const startDraftFromSelection = useCallback(() => {
+    if (!selected || !selected.selector) return;
+    startDraftFor(selected);
+  }, [selected, startDraftFor]);
+
   // ----- Inbound messages from iframes -----
   useEffect(() => {
     function onMessage(e) {
@@ -782,28 +807,6 @@ function App() {
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, [commentsByFile, focusedCommentId, startDraftFromSelection, startDraftFor]);
-
-  // ----- Comment composer helpers -----
-  const startDraftFor = useCallback((sel) => {
-    const file = (sel && sel.file) || activePath;
-    if (!file || file === SYSTEM_TAB) return;
-    setDraft({
-      file,
-      selector: sel?.selector || '',
-      dom_path: sel?.dom_path || [],
-      tag: sel?.tag || '',
-      classes: sel?.classes || '',
-      bounds: sel?.bounds || null,
-      html: sel?.html || '',
-      text: '',
-    });
-    setFocusedCommentId(null);
-  }, [activePath]);
-
-  const startDraftFromSelection = useCallback(() => {
-    if (!selected || !selected.selector) return;
-    startDraftFor(selected);
-  }, [selected, startDraftFor]);
 
   const submitDraft = useCallback(() => {
     if (!draft || !draft.text.trim()) return;
@@ -997,4 +1000,4 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+createRoot(document.getElementById('root')).render(<App />);

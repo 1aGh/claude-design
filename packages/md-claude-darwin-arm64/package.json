@@ -1,0 +1,14 @@
+{
+  "name": "@1agh/md-claude-darwin-arm64",
+  "version": "0.12.0",
+  "description": "Per-platform binary for @1agh/md-claude (darwin-arm64). Do not install directly — pulled in as an optionalDependency by the main package.",
+  "license": "MIT",
+  "author": "Michal Dovrtěl (1aGh)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/1aGh/md-claude.git"
+  },
+  "os": ["darwin"],
+  "cpu": ["arm64"],
+  "files": ["mdcc", "README.md"]
+}

@@ -11,6 +11,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 -->
 
 - [DDR-016: `plugins/design/dev-server/runtime/` is the canvas-runtime library home — not meta-design, not shell chrome](DDR-016-runtime-folder-purpose.md) — 2026-05-15, design/dev-server/runtime/audit/library/bundle/react/phase-3.4
+- [DDR-015: Per-platform Bun binary distribution via npm `optionalDependencies` sub-packages with postinstall-hardlink (Claude-Code pattern)](DDR-015-per-platform-binary-distribution.md) — 2026-05-15, distribution/npm/bun/binary/optionalDependencies/postinstall/hardlink/ci-matrix/claude-code-pattern/phase-3.4
 - [DDR-014: Dev-server CSS uses `@layer reset, tokens, layout, shell, components, utilities` with Lightning CSS at build time](DDR-014-css-layer-architecture.md) — 2026-05-15, design/dev-server/css/cascade/layers/lightningcss/oklch/tokens/build-pipeline/phase-3.4
 - [DDR-013: Dev-server splits from monolithic `server.mjs` into seven TypeScript modules on `Bun.serve`](DDR-013-server-modular-split-typescript.md) — 2026-05-15, design/dev-server/typescript/modularity/bun-serve/websocket/file-watcher/refactor/phase-3.4
 - [DDR-012: React 19 everywhere — shell and canvases share a single runtime](DDR-012-react-19-unified-runtime.md) — 2026-05-15, design/dev-server/runtime/react/preact/framework/bundle-size/complexity/perf-budgets/phase-3.4/phase-3.6

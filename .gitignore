@@ -20,3 +20,10 @@ dev-server/.cache/
 .ai/scenarios/**/baseline-staging/
 .ai/logs/
 .claude/settings.local.json
+
+# Phase 3.4 — dev-server build output (binaries ship via npm sub-packages)
+plugins/design/dev-server/dist/
+plugins/design/dev-server/bun.lock
+
+# Stub .keep written by dev-server before the inspect.ts fix landed (Phase 3.4)
+.design/.keep

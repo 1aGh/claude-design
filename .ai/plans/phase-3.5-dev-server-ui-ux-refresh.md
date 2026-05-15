@@ -176,18 +176,22 @@ Execute in order. Design stage (Tasks 1–3) closed — implementation starts at
 
 ### Task 4: UPDATE `index.html` — Berkeley Mono webfont + theme attribute
 
-- **Do:** Replace the Google-Fonts Inter/JetBrains link (line 6-7) with the `project` DS font stack. Three options, pick by what works offline: (a) self-host Berkeley Mono `.woff2` under `client/assets/berkeley-mono/` and `@font-face` it in `styles.css`; (b) CDN-fetch via Vercel-style `cdn.jsdelivr.net/.../berkeley-mono` (verify license); (c) ship without Berkeley Mono and fall back to JetBrains Mono (which the existing link already loads). The token chain in `colors_and_type.css` already specifies `'Berkeley Mono', 'TX-02', 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, …` so the fallback is automatic.
+> **3.4 alignment note:** `index.html` is the bundle-loading variant since Phase 3.4 (no more `<script type="text/babel">` + UMD scripts; just one `<script src="/_client/client.bundle.js">` and one `<link rel="stylesheet" href="/_client/styles.css">`). The font `<link>` adjustment in this task lives next to those existing tags.
+
+- **Do:** Replace the Google-Fonts Inter/JetBrains link (line 6-7) with the `project` DS font stack. Three options, pick by what works offline: (a) self-host Berkeley Mono `.woff2` under `client/assets/berkeley-mono/` and `@font-face` it in `1-tokens.css` (the `@layer tokens` from 3.4); (b) CDN-fetch via Vercel-style `cdn.jsdelivr.net/.../berkeley-mono` (verify license); (c) ship without Berkeley Mono and fall back to JetBrains Mono (which the existing link already loads). The token chain in `colors_and_type.css` already specifies `'Berkeley Mono', 'TX-02', 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, …` so the fallback is automatic.
 - **Also:** Keep `<html data-theme="dark">` as initial value; theme toggle in Header will flip it.
 - **Pattern:** Match whatever `.design/system/project/preview/*.html` uses for font loading.
 - **Validate:** `mdcc design serve` against this repo — DevTools computed style on `body` shows `Berkeley Mono` (or `JetBrains Mono` first fallback if BM unavailable); zero Inter references in computed styles.
 - **Decision to record (DDR candidate):** font hosting strategy (a/b/c) → `/flow:record-ddr` if non-obvious.
 
-### Task 5: REFACTOR `styles.css` — bridge to `project` DS tokens
+### Task 5: REFACTOR `client/styles/1-tokens.css` — bridge to `project` DS tokens
 
-- **Do:** Replace the `:root { --u-* }` block (lines 1–63) with:
-  1. `@import url('/_design/system/project/colors_and_type.css');` (server already exposes `.design/` under `/_design/` — verify route or add it) — OR — copy the relevant token blocks inline if cross-origin loading breaks.
+> **3.4 alignment note:** Phase 3.4 already split `styles.css` into 6 `@layer` files under `client/styles/`. The `:root { --u-* }` block now lives in `1-tokens.css` (the `@layer tokens`). This task **edits that one file** — no longer the legacy 1400-LOC monolith. Lightning CSS bundles the result into `dist/styles.css` at build time, so `@import` chains across DS folders Just Work.
+
+- **Do:** Replace the placeholder `--u-*` definitions inside `@layer tokens` in `1-tokens.css` with:
+  1. `@import url('../../../system/project/colors_and_type.css');` (relative path resolves under Lightning CSS's `bundle()` call) — OR — copy the relevant token blocks inline if Lightning CSS's `bundle()` doesn't follow the path (it does as of 1.27, but verify).
   2. Add `[data-theme="light"]` overrides driven by `project` light-theme tokens (the DS file already defines both — just reach for the right selectors).
-  3. **Alias layer:** keep `--u-*` names defined as `var(--*)` aliases so the rest of `styles.css` compiles unchanged in this task. Example: `--u-bg-0: var(--bg-0); --u-accent: var(--accent); --u-r-pill: 0; /* hard-edges collapses pills */ …`.
+  3. **Alias layer:** keep `--u-*` names defined as `var(--*)` aliases so the chrome rules in `3-shell.css` + `4-components.css` compile unchanged in this task. Example: `--u-bg-0: var(--bg-0); --u-accent: var(--accent); --u-r-pill: 0; /* hard-edges collapses pills */ …`. Per CLAUDE.md "design token discipline" memory: sibling tokens carry role conventions beyond names, so audit the alias mapping before mass-applying.
 - **Pattern:** Single source of truth for tokens. No hex literals in styles.css after this task — only var refs.
 - **Gotcha:** `--u-r-pill: 999px` consumers in `app.jsx` need to be reviewed when we alias to `0` — anywhere the pill shape is semantically required (badges?), switch to `--radius-md` (4 px) in the next task. Likewise `--u-accent-bg: rgba(56,189,248,0.14)` aliases to `var(--accent-tint)` which is already a baked OKLCH wash — don't redo the math.
 - **Gotcha 2:** Spacing rescale — `--u-s-3: 12px` ≈ `--space-4: 12px`, but `--u-s-2: 8px` = `--space-3` and `--u-s-1: 4px` = `--space-2`. Alias carefully; off-by-one will visibly shift the layout.
@@ -236,10 +240,10 @@ Execute in order. Design stage (Tasks 1–3) closed — implementation starts at
 
 ## Validation
 
-1. **Lint:** none configured — skip per CLAUDE.md "no test suite, lint config, or build step".
-2. **Types:** none configured — skip.
+1. **Lint:** `biome check .` clean on touched files.
+2. **Types:** `bun tsc --noEmit` clean inside `plugins/design/dev-server/` (3.4 wired this).
 3. **Smoke:** `node cli/bin/mdcc.mjs --help` (CLI surface intact).
-4. **Build:** none in this repo — dev-server is no-build (babel-standalone).
+4. **Build:** `bun run plugins/design/dev-server/build.ts --release --target=bun-<host>` succeeds; gz bundle ≤ 80 KB (DDR-012 budget) — token-alias additions should not noticeably bump the bundle. Lightning CSS output ≤ 30 KB minified.
 5. **Cross-platform scenario:** `scenario-runner` on web-desktop only (dev-server is desktop-only by design — `project` DS desktop density rules).
 6. **Design System Guard:** spawn `design-system-guard` subagent against (a) the live dev-server URL in both themes, (b) `.design/ui/Canvas Viewport.html` CV-08/09/10 as reference truth.
 7. **A11y:** spawn `flow:a11y-auditor` against `http://localhost:4399` in both themes (see Task 10).

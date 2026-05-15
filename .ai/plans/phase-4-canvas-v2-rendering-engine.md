@@ -110,4 +110,4 @@ Hybrid renderer: `<canvas>` overlay (Pixi.js) draws the **viewport frame** — a
 - [ ] Migration path for v0.x canvases preserves content.
 - [ ] DDR: chosen rendering approach (Pixi vs. fallback) with perf numbers.
 - [ ] `_active.json` carries world coordinates for selection.
-- [ ] Perf gate met: ≥ 55 fps on bench AND Phase 3.4 shell budgets (cold start < 100 ms, idle RAM < 50 MB, theme toggle < 16 ms) NOT regressed.
+- [ ] Perf gate met: ≥ 55 fps on bench AND Phase 3.4 shell budgets (cold start < 100 ms HTTP-200, first paint < 350 ms, idle RAM < 80 MB, theme toggle < 16 ms — per DDR-012 relaxed budgets) NOT regressed.

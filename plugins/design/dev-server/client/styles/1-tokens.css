@@ -1,0 +1,67 @@
+/* @layer tokens — design tokens for the dev-server shell. */
+/* Phase 3.5 will replace --u-* with DS-derived values via Lightning CSS @import. */
+@layer tokens {
+/* ============================================================
+   Design plugin — local browser UI
+   Universal styling, no project tokens. Neutral zinc grayscale.
+   ============================================================ */
+
+:root {
+  /* Surfaces — zinc */
+  --u-bg-0:        #09090b;
+  --u-bg-1:        #18181b;
+  --u-bg-2:        #27272a;
+  --u-bg-3:        #3f3f46;
+  --u-bg-4:        #52525b;
+  --u-bg-hover:    rgba(255,255,255,0.05);
+  --u-bg-active:   rgba(255,255,255,0.08);
+  --u-bg-selected: rgba(255,255,255,0.10);
+
+  /* Text */
+  --u-fg-0:  #fafafa;
+  --u-fg-1:  #d4d4d8;
+  --u-fg-2:  #a1a1aa;
+  --u-fg-3:  #71717a;
+
+  /* Borders */
+  --u-border:        rgba(255,255,255,0.08);
+  --u-border-strong: rgba(255,255,255,0.16);
+
+  /* Accent — neutral gray-blue, intentionally not "branded" */
+  --u-accent:        #38bdf8;   /* sky-400 — works on dark, not too strong */
+  --u-accent-bg:     rgba(56,189,248,0.14);
+  --u-accent-line:   rgba(56,189,248,0.50);
+  --u-accent-strong: #0ea5e9;
+
+  /* Status */
+  --u-status-success: #22c55e;
+  --u-status-warn:    #f59e0b;
+  --u-status-error:   #ef4444;
+  --u-status-live:    #ef4444;
+
+  /* Radii */
+  --u-r-xs: 2px;
+  --u-r-sm: 4px;
+  --u-r-md: 6px;
+  --u-r-lg: 8px;
+  --u-r-pill: 999px;
+
+  /* Spacing */
+  --u-s-1: 4px;
+  --u-s-2: 8px;
+  --u-s-3: 12px;
+  --u-s-4: 16px;
+  --u-s-5: 24px;
+
+  /* Type */
+  --u-font-sans:    'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --u-font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', 'Menlo', monospace;
+  --u-font-display: 'Inter', ui-sans-serif, system-ui, sans-serif;
+
+  /* Layout */
+  --u-sidebar-w:  320px;
+  --u-rsidebar-w: 320px;
+  --u-header-h:   44px;
+  --u-status-h:   28px;
+}
+}
