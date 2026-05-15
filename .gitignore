@@ -18,6 +18,8 @@ dev-server/.cache/
 .ai/device/
 .ai/browser/
 .ai/scenarios/**/baseline-staging/
+# Per-run scenario artifacts (timestamped folders). spec.md / README.md / aggregate reports are committed; PNGs + per-run report.md are local-only.
+.ai/scenarios/**/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9][0-9][0-9]/
 .ai/logs/
 .claude/settings.local.json
 

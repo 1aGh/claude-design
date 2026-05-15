@@ -391,3 +391,35 @@ Native (iOS/Android) scenarios are **N/A** for this work — site is web-only. D
 4. **JetBrains Mono fallback chain** — if Google Fonts is blocked at runtime (corporate networks), `next/font` self-hosts so this is OK; but verify the CSS variable resolves even if Google Fonts CDN is hypothetically slow.
 
 **Confidence score**: **7.5/10** for one-pass implementation. The tokens + landing rebuild are mechanical; the fumadocs CSS re-skin (Tasks 9–11) is where surprises live — fumadocs's internal selectors aren't a stable API.
+
+---
+
+## Retro
+
+Closed via `/flow:done` on 2026-05-15. Feature shipped in commits `78d9d8f` (re-skin) + `94b4e77` (TOV + dynamic stats + CI guards). Confidence score in hindsight: realistic for the "happy path" but underestimated chrome-detail surface.
+
+**What worked:**
+- The `--color-fd-*` override strategy (DDR-011) held — re-skin via tokens + selective MDX renderer overrides, zero fumadocs fork. Cascade conflicts predicted in Risk #3 didn't materialize because mdcc-tokens.css was imported last.
+- `sync-mdcc-tokens.mjs` + CI drift guard caught two would-be silent regressions during iteration. Worth replicating for the next "shared canvas → site" handoff.
+- Tone-of-voice second pass (`94b4e77`) was the right call — the first pass had marketing voice that drifted from the canvas envelope. Catching it post-build but pre-`/done` was fine; doing it during initial build would have required a critic pass on raw chrome too early.
+
+**What didn't:**
+- Three real DS-spec deviations slipped to `/flow:done`: numbered h2 `::before` counter rule selector didn't match the live DOM (`[data-fd-page]`, `article.prose`, `.fd-docs-body` are all wrong), cmd-K dialog ships `backdrop-blur-xs` from fumadocs and our re-skin didn't neutralize it, mobile theme toggle is `0×0` / unreachable. The commit message acknowledged "visual diff + scenario coverage deferred to `/flow:validate`" — but that deferral let chrome bugs ship.
+- A11y was an even bigger gap: no focus rings anywhere (fumadocs strips outlines, we never re-add), skip-link element is undefined despite the CSS being present, `--fg-3` on `--bg-0` fails 4.5:1 in both themes. WCAG 2.4.7 + 2.4.1 + 1.4.3 all unaddressed at ship time.
+- Pre-existing CI Quality was red since v0.12.0 (`package.json` tabs vs biome's space convention) — went unnoticed for days because nobody ran `pnpm lint` from root locally. Surfaced only during `/flow:done` static gate.
+- The `Buy me a coffee` PNG button + `Lucide.Coffee` icon were obvious envelope hard-NO violations (foreign brand asset, no Lucide in chrome) but slipped because they're "nav chrome" not "feature surface" and didn't get a dedicated critic pass.
+- `<dt>`/`<dd>` outside `<dl>` in `page-meta-footer.tsx` — invalid HTML. Would have been caught by a stricter MDX/JSX lint or by axe-core if a11y had run live.
+
+**What to change next time:**
+1. **Run DS-guard + a11y BEFORE the first feature commit, not at `/done`.** Both agents found real bugs that would have been 1-line CSS fixes in the same session. At `/done` they became a 18-item follow-up plan. Move both to `/execute` step-7 (or to a new `/flow:utils-verify --ui` checkpoint).
+2. **Live agent-browser smoke is non-optional for UI features.** The a11y agent failed to start `agent-browser` (`os error 35`) and had to fall back to static-only. Static caught the major issues but missed runtime focus-ring behavior + axe-core auto-rules. Add a "verify agent-browser works" preflight in `/flow:validate`.
+3. **CSS counter-rule selectors must be verified against live DOM, not the spec.** The plan's "Task 9 — CSS counter on `.prose h2`" got copied into `global.css` against `[data-fd-page]`/`article.prose`/`.fd-docs-body`, none of which match fumadocs's actual markup. Lesson: when re-skinning a vendored UI library, always grep `node_modules/<lib>/dist` for the actual rendered class/attribute before writing the selector.
+4. **`/done` Step 1 lint gate caught a 3-day-old CI breakage.** That's a workflow win — but it shouldn't have been 3 days. Add a `/flow:status` lint signal that surfaces "CI red on main" so it's noticed before the next `/plan`.
+5. **Confidence scores are honest only if the risk list covers the actual failure modes.** Plan listed `--fd-*` slot coverage + cmd-K selector stability as risks; both were fine. Real risks were h2 selector match, BMC asset, focus rings, mobile-theme breakpoint. Future plans: bias the risk list toward "what would a critic pass find" (a11y, DS hard-NOs, mobile parity), not just "what could go wrong in the implementation tactic."
+
+**Follow-up plan:** [`feature-docs-site-followups.md`](feature-docs-site-followups.md) — 21 items across 3 commits (DS-spec / WCAG / code-review polish).
+
+**Artifacts:**
+- Scenario aggregate: [`.ai/scenarios/docs-site/2026-05-15-0906-aggregate.md`](../scenarios/docs-site/2026-05-15-0906-aggregate.md)
+- Code review log: [`.ai/logs/code-reviews/main-docs-site-mdcc-skin.md`](../logs/code-reviews/main-docs-site-mdcc-skin.md)
+- 32 scenario screenshots: `.ai/scenarios/docs-site/<scenario>/2026-05-15-0906/<platform>/*.png`
