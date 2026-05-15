@@ -1,3 +1,5 @@
+import { PageMetaFooter } from '@/components/mdcc/page-meta-footer';
+import { type Crumb, SkuBreadcrumb } from '@/components/mdcc/sku-breadcrumb';
 import { getMDXComponents } from '@/components/mdx';
 import { gitConfig } from '@/lib/shared';
 import { getPageImage, getPageMarkdownUrl, source } from '@/lib/source';
@@ -13,6 +15,36 @@ import { createRelativeLink } from 'fumadocs-ui/mdx';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
+const SECTION_SKU: Record<string, string> = {
+  design: 'MDCC-DSN/01',
+  flow: 'MDCC-FLW/02',
+  cli: 'MDCC-CLI/03',
+  reference: 'MDCC-REF/04',
+  recipes: 'MDCC-RCP/05',
+};
+
+function buildCrumbs(slug: readonly string[] | undefined): Crumb[] {
+  const crumbs: Crumb[] = [{ label: 'Docs', href: '/docs' }];
+  if (!slug || slug.length === 0) return crumbs;
+  let href = '/docs';
+  for (const seg of slug) {
+    href += `/${seg}`;
+    crumbs.push({ label: seg.replace(/-/g, ' '), href });
+  }
+  return crumbs;
+}
+
+function skuFor(slug: readonly string[] | undefined): string | undefined {
+  if (!slug || slug.length === 0) return 'MDCC-DOC/00';
+  const head = slug[0];
+  const sku = SECTION_SKU[head];
+  if (!sku) return undefined;
+  if (slug.length > 1) {
+    return `${sku}.${slug.slice(1).join('-')}`;
+  }
+  return sku;
+}
+
 export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
   const params = await props.params;
   const page = source.getPage(params.slug);
@@ -20,26 +52,27 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
 
   const MDX = page.data.body;
   const markdownUrl = getPageMarkdownUrl(page).url;
+  const editUrl = `https://github.com/${gitConfig.user}/${gitConfig.repo}/blob/${gitConfig.branch}/content/docs/${page.path}`;
+  const crumbs = buildCrumbs(params.slug);
+  const sku = skuFor(params.slug);
 
   return (
     <DocsPage toc={page.data.toc} full={page.data.full}>
+      <SkuBreadcrumb crumbs={crumbs} sku={sku} />
       <DocsTitle>{page.data.title}</DocsTitle>
       <DocsDescription className="mb-0">{page.data.description}</DocsDescription>
       <div className="flex flex-row gap-2 items-center border-b pb-6">
         <MarkdownCopyButton markdownUrl={markdownUrl} />
-        <ViewOptionsPopover
-          markdownUrl={markdownUrl}
-          githubUrl={`https://github.com/${gitConfig.user}/${gitConfig.repo}/blob/${gitConfig.branch}/content/docs/${page.path}`}
-        />
+        <ViewOptionsPopover markdownUrl={markdownUrl} githubUrl={editUrl} />
       </div>
       <DocsBody>
         <MDX
           components={getMDXComponents({
-            // this allows you to link to other pages with relative file paths
             a: createRelativeLink(source, page),
           })}
         />
       </DocsBody>
+      <PageMetaFooter editUrl={editUrl} sku={sku} />
     </DocsPage>
   );
 }

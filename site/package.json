@@ -11,7 +11,9 @@
     "types:check": "fumadocs-mdx && next typegen && tsc --noEmit",
     "prebuild": "node scripts/build-command-reference.mjs && node scripts/build-schema-reference.mjs && fumadocs-mdx",
     "predev": "node scripts/build-command-reference.mjs && node scripts/build-schema-reference.mjs && fumadocs-mdx",
-    "gen:reference": "node scripts/build-command-reference.mjs && node scripts/build-schema-reference.mjs"
+    "gen:reference": "node scripts/build-command-reference.mjs && node scripts/build-schema-reference.mjs",
+    "sync:tokens": "node scripts/sync-mdcc-tokens.mjs",
+    "sync:tokens:check": "node scripts/sync-mdcc-tokens.mjs --check"
   },
   "dependencies": {
     "fumadocs-core": "16.8.10",

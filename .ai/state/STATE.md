@@ -3,11 +3,11 @@
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
 **Workflow:** feature-delivery — md-claude v1.0 roadmap
-**Phase:** feature-docs-site-mdcc-skin — **in-progress**
-**Status:** in-progress
+**Phase:** feature-docs-site-mdcc-skin — **execute-complete**
+**Status:** awaiting-done
 **Started:** 2026-05-12
 **Updated:** 2026-05-15
-**Active task:** Task 1 (SETUP — copy MDCC tokens into site)
+**Active task:** —
 **Active plan:** `.ai/plans/feature-docs-site-mdcc-skin.md`
 **Last archived plan:** `.ai/plans/archive/phase-14-design-system-keeper-pattern-priors.md`
 **Branch:** `main`
@@ -78,6 +78,33 @@ Consider `/flow:make-skill-template` for **fumadocs** and **hocuspocus** if thei
 | 2026-05-15 | done | `/flow:done` Phase 14 — DDR-010 written, retro appended (3 wins / 3 misses / 3 process improvements), action checklist in retro source ticked to `[x]`, plan archived to `.ai/plans/archive/phase-14-design-system-keeper-pattern-priors.md`. Open carry-over: scratch-project smoke run of `/design:new` to verify ds-keeper fires + reports findings on a deliberately-drifty input. |
 
 ## Execution Progress
+
+### feature-docs-site-mdcc-skin — execute complete (2026-05-15)
+
+- [x] T1: Copy MDCC tokens into site + sync script ✅ (`site/app/mdcc-tokens.css`, `site/scripts/sync-mdcc-tokens.mjs`, `pnpm sync:tokens` + `sync:tokens:check`)
+- [x] T2: Swap Inter → JetBrains Mono via next/font/google ✅ (`site/app/layout.tsx` — variable `--font-mdcc-mono`, `mdcc` class + `data-theme="light"` on `<html>`)
+- [x] T3: `--color-fd-*` bridge in `site/app/global.css` ✅ (overrides for 17 fumadocs slots, mapped to MDCC `--bg-*`/`--fg-*`/`--accent`)
+- [x] T4: MDCC nav chrome in `lib/layout.shared.tsx` ✅ (JSX nav title + Docs/Plugins/Source links)
+- [x] T5: `<SkuLabel>` component + base MDCC CSS (.mdcc-sku, .mdcc-wm, .mdcc-nav-link, .mdcc-skip-link) ✅
+- [x] T6: `(home)/page.tsx` rebuilt — Hero + CatalogGrid + MetaFooter inline ✅
+- [x] T7: `<CodeBlock>` MDX renderer with filename strip + copy button ✅ (`site/components/mdcc/code-block.tsx`)
+- [x] T8: `<Callout>` MDX renderer with ASCII glyphs (`?`, `!`, `▲`, `★`) ✅
+- [x] T9: Docs shell extras — `<SkuBreadcrumb>` + CSS-counter h2 numbering + `<PageMetaFooter>` ✅
+- [x] T10: Sidebar + TOC + prev/next pager re-skin (pure CSS in global.css) ✅
+- [x] T11: Cmd-K palette re-skin (CSS targeting Orama dialog selectors) ✅
+- [x] T12: Theme parity — `html.dark.mdcc` selector (specificity 0,2,1) wins over `.mdcc[data-theme="light"]` (0,2,0); mirrors all MDCC dark tokens ✅
+- [x] T13: Inter removed; `appName` kept (still used by OG image route) ✅
+- [x] T14: DDR-011 written + indexed in `.ai/decisions/README.md` ✅
+
+**Validation:**
+- `pnpm types:check` ✅ green
+- `pnpm lint` ✅ green on all touched files (12 files clean)
+- `pnpm build` ✅ green — 169 static routes prerendered, 0 warnings, Turbopack 3.6s
+
+**Carry-over:**
+- Visual diff vs 4 artboards (DS-01..DS-04) NOT yet run — `/flow:validate` step that needs `flow:scenario-runner`. Recommended before `/flow:done`.
+- `design-system-guard` + `a11y-auditor` scenario runs pending — both from `/flow:validate`.
+- Cmd-K type-specific glyphs documented in DDR-011 as deferred (fumadocs 16.8.10 doesn't expose result-type metadata).
 
 ### Phase 13 — Stable element IDs + canonical screenshots + cheap helpers — execute complete (2026-05-15)
 

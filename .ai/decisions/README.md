@@ -10,6 +10,8 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
 
+- [DDR-011: Re-skin fumadocs via `--color-fd-*` overrides; do NOT fork](DDR-011-mdcc-skin-of-fumadocs-vs-fork.md) — 2026-05-15, site/docs/fumadocs/design-system/theming/css-tokens/upgrade-burden
+- [DDR-010: `design-system-keeper` agent — read-only DS-fidelity audit between generation and the critic panel](DDR-010-design-system-keeper-agent.md) — 2026-05-15, design/agents/quality-gate/pattern-priors
 - [DDR-009: Bun runtime authoritative for `plugins/design/dev-server/` (no Node fallback)](DDR-009-bun-runtime-authoritative-for-dev-server.md) — 2026-05-15, design/dev-server/runtime/bun/distribution/perf/lock-in/npm/ci/phase-3.4
 - [DDR-008: `plugins/design/dev-server/bin/` is the canonical home for shared bash helpers](DDR-008-dev-server-bin-canonical-helper-home.md) — 2026-05-15, design/dev-server/bash/helpers/dry/ci/npm-distribution
 - [DDR-007: Stable element-id schema — paired `data-dc-screen` + `data-dc-element` attributes on canvas content](DDR-007-stable-element-id-schema-data-dc-attrs.md) — 2026-05-15, design/runtime/inspector/screenshots/critics/comments/schema

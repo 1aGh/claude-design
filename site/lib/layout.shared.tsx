@@ -1,12 +1,22 @@
 import type { BaseLayoutProps } from 'fumadocs-ui/layouts/shared';
-import { appName, gitConfig } from './shared';
+import { gitConfig } from './shared';
 
 export function baseOptions(): BaseLayoutProps {
+  const githubUrl = `https://github.com/${gitConfig.user}/${gitConfig.repo}`;
   return {
     nav: {
-      // JSX supported
-      title: appName,
+      title: (
+        <span className="inline-flex items-center gap-2">
+          <span className="mdcc-wm">md-claude</span>
+          <span className="mdcc-sku">MDCC/00</span>
+        </span>
+      ),
     },
-    githubUrl: `https://github.com/${gitConfig.user}/${gitConfig.repo}`,
+    links: [
+      { text: 'Docs', url: '/docs' },
+      { text: 'Plugins', url: '/#plugins' },
+      { text: 'Source', url: githubUrl, external: true },
+    ],
+    githubUrl,
   };
 }

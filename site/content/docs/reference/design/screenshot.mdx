@@ -1,28 +1,28 @@
 ---
 title: /design:screenshot
-description: "Capture screenshot aktivního canvasu přes agent-browser (HTTP server URL, ne file://) — pro visual review, /design:critic, nebo annotation loop"
+description: "Capture screenshot aktivního canvasu — full, jednoho screenu, elementu, nebo všech screens v smyčce. Wrapper přes `dev-server/bin/screenshot.sh` (agent-browser primárně, playwright fallback)."
 ---
 
 | Property | Value |
 | -------- | ----- |
 | **Command** | `/design:screenshot` |
 | **Category** | `daily` |
-| **Argument hint** | `[--area <name>] [--selector <css>]` |
+| **Argument hint** | `[--screen\|--element <id> \| --selector <css> \| --full \| --all-screens] [--area <n>]` |
 | **Source** | [`plugins/design/commands/screenshot.md`](https://github.com/1aGh/md-claude/blob/main/plugins/design/commands/screenshot.md) |
 
 ## Description
 
-Capture screenshot aktivního canvasu přes agent-browser (HTTP server URL, ne file://) — pro visual review, /design:critic, nebo annotation loop
+Capture screenshot aktivního canvasu — full, jednoho screenu, elementu, nebo všech screens v smyčce. Wrapper přes `dev-server/bin/screenshot.sh` (agent-browser primárně, playwright fallback).
 
 ## Invocation
 
 ```text
-/design:screenshot [--area <name>] [--selector <css>]
+/design:screenshot [--screen|--element <id> | --selector <css> | --full | --all-screens] [--area <n>]
 ```
 
 ## Summary
 
-Otevře aktivní canvas (`_active.json`) v agent-browseru (přes HTTP, ne file://), zachytí screenshot, uloží do `.design/_history/&lt;slug>/screenshots/&lt;NNN>-&lt;area>.png` (gitignored).
+Otevře aktivní canvas (`_active.json`) přes server URL (ne `file://`), zachytí screenshot, uloží do `.design/_history/&lt;slug>/screenshots/&lt;NNN>-&lt;area>.png` (gitignored).
 
 ## Source of truth
 

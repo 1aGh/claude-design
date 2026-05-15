@@ -1,6 +1,81 @@
 @import "tailwindcss";
 @import "fumadocs-ui/css/neutral.css";
 @import "fumadocs-ui/css/preset.css";
+@import "./mdcc-tokens.css";
+
+/* ─────────────────────────────────────────────────────────────────────────
+   MDCC × fumadocs theme bridge
+   -------------------------------------------------------------------------
+   mdcc-tokens.css uses `[data-theme="dark"]` on `.mdcc`; fumadocs's theme
+   toggle flips the `.dark` className on `<html>`. Duplicate MDCC dark
+   tokens under `html.dark` so the toggle drives MDCC tokens directly.
+   See DDR-011.
+   ───────────────────────────────────────────────────────────────────── */
+
+/* Selector specificity note: `.mdcc[data-theme="light"]` in mdcc-tokens.css
+   has specificity (0,2,0). To win in dark mode we use `html.dark.mdcc`
+   (0,2,1). */
+html.dark.mdcc,
+html.dark .mdcc {
+  --bg-0: oklch(13% 0.012 60);
+  --bg-1: oklch(17% 0.014 60);
+  --bg-2: oklch(20% 0.016 60);
+  --bg-3: oklch(24% 0.018 60);
+  --bg-4: oklch(28% 0.020 60);
+
+  --border-subtle:  oklch(28% 0.018 60);
+  --border-default: oklch(40% 0.022 60);
+  --border-strong:  oklch(58% 0.026 60);
+
+  --fg-0: oklch(94% 0.014 80);
+  --fg-1: oklch(78% 0.014 80);
+  --fg-2: oklch(60% 0.012 80);
+  --fg-3: oklch(44% 0.010 80);
+
+  --accent:        oklch(72% 0.160 55);
+  --accent-hover:  oklch(78% 0.160 55);
+  --accent-active: oklch(84% 0.160 55);
+  --accent-fg:     oklch(14% 0.020 50);
+  --accent-tint:   oklch(28% 0.060 55);
+
+  --status-success: oklch(72% 0.16 145);
+  --status-warn:    oklch(80% 0.16  88);
+  --status-error:   oklch(68% 0.20  25);
+  --status-info:    oklch(72% 0.13 230);
+
+  --mono-cell-bg:   oklch(20% 0.016 60);
+  --mono-cell-fg:   oklch(88% 0.014 60);
+  --mono-rule:      oklch(32% 0.020 60);
+
+  --shadow-focus: 0 0 0 2px var(--accent);
+  color-scheme: dark;
+}
+
+/* fumadocs slots — single declaration; values re-resolve per theme via
+   --bg-* / --fg-* / --accent which the selectors above swap. */
+:root {
+  --color-fd-background: var(--bg-0);
+  --color-fd-foreground: var(--fg-0);
+  --color-fd-muted: var(--bg-2);
+  --color-fd-muted-foreground: var(--fg-2);
+  --color-fd-popover: var(--bg-1);
+  --color-fd-popover-foreground: var(--fg-0);
+  --color-fd-card: var(--bg-1);
+  --color-fd-card-foreground: var(--fg-0);
+  --color-fd-border: var(--border-default);
+  --color-fd-primary: var(--accent);
+  --color-fd-primary-foreground: var(--accent-fg);
+  --color-fd-secondary: var(--bg-2);
+  --color-fd-secondary-foreground: var(--fg-0);
+  --color-fd-accent: var(--accent-tint);
+  --color-fd-accent-foreground: var(--fg-0);
+  --color-fd-ring: var(--accent);
+  --color-fd-overlay: oklch(0% 0 0 / 0.5);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Base type + body
+   ───────────────────────────────────────────────────────────────────── */
 
 html {
   scrollbar-gutter: stable;
@@ -9,4 +84,576 @@ html {
 html > body[data-scroll-locked] {
   margin-right: 0px !important;
   --removed-body-scroll-bar-size: 0px !important;
+}
+
+body {
+  font-family:
+    'Berkeley Mono', 'TX-02', 'JetBrains Mono',
+    var(--font-mdcc-mono),
+    'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-feature-settings: "ss01", "ss20"; /* JetBrains Mono: zero with slash */
+  background: var(--color-fd-background);
+  color: var(--color-fd-foreground);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   MDCC chrome — nav, SKU labels, wordmark
+   Lifted from .design/ui/Docs Site.html (.nav / .nav-brand / .nav-links)
+   ───────────────────────────────────────────────────────────────────── */
+
+.mdcc-sku {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  height: 18px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--tracking-sku);
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-tint);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-xs);
+  white-space: nowrap;
+  line-height: 1;
+}
+
+html.dark .mdcc-sku {
+  background: color-mix(in oklch, var(--accent) 14%, transparent);
+}
+
+.mdcc-wm {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--fg-0);
+}
+
+.mdcc-nav-link {
+  color: var(--fg-1);
+  text-decoration: none;
+  padding: 0 var(--space-3);
+  font-size: var(--type-sm);
+  letter-spacing: var(--tracking-normal);
+  border-bottom: 1px solid transparent;
+  transition: color var(--dur-flip) var(--ease-out),
+              border-color var(--dur-flip) var(--ease-out);
+}
+.mdcc-nav-link:hover {
+  color: var(--fg-0);
+  border-bottom-color: var(--accent);
+}
+.mdcc-nav-link[aria-current="page"] {
+  color: var(--fg-0);
+  border-bottom-color: var(--accent);
+}
+
+.mdcc-skip-link {
+  position: absolute;
+  left: -9999px;
+  top: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: var(--bg-1);
+  border: 1px solid var(--accent);
+  color: var(--fg-0);
+  font-size: var(--type-sm);
+  z-index: 100;
+}
+.mdcc-skip-link:focus {
+  left: var(--space-3);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Marketplace landing — Hero / CatalogGrid / MetaFooter
+   ───────────────────────────────────────────────────────────────────── */
+
+.mdcc-landing {
+  max-width: var(--layout-max-w);
+  margin: 0 auto;
+  padding: var(--space-9) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-9);
+}
+
+.mdcc-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-8);
+  align-items: start;
+  border-top: var(--rule-thin);
+  border-bottom: var(--rule-thin);
+  padding: var(--space-8) 0;
+}
+@media (max-width: 880px) {
+  .mdcc-hero { grid-template-columns: 1fr; }
+}
+
+.mdcc-hero-copy h1 {
+  font-size: var(--type-3xl);
+  line-height: var(--lh-3xl);
+  letter-spacing: var(--tracking-tight);
+  margin: 0 0 var(--space-4) 0;
+  font-weight: 700;
+  color: var(--fg-0);
+}
+.mdcc-hero-copy p {
+  font-size: var(--type-md);
+  line-height: var(--lh-md);
+  color: var(--fg-1);
+  margin: 0 0 var(--space-5) 0;
+}
+.mdcc-hero-sku {
+  margin-top: var(--space-5);
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+}
+
+.mdcc-install {
+  background: var(--bg-1);
+  border: var(--rule-thin);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.mdcc-install-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  border-bottom: var(--rule-thin);
+  padding-bottom: var(--space-3);
+}
+.mdcc-install pre {
+  margin: 0;
+  font-size: var(--type-sm);
+  line-height: var(--lh-md);
+  color: var(--fg-0);
+  white-space: pre;
+  overflow-x: auto;
+}
+.mdcc-install-copy {
+  background: transparent;
+  border: 1px solid var(--border-default);
+  color: var(--fg-1);
+  padding: 2px var(--space-3);
+  font: inherit;
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background var(--dur-flip) var(--ease-out);
+}
+.mdcc-install-copy:hover { background: var(--bg-3); }
+
+.mdcc-cta-primary,
+.mdcc-cta-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  font-size: var(--type-sm);
+  font-family: inherit;
+  letter-spacing: var(--tracking-normal);
+  text-decoration: none;
+  border: 1px solid var(--accent);
+  transition: background var(--dur-flip) var(--ease-out),
+              color var(--dur-flip) var(--ease-out);
+}
+.mdcc-cta-primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.mdcc-cta-primary:hover { background: var(--accent-hover); }
+.mdcc-cta-ghost {
+  background: transparent;
+  color: var(--fg-0);
+  border-color: var(--border-default);
+}
+.mdcc-cta-ghost:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.mdcc-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: var(--rule-strong);
+  padding-bottom: var(--space-3);
+  margin-bottom: 0;
+}
+.mdcc-section-head h2 {
+  font-size: var(--type-xl);
+  line-height: var(--lh-xl);
+  letter-spacing: var(--tracking-tight);
+  margin: 0;
+  color: var(--fg-0);
+}
+.mdcc-section-head .mdcc-eyebrow {
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+
+.mdcc-cat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid var(--border-default);
+  background: var(--bg-0);
+}
+@media (max-width: 880px) {
+  .mdcc-cat-grid { grid-template-columns: 1fr; }
+}
+.mdcc-cat-card {
+  margin: -1px 0 0 -1px;
+  border: 1px solid var(--border-default);
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  background: var(--bg-0);
+  color: var(--fg-0);
+  text-decoration: none;
+  transition: background var(--dur-panel) var(--ease-out);
+}
+.mdcc-cat-card:hover { background: var(--bg-1); }
+.mdcc-cat-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.mdcc-cat-card h3 {
+  font-size: var(--type-lg);
+  margin: 0;
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg-0);
+}
+.mdcc-cat-card p {
+  font-size: var(--type-sm);
+  line-height: var(--lh-md);
+  color: var(--fg-1);
+  margin: 0;
+}
+.mdcc-cat-card-foot {
+  margin-top: auto;
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-3);
+}
+
+.mdcc-meta-footer {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-5);
+  border-top: var(--rule-thin);
+  padding-top: var(--space-6);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+  letter-spacing: var(--tracking-wide);
+}
+@media (max-width: 720px) {
+  .mdcc-meta-footer { grid-template-columns: repeat(2, 1fr); }
+}
+.mdcc-meta-footer dt {
+  text-transform: uppercase;
+  color: var(--fg-2);
+  font-size: 10px;
+  letter-spacing: var(--tracking-eyebrow);
+  margin-bottom: var(--space-2);
+}
+.mdcc-meta-footer dd {
+  margin: 0;
+  color: var(--fg-0);
+  font-size: var(--type-sm);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Docs shell — sidebar / TOC / pager / numbered h2 / SKU breadcrumb
+   ───────────────────────────────────────────────────────────────────── */
+
+.mdcc-sku-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  color: var(--fg-2);
+  margin: 0 0 var(--space-4) 0;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  text-transform: uppercase;
+}
+.mdcc-sku-breadcrumb a {
+  color: var(--fg-2);
+  text-decoration: none;
+}
+.mdcc-sku-breadcrumb a:hover { color: var(--fg-0); }
+.mdcc-sku-breadcrumb .sep { color: var(--fg-3); }
+
+/* CSS counters for h2 numbering in docs body. We target the fumadocs DocsBody
+   article — `[data-fd-page]` is the typical wrapper; if absent fall back to
+   `.prose` / `article`. */
+[data-fd-page],
+article.prose,
+.fd-docs-body {
+  counter-reset: mdcc-h2;
+}
+[data-fd-page] h2,
+article.prose h2,
+.fd-docs-body h2 {
+  counter-increment: mdcc-h2;
+  border-top: 1px solid var(--border-default);
+  padding-top: var(--space-5);
+  margin-top: var(--space-7);
+  letter-spacing: var(--tracking-tight);
+}
+[data-fd-page] h2::before,
+article.prose h2::before,
+.fd-docs-body h2::before {
+  content: counter(mdcc-h2, decimal-leading-zero) " · ";
+  color: var(--accent);
+  font-weight: 500;
+  letter-spacing: var(--tracking-sku);
+}
+
+/* Anchor `#` hover affordance on h2/h3 */
+[data-fd-page] h2:hover::after,
+[data-fd-page] h3:hover::after {
+  content: " #";
+  color: var(--fg-3);
+  font-weight: 400;
+}
+
+.mdcc-page-meta {
+  margin-top: var(--space-8);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-strong);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-5);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+  letter-spacing: var(--tracking-wide);
+}
+.mdcc-page-meta dt {
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: var(--tracking-eyebrow);
+  margin-bottom: var(--space-2);
+}
+.mdcc-page-meta dd {
+  margin: 0;
+  color: var(--fg-0);
+  font-size: var(--type-sm);
+}
+.mdcc-page-meta a {
+  color: var(--fg-0);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--border-default);
+}
+.mdcc-page-meta a:hover { text-decoration-color: var(--accent); }
+
+/* Sidebar re-skin (fumadocs default selectors) */
+#nd-sidebar {
+  font-size: var(--type-sm);
+}
+#nd-sidebar [data-folder]:not([data-folder-level="0"]) > [data-button],
+#nd-sidebar [data-folder][data-folder-level="0"] > [data-button] {
+  /* Section headers in SKU style */
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-sku);
+  font-size: 11px;
+  color: var(--fg-2);
+}
+#nd-sidebar [data-active="true"] {
+  color: var(--accent) !important;
+  border-left: 1px solid var(--accent);
+  background: var(--accent-tint) !important;
+}
+#nd-sidebar a[data-active="true"]::before { display: none; }
+/* Hide lucide icons in sidebar items (DS hard NO: no emoji/icons in chrome) */
+#nd-sidebar a > svg,
+#nd-sidebar [data-button] > svg {
+  display: none;
+}
+
+/* Right-rail TOC */
+[data-toc] {
+  font-size: var(--type-sm);
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-4);
+}
+[data-toc] a {
+  display: block;
+  padding: 2px var(--space-3);
+  color: var(--fg-2);
+  border-left: 1px solid transparent;
+  text-decoration: none;
+}
+[data-toc] a[data-active="true"] {
+  color: var(--accent);
+  border-left-color: var(--accent);
+}
+
+/* Prev/next pager */
+[data-fd-page] + nav,
+nav[data-fd-pager],
+.fd-pager {
+  border-top: 1px solid var(--border-strong);
+  padding-block: var(--space-7);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-5);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   MDX — code blocks + callouts + inline code
+   ───────────────────────────────────────────────────────────────────── */
+
+.mdcc-code {
+  border: 1px solid var(--mono-rule);
+  background: var(--bg-1);
+  font-family:
+    'Berkeley Mono', 'TX-02', 'JetBrains Mono',
+    var(--font-mdcc-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--type-sm);
+  line-height: var(--lh-md);
+  margin: var(--space-5) 0;
+}
+.mdcc-code-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--mono-rule);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+  letter-spacing: var(--tracking-wide);
+}
+.mdcc-code-head .mdcc-code-filename {
+  text-transform: uppercase;
+  font-weight: 500;
+  letter-spacing: var(--tracking-sku);
+}
+.mdcc-code-copy {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--fg-2);
+  font: inherit;
+  cursor: pointer;
+  padding: 0 var(--space-2);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+}
+.mdcc-code-copy:hover { color: var(--fg-0); border-color: var(--border-default); }
+.mdcc-code-copy[data-copied="true"] { color: var(--status-success); }
+.mdcc-code-body {
+  padding: var(--space-4);
+  overflow-x: auto;
+}
+.mdcc-code-body code {
+  background: transparent;
+  padding: 0;
+  border: 0;
+  font: inherit;
+}
+
+/* Inline code */
+:not(pre) > code {
+  background: var(--mono-cell-bg);
+  color: var(--mono-cell-fg);
+  padding: 1px 4px;
+  border: 1px solid var(--mono-rule);
+  border-radius: var(--radius-xs);
+  font-family:
+    'Berkeley Mono', 'TX-02', 'JetBrains Mono',
+    var(--font-mdcc-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+}
+
+/* Callouts */
+.mdcc-callout {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  margin: var(--space-5) 0;
+  border: 1px solid var(--border-subtle);
+  border-left: 4px solid var(--border-default);
+  background: var(--bg-1);
+}
+.mdcc-callout-glyph {
+  font-weight: 700;
+  font-size: var(--type-md);
+  line-height: var(--lh-base);
+  color: var(--fg-1);
+}
+.mdcc-callout-body { font-size: var(--type-sm); line-height: var(--lh-md); }
+.mdcc-callout-body > *:first-child { margin-top: 0; }
+.mdcc-callout-body > *:last-child { margin-bottom: 0; }
+.mdcc-callout[data-type="note"] {
+  border-left-color: var(--status-info);
+}
+.mdcc-callout[data-type="note"] .mdcc-callout-glyph { color: var(--status-info); }
+.mdcc-callout[data-type="warn"] {
+  border-left-color: var(--status-warn);
+}
+.mdcc-callout[data-type="warn"] .mdcc-callout-glyph { color: var(--status-warn); }
+.mdcc-callout[data-type="danger"] {
+  border-left-color: var(--status-error);
+}
+.mdcc-callout[data-type="danger"] .mdcc-callout-glyph { color: var(--status-error); }
+.mdcc-callout[data-type="tip"] {
+  border-left-color: var(--status-success);
+}
+.mdcc-callout[data-type="tip"] .mdcc-callout-glyph { color: var(--status-success); }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Cmd-K palette — re-skin Orama dialog
+   ───────────────────────────────────────────────────────────────────── */
+
+[role="dialog"][data-fd-search],
+[data-fd-search-dialog] {
+  background: var(--bg-1) !important;
+  border: 1px solid var(--border-strong) !important;
+  border-radius: var(--radius-xs) !important;
+  box-shadow: none !important;
+}
+[data-fd-search] input,
+[data-fd-search-dialog] input {
+  background: transparent !important;
+  border-bottom: 1px solid var(--border-default) !important;
+  font-family: inherit;
+  font-size: var(--type-md);
+  padding: var(--space-4) var(--space-5);
+}
+[data-fd-search] [data-result],
+[data-fd-search-dialog] [data-result] {
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--type-sm);
+}
+[data-fd-search] [data-result]::before,
+[data-fd-search-dialog] [data-result]::before {
+  content: "▸ ";
+  color: var(--accent);
+  margin-right: var(--space-2);
+}
+[data-fd-search] [data-result]:hover,
+[data-fd-search] [data-result][data-active="true"],
+[data-fd-search-dialog] [data-result]:hover,
+[data-fd-search-dialog] [data-result][data-active="true"] {
+  background: var(--bg-3);
 }
