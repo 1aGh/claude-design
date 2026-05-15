@@ -84,3 +84,20 @@ Three commits, in this order:
 - DDR-011 (re-skin strategy): [`.ai/decisions/DDR-011-mdcc-skin-of-fumadocs-vs-fork.md`](../decisions/DDR-011-mdcc-skin-of-fumadocs-vs-fork.md)
 - Canvas spec: `.design/ui/Docs Site.html`
 - Envelope: `.design/_history/docs-site/000-envelope.md`
+
+## Retro — 2026-05-15
+
+**Outcome:** items 1-3, 5-7, 9-18 shipped (subsumed into TOV commit `fece8da` alongside voice-register rewrites). Item 4 (Lucide v cmd-K) deferred, regression fix in commit `fb0ae63`. Items 8 (mobile theme toggle), 19-21 (token discipline) deferred with notes. Build/types/lint green throughout.
+
+**What worked:**
+- Splitting the plan into 3 commit groups (DS-spec / WCAG / polish) made the diff easy to reason about and trivially mergeable into the TOV pass that ran in parallel.
+- Reading fumadocs's compiled JS directly to find that `DocsBody` renders `<div class="prose flex-1">` (not `[data-fd-page]`) caught a silently-dead selector before it shipped.
+- Verifying the icon-hide rule with a live dev server (`localhost:3055` + grep on rendered HTML) caught that Sun/Moon/Search SVGs were the only visible affordance of their parent buttons — manual file-only review would have missed this.
+
+**What didn't:**
+- Item 4 (`[role="dialog"].bg-fd-popover svg { display: none }`) was reasoned-correct on paper (Radix Popover's dialog role + bg-fd-popover class is exclusive to cmd-K content) but in practice Tailwind v4 class-name escaping + Radix portal context made the rule hit chrome buttons whose parents inherited a dialog role somewhere up the tree. Lesson: when a CSS rule targets fumadocs/Radix internals, verify by **opening the dialog in a browser and watching what disappears**, not by reading source.
+- I added a stray `site/package-lock.json` by running `npm install` in a pnpm workspace — caught + reverted, but a `cd site && npm install` muscle-memory is dangerous on a monorepo. Always check `pnpm-workspace.yaml` before reaching for `npm`.
+
+**For next time:**
+- When `/flow:execute` runs concurrently with another session editing the same files, the loser-merge case (different files but overlapping intent) needs an explicit conflict-detection step. The TOV pass + my followups landed cleanly in `fece8da` only because the user manually merged them.
+- The plan's "items 19-21 optional" was correctly scoped as opt-out — keep that pattern.
