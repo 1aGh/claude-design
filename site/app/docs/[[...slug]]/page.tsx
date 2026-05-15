@@ -3,6 +3,7 @@ import { type Crumb, SkuBreadcrumb } from '@/components/mdcc/sku-breadcrumb';
 import { getMDXComponents } from '@/components/mdx';
 import { gitConfig } from '@/lib/shared';
 import { getPageImage, getPageMarkdownUrl, source } from '@/lib/source';
+import stats from '@/lib/stats.json';
 import {
   DocsBody,
   DocsDescription,
@@ -72,7 +73,11 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
           })}
         />
       </DocsBody>
-      <PageMetaFooter editUrl={editUrl} sku={sku} />
+      <PageMetaFooter
+        editUrl={editUrl}
+        sku={sku}
+        updated={(stats.pageUpdated as Record<string, string>)[page.path]}
+      />
     </DocsPage>
   );
 }

@@ -1,13 +1,15 @@
 ---
 title: md-claude
-description: A Claude Code marketplace shipping two plugins (design + flow) and the mdcc CLI.
+description: A Claude Code marketplace shipping two plugins (design + flow) and the mdcc CLI. Catalog-graded. No telemetry, no signup.
 ---
 
-`md-claude` is a [Claude Code](https://claude.ai/code) marketplace by Michal Dovrtěl. It ships two plugins plus an npm-published CLI, all under one version.
+A Claude Code marketplace by Michal Dovrtěl. Two plugins. One CLI. One version. The repo is the source of truth — decisions, plans, design mocks, retros all live next to the code they belong to.
 
-- **`design`** — canvas-first iteration on HTML / JSX mocks under a project's `.design/` directory. Zero-dep dev server with a Cmd+Click inspector overlay so Claude knows which element you're feedback-ing on.
-- **`flow`** — a generic agentic workflow loop with a second-brain `.ai/` workspace. Project-agnostic via a per-repo `workflows.config.json` — same plugin runs in your Next.js app, Expo RN, Go service, anything.
-- **`mdcc`** — small CLI to scaffold the `.ai/` workspace, read/write config, and boot the design dev server.
+- **`design`** — canvas-first iteration on HTML / JSX mocks under `.design/`. Zero-dep dev server. Cmd+Click inspector overlay so Claude knows which element the feedback is about.
+- **`flow`** — generic agentic workflow loop with a second-brain `.ai/` workspace. Project-agnostic via per-repo `workflows.config.json`. Same plugin runs in Next.js, Expo, Go, anything.
+- **`mdcc`** — small CLI. Scaffolds the `.ai/` workspace, reads / writes config, boots the design dev server.
+
+Open-source. MIT. No telemetry, no signup, no _book a demo_ button. If it crashes, `git pull` and try again — that's the entire support contract.
 
 ## Pick a direction
 
@@ -15,22 +17,22 @@ description: A Claude Code marketplace shipping two plugins (design + flow) and 
   <Card
     title="Getting Started"
     href="/docs/getting-started"
-    description="Install the marketplace, scaffold your first project."
+    description="Install the marketplace, scaffold a project, run a first command. Five minutes."
   />
   <Card
     title="`mdcc` CLI"
     href="/docs/cli"
-    description="Subcommands: init, config, design serve."
+    description="Subcommands: init, config, design serve, design init."
   />
   <Card
     title="Flow commands"
     href="/docs/flow"
-    description="The 30 slash commands that drive plan → execute → done."
+    description="The 29 slash commands that drive plan → execute → done → validate → release."
   />
   <Card
     title="Design commands"
     href="/docs/design"
-    description="`/design`, `/design:new`, `/design:critic`, and friends."
+    description="`/design:new`, `/design:edit`, `/design:critic`, and the rest of the canvas loop."
   />
   <Card
     title="Config reference"
@@ -48,8 +50,8 @@ description: A Claude Code marketplace shipping two plugins (design + flow) and 
 
 The two plugins share a worldview: **Claude Code is the IDE; the repo is the source of truth.** Decisions get written to `.ai/decisions/`. Plans get archived to `.ai/plans/archive/`. Design mocks live in `.design/` next to the production code they precede. Nothing lives only in a chat scroll.
 
-You can install just one — the marketplace lets you pick `design`, `flow`, or both.
+Install one, install both. The marketplace doesn't care which.
 
 ## License + source
 
-MIT. Source at [github.com/1aGh/md-claude](https://github.com/1aGh/md-claude).
+MIT. Source at [github.com/1aGh/md-claude](https://github.com/1aGh/md-claude). Issues + PRs welcome.

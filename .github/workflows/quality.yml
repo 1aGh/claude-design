@@ -14,6 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0    # build-stats.mjs reads git tags + shortlog + per-file log
 
       - uses: pnpm/action-setup@v6
 
@@ -36,3 +38,19 @@ jobs:
 
       - name: Version parity
         run: bash scripts/check-version-parity.sh
+
+      - name: MDCC tokens drift (.design ↔ site/app)
+        run: pnpm --filter @md-claude/site sync:tokens:check
+
+      - name: Site generated content drift (reference + stats)
+        run: |
+          pnpm --filter @md-claude/site gen:reference
+          pnpm --filter @md-claude/site gen:stats
+          if ! git diff --quiet site/content/docs/reference site/lib/stats.json; then
+            echo "::error::Generated site content is stale. Run \`pnpm --filter @md-claude/site gen:reference && pnpm --filter @md-claude/site gen:stats\` locally and commit the diff."
+            git --no-pager diff --stat site/content/docs/reference site/lib/stats.json
+            exit 1
+          fi
+
+      - name: Site build (validates fumadocs MDX + Next compile)
+        run: pnpm --filter @md-claude/site build

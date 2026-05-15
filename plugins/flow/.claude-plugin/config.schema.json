@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "flow plugin — per-repo config",
-  "description": "Per-repo configuration consumed by the flow plugin's commands, skills, and subagents. Place at <repo>/.ai/workflows.config.json. Missing file = sensible defaults; missing keys = same.",
+  "description": "Per-repo configuration consumed by the flow plugin's commands, skills, and subagents. Place at <repo>/.ai/workflows.config.json. Missing file = defaults; missing keys = same.",
   "type": "object",
   "additionalProperties": false,
   "required": ["name"],

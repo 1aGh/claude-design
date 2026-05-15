@@ -1,0 +1,6 @@
+# Canonical identity for git shortlog / log / blame.
+# Format: <canonical name> <canonical email> <old name> <old email>
+# See: https://git-scm.com/docs/gitmailmap
+
+1aGh <m.dovrtel@gmail.com> michal <michal.dovrtel@studyfi.com>
+1aGh <m.dovrtel@gmail.com> Michal Dovrtel <m.dovrtel@gmail.com>

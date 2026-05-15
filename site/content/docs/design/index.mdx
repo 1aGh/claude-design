@@ -3,11 +3,11 @@ title: Design commands
 description: The /design:* slash commands — canvas-first iteration on HTML/JSX mocks under .design/.
 ---
 
-The `design` plugin treats the **canvas as the working surface**. Each canvas is an HTML or JSX file under `.design/<project-or-feature>/`; commands iterate **in place** on the active canvas (the one open in your browser tab), so feedback like "move the CTA up" lands on the file you're looking at — not a new mock somewhere else.
+The canvas is the working surface. HTML or JSX, under `.design/<project-or-feature>/`. Commands iterate **in place** on the active canvas — the one open in your browser tab — so feedback like "move the CTA up" lands on the file you're looking at, not a new mock somewhere else.
 
-A zero-dep Node dev server injects an inspector overlay so **Cmd+Click any element** to scope the next `/design:edit "<feedback>"` to that selection. The server tracks active tab + selected element via WebSocket and writes `<designRoot>/_active.json` for the slash commands to read.
+A zero-dep Node dev server injects an inspector overlay. **Cmd+Click any element** to scope the next `/design:edit "<feedback>"` to that selection. The server tracks active tab + selected element via WebSocket and writes `<designRoot>/_active.json` for the slash commands to read.
 
-## The eleven commands
+## Eleven commands
 
 Eight daily verbs (no prefix) + three setup verbs (`setup-*` group). The bare `/design` form was a v0.8 one-version compat stub redirecting to `/design:edit`; **removed in v0.9**.
 

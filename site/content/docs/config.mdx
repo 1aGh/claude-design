@@ -3,7 +3,9 @@ title: workflows.config.json
 description: Per-repo configuration consumed by the flow plugin's commands, skills, and subagents.
 ---
 
-Lives at `.ai/workflows.config.json`. Missing file → sensible defaults. Missing keys → same. The only required key is `name`.
+One file. One required key (`name`). Everything else has a default — set it when the default is wrong.
+
+Lives at `.ai/workflows.config.json`. Missing file → defaults. Missing keys → same. **The only required key is `name`.**
 
 ```json
 {

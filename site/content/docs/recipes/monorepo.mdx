@@ -3,7 +3,9 @@ title: Monorepo recipe
 description: Drop-in setup for a pnpm / Turbo / Nx workspace — scope flow + design to a single package or run them at the root.
 ---
 
-Assumed: pnpm workspace, possibly Turbo or Nx on top. Multiple deployable apps + shared packages.
+Drop-in setup for a workspace. Two valid layouts depending on who owns what — pick A unless you've already split into autonomous package teams.
+
+**Starting point:** pnpm workspace, possibly Turbo or Nx on top. Multiple deployable apps + shared packages.
 
 ## Two valid layouts
 
@@ -120,7 +122,7 @@ mdcc design serve --port 4399
 - **One `CLAUDE.md` at root + per-package overrides.** The root `CLAUDE.md` covers cross-cutting concerns (commit conventions, branch model). Per-package `CLAUDE.md` (placed in `apps/web/`, `apps/api/`, etc.) override or extend it.
 - **`workflows.config.json` is *not* hierarchical.** Pick Option A or Option B, don't mix. The flow plugin reads exactly one config from the directory you invoke it in.
 - **Turbo cache.** Flow doesn't manage Turbo's cache. If `/flow:utils-verify` reports a stale failure, `pnpm turbo run lint --force` and re-verify.
-- **PR scopes.** Conventional commits for monorepos benefit from a scope: `feat(web): …`, `fix(ui): …`. `/flow:done` formats commits to match `conventions.commits` but won't auto-pick the scope — you can add it when prompted.
+- **PR scopes.** Conventional commits for monorepos benefit from a scope: `feat(web): …`, `fix(ui): …`. `/flow:done` formats commits to match `conventions.commits` but won't auto-pick the scope — add it when prompted.
 
 ## Next
 

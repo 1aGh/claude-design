@@ -9,7 +9,9 @@ npm i -g @1agh/md-claude    # installs `mdcc` (alias: `claude-design-server`)
 npx @1agh/md-claude <cmd>
 ```
 
-`mdcc` is intentionally small. It does mechanical scaffolding and config; the *interesting* setup work happens inside Claude Code via `/flow:init`, which calls `mdcc init` as step one.
+**`mdcc` is intentionally small.** Mechanical scaffolding and config — that's it. The interesting setup happens inside Claude Code via `/flow:init`, which calls `mdcc init` as step one.
+
+Five subcommands: `init`, `config`, `design serve`, `design init`, `version` / `help`. Pure ESM. Zero runtime deps beyond Node 20+.
 
 ## `mdcc init`
 

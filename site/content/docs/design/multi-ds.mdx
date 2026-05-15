@@ -3,9 +3,9 @@ title: Multi-DS — multiple design systems in one project
 description: How to declare multiple design systems under .design/system/ and route canvases to the right one.
 ---
 
-Some products need more than one design system in the same repo — a marketing site that doesn't share the admin tool's pro-tool density, an iOS app that diverges from a desktop dashboard, an enterprise variant with corporate-brand constraints.
+Some products need more than one design system in the same repo: a marketing site that doesn't share the admin tool's pro-tool density; an iOS app that diverges from a desktop dashboard; an enterprise variant with corporate-brand constraints.
 
-The design plugin handles this as **per-DS folders under `<designRoot>/system/`** with **per-canvas attribution** via `.meta.json.designSystem`. The completeness-critic, the design-system-guard subagent (in flow), and the read-side of skill `design-system` all scope to the canvas's declared DS — tokens from one DS never blend into another.
+The plugin handles this as **per-DS folders under `<designRoot>/system/`** with **per-canvas attribution** via `.meta.json.designSystem`. The completeness-critic, the design-system-guard subagent (in flow), and the read-side of skill `design-system` all scope to the canvas's declared DS — tokens from one DS never blend into another.
 
 ## When to use multi-DS
 
