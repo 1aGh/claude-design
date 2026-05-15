@@ -1,9 +1,9 @@
 ---
 title: Expo (React Native) recipe
-description: Drop-in setup for an Expo + React Native app — native scenarios via flow:scenario, agent-device automation.
+description: Drop-in setup for an Expo + React Native app. Native scenarios via flow:scenario, agent-device automation.
 ---
 
-Drop-in setup for a native app. `design` is **optional** here — its canvas-first loop targets HTML/JSX. For Expo, design typically lives upstream in Figma; flow's `agent-device` skill handles native verification.
+Drop-in setup for a native app. `design` is **optional** here. Its canvas-first loop targets HTML/JSX. For Expo, design typically lives upstream in Figma. Flow's `agent-device` skill handles native verification.
 
 **Starting point:** existing Expo SDK 51+ app, pnpm / npm / yarn, TypeScript.
 
@@ -16,7 +16,7 @@ In Claude Code:
 /plugin install flow@md-claude
 ```
 
-The `design` plugin is **optional** for native — its canvas-first loop targets HTML/JSX in the browser. For Expo, design typically lives upstream in Figma + flow's `agent-device` automation for native verification.
+The `design` plugin is **optional** for native. Its canvas-first loop targets HTML/JSX in the browser. For Expo, design typically lives upstream in Figma plus flow's `agent-device` automation for native verification.
 
 In your terminal:
 
@@ -61,7 +61,7 @@ For an Expo app you'll typically end up with:
 }
 ```
 
-`bundleIdPrefix` is required for native scenarios — `/flow:utils-verify` and `/flow:scenario` use it to launch builds on the simulator.
+`bundleIdPrefix` is required for native scenarios. `/flow:utils-verify` and `/flow:scenario` use it to launch builds on the simulator.
 
 ## 3. Scenarios on a simulator
 
@@ -93,8 +93,8 @@ Output: a markdown report under `.ai/scenarios/<name>/report.md` with per-step s
 
 ## Gotchas
 
-- **Metro hot reload.** Flow doesn't manage Metro. Start it yourself (`npx expo start`); the agent-device skill connects to whatever's running.
-- **EAS Build / release.** `/flow:release` walks `releaseGuide` — for Expo, your runbook will reference `eas build --platform all` and the EAS dashboard. Auto-detected during `init` when an `eas.json` is found.
+- **Metro hot reload.** Flow doesn't manage Metro. Start it yourself (`npx expo start`). The agent-device skill connects to whatever's running.
+- **EAS Build / release.** `/flow:release` walks `releaseGuide`. For Expo, your runbook will reference `eas build --platform all` and the EAS dashboard. Auto-detected during `init` when an `eas.json` is found.
 - **Design plugin still useful** for things like in-app web views, settings screens that are also web pages, or landing-page mocks of the marketing site that fronts the app.
 
 ## Next

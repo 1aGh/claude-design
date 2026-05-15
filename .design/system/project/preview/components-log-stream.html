@@ -2,7 +2,7 @@
 <html lang="en" class="mdcc">
 <head>
 <meta charset="utf-8">
-<title>MDCC-DSN/01.components-log-stream — md-claude</title>
+<title>MDCC-DSN/01.components-log-stream / md-claude</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <!-- SPECIMEN: log stream — timestamps + level tag + body, mono everywhere. -->
 <link rel="stylesheet" href="../colors_and_type.css">
@@ -27,7 +27,7 @@
 <body>
 <header class="specimen-hd"><span class="sku">MDCC-DSN/01.components-log-stream</span><span class="crumbs"><span>md-claude</span><span>design system</span><span>dev</span><span>log-stream</span></span><span class="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
 <main class="specimen">
-  <section class="specimen-title"><h1>Log stream</h1><p class="lede">Timestamp + level + message. Three columns, mono everything. Level is a 4-letter caps tag in the status family color — no icon, no emoji.</p></section>
+  <section class="specimen-title"><h1>Log stream</h1><p class="lede">Timestamp + level + message. Three columns, mono everything. Level is a 4-letter caps tag in the status family color. No icon, no emoji.</p></section>
   <dl class="specimen-meta"><div><dt>Levels</dt><dd>info · ok · warn · err · debug</dd></div><div><dt>Cols</dt><dd>120 / 60 / 1fr</dd></div></dl>
 
   <h2 data-no="01">Dev-server tail</h2>
@@ -39,7 +39,7 @@
     <div class="line"><span class="t">2026-05-14 09:42:14</span><span class="lv lv-debug">DBG</span><span class="msg">GET /system/project/preview/colors-accent.html · 200 · 7.2ms</span></div>
     <div class="line"><span class="t">2026-05-14 09:42:14</span><span class="lv lv-info">INFO</span><span class="msg">active tab: <span class="tag">colors-accent.html</span></span></div>
     <div class="line"><span class="t">2026-05-14 09:42:18</span><span class="lv lv-info">INFO</span><span class="msg">inspector selection: <span class="tag">.stamp .stamp-headline</span></span></div>
-    <div class="line"><span class="t">2026-05-14 09:42:22</span><span class="lv lv-warn">WARN</span><span class="msg">snapshot stack at 28/30 — consider <code>/design:setup-docs</code> to prune</span></div>
+    <div class="line"><span class="t">2026-05-14 09:42:22</span><span class="lv lv-warn">WARN</span><span class="msg">snapshot stack at 28/30. consider <code>/design:setup-docs</code> to prune</span></div>
     <div class="line"><span class="t">2026-05-14 09:42:30</span><span class="lv lv-err">ERR</span><span class="msg">file not found: <span class="tag">ui/sandbox.html</span> · refusing to serve missing canvas</span></div>
     <div class="line"><span class="t">2026-05-14 09:42:31</span><span class="lv lv-info">INFO</span><span class="msg">active tab cleared</span></div>
   </div>

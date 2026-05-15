@@ -1,15 +1,15 @@
 ---
 title: Monorepo recipe
-description: Drop-in setup for a pnpm / Turbo / Nx workspace — scope flow + design to a single package or run them at the root.
+description: Drop-in setup for a pnpm / Turbo / Nx workspace. Scope flow + design to a single package or run them at the root.
 ---
 
-Drop-in setup for a workspace. Two valid layouts depending on who owns what — pick A unless you've already split into autonomous package teams.
+Drop-in setup for a workspace. Two valid layouts depending on who owns what. Pick A unless you've already split into autonomous package teams.
 
-**Starting point:** pnpm workspace, possibly Turbo or Nx on top. Multiple deployable apps + shared packages.
+**Starting point:** pnpm workspace, possibly Turbo or Nx on top. Multiple deployable apps and shared packages.
 
 ## Two valid layouts
 
-**Option A — root-level `.ai/`** (recommended for cross-package work).
+**Option A. Root-level `.ai/`** (recommended for cross-package work).
 
 ```
 my-monorepo/
@@ -24,7 +24,7 @@ my-monorepo/
 └── turbo.json
 ```
 
-**Option B — per-package `.ai/`** (only if packages are owned by different teams with diverging conventions).
+**Option B. Per-package `.ai/`** (only if packages are owned by different teams with diverging conventions).
 
 ```
 my-monorepo/
@@ -92,7 +92,7 @@ mdcc config set integrations.changelog.scope "@acme/web"
 
 `/flow:release-changelog` will then drop entries into `.changeset/*.md` and `/flow:release` will walk the changesets-flavored release runbook (auto-scaffolded into `.ai/release-guide.md`).
 
-If you publish multiple packages, set `scope` to the most-frequently-released one — the others are still released, you just don't have to pass `--filter` every time.
+If you publish multiple packages, set `scope` to the most-frequently-released one. The others are still released, you just don't have to pass `--filter` every time.
 
 ## Design plugin in a monorepo
 
@@ -108,21 +108,21 @@ If you've installed the `design` plugin, the canonical place for design canvases
 └── admin/                        # canvases for apps/admin
 ```
 
-The dev server resolves the design root via `--root` arg → `$CLAUDE_PROJECT_DIR` → `cwd`. From any package directory, set:
+The dev server resolves the design root via `--root` arg, then `$CLAUDE_PROJECT_DIR`, then `cwd`. From any package directory, set:
 
 ```bash
 export CLAUDE_PROJECT_DIR=$(git rev-parse --show-toplevel)
 mdcc design serve --port 4399
 ```
 
-…or boot it from the repo root.
+...or boot it from the repo root.
 
 ## Gotchas
 
-- **One `CLAUDE.md` at root + per-package overrides.** The root `CLAUDE.md` covers cross-cutting concerns (commit conventions, branch model). Per-package `CLAUDE.md` (placed in `apps/web/`, `apps/api/`, etc.) override or extend it.
+- **One `CLAUDE.md` at root plus per-package overrides.** The root `CLAUDE.md` covers cross-cutting concerns (commit conventions, branch model). Per-package `CLAUDE.md` (placed in `apps/web/`, `apps/api/`, etc.) override or extend it.
 - **`workflows.config.json` is *not* hierarchical.** Pick Option A or Option B, don't mix. The flow plugin reads exactly one config from the directory you invoke it in.
 - **Turbo cache.** Flow doesn't manage Turbo's cache. If `/flow:utils-verify` reports a stale failure, `pnpm turbo run lint --force` and re-verify.
-- **PR scopes.** Conventional commits for monorepos benefit from a scope: `feat(web): …`, `fix(ui): …`. `/flow:done` formats commits to match `conventions.commits` but won't auto-pick the scope — add it when prompted.
+- **PR scopes.** Conventional commits for monorepos benefit from a scope: `feat(web): ...`, `fix(ui): ...`. `/flow:done` formats commits to match `conventions.commits` but won't auto-pick the scope. Add it when prompted.
 
 ## Next
 

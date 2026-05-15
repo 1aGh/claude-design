@@ -2,7 +2,7 @@
 <html lang="en" class="mdcc">
 <head>
 <meta charset="utf-8">
-<title>MDCC-DSN/01.colors-surfaces — md-claude</title>
+<title>MDCC-DSN/01.colors-surfaces / md-claude</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <!-- SPECIMEN: surface ladder (--bg-0..--bg-4) + border tokens + how panels layer.
      Verifies depth-via-bg-shift (no shadows) reads in both paper and phosphor. -->
@@ -19,7 +19,7 @@
 <main class="specimen">
   <section class="specimen-title">
     <h1>Surface ladder</h1>
-    <p class="lede">Five steps. <code>--bg-0</code> is the page. <code>--bg-4</code> is the deepest hover. Depth in this DS comes from 1px rules and bg-shifts — never from drop-shadow. If you can't see the layer separation, fix the rule, not the shadow.</p>
+    <p class="lede">Five steps. <code>--bg-0</code> is the page. <code>--bg-4</code> is the deepest hover. Depth in this DS comes from 1px rules and bg-shifts. Never from drop-shadow. If you can't see the layer separation, fix the rule, not the shadow.</p>
   </section>
   <dl class="specimen-meta">
     <div><dt>Published</dt><dd>2026-05-14</dd></div>
@@ -67,7 +67,7 @@
   </div>
 
   <h2 data-no="04">When not to use <span class="h2-aside">depth ≠ shadow</span></h2>
-  <div class="anti"><p style="margin:0">Don't add <code>box-shadow</code> to bump a card "above" the page — the bg-shift between <code>--bg-0</code> and <code>--bg-1</code> + the 1px rule does that already. Adding shadow is breaking the signature.</p></div>
+  <div class="anti"><p style="margin:0">Don't add <code>box-shadow</code> to bump a card "above" the page. The bg-shift between <code>--bg-0</code> and <code>--bg-1</code> + the 1px rule does that already. Adding shadow is breaking the signature.</p></div>
   <div class="pro"><p style="margin:0">If a card needs more emphasis, increase the 1px rule to <code>--border-strong</code> or accent-tint a left border (<code>border-left: 4px solid var(--accent)</code>). The depth ladder is one step + 1px, repeat.</p></div>
 
   <footer class="specimen-ft">

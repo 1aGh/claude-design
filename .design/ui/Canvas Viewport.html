@@ -2,7 +2,7 @@
 <html lang="en" class="mdcc" data-theme="light">
 <head>
 <meta charset="utf-8">
-<title>Canvas Viewport — MDCC-DSN/01 · v1.0 → v1.3 states</title>
+<title>Canvas Viewport. MDCC-DSN/01 · v1.0 to v1.3 states</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="stylesheet" href="../system/project/colors_and_type.css">
 <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
@@ -1576,14 +1576,14 @@ function MenuShortcut({ children }) {
 function FileDropdown() {
   return (
     <div className="mb-dropdown" role="menu" aria-label="File" style={{ left: '92px' }}>
-      <div role="menuitem" className="mb-dd-item"><span className="lbl">New Canvas…</span><MenuShortcut>⌘ N</MenuShortcut></div>
-      <div role="menuitem" className="mb-dd-item"><span className="lbl">Open Project…</span><MenuShortcut>⌘ O</MenuShortcut></div>
+      <div role="menuitem" className="mb-dd-item"><span className="lbl">New Canvas...</span><MenuShortcut>⌘ N</MenuShortcut></div>
+      <div role="menuitem" className="mb-dd-item"><span className="lbl">Open Project...</span><MenuShortcut>⌘ O</MenuShortcut></div>
       <div role="menuitem" className="mb-dd-item"><span className="lbl">Reveal in Finder</span><MenuShortcut>⌥ ⌘ R</MenuShortcut></div>
       <div role="separator" className="mb-dd-sep" />
       <div role="menuitem" className="mb-dd-item"><span className="lbl">Save Snapshot</span><MenuShortcut>⌘ S</MenuShortcut></div>
       <div role="menuitem" className="mb-dd-item"><span className="lbl">Rollback</span><MenuShortcut>⌘ Z</MenuShortcut></div>
       <div role="separator" className="mb-dd-sep" />
-      <div role="menuitem" className="mb-dd-item"><span className="lbl">Export…</span><MenuShortcut>⇧ ⌘ E</MenuShortcut></div>
+      <div role="menuitem" className="mb-dd-item"><span className="lbl">Export...</span><MenuShortcut>⇧ ⌘ E</MenuShortcut></div>
       <div role="menuitem" className="mb-dd-item"><span className="lbl">Handoff to Production</span><MenuShortcut>⇧ ⌘ H</MenuShortcut></div>
     </div>
   );
@@ -1623,7 +1623,7 @@ function ToolsDropdown({ active = {} }) {
       <div role="menuitemradio" aria-checked={false} className="mb-dd-item"><span className="lbl">Eraser</span><MenuShortcut>E</MenuShortcut></div>
       <div role="menuitemradio" aria-checked={false} className="mb-dd-item"><span className="lbl">Select</span><MenuShortcut>V</MenuShortcut></div>
       <div role="separator" className="mb-dd-sep" />
-      <div role="menuitem" className="mb-dd-item"><span className="lbl">Color Picker…</span><MenuShortcut>⇧ C</MenuShortcut></div>
+      <div role="menuitem" className="mb-dd-item"><span className="lbl">Color Picker...</span><MenuShortcut>⇧ C</MenuShortcut></div>
       <div role="separator" className="mb-dd-sep" />
       <div className="mb-dd-hd">Comments</div>
       <div role="menuitem" className="mb-dd-item"><span className="lbl">Drop Pin Here</span><MenuShortcut>⌘ ⇧ K</MenuShortcut></div>
@@ -2061,7 +2061,7 @@ function ArtboardDraw() {
             fontWeight="700"
             fill="var(--accent)"
           >
-            wrong radius — should be 4
+            wrong radius. should be 4
           </text>
           <path
             d="M 320 192 L 308 204"
@@ -2074,15 +2074,15 @@ function ArtboardDraw() {
 
         {/* Draw toolbar */}
         <div className="draw-tb" role="toolbar" aria-label="draw tools">
-          <button type="button" className="active" title="pen — B">B</button>
-          <button type="button" title="rectangle — R">R</button>
-          <button type="button" title="arrow — A">A</button>
-          <button type="button" title="eraser — E">E</button>
+          <button type="button" className="active" title="pen · B">B</button>
+          <button type="button" title="rectangle · R">R</button>
+          <button type="button" title="arrow · A">A</button>
+          <button type="button" title="eraser · E">E</button>
           <button type="button" title="color picker">
             <span style={{ display: 'inline-block', width: '14px', height: '14px', background: 'var(--accent)', border: '1px solid var(--fg-0)' }} />
           </button>
-          <button type="button" title="select — V">V</button>
-          <button type="button" title="presentation toggle — P">P</button>
+          <button type="button" title="select · V">V</button>
+          <button type="button" title="presentation toggle · P">P</button>
         </div>
 
         {/* Color picker popover — opens next to color button */}
@@ -2098,7 +2098,7 @@ function ArtboardDraw() {
         {/* Shortcut hint chip */}
         <div className="kb-hint">
           <kbd>B</kbd><kbd>R</kbd><kbd>A</kbd><kbd>E</kbd><kbd>V</kbd>
-          <span>—</span>
+          <span>·</span>
           <kbd className="esc">ESC</kbd>
           <span>TO EXIT</span>
         </div>
@@ -2183,7 +2183,7 @@ function ArtboardPin() {
             <button type="button" className="pin" aria-label="Open thread on button.btn-primary" style={{ left: '140px', top: '180px' }}>M</button>
 
             {/* Closed pin on the Notifications toggle row — 2 unread replies */}
-            <button type="button" className="pin closed unread" data-unread="2" aria-label="Comment thread on Notifications — 2 unread" style={{ right: '32px', top: '116px' }}>P</button>
+            <button type="button" className="pin closed unread" data-unread="2" aria-label="Comment thread on Notifications. 2 unread" style={{ right: '32px', top: '116px' }}>P</button>
           </div>
         </div>
 
@@ -2199,7 +2199,7 @@ function ArtboardPin() {
               <span className="ts">2m ago</span>
             </div>
             <div className="body">
-              <span className="mention">@claude</span> this padding feels cramped — try <code>12 16</code> instead of <code>8 12</code>. Make it match the spec.
+              <span className="mention">@claude</span> this padding feels cramped. try <code>12 16</code> instead of <code>8 12</code>, match the spec.
             </div>
           </div>
           <div className="thread-msg">
@@ -2209,7 +2209,7 @@ function ArtboardPin() {
               <span style={{ color: 'var(--status-success)', fontSize: '10px', letterSpacing: 'var(--tracking-sku)', textTransform: 'uppercase' }}>● APPLIED</span>
             </div>
             <div className="body">
-              applied. snapshot <code>048-T2127</code>. ready to review.
+              applied. snapshot <code>048-T2127</code>. ready when you are.
             </div>
           </div>
           <div className="thread-input">
@@ -2254,9 +2254,10 @@ function ArtboardPresentation() {
             <span className="stamp">Iterate in place.</span>
           </h1>
           <p>
-            The infinite canvas for repo-local design iteration. Free-form artboards,
-            pin-comments, draw annotations, live cursors, and a Cmd+click inspector — all
-            shipped with the plugin. No SaaS. The dev-server runs on localhost.
+            An infinite canvas for repo-local design iteration. Free-form artboards,
+            pin-comments, draw annotations, live cursors, a Cmd+click inspector. All
+            of it ships with the plugin. No SaaS. The dev-server boots on localhost.
+            (Usually about 800ms.)
           </p>
           <div className="cta">
             <button type="button" className="btn-fill">Install plugin</button>
@@ -2303,7 +2304,7 @@ function ArtboardCollab() {
       {/* Soft-lock banner — flows ABOVE the SKU bar; boldest typographic moment in the canvas */}
       <div className="lock-banner" role="status" aria-live="polite">
         <span>
-          <span className="bolt" aria-hidden="true">⚡</span>{' '}CLAUDE IS EDITING THIS CANVAS · YOUR CHANGES MAY CONFLICT
+          <span className="bolt" aria-hidden="true">⚡</span>{' '}CLAUDE HAS THE WHEEL · SOFT-LOCK FOR
         </span>
         <span className="countdown">08s</span>
       </div>
@@ -2376,8 +2377,8 @@ function ArtboardCollab() {
             </button>
 
             {/* Pin with typing indicator — Maya is currently typing a reply */}
-            <button type="button" className="pin" aria-label="Open thread on form — Maya is typing" style={{ right: '24px', top: '24px' }}>M
-              <span className="typing-dot" aria-live="polite">MAYA TYPING…</span>
+            <button type="button" className="pin" aria-label="Open thread on form. Maya is typing" style={{ right: '24px', top: '24px' }}>M
+              <span className="typing-dot" aria-live="polite">MAYA TYPING...</span>
             </button>
           </div>
         </div>
@@ -2387,10 +2388,10 @@ function ArtboardCollab() {
         <RemoteCursor x={748} y={482} color="var(--status-success)" name="DANIEL" />
 
         {/* Participant avatars chrome */}
-        <div className="participants" role="group" aria-label="Connected peers — click to follow">
+        <div className="participants" role="group" aria-label="Connected peers. Click to follow">
           <button type="button" className="avatar av-you" aria-label="You (host)">Y</button>
-          <button type="button" className="avatar av-alice" aria-label="Alice Tanaka — follow viewport">A</button>
-          <button type="button" className="avatar av-daniel" aria-label="Daniel Reyes — follow viewport" aria-expanded="true">
+          <button type="button" className="avatar av-alice" aria-label="Alice Tanaka. Follow viewport">A</button>
+          <button type="button" className="avatar av-daniel" aria-label="Daniel Reyes. Follow viewport" aria-expanded="true">
             D
             <span className="follow-pill" role="tooltip">FOLLOW DANIEL</span>
           </button>
@@ -2422,7 +2423,7 @@ function ArtboardInspector() {
               <span>LAYERS · ScoutRadar.html</span>
               <kbd>L</kbd>
             </div>
-            <div role="tree" aria-label="DOM tree — ui/ScoutRadar.html">
+            <div role="tree" aria-label="DOM tree. ui/ScoutRadar.html">
               <div role="treeitem" tabIndex={-1} aria-expanded="true"  aria-level="1" className="tree-row-l"><span className="gly" aria-hidden="true">▾</span><span className="tag">&lt;body</span><span className="cls"> .mdcc&gt;</span></div>
               <div role="treeitem" tabIndex={-1} aria-expanded="true"  aria-level="2" className="tree-row-l" style={{ paddingLeft: '20px' }}><span className="gly" aria-hidden="true">▾</span><span className="tag">&lt;main</span><span className="cls"> .app&gt;</span></div>
               <div role="treeitem" tabIndex={-1} aria-expanded="true"  aria-level="3" className="tree-row-l" style={{ paddingLeft: '34px' }}><span className="gly" aria-hidden="true">▾</span><span className="tag">&lt;header</span><span className="cls"> .topbar&gt;</span></div>
@@ -2618,7 +2619,7 @@ function ArtboardTree() {
         {/* RIGHT — selected file preview / metadata */}
         <div className="tree-detail">
           <div className="td-eyebrow">UI CANVAS · ui/Canvas Viewport.html</div>
-          <h2 className="td-title">Canvas Viewport — 7 artboards</h2>
+          <h2 className="td-title">Canvas Viewport. 10 artboards, mostly behaving.</h2>
 
           <dl className="td-meta">
             <dt>Design system</dt><dd>project (MDCC-DSN/01)</dd>
@@ -2632,9 +2633,9 @@ function ArtboardTree() {
 
           <div className="td-stamp">
             <div className="stamp-sku">MDCC-DSN/01 · CV-CANVAS-VIEWPORT · PUBLISHED 2026-05-15</div>
-            <h3 className="stamp-title">Meta-design of the dev-server canvas itself</h3>
+            <h3 className="stamp-title">The dev-server canvas, designing itself. (It got a bit recursive.)</h3>
             <p style={{ margin: '8px 0 0', color: 'var(--fg-1)', fontSize: '12px', maxWidth: '54ch', lineHeight: 1.55 }}>
-              Every distinct viewport state v1.0 → v1.3 will ship — infinite canvas, draw tools,
+              Every viewport state from v1.0 to v1.3 ships here. Infinite canvas, draw tools,
               pin-comments, presentation mode, live collab, inspector + layers, file tree, DS view,
               comments list. Synthesized from .ai/plans/phase-{`{4,5,6,8,12}`}.md.
             </p>
@@ -2884,7 +2885,7 @@ function ArtboardCommentsList() {
                 <span>· 2 replies</span>
               </div>
               <div className="body">
-                <span className="mention">@claude</span> this padding feels cramped — try <code>12 16</code> instead of <code>8 12</code>. Make it match the spec.
+                <span className="mention">@claude</span> this padding feels cramped. try <code>12 16</code> instead of <code>8 12</code>, match the spec.
               </div>
               <div className="meta">
                 <span className="pill open">● OPEN</span>
@@ -2895,11 +2896,11 @@ function ArtboardCommentsList() {
               <div className="cl-thread">
                 <div className="reply">
                   <b>Claude</b><span className="ts">1m ago</span>
-                  <div className="text">applied. snapshot <code>048-T2127</code>. ready to review.</div>
+                  <div className="text">applied. snapshot <code>048-T2127</code>. ready when you are.</div>
                 </div>
                 <div className="reply">
                   <b>Maya Chen</b><span className="ts">just now · drafting</span>
-                  <div className="text" style={{ color: 'var(--fg-2)', fontStyle: 'italic' }}>typing…</div>
+                  <div className="text" style={{ color: 'var(--fg-2)', fontStyle: 'italic' }}>typing...</div>
                 </div>
                 <div className="actions">
                   <button type="button" className="primary">Reply</button>
@@ -2939,7 +2940,7 @@ function ArtboardCommentsList() {
                 <span>· 3 replies</span>
               </div>
               <div className="body">
-                <span className="mention">@maya</span> notifications copy is too long — "ride status + receipts" → just "ride updates"?
+                <span className="mention">@maya</span> notifications copy runs long. "ride status + receipts" could just be "ride updates"?
               </div>
               <div className="meta">
                 <span className="pill open">● OPEN</span>
@@ -2978,7 +2979,7 @@ function ArtboardCommentsList() {
                 <span>· 1 reply</span>
               </div>
               <div className="body">
-                The stamp block on "Iterate in place." should bleed off the right edge — feels too contained.
+                The stamp block on "Iterate in place." should bleed off the right edge. Reads too contained.
               </div>
               <div className="meta">
                 <span className="pill open">● OPEN</span>
@@ -2998,7 +2999,7 @@ function ArtboardCommentsList() {
                 <span>· resolved by Claude</span>
               </div>
               <div className="body">
-                Radar circle overlapping the names column — give it <code>position: relative</code>.
+                Radar circle overlapping the names column. Give it <code>position: relative</code>.
               </div>
               <div className="meta">
                 <span className="pill resolved">✓ RESOLVED</span>

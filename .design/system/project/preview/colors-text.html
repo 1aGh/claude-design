@@ -2,7 +2,7 @@
 <html lang="en" class="mdcc">
 <head>
   <meta charset="utf-8"/>
-  <title>MDCC-DSN/01.colors-text — md-claude</title>
+  <title>MDCC-DSN/01.colors-text / md-claude</title>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <!-- SPECIMEN: ink ladder — primary/secondary/tertiary/disabled text on each
        surface from --bg-0..--bg-4. Verifies WCAG contrast in BOTH themes. -->
@@ -21,7 +21,7 @@
   <main class="specimen">
     <section class="specimen-title">
       <h1>Ink ladder</h1>
-      <p class="lede">Four text tokens — <code>--fg-0</code> through <code>--fg-3</code> — drop in legibility, never in temperature. Each rung pairs with a surface so you don't have to guess if it'll pass contrast on phosphor.</p>
+      <p class="lede">Four text tokens. <code>--fg-0</code> through <code>--fg-3</code>. They drop in legibility, never in temperature. Each rung pairs with a surface so you don't have to guess if it'll pass contrast on phosphor.</p>
     </section>
     <dl class="specimen-meta">
       <div><dt>Published</dt><dd>2026-05-14</dd></div>
@@ -45,7 +45,7 @@
       <div class="swatch">
         <div class="chip" style="background:var(--fg-2);height:88px"></div>
         <div class="meta"><strong>--fg-2</strong><span class="oklch">L 52 / 60</span></div>
-        <div style="padding:var(--space-3) var(--space-4);font-size:var(--type-sm);color:var(--fg-2)">Tertiary. Eyebrows, SKU labels, footnotes — anything that should be present but not loud.</div>
+        <div style="padding:var(--space-3) var(--space-4);font-size:var(--type-sm);color:var(--fg-2)">Tertiary. Eyebrows, SKU labels, footnotes. Anything that should be present but not loud.</div>
       </div>
       <div class="swatch">
         <div class="chip" style="background:var(--fg-3);height:88px"></div>
@@ -56,10 +56,10 @@
 
     <h2 data-no="02">In context <span class="h2-aside">prose at each rung</span></h2>
     <div class="card">
-      <p style="color:var(--fg-0);margin:0 0 var(--space-3)"><strong>fg-0 — primary.</strong> <code>mdcc init</code> scaffolds the .ai/ workspace into the current project. Run it once. The README will reflect the convention.</p>
-      <p style="color:var(--fg-1);margin:0 0 var(--space-3)"><strong>fg-1 — secondary.</strong> If you re-run it, mdcc will detect the existing workspace and refuse to overwrite without <code>--force</code>. Yes, even when you really want it to. The rule isn't "we make this hard", it's "the templates already moved on".</p>
-      <p style="color:var(--fg-2);margin:0 0 var(--space-3)"><strong>fg-2 — tertiary.</strong> See also: <code>mdcc design serve</code>, which boots the canvas browser at 4399 unless you say otherwise.</p>
-      <p style="color:var(--fg-3);margin:0"><strong>fg-3 — disabled.</strong> Not reachable until a design system exists. Run <code>/design:setup-ds</code> first.</p>
+      <p style="color:var(--fg-0);margin:0 0 var(--space-3)"><strong>fg-0. Primary.</strong> <code>mdcc init</code> scaffolds the .ai/ workspace into the current project. Run it once. The README will reflect the convention.</p>
+      <p style="color:var(--fg-1);margin:0 0 var(--space-3)"><strong>fg-1. Secondary.</strong> If you re-run it, mdcc will detect the existing workspace and refuse to overwrite without <code>--force</code>. Yes, even when you really want it to. The rule isn't "we make this hard", it's "the templates already moved on".</p>
+      <p style="color:var(--fg-2);margin:0 0 var(--space-3)"><strong>fg-2. Tertiary.</strong> See also: <code>mdcc design serve</code>, which boots the canvas browser at 4399 unless you say otherwise.</p>
+      <p style="color:var(--fg-3);margin:0"><strong>fg-3. Disabled.</strong> Not reachable until a design system exists. Run <code>/design:setup-ds</code> first.</p>
     </div>
 
     <h2 data-no="03">Pair check <span class="h2-aside">fg over every surface</span></h2>
@@ -83,7 +83,7 @@
 
     <h2 data-no="04">When not to use <span class="h2-aside">fg-3 ≠ "subtle text"</span></h2>
     <div class="anti">
-      <p style="margin:0">Don't reach for <code>--fg-3</code> when you want "quiet emphasis". That's <code>--fg-2</code>'s job. <code>--fg-3</code> is reserved for disabled / unavailable controls — if a sighted reader doesn't know "this is currently off", you've used the wrong rung.</p>
+      <p style="margin:0">Don't reach for <code>--fg-3</code> when you want "quiet emphasis". That's <code>--fg-2</code>'s job. <code>--fg-3</code> is reserved for disabled / unavailable controls. If a sighted reader doesn't know "this is currently off", you've used the wrong rung.</p>
     </div>
     <div class="pro">
       <p style="margin:0">Pair <code>--fg-2</code> with <code>--tracking-eyebrow</code> + uppercase for inline metadata ("PUBLISHED · 2026-05-14"). The catalog-eyebrow is the canonical "secondary but present" treatment in this DS.</p>

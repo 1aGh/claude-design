@@ -4,13 +4,13 @@ description: Per-DS rules for the md-claude design system (MDCC-DSN/01). Industr
 user-invocable: false
 ---
 
-# md-claude DS — terse load-bearing rules
+# md-claude DS. Terse load-bearing rules
 
-Authoritative source for everything: `system/project/README.md` (philosophy + voice + hard rules). This file is the cheat-sheet agents load before every edit / specimen write — the things that are easy to forget under attention pressure.
+Authoritative source for everything: `system/project/README.md` (philosophy + voice + hard rules). This file is the cheat-sheet agents load before every edit / specimen write. The things that are easy to forget under attention pressure.
 
-## Tokens — only var(--*) values
+## Tokens. Only var(--*) values
 
-Authoritative file: `system/project/colors_and_type.css`. Every chromatic / dimensional value in any specimen MUST be a `var(--…)` reference. No hex outside that file. No `px` outside the token ladder. No `rem` (the system uses `px` consistently for the mono grid).
+Authoritative file: `system/project/colors_and_type.css`. Every chromatic / dimensional value in any specimen MUST be a `var(--...)` reference. No hex outside that file. No `px` outside the token ladder. No `rem` (the system uses `px` consistently for the mono grid).
 
 - Surfaces: `--bg-0` (page) → `--bg-4` (pressed). Same names in both themes.
 - Ink: `--fg-0` (primary) → `--fg-3` (disabled).
@@ -21,13 +21,13 @@ Authoritative file: `system/project/colors_and_type.css`. Every chromatic / dime
 - Type ladder: `--type-xs` (11px) → `--type-3xl` (40px) with matching `--lh-*`.
 - Tracking: `--tracking-tight` / `--tracking-normal` / `--tracking-wide` / `--tracking-sku` (0.12em, the catalog SKU letterspacing) / `--tracking-eyebrow` (0.18em).
 
-## Typography — Berkeley everywhere
+## Typography. Berkeley everywhere
 
-`--font-display`, `--font-body`, `--font-mono` all resolve to the same Berkeley Mono stack. Do NOT swap to a humanist sans. If the result feels claustrophobic, increase `line-height` or use `--tracking-wide` — never reach for `Inter`.
+`--font-display`, `--font-body`, `--font-mono` all resolve to the same Berkeley Mono stack. Do NOT swap to a humanist sans. If the result feels claustrophobic, increase `line-height` or use `--tracking-wide`. Never reach for `Inter`.
 
 H1 = `--type-3xl` mono with `tracking-tight`. H2 = mono ALL CAPS at `--type-xs` with `tracking-sku`, prefixed by a numeric SKU via `data-no` (e.g. `<h2 data-no="01">When to use</h2>`). H3 = mono at `--type-sm` regular case.
 
-## Signature treatment — SKU framing + 1px rules (hard-edges family)
+## Signature treatment. SKU framing + 1px rules (hard-edges family)
 
 Every specimen wears the chrome from `preview/_layout.css`:
 - `.specimen-hd` part-number bar at the top (`MDCC-DSN/01` + breadcrumb + theme toggle)
@@ -42,7 +42,7 @@ In specimen content, lean on:
 
 NO drop-shadows. NO border-radius > 4px. NO backdrop-blur. Depth = type weight + bg-shift between `--bg-1` and `--bg-2` + 1px hairlines.
 
-## Iconography — ASCII / Unicode glyphs
+## Iconography. ASCII / Unicode glyphs
 
 Family: `industry-specific`. Use Unicode glyphs inline with mono text first:
 
@@ -60,21 +60,46 @@ Custom SVG glyphs live in `assets/glyphs/<name>.svg` at 16×16 with 1px stroke (
 
 NO emoji in chrome. ✋ in markdown is fine; `🚀` in a button label is a critic warning.
 
-## Density — balanced docs-page
+## Density. Balanced docs-page
 
 Base padding lives on `--space-3` / `--space-4` (8 / 12px). Buttons = `padding: var(--space-3) var(--space-5)`. Cards = `padding: var(--space-5)`. Tile-hd = `padding: var(--space-3) var(--space-4)`. Tables = `td { padding: var(--space-2) var(--space-3); }` (compact).
 
 Prose runs to `--layout-prose` (72ch). Layout-max-width = `--layout-max-w` (1240px). Dev-server-canvas surfaces tighten to `auto-fill minmax(220px, 1fr)` tile grids.
 
-## Voice — htmx over U.S. Graphics
+## Voice
 
-Direct fragments. ALL-CAPS-for-emphasis fine. ASIDES in (parens) fine. Reference the tool by name (`mdcc`, `/design:edit`). No `we`, no `our`, no aspirational verbs.
+Bear-Blog school dry-grin on a U.S. Graphics catalog spine. Catalog stamps and hairlines stay; the prose is signed by a person.
 
-Sample register (use as cold-start reference when writing specimen copy):
+**Three highest-leverage rules:**
 
-> `mdcc init` — scaffolds .ai/ into the current project. Fails loud if not a git repo. Run it once. Don't run it twice; the rule isn't "we make this hard for you", it's "the templates already moved on".
+1. **Load-bearing parenthetical.** Sentence carries the fact, parens carry the warmth. `Booting. (Usually about 800ms.)`
+2. **Magic-admitted-as-magic.** Concede emergent behaviour modestly, as a fact. Once per surface. `An agentic loop that ships things eventually.`
+3. **Generative stacking, not corrective.** Frame the offer as "X & Y". `Plugins & Vibes.` not `Plugins, not vibes.`
 
-When choosing between two phrasings, pick the shorter unless it loses information. If you wrote "we", delete it and rewrite.
+**Cold-start register sample:**
+
+```
+hero    · A Claude Code marketplace. Two plugins, one CLI, some vibes.
+empty   · Nothing installed yet. Which is fine, you just got here.
+error   · Generation failed. Falling back to direct mode. No silent downgrade.
+loading · Booting. (Usually about 800ms.)
+tooltip · Scaffolds a docs site. (Yes, this one too.)
+```
+
+**Smells like try-hard if...**
+
+- the copy contains `—` (em dash) or `–` (en dash) anywhere in prose. Period, comma, or paren. Pick one.
+- the copy contains `…` (ellipsis character) or curly quotes (`"` `"` `'` `'`). Use three periods and straight quotes.
+- you wrote `we`, `our`, `let's`, or `together`
+- you wrote `!` after anything that isn't works / fired / shipped / boots / saved-first-time
+- you wrote `I` outside the bio, footer signature, README opener, or a deprecation notice
+- the headline shape is "X, not Y" (use generative stacking)
+- the headline contains a time-promise ("in N minutes")
+- the magic-admitted card fires twice on the same page
+- a pun lands more than once per surface
+- there's an emoji anywhere in DS chrome
+
+Full doctrine at `system/project/README.md` "Voice" section. Read it when writing copy for a new surface class.
 
 ## Hard NOs (critic blockers)
 
@@ -82,7 +107,7 @@ From `README.md` "Hard rules" section. Quick reference:
 - Blocker: frosted-blur / glassmorphism (any `backdrop-filter` use)
 - Blocker: drop-shadows on chrome (any `box-shadow` outside `--shadow-focus`)
 - Blocker: animations beyond hover + reduced-motion-safe tooltip fades
-- Blocker: AI-launch gradient (`linear-gradient` on hero / chrome — gradients are data-viz only)
+- Blocker: AI-launch gradient (`linear-gradient` on hero / chrome. Gradients are data-viz only)
 - Warning: `border-radius` > 4px
 - Warning: magic-verbs (`reimagine`, `supercharge`, `unlock`, `effortless`, `magical`)
 - Warning: emoji in DS chrome
@@ -97,7 +122,7 @@ Light theme (paper) is default; dark theme (phosphor) is equal-status. Switching
 - Borders stay 1px hairlines but shift to the appropriate L for visibility
 - **Identity does NOT change.** Same SKU framing, same hairlines, same mono. Themes are surfaces; brand is the rest.
 
-If a canvas only renders well in one theme, it's broken — write it to work in both, or escalate to the user that the canvas is theme-specific (rare).
+If a canvas only renders well in one theme, it's broken. Write it to work in both, or escalate to the user that the canvas is theme-specific (rare).
 
 ## Cross-refs
 

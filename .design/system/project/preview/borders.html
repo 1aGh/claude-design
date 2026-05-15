@@ -2,7 +2,7 @@
 <html lang="en" class="mdcc">
 <head>
 <meta charset="utf-8">
-<title>MDCC-DSN/01.borders — md-claude</title>
+<title>MDCC-DSN/01.borders / md-claude</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <!-- SPECIMEN: 1px hairline catalog — three border tokens, the depth-via-rules method. -->
 <link rel="stylesheet" href="../colors_and_type.css">
@@ -12,18 +12,18 @@
 <body>
 <header class="specimen-hd"><span class="sku">MDCC-DSN/01.borders</span><span class="crumbs"><span>md-claude</span><span>design system</span><span>foundation</span><span>borders</span></span><span class="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
 <main class="specimen">
-  <section class="specimen-title"><h1>Borders</h1><p class="lede">1px hairlines do the depth work — no shadows, no glow. Three weights cover everything from "barely there" row separators to "this is the page section" h2 underlines.</p></section>
+  <section class="specimen-title"><h1>Borders</h1><p class="lede">1px hairlines do the depth work. No shadows, no glow. Three weights cover everything from "barely there" row separators to "this is the page section" h2 underlines.</p></section>
   <dl class="specimen-meta"><div><dt>Tokens</dt><dd>3</dd></div><div><dt>Width</dt><dd>1px (default) · 2px (--border-width-strong)</dd></div></dl>
 
   <h2 data-no="01">Three weights</h2>
   <div class="grid" style="grid-template-columns:repeat(3,1fr);gap:0">
-    <div style="padding:var(--space-5);background:var(--bg-1);border:1px solid var(--border-subtle)"><div class="eyebrow">--border-subtle</div><p style="margin:var(--space-3) 0 0;font-size:var(--type-sm);color:var(--fg-1)">Row dividers in dense lists. Easy to miss — that's the point.</p></div>
+    <div style="padding:var(--space-5);background:var(--bg-1);border:1px solid var(--border-subtle)"><div class="eyebrow">--border-subtle</div><p style="margin:var(--space-3) 0 0;font-size:var(--type-sm);color:var(--fg-1)">Row dividers in dense lists. Easy to miss. That's the point.</p></div>
     <div style="padding:var(--space-5);background:var(--bg-1);border:1px solid var(--border-default)"><div class="eyebrow">--border-default</div><p style="margin:var(--space-3) 0 0;font-size:var(--type-sm);color:var(--fg-1)">The catalog hairline. Tile edges, input borders, table cells.</p></div>
     <div style="padding:var(--space-5);background:var(--bg-1);border:1px solid var(--border-strong)"><div class="eyebrow">--border-strong</div><p style="margin:var(--space-3) 0 0;font-size:var(--type-sm);color:var(--fg-1)">h2 underlines, primary button edges, .specimen-hd bottom.</p></div>
   </div>
 
   <h2 data-no="02">Overlapping-border grid <span class="h2-aside">the catalog trick</span></h2>
-  <p>Use <code>border: 1px solid var(--border-default); margin: -1px 0 0 -1px;</code> on grid children so adjacent edges collapse into a single 1px rule — no doubled lines.</p>
+  <p>Use <code>border: 1px solid var(--border-default); margin: -1px 0 0 -1px;</code> on grid children so adjacent edges collapse into a single 1px rule. No doubled lines.</p>
   <div class="grid" style="grid-template-columns:repeat(4,1fr);gap:0;border:1px solid var(--border-default)">
     <div style="background:var(--bg-1);padding:var(--space-4);font-family:var(--font-mono);font-size:var(--type-xs);color:var(--fg-2);border:1px solid var(--border-default);margin:-1px 0 0 -1px">cell 01</div>
     <div style="background:var(--bg-1);padding:var(--space-4);font-family:var(--font-mono);font-size:var(--type-xs);color:var(--fg-2);border:1px solid var(--border-default);margin:-1px 0 0 -1px">cell 02</div>

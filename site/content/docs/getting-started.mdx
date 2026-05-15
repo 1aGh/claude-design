@@ -1,11 +1,11 @@
 ---
 title: Getting Started
-description: Install the marketplace and scaffold your first project in under five minutes. No signup.
+description: Three commands and you're in. (Maybe four. Depends on your shell.)
 ---
 
-Five steps. Four optional. `npm install` + a handful of slash commands. No accounts, no API keys, no telemetry.
+Three commands and you're in. (Maybe four. Depends on your shell.) Five steps below, four of them optional. `npm install` and a handful of slash commands. No accounts, no API keys, no telemetry.
 
-## 1 · Install the marketplace
+## 1. Install the marketplace
 
 Inside Claude Code:
 
@@ -15,9 +15,9 @@ Inside Claude Code:
 /plugin install flow@md-claude
 ```
 
-Install one or both — they're independent. `/plugin marketplace update md-claude` pulls future releases.
+Install one or both, they're independent. `/plugin marketplace update md-claude` pulls future releases.
 
-## 2 · Install the CLI (optional, recommended)
+## 2. Install the CLI (optional, recommended)
 
 ```bash
 npm i -g @1agh/md-claude
@@ -25,9 +25,9 @@ npm i -g @1agh/md-claude
 npx @1agh/md-claude --help
 ```
 
-This gives you `mdcc` — the binary that scaffolds the `.ai/` workspace and boots the design dev server. See [CLI](/docs/cli) for the full surface.
+This gives you `mdcc`. The binary that scaffolds the `.ai/` workspace and boots the design dev server. See [CLI](/docs/cli) for the full surface.
 
-## 3 · Scaffold a project
+## 3. Scaffold a project
 
 ```bash
 mdcc init --name my-app
@@ -46,11 +46,11 @@ Copies the `.ai/` skeleton from the flow plugin into your repo:
 └── scenarios/              # cross-platform UI scenarios
 ```
 
-For richer setup (stack auto-detect, branching model, changelog provider), run `/flow:init` inside Claude Code instead — it calls `mdcc init` first, then asks the right questions.
+For richer setup (stack auto-detect, branching model, changelog provider), run `/flow:init` inside Claude Code instead. It calls `mdcc init` first, then asks the right questions.
 
 For `CLAUDE.md`, use Claude Code's built-in `/init`. Don't write it by hand.
 
-## 4 · Run a slash command
+## 4. Run a slash command
 
 Three good first commands:
 
@@ -60,9 +60,9 @@ Three good first commands:
 | `/flow:plan "<feature>"` | Drafts a phase plan grounded in your PRD + design system. |
 | `/design:new <Name> "<brief>"` | Scaffolds a new design canvas under `.design/<name>/` and iterates on it. |
 
-After the plan lands, `/flow:execute .ai/plans/<plan>.md` walks the implementation; `/flow:done` validates, commits, opens a PR, and archives the plan.
+After the plan lands, `/flow:execute .ai/plans/<plan>.md` walks the implementation. `/flow:done` validates, commits, opens a PR, and archives the plan.
 
-## 5 · Boot the design dev server (optional)
+## 5. Boot the design dev server (optional)
 
 If you've installed the `design` plugin and you have a `.design/` directory:
 
@@ -71,7 +71,7 @@ mdcc design serve --port 4399
 # → http://localhost:4399
 ```
 
-The server injects an inspector overlay into every HTML canvas — **Cmd+Click any element** to scope `/design:edit "<feedback>"` to that selection.
+The server injects an inspector overlay into every HTML canvas. **Cmd+Click any element** to scope `/design:edit "<feedback>"` to that selection.
 
 ## Next
 

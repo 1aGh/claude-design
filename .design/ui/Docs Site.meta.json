@@ -13,7 +13,8 @@
         { "id": "landing",      "label": "DS-01 · MARKETPLACE LANDING",    "width": 1440, "height": 900 },
         { "id": "docs-index",   "label": "DS-02 · DOCS · INDEX",           "width": 1440, "height": 900 },
         { "id": "docs-article", "label": "DS-03 · DOCS · ARTICLE",         "width": 1440, "height": 900 },
-        { "id": "cmd-k",        "label": "DS-04 · CMD-K · GLOBAL PALETTE", "width": 1440, "height": 900 }
+        { "id": "cmd-k",        "label": "DS-04 · CMD-K · GLOBAL PALETTE", "width": 1440, "height": 900 },
+        { "id": "about",        "label": "DS-05 · /docs/about",            "width": 1440, "height": 900 }
       ]
     }
   ],

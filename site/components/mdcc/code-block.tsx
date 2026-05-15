@@ -1,6 +1,6 @@
 'use client';
 
-import { type HTMLAttributes, useRef, useState } from 'react';
+import { type HTMLAttributes, useEffect, useRef, useState } from 'react';
 
 type PreProps = HTMLAttributes<HTMLPreElement> & {
   // rehype-pretty-code conventions (optional — may not be present today)
@@ -8,12 +8,22 @@ type PreProps = HTMLAttributes<HTMLPreElement> & {
   'data-language'?: string;
 };
 
-export function CodeBlock(props: PreProps) {
-  const { children, className, ...rest } = props;
-  const filename = (rest as Record<string, string | undefined>)['data-filename'];
-  const language = (rest as Record<string, string | undefined>)['data-language'];
+export function CodeBlock({
+  children,
+  className,
+  'data-filename': filename,
+  'data-language': language,
+  ...rest
+}: PreProps) {
   const preRef = useRef<HTMLPreElement>(null);
   const [copied, setCopied] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
   const label = filename ?? language ?? 'snippet';
 
@@ -29,16 +39,28 @@ export function CodeBlock(props: PreProps) {
           onClick={() => {
             const text = preRef.current?.textContent ?? '';
             if (!text) return;
-            navigator.clipboard.writeText(text).then(() => {
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1500);
-            });
+            navigator.clipboard
+              .writeText(text)
+              .then(() => {
+                setCopied(true);
+                if (timerRef.current) clearTimeout(timerRef.current);
+                timerRef.current = setTimeout(() => setCopied(false), 1500);
+              })
+              .catch((err) => {
+                console.error('[CodeBlock] clipboard write failed', err);
+              });
           }}
         >
           {copied ? 'COPIED' : 'COPY'}
         </button>
       </div>
-      <pre ref={preRef} className="mdcc-code-body" {...rest}>
+      <pre
+        ref={preRef}
+        className="mdcc-code-body"
+        data-filename={filename}
+        data-language={language}
+        {...rest}
+      >
         {children}
       </pre>
     </figure>

@@ -9,26 +9,28 @@ export function PageMetaFooter({
 }) {
   return (
     <footer className="mdcc-page-meta">
-      <div>
-        <dt>Edit</dt>
-        <dd>
-          {editUrl ? (
-            <a href={editUrl} target="_blank" rel="noreferrer">
-              edit on github ↗
-            </a>
-          ) : (
-            <span>—</span>
-          )}
-        </dd>
-      </div>
-      <div>
-        <dt>Last updated</dt>
-        <dd>{updated ?? '—'}</dd>
-      </div>
-      <div>
-        <dt>Page SKU</dt>
-        <dd>{sku ?? '—'}</dd>
-      </div>
+      <dl className="mdcc-page-meta-dl">
+        <div>
+          <dt>Edit</dt>
+          <dd>
+            {editUrl ? (
+              <a href={editUrl} target="_blank" rel="noopener noreferrer">
+                edit on github ↗
+              </a>
+            ) : (
+              <span>--</span>
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt>Last updated</dt>
+          <dd>{updated ?? '--'}</dd>
+        </div>
+        <div>
+          <dt>Page SKU</dt>
+          <dd>{sku ?? '--'}</dd>
+        </div>
+      </dl>
     </footer>
   );
 }

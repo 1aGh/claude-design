@@ -4,11 +4,18 @@
 
 **Workflow:** feature-delivery — md-claude v1.0 roadmap
 **Phase:** phase-3.4-architecture-refactor (✅ done, archived) ∥ feature-docs-site-mdcc-skin (✅ done, archived; follow-ups queued)
-**Status:** ready-for-next
+**Status:** plan-executed-pending-validation
 **Started:** 2026-05-12
 **Updated:** 2026-05-15
-**Active task:** —
-**Active plan:** — (next: `feature-docs-site-followups.md` queued)
+**Active task:** feature-docs-site-followups
+**Active plan:** `.ai/plans/feature-docs-site-followups.md`
+
+## Execution Progress — feature-docs-site-followups
+
+- ✅ Commit 1 (DS-spec deviations, items 1-6) — global.css + page.tsx + layout.shared.tsx + package.json
+- ✅ Commit 2 (WCAG 2.1 AA, items 7-13) — global.css + layout.tsx + page.tsx; item 8 documented as fumadocs-controlled (no shadow toggle, per DDR-011)
+- ✅ Commit 3 (Code-review polish, items 14-18) — page-meta-footer.tsx + build-stats.mjs + copy-button.tsx + code-block.tsx
+- ⏭ Items 19-21 (token discipline) deferred — flagged as optional in plan
 **Last archived plan:** `.ai/plans/archive/feature-docs-site-mdcc-skin.md`
 **Branch:** `main`
 

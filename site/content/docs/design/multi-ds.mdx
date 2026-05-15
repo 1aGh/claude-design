@@ -1,28 +1,28 @@
 ---
-title: Multi-DS — multiple design systems in one project
+title: Multi-DS. Multiple design systems in one project
 description: How to declare multiple design systems under .design/system/ and route canvases to the right one.
 ---
 
-Some products need more than one design system in the same repo: a marketing site that doesn't share the admin tool's pro-tool density; an iOS app that diverges from a desktop dashboard; an enterprise variant with corporate-brand constraints.
+Some products need more than one design system in the same repo. A marketing site that doesn't share the admin tool's pro-tool density. An iOS app that diverges from a desktop dashboard. An enterprise variant with corporate-brand constraints.
 
-The plugin handles this as **per-DS folders under `<designRoot>/system/`** with **per-canvas attribution** via `.meta.json.designSystem`. The completeness-critic, the design-system-guard subagent (in flow), and the read-side of skill `design-system` all scope to the canvas's declared DS — tokens from one DS never blend into another.
+The plugin handles this as **per-DS folders under `<designRoot>/system/`** with **per-canvas attribution** via `.meta.json.designSystem`. The completeness-critic, the design-system-guard subagent (in flow), and the read-side of skill `design-system` all scope to the canvas's declared DS. Tokens from one DS never blend into another.
 
 ## When to use multi-DS
 
 Reach for it when:
 
-- Two surfaces of the same product have **incompatible visual languages** (e.g., a marketing site with gradients + decorative type vs. an admin tool with dense rows + tabular nums).
+- Two surfaces of the same product have **incompatible visual languages** (e.g., a marketing site with gradients and decorative type vs. an admin tool with dense rows and tabular nums).
 - The team needs **separate token sets** (e.g., a sub-brand with its own accent ladder).
 - A specific platform (iOS, watchOS) has **platform-native constraints** that don't fit the desktop DS.
 
 Avoid it when:
 
 - The difference is a single token override (a different `--accent` for one section). Use canvas-level `opt_out_scope: aesthetic` or a documented theme variant instead.
-- The split is "one-time experiment". A second DS adds maintenance cost — keep it for permanent divergences.
+- The split is "one-time experiment". A second DS adds maintenance cost. Keep it for permanent divergences.
 
 ## Single-DS vs. multi-DS layout
 
-**Single-DS** (the default — one DS per project):
+**Single-DS** (the default, one DS per project):
 
 ```
 .design/
@@ -58,7 +58,7 @@ Avoid it when:
 > /design:setup-ds marketing "consumer-facing marketing site for product launch"
 ```
 
-The skill detects `additional-ds` mode (config exists, `marketing` not in `designSystems[]`), runs reduced discovery, offers an inheritance picker (typography, voice, iconography, motion — multi-select), and scaffolds `system/marketing/` next to the existing DS.
+The skill detects `additional-ds` mode (config exists, `marketing` not in `designSystems[]`), runs reduced discovery, offers an inheritance picker (typography, voice, iconography, motion. Multi-select), and scaffolds `system/marketing/` next to the existing DS.
 
 After scaffold:
 
@@ -81,15 +81,15 @@ After scaffold:
 
 The command:
 
-1. Validates `--ds=marketing` against `config.designSystems[].name`. Unknown DS → fail with hint to `/design:setup-ds marketing "<brief>"` (clean separation — `new` doesn't create DSes).
-2. Resolves marketing's tokens + component HTML, passes them as context to `frontend-design`.
+1. Validates `--ds=marketing` against `config.designSystems[].name`. Unknown DS, fail with hint to `/design:setup-ds marketing "<brief>"` (clean separation, `new` doesn't create DSes).
+2. Resolves marketing's tokens and component HTML, passes them as context to `frontend-design`.
 3. Writes `designSystem: "marketing"` into the canvas's `.meta.json`.
 
 Subsequent `/design:edit` iterations on that canvas inherit the `marketing` scope automatically.
 
 ## How subagents stay scoped
 
-- **Skill `design-system` (read mode)** loads only the canvas's declared DS — never blends.
+- **Skill `design-system` (read mode)** loads only the canvas's declared DS. Never blends.
 - **`design-system-completeness-critic`** scopes to one DS at a time, or runs per-DS sections when invoked with `--all-ds`.
 - **`flow:design-system-guard`** reads `<canvas>.meta.json.designSystem` first, then enforces only that DS's rules. Cross-DS token use (a canvas declared against `marketing` referencing `admin`'s `--accent`) is a blocker.
 

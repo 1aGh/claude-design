@@ -94,6 +94,13 @@ body {
   color: var(--color-fd-foreground);
 }
 
+/* Global focus ring — wins over fumadocs `focus-visible:outline-none` via
+   selector specificity + cascade order. WCAG 2.4.7. */
+:where(a, button, [role="button"], input, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 /* ─────────────────────────────────────────────────────────────────────────
    MDCC chrome — nav, SKU labels, wordmark
    Lifted from .design/ui/Docs Site.html (.nav / .nav-brand / .nav-links)
@@ -272,7 +279,8 @@ html.dark .mdcc-sku {
   background: transparent;
   border: 1px solid var(--border-default);
   color: var(--fg-1);
-  padding: 2px var(--space-3);
+  /* Minimum padding so the hit-box is ≥24×24 (WCAG 2.5.8 AA, 2.2). */
+  padding: var(--space-2) var(--space-3);
   font: inherit;
   font-size: var(--type-xs);
   letter-spacing: var(--tracking-wide);
@@ -339,7 +347,7 @@ html.dark .mdcc-sku {
 .mdcc-cat-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border-strong);
   background: var(--bg-0);
 }
 @media (max-width: 880px) {
@@ -349,7 +357,9 @@ html.dark .mdcc-sku {
 }
 .mdcc-cat-card {
   margin: -1px 0 0 -1px;
-  border: 1px solid var(--border-default);
+  /* Cards are the sole affordance — promote to --border-strong so the
+     non-text border clears 3:1 (WCAG 1.4.11). */
+  border: 1px solid var(--border-strong);
   padding: var(--space-6);
   display: flex;
   flex-direction: column;
@@ -389,6 +399,74 @@ html.dark .mdcc-sku {
   padding-top: var(--space-3);
 }
 
+.mdcc-maker-signature {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  padding-bottom: var(--space-5);
+  font-size: var(--type-sm);
+  color: var(--fg-1);
+}
+.mdcc-maker-signature p {
+  margin: 0;
+}
+.mdcc-maker-signature a {
+  color: var(--fg-0);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.mdcc-about {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 18rem);
+  gap: var(--space-7, var(--space-6));
+  align-items: start;
+  padding-block: var(--space-7, var(--space-6));
+}
+@media (max-width: 960px) {
+  .mdcc-about {
+    grid-template-columns: 1fr;
+  }
+}
+.mdcc-about-copy h1 {
+  font-size: var(--type-3xl, var(--type-2xl));
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--lh-sm);
+  margin: var(--space-3) 0 var(--space-6);
+  color: var(--fg-0);
+}
+.mdcc-about-copy p {
+  font-size: var(--type-md);
+  line-height: var(--lh-lg, var(--lh-md));
+  color: var(--fg-1);
+  margin: 0 0 var(--space-4);
+  max-width: 60ch;
+}
+.mdcc-about-meta {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+  border-top: var(--rule-thin);
+  padding-top: var(--space-5);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+  letter-spacing: var(--tracking-wide);
+  margin: 0;
+}
+.mdcc-about-meta dt {
+  text-transform: uppercase;
+  color: var(--fg-2);
+  font-size: 10px;
+  letter-spacing: var(--tracking-eyebrow);
+  margin-bottom: var(--space-2);
+}
+.mdcc-about-meta dd {
+  margin: 0;
+  color: var(--fg-0);
+  font-size: var(--type-sm);
+}
+
 .mdcc-meta-footer {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -423,6 +501,7 @@ html.dark .mdcc-sku {
 
 .mdcc-sku-breadcrumb {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
   font-size: var(--type-xs);
@@ -432,6 +511,7 @@ html.dark .mdcc-sku {
   padding-bottom: var(--space-3);
   border-bottom: 1px solid var(--border-subtle);
   text-transform: uppercase;
+  min-width: 0;
 }
 .mdcc-sku-breadcrumb a {
   color: var(--fg-2);
@@ -443,38 +523,43 @@ html.dark .mdcc-sku {
 .mdcc-sku-breadcrumb .sep {
   color: var(--fg-3);
 }
+.mdcc-sku-breadcrumb > .mdcc-sku {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 720px) {
+  .mdcc-sku-breadcrumb > .mdcc-sku {
+    margin-left: auto;
+  }
+}
 
-/* CSS counters for h2 numbering in docs body. We target the fumadocs DocsBody
-   article — `[data-fd-page]` is the typical wrapper; if absent fall back to
-   `.prose` / `article`. */
-[data-fd-page],
-article.prose,
-.fd-docs-body {
+/* CSS counters for h2 numbering in docs body. The live wrapper is fumadocs
+   `DocsBody`, which renders `<div class="prose flex-1">` — `.prose` is the
+   only stable hook (no `[data-fd-page]` / `.fd-docs-body` are emitted). */
+.prose {
   counter-reset: mdcc-h2;
 }
-[data-fd-page] h2,
-article.prose h2,
-.fd-docs-body h2 {
+.prose h2 {
   counter-increment: mdcc-h2;
   border-top: 1px solid var(--border-default);
   padding-top: var(--space-5);
   margin-top: var(--space-7);
   letter-spacing: var(--tracking-tight);
 }
-[data-fd-page] h2::before,
-article.prose h2::before,
-.fd-docs-body h2::before {
+.prose h2::before {
   content: counter(mdcc-h2, decimal-leading-zero) " · ";
   color: var(--accent);
   font-weight: 500;
   letter-spacing: var(--tracking-sku);
 }
 
-/* Anchor `#` hover affordance on h2/h3 */
-[data-fd-page] h2:hover::after,
-[data-fd-page] h3:hover::after {
+/* Anchor `#` hover affordance on h2/h3 — bumped to --fg-2 so the visible
+   link character clears 4.5:1 (WCAG 1.4.3). */
+.prose h2:hover::after,
+.prose h3:hover::after {
   content: " #";
-  color: var(--fg-3);
+  color: var(--fg-2);
   font-weight: 400;
 }
 
@@ -482,12 +567,15 @@ article.prose h2::before,
   margin-top: var(--space-8);
   padding-top: var(--space-5);
   border-top: 1px solid var(--border-strong);
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-5);
   font-size: var(--type-xs);
   color: var(--fg-2);
   letter-spacing: var(--tracking-wide);
+}
+.mdcc-page-meta-dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-5);
 }
 .mdcc-page-meta dt {
   text-transform: uppercase;
@@ -599,7 +687,8 @@ nav[data-fd-pager],
   color: var(--fg-2);
   font: inherit;
   cursor: pointer;
-  padding: 0 var(--space-2);
+  /* Minimum padding so the hit-box is ≥24×24 (WCAG 2.5.8 AA, 2.2). */
+  padding: var(--space-2) var(--space-3);
   text-transform: uppercase;
   letter-spacing: var(--tracking-wide);
 }
@@ -633,16 +722,27 @@ nav[data-fd-pager],
   font-size: 0.92em;
 }
 
-/* Callouts */
+/* Callouts — 1 px hairline contract (DS rule 5). The type-coloured accent
+   stripe lives on a 2 px-wide `::before` child so the border itself stays
+   the 1 px rule shared with every other surface. */
 .mdcc-callout {
+  position: relative;
   display: grid;
   grid-template-columns: auto 1fr;
   gap: var(--space-3);
   padding: var(--space-4) var(--space-5);
   margin: var(--space-5) 0;
   border: 1px solid var(--border-subtle);
-  border-left: 4px solid var(--border-default);
   background: var(--bg-1);
+}
+.mdcc-callout::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--border-default);
 }
 .mdcc-callout-glyph {
   font-weight: 700;
@@ -660,26 +760,26 @@ nav[data-fd-pager],
 .mdcc-callout-body > *:last-child {
   margin-bottom: 0;
 }
-.mdcc-callout[data-type="note"] {
-  border-left-color: var(--status-info);
+.mdcc-callout[data-type="note"]::before {
+  background: var(--status-info);
 }
 .mdcc-callout[data-type="note"] .mdcc-callout-glyph {
   color: var(--status-info);
 }
-.mdcc-callout[data-type="warn"] {
-  border-left-color: var(--status-warn);
+.mdcc-callout[data-type="warn"]::before {
+  background: var(--status-warn);
 }
 .mdcc-callout[data-type="warn"] .mdcc-callout-glyph {
   color: var(--status-warn);
 }
-.mdcc-callout[data-type="danger"] {
-  border-left-color: var(--status-error);
+.mdcc-callout[data-type="danger"]::before {
+  background: var(--status-error);
 }
 .mdcc-callout[data-type="danger"] .mdcc-callout-glyph {
   color: var(--status-error);
 }
-.mdcc-callout[data-type="tip"] {
-  border-left-color: var(--status-success);
+.mdcc-callout[data-type="tip"]::before {
+  background: var(--status-success);
 }
 .mdcc-callout[data-type="tip"] .mdcc-callout-glyph {
   color: var(--status-success);
@@ -687,7 +787,18 @@ nav[data-fd-pager],
 
 /* ─────────────────────────────────────────────────────────────────────────
    Cmd-K palette — re-skin Orama dialog
+
+   fumadocs doesn't emit `[data-fd-search]` attributes; the live tree is a
+   Radix `[role="dialog"]` with a sibling overlay carrying `.backdrop-blur-xs`.
+   We override via class hooks instead (DS-04 — flat black scrim, no glass).
    ───────────────────────────────────────────────────────────────────── */
+
+/* Strip glassmorphism on every fumadocs overlay (search dialog + mobile
+   sidebar drawer). DS hard NO — no backdrop-filter, anywhere. */
+.backdrop-blur-xs {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
 
 [role="dialog"][data-fd-search],
 [data-fd-search-dialog] {
@@ -721,4 +832,13 @@ nav[data-fd-pager],
 [data-fd-search-dialog] [data-result]:hover,
 [data-fd-search-dialog] [data-result][data-active="true"] {
   background: var(--bg-3);
+}
+
+/* Hide lucide glyphs inside the search dialog — same DS rule as the
+   sidebar. Scoped to fumadocs's own `bg-fd-popover` shell so we don't
+   nuke icons in other dialogs. */
+[role="dialog"].bg-fd-popover svg,
+[data-fd-search] svg,
+[data-fd-search-dialog] svg {
+  display: none;
 }

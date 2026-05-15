@@ -1,13 +1,13 @@
 ---
 title: Flow commands
-description: All 29 /flow:* slash commands, grouped by lifecycle. Daily verbs stay terse; everything else uses a group-verb prefix.
+description: All 29 /flow:* slash commands, grouped by lifecycle. Daily verbs stay terse, everything else uses a group-verb prefix.
 ---
 
-Twenty-nine commands. Ten run every feature cycle and stay one-word terse (`plan`, `execute`, `done`, `validate`). The rest belong to a group and wear the group as a prefix (`setup-prd`, `bug-rca`, `record-ddr`, `maintain-clean`). No subdirectory namespacing — Claude Code doesn't support it; the prefix is the working substitute.
+Twenty-nine commands. Ten run every feature cycle and stay one-word terse (`plan`, `execute`, `done`, `validate`). The rest belong to a group and wear the group as a prefix (`setup-prd`, `bug-rca`, `record-ddr`, `maintain-clean`). No subdirectory namespacing. Claude Code doesn't support it; the prefix is the working substitute.
 
 The canonical catalog: [`plugins/flow/CATEGORIES.md`](https://github.com/1aGh/md-claude/blob/main/plugins/flow/CATEGORIES.md). Live grouped index, one slash command away: `/flow:help`.
 
-## Daily — every-cycle workflow
+## Daily. Every-cycle workflow
 
 | Command | What it does |
 | ------- | ------------ |
@@ -19,11 +19,11 @@ The canonical catalog: [`plugins/flow/CATEGORIES.md`](https://github.com/1aGh/md
 | `/flow:pause` | Snapshot state, write `HANDOFF.md`, ready for context switch. |
 | `/flow:resume` | Resume from a previous `/flow:pause`. |
 | `/flow:scenario` | Cross-platform UI scenario across 5 platforms. |
-| `/flow:quick` | Trivial-change fast-path — skip plan cycle, go edit → verify → commit. |
+| `/flow:quick` | Trivial-change fast-path. Skip plan cycle, go edit, verify, commit. |
 | `/flow:release` | Walk the project's release runbook step-by-step with explicit confirmation. |
 | `/flow:help` | Auto-generated grouped index (built from frontmatter). |
 
-## Setup — one-shot bootstrapping
+## Setup. One-shot bootstrapping
 
 Run once per project (or once per major restructure).
 
@@ -34,7 +34,7 @@ Run once per project (or once per major restructure).
 | `/flow:setup-codebase-map` | Snapshot architecture into `.ai/context/` for cross-session reuse. |
 | `/flow:setup-context` | Prime the agent with the codebase map + `CLAUDE.md`. |
 
-## Validate — specialized validators
+## Validate. Specialized validators
 
 Called by the `/flow:validate` parent or directly when you want only one check.
 
@@ -43,14 +43,14 @@ Called by the `/flow:validate` parent or directly when you want only one check.
 | `/flow:validate-a11y` | Accessibility audit (WCAG 2.1 AA). |
 | `/flow:validate-visual` | Visual regression check with screenshots. |
 
-## Bug — incident workflow
+## Bug. Incident workflow
 
 | Command | What it does |
 | ------- | ------------ |
 | `/flow:bug-rca <issue-id>` | Analyze and document root cause for a GitHub issue. |
 | `/flow:bug-fix <issue-id>` | Implement the fix from the RCA document. |
 
-## Record — knowledge capture
+## Record. Knowledge capture
 
 Append-only artifacts future sessions read.
 
@@ -60,7 +60,7 @@ Append-only artifacts future sessions read.
 | `/flow:record-retro` | Implementation-vs-plan retrospective after `/flow:done`. |
 | `/flow:record-execution` | Generate an implementation report for system review. |
 
-## Maintain — hygiene
+## Maintain. Hygiene
 
 Cleanup, freshness, infrastructure health.
 
@@ -71,21 +71,21 @@ Cleanup, freshness, infrastructure health.
 | `/flow:maintain-ai-health` | Diagnose health of the AI infrastructure (commands, skills, agents, state). |
 | `/flow:maintain-discover "<task>"` | Search AI capabilities by natural-language task description. |
 
-## Review — pre-commit / pre-PR
+## Review. Pre-commit / pre-PR
 
 | Command | What it does |
 | ------- | ------------ |
 | `/flow:review-code` | Pre-commit self-review of uncommitted changes. |
 
-## Release — release-time
+## Release. Release-time
 
 Sibling of daily `/flow:release` (the runbook walker).
 
 | Command | What it does |
 | ------- | ------------ |
-| `/flow:release-changelog` | Author a changelog entry using the configured provider (Changesets, git-cliff, …). |
+| `/flow:release-changelog` | Author a changelog entry using the configured provider (Changesets, git-cliff, etc). |
 
-## Utils — sub-commands
+## Utils. Sub-commands
 
 Internal verbs called from inside other commands. Not primary user actions, but exposed as slash commands so they can be invoked standalone when debugging.
 

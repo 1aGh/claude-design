@@ -17,15 +17,15 @@ const siteUrl =
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: 'md-claude — docs',
+    default: 'md-claude, how it works mostly',
     template: '%s | md-claude',
   },
   description:
-    'A Claude Code marketplace shipping two plugins — design (canvas-first iteration) and flow (agentic workflow loop with a second-brain .ai/ workspace) — plus the mdcc CLI.',
+    'A Claude Code marketplace. Two plugins, one CLI, some vibes. design iterates canvases. flow runs the agentic loop. mdcc is the plumbing.',
   openGraph: {
     title: 'md-claude',
     description:
-      'Claude Code marketplace: design + flow plugins, plus the mdcc CLI. Plan, design, ship — all from inside Claude.',
+      'A Claude Code marketplace. Two plugins, one CLI, some vibes. Plan, design, ship, all from inside Claude.',
     type: 'website',
     siteName: 'md-claude',
   },
@@ -41,6 +41,9 @@ export default function Layout({ children }: LayoutProps<'/'>) {
       suppressHydrationWarning
     >
       <body className="flex flex-col min-h-screen">
+        <a className="mdcc-skip-link" href="#main-content">
+          Skip to main
+        </a>
         <RootProvider>{children}</RootProvider>
       </body>
     </html>

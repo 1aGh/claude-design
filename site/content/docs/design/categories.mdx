@@ -1,11 +1,11 @@
 ---
 title: Command categories
-description: Slash-command groups for the design plugin — daily + setup. Mirrors plugins/design/CATEGORIES.md.
+description: Slash-command groups for the design plugin. Daily plus setup. Mirrors plugins/design/CATEGORIES.md.
 ---
 
 Two groups. `daily` (verb-as-complete-action, called every iteration cycle) and `setup-*` (one-shot bootstrapping operations).
 
-Mirrors the flow plugin's [categorization](https://github.com/1aGh/md-claude/blob/main/plugins/flow/CATEGORIES.md) pattern. Claude Code doesn't support slash-command subdirectory namespacing; the `<group>-<verb>` prefix is the working substitute. Typing `/design:setup-` autocompletes only the three setup verbs.
+Mirrors the flow plugin's [categorization](https://github.com/1aGh/md-claude/blob/main/plugins/flow/CATEGORIES.md) pattern. Claude Code doesn't support slash-command subdirectory namespacing. The `<group>-<verb>` prefix is the working substitute. Typing `/design:setup-` autocompletes only the three setup verbs.
 
 ## daily
 
@@ -22,7 +22,7 @@ Default verbs. No prefix.
 | `/design:handoff` | Migrate the active canvas to a production target |
 | `/design:help` | Print the grouped command index |
 
-The bare `/design` form was a v0.8 one-version compat stub redirecting to `/design:edit`. **Removed in v0.9** — only `/design:edit` resolves.
+The bare `/design` form was a v0.8 one-version compat stub redirecting to `/design:edit`. **Removed in v0.9**. Only `/design:edit` resolves.
 
 ## setup-*
 
@@ -31,30 +31,30 @@ One-shot bootstrapping operations.
 | Command | What it does |
 | ------- | ------------ |
 | `/design:init` | Initialize the project environment (deps check, install hints, skeleton `.design/config.json`). Mirrors `/flow:init`. |
-| `/design:setup-ds <name> "[brief]"` | Create a design system (first one, additional, or re-bootstrap with `--force`). Thin wrapper → skill `design-system` in bootstrap mode. |
+| `/design:setup-ds <name> "[brief]"` | Create a design system (first one, additional, or re-bootstrap with `--force`). Thin wrapper around skill `design-system` in bootstrap mode. |
 | `/design:setup-docs [--full]` | Refresh `.design/README.md` + `INDEX.md`. Auto-runs after `/design:edit` and `/design:new`; manual trigger to force a refresh. |
 
 Why three setup verbs:
 
-- **`init`** is project-level — runs **once** per repo to prepare the ground (dependency hints, CLAUDE.md / `.ai/` recommendations, skeleton config). Auto-invoked when other commands hit a missing `.design/config.json`.
-- **`setup-ds`** is per-DS — runs **once per design system** (first one for a project, or every time you add a marketing-vs-admin-vs-mobile DS). Auto-invokes `init` first if config is missing.
-- **`setup-docs`** is per-canvas-event — auto-runs after every `/design:edit` and `/design:new`. Manual trigger when you want to force a regeneration.
+- **`init`** is project-level. Runs **once** per repo to prepare the ground (dependency hints, CLAUDE.md / `.ai/` recommendations, skeleton config). Auto-invoked when other commands hit a missing `.design/config.json`.
+- **`setup-ds`** is per-DS. Runs **once per design system** (first one for a project, or every time you add a marketing-vs-admin-vs-mobile DS). Auto-invokes `init` first if config is missing.
+- **`setup-docs`** is per-canvas-event. Auto-runs after every `/design:edit` and `/design:new`. Manual trigger when you want to force a regeneration.
 
 ## Naming convention
 
 Commands within a group prefix the group name with a dash separator:
 
 ```
-/design:setup-ds               ← group "setup", verb "ds"
-/design:setup-docs             ← group "setup", verb "docs"
+/design:setup-ds               # group "setup", verb "ds"
+/design:setup-docs             # group "setup", verb "docs"
 ```
 
 Daily commands have no prefix:
 
 ```
-/design:init                   ← daily
-/design:edit                   ← daily
-/design:new                    ← daily
+/design:init                   # daily
+/design:edit                   # daily
+/design:new                    # daily
 ```
 
 This makes autocomplete predictable.
@@ -72,6 +72,6 @@ This makes autocomplete predictable.
 1. Pick the group from the table above. If none fits, propose a new group in `plugins/design/CATEGORIES.md` (with prose justification) before adding the file.
 2. Create `plugins/design/commands/<group>-<verb>.md` (or `<verb>.md` for `daily`).
 3. Set frontmatter: `name: <verb-or-group-verb>`, `category: <group>`, `description: <one-liner>`, `argument-hint:` if any.
-4. `/design:help` picks it up automatically — no manual catalog update needed.
+4. `/design:help` picks it up automatically. No manual catalog update needed.
 
 The auto-generated reference pages under `/docs/reference/design/` are produced by `site/scripts/build-command-reference.mjs` from each command file's frontmatter on every `pnpm prebuild`.

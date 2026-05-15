@@ -7,6 +7,17 @@ import { useState, useEffect, useRef, useMemo, useCallback, Fragment } from 'rea
 import { createRoot } from 'react-dom/client';
 
 const SYSTEM_TAB = '__system__';
+const THEME_STORE = 'mdcc-theme';
+
+function readInitialTheme() {
+  if (typeof window === 'undefined') return 'dark';
+  try {
+    const stored = localStorage.getItem(THEME_STORE);
+    if (stored === 'light' || stored === 'dark') return stored;
+  } catch {}
+  // Match the data-theme attribute index.html ships with (dark).
+  return 'dark';
+}
 
 // ---------- Utility ----------
 
@@ -157,17 +168,17 @@ function Sidebar({ groups, activePath, onOpen, onOpenSystem, wsConnected, projec
       </button>
 
       <div className="search">
-        <Icon d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" size={12} />
+        <Icon d="M21 21l-4.35-4.35 M11 19a8 8 0 100-16 8 8 0 000 16z" size={12} />
         <input
           type="text"
-          placeholder="Search files…"
+          placeholder="filter…"
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
         {search ? (
-          <button className="search-clear" onClick={() => setSearch('')} title="Clear (Esc)">×</button>
+          <button className="search-clear" onClick={() => setSearch('')} title="Clear (Esc)" aria-label="Clear search">×</button>
         ) : (
-          <span className="search-kbd">/</span>
+          <span className="search-kbd" aria-hidden="true">/</span>
         )}
       </div>
 
@@ -306,6 +317,26 @@ function Tabs({ tabs, activePath, onActivate, onClose }) {
   );
 }
 
+function ThemeToggle({ theme, onToggle }) {
+  // Show the icon of the theme you'll switch TO — clearer affordance than current state.
+  // Sun + Moon paths are condensed Lucide-style (single-path so the existing <Icon> works).
+  const sun = 'M12 7a5 5 0 100 10 5 5 0 000-10z M12 3v1 M12 20v1 M21 12h-1 M4 12H3 M16.95 7.05l-.71.71 M7.05 16.95l-.71.71 M16.95 16.95l-.71-.71 M7.05 7.05l-.71-.71';
+  const moon = 'M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z';
+  const next = theme === 'dark' ? 'light' : 'dark';
+  return (
+    <button
+      type="button"
+      className="theme-toggle"
+      onClick={onToggle}
+      title={`Switch to ${next} theme`}
+      aria-label={`Switch to ${next} theme`}
+    >
+      <Icon d={theme === 'dark' ? sun : moon} size={14} />
+      <span className="theme-toggle-label">{next}</span>
+    </button>
+  );
+}
+
 function Viewport({ tabs, activePath, registerIframe, systemData, onOpenFromSystem }) {
   return (
     <div className="viewport">
@@ -347,6 +378,65 @@ function Viewport({ tabs, activePath, registerIframe, systemData, onOpenFromSyst
 
 // ---------- SystemView ----------
 
+const TOKEN_NAMES = [
+  '--bg-0', '--bg-1', '--bg-2', '--bg-3', '--bg-4',
+  '--fg-0', '--fg-1', '--fg-2', '--fg-3',
+  '--accent', '--accent-hover', '--accent-active', '--accent-fg', '--accent-tint',
+  '--status-success', '--status-warn', '--status-error', '--status-info',
+  '--border-subtle', '--border-default', '--border-strong',
+];
+const TYPE_STEPS = ['xs', 'sm', 'base', 'md', 'lg', 'xl', '2xl', '3xl'];
+
+function readTokens(names) {
+  if (typeof window === 'undefined') return names.map(name => ({ name, value: '' }));
+  const cs = getComputedStyle(document.documentElement);
+  return names.map(name => ({ name, value: cs.getPropertyValue(name).trim() }));
+}
+
+function TokenLadder() {
+  const [tokens, setTokens] = useState(() => readTokens(TOKEN_NAMES));
+  useEffect(() => {
+    setTokens(readTokens(TOKEN_NAMES));
+    const obs = new MutationObserver(() => setTokens(readTokens(TOKEN_NAMES)));
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => obs.disconnect();
+  }, []);
+  return (
+    <section className="sv-section sv-section-tokens">
+      <h2>tokens · surfaces & ink<span className="sv-h-num">{tokens.length}</span></h2>
+      <div className="sv-tokens-ladder">
+        {tokens.map(t => (
+          <div className="sv-tok-cell" key={t.name}>
+            <div className="sv-tok-swatch" style={{ background: `var(${t.name})` }} />
+            <div className="sv-tok-meta">
+              <code className="sv-tok-name">{t.name}</code>
+              <span className="sv-tok-value">{t.value || '—'}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function TypeLadder() {
+  return (
+    <section className="sv-section sv-section-type">
+      <h2>type · 8-step ladder<span className="sv-h-num">{TYPE_STEPS.length}</span></h2>
+      <div className="sv-type-list">
+        {TYPE_STEPS.map(s => (
+          <div className="sv-type-row" key={s}>
+            <code className="sv-type-tok">--type-{s}</code>
+            <span className="sv-type-sample" style={{ fontSize: `var(--type-${s})`, lineHeight: `var(--lh-${s})` }}>
+              The catalog is the system.
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function SystemView({ data, onOpen }) {
   if (!data) {
     return <div className="sv-empty"><p>Loading design system…</p></div>;
@@ -357,11 +447,13 @@ function SystemView({ data, onOpen }) {
   return (
     <div className="sv">
       <header className="sv-header">
-        <h1>Design system</h1>
-        <p className="sv-meta">
-          <span>Galleries of <code>{systemDir}/&lt;project&gt;/preview/</code> and <code>{systemDir}/&lt;project&gt;/ui_kits/</code>.</span>
-        </p>
+        <span className="sv-sku">MDCC-DSN/01</span>
+        <span className="sv-title">design system view</span>
+        <span className="sv-loc"><code>{systemDir}</code></span>
       </header>
+
+      <TokenLadder />
+      <TypeLadder />
 
       {empty ? (
         <div className="sv-empty">
@@ -369,8 +461,8 @@ function SystemView({ data, onOpen }) {
         </div>
       ) : (
         <>
-          <Gallery title="Preview" items={previewGallery} onOpen={onOpen} kind="preview" />
-          <Gallery title="UI kits" items={uiKitsGallery}  onOpen={onOpen} kind="ui_kits" />
+          <Gallery title="preview" items={previewGallery} onOpen={onOpen} kind="preview" />
+          <Gallery title="ui kits"  items={uiKitsGallery}  onOpen={onOpen} kind="ui_kits" />
         </>
       )}
     </div>
@@ -463,28 +555,55 @@ function CommentBar({ activePath, selected, comments, focusedId, draft, setDraft
   );
 }
 
-function StatusBar({ activePath, selected, wsConnected, onClearSelected, onAddComment, hasDraft }) {
+function StatusBarSlot({ label, children, className = '' }) {
+  return (
+    <span className={'sb-slot ' + className} role="group" aria-label={label}>
+      {children}
+    </span>
+  );
+}
+
+function StatusBar({ activePath, selected, wsConnected, openCount, theme, onToggleTheme, onClearSelected, onAddComment, hasDraft }) {
   const isSystem = activePath === SYSTEM_TAB;
   const text = selected && selected.selector
     ? selected.selector + (selected.text ? ` — "${selected.text.slice(0, 60)}"` : '')
-    : '—';
+    : '';
   const title = selected && selected.dom_path ? selected.dom_path.join(' > ') : (selected ? selected.selector : '');
   return (
-    <div className="statusbar">
-      <span>active: <span className="file">{isSystem ? '▦ design system' : (activePath || '—')}</span></span>
-      {selected && selected.selector && !isSystem && (
-        <span className="selected-info">
-          <span style={{ color: 'var(--u-accent)' }}>●</span>
-          <span className="sel-text" title={title}>{text}</span>
-          {!hasDraft && (
-            <button className="add-comment" onClick={onAddComment} title="Add comment on selected element (⌘⇧+click in canvas)">+ Comment</button>
-          )}
-          <button className="clear-sel" onClick={onClearSelected} title="Clear (Esc inside iframe)">×</button>
+    <div className="statusbar" role="contentinfo">
+      <StatusBarSlot label="Active file" className="sb-active">
+        <span className="sb-key">active</span>
+        <span className="sb-file" title={activePath || ''}>
+          {isSystem ? '▦ design system' : (activePath || '—')}
         </span>
+      </StatusBarSlot>
+
+      {selected && selected.selector && !isSystem && (
+        <StatusBarSlot label="Selected element" className="sb-selected">
+          <span className="sb-dot" aria-hidden="true">●</span>
+          <span className="sb-sel-text" title={title}>{text}</span>
+          {!hasDraft && (
+            <button type="button" className="sb-add-comment" onClick={onAddComment} title="Add comment on selected element (⌘⇧+click in canvas)">+ comment</button>
+          )}
+          <button type="button" className="sb-clear-sel" onClick={onClearSelected} title="Clear (Esc inside iframe)" aria-label="Clear selection">×</button>
+        </StatusBarSlot>
       )}
-      <span className={'ws' + (wsConnected ? ' connected' : '')}>
-        ws: {wsConnected ? 'connected' : 'reconnecting…'}
-      </span>
+
+      <StatusBarSlot label="Open comments" className="sb-unread">
+        <span className="sb-key">comments</span>
+        <span className="sb-count">{openCount}</span>
+      </StatusBarSlot>
+
+      <StatusBarSlot label="Connection" className="sb-live">
+        <span className={'sb-live-dot' + (wsConnected ? ' connected' : '')} aria-hidden="true" />
+        <span className="sb-key">{wsConnected ? 'live' : 'reconnecting'}</span>
+      </StatusBarSlot>
+
+      <span className="sb-spacer" />
+
+      <StatusBarSlot label="Theme" className="sb-theme">
+        <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+      </StatusBarSlot>
     </div>
   );
 }
@@ -601,8 +720,21 @@ function App() {
   const [focusedCommentId, setFocusedCommentId] = useState(null);
   const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
   const [commentsFilter, setCommentsFilter] = useState('open');   // 'all' | 'open' | 'resolved'
+  const [theme, setTheme] = useState(readInitialTheme);
   const wsRef = useRef(null);
   const iframesRef = useRef(new Map());
+
+  // Sync theme to <html data-theme> + localStorage on every change.
+  useEffect(() => {
+    try {
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem(THEME_STORE, theme);
+    } catch {}
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme(t => (t === 'dark' ? 'light' : 'dark'));
+  }, []);
 
   // ----- Tree -----
   const loadTree = useCallback(async () => {
@@ -938,17 +1070,28 @@ function App() {
         <header className="header">
           <Tabs tabs={tabs} activePath={activePath} onActivate={setActivePath} onClose={closeTab} />
           <div className="actions">
-            <button title="Re-scan disk for new HTML files" onClick={reloadTree}>↻ tree</button>
-            <button title="Reload active iframe (⌘R)" onClick={reloadActive}>↻ active</button>
+            <button type="button" title="Re-scan disk for new HTML files" onClick={reloadTree}>
+              <Icon d="M21 12a9 9 0 0 0-15-6.7L3 8 M3 4v4h4 M3 12a9 9 0 0 0 15 6.7L21 16 M21 20v-4h-4" size={12} />
+              <span>tree</span>
+            </button>
+            <button type="button" title="Reload active iframe (⌘R)" onClick={reloadActive}>
+              <Icon d="M21 12a9 9 0 0 0-15-6.7L3 8 M3 4v4h4 M3 12a9 9 0 0 0 15 6.7L21 16 M21 20v-4h-4" size={12} />
+              <span>active</span>
+            </button>
             <button
+              type="button"
               className={'rs-toggle' + (commentsPanelOpen ? ' active' : '')}
               onClick={() => setCommentsPanelOpen(v => !v)}
               title="Toggle Comments panel (⌘⇧M)"
             >
-              💬 comments
+              <Icon d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" size={12} />
+              <span>comments</span>
               {totalOpen > 0 && <span className="rs-badge">{totalOpen}</span>}
             </button>
-            <a className="icon-only" target="_blank" rel="noreferrer" href={activePath && activePath !== SYSTEM_TAB ? urlOf(activePath) : '#'} title="Open in system browser">↗ system</a>
+            <a className="icon-only" target="_blank" rel="noreferrer" href={activePath && activePath !== SYSTEM_TAB ? urlOf(activePath) : '#'} title="Open in system browser">
+              <Icon d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6 M15 3h6v6 M10 14L21 3" size={12} />
+              <span>open</span>
+            </a>
           </div>
         </header>
         <Viewport
@@ -978,6 +1121,9 @@ function App() {
           activePath={activePath}
           selected={selected}
           wsConnected={wsConnected}
+          openCount={totalOpen}
+          theme={theme}
+          onToggleTheme={toggleTheme}
           onClearSelected={clearSelected}
           onAddComment={startDraftFromSelection}
           hasDraft={!!(draft && draft.file === activePath)}

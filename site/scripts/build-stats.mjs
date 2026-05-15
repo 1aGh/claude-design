@@ -49,7 +49,7 @@ async function countDirs(dir) {
   return entries.filter((e) => e.isDirectory()).length;
 }
 
-// Walk content/docs/**/*.mdx → map of fumadocs `page.path` → ISO date.
+// Walk content/docs/**/*.mdx -> map of fumadocs `page.path` -> ISO date.
 // fumadocs `page.path` is the relative path from content/docs/ to the .mdx file
 // (e.g. "design/bootstrap.mdx", "recipes/nextjs.mdx", "index.mdx").
 async function buildPageUpdatedMap() {
@@ -63,10 +63,11 @@ async function buildPageUpdatedMap() {
       if (entry.isDirectory()) {
         await walk(rel);
       } else if (entry.name.endsWith('.mdx')) {
-        // Skip auto-generated reference pages — their content is derived from
-        // the plugin command files, so use the plugin file's mtime instead.
+        // Quote with `'` and escape any literal `'` in the path (rare but
+        // possible) so shell expansion is exact.
         const file = resolve(docsRoot, rel);
-        const date = sh(`git log -1 --format=%cs -- '${file}'`);
+        const quoted = `'${file.replace(/'/g, `'\\''`)}'`;
+        const date = sh(`git log -1 --format=%cs -- ${quoted}`);
         if (date) map[rel] = date;
       }
     }
@@ -82,11 +83,15 @@ const lastTagDate =
     "git for-each-ref --sort=-creatordate --count=1 --format='%(creatordate:short)' refs/tags/v*"
   ) ||
   sh('git log -1 --format=%cs -- package.json') ||
-  new Date().toISOString().slice(0, 10);
+  (() => {
+    console.warn('[stats] WARN no git tag and no package.json log entry -- falling back to today');
+    return new Date().toISOString().slice(0, 10);
+  })();
 
 // `git shortlog -sne` honors .mailmap (collapses identities). We then drop bot
 // accounts (dependabot, renovate, etc.) so the count reflects humans.
-const contributorsRaw = sh('git shortlog -sne main');
+// Reads HEAD instead of `main` so the script works on feature branches too.
+const contributorsRaw = sh('git shortlog -sne HEAD');
 const contributors = contributorsRaw
   ? contributorsRaw
       .split('\n')
@@ -123,6 +128,12 @@ const stats = {
   },
   pageUpdated: await buildPageUpdatedMap(),
 };
+
+if (Object.keys(stats.pageUpdated).length === 0) {
+  console.warn(
+    '[stats] WARN buildPageUpdatedMap produced 0 entries — docs `Last updated` lines will render as `--`'
+  );
+}
 
 await writeFile(out, `${JSON.stringify(stats, null, 2)}\n`);
 

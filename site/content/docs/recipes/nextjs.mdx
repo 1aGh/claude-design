@@ -1,13 +1,13 @@
 ---
 title: Next.js recipe
-description: Drop-in setup for a Next.js 15+ app — App Router, Tailwind, Vitest.
+description: Drop-in setup for a Next.js 15+ app. App Router, Tailwind, Vitest.
 ---
 
-Drop-in setup for a Next.js app. Five steps, four optional. App Router, Tailwind, Vitest assumed — adjust where your stack diverges.
+Drop-in setup for a Next.js app. Five steps, four optional. App Router, Tailwind, Vitest assumed. Adjust where your stack diverges.
 
 **Starting point:** existing Next.js 15+ app, pnpm or npm, Tailwind, App Router.
 
-## 1. Install the marketplace + CLI
+## 1. Install the marketplace and CLI
 
 In Claude Code:
 
@@ -90,17 +90,17 @@ Open `http://localhost:4399`. New canvases are scaffolded via `/design:new` insi
 ## 4. Try the loop
 
 ```text
-/flow:setup-prd          # one-time: draft the PRD
-/flow:plan "<feature>"   # per-feature: draft a phase plan
+/flow:setup-prd          # one-time. draft the PRD
+/flow:plan "<feature>"   # per-feature. draft a phase plan
 /flow:execute            # implement it
-/flow:done               # validate → commit → PR → archive
+/flow:done               # validate, commit, PR, archive
 ```
 
 ## Gotchas
 
 - **App Router only.** The plugin's defaults assume `next-app` router. If you're on Pages Router, set `stack.router: "next-pages"` and accept that the design-system-guard's a11y checks for `<Link>` semantics will lean toward App Router idioms.
-- **Tailwind v4.** Works fine. The design plugin's CSS-token system is framework-agnostic — Tailwind tokens live in `tailwind.config.ts`, design tokens in `.design/system/`. Keep them in sync via a DDR if you decide to dedupe.
-- **Vercel deploy.** `/flow:release` walks the `releaseGuide` runbook, not a Vercel-specific flow. If your release process is just "push to main → Vercel deploys", your runbook can be a single H2 saying so.
+- **Tailwind v4.** Works fine. The design plugin's CSS-token system is framework-agnostic. Tailwind tokens live in `tailwind.config.ts`, design tokens in `.design/system/`. Keep them in sync via a DDR if you decide to dedupe.
+- **Vercel deploy.** `/flow:release` walks the `releaseGuide` runbook, not a Vercel-specific flow. If your release process is just "push to main, Vercel deploys", your runbook can be a single H2 saying so.
 
 ## Next
 

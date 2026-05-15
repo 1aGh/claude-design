@@ -9,7 +9,7 @@ npm i -g @1agh/md-claude    # installs `mdcc` (alias: `claude-design-server`)
 npx @1agh/md-claude <cmd>
 ```
 
-**`mdcc` is intentionally small.** Mechanical scaffolding and config — that's it. The interesting setup happens inside Claude Code via `/flow:init`, which calls `mdcc init` as step one.
+**`mdcc` is intentionally small.** Mechanical scaffolding and config. That's it. The interesting setup happens inside Claude Code via `/flow:init`, which calls `mdcc init` as step one.
 
 Five subcommands: `init`, `config`, `design serve`, `design init`, `version` / `help`. Pure ESM. Zero runtime deps beyond Node 20+.
 
@@ -21,9 +21,9 @@ Scaffold the `.ai/` second-brain workspace into the current repo.
 mdcc init [--name <project>] [--force] [--dry-run]
 ```
 
-- `--name <project>` — project slug for the `<project>` placeholder used by flow templates (e.g. `.ai/<project>-prd.md`). Defaults to the current directory basename.
-- `--force` — overwrite existing files. Off by default; `init` is idempotent.
-- `--dry-run` — print what would be written without touching the filesystem.
+- `--name <project>`. Project slug for the `<project>` placeholder used by flow templates (e.g. `.ai/<project>-prd.md`). Defaults to the current directory basename.
+- `--force`. Overwrite existing files. Off by default; `init` is idempotent.
+- `--dry-run`. Print what would be written without touching the filesystem.
 
 The skeleton lives at `plugins/flow/templates/ai-skeleton/`. `mdcc init` does string templating during the copy:
 
@@ -42,9 +42,9 @@ mdcc config get <dotted.key>
 mdcc config set <dotted.key> <value>
 ```
 
-- `show` — pretty-print the whole config.
-- `get` — print a single key. Dotted path: `mdcc config get motion.complex`.
-- `set` — write a key. Values that parse as JSON (numbers, booleans, arrays, objects) are stored typed:
+- `show`. Pretty-print the whole config.
+- `get`. Print a single key. Dotted path: `mdcc config get motion.complex`.
+- `set`. Write a key. Values that parse as JSON (numbers, booleans, arrays, objects) are stored typed:
 
 ```bash
 mdcc config set platforms '["web-desktop","web-mobile"]'
@@ -64,10 +64,10 @@ mdcc design serve [--port N] [--root <path>]
 
 Equivalent to invoking `claude-design-server` directly (which is the second bin shipped by `@1agh/md-claude`). All remaining args are forwarded to the server.
 
-- `--port` — listen on a specific port (default `4399`; falls back to a random free port if taken).
-- `--root` — serve a different repo. By default uses `$CLAUDE_PROJECT_DIR`, then `process.cwd()`.
+- `--port`. Listen on a specific port (default `4399`; falls back to a random free port if taken).
+- `--root`. Serve a different repo. By default uses `$CLAUDE_PROJECT_DIR`, then `process.cwd()`.
 
-The server **fails loud** if launched from a directory without a `.design/` folder. That's deliberate — it stops you from accidentally serving the wrong project.
+The server **fails loud** if launched from a directory without a `.design/` folder. That's deliberate. It stops you from accidentally serving the wrong project.
 
 ## `mdcc design init`
 
@@ -78,13 +78,13 @@ mdcc design init [--name <slug>] [--ds <name>] [--force] [--dry-run]
                  [--no-discovery | --discovery-payload <path>]
 ```
 
-**Refuses to run interactively.** Full discovery requires Claude Code — use `/design:setup-ds <name>` there. The CLI helper exists for CI / scripted contexts:
+**Refuses to run interactively.** Full discovery requires Claude Code. Use `/design:setup-ds <name>` there. The CLI helper exists for CI / scripted contexts:
 
-- `--no-discovery` — scaffold Core only (~10 files: README, INDEX, config.json, tokens, 9 specimens) with Recommended defaults (Inter + IBM Plex + JetBrains Mono, indigo accent, dark theme, `standard` profile).
-- `--discovery-payload <path>` — read pre-computed answers + tokens from JSON and scaffold Core + derived specimens deterministically. This is the path skill `design-system` (bootstrap mode) uses when shelling out from Claude Code.
-- `--name <slug>` — project name token. Defaults to the current directory basename.
-- `--ds <name>` — design system name (kebab-case). Defaults to `project` (single-DS convention).
-- `--force` — overwrite an existing `system/<ds>/`. Off by default.
+- `--no-discovery`. Scaffold Core only (~10 files: README, INDEX, config.json, tokens, 9 specimens) with Recommended defaults (Inter + IBM Plex + JetBrains Mono, indigo accent, dark theme, `standard` profile).
+- `--discovery-payload <path>`. Read pre-computed answers and tokens from JSON and scaffold Core + derived specimens deterministically. This is the path skill `design-system` (bootstrap mode) uses when shelling out from Claude Code.
+- `--name <slug>`. Project name token. Defaults to the current directory basename.
+- `--ds <name>`. Design system name (kebab-case). Defaults to `project` (single-DS convention).
+- `--force`. Overwrite an existing `system/<ds>/`. Off by default.
 
 ```bash
 # Quick CI scaffold (Core only)
@@ -110,7 +110,7 @@ mdcc help
 
 ## Where the source lives
 
-- `cli/bin/mdcc.mjs` — argv parser + subcommand dispatch.
-- `cli/commands/{init,config,design,help,version}.mjs` — one file per subcommand.
+- `cli/bin/mdcc.mjs`. Argv parser and subcommand dispatch.
+- `cli/commands/{init,config,design,help,version}.mjs`. One file per subcommand.
 
 Pure ESM, no deps beyond Node 20+. PRs welcome at [github.com/1aGh/md-claude](https://github.com/1aGh/md-claude).
