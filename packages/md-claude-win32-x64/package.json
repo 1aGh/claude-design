@@ -1,6 +1,6 @@
 {
   "name": "@1agh/md-claude-win32-x64",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "description": "Per-platform binary for @1agh/md-claude (win32-x64). Do not install directly — pulled in as an optionalDependency by the main package.",
   "license": "MIT",
   "author": "Michal Dovrtěl (1aGh)",

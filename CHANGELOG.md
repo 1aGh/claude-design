@@ -1,5 +1,40 @@
 # @1agh/md-claude
 
+## 0.13.1
+
+### Patch Changes
+
+- Hotfix: repair v0.13.0 release pipeline.
+
+  v0.13.0 half-published (3 of 7 platform sub-packages reached npm; the
+  root `@1agh/md-claude` package never published). Root causes:
+
+  - `plugins/design/dev-server/build.ts` produced
+    `dist/mdcc-windows-x64.exe` but `build-binaries.yml` expected
+    `mdcc-win32-x64.exe` (bun's target naming vs. Node's
+    `process.platform`). `platformSlug()` now translates
+    `windows-x64` → `win32-x64`.
+  - `build-binaries.yml` used `container: alpine:3.20` for musl builds,
+    but JS-based actions can't run in alpine on arm64 runners. Dropped
+    the container; cross-compile musl from regular ubuntu via Bun's
+    `--target=bun-linux-*-musl` (statically-linked output).
+  - `pnpm install --frozen-lockfile` is fundamentally incompatible with
+    the `optionalDependencies` bootstrap pattern (lockfile can't
+    enumerate sub-packages that aren't on npm yet). Switched
+    `build-binaries.yml > publish-main` and `quality.yml` to
+    `--no-frozen-lockfile`.
+  - `publish.yml` was a duplicate of `build-binaries.yml > publish-main`
+    without the `needs: build-binaries` gate, so it raced ahead and
+    always failed at install. Deleted.
+  - `scripts/changesets-version.sh` only propagated the bumped version
+    to plugin manifests; missed `packages/md-claude-*/package.json` and
+    the `optionalDependencies` pins. Now delegates to
+    `scripts/bump-version.sh "$NEW"` which covers every manifest.
+
+  GitHub Release creation moved into `build-binaries.yml` (new
+  `create-release` job runs first; `publish-main` populates notes after
+  npm publish).
+
 ## 0.13.0
 
 ### Minor Changes
