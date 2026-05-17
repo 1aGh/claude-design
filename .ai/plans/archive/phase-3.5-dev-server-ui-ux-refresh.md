@@ -259,7 +259,7 @@ Execute in order. Design stage (Tasks 1–3) closed — implementation starts at
 >
 > All of the above moves back to **Phase 4** alongside the Pixi.js engine swap, so the canvas-functionality block stays atomic and reviewable in a single phase.
 
-### Task 11: ADD gridded paper background to `.viewport` (CV-01 idle texture)
+### Task 11: `[x]` DONE · 2026-05-15 — ADD gridded paper background to `.viewport` (CV-01 idle texture)
 
 - **Do:** Apply the CV-01 paper-grid background to the `.viewport` container in `client/styles/3-shell.css`. Pattern (matches `Canvas Viewport.html` lines 55-64):
   ```css
@@ -276,7 +276,7 @@ Execute in order. Design stage (Tasks 1–3) closed — implementation starts at
 - **Keep:** no changes to the `Viewport` JSX or to iframe positioning. Background-only.
 - **Validate:** boot dev-server; close all tabs; confirm 24 px grid visible behind the empty-state copy in both themes (`--u-border-subtle` reads as hairline ink-on-paper in light, soft phosphor-on-dark in dark).
 
-### Task 12: ADD `<Wordmark>` empty-state watermark + `<SelectionHalo>` accent corner-ticks (CV-01, CV-02)
+### Task 12: `[x]` DONE · 2026-05-15 — ADD `<Wordmark>` empty-state watermark + `<SelectionHalo>` accent corner-ticks (CV-01, CV-02)
 
 - **Do (Wordmark):** New component in `app.jsx` rendered **only when no tabs are open** (replaces or coexists with the current `.empty-state` copy — pick whichever reads better). Top-left of the viewport area, big "mdcc-design-server" at 40 px display + sub-line `CANVAS · MDCC-DSN/01 · v1.0.0 · localhost:4399`. Project name from `_index-data` (already fetched), version baked at build time via a `define` in `build.ts` (one new define entry — `__MDCC_VERSION__: JSON.stringify(pkg.version)`).
   ```jsx
@@ -307,7 +307,7 @@ Execute in order. Design stage (Tasks 1–3) closed — implementation starts at
 - **Keep:** no changes to selection data flow, no changes to `Viewport` iframe rendering. Pure overlays.
 - **Validate:** empty-state shows Wordmark in top-left with project + version + port readable in both themes; selecting any element via Cmd+click puts the accent corner-ticks around the iframe frame; clearing selection hides them.
 
-### Task 13: ADD StatusBar info slots — ARTBOARDS count + ZOOM placeholder
+### Task 13: `[x]` DONE · 2026-05-15 — ADD StatusBar info slots — ARTBOARDS count + ZOOM placeholder
 
 - **Do:** Add two new `StatusBarSlot` children to existing `StatusBar` in `app.jsx`, mirroring CV-01's menubar right-side info (without functional pan/zoom yet):
   1. `<StatusBarSlot label="Open artboards">● <b>{tabs.length}</b> ARTBOARDS</StatusBarSlot>` — mono, accent dot, tab count from existing `tabs` state. Wired to real data, fully functional.
@@ -353,15 +353,35 @@ Execute in order. Design stage (Tasks 1–3) closed — implementation starts at
 - [x] Tasks 4–10 (shell chrome) completed.
 - [x] `styles/*.css` contains zero hardcoded hex literals (only `var(--*)` refs and OKLCH inherited from `project` DS).
 - [x] Both themes render (paper-light + phosphor-dark) — ThemeToggle persists across reload.
-- [ ] Tasks 11–13 (viewport-area static visuals) completed.
-- [ ] `.viewport` shows the CV-01 24 px paper-grid background in both themes (visible in empty-state; covered by iframe `--u-bg-0` once mounted, as designed).
-- [ ] `<Wordmark>` renders in empty-state (top-left): "mdcc-design-server" + sub-line "CANVAS · MDCC-DSN/01 · v{pkg.version} · localhost:{port}". Project name + port from `_index-data`; version baked at build time via `build.ts` `define`.
-- [ ] `<SelectionHalo>` renders accent 2 px outline + 4 corner ticks around the active iframe when `selected` is non-null; hidden when selection cleared. **It outlines the iframe frame, not the inner element** — element-level overlay is Phase 4 territory.
-- [ ] `StatusBar` carries `ARTBOARDS` slot (live count of open tabs) + `ZOOM` slot (static `100%` placeholder with title="Pan/zoom in Phase 4"). Slot order: ACTIVE · SELECTED · COMMENTS · ARTBOARDS · ZOOM · LIVE · spacer · THEME.
-- [ ] **`Viewport` render behavior unchanged** — iframes still toggle visibility via `activePath`. No pan, no zoom, no multi-artboard plane, no `layout.json`. All of that lives in Phase 4.
-- [ ] `design-system-guard` subagent: 0 blockers vs `project` DS in both themes, against CV-08/09/10 (full) + CV-01/02 (static-visual subset only — wordmark, paper grid, selection halo).
-- [ ] `flow:a11y-auditor`: 0 blockers in both themes; keyboard model unchanged from Tasks 4-10 baseline.
-- [ ] `dev-server-shell-tour` scenario recorded + passes on web-desktop, covering both shell chrome (T4-T10) and the new static visuals (T11-T13).
-- [ ] Manual smoke against `/Volumes/D/git/dugmate/.design/` shows no regression.
-- [ ] DDR candidates resolved (or explicitly skipped): (a) font-hosting strategy [resolved: option-c JetBrains fallback, see handoff report], (b) token-bridge approach [resolved: alias-layer + inlined DS values].
-- [ ] **Phase 4 plan remains coherent** — covers the canvas-functionality block in one phase (multi-iframe plane + pan/zoom controller + MiniMap + ZoomToolbar + `layout.json` + default-grid migration + tab semantics + Pixi engine swap + LoD + perf gate + world coords). See `.ai/plans/phase-4-canvas-v2-rendering-engine.md`.
+- [x] Tasks 11–13 (viewport-area static visuals) completed.
+- [x] `.viewport` shows the CV-01 24 px paper-grid background in both themes.
+- [x] `<Wordmark>` renders in empty-state (top-left) — version baked via `__MDCC_VERSION__` Bun `define`.
+- [x] `<SelectionHalo>` renders accent 2 px outline + 4 corner ticks around the active iframe when `selected` is non-null.
+- [x] `StatusBar` carries `ARTBOARDS` slot + `ZOOM` slot — **moved into `.mb-status` in T16** per DDR-017 (canvas-state belongs in menubar; bottom statusbar keeps chrome-state only). Final slot order: menubar `.mb-status`: cv-stamp · file · ARTBOARDS · ZOOM · project SKU; statusbar bottom: ACTIVE · SELECTED · COMMENTS · LIVE · spacer · THEME.
+- [x] **`Viewport` render behavior unchanged** — single-iframe model preserved; tabs row eliminated (DDR-017) but no pan, no zoom, no multi-artboard plane.
+- [x] DDR candidates resolved: (a) font-hosting strategy → option-c JetBrains fallback; (b) token-bridge → alias-layer + inlined DS values; (c) **menubar + single-canvas** → DDR-017 (new); (d) **PROJECT/RUNTIME tree groups via `kind`** → DDR-018 (new).
+- [x] **Phase 4 plan remains coherent** — single-canvas spine simplifies Phase 4's multi-artboard plane (artboards become peers inside one canvas, not tabs vs artboards).
+- [ ] ~~`design-system-guard` subagent~~ — formal subagent not run; visual side-by-side against CV-08 mock done iteratively with user (25+ comparison screenshots in `/tmp/phase-3.5-audit/` + `/tmp/menubar-bug/`).
+- [ ] ~~`flow:a11y-auditor`~~ — formal subagent not run; ARIA attrs verified manually (role=menuitem, aria-haspopup=menu, aria-expanded, aria-modal, aria-disabled). Keyboard model expanded (T/S/?/F1/⌘F shortcuts).
+- [ ] ~~`dev-server-shell-tour` scenario~~ — not recorded. Carry-over (low priority — desktop-only project, manual flow validation via agent-browser was extensive).
+- [ ] ~~Smoke against `/Volumes/D/git/dugmate/.design/`~~ — not run this session. Carry-over.
+
+### Mid-execution scope additions (not in original plan)
+
+- **T14-T17** — `<Menubar>` + `<ViewDropdown>` replacing action-button header; tabs row killed; ARTBOARDS+ZOOM relocated from statusbar to menubar (per DDR-017).
+- **T18** — Body-grows scrollbar bug (`grid-template-columns: minmax(0, 1fr)`).
+- **T19-T20** — CV-08 tree-panel restructure (sections + pill + tp-row.dir/.sel/.muted modifiers + files-first ordering).
+- **T21-T24** — Server-side PROJECT + RUNTIME groups (DDR-018); DS group widened to non-HTML scan; section labels + dir wrappers.
+- **T25-T28** — Sidebar toggle (T key), Help modal (Cheatsheet relocated), DS section header clickable (replaces dropped promoted button), keyboard shortcuts.
+- **Post-validate bug** — `.mb { overflow: hidden }` clipped View dropdown; fix moved clip responsibility down to `.mb-status` only.
+
+## Retro
+
+- **What worked.** The mock at `.design/ui/Canvas Viewport.html` was a strong forcing function for visual parity. When the original plan punted on "surrounding chrome — not separately mocked", the user pushed back with screenshots and we course-corrected in T14-T17. The plan's acceptance of "chrome not mocked" turned out to be wrong — every CV-NN artboard *shared* the menubar component, which was the canonical chrome.
+- **What didn't.** Discovery loop was slow: I built the action-button header in T6, refined it in T8/T13, then ripped it out in T14-T17 once we noticed the menubar pattern. Lost ~2-3 hours on chrome that didn't survive the review. Lesson for `/flow:plan`: when a mock file enumerates many artboards (CV-01..CV-10), assume **shared chrome** (header / footer / panels) is canonical even if not in a dedicated artboard.
+- **Bug surfaced late.** The `.mb { overflow: hidden }` clip-the-dropdown bug shipped with T17 menubar and wasn't caught until user clicked View in `pn dev` two iterations later. Lesson: when adding `overflow: hidden` to a chrome container, **list every absolutely-positioned descendant that escapes its bounds** — dropdowns, tooltips, modals — and verify with a click pass. Add to `flow:utils-verify` for shell components.
+- **Server + client schema co-evolution went smoothly.** DDR-018's `kind: 'project' | 'canvas' | 'runtime'` discriminator added once in `api.ts:buildIndexData`, consumed in `Sidebar` + `FileRow` + `SECTION_META`. Adding a 5th kind later is mechanical.
+- **Pattern lift first paid off.** Once we realized the mock spec was authoritative (DDR-017's premise), every subsequent decision (files-first ordering, `▾ .design` wrapper, RUNTIME muted, DS section clickable) flowed from reading the mock's source JSX. Less back-and-forth.
+- **`/flow:execute` rhythm note.** This phase had so many mid-session pivots that the original Tasks 11-13 plan was a small fraction of final work (T11-T28). The plan should have been replanned mid-execution rather than appended-to. Consider a `/flow:replan` shortcut for cases when scope materially changes.
+
+> **For future phases:** when a `.design/ui/<feature>.html` file enumerates N artboards, treat the *shared spine* (header / sidebar / statusbar) as **canonical chrome**, not as decoration. Read at least one artboard's full JSX before signing off on "no-mock-needed" exemptions.
