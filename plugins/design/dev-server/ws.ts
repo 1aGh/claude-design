@@ -54,6 +54,7 @@ export function createWs(ctx: Context, api: Api, inspect: Inspect): Ws {
       clients.delete(ws);
     },
     async message(ws, raw) {
+      // biome-ignore lint/suspicious/noExplicitAny: JSON.parse result; narrowed by runtime discriminator checks below.
       let msg: any;
       try {
         msg = JSON.parse(typeof raw === 'string' ? raw : new TextDecoder().decode(raw));

@@ -52,8 +52,7 @@ function main() {
   const bin = resolveBinary(slug);
   if (!bin || !fs.existsSync(bin)) {
     console.error(
-      `mdcc-safe: missing @1agh/md-claude-${slug}. ` +
-        'Reinstall without --ignore-scripts: `npm i -g @1agh/md-claude`.',
+      `mdcc-safe: missing @1agh/md-claude-${slug}. Reinstall without --ignore-scripts: \`npm i -g @1agh/md-claude\`.`
     );
     process.exit(1);
   }

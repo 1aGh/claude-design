@@ -4,6 +4,7 @@
 // a server-side API so the same logic lives in one place and is callable both
 // from the WS layer and from a future server-driven auto-snapshot hook.
 
+import type { Dirent } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -34,7 +35,7 @@ function fileSlug(file: string, designRel: string): string {
   } catch {
     /* ignore */
   }
-  const prefix = designRel.replace(/^\/+|\/+$/g, '') + '/';
+  const prefix = `${designRel.replace(/^\/+|\/+$/g, '')}/`;
   if (p.startsWith(prefix)) p = p.slice(prefix.length);
   return p
     .replace(/\//g, '-')
@@ -80,7 +81,7 @@ export function createHistory(ctx: Context): History {
   async function listSnapshots(file: string): Promise<Snapshot[]> {
     const slug = fileSlug(file, ctx.paths.designRel);
     const dir = path.join(ctx.paths.historyDir, slug);
-    let entries;
+    let entries: Dirent[];
     try {
       entries = await readdir(dir, { withFileTypes: true });
     } catch {

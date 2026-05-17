@@ -1,8 +1,8 @@
 // Smoke: snapshot writer + rollback reader round-trip (history.ts directly,
 // no server process).
 
-import { describe, test, expect } from 'bun:test';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { describe, expect, test } from 'bun:test';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -37,11 +37,11 @@ describe('history.ts', () => {
 
       const list = await hist.listSnapshots('.design/ui/a.html');
       expect(list.length).toBe(1);
-      expect(list[0]!.ts).toBe(wrote.ts);
+      expect(list[0]?.ts).toBe(wrote.ts);
 
       const read = await hist.readSnapshot('.design/ui/a.html', wrote.ts);
       expect(read).not.toBeNull();
-      expect(new TextDecoder().decode(read!.content)).toBe('<doc>v1</doc>');
+      expect(new TextDecoder().decode(read?.content)).toBe('<doc>v1</doc>');
     });
   });
 

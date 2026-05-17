@@ -5,7 +5,7 @@
 // every release tag (Task 13). Local devs see this skip silently unless they
 // have already run `bun run build.ts --release`.
 
-import { describe, test, expect } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 
 const PLATFORM_SLUG = (() => {
@@ -26,7 +26,9 @@ describe('binary smoke', () => {
     const binPath = join(import.meta.dir, '..', 'dist', `mdcc-${PLATFORM_SLUG}`);
     const exists = await Bun.file(binPath).exists();
     if (!exists) {
-      console.log(`binary-smoke: ${binPath} not built; skipping (run \`bun run build.ts --release\`)`);
+      console.log(
+        `binary-smoke: ${binPath} not built; skipping (run \`bun run build.ts --release\`)`
+      );
       return;
     }
 

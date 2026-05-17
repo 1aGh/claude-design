@@ -61,11 +61,14 @@ export interface Paths {
 // Tiny pub-sub bus. Lazy — modules subscribe with on('selected', fn) and emit
 // the matching event. Avoids cycling imports between inspect.ts <-> ws.ts.
 export interface Bus {
+  // biome-ignore lint/suspicious/noExplicitAny: heterogeneous pubsub — subscribers annotate their own payload shape.
   on(evt: string, fn: (payload: any) => void): () => void;
+  // biome-ignore lint/suspicious/noExplicitAny: heterogeneous pubsub — emitters supply their own payload shape.
   emit(evt: string, payload?: any): void;
 }
 
 export function createBus(): Bus {
+  // biome-ignore lint/suspicious/noExplicitAny: subscribers are typed at the call site; the bus stores the erased type.
   const subs = new Map<string, Set<(p: any) => void>>();
   return {
     on(evt, fn) {
@@ -128,7 +131,7 @@ export function createContext(): Context {
   // "wrong project root" bugs.
   if (!existsSync(path.join(repoRoot, '.design'))) {
     console.error(`  error: no .design/ directory at ${repoRoot}`);
-    console.error(`  Run from your project root, set $CLAUDE_PROJECT_DIR, or pass --root <path>.`);
+    console.error('  Run from your project root, set $CLAUDE_PROJECT_DIR, or pass --root <path>.');
     process.exit(1);
   }
 

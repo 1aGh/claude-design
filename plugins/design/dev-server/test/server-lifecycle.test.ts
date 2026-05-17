@@ -1,9 +1,9 @@
 // Smoke: boot → /_health 200 → _server.json written → shutdown.
 
-import { describe, test, expect } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 
-import { makeSandbox, nextPort, bootServer, killProc } from './_helpers.ts';
+import { bootServer, killProc, makeSandbox, nextPort } from './_helpers.ts';
 
 describe('server lifecycle', () => {
   test('boots, writes _server.json, responds to /_health', async () => {

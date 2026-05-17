@@ -1,6 +1,6 @@
 // Smoke: dist/client.bundle.js exists, parses, and references React 19.
 
-import { describe, test, expect } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { spawnSync } from 'bun';
 

@@ -97,13 +97,13 @@ startHeapWatch();
 
 const url = `http://localhost:${server.port}`;
 console.log(`\n  ${ctx.projectLabel} — local browser`);
-console.log(`  ─────────────────────────────`);
+console.log('  ─────────────────────────────');
 console.log(`  ${url}`);
 console.log(`  Project:   ${ctx.cfg.name}`);
 console.log(`  Config:    ${ctx.cfg._source}`);
 console.log(`  Design:    ${ctx.paths.designRoot}`);
 console.log(`  Active:    ${ctx.paths.activeFile}`);
-console.log(`  Press Ctrl+C to stop.\n`);
+console.log('  Press Ctrl+C to stop.\n');
 
 if (!process.env.NO_OPEN) {
   if (process.platform === 'darwin')

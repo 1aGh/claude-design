@@ -185,11 +185,11 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect): Http {
 
       const e = ext(fp);
       // .html under designRoot gets inspector + runtime injection.
-      if (e === '.html' && (fp + '/').startsWith(ctx.paths.designRoot + '/')) {
+      if (e === '.html' && `${fp}/`.startsWith(`${ctx.paths.designRoot}/`)) {
         const html = await file.text();
         const injected = inspect.injectInto(html);
         return new Response(injected, {
-          headers: { 'Content-Type': MIME['.html']!, 'Cache-Control': 'no-store' },
+          headers: { 'Content-Type': MIME['.html'] ?? 'text/html', 'Cache-Control': 'no-store' },
         });
       }
 
@@ -202,7 +202,7 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect): Http {
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return new Response('Server error: ' + msg, { status: 500 });
+      return new Response(`Server error: ${msg}`, { status: 500 });
     }
   }
 

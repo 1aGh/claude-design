@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
   title: 'About the maker',
-  description: 'Hi I\'m Michal and I build things. md-claude is a small Claude Code marketplace.',
+  description: "Hi I'm Michal and I build things. md-claude is a small Claude Code marketplace.",
 };
 
 export default function AboutPage() {

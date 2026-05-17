@@ -1,8 +1,8 @@
 // Smoke: WebSocket upgrade against Bun.serve's native handler.
 
-import { describe, test, expect } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 
-import { makeSandbox, nextPort, bootServer, killProc } from './_helpers.ts';
+import { bootServer, killProc, makeSandbox, nextPort } from './_helpers.ts';
 
 describe('ws handshake', () => {
   test('upgrades and receives initial snapshot', async () => {
@@ -15,7 +15,9 @@ describe('ws handshake', () => {
         const t = setTimeout(() => reject(new Error('no message')), 2000);
         ws.addEventListener('message', (e) => {
           clearTimeout(t);
-          resolve(typeof e.data === 'string' ? e.data : new TextDecoder().decode(e.data as ArrayBuffer));
+          resolve(
+            typeof e.data === 'string' ? e.data : new TextDecoder().decode(e.data as ArrayBuffer)
+          );
         });
         ws.addEventListener('error', (e) => reject(e));
       });

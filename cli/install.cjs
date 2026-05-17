@@ -32,7 +32,9 @@ function detectSlug() {
     if (a === 'arm64') return 'darwin-arm64';
     try {
       const { execSync } = require('node:child_process');
-      const t = execSync('sysctl -n sysctl.proc_translated', { stdio: ['ignore', 'pipe', 'ignore'] })
+      const t = execSync('sysctl -n sysctl.proc_translated', {
+        stdio: ['ignore', 'pipe', 'ignore'],
+      })
         .toString()
         .trim();
       if (t === '1') return 'darwin-arm64';
@@ -69,9 +71,7 @@ function resolveBinary(slug) {
     return path.join(path.dirname(manifest), filename);
   } catch (err) {
     throw new Error(
-      `Cannot find ${pkg}. ` +
-        'Reinstall with `npm i -g @1agh/md-claude` or `npm rebuild @1agh/md-claude`. ' +
-        `(${err && err.message ? err.message : err})`,
+      `Cannot find ${pkg}. Reinstall with \`npm i -g @1agh/md-claude\` or \`npm rebuild @1agh/md-claude\`. (${err?.message ? err.message : err})`
     );
   }
 }
@@ -98,8 +98,10 @@ function main() {
     }
     console.log(`@1agh/md-claude: registered ${slug} binary (${bin})`);
   } catch (err) {
-    console.error(`@1agh/md-claude: postinstall failed — ${err && err.message ? err.message : err}`);
-    console.error('  `mdcc design serve` will fall back to running server.ts on Bun (if available).');
+    console.error(`@1agh/md-claude: postinstall failed — ${err?.message ? err.message : err}`);
+    console.error(
+      '  `mdcc design serve` will fall back to running server.ts on Bun (if available).'
+    );
     process.exit(0); // Don't fail the install.
   }
 }

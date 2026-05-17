@@ -40,7 +40,7 @@ export function createFsWatch(ctx: Context): FsWatch {
         // Skip our own runtime artifacts.
         if (filename.startsWith('_server.json')) return;
         if (filename.startsWith('_active.json')) return;
-        if (filename.startsWith('_history' + path.sep) || filename.startsWith('_history/')) return;
+        if (filename.startsWith(`_history${path.sep}`) || filename.startsWith('_history/')) return;
         emit(filename);
       });
     } catch (err) {

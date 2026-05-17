@@ -1,9 +1,9 @@
 // Shared test scaffolding. Bun-test only.
 
-import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawn, type Subprocess } from 'bun';
+import { type Subprocess, spawn } from 'bun';
 
 export interface Sandbox {
   root: string;
@@ -26,13 +26,13 @@ export function makeSandbox(): Sandbox {
         ],
       },
       null,
-      2,
-    ),
+      2
+    )
   );
   mkdirSync(join(designRoot, 'ui'), { recursive: true });
   writeFileSync(
     join(designRoot, 'ui', 'fixture.html'),
-    '<!doctype html><html><head><title>fix</title></head><body><h1>fixture</h1></body></html>',
+    '<!doctype html><html><head><title>fix</title></head><body><h1>fixture</h1></body></html>'
   );
   return { root, designRoot };
 }

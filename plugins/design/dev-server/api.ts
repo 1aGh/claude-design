@@ -2,6 +2,7 @@
 // Returns plain objects; http.ts wraps them in Response.json().
 
 import crypto from 'node:crypto';
+import type { Dirent } from 'node:fs';
 import { readFile, readdir, stat as statp } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -25,7 +26,7 @@ const HIDDEN_OK = new Set(['.ai', '.claude', '.design']);
 
 export async function findHtmlFiles(absRoot: string, prefixUnderRepo: string): Promise<string[]> {
   const out: string[] = [];
-  let entries;
+  let entries: Dirent[];
   try {
     entries = await readdir(absRoot, { withFileTypes: true });
   } catch {
@@ -46,7 +47,7 @@ export async function findHtmlFiles(absRoot: string, prefixUnderRepo: string): P
 
 async function findFiles(absRoot: string, prefix: string, exts: string[]): Promise<string[]> {
   const out: string[] = [];
-  let entries;
+  let entries: Dirent[];
   try {
     entries = await readdir(absRoot, { withFileTypes: true });
   } catch {
@@ -109,7 +110,7 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
     } catch {
       /* ignore */
     }
-    const prefix = paths.designRel.replace(/^\/+|\/+$/g, '') + '/';
+    const prefix = `${paths.designRel.replace(/^\/+|\/+$/g, '')}/`;
     if (p.startsWith(prefix)) p = p.slice(prefix.length);
     return p
       .replace(/\//g, '-')
@@ -139,7 +140,7 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
 
   async function loadAllComments(): Promise<Record<string, Comment[]>> {
     const out: Record<string, Comment[]> = {};
-    let entries;
+    let entries: Dirent[];
     try {
       entries = await readdir(paths.commentsDir, { withFileTypes: true });
     } catch {
@@ -161,7 +162,7 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
   }
 
   function newCommentId(): string {
-    return 'c_' + crypto.randomBytes(6).toString('hex');
+    return `c_${crypto.randomBytes(6).toString('hex')}`;
   }
 
   async function commentsAdd(payload: Partial<Comment> & { file: string; text: string }) {
@@ -193,7 +194,8 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
     for (const [file, list] of Object.entries(all)) {
       const i = list.findIndex((c) => c.id === id);
       if (i < 0) continue;
-      const entry = list[i]!;
+      const entry = list[i];
+      if (!entry) continue;
       if (patch.status === 'resolved' || patch.status === 'open') {
         entry.status = patch.status;
         entry.resolved_at = patch.status === 'resolved' ? new Date().toISOString() : null;
@@ -246,7 +248,7 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
       safe.viewport = {
         x: Number.isFinite(v.x) ? v.x : 0,
         y: Number.isFinite(v.y) ? v.y : 0,
-        scale: Number.isFinite(v.scale) ? Math.min(8, Math.max(0.05, v.scale!)) : 1,
+        scale: Number.isFinite(v.scale) ? Math.min(8, Math.max(0.05, v.scale as number)) : 1,
       };
     }
     await Bun.write(canvasStatePath(file), JSON.stringify(safe, null, 2));
@@ -303,7 +305,7 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
         label: g.label,
         paths: filePaths,
         fullPath: groupRel,
-        stripPrefix: paths.designRel + '/',
+        stripPrefix: `${paths.designRel}/`,
         kind: 'canvas' as const,
       });
     }
@@ -360,10 +362,9 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
     const tokens: { name: string; value: string; kind: string }[] = [];
     const re = /(--[a-z][a-z0-9-]*)\s*:\s*([^;}]+);/gi;
     const seen = new Set<string>();
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(css)) !== null) {
-      const name = m[1]!.trim();
-      const value = m[2]!.trim();
+    for (const m of css.matchAll(re)) {
+      const name = m[1]?.trim() ?? '';
+      const value = m[2]?.trim() ?? '';
       const key = `${name}|${value}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -410,7 +411,11 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
       /* ignore */
     }
     const tokenGroups: Record<string, typeof tokens> = {};
-    for (const t of tokens) (tokenGroups[t.kind] = tokenGroups[t.kind] || []).push(t);
+    for (const t of tokens) {
+      const group = tokenGroups[t.kind] ?? [];
+      group.push(t);
+      tokenGroups[t.kind] = group;
+    }
 
     async function galleryFor(folderName: string) {
       const matches: { abs: string; rel: string }[] = [];
@@ -446,8 +451,8 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
         for (const f of files) {
           const fname = f
             .split('/')
-            .pop()!
-            .replace(/\.html$/i, '');
+            .pop()
+            ?.replace(/\.html$/i, '');
           const group = f.split('/').slice(-2, -1)[0] || folderName;
           const label = fname.toLowerCase() === 'index' ? group : fname;
           items.push({ label, path: f, group });

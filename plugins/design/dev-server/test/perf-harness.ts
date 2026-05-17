@@ -19,7 +19,7 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawn, gzipSync } from 'bun';
+import { gzipSync, spawn } from 'bun';
 
 const STRICT = process.argv.includes('--strict');
 const PORT = 4500 + Math.floor(Math.random() * 1000);
@@ -40,7 +40,7 @@ function makeFixture(): string {
   for (let i = 0; i < 10; i++) {
     writeFileSync(
       join(root, '.design', 'ui', `c${i}.html`),
-      `<!doctype html><html><body><div data-dc-screen="s${i}"><h1>${i}</h1></div></body></html>`,
+      `<!doctype html><html><body><div data-dc-screen="s${i}"><h1>${i}</h1></div></body></html>`
     );
   }
   return root;
@@ -58,7 +58,9 @@ async function measureColdStart(root: string): Promise<number> {
   try {
     while (performance.now() - start < 5000) {
       try {
-        const r = await fetch(`http://localhost:${PORT}/_health`, { signal: AbortSignal.timeout(50) });
+        const r = await fetch(`http://localhost:${PORT}/_health`, {
+          signal: AbortSignal.timeout(50),
+        });
         if (r.ok) return performance.now() - start;
       } catch {
         /* not up yet */
@@ -74,7 +76,13 @@ async function measureColdStart(root: string): Promise<number> {
 
 async function measureBundleSize(): Promise<number> {
   const buildResult = spawn({
-    cmd: ['bun', 'run', join(REPO, 'build.ts'), '--release', `--target=bun-${process.platform}-${process.arch}`],
+    cmd: [
+      'bun',
+      'run',
+      join(REPO, 'build.ts'),
+      '--release',
+      `--target=bun-${process.platform}-${process.arch}`,
+    ],
     cwd: REPO,
     stdout: 'ignore',
     stderr: 'ignore',
@@ -98,7 +106,9 @@ async function measureWsRoundTrip(root: string): Promise<{ p50: number; p99: num
   try {
     while (true) {
       try {
-        const r = await fetch(`http://localhost:${PORT + 1}/_health`, { signal: AbortSignal.timeout(50) });
+        const r = await fetch(`http://localhost:${PORT + 1}/_health`, {
+          signal: AbortSignal.timeout(50),
+        });
         if (r.ok) break;
       } catch {
         /* */
@@ -156,8 +166,18 @@ async function main() {
   };
 
   const ws = await measureWsRoundTrip(root);
-  report.budgets.wsRoundTripP50 = { value: +ws.p50.toFixed(2), budget: 1, unit: 'ms', pass: ws.p50 < 1 };
-  report.budgets.wsRoundTripP99 = { value: +ws.p99.toFixed(2), budget: 5, unit: 'ms', pass: ws.p99 < 5 };
+  report.budgets.wsRoundTripP50 = {
+    value: +ws.p50.toFixed(2),
+    budget: 1,
+    unit: 'ms',
+    pass: ws.p50 < 1,
+  };
+  report.budgets.wsRoundTripP99 = {
+    value: +ws.p99.toFixed(2),
+    budget: 5,
+    unit: 'ms',
+    pass: ws.p99 < 5,
+  };
 
   writeFileSync(join(HERE, 'perf-report.json'), JSON.stringify(report, null, 2));
 

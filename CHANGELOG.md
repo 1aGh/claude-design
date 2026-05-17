@@ -1,5 +1,134 @@
 # @1agh/md-claude
 
+## 0.13.0
+
+### Minor Changes
+
+- b200e59: design plugin: stable element-id schema + canonical screenshot pipeline + shared bash helpers
+
+  **New user-visible flags on `/design:screenshot`:**
+
+  - `--screen <id>` — capture one artboard by `data-dc-screen` id (or legacy `data-dc-slot`)
+  - `--element <id>` — capture one named region by `data-dc-element` id
+  - `--all-screens` — loop over every artboard, write `<NNN>-screen-<id>.png` per artboard
+  - existing `--full` / `--selector <css>` / `--area <name>` retained
+
+  **Stable element-id schema in generated canvases:**
+
+  - `DCArtboard` runtime now renders `data-dc-screen="<id>"` alongside the legacy `data-dc-slot` (same value). Backwards-compatible — existing canvases keep working.
+  - `/design:new` / `/design:edit` envelope directive 15 instructs `frontend-design` to tag named regions (heroes, CTAs, list rows, form fields) with `data-dc-element="<kebab-id>"`. Stable handles for comments, screenshots, and critic verdicts across iterations.
+  - Inspector (`server.mjs` `cssPath()` / `domPath()`) now prefers `[data-dc-element]` → `[data-dc-screen]` → `#id` → `:nth-child`. Cmd+Click on a tagged element yields a stable selector instead of fragile `:nth-child(3)`.
+
+  **Canonical bash helpers under `plugins/design/dev-server/bin/`** (shipped via npm, called from slash commands and critics):
+
+  - `screenshot.sh` — wraps `agent-browser` with `npx playwright` fallback; handles URL resolution, mount poll, per-screen loop, engine selection
+  - `bootstrap-check.sh` — detects `.design/config.json` + DS folders; exit 0/10/11; modes: default / `--json` / `--shell-export`
+  - `server-up.sh` — server lifecycle (PID + `/_health` check, respawn, 10s poll); stdout = port
+  - `slug.sh` — single source of truth for `_history/<slug>/` path normalization
+
+  **Bug fix:** `signature-moment-critic.md` previously referenced `[data-artboard-id]` — a selector that no runtime ever emitted, silently falling back to `--full` and losing per-artboard discipline. Renamed to `data-dc-screen` (sweep across the plugin).
+
+  **Refactor:** inline `agent-browser navigate + screenshot` bash blocks removed from `commands/{screenshot,new,edit,setup-ds}.md`, `skills/design/SKILL.md`, `skills/design-system/SKILL.md`, `agents/design-critic.md`, `agents/signature-moment-critic.md`. All callers now invoke the helper.
+
+  See DDR-007 (element-id schema) and DDR-008 (helper home) for the architectural rationale.
+
+- 77478b0: design plugin: `design-system-keeper` agent + pattern-priors envelope + token-usage doctrine
+
+  **New auto-routed audit agent — `design-system-keeper`:**
+
+  Read-only agent (`tools: Read, Bash, Glob, Grep`) that runs between canvas generation and the critic panel. Two passes:
+
+  - **Pattern-reinvention scan** — greps existing canvases + DS preview library for class shapes the new canvas should have lifted (catches `.pcard` re-deriving an existing `.dc-card`, etc.).
+  - **Token-usage audit** — cross-checks every `var(--TOKEN)` against the DS README's `## Token usage guide` table to flag role mismatches (e.g. `--accent-active` used as a fill instead of body-text contrast).
+
+  Findings are warnings by default; the agent self-promotes its own verdict to blocker when ≥ 5 token-usage mismatches OR ≥ 3 pattern reinventions stack on a single canvas (mass-drift signal).
+
+  **New user-visible flag on `/design:new` and `/design:edit`:**
+
+  - `--skip-ds-keeper` — opt out of the precheck for known-experimental canvases / debug runs.
+
+  **Orchestrator integration:**
+
+  - `/design:new` step 9.5 spawns ds-keeper in parallel with the critic panel (always, unless flag).
+  - `/design:new` step 5/5a/5b — envelope template now carries a mandatory `## Pattern priors` section listing existing canvases (with their class roots) + DS preview components (with one-line role). Generator is instructed to lift before reinventing.
+  - `/design:edit` step 7.5 — conditional precheck (fires when diff ≥ 10 lines OR new class root introduced; skipped on micro-edits).
+  - `/design:edit` step 8a — DS-drift fast-path. When user feedback explicitly names DS drift (regex matches "design system" / "DS" / Czech "jiné barvy než DS"), routes a stripped panel `[ds-keeper, design-critic]` capped at 2 iterations. Skips 4–6 critic spawns per iter that would have been deterministic find-and-replace.
+
+  **New DS doc convention — `## Token usage guide` section:**
+
+  `md-claude`'s own DS at `.design/system/project/README.md` gains a Token usage guide table covering all four token families (accent, fg, bg, border) — for each token: "Use for" / "Don't use for". This is the audit source for ds-keeper's Pass B. Future DSes scaffolded by `/design:setup-ds` should follow the same pattern (inspiration-library template carry-over).
+
+  **Pattern-lift discipline codified in CLAUDE.md:**
+
+  New paragraph under § Design plugin: "Pattern priors come first — when working under a project DS that has existing canvases or preview components, those files ARE the design spec. Lift before invent."
+
+  See [DDR-010](.ai/decisions/DDR-010-design-system-keeper-agent.md) and the [Docs Site retro](.ai/logs/system-reviews/docs-site-design-generation-review.md) for the rationale and the cost-saving math (~50–80k tokens per session in the typical "user has existing canvas to lift from" scenario).
+
+- 61d9e9d: **Phase 3.4 — dev-server runtime + build pipeline + distribution overhaul.**
+
+  The dev-server (`mdcc design serve`) is now built on Bun authoritatively (DDR-009), distributed as per-platform standalone binaries via npm `optionalDependencies` sub-packages (DDR-015), and runs on a 7-module TypeScript split of the former 1288-LOC `server.mjs` monolith (DDR-013). The shell client migrates from React 18 UMD via babel-standalone to React 19 from npm, bundled with `Bun.build` to a 66 KB gz IIFE (DDR-012). CSS moves to a `@layer reset, tokens, layout, shell, components, utilities` cascade processed by Lightning CSS at build time (DDR-014).
+
+  **No breaking change for `mdcc` CLI surface.** `mdcc init` / `mdcc config` / `mdcc design serve` / `mdcc design init` all work as before — same flags, same output paths. End-user prereq drops from "Node 20+" to "nothing" once published with sub-packages, because postinstall hardlinks the matching platform binary in place. `mdcc-safe` bin is the `--ignore-scripts` fallback (slower but always works).
+
+  Highlights:
+
+  - `bun build --compile` produces ~57 MB standalone binary per platform (darwin-arm64 / darwin-x64 / linux-x64 / linux-arm64 / linux-x64-musl / linux-arm64-musl / win32-x64).
+  - 7 sub-packages under `packages/md-claude-<slug>/`; `optionalDependencies` in the main tarball pin all 7 in lockstep. `scripts/bump-version.sh` + `scripts/check-version-parity.sh` extended.
+  - `.github/workflows/build-binaries.yml` is the new release pipeline (fail-fast: false matrix, native runner per platform, npm provenance on every artifact, `publish-main` gated on all sub-packages being live).
+  - Native `Bun.serve` WebSocket replaces the hand-rolled RFC-6455 upgrade (saves ~150 LOC + 1.7× WS throughput headroom for future collab features).
+  - 7 `bun:test` smoke tests + `perf-harness.ts` measure the Phase 3.4 budgets (cold start < 100 ms HTTP, bundle gz < 80 KB, WS p50 < 1 ms).
+  - CSS-only HMR live; full JSX HMR with react-refresh-runtime is deferred to Phase 3.5.
+
+  Unblocks Phase 3.5 (DS-token-aware shell visual refresh) and Phase 4 (Pixi.js canvas v2 + infinite canvas).
+
+  Per-platform sub-packages (new on npm): `@1agh/md-claude-darwin-arm64`, `@1agh/md-claude-darwin-x64`, `@1agh/md-claude-linux-x64`, `@1agh/md-claude-linux-arm64`, `@1agh/md-claude-linux-x64-musl`, `@1agh/md-claude-linux-arm64-musl`, `@1agh/md-claude-win32-x64`. End users should not install these directly — npm resolves the matching one automatically.
+
+  See `.ai/decisions/DDR-{009,012,013,014,015,016}.md` for the full rationale set.
+
+- e5eb043: **Phase 3.5 — dev-server shell refresh: shadcn-style menubar + CV-08 tree-panel + Help modal + paper-grid viewport.**
+
+  The `mdcc design serve` chrome is rebuilt against the `project` DS (MDCC-DSN/01) mocks in `.design/ui/Canvas Viewport.html`. The action-button header (`tree · active · comments · open`) is replaced by a 30 px top **menubar** (`■ MDCC · File · Edit · View · Selection · Tools · Help · CV-stamp · file · N ARTBOARDS · ZOOM 100% · project SKU`) per CV-01/CV-08 spec — see [DDR-017](../.ai/decisions/DDR-017-dev-server-shell-menubar-single-canvas.md). The tabs row is gone — the dev-server is single-canvas; opening a file in the tree replaces the active one. The left sidebar becomes a four-section CV-08 tree (`PROJECT / DESIGN SYSTEM · / UI CANVASES / RUNTIME · GITIGNORED`) backed by a new `kind` discriminator in `_index-data` — see [DDR-018](../.ai/decisions/DDR-018-tree-groups-via-kind-discriminator.md).
+
+  **Visual surfaces (CV-01 / CV-02 static lift)**
+
+  - **Paper-grid viewport bg** — 24 px ink hairline grid on `--u-bg-1`; visible in empty state, covered by iframe once a canvas mounts.
+  - **Wordmark watermark** — `mdcc-design-server` 40 px display + `CANVAS · MD-CLAUDE / v{version} / localhost:{port}` SKU sub-line; mounted in the empty state. Version baked at build time via a new `__MDCC_VERSION__` Bun `define`.
+  - **Selection halo** — accent 2 px outline + 4 corner ticks around the active iframe when an element is selected (CV-02 lift).
+
+  **Menubar + dropdown**
+
+  - **View dropdown** (T): `Project Tree (T)`, `Comments Sidebar (⌘⇧M)`, `Design system view (S)` all toggleable; `Layers Panel`, `Inspector`, `Annotations`, `Presentation Mode`, `Zoom In/Out/Fit/Actual Size` rendered with `Phase N` tags (inert until those phases land).
+  - **Help menu** opens `<HelpModal>` — modal containing the cheatsheet that used to live in the sidebar (Element selection · Tabs & canvas · Slash commands · Opt-out scope · Auto-critic loop · Pin-to-element flow · Comments). Esc / backdrop / × close. Triggered by `?` or `F1` too.
+  - **State stamp** in `.mb-status`: cv-stamp (`IDLE / CANVAS / SYSTEM`) + file path + `● N ARTBOARDS · ZOOM 100% · MD-CLAUDE`.
+
+  **Sidebar (CV-08)**
+
+  - New `<Sidebar>` reads `kind`-tagged groups: PROJECT (`▾ .design` root files), DESIGN SYSTEM · (`MDCC-DSN/01` pill, `▾ system/project` with `README.md`, `SKILL.md`, `colors_and_type.css`, `▾ preview` with HTMLs), UI CANVASES (count pill, `▾ ui`), RUNTIME · GITIGNORED (count pill, muted treatment).
+  - DS section header is **clickable** — opens the system view. (Replaces the dropped promoted "Design system view" row.)
+  - Files-first ordering inside dirs (mock convention).
+  - Non-HTML rows are inert (`aria-disabled="true"`, no-op click).
+
+  **Keyboard surface**
+
+  - `T` toggles sidebar visibility (visibility-hidden, state preserved).
+  - `S` toggles SYSTEM view.
+  - `⌘F` focuses search (re-opens sidebar if hidden).
+  - `⌘⇧M` toggles comments rsidebar.
+  - `?` / `F1` opens Help modal.
+  - `Esc` closes modal / composer / focused pin.
+
+  **Fixes**
+
+  - **Body-grows scrollbar bug** — long selected-element selectors in the statusbar no longer push the grid wider than viewport. Root cause: `.app { grid-template-columns: 320px 1fr }` defaults to `minmax(auto, 1fr)`, so an unbreakable selector string expanded the track. Fix: `minmax(0, 1fr)` + `min-width: 0; overflow: hidden` on `.app` + `.statusbar`.
+  - **View dropdown clipped** — earlier `.mb { overflow: hidden }` (added to clamp menubar status) clipped the dropdown (`position: absolute; top: 30px`). Removed; right-side clamp stays on `.mb-status` alone.
+
+  **Server (`api.ts`)**
+
+  - `buildIndexData` synthesizes PROJECT (`.md`/`.json`/`.txt`/`.yml`/`.yaml`/`.css` at `.design/` root) and RUNTIME (`_*` entries at root) groups in addition to the existing canvas groups.
+  - DS canvas group widens its scan to `['.html', '.md', '.css', '.json']` so `README.md` / `SKILL.md` / `colors_and_type.css` appear alongside preview HTMLs.
+
+  No `mdcc` CLI surface change. Phase 4 (Pixi canvas v2) lands on this refreshed shell.
+
 ## 0.12.0
 
 ### Minor Changes
