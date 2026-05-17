@@ -54,7 +54,13 @@ jobs:
             target: bun-darwin-arm64
             slug: darwin-arm64
             ext: ''
-          - os: macos-13
+          # darwin-x64 cross-compiled from macos-14 (arm64). bun supports
+          # `--target=bun-darwin-x64` from any macOS host and produces a
+          # Mach-O 64-bit x86_64 binary. macos-13 was the original choice
+          # for native-host parity, but the macos-13 runner is being
+          # deprecated and its queue capacity is unreliable (15+ min waits
+          # with no runner assignment observed on 2026-05-17).
+          - os: macos-14
             target: bun-darwin-x64
             slug: darwin-x64
             ext: ''
@@ -138,7 +144,22 @@ jobs:
         run: |
           cd packages/md-claude-${{ matrix.slug }}
           npm config set //registry.npmjs.org/:_authToken "$NODE_AUTH_TOKEN"
-          npm publish --access public --provenance
+          # Idempotent: if the version is already published (e.g. a retry of
+          # a partial release run), treat 409 as success. Any other error
+          # still fails the matrix cell.
+          set +e
+          OUTPUT=$(npm publish --access public --provenance 2>&1)
+          STATUS=$?
+          set -e
+          echo "$OUTPUT"
+          if [ $STATUS -ne 0 ]; then
+            if echo "$OUTPUT" | grep -qE "(EPUBLISHCONFLICT|cannot publish over|previous version|previously published)"; then
+              VER=$(node -p "require('./package.json').version")
+              echo "::notice::@1agh/md-claude-${{ matrix.slug }}@${VER} already published — treating as success"
+              exit 0
+            fi
+            exit $STATUS
+          fi
 
       - name: Dry-run sub-package
         if: github.event_name == 'workflow_dispatch' && inputs.dry-run == true
@@ -197,7 +218,21 @@ jobs:
         if: github.event_name == 'push' || inputs.dry-run != true
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public --provenance
+        # Idempotent: see sub-package publish above for rationale.
+        run: |
+          set +e
+          OUTPUT=$(npm publish --access public --provenance 2>&1)
+          STATUS=$?
+          set -e
+          echo "$OUTPUT"
+          if [ $STATUS -ne 0 ]; then
+            if echo "$OUTPUT" | grep -qE "(EPUBLISHCONFLICT|cannot publish over|previous version|previously published)"; then
+              VER=$(node -p "require('./package.json').version")
+              echo "::notice::@1agh/md-claude@${VER} already published — treating as success"
+              exit 0
+            fi
+            exit $STATUS
+          fi
 
       - name: Dry-run main tarball
         if: github.event_name == 'workflow_dispatch' && inputs.dry-run == true
