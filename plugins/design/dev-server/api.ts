@@ -256,17 +256,81 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
 
   async function buildIndexData() {
     const groups = [];
+
+    // PROJECT — top-level .design/ files (README.md, INDEX.md, config.json, …).
+    // These are non-HTML so they're listed but not openable in the iframe; the
+    // sidebar can still display them as context (mirrors CV-08 mock).
+    const projectFiles: string[] = [];
+    try {
+      const entries = await readdir(paths.designRoot, { withFileTypes: true });
+      entries.sort((a, b) => a.name.localeCompare(b.name));
+      for (const e of entries) {
+        if (!e.isFile()) continue;
+        if (e.name.startsWith('_')) continue;
+        if (e.name.startsWith('.')) continue;
+        if (!/\.(md|json|txt|yml|yaml|css)$/i.test(e.name)) continue;
+        projectFiles.push(path.posix.join(paths.designRel, e.name));
+      }
+    } catch {}
+    if (projectFiles.length) {
+      groups.push({
+        label: 'Project',
+        paths: projectFiles,
+        fullPath: paths.designRel,
+        // Strip only the leading slash — keep `.design/...` so the tree
+        // renders `▾ .design` as the parent dir per CV-08 mock.
+        stripPrefix: '',
+        kind: 'project' as const,
+      });
+    }
+
+    // Canvas groups — strip just `.design/` so the immediate subdir
+    // (`system`, `ui`, …) shows up as a dir wrapper in the tree (mirrors
+    // CV-08's `▾ ui` / `▾ system/project` headers).
+    //
+    // For DS groups (label === 'Design system' OR path starts with `system`)
+    // we also include sibling .md / .css / .json so README, SKILL, and the
+    // tokens CSS file render in the tree per CV-08 mock. Inert at click time
+    // (FileRow non-HTML branch).
     for (const g of cfg.canvasGroups) {
       const groupAbs = path.join(paths.designRoot, g.path);
       const groupRel = path.posix.join(paths.designRel, g.path);
-      const filePaths = await findHtmlFiles(groupAbs, groupRel);
+      const isDs = g.label === 'Design system' || /^system(\/|$)/.test(g.path);
+      const filePaths = isDs
+        ? await findFiles(groupAbs, groupRel, ['.html', '.md', '.css', '.json'])
+        : await findHtmlFiles(groupAbs, groupRel);
       groups.push({
         label: g.label,
         paths: filePaths,
         fullPath: groupRel,
-        stripPrefix: groupRel + '/',
+        stripPrefix: paths.designRel + '/',
+        kind: 'canvas' as const,
       });
     }
+
+    // RUNTIME — gitignored state files (_active.json, _server.json) +
+    // pointers to _history/ and _comments/ dirs. Visible but inert in the
+    // sidebar; matches the CV-08 mock's bottom section.
+    const runtimeFiles: string[] = [];
+    try {
+      const entries = await readdir(paths.designRoot, { withFileTypes: true });
+      entries.sort((a, b) => a.name.localeCompare(b.name));
+      for (const e of entries) {
+        if (!e.name.startsWith('_')) continue;
+        runtimeFiles.push(path.posix.join(paths.designRel, e.name));
+      }
+    } catch {}
+    if (runtimeFiles.length) {
+      groups.push({
+        label: 'Runtime',
+        paths: runtimeFiles,
+        fullPath: paths.designRel,
+        // Same as PROJECT — keep `.design/` so the tree shows the parent dir.
+        stripPrefix: '',
+        kind: 'runtime' as const,
+      });
+    }
+
     return {
       project: cfg.name,
       projectLabel: ctx.projectLabel,

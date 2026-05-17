@@ -8,6 +8,9 @@ import { createRoot } from 'react-dom/client';
 
 const SYSTEM_TAB = '__system__';
 const THEME_STORE = 'mdcc-theme';
+// Bun's `define` substitutes this at build time (see build.ts); falls back when
+// the bundle is consumed in a context that hasn't run the build.
+const MDCC_VERSION = typeof __MDCC_VERSION__ !== 'undefined' ? __MDCC_VERSION__ : 'dev';
 
 function readInitialTheme() {
   if (typeof window === 'undefined') return 'dark';
@@ -110,70 +113,154 @@ function Icon({ d, size = 14, color }) {
   );
 }
 
-function Tree({ node, activePath, onOpen, commentsByFile, depth = 0 }) {
-  const dirs = Object.keys(node).filter(k => k !== '_files').sort();
+// ───── Tree (CV-08 spec) ─────
+// File rows use `.tp-row` with optional .dir / .sel / .star / .modified
+// modifiers + a leading `.glyph` (▾ open dir, ▸ closed dir / selected file,
+// · file). Section headers use `.tp-section-hd` with a `.pill` counter.
+// The flat-row model (vs the old nested <details>) mirrors the mock and
+// keeps padding-left under explicit control per depth level.
+
+const TREE_INDENT_BASE = 12;
+const TREE_INDENT_STEP = 16;
+
+function DirRow({ name, depth, defaultOpen, children }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <Fragment>
-      {dirs.map(d => (
-        <details key={d} open={depth < 2}>
-          <summary>{d}</summary>
-          <Tree node={node[d]} activePath={activePath} onOpen={onOpen} commentsByFile={commentsByFile} depth={depth + 1} />
-        </details>
-      ))}
-      {node._files && (
-        <ul className="tree-files">
-          {[...node._files].sort((a, b) => a.name.localeCompare(b.name)).map(f => {
-            const oc = openCount(commentsByFile[f.path]);
-            return (
-              <li key={f.path}>
-                <button
-                  className={'tree-file' + (f.path === activePath ? ' active' : '')}
-                  title={f.path + (oc ? ` — ${oc} open comment${oc === 1 ? '' : 's'}` : '')}
-                  onClick={() => onOpen(f.path)}
-                >
-                  <span className="tf-name">{f.name}</span>
-                  {oc > 0 && <span className="tf-badge">{oc}</span>}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+      <button
+        type="button"
+        role="treeitem"
+        aria-expanded={open}
+        tabIndex={-1}
+        className="tp-row dir"
+        style={{ paddingLeft: TREE_INDENT_BASE + depth * TREE_INDENT_STEP + 'px' }}
+        onClick={() => setOpen(v => !v)}
+      >
+        <span className="glyph" aria-hidden="true">{open ? '▾' : '▸'}</span>
+        <span className="name">{name}</span>
+      </button>
+      {open && children}
     </Fragment>
   );
 }
 
-function Sidebar({ groups, activePath, onOpen, onOpenSystem, wsConnected, project, search, setSearch, commentsByFile }) {
+function FileRow({ file, activePath, onOpen, openCount: oc, depth, kind }) {
+  const isSel = file.path === activePath;
+  const isHtml = /\.html?$/i.test(file.name);
+  // Non-HTML rows (PROJECT *.md, RUNTIME _active.json, ...) are display-only —
+  // clicking them doesn't open an iframe; we leave the click as no-op + cursor
+  // hint via `aria-disabled`.
+  const inert = !isHtml;
+  return (
+    <button
+      type="button"
+      role="treeitem"
+      aria-selected={isSel}
+      aria-disabled={inert ? 'true' : undefined}
+      tabIndex={isSel ? 0 : -1}
+      className={'tp-row' + (isSel ? ' sel' : '') + (kind === 'runtime' ? ' muted' : '')}
+      style={{ paddingLeft: TREE_INDENT_BASE + depth * TREE_INDENT_STEP + 'px' }}
+      title={file.path + (oc ? ` — ${oc} open` : (inert ? ' (file index only)' : ''))}
+      onClick={() => { if (!inert) onOpen(file.path); }}
+    >
+      <span className="glyph" aria-hidden="true">{isSel ? '▸' : '·'}</span>
+      <span className="name">{file.name}</span>
+      {oc > 0 && <span className="badge">{oc}</span>}
+    </button>
+  );
+}
+
+function Tree({ node, activePath, onOpen, commentsByFile, depth = 1, kind }) {
+  const dirs = Object.keys(node).filter(k => k !== '_files').sort();
+  // CV-08 ordering: files at this level FIRST, then sub-dirs. Lets
+  // `system/project/README.md` show up before `system/project/preview/…`.
+  return (
+    <Fragment>
+      {node._files && [...node._files].sort((a, b) => a.name.localeCompare(b.name)).map(f => (
+        <FileRow
+          key={f.path}
+          file={f}
+          activePath={activePath}
+          onOpen={onOpen}
+          openCount={openCount(commentsByFile[f.path])}
+          depth={depth}
+          kind={kind}
+        />
+      ))}
+      {dirs.map(d => (
+        <DirRow key={d} name={d} depth={depth} defaultOpen={true}>
+          <Tree
+            node={node[d]}
+            activePath={activePath}
+            onOpen={onOpen}
+            commentsByFile={commentsByFile}
+            depth={depth + 1}
+            kind={kind}
+          />
+        </DirRow>
+      ))}
+    </Fragment>
+  );
+}
+
+// CV-08 section labels — title + optional SKU pill. The pill carries
+// project / DS identity; the mock keeps these tight (1 line). Labels are
+// keyed by the server-provided `kind` (PROJECT / DS / UI / RUNTIME).
+const SECTION_META = {
+  project:  { title: 'PROJECT',                pillFromCount: false },
+  // Design-system group: the kind for any group whose label is "Design system"
+  // is set on the server; pill carries the DS code.
+  ds:       { title: 'DESIGN SYSTEM ·',        pill: 'MDCC-DSN/01' },
+  canvas:   { title: 'UI CANVASES',            pillFromCount: true },
+  runtime:  { title: 'RUNTIME · GITIGNORED',   pillFromCount: true },
+};
+
+function sectionMetaFor(g) {
+  if (g.kind === 'project') return SECTION_META.project;
+  if (g.kind === 'runtime') return SECTION_META.runtime;
+  // canvas-kind groups: "Design system" → ds, anything else → canvas label
+  if (g.label === 'Design system') return SECTION_META.ds;
+  if (g.label === 'UI kit')        return SECTION_META.canvas;
+  return { title: g.label.toUpperCase(), pillFromCount: true };
+}
+
+function Sidebar({ groups, activePath, onOpen, onOpenSystem, wsConnected, search, setSearch, commentsByFile }) {
   const filteredGroups = useMemo(() => {
     if (!search) return groups;
     return groups.map(g => ({ ...g, tree: filterTree(g.tree, search), filtered: !!search }));
   }, [groups, search]);
 
+  // Mock uses `42 / 42` — total openable canvases, not every listed file.
+  // We count only HTML files so the counter matches "canvases you can mount".
+  const htmlCount = useMemo(() => {
+    let total = 0;
+    for (const g of groups) for (const p of g.paths || []) if (/\.html?$/i.test(p)) total++;
+    return total;
+  }, [groups]);
+  const htmlShown = useMemo(() => {
+    let total = 0;
+    for (const g of filteredGroups) for (const p of g.paths || []) if (/\.html?$/i.test(p)) total++;
+    return total;
+  }, [filteredGroups]);
+
   return (
     <nav className="sidebar">
-      <div className="brand">
-        <div className="brand-mark">{(project || 'D')[0].toUpperCase()}</div>
-        <div className="brand-title">{project || 'Design'}</div>
-        <div className={'brand-status' + (wsConnected ? ' connected' : '')} title={wsConnected ? 'WebSocket connected' : 'WebSocket disconnected'}/>
+      <div className="tree-panel-hd">
+        <span>FILES</span>
+        <span className="ct" title={wsConnected ? 'live · file index synced' : 'reconnecting…'}>
+          <span className={'live-dot' + (wsConnected ? ' connected' : '')} aria-hidden="true" />
+          {htmlShown} / {htmlCount}
+        </span>
       </div>
 
-      <button
-        className={'system-link' + (activePath === SYSTEM_TAB ? ' active' : '')}
-        onClick={onOpenSystem}
-        title="View the project's design system on a single page"
-      >
-        <span className="sl-glyph">▦</span>
-        <span className="sl-label">Design system</span>
-        <span className="sl-arrow">→</span>
-      </button>
-
-      <div className="search">
+      <div className="tree-panel-search">
         <Icon d="M21 21l-4.35-4.35 M11 19a8 8 0 100-16 8 8 0 000 16z" size={12} />
         <input
-          type="text"
-          placeholder="filter…"
+          type="search"
+          placeholder="filter (⌘F)"
           value={search}
           onChange={e => setSearch(e.target.value)}
+          aria-label="Filter files"
         />
         {search ? (
           <button className="search-clear" onClick={() => setSearch('')} title="Clear (Esc)" aria-label="Clear search">×</button>
@@ -182,34 +269,80 @@ function Sidebar({ groups, activePath, onOpen, onOpenSystem, wsConnected, projec
         )}
       </div>
 
-      <div className="tree">
-        {filteredGroups.map(g => (
-          <section className="tree-section" key={g.label}>
-            <h2 className="tree-h2">
-              {g.label}
-              <span className="count">{g.paths.length}</span>
-            </h2>
-            {g.tree ? (
-              <Tree node={g.tree} activePath={activePath} onOpen={onOpen} commentsByFile={commentsByFile} />
-            ) : g.paths.length === 0 ? (
-              <p className="tree-empty">No HTML in <code>{g.fullPath}</code>.</p>
-            ) : search ? (
-              <p className="tree-empty">No matches.</p>
-            ) : null}
-          </section>
-        ))}
+      <div className="tree-panel-body" role="tree" aria-label="Project file tree">
+        {filteredGroups.map(g => {
+          const meta = sectionMetaFor(g);
+          const pill = meta.pill || (meta.pillFromCount ? String(g.paths?.length || 0) : null);
+          const hasItems = g.tree && Object.keys(g.tree).length > 0;
+          // DS section is clickable — opens the SystemView (the whole-DS
+          // entry point that used to live as a promoted button at the top).
+          const isDs = g.label === 'Design system';
+          const dsActive = isDs && activePath === SYSTEM_TAB;
+          return (
+            <Fragment key={g.label}>
+              {isDs ? (
+                <button
+                  type="button"
+                  className={'tp-section-hd clickable' + (dsActive ? ' active' : '')}
+                  onClick={onOpenSystem}
+                  title="Open the design system view"
+                >
+                  <span>{meta.title}</span>
+                  {pill && <span className="pill">{pill}</span>}
+                </button>
+              ) : (
+                <div className="tp-section-hd">
+                  <span>{meta.title}</span>
+                  {pill && <span className="pill">{pill}</span>}
+                </div>
+              )}
+              {hasItems ? (
+                <Tree
+                  node={g.tree}
+                  activePath={activePath}
+                  onOpen={onOpen}
+                  commentsByFile={commentsByFile}
+                  depth={1}
+                  kind={g.kind}
+                />
+              ) : (
+                <div className="tp-empty">
+                  {search ? 'No matches.' : 'Empty.'}
+                </div>
+              )}
+            </Fragment>
+          );
+        })}
       </div>
-
-      <Cheatsheet />
     </nav>
   );
 }
 
-function Cheatsheet() {
+// Help modal — hosts the cheatsheet that used to live in the left sidebar.
+// Triggered from the menubar's Help item. Esc + backdrop click close it.
+function HelpModal({ open, onClose }) {
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+  if (!open) return null;
   return (
-    <div className="cheatsheet">
-      <details open>
-        <summary>Element selection</summary>
+    <div
+      className="help-modal-backdrop"
+      role="presentation"
+      onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="help-modal" role="dialog" aria-modal="true" aria-labelledby="help-modal-title">
+        <header className="help-modal-hd">
+          <span className="title" id="help-modal-title">Help · shortcuts &amp; commands</span>
+          <span className="sku">MDCC-DEV-SRV / v{MDCC_VERSION}</span>
+          <button type="button" className="help-modal-close" aria-label="Close (Esc)" onClick={onClose}>×</button>
+        </header>
+        <div className="help-modal-body">
+          <details open>
+            <summary>Element selection</summary>
         <ul>
           <li><kbd>⌘</kbd> + hover <span>highlight</span></li>
           <li><kbd>⌘</kbd> + click <span>select</span></li>
@@ -279,41 +412,167 @@ function Cheatsheet() {
           <li>Reload iframe (<kbd>⌘R</kbd>)</li>
         </ol>
       </details>
-      <details>
-        <summary>Comments</summary>
-        <ol>
-          <li><kbd>⌘</kbd>+click element, then <kbd>⌘C</kbd> <span>or ⌘⇧+click</span></li>
-          <li>Numbered pin appears on canvas</li>
-          <li><kbd>⌘⇧M</kbd> <span>opens panel — All / Open / Resolved</span></li>
-          <li>Click row in panel <span>jumps to that file + pin</span></li>
-          <li>Claude reads <code>_comments/&lt;slug&gt;.json</code> on next <code>/design</code></li>
-        </ol>
-      </details>
+          <details>
+            <summary>Comments</summary>
+            <ol>
+              <li><kbd>⌘</kbd>+click element, then <kbd>⌘C</kbd> <span>or ⌘⇧+click</span></li>
+              <li>Numbered pin appears on canvas</li>
+              <li><kbd>⌘⇧M</kbd> <span>opens panel — All / Open / Resolved</span></li>
+              <li>Click row in panel <span>jumps to that file + pin</span></li>
+              <li>Claude reads <code>_comments/&lt;slug&gt;.json</code> on next <code>/design</code></li>
+            </ol>
+          </details>
+        </div>
+      </div>
     </div>
   );
 }
 
-function Tabs({ tabs, activePath, onActivate, onClose }) {
+// ───────── Menubar (CV-01/CV-08 top chrome) ─────────
+//
+// Replaces the legacy `.header` action-button toolbar. Mirrors the shared
+// Menubar component from .design/ui/Canvas Viewport.html — brand · menus ·
+// status. View dropdown is wired to the only toggleable panel today (the
+// Comments sidebar); the rest is inert with a phase-tag explaining when it
+// lands.
+
+const MENU_NAMES = ['File', 'Edit', 'View', 'Selection', 'Tools', 'Help'];
+
+function ViewDropdown({ panels, onToggle, onClose }) {
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    function onDocClick(e) {
+      if (!e.target.closest('.mb-dropdown, .mb-menu')) onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('mousedown', onDocClick);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('mousedown', onDocClick);
+    };
+  }, [onClose]);
+
   return (
-    <div className="tabs">
-      {tabs.map(t => (
-        <div
-          key={t.path}
-          className={'tab' + (t.path === activePath ? ' active' : '') + (t.path === SYSTEM_TAB ? ' tab-system' : '')}
-          title={t.path === SYSTEM_TAB ? 'Design system overview' : t.path}
-          onClick={e => {
-            if (e.target.classList.contains('close')) {
-              onClose(t.path);
-              return;
-            }
-            onActivate(t.path);
-          }}
+    <div className="mb-dropdown" role="menu" aria-label="View" style={{ left: '146px' }}>
+      <div className="mb-dd-hd">Panels</div>
+      {panels.map(p => (
+        <button
+          key={p.id}
+          type="button"
+          role="menuitem"
+          className={'mb-dd-item' + (p.checked ? ' active' : '')}
+          aria-disabled={p.disabled ? 'true' : undefined}
+          onClick={() => { if (!p.disabled) { onToggle(p.id); onClose(); } }}
         >
-          <span className="name">{t.path === SYSTEM_TAB ? '▦ Design system' : basename(t.path)}</span>
-          <button className="close" title="Close">×</button>
-        </div>
+          <span className="lbl">
+            <span className="check">{p.checked ? '✓' : ''}</span>
+            <span>{p.label}</span>
+          </span>
+          {p.phase
+            ? <span className="phase-tag">{p.phase}</span>
+            : <span className="shortcut">{p.shortcut || ''}</span>}
+        </button>
+      ))}
+      <div className="mb-dd-sep" />
+      <div className="mb-dd-hd">Zoom</div>
+      {[
+        { label: 'Zoom In',       shortcut: '⌘ +' },
+        { label: 'Zoom Out',      shortcut: '⌘ −' },
+        { label: 'Fit to Screen', shortcut: '⌘ 0' },
+        { label: 'Actual Size · 100 %', shortcut: '⌥ ⌘ 0' },
+      ].map(z => (
+        <button
+          key={z.label}
+          type="button"
+          role="menuitem"
+          className="mb-dd-item"
+          aria-disabled="true"
+        >
+          <span className="lbl"><span className="check" /><span>{z.label}</span></span>
+          <span className="phase-tag">Phase 4</span>
+        </button>
       ))}
     </div>
+  );
+}
+
+function Menubar({ activePath, project, tabsCount, openMenu, setOpenMenu, commentsPanelOpen, onToggleComments, onOpenSystem, sidebarOpen, onToggleSidebar, onOpenHelp }) {
+  const isSystem = activePath === SYSTEM_TAB;
+  const stamp = isSystem ? 'SYSTEM' : (activePath ? 'CANVAS' : 'IDLE');
+  const fileLabel = isSystem
+    ? <b>design system</b>
+    : (activePath ? <>{activePath.split('/').slice(0, -1).join('/')}/<b>{basename(activePath)}</b></> : <span style={{ color: 'var(--u-fg-3)' }}>no canvas open</span>);
+
+  const panels = [
+    { id: 'tree',     label: 'Project Tree',         shortcut: 'T',     checked: sidebarOpen,        disabled: false },
+    { id: 'comments', label: 'Comments Sidebar',     shortcut: '⌘ ⇧ M', checked: commentsPanelOpen,  disabled: false },
+    { id: 'system',   label: 'Design system view',   shortcut: 'S',     checked: isSystem,           disabled: false },
+    { id: 'layers',     label: 'Layers Panel',       phase: 'Phase 12', disabled: true },
+    { id: 'inspector',  label: 'Inspector',          phase: 'Phase 12', disabled: true },
+    { id: 'annotate',   label: 'Annotations',        phase: 'Phase 5',  disabled: true },
+    { id: 'present',    label: 'Presentation Mode',  phase: 'Phase 6',  disabled: true },
+  ];
+
+  function onMenuClick(key) {
+    if (key === 'view') {
+      setOpenMenu(openMenu === key ? null : key);
+    } else if (key === 'help') {
+      setOpenMenu(null);
+      onOpenHelp();
+    }
+  }
+
+  return (
+    <header className="mb" role="menubar" aria-label="Application menubar">
+      <span className="mb-brand">
+        <span className="dot" aria-hidden="true" />
+        <span>mdcc</span>
+      </span>
+      <nav className="mb-menus" aria-label="Application menus">
+        {MENU_NAMES.map(name => {
+          const key = name.toLowerCase();
+          const interactive = key === 'view' || key === 'help';
+          const open = openMenu === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              className="mb-menu"
+              role="menuitem"
+              aria-haspopup={key === 'view' ? 'menu' : undefined}
+              aria-expanded={key === 'view' ? open : undefined}
+              aria-disabled={interactive ? undefined : 'true'}
+              title={interactive ? '' : 'Coming in a later phase'}
+              onClick={() => onMenuClick(key)}
+            >
+              {name}
+            </button>
+          );
+        })}
+      </nav>
+      {openMenu === 'view' && (
+        <ViewDropdown
+          panels={panels}
+          onToggle={id => {
+            if (id === 'tree') onToggleSidebar();
+            else if (id === 'comments') onToggleComments();
+            else if (id === 'system') onOpenSystem();
+          }}
+          onClose={() => setOpenMenu(null)}
+        />
+      )}
+      <div className="mb-spacer" />
+      <div className="mb-status">
+        <span className="cv-stamp">{stamp}</span>
+        <span className="file" title={activePath || ''}>{fileLabel}</span>
+        <span className="sep" />
+        <span><span className="accent-dot">●</span> <b>{tabsCount}</b> ARTBOARDS</span>
+        <span className="sep" />
+        <span title="Pan/zoom in Phase 4">ZOOM <b>100%</b></span>
+        <span className="sep" />
+        <span className="ok"><b>{project || 'MDCC'}</b></span>
+      </div>
+    </header>
   );
 }
 
@@ -337,22 +596,48 @@ function ThemeToggle({ theme, onToggle }) {
   );
 }
 
-function Viewport({ tabs, activePath, registerIframe, systemData, onOpenFromSystem }) {
+function Wordmark({ project, port, version }) {
+  return (
+    <div className="wm" aria-label="mdcc design server">
+      <span className="wm-glyph">mdcc-design-server</span>
+      <span className="wm-sub">
+        <span>CANVAS · {(project || 'MDCC').toUpperCase()}</span>
+        <span className="wm-sep">/</span>
+        <b>v{version}</b>
+        <span className="wm-sep">/</span>
+        <span>localhost:{port || '4399'}</span>
+      </span>
+    </div>
+  );
+}
+
+function SelectionHalo() {
+  // Accent 2 px outline + 4 corner ticks around the active iframe (the artboard
+  // frame). Element-level overlay is Phase 4 territory — it needs world-coord
+  // projection, which doesn't exist yet.
+  return <div className="sel-halo" aria-hidden="true"><i /></div>;
+}
+
+function Viewport({ tabs, activePath, registerIframe, systemData, onOpenFromSystem, project, selected }) {
+  const showHalo = selected && activePath && activePath !== SYSTEM_TAB;
   return (
     <div className="viewport">
       {tabs.length === 0 && (
-        <div className="empty-state">
-          <div className="big">No mock open</div>
-          <div className="small">
-            ← Click a <code>.html</code> file in the tree, or open the <strong>Design system</strong> view above it.
-            <br /><br />
-            Tabs work like in an editor — close with the × on each tab. <kbd>⌘R</kbd> reloads the active iframe.
-            <br /><br />
-            <strong>Element selection:</strong> hold <kbd>⌘</kbd> inside the canvas and hover. <kbd>⌘</kbd>+click selects, <kbd>⌘⇧</kbd>+click adds a comment.
-            <br /><br />
-            Active file, selection, and comments are tracked in <code>_active.json</code> + <code>_comments/</code> — Claude reads them when you run <code>/design</code>.
+        <>
+          <Wordmark project={project} port={typeof window !== 'undefined' ? window.location.port : ''} version={MDCC_VERSION} />
+          <div className="empty-state">
+            <div className="big">No mock open</div>
+            <div className="small">
+              ← Click a <code>.html</code> file in the tree, or open the <strong>Design system</strong> view above it.
+              <br /><br />
+              Tabs work like in an editor — close with the × on each tab. <kbd>⌘R</kbd> reloads the active iframe.
+              <br /><br />
+              <strong>Element selection:</strong> hold <kbd>⌘</kbd> inside the canvas and hover. <kbd>⌘</kbd>+click selects, <kbd>⌘⇧</kbd>+click adds a comment.
+              <br /><br />
+              Active file, selection, and comments are tracked in <code>_active.json</code> + <code>_comments/</code> — Claude reads them when you run <code>/design</code>.
+            </div>
           </div>
-        </div>
+        </>
       )}
       {tabs.map(t => {
         if (t.path === SYSTEM_TAB) {
@@ -372,6 +657,7 @@ function Viewport({ tabs, activePath, registerIframe, systemData, onOpenFromSyst
           />
         );
       })}
+      {showHalo && <SelectionHalo />}
     </div>
   );
 }
@@ -721,6 +1007,9 @@ function App() {
   const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
   const [commentsFilter, setCommentsFilter] = useState('open');   // 'all' | 'open' | 'resolved'
   const [theme, setTheme] = useState(readInitialTheme);
+  const [openMenu, setOpenMenu] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [helpOpen, setHelpOpen] = useState(false);
   const wsRef = useRef(null);
   const iframesRef = useRef(new Map());
 
@@ -812,9 +1101,17 @@ function App() {
     try { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); } catch {}
   }
 
-  // ----- Tab management -----
+  // ----- Tab management (single-canvas) -----
+  // Single-canvas model: opening a file REPLACES the active one (no tab strip).
+  // The `tabs` state stays as a 0-or-1 array so the rest of the plumbing
+  // (iframesRef, comments push, WS `tabs` message) doesn't need refactoring.
+  // ARTBOARDS slot in the menubar reads `tabs.length` and reports 0 or 1.
   const openTab = useCallback((path) => {
-    setTabs(prev => prev.find(t => t.path === path) ? prev : [...prev, { path }]);
+    setTabs(prev => {
+      // Drop the previously-open iframe so we don't leak DOM nodes.
+      for (const t of prev) if (t.path !== path) iframesRef.current.delete(t.path);
+      return [{ path }];
+    });
     setActivePath(path);
     setFocusedCommentId(null);
     setDraft(null);
@@ -1029,11 +1326,43 @@ function App() {
         // No selection — fall through so browser's normal copy still works
       }
       if (inEditable) return;
-      // / — focus search
+      // / — focus search (or ⌘F per CV-08 placeholder hint)
       if (e.key === '/') {
         e.preventDefault();
-        const inp = document.querySelector('.search input');
+        const inp = document.querySelector('.tree-panel-search input');
         if (inp) inp.focus();
+        return;
+      }
+      if (meta && (e.key === 'f' || e.key === 'F')) {
+        e.preventDefault();
+        if (!sidebarOpen) setSidebarOpen(true);
+        setTimeout(() => {
+          const inp = document.querySelector('.tree-panel-search input');
+          if (inp) inp.focus();
+        }, 0);
+        return;
+      }
+      // T — toggle Project Tree (sidebar)
+      if (e.key === 't' || e.key === 'T') {
+        if (e.shiftKey || meta) return;
+        e.preventDefault();
+        setSidebarOpen(v => !v);
+        return;
+      }
+      // S — toggle Design system view
+      if ((e.key === 's' || e.key === 'S') && !meta && !e.shiftKey) {
+        e.preventDefault();
+        if (activePath === SYSTEM_TAB) {
+          closeTab(SYSTEM_TAB);
+        } else {
+          openSystem();
+        }
+        return;
+      }
+      // ? or F1 — open Help modal
+      if (e.key === '?' || e.key === 'F1') {
+        e.preventDefault();
+        setHelpOpen(true);
         return;
       }
       // Esc — close composer (in addition to its own textarea handler) or clear focused pin
@@ -1044,7 +1373,7 @@ function App() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [reloadActive, selected, activePath, startDraftFromSelection, draft, focusedCommentId]);
+  }, [reloadActive, selected, activePath, startDraftFromSelection, draft, focusedCommentId, sidebarOpen, openSystem, closeTab]);
 
   const registerIframe = useCallback((path, el) => {
     if (el) iframesRef.current.set(path, el);
@@ -1054,52 +1383,39 @@ function App() {
   const totalOpen = totalCounts(commentsByFile).open;
 
   return (
-    <div className={'app' + (commentsPanelOpen ? ' with-rsidebar' : '')}>
+    <div className={'app' + (commentsPanelOpen ? ' with-rsidebar' : '') + (sidebarOpen ? '' : ' no-sidebar')}>
       <Sidebar
         groups={groups}
         activePath={activePath}
         onOpen={openTab}
         onOpenSystem={openSystem}
         wsConnected={wsConnected}
-        project={project}
         search={search}
         setSearch={setSearch}
         commentsByFile={commentsByFile}
       />
       <div className="main">
-        <header className="header">
-          <Tabs tabs={tabs} activePath={activePath} onActivate={setActivePath} onClose={closeTab} />
-          <div className="actions">
-            <button type="button" title="Re-scan disk for new HTML files" onClick={reloadTree}>
-              <Icon d="M21 12a9 9 0 0 0-15-6.7L3 8 M3 4v4h4 M3 12a9 9 0 0 0 15 6.7L21 16 M21 20v-4h-4" size={12} />
-              <span>tree</span>
-            </button>
-            <button type="button" title="Reload active iframe (⌘R)" onClick={reloadActive}>
-              <Icon d="M21 12a9 9 0 0 0-15-6.7L3 8 M3 4v4h4 M3 12a9 9 0 0 0 15 6.7L21 16 M21 20v-4h-4" size={12} />
-              <span>active</span>
-            </button>
-            <button
-              type="button"
-              className={'rs-toggle' + (commentsPanelOpen ? ' active' : '')}
-              onClick={() => setCommentsPanelOpen(v => !v)}
-              title="Toggle Comments panel (⌘⇧M)"
-            >
-              <Icon d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" size={12} />
-              <span>comments</span>
-              {totalOpen > 0 && <span className="rs-badge">{totalOpen}</span>}
-            </button>
-            <a className="icon-only" target="_blank" rel="noreferrer" href={activePath && activePath !== SYSTEM_TAB ? urlOf(activePath) : '#'} title="Open in system browser">
-              <Icon d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6 M15 3h6v6 M10 14L21 3" size={12} />
-              <span>open</span>
-            </a>
-          </div>
-        </header>
+        <Menubar
+          activePath={activePath}
+          project={project}
+          tabsCount={tabs.length}
+          openMenu={openMenu}
+          setOpenMenu={setOpenMenu}
+          commentsPanelOpen={commentsPanelOpen}
+          onToggleComments={() => setCommentsPanelOpen(v => !v)}
+          onOpenSystem={openSystem}
+          sidebarOpen={sidebarOpen}
+          onToggleSidebar={() => setSidebarOpen(v => !v)}
+          onOpenHelp={() => setHelpOpen(true)}
+        />
         <Viewport
           tabs={tabs}
           activePath={activePath}
           registerIframe={registerIframe}
           systemData={systemData}
           onOpenFromSystem={openTab}
+          project={project}
+          selected={selected}
         />
         {activePath && activePath !== SYSTEM_TAB && (
           <CommentBar
@@ -1142,6 +1458,7 @@ function App() {
           onDelete={deleteComment}
         />
       )}
+      <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }

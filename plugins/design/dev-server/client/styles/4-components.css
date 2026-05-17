@@ -947,4 +947,168 @@
   background: var(--u-accent-bg);
   color: var(--u-accent);
 }
+
+/* ----- Help modal -----
+   Hosts the cheatsheet that used to live in the left sidebar. Hard-edge card
+   + offset shadow per project DS — no blur, no scrim alpha higher than the
+   page bg already provides. */
+.help-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in oklch, var(--u-bg-0) 70%, transparent);
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: var(--u-s-4);
+}
+.help-modal {
+  background: var(--u-bg-1);
+  border: 1px solid var(--u-fg-0);
+  box-shadow: 8px 8px 0 var(--u-fg-0);
+  width: min(720px, 100%);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--u-font-mono);
+}
+.help-modal-hd {
+  padding: var(--u-s-3) var(--u-s-4);
+  border-bottom: 1px solid var(--u-fg-0);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--u-bg-2);
+}
+.help-modal-hd .title {
+  font-weight: 700;
+  letter-spacing: var(--tracking-sku);
+  text-transform: uppercase;
+  font-size: var(--type-xs);
+  color: var(--u-fg-0);
+}
+.help-modal-hd .sku {
+  font-size: 10px;
+  letter-spacing: var(--tracking-sku);
+  color: var(--u-fg-2);
+  text-transform: uppercase;
+}
+.help-modal-close {
+  background: transparent;
+  border: 1px solid var(--u-border);
+  color: var(--u-fg-1);
+  cursor: pointer;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  line-height: 1;
+  font-family: var(--u-font-mono);
+}
+.help-modal-close:hover { background: var(--u-bg-3); color: var(--u-fg-0); border-color: var(--u-border-strong); }
+.help-modal-close:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.help-modal-body {
+  padding: var(--u-s-3) var(--u-s-4);
+  overflow-y: auto;
+  font-size: var(--type-xs);
+  color: var(--u-fg-1);
+}
+.help-modal-body::-webkit-scrollbar { width: 6px; }
+.help-modal-body::-webkit-scrollbar-thumb { background: var(--u-border); }
+.help-modal-body details {
+  margin: 0 0 var(--u-s-2);
+  border-bottom: 1px solid var(--u-border-subtle);
+  padding-bottom: var(--u-s-2);
+}
+.help-modal-body details:last-child { border-bottom: 0; }
+.help-modal-body details > summary {
+  cursor: pointer;
+  padding: var(--u-s-2) 0;
+  font-weight: 700;
+  letter-spacing: var(--tracking-sku);
+  text-transform: uppercase;
+  font-size: 11px;
+  color: var(--u-fg-0);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: var(--u-s-2);
+}
+.help-modal-body details > summary::-webkit-details-marker { display: none; }
+.help-modal-body details > summary::before {
+  content: "▸";
+  color: var(--u-fg-2);
+  font-size: 10px;
+  width: 12px;
+}
+.help-modal-body details[open] > summary::before { content: "▾"; }
+.help-modal-body ul,
+.help-modal-body ol {
+  margin: 0;
+  padding: 0 0 var(--u-s-2) var(--u-s-4);
+  list-style: none;
+  font-size: 11px;
+  line-height: 1.7;
+}
+.help-modal-body li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--u-s-2);
+  padding: 2px 0;
+}
+.help-modal-body li > span {
+  color: var(--u-fg-3);
+  font-size: 10px;
+  margin-left: auto;
+  text-align: right;
+}
+.help-modal-body kbd {
+  font-family: var(--u-font-mono);
+  font-size: 10px;
+  background: var(--u-bg-2);
+  border: 1px solid var(--u-border);
+  padding: 1px 5px;
+  color: var(--u-fg-0);
+}
+.help-modal-body code {
+  font-family: var(--u-font-mono);
+  font-size: 10px;
+  color: var(--u-accent);
+  background: var(--u-accent-bg);
+  padding: 1px 4px;
+}
+.help-modal-body code i { font-style: normal; color: var(--u-fg-2); }
+.help-modal-body ul.cmds li,
+.help-modal-body ul.files li {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.help-modal-body ul.cmds li > span,
+.help-modal-body ul.files li > span {
+  margin-left: 0;
+  text-align: left;
+}
+
+/* ----- Tree section header (clickable variant for DS row) ----- */
+.tp-section-hd.clickable {
+  cursor: pointer;
+  user-select: none;
+  background: transparent;
+  border: 0;
+  width: 100%;
+  text-align: left;
+  font-family: var(--u-font-mono);
+  transition: background var(--dur-flip) var(--ease-out);
+}
+.tp-section-hd.clickable:hover { background: var(--u-bg-2); }
+.tp-section-hd.clickable:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.tp-section-hd.clickable.active {
+  background: var(--u-accent-bg);
+  color: var(--u-fg-0);
+}
+.tp-section-hd.clickable.active .pill {
+  border-color: var(--u-accent);
+  color: var(--u-accent);
+}
 }

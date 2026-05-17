@@ -67,6 +67,8 @@ function ensureDist() {
 async function buildClient(): Promise<{ outBytes: number; outPath: string }> {
   ensureDist();
   const outPath = join(DIST, 'client.bundle.js');
+  // Read package.json version at build time for the wordmark sub-line.
+  const pkg = JSON.parse(await Bun.file(join(ROOT, '..', '..', '..', 'package.json')).text());
   const result = await Bun.build({
     entrypoints: [join(ROOT, 'client/app.jsx')],
     outdir: DIST,
@@ -82,6 +84,7 @@ async function buildClient(): Promise<{ outBytes: number; outPath: string }> {
     sourcemap: MODE === 'dev' ? 'inline' : 'none',
     define: {
       'process.env.NODE_ENV': JSON.stringify(MODE === 'release' ? 'production' : 'development'),
+      __MDCC_VERSION__: JSON.stringify(pkg.version),
     },
   });
   if (!result.success) {
