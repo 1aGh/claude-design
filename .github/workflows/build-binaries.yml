@@ -41,12 +41,10 @@ jobs:
             slug: linux-arm64
             ext: ''
           - os: ubuntu-22.04
-            container: alpine:3.20
             target: bun-linux-x64-musl
             slug: linux-x64-musl
             ext: ''
           - os: ubuntu-22.04-arm
-            container: alpine:3.20
             target: bun-linux-arm64-musl
             slug: linux-arm64-musl
             ext: ''
@@ -54,17 +52,18 @@ jobs:
             target: bun-windows-x64
             slug: win32-x64
             ext: '.exe'
+    # musl targets are cross-compiled from regular glibc ubuntu runners via
+    # `bun build --compile --target=bun-linux-*-musl` — bun produces statically
+    # linked binaries that don't depend on the host's libc. Previously we ran
+    # inside an `alpine:3.20` container, but GitHub Actions can't run JS-based
+    # actions (actions/checkout, setup-bun) inside alpine on arm64 runners
+    # ("JavaScript Actions in Alpine containers are only supported on x64 Linux
+    # runners").
     runs-on: ${{ matrix.os }}
-    container: ${{ matrix.container || '' }}
     permissions:
       contents: write
       id-token: write
     steps:
-      - name: Alpine prerequisites
-        if: matrix.container == 'alpine:3.20'
-        run: |
-          apk add --no-cache bash curl git nodejs npm libstdc++ libgcc unzip
-
       - uses: actions/checkout@v6
         with:
           fetch-depth: 1
@@ -150,7 +149,14 @@ jobs:
           cache: pnpm
 
       - name: Install
-        run: pnpm install --frozen-lockfile
+        # --no-frozen-lockfile: optionalDependencies on the freshly-published
+        # @1agh/md-claude-<slug>@$VER packages only resolve after the matrix
+        # above pushes them to npm. A frozen lockfile cannot enumerate
+        # specifiers that didn't exist when the lockfile was last written.
+        # The release tag is the integrity boundary; quality.yml runs against
+        # the same `--no-frozen-lockfile` (lockfile is still respected when
+        # entries are present).
+        run: pnpm install --no-frozen-lockfile
 
       - name: Verify version parity
         run: bash scripts/check-version-parity.sh

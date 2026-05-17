@@ -25,7 +25,12 @@ jobs:
           cache: pnpm
 
       - name: Install
-        run: pnpm install --frozen-lockfile
+        # See build-binaries.yml `Install` step for rationale: the per-platform
+        # @1agh/md-claude-<slug> packages are an optionalDependencies pattern
+        # that bootstraps through release time, so the lockfile cannot
+        # enumerate all 7 specifiers between releases. Lockfile is still
+        # respected when entries are present.
+        run: pnpm install --no-frozen-lockfile
 
       - name: Lint (biome)
         run: pnpm lint

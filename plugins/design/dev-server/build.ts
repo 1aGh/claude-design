@@ -46,7 +46,10 @@ const PLATFORM_MATRIX = [
 type PlatformTarget = (typeof PLATFORM_MATRIX)[number];
 
 function platformSlug(target: PlatformTarget): string {
-  return target.replace(/^bun-/, '');
+  // bun calls Windows "windows"; npm and process.platform call it "win32".
+  // Sub-package directories + the build-binaries.yml matrix slug use win32-x64.
+  const s = target.replace(/^bun-/, '');
+  return s === 'windows-x64' ? 'win32-x64' : s;
 }
 
 function currentTarget(): PlatformTarget {
