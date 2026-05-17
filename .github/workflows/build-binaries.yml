@@ -195,6 +195,14 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           cache: pnpm
 
+      - name: Install Bun
+        # `pnpm build` recurses into plugins/design/dev-server, whose build
+        # script invokes `bun run build.ts`. Without Bun on PATH the step
+        # fails with `sh: 1: bun: not found`.
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.x'
+
       - name: Install
         # --no-frozen-lockfile: optionalDependencies on the freshly-published
         # @1agh/md-claude-<slug>@$VER packages only resolve after the matrix
