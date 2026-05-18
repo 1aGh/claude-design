@@ -3,12 +3,85 @@
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
 **Workflow:** feature-delivery — md-claude v1.0 roadmap
-**Phase:** Phase 3.6 — canvas TSX format (Tasks 0–6 of 12 landed; Tasks 7–12 carry to next session)
-**Status:** in-progress
+**Phase:** Phase 3.6.1 — canvas envelope hygiene + reusable canvas-lib + HMR + DS specimens
+**Status:** planned (awaiting `/flow:execute`)
 **Started:** 2026-05-12
 **Updated:** 2026-05-18
-**Active task:** Phase 3.6 Tasks 7–12 (handoff.ts shadcn registry-item.json, codemod migrate-canvases.ts, sweep .html → .tsx refs across commands/skills, schema updates, e2e regression, AI-handoff polish)
-**Active plan:** `.ai/plans/phase-3.6-canvas-tsx-format.md`
+**Active task:** Phase 3.6 CLOSED (shipped with documented runtime follow-up); Phase 3.6.1 plan committed and ready to execute
+**Active plan:** `.ai/plans/phase-3.6.1-canvas-envelope-and-ds-specimens.md`
+
+## Phase 3.6 close-out note (2026-05-18)
+
+Phase 3.6 (canvas TSX format) **shipped** with all 12 tasks marked complete + 95 tests green + handoff CLI end-to-end-verified. Acceptance criteria as written were met. Runtime hygiene gaps surfaced when the user opened the migrated canvases in the dev-server:
+
+- `Docs Site.tsx` + `Canvas Viewport.tsx` white-page at runtime — codemod produced JSX that referenced `<DesignCanvas>`/`<DCSection>`/`<DCArtboard>` but didn't define them (originals relied on babel-runtime window globals). Build + tests pass; runtime fails.
+- `Smoke TSX.tsx` lacks the canvas envelope (was a foundation-slice mount fixture, never upgraded).
+- DS specimens left as `.html` (Plan Task 9 explicitly skip-listed them) breaks the plug-and-play promise — inspector select + `/design:edit` don't work on specimens.
+- HMR was never wired (carries from runtime slice).
+
+3.6 acceptance criteria didn't require "renders without console errors" — only "transpile + build". That gap caused the disconnect. 3.6.1 plan adds that gate + introduces a project-owned `@mdcc/canvas-lib` shared library (resolved virtually, inlined on handoff) + wires HMR + flips DS specimens to TSX.
+
+Closing 3.6 as **shipped + documented**; 3.6.1 is the follow-up.
+
+## Execution Progress — phase-3.6-canvas-tsx-format (closing slice, 2026-05-18)
+
+Tasks 7–12 of 12 landed in this session — canvas TSX format is feature-complete from the dev-server through to /design:handoff registry-item drop.
+
+- ✅ Task 7: `handoff.ts` + `bin/handoff.sh` + rewritten `/design:handoff` command. Emits `<Slug>.registry.json` per [shadcn registry-item schema](https://ui.shadcn.com/schema/registry-item.json). `stripDataCdId()` AST-removes the pipeline scaffolding from the dropped TSX. `classifyImports()` separates npm specs from `@/components/ui/*` registry deps via `Bun.Transpiler.scanImports()`. React + ReactDOM forced into the dep floor (DDR-012). 14 new tests in `test/handoff.test.ts`.
+
+- ✅ Task 8: `scripts/migrate-canvases.ts` codemod + one-shot run. `Docs Site.html` (1909 LOC, 74 KB) → `Docs Site.tsx` (48 KB) + `Docs Site.css` (30 KB) + meta-injected `css_mode: "inline"` + `data_cd_id_version: 1` + auto-generated JSDoc header (Task 12a baked in). `Canvas Viewport.html` (3076 LOC) → equivalent triplet. Originals archived under `_history/_migration-2026-05-15/ui/`. Both migrated canvases parse cleanly via `canvas-pipeline.ts` (locator counts: 722 + 1070 elements) and round-trip through `canvas-build.ts` (browser-loadable ESM, 156 KB + 244 KB respectively). React.useEffect ⇒ bare `useEffect` import rewrite handled.
+
+- ✅ Task 9: `.html → .tsx` sweep across `plugins/design/commands/*` + `plugins/design/skills/*` (excluding intentional preview-specimen + `_shell.html` references). `new.md` scan recipes now match `\( -name "*.tsx" -o -name "*.html" \)` so the grace-window keeps working. `edit.md` Failure modes accept both extensions. `skills/design/SKILL.md` + `skills/ui-kit/SKILL.md` describe TSX-first canvas layout.
+
+- ✅ Task 10 + 12d: schema additions. `canvas-meta.schema.json` gained `css_mode` enum (`inline | tailwind | modules`), `data_cd_id_version` integer, `ai_context` object (`pinned_decisions[]`, `known_quirks[]`, `why_this_exists`). `config.schema.json.handoffTargets` documents `registry:item` magic-path. `.design/config.json.handoffTargets` populated with the shadcn-registry entry.
+
+- ✅ Task 11: smoke + regression. `test/phase-3.6-smoke.test.ts` exercises the migrated `Docs Site.tsx` + `Canvas Viewport.tsx` end-to-end (transpile → build → emit registry-item, all in one suite). Skips cleanly on fresh checkouts via `existsSync` guard. Real CLI run produces `Docs Site.registry.json`: 57 KB, 3 files (component 45 KB no `data-cd-id`, style 3 KB subset of `_components.css`, theme 2 KB of touched tokens), 30 cssVars surfaced.
+
+- ✅ Task 12: AI-handoff polish.
+  - 12a — `canvas-header.ts` JSDoc projector module. Idempotent block-comment overwrite via `applyHeaderToSource()`; surfaces `ai_context.why_this_exists` → `@notes`, `pinned_decisions[]` → `@decision`, `known_quirks[]` → `@quirk`. CLI entry for `/design:edit` to shell out. 8 new tests in `test/canvas-header.test.ts`. JSDoc generation is also baked into Task 8's codemod (every migrated canvas already ships a header).
+  - 12b — `_components.css` + token bundling in `handoff.ts`. AST-scan canvas TSX for every `className` literal (covers string concats, template-literal quasis, ternaries via generic-recurse). `filterComponentsCss()` keeps rules whose first class is in the harvested set, including BEM-modifier derivatives (`.btn--ghost` rides along when `btn` is referenced). `filterTokensCss()` plucks only the `var(--*)` references the kept CSS touches. Emitted as `files[1]: registry:style` + `files[2]: registry:theme` + `cssVars.theme`.
+  - 12c — `/design:edit` Step 1.5 added. Auto-loads `_components.css` + `colors_and_type.css` into orchestrator context BEFORE dispatching to frontend-design, gated on `css_mode === "inline"` + (style-verb-in-feedback OR `selected.v === 2`). Bounded cost (~6 KB CSS context) vs. the unbounded "Claude re-grep'd mid-edit" round-trip.
+  - 12d — `ai_context` schema field (combined with Task 10).
+
+**Phase 3.6 acceptance gates verified this session:**
+- `bun test` — **95 pass / 0 fail** across 16 files (up from 83 at session start; +12 new tests).
+- `bun tsc --noEmit` — clean for new files; only pre-existing `api.ts(457,25)+(458,24)` errors remain (confirmed unchanged).
+- End-to-end CLI run: `bin/handoff.sh "Docs Site.tsx" .design` exits 0, emits valid `<Slug>.registry.json` (schema URL matches, `dependencies` floor present, `files[0].content` has zero `data-cd-id` occurrences).
+- Pipeline round-trip on migrated canvases: `Docs Site.tsx` and `Canvas Viewport.tsx` both transpile + build cleanly; locator cardinality non-trivially populated (722 + 1070 entries).
+
+**Deps added this session:** none. (`oxc-parser` + `magic-string` already present from foundation slice; `lightningcss` already in devDeps from Phase 3.4.)
+
+**Files added (Phase 3.6 closing slice):**
+
+- ADDED: `plugins/design/dev-server/handoff.ts` (~480 LOC) — registry-item emitter + CSS bundling
+- ADDED: `plugins/design/dev-server/canvas-header.ts` (~130 LOC) — JSDoc projector
+- ADDED: `plugins/design/dev-server/bin/handoff.sh` — orchestrator shell-out
+- ADDED: `plugins/design/dev-server/test/handoff.test.ts` (14 tests)
+- ADDED: `plugins/design/dev-server/test/canvas-header.test.ts` (8 tests)
+- ADDED: `plugins/design/dev-server/test/phase-3.6-smoke.test.ts` (4 tests — repo-canvas regression)
+- ADDED: `scripts/migrate-canvases.ts` (~330 LOC) — one-shot HTML→TSX codemod
+- ADDED: `.design/ui/Docs Site.tsx` + `.css` (migrated)
+- ADDED: `.design/ui/Canvas Viewport.tsx` + `.css` (migrated)
+- ADDED: `.design/ui/Docs Site.registry.json` (sample handoff emit — gitignored? user picks)
+- ADDED: `.design/_history/_migration-2026-05-15/ui/Docs Site.html` (archived)
+- ADDED: `.design/_history/_migration-2026-05-15/ui/Canvas Viewport.html` (archived)
+- MODIFIED: `plugins/design/dev-server/canvas-meta.schema.json` — `css_mode`, `data_cd_id_version`, `ai_context`
+- MODIFIED: `plugins/design/dev-server/config.schema.json` — `handoffTargets[].path` documents `registry:item`
+- MODIFIED: `.design/config.json` — `handoffTargets[0]` populated
+- MODIFIED: `.design/ui/Docs Site.meta.json` + `Canvas Viewport.meta.json` — `css_mode: "inline"` + `data_cd_id_version: 1`
+- MODIFIED: `plugins/design/commands/handoff.md` — rewritten for shadcn registry-item flow
+- MODIFIED: `plugins/design/commands/edit.md` — Step 1.5 DS-context auto-load + Failure-modes ext check
+- MODIFIED: `plugins/design/commands/new.md` — TSX-first default + tsx|html scan recipes
+- MODIFIED: `plugins/design/commands/setup-docs.md` — TSX-aware inventory + tree diagram
+- MODIFIED: `plugins/design/skills/design/SKILL.md` — TSX paths in active/comments/new
+- MODIFIED: `plugins/design/skills/ui-kit/SKILL.md` — TSX canvas layout + inline frame primitives
+
+**Out-of-scope / carries forward:**
+
+- Performance budget gates from the plan (cold-load < 250 ms, transform < 8 ms p50, HMR < 100 ms, token cost < 30 %) — not measured this session. Bench harness in `test/perf-harness.ts` exists; full sampling against the migrated canvases is a `/done` follow-up.
+- HMR — still not wired (carries from runtime slice).
+- DDR-017 numbering — the plan calls for DDR-017 but the foundation slice picked DDR-019 (017 + 018 already taken). DDR-019 is the source of truth.
+- `Docs Site.registry.json` was emitted as a smoke test; user should decide whether to commit it as an example or gitignore it.
 
 ## Execution Progress — phase-3.6-canvas-tsx-format (runtime slice, 2026-05-18)
 

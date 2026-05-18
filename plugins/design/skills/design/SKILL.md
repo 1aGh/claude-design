@@ -109,10 +109,10 @@ Diagnostic goes to stderr (`✓ server alive pid=… port=…` / `→ starting d
 ```jsonc
 // <designRoot>/_active.json
 {
-  "active": "<designRoot>/ui/project/<File>.html",
-  "open_tabs": ["<designRoot>/ui/project/<File>.html"],
+  "active": "<designRoot>/ui/project/<File>.tsx",
+  "open_tabs": ["<designRoot>/ui/project/<File>.tsx"],
   "selected": {
-    "file": "<designRoot>/ui/project/<File>.html",
+    "file": "<designRoot>/ui/project/<File>.tsx",
     "selector": "body.<rootClass> > div.frame > section.card:nth-child(3) > div.row:nth-child(2)",
     "tag": "div",
     "classes": "row example-row",
@@ -142,7 +142,7 @@ The dev-server UI lets the user drop comments on individual elements (Cmd+Shift+
 [
   {
     "id": "c_<6 hex bytes>",
-    "file": "<designRoot>/ui/<Canvas>.html",
+    "file": "<designRoot>/ui/<Canvas>.tsx",
     "selector": "body.<rootClass> > main > section.card:nth-child(3) > h2.title",
     "dom_path": ["body.<rootClass>", "main", "section.card:nth-child(3)", "h2.title"],
     "tag": "h2",
@@ -287,13 +287,13 @@ Use the Edit tool with `old_string` matching a unique substring of the selected 
 
 ### `/design:new <name> "<brief>"` — scaffold new canvas project
 
-Creates a brand-new HTML canvas file in `<designRoot>/<newCanvasDir>/<Name>.html` (or `<newComponentDir>/<Name>.jsx` if the user explicitly says component). Generated via the `frontend-design` Skill (preferred) or the orchestrator's direct authoring (documented fallback) — see "Generation invocation" in Cross-skill calls.
+Creates a brand-new TSX canvas file in `<designRoot>/<newCanvasDir>/<Name>.tsx` (or `<newComponentDir>/<Name>.tsx` if the user explicitly says component). Phase 3.6+ default; legacy `.html` canvases keep rendering during the codemod grace window. Generated via the `frontend-design` Skill (preferred) or the orchestrator's direct authoring (documented fallback) — see "Generation invocation" in Cross-skill calls.
 
 **The new file MUST be a multi-artboard canvas project**, not a single-page wrapper. It uses the `DesignCanvas` + `DCSection` + `DCArtboard` pattern (see existing examples in `<designRoot>/ui/`) so multiple screens live in one panable canvas. A bare single-page wrapper is an anti-pattern unless the user explicitly says so.
 
 1. Validate `<name>`:
-   - For canvas project: title-case with optional spaces (`Match Recap`, `Scout Radar`). File: `<Name>.html`.
-   - For shared component: PascalCase (`MatchRecap`). File: `<newComponentDir>/<Name>.jsx`.
+   - For canvas project: title-case with optional spaces (`Match Recap`, `Scout Radar`). File: `<Name>.tsx`.
+   - For shared component: PascalCase (`MatchRecap`). File: `<newComponentDir>/<Name>.tsx`.
 2. Reject if file already exists. Suggest `<Name> v2`.
 3. **Build the envelope** following "Envelope discipline" — creative brief, not wireframe spec. Include the aspiration directives 9–14 verbatim. Reference at least one existing canvas as wrapper pattern.
 4. **Generate** via the preferred path; fall back transparently if the Skill is unavailable. Always note which path was taken in the final report.
@@ -789,7 +789,7 @@ Generative skills (frontend-design, design-system) produce best work when given 
 
 ✅ **DO:**
 - Set the vibe ("studio-grade onboarding, light theme, breathable, editorial")
-- Reference 1–2 existing canvases ("look at `<Mobile.html>` for the bezel pattern, `<Studio.html>` for grid")
+- Reference 1–2 existing canvases ("look at `<Mobile.tsx>` for the bezel pattern, `<Studio.tsx>` for grid")
 - List 2–3 hard requirements (tokens link, body class, artboard count target)
 - State the **aspiration directives 9–14 verbatim** — those are non-negotiable quality drivers
 - Identify ONE signature moment intent per screen if the brief implies it ("welcome must have a memorable compositional anchor")

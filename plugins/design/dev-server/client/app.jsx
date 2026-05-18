@@ -167,11 +167,11 @@ function DirRow({ name, depth, defaultOpen, children }) {
 
 function FileRow({ file, activePath, onOpen, openCount: oc, depth, kind }) {
   const isSel = file.path === activePath;
-  const isHtml = /\.html?$/i.test(file.name);
-  // Non-HTML rows (PROJECT *.md, RUNTIME _active.json, ...) are display-only —
+  const isCanvas = /\.(tsx|html?)$/i.test(file.name);
+  // Non-canvas rows (PROJECT *.md, RUNTIME _active.json, ...) are display-only —
   // clicking them doesn't open an iframe; we leave the click as no-op + cursor
   // hint via `aria-disabled`.
-  const inert = !isHtml;
+  const inert = !isCanvas;
   return (
     <button
       type="button"
@@ -252,15 +252,16 @@ function Sidebar({ groups, activePath, onOpen, onOpenSystem, wsConnected, search
   }, [groups, search]);
 
   // Mock uses `42 / 42` — total openable canvases, not every listed file.
-  // We count only HTML files so the counter matches "canvases you can mount".
+  // We count canvas files (TSX Phase 3.6+ default, HTML legacy) so the counter
+  // matches "canvases you can mount".
   const htmlCount = useMemo(() => {
     let total = 0;
-    for (const g of groups) for (const p of g.paths || []) if (/\.html?$/i.test(p)) total++;
+    for (const g of groups) for (const p of g.paths || []) if (/\.(tsx|html?)$/i.test(p)) total++;
     return total;
   }, [groups]);
   const htmlShown = useMemo(() => {
     let total = 0;
-    for (const g of filteredGroups) for (const p of g.paths || []) if (/\.html?$/i.test(p)) total++;
+    for (const g of filteredGroups) for (const p of g.paths || []) if (/\.(tsx|html?)$/i.test(p)) total++;
     return total;
   }, [filteredGroups]);
 
@@ -649,7 +650,7 @@ function Viewport({ tabs, activePath, registerIframe, systemData, onOpenFromSyst
           <div className="empty-state">
             <div className="big">No mock open</div>
             <div className="small">
-              ← Click a <code>.html</code> file in the tree, or open the <strong>Design system</strong> view above it.
+              ← Click a <code>.tsx</code> (or legacy <code>.html</code>) file in the tree, or open the <strong>Design system</strong> view above it.
               <br /><br />
               Tabs work like in an editor — close with the × on each tab. <kbd>⌘R</kbd> reloads the active iframe.
               <br /><br />

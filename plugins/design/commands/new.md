@@ -7,7 +7,7 @@ argument-hint: "<Name> \"<brief>\" [--component] [--mobile] [--quick | --no-crit
 
 # /design:new — scaffold nový canvas projekt
 
-Vytvoří **nový multi-artboard canvas soubor** v `<designRoot>/<newCanvasDir>/<Name>.html` přes `frontend-design` plugin. Generic envelope se adaptuje podle `<repo>/.design/config.json` (rootClass, themeDefault, tokensCssRel, …).
+Vytvoří **nový multi-artboard canvas soubor** v `<designRoot>/<newCanvasDir>/<Name>.tsx` (Phase 3.6+ TSX default; legacy `.html` canvases lze stále číst a editovat během grace window) přes `frontend-design` plugin. Generic envelope se adaptuje podle `<repo>/.design/config.json` (rootClass, themeDefault, tokensCssRel, …).
 
 **Canvas projekt = `DesignCanvas` + jedna nebo více `DCSection` + jeden nebo více `DCArtboard`** (panable / zoomable infinite-canvas pattern). Single-page wrapper je anti-pattern; nový screen patří jako další `DCArtboard` do existujícího canvasu (přes `/design:edit "<add new artboard for X>"` ne přes `/design:new`).
 
@@ -224,11 +224,13 @@ Adaptuj generic envelope ze SKILL.md "Generation envelope" s konkrétními confi
 ```bash
 # Existing canvases in this DS — same dir as the target, .meta.json.designSystem matches.
 PRIORS_DIR="$DESIGN_ROOT/$NEW_CANVAS_DIR"
-PRIOR_CANVASES=$(find "$PRIORS_DIR" -maxdepth 2 -name "*.html" -not -name "$(basename "$TARGET_PATH")")
+PRIOR_CANVASES=$(find "$PRIORS_DIR" -maxdepth 2 \( -name "*.tsx" -o -name "*.html" \) -not -name "$(basename "$TARGET_PATH")")
 
 PRIORS_LIST=""
 for c in $PRIOR_CANVASES; do
-  META="$(dirname "$c")/$(basename "$c" .html).meta.json"
+  STEM="$(basename "$c")"
+  STEM="${STEM%.*}"
+  META="$(dirname "$c")/${STEM}.meta.json"
   # Filter to canvases in the same DS (multi-DS aware). Single-DS layouts have no
   # designSystem field on the meta — accept those too (treat as same DS).
   CANVAS_DS=$(jq -r '.designSystem // "project"' "$META" 2>/dev/null || echo "project")
@@ -285,10 +287,10 @@ For any compositional element (card, panel, snippet, toolbar, sidebar, modal, bu
 The `design-system-keeper` agent (step 9.5) audits compliance with this directive after generation. Surfaced reinventions feed into the critic panel as additional context.
 
 ### Existing canvases (same DS, with class roots)
-<for each .html in <DESIGN_ROOT>/<NEW_CANVAS_DIR>/ matching this DS, NOT the new canvas — see step 5 collection recipe>
+<for each .tsx or .html in <DESIGN_ROOT>/<NEW_CANVAS_DIR>/ matching this DS, NOT the new canvas — see step 5 collection recipe>
 - <path> (<.meta.json.subtitle>) — class roots: <comma-separated list extracted via the recipe>
 
-### Existing preview components (DS library, with role)
+### Existing preview components (DS library, with role — preview specimens stay .html)
 <for each .html in <DS_ROOT>/preview/components-*.html — see step 5 collection recipe>
 - <filename> — <one-line role from the file's title or first heading>
 
@@ -407,7 +409,7 @@ else
   KEEPER_OUT="$HIST/$N_KEEPER-ds-keeper.md"
 
   # Collect existing canvases in the same DS (excludes the new canvas).
-  EXISTING_JSON=$(find "$DESIGN_ROOT/$NEW_CANVAS_DIR" -maxdepth 2 -name "*.html" \
+  EXISTING_JSON=$(find "$DESIGN_ROOT/$NEW_CANVAS_DIR" -maxdepth 2 \( -name "*.tsx" -o -name "*.html" \) \
                     -not -path "*$TARGET_PATH*" \
                     | jq -R . | jq -sc .)
 fi
@@ -495,7 +497,7 @@ For a new canvas:
 ### 12. Print
 
 ```
-✓ Created: <DESIGN_ROOT>/<NEW_CANVAS_DIR>/<Name>.html
+✓ Created: <DESIGN_ROOT>/<NEW_CANVAS_DIR>/<Name>.tsx
   Pattern: multi-artboard canvas (DesignCanvas + N artboards)
   Sidecar: <DESIGN_ROOT>/<NEW_CANVAS_DIR>/<Name>.meta.json
   Generation: {frontend-design specialist | orchestrator-direct fallback}
@@ -533,7 +535,7 @@ For a new canvas:
 
 ## Failure modes
 
-- **Target file already exists** → preferred: surface AskUserQuestion s 2–3 návrhy alternative name (mechanical `<Name> v2`, plus 1–2 brief-derived semantic alternatives — e.g. pokud existující je `iOS Signup Flow.html` a brief je o scootersharingu, navrhni `Scooter Signup Flow`). Pokud user vybere, použij; pokud zruší, abort.
+- **Target file already exists** → preferred: surface AskUserQuestion s 2–3 návrhy alternative name (mechanical `<Name> v2`, plus 1–2 brief-derived semantic alternatives — e.g. pokud existující je `iOS Signup Flow.tsx` a brief je o scootersharingu, navrhni `Scooter Signup Flow`). Pokud user vybere, použij; pokud zruší, abort.
 - **Target file exists AND AskUserQuestion is denied** (Auto Mode / non-interactive context) → infer the most accurate alternative name from the brief — semantic, ne mechanical `v2`. Document the choice explicitly v final printu (`Filename: <chosen> (auto-picked from brief because <existing> existed)`). Auto Mode authorizes reasonable autonomous decisions; preserving existing files while creating a new one with brief-accurate name je reasonable. Mechanical `v2` suffix je acceptable fallback pokud brief nedává jasný semantic name.
 - **`frontend-design` Skill nedostupný** → **NE fail** — fall back to orchestrator-direct generation (viz krok 6). Final print MUSÍ flagnout `Generation: orchestrator-direct fallback` + suggestion `/plugin install frontend-design@claude-plugins-official` pro lepší kvalitu příští spuštění.
 - **Generated HTML porušuje validaci** (chybí tokens, hardcoded colors, single-page wrapper bez DCArtboard, …) → re-prompt jednou. Pokud zase rozbité, fail s detail.

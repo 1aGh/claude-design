@@ -1,0 +1,616 @@
+// /design:handoff emitter — shadcn registry-item.json sidecar (Phase 3.6 Task 7 + 12b).
+//
+// Walks a canvas TSX file, classifies its imports, strips `data-cd-id` attrs
+// (those are dev-time scaffolding the production drop has no business with),
+// optionally bundles the actually-used subset of `_components.css` +
+// `colors_and_type.css`, and emits a JSON sidecar conforming to
+// https://ui.shadcn.com/schema/registry-item.json.
+//
+// Consumer pattern:
+//   bunx shadcn add file://./<Slug>.registry.json
+//
+// Same oxc-parser + magic-string + lightningcss toolchain as canvas-pipeline.ts
+// and canvas-edit.ts — one mental model, three call sites.
+//
+// Strip semantics (Task 12):
+//   - data-cd-id  → removed (pipeline-emitted; not source)
+//   - JSDoc header → kept (cold-read context for future Claude / human reader)
+//   - inline DesignCanvas/DCSection/DCArtboard chrome → kept as-is; the
+//     consumer's host page wraps or unwraps as needed.
+//
+// CSS bundling (Task 12b):
+//   - Scan canvas TSX for every string literal that appears as a `className`
+//     attribute value. Tokenise on whitespace → set of class names.
+//   - Parse `_components.css` with lightningcss; keep rules whose selector list
+//     contains any selector whose `base class` (the first class segment, after
+//     stripping pseudo + descendant tail) is in the set.
+//   - Walk the kept CSS for `var(--name)` references, intersect with
+//     `colors_and_type.css`, emit only the matched custom properties under
+//     cssVars.theme (the schema's first-class theme-token slot).
+
+import path from 'node:path';
+
+import { parseSync } from 'oxc-parser';
+import MagicString from 'magic-string';
+
+// biome-ignore lint/suspicious/noExplicitAny: oxc AST nodes are heterogeneous.
+type AnyNode = any;
+
+// ---------------------------------------------------------------------------
+// Public types — shaped to match shadcn's registry-item.json schema. Reference:
+//   https://ui.shadcn.com/schema/registry-item.json
+// We don't ship every optional field — only the ones we can produce reliably.
+
+export interface RegistryItemFile {
+  /** Relative path the file should land at in the consumer project. */
+  path: string;
+  /** File contents. */
+  content: string;
+  /** shadcn file-type discriminator. */
+  type:
+    | 'registry:component'
+    | 'registry:block'
+    | 'registry:ui'
+    | 'registry:style'
+    | 'registry:lib'
+    | 'registry:hook'
+    | 'registry:theme';
+  /** Optional override for where the file lands in the consumer project. */
+  target?: string;
+}
+
+export interface RegistryItem {
+  $schema: string;
+  name: string;
+  type: 'registry:block' | 'registry:component' | 'registry:ui';
+  title?: string;
+  description?: string;
+  /** npm package specifiers (e.g. ["react", "lucide-react"]). */
+  dependencies: string[];
+  /** Other registry items this depends on (e.g. ["button", "card"]). */
+  registryDependencies: string[];
+  /** Files to drop. Index 0 is conventionally the entry component. */
+  files: RegistryItemFile[];
+  /** CSS custom properties grouped by theme (light/dark). Empty when no tokens used. */
+  cssVars?: {
+    theme?: Record<string, string>;
+    light?: Record<string, string>;
+    dark?: Record<string, string>;
+  };
+}
+
+export interface EmitOptions {
+  /** Absolute path to canvas .tsx file. */
+  canvasAbsPath: string;
+  /** Pretty title from meta.json (becomes registry item `title`). */
+  title?: string;
+  /** One-line description from meta.json.subtitle (becomes `description`). */
+  description?: string;
+  /** Optional path to project's `_components.css` for CSS bundling (Task 12b). */
+  componentsCssPath?: string;
+  /** Optional path to project's tokens CSS for cssVars resolution (Task 12b). */
+  tokensCssPath?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Strip data-cd-id from source — the inverse of canvas-pipeline.ts pass 1.
+
+/**
+ * Remove every ` data-cd-id="<hex>"` attribute from a TSX source string.
+ * Pure: caller persists. Uses the same oxc-parser + magic-string toolchain as
+ * the pipeline that emitted them.
+ */
+export function stripDataCdId(canvasAbsPath: string, source: string): string {
+  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) {
+    const first = parsed.errors[0];
+    throw new Error(
+      `oxc-parser failed on ${canvasAbsPath} (${parsed.errors.length} errors). First: ${first?.message ?? 'unknown'}`
+    );
+  }
+  const s = new MagicString(source);
+
+  function visit(node: AnyNode): void {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const c of node) visit(c);
+      return;
+    }
+    if (typeof node.type !== 'string') return;
+
+    if (node.type === 'JSXOpeningElement') {
+      const attrs = node.attributes as AnyNode[] | undefined;
+      if (Array.isArray(attrs)) {
+        for (const a of attrs) {
+          if (
+            a?.type === 'JSXAttribute' &&
+            a.name?.type === 'JSXIdentifier' &&
+            a.name.name === 'data-cd-id' &&
+            typeof a.start === 'number' &&
+            typeof a.end === 'number'
+          ) {
+            // Trim the leading whitespace too — author-friendly output.
+            let from = a.start as number;
+            while (from > 0 && /\s/.test(source[from - 1] as string)) from--;
+            s.remove(from, a.end);
+          }
+        }
+      }
+    }
+
+    for (const k of Object.keys(node)) {
+      if (k === 'loc' || k === 'range' || k === 'start' || k === 'end' || k === 'type') continue;
+      visit(node[k]);
+    }
+  }
+
+  visit(parsed.program);
+  return s.toString();
+}
+
+// ---------------------------------------------------------------------------
+// Import classification — npm specifier vs shadcn `@/components/ui/*`.
+
+interface ClassifiedImports {
+  /** npm package names, deduped. */
+  dependencies: string[];
+  /** shadcn primitive names (e.g. `button` from `@/components/ui/button`). */
+  registryDependencies: string[];
+}
+
+/**
+ * Classify import specifiers in a TSX source. Heuristic:
+ *   - `@/components/ui/<name>`     → registry dependency `<name>`
+ *   - bare specifier starting with letter / `@` not in the above pattern
+ *                                  → npm dependency (the package portion)
+ *   - relative imports (`./...`, `../...`) → ignored (consumer ships its own)
+ */
+export function classifyImports(canvasAbsPath: string, source: string): ClassifiedImports {
+  const deps = new Set<string>();
+  const regDeps = new Set<string>();
+
+  // Bun.Transpiler.scanImports() is the documented fast path; pulls every
+  // ImportDeclaration / dynamic import / require call.
+  const scanner = new Bun.Transpiler({ loader: 'tsx' });
+  const imports = scanner.scanImports(source);
+  for (const imp of imports) {
+    const spec = imp.path;
+    if (!spec) continue;
+    if (spec.startsWith('./') || spec.startsWith('../') || spec.startsWith('/')) continue;
+    if (spec.startsWith('@/components/ui/')) {
+      const name = spec.slice('@/components/ui/'.length).split('/')[0];
+      if (name) regDeps.add(name);
+      continue;
+    }
+    deps.add(packageNameOf(spec));
+  }
+
+  void canvasAbsPath;
+  return {
+    dependencies: [...deps].sort(),
+    registryDependencies: [...regDeps].sort(),
+  };
+}
+
+/**
+ * Extract the npm package name from a bare specifier. Handles scoped packages
+ * (`@scope/name`) and subpath imports (`react-dom/client` → `react-dom`).
+ */
+function packageNameOf(spec: string): string {
+  if (spec.startsWith('@')) {
+    const parts = spec.split('/');
+    return parts.length >= 2 ? `${parts[0]}/${parts[1]}` : spec;
+  }
+  const slash = spec.indexOf('/');
+  return slash > 0 ? spec.slice(0, slash) : spec;
+}
+
+// ---------------------------------------------------------------------------
+// className harvester — collect every class name string appearing as a JSX
+// className attribute value (`className="a b"` or `className={'a b'}`).
+
+export function collectClassNames(canvasAbsPath: string, source: string): Set<string> {
+  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+  const out = new Set<string>();
+
+  function pushTokens(str: string): void {
+    for (const tok of str.split(/\s+/)) {
+      if (tok) out.add(tok);
+    }
+  }
+
+  function visit(node: AnyNode): void {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const c of node) visit(c);
+      return;
+    }
+    if (typeof node.type !== 'string') return;
+
+    if (
+      node.type === 'JSXAttribute' &&
+      node.name?.type === 'JSXIdentifier' &&
+      node.name.name === 'className'
+    ) {
+      // Walk the value subtree and harvest every string-literal / template
+      // quasi we find. Covers literal, JSXExpressionContainer(Literal),
+      // TemplateLiteral, BinaryExpression of literals, conditional with
+      // literal branches, clsx/cn calls with literal args, etc.
+      harvestStrings(node.value, pushTokens);
+      return;
+    }
+
+    for (const k of Object.keys(node)) {
+      if (k === 'loc' || k === 'range' || k === 'start' || k === 'end' || k === 'type') continue;
+      visit(node[k]);
+    }
+  }
+
+  visit(parsed.program);
+  return out;
+}
+
+function harvestStrings(node: AnyNode, sink: (s: string) => void): void {
+  if (!node || typeof node !== 'object') return;
+  if (Array.isArray(node)) {
+    for (const c of node) harvestStrings(c, sink);
+    return;
+  }
+  const t = node.type;
+  if (typeof t !== 'string') return;
+  if (t === 'Literal' || t === 'StringLiteral') {
+    if (typeof node.value === 'string') sink(node.value);
+    return;
+  }
+  if (t === 'TemplateLiteral') {
+    for (const q of node.quasis ?? []) {
+      const raw = q?.value?.cooked ?? q?.value?.raw ?? '';
+      if (typeof raw === 'string') sink(raw);
+    }
+    for (const e of node.expressions ?? []) harvestStrings(e, sink);
+    return;
+  }
+  for (const k of Object.keys(node)) {
+    if (k === 'loc' || k === 'range' || k === 'start' || k === 'end' || k === 'type') continue;
+    harvestStrings(node[k], sink);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// CSS subset extraction — keep rules whose base class is in the harvested set,
+// plus the var(--*) references inside those rules.
+
+interface CssBundleResult {
+  /** CSS source containing only used rules. May be empty string. */
+  css: string;
+  /** Names of CSS custom properties referenced by the kept rules. */
+  tokens: Set<string>;
+}
+
+/**
+ * Filter a CSS file to only the rules whose first class selector is in `keep`.
+ * Naive but reliable parser: walks top-level rule blocks via balanced braces.
+ * Avoids pulling lightningcss into the visitor path for the v1 of this feature.
+ */
+export function filterComponentsCss(cssSource: string, keep: Set<string>): CssBundleResult {
+  const out: string[] = [];
+  const tokens = new Set<string>();
+
+  let i = 0;
+  const n = cssSource.length;
+  while (i < n) {
+    // Skip whitespace.
+    while (i < n && /\s/.test(cssSource[i] as string)) i++;
+    if (i >= n) break;
+
+    // Handle comments at top level — preserve them if attached to a kept rule;
+    // for simplicity, drop them all (they're documentation, not necessary).
+    if (cssSource[i] === '/' && cssSource[i + 1] === '*') {
+      const end = cssSource.indexOf('*/', i + 2);
+      i = end < 0 ? n : end + 2;
+      continue;
+    }
+
+    // @-rules: @media { ... }, @keyframes { ... }, etc. Recurse into @media,
+    // emit @keyframes wholesale if any class inside its body is referenced
+    // (animations are class-attached; we keep them when their owning class
+    // survives). Simpler v1: keep every @-rule whose body, when filtered, has
+    // content; emit the filtered body.
+    if (cssSource[i] === '@') {
+      const ruleStart = i;
+      // Find prelude end at next `{` or `;`.
+      let j = i;
+      while (j < n && cssSource[j] !== '{' && cssSource[j] !== ';') j++;
+      if (j >= n) break;
+      if (cssSource[j] === ';') {
+        // Naked @import / @charset / @namespace — drop.
+        i = j + 1;
+        continue;
+      }
+      // Body starts at j. Scan to matching `}`.
+      const bodyEnd = matchBrace(cssSource, j);
+      if (bodyEnd < 0) {
+        i = n;
+        continue;
+      }
+      const prelude = cssSource.slice(ruleStart, j).trim();
+      const body = cssSource.slice(j + 1, bodyEnd);
+      const isKeyframes = /^@(-\w+-)?keyframes\b/.test(prelude);
+      if (isKeyframes) {
+        // Keep keyframes wholesale if its name shows up via animation refs in
+        // the kept ruleset. For v1 we keep all @keyframes; size impact is
+        // small (canvases rarely define many).
+        const block = cssSource.slice(ruleStart, bodyEnd + 1);
+        out.push(block);
+        collectVars(block, tokens);
+        i = bodyEnd + 1;
+        continue;
+      }
+      // Recurse — filter inside @media.
+      const inner = filterComponentsCss(body, keep);
+      if (inner.css.trim().length > 0) {
+        out.push(`${prelude} {\n${inner.css.trimEnd()}\n}`);
+        for (const t of inner.tokens) tokens.add(t);
+      }
+      i = bodyEnd + 1;
+      continue;
+    }
+
+    // Selector rule: read prelude up to `{`.
+    const ruleStart = i;
+    let j = i;
+    while (j < n && cssSource[j] !== '{') j++;
+    if (j >= n) break;
+    const bodyEnd = matchBrace(cssSource, j);
+    if (bodyEnd < 0) break;
+    const prelude = cssSource.slice(ruleStart, j).trim();
+    if (selectorListIntersects(prelude, keep)) {
+      const block = cssSource.slice(ruleStart, bodyEnd + 1);
+      out.push(block);
+      collectVars(block, tokens);
+    }
+    i = bodyEnd + 1;
+  }
+
+  return { css: out.join('\n\n'), tokens };
+}
+
+function matchBrace(s: string, openIdx: number): number {
+  let depth = 0;
+  for (let i = openIdx; i < s.length; i++) {
+    const c = s[i];
+    if (c === '{') depth++;
+    else if (c === '}') {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * True if the comma-separated selector list contains any selector whose
+ * first class segment is in `keep`. Splits on commas at depth 0 (won't fail on
+ * `:is(.a,.b)` and similar but stays naive for v1 — the canvases this serves
+ * don't use complex CSSWG selectors).
+ */
+function selectorListIntersects(prelude: string, keep: Set<string>): boolean {
+  for (const sel of prelude.split(',')) {
+    const cls = firstClass(sel.trim());
+    if (!cls) continue;
+    // Direct hit, or BEM-base hit (.btn--ghost survives when `btn` is kept,
+    // .card__title survives when `card` is kept). Matches author intent —
+    // canvases that already opt into BEM modifiers expect the whole family to
+    // travel with the base class.
+    if (keep.has(cls)) return true;
+    const bem = cls.split(/(?:--|__)/, 1)[0];
+    if (bem && bem !== cls && keep.has(bem)) return true;
+  }
+  return false;
+}
+
+function firstClass(selector: string): string | null {
+  // Scan for `.name` — pick the first one. Stops at descendant combinators.
+  const m = selector.match(/\.([A-Za-z_-][A-Za-z0-9_-]*)/);
+  return m && m[1] ? m[1] : null;
+}
+
+function collectVars(css: string, tokens: Set<string>): void {
+  for (const m of css.matchAll(/var\(\s*(--[A-Za-z0-9_-]+)/g)) {
+    if (m[1]) tokens.add(m[1]);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Token resolution — read `colors_and_type.css`, pluck only the custom
+// properties listed in `tokens`. Output is keyed by token-without-`--`.
+
+export function filterTokensCss(
+  cssSource: string,
+  tokens: Set<string>
+): { theme: Record<string, string>; usedCss: string } {
+  const theme: Record<string, string> = {};
+  // The expectation here is that the tokens CSS declares each `--foo: value;`
+  // inside `:root` or theme-scoped blocks. We keep things simple: regex over
+  // top-level `--name: value;` declarations. Multiple themes get merged into
+  // `theme` (consumer can split later); a richer light/dark scheme is a
+  // later iteration.
+  const re = /(--[A-Za-z0-9_-]+)\s*:\s*([^;]+);/g;
+  const usedDeclarations: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(cssSource)) !== null) {
+    const name = m[1] as string;
+    const value = (m[2] as string).trim();
+    if (tokens.has(name)) {
+      theme[name.slice(2)] = value;
+      usedDeclarations.push(`${name}: ${value};`);
+    }
+  }
+  // Build a minimal :root usedCss block — useful when the consumer wants the
+  // raw declarations rather than the shadcn cssVars sugar.
+  const usedCss = usedDeclarations.length > 0
+    ? `:root {\n  ${usedDeclarations.join('\n  ')}\n}\n`
+    : '';
+  return { theme, usedCss };
+}
+
+// ---------------------------------------------------------------------------
+// Main entry — emit the registry-item.json structure.
+
+export async function emitRegistryItem(opts: EmitOptions): Promise<RegistryItem> {
+  const canvasFile = Bun.file(opts.canvasAbsPath);
+  if (!(await canvasFile.exists())) {
+    throw new Error(`Canvas not found: ${opts.canvasAbsPath}`);
+  }
+  const rawTsx = await canvasFile.text();
+
+  // Strip dev-time scaffolding.
+  const tsx = stripDataCdId(opts.canvasAbsPath, rawTsx);
+
+  // Classify imports.
+  const { dependencies, registryDependencies } = classifyImports(opts.canvasAbsPath, tsx);
+
+  // React + ReactDOM always shipped as runtime deps — the canvas authoring
+  // contract requires React 19 (DDR-012). scanImports already finds `react`
+  // when JSX is present (Bun.Transpiler tracks jsx-runtime usage), but it
+  // doesn't surface react-dom unless explicitly imported. Force-include both.
+  const depSet = new Set(dependencies);
+  depSet.add('react');
+  depSet.add('react-dom');
+  const finalDeps = [...depSet].sort();
+
+  // Compute slug for `name` field — kebab-case of the file stem.
+  const slug = kebabCase(path.basename(opts.canvasAbsPath, path.extname(opts.canvasAbsPath)));
+
+  // Files: index 0 is the canvas TSX (always). 1+ are CSS bundles (optional —
+  // when componentsCssPath / tokensCssPath are passed).
+  const files: RegistryItemFile[] = [
+    {
+      path: `components/${slug}.tsx`,
+      content: tsx,
+      type: 'registry:component',
+    },
+  ];
+
+  let cssVars: RegistryItem['cssVars'] | undefined;
+
+  if (opts.componentsCssPath) {
+    const componentsCss = await Bun.file(opts.componentsCssPath).text().catch(() => '');
+    if (componentsCss) {
+      const classNames = collectClassNames(opts.canvasAbsPath, tsx);
+      const { css, tokens } = filterComponentsCss(componentsCss, classNames);
+      if (css.trim().length > 0) {
+        files.push({
+          path: `styles/${slug}.css`,
+          content: `${css}\n`,
+          type: 'registry:style',
+        });
+      }
+      if (opts.tokensCssPath && tokens.size > 0) {
+        const tokensCss = await Bun.file(opts.tokensCssPath).text().catch(() => '');
+        if (tokensCss) {
+          const { theme, usedCss } = filterTokensCss(tokensCss, tokens);
+          if (Object.keys(theme).length > 0) {
+            cssVars = { theme };
+          }
+          // The consumer will graft cssVars into globals.css via shadcn's CLI;
+          // we also include the raw token block as a fallback for non-shadcn
+          // consumers.
+          if (usedCss.length > 0) {
+            files.push({
+              path: `styles/${slug}.tokens.css`,
+              content: usedCss,
+              type: 'registry:theme',
+            });
+          }
+        }
+      }
+    }
+  }
+
+  const item: RegistryItem = {
+    $schema: 'https://ui.shadcn.com/schema/registry-item.json',
+    name: slug,
+    type: 'registry:block',
+    title: opts.title,
+    description: opts.description,
+    dependencies: finalDeps,
+    registryDependencies,
+    files,
+    ...(cssVars ? { cssVars } : {}),
+  };
+
+  // Drop undefined keys for a clean JSON.
+  if (!item.title) delete (item as Partial<RegistryItem>).title;
+  if (!item.description) delete (item as Partial<RegistryItem>).description;
+
+  return item;
+}
+
+function kebabCase(s: string): string {
+  return s
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/[\s_]+/g, '-')
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+/**
+ * Write the registry-item.json sidecar next to a canvas. Caller picks the
+ * destination path; conventional default is `<canvas-dir>/<Slug>.registry.json`.
+ */
+export async function writeRegistryItem(
+  destPath: string,
+  item: RegistryItem
+): Promise<void> {
+  const json = `${JSON.stringify(item, null, 2)}\n`;
+  const tmp = `${destPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
+  await Bun.write(tmp, json);
+  const { rename } = await import('node:fs/promises');
+  await rename(tmp, destPath);
+}
+
+// ---------------------------------------------------------------------------
+// CLI entry — invoked from bin/handoff.sh (the orchestrator wrapper) when
+// /design:handoff shells out. Keeps Bun-startup costs off the hot path.
+
+if (import.meta.main) {
+  const argv = process.argv.slice(2);
+  if (argv[0] === '--emit' && argv.length >= 2) {
+    const canvas = argv[1] as string;
+    const designRoot = argv[2];
+    const opts: EmitOptions = { canvasAbsPath: canvas };
+    if (designRoot) {
+      opts.componentsCssPath = path.join(designRoot, 'system/project/preview/_components.css');
+      opts.tokensCssPath = path.join(designRoot, 'system/project/colors_and_type.css');
+    }
+    // Try to read meta.json sidecar for title/description.
+    const metaPath = canvas.replace(/\.tsx$/, '.meta.json');
+    try {
+      const metaFile = Bun.file(metaPath);
+      if (await metaFile.exists()) {
+        const meta = (await metaFile.json()) as { title?: string; subtitle?: string };
+        opts.title = meta.title;
+        opts.description = meta.subtitle;
+      }
+    } catch {
+      // ignore — meta is optional
+    }
+    try {
+      const item = await emitRegistryItem(opts);
+      const dest = canvas.replace(/\.tsx$/, '.registry.json');
+      await writeRegistryItem(dest, item);
+      console.log(JSON.stringify({ dest, files: item.files.length, deps: item.dependencies.length }));
+      process.exit(0);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`handoff: ${msg}`);
+      process.exit(2);
+    }
+  } else {
+    console.error('Usage: bun run handoff.ts --emit <canvas-abs-path> [designRoot]');
+    process.exit(2);
+  }
+}

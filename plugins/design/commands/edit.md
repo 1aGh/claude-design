@@ -54,6 +54,56 @@ ROOT_CLASS=$(jq -r '.rootClass // "app"'           "$CFG" 2>/dev/null || echo "a
 TOKENS_REL=$(jq -r '.tokensCssRel // "system/colors_and_type.css"' "$CFG" 2>/dev/null || echo "system/colors_and_type.css")
 ```
 
+### 1.5 Auto-load DS context for inline-mode canvases (Phase 3.6 Task 12c)
+
+When the canvas is `.tsx` + `css_mode: "inline"` AND the feedback is about styling (classes, spacing, colors, borders, radii, …) OR `_active.json.selected.id` is set, **pre-load** the DS's `_components.css` + `colors_and_type.css` into the orchestrator's context BEFORE dispatching to `frontend-design`. Cost: ~6 KB CSS read per qualifying edit; saves the ~30 KB "Claude re-grep'd `_components.css` mid-edit" round-trip that empirically slows token-cheap iteration.
+
+```bash
+# Resolve the active canvas's meta sidecar; bail early on non-tsx, non-inline,
+# or when there's no _components.css to load.
+ABS_ACTIVE="$REPO_ROOT/$DESIGN_ROOT/${ACTIVE#$DESIGN_ROOT/}"
+META_PATH="${ABS_ACTIVE%.*}.meta.json"
+CSS_MODE=$(jq -r '.css_mode // "inline"' "$META_PATH" 2>/dev/null || echo "inline")
+
+LOAD_CSS=0
+# Heuristic — case-insensitive match against style verbs. Bound and conservative;
+# err toward loading when in doubt (~6 KB is cheap).
+case "$ARGUMENTS" in
+  *color*|*COLOR*|*Color*|\
+  *padding*|*PADDING*|*Padding*|\
+  *spacing*|*SPACING*|*Spacing*|\
+  *margin*|*MARGIN*|*Margin*|\
+  *border*|*BORDER*|*Border*|\
+  *radius*|*RADIUS*|*Radius*|\
+  *shadow*|*SHADOW*|*Shadow*|\
+  *background*|*BACKGROUND*|\
+  *className*|*class\ name*|\
+  *font-*|*tracking*|*leading*|\
+  *opacity*|*OPACITY*|\
+  *hover*|*HOVER*|*focus*|*FOCUS*)
+    LOAD_CSS=1
+    ;;
+esac
+
+# Selection-anchored edits also benefit — they're nearly always style/structure.
+if [ "${SEL_VALID:-0}" = "1" ]; then
+  LOAD_CSS=1
+fi
+
+if [ "$LOAD_CSS" = "1" ] && [ "${ACTIVE##*.}" = "tsx" ] && [ "$CSS_MODE" = "inline" ]; then
+  # Use the design system's tokensCssRel + the DS-specific `_components.css`.
+  DS_NAME=$(jq -r '.designSystem // "project"' "$META_PATH" 2>/dev/null || echo "project")
+  DS_PREVIEW_DIR=$(jq -r ".designSystems[] | select(.name==\"$DS_NAME\") | .path" "$CFG" 2>/dev/null || echo "system/$DS_NAME")
+  COMPONENTS_CSS="$REPO_ROOT/$DESIGN_ROOT/$DS_PREVIEW_DIR/preview/_components.css"
+  TOKENS_CSS="$REPO_ROOT/$DESIGN_ROOT/$TOKENS_REL"
+  # Surface paths for the orchestrator to `Read` ahead of dispatch.
+  echo "→ pre-loading DS context: $COMPONENTS_CSS"
+  echo "→ pre-loading DS context: $TOKENS_CSS"
+fi
+```
+
+**What the orchestrator does with those paths:** if `LOAD_CSS=1`, the orchestrator `Read`s both files BEFORE building the prompt for `frontend-design`. The class names in `_components.css` show what's available (`.btn`, `.btn--ghost`, `.tile`, `.sku`, `.seg`, ...), and `colors_and_type.css` shows the token namespace — both seed the LLM with the exact vocabulary the canvas already speaks. For `css_mode: "tailwind"` canvases skip (Tailwind utilities self-describe); for `css_mode: "modules"` load the canvas's `<Slug>.module.css` sidecar instead.
+
 ### 2. Server lifecycle (vždy první)
 
 ```bash
@@ -331,7 +381,7 @@ Failure here is non-fatal — print warning, don't restore the canvas. (User can
 
 - **Server nelze nastartovat (10s timeout)** → fail s `cat $DESIGN_ROOT/_server.log` instrukcí.
 - **`_active.json` chybí / `active = null`** → fail: "Otevři soubor v browser tabu, klikni na něj, pak zkus znovu."
-- **Active path není `.html`** → fail: "Active canvas musí být HTML soubor."
+- **Active path není `.tsx` ani `.html`** → fail: "Active canvas musí být TSX (Phase 3.6+) nebo legacy HTML soubor."
 - **Snapshot fail (no disk / permission)** → refuse, needituj.
 - **Edit poruší tokens link / rootClass / hardcoded colors** → automatic rollback ze snapshotu, report.
 - **Selected element's outerHTML appears multiple times v souboru** → použij dom_path k disambiguaci nebo fail s návrhem zúžit selekci (Cmd+Click konkrétnější dítě).

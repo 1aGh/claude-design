@@ -61,13 +61,13 @@
     },
     "handoffTargets": {
       "type": "array",
-      "description": "Where /design:handoff can migrate canvases to. Empty array disables handoff.",
+      "description": "Where /design:handoff emits target artifacts. Empty array disables handoff. Special `path` values: `registry:item` emits a shadcn registry-item.json sidecar next to the canvas (Phase 3.6 default — consume via `bunx shadcn add file://./<Slug>.registry.json`). Any other path is treated as a repo-relative target dir for legacy direct-migration handoff. Recommended single-entry default: `[{ label: 'shadcn registry', path: 'registry:item', platform: 'web' }]`.",
       "items": {
         "type": "object",
         "required": ["label", "path"],
         "properties": {
           "label": { "type": "string" },
-          "path": { "type": "string", "description": "Repo-relative target dir." },
+          "path": { "type": "string", "description": "`registry:item` for shadcn sidecar emit, or repo-relative target dir for direct migration." },
           "platform": { "type": "string", "enum": ["web", "mobile", "desktop", "other"] }
         },
         "additionalProperties": false
@@ -76,7 +76,7 @@
     },
     "newCanvasDir": {
       "type": "string",
-      "description": "Default folder (under designRoot) where /design:new scaffolds new canvas .html files.",
+      "description": "Default folder (under designRoot) where /design:new scaffolds new canvas .tsx files (Phase 3.6+; older repos may still hold .html canvases pending one-shot migration).",
       "default": "ui"
     },
     "newComponentDir": {

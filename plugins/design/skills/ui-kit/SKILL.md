@@ -10,16 +10,16 @@ This skill is a **thin pointer**. The actual UI-kit content lives under the proj
 ```
 <designRoot>/ui/
   ├── project/
-  │   ├── <ProjectName> Studio.html      # multi-artboard desktop canvas (composer)
-  │   ├── <ProjectName> Mobile.html      # multi-artboard mobile canvas (composer)
-  │   ├── <Other Canvas>.html            # additional canvas projects
-  │   ├── components/*.jsx               # shared desktop components
-  │   └── components/mobile/*.jsx        # shared mobile components
+  │   ├── <ProjectName> Studio.tsx       # multi-artboard desktop canvas (composer; Phase 3.6+ default)
+  │   ├── <ProjectName> Mobile.tsx       # multi-artboard mobile canvas (composer)
+  │   ├── <Other Canvas>.tsx             # additional canvas projects (legacy .html until codemod runs)
+  │   ├── components/*.tsx               # shared desktop components
+  │   └── components/mobile/*.tsx        # shared mobile components
   ├── chats/                             # iteration transcripts per surface (if migrated from Claude Design)
   └── README.md                          # canvas catalog
 ```
 
-The canvas runtime itself (`DesignCanvas`, `DCSection`, `DCArtboard`, `DCPostIt`, `TweaksPanel`, `useTweaks`) is **NOT** copied per-project — it lives in `${CLAUDE_PLUGIN_ROOT}/dev-server/runtime/` and is auto-injected by the dev server into every served HTML. Canvases reference these as window globals after babel compiles them. New canvases must not bundle a local copy.
+Per-canvas TSX files inline lightweight copies of the frame primitives (`DesignCanvas`, `DCSection`, `DCArtboard`) — see `plugins/design/templates/canvas.tsx.template`. This keeps each canvas self-contained for handoff (`/design:handoff` ships them inside the registry-item file with no runtime dep). Heavier ergonomic helpers (`DCPostIt`, `TweaksPanel`, `useTweaks`) are imported from a shared dev-server module when needed. Legacy `.html` canvases still pick up window globals during the 3.6 grace window.
 
 This skill is non-user-invocable. Auto-loads when Claude is doing UI work. The user-facing entry point is the `design` orchestrator skill.
 

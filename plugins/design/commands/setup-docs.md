@@ -42,7 +42,7 @@ TOKENS_REL=$(jq -r '.tokensCssRel' "$CFG")
 
 ### 2. Inventory
 
-For each `*.html` in `<DESIGN_ROOT>/<NEW_CANVAS_DIR>/`:
+For each `*.tsx` (or legacy `*.html`) in `<DESIGN_ROOT>/<NEW_CANVAS_DIR>/`:
 - Read sibling `<Canvas>.meta.json` if exists; otherwise generate stub from filename.
 - Note iteration count from `<DESIGN_ROOT>/_history/<slug>/chat.md` (count `## Iteration` headers).
 - Note latest screenshot path from `<DESIGN_ROOT>/_history/<slug>/screenshots/*.full.png`.
@@ -74,11 +74,12 @@ Template (adapted with project specifics):
 │   │   ├── preview/                    # browsable specimens (color/type/components)
 │   │   └── ui_kits/                    # reference UI compositions
 └── {NEW_CANVAS_DIR}/         # canvas projects (multi-artboard DesignCanvas files)
-    ├── <Canvas-1>.html
+    ├── <Canvas-1>.tsx                  # ← TSX canvas (Phase 3.6+ default)
     ├── <Canvas-1>.meta.json            # ← title / brief / sections / tokens used
-    ├── <Canvas-2>.html
+    ├── <Canvas-1>.css                  # ← optional sibling stylesheet (when css_mode=inline + migrated)
+    ├── <Canvas-2>.tsx
     ├── ...
-    └── components/                     # shared component .jsx files
+    └── components/                     # shared component .tsx files
 ```
 
 The plugin runs a local dev server (`node ${CLAUDE_PLUGIN_ROOT}/dev-server/server.mjs`) that scans this folder, renders canvases in iframes, and tracks the active tab + element selection in `_active.json` (gitignored). Iterations are persisted in `_history/<slug>/` (gitignored): snapshots, critic reports, screenshots, and a chat transcript.
@@ -87,19 +88,19 @@ The plugin runs a local dev server (`node ${CLAUDE_PLUGIN_ROOT}/dev-server/serve
 
 **Read `INDEX.md` first** — it lists every canvas with title, brief, sections, artboards, and which production routes they map to. Pick the canvas matching the work scope.
 
-**Read its iteration transcript next.** Each canvas with iteration history has a chat at `_history/<slug>/chat.md`. The chat shows the back-and-forth between the user and the design assistant — it tells you **what the user actually wants** and **where they landed**. The HTML file is the output, but the chat is where the intent lives. (If `--include-history` was used in a prior export, transcripts may also be at `chats/<slug>.md`.)
+**Read its iteration transcript next.** Each canvas with iteration history has a chat at `_history/<slug>/chat.md`. The chat shows the back-and-forth between the user and the design assistant — it tells you **what the user actually wants** and **where they landed**. The canvas file is the output, but the chat is where the intent lives. (If `--include-history` was used in a prior export, transcripts may also be at `chats/<slug>.md`.)
 
-**Find the canvas's primary HTML and read it top to bottom.** Each canvas project is a multi-artboard `DesignCanvas` HTML file. Then **follow its imports**: open every component file under `components/`, the tokens at `system/{project}/colors_and_type.css`, and the canvas's `.meta.json` sidecar.
+**Find the canvas's primary `.tsx` (or legacy `.html`) and read it top to bottom.** Each canvas project is a multi-artboard `DesignCanvas` file. Then **follow its imports**: open every component file under `components/`, the tokens at `system/{project}/colors_and_type.css`, and the canvas's `.meta.json` sidecar.
 
 **If anything is ambiguous, ask the user to confirm before you start implementing.** It's much cheaper to clarify scope up front than to build the wrong thing.
 
 ## About the design files
 
-The design medium is **HTML/CSS/JS** — these are prototypes, not production code. Your job is to **recreate them pixel-perfectly** in whatever technology the production codebase uses (React, Vue, native, whatever fits). Match the visual output; don't copy the prototype's internal structure unless it happens to fit.
+The design medium is **TSX + CSS** (React 19 source) — these are prototypes, not production code. Your job is to **recreate them pixel-perfectly** in whatever technology the production codebase uses (React, Vue, native, whatever fits). Match the visual output; don't copy the prototype's internal structure unless it happens to fit.
 
 Each canvas is a **multi-artboard `DesignCanvas`** with one or more `DCSection` blocks containing `DCArtboard` instances. Each artboard is a separate screen — you implement them as separate routes / components in production.
 
-**Don't render canvases in a browser or take screenshots unless asked to.** Everything you need (dimensions, colors, layout rules, intended behaviors) is in the source HTML, the `.meta.json` sidecar, and the chat transcript. Read them directly.
+**Don't render canvases in a browser or take screenshots unless asked to.** Everything you need (dimensions, colors, layout rules, intended behaviors) is in the source TSX (legacy: HTML), the `.meta.json` sidecar, and the chat transcript. Read them directly.
 
 ## Hard rules (from {NAME}'s design system)
 
@@ -152,12 +153,12 @@ _Auto-maintained by `/design:setup-docs`. Last updated {ISO}._
 
 | File | Title | Platform | Sections | Artboards | Iter | Last modified |
 |---|---|---|---|---|---|---|
-| {Canvas}.html | {meta.title} | {meta.platform} | {meta.sections.length} | {sum of artboards} | {meta.iteration_count} | {meta.last_modified} |
+| {Canvas}.tsx | {meta.title} | {meta.platform} | {meta.sections.length} | {sum of artboards} | {meta.iteration_count} | {meta.last_modified} |
 | ... |
 
 ## Per-canvas detail
 
-### {Canvas}.html
+### {Canvas}.tsx
 
 **Title:** {meta.title}{"  ·  " + meta.subtitle if subtitle}
 

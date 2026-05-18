@@ -24,6 +24,13 @@ const HIDDEN_OK = new Set(['.ai', '.claude', '.design']);
 
 // ---------- File tree ----------
 
+/**
+ * Find canvas files under a non-DS group root. Phase 3.6+ accepts both `.tsx`
+ * (current authoring format) and `.html` (legacy, pre-codemod) so the tree
+ * keeps rendering during the migration grace window. DS preview specimens
+ * (`system/<ds>/preview/*.html`) intentionally stay `.html` and travel via
+ * the DS-aware `findFiles()` path below.
+ */
 export async function findHtmlFiles(absRoot: string, prefixUnderRepo: string): Promise<string[]> {
   const out: string[] = [];
   let entries: Dirent[];
@@ -40,7 +47,10 @@ export async function findHtmlFiles(absRoot: string, prefixUnderRepo: string): P
     const full = path.join(absRoot, e.name);
     const rel = path.posix.join(prefixUnderRepo, e.name);
     if (e.isDirectory()) out.push(...(await findHtmlFiles(full, rel)));
-    else if (e.name.toLowerCase().endsWith('.html')) out.push(rel);
+    else {
+      const low = e.name.toLowerCase();
+      if (low.endsWith('.tsx') || low.endsWith('.html')) out.push(rel);
+    }
   }
   return out;
 }
@@ -115,7 +125,7 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
     return p
       .replace(/\//g, '-')
       .replace(/\s+/g, '_')
-      .replace(/\.html$/i, '')
+      .replace(/\.(tsx|html)$/i, '')
       .replace(/^\.+/, '')
       .toLowerCase();
   }
@@ -299,7 +309,7 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
       const groupRel = path.posix.join(paths.designRel, g.path);
       const isDs = g.label === 'Design system' || /^system(\/|$)/.test(g.path);
       const filePaths = isDs
-        ? await findFiles(groupAbs, groupRel, ['.html', '.md', '.css', '.json'])
+        ? await findFiles(groupAbs, groupRel, ['.tsx', '.html', '.md', '.css', '.json'])
         : await findHtmlFiles(groupAbs, groupRel);
       groups.push({
         label: g.label,

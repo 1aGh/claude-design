@@ -1,117 +1,114 @@
 ---
 name: design:handoff
 category: daily
-description: Migrate aktivní canvas (`_active.json`) do production kódu (target z `.design/config.json` handoffTargets)
-argument-hint: "[--target <label>] [--force]"
+description: Emit a shadcn `registry-item.json` sidecar pro aktivní canvas (production-ready drop pro Next.js / Vite / Bun)
+argument-hint: "[--canvas <path>] [--force]"
 ---
 
-# /design:handoff — production migration
+# /design:handoff — shadcn registry-item.json sidecar
 
-Konvertuje aktivní canvas do production kódu repa. Cíle (target paths + platform) jsou v `.design/config.json` v poli `handoffTargets[]` — typicky `apps/web` a/nebo `apps/mobile`, ale jakákoliv konvence repa.
+Konvertuje aktivní canvas (z `_active.json`) na **`<Slug>.registry.json`** vedle TSX souboru. Cílový projekt to konzumuje přes `bunx shadcn add file://./<Slug>.registry.json` — funguje pro Next.js / Vite / Astro / Remix / Bun, jakýkoli framework, který má `shadcn` CLI.
 
-Tokens se mapují na repo's design tokens package (pokud existuje v `packages/design-tokens` nebo equivalent — orchestrator hledá podle `tokensCssRel` a sourcuje na nejbližší cestu).
+Co sidecar obsahuje:
 
-**Vstup `$ARGUMENTS`:** `[--target <label>] [--force]`
+1. **`files[0]`** — canvas TSX, **bez `data-cd-id` atributů** (dev-time scaffolding, production je nepotřebuje).
+2. **`files[1]`** (jen pro `css_mode: "inline"`) — podmnožina `_components.css` ořezaná na pravidla, jejichž třída se v canvasu vyskytuje (`.btn`, `.tile`, `.sku`, ...). BEM modifikátory (`.btn--ghost`) jedou s base classou.
+3. **`files[2]`** (jen pro `css_mode: "inline"`) — podmnožina `colors_and_type.css` tokenů, na které ořezané CSS odkazuje přes `var(--*)`.
+4. **`cssVars.theme`** — stejné tokeny v shadcn formátu, aby je CLI grafikovala do `app/globals.css`.
+5. **`dependencies`** — npm spec resolvuje z `Bun.Transpiler.scanImports()` (`react`, `react-dom` + cokoli další). React + ReactDOM jsou floor (DDR-012).
+6. **`registryDependencies`** — `@/components/ui/*` importy se mapují na shadcn primitive names (`button`, `card`, ...).
 
-- `--target <label>` — kam migrovat (label musí matchovat jednomu z `handoffTargets[].label` v configu). Default = inferováno z názvu active souboru (`Mobile`/`iOS` v názvu → mobile target, `Studio`/`Desktop` → web target).
-- `--force` — shipni i s otevřenými blockers v latest critique (NEDOPORUČENO).
+**Vstup `$ARGUMENTS`:** `[--canvas <path>] [--force]`
+
+- `--canvas <path>` — explicitní cesta k canvas .tsx (default = `_active.json.active`).
+- `--force` — emitni sidecar i s otevřenými blockers v latest critique.
 
 **Příklad:**
 ```
-/design:handoff                    # auto-detect target
-/design:handoff --target web
-/design:handoff --target mobile
-/design:handoff --force            # bypass blockers
+/design:handoff
+/design:handoff --canvas .design/ui/Docs\ Site.tsx
+/design:handoff --force
 ```
 
-## Pre-requisites (orchestrator si je ohlídá)
+## Pre-requisites
 
-Než handoff poběží, skill ověří:
-1. **Server běží + `_active.json` má active canvas** (auto-start serveru pokud chybí).
-2. **`handoffTargets` v configu není prázdný** — pokud ano, fail "No handoff targets configured in `.design/config.json`."
-3. **Latest critique pro tenhle canvas má `blockers == 0`** — pokud ne, fail s návrhem `/design:edit "Address: <top blocker>"` first.
-   - Override: `--force` (pouze když user explicitně řekne "ship despite blockers").
-4. **Target path z configu existuje v repu** — fail pokud ne.
+1. **Canvas je `.tsx`** — pro `.html` canvases nejprve spusť migrace (Task 8 codemod) nebo `/design:edit` v novém TSX projektu.
+2. **`handoffTargets[0].path === "registry:item"`** v `.design/config.json` (default po Task 10 update).
+3. **Latest critique má `blockers === 0`** — pokud ne, fail s návrhem `/design:edit "Address: <top blocker>"`. Override `--force`.
 
 ## Postup
 
-Vyvolej skill `design` se vstupem: `handoff $ARGUMENTS`.
-
-Skill:
-
-### 1. Resolve config + target
+### 1. Resolve canvas + meta
 
 ```bash
 CFG=.design/config.json
 DESIGN_ROOT=$(jq -r '.designRoot' "$CFG")
-TARGETS=$(jq -c '.handoffTargets // []' "$CFG")
-[ "$TARGETS" = "[]" ] && echo "No handoff targets configured in .design/config.json" && exit 1
+ACTIVE=$(jq -r '.active' "$DESIGN_ROOT/_active.json")
+CANVAS="$DESIGN_ROOT/$ACTIVE"
+[ "${CANVAS##*.}" != "tsx" ] && echo "handoff: canvas is not .tsx — migrate first" && exit 1
 ```
 
-Pokud `--target <label>` byl předán, najdi v `handoffTargets` entry s `label == <label>`. Jinak inferuj z názvu active canvasu (regex match `Mobile|iOS|Android` → platform `mobile`; `Studio|Desktop` → platform `web`; jinak ask user).
+Načti `<canvas>.meta.json` (kvůli `title` + `subtitle` → registry `title`/`description`).
 
-### 2. Pre-flight (viz výše)
+### 2. Pre-flight blocker check
 
-### 3. Načte aktivní canvas
+Stejně jako `/design:critic` — `_history/<slug>/<NNN>-critic.md` posledního běhu. `blockers: 0` ⇒ pokračuj, jinak fail.
 
-Cesta z `_active.json`. Read full content.
+### 3. Shell out na `bin/handoff.sh`
 
-### 4. Extrakce
+```bash
+bash plugins/design/dev-server/bin/handoff.sh "$CANVAS" "$DESIGN_ROOT"
+```
 
-- **Token usage** — grep všechny `var(--*)` reference → `<DESIGN_ROOT>/_history/<slug>/handoff/tokens-used.json`:
-  ```json
-  { "tokens": ["--bg-1", "--accent", "--radius-lg"], "new": ["--accent-2"] }
-  ```
-- **Layout structure** — semantic regions (header, main, aside, sections).
-- **Interaction hints** — buttons (variant, label, action), inputs (type, placeholder, validation), focus order.
+Wrapper zavolá `bun run handoff.ts --emit <canvas> <designRoot>`. Skript:
 
-### 5. Convert
+1. Načte canvas TSX.
+2. Stripne `data-cd-id` atributy (AST-aware, oxc-parser + magic-string).
+3. Klasifikuje importy (npm vs `@/components/ui/*`).
+4. Pro `css_mode: "inline"` canvases:
+   - Sebere každý `className` literal token (`btn`, `btn--ghost`, `sku`, ...).
+   - Ořeže `_components.css` jen na pravidla s odpovídajícími base classami (BEM modifikátory + pseudo-classy se vezmou se sebou).
+   - Z ořezaného CSS extrahuje `var(--*)` reference + ořeže `colors_and_type.css` na ně.
+5. Složí `RegistryItem` strukturu per [shadcn registry-item schema](https://ui.shadcn.com/schema/registry-item.json).
+6. Zapíše atomicky na `<canvas-dir>/<Slug>.registry.json`.
 
-Adaptace závisí na `target.platform`:
+### 4. Reportuj výstup
 
-| Platform | Output convention | Notes |
-|---|---|---|
-| `web` | `<target.path>/app/<route>/page.tsx` (Next.js) nebo `<target.path>/src/<route>.tsx` — orchestrator detekuje podle existující struktury | React + Tailwind převedení tokenů na CSS vars / theme |
-| `mobile` | `<target.path>/app/<route>.tsx` (Expo Router) nebo equivalent | React Native + NativeWind; native primitives |
-| `desktop` | Závisí na frameworku (Electron / Tauri) — orchestrator se zeptá pokud nejasné | |
-| `other` | Orchestrator fail-fast: "Unknown platform — please specify in target config" | |
+```
+✅ Handoff sidecar: .design/ui/Docs Site.registry.json
+   files: 3  (component + style + theme)
+   deps:  2  (react, react-dom)
+   registryDependencies: 0
+   
+   Konzumace v target projektu:
+     bunx shadcn add file://$(pwd)/.design/ui/Docs\ Site.registry.json
+```
 
-Když repo má `packages/<feature-package>` strukturu (monorepo), shared komponenty patří tam, page-level patří do `<target.path>`.
+### 5. Návazné kroky
 
-### 6. Token sync
+- Pokud sidecar je úspěšně emitnutý + komponenta jede v scratch projektu → ulož path do `_history/<slug>/handoff/<NNN>-registry.json.md` jako log.
+- Pro multi-canvas batch handoff: smyčka přes `_active.json.open_tabs` nebo `find .design/ui -name '*.tsx'`.
 
-Pokud `tokens-used.json.new` je neprázdné, přidej nové tokeny do repo's design tokens package. Cesta: orchestrator hledá `packages/design-tokens/src/tokens.css` (default Turborepo convention) nebo equivalent. Pokud nenalezne, fail s návrhem manuálně.
+## What handoff DOES / DOES NOT do
 
-### 7. Handoff report
+**DOES:**
+- Stripne `data-cd-id` (dev scaffolding off).
+- Resolvuje `dependencies` z importů (`react` + `react-dom` always).
+- Bunduje použitou podmnožinu `_components.css` + tokenů (pro `css_mode: "inline"`).
+- Atomicky zapíše sidecar.
 
-Zapiš `<DESIGN_ROOT>/_history/<slug>/handoff/<NNN>-handoff-report.md` (gitignored — pokud chceš track, copy ho do `.ai/decisions/`):
-
-- Active canvas migrated
-- Target (label, path, platform)
-- Files created / modified (relativní paths)
-- Tokens referenced + new tokens added
-- Open critique items carried over (pokud `--force` byl použit)
-- Next steps (run `/flow:utils-verify`, manual smoke test)
-
-### 8. Návrh navazujících commands
-
-- `/flow:utils-verify` — smoke + a11y na nové cestě (pokud existuje verify skill v repu)
-- `/flow:review-code` — pre-commit self-review (pokud existuje)
-- `/scenario new <slug>` — pokud surface ještě nemá cross-platform scenario
-
-## What handoff DOES NOT do
-
-- **Necommituje** — handoff jen napíše soubory, commit dělá user.
-- **Nespouští testy** — to je verify job.
-- **Nemění backend/API** — handoff je čistě UI vrstva.
-- **Negeneruje routes** — pokud route neexistuje, fail s návrhem ji založit ručně. Nechceme magii v routingu.
+**DOES NOT:**
+- Necommituje. Sidecar zůstává v `.design/ui/` — uživatel commituje, kdy chce.
+- Nespouští testy.
+- Nepushuje na shadcn registry namespace (pro public hosting použij vlastní pipeline).
+- Nemění target framework (canvas TSX je už React 19, target projekt taky — žádný runtime translation).
 
 ## Failure modes
 
-- **Latest critique má blockers a `--force` nebyl předán** → fail s top blocker quote.
-- **Target dir neexistuje** → fail.
-- **`handoffTargets` v configu prázdný** → fail s návrhem doplnit config.
-- **HTML použil token, který není v project tokens CSS** → fail (regression v iteraci, oprav přes `/design:edit`).
-- **Frameworkové dependencies chybí v target adresáři** → fail s install command.
+- **Canvas není `.tsx`** → fail "migrate first".
+- **`handoffTargets` v configu nemá `registry:item`** → fail s návrhem `mdcc config set handoffTargets ...`.
+- **`bun` v PATH chybí** → fail s pokynem nainstalovat Bun (Phase 3.4).
+- **Latest critique má blockers + bez `--force`** → fail s top blocker quote.
+- **`_components.css` nebo `colors_and_type.css` neexistuje** → emit s prázdným CSS bundle (TSX-only registry-item; consumer dostane self-contained komponentu, ale tříd `_components.css` nepoužije — to je v podstatě same-stack handoff between mdcc projekty).
 
-Po úspěšném handoff vidíš v terminálu summary + path k handoff-report.md.
+Po úspěšném handoff vidíš shell output s path k sidecar a kopírovací `bunx shadcn add` command.

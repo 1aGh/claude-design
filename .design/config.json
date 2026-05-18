@@ -24,5 +24,7 @@
     }
   ],
   "defaultDesignSystem": "project",
-  "handoffTargets": []
+  "handoffTargets": [
+    { "label": "shadcn registry", "path": "registry:item", "platform": "web" }
+  ]
 }

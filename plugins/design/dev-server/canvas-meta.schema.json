@@ -101,6 +101,39 @@
       "enum": ["palette", "aesthetic", "full"],
       "description": "Persisted DS opt-out scope for this canvas. Subsequent /design:edit iterations inherit this; --opt-out=<scope> on the flag overrides for that iteration and persists the new value. a11y is enforced at every scope.",
       "default": "palette"
+    },
+    "css_mode": {
+      "type": "string",
+      "enum": ["inline", "tailwind", "modules"],
+      "description": "How this canvas writes CSS. 'inline' (MDCC-DSN/01 default) uses bespoke classes from `_components.css` + ad-hoc `style={{}}` for one-off values. 'tailwind' opts the canvas into Tailwind utilities (requires `bun-plugin-tailwind` on the dev-server). 'modules' uses a sibling `<Slug>.module.css`. The /design:handoff CSS-bundling path only fires for 'inline' (Phase 3.6 Task 12b).",
+      "default": "inline"
+    },
+    "data_cd_id_version": {
+      "type": "integer",
+      "description": "Major version of the data-cd-id scheme this canvas was last transpiled against. Bumped when the ID derivation rule changes (renumbering the universe of IDs). Future-proofing for v2 of the inspector; v1 = current Bun.hash(componentName + ':' + idx) → 8 hex.",
+      "default": 1,
+      "minimum": 1
+    },
+    "ai_context": {
+      "type": "object",
+      "description": "Opt-in metadata for AI cold-read. Persists hard-won context that doesn't live in the canvas source itself — pinned decisions, known quirks, rationale for why this canvas exists. Read by /design:edit's pre-flight to seed the model. Hand-edited; never auto-filled (auto-fill would defeat the purpose).",
+      "additionalProperties": false,
+      "properties": {
+        "pinned_decisions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Short one-liners — decisions tried, accepted or rejected, that shaped the canvas (e.g. 'tried gradient hero — rejected: phosphor-dark theme clashed')."
+        },
+        "known_quirks": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Non-obvious behaviour callers might trip over (e.g. 'docs-article artboard intentionally taller than the rest — reserves room for fold-line annotations')."
+        },
+        "why_this_exists": {
+          "type": "string",
+          "description": "One paragraph explaining the canvas's reason for being. Surfaced in the generated JSDoc header as `@notes` when present."
+        }
+      }
     }
   }
 }
