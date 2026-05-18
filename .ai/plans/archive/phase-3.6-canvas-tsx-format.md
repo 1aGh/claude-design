@@ -436,3 +436,31 @@ Skip the 5-platform matrix — dev-server has no mobile/native surface.
 - [ ] `/design:edit` Step 1.5 auto-loads `_components.css` for `css_mode: "inline"` canvases when feedback names a styled element; visible in `.ai/state/HANDOFF.md` regression trace
 - [ ] No remaining `\.html` references in `plugins/design/commands/*.md` outside of `_shell.html` + system-specimen targets
 - [ ] No DDR-worthy decision left unrecorded
+
+---
+
+## Retro (closed 2026-05-18)
+
+**What worked:**
+
+- The "one toolchain, three call sites" discipline (oxc-parser + magic-string in canvas-pipeline, canvas-edit, codemod, handoff) paid off — every new file slotted into the existing mental model. Net surface added: ~1000 LOC across 4 modules + 4 test files; net cognitive load: one toolchain.
+- Splitting the phase across 3 sessions (foundation → runtime slice → closing slice) prevented context exhaustion. Each session's STATE.md handoff was specific enough that the next picked up cleanly.
+- `bun:test` against the actually-migrated repo canvases (`phase-3.6-smoke.test.ts`) caught real regressions earlier than synthetic fixtures would have. Worth carrying to 3.6.1.
+- Idempotent JSDoc header injection (Task 12a `applyHeaderToSource`) generalised cleanly from "codemod baked it in" to "any future tool can re-sync from meta" — one less codepath to maintain.
+
+**What didn't:**
+
+- **Acceptance criteria missed runtime rendering**. Plan gated on "transpile + build cleanly" but not "render without console errors." The codemod produced files that satisfied all 12 listed criteria yet white-paged at runtime because frame primitives (`DesignCanvas`/`DCSection`/`DCArtboard`) were never defined in TSX-land. The original HTML canvases got them as babel-runtime window globals; the codemod copied JSX verbatim without inlining definitions. Caught by user on first open. Mitigation now lives in Phase 3.6.1 (canvas-lib + virtual-module resolution + handoff inlining).
+- **DDR-017 → DDR-019 numbering drift**. Plan called for DDR-017; foundation slice committed it as DDR-019 because 017/018 were already taken. Both numbers float around in plan + STATE.md prose. Lesson: pick the DDR number **after** scanning `.ai/decisions/`, not in the plan template.
+- **Performance budgets were aspirational, not measured**. The plan's "Performance budgets" table listed gates (cold load < 250 ms, transform < 8 ms p50, HMR < 100 ms, token cost < 30 %) but Task 11 only ran the build harness, not wall-clock sampling. None of the gates were actually verified this phase. Carries to 3.6.1's explicit HMR gate (< 200 ms p50, measured).
+- **Smoke TSX.tsx got orphaned**. It was a foundation-slice runtime mount fixture; nobody upgraded it to use the canvas envelope when that contract solidified. Plan said "safe to keep or delete" — that's the kind of language that ages into "neither maintained nor deleted." 3.6.1 rewrites it as a proper canvas.
+- **DS specimens skip-list was the wrong call**. Plan Task 9 explicitly kept `system/<ds>/preview/*.html` as static HTML on the reasoning that "they don't iterate." User flagged immediately that they SHOULD iterate (Cmd+Click + `/design:edit`). The plan-time decision under-weighted the plug-and-play UX. Reversed in 3.6.1.
+
+**What to change in `/plan` / `/execute` next time:**
+
+- **Acceptance criteria must include a runtime gate**, not just static checks. For UI work: "the migrated artifact renders with 0 console errors" is now the minimum bar. Add to `/plan` template.
+- **DDR numbering**: `/plan` should pre-scan `.ai/decisions/` and assign the next free number into the plan template, not let it drift.
+- **Performance budgets**: if the plan lists a gate, the plan must list the measurement command. "Targets without instrumentation" → either drop the target or schedule the instrumentation as a task.
+- **Skip-lists with weak rationale are tech debt**. When the plan says "X stays in old format because Y", the "Y" must be a hard reason (security, scope, blocking dependency). "Doesn't iterate" was a soft reason that the user immediately contradicted.
+
+**Successor phase:** `.ai/plans/phase-3.6.1-canvas-envelope-and-ds-specimens.md` — canvas-lib + virtual module + handoff inlining + HMR + DS specimens to TSX.
