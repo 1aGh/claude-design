@@ -8,8 +8,10 @@ import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import type { Api } from './api.ts';
+import { TranspileError, transpileCanvasSource } from './canvas-pipeline.ts';
 import type { Context } from './context.ts';
 import type { Inspect } from './inspect.ts';
+import { canvasSlug, writeLocator } from './locator.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -59,6 +61,69 @@ function safePathUnderRoot(reqUrl: string, repoRoot: string): string | null {
 const DIST_DIR = join(HERE, 'dist');
 const CLIENT_DIR = join(HERE, 'client');
 const RUNTIME_DIR = join(HERE, 'runtime');
+
+// In-memory transpile cache. Key = absolute canvas path; value = the last
+// transpile keyed by mtime. Repeat GETs against an unchanged source skip the
+// parse + ID-injection + Bun.Transpiler entirely.
+interface CanvasCacheEntry {
+  mtimeMs: number;
+  etag: string;
+  js: string;
+}
+const canvasCache = new Map<string, CanvasCacheEntry>();
+
+async function serveCanvasTsx(
+  absPath: string,
+  req: Request,
+  ctx: Context,
+  locatorAbsPath: string
+): Promise<Response> {
+  const file = Bun.file(absPath);
+  if (!(await file.exists())) return new Response('Not found', { status: 404 });
+
+  // `stat` via Bun.file().lastModified — falls back to 0 if unavailable.
+  const mtimeMs = typeof file.lastModified === 'number' ? file.lastModified : 0;
+  let cached = canvasCache.get(absPath);
+
+  if (!cached || cached.mtimeMs !== mtimeMs) {
+    const source = await file.text();
+    let result: ReturnType<typeof transpileCanvasSource>;
+    try {
+      result = transpileCanvasSource(absPath, source);
+    } catch (err) {
+      if (err instanceof TranspileError) {
+        return new Response(`Transpile error: ${err.message}`, {
+          status: 500,
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        });
+      }
+      throw err;
+    }
+    cached = { mtimeMs, etag: result.etag, js: result.js };
+    canvasCache.set(absPath, cached);
+    // Persist the locator map. Awaited so the inspector / Phase-12 layers
+    // panel sees a consistent (cdId -> source) view by the time the canvas
+    // mounts. Per-path mutex inside writeLocator() makes concurrent transpiles
+    // safe.
+    await writeLocator(locatorAbsPath, canvasSlug(absPath, ctx.paths.designRoot), result.locator);
+  }
+
+  const ifNoneMatch = req.headers.get('if-none-match');
+  if (ifNoneMatch === cached.etag) {
+    return new Response(null, {
+      status: 304,
+      headers: { ETag: cached.etag, 'Cache-Control': 'no-cache' },
+    });
+  }
+  return new Response(cached.js, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/javascript; charset=utf-8',
+      ETag: cached.etag,
+      'Cache-Control': 'no-cache',
+    },
+  });
+}
 
 async function serveFile(absPath: string, headers: Record<string, string> = {}): Promise<Response> {
   const file = Bun.file(absPath);
@@ -184,8 +249,18 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect): Http {
       if (!exists) return new Response('Not found', { status: 404 });
 
       const e = ext(fp);
+      const underDesignRoot = `${fp}/`.startsWith(`${ctx.paths.designRoot}/`);
+      // .tsx under designRoot is a canvas — transpile + emit locator, return JS.
+      if (e === '.tsx' && underDesignRoot) {
+        return serveCanvasTsx(
+          fp,
+          req,
+          ctx,
+          join(ctx.paths.designRoot, '_locator.json')
+        );
+      }
       // .html under designRoot gets inspector + runtime injection.
-      if (e === '.html' && `${fp}/`.startsWith(`${ctx.paths.designRoot}/`)) {
+      if (e === '.html' && underDesignRoot) {
         const html = await file.text();
         const injected = inspect.injectInto(html);
         return new Response(injected, {

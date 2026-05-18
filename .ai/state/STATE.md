@@ -3,14 +3,51 @@
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
 **Workflow:** feature-delivery — md-claude v1.0 roadmap
-**Phase:** — (Phase 3.5 DONE 2026-05-17 — shell refresh: menubar + CV-08 tree + help modal + paper-grid; DDR-017, DDR-018) ∥ feature-docs-site-followups (commits 1-3 landed; items 19-21 deferred)
-**Status:** done
+**Phase:** Phase 3.6 — canvas TSX format (foundation slice: Tasks 0–3 of 12 landed 2026-05-18; Tasks 4–12 carry to next session)
+**Status:** in-progress
 **Started:** 2026-05-12
-**Updated:** 2026-05-17
-**Active task:** —
-**Active plan:** —
+**Updated:** 2026-05-18
+**Active task:** Phase 3.6 Tasks 4–12 (inspector contract, /design:edit AST path, _shell.html, /design:new, handoff, codemod, sweep, schemas, e2e, AI-handoff polish)
+**Active plan:** `.ai/plans/phase-3.6-canvas-tsx-format.md`
 
-## Execution Progress — phase-3.5-dev-server-ui-ux-refresh
+## Execution Progress — phase-3.6-canvas-tsx-format (foundation slice, 2026-05-18)
+
+- ✅ Task 0: DDR-019 written (`.ai/decisions/DDR-019-canvas-tsx-format.md`). Renumbered from plan's "DDR-017" because 017 + 018 were taken by Phase 3.5. DDR-019 reconciles with DDR-007: `data-cd-id` (transpiler-emitted, universal) and `data-dc-element` (author-emitted, semantic) coexist with documented inspector preference order. DDR index updated; 017 + 018 also indexed (were missing from README).
+- ✅ Task 1: `plugins/design/dev-server/canvas-pipeline.ts` — two-pass transform via `oxc-parser` (parse) + `magic-string` (byte-range inject) + `Bun.Transpiler` (TSX→JS). ID = `Bun.hash(componentName + ":" + idx).toString(16).slice(0, 8)` — 8 hex chars, no `blake3-wasm` dep added (plan permitted Bun.hash). 15 bun:test cases green; covers determinism, whitespace-stability, sibling-insert contract, robustness (arrow components, JSXMemberExpression, idempotency on re-transpile of post-pass-1 source, malformed source → TranspileError).
+- ✅ Task 2: `plugins/design/dev-server/locator.ts` — per-canvas `_locator.json` writer with per-path Promise-mutex + atomic rename. Top-level keyed by canvas slug (POSIX, ext-less, relative to designRoot). 14 bun:test cases green; covers roundtrip, multi-slug isolation, deterministic sorted-key JSON, 20-way concurrent multi-slug writes, 10-way concurrent same-slug last-writer-wins, clearLocatorSlug, malformed-JSON-as-empty.
+- ✅ Task 3: `plugins/design/dev-server/http.ts` — TSX-route hooked into the existing fall-through `fetch()`. URL pattern `/.design/ui/<file>.tsx` (matches existing shell `urlOf()` helper that prefixes designRel into the iframe src). 200 + `application/javascript` + ETag (`Bun.hash(post-pass-1 source).toString(16)`); 304 on `If-None-Match` match; 500 + readable body on `TranspileError`; 404 / 403 on missing / traversal. In-memory `(absPath -> { mtimeMs, etag, js })` cache skips re-transpile when source unchanged. Locator is written synchronously before the response. 7 bun:test cases green.
+
+**Deps added (workspace `plugins/design/dev-server/package.json`):**
+
+- `oxc-parser ^0.131.0` (devDependency; ESTree-compatible TSX parser, ~1–3 ms for canvas-scale input)
+- `magic-string ^0.30.21` (devDependency; byte-range edits, used by Rollup/Vite in production)
+- Skipped `blake3-wasm` per plan permission — `Bun.hash` is 64-bit; sliced to 8 hex chars = 32 bits = ample for ≤300-element canvases.
+
+**Validation status:**
+
+- `bun test` — 44 pass / 0 fail across 10 files (the new 36 expects fold cleanly into the existing 8-file suite).
+- `bun tsc --noEmit` — clean for new files. Pre-existing `api.ts(457,25)` error confirmed via stash-then-tsc — not introduced by this session.
+- `bun run build.ts` — not re-run; route + pipeline run under bun source-mode. Should be re-built when Task 6 ships the runtime bundle that makes the JS browser-loadable.
+
+**Out-of-scope / carries to next session:**
+
+- **Browser-loadability of the route response.** `Bun.Transpiler.transformSync` output uses internal `jsxDEV_<hash>` symbol names meant for Bun's runtime — not browser-resolvable as-is. Task 6 (`_shell.html` + `/_canvas-runtime/react.bundle.js`) closes this; Tasks 0–3 stop at "valid JS by parse-check" (DDR-019 explicitly notes this — "making it BROWSER-loadable is the _shell.html + react-runtime bundle's job"). Tests verify the JS is re-parseable by `oxc-parser`; nothing more is promised this session.
+- Tasks 4–12: inspector contract upgrade (data-cd-id reader in inspect.ts), `/design:edit` AST-aware element edits (canvas-edit.ts + bin/canvas-edit.sh), `_shell.html` + `canvas.tsx.template` + `/design:new` rewrite, `handoff.ts` + `/design:handoff` (shadcn registry-item.json sidecar), `scripts/migrate-canvases.ts` codemod + one-shot migration, sweep of `.html` refs across `plugins/design/commands/*` + skills, schema updates (`canvas-meta.schema.json.css_mode` + `data-cd-id-version`, `config.schema.json.handoffTargets`), e2e regression, AI-handoff polish (JSDoc headers, CSS bundling in registry-item, edit-context CSS auto-load).
+- Performance budget gates from the plan (per-canvas TSX < 35 KB, two-pass < 8 ms p50, cold load < 250 ms, etc.) — not yet measured. Most are gated on Task 8 (codemod) producing real-world migrated canvases.
+
+**Files modified / added (Phase 3.6 foundation):**
+
+- ADDED: `plugins/design/dev-server/canvas-pipeline.ts`
+- ADDED: `plugins/design/dev-server/locator.ts`
+- ADDED: `plugins/design/dev-server/test/canvas-pipeline.test.ts`
+- ADDED: `plugins/design/dev-server/test/locator.test.ts`
+- ADDED: `plugins/design/dev-server/test/canvas-route.test.ts`
+- ADDED: `.ai/decisions/DDR-019-canvas-tsx-format.md`
+- MODIFIED: `plugins/design/dev-server/http.ts` — imports canvas-pipeline + locator; new `serveCanvasTsx()` + in-memory cache; dispatched from `fetch()` for `.tsx` under designRoot
+- MODIFIED: `plugins/design/dev-server/package.json` — added `oxc-parser` + `magic-string` devDeps (`bun.lock` is gitignored)
+- MODIFIED: `.ai/decisions/README.md` — indexed DDR-017, DDR-018, DDR-019
+
+## Execution Progress — phase-3.5-dev-server-ui-ux-refresh (DONE 2026-05-17)
 
 - ✅ Task 1-3 (design stage — CV-08/09/10 mocks; user signed off 2026-05-15)
 - ✅ Task 4: index.html → JetBrains Mono fallback (Berkeley primary via token chain), Inter dropped

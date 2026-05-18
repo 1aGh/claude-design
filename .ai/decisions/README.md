@@ -10,6 +10,9 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
 
+- [DDR-019: Canvas format — `.tsx` files transpiled by Bun, with auto-injected `data-cd-id` and shared `_shell.html`](DDR-019-canvas-tsx-format.md) — 2026-05-18, design/dev-server/canvas/tsx/oxc/magic-string/bun-transpiler/data-cd-id/handoff/shadcn/phase-3.6
+- [DDR-018: Tree groups via `kind` discriminator — server scans PROJECT root + RUNTIME gitignored alongside canvases](DDR-018-tree-groups-via-kind-discriminator.md) — 2026-05-17, design/dev-server/sidebar/server/file-tree/phase-3.5
+- [DDR-017: Dev-server shell = shadcn-style menubar + single-canvas viewport (tabs row killed)](DDR-017-dev-server-shell-menubar-single-canvas.md) — 2026-05-17, design/dev-server/shell/chrome/menubar/ux/phase-3.5
 - [DDR-016: `plugins/design/dev-server/runtime/` is the canvas-runtime library home — not meta-design, not shell chrome](DDR-016-runtime-folder-purpose.md) — 2026-05-15, design/dev-server/runtime/audit/library/bundle/react/phase-3.4
 - [DDR-015: Per-platform Bun binary distribution via npm `optionalDependencies` sub-packages with postinstall-hardlink (Claude-Code pattern)](DDR-015-per-platform-binary-distribution.md) — 2026-05-15, distribution/npm/bun/binary/optionalDependencies/postinstall/hardlink/ci-matrix/claude-code-pattern/phase-3.4
 - [DDR-014: Dev-server CSS uses `@layer reset, tokens, layout, shell, components, utilities` with Lightning CSS at build time](DDR-014-css-layer-architecture.md) — 2026-05-15, design/dev-server/css/cascade/layers/lightningcss/oklch/tokens/build-pipeline/phase-3.4
