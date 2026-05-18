@@ -3,12 +3,66 @@
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
 **Workflow:** feature-delivery — md-claude v1.0 roadmap
-**Phase:** Phase 3.6 — canvas TSX format (foundation slice: Tasks 0–3 of 12 landed 2026-05-18; Tasks 4–12 carry to next session)
+**Phase:** Phase 3.6 — canvas TSX format (Tasks 0–6 of 12 landed; Tasks 7–12 carry to next session)
 **Status:** in-progress
 **Started:** 2026-05-12
 **Updated:** 2026-05-18
-**Active task:** Phase 3.6 Tasks 4–12 (inspector contract, /design:edit AST path, _shell.html, /design:new, handoff, codemod, sweep, schemas, e2e, AI-handoff polish)
+**Active task:** Phase 3.6 Tasks 7–12 (handoff.ts shadcn registry-item.json, codemod migrate-canvases.ts, sweep .html → .tsx refs across commands/skills, schema updates, e2e regression, AI-handoff polish)
 **Active plan:** `.ai/plans/phase-3.6-canvas-tsx-format.md`
+
+## Execution Progress — phase-3.6-canvas-tsx-format (runtime slice, 2026-05-18)
+
+Tasks 4–6 landed in second session of 2026-05-18 — TSX canvases now browser-loadable end-to-end (page mounts, useState round-trips, inspector reads data-cd-id).
+
+- ✅ Task 4: `inspect.ts` upgraded — `SelectedElement.v: 1 | 2` schema (v=2 when click-target has an ancestor `data-cd-id`; v=1 fallback for legacy .html + shell chrome clicks). INSPECTOR_SCRIPT.elInfo() adds `id` via `closest('[data-cd-id]')`. Server-side `setSelected()` derives canvas slug from path. 3 new tests in `test/active-state.test.ts` (v=2 round-trip, v=1 fallback, slug derivation).
+
+- ✅ Task 5: `canvas-edit.ts` + `bin/canvas-edit.sh` + `/design:edit` Step 3a. AST-aware single-attribute edits via oxc-parser + magic-string. Supports `className` swap/insert, `style.<prop>` swap/insert in inline ObjectExpression, plain string attrs (aria-label, etc.). Per-canvas mutex + atomic-rename write. Refuses to edit `data-cd-id` (pipeline-owned). CLI entry `bun canvas-edit.ts --invoke <canvas> <id> <attr> <value>` for `/design:edit` to shell out. 11 new tests in `test/canvas-edit.test.ts`. `edit.md` Step 3a documents the fast-path triggers (active = .tsx + selected.v=2 + single-element single-attribute feedback) and what it skips (steps 5 + 6 + 3.5 element-focused screenshot).
+
+- ✅ Task 6: TSX canvases browser-loadable end-to-end. Five sub-deliverables:
+  - `runtime-bundle.ts` — pre-built React 19 + ReactDOM + jsx-runtime bundles served at `/_canvas-runtime/<pkg>.js`. Per-package sub-bundles + cross-bundle externals (each bundle externalises the others; importmap stitches at browser-level → singleton React preserved). Dynamic export discovery via `await import(pkg)` enumerates ALL keys including `__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE` (required for ReactDOM to find React's shared internals — without it: `Cannot read properties of undefined (reading 'S')` on first createRoot). **NODE_ENV=production** baked in — the dev React variant trips a Bun.build CJS-rename collision (`Assignment to constant variable` on `import * as React`); production variant is collision-free + smaller. 6 tests in `test/runtime-bundle.test.ts`.
+  - `canvas-build.ts` — wraps `canvas-pipeline.ts` (pass-1 data-cd-id injection) with a Bun.build pass that produces browser-loadable ESM. Virtual-loader plugin feeds the with-IDs source to Bun.build (filter uses suffix-match because macOS /tmp → /private/tmp symlinks defeat exact-path matching). React + jsx-runtime + ReactDOM externalised. 5 tests in `test/canvas-build.test.ts`.
+  - `http.ts` — new routes `/_canvas-runtime/<slug>.js` (lazy-built, etag-cached, 304-aware) + `/_canvas-shell.html` (serves the static shell template). TSX-canvas route swapped from `transpileCanvasSource` direct → `buildCanvasModule` (the route's `js` body is now browser-loadable, not just parseable). Existing `canvas-route.test.ts` updated for Bun.build's `export { X as default }` form.
+  - `plugins/design/templates/_shell.html` — shared canvas mount harness with importmap (`react`/`react-dom`/`react-dom/client`/`react/jsx-runtime`/`react/jsx-dev-runtime` → `/_canvas-runtime/*.js`), async dynamic-import of the canvas TSX, `createRoot(root).render(<Canvas/>)`. Query params `?canvas=<rel>` + `?designRel=<rel>` + optional `?tokens=` / `?components=`.
+  - `plugins/design/templates/canvas.tsx.template` — JSDoc header projecting `.meta.json` (@canvas/@ds/@platform/@opt_out/@artboards/@brief/@stack/@history/@handoff) + envelope with DesignCanvas + DCSection + DCArtboard primitives inlined locally (handoff-friendly — no runtime dep on dev-server chrome).
+  - `client/app.jsx` — `canvasUrl(p, cfg)` helper switches `.tsx` paths to `/_canvas-shell.html?canvas=…&designRel=…` while keeping `.html` on the legacy direct-load path. App fetches `/_config` once at boot + threads `cfg` into Viewport. Existing build (`bun run build.ts`) refreshed.
+  - `/design:new` step 3 + 7 + 8 patched — default target now `.tsx`, validation accepts default-export React component + no `<!doctype>`, write step references the canvas.tsx.template. Legacy `.html` path kept for backwards compat until Task 8 codemod lands.
+
+**Phase 3.6 acceptance gates verified this session:**
+- Browser end-to-end: `/_canvas-shell.html?canvas=ui/Smoke%20TSX.tsx` renders `<div>` + `<h1>` + `<button>` with `data-cd-id` attrs in DOM; useState round-trips (clicking the button increments visible count).
+- `bun test`: **69 pass / 0 fail** (up from 44 at end of Task 3 session).
+- `bun tsc --noEmit`: clean for new files; only pre-existing api.ts(457,25)+(458,24) errors remain (confirmed not introduced this session).
+
+**Deps added this session:** none (React + ReactDOM + @types/* were already in `plugins/design/dev-server/package.json` devDeps from Task 0; no new packages needed for Tasks 4–6).
+
+**Files modified / added (Phase 3.6 runtime slice):**
+
+- ADDED: `plugins/design/dev-server/canvas-build.ts` — Bun.build wrap on pipeline withIds source
+- ADDED: `plugins/design/dev-server/canvas-edit.ts` — AST single-attribute editor
+- ADDED: `plugins/design/dev-server/runtime-bundle.ts` — React 19 pre-bundles
+- ADDED: `plugins/design/dev-server/bin/canvas-edit.sh` — CLI wrapper for /design:edit Step 3a
+- ADDED: `plugins/design/dev-server/test/canvas-build.test.ts` (5 tests)
+- ADDED: `plugins/design/dev-server/test/canvas-edit.test.ts` (11 tests)
+- ADDED: `plugins/design/dev-server/test/runtime-bundle.test.ts` (6 tests)
+- ADDED: `plugins/design/templates/_shell.html` — canvas mount harness with importmap
+- ADDED: `plugins/design/templates/canvas.tsx.template` — TSX scaffold with JSDoc header
+- ADDED: `.design/ui/Smoke TSX.tsx` — smoke fixture used to verify browser-load; safe to keep or delete
+- MODIFIED: `plugins/design/dev-server/inspect.ts` — v=2 selection schema + data-cd-id reader
+- MODIFIED: `plugins/design/dev-server/http.ts` — buildCanvasModule swap + /_canvas-runtime + /_canvas-shell routes
+- MODIFIED: `plugins/design/dev-server/client/app.jsx` — canvasUrl helper + cfg loading + Viewport prop wiring
+- MODIFIED: `plugins/design/dev-server/dist/client.bundle.js` + `styles.css` — rebuilt
+- MODIFIED: `plugins/design/dev-server/test/active-state.test.ts` — +3 tests (v=2 round-trip, v=1 fallback, slug derivation)
+- MODIFIED: `plugins/design/dev-server/test/canvas-route.test.ts` — accept Bun.build's `export { X as default }` form
+- MODIFIED: `plugins/design/commands/edit.md` — new Step 3a documenting AST fast-path
+- MODIFIED: `plugins/design/commands/new.md` — Step 3 + 7 + 8 default to `.tsx` (legacy `.html` path kept for backwards compat)
+
+**Out-of-scope / carries to next session:**
+
+- Tasks 7–12 unchanged from prior session note: handoff.ts + /design:handoff (shadcn registry-item.json), scripts/migrate-canvases.ts codemod + one-shot migration, sweep of remaining `.html` references in commands + skills, schema updates (canvas-meta.schema.json `css_mode` + `data-cd-id-version`, config.schema.json handoffTargets), e2e regression suite + token-cost measurement, AI-handoff polish (JSDoc header generator, CSS bundling in registry-item, /design:edit Step 1.5 auto-load _components.css for css_mode=inline canvases, `ai_context` meta schema field).
+- **Performance budget gates** — not yet measured this session either; per-canvas TSX file size + transform cost + cold-load < 250 ms + HMR + token cost target should be sampled in Task 11 once the codemod produces realistic migrated canvases.
+- HMR — not wired yet. `/_bun_hmr` endpoint still TODO (plan says "Bun 1.3's `import.meta.hot` + React Fast Refresh"). Currently a manual page reload is needed after editing a canvas TSX.
+- Iframe Cmd+R reload behaviour — the `_canvas-shell.html` doesn't yet bust the canvas-module browser cache when its source changes; next session should add ETag-aware reload or `?v=<etag>` query.
+- Dev-mode JSX runtime — Bun.build's collision in the dev React variant means production-mode React is used everywhere. Source-map quality + dev warnings are reduced as a consequence; revisit if/when Bun ships a fix (track via Bun's issue tracker).
+- React-DOM bundle size is ~922 KB raw (no minify in dev). Plan target was ~25–35 KB gz total runtime — production minify + gz would close most of the gap. Not addressed this session.
 
 ## Execution Progress — phase-3.6-canvas-tsx-format (foundation slice, 2026-05-18)
 

@@ -28,6 +28,27 @@ function urlOf(p) {
   return '/' + p.split('/').map(encodeURIComponent).join('/');
 }
 
+// Iframe src for a canvas path. TSX canvases go through _canvas-shell.html so
+// the bundled React 19 runtime + importmap can mount the default export. HTML
+// canvases keep the legacy "serve the file with inspector + Babel injected"
+// path. Phase 3.6 contract; the path argument is repo-root-relative
+// (e.g. ".design/ui/Foo.tsx").
+function canvasUrl(p, cfg) {
+  if (!p.endsWith('.tsx')) return urlOf(p);
+  const designRel = (cfg?.designRel || '.design').replace(/^\/+|\/+$/g, '');
+  // Path under designRoot (POSIX, encoded segments).
+  let rel = p;
+  if (rel.startsWith(designRel + '/')) rel = rel.slice(designRel.length + 1);
+  const canvasParam = rel.split('/').map(encodeURIComponent).join('/');
+  const params = new URLSearchParams({
+    canvas: canvasParam,
+    designRel,
+  });
+  if (cfg?.tokensCssRel) params.set('tokens', cfg.tokensCssRel);
+  if (cfg?.componentsCssRel) params.set('components', cfg.componentsCssRel);
+  return `/_canvas-shell.html?${params.toString()}`;
+}
+
 function basename(p) {
   return p.split('/').pop();
 }
@@ -618,7 +639,7 @@ function SelectionHalo() {
   return <div className="sel-halo" aria-hidden="true"><i /></div>;
 }
 
-function Viewport({ tabs, activePath, registerIframe, systemData, onOpenFromSystem, project, selected }) {
+function Viewport({ tabs, activePath, registerIframe, systemData, onOpenFromSystem, project, selected, cfg }) {
   const showHalo = selected && activePath && activePath !== SYSTEM_TAB;
   return (
     <div className="viewport">
@@ -651,7 +672,7 @@ function Viewport({ tabs, activePath, registerIframe, systemData, onOpenFromSyst
           <iframe
             key={t.path}
             ref={el => registerIframe(t.path, el)}
-            src={urlOf(t.path)}
+            src={canvasUrl(t.path, cfg)}
             className={t.path === activePath ? 'active' : ''}
             data-path={t.path}
           />
@@ -1001,6 +1022,24 @@ function App() {
   const [wsConnected, setWsConnected] = useState(false);
   const [search, setSearch] = useState('');
   const [systemData, setSystemData] = useState(null);
+  // Loaded once at boot from /_config — informs canvasUrl() so TSX iframes
+  // can pass the right ?designRel + ?tokens query to the canvas mount shell.
+  const [cfg, setCfg] = useState({ designRel: '.design' });
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/_config')
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        const designRel = (data.designRoot || '.design').replace(/^\/+|\/+$/g, '');
+        setCfg({
+          designRel,
+          tokensCssRel: data.tokensCssRel,
+        });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   const [commentsByFile, setCommentsByFile] = useState({});      // { file: [Comment] }
   const [draft, setDraft] = useState(null);                       // { file, selector, dom_path, bounds, tag, classes, html, text }
   const [focusedCommentId, setFocusedCommentId] = useState(null);
@@ -1416,6 +1455,7 @@ function App() {
           onOpenFromSystem={openTab}
           project={project}
           selected={selected}
+          cfg={cfg}
         />
         {activePath && activePath !== SYSTEM_TAB && (
           <CommentBar

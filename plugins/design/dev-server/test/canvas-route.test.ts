@@ -85,7 +85,9 @@ describe('TSX canvas route', () => {
       // Body should contain data-cd-id metadata + an export — proves the two
       // passes ran end to end.
       expect(body).toMatch(/data-cd-id/);
-      expect(body).toMatch(/export default/);
+      // Bun.build emits `export { Hello as default }` (renamed-default form)
+      // rather than `export default Hello`. Both are valid ESM; match either.
+      expect(body).toMatch(/export\s+\{[\s\S]*\bdefault\b[\s\S]*\}|export\s+default\b/);
     } finally {
       await teardown();
     }

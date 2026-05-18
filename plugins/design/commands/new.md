@@ -125,9 +125,11 @@ Helper detekuje běžící server (PID + `curl /_health`), startuje znovu pokud 
 
 ### 3. Validate name + resolve target path
 
-- Default canvas: `<DESIGN_ROOT>/<NEW_CANVAS_DIR>/<Name>.html`
-- `--component`: `<DESIGN_ROOT>/<NEW_COMPONENT_DIR>/<PascalName>.jsx`
+- Default canvas: `<DESIGN_ROOT>/<NEW_CANVAS_DIR>/<Name>.tsx` (Phase 3.6 default — TSX canvas served by the dev-server's two-pass pipeline + Bun.build runtime). The canvas mounts via `_canvas-shell.html`; React 19 + ReactDOM ride in shared `/_canvas-runtime/*.js` bundles.
+- `--component`: `<DESIGN_ROOT>/<NEW_COMPONENT_DIR>/<PascalName>.tsx`
 - Reject pokud target file existuje (suggest `<Name> v2`).
+
+**Legacy `.html` canvases** (pre-3.6) keep rendering via the dev-server's HTML route (inspector + Babel-React injected). The migration codemod (Phase 3.6 Task 8) converts them to `.tsx` in one pass; until that runs, both formats coexist.
 
 ### 4. Resolve mobile/desktop + opt-out scope
 
@@ -331,14 +333,22 @@ Viz SKILL.md "Cross-skill calls → Generation invocation".
 
 ### 7. Validate output
 
-- Link na tokens (relative path resolved správně z target file)
-- `<body class="<ROOT_CLASS>" data-theme="…">`
-- Obsahuje alespoň jeden `<DCArtboard` ref (canvas-multi-artboard pattern)
-- Žádné hardcoded colors / fonts / radii
+TSX canvases (Phase 3.6 default):
+
+- Default-exported React component (`export default function <Name>() { … }` — kebab-PascalCase ok; the module must have exactly one default export).
+- Standard `import` statements for `react` (when hooks are used), framework primitives, and any sibling components. **No** `<!doctype>`, no `<html>` / `<body>` — those live in `_canvas-shell.html`.
+- Contains at least one `<DCArtboard …>` (canvas-multi-artboard pattern).
+- Class strings reference the project DS `_components.css` classes (`.btn`, `.tile`, `.sku`, `.seg`, …). Inline `style={{}}` is the escape hatch for arbitrary one-offs — gradients / radii honor the opt-out scope.
+- No hardcoded colors / fonts / radii in `style={{}}` — use `var(--*)` tokens or DS classes.
+- Parses cleanly via `oxc-parser` (the dev-server's canvas-pipeline runs this every request — a parse failure surfaces as HTTP 500 with the error byte). Pre-flight: `bun -e 'import { parseSync } from "oxc-parser"; const s = await Bun.file("<target>").text(); const r = parseSync("<target>", s); process.exit(r.errors?.length ? 1 : 0);'`.
+
+Legacy `.html` (pre-3.6 codemod): keep the old checks — tokens link, `<body class="<ROOT_CLASS>" data-theme="…">`, at least one `<DCArtboard>`, no hardcoded colors.
 
 ### 8. Write target file
 
 Pokud validation fails, do not write. Re-prompt jednou s konkrétním fix-list. Pokud znovu fail, stop.
+
+**TSX canvases** are written from `plugins/design/templates/canvas.tsx.template` — the JSDoc header is regenerated from `.meta.json` on every write (Task 12a, future); the JSX body is the frontend-design output. The `_canvas-shell.html` harness lives in the plugin distribution and is served at `/_canvas-shell.html`; **no copy lands in `<DESIGN_ROOT>/`** (server is the single source of truth — avoids a stale per-project copy drifting from the plugin).
 
 ### 9. Post-write reality check — per-artboard screenshots
 

@@ -8,10 +8,12 @@ import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import type { Api } from './api.ts';
-import { TranspileError, transpileCanvasSource } from './canvas-pipeline.ts';
+import { buildCanvasModule } from './canvas-build.ts';
+import { TranspileError } from './canvas-pipeline.ts';
 import type { Context } from './context.ts';
 import type { Inspect } from './inspect.ts';
 import { canvasSlug, writeLocator } from './locator.ts';
+import { getRuntimeBundle, packageForSlug, RUNTIME_PACKAGES, slugFor } from './runtime-bundle.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -61,6 +63,7 @@ function safePathUnderRoot(reqUrl: string, repoRoot: string): string | null {
 const DIST_DIR = join(HERE, 'dist');
 const CLIENT_DIR = join(HERE, 'client');
 const RUNTIME_DIR = join(HERE, 'runtime');
+const TEMPLATES_DIR = join(HERE, '..', 'templates');
 
 // In-memory transpile cache. Key = absolute canvas path; value = the last
 // transpile keyed by mtime. Repeat GETs against an unchanged source skip the
@@ -87,9 +90,9 @@ async function serveCanvasTsx(
 
   if (!cached || cached.mtimeMs !== mtimeMs) {
     const source = await file.text();
-    let result: ReturnType<typeof transpileCanvasSource>;
+    let result: Awaited<ReturnType<typeof buildCanvasModule>>;
     try {
-      result = transpileCanvasSource(absPath, source);
+      result = await buildCanvasModule(absPath, source);
     } catch (err) {
       if (err instanceof TranspileError) {
         return new Response(`Transpile error: ${err.message}`, {
@@ -97,7 +100,11 @@ async function serveCanvasTsx(
           headers: { 'Content-Type': 'text/plain; charset=utf-8' },
         });
       }
-      throw err;
+      const msg = err instanceof Error ? err.message : String(err);
+      return new Response(`Canvas build error: ${msg}`, {
+        status: 500,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      });
     }
     cached = { mtimeMs, etag: result.etag, js: result.js };
     canvasCache.set(absPath, cached);
@@ -238,6 +245,45 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect): Http {
         const rel = decodeURIComponent(pathname.slice('/_runtime/'.length));
         if (rel.includes('..')) return new Response('Forbidden', { status: 403 });
         return serveFile(join(RUNTIME_DIR, rel));
+      }
+
+      // React 19 runtime bundles for TSX canvases. The browser pulls these
+      // through the importmap in _canvas-shell.html — each bundle is a single
+      // package (react, react-dom/client, jsx-runtime, jsx-dev-runtime),
+      // built once on first request, cached in-process for the session.
+      if (pathname.startsWith('/_canvas-runtime/')) {
+        const slugWithExt = decodeURIComponent(pathname.slice('/_canvas-runtime/'.length));
+        const pkg = packageForSlug(slugWithExt);
+        if (!pkg) return new Response('Not found', { status: 404 });
+        try {
+          const bundle = await getRuntimeBundle(pkg);
+          const ifNoneMatch = req.headers.get('if-none-match');
+          if (ifNoneMatch === bundle.etag) {
+            return new Response(null, {
+              status: 304,
+              headers: { ETag: bundle.etag, 'Cache-Control': 'no-cache' },
+            });
+          }
+          return new Response(bundle.js, {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/javascript; charset=utf-8',
+              ETag: bundle.etag,
+              'Cache-Control': 'no-cache',
+            },
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          return new Response(`Runtime bundle error: ${msg}`, { status: 500 });
+        }
+      }
+
+      // Canvas mount harness — served for iframes pointing at a .tsx canvas.
+      // Static template ships under plugins/design/templates/_shell.html.
+      // Query parameter ?canvas=<path-relative-to-designRoot> tells the shell
+      // which canvas to import + mount. See plugins/design/templates/_shell.html.
+      if (pathname === '/_canvas-shell.html' || pathname === '/_canvas-shell') {
+        return serveFile(join(TEMPLATES_DIR, '_shell.html'));
       }
 
       // Fall-through: serve user repo files (designRoot + everything under repoRoot).

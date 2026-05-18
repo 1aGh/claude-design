@@ -9,6 +9,7 @@ dev-server/.cache/
 # (source-of-truth files like config.json / README.md / INDEX.md / system/ ARE committed)
 .design/_server.json
 .design/_active.json
+.design/_locator.json
 .design/_history/
 .design/_comments/
 .design/_canvas-state/

@@ -6,6 +6,7 @@ import type { Context } from './context.ts';
 
 export interface SelectedElement {
   file: string;
+  /** CSS-selector path (v1 anchor). Always present for backwards-compat + legacy HTML canvases. */
   selector: string;
   tag: string;
   classes: string;
@@ -14,7 +15,21 @@ export interface SelectedElement {
   bounds: { x: number; y: number; w: number; h: number } | null;
   html: string;
   ts: string;
-  v: 1; // schema version — bumped to 2 in Phase 3.6 when migrating to data-cd-id paths
+  /**
+   * Schema version. v2 = TSX canvas with a `data-cd-id` anchor at click target
+   * (or any ancestor — script walks via `closest()`); v1 = no `data-cd-id`
+   * anywhere (legacy `.html` canvases, or click on shell chrome of a TSX
+   * canvas). Readers must accept both during the grace window.
+   */
+  v: 1 | 2;
+  /** Stable per-element id from canvas-pipeline two-pass transform. Present only when v === 2. */
+  id?: string;
+  /**
+   * Canvas slug — POSIX, extension-less, relative to designRoot. Matches
+   * `_locator.json` top-level keys. Present only when v === 2. The inspector
+   * derives it server-side from `file` (stripping `<designRoot>/` prefix + `.tsx`).
+   */
+  canvas?: string;
 }
 
 export interface ActiveState {
@@ -31,7 +46,7 @@ export interface Inspect {
   load(): Promise<void>;
   setActive(file: string): void;
   setOpenTabs(tabs: string[]): void;
-  setSelected(sel: Omit<SelectedElement, 'ts' | 'v'> | null): void;
+  setSelected(sel: Omit<SelectedElement, 'ts' | 'v' | 'canvas'> | null): void;
   save(): Promise<void>;
   injectInto(html: string): string;
 }
@@ -104,10 +119,13 @@ export function createInspect(
     scheduleSave();
   }
 
-  function setSelected(sel: Omit<SelectedElement, 'ts' | 'v'> | null) {
+  function setSelected(sel: Omit<SelectedElement, 'ts' | 'v' | 'canvas'> | null) {
     if (sel && typeof sel === 'object') {
+      const file = typeof sel.file === 'string' ? sel.file : (state.active ?? '');
+      const id = typeof sel.id === 'string' && sel.id ? sel.id : undefined;
+      const v: 1 | 2 = id ? 2 : 1;
       state.selected = {
-        file: typeof sel.file === 'string' ? sel.file : (state.active ?? ''),
+        file,
         selector: String(sel.selector || ''),
         tag: String(sel.tag || ''),
         classes: String(sel.classes || ''),
@@ -116,7 +134,8 @@ export function createInspect(
         bounds: sel.bounds ?? null,
         html: String(sel.html || '').slice(0, 4000),
         ts: new Date().toISOString(),
-        v: 1,
+        v,
+        ...(id ? { id, canvas: deriveCanvasSlug(file) } : {}),
       };
     } else {
       state.selected = null;
@@ -124,6 +143,23 @@ export function createInspect(
     state.last_change = new Date().toISOString();
     scheduleSave();
     ctx.bus.emit('selected', state.selected);
+  }
+
+  /**
+   * Canvas slug for v2 selections. Mirrors `canvasSlug()` from locator.ts but
+   * accepts a designRoot-relative `file` path (which is what the iframe reports)
+   * rather than an absolute one. Strips a leading `<designRoot-relative>/` if
+   * present and strips the final extension.
+   */
+  function deriveCanvasSlug(file: string): string {
+    let s = (file || '').replace(/^\/+/, '');
+    // Strip a leading designRoot prefix if it's part of the file path. The
+    // iframe's pathname includes the design root (e.g. `.design/ui/Foo.tsx`);
+    // locator.ts strips it via path.relative — mirror that here.
+    const dr = ctx.paths.designRel.replace(/^\.\//, '').replace(/^\/+|\/+$/g, '');
+    if (dr && s.startsWith(`${dr}/`)) s = s.slice(dr.length + 1);
+    const dot = s.lastIndexOf('.');
+    return dot > 0 ? s.slice(0, dot) : s;
   }
 
   function injectInto(html: string): string {
@@ -257,9 +293,22 @@ const INSPECTOR_SCRIPT = `
     return hops;
   }
 
+  function cdIdOf(el) {
+    // Walk up to the nearest ancestor (or el itself) carrying a data-cd-id —
+    // this is the TSX two-pass-transform anchor. Returns null on legacy .html
+    // canvases or when the click landed on shell chrome (no canvas-emitted
+    // ancestor). The server stamps v=1 in that case (CSS-selector fallback).
+    if (!(el instanceof Element) || !el.closest) return null;
+    var anchor = el.closest('[data-cd-id]');
+    if (!anchor) return null;
+    var raw = anchor.getAttribute('data-cd-id');
+    return (typeof raw === 'string' && raw) ? raw : null;
+  }
+
   function elInfo(el) {
     var rect = el.getBoundingClientRect();
-    return {
+    var id = cdIdOf(el);
+    var info = {
       file: FILE,
       selector: cssPath(el),
       tag: el.tagName.toLowerCase(),
@@ -269,6 +318,8 @@ const INSPECTOR_SCRIPT = `
       bounds: { x: Math.round(rect.left), y: Math.round(rect.top), w: Math.round(rect.width), h: Math.round(rect.height) },
       html: (el.outerHTML || '').slice(0, 4000)
     };
+    if (id) info.id = id;
+    return info;
   }
 
   function showLabel(text, x, y, warn) {

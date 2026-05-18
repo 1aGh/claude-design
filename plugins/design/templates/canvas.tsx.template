@@ -1,0 +1,101 @@
+/**
+ * @canvas      {{NAME}} — {{SUBTITLE}}
+ * @ds          {{DS_NAME}}
+ * @platform    {{PLATFORM}}
+ * @opt_out     {{OPT_OUT_SCOPE}}
+ * @artboards   {{ARTBOARDS}}
+ * @brief       {{BRIEF}}
+ * @stack       React 19 · TSX · Bun.build · css_mode={{CSS_MODE}}
+ * @history     {{HISTORY_DIR}}
+ * @handoff     bunx shadcn add file://./{{NAME}}.registry.json
+ *
+ * Authored under {{DS_NAME}}. Tokens + shared component classes load via the
+ * dev-server's _shell.html harness — link tags arrive automatically from the
+ * iframe's ?tokens= / ?components= query. Class names match the DS's
+ * `_components.css` (`.btn`, `.tile`, `.sku`, `.seg`, ...). Bespoke classes go
+ * into a sibling .module.css iff `css_mode === "modules"`; for `inline` (the
+ * MDCC-DSN/01 default) prefer existing classes + `style={{}}` for arbitrary
+ * one-off values.
+ *
+ * `data-cd-id="<8 hex>"` attributes are injected at request time by the dev
+ * server (canvas-pipeline.ts pass 1). Don't author them by hand — they'd be
+ * stripped + replaced. `/design:handoff` strips them again before the registry
+ * sidecar leaves dev (production has no business with dev-time scaffolding).
+ */
+
+import { useState } from "react";
+
+export default function {{COMPONENT_NAME}}() {
+  return (
+    <DesignCanvas>
+      <DCSection id="overview" title="{{SUBTITLE}}">
+        <DCArtboard id="primary" label="A · primary" width={1280} height={800}>
+          <div className="mdcc" data-theme="{{THEME_DEFAULT}}">
+            {/* Replace this scaffold with the actual canvas content. The
+                envelope this template was rendered against is in
+                {{HISTORY_DIR}}/000-envelope.md. */}
+            <h1 className="sku">{{NAME}}</h1>
+            <p>{{BRIEF}}</p>
+          </div>
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Canvas-frame primitives — local copies of the design plugin's DesignCanvas
+// API. Loaded inline so the canvas can be screenshot / handed-off without a
+// runtime dep on the dev-server's chrome. The shapes mirror legacy .html
+// canvases — same prop names, same children pattern.
+
+function DesignCanvas({ children }: { children: React.ReactNode }) {
+  return <div className="dc-canvas">{children}</div>;
+}
+
+function DCSection({
+  id,
+  title,
+  subtitle,
+  children,
+}: {
+  id: string;
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="dc-section" data-dc-section={id}>
+      <header>
+        <h2>{title}</h2>
+        {subtitle ? <p className="sku">{subtitle}</p> : null}
+      </header>
+      <div className="dc-section-body">{children}</div>
+    </section>
+  );
+}
+
+function DCArtboard({
+  id,
+  label,
+  width,
+  height,
+  children,
+}: {
+  id: string;
+  label: string;
+  width: number;
+  height: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <article
+      className="dc-artboard"
+      data-dc-screen={id}
+      style={{ width, height }}
+    >
+      <header className="dc-artboard-label sku">{label}</header>
+      <div className="dc-artboard-body">{children}</div>
+    </article>
+  );
+}
