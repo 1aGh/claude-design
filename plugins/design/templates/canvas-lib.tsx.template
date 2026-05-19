@@ -458,12 +458,20 @@ export function useViewportController(
   // upscales a cached layer, which produces the pixelation users see at
   // zoom > ~1.5. CSS `zoom` is supported in Chrome / Safari / Edge (always)
   // and Firefox 126+; for a dev-server design tool that's full coverage.
+  //
+  // ! Subtle: CSS `zoom: N` makes `transform: translate(Xpx, Ypx)` translate by
+  // ! N×X / N×Y screen pixels (translate is in the *pre-zoom* coord space, then
+  // ! the whole layer is zoomed). Our controller's `vpRef` holds the translate
+  // ! in *screen* pixels (the same convention as `transform: scale(N)
+  // ! translate(...)` had), so we divide by zoom at write time to convert into
+  // ! the CSS-zoom world. The data model stays simple and pan/zoom math (in
+  // ! particular zoom-around-cursor) keeps using screen-px throughout.
   const writeTransform = useCallback((v: ViewportState) => {
     const el = worldRef.current;
     if (!el) return;
-    // translate operates on the post-zoom box → values stay in screen pixels.
-    el.style.transform = `translate(${v.x}px, ${v.y}px)`;
-    el.style.zoom = String(v.zoom);
+    const z = v.zoom || 1;
+    el.style.transform = `translate(${v.x / z}px, ${v.y / z}px)`;
+    el.style.zoom = String(z);
     el.style.visibility = "visible";
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -688,10 +696,13 @@ export function useViewportController(
         zoomAt(factor, cx, cy);
         return;
       }
-      // Shift+wheel — for mouse wheels with only a vertical axis, this
-      // translates vertical scrolling into horizontal panning.
+      // Shift+wheel → horizontal pan. Some browsers / OSes auto-swap
+      // deltaX↔deltaY when shift is held (Chromium on Linux does, macOS
+      // doesn't, Safari sometimes does); some don't. Read whichever axis
+      // actually carries energy so the gesture lands horizontally either way.
       if (e.shiftKey) {
-        panBy(-e.deltaY, 0);
+        const d = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+        panBy(-d, 0);
         return;
       }
       // Default: trackpad two-finger scroll → 2D pan. The negation keeps the
