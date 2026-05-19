@@ -463,6 +463,71 @@ export function filterTokensCss(
 }
 
 // ---------------------------------------------------------------------------
+// Phase 4 T7 — handoff-static frame overrides.
+//
+// Dev-time canvas-lib carries the full infinite-canvas engine: DesignCanvas
+// runs `useViewportController`, mounts `DCMiniMap` + `DCZoomToolbar`, walks
+// children via `harvestArtboards`, etc. None of that belongs in a shadcn
+// registry item — the consumer of a handed-off canvas wants the design as
+// rendered, not the authoring engine.
+//
+// `applyHandoffStaticOverrides` rewrites the three frame functions in the
+// libMap to minimal static variants with empty `deps`. When `inlineUsedExports`
+// then BFS-resolves what the user canvas imports (`DesignCanvas`, `DCSection`,
+// `DCArtboard`), it finds these stub bodies and never reaches the engine code
+// (`useViewportController`, `DCMiniMap`, `DCZoomToolbar`, `WorldContext`,
+// `harvestArtboards`, `synthDefaultGrid`, `computeFit`, ...).
+//
+// The static frames intentionally mirror the standalone-mode rendering branch
+// of the dev-time components — same DOM, same classes, same data attributes —
+// so the DS's `_components.css` rules still apply 1:1.
+
+const STATIC_DESIGN_CANVAS = `function DesignCanvas({ children }) {
+  return <div className="dc-canvas">{children}</div>;
+}`;
+
+const STATIC_DC_SECTION = `function DCSection({ id, title, subtitle, children }) {
+  return (
+    <section className="dc-section" data-dc-section={id}>
+      <header>
+        <h2>{title}</h2>
+        {subtitle ? <p className="sku">{subtitle}</p> : null}
+      </header>
+      <div className="dc-section-body">{children}</div>
+    </section>
+  );
+}`;
+
+const STATIC_DC_ARTBOARD = `function DCArtboard({ id, label, width, height, children }) {
+  return (
+    <article className="dc-artboard" data-dc-screen={id} style={{ width, height }}>
+      <header className="dc-artboard-label sku">{label}</header>
+      <div className="dc-artboard-body">{children}</div>
+    </article>
+  );
+}`;
+
+/**
+ * Names this routine overrides. Exported so tests can pin the list. Adding
+ * a new engine-bearing top-level export to canvas-lib that the canvas might
+ * import requires either (a) extending this map with a static variant, or
+ * (b) extending `inlineUsedExports`'s skip-set.
+ */
+export const HANDOFF_STATIC_FRAME_EXPORTS = ['DesignCanvas', 'DCSection', 'DCArtboard'] as const;
+
+export function applyHandoffStaticOverrides(libMap: Map<string, { name: string; source: string; deps: string[] }>): void {
+  if (libMap.has('DesignCanvas')) {
+    libMap.set('DesignCanvas', { name: 'DesignCanvas', source: STATIC_DESIGN_CANVAS, deps: [] });
+  }
+  if (libMap.has('DCSection')) {
+    libMap.set('DCSection', { name: 'DCSection', source: STATIC_DC_SECTION, deps: [] });
+  }
+  if (libMap.has('DCArtboard')) {
+    libMap.set('DCArtboard', { name: 'DCArtboard', source: STATIC_DC_ARTBOARD, deps: [] });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main entry — emit the registry-item.json structure.
 
 export async function emitRegistryItem(opts: EmitOptions): Promise<RegistryItem> {
@@ -478,12 +543,19 @@ export async function emitRegistryItem(opts: EmitOptions): Promise<RegistryItem>
   // Inline canvas-lib helpers — when the canvas imports from @mdcc/canvas-lib,
   // we splice the resolved exports + their transitive deps into the canvas
   // source and strip the specifier. Phase 3.6.1 Task 9.
+  //
+  // Phase 4 T7 — engine exports (useViewportController, DCMiniMap,
+  // DCZoomToolbar, ...) MUST NOT travel into a handed-off registry item.
+  // The trick: replace `DesignCanvas`, `DCArtboard`, `DCSection` in the
+  // libMap with their static-frame variants before BFS. The static variants
+  // have empty deps, so the transitive walk never reaches the engine code.
   if (opts.designRoot) {
     const libPath = canvasLibPath(opts.designRoot);
     const libFile = Bun.file(libPath);
     if (await libFile.exists()) {
       const libSource = await libFile.text();
       const libMap = buildLibMap(libPath, libSource);
+      applyHandoffStaticOverrides(libMap);
       const inlined = inlineUsedExports(tsx, libMap);
       tsx = inlined.content;
     }

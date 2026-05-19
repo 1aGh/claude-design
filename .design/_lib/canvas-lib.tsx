@@ -107,6 +107,22 @@ button.dc-artboard-label {
 }
 button.dc-artboard-label:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .dc-artboard[aria-current="true"] { box-shadow: 0 0 0 2px #d63b1f; }
+.dc-artboard-lod {
+  position: absolute;
+  inset: 0;
+  margin-top: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(60,60,70,0.05), rgba(60,60,70,0.02));
+  color: rgba(60,60,70,0.42);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: clamp(14px, 6vw, 48px);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  pointer-events: none;
+  user-select: none;
+}
 `.trim();
 
 function ensureEngineStyles(): void {
@@ -955,6 +971,18 @@ export function DCArtboard({
   const ctx = useWorldContext();
   const controller = useViewportControllerContext();
   const rect = ctx ? ctx.rectFor(id) : null;
+  // Phase 4 T7 — Level-of-Detail hysteresis. Below zoom 0.3 the artboard's
+  // body is swapped for a cheap placeholder; live content returns once zoom
+  // climbs above 0.4 (avoids thrashing at the threshold).
+  const [useLod, setUseLod] = useState(false);
+  const zoom = ctx?.viewport?.zoom ?? 1;
+  useEffect(() => {
+    setUseLod((prev) => {
+      if (prev && zoom >= 0.4) return false;
+      if (!prev && zoom < 0.3) return true;
+      return prev;
+    });
+  }, [zoom]);
   if (!ctx || !rect) {
     return (
       <article
@@ -975,6 +1003,7 @@ export function DCArtboard({
     <article
       className="dc-artboard dc-positioned"
       data-dc-screen={id}
+      data-lod={useLod ? "1" : undefined}
       aria-current={isActive ? "true" : undefined}
       style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}
     >
@@ -986,7 +1015,11 @@ export function DCArtboard({
       >
         {label}
       </button>
-      <div className="dc-artboard-body">{children}</div>
+      {useLod ? (
+        <div className="dc-artboard-lod" aria-hidden="true">{label}</div>
+      ) : (
+        <div className="dc-artboard-body">{children}</div>
+      )}
     </article>
   );
 }

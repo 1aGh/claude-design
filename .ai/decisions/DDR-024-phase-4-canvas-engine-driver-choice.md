@@ -2,6 +2,7 @@
 
 - **Date:** 2026-05-19
 - **Status:** Accepted (CSS-transform baseline) · **Hold** (Pixi.js swap pending T6 measurements)
+- **T7 disposition:** shipped as DOM-driver enhancements — LoD swap at zoom < 0.3 + handoff static-frame filter. Pixi.js bundle deferred until DDR-024 Measurements clear the gate.
 - **Tags:** design, canvas, performance, phase-4, perf-budget
 - **Related:** [DDR-009](./DDR-009-bun-runtime-authoritative-for-dev-server.md), [DDR-022](./DDR-022-canvas-lib-virtual-module-and-inline-on-handoff.md), [`.ai/plans/phase-4-canvas-v2-rendering-engine.md`](../plans/phase-4-canvas-v2-rendering-engine.md), [`.design/_lab/perf-100-artboards.tsx`](../../.design/_lab/perf-100-artboards.tsx)
 
@@ -117,4 +118,11 @@ Stress-test harder so Pixi.js's advantages emerge.
 
 T6 (this DDR + lab canvas) is part of the Phase 4 plan.
 
-T7's authorization happens via a post-measurement DDR amendment, not a separate DDR.
+T7 shipped as DOM-driver enhancements:
+
+1. **LoD content swap at zoom < 0.3.** `DCArtboard` swaps its `<div class="dc-artboard-body">` for a `<div class="dc-artboard-lod">` placeholder when the world transform's zoom drops below 0.3. Re-enters live content above 0.4 (hysteresis — avoids thrashing at the boundary). The placeholder is pure CSS — gradient background + the artboard's label centered in big mono type, `aria-hidden`. Cost: a few state updates and one DOM swap; zero new dependencies. Live-state inside artboard children is unmounted when LoD activates and remounted on exit — same trade-off the Pixi path would have made, just earlier in the pipeline.
+2. **Handoff static-frame filter.** `applyHandoffStaticOverrides()` in `handoff.ts` rewrites the libMap entries for `DesignCanvas` / `DCSection` / `DCArtboard` with minimal static-frame source + empty `deps` BEFORE `inlineUsedExports` runs its BFS. Engine code (`useViewportController`, `DCMiniMap`, `DCZoomToolbar`, `WorldContext`, `harvestArtboards`, `synthDefaultGrid`, `computeFit`, …) is therefore never reached during transitive resolution and never appears in the registry item. 4 dedicated tests pin this contract.
+
+Pixi.js engine swap (the bundled-WebGL path) remains the deferred branch. If perf-bench numbers ever land in the Measurements section above and clear the gate, the swap is implementable behind the same `useViewportController` interface (the LoD swap is independent — Pixi would render the full-detail path at high zoom; LoD's CSS placeholder would still work as the low-zoom fallback). Until then, this DDR is the authority: T7 ships without Pixi.
+
+This DDR will be amended (not superseded) if/when measurements unlock the engine swap.

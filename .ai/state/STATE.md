@@ -4,10 +4,10 @@
 
 **Workflow:** feature-delivery — md-claude v1.0 roadmap
 **Phase:** Phase 4 — canvas v2 infinite-canvas engine inside the canvas runtime
-**Status:** in-progress (T1-T6 landed · T7 on HOLD pending perf measurements per DDR-024)
+**Status:** done (T1-T7 landed · Pixi swap deferred pending T6 measurements per DDR-024)
 **Started:** 2026-05-12
 **Updated:** 2026-05-19
-**Active task:** — (T7 blocked on user-side perf benchmark)
+**Active task:** —
 **Active plan:** `.ai/plans/phase-4-canvas-v2-rendering-engine.md`
 
 ## Execution Progress
@@ -17,15 +17,16 @@
 - [x] T2 — useViewportController hook
 - [x] T3 — DCMiniMap + DCZoomToolbar
 - [x] T4 — Per-DCArtboard click-to-focus
-- [x] T5 — meta.json layout + viewport persistence (+ 5 new tests, 128→135 total)
-- [x] T6 — Perf-prototype lab canvas + DDR-024 (CSS-baseline accepted; T7 gated on measurements)
-- [ ] T7 — Pixi.js engine swap + LoD — **HOLD** (needs user to run perf bench on M1 MBA per DDR-024 methodology)
+- [x] T5 — meta.json layout + viewport persistence (+ 5 new tests)
+- [x] T6 — Perf-prototype lab canvas + DDR-024 (CSS-baseline accepted; engine swap gated on measurements)
+- [x] T7 — DOM-driver enhancements: LoD content swap at zoom < 0.3 (hysteresis 0.4 exit) + handoff static-frame filter (`applyHandoffStaticOverrides`) keeping `useViewportController` / `DCMiniMap` / `DCZoomToolbar` / `WorldContext` / harvest+grid+fit helpers out of registry items. Pixi.js bundle deferred per DDR-024.
 
 ## History
 
 | Date | Phase | Status | Note |
 | --- | --- | --- | --- |
-| 2026-05-19 | Phase 4 T1–T6 | done | Infinite-canvas engine landed in `canvas-lib.tsx.template` — DesignCanvas world plane (T1), `useViewportController` hook (T2), `DCMiniMap` + `DCZoomToolbar` (T3), per-DCArtboard click-to-focus (T4), `<file>.meta.json` `layout` + `viewport` persistence (T5) via new `/_api/canvas-meta` GET/PATCH endpoint, perf lab `.design/_lab/perf-100-artboards.tsx` + DDR-024 (T6). T0 revert folded into the same change. `bun test` 135/135. T7 gated on user-side perf benchmark — DDR-024 carries the methodology + template. |
+| 2026-05-19 | Phase 4 T7 | done | DOM-driver enhancements per DDR-024's "Pixi cancelled / DOM-only" exit path: LoD content swap at zoom < 0.3 (hysteresis 0.4 exit) in `DCArtboard`; `applyHandoffStaticOverrides()` in `handoff.ts` strips engine code from registry-item inlining (4 new tests pin contract). Pixi.js bundle stays deferred until perf-bench fills DDR-024 Measurements. `bun test` 139/139. |
+| 2026-05-19 | Phase 4 T1–T6 | done | Infinite-canvas engine landed in `canvas-lib.tsx.template` — DesignCanvas world plane (T1), `useViewportController` hook (T2), `DCMiniMap` + `DCZoomToolbar` (T3), per-DCArtboard click-to-focus (T4), `<file>.meta.json` `layout` + `viewport` persistence (T5) via new `/_api/canvas-meta` GET/PATCH endpoint, perf lab `.design/_lab/perf-100-artboards.tsx` + DDR-024 (T6). T0 revert folded into the same change. `bun test` 135/135. Commit `0c4c209`. |
 | 2026-05-19 | Phase 4 T0 | folded | Shell-level 2026-05-19 T1 reverted in `app.jsx` (computeFit/computeDefaultGrid/.vp-world/multi-tab openTab/SelectionHalo rect dropped); engine moves to canvas runtime per user direction. Folded into the T1–T6 commit. |
 | 2026-05-19 | Sidebar restructure | done | Dev-server FILES panel redesigned: sidecar nesting, per-DS folders, unified section toggles, hidden-files toggle, DS-count pill. Commit `8c58c2c`. Archived: `.ai/plans/archive/client-tree-restructure.md`. Changeset authored. |
 | 2026-05-19 | Phase 3.6.1 | done | canvas-lib + HMR + TSX specimens shipped; 38/38 specimen-render scenario PASS; DDR-022 + DDR-023 recorded. Archived: `.ai/plans/archive/phase-3.6.1-canvas-envelope-and-ds-specimens.md`. |
