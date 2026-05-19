@@ -14,7 +14,7 @@ Feature implementation plans. One file per feature; the active multi-phase roadm
 
 # md-claude v1.0 → v1.2+ — Execution roadmap
 
-> 7 active v1.0 phases + 1 icebox + 1 late-v1.0 + 3 post-v1.0 plans, all implementing [`../docs/PRD.md`](../docs/PRD.md). Config reference at [`../docs/config-schema.md`](../docs/config-schema.md). Architecture research at [`../docs/research-runtime.md`](../docs/research-runtime.md) + [`../docs/research-collab.md`](../docs/research-collab.md).
+> 8 active v1.0 phases + 1 icebox + 1 late-v1.0 + 3 post-v1.0 plans, all implementing [`../docs/PRD.md`](../docs/PRD.md). Config reference at [`../docs/config-schema.md`](../docs/config-schema.md). Architecture research at [`../docs/research-runtime.md`](../docs/research-runtime.md) + [`../docs/research-collab.md`](../docs/research-collab.md).
 
 ## Dependency graph (v1.0 ship line)
 
@@ -41,9 +41,17 @@ Feature implementation plans. One file per feature; the active multi-phase roadm
                   ┌────────────────┐                       ┌──────────────────┐
                   │ Phase 5:       │                       │ Phase 6:         │
                   │ Multi-DS       │                       │ Comments +       │
-                  │ (gen-time) +   │   parallel            │ presentation +   │
-                  │ draw tools     │                       │ export           │
-                  └────────────────┘                       └────────┬─────────┘
+                  │ (gen-time) +   │   parallel            │ presentation    │
+                  │ draw tools     │                       │                  │
+                  └────────────────┘                       └──────────────────┘
+
+                                                           ┌──────────────────┐
+                                                           │ Phase 6.5:       │
+                                                           │ Export (PNG/PDF/ │
+                                                           │ SVG/HTML/Canva/  │
+                                                           │ ZIP) — UI-first  │
+                                                           │ parallel with 5+6│
+                                                           └────────┬─────────┘
                                                                     │
                                                                     ▼
                                                         ┌──────────────────────────┐
@@ -89,7 +97,8 @@ v1.3+ (conditional on user-feedback survey)
 | 13 | Flow command categorization (naming + index, no subfolders) | `phase-13-flow-command-categorization.md` | with Phase 2 | v1.0 | `/flow:execute .ai/plans/phase-13-flow-command-categorization.md` |
 | 4 | Canvas v2 rendering engine | `phase-4-canvas-v2-rendering-engine.md` | — | v1.0 | `/flow:execute .ai/plans/phase-4-canvas-v2-rendering-engine.md` |
 | 5 | Multi-DS + draw tools | `phase-5-multi-ds-and-draw-tools.md` | with Phase 6 | v1.0 | `/flow:execute .ai/plans/phase-5-multi-ds-and-draw-tools.md` |
-| 6 | Comments + presentation + export | `phase-6-comments-presentation-export.md` | with Phase 5 | v1.0 | `/flow:execute .ai/plans/phase-6-comments-presentation-export.md` |
+| 6 | Comments + presentation | `phase-6-comments-presentation-export.md` | with Phase 5 + 6.5 | v1.0 | `/flow:execute .ai/plans/phase-6-comments-presentation-export.md` |
+| 6.5 | Canvas export (PNG/PDF/SVG/HTML/Canva/ZIP) — UI-first | `phase-6.5-export.md` | with Phase 5 + 6 | v1.0 | `/flow:execute .ai/plans/phase-6.5-export.md` |
 | 7 | ACP chat sidebar | `phase-7-acp-chat-sidebar.md` | ❄️ skipped | ICEBOX | (not in v1.0) |
 | 8 | Live collaboration LAN | `phase-8-live-collaboration-yjs-lan.md` | — | v1.0 | `/flow:execute .ai/plans/phase-8-live-collaboration-yjs-lan.md` |
 | 11 | Flow ↔ Design integration | `phase-11-flow-design-integration.md` | — | v1.0 late / v1.1 | `/flow:execute .ai/plans/phase-11-flow-design-integration.md` |
@@ -139,13 +148,21 @@ v1.3+ (conditional on user-feedback survey)
 
 > **What to build:** Multi design-system **as attachment** (revised interpretation 2026-05-12): multiple `.design/system/<name>/` folders, each scaffolds canvases via `/design:new --ds=<name>`. Per-canvas `.meta.json.designSystem` records membership; `design-system-guard` subagent scopes per canvas. **Not** a runtime canvas switcher. Plus: draw / annotation tools (pen / circle / arrow as SVG sidecar). Layers panel + in-canvas CSS editor explicitly NOT in this phase — moved to Phase 12.
 
-### Phase 6 — Comments + presentation + export
+### Phase 6 — Comments + presentation
 
 ```
 /flow:execute .ai/plans/phase-6-comments-presentation-export.md
 ```
 
-> **What to build:** Pin-comments anchored to element or world coords, threading + resolve + @mention (git committer autocomplete), persisted to `.design/_comments/<slug>.json`. Presentation mode (full-screen, arrow keys, Esc). Exporters: PDF (`pdf-lib`), PNG (Playwright dev-dep), HTML zip (inlined assets), Canva (best-effort archive + README). Surface via `mdcc design export` CLI + `/design:export` slash command.
+> **What to build:** Pin-comments anchored to element or world coords, threading + resolve + @mention (git committer autocomplete), persisted to `.design/_comments/<slug>.json`. Presentation mode (full-screen, arrow keys, Esc). **Export was extracted to Phase 6.5** (2026-05-19) — too big to share a plan after scope ladder + SVG + raw-source ZIP were added.
+
+### Phase 6.5 — Canvas export (UI-first, multi-format, scope-aware)
+
+```
+/flow:execute .ai/plans/phase-6.5-export.md
+```
+
+> **What to build:** First-class export feature with toolbar button + `⌘E` dialog + context-menu entries. 6 formats (PNG, PDF, SVG, HTML standalone zip, Canva-handoff, project-raw ZIP) × 4 scopes (selection, artboard, canvas-as-separate, project-raw). `POST /api/export` is the single engine; `mdcc design export` CLI + `/design:export` slash are thin clients. SVG via `<foreignObject>` (DDR with Safari + Illustrator caveats). Project-raw ZIP streams `<designRoot>/` minus runtime files. Recent-exports list + `⌘⇧E` re-runs the latest.
 
 ### Phase 7 — ACP chat sidebar [❄️ ICEBOX — skip for v1.0]
 
