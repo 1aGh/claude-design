@@ -90,7 +90,8 @@ const PUBLISH_MS = 50;
 // world transform. Idempotent via the `dc-engine-css` id check.
 
 const ENGINE_CSS = `
-.dc-canvas { position: absolute; inset: 0; overflow: hidden; }
+.dc-canvas { position: absolute; inset: 0; overflow: hidden; outline: none; }
+.dc-canvas:focus { outline: none; }
 .dc-world { position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform; }
 .dc-canvas .dc-artboard.dc-positioned { position: absolute; }
 .dc-section-collapsed { display: contents; }
@@ -599,6 +600,21 @@ export function useViewportController(
     const host = hostRef.current;
     if (!host) return;
 
+    // Auto-focus on pointer enter — without this, keyboard shortcuts (Space
+    // for pan, Cmd+0/1/+/-) silently fail until the user clicks inside the
+    // iframe. Focusing the host element pulls keyboard focus into this
+    // iframe's contentWindow so the window-scoped keydown listener below
+    // receives events natively.
+    const onPointerEnter = () => {
+      try {
+        if (typeof window !== "undefined" && document.activeElement !== host) {
+          host.focus({ preventScroll: true });
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+
     const spaceHeld = { current: false };
     const panState: {
       active: boolean;
@@ -608,14 +624,28 @@ export function useViewportController(
     } = { active: false, pointerId: -1, lastX: 0, lastY: 0 };
 
     const onWheel = (e: WheelEvent) => {
-      // Pinch on mac trackpad fires wheel with ctrlKey:true automatically. We
-      // treat any wheel as zoom-around-cursor — matches Figma's gesture model.
       e.preventDefault();
       const rect = host.getBoundingClientRect();
       const cx = e.clientX - rect.left;
       const cy = e.clientY - rect.top;
-      const factor = Math.exp(-e.deltaY * WHEEL_ZOOM_K);
-      zoomAt(factor, cx, cy);
+      // Mac trackpad pinch fires wheel with ctrlKey:true automatically, even
+      // without a physical Ctrl press — so the same branch covers both
+      // Ctrl+wheel (mouse) and pinch-zoom (trackpad).
+      if (e.ctrlKey || e.metaKey) {
+        const factor = Math.exp(-e.deltaY * WHEEL_ZOOM_K);
+        zoomAt(factor, cx, cy);
+        return;
+      }
+      // Shift+wheel — for mouse wheels with only a vertical axis, this
+      // translates vertical scrolling into horizontal panning.
+      if (e.shiftKey) {
+        panBy(-e.deltaY, 0);
+        return;
+      }
+      // Default: trackpad two-finger scroll → 2D pan. The negation keeps the
+      // "content follows your fingers" mapping (Mac natural scroll). Mouse
+      // wheels with only deltaY pan vertically.
+      panBy(-e.deltaX, -e.deltaY);
     };
 
     const onPointerDown = (e: PointerEvent) => {
@@ -705,20 +735,22 @@ export function useViewportController(
       }
     };
 
-    host.tabIndex = host.tabIndex >= 0 ? host.tabIndex : -1; // focusable for kbd
+    host.tabIndex = host.tabIndex >= 0 ? host.tabIndex : 0; // focusable for kbd
     host.addEventListener("wheel", onWheel, { passive: false });
+    host.addEventListener("pointerenter", onPointerEnter);
     host.addEventListener("pointerdown", onPointerDown);
     host.addEventListener("pointermove", onPointerMove);
     host.addEventListener("pointerup", endPan);
     host.addEventListener("pointercancel", endPan);
     // Keyboard listeners on window so the iframe's <body> doesn't have to be
-    // the focus target every time — the iframe itself receives focus from the
-    // shell's tab click, which is enough for window-scoped key events.
+    // the focus target every time — pointerenter focuses the host element
+    // (above) which gives this iframe's contentWindow keyboard focus.
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
 
     return () => {
       host.removeEventListener("wheel", onWheel);
+      host.removeEventListener("pointerenter", onPointerEnter);
       host.removeEventListener("pointerdown", onPointerDown);
       host.removeEventListener("pointermove", onPointerMove);
       host.removeEventListener("pointerup", endPan);

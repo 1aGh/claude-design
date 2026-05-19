@@ -153,6 +153,18 @@ export interface Http {
 }
 
 export function createHttp(ctx: Context, api: Api, inspect: Inspect): Http {
+  // Cache invalidation — when `_lib/canvas-lib.tsx` (or anything else under
+  // `_lib/`) changes, every cached canvas bundle is stale because canvas-lib
+  // is inlined into each one via the resolver plugin. Drop the whole cache
+  // so the next request rebuilds with the fresh lib. Without this, the HMR
+  // "hard reload" message reaches the browser but the iframe re-fetches a
+  // stale-but-fresh-mtime bundle and the change never takes effect.
+  ctx.bus.on('fs:any', (rel: string) => {
+    if (rel.startsWith('_lib/')) {
+      canvasCache.clear();
+    }
+  });
+
   async function readJson<T = unknown>(req: Request, max = 256 * 1024): Promise<T | null> {
     try {
       const text = await req.text();
