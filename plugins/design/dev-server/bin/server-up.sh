@@ -3,23 +3,30 @@
 # Canonical recipe (was inline in `edit.md` step 2, `new.md` step 2, etc.).
 #
 # Usage:
-#   server-up.sh [--root <repo>] [--timeout 10]
+#   server-up.sh [--root <repo>] [--timeout 10] [--allow-legacy]
 #
 # Reads / writes:
 #   $DESIGN_ROOT/_server.json   (PID + port the running server wrote)
 #   $DESIGN_ROOT/_server.log    (stdout/stderr of the spawned server)
 #
+# Runtime selection (DDR-020):
+#   - Default: bun + server.ts. Hard-fails when bun is not on $PATH.
+#   - --allow-legacy: opt-in fallback to node + server.mjs (debug only;
+#     no TSX canvas pipeline, no HMR). Sunset in DDR-020 Phase B.
+#
 # Output: prints the port on stdout. Diagnostic lines go to stderr.
-# Exit:   0 = server ready / 1 = start timeout / 2 = bad args.
+# Exit:   0 = server ready / 1 = start timeout or missing runtime / 2 = bad args.
 
 REPO=""
 TIMEOUT=10
+ALLOW_LEGACY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --root)    REPO="$2"; shift 2 ;;
     --timeout) TIMEOUT="$2"; shift 2 ;;
+    --allow-legacy) ALLOW_LEGACY=1; shift ;;
     --help|-h)
-      sed -n '2,15p' "$0" | sed 's/^# \?//'
+      sed -n '2,21p' "$0" | sed 's/^# \?//'
       exit 0
       ;;
     *)
@@ -34,17 +41,32 @@ if [ -z "$REPO" ]; then
   REPO="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 fi
 
-# Resolve plugin root (where server.mjs lives).
-# Priority: $CLAUDE_PLUGIN_ROOT > $(dirname "$0")/.. (helper lives in dev-server/bin/).
+# Resolve plugin root + pick a server runtime. DDR-020: bun + server.ts is
+# authoritative. Legacy node + server.mjs is sunset; available only behind
+# --allow-legacy (debug-only — no TSX canvas pipeline, no HMR).
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+SERVER_TS="$PLUGIN_ROOT/dev-server/server.ts"
 SERVER_MJS="$PLUGIN_ROOT/dev-server/server.mjs"
-if [ ! -f "$SERVER_MJS" ]; then
-  # Fallback: same parent layout but PLUGIN_ROOT is the bin's grandparent (dev-server/).
-  SERVER_MJS="$SCRIPT_DIR/../server.mjs"
-fi
-if [ ! -f "$SERVER_MJS" ]; then
-  echo "server-up.sh: server.mjs not found (looked at \$CLAUDE_PLUGIN_ROOT/dev-server/server.mjs and helper-relative path)" >&2
+if [ ! -f "$SERVER_TS" ]; then SERVER_TS="$SCRIPT_DIR/../server.ts"; fi
+if [ ! -f "$SERVER_MJS" ]; then SERVER_MJS="$SCRIPT_DIR/../server.mjs"; fi
+
+RUNTIME=""
+RUNTIME_CMD=""
+if [ $ALLOW_LEGACY -eq 1 ]; then
+  if [ ! -f "$SERVER_MJS" ]; then
+    echo "server-up.sh: --allow-legacy requested but server.mjs not found at $SERVER_MJS" >&2
+    exit 1
+  fi
+  RUNTIME="node"
+  RUNTIME_CMD="node $SERVER_MJS"
+  echo "server-up.sh: WARNING — running legacy server.mjs (no TSX canvas pipeline, no HMR). DDR-020 sunsets this in Phase B." >&2
+elif command -v bun >/dev/null 2>&1 && [ -f "$SERVER_TS" ]; then
+  RUNTIME="bun"
+  RUNTIME_CMD="bun $SERVER_TS"
+else
+  echo "server-up.sh: bun not on \$PATH — install via https://bun.sh/install" >&2
+  echo "server-up.sh: DDR-020 made bun authoritative; the node fallback is opt-in via --allow-legacy (debug only)." >&2
   exit 1
 fi
 
@@ -86,8 +108,12 @@ fi
 
 # Step 2 — spawn.
 mkdir -p "$DESIGN_ROOT"
-echo "→ starting dev server: node $SERVER_MJS --root $REPO" >&2
-nohup node "$SERVER_MJS" --root "$REPO" > "$DESIGN_ROOT/_server.log" 2>&1 &
+echo "→ starting dev server: $RUNTIME_CMD --root $REPO" >&2
+if [ "$RUNTIME" = "bun" ]; then
+  nohup bun "$SERVER_TS" --root "$REPO" > "$DESIGN_ROOT/_server.log" 2>&1 &
+elif [ "$RUNTIME" = "node" ]; then
+  nohup node "$SERVER_MJS" --root "$REPO" > "$DESIGN_ROOT/_server.log" 2>&1 &
+fi
 disown 2>/dev/null || true
 
 # Step 3 — poll.

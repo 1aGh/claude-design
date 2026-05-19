@@ -134,6 +134,35 @@ Persist checkpoint state in `.ai/state/STATE.md` under a `## Execution Progress`
 - Implement all test cases mentioned
 - Follow the testing approach outlined
 
+### 3.5 UI smoke gate (auto-fires on design-infra + bulk-canvas diffs)
+
+> **Pattern reference:** DDR-021 — `/design:smoke` is the gate for infra changes + bulk multi-canvas operations. Per-canvas hooks (`/design:edit` step 7, `/design:new` step 9) don't fire for infra-shape work, so phase-end needs its own render check.
+
+After the last task, compute the phase diff (`git diff --name-only $(git merge-base HEAD <base>)..HEAD` against the branch base, or `git diff --name-only HEAD~$N..HEAD` where N = tasks completed this session). **Run `/design:smoke` if any of:**
+
+| Trigger | Matches when |
+|---|---|
+| Dev-server change | Any path under `plugins/design/dev-server/**` modified |
+| Runtime library change | Any path under `<designRoot>/_lib/**` modified |
+| Canvas template change | Any path matching `plugins/design/templates/canvas*.tsx.template` modified |
+| Bulk canvas migration | ≥ 3 `*.tsx` files mutated under `<designRoot>/` AND no `/design:edit` was invoked this session (codemod / script shape) |
+
+When triggered:
+
+1. Boot server if needed: `PORT=$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/server-up.sh")` (no-op if already up).
+2. Run smoke: `bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/smoke.sh" --out-dir "<designRoot>/_history/_smoke/<phase-slug>"`.
+3. **Read every PNG in the output dir.** Per DDR-021, when smoke returns > 5 images the executor MUST `Read` each PNG into context — no sampling. Phase 3.6.1 retro learning #4 documents the failure mode: the agent screenshotted 38 specimens, sampled 3, called it good; user found triple-chrome in `colors-accent` in 2 seconds. Pre-attentive bugs miss-sample.
+4. **If smoke exits non-zero (any `BLANK` / `ERROR`):**
+   - Mark the phase as `❌ SMOKE-BLOCKED` in the output report.
+   - List every failing canvas with its detail.
+   - Do NOT prompt for `/done`. Create a follow-up triage task: identify root cause (dropped CSS, undefined ref, broken import, blank mount), fix, re-run smoke.
+   - Smoke failures are usually integration-shape — they don't fit the per-task Edit-Verify Loop's 3-iteration counter; treat as a new task.
+5. **If smoke exits 0:** include the report path in the output report's "Completed Tasks" section; proceed to step 4.
+
+When the diff doesn't match any trigger (typical non-design changes), skip the gate entirely. Print one line: `→ no design-infra changes in phase diff; skipping smoke gate`.
+
+This gate is **automatic, not opt-in**. The plan-template-only fix was tried at Phase 3.6 and failed at Phase 3.6.1 (the author quoted the prior retro and still didn't add a render check). The hook lives here so it fires regardless of what the plan-author remembered.
+
 ### 4. Final Validation (suggest, don't run)
 
 After the last task, **do not** auto-run a full `/validate` — it's expensive (cross-platform scenario, 5–15 min). Instead:

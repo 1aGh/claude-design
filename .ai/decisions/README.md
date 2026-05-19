@@ -10,6 +10,8 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
 
+- [DDR-021: `/design:smoke` is the gate for infra changes + bulk multi-canvas operations](DDR-021-design-smoke-gate-for-infra-and-bulk-ui-work.md) — 2026-05-19, design/dev-server/smoke/render-gate/validation/flow-execute/phase-3.6
+- [DDR-020: Single dev-server runtime — `server.ts` (Bun) authoritative, `server.mjs` sunset](DDR-020-single-dev-server-runtime-bun.md) — 2026-05-19, design/dev-server/bun/server.mjs/server.ts/sunset/runtime/phase-3.6
 - [DDR-019: Canvas format — `.tsx` files transpiled by Bun, with auto-injected `data-cd-id` and shared `_shell.html`](DDR-019-canvas-tsx-format.md) — 2026-05-18, design/dev-server/canvas/tsx/oxc/magic-string/bun-transpiler/data-cd-id/handoff/shadcn/phase-3.6
 - [DDR-018: Tree groups via `kind` discriminator — server scans PROJECT root + RUNTIME gitignored alongside canvases](DDR-018-tree-groups-via-kind-discriminator.md) — 2026-05-17, design/dev-server/sidebar/server/file-tree/phase-3.5
 - [DDR-017: Dev-server shell = shadcn-style menubar + single-canvas viewport (tabs row killed)](DDR-017-dev-server-shell-menubar-single-canvas.md) — 2026-05-17, design/dev-server/shell/chrome/menubar/ux/phase-3.5
