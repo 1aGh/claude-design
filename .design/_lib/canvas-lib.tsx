@@ -90,40 +90,58 @@ const PUBLISH_MS = 50;
 // world transform. Idempotent via the `dc-engine-css` id check.
 
 const ENGINE_CSS = `
-.dc-canvas { position: absolute; inset: 0; overflow: hidden; outline: none; }
+.dc-canvas {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  outline: none;
+  background-color: var(--bg-1, #f4f1ea);
+  background-image:
+    linear-gradient(var(--border-subtle, rgba(0,0,0,0.08)) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border-subtle, rgba(0,0,0,0.08)) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
 .dc-canvas:focus { outline: none; }
 .dc-world { position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform; }
-.dc-canvas .dc-artboard.dc-positioned { position: absolute; }
 .dc-section-collapsed { display: contents; }
+
+.dc-canvas .dc-artboard {
+  background: var(--bg-0, #ffffff);
+  color: var(--fg-0, #2a2520);
+  border: 1px solid var(--fg-0, #2a2520);
+  box-shadow: 6px 6px 0 var(--fg-0, #2a2520);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.dc-canvas .dc-artboard.dc-positioned { position: absolute; }
+.dc-canvas .dc-artboard-label {
+  flex-shrink: 0;
+  background: var(--bg-2, #e8e3d8);
+  border-bottom: 1px solid var(--fg-0, #2a2520);
+  padding: 6px 14px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-1, #4a3f30);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+.dc-canvas .dc-artboard-body {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
 button.dc-artboard-label {
   appearance: none;
-  background: transparent;
-  border: 0;
+  border-width: 0 0 1px 0;
   font: inherit;
-  color: inherit;
   cursor: pointer;
-  text-align: inherit;
+  text-align: left;
   display: block;
   width: 100%;
 }
-button.dc-artboard-label:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
-.dc-artboard[aria-current="true"] { box-shadow: 0 0 0 2px #d63b1f; }
-.dc-artboard-lod {
-  position: absolute;
-  inset: 0;
-  margin-top: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, rgba(60,60,70,0.05), rgba(60,60,70,0.02));
-  color: rgba(60,60,70,0.42);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: clamp(14px, 6vw, 48px);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  pointer-events: none;
-  user-select: none;
-}
+button.dc-artboard-label:focus-visible { outline: 2px solid var(--accent, #d63b1f); outline-offset: -2px; }
+.dc-canvas .dc-artboard[aria-current="true"] { box-shadow: 6px 6px 0 var(--fg-0, #2a2520), 0 0 0 2px var(--accent, #d63b1f); }
 `.trim();
 
 function ensureEngineStyles(): void {
@@ -228,16 +246,24 @@ function harvestArtboards(children: ReactNode): ArtboardSeed[] {
 }
 
 function synthDefaultGrid(seeds: ArtboardSeed[]): ArtboardRect[] {
-  // Alphabetical by id (per plan T1); child-index ids `__ab_N` sort
-  // consistently after explicit ids since `_` < most letters in localeCompare.
-  const sorted = [...seeds].sort((a, b) => a.id.localeCompare(b.id));
-  return sorted.map((seed, i) => {
+  // Render order (the order DCArtboards appear in JSX), not alphabetical —
+  // authors label artboards DS-01 / DS-02 / CV-01 etc. and expect that
+  // numeric order to show top-left → bottom-right, but their ids are usually
+  // semantic (`landing`, `docs-article`, `cmd-k`, `about`) which would
+  // shuffle the numeric order.
+  // Column / row size come from the largest artboard so canvases with mixed
+  // dimensions (width=1440 on Docs Site, width=1280 elsewhere) don't bleed
+  // past a 1280-step grid.
+  if (seeds.length === 0) return [];
+  const cellW = seeds.reduce((m, s) => Math.max(m, s.w), 0) || VP_GRID.w;
+  const cellH = seeds.reduce((m, s) => Math.max(m, s.h), 0) || VP_GRID.h;
+  return seeds.map((seed, i) => {
     const col = i % VP_GRID.cols;
     const row = Math.floor(i / VP_GRID.cols);
     return {
       id: seed.id,
-      x: col * (VP_GRID.w + VP_GRID.gutter),
-      y: row * (VP_GRID.h + VP_GRID.gutter),
+      x: col * (cellW + VP_GRID.gutter),
+      y: row * (cellH + VP_GRID.gutter),
       w: seed.w,
       h: seed.h,
     };
@@ -402,6 +428,7 @@ export function useViewportController(
   const [viewport, setViewportPublished] = useState<ViewportState>({ x: 0, y: 0, zoom: 1 });
   const [isInteracting, setIsInteracting] = useState(false);
   const interactingRef = useRef(false);
+  const isInteractingStateRef = useRef(false);
 
   // Throttle / settle timers.
   const publishTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -416,12 +443,14 @@ export function useViewportController(
   const jumpTargetsRef = useRef(jumpTargets);
   jumpTargetsRef.current = jumpTargets;
 
+  // worldRef is stable across renders — read inside callbacks lazily, no dep.
   const writeTransform = useCallback((v: ViewportState) => {
     const el = worldRef.current;
     if (!el) return;
     el.style.transform = `translate(${v.x}px, ${v.y}px) scale(${v.zoom})`;
     el.style.visibility = "visible";
-  }, [worldRef]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const schedulePublish = useCallback(() => {
     if (publishTimerRef.current != null) return;
@@ -440,17 +469,24 @@ export function useViewportController(
     }, SETTLE_MS);
   }, []);
 
+  // Read the interacting flag from a ref so this callback identity stays
+  // stable across renders — otherwise applyViewport (and the listeners that
+  // close over it) get torn down on every state update, eating mid-gesture
+  // pointer events.
   const markInteracting = useCallback(() => {
     interactingRef.current = true;
-    if (!isInteracting) setIsInteracting(true);
+    if (!isInteractingStateRef.current) {
+      isInteractingStateRef.current = true;
+      setIsInteracting(true);
+    }
     if (interactEndTimerRef.current != null) clearTimeout(interactEndTimerRef.current);
-    // Falling edge after ~220 ms of input silence releases the gesture flag.
     interactEndTimerRef.current = setTimeout(() => {
       interactingRef.current = false;
+      isInteractingStateRef.current = false;
       setIsInteracting(false);
       interactEndTimerRef.current = null;
     }, 220);
-  }, [isInteracting]);
+  }, []);
 
   const applyViewport = useCallback((next: ViewportState) => {
     const clamped: ViewportState = {
@@ -903,11 +939,13 @@ export function DesignCanvas({ children, controls }: DesignCanvasProps) {
     return bestId;
   }, [artboards, controller.viewport]);
 
-  // Initial transform — `controller.viewport` updates on its 50 ms publish
-  // tick. The world is invisible until the first transform is written.
-  const worldStyle: CSSProperties = {
-    transform: `translate(${controller.viewport.x}px, ${controller.viewport.y}px) scale(${controller.viewport.zoom})`,
-  };
+  // The world's transform is owned by useViewportController (writes straight
+  // to `worldRef.current.style.transform`). Rendering the transform from
+  // React state instead would race: between React's commit and the
+  // controller's next synchronous write, the world would snap back to a
+  // stale published value. We start hidden and the controller's
+  // useLayoutEffect writes the initial transform before first paint.
+  const worldStyle: CSSProperties = { visibility: "hidden" };
 
   const ctxValue = useMemo<WorldContextValue>(
     () => ({
@@ -1003,18 +1041,6 @@ export function DCArtboard({
   const ctx = useWorldContext();
   const controller = useViewportControllerContext();
   const rect = ctx ? ctx.rectFor(id) : null;
-  // Phase 4 T7 — Level-of-Detail hysteresis. Below zoom 0.3 the artboard's
-  // body is swapped for a cheap placeholder; live content returns once zoom
-  // climbs above 0.4 (avoids thrashing at the threshold).
-  const [useLod, setUseLod] = useState(false);
-  const zoom = ctx?.viewport?.zoom ?? 1;
-  useEffect(() => {
-    setUseLod((prev) => {
-      if (prev && zoom >= 0.4) return false;
-      if (!prev && zoom < 0.3) return true;
-      return prev;
-    });
-  }, [zoom]);
   if (!ctx || !rect) {
     return (
       <article
@@ -1035,7 +1061,6 @@ export function DCArtboard({
     <article
       className="dc-artboard dc-positioned"
       data-dc-screen={id}
-      data-lod={useLod ? "1" : undefined}
       aria-current={isActive ? "true" : undefined}
       style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}
     >
@@ -1047,11 +1072,7 @@ export function DCArtboard({
       >
         {label}
       </button>
-      {useLod ? (
-        <div className="dc-artboard-lod" aria-hidden="true">{label}</div>
-      ) : (
-        <div className="dc-artboard-body">{children}</div>
-      )}
+      <div className="dc-artboard-body">{children}</div>
     </article>
   );
 }
