@@ -47,5 +47,11 @@
   "envelope_path": ".design/_history/docs-site/000-envelope.md",
   "ux_research_payload": ".design/_history/_system/project-73477bbc-domain-research-ux-patterns.json",
   "css_mode": "inline",
-  "data_cd_id_version": 1
+  "data_cd_id_version": 1,
+  "viewport": {
+    "x": -2708.274047352776,
+    "y": 124.79292964738477,
+    "zoom": 0.9753498070512556
+  },
+  "last_modified": "2026-05-19T09:03:51.540Z"
 }
