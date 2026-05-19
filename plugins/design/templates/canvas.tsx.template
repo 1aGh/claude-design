@@ -17,6 +17,13 @@
  * MDCC-DSN/01 default) prefer existing classes + `style={{}}` for arbitrary
  * one-off values.
  *
+ * The envelope primitives (`DesignCanvas`, `DCSection`, `DCArtboard`) and any
+ * specimen helpers come from the project-owned canvas library via the virtual
+ * specifier — the dev-server resolves it to `<designRoot>/_lib/canvas-lib.tsx`,
+ * and `/design:handoff` AST-inlines the used exports so the registry-item
+ * drop is self-contained. Read `_lib/canvas-lib.tsx` for the full export
+ * surface (helpers + hooks) before reaching for new components.
+ *
  * `data-cd-id="<8 hex>"` attributes are injected at request time by the dev
  * server (canvas-pipeline.ts pass 1). Don't author them by hand — they'd be
  * stripped + replaced. `/design:handoff` strips them again before the registry
@@ -24,6 +31,8 @@
  */
 
 import { useState } from "react";
+
+import { DesignCanvas, DCSection, DCArtboard } from "@mdcc/canvas-lib";
 
 export default function {{COMPONENT_NAME}}() {
   return (
@@ -40,62 +49,5 @@ export default function {{COMPONENT_NAME}}() {
         </DCArtboard>
       </DCSection>
     </DesignCanvas>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Canvas-frame primitives — local copies of the design plugin's DesignCanvas
-// API. Loaded inline so the canvas can be screenshot / handed-off without a
-// runtime dep on the dev-server's chrome. The shapes mirror legacy .html
-// canvases — same prop names, same children pattern.
-
-function DesignCanvas({ children }: { children: React.ReactNode }) {
-  return <div className="dc-canvas">{children}</div>;
-}
-
-function DCSection({
-  id,
-  title,
-  subtitle,
-  children,
-}: {
-  id: string;
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="dc-section" data-dc-section={id}>
-      <header>
-        <h2>{title}</h2>
-        {subtitle ? <p className="sku">{subtitle}</p> : null}
-      </header>
-      <div className="dc-section-body">{children}</div>
-    </section>
-  );
-}
-
-function DCArtboard({
-  id,
-  label,
-  width,
-  height,
-  children,
-}: {
-  id: string;
-  label: string;
-  width: number;
-  height: number;
-  children: React.ReactNode;
-}) {
-  return (
-    <article
-      className="dc-artboard"
-      data-dc-screen={id}
-      style={{ width, height }}
-    >
-      <header className="dc-artboard-label sku">{label}</header>
-      <div className="dc-artboard-body">{children}</div>
-    </article>
   );
 }

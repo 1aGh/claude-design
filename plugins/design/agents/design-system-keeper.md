@@ -20,18 +20,18 @@ This agent does **not** judge whether the canvas "looks good" — that's `design
 ## Inputs (orchestrator passes you)
 
 ```
-canvas_path                # absolute path to the candidate .html canvas (the new / just-edited file)
+canvas_path                # absolute path to the candidate .tsx canvas (the new / just-edited file)
 ds_root                    # absolute path to <designRoot>/system/<ds>/
-existing_canvases          # JSON array of absolute paths to all .html canvases in the same DS
+existing_canvases          # JSON array of absolute paths to all .tsx canvases in the same DS
                            #   (orchestrator filters by .meta.json.designSystem == <ds_name>; in single-DS
-                           #   layouts this is every .html in <designRoot>/<newCanvasDir>/ except canvas_path)
-preview_components_root    # absolute path to <ds_root>/preview/  (the components-*.html etc.)
+                           #   layouts this is every .tsx in <designRoot>/<newCanvasDir>/ except canvas_path)
+preview_components_root    # absolute path to <ds_root>/preview/  (the components-*.tsx etc.)
 token_guide_path           # absolute path to <ds_root>/README.md  (you grep its `## Token usage guide` section)
 output_path                # where to write the report (typically <designRoot>/_history/<slug>/NNN-ds-keeper.md)
 iter_n                     # iteration number (1 if first run on this canvas)
 ```
 
-If `existing_canvases` is empty (the new canvas is the FIRST in this DS) and `preview_components_root` has no `components-*.html` either, Pass A is a no-op — report `pattern-reinvention: skipped (no priors)` and proceed to Pass B.
+If `existing_canvases` is empty (the new canvas is the FIRST in this DS) and `preview_components_root` has no `components-*.tsx` either, Pass A is a no-op — report `pattern-reinvention: skipped (no priors)` and proceed to Pass B.
 
 If `token_guide_path`'s README has no `## Token usage guide` section, Pass B is degraded — report `token-usage: degraded (DS README has no Token usage guide section — add one before this audit can enforce role discipline)` and continue with a generic best-effort heuristic (text properties want lighter `*-active` variants; `background:` / `border:` want the canonical fill token).
 
@@ -92,7 +92,7 @@ then it's a `pattern-reinvention` warning. Otherwise downgrade to an `info` line
 **Step 5 — Surface findings.** Each finding format:
 
 ```
-- pattern-reinvention | candidate `.pcard` (canvas line 142) ↔ existing `.dc-card` (Canvas Viewport.html line 318)
+- pattern-reinvention | candidate `.pcard` (canvas line 142) ↔ existing `.dc-card` (Canvas Viewport.tsx line 318)
   Same compositional role (card frame). Suggest: lift `.dc-card` directly — same paddings, same border treatment.
   If a divergence is intentional, leave a one-line JSX comment in the candidate explaining what `.pcard` does that `.dc-card` doesn't.
 ```
@@ -187,7 +187,7 @@ _<ISO ts> · canvas: `{canvas_path}` · ds: `{ds_name}`_
     { "category": "ds-tokens-mass-drift", "line": 0, "summary": "5+ token-usage mismatches stacked — likely a11y mass-migration drift", "fix": "Re-target the migration: split text-grade vs fill-grade usages and apply per-grade tokens (see Token usage guide)." }
   ],
   "top_warnings": [
-    { "category": "pattern-reinvention", "line": 142, "summary": "`.pcard` re-derives `.dc-card` from Canvas Viewport.html", "fix": "Lift `.dc-card` directly or comment why a divergence is intentional." },
+    { "category": "pattern-reinvention", "line": 142, "summary": "`.pcard` re-derives `.dc-card` from Canvas Viewport.tsx", "fix": "Lift `.dc-card` directly or comment why a divergence is intentional." },
     { "category": "ds-tokens", "line": 87, "summary": "`background-color: var(--accent-active)` — token is reserved for text/links per Token usage guide", "fix": "Replace with var(--accent)." }
   ],
   "passed": (X == 0),

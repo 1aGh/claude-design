@@ -1,0 +1,6 @@
+table.cat{width:100%;border-collapse:collapse;border:1px solid var(--border-default)}
+  table.cat thead th{text-align:left;padding:var(--space-3) var(--space-4);background:var(--bg-2);border-bottom:1px solid var(--border-strong);font-family:var(--font-mono);font-size:var(--type-xs);letter-spacing:var(--tracking-sku);text-transform:uppercase;color:var(--fg-2)}
+  table.cat tbody td{padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border-subtle);font-family:var(--font-body);font-size:var(--type-sm);color:var(--fg-1);vertical-align:top}
+  table.cat tbody tr:hover{background:var(--bg-2)}
+  table.cat tbody td strong{color:var(--fg-0);font-weight:600}
+  table.cat td.num{text-align:right;font-family:var(--font-mono);color:var(--fg-0)}

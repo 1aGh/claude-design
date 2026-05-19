@@ -71,6 +71,7 @@
       const designRel = params.get('designRel') || '.design';
       const tokensRel = params.get('tokens') || '';
       const componentsRel = params.get('components') || '';
+      const layoutRel = params.get('layout') || '';
 
       function showError(msg) {
         const el = document.getElementById('canvas-mount-error');
@@ -78,11 +79,60 @@
         console.error('[canvas-shell]', msg);
       }
 
+      // ---------------------------------------------------------------------
+      // HMR client — listens for `canvas-hmr` messages on /_ws. Three modes:
+      //   - css: swap <link> href with ?v=<version> cache bust.
+      //   - module: location.reload() — the canvas module re-fetches.
+      //   - hard: location.reload() — _lib/* changed, everything re-bundles.
+      // The WS connection retries on close (dev-server restart resilience).
+      function connectHmr() {
+        const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+        const ws = new WebSocket(proto + '://' + location.host + '/_ws');
+        ws.addEventListener('message', (ev) => {
+          try {
+            const msg = JSON.parse(ev.data);
+            if (!msg || msg.type !== 'canvas-hmr') return;
+            if (msg.mode === 'css') {
+              const v = msg.version || Date.now();
+              // Match by exact filename when we have one; otherwise refresh all.
+              const targetFile = (msg.file || '').split('/').pop();
+              for (const link of document.querySelectorAll('link[rel="stylesheet"]')) {
+                const href = link.getAttribute('href') || '';
+                if (!targetFile || href.includes(targetFile)) {
+                  const base = href.split('?')[0];
+                  link.setAttribute('href', base + '?v=' + v);
+                }
+              }
+            } else if (msg.mode === 'module' || msg.mode === 'hard') {
+              // Only reload when the change touches *this* canvas (or `_lib`).
+              if (msg.mode === 'hard' || !msg.file || (canvasRel && msg.file === canvasRel)) {
+                location.reload();
+              }
+            }
+          } catch (e) {
+            console.warn('[canvas-shell] HMR message parse error', e);
+          }
+        });
+        ws.addEventListener('close', () => {
+          // Reconnect after a beat — dev-server may have restarted.
+          setTimeout(connectHmr, 750);
+        });
+      }
+      connectHmr();
+
       if (!canvasRel) {
         showError('Missing ?canvas= query parameter. Add ?canvas=ui/<slug>.tsx.');
       } else {
         if (tokensRel) document.getElementById('canvas-tokens').href = '/' + designRel + '/' + tokensRel;
         if (componentsRel) document.getElementById('canvas-components').href = '/' + designRel + '/' + componentsRel;
+        if (layoutRel) {
+          // Inject a third <link> for the DS layout chrome (specimens load this).
+          const layoutLink = document.createElement('link');
+          layoutLink.rel = 'stylesheet';
+          layoutLink.href = '/' + designRel + '/' + layoutRel;
+          layoutLink.dataset.canvasCss = 'layout';
+          document.head.appendChild(layoutLink);
+        }
 
         const canvasUrl = '/' + designRel + '/' + canvasRel;
         try {

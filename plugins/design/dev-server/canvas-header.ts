@@ -46,10 +46,11 @@ export interface HeaderOpts {
  */
 export function buildHeader(opts: HeaderOpts): string {
   const m = opts.meta;
-  const artboardIds = (m.sections ?? [])
-    .flatMap((s) => s.artboards ?? [])
-    .map((a) => a.id)
-    .join(' | ') || '—';
+  const artboardIds =
+    (m.sections ?? [])
+      .flatMap((s) => s.artboards ?? [])
+      .map((a) => a.id)
+      .join(' | ') || '—';
   const opt = m.opt_out_scope ?? 'palette';
   const platform = m.platform ?? 'desktop';
   const ds = m.designSystem ?? opts.dsName ?? 'project';

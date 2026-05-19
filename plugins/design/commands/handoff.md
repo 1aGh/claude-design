@@ -32,7 +32,7 @@ Co sidecar obsahuje:
 
 ## Pre-requisites
 
-1. **Canvas je `.tsx`** — pro `.html` canvases nejprve spusť migrace (Task 8 codemod) nebo `/design:edit` v novém TSX projektu.
+1. **Canvas je `.tsx`** — TSX je jediný podporovaný formát.
 2. **`handoffTargets[0].path === "registry:item"`** v `.design/config.json` (default po Task 10 update).
 3. **Latest critique má `blockers === 0`** — pokud ne, fail s návrhem `/design:edit "Address: <top blocker>"`. Override `--force`.
 

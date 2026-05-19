@@ -108,13 +108,7 @@ describe('transpileCanvasSource — Pass 1 (ID injection)', () => {
       .map((e) => e.jsxPath.join('>'))
       .sort();
     // Expected, sorted: section, section>button, section>h1, section>p, section>p>em
-    expect(paths).toEqual([
-      'section',
-      'section>button',
-      'section>h1',
-      'section>p',
-      'section>p>em',
-    ]);
+    expect(paths).toEqual(['section', 'section>button', 'section>h1', 'section>p', 'section>p>em']);
   });
 });
 

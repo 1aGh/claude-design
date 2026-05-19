@@ -44,7 +44,7 @@ When you're generating, reviewing, or migrating UI:
 4. **Read the DS README** at `<designRoot>/<resolvedDsPath>/README.md` — it contains the project-specific aesthetic, hard-stop rules, and rationale that override anything generic you'd otherwise default to.
 5. **Read the DS SKILL.md** at `<designRoot>/<resolvedDsPath>/SKILL.md` — terse load-bearing summary the agent should treat as authoritative for hard rules + voice.
 6. **Browse specimens** at `<designRoot>/<resolvedDsPath>/preview/` — concrete examples of legal swatches, typography pairings, density ladders, component compositions.
-7. **Reference UI kits** at `<designRoot>/<resolvedDsPath>/preview/ui_kits-{desktop,mobile}-{index,showcase}.html` (when present) — `index` is the catalog/launcher, `showcase` is the full product mock with theme/accent switching. These flatten into the `preview/` dir at scaffold time; the source convention in the inspiration library is `platform-<platform>/ui_kits-<platform>-*.html`.
+7. **Reference UI kits** at `<designRoot>/<resolvedDsPath>/preview/ui_kits-{desktop,mobile}-{index,showcase}.tsx` (when present) — `index` is the catalog/launcher, `showcase` is the full product mock with theme/accent switching. These flatten into the `preview/` dir at scaffold time; the source convention in the inspiration library is `platform-<platform>/ui_kits-<platform>-*.html`.
 
 ### Multi-DS lookup pattern
 
@@ -146,9 +146,9 @@ Hard-stops: missing Node → abort with install hint; missing git → abort with
 
 **Round 3 — Pro-designer inputs** (4 Qs via a third AskUserQuestion call, **options sourced from Round 0 payload**):
 
-- **Q9 signature visual treatment** — single select. **Options sourced from payload `signature_treatment_options[]`.** Always 3 domain-relevant options + `none / restrained` (universal opt-out) + `pick-for-me`. Recommended pre-fill from payload `recommended: true`. The chosen treatment is baked into `_layout.css` chrome (body background, h1 text-shadow, sectioning rules) AND surfaces in at least one signature specimen (typically `colors-accent.html` brand-spotlight + `ui_kits-*-showcase.html` hero).
+- **Q9 signature visual treatment** — single select. **Options sourced from payload `signature_treatment_options[]`.** Always 3 domain-relevant options + `none / restrained` (universal opt-out) + `pick-for-me`. Recommended pre-fill from payload `recommended: true`. The chosen treatment is baked into `_layout.css` chrome (body background, h1 text-shadow, sectioning rules) AND surfaces in at least one signature specimen (typically `colors-accent.tsx` brand-spotlight + `ui_kits-*-showcase.tsx` hero).
 - **Q10 hard NO list** — multi-select. **Options assembled from payload `suggested_hard_NOs[]` AND payload `anti_references[]`** (one suggested NO per anti-reference, derived from its `why_to_avoid` field). The list is a checklist — user picks any subset. Recommended pre-checks the suggested NOs that are clear domain consensus (e.g. for recipe: "no popup recipe-introduction text" is consensus). Universal options always appended: `no decorative gradients` · `no animations beyond hover` · `anything goes (skip)`. Every checked item becomes a guardrail surfaced in the DS README and the per-DS SKILL.md. Sub-agents authoring specimens MUST read this list before writing.
-- **Q11 iconography vibe** — single select. **Options sourced from payload `iconography_vibe_options[]`.** Always 3 domain-relevant options + `pick-for-me`. Recommended from payload `recommended: true`. Drives `iconography.html` specimen content + the 3–5 example SVGs scaffolded into `assets/glyphs/`.
+- **Q11 iconography vibe** — single select. **Options sourced from payload `iconography_vibe_options[]`.** Always 3 domain-relevant options + `pick-for-me`. Recommended from payload `recommended: true`. Drives `iconography.tsx` specimen content + the 3–5 example SVGs scaffolded into `assets/glyphs/`.
 - **Q12 density preference** — single select. **Options sourced from payload `density_options[]`.** Always 3 domain-relevant options + `pick-for-me (derive from Q2 audience)`. Recommended from payload `recommended: true`. Sets `--space-*` usage conventions and the default padding values in `_layout.css`.
 
 **Confirm.** Echo a **3-sentence** proposed direction (one sentence per round: identity + brand + visual signature). Wait for explicit yes / corrections. On "no", restart the affected round (max 2 retries each before "scaffold-with-current and iterate via /design:edit").
@@ -195,7 +195,7 @@ Inherited values are pre-baked into the new DS's `colors_and_type.css`; discover
 
 #### `re-bootstrap` (12 Qs, pre-filled)
 
-Read `system/<ds>/colors_and_type.css` + `system/<ds>/README.md` + `_layout.css` to pre-fill answers (Round 3 derived from `_layout.css` body background + body::before/::after presence + iconography.html curation). User hits enter on each to keep current; only changed answers cause re-generation of affected files.
+Read `system/<ds>/colors_and_type.css` + `system/<ds>/README.md` + `_layout.css` to pre-fill answers (Round 3 derived from `_layout.css` body background + body::before/::after presence + iconography.tsx curation). User hits enter on each to keep current; only changed answers cause re-generation of affected files.
 
 **Round 0 in re-bootstrap mode** — ALWAYS re-research (`--force` implies a year may have passed; cached payload is stale by definition). Brief is reconstructed from the existing DS README's "What this DS is for" line. The fresh payload may surface new domain references that the original bootstrap didn't have access to; those new references update the option labels in Round 2/3, so even a "keep all current answers" pass shows the user what's changed in the domain since the original bootstrap.
 
@@ -247,7 +247,7 @@ This prevents token leakage when the DS coexists with another design system on t
 [data-team="emerald"] { --accent: oklch(70% 0.16 150); --accent-hover: oklch(66% 0.16 150); --accent-fg: oklch(14% 0.04 150); }
 ```
 
-This honors the one-accent rule (only `--accent*` family is overridden, never adds `--accent2`), but lets the live UI pick from a small palette. The `platform-desktop/ui_kits-desktop-showcase.html` reference template includes an accent picker that flips `data-team` on `<html>`.
+This honors the one-accent rule (only `--accent*` family is overridden, never adds `--accent2`), but lets the live UI pick from a small palette. The `platform-desktop/ui_kits-desktop-showcase.tsx` reference template includes an accent picker that flips `data-team` on `<html>`.
 
 **Default:** skip this section unless the discovery brief explicitly mentions "per-team", "per-tenant", or "multi-brand". Most DSes don't need it.
 
@@ -255,11 +255,11 @@ This honors the one-accent rule (only `--accent*` family is overridden, never ad
 
 ### Pre-scaffold — claim scan + emit `_scaffold-roster.yaml`
 
-**Step 1 — Claim scan (mandatory before roster).** Read the draft README + SKILL.md you're about to author for this DS. `grep` the prose for these substrings: `mascot`, `glyph`, `logotype`, `wordmark`, `illustration`, `hedgehog`, `character`, `mark`. For every match, ensure the receiving file (logo.html for wordmark/mark, ≥1 `assets/glyphs/*.svg` for glyph, etc.) is **listed as a `pending` row in the roster you're about to emit**. See `_MAPPING.md` "Claim → receipt" for the canonical claim→file table. This pre-emission scan is what prevents the `assets/glyphs/` empty-directory regression the studio-2 retro flagged (BAD-4).
+**Step 1 — Claim scan (mandatory before roster).** Read the draft README + SKILL.md you're about to author for this DS. `grep` the prose for these substrings: `mascot`, `glyph`, `logotype`, `wordmark`, `illustration`, `hedgehog`, `character`, `mark`. For every match, ensure the receiving file (logo.tsx for wordmark/mark, ≥1 `assets/glyphs/*.svg` for glyph, etc.) is **listed as a `pending` row in the roster you're about to emit**. See `_MAPPING.md` "Claim → receipt" for the canonical claim→file table. This pre-emission scan is what prevents the `assets/glyphs/` empty-directory regression the studio-2 retro flagged (BAD-4).
 
 **Step 2 — Emit `_scaffold-roster.yaml`.** The main agent writes the roster to `<designRoot>/_history/_system/<ds>-000-scaffold-roster.yaml`. The roster lists every file the scaffold will produce, plus its dependency closure and batch assignment. **The roster is the contract.** Sub-agents write their slice, then update `status: written` (with a `loc: <N>` field) on each row. Main agent reconciles at the end — any row stuck in `pending` is a regression flag.
 
-**Roster mutation rule.** Sub-agents may ONLY flip existing rows' `status` and add `loc`. They MUST NOT add new rows. If a sub-agent discovers a missing claim during its slice (e.g. wordmark referenced but no logo.html in roster), it returns the gap as a one-line note in its completion message; the main agent adds the row in the next reconcile pass. This rule prevents the silent contract-drift the studio-2 retro caught (BAD-1).
+**Roster mutation rule.** Sub-agents may ONLY flip existing rows' `status` and add `loc`. They MUST NOT add new rows. If a sub-agent discovers a missing claim during its slice (e.g. wordmark referenced but no logo.tsx in roster), it returns the gap as a one-line note in its completion message; the main agent adds the row in the next reconcile pass. This rule prevents the silent contract-drift the studio-2 retro caught (BAD-1).
 
 ```yaml
 # 000-scaffold-roster.yaml — emitted before scaffold; sub-agents update status as they write
@@ -290,35 +290,35 @@ files:
   - { path: "../../INDEX.md",            batch: A, deps: [], status: pending }
   - { path: "../../config.json",         batch: A, deps: [], status: pending }
   # Batch B — fan out (token-only specimens; depend only on tokens + chrome)
-  - { path: "preview/colors-text.html",      batch: B, deps: [tokens, chrome],          status: pending }
-  - { path: "preview/colors-surfaces.html",  batch: B, deps: [tokens, chrome],          status: pending }
-  - { path: "preview/colors-accent.html",    batch: B, deps: [tokens, chrome],          status: pending, signature: true }
-  - { path: "preview/type-scale.html",       batch: B, deps: [tokens, chrome],          status: pending }
-  - { path: "preview/spacing-scale.html",    batch: B, deps: [tokens, chrome],          status: pending }
-  - { path: "preview/motion.html",           batch: B, deps: [tokens, chrome],          status: pending }
-  - { path: "preview/radii.html",            batch: B, deps: [tokens, chrome],          status: pending }
-  - { path: "preview/elevation.html",        batch: B, deps: [tokens, chrome],          status: pending }
-  - { path: "preview/focus.html",            batch: B, deps: [tokens, chrome],          status: pending }
-  - { path: "preview/iconography.html",      batch: B, deps: [tokens, chrome, Q11],     status: pending }
-  - { path: "preview/borders.html",          batch: B, deps: [tokens, chrome],          status: pending }
-  - { path: "preview/grid.html",             batch: B, deps: [tokens, chrome, Q3],      status: pending }
-  - { path: "preview/opacity.html",          batch: B, deps: [tokens, chrome],          status: pending }
-  - { path: "preview/selection.html",        batch: B, deps: [tokens, chrome],          status: pending }
+  - { path: "preview/colors-text.tsx",      batch: B, deps: [tokens, chrome],          status: pending }
+  - { path: "preview/colors-surfaces.tsx",  batch: B, deps: [tokens, chrome],          status: pending }
+  - { path: "preview/colors-accent.tsx",    batch: B, deps: [tokens, chrome],          status: pending, signature: true }
+  - { path: "preview/type-scale.tsx",       batch: B, deps: [tokens, chrome],          status: pending }
+  - { path: "preview/spacing-scale.tsx",    batch: B, deps: [tokens, chrome],          status: pending }
+  - { path: "preview/motion.tsx",           batch: B, deps: [tokens, chrome],          status: pending }
+  - { path: "preview/radii.tsx",            batch: B, deps: [tokens, chrome],          status: pending }
+  - { path: "preview/elevation.tsx",        batch: B, deps: [tokens, chrome],          status: pending }
+  - { path: "preview/focus.tsx",            batch: B, deps: [tokens, chrome],          status: pending }
+  - { path: "preview/iconography.tsx",      batch: B, deps: [tokens, chrome, Q11],     status: pending }
+  - { path: "preview/borders.tsx",          batch: B, deps: [tokens, chrome],          status: pending }
+  - { path: "preview/grid.tsx",             batch: B, deps: [tokens, chrome, Q3],      status: pending }
+  - { path: "preview/opacity.tsx",          batch: B, deps: [tokens, chrome],          status: pending }
+  - { path: "preview/selection.tsx",        batch: B, deps: [tokens, chrome],          status: pending }
   # Batch C — fan out (components + compositions; depend on tokens + chrome + reference template)
-  - { path: "preview/components-buttons.html",      batch: C, deps: [tokens, chrome, template], status: pending }
-  - { path: "preview/components-cards.html",        batch: C, deps: [tokens, chrome, template], status: pending }
-  - { path: "preview/components-inputs.html",       batch: C, deps: [tokens, chrome, template], status: pending }
-  - { path: "preview/components-toggles.html",      batch: C, deps: [tokens, chrome, template], status: pending }
-  - { path: "preview/components-dialogs.html",      batch: C, deps: [tokens, chrome, template], status: pending }
-  - { path: "preview/components-tooltips.html",     batch: C, deps: [tokens, chrome, template], status: pending }
-  - { path: "preview/components-tables.html",       batch: C, deps: [tokens, chrome, template], status: pending }
-  - { path: "preview/components-callout.html",      batch: C, deps: [tokens, chrome, template], status: pending }
-  - { path: "preview/empty-state.html",             batch: C, deps: [tokens, chrome, template], status: pending, signature: true }
-  - { path: "preview/logo.html",                    batch: C, deps: [tokens, chrome, assets], status: pending, signature: true }
+  - { path: "preview/components-buttons.tsx",      batch: C, deps: [tokens, chrome, template], status: pending }
+  - { path: "preview/components-cards.tsx",        batch: C, deps: [tokens, chrome, template], status: pending }
+  - { path: "preview/components-inputs.tsx",       batch: C, deps: [tokens, chrome, template], status: pending }
+  - { path: "preview/components-toggles.tsx",      batch: C, deps: [tokens, chrome, template], status: pending }
+  - { path: "preview/components-dialogs.tsx",      batch: C, deps: [tokens, chrome, template], status: pending }
+  - { path: "preview/components-tooltips.tsx",     batch: C, deps: [tokens, chrome, template], status: pending }
+  - { path: "preview/components-tables.tsx",       batch: C, deps: [tokens, chrome, template], status: pending }
+  - { path: "preview/components-callout.tsx",      batch: C, deps: [tokens, chrome, template], status: pending }
+  - { path: "preview/empty-state.tsx",             batch: C, deps: [tokens, chrome, template], status: pending, signature: true }
+  - { path: "preview/logo.tsx",                    batch: C, deps: [tokens, chrome, assets], status: pending, signature: true }
   # … gated entries appended based on Q2/Q3 (audience-pro/*, audience-developer/*, status/*, presence, etc.)
   # … always ends with the highest-leverage composition:
-  - { path: "preview/ui_kits-desktop-showcase.html", batch: C, deps: [tokens, chrome, template, ALL], status: pending, signature: true }
-  - { path: "preview/ui_kits-desktop-index.html",    batch: C, deps: [ALL specimens written], status: pending }   # written LAST so it can link to peers
+  - { path: "preview/ui_kits-desktop-showcase.tsx", batch: C, deps: [tokens, chrome, template, ALL], status: pending, signature: true }
+  - { path: "preview/ui_kits-desktop-index.tsx",    batch: C, deps: [ALL specimens written], status: pending }   # written LAST so it can link to peers
 # Batch B fan-out groups — sub-agents claim these slices
 fanout:
   - { batch: B, slice: "color tokens",        files: [colors-text, colors-surfaces, colors-accent] }
@@ -333,7 +333,7 @@ fanout:
   # … plus other gated slices
 ```
 
-Reconciliation rule: after Batch C completes, the main agent reads the roster, asserts every row is `written`, and rejects the bootstrap as incomplete otherwise. The `ui_kits-*-index.html` is always last because it links every peer — written after the rest by the main agent, not a sub-agent.
+Reconciliation rule: after Batch C completes, the main agent reads the roster, asserts every row is `written`, and rejects the bootstrap as incomplete otherwise. The `ui_kits-*-index.tsx` is always last because it links every peer — written after the rest by the main agent, not a sub-agent.
 
 ### Scaffold (3-batch fan-out)
 
@@ -344,6 +344,8 @@ The inspiration library at `plugins/design/templates/design-system-inspiration/`
 #### Batch A — main agent writes serially
 
 The dependency root. Main agent writes these **in order, alone** because every later file imports them.
+
+0. **`<designRoot>/_lib/canvas-lib.tsx`** — project-owned canvas library. **Write once per project, idempotent across re-bootstraps + additional-DS runs.** If `<designRoot>/_lib/canvas-lib.tsx` already exists, skip. Otherwise copy verbatim from `plugins/design/templates/canvas-lib.tsx.template` to `<designRoot>/_lib/canvas-lib.tsx`. The lib exports the canvas envelope (`DesignCanvas`, `DCSection`, `DCArtboard`, `DCPostIt`), specimen helpers (`SpecimenHeader`, `TokenChip`, `ColorSwatch`, `KbdHint`, etc.) + hooks (`useTokens`, `useTheme`). Every scaffolded TSX specimen imports from `@mdcc/canvas-lib`, which the dev-server resolves to this file. Without it, every specimen white-pages at runtime.
 
 1. `colors_and_type.css` — tokens. Substitute discovery values (accent OKLCH, fonts, density-derived `--space-*` defaults, Q9-derived shadow/treatment tokens like `--shadow-glow` or `--scanline-alpha`).
 2. `<designRoot>/system/<ds>/preview/_layout.css` — chrome. **Bakes Q9 signature treatment into the body background + h1 treatment.** Examples:
@@ -369,8 +371,46 @@ Group the remaining files into **5–8 slices** (per the `fanout:` block of the 
 **Sub-agent prompt template** (use verbatim, substitute the slice details):
 
 ```
-You are scaffolding part of a design system. Write {{N}} specimen HTML files in
+You are scaffolding part of a design system. Write {{N}} specimen TSX files in
 parallel with other sub-agents. Each file lands at the absolute path listed.
+
+SHAPE — every specimen TSX is BARE — NO canvas-lib envelope. The shape:
+
+  /** JSDoc header (see template) */
+  import "./<slug>.css";  /* per-specimen bespoke CSS — sibling file */
+
+  export default function <PascalName>() {
+    return (
+      <>
+        <header className="specimen-hd">
+          <span className="sku">MDCC-DSN/01.<slug></span>
+          <span className="crumbs">...</span>
+          <span className="theme-toggle" ...>...</span>
+        </header>
+        <main className="specimen">
+          <section className="specimen-title">
+            <h1>...</h1>
+            <p className="lede">...</p>
+          </section>
+          {/* sections, h2 dividers, tables, etc. */}
+        </main>
+      </>
+    );
+  }
+
+Specimens are FLOWING reference pages, not viewport mocks. Do NOT wrap in
+`<DesignCanvas><DCSection><DCArtboard>` — `_layout.css` styles `<body>` as
+a flex column directly. The original .html-era specimens had exactly this
+shape; we keep it one-for-one in TSX.
+
+Canvas-lib (`@mdcc/canvas-lib`) is reserved for UI mock canvases with
+multiple fixed-px artboards (Docs Site, Canvas Viewport). Specimens do NOT
+import it. Token/theme hooks (`useTokens`, `useTheme`) ARE available if a
+specimen genuinely needs them — but bare CSS via `var(--*)` is the default.
+
+Per-specimen bespoke CSS lives in a sibling `<slug>.css`. The dev-server's
+canvas-build.ts collects this and injects it as a `<style>` at module init
+so the drop is self-contained.
 
 PROJECT
 - name: {{project_label}}
@@ -390,7 +430,7 @@ REFERENCES (verbatim — read first, do not skim)
 - _MAPPING.md gating rules:   {{absolute path to _MAPPING.md}}
 - inspiration library root:   {{absolute path to plugins/design/templates/design-system-inspiration/}}
 {{if peer_DS_references_attached:}}
-- PEER DS gold-standard:      {{absolute paths to system/<peer-ds>/preview/<file>.html}}
+- PEER DS gold-standard:      {{absolute paths to system/<peer-ds>/preview/<file>.tsx}}
 {{endif}}
 
 DOMAIN_NOUNS (authoritative — every specimen MUST use only these nouns)
@@ -418,17 +458,17 @@ CREATIVITY RUBRIC — do NOT token-swap. RESTRUCTURE.
 - Every specimen earns at least ONE compositional choice that's not in the
   template. Examples that landed well in the studio 2026-05-13 re-bootstrap (use
   these as gold-standard creativity moves):
-    - colors-accent.html (48 LOC template → ~5× LOC): added a brand-spotlight
+    - colors-accent.tsx (48 LOC template → ~5× LOC): added a brand-spotlight
       hero with masked gradient border, a "wrong" anti-pattern teaching device,
       chroma annotations on swatches.
-    - empty-state.html (~6× LOC): added a "Voice — keep or kill" panel
+    - empty-state.tsx (~6× LOC): added a "Voice — keep or kill" panel
       comparing good vs corporate copy side by side; added a variants grid for
       multiple empty-state cases.
-    - ui_kits-<platform>-showcase.html (~3× LOC): replaced the template's
+    - ui_kits-<platform>-showcase.tsx (~3× LOC): replaced the template's
       generic mock screens with project-specific reality from the discovery
       payload's domain_nouns; added a live-presence layer + a token-row
       inspector panel where the brief warranted it.
-  Anti-example: a components-buttons.html at 1.3× the template LOC that kept
+  Anti-example: a components-buttons.tsx at 1.3× the template LOC that kept
   the template's fake-state grid almost verbatim. **Don't do this.** Add
   icon-only + kbd-hint variants, push hierarchy contrast, surface the signature
   treatment on the primary's hover state.
@@ -458,7 +498,7 @@ After writing all {{N}} files:
   1. Update each row in {{absolute path to _scaffold-roster.yaml}}: change
      `status: pending` → `status: written, loc: <line-count>`.
   2. **Do NOT add new rows.** If you discover a missing claim (e.g. wordmark
-     referenced but no logo.html in roster), include "ROSTER GAP: <description>"
+     referenced but no logo.tsx in roster), include "ROSTER GAP: <description>"
      in your completion message. The main agent reconciles new rows.
   3. Return a one-line confirmation per file with LOC.
 ```
@@ -472,7 +512,7 @@ Batch A (main agent, serial)         ← ~7 files, 2-3 minutes
   ↓ blocks all of B + C
 Batch B (5 sub-agents, parallel)     ← ~12-14 files in ~4-6 minutes wall-clock
 Batch C (3-5 sub-agents, parallel)   ← ~10-15 files in ~4-6 minutes wall-clock
-  ↓ blocks ui_kits-*-index.html
+  ↓ blocks ui_kits-*-index.tsx
 Index files (main agent, serial)     ← 1-2 files linking every peer; written LAST
 ```
 
@@ -487,7 +527,7 @@ Scaffold sources (walk in order, apply gate, generate):
 
 1. **`core/preview/*`** — always-on. 10 preview specimens (colors-{text,surfaces,accent}, type-scale, spacing-scale, motion, components-{buttons,cards,inputs}) + `_layout.css` chrome.
 2. **`foundations/*`** — always-on for any `completenessProfile != minimal`. 8 specimens: borders, elevation, focus, grid, iconography, opacity, radii, selection. **Re-curate iconography** to project domain (developer → terminal/file/branch; consumer → home/search; pro → roster/calendar).
-3. **`universal/*`** — always-on. 6 components (toggles, dialogs, tooltips, tables, callout, empty-state) + `logo.html` IF wordmark/logotype claim exists.
+3. **`universal/*`** — always-on. 6 components (toggles, dialogs, tooltips, tables, callout, empty-state) + `logo.tsx` IF wordmark/logotype claim exists.
 4. **`status/*`** — IF `"status" ∈ activeFamilies` (default-on). 3 files: colors-status, components-status, skeletons.
 5. **`audience-<q2>/*`** — gated on Q2 audience. Pick exactly ONE of audience-developer / audience-pro / audience-consumer. 5–6 files each.
 6. **`platform-<q3>/*`** — gated on Q3 platforms. desktop is default-on (2 components + 2 ui_kit entries). mobile adds 4 components + 2 ui_kit entries.
@@ -495,8 +535,8 @@ Scaffold sources (walk in order, apply gate, generate):
 8. **`patterns/*`** and **`meta/*`** — opt-in only. Not auto-scaffolded; user requests them explicitly via `/design:new` or `config.extensions[]`.
 
 **ui_kit handling** — `platform-<platform>/ui_kits-<platform>-{index,showcase}.html` is **not optional** for any in-scope platform. The two files serve distinct roles:
-- `ui_kits-<platform>-index.html` — **catalog/launcher** (links to platform-specific specimens)
-- `ui_kits-<platform>-showcase.html` — **full product mock** (multi-screen + theme/accent picker — the highest-leverage "DS in use" artifact)
+- `ui_kits-<platform>-index.tsx` — **catalog/launcher** (links to platform-specific specimens)
+- `ui_kits-<platform>-showcase.tsx` — **full product mock** (multi-screen + theme/accent picker — the highest-leverage "DS in use" artifact)
 
 Both flatten into `system/<ds>/preview/` at scaffold time. **Never scaffold a platform-* directory as an empty stub.** Empty `ui_kits/<platform>/` is the regression the studio bootstrap produced — completeness-critic V12/V13 enforces non-emptiness.
 
@@ -546,7 +586,7 @@ OUT_DIR="<designRoot>/_history/_system/<ds>-000-bootstrap-screenshots"
 mkdir -p "$OUT_DIR"
 for specimen in colors-accent empty-state ui_kits-desktop-showcase; do
   bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" \
-    --url "file://<absolute-repo-root>/<designRoot>/system/<ds>/preview/${specimen}.html" \
+    --url "file://<absolute-repo-root>/<designRoot>/system/<ds>/preview/${specimen}.tsx" \
     --full --out "$OUT_DIR/${specimen}.png"
 done
 ```
@@ -557,7 +597,7 @@ done
 
 > **The completeness-critic does not catch aesthetic gaps.** It returns `pass` for generic public-component-library output. This step is non-negotiable, especially when discovery captured strong references in the research payload.
 
-Spawn these critics **in parallel** (single message, multiple Agent calls) on one signature specimen — default target is `colors-accent.html` (the accent showcase). When the bootstrap produced a `ui_kits-desktop-showcase.html` (the full product mock), run a second pass on it too — it's the highest-fidelity "DS in use" artifact and the most useful target for graphic-design + signature-moment evaluation.
+Spawn these critics **in parallel** (single message, multiple Agent calls) on one signature specimen — default target is `colors-accent.tsx` (the accent showcase). When the bootstrap produced a `ui_kits-desktop-showcase.tsx` (the full product mock), run a second pass on it too — it's the highest-fidelity "DS in use" artifact and the most useful target for graphic-design + signature-moment evaluation.
 
 | Critic | Subagent type | What it catches |
 |---|---|---|

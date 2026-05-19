@@ -8,7 +8,7 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { getRuntimeBundle, RUNTIME_PACKAGES, slugFor, packageForSlug } from '../runtime-bundle.ts';
+import { RUNTIME_PACKAGES, getRuntimeBundle, packageForSlug, slugFor } from '../runtime-bundle.ts';
 
 describe('runtime-bundle', () => {
   test('builds all four sub-bundles successfully', async () => {
@@ -62,7 +62,7 @@ describe('runtime-bundle', () => {
     for (const p of RUNTIME_PACKAGES) {
       const s = slugFor(p);
       expect(packageForSlug(s)).toBe(p);
-      expect(packageForSlug(s + '.js')).toBe(p);
+      expect(packageForSlug(`${s}.js`)).toBe(p);
     }
     expect(packageForSlug('nope.js')).toBeNull();
   });

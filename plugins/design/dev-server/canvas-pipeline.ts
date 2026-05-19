@@ -121,10 +121,7 @@ function componentNameOf(node: AnyNode): string | null {
   // const Foo = () => ...  /  const Foo = function() { ... }
   if (node.type === 'VariableDeclarator' && isPascalIdent(node.id?.name)) {
     const init = node.init;
-    if (
-      init &&
-      (init.type === 'ArrowFunctionExpression' || init.type === 'FunctionExpression')
-    ) {
+    if (init && (init.type === 'ArrowFunctionExpression' || init.type === 'FunctionExpression')) {
       return node.id.name;
     }
   }
@@ -160,7 +157,11 @@ function hasDataCdIdAttr(opening: AnyNode): boolean {
   const attrs = opening?.attributes;
   if (!Array.isArray(attrs)) return false;
   for (const a of attrs) {
-    if (a?.type === 'JSXAttribute' && a.name?.type === 'JSXIdentifier' && a.name.name === 'data-cd-id') {
+    if (
+      a?.type === 'JSXAttribute' &&
+      a.name?.type === 'JSXIdentifier' &&
+      a.name.name === 'data-cd-id'
+    ) {
       return true;
     }
   }

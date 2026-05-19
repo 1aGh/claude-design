@@ -1,0 +1,17 @@
+.state{border:1px solid var(--border-default);background:var(--bg-1);padding:var(--space-7) var(--space-6);text-align:center;}
+  .state .eyebrow{margin-bottom:var(--space-3);color:var(--accent)}
+  .state h3{font-size:var(--type-xl);margin:0 0 var(--space-3);color:var(--fg-0)}
+  .state p{color:var(--fg-1);max-width:54ch;margin:0 auto var(--space-5)}
+  .state .code-404{font-family:var(--font-mono);font-size:var(--type-7xl,4rem);letter-spacing:var(--tracking-sku);color:var(--fg-2);line-height:1;margin-bottom:var(--space-4)}
+  .toast{display:inline-flex;align-items:flex-start;gap:var(--space-3);border:1px solid var(--border-default);border-left:4px solid var(--status-success);background:var(--bg-1);padding:var(--space-4) var(--space-5);text-align:left;max-width:60ch;}
+  .toast .eyebrow{color:var(--status-success);margin-bottom:var(--space-2);font-weight:600}
+  .toast p{margin:0;color:var(--fg-1);max-width:none}
+  .skeleton-shell{border:1px solid var(--border-default);background:var(--bg-1);padding:var(--space-6);display:grid;gap:var(--space-3);text-align:left;max-width:60ch;margin:0 auto;}
+  .skeleton-bar{height:12px;background:var(--bg-2,var(--bg-1));border:1px solid var(--border-default);position:relative;overflow:hidden;}
+  .skeleton-bar::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent 0%,var(--fg-2) 50%,transparent 100%);opacity:0.18;animation:sk 1.6s linear infinite;}
+  .skeleton-bar.w-60{width:60%}.skeleton-bar.w-80{width:80%}.skeleton-bar.w-40{width:40%}
+  .skeleton-meta{font-family:var(--font-mono);font-size:var(--type-xs);letter-spacing:var(--tracking-sku);text-transform:uppercase;color:var(--fg-2);margin-top:var(--space-3)}
+  @keyframes sk{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+  @media (prefers-reduced-motion: reduce){.skeleton-bar::after{animation:none}}
+  .xref{border:1px solid var(--border-default);background:var(--bg-1);padding:var(--space-4) var(--space-5);display:flex;justify-content:space-between;align-items:center;gap:var(--space-4)}
+  .xref a{font-family:var(--font-mono);font-size:var(--type-sm);color:var(--accent)}

@@ -30,8 +30,11 @@
 
 import path from 'node:path';
 
-import { parseSync } from 'oxc-parser';
 import MagicString from 'magic-string';
+import { parseSync } from 'oxc-parser';
+
+import { buildLibMap, inlineUsedExports } from './canvas-lib-inline.ts';
+import { canvasLibPath } from './canvas-lib-resolver.ts';
 
 // biome-ignore lint/suspicious/noExplicitAny: oxc AST nodes are heterogeneous.
 type AnyNode = any;
@@ -90,6 +93,12 @@ export interface EmitOptions {
   componentsCssPath?: string;
   /** Optional path to project's tokens CSS for cssVars resolution (Task 12b). */
   tokensCssPath?: string;
+  /**
+   * Absolute path to design root. When provided, `@mdcc/canvas-lib` imports
+   * in the canvas are inlined from `<designRoot>/_lib/canvas-lib.tsx` so the
+   * emitted drop is self-contained (Phase 3.6.1 Task 9).
+   */
+  designRoot?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -412,7 +421,7 @@ function selectorListIntersects(prelude: string, keep: Set<string>): boolean {
 function firstClass(selector: string): string | null {
   // Scan for `.name` — pick the first one. Stops at descendant combinators.
   const m = selector.match(/\.([A-Za-z_-][A-Za-z0-9_-]*)/);
-  return m && m[1] ? m[1] : null;
+  return m?.[1] ? m[1] : null;
 }
 
 function collectVars(css: string, tokens: Set<string>): void {
@@ -448,9 +457,8 @@ export function filterTokensCss(
   }
   // Build a minimal :root usedCss block — useful when the consumer wants the
   // raw declarations rather than the shadcn cssVars sugar.
-  const usedCss = usedDeclarations.length > 0
-    ? `:root {\n  ${usedDeclarations.join('\n  ')}\n}\n`
-    : '';
+  const usedCss =
+    usedDeclarations.length > 0 ? `:root {\n  ${usedDeclarations.join('\n  ')}\n}\n` : '';
   return { theme, usedCss };
 }
 
@@ -465,16 +473,32 @@ export async function emitRegistryItem(opts: EmitOptions): Promise<RegistryItem>
   const rawTsx = await canvasFile.text();
 
   // Strip dev-time scaffolding.
-  const tsx = stripDataCdId(opts.canvasAbsPath, rawTsx);
+  let tsx = stripDataCdId(opts.canvasAbsPath, rawTsx);
+
+  // Inline canvas-lib helpers — when the canvas imports from @mdcc/canvas-lib,
+  // we splice the resolved exports + their transitive deps into the canvas
+  // source and strip the specifier. Phase 3.6.1 Task 9.
+  if (opts.designRoot) {
+    const libPath = canvasLibPath(opts.designRoot);
+    const libFile = Bun.file(libPath);
+    if (await libFile.exists()) {
+      const libSource = await libFile.text();
+      const libMap = buildLibMap(libPath, libSource);
+      const inlined = inlineUsedExports(tsx, libMap);
+      tsx = inlined.content;
+    }
+  }
 
   // Classify imports.
   const { dependencies, registryDependencies } = classifyImports(opts.canvasAbsPath, tsx);
+  // @mdcc/canvas-lib is a dev-time virtual specifier — never ship as dep.
+  const depsFiltered = dependencies.filter((d) => d !== '@mdcc/canvas-lib');
 
   // React + ReactDOM always shipped as runtime deps — the canvas authoring
   // contract requires React 19 (DDR-012). scanImports already finds `react`
   // when JSX is present (Bun.Transpiler tracks jsx-runtime usage), but it
   // doesn't surface react-dom unless explicitly imported. Force-include both.
-  const depSet = new Set(dependencies);
+  const depSet = new Set(depsFiltered);
   depSet.add('react');
   depSet.add('react-dom');
   const finalDeps = [...depSet].sort();
@@ -495,7 +519,9 @@ export async function emitRegistryItem(opts: EmitOptions): Promise<RegistryItem>
   let cssVars: RegistryItem['cssVars'] | undefined;
 
   if (opts.componentsCssPath) {
-    const componentsCss = await Bun.file(opts.componentsCssPath).text().catch(() => '');
+    const componentsCss = await Bun.file(opts.componentsCssPath)
+      .text()
+      .catch(() => '');
     if (componentsCss) {
       const classNames = collectClassNames(opts.canvasAbsPath, tsx);
       const { css, tokens } = filterComponentsCss(componentsCss, classNames);
@@ -507,7 +533,9 @@ export async function emitRegistryItem(opts: EmitOptions): Promise<RegistryItem>
         });
       }
       if (opts.tokensCssPath && tokens.size > 0) {
-        const tokensCss = await Bun.file(opts.tokensCssPath).text().catch(() => '');
+        const tokensCss = await Bun.file(opts.tokensCssPath)
+          .text()
+          .catch(() => '');
         if (tokensCss) {
           const { theme, usedCss } = filterTokensCss(tokensCss, tokens);
           if (Object.keys(theme).length > 0) {
@@ -541,8 +569,8 @@ export async function emitRegistryItem(opts: EmitOptions): Promise<RegistryItem>
   };
 
   // Drop undefined keys for a clean JSON.
-  if (!item.title) delete (item as Partial<RegistryItem>).title;
-  if (!item.description) delete (item as Partial<RegistryItem>).description;
+  if (!item.title) (item as Partial<RegistryItem>).title = undefined;
+  if (!item.description) (item as Partial<RegistryItem>).description = undefined;
 
   return item;
 }
@@ -561,10 +589,7 @@ function kebabCase(s: string): string {
  * Write the registry-item.json sidecar next to a canvas. Caller picks the
  * destination path; conventional default is `<canvas-dir>/<Slug>.registry.json`.
  */
-export async function writeRegistryItem(
-  destPath: string,
-  item: RegistryItem
-): Promise<void> {
+export async function writeRegistryItem(destPath: string, item: RegistryItem): Promise<void> {
   const json = `${JSON.stringify(item, null, 2)}\n`;
   const tmp = `${destPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
   await Bun.write(tmp, json);
@@ -583,6 +608,7 @@ if (import.meta.main) {
     const designRoot = argv[2];
     const opts: EmitOptions = { canvasAbsPath: canvas };
     if (designRoot) {
+      opts.designRoot = designRoot;
       opts.componentsCssPath = path.join(designRoot, 'system/project/preview/_components.css');
       opts.tokensCssPath = path.join(designRoot, 'system/project/colors_and_type.css');
     }
@@ -602,7 +628,9 @@ if (import.meta.main) {
       const item = await emitRegistryItem(opts);
       const dest = canvas.replace(/\.tsx$/, '.registry.json');
       await writeRegistryItem(dest, item);
-      console.log(JSON.stringify({ dest, files: item.files.length, deps: item.dependencies.length }));
+      console.log(
+        JSON.stringify({ dest, files: item.files.length, deps: item.dependencies.length })
+      );
       process.exit(0);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

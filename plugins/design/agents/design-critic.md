@@ -18,7 +18,7 @@ You critique. You **never** edit the canvas. You **never** spawn other agents.
 ## Inputs (orchestrator passes you)
 
 ```
-canvas_path        # absolute path to active .html canvas
+canvas_path        # absolute path to active .tsx canvas
 screenshot_path    # absolute path or empty (capture if empty)
 feedback           # the user's last /design:edit feedback (or "" for /design:new initial gen)
 selected           # JSON of the selected element if scoped, else null

@@ -4,11 +4,11 @@
 # `commands/edit.md` step 3 originally; now the single source of truth.
 #
 # Usage:  slug.sh "<path-relative-to-designRoot>"
-# Output: lowercase kebab slug — e.g. "ui/showcase/Match Recap.html" -> "ui-showcase-match_recap"
+# Output: lowercase kebab slug — e.g. "ui/showcase/Match Recap.tsx" -> "ui-showcase-match_recap"
 
 if [ $# -lt 1 ] || [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
   echo "Usage: slug.sh <relative-path>" >&2
-  echo "Example: slug.sh 'ui/showcase/Match Recap.html' -> ui-showcase-match_recap" >&2
+  echo "Example: slug.sh 'ui/showcase/Match Recap.tsx' -> ui-showcase-match_recap" >&2
   [ "$1" = "--help" ] || [ "$1" = "-h" ] && exit 0
   exit 1
 fi
@@ -17,6 +17,6 @@ printf '%s' "${1#./}" \
   | tr '/' '-' \
   | tr ' ' '_' \
   | tr '[:upper:]' '[:lower:]' \
-  | sed 's/\.html$//' \
+  | sed -E 's/\.(tsx|jsx|html?|css|json|md)$//' \
   | sed 's/^\.\+//'
 echo

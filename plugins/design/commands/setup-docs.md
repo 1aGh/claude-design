@@ -42,7 +42,7 @@ TOKENS_REL=$(jq -r '.tokensCssRel' "$CFG")
 
 ### 2. Inventory
 
-For each `*.tsx` (or legacy `*.html`) in `<DESIGN_ROOT>/<NEW_CANVAS_DIR>/`:
+For each `*.tsx` in `<DESIGN_ROOT>/<NEW_CANVAS_DIR>/`:
 - Read sibling `<Canvas>.meta.json` if exists; otherwise generate stub from filename.
 - Note iteration count from `<DESIGN_ROOT>/_history/<slug>/chat.md` (count `## Iteration` headers).
 - Note latest screenshot path from `<DESIGN_ROOT>/_history/<slug>/screenshots/*.full.png`.
@@ -74,15 +74,15 @@ Template (adapted with project specifics):
 │   │   ├── preview/                    # browsable specimens (color/type/components)
 │   │   └── ui_kits/                    # reference UI compositions
 └── {NEW_CANVAS_DIR}/         # canvas projects (multi-artboard DesignCanvas files)
-    ├── <Canvas-1>.tsx                  # ← TSX canvas (Phase 3.6+ default)
+    ├── <Canvas-1>.tsx                  # ← TSX canvas (React 19 + Bun.build pipeline)
     ├── <Canvas-1>.meta.json            # ← title / brief / sections / tokens used
-    ├── <Canvas-1>.css                  # ← optional sibling stylesheet (when css_mode=inline + migrated)
+    ├── <Canvas-1>.css                  # ← optional sibling stylesheet (when css_mode=inline)
     ├── <Canvas-2>.tsx
     ├── ...
     └── components/                     # shared component .tsx files
 ```
 
-The plugin runs a local dev server (`node ${CLAUDE_PLUGIN_ROOT}/dev-server/server.mjs`) that scans this folder, renders canvases in iframes, and tracks the active tab + element selection in `_active.json` (gitignored). Iterations are persisted in `_history/<slug>/` (gitignored): snapshots, critic reports, screenshots, and a chat transcript.
+The plugin runs a local dev server (`bun ${CLAUDE_PLUGIN_ROOT}/dev-server/server.ts`) that scans this folder, mounts canvases via `_canvas-shell.html` + React 19 importmap, and tracks the active tab + element selection in `_active.json` (gitignored). Iterations are persisted in `_history/<slug>/` (gitignored): snapshots, critic reports, screenshots, and a chat transcript.
 
 ## What you should do — IMPORTANT
 
@@ -90,7 +90,7 @@ The plugin runs a local dev server (`node ${CLAUDE_PLUGIN_ROOT}/dev-server/serve
 
 **Read its iteration transcript next.** Each canvas with iteration history has a chat at `_history/<slug>/chat.md`. The chat shows the back-and-forth between the user and the design assistant — it tells you **what the user actually wants** and **where they landed**. The canvas file is the output, but the chat is where the intent lives. (If `--include-history` was used in a prior export, transcripts may also be at `chats/<slug>.md`.)
 
-**Find the canvas's primary `.tsx` (or legacy `.html`) and read it top to bottom.** Each canvas project is a multi-artboard `DesignCanvas` file. Then **follow its imports**: open every component file under `components/`, the tokens at `system/{project}/colors_and_type.css`, and the canvas's `.meta.json` sidecar.
+**Find the canvas's primary `.tsx` and read it top to bottom.** Each canvas project is a multi-artboard `DesignCanvas` file importing envelope primitives from `@mdcc/canvas-lib`. Then **follow its imports**: open every component file under `components/`, the tokens at `system/{project}/colors_and_type.css`, and the canvas's `.meta.json` sidecar.
 
 **If anything is ambiguous, ask the user to confirm before you start implementing.** It's much cheaper to clarify scope up front than to build the wrong thing.
 

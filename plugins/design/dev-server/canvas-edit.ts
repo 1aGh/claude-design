@@ -27,8 +27,8 @@
 // (matches the locator.ts pattern). Two parallel edits against different
 // canvases run in parallel.
 
-import { parseSync } from 'oxc-parser';
 import MagicString from 'magic-string';
+import { parseSync } from 'oxc-parser';
 
 export class CanvasEditError extends Error {
   readonly canvas: string;
@@ -134,11 +134,7 @@ function findAttribute(opening: AnyNode, name: string): AnyNode | null {
   const attrs = opening?.attributes;
   if (!Array.isArray(attrs)) return null;
   for (const a of attrs) {
-    if (
-      a?.type === 'JSXAttribute' &&
-      a.name?.type === 'JSXIdentifier' &&
-      a.name.name === name
-    ) {
+    if (a?.type === 'JSXAttribute' && a.name?.type === 'JSXIdentifier' && a.name.name === name) {
       return a;
     }
   }
@@ -158,12 +154,10 @@ function withLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
   });
   const next = prev.then(() => gate);
   locks.set(filePath, next);
-  return prev
-    .then(fn)
-    .finally(() => {
-      release();
-      if (locks.get(filePath) === next) locks.delete(filePath);
-    });
+  return prev.then(fn).finally(() => {
+    release();
+    if (locks.get(filePath) === next) locks.delete(filePath);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -190,7 +184,10 @@ export async function editAttribute(
   return withLock(canvasAbsPath, async () => {
     const file = Bun.file(canvasAbsPath);
     if (!(await file.exists())) {
-      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, { canvas: canvasAbsPath, id });
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id,
+      });
     }
     const source = await file.text();
     const next = applyEdit(canvasAbsPath, source, id, attr, value);
@@ -385,9 +382,7 @@ if (import.meta.main) {
       process.exit(2);
     }
   } else {
-    console.error(
-      'Usage: bun run canvas-edit.ts --invoke <canvas> <id> <attr> <value>'
-    );
+    console.error('Usage: bun run canvas-edit.ts --invoke <canvas> <id> <attr> <value>');
     process.exit(2);
   }
 }

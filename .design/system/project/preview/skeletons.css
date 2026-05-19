@@ -1,0 +1,3 @@
+.skel{background:var(--bg-2);height:14px;border-radius:0;border:1px solid var(--border-subtle);display:block;}
+  .skel-tall{height:24px}
+  .skel-block{height:120px}

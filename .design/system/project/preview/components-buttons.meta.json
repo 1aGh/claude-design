@@ -1,0 +1,24 @@
+{
+  "title": "components-buttons",
+  "subtitle": "button variants — primary / default / ghost / quiet + sizes + kbd hints.",
+  "brief": "MDCC-DSN/01.components-buttons / md-claude",
+  "platform": "desktop",
+  "designSystem": "project",
+  "opt_out_scope": "none",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "MDCC-DSN/01.components-buttons / md-claude",
+      "artboards": [
+        {
+          "id": "primary",
+          "label": "COMPONENTS-BUTTONS",
+          "width": 0,
+          "height": 0
+        }
+      ]
+    }
+  ],
+  "css_mode": "inline",
+  "data_cd_id_version": 1
+}

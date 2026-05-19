@@ -5,6 +5,7 @@ import type { ServerWebSocket, WebSocketHandler } from 'bun';
 
 import type { Api } from './api.ts';
 import type { Context } from './context.ts';
+import { createHmrBroadcaster } from './hmr-broadcast.ts';
 import type { Inspect } from './inspect.ts';
 
 export interface WsData {
@@ -44,6 +45,10 @@ export function createWs(ctx: Context, api: Api, inspect: Inspect): Ws {
   ctx.bus.on('comments', ({ file, comments }: { file: string; comments: unknown[] }) =>
     broadcast({ type: 'comments', file, comments })
   );
+
+  // HMR broadcaster — turns fs:any change events into `canvas-hmr` messages.
+  // The iframe-side client (in _shell.html) decides reload strategy from `mode`.
+  createHmrBroadcaster(ctx, (msg) => broadcast(msg));
 
   const handler: WebSocketHandler<WsData> = {
     open(ws) {

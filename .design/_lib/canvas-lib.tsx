@@ -1,0 +1,292 @@
+/**
+ * @file       canvas-lib.tsx — project-owned canvas library
+ * @scope      <designRoot>/_lib/canvas-lib.tsx
+ * @purpose    Shared primitives + helpers + hooks for every TSX canvas
+ *             (UI mocks + DS specimens). Imported via the virtual module
+ *             specifier `@mdcc/canvas-lib`, which the dev-server's Bun.build
+ *             resolver maps to this file. On /design:handoff the used exports
+ *             are AST-inlined into the emitted registry-item so the consumer
+ *             never sees the `@mdcc/canvas-lib` specifier.
+ *
+ * Exports (cold-reader cheat sheet):
+ *
+ *   Frame envelope ─────────────────────────────────────────────────────────
+ *   DesignCanvas       Root wrapper. <div class="dc-canvas">.
+ *   DCSection          Titled section. Adds `<header><h2>...</h2></header>`.
+ *   DCArtboard         Bordered artboard with SKU strip header. Pass
+ *                      width=0 + height=0 to flow (specimens). Otherwise
+ *                      fixed-px (UI mocks).
+ *   DCPostIt           <aside class="dc-postit"> — sticky-note annotation.
+ *
+ *   Specimen helpers ───────────────────────────────────────────────────────
+ *   SpecimenHeader     The .specimen-hd row (sku + crumbs + ThemeToggle).
+ *   SpecimenMeta       <dl class="specimen-meta"> ladder from entries[].
+ *   KbdHint            <kbd> chrome.
+ *   TokenChip          Inline visualiser for a var(--*) value.
+ *   ColorSwatch        Square + label for a color token.
+ *   TypeScaleRow       One row of a type-ladder specimen.
+ *   ThemeToggle        Light/dark <button> group writing data-theme on <html>.
+ *
+ *   Hooks ──────────────────────────────────────────────────────────────────
+ *   useTokens(prefix?) Resolves CSS custom properties from <html> computed style.
+ *   useTheme()         Current theme + setter, syncs to <html data-theme>.
+ *   useArtboardBounds(ref) ResizeObserver wrapper returning {width,height}.
+ *
+ * Authoring vocabulary. Lift these before re-implementing equivalents. The
+ * surface intentionally mirrors the .html-era specimen idioms one-for-one
+ * (`.specimen-hd`, `.specimen-meta`, `.sku`, `.swatch`, `.stamp`) so existing
+ * `_components.css` rules still target them.
+ *
+ * data-cd-id IDs are injected by canvas-pipeline.ts pass 1 — including on the
+ * primitives below. That's fine; pipeline IDs change every time the lib
+ * changes. Don't pin lib-internal IDs in tests.
+ */
+
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Frame envelope — re-exported from `./design-canvas-viewport`, the ported
+// pre-migration babel-runtime component. UI canvases (Docs Site, Canvas
+// Viewport, Smoke TSX) get the full pan/zoom viewport + persisted artboard
+// reorder + focus mode they had before the TSX migration. DS specimens do
+// not import these — they render bare TSX directly.
+
+export {
+  DesignCanvas,
+  DCSection,
+  DCArtboard,
+  DCPostIt,
+} from "./design-canvas-viewport";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Specimen helpers
+
+/** SKU + breadcrumb trail + optional ThemeToggle. Maps to `.specimen-hd`. */
+export function SpecimenHeader({
+  sku,
+  crumbs,
+  showThemeToggle = true,
+}: {
+  sku: string;
+  crumbs: string[];
+  showThemeToggle?: boolean;
+}) {
+  return (
+    <header className="specimen-hd">
+      <span className="sku">{sku}</span>
+      <span className="crumbs">
+        {crumbs.map((c, i) => (
+          <span key={`${c}-${i}`}>{c}</span>
+        ))}
+      </span>
+      {showThemeToggle ? <ThemeToggle /> : null}
+    </header>
+  );
+}
+
+/** `<dl class="specimen-meta">` ladder. */
+export function SpecimenMeta({
+  entries,
+}: {
+  entries: Array<{ label: string; value: ReactNode }>;
+}) {
+  return (
+    <dl className="specimen-meta">
+      {entries.map(({ label, value }) => (
+        <div key={label}>
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** <kbd> chrome — keyboard hint. */
+export function KbdHint({ children }: { children: ReactNode }) {
+  return <kbd>{children}</kbd>;
+}
+
+/** Inline `var(--name)` value visualiser — small chip + token name. */
+export function TokenChip({
+  name,
+  swatch,
+}: {
+  name: string;
+  swatch?: boolean;
+}) {
+  return (
+    <span className="token-chip" data-token={name}>
+      {swatch ? (
+        <span className="token-chip-swatch" style={{ background: `var(${name})` }} />
+      ) : null}
+      <code>{name}</code>
+    </span>
+  );
+}
+
+/** Color swatch — square + token label + optional caption. */
+export function ColorSwatch({
+  token,
+  caption,
+  height = 96,
+}: {
+  token: string;
+  caption?: ReactNode;
+  height?: number;
+}) {
+  return (
+    <div className="swatch">
+      <div className="chip" style={{ background: `var(${token})`, height }} />
+      <div className="meta">
+        <strong>{token}</strong>
+        {caption ? <span className="oklch">{caption}</span> : null}
+      </div>
+    </div>
+  );
+}
+
+/** Single row of a type-ladder specimen — label + sample at given token. */
+export function TypeScaleRow({
+  token,
+  label,
+  sample,
+}: {
+  token: string;
+  label: string;
+  sample?: string;
+}) {
+  return (
+    <div className="type-row" data-token={token}>
+      <span className="sku">{label}</span>
+      <span className="type-sample" style={{ fontSize: `var(${token})` }}>
+        {sample ?? "The quick brown fox jumps over the lazy dog"}
+      </span>
+    </div>
+  );
+}
+
+/** Light/dark toggle. Writes `data-theme` on `<html>` and persists to memory. */
+export function ThemeToggle() {
+  const { theme, setTheme } = useTheme();
+  return (
+    <span className="theme-toggle" role="tablist" aria-label="Theme">
+      <button
+        type="button"
+        data-theme="light"
+        aria-pressed={theme === "light"}
+        onClick={() => setTheme("light")}
+      >
+        LIGHT
+      </button>
+      <button
+        type="button"
+        data-theme="dark"
+        aria-pressed={theme === "dark"}
+        onClick={() => setTheme("dark")}
+      >
+        DARK
+      </button>
+    </span>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hooks
+
+/**
+ * Read resolved CSS custom property values from `<html>`. Returns the full set
+ * when prefix is omitted; otherwise filters to vars beginning with `--<prefix>`.
+ * Re-resolves on `data-theme` mutation.
+ */
+export function useTokens(prefix?: string): Record<string, string> {
+  const [tokens, setTokens] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    function read() {
+      const root = document.documentElement;
+      const cs = getComputedStyle(root);
+      const out: Record<string, string> = {};
+      // CSSStyleDeclaration is iterable in modern browsers; fall back to length.
+      const len = cs.length;
+      for (let i = 0; i < len; i++) {
+        const name = cs.item(i);
+        if (!name.startsWith("--")) continue;
+        if (prefix && !name.startsWith(`--${prefix}`)) continue;
+        out[name] = cs.getPropertyValue(name).trim();
+      }
+      setTokens(out);
+    }
+    read();
+    const mo = new MutationObserver(read);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => mo.disconnect();
+  }, [prefix]);
+  return tokens;
+}
+
+/**
+ * Current theme + setter. Mirrors the `data-theme` attribute on `<html>`.
+ * Defaults to whatever attribute is already set (or "light"). No persistence
+ * to localStorage — canvases are ephemeral; specimens reset per-load.
+ */
+export function useTheme(): { theme: string; setTheme: (t: string) => void } {
+  const [theme, setThemeState] = useState<string>(() => {
+    if (typeof document === "undefined") return "light";
+    return document.documentElement.dataset.theme ?? "light";
+  });
+  const setTheme = useCallback((t: string) => {
+    if (typeof document !== "undefined") {
+      document.documentElement.dataset.theme = t;
+    }
+    setThemeState(t);
+  }, []);
+  useLayoutEffect(() => {
+    if (typeof document === "undefined") return;
+    // Sync state from DOM if something else (e.g. inspector) flipped it.
+    const obs = new MutationObserver(() => {
+      const t = document.documentElement.dataset.theme ?? "light";
+      setThemeState(t);
+    });
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => obs.disconnect();
+  }, []);
+  return useMemo(() => ({ theme, setTheme }), [theme, setTheme]);
+}
+
+/**
+ * ResizeObserver wrapper. Pass a ref to any element (typically the active
+ * artboard); returns its current `{ width, height }` in CSS pixels.
+ */
+export function useArtboardBounds(
+  ref: RefObject<HTMLElement | null>
+): { width: number; height: number } {
+  const [bounds, setBounds] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      const e = entries[0];
+      if (!e) return;
+      const r = e.contentRect;
+      setBounds({ width: r.width, height: r.height });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+  return bounds;
+}
+
+// Silence "unused" lint for `useRef` re-export point if a downstream canvas
+// imports `useRef` from this module by mistake — we keep it available so
+// `useArtboardBounds` consumers have one import line.
+export { useRef };

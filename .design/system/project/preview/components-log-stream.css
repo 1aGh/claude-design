@@ -1,0 +1,13 @@
+.log{border:1px solid var(--border-default);background:var(--bg-1);font-family:var(--font-mono);font-size:var(--type-sm)}
+  .log .lh{padding:var(--space-2) var(--space-4);background:var(--bg-2);border-bottom:1px solid var(--border-default);display:flex;justify-content:space-between;color:var(--fg-2);font-size:var(--type-xs);letter-spacing:var(--tracking-sku);text-transform:uppercase}
+  .log .line{display:grid;grid-template-columns:120px 60px 1fr;gap:var(--space-3);padding:2px var(--space-4);border-bottom:1px solid var(--border-subtle);align-items:start}
+  .log .line:last-child{border-bottom:0}
+  .log .t{color:var(--fg-3);font-size:var(--type-xs);padding-top:1px}
+  .log .lv{font-size:var(--type-xs);letter-spacing:var(--tracking-sku);text-transform:uppercase;font-weight:600;padding-top:1px}
+  .log .lv-info{color:var(--status-info)}
+  .log .lv-ok{color:var(--status-success)}
+  .log .lv-warn{color:var(--status-warn)}
+  .log .lv-err{color:var(--status-error)}
+  .log .lv-debug{color:var(--fg-3)}
+  .log .msg{color:var(--fg-0);white-space:pre-wrap;word-break:break-word}
+  .log .msg .tag{color:var(--accent)}

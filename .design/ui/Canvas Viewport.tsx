@@ -10,8 +10,9 @@
  * @handoff     bunx shadcn add file://./Canvas Viewport.registry.json
  */
 
-import { useEffect } from "react";
+import { useEffect, useState, useCallback } from "react";
 import "./Canvas Viewport.css";
+import { DCArtboard, DCSection, DesignCanvas } from "@mdcc/canvas-lib";
 
 // All components are pure render functions — no React state needed for a static mock.
 
@@ -1483,7 +1484,12 @@ function ArtboardCommentsList() {
 // ─────────────────────────────────────────────────────────────────────
 
 function App() {
-  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  // Local tweak state. Replaces the legacy `useTweaks` window-global from the
+  // babel-runtime era (Phase 3.6.1 TSX migration). The floating <TweaksPanel>
+  // UI is gone with it — theme is now driven directly via local state. If we
+  // need a panel back, it should live in `@mdcc/canvas-lib` as a proper export.
+  const [t, setTweak] = useState(TWEAK_DEFAULTS);
+  void setTweak;
 
   // Propagate the theme tweak to the root <html class="mdcc">. The token CSS
   // keys all surface colors off [data-theme="light"] / [data-theme="dark"], so
@@ -1491,15 +1497,6 @@ function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = t.theme;
   }, [t.theme]);
-
-  // The dev-server host doesn't (yet) render a Tweaks toggle in its toolbar,
-  // so the shared TweaksPanel runtime — which gates rendering on
-  // __activate_edit_mode from window.parent — never opens. Self-activate on
-  // mount so the floating panel is visible immediately. User can still close
-  // with the X (panel keeps its own open state after dismiss).
-  useEffect(() => {
-    window.postMessage({ type: '__activate_edit_mode' }, '*');
-  }, []);
 
   return (
     <>
@@ -1521,15 +1518,6 @@ function App() {
           <DCArtboard id="comments"     label="CV-10 · COMMENTS LIST · TABS"  width={1280} height={820}><ArtboardCommentsList /></DCArtboard>
         </DCSection>
       </DesignCanvas>
-      <TweaksPanel title="Canvas tweaks">
-        <TweakSection label="Appearance" />
-        <TweakRadio
-          label="Theme"
-          value={t.theme}
-          options={['light', 'dark']}
-          onChange={(v) => setTweak('theme', v)}
-        />
-      </TweaksPanel>
     </>
   );
 }

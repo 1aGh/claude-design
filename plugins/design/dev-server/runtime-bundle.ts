@@ -53,7 +53,9 @@ async function namedExportsFor(pkg: RuntimePackage): Promise<readonly string[]> 
   if (hit) return hit;
   const mod = (await import(pkg)) as Record<string, unknown>;
   // `default` is auto-emitted from our synthetic entry separately; skip here.
-  const keys = Object.keys(mod).filter((k) => k !== 'default').sort();
+  const keys = Object.keys(mod)
+    .filter((k) => k !== 'default')
+    .sort();
   namedExportsCache.set(pkg, keys);
   return keys;
 }
@@ -106,12 +108,11 @@ export async function getRuntimeBundle(pkg: RuntimePackage): Promise<BundleCache
   // The `as any` cast tolerates names like `__INTERNAL_DO_NOT_USE_OR_WARN`
   // that aren't declared in the package's .d.ts; the destructure still
   // succeeds at runtime, which is what matters.
-  const entryContent =
-    `import * as __mod__ from ${JSON.stringify(pkg)};\n` +
-    (exportNames.length > 0
+  const entryContent = `import * as __mod__ from ${JSON.stringify(pkg)};\n${
+    exportNames.length > 0
       ? `const {\n${namedLines}\n} = __mod__ as any;\n` + `export {\n${namedLines}\n};\n`
-      : '') +
-    `export default __mod__;\n`;
+      : ''
+  }export default __mod__;\n`;
 
   // Externalise the OTHER three runtime packages so they don't get bundled
   // multiple times into this one. The importmap re-stitches at runtime — the

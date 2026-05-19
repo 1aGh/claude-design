@@ -1,0 +1,59 @@
+/**
+ * @canvas      {{NAME}} — {{SUBTITLE}}
+ * @ds          {{DS_NAME}}
+ * @platform    {{PLATFORM}}
+ * @opt_out     {{OPT_OUT_SCOPE}}
+ * @artboards   primary
+ * @brief       DS specimen — {{NAME}}
+ * @stack       React 19 · TSX · Bun.build · css_mode={{CSS_MODE}}
+ * @history     {{HISTORY_DIR}}
+ * @handoff     bunx shadcn add file://./{{NAME}}.registry.json
+ *
+ * Specimen surface for the {{DS_NAME}} design system. Bare TSX — no canvas-
+ * lib envelope (DesignCanvas / DCSection / DCArtboard). Specimens are
+ * flowing reference pages styled by `_layout.css` (which assumes `<body>` is
+ * the outer flex column) and their own component CSS rules in
+ * `_components.css`. The `<header class="specimen-hd">` provides SKU +
+ * crumbs + theme toggle exactly like the original .html specimens did.
+ *
+ * Tokens + `_layout.css` + `_components.css` are loaded by the dev-server's
+ * `_shell.html` harness via the iframe's `?tokens=` / `?components=` /
+ * `?layout=` query.
+ *
+ * Per-specimen bespoke CSS lives in a sibling `<Slug>.css` — `import` it
+ * below; canvas-build.ts injects it as a `<style>` tag at module init so
+ * the drop stays self-contained. (No `<link>` needed.)
+ *
+ * `data-cd-id="<8 hex>"` attributes are injected at request time by the
+ * dev-server's canvas pipeline pass 1 — don't author them by hand.
+ */
+
+import "./{{NAME}}.css";
+
+export default function {{COMPONENT_NAME}}() {
+  return (
+    <>
+      <header className="specimen-hd">
+        <span className="sku">{{SKU}}</span>
+        <span className="crumbs">
+          {/* {{CRUMB_HINT}} */}
+        </span>
+        {/* Theme toggle is wired by the host page (matchMedia + localStorage),
+            mirroring the legacy .html specimens. Author static markup here. */}
+        <span className="theme-toggle" role="tablist" aria-label="Theme">
+          <button data-theme="light">LIGHT</button>
+          <button data-theme="dark">DARK</button>
+        </span>
+      </header>
+
+      <main className="specimen">
+        <section className="specimen-title">
+          <h1>{{NAME}}</h1>
+          <p className="lede">{{BRIEF}}</p>
+        </section>
+
+        {/* Replace this scaffold with the actual specimen content. */}
+      </main>
+    </>
+  );
+}

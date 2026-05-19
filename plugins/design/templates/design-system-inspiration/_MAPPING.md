@@ -46,14 +46,14 @@ Every project — regardless of discovery — gets:
 
 Token-foundation specimens that ship for any non-`minimal` profile:
 
-- `foundations/radii.html` → `system/<ds>/preview/radii.html`
-- `foundations/elevation.html` → `system/<ds>/preview/elevation.html`
-- `foundations/iconography.html` → `system/<ds>/preview/iconography.html` (skill re-curates icon set to project domain at scaffold time — see Rules #8 below)
-- `foundations/focus.html` → `system/<ds>/preview/focus.html`
-- `foundations/grid.html` → `system/<ds>/preview/grid.html`
-- `foundations/borders.html` → `system/<ds>/preview/borders.html`
-- `foundations/opacity.html` → `system/<ds>/preview/opacity.html`
-- `foundations/selection.html` → `system/<ds>/preview/selection.html`
+- `foundations/radii.html` → `system/<ds>/preview/radii.tsx`
+- `foundations/elevation.html` → `system/<ds>/preview/elevation.tsx`
+- `foundations/iconography.html` → `system/<ds>/preview/iconography.tsx` (skill re-curates icon set to project domain at scaffold time — see Rules #8 below)
+- `foundations/focus.html` → `system/<ds>/preview/focus.tsx`
+- `foundations/grid.html` → `system/<ds>/preview/grid.tsx`
+- `foundations/borders.html` → `system/<ds>/preview/borders.tsx`
+- `foundations/opacity.html` → `system/<ds>/preview/opacity.tsx`
+- `foundations/selection.html` → `system/<ds>/preview/selection.tsx`
 
 **Foundations default: +8 files.** Profile `minimal` drops these. Profile `standard`/`strict` includes all eight.
 

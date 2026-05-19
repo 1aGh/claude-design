@@ -1,0 +1,41 @@
+.stamp {
+    border: 4px solid var(--accent);
+    padding: var(--space-7) var(--space-8);
+    background: var(--bg-0);
+    position: relative;
+    margin: var(--space-5) 0 var(--space-6);
+    max-width: 720px;
+  }
+  .stamp::before, .stamp::after {
+    content: "";
+    position: absolute;
+    inset: 6px;
+    border: 1px solid var(--accent);
+    pointer-events: none;
+  }
+  .stamp .stamp-eyebrow {
+    font-family: var(--font-mono);
+    font-size: var(--type-xs);
+    letter-spacing: var(--tracking-sku);
+    color: var(--accent);
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+  .stamp .stamp-headline {
+    font-family: var(--font-display);
+    font-size: var(--type-2xl);
+    line-height: var(--lh-2xl);
+    margin: var(--space-3) 0;
+    color: var(--fg-0);
+    letter-spacing: var(--tracking-tight);
+    font-weight: 700;
+  }
+  .stamp .stamp-body { color: var(--fg-1); max-width: 56ch; margin: 0 0 var(--space-4); }
+  .stamp .stamp-meta {
+    display: flex; gap: var(--space-5); font-family: var(--font-mono);
+    font-size: var(--type-xs); letter-spacing: var(--tracking-wide);
+    text-transform: uppercase; color: var(--fg-2);
+    border-top: 1px solid var(--accent); padding-top: var(--space-3);
+  }
+  .stamp .stamp-meta strong { color: var(--accent); font-weight: 700; }
+  .accent-row { display: flex; gap: var(--space-5); align-items: center; margin: var(--space-4) 0; flex-wrap: wrap; }

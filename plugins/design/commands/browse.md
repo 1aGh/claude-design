@@ -23,17 +23,17 @@ Server čte `<repo>/.design/config.json` při bootu. Auto-najde volný port od *
 ## Postup
 
 ```bash
-# Direct boot (server čte $CLAUDE_PROJECT_DIR pokud je nastaveno, jinak cwd):
-node ${CLAUDE_PLUGIN_ROOT}/dev-server/server.mjs --root "$CLAUDE_PROJECT_DIR"
+# Direct boot (Bun-based server, čte $CLAUDE_PROJECT_DIR pokud je nastaveno, jinak cwd):
+bun ${CLAUDE_PLUGIN_ROOT}/dev-server/server.ts --root "$CLAUDE_PROJECT_DIR"
 
 # With explicit port:
-PORT=4400 node ${CLAUDE_PLUGIN_ROOT}/dev-server/server.mjs --root "$CLAUDE_PROJECT_DIR"
+bun ${CLAUDE_PLUGIN_ROOT}/dev-server/server.ts --root "$CLAUDE_PROJECT_DIR" --port 4400
 
 # Headless (no auto-open browser, useful in CI / SSH):
-NO_OPEN=1 node ${CLAUDE_PLUGIN_ROOT}/dev-server/server.mjs --root "$CLAUDE_PROJECT_DIR"
+NO_OPEN=1 bun ${CLAUDE_PLUGIN_ROOT}/dev-server/server.ts --root "$CLAUDE_PROJECT_DIR"
 ```
 
-`--root` je explicitní volba — pokud chybí, server fallbackne na `$CLAUDE_PROJECT_DIR` a pak na `process.cwd()`. Vždy ukazuje na **uživatelův projekt**, ne na install dir pluginu (`${CLAUDE_PLUGIN_ROOT}` slouží jen k lokaci `server.mjs`).
+`--root` je explicitní volba — pokud chybí, server fallbackne na `$CLAUDE_PROJECT_DIR` a pak na `process.cwd()`. Vždy ukazuje na **uživatelův projekt**, ne na install dir pluginu (`${CLAUDE_PLUGIN_ROOT}` slouží jen k lokaci `server.ts`).
 
 Repo může mít wrapper script v `package.json` (např. `pnpm design:browse`) — pokud existuje, použij ho. Jinak přímé spuštění výše.
 

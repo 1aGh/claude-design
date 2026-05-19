@@ -49,6 +49,7 @@ export interface Inspect {
   setSelected(sel: Omit<SelectedElement, 'ts' | 'v' | 'canvas'> | null): void;
   save(): Promise<void>;
   injectInto(html: string): string;
+  injectInspectorOnly(html: string): string;
 }
 
 const NEW = (): ActiveState => ({
@@ -169,7 +170,25 @@ export function createInspect(
     return out;
   }
 
-  return { state, load, setActive, setOpenTabs, setSelected, save, injectInto };
+  /**
+   * Inject ONLY the inspector overlay (no babel-runtime). Used by
+   * `_canvas-shell.html` so Cmd+Click selection + comment shortcuts work
+   * on TSX canvases the same way they did on the legacy .html canvases.
+   */
+  function injectInspectorOnly(html: string): string {
+    return injectInspector(html);
+  }
+
+  return {
+    state,
+    load,
+    setActive,
+    setOpenTabs,
+    setSelected,
+    save,
+    injectInto,
+    injectInspectorOnly,
+  };
 }
 
 // ---------- Runtime + Inspector script injection ----------
@@ -211,7 +230,23 @@ const INSPECTOR_SCRIPT = `
 (function() {
   if (window.__designInspectorAttached) return;
   window.__designInspectorAttached = true;
-  var FILE = (function(){ try { return decodeURIComponent(location.pathname); } catch(e){ return location.pathname; } })().replace(/^\\//,'');
+  // Resolve canvas file. For legacy .html canvases, location.pathname IS the
+  // canvas path. For TSX canvases mounted via /_canvas-shell.html, the canvas
+  // path is in the ?canvas= query param + needs the designRel prefix so the
+  // parent's activePath comparison matches (parent uses ".design/ui/<name>.tsx"
+  // shape from /_index-data).
+  var FILE = (function(){
+    try {
+      var p = location.pathname;
+      if (p === '/_canvas-shell.html' || p === '/_canvas-shell') {
+        var qs = new URLSearchParams(location.search);
+        var canvas = qs.get('canvas') || '';
+        var designRel = (qs.get('designRel') || '.design').replace(/^\\/+|\\/+$/g, '');
+        return designRel + '/' + canvas;
+      }
+      return decodeURIComponent(p).replace(/^\\//,'');
+    } catch(e) { return location.pathname.replace(/^\\//,''); }
+  })();
 
   var styleEl = document.createElement('style');
   styleEl.textContent = [

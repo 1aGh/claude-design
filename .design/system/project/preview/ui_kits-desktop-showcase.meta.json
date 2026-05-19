@@ -1,0 +1,24 @@
+{
+  "title": "ui_kits-desktop-showcase",
+  "subtitle": "SIGNATURE ★★ — the \"DS in use\" showcase. Full mdcc-design-server mock screen: top chrome + file-tree + tabbed iframe preview + inspector overlay + status bar. Theme + accent retint via data attributes",
+  "brief": "MDCC-DSN/01 / md-claude · DS in use",
+  "platform": "desktop",
+  "designSystem": "project",
+  "opt_out_scope": "none",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "MDCC-DSN/01 / md-claude · DS in use",
+      "artboards": [
+        {
+          "id": "primary",
+          "label": "UI_KITS-DESKTOP-SHOWCASE",
+          "width": 0,
+          "height": 0
+        }
+      ]
+    }
+  ],
+  "css_mode": "inline",
+  "data_cd_id_version": 1
+}

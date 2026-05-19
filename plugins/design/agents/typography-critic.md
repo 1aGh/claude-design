@@ -37,7 +37,7 @@ Footer: emit `"opt_out_applied": "<scope>"` and `"ds_blockers_downgraded": N`.
    - `--lh-*` line-height ladder
    - `--tracking-*` letter-spacing ladder
    - `--w-*` weight ladder
-3. Read any project `system/<name>/preview/*type*.html` specimens for legal pairings.
+3. Read any project `system/<name>/preview/*type*.tsx` specimens for legal pairings.
 
 ## Review axes
 

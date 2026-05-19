@@ -1,0 +1,5 @@
+.type-row{display:grid;grid-template-columns:120px 1fr 80px;gap:var(--space-5);align-items:baseline;padding:var(--space-4) 0;border-bottom:1px solid var(--border-subtle);}
+  .type-row .label{font-family:var(--font-mono);font-size:var(--type-xs);letter-spacing:var(--tracking-sku);text-transform:uppercase;color:var(--fg-2);}
+  .type-row .specimen-line{color:var(--fg-0);}
+  .type-row .meta{font-family:var(--font-mono);font-size:var(--type-xs);color:var(--fg-3);text-align:right;}
+  .track-row{display:grid;grid-template-columns:180px 1fr;gap:var(--space-5);align-items:baseline;padding:var(--space-3) 0;border-bottom:1px solid var(--border-subtle);}

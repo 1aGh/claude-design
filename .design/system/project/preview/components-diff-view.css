@@ -1,0 +1,10 @@
+.diff{border:1px solid var(--border-default);background:var(--bg-1);font-family:var(--font-mono);font-size:var(--type-sm);}
+  .diff .dh{padding:var(--space-2) var(--space-4);background:var(--bg-2);border-bottom:1px solid var(--border-default);display:flex;justify-content:space-between;color:var(--fg-2);font-size:var(--type-xs);letter-spacing:var(--tracking-sku);text-transform:uppercase}
+  .diff .row{display:grid;grid-template-columns:48px 1fr;gap:0;border-bottom:1px solid var(--border-subtle)}
+  .diff .row:last-child{border-bottom:0}
+  .diff .gut{padding:2px var(--space-3);text-align:right;color:var(--fg-3);background:var(--bg-2);user-select:none}
+  .diff .ln{padding:2px var(--space-4);white-space:pre}
+  .diff .add{background:color-mix(in oklab, var(--status-success) 12%, var(--bg-1))}
+  .diff .add .gut{background:color-mix(in oklab, var(--status-success) 22%, var(--bg-2));color:var(--status-success)}
+  .diff .del{background:color-mix(in oklab, var(--status-error) 12%, var(--bg-1))}
+  .diff .del .gut{background:color-mix(in oklab, var(--status-error) 22%, var(--bg-2));color:var(--status-error)}

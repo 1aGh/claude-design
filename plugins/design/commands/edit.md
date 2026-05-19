@@ -100,9 +100,21 @@ if [ "$LOAD_CSS" = "1" ] && [ "${ACTIVE##*.}" = "tsx" ] && [ "$CSS_MODE" = "inli
   echo "→ pre-loading DS context: $COMPONENTS_CSS"
   echo "→ pre-loading DS context: $TOKENS_CSS"
 fi
+
+# Always pre-load `_lib/canvas-lib.tsx` for every TSX canvas — the lib is the
+# authoring vocabulary (envelope + helpers + hooks the canvas can compose
+# from). Cold-edit on a canvas without seeing the available helpers is a
+# known foot-gun (Phase 3.6.1 Task 13). Cost: ~12 KB read, idempotent across
+# the iteration loop.
+if [ "${ACTIVE##*.}" = "tsx" ]; then
+  CANVAS_LIB="$REPO_ROOT/$DESIGN_ROOT/_lib/canvas-lib.tsx"
+  if [ -f "$CANVAS_LIB" ]; then
+    echo "→ pre-loading canvas-lib: $CANVAS_LIB"
+  fi
+fi
 ```
 
-**What the orchestrator does with those paths:** if `LOAD_CSS=1`, the orchestrator `Read`s both files BEFORE building the prompt for `frontend-design`. The class names in `_components.css` show what's available (`.btn`, `.btn--ghost`, `.tile`, `.sku`, `.seg`, ...), and `colors_and_type.css` shows the token namespace — both seed the LLM with the exact vocabulary the canvas already speaks. For `css_mode: "tailwind"` canvases skip (Tailwind utilities self-describe); for `css_mode: "modules"` load the canvas's `<Slug>.module.css` sidecar instead.
+**What the orchestrator does with those paths:** if `LOAD_CSS=1`, the orchestrator `Read`s both files BEFORE building the prompt for `frontend-design`. The class names in `_components.css` show what's available (`.btn`, `.btn--ghost`, `.tile`, `.sku`, `.seg`, ...), and `colors_and_type.css` shows the token namespace — both seed the LLM with the exact vocabulary the canvas already speaks. For `css_mode: "tailwind"` canvases skip (Tailwind utilities self-describe); for `css_mode: "modules"` load the canvas's `<Slug>.module.css` sidecar instead. The `_lib/canvas-lib.tsx` read ALWAYS happens for `.tsx` canvases (any mode) — the lib is the project's authoring vocabulary and missing it is the most common reason a `/design:edit` suggests re-inventing a helper that already exists.
 
 ### 2. Server lifecycle (vždy první)
 
@@ -188,7 +200,7 @@ It skips:
 - Step 6's `grep` validation — surgical attribute swaps can't move the tokens link or the rootClass.
 - The step-3.5 element-focused screenshot (the AST path already knows the exact target).
 
-**When the AST path does NOT run** (extension is `.html`, no selection, v=1 selection, multi-element feedback, structural change), fall through to step 3.5 + step 5 unchanged.
+**When the AST path does NOT run** (no selection, v=1 selection, multi-element feedback, structural change), fall through to step 3.5 + step 5 unchanged.
 
 The token-cost win is the headline result: the orchestrator reads ~5 KB of canvas state (`_active.json` excerpt + one selection record) instead of the full canvas TSX, and writes 0 bytes of file diff outside the targeted attribute byte range. Tracked against the Phase 3.6 budget "< 30 % of pre-phase token cost on a 1-element edit."
 
@@ -381,7 +393,7 @@ Failure here is non-fatal — print warning, don't restore the canvas. (User can
 
 - **Server nelze nastartovat (10s timeout)** → fail s `cat $DESIGN_ROOT/_server.log` instrukcí.
 - **`_active.json` chybí / `active = null`** → fail: "Otevři soubor v browser tabu, klikni na něj, pak zkus znovu."
-- **Active path není `.tsx` ani `.html`** → fail: "Active canvas musí být TSX (Phase 3.6+) nebo legacy HTML soubor."
+- **Active path není `.tsx`** → fail: "Active canvas musí být TSX soubor."
 - **Snapshot fail (no disk / permission)** → refuse, needituj.
 - **Edit poruší tokens link / rootClass / hardcoded colors** → automatic rollback ze snapshotu, report.
 - **Selected element's outerHTML appears multiple times v souboru** → použij dom_path k disambiguaci nebo fail s návrhem zúžit selekci (Cmd+Click konkrétnější dítě).

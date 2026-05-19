@@ -7,10 +7,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import {
+  type MetaSidecar,
   applyHeader,
   applyHeaderToSource,
   buildHeader,
-  type MetaSidecar,
 } from '../canvas-header.ts';
 
 const META: MetaSidecar = {
@@ -100,7 +100,10 @@ describe('canvas-header / applyHeader (fs)', () => {
   test('writes a fresh header + persists meta projection', async () => {
     const canvas = path.join(dir, 'Demo.tsx');
     const meta = path.join(dir, 'Demo.meta.json');
-    await Bun.write(canvas, 'import { useState } from "react";\nexport default function Demo() { return <div/>; }\n');
+    await Bun.write(
+      canvas,
+      'import { useState } from "react";\nexport default function Demo() { return <div/>; }\n'
+    );
     await Bun.write(meta, JSON.stringify(META, null, 2));
     const r = await applyHeader(canvas);
     expect(r.changed).toBe(true);

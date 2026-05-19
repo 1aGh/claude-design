@@ -36,16 +36,41 @@ function urlOf(p) {
 function canvasUrl(p, cfg) {
   if (!p.endsWith('.tsx')) return urlOf(p);
   const designRel = (cfg?.designRel || '.design').replace(/^\/+|\/+$/g, '');
-  // Path under designRoot (POSIX, encoded segments).
+  // Path under designRoot.
   let rel = p;
   if (rel.startsWith(designRel + '/')) rel = rel.slice(designRel.length + 1);
-  const canvasParam = rel.split('/').map(encodeURIComponent).join('/');
-  const params = new URLSearchParams({
-    canvas: canvasParam,
-    designRel,
-  });
-  if (cfg?.tokensCssRel) params.set('tokens', cfg.tokensCssRel);
+  // Pass `rel` to URLSearchParams RAW — it does encoding once. Pre-encoding
+  // with encodeURIComponent then handing to URLSearchParams produced
+  // `Docs%2520Site.tsx` (the `%` of `%20` got re-encoded as `%25`) and broke
+  // every UI canvas with a space in its filename.
+  const params = new URLSearchParams();
+  params.set('canvas', rel);
+  params.set('designRel', designRel);
+  // Resolve tokens path. Prefer the first designSystem's tokensCssRel — that's
+  // the project's authoritative tokens file (e.g. `system/project/colors_and_type.css`).
+  // The top-level cfg.tokensCssRel is the legacy default (`system/colors_and_type.css`)
+  // and points to a file that usually doesn't exist in DS-bootstrapped projects.
+  const ds0 = cfg?.designSystems?.[0];
+  const tokens = ds0?.tokensCssRel || cfg?.tokensCssRel;
+  if (tokens) params.set('tokens', tokens);
   if (cfg?.componentsCssRel) params.set('components', cfg.componentsCssRel);
+  // Specimen detection: anything under `system/<ds>/preview/` gets the layout
+  // chrome CSS so its `.specimen-hd` / `_layout.css`-baked treatment renders.
+  const specMatch = rel.match(/^system\/([^/]+)\/preview\//);
+  if (specMatch) {
+    const ds = specMatch[1];
+    params.set('layout', `system/${ds}/preview/_layout.css`);
+    if (!cfg?.componentsCssRel) {
+      params.set('components', `system/${ds}/preview/_components.css`);
+    }
+  } else if (ds0?.path) {
+    // UI canvas — load the project DS's `_components.css` so the dc-canvas /
+    // dc-section / dc-artboard chrome (and any DS classes the canvas reuses)
+    // renders correctly.
+    if (!cfg?.componentsCssRel) {
+      params.set('components', `${ds0.path}/preview/_components.css`);
+    }
+  }
   return `/_canvas-shell.html?${params.toString()}`;
 }
 
@@ -1036,6 +1061,11 @@ function App() {
         setCfg({
           designRel,
           tokensCssRel: data.tokensCssRel,
+          // Pass through designSystems so canvasUrl can resolve the right
+          // tokens/components paths per-DS. Top-level tokensCssRel is the
+          // legacy default; designSystems[0].tokensCssRel is the project's
+          // authoritative value (post DS-bootstrap).
+          designSystems: data.designSystems,
         });
       })
       .catch(() => {});

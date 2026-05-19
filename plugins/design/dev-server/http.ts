@@ -13,7 +13,7 @@ import { TranspileError } from './canvas-pipeline.ts';
 import type { Context } from './context.ts';
 import type { Inspect } from './inspect.ts';
 import { canvasSlug, writeLocator } from './locator.ts';
-import { getRuntimeBundle, packageForSlug, RUNTIME_PACKAGES, slugFor } from './runtime-bundle.ts';
+import { RUNTIME_PACKAGES, getRuntimeBundle, packageForSlug, slugFor } from './runtime-bundle.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -92,7 +92,9 @@ async function serveCanvasTsx(
     const source = await file.text();
     let result: Awaited<ReturnType<typeof buildCanvasModule>>;
     try {
-      result = await buildCanvasModule(absPath, source);
+      result = await buildCanvasModule(absPath, source, {
+        designRoot: ctx.paths.designRoot,
+      });
     } catch (err) {
       if (err instanceof TranspileError) {
         return new Response(`Transpile error: ${err.message}`, {
@@ -283,7 +285,14 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect): Http {
       // Query parameter ?canvas=<path-relative-to-designRoot> tells the shell
       // which canvas to import + mount. See plugins/design/templates/_shell.html.
       if (pathname === '/_canvas-shell.html' || pathname === '/_canvas-shell') {
-        return serveFile(join(TEMPLATES_DIR, '_shell.html'));
+        const shellHtml = await Bun.file(join(TEMPLATES_DIR, '_shell.html')).text();
+        // Inject inspector overlay — same Cmd+Click selection + Shift/C+Click
+        // add-comment flow the legacy .html canvases got. Without this, TSX
+        // canvases mount fine but lose every interactive devtool.
+        const injected = inspect.injectInspectorOnly(shellHtml);
+        return new Response(injected, {
+          headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
+        });
       }
 
       // Fall-through: serve user repo files (designRoot + everything under repoRoot).
@@ -298,12 +307,7 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect): Http {
       const underDesignRoot = `${fp}/`.startsWith(`${ctx.paths.designRoot}/`);
       // .tsx under designRoot is a canvas — transpile + emit locator, return JS.
       if (e === '.tsx' && underDesignRoot) {
-        return serveCanvasTsx(
-          fp,
-          req,
-          ctx,
-          join(ctx.paths.designRoot, '_locator.json')
-        );
+        return serveCanvasTsx(fp, req, ctx, join(ctx.paths.designRoot, '_locator.json'));
       }
       // .html under designRoot gets inspector + runtime injection.
       if (e === '.html' && underDesignRoot) {

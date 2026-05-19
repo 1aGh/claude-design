@@ -11,6 +11,7 @@
  */
 
 import "./Docs Site.css";
+import { DCArtboard, DCSection, DesignCanvas } from "@mdcc/canvas-lib";
 
 /* ───────────────────────────────────────────────────────────────────── *
  *  Docs Site / MDCC-DSN/01                                              *

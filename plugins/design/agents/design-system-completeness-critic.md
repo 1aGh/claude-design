@@ -47,7 +47,7 @@ In multi-DS projects (`config.designSystems.length > 1`), produce one section pe
 | C5 | `<ds_root>/colors_and_type.css` exists at the path declared in `config.tokensCssRel` | Authoritative tokens |
 | C6 | Core vars present in tokens CSS: `--accent`, `--bg-0` through `--bg-4`, `--fg-0` through `--fg-3`, at least one `--dur-*` motion var | Minimum token contract |
 | C7 | Exactly **one** `--accent*` family (no `--accent2`, no `--accent-secondary`) | One-accent rule |
-| C8 | `<ds_root>/preview/` exists with ≥ N specimens (HTML files), where N depends on `completenessProfile`: minimal=3, standard=8, strict=12 | Adaptive minimum |
+| C8 | `<ds_root>/preview/` exists with ≥ N specimens (TSX files), where N depends on `completenessProfile`: minimal=3, standard=8, strict=12 | Adaptive minimum |
 
 **Run C6 + C7 via `grep`:**
 
@@ -89,24 +89,24 @@ Profile gate: `minimal` skips all of Tier 2; `standard` runs everything except V
 |---|---|---|---|
 | V1 | `<designRoot>/INDEX.md` exists | standard+ | always |
 | V2 | OKLCH used for ≥1 color in tokens CSS | standard+ | always |
-| V3 | Each `.html` specimen in `preview/` `<link>`s the tokens CSS | standard+ | per missing → 1 warning |
-| V4 | `<ds_root>/preview/colors-*.html` exists (≥1 file matching the prefix) | standard+ | always |
-| V5 | `<ds_root>/preview/type-*.html` exists (≥1) | standard+ | always |
-| V6 | `<ds_root>/preview/spacing-scale.html` exists | standard+ | always |
-| V7 | `<ds_root>/preview/components-*.html` exists (≥3 components) | standard+ | always |
-| V8 | `<ds_root>/preview/motion.html` exists | standard+ | always |
-| V9 | `<ds_root>/preview/colors-status.html` (or `status-*.html`) exists | standard+ | IF `"status" ∈ activeFamilies` |
-| V10 | `<ds_root>/preview/colors-presence.html` exists | standard+ | IF `"presence" ∈ activeFamilies` |
-| V11 | `<ds_root>/preview/type-mono.html` exists | standard+ | IF `"mono" ∈ activeFamilies` |
-| V11a | `<ds_root>/preview/radii.html` exists | standard+ | always — foundations |
-| V11b | `<ds_root>/preview/elevation.html` exists | standard+ | always — foundations |
-| V11c | `<ds_root>/preview/iconography.html` exists | standard+ | always — foundations |
-| V11d | `<ds_root>/preview/focus.html` exists | standard+ | always — foundations (focus-visible token + ring discipline) |
-| V11e | `<ds_root>/preview/skeletons.html` exists | standard+ | IF `"status" ∈ activeFamilies` (lives in status/ family) |
-| V11f | `<ds_root>/preview/components-status.html` exists | standard+ | IF `"status" ∈ activeFamilies` |
-| V11g | `<ds_root>/preview/logo.html` exists | standard+ | IF wordmark/logotype claim in README/SKILL.md OR `assets/logos/*.svg` exists |
-| V12 | `<ds_root>/preview/ui_kits-desktop-showcase.html` exists (full product mock, NOT just the catalog `ui_kits-desktop-index.html`) | standard+ | IF `"desktop" ∈ inferred platforms` (default-on); missing → warning |
-| V13 | `<ds_root>/preview/ui_kits-mobile-showcase.html` exists | standard+ | IF `"mobile" ∈ inferred platforms`; missing → warning |
+| V3 | Each `.tsx` specimen in `preview/` `<link>`s the tokens CSS | standard+ | per missing → 1 warning |
+| V4 | `<ds_root>/preview/colors-*.tsx` exists (≥1 file matching the prefix) | standard+ | always |
+| V5 | `<ds_root>/preview/type-*.tsx` exists (≥1) | standard+ | always |
+| V6 | `<ds_root>/preview/spacing-scale.tsx` exists | standard+ | always |
+| V7 | `<ds_root>/preview/components-*.tsx` exists (≥3 components) | standard+ | always |
+| V8 | `<ds_root>/preview/motion.tsx` exists | standard+ | always |
+| V9 | `<ds_root>/preview/colors-status.tsx` (or `status-*.tsx`) exists | standard+ | IF `"status" ∈ activeFamilies` |
+| V10 | `<ds_root>/preview/colors-presence.tsx` exists | standard+ | IF `"presence" ∈ activeFamilies` |
+| V11 | `<ds_root>/preview/type-mono.tsx` exists | standard+ | IF `"mono" ∈ activeFamilies` |
+| V11a | `<ds_root>/preview/radii.tsx` exists | standard+ | always — foundations |
+| V11b | `<ds_root>/preview/elevation.tsx` exists | standard+ | always — foundations |
+| V11c | `<ds_root>/preview/iconography.tsx` exists | standard+ | always — foundations |
+| V11d | `<ds_root>/preview/focus.tsx` exists | standard+ | always — foundations (focus-visible token + ring discipline) |
+| V11e | `<ds_root>/preview/skeletons.tsx` exists | standard+ | IF `"status" ∈ activeFamilies` (lives in status/ family) |
+| V11f | `<ds_root>/preview/components-status.tsx` exists | standard+ | IF `"status" ∈ activeFamilies` |
+| V11g | `<ds_root>/preview/logo.tsx` exists | standard+ | IF wordmark/logotype claim in README/SKILL.md OR `assets/logos/*.svg` exists |
+| V12 | `<ds_root>/preview/ui_kits-desktop-showcase.tsx` exists (full product mock, NOT just the catalog `ui_kits-desktop-index.tsx`) | standard+ | IF `"desktop" ∈ inferred platforms` (default-on); missing → warning |
+| V13 | `<ds_root>/preview/ui_kits-mobile-showcase.tsx` exists | standard+ | IF `"mobile" ∈ inferred platforms`; missing → warning |
 | V14 | `<ds_root>/assets/{logos,glyphs}/` exists (may be empty) | standard+ | always |
 | V15 | `config.json` has all the bootstrap fields (`extensions`, `completenessProfile`, `activeFamilies`, `designSystems`, `defaultDesignSystem`) | standard+ | per missing → 1 warning |
 | V16 | `<ds_root>/README.md` has sections matching `## Voice`, `## Hard rules`, `## Hard-stops` (any 2 of 3) | **strict only** | always |
@@ -160,7 +160,7 @@ _<ISO ts> · designRoot: `{designRoot}` · profile: {profile} · activeFamilies:
 
 **Blockers: X** · Warnings: Y · Verdict: {pass | fix-and-retry}
 
-{One-line — e.g. "Tier 1: 0/8 fails. Tier 2: 2 warnings (V4 missing colors-*.html, V14 assets/logos/ empty). 1 free-form extension acknowledged."}
+{One-line — e.g. "Tier 1: 0/8 fails. Tier 2: 2 warnings (V4 missing colors-*.tsx, V14 assets/logos/ empty). 1 free-form extension acknowledged."}
 
 ## Blockers (Tier 1 — Core)
 

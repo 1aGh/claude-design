@@ -24,10 +24,10 @@ describe('canvas-build / buildCanvasModule', () => {
   test('preserves data-cd-id from pass 1', async () => {
     const src =
       `import { useState } from "react";\n` +
-      `export default function Demo() {\n` +
-      `  const [n] = useState(0);\n` +
+      'export default function Demo() {\n' +
+      '  const [n] = useState(0);\n' +
       `  return <button className="btn">{n}</button>;\n` +
-      `}\n`;
+      '}\n';
     const abs = await writeTmp('cd-id', src);
     const r = await buildCanvasModule(abs, src);
     expect(r.js).toContain('data-cd-id');
@@ -35,7 +35,7 @@ describe('canvas-build / buildCanvasModule', () => {
   });
 
   test('emits standard react JSX runtime import (no Bun-internal symbols)', async () => {
-    const src = `export default function X() { return <div />; }\n`;
+    const src = 'export default function X() { return <div />; }\n';
     const abs = await writeTmp('std-jsx', src);
     const r = await buildCanvasModule(abs, src);
     // Production-mode build uses react/jsx-runtime (the dev variant trips a
@@ -49,9 +49,7 @@ describe('canvas-build / buildCanvasModule', () => {
 
   test('locator + etag mirror the canvas-pipeline result', async () => {
     const src =
-      `export default function Y() {\n` +
-      `  return <section><h1>hi</h1></section>;\n` +
-      `}\n`;
+      'export default function Y() {\n' + '  return <section><h1>hi</h1></section>;\n' + '}\n';
     const abs = await writeTmp('locator', src);
     const r = await buildCanvasModule(abs, src);
     // section + h1 = 2 JSX elements → 2 locator entries.
@@ -60,7 +58,7 @@ describe('canvas-build / buildCanvasModule', () => {
   });
 
   test('externalises react + reactDOM (no inlined copies)', async () => {
-    const src = `export default function Z() { return <span />; }\n`;
+    const src = 'export default function Z() { return <span />; }\n';
     const abs = await writeTmp('external', src);
     const r = await buildCanvasModule(abs, src);
     // ReactDOM's package signature; the canvas bundle must NOT contain it,
@@ -72,7 +70,7 @@ describe('canvas-build / buildCanvasModule', () => {
   });
 
   test('exposes a default export', async () => {
-    const src = `export default function Q() { return <i />; }\n`;
+    const src = 'export default function Q() { return <i />; }\n';
     const abs = await writeTmp('default', src);
     const r = await buildCanvasModule(abs, src);
     expect(r.js).toMatch(/export\s*\{[\s\S]*default[\s\S]*\}/);

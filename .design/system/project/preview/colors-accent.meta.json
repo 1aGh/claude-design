@@ -1,0 +1,24 @@
+{
+  "title": "colors-accent",
+  "subtitle": "SIGNATURE — the accent family (amber-rust catalog stamp). Demonstrates --accent / --accent-hover / --accent-active / --accent-fg / --accent-tint, the brand-spotlight stamp composition, anti-pattern ca",
+  "brief": "MDCC-DSN/01.colors-accent / md-claude",
+  "platform": "desktop",
+  "designSystem": "project",
+  "opt_out_scope": "none",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "MDCC-DSN/01.colors-accent / md-claude",
+      "artboards": [
+        {
+          "id": "primary",
+          "label": "COLORS-ACCENT",
+          "width": 0,
+          "height": 0
+        }
+      ]
+    }
+  ],
+  "css_mode": "inline",
+  "data_cd_id_version": 1
+}

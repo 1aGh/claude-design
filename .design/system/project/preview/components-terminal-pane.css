@@ -1,0 +1,9 @@
+.term{border:1px solid var(--border-default);background:var(--bg-1);font-family:var(--font-mono);font-size:var(--type-sm);line-height:var(--lh-base)}
+  .term .th{padding:var(--space-2) var(--space-4);background:var(--bg-2);border-bottom:1px solid var(--border-default);display:flex;justify-content:space-between;align-items:center;color:var(--fg-2);font-size:var(--type-xs);letter-spacing:var(--tracking-wide)}
+  .term .th .dots{display:flex;gap:6px}
+  .term .th .dots span{width:8px;height:8px;background:var(--border-default)}
+  .term .body{padding:var(--space-4);min-height:280px}
+  .term .pr{color:var(--accent)}
+  .term .cmd{color:var(--fg-0)}
+  .term .out{color:var(--fg-1)}
+  .term .cur{display:inline-block;width:8px;height:14px;background:var(--accent);vertical-align:-2px;animation:none}

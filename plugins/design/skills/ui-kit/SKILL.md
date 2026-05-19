@@ -10,16 +10,16 @@ This skill is a **thin pointer**. The actual UI-kit content lives under the proj
 ```
 <designRoot>/ui/
   ├── project/
-  │   ├── <ProjectName> Studio.tsx       # multi-artboard desktop canvas (composer; Phase 3.6+ default)
+  │   ├── <ProjectName> Studio.tsx       # multi-artboard desktop canvas (composer)
   │   ├── <ProjectName> Mobile.tsx       # multi-artboard mobile canvas (composer)
-  │   ├── <Other Canvas>.tsx             # additional canvas projects (legacy .html until codemod runs)
+  │   ├── <Other Canvas>.tsx             # additional canvas projects
   │   ├── components/*.tsx               # shared desktop components
   │   └── components/mobile/*.tsx        # shared mobile components
   ├── chats/                             # iteration transcripts per surface (if migrated from Claude Design)
   └── README.md                          # canvas catalog
 ```
 
-Per-canvas TSX files inline lightweight copies of the frame primitives (`DesignCanvas`, `DCSection`, `DCArtboard`) — see `plugins/design/templates/canvas.tsx.template`. This keeps each canvas self-contained for handoff (`/design:handoff` ships them inside the registry-item file with no runtime dep). Heavier ergonomic helpers (`DCPostIt`, `TweaksPanel`, `useTweaks`) are imported from a shared dev-server module when needed. Legacy `.html` canvases still pick up window globals during the 3.6 grace window.
+Per-canvas TSX files import frame primitives (`DesignCanvas`, `DCSection`, `DCArtboard`, `DCPostIt`) from `@mdcc/canvas-lib` — a virtual specifier the dev-server resolves to `<designRoot>/_lib/canvas-lib.tsx` (project-owned source). `/design:handoff` AST-inlines the used exports on emit so the registry-item drop is self-contained (no `@mdcc/canvas-lib` reference survives in the consumer drop).
 
 This skill is non-user-invocable. Auto-loads when Claude is doing UI work. The user-facing entry point is the `design` orchestrator skill.
 

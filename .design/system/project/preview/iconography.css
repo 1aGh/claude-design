@@ -1,0 +1,5 @@
+.glyph-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:0;border:1px solid var(--border-default)}
+  .glyph-grid > .gly{padding:var(--space-4);background:var(--bg-1);border:1px solid var(--border-default);margin:-1px 0 0 -1px;text-align:center}
+  .glyph-grid .gly-char{font-family:var(--font-mono);font-size:32px;color:var(--fg-0);line-height:1;margin-bottom:var(--space-2)}
+  .glyph-grid .gly-svg{height:32px;width:32px;color:var(--fg-0);margin:0 auto var(--space-2);display:block}
+  .glyph-grid .gly-name{font-family:var(--font-mono);font-size:var(--type-xs);letter-spacing:var(--tracking-wide);color:var(--fg-2);text-transform:uppercase}

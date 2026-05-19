@@ -287,7 +287,7 @@ Use the Edit tool with `old_string` matching a unique substring of the selected 
 
 ### `/design:new <name> "<brief>"` — scaffold new canvas project
 
-Creates a brand-new TSX canvas file in `<designRoot>/<newCanvasDir>/<Name>.tsx` (or `<newComponentDir>/<Name>.tsx` if the user explicitly says component). Phase 3.6+ default; legacy `.html` canvases keep rendering during the codemod grace window. Generated via the `frontend-design` Skill (preferred) or the orchestrator's direct authoring (documented fallback) — see "Generation invocation" in Cross-skill calls.
+Creates a brand-new TSX canvas file in `<designRoot>/<newCanvasDir>/<Name>.tsx` (or `<newComponentDir>/<Name>.tsx` if the user explicitly says component). TSX is the only supported canvas format; envelope primitives import from `@mdcc/canvas-lib` (virtual specifier → `<designRoot>/_lib/canvas-lib.tsx`). Generated via the `frontend-design` Skill (preferred) or the orchestrator's direct authoring (documented fallback) — see "Generation invocation" in Cross-skill calls.
 
 **The new file MUST be a multi-artboard canvas project**, not a single-page wrapper. It uses the `DesignCanvas` + `DCSection` + `DCArtboard` pattern (see existing examples in `<designRoot>/ui/`) so multiple screens live in one panable canvas. A bare single-page wrapper is an anti-pattern unless the user explicitly says so.
 
@@ -757,15 +757,15 @@ DO NOT pick fonts, colors, radii, or shadows. Use the CSS variables defined in t
 Reference layouts (read at least one for the wrapper pattern):
 {matched existing canvas paths, picked by similarity}
 
-Output: a single self-contained HTML file at <target_path>. The file MUST:
-1. <link rel="stylesheet" href="…/{tokensCssRel}"> (relative path resolved from target file)
-2. <body class="{CFG.rootClass}" data-theme="{CFG.themeDefault}"{ data-team="…" if CFG.teamAccentDefault}>
-3. Use a multi-artboard canvas wrapper (DesignCanvas + DCSection + DCArtboard) — minimum 1 DCArtboard, but expect to grow.
-4. Mount React via the same Babel-standalone + react@18.3.1 + react-dom@18.3.1 UMD pattern used in existing canvases.
-5. NO inline color/font/radius values — use CSS vars from the tokens file.
+Output: a single self-contained TSX file at <target_path>. The file MUST:
+1. Default-exported React component (`export default function <Name>() { … }`).
+2. `import { DesignCanvas, DCSection, DCArtboard } from "@mdcc/canvas-lib"` — virtual specifier the dev-server resolves to `<designRoot>/_lib/canvas-lib.tsx`. Optional helpers (`DCPostIt`, `SpecimenHeader`, `TokenChip`, `useTheme`, …) live in the same module.
+3. Use a multi-artboard canvas wrapper (`<DesignCanvas><DCSection><DCArtboard …/></DCSection></DesignCanvas>`) — minimum 1 DCArtboard, but expect to grow. Each artboard has `id`, `label`, `width`, `height`.
+4. `data-theme="{CFG.themeDefault}"` on a `.mdcc` wrapper inside artboards. Tokens link auto-loads via the dev-server's canvas-shell harness; no `<link>` in the TSX.
+5. NO inline color/font/radius values — use CSS vars from the tokens file via `style={{ background: 'var(--accent)' }}` or DS classes.
 6. NO external fonts beyond what the tokens CSS already imports.
 7. NO inline images / icons that aren't sourced from the project's assets folder.
-8. DO NOT bundle / reference `design-canvas.jsx` or `tweaks-panel.jsx` — the dev server provides them as a single source of truth at `/_runtime/*` and auto-injects them into every served HTML. `DesignCanvas`, `DCSection`, `DCArtboard`, `DCPostIt`, `TweaksPanel`, and `useTweaks` are available as window globals after babel compiles them.
+8. Optional per-canvas sibling `<Name>.css` (`import "./<Name>.css"`) for bespoke styles — canvas-build inlines it as a `<style>` tag at module init. Class names should still favor `_components.css` shared classes (`.btn`, `.tile`, `.sku`, …) when possible.
 
 ## Aspiration directives (always include — these drive the signature-moment-critic axes)
 
@@ -805,17 +805,15 @@ Generative skills (frontend-design, design-system) produce best work when given 
 
 **Why this matters:** prescriptive envelopes lock the generator to *exactly what was dictated* — competent stock, no creative leap. The signature-moment-critic axis can't be hit if the envelope already pre-decided every element. Less prompting → more invention.
 
-### Canvas runtime — single source of truth
+### Canvas-lib — single source of truth (project-owned)
 
-The DesignCanvas / DCSection / DCArtboard / DCPostIt + TweaksPanel + useTweaks helpers live in **`${CLAUDE_PLUGIN_ROOT}/dev-server/runtime/`** (one file per concern). The dev server:
+The frame primitives (`DesignCanvas`, `DCSection`, `DCArtboard`, `DCPostIt`) + specimen helpers (`SpecimenHeader`, `TokenChip`, `ColorSwatch`, `KbdHint`, `ThemeToggle`) + hooks (`useTokens`, `useTheme`, `useArtboardBounds`) all live in **`<designRoot>/_lib/canvas-lib.tsx`** — project-owned source, scaffolded once from `plugins/design/templates/canvas-lib.tsx.template` on first `/design:setup-ds` run.
 
-1. Serves them at `/_runtime/<file>` (e.g. `/_runtime/design-canvas.jsx`).
-2. Auto-injects `<script type="text/babel" src="/_runtime/design-canvas.jsx">` (and tweaks-panel) into every HTML served from `<designRoot>/`.
-3. Strips any legacy local references (`<script src="design-canvas.jsx">` etc.) on the way out so we don't double-load.
+Canvases import via the virtual specifier `@mdcc/canvas-lib`. The dev-server's `canvas-build.ts` plugin resolves that specifier to the on-disk lib file before bundling. `/design:handoff` AST-inlines the used exports + their transitive deps into the emitted registry-item so the consumer drop is self-contained (zero `@mdcc/canvas-lib` references in the dropped TSX).
 
-This means **bug fixes / improvements to the canvas runtime land instantly across every canvas** (existing and future), and newly-generated canvases never need to copy the runtime locally. `/design:new` envelopes explicitly forbid bundling these scripts.
+**One edit to `_lib/canvas-lib.tsx` reaches every open canvas** (HMR broadcast triggers a hard iframe reload). New canvases never need to copy frame primitives locally.
 
-If you're authoring a new helper that should be shared across all canvases (e.g. a new `<DCPostIt>` variant), add it to a runtime file and it'll be available globally on next page load.
+If you're authoring a new helper that should be shared across all canvases (e.g. a new `<DCPostIt>` variant or a token-introspection hook), add it to `_lib/canvas-lib.tsx` and `export` it. Sub-agents reading the lib's exports surface during `/design:edit` step 1.5 pick it up automatically.
 
 ## Cross-skill calls
 

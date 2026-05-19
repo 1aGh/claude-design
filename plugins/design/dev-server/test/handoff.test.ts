@@ -7,7 +7,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
+import { transpileCanvasSource } from '../canvas-pipeline.ts';
 import {
+  type RegistryItem,
   classifyImports,
   collectClassNames,
   emitRegistryItem,
@@ -15,9 +17,7 @@ import {
   filterTokensCss,
   stripDataCdId,
   writeRegistryItem,
-  type RegistryItem,
 } from '../handoff.ts';
-import { transpileCanvasSource } from '../canvas-pipeline.ts';
 
 const CANVAS = '/abs/Canvas.tsx';
 
@@ -34,13 +34,12 @@ describe('handoff / stripDataCdId', () => {
   });
 
   test('strip is idempotent on already-stripped source', () => {
-    const src = `function Demo() { return <div>x</div>; }`;
+    const src = 'function Demo() { return <div>x</div>; }';
     expect(stripDataCdId(CANVAS, src)).toBe(src);
   });
 
   test('preserves other attributes byte-for-byte', () => {
-    const src =
-      `function Demo() { return <button className="btn" aria-label="ok" data-cd-id="deadbeef">go</button>; }`;
+    const src = `function Demo() { return <button className="btn" aria-label="ok" data-cd-id="deadbeef">go</button>; }`;
     const out = stripDataCdId(CANVAS, src);
     expect(out).toContain('className="btn"');
     expect(out).toContain('aria-label="ok"');
@@ -179,8 +178,8 @@ describe('handoff / filterTokensCss', () => {
   test('extracts only requested tokens', () => {
     const r = filterTokensCss(tokensCss, new Set(['--fg-0', '--accent']));
     expect(r.theme['fg-0']).toBe('#111');
-    expect(r.theme['accent']).toBe('#d97706');
-    expect(r.theme['unused']).toBeUndefined();
+    expect(r.theme.accent).toBe('#d97706');
+    expect(r.theme.unused).toBeUndefined();
     expect(r.usedCss).toContain('--fg-0: #111;');
     expect(r.usedCss).toContain('--accent: #d97706;');
     expect(r.usedCss).not.toContain('--unused');
@@ -223,7 +222,7 @@ describe('handoff / emitRegistryItem end-to-end', () => {
     );
     await Bun.write(
       tokensCssAbs,
-      `:root { --space-3: 12px; --fg-0: #111; --tracking-sku: 0.04em; --unused: #abc; }`
+      ':root { --space-3: 12px; --fg-0: #111; --tracking-sku: 0.04em; --unused: #abc; }'
     );
 
     const item = await emitRegistryItem({
@@ -273,10 +272,7 @@ describe('handoff / emitRegistryItem end-to-end', () => {
 
   test('emit without CSS paths produces TSX-only registry-item', async () => {
     const canvasAbs = path.join(tmpDir, 'NoCss.tsx');
-    await Bun.write(
-      canvasAbs,
-      `export default function NoCss() { return <div>x</div>; }`
-    );
+    await Bun.write(canvasAbs, 'export default function NoCss() { return <div>x</div>; }');
     const item = await emitRegistryItem({ canvasAbsPath: canvasAbs });
     expect(item.files.length).toBe(1);
     expect(item.files[0]?.type).toBe('registry:component');

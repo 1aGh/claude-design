@@ -7,11 +7,11 @@ argument-hint: "<Name> \"<brief>\" [--component] [--mobile] [--quick | --no-crit
 
 # /design:new — scaffold nový canvas projekt
 
-Vytvoří **nový multi-artboard canvas soubor** v `<designRoot>/<newCanvasDir>/<Name>.tsx` (Phase 3.6+ TSX default; legacy `.html` canvases lze stále číst a editovat během grace window) přes `frontend-design` plugin. Generic envelope se adaptuje podle `<repo>/.design/config.json` (rootClass, themeDefault, tokensCssRel, …).
+Vytvoří **nový multi-artboard canvas soubor** v `<designRoot>/<newCanvasDir>/<Name>.tsx` přes `frontend-design` plugin. Generic envelope se adaptuje podle `<repo>/.design/config.json` (rootClass, themeDefault, tokensCssRel, …). Canvas envelope (`DesignCanvas` / `DCSection` / `DCArtboard`) se importuje z virtuálního specifikátoru `@mdcc/canvas-lib`, který dev-server resolvuje na project-owned `<designRoot>/_lib/canvas-lib.tsx`.
 
 **Canvas projekt = `DesignCanvas` + jedna nebo více `DCSection` + jeden nebo více `DCArtboard`** (panable / zoomable infinite-canvas pattern). Single-page wrapper je anti-pattern; nový screen patří jako další `DCArtboard` do existujícího canvasu (přes `/design:edit "<add new artboard for X>"` ne přes `/design:new`).
 
-**Sessions už neexistují.** Nová plocha = nový soubor v `<designRoot>/<newCanvasDir>/`. Žádný `.ai/design-sessions/` adresář, žádné `iterations/NNN.html`. Iterace je in-place edit s `_history/` snapshoty.
+**Sessions už neexistují.** Nová plocha = nový soubor v `<designRoot>/<newCanvasDir>/`. Žádný `.ai/design-sessions/` adresář, žádné `iterations/NNN.tsx`. Iterace je in-place edit s `_history/` snapshoty.
 
 ## Default = `--perfect`
 
@@ -125,11 +125,11 @@ Helper detekuje běžící server (PID + `curl /_health`), startuje znovu pokud 
 
 ### 3. Validate name + resolve target path
 
-- Default canvas: `<DESIGN_ROOT>/<NEW_CANVAS_DIR>/<Name>.tsx` (Phase 3.6 default — TSX canvas served by the dev-server's two-pass pipeline + Bun.build runtime). The canvas mounts via `_canvas-shell.html`; React 19 + ReactDOM ride in shared `/_canvas-runtime/*.js` bundles.
+- Default canvas: `<DESIGN_ROOT>/<NEW_CANVAS_DIR>/<Name>.tsx` (TSX canvas served by the dev-server's two-pass pipeline + Bun.build runtime). The canvas mounts via `_canvas-shell.html`; React 19 + ReactDOM ride in shared `/_canvas-runtime/*.js` bundles. Envelope primitives (`DesignCanvas`, `DCSection`, `DCArtboard`, `DCPostIt`) come from `@mdcc/canvas-lib` — the dev-server resolves that virtual specifier to `<designRoot>/_lib/canvas-lib.tsx` (project-owned source).
 - `--component`: `<DESIGN_ROOT>/<NEW_COMPONENT_DIR>/<PascalName>.tsx`
 - Reject pokud target file existuje (suggest `<Name> v2`).
 
-**Legacy `.html` canvases** (pre-3.6) keep rendering via the dev-server's HTML route (inspector + Babel-React injected). The migration codemod (Phase 3.6 Task 8) converts them to `.tsx` in one pass; until that runs, both formats coexist.
+**TSX is the only canvas format.** Legacy `.html` canvases have been migrated; the html-to-jsx codemod was removed alongside the migration. New canvases are authored as TSX from `canvas.tsx.template`.
 
 ### 4. Resolve mobile/desktop + opt-out scope
 
@@ -224,7 +224,7 @@ Adaptuj generic envelope ze SKILL.md "Generation envelope" s konkrétními confi
 ```bash
 # Existing canvases in this DS — same dir as the target, .meta.json.designSystem matches.
 PRIORS_DIR="$DESIGN_ROOT/$NEW_CANVAS_DIR"
-PRIOR_CANVASES=$(find "$PRIORS_DIR" -maxdepth 2 \( -name "*.tsx" -o -name "*.html" \) -not -name "$(basename "$TARGET_PATH")")
+PRIOR_CANVASES=$(find "$PRIORS_DIR" -maxdepth 2 -name "*.tsx" -not -name "$(basename "$TARGET_PATH")")
 
 PRIORS_LIST=""
 for c in $PRIOR_CANVASES; do
@@ -246,12 +246,14 @@ for c in $PRIOR_CANVASES; do
   PRIORS_LIST+="- $c ($SUB) — class roots: $CLASSES"$'\n'
 done
 
-# Preview components — DS-supplied component library.
-PRIOR_PREVIEW=$(ls "$DS_ROOT/preview/components-"*.html 2>/dev/null)
+# Preview components — DS-supplied component library (TSX specimens).
+PRIOR_PREVIEW=$(ls "$DS_ROOT/preview/components-"*.tsx 2>/dev/null)
 PREVIEW_LIST=""
 for p in $PRIOR_PREVIEW; do
-  ROLE=$(grep -oE '<title>[^<]+</title>' "$p" | head -1 | sed -E 's|</?title>||g')
-  [ -z "$ROLE" ] && ROLE=$(basename "$p" .html | sed 's/components-//; s/-/ /g')
+  # Pull subtitle from .meta.json sidecar (cheap, no AST parse).
+  META="${p%.tsx}.meta.json"
+  ROLE=$(jq -r '.subtitle // .title // ""' "$META" 2>/dev/null || echo "")
+  [ -z "$ROLE" ] && ROLE=$(basename "$p" .tsx | sed 's/components-//; s/-/ /g')
   PREVIEW_LIST+="- $(basename "$p") — $ROLE"$'\n'
 done
 ```
@@ -287,12 +289,12 @@ For any compositional element (card, panel, snippet, toolbar, sidebar, modal, bu
 The `design-system-keeper` agent (step 9.5) audits compliance with this directive after generation. Surfaced reinventions feed into the critic panel as additional context.
 
 ### Existing canvases (same DS, with class roots)
-<for each .tsx or .html in <DESIGN_ROOT>/<NEW_CANVAS_DIR>/ matching this DS, NOT the new canvas — see step 5 collection recipe>
+<for each .tsx in <DESIGN_ROOT>/<NEW_CANVAS_DIR>/ matching this DS, NOT the new canvas — see step 5 collection recipe>
 - <path> (<.meta.json.subtitle>) — class roots: <comma-separated list extracted via the recipe>
 
-### Existing preview components (DS library, with role — preview specimens stay .html)
-<for each .html in <DS_ROOT>/preview/components-*.html — see step 5 collection recipe>
-- <filename> — <one-line role from the file's title or first heading>
+### Existing preview components (DS library, with role)
+<for each .tsx in <DS_ROOT>/preview/components-*.tsx — see step 5 collection recipe>
+- <filename> — <one-line role from the .meta.json subtitle>
 
 (If neither list has entries, this is the first canvas in this DS — Pattern priors is empty; the generator works from the DS readme + UX research alone.)
 
@@ -335,22 +337,21 @@ Viz SKILL.md "Cross-skill calls → Generation invocation".
 
 ### 7. Validate output
 
-TSX canvases (Phase 3.6 default):
+TSX canvas (the only format):
 
 - Default-exported React component (`export default function <Name>() { … }` — kebab-PascalCase ok; the module must have exactly one default export).
 - Standard `import` statements for `react` (when hooks are used), framework primitives, and any sibling components. **No** `<!doctype>`, no `<html>` / `<body>` — those live in `_canvas-shell.html`.
+- Imports envelope primitives from `@mdcc/canvas-lib`: `import { DesignCanvas, DCSection, DCArtboard } from "@mdcc/canvas-lib"`. The dev-server resolves that virtual specifier to `<designRoot>/_lib/canvas-lib.tsx` (project-owned source). `/design:handoff` AST-inlines the used exports on emit so the registry-item drop is self-contained.
 - Contains at least one `<DCArtboard …>` (canvas-multi-artboard pattern).
 - Class strings reference the project DS `_components.css` classes (`.btn`, `.tile`, `.sku`, `.seg`, …). Inline `style={{}}` is the escape hatch for arbitrary one-offs — gradients / radii honor the opt-out scope.
 - No hardcoded colors / fonts / radii in `style={{}}` — use `var(--*)` tokens or DS classes.
 - Parses cleanly via `oxc-parser` (the dev-server's canvas-pipeline runs this every request — a parse failure surfaces as HTTP 500 with the error byte). Pre-flight: `bun -e 'import { parseSync } from "oxc-parser"; const s = await Bun.file("<target>").text(); const r = parseSync("<target>", s); process.exit(r.errors?.length ? 1 : 0);'`.
 
-Legacy `.html` (pre-3.6 codemod): keep the old checks — tokens link, `<body class="<ROOT_CLASS>" data-theme="…">`, at least one `<DCArtboard>`, no hardcoded colors.
-
 ### 8. Write target file
 
 Pokud validation fails, do not write. Re-prompt jednou s konkrétním fix-list. Pokud znovu fail, stop.
 
-**TSX canvases** are written from `plugins/design/templates/canvas.tsx.template` — the JSDoc header is regenerated from `.meta.json` on every write (Task 12a, future); the JSX body is the frontend-design output. The `_canvas-shell.html` harness lives in the plugin distribution and is served at `/_canvas-shell.html`; **no copy lands in `<DESIGN_ROOT>/`** (server is the single source of truth — avoids a stale per-project copy drifting from the plugin).
+**TSX canvases** are written from `plugins/design/templates/canvas.tsx.template` — the JSDoc header is generated from `.meta.json` (auto-emitted by `canvas-header.ts` on `/design:edit`); the JSX body is the frontend-design output. The `_canvas-shell.html` harness lives in the plugin distribution and is served at `/_canvas-shell.html`; **no copy lands in `<DESIGN_ROOT>/`** (server is the single source of truth — avoids a stale per-project copy drifting from the plugin).
 
 ### 9. Post-write reality check — per-artboard screenshots
 
@@ -409,7 +410,7 @@ else
   KEEPER_OUT="$HIST/$N_KEEPER-ds-keeper.md"
 
   # Collect existing canvases in the same DS (excludes the new canvas).
-  EXISTING_JSON=$(find "$DESIGN_ROOT/$NEW_CANVAS_DIR" -maxdepth 2 \( -name "*.tsx" -o -name "*.html" \) \
+  EXISTING_JSON=$(find "$DESIGN_ROOT/$NEW_CANVAS_DIR" -maxdepth 2 -name "*.tsx" \
                     -not -path "*$TARGET_PATH*" \
                     | jq -R . | jq -sc .)
 fi

@@ -64,14 +64,12 @@ function withLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
   });
   const next = prev.then(() => gate);
   locks.set(filePath, next);
-  return prev
-    .then(fn)
-    .finally(() => {
-      release();
-      // Only the last queued acquire clears the map entry; intermediate ones
-      // leave it pointing at the still-pending tail.
-      if (locks.get(filePath) === next) locks.delete(filePath);
-    });
+  return prev.then(fn).finally(() => {
+    release();
+    // Only the last queued acquire clears the map entry; intermediate ones
+    // leave it pointing at the still-pending tail.
+    if (locks.get(filePath) === next) locks.delete(filePath);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -108,11 +106,7 @@ export async function readLocator(
 // renames over the original. Per-path mutex prevents concurrent writers from
 // trampling each other's slug entries.
 
-export function writeLocator(
-  locatorAbsPath: string,
-  slug: string,
-  map: LocatorMap
-): Promise<void> {
+export function writeLocator(locatorAbsPath: string, slug: string, map: LocatorMap): Promise<void> {
   return withLock(locatorAbsPath, async () => {
     const current = await readLocatorFile(locatorAbsPath);
     const next: LocatorFile = { ...current, [slug]: map };

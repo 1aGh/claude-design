@@ -22,6 +22,10 @@
 // serves the resulting JS at /<designRel>/ui/<slug>.tsx with Content-Type
 // `application/javascript`.
 
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+
+import { canvasLibPath, canvasLibResolver } from './canvas-lib-resolver.ts';
 import { transpileCanvasSource } from './canvas-pipeline.ts';
 import type { LocatorMap } from './locator.ts';
 import { RUNTIME_PACKAGES } from './runtime-bundle.ts';
@@ -35,26 +39,46 @@ export interface CanvasBundleResult {
   etag: string;
 }
 
+export interface BuildCanvasOptions {
+  /**
+   * Absolute path to the design root. Used to resolve the virtual specifier
+   * `@mdcc/canvas-lib` → `<designRoot>/_lib/canvas-lib.tsx`. If omitted, the
+   * design root is inferred from the canvas path (the nearest ancestor that
+   * contains a `_lib/canvas-lib.tsx`, falling back to the canvas's containing
+   * dir). Pass the real value from `ctx.paths.designRoot` whenever possible.
+   */
+  designRoot?: string;
+}
+
 /**
  * Build a single canvas TSX file end-to-end. Identity pass is from
- * canvas-pipeline.ts; the module pass is Bun.build with React externalised.
+ * canvas-pipeline.ts; the module pass is Bun.build with React externalised
+ * and `@mdcc/canvas-lib` resolved to the project-owned canvas-lib source.
  */
 export async function buildCanvasModule(
   canvasAbsPath: string,
-  source: string
+  source: string,
+  options: BuildCanvasOptions = {}
 ): Promise<CanvasBundleResult> {
   // Pass 1: inject data-cd-id, capture the locator.
   const pass1 = transpileCanvasSource(canvasAbsPath, source);
+  const designRoot = options.designRoot ?? inferDesignRoot(canvasAbsPath);
+
+  // Pre-flight the canvas-lib resolver — Bun.build collapses plugin throws to
+  // a useless "Bundle failed" string, so we surface the missing-lib reason
+  // ourselves before delegating.
+  if (/@mdcc\/canvas-lib/.test(source) && !existsSync(canvasLibPath(designRoot))) {
+    throw new Error(
+      `[@mdcc/canvas-lib] canvas library missing at ${canvasLibPath(designRoot)}. Canvas ${canvasAbsPath} imports it. Run /design:setup-ds to scaffold, or copy plugins/design/templates/canvas-lib.tsx.template.`
+    );
+  }
 
   // Pass 2: Bun.build with a virtual loader that resolves canvasAbsPath to the
   // post-pass-1 TSX. Every other import (npm packages, relative imports of
   // sibling canvas components) goes through Bun's default resolver. The four
   // runtime packages are externalised so they resolve through the importmap.
   const externalSpecifiers = new Set<string>(
-    RUNTIME_PACKAGES.flatMap((p) => [
-      p,
-      ...(p === 'react-dom/client' ? ['react-dom'] : []),
-    ])
+    RUNTIME_PACKAGES.flatMap((p) => [p, ...(p === 'react-dom/client' ? ['react-dom'] : [])])
   );
 
   const built = await Bun.build({
@@ -72,6 +96,9 @@ export async function buildCanvasModule(
       'process.env.NODE_ENV': '"production"',
     },
     plugins: [
+      // Resolve `@mdcc/canvas-lib` BEFORE exact-externals — we want the bare
+      // specifier to map to the on-disk lib file, not get marked external.
+      canvasLibResolver(designRoot),
       {
         name: 'canvas-virtual-source',
         setup(builder) {
@@ -99,13 +126,44 @@ export async function buildCanvasModule(
     const msg = built.logs.map((l) => l.message).join('\n');
     throw new Error(`Bun.build failed on ${canvasAbsPath}:\n${msg}`);
   }
-  const out = built.outputs[0];
-  if (!out) {
-    throw new Error(`Bun.build produced no output for ${canvasAbsPath}`);
+  const entry = built.outputs.find((o) => o.kind === 'entry-point');
+  if (!entry) {
+    throw new Error(`Bun.build produced no entry-point output for ${canvasAbsPath}`);
   }
-  const js = await out.text();
+  let js = await entry.text();
+
+  // Gather any sibling CSS the bundler produced from `import "./<slug>.css"`
+  // statements in the canvas/specimen TSX. Bun.build extracts those into a
+  // separate `kind: "asset"` CSS file. Browser-loaded ESM doesn't process
+  // `import "*.css"` natively, so we inline the CSS via a `<style>` tag
+  // injection at module-init time — keeps each canvas self-contained without
+  // needing a parallel `<link>` request.
+  const cssAssets = built.outputs.filter((o) => o.kind === 'asset' && o.path.endsWith('.css'));
+  if (cssAssets.length > 0) {
+    let css = '';
+    for (const a of cssAssets) css += await a.text();
+    if (css.trim().length > 0) {
+      const slug = canvasAbsPath.split('/').pop() ?? 'canvas';
+      js = buildCssInjector(slug, css) + js;
+    }
+  }
+
   const etag = Bun.hash(js).toString(16);
   return { js, locator: pass1.locator, etag };
+}
+
+/**
+ * Synthesize a module-init prologue that creates a `<style data-canvas-css>`
+ * tag with the bundled CSS text. Idempotent per-slug — duplicate mounts of
+ * the same canvas don't re-inject. Run at top-level so it executes before
+ * the React component does its first render.
+ */
+function buildCssInjector(slug: string, css: string): string {
+  // JSON-encode the CSS text so we don't need to worry about backticks,
+  // backslashes, or embedded `</style>` (which would break a raw template).
+  const enc = JSON.stringify(css);
+  const id = `canvas-css-${slug.replace(/[^a-zA-Z0-9-]/g, '_')}`;
+  return `// canvas-build: inject bundled sibling CSS so the canvas is self-contained.\n(function(){if(typeof document==="undefined")return;if(document.getElementById(${JSON.stringify(id)}))return;var s=document.createElement("style");s.id=${JSON.stringify(id)};s.dataset.canvasCss="bundled";s.textContent=${enc};document.head.appendChild(s);})();\n`;
 }
 
 function filterForExactPath(absPath: string): RegExp {
@@ -123,4 +181,23 @@ function filterForExactPath(absPath: string): RegExp {
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Walk up from the canvas path looking for an ancestor that contains a
+ * `_lib/canvas-lib.tsx`. Falls back to the canvas's containing dir if nothing
+ * matches — the resolver will then fail loud if any canvas tries to import
+ * `@mdcc/canvas-lib`. Tests + http.ts always pass the explicit designRoot, so
+ * this fallback only fires when somebody hand-calls buildCanvasModule().
+ */
+function inferDesignRoot(canvasAbsPath: string): string {
+  let dir = path.dirname(canvasAbsPath);
+  // Hard ceiling to avoid runaway loops on weird path shapes.
+  for (let i = 0; i < 12; i++) {
+    if (existsSync(path.join(dir, '_lib', 'canvas-lib.tsx'))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return path.dirname(canvasAbsPath);
 }

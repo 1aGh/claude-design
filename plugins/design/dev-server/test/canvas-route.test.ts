@@ -114,7 +114,7 @@ describe('TSX canvas route', () => {
     await boot('Docs Site.tsx', SIMPLE_TSX);
     try {
       await fetch(`http://localhost:${port}/.design/ui/Docs%20Site.tsx`);
-      const locFile = join(sb!.designRoot, '_locator.json');
+      const locFile = join(sb?.designRoot, '_locator.json');
       // The locator is written synchronously before the response — the file
       // must exist + carry the canvas slug.
       expect(existsSync(locFile)).toBe(true);

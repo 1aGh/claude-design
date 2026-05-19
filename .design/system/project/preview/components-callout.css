@@ -1,0 +1,8 @@
+.call{border:1px solid var(--border-default);border-left:4px solid var(--fg-2);background:var(--bg-1);padding:var(--space-4) var(--space-5);margin:var(--space-3) 0;}
+  .call .eyebrow{margin-bottom:var(--space-2);font-weight:600}
+  .call p{margin:0;color:var(--fg-1)}
+  .call.info{border-left-color:var(--status-info)}.call.info .eyebrow{color:var(--status-info)}
+  .call.warn{border-left-color:var(--status-warn)}.call.warn .eyebrow{color:var(--status-warn)}
+  .call.err{border-left-color:var(--status-error)}.call.err .eyebrow{color:var(--status-error)}
+  .call.ok{border-left-color:var(--status-success)}.call.ok .eyebrow{color:var(--status-success)}
+  .call.note{border-left-color:var(--accent)}.call.note .eyebrow{color:var(--accent)}

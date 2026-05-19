@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { applyEdit, CanvasEditError, editAttribute } from '../canvas-edit.ts';
+import { CanvasEditError, applyEdit, editAttribute } from '../canvas-edit.ts';
 import { transpileCanvasSource } from '../canvas-pipeline.ts';
 
 const CANVAS = '/abs/Canvas.tsx';
@@ -37,13 +37,11 @@ describe('canvas-edit / applyEdit', () => {
   });
 
   test('inserts className when missing', () => {
-    const src = `function Demo() { return <div>x</div>; }`;
+    const src = 'function Demo() { return <div>x</div>; }';
     const ids = idsOf(src);
     const id = ids.div as string;
     const out = applyEdit(CANVAS, src, id, 'className', 'card');
-    expect(out.source).toBe(
-      `function Demo() { return <div className="card">x</div>; }`
-    );
+    expect(out.source).toBe(`function Demo() { return <div className="card">x</div>; }`);
   });
 
   test('rewrites a plain attribute (aria-label)', () => {
@@ -51,23 +49,21 @@ describe('canvas-edit / applyEdit', () => {
     const ids = idsOf(src);
     const id = ids.button as string;
     const out = applyEdit(CANVAS, src, id, 'aria-label', 'new');
-    expect(out.source).toBe(
-      `function Demo() { return <button aria-label="new">x</button>; }`
-    );
+    expect(out.source).toBe(`function Demo() { return <button aria-label="new">x</button>; }`);
   });
 
   test('swaps a single style.<prop> value inside style={{...}}', () => {
-    const src = `function Demo() { return <div style={{ padding: 8, margin: 4 }}>x</div>; }`;
+    const src = 'function Demo() { return <div style={{ padding: 8, margin: 4 }}>x</div>; }';
     const ids = idsOf(src);
     const id = ids.div as string;
     const out = applyEdit(CANVAS, src, id, 'style.padding', '14');
     expect(out.source).toBe(
-      `function Demo() { return <div style={{ padding: 14, margin: 4 }}>x</div>; }`
+      'function Demo() { return <div style={{ padding: 14, margin: 4 }}>x</div>; }'
     );
   });
 
   test('inserts a missing style key into existing style={{...}}', () => {
-    const src = `function Demo() { return <div style={{ padding: 8 }}>x</div>; }`;
+    const src = 'function Demo() { return <div style={{ padding: 8 }}>x</div>; }';
     const ids = idsOf(src);
     const id = ids.div as string;
     const out = applyEdit(CANVAS, src, id, 'style.color', '"#facc15"');
@@ -78,7 +74,7 @@ describe('canvas-edit / applyEdit', () => {
   });
 
   test('inserts a brand-new style={{}} prop when missing', () => {
-    const src = `function Demo() { return <div>x</div>; }`;
+    const src = 'function Demo() { return <div>x</div>; }';
     const ids = idsOf(src);
     const id = ids.div as string;
     const out = applyEdit(CANVAS, src, id, 'style.padding', '14');
@@ -86,32 +82,34 @@ describe('canvas-edit / applyEdit', () => {
   });
 
   test('throws CanvasEditError when id is not found', () => {
-    const src = `function Demo() { return <div>x</div>; }`;
+    const src = 'function Demo() { return <div>x</div>; }';
     expect(() => applyEdit(CANVAS, src, 'deadbeef', 'className', 'x')).toThrow(CanvasEditError);
   });
 
   test('refuses to edit data-cd-id (owned by pipeline)', () => {
-    const src = `function Demo() { return <div>x</div>; }`;
+    const src = 'function Demo() { return <div>x</div>; }';
     const ids = idsOf(src);
     const id = ids.div as string;
     expect(() => applyEdit(CANVAS, src, id, 'data-cd-id', 'beefcafe')).toThrow(CanvasEditError);
   });
 
   test('throws on malformed source', () => {
-    const src = `function Demo() { return <not closing`;
+    const src = 'function Demo() { return <not closing';
     expect(() => applyEdit(CANVAS, src, 'aaaaaaaa', 'className', 'x')).toThrow();
   });
 
   test('targets the right element when multiple share a type', () => {
     const src =
-      `function Demo() { return (<section>` +
+      'function Demo() { return (<section>' +
       `<button className="a">A</button>` +
       `<button className="b">B</button>` +
-      `</section>); }`;
+      '</section>); }';
     // The pipeline visits in pre-order; expose all <button> ids by walking the
     // withIds output and capturing each match.
     const { withIds } = transpileCanvasSource(CANVAS, src);
-    const matches = [...withIds.matchAll(/<button[^>]*data-cd-id="([0-9a-f]{8})"[^>]*className="([ab])"/g)];
+    const matches = [
+      ...withIds.matchAll(/<button[^>]*data-cd-id="([0-9a-f]{8})"[^>]*className="([ab])"/g),
+    ];
     expect(matches.length).toBe(2);
     const idA = matches.find((m) => m[2] === 'a')?.[1] as string;
     expect(idA).toBeDefined();

@@ -26,7 +26,8 @@ const CANVAS_VIEWPORT = path.join(DESIGN_ROOT, 'ui/Canvas Viewport.tsx');
 
 const skipReason = (() => {
   if (!existsSync(DOCS_SITE)) return `${DOCS_SITE} missing — run scripts/migrate-canvases.ts`;
-  if (!existsSync(CANVAS_VIEWPORT)) return `${CANVAS_VIEWPORT} missing — run scripts/migrate-canvases.ts`;
+  if (!existsSync(CANVAS_VIEWPORT))
+    return `${CANVAS_VIEWPORT} missing — run scripts/migrate-canvases.ts`;
   return null;
 })();
 

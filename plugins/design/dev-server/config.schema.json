@@ -67,7 +67,10 @@
         "required": ["label", "path"],
         "properties": {
           "label": { "type": "string" },
-          "path": { "type": "string", "description": "`registry:item` for shadcn sidecar emit, or repo-relative target dir for direct migration." },
+          "path": {
+            "type": "string",
+            "description": "`registry:item` for shadcn sidecar emit, or repo-relative target dir for direct migration."
+          },
           "platform": { "type": "string", "enum": ["web", "mobile", "desktop", "other"] }
         },
         "additionalProperties": false
