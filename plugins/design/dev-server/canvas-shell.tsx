@@ -56,6 +56,7 @@ import {
   type MenuItem,
 } from "./context-menu.tsx";
 import { ToolPalette } from "./tool-palette.tsx";
+import { AnnotationsLayer } from "./annotations-layer.tsx";
 import {
   SnapGuideOverlay,
   useViewportControllerContext,
@@ -115,12 +116,22 @@ const HALO_CSS = `
  * interactions are suppressed by the router anyway.
  */
 .dc-canvas[data-active-tool="comment"],
-.dc-canvas[data-active-tool="comment"] * {
+.dc-canvas[data-active-tool="comment"] *,
+.dc-canvas[data-active-tool="pen"],
+.dc-canvas[data-active-tool="pen"] *,
+.dc-canvas[data-active-tool="rect"],
+.dc-canvas[data-active-tool="rect"] *,
+.dc-canvas[data-active-tool="arrow"],
+.dc-canvas[data-active-tool="arrow"] * {
   cursor: crosshair !important;
 }
 .dc-canvas[data-active-tool="hand"],
 .dc-canvas[data-active-tool="hand"] * {
   cursor: grab !important;
+}
+.dc-canvas[data-active-tool="eraser"],
+.dc-canvas[data-active-tool="eraser"] * {
+  cursor: cell !important;
 }
 `.trim();
 
@@ -476,6 +487,7 @@ function CanvasRouter({
   return (
     <>
       {children}
+      <AnnotationsLayer />
       <ToolPalette />
       <HoverHalo el={hoverEl} />
       <SelectionHalos />

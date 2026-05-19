@@ -207,6 +207,97 @@ describe("input-router / keydown — tool letters", () => {
   });
 });
 
+describe("input-router / keydown — Phase 5 draw tools", () => {
+  test("B → tool pen", () => {
+    expect(classify(base({ type: "keydown", key: "b" }))).toEqual({
+      kind: "tool",
+      tool: "pen",
+    });
+  });
+
+  test("R → tool rect", () => {
+    expect(classify(base({ type: "keydown", key: "r" }))).toEqual({
+      kind: "tool",
+      tool: "rect",
+    });
+  });
+
+  test("A → tool arrow", () => {
+    expect(classify(base({ type: "keydown", key: "a" }))).toEqual({
+      kind: "tool",
+      tool: "arrow",
+    });
+  });
+
+  test("E → tool eraser", () => {
+    expect(classify(base({ type: "keydown", key: "e" }))).toEqual({
+      kind: "tool",
+      tool: "eraser",
+    });
+  });
+
+  test("uppercase B (shift held) — still maps to pen (lowercased)", () => {
+    expect(classify(base({ type: "keydown", key: "B", shiftKey: true }))).toEqual({
+      kind: "tool",
+      tool: "pen",
+    });
+  });
+
+  test("Cmd+B (modifier-held) → no-op so the browser keeps it", () => {
+    expect(classify(base({ type: "keydown", key: "b", metaKey: true })).kind).toBe(
+      "no-op"
+    );
+  });
+});
+
+describe("input-router / pointer events — Phase 5 annotation tools", () => {
+  test("pointermove in pen tool → no-op (SVG overlay owns it)", () => {
+    expect(
+      classify(base({ type: "pointermove", activeTool: "pen", clientX: 1, clientY: 2 }))
+        .kind
+    ).toBe("no-op");
+  });
+
+  test("pointermove in eraser tool → no-op", () => {
+    expect(
+      classify(base({ type: "pointermove", activeTool: "eraser" })).kind
+    ).toBe("no-op");
+  });
+
+  test("bare left-click in rect tool → no-op (SVG overlay claims)", () => {
+    expect(
+      classify(base({ type: "pointerdown", activeTool: "rect", button: 0 })).kind
+    ).toBe("no-op");
+  });
+
+  test("cmd+left-click in arrow tool → select replace (escape hatch to move)", () => {
+    expect(
+      classify(
+        base({
+          type: "pointerdown",
+          activeTool: "arrow",
+          button: 0,
+          metaKey: true,
+          clientX: 4,
+          clientY: 5,
+        })
+      )
+    ).toEqual({
+      kind: "select",
+      mode: "replace",
+      deep: true,
+      clientX: 4,
+      clientY: 5,
+    });
+  });
+
+  test("right-click in pen tool → context-menu (unchanged)", () => {
+    expect(
+      classify(base({ type: "pointerdown", activeTool: "pen", button: 2 })).kind
+    ).toBe("context-menu");
+  });
+});
+
 describe("input-router / isEditableTarget", () => {
   test("null target → false", () => {
     expect(isEditableTarget(null)).toBe(false);

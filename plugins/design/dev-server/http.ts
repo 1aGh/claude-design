@@ -254,6 +254,38 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect): Http {
       return new Response('Method not allowed', { status: 405 });
     },
 
+    '/_api/annotations': async (req: Request) => {
+      // Phase 5 — `<designRoot>/<slug>.annotations.svg` read / overwrite.
+      // GET ?file=<repo-relative-canvas-path>           → SVG text (empty if absent)
+      // PUT body { file, svg }                          → 204 on write, 4xx otherwise
+      const url = new URL(req.url);
+      if (req.method === 'GET') {
+        const file = url.searchParams.get('file');
+        if (!file) return new Response('file query param required', { status: 400 });
+        const svg = await api.loadAnnotations(file);
+        return new Response(svg ?? '', {
+          status: 200,
+          headers: {
+            'Content-Type': 'image/svg+xml; charset=utf-8',
+            'Cache-Control': 'no-store',
+          },
+        });
+      }
+      if (req.method === 'PUT' || req.method === 'POST') {
+        const body = await readJson<{ file?: string; svg?: string }>(req, 1024 * 1024 + 1024);
+        if (!body || typeof body.file !== 'string' || !body.file) {
+          return new Response('body must include { file, svg }', { status: 400 });
+        }
+        if (typeof body.svg !== 'string') {
+          return new Response('body.svg must be a string', { status: 400 });
+        }
+        const ok = await api.saveAnnotations(body.file, body.svg);
+        if (!ok) return new Response('rejected', { status: 400 });
+        return new Response(null, { status: 204 });
+      }
+      return new Response('Method not allowed', { status: 405 });
+    },
+
     '/_canvas-state': async (req: Request) => {
       const url = new URL(req.url);
       if (req.method === 'GET') {

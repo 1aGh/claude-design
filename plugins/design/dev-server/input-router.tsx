@@ -32,7 +32,27 @@ import { useEffect, type RefObject } from "react";
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 
-export type Tool = "move" | "hand" | "comment";
+/**
+ * Tool union. Phase 4.1 shipped V/H/C; Phase 5 adds the draw set
+ * (pen / rect / arrow / eraser). Draw-tool pointer events are owned by
+ * `AnnotationsLayer` — the router classifies their letter shortcuts but
+ * returns `no-op` for the corresponding pointer events so the SVG overlay
+ * can grab them natively.
+ */
+export type Tool =
+  | "move"
+  | "hand"
+  | "comment"
+  | "pen"
+  | "rect"
+  | "arrow"
+  | "eraser";
+
+const ANNOTATION_TOOLS = new Set<Tool>(["pen", "rect", "arrow", "eraser"]);
+
+export function isAnnotationTool(t: Tool): boolean {
+  return ANNOTATION_TOOLS.has(t);
+}
 
 export type RouterAction =
   | { kind: "no-op" }
@@ -94,6 +114,10 @@ export function classify(input: ClassifyInput): RouterAction {
     if (k === "v") return { kind: "tool", tool: "move" };
     if (k === "h") return { kind: "tool", tool: "hand" };
     if (k === "c") return { kind: "tool", tool: "comment" };
+    if (k === "b") return { kind: "tool", tool: "pen" };
+    if (k === "r") return { kind: "tool", tool: "rect" };
+    if (k === "a") return { kind: "tool", tool: "arrow" };
+    if (k === "e") return { kind: "tool", tool: "eraser" };
     if (input.key === "Escape") return { kind: "escape" };
     return { kind: "no-op" };
   }
@@ -107,6 +131,10 @@ export function classify(input: ClassifyInput): RouterAction {
   }
 
   if (input.type === "pointermove") {
+    // Phase 5 draw tools: pen / rect / arrow / eraser own all their pointer
+    // events through `AnnotationsLayer`. The router never paints a hover halo
+    // while drawing — that affordance is reserved for select / comment.
+    if (isAnnotationTool(input.activeTool)) return { kind: "no-op" };
     // Hand tool: drag pan is owned by useViewportController; no hover paint.
     if (input.activeTool === "hand") return { kind: "no-op" };
     // Comment tool: always paint a preview halo on the deepest element under
@@ -141,6 +169,14 @@ export function classify(input: ClassifyInput): RouterAction {
     }
     if (input.button === 1 || input.spaceHeld) return { kind: "no-op" };
     if (input.button !== 0) return { kind: "no-op" };
+
+    // Phase 5 draw tools own bare left-clicks; the router returns no-op so
+    // the SVG layer's own listeners (no preventDefault) fire normally. Cmd-
+    // modified clicks still flow into the move-tool select path below — that
+    // stays available as an escape hatch even while a draw tool is active.
+    if (isAnnotationTool(input.activeTool) && !metaOrCtrl(input)) {
+      return { kind: "no-op" };
+    }
 
     if (input.activeTool === "comment") {
       // Comment tool: bare click drops a pin. Cmd / Shift modifiers reserved
