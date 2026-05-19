@@ -663,14 +663,16 @@ function HelpModal({ open, onClose }) {
         </header>
         <div className="help-modal-body">
           <details open>
-            <summary>Element selection</summary>
+            <summary>Canvas selection &amp; tools</summary>
         <ul>
-          <li><kbd>⌘</kbd> + hover <span>highlight</span></li>
-          <li><kbd>⌘</kbd> + click <span>select</span></li>
-          <li><kbd>⌘C</kbd> + click <span>select + comment</span></li>
-          <li><kbd>⌘⇧</kbd> + click <span>select + comment (alt)</span></li>
-          <li><kbd>⌘C</kbd> after select <span>comment selected</span></li>
-          <li><kbd>Esc</kbd> in canvas <span>clear</span></li>
+          <li><kbd>V</kbd> <span>move tool — Cmd+click to select, Cmd+Shift to multi</span></li>
+          <li><kbd>H</kbd> <span>hand tool — bare drag pans (no Space needed)</span></li>
+          <li><kbd>C</kbd> <span>comment tool — hover paints, click drops a pin</span></li>
+          <li><kbd>⌘</kbd> + hover <span>preview deepest element under cursor</span></li>
+          <li><kbd>⌘</kbd> + click <span>select that element (replace)</span></li>
+          <li><kbd>⌘⇧</kbd> + click <span>add deepest to selection (multi)</span></li>
+          <li>right-click <span>context menu (Copy CSS / Fit / Reset...)</span></li>
+          <li><kbd>Esc</kbd> in canvas <span>clear selection + close menu</span></li>
         </ul>
       </details>
       <details>
@@ -932,15 +934,7 @@ function Wordmark({ project, port, version }) {
   );
 }
 
-function SelectionHalo() {
-  // Accent 2 px outline + 4 corner ticks around the active iframe (the artboard
-  // frame). Element-level overlay is Phase 4 territory — it needs world-coord
-  // projection, which doesn't exist yet.
-  return <div className="sel-halo" aria-hidden="true"><i /></div>;
-}
-
-function Viewport({ tabs, activePath, registerIframe, systemData, onOpenFromSystem, project, selected, cfg }) {
-  const showHalo = selected && activePath && activePath !== SYSTEM_TAB;
+function Viewport({ tabs, activePath, registerIframe, systemData, onOpenFromSystem, project, cfg }) {
   return (
     <div className="viewport">
       {tabs.length === 0 && (
@@ -953,7 +947,7 @@ function Viewport({ tabs, activePath, registerIframe, systemData, onOpenFromSyst
               <br /><br />
               Tabs work like in an editor — close with the × on each tab. <kbd>⌘R</kbd> reloads the active iframe.
               <br /><br />
-              <strong>Element selection:</strong> hold <kbd>⌘</kbd> inside the canvas and hover. <kbd>⌘</kbd>+click selects, <kbd>⌘⇧</kbd>+click adds a comment.
+              <strong>Element selection:</strong> hold <kbd>⌘</kbd> inside the canvas and hover for a preview, click to select. <kbd>⌘⇧</kbd>+click adds to a multi-selection. <kbd>V</kbd>/<kbd>H</kbd>/<kbd>C</kbd> swap tool; right-click opens the context menu.
               <br /><br />
               Active file, selection, and comments are tracked in <code>_active.json</code> + <code>_comments/</code> — Claude reads them when you run <code>/design</code>.
             </div>
@@ -978,7 +972,6 @@ function Viewport({ tabs, activePath, registerIframe, systemData, onOpenFromSyst
           />
         );
       })}
-      {showHalo && <SelectionHalo />}
     </div>
   );
 }
@@ -1574,15 +1567,36 @@ function App() {
       if (m.dgn === 'select' && m.selection) {
         wsSend({ type: 'select', selection: m.selection });
         setSelected(m.selection);
+      } else if (m.dgn === 'select-set') {
+        // Canvas multi-select. Payload shape:
+        //   null              → empty selection
+        //   Selection         → length-1 (back-compat with legacy single-element shape)
+        //   Selection[]       → N > 1
+        // For shell purposes we track the focused entry (head of array, or
+        // the bare object) — comments + halo only act on one element at a
+        // time today. Multi-target editing is an explicit Phase-4.1 non-goal.
+        const payload = m.selection;
+        if (payload == null) {
+          wsSend({ type: 'clear-select' });
+          setSelected(null);
+        } else if (Array.isArray(payload)) {
+          const head = payload[0] ?? null;
+          if (head) wsSend({ type: 'select', selection: head });
+          setSelected(head);
+        } else {
+          wsSend({ type: 'select', selection: payload });
+          setSelected(payload);
+        }
       } else if (m.dgn === 'clear-select') {
         wsSend({ type: 'clear-select' });
         setSelected(null);
       } else if (m.dgn === 'comment-compose' && m.selection) {
-        // Cmd+Shift+click in iframe → start composer for that element
+        // Canvas C-tool / right-click "Add comment" converge here. The shell
+        // opens a composer for the target.
         startDraftFor(m.selection);
       } else if (m.dgn === 'comment-shortcut') {
-        // Cmd+C inside iframe (parent's window keydown can't fire while
-        // iframe has focus). Use current `selected` state.
+        // Carry-over for any legacy `.html` mock or external embed that
+        // still posts this. Canvas-shell uses `comment-compose` directly.
         startDraftFromSelection();
       } else if (m.dgn === 'comment-click' && m.id) {
         setFocusedCommentId(m.id);
@@ -1602,6 +1616,18 @@ function App() {
     return () => window.removeEventListener('message', onMessage);
   }, [commentsByFile, focusedCommentId, startDraftFromSelection, startDraftFor]);
 
+  // Tell the active canvas iframe to drop any persistent selection (canvas
+  // SelectionSet) — used when the comment composer closes via submit /
+  // cancel / Esc. canvas-shell listens for `force-clear` on the window
+  // message channel and calls selSet.clear().
+  const clearActiveCanvasSelection = useCallback(() => {
+    if (!activePath || activePath === SYSTEM_TAB) return;
+    const el = iframesRef.current.get(activePath);
+    if (el && el.contentWindow) {
+      try { el.contentWindow.postMessage({ dgn: 'force-clear' }, '*'); } catch {}
+    }
+  }, [activePath]);
+
   const submitDraft = useCallback(() => {
     if (!draft || !draft.text.trim()) return;
     wsSend({ type: 'comments-add', payload: {
@@ -1615,9 +1641,13 @@ function App() {
       text: draft.text.trim(),
     }});
     setDraft(null);
-  }, [draft]);
+    clearActiveCanvasSelection();
+  }, [draft, clearActiveCanvasSelection]);
 
-  const cancelDraft = useCallback(() => setDraft(null), []);
+  const cancelDraft = useCallback(() => {
+    setDraft(null);
+    clearActiveCanvasSelection();
+  }, [clearActiveCanvasSelection]);
 
   const resolveComment = useCallback((id) => {
     wsSend({ type: 'comments-patch', id, patch: { status: 'resolved' } });
@@ -1668,6 +1698,11 @@ function App() {
     function onKey(e) {
       const meta = e.metaKey || e.ctrlKey;
       const inEditable = ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
+      // Phase 4.1: shell-side letter shortcuts (H/T/S) must not double-fire
+      // inside a focused canvas iframe — the canvas input router owns those
+      // letters as tool-mode keys (V/H/C). Cmd-modified shortcuts (⌘R, ⌘⇧M,
+      // ⌘F) still fire regardless of focus, mirroring browser convention.
+      const inCanvasIframe = document.activeElement?.tagName === 'IFRAME';
 
       // Cmd+R — reload active iframe (override browser reload)
       if (meta && (e.key === 'r' || e.key === 'R')) {
@@ -1681,14 +1716,15 @@ function App() {
         setCommentsPanelOpen(v => !v);
         return;
       }
-      // Cmd+C / Ctrl+C — comment on currently selected element (overrides system copy when something is selected)
+      // Cmd+C / Ctrl+C — Phase 4.1 removed the shell-side comment-drop chord.
+      // Canvas comment-drop is the `C` tool letter (press C in the canvas,
+      // then click the element) or right-click "Add comment". Cmd+C now
+      // reverts to native browser copy.
       if (meta && !e.shiftKey && !e.altKey && (e.key === 'c' || e.key === 'C')) {
-        if (selected && selected.selector && activePath && activePath !== SYSTEM_TAB && !inEditable) {
-          e.preventDefault();
-          startDraftFromSelection();
-          return;
+        if (selected && selected.selector && activePath && activePath !== SYSTEM_TAB && !inEditable && console && console.warn) {
+          console.warn('Cmd+C comment-drop deprecated — press C inside the canvas to enter Comment tool, then click the element.');
         }
-        // No selection — fall through so browser's normal copy still works
+        // Fall through to native copy.
       }
       if (inEditable) return;
       // / — focus search (or ⌘F per CV-08 placeholder hint)
@@ -1706,6 +1742,14 @@ function App() {
           if (inp) inp.focus();
         }, 0);
         return;
+      }
+      // T / H / S are bare-letter shell shortcuts. When focus is inside a
+      // canvas iframe, the canvas input router claims V/H/C — bail out
+      // here so the canvas owns the key and the sidebar/system view don't
+      // double-fire on focused-canvas keypresses.
+      if (inCanvasIframe) {
+        // Esc still bubbles below (composer / focused-pin clear).
+        if (e.key !== 'Escape') return;
       }
       // T — toggle Project Tree (sidebar)
       if (e.key === 't' || e.key === 'T') {
@@ -1739,13 +1783,13 @@ function App() {
       }
       // Esc — close composer (in addition to its own textarea handler) or clear focused pin
       if (e.key === 'Escape') {
-        if (draft) { setDraft(null); return; }
+        if (draft) { setDraft(null); clearActiveCanvasSelection(); return; }
         if (focusedCommentId) { setFocusedCommentId(null); return; }
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [reloadActive, selected, activePath, startDraftFromSelection, draft, focusedCommentId, sidebarOpen, openSystem, closeTab]);
+  }, [reloadActive, selected, activePath, startDraftFromSelection, draft, focusedCommentId, sidebarOpen, openSystem, closeTab, clearActiveCanvasSelection]);
 
   const registerIframe = useCallback((path, el) => {
     if (el) iframesRef.current.set(path, el);
@@ -1792,7 +1836,6 @@ function App() {
           systemData={systemData}
           onOpenFromSystem={openTab}
           project={project}
-          selected={selected}
           cfg={cfg}
         />
         {activePath && activePath !== SYSTEM_TAB && (

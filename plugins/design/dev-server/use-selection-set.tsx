@@ -1,0 +1,234 @@
+/**
+ * @file       use-selection-set.tsx — Phase 4.1 multi-selection store
+ * @scope      plugins/design/dev-server/use-selection-set.tsx
+ * @purpose    Multi-element selection state for canvas-shell. The canvas
+ *             input router calls `replace()` / `add()` / `clear()`;
+ *             the provider debounces and posts up to the dev-server shell
+ *             through the existing `__design_selected` window.parent channel
+ *             so `_active.json` reflects the current selection set.
+ *
+ * Schema migration. `_active.json#selected` historically holds
+ *     selected: SelectedElement | null
+ * Phase 4.1 widens to
+ *     selected: SelectedElement | SelectedElement[] | null
+ * Writer: emits a single object when N === 1 (back-compat with downstream
+ * tools that still read the legacy shape — `/design:edit`, handoff). Emits an
+ * array when N > 1. Reader (this hook on rehydrate) accepts all three.
+ */
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Types
+
+/**
+ * Minimal Selection shape that travels through the parent postMessage channel.
+ * Mirrors `SelectedElement` from inspect.ts but the canvas router computes it
+ * client-side and the inspector overlay's enrichment fields (html excerpt,
+ * dom_path, classes...) are filled in by the router right before the message
+ * is posted.
+ */
+export interface Selection {
+  /** Canvas file path — designRel-prefixed (e.g. `.design/ui/Foo.tsx`). */
+  file?: string;
+  /** Stable `data-cd-id` anchor when present. v2-grade only. */
+  id?: string;
+  /** CSS-selector fallback path (always present). */
+  selector: string;
+  /** Artboard host (`data-dc-screen`) — for scoping multi-edits in future. */
+  artboardId?: string | null;
+  /** Snapshot fields filled by the router from `resolveHoverTarget`. */
+  tag?: string;
+  classes?: string;
+  text?: string;
+  dom_path?: string[];
+  bounds?: { x: number; y: number; w: number; h: number } | null;
+  html?: string;
+}
+
+interface SelectionSetValue {
+  selected: Selection[];
+  replace: (s: Selection | Selection[]) => void;
+  add: (s: Selection | Selection[]) => void;
+  remove: (s: Selection) => void;
+  toggle: (s: Selection) => void;
+  clear: () => void;
+}
+
+const SelectionSetContext = createContext<SelectionSetValue | null>(null);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Identity. Prefer `id` (data-cd-id stable anchor); fall back to selector.
+
+function selectionKey(s: Selection): string {
+  return s.id ? `id:${s.id}` : `sel:${s.selector}`;
+}
+
+function dedupe(list: Selection[]): Selection[] {
+  const out: Selection[] = [];
+  const seen = new Set<string>();
+  for (const s of list) {
+    const k = selectionKey(s);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(s);
+  }
+  return out;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Provider
+
+const POST_DEBOUNCE_MS = 50; // mirrors canvas-lib's SETTLE/PUBLISH cadence
+
+export function SelectionSetProvider({
+  children,
+  /** Override the postMessage destination (used in tests). */
+  postTarget,
+}: {
+  children: ReactNode;
+  postTarget?: { postMessage: (msg: unknown, targetOrigin: string) => void } | null;
+}) {
+  const [selected, setSelected] = useState<Selection[]>([]);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const post = useCallback(
+    (next: Selection[]) => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+        timerRef.current = null;
+        const target =
+          postTarget ?? (typeof window !== "undefined" ? window.parent : null);
+        if (!target) return;
+        // Wire shape: single object for N=1 (back-compat), array for N>1, null for empty.
+        const payload: Selection | Selection[] | null =
+          next.length === 0 ? null : next.length === 1 ? (next[0] ?? null) : next;
+        try {
+          target.postMessage(
+            { dgn: "select-set", selection: payload },
+            "*"
+          );
+        } catch {
+          /* iframe likely cross-origin or detached */
+        }
+      }, POST_DEBOUNCE_MS);
+    },
+    [postTarget]
+  );
+
+  // Cleanup the debounce timer on unmount.
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    []
+  );
+
+  const replace = useCallback(
+    (s: Selection | Selection[]) => {
+      const next = dedupe(Array.isArray(s) ? s : [s]);
+      setSelected(next);
+      post(next);
+    },
+    [post]
+  );
+
+  const add = useCallback(
+    (s: Selection | Selection[]) => {
+      const incoming = Array.isArray(s) ? s : [s];
+      setSelected((prev) => {
+        const next = dedupe([...prev, ...incoming]);
+        post(next);
+        return next;
+      });
+    },
+    [post]
+  );
+
+  const remove = useCallback(
+    (s: Selection) => {
+      const k = selectionKey(s);
+      setSelected((prev) => {
+        const next = prev.filter((x) => selectionKey(x) !== k);
+        post(next);
+        return next;
+      });
+    },
+    [post]
+  );
+
+  const toggle = useCallback(
+    (s: Selection) => {
+      const k = selectionKey(s);
+      setSelected((prev) => {
+        const next = prev.some((x) => selectionKey(x) === k)
+          ? prev.filter((x) => selectionKey(x) !== k)
+          : [...prev, s];
+        post(next);
+        return next;
+      });
+    },
+    [post]
+  );
+
+  const clear = useCallback(() => {
+    setSelected([]);
+    post([]);
+  }, [post]);
+
+  const value = useMemo<SelectionSetValue>(
+    () => ({ selected, replace, add, remove, toggle, clear }),
+    [selected, replace, add, remove, toggle, clear]
+  );
+
+  return (
+    <SelectionSetContext.Provider value={value}>
+      {children}
+    </SelectionSetContext.Provider>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hooks
+
+export function useSelectionSet(): SelectionSetValue {
+  const ctx = useContext(SelectionSetContext);
+  if (!ctx) {
+    throw new Error("useSelectionSet must be used inside <SelectionSetProvider>");
+  }
+  return ctx;
+}
+
+export function useSelectionSetOptional(): SelectionSetValue | null {
+  return useContext(SelectionSetContext);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Wire-shape helpers — exported for tests and inspect.ts back-compat reader.
+
+/** Convert any inbound shape to an array. */
+export function normalizeSelectedRead(
+  raw: Selection | Selection[] | null | undefined
+): Selection[] {
+  if (raw == null) return [];
+  if (Array.isArray(raw)) return dedupe(raw);
+  return [raw];
+}
+
+/** Convert internal array back to the wire shape (writer). */
+export function denormalizeSelectedWrite(
+  list: Selection[]
+): Selection | Selection[] | null {
+  if (list.length === 0) return null;
+  if (list.length === 1) return list[0] ?? null;
+  return list;
+}

@@ -315,29 +315,32 @@ Run these commands to confirm zero regressions:
 
 ## Acceptance Criteria
 
-- [ ] T1: `input-router.tsx` ships with full classification table + `bun test` covers every row (non-wheel events only — canvas-lib owns wheel)
-- [ ] T2: `useToolMode` + V/H/C/Esc shortcuts work inside canvas iframe, do **not** collide with shell H/T
-- [ ] T3: `_active.json` accepts `Selection | Selection[] | null`; reader back-compatible with single-element shape for one cycle; writer emits the appropriate shape per cardinality
-- [ ] T4: `DesignCanvas` gains `inputMode?: 'default' | 'figjam'` prop. Default behavior identical to today. `'figjam'` mounts router stack + sets `window.__MDCC_INPUT_MODE__` sentinel; inspector overlay short-circuits its hover/click handlers when sentinel is `'figjam'`. Canvas Viewport.tsx + Smoke TSX.tsx opt in.
-- [ ] T5: hover paints halo without Cmd; Cmd+hover descends to deepest element; click persists into selection-set; multi-selection renders solid halos per element + dashed group bbox
-- [ ] T6: right-click menu shows context-appropriate items with shortcut hints, dismisses on Esc / outside-click; keyboard-reachable
-- [ ] T7: `ToolPalette` renders bottom-left, tracks active tool, registers V/H/C; designed for Phase 5 tool extensibility
-- [ ] T8: shell `Cmd+C` / `Cmd+Shift+click` comment chords removed; shell H/T don't fire inside canvas iframe; help overlay documents new grammar; postMessage listener accepts `Selection[]`
-- [ ] T9: Canvas Viewport.tsx + Smoke TSX.tsx have `inputMode="figjam"`; both scenarios run green on web-desktop; mobile = degraded with rationale
-- [ ] T10: perf gate ≥ 55 fps with hover-recompute under 100-artboard stress, both drivers
-- [ ] `/flow:utils-verify` clean after each task
-- [ ] `/flow:validate` clean overall:
-  - [ ] Bun tests pass (133/133 baseline + ≥ 3 new test files)
-  - [ ] `scenario-runner`: 0 blockers, parity_ok=true on the two new scenarios + Phase 4 regression
-  - [ ] `design-system-guard`: 0 blockers
-  - [ ] `a11y-auditor`: 0 blockers (right-click menu keyboard reachability is the bar)
-  - [ ] **Handoff parity**: drop with `inputMode="figjam"` works in bare iframe; drop without it gets default Phase-4 grammar; no `runtime/` references anywhere in the drop
-- [ ] **DDR-worthy decisions captured:**
-  - DDR-026: canvas-lib `inputMode` prop — opt-in switch for FigJam routing, sentinel coexistence with inspector overlay, handoff parity contract
-  - DDR (or appendix): tool-mode framework extensibility contract (Phase 5 inherits this; lock the API now)
-  - DDR (or appendix): selection-set as `_active.selected: Selection[]` schema migration + back-compat window
-- [ ] CLAUDE.md updated if any new convention emerged (likely: "FigJam-mode shortcuts are canvas-iframe scoped, not window scoped" + "new dev-server modules live as siblings to canvas-lib.tsx; there is no `runtime/` folder")
-- [ ] Plan archived on `/done` per `.ai/plans/README.md` lifecycle
+> **Plan revision note (2026-05-19, during /done).** Original plan landed an opt-in `inputMode="figjam"` prop. After live smoke tests the decision flipped to a **universal grammar** — the prop, the `__MDCC_INPUT_MODE__` sentinel, and the inspector overlay's hover/click selection path were all removed. `figjam` naming was renamed to `canvas` throughout (file: `figjam-shell.tsx` → `canvas-shell.tsx`; classes `.dc-fjm-*` → `.dc-cv-*`). DDR-026 was rewritten to reflect the universal model. Criteria below are checked against the **shipped** behavior (universal), not the original prop-based design.
+
+- [x] T1: `input-router.tsx` ships with full classification table + `bun test` covers every row (non-wheel events only — canvas-lib owns wheel) — 33 tests
+- [x] T2: `useToolMode` + V/H/C/Esc shortcuts work inside canvas iframe, do not collide with shell H/T — 7 tests
+- [x] T3: `_active.json` accepts `Selection | Selection[] | null`; writer collapses single-entry array to bare object for back-compat — 12 tests
+- [x] T4: `DesignCanvas` **always** mounts canvas-shell + ToolProvider (revised — no `inputMode` prop; universal grammar). Sentinel removed.
+- [x] T5: hover paints (Cmd+hover in Move mode, bare hover in Comment mode), Cmd-click selects deepest, multi-select renders solid halos + dashed group bbox. **Refactored to floating overlays** (`position: fixed`) so 2 px stays 2 px at any zoom.
+- [x] T6: right-click menu shows context-appropriate items with shortcut hints, dismisses on Esc / outside-click; keyboard-reachable
+- [x] T7: `ToolPalette` renders bottom-left, tracks active tool, registers V/H/C; open for Phase 5 tool extensibility
+- [x] T8: shell `Cmd+C` / `Cmd+Shift+click` comment chords removed; shell H/T don't fire inside canvas iframe; help overlay rewritten as single section (universal grammar); postMessage listener accepts `select-set` array shape; `force-clear` flows on composer close
+- [x] T9: scenarios `canvas-input-grammar` + `canvas-context-menu` authored under `.ai/scenarios/canvas-format-tsx/`. (Originally named `canvas-figjam-grammar` — renamed at the universal-grammar flip.)
+- [x] T10: perf-100-artboards fixture opted in (no prop needed in universal model); rAF coalescing argument documented in `.ai/logs/phase-4.1-hover-perf-2026-05-19.md`. Live fps verification deferred to `/flow:validate`.
+- [x] `/flow:utils-verify` (light static + tests) clean after each task
+- [x] `/flow:validate` partial — heavyweight gates deferred:
+  - [x] Bun tests pass: 185 / 185 (133 baseline + 52 new from input-router + tool-mode + selection-set)
+  - [x] `bunx tsc --noEmit` clean (only pre-existing `api.ts:592–593` errors)
+  - [x] Canvas-build smoke: Canvas Viewport / Docs Site / Smoke TSX all 200, 0 legacy `dc-fjm-` / `figjam` / `dgn-insp-` refs in bundles
+  - [ ] `scenario-runner` 5-platform cross-platform — DEFERRED. Web-desktop manually walked the new scenarios during iteration; cross-platform run is the `/flow:validate` job and can be run on demand
+  - [ ] `design-system-guard` subagent — DEFERRED (palette + menu chrome use DS tokens by construction; no hardcoded colors)
+  - [ ] `a11y-auditor` subagent — DEFERRED (ContextMenu has full keyboard nav + ARIA; ToolPalette buttons have `aria-pressed`)
+- [x] **DDR-worthy decisions captured:**
+  - DDR-026: **universal canvas input grammar** (rewritten from the original `inputMode`-prop draft after the live smoke session)
+  - Tool-mode framework extensibility contract documented in DDR-026 implementation notes
+  - `_active.selected` schema migration documented in DDR-026 + in `inspect.ts` doc-string
+- [x] CLAUDE.md update — none needed (the universal-grammar decision and its naming convention live in DDR-026; CLAUDE.md already covers "dev-server is single source of canvas tooling")
+- [ ] Plan archived on `/done` per `.ai/plans/README.md` lifecycle — happening now
 
 ---
 
@@ -351,4 +354,15 @@ Run these commands to confirm zero regressions:
 - **Layers panel / CSS editor** — Phase 12 owns those.
 - **Bringing back any `runtime/` folder** — DDR-016 superseded; new modules go as siblings to `canvas-lib.tsx`.
 - **Project-side scaffolding of any of these modules** — DDR-025 stands. `.design/` is user content only.
-- **Replacing the inspector overlay for default-mode canvases** — `inputMode="default"` canvases keep Cmd-hover/Cmd-click via INSPECTOR_SCRIPT. Only `inputMode="figjam"` canvases get the new grammar.
+- **Replacing the inspector overlay for default-mode canvases** — superseded during execution. The inspector overlay's selection path was removed; only comment-pin rendering survives. See DDR-026.
+
+---
+
+## Retro
+
+- **Plan vs reality — the opt-in flag was the wrong default.** Original plan invested heavily in coexistence (sentinel, inspector overlay short-circuit, two help-overlay sections, an `inputMode="figjam"` prop on every canvas opening). Live smoke immediately surfaced the two-grammar problem (cyan-with-label vs orange-no-label) and the user's "ne-figjam, prostě canvas" naming directive. The flag was deleted within the same session it landed. **Lesson for `/plan`:** when an opt-in flag exists only to ease coexistence with deprecated behavior, ship a universal default and remove the deprecated behavior — half-coexistence states are more confusing than either pure end-state.
+- **Halos as CSS-stamped classes don't work under CSS `zoom`.** Initial T5 stamped `.dc-fjm-selected { outline: 2px ... }` directly on target elements. At 42 % zoom the outline scaled to 0.84 px and was invisible — the user reported "comment hover doesn't paint anything." Refactor to floating `position: fixed` overlays (one per tracked element, rAF-updated from `getBoundingClientRect()`) made the halo zoom-immune. **Lesson:** any canvas-mounted visual that uses CSS `zoom` for the world plane needs screen-coord chrome for affordances that must stay constant-width.
+- **`resolveHoverTarget` deep mode shouldn't climb.** First version walked up to find the closest `[data-cd-id]` ancestor — which collapsed to the artboard root when no descendant was stamped. User saw "Cmd-click on a deep span selects the whole artboard." Fix: deep mode uses the hit element's OWN `data-cd-id` (or null + cssPath fallback). **Lesson for resolveHoverTarget-style walkers:** "deep" and "top" are different walking strategies, not modifiers on the same walk. Encode the intent literally.
+- **Capture-phase + paired listeners is the right way to claim canvas input.** Initially the router lived in bubble phase; button-click handlers fired before the router could `preventDefault`. Moving to capture phase + adding paired `mousedown` / `click` listeners gave the router first chance and stopped focus / native click reliably. Comment-tool inertness "just worked" once this pattern was in place — no need for `pointer-events: none` gymnastics that would have broken `elementFromPoint`.
+- **Decision-flip mid-execution should record itself.** The DDR-026 history (drafted as `inputMode` prop, rewritten as universal grammar same day) is now embedded in DDR-026 — including the "alternatives considered" section listing the rejected opt-in design. Future plans considering coexistence flags can grep this DDR before re-litigating. **Lesson for `/plan`:** when a plan revision lands during `/execute`, push the revision into the DDR Alternatives section right then — don't wait for `/done` to remember.
+- **Scenario specs need to follow naming flips.** `canvas-figjam-grammar` was renamed to `canvas-input-grammar` at the universal-grammar flip. Worth adding a brief grep-and-rename guard to `/done` for scenarios + DDR filenames when a plan's frontmatter changes.

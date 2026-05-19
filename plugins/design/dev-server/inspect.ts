@@ -32,21 +32,35 @@ export interface SelectedElement {
   canvas?: string;
 }
 
+/**
+ * Phase 4.1: `selected` widens from `SelectedElement | null` to
+ * `SelectedElement | SelectedElement[] | null` for multi-select via canvas-shell
+ * input router. Readers must accept all three shapes. Writer below emits a
+ * single object when cardinality is 1 (back-compat with `/design:edit` +
+ * downstream tools that read the legacy shape) and an array for N > 1.
+ */
+export type SelectedValue = SelectedElement | SelectedElement[] | null;
+
 export interface ActiveState {
   active: string | null;
   open_tabs: string[];
-  selected: SelectedElement | null;
+  selected: SelectedValue;
   last_change: string | null;
   session_started: string;
   active_comments?: unknown[];
 }
+
+type SetSelectedInput =
+  | Omit<SelectedElement, 'ts' | 'v' | 'canvas'>
+  | Array<Omit<SelectedElement, 'ts' | 'v' | 'canvas'>>
+  | null;
 
 export interface Inspect {
   state: ActiveState;
   load(): Promise<void>;
   setActive(file: string): void;
   setOpenTabs(tabs: string[]): void;
-  setSelected(sel: Omit<SelectedElement, 'ts' | 'v' | 'canvas'> | null): void;
+  setSelected(sel: SetSelectedInput): void;
   save(): Promise<void>;
   injectInspector(html: string): string;
 }
@@ -119,24 +133,44 @@ export function createInspect(
     scheduleSave();
   }
 
-  function setSelected(sel: Omit<SelectedElement, 'ts' | 'v' | 'canvas'> | null) {
-    if (sel && typeof sel === 'object') {
-      const file = typeof sel.file === 'string' ? sel.file : (state.active ?? '');
-      const id = typeof sel.id === 'string' && sel.id ? sel.id : undefined;
-      const v: 1 | 2 = id ? 2 : 1;
-      state.selected = {
-        file,
-        selector: String(sel.selector || ''),
-        tag: String(sel.tag || ''),
-        classes: String(sel.classes || ''),
-        text: String(sel.text || '').slice(0, 240),
-        dom_path: Array.isArray(sel.dom_path) ? sel.dom_path.slice(0, 16) : [],
-        bounds: sel.bounds ?? null,
-        html: String(sel.html || '').slice(0, 4000),
-        ts: new Date().toISOString(),
-        v,
-        ...(id ? { id, canvas: deriveCanvasSlug(file) } : {}),
-      };
+  function enrich(
+    sel: Omit<SelectedElement, 'ts' | 'v' | 'canvas'>
+  ): SelectedElement {
+    const file = typeof sel.file === 'string' ? sel.file : (state.active ?? '');
+    const id = typeof sel.id === 'string' && sel.id ? sel.id : undefined;
+    const v: 1 | 2 = id ? 2 : 1;
+    return {
+      file,
+      selector: String(sel.selector || ''),
+      tag: String(sel.tag || ''),
+      classes: String(sel.classes || ''),
+      text: String(sel.text || '').slice(0, 240),
+      dom_path: Array.isArray(sel.dom_path) ? sel.dom_path.slice(0, 16) : [],
+      bounds: sel.bounds ?? null,
+      html: String(sel.html || '').slice(0, 4000),
+      ts: new Date().toISOString(),
+      v,
+      ...(id ? { id, canvas: deriveCanvasSlug(file) } : {}),
+    };
+  }
+
+  function setSelected(sel: SetSelectedInput) {
+    if (sel == null) {
+      state.selected = null;
+    } else if (Array.isArray(sel)) {
+      const enriched = sel
+        .filter((s): s is Omit<SelectedElement, 'ts' | 'v' | 'canvas'> =>
+          !!s && typeof s === 'object'
+        )
+        .map(enrich);
+      // Writer back-compat: collapse single-entry array to a bare object so
+      // legacy readers (`/design:edit`, handoff tooling) keep working without
+      // schema awareness. N>1 stays as an array.
+      if (enriched.length === 0) state.selected = null;
+      else if (enriched.length === 1) state.selected = enriched[0] ?? null;
+      else state.selected = enriched;
+    } else if (typeof sel === 'object') {
+      state.selected = enrich(sel);
     } else {
       state.selected = null;
     }
@@ -181,38 +215,20 @@ function injectInspector(html: string): string {
   return html.slice(0, idx) + INSPECTOR_SCRIPT + html.slice(idx);
 }
 
-// Cmd+hover/click overlay injected into every served .html under designRoot.
-// Posts selection events up to the parent frame via window.parent.postMessage.
-// Mirror of server.mjs INSPECTOR_SCRIPT — kept verbatim so behaviour is identical.
+// Comment-pin rendering overlay injected into every served HTML page under
+// designRoot. Pin layer is the ONLY responsibility — hover/click selection is
+// owned by canvas-shell.tsx (TSX canvases) and isn't applicable to legacy
+// `.html` mocks since the broader migration to TSX. Pin layer keeps working
+// in both, because pins are positioned by selector and updated via the
+// `comments-set` postMessage channel from the shell.
 const INSPECTOR_SCRIPT = `
 <script>
 (function() {
   if (window.__designInspectorAttached) return;
   window.__designInspectorAttached = true;
-  // Resolve canvas file. For legacy .html canvases, location.pathname IS the
-  // canvas path. For TSX canvases mounted via /_canvas-shell.html, the canvas
-  // path is in the ?canvas= query param + needs the designRel prefix so the
-  // parent's activePath comparison matches (parent uses ".design/ui/<name>.tsx"
-  // shape from /_index-data).
-  var FILE = (function(){
-    try {
-      var p = location.pathname;
-      if (p === '/_canvas-shell.html' || p === '/_canvas-shell') {
-        var qs = new URLSearchParams(location.search);
-        var canvas = qs.get('canvas') || '';
-        var designRel = (qs.get('designRel') || '.design').replace(/^\\/+|\\/+$/g, '');
-        return designRel + '/' + canvas;
-      }
-      return decodeURIComponent(p).replace(/^\\//,'');
-    } catch(e) { return location.pathname.replace(/^\\//,''); }
-  })();
 
   var styleEl = document.createElement('style');
   styleEl.textContent = [
-    '.dgn-insp-hover { outline: 2px solid #00D4E4 !important; outline-offset: 1px !important; cursor: crosshair !important; }',
-    '.dgn-insp-selected { outline: 2px solid #00D4E4 !important; outline-offset: 1px !important; box-shadow: 0 0 0 4px rgba(0,212,228,0.18) !important; }',
-    '.dgn-insp-label { position: fixed; z-index: 2147483647; font: 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace; background: #00D4E4; color: #000; padding: 4px 8px; border-radius: 4px; pointer-events: none; box-shadow: 0 2px 8px rgba(0,0,0,0.4); transform: translate(0, -110%); white-space: nowrap; max-width: 320px; overflow: hidden; text-overflow: ellipsis; }',
-    '.dgn-insp-label.warn { background: #ef4444; color: #fff; }',
     '.dgn-pin { position: absolute; top: 0; left: 0; z-index: 2147483646; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 999px 999px 999px 4px; background: #facc15; color: #1c1917; font: 600 11px/22px ui-sans-serif, system-ui, sans-serif; text-align: center; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.5), 0 0 0 1px rgba(0,0,0,0.4); transition: filter 120ms; transform-origin: bottom left; will-change: transform; }',
     '.dgn-pin:hover { filter: brightness(1.1); outline: 2px solid rgba(0,0,0,0.3); }',
     '.dgn-pin.resolved { background: #22c55e; color: #052e16; }',
@@ -220,179 +236,13 @@ const INSPECTOR_SCRIPT = `
   ].join('\\n');
   document.documentElement.appendChild(styleEl);
 
-  var label = document.createElement('div');
-  label.className = 'dgn-insp-label';
-  label.style.display = 'none';
-  document.documentElement.appendChild(label);
-
   var pinLayer = document.createElement('div');
   pinLayer.id = 'dgn-pin-layer';
   pinLayer.style.cssText = 'position:absolute;top:0;left:0;width:0;height:0;pointer-events:none;z-index:2147483646;';
   document.documentElement.appendChild(pinLayer);
 
-  var lastHover = null;
-  var lastSelected = null;
-  var modifierDown = false;
-  var cKeyDown = false;
   var commentsCache = [];
   var focusedPinId = null;
-
-  function isModifier(e) { return e.metaKey; }
-
-  function shortText(el, max) {
-    var t = (el.innerText || el.textContent || '').replace(/\\s+/g,' ').trim();
-    return t.length > max ? t.slice(0, max - 1) + '…' : t;
-  }
-
-  function realClasses(el) {
-    return (el.getAttribute('class') || '').trim().split(/\\s+/)
-      .filter(function(c) { return c && c.indexOf('dgn-') !== 0; });
-  }
-
-  function cssPath(el) {
-    if (!(el instanceof Element)) return '';
-    var path = [];
-    while (el && el.nodeType === 1 && path.length < 8) {
-      var dscEl = el.getAttribute && el.getAttribute('data-dc-element');
-      if (dscEl) { path.unshift('[data-dc-element="' + dscEl + '"]'); break; }
-      var dscSc = el.getAttribute && el.getAttribute('data-dc-screen');
-      if (dscSc) { path.unshift('[data-dc-screen="' + dscSc + '"]'); break; }
-      var sel = el.nodeName.toLowerCase();
-      if (el.id) { sel = '#' + el.id; path.unshift(sel); break; }
-      var cls = realClasses(el).slice(0, 2);
-      if (cls.length) sel += '.' + cls.join('.');
-      var sib = 1, n = el;
-      while ((n = n.previousElementSibling)) sib++;
-      sel += ':nth-child(' + sib + ')';
-      path.unshift(sel);
-      el = el.parentElement;
-    }
-    return path.join(' > ');
-  }
-
-  function domPath(el) {
-    var hops = [];
-    while (el && el.nodeType === 1 && hops.length < 8) {
-      var label = el.nodeName.toLowerCase();
-      var dEl = el.getAttribute && el.getAttribute('data-dc-element');
-      var dSc = el.getAttribute && el.getAttribute('data-dc-screen');
-      if (dEl) label += '[data-dc-element="' + dEl + '"]';
-      else if (dSc) label += '[data-dc-screen="' + dSc + '"]';
-      else if (el.id) label += '#' + el.id;
-      var cls = realClasses(el).slice(0, 2);
-      if (cls.length && !dEl && !dSc) label += '.' + cls.join('.');
-      hops.unshift(label);
-      el = el.parentElement;
-    }
-    return hops;
-  }
-
-  function cdIdOf(el) {
-    // Walk up to the nearest ancestor (or el itself) carrying a data-cd-id —
-    // this is the TSX two-pass-transform anchor. Returns null on legacy .html
-    // canvases or when the click landed on shell chrome (no canvas-emitted
-    // ancestor). The server stamps v=1 in that case (CSS-selector fallback).
-    if (!(el instanceof Element) || !el.closest) return null;
-    var anchor = el.closest('[data-cd-id]');
-    if (!anchor) return null;
-    var raw = anchor.getAttribute('data-cd-id');
-    return (typeof raw === 'string' && raw) ? raw : null;
-  }
-
-  function elInfo(el) {
-    var rect = el.getBoundingClientRect();
-    var id = cdIdOf(el);
-    var info = {
-      file: FILE,
-      selector: cssPath(el),
-      tag: el.tagName.toLowerCase(),
-      classes: realClasses(el).join(' '),
-      text: shortText(el, 240),
-      dom_path: domPath(el),
-      bounds: { x: Math.round(rect.left), y: Math.round(rect.top), w: Math.round(rect.width), h: Math.round(rect.height) },
-      html: (el.outerHTML || '').slice(0, 4000)
-    };
-    if (id) info.id = id;
-    return info;
-  }
-
-  function showLabel(text, x, y, warn) {
-    label.style.display = '';
-    label.style.left = (x + 12) + 'px';
-    label.style.top = y + 'px';
-    label.textContent = text;
-    label.classList.toggle('warn', !!warn);
-  }
-  function hideLabel() { label.style.display = 'none'; }
-
-  document.addEventListener('keydown', function(e) {
-    if (e.key === 'Meta') modifierDown = true;
-    if ((e.key === 'c' || e.key === 'C') && (e.metaKey || e.ctrlKey)) cKeyDown = true;
-    if (e.key === 'Escape') {
-      if (lastHover) lastHover.classList.remove('dgn-insp-hover');
-      if (lastSelected) lastSelected.classList.remove('dgn-insp-selected');
-      lastHover = null; lastSelected = null;
-      hideLabel();
-      try { window.parent.postMessage({ dgn: 'clear-select' }, '*'); } catch(e) {}
-    }
-    if ((e.metaKey || e.ctrlKey) && (e.key === 'c' || e.key === 'C') && !e.shiftKey && !e.altKey) {
-      if (lastSelected) {
-        e.preventDefault();
-        try { window.parent.postMessage({ dgn: 'comment-shortcut' }, '*'); } catch(e) {}
-      }
-    }
-  }, true);
-  document.addEventListener('keyup', function(e) {
-    if (e.key === 'Meta') {
-      modifierDown = false;
-      if (lastHover) { lastHover.classList.remove('dgn-insp-hover'); lastHover = null; }
-      hideLabel();
-    }
-    if (e.key === 'c' || e.key === 'C') cKeyDown = false;
-  }, true);
-  document.addEventListener('blur', function() {
-    modifierDown = false;
-    cKeyDown = false;
-    if (lastHover) { lastHover.classList.remove('dgn-insp-hover'); lastHover = null; }
-    hideLabel();
-  }, true);
-
-  document.addEventListener('mousemove', function(e) {
-    if (!isModifier(e)) {
-      if (lastHover) { lastHover.classList.remove('dgn-insp-hover'); lastHover = null; }
-      hideLabel();
-      return;
-    }
-    var el = document.elementFromPoint(e.clientX, e.clientY);
-    if (!el || el === lastHover) return;
-    if (el === label) return;
-    if (lastHover) lastHover.classList.remove('dgn-insp-hover');
-    lastHover = el;
-    el.classList.add('dgn-insp-hover');
-    var t = el.tagName.toLowerCase();
-    var c = (el.getAttribute('class') || '').trim();
-    showLabel(t + (c ? '.' + c.split(/\\s+/).slice(0,2).join('.') : ''), e.clientX, e.clientY);
-  }, true);
-
-  document.addEventListener('click', function(e) {
-    if (!isModifier(e)) return;
-    if (e.target && e.target.closest && e.target.closest('.dgn-pin')) return;
-    e.preventDefault();
-    e.stopPropagation();
-    var el = document.elementFromPoint(e.clientX, e.clientY);
-    if (!el || el.classList.contains('dgn-pin')) return;
-    if (lastSelected) lastSelected.classList.remove('dgn-insp-selected');
-    lastSelected = el;
-    el.classList.add('dgn-insp-selected');
-    var info = elInfo(el);
-    try { window.parent.postMessage({ dgn: 'select', selection: info }, '*'); } catch(err) {}
-    var commentNow = e.shiftKey || cKeyDown;
-    if (commentNow) {
-      try { window.parent.postMessage({ dgn: 'comment-compose', selection: info }, '*'); } catch(err) {}
-    }
-    showLabel((commentNow ? 'comment: ' : 'selected: ') + info.tag + (info.classes ? '.' + info.classes.split(/\\s+/).slice(0,2).join('.') : ''), e.clientX, e.clientY);
-    setTimeout(hideLabel, 1500);
-  }, true);
 
   var pinNodes = [];
   var rafToken = null;
@@ -494,13 +344,24 @@ const INSPECTOR_SCRIPT = `
           if (t) t.scrollIntoView({ behavior: 'smooth', block: 'center' });
         } catch (e) {}
       }
-    } else if (m.dgn === 'force-clear') {
-      if (lastSelected) lastSelected.classList.remove('dgn-insp-selected');
-      lastSelected = null;
     }
+    /* force-clear is now consumed by canvas-shell.tsx — the inspector
+       overlay has no per-element selection state to clear anymore. */
   });
 
-  try { window.parent.postMessage({ dgn: 'loaded', file: FILE }, '*'); } catch(e) {}
+  try {
+    var p = location.pathname;
+    var file;
+    if (p === '/_canvas-shell.html' || p === '/_canvas-shell') {
+      var qs = new URLSearchParams(location.search);
+      var canvas = qs.get('canvas') || '';
+      var designRel = (qs.get('designRel') || '.design').replace(/^\\/+|\\/+$/g, '');
+      file = designRel + '/' + canvas;
+    } else {
+      file = decodeURIComponent(p).replace(/^\\//, '');
+    }
+    window.parent.postMessage({ dgn: 'loaded', file: file }, '*');
+  } catch (e) {}
 })();
 </script>
 `;

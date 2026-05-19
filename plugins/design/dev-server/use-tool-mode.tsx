@@ -1,0 +1,108 @@
+/**
+ * @file       use-tool-mode.tsx — Phase 4.1 tool-mode store
+ * @scope      plugins/design/dev-server/use-tool-mode.tsx
+ * @purpose    Context + hook for the active canvas tool. Wired into
+ *             DesignCanvas. Phase 5 will
+ *             register additional tools (pen, circle, arrow, eraser) via
+ *             the same provider — the API is intentionally open.
+ *
+ * The router's `onTool` callback (input-router.tsx) writes into this store.
+ * The ToolPalette + cursor sync read from it. Selecting a tool also mutates
+ * `document.body.style.cursor` so the affordance matches across the iframe.
+ */
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+
+import type { Tool } from "./input-router.tsx";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Types
+
+export interface ToolDescriptor {
+  id: Tool;
+  label: string;
+  /** Letter-key shortcut shown in the palette tooltip. */
+  shortcut: string;
+  /** CSS cursor value applied to <body> when this tool is active. */
+  cursor: string;
+}
+
+export const DEFAULT_TOOLS: readonly ToolDescriptor[] = Object.freeze([
+  { id: "move", label: "Move", shortcut: "V", cursor: "default" },
+  { id: "hand", label: "Hand", shortcut: "H", cursor: "grab" },
+  { id: "comment", label: "Comment", shortcut: "C", cursor: "crosshair" },
+]);
+
+interface ToolContextValue {
+  tool: Tool;
+  setTool: (t: Tool) => void;
+  tools: readonly ToolDescriptor[];
+}
+
+const ToolContext = createContext<ToolContextValue | null>(null);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Provider
+
+export function ToolProvider({
+  children,
+  tools = DEFAULT_TOOLS,
+  initial = "move",
+}: {
+  children: ReactNode;
+  tools?: readonly ToolDescriptor[];
+  initial?: Tool;
+}) {
+  const [tool, setToolState] = useState<Tool>(initial);
+  const setTool = useCallback((t: Tool) => setToolState(t), []);
+
+  // Body cursor sync — applied to the canvas iframe's body (this hook runs
+  // inside the iframe context). The viewport-controller still owns the
+  // grabbing/grab cursor swap during space-pan; this only sets the resting
+  // cursor for the active tool.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const desc = tools.find((t) => t.id === tool);
+    if (!desc) return;
+    const prev = document.body.style.cursor;
+    document.body.style.cursor = desc.cursor;
+    return () => {
+      document.body.style.cursor = prev;
+    };
+  }, [tool, tools]);
+
+  const value = useMemo<ToolContextValue>(
+    () => ({ tool, setTool, tools }),
+    [tool, setTool, tools]
+  );
+
+  return <ToolContext.Provider value={value}>{children}</ToolContext.Provider>;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hook
+
+export function useToolMode(): ToolContextValue {
+  const ctx = useContext(ToolContext);
+  if (!ctx) {
+    throw new Error("useToolMode must be used inside <ToolProvider>");
+  }
+  return ctx;
+}
+
+/**
+ * Read-only variant — returns `null` when no provider mounted. Used by
+ * components that can render outside a ToolProvider tree (the input
+ * router's optional path).
+ */
+export function useToolModeOptional(): ToolContextValue | null {
+  return useContext(ToolContext);
+}

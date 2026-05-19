@@ -1,0 +1,234 @@
+// input-router — Phase 4.1 Task 1. Pure classifier table tests.
+
+import { describe, expect, test } from "bun:test";
+
+import {
+  classify,
+  isEditableTarget,
+  type ClassifyInput,
+  type Tool,
+} from "../input-router.tsx";
+
+const base = (over: Partial<ClassifyInput>): ClassifyInput => ({
+  type: "pointermove",
+  activeTool: "move" as Tool,
+  ...over,
+});
+
+describe("input-router / pointermove — move tool", () => {
+  test("bare hover → no-op (native interactions pass through)", () => {
+    const action = classify(base({ type: "pointermove", clientX: 10, clientY: 20 }));
+    expect(action.kind).toBe("no-op");
+  });
+
+  test("cmd-hover → hover preview with deep=true", () => {
+    const action = classify(
+      base({ type: "pointermove", metaKey: true, clientX: 5, clientY: 6 })
+    );
+    expect(action).toMatchObject({ kind: "hover", deep: true });
+  });
+
+  test("ctrl-hover (windows/linux) → hover with deep=true", () => {
+    const action = classify(base({ type: "pointermove", ctrlKey: true }));
+    expect(action).toMatchObject({ kind: "hover", deep: true });
+  });
+
+  test("hover in hand tool → no-op", () => {
+    const action = classify(base({ type: "pointermove", activeTool: "hand" }));
+    expect(action.kind).toBe("no-op");
+  });
+
+  test("hover in comment tool → hover with deep=true (preview deepest)", () => {
+    const action = classify(
+      base({ type: "pointermove", activeTool: "comment", clientX: 1, clientY: 2 })
+    );
+    expect(action).toEqual({ kind: "hover", deep: true, clientX: 1, clientY: 2 });
+  });
+});
+
+describe("input-router / pointerdown — move tool select", () => {
+  test("bare left-click → no-op (native interactions pass through)", () => {
+    const action = classify(
+      base({ type: "pointerdown", button: 0, clientX: 100, clientY: 200 })
+    );
+    expect(action.kind).toBe("no-op");
+  });
+
+  test("shift+left-click (no cmd) → no-op (no select without Cmd)", () => {
+    const action = classify(
+      base({ type: "pointerdown", button: 0, shiftKey: true })
+    );
+    expect(action.kind).toBe("no-op");
+  });
+
+  test("cmd+left-click → select replace, deep=true (nested single)", () => {
+    const action = classify(
+      base({ type: "pointerdown", button: 0, metaKey: true, clientX: 11, clientY: 22 })
+    );
+    expect(action).toEqual({
+      kind: "select",
+      mode: "replace",
+      deep: true,
+      clientX: 11,
+      clientY: 22,
+    });
+  });
+
+  test("cmd+shift+left-click → select add, deep=true (multi nested)", () => {
+    const action = classify(
+      base({ type: "pointerdown", button: 0, metaKey: true, shiftKey: true })
+    );
+    expect(action).toMatchObject({ kind: "select", mode: "add", deep: true });
+  });
+
+  test("ctrl+left-click (linux/windows cmd-equivalent) → select replace deep", () => {
+    const action = classify(
+      base({ type: "pointerdown", button: 0, ctrlKey: true })
+    );
+    expect(action).toMatchObject({ kind: "select", mode: "replace", deep: true });
+  });
+});
+
+describe("input-router / pointerdown — non-left buttons", () => {
+  test("middle-button → no-op (viewport-controller owns it)", () => {
+    const action = classify(base({ type: "pointerdown", button: 1 }));
+    expect(action.kind).toBe("no-op");
+  });
+
+  test("right-button → context-menu", () => {
+    const action = classify(
+      base({ type: "pointerdown", button: 2, clientX: 50, clientY: 60 })
+    );
+    expect(action).toEqual({ kind: "context-menu", clientX: 50, clientY: 60 });
+  });
+
+  test("space-held + left-click → no-op (viewport-controller pans)", () => {
+    const action = classify(base({ type: "pointerdown", button: 0, spaceHeld: true }));
+    expect(action.kind).toBe("no-op");
+  });
+});
+
+describe("input-router / pointerdown — tool-aware", () => {
+  test("comment tool + bare click → drop-comment", () => {
+    const action = classify(
+      base({ type: "pointerdown", button: 0, activeTool: "comment", clientX: 12, clientY: 34 })
+    );
+    expect(action).toEqual({ kind: "drop-comment", clientX: 12, clientY: 34 });
+  });
+
+  test("comment tool + shift+click → drop-comment (modifier ignored for now)", () => {
+    const action = classify(
+      base({ type: "pointerdown", button: 0, activeTool: "comment", shiftKey: true })
+    );
+    expect(action.kind).toBe("drop-comment");
+  });
+
+  test("hand tool + bare click → no-op (viewport-controller claims the drag)", () => {
+    const action = classify(
+      base({ type: "pointerdown", button: 0, activeTool: "hand" })
+    );
+    expect(action.kind).toBe("no-op");
+  });
+
+  test("hand tool + cmd+click → still no-op (no select in hand mode)", () => {
+    const action = classify(
+      base({ type: "pointerdown", button: 0, activeTool: "hand", metaKey: true })
+    );
+    expect(action.kind).toBe("no-op");
+  });
+});
+
+describe("input-router / contextmenu event", () => {
+  test("always opens menu + carries cursor coords", () => {
+    const action = classify(
+      base({ type: "contextmenu", clientX: 77, clientY: 88 })
+    );
+    expect(action).toEqual({ kind: "context-menu", clientX: 77, clientY: 88 });
+  });
+});
+
+describe("input-router / keydown — tool letters", () => {
+  test("V → tool move", () => {
+    const action = classify(base({ type: "keydown", key: "v" }));
+    expect(action).toEqual({ kind: "tool", tool: "move" });
+  });
+
+  test("uppercase V (Shift held during letter)", () => {
+    const action = classify(base({ type: "keydown", key: "V" }));
+    expect(action).toEqual({ kind: "tool", tool: "move" });
+  });
+
+  test("H → tool hand", () => {
+    expect(classify(base({ type: "keydown", key: "h" }))).toEqual({
+      kind: "tool",
+      tool: "hand",
+    });
+  });
+
+  test("C → tool comment", () => {
+    expect(classify(base({ type: "keydown", key: "c" }))).toEqual({
+      kind: "tool",
+      tool: "comment",
+    });
+  });
+
+  test("Escape → escape action", () => {
+    expect(classify(base({ type: "keydown", key: "Escape" }))).toEqual({
+      kind: "escape",
+    });
+  });
+
+  test("Cmd+C with modifier → no-op (browser copy / viewport-controller)", () => {
+    const action = classify(base({ type: "keydown", key: "c", metaKey: true }));
+    expect(action.kind).toBe("no-op");
+  });
+
+  test("Cmd+V with modifier → no-op", () => {
+    const action = classify(base({ type: "keydown", key: "v", metaKey: true }));
+    expect(action.kind).toBe("no-op");
+  });
+
+  test("Cmd+Escape → escape (cancels regardless of modifiers)", () => {
+    const action = classify(
+      base({ type: "keydown", key: "Escape", metaKey: true })
+    );
+    expect(action.kind).toBe("escape");
+  });
+
+  test("V in input field → no-op", () => {
+    const action = classify(base({ type: "keydown", key: "v", isEditable: true }));
+    expect(action.kind).toBe("no-op");
+  });
+
+  test("Other letters → no-op", () => {
+    expect(classify(base({ type: "keydown", key: "x" })).kind).toBe("no-op");
+    expect(classify(base({ type: "keydown", key: "Tab" })).kind).toBe("no-op");
+    expect(classify(base({ type: "keydown", key: "Enter" })).kind).toBe("no-op");
+  });
+});
+
+describe("input-router / isEditableTarget", () => {
+  test("null target → false", () => {
+    expect(isEditableTarget(null)).toBe(false);
+  });
+
+  test("plain div → false", () => {
+    const el = { tagName: "DIV", isContentEditable: false } as HTMLElement;
+    expect(isEditableTarget(el)).toBe(false);
+  });
+
+  test("INPUT → true", () => {
+    const el = { tagName: "INPUT", isContentEditable: false } as HTMLElement;
+    expect(isEditableTarget(el)).toBe(true);
+  });
+
+  test("TEXTAREA → true", () => {
+    const el = { tagName: "TEXTAREA", isContentEditable: false } as HTMLElement;
+    expect(isEditableTarget(el)).toBe(true);
+  });
+
+  test("contentEditable=true → true", () => {
+    const el = { tagName: "DIV", isContentEditable: true } as HTMLElement;
+    expect(isEditableTarget(el)).toBe(true);
+  });
+});

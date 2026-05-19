@@ -80,6 +80,9 @@ import {
   type RefObject,
 } from "react";
 
+import { CanvasShell } from "./canvas-shell.tsx";
+import { ToolProvider, useToolModeOptional } from "./use-tool-mode.tsx";
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Module constants
 
@@ -157,7 +160,7 @@ button.dc-artboard-label {
   width: 100%;
 }
 button.dc-artboard-label:focus-visible { outline: 2px solid var(--accent, #d63b1f); outline-offset: -2px; }
-.dc-canvas .dc-artboard[aria-current="true"] { box-shadow: 6px 6px 0 var(--fg-0, #2a2520), 0 0 0 2px var(--accent, #d63b1f); }
+/* Active-artboard ring is in canvas-shell HALO_CSS (subtle 1 px tint). */
 `.trim();
 
 function ensureEngineStyles(): void {
@@ -389,6 +392,14 @@ export interface ViewportControllerOptions {
    * artboard list. Optional — keyboard jumps no-op when omitted.
    */
   jumpTargets?: ArtboardRect[];
+  /**
+   * Phase 4.1 hand-tool support. When this predicate returns `true`, bare
+   * left-button pointerdown initiates a pan drag (no Space required). The
+   * predicate is read per-event so the consumer can return the live tool
+   * state. Omit / return `false` to keep the Phase-4 behavior (drag only
+   * with Space or middle-mouse).
+   */
+  isPanDragActive?: () => boolean;
 }
 
 export interface ViewportControllerHandle {
@@ -437,7 +448,9 @@ function fitRectIntoHost(rect: ArtboardRect, hostEl: HTMLElement, pad = 24): Vie
 export function useViewportController(
   opts: ViewportControllerOptions
 ): ViewportControllerHandle {
-  const { hostRef, worldRef, computeFit: computeFitFn, getInitial, onSettle, jumpTargets } = opts;
+  const { hostRef, worldRef, computeFit: computeFitFn, getInitial, onSettle, jumpTargets, isPanDragActive } = opts;
+  const isPanDragActiveRef = useRef<(() => boolean) | undefined>(isPanDragActive);
+  isPanDragActiveRef.current = isPanDragActive;
 
   // Canonical viewport in a ref — synchronous, drives the world transform.
   const vpRef = useRef<ViewportState>({ x: 0, y: 0, zoom: 1 });
@@ -722,7 +735,12 @@ export function useViewportController(
     const onPointerDown = (e: PointerEvent) => {
       const isMiddle = e.button === 1;
       const isLeftWithSpace = e.button === 0 && spaceHeld.current;
-      if (!isMiddle && !isLeftWithSpace) return;
+      // Phase 4.1 hand tool: bare left-button initiates pan when the consumer
+      // signals hand-mode via `isPanDragActive`. Read per-event so the live
+      // tool state controls the gate.
+      const isLeftWithHandTool =
+        e.button === 0 && !spaceHeld.current && !!isPanDragActiveRef.current?.();
+      if (!isMiddle && !isLeftWithSpace && !isLeftWithHandTool) return;
       e.preventDefault();
       try {
         host.setPointerCapture(e.pointerId);
@@ -893,7 +911,7 @@ function isEditableTarget(t: EventTarget | null): boolean {
 // can issue pan/zoom operations.
 const ControllerContext = createContext<ViewportControllerHandle | null>(null);
 
-function useViewportControllerContext(): ViewportControllerHandle | null {
+export function useViewportControllerContext(): ViewportControllerHandle | null {
   return useContext(ControllerContext);
 }
 
@@ -906,7 +924,26 @@ interface DesignCanvasProps {
   controls?: { minimap?: boolean; toolbar?: boolean };
 }
 
-export function DesignCanvas({ children, controls }: DesignCanvasProps) {
+/**
+ * DesignCanvas mounts the universal canvas input grammar (hover preview,
+ * Cmd-click select, multi-select, tool modes V/H/C, right-click menu) for
+ * every TSX canvas. There's no opt-out — the legacy Cmd-only inspector
+ * overlay path was removed in favor of one consistent affordance everywhere.
+ *
+ * `ToolProvider` lives above `DesignCanvasInner` so the viewport
+ * controller's `isPanDragActive` predicate can read the live tool state
+ * via `useToolModeOptional` (hand-mode bare-drag pan).
+ */
+export function DesignCanvas(props: DesignCanvasProps) {
+  return (
+    <ToolProvider>
+      <DesignCanvasInner {...props} />
+    </ToolProvider>
+  );
+}
+DesignCanvas.displayName = "DesignCanvas";
+
+function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
   ensureEngineStyles();
 
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -951,6 +988,14 @@ export function DesignCanvas({ children, controls }: DesignCanvasProps) {
     patchCanvasMeta({ viewport: v });
   }, []);
 
+  const toolModeCtx = useToolModeOptional();
+  const toolRef = useRef(toolModeCtx?.tool ?? "move");
+  toolRef.current = toolModeCtx?.tool ?? "move";
+  const isPanDragActive = useCallback(
+    () => toolRef.current === "hand",
+    []
+  );
+
   const controller = useViewportController({
     hostRef,
     worldRef,
@@ -958,6 +1003,7 @@ export function DesignCanvas({ children, controls }: DesignCanvasProps) {
     getInitial,
     onSettle,
     jumpTargets: artboards,
+    isPanDragActive,
   });
 
   const rectById = useMemo(() => {
@@ -1014,21 +1060,25 @@ export function DesignCanvas({ children, controls }: DesignCanvasProps) {
   const showMiniMap = controls?.minimap !== false;
   const showToolbar = controls?.toolbar !== false;
 
+  const inner = (
+    <div className="dc-canvas" ref={hostRef}>
+      <div className="dc-world" ref={worldRef} style={worldStyle}>
+        {children}
+      </div>
+      {showMiniMap ? <DCMiniMap /> : null}
+      {showToolbar ? <DCZoomToolbar /> : null}
+    </div>
+  );
+
   return (
     <WorldContext.Provider value={ctxValue}>
       <ControllerContext.Provider value={controller}>
-        <div className="dc-canvas" ref={hostRef}>
-          <div className="dc-world" ref={worldRef} style={worldStyle}>
-            {children}
-          </div>
-          {showMiniMap ? <DCMiniMap /> : null}
-          {showToolbar ? <DCZoomToolbar /> : null}
-        </div>
+        <CanvasShell hostRef={hostRef}>{inner}</CanvasShell>
       </ControllerContext.Provider>
     </WorldContext.Provider>
   );
 }
-DesignCanvas.displayName = "DesignCanvas";
+DesignCanvasInner.displayName = "DesignCanvasInner";
 
 export function DCSection({
   id,

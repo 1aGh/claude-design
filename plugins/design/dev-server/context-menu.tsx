@@ -1,0 +1,343 @@
+/**
+ * @file       context-menu.tsx — Phase 4.1 right-click context menu
+ * @scope      plugins/design/dev-server/context-menu.tsx
+ * @purpose    Floating, context-aware right-click menu. The router calls
+ *             `openContextMenu({ clientX, clientY, target })`; the menu
+ *             resolves the section list via the ContextRegistry and renders
+ *             items with right-aligned shortcut hints. Pattern prior:
+ *             `audience-pro/components-toast-menu.html` (hairline border,
+ *             mono shortcut hints, sep lines).
+ *
+ * Targeting taxonomy:
+ *   - element        — cursor is over a `[data-cd-id]` descendant
+ *   - artboard-chrome — cursor over an artboard's label/border (`[data-dc-screen]`)
+ *   - world           — cursor on empty canvas background
+ *   - overlay         — cursor over MiniMap / ZoomToolbar / ToolPalette
+ *                       (no menu — bubble through)
+ *
+ * Items registered for each target type live in the default registry; consumers
+ * can extend via `<ContextMenuProvider extra={...}>` (Phase 5+).
+ */
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Types
+
+export type ContextTargetKind = "element" | "artboard-chrome" | "world" | "overlay";
+
+export interface ContextTarget {
+  kind: ContextTargetKind;
+  /** Resolved DOM element under cursor (raw hit). */
+  el: Element | null;
+  /** Stable `data-cd-id` if the hit is inside a TSX-pipeline-stamped subtree. */
+  cdId: string | null;
+  /** Owning artboard id (`data-dc-screen`). */
+  artboardId: string | null;
+  /** Viewport coords for the menu position. */
+  clientX: number;
+  clientY: number;
+}
+
+export interface MenuItem {
+  id: string;
+  label: string;
+  /** Right-aligned shortcut hint (e.g. `⌘C`, `⌫`). */
+  shortcut?: string;
+  destructive?: boolean;
+  disabled?: boolean;
+  onSelect: (target: ContextTarget) => void;
+}
+
+export type MenuSection = MenuItem[];
+
+export type ContextRegistry = Record<ContextTargetKind, MenuSection[]>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Default registry. Item callbacks intentionally use `console.warn` for the
+// un-implemented affordances; T6 + later phases wire real handlers in.
+
+function noop(name: string) {
+  return () => {
+    if (typeof console !== "undefined") {
+      console.warn(`[context-menu] TODO: ${name}`);
+    }
+  };
+}
+
+const DEFAULT_REGISTRY: ContextRegistry = {
+  element: [
+    [
+      { id: "add-comment", label: "Add comment", shortcut: "C", onSelect: noop("add-comment") },
+      { id: "copy-css", label: "Copy CSS", shortcut: "⌘⇧C", onSelect: noop("copy-css") },
+      { id: "copy-id", label: "Copy data-cd-id", onSelect: noop("copy-id") },
+      { id: "inspect", label: "Inspect", shortcut: "⌥I", onSelect: noop("inspect") },
+    ],
+    [
+      { id: "hide", label: "Hide", shortcut: "⌘⇧H", onSelect: noop("hide") },
+      { id: "lock", label: "Lock", shortcut: "⌘⇧L", onSelect: noop("lock") },
+    ],
+  ],
+  "artboard-chrome": [
+    [
+      { id: "rename", label: "Rename", shortcut: "↵", onSelect: noop("rename-artboard") },
+      { id: "duplicate", label: "Duplicate", shortcut: "⌘D", onSelect: noop("duplicate-artboard") },
+    ],
+    [
+      { id: "fit-one", label: "Fit just this artboard", onSelect: noop("fit-one") },
+      { id: "reset-pos", label: "Reset position", onSelect: noop("reset-artboard-pos") },
+    ],
+  ],
+  world: [
+    [
+      { id: "paste-artboard", label: "Paste artboard", shortcut: "⌘V", onSelect: noop("paste-artboard") },
+      { id: "fit-view", label: "Fit to view", shortcut: "1", onSelect: noop("fit-view") },
+      { id: "reset-view", label: "Reset view", shortcut: "⌘0", onSelect: noop("reset-view") },
+    ],
+  ],
+  overlay: [],
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Provider / context
+
+interface ContextMenuValue {
+  open: (target: ContextTarget) => void;
+  close: () => void;
+  registry: ContextRegistry;
+}
+
+const ContextMenuContext = createContext<ContextMenuValue | null>(null);
+
+interface InternalState {
+  target: ContextTarget | null;
+}
+
+const MENU_CSS = `
+.dc-context-menu {
+  position: fixed;
+  z-index: 7;
+  background: var(--bg-1, #fff);
+  border: 1px solid var(--border-default, rgba(0,0,0,0.12));
+  border-radius: var(--radius-md, 6px);
+  box-shadow: var(--shadow-md, 0 8px 24px rgba(0,0,0,0.12));
+  padding: 4px;
+  min-width: 220px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--fg-0, rgba(20,15,10,0.92));
+  user-select: none;
+}
+.dc-context-menu .dc-menu-sep {
+  height: 1px;
+  background: var(--border-subtle, rgba(0,0,0,0.08));
+  margin: 4px -4px;
+}
+.dc-context-menu .dc-menu-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+.dc-context-menu .dc-menu-item:hover,
+.dc-context-menu .dc-menu-item:focus-visible {
+  background: var(--bg-3, rgba(0,0,0,0.05));
+  outline: none;
+}
+.dc-context-menu .dc-menu-item[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.dc-context-menu .dc-menu-item.is-destructive:hover,
+.dc-context-menu .dc-menu-item.is-destructive:focus-visible {
+  background: var(--status-error, #c0392b);
+  color: var(--accent-fg, #fff);
+}
+.dc-context-menu .dc-menu-shortcut {
+  color: var(--fg-2, rgba(40,30,20,0.55));
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+`.trim();
+
+function ensureMenuStyles(): void {
+  if (typeof document === "undefined") return;
+  if (document.getElementById("dc-context-menu-css")) return;
+  const s = document.createElement("style");
+  s.id = "dc-context-menu-css";
+  s.textContent = MENU_CSS;
+  document.head.appendChild(s);
+}
+
+export function ContextMenuProvider({
+  children,
+  registry = DEFAULT_REGISTRY,
+}: {
+  children: ReactNode;
+  registry?: ContextRegistry;
+}) {
+  const [state, setState] = useState<InternalState>({ target: null });
+
+  const open = useCallback((target: ContextTarget) => {
+    if (target.kind === "overlay") return;
+    setState({ target });
+  }, []);
+  const close = useCallback(() => setState({ target: null }), []);
+
+  const value = useMemo<ContextMenuValue>(
+    () => ({ open, close, registry }),
+    [open, close, registry]
+  );
+
+  return (
+    <ContextMenuContext.Provider value={value}>
+      {children}
+      {state.target ? (
+        <ContextMenuView
+          target={state.target}
+          sections={registry[state.target.kind] ?? []}
+          onClose={close}
+        />
+      ) : null}
+    </ContextMenuContext.Provider>
+  );
+}
+
+export function useContextMenu(): ContextMenuValue {
+  const ctx = useContext(ContextMenuContext);
+  if (!ctx) {
+    throw new Error("useContextMenu must be used inside <ContextMenuProvider>");
+  }
+  return ctx;
+}
+
+export function useContextMenuOptional(): ContextMenuValue | null {
+  return useContext(ContextMenuContext);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// View
+
+function ContextMenuView({
+  target,
+  sections,
+  onClose,
+}: {
+  target: ContextTarget;
+  sections: MenuSection[];
+  onClose: () => void;
+}) {
+  ensureMenuStyles();
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [pos, setPos] = useState<{ x: number; y: number }>({
+    x: target.clientX,
+    y: target.clientY,
+  });
+
+  // Reposition if menu would overflow the viewport.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let nx = target.clientX;
+    let ny = target.clientY;
+    if (nx + r.width > vw - 8) nx = Math.max(8, vw - r.width - 8);
+    if (ny + r.height > vh - 8) ny = Math.max(8, vh - r.height - 8);
+    if (nx !== pos.x || ny !== pos.y) setPos({ x: nx, y: ny });
+    // Focus first menu item for keyboard nav.
+    const firstBtn = el.querySelector<HTMLButtonElement>("button.dc-menu-item:not([disabled])");
+    firstBtn?.focus();
+    // Dismiss on outside-click / Esc / scroll.
+    const onDocPointer = (e: PointerEvent) => {
+      if (!el.contains(e.target as Node)) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const items = Array.from(
+          el.querySelectorAll<HTMLButtonElement>("button.dc-menu-item:not([disabled])")
+        );
+        if (items.length === 0) return;
+        const idx = items.findIndex((b) => b === document.activeElement);
+        const nextIdx =
+          e.key === "ArrowDown"
+            ? (idx + 1) % items.length
+            : (idx - 1 + items.length) % items.length;
+        items[nextIdx]?.focus();
+      }
+    };
+    const onScroll = () => onClose();
+    document.addEventListener("pointerdown", onDocPointer, true);
+    document.addEventListener("keydown", onKey, true);
+    document.addEventListener("scroll", onScroll, true);
+    window.addEventListener("blur", onClose);
+    return () => {
+      document.removeEventListener("pointerdown", onDocPointer, true);
+      document.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("blur", onClose);
+    };
+  }, [target.clientX, target.clientY, onClose, pos.x, pos.y]);
+
+  return (
+    <div
+      ref={ref}
+      className="dc-context-menu"
+      role="menu"
+      style={{ left: pos.x, top: pos.y }}
+    >
+      {sections.map((section, si) => (
+        <div key={si} role="group">
+          {si > 0 ? <div className="dc-menu-sep" aria-hidden="true" /> : null}
+          {section.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="menuitem"
+              disabled={item.disabled}
+              className={
+                "dc-menu-item" + (item.destructive ? " is-destructive" : "")
+              }
+              onClick={() => {
+                if (item.disabled) return;
+                item.onSelect(target);
+                onClose();
+              }}
+            >
+              <span>{item.label}</span>
+              {item.shortcut ? (
+                <span className="dc-menu-shortcut">{item.shortcut}</span>
+              ) : null}
+            </button>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
