@@ -28,6 +28,12 @@ export const RUNTIME_PACKAGES = [
   'react-dom/client',
   'react/jsx-runtime',
   'react/jsx-dev-runtime',
+  // Phase 4 — Pixi.js v8 available as a per-iframe runtime bundle. Lazy-built
+  // on first request; canvases that don't `import 'pixi.js'` never pay the
+  // ~500 KB bundle cost. Reserved for future snapshot-to-texture rendering
+  // (DDR-024 deferred path) and any high-end designer-tool overlays a canvas
+  // wants to draw via WebGL.
+  'pixi.js',
 ] as const;
 
 export type RuntimePackage = (typeof RUNTIME_PACKAGES)[number];
@@ -63,9 +69,13 @@ async function namedExportsFor(pkg: RuntimePackage): Promise<readonly string[]> 
 /**
  * URL slug used in `/_canvas-runtime/<slug>.js`. Maps package specifier to a
  * filename-safe form. Inverse of {@link packageForSlug}.
+ *
+ * Slashes → `_`. Dots in package names → `-` (so `pixi.js` → `pixi-js` and
+ * the trailing `.js` extension on the URL stays unambiguous; without this,
+ * `packageForSlug` would strip `.js` and resolve `pixi.js.js` → `pixi`).
  */
 export function slugFor(pkg: RuntimePackage): string {
-  return pkg.replace(/\//g, '_');
+  return pkg.replace(/\//g, '_').replace(/\./g, '-');
 }
 
 export function packageForSlug(slug: string): RuntimePackage | null {

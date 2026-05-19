@@ -102,7 +102,15 @@ const ENGINE_CSS = `
   background-size: 24px 24px;
 }
 .dc-canvas:focus { outline: none; }
-.dc-world { position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform; }
+.dc-world {
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* CSS zoom drives the scale; transform handles pan. transform-origin is
+     irrelevant under zoom (zoom anchors top-left of the box). will-change
+     hints to the compositor that this layer changes often. */
+  will-change: transform;
+}
 .dc-section-collapsed { display: contents; }
 
 .dc-canvas .dc-artboard {
@@ -444,10 +452,18 @@ export function useViewportController(
   jumpTargetsRef.current = jumpTargets;
 
   // worldRef is stable across renders — read inside callbacks lazily, no dep.
+  // Use CSS `zoom` (not `transform: scale`) for the scale dimension. `zoom`
+  // re-flows layout at the new size so the browser re-rasterizes text at the
+  // target resolution — text stays crisp at any zoom level. `transform: scale`
+  // upscales a cached layer, which produces the pixelation users see at
+  // zoom > ~1.5. CSS `zoom` is supported in Chrome / Safari / Edge (always)
+  // and Firefox 126+; for a dev-server design tool that's full coverage.
   const writeTransform = useCallback((v: ViewportState) => {
     const el = worldRef.current;
     if (!el) return;
-    el.style.transform = `translate(${v.x}px, ${v.y}px) scale(${v.zoom})`;
+    // translate operates on the post-zoom box → values stay in screen pixels.
+    el.style.transform = `translate(${v.x}px, ${v.y}px)`;
+    el.style.zoom = String(v.zoom);
     el.style.visibility = "visible";
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -772,29 +788,46 @@ export function useViewportController(
     };
 
     host.tabIndex = host.tabIndex >= 0 ? host.tabIndex : 0; // focusable for kbd
-    host.addEventListener("wheel", onWheel, { passive: false });
+
+    // Wheel listener lives on the document at the CAPTURE phase. Bubble-phase
+    // on `host` is too late — an inner scrollable element (e.g. CSS
+    // `overflow: auto` somewhere in an artboard's content tree) consumes the
+    // wheel first and the bubble never reaches us, which is why
+    // shift+wheel-for-horizontal-pan would silently drop on some pages.
+    // We still check the event target is inside this canvas before acting,
+    // so wheels happening in shell chrome or another iframe pass through.
+    const doc = host.ownerDocument || document;
+    const captureWheel = (e: WheelEvent) => {
+      if (!host.contains(e.target as Node)) return;
+      onWheel(e);
+    };
+    const captureKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept keyboard events from input fields anywhere.
+      if (isEditableTarget(e.target)) return;
+      onKeyDown(e);
+    };
+    const captureKeyUp = (e: KeyboardEvent) => onKeyUp(e);
+
+    doc.addEventListener("wheel", captureWheel, { passive: false, capture: true });
+    doc.addEventListener("keydown", captureKeyDown, { capture: true });
+    doc.addEventListener("keyup", captureKeyUp, { capture: true });
     host.addEventListener("pointerenter", onPointerEnter);
     host.addEventListener("pointerdown", onPointerDown);
     host.addEventListener("pointermove", onPointerMove);
     host.addEventListener("pointerup", endPan);
     host.addEventListener("pointercancel", endPan);
-    // Keyboard listeners on window so the iframe's <body> doesn't have to be
-    // the focus target every time — pointerenter focuses the host element
-    // (above) which gives this iframe's contentWindow keyboard focus.
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", onKeyUp);
 
     return () => {
-      host.removeEventListener("wheel", onWheel);
+      doc.removeEventListener("wheel", captureWheel, { capture: true } as EventListenerOptions);
+      doc.removeEventListener("keydown", captureKeyDown, { capture: true } as EventListenerOptions);
+      doc.removeEventListener("keyup", captureKeyUp, { capture: true } as EventListenerOptions);
       host.removeEventListener("pointerenter", onPointerEnter);
       host.removeEventListener("pointerdown", onPointerDown);
       host.removeEventListener("pointermove", onPointerMove);
       host.removeEventListener("pointerup", endPan);
       host.removeEventListener("pointercancel", endPan);
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", onKeyUp);
     };
-  }, [hostRef, panBy, zoomAt, fit, reset, zoomIn, zoomOut, jumpTo]);
+  }, [hostRef]);
 
   // Final settle on unmount — drop pending timers, flush onSettle synchronously
   // so persistence-on-close (T5) still records the last viewport.
