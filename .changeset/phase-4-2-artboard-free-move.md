@@ -19,12 +19,14 @@ Artboards on the infinite canvas are now spatially editable. Phase 4 shipped the
 
 **New modules.** `use-snap-guides.tsx` (pure snap math, 20 table tests) · `use-artboard-drag.tsx` (state-machine reducer + DOM hook, 20 unit tests) · `SnapGuideOverlay` export from `canvas-lib.tsx` mounted by `CanvasShell`.
 
-**Bug fixes (caught during visual smoke).**
+**Bug fixes (caught during visual smoke + code review + post-merge dogfooding).**
 - The reader in `DesignCanvasInner.artboards` `useMemo` previously replaced default-grid entries wholesale with meta entries. Once 4.2 writers started emitting position-only `{ id, x, y }`, the replace left `w` / `h` undefined → artboards rendered at 0×0. Reader now merges meta over defaults instead of replacing.
 - The drag hook used to call `setPointerCapture` on the outer article on pointerdown. That redirected the synthetic `click` event to the captured ancestor, breaking the label button's `onClick` → Phase 4 pan-to-focus regression. Capture removed; global window-level pointermove/up listeners (capture: true) carry the drag without it.
+- `selectedIds` in the drag hook fell back from `Selection.id` (a child element's `data-cd-id`) to `Selection.artboardId`. That pulled stray child cd-ids into the multi-drag identity set and silently disabled multi-artboard drag. New `selectionsToArtboardIds` helper now keys on `artboardId` only; covered by a regression test.
+- Drag commits PATCH'd the server but the local React state stayed frozen — users had to switch canvases to "see" the dropped artboard at its new position. `DesignCanvasInner.artboards` converted from `useMemo([seeds])` to `useState` with optimistic update on commit. Drop now reflects instantly in the DOM without an iframe reload.
 
 **Handoff regression-clean.** Drag + snap exports (`useArtboardDrag`, `SnapGuideOverlay`, `computeSnap`, `useSnapGuides`, `DragStateContext`) never travel into a handed-off registry item — the static-frame overrides for `DesignCanvas` / `DCArtboard` / `DCSection` break the transitive chain, pinned by 2 new tests in `handoff-static-frames.test.ts`.
 
 **Schema.** `canvas-meta.schema.json#layout.artboards[].required` narrows from `["id","x","y","w","h"]` to `["id","x","y"]`. `w` / `h` remain in `properties` as legacy read-only fields.
 
-`bun test` 235/235, 0 fail (185 baseline + 40 new across snap + drag + 1 canvas-meta-api + 2 handoff). `bunx tsc --noEmit` clean of new errors. Scenario `canvas-artboard-drag` authored at `.ai/scenarios/canvas-format-tsx/canvas-artboard-drag/spec.md`; manual web-desktop end-to-end smoke confirmed drag → snap → drop → reload round-trip with pin artboard at `{x: 1200, y: 1200}` post-reload.
+`bun test` 239/239, 0 fail (baseline + 44 new across snap + drag + 1 canvas-meta-api + 2 handoff). `bunx tsc --noEmit` clean of new errors. Scenario `canvas-artboard-drag` authored at `.ai/scenarios/canvas-format-tsx/canvas-artboard-drag/spec.md`; manual web-desktop end-to-end smoke confirmed drag → snap → drop → reload round-trip with pin artboard at `{x: 1200, y: 1200}` post-reload, plus the post-merge instant-update fix (pin moved from `(0, 900)` → `(1414, 1400)` with DOM reflecting the change immediately on pointerup, no reload).
