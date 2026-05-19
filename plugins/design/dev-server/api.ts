@@ -108,6 +108,9 @@ export interface Api {
   // Canvas meta sidecar (Phase 4 T5 — .design/ui/<slug>.meta.json)
   loadCanvasMeta(file: string): Promise<Record<string, unknown> | null>;
   patchCanvasMeta(file: string, patch: Record<string, unknown>): Promise<Record<string, unknown> | null>;
+  // Annotations sidecar (Phase 5 — .design/<slug>.annotations.svg)
+  loadAnnotations(file: string): Promise<string | null>;
+  saveAnnotations(file: string, svg: string): Promise<boolean>;
   // Aggregate data
   buildIndexData(): Promise<unknown>;
   buildSystemData(): Promise<unknown>;
@@ -346,6 +349,38 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
     next.last_modified = new Date().toISOString();
     await Bun.write(metaAbs, JSON.stringify(next, null, 2));
     return next;
+  }
+
+  // ---------- Annotations sidecar (Phase 5) ----------
+  //
+  // Each canvas keeps a single `.annotations.svg` file under `<designRoot>/`
+  // named by the canonical `fileSlug()`. The client posts the full SVG string
+  // on every stroke commit; the server overwrites the file. SVG is bounded at
+  // 1 MB (rejects larger bodies) — well above realistic annotation sizes for
+  // hundreds of strokes but small enough that a malicious POST can't fill the
+  // disk in one round-trip.
+
+  function annotationsPath(file: string): string {
+    return path.join(paths.designRoot, `${fileSlug(file)}.annotations.svg`);
+  }
+
+  async function loadAnnotations(file: string): Promise<string | null> {
+    try {
+      return await Bun.file(annotationsPath(file)).text();
+    } catch {
+      return null;
+    }
+  }
+
+  async function saveAnnotations(file: string, svg: string): Promise<boolean> {
+    if (typeof svg !== 'string') return false;
+    if (svg.length > 1024 * 1024) return false;
+    // Cheap content gate — must look like an <svg> document. Avoids accidental
+    // writes of arbitrary blobs through this endpoint. The client controls the
+    // content fully, so we don't try to sanitize beyond a tag check.
+    if (!/^\s*<svg[\s>]/i.test(svg)) return false;
+    await Bun.write(annotationsPath(file), svg);
+    return true;
   }
 
   async function saveCanvasState(file: string, state: Record<string, unknown>) {
@@ -628,6 +663,8 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
     saveCanvasState,
     loadCanvasMeta,
     patchCanvasMeta,
+    loadAnnotations,
+    saveAnnotations,
     buildIndexData,
     buildSystemData,
   };

@@ -102,3 +102,17 @@ Toolbar with native `<svg>` drawing (minimal subset of tldraw's pattern — no e
 - `plugins/design/dev-server/test/use-tool-mode.test.tsx`
 
 **Scenario coverage gap:** `canvas-annotations` scenario not yet authored — flag for `/flow:scenario new canvas-annotations` before `/flow:done`.
+
+---
+
+## Retro (2026-05-20, /flow:done)
+
+- **What worked.** Scoping Phase 5 down to draw-only (after the original layers + multi-DS + in-canvas-CSS extraction in 2026-05-13) kept the change focused: one new file (`annotations-layer.tsx`), three modified, one new endpoint, six task slices. All tasks shipped in a single execute pass; no Edit-Verify Loop iterations needed beyond the one self-inflicted test regression. The existing Phase 4.1 tool-mode + input-router architecture absorbed the new tools cleanly — the `Tool` union grew, `isAnnotationTool()` slotted next to it, and the SVG layer dropped in next to `SnapGuideOverlay` / `ToolPalette` without touching `useViewportController`.
+
+- **What didn't.** Three drag-bys surfaced during /validate that should have been caught in /execute. (1) Biome compliance was never run during execute — 45 errors total on changed files, including pre-existing carry-overs. /validate fixed the new ones (13 `noNonNullAssertion`, 2 a11y) by refactoring `PALETTE` to a tuple, destructuring pen loops, and replacing the hand-rolled `role="dialog"` `<div>` with a native `<dialog>` opened via `.showModal()` + `::backdrop` styling. (2) The cross-platform scenario wasn't authored during execute — /validate hard-failed on it; scenario was written + smoke-piloted post-hoc. (3) Two harness limitations surfaced only during the smoke: dispatched `KeyboardEvent` on iframe `document` doesn't reach capture-phase listeners; React props lag one render after `.click()`-driven tool switches, so dispatched pointerdowns run the previous tool's handler. Neither is a product bug, but both block easy automation — the unit tests carried the load.
+
+- **What to change next time.** (a) Add `bunx biome check` to the per-task `/flow:utils-verify` loop, not just at /validate — catches lint regressions while context is still warm. (b) Author the scenario file BEFORE the last task, not after — it doubles as an acceptance spec the implementation can target. (c) Add `data-testid` attributes upfront on any new chrome (swatches, toggles, dialogs) so the scenario harness doesn't depend on class names that the next critic agent might rename. (d) For dev-server features that need keyboard input testing, expose a programmatic dev-only API (`window.__mdccAnnotations.setVisible(false)` etc.) so smoke pilots don't fight `dispatchEvent` quirks.
+
+- **Phase 5.1 entry point.** The known limitations (pan/zoom blocked in draw mode, no selection / restyle, missing ellipse / text / fill / thickness, inert menubar) are already scoped in `.ai/plans/phase-5.1-annotations-figjam.md` (12 tasks). The pan/zoom regression guard is captured as step 6 in the canvas-annotations scenario — Phase 5.1's first task flips that assertion.
+
+- **What surprised us.** The dialog-element refactor (last-minute biome fix) actually IMPROVED accessibility — native `<dialog>` brings free focus trap + Esc dismiss + top-layer stacking that the original `role="dialog"` `<div>` faked. Worth the diff.

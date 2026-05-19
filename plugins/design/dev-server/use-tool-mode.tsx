@@ -39,6 +39,14 @@ export const DEFAULT_TOOLS: readonly ToolDescriptor[] = Object.freeze([
   { id: "move", label: "Move", shortcut: "V", cursor: "default" },
   { id: "hand", label: "Hand", shortcut: "H", cursor: "grab" },
   { id: "comment", label: "Comment", shortcut: "C", cursor: "crosshair" },
+  // Phase 5 — draw / annotation tools. Cursors stay as `crosshair` for pen /
+  // rect / arrow (the pen-tip glyph is reserved for the system text caret).
+  // Eraser uses `cell` as the closest cross-browser substitute for a rubber
+  // affordance (no native rubber cursor exists).
+  { id: "pen", label: "Pen", shortcut: "B", cursor: "crosshair" },
+  { id: "rect", label: "Rect", shortcut: "R", cursor: "crosshair" },
+  { id: "arrow", label: "Arrow", shortcut: "A", cursor: "crosshair" },
+  { id: "eraser", label: "Eraser", shortcut: "E", cursor: "cell" },
 ]);
 
 interface ToolContextValue {

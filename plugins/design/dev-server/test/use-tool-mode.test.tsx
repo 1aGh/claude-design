@@ -12,9 +12,25 @@ import {
 } from "../use-tool-mode.tsx";
 
 describe("use-tool-mode / static", () => {
-  test("DEFAULT_TOOLS exposes V/H/C with shortcuts", () => {
-    expect(DEFAULT_TOOLS.map((t) => t.id)).toEqual(["move", "hand", "comment"]);
-    expect(DEFAULT_TOOLS.map((t) => t.shortcut)).toEqual(["V", "H", "C"]);
+  test("DEFAULT_TOOLS exposes V/H/C + Phase 5 draw set B/R/A/E", () => {
+    expect(DEFAULT_TOOLS.map((t) => t.id)).toEqual([
+      "move",
+      "hand",
+      "comment",
+      "pen",
+      "rect",
+      "arrow",
+      "eraser",
+    ]);
+    expect(DEFAULT_TOOLS.map((t) => t.shortcut)).toEqual([
+      "V",
+      "H",
+      "C",
+      "B",
+      "R",
+      "A",
+      "E",
+    ]);
   });
 
   test("DEFAULT_TOOLS is immutable (Object.freeze applied)", () => {
@@ -26,6 +42,10 @@ describe("use-tool-mode / static", () => {
     expect(byId.move).toBe("default");
     expect(byId.hand).toBe("grab");
     expect(byId.comment).toBe("crosshair");
+    expect(byId.pen).toBe("crosshair");
+    expect(byId.rect).toBe("crosshair");
+    expect(byId.arrow).toBe("crosshair");
+    expect(byId.eraser).toBe("cell");
   });
 });
 
