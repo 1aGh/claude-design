@@ -4,11 +4,107 @@
 
 **Workflow:** feature-delivery — md-claude v1.0 roadmap
 **Phase:** Phase 3.6.1 — canvas envelope hygiene + reusable canvas-lib + HMR + DS specimens
-**Status:** planned (awaiting `/flow:execute`)
+**Status:** done
 **Started:** 2026-05-12
-**Updated:** 2026-05-18
-**Active task:** Phase 3.6 CLOSED (shipped with documented runtime follow-up); Phase 3.6.1 plan committed and ready to execute
-**Active plan:** `.ai/plans/phase-3.6.1-canvas-envelope-and-ds-specimens.md`
+**Updated:** 2026-05-19
+**Active task:** —
+**Active plan:** —
+
+## History
+
+| Date | Phase | Status | Note |
+| --- | --- | --- | --- |
+| 2026-05-19 | Phase 3.6.1 | done | canvas-lib + HMR + TSX specimens shipped; 38/38 specimen-render scenario PASS; DDR-022 + DDR-023 recorded. Archived: `.ai/plans/archive/phase-3.6.1-canvas-envelope-and-ds-specimens.md`. |
+
+## Phase 3.6.1 close-out (2026-05-19, /flow:done)
+
+- `/flow:validate` ran clean after one type-contract fix (`Inspect.injectInspectorOnly()` declaration) + 30 biome autofixes (1 pre-existing `while ((m = re.exec()))` carry-over).
+- New scenario `canvas-format-tsx/specimen-render-and-edit` (web-desktop, walks all 38 specimen TSXs) authored + piloted. First run caught **3 broken specimens** with unescaped `{` / `}` chars in JSX text content (`components-code-block`, `components-diff-view`, `type-mono`). Fixed via `{'{'}` / `{'}'}` escapes + `<pre>{\`...\`}</pre>` template wrap. Re-run: **38/38 PASS**.
+- DDR-022 (canvas-lib virtual module + inline-on-handoff) + DDR-023 (no html-to-jsx codemod, specimens are bare TSX) recorded.
+- Changeset authored (`@1agh/md-claude` minor, 0.13.1 → 0.14.0 on next `changeset version`).
+- Plan retro appended; plan archived to `.ai/plans/archive/`.
+- Commits: `5d9292e` (feat) + this STATE update.
+
+## Phase 3.6.1 visual-regression repair (2026-05-18, post-/validate)
+
+When the user opened the migrated specimens in the dev-server they reported widespread visual breakage. Live screenshot review confirmed three discrete failure modes; all fixed in this session:
+
+1. **Triple-chrome above specimen content.** The migrated specimens were wrapped in `<DesignCanvas><DCSection title="..."><DCArtboard label="..." width={0} height={0}>...</DCArtboard></DCSection></DesignCanvas>`. The DCSection's `<h2>` title strip + DCArtboard's `dc-artboard-label sku` SKU strip both rendered ABOVE the original `<header class="specimen-hd">` — three header rows where the original HTML had one.
+
+2. **`htmlFor` bleeding into prose.** The html-to-jsx codemod's attribute-rename regex (`\s([a-zA-Z-]...)(=...|(?=\s|/>|>))`) matched plain words in text content. The word "for" in sentences like "a library for the marketplace" got rewritten to `htmlFor`. Same risk class would have hit `readonly`, `disabled`, `checked`, `selected`, `hidden`, etc. — every boolean attribute name.
+
+3. **Sibling CSS dropped.** `import "./<slug>.css"` in specimen TSX produced a separate `.css` asset via Bun.build, but `buildCanvasModule()` only took `outputs[0]` (the JS entry-point) and discarded the rest. Specimens with bespoke per-file CSS (`ui_kits-desktop-showcase`, `motion`, `state-system`, `logo`, `iconography`, ...) rendered as unstyled text dumps in the browser.
+
+### Scope correction — user direction
+
+User explicitly stated `html-to-jsx` is unnecessary scaffolding: specimens should be authored as native TSX with no codemod layer at all. Phase 3.6.1's "specimens migration" track is **collapsed to a one-shot manual migration** — going forward, specimens are bare TSX written by hand or by sub-agents during DS bootstrap (per the updated SKILL.md sub-agent prompt). No `migrate-canvases.ts`, no `html-to-jsx.ts`.
+
+### Changes this session
+
+- **DELETED:** `plugins/design/dev-server/html-to-jsx.ts`, `plugins/design/dev-server/test/html-to-jsx.test.ts`, `plugins/design/dev-server/test/migrate-specimens.test.ts`, `scripts/migrate-canvases.ts`. Tests dropped from 149 → 123 (still ahead of Phase 3.6 baseline of 95).
+- **canvas-lib.tsx + template** — reverted the `width=0/height=0` auto-flow special case + `bare` DCSection prop. DCArtboard now ONLY renders fixed-px chrome (UI mocks); specimens never wrap themselves in it.
+- **Specimens stripped (`.design/system/project/preview/*.tsx`)** — 38 specimens hand-fixed: dropped the `<DesignCanvas><DCSection><DCArtboard>` envelope, replaced with bare `<><header class="specimen-hd">...</header><main class="specimen">...</main></>`. Also globally replaced `htmlFor ` → `for ` in prose text (left `htmlFor=`/`htmlFor={...}` in actual attribute positions). Carried out via a one-shot Bun script (deleted after run).
+- **canvas-build.ts** — `buildCanvasModule()` now collects every `kind: "asset"` CSS output from `Bun.build` and prepends a self-installing `<style data-canvas-css="bundled">` injector to the JS bundle. Idempotent per-slug; works under both module + hard HMR reloads.
+- **ds-specimen.tsx.template** — rewritten to scaffold bare TSX with `specimen-hd` + `<main class="specimen">` shape. No envelope.
+- **design-system/SKILL.md** — sub-agent prompt block flipped: specimens are bare TSX, NO `@mdcc/canvas-lib` import. UI mock canvases (Docs Site, Canvas Viewport, Smoke TSX) keep the envelope.
+
+### Visual verification (live dev-server, agent-browser)
+
+Started the Bun-based dev-server (`bun plugins/design/dev-server/server.ts`) — note that `bin/server-up.sh` boots the legacy `server.mjs` (zero-dep Node, no TSX pipeline). The Bun server is what wires the canvas-build pipeline + CSS injector.
+
+Captured screenshots of 38 specimens + 3 UI canvases. Sampled and confirmed visually correct:
+
+- ✓ colors-accent · type-scale · components-buttons · components-toggles · iconography · logo · motion · borders · empty-state · components-cards · ui_kits-desktop-showcase — all render with full styling, single specimen-hd, original layout intact.
+- ✓ Docs Site (5 stacked artboards at 1440×900) · Canvas Viewport — UI canvas chrome (`dc-canvas` / `dc-section` / `dc-artboard` + label strips) renders correctly via their sibling CSS.
+- ✓ Smoke TSX renders functionally (counter + h1 + bare button); intentionally has no chrome styling (it's a foundation smoke fixture).
+
+### Known carry-over
+
+- `bin/server-up.sh` still launches `server.mjs` (legacy Node server, no TSX pipeline). The mdcc design serve story for the Bun-based server is a separate follow-up — currently you boot it manually via `bun plugins/design/dev-server/server.ts --root . --port 4399`. Not blocking Phase 3.6.1 close-out but worth a Phase 3.6.2 or DDR.
+- Tests: 123 pass / 0 fail (down from 149 only because the codemod tests went with the codemod). tsc clean except for the two pre-existing api.ts errors.
+
+## Phase 3.6.1 execution close-out (2026-05-18)
+
+All 14 tasks of the Phase 3.6.1 plan landed in this session — canvas envelope + reusable canvas-lib + HMR + DS specimens all in TSX.
+
+- ✅ Task 1: `plugins/design/templates/canvas-lib.tsx.template` (~290 LOC) — frame envelope (DesignCanvas/DCSection/DCArtboard/DCPostIt) + specimen helpers (SpecimenHeader/SpecimenMeta/TokenChip/ColorSwatch/TypeScaleRow/KbdHint/ThemeToggle) + hooks (useTokens/useTheme/useArtboardBounds). Bootstrapped into `.design/_lib/canvas-lib.tsx`. Parses cleanly via oxc.
+- ✅ Task 2: `plugins/design/dev-server/canvas-lib-resolver.ts` (~90 LOC) — `@mdcc/canvas-lib` virtual module resolver as a Bun.build plugin; `readCanvasLibSource()` for handoff. `canvas-build.ts` wires it in + adds explicit pre-flight check (Bun.build's plugin throws collapse to "Bundle failed", so we surface the missing-lib reason at the top level). `http.ts` threads `designRoot`. 7 new tests.
+- ✅ Task 3: `.design/ui/Smoke TSX.tsx` rewritten with canvas-lib envelope + new meta sidecar. Renders 6 locator entries, no console errors.
+- ✅ Task 4: `plugins/design/dev-server/html-to-jsx.ts` (~170 LOC) — regex-driven HTML→JSX rewriter: class→className, void elements self-close, boolean attrs `={true}`, style→object, comments→`{/* */}`, SVG kebab→camelCase, rejects inline `on*` handlers + `<script>` as out-of-scope. 15 fixture tests.
+- ✅ Task 5: `scripts/migrate-canvases.ts` rewritten with `--target {canvases|specimens}` + `--force`. Canvases mode: prepend `@mdcc/canvas-lib` import + drop orphan inline primitives. Specimens mode: strip scripts → htmlToJsx → wrap in canvas-lib envelope → emit triplet (`.tsx`/`.css`/`.meta.json`) + archive original. 11 tests.
+- ✅ Task 6: Both codemod modes ran end-to-end. Canvases: `Docs Site.tsx` + `Canvas Viewport.tsx` regenerated via `--force` (Smoke TSX already done). Specimens: 37/38 auto-migrated, 1 (`components-toggles.tsx`) hand-migrated for inline `onclick`-based state; archive + MIGRATION_NOTES.md written. All 11 sample canvases (3 UI + 8 specimens) build cleanly with non-trivial locator cardinality.
+- ✅ Task 7: `plugins/design/skills/design-system/SKILL.md` — Round 0 (Batch A step 0) scaffolds `_lib/canvas-lib.tsx` idempotently from the template. Roster + prose flipped to `.tsx` extensions (~50 substitutions). Sub-agent prompt template now requires the canvas-lib envelope import block. `_MAPPING.md` destination paths flipped; source-side inspiration library kept as `.html` (the templates don't migrate).
+- ✅ Task 8: `plugins/design/dev-server/hmr-broadcast.ts` (~110 LOC) — bridges `fs:any` events to `canvas-hmr` WS messages with 50ms debounce + mode classification (`css`/`module`/`hard`) + coalescing (`hard > module > css` within the window). Wired into `ws.ts`. `_shell.html` injects a small HMR client that opens `/_ws`, swaps `<link>` href on CSS changes (cache-bust `?v=`) and `location.reload()` on TSX/`_lib` changes; reconnects with 750 ms backoff on close. 7 tests.
+- ✅ Task 9: `plugins/design/dev-server/canvas-lib-inline.ts` (~180 LOC) — `buildLibMap()` parses canvas-lib via oxc-parser, captures named exports + internal helpers with JSDoc-extended source ranges + dep edges (transitive references). `inlineUsedExports()` strips the `@mdcc/canvas-lib` import line, BFS-resolves transitive deps, appends bodies after the canvas default export. `handoff.ts` calls it after `stripDataCdId()`; filters `@mdcc/canvas-lib` out of npm deps. End-to-end verified: `Smoke TSX.registry.json.files[0].content` has zero `@mdcc` references. 14 tests.
+- ✅ Task 10: `plugins/design/templates/canvas.tsx.template` rewritten — replaces inline primitive functions with `import { DesignCanvas, DCSection, DCArtboard } from "@mdcc/canvas-lib"`; JSDoc explains the virtual-specifier contract. NEW `plugins/design/templates/ds-specimen.tsx.template` (~55 LOC) — simpler envelope for specimens, auto-flow artboard (`width={0} height={0}`), wraps `SpecimenHeader`.
+- ✅ Task 11: `plugins/design/agents/design-system-completeness-critic.md` + `design-system-keeper.md` — specimen-existence checks + narrative refs flipped to `.tsx`.
+- ✅ Task 12: `_canvas-shell.html` accepts new `?layout=<rel>` query param (specimens load DS chrome via `_layout.css`). `client/app.jsx`'s `canvasUrl()` detects `system/<ds>/preview/` paths and auto-derives `?layout=` + `?components=` + `?tokens=` from the DS slug. `colors-accent.tsx` end-to-end-loadable with full chrome.
+- ✅ Task 13: `plugins/design/commands/edit.md` Step 1.5 extended — for ALL `.tsx` canvases (any css_mode), the orchestrator pre-loads `_lib/canvas-lib.tsx` so the iteration prompt sees the authoring vocabulary (envelope + helpers + hooks) instead of re-inventing equivalents.
+- ✅ Task 14: full regression. `bun test` — **149 pass / 0 fail** across 21 test files (+ 54 new tests, up from 95 baseline). `bun tsc --noEmit` — only pre-existing api.ts errors (467/468); no new errors. End-to-end build smoke on 11 canvases/specimens — all clean. /design:handoff on Smoke TSX → registry-item has zero `@mdcc/canvas-lib` references.
+
+**Files added this session:**
+
+- ADDED: `plugins/design/templates/canvas-lib.tsx.template` + `.design/_lib/canvas-lib.tsx`
+- ADDED: `plugins/design/templates/ds-specimen.tsx.template`
+- ADDED: `plugins/design/dev-server/canvas-lib-resolver.ts`
+- ADDED: `plugins/design/dev-server/canvas-lib-inline.ts`
+- ADDED: `plugins/design/dev-server/hmr-broadcast.ts`
+- ADDED: `plugins/design/dev-server/html-to-jsx.ts`
+- ADDED: `plugins/design/dev-server/test/canvas-lib-resolver.test.ts` (7 tests)
+- ADDED: `plugins/design/dev-server/test/canvas-lib-inline.test.ts` (14 tests)
+- ADDED: `plugins/design/dev-server/test/hmr-broadcast.test.ts` (7 tests)
+- ADDED: `plugins/design/dev-server/test/html-to-jsx.test.ts` (15 tests)
+- ADDED: `plugins/design/dev-server/test/migrate-specimens.test.ts` (11 tests)
+- ADDED: 37 codemod-migrated specimen TSX/CSS/meta triplets under `.design/system/project/preview/`
+- ADDED: `.design/system/project/preview/components-toggles.tsx` (hand-migrated)
+- ADDED: `.design/_history/_migration-2026-05-15/MIGRATION_NOTES.md`
+- MODIFIED: `plugins/design/dev-server/canvas-build.ts`, `handoff.ts`, `http.ts`, `ws.ts`, `client/app.jsx`
+- MODIFIED: `plugins/design/templates/canvas.tsx.template`, `_shell.html`
+- MODIFIED: `plugins/design/skills/design-system/SKILL.md`, `plugins/design/templates/design-system-inspiration/_MAPPING.md`
+- MODIFIED: `plugins/design/agents/design-system-{completeness-critic,keeper}.md`
+- MODIFIED: `plugins/design/commands/edit.md`
+- MODIFIED: `scripts/migrate-canvases.ts`
+- ARCHIVED: `.design/system/project/preview/*.html` → `.design/_history/_migration-2026-05-15/system/project/preview/`
 
 ## Phase 3.6 close-out note (2026-05-18)
 

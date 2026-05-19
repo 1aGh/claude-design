@@ -411,3 +411,38 @@ mdcc design serve --root "$(pwd)"
 - [ ] `/design:setup-ds` writes `.tsx` specimens for a fresh DS + scaffolds `_lib/canvas-lib.tsx`
 - [ ] Updated `canvas-format-tsx` scenarios pass single-platform pilot
 - [ ] STATE.md reflects post-3.6.1 status; archive note recorded
+
+---
+
+## Retro (2026-05-19 — /flow:done close-out)
+
+**Shipped:** 14/14 tasks + 6 post-/validate visual-regression repair tasks landed across 2026-05-12 → 2026-05-18 (see STATE.md "Phase 3.6.1 execution close-out" + "visual-regression repair" sections). A standalone system review covers the full divergence inventory: `.ai/logs/system-reviews/phase-3.6.1-canvas-envelope-and-ds-specimens-review.md` (gitignored; alignment 5.5/10).
+
+**The /flow:done session itself (2026-05-19) added three things on top of the executed work:**
+
+1. **Caught a type regression `/flow:validate` would have blocked on.** `Inspect.injectInspectorOnly()` was added to `inspect.ts` during Phase 3.6.1 execution but not declared on the exported interface — `http.ts:292` + `inspect.ts:181` failed `tsc --noEmit` with `Property 'injectInspectorOnly' does not exist on type 'Inspect'`. One-line type-contract fix. Lesson: when extending a returned object inside `createX()`, the interface declaration is non-optional. Worth a lint rule or convention if it recurs.
+2. **`specimen-render-and-edit` scenario authored + piloted.** Plan acceptance criterion ("Updated `canvas-format-tsx` scenarios pass single-platform pilot") promised a second scenario; landed today. Runner walks every `.design/system/<ds>/preview/*.tsx`, opens each through `_canvas-shell.html`, probes DOM + console errors + `#canvas-mount-error` text content, screenshots, classifies PASS/EMPTY/FAIL. **First run caught 3 broken specimens with unescaped `{`/`}` in JSX text content** (CSS / code dumps). Initial classifier missed them because the parse error rendered as visible body text rather than console output — fixed the classifier to inspect `#canvas-mount-error` too. After fixing the 3 specimens (`{'{'}` / `{'}'}` escapes + template-literal wrap), 38/38 PASS.
+3. **DDR-022 + DDR-023 + changeset.** The Phase 3.6.1 plan + retro captured the architectural decisions in narrative; promoting them to formal DDRs makes the contract greppable for future work. Changeset (minor bump) added.
+
+**Soft gaps acknowledged (acceptance criteria not directly measured this session):**
+
+- HMR < 200 ms p50 latency probe not run end-to-end. Code path is in place (`hmr-broadcast.ts` + `_shell.html` HMR client, 7 tests); a wall-clock measurement deferred.
+- Cmd+Click on a specimen → `_active.json.selected.v=2` not directly exercised by the scenario. Pipeline is shared with UI canvases (Phase 3.6 scenario `tsx-canvas-render-and-edit` exercises it); the specimen-render scenario verifies that `data-cd-id` injection lands (per-specimen cdIds counts 39–239), which is the prerequisite. End-to-end Cmd+Click probe is straightforward to add — defer until first observed failure.
+
+**What worked:**
+
+- **`/flow:validate` → `/flow:done` cadence held.** Validate caught the type regression + missing changeset + missing DDRs; done closed each in order. The scenario-runner gate was the high-signal catch — without it the 3 broken specimens would have shipped silent.
+- **The retro that already existed paid off twice.** Writing DDR-022 + DDR-023 was just promoting prose the 2026-05-18 system review had already organized. The DDR is the contract; the retro is the receipt.
+- **Bash-3.2 compat for the runner script.** Caught `mapfile` not existing on macOS bash in dry-run before live run; one-line `while IFS= read` substitute. The runner is portable to any macOS dev box without Homebrew bash.
+
+**What to change in /plan or /execute next time:**
+
+- **Acceptance criterion "X scenarios pass single-platform pilot" should NAME the scenarios that need to exist.** Phase 3.6.1's criterion left "updated scenarios" ambiguous — turned out to mean "author specimen-render-and-edit then pilot it", but the wording let execution slide past it. Explicit list: "scenarios under `.ai/scenarios/canvas-format-tsx/`: tsx-canvas-render-and-edit, specimen-render-and-edit. Both must have a `runners/web-desktop.sh` and a pilot run committed."
+- **Whenever interfaces get extended inside `createX()` factories, run a type-check before declaring the task done.** Phase 3.6.1's Task 14 "full regression: bun test green, bun tsc --noEmit no new errors" line passed at execution time, but the regression that surfaced in `/flow:validate` was a tsc error introduced AFTER Task 14's verification (during one of the repair commits). One more `bun tsc --noEmit` immediately before `/flow:done` would have caught it.
+- **Sub-agent specimen prompts must call out JSX brace-escape explicitly.** Three of the 38 specimens dumped raw CSS / JS code into JSX text content with unescaped `{` and `}`. The fix is universal: any specimen showing code-as-text wraps in `<pre>{\`...\`}</pre>` (template literal) when there's no inline highlighting, or uses `{'{'}` / `{'}'}` JSX escapes when there is. Worth a one-line note in `SKILL.md`'s sub-agent prompt block + `ds-specimen.tsx.template` header comment.
+
+**Followups (not blockers):**
+
+- `bin/server-up.sh` still launches `server.mjs` (legacy Node server, no TSX pipeline). The Bun-based server is the authoritative runtime (DDR-009 + DDR-020) but `mdcc design serve` doesn't boot it yet. Phase 3.6.2 or a small follow-up DDR.
+- 30 biome-style findings auto-fixed during `/flow:validate`; 1 remaining (`while ((m = re.exec()))` in `handoff.ts:450` — pre-existing regex idiom). Worth a `biome.json` override or a one-line refactor.
+- Plan promised `_history/_migration-2026-05-15/MIGRATION_NOTES.md` for codemod-skipped specimens. After the html-to-jsx scope correction (DDR-023) the notes file is moot; can delete on next archive-cleanup pass.
