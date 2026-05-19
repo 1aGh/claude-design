@@ -1,28 +1,28 @@
 ---
 title: /design:handoff
-description: "Migrate aktivní canvas (`_active.json`) do production kódu (target z `.design/config.json` handoffTargets)"
+description: "Emit a shadcn `registry-item.json` sidecar pro aktivní canvas (production-ready drop pro Next.js / Vite / Bun)"
 ---
 
 | Property | Value |
 | -------- | ----- |
 | **Command** | `/design:handoff` |
 | **Category** | `daily` |
-| **Argument hint** | `[--target <label>] [--force]` |
+| **Argument hint** | `[--canvas <path>] [--force]` |
 | **Source** | [`plugins/design/commands/handoff.md`](https://github.com/1aGh/md-claude/blob/main/plugins/design/commands/handoff.md) |
 
 ## Description
 
-Migrate aktivní canvas (`_active.json`) do production kódu (target z `.design/config.json` handoffTargets)
+Emit a shadcn `registry-item.json` sidecar pro aktivní canvas (production-ready drop pro Next.js / Vite / Bun)
 
 ## Invocation
 
 ```text
-/design:handoff [--target <label>] [--force]
+/design:handoff [--canvas <path>] [--force]
 ```
 
 ## Summary
 
-Konvertuje aktivní canvas do production kódu repa. Cíle (target paths + platform) jsou v `.design/config.json` v poli `handoffTargets[]` — typicky `apps/web` a/nebo `apps/mobile`, ale jakákoliv konvence repa.
+Konvertuje aktivní canvas (z `_active.json`) na **`&lt;Slug>.registry.json`** vedle TSX souboru. Cílový projekt to konzumuje přes `bunx shadcn add file://./&lt;Slug>.registry.json` — funguje pro Next.js / Vite / Astro / Remix / Bun, jakýkoli framework, který má `shadcn` CLI.
 
 ## Source of truth
 

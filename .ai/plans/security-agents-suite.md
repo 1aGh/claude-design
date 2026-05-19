@@ -340,4 +340,4 @@ Not applicable — this is a plugin-internal addition (markdown + schema). No UI
 - [ ] `config.schema.json` parses; `security` block + `skills.securityRules` toggle present.
 - [ ] `CATEGORIES.md` lists `/flow:validate-security` under `validate`.
 - [ ] No DDR-worthy decision left unrecorded — this addition touches the plugin's public surface; a one-page DDR ("Why a defender + attacker pair instead of a single auditor") would be reasonable, but is optional given the rationale is captured in the agent file headers.
-- [ ] Convention compliance: every new file's `name:` frontmatter is fully-qualified (`flow:<slug>`) per [DDR-006](./.ai/decisions/DDR-006-plugin-namespace-in-name-frontmatter.md).
+- [ ] Convention compliance: every new file's `name:` frontmatter is fully-qualified (`flow:<slug>`) per [DDR-006](../decisions/DDR-006-plugin-namespace-in-name-frontmatter.md).

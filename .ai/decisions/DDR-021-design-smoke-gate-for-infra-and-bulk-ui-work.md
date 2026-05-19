@@ -3,7 +3,7 @@
 - **Date:** 2026-05-19
 - **Status:** Accepted
 - **Tags:** design, dev-server, smoke, render-gate, validation, flow-execute, phase-3.6
-- **Related:** [DDR-009](./DDR-009-bun-runtime-authoritative-for-dev-server.md), [DDR-019](./DDR-019-canvas-tsx-format.md), [DDR-020](./DDR-020-single-dev-server-runtime-bun.md), [`.ai/logs/system-reviews/phase-3.6.1-canvas-envelope-and-ds-specimens-review.md`](../logs/system-reviews/phase-3.6.1-canvas-envelope-and-ds-specimens-review.md), [`.ai/logs/system-reviews/design-edit-screenshot-habits-review.md`](../logs/system-reviews/design-edit-screenshot-habits-review.md)
+- **Related:** [DDR-009](./DDR-009-bun-runtime-authoritative-for-dev-server.md), [DDR-019](./DDR-019-canvas-tsx-format.md), [DDR-020](./DDR-020-single-dev-server-runtime-bun.md), [`.ai/logs/system-reviews/phase-3.6.1-canvas-envelope-and-ds-specimens-review.md`](../logs/system-reviews/phase-3.6.1-canvas-envelope-and-ds-specimens-review.md)
 
 ## Context
 
@@ -116,4 +116,4 @@ In-session retro `.ai/logs/system-reviews/phase-3.6.1-canvas-envelope-and-ds-spe
 - Divergence **G2** (CSS-injection prologue) — example of "Bun.build default behavior didn't work for novel inputs", caught only when user opened specimens.
 - Learning #4 ("fastest visual regression catch is the user opening the file") — basis for the "read every screenshot, not sample" rule.
 
-Prior retro `.ai/logs/system-reviews/design-edit-screenshot-habits-review.md` (the studio iter-4 incident) supplies the same lesson at single-canvas granularity — `/design:edit` step 3.5 was the per-canvas fix; `/design:smoke` is its batch counterpart.
+Prior retro on `/design:edit` screenshot habits (the studio iter-4 incident) supplies the same lesson at single-canvas granularity — `/design:edit` step 3.5 was the per-canvas fix; `/design:smoke` is its batch counterpart.

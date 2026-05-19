@@ -1,0 +1,31 @@
+---
+title: /design:smoke
+description: "Batch screenshot every UI canvas (`<designRoot>/ui/*.tsx`) + every preview specimen (`<designRoot>/system/*/preview/*.tsx`); flag blank iframes + visible error overlays. Exit non-zero on any failure. Catches the \"build green ≠ user-visible green\" class of regression that bypasses per-canvas hooks. See DDR-021."
+---
+
+| Property | Value |
+| -------- | ----- |
+| **Command** | `/design:smoke` |
+| **Category** | `validate` |
+| **Argument hint** | `[--include-system 0\|1] [--timeout <secs>] [--out-dir <dir>]` |
+| **Source** | [`plugins/design/commands/smoke.md`](https://github.com/1aGh/md-claude/blob/main/plugins/design/commands/smoke.md) |
+
+## Description
+
+Batch screenshot every UI canvas (`&lt;designRoot>/ui/*.tsx`) + every preview specimen (`&lt;designRoot>/system/*/preview/*.tsx`); flag blank iframes + visible error overlays. Exit non-zero on any failure. Catches the "build green ≠ user-visible green" class of regression that bypasses per-canvas hooks. See DDR-021.
+
+## Invocation
+
+```text
+/design:smoke [--include-system 0|1] [--timeout <secs>] [--out-dir <dir>]
+```
+
+## Summary
+
+Wraps `${CLAUDE_PLUGIN_ROOT}/dev-server/bin/smoke.sh`. Single source of truth lives in the helper; this command exists so you can invoke smoke as a slash, and so `/flow:execute` can call it as a phase-end gate.
+
+## Source of truth
+
+This page is auto-generated from the command's frontmatter. The exact prompt Claude runs — including directives, edge-case handling, and tool-routing logic — lives in the source file:
+
+[**`plugins/design/commands/smoke.md`**](https://github.com/1aGh/md-claude/blob/main/plugins/design/commands/smoke.md) → read it for the full behavior.

@@ -1,6 +1,6 @@
 # Phase 5: Draw / annotation tools for the dev server
 
-> **Scope-narrowed 2026-05-13.** Originally this phase bundled layers panel + in-canvas CSS editor + draw tools + multi-DS. Layers panel + in-canvas CSS editor were extracted to **Phase 12** (end-of-roadmap extra feature). Multi-DS was folded into [`.ai/plans/design-system-init.md`](./design-system-init.md) as its Phase 4, since it shares the same `system/` shape and completeness contract as the single-DS bootstrap workflow.
+> **Scope-narrowed 2026-05-13.** Originally this phase bundled layers panel + in-canvas CSS editor + draw tools + multi-DS. Layers panel + in-canvas CSS editor were extracted to **Phase 12** (end-of-roadmap extra feature). Multi-DS was folded into [`.ai/plans/archive/design-system-init.md`](./archive/design-system-init.md) as its Phase 4, since it shares the same `system/` shape and completeness contract as the single-DS bootstrap workflow.
 >
 > **This phase now ships only:** draw / annotation tools on canvas (pen, circle, arrow, eraser) as a transparent SVG overlay per canvas, with keyboard shortcuts and hideable presentation mode.
 
@@ -70,8 +70,35 @@ Toolbar with native `<svg>` drawing (minimal subset of tldraw's pattern — no e
 
 ## Acceptance criteria
 
-- [ ] Draw / annotation tools persist to `.annotations.svg`; eraser works; toggle visible.
-- [ ] All draw-tool keyboard shortcuts work (B/R/A/E/V/Esc/Cmd+/).
-- [ ] Presentation-mode toggle (Shift+P) hides annotations without persisting.
-- [ ] No regression in Phase 4 canvas v2 perf benchmark.
-- [ ] Multi-DS, layers, in-canvas CSS editor explicitly NOT in this phase (tracked in `design-system-init.md` Phase 4 + Phase 12 respectively).
+- [x] Draw / annotation tools persist to `.annotations.svg`; eraser works; toggle visible.
+- [x] All draw-tool keyboard shortcuts work (B/R/A/E/V/Esc/Cmd+/).
+- [x] Presentation-mode toggle (Shift+P) hides annotations without persisting.
+- [ ] No regression in Phase 4 canvas v2 perf benchmark. _(deferred to `/done` validation — perf harness lives at `dev-server/examples/perf-100-artboards.tsx`)_
+- [x] Multi-DS, layers, in-canvas CSS editor explicitly NOT in this phase (tracked in `design-system-init.md` Phase 4 + Phase 12 respectively).
+
+---
+
+## Execution log (2026-05-19, /flow:execute)
+
+- ✅ Task 1: input-router.tsx — Tool union extended with pen/rect/arrow/eraser + `isAnnotationTool()` helper; keydown classify maps B/R/A/E to tool actions; pointer events return no-op for annotation tools (Cmd+click escape hatch preserved).
+- ✅ Task 2: use-tool-mode.tsx — DEFAULT_TOOLS grew to 7 (V/H/C/B/R/A/E); canvas-shell `data-active-tool` cursor CSS covers pen/rect/arrow=crosshair, eraser=cell.
+- ✅ Task 3: api.ts + http.ts — `loadAnnotations()` / `saveAnnotations()` write `<designRoot>/<slug>.annotations.svg`; `/_api/annotations` GET ?file= → SVG text, PUT body { file, svg } → 204. 1 MB body cap; rejects non-SVG content.
+- ✅ Task 4: new `annotations-layer.tsx` (~640 LOC) — SVG overlay with world-coord stroke storage, viewport-transformed render via `<g transform>`, vector-effect=non-scaling-stroke so strokes stay pixel-thick across zoom. Pen / rect / arrow capture, eraser hit-test on click+drag, 6-swatch color picker, Shift+P presentation toggle, Cmd+/ help sheet. Debounced 200 ms PUT on stroke commit.
+- ✅ Task 5: canvas-shell.tsx — `<AnnotationsLayer/>` mounted before ToolPalette in CanvasRouter so the SVG sits under the floating chrome but over the world.
+- ✅ Task 6: tests added — `test/annotations-layer.test.ts` (helpers: penPathD, arrowHeadPoints, strokesToSvg, strokeHitTest per shape, escape) + `test/annotations-api.test.ts` (GET/PUT round-trip, 400/405 gates, 1 MB body cap) + extensions to `test/input-router.test.ts` (B/R/A/E + annotation-tool pointer no-op + Cmd+click escape hatch) + `test/use-tool-mode.test.tsx` (7-tool DEFAULT_TOOLS). `bun test` 269/269 pass (+30 new). `bunx tsc --noEmit` clean (two pre-existing api.ts errors unchanged).
+
+**Files added:**
+- `plugins/design/dev-server/annotations-layer.tsx`
+- `plugins/design/dev-server/test/annotations-layer.test.ts`
+- `plugins/design/dev-server/test/annotations-api.test.ts`
+
+**Files modified:**
+- `plugins/design/dev-server/input-router.tsx`
+- `plugins/design/dev-server/use-tool-mode.tsx`
+- `plugins/design/dev-server/canvas-shell.tsx`
+- `plugins/design/dev-server/api.ts`
+- `plugins/design/dev-server/http.ts`
+- `plugins/design/dev-server/test/input-router.test.ts`
+- `plugins/design/dev-server/test/use-tool-mode.test.tsx`
+
+**Scenario coverage gap:** `canvas-annotations` scenario not yet authored — flag for `/flow:scenario new canvas-annotations` before `/flow:done`.
