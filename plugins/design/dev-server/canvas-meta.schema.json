@@ -114,6 +114,40 @@
       "default": 1,
       "minimum": 1
     },
+    "layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Phase 4 canvas-v2 spatial layout. Optional — when absent the canvas runtime synthesizes a default grid (3 cols × 1280 × 820, 80 px gutter, alphabetical by DCArtboard id). Authoring state only — stripped from /design:handoff emitted registry items.",
+      "properties": {
+        "artboards": {
+          "type": "array",
+          "description": "Per-DCArtboard world-coord rects keyed by `id`. ids not listed fall back to the default grid slot for their render-order index.",
+          "items": {
+            "type": "object",
+            "required": ["id", "x", "y", "w", "h"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string" },
+              "x": { "type": "number" },
+              "y": { "type": "number" },
+              "w": { "type": "number", "exclusiveMinimum": 0 },
+              "h": { "type": "number", "exclusiveMinimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    "viewport": {
+      "type": "object",
+      "required": ["x", "y", "zoom"],
+      "additionalProperties": false,
+      "description": "Phase 4 canvas-v2 pan/zoom state for the world plane. Optional — when absent the canvas runtime fits-to-screen on the artboard union. Authoring state — stripped from /design:handoff.",
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "zoom": { "type": "number", "minimum": 0.1, "maximum": 4.0 }
+      }
+    },
     "ai_context": {
       "type": "object",
       "description": "Opt-in metadata for AI cold-read. Persists hard-won context that doesn't live in the canvas source itself — pinned decisions, known quirks, rationale for why this canvas exists. Read by /design:edit's pre-flight to seed the model. Hand-edited; never auto-filled (auto-fill would defeat the purpose).",

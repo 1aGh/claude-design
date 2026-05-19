@@ -135,11 +135,29 @@
         }
 
         const canvasUrl = '/' + designRel + '/' + canvasRel;
+        // Phase 4 T5 — read the canvas's sibling .meta.json and stash it on
+        // window so DesignCanvas can seed `layout` + `viewport` synchronously.
+        // The fetch runs in parallel with imports; failure is non-fatal (the
+        // canvas falls through to default grid + fit-to-screen).
+        const metaFileParam = encodeURIComponent(designRel + '/' + canvasRel);
+        const metaFetch = fetch('/_api/canvas-meta?file=' + metaFileParam, {
+          headers: { 'Cache-Control': 'no-store' },
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((j) => {
+            window.__canvas_meta__ = (j && typeof j === 'object') ? j : {};
+            window.__canvas_meta_file__ = designRel + '/' + canvasRel;
+          })
+          .catch(() => {
+            window.__canvas_meta__ = {};
+            window.__canvas_meta_file__ = designRel + '/' + canvasRel;
+          });
         try {
           const [{ createRoot }, mod, react] = await Promise.all([
             import('react-dom/client'),
             import(canvasUrl),
             import('react'),
+            metaFetch,
           ]);
           const Canvas = mod.default;
           if (typeof Canvas !== 'function') {

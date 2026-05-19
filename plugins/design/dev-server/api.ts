@@ -105,6 +105,9 @@ export interface Api {
   // Canvas state
   loadCanvasState(file: string): Promise<Record<string, unknown> | null>;
   saveCanvasState(file: string, state: Record<string, unknown>): Promise<void>;
+  // Canvas meta sidecar (Phase 4 T5 — .design/ui/<slug>.meta.json)
+  loadCanvasMeta(file: string): Promise<Record<string, unknown> | null>;
+  patchCanvasMeta(file: string, patch: Record<string, unknown>): Promise<Record<string, unknown> | null>;
   // Aggregate data
   buildIndexData(): Promise<unknown>;
   buildSystemData(): Promise<unknown>;
@@ -247,6 +250,102 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
     } catch {
       return null;
     }
+  }
+
+  // ---------- Canvas meta sidecar (Phase 4 T5) ----------
+  //
+  // Each canvas under `<designRoot>/ui/<name>.tsx` has a sibling
+  // `<name>.meta.json`. Phase 4 stores `layout` (per-artboard world-coord
+  // rects) and `viewport` (last pan/zoom) inside that file so the canvas
+  // runtime can restore state on reload. The PATCH path is intentionally
+  // merge-shallow on top-level keys — never clobber `title`, `sections`,
+  // `ai_context`, or any other authoring metadata.
+
+  /**
+   * Resolve `file` (a path relative to repoRoot like `.design/ui/Foo.tsx`)
+   * into the absolute path of its sibling `.meta.json` sidecar. Refuses
+   * paths that escape repoRoot.
+   */
+  function canvasMetaPath(file: string): string | null {
+    let p = String(file).replace(/^\/+/, '');
+    try {
+      p = decodeURIComponent(p);
+    } catch {
+      /* ignore */
+    }
+    if (p.includes('..')) return null;
+    const abs = path.join(paths.repoRoot, p);
+    if (!abs.startsWith(`${paths.repoRoot}/`)) return null;
+    const ext = path.extname(abs).toLowerCase();
+    if (ext !== '.tsx' && ext !== '.html') return null;
+    return abs.replace(/\.(tsx|html)$/i, '.meta.json');
+  }
+
+  async function loadCanvasMeta(file: string): Promise<Record<string, unknown> | null> {
+    const metaAbs = canvasMetaPath(file);
+    if (!metaAbs) return null;
+    try {
+      const raw = await Bun.file(metaAbs).text();
+      const obj = JSON.parse(raw);
+      return obj && typeof obj === 'object' && !Array.isArray(obj)
+        ? (obj as Record<string, unknown>)
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Shallow-merge `patch` onto the existing meta sidecar and write back. Only
+   * the Phase 4 keys `layout` + `viewport` are accepted from untrusted clients;
+   * the rest of meta (title, sections, brief, ai_context, …) is preserved.
+   * Returns the merged meta on success, null when the canvas has no meta or
+   * the patch is rejected.
+   */
+  async function patchCanvasMeta(
+    file: string,
+    patch: Record<string, unknown>
+  ): Promise<Record<string, unknown> | null> {
+    const metaAbs = canvasMetaPath(file);
+    if (!metaAbs) return null;
+    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return null;
+    let current: Record<string, unknown> = {};
+    try {
+      const raw = await Bun.file(metaAbs).text();
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        current = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // No existing meta — create one with just the Phase 4 keys.
+    }
+    const next = { ...current };
+    // Whitelist of patchable top-level keys.
+    if (patch.layout !== undefined) {
+      if (patch.layout === null) {
+        delete next.layout;
+      } else if (typeof patch.layout === 'object' && !Array.isArray(patch.layout)) {
+        next.layout = patch.layout;
+      }
+    }
+    if (patch.viewport !== undefined) {
+      if (patch.viewport === null) {
+        delete next.viewport;
+      } else if (typeof patch.viewport === 'object' && !Array.isArray(patch.viewport)) {
+        const v = patch.viewport as { x?: unknown; y?: unknown; zoom?: unknown };
+        if (
+          Number.isFinite(v.x as number) &&
+          Number.isFinite(v.y as number) &&
+          Number.isFinite(v.zoom as number)
+        ) {
+          const zoom = Math.min(4, Math.max(0.1, v.zoom as number));
+          next.viewport = { x: v.x as number, y: v.y as number, zoom };
+        }
+      }
+    }
+    next.last_modified = new Date().toISOString();
+    await Bun.write(metaAbs, JSON.stringify(next, null, 2));
+    return next;
   }
 
   async function saveCanvasState(file: string, state: Record<string, unknown>) {
@@ -527,6 +626,8 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
     commentsDelete,
     loadCanvasState,
     saveCanvasState,
+    loadCanvasMeta,
+    patchCanvasMeta,
     buildIndexData,
     buildSystemData,
   };

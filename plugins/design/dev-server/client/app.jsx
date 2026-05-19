@@ -3,7 +3,7 @@
 // Renders: file tree, tabs, viewport (iframes), status bar, design-system view, comments.
 // Universal — no project tokens needed; styling lives in client/styles/.
 
-import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, Fragment } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, Fragment } from 'react';
 import { createRoot } from 'react-dom/client';
 
 const SYSTEM_TAB = '__system__';
@@ -932,94 +932,20 @@ function Wordmark({ project, port, version }) {
   );
 }
 
-function SelectionHalo({ rect }) {
+function SelectionHalo() {
   // Accent 2 px outline + 4 corner ticks around the active iframe (the artboard
-  // frame). In Phase 4 T1 the halo lives inside `.vp-world` and is positioned
-  // at the active iframe's world coords so it scales with the world transform
-  // T2 introduces. Element-level (sub-iframe) overlay waits on T7's world-coord
-  // projection out of CSS px space.
-  const style = rect ? { left: rect.x, top: rect.y, width: rect.w, height: rect.h } : undefined;
-  return <div className="sel-halo" aria-hidden="true" style={style}><i /></div>;
-}
-
-// Default grid: 3 columns × 1280 × 820 artboards, 80 px gutters, alphabetical.
-// Phase 4 T1 computes this in the client; T5 hands authority to the server's
-// `/_api/layout/<slug>` synth + persistence.
-const VP_GRID = { cols: 3, w: 1280, h: 820, gutter: 80, x0: 60, y0: 260 };
-
-function computeDefaultGrid(tabs) {
-  const layout = new Map();
-  const paths = tabs.map(t => t.path).filter(p => p !== SYSTEM_TAB).sort();
-  for (let i = 0; i < paths.length; i++) {
-    const col = i % VP_GRID.cols;
-    const row = Math.floor(i / VP_GRID.cols);
-    layout.set(paths[i], {
-      x: VP_GRID.x0 + col * (VP_GRID.w + VP_GRID.gutter),
-      y: VP_GRID.y0 + row * (VP_GRID.h + VP_GRID.gutter),
-      w: VP_GRID.w,
-      h: VP_GRID.h,
-    });
-  }
-  return layout;
-}
-
-// Fit-to-screen world transform. bbox = union of artboard rects only (the
-// in-world Wordmark is intentionally outside the bbox so a single open canvas
-// can fill the panel; Wordmark becomes a pan-to-find detail at full zoom-out).
-// Phase 4 T1 = fit IS the canvas state; T2's controller treats Cmd+0 as
-// "re-invoke this same compute" after a user pan/zoom dirties it.
-const VP_FIT_PAD = 24;
-
-function computeFit(layout, viewportEl) {
-  if (!layout || layout.size === 0 || !viewportEl) return null;
-  let xMin = Infinity, yMin = Infinity, xMax = -Infinity, yMax = -Infinity;
-  for (const r of layout.values()) {
-    if (r.x < xMin) xMin = r.x;
-    if (r.y < yMin) yMin = r.y;
-    if (r.x + r.w > xMax) xMax = r.x + r.w;
-    if (r.y + r.h > yMax) yMax = r.y + r.h;
-  }
-  const bw = xMax - xMin;
-  const bh = yMax - yMin;
-  const vw = viewportEl.clientWidth;
-  const vh = viewportEl.clientHeight;
-  if (!vw || !vh || bw <= 0 || bh <= 0) return null;
-  const zoom = Math.min((vw - VP_FIT_PAD * 2) / bw, (vh - VP_FIT_PAD * 2) / bh, 1.0);
-  // Translate so the bbox is centered in the viewport. transform-origin is 0,0
-  // so we offset by -bbox_origin*zoom to bring the bbox into view, then add the
-  // centering margin.
-  const x = (vw - bw * zoom) / 2 - xMin * zoom;
-  const y = (vh - bh * zoom) / 2 - yMin * zoom;
-  return { x, y, zoom };
+  // frame). Element-level overlay is Phase 4 territory — it needs world-coord
+  // projection, which doesn't exist yet.
+  return <div className="sel-halo" aria-hidden="true"><i /></div>;
 }
 
 function Viewport({ tabs, activePath, registerIframe, systemData, onOpenFromSystem, project, selected, cfg }) {
-  const port = typeof window !== 'undefined' ? window.location.port : '';
-  const hasArtboards = tabs.some(t => t.path !== SYSTEM_TAB);
-  const hasSystemTab = tabs.some(t => t.path === SYSTEM_TAB);
-  const layout = hasArtboards ? computeDefaultGrid(tabs) : null;
-  const showHalo = selected && activePath && activePath !== SYSTEM_TAB && layout && layout.has(activePath);
-  const haloRect = showHalo ? layout.get(activePath) : null;
-  const viewportRef = useRef(null);
-  const [fit, setFit] = useState(null);
-  const tabsKey = tabs.map(t => t.path).join('|');
-  useLayoutEffect(() => {
-    if (!hasArtboards || !viewportRef.current) { setFit(null); return; }
-    const measure = () => setFit(computeFit(layout, viewportRef.current));
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(viewportRef.current);
-    return () => ro.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabsKey, hasArtboards]);
-  const worldStyle = fit
-    ? { transform: `translate(${fit.x}px, ${fit.y}px) scale(${fit.zoom})` }
-    : { visibility: 'hidden' };
+  const showHalo = selected && activePath && activePath !== SYSTEM_TAB;
   return (
-    <div className="viewport" ref={viewportRef}>
-      {!hasArtboards && (
+    <div className="viewport">
+      {tabs.length === 0 && (
         <>
-          <Wordmark project={project} port={port} version={MDCC_VERSION} />
+          <Wordmark project={project} port={typeof window !== 'undefined' ? window.location.port : ''} version={MDCC_VERSION} />
           <div className="empty-state">
             <div className="big">No mock open</div>
             <div className="small">
@@ -1034,31 +960,25 @@ function Viewport({ tabs, activePath, registerIframe, systemData, onOpenFromSyst
           </div>
         </>
       )}
-      {hasArtboards && (
-        <div className="vp-world" style={worldStyle}>
-          <Wordmark project={project} port={port} version={MDCC_VERSION} />
-          {tabs.map(t => {
-            if (t.path === SYSTEM_TAB) return null;
-            const r = layout.get(t.path);
-            return (
-              <iframe
-                key={t.path}
-                ref={el => registerIframe(t.path, el)}
-                src={canvasUrl(t.path, cfg)}
-                className={t.path === activePath ? 'active' : ''}
-                data-path={t.path}
-                style={{ left: r.x, top: r.y, width: r.w, height: r.h }}
-              />
-            );
-          })}
-          {showHalo && <SelectionHalo rect={haloRect} />}
-        </div>
-      )}
-      {hasSystemTab && (
-        <div className={'system-view' + (activePath === SYSTEM_TAB ? ' active' : '')}>
-          <SystemView data={systemData} onOpen={onOpenFromSystem} />
-        </div>
-      )}
+      {tabs.map(t => {
+        if (t.path === SYSTEM_TAB) {
+          return (
+            <div key={t.path} className={'system-view' + (t.path === activePath ? ' active' : '')}>
+              <SystemView data={systemData} onOpen={onOpenFromSystem} />
+            </div>
+          );
+        }
+        return (
+          <iframe
+            key={t.path}
+            ref={el => registerIframe(t.path, el)}
+            src={canvasUrl(t.path, cfg)}
+            className={t.path === activePath ? 'active' : ''}
+            data-path={t.path}
+          />
+        );
+      })}
+      {showHalo && <SelectionHalo />}
     </div>
   );
 }
@@ -1548,12 +1468,15 @@ function App() {
 
   // ----- Tab management (single-canvas) -----
   // Single-canvas model: opening a file REPLACES the active one (no tab strip).
-  // Phase 4 T1: multi-tab. If the path is already open, just activate it;
-  // otherwise append. Existing iframes stay mounted so the infinite-canvas
-  // plane can render them side-by-side without reload churn. Tab close path
-  // (`closeTab`) handles iframe cleanup.
+  // The `tabs` state stays as a 0-or-1 array so the rest of the plumbing
+  // (iframesRef, comments push, WS `tabs` message) doesn't need refactoring.
+  // ARTBOARDS slot in the menubar reads `tabs.length` and reports 0 or 1.
   const openTab = useCallback((path) => {
-    setTabs(prev => prev.find(t => t.path === path) ? prev : [...prev, { path }]);
+    setTabs(prev => {
+      // Drop the previously-open iframe so we don't leak DOM nodes.
+      for (const t of prev) if (t.path !== path) iframesRef.current.delete(t.path);
+      return [{ path }];
+    });
     setActivePath(path);
     setFocusedCommentId(null);
     setDraft(null);

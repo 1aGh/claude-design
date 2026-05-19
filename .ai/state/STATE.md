@@ -3,33 +3,30 @@
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
 **Workflow:** feature-delivery — md-claude v1.0 roadmap
-**Phase:** Phase 4 — Canvas v2: infinite-canvas behavior + render engine
-**Status:** in-progress
-**Started:** 2026-05-19
+**Phase:** Phase 4 — canvas v2 infinite-canvas engine inside the canvas runtime
+**Status:** in-progress (T1-T6 landed · T7 on HOLD pending perf measurements per DDR-024)
+**Started:** 2026-05-12
 **Updated:** 2026-05-19
-**Active task:** T1 done — next: T2 pan/zoom controller (gated on user review)
+**Active task:** — (T7 blocked on user-side perf benchmark)
 **Active plan:** `.ai/plans/phase-4-canvas-v2-rendering-engine.md`
 
 ## Execution Progress
 
-- ✅ **T1 (2026-05-19)** — Viewport refactored to `.vp-world` multi-iframe plane on CSS transforms + fit-to-screen default.
-  - `Viewport` rebuilt with `computeDefaultGrid` (3-col × 1280×820 × 80gut, alphabetical) — server-side synth lands in T5.
-  - In-world `Wordmark` (scales with future pan/zoom). Empty-state branch kept for `tabs.length === 0`.
-  - `SelectionHalo` accepts a `rect` prop; inline-styled to active iframe's world coords.
-  - `openTab` flipped from single-tab (`[{path}]`) to multi-tab (`[...prev, {path}]` if not already open) — "0-or-1 array" comment deleted.
-  - CSS: added `.vp-world` rules; `.viewport { overflow: hidden }`; `.vp-world > iframe` box-shadow + bg; removed `inset:0`/`display:none` toggle on `.viewport > iframe`; `.sel-halo` lost `inset:0` (inline style now positions it).
-  - **Plan correction mid-task** — original T1 spec didn't address default viewport state. First smoke screenshot at 1280×640 (too small) hid the issue; user pointed out at realistic browser size that opening a single canvas showed an artboard wrapped in paper-grid like a tiny embed. Plan T1 updated: **fit-to-screen on artboards (not on artboards-plus-wordmark) IS the canvas state — no `zoom 100 % with paper-grid surround` default**. T2 controller layers on top; Cmd+0 = re-invoke same compute after user pan/zoom dirties auto-fit.
-  - Implementation: `computeFit(layout, viewportEl)` reads `clientWidth/Height`, derives bbox from artboard rects (excluding Wordmark), zoom = min((vw−2·pad)/bw, (vh−2·pad)/bh, 1.0), centers bbox via translate. `useLayoutEffect` + `ResizeObserver` recomputes on tabs change + window resize. World hidden until first measure to avoid pre-fit flash.
-  - Verified at 1280×633 (canvas panel ~960×562 after chrome): single Smoke TSX iframe fills 84% width × 91% height of the panel (vs. ~63% × 70% before fix); three open tabs fit side-by-side at zoom 0.23 with Wordmark visible top-left. Screenshots `.ai/logs/phase-4-screenshots/t1-fix-single-fit.png` + `t1-fix-multi-fit.png`. Tests 123/123 pass, tsc clean except 2 pre-existing api.ts errors.
-  - **Process retro:** the first verification declared T1 done after a too-small smoke screenshot. User caught it. Lesson for T2-T7: every visual verify runs at a realistic viewport (≥ 1280 panel-width), and the question "does this look right for the COMMON case (1 open tab)?" is the smoke gate, not "does the code structure exist?".
-
-- ⚠ **2026-05-19 plan rewrite — Phase 4 scope corrected.** User reviewed the T1 fix-up at full browser size and flagged a deeper issue: the entire Phase 4 plan put the engine at the wrong abstraction layer. Each `.tsx` under `.design/ui/` IS a canvas (Smoke TSX, Canvas Viewport, Docs Site are independent design documents); file tabs are editor-style file tabs (one canvas active at a time fills the panel); the infinite-canvas engine belongs INSIDE the canvas runtime (canvas-lib `DesignCanvas`), not as a shell-level multi-iframe plane. Plan `.ai/plans/phase-4-canvas-v2-rendering-engine.md` rewritten end-to-end (2026-05-19) with engine-always-on + per-canvas `<file>.meta.json` persistence (merged into existing meta, not a separate `.layout.json` sidecar). New T0 task added: revert the 2026-05-19 shell-level T1 changes before T1 (the new T1 — `DesignCanvas` world-plane rewrite) can run. User explicitly said "nic neimplementuj" — plan rewrite only; T0 + T1 implementation are next-session work.
-  - Sub-retro: my failure was building the literal letter of the original plan (`.vp-world` in `app.jsx`) without questioning whether the plan put the engine in the right place. The user's mental model — "canvas is canvas, file with canvas displays in main panel period" — was visible in their first screenshot if I had read it more carefully. Lesson: when a plan's framing produces awkward results on the common path, the plan's framing might be wrong, not just my impl. Question the abstraction layer earlier.
+- [x] T0 — REVERT shell-level 2026-05-19 T1 (folded into T1 per user direction)
+- [x] T1 — DesignCanvas → world plane (CSS transforms)
+- [x] T2 — useViewportController hook
+- [x] T3 — DCMiniMap + DCZoomToolbar
+- [x] T4 — Per-DCArtboard click-to-focus
+- [x] T5 — meta.json layout + viewport persistence (+ 5 new tests, 128→135 total)
+- [x] T6 — Perf-prototype lab canvas + DDR-024 (CSS-baseline accepted; T7 gated on measurements)
+- [ ] T7 — Pixi.js engine swap + LoD — **HOLD** (needs user to run perf bench on M1 MBA per DDR-024 methodology)
 
 ## History
 
 | Date | Phase | Status | Note |
 | --- | --- | --- | --- |
+| 2026-05-19 | Phase 4 T1–T6 | done | Infinite-canvas engine landed in `canvas-lib.tsx.template` — DesignCanvas world plane (T1), `useViewportController` hook (T2), `DCMiniMap` + `DCZoomToolbar` (T3), per-DCArtboard click-to-focus (T4), `<file>.meta.json` `layout` + `viewport` persistence (T5) via new `/_api/canvas-meta` GET/PATCH endpoint, perf lab `.design/_lab/perf-100-artboards.tsx` + DDR-024 (T6). T0 revert folded into the same change. `bun test` 135/135. T7 gated on user-side perf benchmark — DDR-024 carries the methodology + template. |
+| 2026-05-19 | Phase 4 T0 | folded | Shell-level 2026-05-19 T1 reverted in `app.jsx` (computeFit/computeDefaultGrid/.vp-world/multi-tab openTab/SelectionHalo rect dropped); engine moves to canvas runtime per user direction. Folded into the T1–T6 commit. |
 | 2026-05-19 | Sidebar restructure | done | Dev-server FILES panel redesigned: sidecar nesting, per-DS folders, unified section toggles, hidden-files toggle, DS-count pill. Commit `8c58c2c`. Archived: `.ai/plans/archive/client-tree-restructure.md`. Changeset authored. |
 | 2026-05-19 | Phase 3.6.1 | done | canvas-lib + HMR + TSX specimens shipped; 38/38 specimen-render scenario PASS; DDR-022 + DDR-023 recorded. Archived: `.ai/plans/archive/phase-3.6.1-canvas-envelope-and-ds-specimens.md`. |
 

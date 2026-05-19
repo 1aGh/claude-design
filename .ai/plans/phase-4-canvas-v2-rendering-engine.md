@@ -1,153 +1,234 @@
-# Phase 4: Canvas v2 — infinite-canvas behavior + render engine
+# Phase 4: Canvas v2 — infinite-canvas engine inside the canvas runtime
 
-> **SCOPE 2026-05-15 (revised twice).** First revision tried to push viewport mechanics into Phase 3.5; user clarified: *"funkcionalita kanvasu patří do Phase 4, ať se to nepřekrývá."* Final scope: Phase 3.5 = visual chrome around the canvas (Tasks 11-13 added gridded paper bg + Wordmark + SelectionHalo + StatusBar info slots — static-only). Phase 4 = the whole **canvas-functionality block** in one phase: multi-iframe infinite-canvas plane, pan/zoom controller, MiniMap, ZoomToolbar, `layout.json` persistence, default-grid migration from v0.x, tab-semantics change (toggle → pan-to-focus), Pixi.js stage, LoD screenshot fallback, world coords in `_active.json`. One phase, one coherent rewrite of how the canvas works.
+> **SCOPE 2026-05-19 — rewritten end to end.** The original Phase 4 plan (2026-05-15) put the engine at the dev-server **shell** level (one shared `.vp-world` in `app.jsx` holding every open canvas as an iframe). 2026-05-19 user feedback corrected the abstraction layer: every `.tsx` under `.design/ui/` (and any future user canvas) **is itself a canvas** — file tabs are file tabs (one canvas active at a time, fills the canvas panel). The infinite-canvas engine lives **inside the canvas runtime** — `DesignCanvas` from `@mdcc/canvas-lib` is the world plane, `DCArtboard` instances are spatial primitives within it. Pan/zoom/MiniMap/ZoomToolbar/Pixi.js are all **per-canvas**. Layout + viewport state persists inside each canvas's own `<file>.meta.json` (no separate `.layout.json` sidecar). The 2026-05-19 shell-level T1 implementation is a wrong-direction artifact and gets reverted in T0 before the new T1 lands.
+>
+> Previous-revision context (kept for git archaeology, NOT current scope): the 2026-05-15 revision settled on Phase 3.5 = visual chrome, Phase 4 = canvas-functionality block. That split survives — Phase 3.5 chrome (paper-grid bg, Wordmark empty-state, SelectionHalo, StatusBar `ARTBOARDS`/`ZOOM` placeholders) stays as-is. What changed is **where** the engine lives.
 
 ## Description
 
-The current dev-server treats canvas as "one active iframe fills the viewport area, tabs toggle visibility." Phase 4 replaces that with a Figma-style infinite canvas: all open tabs render simultaneously on a transformable world plane, pan + zoom + pinch work as expected, a MiniMap shows the world overview, a ZoomToolbar exposes fit-to-screen / 1:1 / +/-, and `.design/<canvas-slug>.layout.json` persists artboard positions + viewport state. Underneath, the world transform is owned by a Pixi.js (WebGL with Canvas2D fallback) stage, not CSS transforms — that's the perf-critical piece that unlocks 60 fps at 100+ artboards. Below `zoom < 0.3` each iframe is swapped for a server-rendered screenshot to maintain frame budget at fit-to-screen.
+Today every `.tsx` canvas under `.design/` renders inside its iframe as a static TSX flow — `DCArtboard` is a labeled card that participates in normal document flow. Phase 4 turns `DesignCanvas` into a transformable **world plane** where every nested `DCArtboard` is absolutely-positioned in world coords; pan, zoom, pinch, spacebar-drag, middle-mouse-drag, and Cmd-shortcuts move the world; a MiniMap shows the canvas overview, a ZoomToolbar exposes fit / 1:1 / +/-. Each canvas's own `<file>.meta.json` carries `layout: { artboards: [...] }` + `viewport: { x, y, zoom }` so positions and pan/zoom state round-trip across reloads. The engine is **always on** (no per-canvas opt-in) — single-artboard canvases default to fit-to-screen and look unchanged from pre-Phase 4; multi-artboard canvases (e.g. `Canvas Viewport.tsx` with CV-01..CV-08) gain spatial editing. Underneath, the world transform is owned by Pixi.js (WebGL with Canvas2D fallback) per canvas — that's the perf-critical piece for canvases with 50+ artboards. Below `zoom < 0.3` each `DCArtboard`'s content is swapped for a server-rendered LoD screenshot to hold the frame budget at fit-to-screen.
 
-> **Runtime + build pipeline already provided by Phase 3.4.** Server runs on Bun (`Bun.serve` / `Bun.file` / `Bun.write`); client bundle is produced by `Bun.build` per `plugins/design/dev-server/build.ts`; Pixi.js is added to the existing client build as a regular npm dep and bundled by `Bun.build` into `dist/client.bundle.js`. No new build tool / runtime / distribution.
+The **dev-server shell** stays unchanged from Phase 3.5: one active iframe fills the canvas panel; tabs are file tabs (clicking a tree item activates that canvas, just like opening a file in an editor). There is no cross-canvas spatial relationship — different `.tsx` files are different documents. The 2026-05-19 shell-level T1 implementation (`.vp-world` in `app.jsx`, multi-tab `openTab`, `computeFit`, in-world Wordmark, world-positioned SelectionHalo, paper-grid as viewport-bound) is reverted in T0.
 
-> **Shell visuals already provided by Phase 3.5.** Wordmark, paper-grid bg, SelectionHalo, StatusBar `ARTBOARDS` + `ZOOM` slots ship as static visuals in Phase 3.5 T11-T13. Phase 4 takes the static `ZOOM 100%` placeholder and wires it to the live controller; promotes the Wordmark from empty-state-only to in-world (so it scales with pan/zoom); inserts a `WORLD x,y` slot between ZOOM and LIVE. Otherwise the Phase 3.5 chrome contract is consumed as-is.
+> **Runtime + build pipeline already provided by Phase 3.4.** Bun server, `Bun.build` orchestrator, per-platform binary distribution. Pixi.js drops into the canvas-lib build pipeline as a regular npm dep — the runtime that compiles each `.tsx` canvas into a self-installing JS bundle (`canvas-build.ts`) picks Pixi up automatically.
+
+> **Canvas-lib already shipped in Phase 3.6.1.** `@mdcc/canvas-lib` is a virtual module that bundles into each canvas's JS via `canvas-lib-resolver.ts`. Phase 4 expands canvas-lib's surface (new components: viewport controller hook, MiniMap, ZoomToolbar) without changing the virtual-module mechanism. `canvas-lib-inline.ts` (handoff path) gets one new responsibility: strip authoring-time engine exports (the controller hook, MiniMap, ZoomToolbar) when emitting registry items — those are not production runtime.
 
 ## User Story
 
-As a designer working on a 30-screen flow, I want to fluidly pan and zoom across my entire `.design/` workspace at 60fps so that I can navigate the project the way I would in Figma — without each artboard reloading or scrolling stuttering.
+As a designer authoring `Canvas Viewport.tsx` with 8 states (CV-01..CV-08), I want each state to be a spatially-positioned `DCArtboard` on an infinite canvas — pannable, zoomable, with a MiniMap + ZoomToolbar — so I can see all states at fit-to-screen, zoom into one to inspect, and (in a future phase) drag-reposition them. My layout + last viewport state persists in `.design/ui/Canvas Viewport.meta.json` so reload doesn't lose my place. The dev-server tab semantics stay editor-style: switching to `Smoke TSX.tsx` swaps the visible canvas; switching back to Canvas Viewport returns me exactly where I was.
 
 ## Problem
 
-- Current canvas is a list of iframes in a flexbox container. Pan and zoom = browser scroll. Performance collapses past ~10 artboards.
-- No infinite canvas — artboards are tab-stacked, not spatially arranged. No mini-map, no zoom controls, no fit-to-screen.
-- Free-form screen positioning (a v1.0 user request) is impossible in the current model.
+- `DCArtboard` is currently a labeled card primitive; canvas content stacks vertically by default. For a canvas with 8 states the author scrolls a long page.
+- No spatial editing. The author can't say "CV-01 sits to the left of CV-02" — they live with document flow.
+- Performance breaks past ~10 DCArtboards in one canvas. All in DOM, no Pixi/WebGL.
+- The 2026-05-19 shell-level T1 implementation is the wrong abstraction layer and confuses the model (different `.tsx` files were getting bundled onto one shared world plane — they're not related).
 
 ## Solution
 
-Two stacked deliverables, sequenced T1 → T7:
+Three stacked deliverables, sequenced T0 → T7:
 
-1. **Behavior layer (T1-T5):** refactor `Viewport` from single-iframe-fills to multi-iframe infinite-canvas plane; build the pan/zoom controller; add MiniMap + ZoomToolbar interactive components; persist `<slug>.layout.json`; migrate v0.x → default grid. All on CSS transforms initially (proves UX before perf gate).
-2. **Engine layer (T6-T7):** swap CSS-transform driver for Pixi.js stage behind the same controller interface; LoD screenshot fallback below zoom 0.3; world coords in `_active.json`; close the perf gate at 100 artboards × 30 nodes ≥ 55 fps.
+0. **Revert layer (T0):** roll back the 2026-05-19 shell-level T1 implementation. Dev-server `Viewport` goes back to Phase 3.5 single-iframe-fills, tabs back to file-tabs, SelectionHalo back to overlay-the-panel. One commit, isolated.
 
-The split lets us land a working infinite canvas as soon as T5 passes (designers can use it), then attack perf in T6-T7 without UX risk. If T6 perf-prototype shows DOM wins, we ship without Pixi and close the phase.
+1. **Behavior layer (T1-T5):** `DesignCanvas` becomes a world plane. `DCArtboard` positions live in world coords (default grid or `<file>.meta.json`). Add the pan/zoom controller (canvas-lib hook), MiniMap, ZoomToolbar. Per-DCArtboard click-to-focus. Persist + restore `layout` + `viewport` via meta.json. All on CSS transforms initially.
 
-`.design/<canvas-slug>.layout.json` schema (introduced in T3): `{ artboards: [{ slug, path, x, y, width, height, zIndex }], viewport: { x, y, zoom } }`. Committed (not gitignored) — layout is a meaningful design artifact.
+2. **Engine layer (T6-T7):** swap CSS-transform driver for Pixi.js **per canvas** behind the same `DesignCanvas` interface. LoD screenshot fallback below zoom 0.3. Perf gate at 100 artboards × 30 nodes ≥ 55 fps in one canvas.
+
+The split lets a working in-canvas infinite-canvas land as soon as T5 passes (designers can use it on `Canvas Viewport.tsx` and future multi-state files); T6-T7 attack perf without UX risk; if T6 perf-prototype shows DOM wins, ship without Pixi.
+
+`<file>.meta.json` schema extension (introduced in T5; backwards-compat with existing meta):
+
+```json
+{
+  "id": "...",
+  "locators": [...],
+  "layout": {
+    "artboards": [
+      { "id": "cv-01", "x": 0,    "y": 0,    "w": 1280, "h": 820 },
+      { "id": "cv-02", "x": 1360, "y": 0,    "w": 1280, "h": 820 }
+    ]
+  },
+  "viewport": { "x": 0, "y": 0, "zoom": 1.0 }
+}
+```
+
+Both `layout` and `viewport` are optional. Missing `layout` → default grid synthesized at canvas mount (3 columns × 1280×820 × 80 gut, by `id` alphabetical, or child index when `id` absent). Missing `viewport` → fit-to-screen. **Always on:** there is no opt-out flag; a single-artboard canvas just renders one rect at fit, behaviorally identical to pre-Phase 4 (the difference is that pan/zoom is now available, but the resting view is unchanged).
 
 ## Metadata
 
-- **Type:** Major refactor (rendering rewrite)
+- **Type:** Major refactor (canvas-lib + canvas runtime rewrite)
 - **Complexity:** High
-- **Depends on:** **Phase 3.4** (Bun runtime + `build.ts` orchestrator + per-platform binary distribution + React 19 + 7-module server split + `@layer` CSS) and **Phase 3.5** (shell visual refresh + tokens) must land before this phase starts.
+- **Depends on:** Phase 3.4 (Bun runtime + `build.ts` orchestrator + 7-module server split), Phase 3.5 (shell chrome — paper-grid, Wordmark empty-state, SelectionHalo, StatusBar slots), Phase 3.6.1 (canvas-lib virtual module + handoff inline + HMR + bare-TSX specimens). All landed.
 - **Parallel with:** —
 - **Affected files:**
-  - `plugins/design/dev-server/client/app.jsx` (split into `Canvas/`, `Viewport/`, `Toolbar/` subtrees — built on the React 19+Bun.build pipeline from 3.4)
-  - `plugins/design/dev-server/client/canvas/` (new — Pixi.js stage, viewport controller, artboard renderer; written in TS per the 3.4 convention)
-  - `plugins/design/dev-server/client/styles/4-components.css` (canvas overlay styles — into the existing `@layer components` from 3.4; no new layer)
-  - `plugins/design/dev-server/api.ts` (new endpoint `GET/PUT /api/layout/<slug>` — added to the 3.4 module split, not the old `server.mjs`)
-  - `plugins/design/dev-server/canvas-meta.schema.json` (extend with `layout` + `viewport`)
-  - `plugins/design/dev-server/package.json` (add `pixi.js ^8` to `dependencies` — bundled into the client by `Bun.build`, picked up by the 3.4 `build.ts` automatically)
-  - `plugins/design/dev-server/build.ts` (touched only to verify Pixi bundles cleanly; existing orchestrator unchanged otherwise)
+  - `plugins/design/templates/canvas-lib.tsx.template` + bootstrap copy at `.design/_lib/canvas-lib.tsx` — `DesignCanvas` rewritten to render `.dc-world`; `DCArtboard` becomes world-positioned; new exports `useViewportController`, `DCMiniMap`, `DCZoomToolbar`.
+  - `plugins/design/dev-server/canvas-meta.schema.json` — add `layout` + `viewport` blocks.
+  - `plugins/design/dev-server/api.ts` — extend meta read/write to round-trip `layout` + `viewport` (PATCH semantics, preserves other meta keys).
+  - `plugins/design/dev-server/canvas-lib-inline.ts` — handoff filter must strip authoring-time engine exports.
+  - `plugins/design/dev-server/handoff.ts` — drop `layout` + `viewport` from emitted meta (authoring state, not production).
+  - `plugins/design/dev-server/package.json` — `pixi.js ^8` added once T6 DDR authorizes.
+  - `plugins/design/dev-server/build.ts` — touched only to confirm Pixi bundles cleanly into each canvas's JS via the existing per-canvas build path.
+  - **REVERT in T0:** `plugins/design/dev-server/client/app.jsx` (drop `.vp-world` JSX, `computeDefaultGrid`, `computeFit`, `useLayoutEffect`/`ResizeObserver`, multi-tab `openTab`, `SelectionHalo({rect})`) + `client/styles/3-shell.css` (drop `.vp-world` rules, restore `.viewport > iframe { display: none } / .active { display: block }` toggle, restore `.sel-halo { inset: 0 }`).
 
 ---
 
 ## Tasks
 
-> Sequenced: T1-T5 land the infinite-canvas behavior on CSS transforms (designers can use it as soon as T5 passes). T6-T7 attack perf via Pixi swap + LoD. Phase closes only after the perf gate is met.
+> Sequenced: T0 reverts the shell-level wrong-direction. T1-T5 land in-canvas behavior on CSS transforms (designers can use it as soon as T5 passes). T6-T7 attack perf via Pixi swap + LoD per canvas. Phase closes only after the perf gate is met.
 
-### Task 1: REFACTOR `Viewport` → multi-iframe infinite-canvas plane (CSS-transform world)
+### Task 0: REVERT the 2026-05-19 shell-level Phase 4 T1 implementation
 
-- **Do:** Restructure the `Viewport` component in `app.jsx`. Today it's `<div className="viewport">{tabs.map(t => <iframe className={t.path===activePath?'active':''}/>)}` with `display: none` toggling visibility. Replace with a `.vp-world` div carrying a single `transform: translate(...) scale(...)` for the entire scene; iframes are absolutely-positioned in world coords inside it. All tabs render simultaneously. Per-iframe transforms are NOT used — only the world wrapper is transformed (Phase 4 T6 swaps that one transform from CSS to Pixi).
-- **Promote Phase 3.5 Wordmark from empty-state to in-world** so it scales with pan/zoom (CV-01 mock pattern).
-- **Pattern:** CV-01 `.ab-world` + `.fc` items in `Canvas Viewport.html`.
-- **Keep:** iframe `src`, `data-path`, inspector overlay injection, comment-pin postMessage flow — byte-identical from `runtime/` perspective. SelectionHalo from Phase 3.5 stays; element-level halo overlay can come now that we have world coords (out of CSS px space).
-- **Gotcha:** scaling iframes via CSS `transform: scale()` still routes pointer events correctly; coordinates inside the iframe stay un-scaled (browser does the math). Inspector reports CSS selectors so Cmd+click selection "just works". Verify in T7 smoke.
-- **Validate:** boot dev-server; all open tabs render side-by-side in the new world plane; `runtime/` Cmd+click still selects elements; SelectionHalo wraps the iframe being interacted with.
+- **Do:** Roll back changes in:
+  - `plugins/design/dev-server/client/app.jsx` — restore the previous `Viewport` (single-active-iframe-fills, `display: none` on inactive, SelectionHalo as full-bleed `inset:0` overlay); restore the single-tab `openTab` (`setTabs(prev => [{path}])`); remove `useLayoutEffect`, `useRef(viewportRef)`, `computeDefaultGrid`, `computeFit`, `VP_GRID`, `VP_FIT_PAD`, `useLayoutEffect` import addition; revert `SelectionHalo` signature to no-args.
+  - `plugins/design/dev-server/client/styles/3-shell.css` — drop the `.vp-world` block + the `.vp-world > iframe` rule; restore `.viewport > iframe { position:absolute; inset:0; width:100%; height:100%; display:none } / .viewport > iframe.active { display:block }`; restore `.viewport` without `overflow: hidden`; restore `.sel-halo { inset: 0 }`.
+- **Don't touch:** any T0 revert leaves the rest of the working tree intact (the unrelated pre-existing diffs in `4-components.css`, `app.jsx` constants for `DS_EXPANDED_STORE` etc. are NOT mine and stay).
+- **Pattern:** `git diff` between this branch and `main` for those two files shows clearly which hunks are mine vs. pre-existing. T0 deletes only my hunks.
+- **Validate:** boot dev-server, open Smoke TSX — fills the canvas panel chrome-to-chrome (pre-Phase 4 behavior). Open three tabs — clicking each toggles the active iframe (no side-by-side rendering, no fit math, no .vp-world). SelectionHalo on element select overlays the whole panel area. `bun test` 123/123 still pass.
+- **STATE.md retro:** add a short note marking T0 as "revert of failed 2026-05-19 shell-level T1; engine moves to canvas runtime per user direction".
 
-### Task 2: ADD pan + zoom interaction (`viewport-control.mjs`)
+### Task 1: REFACTOR `DesignCanvas` → infinite-canvas world plane (CSS-transform world, inside the canvas iframe)
 
-- **Do:** New module `client/viewport-control.mjs` (matches the existing `client/hmr.mjs` / `client/iframe-lazy.mjs` `.mjs` convention). Exports `createViewportController({ getState, setState, element })`. Owns:
+- **Do:** Rewrite the `DesignCanvas` component in `canvas-lib.tsx.template` (and re-bootstrap `.design/_lib/canvas-lib.tsx`). Today it's a static wrapper that flows children naturally (vertical block layout). New behavior:
+  - Root renders `<div className="dc-canvas">` with absolute-positioned children: a `.dc-world` transform target containing all DCArtboards, plus floating overlays (`DCMiniMap`, `DCZoomToolbar`) that sit outside the world transform.
+  - `.dc-world` carries a single `transform: translate(${x}px, ${y}px) scale(${zoom})` for the whole scene, with `transform-origin: 0 0`. The viewport controller hook (T2) owns `{x, y, zoom}`.
+  - `DCArtboard` children are absolutely-positioned via inline `style={{ left, top, width, height }}` pulled from `meta.layout.artboards` (by `id` prop, or child index when `id` absent), or from the default grid synth if `meta.layout` is missing.
+  - `DCSection` keeps its current label-box behavior but doesn't impose flow inside the world; authors using `DCSection` as a group label render its title as an in-world label rect (out of bbox or as a meta-artboard — defer the visual decision; for T1 just render the section title as a small floating chip at the top-left of its bounding artboards or omit it visually if the author hasn't placed artboards inside).
+- **Default world transform = fit-to-screen on the union of DCArtboard rects (artboards only, no other primitives).** Single artboard fills the iframe (downscaling from 1280×820 to whatever the iframe is); multiple lay out per the default grid and all fit. The Wordmark from Phase 3.5 stays a SHELL-LEVEL empty-state thing — it does NOT appear inside `.dc-world`. (The 2026-05-19 attempt to put the Wordmark in-world was a misreading of "promote to in-world"; correct reading is "Wordmark stays shell empty-state; canvas content is its own world".)
+- **Default grid:** 3 columns × 1280 × 820 × 80 gut, ordered alphabetically by DCArtboard `id` (fall back to child index). Computed at canvas mount when `meta.layout` is absent. T5 persists on first user pan/zoom.
+- **Pattern:** CV-01 `.ab-world` + `.fc` items in `.design/ui/Canvas Viewport.tsx` — exactly the same pattern, just now applied as a canvas-lib primitive instead of a shell-level construct.
+- **Keep:** inspector overlay injection + comment-pin postMessage flow — byte-identical from `runtime/` perspective (the runtime sees per-DCArtboard content; world transform on the parent doesn't affect inspector selectors). `DCPostIt`, `SpecimenHeader`, `TokenChip`, all the specimen helpers — untouched; specimens are bare TSX without `DesignCanvas` and don't get the engine.
+- **Gotcha:** CSS `transform: scale()` on an ancestor still routes pointer events into descendant DCArtboards correctly; coordinates inside the artboard stay un-scaled (browser does the math). Inspector reports CSS selectors so Cmd+click selection "just works". Verify in T7 smoke.
+- **Validate:** boot dev-server, open Canvas Viewport (8 DCArtboards) — see all 8 fit-to-screen, no scroll. Open Smoke TSX (1 DCArtboard) — see it fill the canvas iframe, behaviorally indistinguishable from pre-Phase 4 (until T2 adds the controls). Open Docs Site (1 DCArtboard, one big mock) — fills the iframe at fit. runtime/Cmd+click still selects elements inside each artboard.
+
+### Task 2: ADD `useViewportController` hook (canvas-lib)
+
+- **Do:** New module `canvas-lib/viewport-controller.ts` (matches the existing TS-in-canvas-lib convention). Exports `useViewportController({ getInitial, onSettle, worldRef, hostRef })`. Owns:
   - **Wheel = zoom around cursor.** `event.deltaY` → exponential zoom factor; preserve world-coord under cursor. `preventDefault` to disable browser-zoom.
   - **Pinch (trackpad) = zoom around midpoint.** Detected as `ctrlKey + wheel` on macOS Safari/Chrome.
-  - **Spacebar + drag = pan.** Track keydown/keyup; cursor changes to `grab` / `grabbing`.
+  - **Spacebar + drag = pan.** Track keydown/keyup; cursor changes to `grab` / `grabbing`. Listener scoped to `hostRef.current` so it doesn't conflict with shell-level keyboard.
   - **Middle-mouse drag = pan** (alternative for users without spacebar habit).
-  - **Keyboard shortcuts:** `Cmd+0` fit-to-screen · `Cmd+1` actual size (1:1, zoom 1.0) · `Cmd+=` zoom in 1.2× · `Cmd+-` zoom out 0.83× · `Cmd+Option+1..9` jump to artboard N (Option modifier to avoid Chrome tab-switching collision).
+  - **Keyboard shortcuts (scoped to canvas iframe):** `Cmd+0` fit-to-screen (re-invokes the same compute T1 uses on mount) · `Cmd+1` actual size (1:1, zoom 1.0) · `Cmd+=` zoom in 1.2× · `Cmd+-` zoom out 0.83× · `Cmd+Option+1..9` jump to DCArtboard N (Option modifier to avoid Chrome tab-switching collision).
   - **Clamp zoom** to [0.1, 4.0].
   - **Reduced motion:** `prefers-reduced-motion: reduce` collapses animations to instant snaps.
-- **State shape:** `viewport: { x, y, zoom }` in React state via `useState`. Controller has a ref handle; React re-renders on settled values (debounced 50 ms); active animation frame goes straight to `style.transform` for 60fps under CSS driver.
+- **State shape:** `viewport: { x, y, zoom }` in the hook's own `useState`. Active animation frame writes straight to `worldRef.current.style.transform` for 60 fps under the CSS driver; debounced 50 ms `setState` for React-consumer reads (MiniMap, ZoomToolbar, status overlays). Settled state (after 500 ms of inactivity) calls `onSettle` so T5 can persist.
+- **Scope:** the hook holds the canvas's own viewport state. Each canvas iframe has its own `useViewportController` instance — there is no cross-canvas shared state. This is the explicit difference from the 2026-05-19 shell-level T1 attempt.
 - **Pattern:** reference `pixi-viewport` library API for wheel/pinch math (don't bundle; re-implement minimal subset).
-- **Validate:** smooth pan/zoom with 10 iframes; shortcuts all work; spacebar in viewport doesn't conflict with spacebar in tree (controller scopes listener to `.viewport`).
+- **Validate:** in Canvas Viewport, pan with spacebar+drag, zoom with wheel — all 8 artboards reachable; in Smoke TSX, same gestures work even with one artboard. Shell-level inputs (Cmd+R reload, sidebar typing) unaffected — controller scopes listener to canvas iframe.
 
-### Task 3: ADD `<MiniMap>` + `<ZoomToolbar>` interactive components (CV-01)
+### Task 3: ADD `<DCMiniMap />` + `<DCZoomToolbar />` canvas-lib components
 
-- **Do (MiniMap):** Bottom-right floating panel (196 × 132 px per CV-01). Renders all artboard rects scaled to fit, plus a red 2 px outline rect for the current viewport. Click-drag inside MiniMap = drag-pan main view. Click outside the viewport rect = recenter on that point. Header: `"WORLD MAP · N/N"` (artboard count). Decorative — `aria-hidden="true"` (SR users get the same info from StatusBar slots).
-- **Do (ZoomToolbar):** Bottom-center floating toolbar. Five buttons: `−` zoom out, `[42%]` active zoom indicator + click resets to 100%, `+` zoom in, `[ ]` fit-to-screen, `1:1` actual size. Mono labels, hairline-bordered, hard-edged buttons matching CV-01 `.zoom-tb`.
-- **Wire to Phase 3.5 placeholder ZOOM slot:** swap the static `100%` value source for the live controller value via the existing `<StatusBarSlot label="Zoom">` from Phase 3.5 T13. Remove the "Pan/zoom in Phase 4" tooltip. Insert a new `<StatusBarSlot label="World position">WORLD <b>{x}, {y}</b></StatusBarSlot>` between ZOOM and LIVE (the slot that was deferred from 3.5).
-- **Pattern:** CV-01 mock components `.mm` (lines 108-131) + `.zoom-tb` (lines 134-160).
-- **Validate:** open 3-5 tabs; MiniMap shows rects + tracks pan/zoom; ZoomToolbar buttons all work; StatusBar ZOOM + WORLD update live.
+- **Do (DCMiniMap):** New canvas-lib export. Bottom-right floating panel (196 × 132 px per CV-01) rendered inside `.dc-canvas` but **outside** `.dc-world` (so it doesn't pan/zoom with the world). Renders all DCArtboard rects scaled to fit, plus a red 2 px outline rect for the current viewport. Click-drag inside MiniMap = drag-pan main view; click outside the viewport rect = recenter on that point. Header: `"WORLD MAP · N/N"` (DCArtboard count). Decorative — `aria-hidden="true"` (SR users navigate via DCArtboard label buttons from T4).
+- **Do (DCZoomToolbar):** Bottom-center floating toolbar. Five buttons: `−` zoom out, `[42%]` active zoom indicator + click resets to 100%, `+` zoom in, `[ ]` fit-to-screen, `1:1` actual size. Mono labels, hairline-bordered, hard-edged buttons matching CV-01 `.zoom-tb`. Same outside-of-world placement as MiniMap.
+- **Wiring:** `DesignCanvas` mounts both by default. Author opts out via `<DesignCanvas controls={{ minimap: false, toolbar: false }}>`. Both consume `useViewportController` state via a context (`ViewportControllerContext` published by `DesignCanvas`).
+- **Note on shell StatusBar:** Phase 3.5's placeholder `ZOOM 100 %` slot stays static at the shell level (it's the ACTIVE canvas's ZOOM, but the shell doesn't have a reliable cross-canvas signal — different canvases have different zooms). The shell ZOOM slot becomes a vestigial chrome stamp showing `--` or just disappears. Decide in T3 implementation; either is fine.
+- **Pattern:** CV-01 mock components `.mm` + `.zoom-tb`.
+- **Validate:** in a multi-artboard canvas, MiniMap shows all rects + tracks pan/zoom; ZoomToolbar buttons all work. In single-artboard canvas, MiniMap renders the single rect; everything still functional.
 
-### Task 4: REFACTOR Tabs — click pans+zooms to artboard (no toggle)
+### Task 4: Per-DCArtboard click-to-focus (in-canvas nav)
 
-- **Do:** Existing `.tabs` row in the header keeps its JSX but `onClick` changes from `setActivePath(p)` (toggled iframe visibility) to `panToArtboard(p)` (smooth-pan + zoom-to-fit the target iframe in 240 ms; `prefers-reduced-motion` skips to instant). Active tab indicator = whichever artboard is closest to viewport center after pan settles (computed in the controller's `onSettle` callback, not on every frame).
-- **Keep:** tab close button, tab open behavior (clicking a tree file still opens a tab — which now also pans to it).
-- **Validate:** tab click pans + zooms; close button still works; close-then-open returns to last position (via `layout.json` per T5).
+- **Do:** Each DCArtboard's label strip (`dc-artboard-label`) becomes a focusable button. Click = smooth-pan + zoom-to-fit just that artboard in 240 ms (`prefers-reduced-motion` skips to instant). Active artboard indicator = whichever DCArtboard is closest to viewport center after pan settles (computed in the controller's `onSettle` callback).
+- **Note:** this REPLACES the 2026-05-15 plan's T4 (which routed *file-tab* clicks through pan-to-focus across a shared shell-level world — wrong scope). File tabs in the shell stay editor-style (one canvas active at a time, no pan animation). Per-DCArtboard pan-to-focus is in-canvas navigation only.
+- **Keyboard equivalent:** `Cmd+Option+1..9` from T2 already jumps to DCArtboard N. T4 binds the label click + adds focus-ring + `aria-current` for SR users.
+- **Validate:** open Canvas Viewport at fit-to-screen showing 8 artboards. Click CV-03 label → smoothly pans+zooms so CV-03 fills the iframe. Click CV-05 label → smooth transition. Tab/Shift+Tab through labels works for keyboard users.
 
-### Task 5: ADD `<slug>.layout.json` persistence + v0.x default-grid migration
+### Task 5: ADD `<file>.meta.json` layout + viewport persistence
 
-- **Do (server):** Handlers `GET /_api/layout/<slug>` + `PUT /_api/layout/<slug>` in `api.ts`. Body schema: `{ artboards: [{ slug, path, x, y, width, height, zIndex }], viewport: { x, y, zoom } }`. File path: `<designRoot>/<slug>.layout.json`. Read via `Bun.file().json()` with 404-on-missing; write via `Bun.write`.
-- **Do (migration):** when `<slug>.layout.json` is missing, server **synthesizes a default grid** from `_index-data` (`groups[].paths`): 3 columns, 1280 × 820 default artboard size, 80 px gutters, ordered alphabetically. Returns the synth response **without writing it** (client decides whether to persist on first user interaction — pan or zoom).
-- **Do (client):** on mount, fetch `/_api/layout/<slug>` for the current canvas (slug `"default"` for v0.x — Phase 5 introduces multiple named canvases). Apply: position each tab's iframe per `artboards[].{x,y,width,height}`; set viewport `{x,y,zoom}`. On pan-stop / zoom-stop (debounced 500 ms), `PUT` the new state. Add `<slug>.layout.json` as a **committed** file (not gitignored — layout is a meaningful design artifact).
-- **Validate:** open dev-server on a fresh `.design/`; verify default grid renders; pan + zoom; reload; viewport restored. `cat .design/default.layout.json` shows JSON with current state.
+- **Do (schema):** Extend `plugins/design/dev-server/canvas-meta.schema.json`:
+  ```jsonc
+  {
+    // existing fields preserved …
+    "layout": {
+      "type": "object",
+      "properties": {
+        "artboards": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "x", "y", "w", "h"],
+            "properties": { "id": {"type": "string"}, "x": {"type": "number"}, "y": {"type": "number"}, "w": {"type": "number"}, "h": {"type": "number"} }
+          }
+        }
+      }
+    },
+    "viewport": {
+      "type": "object",
+      "required": ["x", "y", "zoom"],
+      "properties": { "x": {"type": "number"}, "y": {"type": "number"}, "zoom": {"type": "number"} }
+    }
+  }
+  ```
+  Both `layout` + `viewport` are optional. Backwards-compatible — existing canvases without these blocks work unchanged.
+- **Do (server):** `api.ts` extends the existing canvas-meta read/write endpoint (`GET /_api/canvas-meta/<path>` already in 3.6.1) to:
+  - GET: return the full meta as-is (no synthesis on read — the client synthesizes defaults).
+  - **PATCH `/_api/canvas-meta/<path>`** (new method or POST with `{ patch: {...} }` shape — pick the simpler one): merges `layout` and/or `viewport` into the existing meta, atomic write via `Bun.write`, preserves all other keys.
+- **Do (client / canvas-lib):** `_canvas-shell.html` already injects `window.__canvas_meta__` for the loaded canvas. `DesignCanvas` reads it:
+  - If `meta.layout` present → use those artboard positions, looking up by DCArtboard `id` (or child index for legacy artboards without `id`).
+  - If `meta.layout` absent → synth default grid (T1's default).
+  - If `meta.viewport` present → seed the controller's initial state.
+  - If `meta.viewport` absent → fit-to-screen.
+  - `useViewportController.onSettle` (debounced 500 ms) fires PATCH with `{ viewport: {...} }`.
+  - Per-artboard repositioning (when T8+ adds drag-to-move) fires PATCH with `{ layout: { artboards: [...] } }`. T5 itself doesn't add drag — only persists what the controller already produces.
+- **Do (handoff):** `handoff.ts` strips both `layout` + `viewport` from the meta block in emitted registry items — they're authoring state, not production data. `canvas-lib-inline.ts` likewise filters the engine-runtime exports (see T7) so handed-off code has no controller/MiniMap/ZoomToolbar references.
+- **Validate:** open Canvas Viewport, pan to CV-05 close-up, reload — viewport restored to CV-05 close-up. `cat .design/ui/Canvas\ Viewport.meta.json` shows `viewport` block. Open Smoke TSX (no prior layout), default fit-to-screen renders, then pan/zoom, reload — viewport persisted. Run `/design:handoff` on Canvas Viewport — emitted registry has no `layout`/`viewport` in meta, no engine exports in code.
 
-### Task 6: Perf-prototype DDR — Pixi vs DOM-transform baseline
+### Task 6: Perf-prototype DDR — Pixi vs DOM-transform baseline (per-canvas)
 
-- **Do:** Build a throwaway test page **inside the Phase 3.4 build pipeline** (Bun.build + React 19) rendering 100 artboards (100 × 100 div each, faked content) under three approaches: (a) the **T1-T5 CSS-transform world** baseline (already shipped at this point), (b) Pixi.js WebGL, (c) Canvas2D ImageData blit. Measure FPS while panning + zooming. DDR the result.
-- **Pattern:** harness similar to `Vercel/turbo`'s dependency-graph viz.
-- **Validate:** Decision recorded with FPS numbers. If Pixi wins by < 20 %, **cancel the engine swap** and ship Phase 4 as "DOM virtualization + IntersectionObserver tuning only" — T1-T5 already deliver the UX. DDR explicitly authorizes that exit.
+- **Do:** Build a throwaway lab canvas at `.design/_lab/perf-100-artboards.tsx` rendering 100 DCArtboards × 30 nodes each (faked content, no real CSS bling). Three drivers measured side-by-side:
+  - (a) The T1-T5 CSS-transform world (already shipped at this point) — the baseline.
+  - (b) Pixi.js WebGL stage swapping the CSS world transform (compose iframe content into a Pixi texture, or render at the DOM level still but composite via Pixi).
+  - (c) Canvas2D ImageData blit (sanity-check fallback).
+  Measure FPS while panning + zooming in that one canvas. DDR records the numbers.
+- **Pattern:** harness similar to Vercel/turbo's dependency-graph viz lab.
+- **Exit clause unchanged from original Phase 4 plan:** if Pixi gain < 20 %, **cancel the engine swap** and ship Phase 4 as "DOM virtualization + IntersectionObserver tuning only" — T1-T5 already deliver the UX. DDR explicitly authorizes that exit.
 
-### Task 7: Engine swap (CSS → Pixi.js) + LoD fallback + world coords in `_active.json` + perf gate close
+### Task 7: Engine swap (CSS → Pixi.js) + LoD fallback + perf gate close — per canvas
 
 > Only runs if T6 DDR authorizes the swap.
 
-- **Do (engine swap):** New module `client/canvas/pixi-driver.ts` implementing the same interface as the CSS-transform driver from T2. `viewport-control.mjs` (or its `.ts` equivalent) gets a build-time feature flag picking which driver applies world transforms. **UX byte-identical** — MiniMap, ZoomToolbar, StatusBar slots, keyboard shortcuts, animation curves all consume controller state via the same React hooks; nothing visible changes.
-- **Do (LoD):** when `zoom < 0.3`, swap each iframe for a static screenshot. Server pre-renders via `dev-server/bin/screenshot.sh --full <path>` on first artboard mount, caches under `_history/<slug>/_lod/`. Client requests via new `GET /_lod/<path>?w=320`. Re-enter "live iframe" mode when zoom rises above 0.4 (hysteresis).
-- **Do (world coords):** extend `_active.json` with `viewport: { x, y, zoom }` mirror (so Claude reading state via `/design:edit` doesn't have to parse two files) + `selected.worldCoords: { x, y }`. Keep `selected.cssPath` unchanged from Phase 3.5. Writes go through `inspect.ts` via `Bun.write`.
-- **Do (perf gate close):** re-run the T6 perf harness against the live build; assert ≥ 55 fps at 100 artboards × 30 nodes. If sub-55, DDR with the actual number + remediation plan (IntersectionObserver tuning + iframe pool size). Re-run Phase 3.4 perf harness to confirm shell budgets not regressed (cold start < 100 ms HTTP-200, idle RAM < 80 MB).
-- **Update `client/iframe-lazy.mjs`:** viewport-controller world-coords become the authoritative visibility signal, replacing the flexbox-IO logic from Phase 3.4.
-- **Validate:** scenarios `dev-server-shell-tour` + `dev-server-infinite-canvas` pass on Pixi driver pass with zero UX diff (≤ 0 px on chrome, ≤ 4 px on world-position rounding). Perf bench writes a markdown report under `.ai/logs/phase-4-perf-{date}.md`.
+- **Do (engine swap):** New module `canvas-lib/pixi-driver.ts` implementing the same interface as the CSS-transform driver from T2. `useViewportController` gets a build-time feature flag picking which driver applies world transforms. **UX byte-identical** — MiniMap, ZoomToolbar, DCArtboard label clicks, keyboard shortcuts, animation curves all consume controller state via the same React hooks; nothing visible changes. The Pixi stage lives **inside each canvas's iframe** — each canvas instantiates its own stage; shell-level Pixi initialization is not introduced (there is no shell-level rendering).
+- **Do (LoD):** when `zoom < 0.3`, each DCArtboard's rendered content is swapped for a static screenshot. Server pre-renders via `dev-server/bin/screenshot.sh --element <artboard-id>` on first artboard mount (or lazily on first LoD-trigger), caches under `_history/<canvas-slug>/_lod/<artboard-id>.png`. Client requests via new `GET /_lod/<canvas>/<artboard>?w=320`. Re-enter live content above zoom 0.4 (hysteresis).
+- **Do (handoff inline):** `canvas-lib-inline.ts` filters the engine-runtime exports (`useViewportController`, `DCMiniMap`, `DCZoomToolbar`, `pixi-driver` internals) from the BFS-dep walk — handed-off code has the static `DesignCanvas` + `DCArtboard` definitions only. `inlineUsedExports` already does export-name resolution; add an allow-list of "non-runtime-exports" to skip.
+- **Do (perf gate close):** re-run the T6 perf harness against the live Pixi build; assert ≥ 55 fps at 100 artboards × 30 nodes inside one canvas. If sub-55, DDR with the actual number + remediation plan (IntersectionObserver tuning + artboard render-pool sizing). Re-run Phase 3.4 perf harness to confirm shell budgets not regressed (cold start < 100 ms HTTP-200, idle RAM < 80 MB, first paint < 350 ms, theme toggle < 16 ms per DDR-012). Shell budgets should be unaffected — the engine is per-canvas, not shell.
+- **Validate:** scenarios `canvas-runtime-tour` + `canvas-runtime-pan-zoom-50-artboards` pass on the Pixi driver with zero UX diff (≤ 0 px on chrome, ≤ 4 px on world-position rounding). Perf bench writes a markdown report under `.ai/logs/phase-4-perf-{date}.md`.
 
 ---
 
 ## Validation
 
-1. **Static:** `bun run plugins/design/dev-server/build.ts --release` succeeds; bundle size ≤ 400 KB gz (canvas v2 budget — adds ~120 KB on top of the ~80 KB Phase 3.4 baseline for the React 19 shell + chrome).
-2. **Types:** `bun tsc --noEmit` passes on `client/canvas/*.ts` and any new files in the 7-module server split.
-3. **Perf bench:** Repeatable harness measures FPS over 100 artboards × 30 nodes — must hold ≥ 55 fps on an M1 MacBook Air. Re-runs the Phase 3.4 perf harness to confirm no regression on the shell budgets (cold start < 100 ms HTTP-200, idle RAM < 80 MB).
-4. **Cross-platform scenario:** Spawn `scenario-runner` for `canvas-pan-zoom-50-artboards` across `web-desktop` + `web-mobile` (mobile is degraded mode — accept).
-5. **A11y:** Spawn `a11y-auditor` against the toolbar + minimap UI.
-6. **Backward compat:** Open three v0.x sample projects; verify auto-layout migration works.
+1. **Static:** `bun run plugins/design/dev-server/build.ts --release` succeeds. Per-canvas JS bundle adds ~80-150 KB for the engine (measured per canvas via `canvas-build.ts` output sizes — shell bundle stays ≤ 400 KB gz as before, since engine isn't bundled into the shell).
+2. **Types:** `bun tsc --noEmit` passes on canvas-lib + dev-server changes (the 2 pre-existing `api.ts` errors carry over until they're separately fixed).
+3. **Tests:** `bun test` stays green (123/123 baseline from Phase 3.6.1, plus new tests for the controller hook + MiniMap geometry + meta-PATCH endpoint).
+4. **Perf bench:** repeatable harness measures FPS over 100 DCArtboards × 30 nodes in one canvas — must hold ≥ 55 fps on an M1 MacBook Air. Re-runs the Phase 3.4 shell perf harness to confirm no regression on cold start / idle RAM / paint budgets.
+5. **Cross-platform scenario:** spawn `scenario-runner` for `canvas-runtime-pan-zoom-50-artboards` across web-desktop + web-mobile (mobile is degraded mode — accept).
+6. **A11y:** spawn `a11y-auditor` against the MiniMap + ZoomToolbar UI inside a canvas (each canvas's iframe is its own a11y root).
+7. **Backward compat:** open Smoke TSX + Canvas Viewport + Docs Site — verify all three render correctly; no visual regression vs pre-Phase 4 on the single-artboard cases; Canvas Viewport gains the spatial view.
+8. **Handoff integrity:** `/design:handoff` on Canvas Viewport → emitted registry-item has zero `useViewportController` / `DCMiniMap` / `DCZoomToolbar` references and no `layout`/`viewport` in meta.
+9. **Meta round-trip:** open a canvas, pan/zoom, reload — `cat <file>.meta.json` shows persisted `viewport`; visual state matches pre-reload.
 
 ## Scenario coverage
 
 | Scenario | Covers user flow | Status |
 |----------|------------------|--------|
-| `dev-server-infinite-canvas` | Open project → default grid renders all .html files → tab click pans/zooms to artboard → wheel-zoom out to fit-to-screen → Cmd+0 fit shortcut → MiniMap click-drag pans → ZoomToolbar `1:1` → reload (viewport restored from `default.layout.json`) → spacebar+drag → confirm StatusBar ZOOM/WORLD/ARTBOARDS update live | 🆕 new |
-| `canvas-pan-zoom-50-artboards` | Stress: open 50 artboards → continuous pan → continuous zoom → fit-to-screen → assert ≥ 55 fps under Pixi driver | 🆕 new |
+| `canvas-runtime-tour` | Open Canvas Viewport → see 8 DCArtboards at fit-to-screen → wheel-zoom into CV-03 → MiniMap shows viewport rect → click CV-05 label → smooth pan+zoom to CV-05 → Cmd+0 returns to fit-all → spacebar+drag pan → reload, viewport restored exactly. Across all of this the dev-server shell tabs stay editor-style (no shell-level pan). | 🆕 new |
+| `canvas-runtime-pan-zoom-50-artboards` | Build `.design/_lab/perf-50-artboards.tsx` → continuous pan → continuous zoom → fit-to-screen → assert ≥ 55 fps under chosen driver. Single canvas iframe; no shell involvement. | 🆕 new |
+
+The 2026-05-15 scenarios `dev-server-infinite-canvas` + `canvas-pan-zoom-50-artboards` from the original Phase 4 plan are obsoleted — they covered the shell-level model which T0 reverts.
 
 ---
 
 ## Acceptance criteria
 
-- [ ] Phase 3.4 + Phase 3.5 landed (this phase consumes Phase 3.5's static-visual chrome contract — Wordmark, paper-grid bg, SelectionHalo, StatusBar `ARTBOARDS` + placeholder `ZOOM` slots — and promotes them to fully interactive).
-- [ ] `Viewport` refactored to multi-iframe infinite-canvas plane on CSS transforms (T1).
-- [ ] Pan / zoom / pinch / spacebar-drag / middle-mouse-drag / Cmd+Option+digit shortcuts all work and feel responsive (T2).
-- [ ] `MiniMap` + `ZoomToolbar` render per CV-01 reference; click-drag MiniMap pans main view (T3).
-- [ ] StatusBar `ZOOM` slot wired to live controller (replaces placeholder); new `WORLD x,y` slot added (T3).
-- [ ] Tab click pans+zooms to focus an artboard (smooth motion, prefers-reduced-motion respected) (T4).
-- [ ] `GET/PUT /_api/layout/<slug>` endpoints return + persist; `.design/default.layout.json` round-trips across reload (T5).
-- [ ] Default-grid migration: opening a `.design/` without `default.layout.json` returns a synthesized layout; first user pan/zoom persists it (lazy-create). `.design/*.layout.json` is **committed** (T5).
-- [ ] DDR-T6 written: perf-prototype results (DOM baseline vs Pixi vs Canvas2D at 100 artboards). If Pixi gain < 20 %, engine swap cancelled — DDR documents the exit (T6).
-- [ ] If swap authorized: Pixi.js dropped into the existing `Bun.build` pipeline as a regular dependency — no new bundler, no new build script (T7).
-- [ ] If swap authorized: LoD screenshot fallback active below zoom 0.3 with 0.4 re-entry hysteresis; cached under `_history/<slug>/_lod/` (T7).
-- [ ] `_active.json` carries `viewport: { x, y, zoom }` + `selected.worldCoords` (T7).
-- [ ] `client/iframe-lazy.mjs` updated: viewport-controller world-coords replace flexbox-IO logic as the visibility source (T7).
-- [ ] Perf gate met: ≥ 55 fps on the 100-artboard × 30-node bench AND Phase 3.4 shell budgets (cold start < 100 ms HTTP-200, first paint < 350 ms, idle RAM < 80 MB, theme toggle < 16 ms — per DDR-012) NOT regressed (T7).
-- [ ] Scenarios `dev-server-infinite-canvas` (new in Phase 4) + `dev-server-shell-tour` (from Phase 3.5) pass on web-desktop.
-- [ ] Manual smoke against `/Volumes/D/git/dugmate/.design/` shows no regression + default-grid generates sensibly.
+- [ ] Phase 3.4 + Phase 3.5 + Phase 3.6.1 landed (all dependencies satisfied as of 2026-05-19).
+- [ ] **T0:** 2026-05-19 shell-level T1 reverted in `app.jsx` + `3-shell.css`. Dev-server shell back to Phase 3.5 single-iframe-fills + file-tab toggle behavior. `bun test` 123/123 still pass.
+- [ ] **T1:** `DesignCanvas` from `@mdcc/canvas-lib` is an infinite-canvas world plane (`.dc-world` + transform); `DCArtboard` children are absolutely-positioned in world coords; default-grid + fit-to-screen apply when meta has no `layout`/`viewport`.
+- [ ] **T2:** `useViewportController` hook owns pan/zoom/pinch/spacebar-drag/middle-mouse-drag/Cmd+Option+digit; scoped to the canvas iframe; per-canvas state, no shell crosstalk.
+- [ ] **T3:** `DCMiniMap` + `DCZoomToolbar` render per CV-01 reference inside the canvas iframe; opt-out via `<DesignCanvas controls={...}>`; click-drag MiniMap pans the canvas world.
+- [ ] **T4:** DCArtboard label is a focusable button that pans+zooms to fit just that artboard; reduced-motion respected; active artboard indicator updates on settle.
+- [ ] **T5:** `canvas-meta.schema.json` extended with `layout` + `viewport`; PATCH endpoint round-trips state; default-grid synth + fit-to-screen synth applied when blocks absent; handoff strips both blocks from emitted meta.
+- [ ] **T6:** DDR written with perf-prototype results (DOM vs Pixi vs Canvas2D at 100 artboards × 30 nodes in one canvas). If Pixi gain < 20 %, T7 cancelled — DDR documents the exit.
+- [ ] **T7 (if authorized):** Pixi.js engine swap per canvas (no shell-level Pixi); LoD screenshot fallback active below zoom 0.3 with 0.4 re-entry hysteresis; cached under `_history/<canvas-slug>/_lod/`; `canvas-lib-inline.ts` strips engine exports from handoff.
+- [ ] Perf gate: ≥ 55 fps at 100 artboards × 30 nodes in one canvas, M1 MBA; Phase 3.4 shell budgets unaffected.
+- [ ] Scenarios `canvas-runtime-tour` + `canvas-runtime-pan-zoom-50-artboards` pass on web-desktop.
+- [ ] Manual smoke against `/Volumes/D/git/dugmate/.design/ui/` shows no regression on existing single-artboard canvases; multi-artboard canvases (if any in dugmate) get the infinite-canvas behavior.
+- [ ] The dev-server shell **never** ends up with multiple iframes sharing a transformed world plane — that's the explicit anti-pattern this plan rejects.

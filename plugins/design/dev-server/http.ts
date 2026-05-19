@@ -193,6 +193,32 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect): Http {
       return Response.json({ file, comments }, { headers: { 'Cache-Control': 'no-store' } });
     },
 
+    '/_api/canvas-meta': async (req: Request) => {
+      // Phase 4 T5 — sibling `<canvas>.meta.json` read / merge.
+      // GET ?file=<repo-relative-canvas-path>            → full meta or {}
+      // PATCH (or POST) body { file, patch: {...} }      → shallow-merged meta
+      const url = new URL(req.url);
+      if (req.method === 'GET') {
+        const file = url.searchParams.get('file');
+        if (!file) return new Response('file query param required', { status: 400 });
+        const meta = await api.loadCanvasMeta(file);
+        return Response.json(meta ?? {}, { headers: { 'Cache-Control': 'no-store' } });
+      }
+      if (req.method === 'PATCH' || req.method === 'POST') {
+        const body = await readJson<{ file?: string; patch?: Record<string, unknown> }>(req);
+        if (!body || typeof body.file !== 'string' || !body.file) {
+          return new Response('body must include { file, patch }', { status: 400 });
+        }
+        if (!body.patch || typeof body.patch !== 'object') {
+          return new Response('body.patch must be an object', { status: 400 });
+        }
+        const next = await api.patchCanvasMeta(body.file, body.patch);
+        if (!next) return new Response('Not found or rejected', { status: 404 });
+        return Response.json(next, { headers: { 'Cache-Control': 'no-store' } });
+      }
+      return new Response('Method not allowed', { status: 405 });
+    },
+
     '/_canvas-state': async (req: Request) => {
       const url = new URL(req.url);
       if (req.method === 'GET') {
