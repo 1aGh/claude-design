@@ -2,10 +2,13 @@
 name: phase-4.2-artboard-free-move
 status: draft
 created: 2026-05-19
-decisions: []
+revised: 2026-05-19
+decisions: [DDR-025-canvas-lib-single-source-in-dev-server.md]
 depends-on: phase-4.1-figjam-canvas-interactions.md (selection-set + tool-mode framework)
 amends: phase-4-canvas-v2-rendering-engine.md (delivers the deferred "T8+ drag-to-move")
 ---
+
+> **Path-sweep pending (2026-05-19).** This plan was authored pre-Phase-4.0.5 and still references `.design/_lib/canvas-lib.tsx`, `plugins/design/_lib/...`, `plugins/design/dev-server/runtime/design-canvas.jsx`, and `plugins/design/templates/canvas-lib.tsx.template` — all of which were relocated or deleted by DDR-025 (Phase 4.0.5) and the runtime/ purge (2026-05-19). Before this plan goes active, do a path sweep: canvas-lib lives at `plugins/design/dev-server/canvas-lib.tsx` (single source); `runtime/` is gone; new modules land as siblings to `canvas-lib.tsx` (e.g., `plugins/design/dev-server/use-artboard-drag.tsx`). No template mirror.
 
 # Phase 4.2: Free-form artboard repositioning
 

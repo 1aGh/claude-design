@@ -1,7 +1,7 @@
 # DDR-016: `plugins/design/dev-server/runtime/` is the canvas-runtime library home — not meta-design, not shell chrome
 
 - **Date:** 2026-05-15
-- **Status:** Accepted
+- **Status:** **Superseded 2026-05-19** by the Phase 3.6 → 4.0.5 canvas-lib single-source architecture. The `runtime/` folder and its two files (`design-canvas.jsx`, `tweaks-panel.jsx`) are deleted; their behavior is fully replaced by `plugins/design/dev-server/canvas-lib.tsx` (TSX canvases) + `inspect.ts` injection (Cmd+Click selection overlay). The HTML-canvas injection path (`injectInto`, `injectRuntime`, `stripLegacyRuntime`, `/_runtime/*` route) is removed from both `inspect.ts`/`http.ts` (Bun server) and `server.mjs` (legacy Node fallback). No active `.html` canvases exist under `.design/` — all migrated to `.tsx` during Phase 3.6.1. Original Accepted record preserved below for historical context.
 - **Tags:** design, dev-server, runtime, audit, library, bundle, react, phase-3.4
 - **Related:** [`.ai/plans/phase-3.4-architecture-refactor.md`](../plans/phase-3.4-architecture-refactor.md) (Task 1 — the audit gate this DDR answers), [DDR-012](./DDR-012-react-19-unified-runtime.md), `plugins/design/dev-server/runtime/design-canvas.jsx` (803 LOC), `plugins/design/dev-server/runtime/tweaks-panel.jsx` (425 LOC), `plugins/design/dev-server/server.mjs:878-895` (HTML injection that wires `<script type="text/babel" src="/_runtime/*.jsx">` into every user canvas page), `plugins/design/dev-server/server.mjs:1209-1210` (`/_runtime/*` route handler)
 

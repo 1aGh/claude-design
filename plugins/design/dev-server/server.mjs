@@ -873,40 +873,7 @@ const INSPECTOR_SCRIPT = `
 </script>
 `;
 
-// ---------- Canvas runtime injection ----------
-// Single source of truth for the DesignCanvas / DCSection / DCArtboard / Tweaks
-// helpers — `dev-server/runtime/*.jsx`. We inject script tags into every HTML
-// served from designRoot so canvases don't ship their own copy. Same code +
-// same fixes everywhere; future-generated canvases inherit improvements
-// automatically.
-
-const RUNTIME_INJECT = `
-<!-- design-plugin canvas runtime (single source of truth, served by dev server) -->
-<script type="text/babel" src="/_runtime/design-canvas.jsx" data-design-runtime="1"></script>
-<script type="text/babel" src="/_runtime/tweaks-panel.jsx"  data-design-runtime="1"></script>
-`;
-
-// Strip legacy local references (e.g. <script src="design-canvas.jsx"> or
-// any other relative path that resolves to the runtime files). The injected
-// /_runtime/* version is authoritative.
-function stripLegacyRuntime(html) {
-  return html
-    .replace(/<script[^>]*src=["'][^"']*design-canvas\.jsx["'][^>]*><\/script>\s*/gi, '')
-    .replace(/<script[^>]*src=["'][^"']*tweaks-panel\.jsx["'][^>]*><\/script>\s*/gi, '');
-}
-
-function injectRuntime(html) {
-  // Prefer placement at start of <body> so text/babel scripts inside body see
-  // the globals. Fall back to before </head> or end of doc.
-  const bodyOpen = html.match(/<body[^>]*>/i);
-  if (bodyOpen) {
-    const idx = bodyOpen.index + bodyOpen[0].length;
-    return html.slice(0, idx) + RUNTIME_INJECT + html.slice(idx);
-  }
-  const headClose = html.lastIndexOf('</head>');
-  if (headClose !== -1) return html.slice(0, headClose) + RUNTIME_INJECT + html.slice(headClose);
-  return RUNTIME_INJECT + html;
-}
+// ---------- Inspector script injection ----------
 
 function injectInspector(html) {
   var idx = html.lastIndexOf('</body>');
@@ -1090,7 +1057,6 @@ async function buildSystemData() {
 // ---------- Client + runtime static files ----------
 
 const CLIENT_DIR  = path.join(__dirname, 'client');
-const RUNTIME_DIR = path.join(__dirname, 'runtime');
 
 async function serveStaticFrom(rootDir, relPath, res) {
   const safe = relPath.replace(/\.\./g, '');
@@ -1109,7 +1075,6 @@ async function serveStaticFrom(rootDir, relPath, res) {
 }
 
 const serveClientFile  = (rel, res) => serveStaticFrom(CLIENT_DIR, rel, res);
-const serveRuntimeFile = (rel, res) => serveStaticFrom(RUNTIME_DIR, rel, res);
 
 // ---------- HTTP ----------
 
@@ -1206,11 +1171,6 @@ const server = http.createServer(async (req, res) => {
       await serveClientFile(rel, res);
       return;
     }
-    if (reqPath.startsWith('/_runtime/')) {
-      const rel = decodeURIComponent(reqPath.slice('/_runtime/'.length));
-      await serveRuntimeFile(rel, res);
-      return;
-    }
     const fp = safePath(reqPath);
     if (!fp) { res.writeHead(403); res.end('Forbidden'); return; }
     let stat;
@@ -1236,8 +1196,6 @@ const server = http.createServer(async (req, res) => {
 
     if (ext === '.html' && fp.startsWith(DESIGN_ROOT + path.sep)) {
       let html = data.toString('utf8');
-      html = stripLegacyRuntime(html);
-      html = injectRuntime(html);
       html = injectInspector(html);
       data = Buffer.from(html, 'utf8');
     }

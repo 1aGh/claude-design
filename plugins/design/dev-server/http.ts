@@ -64,7 +64,6 @@ function safePathUnderRoot(reqUrl: string, repoRoot: string): string | null {
 // and inside the standalone binary's embedded FS in --compile mode.
 const DIST_DIR = join(HERE, 'dist');
 const CLIENT_DIR = join(HERE, 'client');
-const RUNTIME_DIR = join(HERE, 'runtime');
 const TEMPLATES_DIR = join(HERE, '..', 'templates');
 
 // In-memory transpile cache. Key = absolute canvas path; value = the last
@@ -305,13 +304,7 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect): Http {
         return serveFile(srcHit);
       }
 
-      if (pathname.startsWith('/_runtime/')) {
-        const rel = decodeURIComponent(pathname.slice('/_runtime/'.length));
-        if (rel.includes('..')) return new Response('Forbidden', { status: 403 });
-        return serveFile(join(RUNTIME_DIR, rel));
-      }
-
-      // React 19 runtime bundles for TSX canvases. The browser pulls these
+// React 19 runtime bundles for TSX canvases. The browser pulls these
       // through the importmap in _canvas-shell.html — each bundle is a single
       // package (react, react-dom/client, jsx-runtime, jsx-dev-runtime),
       // built once on first request, cached in-process for the session.
@@ -348,10 +341,10 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect): Http {
       // which canvas to import + mount. See plugins/design/templates/_shell.html.
       if (pathname === '/_canvas-shell.html' || pathname === '/_canvas-shell') {
         const shellHtml = await Bun.file(join(TEMPLATES_DIR, '_shell.html')).text();
-        // Inject inspector overlay — same Cmd+Click selection + Shift/C+Click
-        // add-comment flow the legacy .html canvases got. Without this, TSX
-        // canvases mount fine but lose every interactive devtool.
-        const injected = inspect.injectInspectorOnly(shellHtml);
+        // Inject inspector overlay — Cmd+Click selection + Shift/C+Click
+        // add-comment flow. Without this, TSX canvases mount fine but lose
+        // every interactive devtool.
+        const injected = inspect.injectInspector(shellHtml);
         return new Response(injected, {
           headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
         });
@@ -371,16 +364,7 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect): Http {
       if (e === '.tsx' && underDesignRoot) {
         return serveCanvasTsx(fp, req, ctx, join(ctx.paths.designRoot, '_locator.json'));
       }
-      // .html under designRoot gets inspector + runtime injection.
-      if (e === '.html' && underDesignRoot) {
-        const html = await file.text();
-        const injected = inspect.injectInto(html);
-        return new Response(injected, {
-          headers: { 'Content-Type': MIME['.html'] ?? 'text/html', 'Cache-Control': 'no-store' },
-        });
-      }
-
-      // Bun.file streams transparently for binary content.
+// Bun.file streams transparently for binary content.
       return new Response(file, {
         headers: {
           'Content-Type': MIME[e] || 'application/octet-stream',

@@ -11,8 +11,8 @@
 // Gotcha 2 — land CSS-only HMR first; JSX patching arrives in Phase 3.5 once
 // react-refresh-runtime is wired through Bun.build).
 //
-// Iframes opt out — paths under /_runtime/ never trigger a parent reload;
-// they get a postMessage to the iframe itself.
+// Iframes opt out — never trigger a parent reload; they get a postMessage
+// to the iframe itself.
 
 const STYLE_SELECTOR = 'link[rel="stylesheet"][href*="/_client/styles.css"]';
 

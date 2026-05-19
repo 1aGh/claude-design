@@ -48,8 +48,7 @@ export interface Inspect {
   setOpenTabs(tabs: string[]): void;
   setSelected(sel: Omit<SelectedElement, 'ts' | 'v' | 'canvas'> | null): void;
   save(): Promise<void>;
-  injectInto(html: string): string;
-  injectInspectorOnly(html: string): string;
+  injectInspector(html: string): string;
 }
 
 const NEW = (): ActiveState => ({
@@ -163,22 +162,6 @@ export function createInspect(
     return dot > 0 ? s.slice(0, dot) : s;
   }
 
-  function injectInto(html: string): string {
-    let out = stripLegacyRuntime(html);
-    out = injectRuntime(out);
-    out = injectInspector(out);
-    return out;
-  }
-
-  /**
-   * Inject ONLY the inspector overlay (no babel-runtime). Used by
-   * `_canvas-shell.html` so Cmd+Click selection + comment shortcuts work
-   * on TSX canvases the same way they did on the legacy .html canvases.
-   */
-  function injectInspectorOnly(html: string): string {
-    return injectInspector(html);
-  }
-
   return {
     state,
     load,
@@ -186,35 +169,11 @@ export function createInspect(
     setOpenTabs,
     setSelected,
     save,
-    injectInto,
-    injectInspectorOnly,
+    injectInspector,
   };
 }
 
-// ---------- Runtime + Inspector script injection ----------
-
-const RUNTIME_INJECT = `
-<!-- design-plugin canvas runtime (single source of truth, served by dev server) -->
-<script type="text/babel" src="/_runtime/design-canvas.jsx" data-design-runtime="1"></script>
-<script type="text/babel" src="/_runtime/tweaks-panel.jsx"  data-design-runtime="1"></script>
-`;
-
-function stripLegacyRuntime(html: string): string {
-  return html
-    .replace(/<script[^>]*src=["'][^"']*design-canvas\.jsx["'][^>]*><\/script>\s*/gi, '')
-    .replace(/<script[^>]*src=["'][^"']*tweaks-panel\.jsx["'][^>]*><\/script>\s*/gi, '');
-}
-
-function injectRuntime(html: string): string {
-  const bodyOpen = html.match(/<body[^>]*>/i);
-  if (bodyOpen && bodyOpen.index !== undefined) {
-    const idx = bodyOpen.index + bodyOpen[0].length;
-    return html.slice(0, idx) + RUNTIME_INJECT + html.slice(idx);
-  }
-  const headClose = html.lastIndexOf('</head>');
-  if (headClose !== -1) return html.slice(0, headClose) + RUNTIME_INJECT + html.slice(headClose);
-  return RUNTIME_INJECT + html;
-}
+// ---------- Inspector script injection ----------
 
 function injectInspector(html: string): string {
   const idx = html.lastIndexOf('</body>');
