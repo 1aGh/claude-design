@@ -98,7 +98,7 @@ v1.3+ (conditional on user-feedback survey)
 | 4 | Canvas v2 rendering engine | `phase-4-canvas-v2-rendering-engine.md` | — | v1.0 | `/flow:execute .ai/plans/phase-4-canvas-v2-rendering-engine.md` |
 | 5 | Multi-DS + draw tools | `phase-5-multi-ds-and-draw-tools.md` | with Phase 6 | v1.0 | `/flow:execute .ai/plans/phase-5-multi-ds-and-draw-tools.md` |
 | 6 | Comments + presentation | `phase-6-comments-presentation-export.md` | with Phase 5 + 6.5 | v1.0 | `/flow:execute .ai/plans/phase-6-comments-presentation-export.md` |
-| 6.5 | Canvas export (PNG/PDF/SVG/HTML/Canva/ZIP) — UI-first | `phase-6.5-export.md` | with Phase 5 + 6 | v1.0 | `/flow:execute .ai/plans/phase-6.5-export.md` |
+| 6.5 | Canvas export (PNG/PDF/SVG/HTML/PPTX/Canva-editable/ZIP) — UI-first | `phase-6.5-export.md` | with Phase 5 + 6 | v1.0 | `/flow:execute .ai/plans/phase-6.5-export.md` |
 | 7 | ACP chat sidebar | `phase-7-acp-chat-sidebar.md` | ❄️ skipped | ICEBOX | (not in v1.0) |
 | 8 | Live collaboration LAN | `phase-8-live-collaboration-yjs-lan.md` | — | v1.0 | `/flow:execute .ai/plans/phase-8-live-collaboration-yjs-lan.md` |
 | 11 | Flow ↔ Design integration | `phase-11-flow-design-integration.md` | — | v1.0 late / v1.1 | `/flow:execute .ai/plans/phase-11-flow-design-integration.md` |
@@ -162,7 +162,7 @@ v1.3+ (conditional on user-feedback survey)
 /flow:execute .ai/plans/phase-6.5-export.md
 ```
 
-> **What to build:** First-class export feature with toolbar button + `⌘E` dialog + context-menu entries. 6 formats (PNG, PDF, SVG, HTML standalone zip, Canva-handoff, project-raw ZIP) × 4 scopes (selection, artboard, canvas-as-separate, project-raw). `POST /api/export` is the single engine; `mdcc design export` CLI + `/design:export` slash are thin clients. SVG via `<foreignObject>` (DDR with Safari + Illustrator caveats). Project-raw ZIP streams `<designRoot>/` minus runtime files. Recent-exports list + `⌘⇧E` re-runs the latest.
+> **What to build:** First-class export feature with toolbar button + `⌘E` dialog + context-menu entries. **7 formats** (PNG, PDF, SVG, HTML standalone zip, **PPTX**, **Canva-editable**, project-raw ZIP) × 4 scopes (selection, artboard, canvas-as-separate, project-raw). `POST /api/export` is the single engine; `mdcc design export` CLI + `/design:export` slash are thin clients. SVG via `<foreignObject>` (DDR with Safari + Illustrator caveats). **PPTX** via `pptxgenjs` driven from a normalized canvas model (not DOM walker), producing native editable shapes/text frames. **Canva** = PPTX + Canva Connect Design-Imports API (when OAuth token present) / drag-drop fallback otherwise — parity with [Anthropic Claude Design](https://www.anthropic.com/news/claude-design-anthropic-labs) (Apr 2026). Project-raw ZIP streams `<designRoot>/` minus runtime files. Recent-exports list + `⌘⇧E` re-runs the latest. Bundle delta ≤ 700KB.
 
 ### Phase 7 — ACP chat sidebar [❄️ ICEBOX — skip for v1.0]
 
