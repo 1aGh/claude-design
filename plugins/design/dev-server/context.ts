@@ -13,11 +13,24 @@ export interface CanvasGroup {
   path: string;
 }
 
+export interface DesignSystemEntry {
+  name: string;
+  path: string;
+  description?: string;
+  tokensCssRel?: string;
+  rootClass?: string;
+  themeDefault?: 'dark' | 'light';
+  themes?: string[];
+  newCanvasDir?: string;
+  newComponentDir?: string;
+}
+
 export interface DevServerConfig {
   name: string;
   projectLabel: string | null;
   designRoot: string;
   canvasGroups: CanvasGroup[];
+  designSystems?: DesignSystemEntry[];
   rootClass: string;
   themeDefault: 'dark' | 'light';
   tokensCssRel: string;

@@ -3,11 +3,15 @@
 // Renders: file tree, tabs, viewport (iframes), status bar, design-system view, comments.
 // Universal — no project tokens needed; styling lives in client/styles/.
 
-import { useState, useEffect, useRef, useMemo, useCallback, Fragment } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, Fragment } from 'react';
 import { createRoot } from 'react-dom/client';
 
 const SYSTEM_TAB = '__system__';
 const THEME_STORE = 'mdcc-theme';
+const SHOW_HIDDEN_STORE = 'mdcc-show-hidden';
+const SECTIONS_STORE = 'mdcc-sections-expanded';
+const SIDEBAR_STORE = 'mdcc-sidebar-open';
+const CANVAS_EXT_RE = /\.(tsx|html?)$/i;
 // Bun's `define` substitutes this at build time (see build.ts); falls back when
 // the bundle is consumed in a context that hasn't run the build.
 const MDCC_VERSION = typeof __MDCC_VERSION__ !== 'undefined' ? __MDCC_VERSION__ : 'dev';
@@ -20,6 +24,33 @@ function readInitialTheme() {
   } catch {}
   // Match the data-theme attribute index.html ships with (dark).
   return 'dark';
+}
+
+function readBoolStore(key, fallback) {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const v = localStorage.getItem(key);
+    if (v === '1') return true;
+    if (v === '0') return false;
+  } catch {}
+  return fallback;
+}
+
+function readJsonStore(key, fallback) {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const v = localStorage.getItem(key);
+    return v ? JSON.parse(v) : fallback;
+  } catch { return fallback; }
+}
+
+// Section default-open: working sections (project + non-DS canvas groups)
+// open; meta sections (DS + runtime) collapsed. Users can override per-section
+// via the chevron; overrides persist in localStorage.
+function sectionDefaultOpen(g) {
+  if (g.kind === 'runtime') return false;
+  if (g.label === 'Design system') return false;
+  return true;
 }
 
 // ---------- Utility ----------
@@ -76,6 +107,68 @@ function canvasUrl(p, cfg) {
 
 function basename(p) {
   return p.split('/').pop();
+}
+
+// Strip canvas extensions for display. `Canvas Viewport.tsx` → `Canvas Viewport`.
+// Sidecars (`.meta.json`, `.css`, `.registry.json`) keep their extensions so
+// the file type stays unambiguous.
+function displayName(name) {
+  return name.replace(CANVAS_EXT_RE, '');
+}
+
+// Primary base = name with the canvas extension stripped. `Canvas Viewport.tsx`
+// → `Canvas Viewport`. A sidecar belongs to that primary when its name starts
+// with `<base>.` — so `Canvas Viewport.meta.json` and `Canvas Viewport.css`
+// both nest under `Canvas Viewport.tsx`. Naïve single-extension stripping
+// breaks for multi-dot sidecars like `*.meta.json`.
+function canvasBase(name) {
+  return name.replace(CANVAS_EXT_RE, '');
+}
+
+// Group flat file list into { primary: canvas, sidecars: [...] }. Sidecars
+// share the primary base + `.` prefix and don't themselves match the canvas
+// extension regex. Orphans (no canvas peer at this dir level) come back as
+// `{ primary: orphan, sidecars: [], orphan: true }` so the caller can gate
+// them on `showHidden`.
+function groupBySidecar(files) {
+  // Pass 1 — claim primaries; prefer .tsx over .html on tie.
+  const primaryByBase = new Map();
+  for (const f of files) {
+    if (!CANVAS_EXT_RE.test(f.name)) continue;
+    const base = canvasBase(f.name);
+    if (!primaryByBase.has(base) || /\.tsx$/i.test(f.name)) primaryByBase.set(base, f);
+  }
+  // Pass 2 — match non-canvas files to the longest primary base they prefix.
+  const sidecarsByBase = new Map();
+  const orphans = [];
+  for (const f of files) {
+    if (CANVAS_EXT_RE.test(f.name)) continue;
+    let matched = null;
+    for (const base of primaryByBase.keys()) {
+      if (f.name === base) continue;
+      if (f.name.startsWith(`${base}.`)) {
+        if (!matched || base.length > matched.length) matched = base;
+      }
+    }
+    if (matched) {
+      const list = sidecarsByBase.get(matched) || [];
+      list.push(f);
+      sidecarsByBase.set(matched, list);
+    } else {
+      orphans.push(f);
+    }
+  }
+  const canvases = [];
+  for (const [base, primary] of primaryByBase) {
+    const sidecars = (sidecarsByBase.get(base) || []).sort((a, b) => a.name.localeCompare(b.name));
+    canvases.push({ primary, sidecars, orphan: false });
+  }
+  canvases.sort((a, b) => a.primary.name.localeCompare(b.primary.name));
+  orphans.sort((a, b) => a.name.localeCompare(b.name));
+  return {
+    canvases,
+    orphans: orphans.map((f) => ({ primary: f, sidecars: [], orphan: true })),
+  };
 }
 
 function buildTree(paths, stripPrefix) {
@@ -190,13 +283,52 @@ function DirRow({ name, depth, defaultOpen, children }) {
   );
 }
 
-function FileRow({ file, activePath, onOpen, openCount: oc, depth, kind }) {
+// DsFolderRow — a per-DS folder inside the DESIGN SYSTEM section.
+// Split target: chevron toggles disclosure of the folder's contents; clicking
+// the folder name opens the SystemView focused on that DS (single SystemView
+// for now; the dsName is plumbed through so a future per-DS view can use it).
+function DsFolderRow({ name, dsName, depth, defaultOpen, active, onOpenSystem, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <Fragment>
+      <div
+        className={'tp-row ds-folder' + (active ? ' sel' : '')}
+        style={{ paddingLeft: TREE_INDENT_BASE + depth * TREE_INDENT_STEP + 'px' }}
+        role="treeitem"
+        aria-expanded={open}
+      >
+        <button
+          type="button"
+          className="ds-folder-chev"
+          onClick={() => setOpen((v) => !v)}
+          aria-label={open ? 'Collapse design system' : 'Expand design system'}
+          title={open ? 'Collapse' : 'Expand'}
+        >
+          <span className="glyph" aria-hidden="true">{open ? '▾' : '▸'}</span>
+        </button>
+        <button
+          type="button"
+          className="ds-folder-open"
+          onClick={() => onOpenSystem(dsName)}
+          aria-label={`Open ${dsName} design system view`}
+          title="Open the design system view"
+        >
+          <span className="name">{name}</span>
+        </button>
+      </div>
+      {open && children}
+    </Fragment>
+  );
+}
+
+function FileRow({ file, activePath, onOpen, openCount: oc, depth, kind, sidecar }) {
   const isSel = file.path === activePath;
-  const isCanvas = /\.(tsx|html?)$/i.test(file.name);
+  const isCanvas = CANVAS_EXT_RE.test(file.name);
   // Non-canvas rows (PROJECT *.md, RUNTIME _active.json, ...) are display-only —
   // clicking them doesn't open an iframe; we leave the click as no-op + cursor
   // hint via `aria-disabled`.
   const inert = !isCanvas;
+  const label = isCanvas ? displayName(file.name) : file.name;
   return (
     <button
       type="button"
@@ -204,37 +336,141 @@ function FileRow({ file, activePath, onOpen, openCount: oc, depth, kind }) {
       aria-selected={isSel}
       aria-disabled={inert ? 'true' : undefined}
       tabIndex={isSel ? 0 : -1}
-      className={'tp-row' + (isSel ? ' sel' : '') + (kind === 'runtime' ? ' muted' : '')}
+      className={'tp-row' + (isSel ? ' sel' : '') + (kind === 'runtime' ? ' muted' : '') + (sidecar ? ' sidecar' : '')}
       style={{ paddingLeft: TREE_INDENT_BASE + depth * TREE_INDENT_STEP + 'px' }}
       title={file.path + (oc ? ` — ${oc} open` : (inert ? ' (file index only)' : ''))}
       onClick={() => { if (!inert) onOpen(file.path); }}
     >
       <span className="glyph" aria-hidden="true">{isSel ? '▸' : '·'}</span>
-      <span className="name">{file.name}</span>
+      <span className="name">{label}</span>
       {oc > 0 && <span className="badge">{oc}</span>}
     </button>
   );
 }
 
-function Tree({ node, activePath, onOpen, commentsByFile, depth = 1, kind }) {
-  const dirs = Object.keys(node).filter(k => k !== '_files').sort();
-  // CV-08 ordering: files at this level FIRST, then sub-dirs. Lets
-  // `system/project/README.md` show up before `system/project/preview/…`.
+function CanvasRow({ primary, sidecars, depth, kind, activePath, onOpen, openCount: oc, showHidden, forceOpen }) {
+  const hasSidecars = sidecars.length > 0;
+  const [openState, setOpenState] = useState(false);
+  // Sidecars are only revealed when the user opts in via `showHidden` — the
+  // chevron itself only appears in that mode. When `forceOpen` is true (search
+  // match in a sidecar), override local state so the user sees the hit.
+  const open = forceOpen || openState;
+  const isSel = primary.path === activePath;
+  const showChevron = hasSidecars && showHidden;
+  if (!showChevron) {
+    return (
+      <FileRow
+        file={primary}
+        activePath={activePath}
+        onOpen={onOpen}
+        openCount={oc}
+        depth={depth}
+        kind={kind}
+      />
+    );
+  }
   return (
     <Fragment>
-      {node._files && [...node._files].sort((a, b) => a.name.localeCompare(b.name)).map(f => (
+      <button
+        type="button"
+        role="treeitem"
+        aria-selected={isSel}
+        aria-expanded={open}
+        tabIndex={isSel ? 0 : -1}
+        className={'tp-row canvas-row' + (isSel ? ' sel' : '')}
+        style={{ paddingLeft: TREE_INDENT_BASE + depth * TREE_INDENT_STEP + 'px' }}
+        title={primary.path}
+        onClick={(e) => {
+          // Click the chevron region → toggle disclosure. Click anywhere else → open canvas.
+          if (e.target.closest('.canvas-chev')) {
+            setOpenState((v) => !v);
+            return;
+          }
+          onOpen(primary.path);
+        }}
+      >
+        <span
+          className="glyph canvas-chev"
+          aria-hidden="true"
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpenState((v) => !v);
+          }}
+        >
+          {open ? '▾' : '▸'}
+        </span>
+        <span className="name">{displayName(primary.name)}</span>
+        {oc > 0 && <span className="badge">{oc}</span>}
+      </button>
+      {open && sidecars.map((sc) => (
         <FileRow
-          key={f.path}
-          file={f}
+          key={sc.path}
+          file={sc}
           activePath={activePath}
           onOpen={onOpen}
-          openCount={openCount(commentsByFile[f.path])}
+          openCount={0}
+          depth={depth + 1}
+          kind={kind}
+          sidecar
+        />
+      ))}
+    </Fragment>
+  );
+}
+
+function Tree({ node, activePath, onOpen, commentsByFile, depth = 1, kind, showHidden, search, dsFolders, onOpenSystem }) {
+  const dirs = Object.keys(node).filter(k => k !== '_files').sort();
+  const files = node._files || [];
+  // VS Code-style sidecar grouping. Canvas (`.tsx`/`.html`) becomes the primary
+  // row; same-basename non-canvas files (`.meta.json`, `.css`, …) collapse
+  // under it. Orphans surface only when `showHidden` is on.
+  const { canvases, orphans } = useMemo(() => groupBySidecar(files), [files]);
+  const hasSearch = !!(search && search.trim());
+  // DS-folder lookup: only meaningful at the top level of a DS group. The
+  // server emits `dsFolders: [{name, folder}, ...]` so the client knows which
+  // dir at depth=1 corresponds to a DS root (click → open SystemView).
+  const dsFolderByName = useMemo(() => {
+    if (!dsFolders || depth !== 1) return null;
+    const m = new Map();
+    for (const f of dsFolders) m.set(f.folder, f);
+    return m;
+  }, [dsFolders, depth]);
+  return (
+    <Fragment>
+      {canvases.map((entry) => {
+        const forceOpen = hasSearch && entry.sidecars.some((sc) => {
+          const q = search.toLowerCase();
+          return sc.name.toLowerCase().includes(q) || sc.path.toLowerCase().includes(q);
+        });
+        return (
+          <CanvasRow
+            key={entry.primary.path}
+            primary={entry.primary}
+            sidecars={entry.sidecars}
+            activePath={activePath}
+            onOpen={onOpen}
+            openCount={openCount(commentsByFile[entry.primary.path])}
+            depth={depth}
+            kind={kind}
+            showHidden={showHidden}
+            forceOpen={forceOpen}
+          />
+        );
+      })}
+      {showHidden && orphans.map((entry) => (
+        <FileRow
+          key={entry.primary.path}
+          file={entry.primary}
+          activePath={activePath}
+          onOpen={onOpen}
+          openCount={openCount(commentsByFile[entry.primary.path])}
           depth={depth}
           kind={kind}
         />
       ))}
-      {dirs.map(d => (
-        <DirRow key={d} name={d} depth={depth} defaultOpen={true}>
+      {dirs.map(d => {
+        const dsMatch = dsFolderByName?.get(d);
+        const childTree = (
           <Tree
             node={node[d]}
             activePath={activePath}
@@ -242,9 +478,32 @@ function Tree({ node, activePath, onOpen, commentsByFile, depth = 1, kind }) {
             commentsByFile={commentsByFile}
             depth={depth + 1}
             kind={kind}
+            showHidden={showHidden}
+            search={search}
+            onOpenSystem={onOpenSystem}
           />
-        </DirRow>
-      ))}
+        );
+        if (dsMatch && onOpenSystem) {
+          return (
+            <DsFolderRow
+              key={d}
+              name={d}
+              dsName={dsMatch.name}
+              depth={depth}
+              defaultOpen={true}
+              active={activePath === SYSTEM_TAB}
+              onOpenSystem={onOpenSystem}
+            >
+              {childTree}
+            </DsFolderRow>
+          );
+        }
+        return (
+          <DirRow key={d} name={d} depth={depth} defaultOpen={true}>
+            {childTree}
+          </DirRow>
+        );
+      })}
     </Fragment>
   );
 }
@@ -254,9 +513,9 @@ function Tree({ node, activePath, onOpen, commentsByFile, depth = 1, kind }) {
 // keyed by the server-provided `kind` (PROJECT / DS / UI / RUNTIME).
 const SECTION_META = {
   project:  { title: 'PROJECT',                pillFromCount: false },
-  // Design-system group: the kind for any group whose label is "Design system"
-  // is set on the server; pill carries the DS code.
-  ds:       { title: 'DESIGN SYSTEM ·',        pill: 'MDCC-DSN/01' },
+  // Design-system group: pill shows the number of DSes (one row per DS folder
+  // inside). Computed in Sidebar from `g.dsFolders.length`.
+  ds:       { title: 'DESIGN SYSTEM',          pillFromDsCount: true },
   canvas:   { title: 'UI CANVASES',            pillFromCount: true },
   runtime:  { title: 'RUNTIME · GITIGNORED',   pillFromCount: true },
 };
@@ -270,7 +529,7 @@ function sectionMetaFor(g) {
   return { title: g.label.toUpperCase(), pillFromCount: true };
 }
 
-function Sidebar({ groups, activePath, onOpen, onOpenSystem, wsConnected, search, setSearch, commentsByFile }) {
+function Sidebar({ groups, activePath, onOpen, onOpenSystem, wsConnected, search, setSearch, commentsByFile, showHidden, sectionsExpanded, onToggleSection }) {
   const filteredGroups = useMemo(() => {
     if (!search) return groups;
     return groups.map(g => ({ ...g, tree: filterTree(g.tree, search), filtered: !!search }));
@@ -281,12 +540,12 @@ function Sidebar({ groups, activePath, onOpen, onOpenSystem, wsConnected, search
   // matches "canvases you can mount".
   const htmlCount = useMemo(() => {
     let total = 0;
-    for (const g of groups) for (const p of g.paths || []) if (/\.(tsx|html?)$/i.test(p)) total++;
+    for (const g of groups) for (const p of g.paths || []) if (CANVAS_EXT_RE.test(p)) total++;
     return total;
   }, [groups]);
   const htmlShown = useMemo(() => {
     let total = 0;
-    for (const g of filteredGroups) for (const p of g.paths || []) if (/\.(tsx|html?)$/i.test(p)) total++;
+    for (const g of filteredGroups) for (const p of g.paths || []) if (CANVAS_EXT_RE.test(p)) total++;
     return total;
   }, [filteredGroups]);
 
@@ -318,32 +577,43 @@ function Sidebar({ groups, activePath, onOpen, onOpenSystem, wsConnected, search
 
       <div className="tree-panel-body" role="tree" aria-label="Project file tree">
         {filteredGroups.map(g => {
+          // Hide gitignored runtime / orphan-only project sections by default.
+          // Active search overrides — if the user typed a query, they want hits
+          // wherever they live.
+          if (!showHidden && !search && g.kind === 'runtime') return null;
           const meta = sectionMetaFor(g);
-          const pill = meta.pill || (meta.pillFromCount ? String(g.paths?.length || 0) : null);
+          // Counter pill counts canvases only — sidecars + orphans inflate the
+          // raw `paths.length` and the FILES header already filters this way.
+          const canvasCount = (g.paths || []).filter((p) => CANVAS_EXT_RE.test(p)).length;
+          const pill = meta.pill
+            || (meta.pillFromDsCount ? String(g.dsFolders?.length || 0) : null)
+            || (meta.pillFromCount ? String(canvasCount || g.paths?.length || 0) : null);
           const hasItems = g.tree && Object.keys(g.tree).length > 0;
-          // DS section is clickable — opens the SystemView (the whole-DS
-          // entry point that used to live as a promoted button at the top).
           const isDs = g.label === 'Design system';
-          const dsActive = isDs && activePath === SYSTEM_TAB;
+          const isProject = g.kind === 'project';
+          // Project section: when showHidden is off, every row inside is an
+          // orphan (.md / .json / .css) → empty body. Skip the header in that
+          // case so the sidebar doesn't show "PROJECT" with nothing under it.
+          if (!showHidden && !search && isProject && canvasCount === 0) return null;
+          const defaultOpen = sectionDefaultOpen(g);
+          const explicit = sectionsExpanded[g.label];
+          // Active search forces every section open so hits aren't hidden.
+          const sectionOpen = !!search || (explicit === undefined ? defaultOpen : explicit);
+          const chev = sectionOpen ? '▾' : '▸';
           return (
             <Fragment key={g.label}>
-              {isDs ? (
-                <button
-                  type="button"
-                  className={'tp-section-hd clickable' + (dsActive ? ' active' : '')}
-                  onClick={onOpenSystem}
-                  title="Open the design system view"
-                >
-                  <span>{meta.title}</span>
-                  {pill && <span className="pill">{pill}</span>}
-                </button>
-              ) : (
-                <div className="tp-section-hd">
-                  <span>{meta.title}</span>
-                  {pill && <span className="pill">{pill}</span>}
-                </div>
-              )}
-              {hasItems ? (
+              <button
+                type="button"
+                className="tp-section-hd clickable section-toggle"
+                onClick={() => onToggleSection(g.label, defaultOpen)}
+                aria-expanded={sectionOpen}
+                title={sectionOpen ? 'Collapse section' : 'Expand section'}
+              >
+                <span className="chev" aria-hidden="true">{chev}</span>
+                <span className="section-label">{meta.title}</span>
+                {pill && <span className="pill">{pill}</span>}
+              </button>
+              {sectionOpen && (hasItems ? (
                 <Tree
                   node={g.tree}
                   activePath={activePath}
@@ -351,12 +621,16 @@ function Sidebar({ groups, activePath, onOpen, onOpenSystem, wsConnected, search
                   commentsByFile={commentsByFile}
                   depth={1}
                   kind={g.kind}
+                  showHidden={showHidden}
+                  search={search}
+                  dsFolders={g.dsFolders}
+                  onOpenSystem={isDs ? onOpenSystem : undefined}
                 />
               ) : (
                 <div className="tp-empty">
                   {search ? 'No matches.' : 'Empty.'}
                 </div>
-              )}
+              ))}
             </Fragment>
           );
         })}
@@ -543,17 +817,17 @@ function ViewDropdown({ panels, onToggle, onClose }) {
   );
 }
 
-function Menubar({ activePath, project, tabsCount, openMenu, setOpenMenu, commentsPanelOpen, onToggleComments, onOpenSystem, sidebarOpen, onToggleSidebar, onOpenHelp }) {
+function Menubar({ activePath, project, tabsCount, openMenu, setOpenMenu, commentsPanelOpen, onToggleComments, onOpenSystem, sidebarOpen, onToggleSidebar, showHidden, onToggleShowHidden, onOpenHelp }) {
   const isSystem = activePath === SYSTEM_TAB;
   const stamp = isSystem ? 'SYSTEM' : (activePath ? 'CANVAS' : 'IDLE');
   const fileLabel = isSystem
     ? <b>design system</b>
-    : (activePath ? <>{activePath.split('/').slice(0, -1).join('/')}/<b>{basename(activePath)}</b></> : <span style={{ color: 'var(--u-fg-3)' }}>no canvas open</span>);
+    : (activePath ? <>{activePath.split('/').slice(0, -1).join('/')}/<b>{displayName(basename(activePath))}</b></> : <span style={{ color: 'var(--u-fg-3)' }}>no canvas open</span>);
 
   const panels = [
     { id: 'tree',     label: 'Project Tree',         shortcut: 'T',     checked: sidebarOpen,        disabled: false },
     { id: 'comments', label: 'Comments Sidebar',     shortcut: '⌘ ⇧ M', checked: commentsPanelOpen,  disabled: false },
-    { id: 'system',   label: 'Design system view',   shortcut: 'S',     checked: isSystem,           disabled: false },
+    { id: 'hidden',   label: 'Show hidden files',    shortcut: 'H',     checked: showHidden,         disabled: false },
     { id: 'layers',     label: 'Layers Panel',       phase: 'Phase 12', disabled: true },
     { id: 'inspector',  label: 'Inspector',          phase: 'Phase 12', disabled: true },
     { id: 'annotate',   label: 'Annotations',        phase: 'Phase 5',  disabled: true },
@@ -603,7 +877,7 @@ function Menubar({ activePath, project, tabsCount, openMenu, setOpenMenu, commen
           onToggle={id => {
             if (id === 'tree') onToggleSidebar();
             else if (id === 'comments') onToggleComments();
-            else if (id === 'system') onOpenSystem();
+            else if (id === 'hidden') onToggleShowHidden();
           }}
           onClose={() => setOpenMenu(null)}
         />
@@ -658,20 +932,94 @@ function Wordmark({ project, port, version }) {
   );
 }
 
-function SelectionHalo() {
+function SelectionHalo({ rect }) {
   // Accent 2 px outline + 4 corner ticks around the active iframe (the artboard
-  // frame). Element-level overlay is Phase 4 territory — it needs world-coord
-  // projection, which doesn't exist yet.
-  return <div className="sel-halo" aria-hidden="true"><i /></div>;
+  // frame). In Phase 4 T1 the halo lives inside `.vp-world` and is positioned
+  // at the active iframe's world coords so it scales with the world transform
+  // T2 introduces. Element-level (sub-iframe) overlay waits on T7's world-coord
+  // projection out of CSS px space.
+  const style = rect ? { left: rect.x, top: rect.y, width: rect.w, height: rect.h } : undefined;
+  return <div className="sel-halo" aria-hidden="true" style={style}><i /></div>;
+}
+
+// Default grid: 3 columns × 1280 × 820 artboards, 80 px gutters, alphabetical.
+// Phase 4 T1 computes this in the client; T5 hands authority to the server's
+// `/_api/layout/<slug>` synth + persistence.
+const VP_GRID = { cols: 3, w: 1280, h: 820, gutter: 80, x0: 60, y0: 260 };
+
+function computeDefaultGrid(tabs) {
+  const layout = new Map();
+  const paths = tabs.map(t => t.path).filter(p => p !== SYSTEM_TAB).sort();
+  for (let i = 0; i < paths.length; i++) {
+    const col = i % VP_GRID.cols;
+    const row = Math.floor(i / VP_GRID.cols);
+    layout.set(paths[i], {
+      x: VP_GRID.x0 + col * (VP_GRID.w + VP_GRID.gutter),
+      y: VP_GRID.y0 + row * (VP_GRID.h + VP_GRID.gutter),
+      w: VP_GRID.w,
+      h: VP_GRID.h,
+    });
+  }
+  return layout;
+}
+
+// Fit-to-screen world transform. bbox = union of artboard rects only (the
+// in-world Wordmark is intentionally outside the bbox so a single open canvas
+// can fill the panel; Wordmark becomes a pan-to-find detail at full zoom-out).
+// Phase 4 T1 = fit IS the canvas state; T2's controller treats Cmd+0 as
+// "re-invoke this same compute" after a user pan/zoom dirties it.
+const VP_FIT_PAD = 24;
+
+function computeFit(layout, viewportEl) {
+  if (!layout || layout.size === 0 || !viewportEl) return null;
+  let xMin = Infinity, yMin = Infinity, xMax = -Infinity, yMax = -Infinity;
+  for (const r of layout.values()) {
+    if (r.x < xMin) xMin = r.x;
+    if (r.y < yMin) yMin = r.y;
+    if (r.x + r.w > xMax) xMax = r.x + r.w;
+    if (r.y + r.h > yMax) yMax = r.y + r.h;
+  }
+  const bw = xMax - xMin;
+  const bh = yMax - yMin;
+  const vw = viewportEl.clientWidth;
+  const vh = viewportEl.clientHeight;
+  if (!vw || !vh || bw <= 0 || bh <= 0) return null;
+  const zoom = Math.min((vw - VP_FIT_PAD * 2) / bw, (vh - VP_FIT_PAD * 2) / bh, 1.0);
+  // Translate so the bbox is centered in the viewport. transform-origin is 0,0
+  // so we offset by -bbox_origin*zoom to bring the bbox into view, then add the
+  // centering margin.
+  const x = (vw - bw * zoom) / 2 - xMin * zoom;
+  const y = (vh - bh * zoom) / 2 - yMin * zoom;
+  return { x, y, zoom };
 }
 
 function Viewport({ tabs, activePath, registerIframe, systemData, onOpenFromSystem, project, selected, cfg }) {
-  const showHalo = selected && activePath && activePath !== SYSTEM_TAB;
+  const port = typeof window !== 'undefined' ? window.location.port : '';
+  const hasArtboards = tabs.some(t => t.path !== SYSTEM_TAB);
+  const hasSystemTab = tabs.some(t => t.path === SYSTEM_TAB);
+  const layout = hasArtboards ? computeDefaultGrid(tabs) : null;
+  const showHalo = selected && activePath && activePath !== SYSTEM_TAB && layout && layout.has(activePath);
+  const haloRect = showHalo ? layout.get(activePath) : null;
+  const viewportRef = useRef(null);
+  const [fit, setFit] = useState(null);
+  const tabsKey = tabs.map(t => t.path).join('|');
+  useLayoutEffect(() => {
+    if (!hasArtboards || !viewportRef.current) { setFit(null); return; }
+    const measure = () => setFit(computeFit(layout, viewportRef.current));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(viewportRef.current);
+    return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabsKey, hasArtboards]);
+  const worldStyle = fit
+    ? { transform: `translate(${fit.x}px, ${fit.y}px) scale(${fit.zoom})` }
+    : { visibility: 'hidden' };
   return (
-    <div className="viewport">
-      {tabs.length === 0 && (
+    <div className="viewport" ref={viewportRef}>
+      {!hasArtboards && (
         <>
-          <Wordmark project={project} port={typeof window !== 'undefined' ? window.location.port : ''} version={MDCC_VERSION} />
+          <Wordmark project={project} port={port} version={MDCC_VERSION} />
           <div className="empty-state">
             <div className="big">No mock open</div>
             <div className="small">
@@ -686,25 +1034,31 @@ function Viewport({ tabs, activePath, registerIframe, systemData, onOpenFromSyst
           </div>
         </>
       )}
-      {tabs.map(t => {
-        if (t.path === SYSTEM_TAB) {
-          return (
-            <div key={t.path} className={'system-view' + (t.path === activePath ? ' active' : '')}>
-              <SystemView data={systemData} onOpen={onOpenFromSystem} />
-            </div>
-          );
-        }
-        return (
-          <iframe
-            key={t.path}
-            ref={el => registerIframe(t.path, el)}
-            src={canvasUrl(t.path, cfg)}
-            className={t.path === activePath ? 'active' : ''}
-            data-path={t.path}
-          />
-        );
-      })}
-      {showHalo && <SelectionHalo />}
+      {hasArtboards && (
+        <div className="vp-world" style={worldStyle}>
+          <Wordmark project={project} port={port} version={MDCC_VERSION} />
+          {tabs.map(t => {
+            if (t.path === SYSTEM_TAB) return null;
+            const r = layout.get(t.path);
+            return (
+              <iframe
+                key={t.path}
+                ref={el => registerIframe(t.path, el)}
+                src={canvasUrl(t.path, cfg)}
+                className={t.path === activePath ? 'active' : ''}
+                data-path={t.path}
+                style={{ left: r.x, top: r.y, width: r.w, height: r.h }}
+              />
+            );
+          })}
+          {showHalo && <SelectionHalo rect={haloRect} />}
+        </div>
+      )}
+      {hasSystemTab && (
+        <div className={'system-view' + (activePath === SYSTEM_TAB ? ' active' : '')}>
+          <SystemView data={systemData} onOpen={onOpenFromSystem} />
+        </div>
+      )}
     </div>
   );
 }
@@ -1005,7 +1359,7 @@ function CommentsPanel({ commentsByFile, filter, setFilter, activePath, focusedI
               onClick={() => onJump(g.file, null)}
               title={g.file}
             >
-              <span className="rs-group-name">{basename(g.file)}</span>
+              <span className="rs-group-name">{displayName(basename(g.file))}</span>
               <span className="rs-group-count">{g.comments.length}</span>
             </button>
             {g.comments.map(c => (
@@ -1078,7 +1432,9 @@ function App() {
   const [commentsFilter, setCommentsFilter] = useState('open');   // 'all' | 'open' | 'resolved'
   const [theme, setTheme] = useState(readInitialTheme);
   const [openMenu, setOpenMenu] = useState(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() => readBoolStore(SIDEBAR_STORE, true));
+  const [showHidden, setShowHidden] = useState(() => readBoolStore(SHOW_HIDDEN_STORE, false));
+  const [sectionsExpanded, setSectionsExpanded] = useState(() => readJsonStore(SECTIONS_STORE, {}));
   const [helpOpen, setHelpOpen] = useState(false);
   const wsRef = useRef(null);
   const iframesRef = useRef(new Map());
@@ -1090,6 +1446,25 @@ function App() {
       localStorage.setItem(THEME_STORE, theme);
     } catch {}
   }, [theme]);
+
+  // Persist sidebar / hidden-files / DS-body toggles. Mirror theme pattern.
+  useEffect(() => {
+    try { localStorage.setItem(SIDEBAR_STORE, sidebarOpen ? '1' : '0'); } catch {}
+  }, [sidebarOpen]);
+  useEffect(() => {
+    try { localStorage.setItem(SHOW_HIDDEN_STORE, showHidden ? '1' : '0'); } catch {}
+  }, [showHidden]);
+  useEffect(() => {
+    try { localStorage.setItem(SECTIONS_STORE, JSON.stringify(sectionsExpanded)); } catch {}
+  }, [sectionsExpanded]);
+
+  const toggleSection = useCallback((label, defaultOpen) => {
+    setSectionsExpanded(prev => {
+      const cur = prev[label];
+      const isOpen = cur === undefined ? defaultOpen : cur;
+      return { ...prev, [label]: !isOpen };
+    });
+  }, []);
 
   const toggleTheme = useCallback(() => {
     setTheme(t => (t === 'dark' ? 'light' : 'dark'));
@@ -1173,15 +1548,12 @@ function App() {
 
   // ----- Tab management (single-canvas) -----
   // Single-canvas model: opening a file REPLACES the active one (no tab strip).
-  // The `tabs` state stays as a 0-or-1 array so the rest of the plumbing
-  // (iframesRef, comments push, WS `tabs` message) doesn't need refactoring.
-  // ARTBOARDS slot in the menubar reads `tabs.length` and reports 0 or 1.
+  // Phase 4 T1: multi-tab. If the path is already open, just activate it;
+  // otherwise append. Existing iframes stay mounted so the infinite-canvas
+  // plane can render them side-by-side without reload churn. Tab close path
+  // (`closeTab`) handles iframe cleanup.
   const openTab = useCallback((path) => {
-    setTabs(prev => {
-      // Drop the previously-open iframe so we don't leak DOM nodes.
-      for (const t of prev) if (t.path !== path) iframesRef.current.delete(t.path);
-      return [{ path }];
-    });
+    setTabs(prev => prev.find(t => t.path === path) ? prev : [...prev, { path }]);
     setActivePath(path);
     setFocusedCommentId(null);
     setDraft(null);
@@ -1419,6 +1791,13 @@ function App() {
         setSidebarOpen(v => !v);
         return;
       }
+      // H — toggle show-hidden (sidecars + project/runtime orphans)
+      if (e.key === 'h' || e.key === 'H') {
+        if (e.shiftKey || meta) return;
+        e.preventDefault();
+        setShowHidden(v => !v);
+        return;
+      }
       // S — toggle Design system view
       if ((e.key === 's' || e.key === 'S') && !meta && !e.shiftKey) {
         e.preventDefault();
@@ -1463,6 +1842,9 @@ function App() {
         search={search}
         setSearch={setSearch}
         commentsByFile={commentsByFile}
+        showHidden={showHidden}
+        sectionsExpanded={sectionsExpanded}
+        onToggleSection={toggleSection}
       />
       <div className="main">
         <Menubar
@@ -1476,6 +1858,8 @@ function App() {
           onOpenSystem={openSystem}
           sidebarOpen={sidebarOpen}
           onToggleSidebar={() => setSidebarOpen(v => !v)}
+          showHidden={showHidden}
+          onToggleShowHidden={() => setShowHidden(v => !v)}
           onOpenHelp={() => setHelpOpen(true)}
         />
         <Viewport

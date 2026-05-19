@@ -1111,4 +1111,158 @@
   border-color: var(--u-accent);
   color: var(--u-accent);
 }
+
+/* DS section: split header — title button (opens system view) + chevron
+   button (expands body). Two child buttons share the row, each a focusable
+   target with a distinct aria-label. */
+.tp-section-hd.ds-split {
+  padding: 0;
+  cursor: default;
+}
+.tp-section-hd.ds-split > button {
+  background: transparent;
+  border: 0;
+  padding: 6px var(--u-s-3) 2px;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.tp-section-hd.ds-split > button:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  position: relative;
+  z-index: 1;
+}
+.tp-section-hd.ds-split .ds-open {
+  flex: 1;
+  min-width: 0;
+  justify-content: flex-start;
+}
+.tp-section-hd.ds-split .ds-open:hover { background: var(--u-bg-2); }
+.tp-section-hd.ds-split .chev {
+  padding: 6px 10px 2px;
+  color: var(--u-fg-2);
+  opacity: 0.75;
+  flex: none;
+}
+.tp-section-hd.ds-split .chev:hover { opacity: 1; background: var(--u-bg-2); }
+.tp-section-hd.ds-split.active .ds-open {
+  background: var(--u-accent-bg);
+  color: var(--u-fg-0);
+}
+.tp-section-hd.ds-split.active .pill {
+  border-color: var(--u-accent);
+  color: var(--u-accent);
+}
+
+/* Sidecar rows nested under a canvas — muted, no leading glyph (chevron
+   already lives on the parent canvas row). */
+.tp-row.sidecar {
+  opacity: 0.55;
+}
+.tp-row.sidecar .glyph { visibility: hidden; }
+.tp-row.sidecar:hover { opacity: 0.85; }
+
+/* Canvas-row disclosure chevron — sits in the glyph slot, hover affordance. */
+.tp-row.canvas-row .canvas-chev { cursor: pointer; }
+.tp-row.canvas-row .canvas-chev:hover { color: var(--u-fg-0); }
+
+/* Per-DS folder row inside the DESIGN SYSTEM section. Two child buttons —
+   chevron toggles disclosure, name opens SystemView for that DS. */
+.tp-row.ds-folder {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 2px 0;
+  cursor: default;
+  font-weight: 600;
+  color: var(--u-fg-0);
+}
+.tp-row.ds-folder > button {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+.tp-row.ds-folder > button:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  position: relative;
+  z-index: 1;
+}
+.tp-row.ds-folder .ds-folder-chev {
+  padding: 0 4px;
+  flex: none;
+}
+.tp-row.ds-folder .ds-folder-chev .glyph {
+  width: 12px;
+  display: inline-block;
+  text-align: center;
+  color: var(--u-fg-1);
+  font-size: 10px;
+}
+.tp-row.ds-folder .ds-folder-chev:hover .glyph { color: var(--u-fg-0); }
+.tp-row.ds-folder .ds-folder-open {
+  flex: 1;
+  min-width: 0;
+  padding: 0 var(--u-s-3) 0 0;
+  text-align: left;
+}
+.tp-row.ds-folder .ds-folder-open .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tp-row.ds-folder .ds-folder-open:hover { color: var(--u-accent); }
+.tp-row.ds-folder.sel { background: var(--u-accent-bg); }
+.tp-row.ds-folder.sel .ds-folder-open .name { color: var(--u-fg-0); }
+
+/* Generic section toggle (every non-DS section: PROJECT, UI canvases, RUNTIME).
+   Header is a single button with a leading chevron, the section title, and
+   the optional count pill. Mirrors `.tp-section-hd` typography but adds the
+   button-reset so the whole row is one click target. */
+.tp-section-hd.section-toggle {
+  background: transparent;
+  border: 0;
+  width: 100%;
+  cursor: pointer;
+  text-align: left;
+  align-items: center;
+  font: inherit;
+  letter-spacing: var(--tracking-sku);
+  text-transform: uppercase;
+  font-family: var(--u-font-mono);
+  color: var(--u-fg-1);
+  font-size: 9px;
+  font-weight: 700;
+  transition: background var(--dur-flip) var(--ease-out);
+}
+.tp-section-hd.section-toggle:hover { background: var(--u-bg-2); color: var(--u-fg-0); }
+.tp-section-hd.section-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.tp-section-hd.section-toggle .chev {
+  display: inline-block;
+  width: 12px;
+  text-align: center;
+  color: var(--u-fg-2);
+  font-size: 10px;
+  flex: none;
+}
+.tp-section-hd.section-toggle .section-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

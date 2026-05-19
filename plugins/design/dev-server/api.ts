@@ -289,9 +289,9 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
         label: 'Project',
         paths: projectFiles,
         fullPath: paths.designRel,
-        // Strip only the leading slash — keep `.design/...` so the tree
-        // renders `▾ .design` as the parent dir per CV-08 mock.
-        stripPrefix: '',
+        // Strip `.design/` — the section header already names the parent;
+        // the chain `▾ .design → file` was redundant.
+        stripPrefix: `${paths.designRel}/`,
         kind: 'project' as const,
       });
     }
@@ -308,15 +308,40 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
       const groupAbs = path.join(paths.designRoot, g.path);
       const groupRel = path.posix.join(paths.designRel, g.path);
       const isDs = g.label === 'Design system' || /^system(\/|$)/.test(g.path);
+      // Always include canvas sidecars (`.meta.json`, `.css`, `.registry.json`)
+      // so the client can nest them under their primary `.tsx` / `.html`. DS
+      // groups additionally surface `.md` for README + SKILL docs.
       const filePaths = isDs
         ? await findFiles(groupAbs, groupRel, ['.tsx', '.html', '.md', '.css', '.json'])
-        : await findHtmlFiles(groupAbs, groupRel);
+        : await findFiles(groupAbs, groupRel, ['.tsx', '.html', '.css', '.json']);
+      // Strip down to `g.path` so per-DS folders (`project`, `beta`, …) show
+      // up as the top-level dirs inside the DS section. Single-DS configs get
+      // a wrapper folder too — slightly more verbose, but consistent with
+      // multi-DS and gives the user one click-target per DS to open its
+      // SystemView.
+      const matchedDs =
+        g.label === 'Design system'
+          ? (cfg.designSystems ?? []).filter(
+              (d) => d.path === g.path || d.path.startsWith(`${g.path}/`),
+            )
+          : [];
+      const dsFolders = matchedDs.map((d) => ({
+        name: d.name,
+        path: d.path,
+        // Folder name relative to the group root — what the client will see as
+        // a top-level dir name inside the tree.
+        folder:
+          d.path === g.path
+            ? d.path.split('/').pop() || d.path
+            : d.path.slice(g.path.length + 1).split('/')[0],
+      }));
       groups.push({
         label: g.label,
         paths: filePaths,
         fullPath: groupRel,
-        stripPrefix: `${paths.designRel}/`,
+        stripPrefix: `${paths.designRel}/${g.path}/`,
         kind: 'canvas' as const,
+        dsFolders: dsFolders.length ? dsFolders : undefined,
       });
     }
 
@@ -337,8 +362,9 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
         label: 'Runtime',
         paths: runtimeFiles,
         fullPath: paths.designRel,
-        // Same as PROJECT — keep `.design/` so the tree shows the parent dir.
-        stripPrefix: '',
+        // Same as PROJECT — strip `.design/` so each row sits flat under the
+        // section header instead of nested under a redundant `.design` dir.
+        stripPrefix: `${paths.designRel}/`,
         kind: 'runtime' as const,
       });
     }
