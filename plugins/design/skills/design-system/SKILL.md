@@ -345,7 +345,7 @@ The inspiration library at `plugins/design/templates/design-system-inspiration/`
 
 The dependency root. Main agent writes these **in order, alone** because every later file imports them.
 
-0. **`<designRoot>/_lib/canvas-lib.tsx`** — project-owned canvas library. **Write once per project, idempotent across re-bootstraps + additional-DS runs.** If `<designRoot>/_lib/canvas-lib.tsx` already exists, skip. Otherwise copy verbatim from `plugins/design/templates/canvas-lib.tsx.template` to `<designRoot>/_lib/canvas-lib.tsx`. The lib exports the canvas envelope (`DesignCanvas`, `DCSection`, `DCArtboard`, `DCPostIt`), specimen helpers (`SpecimenHeader`, `TokenChip`, `ColorSwatch`, `KbdHint`, etc.) + hooks (`useTokens`, `useTheme`). Every scaffolded TSX specimen imports from `@mdcc/canvas-lib`, which the dev-server resolves to this file. Without it, every specimen white-pages at runtime.
+> **Canvas-lib note (DDR-025):** Per Phase 4.0.5 canvas-lib ships with the dev-server install at `plugins/design/dev-server/canvas-lib.tsx`. Bootstrap **does not** scaffold a project-side copy — the virtual specifier `@mdcc/canvas-lib` resolves directly at canvas build time. UI mock canvases keep importing `DesignCanvas` / `DCSection` / `DCArtboard` from `@mdcc/canvas-lib` without any per-project setup.
 
 1. `colors_and_type.css` — tokens. Substitute discovery values (accent OKLCH, fonts, density-derived `--space-*` defaults, Q9-derived shadow/treatment tokens like `--shadow-glow` or `--scanline-alpha`).
 2. `<designRoot>/system/<ds>/preview/_layout.css` — chrome. **Bakes Q9 signature treatment into the body background + h1 treatment.** Examples:

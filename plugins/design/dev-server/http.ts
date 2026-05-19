@@ -4,11 +4,13 @@
 // the route table without rewriting this module. The `fetch` export is the
 // top-level fall-through for paths Bun's `routes` field doesn't cover.
 
+import { watch } from 'node:fs';
 import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import type { Api } from './api.ts';
 import { buildCanvasModule } from './canvas-build.ts';
+import { canvasLibPath } from './canvas-lib-resolver.ts';
 import { TranspileError } from './canvas-pipeline.ts';
 import type { Context } from './context.ts';
 import type { Inspect } from './inspect.ts';
@@ -153,17 +155,39 @@ export interface Http {
 }
 
 export function createHttp(ctx: Context, api: Api, inspect: Inspect): Http {
-  // Cache invalidation — when `_lib/canvas-lib.tsx` (or anything else under
-  // `_lib/`) changes, every cached canvas bundle is stale because canvas-lib
-  // is inlined into each one via the resolver plugin. Drop the whole cache
-  // so the next request rebuilds with the fresh lib. Without this, the HMR
-  // "hard reload" message reaches the browser but the iframe re-fetches a
-  // stale-but-fresh-mtime bundle and the change never takes effect.
+  // Cache invalidation — when canvas-lib changes, every cached canvas bundle
+  // is stale because canvas-lib is inlined into each one via the resolver
+  // plugin. Drop the whole cache so the next request rebuilds with the fresh
+  // lib. Without this, the HMR "hard reload" message reaches the browser but
+  // the iframe re-fetches a stale-but-fresh-mtime bundle and the change never
+  // takes effect.
+  //
+  // Per DDR-025 canvas-lib ships with the dev-server, so we watch the
+  // dev-server-internal file directly instead of relying on the project-side
+  // fs:any watcher. The synthetic `_lib/canvas-lib.tsx` rel-path lets the
+  // existing hmr-broadcast classifier emit a hard reload without bespoke
+  // wiring. The legacy `fs:any` _lib/ listener stays for downstream projects
+  // still carrying a pre-4.0.5 `<designRoot>/_lib/`, but that file is now
+  // ignored at build time — clearing the cache here is harmless.
   ctx.bus.on('fs:any', (rel: string) => {
     if (rel.startsWith('_lib/')) {
       canvasCache.clear();
     }
   });
+
+  let libWatcher: ReturnType<typeof watch> | null = null;
+  try {
+    libWatcher = watch(canvasLibPath(), () => {
+      canvasCache.clear();
+      ctx.bus.emit('fs:any', '_lib/canvas-lib.tsx');
+    });
+  } catch (err) {
+    console.warn(
+      '[canvas-lib] failed to watch dev-server canvas-lib:',
+      err instanceof Error ? err.message : err
+    );
+  }
+  void libWatcher;
 
   async function readJson<T = unknown>(req: Request, max = 256 * 1024): Promise<T | null> {
     try {

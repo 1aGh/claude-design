@@ -4,7 +4,7 @@
 - **Status:** Accepted (CSS-transform baseline) · **Hold** (Pixi.js swap pending T6 measurements)
 - **T7 disposition:** shipped as DOM-driver enhancements — LoD swap at zoom < 0.3 + handoff static-frame filter. Pixi.js bundle deferred until DDR-024 Measurements clear the gate.
 - **Tags:** design, canvas, performance, phase-4, perf-budget
-- **Related:** [DDR-009](./DDR-009-bun-runtime-authoritative-for-dev-server.md), [DDR-022](./DDR-022-canvas-lib-virtual-module-and-inline-on-handoff.md), [`.ai/plans/phase-4-canvas-v2-rendering-engine.md`](../plans/phase-4-canvas-v2-rendering-engine.md), [`.design/_lab/perf-100-artboards.tsx`](../../.design/_lab/perf-100-artboards.tsx)
+- **Related:** [DDR-009](./DDR-009-bun-runtime-authoritative-for-dev-server.md), [DDR-022](./DDR-022-canvas-lib-virtual-module-and-inline-on-handoff.md), [DDR-025](./DDR-025-canvas-lib-single-source-in-dev-server.md), [`.ai/plans/phase-4-canvas-v2-rendering-engine.md`](../plans/phase-4-canvas-v2-rendering-engine.md), [`plugins/design/dev-server/examples/perf-100-artboards.tsx`](../../plugins/design/dev-server/examples/perf-100-artboards.tsx) (was `.design/_lab/perf-100-artboards.tsx` pre-Phase 4.0.5)
 
 ## Context
 
@@ -32,7 +32,7 @@ T6 is the gate. If Pixi.js outperforms CSS transforms by < 20 % at the 100 × 30
    - `will-change: transform` discipline (already in the engine CSS, applied only on `.dc-world`);
    - Optional screenshot LoD without the Pixi rewrite — same `screenshot.sh` cache, swapped via CSS `background-image` below zoom 0.3.
 
-4. **Measurement is a one-shot task ahead of T7.** The lab canvas `.design/_lab/perf-100-artboards.tsx` (Phase 4 T6 deliverable) is the reference workload. A human runs it on an M1 MacBook Air (Phase 3.4 reference hardware) and records numbers into `.ai/logs/phase-4-perf-<date>.md`. The numbers go into this DDR's "Measurements" section as part of accepting T7.
+4. **Measurement is a one-shot task ahead of T7.** The lab canvas `plugins/design/dev-server/examples/perf-100-artboards.tsx` (Phase 4 T6 deliverable; relocated from `.design/_lab/` per DDR-025 / Phase 4.0.5) is the reference workload. A human runs it on an M1 MacBook Air (Phase 3.4 reference hardware) and records numbers into `.ai/logs/phase-4-perf-<date>.md`. The numbers go into this DDR's "Measurements" section as part of accepting T7.
 
 ## Methodology
 
@@ -78,7 +78,8 @@ The 2026-05-19 prior on the result: CSS transforms hit ≥ 55 fps at 100 × 30, 
 >
 > ```sh
 > bun run plugins/design/dev-server/server.mjs --root /Volumes/D/git/claude-design
-> # Open http://localhost:4399/_canvas-shell.html?canvas=_lab/perf-100-artboards.tsx
+> # Open http://localhost:4399/_canvas-shell.html?canvas=plugins/design/dev-server/examples/perf-100-artboards.tsx
+> # (pre-Phase 4.0.5 location: `_lab/perf-100-artboards.tsx`)
 > # Wait for fit-to-screen.
 > # In DevTools console: setInterval(() => console.log(window.__perf__.fps()), 1000)
 > # Run pan + zoom workloads, copy numbers into .ai/logs/phase-4-perf-<date>.md
@@ -89,7 +90,7 @@ The 2026-05-19 prior on the result: CSS transforms hit ≥ 55 fps at 100 × 30, 
 - Phase 4 ships **with the CSS-transform driver** when T1-T5 (already complete) land. The MVP is feature-complete.
 - T7 is on **hold** until T6 measurements clear the gate. If measurements unlock T7, this DDR will be amended to "Accepted (Pixi swap authorized)" with the numbers inlined.
 - If T6 measurements fail the gate, this DDR will be amended to "Accepted (Pixi swap cancelled)" with the numbers + the architectural lesson. The Phase 4 close-out STATE row marks T7 as "cancelled per DDR-024 measurements".
-- The `.design/_lab/` directory is the home for future throwaway perf canvases (load-bearing only via the `.gitignore` posture — perf labs are committable but underscore-prefixed so they don't pollute the tree).
+- Future throwaway perf canvases live under `plugins/design/dev-server/examples/` (DDR-025 / Phase 4.0.5 relocated them out of `.design/_lab/`, which mis-classified dev-server fixtures as user content).
 
 ## Alternatives considered
 

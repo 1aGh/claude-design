@@ -56,6 +56,8 @@ These files are user-facing runtime state — when changing the server, keep the
 
 The server fails loud if launched from a directory without `.design/` rather than serving an empty UI — preserve this behaviour, it's load-bearing for debugging "wrong project root" cases.
 
+The shared canvas library (`DesignCanvas`, `DCSection`, `DCArtboard`, helpers, hooks) lives at **`plugins/design/dev-server/canvas-lib.tsx`** — single source, ships with the dev-server install. Canvases import it via the virtual specifier `@mdcc/canvas-lib`, which the dev-server's Bun.build plugin resolves to that file. Edit there; the http-layer file-watcher broadcasts a hard reload to every open canvas iframe on change. Per [DDR-025](.ai/decisions/DDR-025-canvas-lib-single-source-in-dev-server.md), there is no project-side copy — downstream projects that still carry a legacy `<designRoot>/_lib/canvas-lib.tsx` get a one-shot deprecation warning at boot and the file is ignored.
+
 ### Dev-server helpers (`plugins/design/dev-server/bin/`)
 
 Single source of truth for the bash recipes that used to be duplicated across `/design:new`, `/design:edit`, `/design:screenshot`, `/design:setup-ds`, and every critic agent:

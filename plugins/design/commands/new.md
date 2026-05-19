@@ -7,7 +7,7 @@ argument-hint: "<Name> \"<brief>\" [--component] [--mobile] [--quick | --no-crit
 
 # /design:new — scaffold nový canvas projekt
 
-Vytvoří **nový multi-artboard canvas soubor** v `<designRoot>/<newCanvasDir>/<Name>.tsx` přes `frontend-design` plugin. Generic envelope se adaptuje podle `<repo>/.design/config.json` (rootClass, themeDefault, tokensCssRel, …). Canvas envelope (`DesignCanvas` / `DCSection` / `DCArtboard`) se importuje z virtuálního specifikátoru `@mdcc/canvas-lib`, který dev-server resolvuje na project-owned `<designRoot>/_lib/canvas-lib.tsx`.
+Vytvoří **nový multi-artboard canvas soubor** v `<designRoot>/<newCanvasDir>/<Name>.tsx` přes `frontend-design` plugin. Generic envelope se adaptuje podle `<repo>/.design/config.json` (rootClass, themeDefault, tokensCssRel, …). Canvas envelope (`DesignCanvas` / `DCSection` / `DCArtboard`) se importuje z virtuálního specifikátoru `@mdcc/canvas-lib`, který dev-server resolvuje na svou bundled canvas-lib v `plugins/design/dev-server/canvas-lib.tsx` (single source, ships s dev-server installem per DDR-025).
 
 **Canvas projekt = `DesignCanvas` + jedna nebo více `DCSection` + jeden nebo více `DCArtboard`** (panable / zoomable infinite-canvas pattern). Single-page wrapper je anti-pattern; nový screen patří jako další `DCArtboard` do existujícího canvasu (přes `/design:edit "<add new artboard for X>"` ne přes `/design:new`).
 
@@ -125,7 +125,7 @@ Helper detekuje běžící server (PID + `curl /_health`), startuje znovu pokud 
 
 ### 3. Validate name + resolve target path
 
-- Default canvas: `<DESIGN_ROOT>/<NEW_CANVAS_DIR>/<Name>.tsx` (TSX canvas served by the dev-server's two-pass pipeline + Bun.build runtime). The canvas mounts via `_canvas-shell.html`; React 19 + ReactDOM ride in shared `/_canvas-runtime/*.js` bundles. Envelope primitives (`DesignCanvas`, `DCSection`, `DCArtboard`, `DCPostIt`) come from `@mdcc/canvas-lib` — the dev-server resolves that virtual specifier to `<designRoot>/_lib/canvas-lib.tsx` (project-owned source).
+- Default canvas: `<DESIGN_ROOT>/<NEW_CANVAS_DIR>/<Name>.tsx` (TSX canvas served by the dev-server's two-pass pipeline + Bun.build runtime). The canvas mounts via `_canvas-shell.html`; React 19 + ReactDOM ride in shared `/_canvas-runtime/*.js` bundles. Envelope primitives (`DesignCanvas`, `DCSection`, `DCArtboard`, `DCPostIt`) come from `@mdcc/canvas-lib` — the dev-server resolves that virtual specifier to its bundled canvas-lib at `plugins/design/dev-server/canvas-lib.tsx` (per DDR-025; ships with the dev-server install).
 - `--component`: `<DESIGN_ROOT>/<NEW_COMPONENT_DIR>/<PascalName>.tsx`
 - Reject pokud target file existuje (suggest `<Name> v2`).
 
@@ -341,7 +341,7 @@ TSX canvas (the only format):
 
 - Default-exported React component (`export default function <Name>() { … }` — kebab-PascalCase ok; the module must have exactly one default export).
 - Standard `import` statements for `react` (when hooks are used), framework primitives, and any sibling components. **No** `<!doctype>`, no `<html>` / `<body>` — those live in `_canvas-shell.html`.
-- Imports envelope primitives from `@mdcc/canvas-lib`: `import { DesignCanvas, DCSection, DCArtboard } from "@mdcc/canvas-lib"`. The dev-server resolves that virtual specifier to `<designRoot>/_lib/canvas-lib.tsx` (project-owned source). `/design:handoff` AST-inlines the used exports on emit so the registry-item drop is self-contained.
+- Imports envelope primitives from `@mdcc/canvas-lib`: `import { DesignCanvas, DCSection, DCArtboard } from "@mdcc/canvas-lib"`. The dev-server resolves that virtual specifier to its bundled canvas-lib at `plugins/design/dev-server/canvas-lib.tsx` (single source, ships with the dev-server install per DDR-025). `/design:handoff` AST-inlines the used exports on emit so the registry-item drop is self-contained.
 - Contains at least one `<DCArtboard …>` (canvas-multi-artboard pattern).
 - Class strings reference the project DS `_components.css` classes (`.btn`, `.tile`, `.sku`, `.seg`, …). Inline `style={{}}` is the escape hatch for arbitrary one-offs — gradients / radii honor the opt-out scope.
 - No hardcoded colors / fonts / radii in `style={{}}` — use `var(--*)` tokens or DS classes.

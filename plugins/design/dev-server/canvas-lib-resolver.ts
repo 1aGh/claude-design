@@ -1,9 +1,11 @@
-// Virtual-module resolver for `@mdcc/canvas-lib` (Phase 3.6.1).
+// Virtual-module resolver for `@mdcc/canvas-lib` (Phase 3.6.1; relocated 4.0.5).
 //
 // Canvases import the shared canvas library via the specifier `@mdcc/canvas-lib`.
-// At build time we redirect that to `<designRoot>/_lib/canvas-lib.tsx` so:
+// At build time we redirect that to the dev-server-bundled source at
+// `plugins/design/dev-server/canvas-lib.tsx` so:
 //
-//   - the lib lives under the design root (project-owned source, not an npm dep),
+//   - the lib ships with the dev-server install (single source of truth — see
+//     DDR-025; reverses DDR-022's "project-owned source under <designRoot>/_lib/"),
 //   - Bun.build bundles the actually-used exports into the canvas module via
 //     normal tree-shaking,
 //   - `/design:handoff` can strip the import + inline the same exports for the
@@ -11,15 +13,14 @@
 //
 // Two surfaces:
 //
-//   - `canvasLibResolver(designRoot)` — Bun.build plugin. Registered alongside
+//   - `canvasLibResolver()` — Bun.build plugin. Registered alongside
 //     `exact-externals` in canvas-build.ts. Must run FIRST so the bare specifier
 //     gets claimed before any other resolver.
-//   - `readCanvasLibSource(designRoot)` — small async helper used by handoff.ts
+//   - `readCanvasLibSource()` — small async helper used by handoff.ts
 //     to read the lib source once for inlining.
 //
-// Failure mode: if a canvas imports `@mdcc/canvas-lib` but no
-// `_lib/canvas-lib.tsx` exists, Bun.build's error message will point at the
-// resolver; `canvas-build.ts` wraps the error with a /design:setup-ds hint.
+// Failure mode: if the dev-server's bundled canvas-lib is missing, the install
+// is corrupt; canvas-build.ts surfaces a re-install hint.
 
 import { existsSync } from 'node:fs';
 import path from 'node:path';
@@ -29,11 +30,12 @@ import type { BunPlugin } from 'bun';
 export const CANVAS_LIB_SPECIFIER = '@mdcc/canvas-lib';
 
 /**
- * Absolute on-disk path the specifier resolves to. Centralised so the plugin
- * + handoff + tests agree on the location.
+ * Returns the dev-server-internal canvas-lib path. The `_designRoot` parameter
+ * is retained for one minor (back-compat with callers we don't control) but
+ * ignored — canvas-lib now ships with the dev-server install (DDR-025).
  */
-export function canvasLibPath(designRoot: string): string {
-  return path.join(designRoot, '_lib', 'canvas-lib.tsx');
+export function canvasLibPath(_designRoot?: string): string {
+  return path.join(import.meta.dir, 'canvas-lib.tsx');
 }
 
 export interface CanvasLibResolverOptions {
@@ -42,14 +44,14 @@ export interface CanvasLibResolverOptions {
 }
 
 /**
- * Bun.build plugin factory. Maps `@mdcc/canvas-lib` → `<designRoot>/_lib/
- * canvas-lib.tsx`. No-op for any other specifier.
+ * Bun.build plugin factory. Maps `@mdcc/canvas-lib` → the dev-server-bundled
+ * `canvas-lib.tsx`. No-op for any other specifier.
  */
 export function canvasLibResolver(
-  designRoot: string,
+  _designRoot?: string,
   opts: CanvasLibResolverOptions = {}
 ): BunPlugin {
-  const target = canvasLibPath(designRoot);
+  const target = canvasLibPath();
   const failLoud = opts.failLoud !== false;
   return {
     name: 'mdcc-canvas-lib',
@@ -57,7 +59,7 @@ export function canvasLibResolver(
       builder.onResolve({ filter: /^@mdcc\/canvas-lib$/ }, () => {
         if (failLoud && !existsSync(target)) {
           throw new Error(
-            `[@mdcc/canvas-lib] canvas library missing at ${target}. Run /design:setup-ds to scaffold it, or copy from plugins/design/templates/canvas-lib.tsx.template.`
+            `[@mdcc/canvas-lib] canvas library missing at ${target} — dev-server install is corrupt; re-install @1agh/md-claude.`
           );
         }
         return { path: target };
@@ -71,12 +73,12 @@ export function canvasLibResolver(
  * is missing. Used by handoff.ts to build the export-name → source map for
  * inlining used helpers into the emitted registry-item.
  */
-export async function readCanvasLibSource(designRoot: string): Promise<string> {
-  const p = canvasLibPath(designRoot);
+export async function readCanvasLibSource(_designRoot?: string): Promise<string> {
+  const p = canvasLibPath();
   const f = Bun.file(p);
   if (!(await f.exists())) {
     throw new Error(
-      `[@mdcc/canvas-lib] canvas library missing at ${p}. Run /design:setup-ds to scaffold it.`
+      `[@mdcc/canvas-lib] canvas library missing at ${p} — dev-server install is corrupt; re-install @1agh/md-claude.`
     );
   }
   return f.text();

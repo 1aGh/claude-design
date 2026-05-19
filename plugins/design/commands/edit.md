@@ -101,20 +101,21 @@ if [ "$LOAD_CSS" = "1" ] && [ "${ACTIVE##*.}" = "tsx" ] && [ "$CSS_MODE" = "inli
   echo "→ pre-loading DS context: $TOKENS_CSS"
 fi
 
-# Always pre-load `_lib/canvas-lib.tsx` for every TSX canvas — the lib is the
-# authoring vocabulary (envelope + helpers + hooks the canvas can compose
-# from). Cold-edit on a canvas without seeing the available helpers is a
-# known foot-gun (Phase 3.6.1 Task 13). Cost: ~12 KB read, idempotent across
-# the iteration loop.
+# Always pre-load the dev-server-bundled canvas-lib for every TSX canvas —
+# the lib is the authoring vocabulary (envelope + helpers + hooks the canvas
+# can compose from). Cold-edit on a canvas without seeing the available
+# helpers is a known foot-gun (Phase 3.6.1 Task 13). Per DDR-025 / Phase
+# 4.0.5 the lib ships with the dev-server install at
+# `plugins/design/dev-server/canvas-lib.tsx`. Cost: ~58 KB read, idempotent.
 if [ "${ACTIVE##*.}" = "tsx" ]; then
-  CANVAS_LIB="$REPO_ROOT/$DESIGN_ROOT/_lib/canvas-lib.tsx"
+  CANVAS_LIB="$CLAUDE_PLUGIN_ROOT/dev-server/canvas-lib.tsx"
   if [ -f "$CANVAS_LIB" ]; then
     echo "→ pre-loading canvas-lib: $CANVAS_LIB"
   fi
 fi
 ```
 
-**What the orchestrator does with those paths:** if `LOAD_CSS=1`, the orchestrator `Read`s both files BEFORE building the prompt for `frontend-design`. The class names in `_components.css` show what's available (`.btn`, `.btn--ghost`, `.tile`, `.sku`, `.seg`, ...), and `colors_and_type.css` shows the token namespace — both seed the LLM with the exact vocabulary the canvas already speaks. For `css_mode: "tailwind"` canvases skip (Tailwind utilities self-describe); for `css_mode: "modules"` load the canvas's `<Slug>.module.css` sidecar instead. The `_lib/canvas-lib.tsx` read ALWAYS happens for `.tsx` canvases (any mode) — the lib is the project's authoring vocabulary and missing it is the most common reason a `/design:edit` suggests re-inventing a helper that already exists.
+**What the orchestrator does with those paths:** if `LOAD_CSS=1`, the orchestrator `Read`s both files BEFORE building the prompt for `frontend-design`. The class names in `_components.css` show what's available (`.btn`, `.btn--ghost`, `.tile`, `.sku`, `.seg`, ...), and `colors_and_type.css` shows the token namespace — both seed the LLM with the exact vocabulary the canvas already speaks. For `css_mode: "tailwind"` canvases skip (Tailwind utilities self-describe); for `css_mode: "modules"` load the canvas's `<Slug>.module.css` sidecar instead. The canvas-lib read ALWAYS happens for `.tsx` canvases (any mode) — the lib is the project's authoring vocabulary and missing it is the most common reason a `/design:edit` suggests re-inventing a helper that already exists.
 
 ### 2. Server lifecycle (vždy první)
 

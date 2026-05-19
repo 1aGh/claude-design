@@ -30,6 +30,37 @@ import { transpileCanvasSource } from './canvas-pipeline.ts';
 import type { LocatorMap } from './locator.ts';
 import { RUNTIME_PACKAGES } from './runtime-bundle.ts';
 
+// Sanity-check the dev-server-bundled canvas-lib once per process boot. If the
+// install is corrupt (file missing), surface that before the first canvas build
+// — Bun.build's plugin throws collapse to a useless "Bundle failed" string.
+let canvasLibPresenceVerified = false;
+function verifyCanvasLibPresence(): void {
+  if (canvasLibPresenceVerified) return;
+  const target = canvasLibPath();
+  if (!existsSync(target)) {
+    throw new Error(
+      `[@mdcc/canvas-lib] canvas library missing at ${target} — dev-server install is corrupt; re-install @1agh/md-claude.`
+    );
+  }
+  canvasLibPresenceVerified = true;
+}
+
+// Per DDR-025, canvas-lib now ships with the dev-server. Downstream projects
+// with a legacy `<designRoot>/_lib/canvas-lib.tsx` from a pre-4.0.5 setup get a
+// single deprecation warning per dev-server process — the project file is
+// ignored, the dev-server-bundled lib is authoritative.
+const loggedLegacyForRoot = new Set<string>();
+function warnLegacyDesignLib(designRoot: string): void {
+  if (loggedLegacyForRoot.has(designRoot)) return;
+  loggedLegacyForRoot.add(designRoot);
+  const legacy = path.join(designRoot, '_lib', 'canvas-lib.tsx');
+  if (existsSync(legacy)) {
+    console.warn(
+      `[canvas-lib] Legacy ${legacy} detected. As of v0.15.0, canvas-lib ships with the dev-server install — the project file is ignored and can be deleted. See DDR-025 for the migration rationale.`
+    );
+  }
+}
+
 export interface CanvasBundleResult {
   /** Browser-loadable ES module text. */
   js: string;
@@ -41,11 +72,11 @@ export interface CanvasBundleResult {
 
 export interface BuildCanvasOptions {
   /**
-   * Absolute path to the design root. Used to resolve the virtual specifier
-   * `@mdcc/canvas-lib` → `<designRoot>/_lib/canvas-lib.tsx`. If omitted, the
-   * design root is inferred from the canvas path (the nearest ancestor that
-   * contains a `_lib/canvas-lib.tsx`, falling back to the canvas's containing
-   * dir). Pass the real value from `ctx.paths.designRoot` whenever possible.
+   * Absolute path to the design root. Per DDR-025 canvas-lib is dev-server
+   * bundled, so this value is no longer required to resolve `@mdcc/canvas-lib`
+   * — it's accepted for back-compat and used only to emit a one-shot
+   * deprecation warning when a legacy `<designRoot>/_lib/canvas-lib.tsx` is
+   * detected.
    */
   designRoot?: string;
 }
@@ -53,7 +84,7 @@ export interface BuildCanvasOptions {
 /**
  * Build a single canvas TSX file end-to-end. Identity pass is from
  * canvas-pipeline.ts; the module pass is Bun.build with React externalised
- * and `@mdcc/canvas-lib` resolved to the project-owned canvas-lib source.
+ * and `@mdcc/canvas-lib` resolved to the dev-server-bundled canvas-lib.
  */
 export async function buildCanvasModule(
   canvasAbsPath: string,
@@ -62,15 +93,18 @@ export async function buildCanvasModule(
 ): Promise<CanvasBundleResult> {
   // Pass 1: inject data-cd-id, capture the locator.
   const pass1 = transpileCanvasSource(canvasAbsPath, source);
-  const designRoot = options.designRoot ?? inferDesignRoot(canvasAbsPath);
 
-  // Pre-flight the canvas-lib resolver — Bun.build collapses plugin throws to
-  // a useless "Bundle failed" string, so we surface the missing-lib reason
-  // ourselves before delegating.
-  if (/@mdcc\/canvas-lib/.test(source) && !existsSync(canvasLibPath(designRoot))) {
-    throw new Error(
-      `[@mdcc/canvas-lib] canvas library missing at ${canvasLibPath(designRoot)}. Canvas ${canvasAbsPath} imports it. Run /design:setup-ds to scaffold, or copy plugins/design/templates/canvas-lib.tsx.template.`
-    );
+  // Sanity-check the dev-server-bundled canvas-lib once per process — if the
+  // install is corrupt, fail loud before Bun.build collapses plugin throws.
+  if (/@mdcc\/canvas-lib/.test(source)) {
+    verifyCanvasLibPresence();
+  }
+
+  // Non-destructive deprecation warning for projects still carrying a legacy
+  // `<designRoot>/_lib/canvas-lib.tsx`. The dev-server-bundled lib is
+  // authoritative; this just nudges the project owner to clean up.
+  if (options.designRoot) {
+    warnLegacyDesignLib(options.designRoot);
   }
 
   // Pass 2: Bun.build with a virtual loader that resolves canvasAbsPath to the
@@ -97,8 +131,8 @@ export async function buildCanvasModule(
     },
     plugins: [
       // Resolve `@mdcc/canvas-lib` BEFORE exact-externals — we want the bare
-      // specifier to map to the on-disk lib file, not get marked external.
-      canvasLibResolver(designRoot),
+      // specifier to map to the dev-server-bundled lib, not get marked external.
+      canvasLibResolver(),
       {
         name: 'canvas-virtual-source',
         setup(builder) {
@@ -183,21 +217,3 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/**
- * Walk up from the canvas path looking for an ancestor that contains a
- * `_lib/canvas-lib.tsx`. Falls back to the canvas's containing dir if nothing
- * matches — the resolver will then fail loud if any canvas tries to import
- * `@mdcc/canvas-lib`. Tests + http.ts always pass the explicit designRoot, so
- * this fallback only fires when somebody hand-calls buildCanvasModule().
- */
-function inferDesignRoot(canvasAbsPath: string): string {
-  let dir = path.dirname(canvasAbsPath);
-  // Hard ceiling to avoid runaway loops on weird path shapes.
-  for (let i = 0; i < 12; i++) {
-    if (existsSync(path.join(dir, '_lib', 'canvas-lib.tsx'))) return dir;
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return path.dirname(canvasAbsPath);
-}

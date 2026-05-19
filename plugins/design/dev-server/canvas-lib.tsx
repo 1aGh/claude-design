@@ -1,6 +1,9 @@
 /**
- * @file       canvas-lib.tsx — project-owned canvas library
- * @scope      <designRoot>/_lib/canvas-lib.tsx
+ * @file       canvas-lib.tsx — dev-server-bundled canvas library
+ * @scope      plugins/design/dev-server/canvas-lib.tsx
+ *             Ships with the dev-server install; resolved at canvas build time
+ *             via the `@mdcc/canvas-lib` virtual specifier. Per DDR-025, this
+ *             is the single source of truth — no project-side copy.
  * @purpose    Shared primitives + helpers + hooks for every TSX canvas
  *             (UI mocks + DS specimens). Imported via the virtual module
  *             specifier `@mdcc/canvas-lib`, which the dev-server's Bun.build
@@ -54,6 +57,11 @@
  * The engine is always on; a single-artboard canvas just defaults to
  * fit-to-screen and looks identical to pre-Phase 4. Layout + viewport state
  * live in `<file>.meta.json` via `window.__canvas_meta__` (T5 wiring).
+ *
+ * Phase 4.0.5 (2026-05-19) — relocated from `<designRoot>/_lib/canvas-lib.tsx`
+ * per DDR-025; single source in dev-server. No project-side copy is scaffolded
+ * anymore; legacy `_lib/` directories in downstream projects get a one-cycle
+ * deprecation log at dev-server boot.
  */
 
 import {

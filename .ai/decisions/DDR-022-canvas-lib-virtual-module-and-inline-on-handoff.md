@@ -1,9 +1,11 @@
 # DDR-022: `@mdcc/canvas-lib` is a project-owned virtual module, inlined per-canvas on handoff
 
 - **Date:** 2026-05-19
-- **Status:** Accepted
+- **Status:** Accepted — **partially superseded by [DDR-025](./DDR-025-canvas-lib-single-source-in-dev-server.md) (2026-05-19)**
 - **Tags:** design, dev-server, canvas-lib, virtual-module, handoff, registry-item, phase-3.6.1
-- **Related:** [DDR-019](./DDR-019-canvas-tsx-format.md), [DDR-021](./DDR-021-design-smoke-gate-for-infra-and-bulk-ui-work.md), [`.ai/plans/phase-3.6.1-canvas-envelope-and-ds-specimens.md`](../plans/phase-3.6.1-canvas-envelope-and-ds-specimens.md), [`.ai/logs/system-reviews/phase-3.6.1-canvas-envelope-and-ds-specimens-review.md`](../logs/system-reviews/phase-3.6.1-canvas-envelope-and-ds-specimens-review.md)
+- **Related:** [DDR-019](./DDR-019-canvas-tsx-format.md), [DDR-021](./DDR-021-design-smoke-gate-for-infra-and-bulk-ui-work.md), [DDR-025](./DDR-025-canvas-lib-single-source-in-dev-server.md), [`.ai/plans/phase-3.6.1-canvas-envelope-and-ds-specimens.md`](../plans/phase-3.6.1-canvas-envelope-and-ds-specimens.md), [`.ai/logs/system-reviews/phase-3.6.1-canvas-envelope-and-ds-specimens-review.md`](../logs/system-reviews/phase-3.6.1-canvas-envelope-and-ds-specimens-review.md)
+
+> **Status update (2026-05-19):** Partially superseded by [DDR-025](./DDR-025-canvas-lib-single-source-in-dev-server.md). The "project-owned source under `<designRoot>/_lib/`" assertion is reversed — canvas-lib now ships with the dev-server install at `plugins/design/dev-server/canvas-lib.tsx` (single source, no per-project scaffold). The "virtual specifier at author time + inlined source at handoff time" two-state model remains in force; only the *physical home* of the canonical source changed.
 
 ## Context
 

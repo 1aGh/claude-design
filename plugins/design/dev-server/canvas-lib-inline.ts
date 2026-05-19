@@ -1,13 +1,15 @@
-// canvas-lib inlining for /design:handoff (Phase 3.6.1 Task 9).
+// canvas-lib inlining for /design:handoff (Phase 3.6.1 Task 9; per DDR-025 the
+// lib source now ships with the dev-server install).
 //
 // `/design:handoff` emits a self-contained shadcn registry-item.json. Canvases
 // import their envelope + helpers from `@mdcc/canvas-lib`, which the dev-server
-// resolves to `<designRoot>/_lib/canvas-lib.tsx`. The handoff drop must inline
-// every used export so the consumer never sees the `@mdcc/canvas-lib`
-// specifier — it's a dev-time virtual module, not a real npm dep.
+// resolves to its bundled `plugins/design/dev-server/canvas-lib.tsx`. The
+// handoff drop must inline every used export so the consumer never sees the
+// `@mdcc/canvas-lib` specifier — it's a dev-time virtual module, not a real
+// npm dep.
 //
 // Strategy:
-//   1. Parse `_lib/canvas-lib.tsx` via oxc-parser. Walk top-level declarations
+//   1. Parse the dev-server-bundled canvas-lib.tsx via oxc-parser. Walk top-level declarations
 //      to build a Map<name, { source, deps }>:
 //        - source: byte range of the declaration (including JSDoc immediately
 //                  above, when present).

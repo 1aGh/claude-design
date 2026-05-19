@@ -95,8 +95,10 @@ export interface EmitOptions {
   tokensCssPath?: string;
   /**
    * Absolute path to design root. When provided, `@mdcc/canvas-lib` imports
-   * in the canvas are inlined from `<designRoot>/_lib/canvas-lib.tsx` so the
-   * emitted drop is self-contained (Phase 3.6.1 Task 9).
+   * in the canvas are inlined from the dev-server-bundled canvas-lib so the
+   * emitted drop is self-contained (Phase 3.6.1 Task 9; per DDR-025 the lib
+   * lives in the dev-server, not under designRoot). The argument is kept for
+   * back-compat with the CLI shape — handoff inlining no longer reads it.
    */
   designRoot?: string;
 }
