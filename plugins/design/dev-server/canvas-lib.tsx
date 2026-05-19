@@ -1032,7 +1032,11 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
 
   const seeds = useMemo(() => harvestArtboards(children), [children]);
 
-  const artboards = useMemo<ArtboardRect[]>(() => {
+  // Merge JSX-derived defaults with meta-persisted positions. Per DDR-027,
+  // artboard size is JSX-authoritative; meta tolerates legacy w/h fields for
+  // back-compat with Phase 4 snapshots but never lets a missing meta size
+  // zero-out the rendered box.
+  const initialArtboards = useCallback((): ArtboardRect[] => {
     const meta = readCanvasMeta();
     const defaults = synthDefaultGrid(seeds);
     const metaLayout = meta?.layout?.artboards;
@@ -1041,10 +1045,6 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
     for (const r of metaLayout) {
       if (r && typeof r.id === "string") byId.set(r.id, r);
     }
-    // Merge: meta provides positions (x, y), JSX-derived defaults provide
-    // sizes (w, h). Per DDR-027, artboard size is JSX-authoritative; meta
-    // tolerates legacy w/h fields for back-compat with Phase 4 snapshots
-    // but never lets a missing meta size zero-out the rendered box.
     return defaults.map((d) => {
       const m = byId.get(d.id);
       if (!m) return d;
@@ -1057,6 +1057,20 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
       };
     });
   }, [seeds]);
+
+  // Artboards live in state (not a useMemo) so a drag commit can update
+  // positions in-place without waiting for an iframe reload to re-read meta.
+  // Phase 4.2 originally used useMemo([seeds]) — dragging would PATCH the
+  // server but the local React state stayed frozen at mount-time. Users had
+  // to switch canvases (forcing a reload) to see the new position.
+  const [artboards, setArtboards] = useState<ArtboardRect[]>(initialArtboards);
+
+  // Re-seed when JSX children change (HMR after canvas TSX edit). The seed
+  // signature is identity-stable across renders that don't change the JSX,
+  // so this won't clobber drag-commit state during normal interaction.
+  useEffect(() => {
+    setArtboards(initialArtboards());
+  }, [initialArtboards]);
 
   // Stable refs so the controller's callbacks always see the latest values.
   const artboardsRef = useRef(artboards);
@@ -1168,6 +1182,10 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
         if (m) return { ...r, x: m.x, y: m.y };
         return r;
       });
+      // Optimistic local update — DOM reflects the new position the moment
+      // the drag drops, no iframe reload required. The PATCH below catches
+      // the server up; if it fails we already logged it via `patchCanvasMeta`.
+      setArtboards(next);
       patchCanvasMeta({ layout: { artboards: next } });
     },
     []
