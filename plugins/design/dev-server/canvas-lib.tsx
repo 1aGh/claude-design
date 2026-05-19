@@ -82,6 +82,11 @@ import {
 
 import { CanvasShell } from "./canvas-shell.tsx";
 import { ToolProvider, useToolModeOptional } from "./use-tool-mode.tsx";
+import {
+  useArtboardDrag,
+  type DragState,
+} from "./use-artboard-drag.tsx";
+import { useSelectionSetOptional } from "./use-selection-set.tsx";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Module constants
@@ -161,6 +166,29 @@ button.dc-artboard-label {
 }
 button.dc-artboard-label:focus-visible { outline: 2px solid var(--accent, #d63b1f); outline-offset: -2px; }
 /* Active-artboard ring is in canvas-shell HALO_CSS (subtle 1 px tint). */
+/* Phase 4.2 — drag chrome. */
+.dc-canvas[data-active-tool="move"] .dc-artboard-label { cursor: grab; }
+.dc-canvas[data-active-tool="move"] .dc-artboard-label:active { cursor: grabbing; }
+.dc-canvas .dc-artboard.dc-dragging { opacity: 0.3; }
+.dc-canvas .dc-artboard-ghost {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0.5;
+  background: var(--bg-0, #ffffff);
+  border: 1px solid var(--fg-0, #2a2520);
+  box-shadow: 6px 6px 0 var(--fg-0, #2a2520);
+  z-index: 4;
+}
+.dc-canvas .dc-artboard-ghost-label {
+  background: var(--bg-2, #e8e3d8);
+  border-bottom: 1px solid var(--fg-0, #2a2520);
+  padding: 6px 14px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-1, #4a3f30);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
 `.trim();
 
 function ensureEngineStyles(): void {
@@ -348,15 +376,49 @@ function readCanvasMetaFile(): string | null {
 /**
  * PATCH the canvas-meta sidecar with `{ viewport }` or `{ layout }`. Best-effort
  * fire-and-forget — failures are logged but don't disrupt the canvas.
+ *
+ * Phase 4.2 (DDR-027): artboard `w`/`h` is JSX-authoritative. The writer
+ * strips any `w`/`h` keys from `layout.artboards[]` before PATCH so a drag
+ * commit only persists the position pair `{ id, x, y }`. The reader stays
+ * tolerant of legacy entries that still carry `w`/`h` (Phase 4 default-grid
+ * snapshots remain readable until the next drag overwrites them).
  */
-function patchCanvasMeta(patch: { viewport?: ViewportState; layout?: { artboards: ArtboardRect[] } }): void {
+/**
+ * Wire shape persisted to `meta.layout.artboards[]`. DDR-027: positions only,
+ * size is JSX-authoritative. Distinct from the in-memory `ArtboardRect` which
+ * still carries `w`/`h` for layout math.
+ */
+interface PersistedArtboardLayout {
+  id: string;
+  x: number;
+  y: number;
+}
+
+function patchCanvasMeta(patch: {
+  viewport?: ViewportState;
+  layout?: { artboards: ArtboardRect[] };
+}): void {
   if (typeof window === "undefined" || typeof fetch === "undefined") return;
   const file = readCanvasMetaFile();
   if (!file) return;
+  const sanitized: {
+    viewport?: ViewportState;
+    layout?: { artboards: PersistedArtboardLayout[] };
+  } = {};
+  if (patch.viewport) sanitized.viewport = patch.viewport;
+  if (patch.layout?.artboards) {
+    sanitized.layout = {
+      artboards: patch.layout.artboards.map((r) => ({
+        id: r.id,
+        x: r.x,
+        y: r.y,
+      })),
+    };
+  }
   fetch("/_api/canvas-meta", {
     method: "PATCH",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ file, patch }),
+    body: JSON.stringify({ file, patch: sanitized }),
   }).catch((err) => {
     console.warn("[canvas-lib] persist viewport failed:", err);
   });
@@ -915,6 +977,25 @@ export function useViewportControllerContext(): ViewportControllerHandle | null 
   return useContext(ControllerContext);
 }
 
+// Drag-state context (Phase 4.2) — published by DesignCanvas so SnapGuideOverlay
+// (mounted by CanvasShell) can read the active drag's snap guides + so each
+// DCArtboard can know whether it's being dragged as a follower (multi-select
+// drag). A single source-of-truth: only one drag can be active at a time, so
+// the bus holds a single DragState. Each DCArtboard's hook writes here when
+// non-idle and resets to idle on release.
+interface DragStateBus {
+  current: DragState;
+  setCurrent: (s: DragState) => void;
+  /** Commit drag positions — DesignCanvas wires this to patchCanvasMeta. */
+  commitPositions: (moved: { id: string; x: number; y: number }[]) => void;
+}
+
+const DragStateContext = createContext<DragStateBus | null>(null);
+
+export function useDragStateContext(): DragStateBus | null {
+  return useContext(DragStateContext);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Frame envelope
 
@@ -960,7 +1041,21 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
     for (const r of metaLayout) {
       if (r && typeof r.id === "string") byId.set(r.id, r);
     }
-    return defaults.map((d) => byId.get(d.id) ?? d);
+    // Merge: meta provides positions (x, y), JSX-derived defaults provide
+    // sizes (w, h). Per DDR-027, artboard size is JSX-authoritative; meta
+    // tolerates legacy w/h fields for back-compat with Phase 4 snapshots
+    // but never lets a missing meta size zero-out the rendered box.
+    return defaults.map((d) => {
+      const m = byId.get(d.id);
+      if (!m) return d;
+      return {
+        id: d.id,
+        x: Number.isFinite(m.x) ? m.x : d.x,
+        y: Number.isFinite(m.y) ? m.y : d.y,
+        w: typeof m.w === "number" && m.w > 0 ? m.w : d.w,
+        h: typeof m.h === "number" && m.h > 0 ? m.h : d.h,
+      };
+    });
   }, [seeds]);
 
   // Stable refs so the controller's callbacks always see the latest values.
@@ -1060,6 +1155,33 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
   const showMiniMap = controls?.minimap !== false;
   const showToolbar = controls?.toolbar !== false;
 
+  // Drag-state bus (Phase 4.2). Single source of truth: only one artboard
+  // drag is active at a time. DCArtboards write here when their local drag
+  // hook is non-idle; SnapGuideOverlay (in canvas-shell) reads guides.
+  const [dragCurrent, setDragCurrent] = useState<DragState>({ kind: "idle" });
+
+  const commitArtboardPositions = useCallback(
+    (moved: { id: string; x: number; y: number }[]) => {
+      const movedById = new Map(moved.map((m) => [m.id, m]));
+      const next = artboardsRef.current.map((r) => {
+        const m = movedById.get(r.id);
+        if (m) return { ...r, x: m.x, y: m.y };
+        return r;
+      });
+      patchCanvasMeta({ layout: { artboards: next } });
+    },
+    []
+  );
+
+  const dragBus = useMemo<DragStateBus>(
+    () => ({
+      current: dragCurrent,
+      setCurrent: setDragCurrent,
+      commitPositions: commitArtboardPositions,
+    }),
+    [dragCurrent, commitArtboardPositions]
+  );
+
   const inner = (
     <div className="dc-canvas" ref={hostRef}>
       <div className="dc-world" ref={worldRef} style={worldStyle}>
@@ -1073,7 +1195,9 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
   return (
     <WorldContext.Provider value={ctxValue}>
       <ControllerContext.Provider value={controller}>
-        <CanvasShell hostRef={hostRef}>{inner}</CanvasShell>
+        <DragStateContext.Provider value={dragBus}>
+          <CanvasShell hostRef={hostRef}>{inner}</CanvasShell>
+        </DragStateContext.Provider>
       </ControllerContext.Provider>
     </WorldContext.Provider>
   );
@@ -1142,7 +1266,42 @@ export function DCArtboard({
 }) {
   const ctx = useWorldContext();
   const controller = useViewportControllerContext();
+  const toolMode = useToolModeOptional();
+  const selSet = useSelectionSetOptional();
+  const dragBus = useDragStateContext();
   const rect = ctx ? ctx.rectFor(id) : null;
+
+  // Drag hook — always called (hook rules). Inert outside DesignCanvas
+  // (allRects empty, enabled=false), so specimens / legacy uses get a plain
+  // fixed-size block as before.
+  const dragHook = useArtboardDrag({
+    artboardId: id,
+    selected: selSet?.selected ?? [],
+    rectFor: (rid) => (ctx ? ctx.rectFor(rid) : null),
+    allRects: ctx?.artboards ?? [],
+    viewport: ctx?.viewport ?? null,
+    enabled: !!ctx && (toolMode?.tool ?? "move") === "move",
+    onCommit: (moved) => {
+      if (dragBus) dragBus.commitPositions(moved);
+    },
+  });
+
+  // Publish this artboard's drag state to the bus. Only push when non-idle;
+  // when our local state returns to idle AFTER having been non-idle, push
+  // one final idle update so the bus clears.
+  const wasNonIdleRef = useRef(false);
+  useEffect(() => {
+    if (!dragBus) return;
+    const s = dragHook.dragState;
+    if (s.kind !== "idle") {
+      dragBus.setCurrent(s);
+      wasNonIdleRef.current = true;
+    } else if (wasNonIdleRef.current) {
+      dragBus.setCurrent({ kind: "idle" });
+      wasNonIdleRef.current = false;
+    }
+  }, [dragHook.dragState, dragBus]);
+
   if (!ctx || !rect) {
     return (
       <article
@@ -1159,26 +1318,132 @@ export function DCArtboard({
   const onFocus = () => {
     if (controller) controller.jumpTo(rect);
   };
+
+  // Am I involved in the current drag (as leader or follower)?
+  const busDrag = dragBus?.current;
+  const isLeader = busDrag?.kind === "dragging" && busDrag.leaderId === id;
+  const followerOffset =
+    busDrag?.kind === "dragging"
+      ? busDrag.followers.find((f) => f.id === id)
+      : undefined;
+  const isFollower = !!followerOffset;
+  const isInDrag = isLeader || isFollower;
+
+  // Ghost position (world coords).
+  let ghostX = 0;
+  let ghostY = 0;
+  if (busDrag?.kind === "dragging") {
+    if (isLeader) {
+      ghostX = busDrag.leaderRect.x;
+      ghostY = busDrag.leaderRect.y;
+    } else if (isFollower && followerOffset) {
+      ghostX = busDrag.leaderRect.x + followerOffset.offsetX;
+      ghostY = busDrag.leaderRect.y + followerOffset.offsetY;
+    }
+  }
+
+  const handleProps = dragHook.bindHandle();
+
   return (
-    <article
-      className="dc-artboard dc-positioned"
-      data-dc-screen={id}
-      aria-current={isActive ? "true" : undefined}
-      style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}
-    >
-      <button
-        type="button"
-        className="dc-artboard-label sku"
-        onClick={onFocus}
-        aria-label={`Focus artboard ${label}`}
+    <>
+      <article
+        className={`dc-artboard dc-positioned${isInDrag ? " dc-dragging" : ""}`}
+        data-dc-screen={id}
+        aria-current={isActive ? "true" : undefined}
+        style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}
+        {...handleProps}
       >
-        {label}
-      </button>
-      <div className="dc-artboard-body">{children}</div>
-    </article>
+        <button
+          type="button"
+          className="dc-artboard-label sku"
+          onClick={onFocus}
+          aria-label={`Focus artboard ${label}`}
+        >
+          {label}
+        </button>
+        <div className="dc-artboard-body">{children}</div>
+      </article>
+      {isInDrag ? (
+        <div
+          className="dc-artboard-ghost"
+          aria-hidden="true"
+          style={{ left: ghostX, top: ghostY, width: rect.w, height: rect.h }}
+        >
+          <div className="dc-artboard-ghost-label">{label}</div>
+        </div>
+      ) : null}
+    </>
   );
 }
 DCArtboard.displayName = "DCArtboard";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SnapGuideOverlay (Phase 4.2) — renders 1 px guide lines while a drag is in
+// flight. Mounted by canvas-shell as a chrome layer outside `.dc-world`, so
+// the lines are in screen coords (no CSS-zoom subpixel weirdness). Guides
+// come from `dragBus.current.snap.guides`; world→screen projection uses the
+// live viewport (`v.x + worldCoord * v.zoom` — same convention as `writeTransform`).
+
+export function SnapGuideOverlay() {
+  const dragBus = useDragStateContext();
+  const world = useWorldContext();
+  if (!dragBus || !world) return null;
+  const s = dragBus.current;
+  if (s.kind !== "dragging") return null;
+  const vp = world.viewport;
+  if (!vp) return null;
+  return (
+    <>
+      {s.snap.guides.map((g, i) => {
+        if (g.axis === "x") {
+          const sx = vp.x + g.pos * vp.zoom;
+          const sFrom = vp.y + g.from * vp.zoom;
+          const sTo = vp.y + g.to * vp.zoom;
+          return (
+            <div
+              // biome-ignore lint/suspicious/noArrayIndexKey: guides are positional
+              key={`x-${i}`}
+              className="dc-snap-guide"
+              style={{
+                position: "fixed",
+                pointerEvents: "none",
+                background: "var(--accent, #d63b1f)",
+                left: sx,
+                top: sFrom,
+                width: 1,
+                height: Math.max(1, sTo - sFrom),
+                zIndex: 6,
+              }}
+              aria-hidden="true"
+            />
+          );
+        }
+        const sy = vp.y + g.pos * vp.zoom;
+        const sFrom = vp.x + g.from * vp.zoom;
+        const sTo = vp.x + g.to * vp.zoom;
+        return (
+          <div
+            // biome-ignore lint/suspicious/noArrayIndexKey: guides are positional
+            key={`y-${i}`}
+            className="dc-snap-guide"
+            style={{
+              position: "fixed",
+              pointerEvents: "none",
+              background: "var(--accent, #d63b1f)",
+              left: sFrom,
+              top: sy,
+              width: Math.max(1, sTo - sFrom),
+              height: 1,
+              zIndex: 6,
+            }}
+            aria-hidden="true"
+          />
+        );
+      })}
+    </>
+  );
+}
+SnapGuideOverlay.displayName = "SnapGuideOverlay";
 
 export function DCPostIt({ children }: { children: ReactNode }) {
   return <aside className="dc-postit">{children}</aside>;

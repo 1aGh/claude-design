@@ -118,3 +118,96 @@ export default function Y() {
     expect(r.content).not.toContain('function DCSection');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 4.2 — drag + snap exports must also be stripped from handoff output.
+// The real DCArtboard references useArtboardDrag (and friends) internally;
+// the static-frame override breaks that chain. This test pins that behavior.
+
+const LIB_SOURCE_4_2 = `
+import { createContext, useContext } from "react";
+
+export function useViewportController() { return { viewport: { x: 0, y: 0, zoom: 1 } }; }
+export function DCMiniMap() { return <div />; }
+export function DCZoomToolbar() { return <div />; }
+
+const WorldContext = createContext(null);
+function harvestArtboards(c) { return c; }
+function synthDefaultGrid(s) { return s; }
+
+export function computeSnap(p, others, opts) { return { x: p.x, y: p.y, guides: [] }; }
+export function useSnapGuides() { /* placeholder */ }
+export function useArtboardDrag(opts) {
+  const _snap = computeSnap;
+  return { bindHandle: () => ({}), dragState: { kind: "idle" } };
+}
+const DragStateContext = createContext(null);
+export function SnapGuideOverlay() {
+  const ctx = useContext(DragStateContext);
+  return ctx ? <div className="dc-snap-guide" /> : null;
+}
+
+export function DesignCanvas({ children }) {
+  const ctl = useViewportController();
+  const seeds = harvestArtboards(children);
+  const layout = synthDefaultGrid(seeds);
+  return (
+    <WorldContext.Provider value={{ ctl, layout }}>
+      <DragStateContext.Provider value={null}>
+        <div className="dc-canvas">{children}<DCMiniMap /><DCZoomToolbar /><SnapGuideOverlay /></div>
+      </DragStateContext.Provider>
+    </WorldContext.Provider>
+  );
+}
+
+export function DCSection({ id, title, children }) {
+  return <section data-id={id}><h2>{title}</h2>{children}</section>;
+}
+
+export function DCArtboard({ id, label, width, height, children }) {
+  const drag = useArtboardDrag({ artboardId: id });
+  return (
+    <article className="dc-artboard" data-dc-screen={id} {...drag.bindHandle()} style={{ width, height }}>
+      <header>{label}</header>
+      <div>{children}</div>
+    </article>
+  );
+}
+`;
+
+const PHASE_4_2_CANVAS = `import { DesignCanvas, DCSection, DCArtboard } from "@mdcc/canvas-lib";
+export default function X() {
+  return (
+    <DesignCanvas>
+      <DCSection id="s" title="S">
+        <DCArtboard id="a" label="A" width={100} height={100}>hi</DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+`;
+
+describe('handoff-static-frames / Phase 4.2 drag + snap exports', () => {
+  test('without overrides — drag + snap engine code IS pulled in (regression baseline)', () => {
+    const libMap = buildLibMap(LIB_PATH, LIB_SOURCE_4_2);
+    const r = inlineUsedExports(PHASE_4_2_CANVAS, libMap);
+    // DCArtboard depends on useArtboardDrag → BFS reaches it.
+    expect(r.content).toContain('useArtboardDrag');
+    // DesignCanvas wraps SnapGuideOverlay → BFS reaches it.
+    expect(r.content).toContain('SnapGuideOverlay');
+  });
+
+  test('with overrides — drag + snap engine code is stripped', () => {
+    const libMap = buildLibMap(LIB_PATH, LIB_SOURCE_4_2);
+    applyHandoffStaticOverrides(libMap);
+    const r = inlineUsedExports(PHASE_4_2_CANVAS, libMap);
+    expect(r.content).not.toContain('useArtboardDrag');
+    expect(r.content).not.toContain('SnapGuideOverlay');
+    expect(r.content).not.toContain('computeSnap');
+    expect(r.content).not.toContain('useSnapGuides');
+    expect(r.content).not.toContain('DragStateContext');
+    // Static frames still land as the minimal markup.
+    expect(r.content).toContain('function DesignCanvas');
+    expect(r.content).toContain('function DCArtboard');
+  });
+});

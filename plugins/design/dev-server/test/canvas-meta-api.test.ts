@@ -166,6 +166,55 @@ describe('/_api/canvas-meta — GET/PATCH', () => {
     }
   });
 
+  test('PATCH layout persists position-only entries (Phase 4.2 strip-on-write)', async () => {
+    // DDR-027: artboard w/h is JSX-authoritative. The client-side writer
+    // (canvas-lib.tsx patchCanvasMeta) strips w/h before PATCH; the server
+    // must round-trip whatever shape it receives without rejecting partial
+    // entries.
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      mkdirSync(join(designRoot, 'ui'), { recursive: true });
+      const tsxAbs = join(designRoot, 'ui', 'Phase42.tsx');
+      writeFileSync(tsxAbs, 'export default function P(){return <main/>}\n');
+      const metaAbs = tsxAbs.replace(/\.tsx$/, '.meta.json');
+      writeFileSync(metaAbs, JSON.stringify({ title: 'P', sections: [] }));
+      const file = repoRel(designRoot, tsxAbs);
+
+      const r = await fetch(`http://localhost:${port}/_api/canvas-meta`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          file,
+          patch: {
+            layout: {
+              artboards: [
+                { id: 'a', x: 100, y: 50 },
+                { id: 'b', x: 1500, y: 50 },
+              ],
+            },
+          },
+        }),
+      });
+      expect(r.status).toBe(200);
+      const merged = (await r.json()) as MetaShape;
+      const arts = merged.layout?.artboards as Array<Record<string, unknown>> | undefined;
+      expect(arts).toBeDefined();
+      expect(arts?.length).toBe(2);
+      // No w/h written.
+      expect(arts?.[0]).toEqual({ id: 'a', x: 100, y: 50 });
+      expect(arts?.[1]).toEqual({ id: 'b', x: 1500, y: 50 });
+
+      const onDisk = JSON.parse(readFileSync(metaAbs, 'utf8')) as MetaShape;
+      const diskArts = onDisk.layout?.artboards as Array<Record<string, unknown>> | undefined;
+      expect(diskArts?.[0]).not.toHaveProperty('w');
+      expect(diskArts?.[0]).not.toHaveProperty('h');
+    } finally {
+      await killProc(proc);
+    }
+  });
+
   test('PATCH rejects paths that escape repoRoot', async () => {
     const { root } = makeSandbox();
     const port = nextPort();

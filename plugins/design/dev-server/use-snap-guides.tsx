@@ -1,0 +1,215 @@
+/**
+ * @file       use-snap-guides.tsx — Phase 4.2 snap math + guide-line shapes
+ * @scope      plugins/design/dev-server/use-snap-guides.tsx
+ * @purpose    Pure function `computeSnap` that returns a snapped (x, y) for a
+ *             proposed artboard rect plus the guide lines that should render
+ *             as visual feedback. No React state; the drag controller calls
+ *             this on every pointermove tick.
+ *
+ * Two snap kinds:
+ *
+ *   Grid     — every `gridSize` world-units. Applied to top-left corner of
+ *              `proposed` (left edge for X, top edge for Y).
+ *   Sibling  — alignment with other artboard rects: left↔left, right↔right,
+ *              left↔right, right↔left, centerX↔centerX on the X-axis (and
+ *              the matching top/bottom/centerY set on the Y-axis).
+ *
+ * Tolerance is in world units, not screen pixels (DDR-028) — snap feel stays
+ * consistent across zoom levels.
+ *
+ * The X-axis and Y-axis are independent: a proposed rect can snap X to a
+ * sibling edge and Y to a grid line simultaneously. Both guides render.
+ *
+ * Closest candidate wins per axis (smallest |delta|). When multiple sibling
+ * candidates land on the exact same `pos` (e.g. two artboards' right edges
+ * stacked at the same x), we render one merged guide whose from/to spans the
+ * union of every aligned rect's perpendicular extent.
+ *
+ * `disabled: true` (Alt held) short-circuits with `{ x, y, guides: [] }`.
+ */
+
+export interface Rect {
+  /** Optional rect id — used by the drag controller to filter self / followers
+   *  out of the snap candidate set. `computeSnap` itself ignores it. */
+  id?: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export type SnapAxis = 'x' | 'y';
+
+export interface SnapGuide {
+  /** `"x"` → vertical line (snapping X coord). Line sits at `pos` on X,
+   *  spans `from..to` on Y. `"y"` is the dual: horizontal line at `pos` on Y,
+   *  spans `from..to` on X. */
+  axis: SnapAxis;
+  pos: number;
+  from: number;
+  to: number;
+}
+
+export interface SnapResult {
+  /** Possibly-snapped top-left X of the proposed rect (in world coords). */
+  x: number;
+  /** Possibly-snapped top-left Y. */
+  y: number;
+  /** Guides to render. 0..2 entries in the common case (one per axis). */
+  guides: SnapGuide[];
+}
+
+export interface SnapOptions {
+  /** World-units between grid lines. Default 40. */
+  gridSize: number;
+  /** Max world-unit distance at which a candidate is considered "close". */
+  tolerance: number;
+  /** Skip all snap math + return proposed unchanged (Alt-held bypass). */
+  disabled: boolean;
+}
+
+interface AxisCandidate {
+  /** Shift to apply to proposed on this axis. */
+  delta: number;
+  /** Position of the guide line in world coords (on the snapped axis). */
+  pos: number;
+  /** Perpendicular extent — `from..to` of the would-be guide. */
+  from: number;
+  to: number;
+}
+
+function nearestGridDelta(coord: number, gridSize: number, tolerance: number): number | null {
+  if (!Number.isFinite(coord) || gridSize <= 0) return null;
+  const nearest = Math.round(coord / gridSize) * gridSize;
+  const delta = nearest - coord;
+  return Math.abs(delta) <= tolerance ? delta : null;
+}
+
+function pickClosest(cands: AxisCandidate[]): AxisCandidate | null {
+  if (cands.length === 0) return null;
+  let best = cands[0] as AxisCandidate;
+  let bestAbs = Math.abs(best.delta);
+  for (let i = 1; i < cands.length; i++) {
+    const c = cands[i] as AxisCandidate;
+    const a = Math.abs(c.delta);
+    if (a < bestAbs) {
+      best = c;
+      bestAbs = a;
+    }
+  }
+  return best;
+}
+
+/**
+ * Among `cands`, find every entry whose `pos` matches `winner.pos` (within a
+ * tiny epsilon to absorb floating-point noise) and union their from/to into
+ * one guide. Returns the merged guide.
+ */
+function mergeAtPos(axis: SnapAxis, winner: AxisCandidate, cands: AxisCandidate[]): SnapGuide {
+  let from = winner.from;
+  let to = winner.to;
+  for (const c of cands) {
+    if (Math.abs(c.pos - winner.pos) > 0.001) continue;
+    if (c.from < from) from = c.from;
+    if (c.to > to) to = c.to;
+  }
+  return { axis, pos: winner.pos, from, to };
+}
+
+export function computeSnap(proposed: Rect, others: Rect[], opts: SnapOptions): SnapResult {
+  if (opts.disabled) {
+    return { x: proposed.x, y: proposed.y, guides: [] };
+  }
+  const { gridSize, tolerance } = opts;
+  const propLeft = proposed.x;
+  const propRight = proposed.x + proposed.w;
+  const propCenterX = proposed.x + proposed.w / 2;
+  const propTop = proposed.y;
+  const propBottom = proposed.y + proposed.h;
+  const propCenterY = proposed.y + proposed.h / 2;
+
+  const xCands: AxisCandidate[] = [];
+  const yCands: AxisCandidate[] = [];
+
+  // Grid candidates — left edge for X, top edge for Y. Perpendicular extent
+  // is just the proposed rect's own range (no sibling involved).
+  const gridX = nearestGridDelta(propLeft, gridSize, tolerance);
+  if (gridX !== null) {
+    xCands.push({
+      delta: gridX,
+      pos: propLeft + gridX,
+      from: propTop,
+      to: propBottom,
+    });
+  }
+  const gridY = nearestGridDelta(propTop, gridSize, tolerance);
+  if (gridY !== null) {
+    yCands.push({
+      delta: gridY,
+      pos: propTop + gridY,
+      from: propLeft,
+      to: propRight,
+    });
+  }
+
+  // Sibling candidates.
+  for (const other of others) {
+    const oLeft = other.x;
+    const oRight = other.x + other.w;
+    const oCenterX = other.x + other.w / 2;
+    const oTop = other.y;
+    const oBottom = other.y + other.h;
+    const oCenterY = other.y + other.h / 2;
+
+    // X-axis pairs: (propCoord, otherCoord).
+    const xPairs: Array<[number, number]> = [
+      [propLeft, oLeft],
+      [propRight, oRight],
+      [propLeft, oRight],
+      [propRight, oLeft],
+      [propCenterX, oCenterX],
+    ];
+    for (const [propCoord, otherCoord] of xPairs) {
+      const delta = otherCoord - propCoord;
+      if (Math.abs(delta) > tolerance) continue;
+      xCands.push({
+        delta,
+        pos: otherCoord,
+        from: Math.min(propTop, oTop),
+        to: Math.max(propBottom, oBottom),
+      });
+    }
+
+    // Y-axis pairs.
+    const yPairs: Array<[number, number]> = [
+      [propTop, oTop],
+      [propBottom, oBottom],
+      [propTop, oBottom],
+      [propBottom, oTop],
+      [propCenterY, oCenterY],
+    ];
+    for (const [propCoord, otherCoord] of yPairs) {
+      const delta = otherCoord - propCoord;
+      if (Math.abs(delta) > tolerance) continue;
+      yCands.push({
+        delta,
+        pos: otherCoord,
+        from: Math.min(propLeft, oLeft),
+        to: Math.max(propRight, oRight),
+      });
+    }
+  }
+
+  const winX = pickClosest(xCands);
+  const winY = pickClosest(yCands);
+
+  const guides: SnapGuide[] = [];
+  if (winX) guides.push(mergeAtPos('x', winX, xCands));
+  if (winY) guides.push(mergeAtPos('y', winY, yCands));
+
+  return {
+    x: proposed.x + (winX ? winX.delta : 0),
+    y: proposed.y + (winY ? winY.delta : 0),
+    guides,
+  };
+}

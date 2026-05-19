@@ -57,6 +57,7 @@ import {
 } from "./context-menu.tsx";
 import { ToolPalette } from "./tool-palette.tsx";
 import {
+  SnapGuideOverlay,
   useViewportControllerContext,
   type ViewportControllerHandle,
 } from "./canvas-lib.tsx";
@@ -479,6 +480,7 @@ function CanvasRouter({
       <HoverHalo el={hoverEl} />
       <SelectionHalos />
       <GroupBbox />
+      <SnapGuideOverlay />
     </>
   );
 }

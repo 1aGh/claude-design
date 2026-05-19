@@ -117,21 +117,29 @@
     "layout": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Phase 4 canvas-v2 spatial layout. Optional — when absent the canvas runtime synthesizes a default grid (3 cols × 1280 × 820, 80 px gutter, alphabetical by DCArtboard id). Authoring state only — stripped from /design:handoff emitted registry items.",
+      "description": "Phase 4 canvas-v2 spatial layout. Optional — when absent the canvas runtime synthesizes a default grid (3 cols × 1280 × 820, 80 px gutter, alphabetical by DCArtboard id). Authoring state only — stripped from /design:handoff emitted registry items. Phase 4.2 (DDR-027): artboard size is JSX-authoritative (props.width / props.height on <DCArtboard>); `layout.artboards[]` persists positions only. Writes strip any incoming `w`/`h`; reads tolerate them for back-compat with Phase 4 default-grid snapshots.",
       "properties": {
         "artboards": {
           "type": "array",
           "description": "Per-DCArtboard world-coord rects keyed by `id`. ids not listed fall back to the default grid slot for their render-order index.",
           "items": {
             "type": "object",
-            "required": ["id", "x", "y", "w", "h"],
+            "required": ["id", "x", "y"],
             "additionalProperties": false,
             "properties": {
               "id": { "type": "string" },
               "x": { "type": "number" },
               "y": { "type": "number" },
-              "w": { "type": "number", "exclusiveMinimum": 0 },
-              "h": { "type": "number", "exclusiveMinimum": 0 }
+              "w": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Read-only legacy field — Phase 4 default-grid snapshots wrote this; Phase 4.2 writers strip it. JSX width prop is the source of truth."
+              },
+              "h": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Read-only legacy field — see `w`."
+              }
             }
           }
         }
