@@ -358,13 +358,24 @@ Repo doesn't use `.ai/scenarios/` for tool-internal UI (the dev-server itself is
 
 ## Acceptance Criteria
 
-- [ ] Tasks 1–8 completed
-- [ ] `bun build` succeeds for client app
-- [ ] `bun test` in `plugins/design/dev-server` stays green
-- [ ] All 5 states in Validation step 4 visually confirmed via screenshots
-- [ ] Reload-persistence confirmed for `sidebarOpen`, `dsBodyExpanded`, `showHidden`
-- [ ] Multi-DS fallback confirmed (Task 6 in Validation)
-- [ ] A11y keyboard walk confirmed, contrast within WCAG 4.5:1
-- [ ] Active-canvas open/close still works end-to-end
-- [ ] No DDR needed (proven UX pattern, additive server schema, no new dependencies) — but if Multi-DS fallback surfaces an ambiguous case during Validation, record a DDR pointing forward to a "proper multi-DS sectioning" follow-up
-- [ ] PR description links before/after screenshots
+- [x] Tasks 1–8 completed
+- [x] `bun build` succeeds for client app
+- [x] `bun test` in `plugins/design/dev-server` stays green (123/123)
+- [x] All 5 states in Validation step 4 visually confirmed via screenshots
+- [x] Reload-persistence confirmed for `sidebarOpen`, `sectionsExpanded` (replaced `dsBodyExpanded` mid-flight), `showHidden`
+- [x] Multi-DS fallback confirmed — went beyond fallback: per-DS folders are now the canonical structure for any DS count, not a fallback for >1
+- [ ] A11y keyboard walk — not done (deferred; surface is dev-tool internal)
+- [x] Active-canvas open/close still works end-to-end
+- [x] No DDR needed — but a follow-up may want to formalize the per-DS folder convention if it changes how `/design:setup-ds` thinks about multi-DS scaffolds
+- [ ] PR description links before/after screenshots — pending if pushed
+
+---
+
+## Retro
+
+- **Plan held up structurally, but the user-feedback loop rewrote half of it.** The original plan assumed sidecars came in for free on the server (they didn't — `findHtmlFiles` only emitted `.tsx`/`.html` for non-DS groups), assumed a single-extension `basenameNoExt` would match `*.meta.json` (it didn't — needed prefix-based match), and assumed the DS section should split into "open system view" + "expand body" with a special active state (the user explicitly rejected the active state; "Design System" is a section label, not an action).
+- **The user's intuition about structure was sharper than the plan's.** Two iterations in, the plan's "single-DS flat / multi-DS fallback to folder" split got replaced with "always show per-DS folders, regardless of count" — because the user wanted the structural affordance always present. Cleaner contract; the plan's "fallback" framing was over-engineered.
+- **`groupBySidecar` bug was an easy miss in static review.** `basenameNoExt('Foo.meta.json')` returned `Foo.meta`, never matching primary `Foo`. Would have been caught by one test case asserting `.meta.json` nesting; there was no such test and the manual smoke missed it until the user pointed at the rendered tree. Lesson: any string-munging helper handling multi-dot filenames deserves a unit test.
+- **Section-toggle generalization came late but was the right move.** The initial plan only made the DS section expandable. User feedback "vsechny sekce v tree by meli byt expadnable" forced the refactor that ended up cleaner — one `sectionsExpanded` object keyed by label, one localStorage key, one chevron pattern. Should have been the design from day 1.
+- **Live screenshot smoke (via agent-browser + `localStorage` eval) was decisive.** Static review missed three issues (sidecar bug, UI canvases missing sidecars on server, DS-header active state). Each came out in <30s once the screenshot landed. For UI work, screenshots > prose every time.
+- **Process tweak for next /plan:** when the plan involves "this should also work for multi-X (where X is currently 1)", build the multi-X case from the start, not as a fallback. Single-N is a degenerate case of multi-N, not the other way around.
