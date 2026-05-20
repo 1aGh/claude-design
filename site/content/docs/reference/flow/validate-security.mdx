@@ -1,0 +1,31 @@
+---
+title: /flow:validate-security
+description: "Security review — spawns security-auditor + ethical-hacker subagents, aggregates report, gates on severityFloor"
+---
+
+| Property | Value |
+| -------- | ----- |
+| **Command** | `/flow:validate-security` |
+| **Category** | `validate` |
+| **Argument hint** | `[--since <ref>] [--include-ai \| --no-ai]` |
+| **Source** | [`plugins/flow/commands/validate-security.md`](https://github.com/1aGh/maude/blob/main/plugins/flow/commands/validate-security.md) |
+
+## Description
+
+Security review — spawns security-auditor + ethical-hacker subagents, aggregates report, gates on severityFloor
+
+## Invocation
+
+```text
+/flow:validate-security [--since <ref>] [--include-ai | --no-ai]
+```
+
+## Summary
+
+Run a focused security pass over the diff. Defender (`security-auditor`) catches OWASP-class findings against changed files; attacker (`ethical-hacker`) threat-models the change, hunts chained exploits, and covers AI/MCP attack surface (prompt injection, MCP tool poisoning, confused-deputy, the trifecta). Both run **in
+
+## Source of truth
+
+This page is auto-generated from the command's frontmatter. The exact prompt Claude runs — including directives, edge-case handling, and tool-routing logic — lives in the source file:
+
+[**`plugins/flow/commands/validate-security.md`**](https://github.com/1aGh/maude/blob/main/plugins/flow/commands/validate-security.md) → read it for the full behavior.

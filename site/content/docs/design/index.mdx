@@ -7,9 +7,9 @@ The canvas is the working surface. HTML or JSX, under `.design/<project-or-featu
 
 A zero-dep Node dev server injects an inspector overlay. **Cmd+Click any element** to scope the next `/design:edit "<feedback>"` to that selection. The server tracks active tab and selected element via WebSocket and writes `<designRoot>/_active.json` for the slash commands to read.
 
-## Eleven commands
+## Twelve commands
 
-Eight daily verbs (no prefix) plus three setup verbs (`setup-*` group). The bare `/design` form was a v0.8 one-version compat stub redirecting to `/design:edit`. **Removed in v0.9**.
+Eight daily verbs (no prefix), three setup verbs (`setup-*` group), and one validator (`smoke`). The bare `/design` form was a v0.8 one-version compat stub redirecting to `/design:edit`. **Removed in v0.9**.
 
 | Command | What it does |
 | ------- | ------------ |
@@ -24,6 +24,7 @@ Eight daily verbs (no prefix) plus three setup verbs (`setup-*` group). The bare
 | `/design:init` | One-time project init: dependency pre-flight, install hints, skeleton `.design/config.json`. Mirrors `/flow:init`. Auto-invoked when other commands hit a missing config. |
 | `/design:setup-ds <name> "[brief]"` | Create a design system (first one, additional, or re-bootstrap with `--force`). Thin wrapper around skill `design-system` in bootstrap mode. |
 | `/design:setup-docs [--full]` | Refresh `<designRoot>/README.md` + `INDEX.md`. "READ THIS FIRST" docs that live in the design root and stay current. Auto-runs after `/design:edit` and `/design:new`. |
+| `/design:smoke` | Batch screenshot every UI canvas + preview specimen. Flag blank iframes and visible error overlays. Catches "build green ≠ user-visible green" regressions. |
 
 ## Dev server runtime files
 

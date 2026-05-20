@@ -12,7 +12,7 @@ const INSTALL_SNIPPET = `# 1. add the marketplace
 
 # optional. scaffold a project from CLI
 npm i -g @1agh/maude
-mdcc init --name my-app`;
+maude init --name my-app`;
 
 const CATALOG = [
   {
@@ -45,7 +45,7 @@ const CATALOG = [
   },
   {
     sku: 'MDCC-CLI/03',
-    slug: 'mdcc',
+    slug: 'maude',
     title: 'The plumbing the other two pretend not to need.',
     description:
       'Scaffolds the .ai/ workspace. Reads and writes config. Boots the design dev server. Pure ESM, zero runtime deps beyond Node 20+.',
@@ -83,7 +83,7 @@ export default function HomePage() {
           </p>
           <p>
             <code>design</code> iterates on HTML mocks. <code>flow</code> runs the agentic loop
-            until the feature actually ships. <code>mdcc</code> scaffolds the second-brain{' '}
+            until the feature actually ships. <code>maude</code> scaffolds the second-brain{' '}
             <code>.ai/</code> workspace they both pretend they could live without.
           </p>
           <p className="mdcc-hero-fineprint">

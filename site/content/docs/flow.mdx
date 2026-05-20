@@ -1,9 +1,9 @@
 ---
 title: Flow commands
-description: All 29 /flow:* slash commands, grouped by lifecycle. Daily verbs stay terse, everything else uses a group-verb prefix.
+description: All 30 /flow:* slash commands, grouped by lifecycle. Daily verbs stay terse, everything else uses a group-verb prefix.
 ---
 
-Twenty-nine commands. Ten run every feature cycle and stay one-word terse (`plan`, `execute`, `done`, `validate`). The rest belong to a group and wear the group as a prefix (`setup-prd`, `bug-rca`, `record-ddr`, `maintain-clean`). No subdirectory namespacing. Claude Code doesn't support it; the prefix is the working substitute.
+Thirty commands. Eleven run every feature cycle and stay one-word terse (`plan`, `execute`, `done`, `validate`). The rest belong to a group and wear the group as a prefix (`setup-prd`, `bug-rca`, `record-ddr`, `maintain-clean`). No subdirectory namespacing. Claude Code doesn't support it; the prefix is the working substitute.
 
 The canonical catalog: [`plugins/flow/CATEGORIES.md`](https://github.com/1aGh/maude/blob/main/plugins/flow/CATEGORIES.md). Live grouped index, one slash command away: `/flow:help`.
 
@@ -42,6 +42,7 @@ Called by the `/flow:validate` parent or directly when you want only one check.
 | ------- | ------------ |
 | `/flow:validate-a11y` | Accessibility audit (WCAG 2.1 AA). |
 | `/flow:validate-visual` | Visual regression check with screenshots. |
+| `/flow:validate-security` | Security review (`security-auditor` + `ethical-hacker` subagents), aggregated report, gates on `severityFloor`. |
 
 ## Bug. Incident workflow
 

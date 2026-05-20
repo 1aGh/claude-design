@@ -21,7 +21,7 @@ export const metadata: Metadata = {
     template: '%s | maude',
   },
   description:
-    'A Claude Code marketplace. Two plugins, one CLI, some vibes. design iterates canvases. flow runs the agentic loop. mdcc is the plumbing.',
+    'A Claude Code marketplace. Two plugins, one CLI, some vibes. design iterates canvases. flow runs the agentic loop. maude is the plumbing.',
   openGraph: {
     title: 'maude',
     description:
