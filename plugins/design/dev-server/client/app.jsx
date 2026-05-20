@@ -947,7 +947,7 @@ function Menubar({ activePath, project, tabsCount, openMenu, setOpenMenu, commen
     <header className="mb" role="menubar" aria-label="Application menubar">
       <span className="mb-brand">
         <span className="dot" aria-hidden="true" />
-        <span>mdcc</span>
+        <span>maude</span>
       </span>
       <nav className="mb-menus" aria-label="Application menus">
         {MENU_NAMES.map(name => {
@@ -1036,10 +1036,10 @@ function ThemeToggle({ theme, onToggle }) {
 
 function Wordmark({ project, port, version }) {
   return (
-    <div className="wm" aria-label="mdcc design server">
-      <span className="wm-glyph">mdcc-design-server</span>
+    <div className="wm" aria-label="maude design server">
+      <span className="wm-glyph">maude-design-server</span>
       <span className="wm-sub">
-        <span>CANVAS · {(project || 'MDCC').toUpperCase()}</span>
+        <span>CANVAS · {(project || 'MAUDE').toUpperCase()}</span>
         <span className="wm-sep">/</span>
         <b>v{version}</b>
         <span className="wm-sep">/</span>

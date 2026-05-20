@@ -1,14 +1,14 @@
 {
   "title": "colors-themes-side-by-side",
   "subtitle": "paper-light and phosphor-dark rendered side-by-side. Each column is a wrapped .mdcc with explicit data-theme. Same components on both sides.",
-  "brief": "MDCC-DSN/01.colors-themes-side-by-side / md-claude",
+  "brief": "MDCC-DSN/01.colors-themes-side-by-side / Maude",
   "platform": "desktop",
   "designSystem": "project",
   "opt_out_scope": "none",
   "sections": [
     {
       "id": "overview",
-      "title": "MDCC-DSN/01.colors-themes-side-by-side / md-claude",
+      "title": "MDCC-DSN/01.colors-themes-side-by-side / Maude",
       "artboards": [
         {
           "id": "primary",

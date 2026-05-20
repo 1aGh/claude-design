@@ -381,7 +381,7 @@
             },
             "scope": {
               "type": "string",
-              "description": "Optional package scope for monorepos — e.g. \"@1agh/md-claude\". Passed to provider commands when they need to target a workspace member."
+              "description": "Optional package scope for monorepos — e.g. \"@1agh/maude\". Passed to provider commands when they need to target a workspace member."
             },
             "releaseGuide": {
               "type": "string",

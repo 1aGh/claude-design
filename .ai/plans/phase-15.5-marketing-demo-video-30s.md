@@ -17,13 +17,13 @@ Validate docs and codebase patterns before implementing. Pay attention to existi
 
 ## Description
 
-Produce a 30-second 16:9 marketing/showcase video for `md-claude` that the agent (me) produces **end-to-end without human edits in a video editor**. The video stitches real screen recordings of the design plugin dev-server UI, the docs site (`site/`), and the Claude Code terminal flow, overlaid with infographic "title cards" and burned-in captions, scored with a royalty-free instrumental bed. Final artifact lives in `site/public/demo.mp4` and is embedded into both the docs landing page and `README.md`.
+Produce a 30-second 16:9 marketing/showcase video for `maude` that the agent (me) produces **end-to-end without human edits in a video editor**. The video stitches real screen recordings of the design plugin dev-server UI, the docs site (`site/`), and the Claude Code terminal flow, overlaid with infographic "title cards" and burned-in captions, scored with a royalty-free instrumental bed. Final artifact lives in `site/public/demo.mp4` and is embedded into both the docs landing page and `README.md`.
 
 The agent orchestrates **every** step: spawns the dev-server, triggers UI interactions via `computer-use` + Bash, records segments with `screencapture -v` (macOS built-in) — falling back to `ffmpeg avfoundation` once installed — produces infographic frames by rendering HTML cards in a Chromium tab and screenshot-sequencing them, downloads music from Pixabay via WebFetch/curl, and assembles everything with `ffmpeg` (concat + drawtext + audio mix + scale/pad).
 
 ## User Story
 
-As a **prospective md-claude user** landing on the docs site or GitHub README, I want a **30-second visual demo** so that I can grasp what the marketplace + plugins do — `mdcc init`, `/design:new`, the canvas dev server, `/design:edit` — **without reading a wall of text or installing anything**.
+As a **prospective Maude user** landing on the docs site or GitHub README, I want a **30-second visual demo** so that I can grasp what the marketplace + plugins do — `maude init`, `/design:new`, the canvas dev server, `/design:edit` — **without reading a wall of text or installing anything**.
 
 ## Problem
 
@@ -127,13 +127,13 @@ Detect active DS via `jq -r '.activeDesignSystem' .design/config.json`.
 
 | # | Scene | Dur | Capture source | Caption |
 |---|-------|-----|----------------|---------|
-| 1 | Intro card | 3.0s | `render-card.mjs intro.html` | `md-claude — design + workflow plugins for Claude Code` |
-| 2 | `mdcc init` terminal | 4.0s | `screencapture -v` of Terminal running `mdcc init` in `/tmp/scratch` | `Scaffold .ai/ in one command` |
+| 1 | Intro card | 3.0s | `render-card.mjs intro.html` | `maude — design + workflow plugins for Claude Code` |
+| 2 | `maude init` terminal | 4.0s | `screencapture -v` of Terminal running `maude init` in `/tmp/scratch` | `Scaffold .ai/ in one command` |
 | 3 | `/design:new` flow | 5.0s | `screencapture -v` of Claude Code terminal, scripted Q&A via computer-use type-into-app-when-allowed; speed 2× in post | `Brief → discovery → design system` |
 | 4 | Dev-server canvas (hero) | 6.0s | `screencapture -v` of Chrome showing `Canvas Viewport`, Cmd+Click element select animation via claude-in-chrome MCP | `Live canvas with Cmd+Click inspector` |
 | 5 | `/design:edit` magic | 6.0s | Split-screen: left half = Claude Code terminal showing `/design:edit "tighten the hero"`, right half = canvas auto-reloading. Composite in ffmpeg `hstack`. | `One feedback string → diff applied & reloaded` |
-| 6 | Docs teaser | 3.0s | `screencapture -v` of `site/` localhost scroll OR real production https://md-claude.dev | `Docs at md-claude.dev` |
-| 7 | Outro CTA | 3.0s | `render-card.mjs outro.html` | `npm i -g @1agh/md-claude · github.com/1aGh/md-claude` |
+| 6 | Docs teaser | 3.0s | `screencapture -v` of `site/` localhost scroll OR real production https://maude.iagh.cz | `Docs at maude.iagh.cz` |
+| 7 | Outro CTA | 3.0s | `render-card.mjs outro.html` | `npm i -g @1agh/maude · github.com/1aGh/maude` |
 
 **Total:** 30.0s exact. Each scene's raw capture is ~10% longer than its slot to allow trim-in/trim-out cleanup.
 
@@ -170,7 +170,7 @@ Detect active DS via `jq -r '.activeDesignSystem' .design/config.json`.
 
 ### Captions discipline
 
-Per [no AI-tell punctuation] memory: **no em dash, en dash, curly quotes, ellipsis char, excess emoji** in any caption or card copy. ASCII hyphens, straight quotes, three periods if needed. Interpunct OK only in stamps like `npm i -g @1agh/md-claude`.
+Per [no AI-tell punctuation] memory: **no em dash, en dash, curly quotes, ellipsis char, excess emoji** in any caption or card copy. ASCII hyphens, straight quotes, three periods if needed. Interpunct OK only in stamps like `npm i -g @1agh/maude`.
 
 ---
 
@@ -202,7 +202,7 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
 
 - **Do**:
   1. Scaffold `scripts/video/cards/`:
-     - `IntroCard.tsx` — 3 s, 1920×1080. Big wordmark "md-claude", tagline "design + workflow plugins for Claude Code". Spring-driven entrance (90 frames at 30 fps): opacity 0→1 + 24px translate over the first 18 frames using `spring()`, hold 54 frames, gentle fade-out over the last 18.
+     - `IntroCard.tsx` — 3 s, 1920×1080. Big wordmark "maude", tagline "design + workflow plugins for Claude Code". Spring-driven entrance (90 frames at 30 fps): opacity 0→1 + 24px translate over the first 18 frames using `spring()`, hold 54 frames, gentle fade-out over the last 18.
      - `OutroCard.tsx` — 3 s, 1920×1080. Install command in mono, GitHub URL, accent-color underline that wipes left→right with `interpolate()`.
      - `LowerThird.tsx` — reusable caption overlay, 50% accent-plate behind text, fontsize 44, used by every scene via `<Sequence>` from final composition.
   2. Brand wiring: `import tokens from '../../../.design/system/project/colors_and_type.css'` is not directly importable into Remotion (it's CSS, not TS). Two options: (a) re-export a small `tokens.ts` shim under `scripts/video/cards/tokens.ts` that mirrors `--bg`, `--ink`, `--accent`, `--mono-family` values, with a regression check that fails if the CSS source drifts; (b) inject the CSS file as an `<style>` block in a Remotion `<AbsoluteFill>` wrapper. Default to (a) — explicit shim is greppable when the DS rotates.
@@ -233,23 +233,23 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
 - **Gotcha**: Frame timing — 3.0s × 30fps = 90 frames; Remotion's `durationInFrames` is the source of truth. Off-by-one is impossible if `Composition durationInFrames={90}` is set.
 - **Validate**: `ffprobe -v error -show_entries format=duration -of csv=p=0 scripts/video/.work/scenes/01-intro.mp4` returns `3.00...`.
 
-### Task 5: AUTHOR Scene 2 (`mdcc init`) as a `.tape`
+### Task 5: AUTHOR Scene 2 (`maude init`) as a `.tape`
 
 - **Do**:
-  1. Write `scripts/video/tapes/02-mdcc-init.tape`:
+  1. Write `scripts/video/tapes/02-maude-init.tape`:
      ```
-     Output scripts/video/.work/scenes/02-mdcc-init.mp4
+     Output scripts/video/.work/scenes/02-maude-init.mp4
      Set FontSize 18
      Set Width 1920
      Set Height 1080
      Set Theme "Dracula"
-     Type "cd /tmp/scratch-mdcc-demo && node /Volumes/D/git/claude-design/cli/bin/mdcc.mjs init && ls .ai" Enter
+     Type "cd /tmp/scratch-maude-demo && node /Volumes/D/git/claude-design/cli/bin/maude.mjs init && ls .ai" Enter
      Sleep 4s
      ```
   2. Run via VHS: deterministic, headless, no clipboard hack, no Screen Recording permission. The 4-second cut comes from the `Sleep` after the command.
 - **Pattern**: Declarative `.tape` DSL replaces the computer-use clipboard workflow entirely.
-- **Gotcha**: `mdcc init` colors render via the same ANSI codes VHS captures; if output looks dim, `Set Theme` to a higher-contrast preset (e.g. `Dracula` or `GitHub`) — no `CLICOLOR_FORCE` needed.
-- **Validate**: `vhs scripts/video/tapes/02-mdcc-init.tape && ffprobe scripts/video/.work/scenes/02-mdcc-init.mp4` reports duration ≥ 4.0s, h264, 1920×1080 (VHS may degrade fps to 25 — assemble normalizes).
+- **Gotcha**: `maude init` colors render via the same ANSI codes VHS captures; if output looks dim, `Set Theme` to a higher-contrast preset (e.g. `Dracula` or `GitHub`) — no `CLICOLOR_FORCE` needed.
+- **Validate**: `vhs scripts/video/tapes/02-maude-init.tape && ffprobe scripts/video/.work/scenes/02-maude-init.mp4` reports duration ≥ 4.0s, h264, 1920×1080 (VHS may degrade fps to 25 — assemble normalizes).
 
 ### Task 6: AUTHOR Scene 3 (`/design:new` discovery turn) as a `.tape`
 
@@ -344,7 +344,7 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
      ```
 - **Pattern**: GitHub README markdown allows `<video>` since 2022.
 - **Gotcha**: README on PyPI/npm WILL NOT render the video — that's fine, this is GitHub-specific. The video MUST NOT be linked from the npm-published README path. Verify by checking `package.json` `files` excludes README modifications that would mislead npm viewers. Acceptable: keep one README, GitHub renders video, npm shows broken tag (or wrap in a `<!-- video -->` comment a build step strips for the npm copy — but that's overkill for v1; just accept the broken tag on npm).
-- **Validate**: View README on github.com/1aGh/md-claude, confirm video renders inline.
+- **Validate**: View README on github.com/1aGh/maude, confirm video renders inline.
 
 ### Task 13: EXCLUDE video from npm publish
 

@@ -4,7 +4,7 @@
  * @platform    desktop
  * @opt_out     none
  * @artboards   primary
- * @brief       MDCC-DSN/01.colors-text / md-claude
+ * @brief       MDCC-DSN/01.colors-text / Maude
  * @stack       React 19 · TSX · Bun.build · css_mode=inline
  * @history     .design/_history/colors-text/
  * @handoff     bunx shadcn add file://./colors-text.registry.json
@@ -14,7 +14,7 @@ export default function ColorsText() {
     <>
           <header className="specimen-hd">
               <span className="sku">MDCC-DSN/01.colors-text</span>
-              <span className="crumbs"><span>md-claude</span><span>design system</span><span>color</span><span>text</span></span>
+              <span className="crumbs"><span>maude</span><span>design system</span><span>color</span><span>text</span></span>
               <span className="theme-toggle" role="tablist" aria-label="Theme">
                 <button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button>
               </span>
@@ -66,19 +66,19 @@ export default function ColorsText() {
               <h2 data-no="03">Pair check <span className="h2-aside">fg over every surface</span></h2>
               <div className="grid" style={{ gridTemplateColumns: 'repeat(5,1fr)' }}>
                 <div className="swatch" style={{ background: 'var(--bg-0)' }}>
-                  <div style={{ padding: 'var(--space-4)', minHeight: '124px' }}><div className="eyebrow">bg-0 · page</div><p style={{ color: 'var(--fg-0)', margin: 'var(--space-2) 0 var(--space-1)', fontWeight: '600' }}>md-claude</p><p style={{ color: 'var(--fg-1)', fontSize: 'var(--type-xs)', margin: '0' }}>A marketplace of plugins. A canvas of HTML.</p></div>
+                  <div style={{ padding: 'var(--space-4)', minHeight: '124px' }}><div className="eyebrow">bg-0 · page</div><p style={{ color: 'var(--fg-0)', margin: 'var(--space-2) 0 var(--space-1)', fontWeight: '600' }}>maude</p><p style={{ color: 'var(--fg-1)', fontSize: 'var(--type-xs)', margin: '0' }}>A marketplace of plugins. A canvas of HTML.</p></div>
                 </div>
                 <div className="swatch" style={{ background: 'var(--bg-1)' }}>
-                  <div style={{ padding: 'var(--space-4)', minHeight: '124px' }}><div className="eyebrow">bg-1 · card</div><p style={{ color: 'var(--fg-0)', margin: 'var(--space-2) 0 var(--space-1)', fontWeight: '600' }}>md-claude</p><p style={{ color: 'var(--fg-1)', fontSize: 'var(--type-xs)', margin: '0' }}>A marketplace of plugins. A canvas of HTML.</p></div>
+                  <div style={{ padding: 'var(--space-4)', minHeight: '124px' }}><div className="eyebrow">bg-1 · card</div><p style={{ color: 'var(--fg-0)', margin: 'var(--space-2) 0 var(--space-1)', fontWeight: '600' }}>maude</p><p style={{ color: 'var(--fg-1)', fontSize: 'var(--type-xs)', margin: '0' }}>A marketplace of plugins. A canvas of HTML.</p></div>
                 </div>
                 <div className="swatch" style={{ background: 'var(--bg-2)' }}>
-                  <div style={{ padding: 'var(--space-4)', minHeight: '124px' }}><div className="eyebrow">bg-2 · panel</div><p style={{ color: 'var(--fg-0)', margin: 'var(--space-2) 0 var(--space-1)', fontWeight: '600' }}>md-claude</p><p style={{ color: 'var(--fg-1)', fontSize: 'var(--type-xs)', margin: '0' }}>A marketplace of plugins. A canvas of HTML.</p></div>
+                  <div style={{ padding: 'var(--space-4)', minHeight: '124px' }}><div className="eyebrow">bg-2 · panel</div><p style={{ color: 'var(--fg-0)', margin: 'var(--space-2) 0 var(--space-1)', fontWeight: '600' }}>maude</p><p style={{ color: 'var(--fg-1)', fontSize: 'var(--type-xs)', margin: '0' }}>A marketplace of plugins. A canvas of HTML.</p></div>
                 </div>
                 <div className="swatch" style={{ background: 'var(--bg-3)' }}>
-                  <div style={{ padding: 'var(--space-4)', minHeight: '124px' }}><div className="eyebrow">bg-3 · input</div><p style={{ color: 'var(--fg-0)', margin: 'var(--space-2) 0 var(--space-1)', fontWeight: '600' }}>md-claude</p><p style={{ color: 'var(--fg-1)', fontSize: 'var(--type-xs)', margin: '0' }}>A marketplace of plugins. A canvas of HTML.</p></div>
+                  <div style={{ padding: 'var(--space-4)', minHeight: '124px' }}><div className="eyebrow">bg-3 · input</div><p style={{ color: 'var(--fg-0)', margin: 'var(--space-2) 0 var(--space-1)', fontWeight: '600' }}>maude</p><p style={{ color: 'var(--fg-1)', fontSize: 'var(--type-xs)', margin: '0' }}>A marketplace of plugins. A canvas of HTML.</p></div>
                 </div>
                 <div className="swatch" style={{ background: 'var(--bg-4)' }}>
-                  <div style={{ padding: 'var(--space-4)', minHeight: '124px' }}><div className="eyebrow">bg-4 · pressed</div><p style={{ color: 'var(--fg-0)', margin: 'var(--space-2) 0 var(--space-1)', fontWeight: '600' }}>md-claude</p><p style={{ color: 'var(--fg-1)', fontSize: 'var(--type-xs)', margin: '0' }}>A marketplace of plugins. A canvas of HTML.</p></div>
+                  <div style={{ padding: 'var(--space-4)', minHeight: '124px' }}><div className="eyebrow">bg-4 · pressed</div><p style={{ color: 'var(--fg-0)', margin: 'var(--space-2) 0 var(--space-1)', fontWeight: '600' }}>maude</p><p style={{ color: 'var(--fg-1)', fontSize: 'var(--type-xs)', margin: '0' }}>A marketplace of plugins. A canvas of HTML.</p></div>
                 </div>
               </div>
 
@@ -92,7 +92,7 @@ export default function ColorsText() {
 
               <footer className="specimen-ft">
                 <div className="colo-block"><strong>MDCC-DSN/01</strong><span>· colors-text · paper+phosphor</span></div>
-                <div className="colo-block"><span>md-claude · v0.12.0</span></div>
+                <div className="colo-block"><span>Maude · v0.12.0</span></div>
               </footer>
             </main>
         </>

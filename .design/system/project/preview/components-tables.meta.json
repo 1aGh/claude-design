@@ -1,14 +1,14 @@
 {
   "title": "components-tables",
   "subtitle": "data table with compact mono-grid rhythm.",
-  "brief": "MDCC-DSN/01.components-tables / md-claude",
+  "brief": "MDCC-DSN/01.components-tables / Maude",
   "platform": "desktop",
   "designSystem": "project",
   "opt_out_scope": "none",
   "sections": [
     {
       "id": "overview",
-      "title": "MDCC-DSN/01.components-tables / md-claude",
+      "title": "MDCC-DSN/01.components-tables / Maude",
       "artboards": [
         {
           "id": "primary",

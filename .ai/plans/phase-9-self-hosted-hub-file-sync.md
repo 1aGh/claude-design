@@ -6,15 +6,15 @@
 
 Make collaboration usable across the internet without exposing anyone's laptop, without requiring SaaS, without making contributors learn Yjs / PartyKit / Hocuspocus. Three pieces:
 
-1. **`mdcc hub serve`** — long-running self-hostable service. Wraps **Hocuspocus** (`@hocuspocus/server`, MIT, Node-native — see `.ai/docs/research-collab.md` § Self-hostable framework comparison for why not PartyKit). Persists Yjs state per canvas via `@hocuspocus/extension-sqlite`. Token-based auth. TLS via Caddy or Cloudflare Tunnel.
-2. **`mdcc hub deploy <target>`** — one-shot deploy recipes. Emits `fly.toml` / `docker-compose.yml` / `systemd` unit. Targets: `fly` (primary), `docker`, `systemd`, `tailscale-funnel`, `cloudflare-tunnel`. ~$0.45-5/mo run cost on Fly free-ish tier.
-3. **`mdcc design link <hub-url>`** + **bidirectional file sync agent** — peer command that pairs the local clone with a hub. After link, the existing `mdcc design serve` does double duty: serves the local browser UI AND keeps `.design/*.html` mirrored against the hub's Yjs state. Claude Code on the peer never sees Yjs — it reads / writes plain files via `Read` / `Edit` / `Write` exactly as today.
+1. **`maude hub serve`** — long-running self-hostable service. Wraps **Hocuspocus** (`@hocuspocus/server`, MIT, Node-native — see `.ai/docs/research-collab.md` § Self-hostable framework comparison for why not PartyKit). Persists Yjs state per canvas via `@hocuspocus/extension-sqlite`. Token-based auth. TLS via Caddy or Cloudflare Tunnel.
+2. **`maude hub deploy <target>`** — one-shot deploy recipes. Emits `fly.toml` / `docker-compose.yml` / `systemd` unit. Targets: `fly` (primary), `docker`, `systemd`, `tailscale-funnel`, `cloudflare-tunnel`. ~$0.45-5/mo run cost on Fly free-ish tier.
+3. **`maude design link <hub-url>`** + **bidirectional file sync agent** — peer command that pairs the local clone with a hub. After link, the existing `maude design serve` does double duty: serves the local browser UI AND keeps `.design/*.html` mirrored against the hub's Yjs state. Claude Code on the peer never sees Yjs — it reads / writes plain files via `Read` / `Edit` / `Write` exactly as today.
 
 **Key insight from research:** v1.1 treats HTML body as opaque `Y.Text`, not structured `Y.XmlFragment`. Round-trip drift would otherwise cause infinite sync churn. Structured CRDT for true element-level co-editing is Phase 10 (v1.2) — and only if v1.1 incidents prove it's needed.
 
 ## User Story
 
-As an indie dev who wants to collaborate with a designer in another timezone, I want to run `mdcc hub deploy fly` once, share the resulting URL with my designer, and have her run `mdcc design link <url>` in her clone of the repo — so that her browser sees the same canvases I see, her local `.design/` mirrors mine automatically, and Claude Code on her laptop can read/write design files just like mine does. No SaaS account, no PartyKit install, no Yjs knowledge required.
+As an indie dev who wants to collaborate with a designer in another timezone, I want to run `maude hub deploy fly` once, share the resulting URL with my designer, and have her run `maude design link <url>` in her clone of the repo — so that her browser sees the same canvases I see, her local `.design/` mirrors mine automatically, and Claude Code on her laptop can read/write design files just like mine does. No SaaS account, no PartyKit install, no Yjs knowledge required.
 
 ## Problem
 
@@ -25,16 +25,16 @@ As an indie dev who wants to collaborate with a designer in another timezone, I 
 
 ## Solution
 
-Hide all Yjs / Hocuspocus complexity behind two `mdcc` commands. Bundle a pre-configured Hocuspocus server as `mdcc hub serve`. Bundle a Yjs client + file watcher into `mdcc design serve` (already exists; just adds linked-mode behavior when a hub URL is configured).
+Hide all Yjs / Hocuspocus complexity behind two `maude` commands. Bundle a pre-configured Hocuspocus server as `maude hub serve`. Bundle a Yjs client + file watcher into `maude design serve` (already exists; just adds linked-mode behavior when a hub URL is configured).
 
 ### Architecture
 
 ```
 Alice laptop                      Self-hosted hub                  Bob laptop
 ┌──────────────────┐           ┌──────────────────────┐         ┌──────────────────┐
-│ Browser canvas   │←──WSS────→│ mdcc hub serve       │←──WSS───│ Browser canvas   │
+│ Browser canvas   │←──WSS────→│ maude hub serve       │←──WSS───│ Browser canvas   │
 │ Claude Code      │           │ (Hocuspocus +        │         │ Claude Code      │
-│ mdcc design serve│←──WSS────→│  SQLite at /data)    │←──WSS──→│ mdcc design serve│
+│ maude design serve│←──WSS────→│  SQLite at /data)    │←──WSS──→│ maude design serve│
 │  ├ Yjs client    │           │                      │         │  ├ Yjs client    │
 │  ├ fs watcher    │           │ Token auth           │         │  ├ fs watcher    │
 │  └ sync agent    │           │ TLS via Caddy        │         │  └ sync agent    │
@@ -56,17 +56,17 @@ The sync layer guarantees: live state → disk state on every quiescence. Disk s
 
 ```sh
 # One-time on a VPS or fly.io account
-mdcc hub deploy fly
+maude hub deploy fly
 # → emits fly.toml, prints HUB_URL + TOKEN + invite command to share
 
 # On each peer's laptop, inside the repo
-mdcc design link https://md-claude-hub-foo.fly.dev --token=abc123
+maude design link https://maude-hub-foo.fly.dev --token=abc123
 # → tests connection, first-sync, writes .design/config.json.linkedHub
-# → starts a linked mdcc design serve in background OR prompts to start
+# → starts a linked maude design serve in background OR prompts to start
 
 # Daily workflow stays the same
 cd ~/repo
-mdcc design serve              # browser opens; canvas live with hub
+maude design serve              # browser opens; canvas live with hub
 # Claude Code in another terminal:
 /design "make CTA red"          # writes to .design/screen.html locally
                                 # → fs watcher detects → pushes to hub
@@ -79,10 +79,10 @@ mdcc design serve              # browser opens; canvas live with hub
 A user who has been running Phase 8 LAN mode (no hub) and now wants to enable hub federation goes through:
 
 1. **Existing state**: Peer running Phase 8 has local `.design/_state/<slug>.ydoc.bin` files from prior LAN sessions (binary CRDT logs containing comment history, annotations).
-2. **Deploy hub**: `mdcc hub deploy fly` (or any other target) — creates empty hub, prints URL + token.
+2. **Deploy hub**: `maude hub deploy fly` (or any other target) — creates empty hub, prints URL + token.
 3. **Adopt from existing local state**:
    ```sh
-   mdcc design link <url> --token=... --adopt
+   maude design link <url> --token=... --adopt
    ```
    - Agent detects hub is empty AND local `.ydoc.bin` files exist for this project.
    - Pushes the entire Y.Doc state from local `.ydoc.bin` to hub (preserves comment history, annotations, layout).
@@ -90,7 +90,7 @@ A user who has been running Phase 8 LAN mode (no hub) and now wants to enable hu
    - JSON snapshot files (`.design/_comments/*.json`, `.design/<slug>.annotations.svg`) remain unchanged on disk.
 4. **Other peers join**: Previously LAN-only collaborators run `git pull` to get the `linkedHub` config commit, then:
    ```sh
-   mdcc design link --use-config --token=...
+   maude design link --use-config --token=...
    ```
    - Hub is now canonical; their local state reconciles via Yjs sync v2.
    - Commutative merge — no data loss expected for comments / annotations (additive operations).
@@ -99,7 +99,7 @@ A user who has been running Phase 8 LAN mode (no hub) and now wants to enable hu
 
 **No data loss expected.** The `_state/<slug>.ydoc.bin` is the migration vehicle — a complete CRDT log of the LAN session that hub adopts wholesale. Snapshots on disk (`.json`, `.svg`) remain authoritative reference for git history.
 
-**Edge case — long-disconnected LAN peer.** If a peer was in a LAN session days ago and only now reconnects after the team has done much hub work: their `.ydoc.bin` is stale. The peer's `mdcc design link --use-config` triggers Yjs sync v2 → server-side state vector wins on conflicting attributes, but the peer's comments / annotations added during disconnection are merged in additively. Document this in the linking command UX as "merging X local changes into hub state".
+**Edge case — long-disconnected LAN peer.** If a peer was in a LAN session days ago and only now reconnects after the team has done much hub work: their `.ydoc.bin` is stale. The peer's `maude design link --use-config` triggers Yjs sync v2 → server-side state vector wins on conflicting attributes, but the peer's comments / annotations added during disconnection are merged in additively. Document this in the linking command UX as "merging X local changes into hub state".
 
 ---
 
@@ -120,7 +120,7 @@ A user who has been running Phase 8 LAN mode (no hub) and now wants to enable hu
     - `plugins/design/hub/Caddyfile.template`
   - `plugins/design/dev-server/runtime/sync/` (new — Yjs client + fs watcher + echo prevention)
   - `plugins/design/dev-server/server.mjs` (extended — linked-mode behavior; detects `.design/config.json.linkedHub` and connects on boot)
-  - `cli/commands/hub.mjs` (new — `mdcc hub serve|deploy|token|status`)
+  - `cli/commands/hub.mjs` (new — `maude hub serve|deploy|token|status`)
   - `cli/commands/design.mjs` (extended — `link|unlink|status|adopt` subcommands)
   - `plugins/design/dev-server/config.schema.json` (extends `linkedHub` field)
   - `.design/config.json` (committed — adds `linkedHub: { url, projectId }` when linked)
@@ -139,34 +139,34 @@ A user who has been running Phase 8 LAN mode (no hub) and now wants to enable hu
 
 ### Task 1: Hub workspace + Hocuspocus skeleton
 
-- **Do:** Add `plugins/design/hub/` to `pnpm-workspace.yaml`. Stub `package.json` (`"private": true`, `"name": "@md-claude/hub"`). Install `@hocuspocus/server`, `@hocuspocus/extension-sqlite`. Write `src/server.mjs` that instantiates Hocuspocus with: SQLite persistence at `/data/<project-id>/`, token auth via `onAuthenticate`, awareness enabled. Listens on `$PORT` (default 1234). esbuild bundles to `dist/hub.bundle.mjs` so the published npm tarball ships the hub binary.
+- **Do:** Add `plugins/design/hub/` to `pnpm-workspace.yaml`. Stub `package.json` (`"private": true`, `"name": "@maude/hub"`). Install `@hocuspocus/server`, `@hocuspocus/extension-sqlite`. Write `src/server.mjs` that instantiates Hocuspocus with: SQLite persistence at `/data/<project-id>/`, token auth via `onAuthenticate`, awareness enabled. Listens on `$PORT` (default 1234). esbuild bundles to `dist/hub.bundle.mjs` so the published npm tarball ships the hub binary.
 - **Pattern:** `https://tiptap.dev/docs/hocuspocus/server/configure` — copy the canonical setup.
 - **Validate:** `node plugins/design/hub/dist/hub.bundle.mjs` boots on `localhost:1234`. Two `y-websocket` clients can connect and sync.
 
-### Task 2: `mdcc hub serve|deploy|token|status`
+### Task 2: `maude hub serve|deploy|token|status`
 
 - **Do:** `cli/commands/hub.mjs` exposes:
-  - `mdcc hub serve [--port N] [--data <path>] [--token <hex>] [--insecure-http]` — runs the bundled Hocuspocus locally (for testing, LAN deploy, or contributor dev). `--insecure-http` allows non-TLS for localhost dev.
-  - `mdcc hub deploy fly|docker|systemd|tailscale|cloudflare` — emits the corresponding template, runs the deploy CLI if available (`fly launch` etc.) or prints next steps.
-  - **`mdcc hub token <subcommand>`** — full lifecycle:
-    - `mdcc hub token generate [--project <id>] [--label <name>]` — generates 32-byte hex token, stores HMAC hash on hub side (in SQLite `tokens` table with `created_at`, `project`, `label`, `last_used`), prints raw token ONCE (warning: "this is shown only now, copy it"). Token format: `mch_<32hex>` (recognizable prefix).
-    - `mdcc hub token rotate <token-id|label>` — invalidates old token, generates replacement. Peers see "auth expired, re-link" notification.
-    - `mdcc hub token list` — shows all active tokens (label, project, created, last-used; never the raw token).
-    - `mdcc hub token revoke <token-id|label>` — immediate kill (HMAC removed from SQLite). Connected peers get disconnected on next heartbeat.
-  - `mdcc hub status [<url>]` — pings hub, shows uptime / persisted canvases / version / active connections.
+  - `maude hub serve [--port N] [--data <path>] [--token <hex>] [--insecure-http]` — runs the bundled Hocuspocus locally (for testing, LAN deploy, or contributor dev). `--insecure-http` allows non-TLS for localhost dev.
+  - `maude hub deploy fly|docker|systemd|tailscale|cloudflare` — emits the corresponding template, runs the deploy CLI if available (`fly launch` etc.) or prints next steps.
+  - **`maude hub token <subcommand>`** — full lifecycle:
+    - `maude hub token generate [--project <id>] [--label <name>]` — generates 32-byte hex token, stores HMAC hash on hub side (in SQLite `tokens` table with `created_at`, `project`, `label`, `last_used`), prints raw token ONCE (warning: "this is shown only now, copy it"). Token format: `mau_<32hex>` (recognizable prefix).
+    - `maude hub token rotate <token-id|label>` — invalidates old token, generates replacement. Peers see "auth expired, re-link" notification.
+    - `maude hub token list` — shows all active tokens (label, project, created, last-used; never the raw token).
+    - `maude hub token revoke <token-id|label>` — immediate kill (HMAC removed from SQLite). Connected peers get disconnected on next heartbeat.
+  - `maude hub status [<url>]` — pings hub, shows uptime / persisted canvases / version / active connections.
 - **Pattern:** Token UX mirrors `gh auth token` + `ghcr` PAT scoping. Each deploy target is a templated config file (substitutes `IMAGE_TAG`, `VOLUME_SIZE`, `REGION`) + a "what to run next" message.
 - **Auth scope:** A token grants access to ALL projects unless created with `--project <id>` (then it's project-scoped). Default = workspace-wide; project-scoped recommended for external collaborators.
-- **Validate:** End-to-end: `mdcc hub deploy fly` on a clean fly.io account succeeds; `mdcc hub status <url>` returns OK; `mdcc hub token rotate` disconnects peers within 5s.
+- **Validate:** End-to-end: `maude hub deploy fly` on a clean fly.io account succeeds; `maude hub status <url>` returns OK; `maude hub token rotate` disconnects peers within 5s.
 
-### Task 3: `mdcc design link|unlink|status|adopt`
+### Task 3: `maude design link|unlink|status|adopt`
 
 - **Do:** `cli/commands/design.mjs` extends:
-  - `mdcc design link <url> --token <hex>` — pings hub, performs first-sync handshake (hub state vs local disk: hub-wins by default; `--peer-wins` flag to push local up first; `--adopt` to push local up unconditionally if hub is empty); writes `.design/config.json.linkedHub`; stores token in `~/.config/mdcc/hubs.json`; prints "you're linked"
-  - `mdcc design unlink` — removes linkedHub from config + drops the token; local files untouched
-  - `mdcc design status` — shows hub URL, last successful sync, pending ops queue size, conflict state if any
-  - `mdcc design adopt <url> --token <hex>` — explicit "I am the source of truth, overwrite hub state with my disk" for first-time bootstrap from a populated repo
+  - `maude design link <url> --token <hex>` — pings hub, performs first-sync handshake (hub state vs local disk: hub-wins by default; `--peer-wins` flag to push local up first; `--adopt` to push local up unconditionally if hub is empty); writes `.design/config.json.linkedHub`; stores token in `~/.config/mdcc/hubs.json`; prints "you're linked"
+  - `maude design unlink` — removes linkedHub from config + drops the token; local files untouched
+  - `maude design status` — shows hub URL, last successful sync, pending ops queue size, conflict state if any
+  - `maude design adopt <url> --token <hex>` — explicit "I am the source of truth, overwrite hub state with my disk" for first-time bootstrap from a populated repo
 - **Pattern:** Same UX rhythm as `git remote add` + `git push --set-upstream origin main` — familiar to engineers.
-- **Validate:** Round-trip linking, unlinking, status all work locally against `mdcc hub serve`.
+- **Validate:** Round-trip linking, unlinking, status all work locally against `maude hub serve`.
 
 ### Task 4: Bidirectional file sync agent (the hard part)
 
@@ -175,7 +175,7 @@ A user who has been running Phase 8 LAN mode (no hub) and now wants to enable hu
   2. **fs.watch / chokidar watcher** — observes `.design/*.html`, `.design/_comments/*.json`, `.design/_annotations/*.svg`. Debounced 250ms.
   3. **Echo prevention** — before writing a file from a Yjs update, agent records `sha256(bytes)` in `recentRemoteWrites: Map<filepath, { hash, expiresAt }>`. On fs.watch fire, agent computes `sha256(fileBytes)`; if it matches a pending entry within 1500ms, drop the event (it's our own write). If no match, treat as user/Claude edit; push to Y.Doc.
   4. **Atomic writes** — agent writes to `<filepath>.tmp` then `renameSync` to final path. Claude Code's `Write` tool does NOT currently use this pattern (writes are not atomic in Node by default); document this as known minor risk + accept (fs.watch usually fires after rename in macOS / Linux; Windows is more fragile — document).
-  5. **Cold start** — on `mdcc design serve` boot with a linkedHub: open Y.Doc from hub, read disk into agent memory, compare hash with Y.Doc snapshot → either accept hub (default), accept disk (`--peer-wins` in link), or open a 3-way merge prompt.
+  5. **Cold start** — on `maude design serve` boot with a linkedHub: open Y.Doc from hub, read disk into agent memory, compare hash with Y.Doc snapshot → either accept hub (default), accept disk (`--peer-wins` in link), or open a 3-way merge prompt.
   6. **Y.Doc → disk codec** — for v1.1, treat HTML body as `Y.Text` (no parse / serialize asymmetry). On Y.Doc text update → write to disk at 800ms quiescence. Comments/annotations stay as Y.Array → JSON snapshot.
 - **Pattern:** Echo prevention is borrowed from Syncthing's "weak hash + sequence number" approach. Chokidar's `awaitWriteFinish` option handles partial writes.
 - **Validate:** Stress test: `for i in {1..100}; do echo "<button>$i</button>" > .design/screen.html; sleep 0.1; done` → hub state matches final write; no echo loop; no missed events.
@@ -206,8 +206,8 @@ A user who has been running Phase 8 LAN mode (no hub) and now wants to enable hu
   WORKDIR /build
   COPY package.json pnpm-lock.yaml ./
   COPY plugins/design/hub/ ./plugins/design/hub/
-  RUN corepack enable && pnpm install --frozen-lockfile --filter @md-claude/hub
-  RUN pnpm --filter @md-claude/hub build
+  RUN corepack enable && pnpm install --frozen-lockfile --filter @maude/hub
+  RUN pnpm --filter @maude/hub build
 
   # Stage 2: runtime
   FROM node:20-alpine
@@ -223,7 +223,7 @@ A user who has been running Phase 8 LAN mode (no hub) and now wants to enable hu
   ENTRYPOINT ["/sbin/tini", "--"]
   CMD ["node", "hub.bundle.mjs"]
   ```
-  Image published as `ghcr.io/1agh/md-claude-hub:vX.Y.Z` + `:latest` on every release tag (multi-arch: amd64 + arm64 via buildx).
+  Image published as `ghcr.io/1agh/maude-hub:vX.Y.Z` + `:latest` on every release tag (multi-arch: amd64 + arm64 via buildx).
 
   **`fly.toml.template`** — `auto_stop_machines = "stop"`, 3GB volume at `/data`, primary region from user, internal port 1234.
 
@@ -231,7 +231,7 @@ A user who has been running Phase 8 LAN mode (no hub) and now wants to enable hu
   ```yaml
   services:
     hub:
-      image: ghcr.io/1agh/md-claude-hub:latest
+      image: ghcr.io/1agh/maude-hub:latest
       restart: unless-stopped
       environment:
         HUB_SECRET: ${HUB_SECRET}
@@ -263,7 +263,7 @@ A user who has been running Phase 8 LAN mode (no hub) and now wants to enable hu
   }
   ```
 
-  **`systemd/mdcc-hub.service.template`** — for raw VPS where user runs Caddy / Nginx separately for TLS.
+  **`systemd/maude-hub.service.template`** — for raw VPS where user runs Caddy / Nginx separately for TLS.
 
   **`cloudflared.template`** + **`tailscale-funnel.md`** recipes for no-public-IP home servers.
 
@@ -276,7 +276,7 @@ A user who has been running Phase 8 LAN mode (no hub) and now wants to enable hu
   - **`git pull` brings new disk state while linked.** Agent detects file hash differs from last-known-Y.Doc snapshot. Prompts: "Local changes from git pull. Sync up to hub? [Push to hub / Discard local and accept hub / Abort]". Default 30s timeout → push.
   - **Hub disk wiped, restored from backup.** Peer reconnects, sees Y.Doc state-vector older than its local. Yjs sync v2 merges peer ops onto hub (peer-as-cold-backup pattern, automatic, no UX).
   - **Two peers offline + diverged via git.** When both come online, last-write-wins on hub (with Yjs merge); a notification surfaces to the disadvantaged peer.
-  - **Token rotation.** `mdcc hub token --rotate` invalidates all existing peer tokens; peers see "auth expired, re-link" notification.
+  - **Token rotation.** `maude hub token --rotate` invalidates all existing peer tokens; peers see "auth expired, re-link" notification.
 - **Validate:** Each scenario walked through in test harness.
 
 ### Task 9: Gitignore strategy + `collab.commitStrategy` config option
@@ -284,7 +284,7 @@ A user who has been running Phase 8 LAN mode (no hub) and now wants to enable hu
 - **Do:** DDR + implementation for "what stays in git vs what doesn't" in linked mode.
 - **Default strategy = `"full"`** (recommended for all teams):
   ```gitignore
-  # md-claude design plugin runtime — gitignored even in linked mode
+  # Maude design plugin runtime — gitignored even in linked mode
   .design/_state/                # binary CRDT logs (regenerable from hub)
   .design/_server.json
   .design/_server.log
@@ -305,18 +305,18 @@ A user who has been running Phase 8 LAN mode (no hub) and now wants to enable hu
   - Generates extra `.gitignore` entries for `.design/*.html`, `.design/*.layout.json`, etc.
   - Only `.design/config.json` + `.design/system/` stay in git
   - Hub becomes the canonical source; clone-without-hub-access yields an empty canvas state
-  - `mdcc design link` then pulls everything fresh
+  - `maude design link` then pulls everything fresh
 - **Alternative `collab.commitStrategy: "manual"`** — generates no `.gitignore` entries; team curates ignore rules themselves.
 - **Implementation:**
-  1. `mdcc init` (or `mdcc design link --adopt`) writes the appropriate `.gitignore` rules. Idempotent — re-running doesn't duplicate.
-  2. Switching strategies via `mdcc config set collab.commitStrategy <value>` + `mdcc design sync-gitignore` (regenerates `.gitignore` block between `# md-claude:begin` and `# md-claude:end` markers; preserves user's other gitignore rules).
-  3. Solo→linked transition (`mdcc design link --adopt`): if `.gitignore` lacks runtime rules, prompt "Add md-claude gitignore block? [Y/n]". Yes → write block. User can edit anytime.
-  4. Linked→solo (`mdcc design unlink`): leave `.gitignore` intact; runtime rules are harmless in solo mode (the gitignored files just don't exist).
+  1. `maude init` (or `maude design link --adopt`) writes the appropriate `.gitignore` rules. Idempotent — re-running doesn't duplicate.
+  2. Switching strategies via `maude config set collab.commitStrategy <value>` + `maude design sync-gitignore` (regenerates `.gitignore` block between `# maude:begin` and `# maude:end` markers; preserves user's other gitignore rules).
+  3. Solo→linked transition (`maude design link --adopt`): if `.gitignore` lacks runtime rules, prompt "Add Maude gitignore block? [Y/n]". Yes → write block. User can edit anytime.
+  4. Linked→solo (`maude design unlink`): leave `.gitignore` intact; runtime rules are harmless in solo mode (the gitignored files just don't exist).
 - **DDR rationale:** Cold backup, PR review value, bootstrap-from-clone all argue for keeping `.html` in git. `hub-only` is opt-in for unusual cases.
 - **Validate:**
-  - Fresh repo + `mdcc init` writes correct `.gitignore` block.
+  - Fresh repo + `maude init` writes correct `.gitignore` block.
   - Switching `commitStrategy: hub-only` adds extra rules; switching back to `full` removes them.
-  - `mdcc design unlink` doesn't touch user-authored gitignore content outside markers.
+  - `maude design unlink` doesn't touch user-authored gitignore content outside markers.
 
 ### Task 10: Local development workflow for hub
 
@@ -325,23 +325,23 @@ A user who has been running Phase 8 LAN mode (no hub) and now wants to enable hu
   **Level 1 — fastest iteration (no Docker, plain Node):**
   ```sh
   # Terminal A — run hub
-  pnpm --filter @md-claude/hub dev   # watch mode via esbuild + node --watch
+  pnpm --filter @maude/hub dev   # watch mode via esbuild + node --watch
   # Hub serves on http://localhost:1234, --insecure-http accepted
 
   # Terminal B — generate test token
-  mdcc hub token generate --hub http://localhost:1234 --label dev-test
-  # Prints: mch_a3f9c8b2...
+  maude hub token generate --hub http://localhost:1234 --label dev-test
+  # Prints: mau_a3f9c8b2...
 
   # Terminal C — peer with linked repo
   cd /tmp/test-project
-  mdcc init
+  maude init
   echo '<button>test</button>' > .design/screen.html
-  mdcc design link http://localhost:1234 --token mch_a3f9c8b2... --adopt
+  maude design link http://localhost:1234 --token mau_a3f9c8b2... --adopt
 
   # Terminal D — second peer simulating second user
   cd /tmp/test-project-2   # different clone of same repo
   git clone /tmp/test-project .
-  mdcc design link --use-config --token mch_a3f9c8b2...
+  maude design link --use-config --token mau_a3f9c8b2...
 
   # Now edits in either terminal C or D propagate.
   ```
@@ -370,12 +370,12 @@ A user who has been running Phase 8 LAN mode (no hub) and now wants to enable hu
   # Tests full WSS flow including cert validation
   ```
 
-- **Bonus:** `mdcc hub serve --dev` shortcut that runs hub on `localhost:1234` with auto-generated dev token (`mch_dev_<random>`), prints the full `mdcc design link` invite, and skips authentication enforcement when token starts with `mch_dev_` (with red warning banner in logs). Reduces contributor onboarding to one command.
+- **Bonus:** `maude hub serve --dev` shortcut that runs hub on `localhost:1234` with auto-generated dev token (`mau_dev_<random>`), prints the full `maude design link` invite, and skips authentication enforcement when token starts with `mau_dev_` (with red warning banner in logs). Reduces contributor onboarding to one command.
 - **Contributor doc:** `plugins/design/hub/CONTRIBUTING.md` covers the three levels + common gotchas (Docker on macOS volume perf, fs.watch behavior on Linux containers).
 - **Validate:**
   - Fresh contributor following Level 1 docs from `pnpm i` to first cross-terminal sync in < 5 minutes.
   - Level 3 catches WSS / TLS issues that Level 1 would miss.
-  - `mdcc hub serve --dev` works without any config files.
+  - `maude hub serve --dev` works without any config files.
 
 ### Task 11: Stress + integration tests
 
@@ -393,10 +393,10 @@ A user who has been running Phase 8 LAN mode (no hub) and now wants to enable hu
 ## Validation
 
 1. **Static:** Bundle sizes — hub `dist/hub.bundle.mjs` ≤ 5MB (Hocuspocus + SQLite + deps); agent sync delta in dev-server bundle ≤ 100KB gz.
-2. **Functional:** Full flow `mdcc hub deploy fly` → `mdcc design link` → cross-machine edit visible in <500ms.
+2. **Functional:** Full flow `maude hub deploy fly` → `maude design link` → cross-machine edit visible in <500ms.
 3. **Stress:** 5 peers × 1 hour passes (no echo, bounded growth).
 4. **Cross-platform scenario:** `hub-cross-continent-edit` web-desktop, web-mobile.
-5. **A11y:** `mdcc design status` output is structured (parseable); `--json` flag for tooling.
+5. **A11y:** `maude design status` output is structured (parseable); `--json` flag for tooling.
 6. **Security:** Token verification on every connection; rate limit verified.
 
 ## Scenario coverage
@@ -407,15 +407,15 @@ A user who has been running Phase 8 LAN mode (no hub) and now wants to enable hu
 | `hub-cross-continent-edit` | Two peers on different ISPs linked to same hub on Fly → A's `/design` edit appears in B's disk + browser within 1s | 🆕 new |
 | `hub-pull-conflict` | A linked, B does `git pull` introducing different file → conflict prompt → resolve via push | 🆕 new |
 | `hub-restart-resilience` | Hub `fly machines restart` mid-session → peers reconnect → no ops lost | 🆕 new |
-| `hub-unlink-resume-solo` | Peer `mdcc design unlink` → continues solo with local files intact → re-links later → state reconciles | 🆕 new |
+| `hub-unlink-resume-solo` | Peer `maude design unlink` → continues solo with local files intact → re-links later → state reconciles | 🆕 new |
 
 ---
 
 ## Acceptance criteria
 
 - [ ] DDR signed off: Hocuspocus over PartyKit.
-- [ ] `mdcc hub serve` boots locally; `mdcc hub deploy fly` produces a working hub.
-- [ ] `mdcc design link / unlink / status / adopt` all functional.
+- [ ] `maude hub serve` boots locally; `maude hub deploy fly` produces a working hub.
+- [ ] `maude design link / unlink / status / adopt` all functional.
 - [ ] Bidirectional file sync passes 100-event stress test with no echo loops.
 - [ ] Atomic write semantics documented; Windows fragility called out.
 - [ ] First-sync conflict UX (hub-wins / peer-wins / adopt) all reachable.
@@ -426,9 +426,9 @@ A user who has been running Phase 8 LAN mode (no hub) and now wants to enable hu
 - [ ] Solo workflow regression-tested — unlinked repos behave identically to v1.0.
 - [ ] `~/.config/mdcc/hubs.json` per-machine token storage works on macOS / Linux / Windows.
 - [ ] Decision-trigger documented for moving to Phase 10 (structured CRDT) — record the kind of incident that would justify the v1.2 jump.
-- [ ] `mdcc hub token generate|rotate|list|revoke` fully implemented; HMAC-hashed storage; per-project scoping verified.
+- [ ] `maude hub token generate|rotate|list|revoke` fully implemented; HMAC-hashed storage; per-project scoping verified.
 - [ ] Gitignore strategy DDR signed off; `collab.commitStrategy` default = `"full"`; alternate strategies (`hub-only`, `manual`) tested.
-- [ ] `mdcc hub serve --dev` works zero-config; contributor onboarding < 5 min to first cross-terminal sync.
+- [ ] `maude hub serve --dev` works zero-config; contributor onboarding < 5 min to first cross-terminal sync.
 - [ ] Multi-arch Docker image (`amd64` + `arm64`) published on every release tag to GHCR.
 - [ ] Three-level local dev workflow (plain Node, Docker compose, Docker + mkcert TLS) documented in `plugins/design/hub/CONTRIBUTING.md`.
 - [ ] Phase 8 → Phase 9 migration scenario tested end-to-end (`.ydoc.bin` adoption preserves comment history + annotations from a real Phase 8 LAN session).

@@ -1,14 +1,14 @@
 {
   "title": "components-log-stream",
   "subtitle": "log stream — timestamps + level tag + body, mono everywhere.",
-  "brief": "MDCC-DSN/01.components-log-stream / md-claude",
+  "brief": "MDCC-DSN/01.components-log-stream / Maude",
   "platform": "desktop",
   "designSystem": "project",
   "opt_out_scope": "none",
   "sections": [
     {
       "id": "overview",
-      "title": "MDCC-DSN/01.components-log-stream / md-claude",
+      "title": "MDCC-DSN/01.components-log-stream / Maude",
       "artboards": [
         {
           "id": "primary",

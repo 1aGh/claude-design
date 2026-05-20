@@ -4,7 +4,7 @@
  * @platform    desktop
  * @opt_out     none
  * @artboards   primary
- * @brief       MDCC-DSN/01.colors-themes-side-by-side / md-claude
+ * @brief       MDCC-DSN/01.colors-themes-side-by-side / Maude
  * @stack       React 19 · TSX · Bun.build · css_mode=inline
  * @history     .design/_history/colors-themes-side-by-side/
  * @handoff     bunx shadcn add file://./colors-themes-side-by-side.registry.json
@@ -16,7 +16,7 @@ export default function ColorsThemesSideBySide() {
     <>
           <header className="specimen-hd">
             <span className="sku">MDCC-DSN/01.colors-themes-side-by-side</span>
-            <span className="crumbs"><span>md-claude</span><span>design system</span><span>color</span><span>themes</span></span>
+            <span className="crumbs"><span>maude</span><span>design system</span><span>color</span><span>themes</span></span>
             <span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span>
           </header>
           <main className="specimen">
@@ -34,7 +34,7 @@ export default function ColorsThemesSideBySide() {
             <div className="pair">
               <div className="col mdcc" data-theme="light" style={{ background: 'var(--bg-0)', color: 'var(--fg-0)' }}>
                 <div className="col-eyebrow">PAPER · MARKETPLACE LANDING MODE</div>
-                <h3>md-claude</h3>
+                <h3>maude</h3>
                 <p style={{ color: 'var(--fg-1)', margin: '0 0 var(--space-4)' }}>A catalog of Claude Code plugins, rendered as spec sheets.</p>
                 <div className="tile" style={{ background: 'var(--bg-1)', marginBottom: 'var(--space-4)' }}>
                   <div className="tile-hd"><span className="sku">MDCC-DSN/01</span><span>v0.12.0</span></div>
@@ -56,7 +56,7 @@ export default function ColorsThemesSideBySide() {
               </div>
               <div className="col mdcc" data-theme="dark" style={{ background: 'var(--bg-0)', color: 'var(--fg-0)' }}>
                 <div className="col-eyebrow">PHOSPHOR · DEV-SERVER CANVAS MODE</div>
-                <h3>md-claude</h3>
+                <h3>maude</h3>
                 <p style={{ color: 'var(--fg-1)', margin: '0 0 var(--space-4)' }}>A catalog of Claude Code plugins, rendered as spec sheets.</p>
                 <div className="tile" style={{ background: 'var(--bg-1)', marginBottom: 'var(--space-4)' }}>
                   <div className="tile-hd"><span className="sku">MDCC-DSN/01</span><span>v0.12.0</span></div>
@@ -84,7 +84,7 @@ export default function ColorsThemesSideBySide() {
 
             <footer className="specimen-ft">
               <div className="colo-block"><strong>MDCC-DSN/01</strong><span>· colors-themes-side-by-side</span></div>
-              <div className="colo-block"><span>md-claude · v0.12.0</span></div>
+              <div className="colo-block"><span>Maude · v0.12.0</span></div>
             </footer>
           </main>
         </>

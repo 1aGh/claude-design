@@ -10,27 +10,27 @@ Three commands and you're in. (Maybe four. Depends on your shell.) Five steps be
 Inside Claude Code:
 
 ```text
-/plugin marketplace add 1aGh/md-claude
-/plugin install design@md-claude
-/plugin install flow@md-claude
+/plugin marketplace add 1aGh/maude
+/plugin install design@maude
+/plugin install flow@maude
 ```
 
-Install one or both, they're independent. `/plugin marketplace update md-claude` pulls future releases.
+Install one or both, they're independent. `/plugin marketplace update maude` pulls future releases.
 
 ## 2. Install the CLI (optional, recommended)
 
 ```bash
-npm i -g @1agh/md-claude
+npm i -g @1agh/maude
 # or skip the global install:
-npx @1agh/md-claude --help
+npx @1agh/maude --help
 ```
 
-This gives you `mdcc`. The binary that scaffolds the `.ai/` workspace and boots the design dev server. See [CLI](/docs/cli) for the full surface.
+This gives you `maude`. The binary that scaffolds the `.ai/` workspace and boots the design dev server. See [CLI](/docs/cli) for the full surface.
 
 ## 3. Scaffold a project
 
 ```bash
-mdcc init --name my-app
+maude init --name my-app
 ```
 
 Copies the `.ai/` skeleton from the flow plugin into your repo:
@@ -46,7 +46,7 @@ Copies the `.ai/` skeleton from the flow plugin into your repo:
 └── scenarios/              # cross-platform UI scenarios
 ```
 
-For richer setup (stack auto-detect, branching model, changelog provider), run `/flow:init` inside Claude Code instead. It calls `mdcc init` first, then asks the right questions.
+For richer setup (stack auto-detect, branching model, changelog provider), run `/flow:init` inside Claude Code instead. It calls `maude init` first, then asks the right questions.
 
 For `CLAUDE.md`, use Claude Code's built-in `/init`. Don't write it by hand.
 
@@ -67,7 +67,7 @@ After the plan lands, `/flow:execute .ai/plans/<plan>.md` walks the implementati
 If you've installed the `design` plugin and you have a `.design/` directory:
 
 ```bash
-mdcc design serve --port 4399
+maude design serve --port 4399
 # → http://localhost:4399
 ```
 
@@ -76,7 +76,7 @@ The server injects an inspector overlay into every HTML canvas. **Cmd+Click any 
 ## Next
 
 <Cards>
-  <Card title="`mdcc` CLI reference" href="/docs/cli" />
+  <Card title="`maude` CLI reference" href="/docs/cli" />
   <Card title="Flow commands by category" href="/docs/flow" />
   <Card title="Design commands" href="/docs/design" />
   <Card title="`workflows.config.json` reference" href="/docs/config" />

@@ -12,8 +12,8 @@
 Why now-but-not-yet:
 
 1. The current workload (1 HTTP server, a few WS clients per editor session) has zero measurable benefit from Bun's perf delta. Latency is dominated by network + user think time, not runtime CPU. Switching now buys ~0ms in user-perceived speed.
-2. Bun is, however, the strategic runtime for this ecosystem: Anthropic acquired Bun in late 2025 and Claude Code itself ships as a `bun build --compile` binary. As an md-claude plugin we *will* eventually want symmetric distribution.
-3. The compelling moment to introduce Bun is **distribution**, not performance: a single-file binary published per platform via GitHub Releases lets non-dev users (designers, PMs) run `mdcc design serve` without installing Node. That payoff arrives once we have a richer bundle (Phase 4+) where "no Node required" actually changes who can install.
+2. Bun is, however, the strategic runtime for this ecosystem: Anthropic acquired Bun in late 2025 and Claude Code itself ships as a `bun build --compile` binary. As an Maude plugin we *will* eventually want symmetric distribution.
+3. The compelling moment to introduce Bun is **distribution**, not performance: a single-file binary published per platform via GitHub Releases lets non-dev users (designers, PMs) run `maude design serve` without installing Node. That payoff arrives once we have a richer bundle (Phase 4+) where "no Node required" actually changes who can install.
 
 So the actionable trade-off is:
 - **If you want quickest win + lowest risk now**: keep Node, write the new code (Phase 4-8) runtime-agnostically, and add a `bun --compile` target as a CI artifact once it's worth shipping.
@@ -63,7 +63,7 @@ Cons:
 
 Current stable: **Bun 1.3.13**, released **2026-04-20** (still 1.3.x line, no 1.4 yet as of May 2026). Stable line since March 2025 with monthly patches.
 
-Anthropic acquired Bun in late 2025; Claude Code itself ships as a `bun build --compile` binary distributed to "millions of developers across macOS, Linux, and Windows." This is strategically important context for an md-claude marketplace plugin.
+Anthropic acquired Bun in late 2025; Claude Code itself ships as a `bun build --compile` binary distributed to "millions of developers across macOS, Linux, and Windows." This is strategically important context for an Maude marketplace plugin.
 
 **Compat with our APIs** (per `bun.com/docs/runtime/nodejs-compat`, claims Node v23 parity):
 - `node:http` — "Fully implemented. Outgoing client request body is currently buffered instead of streamed." Server-side request handling (our use case) is in the green. v1.3.13 added HTTP/2 h2c fixes; no open critical issues for `http.createServer` server-mode that affect us.
@@ -98,7 +98,7 @@ Current state (May 2026): Deno 2 launched late 2024 with explicit npm + `node_mo
 Why it's not a fit for us:
 - Our code uses `node:*` imports throughout, which Deno 2 supports — but Deno's value proposition is permissions and Web-first APIs, neither of which solves anything we have.
 - Strategic alignment: Claude Code chose Bun; Anthropic now owns Bun. As a Claude marketplace plugin, betting against that direction adds friction without payoff.
-- `deno compile` binaries are smaller (~50% slimmer per Deno 2024 retrospective) but the ecosystem story (npm publish flow, `package.json` engines, scoped `@1agh/md-claude`) is more pleasant in Bun.
+- `deno compile` binaries are smaller (~50% slimmer per Deno 2024 retrospective) but the ecosystem story (npm publish flow, `package.json` engines, scoped `@1agh/maude`) is more pleasant in Bun.
 
 Recommendation: rule out unless a future requirement (e.g. running untrusted user-supplied design code with a sandbox) makes Deno's permissions model load-bearing. Phase 7 ACP relay is the only candidate, and even there a Bun child process with restricted env vars is sufficient.
 
@@ -130,7 +130,7 @@ The hypothesis: ship a thin npm wrapper that downloads a per-platform single-fil
 
 ### 4.1 The npm pattern (proven by esbuild)
 
-esbuild distributes via npm `optionalDependencies` keyed on `os` + `cpu`: a parent package `@1agh/md-claude` declares `optionalDependencies` for `@1agh/md-claude-darwin-arm64`, `@1agh/md-claude-linux-x64`, etc. npm/pnpm/yarn install only the one matching the host. A tiny launcher in the parent package resolves the binary and `execve`s it.
+esbuild distributes via npm `optionalDependencies` keyed on `os` + `cpu`: a parent package `@1agh/maude` declares `optionalDependencies` for `@1agh/maude-darwin-arm64`, `@1agh/maude-linux-x64`, etc. npm/pnpm/yarn install only the one matching the host. A tiny launcher in the parent package resolves the binary and `execve`s it.
 
 Advantages over `postinstall`:
 - Works inside corporate proxies, offline mirrors, read-only filesystems.
@@ -167,7 +167,7 @@ Total Releases artifact storage per version: ~4 platforms × ~60-90 MB = **240-3
 
 ### 4.4 Postinstall friction reality
 
-For the user who runs `npm i -g @1agh/md-claude`, the experience is:
+For the user who runs `npm i -g @1agh/maude`, the experience is:
 - *Today (Node-only)*: ~3s install, ~0 disk overhead since they have Node. Works on any platform.
 - *With Bun binary via optionalDeps*: ~5-10s install, ~60MB platform binary cached. Works on the 4 platforms we shipped. **Designers without Node installed can now use it.**
 
@@ -192,15 +192,15 @@ The net is "+5s install for engineers, –$infinity friction for non-engineer us
 **Phase B (when Phase 4 Pixi bundle is real and you want non-dev users):**
 
 1. Set up `bun build --compile --target=<t>` in CI for the 4-platform minimum.
-2. Publish per-platform tarballs as `@1agh/md-claude-<os>-<arch>` scoped packages.
-3. Add `optionalDependencies` to the parent `@1agh/md-claude`.
-4. Thin launcher in `cli/bin/mdcc.mjs` decides: if a platform binary is available, exec it; otherwise fall back to `node plugins/design/dev-server/server.mjs`. The fallback also preserves the current dev-loop experience for contributors.
+2. Publish per-platform tarballs as `@1agh/maude-<os>-<arch>` scoped packages.
+3. Add `optionalDependencies` to the parent `@1agh/maude`.
+4. Thin launcher in `cli/bin/maude.mjs` decides: if a platform binary is available, exec it; otherwise fall back to `node plugins/design/dev-server/server.mjs`. The fallback also preserves the current dev-loop experience for contributors.
 5. Codesign + notarize macOS binaries in CI.
 6. Document the dual install path in `README.md`: "fast path (binary)" vs "compatible path (Node)".
 
 **Phase C (optional, only if benchmarks justify):**
 
-If Phase 8 cursor presence shows measurable bottleneck on Node, write a `server.bun.mjs` variant that uses `Bun.serve({ websocket })` with native pub/sub `server.publish(topic, msg)`. Default stays Node; Bun variant is opt-in via `mdcc design serve --runtime=bun`. Until benchmarks demand it, this is overengineering.
+If Phase 8 cursor presence shows measurable bottleneck on Node, write a `server.bun.mjs` variant that uses `Bun.serve({ websocket })` with native pub/sub `server.publish(topic, msg)`. Default stays Node; Bun variant is opt-in via `maude design serve --runtime=bun`. Until benchmarks demand it, this is overengineering.
 
 ---
 
@@ -232,14 +232,14 @@ The exception: if we go full Bun (run `bun` in CI anyway for the `--compile` ste
 The cheap experiment to do before committing:
 
 1. **Build a port of `server.mjs` to `Bun.serve` (1-2 hour spike)** in a branch. Keep `node:*` imports for fs/path/etc, replace only `http.createServer` + manual upgrade with `Bun.serve({ fetch, websocket })`. Diff the LoC and the readability.
-2. **Measure cold start**: `time mdcc design serve --port 4399` vs `bun ...`. Expect Bun to win by ~50ms. Not load-bearing for us but verify the claim holds.
+2. **Measure cold start**: `time maude design serve --port 4399` vs `bun ...`. Expect Bun to win by ~50ms. Not load-bearing for us but verify the claim holds.
 3. **Measure WS broadcast latency** under realistic load: 5 simulated tabs subscribing to active-canvas state, server pushing 30 frames/sec for 60 seconds. Track p50/p95/p99 with `performance.now()` on the client. Expect <1ms on both; Bun's win is invisible to humans.
 4. **Measure single-file binary size** for the minimal 4-platform matrix:
    ```
    bun build --compile --minify --bytecode --target=bun-darwin-arm64 plugins/design/dev-server/server.mjs --outfile bin/mdcc-darwin-arm64
    ```
    Expected: 55-70 MB each. Record actual.
-5. **Measure cold install** for the optionalDeps wrapper: `npm i -g @1agh/md-claude` on each of 4 platforms with a fresh cache. Compare to current install time.
+5. **Measure cold install** for the optionalDeps wrapper: `npm i -g @1agh/maude` on each of 4 platforms with a fresh cache. Compare to current install time.
 
 Do not commit to a runtime change until 1-3 are run. Do not commit to binary distribution until 4-5 are run.
 
@@ -279,7 +279,7 @@ Do not commit to a runtime change until 1-3 are run. Do not commit to binary dis
 
 If checking most "yes" → switch runtime (Bun) or add binary distribution:
 - [ ] Phase 4 Pixi client lives in the dev-server bundle (yes → distribution matters more)
-- [ ] Non-engineer end users are a real persona for `mdcc design serve` (yes → binary distribution wins)
+- [ ] Non-engineer end users are a real persona for `maude design serve` (yes → binary distribution wins)
 - [ ] WS throughput hits >50 concurrent clients regularly (yes → Bun WS perf matters)
 - [ ] CI budget for 4-platform build matrix is acceptable (yes → binary distribution feasible)
 - [ ] Apple Developer ID is in hand or budgetable (yes → macOS notarization possible)

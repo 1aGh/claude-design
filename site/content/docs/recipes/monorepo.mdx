@@ -43,8 +43,8 @@ Most teams want Option A. Pick B only if you've already split into autonomous pa
 
 ```bash
 cd my-monorepo
-npm i -g @1agh/md-claude
-mdcc init --name my-monorepo
+npm i -g @1agh/maude
+maude init --name my-monorepo
 ```
 
 Inside Claude Code at the repo root:
@@ -86,8 +86,8 @@ You'll end up with something like:
 For a monorepo, the typical changelog provider is **Changesets**, scoped to specific publishable packages.
 
 ```bash
-mdcc config set integrations.changelog.provider changesets
-mdcc config set integrations.changelog.scope "@acme/web"
+maude config set integrations.changelog.provider changesets
+maude config set integrations.changelog.scope "@acme/web"
 ```
 
 `/flow:release-changelog` will then drop entries into `.changeset/*.md` and `/flow:release` will walk the changesets-flavored release runbook (auto-scaffolded into `.ai/release-guide.md`).
@@ -112,7 +112,7 @@ The dev server resolves the design root via `--root` arg, then `$CLAUDE_PROJECT_
 
 ```bash
 export CLAUDE_PROJECT_DIR=$(git rev-parse --show-toplevel)
-mdcc design serve --port 4399
+maude design serve --port 4399
 ```
 
 ...or boot it from the repo root.

@@ -26,13 +26,13 @@ PLUGIN_PATHS=(
 # Per-platform sub-packages (Phase 3.4 / DDR-015) — versioned in lockstep with
 # the main tarball because the main package's optionalDependencies pin them.
 SUBPACKAGE_PATHS=(
-  "$ROOT/packages/md-claude-darwin-arm64/package.json"
-  "$ROOT/packages/md-claude-darwin-x64/package.json"
-  "$ROOT/packages/md-claude-linux-x64/package.json"
-  "$ROOT/packages/md-claude-linux-arm64/package.json"
-  "$ROOT/packages/md-claude-linux-x64-musl/package.json"
-  "$ROOT/packages/md-claude-linux-arm64-musl/package.json"
-  "$ROOT/packages/md-claude-win32-x64/package.json"
+  "$ROOT/packages/maude-darwin-arm64/package.json"
+  "$ROOT/packages/maude-darwin-x64/package.json"
+  "$ROOT/packages/maude-linux-x64/package.json"
+  "$ROOT/packages/maude-linux-arm64/package.json"
+  "$ROOT/packages/maude-linux-x64-musl/package.json"
+  "$ROOT/packages/maude-linux-arm64-musl/package.json"
+  "$ROOT/packages/maude-win32-x64/package.json"
 )
 
 if [ $# -ne 1 ]; then
@@ -76,7 +76,7 @@ node -e "
     // those too so they always agree with the version we just wrote.
     if (j.optionalDependencies) {
       for (const k of Object.keys(j.optionalDependencies)) {
-        if (k.startsWith('@1agh/md-claude-')) j.optionalDependencies[k] = '$NEW';
+        if (k.startsWith('@1agh/maude-')) j.optionalDependencies[k] = '$NEW';
       }
     }
     fs.writeFileSync(p, JSON.stringify(j, null, 2) + '\n');

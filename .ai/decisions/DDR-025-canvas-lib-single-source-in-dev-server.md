@@ -7,7 +7,7 @@
 
 ## Context
 
-DDR-022 (2026-05-19, hours before this DDR) decided that `@mdcc/canvas-lib` is a **project-owned** virtual module, scaffolded from `plugins/design/templates/canvas-lib.tsx.template` into `<designRoot>/_lib/canvas-lib.tsx` on first `/design:setup-ds` run. The resolver in `canvas-lib-resolver.ts` then maps the specifier to that project-local file, the handoff inliner reads from the same file, and HMR watches it for changes.
+DDR-022 (2026-05-19, hours before this DDR) decided that `@maude/canvas-lib` is a **project-owned** virtual module, scaffolded from `plugins/design/templates/canvas-lib.tsx.template` into `<designRoot>/_lib/canvas-lib.tsx` on first `/design:setup-ds` run. The resolver in `canvas-lib-resolver.ts` then maps the specifier to that project-local file, the handoff inliner reads from the same file, and HMR watches it for changes.
 
 The motivation was solid (single source per project, helpers can grow, handoff stays self-contained). But the moment we tried to plan Phase 4.1 (FigJam-grade canvas interactions — bigger surface, new modules, new exports) the same architecture started to bite:
 
@@ -26,7 +26,7 @@ The architectural pressure is one-directional: **drift cost is monotonically inc
 Concretely:
 
 1. **canvas-lib.tsx relocates** from `plugins/design/templates/canvas-lib.tsx.template` (template) + `<designRoot>/_lib/canvas-lib.tsx` (project copy) to **`plugins/design/dev-server/canvas-lib.tsx`** (single source, lives next to other dev-server modules). The template version is deleted. The project copy in this repo's `.design/_lib/` is deleted.
-2. **`canvas-lib-resolver.ts`** is rewired: `canvasLibPath()` returns the dev-server-internal path (`path.join(__dirname, 'canvas-lib.tsx')` or equivalent), not `<designRoot>/_lib/canvas-lib.tsx`. The `Bun.build` resolver maps `@mdcc/canvas-lib` → dev-server path. Identical Bun.build semantics; just a different source location.
+2. **`canvas-lib-resolver.ts`** is rewired: `canvasLibPath()` returns the dev-server-internal path (`path.join(__dirname, 'canvas-lib.tsx')` or equivalent), not `<designRoot>/_lib/canvas-lib.tsx`. The `Bun.build` resolver maps `@maude/canvas-lib` → dev-server path. Identical Bun.build semantics; just a different source location.
 3. **Pre-flight check** in `canvas-build.ts` becomes a sanity check on the dev-server install (the file ships with dev-server, so missing-file = corrupt install, not a project-setup miss). The "/design:setup-ds to scaffold" hint is removed.
 4. **`canvas-lib-inline.ts`** (handoff inliner) reads from the dev-server path. The handoff drop is unchanged from the consumer's perspective — they still receive a self-contained registry-item with the canvas-lib exports AST-inlined.
 5. **HMR file-watcher** in `http.ts` watches the dev-server path. Editing `plugins/design/dev-server/canvas-lib.tsx` triggers hard-reload of every open iframe in the current dev session.
@@ -36,7 +36,7 @@ Concretely:
 9. **`/design:edit` Step 1.5** still pre-loads canvas-lib source into orchestrator context — just reading from the dev-server path now. The user-facing behavior (orchestrator sees the helper surface before editing) is preserved.
 10. **`<designRoot>/_lib/` and `<designRoot>/_lab/` are deprecated path conventions.** A one-cycle migration guard in `canvas-build.ts` warns when a project still has a `_lib/canvas-lib.tsx` (instructs the user to delete it; the dev-server canvas-lib is now authoritative).
 
-The two-state mental model from DDR-022 is preserved: **virtual import at author time** (canvases write `import { DesignCanvas } from "@mdcc/canvas-lib"`), **inlined source at handoff time** (registry-item drop has no `@mdcc/canvas-lib` reference). Only the *physical location* of the canonical canvas-lib source changes.
+The two-state mental model from DDR-022 is preserved: **virtual import at author time** (canvases write `import { DesignCanvas } from "@maude/canvas-lib"`), **inlined source at handoff time** (registry-item drop has no `@maude/canvas-lib` reference). Only the *physical location* of the canonical canvas-lib source changes.
 
 ## Alternatives considered
 
@@ -47,7 +47,7 @@ Detect when a project's `_lib/canvas-lib.tsx` diverges from the current template
 - **Pros:** Preserves the override capability (theoretical).
 - **Cons:** Adds infrastructure (hash store, drift detector, sync command, conflict resolution UX for the hypothetical "user edited their copy" case) to address a problem that wouldn't exist if we stopped materializing the file. Pure drift-management overhead.
 
-### B — Real npm package `@mdcc/canvas-lib` (still rejected per DDR-022)
+### B — Real npm package `@maude/canvas-lib` (still rejected per DDR-022)
 
 Same reasoning as DDR-022 alternative B. External versioning + handoff drop friction. Re-rejected; not viable.
 
@@ -80,14 +80,14 @@ Continue scaffolding into projects. Add input-router etc. as more `_lib/` files.
 - **`.design/` becomes a pure content directory.** Inspectable, gitignorable per-project policy (some projects gitignore `.design/`, some commit it), reasoned-about cleanly. No "is this engine code or my design content?" ambiguity.
 - **Phase 4.1+ adds zero materialized files.** Input-router, tool-mode store, selection-set, context-menu — all live in `plugins/design/dev-server/runtime/` (DDR-016: runtime folder = strip-on-handoff). No new project-local files; no new drift sources.
 - **`/design:setup-ds` shrinks.** Round-0 Batch-A step 0 vanishes. The skill becomes simpler to maintain and faster to bootstrap (no canvas-lib file copy at all).
-- **Handoff self-containment guarantee unchanged.** `canvas-lib-inline.ts` reads from a different path but produces identical output. The 14 inline tests still pass; the per-canvas tree-shake still works; the registry-item drop is still zero-`@mdcc/canvas-lib`.
+- **Handoff self-containment guarantee unchanged.** `canvas-lib-inline.ts` reads from a different path but produces identical output. The 14 inline tests still pass; the per-canvas tree-shake still works; the registry-item drop is still zero-`@maude/canvas-lib`.
 - **Clearer mental model for new contributors.** "User content under `.design/`, engine under `plugins/design/dev-server/`" is one sentence. The DDR-022 "project-owned virtual module" was three sentences and still confusing.
 
 **Negative / trade-offs:**
 
 - **One-time migration.** Phase 4.0.5 does the relocation + cleanup. Cost: ~1 day of work, mostly path swaps + test fixture updates + design-system/SKILL.md edits + deleting Round-0 step 0. Cheap relative to the per-phase drift cost we'd otherwise pay forever.
 - **DDR-022 partially superseded.** The "project-owned" framing is wrong. Updated section: "*See DDR-025: canvas-lib lives in dev-server, not in `<designRoot>/_lib/`. The 'inline on handoff' and 'virtual specifier at author time' parts of DDR-022 remain in force; the 'project-owned source' part is reversed.*" Added as a header note on DDR-022 itself.
-- **Loss of per-project canvas-lib override.** Theoretical capability; nobody used it. If a downstream project genuinely needs custom canvas-lib helpers, the path is: contribute them upstream to dev-server (matches the open-source contribution model) or wrap them in their own project-local module that imports `@mdcc/canvas-lib` and re-exports an augmented surface. Acceptable.
+- **Loss of per-project canvas-lib override.** Theoretical capability; nobody used it. If a downstream project genuinely needs custom canvas-lib helpers, the path is: contribute them upstream to dev-server (matches the open-source contribution model) or wrap them in their own project-local module that imports `@maude/canvas-lib` and re-exports an augmented surface. Acceptable.
 - **Existing downstream projects with `_lib/canvas-lib.tsx`** need a deprecation cycle. The 4.0.5 plan ships a `canvas-build.ts` warning that logs "delete `<designRoot>/_lib/canvas-lib.tsx` — canvas-lib now ships with dev-server" on boot for one minor version. After that, the file is silently ignored.
 - **`_lab/` semantics shift.** This repo's `.design/_lab/perf-100-artboards.tsx` was Phase 4 T6's perf fixture. Strictly it's dev-server tooling (we used it to stress-test the renderer), not a user-authored design. Moving it to `plugins/design/dev-server/examples/perf-100-artboards.tsx` is correct but does break any docs / scenario refs to the old path. The 4.0.5 plan sweeps those.
 

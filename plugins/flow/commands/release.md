@@ -84,10 +84,10 @@ reflect any [edit] swaps — that's how the file stays current.
 
 `/flow:release` is **provider-agnostic** by design — the runbook supplies provider-specific commands; the walker just orchestrates. This is the load-bearing decision: it means adding a new changelog provider (`git-cliff`, `conventional`, `custom`, …) is a **documentation** change (update the skeleton's stub in `cli/commands/init.mjs`), not a code change to `/flow:release`.
 
-Phase 3 ships the `changesets` stub end-to-end via `mdcc init --provider changesets`. Other providers land their stubs in follow-up PRs.
+Phase 3 ships the `changesets` stub end-to-end via `maude init --provider changesets`. Other providers land their stubs in follow-up PRs.
 
 ## Notes
 
-- The runbook is yours. Edit it freely. `mdcc init` only scaffolds the initial structure; subsequent runs of `/flow:release` always read whatever's currently on disk.
+- The runbook is yours. Edit it freely. `maude init` only scaffolds the initial structure; subsequent runs of `/flow:release` always read whatever's currently on disk.
 - For non-trivial release flows (multi-package monorepos, manual smoke gates, staged publishes), consider splitting into multiple `##` steps so each can be skipped/aborted independently rather than one giant bash block.
 - If a step's commands depend on the previous step's success, write that into the prose (`- [ ] Confirm CI green before continuing`) — the walker won't enforce step ordering; that's the runbook author's call.

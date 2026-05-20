@@ -15,7 +15,7 @@ export const SmokeCard = () => {
         letterSpacing: -0.5,
       }}
     >
-      <div style={{ opacity }}>md-claude smoke test</div>
+      <div style={{ opacity }}>maude smoke test</div>
     </AbsoluteFill>
   );
 };

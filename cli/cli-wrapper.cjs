@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /* eslint-disable */
-// Safe-mode entry. Exposed as the `mdcc-safe` bin in main package.json.
+// Safe-mode entry. Exposed as the `maude-safe` bin (legacy alias: `mdcc-safe`) in main package.json.
 //
 // Used when postinstall was skipped (`npm install --ignore-scripts`) or when
 // the hardlink failed for some reason. Performs platform detection on every
@@ -37,8 +37,8 @@ function detectSlug() {
 }
 
 function resolveBinary(slug) {
-  const filename = process.platform === 'win32' ? 'mdcc.exe' : 'mdcc';
-  const pkg = `@1agh/md-claude-${slug}`;
+  const filename = process.platform === 'win32' ? 'maude.exe' : 'maude';
+  const pkg = `@1agh/maude-${slug}`;
   try {
     const manifest = require.resolve(`${pkg}/package.json`);
     return path.join(path.dirname(manifest), filename);
@@ -52,13 +52,13 @@ function main() {
   const bin = resolveBinary(slug);
   if (!bin || !fs.existsSync(bin)) {
     console.error(
-      `mdcc-safe: missing @1agh/md-claude-${slug}. Reinstall without --ignore-scripts: \`npm i -g @1agh/md-claude\`.`
+      `maude-safe: missing @1agh/maude-${slug}. Reinstall without --ignore-scripts: \`npm i -g @1agh/maude\`.`
     );
     process.exit(1);
   }
   const res = spawnSync(bin, process.argv.slice(2), { stdio: 'inherit' });
   if (res.error) {
-    console.error('mdcc-safe:', res.error.message);
+    console.error('maude-safe:', res.error.message);
     process.exit(1);
   }
   process.exit(res.status ?? 0);

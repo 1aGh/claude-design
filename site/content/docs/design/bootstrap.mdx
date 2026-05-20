@@ -8,7 +8,7 @@ description: How to scaffold .design/ in a new project, from cold-start to a usa
 Two paths to the same result:
 
 1. **Inside Claude Code** (recommended). Interactive discovery, project-flavored output, full specimen library.
-2. **From the terminal** (CI / scripted). `mdcc design init --no-discovery` with Recommended defaults.
+2. **From the terminal** (CI / scripted). `maude design init --no-discovery` with Recommended defaults.
 
 ## Path 1. Inside Claude Code
 
@@ -18,7 +18,7 @@ Two paths to the same result:
 
 What happens:
 
-1. **Onboard runs first** (if `.design/config.json` is missing). `/design:init` does dependency pre-flight (Node 20+, git), writes a skeleton config with empty `designSystems: []`, and prints install hints for soft deps (agent-browser, mdcc, CLAUDE.md / `.ai/` recommendations).
+1. **Onboard runs first** (if `.design/config.json` is missing). `/design:init` does dependency pre-flight (Node 20+, git), writes a skeleton config with empty `designSystems: []`, and prints install hints for soft deps (agent-browser, maude, CLAUDE.md / `.ai/` recommendations).
 2. **Skill `design-system` loads in bootstrap mode.** It detects `first-bootstrap` (no DS yet) and runs an 8-question discovery split across two `AskUserQuestion` rounds. Identity (audience, platforms, theme) plus brand (mood references, brand color, typography, content tone).
 3. **Direction confirmation.** The skill echoes a two-sentence proposed direction. You say yes or correct it.
 4. **Mapping to file set.** The skill consults `_MAPPING.md` to compute which specimens to scaffold based on the discovery answers. A consumer marketing site gets ~12 specimens, a pro-tool with multiplayer gets ~22.
@@ -37,7 +37,7 @@ For CI, scripted setup, or "just give me a starting point I'll edit by hand":
 
 ```bash
 cd /path/to/repo
-mdcc design init --no-discovery --name acme
+maude design init --no-discovery --name acme
 ```
 
 Produces ~16 files using Recommended defaults:
@@ -101,4 +101,4 @@ The skill detects `re-bootstrap` mode and pre-fills all 8 questions with the cur
 | `.design/system/<ds>/preview/` | Browsable specimens. At least 8 in `standard` profile |
 | `.design/system/<ds>/assets/{logos,glyphs}/` | Brand assets (may start empty) |
 
-Browse them: `mdcc design serve`, then `http://localhost:4399`.
+Browse them: `maude design serve`, then `http://localhost:4399`.

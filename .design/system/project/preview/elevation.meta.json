@@ -1,14 +1,14 @@
 {
   "title": "elevation",
   "subtitle": "depth-via-rules, not depth-via-shadow. --shadow-* are deliberately none.",
-  "brief": "MDCC-DSN/01.elevation / md-claude",
+  "brief": "MDCC-DSN/01.elevation / Maude",
   "platform": "desktop",
   "designSystem": "project",
   "opt_out_scope": "none",
   "sections": [
     {
       "id": "overview",
-      "title": "MDCC-DSN/01.elevation / md-claude",
+      "title": "MDCC-DSN/01.elevation / Maude",
       "artboards": [
         {
           "id": "primary",

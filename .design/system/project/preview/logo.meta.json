@@ -1,14 +1,14 @@
 {
   "title": "logo",
   "subtitle": "SIGNATURE — wordmark + 4 domain-noun glyphs. Construction rules.",
-  "brief": "MDCC-DSN/01.logo / md-claude",
+  "brief": "MDCC-DSN/01.logo / Maude",
   "platform": "desktop",
   "designSystem": "project",
   "opt_out_scope": "none",
   "sections": [
     {
       "id": "overview",
-      "title": "MDCC-DSN/01.logo / md-claude",
+      "title": "MDCC-DSN/01.logo / Maude",
       "artboards": [
         {
           "id": "primary",

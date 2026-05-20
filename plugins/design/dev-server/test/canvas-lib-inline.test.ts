@@ -71,7 +71,7 @@ describe('canvas-lib-inline / buildLibMap', () => {
 });
 
 describe('canvas-lib-inline / inlineUsedExports', () => {
-  test('no-op when canvas has no @mdcc/canvas-lib import', () => {
+  test('no-op when canvas has no @maude/canvas-lib import', () => {
     const canvas = 'export default function X() { return <button>x</button>; }\n';
     const r = inlineUsedExports(canvas, map());
     expect(r.droppedImport).toBe(false);
@@ -81,18 +81,18 @@ describe('canvas-lib-inline / inlineUsedExports', () => {
 
   test('inlines a single export + strips import line', () => {
     const canvas =
-      `import { DesignCanvas } from "@mdcc/canvas-lib";\n` +
+      `import { DesignCanvas } from "@maude/canvas-lib";\n` +
       'export default function X() { return <DesignCanvas>hi</DesignCanvas>; }\n';
     const r = inlineUsedExports(canvas, map());
     expect(r.droppedImport).toBe(true);
     expect(r.inlined).toEqual(['DesignCanvas']);
-    expect(r.content).not.toContain('@mdcc/canvas-lib');
+    expect(r.content).not.toContain('@maude/canvas-lib');
     expect(r.content).toContain('function DesignCanvas');
   });
 
   test('inlines transitive internal deps (ColorSwatch → TokenChip → internalHelper)', () => {
     const canvas =
-      `import { ColorSwatch } from "@mdcc/canvas-lib";\n` +
+      `import { ColorSwatch } from "@maude/canvas-lib";\n` +
       `export default function X() { return <ColorSwatch token="--accent" />; }\n`;
     const r = inlineUsedExports(canvas, map());
     expect(r.inlined.sort()).toEqual(['ColorSwatch', 'TokenChip', 'internalHelper']);
@@ -103,23 +103,23 @@ describe('canvas-lib-inline / inlineUsedExports', () => {
 
   test('handles multi-line import with trailing commas', () => {
     const canvas =
-      `import {\n  DesignCanvas,\n  DCArtboard,\n} from "@mdcc/canvas-lib";\n` +
+      `import {\n  DesignCanvas,\n  DCArtboard,\n} from "@maude/canvas-lib";\n` +
       'export default function X() { return <DesignCanvas><DCArtboard /></DesignCanvas>; }\n';
     const r = inlineUsedExports(canvas, map());
     expect(r.inlined.sort()).toEqual(['DCArtboard', 'DesignCanvas']);
-    expect(r.content).not.toMatch(/from\s*["']@mdcc\/canvas-lib["']/);
+    expect(r.content).not.toMatch(/from\s*["']@maude\/canvas-lib["']/);
   });
 
   test('throws when canvas imports an unknown export', () => {
     const canvas =
-      `import { DoesNotExist } from "@mdcc/canvas-lib";\n` +
+      `import { DoesNotExist } from "@maude/canvas-lib";\n` +
       'export default function X() { return <DoesNotExist />; }\n';
     expect(() => inlineUsedExports(canvas, map())).toThrow(/no such export/);
   });
 
   test('inlined content keeps the canvas default export at the top', () => {
     const canvas =
-      `import { DesignCanvas } from "@mdcc/canvas-lib";\n` +
+      `import { DesignCanvas } from "@maude/canvas-lib";\n` +
       'export default function X() { return <DesignCanvas>x</DesignCanvas>; }\n';
     const r = inlineUsedExports(canvas, map());
     const defaultIdx = r.content.indexOf('export default');
@@ -128,17 +128,17 @@ describe('canvas-lib-inline / inlineUsedExports', () => {
     expect(helperIdx).toBeGreaterThan(defaultIdx);
   });
 
-  test('zero @mdcc references remain in output', () => {
+  test('zero @maude references remain in output', () => {
     const canvas =
-      `import { DesignCanvas, ColorSwatch } from "@mdcc/canvas-lib";\n` +
+      `import { DesignCanvas, ColorSwatch } from "@maude/canvas-lib";\n` +
       `export default function X() { return <DesignCanvas><ColorSwatch token="--x"/></DesignCanvas>; }\n`;
     const r = inlineUsedExports(canvas, map());
-    expect(r.content.match(/@mdcc/g)).toBeNull();
+    expect(r.content.match(/@maude/g)).toBeNull();
   });
 
   test('result is at least as large as the original canvas (helpers added)', () => {
     const canvas =
-      `import { DesignCanvas } from "@mdcc/canvas-lib";\n` +
+      `import { DesignCanvas } from "@maude/canvas-lib";\n` +
       'export default function X() { return <DesignCanvas>x</DesignCanvas>; }\n';
     const r = inlineUsedExports(canvas, map());
     expect(r.content.length).toBeGreaterThan(canvas.length);

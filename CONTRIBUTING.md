@@ -1,6 +1,6 @@
-# Contributing to md-claude
+# Contributing to Maude
 
-Thanks for considering a contribution. md-claude is small and the bar for "ready to merge" is mostly: works on a fresh clone, doesn't surprise existing users, and ships with a [changeset](https://github.com/changesets/changesets) describing the user-visible impact.
+Thanks for considering a contribution. Maude is small and the bar for "ready to merge" is mostly: works on a fresh clone, doesn't surprise existing users, and ships with a [changeset](https://github.com/changesets/changesets) describing the user-visible impact.
 
 This document is intentionally short. If something here is unclear, opening an issue or a doc PR is itself a great first contribution.
 
@@ -8,8 +8,8 @@ This document is intentionally short. If something here is unclear, opening an i
 
 ```sh
 # 1. Fork + clone
-gh repo fork 1aGh/md-claude --clone --remote
-cd md-claude
+gh repo fork 1aGh/maude --clone --remote
+cd maude
 
 # 2. Install (Node ≥ 20, pnpm ≥ 9)
 pnpm install
@@ -37,7 +37,7 @@ If those six steps work end-to-end, your PR is ~95% of the way there.
 ```
 .
 ├── .claude-plugin/marketplace.json   # entry point Claude Code reads
-├── cli/                              # mdcc CLI (published to npm)
+├── cli/                              # maude CLI (published to npm; legacy `mdcc` alias)
 ├── plugins/
 │   ├── design/                       # canvas-first design plugin
 │   │   ├── dev-server/               # zero-dep Node dev server (workspace)
@@ -48,7 +48,7 @@ If those six steps work end-to-end, your PR is ~95% of the way there.
 └── package.json                      # the single npm publisher
 ```
 
-The repo is a **pnpm workspace monorepo** with a single published npm package (`@1agh/md-claude`). All other workspaces are `"private": true` and never publish — they are dev-time only. See the workspace DDR under `.ai/decisions/` for the rationale.
+The repo is a **pnpm workspace monorepo** with a single published npm package (`@1agh/maude`). All other workspaces are `"private": true` and never publish — they are dev-time only. See the workspace DDR under `.ai/decisions/` for the rationale.
 
 ## Local development loop
 
@@ -56,12 +56,12 @@ The plugins are pure markdown commands/skills/agents plus a zero-dep Node server
 
 ```
 # Tell Claude Code to read this working tree as a marketplace
-/plugin marketplace add /absolute/path/to/md-claude
-/plugin install design@md-claude
-/plugin install flow@md-claude
+/plugin marketplace add /absolute/path/to/maude
+/plugin install design@maude
+/plugin install flow@maude
 
 # After every edit
-/plugin marketplace update md-claude
+/plugin marketplace update maude
 /reload-plugins
 ```
 
@@ -108,7 +108,7 @@ Conventional Commits — short, imperative, scope-tagged:
 
 ```
 feat(design): pin-to-element edits via Cmd+Click
-fix(cli): mdcc init now rewrites $schema for global installs
+fix(cli): maude init now rewrites $schema for global installs
 docs(readme): clarify changeset flow
 chore(infra): bootstrap pnpm workspaces (Phase 1 / Task 0)
 ```
@@ -148,6 +148,6 @@ Participation in this project is governed by the [Contributor Covenant 2.1](./CO
 
 ## Questions?
 
-- General questions → [GitHub Discussions](https://github.com/1aGh/md-claude/discussions).
-- Bug reports → [Issues](https://github.com/1aGh/md-claude/issues).
+- General questions → [GitHub Discussions](https://github.com/1aGh/maude/discussions).
+- Bug reports → [Issues](https://github.com/1aGh/maude/issues).
 - Security → [SECURITY.md](./SECURITY.md).

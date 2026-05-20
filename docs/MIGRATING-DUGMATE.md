@@ -1,6 +1,6 @@
 # Migrating Dugmate to the `flow` plugin
 
-This guide migrates `/Volumes/D/git/dugmate` from its bundled `.claude/` workflow loop to the marketplace-installed `flow@md-claude` plugin.
+This guide migrates `/Volumes/D/git/dugmate` from its bundled `.claude/` workflow loop to the marketplace-installed `flow@maude` plugin.
 
 ## What you keep, what you remove, what you gain
 
@@ -11,9 +11,9 @@ This guide migrates `/Volumes/D/git/dugmate` from its bundled `.claude/` workflo
 - `skills/dugmate-a11y-rules/`
 - `skills/dugmate-testing-rules/`
 - `skills/dugmate-debugging-rules/`
-- `skills/ux-designer/` — stays Dugmate-local indefinitely. Design-critic skills live in the `design` plugin (`/design:critic`) and cover that role at md-claude scope.
+- `skills/ux-designer/` — stays Dugmate-local indefinitely. Design-critic skills live in the `design` plugin (`/design:critic`) and cover that role at Maude scope.
 
-**Remove** (replaced by `flow@md-claude`):
+**Remove** (replaced by `flow@maude`):
 
 - `dugmate/.claude/commands/*.md` — all 25 commands. Flow plugin ships generic, English equivalents installed under the `/flow:` namespace. If you really want Czech command bodies, you can override individual ones by placing matching files back in `dugmate/.claude/commands/` (Claude Code prefers local over plugin).
 - `dugmate/.claude/agents/*.md` — `a11y-auditor`, `design-system-guard`, `scenario-runner`, `test-coverage`. Flow plugin ships these generic.
@@ -27,22 +27,22 @@ This guide migrates `/Volumes/D/git/dugmate` from its bundled `.claude/` workflo
 
 ## Migration steps
 
-### 1. Install md-claude marketplace + flow plugin
+### 1. Install Maude marketplace + flow plugin
 
 Inside Claude Code, with `dugmate` open as the project:
 
 ```
-/plugin marketplace add 1aGh/md-claude
-/plugin install flow@md-claude
+/plugin marketplace add 1aGh/maude
+/plugin install flow@maude
 /reload-plugins
 ```
 
-Optional: `/plugin install design@md-claude` if you want the design canvas there too. (Dugmate already has rich design tooling; verify before installing.)
+Optional: `/plugin install design@maude` if you want the design canvas there too. (Dugmate already has rich design tooling; verify before installing.)
 
 ### 2. Install the CLI globally
 
 ```sh
-npm i -g @1agh/md-claude
+npm i -g @1agh/maude
 ```
 
 ### 3. Scaffold the missing `.ai/` pieces
@@ -51,7 +51,7 @@ Dugmate already has a rich `.ai/`. The flow skeleton adds anything missing — i
 
 ```sh
 cd /Volumes/D/git/dugmate
-mdcc init --name dugmate
+maude init --name dugmate
 ```
 
 This:
@@ -62,29 +62,29 @@ This:
 ### 4. Populate the config
 
 ```sh
-mdcc config set name dugmate
-mdcc config set language cs
-mdcc config set theme dark
-mdcc config set platforms '["web-desktop","web-mobile","ios-phone","ios-tablet","android-phone"]'
-mdcc config set bundleIdPrefix com.dugmate
-mdcc config set boundaries.realtime '["Yjs","WebSocket","Partykit","Liveblocks"]'
-mdcc config set boundaries.video '["Mux","bunny.net"]'
-mdcc config set boundaries.api '["tRPC","RLS"]'
-mdcc config set boundaries.telemetry '["PostHog"]'
-mdcc config set ux.responseTargetMs 100
-mdcc config set ux.bilingual '["cs","en"]'
-mdcc config set responsive.densityMap '{"web-desktop":"command-center","web-mobile":"sideline-tool","ios-phone":"palm-friendly","ios-tablet":"palm-friendly","android-phone":"palm-friendly"}'
+maude config set name dugmate
+maude config set language cs
+maude config set theme dark
+maude config set platforms '["web-desktop","web-mobile","ios-phone","ios-tablet","android-phone"]'
+maude config set bundleIdPrefix com.dugmate
+maude config set boundaries.realtime '["Yjs","WebSocket","Partykit","Liveblocks"]'
+maude config set boundaries.video '["Mux","bunny.net"]'
+maude config set boundaries.api '["tRPC","RLS"]'
+maude config set boundaries.telemetry '["PostHog"]'
+maude config set ux.responseTargetMs 100
+maude config set ux.bilingual '["cs","en"]'
+maude config set responsive.densityMap '{"web-desktop":"command-center","web-mobile":"sideline-tool","ios-phone":"palm-friendly","ios-tablet":"palm-friendly","android-phone":"palm-friendly"}'
 ```
 
-Inspect with `mdcc config show`.
+Inspect with `maude config show`.
 
 ### 5. Verify path resolution
 
 The flow plugin's commands resolve `<project>` from `.ai/workflows.config.json` → `name`. With `name: "dugmate"`, references like `.ai/<project>-prd.md` resolve to `.ai/dugmate-prd.md` — which already exists.
 
 ```sh
-mdcc config get paths.prd            # → .ai/dugmate-prd.md
-mdcc config get paths.designSystem   # → .ai/dugmate-design-system.md
+maude config get paths.prd            # → .ai/dugmate-prd.md
+maude config get paths.designSystem   # → .ai/dugmate-design-system.md
 ```
 
 If you want different filenames, override `paths.prd` / `paths.designSystem`.
@@ -101,7 +101,7 @@ git rm -r .claude/skills/agent-browser .claude/skills/agent-device \
           .claude/skills/ddr-keeper .claude/skills/make-skill-template \
           .claude/skills/question-protocol .claude/skills/scenario \
           .claude/skills/workflow-state
-git commit -m "chore: drop bundled workflow loop, switch to flow@md-claude"
+git commit -m "chore: drop bundled workflow loop, switch to flow@maude"
 ```
 
 **Don't remove:**
@@ -113,13 +113,13 @@ git commit -m "chore: drop bundled workflow loop, switch to flow@md-claude"
 
 ### 7. Update `dugmate/.claude/settings.json`
 
-Make sure `flow@md-claude` is in your enabled plugins list:
+Make sure `flow@maude` is in your enabled plugins list:
 
 ```json
 {
   "enabledPlugins": [
-    "flow@md-claude",
-    "design@md-claude",
+    "flow@maude",
+    "design@maude",
     "frontend-design@claude-code",
     "playground@claude-code"
   ]
@@ -148,9 +148,9 @@ Then try a small loop end-to-end on a throwaway branch:
 ## What can go wrong
 
 - **Subagents can't find `dugmate-*-rules`.** Cause: skill folder names changed or moved. Fix: ensure `dugmate/.claude/skills/dugmate-{motion,responsive,a11y,testing,debugging}-rules/SKILL.md` exist (with frontmatter `name: dugmate-<topic>-rules`).
-- **`<project>` placeholder doesn't resolve.** Cause: `.ai/workflows.config.json` missing or `name` empty. Fix: `mdcc config set name dugmate`.
+- **`<project>` placeholder doesn't resolve.** Cause: `.ai/workflows.config.json` missing or `name` empty. Fix: `maude config set name dugmate`.
 - **Czech command bodies missed.** Generic commands are EN. If you really need a Czech body, copy that specific command back to `dugmate/.claude/commands/<name>.md` — Claude Code prefers local over plugin. Recommended: keep EN.
-- **`scenario-runner` doesn't iterate all 5 platforms.** Cause: `platforms` array short. Fix: `mdcc config set platforms '[...]'`.
+- **`scenario-runner` doesn't iterate all 5 platforms.** Cause: `platforms` array short. Fix: `maude config set platforms '[...]'`.
 - **`.ai/dugmate-*.md` files have stale links to `.claude/commands/`.** Update those to `plugins/flow/commands/` or just remove the path — the command name is what matters.
 
 ## Tracker integration (optional)
@@ -158,15 +158,15 @@ Then try a small loop end-to-end on a throwaway branch:
 If you decide to wire dugmate's tracker (currently GitHub Issues) into the flow loop, add the integration block. For dugmate this is minimal because `provider: github` + `gh` CLI covers everything:
 
 ```sh
-mdcc config set integrations.tracker.provider github
+maude config set integrations.tracker.provider github
 ```
 
 For projects on ClickUp / Linear / Jira / Notion, set the MCP prefix and pour project-specific shape into `defaults`:
 
 ```sh
-mdcc config set integrations.tracker.provider clickup
-mdcc config set integrations.tracker.mcp mcp__claude_ai_ClickUp
-mdcc config set integrations.tracker.defaults '{"boardListId":"901519382993","doneStatus":"done","activeStatus":"in progress"}'
+maude config set integrations.tracker.provider clickup
+maude config set integrations.tracker.mcp mcp__claude_ai_ClickUp
+maude config set integrations.tracker.defaults '{"boardListId":"901519382993","doneStatus":"done","activeStatus":"in progress"}'
 ```
 
 Anything non-obvious about *why* those values are correct (which list is the source of truth, what the status flow contract is, how milestones nest) belongs in a DDR — see `docs/INTEGRATIONS.md` for the schema → config → DDR pattern.

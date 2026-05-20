@@ -1,14 +1,14 @@
 {
   "title": "components-terminal-pane",
   "subtitle": "terminal pane — prompt + cursor + history. Phosphor heritage.",
-  "brief": "MDCC-DSN/01.components-terminal-pane / md-claude",
+  "brief": "MDCC-DSN/01.components-terminal-pane / Maude",
   "platform": "desktop",
   "designSystem": "project",
   "opt_out_scope": "none",
   "sections": [
     {
       "id": "overview",
-      "title": "MDCC-DSN/01.components-terminal-pane / md-claude",
+      "title": "MDCC-DSN/01.components-terminal-pane / Maude",
       "artboards": [
         {
           "id": "primary",

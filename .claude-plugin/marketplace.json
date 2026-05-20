@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "md-claude",
-  "description": "Claude Code plugins by Michal Dovrtěl — `design` (canvas-first iteration on HTML/JSX mocks with auto-managed dev server and chained critique) and `flow` (generic agentic workflow loop with second-brain `.ai/` workspace, config-driven enforcement skills, and subagents). Ships `mdcc` CLI for scaffolding and tooling.",
+  "name": "maude",
+  "description": "Claude Code plugins by Michal Dovrtěl — `design` (canvas-first iteration on HTML/JSX mocks with auto-managed dev server and chained critique) and `flow` (generic agentic workflow loop with second-brain `.ai/` workspace, config-driven enforcement skills, and subagents). Ships the `maude` CLI (with `mdcc` legacy alias) for scaffolding and tooling.",
   "owner": {
     "name": "1aGh"
   },
@@ -16,7 +16,7 @@
       "name": "flow",
       "source": "./plugins/flow",
       "category": "workflow",
-      "description": "Generic agentic workflow loop — 29 slash commands across 9 categories. Daily verbs: /flow:plan, /flow:execute, /flow:done, /flow:validate, /flow:status, /flow:pause, /flow:resume, /flow:scenario, /flow:quick, /flow:release, /flow:help. Grouped specializations follow a `<group>-<verb>` prefix: setup-* (onboard, prd, codebase-map, context), bug-* (rca, fix), record-* (ddr, retro, execution), maintain-* (clean, docs, ai-health, discover), validate-* (a11y, visual), review-code, release-changelog, utils-verify. Type /flow:help for the live index. Project-agnostic via `<project>` placeholders + per-repo `.ai/workflows.config.json`. Bundled subagents (a11y-auditor, design-system-guard, scenario-runner, test-coverage) and skills (workflow-state, ddr-keeper, scenario, agent-browser, agent-device, codebase-intelligence, a11y-checker, question-protocol, make-skill-template). Use `mdcc init` to scaffold `.ai/` skeleton."
+      "description": "Generic agentic workflow loop — 29 slash commands across 9 categories. Daily verbs: /flow:plan, /flow:execute, /flow:done, /flow:validate, /flow:status, /flow:pause, /flow:resume, /flow:scenario, /flow:quick, /flow:release, /flow:help. Grouped specializations follow a `<group>-<verb>` prefix: setup-* (onboard, prd, codebase-map, context), bug-* (rca, fix), record-* (ddr, retro, execution), maintain-* (clean, docs, ai-health, discover), validate-* (a11y, visual), review-code, release-changelog, utils-verify. Type /flow:help for the live index. Project-agnostic via `<project>` placeholders + per-repo `.ai/workflows.config.json`. Bundled subagents (a11y-auditor, design-system-guard, scenario-runner, test-coverage) and skills (workflow-state, ddr-keeper, scenario, agent-browser, agent-device, codebase-intelligence, a11y-checker, question-protocol, make-skill-template). Use `maude init` (or legacy `mdcc init`) to scaffold `.ai/` skeleton."
     }
   ]
 }

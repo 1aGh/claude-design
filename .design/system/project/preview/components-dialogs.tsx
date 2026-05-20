@@ -4,7 +4,7 @@
  * @platform    desktop
  * @opt_out     none
  * @artboards   primary
- * @brief       MDCC-DSN/01.components-dialogs / md-claude
+ * @brief       MDCC-DSN/01.components-dialogs / Maude
  * @stack       React 19 · TSX · Bun.build · css_mode=inline
  * @history     .design/_history/components-dialogs/
  * @handoff     bunx shadcn add file://./components-dialogs.registry.json
@@ -14,7 +14,7 @@ import "./components-dialogs.css";
 export default function ComponentsDialogs() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.components-dialogs</span><span className="crumbs"><span>md-claude</span><span>design system</span><span>components</span><span>dialogs</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.components-dialogs</span><span className="crumbs"><span>maude</span><span>design system</span><span>components</span><span>dialogs</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Dialogs</h1><p className="lede">Modal dialog + side drawer. SKU header, sectioned body, action footer. Scrim is a flat 0.6 alpha. No backdrop blur, no frosted-glass.</p></section>
             <dl className="specimen-meta"><div><dt>Variants</dt><dd>modal · drawer</dd></div><div><dt>Scrim</dt><dd>rgba(0,0,0,0.6). No blur.</dd></div></dl>
@@ -48,7 +48,7 @@ export default function ComponentsDialogs() {
               <div className="drawer-ft"><button className="btn btn--quiet">Close</button><button className="btn btn--primary" style={{ marginLeft: 'auto' }}>Apply</button></div>
             </div>
 
-            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· components-dialogs</span></div><div className="colo-block"><span>md-claude · v0.12.0</span></div></footer>
+            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· components-dialogs</span></div><div className="colo-block"><span>Maude · v0.12.0</span></div></footer>
           </main>
         </>
   );

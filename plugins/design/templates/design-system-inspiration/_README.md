@@ -66,6 +66,6 @@ templates/design-system-inspiration/
 
 ## Placeholder syntax (`.tpl` files only)
 
-Templates (`.tpl` extension) use `{{name}}` double-brace placeholders. Distinct from flow's `PROJECT_NAME` namespace. The CLI helper (`mdcc design init`) strips the `.tpl` suffix during scaffold and substitutes placeholders from the discovery payload.
+Templates (`.tpl` extension) use `{{name}}` double-brace placeholders. Distinct from flow's `PROJECT_NAME` namespace. The CLI helper (`maude design init`) strips the `.tpl` suffix during scaffold and substitutes placeholders from the discovery payload.
 
 Plain `.html` files have no placeholders — the agent reads them as references and writes fresh files.

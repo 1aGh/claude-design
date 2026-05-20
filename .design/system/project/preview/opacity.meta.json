@@ -1,14 +1,14 @@
 {
   "title": "opacity",
   "subtitle": "opacity ladder for disabled / pressed / overlay scrim.",
-  "brief": "MDCC-DSN/01.opacity / md-claude",
+  "brief": "MDCC-DSN/01.opacity / Maude",
   "platform": "desktop",
   "designSystem": "project",
   "opt_out_scope": "none",
   "sections": [
     {
       "id": "overview",
-      "title": "MDCC-DSN/01.opacity / md-claude",
+      "title": "MDCC-DSN/01.opacity / Maude",
       "artboards": [
         {
           "id": "primary",

@@ -1,14 +1,14 @@
 {
   "title": "components-resize-panels",
   "subtitle": "resizable file-tree + main pane (the dev-server's anatomy).",
-  "brief": "MDCC-DSN/01.components-resize-panels / md-claude",
+  "brief": "MDCC-DSN/01.components-resize-panels / Maude",
   "platform": "desktop",
   "designSystem": "project",
   "opt_out_scope": "none",
   "sections": [
     {
       "id": "overview",
-      "title": "MDCC-DSN/01.components-resize-panels / md-claude",
+      "title": "MDCC-DSN/01.components-resize-panels / Maude",
       "artboards": [
         {
           "id": "primary",

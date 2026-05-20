@@ -4,7 +4,7 @@
  * @platform    desktop
  * @opt_out     none
  * @artboards   primary
- * @brief       MDCC-DSN/01 / md-claude · DS in use
+ * @brief       MDCC-DSN/01 / Maude · DS in use
  * @stack       React 19 · TSX · Bun.build · css_mode=inline
  * @history     .design/_history/ui-kits-desktop-showcase/
  * @handoff     bunx shadcn add file://./ui_kits-desktop-showcase.registry.json
@@ -14,13 +14,13 @@ import "./ui_kits-desktop-showcase.css";
 export default function UiKitsDesktopShowcase() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01 · SHOWCASE</span><span className="crumbs"><span>md-claude</span><span>design system</span><span>ds in use</span><span>desktop showcase</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01 · SHOWCASE</span><span className="crumbs"><span>maude</span><span>design system</span><span>ds in use</span><span>desktop showcase</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
 
           <main className="stage">
             <div className="stage-hd">
               <div className="left">
                 <span className="sku-big">MDCC-DSN/01</span>
-                <span className="title">md-claude · the dev-server canvas in use</span>
+                <span className="title">maude · the dev-server canvas in use</span>
               </div>
               <div className="accent-picker">
                 <span>ACCENT</span>
@@ -94,7 +94,7 @@ export default function UiKitsDesktopShowcase() {
                       <div style={{ border: '4px solid var(--accent)', padding: 'var(--space-6)', background: 'var(--bg-0)', position: 'relative', margin: '0 0 var(--space-5)' }}>
                         <div style={{ position: 'absolute', inset: '4px', border: '1px solid var(--accent)', pointerEvents: 'none' }}></div>
                         <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--type-xs)', letterSpacing: 'var(--tracking-sku)', color: 'var(--accent)', fontWeight: '700', textTransform: 'uppercase' }}>MDCC-DSN/01 · PUBLISHED 2026-05-14</div>
-                        <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--type-xl)', margin: 'var(--space-3) 0', color: 'var(--fg-0)', fontWeight: '700' }}>md-claude design system</h3>
+                        <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 'var(--type-xl)', margin: 'var(--space-3) 0', color: 'var(--fg-0)', fontWeight: '700' }}>maude design system</h3>
                         <p style={{ margin: '0', color: 'var(--fg-1)', maxWidth: '50ch' }}>A catalog-disciplined, mono-everywhere DS for the marketplace and the dev-server canvas. The accent is a stamp, not a fill.</p>
                       </div>
 
@@ -192,7 +192,7 @@ export default function UiKitsDesktopShowcase() {
 
             <footer className="specimen-ft" style={{ marginTop: 'var(--space-7)' }}>
               <div className="colo-block"><strong>MDCC-DSN/01</strong><span>· ui_kits-desktop-showcase · ★★ highest-leverage</span></div>
-              <div className="colo-block"><span>md-claude · v0.12.0</span></div>
+              <div className="colo-block"><span>Maude · v0.12.0</span></div>
             </footer>
           </main>
         </>

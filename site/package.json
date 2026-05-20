@@ -1,8 +1,8 @@
 {
-  "name": "@md-claude/site",
+  "name": "@maude/site",
   "version": "0.0.0",
   "private": true,
-  "description": "md-claude documentation site (Fumadocs + Next.js). Public docs for the mdcc CLI and the flow + design plugins.",
+  "description": "Maude documentation site (Fumadocs + Next.js). Public docs for the maude CLI (legacy alias: mdcc) and the flow + design plugins.",
   "scripts": {
     "build": "next build",
     "dev": "next dev",

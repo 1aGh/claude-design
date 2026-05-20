@@ -40,7 +40,7 @@ body:
       options:
         - design plugin
         - flow plugin
-        - mdcc CLI
+        - maude CLI
         - docs site
         - release / CI
         - other

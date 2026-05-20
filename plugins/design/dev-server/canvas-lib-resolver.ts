@@ -1,6 +1,6 @@
-// Virtual-module resolver for `@mdcc/canvas-lib` (Phase 3.6.1; relocated 4.0.5).
+// Virtual-module resolver for `@maude/canvas-lib` (Phase 3.6.1; relocated 4.0.5).
 //
-// Canvases import the shared canvas library via the specifier `@mdcc/canvas-lib`.
+// Canvases import the shared canvas library via the specifier `@maude/canvas-lib`.
 // At build time we redirect that to the dev-server-bundled source at
 // `plugins/design/dev-server/canvas-lib.tsx` so:
 //
@@ -27,7 +27,7 @@ import path from 'node:path';
 
 import type { BunPlugin } from 'bun';
 
-export const CANVAS_LIB_SPECIFIER = '@mdcc/canvas-lib';
+export const CANVAS_LIB_SPECIFIER = '@maude/canvas-lib';
 
 /**
  * Returns the dev-server-internal canvas-lib path. The `_designRoot` parameter
@@ -44,7 +44,7 @@ export interface CanvasLibResolverOptions {
 }
 
 /**
- * Bun.build plugin factory. Maps `@mdcc/canvas-lib` → the dev-server-bundled
+ * Bun.build plugin factory. Maps `@maude/canvas-lib` → the dev-server-bundled
  * `canvas-lib.tsx`. No-op for any other specifier.
  */
 export function canvasLibResolver(
@@ -54,12 +54,12 @@ export function canvasLibResolver(
   const target = canvasLibPath();
   const failLoud = opts.failLoud !== false;
   return {
-    name: 'mdcc-canvas-lib',
+    name: 'maude-canvas-lib',
     setup(builder) {
-      builder.onResolve({ filter: /^@mdcc\/canvas-lib$/ }, () => {
+      builder.onResolve({ filter: /^@maude\/canvas-lib$/ }, () => {
         if (failLoud && !existsSync(target)) {
           throw new Error(
-            `[@mdcc/canvas-lib] canvas library missing at ${target} — dev-server install is corrupt; re-install @1agh/md-claude.`
+            `[@maude/canvas-lib] canvas library missing at ${target} — dev-server install is corrupt; re-install @1agh/maude.`
           );
         }
         return { path: target };
@@ -78,7 +78,7 @@ export async function readCanvasLibSource(_designRoot?: string): Promise<string>
   const f = Bun.file(p);
   if (!(await f.exists())) {
     throw new Error(
-      `[@mdcc/canvas-lib] canvas library missing at ${p} — dev-server install is corrupt; re-install @1agh/md-claude.`
+      `[@maude/canvas-lib] canvas library missing at ${p} — dev-server install is corrupt; re-install @1agh/maude.`
     );
   }
   return f.text();

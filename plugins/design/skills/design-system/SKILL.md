@@ -345,7 +345,7 @@ The inspiration library at `plugins/design/templates/design-system-inspiration/`
 
 The dependency root. Main agent writes these **in order, alone** because every later file imports them.
 
-> **Canvas-lib note (DDR-025):** Per Phase 4.0.5 canvas-lib ships with the dev-server install at `plugins/design/dev-server/canvas-lib.tsx`. Bootstrap **does not** scaffold a project-side copy — the virtual specifier `@mdcc/canvas-lib` resolves directly at canvas build time. UI mock canvases keep importing `DesignCanvas` / `DCSection` / `DCArtboard` from `@mdcc/canvas-lib` without any per-project setup.
+> **Canvas-lib note (DDR-025):** Per Phase 4.0.5 canvas-lib ships with the dev-server install at `plugins/design/dev-server/canvas-lib.tsx`. Bootstrap **does not** scaffold a project-side copy — the virtual specifier `@maude/canvas-lib` resolves directly at canvas build time. UI mock canvases keep importing `DesignCanvas` / `DCSection` / `DCArtboard` from `@maude/canvas-lib` without any per-project setup.
 
 1. `colors_and_type.css` — tokens. Substitute discovery values (accent OKLCH, fonts, density-derived `--space-*` defaults, Q9-derived shadow/treatment tokens like `--shadow-glow` or `--scanline-alpha`).
 2. `<designRoot>/system/<ds>/preview/_layout.css` — chrome. **Bakes Q9 signature treatment into the body background + h1 treatment.** Examples:
@@ -403,7 +403,7 @@ Specimens are FLOWING reference pages, not viewport mocks. Do NOT wrap in
 a flex column directly. The original .html-era specimens had exactly this
 shape; we keep it one-for-one in TSX.
 
-Canvas-lib (`@mdcc/canvas-lib`) is reserved for UI mock canvases with
+Canvas-lib (`@maude/canvas-lib`) is reserved for UI mock canvases with
 multiple fixed-px artboards (Docs Site, Canvas Viewport). Specimens do NOT
 import it. Token/theme hooks (`useTokens`, `useTheme`) ARE available if a
 specimen genuinely needs them — but bare CSS via `var(--*)` is the default.
@@ -520,7 +520,7 @@ Batch B and Batch C can also fire **simultaneously** — they have disjoint depe
 
 For each file in the computed set the sub-agent:
 
-- **Core `.tpl` files** (under inspiration `core/`): substitute placeholders from the discovery payload. If `mdcc` is available on PATH, shell out to `mdcc design init --discovery-payload <path>`. Else inline Write.
+- **Core `.tpl` files** (under inspiration `core/`): substitute placeholders from the discovery payload. If `maude` is available on PATH, shell out to `maude design init --discovery-payload <path>`. Else inline Write.
 - **Specimen files**: read the corresponding reference in the inspiration library, then **RESTRUCTURE** following the creativity rubric above. **No placeholder copy** in the output, ever.
 
 Scaffold sources (walk in order, apply gate, generate):
@@ -620,7 +620,7 @@ Spawn these critics **in parallel** (single message, multiple Agent calls) on on
 
 Bootstrap-mode Post-Flight is **slim** — only DS-specific follow-ups (no environment offers; those belong to `init`):
 
-- Optionally surface a one-shot AskUserQuestion offering `mdcc design serve` if not already running, so the user can browse the freshly-generated specimens.
+- Optionally surface a one-shot AskUserQuestion offering `maude design serve` if not already running, so the user can browse the freshly-generated specimens.
 
 Everything else (CLAUDE.md, .ai/, agent-browser install hints) was handled during `init` BEFORE bootstrap ran.
 

@@ -2,7 +2,7 @@
 
 **Persona:** Claude (or human designer) auditing every DS specimen TSX after the Phase 3.6.1 visual-regression repair — confirming the bare-TSX specimen shape boots cleanly through `_canvas-shell.html` and the inspector pipeline lights up.
 **Artboards:** every `.design/system/<ds>/preview/*.tsx` under the active design system (`project` by default — 38 files at time of authoring).
-**Hypothesis:** the bare-TSX specimen contract (post scope-correction — no `@mdcc/canvas-lib` envelope, just `<header class="specimen-hd">` + `<main class="specimen">`) survives end-to-end:
+**Hypothesis:** the bare-TSX specimen contract (post scope-correction — no `@maude/canvas-lib` envelope, just `<header class="specimen-hd">` + `<main class="specimen">`) survives end-to-end:
 
 1. Every specimen loads through `_canvas-shell.html?canvas=<rel>&layout=…&components=…&tokens=…` without throwing.
 2. The canvas-build pipeline emits both the JS module + the sibling CSS asset (the post-3.6.1 `buildCanvasModule()` CSS-injector hot-fix).

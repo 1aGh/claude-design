@@ -11,12 +11,12 @@
  */
 
 import "./Docs Site.css";
-import { DCArtboard, DCSection, DesignCanvas } from "@mdcc/canvas-lib";
+import { DCArtboard, DCSection, DesignCanvas } from "@maude/canvas-lib";
 
 /* ───────────────────────────────────────────────────────────────────── *
  *  Docs Site / MDCC-DSN/01                                              *
  *                                                                       *
- *  4 artboards composing the redesign of the md-claude marketplace +    *
+ *  4 artboards composing the redesign of the Maude marketplace +    *
  *  standalone fumadocs site. Shared TopNav across all four; landing     *
  *  carries brand exuberance (within DS rules), docs are sparse-visual   *
  *  / interaction-dense.                                                 *
@@ -27,13 +27,13 @@ function TopNav({ active = "docs" }) {
   return (
     <header className="nav">
       <div className="nav-brand">
-        <a href="/" className="wm">md-claude</a>
+        <a href="/" className="wm">maude</a>
         <span className="sku">MDCC-MKT/00 · v0.12.0</span>
       </div>
       <nav className="nav-links" aria-label="Primary">
         <a href="/docs"     className={active === "docs"    ? "active" : ""}>Docs</a>
         <a href="/plugins"  className={active === "plugins" ? "active" : ""}>Plugins</a>
-        <a href="https://github.com/1aGh/md-claude">Source <span aria-hidden="true">↗</span></a>
+        <a href="https://github.com/1aGh/maude">Source <span aria-hidden="true">↗</span></a>
         <a href="/changelog">Changelog</a>
       </nav>
       <div className="nav-tools">
@@ -91,9 +91,9 @@ function DocSidebar({ activeSlug }) {
       <section>
         <h4><span>CLI · MDCC</span><span className="sku">MDCC-CLI/03</span></h4>
         <ul>
-          <li className={is("cli-init")}><a href="/docs/cli#init"><code>mdcc init</code></a></li>
-          <li className={is("cli-config")}><a href="/docs/cli#config"><code>mdcc config</code></a></li>
-          <li className={is("cli-design")}><a href="/docs/cli#design"><code>mdcc design serve</code></a></li>
+          <li className={is("cli-init")}><a href="/docs/cli#init"><code>maude init</code></a></li>
+          <li className={is("cli-config")}><a href="/docs/cli#config"><code>maude config</code></a></li>
+          <li className={is("cli-design")}><a href="/docs/cli#design"><code>maude design serve</code></a></li>
           <li className={is("config")}><a href="/docs/config">workflows.config.json</a></li>
         </ul>
       </section>
@@ -174,7 +174,7 @@ function ArtboardLanding() {
   return (
     <div className="ab">
       <a href="#land-h1" className="skip">Skip to content</a>
-      <AbSku id="DS-01" label="MARKETPLACE LANDING" file="md-claude.dev/" />
+      <AbSku id="DS-01" label="MARKETPLACE LANDING" file="maude.iagh.cz/" />
       <TopNav active="plugins" />
       <div className="land">
 
@@ -195,7 +195,7 @@ function ArtboardLanding() {
               Two plugins, one CLI, zero feelings about your CSS framework.
               <code>design</code> iterates on HTML mocks until they stop being embarrassing.
               <code>flow</code> runs the agentic loop until the feature actually ships.
-              <code>mdcc</code> scaffolds the second-brain <code>.ai/</code> workspace they both pretend they could live without.
+              <code>maude</code> scaffolds the second-brain <code>.ai/</code> workspace they both pretend they could live without.
             </p>
             <p style={{color:"var(--fg-2)", fontSize:"var(--type-sm)", maxWidth:"60ch"}}>
               Open-source. Catalog-graded. No telemetry, no signup, no <em style={{fontStyle:"normal", textDecoration:"line-through", textDecorationColor:"var(--accent)"}}>book a demo</em> button. If it crashes, you <code style={{background:"transparent",border:0,padding:0,color:"var(--accent)"}}>git pull</code> and try again. That's the entire support contract.
@@ -221,15 +221,15 @@ function ArtboardLanding() {
             </div>
             <pre>
 <span className="cmt"># 1. add the marketplace</span>{"\n"}
-<span className="prompt">$</span> <span className="acc">/plugin</span> marketplace add 1aGh/md-claude{"\n"}
+<span className="prompt">$</span> <span className="acc">/plugin</span> marketplace add 1aGh/maude{"\n"}
 {"\n"}
 <span className="cmt"># 2. install plugins</span>{"\n"}
-<span className="prompt">$</span> <span className="acc">/plugin</span> install design@md-claude{"\n"}
-<span className="prompt">$</span> <span className="acc">/plugin</span> install flow@md-claude{"\n"}
+<span className="prompt">$</span> <span className="acc">/plugin</span> install design@maude{"\n"}
+<span className="prompt">$</span> <span className="acc">/plugin</span> install flow@maude{"\n"}
 {"\n"}
 <span className="cmt"># optional. scaffold a project from CLI</span>{"\n"}
-<span className="prompt">$</span> npm i -g @1agh/md-claude{"\n"}
-<span className="prompt">$</span> <span className="acc">mdcc</span> init --name my-app
+<span className="prompt">$</span> npm i -g @1agh/maude{"\n"}
+<span className="prompt">$</span> <span className="acc">maude</span> init --name my-app
             </pre>
           </div>
         </section>
@@ -247,7 +247,7 @@ function ArtboardLanding() {
               <p>Canvas-first iteration on HTML/JSX mocks. Includes a zero-dep dev server with element inspector overlay (Cmd+Click → selection lands on disk for the next /design:edit).</p>
               <div className="tags"><span>commands · 12</span><span>skills · 4</span><span>critics · 9</span></div>
               <div className="install">
-                <code>/plugin install design@md-claude</code>
+                <code>/plugin install design@maude</code>
                 <button type="button" className="copy" aria-label="Copy install command for design plugin">COPY</button>
               </div>
               <div className="foot"><span>last update · 2 days ago</span><a href="/docs/design">DOCS <span aria-hidden="true">→</span></a></div>
@@ -259,20 +259,20 @@ function ArtboardLanding() {
               <p>Generic agentic workflow loop with a second-brain <code className="acc">.ai/</code> workspace. Project-agnostic via per-repo <code className="acc">workflows.config.json</code>. Plan → execute → done → validate.</p>
               <div className="tags"><span>commands · 28</span><span>skills · 14</span><span>agents · 4</span></div>
               <div className="install">
-                <code>/plugin install flow@md-claude</code>
+                <code>/plugin install flow@maude</code>
                 <button type="button" className="copy" aria-label="Copy install command for flow plugin">COPY</button>
               </div>
               <div className="foot"><span>last update · 2 days ago</span><a href="/docs/flow">DOCS <span aria-hidden="true">→</span></a></div>
             </article>
 
             <article className="pcard">
-              <div className="row1"><span className="sku">MDCC-CLI/03 · mdcc</span><span className="ver">v0.12.0</span></div>
-              <h3><code>mdcc</code> The plumbing the other two pretend not to need.</h3>
-              <p>Scaffolds the <code className="acc">.ai/</code> workspace, edits <code className="acc">workflows.config.json</code>, and boots the design dev server. Ships <code className="acc">mdcc</code> and the back-compat alias <code className="acc">claude-design-server</code>.</p>
+              <div className="row1"><span className="sku">MDCC-CLI/03 · maude</span><span className="ver">v0.12.0</span></div>
+              <h3><code>maude</code> The plumbing the other two pretend not to need.</h3>
+              <p>Scaffolds the <code className="acc">.ai/</code> workspace, edits <code className="acc">workflows.config.json</code>, and boots the design dev server. Ships <code className="acc">maude</code> and the back-compat alias <code className="acc">claude-design-server</code>.</p>
               <div className="tags"><span>subcommands · 3</span><span>node ≥ 20</span><span>zero deps</span></div>
               <div className="install">
-                <code>npm i -g @1agh/md-claude</code>
-                <button type="button" className="copy" aria-label="Copy install command for mdcc CLI">COPY</button>
+                <code>npm i -g @1agh/maude</code>
+                <button type="button" className="copy" aria-label="Copy install command for maude CLI">COPY</button>
               </div>
               <div className="foot"><span>last update · 5 days ago</span><a href="/docs/cli">DOCS <span aria-hidden="true">→</span></a></div>
             </article>
@@ -295,7 +295,7 @@ function ArtboardLanding() {
             <span className="ok">● BUILD GREEN</span>
           </div>
           <div className="meta" style={{justifyContent:"flex-end"}}>
-            <a href="https://github.com/1aGh/md-claude">GITHUB <span aria-hidden="true">↗</span></a>
+            <a href="https://github.com/1aGh/maude">GITHUB <span aria-hidden="true">↗</span></a>
             <span aria-hidden="true">·</span>
             <a href="/changelog">CHANGELOG</a>
             <span aria-hidden="true">·</span>
@@ -314,7 +314,7 @@ function ArtboardLanding() {
 // ═════════════════════════════════════════════════════════════════════
 function ArtboardDocsIndex() {
   const toc = [
-    { id: "what-it-is", label: "What md-claude is", level: 2 },
+    { id: "what-it-is", label: "What Maude is", level: 2 },
     { id: "sections",   label: "Documentation sections", level: 2 },
     { id: "getting-started", label: "Three commands and you're in. (Maybe four. Depends on your shell.)", level: 3 },
     { id: "support",    label: "Support & contributing", level: 2 },
@@ -335,19 +335,19 @@ function ArtboardDocsIndex() {
             <span className="sku-tail">MDCC-DOC/00 · index</span>
           </nav>
 
-          <h1 className="doc-h1">md-claude, how it works mostly</h1>
+          <h1 className="doc-h1">maude, how it works mostly</h1>
           <p className="doc-lede">
             Two plugins, one CLI, and the <code>.ai/</code> workspace they both pretend not to need.
-            You're probably here for <code>design</code> or <code>flow</code>. <code>mdcc</code> is
+            You're probably here for <code>design</code> or <code>flow</code>. <code>maude</code> is
             the plumbing. <code>⌘K</code> skips ahead.
           </p>
 
           <h2 id="what-it-is" className="doc-h2"><span className="num">01</span><span>What it is</span></h2>
           <p className="doc-p">
-            <code>md-claude</code> is a single repo that publishes (a) a Claude Code plugin marketplace defined by
+            <code>maude</code> is a single repo that publishes (a) a Claude Code plugin marketplace defined by
             <code>.claude-plugin/marketplace.json</code> and (b) an npm package
-            (<code>@1agh/md-claude</code>) that ships the <code>mdcc</code> CLI plus the dev-server runtime helpers.
-            The marketplace surfaces the <code>design</code> and <code>flow</code> plugins; <code>mdcc init</code>
+            (<code>@1agh/maude</code>) that ships the <code>maude</code> CLI plus the dev-server runtime helpers.
+            The marketplace surfaces the <code>design</code> and <code>flow</code> plugins; <code>maude init</code>
             scaffolds a project against either one.
           </p>
           <p className="doc-p">
@@ -365,7 +365,7 @@ function ArtboardDocsIndex() {
             </a>
             <a href="/docs/cli" className="doc-tile">
               <span className="sku">MDCC-CLI/03 · cli</span>
-              <h4>The mdcc CLI</h4>
+              <h4>The maude CLI</h4>
               <p>Three subcommands: <code>init</code>, <code>config</code>, <code>design serve</code>. Plus the back-compat <code>claude-design-server</code> alias.</p>
               <span className="pages"><b>4</b> PAGES · 8 MIN</span>
             </a>
@@ -398,7 +398,7 @@ function ArtboardDocsIndex() {
           <h3 id="getting-started" className="doc-h3">Three commands and you're in. (Maybe four. Depends on your shell.)</h3>
           <p className="doc-p">
             From a brand-new Claude Code session, run the three commands below. After
-            <code>mdcc init</code>, the <code>.ai/</code> directory exists and you can start with
+            <code>maude init</code>, the <code>.ai/</code> directory exists and you can start with
             <code>/flow:plan "first feature"</code> or open a canvas with <code>/design:new</code>.
           </p>
 
@@ -414,25 +414,25 @@ function ArtboardDocsIndex() {
               </div>
             </div>
             <pre>
-<span className="prompt">›</span> <span className="acc">/plugin</span> marketplace add 1aGh/md-claude{"\n"}
-<span className="prompt">›</span> <span className="acc">/plugin</span> install design@md-claude{"\n"}
-<span className="prompt">›</span> <span className="acc">/plugin</span> install flow@md-claude{"\n"}
+<span className="prompt">›</span> <span className="acc">/plugin</span> marketplace add 1aGh/maude{"\n"}
+<span className="prompt">›</span> <span className="acc">/plugin</span> install design@maude{"\n"}
+<span className="prompt">›</span> <span className="acc">/plugin</span> install flow@maude{"\n"}
 {"\n"}
 <span className="cmt"># optional. scaffold .ai/ + workflows.config.json</span>{"\n"}
-<span className="prompt">$</span> <span className="acc">mdcc</span> init --name my-app
+<span className="prompt">$</span> <span className="acc">maude</span> init --name my-app
             </pre>
           </div>
 
           <h2 id="support" className="doc-h2"><span className="num">03</span><span>Support &amp; contributing</span></h2>
           <p className="doc-p">
-            File issues at <a href="https://github.com/1aGh/md-claude/issues">github.com/1aGh/md-claude/issues</a>.
+            File issues at <a href="https://github.com/1aGh/maude/issues">github.com/1aGh/maude/issues</a>.
             PRs welcome. Start with <a href="/docs/recipes/first-plugin">"Author your first plugin"</a> for the contributing
             walkthrough. The repo dogfoods <code>flow</code> on itself, so the <code>.ai/decisions/</code> directory is
             the authoritative log of why things are the way they are.
           </p>
 
           <div className="doc-pagefoot">
-            <a href="https://github.com/1aGh/md-claude/edit/main/site/content/docs/index.mdx">EDIT THIS PAGE ON GITHUB</a>
+            <a href="https://github.com/1aGh/maude/edit/main/site/content/docs/index.mdx">EDIT THIS PAGE ON GITHUB</a>
             <span>LAST UPDATED <b style={{color:"var(--fg-0)"}}>2026-05-12</b></span>
             <span className="slug">DOCS/INDEX · MDCC-DOC/00</span>
           </div>
@@ -608,7 +608,7 @@ function ArtboardDocsArticle() {
           </nav>
 
           <div className="doc-pagefoot">
-            <a href="https://github.com/1aGh/md-claude/edit/main/plugins/design/commands/new.md">EDIT THIS PAGE ON GITHUB</a>
+            <a href="https://github.com/1aGh/maude/edit/main/plugins/design/commands/new.md">EDIT THIS PAGE ON GITHUB</a>
             <span>LAST UPDATED <b style={{color:"var(--fg-0)"}}>2026-05-14</b></span>
             <span className="slug">design / commands / new · MDCC-DSN/01.canvas-new</span>
           </div>
@@ -778,13 +778,13 @@ function ArtboardAbout() {
 
           <h1 className="doc-h1">About the maker<span style={{color:"var(--accent)"}}>.</span></h1>
           <p className="doc-p">Hi I'm Michal and I build things.</p>
-          <p className="doc-p">md-claude is a small Claude Code marketplace. Two plugins, one CLI, some opinions about HTML mocks. I built it, mostly at night, because I kept needing it.</p>
+          <p className="doc-p">maude is a small Claude Code marketplace. Two plugins, one CLI, some opinions about HTML mocks. I built it, mostly at night, because I kept needing it.</p>
           <p className="doc-p">I don't fully understand why it works, but it works.</p>
           <p className="doc-p">I like nerdy jokes and tools without analytics. Based in Prague. Reachable by email, ideally not Slack.</p>
           <p className="doc-p">If it breaks it's almost certainly my fault. Open an issue. I read them.</p>
 
           <div className="doc-pagefoot">
-            <a href="https://github.com/1aGh/md-claude/edit/main/site/content/docs/about.mdx">EDIT THIS PAGE ON GITHUB</a>
+            <a href="https://github.com/1aGh/maude/edit/main/site/content/docs/about.mdx">EDIT THIS PAGE ON GITHUB</a>
             <span>LAST UPDATED <b style={{color:"var(--fg-0)"}}>2026-05-15</b></span>
             <span className="slug">DOCS/ABOUT · MDCC-MKR/01</span>
           </div>

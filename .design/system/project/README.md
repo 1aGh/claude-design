@@ -1,8 +1,8 @@
-# md-claude design system · MDCC-DSN/01
+# Maude design system · MDCC-DSN/01
 
 > **One-line:** A small Claude Code marketplace, shaped like a precision-instrument catalog. Built to clothe both the plugin landing AND the `mdcc design` canvas browser in the same monospace voice. Two plugins, one CLI, some opinions about HTML mocks. I built it, mostly at night, because I kept needing it.
 
-The system isn't aiming to be neutral. Vercel's Geist is neutral. shadcn is neutral. They're excellent. Go use them if neutral is what your project needs. **md-claude is the opposite move.** Plugins are framed as catalog products with part-numbers (`MDCC-DSN/01`, `MDCC-FLW/02`); type is mono everywhere; chrome is 1px hairlines and not a drop-shadow in sight; and the copy carries a Bear-Blog-school dry-grin sitting on top of a U.S.-Graphics-grade typographic spine. That tension (serious type, person-voiced copy) IS the brand.
+The system isn't aiming to be neutral. Vercel's Geist is neutral. shadcn is neutral. They're excellent. Go use them if neutral is what your project needs. **Maude is the opposite move.** Plugins are framed as catalog products with part-numbers (`MDCC-DSN/01`, `MDCC-FLW/02`); type is mono everywhere; chrome is 1px hairlines and not a drop-shadow in sight; and the copy carries a Bear-Blog-school dry-grin sitting on top of a U.S.-Graphics-grade typographic spine. That tension (serious type, person-voiced copy) IS the brand.
 
 If the canvas you're building isn't comfortable being called "a Berkeley Mono spec sheet that knows it's funny", you're probably on the wrong DS.
 
@@ -144,7 +144,7 @@ Hi I'm Michal, I made this. Open issues if it breaks.
 ```
 Hi I'm Michal and I build things.
 
-md-claude is a small Claude Code marketplace. Two plugins, one CLI, some opinions about HTML mocks. I built it, mostly at night, because I kept needing it.
+maude is a small Claude Code marketplace. Two plugins, one CLI, some opinions about HTML mocks. I built it, mostly at night, because I kept needing it.
 
 I don't fully understand why it works, but it works.
 
@@ -167,7 +167,7 @@ Chrome contract: no portrait, no signature-as-image, no handwritten-feel mono. C
 | `design. Iterates canvases until they stop being embarrassing.` | `design — Canvas-first iteration.` |
 | `flow. The agentic loop that ships things eventually.` | `flow — Plan, execute, done.` |
 | `mdcc. The plumbing the other two pretend not to need.` | `mdcc — Three subcommands, no surprises.` |
-| `md-claude, how it works mostly` | `md-claude documentation` |
+| `maude, how it works mostly` | `maude documentation` |
 | `You're probably here for design or flow. mdcc is the plumbing.` | `design handles X, flow handles Y, mdcc handles Z.` |
 | `Three commands and you're in. (Maybe four. Depends on your shell.)` | `Getting started in 3 minutes` |
 | `Nothing installed yet. Which is fine, you just got here.` | `You haven't installed anything yet.` |
@@ -268,7 +268,7 @@ The DS ships with three classes of brand asset under `assets/`:
 
 | Path | What it is |
 |---|---|
-| `assets/logos/wordmark.svg` | The `md-claude` wordmark. Berkeley-mono uppercase set with the accent dot. Use at the top of marketplace landing + dev-server header. |
+| `assets/logos/wordmark.svg` | The `maude` wordmark. Berkeley-mono uppercase set with the accent dot. Use at the top of marketplace landing + dev-server header. |
 | `assets/glyphs/<name>.svg` | Domain-noun glyph set (plugin, canvas, slash-command, file-tree). 16×16 grid, 1px stroke, designed to sit inline with mono text at `--type-base`. Drop more here when you scaffold new noun surfaces. |
 | `preview/iconography.html` | The specimen that catalogs all glyphs side-by-side; new glyphs MUST land in this index. |
 
@@ -299,10 +299,10 @@ When writing specimen copy yourself (without an agent), use `voice_tone_options[
 
 ## Provenance
 
-- Bootstrapped: **2026-05-14** via `/design:setup-ds project "<brief>"` against `md-claude@0.12.0`
+- Bootstrapped: **2026-05-14** via `/design:setup-ds project "<brief>"` against `maude@0.12.0`
 - Round 0 research: 11 WebSearch queries; payload at `_history/_system/project-df4b0d27-domain-research-discovery.json`
 - Anchor pool: U.S. Graphics Company, JSR, Berkeley Mono spec sheets, htmx.org, redbean.dev, The Monospace Web, 16colo.rs, Teletext revival, Robb Owen, tldraw, Vercel Geist (calibration floor)
-- Inspiration library: `plugins/design/templates/design-system-inspiration/` @ md-claude v0.12.0
+- Inspiration library: `plugins/design/templates/design-system-inspiration/` @ Maude v0.12.0
 - Discovery answers: see `_history/_system/project-000-scaffold-roster.yaml` `discovery:` block
 
 Re-bootstrap with `/design:setup-ds project --force` if the domain has moved (anchors stale, new heritage references surfaced). The cached payload will be refreshed.

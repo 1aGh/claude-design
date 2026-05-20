@@ -1,15 +1,10 @@
 #!/bin/sh
-# Placeholder bin shipped in the main @1agh/md-claude tarball.
+# Legacy alias for `maude.exe`. Prints deprecation warning, then delegates.
+# Will be removed in v0.17.x. Use `maude` directly.
 #
-# This file is HARDLINKED over by `cli/install.cjs` (the postinstall hook),
-# which replaces it with the real native binary from the matching per-platform
-# sub-package (@1agh/md-claude-<slug>). After postinstall, invoking `mdcc`
-# execs the native binary directly with zero Node startup overhead.
-#
-# If you see this message at runtime, your installer skipped postinstall.
-# Either run `npm rebuild @1agh/md-claude` to retry, or invoke the safe-mode
-# fallback (`mdcc-safe`) which performs platform detection on every call.
-echo "@1agh/md-claude: postinstall did not complete (the bin stub is still in place)." >&2
-echo "  Run \`npm rebuild @1agh/md-claude\` to retry the postinstall hardlink." >&2
-echo "  Or use the safe fallback: \`mdcc-safe <args>\`." >&2
+# Like maude.exe, this is HARDLINKED over by `cli/install.cjs` on postinstall
+# to the same native binary. If the hardlink failed, this stub fires.
+echo "mdcc: ⚠ \`mdcc\` is deprecated. Use \`maude\` instead. This alias will be removed in v0.17.x." >&2
+echo "@1agh/maude: postinstall did not complete (the bin stub is still in place)." >&2
+echo "  Run \`npm rebuild @1agh/maude\` to retry the postinstall hardlink." >&2
 exit 1

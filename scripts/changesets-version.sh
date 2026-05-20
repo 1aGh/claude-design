@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Wraps `pnpm changeset version` so EVERY versioned manifest moves in lockstep:
-# package.json, both plugin manifests, AND the 7 packages/md-claude-*/package.json
+# package.json, both plugin manifests, AND the 7 packages/maude-*/package.json
 # sub-packages (plus the optionalDependencies pins in root package.json that
 # point at them — see DDR-015 / Phase 3.4 per-platform binary distribution).
 #
@@ -35,5 +35,5 @@ fi
 
 echo "$OLD → $NEW (changesets) — propagating to plugin manifests + sub-packages"
 
-# 2. Propagate to plugin manifests + 7 packages/md-claude-*/package.json + pins.
+# 2. Propagate to plugin manifests + 7 packages/maude-*/package.json + pins.
 "$ROOT/scripts/bump-version.sh" "$NEW"

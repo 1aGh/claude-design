@@ -1,14 +1,14 @@
 {
   "title": "ui_kits-desktop-index",
   "subtitle": "catalog launcher — index of every peer specimen. Written LAST.",
-  "brief": "MDCC-DSN/01 / md-claude · catalog index",
+  "brief": "MDCC-DSN/01 / Maude · catalog index",
   "platform": "desktop",
   "designSystem": "project",
   "opt_out_scope": "none",
   "sections": [
     {
       "id": "overview",
-      "title": "MDCC-DSN/01 / md-claude · catalog index",
+      "title": "MDCC-DSN/01 / Maude · catalog index",
       "artboards": [
         {
           "id": "primary",

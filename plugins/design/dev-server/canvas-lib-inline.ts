@@ -2,10 +2,10 @@
 // lib source now ships with the dev-server install).
 //
 // `/design:handoff` emits a self-contained shadcn registry-item.json. Canvases
-// import their envelope + helpers from `@mdcc/canvas-lib`, which the dev-server
+// import their envelope + helpers from `@maude/canvas-lib`, which the dev-server
 // resolves to its bundled `plugins/design/dev-server/canvas-lib.tsx`. The
 // handoff drop must inline every used export so the consumer never sees the
-// `@mdcc/canvas-lib` specifier — it's a dev-time virtual module, not a real
+// `@maude/canvas-lib` specifier — it's a dev-time virtual module, not a real
 // npm dep.
 //
 // Strategy:
@@ -14,7 +14,7 @@
 //        - source: byte range of the declaration (including JSDoc immediately
 //                  above, when present).
 //        - deps: other top-level identifiers referenced inside the body.
-//   2. Scan the canvas TSX for `import { ... } from "@mdcc/canvas-lib"`.
+//   2. Scan the canvas TSX for `import { ... } from "@maude/canvas-lib"`.
 //      Collect the named imports.
 //   3. Transitively resolve deps: each import drags in helpers it calls,
 //      which drag in helpers THEY call, etc.
@@ -190,21 +190,21 @@ function nodeRangeWithComment(source: string, node: AnyNode): { start: number; e
 export interface InlineResult {
   /** Canvas source with the import stripped + helpers appended. */
   content: string;
-  /** True when an `@mdcc/canvas-lib` import was found + removed. */
+  /** True when an `@maude/canvas-lib` import was found + removed. */
   droppedImport: boolean;
   /** Sorted list of helper names inlined (including transitive). */
   inlined: string[];
 }
 
 /**
- * Replace `import { ... } from "@mdcc/canvas-lib"` with the resolved bodies
+ * Replace `import { ... } from "@maude/canvas-lib"` with the resolved bodies
  * of every named import (+ their transitive dependencies). Returns the
  * rewritten source.
  */
 export function inlineUsedExports(canvasSource: string, libMap: LibMap): InlineResult {
   // 1. Locate the import line. We tolerate single OR double quotes, type-only
   //    imports (rare), trailing commas, multi-line shapes.
-  const importRe = /\bimport\s+(?:type\s+)?\{([^}]+)\}\s*from\s*["']@mdcc\/canvas-lib["']\s*;?/m;
+  const importRe = /\bimport\s+(?:type\s+)?\{([^}]+)\}\s*from\s*["']@maude\/canvas-lib["']\s*;?/m;
   const m = importRe.exec(canvasSource);
   if (!m) {
     return { content: canvasSource, droppedImport: false, inlined: [] };
@@ -226,7 +226,7 @@ export function inlineUsedExports(canvasSource: string, libMap: LibMap): InlineR
     const info = libMap.get(name);
     if (!info) {
       throw new Error(
-        `[canvas-lib-inline] Canvas imports '${name}' from @mdcc/canvas-lib but the lib has no such export.`
+        `[canvas-lib-inline] Canvas imports '${name}' from @maude/canvas-lib but the lib has no such export.`
       );
     }
     wanted.add(name);

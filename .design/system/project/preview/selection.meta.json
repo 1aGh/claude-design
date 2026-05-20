@@ -1,14 +1,14 @@
 {
   "title": "selection",
   "subtitle": "text + element selection styling. Accent bg, accent-fg ink.",
-  "brief": "MDCC-DSN/01.selection / md-claude",
+  "brief": "MDCC-DSN/01.selection / Maude",
   "platform": "desktop",
   "designSystem": "project",
   "opt_out_scope": "none",
   "sections": [
     {
       "id": "overview",
-      "title": "MDCC-DSN/01.selection / md-claude",
+      "title": "MDCC-DSN/01.selection / Maude",
       "artboards": [
         {
           "id": "primary",

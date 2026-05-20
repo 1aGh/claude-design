@@ -4,7 +4,7 @@
  * @platform    desktop
  * @opt_out     none
  * @artboards   primary
- * @brief       MDCC-DSN/01.type-scale / md-claude
+ * @brief       MDCC-DSN/01.type-scale / Maude
  * @stack       React 19 · TSX · Bun.build · css_mode=inline
  * @history     .design/_history/type-scale/
  * @handoff     bunx shadcn add file://./type-scale.registry.json
@@ -16,7 +16,7 @@ export default function TypeScale() {
     <>
           <header className="specimen-hd">
             <span className="sku">MDCC-DSN/01.type-scale</span>
-            <span className="crumbs"><span>md-claude</span><span>design system</span><span>type</span><span>scale</span></span>
+            <span className="crumbs"><span>maude</span><span>design system</span><span>type</span><span>scale</span></span>
             <span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span>
           </header>
           <main className="specimen">
@@ -51,12 +51,12 @@ export default function TypeScale() {
             <p>mdcc design serve boots a canvas browser at port 4399 (or whatever you ask for). It scans <code>.design/system/&lt;ds&gt;/preview/</code>, builds a file-tree, and lets you tab between iframe previews. The element inspector overlay attaches itself with <kbd>Cmd</kbd>+<kbd>Click</kbd>. Pick a node, the active selection writes itself to <code>_active.json</code>, and <code>/design:edit "&lt;feedback&gt;"</code> scopes its edit to the picked element. Zero dependencies, zero npm install scratchpad. It's a Node script. It will outlive you.</p>
 
             <h2 data-no="04">When not to use <span className="h2-aside">don't reach for a sans</span></h2>
-            <div className="anti"><p style={{ margin: '0' }}>Don't introduce <code>font-family: Inter</code> or any humanist sans into a md-claude canvas. If the result feels claustrophobic, the fix is line-height or letter-spacing. Never a font swap. Mono everywhere is the commitment.</p></div>
+            <div className="anti"><p style={{ margin: '0' }}>Don't introduce <code>font-family: Inter</code> or any humanist sans into a Maude canvas. If the result feels claustrophobic, the fix is line-height or letter-spacing. Never a font swap. Mono everywhere is the commitment.</p></div>
             <div className="pro"><p style={{ margin: '0' }}>If a body paragraph feels dense, bump <code>line-height</code> by 4px or apply <code>letter-spacing: 0.01em</code>. Berkeley Mono at 13/22 with 0.01em tracking reads as comfortably as any sans body. The trick is the rhythm, not the family.</p></div>
 
             <footer className="specimen-ft">
               <div className="colo-block"><strong>MDCC-DSN/01</strong><span>· type-scale</span></div>
-              <div className="colo-block"><span>md-claude · v0.12.0</span></div>
+              <div className="colo-block"><span>Maude · v0.12.0</span></div>
             </footer>
           </main>
         </>

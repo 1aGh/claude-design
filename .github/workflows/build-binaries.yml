@@ -1,8 +1,8 @@
 name: Build per-platform binaries
 
-# Phase 3.4 / DDR-015 — build mdcc dev-server as a Bun standalone binary on each
-# target platform, publish the matching @1agh/md-claude-<slug> sub-package, then
-# (once every binary is uploaded) publish the main @1agh/md-claude tarball.
+# Phase 3.4 / DDR-015 — build the maude dev-server as a Bun standalone binary on each
+# target platform, publish the matching @1agh/maude-<slug> sub-package, then
+# (once every binary is uploaded) publish the main @1agh/maude tarball.
 #
 # Trigger on a v*.*.* tag push. This workflow owns the full release pipeline:
 # create-release (empty GH Release) → build-binaries matrix (build + npm publish
@@ -112,7 +112,7 @@ jobs:
           bun install --frozen-lockfile
           bun run build.ts --release --target=${{ matrix.target }}
           ls -la dist/
-          BIN="dist/mdcc-${{ matrix.slug }}${{ matrix.ext }}"
+          BIN="dist/maude-${{ matrix.slug }}${{ matrix.ext }}"
           if [ ! -f "$BIN" ]; then
             echo "error: expected $BIN not produced" >&2
             exit 1
@@ -131,9 +131,9 @@ jobs:
       - name: Stage sub-package contents
         shell: bash
         run: |
-          DEST="packages/md-claude-${{ matrix.slug }}"
-          cp "plugins/design/dev-server/${{ env.BIN }}" "$DEST/mdcc${{ matrix.ext }}"
-          chmod +x "$DEST/mdcc${{ matrix.ext }}" || true
+          DEST="packages/maude-${{ matrix.slug }}"
+          cp "plugins/design/dev-server/${{ env.BIN }}" "$DEST/maude${{ matrix.ext }}"
+          chmod +x "$DEST/maude${{ matrix.ext }}" || true
           ls -la "$DEST"
 
       - name: Publish sub-package
@@ -142,7 +142,7 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          cd packages/md-claude-${{ matrix.slug }}
+          cd packages/maude-${{ matrix.slug }}
           npm config set //registry.npmjs.org/:_authToken "$NODE_AUTH_TOKEN"
           # Idempotent: if the version is already published (e.g. a retry of
           # a partial release run), treat 409 as success. Any other error
@@ -155,7 +155,7 @@ jobs:
           if [ $STATUS -ne 0 ]; then
             if echo "$OUTPUT" | grep -qE "(EPUBLISHCONFLICT|cannot publish over|previous version|previously published)"; then
               VER=$(node -p "require('./package.json').version")
-              echo "::notice::@1agh/md-claude-${{ matrix.slug }}@${VER} already published — treating as success"
+              echo "::notice::@1agh/maude-${{ matrix.slug }}@${VER} already published — treating as success"
               exit 0
             fi
             exit $STATUS
@@ -165,7 +165,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.dry-run == true
         shell: bash
         run: |
-          cd packages/md-claude-${{ matrix.slug }}
+          cd packages/maude-${{ matrix.slug }}
           npm publish --access public --provenance --dry-run
 
       - name: Upload binary as Release asset
@@ -205,7 +205,7 @@ jobs:
 
       - name: Install
         # --no-frozen-lockfile: optionalDependencies on the freshly-published
-        # @1agh/md-claude-<slug>@$VER packages only resolve after the matrix
+        # @1agh/maude-<slug>@$VER packages only resolve after the matrix
         # above pushes them to npm. A frozen lockfile cannot enumerate
         # specifiers that didn't exist when the lockfile was last written.
         # The release tag is the integrity boundary; quality.yml runs against
@@ -236,7 +236,7 @@ jobs:
           if [ $STATUS -ne 0 ]; then
             if echo "$OUTPUT" | grep -qE "(EPUBLISHCONFLICT|cannot publish over|previous version|previously published)"; then
               VER=$(node -p "require('./package.json').version")
-              echo "::notice::@1agh/md-claude@${VER} already published — treating as success"
+              echo "::notice::@1agh/maude@${VER} already published — treating as success"
               exit 0
             fi
             exit $STATUS

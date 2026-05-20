@@ -1,8 +1,8 @@
 # Video pipeline
 
-Toolchain for md-claude marketing/demo videos.
+Toolchain for maude marketing/demo videos.
 
-**Remotion license ack** (2026-05-20): md-claude is solo OSS, qualifies for the
+**Remotion license ack** (2026-05-20): maude is solo OSS, qualifies for the
 Remotion free tier (https://www.remotion.dev/docs/license). If the org ever
 grows beyond 3 people, a Company License is required before this stack can keep
 rendering.

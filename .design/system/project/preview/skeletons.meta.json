@@ -1,14 +1,14 @@
 {
   "title": "skeletons",
   "subtitle": "skeleton loading placeholders — flat bg-2 blocks, no shimmer.",
-  "brief": "MDCC-DSN/01.skeletons / md-claude",
+  "brief": "MDCC-DSN/01.skeletons / Maude",
   "platform": "desktop",
   "designSystem": "project",
   "opt_out_scope": "none",
   "sections": [
     {
       "id": "overview",
-      "title": "MDCC-DSN/01.skeletons / md-claude",
+      "title": "MDCC-DSN/01.skeletons / Maude",
       "artboards": [
         {
           "id": "primary",

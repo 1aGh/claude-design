@@ -81,7 +81,7 @@ Add a collapsible right-side panel ("Chat") to canvas chrome. The panel implemen
 
 ### Task 6: Persistence + transcript
 
-- **Do:** Store chat per canvas at `.design/_chat/<canvas-slug>.jsonl` (append-only). Reload restores history. Cleared with `mdcc design chat clear --canvas <slug>`.
+- **Do:** Store chat per canvas at `.design/_chat/<canvas-slug>.jsonl` (append-only). Reload restores history. Cleared with `maude design chat clear --canvas <slug>`.
 - **Pattern:** JSONL for git-friendly diffs.
 - **Validate:** Restart server, reload page, history preserved.
 

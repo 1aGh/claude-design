@@ -3,7 +3,7 @@ title: workflows.config.json — schema
 description: Auto-generated reference of every key in .ai/workflows.config.json — type, default, allowed values, description.
 ---
 
-Auto-generated from [`plugins/flow/.claude-plugin/config.schema.json`](https://github.com/1aGh/md-claude/blob/main/plugins/flow/.claude-plugin/config.schema.json). Re-runs on every site build.
+Auto-generated from [`plugins/flow/.claude-plugin/config.schema.json`](https://github.com/1aGh/maude/blob/main/plugins/flow/.claude-plugin/config.schema.json). Re-runs on every site build.
 
 For prose with examples, see the [hand-written config guide](/docs/config).
 
@@ -286,6 +286,37 @@ User-perceived response time ceiling for primary interactions.
 
 ISO 639-1 codes the UI ships in (e.g. `["cs", "en"]`). Empty = monolingual.
 
+## `security`
+
+**Type:** `object`
+
+Security review knobs. security-auditor + ethical-hacker subagents read these. Skip the whole pass with skills.securityRules.enabled = false.
+
+### `security.severityFloor`
+
+**Type:** enum: `"low"` │ `"medium"` │ `"high"` │ `"critical"` · **Default:** `"medium"`
+
+Lowest severity that blocks /flow:validate step 6.5 and /flow:validate-security. Findings below this rate as warnings, not blockers.
+
+**Allowed values:**
+
+- `"low"`
+- `"medium"`
+- `"high"`
+- `"critical"`
+
+### `security.scope`
+
+**Type:** `enum("classic", "ai", "supply-chain")[]` · **Default:** `["classic","ai","supply-chain"]`
+
+Which rule families to evaluate. Drop "ai" if the project has no model / MCP surface; drop "supply-chain" for projects with no third-party deps.
+
+### `security.includeAi`
+
+**Type:** `boolean` · **Default:** `true`
+
+Shortcut to enable/disable §B AI-era rules in security-rules skill. When false, ethical-hacker still threat-models classic surface but the mandatory AI/MCP section reads "N/A — disabled by config".
+
 ## `skills`
 
 **Type:** `object`
@@ -331,6 +362,36 @@ Per-skill toggles. Each enforcement skill respects its own `enabled` flag (defau
 #### `skills.debuggingRules.enabled`
 
 **Type:** `boolean` · **Default:** `true`
+
+### `skills.securityRules`
+
+**Type:** `object`
+
+#### `skills.securityRules.enabled`
+
+**Type:** `boolean` · **Default:** `true`
+
+### `skills.coverageTrend`
+
+**Type:** `object`
+
+Optional coverage-trend warning in /flow:validate. Opt-in — disabled by default, because not every project has a stable coverage signal worth gating on. When enabled, /flow:validate parses the current run's coverage and compares against `.ai/state/coverage-baseline.json`; a drop greater than `warnThresholdPp` percentage points emits a soft warning (never blocks). Baseline is refreshed by /flow:done after a green run.
+
+#### `skills.coverageTrend.enabled`
+
+**Type:** `boolean` · **Default:** `false`
+
+#### `skills.coverageTrend.warnThresholdPp`
+
+**Type:** `number` · **Default:** `1` · **Min:** `0`
+
+Percentage-point drop that triggers the warning. e.g. `1.0` means a 1-point drop (78% → 77%) warns.
+
+#### `skills.coverageTrend.baselineBranch`
+
+**Type:** `string` · **Default:** `"main"`
+
+Branch whose coverage is considered authoritative. /flow:done writes the baseline only when the active branch matches this value (typically `main`).
 
 ## `integrations`
 
@@ -447,7 +508,7 @@ Release-note / changelog tooling. Used by /flow:validate and /flow:done to remin
 
 **Type:** `string`
 
-Optional package scope for monorepos — e.g. "@1agh/md-claude". Passed to provider commands when they need to target a workspace member.
+Optional package scope for monorepos — e.g. "@1agh/maude". Passed to provider commands when they need to target a workspace member.
 
 #### `integrations.changelog.releaseGuide`
 

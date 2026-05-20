@@ -1,80 +1,80 @@
 ---
-title: mdcc CLI
+title: maude CLI
 description: The npm-published binary that scaffolds the .ai/ workspace, edits workflows.config.json, and boots the design dev server.
 ---
 
 ```bash
-npm i -g @1agh/md-claude    # installs `mdcc` (alias: `claude-design-server`)
+npm i -g @1agh/maude    # installs `maude` (legacy alias: `mdcc`; also installs `claude-design-server`)
 # or:
-npx @1agh/md-claude <cmd>
+npx @1agh/maude <cmd>
 ```
 
-**`mdcc` is intentionally small.** Mechanical scaffolding and config. That's it. The interesting setup happens inside Claude Code via `/flow:init`, which calls `mdcc init` as step one.
+**`maude` is intentionally small.** Mechanical scaffolding and config. That's it. The interesting setup happens inside Claude Code via `/flow:init`, which calls `maude init` as step one.
 
 Five subcommands: `init`, `config`, `design serve`, `design init`, `version` / `help`. Pure ESM. Zero runtime deps beyond Node 20+.
 
-## `mdcc init`
+## `maude init`
 
 Scaffold the `.ai/` second-brain workspace into the current repo.
 
 ```bash
-mdcc init [--name <project>] [--force] [--dry-run]
+maude init [--name <project>] [--force] [--dry-run]
 ```
 
 - `--name <project>`. Project slug for the `<project>` placeholder used by flow templates (e.g. `.ai/<project>-prd.md`). Defaults to the current directory basename.
 - `--force`. Overwrite existing files. Off by default; `init` is idempotent.
 - `--dry-run`. Print what would be written without touching the filesystem.
 
-The skeleton lives at `plugins/flow/templates/ai-skeleton/`. `mdcc init` does string templating during the copy:
+The skeleton lives at `plugins/flow/templates/ai-skeleton/`. `maude init` does string templating during the copy:
 
 - Replaces `PROJECT_NAME` placeholders with `--name`'s value.
 - Rewrites the `$schema` ref in `workflows.config.json` from a relative path to the absolute GitHub raw URL (so it resolves after `npm install`).
 
 Does **not** write `CLAUDE.md`. Use Claude Code's built-in `/init` for that.
 
-## `mdcc config`
+## `maude config`
 
 Read or write keys in `.ai/workflows.config.json` from the terminal.
 
 ```bash
-mdcc config show
-mdcc config get <dotted.key>
-mdcc config set <dotted.key> <value>
+maude config show
+maude config get <dotted.key>
+maude config set <dotted.key> <value>
 ```
 
 - `show`. Pretty-print the whole config.
-- `get`. Print a single key. Dotted path: `mdcc config get motion.complex`.
+- `get`. Print a single key. Dotted path: `maude config get motion.complex`.
 - `set`. Write a key. Values that parse as JSON (numbers, booleans, arrays, objects) are stored typed:
 
 ```bash
-mdcc config set platforms '["web-desktop","web-mobile"]'
-mdcc config set motion.complex 1200
-mdcc config set theme dark
+maude config set platforms '["web-desktop","web-mobile"]'
+maude config set motion.complex 1200
+maude config set theme dark
 ```
 
 Validates known keys against the flow plugin's `config.schema.json`. Unknown keys are written as-is but warned.
 
-## `mdcc design serve`
+## `maude design serve`
 
 Boot the design dev server in the current repo.
 
 ```bash
-mdcc design serve [--port N] [--root <path>]
+maude design serve [--port N] [--root <path>]
 ```
 
-Equivalent to invoking `claude-design-server` directly (which is the second bin shipped by `@1agh/md-claude`). All remaining args are forwarded to the server.
+Equivalent to invoking `claude-design-server` directly (which is the second bin shipped by `@1agh/maude`). All remaining args are forwarded to the server.
 
 - `--port`. Listen on a specific port (default `4399`; falls back to a random free port if taken).
 - `--root`. Serve a different repo. By default uses `$CLAUDE_PROJECT_DIR`, then `process.cwd()`.
 
 The server **fails loud** if launched from a directory without a `.design/` folder. That's deliberate. It stops you from accidentally serving the wrong project.
 
-## `mdcc design init`
+## `maude design init`
 
 Non-interactive scaffold helper for the design plugin. Writes Core files from the design-system-inspiration library into `.design/` in the current repo.
 
 ```bash
-mdcc design init [--name <slug>] [--ds <name>] [--force] [--dry-run]
+maude design init [--name <slug>] [--ds <name>] [--force] [--dry-run]
                  [--no-discovery | --discovery-payload <path>]
 ```
 
@@ -88,29 +88,29 @@ mdcc design init [--name <slug>] [--ds <name>] [--force] [--dry-run]
 
 ```bash
 # Quick CI scaffold (Core only)
-mdcc design init --no-discovery --name acme
+maude design init --no-discovery --name acme
 
 # Re-bootstrap an existing DS
-mdcc design init --no-discovery --name acme --force
+maude design init --no-discovery --name acme --force
 
 # Skill-driven scaffold from a payload file
-mdcc design init --discovery-payload /tmp/discovery.json --name acme
+maude design init --discovery-payload /tmp/discovery.json --name acme
 ```
 
 For everything beyond a Core scaffold (audience-specific specimens, platform-conditional adds, brand-color discovery), use `/design:setup-ds` inside Claude Code.
 
-## `mdcc version` / `mdcc help`
+## `maude version` / `maude help`
 
 What they say on the tin.
 
 ```bash
-mdcc version
-mdcc help
+maude version
+maude help
 ```
 
 ## Where the source lives
 
-- `cli/bin/mdcc.mjs`. Argv parser and subcommand dispatch.
+- `cli/bin/maude.mjs` (legacy alias: `cli/bin/mdcc.mjs`). Argv parser and subcommand dispatch.
 - `cli/commands/{init,config,design,help,version}.mjs`. One file per subcommand.
 
-Pure ESM, no deps beyond Node 20+. PRs welcome at [github.com/1aGh/md-claude](https://github.com/1aGh/md-claude).
+Pure ESM, no deps beyond Node 20+. PRs welcome at [github.com/1aGh/maude](https://github.com/1aGh/maude).

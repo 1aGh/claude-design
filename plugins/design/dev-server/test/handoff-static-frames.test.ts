@@ -56,7 +56,7 @@ export function DCArtboard({ id, label, width, height, children }) {
 }
 `;
 
-const SAMPLE_CANVAS = `import { DesignCanvas, DCSection, DCArtboard } from "@mdcc/canvas-lib";
+const SAMPLE_CANVAS = `import { DesignCanvas, DCSection, DCArtboard } from "@maude/canvas-lib";
 export default function X() {
   return (
     <DesignCanvas>
@@ -109,7 +109,7 @@ describe('handoff-static-frames', () => {
     const libMap = buildLibMap(LIB_PATH, LIB_SOURCE);
     applyHandoffStaticOverrides(libMap);
     // Canvas only imports DCArtboard — DesignCanvas + DCSection stay unused.
-    const canvas = `import { DCArtboard } from "@mdcc/canvas-lib";
+    const canvas = `import { DCArtboard } from "@maude/canvas-lib";
 export default function Y() {
   return <DCArtboard id="x" label="X" width={10} height={10}>hi</DCArtboard>;
 }
@@ -177,7 +177,7 @@ export function DCArtboard({ id, label, width, height, children }) {
 }
 `;
 
-const PHASE_4_2_CANVAS = `import { DesignCanvas, DCSection, DCArtboard } from "@mdcc/canvas-lib";
+const PHASE_4_2_CANVAS = `import { DesignCanvas, DCSection, DCArtboard } from "@maude/canvas-lib";
 export default function X() {
   return (
     <DesignCanvas>

@@ -18,13 +18,13 @@ PLUGIN_PATHS=(
   "$ROOT/plugins/flow/.claude-plugin/plugin.json"
 )
 SUBPACKAGE_PATHS=(
-  "$ROOT/packages/md-claude-darwin-arm64/package.json"
-  "$ROOT/packages/md-claude-darwin-x64/package.json"
-  "$ROOT/packages/md-claude-linux-x64/package.json"
-  "$ROOT/packages/md-claude-linux-arm64/package.json"
-  "$ROOT/packages/md-claude-linux-x64-musl/package.json"
-  "$ROOT/packages/md-claude-linux-arm64-musl/package.json"
-  "$ROOT/packages/md-claude-win32-x64/package.json"
+  "$ROOT/packages/maude-darwin-arm64/package.json"
+  "$ROOT/packages/maude-darwin-x64/package.json"
+  "$ROOT/packages/maude-linux-x64/package.json"
+  "$ROOT/packages/maude-linux-arm64/package.json"
+  "$ROOT/packages/maude-linux-x64-musl/package.json"
+  "$ROOT/packages/maude-linux-arm64-musl/package.json"
+  "$ROOT/packages/maude-win32-x64/package.json"
 )
 
 if [ ! -f "$PKG_PATH" ]; then
@@ -63,13 +63,13 @@ for sub in "${SUBPACKAGE_PATHS[@]}"; do
   fi
 done
 
-# optionalDependencies pin parity — every @1agh/md-claude-* entry must equal PKG_VER.
+# optionalDependencies pin parity — every @1agh/maude-* entry must equal PKG_VER.
 mismatches=$((mismatches + $(node -e "
   const j = require('$PKG_PATH');
   const od = j.optionalDependencies || {};
   let n = 0;
   for (const [k, v] of Object.entries(od)) {
-    if (!k.startsWith('@1agh/md-claude-')) continue;
+    if (!k.startsWith('@1agh/maude-')) continue;
     if (v !== j.version) {
       console.error('error: optionalDependencies pin mismatch:');
       console.error('  package.json version:', j.version);

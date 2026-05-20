@@ -4,7 +4,7 @@
  * @platform    desktop
  * @opt_out     palette
  * @artboards   idle | zoomed | draw | pin | presentation | collab | inspector | tree | dsview | comments
- * @brief       Multi-artboard meta-design of the md-claude dev-server canvas (this very tool) — every distinct canvas-viewport state that v1.0 → v1.3 will ship, broken down by screen. Synthesized from .ai/plans/phase-{4,5,6,8,12}.md. Scope: features that touch the canvas viewport itself (infinite canvas + pan/zoom + mini-map, draw tools, pin-comments, presentation mode, live collab, inspector + layers). Explicitly NOT in scope: app shell chrome (left file-tree, top header, tabs row, status bar, system view, comments-list panel) — those live in a separate canvas covering Phase 3.5.
+ * @brief       Multi-artboard meta-design of the Maude dev-server canvas (this very tool) — every distinct canvas-viewport state that v1.0 → v1.3 will ship, broken down by screen. Synthesized from .ai/plans/phase-{4,5,6,8,12}.md. Scope: features that touch the canvas viewport itself (infinite canvas + pan/zoom + mini-map, draw tools, pin-comments, presentation mode, live collab, inspector + layers). Explicitly NOT in scope: app shell chrome (left file-tree, top header, tabs row, status bar, system view, comments-list panel) — those live in a separate canvas covering Phase 3.5.
  * @stack       React 19 · TSX · Bun.build · css_mode=inline
  * @history     .design/_history/canvas-viewport/
  * @handoff     bunx shadcn add file://./Canvas Viewport.registry.json
@@ -12,7 +12,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import "./Canvas Viewport.css";
-import { DCArtboard, DCSection, DesignCanvas } from "@mdcc/canvas-lib";
+import { DCArtboard, DCSection, DesignCanvas } from "@maude/canvas-lib";
 
 // All components are pure render functions — no React state needed for a static mock.
 
@@ -100,7 +100,7 @@ function ToolsDropdown({ active = {} }) {
 function Menubar({ cv, file, right, openMenu, viewState = {}, toolState = {} }) {
   return (
     <header className="mb" role="menubar" aria-label="Application menubar">
-      <span className="mb-brand"><span className="dot" aria-hidden="true" />mdcc</span>
+      <span className="mb-brand"><span className="dot" aria-hidden="true" />maude</span>
       <nav className="mb-menus" aria-label="Application menus">
         {MENU_NAMES.map(name => {
           const key = name.toLowerCase();
@@ -251,7 +251,7 @@ function ArtboardIdle() {
       />
       <div className="ab-world">
         <div className="wm" aria-label="brand mark">
-          <span className="glyph">mdcc-design-server</span>
+          <span className="glyph">maude-design-server</span>
           <span className="sub">
             <span>CANVAS · MDCC-DSN/01</span>
             <span className="sep">/</span>
@@ -712,7 +712,7 @@ function ArtboardPresentation() {
       <div className="ab-world" style={{ background: 'var(--bg-2)', backgroundImage: 'none' }}>
         <div className="pres-stage">
           <span className="sku-cap">ui/MarketingHero.html · 3 / 6</span>
-          <div className="eyebrow">md-claude · v1.0 · published 2026-05-14</div>
+          <div className="eyebrow">Maude · v1.0 · published 2026-05-14</div>
           <h1>
             One canvas.<br />
             Every screen.<br />
@@ -1141,7 +1141,7 @@ function ArtboardDSView() {
         <div className="dsv">
           <div className="dsv-hd">
             <span className="dsv-sku">MDCC-DSN/01</span>
-            <span className="dsv-title">md-claude · the project design system</span>
+            <span className="dsv-title">maude · the project design system</span>
             <div className="dsv-meta">
               <span>PROFILE · <b>STANDARD</b></span>
               <span>FAMILIES · <b>accent · status · mono</b></span>
@@ -1201,7 +1201,7 @@ function ArtboardDSView() {
               </div>
               <div className="dsv-thumb star">
                 <div className="preview" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px' }}>
-                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, color: 'var(--fg-0)', letterSpacing: 'var(--tracking-tight)' }}>md-claude</span>
+                  <span style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: 700, color: 'var(--fg-0)', letterSpacing: 'var(--tracking-tight)' }}>maude</span>
                 </div>
                 <div className="name">logo</div>
                 <div className="desc">wordmark · glyph</div>
@@ -1487,7 +1487,7 @@ function App() {
   // Local tweak state. Replaces the legacy `useTweaks` window-global from the
   // babel-runtime era (Phase 3.6.1 TSX migration). The floating <TweaksPanel>
   // UI is gone with it — theme is now driven directly via local state. If we
-  // need a panel back, it should live in `@mdcc/canvas-lib` as a proper export.
+  // need a panel back, it should live in `@maude/canvas-lib` as a proper export.
   const [t, setTweak] = useState(TWEAK_DEFAULTS);
   void setTweak;
 

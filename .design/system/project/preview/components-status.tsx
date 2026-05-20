@@ -4,7 +4,7 @@
  * @platform    desktop
  * @opt_out     none
  * @artboards   primary
- * @brief       MDCC-DSN/01.components-status / md-claude
+ * @brief       MDCC-DSN/01.components-status / Maude
  * @stack       React 19 · TSX · Bun.build · css_mode=inline
  * @history     .design/_history/components-status/
  * @handoff     bunx shadcn add file://./components-status.registry.json
@@ -12,7 +12,7 @@
 export default function ComponentsStatus() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.components-status</span><span className="crumbs"><span>md-claude</span><span>design system</span><span>status</span><span>components</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.components-status</span><span className="crumbs"><span>maude</span><span>design system</span><span>status</span><span>components</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Status indicators</h1><p className="lede">Badges (outline + solid), dots, inline label-value pairs. All squared corners. The semantic color does the talking; no decorative iconography.</p></section>
             <dl className="specimen-meta"><div><dt>Variants</dt><dd>badge · badge--solid · dot · inline-state</dd></div></dl>
@@ -54,7 +54,7 @@ export default function ComponentsStatus() {
               </tbody>
             </table>
 
-            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· components-status</span></div><div className="colo-block"><span>md-claude · v0.12.0</span></div></footer>
+            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· components-status</span></div><div className="colo-block"><span>Maude · v0.12.0</span></div></footer>
           </main>
         </>
   );

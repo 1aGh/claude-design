@@ -4,7 +4,7 @@
  * @platform    desktop
  * @opt_out     none
  * @artboards   primary
- * @brief       MDCC-DSN/01.components-inputs / md-claude
+ * @brief       MDCC-DSN/01.components-inputs / Maude
  * @stack       React 19 · TSX · Bun.build · css_mode=inline
  * @history     .design/_history/components-inputs/
  * @handoff     bunx shadcn add file://./components-inputs.registry.json
@@ -14,7 +14,7 @@ export default function ComponentsInputs() {
     <>
           <header className="specimen-hd">
             <span className="sku">MDCC-DSN/01.components-inputs</span>
-            <span className="crumbs"><span>md-claude</span><span>design system</span><span>components</span><span>inputs</span></span>
+            <span className="crumbs"><span>maude</span><span>design system</span><span>components</span><span>inputs</span></span>
             <span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span>
           </header>
           <main className="specimen">
@@ -31,7 +31,7 @@ export default function ComponentsInputs() {
             <div style={{ maxWidth: '480px' }}>
               <div className="field">
                 <label className="field-label" htmlFor="i1">Plugin name<span className="hint">required</span></label>
-                <input id="i1" className="input" placeholder="md-claude/design" />
+                <input id="i1" className="input" placeholder="maude/design" />
                 <p className="field-help">Use the form <code>owner/repo</code>.</p>
               </div>
               <div className="field">
@@ -56,19 +56,19 @@ export default function ComponentsInputs() {
             <div style={{ maxWidth: '480px' }}>
               <div className="field">
                 <label className="field-label">Hover (mouse over)</label>
-                <input className="input" value="md-claude/design" style={{ borderColor: 'var(--border-strong)' }} />
+                <input className="input" value="maude/design" style={{ borderColor: 'var(--border-strong)' }} />
               </div>
               <div className="field">
                 <label className="field-label">Focus</label>
-                <input className="input" value="md-claude/design" autofocus={true} />
+                <input className="input" value="maude/design" autofocus={true} />
               </div>
               <div className="field">
                 <label className="field-label">Disabled</label>
-                <input className="input" value="md-claude/design" disabled={true} />
+                <input className="input" value="maude/design" disabled={true} />
               </div>
               <div className="field">
                 <label className="field-label">Error</label>
-                <input className="input" value="md-claude/design space" aria-invalid="true" />
+                <input className="input" value="maude/design space" aria-invalid="true" />
                 <p className="field-err">Plugin names cannot contain spaces.</p>
               </div>
             </div>
@@ -78,7 +78,7 @@ export default function ComponentsInputs() {
 
             <footer className="specimen-ft">
               <div className="colo-block"><strong>MDCC-DSN/01</strong><span>· components-inputs</span></div>
-              <div className="colo-block"><span>md-claude · v0.12.0</span></div>
+              <div className="colo-block"><span>Maude · v0.12.0</span></div>
             </footer>
           </main>
         </>

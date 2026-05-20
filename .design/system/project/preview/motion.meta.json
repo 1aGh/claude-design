@@ -1,14 +1,14 @@
 {
   "title": "motion",
   "subtitle": "motion tokens. Hover-only; --dur-route is 1ms (instant).",
-  "brief": "MDCC-DSN/01.motion / md-claude",
+  "brief": "MDCC-DSN/01.motion / Maude",
   "platform": "desktop",
   "designSystem": "project",
   "opt_out_scope": "none",
   "sections": [
     {
       "id": "overview",
-      "title": "MDCC-DSN/01.motion / md-claude",
+      "title": "MDCC-DSN/01.motion / Maude",
       "artboards": [
         {
           "id": "primary",

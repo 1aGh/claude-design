@@ -15,7 +15,7 @@ Native iOS/Android: N/A (web-only). See `../README.md`.
 
 ## Preconditions
 
-- `pnpm --filter @md-claude/site dev` running on `http://localhost:3000` (or any port; pass via `--base-url`).
+- `pnpm --filter @maude/site dev` running on `http://localhost:3000` (or any port; pass via `--base-url`).
 - Light theme default (`<html data-theme="light" class="mdcc">`).
 
 ## Steps

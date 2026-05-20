@@ -4,7 +4,7 @@
  * @platform    desktop
  * @opt_out     none
  * @artboards   primary
- * @brief       MDCC-DSN/01.opacity / md-claude
+ * @brief       MDCC-DSN/01.opacity / Maude
  * @stack       React 19 · TSX · Bun.build · css_mode=inline
  * @history     .design/_history/opacity/
  * @handoff     bunx shadcn add file://./opacity.registry.json
@@ -12,7 +12,7 @@
 export default function Opacity() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.opacity</span><span className="crumbs"><span>md-claude</span><span>design system</span><span>foundation</span><span>opacity</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.opacity</span><span className="crumbs"><span>maude</span><span>design system</span><span>foundation</span><span>opacity</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Opacity</h1><p className="lede">Disabled is 0.5. Press-armed is 0.7. Scrim is 0.6. That's it. No graduated alpha-fog for "atmosphere".</p></section>
             <dl className="specimen-meta"><div><dt>Levels</dt><dd>4</dd></div><div><dt>Use</dt><dd>state, not decoration</dd></div></dl>
@@ -28,7 +28,7 @@ export default function Opacity() {
             <h2 data-no="02">When NOT to use</h2>
             <div className="anti"><p style={{ margin: '0' }}>Don't use opacity for "ambient" texture. Fading a hero bg to 0.4 to "soften" it is decoration, and the catalog aesthetic doesn't soften anything.</p></div>
 
-            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· opacity</span></div><div className="colo-block"><span>md-claude · v0.12.0</span></div></footer>
+            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· opacity</span></div><div className="colo-block"><span>Maude · v0.12.0</span></div></footer>
           </main>
         </>
   );

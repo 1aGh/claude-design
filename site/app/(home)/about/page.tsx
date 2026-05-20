@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
   title: 'About the maker',
-  description: "Hi I'm Michal and I build things. md-claude is a small Claude Code marketplace.",
+  description: "Hi I'm Michal and I build things. Maude is a small Claude Code marketplace.",
 };
 
 export default function AboutPage() {
@@ -23,8 +23,8 @@ export default function AboutPage() {
           <p>Hi I&apos;m Michal and I build things.</p>
 
           <p>
-            md-claude is a small Claude Code marketplace. Two plugins, one CLI, some opinions about
-            HTML mocks. I built it, mostly at night, because I kept needing it.
+            Maude is a small Claude Code marketplace. Two plugins, one CLI, some opinions about HTML
+            mocks. I built it, mostly at night, because I kept needing it.
           </p>
 
           <p>I don&apos;t fully understand why it works, but it works.</p>
@@ -61,7 +61,7 @@ export default function AboutPage() {
           <div>
             <dt>Source</dt>
             <dd>
-              <a href="https://github.com/1aGh/md-claude">github.com/1aGh/md-claude</a>
+              <a href="https://github.com/1aGh/maude">github.com/1aGh/maude</a>
             </dd>
           </div>
         </dl>

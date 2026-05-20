@@ -4,7 +4,7 @@
  * @platform    desktop
  * @opt_out     none
  * @artboards   primary
- * @brief       MDCC-DSN/01.iconography / md-claude
+ * @brief       MDCC-DSN/01.iconography / Maude
  * @stack       React 19 · TSX · Bun.build · css_mode=inline
  * @history     .design/_history/iconography/
  * @handoff     bunx shadcn add file://./iconography.registry.json
@@ -14,7 +14,7 @@ import "./iconography.css";
 export default function Iconography() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.iconography</span><span className="crumbs"><span>md-claude</span><span>design system</span><span>foundation</span><span>iconography</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.iconography</span><span className="crumbs"><span>maude</span><span>design system</span><span>foundation</span><span>iconography</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Iconography</h1><p className="lede">ASCII / Unicode-glyph icons first. Characters do the work, inherit the mono baseline automatically. SVG glyphs for domain nouns that need their own mark live under <code>assets/glyphs/</code>. No emoji, ever.</p></section>
             <dl className="specimen-meta"><div><dt>Family</dt><dd>industry-specific</dd></div><div><dt>Unicode glyphs</dt><dd>20+</dd></div><div><dt>SVG glyphs</dt><dd>4 (plugin · canvas · slash-command · file-tree)</dd></div></dl>
@@ -75,7 +75,7 @@ export default function Iconography() {
             <h2 data-no="04">When NOT to use</h2>
             <div className="anti"><p style={{ margin: '0' }}>Don't introduce an emoji ("🚀 Launch", no). Don't pull from Heroicons/Lucide for chrome. The DS commits to characters first, SVG only when domain nouns demand their own mark.</p></div>
 
-            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· iconography</span></div><div className="colo-block"><span>md-claude · v0.12.0</span></div></footer>
+            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· iconography</span></div><div className="colo-block"><span>Maude · v0.12.0</span></div></footer>
           </main>
         </>
   );

@@ -106,9 +106,9 @@ Wrapper zavolá `bun run handoff.ts --emit <canvas> <designRoot>`. Skript:
 ## Failure modes
 
 - **Canvas není `.tsx`** → fail "migrate first".
-- **`handoffTargets` v configu nemá `registry:item`** → fail s návrhem `mdcc config set handoffTargets ...`.
+- **`handoffTargets` v configu nemá `registry:item`** → fail s návrhem `maude config set handoffTargets ...`.
 - **`bun` v PATH chybí** → fail s pokynem nainstalovat Bun (Phase 3.4).
 - **Latest critique má blockers + bez `--force`** → fail s top blocker quote.
-- **`_components.css` nebo `colors_and_type.css` neexistuje** → emit s prázdným CSS bundle (TSX-only registry-item; consumer dostane self-contained komponentu, ale tříd `_components.css` nepoužije — to je v podstatě same-stack handoff between mdcc projekty).
+- **`_components.css` nebo `colors_and_type.css` neexistuje** → emit s prázdným CSS bundle (TSX-only registry-item; consumer dostane self-contained komponentu, ale tříd `_components.css` nepoužije — to je v podstatě same-stack handoff between maude projekty).
 
 Po úspěšném handoff vidíš shell output s path k sidecar a kopírovací `bunx shadcn add` command.

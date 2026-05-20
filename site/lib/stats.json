@@ -10,11 +10,11 @@
       "agents": 13
     },
     "flow": {
-      "commands": 29,
-      "skills": 16,
-      "agents": 4
+      "commands": 30,
+      "skills": 17,
+      "agents": 6
     },
-    "mdcc": {
+    "maude": {
       "subcommands": 5
     }
   },

@@ -4,7 +4,7 @@
  * @platform    desktop
  * @opt_out     none
  * @artboards   primary
- * @brief       MDCC-DSN/01.type-mono / md-claude
+ * @brief       MDCC-DSN/01.type-mono / Maude
  * @stack       React 19 · TSX · Bun.build · css_mode=inline
  * @history     .design/_history/type-mono/
  * @handoff     bunx shadcn add file://./type-mono.registry.json
@@ -12,7 +12,7 @@
 export default function TypeMono() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.type-mono</span><span className="crumbs"><span>md-claude</span><span>design system</span><span>type</span><span>mono</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.type-mono</span><span className="crumbs"><span>maude</span><span>design system</span><span>type</span><span>mono</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Mono type</h1><p className="lede">Berkeley Mono everywhere isn't a code-specific token. It's the body family. This specimen demonstrates how mono renders prose, code, identifiers, and the character-grid rhythm specifically.</p></section>
             <dl className="specimen-meta"><div><dt>Stack</dt><dd>Berkeley Mono / JetBrains Mono / ui-monospace</dd></div><div><dt>Reading mode</dt><dd>prose + code share font</dd></div></dl>
@@ -57,7 +57,7 @@ export default function TypeMono() {
               </tbody>
             </table>
 
-            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· type-mono</span></div><div className="colo-block"><span>md-claude · v0.12.0</span></div></footer>
+            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· type-mono</span></div><div className="colo-block"><span>Maude · v0.12.0</span></div></footer>
           </main>
         </>
   );

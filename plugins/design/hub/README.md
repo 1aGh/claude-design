@@ -1,7 +1,7 @@
-# @md-claude/hub (reserved)
+# @maude/hub (reserved)
 
 Workspace slot reserved for **Phase 9 (v1.1)** — self-hostable Yjs sync hub
-(`mdcc hub serve|deploy`, `mdcc design link <url>`).
+(`maude hub serve|deploy`, `maude design link <url>`).
 
 Empty by design. Reserving the workspace here in Phase 1 avoids a second
 monorepo restructure when Phase 9 lands. See:

@@ -9,7 +9,7 @@ Lives at `.ai/workflows.config.json`. Missing file means defaults. Missing keys,
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/1aGh/md-claude/main/plugins/flow/.claude-plugin/config.schema.json",
+  "$schema": "https://raw.githubusercontent.com/1aGh/maude/main/plugins/flow/.claude-plugin/config.schema.json",
   "name": "my-app",
   "language": "en",
   "theme": "agnostic",
@@ -20,9 +20,9 @@ Lives at `.ai/workflows.config.json`. Missing file means defaults. Missing keys,
 Set keys from the CLI or by hand:
 
 ```bash
-mdcc config set platforms '["web-desktop","web-mobile"]'
-mdcc config set motion.complex 1200
-mdcc config get integrations.tracker.provider
+maude config set platforms '["web-desktop","web-mobile"]'
+maude config set motion.complex 1200
+maude config get integrations.tracker.provider
 ```
 
 ## Sections
@@ -220,4 +220,4 @@ The **release runbook** (`releaseGuide`) is plain Markdown. `H2` sections become
 
 ## Validation
 
-The full JSON Schema lives at [`plugins/flow/.claude-plugin/config.schema.json`](https://github.com/1aGh/md-claude/blob/main/plugins/flow/.claude-plugin/config.schema.json). Reference it via `$schema` for editor autocomplete + diagnostics.
+The full JSON Schema lives at [`plugins/flow/.claude-plugin/config.schema.json`](https://github.com/1aGh/maude/blob/main/plugins/flow/.claude-plugin/config.schema.json). Reference it via `$schema` for editor autocomplete + diagnostics.

@@ -1,4 +1,19 @@
-# @1agh/md-claude
+# @1agh/maude
+
+> Renamed from `@1agh/md-claude` in v0.15.0. See [`docs/MIGRATING-MD-CLAUDE-TO-MAUDE.md`](docs/MIGRATING-MD-CLAUDE-TO-MAUDE.md). Historic entries below reference the old name as a matter of record.
+
+## 0.15.0
+
+### Major Changes
+
+- **Project renamed `md-claude` → Maude.** Atomic rebrand across npm, GitHub repo, marketplace, CLI, dev-server, site, docs, and self-dogfooding directories. See [DDR-032](.ai/decisions/DDR-032-rename-md-claude-to-maude.md) and the [migration guide](docs/MIGRATING-MD-CLAUDE-TO-MAUDE.md).
+- **npm**: `@1agh/md-claude` → `@1agh/maude` (old package unpublished within 72h window). 7 per-platform sub-packages renamed in lockstep (`@1agh/maude-<slug>`).
+- **GitHub**: repo `1aGh/md-claude` → `1aGh/maude` (301 redirect preserved).
+- **CLI**: primary bin is now `maude` (`maude init`, `maude config`, `maude design serve`). The legacy `mdcc` bin still works as a deprecation-warning alias and will be dropped in v0.17.x. `MD_CLAUDE_SKIP_POSTINSTALL` env var renamed to `MAUDE_SKIP_POSTINSTALL` (old name accepted for one cycle).
+- **Marketplace**: `/plugin marketplace add 1aGh/md-claude` → `/plugin marketplace add 1aGh/maude`. Plugin install syntax changed: `flow@md-claude` → `flow@maude`, `design@md-claude` → `design@maude`.
+- **Workspace scopes**: internal pnpm workspaces `@md-claude/site`, `@md-claude/dev-server`, `@md-claude/hub` renamed to `@maude/*`.
+- **Domain**: docs site canonical host moved to `maude.iagh.cz` (DNS + Vercel wiring done in post-merge step).
+- **Intentionally preserved as internal namespaces** (per DDR-032 sub-decision 2): CSS class identifiers `.mdcc-*`, CSS custom properties `--mdcc-*`, `site/components/mdcc/` paths, the `~/.config/mdcc/` XDG config path, and the `@maude/canvas-lib` virtual import specifier used by canvases.
 
 ## 0.14.0
 
@@ -17,7 +32,7 @@
 
 - 5d9292e: **Design plugin — Phase 3.6.1: canvas envelope hygiene, reusable canvas-lib, HMR, and DS specimens as TSX.**
 
-  - **`@mdcc/canvas-lib`** — shared canvas library (`<designRoot>/_lib/canvas-lib.tsx`) resolved virtually at build time. Ships the frame envelope (`DesignCanvas`, `DCSection`, `DCArtboard`, `DCPostIt`), specimen helpers (`SpecimenHeader`, `SpecimenMeta`, `TokenChip`, `ColorSwatch`, `TypeScaleRow`, `KbdHint`, `ThemeToggle`) and hooks (`useTokens`, `useTheme`, `useArtboardBounds`). Authored once, imported by canvases and specimens — `/design:handoff` inlines used exports per-canvas so the emitted registry-item stays self-contained.
+  - **`@maude/canvas-lib`** — shared canvas library (`<designRoot>/_lib/canvas-lib.tsx`) resolved virtually at build time. Ships the frame envelope (`DesignCanvas`, `DCSection`, `DCArtboard`, `DCPostIt`), specimen helpers (`SpecimenHeader`, `SpecimenMeta`, `TokenChip`, `ColorSwatch`, `TypeScaleRow`, `KbdHint`, `ThemeToggle`) and hooks (`useTokens`, `useTheme`, `useArtboardBounds`). Authored once, imported by canvases and specimens — `/design:handoff` inlines used exports per-canvas so the emitted registry-item stays self-contained.
   - **HMR** — `fs-watch` change events now broadcast `canvas-hmr` messages over the existing inspector WebSocket. CSS sibling edits hot-swap via `<link>` cache-bust; `_lib/**` edits trigger hard iframe reload; canvas `.tsx` edits do a module reload. Target p50 < 200 ms click-to-paint, p99 < 400 ms.
   - **DS specimens are now TSX**, not HTML. `/design:setup-ds` scaffolds bare-TSX specimens via the new `ds-specimen.tsx.template`; the `design-system-completeness-critic` and `design-system-keeper` agents read `.tsx`. The legacy `system/<ds>/preview/*.html` set is archived under `_history/_migration-2026-05-15/`.
   - **`/design:edit` Step 1.5** now also pre-loads `<designRoot>/_lib/canvas-lib.tsx` for every `.tsx` canvas so iteration prompts see the authoring vocabulary instead of re-inventing helpers.
@@ -163,7 +178,7 @@
   Internal refactor — zero behavior change for canvas authors (handoff drop is byte-identical), but plugin-author ergonomics + downstream-project filesystem layout shift.
 
   - **canvas-lib relocated.** The shared canvas library (`DesignCanvas`, `DCSection`, `DCArtboard`, `DCPostIt`, specimen helpers, hooks) now lives at `plugins/design/dev-server/canvas-lib.tsx` and ships with the dev-server install. Three prior copies — `plugins/design/templates/canvas-lib.tsx.template`, the dogfood `.design/_lib/canvas-lib.tsx`, and every initialized project's scaffolded `<designRoot>/_lib/canvas-lib.tsx` — collapse to one. Plugin releases now reach end users automatically.
-  - **Bootstrap drops the canvas-lib scaffold step.** `design-system/SKILL.md` Round-0 Batch-A step 0 deleted. `/design:setup-ds` no longer writes a `_lib/` directory in the project; the virtual specifier `@mdcc/canvas-lib` resolves directly to the dev-server-bundled file at canvas build time.
+  - **Bootstrap drops the canvas-lib scaffold step.** `design-system/SKILL.md` Round-0 Batch-A step 0 deleted. `/design:setup-ds` no longer writes a `_lib/` directory in the project; the virtual specifier `@maude/canvas-lib` resolves directly to the dev-server-bundled file at canvas build time.
   - **Legacy `<designRoot>/_lib/canvas-lib.tsx` deprecation guard.** Downstream projects with a pre-4.0.5 `_lib/canvas-lib.tsx` get a one-shot warning log per dev-server boot (`[canvas-lib] Legacy … detected …`); the project file is **ignored** and the dev-server-bundled lib is authoritative. After two minor versions the warning becomes silent and the fallback comment is removed.
   - **Perf fixture relocated.** `.design/_lab/perf-100-artboards.tsx` → `plugins/design/dev-server/examples/perf-100-artboards.tsx` with sibling `README.md`. The fixture is dev-server tooling, not user content — keeping it in `.design/_lab/` mislabeled the boundary.
   - **canvas-lib HMR.** When `plugins/design/dev-server/canvas-lib.tsx` is edited, the http-layer file-watcher clears the canvas bundle cache and emits a synthetic `_lib/canvas-lib.tsx` event so the existing hmr-broadcast classifier emits the same hard-reload message every open iframe was already wired for. No bespoke client-side wiring.

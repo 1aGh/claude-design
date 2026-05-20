@@ -40,7 +40,7 @@ export async function run({ args, pkgRoot }) {
   const { flags } = parseArgs(args, { booleans: ['force', 'dry-run', 'help'] });
   if (flags.help) {
     process.stdout.write(
-      'mdcc init [--name <project>] [--provider <changesets|git-cliff|conventional|custom|none>] [--force] [--dry-run]\n'
+      'maude init [--name <project>] [--provider <changesets|git-cliff|conventional|custom|none>] [--force] [--dry-run]\n'
     );
     return;
   }
@@ -61,10 +61,10 @@ export async function run({ args, pkgRoot }) {
 
   const skeletonExists = await pathExists(skeleton);
   if (!skeletonExists) {
-    throw new Error(`skeleton not found at ${skeleton}. Reinstall mdcc.`);
+    throw new Error(`skeleton not found at ${skeleton}. Reinstall maude.`);
   }
 
-  process.stdout.write('mdcc init\n');
+  process.stdout.write('maude init\n');
   process.stdout.write(`  project name: ${projectName}\n`);
   process.stdout.write(`  scaffold target: ${aiDir}\n`);
   process.stdout.write(`  changelog provider: ${provider}\n`);
@@ -84,7 +84,7 @@ export async function run({ args, pkgRoot }) {
       if (srcPath.endsWith('workflows.config.json')) {
         out = out.replace(
           '"$schema": "../../plugins/flow/.claude-plugin/config.schema.json"',
-          '"$schema": "https://raw.githubusercontent.com/1aGh/md-claude/main/plugins/flow/.claude-plugin/config.schema.json"'
+          '"$schema": "https://raw.githubusercontent.com/1aGh/maude/main/plugins/flow/.claude-plugin/config.schema.json"'
         );
         // Propagate --provider into integrations.changelog.provider so the
         // first /flow:init run doesn't have to ask for what the user
@@ -121,7 +121,7 @@ export async function run({ args, pkgRoot }) {
   // Note: we do NOT scaffold CLAUDE.md here. That's the job of Claude Code's
   // built-in `/init` command, which analyzes the codebase and writes a
   // <200-line CLAUDE.md tailored to the project. `mdcc init` only owns
-  // .ai/ — the second-brain workspace.
+  // .ai/ — the second-brain workspace. Legacy `mdcc init` alias still works.
 
   const claudeMdExists =
     (await pathExists(resolve(cwd, 'CLAUDE.md'))) ||
@@ -149,7 +149,7 @@ function printSummary({ created, replaced, skipped }) {
   if (replaced.length) process.stdout.write(`, ${replaced.length} replaced`);
   if (skipped.length) process.stdout.write(`, ${skipped.length} skipped`);
   process.stdout.write('\n');
-  if (process.env.MDCC_DEBUG) {
+  if (process.env.MAUDE_DEBUG || process.env.MDCC_DEBUG) {
     for (const c of created) process.stdout.write(`    + ${c}\n`);
     for (const r of replaced) process.stdout.write(`    ~ ${r}\n`);
     for (const s of skipped) process.stdout.write(`    = ${s}\n`);
@@ -158,8 +158,8 @@ function printSummary({ created, replaced, skipped }) {
 
 function printNextSteps(name, claudeMdExists) {
   process.stdout.write('\nNext steps:\n');
-  process.stdout.write('  1. In Claude Code: /plugin marketplace add 1aGh/md-claude\n');
-  process.stdout.write('                     /plugin install flow@md-claude\n');
+  process.stdout.write('  1. In Claude Code: /plugin marketplace add 1aGh/maude\n');
+  process.stdout.write('                     /plugin install flow@maude\n');
   if (!claudeMdExists) {
     process.stdout.write('  2. /init — generate a CLAUDE.md tailored to your codebase\n');
     process.stdout.write(

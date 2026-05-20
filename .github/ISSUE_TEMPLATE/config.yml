@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Questions & discussion
-    url: https://github.com/1aGh/md-claude/discussions
+    url: https://github.com/1aGh/maude/discussions
     about: For general questions, ideas, and show-and-tell — not bug reports.
   - name: Security disclosure
-    url: https://github.com/1aGh/md-claude/blob/main/SECURITY.md
+    url: https://github.com/1aGh/maude/blob/main/SECURITY.md
     about: Please do not open a public issue for security reports.

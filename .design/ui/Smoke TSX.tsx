@@ -18,7 +18,7 @@
 
 import { useState } from "react";
 
-import { DesignCanvas, DCSection, DCArtboard } from "@mdcc/canvas-lib";
+import { DesignCanvas, DCSection, DCArtboard } from "@maude/canvas-lib";
 
 export default function SmokeTSX() {
   const [n, setN] = useState(0);

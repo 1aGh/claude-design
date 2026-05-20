@@ -19,7 +19,7 @@ This skill is a **thin pointer**. The actual UI-kit content lives under the proj
   └── README.md                          # canvas catalog
 ```
 
-Per-canvas TSX files import frame primitives (`DesignCanvas`, `DCSection`, `DCArtboard`, `DCPostIt`) from `@mdcc/canvas-lib` — a virtual specifier the dev-server resolves to its bundled canvas-lib at `plugins/design/dev-server/canvas-lib.tsx` (single source, ships with the dev-server install per DDR-025). `/design:handoff` AST-inlines the used exports on emit so the registry-item drop is self-contained (no `@mdcc/canvas-lib` reference survives in the consumer drop).
+Per-canvas TSX files import frame primitives (`DesignCanvas`, `DCSection`, `DCArtboard`, `DCPostIt`) from `@maude/canvas-lib` — a virtual specifier the dev-server resolves to its bundled canvas-lib at `plugins/design/dev-server/canvas-lib.tsx` (single source, ships with the dev-server install per DDR-025). `/design:handoff` AST-inlines the used exports on emit so the registry-item drop is self-contained (no `@maude/canvas-lib` reference survives in the consumer drop).
 
 This skill is non-user-invocable. Auto-loads when Claude is doing UI work. The user-facing entry point is the `design` orchestrator skill.
 

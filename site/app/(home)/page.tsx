@@ -4,14 +4,14 @@ import stats from '@/lib/stats.json';
 import Link from 'next/link';
 
 const INSTALL_SNIPPET = `# 1. add the marketplace
-/plugin marketplace add 1aGh/md-claude
+/plugin marketplace add 1aGh/maude
 
 # 2. install plugins
-/plugin install design@md-claude
-/plugin install flow@md-claude
+/plugin install design@maude
+/plugin install flow@maude
 
 # optional. scaffold a project from CLI
-npm i -g @1agh/md-claude
+npm i -g @1agh/maude
 mdcc init --name my-app`;
 
 const CATALOG = [
@@ -26,7 +26,7 @@ const CATALOG = [
       `skills · ${stats.plugins.design.skills}`,
       `critics · ${stats.plugins.design.agents}`,
     ],
-    install: '/plugin install design@md-claude',
+    install: '/plugin install design@maude',
     docs: '/docs/design',
   },
   {
@@ -40,7 +40,7 @@ const CATALOG = [
       `skills · ${stats.plugins.flow.skills}`,
       `agents · ${stats.plugins.flow.agents}`,
     ],
-    install: '/plugin install flow@md-claude',
+    install: '/plugin install flow@maude',
     docs: '/docs/flow',
   },
   {
@@ -50,11 +50,11 @@ const CATALOG = [
     description:
       'Scaffolds the .ai/ workspace. Reads and writes config. Boots the design dev server. Pure ESM, zero runtime deps beyond Node 20+.',
     tags: [
-      `subcommands · ${stats.plugins.mdcc.subcommands}`,
+      `subcommands · ${stats.plugins.maude.subcommands}`,
       `node ${stats.nodeRange.replace('>=', '≥ ')}`,
       'zero deps',
     ],
-    install: 'npm i -g @1agh/md-claude',
+    install: 'npm i -g @1agh/maude',
     docs: '/docs/cli',
   },
 ];
@@ -177,7 +177,7 @@ export default function HomePage() {
           <div>
             <dt>Source</dt>
             <dd>
-              <a href="https://github.com/1aGh/md-claude">github.com/1aGh/md-claude</a>
+              <a href="https://github.com/1aGh/maude">github.com/1aGh/maude</a>
             </dd>
           </div>
           <div>

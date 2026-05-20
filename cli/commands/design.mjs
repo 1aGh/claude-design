@@ -15,7 +15,7 @@ export async function run({ args, pkgRoot }) {
   }
 
   if (!SUBCOMMANDS.has(sub)) {
-    process.stderr.write(`mdcc design: unknown subcommand "${sub}"\n${usage()}`);
+    process.stderr.write(`maude design: unknown subcommand "${sub}"\n${usage()}`);
     process.exit(2);
   }
 
@@ -28,7 +28,7 @@ export async function run({ args, pkgRoot }) {
 }
 
 function usage() {
-  return `mdcc design <serve|init> [options]
+  return `maude design <serve|init> [options]
 
   serve [--port N] [--root PATH]
         Start the design plugin's dev server in the current repo. Equivalent
@@ -73,7 +73,7 @@ async function runServe({ args, pkgRoot }) {
     const child = spawn(binPath, forwarded, { stdio: 'inherit', env: process.env });
     child.on('exit', (code) => process.exit(code ?? 0));
     child.on('error', (err) => {
-      process.stderr.write(`mdcc design serve (binary ${binPath}): ${err.message}\n`);
+      process.stderr.write(`maude design serve (binary ${binPath}): ${err.message}\n`);
       process.exit(1);
     });
     return;
@@ -93,7 +93,7 @@ async function runServe({ args, pkgRoot }) {
     : spawn(process.execPath, [mjsEntry, ...forwarded], { stdio: 'inherit', env: process.env });
   child.on('exit', (code) => process.exit(code ?? 0));
   child.on('error', (err) => {
-    process.stderr.write(`mdcc design serve: ${err.message}\n`);
+    process.stderr.write(`maude design serve: ${err.message}\n`);
     process.exit(1);
   });
 }
@@ -120,22 +120,22 @@ async function runInit({ args, pkgRoot }) {
   );
 
   if (!(await pathExists(inspirationRoot))) {
-    throw new Error(`inspiration library not found at ${inspirationRoot}. Reinstall mdcc.`);
+    throw new Error(`inspiration library not found at ${inspirationRoot}. Reinstall maude.`);
   }
 
   if (!flags['no-discovery'] && !flags['discovery-payload']) {
     process.stderr.write(
-      `mdcc design init: interactive bootstrap requires Claude Code.
+      `maude design init: interactive bootstrap requires Claude Code.
 
   Inside Claude Code:
     /design:setup-ds <name>           — full discovery + scaffold (recommended)
     /design:init             — just prepare the env (no DS yet)
 
   From the CLI (non-interactive only):
-    mdcc design init --no-discovery [--name <slug>]
+    maude design init --no-discovery [--name <slug>]
         scaffold Core only with default tokens
 
-    mdcc design init --discovery-payload <path>
+    maude design init --discovery-payload <path>
         read JSON answers + tokens, scaffold Core + derived specimens
 `
     );
@@ -155,7 +155,7 @@ async function runInit({ args, pkgRoot }) {
   const dsDir = resolve(designDir, 'system', dsName);
   if ((await pathExists(dsDir)) && !flags.force) {
     process.stderr.write(
-      `mdcc design init: ${dsDir} already exists. Pass --force to overwrite, or use a different --ds.\n`
+      `maude design init: ${dsDir} already exists. Pass --force to overwrite, or use a different --ds.\n`
     );
     process.exit(2);
   }
@@ -165,7 +165,7 @@ async function runInit({ args, pkgRoot }) {
     ? await readPayload(flags['discovery-payload'])
     : defaultPayload({ projectName, dsName });
 
-  process.stdout.write('mdcc design init\n');
+  process.stdout.write('maude design init\n');
   process.stdout.write(`  project name: ${projectName}\n`);
   process.stdout.write(`  ds name:      ${dsName}\n`);
   process.stdout.write(`  scaffold target: ${designDir}\n`);
@@ -358,7 +358,7 @@ function printSummary({ created, replaced, skipped }) {
   if (replaced.length) process.stdout.write(`, ${replaced.length} replaced`);
   if (skipped.length) process.stdout.write(`, ${skipped.length} skipped`);
   process.stdout.write('\n');
-  if (process.env.MDCC_DEBUG) {
+  if (process.env.MAUDE_DEBUG || process.env.MDCC_DEBUG) {
     for (const c of created) process.stdout.write(`    + ${c}\n`);
     for (const r of replaced) process.stdout.write(`    ~ ${r}\n`);
     for (const s of skipped) process.stdout.write(`    = ${s}\n`);
@@ -382,5 +382,5 @@ function printNextSteps({ dsName, payloadProvided }) {
   process.stdout.write(
     `  Then: /design:edit "<feedback>" to iterate on a specimen, or /design:new "<Name>" "<brief>" --ds=${dsName} for a canvas.\n`
   );
-  process.stdout.write('  Browse: mdcc design serve\n');
+  process.stdout.write('  Browse: maude design serve\n');
 }

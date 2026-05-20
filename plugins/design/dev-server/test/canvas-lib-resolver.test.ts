@@ -1,4 +1,4 @@
-// canvas-lib-resolver — virtual specifier `@mdcc/canvas-lib` → the dev-server-
+// canvas-lib-resolver — virtual specifier `@maude/canvas-lib` → the dev-server-
 // bundled canvas-lib (Phase 3.6.1 Task 2; relocated to dev-server in Phase
 // 4.0.5 per DDR-025).
 
@@ -37,17 +37,17 @@ describe('canvas-lib-resolver / canvasLibPath', () => {
     expect(canvasLibPath('/foo/bar')).toBe(canvasLibPath());
   });
 
-  test('CANVAS_LIB_SPECIFIER is `@mdcc/canvas-lib`', () => {
-    expect(CANVAS_LIB_SPECIFIER).toBe('@mdcc/canvas-lib');
+  test('CANVAS_LIB_SPECIFIER is `@maude/canvas-lib`', () => {
+    expect(CANVAS_LIB_SPECIFIER).toBe('@maude/canvas-lib');
   });
 });
 
 describe('canvas-lib-resolver / canvasLibResolver plugin', () => {
-  test('resolves @mdcc/canvas-lib through Bun.build', async () => {
+  test('resolves @maude/canvas-lib through Bun.build', async () => {
     const canvasPath = path.join(DESIGN_ROOT, 'ui', 'Resolves.tsx');
     await mkdir(path.dirname(canvasPath), { recursive: true });
     const canvasSource =
-      `import { DesignCanvas, DCArtboard } from "@mdcc/canvas-lib";\n` +
+      `import { DesignCanvas, DCArtboard } from "@maude/canvas-lib";\n` +
       'export default function Demo() {\n' +
       '  return <DesignCanvas><DCArtboard>hi</DCArtboard></DesignCanvas>;\n' +
       '}\n';
@@ -59,7 +59,7 @@ describe('canvas-lib-resolver / canvasLibResolver plugin', () => {
     expect(r.js).toContain('dc-canvas');
     expect(r.js).toContain('dc-artboard');
     // The bare specifier should NOT survive as an import.
-    expect(r.js).not.toMatch(/from\s*["']@mdcc\/canvas-lib["']/);
+    expect(r.js).not.toMatch(/from\s*["']@maude\/canvas-lib["']/);
   });
 
   test('does not interfere with canvases that never import the lib', async () => {
@@ -102,7 +102,7 @@ describe('canvas-lib-resolver / legacy deprecation guard', () => {
     const canvasPath = path.join(projRoot, 'ui', 'Legacy.tsx');
     await mkdir(path.dirname(canvasPath), { recursive: true });
     const canvasSource =
-      `import { DesignCanvas } from "@mdcc/canvas-lib";\n` +
+      `import { DesignCanvas } from "@maude/canvas-lib";\n` +
       'export default function L() { return <DesignCanvas>hi</DesignCanvas>; }\n';
     await writeFile(canvasPath, canvasSource);
     const r = await buildCanvasModule(canvasPath, canvasSource, { designRoot: projRoot });

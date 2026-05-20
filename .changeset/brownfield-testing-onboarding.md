@@ -1,5 +1,5 @@
 ---
-"@1agh/md-claude": patch
+"@1agh/maude": patch
 ---
 
 flow: Brownfield testing onboarding — three opt-in/advisory additions to make the flow plugin friendlier on existing repos with no test runner or thin coverage. (1) `flow:test-coverage` subagent gains `path <glob>` and `branch` scope modes alongside the existing `diff` default — unblocks brownfield audits like "audit `apps/api/auth/`" without abusing the diff mode; path/branch reports are framed as advisory (no "blockers" count). (2) `/flow:init` Step 2c surfaces a stack-appropriate test-runner recommendation when detection returns `tests=unknown` (vitest for Next/Vite, jest for Expo, pytest, go-test, cargo-test, JUnit) — recommendation only, no scaffolding. (3) `/flow:done` Step 7a refreshes `.ai/state/coverage-baseline.json` on the configured `baselineBranch` (default `main`) when `skills.coverageTrend.enabled` — pairs with the coverage-trend warning already in `/flow:validate` Step 2a. All three are opt-in / advisory by design; the testing-rules iron law still owns greenfield TDD discipline.

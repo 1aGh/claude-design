@@ -17,7 +17,7 @@ export default function ComponentsToggles() {
 <header className="specimen-hd">
           <span className="sku">MDCC-DSN/01.components-toggles</span>
           <span className="crumbs">
-            <span>md-claude</span>
+            <span>maude</span>
             <span>design system</span>
             <span>components</span>
             <span>toggles</span>
@@ -72,7 +72,7 @@ export default function ComponentsToggles() {
 
           <footer className="specimen-ft">
             <div className="colo-block"><strong>MDCC-DSN/01</strong><span>· components-toggles</span></div>
-            <div className="colo-block"><span>md-claude · v0.12.0</span></div>
+            <div className="colo-block"><span>Maude · v0.12.0</span></div>
           </footer>
         </main>
     </>

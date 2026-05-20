@@ -1,6 +1,6 @@
 {
-  "$schema": "https://raw.githubusercontent.com/1aGh/md-claude/main/plugins/design/dev-server/config.schema.json",
-  "name": "md-claude",
+  "$schema": "https://raw.githubusercontent.com/1aGh/maude/main/plugins/design/dev-server/config.schema.json",
+  "name": "maude",
   "designRoot": ".design",
   "rootClass": "mdcc",
   "canvasGroups": [

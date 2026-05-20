@@ -1,14 +1,14 @@
 {
   "title": "components-monospace-table",
   "subtitle": "data-grade monospace table — tabular numerics, aligned columns.",
-  "brief": "MDCC-DSN/01.components-monospace-table / md-claude",
+  "brief": "MDCC-DSN/01.components-monospace-table / Maude",
   "platform": "desktop",
   "designSystem": "project",
   "opt_out_scope": "none",
   "sections": [
     {
       "id": "overview",
-      "title": "MDCC-DSN/01.components-monospace-table / md-claude",
+      "title": "MDCC-DSN/01.components-monospace-table / Maude",
       "artboards": [
         {
           "id": "primary",

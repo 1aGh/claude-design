@@ -1,8 +1,10 @@
-# md-claude — Claude Code marketplace
+# Maude — Claude Code marketplace
 
-A personal marketplace of Claude Code plugins. Two plugins today, plus an `mdcc` CLI for scaffolding and running the bundled dev tooling.
+A personal marketplace of Claude Code plugins. Two plugins today, plus a `maude` CLI for scaffolding and running the bundled dev tooling.
 
-> **📚 Full docs: https://md-claude.iagh.cz** (or browse the source under [`site/content/docs/`](./site/content/docs/) until the public URL lands).
+> **Renamed from `md-claude`.** See [`docs/MIGRATING-MD-CLAUDE-TO-MAUDE.md`](./docs/MIGRATING-MD-CLAUDE-TO-MAUDE.md) if you came from the old name.
+
+> **📚 Full docs: https://maude.iagh.cz** (or browse the source under [`site/content/docs/`](./site/content/docs/) until the public URL lands).
 > Contributing? See [CONTRIBUTING.md](./CONTRIBUTING.md). Security? See [SECURITY.md](./SECURITY.md).
 
 | Plugin | What it does |
@@ -10,21 +12,21 @@ A personal marketplace of Claude Code plugins. Two plugins today, plus an `mdcc`
 | **`design`** | Canvas-first iteration on HTML/JSX mocks under `.design/` — element selection via Cmd+Click, auto-managed dev server, chained UX/DS critique. |
 | **`flow`** | Generic agentic workflow loop with a second-brain `.ai/` workspace. `/flow:plan`, `/flow:execute`, `/flow:utils-verify`, `/flow:validate`, `/flow:done`, `/flow:init`, `/flow:record-ddr`, `/flow:scenario`, …. Project-agnostic via `<project>` placeholders + per-repo `.ai/workflows.config.json`. |
 
-Plus the **`mdcc`** CLI — `mdcc init` scaffolds a fresh `.ai/` workspace from the flow plugin skeleton; `mdcc design serve` boots the design dev server.
+Plus the **`maude`** CLI — `maude init` scaffolds a fresh `.ai/` workspace from the flow plugin skeleton; `maude design serve` boots the design dev server. The legacy `mdcc` alias still works (prints a deprecation warning) and will be removed in v0.17.x.
 
 ## Quick start
 
 ### 1. Add the marketplace inside Claude Code
 
 ```
-/plugin marketplace add 1aGh/md-claude
+/plugin marketplace add 1aGh/maude
 ```
 
 ### 2. Install the plugins you want
 
 ```
-/plugin install design@md-claude
-/plugin install flow@md-claude
+/plugin install design@maude
+/plugin install flow@maude
 ```
 
 Then `/reload-plugins` and you should see `/design:edit`, `/design:*`, `/flow:plan`, `/flow:execute`, etc.
@@ -33,26 +35,26 @@ Then `/reload-plugins` and you should see `/design:edit`, `/design:*`, `/flow:pl
 
 ```sh
 # From npm:
-npm i -g @1agh/md-claude
+npm i -g @1agh/maude
 
 # Or directly from GitHub:
-npm i -g github:1aGh/md-claude
+npm i -g github:1aGh/maude
 ```
 
-After install you have two bins on `$PATH`:
+After install you have these bins on `$PATH`:
 
-- `mdcc` — the namespace CLI (`init`, `config`, `design serve`).
-- `claude-design-server` — direct alias for the dev server (kept for back-compat).
+- `maude` — the primary CLI (`init`, `config`, `design serve`).
+- `mdcc` — legacy alias for `maude`. Prints a deprecation warning; will be removed in v0.17.x.
 
 ### 4. Bootstrap a repo
 
 In any project root:
 
 ```sh
-mdcc init                          # scaffold .ai/ second-brain workspace
+maude init                          # scaffold .ai/ second-brain workspace
 ```
 
-Then inside Claude Code (with `flow@md-claude` installed):
+Then inside Claude Code (with `flow@maude` installed):
 
 ```
 /init                  # Anthropic's built-in — generates CLAUDE.md tailored to your codebase
@@ -72,14 +74,14 @@ Then inside Claude Code (with `flow@md-claude` installed):
 
 User-facing docs live in two places — the README points you the right way:
 
-- **Reference** (every command, every config key, recipes for Next.js / Expo / monorepo) → [`site/content/docs/`](./site/content/docs/) (served at https://md-claude.iagh.cz once Vercel is wired — see [DDR-005](.ai/decisions/DDR-005-docs-site-stack-and-hosting.md)).
+- **Reference** (every command, every config key, recipes for Next.js / Expo / monorepo) → [`site/content/docs/`](./site/content/docs/) (served at https://maude.iagh.cz once Vercel is wired — see [DDR-005](.ai/decisions/DDR-005-docs-site-stack-and-hosting.md)).
 - **Quickstart** + **contributor info** → this README.
 
 The docs site auto-generates per-command pages from `plugins/{flow,design}/commands/*.md` frontmatter and a typed schema reference from `plugins/flow/.claude-plugin/config.schema.json`. Adding a new command → docs update on next build.
 
 ## Workspaces
 
-The repo is a **pnpm workspace monorepo** with one published npm package (`@1agh/md-claude`). Internal workspaces are `"private": true` and never publish:
+The repo is a **pnpm workspace monorepo** with one published npm package (`@1agh/maude`). Internal workspaces are `"private": true` and never publish:
 
 | Workspace | Purpose |
 | --------- | ------- |
@@ -100,21 +102,21 @@ pnpm test             # node --test over cli/**/*.test.mjs
 pnpm changeset        # add a changeset for the next release
 ```
 
-The site workspace's Next.js dependencies are heavy — contributors fixing plugin code can keep working with `pnpm install --filter '!@md-claude/site'` to skip them.
+The site workspace's Next.js dependencies are heavy — contributors fixing plugin code can keep working with `pnpm install --filter '!@maude/site'` to skip them.
 
 ## Updating
 
 In Claude Code, after a new version lands on the marketplace:
 
 ```
-/plugin marketplace update md-claude
-/plugin install design@md-claude
-/plugin install flow@md-claude
+/plugin marketplace update maude
+/plugin install design@maude
+/plugin install flow@maude
 ```
 
 ## Releasing
 
-The npm package (`@1agh/md-claude`) and the Claude Code plugins (`design@md-claude`, `flow@md-claude`) share one version. The standard release path is **Changesets**:
+The npm package (`@1agh/maude`) and the Claude Code plugins (`design@maude`, `flow@maude`) share one version. The standard release path is **Changesets**:
 
 ```sh
 # 1. Each PR with shipped behavior includes a changeset
@@ -145,19 +147,19 @@ The `v*` tag triggers `.github/workflows/publish.yml`, which re-runs the parity 
 ## Local development (plugin authors)
 
 ```
-/plugin marketplace add /absolute/path/to/md-claude
-/plugin install design@md-claude
-/plugin install flow@md-claude
+/plugin marketplace add /absolute/path/to/maude
+/plugin install design@maude
+/plugin install flow@maude
 ```
 
 Working on plugin internals:
 
 1. **Edit in place** — the local marketplace points at your working tree.
 2. **Reload after edits:**
-   - Commands / agents / skills → `/plugin marketplace update md-claude` then `/reload-plugins`.
+   - Commands / agents / skills → `/plugin marketplace update maude` then `/reload-plugins`.
    - Dev server code → kill the running process (`lsof -i :<port>` → `kill`) and let the next `/design:edit` invocation auto-restart.
 3. **Test in isolation** — open Claude Code from a scratch project (`cd /tmp && claude`) so plugins aren't entangled with this repo's own `.ai/`.
-4. **Dogfood** — md-claude itself uses `flow` for plan/execute/done. Once `flow` is installed against this marketplace, you can drive its own development with `/flow:plan`, `/flow:execute`, etc.
+4. **Dogfood** — Maude itself uses `flow` for plan/execute/done. Once `flow` is installed against this marketplace, you can drive its own development with `/flow:plan`, `/flow:execute`, etc.
 
 ## License
 

@@ -7,7 +7,7 @@ Set Framerate 30
 Set Theme "Dracula"
 Set Shell "zsh"
 
-Type "node cli/bin/mdcc.mjs --help"
+Type "node cli/bin/maude.mjs --help"
 Sleep 500ms
 Enter
 Sleep 2s

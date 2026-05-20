@@ -1,5 +1,5 @@
 # Workspace metadata never ships in the published tarball.
-# The root @1agh/md-claude package owns publishing; this nested
+# The root @1agh/maude package owns publishing; this nested
 # package.json exists only so pnpm treats this dir as a workspace.
 package.json
 node_modules/

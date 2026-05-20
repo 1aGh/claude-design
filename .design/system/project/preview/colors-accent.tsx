@@ -4,7 +4,7 @@
  * @platform    desktop
  * @opt_out     none
  * @artboards   primary
- * @brief       MDCC-DSN/01.colors-accent / md-claude
+ * @brief       MDCC-DSN/01.colors-accent / Maude
  * @stack       React 19 · TSX · Bun.build · css_mode=inline
  * @history     .design/_history/colors-accent/
  * @handoff     bunx shadcn add file://./colors-accent.registry.json
@@ -16,7 +16,7 @@ export default function ColorsAccent() {
     <>
           <header className="specimen-hd">
             <span className="sku">MDCC-DSN/01.colors-accent</span>
-            <span className="crumbs"><span>md-claude</span><span>design system</span><span>color</span><span>accent</span></span>
+            <span className="crumbs"><span>maude</span><span>design system</span><span>color</span><span>accent</span></span>
             <span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span>
           </header>
           <main className="specimen">
@@ -35,7 +35,7 @@ export default function ColorsAccent() {
             <p>This is the accent at its loudest: the catalog stamp. Use it once per page. Opening a plugin page, anchoring a marketplace hero, marking the "this is the thing" moment in a showcase. (Twice is already an argument.)</p>
             <div className="stamp">
               <div className="stamp-eyebrow">MDCC-DSN/01 · PUBLISHED 2026-05-14</div>
-              <h3 className="stamp-headline">md-claude design system</h3>
+              <h3 className="stamp-headline">maude design system</h3>
               <p className="stamp-body">A catalog-disciplined, mono-everywhere DS for the marketplace and the dev-server canvas. Berkeley-forward, hard-edges, paper-and-phosphor. The accent is a stamp, not a fill.</p>
               <div className="stamp-meta">
                 <span><strong>Mood</strong> Industrial Catalogue</span>
@@ -109,7 +109,7 @@ export default function ColorsAccent() {
 
             <footer className="specimen-ft">
               <div className="colo-block"><strong>MDCC-DSN/01</strong><span>· colors-accent · ★ signature</span></div>
-              <div className="colo-block"><span>md-claude · v0.12.0</span></div>
+              <div className="colo-block"><span>Maude · v0.12.0</span></div>
             </footer>
           </main>
         </>

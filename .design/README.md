@@ -1,6 +1,6 @@
 # .design/ — read this first
 
-You're looking at the design root of **md-claude** (this repo). Everything visual that the marketplace + dev-server surface up lives under here.
+You're looking at the design root of **Maude** (this repo). Everything visual that the marketplace + dev-server surface up lives under here.
 
 ## Layout
 
@@ -15,7 +15,7 @@ You're looking at the design root of **md-claude** (this repo). Everything visua
 │   └── _system/               ← bootstrap roster, completeness reports, research cache
 │
 ├── system/                    ← design systems (one or more)
-│   └── project/               ← THE design system for md-claude (MDCC-DSN/01)
+│   └── project/               ← THE design system for Maude (MDCC-DSN/01)
 │       ├── README.md          ← philosophy + voice + hard rules (READ BEFORE EDITING)
 │       ├── SKILL.md           ← terse per-DS rules (loaded by every iterator agent)
 │       ├── colors_and_type.css ← tokens (authoritative — never invent colors)
@@ -33,7 +33,7 @@ You're looking at the design root of **md-claude** (this repo). Everything visua
 │       │   ├── platform-desktop: components-resize-panels, ui_kits-desktop-{showcase,index}
 │       │   └── theme-both: colors-themes-side-by-side
 │       └── assets/
-│           ├── logos/wordmark.svg   ← THE md-claude wordmark
+│           ├── logos/wordmark.svg   ← THE Maude wordmark
 │           └── glyphs/*.svg         ← domain-noun glyphs (plugin, canvas, slash-command, file-tree)
 │
 └── ui/                        ← (empty for now) — full product canvases when /design:new fires
@@ -54,7 +54,7 @@ The `system/project/` directory is the design system; everything inside `ui/` wi
 /design:help                        — grouped command index
 ```
 
-For dev-server-only operations: `mdcc design serve` (boots the canvas browser at a free port — defaults `4399`).
+For dev-server-only operations: `maude design serve` (boots the canvas browser at a free port — defaults `4399`).
 
 ## What lives where (vs. what NOT to look for)
 
@@ -69,9 +69,9 @@ This is a **single-DS** project — there's just `system/project/`. If a second 
 
 ## Provenance
 
-- Bootstrapped 2026-05-14 from `md-claude` plugin v0.12.0 via `/design:setup-ds project "<brief>"`
+- Bootstrapped 2026-05-14 from `maude` plugin v0.12.0 via `/design:setup-ds project "<brief>"`
 - Discovery: 12 questions across 3 rounds, anchored to a Round 0 research payload (11 WebSearch queries, no fallback)
 - Active design systems: `project` (MDCC-DSN/01) — the only one
 - Active families: `accent`, `status`, `mono`
 
-Next move if you're hands-on: `/design:critic --system-only` to see how the freshly-scaffolded DS scores against structural + aesthetic critics, then `mdcc design serve` to browse it visually.
+Next move if you're hands-on: `/design:critic --system-only` to see how the freshly-scaffolded DS scores against structural + aesthetic critics, then `maude design serve` to browse it visually.

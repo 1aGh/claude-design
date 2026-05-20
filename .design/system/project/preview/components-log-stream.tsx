@@ -4,7 +4,7 @@
  * @platform    desktop
  * @opt_out     none
  * @artboards   primary
- * @brief       MDCC-DSN/01.components-log-stream / md-claude
+ * @brief       MDCC-DSN/01.components-log-stream / Maude
  * @stack       React 19 · TSX · Bun.build · css_mode=inline
  * @history     .design/_history/components-log-stream/
  * @handoff     bunx shadcn add file://./components-log-stream.registry.json
@@ -14,7 +14,7 @@ import "./components-log-stream.css";
 export default function ComponentsLogStream() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.components-log-stream</span><span className="crumbs"><span>md-claude</span><span>design system</span><span>dev</span><span>log-stream</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.components-log-stream</span><span className="crumbs"><span>maude</span><span>design system</span><span>dev</span><span>log-stream</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Log stream</h1><p className="lede">Timestamp + level + message. Three columns, mono everything. Level is a 4-letter caps tag in the status family color. No icon, no emoji.</p></section>
             <dl className="specimen-meta"><div><dt>Levels</dt><dd>info · ok · warn · err · debug</dd></div><div><dt>Cols</dt><dd>120 / 60 / 1fr</dd></div></dl>
@@ -33,7 +33,7 @@ export default function ComponentsLogStream() {
               <div className="line"><span className="t">2026-05-14 09:42:31</span><span className="lv lv-info">INFO</span><span className="msg">active tab cleared</span></div>
             </div>
 
-            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· components-log-stream</span></div><div className="colo-block"><span>md-claude · v0.12.0</span></div></footer>
+            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· components-log-stream</span></div><div className="colo-block"><span>Maude · v0.12.0</span></div></footer>
           </main>
         </>
   );

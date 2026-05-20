@@ -3,7 +3,7 @@
 **Status:** Deep research, decision-grade. Engineering-level depth.
 **Date:** 2026-05-12
 **Scope:** Design the federated collaboration topology that lets multiple Claude-Code-equipped engineers iterate on the same `.design/*.html` canvases via a long-running, self-hostable hub — while keeping every peer's local repo clone as the source of truth that Claude Code (and humans) read/write through normal filesystem semantics.
-**Audience:** Implementers of md-claude Phase 8/9/10, plus reviewers who decide what ships in v1.x.
+**Audience:** Implementers of Maude Phase 8/9/10, plus reviewers who decide what ships in v1.x.
 
 > **Note on history:** A previous version of this document analysed a LAN-only peer-to-peer topology (single Node process per repo, `--bind 0.0.0.0`, Tailscale-as-recipe). That model was wrong for the client's intent and has been replaced. The CRDT/identity/sub-problem analysis from that draft is reused below where still load-bearing (data model in §6, Phase 9 structured-CRDT framing in §13). Everything else is rewritten from scratch.
 
@@ -13,9 +13,9 @@
 
 **Ship in three slices, with the heavy lift in the middle.**
 
-- **v1.0 — Solo + LAN (no hub).** Keep the current `mdcc design serve` single-machine path exactly as it is. Add a `--bind 0.0.0.0` flag plus a `MDCC_DESIGN_TOKEN` shared secret so two laptops on the same LAN/Tailnet can already meet. No persistence layer, no file sync agent — just presence + comment broadcast over the existing WS. This unblocks "two designers on a coffee shop wifi" without committing to the federated architecture yet, and gives us a fallback if v1.1 slips.
+- **v1.0 — Solo + LAN (no hub).** Keep the current `maude design serve` single-machine path exactly as it is. Add a `--bind 0.0.0.0` flag plus a `MDCC_DESIGN_TOKEN` shared secret so two laptops on the same LAN/Tailnet can already meet. No persistence layer, no file sync agent — just presence + comment broadcast over the existing WS. This unblocks "two designers on a coffee shop wifi" without committing to the federated architecture yet, and gives us a fallback if v1.1 slips.
 
-- **v1.1 — Federated Hub + Bidirectional File Sync (the real work).** Introduce a long-running hub service that any user can self-host on a VPS, Fly Machine, Railway service, Coolify node, or home server behind Tailscale Funnel / Cloudflare Tunnel. The hub holds canonical Yjs state for every canvas in the project. Each peer laptop runs an `mdcc design link <hub-url>` daemon that (a) spawns the existing local dev server unchanged, (b) opens a WS to the hub, and (c) runs a **file-sync agent** that mirrors `.design/` bidirectionally between the hub's Yjs state and the peer's on-disk files. Claude Code on each peer continues to see `.design/screen.html` as a plain local file — never aware that a hub exists. **This is the headline feature.**
+- **v1.1 — Federated Hub + Bidirectional File Sync (the real work).** Introduce a long-running hub service that any user can self-host on a VPS, Fly Machine, Railway service, Coolify node, or home server behind Tailscale Funnel / Cloudflare Tunnel. The hub holds canonical Yjs state for every canvas in the project. Each peer laptop runs an `maude design link <hub-url>` daemon that (a) spawns the existing local dev server unchanged, (b) opens a WS to the hub, and (c) runs a **file-sync agent** that mirrors `.design/` bidirectionally between the hub's Yjs state and the peer's on-disk files. Claude Code on each peer continues to see `.design/screen.html` as a plain local file — never aware that a hub exists. **This is the headline feature.**
 
 - **v1.2 — Structured CRDT for HTML co-edit (current Phase 9).** Once v1.1's transport is stable, replace the "treat HTML as opaque text" assumption with `Y.XmlFragment` parsing in the hub. Enables true concurrent inspector edits and Phase 8 cursors-inside-DOM. Doesn't change the user-visible UX of v1.1 — only the conflict semantics.
 
@@ -26,7 +26,7 @@
 - **Transport:** `wss://` only. TLS termination via Caddy / Cloudflare Tunnel / Tailscale Funnel — never the Node process directly.
 - **Auth:** Shared-secret bearer token (32-byte hex, stored in peer's `~/.config/mdcc/hubs.json`, never committed). JWT optional in v1.2 if multi-user roles emerge.
 - **File-sync algorithm:** **Origin-stamped writes** with a per-file write-suppression window (echo prevention) + chokidar's `awaitWriteFinish` + write-file-atomic (tempfile + rename) on both sides. See §5 for the full state machine.
-- **CLI surface:** `mdcc hub serve`, `mdcc hub deploy <fly|railway|docker>`, `mdcc design link <url> [--token <t>]`, `mdcc design status`, `mdcc design unlink`. See §7.
+- **CLI surface:** `maude hub serve`, `maude hub deploy <fly|railway|docker>`, `maude design link <url> [--token <t>]`, `maude design status`, `maude design unlink`. See §7.
 
 **Top 3 risks (each gets a §15 mitigation):**
 
@@ -36,7 +36,7 @@
 
 **Recommended deploy template (the one we publish first):**
 
-`mdcc hub deploy fly` — a `fly launch` wrapper that uses `ghcr.io/1agh/md-claude-hub:v<X.Y.Z>` (multi-arch image we publish from this repo on every tag), a 3GB volume mounted at `/data`, `shared-cpu-1x` machine (~$2/month), `auto_stop_machines = "stop"` so it suspends when idle, and prints the resulting `https://<app>.fly.dev` + a freshly-generated 32-byte token at the end. Fly is the recommended first target because: (a) free-allotment-killed-but-still-cheapest small Node WS hosting (~$2 compute + $0.45 storage = ~$2.50/month idle, ~$5/month active), (b) volumes work without ceremony, (c) WebSocket support is first-class, (d) `auto_stop_machines` gives free-tier-like economics for solo users. Secondary template: `mdcc hub deploy docker` emits a `docker-compose.yml` + `.env.example` for users with their own VPS / Coolify. Railway is supported but not the *primary* recommendation because its $5/mo trial credit burns down even when idle.
+`maude hub deploy fly` — a `fly launch` wrapper that uses `ghcr.io/1agh/maude-hub:v<X.Y.Z>` (multi-arch image we publish from this repo on every tag), a 3GB volume mounted at `/data`, `shared-cpu-1x` machine (~$2/month), `auto_stop_machines = "stop"` so it suspends when idle, and prints the resulting `https://<app>.fly.dev` + a freshly-generated 32-byte token at the end. Fly is the recommended first target because: (a) free-allotment-killed-but-still-cheapest small Node WS hosting (~$2 compute + $0.45 storage = ~$2.50/month idle, ~$5/month active), (b) volumes work without ceremony, (c) WebSocket support is first-class, (d) `auto_stop_machines` gives free-tier-like economics for solo users. Secondary template: `maude hub deploy docker` emits a `docker-compose.yml` + `.env.example` for users with their own VPS / Coolify. Railway is supported but not the *primary* recommendation because its $5/mo trial credit burns down even when idle.
 
 **Decision triggers — when to actually start v1.1:**
 
@@ -53,11 +53,11 @@ Everything below defends those calls.
 
 The previous research framed this as "two laptops on a LAN, the repo is the source of truth, no SaaS". The client's actual mental model is different and worth restating in their own words:
 
-> "Three tiers. A long-running hub the user hosts themselves anywhere — Fly, Railway, Tailscale node, home server. Peer laptops `mdcc design link <hub>` and from then on `.design/*.html` is bidirectionally synced. Solo mode still works untouched. No SaaS, no PartyKit Cloud lock-in, plug-and-play deploy."
+> "Three tiers. A long-running hub the user hosts themselves anywhere — Fly, Railway, Tailscale node, home server. Peer laptops `maude design link <hub>` and from then on `.design/*.html` is bidirectionally synced. Solo mode still works untouched. No SaaS, no PartyKit Cloud lock-in, plug-and-play deploy."
 
 The engineering version:
 
-> Build a self-hostable Yjs-backed hub that holds canonical state for N canvases per project, plus a peer-side daemon that maintains an **eventually-consistent mirror** between the hub's Yjs state and a directory of `.html` files on the peer's local disk — robust to: Claude Code's whole-file `Write` tool, atomic-rename editors (VS Code, `vim`'s swap-and-rename), `git pull` rewriting files mid-session, hub restarts, peer offline windows, two peers writing concurrently. With zero user awareness of Yjs, PartyKit, or sync primitives — the user types `mdcc design link <url>` and it just works.
+> Build a self-hostable Yjs-backed hub that holds canonical state for N canvases per project, plus a peer-side daemon that maintains an **eventually-consistent mirror** between the hub's Yjs state and a directory of `.html` files on the peer's local disk — robust to: Claude Code's whole-file `Write` tool, atomic-rename editors (VS Code, `vim`'s swap-and-rename), `git pull` rewriting files mid-session, hub restarts, peer offline windows, two peers writing concurrently. With zero user awareness of Yjs, PartyKit, or sync primitives — the user types `maude design link <url>` and it just works.
 
 **Distinct from the LAN P2P model in three ways:**
 
@@ -137,7 +137,7 @@ The truly new hard problems vs the LAN model are **F3, F4, F5, F7** — all in t
        │     _server.json (local dev   ││  │                      │  │                       │
        │       server PID, unchanged)  ││  │                      │  │                       │
        │                                ││  │                      │  │                       │
-       │  Process: mdcc design link    ││  │                      │  │                       │
+       │  Process: maude design link    ││  │                      │  │                       │
        │   ├─ local dev server (4399) ─┘│  │                      │  │                       │
        │   ├─ Hocuspocus provider ─────┼──┘                      │  │                       │
        │   │   (WS to hub)             │  │                      │  │                       │
@@ -302,7 +302,7 @@ The hardest case in the whole sync architecture. Three actors, each may have sta
 | Empty | None | Has state | **Hub wins** — peer downloads hub state, materialises HTML. |
 | Empty | Has state | None | Peer pushes Y.Doc to hub. (Hub was wiped; peer is the only survivor.) |
 | Empty | Has state | Has state | Yjs sync v2 merges. After merge, materialise to disk. |
-| Has files | None | None | Peer parses each `.html` as a `Y.Text` blob, pushes to hub. (First-time `mdcc design link` from solo project.) |
+| Has files | None | None | Peer parses each `.html` as a `Y.Text` blob, pushes to hub. (First-time `maude design link` from solo project.) |
 | Has files | None | Has state | **Conflict — must prompt.** See below. |
 | Has files | Has state | None | Push Y.Doc state to hub; HTML is already correct. |
 | Has files | Has state | Has state | Yjs sync v2 merges. If the merged Y.Text disagrees with the on-disk HTML, the on-disk HTML is overwritten with the merged result. (Peer's disk reflects the consensus.) |
@@ -310,12 +310,12 @@ The hardest case in the whole sync architecture. Three actors, each may have sta
 **The "must prompt" case** (row 6) — peer has `.html` files on disk, no local Y.Doc replica, hub has state. This happens after:
 - Fresh `git clone` of a repo that someone else linked to a hub.
 - Peer's `_state/` directory was wiped.
-- Peer's first `mdcc design link` to a hub that's already been seeded by another peer.
+- Peer's first `maude design link` to a hub that's already been seeded by another peer.
 
 The agent **must not silently overwrite** local files. CLI prompts:
 
 ```
-mdcc design link wss://hub.example.com (token: ********)
+maude design link wss://hub.example.com (token: ********)
 
 Hub state found for these canvases: screen, hero, settings
 Local files found for these canvases: screen (modified 2h ago), hero (unchanged from hub), pricing (no hub state)
@@ -327,7 +327,7 @@ Local files found for these canvases: screen (modified 2h ago), hero (unchanged 
 Choose policy (h=hub-wins, l=local-wins, p=prompt-each): _
 ```
 
-The `--strategy=` flag short-circuits this: `mdcc design link <url> --strategy=hub-wins` accepts everything from hub; `--strategy=local-wins` uploads everything; `--strategy=prompt` (default) is the interactive flow above.
+The `--strategy=` flag short-circuits this: `maude design link <url> --strategy=hub-wins` accepts everything from hub; `--strategy=local-wins` uploads everything; `--strategy=prompt` (default) is the interactive flow above.
 
 After first-sync, the agent persists a `<repo>/.design/_state/<canvas>.ydoc.bin` for each canvas — gitignored, but it's the local Y.Doc replica that makes subsequent reconnects cheap (Yjs sync v2 deltas only).
 
@@ -409,19 +409,19 @@ This is ~200 lines of code. Reviewable, testable, debuggable.
 
 ## 6. Hub Deployment Recipes
 
-The deploy story is the *user-visible* differentiator vs other collab tools — every Yjs hub on the internet has the same trio of code; what makes us pleasant is `mdcc hub deploy fly` returning a URL + token in 90 seconds.
+The deploy story is the *user-visible* differentiator vs other collab tools — every Yjs hub on the internet has the same trio of code; what makes us pleasant is `maude hub deploy fly` returning a URL + token in 90 seconds.
 
 ### 6.1 Recommended primary template: Fly.io
 
-`mdcc hub deploy fly`:
+`maude hub deploy fly`:
 
 ```toml
-# fly.toml emitted by mdcc
-app = "mdcc-hub-<random6>"
+# fly.toml emitted by maude
+app = "maude-hub-<random6>"
 primary_region = "fra"   # configurable, defaults nearest
 
 [build]
-  image = "ghcr.io/1agh/md-claude-hub:v<X.Y.Z>"
+  image = "ghcr.io/1agh/maude-hub:v<X.Y.Z>"
 
 [env]
   PORT = "1234"
@@ -458,7 +458,7 @@ primary_region = "fra"   # configurable, defaults nearest
 
 Pricing math (May 2026 Fly rates): `shared-cpu-1x` + 256MB = $2.02/month if always-on. With `auto_stop_machines = "stop"`, an idle hub costs ~$0.45/month for the 3GB volume + outbound bandwidth. First active hour wakes the machine in ~3s (WS handshake retries automatically). For two engineers iterating ~8 hours/day: $2-5/month total.
 
-`mdcc hub deploy fly` execution flow:
+`maude hub deploy fly` execution flow:
 1. Check `fly` CLI installed; if not, print install hint.
 2. `fly auth whoami` — fail if not logged in.
 3. Generate app name, region prompt (default = lowest-latency-to-user from `fly platform regions`).
@@ -468,17 +468,17 @@ Pricing math (May 2026 Fly rates): `shared-cpu-1x` + 256MB = $2.02/month if alwa
 7. `fly volumes create hub_data --size 3 --region <r>`.
 8. `fly secrets set HUB_TOKEN=<token>`.
 9. `fly deploy`.
-10. Print: `Hub deployed: wss://<app>.fly.dev` + `Token: <token>` + `To link a project: mdcc design link wss://<app>.fly.dev --token <token>`.
+10. Print: `Hub deployed: wss://<app>.fly.dev` + `Token: <token>` + `To link a project: maude design link wss://<app>.fly.dev --token <token>`.
 
 ### 6.2 Docker Compose (self-host VPS, Coolify, home server)
 
-`mdcc hub deploy docker` emits to `./mdcc-hub/`:
+`maude hub deploy docker` emits to `./maude-hub/`:
 
 ```yaml
 # docker-compose.yml
 services:
   hub:
-    image: ghcr.io/1agh/md-claude-hub:v<X.Y.Z>
+    image: ghcr.io/1agh/maude-hub:v<X.Y.Z>
     restart: unless-stopped
     environment:
       - PORT=1234
@@ -524,7 +524,7 @@ User edits the domain, runs `docker compose up -d`, gets auto-Let's Encrypt + WS
 
 ### 6.3 Railway
 
-`mdcc hub deploy railway` — uses `railway.json` + Nixpacks (no Dockerfile required, Railway auto-detects Node):
+`maude hub deploy railway` — uses `railway.json` + Nixpacks (no Dockerfile required, Railway auto-detects Node):
 
 ```json
 {
@@ -543,26 +543,26 @@ Railway auto-handles TLS, WSS, custom domains. Caveat: their $5/month Hobby tier
 
 ### 6.4 Render
 
-`mdcc hub deploy render` — emits `render.yaml`. **Important caveat:** Render's free tier explicitly does not support persistent disks; the hub would lose state on every spin-down. We emit a `render.yaml` for the Starter tier ($7/month) only, and the CLI flow prints a warning before proceeding.
+`maude hub deploy render` — emits `render.yaml`. **Important caveat:** Render's free tier explicitly does not support persistent disks; the hub would lose state on every spin-down. We emit a `render.yaml` for the Starter tier ($7/month) only, and the CLI flow prints a warning before proceeding.
 
 ### 6.5 Coolify / Dokku / raw VPS
 
 Two paths supported:
 
-1. **Coolify "Docker Compose application":** point Coolify at a GitHub repo containing the docker-compose.yml above. Coolify auto-handles TLS via Caddy/Traefik and domain mapping. We document the GitHub template repo `1aGh/md-claude-hub-template` as a one-click button.
-2. **Raw VPS + systemd:** `mdcc hub deploy systemd` emits `/etc/systemd/system/mdcc-hub.service`:
+1. **Coolify "Docker Compose application":** point Coolify at a GitHub repo containing the docker-compose.yml above. Coolify auto-handles TLS via Caddy/Traefik and domain mapping. We document the GitHub template repo `1aGh/maude-hub-template` as a one-click button.
+2. **Raw VPS + systemd:** `maude hub deploy systemd` emits `/etc/systemd/system/maude-hub.service`:
 
 ```ini
 [Unit]
-Description=md-claude collaboration hub
+Description=maude collaboration hub
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/node /opt/mdcc-hub/index.mjs
+ExecStart=/usr/bin/node /opt/maude-hub/index.mjs
 Restart=always
-User=mdcc-hub
-EnvironmentFile=/etc/mdcc-hub/env
+User=maude-hub
+EnvironmentFile=/etc/maude-hub/env
 
 [Install]
 WantedBy=multi-user.target
@@ -601,36 +601,36 @@ The CLI surface, in order of likely first-use.
 ### 7.1 Commands
 
 ```
-mdcc hub serve [--port 1234] [--data-dir /var/lib/mdcc-hub]
+maude hub serve [--port 1234] [--data-dir /var/lib/maude-hub]
     # Run hub locally for testing / dev / home server. Same Docker entrypoint.
 
-mdcc hub deploy <target> [--name <appname>] [--region <r>]
+maude hub deploy <target> [--name <appname>] [--region <r>]
     # target ∈ { fly, railway, docker, render, systemd }
     # Generates token, deploys, prints URL.
 
-mdcc hub token [--rotate]
+maude hub token [--rotate]
     # Print or rotate the deployed hub's token (requires platform credentials).
 
-mdcc design link <hub-url> [--token <t>] [--strategy hub-wins|local-wins|prompt]
+maude design link <hub-url> [--token <t>] [--strategy hub-wins|local-wins|prompt]
     # Run from inside a project repo. Establishes the link.
     # - Pings hub, version check.
     # - Auth handshake.
     # - First-sync (see §5.4).
     # - Writes <repo>/.design/config.json with hub URL (committed).
     # - Writes ~/.config/mdcc/hubs.json with hub URL + token (machine-local, never committed).
-    # - Starts long-running daemon (local dev server + sync agent) via mdcc design serve.
+    # - Starts long-running daemon (local dev server + sync agent) via maude design serve.
 
-mdcc design unlink
+maude design unlink
     # Stops daemon, removes hub URL from config.json. Local files unchanged.
 
-mdcc design status
+maude design status
     # Shows: hub URL, connection state, last sync per canvas, pending conflicts.
 
-mdcc design serve [--linked]
+maude design serve [--linked]
     # Replaces today's serve. If .design/config.json has linkedHub, connects automatically.
     # Otherwise solo mode (current behavior).
 
-mdcc design adopt <hub-url>
+maude design adopt <hub-url>
     # Convenience: link an existing project to an existing hub that was previously seeded
     # by another peer. Implies --strategy=hub-wins. Used after `git clone`.
 ```
@@ -644,9 +644,9 @@ mdcc design adopt <hub-url>
 
 | File | Committed to git? | Why |
 |---|---|---|
-| `<repo>/.design/config.json` (contains `linkedHub` URL) | Yes | So `git clone` + `mdcc design serve` knows where to connect. |
+| `<repo>/.design/config.json` (contains `linkedHub` URL) | Yes | So `git clone` + `maude design serve` knows where to connect. |
 | `<repo>/.design/<canvas>.html` | Yes | The materialised state — the artefact. |
-| `<repo>/.design/_state/<canvas>.ydoc.bin` | **No** (.gitignored by `mdcc init`) | Machine-local Yjs replica. |
+| `<repo>/.design/_state/<canvas>.ydoc.bin` | **No** (.gitignored by `maude init`) | Machine-local Yjs replica. |
 | `<repo>/.design/_server.json` (PID/port) | **No** | Runtime state. |
 | `<repo>/.design/_active.json` (inspector's selected element) | **No** | Runtime state. |
 | `<repo>/.design/_history/` (snapshots) | Opt-in | User decides. |
@@ -660,7 +660,7 @@ mdcc design adopt <hub-url>
 
 ### 7.4 Multiple repos per hub
 
-**Yes.** Hub's `documentName` is namespaced as `<project-id>/<canvas-slug>`. `.design/config.json` includes a `projectId` UUID generated at first `mdcc design link`. Same hub can host designs for many projects, each isolated by namespace.
+**Yes.** Hub's `documentName` is namespaced as `<project-id>/<canvas-slug>`. `.design/config.json` includes a `projectId` UUID generated at first `maude design link`. Same hub can host designs for many projects, each isolated by namespace.
 
 ---
 
@@ -671,18 +671,18 @@ mdcc design adopt <hub-url>
 Simplest thing that works.
 
 - Hub generates a 32-byte hex token at first deploy (or rotation). Stored as `HUB_TOKEN` env var on the hub.
-- Peer's `mdcc design link <url> --token <t>` writes `{ url, token }` to `~/.config/mdcc/hubs.json` (mode 0600).
+- Peer's `maude design link <url> --token <t>` writes `{ url, token }` to `~/.config/mdcc/hubs.json` (mode 0600).
 - Hocuspocus provider sends token in `parameters.token`; hub's `onAuthenticate` compares against env.
 - Read-only mode unused in v1.1 (everyone is read-write).
 
-**Rotation:** `mdcc hub token --rotate` (uses platform CLI credentials to set new env var, prints new token, instructs peers to re-run `mdcc design link --token <new>`). Manual but acceptable.
+**Rotation:** `maude hub token --rotate` (uses platform CLI credentials to set new env var, prints new token, instructs peers to re-run `maude design link --token <new>`). Manual but acceptable.
 
 ### 8.2 v1.2 — JWT-per-user (optional, only if multi-user matters)
 
 If we get a user with team-roles needs:
 
 - Hub holds an HMAC secret.
-- An `mdcc hub user add <email>` command issues a JWT signed by the secret. JWT claims: `{ sub: email, roles: ['editor'], exp }`.
+- An `maude hub user add <email>` command issues a JWT signed by the secret. JWT claims: `{ sub: email, roles: ['editor'], exp }`.
 - `onAuthenticate` verifies JWT and stores user info on `data.connection.context` for use in hooks.
 - Peer awareness includes user identity → "Anna is editing" badge becomes meaningful, not just "someone is editing".
 
@@ -729,7 +729,7 @@ Hub-side: per-IP connection rate limit (`express-rate-limit`-equivalent for WS) 
 
 Three layers:
 
-1. **Continuous (hub.db):** for Fly users, enable Fly volume snapshots (~$0.50/mo per 3GB, daily). For VPS users, document a `cron` job: `rsync /data backup-host:/mdcc-backups/<date>/`.
+1. **Continuous (hub.db):** for Fly users, enable Fly volume snapshots (~$0.50/mo per 3GB, daily). For VPS users, document a `cron` job: `rsync /data backup-host:/maude-backups/<date>/`.
 2. **Quiescence-driven (filesystem mirror):** every time the hub flushes a canvas to HTML, the file is committed to a small bare git repo `/data/projects/<id>/.design/.git/`. Hub maintains a per-project git log. Optional, opt-in via `HUB_GIT_BACKUP=true`. Gives a free time-travel debugging story.
 3. **Peer replicas:** every linked peer also holds a Y.Doc replica in `<repo>/.design/_state/<canvas>.ydoc.bin`. So *even if the hub volume is wiped*, any peer who reconnects can bootstrap the hub. Peer-as-cold-backup is a property of our design, not a feature we need to build.
 
@@ -794,11 +794,11 @@ Two peers both run `/design "<feedback>"` on the same canvas simultaneously. Bot
 | 5 | Hub wiped, restored from 3-day-old backup; peers had been editing | Peer reconnects with newer local Y.Doc; sync v2 merges peer's ops onto hub's older state; hub catches up. | Local replicas saved us. |
 | 6 | Peer's local `_state/<canvas>.ydoc.bin` corrupted | Agent detects (Yjs throws on `applyUpdate`); deletes file; bootstraps from hub (effectively row 2 of §5.4 table). | Recoverable. |
 | 7 | Hub disk full | Hocuspocus' `onStoreDocument` errors; in-memory state continues; restart loses unflushed updates. **Mitigation:** monitor disk; fly volumes auto-grow on signal; document the alert. | Operational risk, not a sync risk. |
-| 8 | Two hubs (rare; user accidentally `mdcc design link` twice) | **Not supported.** `mdcc design link` errors if `.design/config.json` already has a `linkedHub`. Must `unlink` first. | Eliminates split-brain class. |
+| 8 | Two hubs (rare; user accidentally `maude design link` twice) | **Not supported.** `maude design link` errors if `.design/config.json` already has a `linkedHub`. Must `unlink` first. | Eliminates split-brain class. |
 | 9 | Peer machine clock skew (NTP off by hours) | Awareness "since" timestamps wrong; no data corruption (Yjs is causal, not wall-clock). | Cosmetic only. |
 | 10 | Network partition: peer thinks connected, hub thinks disconnected (zombie WS) | Hocuspocus' built-in pong/timeout (default 30s) drops; provider auto-reconnects. | Standard. |
 | 11 | Claude Code mid-Edit when WS drops | Edit completes locally; agent queues op; on reconnect, pushed via sync v2. No loss. | Local Y.Doc holds the op. |
-| 12 | User runs `mdcc design unlink` while another peer is editing | Local agent stops; other peers continue with hub. Local `.design/` frozen at last-synced state. | Clean. |
+| 12 | User runs `maude design unlink` while another peer is editing | Local agent stops; other peers continue with hub. Local `.design/` frozen at last-synced state. | Clean. |
 | 13 | User force-pushes git, rewriting committed `.html` | After `git push --force`, others `git pull --rebase` — their working dirs get the rewritten file; sync agent treats it as ordinary `change` event; hub catches up. | Same as row 4. |
 | 14 | User edits `.design/_state/<canvas>.ydoc.bin` manually | Don't. Documented in `.gitignore` + README. Agent loads on next start; if parse fails, reverts to bootstrap from hub. | Out of contract. |
 
@@ -809,28 +809,28 @@ Two peers both run `/design "<feedback>"` on the same canvas simultaneously. Bot
 ### 12.1 Solo → federated
 
 1. User has been working solo for weeks. `.design/` is full of canvases, committed to git regularly.
-2. `mdcc hub deploy fly` — gets hub URL + token.
-3. `mdcc design link wss://hub.example.com --token <t>` — first-sync with `--strategy=local-wins` (or default prompt, picks "upload all"). Hub gets seeded with current `.design/` contents.
-4. Future peers `git clone` the repo, run `mdcc design adopt wss://hub.example.com --token <t>` (or just `mdcc design serve` if `.design/config.json` already has `linkedHub` — the daemon reads token from `~/.config/mdcc/hubs.json` after one-time `mdcc design link`).
+2. `maude hub deploy fly` — gets hub URL + token.
+3. `maude design link wss://hub.example.com --token <t>` — first-sync with `--strategy=local-wins` (or default prompt, picks "upload all"). Hub gets seeded with current `.design/` contents.
+4. Future peers `git clone` the repo, run `maude design adopt wss://hub.example.com --token <t>` (or just `maude design serve` if `.design/config.json` already has `linkedHub` — the daemon reads token from `~/.config/mdcc/hubs.json` after one-time `maude design link`).
 
 ### 12.2 Federated → solo
 
-1. `mdcc design unlink` — sync agent stops, local `.design/` is whatever was last synced.
-2. `mdcc design serve` — runs the local dev server unchanged; everything works without the hub.
+1. `maude design unlink` — sync agent stops, local `.design/` is whatever was last synced.
+2. `maude design serve` — runs the local dev server unchanged; everything works without the hub.
 3. The `_state/*.ydoc.bin` files become orphaned (no peer-to-peer sync). Either delete them or leave them — next `link` to a different hub will treat them as the source of truth.
 
 ### 12.3 Federated, hub migration (move from Fly to Hetzner)
 
-1. `mdcc hub backup --target ./backup` on user's machine (uses platform CLI to dump hub volume to local tarball).
-2. `mdcc hub deploy hetzner` (or `docker` template), restore tarball during init.
-3. Each peer: `mdcc design unlink && mdcc design link wss://new-hub.example.com --token <t>`.
+1. `maude hub backup --target ./backup` on user's machine (uses platform CLI to dump hub volume to local tarball).
+2. `maude hub deploy hetzner` (or `docker` template), restore tarball during init.
+3. Each peer: `maude design unlink && maude design link wss://new-hub.example.com --token <t>`.
 
 Friction but uncommon. We document but don't optimise.
 
 ### 12.4 Adding a peer mid-project
 
 1. Existing peer running. Hub has state.
-2. New peer `git clone`s repo. Repo has `.design/config.json` with `linkedHub`. New peer runs `mdcc design adopt wss://hub.example.com --token <t>` (or whichever the existing peer told them, ideally via Tailscale-shared `hubs.json` or a private wiki entry).
+2. New peer `git clone`s repo. Repo has `.design/config.json` with `linkedHub`. New peer runs `maude design adopt wss://hub.example.com --token <t>` (or whichever the existing peer told them, ideally via Tailscale-shared `hubs.json` or a private wiki entry).
 3. Sync agent first-syncs (`--strategy=hub-wins` because `_state/` is empty); materialises `.design/<canvas>.html` from hub state; ready.
 
 ---
@@ -848,9 +848,9 @@ Pulling it all together for the implementer.
 - `hub/materialise.mjs` — debounced flush of each `Y.Doc` to `<HUB_DATA_DIR>/projects/<id>/.design/<canvas>.html`.
 - `hub/audit.mjs` — append `{ts, peer, op, doc}` to JSONL.
 - `Dockerfile` — `node:22-alpine`, copy hub/, npm ci, expose 1234.
-- Published to `ghcr.io/1agh/md-claude-hub:vX.Y.Z` on every md-claude tag.
+- Published to `ghcr.io/1agh/maude-hub:vX.Y.Z` on every Maude tag.
 
-**Peer-side (extends current `mdcc design serve`):**
+**Peer-side (extends current `maude design serve`):**
 - `cli/commands/design-link.mjs` — first-time handshake, writes config files, starts daemon.
 - `cli/commands/design-serve.mjs` — extended to detect `linkedHub` and start sync agent.
 - `cli/commands/design-status.mjs` — reads daemon state via local IPC (Unix socket or a `.design/_daemon.json`).
@@ -867,7 +867,7 @@ The existing `plugins/design/dev-server/server.mjs` is unchanged in v1.1. It sti
 - Writes `_active.json` on Cmd+Click.
 - Handles `_history` snapshots.
 
-The sync agent runs **alongside** it in the same `mdcc design serve` process (different module, shared event loop). The dev server's writes to `_active.json` etc. are *not* synced (they're gitignored runtime state). The sync agent only watches the canvas HTML files (`.design/*.html`).
+The sync agent runs **alongside** it in the same `maude design serve` process (different module, shared event loop). The dev server's writes to `_active.json` etc. are *not* synced (they're gitignored runtime state). The sync agent only watches the canvas HTML files (`.design/*.html`).
 
 ### 13.3 Where the design plugin commands fit
 
@@ -902,7 +902,7 @@ In v1.2, it's the structured codec — parse HTML to `Y.XmlFragment` with `data-
 
 Goal: ship "ambient multiplayer for two laptops on a coffee-shop wifi" without committing to the federated model.
 
-- `mdcc design serve --bind 0.0.0.0` flag.
+- `maude design serve --bind 0.0.0.0` flag.
 - `MDCC_DESIGN_TOKEN` env-var-shared-secret check on WS upgrade.
 - Awareness layer in browser inspector (cursors, selections) over existing WS.
 - Comments broadcast (`_comments/*.json` mirrored).
@@ -917,7 +917,7 @@ Goal: ship the architecture this document describes.
 Week 1-2: Hub
 - `hub/` directory, Hocuspocus + SQLite + auth.
 - Dockerfile, GitHub Actions image publish.
-- `mdcc hub serve` (local Node mode).
+- `maude hub serve` (local Node mode).
 
 Week 3-4: Peer sync agent
 - `chokidar` + write-file-atomic + `recentRemoteWrites` echo prevention.
@@ -925,12 +925,12 @@ Week 3-4: Peer sync agent
 - `Y.Text`-on-HTML codec (v1.1).
 
 Week 5: First-sync + CLI
-- `mdcc design link / unlink / status / adopt`.
+- `maude design link / unlink / status / adopt`.
 - First-sync strategy logic (hub-wins/local-wins/prompt).
 - `.design/config.json` schema + git tracking.
 
 Week 6: Deploy templates
-- `mdcc hub deploy fly|docker|railway`.
+- `maude hub deploy fly|docker|railway`.
 - README walkthroughs.
 
 Week 7: Hardening
@@ -985,8 +985,8 @@ Goal: enable concurrent same-canvas inspector edits without garbling.
 
 **Mitigations:**
 - Local Y.Doc replicas as cold backup.
-- `mdcc design status` shows divergence warning if peer's Y state is N updates ahead of hub.
-- Document recovery: `mdcc design unlink && mdcc design link --strategy=local-wins` re-seeds hub from a chosen peer.
+- `maude design status` shows divergence warning if peer's Y state is N updates ahead of hub.
+- Document recovery: `maude design unlink && maude design link --strategy=local-wins` re-seeds hub from a chosen peer.
 
 ### 15.4 Hocuspocus upstream changes (medium)
 
@@ -999,7 +999,7 @@ Goal: enable concurrent same-canvas inspector edits without garbling.
 
 ### 15.5 Deploy template breakage (medium)
 
-**Risk:** Fly/Railway change their CLI/API; `mdcc hub deploy fly` breaks.
+**Risk:** Fly/Railway change their CLI/API; `maude hub deploy fly` breaks.
 
 **Mitigations:**
 - Pin to a specific `flyctl` version range; test in CI weekly via scheduled GH Action.
@@ -1010,8 +1010,8 @@ Goal: enable concurrent same-canvas inspector edits without garbling.
 **Risk:** User commits `~/.config/mdcc/hubs.json` accidentally; or pastes token into a chat.
 
 **Mitigations:**
-- File mode 0600; warning on `mdcc design link` if not in `~/.config/mdcc/`.
-- Token rotation is fast (`mdcc hub token --rotate`).
+- File mode 0600; warning on `maude design link` if not in `~/.config/mdcc/`.
+- Token rotation is fast (`maude hub token --rotate`).
 - Hub-side audit log shows IPs of recent connections; user can spot abuse.
 
 ### 15.7 Claude `Write` tool behaviour (medium, needs verification)
@@ -1025,10 +1025,10 @@ Goal: enable concurrent same-canvas inspector edits without garbling.
 
 ### 15.8 Multi-project hub auth confusion (low)
 
-**Risk:** User pastes hub token from project A into project B's `mdcc design link`. Project B silently joins project A's hub namespace.
+**Risk:** User pastes hub token from project A into project B's `maude design link`. Project B silently joins project A's hub namespace.
 
 **Mitigations:**
-- `mdcc design link` validates `projectId` exists in hub; warns if peer's local `projectId` differs.
+- `maude design link` validates `projectId` exists in hub; warns if peer's local `projectId` differs.
 - v1.2 introduces per-project tokens.
 
 ### 15.9 SQLite contention at scale (low)
@@ -1046,7 +1046,7 @@ Goal: enable concurrent same-canvas inspector edits without garbling.
 
 **Mitigations:**
 - Documented in user-facing docs.
-- `mdcc design status` warns if `git status` shows modified `.design/` files at link-time.
+- `maude design status` warns if `git status` shows modified `.design/` files at link-time.
 - Suggest workflow: `git pull` before starting `/design`, commit at end.
 
 ---
@@ -1126,7 +1126,7 @@ v1.0 stays Yjs-free. v1.1 introduces Yjs *and* the hub *and* the file sync agent
 | Concept | Name picked | Considered & rejected | Why |
 |---|---|---|---|
 | Long-running shared service | `hub` | `server`, `relay`, `room`, `coop` | "Server" overloads with dev server. "Hub" reads natively. |
-| Per-peer process | `daemon` (in docs); `mdcc design serve` (in CLI) | `agent`, `client` | "Agent" overloads with AI agent. "Client" reads passive. |
+| Per-peer process | `daemon` (in docs); `maude design serve` (in CLI) | `agent`, `client` | "Agent" overloads with AI agent. "Client" reads passive. |
 | Connect peer to hub | `link` | `connect`, `pair`, `join` | `link` is persistent, the others are session-y. |
 | One-shot join existing hub | `adopt` | `clone`, `attach`, `pull` | After `git clone`, you `adopt` the existing hub. |
 | Token name | `HUB_TOKEN` | `MDCC_TOKEN`, `DESIGN_TOKEN` | Clear it's a hub credential. |

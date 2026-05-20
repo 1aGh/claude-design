@@ -41,28 +41,6 @@ importers:
       remotion:
         specifier: ^4.0.463
         version: 4.0.463(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
-    optionalDependencies:
-      '@1agh/md-claude-darwin-arm64':
-        specifier: 0.14.0
-        version: 0.14.0
-      '@1agh/md-claude-darwin-x64':
-        specifier: 0.14.0
-        version: 0.14.0
-      '@1agh/md-claude-linux-arm64':
-        specifier: 0.14.0
-        version: 0.14.0
-      '@1agh/md-claude-linux-arm64-musl':
-        specifier: 0.14.0
-        version: 0.14.0
-      '@1agh/md-claude-linux-x64':
-        specifier: 0.14.0
-        version: 0.14.0
-      '@1agh/md-claude-linux-x64-musl':
-        specifier: 0.14.0
-        version: 0.14.0
-      '@1agh/md-claude-win32-x64':
-        specifier: 0.14.0
-        version: 0.14.0
 
   plugins/design/dev-server:
     dependencies:
@@ -153,45 +131,6 @@ importers:
         version: 6.0.3
 
 packages:
-
-  '@1agh/md-claude-darwin-arm64@0.14.0':
-    resolution: {integrity: sha512-bo0uNwSt9/txjHnzWSNsIy4gT5O/gDXyBf/9SV4DUfJj6k3Kq4+zisqgQcRHETvZ7OLxHKa/q1sFc5B+6VlSmQ==}
-    cpu: [arm64]
-    os: [darwin]
-
-  '@1agh/md-claude-darwin-x64@0.14.0':
-    resolution: {integrity: sha512-FTzxfmoYriACl3G9oK7lMIyko2f4an/4sOc7wHRx7ftsKtPAGGzqwEfohCLxbE0ElEpqX6KBm25WIgkP+3z9Pg==}
-    cpu: [x64]
-    os: [darwin]
-
-  '@1agh/md-claude-linux-arm64-musl@0.14.0':
-    resolution: {integrity: sha512-UJJUsSj0Agvl/nscKnTtVhBf539yLmIHSI1Sl9XyQ36KDHLU/eM/twZTH+UapnKyun5Q8KRRGTopxoX5rXbaog==}
-    cpu: [arm64]
-    os: [linux]
-    libc: [musl]
-
-  '@1agh/md-claude-linux-arm64@0.14.0':
-    resolution: {integrity: sha512-9dpcKYVjt6yUMt/GKEvLGmFdj9OOOfZVzTo1rhgmojXVBYcAfack+baA8xKO6WRQbWrKLjPiXrGCkjAXa+fjqA==}
-    cpu: [arm64]
-    os: [linux]
-    libc: [glibc]
-
-  '@1agh/md-claude-linux-x64-musl@0.14.0':
-    resolution: {integrity: sha512-XjMHGrJozMruK+k4Zp6vNQXrekcepwxQ0rz5U8k5iqjKe1WvoP+0M3hNODmsLQfImGzgCr9pXJ03dU/UWiBmfg==}
-    cpu: [x64]
-    os: [linux]
-    libc: [musl]
-
-  '@1agh/md-claude-linux-x64@0.14.0':
-    resolution: {integrity: sha512-4H490EKditDD50XhV2XJXVqPAdtGWEFKdCWgGDoJc3pVXXy6LJ7RCzKB/2oPD+nEWLiI7Y+z+zcka63obxbEXg==}
-    cpu: [x64]
-    os: [linux]
-    libc: [glibc]
-
-  '@1agh/md-claude-win32-x64@0.14.0':
-    resolution: {integrity: sha512-xjg+ovLmgKQ30FOX/riuxzxJYARmeZR112EsBUIm48nc42z30ls1/0jUGr5l4KIFSIZW3lMMKPnPy6JeMVX82A==}
-    cpu: [x64]
-    os: [win32]
 
   '@alloc/quick-lru@5.2.0':
     resolution: {integrity: sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==}
@@ -3393,27 +3332,6 @@ packages:
 
 snapshots:
 
-  '@1agh/md-claude-darwin-arm64@0.14.0':
-    optional: true
-
-  '@1agh/md-claude-darwin-x64@0.14.0':
-    optional: true
-
-  '@1agh/md-claude-linux-arm64-musl@0.14.0':
-    optional: true
-
-  '@1agh/md-claude-linux-arm64@0.14.0':
-    optional: true
-
-  '@1agh/md-claude-linux-x64-musl@0.14.0':
-    optional: true
-
-  '@1agh/md-claude-linux-x64@0.14.0':
-    optional: true
-
-  '@1agh/md-claude-win32-x64@0.14.0':
-    optional: true
-
   '@alloc/quick-lru@5.2.0': {}
 
   '@babel/helper-string-parser@7.27.1': {}
@@ -4435,7 +4353,7 @@ snapshots:
       react-dom: 19.2.6(react@19.2.6)
       react-refresh: 0.18.0
       remotion: 4.0.463(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
-      style-loader: 4.0.0(webpack@5.105.0)
+      style-loader: 4.0.0(webpack@5.105.0(esbuild@0.28.0)(postcss@8.5.10))
       webpack: 5.105.0(esbuild@0.28.0)(postcss@8.5.10)
     transitivePeerDependencies:
       - '@minify-html/node'
@@ -6666,7 +6584,7 @@ snapshots:
 
   strip-final-newline@2.0.0: {}
 
-  style-loader@4.0.0(webpack@5.105.0):
+  style-loader@4.0.0(webpack@5.105.0(esbuild@0.28.0)(postcss@8.5.10)):
     dependencies:
       webpack: 5.105.0(esbuild@0.28.0)(postcss@8.5.10)
 

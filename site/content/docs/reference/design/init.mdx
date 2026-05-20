@@ -1,6 +1,6 @@
 ---
 title: /design:init
-description: "One-time project-level environment init for the design plugin. Detects missing dependencies (node ≥ 20, git, agent-browser, mdcc), prints install hints for soft deps, offers to run /init for CLAUDE.md and /flow:init for .ai/, and writes a skeleton .design/config.json. Does NOT create a design system — use /design:setup-ds <name> for that. Mirrors /flow:init."
+description: "One-time project-level environment init for the design plugin. Detects missing dependencies (node ≥ 20, git, agent-browser, maude), prints install hints for soft deps, offers to run /init for CLAUDE.md and /flow:init for .ai/, and writes a skeleton .design/config.json. Does NOT create a design system — use /design:setup-ds <name> for that. Mirrors /flow:init."
 ---
 
 | Property | Value |
@@ -8,11 +8,11 @@ description: "One-time project-level environment init for the design plugin. Det
 | **Command** | `/design:init` |
 | **Category** | `setup` |
 | **Argument hint** | `[--skip-prompts]` |
-| **Source** | [`plugins/design/commands/init.md`](https://github.com/1aGh/md-claude/blob/main/plugins/design/commands/init.md) |
+| **Source** | [`plugins/design/commands/init.md`](https://github.com/1aGh/maude/blob/main/plugins/design/commands/init.md) |
 
 ## Description
 
-One-time project-level environment init for the design plugin. Detects missing dependencies (node ≥ 20, git, agent-browser, mdcc), prints install hints for soft deps, offers to run /init for CLAUDE.md and /flow:init for .ai/, and writes a skeleton .design/config.json. Does NOT create a design system — use /design:setup-ds &lt;name> for that. Mirrors /flow:init.
+One-time project-level environment init for the design plugin. Detects missing dependencies (node ≥ 20, git, agent-browser, maude), prints install hints for soft deps, offers to run /init for CLAUDE.md and /flow:init for .ai/, and writes a skeleton .design/config.json. Does NOT create a design system — use /design:setup-ds &lt;name> for that. Mirrors /flow:init.
 
 ## Invocation
 
@@ -28,4 +28,4 @@ Project-level environment init for the `design` plugin. Mirrors `/flow:init` in 
 
 This page is auto-generated from the command's frontmatter. The exact prompt Claude runs — including directives, edge-case handling, and tool-routing logic — lives in the source file:
 
-[**`plugins/design/commands/init.md`**](https://github.com/1aGh/md-claude/blob/main/plugins/design/commands/init.md) → read it for the full behavior.
+[**`plugins/design/commands/init.md`**](https://github.com/1aGh/maude/blob/main/plugins/design/commands/init.md) → read it for the full behavior.

@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-`md-claude` — a Claude Code marketplace (defined by `.claude-plugin/marketplace.json`) shipping two plugins plus an npm-published CLI:
+`Maude` — a Claude Code marketplace (defined by `.claude-plugin/marketplace.json`) shipping two plugins plus an npm-published CLI. Project was renamed from `md-claude` in v0.15.0; see [`docs/MIGRATING-MD-CLAUDE-TO-MAUDE.md`](docs/MIGRATING-MD-CLAUDE-TO-MAUDE.md).
 
 - **`plugins/design`** — canvas-first iteration on HTML/JSX mocks under a project's `<designRoot>` (default `.design/`). Includes a zero-dep Node dev server (`plugins/design/dev-server/server.mjs`) that injects an inspector overlay for Cmd+Click element selection and tracks active-canvas state over WebSocket.
 - **`plugins/flow`** — generic agentic workflow loop with a second-brain `.ai/` workspace. Project-agnostic via `<project>` placeholders + per-repo `.ai/workflows.config.json` (schema at `plugins/flow/.claude-plugin/config.schema.json`).
-- **`cli/`** — `mdcc` CLI (entry `cli/bin/mdcc.mjs`, subcommands in `cli/commands/`). Published as `@1agh/md-claude` on npm with two bins: `mdcc` and the back-compat alias `claude-design-server`.
+- **`cli/`** — `maude` CLI (entry `cli/bin/maude.mjs`, subcommands in `cli/commands/`). Published as `@1agh/maude` on npm. Bins: `maude` (primary), `mdcc` (legacy alias — prints deprecation warning, drop in v0.17.x), `maude-safe`/`mdcc-safe` (per-call platform-detection fallback), `claude-design-server` (direct dev-server alias).
 
 The npm package, the design plugin, and the flow plugin all share a single version — `package.json`, `plugins/design/.claude-plugin/plugin.json`, and `plugins/flow/.claude-plugin/plugin.json` must move together. CI enforces parity (`.github/workflows/version-parity.yml`).
 
@@ -20,23 +20,24 @@ npm run start                          # serves $CLAUDE_PROJECT_DIR or cwd; need
 npm run dev                            # same, explicit port 4399
 node plugins/design/dev-server/server.mjs --root /path/to/target-repo
 
-# CLI (after `npm i -g @1agh/md-claude` OR `npm run mdcc -- <args>` locally)
-mdcc init [--name <project>] [--force] [--dry-run]    # scaffold .ai/ from plugins/flow/templates/ai-skeleton
-mdcc config show | get <dotted.key> | set <key> <val>  # edits .ai/workflows.config.json
-mdcc design serve [--port N] [--root <path>]          # boots the design dev server
+# CLI (after `npm i -g @1agh/maude` OR `npm run maude -- <args>` locally)
+maude init [--name <project>] [--force] [--dry-run]    # scaffold .ai/ from plugins/flow/templates/ai-skeleton
+maude config show | get <dotted.key> | set <key> <val>  # edits .ai/workflows.config.json
+maude design serve [--port N] [--root <path>]          # boots the design dev server
+# Legacy `mdcc <cmd>` still works (prints a deprecation warning) until v0.17.x.
 
 # Version + release
 scripts/bump-version.sh patch|minor|major|X.Y.Z       # bumps package.json + both plugin.json files
 scripts/check-version-parity.sh                       # asserts all three match (run in CI too)
 ```
 
-There is **no test suite, lint config, or build step** in this repo — the plugins are pure markdown commands/skills/agents plus a zero-dep Node server. Don't invent a `test` script. If you need to verify a CLI change, run `node cli/bin/mdcc.mjs <cmd>` directly.
+There is **no test suite, lint config, or build step** in this repo — the plugins are pure markdown commands/skills/agents plus a zero-dep Node server. Don't invent a `test` script. If you need to verify a CLI change, run `node cli/bin/maude.mjs <cmd>` directly.
 
 ## Architecture
 
 ### Marketplace layout
 
-`.claude-plugin/marketplace.json` is the entry point Claude Code reads when a user runs `/plugin marketplace add 1aGh/md-claude`. It lists the two plugins and their source paths. Each plugin has its own `.claude-plugin/plugin.json` manifest plus `commands/`, `agents/`, and `skills/` directories — these are surfaced as slash commands, subagents, and auto-loaded skills inside Claude Code.
+`.claude-plugin/marketplace.json` is the entry point Claude Code reads when a user runs `/plugin marketplace add 1aGh/maude`. It lists the two plugins and their source paths. Each plugin has its own `.claude-plugin/plugin.json` manifest plus `commands/`, `agents/`, and `skills/` directories — these are surfaced as slash commands, subagents, and auto-loaded skills inside Claude Code.
 
 ### Dev server runtime contract (`plugins/design/dev-server/server.mjs`)
 
@@ -56,7 +57,7 @@ These files are user-facing runtime state — when changing the server, keep the
 
 The server fails loud if launched from a directory without `.design/` rather than serving an empty UI — preserve this behaviour, it's load-bearing for debugging "wrong project root" cases.
 
-The shared canvas library (`DesignCanvas`, `DCSection`, `DCArtboard`, helpers, hooks) lives at **`plugins/design/dev-server/canvas-lib.tsx`** — single source, ships with the dev-server install. Canvases import it via the virtual specifier `@mdcc/canvas-lib`, which the dev-server's Bun.build plugin resolves to that file. Edit there; the http-layer file-watcher broadcasts a hard reload to every open canvas iframe on change. Per [DDR-025](.ai/decisions/DDR-025-canvas-lib-single-source-in-dev-server.md), there is no project-side copy — downstream projects that still carry a legacy `<designRoot>/_lib/canvas-lib.tsx` get a one-shot deprecation warning at boot and the file is ignored.
+The shared canvas library (`DesignCanvas`, `DCSection`, `DCArtboard`, helpers, hooks) lives at **`plugins/design/dev-server/canvas-lib.tsx`** — single source, ships with the dev-server install. Canvases import it via the virtual specifier `@maude/canvas-lib`, which the dev-server's Bun.build plugin resolves to that file. (Pre-v0.15.0 canvases used `@mdcc/canvas-lib` — the legacy specifier is no longer supported; update existing canvas imports if you upgrade from before the rename.) Edit there; the http-layer file-watcher broadcasts a hard reload to every open canvas iframe on change. Per [DDR-025](.ai/decisions/DDR-025-canvas-lib-single-source-in-dev-server.md), there is no project-side copy — downstream projects that still carry a legacy `<designRoot>/_lib/canvas-lib.tsx` get a one-shot deprecation warning at boot and the file is ignored.
 
 ### Dev-server helpers (`plugins/design/dev-server/bin/`)
 
@@ -90,13 +91,13 @@ Every flow command/skill is project-agnostic. They read `.ai/workflows.config.js
 
 ### `.ai/` skeleton vs. this repo's own `.ai/`
 
-`plugins/flow/templates/ai-skeleton/` is the template that `mdcc init` copies into a target project. This repo also has its own `.ai/` directory at the root — that's md-claude *dogfooding* flow on itself (see README "Local development" section). **The two are independent.** Edits to `plugins/flow/templates/ai-skeleton/` only affect future `mdcc init` runs in other repos; edits to `/Volumes/D/git/claude-design/.ai/` only affect work on this repo.
+`plugins/flow/templates/ai-skeleton/` is the template that `maude init` copies into a target project. This repo also has its own `.ai/` directory at the root — that's Maude *dogfooding* flow on itself (see README "Local development" section). **The two are independent.** Edits to `plugins/flow/templates/ai-skeleton/` only affect future `maude init` runs in other repos; edits to `/Volumes/D/git/claude-design/.ai/` only affect work on this repo.
 
 `cli/commands/init.mjs` does string templating during the copy: it replaces `PROJECT_NAME` and rewrites the `$schema` ref in `workflows.config.json` from a relative path to an absolute GitHub raw URL (because after npm install the schema is no longer at a stable relative location). When changing the skeleton, keep this rewrite in mind for any files added to the `TEMPLATED` list.
 
 ### Published npm surface
 
-`package.json` `files` is intentionally minimal — only `cli/`, `plugins/design/dev-server/`, `plugins/design/templates/`, `plugins/flow/templates/`, the flow config schema, `LICENSE`, and `README.md` ship to npm. The plugin commands/agents/skills (`plugins/*/commands/`, etc.) are **NOT** published via npm — they reach users through the Claude Code plugin marketplace mechanism (`/plugin install`). When adding a new top-level directory that the CLI needs at runtime, add it to `files` or `mdcc` will break for end users.
+`package.json` `files` is intentionally minimal — only `cli/`, `plugins/design/dev-server/`, `plugins/design/templates/`, `plugins/flow/templates/`, the flow config schema, `LICENSE`, and `README.md` ship to npm. The plugin commands/agents/skills (`plugins/*/commands/`, etc.) are **NOT** published via npm — they reach users through the Claude Code plugin marketplace mechanism (`/plugin install`). When adding a new top-level directory that the CLI needs at runtime, add it to `files` or `maude` will break for end users.
 
 ## Design plugin
 
@@ -124,6 +125,6 @@ Never bump versions by hand or with `npm version` — the script is the single s
 
 ## Working on plugin internals locally
 
-For testing edits to plugin commands/skills/agents, the README's "Local development" section is the canonical recipe: point the marketplace at the local working tree (`/plugin marketplace add /absolute/path/to/md-claude`), then `/plugin marketplace update md-claude` + `/reload-plugins` after each edit. **Test in a scratch project** (`cd /tmp/scratch && claude`) rather than from this repo's directory — otherwise this repo's own `.ai/` workspace tangles with the plugin you're testing.
+For testing edits to plugin commands/skills/agents, the README's "Local development" section is the canonical recipe: point the marketplace at the local working tree (`/plugin marketplace add /absolute/path/to/maude`), then `/plugin marketplace update maude` + `/reload-plugins` after each edit. **Test in a scratch project** (`cd /tmp/scratch && claude`) rather than from this repo's directory — otherwise this repo's own `.ai/` workspace tangles with the plugin you're testing.
 
 For dev-server code changes specifically: kill the running server (`lsof -i :<port>` → `kill`) and let the next `/design` invocation auto-restart it; the orchestrator checks `<designRoot>/_server.json` and respawns when stale.

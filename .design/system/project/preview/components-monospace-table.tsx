@@ -4,7 +4,7 @@
  * @platform    desktop
  * @opt_out     none
  * @artboards   primary
- * @brief       MDCC-DSN/01.components-monospace-table / md-claude
+ * @brief       MDCC-DSN/01.components-monospace-table / Maude
  * @stack       React 19 · TSX · Bun.build · css_mode=inline
  * @history     .design/_history/components-monospace-table/
  * @handoff     bunx shadcn add file://./components-monospace-table.registry.json
@@ -14,7 +14,7 @@ import "./components-monospace-table.css";
 export default function ComponentsMonospaceTable() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.components-monospace-table</span><span className="crumbs"><span>md-claude</span><span>design system</span><span>dev</span><span>mono-table</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.components-monospace-table</span><span className="crumbs"><span>maude</span><span>design system</span><span>dev</span><span>mono-table</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Monospace table</h1><p className="lede">Pure data grid. Tabular numerics (<code>font-variant-numeric: tabular-nums</code>) so column rule lines up. Header rows split data into logical groups without a separator block.</p></section>
             <dl className="specimen-meta"><div><dt>Numerals</dt><dd>tabular-nums</dd></div><div><dt>Density</dt><dd>compact (--space-2 vertical)</dd></div></dl>
@@ -44,7 +44,7 @@ export default function ComponentsMonospaceTable() {
             <h2 data-no="02">Why tabular numerics</h2>
             <p>Berkeley Mono ships with proportional numerics by default. Adding <code>font-variant-numeric: tabular-nums</code> forces every digit to the same advance, so "loc 145" and "loc 96" stack column-aligned without a fractional-pixel jitter.</p>
 
-            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· components-monospace-table</span></div><div className="colo-block"><span>md-claude · v0.12.0</span></div></footer>
+            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· components-monospace-table</span></div><div className="colo-block"><span>Maude · v0.12.0</span></div></footer>
           </main>
         </>
   );

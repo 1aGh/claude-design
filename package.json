@@ -1,7 +1,7 @@
 {
-  "name": "@1agh/md-claude",
+  "name": "@1agh/maude",
   "version": "0.14.0",
-  "description": "Marketplace of Claude Code plugins by Michal Dovrtěl: `design` (canvas-first design iteration) + `flow` (generic agentic workflow loop with .ai second brain). Ships `mdcc` CLI to scaffold workspace, run the design dev server, and manage configs.",
+  "description": "Marketplace of Claude Code plugins by Michal Dovrtěl: `design` (canvas-first design iteration) + `flow` (generic agentic workflow loop with .ai second brain). Ships the `maude` CLI (with `mdcc` legacy alias) to scaffold workspace, run the design dev server, and manage configs.",
   "type": "module",
   "engines": {
     "node": ">=20",
@@ -10,14 +10,16 @@
   },
   "packageManager": "pnpm@11.0.4",
   "bin": {
+    "maude": "cli/bin/maude.mjs",
     "mdcc": "cli/bin/mdcc.mjs",
+    "maude-safe": "cli/cli-wrapper.cjs",
     "mdcc-safe": "cli/cli-wrapper.cjs",
     "claude-design-server": "plugins/design/dev-server/server.mjs"
   },
   "scripts": {
     "start": "bun run plugins/design/dev-server/server.ts",
     "dev": "bun run plugins/design/dev-server/server.ts --port 4399",
-    "dev:site": "pnpm --filter @md-claude/site dev --port 4398",
+    "dev:site": "pnpm --filter @maude/site dev --port 4398",
     "build": "pnpm -r --if-present run build",
     "build:binary": "bun run plugins/design/dev-server/build.ts --release",
     "test": "node --test --test-reporter=spec cli/**/*.test.mjs",
@@ -27,6 +29,7 @@
     "changeset": "changeset",
     "changeset:version": "bash scripts/changesets-version.sh",
     "release": "pnpm build && changeset publish",
+    "maude": "node cli/bin/maude.mjs",
     "mdcc": "node cli/bin/mdcc.mjs",
     "video:smoke": "bash scripts/video/smoke/run.sh",
     "video:smoke:terminal": "vhs scripts/video/smoke/terminal.tape",
@@ -36,13 +39,13 @@
     "prepublishOnly": "bash scripts/check-version-parity.sh"
   },
   "optionalDependencies": {
-    "@1agh/md-claude-darwin-arm64": "0.14.0",
-    "@1agh/md-claude-darwin-x64": "0.14.0",
-    "@1agh/md-claude-linux-arm64": "0.14.0",
-    "@1agh/md-claude-linux-arm64-musl": "0.14.0",
-    "@1agh/md-claude-linux-x64": "0.14.0",
-    "@1agh/md-claude-linux-x64-musl": "0.14.0",
-    "@1agh/md-claude-win32-x64": "0.14.0"
+    "@1agh/maude-darwin-arm64": "0.14.0",
+    "@1agh/maude-darwin-x64": "0.14.0",
+    "@1agh/maude-linux-arm64": "0.14.0",
+    "@1agh/maude-linux-arm64-musl": "0.14.0",
+    "@1agh/maude-linux-x64": "0.14.0",
+    "@1agh/maude-linux-x64-musl": "0.14.0",
+    "@1agh/maude-win32-x64": "0.14.0"
   },
   "files": [
     "cli",
@@ -55,11 +58,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/1aGh/md-claude.git"
+    "url": "git+https://github.com/1aGh/maude.git"
   },
-  "homepage": "https://github.com/1aGh/md-claude#readme",
+  "homepage": "https://github.com/1aGh/maude#readme",
   "bugs": {
-    "url": "https://github.com/1aGh/md-claude/issues"
+    "url": "https://github.com/1aGh/maude/issues"
   },
   "license": "MIT",
   "author": "Michal Dovrtěl (1aGh)",
@@ -67,8 +70,8 @@
     "claude-code",
     "claude-marketplace",
     "claude-plugin",
+    "maude",
     "mdcc",
-    "md-claude",
     "agentic-workflow",
     "design-tools",
     "design-system",

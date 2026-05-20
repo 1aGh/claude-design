@@ -1,25 +1,25 @@
-# Release Guide — md-claude
+# Release Guide — Maude
 
 > Walked step-by-step by `/flow:release`. Each `##` heading is a step; bash blocks are candidate commands (the slash command confirms before running each).
 >
 > **Scope:** local prep to trigger the right GitHub Actions. After `git push --follow-tags`, work is handed off to `.github/workflows/build-binaries.yml`, which owns the full release pipeline (create-release → 7-platform matrix → publish-main → populate notes).
 >
-> **Provider:** changesets · **Package:** `@1agh/md-claude`
+> **Provider:** changesets · **Package:** `@1agh/maude`
 >
-> **Ten manifests + seven `optionalDependencies` pins move in lockstep.** `package.json`, both `plugins/*/.claude-plugin/plugin.json` files, and all seven `packages/md-claude-*/package.json` files must always share the same `version`. The root's `optionalDependencies` map pins each sub-package at the same version. `scripts/bump-version.sh` writes all ten + the pins; `scripts/check-version-parity.sh` enforces. `scripts/changesets-version.sh` delegates to `bump-version.sh`, so the changeset flow gets parity for free.
+> **Ten manifests + seven `optionalDependencies` pins move in lockstep.** `package.json`, both `plugins/*/.claude-plugin/plugin.json` files, and all seven `packages/maude-*/package.json` files must always share the same `version`. The root's `optionalDependencies` map pins each sub-package at the same version. `scripts/bump-version.sh` writes all ten + the pins; `scripts/check-version-parity.sh` enforces. `scripts/changesets-version.sh` delegates to `bump-version.sh`, so the changeset flow gets parity for free.
 >
 > **What publishes how:**
-> - **npm — root `@1agh/md-claude`** (CLI + dev-server source + ai-skeleton templates). Published by `build-binaries.yml > publish-main` after every per-platform sub-package lands.
-> - **npm — `@1agh/md-claude-<slug>` × 7** (per-platform Bun standalone binaries: `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`, `linux-x64-musl`, `linux-arm64-musl`, `win32-x64`). Published in parallel by `build-binaries.yml > build-binaries` matrix. Pulled in at install time via root's `optionalDependencies`.
+> - **npm — root `@1agh/maude`** (CLI + dev-server source + ai-skeleton templates). Published by `build-binaries.yml > publish-main` after every per-platform sub-package lands.
+> - **npm — `@1agh/maude-<slug>` × 7** (per-platform Bun standalone binaries: `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`, `linux-x64-musl`, `linux-arm64-musl`, `win32-x64`). Published in parallel by `build-binaries.yml > build-binaries` matrix. Pulled in at install time via root's `optionalDependencies`.
 > - **GitHub Release** — created empty by `build-binaries.yml > create-release` (so matrix `gh release upload` has a target), then `publish-main` populates the body from `CHANGELOG.md` (auto-generated notes if the section is missing).
-> - **Claude Code marketplace** — both plugins (`design`, `flow`) ship via `marketplace.json` read directly from `main`. The moment the release commit is on `main`, end users can `/plugin marketplace update md-claude`. No separate publish step.
+> - **Claude Code marketplace** — both plugins (`design`, `flow`) ship via `marketplace.json` read directly from `main`. The moment the release commit is on `main`, end users can `/plugin marketplace update maude`. No separate publish step.
 
 ## Pre-flight
 
 - [ ] On `main` with clean working tree (no staged or unstaged changes)
 - [ ] Latest `quality.yml` and `version-parity.yml` are **actually green** on `main` (run `gh run list --workflow=quality.yml --branch=main --limit 1` — don't just assume from memory). A red `quality.yml` masks lurkers that the release commit will surface.
 - [ ] At least one `.changeset/*.md` since the previous tag (otherwise the bump is a no-op)
-- [ ] You have npm publish permission for `@1agh/md-claude` + all 7 `@1agh/md-claude-<slug>` packages, and push access to `main`
+- [ ] You have npm publish permission for `@1agh/maude` + all 7 `@1agh/maude-<slug>` packages, and push access to `main`
 - [ ] `NPM_TOKEN` repo secret is set (one-time, only after rotation)
 - [ ] 1Password is unlocked AND the SSH key is approved for the session (signing failures mid-tag-move leave the repo in a partial state — see "When things break")
 
@@ -43,7 +43,7 @@ The wizard asks for bump kind and a short summary, writes `.changeset/<slug>.md`
 
 **Bump-kind rule of thumb:**
 - `patch` — bug fixes, doc-only changes, internal refactors, CLI flag tweaks that stay backwards-compatible.
-- `minor` — new commands/skills/agents, new `mdcc` subcommands, new config keys with safe defaults.
+- `minor` — new commands/skills/agents, new `maude` subcommands, new config keys with safe defaults.
 - `major` — removed/renamed commands or config keys, breaking CLI flag changes, dev-server protocol break.
 
 ## Bump
@@ -81,8 +81,8 @@ Always run. `pnpm changeset version` regularly surfaces stale generated artefact
 ```bash
 pnpm lint
 pnpm test
-pnpm --filter @md-claude/site gen:stats              # refresh derived stats
-pnpm --filter @md-claude/site gen:reference          # refresh derived reference docs
+pnpm --filter @maude/site gen:stats              # refresh derived stats
+pnpm --filter @maude/site gen:reference          # refresh derived reference docs
 git diff --stat site/                                # capture any drift to commit
 ```
 
@@ -97,7 +97,7 @@ VER=$(node -p "require('./package.json').version")
 git add package.json \
         plugins/design/.claude-plugin/plugin.json \
         plugins/flow/.claude-plugin/plugin.json \
-        packages/md-claude-*/package.json \
+        packages/maude-*/package.json \
         CHANGELOG.md \
         .changeset/ \
         site/lib/stats.json \
@@ -120,21 +120,21 @@ git push --follow-tags
 The `v*.*.*` tag triggers `.github/workflows/build-binaries.yml`, which:
 
 1. **`create-release`** — creates an empty GitHub Release (so matrix uploads have a target).
-2. **`build-binaries`** (7-platform matrix) — `bun build --compile --target=<platform>` produces a Bun standalone binary; smoke-tests it; `npm publish --access public --provenance` the matching `@1agh/md-claude-<slug>` sub-package (idempotent — 409 "already published" is treated as success); uploads the binary to the GitHub Release as an asset.
+2. **`build-binaries`** (7-platform matrix) — `bun build --compile --target=<platform>` produces a Bun standalone binary; smoke-tests it; `npm publish --access public --provenance` the matching `@1agh/maude-<slug>` sub-package (idempotent — 409 "already published" is treated as success); uploads the binary to the GitHub Release as an asset.
 3. **`publish-main`** (after the full matrix succeeds) — installs with `--no-frozen-lockfile` (the lockfile cannot enumerate per-platform sub-packages that don't exist on npm until the matrix publishes them); verifies parity; `pnpm build`; verifies tarball shape; `npm publish` the root tarball (idempotent); populates the GitHub Release body from CHANGELOG.md.
 
 Watch the run:
 
 ```bash
 gh run list --workflow=build-binaries.yml --limit 1
-gh run view --web                                    # or open https://github.com/1aGh/md-claude/actions
+gh run view --web                                    # or open https://github.com/1aGh/maude/actions
 ```
 
 After `publish-main` is green:
 
 ```bash
 gh release view "v$(node -p "require('./package.json').version")"
-npm view @1agh/md-claude version                     # confirm npm sees the new root
+npm view @1agh/maude version                     # confirm npm sees the new root
 ```
 
 If the GitHub Release shows `draft: true` (happens when the tag was force-moved during a retry cycle), publish it:
@@ -156,7 +156,7 @@ gh run view <RUN_ID> --log-failed | tail -100
 Common failures + recovery:
 
 - **`macos-13` runner queued for 15+ min with no assignment** — capacity issue, runner is being deprecated. Already migrated to `macos-14` cross-compile (`--target=bun-darwin-x64`); shouldn't recur. If it does, swap the matrix entry and force-move the tag (see below).
-- **`win32-x64` binary not produced (`mdcc-windows-x64.exe` vs `mdcc-win32-x64.exe`)** — slug mismatch between `bun --target` naming and Node's `process.platform`. Already fixed in `build.ts` `platformSlug()`. Should not recur.
+- **`win32-x64` binary not produced (`maude-windows-x64.exe` vs `maude-win32-x64.exe`)** — slug mismatch between `bun --target` naming and Node's `process.platform`. Already fixed in `build.ts` `platformSlug()`. Should not recur.
 - **Alpine container fails "JavaScript Actions in Alpine containers only supported on x64 Linux runners"** — JS actions can't run inside alpine on arm64. Already fixed by cross-compiling musl from regular ubuntu runners. Should not recur.
 - **Network flake on `npm publish`** — re-run the failed job from the Actions UI; the matrix step is idempotent (409 conflict treated as success).
 
@@ -208,8 +208,8 @@ git push origin "v${VER}"
 
 ### npm publish succeeded but the release is broken and needs to come down
 
-- Within 72h npm allows `npm unpublish @1agh/md-claude@X.Y.Z` (non-popular packages only).
-- Prefer `npm deprecate @1agh/md-claude@X.Y.Z "<reason>"` first — keeps the version in the registry as an audit trail and warns installers, without breaking lockfiles that already pinned it.
+- Within 72h npm allows `npm unpublish @1agh/maude@X.Y.Z` (non-popular packages only).
+- Prefer `npm deprecate @1agh/maude@X.Y.Z "<reason>"` first — keeps the version in the registry as an audit trail and warns installers, without breaking lockfiles that already pinned it.
 - If only some of the 7 sub-packages published (partial release), deprecate the published ones with a message pointing at the next patch release.
 - **Do not delete the git tag from GitHub** — fix forward with the next patch release. The tag is the audit trail for what was attempted.
 

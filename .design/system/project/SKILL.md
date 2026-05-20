@@ -1,10 +1,10 @@
 ---
-name: md-claude-design
-description: Per-DS rules for the md-claude design system (MDCC-DSN/01). Industrial-catalogue mood, Paper & Ink palette with one amber-rust accent, Berkeley-forward mono-everywhere typography, hard-edges signature (1px hairlines + part-number SKU framing). Voice = htmx-style irreverent developer over a U.S. Graphics catalog spine. Read first when iterating on any canvas declaring `designSystem: project`.
+name: maude-design
+description: Per-DS rules for the Maude design system (MDCC-DSN/01). Industrial-catalogue mood, Paper & Ink palette with one amber-rust accent, Berkeley-forward mono-everywhere typography, hard-edges signature (1px hairlines + part-number SKU framing). Voice = htmx-style irreverent developer over a U.S. Graphics catalog spine. Read first when iterating on any canvas declaring `designSystem: project`.
 user-invocable: false
 ---
 
-# md-claude DS. Terse load-bearing rules
+# Maude DS. Terse load-bearing rules
 
 Authoritative source for everything: `system/project/README.md` (philosophy + voice + hard rules). This file is the cheat-sheet agents load before every edit / specimen write. The things that are easy to forget under attention pressure.
 

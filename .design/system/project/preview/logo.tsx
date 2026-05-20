@@ -4,7 +4,7 @@
  * @platform    desktop
  * @opt_out     none
  * @artboards   primary
- * @brief       MDCC-DSN/01.logo / md-claude
+ * @brief       MDCC-DSN/01.logo / Maude
  * @stack       React 19 · TSX · Bun.build · css_mode=inline
  * @history     .design/_history/logo/
  * @handoff     bunx shadcn add file://./logo.registry.json
@@ -14,14 +14,14 @@ import "./logo.css";
 export default function Logo() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.logo</span><span className="crumbs"><span>md-claude</span><span>design system</span><span>brand</span><span>logo</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.logo</span><span className="crumbs"><span>maude</span><span>design system</span><span>brand</span><span>logo</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Wordmark &amp; glyphs</h1><p className="lede">The mark is a single typeset of <code>MD-CLAUDE</code> in Berkeley Mono with one amber-rust terminal block. That's the catalog stamp dot. No drawn icon. The wordmark IS the mark. Below: four domain-noun SVG glyphs for the marketplace + dev-server surface.</p></section>
             <dl className="specimen-meta"><div><dt>Files</dt><dd>1 wordmark · 4 glyphs</dd></div><div><dt>Construction</dt><dd>Berkeley Mono · 0.04em tracking · accent dot</dd></div><div><dt>Reusable</dt><dd>currentColor → host context tints</dd></div></dl>
 
             <h2 data-no="01">Wordmark</h2>
             <div className="stage">
-              <img src="../assets/logos/wordmark.svg" alt="md-claude wordmark" />
+              <img src="../assets/logos/wordmark.svg" alt="Maude wordmark" />
             </div>
 
             <h2 data-no="02">Glyphs <span className="h2-aside">four domain nouns</span></h2>
@@ -60,7 +60,7 @@ export default function Logo() {
             <div className="anti"><p style={{ margin: '0' }}>Don't pair the wordmark with a separate icon mark. The wordmark IS the mark. Don't put a "circle-M monogram" next to it. That's a different brand.</p></div>
             <div className="pro"><p style={{ margin: '0' }}>When you need a square avatar / favicon, use the accent block alone at 16×16. It reads as "the dot from the wordmark", which is the only mark this DS has.</p></div>
 
-            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· logo · ★ signature</span></div><div className="colo-block"><span>md-claude · v0.12.0</span></div></footer>
+            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· logo · ★ signature</span></div><div className="colo-block"><span>Maude · v0.12.0</span></div></footer>
           </main>
         </>
   );

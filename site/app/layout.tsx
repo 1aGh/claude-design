@@ -17,17 +17,17 @@ const siteUrl =
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: 'md-claude, how it works mostly',
-    template: '%s | md-claude',
+    default: 'maude, how it works mostly',
+    template: '%s | maude',
   },
   description:
     'A Claude Code marketplace. Two plugins, one CLI, some vibes. design iterates canvases. flow runs the agentic loop. mdcc is the plumbing.',
   openGraph: {
-    title: 'md-claude',
+    title: 'maude',
     description:
       'A Claude Code marketplace. Two plugins, one CLI, some vibes. Plan, design, ship, all from inside Claude.',
     type: 'website',
-    siteName: 'md-claude',
+    siteName: 'maude',
   },
   twitter: { card: 'summary_large_image' },
 };

@@ -1,11 +1,11 @@
 {
-  "$schema": "https://raw.githubusercontent.com/1aGh/md-claude/main/plugins/flow/.claude-plugin/config.schema.json",
-  "name": "md-claude",
+  "$schema": "https://raw.githubusercontent.com/1aGh/maude/main/plugins/flow/.claude-plugin/config.schema.json",
+  "name": "maude",
   "language": "en",
   "theme": "agnostic",
   "paths": {
-    "prd": ".ai/md-claude-prd.md",
-    "designSystem": ".ai/md-claude-design-system.md",
+    "prd": ".ai/maude-prd.md",
+    "designSystem": ".ai/maude-design-system.md",
     "codebaseMap": ".ai/context/codebase-map.md"
   },
   "platforms": [],
@@ -90,7 +90,7 @@
     "changelog": {
       "provider": "changesets",
       "releaseGuide": ".ai/release-guide.md",
-      "scope": "@1agh/md-claude"
+      "scope": "@1agh/maude"
     }
   }
 }

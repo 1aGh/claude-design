@@ -94,7 +94,7 @@ export interface EmitOptions {
   /** Optional path to project's tokens CSS for cssVars resolution (Task 12b). */
   tokensCssPath?: string;
   /**
-   * Absolute path to design root. When provided, `@mdcc/canvas-lib` imports
+   * Absolute path to design root. When provided, `@maude/canvas-lib` imports
    * in the canvas are inlined from the dev-server-bundled canvas-lib so the
    * emitted drop is self-contained (Phase 3.6.1 Task 9; per DDR-025 the lib
    * lives in the dev-server, not under designRoot). The argument is kept for
@@ -545,7 +545,7 @@ export async function emitRegistryItem(opts: EmitOptions): Promise<RegistryItem>
   // Strip dev-time scaffolding.
   let tsx = stripDataCdId(opts.canvasAbsPath, rawTsx);
 
-  // Inline canvas-lib helpers — when the canvas imports from @mdcc/canvas-lib,
+  // Inline canvas-lib helpers — when the canvas imports from @maude/canvas-lib,
   // we splice the resolved exports + their transitive deps into the canvas
   // source and strip the specifier. Phase 3.6.1 Task 9.
   //
@@ -568,8 +568,8 @@ export async function emitRegistryItem(opts: EmitOptions): Promise<RegistryItem>
 
   // Classify imports.
   const { dependencies, registryDependencies } = classifyImports(opts.canvasAbsPath, tsx);
-  // @mdcc/canvas-lib is a dev-time virtual specifier — never ship as dep.
-  const depsFiltered = dependencies.filter((d) => d !== '@mdcc/canvas-lib');
+  // @maude/canvas-lib is a dev-time virtual specifier — never ship as dep.
+  const depsFiltered = dependencies.filter((d) => d !== '@maude/canvas-lib');
 
   // React + ReactDOM always shipped as runtime deps — the canvas authoring
   // contract requires React 19 (DDR-012). scanImports already finds `react`

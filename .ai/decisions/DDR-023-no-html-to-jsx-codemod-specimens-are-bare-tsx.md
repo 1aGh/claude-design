@@ -27,7 +27,7 @@ We hand-fixed the 38 migrated specimens via a one-shot Bun script (deleted after
 
 The contract:
 
-1. **Specimens have a fixed shape.** Bare `<><header className="specimen-hd">...</header><main className="specimen">...</main></>` — no `@mdcc/canvas-lib` envelope ([DDR-022](./DDR-022-canvas-lib-virtual-module-and-inline-on-handoff.md)). The envelope is for UI mocks (`Docs Site.tsx`, `Canvas Viewport.tsx`); specimens are flowing reference pages.
+1. **Specimens have a fixed shape.** Bare `<><header className="specimen-hd">...</header><main className="specimen">...</main></>` — no `@maude/canvas-lib` envelope ([DDR-022](./DDR-022-canvas-lib-virtual-module-and-inline-on-handoff.md)). The envelope is for UI mocks (`Docs Site.tsx`, `Canvas Viewport.tsx`); specimens are flowing reference pages.
 2. **DS bootstrap writes specimens directly.** `plugins/design/skills/design-system/SKILL.md` Round 3 dispatches sub-agents whose prompts include the bare-TSX shape verbatim. Sub-agents produce TSX, not HTML; no codemod intermediate.
 3. **The existing 38 specimens were migrated once, in-session, by an ad-hoc script that the session deleted after running.** The `_history/_migration-2026-05-15/` archive holds the originals; no live codemod refers to them.
 4. **`ds-specimen.tsx.template`** scaffolds the bare-TSX shape (no codemod). It's a template, not a rewriter — read, fill placeholders, write.

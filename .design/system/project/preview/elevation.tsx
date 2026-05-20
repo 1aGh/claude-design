@@ -4,7 +4,7 @@
  * @platform    desktop
  * @opt_out     none
  * @artboards   primary
- * @brief       MDCC-DSN/01.elevation / md-claude
+ * @brief       MDCC-DSN/01.elevation / Maude
  * @stack       React 19 · TSX · Bun.build · css_mode=inline
  * @history     .design/_history/elevation/
  * @handoff     bunx shadcn add file://./elevation.registry.json
@@ -12,7 +12,7 @@
 export default function Elevation() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.elevation</span><span className="crumbs"><span>md-claude</span><span>design system</span><span>foundation</span><span>elevation</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.elevation</span><span className="crumbs"><span>maude</span><span>design system</span><span>foundation</span><span>elevation</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Elevation</h1><p className="lede">There isn't a shadow ladder. <code>--shadow-sm/md/lg</code> are all <code>none</code>. Depth in this DS is bg-shift + 1px rule, repeated. The only blur in the system is <code>--shadow-focus</code>. That's the focus ring.</p></section>
             <dl className="specimen-meta"><div><dt>Shadow tokens</dt><dd>none / none / none / focus-ring only</dd></div><div><dt>Depth method</dt><dd>bg-shift + hairline</dd></div></dl>
@@ -41,7 +41,7 @@ export default function Elevation() {
             <h2 data-no="03">When NOT to use</h2>
             <div className="anti"><p style={{ margin: '0' }}>Don't add <code>box-shadow: 0 4px 12px rgba(0,0,0,0.2)</code> to any tile, card, or panel. The bg-shift + 1px rule does the job. Shadow breaks the signature and the critic panel will block it.</p></div>
 
-            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· elevation</span></div><div className="colo-block"><span>md-claude · v0.12.0</span></div></footer>
+            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· elevation</span></div><div className="colo-block"><span>Maude · v0.12.0</span></div></footer>
           </main>
         </>
   );

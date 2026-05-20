@@ -122,7 +122,7 @@ const stats = {
       skills: await countDirs('plugins/flow/skills'),
       agents: await countFiles('plugins/flow/agents', { extensions: ['.md'] }),
     },
-    mdcc: {
+    maude: {
       subcommands: await countFiles('cli/commands', { extensions: ['.mjs'] }),
     },
   },
@@ -144,6 +144,6 @@ console.log(
     `        version=${stats.version} · published=${stats.publishedDate} · contributors=${stats.contributors}\n` +
     `        design: ${designP.commands}c / ${designP.skills}s / ${designP.agents}a · ` +
     `flow: ${flowP.commands}c / ${flowP.skills}s / ${flowP.agents}a · ` +
-    `mdcc: ${stats.plugins.mdcc.subcommands}sub\n` +
+    `maude: ${stats.plugins.maude.subcommands}sub\n` +
     `        page-updated entries: ${Object.keys(stats.pageUpdated).length}`
 );

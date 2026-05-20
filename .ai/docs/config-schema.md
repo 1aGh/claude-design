@@ -12,8 +12,8 @@
 
 ```jsonc
 {
-  "$schema": "https://raw.githubusercontent.com/1aGh/md-claude/main/plugins/flow/.claude-plugin/config.schema.json",
-  "name": "md-claude",                  // project slug; resolved into <project> placeholder by every flow command
+  "$schema": "https://raw.githubusercontent.com/1aGh/maude/main/plugins/flow/.claude-plugin/config.schema.json",
+  "name": "maude",                  // project slug; resolved into <project> placeholder by every flow command
   "language": "en",                     // "en" | "cs" | other ISO-639-1; affects /flow:plan + DDR prose
 
   "theme": "agnostic",                  // "dark" | "light" | "agnostic"; design-system-guard hint
@@ -78,17 +78,17 @@
     "tracker":   { "provider": "github" },          // pre-v1.0
     "analytics": { "provider": "none" },            // pre-v1.0
     "ci":        { "provider": "github-actions" }, // pre-v1.0
-    "design":    { "provider": "md-claude" },       // pre-v1.0
+    "design":    { "provider": "maude" },       // pre-v1.0
     "changelog": {                                  // Phase 3 — `/flow:release-changelog` + `/flow:release` gate
       "provider": "changesets",                     // changesets | git-cliff | conventional | custom | none
-      "scope": "@1agh/md-claude",
+      "scope": "@1agh/maude",
       "releaseGuide": ".ai/release-guide.md"
     }
   }
 }
 ```
 
-**Read/write:** `mdcc config show | get <dotted.key> | set <key> <value>`.
+**Read/write:** `maude config show | get <dotted.key> | set <key> <value>`.
 
 ---
 
@@ -100,7 +100,7 @@
 
 ```jsonc
 {
-  "$schema": "https://raw.githubusercontent.com/1aGh/md-claude/main/plugins/design/dev-server/config.schema.json",
+  "$schema": "https://raw.githubusercontent.com/1aGh/maude/main/plugins/design/dev-server/config.schema.json",
   "name": "my-project",                 // pre-v1.0
   "projectLabel": null,                 // pre-v1.0; optional override of name in chrome
   "designRoot": ".design",              // pre-v1.0
@@ -140,7 +140,7 @@
     "commitStrategy": "full"            // "full" | "hub-only" | "manual"; controls gitignore generation
   },
   "linkedHub": {                        // Phase 9; absent in solo / LAN mode
-    "url": "https://md-claude-hub-foo.fly.dev",
+    "url": "https://maude-hub-foo.fly.dev",
     "projectId": "my-project"
   },
 
@@ -152,7 +152,7 @@
 }
 ```
 
-**Read/write:** server reads on boot + on file save (debounced). User edits via plain editor (no `mdcc` setter today — could add `mdcc design config <show|get|set>` in v1.1 if frequent).
+**Read/write:** server reads on boot + on file save (debounced). User edits via plain editor (no `maude` setter today — could add `maude design config <show|get|set>` in v1.1 if frequent).
 
 ---
 
@@ -207,17 +207,17 @@ These live alongside canvases but are runtime state, never committed:
 | `.design/_state/<slug>.ydoc.bin` | Phase 8/9 Yjs runtime | Phase 8 | binary CRDT log; regenerable from snapshots |
 | `.design/_chat/<slug>.jsonl` | Phase 7 ACP (icebox) | Phase 7 | per-canvas transcript |
 
-`.gitignore` block (managed by `mdcc init` / `mdcc design sync-gitignore`, framed with `# md-claude:begin` / `# md-claude:end` markers):
+`.gitignore` block (managed by `maude init` / `maude design sync-gitignore`, framed with `# maude:begin` / `# maude:end` markers):
 
 ```gitignore
-# md-claude:begin
+# maude:begin
 .design/_state/
 .design/_server.json
 .design/_active.json
 .design/_server.log
 .design/_history/
 .design/_chat/
-# md-claude:end
+# maude:end
 ```
 
 User can switch `collab.commitStrategy: "hub-only"` to additionally ignore canvas content (`.design/*.html`, `.layout.json`, `.annotations.svg`, `_comments/*.json`) — opt-in for teams who want hub as the only source of truth. Default is `"full"`.

@@ -39,7 +39,7 @@ function verifyCanvasLibPresence(): void {
   const target = canvasLibPath();
   if (!existsSync(target)) {
     throw new Error(
-      `[@mdcc/canvas-lib] canvas library missing at ${target} — dev-server install is corrupt; re-install @1agh/md-claude.`
+      `[@maude/canvas-lib] canvas library missing at ${target} — dev-server install is corrupt; re-install @1agh/maude.`
     );
   }
   canvasLibPresenceVerified = true;
@@ -73,7 +73,7 @@ export interface CanvasBundleResult {
 export interface BuildCanvasOptions {
   /**
    * Absolute path to the design root. Per DDR-025 canvas-lib is dev-server
-   * bundled, so this value is no longer required to resolve `@mdcc/canvas-lib`
+   * bundled, so this value is no longer required to resolve `@maude/canvas-lib`
    * — it's accepted for back-compat and used only to emit a one-shot
    * deprecation warning when a legacy `<designRoot>/_lib/canvas-lib.tsx` is
    * detected.
@@ -84,7 +84,7 @@ export interface BuildCanvasOptions {
 /**
  * Build a single canvas TSX file end-to-end. Identity pass is from
  * canvas-pipeline.ts; the module pass is Bun.build with React externalised
- * and `@mdcc/canvas-lib` resolved to the dev-server-bundled canvas-lib.
+ * and `@maude/canvas-lib` resolved to the dev-server-bundled canvas-lib.
  */
 export async function buildCanvasModule(
   canvasAbsPath: string,
@@ -96,7 +96,7 @@ export async function buildCanvasModule(
 
   // Sanity-check the dev-server-bundled canvas-lib once per process — if the
   // install is corrupt, fail loud before Bun.build collapses plugin throws.
-  if (/@mdcc\/canvas-lib/.test(source)) {
+  if (/@maude\/canvas-lib/.test(source)) {
     verifyCanvasLibPresence();
   }
 
@@ -131,7 +131,7 @@ export async function buildCanvasModule(
       'process.env.NODE_ENV': '"production"',
     },
     plugins: [
-      // Resolve `@mdcc/canvas-lib` BEFORE exact-externals — we want the bare
+      // Resolve `@maude/canvas-lib` BEFORE exact-externals — we want the bare
       // specifier to map to the dev-server-bundled lib, not get marked external.
       canvasLibResolver(),
       {

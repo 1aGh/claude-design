@@ -4,7 +4,7 @@
  * @platform    desktop
  * @opt_out     none
  * @artboards   primary
- * @brief       MDCC-DSN/01.state-system / md-claude
+ * @brief       MDCC-DSN/01.state-system / Maude
  * @stack       React 19 · TSX · Bun.build · css_mode=inline
  * @history     .design/_history/state-system/
  * @handoff     bunx shadcn add file://./state-system.registry.json
@@ -14,7 +14,7 @@ import "./state-system.css";
 export default function StateSystem() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.state-system</span><span className="crumbs"><span>md-claude</span><span>design system</span><span>universal</span><span>state-system</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.state-system</span><span className="crumbs"><span>maude</span><span>design system</span><span>universal</span><span>state-system</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
           <main className="specimen">
             <section className="specimen-title"><h1>State system</h1><p className="lede">Chrome-state family. Four sections, four moments where the UI has to talk: 404, success, loading, and empty. Each one earns its copy the same way. Specific nouns, real commands, no filler.</p></section>
             <dl className="specimen-meta"><div><dt>Status</dt><dd>published</dd></div><div><dt>Family</dt><dd>chrome states</dd></div><div><dt>Sections</dt><dd>4</dd></div><div><dt>Density</dt><dd>balanced-docs</dd></div></dl>
@@ -57,7 +57,7 @@ export default function StateSystem() {
               <a href="./empty-state.html">empty-state.html →</a>
             </div>
 
-            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· state-system</span></div><div className="colo-block"><span>md-claude · v0.12.0</span></div></footer>
+            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· state-system</span></div><div className="colo-block"><span>Maude · v0.12.0</span></div></footer>
           </main>
         </>
   );

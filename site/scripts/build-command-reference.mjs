@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../../');
 const docsRoot = resolve(__dirname, '../content/docs/reference');
-const repoUrl = 'https://github.com/1aGh/md-claude/blob/main';
+const repoUrl = 'https://github.com/1aGh/maude/blob/main';
 
 const plugins = [
   {
@@ -231,7 +231,7 @@ async function emitIndex(counts) {
     'description: Auto-generated index of every /flow:* and /design:* slash command.',
     '---',
     '',
-    'Auto-generated from the source files under [`plugins/`](https://github.com/1aGh/md-claude/tree/main/plugins). Re-runs on every site build (`pnpm --filter @md-claude/site build`).',
+    'Auto-generated from the source files under [`plugins/`](https://github.com/1aGh/maude/tree/main/plugins). Re-runs on every site build (`pnpm --filter @maude/site build`).',
     '',
   ];
   for (const plugin of plugins) {

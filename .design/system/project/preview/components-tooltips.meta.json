@@ -1,14 +1,14 @@
 {
   "title": "components-tooltips",
   "subtitle": "tooltip — pure positioned chip, no gradient or blur bg.",
-  "brief": "MDCC-DSN/01.components-tooltips / md-claude",
+  "brief": "MDCC-DSN/01.components-tooltips / Maude",
   "platform": "desktop",
   "designSystem": "project",
   "opt_out_scope": "none",
   "sections": [
     {
       "id": "overview",
-      "title": "MDCC-DSN/01.components-tooltips / md-claude",
+      "title": "MDCC-DSN/01.components-tooltips / Maude",
       "artboards": [
         {
           "id": "primary",

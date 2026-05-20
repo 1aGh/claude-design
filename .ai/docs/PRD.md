@@ -1,4 +1,4 @@
-# md-claude — Product Requirements Document
+# Maude — Product Requirements Document
 
 > **Status:** v0.4 shipped → roadmap to v1.0
 > **Owner:** Michal Dovrtěl (`1aGh`)
@@ -6,7 +6,7 @@
 
 ## 1. Executive Summary
 
-`md-claude` is a Claude Code marketplace that turns Claude Code into a **complete AI-driven product workshop**: a generic agentic workflow loop (`flow`) for building stable, well-tested apps, paired with a canvas-first design tool (`design`) that replaces rapid prototyping in Figma / Claude Design for repo-local work. The two plugins share one `mdcc` CLI for scaffolding and tooling. Everything is project-agnostic — installed once, drives any repo via `.ai/workflows.config.json` + `.design/config.json`.
+`maude` is a Claude Code marketplace that turns Claude Code into a **complete AI-driven product workshop**: a generic agentic workflow loop (`flow`) for building stable, well-tested apps, paired with a canvas-first design tool (`design`) that replaces rapid prototyping in Figma / Claude Design for repo-local work. The two plugins share one `maude` CLI for scaffolding and tooling. Everything is project-agnostic — installed once, drives any repo via `.ai/workflows.config.json` + `.design/config.json`.
 
 The value proposition: instead of bouncing between Figma (designs), GitHub (issues / PRs / CI), an IDE (code), and a separate AI assistant, the user works inside Claude Code with a unified second-brain (`.ai/`), versioned design canvases (`.design/`), and a single AI agent that owns plan → design → execute → validate → ship.
 
@@ -22,11 +22,11 @@ Make Claude Code a first-class environment for **end-to-end product development*
 2. **Project-agnostic via config.** `<project>` placeholders + JSON schemas; never hardcode downstream specifics.
 3. **Compose, don't re-implement.** Defer to Anthropic's `/init`, `frontend-design`, `agent-browser` rather than duplicating.
 4. **Zero runtime dependencies where possible.** The dev server is pure Node; the CLI ships nothing transitive.
-5. **Dogfooded.** md-claude uses its own plugins to build itself.
+5. **Dogfooded.** Maude uses its own plugins to build itself.
 
 ## 3. Target Users
 
-| Persona | Technical level | Pain point md-claude solves |
+| Persona | Technical level | Pain point Maude solves |
 | ------- | --------------- | --------------------------- |
 | **Indie developer / "vibe coder"** | Mid-senior, JS/TS-heavy, ships solo or in pairs | Tired of context-switching between Figma + IDE + GitHub; wants AI to drive the whole loop from idea to PR. |
 | **Small product team (2-6 people)** | Mixed (design + eng + PM) | Needs cheap, repo-local Figma alternative for early-stage exploration without paying per-seat for Figma + Slack-style review tooling. |
@@ -41,7 +41,7 @@ Make Claude Code a first-class environment for **end-to-end product development*
 
 - ✅ Contribute infrastructure — `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, PR / issue templates, dependabot, branch-protection docs, basic CI quality gates beyond version parity.
 - ✅ Changesets bootstrapped in **this** repo + a **reusable `integrations.changelog` abstraction** (`/flow:release-changelog` for authoring, `/flow:release` for walking a project-owned release runbook) for downstream repos to opt into Changesets, git-cliff, conventional-changelog, or roll their own.
-- ✅ Docs site (Fumadocs) at `md-claude.iagh.cz` (subdomain of team-owned `iagh.cz`) — CLI reference, every workflow command, config schema docs with copy-paste examples. AI-readable so future agents can self-onboard.
+- ✅ Docs site (Fumadocs) at `maude.iagh.cz` (subdomain of team-owned `iagh.cz`) — CLI reference, every workflow command, config schema docs with copy-paste examples. AI-readable so future agents can self-onboard.
 - ✅ `flow` ↔ `design` automatic integration — flow plans auto-detect `.design/` and pull canvas references; `/flow:done` surfaces `/design:handoff` when canvases exist.
 - ✅ Canvas v2 rendering engine — replace iframe-only model with a hybrid Canvas2D / WebGL layer for FigJam-grade pan / zoom / smooth scrolling at 60fps on 1k+ elements.
 - ✅ FigJam-style infinite canvas — free-form screen positioning, multi-screen layouts, zoom-to-fit, mini-map.
@@ -54,15 +54,15 @@ Make Claude Code a first-class environment for **end-to-end product development*
 
 ### ❌ Out of scope (v1.0)
 
-- ❌ Cloud-hosted SaaS variant of the design plugin — md-claude stays repo-local; users self-host.
+- ❌ Cloud-hosted SaaS variant of the design plugin — Maude stays repo-local; users self-host.
 - ❌ Native iOS / Android / desktop apps — browser-based canvas only.
-- ❌ Vector drawing (Sketch / Figma replacement) — md-claude is HTML/JSX-first, not SVG vector editor.
+- ❌ Vector drawing (Sketch / Figma replacement) — Maude is HTML/JSX-first, not SVG vector editor.
 - ❌ Built-in authentication / user accounts — collab piggybacks on git identity + LAN trust.
 - ❌ Plugin marketplace for the design plugin itself (third-party canvas extensions) — explicit non-goal in v1.0.
 - ❌ AI image generation directly in canvas (let users compose with `frontend-design` upstream).
 - ❌ Mobile-first canvas authoring on touch devices — canvas v2 targets desktop browsers.
 - ❌ Real-time co-editing of the same HTML node (structured CRDT over DOM tree) — **scheduled for v1.2 as Phase 10** (`.ai/plans/phase-10-structured-crdt-html-coediting.md`), only if v1.1 surfaces real-world incidents of garbled inspector edits. v1.1 hub mode treats HTML body as opaque `Y.Text` (no element-level merge); structured CRDT is the v1.2 upgrade. Decision trigger: ≥3 user reports of clobber after Phase 9 ships.
-- ❌ Hosted SaaS hub. **v1.1 hub is always self-hosted** — `mdcc hub deploy fly|docker|systemd|tailscale|cloudflare` recipes, user owns the box. No "md-claude cloud" managed offering.
+- ❌ Hosted SaaS hub. **v1.1 hub is always self-hosted** — `mdcc hub deploy fly|docker|systemd|tailscale|cloudflare` recipes, user owns the box. No "maude cloud" managed offering.
 - ❌ ACP local chat sidebar in v1.0 — **moved to icebox 2026-05-12** (`.ai/plans/phase-7-acp-chat-sidebar.md`). Inherent local-per-peer limitation + marginal value-add in hub federation. Re-evaluate at v1.1+ if user feedback validates browser-based agent chat as a designer need.
 - ❌ In-canvas CSS editor + layers panel in v1.0 — **deferred to Phase 12** (end-of-roadmap, v1.3+ conditional). Value uncertain vs. `/design:edit "<feedback>"` AI loop; gate on user-feedback survey. Plan retained at `.ai/plans/phase-12-in-canvas-css-and-layers.md`.
 - ❌ Flow ↔ design integration in v1.0 core — extracted to **Phase 11** (separate work, late v1.0 or early v1.1 ship). `.ai/plans/phase-11-flow-design-integration.md`. Reasoning: most useful when canvas + DS structure is mature post Phase 4-6 and ideally Phase 8.
@@ -76,7 +76,7 @@ Make Claude Code a first-class environment for **end-to-end product development*
 4. **Product owner doing stakeholder review.** "As a PO, I want presentation mode that walks stakeholders through 6 canvases full-screen — so that we don't need a separate Loom recording."
 5. **Designer handing off to engineering.** "As a designer, I want `/design:handoff` to convert the active canvas into production code under `apps/web/` mapped to my project's component library — so that I don't write code translations by hand."
 6. **Solo dev tweaking a component.** "As a developer reviewing a canvas, I want to Cmd+click a button, change its `border-radius` and `padding` in a side panel, and have the source HTML update — so that small tweaks don't require a full `/design:edit "feedback"` round-trip."
-7. **Team adopting md-claude.** "As a tech lead, I want a docs site with copy-paste config recipes for monorepos / Expo / Next.js — so that I can convince two skeptical engineers to install the marketplace without a 30-minute walkthrough."
+7. **Team adopting Maude.** "As a tech lead, I want a docs site with copy-paste config recipes for monorepos / Expo / Next.js — so that I can convince two skeptical engineers to install the marketplace without a 30-minute walkthrough."
 8. **Plugin author releasing v1.1.** "As Michal, I want `scripts/bump-version.sh` + `pnpm changeset publish` to do the same thing — so that contributors don't have to learn my custom release flow."
 
 ## 6. Core Architecture & Patterns
@@ -84,9 +84,9 @@ Make Claude Code a first-class environment for **end-to-end product development*
 ### Top-level layout (current + target)
 
 ```
-md-claude/
+maude/
 ├── .claude-plugin/marketplace.json     # marketplace manifest
-├── cli/                                # mdcc CLI (entry: bin/mdcc.mjs)
+├── cli/                                # maude CLI (entry: bin/mdcc.mjs)
 ├── plugins/
 │   ├── design/                         # canvas-first iteration plugin
 │   │   ├── commands/                   # /design:edit, /design:new, …
@@ -100,7 +100,7 @@ md-claude/
 │       ├── commands/                   # 26 commands (plan, execute, …)
 │       ├── agents/                     # 4 subagents
 │       ├── skills/                     # 15 skills (rules + capability bundles)
-│       └── templates/ai-skeleton/      # mdcc init source
+│       └── templates/ai-skeleton/      # maude init source
 ├── scripts/                            # bump-version, parity check, install
 ├── site/                               # NEW — Fumadocs docs site (v1.0)
 ├── .changeset/                         # NEW — changesets state (v1.0)
@@ -117,7 +117,7 @@ md-claude/
 
 ### Key technology choices
 
-> **Runtime decision:** stay on Node 20+ for v1.0; defer Bun binary distribution to v1.1. Research at `.ai/docs/research-runtime.md` (2026-05-12) — perf delta is invisible at our workload, but `bun build --compile` is the right packaging strategy once Phase 4 lands and non-engineer users start running `mdcc design serve`. Write Phase 4-8 code runtime-agnostically (no internal `_*` access, plain `node:http`, `crypto.createHash` only) so the future swap is mechanical, not a rewrite.
+> **Runtime decision:** stay on Node 20+ for v1.0; defer Bun binary distribution to v1.1. Research at `.ai/docs/research-runtime.md` (2026-05-12) — perf delta is invisible at our workload, but `bun build --compile` is the right packaging strategy once Phase 4 lands and non-engineer users start running `maude design serve`. Write Phase 4-8 code runtime-agnostically (no internal `_*` access, plain `node:http`, `crypto.createHash` only) so the future swap is mechanical, not a rewrite.
 
 | Layer | Current | v1.0 |
 | ----- | ------- | ---- |
@@ -226,13 +226,13 @@ Phase 12 (v1.3+ conditional): In-canvas CSS editor + layers panel (extracted fro
 1. PR with `pnpm changeset add <type>` containing user-facing notes.
 2. `changesets.yml` opens an auto-PR bumping versions + collecting CHANGELOG entries.
 3. Merging the auto-PR triggers `publish.yml`: parity check → `pnpm changeset publish` → npm + tag + GitHub Release.
-4. Plugin marketplace consumers run `/plugin marketplace update md-claude` to pick up the new tag.
+4. Plugin marketplace consumers run `/plugin marketplace update maude` to pick up the new tag.
 
 ### Out-of-scope ideas for future consideration (Phase 9+)
 
 The user asked for additional improvements beyond their list. Captured here as "icebox" — not in v1.0, but worth tracking:
 
-0. **Bun standalone binary distribution (v1.1 — first off the icebox).** `bun build --compile` produces a ~60MB single-file binary per platform; ship via GitHub Releases + thin npm wrapper using the `optionalDependencies` pattern (proven by esbuild). Removes the "Node 20+ required" friction for designer / PM personas who installed `mdcc design serve` to run a stakeholder review. Prerequisites: macOS notarization ($99/yr Apple Developer ID), Windows code-signing optional, 4-platform CI matrix. Decision checklist + benchmark plan in `.ai/docs/research-runtime.md` §7 + §9.
+0. **Bun standalone binary distribution (v1.1 — first off the icebox).** `bun build --compile` produces a ~60MB single-file binary per platform; ship via GitHub Releases + thin npm wrapper using the `optionalDependencies` pattern (proven by esbuild). Removes the "Node 20+ required" friction for designer / PM personas who installed `maude design serve` to run a stakeholder review. Prerequisites: macOS notarization ($99/yr Apple Developer ID), Windows code-signing optional, 4-platform CI matrix. Decision checklist + benchmark plan in `.ai/docs/research-runtime.md` §7 + §9.
 
 1. **`mdcc plugin new <name>`** — scaffold a third-party plugin against the marketplace template.
 2. **Storybook export** — generate `*.stories.tsx` from canvases for component libraries.

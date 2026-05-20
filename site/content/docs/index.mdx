@@ -1,13 +1,13 @@
 ---
-title: md-claude, how it works mostly
+title: Maude, how it works mostly
 description: A Claude Code marketplace. Two plugins, one CLI, some vibes. No telemetry, no signup.
 ---
 
-Two plugins, one CLI, and the `.ai/` workspace they both pretend not to need. You're probably here for `design` or `flow`. `mdcc` is the plumbing. Cmd-K skips ahead.
+Two plugins, one CLI, and the `.ai/` workspace they both pretend not to need. You're probably here for `design` or `flow`. `maude` is the plumbing. Cmd-K skips ahead.
 
 - **`design`**. Canvas-first iteration on HTML / JSX mocks under `.design/`. Zero-dep dev server. Cmd+Click inspector overlay so Claude knows which element the feedback is about.
 - **`flow`**. The agentic loop that ships things eventually. Second-brain `.ai/` workspace, project-agnostic via per-repo `workflows.config.json`. Same plugin runs in Next.js, Expo, Go, anything.
-- **`mdcc`**. Small CLI. Scaffolds the `.ai/` workspace, reads and writes config, boots the design dev server.
+- **`maude`** (legacy alias: `mdcc`). Small CLI. Scaffolds the `.ai/` workspace, reads and writes config, boots the design dev server.
 
 Open-source. MIT. No telemetry, no signup, no _book a demo_ button. If it crashes, `git pull` and try again. That's the entire support contract.
 
@@ -20,7 +20,7 @@ Open-source. MIT. No telemetry, no signup, no _book a demo_ button. If it crashe
     description="Three commands and you're in. (Maybe four. Depends on your shell.)"
   />
   <Card
-    title="`mdcc` CLI"
+    title="`maude` CLI"
     href="/docs/cli"
     description="Subcommands: init, config, design serve, design init."
   />
@@ -54,4 +54,4 @@ Install one, install both. The marketplace doesn't care which.
 
 ## License and source
 
-MIT. Source at [github.com/1aGh/md-claude](https://github.com/1aGh/md-claude). Open issues if it breaks. Send PRs if you have a better idea. I read both.
+MIT. Source at [github.com/1aGh/maude](https://github.com/1aGh/maude). Open issues if it breaks. Send PRs if you have a better idea. I read both.

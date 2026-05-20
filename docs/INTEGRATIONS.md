@@ -97,7 +97,7 @@ Some workflows aren't just integrations — they're **domain workflows** that sp
 - Release management
 - Incident response
 
-These belong in **separate plugins** in the marketplace (e.g. `ab-testing@md-claude`), not in flow's config. They have their own commands, their own subagents, their own config schemas. Spin one up only when you've felt the pain in 2+ projects.
+These belong in **separate plugins** in the marketplace (e.g. `ab-testing@maude`), not in flow's config. They have their own commands, their own subagents, their own config schemas. Spin one up only when you've felt the pain in 2+ projects.
 
 ## Provider hints
 

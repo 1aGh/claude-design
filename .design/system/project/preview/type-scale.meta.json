@@ -1,14 +1,14 @@
 {
   "title": "type-scale",
   "subtitle": "Berkeley-forward 8-step type ladder. Mono everywhere. Show each step at its --type-N / --lh-N pairing + the tracking ladder.",
-  "brief": "MDCC-DSN/01.type-scale / md-claude",
+  "brief": "MDCC-DSN/01.type-scale / Maude",
   "platform": "desktop",
   "designSystem": "project",
   "opt_out_scope": "none",
   "sections": [
     {
       "id": "overview",
-      "title": "MDCC-DSN/01.type-scale / md-claude",
+      "title": "MDCC-DSN/01.type-scale / Maude",
       "artboards": [
         {
           "id": "primary",

@@ -11,7 +11,7 @@ export function baseOptions(): BaseLayoutProps {
     nav: {
       title: (
         <span className="inline-flex items-center gap-2">
-          <span className="mdcc-wm">md-claude</span>
+          <span className="mdcc-wm">maude</span>
           <span className="mdcc-sku">MDCC/00</span>
         </span>
       ),

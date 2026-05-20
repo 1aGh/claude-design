@@ -1,14 +1,14 @@
 {
   "title": "components-code-block",
   "subtitle": "code block with header bar, copy button, line numbers, syntax tints.",
-  "brief": "MDCC-DSN/01.components-code-block / md-claude",
+  "brief": "MDCC-DSN/01.components-code-block / Maude",
   "platform": "desktop",
   "designSystem": "project",
   "opt_out_scope": "none",
   "sections": [
     {
       "id": "overview",
-      "title": "MDCC-DSN/01.components-code-block / md-claude",
+      "title": "MDCC-DSN/01.components-code-block / Maude",
       "artboards": [
         {
           "id": "primary",

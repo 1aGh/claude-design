@@ -3,32 +3,32 @@ name: flow:init
 category: setup
 type: command
 description: Scaffold the .ai/ workspace, auto-detect project stack, populate workflows.config.json, and ensure CLAUDE.md exists (via /init).
-keywords: [init, setup, onboard, project, configure, bootstrap, scaffold, workspace, mdcc, claude.md]
+keywords: [init, setup, onboard, project, configure, bootstrap, scaffold, workspace, maude, mdcc, claude.md]
 ---
 
 # /flow:init — Bootstrap the flow workspace
 
 Sets up everything the `flow` plugin needs to operate on a new (or existing) repo. Does **not** duplicate Claude Code's built-in `/init` — defers to it for `CLAUDE.md`. Owns three things:
 
-1. The `.ai/` second-brain workspace skeleton (scaffolded via `mdcc init`).
+1. The `.ai/` second-brain workspace skeleton (scaffolded via `maude init`).
 2. Populating `.ai/workflows.config.json` with detected stack values.
 3. Recommending `/init` for `CLAUDE.md` if missing.
 
-## Pre-Flight A: `mdcc` CLI available?
+## Pre-Flight A: `maude` CLI available?
 
 ```bash
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
-if command -v mdcc &>/dev/null; then
-  MDCC_AVAILABLE=true
-  MDCC_VERSION="$(mdcc --version 2>/dev/null || echo 'unknown')"
+if command -v maude &>/dev/null; then
+  MAUDE_AVAILABLE=true
+  MAUDE_VERSION="$(maude --version 2>/dev/null || echo 'unknown')"
 else
-  MDCC_AVAILABLE=false
+  MAUDE_AVAILABLE=false
 fi
 ```
 
-- **Available** → `> Found mdcc ($MDCC_VERSION). Will scaffold .ai/ in Step 1.`
-- **Missing** → `> mdcc not on PATH. Run \`npm i -g md-claude\` then re-run /flow:init. Continuing in degraded mode — config-file population in Step 3 will be manual.`
+- **Available** → `> Found maude ($MAUDE_VERSION). Will scaffold .ai/ in Step 1.`
+- **Missing** → `> maude not on PATH. Run \`npm i -g @1agh/maude\` then re-run /flow:init. Continuing in degraded mode — config-file population in Step 3 will be manual.`
 
 ## Pre-Flight B: `CLAUDE.md` exists?
 
@@ -43,9 +43,9 @@ fi
 - **Exists** → continue, will note it in Step 4 report.
 - **Missing** → at end of flow, prompt the user to run Anthropic's built-in `/init` (it analyzes the codebase and writes a `<200`-line `CLAUDE.md` tailored to the stack). **Don't** try to generate `CLAUDE.md` from here — that's `/init`'s job. We'd just duplicate it badly.
 
-## Step 1: Scaffold `.ai/` via `mdcc init`
+## Step 1: Scaffold `.ai/` via `maude init`
 
-> Skip if `MDCC_AVAILABLE=false`. Also skip silently if `.ai/workflows.config.json` already exists (idempotent — assume previous onboard handled it; Step 3 will still propagate fresh detected values).
+> Skip if `MAUDE_AVAILABLE=false`. Also skip silently if `.ai/workflows.config.json` already exists (idempotent — assume previous onboard handled it; Step 3 will still propagate fresh detected values).
 
 Detect project name (user can override later):
 
@@ -56,7 +56,7 @@ PRE_NAME="$(basename "$REPO_ROOT")"
 Run:
 
 ```bash
-mdcc init --name "$PRE_NAME"
+maude init --name "$PRE_NAME"
 ```
 
 After this:
@@ -250,7 +250,7 @@ Ask for these — everything else has a sensible auto-detected or default value:
 4. **Tracker provider** — pre-fill with `$TRACKER_HINT`. Options: `github` | `clickup` | `linear` | `jira` | `notion` | `asana` | `shortcut` | `none`.
 5. **Branching model** — `github-flow` | `trunk-based` | `gitflow` | `release-branch`. Can't be reliably auto-detected; pre-fill `github-flow` as the most common.
 6. **Prohibited packages / libraries** — comma-separated list, or `none`. Example: `lodash` (we use native ES), `moment` (we use date-fns), `axios` (we use fetch).
-7. **Changelog provider** — pre-fill with `$CHANGELOG_PROVIDER`. Options: `changesets` | `git-cliff` | `conventional` | `custom` | `none`. Auto-detected from `.changeset/config.json` (changesets), `cliff.toml` / `.git-cliff.toml` (git-cliff), or `CHANGELOG.md` + conventional commits (conventional). If the monorepo signals at Step 2 are true (`$MONOREPO == "true"`), also ask for an optional **package scope** (e.g. `@1agh/md-claude`) — passed to `/flow:release-changelog` when authoring entries.
+7. **Changelog provider** — pre-fill with `$CHANGELOG_PROVIDER`. Options: `changesets` | `git-cliff` | `conventional` | `custom` | `none`. Auto-detected from `.changeset/config.json` (changesets), `cliff.toml` / `.git-cliff.toml` (git-cliff), or `CHANGELOG.md` + conventional commits (conventional). If the monorepo signals at Step 2 are true (`$MONOREPO == "true"`), also ask for an optional **package scope** (e.g. `@1agh/maude`) — passed to `/flow:release-changelog` when authoring entries.
 
 **Ask only when detection failed (`unknown`):**
 
@@ -259,36 +259,36 @@ Ask for these — everything else has a sensible auto-detected or default value:
 - Test runner (only if `$TESTS="unknown"`) — pre-fill with `$TESTS_RECOMMENDED` from Step 2c, include `$TESTS_RUNNER_HINT` as the question subtitle so the user has install context inline. Accept `none` as a valid answer (records the gap; downstream gates degrade gracefully).
 - CSS approach (only if `$CSS="unknown"` and the project ships UI)
 
-For everything else (boundaries, motion ceilings, density map, bilingual, breakpoints, …) — leave defaults. The user tunes later via `mdcc config set` once the project shape clarifies.
+For everything else (boundaries, motion ceilings, density map, bilingual, breakpoints, …) — leave defaults. The user tunes later via `maude config set` once the project shape clarifies.
 
 ## Step 4: Propagate detected + answered values to `workflows.config.json`
 
-> Skip if `MDCC_AVAILABLE=false`.
+> Skip if `MAUDE_AVAILABLE=false`.
 
 ### 4a. Identity & top-level
 
 ```bash
-mdcc config set name "$ANSWER_NAME"
-mdcc config set language "$ANSWER_LANGUAGE"
-mdcc config set theme "$ANSWER_THEME"
-mdcc config set integrations.tracker.provider "$ANSWER_TRACKER"
-mdcc config set integrations.changelog.provider "$ANSWER_CHANGELOG"
-mdcc config set integrations.changelog.releaseGuide ".ai/release-guide.md"
-[[ -n "$ANSWER_CHANGELOG_SCOPE" ]] && mdcc config set integrations.changelog.scope "$ANSWER_CHANGELOG_SCOPE"
+maude config set name "$ANSWER_NAME"
+maude config set language "$ANSWER_LANGUAGE"
+maude config set theme "$ANSWER_THEME"
+maude config set integrations.tracker.provider "$ANSWER_TRACKER"
+maude config set integrations.changelog.provider "$ANSWER_CHANGELOG"
+maude config set integrations.changelog.releaseGuide ".ai/release-guide.md"
+[[ -n "$ANSWER_CHANGELOG_SCOPE" ]] && maude config set integrations.changelog.scope "$ANSWER_CHANGELOG_SCOPE"
 ```
 
 ### 4b. Stack snapshot
 
 ```bash
-mdcc config set stack.language       "$LANG"
-mdcc config set stack.framework      "$FRAMEWORK"
-mdcc config set stack.packageManager "$PM"
-mdcc config set stack.buildTool      "$BUILD_TOOL"
-mdcc config set stack.monorepo       "$MONOREPO"
-mdcc config set stack.ci             "$CI"
-mdcc config set stack.tests          "$TESTS"
-mdcc config set stack.css            "$CSS"
-mdcc config set stack.router         "$ROUTER"
+maude config set stack.language       "$LANG"
+maude config set stack.framework      "$FRAMEWORK"
+maude config set stack.packageManager "$PM"
+maude config set stack.buildTool      "$BUILD_TOOL"
+maude config set stack.monorepo       "$MONOREPO"
+maude config set stack.ci             "$CI"
+maude config set stack.tests          "$TESTS"
+maude config set stack.css            "$CSS"
+maude config set stack.router         "$ROUTER"
 ```
 
 > `$MONOREPO` is `"true"`/`"false"` (string). The config setter parses `JSON.parse` so it stores as a boolean.
@@ -296,9 +296,9 @@ mdcc config set stack.router         "$ROUTER"
 ### 4c. Conventions
 
 ```bash
-mdcc config set conventions.branchingModel "$ANSWER_BRANCHING"
-mdcc config set conventions.commits        "$COMMITS"
-mdcc config set conventions.prohibited     '<json-array-from-answer>'   # e.g. '["lodash","moment"]'
+maude config set conventions.branchingModel "$ANSWER_BRANCHING"
+maude config set conventions.commits        "$COMMITS"
+maude config set conventions.prohibited     '<json-array-from-answer>'   # e.g. '["lodash","moment"]'
 ```
 
 ### 4d. Platforms (inferred from framework)
@@ -312,7 +312,7 @@ mdcc config set conventions.prohibited     '<json-array-from-answer>'   # e.g. '
 | `unknown` | `["web-desktop"]` (safe default) |
 
 ```bash
-mdcc config set platforms '<inferred-json-array>'
+maude config set platforms '<inferred-json-array>'
 ```
 
 If the framework is `expo`, also try to pluck `bundleIdPrefix` from `app.json` / `app.config.*`:
@@ -322,17 +322,17 @@ If the framework is `expo`, also try to pluck `bundleIdPrefix` from `app.json` /
 BUNDLE_ID="$(jq -r '.expo.ios.bundleIdentifier // .expo.android.package // empty' "$REPO_ROOT/app.json" 2>/dev/null)"
 if [[ -n "$BUNDLE_ID" ]]; then
   PREFIX="$(echo "$BUNDLE_ID" | awk -F. 'NF>=2 {OFS="."; NF--; print}')"
-  mdcc config set bundleIdPrefix "$PREFIX"
+  maude config set bundleIdPrefix "$PREFIX"
 fi
 ```
 
 ### 4f. Scaffold the release runbook
 
-If `$ANSWER_CHANGELOG != "none"` and `.ai/release-guide.md` doesn't already exist, the runbook was already scaffolded by `mdcc init` in Step 1 (when invoked with `--provider`). If Step 1 ran without `--provider` (legacy path), re-emit it now:
+If `$ANSWER_CHANGELOG != "none"` and `.ai/release-guide.md` doesn't already exist, the runbook was already scaffolded by `maude init` in Step 1 (when invoked with `--provider`). If Step 1 ran without `--provider` (legacy path), re-emit it now:
 
 ```bash
 if [[ "$ANSWER_CHANGELOG" != "none" && ! -f "$REPO_ROOT/.ai/release-guide.md" ]]; then
-  mdcc init --name "$ANSWER_NAME" --provider "$ANSWER_CHANGELOG" --force
+  maude init --name "$ANSWER_NAME" --provider "$ANSWER_CHANGELOG" --force
 fi
 ```
 
@@ -359,7 +359,7 @@ If `$ANSWER_CHANGELOG == "none"` and no runbook exists, **skip** — the user ca
 ✓ /flow:init complete
 
 Workspace
-  .ai/ skeleton:               <scaffolded | already present | skipped (no mdcc)>
+  .ai/ skeleton:               <scaffolded | already present | skipped (no maude)>
   .ai/workflows.config.json:   <created | updated | skipped>
 
 Identity
@@ -390,7 +390,7 @@ Integrations
   changelog.provider:          $ANSWER_CHANGELOG
   changelog.scope:             $ANSWER_CHANGELOG_SCOPE (if monorepo)
   release-guide:               .ai/release-guide.md <scaffolded | skipped (provider = none)>
-  (configure mcp + defaults via `mdcc config set integrations.<key>.*`)
+  (configure mcp + defaults via `maude config set integrations.<key>.*`)
 
 CLAUDE.md
   status:                      <present at <path> | missing — run /init>

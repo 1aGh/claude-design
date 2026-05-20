@@ -4,7 +4,7 @@
  * @platform    desktop
  * @opt_out     none
  * @artboards   primary
- * @brief       MDCC-DSN/01.empty-state / md-claude
+ * @brief       MDCC-DSN/01.empty-state / Maude
  * @stack       React 19 · TSX · Bun.build · css_mode=inline
  * @history     .design/_history/empty-state/
  * @handoff     bunx shadcn add file://./empty-state.registry.json
@@ -14,7 +14,7 @@ import "./empty-state.css";
 export default function EmptyState() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.empty-state</span><span className="crumbs"><span>md-claude</span><span>design system</span><span>universal</span><span>empty-state</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.empty-state</span><span className="crumbs"><span>maude</span><span>design system</span><span>universal</span><span>empty-state</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Empty states</h1><p className="lede">An empty state in this DS is a voice exam. If the copy says "Get Started" or "No items yet", you failed. If it tells the reader exactly what they're looking at and how to make it not-empty in two sentences, you passed.</p></section>
             <dl className="specimen-meta"><div><dt>Family</dt><dd>universal</dd></div><div><dt>Voice</dt><dd>htmx-grain direct fragments</dd></div></dl>
@@ -82,7 +82,7 @@ export default function EmptyState() {
             <div className="anti"><p style={{ margin: '0' }}>Don't add a hero illustration ("a friendly sketch of someone holding a clipboard"). The catalog aesthetic doesn't render personality through pictures. The copy does.</p></div>
             <div className="pro"><p style={{ margin: '0' }}>Do use the eyebrow + h3 + body + 1-2 actions pattern. Eyebrow = state label (in accent). h3 = the answer. Body = one short paragraph. Action = a real command, ideally callable from where the user is.</p></div>
 
-            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· empty-state · ★ signature</span></div><div className="colo-block"><span>md-claude · v0.12.0</span></div></footer>
+            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· empty-state · ★ signature</span></div><div className="colo-block"><span>Maude · v0.12.0</span></div></footer>
           </main>
         </>
   );

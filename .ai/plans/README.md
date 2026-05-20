@@ -12,7 +12,7 @@ Feature implementation plans. One file per feature; the active multi-phase roadm
 
 ---
 
-# md-claude v1.0 → v1.2+ — Execution roadmap
+# Maude v1.0 → v1.2+ — Execution roadmap
 
 > 8 active v1.0 phases + 1 icebox + 1 late-v1.0 + 3 post-v1.0 plans, all implementing [`../docs/PRD.md`](../docs/PRD.md). Config reference at [`../docs/config-schema.md`](../docs/config-schema.md). Architecture research at [`../docs/research-runtime.md`](../docs/research-runtime.md) + [`../docs/research-collab.md`](../docs/research-collab.md).
 
@@ -162,7 +162,7 @@ v1.3+ (conditional on user-feedback survey)
 /flow:execute .ai/plans/phase-6.5-export.md
 ```
 
-> **What to build:** First-class export feature with toolbar button + `⌘E` dialog + context-menu entries. **7 formats** (PNG, PDF, SVG, HTML standalone zip, **PPTX**, **Canva-editable**, project-raw ZIP) × 4 scopes (selection, artboard, canvas-as-separate, project-raw). `POST /api/export` is the single engine; `mdcc design export` CLI + `/design:export` slash are thin clients. SVG via `<foreignObject>` (DDR with Safari + Illustrator caveats). **PPTX** via `pptxgenjs` driven from a normalized canvas model (not DOM walker), producing native editable shapes/text frames. **Canva** = PPTX + Canva Connect Design-Imports API (when OAuth token present) / drag-drop fallback otherwise — parity with [Anthropic Claude Design](https://www.anthropic.com/news/claude-design-anthropic-labs) (Apr 2026). Project-raw ZIP streams `<designRoot>/` minus runtime files. Recent-exports list + `⌘⇧E` re-runs the latest. Bundle delta ≤ 700KB.
+> **What to build:** First-class export feature with toolbar button + `⌘E` dialog + context-menu entries. **7 formats** (PNG, PDF, SVG, HTML standalone zip, **PPTX**, **Canva-editable**, project-raw ZIP) × 4 scopes (selection, artboard, canvas-as-separate, project-raw). `POST /api/export` is the single engine; `maude design export` CLI + `/design:export` slash are thin clients. SVG via `<foreignObject>` (DDR with Safari + Illustrator caveats). **PPTX** via `pptxgenjs` driven from a normalized canvas model (not DOM walker), producing native editable shapes/text frames. **Canva** = PPTX + Canva Connect Design-Imports API (when OAuth token present) / drag-drop fallback otherwise — parity with [Anthropic Claude Design](https://www.anthropic.com/news/claude-design-anthropic-labs) (Apr 2026). Project-raw ZIP streams `<designRoot>/` minus runtime files. Recent-exports list + `⌘⇧E` re-runs the latest. Bundle delta ≤ 700KB.
 
 ### Phase 7 — ACP chat sidebar [❄️ ICEBOX — skip for v1.0]
 
@@ -192,7 +192,7 @@ v1.3+ (conditional on user-feedback survey)
 /flow:execute .ai/plans/phase-9-self-hosted-hub-file-sync.md
 ```
 
-> **What to build:** `mdcc hub serve|deploy|token|status` + `mdcc design link|unlink|status|adopt`. Hocuspocus-based hub (`@hocuspocus/server` + `@hocuspocus/extension-sqlite`) bundled as `dist/hub.bundle.mjs`. Deploy recipes: Fly (primary), Docker Compose + Caddy, systemd, Tailscale Funnel, Cloudflare Tunnel. Bidirectional fs watcher with echo prevention (SHA-256 origin tags + 1500ms windows). Per-peer local `.design/` is mirror of hub canonical Yjs state. v1.1 treats HTML body as opaque `Y.Text` (structured CRDT deferred to Phase 10). `collab.commitStrategy: full | hub-only | manual` gitignore mode. Token UX: `generate / rotate / list / revoke` with HMAC storage on hub side. Phase 8 → Phase 9 migration documented.
+> **What to build:** `maude hub serve|deploy|token|status` + `maude design link|unlink|status|adopt`. Hocuspocus-based hub (`@hocuspocus/server` + `@hocuspocus/extension-sqlite`) bundled as `dist/hub.bundle.mjs`. Deploy recipes: Fly (primary), Docker Compose + Caddy, systemd, Tailscale Funnel, Cloudflare Tunnel. Bidirectional fs watcher with echo prevention (SHA-256 origin tags + 1500ms windows). Per-peer local `.design/` is mirror of hub canonical Yjs state. v1.1 treats HTML body as opaque `Y.Text` (structured CRDT deferred to Phase 10). `collab.commitStrategy: full | hub-only | manual` gitignore mode. Token UX: `generate / rotate / list / revoke` with HMAC storage on hub side. Phase 8 → Phase 9 migration documented.
 
 ### Phase 10 — Structured CRDT HTML co-editing (v1.2 conditional)
 
@@ -241,9 +241,9 @@ git push --follow-tags       # triggers .github/workflows/publish.yml
 Then in Claude Code (against every consumer repo):
 
 ```
-/plugin marketplace update md-claude
-/plugin install design@md-claude
-/plugin install flow@md-claude
+/plugin marketplace update maude
+/plugin install design@maude
+/plugin install flow@maude
 ```
 
 ## Tracking

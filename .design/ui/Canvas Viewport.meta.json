@@ -1,7 +1,7 @@
 {
   "title": "Canvas Viewport",
   "subtitle": "Dev-server canvas — every viewport state from v1.0 → v1.3 (Phase 3.5 → Phase 12) · 10 artboards · classic desktop menubar (File · Edit · View · Selection · Tools · Help) per shadcn radix",
-  "brief": "Multi-artboard meta-design of the md-claude dev-server canvas (this very tool) — every distinct canvas-viewport state that v1.0 → v1.3 will ship, broken down by screen. Synthesized from .ai/plans/phase-{4,5,6,8,12}.md. Scope: features that touch the canvas viewport itself (infinite canvas + pan/zoom + mini-map, draw tools, pin-comments, presentation mode, live collab, inspector + layers). Explicitly NOT in scope: app shell chrome (left file-tree, top header, tabs row, status bar, system view, comments-list panel) — those live in a separate canvas covering Phase 3.5.",
+  "brief": "Multi-artboard meta-design of the Maude dev-server canvas (this very tool) — every distinct canvas-viewport state that v1.0 → v1.3 will ship, broken down by screen. Synthesized from .ai/plans/phase-{4,5,6,8,12}.md. Scope: features that touch the canvas viewport itself (infinite canvas + pan/zoom + mini-map, draw tools, pin-comments, presentation mode, live collab, inspector + layers). Explicitly NOT in scope: app shell chrome (left file-tree, top header, tabs row, status bar, system view, comments-list panel) — those live in a separate canvas covering Phase 3.5.",
   "platform": "desktop",
   "created": "2026-05-14T21:22:36Z",
   "last_modified": "2026-05-19T13:22:41.839Z",

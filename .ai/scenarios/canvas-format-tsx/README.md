@@ -2,7 +2,7 @@
 
 Phase 3.6 acceptance scenario — verifies the TSX-canvas pipeline end-to-end through the dev-server's browser UI.
 
-**Persona:** Claude (or human designer) editing canvases in the md-claude design plugin's dev-server.
+**Persona:** Claude (or human designer) editing canvases in the Maude design plugin's dev-server.
 **Plan:** `.ai/plans/phase-3.6-canvas-tsx-format.md` — "Scenario Coverage" table calls for this single-platform smoke.
 **Hypothesis:** A migrated `.tsx` canvas (1) renders correctly through the `_canvas-shell.html` mount harness, (2) the inspector overlay populates `_active.json.selected` with `v=2` + `id` when an element is Cmd+Clicked, and (3) the AST-aware edit path (`/design:edit` Step 3a → `canvas-edit.ts`) lands a single-element className/style change without touching surrounding bytes.
 

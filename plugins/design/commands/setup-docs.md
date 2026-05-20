@@ -90,7 +90,7 @@ The plugin runs a local dev server (`bun ${CLAUDE_PLUGIN_ROOT}/dev-server/server
 
 **Read its iteration transcript next.** Each canvas with iteration history has a chat at `_history/<slug>/chat.md`. The chat shows the back-and-forth between the user and the design assistant — it tells you **what the user actually wants** and **where they landed**. The canvas file is the output, but the chat is where the intent lives. (If `--include-history` was used in a prior export, transcripts may also be at `chats/<slug>.md`.)
 
-**Find the canvas's primary `.tsx` and read it top to bottom.** Each canvas project is a multi-artboard `DesignCanvas` file importing envelope primitives from `@mdcc/canvas-lib`. Then **follow its imports**: open every component file under `components/`, the tokens at `system/{project}/colors_and_type.css`, and the canvas's `.meta.json` sidecar.
+**Find the canvas's primary `.tsx` and read it top to bottom.** Each canvas project is a multi-artboard `DesignCanvas` file importing envelope primitives from `@maude/canvas-lib`. Then **follow its imports**: open every component file under `components/`, the tokens at `system/{project}/colors_and_type.css`, and the canvas's `.meta.json` sidecar.
 
 **If anything is ambiguous, ask the user to confirm before you start implementing.** It's much cheaper to clarify scope up front than to build the wrong thing.
 

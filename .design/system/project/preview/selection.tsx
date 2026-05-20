@@ -4,7 +4,7 @@
  * @platform    desktop
  * @opt_out     none
  * @artboards   primary
- * @brief       MDCC-DSN/01.selection / md-claude
+ * @brief       MDCC-DSN/01.selection / Maude
  * @stack       React 19 · TSX · Bun.build · css_mode=inline
  * @history     .design/_history/selection/
  * @handoff     bunx shadcn add file://./selection.registry.json
@@ -12,7 +12,7 @@
 export default function Selection() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.selection</span><span className="crumbs"><span>md-claude</span><span>design system</span><span>foundation</span><span>selection</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.selection</span><span className="crumbs"><span>maude</span><span>design system</span><span>foundation</span><span>selection</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Selection</h1><p className="lede">Highlight a sentence below. The accent fills the bg, accent-fg becomes the ink. No prefab "hide the system default" tricks. Selection is a real interaction. The DS makes it readable.</p></section>
             <dl className="specimen-meta"><div><dt>Token</dt><dd>--accent / --accent-fg</dd></div><div><dt>Hook</dt><dd>::selection (global, set in _layout.css)</dd></div></dl>
@@ -31,7 +31,7 @@ export default function Selection() {
               <div style={{ padding: '4px var(--space-6)', fontFamily: 'var(--font-mono)', fontSize: 'var(--type-sm)', color: 'var(--fg-1)' }}>└─ empty-state.html</div>
             </div>
 
-            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· selection</span></div><div className="colo-block"><span>md-claude · v0.12.0</span></div></footer>
+            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· selection</span></div><div className="colo-block"><span>Maude · v0.12.0</span></div></footer>
           </main>
         </>
   );

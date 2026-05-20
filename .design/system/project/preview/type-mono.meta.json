@@ -1,14 +1,14 @@
 {
   "title": "type-mono",
   "subtitle": "code-grade monospace usage — every weight, italic, ligatures, ch grid.",
-  "brief": "MDCC-DSN/01.type-mono / md-claude",
+  "brief": "MDCC-DSN/01.type-mono / Maude",
   "platform": "desktop",
   "designSystem": "project",
   "opt_out_scope": "none",
   "sections": [
     {
       "id": "overview",
-      "title": "MDCC-DSN/01.type-mono / md-claude",
+      "title": "MDCC-DSN/01.type-mono / Maude",
       "artboards": [
         {
           "id": "primary",

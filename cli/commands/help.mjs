@@ -1,8 +1,8 @@
 export function run() {
-  const text = `mdcc — md-claude CLI
+  const text = `maude — Maude CLI (legacy alias: mdcc)
 
 USAGE
-  mdcc <command> [options]
+  maude <command> [options]
 
 COMMANDS
   init [--name <project>] [--force] [--dry-run]
@@ -35,20 +35,23 @@ COMMANDS
   version           Print the installed version.
 
 EXAMPLES
-  mdcc init --name acme-app
-  mdcc config set platforms '["web-desktop","web-mobile"]'
-  mdcc config get motion.complex
-  mdcc design serve --port 4399
-  mdcc design init --no-discovery --name acme-app
+  maude init --name acme-app
+  maude config set platforms '["web-desktop","web-mobile"]'
+  maude config get motion.complex
+  maude design serve --port 4399
+  maude design init --no-discovery --name acme-app
 
 NOTES
-  'mdcc init' does mechanical scaffolding of .ai/ only.
+  'maude init' does mechanical scaffolding of .ai/ only.
   For interactive stack detection and workflows.config.json population,
-  run '/flow:init' inside Claude Code — it calls 'mdcc init' as
+  run '/flow:init' inside Claude Code — it calls 'maude init' as
   its first step. For CLAUDE.md, run Anthropic's built-in '/init'.
 
+  The legacy 'mdcc' alias still works (prints a deprecation warning).
+  It will be removed in v0.17.x.
+
 DOCS
-  https://github.com/1aGh/md-claude
+  https://github.com/1aGh/maude
 `;
   process.stdout.write(text);
 }

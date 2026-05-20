@@ -4,7 +4,7 @@
  * @platform    desktop
  * @opt_out     none
  * @artboards   primary
- * @brief       MDCC-DSN/01.skeletons / md-claude
+ * @brief       MDCC-DSN/01.skeletons / Maude
  * @stack       React 19 · TSX · Bun.build · css_mode=inline
  * @history     .design/_history/skeletons/
  * @handoff     bunx shadcn add file://./skeletons.registry.json
@@ -14,7 +14,7 @@ import "./skeletons.css";
 export default function Skeletons() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.skeletons</span><span className="crumbs"><span>md-claude</span><span>design system</span><span>status</span><span>skeletons</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.skeletons</span><span className="crumbs"><span>maude</span><span>design system</span><span>status</span><span>skeletons</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Skeletons</h1><p className="lede">Flat <code>--bg-2</code> rectangles with a hairline border. No shimmer animation. The catalog hard-NO on "animations beyond hover" applies. Skeletons say "loading", not "look at me".</p></section>
             <dl className="specimen-meta"><div><dt>Token</dt><dd>--bg-2 fill · --border-subtle outline</dd></div><div><dt>Animation</dt><dd>none. By design.</dd></div></dl>
@@ -56,7 +56,7 @@ export default function Skeletons() {
             <h2 data-no="03">When NOT to use</h2>
             <div className="anti"><p style={{ margin: '0' }}>Don't add a <code>@keyframes shimmer</code> on these blocks. The static rectangle is the answer. If something's loading slow enough to need a shimmer, surface the actual progress (badge: <code>fetching · 2.4s</code>).</p></div>
 
-            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· skeletons</span></div><div className="colo-block"><span>md-claude · v0.12.0</span></div></footer>
+            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· skeletons</span></div><div className="colo-block"><span>Maude · v0.12.0</span></div></footer>
           </main>
         </>
   );

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Asserts the published @1agh/md-claude tarball has the shape we expect:
+# Asserts the published @1agh/maude tarball has the shape we expect:
 #   - no workspace `package.json` files leak (would publish a private workspace
-#     name like @md-claude/dev-server)
+#     name like @maude/dev-server)
 #   - no `node_modules/` or transitive deps end up in the tarball (the package
 #     has zero runtime deps — `pixi.js`, `pdf-lib`, etc. are devDeps inside
 #     workspaces and must never ship)
@@ -31,7 +31,7 @@ fail() {
 }
 
 # Workspace package.json files must NOT ship — they declare private packages
-# (@md-claude/dev-server, @md-claude/hub, @md-claude/site) that would
+# (@maude/dev-server, @maude/hub, @maude/site) that would
 # accidentally be exposed at install time.
 echo "$listing" | grep -E "^(site|plugins/[^/]+/[^/]+)/package\.json$" >/dev/null \
   && fail "workspace package.json present in tarball" || true

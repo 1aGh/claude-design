@@ -1,6 +1,6 @@
 # tsx-canvas-render-and-edit
 
-**Persona:** Claude (or human designer) running `mdcc design serve` against this repo, opening a migrated TSX canvas, selecting an element with Cmd+Click, then issuing a single-element edit.
+**Persona:** Claude (or human designer) running `maude design serve` against this repo, opening a migrated TSX canvas, selecting an element with Cmd+Click, then issuing a single-element edit.
 **Artboard:** `.design/ui/Docs Site.tsx` → `<DCArtboard id="landing">` hero region.
 **Hypothesis:** Phase 3.6's three load-bearing invariants hold end-to-end:
 1. TSX canvas mounts through the dev-server's `_canvas-shell.html` harness with React 19 + ReactDOM resolved through the importmap (`/_canvas-runtime/*.js`).

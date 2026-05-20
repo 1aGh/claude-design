@@ -11,7 +11,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const schemaPath = resolve(__dirname, '../../plugins/flow/.claude-plugin/config.schema.json');
 const outPath = resolve(__dirname, '../content/docs/reference/config-schema.mdx');
 const sourceRepoUrl =
-  'https://github.com/1aGh/md-claude/blob/main/plugins/flow/.claude-plugin/config.schema.json';
+  'https://github.com/1aGh/maude/blob/main/plugins/flow/.claude-plugin/config.schema.json';
 
 // Escape `<` that would otherwise be parsed as JSX by MDX (e.g. `<repo>`
 // placeholders in schema descriptions). Cheap & sufficient — we don't expect

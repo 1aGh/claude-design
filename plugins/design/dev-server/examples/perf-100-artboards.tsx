@@ -22,7 +22,7 @@
 
 import { useEffect } from 'react';
 
-import { DCArtboard, DCSection, DesignCanvas } from '@mdcc/canvas-lib';
+import { DCArtboard, DCSection, DesignCanvas } from '@maude/canvas-lib';
 
 const ARTBOARD_COUNT = 100;
 const NODES_PER_ARTBOARD = 30;

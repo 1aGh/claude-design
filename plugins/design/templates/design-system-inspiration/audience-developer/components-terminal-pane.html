@@ -31,7 +31,7 @@ NOTES: Uses --font-mono throughout. Foreground colors map to status semantics (-
     <p class="lede">Monospace stack, ANSI-mapped status colors, blinking cursor (motion-respect). Foreground roles use the status palette so terminals stay readable across themes.</p>
 
     <div class="terminal">
-      <div><span class="path">~/code/md-claude</span> <span class="prompt">$</span> mdcc design init --no-discovery --name acme</div>
+      <div><span class="path">~/code/maude</span> <span class="prompt">$</span> maude design init --no-discovery --name acme</div>
       <div>  project name: acme</div>
       <div>  ds name:      project</div>
       <div>  scaffold target: /private/tmp/acme/.design</div>
@@ -45,21 +45,21 @@ NOTES: Uses --font-mono throughout. Foreground colors map to status semantics (-
       <div>    cd /private/tmp/acme &amp;&amp; claude</div>
       <div>    /design:setup-ds project "&lt;one-line product brief&gt;"</div>
       <div>&nbsp;</div>
-      <div><span class="path">~/code/md-claude</span> <span class="prompt">$</span> ls .design/system/project/preview/ | wc -l</div>
+      <div><span class="path">~/code/maude</span> <span class="prompt">$</span> ls .design/system/project/preview/ | wc -l</div>
       <div>      10</div>
-      <div><span class="path">~/code/md-claude</span> <span class="prompt">$</span> <span class="cursor"></span></div>
+      <div><span class="path">~/code/maude</span> <span class="prompt">$</span> <span class="cursor"></span></div>
     </div>
 
     <h2>Error state</h2>
     <div class="terminal">
-      <div><span class="path">~/code/md-claude</span> <span class="prompt">$</span> mdcc design init</div>
-      <div class="err">mdcc design init: interactive bootstrap requires Claude Code.</div>
+      <div><span class="path">~/code/maude</span> <span class="prompt">$</span> maude design init</div>
+      <div class="err">maude design init: interactive bootstrap requires Claude Code.</div>
       <div>&nbsp;</div>
       <div>  Inside Claude Code:</div>
       <div>    /design:setup-ds &lt;name&gt;           — full discovery + scaffold (recommended)</div>
       <div>    /design:init                      — just prepare the env (no DS yet)</div>
       <div>&nbsp;</div>
-      <div><span class="path">~/code/md-claude</span> <span class="prompt">$</span> echo $?</div>
+      <div><span class="path">~/code/maude</span> <span class="prompt">$</span> echo $?</div>
       <div>2</div>
     </div>
   </main>

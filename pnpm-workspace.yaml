@@ -1,5 +1,5 @@
 packages:
-  # The root package (@1agh/md-claude) is the sole npm publisher.
+  # The root package (@1agh/maude) is the sole npm publisher.
   # Listed here so Changesets can resolve it as a workspace member.
   - "."
   - site

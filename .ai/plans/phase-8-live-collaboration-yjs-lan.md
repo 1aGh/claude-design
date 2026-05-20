@@ -18,7 +18,7 @@ As a designer pairing with a developer reviewing a canvas, I want to see their c
 
 - Canvas review today is one-person-at-a-time. Pair review requires screen-share.
 - The "look at my pin-comment" experience requires Slack screenshots — no in-context awareness.
-- Figma solves this but requires a SaaS account per participant. md-claude's value prop is repo-local — we need parity without the SaaS.
+- Figma solves this but requires a SaaS account per participant. maude's value prop is repo-local — we need parity without the SaaS.
 - Comments stored as JSON files (Phase 6) face naïve last-write-wins conflicts when two peers add at once.
 - AI agent (`/design "<feedback>"`) can clobber another peer's local edits today — there's no awareness of in-flight writes.
 
@@ -105,7 +105,7 @@ Transport: existing dev-server WebSocket, extended with `y-websocket`-compatible
 ### Task 8: Discovery + transport docs
 
 - **Do:** `docs/site/content/docs/collaboration.mdx` documents:
-  1. **LAN happy path**: `mdcc design serve --bind 0.0.0.0 --collab-token <random>` → share `http://<lan-ip>:<port>/?token=<random>` with peer.
+  1. **LAN happy path**: `maude design serve --bind 0.0.0.0 --collab-token <random>` → share `http://<lan-ip>:<port>/?token=<random>` with peer.
   2. **Tailscale recipe**: install Tailscale → server stays `--bind 0.0.0.0` → share Magic DNS URL.
   3. **Cloudflare Tunnel recipe**: `cloudflared tunnel --url http://localhost:<port>` → share resulting URL.
   4. **Why no auto-relay**: explicit non-goal statement.

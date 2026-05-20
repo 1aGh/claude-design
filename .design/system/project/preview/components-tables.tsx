@@ -4,7 +4,7 @@
  * @platform    desktop
  * @opt_out     none
  * @artboards   primary
- * @brief       MDCC-DSN/01.components-tables / md-claude
+ * @brief       MDCC-DSN/01.components-tables / Maude
  * @stack       React 19 · TSX · Bun.build · css_mode=inline
  * @history     .design/_history/components-tables/
  * @handoff     bunx shadcn add file://./components-tables.registry.json
@@ -14,7 +14,7 @@ import "./components-tables.css";
 export default function ComponentsTables() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.components-tables</span><span className="crumbs"><span>md-claude</span><span>design system</span><span>components</span><span>tables</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.components-tables</span><span className="crumbs"><span>maude</span><span>design system</span><span>components</span><span>tables</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Tables</h1><p className="lede">A row is a catalog plate. SKU + name + version + status + published. Everything you'd scan in a marketplace listing. Compact padding, 1px row rules, no zebra-striping (the rules do the work).</p></section>
             <dl className="specimen-meta"><div><dt>Density</dt><dd>compact (--space-3 / --space-4)</dd></div><div><dt>Row rule</dt><dd>--border-subtle (1px)</dd></div></dl>
@@ -35,7 +35,7 @@ export default function ComponentsTables() {
             <h2 data-no="02">When NOT to use</h2>
             <div className="anti"><p style={{ margin: '0' }}>Don't zebra-stripe the rows. The hairline between rows is the rhythm; striping doubles up and reads noisy. If you need stronger grouping, group with a sub-heading row, not a band.</p></div>
 
-            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· components-tables</span></div><div className="colo-block"><span>md-claude · v0.12.0</span></div></footer>
+            <footer className="specimen-ft"><div className="colo-block"><strong>MDCC-DSN/01</strong><span>· components-tables</span></div><div className="colo-block"><span>Maude · v0.12.0</span></div></footer>
           </main>
         </>
   );

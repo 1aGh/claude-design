@@ -1,8 +1,8 @@
 {
-  "name": "@md-claude/dev-server",
+  "name": "@maude/dev-server",
   "version": "0.0.0",
   "private": true,
-  "description": "Internal workspace for the canvas dev server. Source ships via the @1agh/md-claude tarball; this package.json never publishes. Bun runtime authoritative — see DDR-009.",
+  "description": "Internal workspace for the canvas dev server. Source ships via the @1agh/maude tarball; this package.json never publishes. Bun runtime authoritative — see DDR-009.",
   "type": "module",
   "main": "server.mjs",
   "scripts": {

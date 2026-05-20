@@ -29,7 +29,7 @@ const dst = existsSync(DST) ? readFileSync(DST, 'utf8') : null;
 if (check) {
   if (src !== dst) {
     console.error(
-      `[sync-mdcc-tokens] DRIFT: ${DST} differs from ${SRC}.\nRun: pnpm --filter @md-claude/site sync:tokens`
+      `[sync-mdcc-tokens] DRIFT: ${DST} differs from ${SRC}.\nRun: pnpm --filter @maude/site sync:tokens`
     );
     process.exit(1);
   }

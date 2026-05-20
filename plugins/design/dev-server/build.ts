@@ -4,7 +4,7 @@
 // Three steps (run on demand):
 //   (a) Client JSX bundle:  client/app.jsx + React 19  ->  dist/client.bundle.js (IIFE, tree-shaken).
 //   (b) CSS bundle:         client/styles/_index.css (Lightning CSS, @layer, OKLCH fallback).
-//   (c) Server binary:      server.ts  ->  dist/mdcc-<platform>  (bun build --compile, per-platform).
+//   (c) Server binary:      server.ts  ->  dist/maude-<platform>  (bun build --compile, per-platform).
 //
 // Modes:
 //   bun run build.ts                       -> dev build for current platform (no compile, no minify)
@@ -126,7 +126,7 @@ async function buildServerBinary(target: PlatformTarget): Promise<{ outPath: str
   ensureDist();
   const slug = platformSlug(target);
   const ext = slug.startsWith('win32') ? '.exe' : '';
-  const outPath = join(DIST, `mdcc-${slug}${ext}`);
+  const outPath = join(DIST, `maude-${slug}${ext}`);
   const entry = join(ROOT, 'server.ts');
   if (!existsSync(entry)) {
     // T7 not landed yet — fall back to the .mjs entry so this script remains runnable mid-migration.

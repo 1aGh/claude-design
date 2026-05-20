@@ -1,6 +1,6 @@
 export const revalidate = false;
 
-const ROBOTS = `# md-claude docs — crawlable by everyone, including LLM / AI tools.
+const ROBOTS = `# Maude docs — crawlable by everyone, including LLM / AI tools.
 # Canonical machine-readable index lives at /llms.txt
 # Full body of every page lives at /llms-full.txt
 # Per-page raw MDX lives at /llms.mdx/docs/<slug>/content.md
@@ -18,7 +18,7 @@ Allow: /
 User-agent: Google-Extended
 Allow: /
 
-Sitemap: https://md-claude.iagh.cz/sitemap.xml
+Sitemap: https://maude.iagh.cz/sitemap.xml
 `;
 
 export function GET() {

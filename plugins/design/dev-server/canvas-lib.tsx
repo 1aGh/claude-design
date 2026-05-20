@@ -2,14 +2,14 @@
  * @file       canvas-lib.tsx — dev-server-bundled canvas library
  * @scope      plugins/design/dev-server/canvas-lib.tsx
  *             Ships with the dev-server install; resolved at canvas build time
- *             via the `@mdcc/canvas-lib` virtual specifier. Per DDR-025, this
+ *             via the `@maude/canvas-lib` virtual specifier. Per DDR-025, this
  *             is the single source of truth — no project-side copy.
  * @purpose    Shared primitives + helpers + hooks for every TSX canvas
  *             (UI mocks + DS specimens). Imported via the virtual module
- *             specifier `@mdcc/canvas-lib`, which the dev-server's Bun.build
+ *             specifier `@maude/canvas-lib`, which the dev-server's Bun.build
  *             resolver maps to this file. On /design:handoff the used exports
  *             are AST-inlined into the emitted registry-item so the consumer
- *             never sees the `@mdcc/canvas-lib` specifier.
+ *             never sees the `@maude/canvas-lib` specifier.
  *
  * Exports (cold-reader cheat sheet):
  *
@@ -1991,5 +1991,5 @@ export function useArtboardBounds(ref: RefObject<HTMLElement | null>): {
 }
 
 // Re-export `useRef` so `useArtboardBounds` consumers can keep a single
-// import line from `@mdcc/canvas-lib`.
+// import line from `@maude/canvas-lib`.
 export { useRef };

@@ -18,7 +18,7 @@ export async function run({ args }) {
   }
   if (sub === 'get') {
     const key = positional[1];
-    if (!key) throw new Error('mdcc config get <dotted.key>');
+    if (!key) throw new Error('maude config get <dotted.key>');
     const cfg = await loadConfig();
     const v = getPath(cfg, key);
     if (v === undefined) {
@@ -32,7 +32,7 @@ export async function run({ args }) {
   if (sub === 'set') {
     const key = positional[1];
     const rawValue = positional[2];
-    if (!key || rawValue === undefined) throw new Error('mdcc config set <dotted.key> <value>');
+    if (!key || rawValue === undefined) throw new Error('maude config set <dotted.key> <value>');
     const value = coerce(rawValue);
     const cfg = await loadConfig();
     setPath(cfg, key, value);
@@ -40,12 +40,12 @@ export async function run({ args }) {
     process.stdout.write(`set ${key} = ${JSON.stringify(value)}\n`);
     return;
   }
-  process.stderr.write(`mdcc config: unknown subcommand "${sub}"\n${usage()}`);
+  process.stderr.write(`maude config: unknown subcommand "${sub}"\n${usage()}`);
   process.exit(2);
 }
 
 function usage() {
-  return `mdcc config <show|get|set> [args]
+  return `maude config <show|get|set> [args]
 
   config show                       Print the full resolved config.
   config get <dotted.key>           Print a single value (e.g. motion.complex).
@@ -59,7 +59,7 @@ async function loadConfig() {
   try {
     await stat(path);
   } catch {
-    throw new Error(`${CONFIG_PATH} not found. Run \`mdcc init\` first.`);
+    throw new Error(`${CONFIG_PATH} not found. Run \`maude init\` first.`);
   }
   return JSON.parse(await readFile(path, 'utf8'));
 }

@@ -1,4 +1,4 @@
-// Smoke: dist/mdcc-<platform> compiles + spawns + exits cleanly.
+// Smoke: dist/maude-<platform> compiles + spawns + exits cleanly.
 //
 // We run this only when the compiled binary is already present. The full
 // `bun build --compile` step costs ~150 ms; CI matrix already proves it on
@@ -23,7 +23,7 @@ describe('binary smoke', () => {
       console.log('binary-smoke: unsupported host platform; skipping');
       return;
     }
-    const binPath = join(import.meta.dir, '..', 'dist', `mdcc-${PLATFORM_SLUG}`);
+    const binPath = join(import.meta.dir, '..', 'dist', `maude-${PLATFORM_SLUG}`);
     const exists = await Bun.file(binPath).exists();
     if (!exists) {
       console.log(
@@ -36,7 +36,7 @@ describe('binary smoke', () => {
     // pointing at a temp dir without .design/ causes a fail-loud exit (1).
     // That's enough to prove the binary is a valid executable.
     const proc = Bun.spawn({
-      cmd: [binPath, '--root', '/tmp/nonexistent-mdcc-test'],
+      cmd: [binPath, '--root', '/tmp/nonexistent-maude-test'],
       stdout: 'pipe',
       stderr: 'pipe',
       env: { ...process.env, NO_OPEN: '1' },

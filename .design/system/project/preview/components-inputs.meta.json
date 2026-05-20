@@ -1,14 +1,14 @@
 {
   "title": "components-inputs",
   "subtitle": "text input, mono input, select, textarea + field anatomy.",
-  "brief": "MDCC-DSN/01.components-inputs / md-claude",
+  "brief": "MDCC-DSN/01.components-inputs / Maude",
   "platform": "desktop",
   "designSystem": "project",
   "opt_out_scope": "none",
   "sections": [
     {
       "id": "overview",
-      "title": "MDCC-DSN/01.components-inputs / md-claude",
+      "title": "MDCC-DSN/01.components-inputs / Maude",
       "artboards": [
         {
           "id": "primary",

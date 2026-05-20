@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# md-claude — environment check & dependency checklist.
+# maude — environment check & dependency checklist.
 #
 # This script does NOT call `/plugin install` for you — those commands run
 # inside Claude Code, not in your shell. It verifies prerequisites and prints
@@ -94,14 +94,14 @@ cat <<'EOF'
 From this directory (local development):
 EOF
 cmd "/plugin marketplace add $repo_root"
-cmd "/plugin install design@md-claude"
+cmd "/plugin install design@maude"
 
 cat <<'EOF'
 
 From GitHub (once published):
 EOF
-cmd "/plugin marketplace add 1aGh/md-claude"
-cmd "/plugin install design@md-claude"
+cmd "/plugin marketplace add 1aGh/maude"
+cmd "/plugin install design@maude"
 
 hdr "Done."
 echo "Then try:  /design \"make the header sticky\""

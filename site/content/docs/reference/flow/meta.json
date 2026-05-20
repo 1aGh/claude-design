@@ -21,6 +21,7 @@
     "utils-verify",
     "---validate---",
     "validate-a11y",
+    "validate-security",
     "validate-visual",
     "---bug---",
     "bug-fix",

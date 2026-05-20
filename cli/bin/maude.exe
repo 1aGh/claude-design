@@ -1,0 +1,15 @@
+#!/bin/sh
+# Placeholder bin shipped in the main @1agh/maude tarball.
+#
+# This file is HARDLINKED over by `cli/install.cjs` (the postinstall hook),
+# which replaces it with the real native binary from the matching per-platform
+# sub-package (@1agh/maude-<slug>). After postinstall, invoking `maude`
+# execs the native binary directly with zero Node startup overhead.
+#
+# If you see this message at runtime, your installer skipped postinstall.
+# Either run `npm rebuild @1agh/maude` to retry, or invoke the safe-mode
+# fallback (`maude-safe` / `mdcc-safe`) which performs platform detection on every call.
+echo "@1agh/maude: postinstall did not complete (the bin stub is still in place)." >&2
+echo "  Run \`npm rebuild @1agh/maude\` to retry the postinstall hardlink." >&2
+echo "  Or use the safe fallback: \`maude-safe <args>\`." >&2
+exit 1

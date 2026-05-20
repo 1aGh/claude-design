@@ -1,7 +1,7 @@
 {
   "title": "Smoke TSX",
   "subtitle": "TSX runtime smoke — single artboard, useState round-trip",
-  "brief": "Minimal canvas that exercises the dev-server pipeline end-to-end: data-cd-id injection, canvas-lib import via @mdcc/canvas-lib, React 19 useState.",
+  "brief": "Minimal canvas that exercises the dev-server pipeline end-to-end: data-cd-id injection, canvas-lib import via @maude/canvas-lib, React 19 useState.",
   "platform": "desktop",
   "designSystem": "project",
   "opt_out_scope": "none",

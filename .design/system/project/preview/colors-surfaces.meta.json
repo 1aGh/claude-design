@@ -1,14 +1,14 @@
 {
   "title": "colors-surfaces",
   "subtitle": "surface ladder (--bg-0..--bg-4) + border tokens + how panels layer. Verifies depth-via-bg-shift (no shadows) reads in both paper and phosphor.",
-  "brief": "MDCC-DSN/01.colors-surfaces / md-claude",
+  "brief": "MDCC-DSN/01.colors-surfaces / Maude",
   "platform": "desktop",
   "designSystem": "project",
   "opt_out_scope": "none",
   "sections": [
     {
       "id": "overview",
-      "title": "MDCC-DSN/01.colors-surfaces / md-claude",
+      "title": "MDCC-DSN/01.colors-surfaces / Maude",
       "artboards": [
         {
           "id": "primary",

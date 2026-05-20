@@ -1,7 +1,7 @@
 ---
 name: design:init
 category: setup
-description: One-time project-level environment init for the design plugin. Detects missing dependencies (node ≥ 20, git, agent-browser, mdcc), prints install hints for soft deps, offers to run /init for CLAUDE.md and /flow:init for .ai/, and writes a skeleton .design/config.json. Does NOT create a design system — use /design:setup-ds <name> for that. Mirrors /flow:init.
+description: One-time project-level environment init for the design plugin. Detects missing dependencies (node ≥ 20, git, agent-browser, maude), prints install hints for soft deps, offers to run /init for CLAUDE.md and /flow:init for .ai/, and writes a skeleton .design/config.json. Does NOT create a design system — use /design:setup-ds <name> for that. Mirrors /flow:init.
 argument-hint: "[--skip-prompts]"
 ---
 
@@ -29,7 +29,7 @@ NODE_OK=false; command -v node &>/dev/null && \
 GIT_OK=false;  git -C "$REPO_ROOT" rev-parse &>/dev/null && GIT_OK=true
 
 # Soft deps (warn on miss, never auto-install)
-MDCC_OK=false;          command -v mdcc &>/dev/null && MDCC_OK=true
+MAUDE_OK=false;          command -v maude &>/dev/null && MAUDE_OK=true
 AGENT_BROWSER_OK=false; command -v agent-browser &>/dev/null && AGENT_BROWSER_OK=true
 
 CLAUDE_MD_OK=false
@@ -54,7 +54,7 @@ Pre-flight summary
 ──────────────────
   node          ✓ v22.5.1
   git           ✓ initialized
-  mdcc          ✓ v0.7.0                    ← scaffold via CLI available
+  maude         ✓ v0.7.0                    ← scaffold via CLI available
   agent-browser ✗ missing                   ← needed for screenshot + 5 critics
   CLAUDE.md     ✗ missing                   ← /init recommended
   .ai/          ✗ missing                   ← /flow:init recommended
@@ -68,7 +68,7 @@ Hard deps satisfied. <N> soft items to address.
 
 ```jsonc
 {
-  "$schema": "https://raw.githubusercontent.com/1aGh/md-claude/main/plugins/design/dev-server/config.schema.json",
+  "$schema": "https://raw.githubusercontent.com/1aGh/maude/main/plugins/design/dev-server/config.schema.json",
   "name": "<repo-basename-as-fallback>",
   "designRoot": ".design",
   "canvasGroups": [
@@ -97,7 +97,7 @@ Honor `--skip-prompts` (auto-invoked-by-`setup-ds` path passes this). Otherwise,
 What should I help with next? (multi-select; "none" is fine)
 
   [ ] Print `npm i -g agent-browser` install hint (needed for screenshot + 5 critics)
-  [ ] Print `npm i -g @1agh/md-claude` install hint (faster scaffold via CLI helper)
+  [ ] Print `npm i -g @1agh/maude` install hint (faster scaffold via CLI helper)
   [ ] Run `/init` to generate CLAUDE.md (recommended — agents need it)
   [ ] Run `/flow:init` to scaffold .ai/ workspace (enables /flow:plan to see the design system)
   [ ] None — I'll handle setup myself
@@ -106,7 +106,7 @@ What should I help with next? (multi-select; "none" is fine)
 **Behavior per selection:**
 
 - **agent-browser hint** → print `npm i -g agent-browser` + one-liner on what it unlocks (screenshot, auto-loop, axe-core a11y).
-- **mdcc hint** → print `npm i -g @1agh/md-claude` + note about `mdcc design serve` and `mdcc design init`.
+- **CLI hint** → print `npm i -g @1agh/maude` + note about `maude design serve` and `maude design init`.
 - **Run /init** → print "Run `/init` now — Anthropic's built-in command analyzes the codebase and writes CLAUDE.md." (cannot programmatically invoke another slash command from inside one).
 - **Run /flow:init** → print "Run `/flow:init` now to scaffold `.ai/` workspace."
 - **None** → skip.
