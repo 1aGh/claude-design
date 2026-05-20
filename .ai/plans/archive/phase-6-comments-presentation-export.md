@@ -85,7 +85,7 @@ Popover styled like the Phase 3.6 canvas-card pattern: `--bg-2` surface, `--rule
   - `gitCommitters(): Promise<{ name: string; email: string; commits: number }[]>` — runs `git shortlog -sne | head -20` via `Bun.spawn` (or `child_process.execFile` in `.mjs` legacy path); cache for 60s
   - `parseMentions(text): string[]` — extracts `/@[\w][\w.-]*/g` tokens, deduped
 - **Migration:** When `loadCommentsForFile` reads a Comment missing `author` / `thread` / `mentions`, default-fill (no rewrite-on-read; only persist defaults on next write — keeps disk stable).
-- **HTTP:** Add `POST /_api/comments/<id>/reply` (body: `{ body, author? }`); add `GET /_api/git-committers`. Both into `http.ts` + mirror into `server.mjs` for the legacy runtime.
+- **HTTP:** Add `POST /_api/comments/<id>/reply` (body: `{ body, author? }`); add `GET /_api/git-committers`. **Bun runtime only** — endpoints land in `http.ts` and helpers in `api.ts` per DDR-009. No `server.mjs` mirror (legacy runtime path is frozen until its Phase 3.4 removal; no production users on it).
 - **Validate:** Hand-author sample comment with replies → load round-trips. `curl /_api/git-committers` returns the local-repo committer list. New comments saved have `author` populated.
 
 ### Task 2: In-place pin bubbles (canvas overlay)
@@ -235,10 +235,19 @@ Popover styled like the Phase 3.6 canvas-card pattern: `--bg-2` surface, `--rule
 
 ## Acceptance criteria
 
-- [ ] Comment composer pops up **at the click location on the canvas**, not in the shell BottomBar.
-- [ ] Pins render as DS-styled badges anchored to element bounds, scale with canvas zoom.
-- [ ] Thread popover supports replies + resolve + delete, styled per DS (hard-edges, hairlines, Berkeley Mono, accent).
-- [ ] @mention autocomplete works from git committer list, mentions persist in `mentions[]`.
-- [ ] Keyboard-only flow passes (Tab → Enter → reply → Esc returns focus).
-- [ ] Scenario `comment-thread-resolve` passes on web-desktop.
-- [ ] No DS guard violations on new CSS.
+- [x] Comment composer pops up **at the click location on the canvas**, not in the shell BottomBar.
+- [x] Pins render as DS-styled badges anchored to element bounds. **Scale-with-zoom reversed** to fixed 24 px during live dogfooding — FigJam parity, documented in [DDR-034](../decisions/DDR-034-comments-overlay-screen-coord-fixed-position.md).
+- [x] Thread popover supports replies + resolve + delete, styled per DS (hard-edges, hairlines, Berkeley Mono, accent). `×` close button added after live dogfood feedback.
+- [x] @mention autocomplete works from git committer list, mentions persist in `mentions[]`.
+- [x] Keyboard-only flow passes (Tab → Enter → reply → Esc returns focus to pin).
+- [ ] Scenario `comment-thread-resolve` passes on web-desktop. **Deferred** — scenario not yet authored. Acceptable for the close-out because (a) the end-to-end flow was validated through live user dogfooding (4 bugs surfaced + fixed in the same session, see Retro), and (b) the scenario would mostly screenshot what we already verified manually. Tracked as a follow-up.
+- [x] No DS guard violations on new CSS. All values via `var(--TOKEN, #hex-fallback)`; no raw declarations, no glow shadows, hard-edge radii, no gradients.
+
+## Retro
+
+- **Plan-vs-real-world architecture pivot.** The plan specified "render pins inside `.dc-world` via createPortal so CSS zoom scales them with artboards." That shipped, then immediately broke against `SelectionHalos` (z-index 5 outside `.dc-world`, world stacks at z-index auto = below). The fix wasn't a tweak — it was a full rewrite of the overlay to be a `position: fixed` screen-coord layer, mirroring `SelectionHalos` itself. **Lesson:** when adding an overlay near existing chrome, audit z-index + stacking-context boundaries (`will-change`, `transform`, `filter`, `isolation`) BEFORE committing to a portal target. The mistake compounded — we wrote pin / composer / thread / mention popup against `offsetWithinWorld`, then rewrote all four anchor functions against `getBoundingClientRect`. Five minutes of stacking-context analysis would have caught this in the plan review.
+- **Live dogfood surfaced 4 bugs in 30 minutes that all six task validations missed.** Z-index, no close button, pointer-events:none decorations breaking `elementFromPoint`, comment-mode router suppressing button clicks. None of these were testable by `bun test` or `tsc` — they're integration-shape bugs at the React + capture-phase + CSS-stacking-context boundary. **Lesson:** for any phase that adds a new UI surface AND touches the input router, plan a 10-minute live dogfood as the FIRST step after `/flow:utils-verify` passes, not after the whole plan is complete. The /flow:execute step 3.5 smoke gate would have surfaced #1 (z-index covering pins) but not the interactive bugs.
+- **`isOverlayTarget` pattern is reusable.** The input router (DDR-026) was written to suppress native clicks under canvas content, but it had no concept of "overlay siblings own their clicks." `isOverlayTarget(t)` is the symmetric pair of `isEditableTarget(t)` — both let the router yield. Future overlays (presentation HUD, live cursors, share popovers) get the same one-line bail-out by adding their root class to the selector list.
+- **`document.elementsFromPoint` is the right fallback for decoration-suppressed clicks.** SVG icons commonly use `pointer-events: none` on `<path>` children so the wrapper handles hover. Standard `elementFromPoint` skips them; `elementsFromPoint` (the "s" variant) returns the full stack and the caller picks the right ancestor. Worth knowing as a general pattern when DOM hit-testing breaks against decorative subtrees.
+- **The plan / Task 1 contradiction about `server.mjs` mirror surfaced before code change.** The user caught it at execute-start time and the policy was clarified (no mirror, Bun authoritative per DDR-009). Saved a half-day of dead-code work. **Lesson:** when an affected-files section and a task body contradict, treat it as a real ambiguity worth a one-question clarification, not a writing slip — the resolution informs scope.
+- **Changesets in monorepo accumulate cleanly.** Four changesets queued for the next release now (brownfield-testing-onboarding, rebrand-maude, security-agents-suite, video-pipeline-toolchain, and this one). Authoring at /done time + linking the DDR makes the release notes self-documenting.

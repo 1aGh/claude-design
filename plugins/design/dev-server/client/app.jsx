@@ -1208,64 +1208,21 @@ function Gallery({ title, items, onOpen, kind }) {
 
 // ---------- Comment composer / viewer ----------
 
-function CommentBar({ activePath, selected, comments, focusedId, draft, setDraft, onSubmit, onCancel, onResolve, onReopen, onDelete, onFocusPin }) {
+function CommentBar({ activePath, comments }) {
+  // Phase 6 — the shell-side composer + chip strip + focused-row chrome were
+  // removed. The iframe overlay (comments-overlay.tsx) owns composer + pin
+  // bubbles + thread popover. BottomBar shrinks to a live open-count summary
+  // so the shell still surfaces total review activity at a glance.
   if (!activePath) return null;
-  const focused = focusedId ? comments.find(c => c.id === focusedId) : null;
   const openComments = (comments || []).filter(c => c.status !== 'resolved');
+  if (openComments.length === 0) return null;
   return (
     <div className="comment-bar">
-      {draft && draft.file === activePath && (
-        <div className="composer">
-          <div className="composer-head">
-            <span className="cb-label">Comment on</span>
-            <code className="composer-selector" title={(draft.dom_path || []).join(' > ')}>{draft.selector || '(canvas)'}</code>
-          </div>
-          <textarea
-            autoFocus
-            className="composer-textarea"
-            value={draft.text}
-            placeholder="What should change here? (⌘↵ save · Esc cancel)"
-            onChange={e => setDraft({ ...draft, text: e.target.value })}
-            onKeyDown={e => {
-              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); onSubmit(); }
-              else if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
-            }}
-            rows={4}
-          />
-          <div className="composer-actions">
-            <button className="cb-secondary" onClick={onCancel}>Cancel</button>
-            <button className="cb-primary" disabled={!draft.text.trim()} onClick={onSubmit}>Save · ⌘↵</button>
-          </div>
-        </div>
-      )}
-
-      {focused && (
-        <div className="cb-row focused">
-          <span className="cb-pinno">#{(comments || []).filter(c => c.selector).findIndex(c => c.id === focused.id) + 1}</span>
-          <span className="cb-text">{focused.text}</span>
-          <span className="cb-target" title={focused.dom_path ? focused.dom_path.join(' > ') : ''}>
-            <code>{focused.selector || '—'}</code>
-          </span>
-          {focused.status === 'resolved'
-            ? <button className="cb-secondary" onClick={() => onReopen(focused.id)}>Reopen</button>
-            : <button className="cb-primary" onClick={() => onResolve(focused.id)}>✓ Resolve</button>}
-          <button className="cb-secondary" onClick={() => onDelete(focused.id)}>Delete</button>
-        </div>
-      )}
-
-      {!draft && !focused && openComments.length > 0 && (
-        <div className="cb-row strip">
-          <span className="cb-label">{openComments.length} open comment{openComments.length === 1 ? '' : 's'}</span>
-          <div className="cb-pin-strip">
-            {openComments.slice(0, 12).map((c, i) => (
-              <button key={c.id} className="cb-pin-chip" title={c.text} onClick={() => onFocusPin(c.id)}>
-                {i + 1}
-              </button>
-            ))}
-            {openComments.length > 12 && <span className="cb-more">+{openComments.length - 12}</span>}
-          </div>
-        </div>
-      )}
+      <div className="cb-row strip">
+        <span className="cb-label">
+          {openComments.length} open comment{openComments.length === 1 ? '' : 's'}
+        </span>
+      </div>
     </div>
   );
 }
@@ -1278,7 +1235,7 @@ function StatusBarSlot({ label, children, className = '' }) {
   );
 }
 
-function StatusBar({ activePath, selected, wsConnected, openCount, theme, onToggleTheme, onClearSelected, onAddComment, hasDraft }) {
+function StatusBar({ activePath, selected, wsConnected, openCount, theme, onToggleTheme, onClearSelected }) {
   const isSystem = activePath === SYSTEM_TAB;
   const text = selected && selected.selector
     ? selected.selector + (selected.text ? ` — "${selected.text.slice(0, 60)}"` : '')
@@ -1297,9 +1254,6 @@ function StatusBar({ activePath, selected, wsConnected, openCount, theme, onTogg
         <StatusBarSlot label="Selected element" className="sb-selected">
           <span className="sb-dot" aria-hidden="true">●</span>
           <span className="sb-sel-text" title={title}>{text}</span>
-          {!hasDraft && (
-            <button type="button" className="sb-add-comment" onClick={onAddComment} title="Add comment on selected element (⌘⇧+click in canvas)">+ comment</button>
-          )}
           <button type="button" className="sb-clear-sel" onClick={onClearSelected} title="Clear (Esc inside iframe)" aria-label="Clear selection">×</button>
         </StatusBarSlot>
       )}
@@ -1454,7 +1408,8 @@ function App() {
     return () => { cancelled = true; };
   }, []);
   const [commentsByFile, setCommentsByFile] = useState({});      // { file: [Comment] }
-  const [draft, setDraft] = useState(null);                       // { file, selector, dom_path, bounds, tag, classes, html, text }
+  // Phase 6 — the in-iframe composer owns drafting; the shell no longer holds
+  // a `draft` state. Mutations route through postMessage → WS instead.
   const [focusedCommentId, setFocusedCommentId] = useState(null);
   const [commentsPanelOpen, setCommentsPanelOpen] = useState(false);
   const [commentsFilter, setCommentsFilter] = useState('open');   // 'all' | 'open' | 'resolved'
@@ -1609,7 +1564,6 @@ function App() {
     });
     setActivePath(path);
     setFocusedCommentId(null);
-    setDraft(null);
   }, []);
 
   const openSystem = useCallback(() => {
@@ -1672,30 +1626,6 @@ function App() {
     try { el.contentWindow.postMessage({ dgn: 'comments-set', comments: list }, '*'); } catch {}
   }, [activePath, commentsByFile]);
 
-  // ----- Comment composer helpers -----
-  // Declared BEFORE the inbound-message useEffect that references them — under
-  // ES build (no var-style hoisting) these are real TDZ violations otherwise.
-  const startDraftFor = useCallback((sel) => {
-    const file = (sel && sel.file) || activePath;
-    if (!file || file === SYSTEM_TAB) return;
-    setDraft({
-      file,
-      selector: sel?.selector || '',
-      dom_path: sel?.dom_path || [],
-      tag: sel?.tag || '',
-      classes: sel?.classes || '',
-      bounds: sel?.bounds || null,
-      html: sel?.html || '',
-      text: '',
-    });
-    setFocusedCommentId(null);
-  }, [activePath]);
-
-  const startDraftFromSelection = useCallback(() => {
-    if (!selected || !selected.selector) return;
-    startDraftFor(selected);
-  }, [selected, startDraftFor]);
-
   // ----- Inbound messages from iframes -----
   useEffect(() => {
     function onMessage(e) {
@@ -1728,13 +1658,40 @@ function App() {
         wsSend({ type: 'clear-select' });
         setSelected(null);
       } else if (m.dgn === 'comment-compose' && m.selection) {
-        // Canvas C-tool / right-click "Add comment" converge here. The shell
-        // opens a composer for the target.
-        startDraftFor(m.selection);
-      } else if (m.dgn === 'comment-shortcut') {
-        // Carry-over for any legacy `.html` mock or external embed that
-        // still posts this. Canvas-shell uses `comment-compose` directly.
-        startDraftFromSelection();
+        // Phase 6 — the iframe overlay owns the composer surface now. The
+        // shell just mirrors `selected` so the StatusBar / sidebar still
+        // reflect the target, and skips the legacy `startDraftFor` path that
+        // opened the shell-side composer. Legacy `.html` mocks (no
+        // canvas-shell mount) fall through to the same path; they lose the
+        // shell composer in this phase. Acceptable per Phase 6 scope.
+        setSelected(m.selection);
+      } else if (m.dgn === 'comment-submit' && m.payload && typeof m.payload.text === 'string') {
+        // Phase 6 — iframe overlay finished composing. Relay through the
+        // existing WS `comments-add` channel; server-side persistence +
+        // broadcast back are identical to the legacy shell-composer flow.
+        const p = m.payload;
+        const txt = String(p.text).trim();
+        if (txt) {
+          wsSend({
+            type: 'comments-add',
+            payload: {
+              file: p.file,
+              selector: p.selector,
+              dom_path: p.dom_path,
+              tag: p.tag,
+              classes: p.classes,
+              bounds: p.bounds,
+              html_excerpt: p.html_excerpt,
+              text: txt,
+            },
+          });
+        }
+      } else if (m.dgn === 'comment-patch' && m.id && m.patch && typeof m.patch === 'object') {
+        // Phase 6 — thread popover routes resolve / reopen through here.
+        wsSend({ type: 'comments-patch', id: m.id, patch: m.patch });
+      } else if (m.dgn === 'comment-delete' && m.id) {
+        wsSend({ type: 'comments-delete', id: m.id });
+        setFocusedCommentId(prev => (prev === m.id ? null : prev));
       } else if (m.dgn === 'comment-click' && m.id) {
         setFocusedCommentId(m.id);
       } else if (m.dgn === 'loaded' && m.file) {
@@ -1751,7 +1708,7 @@ function App() {
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [commentsByFile, focusedCommentId, startDraftFromSelection, startDraftFor]);
+  }, [commentsByFile, focusedCommentId]);
 
   // Tell the active canvas iframe to drop any persistent selection (canvas
   // SelectionSet) — used when the comment composer closes via submit /
@@ -1765,27 +1722,6 @@ function App() {
     }
   }, [activePath]);
 
-  const submitDraft = useCallback(() => {
-    if (!draft || !draft.text.trim()) return;
-    wsSend({ type: 'comments-add', payload: {
-      file: draft.file,
-      selector: draft.selector,
-      dom_path: draft.dom_path,
-      tag: draft.tag,
-      classes: draft.classes,
-      bounds: draft.bounds,
-      html_excerpt: draft.html,
-      text: draft.text.trim(),
-    }});
-    setDraft(null);
-    clearActiveCanvasSelection();
-  }, [draft, clearActiveCanvasSelection]);
-
-  const cancelDraft = useCallback(() => {
-    setDraft(null);
-    clearActiveCanvasSelection();
-  }, [clearActiveCanvasSelection]);
-
   const resolveComment = useCallback((id) => {
     wsSend({ type: 'comments-patch', id, patch: { status: 'resolved' } });
   }, []);
@@ -1796,16 +1732,6 @@ function App() {
     wsSend({ type: 'comments-delete', id });
     setFocusedCommentId(prev => (prev === id ? null : prev));
   }, []);
-
-  const focusPinFromBar = useCallback((id) => {
-    setFocusedCommentId(id);
-    if (activePath && activePath !== SYSTEM_TAB) {
-      const el = iframesRef.current.get(activePath);
-      if (el && el.contentWindow) {
-        try { el.contentWindow.postMessage({ dgn: 'comment-focus', id }, '*'); } catch {}
-      }
-    }
-  }, [activePath]);
 
   // Jump from right-sidebar list to a comment: open file tab if needed, focus pin.
   // The iframe may be freshly mounted; the loaded handler also re-sends focus if focusedCommentId matches.
@@ -1918,15 +1844,15 @@ function App() {
         setHelpOpen(true);
         return;
       }
-      // Esc — close composer (in addition to its own textarea handler) or clear focused pin
+      // Esc — clear focused pin. The in-place composer (Phase 6) and thread
+      // popover handle their own Esc inside the iframe.
       if (e.key === 'Escape') {
-        if (draft) { setDraft(null); clearActiveCanvasSelection(); return; }
         if (focusedCommentId) { setFocusedCommentId(null); return; }
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [reloadActive, selected, activePath, startDraftFromSelection, draft, focusedCommentId, sidebarOpen, openSystem, closeTab, clearActiveCanvasSelection]);
+  }, [reloadActive, selected, activePath, focusedCommentId, sidebarOpen, openSystem, closeTab, clearActiveCanvasSelection]);
 
   const registerIframe = useCallback((path, el) => {
     if (el) iframesRef.current.set(path, el);
@@ -1979,20 +1905,7 @@ function App() {
           cfg={cfg}
         />
         {activePath && activePath !== SYSTEM_TAB && (
-          <CommentBar
-            activePath={activePath}
-            selected={selected}
-            comments={activeFileComments}
-            focusedId={focusedCommentId}
-            draft={draft && draft.file === activePath ? draft : null}
-            setDraft={setDraft}
-            onSubmit={submitDraft}
-            onCancel={cancelDraft}
-            onResolve={resolveComment}
-            onReopen={reopenComment}
-            onDelete={deleteComment}
-            onFocusPin={focusPinFromBar}
-          />
+          <CommentBar activePath={activePath} comments={activeFileComments} />
         )}
         <StatusBar
           activePath={activePath}
@@ -2002,8 +1915,6 @@ function App() {
           theme={theme}
           onToggleTheme={toggleTheme}
           onClearSelected={clearSelected}
-          onAddComment={startDraftFromSelection}
-          hasDraft={!!(draft && draft.file === activePath)}
         />
       </div>
       {commentsPanelOpen && (

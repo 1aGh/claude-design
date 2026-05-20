@@ -78,6 +78,19 @@ async function findFiles(absRoot: string, prefix: string, exts: string[]): Promi
 
 // ---------- Comments ----------
 
+/**
+ * Phase 6 — single reply on a comment thread. `id` is `r_<hex>`; persists inside
+ * the parent `Comment.thread[]`. Bodies are bounded the same way as comment
+ * bodies (4000 chars), and `@handle` tokens in `body` flow into the parent's
+ * `mentions[]` union.
+ */
+export interface Reply {
+  id: string;
+  author: string;
+  body: string;
+  created: string;
+}
+
 export interface Comment {
   id: string;
   file: string;
@@ -91,6 +104,19 @@ export interface Comment {
   status: 'open' | 'resolved';
   created: string;
   resolved_at: string | null;
+  // Phase 6 — author + threading + mentions. Default-filled on read for legacy
+  // comments missing these fields (see `loadCommentsForFile`); persisted on next
+  // write. `author` defaults to the local `git config user.name` resolved at
+  // create time, `thread` to `[]`, `mentions` to `[]`.
+  author: string;
+  thread: Reply[];
+  mentions: string[];
+}
+
+export interface GitCommitter {
+  name: string;
+  email: string;
+  commits: number;
 }
 
 export interface Api {
@@ -102,6 +128,12 @@ export interface Api {
   commentsAdd(payload: Partial<Comment> & { file: string; text: string }): Promise<Comment | null>;
   commentsPatch(id: string, patch: Partial<Comment>): Promise<Comment | null>;
   commentsDelete(id: string): Promise<boolean>;
+  commentsAddReply(
+    id: string,
+    payload: { body: string; author?: string }
+  ): Promise<Comment | null>;
+  gitCommitters(): Promise<GitCommitter[]>;
+  parseMentions(text: string): string[];
   // Canvas state
   loadCanvasState(file: string): Promise<Record<string, unknown> | null>;
   saveCanvasState(file: string, state: Record<string, unknown>): Promise<void>;
@@ -147,10 +179,24 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
     try {
       const raw = await Bun.file(commentsPath(file)).text();
       const arr = JSON.parse(raw);
-      return Array.isArray(arr) ? arr : [];
+      if (!Array.isArray(arr)) return [];
+      // Phase 6 — default-fill `author` / `thread` / `mentions` for legacy
+      // rows. No write-back here; the on-disk shape stays stable until the
+      // next mutation persists the upgraded record.
+      return arr.map(backfillComment);
     } catch {
       return [];
     }
+  }
+
+  function backfillComment(raw: unknown): Comment {
+    const c = (raw ?? {}) as Partial<Comment>;
+    return {
+      ...(c as Comment),
+      author: typeof c.author === 'string' ? c.author : '',
+      thread: Array.isArray(c.thread) ? c.thread : [],
+      mentions: Array.isArray(c.mentions) ? c.mentions : [],
+    };
   }
 
   async function saveCommentsForFile(file: string, list: Comment[]) {
@@ -172,7 +218,8 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
         const arr = JSON.parse(raw);
         if (!Array.isArray(arr) || arr.length === 0) continue;
         const file = arr[0]?.file as string | undefined;
-        if (file) out[file] = arr;
+        // Backfill legacy rows so callers see the v2 shape uniformly.
+        if (file) out[file] = arr.map(backfillComment);
       } catch {
         /* ignore */
       }
@@ -184,10 +231,111 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
     return `c_${crypto.randomBytes(6).toString('hex')}`;
   }
 
+  function newReplyId(): string {
+    return `r_${crypto.randomBytes(6).toString('hex')}`;
+  }
+
+  // ---------- Git author resolution ----------
+  //
+  // Author defaults flow from `git config user.name` resolved against the
+  // repo root. Cached for the lifetime of the process — the local git
+  // identity doesn't shift mid-session and `Bun.spawn` is cheap-but-not-free.
+
+  let cachedGitUser: string | null = null;
+  let cachedGitUserAttempted = false;
+  async function gitCurrentUser(): Promise<string> {
+    if (cachedGitUserAttempted) return cachedGitUser ?? '';
+    cachedGitUserAttempted = true;
+    try {
+      const proc = Bun.spawn(['git', 'config', 'user.name'], {
+        cwd: paths.repoRoot,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      const out = await new Response(proc.stdout).text();
+      await proc.exited;
+      const name = out.trim();
+      cachedGitUser = name || null;
+    } catch {
+      cachedGitUser = null;
+    }
+    return cachedGitUser ?? '';
+  }
+
+  // `git shortlog -sne` against the repo head — cached for 60 s so the
+  // @mention popup doesn't re-fork git on every keystroke.
+  let cachedCommitters: GitCommitter[] | null = null;
+  let cachedCommittersAt = 0;
+  async function gitCommitters(): Promise<GitCommitter[]> {
+    const now = Date.now();
+    if (cachedCommitters && now - cachedCommittersAt < 60_000) return cachedCommitters;
+    try {
+      const proc = Bun.spawn(['git', 'shortlog', '-sne', 'HEAD'], {
+        cwd: paths.repoRoot,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      const text = await new Response(proc.stdout).text();
+      await proc.exited;
+      const lines = text
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .slice(0, 20);
+      const out: GitCommitter[] = [];
+      for (const line of lines) {
+        // Format: `<spaces><count>\t<name> <<email>>`
+        const m = line.match(/^(\d+)\s+(.+?)\s+<([^>]+)>$/);
+        if (!m) continue;
+        const commits = Number(m[1]);
+        const name = m[2]?.trim() ?? '';
+        const email = m[3]?.trim() ?? '';
+        if (!name) continue;
+        out.push({ name, email, commits });
+      }
+      cachedCommitters = out;
+      cachedCommittersAt = now;
+      return out;
+    } catch {
+      cachedCommitters = cachedCommitters ?? [];
+      cachedCommittersAt = now;
+      return cachedCommitters;
+    }
+  }
+
+  /**
+   * Extract `@handle` tokens from free text. Deduped, returns the literal
+   * `@name` form (matching what the autocomplete inserts), so a comment with
+   * `"@ada @lin @ada"` collapses to `["@ada","@lin"]`.
+   */
+  function parseMentions(text: string): string[] {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    if (typeof text !== 'string' || !text) return out;
+    const re = /@[\w][\w.-]*/g;
+    for (const m of text.matchAll(re)) {
+      const tok = m[0];
+      if (!tok || seen.has(tok)) continue;
+      seen.add(tok);
+      out.push(tok);
+    }
+    return out;
+  }
+
+  function mentionsUnion(c: Comment): string[] {
+    const all = [c.text, ...c.thread.map((r) => r.body)].join('\n');
+    return parseMentions(all);
+  }
+
   async function commentsAdd(payload: Partial<Comment> & { file: string; text: string }) {
     if (!payload || typeof payload.file !== 'string' || !payload.file) return null;
     if (typeof payload.text !== 'string' || !payload.text.trim()) return null;
     const list = await loadCommentsForFile(payload.file);
+    const text = String(payload.text).trim().slice(0, 4000);
+    const author =
+      typeof payload.author === 'string' && payload.author.trim()
+        ? payload.author.trim().slice(0, 120)
+        : await gitCurrentUser();
     const c: Comment = {
       id: newCommentId(),
       file: payload.file,
@@ -197,15 +345,49 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
       classes: String(payload.classes || ''),
       bounds: payload.bounds ?? null,
       html_excerpt: String(payload.html_excerpt || '').slice(0, 2000),
-      text: String(payload.text).trim().slice(0, 4000),
+      text,
       status: 'open',
       created: new Date().toISOString(),
       resolved_at: null,
+      author,
+      thread: [],
+      mentions: parseMentions(text),
     };
     list.push(c);
     await saveCommentsForFile(payload.file, list);
     onCommentsChanged(payload.file);
     return c;
+  }
+
+  async function commentsAddReply(
+    id: string,
+    payload: { body: string; author?: string }
+  ): Promise<Comment | null> {
+    if (!payload || typeof payload.body !== 'string' || !payload.body.trim()) return null;
+    const all = await loadAllComments();
+    for (const [file, list] of Object.entries(all)) {
+      const i = list.findIndex((c) => c.id === id);
+      if (i < 0) continue;
+      const entry = list[i];
+      if (!entry) continue;
+      const body = payload.body.trim().slice(0, 4000);
+      const author =
+        typeof payload.author === 'string' && payload.author.trim()
+          ? payload.author.trim().slice(0, 120)
+          : await gitCurrentUser();
+      const reply: Reply = {
+        id: newReplyId(),
+        author,
+        body,
+        created: new Date().toISOString(),
+      };
+      entry.thread = [...entry.thread, reply];
+      entry.mentions = mentionsUnion(entry);
+      await saveCommentsForFile(file, list);
+      onCommentsChanged(file);
+      return entry;
+    }
+    return null;
   }
 
   async function commentsPatch(id: string, patch: Partial<Comment>) {
@@ -221,6 +403,7 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
       }
       if (typeof patch.text === 'string' && patch.text.trim()) {
         entry.text = patch.text.trim().slice(0, 4000);
+        entry.mentions = mentionsUnion(entry);
       }
       await saveCommentsForFile(file, list);
       onCommentsChanged(file);
@@ -662,6 +845,9 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
     commentsAdd,
     commentsPatch,
     commentsDelete,
+    commentsAddReply,
+    gitCommitters,
+    parseMentions,
     loadCanvasState,
     saveCanvasState,
     loadCanvasMeta,

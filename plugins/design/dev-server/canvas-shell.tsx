@@ -37,6 +37,7 @@ import {
 } from 'react';
 
 import { AnnotationsLayer } from './annotations-layer.tsx';
+import { CommentsOverlay } from './comments-overlay.tsx';
 import {
   SnapGuideOverlay,
   type ViewportControllerHandle,
@@ -469,17 +470,89 @@ function CanvasRouter({
         setHoverEl(null);
       },
       onDropComment: ({ clientX, clientY }) => {
-        const target = resolveHoverTarget(document, clientX, clientY, { deep: true });
-        if (!target) return;
+        // First try deep mode — preferred when the user clicks exactly on
+        // a stamped element. When the deep hit lands on an element with
+        // `pointer-events: none` (decorative <svg> children, overlay icons),
+        // elementFromPoint propagates past it and `resolveHoverTarget`
+        // returns null because the next-closest hit is `.dc-artboard-body`
+        // itself.
+        let target = resolveHoverTarget(document, clientX, clientY, { deep: true });
+        if (!target) target = resolveHoverTarget(document, clientX, clientY, { deep: false });
+        // Phase 6 fallback — when both resolveHoverTarget passes bail (the
+        // `hit === bodyEl` early-exit triggers on `pointer-events: none`
+        // decorations), enumerate every element under the click point and
+        // climb the first one that has `data-cd-id`. This is how clicks on
+        // SVG logos / icon glyphs land on the actual stamped wrapper.
+        if (!target && typeof document.elementsFromPoint === 'function') {
+          const stack = document.elementsFromPoint(clientX, clientY);
+          for (const candidate of stack) {
+            const stamped = (candidate as Element).closest?.('[data-cd-id]') as HTMLElement | null;
+            if (!stamped) continue;
+            if (!stamped.closest('.dc-artboard-body')) continue;
+            const artboardEl = stamped.closest('[data-dc-screen]');
+            target = {
+              el: stamped,
+              cdId: stamped.getAttribute('data-cd-id'),
+              artboardId: artboardEl?.getAttribute('data-dc-screen') ?? null,
+            };
+            break;
+          }
+        }
+        if (!target) {
+          // Floating comment fallback — no element anchor, just a click
+          // point. The overlay still renders a pin at the stored bounds.
+          if (typeof window === 'undefined' || typeof document === 'undefined') return;
+          const floatingSel: Selection = {
+            file: deriveFile(),
+            id: undefined,
+            selector: '',
+            artboardId: null,
+            tag: '',
+            classes: '',
+            text: '',
+            dom_path: [],
+            bounds: { x: clientX - 12, y: clientY - 12, w: 24, h: 24 },
+            html: '',
+          };
+          try {
+            document.dispatchEvent(
+              new CustomEvent('cm:open-composer', {
+                detail: { selection: floatingSel, clientX, clientY },
+              })
+            );
+          } catch {
+            /* ignore */
+          }
+          try {
+            window.parent.postMessage({ dgn: 'comment-compose', selection: floatingSel }, '*');
+          } catch {
+            /* parent detached */
+          }
+          return;
+        }
         const sel = hoverTargetToSelection(target);
         // Commit the target to the selection set so the halo persists while
-        // the shell-side composer is open. The user clears by:
-        //   - submit / cancel on the composer (shell posts `force-clear`)
+        // the composer is open. The user clears by:
+        //   - submit / cancel on the composer (overlay dispatches force-clear)
         //   - pressing Esc inside the canvas (router's onEscape → clear)
         //   - clicking another element in comment mode (this handler runs
         //     again and replaces)
         selSet.replace(sel);
-        if (typeof window === 'undefined') return;
+        if (typeof window === 'undefined' || typeof document === 'undefined') return;
+        // Phase 6 — open the in-place composer inside the iframe at the click
+        // point. Custom event is iframe-local so the overlay can subscribe
+        // without round-tripping through the parent shell.
+        try {
+          document.dispatchEvent(
+            new CustomEvent('cm:open-composer', {
+              detail: { selection: sel, clientX, clientY },
+            })
+          );
+        } catch {
+          /* CustomEvent absent — fall through to legacy parent path */
+        }
+        // Still post to parent for back-compat with any legacy `.html` mocks
+        // whose inspector script consumes `comment-compose`.
         try {
           window.parent.postMessage({ dgn: 'comment-compose', selection: sel }, '*');
         } catch {
@@ -492,6 +565,7 @@ function CanvasRouter({
   return (
     <>
       {children}
+      <CommentsOverlay />
       <AnnotationsLayer />
       <ToolPalette />
       <HoverHalo el={hoverEl} />

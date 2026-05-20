@@ -447,179 +447,23 @@
   flex-wrap: wrap;
 }
 /* Composer — stacked vertically so the textarea has real estate */
-.composer {
-  display: flex;
-  flex-direction: column;
-  gap: var(--u-s-2);
-  padding: var(--u-s-3);
-  background: var(--u-bg-2);
-  border: 1px solid var(--u-accent-line);
-  border-radius: var(--u-r-md);
-  margin: 4px 0;
-}
-.composer-head {
-  display: flex;
-  align-items: baseline;
-  gap: var(--u-s-2);
-  font-size: 11px;
-  color: var(--u-fg-3);
-}
-.composer-selector {
-  font-family: var(--u-font-mono);
-  font-size: 11px;
-  color: var(--u-fg-1);
-  background: var(--u-bg-1);
-  padding: 2px 8px;
-  border-radius: var(--u-r-sm);
-  border: 1px solid var(--u-border);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  min-width: 0;
-}
-.comment-bar textarea.composer-textarea {
-  width: 100%;
-  background: var(--u-bg-1);
-  border: 1px solid var(--u-border);
-  border-radius: var(--u-r-sm);
-  color: var(--u-fg-0);
-  font-family: inherit;
-  font-size: 13px;
-  line-height: 1.5;
-  padding: var(--u-s-3);
-  resize: vertical;
-  min-height: 100px;
-  outline: none;
-}
-.comment-bar textarea.composer-textarea:focus { border-color: var(--u-accent-line); }
-.comment-bar textarea.composer-textarea::placeholder { color: var(--u-fg-3); }
-.composer-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 6px;
-}
+/* Phase 6 — the shell-side composer / focused-row / pin-strip surfaces moved
+ * into the canvas iframe (see plugins/design/dev-server/comments-overlay.tsx
+ * + .css). Only the residual BottomBar open-count label survives. The legacy
+ * `.composer*` / `.cb-pin-chip` / `.cb-row.focused` / `.cb-text` / `.cb-target`
+ * / `.cb-pinno` / `.cb-more` rules were removed in the same change. */
 
-.cb-row.composer {
-  align-items: stretch;
-  flex-wrap: nowrap;
-}
 .cb-label {
   color: var(--u-fg-3);
   font-size: 11px;
   flex: none;
   align-self: center;
 }
-.cb-label code {
-  font-family: var(--u-font-mono);
-  font-size: 10px;
-  background: var(--u-bg-2);
-  padding: 1px 4px;
-  border-radius: var(--u-r-xs);
-  color: var(--u-fg-1);
-}
-.comment-bar textarea {
-  flex: 1;
-  background: var(--u-bg-2);
-  border: 1px solid var(--u-border);
-  border-radius: var(--u-r-sm);
-  color: var(--u-fg-0);
-  font-family: inherit;
-  font-size: 12px;
-  padding: var(--u-s-2);
-  resize: vertical;
-  min-height: 40px;
-  outline: none;
-}
-.comment-bar textarea:focus { border-color: var(--u-accent-line); }
-.cb-actions {
-  display: flex;
-  gap: 4px;
-  align-self: flex-end;
-}
-.cb-primary, .cb-secondary {
-  border: 1px solid var(--u-border);
-  background: var(--u-bg-2);
-  color: var(--u-fg-1);
-  border-radius: var(--u-r-sm);
-  padding: 4px var(--u-s-3);
-  font-family: var(--u-font-mono);
-  font-size: 11px;
-  cursor: pointer;
-}
-.cb-primary {
-  background: var(--u-accent);
-  color: var(--u-bg-0);
-  border-color: var(--u-accent);
-  font-weight: 600;
-}
-.cb-primary:hover { background: var(--u-accent-strong); border-color: var(--u-accent-strong); }
-.cb-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-.cb-secondary:hover { background: var(--u-bg-3); color: var(--u-fg-0); }
-
-.cb-row.focused {
-  background: var(--u-bg-2);
-  border-radius: var(--u-r-sm);
-  padding: 4px var(--u-s-2);
-}
-.cb-pinno {
-  font-family: var(--u-font-mono);
-  font-size: 11px;
-  background: var(--u-accent);
-  color: var(--u-accent-fg);
-  border-radius: var(--u-r-sm);
-  padding: 1px 6px;
-  font-weight: 700;
-  flex: none;
-  letter-spacing: var(--tracking-sku);
-}
-.cb-text {
-  flex: 1;
-  color: var(--u-fg-0);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-}
-.cb-target code {
-  font-family: var(--u-font-mono);
-  font-size: 10px;
-  background: var(--u-bg-3);
-  padding: 1px 6px;
-  border-radius: var(--u-r-xs);
-  color: var(--u-fg-2);
-  max-width: 240px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  display: inline-block;
-}
 
 .cb-row.strip {
   font-size: 11px;
   color: var(--u-fg-3);
 }
-.cb-pin-strip {
-  display: flex;
-  gap: 4px;
-  flex: 1;
-  flex-wrap: wrap;
-}
-.cb-pin-chip {
-  font-family: var(--u-font-mono);
-  font-size: 10px;
-  background: var(--u-accent);
-  color: var(--u-accent-fg);
-  border: 0;
-  border-radius: var(--u-r-sm);
-  padding: 2px 7px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform 100ms;
-  letter-spacing: var(--tracking-sku);
-}
-.cb-pin-chip:hover { transform: scale(1.1); }
-.cb-more { font-family: var(--u-font-mono); font-size: 10px; color: var(--u-fg-3); align-self: center; }
 
 /* ----- Right sidebar — Comments panel (CV-10) ----- */
 .rsidebar {

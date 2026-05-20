@@ -240,6 +240,21 @@ export function isEditableTarget(t: EventTarget | null): boolean {
   return false;
 }
 
+/**
+ * Phase 6 — the comments overlay (pins / composer / thread popover / mention
+ * popup) lives INSIDE the canvas world, which means its DOM nodes are inside
+ * the input-router's capture host. Without an explicit bail-out the router
+ * would `preventDefault + stopImmediatePropagation` every click on a
+ * composer button while comment mode is active, blocking Save / Cancel.
+ *
+ * We treat the overlay nodes like editable form widgets — the router yields,
+ * the React event handler runs.
+ */
+export function isOverlayTarget(t: EventTarget | null): boolean {
+  if (!t || !(t as Element).closest) return false;
+  return !!(t as Element).closest('.cm-composer, .cm-thread, .cm-mention-popup, .cm-pin');
+}
+
 export function useInputRouter(opts: UseInputRouterOptions): void {
   const { hostRef, getActiveTool, isSpaceHeld, callbacks, enabled = true } = opts;
 
@@ -290,6 +305,10 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
     };
 
     const onPointerDown = (e: PointerEvent): void => {
+      // Phase 6 — overlay surfaces (composer / thread / mention popup) own
+      // their own clicks. The router is in capture phase, so we have to
+      // bail HERE before classify can claim the event.
+      if (isOverlayTarget(e.target)) return;
       const action = classify({
         type: 'pointerdown',
         button: e.button,
@@ -321,6 +340,7 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
      * stop their twin mousedown.
      */
     const onMouseDown = (e: MouseEvent): void => {
+      if (isOverlayTarget(e.target)) return;
       const action = classify({
         type: 'pointerdown',
         button: e.button,
@@ -346,6 +366,7 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
      * matching pointerdown (re-classify with the same modifiers).
      */
     const onClick = (e: MouseEvent): void => {
+      if (isOverlayTarget(e.target)) return;
       const tool = getActiveTool();
       const mod = e.metaKey || e.ctrlKey;
       const wouldRoute =

@@ -254,6 +254,15 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect): Http {
       return new Response('Method not allowed', { status: 405 });
     },
 
+    '/_api/git-committers': async (req: Request) => {
+      // Phase 6 — feed for the @mention autocomplete in composer + reply box.
+      // GET → top-20 committers on HEAD (`git shortlog -sne | head -20`)
+      // already cached server-side for 60 s.
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      const committers = await api.gitCommitters();
+      return Response.json({ committers }, { headers: { 'Cache-Control': 'no-store' } });
+    },
+
     '/_api/annotations': async (req: Request) => {
       // Phase 5 — `<designRoot>/<slug>.annotations.svg` read / overwrite.
       // GET ?file=<repo-relative-canvas-path>           → SVG text (empty if absent)
@@ -324,6 +333,26 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect): Http {
     try {
       const url = new URL(req.url);
       const pathname = url.pathname;
+
+      // Phase 6 — POST /_api/comments/<id>/reply. Dynamic path, so it lives in
+      // the fall-through instead of the static `routes` map. `<id>` is the
+      // c_<hex> id of the parent comment; body is `{ body, author? }`. Bodies
+      // share the same 4000-char cap as a top-level comment.
+      const replyMatch = pathname.match(/^\/_api\/comments\/([A-Za-z0-9_]+)\/reply$/);
+      if (replyMatch) {
+        if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+        const id = replyMatch[1] ?? '';
+        const body = await readJson<{ body?: string; author?: string }>(req);
+        if (!body || typeof body.body !== 'string' || !body.body.trim()) {
+          return new Response('body.body required', { status: 400 });
+        }
+        const next = await api.commentsAddReply(id, {
+          body: body.body,
+          author: typeof body.author === 'string' ? body.author : undefined,
+        });
+        if (!next) return new Response('Not found', { status: 404 });
+        return Response.json(next, { headers: { 'Cache-Control': 'no-store' } });
+      }
 
       // Bundled client assets (preferred path — bundle from dist/).
       if (pathname.startsWith('/_client/')) {

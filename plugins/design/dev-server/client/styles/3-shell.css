@@ -758,8 +758,7 @@
   flex: 1;
   min-width: 0;
 }
-.sb-clear-sel,
-.sb-add-comment {
+.sb-clear-sel {
   background: transparent;
   color: var(--u-fg-2);
   border: 1px solid var(--u-border);
@@ -772,18 +771,10 @@
   text-transform: uppercase;
   cursor: pointer;
 }
-.sb-add-comment {
-  color: var(--u-accent);
-  border-color: var(--u-accent);
-}
 .sb-clear-sel:hover {
   color: var(--u-fg-0);
   background: var(--u-bg-2);
   border-color: var(--u-border-strong);
-}
-.sb-add-comment:hover {
-  background: var(--u-accent);
-  color: var(--u-accent-fg);
 }
 .sb-unread .sb-count {
   font-family: var(--u-font-mono);
