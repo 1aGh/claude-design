@@ -1,6 +1,6 @@
 {
   "name": "@1agh/maude-darwin-x64",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "Per-platform binary for @1agh/maude (darwin-x64). Do not install directly — pulled in as an optionalDependency by the main package.",
   "license": "MIT",
   "author": "Michal Dovrtěl (1aGh)",
@@ -8,7 +8,14 @@
     "type": "git",
     "url": "git+https://github.com/1aGh/maude.git"
   },
-  "os": ["darwin"],
-  "cpu": ["x64"],
-  "files": ["maude", "README.md"]
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "maude",
+    "README.md"
+  ]
 }
