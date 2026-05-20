@@ -647,3 +647,27 @@ Execute in order. Each task is atomic and testable.
 5. **"4 kola" rename — neuškodí to clarity?** Stávající "Structural / Aesthetic" gates jsou tech-style; "Srozumitelnost / Atraktivita / Konzistence" jsou marketing-style. **My recommendation: keep both — primary header je Pastier-style, sub-line je tech-explanation. Best of both.**
 
 Tyhle 5 jsou jediné genuine fork points. Defaults v "my recommendation" lze přijmout en bloc — řekni "all default" a běžíme execute.
+
+---
+
+## Retro (2026-05-20, /flow:done)
+
+**What worked**
+
+- **Plain-prose Stage 1** (DF-4 → DF-8) was the right call — the AskUserQuestion ceiling deep-research saved us from shipping a broken Stage 1. The dry-run that produced DF-8 also caught the typo + parser-boundary edge cases before the SKILL.md rewrite locked them in.
+- **Dogfood findings backlog (DF-1 … DF-12)** carried load-bearing context across multiple plan iterations and the implementation pass. Permanent IDs (never reindexed) made it trivial to cross-reference rules in commits / DDR / smoke trace without ambiguity.
+- **Sequencing T10 before T9** (rebrand critic-panel headers before paper-tracing) meant the smoke trace could reference final shape, not a moving target.
+- **`_DISCOVERY-v1.md` archive** kept the v1 diff legible without bloating SKILL.md history. Future contributors comparing 3-stage vs 12-Q have a single artifact to read.
+
+**What didn't**
+
+- **First T2 edit left v1 content in place below the new section** — the SKILL.md old-string boundary was too narrow on the first pass; needed a second pass to delete lines 391–488. Lesson: when replacing a multi-section span, anchor the `old_string` on a sentinel BEYOND the last section you want to keep.
+- **`_pastier-probe-templates.md` overshot the 200-line cap on first write** (235 → 191 after trim). Worked examples were padded with redundant comments. Lesson: a "worked example" should be the smallest object that illustrates the shape, not a fully-realized payload.
+- **One residual `fallback ladder` literal in SKILL.md** survived two grep validations — the third grep (caps-insensitive) caught it. Lesson: the validation grep ITSELF needs to match the validation regex the plan declared. If the plan grep is `-i`, the author check should be `-i`.
+
+**What to change in `/plan` or `/execute` next time**
+
+- **Plans that do multi-section file rewrites should declare anchor sentinels** (a "first line to keep AFTER the deletion" string) in the task, not just "replace lines 99-200". Line numbers go stale the moment the first task lands.
+- **Validation greps must include the case / regex flag in the published check.** "0 hits on `fallback ladder`" is ambiguous between `grep` and `grep -i`; the latter is stricter. Spell it out.
+- **For docs-and-spec-only plans, /done should skip the cross-platform scenario gate explicitly**, not silently — surface "no scenario applicable for this change shape" as a green tick instead of an empty section.
+

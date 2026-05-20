@@ -96,108 +96,297 @@ Hard-stops: missing Node → abort with install hint; missing git → abort with
 - For `additional-ds`: target dirname is the kebab-case slug of the user-provided name (`<name>`).
 - For `re-bootstrap`: target is the existing `system/<name>/` dir; refuse unless `--force`.
 
-#### Round 0 — domain research (NEW — runs before any AskUserQuestion)
+> **3-stage architecture (DDR-033, 2026-05-20).** Discovery is split into three stages that move from **abstract to concrete** the way a designer would talk to a stakeholder: **Stage 1 — Vision (extract)** conversational free-text prompts; **Stage 2 — Research (synthesize)** the `ux-research-agent` consumes the rich vision-brief and returns recommendations with per-decision confidence; **Stage 3 — Refinement (decide)** the skill asks the user only where research is uncertain. **Zero hardcoded option ladders in Stage 3.** Pre-3-stage v1 (12 fixed Qs in 3 rounds) is archived at `_DISCOVERY-v1.md` for diff reference. The reasons for the rewrite are documented in DDR-033.
 
-> **Why Round 0 exists.** Pre-research the discovery questionnaire used a hardcoded option ladder for every project — the same set of mood / signature / iconography / density references regardless of whether the brief was about cooking, sports, science, finance, or a niche craft. The questionnaire pretended to do UX research while actually showing the user the same options every run. Round 0 fixes this by spawning the `design:ux-research-agent` BEFORE the first question is asked. The agent runs 6–8 WebSearch queries across abstract source-type categories (awards / case-studies / indie portfolios / non-English regions / lateral industries / niche publications / heritage references) and surfaces whatever real products fit the brief — no pre-set brand preferences or denylists, no allow-listed reference pool. The questionnaire structure (order, count, intent) is unchanged; only the **option labels** become domain-researched.
+> **Hard rule — Stage 1 is plain prose, NOT AskUserQuestion.** The AskUserQuestion tool is a multi-choice picker (min 2 labeled options, auto-"Other" affordance always rendered as N+1 item — schema-enforced, no bypass). Stage 1 needs free-text capture with skip-per-prompt; the tool cannot deliver that UX. Skill emits one chat message per batch with numbered prompts; user replies in one chat message with `1. … 2. …` headings. Parser splits on the heading boundary. See DDR-033 + DF-4 / DF-7 / DF-8 in the plan for the deep research that ruled this in. **Stage 0 + Stage 3 use AskUserQuestion** (4 concrete picks each, with auto-"Other" for overrides).
 
-**Procedure:**
+#### Stage 0 — Scope gate (one AskUserQuestion, only hardcoded choice in the whole flow)
 
-1. **Resolve `brief`.** Order of precedence: `$ARGUMENTS` brief (e.g. `/design:setup-ds project "recipe scaling and substitution tool"`) → existing `<designRoot>/system/<ds>/README.md` "What this DS is for" line (re-bootstrap mode) → caller-provided `$BRIEF` from `/design:edit` / `/design:new` auto-load → empty (fall back to a single AskUserQuestion to capture the one-liner; this is Q1 batched alone). If brief is captured here, **Q1 is already answered** and Round 1 starts at Q2.
-
-2. **Check cache.** Compute the brief hash: `BRIEF_SHA8=$(printf '%s' "$BRIEF" | shasum -a 256 | cut -c1-8)`. Look for `<designRoot>/_history/_system/<ds>-${BRIEF_SHA8}-domain-research-discovery.json`. If present, **read it and reuse — skip step 3**. Print: `Round 0 cache hit — reusing prior research from <researched_at> (brief-hash match: <BRIEF_SHA8>)`. **The hash match is exact, not fuzzy** — two briefs whose hashes differ get fresh research, even if they're "in the same domain", because the caller wrote a different brief and that intent matters. Re-bootstrap with `--force` ALWAYS re-researches regardless of cache (the domain may have moved in the intervening year — the agent surfaces fresh trends).
-
-3. **Spawn `design:ux-research-agent`** via the `Agent` tool with `subagent_type: "design:ux-research-agent"`. Inputs:
-   ```
-   brief:           <resolved brief>
-   caller:          "setup-ds"
-   mode:            "discovery"
-   context_paths:
-     existing_ds_tokens:  <abs path or empty>
-     existing_ds_readme:  <abs path or empty>
-     cached_payload:      <abs path to <ds>-<BRIEF_SHA8>-domain-research-discovery.json — only if it exists>
-   output_path:     <designRoot>/_history/_system/<ds>-<BRIEF_SHA8>-domain-research-discovery.json
-   researched_at:   <current ISO date>
-   ```
-   The agent runs WebSearch + WebFetch, builds a domain-relevant reference pool, writes the payload, returns a one-line confirmation. Wall time ~30–60s.
-
-4. **Read the payload.** Use `Read` on `output_path`. Bind the relevant arrays into the AskUserQuestion options for the rounds below.
-
-5. **Handle thin-research fallback.** If the payload sets `fallback_used: true`, the agent had thin WebSearch results and filled with LLM-knowledge. Use the payload anyway, but **surface a one-line warning in the final next-step block** ("Round 0 fell back to LLM-knowledge mode for this niche domain — review options carefully"). If the agent itself failed (no payload file written), fall back to the **hardcoded option ladders** in the "Fallback option ladders" section at the end of this file — and surface a warning.
-
-#### `first-bootstrap` (12 Qs across 3 rounds, options sourced from Round 0 payload)
-
-> **Why 12, not 8.** The 8-Q baseline gets you a working DS; it does not get you a pro-grade DS. Round 3 (Q9–Q12) captures the inputs a pro designer would gather from a stakeholder before starting visual exploration: signature treatment, hard-NO list, iconography vibe, density preference. Round 3 is the cheapest single intervention to lift output from "structurally valid" to "portfolio-worthy". Opt out via the slash command's `--quick` flag if the user explicitly wants the 8-Q baseline.
-
-> **Options come from the Round 0 payload.** For every Q where the payload provides domain-relevant choices (Q5, Q9, Q10, Q11, Q12), populate AskUserQuestion `options[]` from the payload arrays — `mood_clusters[]`, `signature_treatment_options[]`, `suggested_hard_NOs[]` + `anti_references[]`, `iconography_vibe_options[]`, `density_options[]`. Each option's `label` is the payload `.label`. Each option's `description` cites the anchor products from the payload. The option flagged `recommended: true` in the payload becomes the FIRST option in the AskUserQuestion list with `(Recommended)` appended to its label (per the AskUserQuestion tool convention). **Always end the list with a `pick-for-me` option** so the user can defer the call.
-
-**Round 1 — Identity** (4 Qs via one AskUserQuestion call — **structural inputs only; options are universally stable**):
-
-- Q1 product one-liner — pre-filled from `brief` if captured in Round 0 step 1; otherwise sketch / reuse from PRD / skip
-- Q2 audience — `pro tool` / `consumer app` / `developer tool`. Pre-fill Recommended from payload `audience_hypothesis`.
-- Q3 platforms — `desktop only` / `mobile + desktop` / `tablet-first`. Pre-fill Recommended from payload `platform_hypothesis`.
-- Q4 theme default — `dark` / `light` / `both equal`
-
-**Round 2 — Brand + content** (4 Qs via a second AskUserQuestion call — **ALL options payload-sourced; do NOT hardcode the SaaS ladder**):
-
-- **Q5 mood references** — single select. **Options sourced from payload `mood_clusters[]`.** Each option's `label` = cluster `label` (composed from its 3 anchor product names from the payload); `description` = cluster `one_line`. Always 3 options + `pick-for-me`. The cluster flagged `recommended: true` in the payload becomes the FIRST option with `(Recommended)` appended. **The payload's option labels are authoritative — do not curate them, do not substitute alternative anchors, do not "polish" the descriptions.** If you see the same anchor names across multiple unrelated projects, that's a research-breadth issue the agent's audit trail (`research_quality_notes`) should reveal — re-running the research with a tighter brief usually surfaces different references.
-- **Q6 brand color** — single select. **Options sourced from payload `color_oklch_options[]`.** Each option's `label` = the payload option label (e.g. `cool-clinical L 58–62 C 0.08–0.11 H 200–230`). Each option's `description` = `domain_rationale` (one sentence — why this range fits this domain's heritage). Always 3 payload-sourced options + `I have a hex` (user pastes) + `pick-for-me` (skill picks within the Recommended option's OKLCH range). **NEVER offer "cyan/indigo/emerald/amber default" — those are bias-bait placeholders** that surface in every project regardless of domain. A finance dashboard wants a different range than a children's app than a recipe app; the payload encodes that.
-- **Q7 typography** — single select. **Options sourced from payload `typography_pairing_options[]`.** Each option's `label` = pairing label (categorical, e.g. `editorial-serif + grotesque-sans`); `description` = `domain_rationale` (why this pairing fits the domain's reading mode). Always 3 payload-sourced options + `pick-for-me`. A long-form reading product wants different type than a dense pro-tool dashboard than a consumer mobile app; the payload encodes that based on what the research surfaced.
-- **Q8 content tone** — single select. **Options sourced from payload `voice_tone_options[]`.** Each option's `label` = tone label with anchor product name from the payload (e.g. `<voice-id> (anchor: <real-product-from-payload>)`); `description` = list of characteristics + `sample_microcopy` from the payload (so the user sees the voice, not just hears the label). Always 3 payload-sourced options + `pick-for-me`. **Do NOT hardcode generic tone labels** ("direct-terse README-grade" / "explanatory-friendly" / "formal-B2B") as universal options — voice is domain-coupled, and the payload anchors each tone to a real product the agent surfaced. If the same 3 voice tones come back across multiple runs in different domains, the payload is broken.
-
-**Round 3 — Pro-designer inputs** (4 Qs via a third AskUserQuestion call, **options sourced from Round 0 payload**):
-
-- **Q9 signature visual treatment** — single select. **Options sourced from payload `signature_treatment_options[]`.** Always 3 domain-relevant options + `none / restrained` (universal opt-out) + `pick-for-me`. Recommended pre-fill from payload `recommended: true`. The chosen treatment is baked into `_layout.css` chrome (body background, h1 text-shadow, sectioning rules) AND surfaces in at least one signature specimen (typically `colors-accent.tsx` brand-spotlight + `ui_kits-*-showcase.tsx` hero).
-- **Q10 hard NO list** — multi-select. **Options assembled from payload `suggested_hard_NOs[]` AND payload `anti_references[]`** (one suggested NO per anti-reference, derived from its `why_to_avoid` field). The list is a checklist — user picks any subset. Recommended pre-checks the suggested NOs that are clear domain consensus (e.g. for recipe: "no popup recipe-introduction text" is consensus). Universal options always appended: `no decorative gradients` · `no animations beyond hover` · `anything goes (skip)`. Every checked item becomes a guardrail surfaced in the DS README and the per-DS SKILL.md. Sub-agents authoring specimens MUST read this list before writing.
-- **Q11 iconography vibe** — single select. **Options sourced from payload `iconography_vibe_options[]`.** Always 3 domain-relevant options + `pick-for-me`. Recommended from payload `recommended: true`. Drives `iconography.tsx` specimen content + the 3–5 example SVGs scaffolded into `assets/glyphs/`.
-- **Q12 density preference** — single select. **Options sourced from payload `density_options[]`.** Always 3 domain-relevant options + `pick-for-me (derive from Q2 audience)`. Recommended from payload `recommended: true`. Sets `--space-*` usage conventions and the default padding values in `_layout.css`.
-
-**Confirm.** Echo a **3-sentence** proposed direction (one sentence per round: identity + brand + visual signature). Wait for explicit yes / corrections. On "no", restart the affected round (max 2 retries each before "scaffold-with-current and iterate via /design:edit").
-
-#### Fallback option ladders (used ONLY when Round 0 payload is missing or `fallback_used == true`)
-
-**These are emergency-only options when the ux-research-agent failed entirely** (no payload file written) — they intentionally reference the SaaS-tool ladder because at this point we've already lost the domain-research battle and only need to keep the questionnaire functional. If you find yourself reaching for this section regularly, the agent is the bug — fix the agent, don't normalize the fallback. **ALWAYS surface a prominent warning in the final next-step block when fallback was used**, including a recommendation to re-run with `--force` after addressing whatever caused the agent to fail.
-
-- **Q5 mood fallback:** `dashboard-pragmatic / documentation-editorial / terminal-pro / pick-for-me` (the labels intentionally do NOT include product names — the agent's job is to provide product anchors; if the agent failed, the skill refuses to invent them)
-- **Q6 color fallback:** `pick-for-me (skill chooses OKLCH per Q2 audience heuristic)` / `I have a hex` — **no preset OKLCH options without research**, because every preset becomes the default bias
-- **Q7 typography fallback:** `pick-for-me (skill chooses per Q1 reading-mode heuristic)` — no preset pairings without research
-- **Q8 content tone fallback:** `direct-terse` / `explanatory-friendly` / `formal-B2B` / `pick-for-me` (labels only — no anchor products; agent's job)
-- **Q9 signature treatment fallback:** `none / restrained` · `gradient discipline` · `CRT scanlines + phosphor glow` · `glassmorphism (frosted blur)` · `brutalism (hard edges, no shadows)` · `soft-shadow depth ladder` · `neumorphism (inset shadows)` · `pick-for-me`
-- **Q10 hard NOs fallback:** `no decorative gradients` · `no animations beyond hover` · `no emoji in chrome` · `no rounded corners > 12px` · `no centered hero layouts` · `no marketing-style CTAs` · `anything goes (skip)`
-- **Q11 iconography fallback:** `terminal glyphs (1px stroke, ASCII-leaning)` · `product icons (rounded, balanced)` · `industry-specific (domain nouns dominant)` · `flat-illustrative (solid silhouettes)` · `pick-for-me`
-- **Q12 density fallback:** `dense pro-tool (chrome at space-2/3, dense tables)` · `balanced (chrome at space-3/4)` · `roomy (chrome at space-4/5, more whitespace)` · `pick-for-me (derive from Q2 audience)`
-
-Note that the fallback labels **deliberately do not name products**. Product naming in the fallback was the original bias source — every fallback run was effectively a recycled questionnaire. The fallback now degrades to abstract labels so the user knows immediately something is wrong (no anchor names = no research happened).
-
-#### `additional-ds` (12 Qs, different shape)
-
-**Sequence (load-bearing — DO NOT batch the picker with the confirm at the end):**
+One single-select picker captured BEFORE Stage 1. The answer steers wording in Stage 1, the aspiration target the signature-moment-critic checks against post-scaffold, and the voice register defaults — but is **invisible in the UI as internal scoring jargon**. The user sees plain language about who will use the thing (DF-5).
 
 ```
-Q_purpose → Round 0 (research the new DS's domain — NOT the existing one) → Round 1 (Q2–Q4) → Round 2 (Q5–Q8) → INHERITANCE PICKER → Round 3 (Q9–Q12, with picks pre-filled from inherited DS where applicable) → 3-sentence confirm
+Co je tohle za projekt?
+  ○ Produkt pro veřejnost  — chceš oslovit externí lidi, zákazníky, širší komunitu
+  ○ Interní nástroj         — pro tebe a tvůj tým nebo firmu, audience zná kontext
+  ○ Osobní projekt          — pro sebe, portfolio, vlastní tool, experiment
+  ○ Open-source knihovna    — pro vývojáře co tvůj kód budou používat
 ```
 
-- **Q_purpose** — "What is this DS for, distinct from your existing DS?" (replaces Q1). Answer becomes the `brief` input for Round 0.
-- **Round 0** — same procedure as `first-bootstrap`. Cache key includes the DS slug, so each additional DS gets its own research payload (a "marketing" DS researches marketing-site design; an "admin" DS researches B2B-admin patterns).
-- Q2–Q12 same as first-bootstrap (with "Inherit from `<existing-ds>`" Recommended option on Q7, Q8, Q11, Q12; payload-sourced options on Q5, Q9, Q10, Q11, Q12)
+(AskUserQuestion hard schema: max 4 options per Q — DF-1. "Osobní projekt" + "Research" are merged on purpose so the picker fits the 4-option ceiling.)
 
-**Inheritance picker — fires AFTER Q8, BEFORE Round 3** (multiSelect AskUserQuestion). Position is load-bearing because Round 3 questions overlap inheritance-eligible fields (Q11 iconography especially); deferring the picker until after Round 3 lets users answer Q11 only to have the answer silently overridden by inheritance. The retro `setup-ds-studio-2-review.md` (BAD-7) caught this drift.
+Internal mapping (NOT surfaced to user):
+
+| Scope | Stage 1 voice | Aspiration target (signature-moment-critic) | Default voice register |
+|---|---|---|---|
+| `market` (Produkt pro veřejnost) | "vaše značka / tvůj produkt" | **≥ 4.0/5** | researched per audience |
+| `internal` (Interní nástroj) | "tvůj DS / tvůj tool" | ≥ 3.5/5 | terse |
+| `personal` (Osobní projekt) | "tvůj DS / pro tebe" | 3.0–4.0/5 (per ambition) | user's own voice |
+| `oss` (Open-source knihovna) | "tvoje knihovna" | **≥ 4.0/5** | researched per audience |
+
+#### Stage 1 — Vision (11 conversational free-text prompts, 3 batches, plain prose)
+
+**Principle:** small steps, plain language, every prompt carries an example, `skip` is always a valid answer. Pastier's chapters (Zrcadlo · Facka · Ulice · Kmen · Zkratka · Charakter · OST) live in the **internal comment** beside each prompt — the user never sees the Pastier vocabulary, only a human question with a concrete example.
+
+**Pattern per batch — emit one chat message with the batch heading + numbered prompts + examples; user replies in one chat message with `1. … 2. …` headings or `skip` per item. Parser splits on `**N. …**` boundary or `\nN. ` numbered list; trim, strip example artifacts, identify `skip` markers (case-insensitive, also `ne`, `nevím`, `—`).** Validated end-to-end in plan dogfood DF-8.
+
+```
+─── Batch 1/3 — PŘÍPRAVA (kdo a proč, 4 prompts) ──────────────────
+
+Odpověz v jednom message. Napiš `skip` u jakékoli otázky kterou chceš přeskočit.
+
+**1. Co tenhle projekt je?** Napiš 1–2 věty, jako bys to říkal kamarádovi.
+   *Příklad: „Je to recept manager kde si můžeš nastavit počet porcí
+   a on přepočítá ingredience."* Nemusí to znít cool, normální slova jsou OK.
+   (interní: Pastier — Zkratka)
+
+**2. Co by udělalo tenhle DS úspěchem v TVÝCH očích?**
+   Tady jde o tebe, ne o uživatele. Na čem by sis dal záležet?
+   *Příklad: „Aby každá obrazovka vypadala jako z časopisu",
+   „Aby to bylo rychlé a nepřekáželo to", „Aby se mi to líbilo i za 5 let".*
+   (interní: Pastier — Zrcadlo, část 1)
+
+**3. Je něco, na čem si zakládáš a chceš, aby to bylo cítit i v DS?**
+   *Příklad: „Vždycky perfekcionismus na detailech",
+   „Pohoda nad formálností", „Žádné prázdné buzzwords".*
+   Klidně přeskoč, pokud nevíš.
+   (interní: Pastier — Zrcadlo, část 2)
+
+**4. Naopak — co bys NIKDY nechtěl, aby DS vypadal?**
+   Co tě v jiných projektech / DSes vyloženě irituje? Klidně napiš
+   konkrétní jména produktů kterým se chceš VYHNOUT. (Tohle pomůže
+   research agentovi víc než pozitivní reference.)
+   (interní: Pastier — Facka)
+
+─── Batch 2/3 — PROSTOR (kde to žije, 3 prompts) ──────────────────
+
+**5. V jakém vizuálním prostoru tenhle projekt žije?**
+   Nemusí to být přímí konkurenti — stačí říct, k jaké tradici se hlásíš.
+   *Příklad: „terminal tools jako Linear / Vercel",
+   „editorial jako Stripe docs", „hand-drawn jako Notion early days",
+   „retro arcade jako itch.io".* „Nevím, podívej se a doporuč mi" je
+   validní — research agent to udělá.
+   (interní: Pastier — Ulice, část 1: design lineage)
+
+**6. A naopak — co je z toho prostoru OTŘEPANÉ, čeho už je všude moc?**
+   Co bys NECHTĚL zopakovat?
+   *Příklad: „purple-pink gradient hero", „bento grid landing pages",
+   „glass-morphism cards", „stock photos s ‚happy team meeting'".*
+   (interní: Pastier — Ulice, část 2: anti-references)
+
+**7. Pro koho to děláš?** Klidně „jen pro sebe" je validní odpověď.
+   Pokud jsou to jiní lidé — co o nich asi víš?
+   *Příklad: „Jen pro sebe, je to portfolio", „Pro 5 lidí v týmu
+   co používají dashboardy denně", „Pro vývojáře co staví na PostgreSQL".*
+   (interní: Pastier — Kmen)
+
+─── Batch 3/3 — DUŠE (jak má působit, 4 prompts) ──────────────────
+
+**8. Když to někdo poprvé vidí — jakou JEDNU emoci by měl odejít?**
+   *Příklad: klid · údiv · soustředění · hravost · autorita ·
+   „cítím se chytrý" · radost · pocit „to je řemeslo" · respekt.*
+   Vyber jedno slovo, klidně své vlastní.
+   (interní: Pastier — Charakter, část 1: primární emoce)
+
+**9. A jaký pocit by měl mít z TEBE jako z autora?**
+   *Příklad: „profík v oboru", „hravý experimentátor",
+   „klidný řemeslník", „někdo kdo ví co dělá ale nepyšní se tím".*
+   Můžeš přeskočit pokud je DS impersonální (např. interní nástroj).
+   (interní: Pastier — Charakter, část 2: autor)
+
+**10. Existuje něco jednoho, čím by ses chtěl odlišit?**
+    Jedna věc, díky které lidi řeknou „jo to je [tvůj projekt]"?
+    *Příklad: „naše signature žlutá", „CRT motion na všech přechodech",
+    „mascot ježek v rohu", „typografie jak ve starých knihách",
+    „nezvyklý layout pattern".* „Nevím, doporuč mi něco" je perfektně
+    OK — research ti potom dá návrhy a ty z nich vybereš.
+    (interní: Pastier — OST, část 1: signature claim)
+
+**11. A naopak — co určitě NEMÁ být tvůj signature?**
+    Co je „taková obyčejná default věc" a nechceš to za signature mít?
+    *Příklad: „určitě ne barva, ta je obyčejná",
+    „určitě ne font, neumím to ohlídat".*
+    Klidně přeskoč pokud nemáš názor.
+    (interní: Pastier — OST, část 2)
+```
+
+**After P11, synthesize the inputs into `vision-brief.json`** at `<designRoot>/_history/_system/<ds>-vision-brief.json`:
+
+```json
+{
+  "scope": "<from Stage 0: market | internal | personal | oss>",
+  "elevator_pitch": "<P1>",
+  "success_essay": "<P2>",
+  "values": "<P3 — may be null>",
+  "anti_aesthetics": "<P4>",
+  "design_lineage": "<P5 — may be 'research, surprise me'>",
+  "tired_tropes_to_avoid": "<P6>",
+  "audience": "<P7>",
+  "primary_emotion": "<P8>",
+  "author_voice": "<P9 — may be null>",
+  "ds_signature_hypothesis": "<P10 — may be 'no preference'>",
+  "ds_signature_anti": "<P11 — may be null>",
+  "_pastier_chapter_coverage": {
+    "zrcadlo": ["P2", "P3"],
+    "facka":   ["P4", "P6"],
+    "ulice":   ["P5", "P6"],
+    "kmen":    ["P7"],
+    "zkratka": ["P1"],
+    "charakter": ["P8", "P9"],
+    "ost":     ["P10", "P11"]
+  }
+}
+```
+
+`_pastier_chapter_coverage` is an internal audit field — QA that every Pastier chapter in scope has a source prompt.
+
+**`<brief>` argument shortcut.** If `/design:setup-ds <name> "<rich brief>"` was invoked with a paragraph that covers some of P1 / P5 / P10 inline, pre-fill those vision-brief fields from the brief and **skip the corresponding Stage 1 prompts** — print a one-line `→ Skipping P5 (covered in brief: "<excerpt>")` per skipped prompt so the user can correct if the heuristic misfired. Stages 2 + 3 always run regardless.
+
+#### Stage 2 — Research (no user input, ~30–90s wall-clock)
+
+The `design:ux-research-agent` is spawned via the `Agent` tool with `subagent_type: "design:ux-research-agent"` and **receives the full `vision-brief.json` as input** (the v1 flow only passed a one-liner — DDR-033 + DF-9 prove the rich brief is the single biggest aesthetic-quality lift). Inputs:
+
+```
+brief:           <vision-brief.json contents — entire object, not just elevator_pitch>
+caller:          "setup-ds"
+mode:            "discovery"
+context_paths:
+  vision_brief:        <abs path to <ds>-vision-brief.json>
+  existing_ds_tokens:  <abs path or empty>
+  existing_ds_readme:  <abs path or empty>
+  cached_payload:      <abs path to <ds>-<BRIEF_SHA8>-domain-research-discovery.json — if exists>
+output_path:     <designRoot>/_history/_system/<ds>-<BRIEF_SHA8>-domain-research-discovery.json
+researched_at:   <current ISO date>
+```
+
+`BRIEF_SHA8 = printf '%s' "$(cat <vision-brief.json>)" | shasum -a 256 | cut -c1-8`. Exact hash match for cache reuse; `--force` always re-researches.
+
+The agent's prompt has been extended with **5 Pastier probe templates** (`A. Ulice / B. Zrcadlo + Charakter / C. OST / D. Kmen / E. Confidence evaluation`) — see `_pastier-probe-templates.md` in this folder. The probes structure the WebSearch queries against the vision-brief fields. The agent's response payload extends the existing `discovery` schema with a new `recommendations` block:
+
+```jsonc
+{
+  /* … existing fields (mood_clusters, color_oklch_options, …) … */
+  "recommendations": {
+    "palette": {
+      "recommendation": { /* primary OKLCH option */ },
+      "alternatives":   [ /* 2 OKLCH options */ ],
+      "confidence":     0.85,
+      "rationale":      "Tvoje primary_emotion='klid' + design_lineage='editorial Stripe docs' nasvědčuje L 58-65, C 0.08-0.12, H 200-240. Anchor: Stripe docs accent, Vercel docs hover."
+    },
+    "typography":          { /* same shape */ },
+    "signature_treatment": { /* same shape */ },
+    "majak_3_codes": {
+      "recommendation": ["barva", "font", "motion"],
+      "alternatives":   [["symbol", "barva", "voice"], ["font", "tvar", "vzor"]],
+      "confidence":     0.7,
+      "rationale":      "OST hypotéza 'CRT motion' → motion je code. Lineage editorial → font je code. Třetí code 'barva' protože scope=osobní a chceš výrazné rozpoznání."
+    },
+    "density": { /* same shape */ },
+    "voice":   { /* same shape */ }
+  }
+}
+```
+
+Confidence semantics: `≥ 0.85` strong consensus, `0.60–0.85` mid (vision-brief is specific OR research found consensus, but not both), `< 0.60` low (vague brief + thin or conflicting research), `null` no payload (agent failed).
+
+**Failure handling — NO degradation to hardcoded ladders.** If the agent fails (no payload file written), flow **STOPS** and surfaces:
+
+```
+Research nedoběhl. Můžeš:
+  ○ Popsat Stage 1 víc do hloubky (vrátit se na P1)
+  ○ Zkusit znovu za chvíli (transient WebSearch error)
+  ○ Ukončit a vrátit se k tomu později
+```
+
+The v1 hardcoded option pools are deleted — they were the bias source DDR-033 exists to eliminate (see archived `_DISCOVERY-v1.md` for the v1 reference).
+
+#### Stage 3 — Refinement (adaptive, 0–N Qs by confidence)
+
+For each decision in `recommendations`:
+
+| Confidence | Behavior |
+|---|---|
+| **≥ 0.85** | **Skip Q.** Surface only in the final 3-sentence confirm. |
+| **0.60–0.85** | **1 Q with pre-pick.** Recommended option is first; 2 alternatives from `alternatives[]`; auto-"Other" affordance for user-written override; one option labeled `skip (keep recommendation)`. |
+| **< 0.60** | **1 Q without pre-pick.** 3 alternatives (research's top 3) with `recommended` flag on the first; auto-"Other" for user-written. |
+
+Counts observed in dogfood (DF-10, DF-11):
+
+- **Ideal** (rich vision-brief + strong consensus): 0–2 Qs total.
+- **Typical**: 4–6 Qs.
+- **Worst** (vague vision + niche domain): 8–10 Qs.
+
+Stage 3 batches the active Qs into AskUserQuestion calls **of up to 4 Qs each** (DF-2 — schema max). So a typical 4–6-Q Stage 3 is one or two batches.
+
+**No hardcoded option pools.** If `alternatives[]` is empty for a decision (research found nothing), skill **skips the Q** and asks free-text in the next chat message: `"Research nedoporučuje konkrétní směr pro [X]. Napiš co bys chtěl, nebo nechám default tokens."`
+
+**Maják 3-code is always a Stage 3 Q** (never Stage 1) — it's a concrete design decision that depends on OST hypothesis + lineage research. Question shape:
+
+```
+Research mi doporučuje, aby SIGNATURE tohohle DS stál na 3 kódech:
+  → <code1> (<concrete value 1>), <code2> (<concrete value 2>), <code3> (<concrete value 3>)
+
+Důvod: <one sentence — vazba na OST hypothesis + lineage research>
+
+  ○ Tahle trojka je dobrá, jdeme dál        (Recommended)
+  ○ Vyměnit jeden kód                       (open-text follow-up which one + which alternative)
+  ○ Vyměnit všechny 3                       (open-text follow-up custom trio)
+  ○ Vyber mi je sám podle vision-brief      (skill picks within research consensus)
+```
+
+The 9 Pastier codes are `barva · font · symbol · tvar · vzor · motion · zvuk · voice · charakter`. Of those, `zvuk` and `charakter` are domain-rare; the typical 3-code recommendation draws from the other 7.
+
+#### Confirm (1 chat message, no Q)
+
+After Stage 3 the skill prints a **3-sentence summary** — one sentence per stage:
+
+```
+Vision:     <2-line synth of vision-brief>
+Research:   <3 key anchors from payload + 3-code Maják pick>
+Refinement: <what user changed vs what was left on recommendation>
+
+Pokračovat? (y / něco upravit)
+```
+
+On `něco upravit` return to Stage 3 (NOT Stage 1, unless user explicitly says `začni od začátku`).
+
+#### `additional-ds` adaptation
+
+Same 3 stages, with two added inputs:
+
+- **Pre-Stage 0:** `Q_purpose` (one prose prompt) — "Co je tohle za DS, jiné než tvůj existující DS `<existing-ds>`?" The answer is folded into vision-brief as `elevator_pitch`; the existing DS's vision-brief (if present) is shown as context but does NOT inherit.
+- **Between Stage 2 and Stage 3:** `INHERITANCE PICKER` (multi-select AskUserQuestion, position load-bearing per studio-2 retro BAD-7 — picker before Stage 3 prevents Stage 3 answers from being silently overridden by inheritance).
 
 ```
 Inherit from <existing-ds>? (multi-select; "None" = define fresh)
   [x] Typography (font_display, font_body, font_mono)
   [ ] Voice / content tone
-  [ ] Iconography family            ← if checked, Q11 in Round 3 is skipped + value taken from inherited DS
+  [ ] Iconography family
   [x] Motion durations
   [ ] None
 ```
 
-Inherited values are pre-baked into the new DS's `colors_and_type.css`; discovery answers for inherited fields are ignored. If `Iconography family` is inherited, **skip Q11 in Round 3**.
+Inherited values are pre-baked into the new DS's `colors_and_type.css`; the corresponding `recommendations` entries in the research payload are silenced (no Stage 3 Q on inherited fields, regardless of confidence).
 
-#### `re-bootstrap` (12 Qs, pre-filled)
+#### `re-bootstrap` adaptation
 
-Read `system/<ds>/colors_and_type.css` + `system/<ds>/README.md` + `_layout.css` to pre-fill answers (Round 3 derived from `_layout.css` body background + body::before/::after presence + iconography.tsx curation). User hits enter on each to keep current; only changed answers cause re-generation of affected files.
+For an existing DS without a `vision-brief.json` (DSes scaffolded before DDR-033 don't carry one):
 
-**Round 0 in re-bootstrap mode** — ALWAYS re-research (`--force` implies a year may have passed; cached payload is stale by definition). Brief is reconstructed from the existing DS README's "What this DS is for" line. The fresh payload may surface new domain references that the original bootstrap didn't have access to; those new references update the option labels in Round 2/3, so even a "keep all current answers" pass shows the user what's changed in the domain since the original bootstrap.
+1. **Lossy inference.** Read `system/<ds>/README.md` "What this DS is for" line, `colors_and_type.css` (palette + type families), `_layout.css` (signature treatment family). Produce a draft `vision-brief.json` with `_inferred: true` on every field. Confidence is intentionally low on character / OST / lineage fields (no source in tokens for those).
+2. **Stage 1 confirm pass.** Show the inferred vision-brief to the user in plain prose: `"Tady je co jsem si přečetl z tvého stávajícího DS. Oprav / doplň cokoli, nebo napiš 'OK' pro pokračování."` User edits in one chat message; parser updates fields.
+3. **Stage 2 ALWAYS re-runs.** `--force` implies time has passed; cached payload is stale by definition.
+4. **Stage 3 + Confirm** identical to first-bootstrap.
+
+#### Post-scaffold gate — "4 kola značky"
+
+After scaffold, the aesthetic / structural critic panel is grouped under three Pastier-flavored headers (rename only — critic agents themselves are unchanged):
+
+| Kolo (Pastier) | Critic agents | What it asks |
+|---|---|---|
+| **Kolo 1 — Srozumitelnost** | `design-system-completeness-critic` + `a11y-auditor` | Lze tomu rozumět? Drží to standardy? |
+| **Kolo 2 — Atraktivita** | `graphic-design-critic` + `signature-moment-critic` | Rezonuje to vizuálně? Má to moment? |
+| **Kolo 3 — Konzistence** | `typography-critic` + `brand-critic` + `copy-critic` | Drží to spolu? Voice + visual + naming sedí? |
+
+Pastier's fourth kolo (Frekvence — marketing reach) is intentionally dropped — outside the DS surface. The actual critic-panel execution + reporting block uses these labels; see "Aesthetic critic panel (mandatory)" and "Always-print next steps" sections below.
 
 ### Mapping → file set
 
@@ -593,18 +782,21 @@ done
 
 **3. Read each screenshot back** with the `Read` tool so they're in your visual context. Direct visual scrutiny BEFORE you spawn the aesthetic critics — if the accent is obviously the wrong hue or the layout is obviously broken, fix it in source NOW rather than asking critics to confirm what you can already see.
 
-### Aesthetic critic panel (mandatory)
+### 4 kola značky — critic panel (mandatory)
 
 > **The completeness-critic does not catch aesthetic gaps.** It returns `pass` for generic public-component-library output. This step is non-negotiable, especially when discovery captured strong references in the research payload.
 
-Spawn these critics **in parallel** (single message, multiple Agent calls) on one signature specimen — default target is `colors-accent.tsx` (the accent showcase). When the bootstrap produced a `ui_kits-desktop-showcase.tsx` (the full product mock), run a second pass on it too — it's the highest-fidelity "DS in use" artifact and the most useful target for graphic-design + signature-moment evaluation.
+The seven critic agents are grouped into Pastier's three brand-quality kola (Frekvence is intentionally dropped — outside DS surface). **Kolo 1 runs first** (Srozumitelnost — structural floor must hold before aesthetics matter); **Kola 2 + 3 fire in parallel** in a single message, multiple Agent calls. Default specimen target is `colors-accent.tsx` (the accent showcase); when the bootstrap produced a `ui_kits-desktop-showcase.tsx` run a second pass on it too — it's the highest-fidelity "DS in use" artifact.
 
-| Critic | Subagent type | What it catches |
-|---|---|---|
-| `signature-moment-critic` | `design:design:signature-moment-critic` | Brand prominence, hero moments, mock fidelity, specificity — the "is this portfolio-worthy?" axis |
-| `graphic-design-critic` | `design:design:graphic-design-critic` | Composition, hierarchy, balance, density, rhythm, white-space discipline |
-| `typography-critic` | `design:design:typography-critic` | **Always run during bootstrap.** Type decisions (font choice, scale, mono pairing) are always non-trivial enough to warrant a sanity pass. Cost: one parallel sub-agent. Opt-out only via `--no-typography-critic`. (Was conditional pre-studio-2-retro — BAD-5 caught the trigger condition was too fuzzy.) |
-| `copy-critic` | `design:design:copy-critic` | **Always run during bootstrap.** Voice + claim-vs-content drift slip past completeness-critic by definition. Sub-agent peer-reference cross-contamination (e.g. "publish lineup" leaking from studio's sports-stack) is caught here. |
+| Kolo (Pastier) | Critic | Subagent type | What it catches |
+|---|---|---|---|
+| **Kolo 1 — Srozumitelnost** | `design-system-completeness-critic` | `design:design:design-system-completeness-critic` | Structural completeness — required files, token coverage, manifest fields |
+| **Kolo 1 — Srozumitelnost** | `a11y-auditor` | `flow:flow:a11y-auditor` | WCAG 2.1 AA — contrast, focus, semantic HTML, keyboard reach |
+| **Kolo 2 — Atraktivita** | `signature-moment-critic` | `design:design:signature-moment-critic` | Brand prominence, hero moments, mock fidelity, specificity — the "is this portfolio-worthy?" axis |
+| **Kolo 2 — Atraktivita** | `graphic-design-critic` | `design:design:graphic-design-critic` | Composition, hierarchy, balance, density, rhythm, white-space discipline |
+| **Kolo 3 — Konzistence** | `typography-critic` | `design:design:typography-critic` | **Always run during bootstrap.** Type decisions (font choice, scale, mono pairing) are always non-trivial enough to warrant a sanity pass. Cost: one parallel sub-agent. Opt-out only via `--no-typography-critic`. (Was conditional pre-studio-2-retro — BAD-5 caught the trigger condition was too fuzzy.) |
+| **Kolo 3 — Konzistence** | `brand-critic` | `design:design:brand-critic` | Logo placement / mark integrity / asset ladder / voice-asset alignment |
+| **Kolo 3 — Konzistence** | `copy-critic` | `design:design:copy-critic` | **Always run during bootstrap.** Voice + claim-vs-content drift slip past completeness-critic by definition. Sub-agent peer-reference cross-contamination (e.g. "publish lineup" leaking from studio's sports-stack) is caught here. |
 
 **Surface their verdicts in the next-step block.** Use this threshold matrix:
 
@@ -638,20 +830,24 @@ Round 0 research:
   [if fallback_used: "⚠ Research fell back to LLM-knowledge mode for this niche domain — review the payload manually before trusting the option pool"]
   [if cache hit: "Reused cached research from <date>"]
 
-Structural gate — design-system-completeness-critic:
-  <N> blockers, <N> warnings
+Kolo 1 — Srozumitelnost:
+  design-system-completeness:  <N> blockers, <N> warnings
+  a11y-auditor:                <N> blockers, <N> warnings
 
-Aesthetic gate — critic panel (run on <signature specimen>):
+Kolo 2 — Atraktivita (run on <signature specimen>):
   signature-moment:    aspiration <X.Y>/5  (blockers: <N>, warnings: <N>)
   graphic-design:      <N> blockers, <N> warnings
-  typography:          <N> blockers, <N> warnings    [if applicable]
-  copy:                <N> blockers, <N> warnings    [if applicable]
+
+Kolo 3 — Konzistence:
+  typography:          <N> blockers, <N> warnings
+  brand:               <N> blockers, <N> warnings
+  copy:                <N> blockers, <N> warnings
 
 Visual proof — screenshots saved to .design/_history/_system/000-bootstrap-screenshots/:
   colors-accent.png · empty-state.png · ui_kits-desktop-index.png
 
-[IF aspiration < 3.0 OR any graphic-design blocker:]
-⚠ Aesthetic gate did NOT pass. The DS is structurally valid but does not match the brief's quality bar.
+[IF aspiration < 3.0 OR any Kolo-2 blocker:]
+⚠ Kolo 2 (Atraktivita) did NOT pass. The DS is structurally valid but does not match the brief's quality bar.
   Top blockers:
     1. <blocker 1 summary>
     2. <blocker 2 summary>

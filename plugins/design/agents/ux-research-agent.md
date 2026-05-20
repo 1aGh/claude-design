@@ -104,26 +104,36 @@ If a researched option does not fit any catalogued family, either map it to the 
 
 ## Mode 1 — `discovery` (visual reference pool)
 
-**Caller:** `/design:setup-ds` Round 0 (between target detection and Round 1).
-**Purpose:** populate option labels for Q5 (mood), Q6 (color), Q7 (typography), Q8 (voice), Q9 (signature treatment), Q10 (hard NOs), Q11 (iconography vibe), Q12 (density) with **domain-researched** choices.
+**Caller:** `/design:setup-ds` Stage 2 (between Stage 1 vision capture and Stage 3 refinement).
+**Purpose:** receive the full `vision-brief.json` (Stage 1 output) and produce a payload that (a) populates option labels for downstream pickers AND (b) emits `recommendations[]` with per-decision `confidence` so Stage 3 can adaptively skip / pre-fill / ask.
+
+### Pastier probe templates (Stage 2 scaffolding)
+
+**Read `${CLAUDE_PLUGIN_ROOT}/skills/design-system/_pastier-probe-templates.md` at the start of every fresh discovery run.** It lists 5 input-field-driven probes (A. Ulice / B. Zrcadlo+Charakter / C. OST / D. Kmen / E. Confidence) that map `vision-brief.json` fields to research actions and payload fields. These probes are the SECOND axis of breadth, alongside the source-type categories in `_ux-research-config.json` (Rule 1). Both axes apply.
 
 ### Procedure (discovery mode)
 
-1. **Load runtime config (Step 0 above).** Pull the WebSearch category list into context.
-2. **Parse brief.** Extract domain (single hyphenated tag), audience hypothesis (pro / consumer / developer / mixed), platform hypothesis (desktop / mobile / tablet / multi), domain nouns (5–10 nouns native to this product).
-3. **Run 6–8 diverse WebSearch queries** per Rule 1, in parallel where possible (multiple WebSearch tool calls in one message). Log each in `research_quality_notes`.
-4. **WebFetch 3–6 highest-signal results** for screenshots, "designed by" credits, and on-page detail. Skip listicles that rehash the same 5 picks; prefer case-study deep-dives, portfolios, and niche specialty publications.
-5. **Build mood clusters (3 of them).** Each cluster names 3 anchor products + a one-sentence aesthetic descriptor. Anchors are whatever WebSearch + your analysis surfaced as genuinely relevant — no pre-set "prefer these" or "avoid those".
-6. **Build color OKLCH options (3 of them).** Each option is a domain-grounded range with rationale tied to the domain's heritage / connotation. Anchor every range to at least one researched product whose actual rendered UI uses that range.
-7. **Build typography pairing options (3 of them).** Each option is a real pairing with rationale tied to the domain's reading mode. Long-form reading → editorial serif + grotesque sans pairing; pro-tool dense UI → mono-forward + neutral sans; consumer / friendly → humanist sans + display accent. Anchors are whatever the research surfaced.
-8. **Build voice tone options (3 of them).** Each option is a voice tone with anchor product from the research pool. Voice MUST be anchored to a real product the agent surfaced, not a generic descriptor.
-9. **Identify 3 signature visual treatments** seen in the domain. **Each option's `family` field MUST classify into a Q9 family from `_MAPPING.md`** (Rule 4). Look at award sites and portfolios for treatments the domain has converged on.
-10. **Identify 3 iconography vibes** seen in the domain. **Each option's `family` field MUST classify into a Q11 family from `_MAPPING.md`** (Rule 4).
-11. **Identify 3 density references** tied to audience hypothesis + domain conventions. **Each option's `family` field MUST classify into a Q12 family from `_MAPPING.md`** (Rule 4).
-12. **Identify 2–3 anti-references** — products this should NOT look like, with one-line reason each. Anti-references emerge from research too — they're products the user might be tempted to copy but which exemplify a domain-specific failure mode, not a pre-set list.
-13. **Identify 2–3 trends** with a `still_alive` flag.
-14. **Verify breadth checks (Rule 2)** — if any unmet, run additional queries OR set `fallback_used: true` with explanation.
-15. **Write the payload** with the schema below and the full audit trail (Rule 3).
+1. **Load runtime config (Step 0 above) + Pastier probe templates.** Pull both into context.
+2. **Parse `vision-brief.json`.** Inputs are now the FULL vision-brief (DDR-033) — not just a one-liner. Read every field; the Pastier probe templates describe how each field steers the research.
+3. **Run 6–8 diverse WebSearch queries** per Rule 1 AND the per-probe query patterns in the templates. Parallel where possible. Log each in `research_quality_notes`.
+4. **WebFetch 3–6 highest-signal results** for screenshots, "designed by" credits, on-page detail. Skip listicles; prefer case-study deep-dives, portfolios, niche specialty publications.
+5. **Probe A (Ulice)** → `mood_clusters[]` (3) + `reference_products[]` (5–8) + `anti_references[]` (2–3 from user's anti-list cross-checked against actual products).
+6. **Probe A (continued)** → `color_oklch_options[]` (3) — each a domain-grounded OKLCH range anchored to a real product UI.
+7. **Probe A (continued)** → `typography_pairing_options[]` (3) — real pairings anchored to domain reading mode.
+8. **Probe B (Zrcadlo + Charakter)** → `voice_tone_options[]` (3) — each tone anchored to a real product whose author-bio resonates with `vision-brief.values` / `vision-brief.author_voice`.
+9. **Probe C (OST)** → `signature_treatment_options[]` (3) — refined if `vision-brief.ds_signature_hypothesis` is specific, surfaced if `"surprise me"`. Each option's `family` field MUST classify into a Q9 family from `_MAPPING.md` (Rule 4). Honor `vision-brief.ds_signature_anti`.
+10. **Probe A (continued)** → `iconography_vibe_options[]` (3). `family` per Rule 4.
+11. **Probe D (Kmen)** → `density_options[]` (3) — biased by `vision-brief.audience` + `vision-brief.scope` + `vision-brief.author_voice`. `family` per Rule 4.
+12. **Probe A (continued)** → `anti_references[]` (2–3) + `current_trends[]` (2–3 with `still_alive` flag).
+13. **Probe E (Confidence)** → build the `recommendations` block. **For each of the 6 design decisions** (`palette`, `typography`, `signature_treatment`, `majak_3_codes`, `density`, `voice`) compute:
+    - `recommendation` — the primary pick (links to the `recommended: true` entry in the corresponding `*_options[]` array)
+    - `alternatives[]` — 1–2 other options worth considering
+    - `confidence` — `[0.0, 1.0]` per the heuristic in `_pastier-probe-templates.md` § E (high ≥ 0.85 = brief specific + research consensus; mid 0.60–0.85 = brief specific OR research consensus; low < 0.60 = brief vague + research thin)
+    - `rationale` — one sentence naming the vision-brief input(s) + the research evidence + why this recommendation
+    Confidence is **mandatory**. If you cannot estimate it, set to `0.0` — Stage 3 will surface that as a hard input.
+14. **`majak_3_codes` recommendation** — pick 3 of Pastier's 9 codes (`barva · font · symbol · tvar · vzor · motion · zvuk · voice · charakter`) as the DS's signature scaffolding. The choice MUST connect to `ds_signature_hypothesis` + `design_lineage` + `scope`. Provide 2 alternative trios in `alternatives[]`.
+15. **Verify breadth checks (Rule 2)** — if any unmet, run additional queries OR set `fallback_used: true` with explanation.
+16. **Write the payload** with the schema below and the full audit trail (Rule 3).
 
 ### Discovery payload schema
 
@@ -246,10 +256,38 @@ If a researched option does not fit any catalogued family, either map it to the 
     }
   ],
 
+  "recommendations": {
+    "_doc": "Stage 3 (DDR-033) reads this block per-decision to decide skip / pre-fill / ask. Confidence is MANDATORY.",
+    "palette": {
+      "recommendation":  { "id": "<links to color_oklch_options[].id>" },
+      "alternatives":    [ { "id": "<alt-1>" }, { "id": "<alt-2>" } ],
+      "confidence":      0.85,
+      "rationale":       "<one sentence — vision-brief field(s) + research evidence + why this pick>"
+    },
+    "typography":          { "recommendation": { "id": "<…>" }, "alternatives": [], "confidence": 0.0, "rationale": "<…>" },
+    "signature_treatment": { "recommendation": { "id": "<…>" }, "alternatives": [], "confidence": 0.0, "rationale": "<…>" },
+    "voice":               { "recommendation": { "id": "<…>" }, "alternatives": [], "confidence": 0.0, "rationale": "<…>" },
+    "density":             { "recommendation": { "id": "<…>" }, "alternatives": [], "confidence": 0.0, "rationale": "<…>" },
+    "majak_3_codes": {
+      "recommendation": ["<code-1>", "<code-2>", "<code-3>"],
+      "alternatives":   [ ["<alt-trio-a-1>", "<alt-trio-a-2>", "<alt-trio-a-3>"], ["<alt-trio-b-1>", "<alt-trio-b-2>", "<alt-trio-b-3>"] ],
+      "confidence":     0.0,
+      "rationale":      "<one sentence — connection to ds_signature_hypothesis + design_lineage + scope>"
+    }
+  },
+
   "fallback_used": false,
   "research_quality_notes": "<the audit trail required by Rule 3 — config loaded, queries, anchor sourcing, breadth checks>"
 }
 ```
+
+**Confidence heuristic (3 bullets, applies to every `recommendations.*` entry):**
+
+- **`≥ 0.85`** — vision-brief is specific on this decision AND research found ≥ 3-anchor consensus. Stage 3 will SKIP the question and the user will only see the pick in the final confirm.
+- **`0.60 – 0.85`** — brief is specific OR research found consensus, but not both. Stage 3 will ASK with the recommendation pre-filled as the first option.
+- **`< 0.60`** — brief is vague AND research found conflicting / thin evidence. Stage 3 will ASK without a pre-pick; user must choose from `alternatives[]` or write their own.
+
+`null` confidence is reserved for total agent failure (no payload written) — Stage 3 cannot proceed; the flow stops and offers re-run / abort.
 
 ---
 

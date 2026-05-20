@@ -9,31 +9,33 @@ argument-hint: "<name> [\"<brief>\"] [--force] [--quick]"
 
 Dedicated entry point for **creating a design system** in this project. Three modes the underlying skill auto-detects:
 
-- **first-bootstrap** — `.design/config.json` does not exist (or `designSystems[]` is empty). The agent runs the full 12-question discovery (3 rounds — identity / brand / pro-designer inputs), scaffolds `system/<name>/`, and writes `config.json` with `designSystems: [{ name, path, description }]`.
-- **additional-ds** — `config.json` exists and `<name>` is **not** in `designSystems[]`. The agent runs 11 questions + Q_purpose + inheritance picker, then scaffolds `system/<name>/` next to the existing DS.
-- **re-bootstrap** — `<name>` already exists in `designSystems[]` AND `--force` was passed. The agent pre-fills 12 questions with the current values and re-generates affected files.
+- **first-bootstrap** — `.design/config.json` does not exist (or `designSystems[]` is empty). The skill runs **3-stage discovery** (Stage 0 scope picker → Stage 1 vision prompts → Stage 2 research → Stage 3 refinement), scaffolds `system/<name>/`, writes `config.json` with `designSystems: [{ name, path, description }]`.
+- **additional-ds** — `config.json` exists and `<name>` is **not** in `designSystems[]`. The skill runs the same 3 stages plus a Q_purpose prompt at the start and an inheritance picker between Stage 2 and Stage 3.
+- **re-bootstrap** — `<name>` already exists in `designSystems[]` AND `--force` was passed. Stage 1 is lossy-inferred from the existing DS README + tokens + `_layout.css`; user confirms / corrects in a single chat message; Stage 2 always re-runs; Stage 3 + Confirm proceed identically.
 
 This command **does NOT create a canvas** — use `/design:new` for that. It also does NOT prepare the project environment (deps, CLAUDE.md, .ai/) — that's `/design:init`'s job.
 
 ## Arguments
 
 - `<name>` — required. Kebab-case slug (`marketing`, `admin`, `consumer-mobile`, …). For the first DS in a single-DS project, the literal value `project` is the conventional default.
-- `<brief>` — optional. One-line description used to pre-answer Q1 (first-bootstrap) or Q_purpose (additional-ds). If absent, the skill asks the question interactively. **A rich brief (a paragraph naming references + audience + voice) materially lowers the discovery round count** — strong briefs get pre-filled Recommended options that the user just confirms.
+- `<brief>` — optional. If absent, Stage 1 asks all 11 prompts. If present, the skill pre-fills the matching `vision-brief.json` fields (typically P1 elevator pitch, sometimes P5 lineage / P10 OST hypothesis) and prints a one-line `→ Skipping P<N> (covered in brief)` per skipped prompt so the user can correct misfires.
 - `--force` — required for re-bootstrap of an existing DS. Without it, an existing-DS target produces an error pointing at the right verb (`/design:edit` for incremental change, `/design:setup-ds <new-name>` to add a sibling DS).
-- `--quick` — opt out of Round 3 (pro-designer inputs). Discovery falls back to the 8-Q baseline. Output is structurally valid but typically scores ~3.5/5 aspiration instead of the 4.0+/5 the 12-Q flow targets. Use when scaffolding a throwaway DS or when the user explicitly wants the fast path.
+- `--quick` — opt out of Stage 1's full 11 prompts. The skill collapses Stage 1 to 4 prompts (P1 elevator + P5 lineage + P8 primary emotion + P10 OST hypothesis) and runs Stage 2 + Stage 3 normally. Output is structurally valid but typically scores ~3.5/5 aspiration instead of the 4.0+/5 the full 3-stage flow targets. Use when scaffolding a throwaway DS or when the user explicitly wants the fast path.
 
 ## Examples
 
 ```
-/design:setup-ds project "<one-line description of what this project / tool / product is, who it's for, and what reading mode (long-form vs. dense-pro vs. consumer-friendly)>"
-/design:setup-ds marketing "<one-line description of the marketing surface — audience, primary action, channel>"
+/design:setup-ds project "Je to recept manager kde nastavíš počet porcí a on přepočítá ingredience. Pro mě a 3 kamarády. Chci aby to vypadalo jako kuchařka z 80s, ne jako moderní food app s velkými fotkami."
+/design:setup-ds marketing "<paragraph describing what this marketing surface is for, the audience, the primary action, voice direction>"
 /design:setup-ds admin --force                                          # re-bootstrap
-/design:setup-ds quickdraft "<one-line description>" --quick            # skip Round 3
+/design:setup-ds quickdraft "<one-paragraph brief>" --quick             # collapse Stage 1 to 4 prompts
 ```
 
-**Brief content guidance — what helps the research agent, what biases it:**
-- ✅ Domain (`recipe management`, `match-day scouting`, `lab-equipment scheduling`), audience hypothesis, primary reading mode, platform hypothesis, voice direction in abstract terms (`terse / warm-editorial / formal`).
-- ❌ Do NOT name reference products in the brief (e.g. `vibe: <BrandA> × <BrandB> warmth × <BrandC> canvas`). Brand-name briefs short-circuit the research agent's job and re-introduce the bias the agent exists to fix. The agent's job is to *discover* references for your domain — give it the domain, let it surface the references.
+**Brief content guidance:**
+- Stage 1 of discovery is conversational — the skill leads you through 11 small prompts, each with an example. You don't need to know anything in advance.
+- If `<brief>` is just a one-liner, it pre-fills P1 only; the remaining 10 prompts get asked.
+- If `<brief>` is a paragraph, the skill pattern-matches lineage / OST / audience cues and skips the corresponding Stage 1 prompts (each skip is printed inline so you can correct). Stages 2 + 3 always run.
+- No Pastier vocabulary required — the skill handles the internal mapping to his chapters silently.
 
 ## Process
 
@@ -68,7 +70,7 @@ mode: bootstrap
 target_ds: <name>
 brief:     <brief or empty>
 force:     true|false
-quick:     true|false           # --quick → skip Round 3, fall back to 8-Q baseline
+quick:     true|false           # --quick → collapse Stage 1 to 4 prompts
 ```
 
 The skill detects the sub-mode internally (first-bootstrap / additional-ds / re-bootstrap) based on `.design/config.json` state.
@@ -78,15 +80,15 @@ The skill detects the sub-mode internally (first-bootstrap / additional-ds / re-
 See `plugins/design/skills/design-system/SKILL.md` "Bootstrap flow" for the canonical spec. Briefly:
 
 1. Pre-Flight (light) — node ≥ 20, git, write permission, config exists (else auto-onboard).
-2. Discovery — **3 rounds** of AskUserQuestion (4 Qs each): identity → brand → pro-designer inputs. `--quick` skips Round 3.
-3. Confirm direction — **3-sentence echo** (one per round); user yes / corrects / retries affected round.
-4. Mapping — consult `_MAPPING.md` for file set, `activeFamilies[]`, and per-file `dependency_closure` (drives batching).
+2. Discovery — **3 stages** (DDR-033). Stage 0 = single AskUserQuestion (scope). Stage 1 = 11 plain-prose prompts in 3 batches, free-text + skip. Stage 2 = `ux-research-agent` runs on the full `vision-brief.json`, ~30–90s wall-clock. Stage 3 = adaptive 0–N AskUserQuestion picks driven by per-decision research confidence. `--quick` collapses Stage 1 to 4 prompts.
+3. Confirm — **3-sentence echo** (one per stage); on "něco upravit" return to Stage 3 (not Stage 1).
+4. Mapping — consult `_MAPPING.md` for file set, `activeFamilies[]`, per-file `dependency_closure` (drives batching).
 5. **Pre-scaffold roster** — emit `_history/_system/000-scaffold-roster.yaml` listing every file with `batch: A|B|C` + `status: pending`.
 6. **Scaffold (fan-out)** — Batch A by main agent (tokens + chrome + READMEs + config); Batches B + C **fired in parallel via sub-agents** (5–8 slices). Sub-agents read tokens CSS + chrome + reference template, then RESTRUCTURE per the creativity rubric. Each updates its rows to `status: written`.
 7. Reconcile — main agent reads roster, asserts no pending rows remain.
 8. Copy-claim → asset-receipt sweep, then auto-run completeness-critic.
 9. Visual sanity — 3 signature specimen screenshots via `dev-server/bin/screenshot.sh`.
-10. **Aesthetic critic panel** — signature-moment + graphic-design + typography + copy fired in parallel on signature specimens. Honest verdicts surface in the completion block.
+10. **4 kola značky panel** — Kolo 1 (Srozumitelnost: completeness + a11y) → Kolo 2 (Atraktivita: graphic-design + signature-moment) → Kolo 3 (Konzistence: typography + brand + copy), fired in parallel where independent. Honest verdicts surface in the completion block.
 11. Post-flight — print next-step block.
 
 ### Step 4 — Return
