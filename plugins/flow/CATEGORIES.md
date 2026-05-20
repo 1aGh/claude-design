@@ -64,6 +64,7 @@ Called by the `/flow:validate` parent or directly when you want only one check.
 | ------- | ----------- | --------------- |
 | `/flow:validate-a11y` | Accessibility audit (WCAG 2.1 AA). | Touching UI or forms. |
 | `/flow:validate-visual` | Visual regression check with screenshots. | Touching layout/tokens. |
+| `/flow:validate-security` | OWASP-class + adversarial review of the diff. Spawns `security-auditor` + `ethical-hacker`. | Touching auth, payments, untrusted input, dependencies, or MCP/model surface. |
 
 ### bug — incident workflow
 

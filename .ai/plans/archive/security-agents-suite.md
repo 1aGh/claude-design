@@ -341,3 +341,15 @@ Not applicable — this is a plugin-internal addition (markdown + schema). No UI
 - [ ] `CATEGORIES.md` lists `/flow:validate-security` under `validate`.
 - [ ] No DDR-worthy decision left unrecorded — this addition touches the plugin's public surface; a one-page DDR ("Why a defender + attacker pair instead of a single auditor") would be reasonable, but is optional given the rationale is captured in the agent file headers.
 - [ ] Convention compliance: every new file's `name:` frontmatter is fully-qualified (`flow:<slug>`) per [DDR-006](../decisions/DDR-006-plugin-namespace-in-name-frontmatter.md).
+
+---
+
+## Retro
+
+- **Plan was load-bearing for execution speed.** Each task spelled out file paths, patterns to mirror, validation greps, gotchas — `/flow:execute` ran end-to-end with zero ambiguity. Worth keeping this density on plans that mostly extend an existing pattern (a11y → security here).
+- **Mirroring an existing skill+agent+command quartet works.** The `a11y-rules` / `a11y-auditor` / `validate-a11y` / `validate.md` step-5 shape ported cleanly to security. Plan-level pattern lift saved hours over inventing a shape.
+- **The "demand creativity, refuse checklist-only" persona prompt is the differentiator** for `ethical-hacker`. Anti-patterns explicitly reject checklist-shaped output; mandatory AI/MCP section means trifecta gets considered every review even when "N/A". This is the part of the plan that mattered most.
+- **One DDR landed where the plan said it was optional.** DDR-030 was upgraded from "would be reasonable" to "yes, write it" — defender/attacker split is the kind of structural choice future maintainers will want context on, and the cost of writing it once is low.
+- **Live smoke (plan Task 12) was deferred** — running `/flow:validate-security` in a scratch project via marketplace reload is interactive, not autonomous-execute friendly. Track as a manual follow-up before the next release; if it surfaces a fix, that's a small follow-up commit.
+- **For next /plan**: when a plan touches public plugin surface AND introduces a config-schema change, default to "yes write a DDR" rather than "optional". The DDR cost is low; the future-context payoff is high.
+

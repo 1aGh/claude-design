@@ -224,6 +224,30 @@
         }
       }
     },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Security review knobs. security-auditor + ethical-hacker subagents read these. Skip the whole pass with skills.securityRules.enabled = false.",
+      "properties": {
+        "severityFloor": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "critical"],
+          "default": "medium",
+          "description": "Lowest severity that blocks /flow:validate step 6.5 and /flow:validate-security. Findings below this rate as warnings, not blockers."
+        },
+        "scope": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["classic", "ai", "supply-chain"] },
+          "default": ["classic", "ai", "supply-chain"],
+          "description": "Which rule families to evaluate. Drop \"ai\" if the project has no model / MCP surface; drop \"supply-chain\" for projects with no third-party deps."
+        },
+        "includeAi": {
+          "type": "boolean",
+          "default": true,
+          "description": "Shortcut to enable/disable §B AI-era rules in security-rules skill. When false, ethical-hacker still threat-models classic surface but the mandatory AI/MCP section reads \"N/A — disabled by config\"."
+        }
+      }
+    },
     "skills": {
       "type": "object",
       "additionalProperties": false,
@@ -253,6 +277,30 @@
           "type": "object",
           "properties": { "enabled": { "type": "boolean", "default": true } },
           "additionalProperties": false
+        },
+        "securityRules": {
+          "type": "object",
+          "properties": { "enabled": { "type": "boolean", "default": true } },
+          "additionalProperties": false
+        },
+        "coverageTrend": {
+          "type": "object",
+          "description": "Optional coverage-trend warning in /flow:validate. Opt-in — disabled by default, because not every project has a stable coverage signal worth gating on. When enabled, /flow:validate parses the current run's coverage and compares against `.ai/state/coverage-baseline.json`; a drop greater than `warnThresholdPp` percentage points emits a soft warning (never blocks). Baseline is refreshed by /flow:done after a green run.",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "warnThresholdPp": {
+              "type": "number",
+              "description": "Percentage-point drop that triggers the warning. e.g. `1.0` means a 1-point drop (78% → 77%) warns.",
+              "default": 1.0,
+              "minimum": 0
+            },
+            "baselineBranch": {
+              "type": "string",
+              "description": "Branch whose coverage is considered authoritative. /flow:done writes the baseline only when the active branch matches this value (typically `main`).",
+              "default": "main"
+            }
+          }
         }
       }
     },

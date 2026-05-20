@@ -1,0 +1,128 @@
+---
+name: flow:validate-security
+category: validate
+type: command
+description: Security review — spawns security-auditor + ethical-hacker subagents, aggregates report, gates on severityFloor
+keywords: [security, owasp, prompt-injection, mcp, threat-model, audit, hacker, llm-top-10]
+argument-hint: "[--since <ref>] [--include-ai | --no-ai]"
+---
+
+# /flow:validate-security — security review
+
+Run a focused security pass over the diff. Defender (`security-auditor`) catches OWASP-class findings against changed files; attacker (`ethical-hacker`) threat-models the change, hunts chained exploits, and covers AI/MCP attack surface (prompt injection, MCP tool poisoning, confused-deputy, the trifecta). Both run **in parallel**; outputs aggregate to a single report.
+
+This is the standalone sibling of `/flow:validate-a11y` and `/flow:validate-visual`. The full `/flow:validate` runs this as step 6.5.
+
+## When to run
+
+- Touching auth, authZ, payments, file uploads, parsers, deserialisation, shell calls, query builders.
+- Adding or upgrading a dependency.
+- Adding, modifying, or removing an MCP server.
+- Touching model prompts, tool definitions, agent loops, function calls.
+- Before `/flow:done` on any change with an external trust boundary.
+
+## Pre-flight
+
+1. Read `.ai/workflows.config.json`:
+   - `skills.securityRules.enabled` (default `true`) — if `false`, exit early with a notice.
+   - `security.severityFloor` (default `medium`) — gate threshold.
+   - `security.scope` (default `["classic", "ai", "supply-chain"]`) — narrow rule families.
+   - `security.includeAi` (default `true`) — when `false` or when `--no-ai` arg passed, attacker's AI/MCP section becomes `N/A — disabled by config`.
+2. Determine diff scope:
+   ```bash
+   BASE="$(git merge-base main HEAD 2>/dev/null || git merge-base origin/main HEAD 2>/dev/null || echo HEAD~1)"
+   # honor --since <ref> arg if provided
+   git diff --name-only "$BASE"...HEAD
+   git diff --name-only                    # uncommitted too
+   ```
+   If diff is empty → print `"No changes to review."` and exit.
+
+## Run protocol
+
+**Spawn `security-auditor` and `ethical-hacker` in parallel.** Use a single message with two Task tool calls so they run concurrently. Both consume the same diff scope.
+
+```
+Task tool → subagent_type: security-auditor
+prompt: "Audit the diff against `security-rules` §A.
+         Diff base: <BASE>. Severity floor: <floor>.
+         Write report to .ai/logs/security-reviews/<branch>-<ts>-defender.md.
+         Return JSON output block."
+
+Task tool → subagent_type: ethical-hacker
+prompt: "Adversarial threat model for the diff.
+         Diff base: <BASE>. Severity floor: <floor>. includeAi: <bool>.
+         Defender report (if present): <path>.
+         Write report to .ai/logs/security-reviews/<branch>-<ts>-attacker.md.
+         Return JSON output block. Mandatory AI/MCP section."
+```
+
+Both agents must complete even if one finds blockers — the attacker's chain-finding pass sometimes promotes a defender medium into a chained critical.
+
+## Aggregate
+
+Write `.ai/logs/security-reviews/<branch>-<YYYYMMDD-HHMM>.md`:
+
+```markdown
+# Security review — <branch> @ <commit>
+
+## TL;DR
+| Lane | Blockers | Warnings | Headline |
+| ---- | -------- | -------- | -------- |
+| Defender | <N> | <M> | <highest-severity finding or "clean"> |
+| Attacker | <N> | <M> | <strongest chain or creativity finding> |
+| Combined | <N> | <M> | <gate decision> |
+
+- Severity floor: `<floor>`
+- AI/MCP lens: <on / off>
+- Exploit chains constructed: <K>
+- AI/MCP surface touched: <yes / no>
+
+## Defender findings — OWASP-class
+<defender report content or link>
+
+## Attacker findings — adversarial threat model
+<attacker report content or link>
+
+## Exploit chains
+<list, each with steps and promoted severity>
+
+## AI / MCP attack surface
+<attacker's mandatory section>
+
+## Combined gate decision
+- Blockers at severity >= <floor>: <N>
+- Verdict: **PASS** / **PASS WITH WARNINGS** / **FAIL**
+
+## Next step
+<if FAIL: which specific finding to fix first; if PASS WITH WARNINGS: should-fix list; if PASS: continue to /flow:review-code or /flow:done>
+```
+
+## Gate
+
+- `combined.blockers > 0 && severity >= severityFloor` → **FAIL**. Print the top finding inline and exit non-zero.
+- `ethical-hacker.exploit_chains > 0` is informational by itself; a chain that promotes a defender-medium into a chained high → counts as a blocker.
+- Otherwise → **PASS** (with or without warnings).
+
+## Output to the user
+
+```
+## /flow:validate-security — <YYYY-MM-DD HH:MM>
+Defender: <N> blockers, <M> warnings — .ai/logs/security-reviews/<branch>-<ts>-defender.md
+Attacker: <N> blockers, <M> warnings, <K> chains — .ai/logs/security-reviews/<branch>-<ts>-attacker.md
+AI/MCP: <on/off> — surface touched: <yes/no>
+Aggregate: .ai/logs/security-reviews/<branch>-<ts>.md
+Verdict: PASS / PASS WITH WARNINGS / FAIL
+```
+
+If FAIL: prompt _"Found <N> blockers. Should I open the report and propose fixes?"_
+
+## What /flow:validate-security does NOT do
+
+- Run exploits. The attacker thinks on paper.
+- Edit code. Both agents are read-only by contract.
+- Re-scan history. Diff scope is the active change (or `--since <ref>` if supplied).
+- Block on warnings alone. The floor is the floor.
+
+## Reusing a fresh report
+
+If `.ai/logs/security-reviews/<branch>-*.md` exists for the current HEAD SHA (within the last hour and HEAD unchanged), reuse it instead of re-running. `/flow:review-code` and `/flow:validate` step 6.5 honor the same reuse window.

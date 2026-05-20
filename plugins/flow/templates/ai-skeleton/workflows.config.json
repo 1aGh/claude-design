@@ -51,12 +51,18 @@
     "responseTargetMs": 100,
     "bilingual": []
   },
+  "security": {
+    "severityFloor": "medium",
+    "scope": ["classic", "ai", "supply-chain"],
+    "includeAi": true
+  },
   "skills": {
     "motionRules": { "enabled": true },
     "responsiveRules": { "enabled": true },
     "a11yRules": { "enabled": true },
     "testingRules": { "enabled": true },
-    "debuggingRules": { "enabled": true }
+    "debuggingRules": { "enabled": true },
+    "securityRules": { "enabled": true }
   },
   "integrations": {
     "tracker": { "provider": "none" },

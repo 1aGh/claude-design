@@ -40,7 +40,7 @@ Walk through `## Decisions to record` in the plan. For each unrecorded item run 
 
 Run `/flow:review-code` on uncommitted changes. This version sequences:
 
-1. Audit pass — finds correctness / quality / security / convention findings.
+1. Audit pass — finds correctness / quality / convention findings; `security-auditor` + `ethical-hacker` cover security (defender + attacker reports land in `.ai/logs/security-reviews/`; `/flow:review-code` reuses them if fresh for HEAD).
 2. `code-simplifier` subagent pass — auto-fixes stylistic issues (clarity, nesting, naming).
 3. Recheck — re-run static checks + affected tests. If the simplifier broke something, revert.
 

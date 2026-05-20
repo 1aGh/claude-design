@@ -51,6 +51,13 @@ For every modified file, read it and check:
 
 ### Security
 
+**Spawn `security-auditor` and `ethical-hacker` subagents in parallel.** The defender runs an OWASP-class pass over the diff (injection, secrets, authN/Z, crypto, SSRF, XSS, deserialization, path traversal, supply chain). The attacker threat-models for chained exploits and **AI/MCP attack surface** — prompt injection in tool outputs, MCP tool poisoning, confused-deputy across MCPs, the trifecta (private data + untrusted content + outbound channel in one agent loop). Reports aggregate to `.ai/logs/security-reviews/<branch>-<ts>.md`.
+
+If a fresh report already exists for the current HEAD (e.g. the user just ran `/flow:validate-security` or `/flow:validate`), **reuse it** instead of re-spawning — the file mtime is the cache key.
+
+**Gate the commit when any finding lands at severity ≥ `security.severityFloor`** (default `medium`). Below the floor → warnings carried into the review summary, not a hard block.
+
+Quick manual cross-checks (defender catches these already, listed for the reviewer's eye):
 - No hardcoded secrets, tokens, or API keys
 - Input validation where needed
 - No SQL injection vectors

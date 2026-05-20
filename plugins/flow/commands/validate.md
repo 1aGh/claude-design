@@ -23,6 +23,27 @@ Run in this order. **Stop on first hard fail**, accumulate soft warnings.
 - Unit + integration: full suite
 - Coverage report (just report, don't block on threshold)
 
+#### 2a. Coverage-trend warning (opt-in, non-blocking)
+
+> Soft gate. Reads `skills.coverageTrend` from `.ai/workflows.config.json`. Default `enabled: false` — skip silently.
+
+When `skills.coverageTrend.enabled` is `true` **and** the runner emits a parseable coverage summary:
+
+1. Extract the project-level line coverage as a percentage (parse from `vitest --coverage` / `jest --coverage` / `pytest --cov` / `go test -cover` output — the same line the report shows as `coverage: 78%`).
+2. Read `.ai/state/coverage-baseline.json` if it exists:
+   ```json
+   { "coverage": 78.4, "recordedAt": "2026-05-12", "branch": "main" }
+   ```
+3. Compute `delta = current - baseline.coverage` (negative = drop).
+4. **If `-delta > skills.coverageTrend.warnThresholdPp`** (default `1.0` pp) → emit warning in the Step 8 report:
+   ```
+   ⚠ coverage trend: 78.4% → 76.8% (Δ -1.6 pp, threshold 1.0 pp) — review changed files via flow:test-coverage
+   ```
+   **Never** promote to a blocker — Step 2 is explicit that coverage doesn't block on threshold. If the team wants a hard gate, that requires its own DDR.
+5. **If no baseline exists** → record current as the baseline silently. No warning on the first run. Note in the report: `coverage baseline established (<value>%)`.
+
+Baseline refresh is handled by `/flow:done` (only on the `baselineBranch`, default `main`), not here — `/validate` runs on feature branches too and a feature-branch drop is exactly what the warning is for.
+
 ### 3. Build
 - Production build for each app/package from `.ai/context/codebase-map.md`
 - Bundle size delta if tooling is available (`size-limit`, `bundlewatch`)
@@ -60,6 +81,19 @@ Run in this order. **Stop on first hard fail**, accumulate soft warnings.
 
 The subagent **must use screenshots from the scenario report** as primary evidence (not just grep static analysis), because the scenario provides rendered cross-platform proof.
 
+### 6.5 Security
+
+**Spawn the `security-auditor` and `ethical-hacker` subagents in parallel.** The defender catches OWASP-class findings against changed files (injection, secrets, authN/Z, crypto, SSRF, XSS, deserialization, path traversal, supply chain, logging, error handling). The attacker threat-models the change for chained exploits and **AI/MCP attack surface** — prompt injection in tool outputs, confused-deputy across MCP servers, the trifecta (private data + untrusted content + outbound exfil in one agent loop), tool-description injection in newly added MCP servers. Reports aggregate to `.ai/logs/security-reviews/<branch>-<ts>.md`.
+
+**Gate:**
+
+- Any finding at severity ≥ `security.severityFloor` (default `medium`) → `/flow:validate` fails.
+- Skip the AI/MCP lens when `security.includeAi: false` in config (e.g. backend-only services with no model surface). The defender pass still runs.
+- `ethical-hacker.exploit_chains > 0` is informational by itself, never a blocker — **but** a chain that combines a medium defender finding with a medium attacker finding promotes to high and counts as a blocker.
+- Reuses a fresh report (`.ai/logs/security-reviews/<branch>-*.md` within last hour, same HEAD) instead of re-running.
+
+Skip the whole step when `skills.securityRules.enabled: false`.
+
 ### 7. Doc / decision drift
 
 - Active plan without a `## Retro` section after `/done`? Flag.
@@ -92,6 +126,8 @@ For multi-commit branches use `git merge-base main HEAD` as the diff base instea
 ## /validate — <YYYY-MM-DD HH:MM>
 ✓ types | ✓ lint | ✓ format
 ✓ tests: 142/142 (coverage: 78%)
+   → trend: 78.4% → 78.0% (Δ -0.4 pp, threshold 1.0 pp) — within tolerance
+   (omitted when skills.coverageTrend.enabled = false)
 ✓ build: 3 apps OK (bundle delta: +2.1 KB on web)
 ✓ scenario: <name> 5/5 PASS
    → report: .ai/device/scenario-runs/<name>/2026-05-04-1830/report.md
