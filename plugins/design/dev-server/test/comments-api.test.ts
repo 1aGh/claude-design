@@ -149,9 +149,7 @@ describe('Phase 6 — comments author + thread + mentions', () => {
       expect(new Set(updated.mentions)).toEqual(new Set(['@ada', '@lin']));
 
       // Persisted to disk in the v2 shape.
-      const onDisk = JSON.parse(
-        readFileSync(join(designRoot, '_comments', 'ui-bar.json'), 'utf8')
-      );
+      const onDisk = JSON.parse(readFileSync(join(designRoot, '_comments', 'ui-bar.json'), 'utf8'));
       expect(onDisk[0].thread).toHaveLength(1);
       expect(onDisk[0].thread[0].body).toBe('fixed in next pass @lin');
       expect(new Set(onDisk[0].mentions)).toEqual(new Set(['@ada', '@lin']));

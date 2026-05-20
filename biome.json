@@ -64,5 +64,20 @@
         "noUnusedVariables": "warn"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "include": ["plugins/design/dev-server/comments-overlay.tsx"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "useSemanticElements": "off",
+            "noNoninteractiveElementToInteractiveRole": "off",
+            "useKeyWithClickEvents": "off",
+            "useFocusableInteractive": "off"
+          }
+        }
+      }
+    }
+  ]
 }

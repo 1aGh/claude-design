@@ -8,14 +8,7 @@
     "type": "git",
     "url": "git+https://github.com/1aGh/maude.git"
   },
-  "os": [
-    "win32"
-  ],
-  "cpu": [
-    "x64"
-  ],
-  "files": [
-    "maude.exe",
-    "README.md"
-  ]
+  "os": ["win32"],
+  "cpu": ["x64"],
+  "files": ["maude.exe", "README.md"]
 }

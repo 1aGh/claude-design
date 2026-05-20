@@ -256,8 +256,9 @@ export function CommentsOverlay(): React.ReactNode {
   useEffect(() => {
     if (typeof document === 'undefined') return;
     const onOpen = (e: Event) => {
-      const detail = (e as CustomEvent<{ selection?: ComposeSelection; clientX?: number; clientY?: number }>)
-        .detail;
+      const detail = (
+        e as CustomEvent<{ selection?: ComposeSelection; clientX?: number; clientY?: number }>
+      ).detail;
       if (!detail || !detail.selection) return;
       setComposer({
         selection: detail.selection,
@@ -319,7 +320,7 @@ export function CommentsOverlay(): React.ReactNode {
         if (Array.isArray(data.comments)) {
           // Only set when we haven't received a shell broadcast yet; the
           // shell is authoritative once it kicks in.
-          setComments((prev) => (prev.length === 0 ? data.comments ?? [] : prev));
+          setComments((prev) => (prev.length === 0 ? (data.comments ?? []) : prev));
         }
       } catch {
         /* offline / dev-server restart — silently no-op */
@@ -414,11 +415,7 @@ export function CommentsOverlay(): React.ReactNode {
         );
       })}
       {composer ? (
-        <CommentComposer
-          state={composer}
-          onSubmit={submitComposer}
-          onCancel={closeComposer}
-        />
+        <CommentComposer state={composer} onSubmit={submitComposer} onCancel={closeComposer} />
       ) : null}
       {(() => {
         if (!focusedId) return null;
@@ -651,14 +648,12 @@ function MentionAwareTextarea({
       {/* Combobox pattern — `role="listbox"` + `role="option"` is the canonical
        * ARIA shape for a single-select autocomplete. Keyboard navigation
        * (↑ ↓ Enter Esc) lives on the parent textarea per the combobox spec,
-       * so the popup itself stays inert. Biome's a11y rules want us to use a
-       * semantic interactive element, but no such HTML primitive matches
-       * "non-focusable listbox under a textarea" — the suppressions below
-       * mirror the WAI-ARIA combobox-with-listbox-popup recipe. */}
+       * so the popup itself stays inert. Same pattern applies to the composer
+       * + thread popovers below (`role="dialog"` on a positioned <div>).
+       * Biome's a11y rules want semantic HTML primitives, but none match
+       * "non-focusable listbox under a textarea" or "anchored non-modal popover".
+       * The four affected rules are scoped off for this file in biome.json. */}
       {token && filtered.length > 0 ? (
-        // biome-ignore lint/a11y/useFocusableInteractive: see combobox comment above
-        // biome-ignore lint/a11y/useSemanticElements: see combobox comment above
-        // biome-ignore lint/a11y/noNoninteractiveElementToInteractiveRole: see combobox comment above
         <ul
           className="cm-mention-popup"
           role="listbox"
@@ -668,10 +663,6 @@ function MentionAwareTextarea({
           {filtered.map((c, i) => {
             const selected = i === highlight;
             return (
-              // biome-ignore lint/a11y/useFocusableInteractive: combobox option — focus stays on the parent textarea
-              // biome-ignore lint/a11y/useSemanticElements: see listbox above — listbox/option shape
-              // biome-ignore lint/a11y/noNoninteractiveElementToInteractiveRole: see listbox above
-              // biome-ignore lint/a11y/useKeyWithClickEvents: Enter / Tab handled in parent textarea's onKeyDown
               <li
                 key={`${c.name}-${c.email}`}
                 role="option"

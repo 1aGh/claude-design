@@ -128,10 +128,7 @@ export interface Api {
   commentsAdd(payload: Partial<Comment> & { file: string; text: string }): Promise<Comment | null>;
   commentsPatch(id: string, patch: Partial<Comment>): Promise<Comment | null>;
   commentsDelete(id: string): Promise<boolean>;
-  commentsAddReply(
-    id: string,
-    payload: { body: string; author?: string }
-  ): Promise<Comment | null>;
+  commentsAddReply(id: string, payload: { body: string; author?: string }): Promise<Comment | null>;
   gitCommitters(): Promise<GitCommitter[]>;
   parseMentions(text: string): string[];
   // Canvas state

@@ -8,14 +8,7 @@
     "type": "git",
     "url": "git+https://github.com/1aGh/maude.git"
   },
-  "os": [
-    "darwin"
-  ],
-  "cpu": [
-    "x64"
-  ],
-  "files": [
-    "maude",
-    "README.md"
-  ]
+  "os": ["darwin"],
+  "cpu": ["x64"],
+  "files": ["maude", "README.md"]
 }

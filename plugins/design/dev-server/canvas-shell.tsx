@@ -37,12 +37,12 @@ import {
 } from 'react';
 
 import { AnnotationsLayer } from './annotations-layer.tsx';
-import { CommentsOverlay } from './comments-overlay.tsx';
 import {
   SnapGuideOverlay,
   type ViewportControllerHandle,
   useViewportControllerContext,
 } from './canvas-lib.tsx';
+import { CommentsOverlay } from './comments-overlay.tsx';
 import {
   ContextMenuProvider,
   type ContextRegistry,

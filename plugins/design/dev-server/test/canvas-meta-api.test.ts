@@ -24,16 +24,6 @@ interface MetaShape {
   [k: string]: unknown;
 }
 
-function seedCanvas(designRoot: string, name = 'Phase4.tsx', meta?: MetaShape): string {
-  const ui = join(designRoot, 'ui');
-  mkdirSync(ui, { recursive: true });
-  const tsxPath = join(ui, name);
-  writeFileSync(tsxPath, 'export default function P(){return <main/>}\n');
-  const metaPath = tsxPath.replace(/\.tsx$/, '.meta.json');
-  if (meta) writeFileSync(metaPath, JSON.stringify(meta, null, 2));
-  return tsxPath.replace(`${designRoot.replace(/\.design$/, '')}`, '').replace(/^\/+/, '');
-}
-
 function repoRel(designRoot: string, abs: string): string {
   // designRoot ends in `.design`. repoRoot is its parent.
   const repoRoot = designRoot.replace(/\.design$/, '').replace(/\/+$/, '');
