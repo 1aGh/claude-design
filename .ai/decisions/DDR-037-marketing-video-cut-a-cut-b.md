@@ -199,6 +199,73 @@ When v2 executes:
 - QA → loudnorm → site embed → README → publish-size guard.
 - `gh release create` deferred to user.
 
-## v2 execution log
+## v2.1 refinements (added 2026-05-20, second feedback round)
 
-(Appended during v2 execution — Task 24 of the plan.)
+User added four more constraints after the v2 plan landed:
+
+### a. Real maude in the sandbox (not all-fixture)
+
+`/design:new` and `/design:edit` must actually execute against the
+scratch dir during recording, with both the Claude TUI side (VHS) and
+the dev-server iframe side (Playwright) captured concurrently and
+composited as a `<SplitScreenFrame>`. The viewer sees cause-and-effect
+side by side.
+
+`/design:setup-ds` stays as a dry-run capture (questionary kickoff
+only, no completion) — its output is not used. DS is copied from this
+repo's `.design/system/project/`.
+
+### b. Single perfect cut, length flexible
+
+Drop the Cut A / Cut B split. One ~90 s cut, same MP4 embedded on
+landing AND linked from README. Length cap is the 16 MB site
+autoplay budget, not a wall-clock target.
+
+### c. Visual verification loop baked into the plan
+
+Per-scene intent checks (must-be-visible content per mid-frame) +
+named affordance hard-checks (inspector halo at 3 dwell timestamps,
+comments pin OR composer, install scene no-error frames, docs scene
+no-blank-paint frame, split-screen both-halves-rendered). Max 3 reshoots
+per scene before escalating.
+
+### d. Voice alignment to site + `.design`
+
+Captions + benefit-card copy rewritten in the catalog-spine + Bear-Blog
+dry-grin voice canonicalized in `.design/system/project/README.md`
+§ Voice. Two cards deliberately echo site copy verbatim:
+
+- Card B subline = site hero's "Two plugins, one CLI, some vibes."
+- Card D subline = site fine-print's "No telemetry. No signup. No
+  book a demo button."
+
+The echoes are deliberate — viewers landing on the docs after the
+video get a callback hit on phrases they've already read.
+
+Final caption strings (verbatim, ASCII only):
+
+| Scene | String |
+|-------|--------|
+| install | `Install. Init. Serve.` |
+| tui-setup-ds | `Onboarding is a slash command.` |
+| ds-reveal | `Design system from a paragraph.` |
+| tui-new | `One slash. Real canvas, real code.` |
+| canvas-reveal | `Multi-artboard. Pan. Zoom. Ship.` |
+| canvas-hero | `Cmd+Click. The file Claude needs.` |
+| tui-edit | `Edit. Reload. Same canvas.` |
+| comments | `Comments anchored to pixels. No exports.` |
+| annotations | `Draw on the canvas. Hand it off.` |
+| docs | `Docs at maude.iagh.cz.` |
+
+Final benefit-card copy (headline / subline):
+
+| Card | Headline | Subline |
+|------|----------|---------|
+| local-figma | `Local Figma. For Claude Code.` | `Canvas-first iteration. In your repo. Under .design/.` |
+| all-in-one | `Plan. Design. Ship.` | `Two plugins, one CLI, some vibes.` |
+| human-ai | `Human reads. AI iterates.` | `Both sides speak the same canvas.` |
+| your-repo | `Your repo. Yours forever.` | `No telemetry. No signup. No book a demo button.` |
+
+## v2.1 execution log
+
+(Appended during v2.1 execution — Task 24 of the plan.)

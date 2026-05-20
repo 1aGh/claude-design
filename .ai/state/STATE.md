@@ -3,8 +3,8 @@
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
 **Workflow:** feature-delivery — Maude v1.0 roadmap
-**Phase:** Phase 15.5 v2 — Marketing demo video (rebuild after v1 retro)
-**Status:** ready (plan + storyboard + DDR + memory committed; awaiting /flow:execute phase 15.5)
+**Phase:** Phase 15.5 v2.1 — Marketing demo video (single perfect cut, real maude in sandbox, voice-aligned copy)
+**Status:** ready (v2.1 plan + storyboard + DDR + memory committed; awaiting /flow:execute phase 15.5)
 **Started:** 2026-05-20
 **Updated:** 2026-05-20
 **Active task:** —
@@ -14,14 +14,22 @@
 
 ### Active plan — phase-15.5-marketing-demo-video-30s.md (v2)
 
-v1 was executed in this session and discarded per user request (cuts judged "nudné" — too quiet, inspector flashing, install scene shipped a visible npm error, comments + annotations + Claude TUI surfaces missing). All v1 artifacts (captures, MP4s, Final.tsx changes, site embed, README markdown, scripts) were discarded. Learnings preserved as:
+v1 shipped 48s + 26s cuts judged "nudné." v2 prep added benefit cards + Claude TUI + annotations + split-screen HMR. v2.1 refinements (after second feedback round):
 
-- This plan, rewritten to v2 task list (24 tasks; pre-flight gate + 23 execution tasks + audit).
-- `scripts/video/storyboard.md` v2 — 15-scene Cut A (~75s) + 7-scene Cut B (~30s) with 4 benefit cards, Claude TUI scene, annotations scene, split-screen HMR.
-- `.ai/decisions/DDR-037-marketing-video-cut-a-cut-b.md` v2 — full v1 retro + production gotchas #4-9 + v2 decisions table.
-- `~/.claude/projects/-Volumes-D-git-claude-design/memory/feedback-marketing-video-production.md` — 10 cross-session production rules (bun-add not npm-i, Cmd+0 zoom-reset, frames-at-fps for startFrom, 1.5s dwell on affordances, etc).
+1. **Single perfect cut** (no Cut B) — ~90 s, length flexible.
+2. **Real maude in sandbox** — `/design:new` + `/design:edit` execute for real with split-screen capture (VHS Claude TUI ‖ Playwright dev-server iframe).
+3. **`/design:setup-ds` dry-run only** — questionary kickoff captured, no completion.
+4. **DS reused** from this repo's `.design/system/project/`.
+5. **Visual verification loop** baked into Task 20 — per-scene intent checks + named affordance hard-checks + max-3 reshoots-per-scene.
+6. **Copywriting voice-aligned** to site + `.design/system/project/README.md` § Voice. Captions + benefit cards rewritten. Two cards echo site copy verbatim ("Two plugins, one CLI, some vibes" + "No telemetry. No signup. No book a demo button.").
 
-To execute v2: `/flow:execute phase 15.5`.
+Preservation set (committed to git):
+- `.ai/plans/phase-15.5-marketing-demo-video-30s.md` v2.1 — 24 tasks, single cut, split-screen real-exec.
+- `scripts/video/storyboard.md` v2.1 — 16-scene table with intent checks + voice-aligned captions + voice-aligned card copy.
+- `.ai/decisions/DDR-037-marketing-video-cut-a-cut-b.md` — v1 retro + v2 + v2.1 sections.
+- `~/.claude/projects/-Volumes-D-git-claude-design/memory/feedback-marketing-video-production.md` — 10 cross-session rules.
+
+To execute v2.1: `/flow:execute phase 15.5`.
 
 ### Previous plan — phase-15.1-video-pipeline-infrastructure.md (done)
 
