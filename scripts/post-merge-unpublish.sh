@@ -12,8 +12,24 @@
 
 set -uo pipefail
 
-read -p "npm OTP (6 digits): " OTP
-[ -z "$OTP" ] && { echo "no OTP, aborting"; exit 1; }
+# Auth mode:
+#   1. NPM_TOKEN env var (Automation token from https://www.npmjs.com/settings/~/tokens)
+#      → bypasses 2FA entirely. No prompt.
+#   2. Interactive OTP prompt → falls back if NPM_TOKEN not set.
+
+if [ -n "${NPM_TOKEN:-}" ]; then
+  echo "Using NPM_TOKEN (Automation token, 2FA bypassed)"
+  NPM_RC=$(mktemp)
+  echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > "$NPM_RC"
+  trap 'rm -f "$NPM_RC"' EXIT
+  NPM_CMD=(npm --userconfig "$NPM_RC")
+  OTP_FLAG=()
+else
+  read -p "npm OTP (6 digits) — or set \$NPM_TOKEN to skip 2FA: " OTP
+  [ -z "$OTP" ] && { echo "no OTP, aborting"; exit 1; }
+  NPM_CMD=(npm)
+  OTP_FLAG=(--otp "$OTP")
+fi
 
 # Versions WITHIN 72h window → unpublish
 UNPUBLISH=(
@@ -55,14 +71,14 @@ DEPRECATE=(
 echo "=== unpublish (${#UNPUBLISH[@]} versions, all <72h) ==="
 for pkg in "${UNPUBLISH[@]}"; do
   echo "→ npm unpublish $pkg"
-  npm unpublish "$pkg" --otp "$OTP" 2>&1 | tail -3
+  "${NPM_CMD[@]}" unpublish "$pkg" "${OTP_FLAG[@]}" 2>&1 | tail -3
   echo ""
 done
 
 echo "=== deprecate older versions (${#DEPRECATE[@]} versions, all >72h) ==="
 for pkg in "${DEPRECATE[@]}"; do
   echo "→ npm deprecate $pkg"
-  npm deprecate "$pkg" 'Renamed to @1agh/maude. Run: npm i -g @1agh/maude' --otp "$OTP" 2>&1 | tail -3
+  "${NPM_CMD[@]}" deprecate "$pkg" 'Renamed to @1agh/maude. Run: npm i -g @1agh/maude' "${OTP_FLAG[@]}" 2>&1 | tail -3
   echo ""
 done
 
@@ -74,7 +90,7 @@ for pkg in @1agh/md-claude @1agh/md-claude-darwin-arm64 @1agh/md-claude-darwin-x
            @1agh/md-claude-linux-x64-musl @1agh/md-claude-linux-arm64-musl \
            @1agh/md-claude-win32-x64; do
   echo "→ npm deprecate '$pkg@*'"
-  npm deprecate "$pkg@*" 'Renamed to @1agh/maude. Run: npm i -g @1agh/maude' --otp "$OTP" 2>&1 | tail -2
+  "${NPM_CMD[@]}" deprecate "$pkg@*" 'Renamed to @1agh/maude. Run: npm i -g @1agh/maude' "${OTP_FLAG[@]}" 2>&1 | tail -2
 done
 
 echo ""
