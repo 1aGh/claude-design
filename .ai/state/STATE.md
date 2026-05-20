@@ -3,16 +3,27 @@
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
 **Workflow:** feature-delivery — Maude v1.0 roadmap
-**Phase:** Phase 15.1 — Video pipeline infrastructure
-**Status:** done
+**Phase:** Phase 15.5 v2 — Marketing demo video (rebuild after v1 retro)
+**Status:** ready (plan + storyboard + DDR + memory committed; awaiting /flow:execute phase 15.5)
 **Started:** 2026-05-20
 **Updated:** 2026-05-20
 **Active task:** —
-**Active plan:** —
+**Active plan:** phase-15.5-marketing-demo-video-30s.md (v2)
 
 ## Execution Progress
 
-### Active plan — phase-15.1-video-pipeline-infrastructure.md
+### Active plan — phase-15.5-marketing-demo-video-30s.md (v2)
+
+v1 was executed in this session and discarded per user request (cuts judged "nudné" — too quiet, inspector flashing, install scene shipped a visible npm error, comments + annotations + Claude TUI surfaces missing). All v1 artifacts (captures, MP4s, Final.tsx changes, site embed, README markdown, scripts) were discarded. Learnings preserved as:
+
+- This plan, rewritten to v2 task list (24 tasks; pre-flight gate + 23 execution tasks + audit).
+- `scripts/video/storyboard.md` v2 — 15-scene Cut A (~75s) + 7-scene Cut B (~30s) with 4 benefit cards, Claude TUI scene, annotations scene, split-screen HMR.
+- `.ai/decisions/DDR-037-marketing-video-cut-a-cut-b.md` v2 — full v1 retro + production gotchas #4-9 + v2 decisions table.
+- `~/.claude/projects/-Volumes-D-git-claude-design/memory/feedback-marketing-video-production.md` — 10 cross-session production rules (bun-add not npm-i, Cmd+0 zoom-reset, frames-at-fps for startFrom, 1.5s dwell on affordances, etc).
+
+To execute v2: `/flow:execute phase 15.5`.
+
+### Previous plan — phase-15.1-video-pipeline-infrastructure.md (done)
 
 - [x] T0: Gate — phase 15 smoke green
 - [x] T1: Install Remotion Agent Skills globally (~/.claude/skills/remotion-best-practices/, 36 rules)

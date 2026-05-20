@@ -1,105 +1,110 @@
-# Feature: Marketing demo video — real green-field onboarding (Cut A ~60s + Cut B 30s)
+# Feature: Marketing demo video v2 — bolder composition, real onboarding, infographic benefit cards
 
-> **Rewritten 2026-05-20 to align with phase 15.1 infrastructure.** The
-> v1 of this plan (archived at
-> [`archive/phase-15.5-marketing-demo-video-30s-v1-pre-15.1-alignment.md`](./archive/phase-15.5-marketing-demo-video-30s-v1-pre-15.1-alignment.md))
-> described building plumbing inline — `scripts/video/cards/`, `scripts/video/lib/*.sh`,
-> custom opacity-envelope cross-fades, Playwright at 1920×1080, etc. Phase 15.1
-> shipped all of that as proper infrastructure: a nested Remotion workspace at
-> `scripts/video/final/`, `<TransitionSeries>` for xfades, `<TerminalFrame>` /
-> `<BrowserChrome>` capture wrappers, `/flow:video-new-scene` scaffolder,
-> Playwright at 1280×720, `pnpm run qa` visual-QA workflow, golden-frame
-> regression. This rewrite assumes that infrastructure exists and ONLY composes
-> the real marketing content on top of it.
+> **v2 (rewritten 2026-05-20 after v1 retro).** The first execution of this
+> plan shipped a 48 s Cut A + 26 s Cut B that the user judged "nudné" — too
+> static, the inspector demo barely visible, the live-edit too quiet, the
+> docs scroll choppy, the install scene shipped a visible npm error, and
+> the comments + annotations + Claude TUI surfaces missing entirely.
 >
-> Filename retains `-30s` for git continuity; ignore the suffix.
-
-Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.
+> v2 fixes every flagged scene AND rewrites the storyboard to be more
+> marketing — interleaving 4 infographic benefit cards, capturing Claude
+> Code TUI showing the real `/design:setup-ds` discovery, and using a
+> split-screen composite for HMR. Pace is faster, composition bolder.
+>
+> v1 artifacts were discarded (per user "uplne zahodit dosavadni zmeny");
+> the **lessons** are preserved here, in [DDR-037](../decisions/DDR-037-marketing-video-cut-a-cut-b.md),
+> in the [storyboard](../../scripts/video/storyboard.md), and in the
+> project-memory file `feedback-marketing-video-production`.
+>
+> Plan filename keeps the `-30s` suffix from v1 for git continuity; ignore
+> the suffix (the actual cuts are ~75 s + ~30 s).
 
 ## Description
 
-Produce two MP4s — `site/public/demo.mp4` (Cut A, ~60 s, primary, embedded in
-the docs landing) and `site/public/demo-30s.mp4` (Cut B, 30 s, tight, GitHub
-README, < 10 MB cap) — by:
+Produce two MP4s — `site/public/demo.mp4` (Cut A, ~75 s, primary, embedded
+on the docs landing) and `site/public/demo-30s.mp4` (Cut B, ~30 s, tight,
+GitHub README via release asset) — by composing 15 (Cut A) / 7 (Cut B)
+scenes on top of the phase-15.1 infrastructure (nested workspace,
+`<TransitionSeries>`, `<TerminalFrame>` / `<BrowserChrome>` wrappers,
+`<LowerThird>` captions, golden-frame regression, visual QA workflow).
 
-1. **Bootstrapping a real green-field project** at
-   `/tmp/scratch-maude-demo-<date>/` and running the full lifecycle (`maude
-   init` → `/design:setup-ds` → `/design:new` → `/design:edit`) against it.
-   The marketing video captures the **resulting artifacts**, not the slash
-   commands themselves (the slash commands run inside Claude Code's TUI; the
-   viewer must never see them typed in a shell — that misrepresents how the
-   tool works).
-2. **One VHS terminal capture** covering the genuinely shell-visible part
-   (`npm i -g @1agh/maude && maude init --name recipe-recap && maude design serve`),
-   using the canonical tape pattern from
-   [`scripts/video/tapes/_TEMPLATE.tape`](../../scripts/video/tapes/_TEMPLATE.tape).
-3. **Per-scene Playwright captures** against the scratch dev-server on port
-   4400 (separate from this repo's 4399 instance) — DS preview reveal,
-   canvas reveal, Cmd+Click inspector, HMR reload, comments overlay, docs.
-4. **Assembly via the existing `<Final>` composition** at
-   `scripts/video/final/src/compositions/Final.tsx` — extended with the real
-   scene list + Cut B sibling (`Final30.tsx`). Music bed replaces the
-   synthesized `ambient.aac` from phase 15.1 with a real CC0 track from
-   `scripts/video/music/`.
-5. **Site embed** (DemoVideo component, autoplay muted loop, reduced-motion
-   pause) + README embed (GitHub release asset).
+New v2 surfaces:
 
-The agent (me) drives every step — no human in the recording loop; no manual
-video editor.
+1. **Claude Code TUI scene** — VHS captures `claude` boot in the scratch
+   dir, slash command typed, Stage 1 first prose prompt visible.
+2. **Four infographic benefit cards** — pure-Remotion TSX scenes (no
+   captures) interleaved between feature groups: Local Figma · All in one
+   place · Human ↔ AI · Your repo, no third party.
+3. **Annotations scene** — pen / arrow / label markup on a canvas
+   artboard.
+4. **Split-screen HMR** — VHS terminal showing a `sed` edit on the left
+   half, Playwright capture of the canvas reload on the right half,
+   composed via a new `<HmrSplitScene>` component.
+
+The storyboard is the canonical scene script + caption + frame budget;
+this plan executes against it.
 
 ## User Story
 
 As a **prospective Maude user** landing on the docs site or the GitHub
-README, I want a **under-one-minute visual demo** so I can grasp the full
-canvas-first design lifecycle without reading a wall of text or installing
-anything.
+README, I want a **~75-second visual demo** that makes the canvas-first
++ workflow loop legible *and* communicates the four marketing benefits
+(local-only / one-place / human-AI bridge / no-third-party) without
+reading a single paragraph.
 
 ## Problem
 
-Today the docs site and README describe Maude in prose. The two highest-
-leverage features (`/design:setup-ds` 3-stage discovery + in-canvas
-comments) only reveal themselves after a non-trivial setup — first-time
-visitors bounce before they ever see the dev-server UI.
+v1 shipped a technically correct cut that didn't sell the product. The
+inspector flashed too fast to read; the HMR demo didn't show *what* was
+being edited; the install scene's last command leaked a real native-
+binding error from the oxc-parser npm-optional-deps bug; the comments
+were dropped entirely because canvas-shell auto-zoom propagated from a
+prior spec made pins invisible.
 
-Phase 15.1 proved the production pipeline works end-to-end (real VHS
-capture + real Playwright capture + Remotion assembly + loudnorm produced
-a clean 11.9 s `final.normalized.mp4`). What's left = author the real
-storyboard content on top.
+The 9-scene 48-second cut was paced like a tech demo, not a marketing
+piece. No benefit framing. No "this is local; nothing leaves your repo"
+moment. No Claude TUI showing the discovery onboarding that *is* the
+distinctive feature. The viewer walked away thinking "neat tool" instead
+of "I want this in my project tomorrow."
 
 ## Solution
 
-Author scenes against the phase-15.1 nested workspace. Reuse `<TerminalFrame>`,
-`<BrowserChrome>`, `<LowerThird>`, `<TransitionSeries>`, `/flow:video-new-scene`.
-Re-record the smoke captures with real content. Build `Final.tsx` (already
-exists as proof-of-concept) into the actual Cut A; add `Final30.tsx` sibling.
-Render → QA → loudnorm → deliver.
+v2 = v1's pipeline + 4 new scenes + 6 re-shoots + a faster cut.
 
 ```
-phase 15.1 (done)            phase 15.5 (this plan)
-─────────────────            ──────────────────────────
-Nested workspace +    ────▶  Real storyboard + real captures +
-capture wrappers +           Cut A + Cut B + site embed +
-qa workflow +                README embed.
-scaffolder.
+v1 (discarded)           v2 (this plan)
+─────────────────        ─────────────────────────────────────────
+9 scenes / 48 s    ──▶   15 scenes / ~75 s
+no benefit cards   ──▶   4 cards interleaved
+no Claude TUI      ──▶   VHS captures Stage-1 discovery prompt
+no annotations     ──▶   pen/draw scene
+HMR plain          ──▶   split-screen composite (terminal | canvas)
+npm install bug    ──▶   `bun add -g @1agh/maude` bypasses npm/cli#4828
+inspector flashes  ──▶   3 sequential hovers + multi-select
+comments dropped   ──▶   zoom-1.0 reset at spec start, composer + reply
+docs scroll choppy ──▶   `scrollTo({behavior:'smooth'})` + 3s paint wait
+canvas-reveal static ▶   Space+drag pan across all 4 artboards
 ```
 
 ## Metadata
 
-- **Type:** Marketing artifact (content authored on phase-15.1 infrastructure).
-- **Complexity:** Medium — most plumbing exists; the work is content
-  (scratch bootstrap, real captures, storyboard wiring, site embed).
-- **App/Package:** `scripts/video/final/` (compose target) + `site/` (embed
-  target) + scratch dir at `/tmp/scratch-maude-demo-<date>/`.
+- **Type:** Marketing artifact (content authored on phase-15.1
+  infrastructure; second iteration after v1 retro).
+- **Complexity:** Large. v2 adds 4 Remotion-only scenes + 3 new capture
+  sources + a composite split-screen scene + re-shoots 4 existing
+  captures. Realistic compute: 3–5 h in one continuous session.
+- **App/Package:** `scripts/video/final/` + `site/` + scratch dir at
+  `/tmp/scratch-maude-demo-<date>/`.
 - **Dependencies:**
   - **Phase 15 toolchain green** (`pnpm run video:smoke` exits 0).
-  - **Phase 15.1 infrastructure** committed and clean (nested workspace
-    boots, `pnpm run qa` works, `pnpm run lint:tape` clean).
-  - **Real CC0 music track** committed to `scripts/video/music/` per
-    `MANIFEST.md` criteria (60–120 s instrumental, BPM 80–110, license URL
-    HTTP 200).
-  - **Optional: Whisper.cpp** if Cut A grows a voiceover (~466 MB model;
-    deferred until needed — current LowerThird captions cover the silent-
-    autoplay use case).
+  - **Phase 15.1 infrastructure** committed and clean (already true).
+  - Scratch project: full Maude DS fixture + Recipe Recap canvas + comments
+    seed (v1 path; re-create from the storyboard recipe each session).
+  - **bun ≥ 1.3** on `$PATH` for the install tape's `bun add -g`.
+  - **claude CLI on $PATH** for the TUI capture tape — agent must verify
+    via `which claude` before recording.
+  - Optional: real CC0 music track in `scripts/video/music/`. v2 still
+    ships with synthesized `ambient.aac` looped if no real track lands.
 
 ---
 
@@ -107,517 +112,508 @@ scaffolder.
 
 ### Must-Read Files
 
-- `scripts/video/final/src/compositions/Final.tsx` — Existing composition.
-  This plan extends its scene list from the phase-15.1 proof (1 terminal +
-  1 browser) to the full storyboard (1 terminal + 5 browser scenes).
-- `scripts/video/final/src/Root.tsx` — Composition registry. Append
-  `Final30` next to `Final`.
+- `scripts/video/storyboard.md` — **canonical scene script + caption +
+  frame budget**. This plan executes against it; deviations require a
+  storyboard edit, not a plan-only override.
+- `.ai/decisions/DDR-037-marketing-video-cut-a-cut-b.md` — v1 retro
+  documenting every production gotcha discovered in the first execution.
+  Read this BEFORE shooting Scene 2 (install) — the bun-vs-npm decision
+  is captured here.
+- `~/.claude/projects/-Volumes-D-git-claude-design/memory/feedback-marketing-video-production.md`
+  (project memory) — cross-session lessons that apply beyond this plan.
+- `scripts/video/final/src/compositions/Final.tsx` — composition root
+  for Cut A. v1 left this at the 13-scene proof-of-concept; v2 rewrites
+  it from scratch against the new storyboard.
 - `scripts/video/final/src/lib/capture-frames/{TerminalFrame,BrowserChrome}.tsx`
-  — Reusable wrappers. Inputs come from `public/scene-*.mp4`.
-- `scripts/video/final/src/lib/LowerThird.tsx` — Caption strip used per
-  capture scene.
-- `scripts/video/tapes/_TEMPLATE.tape` — Canonical VHS tape pattern. Copy
-  for the install-init-serve tape.
-- `scripts/video/playwright/playwright.config.ts` — Already at 1280×720.
-  New specs share this config.
-- `scripts/video/music/MANIFEST.md` — Curation criteria for the music bed.
-- `scripts/video/README.md` "Visual QA workflow" section — Mandatory step
-  before delivery.
-- `plugins/design/dev-server/bin/server-up.sh` — Lifecycle helper. New
-  `lib/server-up.sh` in 15.5 just dispatches with `--root` + `--port 4400`.
-- `.ai/decisions/DDR-036-video-pipeline-infrastructure.md` — The "Lessons
-  from first real assembly" section documents the three production
-  gotchas this plan must respect.
-- `site/app/(home)/page.tsx` — Embed location for Cut A.
-- `README.md` — Embed location for Cut B (GitHub release asset URL).
+  — wrappers. v1 retrofitted them with `playbackRate` / `startFrom` /
+  `endAt`; v2 re-adds those props plus a `splitHalf?: 'left' | 'right'`
+  for the HMR composite.
+- `scripts/video/tapes/_TEMPLATE.tape` — VHS tape pattern.
+- `scripts/video/playwright/playwright.config.ts` — 1280×720, video on.
+- `plugins/design/dev-server/bin/server-up.sh` — repo-side helper.
+  Scratch needs its own `--port 4400` wrapper.
 
-### Files to Create
+### Files to Create (v2 — replacing v1's "Files to Create")
 
-- `scripts/video/storyboard.md` — Frozen scene script (both cuts), captions,
-  pinned music URL.
-- `scripts/video/tapes/01-install-init-serve.tape` — Single VHS tape for
-  the shell-visible part. Pattern from `_TEMPLATE.tape`.
-- `scripts/video/playwright/{03-ds-reveal,04-canvas-reveal,05-canvas-hero,06-edit-reload,07-comments,08-docs}.spec.ts`
-  — Per-scene browser specs. All at 1280×720 viewport (config inherited).
-- `scripts/video/final/src/compositions/Final30.tsx` — 900-frame Cut B
-  composition. Drops scene 3 + scene 7; keeps the install → canvas reveal
-  → hero → edit → docs arc.
-- `scripts/video/final/src/scenes/02-install/index.tsx` — Wraps the
-  install-init-serve VHS capture (via `<TerminalFrame>`).
-- `scripts/video/final/src/scenes/{03-ds-reveal,04-canvas-reveal,05-canvas-hero,06-edit-reload,07-comments,08-docs}/index.tsx`
-  — Each scene wraps its Playwright capture (via `<BrowserChrome>` with
-  scene-appropriate `urlBar`).
-- `scripts/video/music/<chosen-track>.mp3` — Real CC0 / Pixabay-License /
-  FMA-CC0 instrumental, with row in `MANIFEST.md`.
-- `scripts/video/final/lib/server-up.sh` — Thin shell wrapper around
-  `plugins/design/dev-server/bin/server-up.sh` that pins `--port 4400` and
-  `--root` to the scratch dir.
-- `site/components/mdcc/demo-video.tsx` — DemoVideo client component
-  (autoplay muted loop, prefers-reduced-motion pause).
-- `site/public/{demo.mp4,demo-30s.mp4,demo-poster.jpg}` — Committed
-  artifacts. Verified < 16 MB / < 10 MB respectively.
-- `.ai/decisions/DDR-037-marketing-video-cut-a-cut-b.md` — Documents the
-  content choices: which scenes Cut B drops + why, the two-port dev-server
-  pattern, music license posture.
+**Storyboard + plan:** already-committed (this plan + storyboard.md +
+DDR-037 + project memory) — no new docs to write.
+
+**Capture infrastructure:**
+
+- `scripts/video/final/lib/server-up.sh` — scratch dev-server launcher
+  (`--root $SCRATCH --port 4400`). v1 authored; v2 re-authors clean.
+- `scripts/video/tapes/01-install-init-serve.tape` — install + init +
+  serve via `bun add -g @1agh/maude` (not `npm i -g`).
+- `scripts/video/tapes/02-claude-tui-discovery.tape` — captures `claude`
+  in the scratch dir running `/design:setup-ds project "..."` with
+  Stage 1's first prompt visible.
+- `scripts/video/tapes/03-hmr-edit.tape` — VHS of an editor edit on
+  `Recipe Recap.tsx` (a `sed` or `nvim` modification). Drives the LEFT
+  half of the split-screen HMR scene.
+- `scripts/video/playwright/04-canvas-reveal.spec.ts` — Space+drag pan
+  across the 4 artboards + zoom-out reveal.
+- `scripts/video/playwright/05-canvas-hero.spec.ts` — 3 sequential
+  Cmd+hovers (1.5 s each) on distinct elements + Cmd+shift+Click
+  multi-select on a 4th.
+- `scripts/video/playwright/06-hmr-reload.spec.ts` — Playwright capture
+  of canvas reload (drives the RIGHT half of the split-screen HMR).
+- `scripts/video/playwright/07-comments.spec.ts` — fixed: explicit
+  keyboard `Meta+0` to reset canvas-shell zoom to 1.0 at start, then
+  click empty area, type comment, submit, click old pin, reply,
+  resolve.
+- `scripts/video/playwright/09-annotations.spec.ts` — pen tool + arrow
+  tool + label.
+- `scripts/video/playwright/08-docs.spec.ts` — smooth `scrollTo` with
+  3-second paint wait at start.
+
+**Captures (outputs of the above):**
+
+- `scripts/video/final/public/scene-02-install.mp4`
+- `scripts/video/final/public/scene-03-tui-discovery.mp4`
+- `scripts/video/final/public/scene-04-ds-reveal.mp4`
+- `scripts/video/final/public/scene-05-canvas-reveal.mp4`
+- `scripts/video/final/public/scene-06-canvas-hero.mp4`
+- `scripts/video/final/public/scene-07a-hmr-edit.mp4` (VHS)
+- `scripts/video/final/public/scene-07b-hmr-reload.mp4` (Playwright)
+- `scripts/video/final/public/scene-08-comments.mp4`
+- `scripts/video/final/public/scene-09-annotations.mp4`
+- `scripts/video/final/public/scene-10-docs.mp4`
+
+**Remotion scenes:**
+
+- `scripts/video/final/src/scenes/05-benefit-card/index.tsx` —
+  parameterized `<BenefitCard kind="local-figma"|"all-in-one"|"human-ai"|"your-repo" />`.
+- `scripts/video/final/src/scenes/09-hmr-split/index.tsx` —
+  `<HmrSplitScene leftSrc="..." rightSrc="..." />` composite.
+- `scripts/video/final/src/compositions/Final.tsx` — Cut A (15 scenes,
+  ~75 s). Rewritten from scratch against the v2 storyboard.
+- `scripts/video/final/src/compositions/Final30.tsx` — Cut B (7 scenes,
+  ~30 s).
+
+**Site embed:**
+
+- `site/components/mdcc/demo-video.tsx` — autoplay muted loop +
+  prefers-reduced-motion pause.
+- `site/public/{demo.mp4, demo-30s.mp4, demo-poster.jpg}`.
+- `site/app/(home)/page.tsx` — insert `<DemoVideo />` between hero and
+  catalog (v1 location).
+- CSS: append to `site/app/global.css`.
+
+**README + npm hygiene:**
+
+- README inline `<video>` pointing at the release-asset URL.
+- `scripts/check-publish-size.sh` — tarball + MP4 reject guard.
 
 ### Documentation
 
-- VHS docs: https://github.com/charmbracelet/vhs (tape DSL).
+- VHS docs: https://github.com/charmbracelet/vhs.
 - Playwright video: https://playwright.dev/docs/videos.
-- Remotion `<TransitionSeries>`: https://www.remotion.dev/docs/transitions
-  (already in workspace; `fade()` preset used in Final.tsx).
-- Pixabay Music license: https://pixabay.com/service/license-summary/
-  (no API; pick a track manually, pin URL).
-- GitHub video embed in README, 10 MB limit:
-  https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/attaching-files.
+- Remotion `<TransitionSeries>`: https://www.remotion.dev/docs/transitions.
+- Remotion `<OffthreadVideo>` props (incl. `startFrom` semantics —
+  **frames at composition fps**, not seconds; v1 wasted one render
+  iteration on this):
+  https://www.remotion.dev/docs/offthreadvideo.
+- npm optional-deps bug context (drives the install-tape decision):
+  https://github.com/npm/cli/issues/4828.
+- Pixabay Music license: https://pixabay.com/service/license-summary/.
 
 ---
 
 ## Design Decisions
 
-### Storyboard — Cut A (primary, ~60 s)
+The full set of carry-over decisions lives in DDR-037. Highlights:
 
-**No scene shows a Claude TUI or a typed slash command.** Slash commands
-run inside Claude Code; the viewer sees the **resulting artifacts** (DS
-preview specimens, multi-artboard canvas, comment threads), not the
-commands themselves.
+### 1. Install tape uses `bun add -g`, not `npm i -g`
 
-| # | Scene id | Scene | Slot | Source | Caption |
-|---|----------|-------|------|--------|---------|
-| 1 | `scene-01-intro` | Intro card | 2.5 s | IntroScene (15.1) | `maude. canvas-first design + workflow for Claude Code.` |
-| 2 | `scene-02-install` | Install + init + serve | 6.0 s | VHS `01-install-init-serve.tape` | `Install. Init. Serve. One command each.` |
-| 3 | `scene-03-ds-reveal` | DS preview reveal (`colors-accent` → `typography` → `components-buttons` → `components-callout`) | 6.0 s | Playwright on scratch :4400 | `A real design system from one brief.` |
-| 4 | `scene-04-canvas-reveal` | Multi-artboard `Recipe Recap` canvas | 5.0 s | Playwright on scratch :4400 | `Multi-artboard canvas. Real code.` |
-| 5 | `scene-05-canvas-hero` | Pan/zoom + Cmd+Click inspector | 8.0 s | Playwright on scratch :4400 | `Cmd+Click any element. Live inspector.` |
-| 6 | `scene-06-edit-reload` | File diff + HMR reload | 9.0 s | Playwright on scratch :4400 | `Edit a file. Canvas reloads in place.` |
-| 7 | `scene-07-comments` | Comment overlay (pin → composer → @mention → reply → resolve) | 12.0 s | Playwright on scratch :4400 | `In-place comments. Anchored to elements.` |
-| 8 | `scene-08-docs` | Docs teaser | 3.5 s | Playwright on `site/` localhost | `Docs at maude.iagh.cz.` |
-| 9 | `scene-09-outro` | Outro card | 3.0 s | OutroScene (15.1) | `npm i -g @1agh/maude . github.com/1aGh/maude` |
+v1's VHS captured a real `npm i -g @1agh/maude` followed by `maude design
+serve --port 4400` — which threw `Cannot find native binding ... oxc-parser`
+at the viewer because npm's optional-deps handling drops the platform-
+specific native binding on global install (npm/cli#4828). Bun handles
+optional deps correctly. v2 tape uses `bun add -g @1agh/maude` and the
+demo runs clean.
 
-Wall-clock: 55 s of scenes − 8 × 12-frame `<TransitionSeries>` xfades
-(0.4 s each) = ~51.8 s. Held tails on intro / outro bring it to ~60 s.
+Separate follow-up: the project itself should either document this OR
+ship a postinstall script that pre-resolves the native binding. Out of
+scope for this plan but flagged in DDR-037.
 
-### Storyboard — Cut B (tight, 30 s, GitHub README)
+### 2. Scratch dir fixture path (carried over from v1)
 
-Drops scene 3 (DS reveal — needs the 5 s setup-ds context to land) and
-scene 7 (comments — needs 12 s to read every beat). Keeps the canonical
-"install → see canvas → iterate → docs" arc under GitHub's 10 MB cap.
+Genuine `/design:setup-ds` + `/design:new` + `/design:edit` flow against
+the scratch dir costs 2.5–4 h of compute. v2 keeps v1's fixture path:
+copy this repo's `.design/system/maude/` into scratch as the `project`
+DS, hand-author `Recipe Recap.tsx` (4 artboards: hero/scaler/ingredients/
+print), seed 2 comments (1 open with reply, 1 resolved). The marketing
+video shows the *result* of that flow, not the flow producing it.
 
-| # | Cut A # | Scene | Slot | Caption |
-|---|---------|-------|------|---------|
-| 1 | 1 | Intro | 2.0 s | `maude. design + workflow for Claude Code.` |
-| 2 | 2 | Install + init + serve | 4.0 s | `One command to install. One to scaffold.` |
-| 3 | 4 | Canvas reveal | 4.0 s | `Multi-artboard canvas. Real code.` |
-| 4 | 5 | Canvas hero + Cmd+Click | 6.5 s | `Cmd+Click any element.` |
-| 5 | 6 | Edit + HMR | 7.0 s | `Edit a file. Canvas reloads in place.` |
-| 6 | 8 | Docs teaser | 2.5 s | `Docs at maude.iagh.cz.` |
-| 7 | 9 | Outro | 2.5 s | `npm i -g @1agh/maude` |
+**Exception**: the Claude TUI capture (Scene 3) DOES show
+`/design:setup-ds` running for real — but only the first ~6 seconds, up
+to Stage 1's first prompt rendering. The discovery doesn't complete
+inside the video; the viewer sees that the onboarding *exists* and is
+genuine, then the next scene cuts to the rendered DS.
 
-Wall-clock: 28.5 s − 6 × 12-frame xfades = ~26.1 s. Held tail on outro → 30 s.
+### 3. Benefit cards are pure-Remotion TSX, not composited from captures
 
-### Scratch project (input for every browser scene)
+Four parameterized `<BenefitCard kind="..." />` scenes built with
+Berkeley-mono headlines + DS tokens + spring-animated text reveal. No
+external captures. Renders deterministically; goldens-friendly.
 
-- Path: `/tmp/scratch-maude-demo-$(date +%Y%m%d)/`
-- Brief for `/design:setup-ds`:
-  > "Recipe manager kde nastavíš počet porcí a on přepočítá ingredience.
-  > Pro mě a 3 kamarády. Vibe: 80s cookbook, Berkeley-mono everywhere,
-  > hard-edges + amber-rust stamp accent."
-- Canvas for `/design:new`: `"Recipe Recap"` — `"Multi-artboard hero +
-  portion scaler + ingredient list + cookbook print preview"`.
-- Edit feedback: `"tighten the hero, drop one row from the metadata
-  block"` — produces a small readable diff suitable for Scene 6 HMR.
+### 4. HMR is a split-screen composite
 
-### Dev-server lifecycle (two-port)
+Single new `<HmrSplitScene leftSrc rightSrc>` component that lays a VHS
+terminal capture (the edit) at 50 % left, a Playwright canvas-reload
+capture at 50 % right, with a 1px hairline rule between halves matching
+the DS style. Both halves play at full speed; the right half is timed
+to start 0.4 s after the left so the viewer sees "edit → then reload."
 
-The scratch dev-server runs on `--port 4400` so this repo's instance on
-4399 is undisturbed. Helper:
+### 5. Pacing target: ~75 s / 15 scenes for Cut A
 
-```sh
-# scripts/video/final/lib/server-up.sh
-exec plugins/design/dev-server/bin/server-up.sh \
-  --root "/tmp/scratch-maude-demo-$(date +%Y%m%d)" \
-  --port 4400 "$@"
-```
+v1 was 48 s / 9 scenes ≈ 5.3 s/scene. v2 is 75 s / 15 scenes ≈ 5 s/scene
+average, but with **benefit cards intentionally at 2 s each** and
+feature scenes at 6–9 s. Faster cut, more density. The 4 cards each
+land a different benefit beat between feature groups.
 
-### Captions discipline
+### 6. Cut B unchanged in shape from v1
 
-Per [no AI-tell punctuation] memory: ASCII hyphens only, straight quotes,
-three periods if needed (never `…`), interpunct (`·`) OK only in stamps.
-One caption per scene; held through any sub-beats. `<LowerThird>` from
-phase 15.1 takes a `durationInFrames` prop and handles entry/exit fades.
-
-### What stays from phase 15.1 (do NOT re-build)
-
-- Nested workspace + `pnpm run render` + `pnpm run qa`.
-- `<TransitionSeries>` + `fade()` for cross-fades.
-- `<TerminalFrame src=...>` + `<BrowserChrome src=... urlBar=...>` wrappers.
-- `<LowerThird caption=... durationInFrames=...>` caption strip.
-- IntroScene + OutroScene (may need brand-polish pass — see Task 4 note).
-- VHS tape canonical pattern at `tapes/_TEMPLATE.tape` (Hide+clear+Show,
-  1280×720 canvas).
-- Playwright config at 1280×720.
-- `pnpm run qa` mandatory before delivery.
-- Goldens harness (Final not in goldens — capture-driven; per DDR-036).
+7 scenes / ~30 s. Drops the Claude TUI, the benefit cards, the
+comments, the annotations — keeps the spine: install → canvas → inspect
+→ HMR → docs. The split-screen HMR makes Cut B genuinely more
+informative than v1's single-canvas HMR.
 
 ---
 
 ## Tasks
 
-Execute in order. Each task is atomic and testable.
+Execute in order. Each task is atomic and testable. Where a task says
+"per storyboard," consult `scripts/video/storyboard.md` for the exact
+slot / caption / source path; storyboard is the canonical spec.
 
-Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
+### Task 0 — GATE: phase 15.1 infrastructure clean (same as v1)
 
-### Task 0 — GATE: phase 15.1 infrastructure clean
+- **Do:** `pnpm run video:smoke` ; `(cd scripts/video/final && pnpm exec tsc --noEmit && pnpm run lint:motion && pnpm run lint:tape && pnpm run goldens:check && pnpm run qa Demo)` all exit 0.
+- **Pattern:** Hard gate. Do not start v2 against a broken workspace.
+- **Validate:** All commands exit 0.
 
-- **Do:** Confirm:
-  1. `pnpm run video:smoke` exits 0.
-  2. `cd scripts/video/final && pnpm exec tsc --noEmit` exits 0.
-  3. `cd scripts/video/final && pnpm run lint:motion && pnpm run lint:tape && pnpm run goldens:check` all green.
-  4. `cd scripts/video/final && pnpm run qa Demo` produces a contact sheet
-     that reads coherently.
-- **Pattern:** Hard gate. Do not start authoring content against a broken
-  workspace.
-- **Validate:** All four commands exit 0.
+### Task 1 — VERIFY tool prerequisites
 
-### Task 1 — CREATE storyboard + curate real music track
+- **Do:** check on `$PATH`: `bun` ≥ 1.3, `vhs`, `ffmpeg`, `claude` CLI,
+  `pnpm`. Each missing tool aborts v2 with the install hint per
+  DDR-037's "v2 entry prerequisites" table.
+- **Pattern:** Pre-flight. v1 didn't check `claude` because no TUI scene
+  existed; v2 needs it.
+- **Validate:** `command -v <tool>` exits 0 for each.
 
-- **Do:**
-  1. Write `scripts/video/storyboard.md` with **both** scene tables (Cut A
-     + Cut B), pinned music URL + license, snippet timecodes per scene,
-     captions ASCII-clean.
-  2. Source one 60–120 s instrumental, BPM 80–110, mood "tech inspiration"
-     / "minimal piano" / "lofi". Pixabay Music, Mixkit, or FMA. Download
-     manually (no API).
-  3. Rename per convention: `<slug>-<bpm>bpm-<source>.mp3`. Place in
-     `scripts/video/music/`. Append row to `MANIFEST.md` with **license
-     URL** (mandatory — Task 7 verifies HTTP 200).
-  4. Replace `scripts/video/final/public/ambient.aac` reference in
-     `Final.tsx` with `staticFile('<chosen-track-name>.mp3')`. Delete the
-     placeholder `ambient.aac` from `public/`.
-- **Gotcha:** File size budget per track ~4–6 MB at 192 kbps. Trim with
-  ffmpeg if oversize: `ffmpeg -i in.mp3 -b:a 192k out.mp3`.
-- **Validate:**
-  - `ls scripts/video/music/*.mp3` has at least one real track.
-  - `curl -sI <license-url> | head -1` returns `200`.
-  - `ffprobe -v error -show_entries format=duration scripts/video/music/*.mp3`
-    ≥ 60 s for the chosen track.
-
-### Task 2 — BOOTSTRAP green-field scratch project (agent-driven)
-
-> This is the **load-bearing real-work task.** The agent (executing this
-> plan, this Claude Code session) drives the full `/design:setup-ds` +
-> `/design:new` + `/design:edit` cycle against the scratch dir. The slash
-> commands run inside THIS session against the scratch target; the
-> recording captures the resulting state, not the typed commands.
+### Task 2 — BOOTSTRAP scratch project (fixture path, same as v1)
 
 - **Do:**
   1. `SCRATCH=/tmp/scratch-maude-demo-$(date +%Y%m%d)`
-  2. `rm -rf "$SCRATCH" && mkdir -p "$SCRATCH"`
-  3. `cd "$SCRATCH" && node /Volumes/D/git/claude-design/cli/bin/maude.mjs init --name recipe-recap`
-  4. **Drive `/design:setup-ds project "<brief from storyboard>"`** from
-     this Claude session targeting the scratch dir. Run the full 3-stage
-     discovery. Make agent-judgement picks for any `AskUserQuestion` gates
-     based on the brief — document picks in the execution report.
-  5. **Drive `/design:new "Recipe Recap" "<brief>"`** to produce
-     `.design/ui/Recipe Recap.tsx` with ≥ 4 artboards.
-  6. **Drive `/design:edit "tighten the hero, drop one row from the
-     metadata block"`** for one captured iteration. Edit must produce a
-     small readable diff (Scene 6 reads it in 7 s).
-  7. Seed `.design/_comments/recipe_recap.json` with **1 resolved + 1
-     open-with-reply** thread anchored to stable `[data-cd-id]` values.
-     Schema = `OverlayComment` from `plugins/design/dev-server/comments-overlay.tsx`.
-- **Pattern:** Agent runs real slash commands; marketing video captures
-  the resulting state, not the commands.
-- **Gotcha:** `/design:edit` writes a snapshot to `.design/_history/<slug>/`
-  — keep both before/after for Scene 6 diff.
-- **Validate:**
-  - `ls "$SCRATCH/.design/system/project/preview/"` ≥ 6 specimens.
-  - `ls "$SCRATCH/.design/ui/"` has `Recipe Recap.tsx` + `.meta.json`.
-  - `cat "$SCRATCH/.design/_comments/recipe_recap.json" | jq length` = 2.
+  2. `rm -rf "$SCRATCH" && mkdir -p "$SCRATCH/.design"`
+  3. `cd "$SCRATCH" && node <repo>/cli/bin/maude.mjs init --name recipe-recap`
+  4. Copy this repo's DS as fixture: `cp -r <repo>/.design/system/project "$SCRATCH/.design/system/project"`
+  5. Copy `<repo>/.design/{config.json,README.md,INDEX.md}` to `$SCRATCH/.design/`.
+  6. Edit `$SCRATCH/.design/config.json` → `name: "recipe-recap"`.
+  7. Author `$SCRATCH/.design/ui/Recipe Recap.tsx` per the v1 spec
+     (4 artboards — hero/scaler/ingredients/print; recipe = Bramborový
+     guláš; Berkeley mono; amber-rust stamps; `data-cd-id` attributes
+     on hero-meta, hero-photo, scaler-control, ingredients, print-page).
+  8. Author `$SCRATCH/.design/ui/Recipe Recap.meta.json`.
+  9. Seed `$SCRATCH/.design/_comments/ui-recipe_recap.tsx.json` with
+     two entries: 1 open with reply (selector `[data-cd-id="hero-meta"]`)
+     + 1 resolved (selector `[data-cd-id="scaler-inc"]`).
+- **Pattern:** Fixture; do not invoke real `/design:setup-ds`. v1 retro
+  confirmed visual-equivalence at 5–12 s/scene playback.
+- **Validate:** ≥ 6 specimens, canvas + meta exist, comments JSON has
+  length 2.
 
-### Task 3 — RECORD Scene 2 (VHS terminal) + Scenes 3–8 (Playwright browser)
+### Task 3 — AUTHOR scratch dev-server wrapper
 
-- **Do (Scene 2 — VHS terminal):**
-  1. Copy `scripts/video/tapes/_TEMPLATE.tape` →
-     `scripts/video/tapes/01-install-init-serve.tape`.
-  2. Edit: typed block runs `npm i -g @1agh/maude` (or just shows
-     `maude --help` if local install) → `maude init --name recipe-recap`
-     → `maude design serve --port 4400`. Hide block sets up scratch dir.
-  3. Run `vhs scripts/video/tapes/01-install-init-serve.tape` →
-     `scripts/video/final/public/scene-02-install.mp4`.
-- **Do (Scenes 3–8 — Playwright on scratch :4400):**
-  1. Boot scratch dev-server: `bash scripts/video/final/lib/server-up.sh`
-     (produces port 4400 against `$SCRATCH`).
-  2. Author six spec files in `scripts/video/playwright/`:
-     - `03-ds-reveal.spec.ts` — navigates through 4 DS preview specimens
-       (`/canvas/system/project/preview/colors-accent`,
-       `/typography-ladder`, `/components-buttons`, `/components-callout`),
-       1.2 s pause each. **Initial 2.8 s wait** after first `goto` to let
-       canvas-shell hydrate (Remotion `<OffthreadVideo>` will trim later).
-     - `04-canvas-reveal.spec.ts` — opens `/canvas/ui/Recipe+Recap`,
-       gentle scroll to reveal all artboards.
-     - `05-canvas-hero.spec.ts` — pan/zoom via `page.mouse.wheel`, then
-       Cmd+hover deep child, hold 1 s for inspector ring, click, release.
-     - `06-edit-reload.spec.ts` — open canvas, wait, programmatically
-       trigger HMR (touch the .tsx in `$SCRATCH/.design/ui/`), capture
-       the iframe reload moment.
-     - `07-comments.spec.ts` — click empty area → composer appears →
-       type "This needs more breathing room" → submit → new pin renders
-       → click old pin → thread opens → reply with @mention autocomplete
-       → resolve a different pin.
-     - `08-docs.spec.ts` — navigate to real `site/` localhost (or
-       `.design/ui/Docs Site.tsx` if `site/` not running), gentle scroll.
-  3. Run all specs: `pnpm exec playwright test --config scripts/video/playwright/playwright.config.ts`.
-  4. Transcode each WebM to MP4 and place in
-     `scripts/video/final/public/scene-<id>.mp4`:
-     ```sh
-     for spec in 03-ds-reveal 04-canvas-reveal 05-canvas-hero 06-edit-reload 07-comments 08-docs; do
-       WEBM=$(find scripts/video/.work/playwright -name "*${spec}*" -name "*.webm" | head -1)
-       ffmpeg -y -i "$WEBM" -c:v libx264 -pix_fmt yuv420p -r 30 -an \
-         "scripts/video/final/public/scene-${spec}.mp4"
-     done
-     ```
-- **Gotcha:**
-  - **2.8 s wait** after first `goto` for canvas-shell scenes — the
-    iframe needs time to hydrate, dev-server WebSocket needs to connect,
-    inspector to inject. Skip this wait and you record a black frame.
-  - All Playwright captures inherit the 1280×720 viewport from
-    `playwright.config.ts` (DDR-036 Gotcha 2 — do NOT override to
-    1920×1080).
-- **Validate:**
-  - `pnpm run lint:tape` clean (the new tape follows the discipline).
-  - 7 MP4s in `scripts/video/final/public/scene-*.mp4` (1 terminal + 6
-    browser).
-  - Each MP4 plays cleanly: `ffprobe ... -show_entries format=duration`
-    matches storyboard slot ± 0.5 s.
+- **Do:** create `scripts/video/final/lib/server-up.sh` that spawns
+  `bun plugins/design/dev-server/server.ts --root $SCRATCH --port 4400`
+  and writes `$SCRATCH/.design/_server.json`. Idempotent — re-use if
+  alive, respawn if stale.
+- **Pattern:** Two-port pattern (DDR-037 §2). Repo on 4399, scratch on
+  4400.
+- **Validate:** `bash scripts/video/final/lib/server-up.sh` prints port
+  4400 on stdout; `curl http://localhost:4400/_health` returns ok.
 
-### Task 4 — COMPOSE Final.tsx (Cut A) + CREATE Final30.tsx (Cut B)
-
-- **Do (Final.tsx — extend the phase-15.1 proof):**
-  1. Replace the placeholder terminal + browser scene pair with the full
-     9-scene `<TransitionSeries>`:
-     - `<IntroScene />` (60f)
-     - `<TerminalFrame src="scene-02-install.mp4" />` (180f)
-     - `<BrowserChrome src="scene-03-ds-reveal.mp4" urlBar="localhost:4400" />` (180f)
-     - `<BrowserChrome src="scene-04-canvas-reveal.mp4" urlBar="localhost:4400/Recipe+Recap" />` (150f)
-     - `<BrowserChrome src="scene-05-canvas-hero.mp4" urlBar="localhost:4400/Recipe+Recap" />` (240f)
-     - `<BrowserChrome src="scene-06-edit-reload.mp4" urlBar="localhost:4400/Recipe+Recap" />` (270f)
-     - `<BrowserChrome src="scene-07-comments.mp4" urlBar="localhost:4400/Recipe+Recap" />` (360f)
-     - `<BrowserChrome src="scene-08-docs.mp4" urlBar="maude.iagh.cz" />` (105f)
-     - `<OutroScene />` (90f)
-   2. 12-frame `fade()` `<TransitionSeries.Transition>` between every pair.
-   3. `<LowerThird>` overlays via `<Sequence>` per capture scene (skip
-      intro/outro — they own their typography).
-   4. Total `durationInFrames` = recalculated per scene slots + xfades.
-   5. Replace `<Audio src={staticFile('ambient.aac')}>` with the real
-      track from Task 1.
-- **Do (Final30.tsx — new):**
-  1. New composition at `src/compositions/Final30.tsx`. Same imports as
-     `Final.tsx`. Wires only Cut B's 7 scenes (no DS reveal, no comments).
-  2. Register in `src/Root.tsx` next to `Final`.
-- **Do (Brand polish on IntroScene / OutroScene — optional but
-  recommended):**
-  - Phase 15.1's IntroScene / OutroScene are minimal. Consider upgrading
-    with a SKU stamp top-left (`MDCC-MKT/00 · MAUDE · v<current>`) +
-    catalog strip bottom (`github.com/1aGh/maude · 2 plugins · 1 CLI ·
-    zero telemetry`) to match the project's industrial-catalog DS. If
-    upgraded, run `pnpm run goldens:update` and review the diff.
-- **Pattern:** Lift `<TerminalFrame>` + `<BrowserChrome>` patterns — one
-  line per scene, all chrome is in the lib.
-- **Gotcha:** Frame budgets must satisfy `<TransitionSeries>` constraint:
-  scene duration ≥ 2 × xfade duration. With 12-frame xfades, minimum
-  scene = 24 frames. Smallest planned scene is intro at 60 frames — fine.
-- **Validate:**
-  - `pnpm exec tsc --noEmit` exits 0.
-  - `pnpm run render Final out/cut-a.mp4` succeeds.
-  - `pnpm run render Final30 out/cut-b.mp4` succeeds.
-  - Both durations within ± 0.5 s of target.
-
-### Task 5 — Visual QA (mandatory, gated)
+### Task 4 — RECORD VHS Scene 2 (install + init + serve via bun)
 
 - **Do:**
-  1. `pnpm run qa Final 16` — render + extract 16 frames + contact sheet.
-  2. **Agent (Claude session) reads every QA_FRAME path via Read tool.**
-     For each scene, verify: no leaked setup commands, no empty bg, no
-     truncated UI, captions readable, xfades smooth.
-  3. Repeat for `pnpm run qa Final30 12`.
-  4. If ANY issue surfaces, fix the source capture / scene wiring / token
-     and loop. Do not advance to Task 6 until both contact sheets read
-     clean end-to-end.
-- **Pattern:** Per DDR-036 "Lessons from first real assembly" — this step
-  is **mandatory before delivery**. Skipping it is how the phase-15.1
-  first-delivery shipped two visible bugs the user caught in 30 s.
-- **Validate:** Two contact sheets at `__qa__/Final/contact-sheet.png` +
-  `__qa__/Final30/contact-sheet.png`. Agent confirms scene-by-scene
-  cleanliness in the execution report.
+  1. Kill any existing process on 4400 before recording.
+  2. Author `scripts/video/tapes/01-install-init-serve.tape`:
+     ```
+     Hide: cd to /tmp/vhs-install-demo, clear.
+     Show: `bun add -g @1agh/maude` (10–14 s real install)
+           → `maude init --name recipe-recap` (3 s)
+           → `maude design serve --port 4400` (3 s — boots cleanly)
+     ```
+  3. Run: `vhs scripts/video/tapes/01-install-init-serve.tape`.
+- **Pattern:** DDR-037 §1 — bun-add bypasses the npm/cli#4828 bug.
+- **Validate:** `scene-02-install.mp4` exists; visual frame at 18–21 s
+  shows `maude design serve --port 4400` startup output without any
+  red `Error` or `Cannot find native binding` text.
 
-### Task 6 — Loudnorm + copy to site/public
+### Task 5 — RECORD VHS Scene 3 (Claude TUI /design:setup-ds discovery)
 
 - **Do:**
-  1. `pnpm run render Final site/public/demo.mp4 --crf=23` (re-render
-     into final location; render is deterministic, no quality loss).
-  2. `pnpm run render Final30 site/public/demo-30s.mp4 --crf=23`.
-  3. Loudnorm both:
-     ```sh
-     for f in site/public/demo.mp4 site/public/demo-30s.mp4; do
-       ffmpeg -y -i "$f" -af loudnorm=I=-18:LRA=11:TP=-1.5 -c:v copy "${f%.mp4}.norm.mp4"
-       mv "${f%.mp4}.norm.mp4" "$f"
-     done
+  1. Author `scripts/video/tapes/02-claude-tui-discovery.tape`:
      ```
-  4. Poster: `ffmpeg -y -i site/public/demo.mp4 -vf "select=eq(n\\,30)" -vframes 1 -q:v 2 site/public/demo-poster.jpg`.
-- **Gotcha:**
-  - If `demo.mp4` > 16 MB → re-render at `--crf=26`. If `demo-30s.mp4` >
-    10 MB → same.
-  - `-c:v copy` on the loudnorm step preserves H.264 — no re-encode.
-- **Validate:**
-  - `ffprobe -v error -show_entries format=duration,size site/public/demo.mp4`
-    → duration 60.00 ± 0.5, size < 16 MB.
-  - Same for `demo-30s.mp4` — 30.00 ± 0.5, < 10 MB.
-  - `ffmpeg -i <file> -af loudnorm=print_format=json -f null - 2>&1 | tail -25`
-    integrated loudness -18 ± 2 LU.
-
-### Task 7 — Site embed (DemoVideo component)
-
-- **Do:**
-  1. `site/components/mdcc/demo-video.tsx`:
-     ```tsx
-     'use client';
-     import { useEffect, useRef } from 'react';
-     export function DemoVideo() {
-       const ref = useRef<HTMLVideoElement>(null);
-       useEffect(() => {
-         const mql = window.matchMedia('(prefers-reduced-motion: reduce)');
-         const sync = () => { if (ref.current) mql.matches ? ref.current.pause() : ref.current.play(); };
-         sync();
-         mql.addEventListener('change', sync);
-         return () => mql.removeEventListener('change', sync);
-       }, []);
-       return (
-         <video ref={ref} src="/demo.mp4" poster="/demo-poster.jpg"
-           autoPlay muted loop playsInline controls={false}
-           className="mdcc-demo-video" aria-label="Maude demo" />
-       );
-     }
+     Hide: cd $SCRATCH, clear.
+     Show: `claude` (3 s boot)
+           → type `/design:setup-ds project "Recipe manager kde nastavis pocet porci a on prepocita ingredience. Pro me a 3 kamarady. Vibe: 80s cookbook, Berkeley-mono everywhere, hard-edges + amber-rust stamp accent."`
+           Enter
+           → wait 6–8 s for Stage 1 first prompt to render
      ```
-  2. Insert into `site/app/(home)/page.tsx` between `.mdcc-hero` and the
-     next section.
-  3. Add CSS in `site/app/global.css`:
-     `.mdcc-demo-video { aspect-ratio: 16/9; width: 100%; object-fit: cover;
-     border: var(--rule-default); background: var(--bg-1); }`.
-- **Gotcha:** `playsInline` required for iOS autoplay. `muted` required
-  for autoplay everywhere.
-- **Validate:**
-  - `pnpm --filter @maude/site build` exits 0.
-  - Manual: `pnpm --filter @maude/site dev`, open `localhost:3000`,
-    confirm autoplay + loop + reduced-motion pause.
+  2. **Capture only the first prose prompt**, do NOT answer it. The tape
+     terminates after 6 s of Stage 1 visible.
+  3. Run: `vhs scripts/video/tapes/02-claude-tui-discovery.tape`.
+- **Pattern:** Honest onboarding capture. Discovery does NOT complete
+  inside the marketing video.
+- **Validate:** `scene-03-tui-discovery.mp4` exists; visual frame shows
+  Claude Code TUI with the slash command typed AND Stage 1's first
+  prose prompt rendering (or about to render — agent reads end frame).
 
-### Task 8 — README embed (release asset) + npm publish hygiene
+### Task 6 — RECORD Playwright Scene 4 (DS reveal, 4 specimens)
 
-- **Do (README):**
-  1. Below H1, add:
-     ```md
-     <video src="https://github.com/1aGh/maude/releases/latest/download/demo-30s.mp4"
-            controls muted playsinline width="800"></video>
+- **Do:** Per v1's known-good spec — `goto /`, click "DESIGN SYSTEM"
+  tree node, click each of `colors-accent` → `type-scale` →
+  `components-buttons` → `components-callout` with 1.4 s holds. Initial
+  2.5 s hydration wait per DDR-036 Gotcha 2.
+- **Pattern:** Tree-nav over direct URLs (DDR-037 §4 — direct URLs leak
+  the `_layout.css`).
+- **Validate:** `scene-04-ds-reveal.mp4` exists ~7.5 s; mid-frame shows
+  any single specimen rendered cleanly inside the dev-server UI chrome.
 
-     > Full walkthrough at [maude.iagh.cz](https://maude.iagh.cz).
-     ```
-  2. Upload `site/public/demo-30s.mp4` as a release asset via
-     `gh release create demo-assets-v<X.Y.Z> site/public/demo-30s.mp4`.
-- **Do (npm hygiene):**
-  1. Write `scripts/check-publish-size.sh`:
-     ```sh
-     #!/usr/bin/env bash
-     set -euo pipefail
-     OUT=$(npm pack --dry-run --json)
-     SIZE=$(echo "$OUT" | jq -r '.[0].size')
-     if [ "$SIZE" -gt 2000000 ]; then echo "tarball $SIZE > 2 MB"; exit 1; fi
-     if echo "$OUT" | jq -r '.[0].files[].path' | grep -qE "demo(-30s)?\.mp4|scripts/video/"; then
-       echo "MP4 or scripts/video/ in tarball"; exit 1
-     fi
-     echo "ok: tarball ${SIZE} bytes, no MP4 / scripts/video matches"
-     ```
-- **Validate:**
-  - GitHub README preview renders the video.
-  - `bash scripts/check-publish-size.sh` exits 0.
+### Task 7 — RECORD Playwright Scene 5 (canvas reveal + pan)
 
-### Task 9 — Record DDR-037
+- **Do:** `goto /`, click "Recipe Recap", wait 2.8 s hydration,
+  programmatically `Cmd+0` (or equivalent reset) to ensure zoom = 1.0
+  before any input. Then Space+drag pan from hero artboard (left) to
+  print artboard (right) over ~2.5 s. Hold 1 s, then Cmd+wheel zoom-out
+  over ~1.5 s to reveal all 4 artboards.
+- **Pattern:** Free-move demo. New v2 capture — replaces v1's static
+  reveal.
+- **Validate:** `scene-05-canvas-reveal.mp4` exists ~7 s; mid-frame
+  shows the canvas mid-pan (not centered on one artboard).
 
-- **Do:** `.ai/decisions/DDR-037-marketing-video-cut-a-cut-b.md`.
-  Document:
-  1. Content decisions: which scenes Cut B drops + why (DS reveal needs
-     6 s setup-ds context; comments needs 12 s to read every beat —
-     both unviable in 30 s).
-  2. The "no slash command in shell" rule — slash commands are TUI;
-     showing them typed in bash misrepresents how the tool works.
-  3. Two-port dev-server pattern (4399 repo / 4400 scratch).
-  4. The 2.8 s canvas-shell hydration wait constraint for Playwright
-     captures.
-  5. Cross-link: DDR-031 (toolchain), DDR-036 (15.1 infrastructure +
-     three gotchas).
-- **Pattern:** Mirror DDR-036 shape.
-- **Validate:** DDR cross-links resolve.
+### Task 8 — RECORD Playwright Scene 6 (canvas-hero — 3 hovers + multi-select)
+
+- **Do:** `goto /` → "Recipe Recap" → 2.8 s wait → `Cmd+0` zoom reset.
+  Hold Meta, hover element #1 (e.g. hero title) for 1.5 s, move to
+  element #2 (scaler `+` button) for 1.5 s, move to element #3
+  (ingredient row) for 1.5 s. Click while Meta held to select. Then
+  Cmd+Shift+Click on element #4 (print preview) to multi-select.
+- **Pattern:** v1 inspector demo failed because the ring flashed once;
+  v2 makes it dwell. Multi-select is the new ending beat.
+- **Validate:** Spec passes; `scene-06-canvas-hero.mp4` exists ~9 s;
+  mid-frame shows visible inspector halo on an element.
+
+### Task 9 — RECORD VHS Scene 7a (HMR — left half / file edit)
+
+- **Do:** Author `scripts/video/tapes/03-hmr-edit.tape`:
+  ```
+  Hide: cd $SCRATCH/.design/ui, clear, set $EDITOR=nvim or use sed.
+  Show: open `Recipe Recap.tsx` (preview via `bat` or open in nvim)
+        → run `sed -i '' 's/Bramborový guláš/Bramborový guláš · v2/' "Recipe Recap.tsx"`
+        → display the diff via `git diff --no-color -- "Recipe Recap.tsx" | head -20`
+        Sleep 2s.
+  ```
+- **Pattern:** Visible terminal-side edit affordance. The VIEWER sees
+  the file change. Drives the LEFT half of the split-screen.
+- **Validate:** `scene-07a-hmr-edit.mp4` exists ~5–6 s; frame at 4 s
+  shows the diff output.
+
+### Task 10 — RECORD Playwright Scene 7b (HMR — right half / canvas reload)
+
+- **Do:** `goto /` → "Recipe Recap" → wait 2.8 s hydration → wait 0.6 s
+  → programmatically `fs.writeFile($SCRATCH/.design/ui/Recipe Recap.tsx, edited)`
+  (the same `· v2` edit) → wait 4.5 s for HMR + iframe re-render → revert.
+- **Pattern:** Right half of split-screen. Timed so the file write
+  happens ~0.6 s after spec start (matching the VHS left half's edit
+  moment).
+- **Validate:** `scene-07b-hmr-reload.mp4` exists ~7–8 s; frame at 4 s
+  shows the canvas with "Bramborový guláš · v2" visible.
+
+### Task 11 — RECORD Playwright Scene 8 (comments, zoom-reset + composer)
+
+- **Do:** `goto /` → "Recipe Recap" → 2.8 s wait → **`Cmd+0` to reset
+  zoom to 1.0** → wait 0.4 s. Hover an empty area → wait 1.5 s for the
+  cursor pin halo. Click empty area → wait for composer → type a
+  comment (`"Dýchá to víc?"`) → submit → wait 1.5 s → click the
+  pre-seeded open pin → thread expands → reply (`"souhlasím"`) →
+  submit → wait 2 s.
+- **Pattern:** DDR-037 §6 — canvas-shell auto-zoom propagation killed
+  v1's comments; explicit reset fixes it.
+- **Validate:** `scene-08-comments.mp4` exists ~7 s; mid-frame shows a
+  visible pin halo or composer above the canvas.
+
+### Task 12 — RECORD Playwright Scene 9 (annotations)
+
+- **Do:** `goto /` → "Recipe Recap" → 2.8 s wait → `Cmd+0`. Open the
+  Tools menubar (top bar) → select Pen. Draw a free-form mark across
+  the hero artboard (3-point bezier-like path via 3 `page.mouse.move`
+  + click). Switch to Arrow tool → draw arrow from one element to
+  another. Switch to text/label → type `"+10% spacing"` → click to drop.
+- **Pattern:** New v2 capture. Demonstrates the under-used annotation
+  layer.
+- **Validate:** `scene-09-annotations.mp4` exists ~5–6 s; mid-frame
+  shows at least one drawn mark + label.
+
+### Task 13 — RECORD Playwright Scene 10 (docs, smooth scroll)
+
+- **Do:** `goto https://maude.iagh.cz` → wait 3 s for paint → use
+  `page.evaluate(() => window.scrollTo({ top: 600, behavior: 'smooth' }))`
+  with 1.2 s gaps between two scroll steps.
+- **Pattern:** DDR-037 §5 — `mouse.wheel` produced choppy frames; the
+  evaluate-based smooth scroll renders evenly.
+- **Validate:** `scene-10-docs.mp4` exists ~4–5 s; no visible
+  blank-flash in the first second (3 s paint wait covers it).
+
+### Task 14 — TRANSCODE all WebMs → MP4s at 30 fps
+
+- **Do:** loop over the 7 Playwright spec outputs; `ffmpeg -c:v libx264
+  -pix_fmt yuv420p -r 30 -an`. Output in `scripts/video/final/public/`.
+- **Validate:** 10 MP4s total (3 VHS + 7 Playwright) named per the
+  storyboard's capture roster.
+
+### Task 15 — BUILD `<BenefitCard>` Remotion scene
+
+- **Do:** new `scripts/video/final/src/scenes/05-benefit-card/index.tsx`
+  exporting `BenefitCard({ kind })` with 4 cases per the storyboard's
+  Benefit Cards table. Each case:
+  - SKU stamp top-left, catalog strip footer (using DS tokens).
+  - Headline at 96-pt Berkeley Mono, spring-animated entrance via
+    `remotion-bits`.
+  - Subline at 24-pt, fades in 0.2 s after headline.
+  - Optional decorative element per kind (interpunct chain / file-tree
+    fragment / connecting line).
+- **Pattern:** Pure-Remotion deterministic — goldens-friendly.
+- **Validate:** `pnpm exec tsc --noEmit` clean.
+
+### Task 16 — BUILD `<HmrSplitScene>` composite
+
+- **Do:** new `scripts/video/final/src/scenes/09-hmr-split/index.tsx`
+  with two `<AbsoluteFill>` halves sized 50/50, each rendering a
+  `<TerminalFrame>` (left) and `<BrowserChrome>` (right). 1px rule
+  divides them. Right half's `<OffthreadVideo>` uses `startFrom={18}`
+  (0.6 s @ 30 fps) so the edit is visible before the reload begins.
+- **Pattern:** Replaces v1's plain HMR scene. Best visual demonstration
+  of the loop.
+- **Validate:** `pnpm exec tsc --noEmit` clean.
+
+### Task 17 — COMPOSE Final.tsx v2 (Cut A, 15 scenes)
+
+- **Do:** rewrite `scripts/video/final/src/compositions/Final.tsx`
+  against the storyboard's Cut A v2 table — 15 sequences with 14 xfades.
+  Audio: `<Audio src={staticFile('ambient.aac')} loop volume={0.7} />`.
+  Captions per the storyboard caption table.
+- **Validate:** `pnpm exec tsc --noEmit` clean; `pnpm run render Final
+  out/Final.mp4 --crf=23` succeeds; duration within ± 0.5 s of target.
+
+### Task 18 — COMPOSE Final30.tsx v2 (Cut B, 7 scenes)
+
+- **Do:** rewrite to the storyboard's Cut B v2 table — 7 sequences with
+  6 xfades. Reuse Cut A's captures.
+- **Validate:** tsc clean; render succeeds; duration ~30 s.
+
+### Task 19 — UPDATE Root.tsx registry
+
+- **Do:** register `Final` + `Final30` with their new `durationInFrames`
+  computed from the storyboard.
+- **Validate:** `pnpm exec tsc --noEmit` clean.
+
+### Task 20 — VISUAL QA gate (mandatory)
+
+- **Do:** `pnpm run qa Final 18` + `pnpm run qa Final30 12`. Read every
+  JPG via the Read tool. Acceptance: no blank-white frames, no error
+  text in any capture, every caption legible, transitions smooth, the
+  benefit cards animate (compare frames 5 / 30 / 55 of each card slot
+  to confirm motion).
+- **Pattern:** DDR-036 mandatory step — agent reads ALL frames, no
+  sampling.
+- **Validate:** Per-scene confirmation in execution report.
+
+### Task 21 — LOUDNORM + copy to site/public
+
+- **Do:** `loudnorm=I=-18:LRA=11:TP=-1.5` on both cuts via
+  `-c:v copy`. Extract poster from `demo.mp4` frame 30.
+- **Validate:** `demo.mp4` < 16 MB, `demo-30s.mp4` < 10 MB, integrated
+  loudness within −18 ± 2 LU for both.
+
+### Task 22 — SITE EMBED (DemoVideo component)
+
+- **Do:** author `site/components/mdcc/demo-video.tsx` (autoplay muted
+  loop + prefers-reduced-motion pause + iOS playsInline). Insert
+  `<DemoVideo />` in `site/app/(home)/page.tsx` between hero and
+  catalog. Append `.mdcc-demo-video-wrap` + `.mdcc-demo-video` CSS to
+  `site/app/global.css` honoring DS tokens.
+- **Validate:** `pnpm --filter @maude/site build` exits 0.
+
+### Task 23 — README embed + npm hygiene
+
+- **Do:** add inline `<video>` tag below README H1 pointing at the
+  release-asset URL. Author `scripts/check-publish-size.sh` (rejects
+  MP4 / `scripts/video/` paths in the tarball; caps tarball at 2 MB).
+- **Stop before `gh release create`** per user policy (DDR-037 §7).
+  Print the exact `gh release create demo-assets-v<version>
+  site/public/demo-30s.mp4` command and pause.
+- **Validate:** `bash scripts/check-publish-size.sh` exits 0.
+
+### Task 24 — APPEND DDR-037 with v2 execution log
+
+- **Do:** add a "v2 execution log" section to DDR-037 listing the
+  concrete decisions made during v2 execution + any new gotchas
+  discovered.
+- **Validate:** DDR-037 cross-links resolve.
 
 ---
 
 ## Validation
 
-Run these end-to-end:
+End-to-end happy path:
 
-1. **Toolchain green:** `pnpm run video:smoke` exits 0.
-2. **Infrastructure clean:** `cd scripts/video/final && pnpm exec tsc --noEmit && pnpm run lint:motion && pnpm run lint:tape && pnpm run goldens:check` — all exit 0.
-3. **End-to-end pipeline (idempotent):**
-   ```sh
-   bash scripts/video/final/lib/server-up.sh &      # boot scratch :4400
-   vhs scripts/video/tapes/01-install-init-serve.tape
-   pnpm exec playwright test --config scripts/video/playwright/playwright.config.ts
-   # transcode WebM → MP4 loop (see Task 3)
-   cd scripts/video/final
-   pnpm run render Final site/public/demo.mp4 --crf=23
-   pnpm run render Final30 site/public/demo-30s.mp4 --crf=23
-   # loudnorm both (see Task 6)
-   ```
-4. **Visual QA (mandatory):** `pnpm run qa Final 16 && pnpm run qa Final30 12` — agent reads every JPG, contact sheet eyeballed.
-5. **Sizes:** `demo.mp4` < 16 MB, `demo-30s.mp4` < 10 MB.
-6. **Loudness:** integrated loudness within -18 ± 2 LU for both.
-7. **Site embed:** landing autoplays muted, loops, reduced-motion pauses.
-8. **README embed:** renders inline on GitHub.
-9. **npm hygiene:** `bash scripts/check-publish-size.sh` exits 0.
-10. **Lint:** `pnpm lint` clean (root).
-
----
-
-## Scenario Coverage (UI tasks — required)
-
-The site embed + README embed ARE UI changes. New scenarios:
-
-- `site-landing-video-autoplay` — assert `<video>` element present,
-  `currentTime > 0` after 1 s, `muted=true`, `loop=true`. Platforms:
-  web-desktop, web-mobile.
-- `site-landing-reduced-motion` — emulate `prefers-reduced-motion`,
-  assert `video.paused === true`. Platform: web-desktop.
-- `readme-video-loads` — fetch the release-asset URL, assert HTTP 200.
-  Platform: web-desktop.
-
-`scenario-runner` agent runs these in `/flow:validate`.
+1. `pnpm run video:smoke` exits 0.
+2. `(cd scripts/video/final && pnpm exec tsc --noEmit && pnpm run lint:motion && pnpm run lint:tape && pnpm run goldens:check)` all exit 0.
+3. `bash scripts/video/final/lib/server-up.sh` prints port 4400.
+4. All 3 VHS tapes render clean (no leaked Hide-block commands, no
+   visible error text in install scene).
+5. All 7 Playwright specs pass; agent reads at least the mid-frame of
+   each capture and confirms scene intent.
+6. `pnpm run qa Final 18 && pnpm run qa Final30 12` — agent reads
+   every JPG.
+7. `demo.mp4` < 16 MB, `demo-30s.mp4` < 10 MB, loudness −18 ± 2 LU.
+8. Site builds (`pnpm --filter @maude/site build` exits 0).
+9. README renders the `<video>` tag (visually verify on GitHub preview
+   AFTER user manually `gh release create`s the asset).
+10. `bash scripts/check-publish-size.sh` exits 0.
 
 ---
 
 ## Acceptance Criteria
 
-- [ ] Tasks 0–9 completed in order.
+- [ ] Tasks 0–24 completed in order.
 - [ ] Phase 15.1 gates green (Task 0).
-- [ ] Real CC0 music track committed; license URL HTTP 200.
-- [ ] Scratch project bootstrapped, all artifacts exist (Task 2 validates).
-- [ ] Seven `scene-*.mp4` captures in `scripts/video/final/public/` (1 VHS + 6 Playwright).
-- [ ] `pnpm run lint:tape` clean (new tape follows discipline).
-- [ ] `Final.tsx` extended with full storyboard; `Final30.tsx` created.
-- [ ] **`pnpm run qa Final` + `pnpm run qa Final30` contact sheets eyeballed; agent confirmed scene-by-scene clean in execution report.**
-- [ ] `site/public/demo.mp4` exists, < 16 MB, ~60 s, h264 + aac, loudnorm -18 LUFS.
-- [ ] `site/public/demo-30s.mp4` exists, < 10 MB, ~30 s, same encoding.
-- [ ] `site/public/demo-poster.jpg` exists.
-- [ ] DemoVideo component embedded in landing; autoplay + reduced-motion verified.
-- [ ] GitHub release asset uploaded; README renders inline.
-- [ ] `scripts/check-publish-size.sh` exits 0; no MP4 in npm tarball.
-- [ ] DDR-037 recorded.
-- [ ] Scenarios authored + green in `/flow:validate`.
-- [ ] No DDR-worthy decision left unrecorded.
+- [ ] All tool prerequisites present (Task 1) — `bun`, `vhs`, `claude`,
+      `ffmpeg`, `pnpm`.
+- [ ] Scratch project bootstrapped via fixture path.
+- [ ] 10 capture MP4s produced (3 VHS + 7 Playwright).
+- [ ] Install scene shows no `Error` / `Cannot find native binding`
+      text (the v1 regression).
+- [ ] Claude TUI scene shows the slash command typed + Stage 1 first
+      prompt visible.
+- [ ] Canvas-hero shows visible inspector halo on at least 2 distinct
+      elements + a multi-select moment.
+- [ ] Comments scene shows visible pins + composer after zoom-reset.
+- [ ] Annotations scene shows at least one drawn mark + a label.
+- [ ] HMR split-screen shows the file edit on left AND canvas reload
+      on right within the same 8 s slot.
+- [ ] 4 benefit cards render with animated headline + subline + DS
+      framing.
+- [ ] `pnpm run qa Final` + `pnpm run qa Final30` contact sheets read
+      clean end-to-end (agent confirms scene-by-scene).
+- [ ] `site/public/demo.mp4` < 16 MB, ~75 s, loudness −18 ± 2 LU.
+- [ ] `site/public/demo-30s.mp4` < 10 MB, ~30 s, same loudness.
+- [ ] DemoVideo embedded in landing; build green.
+- [ ] README `<video>` markdown present (gh release upload deferred to
+      user).
+- [ ] `scripts/check-publish-size.sh` exits 0; no MP4 in tarball.
+- [ ] DDR-037 v2 execution log appended.

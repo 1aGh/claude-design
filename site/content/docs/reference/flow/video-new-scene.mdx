@@ -1,0 +1,31 @@
+---
+title: /flow:video-new-scene
+description: "Scaffold a new Remotion scene under scripts/video/final/src/scenes/ — composition + storyboard row + Root.tsx registration"
+---
+
+| Property | Value |
+| -------- | ----- |
+| **Command** | `/flow:video-new-scene` |
+| **Category** | `setup` |
+| **Argument hint** | `<scene-id> <duration-seconds> \"<caption>\"` |
+| **Source** | [`plugins/flow/commands/video-new-scene.md`](https://github.com/1aGh/maude/blob/main/plugins/flow/commands/video-new-scene.md) |
+
+## Description
+
+Scaffold a new Remotion scene under scripts/video/final/src/scenes/ — composition + storyboard row + Root.tsx registration
+
+## Invocation
+
+```text
+/flow:video-new-scene <scene-id> <duration-seconds> \"<caption>\"
+```
+
+## Summary
+
+Generate a Remotion scene under `scripts/video/final/src/scenes/&lt;scene-id>/`, register the `&lt;Composition>` in `Root.tsx`, and append a row to `scripts/video/storyboard.md` (creating it if missing).
+
+## Source of truth
+
+This page is auto-generated from the command's frontmatter. The exact prompt Claude runs — including directives, edge-case handling, and tool-routing logic — lives in the source file:
+
+[**`plugins/flow/commands/video-new-scene.md`**](https://github.com/1aGh/maude/blob/main/plugins/flow/commands/video-new-scene.md) → read it for the full behavior.
