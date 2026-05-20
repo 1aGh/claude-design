@@ -1,5 +1,176 @@
 # @1agh/md-claude
 
+## 0.14.0
+
+### Minor Changes
+
+- b069b9d: **Design plugin — dev-server sidebar restructure: sidecar nesting, per-DS folders, section toggles.**
+
+  - **VS Code-style sidecar grouping.** `.tsx` canvases are the primary tree rows; `.meta.json` / `.css` / `.registry.json` siblings collapse under a disclosure chevron. Multi-extension match keeps `Foo.meta.json` correctly grouped with `Foo.tsx`. Canvas extensions are stripped in row labels, menubar status, and comments-panel group headers.
+  - **Per-DS folders inside DESIGN SYSTEM section.** Every entry in `cfg.designSystems` renders as its own folder (`project`, `beta`, …) regardless of single- vs. multi-DS. Folder name opens SystemView for that DS; chevron toggles disclosure. Server emits `dsFolders[]` on the DS group so the client knows which dirs are DS roots.
+  - **Every section is expandable.** `PROJECT`, `DESIGN SYSTEM`, `UI CANVASES`, and `RUNTIME` headers are all unified `section-toggle` buttons. Per-section open/collapsed state persists in one `mdcc-sections-expanded` localStorage key. Defaults: working sections (Project, UI canvases) open; meta sections (DS, Runtime) collapsed.
+  - **View › Show hidden files (`H` shortcut).** Off by default — hides sidecars, the RUNTIME section, orphan project files, and DS-level docs (`README.md`, `SKILL.md`, `colors_and_type.css`). On reveals everything plus per-canvas chevrons for sidecar disclosure.
+  - **DS pill counts DSes** (`pillFromDsCount`), replacing the hardcoded `MDCC-DSN/01` SKU stamp from the CV-08 mock. Multi-DS configs show `2`, `3`, ….
+  - **Server `stripPrefix` redesign.** Flattens `.design/` for PROJECT/RUNTIME and `.design/<group.path>/` for canvas groups. DS folders surface as top-level dirs instead of the redundant `system/project` chain.
+  - Removed the "Design system view" entry from the View dropdown — redundant with per-DS folder click + existing `S` shortcut.
+  - Sidebar open/closed state now persisted (`mdcc-sidebar-open`).
+
+- 5d9292e: **Design plugin — Phase 3.6.1: canvas envelope hygiene, reusable canvas-lib, HMR, and DS specimens as TSX.**
+
+  - **`@mdcc/canvas-lib`** — shared canvas library (`<designRoot>/_lib/canvas-lib.tsx`) resolved virtually at build time. Ships the frame envelope (`DesignCanvas`, `DCSection`, `DCArtboard`, `DCPostIt`), specimen helpers (`SpecimenHeader`, `SpecimenMeta`, `TokenChip`, `ColorSwatch`, `TypeScaleRow`, `KbdHint`, `ThemeToggle`) and hooks (`useTokens`, `useTheme`, `useArtboardBounds`). Authored once, imported by canvases and specimens — `/design:handoff` inlines used exports per-canvas so the emitted registry-item stays self-contained.
+  - **HMR** — `fs-watch` change events now broadcast `canvas-hmr` messages over the existing inspector WebSocket. CSS sibling edits hot-swap via `<link>` cache-bust; `_lib/**` edits trigger hard iframe reload; canvas `.tsx` edits do a module reload. Target p50 < 200 ms click-to-paint, p99 < 400 ms.
+  - **DS specimens are now TSX**, not HTML. `/design:setup-ds` scaffolds bare-TSX specimens via the new `ds-specimen.tsx.template`; the `design-system-completeness-critic` and `design-system-keeper` agents read `.tsx`. The legacy `system/<ds>/preview/*.html` set is archived under `_history/_migration-2026-05-15/`.
+  - **`/design:edit` Step 1.5** now also pre-loads `<designRoot>/_lib/canvas-lib.tsx` for every `.tsx` canvas so iteration prompts see the authoring vocabulary instead of re-inventing helpers.
+  - **Fixes** the white-page regression in `Docs Site.tsx` / `Canvas Viewport.tsx` introduced by the Phase 3.6 codemod (which referenced `<DesignCanvas>` JSX identifiers that were undefined in TSX-land) and rebuilds `Smoke TSX.tsx` against the new envelope.
+  - Adds `canvas-lib-resolver`, `canvas-lib-inline`, and `hmr-broadcast` modules to `plugins/design/dev-server/` with full Bun-test coverage.
+
+- 0122207: **Design plugin — Phase 4.1: universal canvas input grammar (DDR-026).**
+
+  Every TSX canvas now ships with the same infinite-canvas affordances out of the box — no opt-in flag, no two-grammar split. Replaces the Phase-4 Cmd-only inspector overlay selection path.
+
+  - **Three canvas tools.** `V` Move (default), `H` Hand, `C` Comment — bottom-left floating ToolPalette + letter-key shortcuts. Scoped to canvas-iframe focus (don't collide with shell shortcuts).
+  - **Selection grammar.** `Cmd + hover` previews the deepest element under cursor. `Cmd + click` selects (replace). `Cmd + Shift + click` adds to a multi-selection (dashed group bounding box renders around the union). Bare hover / click pass through — native interactions (button presses, link clicks, input focus) still work in Move tool. Selection halos render as `position: fixed` overlays in screen coords, so 2 px stays 2 px regardless of zoom level.
+  - **Hand tool.** Bare drag pans the world — no Space required. Cursor forced to `grab` across every descendant (overrides element-level `cursor: pointer` declarations on buttons / links).
+  - **Comment tool.** Hover paints a preview halo on the element under cursor. Click commits that element to the selection set AND opens the shell-side composer for it; the halo persists until Submit / Cancel / Esc. Native interactions on artboard children are fully suppressed via capture-phase `preventDefault + stopImmediatePropagation` — buttons / inputs don't activate while in comment mode.
+  - **Right-click context menu.** Element / artboard chrome / world contexts. Items include `Add comment`, `Copy CSS`, `Copy data-cd-id`, `Hide`, `Deselect`, `Fit just this artboard`, `Fit to view`, `Reset view`. Full keyboard navigation (Arrow Up/Down / Enter / Esc), shortcut hints right-aligned in monospace.
+  - **Active-artboard indicator.** Subtle 1 px tinted accent ring on the artboard closest to the viewport center — marks the `/design:edit` context anchor without competing with selection halos.
+  - **`_active.json#selected` schema widening.** Now accepts `SelectedElement | SelectedElement[] | null`. Writer collapses single-entry arrays to a bare object for back-compat with `/design:edit` and handoff tooling. Reader (`normalizeSelectedRead`) accepts all three shapes.
+  - **Inspector overlay slimmed to comment-pin renderer.** The legacy Cmd-hover / Cmd-click selection path (`.dgn-insp-hover` / `.dgn-insp-selected` cyan outline) is removed. Only `.dgn-pin*` styles + the `comments-set` / `comment-focus` message handlers remain. Comment pins still render on legacy `.html` mocks and on TSX canvases equally.
+  - **Shell `.sel-halo` wrap removed.** The pre-Phase-4 2 px accent border that wrapped the entire iframe is gone — element-level halos in canvas-shell are the only selection visual now.
+
+  **Decision evolution.** First draft of Phase 4.1 landed an opt-in `inputMode="figjam"` prop on `DesignCanvas`. After live smoke tests the decision flipped to universal grammar (visual-inconsistency feedback: cyan-with-label inspector overlay vs accent-no-label new router) + naming directive (`figjam` removed from public API). The full alternatives history lives in DDR-026.
+
+  **No new dependencies.** All new modules are sibling files under `plugins/design/dev-server/`. Tree-shake-on-handoff still works via `canvas-lib-inline.ts` AST walker — drops carry the canvas-shell code as inlined source.
+
+  `bun test` 185/185, 0 fail (133 baseline + 52 new tests across `input-router`, `use-tool-mode`, `use-selection-set`). `bunx tsc --noEmit` clean of new errors. Canvas-build smoke against Canvas Viewport / Docs Site / Smoke TSX all return 200 with consistent canvas-shell wiring.
+
+- a771d04: **Design plugin — Phase 4.2: free-form artboard repositioning (DDR-027, DDR-028).**
+
+  Artboards on the infinite canvas are now spatially editable. Phase 4 shipped the persistence infra; 4.2 plugs the drag-to-reposition UI surface into both that infra and the Phase 4.1 selection-set + tool-mode grammar.
+
+  - **Drag the artboard chrome** (label strip + outer border) while the Move tool is active. Inner content stays click-through, so Cmd+select still works through it.
+  - **Multi-select drag.** When the selection-set contains multiple artboard roots, dragging any one moves all selected artboards rigidly together — relative offsets captured at drag-start and preserved through snap.
+  - **Snap-to-grid + snap-to-sibling.** 40 world-unit grid + 8 world-unit tolerance to other artboards' left / right / center on X (and top / bottom / center on Y). 1 px guide lines render at the snapped position in `--accent`. Independent per axis (X can snap to a sibling and Y to the grid simultaneously).
+  - **Hold Alt to disable snap.** Per-pointermove modifier read; release Alt and guides reappear on the next move.
+  - **Ghost preview.** Original artboards mute to opacity 0.3 (`.dc-dragging`); a semi-transparent clone at opacity 0.5 (`.dc-artboard-ghost`) follows the snapped cursor position. Drop commits.
+  - **4 px click-vs-drag classifier.** Below threshold → label `onClick` fires (Phase 4 pan-to-focus regression-clean). At/above → drag starts, the synthetic click is suppressed via a one-shot capture-phase listener.
+  - **Persistence on drop.** PATCH `meta.layout.artboards[]` via the existing `patchCanvasMeta` writer. Reload restores positions.
+  - **Position-only writes (DDR-027).** The writer strips `w` / `h` from layout payload — artboard size is JSX-authoritative now. The reader still tolerates legacy entries with `w` / `h` for back-compat with Phase 4 default-grid snapshots; the next drag organically migrates them to position-only entries.
+  - **Snap tolerance in world units (DDR-028).** Tolerance scales with the layout, not the screen, so snap feel stays consistent across zoom levels. `useSnapGuides` is a pure zoom-agnostic function.
+  - **Cursor swap.** `grab` on label hover when active tool is `move`; `grabbing` during drag. Wired via the existing `.dc-canvas[data-active-tool="move"]` projection.
+
+  **New modules.** `use-snap-guides.tsx` (pure snap math, 20 table tests) · `use-artboard-drag.tsx` (state-machine reducer + DOM hook, 20 unit tests) · `SnapGuideOverlay` export from `canvas-lib.tsx` mounted by `CanvasShell`.
+
+  **Bug fixes (caught during visual smoke + code review + post-merge dogfooding).**
+
+  - The reader in `DesignCanvasInner.artboards` `useMemo` previously replaced default-grid entries wholesale with meta entries. Once 4.2 writers started emitting position-only `{ id, x, y }`, the replace left `w` / `h` undefined → artboards rendered at 0×0. Reader now merges meta over defaults instead of replacing.
+  - The drag hook used to call `setPointerCapture` on the outer article on pointerdown. That redirected the synthetic `click` event to the captured ancestor, breaking the label button's `onClick` → Phase 4 pan-to-focus regression. Capture removed; global window-level pointermove/up listeners (capture: true) carry the drag without it.
+  - `selectedIds` in the drag hook fell back from `Selection.id` (a child element's `data-cd-id`) to `Selection.artboardId`. That pulled stray child cd-ids into the multi-drag identity set and silently disabled multi-artboard drag. New `selectionsToArtboardIds` helper now keys on `artboardId` only; covered by a regression test.
+  - Drag commits PATCH'd the server but the local React state stayed frozen — users had to switch canvases to "see" the dropped artboard at its new position. `DesignCanvasInner.artboards` converted from `useMemo([seeds])` to `useState` with optimistic update on commit. Drop now reflects instantly in the DOM without an iframe reload.
+
+  **Handoff regression-clean.** Drag + snap exports (`useArtboardDrag`, `SnapGuideOverlay`, `computeSnap`, `useSnapGuides`, `DragStateContext`) never travel into a handed-off registry item — the static-frame overrides for `DesignCanvas` / `DCArtboard` / `DCSection` break the transitive chain, pinned by 2 new tests in `handoff-static-frames.test.ts`.
+
+  **Schema.** `canvas-meta.schema.json#layout.artboards[].required` narrows from `["id","x","y","w","h"]` to `["id","x","y"]`. `w` / `h` remain in `properties` as legacy read-only fields.
+
+  `bun test` 239/239, 0 fail (baseline + 44 new across snap + drag + 1 canvas-meta-api + 2 handoff). `bunx tsc --noEmit` clean of new errors. Scenario `canvas-artboard-drag` authored at `.ai/scenarios/canvas-format-tsx/canvas-artboard-drag/spec.md`; manual web-desktop end-to-end smoke confirmed drag → snap → drop → reload round-trip with pin artboard at `{x: 1200, y: 1200}` post-reload, plus the post-merge instant-update fix (pin moved from `(0, 900)` → `(1414, 1400)` with DOM reflecting the change immediately on pointerup, no reload).
+
+- 54dbe87: **Design plugin — Phase 4: canvas v2 infinite-canvas engine.**
+
+  Every `.tsx` canvas under `<designRoot>/ui/` becomes a transformable world plane — `DCArtboard` children are absolutely positioned in world coords, the whole scene pans and zooms behind a single transform. Pan/zoom state survives reloads. The dev-server shell stays editor-style (one canvas active at a time, file-tab toggle); the infinite-canvas engine lives **inside** each canvas runtime, not at the shell level.
+
+  - **`DesignCanvas` is now a world plane.** Internal `.dc-canvas` + `.dc-world` structure, render-order default grid (3 cols × max-cell-width × max-cell-height, 80 px gutter), per-cell sizing so canvases with mixed-width artboards tile cleanly. Single-artboard canvases default to fit-to-screen — visually identical to pre-Phase 4 until the user pans / zooms.
+  - **`useViewportController` hook** — wheel = 2D pan (Mac trackpad gives both axes), Shift+wheel = horizontal pan (axis-swap robust across browsers/OSes), Ctrl/Cmd+wheel and pinch = zoom around cursor (mathematically exact — the world coord under the cursor stays fixed). Space-hold + drag and middle-mouse drag both pan. Cmd+0 fit, Cmd+1 actual size, Cmd+= / Cmd+- zoom in/out, Cmd+Option+1..9 jump-to-artboard N. Reduced-motion respected.
+  - **`DCMiniMap` + `DCZoomToolbar`** — bottom-right 196×132 floating map with click-drag pan; bottom-center −/%/+/fit/1:1 toolbar. Mounted by default; opt-out via `<DesignCanvas controls={{minimap:false, toolbar:false}}>`.
+  - **`DCArtboard` label is a focusable `<button>`** — click smooth-pans + zooms to fit just that artboard in 240 ms (rAF ease-out cubic; reduced-motion = instant). Active-artboard indicator (`aria-current="true"` + accent ring) tracks the artboard closest to viewport center.
+  - **`<file>.meta.json` persistence** — `canvas-meta.schema.json` extended with optional `layout` + `viewport`. New `/_api/canvas-meta` GET/PATCH endpoint shallow-merges blocks (clamps zoom, rejects non-finite, refuses paths escaping repoRoot). `_shell.html` injects `window.__canvas_meta__`. `onSettle` PATCHes back 500 ms after the last input. 5 new tests pin the contract.
+  - **Handoff stays clean.** `applyHandoffStaticOverrides()` in `handoff.ts` swaps `DesignCanvas` / `DCSection` / `DCArtboard` for minimal static-frame variants in the libMap before the canvas-lib BFS — engine code (`useViewportController`, `DCMiniMap`, `DCZoomToolbar`, `WorldContext`, harvest+grid+fit helpers) never reaches the emitted registry item. 4 dedicated tests pin the contract.
+  - **Crisp text at any zoom.** The world uses CSS `zoom: N` (layout-level re-flow → text re-rasterizes at target resolution) instead of `transform: scale(N)` (which upsamples a cached layer and produces visible pixelation past zoom ~1.5). Pan velocity stays constant in screen px regardless of zoom.
+  - **Pixi.js v8 added to the canvas runtime importmap.** Lazy-bundled at `/_canvas-runtime/pixi-js.js` (1.7 MB, only fetched by canvases that `import 'pixi.js'`). Reserved for the DDR-024-deferred snapshot-to-texture path and high-end designer overlays — current canvases don't need it because CSS `zoom` solves the crispness problem.
+  - **DDR-024** captures the perf-gate methodology (`.design/_lab/perf-100-artboards.tsx` reference workload, idle / 5s pan / 10s zoom on M1 MBA, ≥ 20 % uplift over CSS to authorize Pixi.js engine swap). Pixi.js bundle stays deferred until a user-side bench fills the Measurements block.
+  - **`_lib/` HMR cache invalidation fix.** When `_lib/canvas-lib.tsx` changes, the in-memory canvas bundle cache is cleared so the iframe reload picks up the fresh build. Without this, the HMR hard-reload message reached the browser but served stale-mtime-keyed bundles.
+  - **Slug round-trip fix** in `runtime-bundle.ts`: package names with `.` (like `pixi.js`) now map to slugs with `-` (`pixi-js`) so the URL extension stays unambiguous.
+
+  `bun test`: 123 baseline → 139 with 16 new Phase 4 tests, all green.
+
+- b24726a: **Design plugin — Phase 5.1: FigJam-style annotation overhaul + canvas chrome redesign.**
+
+  The Phase 5 draw layer was write-once: pen/rect/arrow strokes worked, but you couldn't re-select, re-style, move, or delete what you'd drawn, the viewport stuttered, and the dev-server menubar's `View / Selection / Tools` items were inert. Phase 5.1 brings annotations close to FigJam, with a single centered canvas toolbar that replaces the three floating chrome pieces.
+
+  **Annotation rendering**
+
+  - **Portal architecture.** The annotation SVG renders **inside** `.dc-world` via `createPortal`, so the world's CSS `zoom` + `translate` propagate to strokes natively — zero-latency pan/zoom (Phase 5's one-frame shimmer is gone). The input layer is a separate transparent overlay portaled into the host (`.dc-canvas`); viewport gestures (space-pan, middle-mouse, wheel/pinch) coexist with draw mode without `stopPropagation`. See `DDR-029`.
+  - **New shapes.** `O` activates the ellipse tool. Rect + ellipse both gain a **fill picker** ("none" + 6-color palette). Pen + arrow gain a **thin / thick** thickness chip (2 px / 6 px). Schema is back-compatible — Phase 5 SVGs round-trip cleanly.
+  - **Text-in-shape.** Double-click a selected rect or ellipse → `<foreignObject>` editor opens centered in the shape's bbox. Type your label, `Esc` commits; reload preserves. Font size step (S / M / L) lives in the contextual toolbar.
+
+  **Annotation selection + editing**
+
+  - **Parallel selection store.** `AnnotationSelectionProvider` mirrors `use-selection-set` for stroke IDs. Move-tool bare click on a stroke selects (replace), Shift+click adds. `Cmd / Cmd+Shift` falls through to the existing element-selection path (Phase 4.1 escape hatch preserved). Element + annotation selection don't co-exist visibly.
+  - **Marquee drag-select.** In Move mode, drag from empty world → screen-coord rectangle expands as you drag; on release every stroke whose bbox intersects gets selected (Shift = additive). Sub-4-px gestures fall back to "click on empty world → clear".
+  - **Contextual floating toolbar.** Per-shape FigJam-style toolbar anchored above the selection union bbox. Color (always), fill (rect/ellipse), thickness (pen/arrow), font-size (text), delete (always). Fields show the intersection across multi-select. Mutations route through a lifted strokes store and trigger the same debounced PUT save as drawing.
+  - **Move / nudge / delete.** Drag a selected stroke (or the group) → world-coord translate, persists on release. Arrow keys nudge 1 unit (`Shift` = 10). `Backspace` / `Delete` removes selection.
+
+  **Canvas chrome redesign**
+
+  - **Single centered bottom toolbar** replaces `ToolPalette` + `DCZoomToolbar` (the bottom-right pill). Icon-based buttons grouped into three pill segments: nav (V/H/C) · draw (B/R/O/A/E) · view (presentation toggle + zoom display). Adopts the dev-server menubar's visual language (8 px radius, soft shadow, hairline border) so canvas chrome and app chrome read as one product. New `canvas-icons.tsx` ships a dependency-free Lucide-style icon set.
+  - **Color/fill/thickness chrome** sits **directly above** the tool toolbar (centered) when a draw tool is active. Stripped of the Phase 5 "Hide" + "?" buttons — presentation lives on the main toolbar, annotation shortcuts live in the menubar `Help` modal.
+  - **Minimap** restyled to the same chrome family (8 px radius, 24 px shadow), unchanged behavior.
+  - **Zoom popover** absorbs the legacy `DCZoomToolbar`'s four actions (Zoom In / Out / Fit / Actual Size). Opens above the toolbar with shortcut hints. `DCZoomToolbar` is kept exported for back-compat but no longer rendered by `DesignCanvas`.
+
+  **Dev-server menubar bridge**
+
+  - `View → Annotations` toggles visibility (replaces the disabled "Phase 5" tag).
+  - New `Selection` dropdown: `Deselect all` / `Select all annotations`.
+  - New `Tools` dropdown: every tool with its shortcut, click → activates inside the canvas iframe via the existing `dgn:*` postMessage channel.
+  - `HelpModal` gains an **Annotation tools** section so all 11 shortcuts (B/R/O/A/E, V+click, V+drag, double-click, arrow nudge, Backspace, Shift+P) live in one searchable place.
+
+  **Runtime + build**
+
+  - `react-dom` is now its own runtime bundle (was aliased to `react-dom/client`, which omits `createPortal`). Importmap routes `react-dom` → `/_canvas-runtime/react-dom.js`. See `DDR-029`.
+  - New annotation modules: `use-annotation-selection.tsx`, `use-annotations-visibility.tsx`, `annotations-context-toolbar.tsx`, `canvas-icons.tsx`.
+  - New `.gitignore` rule for `.design/**/*.annotations.svg` (per-canvas review scratch is user-local, not source).
+  - `bun test` 287/287 pass (+18 over Phase 5 baseline). `bunx tsc --noEmit` clean (modulo 2 pre-existing `api.ts` errors).
+  - New scenario `canvas-annotations-figjam` (14-step web-desktop walkthrough); supersedes Phase 5's `canvas-annotations`.
+  - `DDR-029` recorded — annotation overlay architecture (portal into world, large SVG dimensions, react-dom bundle split).
+
+- cc0ba03: **Design plugin — Phase 5: draw / annotation tools.**
+
+  Annotate any canvas without leaving the dev-server. Pen, rectangle, arrow, and eraser tools mount as a transparent SVG overlay per canvas, persist to `<designRoot>/<slug>.annotations.svg`, and respect the Phase 4.1 tool grammar (V/H/C still rule; B/R/A/E switch into draw modes).
+
+  - **Four shapes.** Pen freehand (multi-point path), rectangle (drag-to-size, negative areas auto-normalize), arrow (line + tri head), eraser (click or drag — hit-tests every stroke shape, removes the topmost match).
+  - **Per-stroke color** via a 6-swatch floating chrome (accent · amber · green · blue · purple · ink). Default to the DS accent. Swatch only visible while an annotation tool is active.
+  - **World-coord storage.** Strokes are stamped in world coordinates and rendered via the live viewport published by `useViewportControllerContext`; `vector-effect="non-scaling-stroke"` keeps stroke widths pixel-thick across zoom.
+  - **Persistence.** Debounced 200 ms PUT to new `/_api/annotations` endpoint (`GET ?file=<canvas>` → SVG body; `PUT { file, svg }` → 204). Server writes `<designRoot>/<slug>.annotations.svg` (1 MB cap, SVG content gate). Reload restores every stroke; each canvas owns its own file (cross-canvas isolation).
+  - **Shortcuts.** `B` = pen, `R` = rect, `A` = arrow, `E` = eraser, `V` = back to move, `Esc` = also back to move + clears in-flight. `Shift+P` toggles presentation (hides the layer without writing). `Cmd+/` opens a native `<dialog>` shortcut sheet.
+  - **Coexistence with Phase 4.1.** Cmd+click in any draw mode still routes through the input-router's element selection (escape hatch). Pointer events on annotation tools return `no-op` from the router so the SVG layer claims them natively; on non-draw tools the SVG is `pointer-events: none` and the full Phase 4 / 4.1 grammar passes through.
+  - **Help dialog uses native `<dialog>`.** Auto-opened with `.showModal()`, dismissed by Esc or backdrop click. Backdrop styled via `::backdrop` so the scrim follows the modal's stacking context cleanly.
+
+  **New modules.** `annotations-layer.tsx` (~640 LOC — overlay + chrome + state machine + persistence client). New helpers exported for unit tests: `penPathD`, `arrowHeadPoints`, `strokesToSvg`, `svgToStrokes`, `strokeHitTest`, `rid`.
+
+  **Server surface.** `api.ts` adds `loadAnnotations` / `saveAnnotations`. `http.ts` adds the `/_api/annotations` route (`GET` / `PUT` / `POST`, returns 400 on non-SVG bodies, 405 on other methods, 1 MB body cap).
+
+  **Tool grammar.** `Tool` union extends to `pen | rect | arrow | eraser` with the `isAnnotationTool()` helper. `DEFAULT_TOOLS` grows to 7 (V/H/C/B/R/A/E). `canvas-shell.tsx` extends the cursor projection (`crosshair` for pen/rect/arrow, `cell` for eraser).
+
+  **Tests.** 30 new tests across `test/annotations-layer.test.ts` (pure helpers: path / head / hit-test / round-trip / escape) and `test/annotations-api.test.ts` (endpoint round-trip + validation gates). `bun test` 269/269 pass (+30). Existing input-router and use-tool-mode tests extend for the new tool set.
+
+  **Scenario.** `canvas-annotations` authored at `.ai/scenarios/canvas-format-tsx/canvas-annotations/spec.md`; smoke piloted against `localhost:4399` via agent-browser (PUT/GET round-trip + reload-restore + cross-canvas isolation verified end-to-end; eraser + Shift+P / Cmd+/ noted as harness limitations covered by unit tests).
+
+  **Known limitations (entry point for Phase 5.1).** Pan/zoom is blocked in draw mode (the SVG claims pointer events). Strokes can't be selected, moved, or restyled after commit. No ellipse tool, no inline text inside shapes, no background fill, single thickness. The Phase 5.1 plan at `.ai/plans/phase-5.1-annotations-figjam.md` covers all of these plus a canvas-chrome redesign (centered icon toolbar replacing the current bottom-left palette).
+
+### Patch Changes
+
+- bf3b399: **Design plugin — Phase 4.0.5: canvas-lib single source in dev-server (DDR-025).**
+
+  Internal refactor — zero behavior change for canvas authors (handoff drop is byte-identical), but plugin-author ergonomics + downstream-project filesystem layout shift.
+
+  - **canvas-lib relocated.** The shared canvas library (`DesignCanvas`, `DCSection`, `DCArtboard`, `DCPostIt`, specimen helpers, hooks) now lives at `plugins/design/dev-server/canvas-lib.tsx` and ships with the dev-server install. Three prior copies — `plugins/design/templates/canvas-lib.tsx.template`, the dogfood `.design/_lib/canvas-lib.tsx`, and every initialized project's scaffolded `<designRoot>/_lib/canvas-lib.tsx` — collapse to one. Plugin releases now reach end users automatically.
+  - **Bootstrap drops the canvas-lib scaffold step.** `design-system/SKILL.md` Round-0 Batch-A step 0 deleted. `/design:setup-ds` no longer writes a `_lib/` directory in the project; the virtual specifier `@mdcc/canvas-lib` resolves directly to the dev-server-bundled file at canvas build time.
+  - **Legacy `<designRoot>/_lib/canvas-lib.tsx` deprecation guard.** Downstream projects with a pre-4.0.5 `_lib/canvas-lib.tsx` get a one-shot warning log per dev-server boot (`[canvas-lib] Legacy … detected …`); the project file is **ignored** and the dev-server-bundled lib is authoritative. After two minor versions the warning becomes silent and the fallback comment is removed.
+  - **Perf fixture relocated.** `.design/_lab/perf-100-artboards.tsx` → `plugins/design/dev-server/examples/perf-100-artboards.tsx` with sibling `README.md`. The fixture is dev-server tooling, not user content — keeping it in `.design/_lab/` mislabeled the boundary.
+  - **canvas-lib HMR.** When `plugins/design/dev-server/canvas-lib.tsx` is edited, the http-layer file-watcher clears the canvas bundle cache and emits a synthetic `_lib/canvas-lib.tsx` event so the existing hmr-broadcast classifier emits the same hard-reload message every open iframe was already wired for. No bespoke client-side wiring.
+  - **DDR-022 partially superseded by DDR-025.** "Two-state model" (virtual specifier at author time, AST-inlined at handoff time) stands; only the _physical home_ of the canonical source changed. Header annotation added to DDR-022.
+
+  `bun test`: 133/133 (4 tests in `canvas-lib-resolver.test.ts` rewritten to match the new contract — old assertion was `canvasLibPath('/foo/bar') === '/foo/bar/_lib/canvas-lib.tsx'`; new contract is `canvasLibPath()` returns the dev-server-internal path; new legacy-guard test asserts a planted bogus `<designRoot>/_lib/canvas-lib.tsx` is ignored). Handoff drop sha1-identical to pre-relocation baseline.
+
 ## 0.13.1
 
 ### Patch Changes
