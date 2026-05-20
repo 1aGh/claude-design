@@ -9,19 +9,33 @@ import { AbsoluteFill, OffthreadVideo, staticFile } from 'remotion';
  *
  * Usage:
  *   <TerminalFrame src="scene-maude-init.mp4" />
+ *   <TerminalFrame src="x.mp4" playbackRate={1.5} startFrom={30} endAt={300} />
  *
- * For the assembled cut, parent <Sequence> sets duration; this component
- * only owns the visual frame.
+ * `playbackRate` / `startFrom` / `endAt` pass through to <OffthreadVideo>.
+ * NB: startFrom + endAt are frames-at-composition-fps, NOT seconds (DDR-037).
  */
 type Props = {
   /** Filename under public/, e.g. "scene-terminal.mp4". */
   readonly src: string;
   /** Padding around the inset frame. Default = generous (matches Final.tsx). */
   readonly padding?: string;
+  /** OffthreadVideo passthroughs. */
+  readonly playbackRate?: number;
+  readonly startFrom?: number;
+  readonly endAt?: number;
+  /** Hide the dark backdrop (split-screen halves provide their own bg). */
+  readonly transparentBackdrop?: boolean;
 };
 
-export const TerminalFrame: React.FC<Props> = ({ src, padding = '120px 200px' }) => (
-  <AbsoluteFill style={{ backgroundColor: '#0e0e10' }}>
+export const TerminalFrame: React.FC<Props> = ({
+  src,
+  padding = '120px 200px',
+  playbackRate,
+  startFrom,
+  endAt,
+  transparentBackdrop = false,
+}) => (
+  <AbsoluteFill style={{ backgroundColor: transparentBackdrop ? 'transparent' : '#0e0e10' }}>
     <AbsoluteFill
       style={{
         padding,
@@ -42,6 +56,9 @@ export const TerminalFrame: React.FC<Props> = ({ src, padding = '120px 200px' })
         <OffthreadVideo
           src={staticFile(src)}
           muted
+          playbackRate={playbackRate}
+          startFrom={startFrom}
+          endAt={endAt}
           style={{ width: '100%', height: '100%', objectFit: 'contain' }}
         />
       </div>

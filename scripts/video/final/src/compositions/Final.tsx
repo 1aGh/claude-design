@@ -5,81 +5,227 @@ import { LowerThird } from '../lib/LowerThird';
 import { BrowserChrome, TerminalFrame } from '../lib/capture-frames';
 import { IntroScene } from '../scenes/01-intro';
 import { OutroScene } from '../scenes/03-outro';
+import { BenefitCard } from '../scenes/05-benefit-card';
+import { SplitScreenFrame } from '../scenes/06-split-screen';
 
 /**
- * Final cut — proves the full phase-15.5 capture-to-assembly pipe works.
+ * Final v2.1 — single perfect cut, 16 scenes, 15 xfades.
  *
- * Frame budget @ 30fps:
- *   intro       60 frames (2.0 s)         IntroScene wordmark
- *   xfade       12 frames (0.4 s)
- *   terminal   135 frames (4.5 s)         VHS-captured maude init
- *   xfade       12 frames
- *   browser    120 frames (4.0 s)         Playwright dev-server tour
- *   xfade       12 frames
- *   outro       75 frames (2.5 s)         OutroScene install command
+ * Frame budget per storyboard.md (30 fps):
  *
- * Net: 60 + 135 + 120 + 75 - 3*12 = 354 frames = 11.8 s.
+ *   intro          75   IntroScene
+ *   install       210   VHS scene-install-init-serve.mp4
+ *   tui-setup-ds  165   VHS scene-tui-setup-ds-dryrun.mp4
+ *   ds-reveal     210   Playwright scene-ds-reveal.mp4
+ *   card-A         75   <BenefitCard kind="local-figma">
+ *   tui-new       360   <SplitScreenFrame> VHS+Playwright (real /design:new)
+ *   canvas-reveal 180   Playwright scene-canvas-reveal.mp4
+ *   canvas-hero   270   Playwright scene-canvas-hero.mp4
+ *   card-B         75   <BenefitCard kind="all-in-one">
+ *   tui-edit      360   <SplitScreenFrame> VHS+Playwright (real /design:edit)
+ *   comments      210   Playwright scene-comments.mp4
+ *   annotations   165   Playwright scene-annotations.mp4
+ *   card-C         75   <BenefitCard kind="human-ai">
+ *   docs          120   Playwright scene-docs.mp4
+ *   card-D         75   <BenefitCard kind="your-repo">
+ *   outro          90   OutroScene
+ *   ────────────────────
+ *   sum         2715 frames
+ *   - 15 xfades × 12 = 180 overlap
+ *   = 2535 frames = 84.5 s on-screen.
  *
- * Capture scenes get a bottom-aligned <LowerThird> caption strip via
- * <Sequence> overlay. Audio bed plays under everything.
- *
- * Capture wrappers (TerminalFrame / BrowserChrome) live in lib/capture-frames/
- * and accept `src` as a prop — adding a new scene from a new capture is a
- * one-line component invocation, not a copy-paste of the wrapper.
+ * Captions overlay only over capture scenes (intro/outro/cards carry their
+ * own typography). Strings live in CAPTIONS below — sourced verbatim from
+ * storyboard.md § Caption strings.
  */
 
-const INTRO = 60;
 const XFADE = 12;
-const TERMINAL = 135;
-const BROWSER = 120;
-const OUTRO = 75;
 
-const TERMINAL_START = INTRO - XFADE;
-const BROWSER_START = TERMINAL_START + TERMINAL - XFADE;
+const SCENES = {
+  intro: 75,
+  install: 210,
+  tuiSetupDs: 165,
+  dsReveal: 210,
+  cardA: 75,
+  tuiNew: 360,
+  canvasReveal: 180,
+  canvasHero: 270,
+  cardB: 75,
+  tuiEdit: 360,
+  comments: 210,
+  annotations: 165,
+  cardC: 75,
+  docs: 120,
+  cardD: 75,
+  outro: 90,
+} as const;
+
+// Caption start = scene-start in the assembled timeline (xfades subtract
+// duration each, so cumulative offset = sum(prev) - XFADE × prev-xfade-count).
+// We compute starts below for the lower-third overlays.
+const captionStarts = (() => {
+  const order: (keyof typeof SCENES)[] = [
+    'intro',
+    'install',
+    'tuiSetupDs',
+    'dsReveal',
+    'cardA',
+    'tuiNew',
+    'canvasReveal',
+    'canvasHero',
+    'cardB',
+    'tuiEdit',
+    'comments',
+    'annotations',
+    'cardC',
+    'docs',
+    'cardD',
+    'outro',
+  ];
+  const starts: Record<string, number> = {};
+  let cursor = 0;
+  for (let i = 0; i < order.length; i++) {
+    starts[order[i]] = cursor;
+    cursor += SCENES[order[i]] - (i < order.length - 1 ? XFADE : 0);
+  }
+  return starts as Record<keyof typeof SCENES, number>;
+})();
+
+const CAPTIONS: Partial<Record<keyof typeof SCENES, string>> = {
+  install: 'Install. Init. Serve.',
+  tuiSetupDs: 'Onboarding is a slash command.',
+  dsReveal: 'Design system from a paragraph.',
+  tuiNew: 'One slash. Real canvas, real code.',
+  canvasReveal: 'Multi-artboard. Pan. Zoom. Ship.',
+  canvasHero: 'Cmd+Click. The file Claude needs.',
+  tuiEdit: 'Edit. Reload. Same canvas.',
+  comments: 'Comments anchored to pixels. No exports.',
+  annotations: 'Draw on the canvas. Hand it off.',
+  docs: 'Docs at maude.iagh.cz.',
+};
+
+const xfade = () => (
+  <TransitionSeries.Transition
+    presentation={fade()}
+    timing={linearTiming({ durationInFrames: XFADE })}
+  />
+);
 
 export const Final = () => (
   <AbsoluteFill>
     <Audio src={staticFile('ambient.aac')} volume={0.7} />
 
     <TransitionSeries>
-      <TransitionSeries.Sequence durationInFrames={INTRO}>
+      <TransitionSeries.Sequence durationInFrames={SCENES.intro}>
         <IntroScene />
       </TransitionSeries.Sequence>
-      <TransitionSeries.Transition
-        presentation={fade()}
-        timing={linearTiming({ durationInFrames: XFADE })}
-      />
-      <TransitionSeries.Sequence durationInFrames={TERMINAL}>
-        <TerminalFrame src="scene-terminal.mp4" />
+      {xfade()}
+
+      <TransitionSeries.Sequence durationInFrames={SCENES.install}>
+        <TerminalFrame src="scene-install-init-serve.mp4" />
       </TransitionSeries.Sequence>
-      <TransitionSeries.Transition
-        presentation={fade()}
-        timing={linearTiming({ durationInFrames: XFADE })}
-      />
-      <TransitionSeries.Sequence durationInFrames={BROWSER}>
-        <BrowserChrome src="scene-browser.mp4" urlBar="localhost:4399" />
+      {xfade()}
+
+      <TransitionSeries.Sequence durationInFrames={SCENES.tuiSetupDs}>
+        {/* Real tape is ~40s; clip via startFrom/endAt (frames-at-fps, NOT seconds).
+            We start ~22s in (660 frames) where Stage 1 prompt is rendering. */}
+        <TerminalFrame src="scene-tui-setup-ds-dryrun.mp4" startFrom={660} />
       </TransitionSeries.Sequence>
-      <TransitionSeries.Transition
-        presentation={fade()}
-        timing={linearTiming({ durationInFrames: XFADE })}
-      />
-      <TransitionSeries.Sequence durationInFrames={OUTRO}>
+      {xfade()}
+
+      <TransitionSeries.Sequence durationInFrames={SCENES.dsReveal}>
+        {/* clip is ~11.6 s; skip the 3 s hydration preamble. */}
+        <BrowserChrome src="scene-ds-reveal.mp4" urlBar="localhost:4400" startFrom={90} />
+      </TransitionSeries.Sequence>
+      {xfade()}
+
+      <TransitionSeries.Sequence durationInFrames={SCENES.cardA}>
+        <BenefitCard kind="local-figma" />
+      </TransitionSeries.Sequence>
+      {xfade()}
+
+      <TransitionSeries.Sequence durationInFrames={SCENES.tuiNew}>
+        {/* Split-screen: VHS clipped to first ~40s of activity (typing +
+            spinner + streaming); Playwright clipped to last 12s where the
+            canvas materializes. */}
+        <SplitScreenFrame
+          leftSrc="scene-tui-new.mp4"
+          rightSrc="scene-canvas-appears.mp4"
+          leftPlaybackRate={3}
+          rightStartFrom={90}
+          urlBar="localhost:4400"
+        />
+      </TransitionSeries.Sequence>
+      {xfade()}
+
+      <TransitionSeries.Sequence durationInFrames={SCENES.canvasReveal}>
+        {/* clip ~10.6 s; skip 6 s of hydration + click + zoom-reset preamble. */}
+        <BrowserChrome src="scene-canvas-reveal.mp4" urlBar="localhost:4400" startFrom={180} />
+      </TransitionSeries.Sequence>
+      {xfade()}
+
+      <TransitionSeries.Sequence durationInFrames={SCENES.canvasHero}>
+        {/* clip ~14.4 s; skip 6 s preamble; Cmd+hover beats land 4.5/6/7.5s of clip. */}
+        <BrowserChrome src="scene-canvas-hero.mp4" urlBar="localhost:4400" startFrom={180} />
+      </TransitionSeries.Sequence>
+      {xfade()}
+
+      <TransitionSeries.Sequence durationInFrames={SCENES.cardB}>
+        <BenefitCard kind="all-in-one" />
+      </TransitionSeries.Sequence>
+      {xfade()}
+
+      <TransitionSeries.Sequence durationInFrames={SCENES.tuiEdit}>
+        <SplitScreenFrame
+          leftSrc="scene-tui-edit.mp4"
+          rightSrc="scene-canvas-edit.mp4"
+          leftPlaybackRate={1.5}
+          rightStartFrom={4500} /* skip first 150 s of 306 s playwright capture (post-edit half) */
+          urlBar="localhost:4400"
+        />
+      </TransitionSeries.Sequence>
+      {xfade()}
+
+      <TransitionSeries.Sequence durationInFrames={SCENES.comments}>
+        {/* clip ~13.8 s; skip 6 s preamble — pin drops at ~8-9 s of clip. */}
+        <BrowserChrome src="scene-comments.mp4" urlBar="localhost:4400" startFrom={180} />
+      </TransitionSeries.Sequence>
+      {xfade()}
+
+      <TransitionSeries.Sequence durationInFrames={SCENES.annotations}>
+        {/* clip ~13.2 s; skip 5 s preamble — pen/arrow/label land 6-12 s of clip. */}
+        <BrowserChrome src="scene-annotations.mp4" urlBar="localhost:4400" startFrom={150} />
+      </TransitionSeries.Sequence>
+      {xfade()}
+
+      <TransitionSeries.Sequence durationInFrames={SCENES.cardC}>
+        <BenefitCard kind="human-ai" />
+      </TransitionSeries.Sequence>
+      {xfade()}
+
+      <TransitionSeries.Sequence durationInFrames={SCENES.docs}>
+        <BrowserChrome src="scene-docs.mp4" urlBar="maude.iagh.cz" />
+      </TransitionSeries.Sequence>
+      {xfade()}
+
+      <TransitionSeries.Sequence durationInFrames={SCENES.cardD}>
+        <BenefitCard kind="your-repo" />
+      </TransitionSeries.Sequence>
+      {xfade()}
+
+      <TransitionSeries.Sequence durationInFrames={SCENES.outro}>
         <OutroScene />
       </TransitionSeries.Sequence>
     </TransitionSeries>
 
-    {/* Captions over capture scenes only. Intro / outro carry their own typography. */}
-    <Sequence from={TERMINAL_START} durationInFrames={TERMINAL}>
-      <LowerThird
-        caption="maude init  ·  scaffold .ai/ in one command"
-        durationInFrames={TERMINAL}
-      />
-    </Sequence>
-    <Sequence from={BROWSER_START} durationInFrames={BROWSER}>
-      <LowerThird
-        caption="live dev-server  ·  canvas browser at localhost:4399"
-        durationInFrames={BROWSER}
-      />
-    </Sequence>
+    {(Object.keys(CAPTIONS) as (keyof typeof SCENES)[]).map((key) => (
+      <Sequence key={key} from={captionStarts[key]} durationInFrames={SCENES[key]}>
+        <LowerThird caption={CAPTIONS[key] as string} durationInFrames={SCENES[key]} />
+      </Sequence>
+    ))}
   </AbsoluteFill>
 );
+
+// Total: sum(SCENES) - 15 × XFADE
+// = 2715 - 180 = 2535 frames @ 30fps = 84.5 s on-screen.
+export const FINAL_DURATION_FRAMES = Object.values(SCENES).reduce((s, n) => s + n, 0) - 15 * XFADE;

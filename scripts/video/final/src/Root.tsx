@@ -78,7 +78,7 @@ export const Root = () => (
     <Composition
       id="Final"
       component={Final}
-      durationInFrames={354}
+      durationInFrames={2535}
       fps={30}
       width={1920}
       height={1080}

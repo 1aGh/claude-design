@@ -13,21 +13,33 @@ import { tokens } from '../tokens';
  *
  * Usage:
  *   <BrowserChrome src="scene-dev-server.mp4" urlBar="localhost:4399" />
+ *   <BrowserChrome src="x.mp4" playbackRate={1.2} startFrom={45} endAt={300} />
+ *
+ * `playbackRate` / `startFrom` / `endAt` pass through to <OffthreadVideo>.
+ * NB: startFrom + endAt are frames-at-composition-fps, NOT seconds (DDR-037).
  */
 type Props = {
   readonly src: string;
   readonly urlBar?: string;
   readonly padding?: string;
+  readonly playbackRate?: number;
+  readonly startFrom?: number;
+  readonly endAt?: number;
+  readonly transparentBackdrop?: boolean;
 };
 
 export const BrowserChrome: React.FC<Props> = ({
   src,
   urlBar = 'localhost',
   padding = '60px 120px',
+  playbackRate,
+  startFrom,
+  endAt,
+  transparentBackdrop = false,
 }) => (
   <AbsoluteFill
     style={{
-      backgroundColor: tokens.dark.bg0,
+      backgroundColor: transparentBackdrop ? 'transparent' : tokens.dark.bg0,
       padding,
       alignItems: 'center',
       justifyContent: 'center',
@@ -74,6 +86,9 @@ export const BrowserChrome: React.FC<Props> = ({
         <OffthreadVideo
           src={staticFile(src)}
           muted
+          playbackRate={playbackRate}
+          startFrom={startFrom}
+          endAt={endAt}
           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
         />
       </div>

@@ -1,4 +1,5 @@
 import { CopyButton } from '@/components/mdcc/copy-button';
+import { DemoVideo } from '@/components/mdcc/demo-video';
 import { SkuLabel } from '@/components/mdcc/sku-label';
 import stats from '@/lib/stats.json';
 import Link from 'next/link';
@@ -122,6 +123,8 @@ export default function HomePage() {
           <pre>{INSTALL_SNIPPET}</pre>
         </section>
       </section>
+
+      <DemoVideo />
 
       <section aria-labelledby="cat-h">
         <div className="mdcc-section-head">
