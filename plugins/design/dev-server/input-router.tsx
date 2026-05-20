@@ -27,7 +27,7 @@
  * live in the consumer (DesignCanvas).
  */
 
-import { useEffect, type RefObject } from "react";
+import { type RefObject, useEffect } from 'react';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -39,35 +39,21 @@ import { useEffect, type RefObject } from "react";
  * returns `no-op` for the corresponding pointer events so the SVG overlay
  * can grab them natively.
  */
-export type Tool =
-  | "move"
-  | "hand"
-  | "comment"
-  | "pen"
-  | "rect"
-  | "ellipse"
-  | "arrow"
-  | "eraser";
+export type Tool = 'move' | 'hand' | 'comment' | 'pen' | 'rect' | 'ellipse' | 'arrow' | 'eraser';
 
-const ANNOTATION_TOOLS = new Set<Tool>([
-  "pen",
-  "rect",
-  "ellipse",
-  "arrow",
-  "eraser",
-]);
+const ANNOTATION_TOOLS = new Set<Tool>(['pen', 'rect', 'ellipse', 'arrow', 'eraser']);
 
 export function isAnnotationTool(t: Tool): boolean {
   return ANNOTATION_TOOLS.has(t);
 }
 
 export type RouterAction =
-  | { kind: "no-op" }
-  | { kind: "hover"; deep: boolean; clientX: number; clientY: number }
+  | { kind: 'no-op' }
+  | { kind: 'hover'; deep: boolean; clientX: number; clientY: number }
   | {
-      kind: "select";
+      kind: 'select';
       /** `replace` swaps the selection set, `add` merges into it. */
-      mode: "replace" | "add";
+      mode: 'replace' | 'add';
       /**
        * `true` resolves to the deepest descendant under the cursor (Cmd-held
        * mode). `false` resolves to the topmost interesting ancestor (top mode).
@@ -79,13 +65,13 @@ export type RouterAction =
       clientX: number;
       clientY: number;
     }
-  | { kind: "drop-comment"; clientX: number; clientY: number }
-  | { kind: "context-menu"; clientX: number; clientY: number }
-  | { kind: "tool"; tool: Tool }
-  | { kind: "escape" };
+  | { kind: 'drop-comment'; clientX: number; clientY: number }
+  | { kind: 'context-menu'; clientX: number; clientY: number }
+  | { kind: 'tool'; tool: Tool }
+  | { kind: 'escape' };
 
 export interface ClassifyInput {
-  type: "pointermove" | "pointerdown" | "contextmenu" | "keydown";
+  type: 'pointermove' | 'pointerdown' | 'contextmenu' | 'keydown';
   /** PointerEvent.button: 0 = left, 1 = middle, 2 = right. */
   button?: number;
   metaKey?: boolean;
@@ -109,48 +95,48 @@ export interface ClassifyInput {
 const metaOrCtrl = (i: ClassifyInput): boolean => !!(i.metaKey || i.ctrlKey);
 
 export function classify(input: ClassifyInput): RouterAction {
-  if (input.type === "keydown") {
-    if (input.isEditable) return { kind: "no-op" };
+  if (input.type === 'keydown') {
+    if (input.isEditable) return { kind: 'no-op' };
     // Tool letters are bare keys — Cmd/Ctrl/Alt+letter belongs to shell / browser.
     if (input.metaKey || input.ctrlKey || input.altKey) {
       // Esc with modifiers still dismisses.
-      if (input.key === "Escape") return { kind: "escape" };
-      return { kind: "no-op" };
+      if (input.key === 'Escape') return { kind: 'escape' };
+      return { kind: 'no-op' };
     }
-    const k = (input.key || "").toLowerCase();
-    if (k === "v") return { kind: "tool", tool: "move" };
-    if (k === "h") return { kind: "tool", tool: "hand" };
-    if (k === "c") return { kind: "tool", tool: "comment" };
-    if (k === "b") return { kind: "tool", tool: "pen" };
-    if (k === "r") return { kind: "tool", tool: "rect" };
-    if (k === "o") return { kind: "tool", tool: "ellipse" };
-    if (k === "a") return { kind: "tool", tool: "arrow" };
-    if (k === "e") return { kind: "tool", tool: "eraser" };
-    if (input.key === "Escape") return { kind: "escape" };
-    return { kind: "no-op" };
+    const k = (input.key || '').toLowerCase();
+    if (k === 'v') return { kind: 'tool', tool: 'move' };
+    if (k === 'h') return { kind: 'tool', tool: 'hand' };
+    if (k === 'c') return { kind: 'tool', tool: 'comment' };
+    if (k === 'b') return { kind: 'tool', tool: 'pen' };
+    if (k === 'r') return { kind: 'tool', tool: 'rect' };
+    if (k === 'o') return { kind: 'tool', tool: 'ellipse' };
+    if (k === 'a') return { kind: 'tool', tool: 'arrow' };
+    if (k === 'e') return { kind: 'tool', tool: 'eraser' };
+    if (input.key === 'Escape') return { kind: 'escape' };
+    return { kind: 'no-op' };
   }
 
-  if (input.type === "contextmenu") {
+  if (input.type === 'contextmenu') {
     return {
-      kind: "context-menu",
+      kind: 'context-menu',
       clientX: input.clientX ?? 0,
       clientY: input.clientY ?? 0,
     };
   }
 
-  if (input.type === "pointermove") {
+  if (input.type === 'pointermove') {
     // Phase 5 draw tools: pen / rect / arrow / eraser own all their pointer
     // events through `AnnotationsLayer`. The router never paints a hover halo
     // while drawing — that affordance is reserved for select / comment.
-    if (isAnnotationTool(input.activeTool)) return { kind: "no-op" };
+    if (isAnnotationTool(input.activeTool)) return { kind: 'no-op' };
     // Hand tool: drag pan is owned by useViewportController; no hover paint.
-    if (input.activeTool === "hand") return { kind: "no-op" };
+    if (input.activeTool === 'hand') return { kind: 'no-op' };
     // Comment tool: always paint a preview halo on the deepest element under
     // cursor — that's the element the user is about to comment on. Comment
     // pin attachment is to the same element they were hovering.
-    if (input.activeTool === "comment") {
+    if (input.activeTool === 'comment') {
       return {
-        kind: "hover",
+        kind: 'hover',
         deep: true,
         clientX: input.clientX ?? 0,
         clientY: input.clientY ?? 0,
@@ -158,40 +144,40 @@ export function classify(input: ClassifyInput): RouterAction {
     }
     // Move tool: bare hover does nothing (native interactions pass through);
     // Cmd-held hover paints a halo on the deepest element (preview).
-    if (!metaOrCtrl(input)) return { kind: "no-op" };
+    if (!metaOrCtrl(input)) return { kind: 'no-op' };
     return {
-      kind: "hover",
+      kind: 'hover',
       deep: true,
       clientX: input.clientX ?? 0,
       clientY: input.clientY ?? 0,
     };
   }
 
-  if (input.type === "pointerdown") {
+  if (input.type === 'pointerdown') {
     if (input.button === 2) {
       return {
-        kind: "context-menu",
+        kind: 'context-menu',
         clientX: input.clientX ?? 0,
         clientY: input.clientY ?? 0,
       };
     }
-    if (input.button === 1 || input.spaceHeld) return { kind: "no-op" };
-    if (input.button !== 0) return { kind: "no-op" };
+    if (input.button === 1 || input.spaceHeld) return { kind: 'no-op' };
+    if (input.button !== 0) return { kind: 'no-op' };
 
     // Phase 5 draw tools own bare left-clicks; the router returns no-op so
     // the SVG layer's own listeners (no preventDefault) fire normally. Cmd-
     // modified clicks still flow into the move-tool select path below — that
     // stays available as an escape hatch even while a draw tool is active.
     if (isAnnotationTool(input.activeTool) && !metaOrCtrl(input)) {
-      return { kind: "no-op" };
+      return { kind: 'no-op' };
     }
 
-    if (input.activeTool === "comment") {
+    if (input.activeTool === 'comment') {
       // Comment tool: bare click drops a pin. Cmd / Shift modifiers reserved
       // for future "scope comment to deepest" variants — for now they fall
       // through to the same drop.
       return {
-        kind: "drop-comment",
+        kind: 'drop-comment',
         clientX: input.clientX ?? 0,
         clientY: input.clientY ?? 0,
       };
@@ -200,25 +186,25 @@ export function classify(input: ClassifyInput): RouterAction {
     // Hand tool: pan is owned by useViewportController via `isPanDragActive`.
     // Router returns no-op so it doesn't preventDefault or stopPropagation —
     // the controller's pointerdown listener on the same host claims the drag.
-    if (input.activeTool === "hand") return { kind: "no-op" };
+    if (input.activeTool === 'hand') return { kind: 'no-op' };
 
     // Move tool. Selection ONLY fires with Cmd / Cmd+Shift. Bare clicks and
     // Shift-without-Cmd pass through so native canvas interactions (button
     // presses, link clicks, input focus) still work — exactly the same as
     // pre-Phase-4.1 behavior for everything except Cmd-modified gestures.
     const cmd = metaOrCtrl(input);
-    if (!cmd) return { kind: "no-op" };
+    if (!cmd) return { kind: 'no-op' };
     const shift = !!input.shiftKey;
     return {
-      kind: "select",
-      mode: shift ? "add" : "replace",
+      kind: 'select',
+      mode: shift ? 'add' : 'replace',
       deep: true,
       clientX: input.clientX ?? 0,
       clientY: input.clientY ?? 0,
     };
   }
 
-  return { kind: "no-op" };
+  return { kind: 'no-op' };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -226,11 +212,11 @@ export function classify(input: ClassifyInput): RouterAction {
 // through `callbacks`. Returns nothing; cleans up on unmount.
 
 export interface RouterCallbacks {
-  onHover?: (a: Extract<RouterAction, { kind: "hover" }>) => void;
-  onSelect?: (a: Extract<RouterAction, { kind: "select" }>) => void;
-  onDropComment?: (a: Extract<RouterAction, { kind: "drop-comment" }>) => void;
-  onContextMenu?: (a: Extract<RouterAction, { kind: "context-menu" }>) => void;
-  onTool?: (a: Extract<RouterAction, { kind: "tool" }>) => void;
+  onHover?: (a: Extract<RouterAction, { kind: 'hover' }>) => void;
+  onSelect?: (a: Extract<RouterAction, { kind: 'select' }>) => void;
+  onDropComment?: (a: Extract<RouterAction, { kind: 'drop-comment' }>) => void;
+  onContextMenu?: (a: Extract<RouterAction, { kind: 'context-menu' }>) => void;
+  onTool?: (a: Extract<RouterAction, { kind: 'tool' }>) => void;
   onEscape?: () => void;
 }
 
@@ -249,7 +235,7 @@ export function isEditableTarget(t: EventTarget | null): boolean {
   if (!t || !(t as HTMLElement).tagName) return false;
   const el = t as HTMLElement;
   const tag = el.tagName;
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
   if (el.isContentEditable) return true;
   return false;
 }
@@ -264,32 +250,32 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
 
     const dispatch = (action: RouterAction): void => {
       switch (action.kind) {
-        case "hover":
+        case 'hover':
           callbacks.onHover?.(action);
           break;
-        case "select":
+        case 'select':
           callbacks.onSelect?.(action);
           break;
-        case "drop-comment":
+        case 'drop-comment':
           callbacks.onDropComment?.(action);
           break;
-        case "context-menu":
+        case 'context-menu':
           callbacks.onContextMenu?.(action);
           break;
-        case "tool":
+        case 'tool':
           callbacks.onTool?.(action);
           break;
-        case "escape":
+        case 'escape':
           callbacks.onEscape?.();
           break;
-        case "no-op":
+        case 'no-op':
           break;
       }
     };
 
     const onPointerMove = (e: PointerEvent): void => {
       const action = classify({
-        type: "pointermove",
+        type: 'pointermove',
         button: e.button,
         metaKey: e.metaKey,
         ctrlKey: e.ctrlKey,
@@ -305,7 +291,7 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
 
     const onPointerDown = (e: PointerEvent): void => {
       const action = classify({
-        type: "pointerdown",
+        type: 'pointerdown',
         button: e.button,
         metaKey: e.metaKey,
         ctrlKey: e.ctrlKey,
@@ -316,7 +302,7 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
         spaceHeld: isSpaceHeld?.() ?? false,
         activeTool: getActiveTool(),
       });
-      if (action.kind !== "no-op") {
+      if (action.kind !== 'no-op') {
         // Suppress native behavior on every event the router claims —
         // button presses don't fire, inputs don't focus, the canvas
         // content's own click handlers don't run. The router lives in
@@ -336,7 +322,7 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
      */
     const onMouseDown = (e: MouseEvent): void => {
       const action = classify({
-        type: "pointerdown",
+        type: 'pointerdown',
         button: e.button,
         metaKey: e.metaKey,
         ctrlKey: e.ctrlKey,
@@ -347,7 +333,7 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
         spaceHeld: isSpaceHeld?.() ?? false,
         activeTool: getActiveTool(),
       });
-      if (action.kind !== "no-op") {
+      if (action.kind !== 'no-op') {
         e.preventDefault();
         e.stopImmediatePropagation();
       }
@@ -363,9 +349,7 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
       const tool = getActiveTool();
       const mod = e.metaKey || e.ctrlKey;
       const wouldRoute =
-        tool === "comment" ||
-        (tool === "move" && mod && e.button === 0) ||
-        e.button === 2;
+        tool === 'comment' || (tool === 'move' && mod && e.button === 0) || e.button === 2;
       if (wouldRoute) {
         e.preventDefault();
         e.stopImmediatePropagation();
@@ -376,7 +360,7 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
       e.preventDefault();
       e.stopImmediatePropagation();
       const action = classify({
-        type: "contextmenu",
+        type: 'contextmenu',
         clientX: e.clientX,
         clientY: e.clientY,
         metaKey: e.metaKey,
@@ -390,7 +374,7 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
 
     const onKeyDown = (e: KeyboardEvent): void => {
       const action = classify({
-        type: "keydown",
+        type: 'keydown',
         key: e.key,
         metaKey: e.metaKey,
         ctrlKey: e.ctrlKey,
@@ -399,7 +383,7 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
         isEditable: isEditableTarget(e.target),
         activeTool: getActiveTool(),
       });
-      if (action.kind === "tool" || action.kind === "escape") {
+      if (action.kind === 'tool' || action.kind === 'escape') {
         e.preventDefault();
       }
       dispatch(action);
@@ -409,39 +393,27 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
     // descendants (buttons, inputs, canvas content listeners). For events the
     // classifier claims, we preventDefault + stopImmediatePropagation so the
     // descendants never see them.
-    host.addEventListener("pointermove", onPointerMove, { passive: true });
-    host.addEventListener("pointerdown", onPointerDown, { capture: true });
-    host.addEventListener("mousedown", onMouseDown, { capture: true });
-    host.addEventListener("click", onClick, { capture: true });
-    host.addEventListener("contextmenu", onContextMenu, { capture: true });
+    host.addEventListener('pointermove', onPointerMove, { passive: true });
+    host.addEventListener('pointerdown', onPointerDown, { capture: true });
+    host.addEventListener('mousedown', onMouseDown, { capture: true });
+    host.addEventListener('click', onClick, { capture: true });
+    host.addEventListener('contextmenu', onContextMenu, { capture: true });
     // Key events: attach on document so focus inside any descendant is OK;
     // the editable-target gate handles the "user is typing" case.
     const doc = host.ownerDocument ?? document;
-    doc.addEventListener("keydown", onKeyDown, true);
+    doc.addEventListener('keydown', onKeyDown, true);
 
     return () => {
-      host.removeEventListener("pointermove", onPointerMove);
-      host.removeEventListener(
-        "pointerdown",
-        onPointerDown,
-        { capture: true } as EventListenerOptions
-      );
-      host.removeEventListener(
-        "mousedown",
-        onMouseDown,
-        { capture: true } as EventListenerOptions
-      );
-      host.removeEventListener(
-        "click",
-        onClick,
-        { capture: true } as EventListenerOptions
-      );
-      host.removeEventListener(
-        "contextmenu",
-        onContextMenu,
-        { capture: true } as EventListenerOptions
-      );
-      doc.removeEventListener("keydown", onKeyDown, true);
+      host.removeEventListener('pointermove', onPointerMove);
+      host.removeEventListener('pointerdown', onPointerDown, {
+        capture: true,
+      } as EventListenerOptions);
+      host.removeEventListener('mousedown', onMouseDown, { capture: true } as EventListenerOptions);
+      host.removeEventListener('click', onClick, { capture: true } as EventListenerOptions);
+      host.removeEventListener('contextmenu', onContextMenu, {
+        capture: true,
+      } as EventListenerOptions);
+      doc.removeEventListener('keydown', onKeyDown, true);
     };
   }, [enabled, hostRef, getActiveTool, isSpaceHeld, callbacks]);
 }
@@ -469,16 +441,12 @@ export function resolveHoverTarget(
   // Skip the floating chrome (MiniMap / ZoomToolbar / ToolPalette / ContextMenu)
   // AND the canvas/world frame itself — the user is never asking to "select
   // the entire canvas viewport," that's a UI accident from climbing too high.
-  if (
-    hit.closest?.(
-      ".dc-mm, .dc-zoom-tb, .dc-tool-palette, .dc-context-menu, .dc-cv-group-bbox"
-    )
-  ) {
+  if (hit.closest?.('.dc-mm, .dc-zoom-tb, .dc-tool-palette, .dc-context-menu, .dc-cv-group-bbox')) {
     return null;
   }
 
-  const artboardEl = hit.closest?.("[data-dc-screen]") ?? null;
-  const artboardId = artboardEl?.getAttribute("data-dc-screen") ?? null;
+  const artboardEl = hit.closest?.('[data-dc-screen]') ?? null;
+  const artboardId = artboardEl?.getAttribute('data-dc-screen') ?? null;
 
   // Hover-target hard ceiling = `.dc-artboard-body`. The artboard chrome
   // (article root + label button + body wrapper) is never a selection
@@ -486,7 +454,7 @@ export function resolveHoverTarget(
   // selecting them makes the WHOLE artboard outline, which looks like the
   // canvas viewport is selected. If the user landed on chrome (the label
   // button or empty body padding), bail.
-  const bodyEl = hit.closest?.(".dc-artboard-body") ?? null;
+  const bodyEl = hit.closest?.('.dc-artboard-body') ?? null;
   if (!bodyEl) return null;
   if (hit === bodyEl) {
     // Clicked exactly on the body wrapper, no inner element under cursor.
@@ -498,7 +466,7 @@ export function resolveHoverTarget(
     // when present; never climb to an ancestor's id (climbing was the cause
     // of "Cmd-click on a deep span selects the whole artboard root"). When
     // the hit lacks a stamped id, consumers fall back to a CSS-path selector.
-    const cdId = hit.getAttribute?.("data-cd-id") ?? null;
+    const cdId = hit.getAttribute?.('data-cd-id') ?? null;
     return { el: hit, cdId, artboardId };
   }
 
@@ -508,10 +476,10 @@ export function resolveHoverTarget(
   let cur: Element | null = hit;
   let topCdEl: Element | null = null;
   while (cur && cur !== bodyEl) {
-    if (cur.hasAttribute?.("data-cd-id")) topCdEl = cur;
+    if (cur.hasAttribute?.('data-cd-id')) topCdEl = cur;
     cur = cur.parentElement;
   }
   const el = topCdEl ?? hit;
-  const cdId = el.getAttribute?.("data-cd-id") ?? null;
+  const cdId = el.getAttribute?.('data-cd-id') ?? null;
   return { el, cdId, artboardId };
 }

@@ -8,7 +8,7 @@
 //   - GET returns the merged meta
 //   - Paths that escape repoRoot are 400
 
-import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';

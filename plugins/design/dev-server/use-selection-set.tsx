@@ -17,6 +17,7 @@
  */
 
 import {
+  type ReactNode,
   createContext,
   useCallback,
   useContext,
@@ -24,8 +25,7 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactNode,
-} from "react";
+} from 'react';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -106,17 +106,13 @@ export function SelectionSetProvider({
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => {
         timerRef.current = null;
-        const target =
-          postTarget ?? (typeof window !== "undefined" ? window.parent : null);
+        const target = postTarget ?? (typeof window !== 'undefined' ? window.parent : null);
         if (!target) return;
         // Wire shape: single object for N=1 (back-compat), array for N>1, null for empty.
         const payload: Selection | Selection[] | null =
           next.length === 0 ? null : next.length === 1 ? (next[0] ?? null) : next;
         try {
-          target.postMessage(
-            { dgn: "select-set", selection: payload },
-            "*"
-          );
+          target.postMessage({ dgn: 'select-set', selection: payload }, '*');
         } catch {
           /* iframe likely cross-origin or detached */
         }
@@ -190,11 +186,7 @@ export function SelectionSetProvider({
     [selected, replace, add, remove, toggle, clear]
   );
 
-  return (
-    <SelectionSetContext.Provider value={value}>
-      {children}
-    </SelectionSetContext.Provider>
-  );
+  return <SelectionSetContext.Provider value={value}>{children}</SelectionSetContext.Provider>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -203,7 +195,7 @@ export function SelectionSetProvider({
 export function useSelectionSet(): SelectionSetValue {
   const ctx = useContext(SelectionSetContext);
   if (!ctx) {
-    throw new Error("useSelectionSet must be used inside <SelectionSetProvider>");
+    throw new Error('useSelectionSet must be used inside <SelectionSetProvider>');
   }
   return ctx;
 }
@@ -225,9 +217,7 @@ export function normalizeSelectedRead(
 }
 
 /** Convert internal array back to the wire shape (writer). */
-export function denormalizeSelectedWrite(
-  list: Selection[]
-): Selection | Selection[] | null {
+export function denormalizeSelectedWrite(list: Selection[]): Selection | Selection[] | null {
   if (list.length === 0) return null;
   if (list.length === 1) return list[0] ?? null;
   return list;

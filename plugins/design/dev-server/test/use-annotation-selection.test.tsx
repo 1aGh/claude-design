@@ -64,7 +64,8 @@ describe('use-annotation-selection / store contract', () => {
       </AnnotationSelectionProvider>
     );
     expect(captured).not.toBeNull();
-    const c = captured!;
+    if (!captured) throw new Error('unreachable: asserted above');
+    const c = captured;
     expect(typeof c.replace).toBe('function');
     expect(typeof c.add).toBe('function');
     expect(typeof c.toggle).toBe('function');

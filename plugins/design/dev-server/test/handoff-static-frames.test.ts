@@ -70,9 +70,11 @@ export default function X() {
 
 describe('handoff-static-frames', () => {
   test('HANDOFF_STATIC_FRAME_EXPORTS lists DesignCanvas + DCSection + DCArtboard', () => {
-    expect([...HANDOFF_STATIC_FRAME_EXPORTS].sort()).toEqual(
-      ['DCArtboard', 'DCSection', 'DesignCanvas']
-    );
+    expect([...HANDOFF_STATIC_FRAME_EXPORTS].sort()).toEqual([
+      'DCArtboard',
+      'DCSection',
+      'DesignCanvas',
+    ]);
   });
 
   test('without overrides — engine code IS pulled into the handoff inline', () => {

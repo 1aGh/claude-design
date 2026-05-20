@@ -12,10 +12,10 @@ import { describe, expect, test } from 'bun:test';
 
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { ToolPalette } from '../tool-palette.tsx';
-import { ToolProvider, DEFAULT_TOOLS } from '../use-tool-mode.tsx';
-import { AnnotationsVisibilityProvider } from '../use-annotations-visibility.tsx';
 import { TOOL_ICONS } from '../canvas-icons.tsx';
+import { ToolPalette } from '../tool-palette.tsx';
+import { AnnotationsVisibilityProvider } from '../use-annotations-visibility.tsx';
+import { DEFAULT_TOOLS, ToolProvider } from '../use-tool-mode.tsx';
 
 describe('canvas-icons / TOOL_ICONS', () => {
   test('exposes a component for every default tool id', () => {

@@ -27,46 +27,38 @@
  */
 
 import {
+  type ReactNode,
+  type RefObject,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type ReactNode,
-  type RefObject,
-} from "react";
+} from 'react';
 
+import { AnnotationsLayer } from './annotations-layer.tsx';
 import {
-  resolveHoverTarget,
-  useInputRouter,
-  type HoverTarget,
-} from "./input-router.tsx";
-import { useToolMode } from "./use-tool-mode.tsx";
-import {
-  SelectionSetProvider,
-  useSelectionSet,
-  type Selection,
-} from "./use-selection-set.tsx";
+  SnapGuideOverlay,
+  type ViewportControllerHandle,
+  useViewportControllerContext,
+} from './canvas-lib.tsx';
 import {
   ContextMenuProvider,
-  useContextMenu,
   type ContextRegistry,
   type ContextTarget,
   type ContextTargetKind,
   type MenuItem,
-} from "./context-menu.tsx";
-import { ToolPalette } from "./tool-palette.tsx";
-import { AnnotationsLayer } from "./annotations-layer.tsx";
+  useContextMenu,
+} from './context-menu.tsx';
+import { type HoverTarget, resolveHoverTarget, useInputRouter } from './input-router.tsx';
+import { ToolPalette } from './tool-palette.tsx';
 import {
   AnnotationSelectionProvider,
   useAnnotationSelection,
-} from "./use-annotation-selection.tsx";
-import { AnnotationsVisibilityProvider } from "./use-annotations-visibility.tsx";
-import {
-  SnapGuideOverlay,
-  useViewportControllerContext,
-  type ViewportControllerHandle,
-} from "./canvas-lib.tsx";
+} from './use-annotation-selection.tsx';
+import { AnnotationsVisibilityProvider } from './use-annotations-visibility.tsx';
+import { type Selection, SelectionSetProvider, useSelectionSet } from './use-selection-set.tsx';
+import { useToolMode } from './use-tool-mode.tsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Styles — halos render as `position: fixed` siblings of the canvas. Reading
@@ -143,10 +135,10 @@ const HALO_CSS = `
 `.trim();
 
 function ensureHaloStyles(): void {
-  if (typeof document === "undefined") return;
-  if (document.getElementById("dc-cv-halo-css")) return;
-  const s = document.createElement("style");
-  s.id = "dc-cv-halo-css";
+  if (typeof document === 'undefined') return;
+  if (document.getElementById('dc-cv-halo-css')) return;
+  const s = document.createElement('style');
+  s.id = 'dc-cv-halo-css';
   s.textContent = HALO_CSS;
   document.head.appendChild(s);
 }
@@ -198,9 +190,9 @@ function CanvasCore({
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    host.setAttribute("data-active-tool", tool);
+    host.setAttribute('data-active-tool', tool);
     return () => {
-      host.removeAttribute("data-active-tool");
+      host.removeAttribute('data-active-tool');
     };
   }, [hostRef, tool]);
 
@@ -226,21 +218,19 @@ function buildRegistry(deps: {
   const { controller, clearSelection } = deps;
 
   const copy = (text: string): void => {
-    if (typeof navigator === "undefined" || !navigator.clipboard) return;
+    if (typeof navigator === 'undefined' || !navigator.clipboard) return;
     void navigator.clipboard.writeText(text).catch(() => {
       /* clipboard blocked */
     });
   };
 
   const postComposeForTarget = (target: ContextTarget): void => {
-    if (typeof window === "undefined") return;
+    if (typeof window === 'undefined') return;
     const sel: Selection | null = target.el
       ? {
           file: deriveFile(),
           id: target.cdId ?? undefined,
-          selector: target.cdId
-            ? `[data-cd-id="${target.cdId}"]`
-            : cssPath(target.el),
+          selector: target.cdId ? `[data-cd-id="${target.cdId}"]` : cssPath(target.el),
           artboardId: target.artboardId,
           tag: target.el.tagName.toLowerCase(),
           classes: realClasses(target.el),
@@ -249,26 +239,26 @@ function buildRegistry(deps: {
           bounds: (target.el as HTMLElement).getBoundingClientRect
             ? boundsOf(target.el as HTMLElement)
             : null,
-          html: (target.el.outerHTML ?? "").slice(0, 4000),
+          html: (target.el.outerHTML ?? '').slice(0, 4000),
         }
       : null;
     try {
-      window.parent.postMessage({ dgn: "comment-compose", selection: sel }, "*");
+      window.parent.postMessage({ dgn: 'comment-compose', selection: sel }, '*');
     } catch {
       /* ignore */
     }
   };
 
   const fitItem: MenuItem = {
-    id: "fit-view",
-    label: "Fit to view",
-    shortcut: "1",
+    id: 'fit-view',
+    label: 'Fit to view',
+    shortcut: '1',
     onSelect: () => controller?.fit(),
   };
   const resetItem: MenuItem = {
-    id: "reset-view",
-    label: "Reset view",
-    shortcut: "⌘0",
+    id: 'reset-view',
+    label: 'Reset view',
+    shortcut: '⌘0',
     onSelect: () => controller?.reset(),
   };
 
@@ -276,67 +266,67 @@ function buildRegistry(deps: {
     element: [
       [
         {
-          id: "add-comment",
-          label: "Add comment",
-          shortcut: "C",
+          id: 'add-comment',
+          label: 'Add comment',
+          shortcut: 'C',
           onSelect: postComposeForTarget,
         },
         {
-          id: "copy-css",
-          label: "Copy CSS",
-          shortcut: "⌘⇧C",
+          id: 'copy-css',
+          label: 'Copy CSS',
+          shortcut: '⌘⇧C',
           onSelect: (target) => {
             if (!target.el) return;
             copy(cssPath(target.el));
           },
         },
         {
-          id: "copy-id",
-          label: "Copy data-cd-id",
+          id: 'copy-id',
+          label: 'Copy data-cd-id',
           onSelect: (target) => {
             if (target.cdId) copy(target.cdId);
           },
         },
         {
-          id: "inspect",
-          label: "Inspect",
-          shortcut: "⌥I",
+          id: 'inspect',
+          label: 'Inspect',
+          shortcut: '⌥I',
           disabled: true,
           onSelect: () => {
-            console.warn("[context-menu] TODO: tweaks panel for TSX canvases");
+            console.warn('[context-menu] TODO: tweaks panel for TSX canvases');
           },
         },
       ],
       [
         {
-          id: "hide",
-          label: "Hide",
-          shortcut: "⌘⇧H",
+          id: 'hide',
+          label: 'Hide',
+          shortcut: '⌘⇧H',
           onSelect: (target) => {
-            if (target.el) (target.el as HTMLElement).style.visibility = "hidden";
+            if (target.el) (target.el as HTMLElement).style.visibility = 'hidden';
           },
         },
         {
-          id: "deselect",
-          label: "Deselect",
-          shortcut: "Esc",
+          id: 'deselect',
+          label: 'Deselect',
+          shortcut: 'Esc',
           onSelect: () => clearSelection(),
         },
       ],
     ],
-    "artboard-chrome": [
+    'artboard-chrome': [
       [
         {
-          id: "fit-one",
-          label: "Fit just this artboard",
+          id: 'fit-one',
+          label: 'Fit just this artboard',
           onSelect: (target) => {
             if (!controller || !target.artboardId) return;
             // controller exposes jumpTo(rect) — DCArtboard.onFocus uses the
             // same pattern. The artboard label button already wires to
             // onFocus; dispatch a synthetic click as the simplest bridge.
             const btn = (target.el ?? document)
-              .closest?.("[data-dc-screen]")
-              ?.querySelector("button.dc-artboard-label");
+              .closest?.('[data-dc-screen]')
+              ?.querySelector('button.dc-artboard-label');
             (btn as HTMLButtonElement | null)?.click();
           },
         },
@@ -344,9 +334,7 @@ function buildRegistry(deps: {
         resetItem,
       ],
     ],
-    world: [
-      [fitItem, resetItem],
-    ],
+    world: [[fitItem, resetItem]],
     overlay: [],
   };
 }
@@ -401,41 +389,37 @@ function CanvasRouter({
 
   // Clear hover when switching to hand mode mid-stream.
   useEffect(() => {
-    if (tool === "hand") setHoverEl(null);
+    if (tool === 'hand') setHoverEl(null);
   }, [tool]);
 
   // Listen for `dgn: 'force-clear'` from the shell — the comment composer
   // posts it on submit / cancel / Esc so the selection halo clears when the
   // user closes the composer.
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === 'undefined') return;
     const onMessage = (e: MessageEvent) => {
       const m = e.data as { dgn?: string } | null;
-      if (!m || typeof m !== "object" || !m.dgn) return;
-      if (
-        m.dgn === "force-clear" ||
-        m.dgn === "select-clear" ||
-        m.dgn === "selection-clear"
-      ) {
+      if (!m || typeof m !== 'object' || !m.dgn) return;
+      if (m.dgn === 'force-clear' || m.dgn === 'select-clear' || m.dgn === 'selection-clear') {
         selSet.clear();
         annotSel.clear();
         setHoverEl(null);
         return;
       }
-      if (m.dgn === "tool-set") {
+      if (m.dgn === 'tool-set') {
         const t = (m as { tool?: string }).tool;
-        if (typeof t === "string") setTool(t as never);
+        if (typeof t === 'string') setTool(t as never);
         return;
       }
     };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
   }, [selSet, annotSel, setTool]);
 
   // Cleanup any pending rAF on unmount.
   useEffect(
     () => () => {
-      if (hoverRafRef.current != null && typeof cancelAnimationFrame !== "undefined") {
+      if (hoverRafRef.current != null && typeof cancelAnimationFrame !== 'undefined') {
         cancelAnimationFrame(hoverRafRef.current);
       }
     },
@@ -448,7 +432,7 @@ function CanvasRouter({
     callbacks: {
       onHover: ({ deep, clientX, clientY }) => {
         pendingHoverRef.current = { deep, x: clientX, y: clientY };
-        if (hoverRafRef.current == null && typeof requestAnimationFrame !== "undefined") {
+        if (hoverRafRef.current == null && typeof requestAnimationFrame !== 'undefined') {
           hoverRafRef.current = requestAnimationFrame(applyHover);
         }
       },
@@ -457,11 +441,11 @@ function CanvasRouter({
         if (!target) {
           // Cmd-click on dead space (canvas chrome, label strip, empty world):
           // clear for `replace`, leave the set alone for `add`.
-          if (mode === "replace") selSet.clear();
+          if (mode === 'replace') selSet.clear();
           return;
         }
         const sel = hoverTargetToSelection(target);
-        if (mode === "replace") selSet.replace(sel);
+        if (mode === 'replace') selSet.replace(sel);
         else selSet.add(sel);
       },
       onContextMenu: ({ clientX, clientY }) => {
@@ -495,12 +479,9 @@ function CanvasRouter({
         //   - clicking another element in comment mode (this handler runs
         //     again and replaces)
         selSet.replace(sel);
-        if (typeof window === "undefined") return;
+        if (typeof window === 'undefined') return;
         try {
-          window.parent.postMessage(
-            { dgn: "comment-compose", selection: sel },
-            "*"
-          );
+          window.parent.postMessage({ dgn: 'comment-compose', selection: sel }, '*');
         } catch {
           /* parent detached */
         }
@@ -534,7 +515,7 @@ function HoverHalo({ el }: { el: Element | null }) {
 
   useEffect(() => {
     if (!el) {
-      if (ref.current) ref.current.style.display = "none";
+      if (ref.current) ref.current.style.display = 'none';
       return;
     }
     const tick = () => {
@@ -542,14 +523,14 @@ function HoverHalo({ el }: { el: Element | null }) {
       const div = ref.current;
       const t = targetRef.current;
       if (!div || !t || !t.isConnected) {
-        if (div) div.style.display = "none";
+        if (div) div.style.display = 'none';
         return;
       }
       const r = (t as HTMLElement).getBoundingClientRect();
       if (r.width === 0 && r.height === 0) {
-        div.style.display = "none";
+        div.style.display = 'none';
       } else {
-        div.style.display = "block";
+        div.style.display = 'block';
         div.style.left = `${Math.round(r.left)}px`;
         div.style.top = `${Math.round(r.top)}px`;
         div.style.width = `${Math.round(r.width)}px`;
@@ -564,13 +545,7 @@ function HoverHalo({ el }: { el: Element | null }) {
   }, [el]);
 
   if (!el) return null;
-  return (
-    <div
-      ref={ref}
-      className="dc-cv-halo dc-cv-halo--hover"
-      aria-hidden="true"
-    />
-  );
+  return <div ref={ref} className="dc-cv-halo dc-cv-halo--hover" aria-hidden="true" />;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -585,7 +560,7 @@ function SelectionHalos() {
   useEffect(() => {
     if (selected.length === 0) {
       const c = containerRef.current;
-      if (c) c.innerHTML = "";
+      if (c) c.innerHTML = '';
       return;
     }
     const tick = () => {
@@ -594,9 +569,9 @@ function SelectionHalos() {
       if (!c) return;
       // Match the rendered halo count to selected.length; reuse DOM nodes.
       while (c.children.length < selected.length) {
-        const child = document.createElement("div");
-        child.className = "dc-cv-halo dc-cv-halo--selected";
-        child.setAttribute("aria-hidden", "true");
+        const child = document.createElement('div');
+        child.className = 'dc-cv-halo dc-cv-halo--selected';
+        child.setAttribute('aria-hidden', 'true');
         c.appendChild(child);
       }
       while (c.children.length > selected.length) {
@@ -611,14 +586,14 @@ function SelectionHalos() {
             ? safeQuery(sel.selector)
             : null;
         if (!el) {
-          child.style.display = "none";
+          child.style.display = 'none';
           continue;
         }
         const r = (el as HTMLElement).getBoundingClientRect();
         if (r.width === 0 && r.height === 0) {
-          child.style.display = "none";
+          child.style.display = 'none';
         } else {
-          child.style.display = "block";
+          child.style.display = 'block';
           child.style.left = `${Math.round(r.left)}px`;
           child.style.top = `${Math.round(r.top)}px`;
           child.style.width = `${Math.round(r.width)}px`;
@@ -646,7 +621,7 @@ function GroupBbox() {
 
   useEffect(() => {
     if (selected.length < 2) {
-      if (ref.current) ref.current.style.display = "none";
+      if (ref.current) ref.current.style.display = 'none';
       return;
     }
     const tick = () => {
@@ -672,11 +647,11 @@ function GroupBbox() {
         if (r.bottom > yMax) yMax = r.bottom;
       }
       if (!anyHit) {
-        div.style.display = "none";
+        div.style.display = 'none';
         return;
       }
       const pad = 4;
-      div.style.display = "block";
+      div.style.display = 'block';
       div.style.left = `${Math.round(xMin - pad)}px`;
       div.style.top = `${Math.round(yMin - pad)}px`;
       div.style.width = `${Math.round(xMax - xMin + pad * 2)}px`;
@@ -697,15 +672,15 @@ function GroupBbox() {
 // Helpers
 
 function classifyContextKind(target: HoverTarget | null): ContextTargetKind {
-  if (!target) return "world";
+  if (!target) return 'world';
   const el = target.el;
-  if (!el) return "world";
-  if (el.closest?.(".dc-mm, .dc-zoom-tb, .dc-tool-palette, .dc-context-menu")) {
-    return "overlay";
+  if (!el) return 'world';
+  if (el.closest?.('.dc-mm, .dc-zoom-tb, .dc-tool-palette, .dc-context-menu')) {
+    return 'overlay';
   }
-  if (target.cdId) return "element";
-  if (target.artboardId) return "artboard-chrome";
-  return "world";
+  if (target.cdId) return 'element';
+  if (target.artboardId) return 'artboard-chrome';
+  return 'world';
 }
 
 function hoverTargetToSelection(target: HoverTarget): Selection {
@@ -719,11 +694,11 @@ function hoverTargetToSelection(target: HoverTarget): Selection {
   // anchor exists.
   const cdId = target.cdId;
   return {
-    file: typeof window !== "undefined" ? deriveFile() : undefined,
+    file: typeof window !== 'undefined' ? deriveFile() : undefined,
     id: cdId ?? undefined,
     selector: cdId ? `[data-cd-id="${cdId}"]` : cssPath(el),
     artboardId: target.artboardId,
-    tag: el?.tagName.toLowerCase() ?? "",
+    tag: el?.tagName.toLowerCase() ?? '',
     classes: realClasses(el),
     text: shortText(el, 240),
     dom_path: domPath(el),
@@ -735,53 +710,51 @@ function hoverTargetToSelection(target: HoverTarget): Selection {
           h: Math.round(rect.height),
         }
       : null,
-    html: el ? (el.outerHTML ?? "").slice(0, 4000) : "",
+    html: el ? (el.outerHTML ?? '').slice(0, 4000) : '',
   };
 }
 
 function deriveFile(): string | undefined {
   try {
     const p = window.location.pathname;
-    if (p === "/_canvas-shell.html" || p === "/_canvas-shell") {
+    if (p === '/_canvas-shell.html' || p === '/_canvas-shell') {
       const qs = new URLSearchParams(window.location.search);
-      const canvas = qs.get("canvas") ?? "";
-      const designRel = (qs.get("designRel") ?? ".design").replace(/^\/+|\/+$/g, "");
+      const canvas = qs.get('canvas') ?? '';
+      const designRel = (qs.get('designRel') ?? '.design').replace(/^\/+|\/+$/g, '');
       return `${designRel}/${canvas}`;
     }
-    return decodeURIComponent(p).replace(/^\//, "");
+    return decodeURIComponent(p).replace(/^\//, '');
   } catch {
     return undefined;
   }
 }
 
 function realClasses(el: Element | null): string {
-  if (!el) return "";
-  return (el.getAttribute("class") ?? "")
+  if (!el) return '';
+  return (el.getAttribute('class') ?? '')
     .trim()
     .split(/\s+/)
-    .filter((c) => c && !c.startsWith("dgn-") && !c.startsWith("dc-cv-"))
-    .join(" ");
+    .filter((c) => c && !c.startsWith('dgn-') && !c.startsWith('dc-cv-'))
+    .join(' ');
 }
 
 function shortText(el: Element | null, max: number): string {
-  if (!el) return "";
-  const t = ((el as HTMLElement).innerText || el.textContent || "")
-    .replace(/\s+/g, " ")
-    .trim();
+  if (!el) return '';
+  const t = ((el as HTMLElement).innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
   return t.length > max ? `${t.slice(0, max - 1)}…` : t;
 }
 
 function cssPath(el: Element | null): string {
-  if (!el) return "";
+  if (!el) return '';
   const path: string[] = [];
   let cur: Element | null = el;
   while (cur && cur.nodeType === 1 && path.length < 8) {
-    const dscEl = cur.getAttribute?.("data-dc-element");
+    const dscEl = cur.getAttribute?.('data-dc-element');
     if (dscEl) {
       path.unshift(`[data-dc-element="${dscEl}"]`);
       break;
     }
-    const dscSc = cur.getAttribute?.("data-dc-screen");
+    const dscSc = cur.getAttribute?.('data-dc-screen');
     if (dscSc) {
       path.unshift(`[data-dc-screen="${dscSc}"]`);
       break;
@@ -793,15 +766,18 @@ function cssPath(el: Element | null): string {
       break;
     }
     const cls = realClasses(cur).split(/\s+/).filter(Boolean).slice(0, 2);
-    if (cls.length) sel += `.${cls.join(".")}`;
+    if (cls.length) sel += `.${cls.join('.')}`;
     let sib = 1;
-    let n: Element | null = cur;
-    while ((n = n.previousElementSibling)) sib++;
+    let n: Element | null = cur.previousElementSibling;
+    while (n) {
+      sib++;
+      n = n.previousElementSibling;
+    }
     sel += `:nth-child(${sib})`;
     path.unshift(sel);
     cur = cur.parentElement;
   }
-  return path.join(" > ");
+  return path.join(' > ');
 }
 
 function domPath(el: Element | null): string[] {
@@ -809,13 +785,13 @@ function domPath(el: Element | null): string[] {
   let cur = el;
   while (cur && cur.nodeType === 1 && hops.length < 8) {
     let label = cur.nodeName.toLowerCase();
-    const dEl = cur.getAttribute?.("data-dc-element");
-    const dSc = cur.getAttribute?.("data-dc-screen");
+    const dEl = cur.getAttribute?.('data-dc-element');
+    const dSc = cur.getAttribute?.('data-dc-screen');
     if (dEl) label += `[data-dc-element="${dEl}"]`;
     else if (dSc) label += `[data-dc-screen="${dSc}"]`;
     else if (cur.id) label += `#${cur.id}`;
     const cls = realClasses(cur).split(/\s+/).filter(Boolean).slice(0, 2);
-    if (cls.length && !dEl && !dSc) label += `.${cls.join(".")}`;
+    if (cls.length && !dEl && !dSc) label += `.${cls.join('.')}`;
     hops.unshift(label);
     cur = cur.parentElement;
   }

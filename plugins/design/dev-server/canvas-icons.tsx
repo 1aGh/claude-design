@@ -8,7 +8,7 @@
  *             32 × 32, leaving 8 px of optical padding on every side.
  */
 
-import type { SVGProps } from "react";
+import type { SVGProps } from 'react';
 
 type IconProps = SVGProps<SVGSVGElement> & { size?: number };
 
@@ -23,6 +23,8 @@ function Svg({ size = 16, children, ...rest }: IconProps) {
       strokeWidth={1.75}
       strokeLinecap="round"
       strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
       {...rest}
     >
       {children}

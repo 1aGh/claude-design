@@ -133,9 +133,7 @@ export function createInspect(
     scheduleSave();
   }
 
-  function enrich(
-    sel: Omit<SelectedElement, 'ts' | 'v' | 'canvas'>
-  ): SelectedElement {
+  function enrich(sel: Omit<SelectedElement, 'ts' | 'v' | 'canvas'>): SelectedElement {
     const file = typeof sel.file === 'string' ? sel.file : (state.active ?? '');
     const id = typeof sel.id === 'string' && sel.id ? sel.id : undefined;
     const v: 1 | 2 = id ? 2 : 1;
@@ -159,8 +157,8 @@ export function createInspect(
       state.selected = null;
     } else if (Array.isArray(sel)) {
       const enriched = sel
-        .filter((s): s is Omit<SelectedElement, 'ts' | 'v' | 'canvas'> =>
-          !!s && typeof s === 'object'
+        .filter(
+          (s): s is Omit<SelectedElement, 'ts' | 'v' | 'canvas'> => !!s && typeof s === 'object'
         )
         .map(enrich);
       // Writer back-compat: collapse single-entry array to a bare object so

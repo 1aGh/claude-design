@@ -12,16 +12,12 @@
  *             `view-annotations` state stays in sync.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from 'react';
 
-import { useToolMode } from "./use-tool-mode.tsx";
-import { useViewportControllerContext } from "./canvas-lib.tsx";
-import { useAnnotationsVisibility } from "./use-annotations-visibility.tsx";
-import {
-  IconChevronDown,
-  IconPresentation,
-  TOOL_ICONS,
-} from "./canvas-icons.tsx";
+import { IconChevronDown, IconPresentation, TOOL_ICONS } from './canvas-icons.tsx';
+import { useViewportControllerContext } from './canvas-lib.tsx';
+import { useAnnotationsVisibility } from './use-annotations-visibility.tsx';
+import { useToolMode } from './use-tool-mode.tsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Styles — pulled from menubar tokens (`.mb` family). Centered bottom toolbar,
@@ -137,16 +133,16 @@ const PALETTE_CSS = `
 `.trim();
 
 function ensurePaletteStyles(): void {
-  if (typeof document === "undefined") return;
-  if (document.getElementById("dc-tool-palette-css")) return;
-  const s = document.createElement("style");
-  s.id = "dc-tool-palette-css";
+  if (typeof document === 'undefined') return;
+  if (document.getElementById('dc-tool-palette-css')) return;
+  const s = document.createElement('style');
+  s.id = 'dc-tool-palette-css';
   s.textContent = PALETTE_CSS;
   document.head.appendChild(s);
 }
 
-const NAV_TOOLS = ["move", "hand", "comment"] as const;
-const DRAW_TOOLS = ["pen", "rect", "ellipse", "arrow", "eraser"] as const;
+const NAV_TOOLS = ['move', 'hand', 'comment'] as const;
+const DRAW_TOOLS = ['pen', 'rect', 'ellipse', 'arrow', 'eraser'] as const;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Component
@@ -166,8 +162,8 @@ export function ToolPalette() {
     const onDown = (e: PointerEvent) => {
       if (!containerRef.current?.contains(e.target as Node)) setZoomOpen(false);
     };
-    document.addEventListener("pointerdown", onDown, true);
-    return () => document.removeEventListener("pointerdown", onDown, true);
+    document.addEventListener('pointerdown', onDown, true);
+    return () => document.removeEventListener('pointerdown', onDown, true);
   }, [zoomOpen]);
 
   if (!mounted) return null;
@@ -195,12 +191,7 @@ export function ToolPalette() {
   };
 
   return (
-    <div
-      ref={containerRef}
-      className="dc-tool-palette"
-      role="toolbar"
-      aria-label="Canvas tools"
-    >
+    <div ref={containerRef} className="dc-tool-palette" role="toolbar" aria-label="Canvas tools">
       <div className="dc-tp-group">
         {navList.map((t) => (t ? renderToolButton(t.id, t.label, t.shortcut) : null))}
       </div>
@@ -212,7 +203,9 @@ export function ToolPalette() {
       <div className="dc-tp-group">
         <button
           type="button"
-          aria-label={annotationsHidden ? "Show annotations (Shift+P)" : "Hide annotations (Shift+P)"}
+          aria-label={
+            annotationsHidden ? 'Show annotations (Shift+P)' : 'Hide annotations (Shift+P)'
+          }
           aria-pressed={annotationsHidden}
           title="Presentation (Shift+P)"
           onClick={() => visibilityCtx?.setVisible(!visibilityCtx.visible)}
@@ -282,4 +275,4 @@ export function ToolPalette() {
     </div>
   );
 }
-ToolPalette.displayName = "ToolPalette";
+ToolPalette.displayName = 'ToolPalette';

@@ -107,7 +107,10 @@ export interface Api {
   saveCanvasState(file: string, state: Record<string, unknown>): Promise<void>;
   // Canvas meta sidecar (Phase 4 T5 — .design/ui/<slug>.meta.json)
   loadCanvasMeta(file: string): Promise<Record<string, unknown> | null>;
-  patchCanvasMeta(file: string, patch: Record<string, unknown>): Promise<Record<string, unknown> | null>;
+  patchCanvasMeta(
+    file: string,
+    patch: Record<string, unknown>
+  ): Promise<Record<string, unknown> | null>;
   // Annotations sidecar (Phase 5 — .design/<slug>.annotations.svg)
   loadAnnotations(file: string): Promise<string | null>;
   saveAnnotations(file: string, svg: string): Promise<boolean>;
@@ -326,14 +329,14 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
     // Whitelist of patchable top-level keys.
     if (patch.layout !== undefined) {
       if (patch.layout === null) {
-        delete next.layout;
+        next.layout = undefined;
       } else if (typeof patch.layout === 'object' && !Array.isArray(patch.layout)) {
         next.layout = patch.layout;
       }
     }
     if (patch.viewport !== undefined) {
       if (patch.viewport === null) {
-        delete next.viewport;
+        next.viewport = undefined;
       } else if (typeof patch.viewport === 'object' && !Array.isArray(patch.viewport)) {
         const v = patch.viewport as { x?: unknown; y?: unknown; zoom?: unknown };
         if (
@@ -456,7 +459,7 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
       const matchedDs =
         g.label === 'Design system'
           ? (cfg.designSystems ?? []).filter(
-              (d) => d.path === g.path || d.path.startsWith(`${g.path}/`),
+              (d) => d.path === g.path || d.path.startsWith(`${g.path}/`)
             )
           : [];
       const dsFolders = matchedDs.map((d) => ({

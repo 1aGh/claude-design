@@ -448,14 +448,15 @@ export function filterTokensCss(
   // later iteration.
   const re = /(--[A-Za-z0-9_-]+)\s*:\s*([^;]+);/g;
   const usedDeclarations: string[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(cssSource)) !== null) {
+  let m: RegExpExecArray | null = re.exec(cssSource);
+  while (m !== null) {
     const name = m[1] as string;
     const value = (m[2] as string).trim();
     if (tokens.has(name)) {
       theme[name.slice(2)] = value;
       usedDeclarations.push(`${name}: ${value};`);
     }
+    m = re.exec(cssSource);
   }
   // Build a minimal :root usedCss block — useful when the consumer wants the
   // raw declarations rather than the shadcn cssVars sugar.
@@ -517,7 +518,9 @@ const STATIC_DC_ARTBOARD = `function DCArtboard({ id, label, width, height, chil
  */
 export const HANDOFF_STATIC_FRAME_EXPORTS = ['DesignCanvas', 'DCSection', 'DCArtboard'] as const;
 
-export function applyHandoffStaticOverrides(libMap: Map<string, { name: string; source: string; deps: string[] }>): void {
+export function applyHandoffStaticOverrides(
+  libMap: Map<string, { name: string; source: string; deps: string[] }>
+): void {
   if (libMap.has('DesignCanvas')) {
     libMap.set('DesignCanvas', { name: 'DesignCanvas', source: STATIC_DESIGN_CANVAS, deps: [] });
   }

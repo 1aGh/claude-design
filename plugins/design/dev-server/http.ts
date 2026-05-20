@@ -336,7 +336,7 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect): Http {
         return serveFile(srcHit);
       }
 
-// React 19 runtime bundles for TSX canvases. The browser pulls these
+      // React 19 runtime bundles for TSX canvases. The browser pulls these
       // through the importmap in _canvas-shell.html — each bundle is a single
       // package (react, react-dom/client, jsx-runtime, jsx-dev-runtime),
       // built once on first request, cached in-process for the session.
@@ -396,7 +396,7 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect): Http {
       if (e === '.tsx' && underDesignRoot) {
         return serveCanvasTsx(fp, req, ctx, join(ctx.paths.designRoot, '_locator.json'));
       }
-// Bun.file streams transparently for binary content.
+      // Bun.file streams transparently for binary content.
       return new Response(file, {
         headers: {
           'Content-Type': MIME[e] || 'application/octet-stream',

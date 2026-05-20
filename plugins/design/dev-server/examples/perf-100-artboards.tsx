@@ -20,9 +20,9 @@
  * Results land in .ai/decisions/DDR-024 + .ai/logs/phase-4-perf-<date>.md.
  */
 
-import { useEffect } from "react";
+import { useEffect } from 'react';
 
-import { DCArtboard, DCSection, DesignCanvas } from "@mdcc/canvas-lib";
+import { DCArtboard, DCSection, DesignCanvas } from '@mdcc/canvas-lib';
 
 const ARTBOARD_COUNT = 100;
 const NODES_PER_ARTBOARD = 30;
@@ -33,7 +33,7 @@ const NODES_PER_ARTBOARD = 30;
  * installing anything. Idempotent — no-op on the second mount.
  */
 function installFpsSampler(): void {
-  if (typeof window === "undefined") return;
+  if (typeof window === 'undefined') return;
   const w = window as unknown as { __perf__?: { fps: () => number } };
   if (w.__perf__) return;
   let last = performance.now();
@@ -64,12 +64,12 @@ function PerfArtboardBody({ index }: { index: number }) {
     <div
       style={{
         padding: 16,
-        display: "grid",
-        gridTemplateColumns: "repeat(5, 1fr)",
+        display: 'grid',
+        gridTemplateColumns: 'repeat(5, 1fr)',
         gap: 8,
-        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
         fontSize: 11,
-        color: "#444",
+        color: '#444',
       }}
     >
       {nodes.map((n) => (
@@ -77,13 +77,13 @@ function PerfArtboardBody({ index }: { index: number }) {
           key={n}
           style={{
             padding: 8,
-            border: "1px solid rgba(0,0,0,0.12)",
+            border: '1px solid rgba(0,0,0,0.12)',
             borderRadius: 3,
-            background: index % 2 === 0 ? "#fff" : "#fafafa",
+            background: index % 2 === 0 ? '#fff' : '#fafafa',
             minHeight: 48,
           }}
         >
-          AB{index.toString().padStart(3, "0")}·N{n.toString().padStart(2, "0")}
+          AB{index.toString().padStart(3, '0')}·N{n.toString().padStart(2, '0')}
         </div>
       ))}
     </div>
@@ -99,8 +99,8 @@ export default function Perf100Artboards() {
     <DesignCanvas>
       <DCSection id="perf-lab" title="Perf — 100 × 30">
         {ids.map((i) => {
-          const id = `ab-${i.toString().padStart(3, "0")}`;
-          const label = `AB-${i.toString().padStart(3, "0")} · ${NODES_PER_ARTBOARD}n`;
+          const id = `ab-${i.toString().padStart(3, '0')}`;
+          const label = `AB-${i.toString().padStart(3, '0')} · ${NODES_PER_ARTBOARD}n`;
           return (
             <DCArtboard key={id} id={id} label={label} width={1280} height={820}>
               <PerfArtboardBody index={i} />

@@ -12,16 +12,16 @@
  */
 
 import {
+  type ReactNode,
   createContext,
   useCallback,
   useContext,
   useEffect,
   useMemo,
   useState,
-  type ReactNode,
-} from "react";
+} from 'react';
 
-import type { Tool } from "./input-router.tsx";
+import type { Tool } from './input-router.tsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -36,18 +36,18 @@ export interface ToolDescriptor {
 }
 
 export const DEFAULT_TOOLS: readonly ToolDescriptor[] = Object.freeze([
-  { id: "move", label: "Move", shortcut: "V", cursor: "default" },
-  { id: "hand", label: "Hand", shortcut: "H", cursor: "grab" },
-  { id: "comment", label: "Comment", shortcut: "C", cursor: "crosshair" },
+  { id: 'move', label: 'Move', shortcut: 'V', cursor: 'default' },
+  { id: 'hand', label: 'Hand', shortcut: 'H', cursor: 'grab' },
+  { id: 'comment', label: 'Comment', shortcut: 'C', cursor: 'crosshair' },
   // Phase 5 — draw / annotation tools. Cursors stay as `crosshair` for pen /
   // rect / arrow (the pen-tip glyph is reserved for the system text caret).
   // Eraser uses `cell` as the closest cross-browser substitute for a rubber
   // affordance (no native rubber cursor exists).
-  { id: "pen", label: "Pen", shortcut: "B", cursor: "crosshair" },
-  { id: "rect", label: "Rect", shortcut: "R", cursor: "crosshair" },
-  { id: "ellipse", label: "Ellipse", shortcut: "O", cursor: "crosshair" },
-  { id: "arrow", label: "Arrow", shortcut: "A", cursor: "crosshair" },
-  { id: "eraser", label: "Eraser", shortcut: "E", cursor: "cell" },
+  { id: 'pen', label: 'Pen', shortcut: 'B', cursor: 'crosshair' },
+  { id: 'rect', label: 'Rect', shortcut: 'R', cursor: 'crosshair' },
+  { id: 'ellipse', label: 'Ellipse', shortcut: 'O', cursor: 'crosshair' },
+  { id: 'arrow', label: 'Arrow', shortcut: 'A', cursor: 'crosshair' },
+  { id: 'eraser', label: 'Eraser', shortcut: 'E', cursor: 'cell' },
 ]);
 
 interface ToolContextValue {
@@ -64,7 +64,7 @@ const ToolContext = createContext<ToolContextValue | null>(null);
 export function ToolProvider({
   children,
   tools = DEFAULT_TOOLS,
-  initial = "move",
+  initial = 'move',
 }: {
   children: ReactNode;
   tools?: readonly ToolDescriptor[];
@@ -78,7 +78,7 @@ export function ToolProvider({
   // grabbing/grab cursor swap during space-pan; this only sets the resting
   // cursor for the active tool.
   useEffect(() => {
-    if (typeof document === "undefined") return;
+    if (typeof document === 'undefined') return;
     const desc = tools.find((t) => t.id === tool);
     if (!desc) return;
     const prev = document.body.style.cursor;
@@ -88,10 +88,7 @@ export function ToolProvider({
     };
   }, [tool, tools]);
 
-  const value = useMemo<ToolContextValue>(
-    () => ({ tool, setTool, tools }),
-    [tool, setTool, tools]
-  );
+  const value = useMemo<ToolContextValue>(() => ({ tool, setTool, tools }), [tool, setTool, tools]);
 
   return <ToolContext.Provider value={value}>{children}</ToolContext.Provider>;
 }
@@ -102,7 +99,7 @@ export function ToolProvider({
 export function useToolMode(): ToolContextValue {
   const ctx = useContext(ToolContext);
   if (!ctx) {
-    throw new Error("useToolMode must be used inside <ToolProvider>");
+    throw new Error('useToolMode must be used inside <ToolProvider>');
   }
   return ctx;
 }

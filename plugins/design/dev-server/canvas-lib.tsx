@@ -65,6 +65,10 @@
  */
 
 import {
+  type CSSProperties,
+  type ReactNode,
+  type PointerEvent as ReactPointerEvent,
+  type RefObject,
   createContext,
   isValidElement,
   useCallback,
@@ -74,19 +78,12 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
-  type PointerEvent as ReactPointerEvent,
-  type ReactNode,
-  type RefObject,
-} from "react";
+} from 'react';
 
-import { CanvasShell } from "./canvas-shell.tsx";
-import { ToolProvider, useToolModeOptional } from "./use-tool-mode.tsx";
-import {
-  useArtboardDrag,
-  type DragState,
-} from "./use-artboard-drag.tsx";
-import { useSelectionSetOptional } from "./use-selection-set.tsx";
+import { CanvasShell } from './canvas-shell.tsx';
+import { type DragState, useArtboardDrag } from './use-artboard-drag.tsx';
+import { useSelectionSetOptional } from './use-selection-set.tsx';
+import { ToolProvider, useToolModeOptional } from './use-tool-mode.tsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Module constants
@@ -192,10 +189,10 @@ button.dc-artboard-label:focus-visible { outline: 2px solid var(--accent, #d63b1
 `.trim();
 
 function ensureEngineStyles(): void {
-  if (typeof document === "undefined") return;
-  if (document.getElementById("dc-engine-css")) return;
-  const s = document.createElement("style");
-  s.id = "dc-engine-css";
+  if (typeof document === 'undefined') return;
+  if (document.getElementById('dc-engine-css')) return;
+  const s = document.createElement('style');
+  s.id = 'dc-engine-css';
   s.textContent = ENGINE_CSS;
   document.head.appendChild(s);
 }
@@ -272,7 +269,7 @@ function harvestArtboards(children: ReactNode): ArtboardSeed[] {
   const out: ArtboardSeed[] = [];
   let auto = 0;
   function visit(node: ReactNode): void {
-    if (node == null || typeof node === "boolean") return;
+    if (node == null || typeof node === 'boolean') return;
     if (Array.isArray(node)) {
       for (const c of node) visit(c);
       return;
@@ -281,14 +278,14 @@ function harvestArtboards(children: ReactNode): ArtboardSeed[] {
     const type = node.type;
     const isArtboard =
       type === DCArtboard ||
-      (typeof type === "function" &&
-        (type as { displayName?: string }).displayName === "DCArtboard");
+      (typeof type === 'function' &&
+        (type as { displayName?: string }).displayName === 'DCArtboard');
     if (isArtboard) {
       const props = node.props as { id?: string; width?: number; height?: number };
       out.push({
-        id: typeof props.id === "string" && props.id.length > 0 ? props.id : `__ab_${auto}`,
-        w: typeof props.width === "number" ? props.width : VP_GRID.w,
-        h: typeof props.height === "number" ? props.height : VP_GRID.h,
+        id: typeof props.id === 'string' && props.id.length > 0 ? props.id : `__ab_${auto}`,
+        w: typeof props.width === 'number' ? props.width : VP_GRID.w,
+        h: typeof props.height === 'number' ? props.height : VP_GRID.h,
       });
       auto++;
       return;
@@ -325,11 +322,7 @@ function synthDefaultGrid(seeds: ArtboardSeed[]): ArtboardRect[] {
   });
 }
 
-function computeFit(
-  rects: ArtboardRect[],
-  hostEl: HTMLElement,
-  pad = 24
-): ViewportState {
+function computeFit(rects: ArtboardRect[], hostEl: HTMLElement, pad = 24): ViewportState {
   if (rects.length === 0) return { x: 0, y: 0, zoom: 1 };
   let xMin = Number.POSITIVE_INFINITY;
   let yMin = Number.POSITIVE_INFINITY;
@@ -357,11 +350,13 @@ function computeFit(
  * on `window.__canvas_meta__` (Phase 4 T5). Returns undefined if the canvas
  * is mounted outside the shell (specimens / unit tests).
  */
-function readCanvasMeta(): {
-  layout?: { artboards?: ArtboardRect[] };
-  viewport?: ViewportState;
-} | undefined {
-  if (typeof window === "undefined") return undefined;
+function readCanvasMeta():
+  | {
+      layout?: { artboards?: ArtboardRect[] };
+      viewport?: ViewportState;
+    }
+  | undefined {
+  if (typeof window === 'undefined') return undefined;
   const w = window as unknown as {
     __canvas_meta__?: {
       layout?: { artboards?: ArtboardRect[] };
@@ -376,9 +371,9 @@ function readCanvasMeta(): {
  * onSettle PATCHes know which sidecar to write back to.
  */
 function readCanvasMetaFile(): string | null {
-  if (typeof window === "undefined") return null;
+  if (typeof window === 'undefined') return null;
   const w = window as unknown as { __canvas_meta_file__?: string };
-  return typeof w.__canvas_meta_file__ === "string" ? w.__canvas_meta_file__ : null;
+  return typeof w.__canvas_meta_file__ === 'string' ? w.__canvas_meta_file__ : null;
 }
 
 /**
@@ -406,7 +401,7 @@ function patchCanvasMeta(patch: {
   viewport?: ViewportState;
   layout?: { artboards: ArtboardRect[] };
 }): void {
-  if (typeof window === "undefined" || typeof fetch === "undefined") return;
+  if (typeof window === 'undefined' || typeof fetch === 'undefined') return;
   const file = readCanvasMetaFile();
   if (!file) return;
   const sanitized: {
@@ -423,12 +418,12 @@ function patchCanvasMeta(patch: {
       })),
     };
   }
-  fetch("/_api/canvas-meta", {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
+  fetch('/_api/canvas-meta', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ file, patch: sanitized }),
   }).catch((err) => {
-    console.warn("[canvas-lib] persist viewport failed:", err);
+    console.warn('[canvas-lib] persist viewport failed:', err);
   });
 }
 
@@ -503,9 +498,9 @@ function clampZoom(z: number): number {
 }
 
 function prefersReducedMotion(): boolean {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
   try {
-    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   } catch {
     return false;
   }
@@ -515,10 +510,16 @@ function fitRectIntoHost(rect: ArtboardRect, hostEl: HTMLElement, pad = 24): Vie
   return computeFit([rect], hostEl, pad);
 }
 
-export function useViewportController(
-  opts: ViewportControllerOptions
-): ViewportControllerHandle {
-  const { hostRef, worldRef, computeFit: computeFitFn, getInitial, onSettle, jumpTargets, isPanDragActive } = opts;
+export function useViewportController(opts: ViewportControllerOptions): ViewportControllerHandle {
+  const {
+    hostRef,
+    worldRef,
+    computeFit: computeFitFn,
+    getInitial,
+    onSettle,
+    jumpTargets,
+    isPanDragActive,
+  } = opts;
   const isPanDragActiveRef = useRef<(() => boolean) | undefined>(isPanDragActive);
   isPanDragActiveRef.current = isPanDragActive;
 
@@ -557,14 +558,14 @@ export function useViewportController(
   // ! translate(...)` had), so we divide by zoom at write time to convert into
   // ! the CSS-zoom world. The data model stays simple and pan/zoom math (in
   // ! particular zoom-around-cursor) keeps using screen-px throughout.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refs only — stable identity by design.
   const writeTransform = useCallback((v: ViewportState) => {
     const el = worldRef.current;
     if (!el) return;
     const z = v.zoom || 1;
     el.style.transform = `translate(${v.x / z}px, ${v.y / z}px)`;
     el.style.zoom = String(z);
-    el.style.visibility = "visible";
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    el.style.visibility = 'visible';
   }, []);
 
   const schedulePublish = useCallback(() => {
@@ -603,41 +604,50 @@ export function useViewportController(
     }, 220);
   }, []);
 
-  const applyViewport = useCallback((next: ViewportState) => {
-    const clamped: ViewportState = {
-      x: Number.isFinite(next.x) ? next.x : 0,
-      y: Number.isFinite(next.y) ? next.y : 0,
-      zoom: clampZoom(next.zoom),
-    };
-    vpRef.current = clamped;
-    writeTransform(clamped);
-    schedulePublish();
-    scheduleSettle();
-    markInteracting();
-  }, [writeTransform, schedulePublish, scheduleSettle, markInteracting]);
+  const applyViewport = useCallback(
+    (next: ViewportState) => {
+      const clamped: ViewportState = {
+        x: Number.isFinite(next.x) ? next.x : 0,
+        y: Number.isFinite(next.y) ? next.y : 0,
+        zoom: clampZoom(next.zoom),
+      };
+      vpRef.current = clamped;
+      writeTransform(clamped);
+      schedulePublish();
+      scheduleSettle();
+      markInteracting();
+    },
+    [writeTransform, schedulePublish, scheduleSettle, markInteracting]
+  );
 
   // Imperative API ------------------------------------------------------------
 
   const setViewport = useCallback((v: ViewportState) => applyViewport(v), [applyViewport]);
 
-  const panBy = useCallback((dx: number, dy: number) => {
-    const v = vpRef.current;
-    applyViewport({ x: v.x + dx, y: v.y + dy, zoom: v.zoom });
-  }, [applyViewport]);
+  const panBy = useCallback(
+    (dx: number, dy: number) => {
+      const v = vpRef.current;
+      applyViewport({ x: v.x + dx, y: v.y + dy, zoom: v.zoom });
+    },
+    [applyViewport]
+  );
 
-  const zoomAt = useCallback((factor: number, cx: number, cy: number) => {
-    const v = vpRef.current;
-    const newZoom = clampZoom(v.zoom * factor);
-    // World coord under (cx, cy) before the zoom change.
-    const wx = (cx - v.x) / v.zoom;
-    const wy = (cy - v.y) / v.zoom;
-    const next: ViewportState = {
-      x: cx - wx * newZoom,
-      y: cy - wy * newZoom,
-      zoom: newZoom,
-    };
-    applyViewport(next);
-  }, [applyViewport]);
+  const zoomAt = useCallback(
+    (factor: number, cx: number, cy: number) => {
+      const v = vpRef.current;
+      const newZoom = clampZoom(v.zoom * factor);
+      // World coord under (cx, cy) before the zoom change.
+      const wx = (cx - v.x) / v.zoom;
+      const wy = (cy - v.y) / v.zoom;
+      const next: ViewportState = {
+        x: cx - wx * newZoom,
+        y: cy - wy * newZoom,
+        zoom: newZoom,
+      };
+      applyViewport(next);
+    },
+    [applyViewport]
+  );
 
   const fit = useCallback(() => {
     const next = computeFitRef.current();
@@ -684,7 +694,7 @@ export function useViewportController(
       }
       const start: ViewportState = { ...vpRef.current };
       const t0 =
-        typeof performance !== "undefined" && typeof performance.now === "function"
+        typeof performance !== 'undefined' && typeof performance.now === 'function'
           ? performance.now()
           : Date.now();
       const tick = (now: number) => {
@@ -717,7 +727,8 @@ export function useViewportController(
 
   // Mount / event wiring ------------------------------------------------------
 
-  // Initial viewport.
+  // Initial viewport. Intentionally one-shot — caller drives re-fit via the `fit()` handle.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: one-shot mount; caller controls re-fits.
   useLayoutEffect(() => {
     const initial = getInitial();
     if (initial) {
@@ -727,7 +738,7 @@ export function useViewportController(
     }
     // If host has no size yet, refit when ResizeObserver delivers one.
     const host = hostRef.current;
-    if (!host || typeof ResizeObserver === "undefined") return;
+    if (!host || typeof ResizeObserver === 'undefined') return;
     let hadSize = host.clientWidth > 0 && host.clientHeight > 0;
     const ro = new ResizeObserver(() => {
       if (interactingRef.current) return; // never re-fit during a gesture
@@ -741,12 +752,11 @@ export function useViewportController(
     });
     ro.observe(host);
     return () => ro.disconnect();
-    // intentionally one-shot — caller drives re-fit via the `fit()` handle.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Pointer + wheel + key listeners — all scoped to hostRef so the shell
   // keyboard and other iframes stay quiet.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pan/zoom callbacks are useCallback-stable; listeners mount once on host.
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
@@ -758,7 +768,7 @@ export function useViewportController(
     // receives events natively.
     const onPointerEnter = () => {
       try {
-        if (typeof window !== "undefined" && document.activeElement !== host) {
+        if (typeof window !== 'undefined' && document.activeElement !== host) {
           host.focus({ preventScroll: true });
         }
       } catch {
@@ -821,7 +831,7 @@ export function useViewportController(
       panState.pointerId = e.pointerId;
       panState.lastX = e.clientX;
       panState.lastY = e.clientY;
-      host.style.cursor = "grabbing";
+      host.style.cursor = 'grabbing';
     };
 
     const onPointerMove = (e: PointerEvent) => {
@@ -842,14 +852,14 @@ export function useViewportController(
       }
       panState.active = false;
       panState.pointerId = -1;
-      host.style.cursor = spaceHeld.current ? "grab" : "";
+      host.style.cursor = spaceHeld.current ? 'grab' : '';
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
       // Spacebar pan affordance — only when no input is focused.
-      if (e.code === "Space" && !isEditableTarget(e.target)) {
+      if (e.code === 'Space' && !isEditableTarget(e.target)) {
         spaceHeld.current = true;
-        host.style.cursor = panState.active ? "grabbing" : "grab";
+        host.style.cursor = panState.active ? 'grabbing' : 'grab';
         e.preventDefault();
         return;
       }
@@ -868,29 +878,29 @@ export function useViewportController(
       }
       if (e.altKey) return;
       switch (e.key) {
-        case "0":
+        case '0':
           e.preventDefault();
           fit();
           return;
-        case "1":
+        case '1':
           e.preventDefault();
           reset();
           return;
-        case "=":
-        case "+":
+        case '=':
+        case '+':
           e.preventDefault();
           zoomIn();
           return;
-        case "-":
+        case '-':
           e.preventDefault();
           zoomOut();
           return;
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.code === "Space") {
+      if (e.code === 'Space') {
         spaceHeld.current = false;
-        host.style.cursor = panState.active ? "grabbing" : "";
+        host.style.cursor = panState.active ? 'grabbing' : '';
       }
     };
 
@@ -915,24 +925,24 @@ export function useViewportController(
     };
     const captureKeyUp = (e: KeyboardEvent) => onKeyUp(e);
 
-    doc.addEventListener("wheel", captureWheel, { passive: false, capture: true });
-    doc.addEventListener("keydown", captureKeyDown, { capture: true });
-    doc.addEventListener("keyup", captureKeyUp, { capture: true });
-    host.addEventListener("pointerenter", onPointerEnter);
-    host.addEventListener("pointerdown", onPointerDown);
-    host.addEventListener("pointermove", onPointerMove);
-    host.addEventListener("pointerup", endPan);
-    host.addEventListener("pointercancel", endPan);
+    doc.addEventListener('wheel', captureWheel, { passive: false, capture: true });
+    doc.addEventListener('keydown', captureKeyDown, { capture: true });
+    doc.addEventListener('keyup', captureKeyUp, { capture: true });
+    host.addEventListener('pointerenter', onPointerEnter);
+    host.addEventListener('pointerdown', onPointerDown);
+    host.addEventListener('pointermove', onPointerMove);
+    host.addEventListener('pointerup', endPan);
+    host.addEventListener('pointercancel', endPan);
 
     return () => {
-      doc.removeEventListener("wheel", captureWheel, { capture: true } as EventListenerOptions);
-      doc.removeEventListener("keydown", captureKeyDown, { capture: true } as EventListenerOptions);
-      doc.removeEventListener("keyup", captureKeyUp, { capture: true } as EventListenerOptions);
-      host.removeEventListener("pointerenter", onPointerEnter);
-      host.removeEventListener("pointerdown", onPointerDown);
-      host.removeEventListener("pointermove", onPointerMove);
-      host.removeEventListener("pointerup", endPan);
-      host.removeEventListener("pointercancel", endPan);
+      doc.removeEventListener('wheel', captureWheel, { capture: true } as EventListenerOptions);
+      doc.removeEventListener('keydown', captureKeyDown, { capture: true } as EventListenerOptions);
+      doc.removeEventListener('keyup', captureKeyUp, { capture: true } as EventListenerOptions);
+      host.removeEventListener('pointerenter', onPointerEnter);
+      host.removeEventListener('pointerdown', onPointerDown);
+      host.removeEventListener('pointermove', onPointerMove);
+      host.removeEventListener('pointerup', endPan);
+      host.removeEventListener('pointercancel', endPan);
     };
   }, [hostRef]);
 
@@ -972,7 +982,7 @@ function isEditableTarget(t: EventTarget | null): boolean {
   if (!t || !(t as HTMLElement).tagName) return false;
   const el = t as HTMLElement;
   const tag = el.tagName;
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
   if (el.isContentEditable) return true;
   return false;
 }
@@ -1030,7 +1040,7 @@ export function DesignCanvas(props: DesignCanvasProps) {
     </ToolProvider>
   );
 }
-DesignCanvas.displayName = "DesignCanvas";
+DesignCanvas.displayName = 'DesignCanvas';
 
 function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
   ensureEngineStyles();
@@ -1051,7 +1061,7 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
     if (!Array.isArray(metaLayout) || metaLayout.length === 0) return defaults;
     const byId = new Map<string, ArtboardRect>();
     for (const r of metaLayout) {
-      if (r && typeof r.id === "string") byId.set(r.id, r);
+      if (r && typeof r.id === 'string') byId.set(r.id, r);
     }
     return defaults.map((d) => {
       const m = byId.get(d.id);
@@ -1060,8 +1070,8 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
         id: d.id,
         x: Number.isFinite(m.x) ? m.x : d.x,
         y: Number.isFinite(m.y) ? m.y : d.y,
-        w: typeof m.w === "number" && m.w > 0 ? m.w : d.w,
-        h: typeof m.h === "number" && m.h > 0 ? m.h : d.h,
+        w: typeof m.w === 'number' && m.w > 0 ? m.w : d.w,
+        h: typeof m.h === 'number' && m.h > 0 ? m.h : d.h,
       };
     });
   }, [seeds]);
@@ -1106,12 +1116,9 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
   }, []);
 
   const toolModeCtx = useToolModeOptional();
-  const toolRef = useRef(toolModeCtx?.tool ?? "move");
-  toolRef.current = toolModeCtx?.tool ?? "move";
-  const isPanDragActive = useCallback(
-    () => toolRef.current === "hand",
-    []
-  );
+  const toolRef = useRef(toolModeCtx?.tool ?? 'move');
+  toolRef.current = toolModeCtx?.tool ?? 'move';
+  const isPanDragActive = useCallback(() => toolRef.current === 'hand', []);
 
   const controller = useViewportController({
     hostRef,
@@ -1160,7 +1167,7 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
   // controller's next synchronous write, the world would snap back to a
   // stale published value. We start hidden and the controller's
   // useLayoutEffect writes the initial transform before first paint.
-  const worldStyle: CSSProperties = { visibility: "hidden" };
+  const worldStyle: CSSProperties = { visibility: 'hidden' };
 
   const ctxValue = useMemo<WorldContextValue>(
     () => ({
@@ -1180,24 +1187,21 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
   // Drag-state bus (Phase 4.2). Single source of truth: only one artboard
   // drag is active at a time. DCArtboards write here when their local drag
   // hook is non-idle; SnapGuideOverlay (in canvas-shell) reads guides.
-  const [dragCurrent, setDragCurrent] = useState<DragState>({ kind: "idle" });
+  const [dragCurrent, setDragCurrent] = useState<DragState>({ kind: 'idle' });
 
-  const commitArtboardPositions = useCallback(
-    (moved: { id: string; x: number; y: number }[]) => {
-      const movedById = new Map(moved.map((m) => [m.id, m]));
-      const next = artboardsRef.current.map((r) => {
-        const m = movedById.get(r.id);
-        if (m) return { ...r, x: m.x, y: m.y };
-        return r;
-      });
-      // Optimistic local update — DOM reflects the new position the moment
-      // the drag drops, no iframe reload required. The PATCH below catches
-      // the server up; if it fails we already logged it via `patchCanvasMeta`.
-      setArtboards(next);
-      patchCanvasMeta({ layout: { artboards: next } });
-    },
-    []
-  );
+  const commitArtboardPositions = useCallback((moved: { id: string; x: number; y: number }[]) => {
+    const movedById = new Map(moved.map((m) => [m.id, m]));
+    const next = artboardsRef.current.map((r) => {
+      const m = movedById.get(r.id);
+      if (m) return { ...r, x: m.x, y: m.y };
+      return r;
+    });
+    // Optimistic local update — DOM reflects the new position the moment
+    // the drag drops, no iframe reload required. The PATCH below catches
+    // the server up; if it fails we already logged it via `patchCanvasMeta`.
+    setArtboards(next);
+    patchCanvasMeta({ layout: { artboards: next } });
+  }, []);
 
   const dragBus = useMemo<DragStateBus>(
     () => ({
@@ -1231,7 +1235,7 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
     </WorldContext.Provider>
   );
 }
-DesignCanvasInner.displayName = "DesignCanvasInner";
+DesignCanvasInner.displayName = 'DesignCanvasInner';
 
 export function DCSection({
   id,
@@ -1255,7 +1259,7 @@ export function DCSection({
         className="dc-section dc-section-collapsed"
         data-dc-section={id}
         data-dc-section-title={title}
-        data-dc-section-subtitle={subtitle ?? ""}
+        data-dc-section-subtitle={subtitle ?? ''}
       >
         {children}
       </div>
@@ -1271,7 +1275,7 @@ export function DCSection({
     </section>
   );
 }
-DCSection.displayName = "DCSection";
+DCSection.displayName = 'DCSection';
 
 /**
  * Bordered artboard with a SKU-strip header. Inside DesignCanvas its world
@@ -1309,7 +1313,7 @@ export function DCArtboard({
     rectFor: (rid) => (ctx ? ctx.rectFor(rid) : null),
     allRects: ctx?.artboards ?? [],
     viewport: ctx?.viewport ?? null,
-    enabled: !!ctx && (toolMode?.tool ?? "move") === "move",
+    enabled: !!ctx && (toolMode?.tool ?? 'move') === 'move',
     onCommit: (moved) => {
       if (dragBus) dragBus.commitPositions(moved);
     },
@@ -1322,22 +1326,18 @@ export function DCArtboard({
   useEffect(() => {
     if (!dragBus) return;
     const s = dragHook.dragState;
-    if (s.kind !== "idle") {
+    if (s.kind !== 'idle') {
       dragBus.setCurrent(s);
       wasNonIdleRef.current = true;
     } else if (wasNonIdleRef.current) {
-      dragBus.setCurrent({ kind: "idle" });
+      dragBus.setCurrent({ kind: 'idle' });
       wasNonIdleRef.current = false;
     }
   }, [dragHook.dragState, dragBus]);
 
   if (!ctx || !rect) {
     return (
-      <article
-        className="dc-artboard"
-        data-dc-screen={id}
-        style={{ width, height }}
-      >
+      <article className="dc-artboard" data-dc-screen={id} style={{ width, height }}>
         <header className="dc-artboard-label sku">{label}</header>
         <div className="dc-artboard-body">{children}</div>
       </article>
@@ -1350,18 +1350,16 @@ export function DCArtboard({
 
   // Am I involved in the current drag (as leader or follower)?
   const busDrag = dragBus?.current;
-  const isLeader = busDrag?.kind === "dragging" && busDrag.leaderId === id;
+  const isLeader = busDrag?.kind === 'dragging' && busDrag.leaderId === id;
   const followerOffset =
-    busDrag?.kind === "dragging"
-      ? busDrag.followers.find((f) => f.id === id)
-      : undefined;
+    busDrag?.kind === 'dragging' ? busDrag.followers.find((f) => f.id === id) : undefined;
   const isFollower = !!followerOffset;
   const isInDrag = isLeader || isFollower;
 
   // Ghost position (world coords).
   let ghostX = 0;
   let ghostY = 0;
-  if (busDrag?.kind === "dragging") {
+  if (busDrag?.kind === 'dragging') {
     if (isLeader) {
       ghostX = busDrag.leaderRect.x;
       ghostY = busDrag.leaderRect.y;
@@ -1376,9 +1374,9 @@ export function DCArtboard({
   return (
     <>
       <article
-        className={`dc-artboard dc-positioned${isInDrag ? " dc-dragging" : ""}`}
+        className={`dc-artboard dc-positioned${isInDrag ? ' dc-dragging' : ''}`}
         data-dc-screen={id}
-        aria-current={isActive ? "true" : undefined}
+        aria-current={isActive ? 'true' : undefined}
         style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}
         {...handleProps}
       >
@@ -1404,7 +1402,7 @@ export function DCArtboard({
     </>
   );
 }
-DCArtboard.displayName = "DCArtboard";
+DCArtboard.displayName = 'DCArtboard';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SnapGuideOverlay (Phase 4.2) — renders 1 px guide lines while a drag is in
@@ -1418,13 +1416,13 @@ export function SnapGuideOverlay() {
   const world = useWorldContext();
   if (!dragBus || !world) return null;
   const s = dragBus.current;
-  if (s.kind !== "dragging") return null;
+  if (s.kind !== 'dragging') return null;
   const vp = world.viewport;
   if (!vp) return null;
   return (
     <>
       {s.snap.guides.map((g, i) => {
-        if (g.axis === "x") {
+        if (g.axis === 'x') {
           const sx = vp.x + g.pos * vp.zoom;
           const sFrom = vp.y + g.from * vp.zoom;
           const sTo = vp.y + g.to * vp.zoom;
@@ -1434,9 +1432,9 @@ export function SnapGuideOverlay() {
               key={`x-${i}`}
               className="dc-snap-guide"
               style={{
-                position: "fixed",
-                pointerEvents: "none",
-                background: "var(--accent, #d63b1f)",
+                position: 'fixed',
+                pointerEvents: 'none',
+                background: 'var(--accent, #d63b1f)',
                 left: sx,
                 top: sFrom,
                 width: 1,
@@ -1456,9 +1454,9 @@ export function SnapGuideOverlay() {
             key={`y-${i}`}
             className="dc-snap-guide"
             style={{
-              position: "fixed",
-              pointerEvents: "none",
-              background: "var(--accent, #d63b1f)",
+              position: 'fixed',
+              pointerEvents: 'none',
+              background: 'var(--accent, #d63b1f)',
               left: sFrom,
               top: sy,
               width: Math.max(1, sTo - sFrom),
@@ -1472,7 +1470,7 @@ export function SnapGuideOverlay() {
     </>
   );
 }
-SnapGuideOverlay.displayName = "SnapGuideOverlay";
+SnapGuideOverlay.displayName = 'SnapGuideOverlay';
 
 export function DCPostIt({ children }: { children: ReactNode }) {
   return <aside className="dc-postit">{children}</aside>;
@@ -1565,10 +1563,10 @@ const OVERLAY_CSS = `
 `.trim();
 
 function ensureOverlayStyles(): void {
-  if (typeof document === "undefined") return;
-  if (document.getElementById("dc-overlay-css")) return;
-  const s = document.createElement("style");
-  s.id = "dc-overlay-css";
+  if (typeof document === 'undefined') return;
+  if (document.getElementById('dc-overlay-css')) return;
+  const s = document.createElement('style');
+  s.id = 'dc-overlay-css';
   s.textContent = OVERLAY_CSS;
   document.head.appendChild(s);
 }
@@ -1735,7 +1733,7 @@ export function DCMiniMap() {
     </div>
   );
 }
-DCMiniMap.displayName = "DCMiniMap";
+DCMiniMap.displayName = 'DCMiniMap';
 
 /**
  * Bottom-center floating toolbar — zoom out · current % · zoom in · fit · 1:1.
@@ -1748,7 +1746,9 @@ export function DCZoomToolbar() {
   const pct = Math.round(controller.viewport.zoom * 100);
   return (
     <div className="dc-zoom-tb" role="toolbar" aria-label="Zoom">
-      <button type="button" onClick={controller.zoomOut} aria-label="Zoom out">−</button>
+      <button type="button" onClick={controller.zoomOut} aria-label="Zoom out">
+        −
+      </button>
       <button
         type="button"
         className="dc-zoom-tb-pct"
@@ -1757,13 +1757,19 @@ export function DCZoomToolbar() {
       >
         {pct}%
       </button>
-      <button type="button" onClick={controller.zoomIn} aria-label="Zoom in">+</button>
-      <button type="button" onClick={controller.fit} aria-label="Fit to screen">[ ]</button>
-      <button type="button" onClick={controller.reset} aria-label="Actual size">1:1</button>
+      <button type="button" onClick={controller.zoomIn} aria-label="Zoom in">
+        +
+      </button>
+      <button type="button" onClick={controller.fit} aria-label="Fit to screen">
+        [ ]
+      </button>
+      <button type="button" onClick={controller.reset} aria-label="Actual size">
+        1:1
+      </button>
     </div>
   );
 }
-DCZoomToolbar.displayName = "DCZoomToolbar";
+DCZoomToolbar.displayName = 'DCZoomToolbar';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Specimen helpers
@@ -1783,6 +1789,7 @@ export function SpecimenHeader({
       <span className="sku">{sku}</span>
       <span className="crumbs">
         {crumbs.map((c, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: crumbs may repeat; index disambiguates static breadcrumb labels.
           <span key={`${c}-${i}`}>{c}</span>
         ))}
       </span>
@@ -1867,7 +1874,7 @@ export function TypeScaleRow({
     <div className="type-row" data-token={token}>
       <span className="sku">{label}</span>
       <span className="type-sample" style={{ fontSize: `var(${token})` }}>
-        {sample ?? "The quick brown fox jumps over the lazy dog"}
+        {sample ?? 'The quick brown fox jumps over the lazy dog'}
       </span>
     </div>
   );
@@ -1881,16 +1888,16 @@ export function ThemeToggle() {
       <button
         type="button"
         data-theme="light"
-        aria-pressed={theme === "light"}
-        onClick={() => setTheme("light")}
+        aria-pressed={theme === 'light'}
+        onClick={() => setTheme('light')}
       >
         LIGHT
       </button>
       <button
         type="button"
         data-theme="dark"
-        aria-pressed={theme === "dark"}
-        onClick={() => setTheme("dark")}
+        aria-pressed={theme === 'dark'}
+        onClick={() => setTheme('dark')}
       >
         DARK
       </button>
@@ -1909,7 +1916,7 @@ export function ThemeToggle() {
 export function useTokens(prefix?: string): Record<string, string> {
   const [tokens, setTokens] = useState<Record<string, string>>({});
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === 'undefined') return;
     function read() {
       const root = document.documentElement;
       const cs = getComputedStyle(root);
@@ -1917,7 +1924,7 @@ export function useTokens(prefix?: string): Record<string, string> {
       const len = cs.length;
       for (let i = 0; i < len; i++) {
         const name = cs.item(i);
-        if (!name.startsWith("--")) continue;
+        if (!name.startsWith('--')) continue;
         if (prefix && !name.startsWith(`--${prefix}`)) continue;
         out[name] = cs.getPropertyValue(name).trim();
       }
@@ -1925,7 +1932,7 @@ export function useTokens(prefix?: string): Record<string, string> {
     }
     read();
     const mo = new MutationObserver(read);
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     return () => mo.disconnect();
   }, [prefix]);
   return tokens;
@@ -1938,22 +1945,22 @@ export function useTokens(prefix?: string): Record<string, string> {
  */
 export function useTheme(): { theme: string; setTheme: (t: string) => void } {
   const [theme, setThemeState] = useState<string>(() => {
-    if (typeof document === "undefined") return "light";
-    return document.documentElement.dataset.theme ?? "light";
+    if (typeof document === 'undefined') return 'light';
+    return document.documentElement.dataset.theme ?? 'light';
   });
   const setTheme = useCallback((t: string) => {
-    if (typeof document !== "undefined") {
+    if (typeof document !== 'undefined') {
       document.documentElement.dataset.theme = t;
     }
     setThemeState(t);
   }, []);
   useLayoutEffect(() => {
-    if (typeof document === "undefined") return;
+    if (typeof document === 'undefined') return;
     const obs = new MutationObserver(() => {
-      const t = document.documentElement.dataset.theme ?? "light";
+      const t = document.documentElement.dataset.theme ?? 'light';
       setThemeState(t);
     });
-    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     return () => obs.disconnect();
   }, []);
   return useMemo(() => ({ theme, setTheme }), [theme, setTheme]);
@@ -1963,13 +1970,14 @@ export function useTheme(): { theme: string; setTheme: (t: string) => void } {
  * ResizeObserver wrapper. Pass a ref to any element (typically the active
  * artboard); returns its current `{ width, height }` in CSS pixels.
  */
-export function useArtboardBounds(
-  ref: RefObject<HTMLElement | null>
-): { width: number; height: number } {
+export function useArtboardBounds(ref: RefObject<HTMLElement | null>): {
+  width: number;
+  height: number;
+} {
   const [bounds, setBounds] = useState({ width: 0, height: 0 });
   useEffect(() => {
     const el = ref.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
+    if (!el || typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver((entries) => {
       const e = entries[0];
       if (!e) return;

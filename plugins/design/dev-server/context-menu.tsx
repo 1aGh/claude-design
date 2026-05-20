@@ -20,6 +20,7 @@
  */
 
 import {
+  type ReactNode,
   createContext,
   useCallback,
   useContext,
@@ -27,13 +28,12 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactNode,
-} from "react";
+} from 'react';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 
-export type ContextTargetKind = "element" | "artboard-chrome" | "world" | "overlay";
+export type ContextTargetKind = 'element' | 'artboard-chrome' | 'world' | 'overlay';
 
 export interface ContextTarget {
   kind: ContextTargetKind;
@@ -68,7 +68,7 @@ export type ContextRegistry = Record<ContextTargetKind, MenuSection[]>;
 
 function noop(name: string) {
   return () => {
-    if (typeof console !== "undefined") {
+    if (typeof console !== 'undefined') {
       console.warn(`[context-menu] TODO: ${name}`);
     }
   };
@@ -77,31 +77,36 @@ function noop(name: string) {
 const DEFAULT_REGISTRY: ContextRegistry = {
   element: [
     [
-      { id: "add-comment", label: "Add comment", shortcut: "C", onSelect: noop("add-comment") },
-      { id: "copy-css", label: "Copy CSS", shortcut: "⌘⇧C", onSelect: noop("copy-css") },
-      { id: "copy-id", label: "Copy data-cd-id", onSelect: noop("copy-id") },
-      { id: "inspect", label: "Inspect", shortcut: "⌥I", onSelect: noop("inspect") },
+      { id: 'add-comment', label: 'Add comment', shortcut: 'C', onSelect: noop('add-comment') },
+      { id: 'copy-css', label: 'Copy CSS', shortcut: '⌘⇧C', onSelect: noop('copy-css') },
+      { id: 'copy-id', label: 'Copy data-cd-id', onSelect: noop('copy-id') },
+      { id: 'inspect', label: 'Inspect', shortcut: '⌥I', onSelect: noop('inspect') },
     ],
     [
-      { id: "hide", label: "Hide", shortcut: "⌘⇧H", onSelect: noop("hide") },
-      { id: "lock", label: "Lock", shortcut: "⌘⇧L", onSelect: noop("lock") },
+      { id: 'hide', label: 'Hide', shortcut: '⌘⇧H', onSelect: noop('hide') },
+      { id: 'lock', label: 'Lock', shortcut: '⌘⇧L', onSelect: noop('lock') },
     ],
   ],
-  "artboard-chrome": [
+  'artboard-chrome': [
     [
-      { id: "rename", label: "Rename", shortcut: "↵", onSelect: noop("rename-artboard") },
-      { id: "duplicate", label: "Duplicate", shortcut: "⌘D", onSelect: noop("duplicate-artboard") },
+      { id: 'rename', label: 'Rename', shortcut: '↵', onSelect: noop('rename-artboard') },
+      { id: 'duplicate', label: 'Duplicate', shortcut: '⌘D', onSelect: noop('duplicate-artboard') },
     ],
     [
-      { id: "fit-one", label: "Fit just this artboard", onSelect: noop("fit-one") },
-      { id: "reset-pos", label: "Reset position", onSelect: noop("reset-artboard-pos") },
+      { id: 'fit-one', label: 'Fit just this artboard', onSelect: noop('fit-one') },
+      { id: 'reset-pos', label: 'Reset position', onSelect: noop('reset-artboard-pos') },
     ],
   ],
   world: [
     [
-      { id: "paste-artboard", label: "Paste artboard", shortcut: "⌘V", onSelect: noop("paste-artboard") },
-      { id: "fit-view", label: "Fit to view", shortcut: "1", onSelect: noop("fit-view") },
-      { id: "reset-view", label: "Reset view", shortcut: "⌘0", onSelect: noop("reset-view") },
+      {
+        id: 'paste-artboard',
+        label: 'Paste artboard',
+        shortcut: '⌘V',
+        onSelect: noop('paste-artboard'),
+      },
+      { id: 'fit-view', label: 'Fit to view', shortcut: '1', onSelect: noop('fit-view') },
+      { id: 'reset-view', label: 'Reset view', shortcut: '⌘0', onSelect: noop('reset-view') },
     ],
   ],
   overlay: [],
@@ -180,10 +185,10 @@ const MENU_CSS = `
 `.trim();
 
 function ensureMenuStyles(): void {
-  if (typeof document === "undefined") return;
-  if (document.getElementById("dc-context-menu-css")) return;
-  const s = document.createElement("style");
-  s.id = "dc-context-menu-css";
+  if (typeof document === 'undefined') return;
+  if (document.getElementById('dc-context-menu-css')) return;
+  const s = document.createElement('style');
+  s.id = 'dc-context-menu-css';
   s.textContent = MENU_CSS;
   document.head.appendChild(s);
 }
@@ -198,7 +203,7 @@ export function ContextMenuProvider({
   const [state, setState] = useState<InternalState>({ target: null });
 
   const open = useCallback((target: ContextTarget) => {
-    if (target.kind === "overlay") return;
+    if (target.kind === 'overlay') return;
     setState({ target });
   }, []);
   const close = useCallback(() => setState({ target: null }), []);
@@ -225,7 +230,7 @@ export function ContextMenuProvider({
 export function useContextMenu(): ContextMenuValue {
   const ctx = useContext(ContextMenuContext);
   if (!ctx) {
-    throw new Error("useContextMenu must be used inside <ContextMenuProvider>");
+    throw new Error('useContextMenu must be used inside <ContextMenuProvider>');
   }
   return ctx;
 }
@@ -266,78 +271,73 @@ function ContextMenuView({
     if (ny + r.height > vh - 8) ny = Math.max(8, vh - r.height - 8);
     if (nx !== pos.x || ny !== pos.y) setPos({ x: nx, y: ny });
     // Focus first menu item for keyboard nav.
-    const firstBtn = el.querySelector<HTMLButtonElement>("button.dc-menu-item:not([disabled])");
+    const firstBtn = el.querySelector<HTMLButtonElement>('button.dc-menu-item:not([disabled])');
     firstBtn?.focus();
     // Dismiss on outside-click / Esc / scroll.
     const onDocPointer = (e: PointerEvent) => {
       if (!el.contains(e.target as Node)) onClose();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key === 'Escape') {
         e.preventDefault();
         onClose();
         return;
       }
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
         const items = Array.from(
-          el.querySelectorAll<HTMLButtonElement>("button.dc-menu-item:not([disabled])")
+          el.querySelectorAll<HTMLButtonElement>('button.dc-menu-item:not([disabled])')
         );
         if (items.length === 0) return;
         const idx = items.findIndex((b) => b === document.activeElement);
         const nextIdx =
-          e.key === "ArrowDown"
+          e.key === 'ArrowDown'
             ? (idx + 1) % items.length
             : (idx - 1 + items.length) % items.length;
         items[nextIdx]?.focus();
       }
     };
     const onScroll = () => onClose();
-    document.addEventListener("pointerdown", onDocPointer, true);
-    document.addEventListener("keydown", onKey, true);
-    document.addEventListener("scroll", onScroll, true);
-    window.addEventListener("blur", onClose);
+    document.addEventListener('pointerdown', onDocPointer, true);
+    document.addEventListener('keydown', onKey, true);
+    document.addEventListener('scroll', onScroll, true);
+    window.addEventListener('blur', onClose);
     return () => {
-      document.removeEventListener("pointerdown", onDocPointer, true);
-      document.removeEventListener("keydown", onKey, true);
-      document.removeEventListener("scroll", onScroll, true);
-      window.removeEventListener("blur", onClose);
+      document.removeEventListener('pointerdown', onDocPointer, true);
+      document.removeEventListener('keydown', onKey, true);
+      document.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('blur', onClose);
     };
   }, [target.clientX, target.clientY, onClose, pos.x, pos.y]);
 
   return (
-    <div
-      ref={ref}
-      className="dc-context-menu"
-      role="menu"
-      style={{ left: pos.x, top: pos.y }}
-    >
-      {sections.map((section, si) => (
-        <div key={si} role="group">
-          {si > 0 ? <div className="dc-menu-sep" aria-hidden="true" /> : null}
-          {section.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              role="menuitem"
-              disabled={item.disabled}
-              className={
-                "dc-menu-item" + (item.destructive ? " is-destructive" : "")
-              }
-              onClick={() => {
-                if (item.disabled) return;
-                item.onSelect(target);
-                onClose();
-              }}
-            >
-              <span>{item.label}</span>
-              {item.shortcut ? (
-                <span className="dc-menu-shortcut">{item.shortcut}</span>
-              ) : null}
-            </button>
-          ))}
-        </div>
-      ))}
+    <div ref={ref} className="dc-context-menu" role="menu" style={{ left: pos.x, top: pos.y }}>
+      {sections.map((section, si) => {
+        const sectionKey = section.map((i) => i.id).join('|') || `s${si}`;
+        return (
+          // biome-ignore lint/a11y/useSemanticElements: ARIA group within role="menu"; no native equivalent.
+          <div key={sectionKey} role="group">
+            {si > 0 ? <div className="dc-menu-sep" aria-hidden="true" /> : null}
+            {section.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                role="menuitem"
+                disabled={item.disabled}
+                className={`dc-menu-item${item.destructive ? ' is-destructive' : ''}`}
+                onClick={() => {
+                  if (item.disabled) return;
+                  item.onSelect(target);
+                  onClose();
+                }}
+              >
+                <span>{item.label}</span>
+                {item.shortcut ? <span className="dc-menu-shortcut">{item.shortcut}</span> : null}
+              </button>
+            ))}
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -22,8 +22,8 @@
  */
 
 import {
-  createContext,
   type PointerEvent as ReactPointerEvent,
+  createContext,
   useCallback,
   useContext,
   useEffect,
@@ -33,12 +33,12 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 
-import { useViewportControllerContext, useWorldRefContext } from './canvas-lib.tsx';
-import { useToolMode } from './use-tool-mode.tsx';
-import { useAnnotationSelectionOptional } from './use-annotation-selection.tsx';
-import { useSelectionSetOptional } from './use-selection-set.tsx';
 import { AnnotationContextToolbar } from './annotations-context-toolbar.tsx';
+import { useViewportControllerContext, useWorldRefContext } from './canvas-lib.tsx';
+import { useAnnotationSelectionOptional } from './use-annotation-selection.tsx';
 import { useAnnotationsVisibility } from './use-annotations-visibility.tsx';
+import { useSelectionSetOptional } from './use-selection-set.tsx';
+import { useToolMode } from './use-tool-mode.tsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -332,7 +332,7 @@ export function strokeHitTest(s: Stroke, wx: number, wy: number, tol: number): b
     const nx = (wx - s.cx) / s.rx;
     const ny = (wy - s.cy) / s.ry;
     const d = nx * nx + ny * ny;
-    if (s.fill) return d <= 1.0 + (t / Math.max(s.rx, s.ry));
+    if (s.fill) return d <= 1.0 + t / Math.max(s.rx, s.ry);
     // Stroke-only: hit if normalized distance is within a band around 1.
     const band = t / Math.max(s.rx, s.ry);
     const dist = Math.abs(Math.sqrt(d) - 1);
@@ -605,7 +605,8 @@ function translateOne(s: Stroke, dx: number, dy: number): Stroke {
   }
   if (s.tool === 'rect') return { ...s, x: s.x + dx, y: s.y + dy };
   if (s.tool === 'ellipse') return { ...s, cx: s.cx + dx, cy: s.cy + dy };
-  if (s.tool === 'arrow') return { ...s, x1: s.x1 + dx, y1: s.y1 + dy, x2: s.x2 + dx, y2: s.y2 + dy };
+  if (s.tool === 'arrow')
+    return { ...s, x1: s.x1 + dx, y1: s.y1 + dy, x2: s.x2 + dx, y2: s.y2 + dy };
   return s; // text inherits its host's bbox
 }
 
@@ -651,8 +652,7 @@ export function AnnotationsLayer() {
   const drawingRef = useRef<Stroke | null>(null);
   drawingRef.current = drawing;
 
-  const isDraw =
-    tool === 'pen' || tool === 'rect' || tool === 'arrow' || tool === 'ellipse';
+  const isDraw = tool === 'pen' || tool === 'rect' || tool === 'arrow' || tool === 'ellipse';
   const isErase = tool === 'eraser';
   const isActive = isDraw || isErase;
   const supportsThickness = tool === 'pen' || tool === 'arrow';
@@ -709,9 +709,7 @@ export function AnnotationsLayer() {
   const strokesStore = useMemo<StrokesStoreValue>(() => {
     const updateStroke = (id: string, patch: Partial<Stroke>): void => {
       setStrokesState((prev) => {
-        const next = prev.map((s) =>
-          s.id === id ? ({ ...s, ...patch } as Stroke) : s
-        );
+        const next = prev.map((s) => (s.id === id ? ({ ...s, ...patch } as Stroke) : s));
         scheduleSave(next);
         return next;
       });
@@ -719,7 +717,9 @@ export function AnnotationsLayer() {
     const deleteStrokes = (ids: string[]): void => {
       const set = new Set(ids);
       setStrokesState((prev) => {
-        const next = prev.filter((s) => !set.has(s.id) && !(s.tool === 'text' && set.has(s.anchorId)));
+        const next = prev.filter(
+          (s) => !set.has(s.id) && !(s.tool === 'text' && set.has(s.anchorId))
+        );
         scheduleSave(next);
         return next;
       });
@@ -760,7 +760,7 @@ export function AnnotationsLayer() {
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [annotSel, strokes]);
+  }, [annotSel, strokes, setVisible]);
 
   // Document-level toggle: Shift+P (presentation). Annotation-shortcut help is
   // owned by the dev-server menubar (Help button); we no longer ship an
@@ -837,9 +837,29 @@ export function AnnotationsLayer() {
       if (tool === 'pen') {
         setDrawing({ id, tool: 'pen', color, width, points: [[wx, wy]] });
       } else if (tool === 'rect') {
-        setDrawing({ id, tool: 'rect', color, width: STROKE_WIDTH_THIN, x: wx, y: wy, w: 0, h: 0, fill: activeFill });
+        setDrawing({
+          id,
+          tool: 'rect',
+          color,
+          width: STROKE_WIDTH_THIN,
+          x: wx,
+          y: wy,
+          w: 0,
+          h: 0,
+          fill: activeFill,
+        });
       } else if (tool === 'ellipse') {
-        setDrawing({ id, tool: 'ellipse', color, width: STROKE_WIDTH_THIN, cx: wx, cy: wy, rx: 0, ry: 0, fill: activeFill });
+        setDrawing({
+          id,
+          tool: 'ellipse',
+          color,
+          width: STROKE_WIDTH_THIN,
+          cx: wx,
+          cy: wy,
+          rx: 0,
+          ry: 0,
+          fill: activeFill,
+        });
       } else if (tool === 'arrow') {
         setDrawing({
           id,
@@ -854,7 +874,19 @@ export function AnnotationsLayer() {
       }
       return true;
     },
-    [tool, color, fill, thickness, supportsThickness, supportsFill, isActive, isErase, visible, screenToWorld, eraseAt]
+    [
+      tool,
+      color,
+      fill,
+      thickness,
+      supportsThickness,
+      supportsFill,
+      isActive,
+      isErase,
+      visible,
+      screenToWorld,
+      eraseAt,
+    ]
   );
 
   const moveStroke = useCallback(
@@ -961,7 +993,11 @@ export function AnnotationsLayer() {
       const node = el?.closest?.('[data-id][data-tool]') ?? null;
       const id = node?.getAttribute('data-id') ?? null;
       const t = node?.getAttribute('data-tool') ?? null;
-      if (id && t && (t === 'pen' || t === 'rect' || t === 'ellipse' || t === 'arrow' || t === 'text')) {
+      if (
+        id &&
+        t &&
+        (t === 'pen' || t === 'rect' || t === 'ellipse' || t === 'arrow' || t === 'text')
+      ) {
         return id;
       }
       return null;
@@ -1035,8 +1071,7 @@ export function AnnotationsLayer() {
       const addToSelection = e.shiftKey;
       let moved = false;
       const onMove = (mv: PointerEvent) => {
-        const distSq =
-          (mv.clientX - startClientX) ** 2 + (mv.clientY - startClientY) ** 2;
+        const distSq = (mv.clientX - startClientX) ** 2 + (mv.clientY - startClientY) ** 2;
         if (!moved && distSq < 16) return; // 4 px threshold
         moved = true;
         const [cwx, cwy] = screenToWorld(mv.clientX, mv.clientY);
@@ -1063,12 +1098,7 @@ export function AnnotationsLayer() {
           if (s.tool === 'text') continue; // text inherits its host's bbox
           const bb = strokeBBox(s);
           if (!bb) continue;
-          if (
-            bb.x + bb.w >= xMin &&
-            bb.x <= xMax &&
-            bb.y + bb.h >= yMin &&
-            bb.y <= yMax
-          ) {
+          if (bb.x + bb.w >= xMin && bb.x <= xMax && bb.y + bb.h >= yMin && bb.y <= yMax) {
             hits.push(s.id);
           }
         }
@@ -1119,16 +1149,14 @@ export function AnnotationsLayer() {
     (anchorId: string, text: string) => {
       const trimmed = text.trim();
       setStrokesState((prev) => {
-        const existing = prev.find(
-          (s) => s.tool === 'text' && s.anchorId === anchorId
-        ) as TextStroke | undefined;
+        const existing = prev.find((s) => s.tool === 'text' && s.anchorId === anchorId) as
+          | TextStroke
+          | undefined;
         let next: Stroke[];
         if (trimmed.length === 0) {
           next = existing ? prev.filter((s) => s.id !== existing.id) : prev;
         } else if (existing) {
-          next = prev.map((s) =>
-            s.id === existing.id ? { ...existing, text: trimmed } : s
-          );
+          next = prev.map((s) => (s.id === existing.id ? { ...existing, text: trimmed } : s));
         } else {
           next = [
             ...prev,
@@ -1219,9 +1247,9 @@ export function AnnotationsLayer() {
             marquee={marquee}
             editingId={editingId}
             existingTextFor={(anchorId) =>
-              strokes.find(
-                (s) => s.tool === 'text' && s.anchorId === anchorId
-              ) as TextStroke | undefined
+              strokes.find((s) => s.tool === 'text' && s.anchorId === anchorId) as
+                | TextStroke
+                | undefined
             }
             onCommitText={(anchorId, text) => {
               commitText(anchorId, text);
@@ -1351,18 +1379,9 @@ function AnnotationsSvg({
   const target = worldRef?.current ?? null;
   if (!target) return null;
   return createPortal(
-    <svg
-      className="dc-annot-svg"
-      aria-hidden="true"
-      xmlns="http://www.w3.org/2000/svg"
-    >
+    <svg className="dc-annot-svg" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
       {strokes.map((s) => (
-        <StrokeNode
-          key={s.id}
-          stroke={s}
-          anchorsById={anchorsById}
-          interactive={selectMode}
-        />
+        <StrokeNode key={s.id} stroke={s} anchorsById={anchorsById} interactive={selectMode} />
       ))}
       {selectedStrokes.map((s) => (
         <SelectionHalo key={`halo-${s.id}`} stroke={s} anchorsById={anchorsById} />
@@ -1445,12 +1464,7 @@ function TextEditor({
   if (!bbox) return null;
   const fontSize = existing?.fontSize ?? DEFAULT_FONT_SIZE;
   return (
-    <foreignObject
-      x={bbox.x}
-      y={bbox.y}
-      width={Math.max(20, bbox.w)}
-      height={Math.max(20, bbox.h)}
-    >
+    <foreignObject x={bbox.x} y={bbox.y} width={Math.max(20, bbox.w)} height={Math.max(20, bbox.h)}>
       <div
         ref={ref}
         contentEditable
@@ -1570,14 +1584,7 @@ function StrokeNode({
     vectorEffect: 'non-scaling-stroke' as const,
   };
   if (stroke.tool === 'pen') {
-    return (
-      <path
-        {...common}
-        fill="none"
-        d={penPathD(stroke.points)}
-        pointerEvents={strokeHit}
-      />
-    );
+    return <path {...common} fill="none" d={penPathD(stroke.points)} pointerEvents={strokeHit} />;
   }
   if (stroke.tool === 'rect') {
     const x = Math.min(stroke.x, stroke.x + stroke.w);
@@ -1708,4 +1715,3 @@ function AnnotationsChrome({
     </div>
   );
 }
-

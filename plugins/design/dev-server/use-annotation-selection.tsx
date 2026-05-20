@@ -10,14 +10,7 @@
  * selection resets (the strokes themselves persist via `.annotations.svg`).
  */
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { type ReactNode, createContext, useCallback, useContext, useMemo, useState } from 'react';
 
 export interface AnnotationSelectionValue {
   selectedIds: string[];
@@ -28,8 +21,7 @@ export interface AnnotationSelectionValue {
   contains: (id: string) => boolean;
 }
 
-const AnnotationSelectionContext =
-  createContext<AnnotationSelectionValue | null>(null);
+const AnnotationSelectionContext = createContext<AnnotationSelectionValue | null>(null);
 
 function dedupe(ids: string[]): string[] {
   const out: string[] = [];
@@ -60,9 +52,7 @@ export function AnnotationSelectionProvider({
   }, []);
 
   const toggle = useCallback((id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }, []);
 
   const clear = useCallback(() => {
@@ -74,11 +64,8 @@ export function AnnotationSelectionProvider({
   // result instead of a stale closure capture.
   const containsRef = { current: selectedIds };
   containsRef.current = selectedIds;
-  const contains = useCallback(
-    (id: string) => containsRef.current.includes(id),
-    // biome-ignore lint/correctness/useExhaustiveDependencies: ref read intentionally
-    []
-  );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: ref read intentionally
+  const contains = useCallback((id: string) => containsRef.current.includes(id), []);
 
   const value = useMemo<AnnotationSelectionValue>(
     () => ({ selectedIds, replace, add, toggle, clear, contains }),
@@ -95,9 +82,7 @@ export function AnnotationSelectionProvider({
 export function useAnnotationSelection(): AnnotationSelectionValue {
   const ctx = useContext(AnnotationSelectionContext);
   if (!ctx) {
-    throw new Error(
-      "useAnnotationSelection must be used inside <AnnotationSelectionProvider>"
-    );
+    throw new Error('useAnnotationSelection must be used inside <AnnotationSelectionProvider>');
   }
   return ctx;
 }

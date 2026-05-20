@@ -20,37 +20,14 @@
  *   - font-size: only when at least one stroke is text (and the rest are its host)
  */
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import {
-  type Stroke,
-  useStrokesStore,
-} from "./annotations-layer.tsx";
-import { useAnnotationSelectionOptional } from "./use-annotation-selection.tsx";
+import { type Stroke, useStrokesStore } from './annotations-layer.tsx';
+import { useAnnotationSelectionOptional } from './use-annotation-selection.tsx';
 
-const PALETTE = [
-  "#d63b1f",
-  "#f5a623",
-  "#1a8f3e",
-  "#1d6cf0",
-  "#7a4ad3",
-  "#1a1a1a",
-] as const;
+const PALETTE = ['#d63b1f', '#f5a623', '#1a8f3e', '#1d6cf0', '#7a4ad3', '#1a1a1a'] as const;
 
-const FILL_PALETTE = [
-  "#fff4d6",
-  "#e6f4ea",
-  "#e3edff",
-  "#f0e8fb",
-  "#ffe5e0",
-  "#f4f1ee",
-] as const;
+const FILL_PALETTE = ['#fff4d6', '#e6f4ea', '#e3edff', '#f0e8fb', '#ffe5e0', '#f4f1ee'] as const;
 
 const TOOLBAR_CSS = `
 .dc-annot-ctx {
@@ -120,10 +97,10 @@ const TOOLBAR_CSS = `
 `.trim();
 
 function ensureToolbarStyles(): void {
-  if (typeof document === "undefined") return;
-  if (document.getElementById("dc-annot-ctx-css")) return;
-  const s = document.createElement("style");
-  s.id = "dc-annot-ctx-css";
+  if (typeof document === 'undefined') return;
+  if (document.getElementById('dc-annot-ctx-css')) return;
+  const s = document.createElement('style');
+  s.id = 'dc-annot-ctx-css';
   s.textContent = TOOLBAR_CSS;
   document.head.appendChild(s);
 }
@@ -169,13 +146,9 @@ export function AnnotationContextToolbar() {
     if (selectedStrokes.length === 0) {
       return { color: false, fill: false, thickness: false, fontSize: false };
     }
-    const allFillable = selectedStrokes.every(
-      (s) => s.tool === "rect" || s.tool === "ellipse"
-    );
-    const allThickness = selectedStrokes.every(
-      (s) => s.tool === "pen" || s.tool === "arrow"
-    );
-    const anyText = selectedStrokes.some((s) => s.tool === "text");
+    const allFillable = selectedStrokes.every((s) => s.tool === 'rect' || s.tool === 'ellipse');
+    const allThickness = selectedStrokes.every((s) => s.tool === 'pen' || s.tool === 'arrow');
+    const anyText = selectedStrokes.some((s) => s.tool === 'text');
     return {
       color: true,
       fill: allFillable,
@@ -198,11 +171,11 @@ export function AnnotationContextToolbar() {
       }
       const u = unionRect(rects);
       if (!u) {
-        el.style.display = "none";
+        el.style.display = 'none';
         rafRef.current = requestAnimationFrame(tick);
         return;
       }
-      el.style.display = "flex";
+      el.style.display = 'flex';
       // Lay out off-screen first so the size is real, then position.
       const tbW = el.offsetWidth || 280;
       const tbH = el.offsetHeight || 36;
@@ -210,8 +183,7 @@ export function AnnotationContextToolbar() {
       let top = u.y - tbH - margin;
       if (top < 8) top = u.y + u.h + margin;
       let left = u.x + (u.w - tbW) / 2;
-      const winW =
-        typeof window !== "undefined" ? window.innerWidth : tbW + 16;
+      const winW = typeof window !== 'undefined' ? window.innerWidth : tbW + 16;
       if (left < 8) left = 8;
       if (left + tbW > winW - 8) left = winW - tbW - 8;
       el.style.left = `${Math.round(left)}px`;
@@ -227,6 +199,7 @@ export function AnnotationContextToolbar() {
   // Force a re-render when the strokes themselves mutate (the position rAF
   // already follows the bbox; this ensures the active-state of the swatches
   // reflects the current color/fill/thickness without a full app re-render).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: selectedStrokes is the trigger; force is a setState identity.
   useEffect(() => {
     force({});
   }, [selectedStrokes]);
@@ -242,7 +215,7 @@ export function AnnotationContextToolbar() {
     (f: string | null) => {
       if (!store) return;
       for (const s of selectedStrokes) {
-        if (s.tool === "rect" || s.tool === "ellipse") {
+        if (s.tool === 'rect' || s.tool === 'ellipse') {
           store.updateStroke(s.id, { fill: f } as Partial<Stroke>);
         }
       }
@@ -253,7 +226,7 @@ export function AnnotationContextToolbar() {
     (w: number) => {
       if (!store) return;
       for (const s of selectedStrokes) {
-        if (s.tool === "pen" || s.tool === "arrow") {
+        if (s.tool === 'pen' || s.tool === 'arrow') {
           store.updateStroke(s.id, { width: w } as Partial<Stroke>);
         }
       }
@@ -264,7 +237,7 @@ export function AnnotationContextToolbar() {
     (sz: number) => {
       if (!store) return;
       for (const s of selectedStrokes) {
-        if (s.tool === "text") {
+        if (s.tool === 'text') {
           store.updateStroke(s.id, { fontSize: sz } as Partial<Stroke>);
         }
       }
@@ -284,21 +257,17 @@ export function AnnotationContextToolbar() {
   const uniqFill = caps.fill
     ? uniformValue(
         selectedStrokes.map((s) =>
-          s.tool === "rect" || s.tool === "ellipse" ? (s.fill ?? null) : undefined
+          s.tool === 'rect' || s.tool === 'ellipse' ? (s.fill ?? null) : undefined
         )
       )
     : undefined;
   const uniqThickness = caps.thickness
     ? uniformValue(
-        selectedStrokes.map((s) =>
-          s.tool === "pen" || s.tool === "arrow" ? s.width : undefined
-        )
+        selectedStrokes.map((s) => (s.tool === 'pen' || s.tool === 'arrow' ? s.width : undefined))
       )
     : undefined;
   const uniqFontSize = caps.fontSize
-    ? uniformValue(
-        selectedStrokes.map((s) => (s.tool === "text" ? s.fontSize : undefined))
-      )
+    ? uniformValue(selectedStrokes.map((s) => (s.tool === 'text' ? s.fontSize : undefined)))
     : undefined;
 
   return (
@@ -307,7 +276,7 @@ export function AnnotationContextToolbar() {
       className="dc-annot-ctx"
       role="toolbar"
       aria-label="Annotation properties"
-      style={{ display: "flex", top: -9999, left: -9999 }}
+      style={{ display: 'flex', top: -9999, left: -9999 }}
     >
       {PALETTE.map((c) => (
         <button
@@ -414,7 +383,7 @@ export function AnnotationContextToolbar() {
     </div>
   );
 }
-AnnotationContextToolbar.displayName = "AnnotationContextToolbar";
+AnnotationContextToolbar.displayName = 'AnnotationContextToolbar';
 
 function uniformValue<T>(values: (T | undefined)[]): T | undefined {
   const filtered = values.filter((v) => v !== undefined) as T[];
