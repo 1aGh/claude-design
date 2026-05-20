@@ -1,5 +1,18 @@
 # Feature: Marketing Demo Video — 30s, agent-orchestrated
 
+> **Toolchain prerequisite (2026-05-20):** This plan assumes
+> [`phase-15-video-pipeline-toolchain.md`](./phase-15-video-pipeline-toolchain.md)
+> has been run and `pnpm run video:smoke` exits 0. Do not run this plan against
+> a cold toolchain — the install gates (ffmpeg, vhs, Playwright Chromium,
+> Remotion license ack) live there and the per-tool smokes are the ladder. This
+> plan composes the real scenes on top of that proven base.
+>
+> Refactored: the original bash ladder (HTML cards + render-card.mjs,
+> record-scene.sh, custom xfade math + drawtext + 2-pass loudnorm) is replaced
+> by VHS tapes (terminal scenes), Playwright specs (browser scenes), Remotion
+> compositions (cards + final assembly). Net result: ~50–60% less custom code.
+> See `scripts/video/README.md` for the toolchain runbook.
+
 Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.
 
 ## Description
@@ -185,113 +198,130 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
 - **Gotcha**: Pixabay direct-download URLs require a session cookie since 2024; if the curl fails, fall back to a public CC0 alternative on Mixkit (`https://mixkit.co/free-stock-music/`) or Free Music Archive — note the chosen source in storyboard.
 - **Validate**: `bash scripts/video/download-music.sh && ffprobe scripts/video/.cache/music.mp3 2>&1 | grep -E "Duration|bit_rate"` — duration ≥ 30s.
 
-### Task 2: CREATE HTML card templates + `render-card.mjs`
+### Task 2: CREATE Remotion card compositions
 
 - **Do**:
-  1. `scripts/video/cards/intro.html`: 1920×1080, body uses `--bg`/`--ink`/`--accent` from active DS tokens; large wordmark "md-claude", tagline "design + workflow plugins for Claude Code". Subtle animation: 1s in (opacity 0→1 + 8px translate), 1s hold, 1s out — keyframes driven by a `data-t="0..3000"` attribute the renderer increments.
-  2. `scripts/video/cards/outro.html`: install command in mono, GitHub URL, animated underline on accent color.
-  3. `scripts/video/render-card.mjs`: Node ESM script. Uses Playwright (or Chrome MCP if Playwright not installed) to load the HTML at 1920×1080, then for `t in 0..duration` step `1000/fps`: set `body.dataset.t = t`, take a screenshot to `.work/cards/<name>/frame-<NNNN>.png`. After loop, run `ffmpeg -framerate 30 -i frame-%04d.png -c:v libx264 -pix_fmt yuv420p -crf 18 <name>.mp4`.
-- **Pattern**: Same shell as `_screenshot-playwright.mjs` — Node ESM, accepts CLI args, exits on error.
-- **Gotcha**: Playwright may not be a project dep yet. Check `package.json`; if absent, the script should detect and fall back to `npx -y playwright@latest`. Cache the install.
-- **Validate**: `node scripts/video/render-card.mjs intro 3 && ffprobe scripts/video/.work/cards/intro.mp4 2>&1 | grep "30 fps"`.
+  1. Scaffold `scripts/video/cards/`:
+     - `IntroCard.tsx` — 3 s, 1920×1080. Big wordmark "md-claude", tagline "design + workflow plugins for Claude Code". Spring-driven entrance (90 frames at 30 fps): opacity 0→1 + 24px translate over the first 18 frames using `spring()`, hold 54 frames, gentle fade-out over the last 18.
+     - `OutroCard.tsx` — 3 s, 1920×1080. Install command in mono, GitHub URL, accent-color underline that wipes left→right with `interpolate()`.
+     - `LowerThird.tsx` — reusable caption overlay, 50% accent-plate behind text, fontsize 44, used by every scene via `<Sequence>` from final composition.
+  2. Brand wiring: `import tokens from '../../../.design/system/project/colors_and_type.css'` is not directly importable into Remotion (it's CSS, not TS). Two options: (a) re-export a small `tokens.ts` shim under `scripts/video/cards/tokens.ts` that mirrors `--bg`, `--ink`, `--accent`, `--mono-family` values, with a regression check that fails if the CSS source drifts; (b) inject the CSS file as an `<style>` block in a Remotion `<AbsoluteFill>` wrapper. Default to (a) — explicit shim is greppable when the DS rotates.
+  3. Mirror the shape of smoke `SmokeCard.tsx`: `AbsoluteFill` root, `useCurrentFrame()` + `interpolate()` + `spring()` for animation.
+  4. Register all three in a single `scripts/video/cards/index.tsx` `registerRoot` so `pnpm exec remotion render scripts/video/cards/index.tsx IntroCard …` works per-composition.
+- **Pattern**: Mirror smoke `SmokeCard.tsx` shape. Token shim mirrors the way `site/app/mdcc-tokens.css` is reconciled today (the "single source is CSS, JS mirror is a derived view" pattern).
+- **Gotcha**: Per the [no AI-tell punctuation] memory — strip em dash, en dash, curly quotes, ellipsis char from card copy. ASCII only.
+- **Validate**:
+  - `pnpm exec remotion render scripts/video/cards/index.tsx IntroCard scripts/video/.work/cards/intro.mp4 --mute` succeeds.
+  - `ffprobe scripts/video/.work/cards/intro.mp4` reports h264 / 1920×1080 / 30 fps / duration 3.00.
+  - Same for `OutroCard`.
+  - Color sampling on a single frame matches token `--accent` ± 2 in each RGB channel.
 
-### Task 3: CREATE `record-scene.sh`
+### Task 3: CREATE per-scene capture surfaces (no bash ladder)
 
 - **Do**:
-  1. POSIX shell script. Args: `--scene <id> --duration <sec> --region <x,y,w,h> --out <path>`.
-  2. Primary path: `ffmpeg -f avfoundation -capture_cursor 1 -i "1:none" -t $DURATION -filter:v "crop=$W:$H:$X:$Y" -r 30 -c:v libx264 -pix_fmt yuv420p "$OUT"` (device index `1` is typically the main screen; auto-detect via the device list).
-  3. Fallback: `screencapture -v -R "$X,$Y,$W,$H" -V "$DURATION" "$OUT.mov"` then `ffmpeg -i "$OUT.mov" -c:v libx264 -pix_fmt yuv420p "$OUT"`.
-  4. Pre-flight: invoke `plugins/design/dev-server/bin/server-up.sh` if the scene needs the server (Scenes 4/5/6 with localhost canvas).
-- **Pattern**: Two-tier ladder (primary ffmpeg / fallback screencapture) mirrors `plugins/design/dev-server/bin/screenshot.sh`.
-- **Gotcha**: `screencapture -v -V N` exists on macOS 14+, but it includes a 5s countdown unless `-T 0` is added. Use `-T 0`.
-- **Validate**: `bash scripts/video/record-scene.sh --scene smoke --duration 2 --region 0,0,640,480 --out /tmp/smoke.mp4 && ffprobe /tmp/smoke.mp4 2>&1 | grep "Duration: 00:00:02"`.
+  1. `scripts/video/tapes/` — VHS `.tape` files for terminal scenes. One file per scene (Scene 2 + Scene 3 + Scene 5-left). Each tape declares its own `Output ...mp4`, `Set Framerate 30` (best-effort; VHS may still emit 25 fps for MP4 — assemble normalizes), `Set FontSize`, `Set Width/Height`, `Set Theme`.
+  2. `scripts/video/playwright/` — Playwright spec files for browser scenes (Scene 4 hero, Scene 5-right canvas reload, Scene 6 docs teaser). Reuse `scripts/video/smoke/playwright.config.ts` as base; per-scene specs can override `outputDir` via env or test-level config.
+  3. Helper: `scripts/video/lib/server-up.sh` — thin alias to `plugins/design/dev-server/bin/server-up.sh` so all browser scenes pre-flight the dev-server identically. Do NOT duplicate the helper.
+- **Pattern**: The toolchain IS the ladder — VHS for terminal, Playwright for browser, Remotion for compose. No `record-scene.sh` bash wrapper; tapes and specs are the source artifacts.
+- **Gotcha**: VHS `Output` rejects absolute paths; use repo-root-relative paths. Playwright `outputDir` is resolved against the config file location, not cwd — use an absolute path computed via `import.meta.url` (as `smoke/playwright.config.ts` already does).
+- **Validate**: Each `.tape` and `.spec.ts` is independently runnable and produces an MP4 (or WebM that ffmpeg converts) of the expected duration ± 200 ms.
 
-### Task 4: RECORD Scene 1 (intro card) + Scene 7 (outro card)
+### Task 4: COMPOSE Scene 1 (intro card) + Scene 7 (outro card)
 
-- **Do**: Run `render-card.mjs intro 3` and `render-card.mjs outro 3`. These do not require capture — they're rendered headlessly. Move outputs to `scripts/video/.work/scenes/01-intro.mp4` and `07-outro.mp4`.
-- **Pattern**: n/a — straight invocation of Task 2's tool.
-- **Gotcha**: Frame timing — confirm 3.0s × 30fps = 90 frames; off-by-one drift compounds across the 7 scenes.
+- **Do**: `pnpm exec remotion render scripts/video/cards/index.tsx IntroCard scripts/video/.work/scenes/01-intro.mp4 --mute` and same for `OutroCard` → `07-outro.mp4`.
+- **Pattern**: n/a — straight invocation of Task 2's compositions.
+- **Gotcha**: Frame timing — 3.0s × 30fps = 90 frames; Remotion's `durationInFrames` is the source of truth. Off-by-one is impossible if `Composition durationInFrames={90}` is set.
 - **Validate**: `ffprobe -v error -show_entries format=duration -of csv=p=0 scripts/video/.work/scenes/01-intro.mp4` returns `3.00...`.
 
-### Task 5: RECORD Scene 2 (`mdcc init`)
+### Task 5: AUTHOR Scene 2 (`mdcc init`) as a `.tape`
 
 - **Do**:
-  1. Create `/tmp/scratch-mdcc-demo` (empty dir).
-  2. Open Terminal at that path. Resize to a clean 1280×720 windowed region with white-on-black or solid theme.
-  3. Start `record-scene.sh --scene 02-mdcc-init --duration 5 --region <terminal-bounds> --out 02-mdcc-init.mp4`.
-  4. Via `computer-use` (terminal is tier "click" → no typing) — pre-load the command via clipboard (`pbcopy <<< "mdcc init && ls .ai"`), focus Terminal, click in window, use Cmd-V via key tool then Enter. Output streams during 4-second target window.
-  5. Trim to exact 4.0s in `assemble.sh`.
-- **Pattern**: Use clipboard pre-load to work around terminal typing-blocked tier.
-- **Gotcha**: `mdcc init` output is dim by default — set `CLICOLOR_FORCE=1` and a high-contrast terminal theme before recording. Also: `mdcc` must be on PATH; if running from repo, alias to `node /Volumes/D/git/claude-design/cli/bin/mdcc.mjs`.
-- **Validate**: Playback 02-mdcc-init.mp4 manually (one-off `open` call) and confirm the `.ai/` listing is legible at 1080p.
+  1. Write `scripts/video/tapes/02-mdcc-init.tape`:
+     ```
+     Output scripts/video/.work/scenes/02-mdcc-init.mp4
+     Set FontSize 18
+     Set Width 1920
+     Set Height 1080
+     Set Theme "Dracula"
+     Type "cd /tmp/scratch-mdcc-demo && node /Volumes/D/git/claude-design/cli/bin/mdcc.mjs init && ls .ai" Enter
+     Sleep 4s
+     ```
+  2. Run via VHS: deterministic, headless, no clipboard hack, no Screen Recording permission. The 4-second cut comes from the `Sleep` after the command.
+- **Pattern**: Declarative `.tape` DSL replaces the computer-use clipboard workflow entirely.
+- **Gotcha**: `mdcc init` colors render via the same ANSI codes VHS captures; if output looks dim, `Set Theme` to a higher-contrast preset (e.g. `Dracula` or `GitHub`) — no `CLICOLOR_FORCE` needed.
+- **Validate**: `vhs scripts/video/tapes/02-mdcc-init.tape && ffprobe scripts/video/.work/scenes/02-mdcc-init.mp4` reports duration ≥ 4.0s, h264, 1920×1080 (VHS may degrade fps to 25 — assemble normalizes).
 
-### Task 6: RECORD Scene 3 (`/design:new` flow)
-
-- **Do**:
-  1. Open a fresh Claude Code session in a Terminal window in `/tmp/scratch-mdcc-demo`.
-  2. Pre-script the brief: "Show product hero for a local-first task app for designers, calm voice, generous whitespace."
-  3. Start capture for 8s of raw footage (will be sped to 2× and trimmed to 5s).
-  4. Computer-use clipboard-paste the brief; let the agent render its first Q&A; do not fully complete — just enough to show the discovery turn.
-  5. In `assemble.sh`: `setpts=PTS/2` to 2×, trim to exact 5.0s.
-- **Pattern**: Mirror Scene 2 clipboard workaround.
-- **Gotcha**: Claude Code's animated cursor + spinner are the visual hook — make sure the 5s segment lands on visible streaming output, not idle prompt.
-- **Validate**: 5.0s duration; eyeball-check that "design system" and the option-pool render are visible somewhere in the cut.
-
-### Task 7: RECORD Scene 4 (dev-server canvas — hero)
+### Task 6: AUTHOR Scene 3 (`/design:new` discovery turn) as a `.tape`
 
 - **Do**:
-  1. `bash plugins/design/dev-server/bin/server-up.sh` against this repo (`--root /Volumes/D/git/claude-design`).
-  2. Open Chrome to `http://localhost:<PORT>/canvas/ui/Canvas+Viewport` in fullscreen (Cmd+Ctrl+F).
-  3. Start `record-scene.sh --duration 7 --region 0,0,1920,1080 --out 04-canvas-hero.mp4`.
-  4. Via `claude-in-chrome` MCP (Chrome is tier "read" for computer-use → must use the chrome extension): perform Cmd+Click on a hero element to trigger inspector overlay, hold 1s, release, click a second element. The inspector ring animation is the wow moment.
-  5. Trim to exact 6.0s.
-- **Pattern**: Tier-aware MCP routing — Chrome interactions through `claude-in-chrome`, NOT `computer-use`.
-- **Gotcha**: `claude-in-chrome` may not be connected — if not, ask the user to install. Hard requirement for Scene 4; without it, fall back to keyboard-only navigation (Cmd+Click is mouse-only, so fallback = manual narration via on-screen `data-demo-hint` overlays we'd have to add to the canvas). Prefer the extension.
-- **Validate**: 6.0s duration; manual playback confirms at least one inspector overlay frame is visible.
+  1. Write `scripts/video/tapes/03-design-new.tape` that opens a non-interactive scripted Claude Code session via `claude --print` (one-shot) or stages a pre-recorded `asciinema` cast and replays it through VHS. Decide on whichever produces a 5–8 s segment that visibly shows the option-pool render.
+  2. Trim/speed handled in the final Remotion composition via `<Sequence playbackRate={2}>` — NOT in `assemble.sh`. There is no `assemble.sh` in this refactored plan.
+- **Pattern**: All speed + trim handled inside Remotion's timeline. VHS captures raw; Remotion shapes.
+- **Gotcha**: `claude --print` may not fully render the streaming spinner; if it looks static, fall back to recording the live REPL via a pre-scripted `Type "<feedback>"` + `Enter` + `Sleep` sequence — VHS handles the streaming render fine since it captures the terminal at 30 fps regardless of whether the underlying process is interactive.
+- **Validate**: 8.0s raw; 5.0s after Remotion `playbackRate={1.6}` trim (or 2× then crop). Visible: option-pool render with at least 3 distinct options on-screen.
 
-### Task 8: RECORD Scene 5 (`/design:edit` split-screen)
+### Task 7: CAPTURE Scene 4 (dev-server canvas — hero) via Playwright
 
 - **Do**:
-  1. Two recordings in parallel (or sequential then composited):
-     - **Left**: Terminal showing `/design:edit "tighten the hero spacing, push CTA up"`. Same capture mechanics as Scene 2.
-     - **Right**: Chrome canvas showing the auto-reload after the edit.
-  2. Capture each at 960×1080 region (half-width).
-  3. In assemble.sh: `ffmpeg -i left.mp4 -i right.mp4 -filter_complex hstack=inputs=2 05-edit.mp4`.
-  4. The two recordings must share a timeline — record left first (4s lead-in to type/run the command), then record right starting at "edit applied" reload, padding left with the trailing terminal state.
-- **Pattern**: `hstack` composition; mirrors how some marketing videos show terminal+browser side-by-side.
-- **Gotcha**: Time alignment is the hard part — the right pane must reload at exactly the moment the left pane shows "applied". Acceptable: 200ms slop. Use a clapperboard frame (visible counter top-right via on-screen overlay or simply by syncing on the `_active.json` `last_change` timestamp printed in both panes).
-- **Validate**: 6.0s duration; left + right are temporally consistent (edit→reload moment visible in same second).
+  1. `scripts/video/playwright/04-canvas-hero.spec.ts`:
+     - `await page.goto(<canvas URL>, { waitUntil: 'networkidle' });`
+     - Move mouse, hover hero artboard, hold modifier via `page.keyboard.down('Meta')`, hover deepest child, hold 1s for inspector ring animation, click, release Meta.
+     - Total page interaction ~6s; Playwright records the whole spec to WebM at 1920×1080.
+  2. Pre-flight: `PORT=$(plugins/design/dev-server/bin/server-up.sh)` (re-used helper, not duplicated).
+  3. Transcode WebM → MP4 in the same step (mirror `smoke/run.sh` pattern).
+- **Pattern**: Playwright `keyboard.down('Meta')` + `page.mouse.move()` simulates the Cmd+Click overlay trigger that `claude-in-chrome` would have done. No external MCP dep — Playwright owns the browser end-to-end.
+- **Gotcha**: The inspector overlay is injected by the dev-server's `injectInspectorOnly()` and requires a live WS connection back to the dev-server. The Playwright Chromium is a separate browser instance from the dev-server's `_server.json` PID — verify the inspector overlay actually renders by asserting `await page.locator('.dgn-insp-ring').count() > 0` after the modifier-hover.
+- **Validate**: 6.0s duration; manual playback confirms inspector ring visible; `expect(page.locator('.dgn-insp-ring')).toBeVisible()` assertion passes.
 
-### Task 9: RECORD Scene 6 (docs teaser)
-
-- **Do**:
-  1. Decide: real `site/` localhost (run `pnpm --filter site dev`) OR `.design/ui/Docs Site.tsx` mock. Default to the **real site** if the landing renders cleanly; otherwise the mock canvas — note choice in storyboard.
-  2. Smooth scroll from top to mid-page over 3.0s. Use Chrome MCP `scroll` with easing if available; else CSS `scroll-behavior: smooth` triggered by a hashchange.
-  3. `record-scene.sh --duration 4 --region 0,0,1920,1080 --out 06-docs.mp4`; trim to 3.0s.
-- **Pattern**: Same Chrome MCP routing as Scene 4.
-- **Gotcha**: First-load CLS will look terrible on camera. Pre-warm the page (load once, wait 2s) before recording.
-- **Validate**: 3.0s duration; hero + at least one section visible in the scroll path.
-
-### Task 10: CREATE `assemble.sh` — final ffmpeg pipeline
+### Task 8: COMPOSE Scene 5 split-screen in Remotion
 
 - **Do**:
-  1. Inputs: `01-intro.mp4` ... `07-outro.mp4` + `music.mp3`.
-  2. Normalize each clip: `scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30`.
-  3. Concat with xfade transitions (300ms, `fade`) between scenes — use the filter_complex xfade chain with cumulative offset math.
-  4. Burn captions: `drawtext=fontfile=...:text='...':fontsize=44:fontcolor=...@0.95:x=(w-text_w)/2:y=h-160:enable='between(t,T0,T1)'`. One drawtext per scene with a `between(t, ...)` enable expression so captions appear/disappear per scene. Background plate behind text: `drawbox` with 50% alpha for legibility.
-  5. Audio: trim music to 30s, fade in 1s / fade out 2s, normalize to -18 LUFS via `loudnorm=I=-18:LRA=11:TP=-1.5`.
-  6. Encode: 2-pass H.264. Pass 1: `-b:v 2200k -pass 1 -an -f null /dev/null`. Pass 2: `-b:v 2200k -pass 2 -c:a aac -b:a 128k -movflags +faststart -shortest site/public/demo.mp4`.
-  7. Extract poster: `ffmpeg -i site/public/demo.mp4 -vf "select=eq(n\,0)" -vframes 1 -q:v 2 site/public/demo-poster.jpg`.
-- **Pattern**: Standard ffmpeg pipeline; document each filter so future me can debug.
+  1. Capture left + right as separate sources:
+     - Left = `scripts/video/tapes/05-edit-left.tape` (terminal `/design:edit "..."` flow).
+     - Right = `scripts/video/playwright/05-edit-right.spec.ts` (canvas auto-reload after edit).
+  2. Compose in Remotion: a `<SplitScreen>` composition with `<Sequence from={0} durationInFrames={180}>` wrapping two `<Video src={staticFile('...left.mp4')} style={{position:'absolute', left:0, width:'50%'}} />` + `<Video src={...right.mp4} style={{position:'absolute', left:'50%', width:'50%'}} />`. 6.0s × 30fps = 180 frames.
+  3. Frame-perfect alignment via the `startFrom` prop on each `<Video>` — pin the moment "edit applied" lines up with the canvas reload by reading the `_active.json.last_change` timestamps from both runs and computing the offset.
+- **Pattern**: Declarative composition in JSX. Zero ffmpeg `hstack`; zero clapperboard. Remotion's `staticFile()` + `<Video>` + `<Sequence>` IS the composer.
+- **Gotcha**: Both inputs must be normalized to the same fps before Remotion ingests them (Remotion `<Video>` re-encodes at composition fps but mixed source fps inside one `<Video>` causes audio/video drift even when muted). Run them through `assemble.sh`-style ffmpeg normalize as a pre-step (mirror `smoke/assemble.sh` `normalize()` function — lift, don't duplicate).
+- **Validate**: 6.0s duration; left + right reload moments within ±100 ms (tighter than the bash plan's 200 ms slop because Remotion is frame-deterministic once `startFrom` is dialled in).
+
+### Task 9: CAPTURE Scene 6 (docs teaser) via Playwright
+
+- **Do**:
+  1. `scripts/video/playwright/06-docs.spec.ts`: `await page.goto('http://localhost:3000/'); await page.waitForLoadState('networkidle'); await page.evaluate(() => window.scrollTo({ top: 600, behavior: 'smooth' })); await page.waitForTimeout(3000);`.
+  2. Use the real `site/` localhost (`pnpm --filter site dev`) — pre-flight in the run script. Fall back to `.design/ui/Docs Site.tsx` only if `site/` build is broken; note the choice in the storyboard.
+  3. Transcode WebM → MP4 + trim to 3.0s.
+- **Pattern**: Same Playwright pre-flight + transcode pattern as Scene 4 and the smoke browser spec.
+- **Gotcha**: First-load CLS is still a risk. Pre-warm via a discarded first `goto()` + 2s wait, then a fresh `page.reload()` before the recorded interaction.
+- **Validate**: 3.0s; hero + at least one section visible in the scroll path.
+
+### Task 10: COMPOSE final assembly in Remotion + post-loudnorm
+
+- **Do**:
+  1. `scripts/video/final/Final.tsx`: a single Remotion composition, 900 frames (30 s × 30 fps), 1920×1080. Inside:
+     - `<Sequence from={0} durationInFrames={90}><Video src={staticFile('scenes/01-intro.mp4')} /></Sequence>` — Scene 1.
+     - `<Sequence from={90} ...><TransitionSeries.Sequence>...</TransitionSeries.Sequence></Sequence>` — Scenes 2–6 via `@remotion/transitions/fade` (300 ms xfades replace the ffmpeg xfade math).
+     - `<Sequence from={810} durationInFrames={90}><Video src={staticFile('scenes/07-outro.mp4')} /></Sequence>` — Scene 7.
+     - `<Audio src={staticFile('music.mp3')} volume={(f) => spring({ frame: f, from: 0, to: 0.8, config: { damping: 100 } })} />` — music bed with fade-in spring; volume tapers to 0 over the last 60 frames.
+     - `<LowerThird ... />` per-scene captions via the reusable card component from Task 2.
+  2. `scripts/video/final/index.tsx`: `registerRoot` with one composition id `Final`.
+  3. Render: `pnpm exec remotion render scripts/video/final/index.tsx Final site/public/demo.mp4 --codec=h264 --crf=23`.
+  4. Post-process loudnorm (Remotion's audio mixing is fine, but loudness normalization is a one-liner ffmpeg can do better):
+     ```sh
+     ffmpeg -y -i site/public/demo.mp4 -af loudnorm=I=-18:LRA=11:TP=-1.5 -c:v copy site/public/demo.norm.mp4
+     mv site/public/demo.norm.mp4 site/public/demo.mp4
+     ```
+  5. Extract poster: `ffmpeg -y -i site/public/demo.mp4 -vf "select=eq(n\\,0)" -vframes 1 -q:v 2 site/public/demo-poster.jpg`.
+- **Pattern**: Remotion composition + audio + transitions + captions all declared in JSX. The only bash is the single-pass loudnorm post-step and the poster extract.
 - **Gotcha**:
-  - xfade `offset` is cumulative and **subtracts** the transition duration — bad math = black gaps. Compute once into shell variables.
-  - 2200 kbps × 30s ≈ 8.25 MB before audio — tune to land under 8 MB total. If over, drop to `-b:v 1800k`.
-  - `loudnorm` 2-pass is more accurate (`-af loudnorm=...:print_format=json` first); single-pass is fine for v1.
-  - macOS ffmpeg from Homebrew should ship libx264 + libfreetype by default; if drawtext errors with "Could not load font", fall back to `-vf` `subtitles=captions.srt:force_style='FontSize=24,...'`.
+  - Music license still applies — same Pixabay / Mixkit / FMA fallback ladder from Task 1.
+  - 2200 kbps × 30s ≈ 8.25 MB before audio — Remotion's CRF 23 typically lands well below that. If over 8 MB, re-render with `--crf=28` or `--video-bitrate=1800k`.
+  - `@remotion/transitions` requires `pnpm add -D -w @remotion/transitions` — fold into Task 2 of `phase-15-video-pipeline-toolchain.md`'s devDeps list (or add here if not already shipped from Phase 1).
 - **Validate**:
   - `ffprobe -v error -show_entries format=duration,size -of default=nw=1 site/public/demo.mp4` → duration 30.00s ±0.05, size < 8 MB.
-  - `ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of csv=p=0` → `aac`.
-  - Manual: `open site/public/demo.mp4`, watch full 30s, every caption legible, no black gaps, audio bed audible but not overpowering.
+  - `ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of csv=p=0` → `aac` (Remotion default).
+  - Loudness sanity: `ffmpeg -i site/public/demo.mp4 -af loudnorm=print_format=json -f null - 2>&1 | tail -25` → integrated loudness -18 ± 2 LU.
+  - Manual: full 30s playback at native 1080p; captions legible; transitions smooth (no black flicker); audio audible but not overpowering.
 
 ### Task 11: UPDATE `site/` landing — embed video
 
@@ -325,19 +355,19 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
 - **Gotcha**: If anyone adds `site/` to `files` later, an 8 MB MP4 ships to every `npm i` user. Add a parity check script: `scripts/check-publish-size.sh` that runs `npm pack --dry-run --json | jq '.[0].size'` and fails over 1 MB.
 - **Validate**: `npm pack --dry-run 2>&1 | grep -c demo.mp4` returns `0`.
 
-### Task 14: DOCUMENT the pipeline in `scripts/video/README.md`
+### Task 14: EXTEND `scripts/video/README.md` with the marketing pipeline
 
-- **Do**: A short README explaining: prerequisites (ffmpeg, Screen Recording grant, claude-in-chrome MCP), how to re-record each scene independently, how to regenerate the final cut, where the music license lives.
-- **Pattern**: Match `plugins/design/dev-server/bin/README.md` if it exists, else `plugins/flow/templates/ai-skeleton/README.md` tone.
-- **Gotcha**: This is for *future agents/devs re-running the pipeline*. Include the exact terminal window size used so re-records match the original framing.
-- **Validate**: A fresh agent reading only this README can reproduce the video.
+- **Do**: The smoke README (created by `phase-15-video-pipeline-toolchain.md` Task 8) already covers prereqs, troubleshooting, and the toolchain runbook. **Append** a "Marketing pipeline" section that documents: how to re-record each scene independently (one per `.tape` / `.spec.ts` filename), how to regenerate the final cut (`pnpm exec remotion render scripts/video/final/index.tsx Final site/public/demo.mp4`), where the music license lives, and the exact terminal/window dimensions used for the source captures (so re-records match the original framing).
+- **Pattern**: Same tone as the existing smoke README. Keep ASCII-only per the [no AI-tell punctuation] memory.
+- **Gotcha**: Do not rewrite the smoke README — augment it. The smoke section stays load-bearing for toolchain onboarding; the marketing section is the second-level "now that the toolchain is green, here's how to author scenes" guide.
+- **Validate**: A fresh agent reading the unified README can reproduce both the smoke AND the marketing video.
 
 ### Task 15: RECORD a DDR
 
-- **Do**: Create `.ai/decisions/DDR-NNN-agent-orchestrated-marketing-video-pipeline.md`. Document the choices: ffmpeg over OBS (scriptable), screencapture as fallback (no-install), Pixabay over commissioned audio (cost), 16:9 master (web-first per user answer), commit MP4 to repo (under 8 MB, reproducibility) vs LFS (overkill at this size).
+- **Do**: Create `.ai/decisions/DDR-NNN-agent-orchestrated-marketing-video-pipeline.md`. Document the choices specific to this phase: Pixabay over commissioned audio (cost), 16:9 master (web-first per user answer), commit MP4 to repo (under 8 MB, reproducibility) vs LFS (overkill at this size), Remotion `<TransitionSeries>` xfade over ffmpeg xfade math (declarative > hand-tuned offset arithmetic).
 - **Pattern**: Existing DDRs in `.ai/decisions/`.
-- **Gotcha**: Reference DDR-009 (Bun runtime) and DDR-025 (canvas-lib single source) since the dev-server lifecycle is part of the recording pipeline and future Bun migration will change Task 7's bash recipe.
-- **Validate**: DDR follows project DDR schema; cross-linked from this plan.
+- **Gotcha**: Reference the toolchain DDR recorded by `phase-15-video-pipeline-toolchain.md` Task 10 (Remotion + VHS + Playwright + ffmpeg) — do not re-litigate that decision here. Also reference DDR-009 (Bun runtime) and DDR-025 (canvas-lib single source) since the dev-server lifecycle is part of the recording pipeline.
+- **Validate**: DDR follows project DDR schema; cross-linked from this plan AND from the toolchain DDR.
 
 ---
 
@@ -345,8 +375,8 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
 
 Run these commands to confirm zero regressions:
 
-1. **ffmpeg present**: `ffmpeg -version | head -1`
-2. **Pipeline end-to-end (idempotent)**: `bash scripts/video/download-music.sh && bash scripts/video/render-all.sh && bash scripts/video/assemble.sh` — exits 0, produces `site/public/demo.mp4` with `duration=30.0`, `size < 8 MB`.
+1. **Toolchain green**: `pnpm run video:smoke` exits 0 (delegates to `phase-15-video-pipeline-toolchain.md` — required precondition).
+2. **Pipeline end-to-end (idempotent)**: `bash scripts/video/download-music.sh && bash scripts/video/render-all-scenes.sh && pnpm exec remotion render scripts/video/final/index.tsx Final site/public/demo.mp4 --codec=h264 --crf=23 && ffmpeg -y -i site/public/demo.mp4 -af loudnorm=I=-18:LRA=11:TP=-1.5 -c:v copy site/public/demo.norm.mp4 && mv site/public/demo.norm.mp4 site/public/demo.mp4` — exits 0, produces `site/public/demo.mp4` with `duration=30.0`, `size < 8 MB`. `render-all-scenes.sh` orchestrates VHS + Playwright captures + the scene normalize step (replacement for the old `record-scene.sh` + `assemble.sh` bash pair).
 3. **Video integrity**: `ffprobe -v error site/public/demo.mp4` returns no errors; `ffmpeg -v error -i site/public/demo.mp4 -f null -` returns nothing.
 4. **Captions readable**: manual playback at 1×, 0.5× speeds — every caption is on-screen ≥ 2.0s and centered.
 5. **Audio levels**: `ffmpeg -i site/public/demo.mp4 -af loudnorm=print_format=json -f null - 2>&1 | tail -20` shows integrated loudness within -18 ± 2 LU.

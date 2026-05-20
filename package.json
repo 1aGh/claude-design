@@ -28,16 +28,20 @@
     "changeset:version": "bash scripts/changesets-version.sh",
     "release": "pnpm build && changeset publish",
     "mdcc": "node cli/bin/mdcc.mjs",
+    "video:smoke": "bash scripts/video/smoke/run.sh",
+    "video:smoke:terminal": "vhs scripts/video/smoke/terminal.tape",
+    "video:smoke:browser": "playwright test --config scripts/video/smoke/playwright.config.ts",
+    "video:smoke:card": "remotion render scripts/video/smoke/card/index.tsx SmokeCard scripts/video/.work/smoke/card.mp4 --mute",
     "postinstall": "node cli/install.cjs",
     "prepublishOnly": "bash scripts/check-version-parity.sh"
   },
   "optionalDependencies": {
     "@1agh/md-claude-darwin-arm64": "0.14.0",
     "@1agh/md-claude-darwin-x64": "0.14.0",
-    "@1agh/md-claude-linux-x64": "0.14.0",
     "@1agh/md-claude-linux-arm64": "0.14.0",
-    "@1agh/md-claude-linux-x64-musl": "0.14.0",
     "@1agh/md-claude-linux-arm64-musl": "0.14.0",
+    "@1agh/md-claude-linux-x64": "0.14.0",
+    "@1agh/md-claude-linux-x64-musl": "0.14.0",
     "@1agh/md-claude-win32-x64": "0.14.0"
   },
   "files": [
@@ -73,6 +77,15 @@
   ],
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
-    "@changesets/cli": "^2.27.10"
+    "@changesets/cli": "^2.27.10",
+    "@playwright/test": "^1.60.0",
+    "@remotion/bundler": "^4.0.463",
+    "@remotion/cli": "^4.0.463",
+    "@remotion/renderer": "^4.0.463",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "remotion": "^4.0.463"
   }
 }

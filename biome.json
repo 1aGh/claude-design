@@ -24,7 +24,9 @@
       "site/content/docs/reference/**",
       "site/out/**",
       "site/next-env.d.ts",
-      "pnpm-lock.yaml"
+      "pnpm-lock.yaml",
+      "scripts/video/.work/**",
+      "scripts/video/.cache/**"
     ]
   },
   "formatter": {

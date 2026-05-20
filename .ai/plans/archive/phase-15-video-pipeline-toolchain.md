@@ -316,15 +316,26 @@ The downstream plan ([`phase-15.5-marketing-demo-video-30s.md`](./phase-15.5-mar
 
 ## Acceptance Criteria
 
-- [ ] Tasks 0–10 completed in order
-- [ ] User explicitly acked Remotion license posture (Task 0)
-- [ ] `ffmpeg` + `vhs` on PATH; Playwright Chromium installed
-- [ ] Root `package.json` has `video:smoke` + per-tool scripts; devDeps include `remotion`, `@remotion/cli`, `@remotion/renderer`, `@remotion/bundler`, `react`, `react-dom`, `@playwright/test`
-- [ ] `pnpm run video:smoke` exits 0 from a clean `.work/`, produces `smoke.mp4`
-- [ ] `scripts/video/README.md` exists and a fresh agent can reproduce smoke from it alone
-- [ ] `phase-15.5-marketing-demo-video-30s.md` updated (Task 9) — bash ladder replaced with VHS/Playwright/Remotion references; banner at top points at this plan
-- [ ] DDR recorded (Task 10), cross-linked from both plans
-- [ ] `npm pack --dry-run` does NOT include any `scripts/video/` files
-- [ ] `pnpm lint` clean
-- [ ] No DDR-worthy decision left unrecorded
-- [ ] No regressions in existing scripts (`scripts/check-version-parity.sh`, `scripts/bump-version.sh`)
+- [x] Tasks 0–10 completed in order
+- [x] User explicitly acked Remotion license posture (Task 0) — ack 2026-05-20 in README + `// LICENSE-NOTE` in `remotion.config.ts`
+- [x] `ffmpeg` (8.1.1) + `vhs` (0.11.0) on PATH; Playwright Chromium 148.0 + headless-shell 1223 installed
+- [x] Root `package.json` has `video:smoke` + per-tool scripts; devDeps include all listed packages at remotion 4.0.463 / playwright 1.60.0 / react 19.2.6
+- [x] `pnpm run video:smoke` exits 0 from a clean `.work/`, produces `smoke.mp4` (h264 / 1280×720 / 30fps / no audio / ~13.6 s — slightly above the plan's ~9–12 s estimate because VHS terminal scene runs 7 s; not a defect)
+- [x] `scripts/video/README.md` exists with prereqs + per-tool smokes + troubleshooting matrix + cross-link to phase-15.5
+- [x] `phase-15.5-marketing-demo-video-30s.md` updated (Task 9) — banner added; Tasks 2, 3, 5, 6, 8, 10, 14 replaced; Tasks 0/4/7/9/11/12/13/15 kept; validation block updated
+- [x] DDR-031 recorded (Task 10), cross-linked from both plans
+- [x] `npm pack --dry-run` does NOT include any `scripts/video/` files (verified — zero matches)
+- [x] `pnpm lint` clean on new scope (0 errors, 4 pre-existing warnings carried over)
+- [x] No DDR-worthy decision left unrecorded
+- [x] No regressions in existing scripts (`scripts/check-version-parity.sh`, `scripts/bump-version.sh`) — not touched
+
+---
+
+## Retro
+
+- **What worked.** Gating the three install steps (brew, pnpm, playwright install) up-front kept the rest of the phase mechanical — once tools were on PATH, every task was a Write or Edit. Background-running the long installs in parallel with file scaffolding saved real wall-clock time.
+- **What surprised.** Two things diverged from the plan and were absorbed silently: (a) VHS ignores `Set Framerate 30` for MP4 output and still emits 25 fps — assemble.sh now pre-normalizes all inputs to 30 fps before `-c copy` concat (the troubleshooting matrix in the README documents this so a future reader doesn't re-discover it). (b) Playwright resolves a relative `outputDir` against the **config file directory**, not cwd, producing a nested `scripts/video/smoke/scripts/video/.work/...` path on first run — fixed by computing an absolute path via `import.meta.url` in `playwright.config.ts`. Both are now load-bearing notes in the README; `/design:edit` style "screenshot-before-fix" wasn't relevant here, but a 30-second misdiagnosis would have repeated on every fresh clone without these.
+- **What I'd change in the next plan.** Estimate stitched duration from the per-tool durations, not as a target. The plan said "~9–12 s"; actual is 13.6 s because VHS terminal renders 7 s (`Sleep 4 s` plus type/run overhead), not the 3 s I implicitly expected. Not a defect — the plan's duration estimate was loose. For phase-15.5 the 30 s budget will be enforced by Remotion's `durationInFrames` per-scene; no equivalent risk.
+- **What stays useful.** The smoke ladder pattern (`run.sh` orchestrator + per-tool `:terminal`/`:browser`/`:card` npm scripts for isolated debugging) mirrors `screenshot.sh`'s primary→fallback discipline. When phase-15.5 lands and adds 6 real scenes, the same shape can host them — only the scene list grows.
+- **What's still owed.** Phase 15.5 must add `@remotion/transitions` to devDeps (its Task 10 will need it for xfades). Flagged inline in the refactored plan rather than retro-fitted here — keeps the toolchain phase minimal and the marketing phase self-contained.
+
