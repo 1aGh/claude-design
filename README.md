@@ -2,6 +2,10 @@
 
 A personal marketplace of Claude Code plugins. Two plugins today, plus a `maude` CLI for scaffolding and running the bundled dev tooling.
 
+<!-- Demo video lives at https://github.com/1aGh/maude/releases/download/v0.16.0/demo.mp4 once uploaded.
+     Until then the inline tag below stays a soft 404; landing page at https://maude.iagh.cz autoplays the same file. -->
+<video src="https://github.com/1aGh/maude/releases/download/v0.16.0/demo.mp4" controls muted playsinline poster="https://maude.iagh.cz/demo-poster.jpg" width="800"></video>
+
 > **📚 Full docs: https://maude.iagh.cz** (or browse the source under [`site/content/docs/`](./site/content/docs/) until the public URL lands).
 > Contributing? See [CONTRIBUTING.md](./CONTRIBUTING.md). Security? See [SECURITY.md](./SECURITY.md).
 

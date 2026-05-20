@@ -625,3 +625,26 @@ Single end-to-end happy-path script:
 - [ ] DDR-037 v2.1 execution log appended.
 - [ ] **Stopped before `gh release create`** — user uploads
       `demo.mp4` manually.
+
+---
+
+## Retro (appended 2026-05-20 at /flow:done)
+
+What worked:
+- **Decoupled subprocess pattern for real /design:* in VHS scenes.** Plan estimated `/design:new --quick` at ~60 s but actual was 5+ minutes. VHS terminating its pty kills claude before completion. Running the real /design:new + /design:edit in a separate `claude -p` subprocess (started before the VHS tape, lifetimes independent) preserved the "real maude in sandbox" intent. VHS captures the typed slash command + spinner; the actual file write lands wherever, however long it takes; Playwright watches the live dev-server tree for the result. Both halves are honest.
+- **Visual verification loop with `qa Final 18` + per-frame Read.** Caught the docs scene's pre-paint white frame (frame 0.5s of clip was pure white) and the canvas captures' 3–6 s loading preamble that ate the 7 s scene budget. Each was a one-line fix in Final.tsx (`startFrom` prop) or transcode (`ffmpeg -ss 3.0`). Without per-frame reading these would have shipped.
+- **Pattern-lift from existing capture wrappers.** `<TerminalFrame>` + `<BrowserChrome>` were already in `lib/capture-frames/` from phase 15.1. v2.1 added `playbackRate`/`startFrom`/`endAt` passthroughs + a new `transparentBackdrop` prop and built `<SplitScreenFrame>` on top — no rewrite, no new abstraction.
+- **Pre-trust scratch dirs in ~/.claude.json.** The "Is this a project you trust?" first-run dialog blocks VHS input behind the modal. Pre-setting `hasTrustDialogAccepted: true` for both `/private/tmp/scratch-maude-demo-20260520` and `/private/tmp/vhs-install-demo` made VHS scenes work first-try. **Worth memorializing as a memory rule** for future video work.
+
+What didn't work first try:
+- **Two real packaging bugs in published v0.16.0** surfaced via the install scene's `maude design serve --port 4400` command — `bun add -g` doesn't fire the postinstall side-channel writer (so `cli/.platform-binary-path` stays empty), and `magic-string` is only in `plugins/design/dev-server/package.json` devDependencies. The dev-server fallback path crashes on missing `magic-string`. Workaround shipped (drop `maude design serve` from the install tape) but both bugs **deserve a dedicated PR + DDR** — they're real defects that affect any new user.
+- **Playwright's `outputDir` cleanup is per `playwright test` invocation.** Running specs one-at-a-time wiped previous WebMs. Fix: invoke all 8 specs as a single argv (`playwright test 04-ds-reveal 06b-... ...`). Worth documenting in `scripts/video/README.md` for future video-batch work.
+- **Treeitem name carries comments-count badge** ("Recipe Recap 2") after pins are dropped. `exact: true` matchers broke on subsequent specs. Fixed via regex `/^Recipe Recap(\s+\d+)?$/`.
+- **`Meta+0` keyboard shortcuts don't cross Playwright frame boundaries.** The canvas's keydown listener lives on the iframe's content document; `page.keyboard.press('Meta+0')` targets the parent. Workaround: PATCH `/_api/canvas-meta` with `{viewport: {x:0,y:0,zoom:1}}` before navigating. Cleaner than chasing focus inside frames; worth noting in scenario-runner docs for any future cross-frame kb tests.
+
+What to change in /plan or /execute next time:
+- **Plan estimates for skill-driven work need a wider range.** "/design:new --quick takes ~60 s" was off by 5×. Future plans for AI-driven generation tasks should write the range as "1–10 min, decouple lifetimes" and design tape lengths assuming the upper bound.
+- **Pre-flight check for trusted scratch dirs.** Add a Task 0.5 to every plan that records `claude` inside VHS in a new directory: pre-accept the trust dialog. The 2-line python edit costs nothing and saves the entire video.
+- **Per-scene `startFrom` is the default, not the exception.** Future Final.tsx compositions should assume every Playwright capture has ~3–6 s of navigation/hydration preamble. Document this as the default in `scripts/video/README.md` § "Adding a scene" so plan authors think about it up-front instead of catching it during QA.
+- **Outro carries v1 copy ("npm i -g @1agh/maude").** v2.1's plan didn't list outro as a touched scene, so it slipped through with `npm i -g` against the bun-add brand rule. Add a "scene-by-scene caption + copy audit" to the storyboard step of future video plans — every visible string gets a yes/no on whether it carries from previous version.
+- **`playwright test outputDir` cleanup behavior.** Add a one-liner to `scripts/video/README.md`: "Run all specs in a single argv per video assembly; per-spec invocations wipe predecessors' WebMs."
