@@ -20,7 +20,29 @@ Read first: the `testing-rules` skill (bundled in flow plugin). Apply as hard-st
 
 ## Scope
 
-Files in `git diff --name-only main...HEAD`, filtered to source code (not docs / configs).
+Three modes — pick the one the caller asked for. Default is `diff`.
+
+### `diff` — default
+
+Files in `git diff --name-only main...HEAD`, filtered to source code (not docs / configs). Use for the standard `/execute` → `/done` flow where the question is *"what did this branch add and is it tested?"*.
+
+### `path <glob-or-dir>` — brownfield audit
+
+Files matching the given path (single dir, glob, or comma-separated list). Use when onboarding flow into an existing repo and the question is *"where in this module is the test safety net thin?"*. Example callers:
+
+```
+Audit auth/                  → path = apps/api/auth/
+Audit billing module         → path = packages/billing/src/
+Audit a critical file        → path = src/lib/payments.ts
+```
+
+The audit dimensions below don't change — only the file set does. Report still flags untested public API, weakly-covered branches, etc., but framed as "missing tests to add" rather than "regressions to block".
+
+### `branch` — full project sweep
+
+All source files under repo root, filtered the same way as `diff`. Use sparingly — most useful immediately after `/flow:init` in a brownfield repo to produce a baseline coverage-gap report. Skip generated code, vendored deps, build outputs.
+
+When called with a non-`diff` scope, frame the report as **advisory** (no "blockers" count — those only make sense for the diff scope where there's a recent change to gate). Use the "Suggested tests to add" section as the primary deliverable.
 
 ## Audit dimensions
 
@@ -42,7 +64,7 @@ Files in `git diff --name-only main...HEAD`, filtered to source code (not docs /
 ## Report
 
 ```
-## Test coverage — <file count> source files changed
+## Test coverage — <scope: diff | path <p> | branch> — <file count> source files
 
 ### Untested
 - `<file>:<func>` — <missing dimension>
@@ -53,5 +75,7 @@ Files in `git diff --name-only main...HEAD`, filtered to source code (not docs /
 ### Suggested tests to add
 - `<test name>` in `<test file>` — <what to test>
 
-Summary: <N> blockers (untested public API), <M> risky.
+Summary: <scope-appropriate counts>
+  diff scope:   <N> blockers (untested public API in the diff), <M> risky
+  path/branch:  <N> untested public APIs, <M> risky — advisory; pick by impact
 ```

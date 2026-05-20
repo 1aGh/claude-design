@@ -37,7 +37,7 @@ When `skills.coverageTrend.enabled` is `true` **and** the runner emits a parseab
 3. Compute `delta = current - baseline.coverage` (negative = drop).
 4. **If `-delta > skills.coverageTrend.warnThresholdPp`** (default `1.0` pp) → emit warning in the Step 8 report:
    ```
-   ⚠ coverage trend: 78.4% → 76.8% (Δ -1.6 pp, threshold 1.0 pp) — review changed files via flow:test-coverage
+   ⚠ coverage trend: 78.4% → 76.8% (Δ -1.6 pp, threshold 1.0 pp) — review changed files via the flow:test-coverage subagent (default diff scope)
    ```
    **Never** promote to a blocker — Step 2 is explicit that coverage doesn't block on threshold. If the team wants a hard gate, that requires its own DDR.
 5. **If no baseline exists** → record current as the baseline silently. No warning on the first run. Note in the report: `coverage baseline established (<value>%)`.

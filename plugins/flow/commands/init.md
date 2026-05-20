@@ -192,7 +192,53 @@ Invoke `Skill(flow:skill-loader)` with the detected stack as input (framework, l
 
 Onboarding is the one-shot moment to do this thoroughly — every later command (`/flow:plan`, `/flow:execute`) only patches gaps incrementally.
 
-## Step 3: Ask only what we can't auto-detect
+## Step 2c: Test runner recommendation (when detection failed)
+
+> Runs only when `$TESTS == "unknown"` **and** the repo has source files (i.e. not a fresh empty repo). Skip otherwise — `/flow:init` doesn't scaffold runners, only surfaces the gap.
+
+The flow plugin assumes a working test command exists — `/flow:utils-verify`, `/flow:validate`, and the testing-rules iron law all depend on it. When detection turns up nothing, surface a stack-appropriate recommendation **before** Step 3 asks the user, so the question has a real default to pre-fill:
+
+```bash
+TESTS_RECOMMENDED=""
+TESTS_RUNNER_HINT=""
+
+if [[ "$TESTS" == "unknown" ]]; then
+  case "$LANG" in
+    typescript|javascript)
+      case "$FRAMEWORK" in
+        next.js|remix|sveltekit|nuxt|astro) TESTS_RECOMMENDED="vitest"
+          TESTS_RUNNER_HINT="vitest (fast, ESM-native, plays well with $FRAMEWORK) — install: $PM add -D vitest @vitest/coverage-v8" ;;
+        expo)                                TESTS_RECOMMENDED="jest"
+          TESTS_RUNNER_HINT="jest with jest-expo preset — install: $PM add -D jest jest-expo @testing-library/react-native" ;;
+        vite)                                TESTS_RECOMMENDED="vitest"
+          TESTS_RUNNER_HINT="vitest (native Vite integration) — install: $PM add -D vitest" ;;
+        *)                                   TESTS_RECOMMENDED="vitest"
+          TESTS_RUNNER_HINT="vitest is the modern default; jest if you need React Native or legacy compatibility" ;;
+      esac ;;
+    python)   TESTS_RECOMMENDED="pytest"
+              TESTS_RUNNER_HINT="pytest with pytest-cov — install: pip install pytest pytest-cov (or add to pyproject.toml)" ;;
+    go)       TESTS_RECOMMENDED="go-test"
+              TESTS_RUNNER_HINT="built-in: \`go test ./...\` — no install needed; add -coverprofile for coverage" ;;
+    rust)     TESTS_RECOMMENDED="cargo-test"
+              TESTS_RUNNER_HINT="built-in: \`cargo test\` — no install needed" ;;
+    java|kotlin) TESTS_RECOMMENDED="junit"
+                 TESTS_RUNNER_HINT="JUnit 5 (Jupiter) — add via $BUILD_TOOL config" ;;
+    *)        TESTS_RECOMMENDED="none"
+              TESTS_RUNNER_HINT="No stack-specific recommendation — pick a runner that matches your language" ;;
+  esac
+fi
+```
+
+Print a one-line nudge — **never auto-install, never scaffold a config file**:
+
+```
+⚠ No test runner detected. flow:utils-verify and flow:validate both assume one exists.
+  Recommendation for $LANG/$FRAMEWORK: $TESTS_RUNNER_HINT
+  Step 3 will let you confirm or pick a different runner. To skip the gate entirely, answer `none`
+  (flow:testing-rules will be effectively inert until a runner is added).
+```
+
+This is intentionally a recommendation, not a scaffold. Test runner choice is opinionated per project (vitest vs jest, pytest vs unittest, …) and per team. The plugin's job here is to make the absence visible, not to pick for them.
 
 Ask for these — everything else has a sensible auto-detected or default value:
 
@@ -210,7 +256,7 @@ Ask for these — everything else has a sensible auto-detected or default value:
 
 - Framework (only if `$FRAMEWORK="unknown"`)
 - Language (only if `$LANG="unknown"`)
-- Test runner (only if `$TESTS="unknown"`)
+- Test runner (only if `$TESTS="unknown"`) — pre-fill with `$TESTS_RECOMMENDED` from Step 2c, include `$TESTS_RUNNER_HINT` as the question subtitle so the user has install context inline. Accept `none` as a valid answer (records the gap; downstream gates degrade gracefully).
 - CSS approach (only if `$CSS="unknown"` and the project ships UI)
 
 For everything else (boundaries, motion ceilings, density map, bilingual, breakpoints, …) — leave defaults. The user tunes later via `mdcc config set` once the project shape clarifies.
@@ -330,7 +376,7 @@ Stack snapshot
   build tool:                  $BUILD_TOOL
   monorepo:                    $MONOREPO
   CI:                          $CI
-  tests:                       $TESTS
+  tests:                       $TESTS  (recommended on detect-fail: $TESTS_RECOMMENDED)
   CSS:                         $CSS
   router:                      $ROUTER
 
@@ -351,10 +397,12 @@ CLAUDE.md
 
 Next steps
   1. <if CLAUDE.md missing> Run /init to generate CLAUDE.md tailored to this stack.
-  2. Create .ai/$ANSWER_NAME-prd.md with your product brief.
-  3. (Optional) Create .ai/$ANSWER_NAME-design-system.md.
-  4. /flow:status — see where you are.
-  5. /flow:plan <feature> — start working.
+  2. <if $ANSWER_TESTS == "none" and repo has source> Install a test runner — recommendation from Step 2c: $TESTS_RUNNER_HINT. Without one, /flow:utils-verify and /flow:validate skip their test gates.
+  3. <if repo has source and $TESTS != "none"> (Optional) Spawn the `flow:test-coverage` subagent in `path <critical-dir>` mode — establish a baseline gap report for legacy untested code.
+  4. Create .ai/$ANSWER_NAME-prd.md with your product brief.
+  5. (Optional) Create .ai/$ANSWER_NAME-design-system.md.
+  6. /flow:status — see where you are.
+  7. /flow:plan <feature> — start working.
 ```
 
 ## Notes for plugin authors

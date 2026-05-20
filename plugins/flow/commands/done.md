@@ -145,6 +145,18 @@ If the user lists items, propose CLAUDE.md additions (or moves to `.claude/rules
 - Move the plan to `.ai/plans/archive/<x>.plan.md`.
 - STATE.md → phase + status `done`, history row `done | <date> | <one-liner>`. Active task → `—`. Active plan → `—`.
 
+#### 7a. Refresh coverage baseline (opt-in)
+
+> Reads `skills.coverageTrend` from `.ai/workflows.config.json`. Skip silently if `enabled: false` or missing.
+
+When enabled **and** the active branch matches `skills.coverageTrend.baselineBranch` (default `main`) — i.e. this `/done` is closing out a feature on the baseline branch — refresh `.ai/state/coverage-baseline.json`:
+
+```json
+{ "coverage": <current %>, "recordedAt": "<YYYY-MM-DD>", "branch": "<active branch>" }
+```
+
+If the active branch is *not* the baseline branch (typical PR flow where `main` is updated by merge, not by direct `/done`) → skip silently. Recording from a feature branch would lock in a value that doesn't represent main; the merge into `main` is when a fresh `/done` (or a CI-side hook) refreshes the baseline.
+
 ### 8. Report
 
 ```
