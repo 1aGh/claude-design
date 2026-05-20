@@ -1,66 +1,112 @@
-# Feature: Marketing Demo Video — ~55s agent-orchestrated showreel (+ 30s tight cut)
+# Feature: Marketing demo — real green-field onboarding lifecycle (~60s primary + 30s tight cut)
 
-> **Toolchain prerequisite (2026-05-20):** This plan assumes
-> [`phase-15-video-pipeline-toolchain.md`](./archive/phase-15-video-pipeline-toolchain.md)
-> has been run and `pnpm run video:smoke` exits 0. Do not run this plan against
-> a cold toolchain — the install gates (ffmpeg, vhs, Playwright Chromium,
-> Remotion license ack) live there and the per-tool smokes are the ladder. This
-> plan composes the real scenes on top of that proven base.
+> **Toolchain prerequisite (2026-05-20):** Phase 15 video toolchain
+> ([`archive/phase-15-video-pipeline-toolchain.md`](./archive/phase-15-video-pipeline-toolchain.md))
+> must be green. `pnpm run video:smoke` exits 0.
 >
-> Refactored: the original bash ladder (HTML cards + render-card.mjs,
-> record-scene.sh, custom xfade math + drawtext + 2-pass loudnorm) is replaced
-> by VHS tapes (terminal scenes), Playwright specs (browser scenes), Remotion
-> compositions (cards + final assembly). Net result: ~50–60% less custom code.
-> See `scripts/video/README.md` for the toolchain runbook.
->
-> **Scope revision 2026-05-20:** target duration grew from 30s → ~55s primary cut
-> to cover the full lifecycle that shipped between 2026-05-12 and 2026-05-20:
-> `/design:setup-ds` 3-stage discovery (Vision → Research → Refinement, commit
-> 2c90eb1) and in-place FigJam-style comments (pins + composer + thread popover
-> + @mention autocomplete, commit 462e95b). The 30s tight cut survives as
-> "Cut B" — see `## Cut variants` — for surfaces with autoplay-length
-> constraints (GitHub READMEs, social previews). Filename retains `-30s` for
-> git continuity; ignore it.
-
-Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.
+> **Hard reset (2026-05-20, post-revert).** Prior phase-15.5 attempt produced
+> VHS "cinematic-cast" reproductions of `/design:setup-ds` / `/design:new` /
+> `/design:edit` terminal output. The user rejected that direction: those
+> commands run inside the Claude Code TUI and **viewer must never see them
+> typed in a shell**, because that misrepresents how the tool actually works
+> (they are slash commands, not shell commands). This plan replaces the
+> previous Tasks 5–9 with a **real green-field onboarding capture** flow.
+> Filename retains `-30s` for git continuity; ignore the suffix.
 
 ## Description
 
-Produce a ~55-second 16:9 marketing/showcase video for `maude` that the agent (me) produces **end-to-end without human edits in a video editor**. The video stitches real screen recordings of the design plugin dev-server UI, the docs site (`site/`), and the Claude Code terminal flow, overlaid with infographic "title cards" and burned-in captions, scored with a royalty-free instrumental bed. Final artifact lives in `site/public/demo.mp4` (primary cut) + `site/public/demo-30s.mp4` (tight cut for GitHub README + social) and is embedded into both the docs landing page and `README.md`.
+Produce two 1920×1080 H.264 MP4s — `site/public/demo.mp4` (primary, ~60s,
+embedded in the docs landing) and `site/public/demo-30s.mp4` (tight cut for
+the GitHub README, < 10 MB) — by:
 
-The agent orchestrates **every** step: spawns the dev-server, drives terminal scenes through VHS `.tape` files, drives browser scenes through Playwright specs (Cmd+Click inspector, comment-pin workflow, docs scroll), produces infographic frames as Remotion compositions, downloads music via WebFetch/curl, and assembles everything inside one Remotion `Final` composition with `@remotion/transitions` xfades.
+1. **Bootstrapping a real green-field project** at
+   `/tmp/scratch-maude-demo-<date>/` using the production CLI + plugins:
+   - `maude init --name recipe-recap`
+   - `/design:setup-ds project "<brief>"` driven from this Claude Code session
+     against the scratch directory (the slash command is dispatched here; the
+     scratch dir is the target — it becomes a real DS scaffold).
+   - `/design:new "Recipe Recap" "<brief>"` similarly.
+   - `/design:edit "<feedback>"` against the freshly-created canvas — produces
+     a real before/after + a real HMR reload moment.
+   - Seed 2 comment threads (1 resolved + 1 open-with-reply) in
+     `.design/_comments/recipe_recap.json` so Scene 7 has pre-existing pins.
+2. **Capturing artifacts** of the resulting state:
+   - VHS terminal recording of the **install + init + serve** path only —
+     `npm i -g @1agh/maude`, `maude init --name recipe-recap`,
+     `maude design serve`. Stops before any slash-command interaction; the
+     viewer sees the CLI surface, never the Claude TUI.
+   - Playwright browser recordings of the dev-server (pointed at the scratch
+     dir, on a separate port from this repo's dev-server) — DS preview
+     specimens, the multi-artboard canvas, pan/zoom + Cmd+Click inspector,
+     a real HMR moment after a file edit, the FigJam-style comments overlay,
+     the docs site teaser.
+   - Two Remotion brand cards (intro + outro).
+3. **Composing** via Remotion: scene library + brand cards + lower-third
+   captions + opacity-envelope cross-fades. Two compositions share the same
+   scene library — Cut A (60s) and Cut B (30s).
+
+The artifact ships **into this repo** at `site/public/demo.mp4` +
+`site/public/demo-30s.mp4` + `site/public/demo-poster.jpg`, embedded into the
+docs landing via a small `<DemoVideo>` component. The scratch project is
+ephemeral — its files exist only at recording time; after the cuts are
+rendered the scratch dir can be deleted. None of the scratch project's source
+ships into this repo or to npm.
 
 ## User Story
 
-As a **prospective Maude user** landing on the docs site or GitHub README, I want a **under-one-minute visual demo** so that I can grasp the full canvas-first design lifecycle — `maude init` → `/design:setup-ds` (3-stage discovery) → `/design:new` (multi-artboard canvas) → live dev-server with Cmd+Click inspector → `/design:edit` iteration → in-place FigJam-style comments → docs — **without reading a wall of text or installing anything**.
+As a **prospective Maude user** landing on the docs site or the GitHub README,
+I want a **under-one-minute visual walk-through of a fresh project** so I can
+grasp the canvas-first design lifecycle — install → init → DS bootstrap →
+canvas creation → live dev-server → iterate → comments → docs — **without
+installing anything first** and **without watching someone type slash commands
+in a terminal** that wouldn't make sense to me until I had Maude installed.
 
 ## Problem
 
-- README and docs explain features verbally; there is no visual "show, don't tell" surface.
-- Onboarding friction is high — users have to install the marketplace + run a flow before they see the dev-server UI, which is the visually striking part. The two highest-leverage features (`/design:setup-ds` 3-stage discovery and in-canvas comments) only reveal themselves after a non-trivial setup.
-- Social/share previews currently fall back to text snippets.
+Prior attempt synthesized terminal output to fake `/design:setup-ds` etc.
+running in a shell. Two issues:
+
+- **Misleading.** Slash commands live in the Claude Code TUI, not in zsh. A
+  marketing reel that shows them in a shell prompt teaches the viewer the
+  wrong mental model.
+- **Inauthentic.** Pre-canned bash `printf` sequences are easy to spot once
+  you know how Maude actually works. Existing users will see fake; new users
+  will be confused when their real experience doesn't match the video.
+
+The fix is to **stop showing the agent commands at all** and instead show
+their **visual results** — the live dev-server with a freshly-onboarded
+project — plus the one terminal step that genuinely IS a shell command
+(`maude init` + `maude design serve`).
 
 ## Solution
 
-A primary ~55-second muted-friendly MP4 (autoplay-safe) with:
-- 9 scenes, captions burned in for clarity without audio,
-- Royalty-free instrumental bed (Pixabay/CC0) at -18 LUFS,
-- 16:9 1920×1080 H.264, target < 14 MB so it embeds cleanly into the Next.js landing and the Vercel CDN; a sibling 30s tight cut < 8 MB (GitHub's video upload limit at 10 MB) lives at `site/public/demo-30s.mp4` for the README embed.
+Two cuts of "real first-time user lifecycle":
 
-Every recording, transition, caption, and mix is produced by Bash + Remotion + VHS + Playwright + ffmpeg — reproducible, scriptable, no Final Cut.
+| Cut | Duration | Embed | Filename | Size |
+|-----|----------|-------|----------|------|
+| **A — primary** | ~60 s | `site/` landing | `site/public/demo.mp4` | < 16 MB |
+| **B — tight** | 30 s | GitHub README | `site/public/demo-30s.mp4` | < 10 MB |
+
+Same scene library, same captions schema, same brand cards. Re-record any
+single scene → both cuts pick up the change on next `pnpm exec remotion
+render`.
 
 ## Metadata
 
-- **GitHub Issue**: n/a (internal initiative)
-- **Type**: New Capability (marketing artifact + agentic video pipeline)
-- **Complexity**: High — first agentic video production in this repo; multi-tool orchestration (VHS, Playwright, Remotion, ffmpeg); macOS-only capture path
-- **App/Package**: `site/` (embed target) + `scripts/video/` (pipeline) + `.design/` (canvas content recorded)
-- **Affected Systems**: Next.js docs site, README, design plugin dev-server, repo build/publish (videos must NOT ship to npm — verify `package.json` `files` excludes them)
-- **Dependencies**:
-  - Phase 15 toolchain green (`pnpm run video:smoke` exits 0)
-  - Pixabay royalty-free music asset (download once, gitignored cache; license URL pinned in `storyboard.md`)
-  - Existing canvases: `.design/ui/Canvas Viewport.tsx`, `.design/ui/Docs Site.tsx` (used as hero shots)
-  - A demo `.design/` workspace seeded with at least one canvas that has resolvable comment threads (pins + replies) for Scene 7 — see Task 0.5.
+- **GitHub Issue:** n/a (internal initiative)
+- **Type:** New Capability — marketing artifact, second attempt
+- **Complexity:** High — multi-tool orchestration; second dev-server
+  instance against a scratch root; agent must drive a real `/design:*` cycle
+  before recording starts.
+- **App/Package:** `site/` (embed target) + `scripts/video/` (pipeline) +
+  `/tmp/scratch-maude-demo-<date>/` (recording surface; ephemeral)
+- **Affected systems:** Next.js docs site, README, design plugin
+  dev-server, repo build/publish (videos must NOT ship to npm)
+- **Dependencies:**
+  - Phase 15 toolchain green
+  - Pixabay royalty-free music asset (optional; silent v1 acceptable)
+  - This repo's dev-server NOT running (we'll spawn a second instance
+    against the scratch root on a separate port; the current one stays as-is)
 
 ---
 
@@ -68,439 +114,578 @@ Every recording, transition, caption, and mix is produced by Bash + Remotion + V
 
 ### Must-Read Files
 
-- `plugins/design/dev-server/server.mjs` — Why: confirms `--root` arg + `/_health` + WebSocket inspector contract; Scenes 5–7 all depend on this server being live and seeded against `.design/`.
-- `plugins/design/dev-server/bin/screenshot.sh` — Why: prior art for agent-driven capture; the fallback ladder pattern (primary tool → secondary tool) is mirrored by VHS → Playwright → Remotion in our video pipeline.
-- `plugins/design/dev-server/bin/server-up.sh` — Why: lifecycle helper to ensure server is healthy before recording; the video pipeline must invoke this, not start a duplicate.
-- `plugins/design/commands/setup-ds.md` — Why: Scene 3 records the live 3-stage discovery flow. The command's documented Stage 0 / 1 / 2 / 3 ordering + the `→ Skipping P<N> (covered in brief)` line shape is what the on-screen text needs to show for the scene to read as authentic.
-- `plugins/design/commands/new.md` — Why: Scene 4 records `/design:new` envelope generation. Note the default `--perfect` loop is verbose — for the video we want `--quick` so the scene fits in 6 s without speed-ramping past readability.
-- `plugins/design/commands/edit.md` — Why: Scene 6 records `/design:edit "<feedback>"`. The dev-server's HMR broadcast → iframe hard reload is what makes the split-screen reload moment land; pin the reload moment via `_active.json.last_change`.
-- `plugins/design/dev-server/canvas-lib.tsx` (search for `commentPin`, `composer`, `thread`) — Why: Scene 7 drives the comment overlay (commit 462e95b). The Playwright spec needs the actual DOM selectors / class names produced by the in-iframe overlay (`.dgn-comment-pin`, `.dgn-comment-composer`, `.dgn-thread-popover`, `.dgn-mention-autocomplete` — confirm exact names).
-- `.design/ui/Canvas Viewport.tsx` + `.design/ui/Canvas Viewport.css` — Why: Scene 5 hero shot. Confirm it renders cleanly fullscreen before recording.
-- `.design/ui/Docs Site.tsx` — Why: Scene 8 fallback if real `site/` looks too WIP at recording time.
-- `site/app/(home)/page.tsx` — Why: embed location for the final primary cut.
-- `README.md` lines 1-50 — Why: embed location for the 30s tight cut (GitHub `<video>` tag).
-- `package.json` `files` array — Why: must verify both demo MP4s are NOT in the npm publish set.
+- `plugins/design/dev-server/server.mjs` and `server.ts` — Why: confirms
+  `--root <path>` flag resolution; the scratch dir becomes the server root,
+  not this repo.
+- `plugins/design/dev-server/bin/server-up.sh` — Why: lifecycle helper. The
+  scratch-dev-server uses this with a custom `--root` + an alternate port.
+- `plugins/design/skills/design-system/SKILL.md` — Why: drive
+  `/design:setup-ds` against the scratch dir from this session. The skill's
+  3-stage discovery (Vision → Research → Refinement) is the agent's exact
+  procedure.
+- `plugins/design/commands/new.md` — Why: drive `/design:new` against the
+  scratch dir from this session. The command spawns `frontend-design` for
+  envelope construction → canvas generation.
+- `plugins/design/commands/edit.md` — Why: drive `/design:edit` for the
+  real HMR moment captured in Scene 6.
+- `plugins/design/dev-server/comments-overlay.tsx` (search for `cm-pin`,
+  `cm-composer`, `cm-thread`, `cm-mention-popup`) — Why: Scene 7 Playwright
+  spec needs the same selectors that worked in the prior attempt:
+  `.cm-pin`, `.cm-composer`, `.cm-composer__textarea`, `.cm-thread`,
+  `.cm-thread__reply-textarea`, `.cm-mention-popup`, `.cm-btn.cm-btn--primary`.
+- `site/app/(home)/page.tsx` — Why: embed target for the primary cut. Insert
+  point is after `.mdcc-hero` / install section, before `.mdcc-cat-grid`.
+- `README.md` lines 1-20 — Why: embed target for the tight cut (`<video>`
+  tag below H1).
+- `package.json` `files` array — Why: must NOT include `site/public/*.mp4`.
+- `scripts/video/smoke/` — Why: existing Phase 15 toolchain proof. The
+  marketing pipeline reuses the same Remotion/Playwright/VHS shape, only
+  bigger.
 
 ### Files to Create
 
-- `scripts/video/storyboard.md` — Frozen scene-by-scene script for **both cuts** (primary ~55s + tight 30s). Single source of truth.
-- `scripts/video/tapes/*.tape` — VHS scripts for terminal scenes (init, setup-ds, new, edit-left).
-- `scripts/video/playwright/*.spec.ts` — Playwright specs for browser scenes (canvas hero, edit-right, comments, docs).
-- `scripts/video/cards/{IntroCard,OutroCard,LowerThird}.tsx` + `cards/index.tsx` + `cards/tokens.ts` — Remotion compositions for intro / outro / reusable lower-third caption strip.
-- `scripts/video/final/Final.tsx` + `final/Final30.tsx` + `final/index.tsx` — Two Remotion compositions sharing the same scene library; `Final` is the ~55s primary, `Final30` is the 30s tight cut.
-- `scripts/video/render-all-scenes.sh` — Orchestrates VHS + Playwright captures + per-scene normalize (replaces the old `record-scene.sh` + `assemble.sh` bash pair).
-- `scripts/video/download-music.sh` — Idempotent fetch of the Pixabay track to `scripts/video/.cache/music.mp3` (gitignored).
-- `site/public/demo.mp4` — Primary ~55s cut (committed).
-- `site/public/demo-30s.mp4` — Tight 30s cut (committed).
-- `site/public/demo-poster.jpg` — Frame 1 of primary cut.
-- `.gitignore` entries for `scripts/video/.cache/`, `scripts/video/.work/`.
+- `scripts/video/storyboard.md` — Frozen scene script for both cuts +
+  music license slot.
+- `scripts/video/cards/{IntroCard,OutroCard,LowerThird,tokens,index,remotion.config}.tsx`
+  — Brand cards + lower-third overlay.
+- `scripts/video/tapes/01-install-init-serve.tape` — Single VHS terminal
+  capture covering the entire CLI surface the viewer should see. **No slash
+  commands.**
+- `scripts/video/playwright/*.spec.ts` — Per-scene browser specs (DS preview
+  reveal, canvas reveal, canvas hero, edit auto-reload, comments overlay,
+  docs teaser).
+- `scripts/video/playwright/playwright.config.ts` — Absolute `outputDir` via
+  `import.meta.url`; viewport 1920×1080.
+- `scripts/video/final/{Final,Final30,SceneClip,scene-source,index,remotion.config}.tsx`
+  — Two compositions + helper components.
+- `scripts/video/lib/{server-up,normalize,make-placeholders}.sh` — Helper
+  layer. `server-up.sh` boots a SECOND dev-server instance against the
+  scratch root on `--port 4400` (this repo's instance keeps 4399).
+- `scripts/video/bootstrap-scratch.sh` — Agent-runnable script that
+  scaffolds the scratch dir up to (but NOT including) the `/design:setup-ds`
+  / `/design:new` / `/design:edit` cycles (those are agent-driven in this
+  Claude session).
+- `scripts/video/render-all-scenes.sh` — Top-level orchestrator.
+- `scripts/video/download-music.sh` — Idempotent fetch of the optional
+  music bed.
+- `scripts/check-publish-size.sh` — npm hygiene guard (no MP4 in tarball).
+- `site/components/mdcc/demo-video.tsx` — `<DemoVideo>` component for
+  landing embed (autoplay muted loop, prefers-reduced-motion pause).
+- `site/public/{demo.mp4,demo-30s.mp4,demo-poster.jpg}` — Final artifacts.
+- `.ai/decisions/DDR-035-marketing-video-real-green-field-capture.md` — DDR
+  recording the new approach + the rejection of the cinematic-cast
+  alternative.
 
 ### Documentation
 
-- VHS docs: https://github.com/charmbracelet/vhs — Why: declarative terminal capture. `Type`, `Sleep`, `Set Theme`, `Set Width/Height` are the four commands every tape needs.
-- Playwright video recording: https://playwright.dev/docs/videos — Why: per-test WebM at fixed viewport; we transcode to MP4 in post.
-- Remotion `<TransitionSeries>`: https://www.remotion.dev/docs/transitions — Why: declarative xfade between scenes; replaces the ffmpeg xfade offset math.
-- Pixabay Music licensing: https://pixabay.com/service/license-summary/ — Why: confirm "Pixabay Content License" = no attribution required, free commercial use. Pin the track URL in `storyboard.md`.
-- GitHub video embed in README (10 MB limit): https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/attaching-files — Why: the 30s tight cut is sized to land under this limit.
-
-### Patterns to Follow
-
-**Server lifecycle (from `server-up.sh`):**
-```sh
-# Reuse, do NOT reimplement. Both Playwright and the smoke pipeline:
-PORT=$(plugins/design/dev-server/bin/server-up.sh)
-URL="http://localhost:$PORT/canvas/ui/Canvas+Viewport"
-```
-
-**Brand tokens in Remotion cards:**
-```ts
-// scripts/video/cards/tokens.ts — single shim mirrors the active DS's CSS tokens.
-// Regression-checked against .design/system/<active>/colors_and_type.css at lint time.
-export const tokens = {
-  bg: 'var(--bg, #0e0e10)',         // fallback for non-CSS contexts
-  ink: 'var(--ink, #f5f5f0)',
-  accent: 'var(--accent, #ff5722)',
-  mono: 'var(--font-mono, "JetBrains Mono", monospace)',
-} as const;
-```
-
-Detect active DS via `jq -r '.designSystems[0].name' .design/config.json` (note: schema changed in 2026-05-12 from `activeDesignSystem` to `designSystems[]`).
+- VHS docs: https://github.com/charmbracelet/vhs
+- Playwright video recording: https://playwright.dev/docs/videos
+- Remotion `Composition` + `Sequence` + `Video`:
+  https://www.remotion.dev/docs/composition
+- Pixabay Music license: https://pixabay.com/service/license-summary/
+- GitHub video embed in README (10 MB limit):
+  https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/attaching-files
 
 ---
 
 ## Design Decisions
 
-### Storyboard — Cut A (primary, ~60s)
+### Storyboard — Cut A (primary, ~60 s)
 
-Frozen — see `scripts/video/storyboard.md`. Each scene's raw capture is ~10% longer than its slot to allow trim-in/trim-out cleanup. Scenes **3** and **4** are **hybrid (terminal → browser reveal)**: the terminal half shows the command running, the browser half shows the actual UI artifact the command produced (DS preview specimens for setup-ds, the rendered multi-artboard canvas for /design:new). Without the browser reveal both commands look like log output; with it the viewer sees the real visual payoff.
+Every scene below is **a real artifact** captured from the scratch project
+or rendered as a Remotion brand card. **No scene shows a Claude TUI or a
+typed slash command.**
 
-| # | Sub | Scene | Dur | Capture source | Caption (one per parent scene) |
-|---|-----|-------|-----|----------------|--------------------------------|
-| 1 | — | Intro card | 2.5s | `Remotion IntroCard` | `maude — canvas-first design + workflow for Claude Code` |
-| 2 | — | `maude init` terminal | 3.5s | VHS tape (`02-maude-init.tape`) | `Scaffold .ai/ in one command` |
-| 3 | a | `/design:setup-ds` — 3-stage discovery (terminal, **snippet montage**) | 6.0s | 4-5 jump-cut snippets pulled from a full asciinema/VHS recording of one real run — see Task 6 | `Vision → research → refinement` |
-| 3 | b | DS scaffold reveal — preview specimens in dev-server | 4.5s | Playwright (`03b-ds-reveal.spec.ts`) | `→ DS scaffolded: tokens, type, components` |
-| 4 | a | `/design:new` (terminal, **snippet montage**) | 4.0s | 3 jump-cut snippets from a full recording — see Task 7 | `Brief → multi-artboard canvas` |
-| 4 | b | Canvas reveal — fresh multi-artboard opens in dev-server | 4.0s | Playwright (`04b-canvas-reveal.spec.ts`) | `→ Recipe Recap, 4 artboards, live` |
-| 5 | — | Canvas hero — Cmd+Click inspector | 7.5s | Playwright (`05-canvas-hero.spec.ts`) | `Live canvas, Cmd+Click any element` |
-| 6 | — | `/design:edit "tighten the hero"` split-screen | 9.0s | Composite: VHS left (`06-edit-left.tape`) + Playwright right (`06-edit-right.spec.ts`) — composed in Remotion, not ffmpeg `hstack` | `One feedback string → diff + auto-reload` |
-| 7 | — | In-place comments — pin → composer → @mention → reply → resolve | 12.0s | Playwright (`07-comments.spec.ts`) | `In-place comments — FigJam style, anchored to elements` |
-| 8 | — | Docs teaser | 3.5s | Playwright (`08-docs.spec.ts`) on real `site/` localhost | `Docs at maude.iagh.cz` |
-| 9 | — | Outro CTA | 3.0s | `Remotion OutroCard` | `npm i -g @1agh/maude · github.com/1aGh/maude` |
+| # | Scene | Slot | Source | Caption |
+|---|-------|------|--------|---------|
+| 1 | Intro card | 2.5 s | Remotion IntroCard | `maude. canvas-first design + workflow for Claude Code.` |
+| 2 | Install + init + serve (terminal) | 6.0 s | VHS tape on the scratch dir | `Install. Init. Serve. One command each.` |
+| 3 | DS preview reveal — `colors-accent` → `typography` → `components-buttons` → `components-callout` | 6.0 s | Playwright on scratch dev-server | `A real design system, scaffolded from one brief.` |
+| 4 | Canvas reveal — fresh multi-artboard `Recipe Recap` | 5.0 s | Playwright on scratch dev-server | `Multi-artboard canvas. Real code, no Figma.` |
+| 5 | Canvas hero — pan/zoom + Cmd+Click inspector | 8.0 s | Playwright on scratch dev-server | `Cmd+Click any element. Live inspector.` |
+| 6 | Edit moment — file diff + HMR reload | 9.0 s | Playwright on scratch dev-server (no terminal half — viewer sees the result, not the command) | `Edit a file. Canvas reloads in place.` |
+| 7 | Comments overlay — pin, composer, @mention, reply, resolve | 12.0 s | Playwright on scratch dev-server | `In-place comments. Anchored to elements.` |
+| 8 | Docs teaser | 3.5 s | Playwright on real `site/` localhost or canvas-shell mock | `Docs at maude.iagh.cz.` |
+| 9 | Outro card | 3.0 s | Remotion OutroCard | `npm i -g @1agh/maude . github.com/1aGh/maude` |
 
-**Wall-clock total:** sum of sub-durations 59.5s − 10 xfades × 300 ms = **~56.5s**. Round to **60.0s** with held tails on the intro / outro cards. Within each hybrid scene (3, 4) the terminal→reveal handoff is a quick 150 ms cut (not a 300 ms xfade) so the viewer reads it as "the command finished, now look at the result" rather than two unrelated beats.
+Wall-clock: 55.0 s of scenes − 8 cross-fades × 9 frames overlap (0.3 s each)
+= ~52.6 s. Held tails on intro / outro bring to ~60 s. Cross-fades
+implemented as opacity envelopes per `<Sequence>` (no
+`@remotion/transitions` dep — keeps the surface inspectable; same approach
+as the toolchain smoke).
 
-### Snippet montage principle (scenes 3a, 4a, 6-left)
+### Storyboard — Cut B (tight, 30 s)
 
-Agent runs (especially `/design:setup-ds` 3-stage discovery and `/design:new --perfect`) take **minutes**, not seconds. Compressing a multi-minute run into a 4-6s slot via `playbackRate=N` produces unreadable, artificial-looking footage (ANSI streams blur, prompts flicker by, the viewer learns nothing). **Better approach: record the full run once, then jump-cut between 3-5 representative beats.** Each beat is shown at 1× speed for 1.0-1.5 s — long enough to read, short enough to keep the scene moving. Jump cuts (no xfade between snippets within a single scene) read as a deliberate montage, like a film trailer; the viewer infers the omitted middle without seeing it slowed down or sped up.
+Drops scene 3 (DS preview) and scene 7 (comments) entirely. Keeps the
+canonical "install → see canvas → iterate → docs" arc under GitHub's
+10 MB cap.
 
-| Scene | Snippets (each 1.0-1.5 s @ 1×) |
-|-------|--------------------------------|
-| 3a | (1) Stage 1 — first vision prompt + user paste; (2) `→ Skipping P<N> (covered in brief)` lines flash; (3) Stage 2 — three `→ Researching <axis>…` lines in quick succession; (4) Stage 3 — refinement table preview; (5) `✓ Design system project scaffolded at .design/system/project/`. |
-| 4a | (1) `/design:new` invocation line; (2) generation log middle (the spinner + 2-3 "→ writing artboard" lines); (3) `→ Canvas created at .design/ui/Recipe Recap.tsx`. |
-| 6-left | (1) `/design:edit "tighten the hero"` prompt; (2) mid-stream diff preview lines; (3) `→ Applied, reloading canvas`. Right half (Playwright canvas) plays continuously at 1× — only the left terminal half is snippet-cut. |
+| # | Cut A # | Scene | Slot | Caption |
+|---|---------|-------|------|---------|
+| 1 | 1 | Intro | 2.5 s | `maude. design + workflow for Claude Code.` |
+| 2 | 2 | Install + init + serve | 4.0 s | `One command to install. One to scaffold.` |
+| 3 | 4 | Canvas reveal | 4.0 s | `Multi-artboard canvas. Real code.` |
+| 4 | 5 | Canvas hero + Cmd+Click | 6.5 s | `Cmd+Click any element.` |
+| 5 | 6 | Edit moment + HMR | 7.0 s | `Edit a file. Canvas reloads in place.` |
+| 6 | 8 | Docs teaser | 2.5 s | `Docs at maude.iagh.cz.` |
+| 7 | 9 | Outro | 3.0 s | `npm i -g @1agh/maude` |
 
-Recorded raw via `asciinema rec` (preferred — text-based, easy to cherry-pick by timecode) or via VHS `.tape` with `Hide`/`Show` blocks bracketing the keep-segments. Snippets are stitched in Remotion via `<Sequence from={...} durationInFrames={...}>` against the same source file with different `startFrom` offsets — no separate clip files per snippet.
-
-### Storyboard — Cut B (tight, 30s)
-
-Drops Scene 3 (setup-ds) entirely and Scene 7 (comments) entirely; keeps Scene 4's **hybrid (terminal snippet + canvas reveal)** because the reveal is what tells the viewer what `/design:new` actually produced. Keeps the canonical "install → scaffold → live → iterate → docs" arc under GitHub's 10 MB cap.
-
-| # | Scene (Cut A #) | Dur | Source | Caption |
-|---|----------------|-----|--------|---------|
-| 1 | (1) Intro | 2.5s | Remotion IntroCard | `maude — design + workflow for Claude Code` |
-| 2 | (2) `maude init` | 3.0s | VHS | `Scaffold .ai/ in one command` |
-| 3 | (4a + 4b) `/design:new` terminal snippet → canvas reveal | 5.5s (2.5 + 3.0) | snippet montage + Playwright reveal | `Brief → multi-artboard canvas` |
-| 4 | (5) Canvas hero | 6.0s | Playwright | `Live canvas, Cmd+Click any element` |
-| 5 | (6) `/design:edit` split | 7.0s | snippet montage + Playwright | `One feedback string → diff + auto-reload` |
-| 6 | (8) Docs | 2.5s | Playwright | `Docs at maude.iagh.cz` |
-| 7 | (9) Outro | 3.0s | Remotion OutroCard | `npm i -g @1agh/maude` |
-
-**Wall-clock total:** 29.5s − 7 xfades × 300 ms = **~27.4s**. Held tail on outro brings it to 30.0s.
-
-### Components (Remotion cards, from project DS tokens)
-
-| Component | Source | Notes |
-|-----------|--------|-------|
-| `IntroCard.tsx` | new — built fresh | Wordmark + tagline. Spring entrance over 18 frames, hold, 18-frame fade. |
-| `OutroCard.tsx` | new — built fresh | Mono install command + GitHub URL. Accent underline wipes L→R via `interpolate()`. |
-| `LowerThird.tsx` | new — built fresh | Reusable caption overlay, 50% accent-plate behind text, fontsize 44. Used by every scene via `<Sequence>` inside `Final` / `Final30`. |
-
-### Existing screens / blocks reused
-
-| Screen / block | Source | Notes |
-|----------------|--------|-------|
-| Canvas Viewport | `.design/ui/Canvas Viewport.tsx` | Hero shot for Scene 5 (Cut A) / Scene 4 (Cut B). Pre-flight: render at 1920×1080 in browser, confirm no console errors. |
-| Comment overlay | injected by `canvas-lib.tsx` | Scene 7 (Cut A only). Pre-seed `.design/_comments/<slug>.json` so the canvas already has one resolved thread + one open thread; the spec adds a third pin live. |
-| Docs Site mock | `.design/ui/Docs Site.tsx` | Fallback for Scene 8 / Scene 6 if real `site/` looks too WIP. |
-
-### Tokens
-
-| Purpose | Token | Usage |
-|---------|-------|-------|
-| Card background | `--bg` | intro/outro backgrounds |
-| Card text | `--ink` | primary copy |
-| Accent / brand pulse | `--accent` | wordmark, animated underline, comment-pin badge |
-| Caption strip | `--surface` + `--ink-muted` | lower-third pill |
-
-### Custom Components Needed
-
-| Component | Reason | Extends |
-|-----------|--------|---------|
-| `Final.tsx` + `Final30.tsx` | Two compositions sharing one scene library, one music bed, one `LowerThird` | Remotion `<Composition>` + `<TransitionSeries>` |
-| `render-all-scenes.sh` | Orchestrate VHS + Playwright + normalize step before Remotion ingests | none — new helper |
+Wall-clock: 29.5 s − 6 cross-fades × 9-frame overlap = ~27.7 s. Held tail
+on outro brings to 30 s.
 
 ### Captions discipline
 
-Per [no AI-tell punctuation] memory: **no em dash, en dash, curly quotes, ellipsis char, excess emoji** in any caption or card copy. ASCII hyphens, straight quotes, three periods if needed. Interpunct OK only in stamps like `npm i -g @1agh/maude`.
+Per [no AI-tell punctuation] memory: ASCII hyphens only, straight quotes,
+three periods if needed (never ellipsis char), interpunct (`.`) OK only in
+stamps. **One caption per scene; held through any sub-beats.**
+
+### Scratch project
+
+- Path: `/tmp/scratch-maude-demo-$(date +%Y%m%d)/`
+- Brief for setup-ds: `"Recipe manager kde nastavíš počet porcí a on
+  přepočítá ingredience. Pro mě a 3 kamarády. Vibe: 80s cookbook,
+  Berkeley-mono everywhere, hard-edges + amber-rust stamp accent."`
+  (The brief is intentionally lineage-loaded so Stage 1 has enough to skip
+  P1/P5/P10 — produces the recognisable `→ Skipping P<N>` print pattern, in
+  case we capture skill output to a log file for the storyboard.)
+- Canvas for new: `Recipe Recap` — `"Multi-artboard hero + portion scaler
+  + ingredient list + cookbook print preview"`.
+- Edit feedback: `"tighten the hero, drop one row from the metadata
+  block"` — produces a small, readable diff suitable for HMR demonstration.
+
+### Dev-server lifecycle
+
+The scratch dev-server runs on a **separate port** (`--port 4400`) so this
+repo's running instance on 4399 is undisturbed. Lifecycle:
+
+```sh
+PORT=4400 bash plugins/design/dev-server/bin/server-up.sh \
+  --root /tmp/scratch-maude-demo-$(date +%Y%m%d) \
+  --port 4400
+```
+
+All marketing Playwright specs target `localhost:4400`. Smoke tests and
+this repo's own dev-server stay on 4399.
+
+### Components (Remotion cards, from project DS tokens)
+
+Same as prior attempt; carry forward without changes:
+
+| Component | Source | Notes |
+|-----------|--------|-------|
+| `IntroCard.tsx` | new | Wordmark + tagline. Spring entrance over 18 frames, hold, 18-frame fade. |
+| `OutroCard.tsx` | new | Mono install command + GitHub URL. Accent underline wipes L→R. |
+| `LowerThird.tsx` | new | Reusable caption strip, 50% accent plate, fontsize 44. |
+| `tokens.ts` | new | Mirror of active DS `colors_and_type.css` (light + dark tracks, accent oklch 56% 0.170 50). |
 
 ---
 
 ## Tasks
 
-Execute in order. Each task is atomic and testable.
+Execute in order. Each task is atomic and testable. **Tasks 0–4 are
+preparation; Tasks 5–8 capture the green-field project; Tasks 9–14 produce
+and ship.**
 
-Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
+### Task 0 — GATE: Phase 15 toolchain green
 
-### Task 0: GATE — Phase 15 toolchain green
+- **Do:** Confirm `pnpm run video:smoke` exits 0 against the current branch.
+- **Validate:** Exit code 0.
 
-- **Do**: Confirm `pnpm run video:smoke` exits 0 against the current branch. If not, run / finish `phase-15-video-pipeline-toolchain.md` first.
-- **Pattern**: Single hard gate; do not start authoring scenes against a broken toolchain.
-- **Gotcha**: VHS, Playwright Chromium, and the Remotion license ack are all gated by user grant. Don't re-litigate here — that's the toolchain phase's job.
-- **Validate**: `pnpm run video:smoke` exits 0.
+### Task 1 — CREATE storyboard + music script + .gitignore
 
-### Task 0.5: SEED demo `.design/` workspace for recording
+- **Do:**
+  1. Write `scripts/video/storyboard.md` with both cut tables, ASCII-clean
+     captions, music license slot (URL TBD).
+  2. Write `scripts/video/download-music.sh` — idempotent curl to
+     `scripts/video/.cache/music.mp3`, accepts URL as arg or `$MUSIC_URL`.
+  3. Confirm `scripts/video/.gitignore` already ignores `.cache/` and
+     `.work/`.
+- **Gotcha:** Music v1 may be silent — the cut works without music.
+  Storyboard documents that fallback.
+- **Validate:** Storyboard reads cleanly; `bash download-music.sh
+  --force-validate` (no URL) prints actionable error.
 
-- **Do**:
-  1. Use this repo's own `.design/` (the dogfood workspace) — do NOT create a `/tmp/scratch-maude-demo` for the recording surface, because Scene 5 / 6 / 7 want a canvas that already has interesting content.
-  2. Confirm `.design/ui/Canvas Viewport.tsx` renders cleanly at 1920×1080 (open in dev-server, check console).
-  3. For Scene 7 (comments): pre-seed `.design/_comments/<viewport-slug>.json` with **one resolved thread** + **one open thread (one reply)** anchored to two distinct elements in `Canvas Viewport.tsx`. The Playwright spec then adds a **third** pin live so the viewer sees both pre-existing pins and the new-pin moment.
-  4. For Scene 3 (`/design:setup-ds`): the tape runs in a sibling scratch dir (`/tmp/scratch-maude-recording/`) seeded with `maude init` so the discovery scene starts from a clean state. The tape is the only thing that writes to it.
-- **Pattern**: Two recording surfaces — this repo's own `.design/` for live-canvas scenes (5/6/7), a clean scratch dir for the install-flow scenes (2/3/4).
-- **Gotcha**: Comment-pin coordinates are stored relative to the artboard's bounding box; if the canvas layout changes between seed-time and record-time, pins drift. Pin them to stable element IDs (`data-cd-id`), not absolute pixels.
-- **Validate**: Opening the dev-server shows the two seeded pins on `Canvas Viewport`; clicking one opens the thread popover with the seeded reply.
+### Task 2 — CREATE Remotion brand cards
 
-### Task 1: CREATE storyboard + license-anchored music download
+- **Do:**
+  1. `scripts/video/cards/tokens.ts` — mirror the active DS values from
+     `.design/system/project/colors_and_type.css` (light + dark tracks,
+     accent `oklch(56% 0.170 50)`, mono `"Berkeley Mono", "JetBrains Mono",
+     "SF Mono", Menlo, Consolas, monospace`).
+  2. `cards/IntroCard.tsx` — 1920×1080, 75 frames @ 30 fps, spring
+     entrance, hold, fade-out. SKU stamp top-left
+     (`MDCC-MKT/00 . THE CATALOG . v0.15.0`), wordmark "maude." centered,
+     tagline below, bottom catalog strip
+     (`github.com/1aGh/maude . 2 plugins . 1 CLI . zero telemetry .
+     published 2026-05-20`).
+  3. `cards/OutroCard.tsx` — 1920×1080, 90 frames, install command in
+     mono with hard-edge border, accent underline wipe L→R, secondary
+     line (`github.com/1aGh/maude . docs at maude.iagh.cz`).
+  4. `cards/LowerThird.tsx` — utility component (NOT registered).
+     Bottom-centered pill with 88% accent plate, fontsize 44, 6-frame
+     fade-in + 6-frame fade-out scoped to its parent `<Sequence>` via a
+     `durationInFrames` prop.
+  5. `cards/index.tsx` — `registerRoot` for IntroCard + OutroCard only.
+     **Do NOT re-export LowerThird here** — re-exporting triggers a
+     second `registerRoot` from `Final.tsx`'s import path. Final imports
+     `LowerThird` directly from `cards/LowerThird.tsx`.
+  6. `cards/remotion.config.ts` — pixel format yuv420p, codec h264,
+     crf 23.
+- **Gotcha:** Strip em/en dash, curly quotes, ellipsis char from card
+  copy. ASCII only.
+- **Validate:**
+  - `pnpm exec remotion render scripts/video/cards/index.tsx IntroCard
+    /tmp/intro.mp4 --mute --log=error` exits 0; ffprobe reports 2.50 s.
+  - Same for OutroCard → 3.00 s.
+  - Extract frame 30 from each — manual visual sanity (wordmark renders,
+    underline visible).
 
-- **Do**:
-  1. Write `scripts/video/storyboard.md` with **both** scene tables (Cut A primary, Cut B tight), exact timecodes, exact ASCII-clean captions, and the Pixabay track URL + license excerpt.
-  2. Pick a track: 60-90s instrumental (long enough for Cut A with headroom), BPM 90-110, "corporate ambient" or "tech inspiration" mood. The 30s tight cut crops the same source; do NOT pick a 30s track and then need a different one for Cut A.
-  3. Write `scripts/video/download-music.sh` that `curl`s the track to `scripts/video/.cache/music.mp3`.
-  4. Add `scripts/video/.cache/` and `scripts/video/.work/` to `.gitignore`.
-- **Gotcha**: Pixabay direct-download URLs require a session cookie since 2024; if the curl fails, fall back to Mixkit (`https://mixkit.co/free-stock-music/`) or Free Music Archive — note the chosen source in storyboard.
-- **Validate**: `bash scripts/video/download-music.sh && ffprobe scripts/video/.cache/music.mp3 2>&1 | grep -E "Duration|bit_rate"` — duration ≥ 60s.
+### Task 3 — CREATE capture-surface scaffolding
 
-### Task 2: CREATE Remotion card compositions
+- **Do:**
+  1. Make dirs: `scripts/video/{tapes,playwright,final,lib}`.
+  2. `lib/server-up.sh` — thin wrapper that exec's
+     `plugins/design/dev-server/bin/server-up.sh` with `--root` + `--port`
+     args, prints resolved port on stdout. Default port `4400` when called
+     from this script; do NOT clobber this repo's `4399`.
+  3. `lib/normalize.sh` — `ffmpeg ... scale=1920:1080
+     ... force_original_aspect_ratio=decrease ... pad ... fps=30 ...
+     format=yuv420p ... libx264 crf 20 ... -an`. One source → one
+     normalised MP4.
+  4. `lib/make-placeholders.sh` — for each scene file expected by
+     `final/scene-source.ts` that's missing, generate a 1920×1080 black
+     MP4 of slot duration. Lets `Final.tsx` render with placeholders
+     even mid-pipeline.
+  5. `playwright/playwright.config.ts` — absolute `outputDir` via
+     `import.meta.url`, viewport 1920×1080, `video: { mode: 'on',
+     size: { width: 1920, height: 1080 } }`, 60 s timeout per spec.
+- **Validate:** `bash lib/server-up.sh --port 4400 --root /tmp` does NOT
+  affect the running 4399 instance. `bash lib/make-placeholders.sh`
+  produces placeholder MP4s of correct duration.
 
-- **Do**:
-  1. Scaffold `scripts/video/cards/`:
-     - `IntroCard.tsx` — 2.5 s, 1920×1080. Wordmark "maude", tagline "canvas-first design + workflow for Claude Code". Spring entrance (75 frames at 30 fps): opacity 0→1 + 24 px translate over the first 18 frames using `spring()`, hold 39 frames, gentle fade-out over the last 18.
-     - `OutroCard.tsx` — 3.0 s, 1920×1080. Install command in mono, GitHub URL, accent-color underline that wipes left→right with `interpolate()` over 30 frames.
-     - `LowerThird.tsx` — reusable caption overlay, 50 % accent-plate behind text, fontsize 44, used by every scene via `<Sequence>` from `Final` / `Final30`.
-  2. Brand wiring: `scripts/video/cards/tokens.ts` mirrors `--bg`, `--ink`, `--accent`, `--mono-family` values from the active DS's `colors_and_type.css`. Add a lint-time regression check that fails if the CSS source drifts beyond ±2 in any RGB channel.
-  3. Register all three in `scripts/video/cards/index.tsx` `registerRoot`.
-- **Gotcha**: Per the [no AI-tell punctuation] memory — strip em dash, en dash, curly quotes, ellipsis char from card copy. ASCII only.
-- **Validate**:
-  - `pnpm exec remotion render scripts/video/cards/index.tsx IntroCard scripts/video/.work/cards/intro.mp4 --mute` succeeds.
-  - `ffprobe scripts/video/.work/cards/intro.mp4` reports h264 / 1920×1080 / 30 fps / duration 2.50.
-  - Same for `OutroCard` (3.00 s).
-  - Color sampling on a single frame matches token `--accent` ± 2 in each RGB channel.
+### Task 4 — RENDER Scene 1 (intro) + Scene 9 (outro)
 
-### Task 3: CREATE per-scene capture surfaces
+- **Do:**
+  1. `pnpm exec remotion render scripts/video/cards/index.tsx IntroCard
+     scripts/video/.work/scenes/01-intro.mp4 --mute`.
+  2. Same for OutroCard → `09-outro.mp4`.
+- **Validate:** `ffprobe ... -show_entries format=duration` returns
+  `2.50...` and `3.00...` respectively. Visual sanity on extracted
+  frames.
 
-- **Do**:
-  1. `scripts/video/raw/` — full **raw recordings** of long-running agent flows (the source material the Remotion compositions snippet-cut from). One file per agent flow:
-     - `03a-setup-ds.cast` (asciinema cast of one full `/design:setup-ds project "<brief>"` run — typically 3-6 minutes).
-     - `04a-design-new.cast` (asciinema cast of one full `/design:new "Recipe Recap" "..."` run — typically 1-3 minutes; `--perfect` not `--quick` so the discovery beats are visible).
-     - `06a-edit.cast` (asciinema cast of one full `/design:edit "tighten the hero"` run — typically 30s-2min).
-     Each cast is committed once; re-record only when the on-screen output shape genuinely changes (e.g. new Stage in setup-ds). Snippet selection happens in Remotion (Task 12), not at record time, so a single cast supports many edits to the final cut.
-  2. `scripts/video/tapes/` — VHS `.tape` files for **short, deterministic terminal scenes** (no snippet stitching needed):
-     - `02-maude-init.tape` (Scene 2 — `maude init` is a sub-second command; record at 1× and pad to 3.5s with a `Sleep` at the end).
-     Each tape declares its own `Output`, `Set Framerate 30`, `Set FontSize 18`, `Set Width 1920`, `Set Height 1080`, `Set Theme "Dracula"`.
-  3. `scripts/video/playwright/` — Playwright spec files for **browser scenes**:
-     - `03b-ds-reveal.spec.ts` (Scene 3b — opens 2-3 DS preview specimens at `<dev-server>/canvas/system/project/preview/*`; see Task 6 for exact specimens).
-     - `04b-canvas-reveal.spec.ts` (Scene 4b — opens the freshly-created `<dev-server>/canvas/ui/Recipe+Recap`, gentle pan/zoom over the multi-artboard layout).
-     - `05-canvas-hero.spec.ts` (Scene 5 — dev-server canvas + Cmd+Click inspector).
-     - `06-edit-right.spec.ts` (Scene 6 right half — canvas auto-reload after edit).
-     - `07-comments.spec.ts` (Scene 7 — comment-pin workflow, Cut A only).
-     - `08-docs.spec.ts` (Scene 8 — docs site teaser).
-     Reuse `scripts/video/smoke/playwright.config.ts` as base.
-  4. Helper: `scripts/video/lib/server-up.sh` — thin alias to `plugins/design/dev-server/bin/server-up.sh` so every browser scene pre-flights the dev-server identically. Do NOT duplicate the helper.
-- **Pattern**: Two recording tiers — **raw casts** for long agent runs (snippet-cut later), **VHS tapes** for short deterministic commands, **Playwright specs** for browser scenes. Remotion is the compose layer for all three.
-- **Gotcha**:
-  - asciinema casts default to whatever the terminal's font/colors are at record time — set `TERM=xterm-256color` and use a known font (Menlo 18pt) before recording so re-runs match.
-  - For Remotion ingestion, asciinema casts are converted via `agg` (asciinema-agg) to MP4 at 1920×1080 30fps. Add `agg` to the toolchain phase if missing.
-  - VHS `Output` rejects absolute paths; Playwright `outputDir` is resolved against config file location — use `import.meta.url`.
-- **Validate**: Each cast, tape, and spec is independently producible. `agg --cols 200 --rows 60 --font-size 18 scripts/video/raw/03a-setup-ds.cast scripts/video/.work/raw/03a.mp4` exits 0 and produces a multi-minute MP4 at 1920×1080.
+### Task 5 — BOOTSTRAP green-field scratch project
 
-### Task 4: COMPOSE Scene 1 (intro) + Scene 9 (outro)
+> This is the **load-bearing real-work task**. The agent (executing this
+> plan) drives a full `/design:setup-ds` + `/design:new` + `/design:edit`
+> cycle against the scratch dir before any recording happens. The scratch
+> dir is the input to every Playwright spec.
 
-- **Do**: `pnpm exec remotion render scripts/video/cards/index.tsx IntroCard scripts/video/.work/scenes/01-intro.mp4 --mute` and same for `OutroCard` → `09-outro.mp4`.
-- **Validate**: `ffprobe -v error -show_entries format=duration -of csv=p=0 scripts/video/.work/scenes/01-intro.mp4` returns `2.50...`; outro returns `3.00...`.
+- **Do:**
+  1. `SCRATCH=/tmp/scratch-maude-demo-$(date +%Y%m%d); rm -rf "$SCRATCH"
+     && mkdir -p "$SCRATCH"`.
+  2. `cd "$SCRATCH" && node /Volumes/D/git/claude-design/cli/bin/maude.mjs
+     init --name recipe-recap` — produces `.ai/`, `package.json`,
+     `CLAUDE.md`, `.gitignore`, etc.
+  3. **Drive `/design:setup-ds project "<brief>"`** from this Claude
+     session against the scratch dir. The slash command's skill
+     (`plugins/design/skills/design-system/SKILL.md`) runs in this
+     session; the target dir is the scratch dir. Drive the 3-stage
+     discovery (Vision → Research → Refinement) end-to-end. Produces
+     a real `.design/system/project/` with `colors_and_type.css`,
+     `_components.css`, `README.md`, and preview specimens.
+  4. **Drive `/design:new "Recipe Recap" "<brief>"`** similarly. The
+     command spawns `frontend-design` for envelope construction +
+     generation. Produces `.design/ui/Recipe Recap.tsx` with at least
+     4 artboards (RR-01-hero / RR-02-scaler / RR-03-ingredients /
+     RR-04-print).
+  5. **Drive `/design:edit "tighten the hero, drop one row from the
+     metadata block"`** to produce one captured iteration. The edit
+     must be small enough that the resulting diff is readable in a
+     7-second window (Scene 6).
+  6. Seed `.design/_comments/recipe_recap.json` with **1 resolved + 1
+     open-with-reply** thread anchored to stable `[data-cd-id]` values
+     from the canvas. Use the same schema as
+     `plugins/design/dev-server/comments-overlay.tsx` `OverlayComment`
+     interface.
+  7. **Take screenshots of each artifact** for inclusion in the
+     execution report — confirm Stage 0/1/2/3 prints landed, DS
+     specimens render, canvas renders multi-artboard, edit produced a
+     visible diff, comments seed loads in dev-server.
+- **Pattern:** This task is the "agent-driven" part. The agent runs the
+  real slash commands; the marketing video then captures the
+  **resulting state**, not the commands themselves.
+- **Gotcha:**
+  - The agent **does not** need to use `claude --print` or spawn a
+    nested Claude. The slash commands ARE dispatched in this session
+    (which is itself a Claude session running this plan). The scratch
+    dir is just a different `CLAUDE_PROJECT_DIR`-equivalent path that
+    the design plugin's skills can target.
+  - If a skill step requires `AskUserQuestion` (Stage 0 scope picker,
+    Stage 3 refinement picks), the agent makes the picks itself based
+    on the brief — these are agent-judgement-calls, not user gates,
+    in this execution context. Document the picks in the execution
+    report so the recording's caption text matches.
+  - `/design:edit` writes a snapshot to `.design/_history/<slug>/`.
+    Keep both before/after versions so Scene 6 can show the diff.
+- **Validate:**
+  - `ls "$SCRATCH/.design/system/project/preview/"` lists at least 6
+    specimens.
+  - `ls "$SCRATCH/.design/ui/"` shows `Recipe Recap.tsx` +
+    `Recipe Recap.meta.json`.
+  - `ls "$SCRATCH/.design/_history/recipe-recap/"` has the
+    pre-edit snapshot.
+  - `cat "$SCRATCH/.design/_comments/recipe_recap.json" | jq length`
+    returns `2`.
 
-### Task 5: AUTHOR Scene 2 (`maude init`) as a `.tape`
+### Task 6 — BOOT scratch dev-server on port 4400
 
-- **Do**:
-  1. Write `scripts/video/tapes/02-maude-init.tape`:
-     ```
-     Output scripts/video/.work/scenes/02-maude-init.mp4
-     Set FontSize 18
-     Set Width 1920
-     Set Height 1080
-     Set Theme "Dracula"
-     Type "cd /tmp/scratch-maude-recording && node /Volumes/D/git/claude-design/cli/bin/maude.mjs init && ls .ai"
-     Enter
-     Sleep 3s
-     ```
-  2. Run via VHS: deterministic, headless, no Screen Recording permission.
-- **Gotcha**: `maude init` colors render via the same ANSI codes VHS captures; if output looks dim, raise contrast via `Set Theme "GitHub"` — no `CLICOLOR_FORCE` needed.
-- **Validate**: `vhs scripts/video/tapes/02-maude-init.tape && ffprobe scripts/video/.work/scenes/02-maude-init.mp4` reports duration ≥ 3.5 s.
+- **Do:** `bash scripts/video/lib/server-up.sh --root "$SCRATCH"
+  --port 4400`. Confirm `curl -sf
+  http://localhost:4400/_health` returns `{"ok":true}` and that the
+  existing dev-server on 4399 is undisturbed.
+- **Gotcha:** Two dev-servers in the same OS — they must NOT both
+  write to the same `.design/_server.json` or `_active.json`. The
+  scratch dir has its own `.design/_server.json`; this repo's is
+  separate.
+- **Validate:** Both ports return `{"ok":true}`.
 
-### Task 6: RECORD Scene 3a (`/design:setup-ds` raw cast) + AUTHOR Scene 3b (DS preview reveal)
+### Task 7 — RECORD Scene 2 (install + init + serve) via VHS
 
-- **Do (3a — terminal snippet montage source):**
-  1. Run `asciinema rec scripts/video/raw/03a-setup-ds.cast --cols 200 --rows 60` in a clean `/tmp/scratch-maude-recording/` (post-`maude init`). Use Menlo 18pt, `TERM=xterm-256color`. Inside the recording session:
-     ```
-     claude
-     /design:setup-ds project "Je to recept manager kde nastavíš počet porcí a on přepočítá ingredience. Pro mě a 3 kamarády. Chci aby to vypadalo jako kuchařka z 80s, ne jako moderní food app s velkými fotkami."
-     ```
-     Let the full 3-stage flow play out (3-6 minutes is normal — that's the point of recording once and snippeting later).
-  2. Note **snippet timecodes** in `storyboard.md` — the 5 beats listed in the "Snippet montage principle" table above. Each snippet 1.0-1.5s; pick a timecode where the on-screen content is stable and readable (avoid mid-redraw frames).
-  3. Convert to MP4 via `agg --cols 200 --rows 60 --font-size 18 scripts/video/raw/03a-setup-ds.cast scripts/video/.work/raw/03a-setup-ds.mp4`. Remotion ingests this single file and pulls each snippet via `startFrom` + `endAt`.
-- **Do (3b — DS preview reveal spec):**
-  1. Write `scripts/video/playwright/03b-ds-reveal.spec.ts`:
-     - Pre-flight: `PORT=$(plugins/design/dev-server/bin/server-up.sh)`.
-     - `await page.goto('http://localhost:${PORT}/canvas/system/project/preview/colors-accent', { waitUntil: 'networkidle' });` — hold ~1.2s.
-     - `page.goto(...preview/typography-ladder)` — hold ~1.2s.
-     - `page.goto(...preview/components-buttons)` — hold ~1.2s.
-     - `page.goto(...preview/components-cards)` — hold ~0.9s.
-     - Pick whichever 3-4 specimens the actual scaffold writes (grep `.design/system/project/preview/` for `.tsx` files); the goal is **a varied visual sweep** (color swatches → type ladder → button states → card pattern) so the viewer sees "the DS is real and visual, not just config files".
-  2. Output a single 4.5s MP4 via Playwright's video config.
-- **Pattern**: Snippet montage for the agent run (no artificial speed-up); Playwright tab-switch montage for the visual DS reveal. Both Remotion-composable.
-- **Gotcha**:
-  - For 3a: if the `→ Skipping P<N>` lines don't show because the brief didn't trigger them, re-record with a more lineage-loaded brief. Don't fake the line in post.
-  - For 3b: preview specimen filenames are not stable across DS bootstraps — grep the actual folder after recording 3a to confirm which specimens exist before authoring the spec.
-- **Validate**:
-  - 3a: `agg ... | ffprobe -` reports duration ≥ 180 s (3 min) so the snippet picker has headroom.
-  - 3b: 4.5s ± 200 ms; manual playback confirms at least 3 distinct visual styles flash by (color block + text block + component block).
+- **Do:** Write `scripts/video/tapes/01-install-init-serve.tape`:
+  ```
+  Output scripts/video/.work/scenes/02-install-init-serve.mp4
 
-### Task 7: RECORD Scene 4a (`/design:new` raw cast) + AUTHOR Scene 4b (canvas reveal)
+  Set FontSize 20
+  Set Width 1920
+  Set Height 1080
+  Set Framerate 30
+  Set Theme "Dracula"
 
-- **Do (4a — terminal snippet montage source):**
-  1. Run `asciinema rec scripts/video/raw/04a-design-new.cast` after Task 6's setup-ds completes so the project has a live DS. Inside:
-     ```
-     claude
-     /design:new "Recipe Recap" "Multi-artboard hero + portion scaler + ingredient list + cookbook-style print preview"
-     ```
-     Use the **default `--perfect`** (not `--quick`) — the critic-loop iterations are visually meaningful, the snippet picker will lift the most readable moments.
-  2. Identify 3 snippets per the table above. The middle snippet (generation log) is the trickiest — pick a stable frame where 2-3 `→ writing artboard <name>` lines are visible at once, not one being typed letter-by-letter.
-  3. Convert via `agg ... 04a-design-new.cast scripts/video/.work/raw/04a-design-new.mp4`.
-- **Do (4b — canvas reveal spec):**
-  1. Write `scripts/video/playwright/04b-canvas-reveal.spec.ts`:
-     - Pre-flight: dev-server up.
-     - `await page.goto('http://localhost:${PORT}/canvas/ui/Recipe+Recap', { waitUntil: 'networkidle' });`
-     - Brief opening pan: `page.mouse.wheel(0, -400)` then `page.evaluate(() => document.scrollingElement.scrollTo({ left: 200, top: 100, behavior: 'smooth' }))` — soft motion so the multi-artboard layout reveals progressively.
-     - Optional: hover an artboard to surface its title chip.
-     - 4s total.
-- **Pattern**: Same record-once-snippet-many pattern as Task 6, paired with a Playwright visual reveal.
-- **Gotcha**:
-  - The actual canvas file path depends on the canvas's name slug. `/design:new "Recipe Recap"` writes to `.design/ui/Recipe Recap.tsx` → URL path `Recipe+Recap` (URL-encoded space). Confirm by hitting the URL manually before authoring the spec.
-  - If the canvas renders with visible critic-iteration scaffolding artifacts (e.g. TODO comments visible in the rendered output), re-run `/design:new` until the output is clean — don't post-process artifacts out of the recording.
-- **Validate**:
-  - 4a: `agg ... | ffprobe -` reports duration ≥ 60 s.
-  - 4b: 4.0s ± 200 ms; manual playback confirms the multi-artboard canvas is visibly multi-artboard (at least 3 artboards on-screen at some point).
+  Type "cd /tmp/scratch-maude-demo-$(date +%Y%m%d)"  # use a stable scratch path
+  Sleep 200ms
+  Enter
+  Sleep 400ms
 
-### Task 8: CAPTURE Scene 5 (dev-server canvas — hero) via Playwright
+  Type "npm i -g @1agh/maude"  # real install
+  Sleep 200ms
+  Enter
+  Sleep 2.5s
 
-- **Do**:
-  1. `scripts/video/playwright/05-canvas-hero.spec.ts`:
-     - Pre-flight: `PORT=$(plugins/design/dev-server/bin/server-up.sh)` (re-used helper).
-     - `await page.goto(<canvas URL>, { waitUntil: 'networkidle' });`
-     - Pan/zoom briefly via `page.mouse.wheel()` (1 s of fluid motion to advertise the infinite-canvas).
-     - Move mouse, hover hero artboard, `page.keyboard.down('Meta')`, hover deepest child, hold 1 s for inspector ring animation, click, release Meta.
-     - Total page interaction ~8 s; Playwright records at 1920×1080.
-  2. Transcode WebM → MP4 in the same step (mirror `smoke/run.sh` pattern).
-- **Gotcha**: The inspector overlay is injected by `injectInspectorOnly()` and requires a live WS connection. Verify with `await page.locator('.dgn-insp-ring').count() > 0` after the modifier-hover.
-- **Validate**: 8.0 s duration; manual playback confirms inspector ring visible; `expect(page.locator('.dgn-insp-ring')).toBeVisible()` passes.
+  Type "maude init --name recipe-recap"  # real CLI
+  Sleep 200ms
+  Enter
+  Sleep 1.5s
 
-### Task 9: COMPOSE Scene 6 split-screen in Remotion
+  Type "maude design serve --port 4400"  # real CLI, server already running so this is a no-op message
+  Sleep 200ms
+  Enter
+  Sleep 1.5s
+  ```
+- **Pattern:** The tape **stops before any slash command**. Viewer sees
+  the install path that genuinely exists in zsh; the rest of the journey
+  happens in the browser (Scenes 3–8).
+- **Gotcha:** If `npm i -g @1agh/maude` takes too long in the real run,
+  the tape can be tightened — drop the `npm i` line and start at
+  `maude init` (assume install already done; the install URL stays in
+  the OutroCard caption).
+- **Validate:** `vhs scripts/video/tapes/01-install-init-serve.tape`
+  produces an MP4 of duration ≥ 6.0 s.
 
-- **Do**:
-  1. Capture left + right as separate sources:
-     - Left = `scripts/video/raw/06a-edit.cast` (asciinema cast of a full `/design:edit "tighten the hero"` run — typically 30s-2min). Snippet-cut in Remotion to 3 beats (prompt, mid-diff, "applied + reloading") per the snippet table above.
-     - Right = `scripts/video/playwright/06-edit-right.spec.ts` (canvas auto-reload after edit). Plays continuously at 1× — only the left terminal half is snippet-cut.
-  2. Compose in Remotion: a `<SplitScreen>` composition with `<Sequence from={0} durationInFrames={270}>` wrapping the right `<Video src={staticFile('...right.mp4')} style={{position:'absolute', left:'50%', width:'50%'}} />` (continuous) + three left `<Sequence>` blocks each pulling a snippet from `staticFile('raw/06a-edit.mp4')` with `startFrom={...}` + `endAt={...}` and absolute-positioned `left:0, width:'50%'`. 9.0 s × 30 fps = 270 frames.
-  3. Frame-perfect alignment via `startFrom` — pin the "applied + reloading" left snippet to the canvas reload moment on the right by reading `_active.json.last_change` timestamps from both runs.
-- **Pattern**: Left half is montage (jump-cuts within the half-frame), right half is continuous reality — mirrors the user experience of "I typed one feedback line and the canvas reloaded".
-- **Gotcha**: Both inputs must be normalized to 30 fps before Remotion ingests them. Reuse the `normalize()` function from `smoke/assemble.sh`.
-- **Validate**: 9.0 s duration; the third left-snippet ("→ Applied, reloading canvas") and the right-half iframe reload moment align within ±100 ms.
+### Task 8 — CAPTURE Scenes 3, 4, 5, 6, 7, 8 via Playwright (all against scratch dev-server on port 4400)
 
-### Task 10: CAPTURE Scene 7 (in-place comments) via Playwright — Cut A only
+> All six browser scenes are authored as separate spec files. Each spec
+> bumps initial wait to **2.8 s** before any interaction — canvas-shell
+> needs Bun.build compile + React mount + world layout before first
+> paint (~2 s) and the prior attempt's 800 ms wait produced black
+> frames.
 
-- **Do**:
-  1. `scripts/video/playwright/07-comments.spec.ts`:
-     - Pre-flight: dev-server up (re-use helper); confirm the two pre-seeded pins from Task 0.5 render.
-     - `await page.goto(<canvas URL>);` then scroll/zoom so both seeded pins are in frame.
-     - **Beat 1 (0-2 s):** click an empty area of an artboard — composer card appears at click point. Type a comment via `page.keyboard.type('This needs more breathing room', { delay: 60 });`. Press Enter to submit.
-     - **Beat 2 (2-4 s):** new pin renders at the click point; click it; thread popover opens.
-     - **Beat 3 (4-7 s):** in the reply field, type `@`. `page.locator('.dgn-mention-autocomplete')` (or whatever the real selector is — confirm in Task 3) shows git-shortlog committers. Arrow-down twice, Enter to insert the @handle. Continue typing `take a look`. Submit reply.
-     - **Beat 4 (7-10 s):** click "Resolve" on a different pre-existing pin; the pin animates to resolved-state (subdued color, dot, whatever the real animation is).
-     - **Beat 5 (10-12 s):** brief hold showing the canvas with the new pin + the now-resolved pin + the still-open seeded pin — three different states in one frame.
-  2. Total page interaction ~12 s; Playwright records at 1920×1080.
-- **Pattern**: The whole comment-pin overlay is in-iframe (commit 462e95b: "in-canvas iframe overlay that owns pins + composer card + thread popover + @mention autocomplete"). Playwright drives the iframe directly; no popup/window switching.
-- **Gotcha**:
-  - Confirm exact DOM selectors before authoring the spec — grep `canvas-lib.tsx` for `commentPin`, `composer`, `thread`, `mention` and use whatever class names the runtime actually emits.
-  - `@mention` autocomplete is fed by the local repo's git shortlog (commit 462e95b + endpoint `GET /_api/git-committers`, cached 60 s). For a deterministic recording, commit one extra `Co-Authored-By` line into the demo `.design/` repo so the autocomplete has at least 2-3 distinct names. Otherwise the autocomplete shows only the single dev's name and the @-completion beat looks empty.
-- **Validate**: 12.0 s duration; manual playback confirms all 5 beats land in order; `expect(page.locator('.dgn-comment-pin')).toHaveCount(3)` at the final frame.
+- **Do (Scene 3 — `03-ds-reveal.spec.ts`):**
+  - `await page.goto(<preview-specimen>, { waitUntil: 'networkidle' })`
+    for each of 4 specimens, hold 1.5 s each.
+  - Specimens to flip: `colors-accent`,
+    `colors-themes-side-by-side`, `components-buttons`,
+    `components-callout`. Confirm presence in scratch's
+    `.design/system/project/preview/` first.
+- **Do (Scene 4 — `04-canvas-reveal.spec.ts`):**
+  - `goto(<canvas-shell URL with canvas=ui/Recipe Recap.tsx>)`,
+    `waitForTimeout(2800)`. Soft horizontal pan via
+    `page.mouse.wheel(40, 0)` × 8 iterations with 110 ms between.
+- **Do (Scene 5 — `05-canvas-hero.spec.ts`):**
+  - Pan/zoom (wheel events). Then `keyboard.down('Meta')` + slow
+    hover sweep + click. Hold final frame for 1 s.
+- **Do (Scene 6 — `06-edit-hmr.spec.ts`):**
+  - Page already loaded showing the **pre-edit** Recipe Recap canvas
+    (this spec runs BEFORE we apply the edit).
+  - In the same spec, after recording ~5 s of the pre-edit state, the
+    spec writes an `edit-marker.txt` file at a known path — the
+    pipeline orchestrator picks this up, runs the agent-driven edit
+    against the scratch canvas, and the HMR broadcast triggers a live
+    reload that Playwright continues recording for ~3 s.
+  - Alternative if file-watching coordination is too tricky: pre-edit
+    the canvas before the spec runs, but capture the canvas iframe at
+    a moment of HMR reload triggered by `touch
+    .design/ui/Recipe\ Recap.tsx` from outside the spec. Document the
+    chosen approach in the execution report.
+- **Do (Scene 7 — `07-comments.spec.ts`):**
+  - Goto canvas, `waitForTimeout(2800)`, press `c` for comment-tool
+    mode, click an empty artboard area to open composer, type text,
+    submit (with `click({ force: true })` since the submit button can
+    fall outside the 1920×1080 viewport when canvas-shell renders
+    sub-region). Then click the new pin to open the thread, type
+    `@` to surface the mention popup, Arrow-down + Enter to pick a
+    committer, type more reply text, submit. Finally click an
+    existing pin, find the Resolve button via
+    `:has-text('resolve')`, click it. Hold 1.5 s.
+  - **Selectors confirmed in canvas-lib.tsx:** `.cm-pin`,
+    `.cm-composer`, `.cm-composer__textarea`, `.cm-thread`,
+    `.cm-thread__reply-textarea`, `.cm-mention-popup`,
+    `.cm-btn.cm-btn--primary`.
+- **Do (Scene 8 — `08-docs.spec.ts`):**
+  - Prefer `pnpm --filter site dev` on port 4398; fall back to
+    canvas-shell `Docs Site.tsx` mock. Soft scroll + 2 s hold.
+- **Do (transcode step):** All `.webm` outputs are normalized via
+  `lib/normalize.sh` to 1920×1080 30fps H.264 yuv420p no-audio MP4.
+  **Crop step:** if a canvas-shell render fills only the upper-left
+  sub-region of the viewport (observed in prior attempt — canvas-shell
+  inner iframe is sized to a fixed width independent of viewport),
+  apply `crop=960:540:0:0,scale=1920:1080:flags=lanczos` to fill the
+  frame. Decide per-scene; brand cards / VHS tapes / real `site/`
+  docs use full-frame, no crop.
+- **Gotcha:**
+  - 2.8 s initial wait is non-negotiable. Anything shorter produces
+    black frames per the prior attempt.
+  - Playwright's video continues recording even when the spec throws.
+    Use `.click({ force: true }).catch(() => {})` for any
+    interaction that might land outside the viewport — the recording
+    is more valuable than the test pass.
+  - The dev-server's canvas-shell renders the canvas world inside an
+    iframe with **fixed pixel dimensions** at first paint. Width is
+    not viewport-relative until pan/zoom interactions resize. Hence
+    the crop step for scenes 3–7.
+- **Validate:** Each scene produces a normalized 1920×1080 MP4 with
+  visible content (not 8.6 KB black-only). Frame extraction at the
+  mid-point shows the expected UI.
 
-### Task 11: CAPTURE Scene 8 (docs teaser) via Playwright
+### Task 9 — COMPOSE Final.tsx + Final30.tsx + render + post-process
 
-- **Do**:
-  1. `scripts/video/playwright/08-docs.spec.ts`: `await page.goto('http://localhost:3000/'); await page.waitForLoadState('networkidle'); await page.evaluate(() => window.scrollTo({ top: 600, behavior: 'smooth' })); await page.waitForTimeout(3500);`.
-  2. Use the real `site/` localhost (`pnpm --filter site dev`) — pre-flight in the run script. Fall back to `.design/ui/Docs Site.tsx` only if `site/` build is broken; note the choice in storyboard.
-  3. Transcode WebM → MP4 + trim to 3.5 s (Cut A) / 2.5 s (Cut B trims this same source).
-- **Gotcha**: First-load CLS is still a risk. Pre-warm via a discarded first `goto()` + 2 s wait, then a fresh `page.reload()` before the recorded interaction.
-- **Validate**: 3.5 s duration (Cut A); hero + at least one section visible in the scroll path.
-
-### Task 12: COMPOSE Final Cut A (`Final.tsx`, ~55s) + Cut B (`Final30.tsx`, 30s) + post-loudnorm
-
-- **Do**:
-  1. `scripts/video/final/Final.tsx`: one Remotion composition, **1800 frames (60 s × 30 fps)**, 1920×1080. Inside:
-     - `<Sequence from={0} durationInFrames={75}><Video src={staticFile('scenes/01-intro.mp4')} /></Sequence>`
-     - `<Sequence from={75} ...><TransitionSeries>...</TransitionSeries></Sequence>` — scenes 2-8 wired through `@remotion/transitions/fade` (300 ms xfades between top-level scenes; 150 ms hard cuts between 3a↔3b and 4a↔4b sub-beats). All `<Video>` sources are played at **1× speed** — there are no `playbackRate` modifiers. Scene 3a and Scene 4a are each composed as **multiple `<Sequence>` blocks pulling snippets from a single raw cast MP4** via `startFrom` / `endAt` (see Tasks 6 + 7 + 9 for the snippet timecode tables). Scene 6 left half is composed similarly.
-     - `<Sequence from={1710} durationInFrames={90}><Video src={staticFile('scenes/09-outro.mp4')} /></Sequence>`
-     - `<Audio src={staticFile('music.mp3')} volume={(f) => spring({ frame: f, from: 0, to: 0.8, config: { damping: 100 } })} />` — music bed with fade-in spring; tapers to 0 over the last 60 frames.
-     - `<LowerThird ...>` per-scene captions via the reusable card component from Task 2 (one `<Sequence>` per caption).
-  2. `scripts/video/final/Final30.tsx`: 900 frames (30 s × 30 fps), 1920×1080. Reuses the same scene assets and `LowerThird`, drops Scenes 3 + 7 entirely; keeps Scene 4 hybrid (terminal snippet + canvas reveal). See Cut B storyboard table for the exact frame ranges.
-  3. `scripts/video/final/index.tsx`: `registerRoot` with both composition ids: `Final` and `Final30`.
-  4. Render:
+- **Do:**
+  1. `final/scene-source.ts` — declare every scene path. Paths are
+     relative to `--public-dir scripts/video/.work` (required CLI
+     flag — `Config.setPublicDir(...)` in `final/remotion.config.ts`
+     does NOT take effect for non-root entries; the CLI flag is
+     authoritative — see DDR).
+  2. `final/SceneClip.tsx` — `<Video src={src} startFrom?={n}
+     muted />` inside `<AbsoluteFill>`. Optional `debugLabel` prop
+     for authoring; unset for final renders.
+  3. `final/Final.tsx` — 1800 frames (60 s @ 30 fps), 1920×1080.
+     Sequenced scenes with 9-frame opacity-envelope cross-fades.
+     `LowerThird` overlay per scene with caption. Audio bed
+     optional.
+  4. `final/Final30.tsx` — 900 frames (30 s @ 30 fps), drops scene 3
+     + 7, same shape otherwise.
+  5. `final/index.tsx` — `registerRoot` with both compositions.
+  6. Render:
      ```sh
-     pnpm exec remotion render scripts/video/final/index.tsx Final   site/public/demo.mp4    --codec=h264 --crf=23
-     pnpm exec remotion render scripts/video/final/index.tsx Final30 site/public/demo-30s.mp4 --codec=h264 --crf=23
+     pnpm exec remotion render scripts/video/final/index.tsx Final \
+       site/public/demo.mp4 \
+       --codec=h264 --crf=23 \
+       --public-dir scripts/video/.work
+     pnpm exec remotion render scripts/video/final/index.tsx Final30 \
+       site/public/demo-30s.mp4 \
+       --codec=h264 --crf=23 \
+       --public-dir scripts/video/.work
      ```
-  5. Post-process loudnorm on both:
-     ```sh
-     for f in site/public/demo.mp4 site/public/demo-30s.mp4; do
-       ffmpeg -y -i "$f" -af loudnorm=I=-18:LRA=11:TP=-1.5 -c:v copy "${f%.mp4}.norm.mp4"
-       mv "${f%.mp4}.norm.mp4" "$f"
-     done
-     ```
-  6. Extract poster from primary cut: `ffmpeg -y -i site/public/demo.mp4 -vf "select=eq(n\\,0)" -vframes 1 -q:v 2 site/public/demo-poster.jpg`.
-- **Gotcha**:
-  - Same Pixabay / Mixkit / FMA license fallback ladder from Task 1.
-  - Primary cut at CRF 23 typically lands ~12-14 MB for 55 s. If over 16 MB (Vercel CDN soft limit for inline embed), re-render with `--crf=26`.
-  - Tight cut at CRF 23 typically lands ~6-7 MB for 30 s. If over 10 MB (GitHub limit), drop to `--crf=26` or `--video-bitrate=2200k`.
-  - `@remotion/transitions` requires `pnpm add -D -w @remotion/transitions` — folded into Task 2 of the toolchain phase's devDeps list.
-- **Validate**:
-  - `ffprobe -v error -show_entries format=duration,size -of default=nw=1 site/public/demo.mp4` → duration 60.00s ±0.05, size < 16 MB.
-  - `ffprobe -v error -show_entries format=duration,size -of default=nw=1 site/public/demo-30s.mp4` → duration 30.00s ±0.05, size < 10 MB.
-  - `ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of csv=p=0` → `aac` for both.
-  - Loudness sanity on both: `ffmpeg -i <file> -af loudnorm=print_format=json -f null - 2>&1 | tail -25` → integrated loudness -18 ± 2 LU.
-  - Manual: full playback at native 1080p; captions legible; transitions smooth (no black flicker); audio audible but not overpowering. Comment-pin beats in Scene 7 read cleanly (Cut A only).
+  7. Loudnorm: only if music bed exists; skip if silent.
+  8. Poster: `ffmpeg -y -i site/public/demo.mp4 -vf "select=eq(n\\,30)"
+     -vframes 1 -q:v 2 site/public/demo-poster.jpg`.
+- **Gotcha:**
+  - `cards/index.tsx` must NOT re-export `LowerThird` — re-exporting
+    triggers a duplicate `registerRoot` from Final's bundler reach.
+    Final imports `LowerThird` directly from
+    `cards/LowerThird.tsx`.
+  - The 9-frame fade-in / fade-out envelope must NOT exceed half the
+    scene's slot duration for the shortest scene (intro = 75 frames;
+    9-frame envelope is fine). If a scene drops below 30 frames the
+    envelope eats it.
+- **Validate:**
+  - `ffprobe -v error -show_entries format=duration,size -of
+    default=nw=1 site/public/demo.mp4` → duration 60.00 ± 0.5,
+    size < 16 MB.
+  - Same for `demo-30s.mp4` — duration 30.00 ± 0.5, size < 10 MB.
+  - Extract frames at 1 s, 12 s, 24 s, 36 s, 48 s, 58 s — each shows
+    visible content (no all-black sample frames at non-fade
+    boundaries).
 
-### Task 13: UPDATE `site/` landing — embed primary cut
+### Task 10 — UPDATE `site/` landing to embed primary cut
 
-- **Do**:
-  1. In `site/app/(home)/page.tsx`: add `<video src="/demo.mp4" poster="/demo-poster.jpg" autoPlay muted loop playsInline controls={false} className="..." />` near the top of the hero.
-  2. Width: full-bleed within hero container, `aspect-video`, rounded corners matching the site's existing radius token.
-  3. Respect `prefers-reduced-motion` — pause when set via a tiny `useEffect`.
-- **Gotcha**: `playsInline` is required for iOS autoplay. `muted` is required for autoplay everywhere.
-- **Validate**: `cd site && pnpm dev`, open `http://localhost:3000`, confirm video autoplays muted and loops; toggle macOS Reduced Motion and confirm pause behavior.
+- **Do:**
+  1. Create `site/components/mdcc/demo-video.tsx` — client component
+     with autoplay muted loop playsinline, prefers-reduced-motion
+     pause via useEffect + matchMedia.
+  2. Insert `<DemoVideo />` in `site/app/(home)/page.tsx` as a new
+     `.mdcc-demo-section` between `.mdcc-hero` and `.mdcc-cat-grid`.
+  3. Add `.mdcc-demo-section` + `.mdcc-demo-video` styles to
+     `site/app/global.css` — aspect-ratio 16/9, `border: var(--rule-default)`,
+     `background: var(--bg-1)`, `<video>` `object-fit: cover`.
+- **Gotcha:** `playsInline` is required for iOS autoplay. `muted` is
+  required for autoplay everywhere.
+- **Validate:** `pnpm --filter @maude/site build` exits 0. Manual:
+  `pnpm --filter @maude/site dev`, open `localhost:3000`, confirm
+  autoplay + loop + reduced-motion pause.
 
-### Task 14: UPDATE `README.md` — embed tight cut
+### Task 11 — UPDATE `README.md` to embed tight cut
 
-- **Do**:
-  1. Below H1 and tagline, add a video tag pointing to the GitHub-uploaded URL of `demo-30s.mp4`.
-  2. To get the URL: `gh release create demo-assets --notes "marketing assets" site/public/demo-30s.mp4` OR drag-drop into a fresh issue/PR to get the user-content CDN URL. Prefer release assets — reproducible.
-  3. README block:
-     ```md
-     <video src="<CDN_URL>" controls muted playsinline width="800"></video>
+- **Do:**
+  1. Below H1, add a `<video src="..." controls muted playsinline
+     width="800">` tag pointing at the GitHub release asset URL
+     (`https://github.com/1aGh/maude/releases/latest/download/demo-30s.mp4`).
+  2. Add a one-line link to the docs landing for the full cut.
+  3. Add a `<!-- comment -->` block above the video tag with the
+     repro command (`gh release create demo-assets-vX.Y.Z ...`).
+- **Gotcha:** README on npm WILL NOT render the video. Acceptable —
+  the GitHub embed is the goal.
+- **Validate:** Open the GitHub PR / commit preview — `<video>` tag
+  renders inline once the release asset is uploaded.
 
-     > For the full ~55s walkthrough (incl. `/design:setup-ds` discovery and comments), see the [docs site](https://maude.iagh.cz).
-     ```
-- **Gotcha**: README on npm WILL NOT render the video. Acceptable: keep one README, GitHub renders video, npm shows broken tag (or wrap in a `<!-- video -->` comment a build step strips for npm — overkill for v1).
-- **Validate**: View README on github.com/1aGh/maude, confirm video renders inline; the "full walkthrough" link points to docs landing where Cut A lives.
+### Task 12 — VERIFY npm publish hygiene
 
-### Task 15: EXCLUDE both videos from npm publish
+- **Do:** Write `scripts/check-publish-size.sh`:
+  - Runs `npm pack --dry-run --json | jq ...` and asserts:
+    - Tarball size < 2 MB (current baseline ~1.04 MB; 2 MB ceiling
+      gives 1 MB headroom for normal growth).
+    - No file in `files[].path` matches `demo(-30s)?\.mp4` or
+      `scripts/video/`.
+- **Validate:** `bash scripts/check-publish-size.sh` exits 0.
 
-- **Do**:
-  1. Verify `site/public/demo.mp4` and `site/public/demo-30s.mp4` are **NOT** matched by any `package.json` `files` entry.
-  2. Add a parity check `scripts/check-publish-size.sh` that runs `npm pack --dry-run --json | jq '.[0].size'` and fails over 1 MB.
-- **Gotcha**: If anyone adds `site/` to `files` later, ~22 MB of MP4 ships to every `npm i` user.
-- **Validate**: `npm pack --dry-run 2>&1 | grep -cE 'demo(-30s)?\.mp4'` returns `0`.
+### Task 13 — UPDATE scripts/video/README.md with the green-field pipeline
 
-### Task 16: EXTEND `scripts/video/README.md` with the marketing pipeline
+- **Do:** Append a "Marketing pipeline" section describing:
+  - Scratch project bootstrap (Task 5) — what the agent does before
+    recording.
+  - Per-scene re-record commands.
+  - Render commands for both cuts.
+  - The 2.8 s initial-wait constraint for Playwright canvas-shell
+    scenes.
+  - The optional crop step for canvas-shell sub-region scenes.
+- **Gotcha:** Append; don't rewrite the smoke section.
+- **Validate:** A fresh contributor reading the README can re-run the
+  whole pipeline without asking.
 
-- **Do**: Append a "Marketing pipeline" section that documents: how to re-record each scene independently (one per `.tape` / `.spec.ts` filename), how to regenerate **both cuts** (`pnpm exec remotion render scripts/video/final/index.tsx Final ...` + `... Final30 ...`), where the music license lives, the seeded comments state for Scene 7, and the exact terminal/window dimensions used for source captures.
-- **Pattern**: Same tone as the existing smoke README. Keep ASCII-only per the [no AI-tell punctuation] memory.
-- **Gotcha**: Do not rewrite the smoke README — augment it.
-- **Validate**: A fresh agent reading the unified README can reproduce both cuts (primary and tight).
+### Task 14 — RECORD a DDR
 
-### Task 17: RECORD a DDR
-
-- **Do**: Create `.ai/decisions/DDR-NNN-agent-orchestrated-marketing-video-pipeline.md`. Document the phase-specific choices: primary cut grew from 30s → ~55s to cover setup-ds + comments (the two highest-leverage features that shipped late-cycle); two cuts not one (autoplay length constraints differ between Vercel-hosted docs landing and GitHub-rendered README); Remotion `<TransitionSeries>` over ffmpeg xfade math; comment scene depends on pre-seeded `.design/_comments/<slug>.json` so the pin state is deterministic.
-- **Gotcha**: Reference DDR for the toolchain (Remotion + VHS + Playwright + ffmpeg) — do not re-litigate. Also reference DDR-009 (Bun runtime) and DDR-025 (canvas-lib single source) since the dev-server lifecycle is part of the recording pipeline.
-- **Validate**: DDR follows project DDR schema; cross-linked from this plan AND from the toolchain DDR.
+- **Do:** Create
+  `.ai/decisions/DDR-035-marketing-video-real-green-field-capture.md`
+  documenting:
+  1. The hard reset away from cinematic terminal casts.
+  2. Why no slash command appears in the marketing reel terminal.
+  3. The two-port dev-server pattern (4399 for this repo, 4400 for
+     scratch).
+  4. The 2.8 s wait constraint + crop step for canvas-shell scenes.
+  5. `cards/index.tsx` non-re-export discipline.
+  6. `--public-dir` CLI flag is authoritative over `setPublicDir(...)`
+     for non-root entries.
+- **Validate:** DDR follows project schema, cross-linked from this
+  plan + from DDR-031.
 
 ---
 
@@ -508,81 +693,71 @@ Keywords: CREATE, UPDATE, ADD, REMOVE, REFACTOR, MIRROR
 
 | Cut | Duration | Embed target | Filename | Size budget |
 |-----|----------|--------------|----------|-------------|
-| **A — primary** | ~60 s | `site/` landing (`<video autoPlay muted loop>`) | `site/public/demo.mp4` | < 16 MB |
-| **B — tight** | 30.0 s | GitHub `README.md` (`<video controls>`) | `site/public/demo-30s.mp4` | < 10 MB (GitHub limit) |
+| **A — primary** | ~60 s | `site/` landing | `site/public/demo.mp4` | < 16 MB |
+| **B — tight** | 30.0 s | GitHub README | `site/public/demo-30s.mp4` | < 10 MB |
 
-Both cuts share the same scene library, the same captions schema, and the same music bed (different in/out trims). Re-recording a scene in `scripts/video/tapes/` or `scripts/video/playwright/` rebuilds both cuts on the next `pnpm exec remotion render ...` invocation.
+Both cuts share the same scene library + captions + brand cards.
 
 ---
 
 ## Validation
 
-Run these commands to confirm zero regressions:
-
-1. **Toolchain green**: `pnpm run video:smoke` exits 0 (delegates to the toolchain phase).
-2. **Pipeline end-to-end (idempotent)**:
-   ```sh
-   bash scripts/video/download-music.sh
-   bash scripts/video/render-all-scenes.sh
-   pnpm exec remotion render scripts/video/final/index.tsx Final   site/public/demo.mp4    --codec=h264 --crf=23
-   pnpm exec remotion render scripts/video/final/index.tsx Final30 site/public/demo-30s.mp4 --codec=h264 --crf=23
-   for f in site/public/demo.mp4 site/public/demo-30s.mp4; do
-     ffmpeg -y -i "$f" -af loudnorm=I=-18:LRA=11:TP=-1.5 -c:v copy "${f%.mp4}.norm.mp4"
-     mv "${f%.mp4}.norm.mp4" "$f"
-   done
-   ```
-   exits 0, produces both MP4s with the right durations + sizes.
-3. **Video integrity**: `ffprobe -v error site/public/demo.mp4` returns no errors; same for the 30s cut.
-4. **Captions readable**: manual playback at 1×, 0.5× speeds — every caption is on-screen ≥ 2.0 s and centered.
-5. **Audio levels**: integrated loudness within -18 ± 2 LU for both cuts.
-6. **Site embed**: `cd site && pnpm dev` — landing autoplays the primary cut muted, loops cleanly, reduced-motion pauses.
-7. **README on GitHub**: render preview via `gh pr view --web` — tight cut renders inline.
-8. **npm publish hygiene**: `npm pack --dry-run 2>&1 | tee /tmp/pack.log; ! grep -qE 'demo(-30s)?\.mp4' /tmp/pack.log`.
-9. **Lint**: `pnpm lint` passes after embedding the `<video>` element.
-10. **Manual**:
-    - Watch the full primary cut on a retina screen at native 1080p — no compression artifacts on text, no audio clipping, transitions smooth.
-    - Watch tight cut at mobile-size browser (375×812) — captions still legible.
-    - **Scene 7 sanity (Cut A only):** the three comment-pin beats (new pin, @mention autocomplete, resolve) all read clearly — if any beat blurs into the next, raise that beat's duration in `Final.tsx` by 0.5 s.
+1. `pnpm run video:smoke` exits 0 (toolchain prereq).
+2. Scratch project exists at `/tmp/scratch-maude-demo-<date>/` with a
+   real `.design/system/project/`, `.design/ui/Recipe Recap.tsx`, a
+   history snapshot, and 2 seeded comments.
+3. Scratch dev-server on port 4400 returns `{"ok":true}` at `/_health`.
+4. `bash scripts/video/render-all-scenes.sh` exits 0; every scene MP4
+   under `scripts/video/.work/scenes/` is > 50 KB (sanity bound — black
+   frames are ~8.6 KB).
+5. `pnpm exec remotion render ... Final ...` produces `site/public/demo.mp4`
+   at ~60.0 s and < 16 MB.
+6. Same for `Final30` → `demo-30s.mp4` at 30.0 s and < 10 MB.
+7. Frame samples at 1 s, 12 s, 24 s, 36 s, 48 s, 58 s of the primary cut
+   all show visible content.
+8. `cd site && pnpm dev` → `localhost:3000` autoplays the primary cut
+   muted, loops, respects reduced-motion.
+9. `bash scripts/check-publish-size.sh` exits 0.
+10. Manual: watch the primary cut on a retina screen at native 1080p.
+    Read captions. Confirm: **no Claude TUI is visible**, **no slash
+    command is typed in a shell**, every terminal frame shows zsh +
+    real CLI output, every browser frame shows the live scratch
+    dev-server.
 
 ---
 
-## Scenario Coverage (UI tasks — required)
+## Scenario Coverage (UI tasks)
 
-> The video embed in `site/` and the README IS a UI change. Scenarios verify the player loads, autoplays muted, loops, and respects reduced-motion across desktop + mobile web.
-
-**Existing scenarios covering affected flows:**
+The video embed in `site/` and the README IS a UI change. Scenarios:
 
 | Scenario | Covers | Status |
 |----------|--------|--------|
-| (none for `site/` landing today — confirm via `ls .ai/scenarios/`) | — | 🆕 new |
-
-**New scenarios to create:**
-
-- `site-landing-video-autoplay` — flow: navigate to `/`, assert `<video src="/demo.mp4">` element present + `currentTime > 0` after 1 s + `muted=true` + `loop=true`. Platforms: web-desktop, web-mobile.
-- `site-landing-reduced-motion` — flow: emulate `prefers-reduced-motion: reduce`, assert `<video>.paused === true`. Platforms: web-desktop.
-- `readme-video-loads` — flow: navigate to the GitHub README rendered view, assert the `<video>` tag points at the release asset and the asset returns HTTP 200. Platform: web-desktop. (Cheap precondition for the GitHub embed not silently breaking.)
-
-The `scenario-runner` agent runs these as part of `/validate`.
+| `site-landing-video-autoplay` | landing autoplays muted, loops | 🆕 new |
+| `site-landing-reduced-motion` | reduced-motion pauses | 🆕 new |
+| `readme-video-loads` | GitHub release asset HTTP 200 | 🆕 new |
 
 ---
 
 ## Acceptance Criteria
 
-- [ ] All tasks 0-17 completed
-- [ ] `/flow:utils-verify` passes after each task (Edit-Verify Loop, max 3 iterations)
-- [ ] `/validate` passes overall:
-  - [ ] Static (types, lint, format) — `site/` clean
-  - [ ] Tests — none new; pipeline scripts run idempotently
-  - [ ] Build — `site/` builds; both demo MP4s committed
-  - [ ] **`scenario-runner`**: site-landing-video-autoplay + site-landing-reduced-motion + readme-video-loads green
-  - [ ] `design-system-guard`: 0 blockers on the embedded video container
-  - [ ] `a11y-auditor`: 0 blockers — `<video>` has `aria-label`, captions burned in (visible without audio), no autoplay sound (muted)
-- [ ] `site/public/demo.mp4` exists, < 16 MB, ~60.0 s ± 0.5, H.264 + AAC
-- [ ] `site/public/demo-30s.mp4` exists, < 10 MB, exactly 30.0 s, H.264 + AAC
-- [ ] `site/public/demo-poster.jpg` exists, used as `<video poster>`
-- [ ] GitHub README renders the tight cut inline; tight cut link to docs landing for the full cut works
-- [ ] npm `--dry-run` does NOT include either demo MP4
-- [ ] DDR recorded
-- [ ] Music license URL committed in `scripts/video/storyboard.md`
-- [ ] No DDR-worthy decision left unrecorded
-- [ ] Captions strictly ASCII (no em dash, en dash, curly quotes, ellipsis char) per project memory
+- [ ] All tasks 0–14 completed.
+- [ ] **Scratch project bootstrapped end-to-end before any recording
+      starts** — `.design/system/project/`, `.design/ui/Recipe Recap.tsx`,
+      `.design/_history/`, `.design/_comments/recipe_recap.json` all
+      exist and the dev-server on port 4400 renders them.
+- [ ] **Zero Claude TUI frames in either cut.**
+- [ ] **Zero `/design:*` slash commands typed in any terminal scene.**
+      Terminal scenes only show real shell-runnable CLI: `npm i`,
+      `maude init`, `maude design serve`.
+- [ ] `site/public/demo.mp4` exists, ~60.0 s, < 16 MB, H.264 yuv420p.
+- [ ] `site/public/demo-30s.mp4` exists, 30.0 s, < 10 MB.
+- [ ] `site/public/demo-poster.jpg` exists.
+- [ ] Site build green; landing autoplays + loops + reduced-motion
+      pauses.
+- [ ] README `<video>` tag wired to the release asset URL.
+- [ ] `npm pack --dry-run` does NOT include any MP4 or
+      `scripts/video/` path.
+- [ ] DDR-035 recorded.
+- [ ] Music license URL committed (if music is bedded) OR storyboard
+      documents the silent-cut decision.
+- [ ] All captions ASCII-only per [no AI-tell punctuation] memory.
