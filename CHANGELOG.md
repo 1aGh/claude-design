@@ -1,5 +1,64 @@
 # @1agh/maude
 
+## 0.16.0
+
+### Minor Changes
+
+- 462e95b: design: in-place FigJam-style comments — pins, composer, thread popover, @mention autocomplete
+
+  The comment composer + chip strip moved off the shell BottomBar and into the canvas iframe itself. Clicking an element in the Comment tool now opens a small DS-styled composer bubble anchored to the click point; pins render as 24×24 accent-fill badges at the target element's top-right corner; clicking a pin opens a thread popover with replies, resolve / reopen / delete, and an `@`-trigger autocomplete fed by the local repo's `git shortlog`.
+
+  Schema additions (back-compatible — legacy comments default-fill on read, persist on next write):
+
+  - `Comment.author` — defaults to `git config user.name` at create time
+  - `Comment.thread: Reply[]` — `{ id, author, body, created }`
+  - `Comment.mentions: string[]` — `@handle` tokens parsed across body + thread
+
+  New HTTP endpoints (Bun runtime, per DDR-009):
+
+  - `POST /_api/comments/<id>/reply` — append to thread, fold @mentions into the union
+  - `GET /_api/git-committers` — committer list for the @mention popup, cached 60 s server-side
+
+  Architecture: the overlay renders as a `position: fixed` sibling of `.dc-canvas` (NOT portaled into `.dc-world`) so its z-index actually competes with `SelectionHalos`. Pins stay 24 px at every zoom level, FigJam-style. See [DDR-034](.ai/decisions/DDR-034-comments-overlay-screen-coord-fixed-position.md) for the architectural rationale.
+
+  A11y: comment pin is a `<button>` with `aria-label`; thread popover is `role="dialog"` with focus management + Esc-to-close + focus-restore to the originating pin; mention popup uses the WAI-ARIA combobox-with-listbox pattern.
+
+- c9278b2: **Project renamed `md-claude` → Maude.** Atomic rebrand across the npm package, GitHub repo, Claude Code marketplace, CLI binary, dev-server runtime, docs site, and self-dogfooding directories. See [`docs/MIGRATING-MD-CLAUDE-TO-MAUDE.md`](../docs/MIGRATING-MD-CLAUDE-TO-MAUDE.md) and [DDR-032](../.ai/decisions/DDR-032-rename-md-claude-to-maude.md).
+
+  User-visible changes:
+
+  - **npm**: `@1agh/md-claude` → `@1agh/maude`; 7 per-platform sub-packages renamed in lockstep (`@1agh/maude-<slug>`). The old package was unpublished within npm's 72h grace window — `npm i -g @1agh/md-claude` now 404s.
+  - **GitHub**: repo `1aGh/md-claude` → `1aGh/maude` (GitHub 301-redirects raw URL fetches; marketplace install needs to be re-added by hand because the marketplace `name:` field changed).
+  - **CLI**: primary bin is `maude` (`maude init`, `maude config`, `maude design serve`). The legacy `mdcc` bin still ships as a deprecation-warning shim and will be removed in v0.17.x. Same for `mdcc-safe` → `maude-safe`. `MD_CLAUDE_SKIP_POSTINSTALL` env var renamed to `MAUDE_SKIP_POSTINSTALL` (old name accepted one cycle).
+  - **Marketplace install syntax**: `flow@md-claude` → `flow@maude`, `design@md-claude` → `design@maude`.
+  - **Canvas-lib virtual specifier**: `@mdcc/canvas-lib` → `@maude/canvas-lib`. TSX canvases must update their import statements; the dev-server resolver no longer matches the old name.
+  - **Workspace scopes** (internal pnpm): `@md-claude/site`, `@md-claude/dev-server`, `@md-claude/hub` → `@maude/*`.
+  - **Docs site canonical host**: `maude.iagh.cz` (DNS + Vercel wiring is a post-merge maintainer task).
+
+  Intentionally preserved as internal namespaces (DDR-032 sub-decision 2): CSS class identifiers `.mdcc-*`, CSS custom properties `--mdcc-*`, the `site/components/mdcc/` path, the `~/.config/mdcc/` XDG config directory, and `site/app/mdcc-tokens.css`.
+
+- 591f9a8: flow: Add security review subagents — defender (`security-auditor`) for OWASP-class static scans + attacker (`ethical-hacker`) for adversarial threat modeling including AI/MCP attack surface (prompt injection, MCP tool poisoning, confused-deputy, the trifecta). New skill `security-rules` (67 hard-stops across classic + AI-era), new command `/flow:validate-security`, and hooks into `/flow:validate` (step 6.5), `/flow:review-code`, `/flow:done`. New config: top-level `security.{severityFloor,scope,includeAi}` + `skills.securityRules.enabled` (defaults sane; downstream projects get it for free via `mdcc init`).
+- 2c90eb1: **`/design:setup-ds` rewritten as 3-stage discovery (Vision → Research → Refinement).** Replaces the v1 12-question fixed dotazník (3 rounds — Identity / Brand / Pro-designer) with a conversational small-step flow that moves from abstract to concrete the way a human designer talks to a stakeholder. See [DDR-033](../.ai/decisions/DDR-033-three-stage-discovery.md) for full reasoning.
+
+  User-visible changes:
+
+  - **Stage 0 — Scope gate.** One picker (`market` / `internal` / `personal` / `oss`) up front, steers Stage 1 wording + post-scaffold aspiration target. The only hardcoded picker in the whole flow.
+  - **Stage 1 — Vision.** 11 conversational free-text prompts in 3 batches (PŘÍPRAVA · PROSTOR · DUŠE), emitted as plain prose chat messages with one example per prompt. `skip` is always a valid answer. Output = rich `vision-brief.json`. Pastier's framework (Zrcadlo · Facka · Ulice · Kmen · Zkratka · Charakter · OST) templates the prompts but is invisible in the UI.
+  - **Stage 2 — Research.** `ux-research-agent` now receives the full vision-brief (was: one-liner). Returns the existing `discovery` payload plus a new `recommendations` block with `{recommendation, alternatives[], confidence, rationale}` per design decision (palette / typography / signature_treatment / majak_3_codes / density / voice). Pastier probe templates live at `plugins/design/skills/design-system/_pastier-probe-templates.md`.
+  - **Stage 3 — Refinement.** Adaptive 0–N AskUserQuestion picks driven by confidence: `≥ 0.85` SKIP / `0.60–0.85` ASK with pre-pick / `< 0.60` ASK without pre-pick. Maják 3-code combination is always a Stage 3 Q. **Zero hardcoded fallback ladders** — if research fails entirely, flow STOPS (re-run / abort), no degradation.
+  - **`<brief>` argument shortcut.** Rich `/design:setup-ds <name> "<paragraph>"` invocations pre-fill matching vision-brief fields and skip those Stage 1 prompts (each skip printed inline so user can correct).
+  - **`--quick` semantics.** Now collapses Stage 1 to 4 prompts (P1 + P5 + P8 + P10) instead of skipping pre-DDR-033 Round 3.
+  - **Post-scaffold critic panel rebranded as "4 kola značky"** (rename only, no agent-code changes): **Kolo 1 — Srozumitelnost** (completeness + a11y), **Kolo 2 — Atraktivita** (graphic-design + signature-moment), **Kolo 3 — Konzistence** (typography + brand + copy). Pastier's fourth kolo (Frekvence) is dropped — outside DS surface.
+
+  Re-bootstrap of existing DSes is lossy on Stage 1 fields (existing DSes don't carry `vision-brief.json`); skill infers from README + tokens + `_layout.css`, user confirms / corrects in a single chat message before Stage 2 runs. `--force` always re-runs Stage 2.
+
+  v1 reference preserved at `plugins/design/skills/design-system/_DISCOVERY-v1.md` for a transition window.
+
+### Patch Changes
+
+- ce72771: flow: Brownfield testing onboarding — three opt-in/advisory additions to make the flow plugin friendlier on existing repos with no test runner or thin coverage. (1) `flow:test-coverage` subagent gains `path <glob>` and `branch` scope modes alongside the existing `diff` default — unblocks brownfield audits like "audit `apps/api/auth/`" without abusing the diff mode; path/branch reports are framed as advisory (no "blockers" count). (2) `/flow:init` Step 2c surfaces a stack-appropriate test-runner recommendation when detection returns `tests=unknown` (vitest for Next/Vite, jest for Expo, pytest, go-test, cargo-test, JUnit) — recommendation only, no scaffolding. (3) `/flow:done` Step 7a refreshes `.ai/state/coverage-baseline.json` on the configured `baselineBranch` (default `main`) when `skills.coverageTrend.enabled` — pairs with the coverage-trend warning already in `/flow:validate` Step 2a. All three are opt-in / advisory by design; the testing-rules iron law still owns greenfield TDD discipline.
+- 38de33e: chore: Set up agentic video pipeline toolchain in `scripts/video/` (repo-only, not published to npm). Installs Remotion 4 + VHS 0.11 + Playwright 1.60 + ffmpeg 8.1 and proves they integrate via `pnpm run video:smoke` — a ~13s stitched proof clip (VHS terminal scene + Playwright dev-server canvas + Remotion smoke card, normalized + concatenated). Adds `scripts/video/README.md` runbook + DDR-031 documenting the toolchain choice (rejects custom bash pipeline; ~50–60% less code than the original hand-rolled ladder). Refactors the follow-up plan (`.ai/plans/phase-15.5-marketing-demo-video-30s.md`) to consume the new declarative stack. No user-visible behavior change — this lands the infrastructure the next phase needs to author the 30s marketing demo.
+
 > Renamed from `@1agh/md-claude` in v0.15.0. See [`docs/MIGRATING-MD-CLAUDE-TO-MAUDE.md`](docs/MIGRATING-MD-CLAUDE-TO-MAUDE.md). Historic entries below reference the old name as a matter of record.
 
 ## 0.15.0
