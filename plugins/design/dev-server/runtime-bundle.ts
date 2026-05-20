@@ -25,6 +25,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 
 export const RUNTIME_PACKAGES = [
   'react',
+  'react-dom',
   'react-dom/client',
   'react/jsx-runtime',
   'react/jsx-dev-runtime',
@@ -216,8 +217,10 @@ function escapeRegex(s: string): string {
  * list so internal imports of these sibling paths don't drag the runtime back
  * into the bundle.
  */
-function subPathExternals(pkg: RuntimePackage): string[] {
-  if (pkg === 'react-dom/client') return ['react-dom'];
+function subPathExternals(_pkg: RuntimePackage): string[] {
+  // Phase 5.1 — `react-dom` is now its own RUNTIME_PACKAGES entry (so
+  // `createPortal` is bundled and reachable). No aliases needed; the package
+  // list already covers every specifier the importmap routes.
   return [];
 }
 

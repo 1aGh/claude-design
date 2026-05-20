@@ -5,7 +5,7 @@
   "contributors": 1,
   "plugins": {
     "design": {
-      "commands": 11,
+      "commands": 12,
       "skills": 3,
       "agents": 13
     },
@@ -35,14 +35,15 @@
     "reference/design/browse.mdx": "2026-05-13",
     "reference/design/critic.mdx": "2026-05-13",
     "reference/design/edit.mdx": "2026-05-13",
-    "reference/design/handoff.mdx": "2026-05-13",
+    "reference/design/handoff.mdx": "2026-05-20",
     "reference/design/help.mdx": "2026-05-13",
     "reference/design/init.mdx": "2026-05-13",
-    "reference/design/new.mdx": "2026-05-13",
+    "reference/design/new.mdx": "2026-05-20",
     "reference/design/rollback.mdx": "2026-05-13",
     "reference/design/screenshot.mdx": "2026-05-15",
     "reference/design/setup-docs.mdx": "2026-05-13",
     "reference/design/setup-ds.mdx": "2026-05-15",
+    "reference/design/smoke.mdx": "2026-05-20",
     "reference/flow/bug-fix.mdx": "2026-05-13",
     "reference/flow/bug-rca.mdx": "2026-05-13",
     "reference/flow/done.mdx": "2026-05-13",
@@ -72,6 +73,6 @@
     "reference/flow/validate-a11y.mdx": "2026-05-13",
     "reference/flow/validate-visual.mdx": "2026-05-13",
     "reference/flow/validate.mdx": "2026-05-13",
-    "reference/index.mdx": "2026-05-13"
+    "reference/index.mdx": "2026-05-20"
   }
 }

@@ -45,6 +45,7 @@ export const DEFAULT_TOOLS: readonly ToolDescriptor[] = Object.freeze([
   // affordance (no native rubber cursor exists).
   { id: "pen", label: "Pen", shortcut: "B", cursor: "crosshair" },
   { id: "rect", label: "Rect", shortcut: "R", cursor: "crosshair" },
+  { id: "ellipse", label: "Ellipse", shortcut: "O", cursor: "crosshair" },
   { id: "arrow", label: "Arrow", shortcut: "A", cursor: "crosshair" },
   { id: "eraser", label: "Eraser", shortcut: "E", cursor: "cell" },
 ]);

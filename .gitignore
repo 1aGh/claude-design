@@ -30,3 +30,8 @@ plugins/design/dev-server/bun.lock
 
 # Stub .keep written by dev-server before the inspect.ts fix landed (Phase 3.4)
 .design/.keep
+
+# Phase 5 / 5.1 — per-canvas annotation persistence. These are user-local
+# review scratch (pen / rect / ellipse / arrow / text), not source.
+.design/*.annotations.svg
+.design/**/*.annotations.svg

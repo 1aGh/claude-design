@@ -111,9 +111,10 @@ export async function buildCanvasModule(
   // post-pass-1 TSX. Every other import (npm packages, relative imports of
   // sibling canvas components) goes through Bun's default resolver. The four
   // runtime packages are externalised so they resolve through the importmap.
-  const externalSpecifiers = new Set<string>(
-    RUNTIME_PACKAGES.flatMap((p) => [p, ...(p === 'react-dom/client' ? ['react-dom'] : [])])
-  );
+  // Phase 5.1 — `react-dom` is now its own runtime package (so createPortal is
+  // in the bundle). The flatMap legacy alias for `react-dom` is no longer
+  // needed; RUNTIME_PACKAGES already lists every specifier the importmap covers.
+  const externalSpecifiers = new Set<string>(RUNTIME_PACKAGES);
 
   const built = await Bun.build({
     entrypoints: [canvasAbsPath],

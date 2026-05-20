@@ -240,6 +240,14 @@ function useWorldContext(): WorldContextValue | null {
   return useContext(WorldContext);
 }
 
+// Phase 5.1: annotations-layer needs the world `<div>` to portal a stroke SVG
+// inside it (so CSS zoom + translate apply natively, no per-frame projection
+// math). Expose only the ref — the rest of WorldContextValue stays internal.
+export function useWorldRefContext(): RefObject<HTMLDivElement | null> | null {
+  const ctx = useContext(WorldContext);
+  return ctx?.worldRef ?? null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Layout synthesis. Default grid + fit-to-screen compute. Phase 4 T2 will
 // replace the "always re-fit on resize" useLayoutEffect with the
@@ -1206,7 +1214,10 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
         {children}
       </div>
       {showMiniMap ? <DCMiniMap /> : null}
-      {showToolbar ? <DCZoomToolbar /> : null}
+      {/* DCZoomToolbar is intentionally not rendered here. The Phase 5.1
+          ToolPalette absorbs its 4 actions into the unified canvas chrome.
+          The component stays exported for back-compat with any consumer that
+          still imports it directly. */}
     </div>
   );
 
@@ -1483,15 +1494,16 @@ const OVERLAY_CSS = `
   bottom: 16px;
   width: 196px;
   height: 132px;
-  background: rgba(255,255,255,0.92);
-  border: 1px solid rgba(0,0,0,0.12);
-  border-radius: 6px;
+  background: var(--bg-1, rgba(255,255,255,0.98));
+  border: 1px solid var(--u-border-2, rgba(0,0,0,0.08));
+  border-radius: 8px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 10px;
   color: rgba(40,30,20,0.7);
   z-index: 6;
   user-select: none;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.08);
+  overflow: hidden;
 }
 .dc-mm-hd {
   padding: 5px 8px 4px;

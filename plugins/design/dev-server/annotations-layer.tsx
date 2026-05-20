@@ -1,30 +1,44 @@
 /**
- * @file       annotations-layer.tsx — Phase 5 draw / annotation overlay
+ * @file       annotations-layer.tsx — FigJam-style annotation overlay
  * @scope      plugins/design/dev-server/annotations-layer.tsx
- * @purpose    Transparent SVG overlay for pen / rect / arrow / eraser strokes.
- *             Strokes are stored in WORLD coords (so they pan/zoom with the
- *             canvas) and rendered through a `<g transform>` derived from the
- *             live viewport published by `useViewportControllerContext`. The
- *             overlay only claims pointer events while an annotation tool is
- *             active; otherwise pointer-events: none so move/comment/hand
- *             interactions pass through to the canvas. Presentation toggle
- *             (Shift+P) hides the SVG without persisting; the in-canvas help
- *             sheet (Cmd+/) lists every shortcut. Strokes persist to
- *             `<designRoot>/<slug>.annotations.svg` via PUT /_api/annotations
- *             on commit, debounced 200 ms.
+ * @purpose    Portal-rendered draw layer. Strokes live in world coords and
+ *             render INSIDE `.dc-world` via `createPortal`, so CSS `zoom` +
+ *             `translate` on the world move them in lockstep with artboards
+ *             with zero frame lag. A separate transparent input overlay
+ *             (also portal-mounted inside the host) captures pointerdown
+ *             only for draw / erase tools; viewport gestures (space-pan,
+ *             middle-mouse, wheel/pinch) bypass us and reach
+ *             `useViewportController` directly.
+ *
+ * Schema (back-compatible with Phase 5):
+ *   - pen     → <path data-tool="pen" d="M.. L..">
+ *   - rect    → <rect data-tool="rect" x= y= width= height= [fill=]>
+ *   - ellipse → <ellipse data-tool="ellipse" cx= cy= rx= ry= [fill=]>   NEW
+ *   - arrow   → <g data-tool="arrow"><line/><polyline/></g>
+ *   - text    → <text data-tool="text" data-anchor-id= x= y= fill= …>    NEW
+ *
+ * Persists to `<designRoot>/<slug>.annotations.svg` via PUT /_api/annotations
+ * on commit, debounced 200 ms.
  */
 
 import {
+  createContext,
   type PointerEvent as ReactPointerEvent,
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 
-import { useViewportControllerContext } from './canvas-lib.tsx';
+import { useViewportControllerContext, useWorldRefContext } from './canvas-lib.tsx';
 import { useToolMode } from './use-tool-mode.tsx';
+import { useAnnotationSelectionOptional } from './use-annotation-selection.tsx';
+import { useSelectionSetOptional } from './use-selection-set.tsx';
+import { AnnotationContextToolbar } from './annotations-context-toolbar.tsx';
+import { useAnnotationsVisibility } from './use-annotations-visibility.tsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -47,6 +61,18 @@ export interface RectStroke {
   y: number;
   w: number;
   h: number;
+  fill?: string | null;
+}
+export interface EllipseStroke {
+  id: string;
+  tool: 'ellipse';
+  color: string;
+  width: number;
+  cx: number;
+  cy: number;
+  rx: number;
+  ry: number;
+  fill?: string | null;
 }
 export interface ArrowStroke {
   id: string;
@@ -58,7 +84,15 @@ export interface ArrowStroke {
   x2: number;
   y2: number;
 }
-export type Stroke = PenStroke | RectStroke | ArrowStroke;
+export interface TextStroke {
+  id: string;
+  tool: 'text';
+  color: string;
+  fontSize: number;
+  text: string;
+  anchorId: string;
+}
+export type Stroke = PenStroke | RectStroke | EllipseStroke | ArrowStroke | TextStroke;
 
 const PALETTE = [
   '#d63b1f', // accent red — first slot mirrors the default DS accent
@@ -70,6 +104,24 @@ const PALETTE = [
 ] as const;
 type PaletteColor = (typeof PALETTE)[number];
 const DEFAULT_COLOR: PaletteColor = PALETTE[0];
+
+const FILL_PALETTE = [
+  '#fff4d6', // amber tint
+  '#e6f4ea', // green tint
+  '#e3edff', // blue tint
+  '#f0e8fb', // purple tint
+  '#ffe5e0', // red tint
+  '#f4f1ee', // paper
+] as const;
+
+const STROKE_WIDTH_THIN = 2;
+const STROKE_WIDTH_THICK = 6;
+type Thickness = typeof STROKE_WIDTH_THIN | typeof STROKE_WIDTH_THICK;
+
+const FONT_SIZE_SMALL = 12;
+const FONT_SIZE_MEDIUM = 14;
+const FONT_SIZE_LARGE = 20;
+const DEFAULT_FONT_SIZE = FONT_SIZE_MEDIUM;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pure helpers — exported for unit tests.
@@ -109,18 +161,33 @@ export function arrowHeadPoints(
 }
 
 function strokeToSvgEl(s: Stroke): string {
-  const common = `data-id="${esc(s.id)}" data-tool="${s.tool}" stroke="${esc(s.color)}" stroke-width="${s.width}" fill="none" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"`;
+  if (s.tool === 'text') {
+    return `<text data-id="${esc(s.id)}" data-tool="text" data-anchor-id="${esc(
+      s.anchorId
+    )}" data-font-size="${s.fontSize}" fill="${esc(
+      s.color
+    )}" text-anchor="middle" dominant-baseline="middle">${esc(s.text)}</text>`;
+  }
+  const common = `data-id="${esc(s.id)}" data-tool="${s.tool}" stroke="${esc(s.color)}" stroke-width="${s.width}" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"`;
   if (s.tool === 'pen') {
-    return `<path ${common} d="${penPathD(s.points)}" pointer-events="stroke"/>`;
+    return `<path ${common} fill="none" d="${penPathD(s.points)}" pointer-events="stroke"/>`;
   }
   if (s.tool === 'rect') {
-    return `<rect ${common} x="${s.x}" y="${s.y}" width="${Math.max(
+    const fill = s.fill ? esc(s.fill) : 'none';
+    return `<rect ${common} fill="${fill}" x="${s.x}" y="${s.y}" width="${Math.max(
       0,
       s.w
     )}" height="${Math.max(0, s.h)}"/>`;
   }
+  if (s.tool === 'ellipse') {
+    const fill = s.fill ? esc(s.fill) : 'none';
+    return `<ellipse ${common} fill="${fill}" cx="${s.cx}" cy="${s.cy}" rx="${Math.max(
+      0,
+      s.rx
+    )}" ry="${Math.max(0, s.ry)}"/>`;
+  }
   const head = arrowHeadPoints(s.x1, s.y1, s.x2, s.y2, s.width);
-  return `<g ${common}><line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}"/><polyline points="${head}" fill="${esc(s.color)}"/></g>`;
+  return `<g ${common} fill="none"><line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}"/><polyline points="${head}" fill="${esc(s.color)}"/></g>`;
 }
 
 export function strokesToSvg(strokes: readonly Stroke[]): string {
@@ -142,6 +209,13 @@ function parsePathD(d: string): WorldPoint[] {
   return out;
 }
 
+function parseFill(raw: string | null): string | null {
+  if (!raw) return null;
+  const v = raw.trim().toLowerCase();
+  if (!v || v === 'none' || v === 'transparent') return null;
+  return raw;
+}
+
 export function svgToStrokes(svgText: string): Stroke[] {
   const text = (svgText ?? '').trim();
   if (!text) return [];
@@ -153,7 +227,7 @@ export function svgToStrokes(svgText: string): Stroke[] {
     for (const el of Array.from(doc.querySelectorAll('[data-tool]'))) {
       const tool = el.getAttribute('data-tool');
       const id = el.getAttribute('data-id') || rid();
-      const color = el.getAttribute('stroke') || DEFAULT_COLOR;
+      const color = el.getAttribute('stroke') || el.getAttribute('fill') || DEFAULT_COLOR;
       const width = Number.parseFloat(el.getAttribute('stroke-width') || '2') || 2;
       if (tool === 'pen') {
         const d = el.getAttribute('d') || '';
@@ -166,7 +240,17 @@ export function svgToStrokes(svgText: string): Stroke[] {
         const y = Number.parseFloat(el.getAttribute('y') || '0');
         const w = Number.parseFloat(el.getAttribute('width') || '0');
         const h = Number.parseFloat(el.getAttribute('height') || '0');
-        out.push({ id, tool: 'rect', color, width, x, y, w, h });
+        const fill = parseFill(el.getAttribute('fill'));
+        out.push({ id, tool: 'rect', color, width, x, y, w, h, fill });
+        continue;
+      }
+      if (tool === 'ellipse') {
+        const cx = Number.parseFloat(el.getAttribute('cx') || '0');
+        const cy = Number.parseFloat(el.getAttribute('cy') || '0');
+        const rx = Number.parseFloat(el.getAttribute('rx') || '0');
+        const ry = Number.parseFloat(el.getAttribute('ry') || '0');
+        const fill = parseFill(el.getAttribute('fill'));
+        out.push({ id, tool: 'ellipse', color, width, cx, cy, rx, ry, fill });
         continue;
       }
       if (tool === 'arrow') {
@@ -183,6 +267,22 @@ export function svgToStrokes(svgText: string): Stroke[] {
             y2: Number.parseFloat(line.getAttribute('y2') || '0'),
           });
         }
+        continue;
+      }
+      if (tool === 'text') {
+        const anchorId = el.getAttribute('data-anchor-id') || '';
+        const fontSize =
+          Number.parseFloat(el.getAttribute('data-font-size') || String(DEFAULT_FONT_SIZE)) ||
+          DEFAULT_FONT_SIZE;
+        const inkColor = el.getAttribute('fill') || color;
+        out.push({
+          id,
+          tool: 'text',
+          color: inkColor,
+          fontSize,
+          text: (el.textContent || '').trim(),
+          anchorId,
+        });
       }
     }
     return out;
@@ -209,7 +309,8 @@ function pointSegmentDist(
 }
 
 export function strokeHitTest(s: Stroke, wx: number, wy: number, tol: number): boolean {
-  const t = Math.max(tol, s.width);
+  if (s.tool === 'text') return false;
+  const t = Math.max(tol, 'width' in s ? s.width : 2);
   if (s.tool === 'pen') {
     if (s.points.length === 1) {
       const p = s.points[0] as WorldPoint;
@@ -225,13 +326,32 @@ export function strokeHitTest(s: Stroke, wx: number, wy: number, tol: number): b
   if (s.tool === 'arrow') {
     return pointSegmentDist(wx, wy, s.x1, s.y1, s.x2, s.y2) <= t;
   }
-  // rect — hit on any of the 4 edges (open rectangle).
+  if (s.tool === 'ellipse') {
+    // Inside-ellipse hit when filled; on the perimeter otherwise.
+    if (s.rx <= 0 || s.ry <= 0) return false;
+    const nx = (wx - s.cx) / s.rx;
+    const ny = (wy - s.cy) / s.ry;
+    const d = nx * nx + ny * ny;
+    if (s.fill) return d <= 1.0 + (t / Math.max(s.rx, s.ry));
+    // Stroke-only: hit if normalized distance is within a band around 1.
+    const band = t / Math.max(s.rx, s.ry);
+    const dist = Math.abs(Math.sqrt(d) - 1);
+    return dist <= band;
+  }
+  // rect — inside when filled, edge-only otherwise.
   const x = s.x;
   const y = s.y;
   const x2 = x + s.w;
   const y2 = y + s.h;
-  if (wx < Math.min(x, x2) - t || wx > Math.max(x, x2) + t) return false;
-  if (wy < Math.min(y, y2) - t || wy > Math.max(y, y2) + t) return false;
+  const xMin = Math.min(x, x2);
+  const xMax = Math.max(x, x2);
+  const yMin = Math.min(y, y2);
+  const yMax = Math.max(y, y2);
+  if (s.fill) {
+    return wx >= xMin - t && wx <= xMax + t && wy >= yMin - t && wy <= yMax + t;
+  }
+  if (wx < xMin - t || wx > xMax + t) return false;
+  if (wy < yMin - t || wy > yMax + t) return false;
   const onLeft = Math.abs(wx - x) <= t;
   const onRight = Math.abs(wx - x2) <= t;
   const onTop = Math.abs(wy - y) <= t;
@@ -253,7 +373,51 @@ function normalizeRect(r: RectStroke): RectStroke {
 function isStrokeMeaningful(s: Stroke): boolean {
   if (s.tool === 'pen') return s.points.length >= 2;
   if (s.tool === 'rect') return Math.abs(s.w) >= 4 && Math.abs(s.h) >= 4;
+  if (s.tool === 'ellipse') return s.rx >= 2 && s.ry >= 2;
+  if (s.tool === 'text') return s.text.trim().length > 0;
   return Math.hypot(s.x2 - s.x1, s.y2 - s.y1) >= 4;
+}
+
+export function strokeBBox(
+  s: Stroke,
+  anchors?: Map<string, RectStroke | EllipseStroke>
+): { x: number; y: number; w: number; h: number } | null {
+  if (s.tool === 'pen') {
+    if (!s.points.length) return null;
+    let xMin = Number.POSITIVE_INFINITY;
+    let xMax = Number.NEGATIVE_INFINITY;
+    let yMin = Number.POSITIVE_INFINITY;
+    let yMax = Number.NEGATIVE_INFINITY;
+    for (const [px, py] of s.points) {
+      if (px < xMin) xMin = px;
+      if (px > xMax) xMax = px;
+      if (py < yMin) yMin = py;
+      if (py > yMax) yMax = py;
+    }
+    return { x: xMin, y: yMin, w: xMax - xMin, h: yMax - yMin };
+  }
+  if (s.tool === 'rect') {
+    return {
+      x: Math.min(s.x, s.x + s.w),
+      y: Math.min(s.y, s.y + s.h),
+      w: Math.abs(s.w),
+      h: Math.abs(s.h),
+    };
+  }
+  if (s.tool === 'ellipse') {
+    return { x: s.cx - s.rx, y: s.cy - s.ry, w: s.rx * 2, h: s.ry * 2 };
+  }
+  if (s.tool === 'arrow') {
+    return {
+      x: Math.min(s.x1, s.x2),
+      y: Math.min(s.y1, s.y2),
+      w: Math.abs(s.x2 - s.x1),
+      h: Math.abs(s.y2 - s.y1),
+    };
+  }
+  // text → inherit from anchor
+  const host = anchors?.get(s.anchorId);
+  return host ? strokeBBox(host) : null;
 }
 
 function isEditable(t: EventTarget | null): boolean {
@@ -286,21 +450,24 @@ function deriveFile(): string | undefined {
 
 const ANNOT_CSS = `
 .dc-annot-chrome {
+  /* Stacks directly above the centered tool toolbar (which is bottom:16px,
+     32px tall → top edge ~ bottom:48px). 8 px gap → chrome at bottom:60px. */
   position: absolute;
-  right: 16px;
-  bottom: 16px;
+  left: 50%;
+  bottom: 60px;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(255,255,255,0.94);
-  border: 1px solid rgba(0,0,0,0.12);
-  border-radius: 6px;
+  background: var(--bg-1, rgba(255,255,255,0.98));
+  border: 1px solid var(--u-border-2, rgba(0,0,0,0.08));
+  border-radius: 8px;
   padding: 6px 10px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;
   color: rgba(40,30,20,0.85);
   z-index: 6;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.08);
   user-select: none;
 }
 .dc-annot-chrome .dc-annot-swatches { display: flex; gap: 4px; }
@@ -320,6 +487,35 @@ const ANNOT_CSS = `
 .dc-annot-chrome .dc-annot-sw:focus-visible {
   outline: 2px solid var(--accent, #d63b1f);
   outline-offset: 2px;
+}
+.dc-annot-chrome .dc-annot-sep {
+  width: 1px;
+  align-self: stretch;
+  background: rgba(0,0,0,0.08);
+  margin: 0 2px;
+}
+.dc-annot-chrome .dc-annot-fill {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  border: 1px solid rgba(0,0,0,0.18);
+  cursor: pointer;
+  padding: 0;
+  appearance: none;
+  position: relative;
+}
+.dc-annot-chrome .dc-annot-fill--none {
+  background: #fff;
+}
+.dc-annot-chrome .dc-annot-fill--none::after {
+  content: "";
+  position: absolute; inset: 2px;
+  background:
+    linear-gradient(135deg, transparent 47%, #d63b1f 47%, #d63b1f 53%, transparent 53%);
+}
+.dc-annot-chrome .dc-annot-fill[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px var(--accent, #d63b1f);
+  border-color: transparent;
 }
 .dc-annot-chrome .dc-annot-btn {
   appearance: none;
@@ -343,58 +539,36 @@ const ANNOT_CSS = `
   outline: 2px solid var(--accent, #d63b1f);
   outline-offset: 2px;
 }
-/*
- * Native <dialog> opened via .showModal() — the browser positions it centered
- * in the top layer above all stacking contexts. We strip the UA border/padding
- * so the inner card is the only visible chrome, and use ::backdrop for the
- * scrim instead of a wrapping div with background-color.
- */
-.dc-annot-help {
-  border: 0;
-  padding: 0;
-  background: transparent;
-  max-width: none;
-  max-height: none;
-  font-family: ui-sans-serif, system-ui, sans-serif;
+.dc-annot-input {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
 }
-.dc-annot-help::backdrop {
-  background: rgba(20,16,12,0.55);
+.dc-annot-svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  /*
+   * .dc-world has no intrinsic dimensions — its children render via absolute
+   * positioning. An SVG inside with width:100%/height:100% resolves to 0 px
+   * and Chrome clips children even under overflow:visible. We hardcode a
+   * very large width/height instead so the SVG viewport easily covers any
+   * world-coord stroke. vector-effect="non-scaling-stroke" on every stroke
+   * keeps thickness px-constant under CSS zoom; overflow:visible covers the
+   * rare edge case of a stroke straying outside this 200k box.
+   */
+  width: 200000px;
+  height: 200000px;
+  overflow: visible;
+  pointer-events: none;
 }
-.dc-annot-help-card {
-  background: var(--bg-0, #fff);
-  color: var(--fg-0, #1a1a1a);
-  border-radius: 8px;
-  padding: 24px 28px;
-  min-width: 320px;
-  max-width: 480px;
-  box-shadow: 0 24px 64px rgba(0,0,0,0.18);
-}
-.dc-annot-help-card h2 {
-  margin: 0 0 12px;
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-.dc-annot-help-card dl {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  column-gap: 16px;
-  row-gap: 6px;
-  margin: 0;
-  font-size: 13px;
-}
-.dc-annot-help-card kbd {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-  background: rgba(0,0,0,0.06);
-  border: 1px solid rgba(0,0,0,0.1);
-  border-radius: 3px;
-  padding: 1px 6px;
-}
-.dc-annot-help-card .dc-annot-help-foot {
-  margin-top: 16px;
-  font-size: 11px;
-  opacity: 0.65;
+/* Drag-select marquee — rendered while user is dragging to select strokes. */
+.dc-annot-marquee {
+  pointer-events: none;
+  fill: color-mix(in oklab, var(--accent, #d63b1f) 8%, transparent);
+  stroke: var(--accent, #d63b1f);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
 }
 `.trim();
 
@@ -408,6 +582,39 @@ function ensureAnnotStyles(): void {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Strokes store — lifted out of the layer so the contextual toolbar (Phase 5.1
+// Task 8) can mutate strokes without prop-drilling.
+
+export interface StrokesStoreValue {
+  strokes: Stroke[];
+  setStrokes: (next: Stroke[]) => void;
+  updateStroke: (id: string, patch: Partial<Stroke>) => void;
+  deleteStrokes: (ids: string[]) => void;
+  translateStrokes: (ids: string[], dx: number, dy: number) => void;
+}
+
+const StrokesStoreContext = createContext<StrokesStoreValue | null>(null);
+
+export function useStrokesStore(): StrokesStoreValue | null {
+  return useContext(StrokesStoreContext);
+}
+
+function translateOne(s: Stroke, dx: number, dy: number): Stroke {
+  if (s.tool === 'pen') {
+    return { ...s, points: s.points.map(([x, y]) => [x + dx, y + dy] as WorldPoint) };
+  }
+  if (s.tool === 'rect') return { ...s, x: s.x + dx, y: s.y + dy };
+  if (s.tool === 'ellipse') return { ...s, cx: s.cx + dx, cy: s.cy + dy };
+  if (s.tool === 'arrow') return { ...s, x1: s.x1 + dx, y1: s.y1 + dy, x2: s.x2 + dx, y2: s.y2 + dy };
+  return s; // text inherits its host's bbox
+}
+
+// Annotations visibility now lives in use-annotations-visibility.tsx so the
+// ToolPalette (a sibling under CanvasRouter, not a descendant of this layer)
+// can read the same state. Re-exported here for back-compat.
+export { useAnnotationsVisibility } from './use-annotations-visibility.tsx';
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Component
 
 export function AnnotationsLayer() {
@@ -415,21 +622,41 @@ export function AnnotationsLayer() {
   const { tool } = useToolMode();
   const controller = useViewportControllerContext();
   const vp = controller?.viewport ?? null;
+  const worldRef = useWorldRefContext();
+  const annotSel = useAnnotationSelectionOptional();
+  const elementSel = useSelectionSetOptional();
 
-  const [strokes, setStrokes] = useState<Stroke[]>([]);
+  const [strokes, setStrokesState] = useState<Stroke[]>([]);
   const [drawing, setDrawing] = useState<Stroke | null>(null);
   const [color, setColor] = useState<string>(DEFAULT_COLOR);
-  const [visible, setVisible] = useState<boolean>(true);
-  const [helpOpen, setHelpOpen] = useState<boolean>(false);
+  const [fill, setFill] = useState<string | null>(null);
+  const [thickness, setThickness] = useState<Thickness>(STROKE_WIDTH_THIN);
+  const visibilityCtx = useAnnotationsVisibility();
+  const visible = visibilityCtx?.visible ?? true;
+  const setVisible = useCallback(
+    (next: boolean | ((cur: boolean) => boolean)) => {
+      if (!visibilityCtx) return;
+      const v =
+        typeof next === 'function'
+          ? (next as (cur: boolean) => boolean)(visibilityCtx.visible)
+          : next;
+      visibilityCtx.setVisible(v);
+    },
+    [visibilityCtx]
+  );
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const fileRef = useRef<string | undefined>(undefined);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const drawingRef = useRef<Stroke | null>(null);
   drawingRef.current = drawing;
 
-  const isDraw = tool === 'pen' || tool === 'rect' || tool === 'arrow';
+  const isDraw =
+    tool === 'pen' || tool === 'rect' || tool === 'arrow' || tool === 'ellipse';
   const isErase = tool === 'eraser';
   const isActive = isDraw || isErase;
+  const supportsThickness = tool === 'pen' || tool === 'arrow';
+  const supportsFill = tool === 'rect' || tool === 'ellipse';
 
   // Load existing annotations on mount.
   useEffect(() => {
@@ -444,7 +671,7 @@ export function AnnotationsLayer() {
       .then((text) => {
         if (cancelled) return;
         const loaded = svgToStrokes(text);
-        if (loaded.length) setStrokes(loaded);
+        if (loaded.length) setStrokesState(loaded);
       })
       .catch(() => {
         /* network blip — start with an empty annotation set */
@@ -471,8 +698,73 @@ export function AnnotationsLayer() {
     }, 200);
   }, []);
 
-  // Document-level toggles: Shift+P (presentation), Cmd+/ (help sheet), Esc
-  // (close help). Esc clearing drawing tool is owned by input-router → setTool.
+  const setStrokes = useCallback(
+    (next: Stroke[]) => {
+      setStrokesState(next);
+      scheduleSave(next);
+    },
+    [scheduleSave]
+  );
+
+  const strokesStore = useMemo<StrokesStoreValue>(() => {
+    const updateStroke = (id: string, patch: Partial<Stroke>): void => {
+      setStrokesState((prev) => {
+        const next = prev.map((s) =>
+          s.id === id ? ({ ...s, ...patch } as Stroke) : s
+        );
+        scheduleSave(next);
+        return next;
+      });
+    };
+    const deleteStrokes = (ids: string[]): void => {
+      const set = new Set(ids);
+      setStrokesState((prev) => {
+        const next = prev.filter((s) => !set.has(s.id) && !(s.tool === 'text' && set.has(s.anchorId)));
+        scheduleSave(next);
+        return next;
+      });
+    };
+    const translateStrokes = (ids: string[], dx: number, dy: number): void => {
+      const set = new Set(ids);
+      setStrokesState((prev) => {
+        const next = prev.map((s) => (set.has(s.id) ? translateOne(s, dx, dy) : s));
+        scheduleSave(next);
+        return next;
+      });
+    };
+    return {
+      strokes,
+      setStrokes,
+      updateStroke,
+      deleteStrokes,
+      translateStrokes,
+    };
+  }, [strokes, setStrokes, scheduleSave]);
+
+  // Menubar bridge (Phase 5.1 Task 10) — listen for postMessages from the
+  // dev-server shell. `selection-clear` + `tool-set` live in canvas-shell
+  // (those providers are above us); we own visibility + annotation-select-all
+  // because they read this layer's local state.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onMessage = (e: MessageEvent) => {
+      const m = e.data as { dgn?: string; visible?: boolean } | null;
+      if (!m || typeof m !== 'object' || !m.dgn) return;
+      if (m.dgn === 'view-annotations') {
+        if (typeof m.visible === 'boolean') setVisible(m.visible);
+        return;
+      }
+      if (m.dgn === 'annotation-select-all') {
+        if (annotSel) annotSel.replace(strokes.map((s) => s.id));
+      }
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [annotSel, strokes]);
+
+  // Document-level toggle: Shift+P (presentation). Annotation-shortcut help is
+  // owned by the dev-server menubar (Help button); we no longer ship an
+  // in-canvas help dialog from this layer.
   useEffect(() => {
     if (typeof document === 'undefined') return;
     const onKey = (e: KeyboardEvent) => {
@@ -480,20 +772,11 @@ export function AnnotationsLayer() {
       if (e.key === 'P' && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         setVisible((v) => !v);
-        return;
-      }
-      if (e.key === '/' && (e.metaKey || e.ctrlKey) && !e.altKey) {
-        e.preventDefault();
-        setHelpOpen((o) => !o);
-        return;
-      }
-      if (e.key === 'Escape' && helpOpen) {
-        setHelpOpen(false);
       }
     };
     document.addEventListener('keydown', onKey, true);
     return () => document.removeEventListener('keydown', onKey, true);
-  }, [helpOpen]);
+  }, [setVisible]);
 
   const screenToWorld = useCallback(
     (cx: number, cy: number): [number, number] => {
@@ -508,11 +791,15 @@ export function AnnotationsLayer() {
     (wx: number, wy: number) => {
       const zoom = vp?.zoom || 1;
       const tol = 8 / zoom;
-      setStrokes((prev) => {
+      setStrokesState((prev) => {
         for (let i = prev.length - 1; i >= 0; i--) {
           const candidate = prev[i];
           if (candidate && strokeHitTest(candidate, wx, wy, tol)) {
-            const next = prev.slice(0, i).concat(prev.slice(i + 1));
+            const removedId = candidate.id;
+            const next = prev
+              .slice(0, i)
+              .concat(prev.slice(i + 1))
+              .filter((s) => !(s.tool === 'text' && s.anchorId === removedId));
             scheduleSave(next);
             return next;
           }
@@ -524,46 +811,54 @@ export function AnnotationsLayer() {
   );
 
   const beginStroke = useCallback(
-    (e: ReactPointerEvent<SVGSVGElement>) => {
-      if (!isActive || !visible) return;
-      if (e.button !== 0) return;
-      // Cmd/Ctrl held — escape hatch into router's selection model.
-      if (e.metaKey || e.ctrlKey) return;
+    (e: ReactPointerEvent<HTMLDivElement>, spaceHeld: boolean) => {
+      if (!isActive || !visible) return false;
+      if (e.button !== 0) return false;
+      if (spaceHeld) return false;
+      if (e.metaKey || e.ctrlKey) return false;
+      // We do NOT stopPropagation — viewport-controller listens on the host
+      // ancestor and never claims a bare-left/no-space pointerdown anyway.
       e.preventDefault();
-      e.stopPropagation();
       try {
-        e.currentTarget.setPointerCapture(e.pointerId);
+        (e.target as Element & { setPointerCapture?: (id: number) => void }).setPointerCapture?.(
+          e.pointerId
+        );
       } catch {
         /* some browsers reject capture on synthetic events */
       }
       const [wx, wy] = screenToWorld(e.clientX, e.clientY);
       if (isErase) {
         eraseAt(wx, wy);
-        return;
+        return true;
       }
       const id = rid();
+      const width: number = supportsThickness ? thickness : STROKE_WIDTH_THIN;
+      const activeFill = supportsFill ? fill : null;
       if (tool === 'pen') {
-        setDrawing({ id, tool: 'pen', color, width: 2, points: [[wx, wy]] });
+        setDrawing({ id, tool: 'pen', color, width, points: [[wx, wy]] });
       } else if (tool === 'rect') {
-        setDrawing({ id, tool: 'rect', color, width: 2, x: wx, y: wy, w: 0, h: 0 });
+        setDrawing({ id, tool: 'rect', color, width: STROKE_WIDTH_THIN, x: wx, y: wy, w: 0, h: 0, fill: activeFill });
+      } else if (tool === 'ellipse') {
+        setDrawing({ id, tool: 'ellipse', color, width: STROKE_WIDTH_THIN, cx: wx, cy: wy, rx: 0, ry: 0, fill: activeFill });
       } else if (tool === 'arrow') {
         setDrawing({
           id,
           tool: 'arrow',
           color,
-          width: 2,
+          width,
           x1: wx,
           y1: wy,
           x2: wx,
           y2: wy,
         });
       }
+      return true;
     },
-    [tool, color, isActive, isErase, visible, screenToWorld, eraseAt]
+    [tool, color, fill, thickness, supportsThickness, supportsFill, isActive, isErase, visible, screenToWorld, eraseAt]
   );
 
   const moveStroke = useCallback(
-    (e: ReactPointerEvent<SVGSVGElement>) => {
+    (e: ReactPointerEvent<HTMLDivElement>) => {
       if (!isActive || !visible) return;
       const [wx, wy] = screenToWorld(e.clientX, e.clientY);
       if (isErase) {
@@ -581,110 +876,740 @@ export function AnnotationsLayer() {
         if (cur.tool === 'rect') {
           return { ...cur, w: wx - cur.x, h: wy - cur.y };
         }
-        return { ...cur, x2: wx, y2: wy };
+        if (cur.tool === 'ellipse') {
+          const rx = Math.abs(wx - cur.cx);
+          const ry = Math.abs(wy - cur.cy);
+          return { ...cur, rx, ry };
+        }
+        if (cur.tool === 'arrow') {
+          return { ...cur, x2: wx, y2: wy };
+        }
+        return cur;
       });
     },
     [isActive, isErase, visible, screenToWorld, eraseAt]
   );
 
-  const endStroke = useCallback(
-    (e: ReactPointerEvent<SVGSVGElement>) => {
-      if (!isActive || !visible) return;
-      try {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      } catch {
-        /* not captured */
-      }
-      if (isErase) return;
-      const cur = drawingRef.current;
-      if (!cur) return;
-      let final: Stroke | null = cur;
-      if (cur.tool === 'rect') final = normalizeRect(cur);
-      if (final && !isStrokeMeaningful(final)) final = null;
-      if (final) {
-        const committed = final;
-        setStrokes((prev) => {
-          const next = [...prev, committed];
-          scheduleSave(next);
-          return next;
-        });
-      }
-      setDrawing(null);
-    },
-    [isActive, isErase, visible, scheduleSave]
-  );
+  const endStroke = useCallback(() => {
+    if (!isActive || !visible) return;
+    if (isErase) return;
+    const cur = drawingRef.current;
+    if (!cur) return;
+    let final: Stroke | null = cur;
+    if (cur.tool === 'rect') final = normalizeRect(cur);
+    if (final && !isStrokeMeaningful(final)) final = null;
+    if (final) {
+      const committed = final;
+      setStrokesState((prev) => {
+        const next = [...prev, committed];
+        scheduleSave(next);
+        return next;
+      });
+    }
+    setDrawing(null);
+  }, [isActive, isErase, visible, scheduleSave]);
 
-  const transform = vp ? `translate(${vp.x} ${vp.y}) scale(${vp.zoom})` : 'translate(0 0) scale(1)';
   const renderStrokes = useMemo(
     () => (drawing ? [...strokes, drawing] : strokes),
     [strokes, drawing]
   );
 
+  const anchorsById = useMemo(() => {
+    const map = new Map<string, RectStroke | EllipseStroke>();
+    for (const s of strokes) {
+      if (s.tool === 'rect' || s.tool === 'ellipse') map.set(s.id, s);
+    }
+    return map;
+  }, [strokes]);
+
+  const strokesById = useMemo(() => {
+    const map = new Map<string, Stroke>();
+    for (const s of strokes) map.set(s.id, s);
+    return map;
+  }, [strokes]);
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Move-tool selection + drag (Phase 5.1 Tasks 6 + 7). Single doc-level
+  // capture pointerdown listener:
+  //   - target is a stroke → select (replace, or add with Shift)
+  //   - bare click on empty world → clear annotation selection
+  //   - Cmd / Cmd+Shift falls through to element-selection (we bail).
+  // Once a stroke is selected, clicking inside its bbox starts a drag.
+
+  const dragStateRef = useRef<{
+    pointerId: number;
+    startWX: number;
+    startWY: number;
+    movedIds: string[];
+  } | null>(null);
+
+  // Drag-select marquee state. World-coord rectangle (anchor + cursor); the
+  // cursor end animates with pointermove. `null` = no marquee active.
+  const [marquee, setMarquee] = useState<{
+    ax: number;
+    ay: number;
+    bx: number;
+    by: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (tool !== 'move') return;
+    if (!annotSel) return;
+
+    const findStrokeId = (el: Element | null): string | null => {
+      const node = el?.closest?.('[data-id][data-tool]') ?? null;
+      const id = node?.getAttribute('data-id') ?? null;
+      const t = node?.getAttribute('data-tool') ?? null;
+      if (id && t && (t === 'pen' || t === 'rect' || t === 'ellipse' || t === 'arrow' || t === 'text')) {
+        return id;
+      }
+      return null;
+    };
+
+    // Chrome elements never deselect. Includes the per-shape context toolbar,
+    // the main tool palette, the in-canvas draw chrome, the minimap, and the
+    // right-click menu. Clicks on these route to their own handlers.
+    const CHROME_SELECTOR =
+      '.dc-annot-ctx, .dc-tool-palette, .dc-annot-chrome, .dc-mm, .dc-context-menu, .dc-tp-popover';
+
+    const onDown = (e: PointerEvent) => {
+      if (e.button !== 0) return;
+      if (e.metaKey || e.ctrlKey) return; // escape hatch into element-selection
+      const target = e.target as Element | null;
+      if (target?.closest?.(CHROME_SELECTOR)) return; // chrome owns its clicks
+      const strokeId = findStrokeId(target);
+      const [wx, wy] = screenToWorld(e.clientX, e.clientY);
+      const startClientX = e.clientX;
+      const startClientY = e.clientY;
+
+      // Stroke hit — select + start drag-translate of the group ─────────
+      if (strokeId) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        elementSel?.clear();
+        let ids: string[];
+        if (e.shiftKey) {
+          annotSel.add(strokeId);
+          ids = annotSel.contains(strokeId)
+            ? annotSel.selectedIds
+            : [...annotSel.selectedIds, strokeId];
+        } else if (annotSel.contains(strokeId)) {
+          ids = annotSel.selectedIds;
+        } else {
+          annotSel.replace(strokeId);
+          ids = [strokeId];
+        }
+        dragStateRef.current = {
+          pointerId: e.pointerId,
+          startWX: wx,
+          startWY: wy,
+          movedIds: ids,
+        };
+        const onMove = (mv: PointerEvent) => {
+          const st = dragStateRef.current;
+          if (!st || mv.pointerId !== st.pointerId) return;
+          const [cwx, cwy] = screenToWorld(mv.clientX, mv.clientY);
+          const dx = cwx - st.startWX;
+          const dy = cwy - st.startWY;
+          if (dx === 0 && dy === 0) return;
+          strokesStore.translateStrokes(st.movedIds, dx, dy);
+          st.startWX = cwx;
+          st.startWY = cwy;
+        };
+        const onUp = (up: PointerEvent) => {
+          if (up.pointerId !== dragStateRef.current?.pointerId) return;
+          dragStateRef.current = null;
+          document.removeEventListener('pointermove', onMove, true);
+          document.removeEventListener('pointerup', onUp, true);
+          document.removeEventListener('pointercancel', onUp, true);
+        };
+        document.addEventListener('pointermove', onMove, true);
+        document.addEventListener('pointerup', onUp, true);
+        document.addEventListener('pointercancel', onUp, true);
+        return;
+      }
+
+      // Empty world — start a drag-select gesture. A small movement falls
+      // back to a "click on empty world → clear selection" (Figma-style).
+      const addToSelection = e.shiftKey;
+      let moved = false;
+      const onMove = (mv: PointerEvent) => {
+        const distSq =
+          (mv.clientX - startClientX) ** 2 + (mv.clientY - startClientY) ** 2;
+        if (!moved && distSq < 16) return; // 4 px threshold
+        moved = true;
+        const [cwx, cwy] = screenToWorld(mv.clientX, mv.clientY);
+        setMarquee({ ax: wx, ay: wy, bx: cwx, by: cwy });
+      };
+      const onUp = (_up: PointerEvent) => {
+        document.removeEventListener('pointermove', onMove, true);
+        document.removeEventListener('pointerup', onUp, true);
+        document.removeEventListener('pointercancel', onUp, true);
+        if (!moved) {
+          // True click on empty world → clear (unless modifier add-mode).
+          if (!addToSelection && annotSel.selectedIds.length > 0) annotSel.clear();
+          return;
+        }
+        const final = marqueeRef.current;
+        setMarquee(null);
+        if (!final) return;
+        const xMin = Math.min(final.ax, final.bx);
+        const xMax = Math.max(final.ax, final.bx);
+        const yMin = Math.min(final.ay, final.by);
+        const yMax = Math.max(final.ay, final.by);
+        const hits: string[] = [];
+        for (const s of strokesStoreRef.current.strokes) {
+          if (s.tool === 'text') continue; // text inherits its host's bbox
+          const bb = strokeBBox(s);
+          if (!bb) continue;
+          if (
+            bb.x + bb.w >= xMin &&
+            bb.x <= xMax &&
+            bb.y + bb.h >= yMin &&
+            bb.y <= yMax
+          ) {
+            hits.push(s.id);
+          }
+        }
+        if (addToSelection) {
+          annotSel.add(hits);
+        } else if (hits.length === 0) {
+          annotSel.clear();
+        } else {
+          annotSel.replace(hits);
+        }
+      };
+      document.addEventListener('pointermove', onMove, true);
+      document.addEventListener('pointerup', onUp, true);
+      document.addEventListener('pointercancel', onUp, true);
+    };
+
+    document.addEventListener('pointerdown', onDown, true);
+    return () => document.removeEventListener('pointerdown', onDown, true);
+  }, [tool, annotSel, elementSel, screenToWorld, strokesStore]);
+
+  // Latest marquee + strokes refs for the doc-level pointerup callback
+  // (avoids re-binding the listener on every state tick).
+  const marqueeRef = useRef(marquee);
+  marqueeRef.current = marquee;
+  const strokesStoreRef = useRef(strokesStore);
+  strokesStoreRef.current = strokesStore;
+
+  // Double-click on a selected rect/ellipse enters text-edit mode.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (tool !== 'move') return;
+    const onDbl = (e: MouseEvent) => {
+      const target = e.target as Element | null;
+      const node = target?.closest?.('[data-id][data-tool]');
+      if (!node) return;
+      const id = node.getAttribute('data-id');
+      const t = node.getAttribute('data-tool');
+      if (id && (t === 'rect' || t === 'ellipse')) {
+        e.preventDefault();
+        setEditingId(id);
+      }
+    };
+    document.addEventListener('dblclick', onDbl, true);
+    return () => document.removeEventListener('dblclick', onDbl, true);
+  }, [tool]);
+
+  const commitText = useCallback(
+    (anchorId: string, text: string) => {
+      const trimmed = text.trim();
+      setStrokesState((prev) => {
+        const existing = prev.find(
+          (s) => s.tool === 'text' && s.anchorId === anchorId
+        ) as TextStroke | undefined;
+        let next: Stroke[];
+        if (trimmed.length === 0) {
+          next = existing ? prev.filter((s) => s.id !== existing.id) : prev;
+        } else if (existing) {
+          next = prev.map((s) =>
+            s.id === existing.id ? { ...existing, text: trimmed } : s
+          );
+        } else {
+          next = [
+            ...prev,
+            {
+              id: rid(),
+              tool: 'text',
+              color: '#1a1a1a',
+              fontSize: DEFAULT_FONT_SIZE,
+              text: trimmed,
+              anchorId,
+            } as TextStroke,
+          ];
+        }
+        scheduleSave(next);
+        return next;
+      });
+    },
+    [scheduleSave]
+  );
+
+  // Keyboard: arrow nudge + Backspace/Delete remove selected strokes.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (!annotSel) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (isEditable(e.target)) return;
+      if (annotSel.selectedIds.length === 0) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const step = e.shiftKey ? 10 : 1;
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        strokesStore.translateStrokes(annotSel.selectedIds, -step, 0);
+        return;
+      }
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        strokesStore.translateStrokes(annotSel.selectedIds, step, 0);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        strokesStore.translateStrokes(annotSel.selectedIds, 0, -step);
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        strokesStore.translateStrokes(annotSel.selectedIds, 0, step);
+        return;
+      }
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        e.preventDefault();
+        strokesStore.deleteStrokes(annotSel.selectedIds);
+        annotSel.clear();
+      }
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [annotSel, strokesStore]);
+
+  // Selected stroke halos — bboxes in world coords, vector-effect non-scaling-stroke.
+  const selectedStrokes = useMemo(() => {
+    if (!annotSel || annotSel.selectedIds.length === 0) return [] as Stroke[];
+    const out: Stroke[] = [];
+    for (const id of annotSel.selectedIds) {
+      const s = strokesById.get(id);
+      if (s) out.push(s);
+    }
+    return out;
+  }, [annotSel, strokesById]);
+
   return (
-    <>
-      <svg
-        className="dc-annot-svg"
-        aria-hidden="true"
-        style={{
-          position: 'fixed',
-          inset: 0,
-          width: '100%',
-          height: '100%',
-          pointerEvents: isActive && visible ? 'auto' : 'none',
-          zIndex: 4,
-          display: visible ? 'block' : 'none',
-        }}
-        onPointerDown={beginStroke}
-        onPointerMove={moveStroke}
-        onPointerUp={endStroke}
-        onPointerCancel={endStroke}
-      >
-        <g transform={transform}>
-          {renderStrokes.map((s) => (
-            <StrokeNode key={s.id} stroke={s} />
-          ))}
-        </g>
-      </svg>
-      {isActive ? (
-        <AnnotationsChrome
-          color={color}
-          setColor={setColor}
+    <StrokesStoreContext.Provider value={strokesStore}>
+      <>
+        <AnnotationsInput
+          isActive={isActive}
           visible={visible}
-          setVisible={setVisible}
-          onOpenHelp={() => setHelpOpen(true)}
+          beginStroke={beginStroke}
+          moveStroke={moveStroke}
+          endStroke={endStroke}
         />
-      ) : null}
-      {helpOpen ? <HelpSheet onClose={() => setHelpOpen(false)} /> : null}
-    </>
+        {visible ? (
+          <AnnotationsSvg
+            worldRef={worldRef}
+            strokes={renderStrokes}
+            anchorsById={anchorsById}
+            selectMode={tool === 'move'}
+            selectedStrokes={selectedStrokes}
+            marquee={marquee}
+            editingId={editingId}
+            existingTextFor={(anchorId) =>
+              strokes.find(
+                (s) => s.tool === 'text' && s.anchorId === anchorId
+              ) as TextStroke | undefined
+            }
+            onCommitText={(anchorId, text) => {
+              commitText(anchorId, text);
+              setEditingId(null);
+            }}
+            onCancelEdit={() => setEditingId(null)}
+          />
+        ) : null}
+        <AnnotationContextToolbar />
+        {isActive ? (
+          <AnnotationsChrome
+            color={color}
+            setColor={setColor}
+            supportsFill={supportsFill}
+            fill={fill}
+            setFill={setFill}
+            supportsThickness={supportsThickness}
+            thickness={thickness}
+            setThickness={setThickness}
+          />
+        ) : null}
+      </>
+    </StrokesStoreContext.Provider>
   );
 }
 AnnotationsLayer.displayName = 'AnnotationsLayer';
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Input — transparent overlay portaled into the host (.dc-canvas). Receives
+// pointer events for draw / erase ONLY; viewport gestures (middle-mouse,
+// space-pan, wheel) reach `useViewportController` because we never call
+// stopPropagation and the controller listens at the host level alongside us.
+
+function AnnotationsInput({
+  isActive,
+  visible,
+  beginStroke,
+  moveStroke,
+  endStroke,
+}: {
+  isActive: boolean;
+  visible: boolean;
+  beginStroke: (e: ReactPointerEvent<HTMLDivElement>, spaceHeld: boolean) => boolean;
+  moveStroke: (e: ReactPointerEvent<HTMLDivElement>) => void;
+  endStroke: () => void;
+}) {
+  const worldRef = useWorldRefContext();
+  const host = worldRef?.current?.parentElement ?? null;
+  const [, force] = useState({});
+  // Host may not be attached on first commit; nudge a re-render once it is.
+  useEffect(() => {
+    if (host) return;
+    const id = setTimeout(() => force({}), 0);
+    return () => clearTimeout(id);
+  }, [host]);
+
+  const spaceHeldRef = useRef(false);
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const down = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && !isEditable(e.target)) spaceHeldRef.current = true;
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.code === 'Space') spaceHeldRef.current = false;
+    };
+    document.addEventListener('keydown', down, true);
+    document.addEventListener('keyup', up, true);
+    return () => {
+      document.removeEventListener('keydown', down, true);
+      document.removeEventListener('keyup', up, true);
+    };
+  }, []);
+
+  if (!host) return null;
+  const interactive = isActive && visible;
+  return createPortal(
+    <div
+      className="dc-annot-input"
+      aria-hidden="true"
+      style={{ pointerEvents: interactive ? 'auto' : 'none' }}
+      onPointerDown={(e) => {
+        beginStroke(e, spaceHeldRef.current);
+      }}
+      onPointerMove={moveStroke}
+      onPointerUp={endStroke}
+      onPointerCancel={endStroke}
+    />,
+    host
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SVG — portaled INTO `.dc-world` so the world's CSS zoom + translate apply
+// natively. `vector-effect="non-scaling-stroke"` keeps stroke px-thick at any
+// zoom level. `pointer-events: none` on the container — strokes are decorative
+// for now (Phase 5.1 Task 6 will reintroduce hit-test via the selection store).
+
+function AnnotationsSvg({
+  worldRef,
+  strokes,
+  anchorsById,
+  selectMode,
+  selectedStrokes,
+  marquee,
+  editingId,
+  existingTextFor,
+  onCommitText,
+  onCancelEdit,
+}: {
+  worldRef: ReturnType<typeof useWorldRefContext>;
+  strokes: readonly Stroke[];
+  anchorsById: Map<string, RectStroke | EllipseStroke>;
+  selectMode: boolean;
+  selectedStrokes: readonly Stroke[];
+  marquee: { ax: number; ay: number; bx: number; by: number } | null;
+  editingId: string | null;
+  existingTextFor: (anchorId: string) => TextStroke | undefined;
+  onCommitText: (anchorId: string, text: string) => void;
+  onCancelEdit: () => void;
+}) {
+  const [, force] = useState({});
+  useEffect(() => {
+    if (worldRef?.current) return;
+    const id = setTimeout(() => force({}), 0);
+    return () => clearTimeout(id);
+  }, [worldRef]);
+  const target = worldRef?.current ?? null;
+  if (!target) return null;
+  return createPortal(
+    <svg
+      className="dc-annot-svg"
+      aria-hidden="true"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      {strokes.map((s) => (
+        <StrokeNode
+          key={s.id}
+          stroke={s}
+          anchorsById={anchorsById}
+          interactive={selectMode}
+        />
+      ))}
+      {selectedStrokes.map((s) => (
+        <SelectionHalo key={`halo-${s.id}`} stroke={s} anchorsById={anchorsById} />
+      ))}
+      {marquee ? (
+        <rect
+          className="dc-annot-marquee"
+          x={Math.min(marquee.ax, marquee.bx)}
+          y={Math.min(marquee.ay, marquee.by)}
+          width={Math.abs(marquee.bx - marquee.ax)}
+          height={Math.abs(marquee.by - marquee.ay)}
+          vectorEffect="non-scaling-stroke"
+        />
+      ) : null}
+      {editingId ? (
+        <TextEditor
+          anchorId={editingId}
+          host={anchorsById.get(editingId) ?? null}
+          existing={existingTextFor(editingId)}
+          onCommit={onCommitText}
+          onCancel={onCancelEdit}
+        />
+      ) : null}
+    </svg>,
+    target
+  );
+}
+
+function TextEditor({
+  anchorId,
+  host,
+  existing,
+  onCommit,
+  onCancel,
+}: {
+  anchorId: string;
+  host: RectStroke | EllipseStroke | null;
+  existing: TextStroke | undefined;
+  onCommit: (anchorId: string, text: string) => void;
+  onCancel: () => void;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const initial = existing?.text ?? '';
+  const initialRef = useRef(initial);
+  initialRef.current = initial;
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.focus();
+    // Select all so a re-edit replaces existing text easily.
+    try {
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(r);
+      }
+    } catch {
+      /* selection API blocked */
+    }
+  }, []);
+
+  // Commit on outside click; cancel-on-Esc handled in onKeyDown below.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onDown = (e: PointerEvent) => {
+      const el = ref.current;
+      if (!el) return;
+      if (el.contains(e.target as Node)) return;
+      onCommit(anchorId, el.innerText || '');
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    return () => document.removeEventListener('pointerdown', onDown, true);
+  }, [anchorId, onCommit]);
+
+  if (!host) return null;
+  const bbox = strokeBBox(host);
+  if (!bbox) return null;
+  const fontSize = existing?.fontSize ?? DEFAULT_FONT_SIZE;
+  return (
+    <foreignObject
+      x={bbox.x}
+      y={bbox.y}
+      width={Math.max(20, bbox.w)}
+      height={Math.max(20, bbox.h)}
+    >
+      <div
+        ref={ref}
+        contentEditable
+        suppressContentEditableWarning
+        aria-label="Edit annotation text"
+        style={{
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '0 8px',
+          boxSizing: 'border-box',
+          textAlign: 'center',
+          color: existing?.color ?? '#1a1a1a',
+          fontSize: `${fontSize}px`,
+          fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+          lineHeight: 1.25,
+          outline: 'none',
+          background: 'transparent',
+          cursor: 'text',
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            onCancel();
+            return;
+          }
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            const el = ref.current;
+            onCommit(anchorId, el?.innerText || '');
+          }
+        }}
+      >
+        {initial}
+      </div>
+    </foreignObject>
+  );
+}
+
+function SelectionHalo({
+  stroke,
+  anchorsById,
+}: {
+  stroke: Stroke;
+  anchorsById: Map<string, RectStroke | EllipseStroke>;
+}) {
+  const bbox = strokeBBox(stroke, anchorsById);
+  if (!bbox) return null;
+  const pad = 4;
+  return (
+    <rect
+      x={bbox.x - pad}
+      y={bbox.y - pad}
+      width={bbox.w + pad * 2}
+      height={bbox.h + pad * 2}
+      fill="none"
+      stroke="var(--accent, #d63b1f)"
+      strokeWidth={1.5}
+      strokeDasharray="4 3"
+      vectorEffect="non-scaling-stroke"
+      pointerEvents="none"
+      rx={2}
+    />
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Stroke renderer
 
-function StrokeNode({ stroke }: { stroke: Stroke }) {
+function StrokeNode({
+  stroke,
+  anchorsById,
+  interactive,
+}: {
+  stroke: Stroke;
+  anchorsById: Map<string, RectStroke | EllipseStroke>;
+  interactive: boolean;
+}) {
+  // In Move mode, individual stroke nodes claim pointer events so we can
+  // hit-test them from the doc-level capture listener. In draw mode the
+  // overlay above handles input, so the strokes themselves stay inert.
+  const hitMode = interactive ? 'visiblePainted' : ('none' as const);
+  const strokeHit = interactive ? 'stroke' : ('none' as const);
+  if (stroke.tool === 'text') {
+    const host = anchorsById.get(stroke.anchorId);
+    const bbox = host ? strokeBBox(host) : null;
+    if (!bbox) return null;
+    const cx = bbox.x + bbox.w / 2;
+    const cy = bbox.y + bbox.h / 2;
+    return (
+      <text
+        data-id={stroke.id}
+        data-tool="text"
+        data-anchor-id={stroke.anchorId}
+        data-font-size={stroke.fontSize}
+        x={cx}
+        y={cy}
+        fill={stroke.color}
+        fontSize={stroke.fontSize}
+        textAnchor="middle"
+        dominantBaseline="middle"
+        style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif' }}
+      >
+        {stroke.text}
+      </text>
+    );
+  }
   const common = {
     'data-id': stroke.id,
     'data-tool': stroke.tool,
     stroke: stroke.color,
     strokeWidth: stroke.width,
-    fill: 'none' as const,
     strokeLinecap: 'round' as const,
     strokeLinejoin: 'round' as const,
     vectorEffect: 'non-scaling-stroke' as const,
   };
   if (stroke.tool === 'pen') {
-    return <path {...common} d={penPathD(stroke.points)} pointerEvents="stroke" />;
+    return (
+      <path
+        {...common}
+        fill="none"
+        d={penPathD(stroke.points)}
+        pointerEvents={strokeHit}
+      />
+    );
   }
   if (stroke.tool === 'rect') {
     const x = Math.min(stroke.x, stroke.x + stroke.w);
     const y = Math.min(stroke.y, stroke.y + stroke.h);
-    return <rect {...common} x={x} y={y} width={Math.abs(stroke.w)} height={Math.abs(stroke.h)} />;
+    return (
+      <rect
+        {...common}
+        fill={stroke.fill ?? 'none'}
+        x={x}
+        y={y}
+        width={Math.abs(stroke.w)}
+        height={Math.abs(stroke.h)}
+        pointerEvents={hitMode}
+      />
+    );
+  }
+  if (stroke.tool === 'ellipse') {
+    return (
+      <ellipse
+        {...common}
+        fill={stroke.fill ?? 'none'}
+        cx={stroke.cx}
+        cy={stroke.cy}
+        rx={Math.max(0, stroke.rx)}
+        ry={Math.max(0, stroke.ry)}
+        pointerEvents={hitMode}
+      />
+    );
   }
   const head = arrowHeadPoints(stroke.x1, stroke.y1, stroke.x2, stroke.y2, stroke.width);
   return (
-    <g {...common}>
+    <g {...common} fill="none" pointerEvents={hitMode}>
       <line x1={stroke.x1} y1={stroke.y1} x2={stroke.x2} y2={stroke.y2} />
       <polyline points={head} fill={stroke.color} />
     </g>
@@ -692,22 +1617,27 @@ function StrokeNode({ stroke }: { stroke: Stroke }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Chrome — color swatches + presentation toggle + help button. Renders only
-// while an annotation tool is active; the existing ToolPalette already exposes
-// the tool buttons (B/R/A/E/V) so we don't duplicate those here.
+// Chrome — color swatches + (optional fill picker) + (optional thickness chip)
+// + presentation toggle + help button.
 
 function AnnotationsChrome({
   color,
   setColor,
-  visible,
-  setVisible,
-  onOpenHelp,
+  supportsFill,
+  fill,
+  setFill,
+  supportsThickness,
+  thickness,
+  setThickness,
 }: {
   color: string;
   setColor: (c: string) => void;
-  visible: boolean;
-  setVisible: (v: boolean) => void;
-  onOpenHelp: () => void;
+  supportsFill: boolean;
+  fill: string | null;
+  setFill: (f: string | null) => void;
+  supportsThickness: boolean;
+  thickness: Thickness;
+  setThickness: (t: Thickness) => void;
 }) {
   return (
     <div className="dc-annot-chrome" role="toolbar" aria-label="Annotation tools">
@@ -725,96 +1655,57 @@ function AnnotationsChrome({
           />
         ))}
       </div>
-      <button
-        type="button"
-        className="dc-annot-btn"
-        aria-pressed={!visible}
-        title="Presentation (Shift+P)"
-        onClick={() => setVisible(!visible)}
-      >
-        {visible ? 'Hide' : 'Show'}
-      </button>
-      <button type="button" className="dc-annot-btn" title="Shortcuts (⌘/)" onClick={onOpenHelp}>
-        ?
-      </button>
+      {supportsFill ? (
+        <>
+          <div className="dc-annot-sep" />
+          <div className="dc-annot-swatches" role="radiogroup" aria-label="Fill color">
+            <button
+              type="button"
+              className="dc-annot-fill dc-annot-fill--none"
+              aria-pressed={fill == null}
+              aria-label="No fill"
+              title="No fill"
+              onClick={() => setFill(null)}
+            />
+            {FILL_PALETTE.map((c) => (
+              <button
+                key={c}
+                type="button"
+                className="dc-annot-fill"
+                aria-pressed={c === fill}
+                aria-label={`Fill ${c}`}
+                title={`Fill ${c}`}
+                style={{ background: c }}
+                onClick={() => setFill(c)}
+              />
+            ))}
+          </div>
+        </>
+      ) : null}
+      {supportsThickness ? (
+        <>
+          <div className="dc-annot-sep" />
+          <button
+            type="button"
+            className="dc-annot-btn"
+            aria-pressed={thickness === STROKE_WIDTH_THIN}
+            title="Thin (2px)"
+            onClick={() => setThickness(STROKE_WIDTH_THIN)}
+          >
+            Thin
+          </button>
+          <button
+            type="button"
+            className="dc-annot-btn"
+            aria-pressed={thickness === STROKE_WIDTH_THICK}
+            title="Thick (6px)"
+            onClick={() => setThickness(STROKE_WIDTH_THICK)}
+          >
+            Thick
+          </button>
+        </>
+      ) : null}
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Help sheet — modal overlay listing every annotation shortcut.
-
-function HelpSheet({ onClose }: { onClose: () => void }) {
-  // Native <dialog> handles aria-modal + focus trap for free and dodges the
-  // need to hand-roll role="dialog" + key-handler shims. Esc-to-close is also
-  // wired at the document level in AnnotationsLayer; the dialog's own onClose
-  // fires for native Esc and for `.close()`.
-  const ref = useRef<HTMLDialogElement | null>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    if (typeof el.showModal === 'function') el.showModal();
-    return () => {
-      try {
-        el.close();
-      } catch {
-        /* already closed */
-      }
-    };
-  }, []);
-  return (
-    <dialog
-      ref={ref}
-      className="dc-annot-help"
-      aria-label="Annotation shortcuts"
-      onClose={onClose}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose();
-      }}
-    >
-      <div className="dc-annot-help-card">
-        <h2>Annotation shortcuts</h2>
-        <dl>
-          <dt>
-            <kbd>B</kbd>
-          </dt>
-          <dd>Pen</dd>
-          <dt>
-            <kbd>R</kbd>
-          </dt>
-          <dd>Rectangle</dd>
-          <dt>
-            <kbd>A</kbd>
-          </dt>
-          <dd>Arrow</dd>
-          <dt>
-            <kbd>E</kbd>
-          </dt>
-          <dd>Eraser</dd>
-          <dt>
-            <kbd>V</kbd>
-          </dt>
-          <dd>Select (exit draw)</dd>
-          <dt>
-            <kbd>Esc</kbd>
-          </dt>
-          <dd>Exit draw mode</dd>
-          <dt>
-            <kbd>Shift</kbd> + <kbd>P</kbd>
-          </dt>
-          <dd>Presentation (hide annotations)</dd>
-          <dt>
-            <kbd>⌘</kbd> + <kbd>/</kbd>
-          </dt>
-          <dd>Toggle this sheet</dd>
-        </dl>
-        <p className="dc-annot-help-foot">
-          Strokes persist to <code>.annotations.svg</code> per canvas.
-        </p>
-      </div>
-    </dialog>
-  );
-}

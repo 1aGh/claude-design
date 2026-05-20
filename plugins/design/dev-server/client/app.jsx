@@ -676,6 +676,22 @@ function HelpModal({ open, onClose }) {
         </ul>
       </details>
       <details>
+        <summary>Annotation tools</summary>
+        <ul>
+          <li><kbd>B</kbd> <span>pen — freehand stroke</span></li>
+          <li><kbd>R</kbd> <span>rectangle — drag to define corners</span></li>
+          <li><kbd>O</kbd> <span>ellipse — drag from center outward</span></li>
+          <li><kbd>A</kbd> <span>arrow — drag tail → tip</span></li>
+          <li><kbd>E</kbd> <span>eraser — click or drag over strokes to remove</span></li>
+          <li><kbd>V</kbd> + click stroke <span>select annotation (Shift+click to multi)</span></li>
+          <li><kbd>V</kbd> + drag empty <span>marquee-select strokes that overlap</span></li>
+          <li>double-click rect/ellipse <span>add text inside the shape</span></li>
+          <li>arrow keys <span>nudge selected annotation 1 unit (Shift = 10)</span></li>
+          <li><kbd>Backspace</kbd> <span>delete selected annotations</span></li>
+          <li><kbd>⇧P</kbd> <span>presentation — hide annotations for clean screenshot</span></li>
+        </ul>
+      </details>
+      <details>
         <summary>Tabs &amp; canvas</summary>
         <ul>
           <li>click in tree <span>open tab</span></li>
@@ -819,7 +835,89 @@ function ViewDropdown({ panels, onToggle, onClose }) {
   );
 }
 
-function Menubar({ activePath, project, tabsCount, openMenu, setOpenMenu, commentsPanelOpen, onToggleComments, onOpenSystem, sidebarOpen, onToggleSidebar, showHidden, onToggleShowHidden, onOpenHelp }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 5.1 — Selection + Tools dropdowns (mirror ViewDropdown shape).
+
+function SelectionDropdown({ onAction, onClose }) {
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    function onDocClick(e) {
+      if (!e.target.closest('.mb-dropdown, .mb-menu')) onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('mousedown', onDocClick);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('mousedown', onDocClick);
+    };
+  }, [onClose]);
+  const items = [
+    { id: 'deselect-all',          label: 'Deselect all',          shortcut: 'Esc' },
+    { id: 'select-all-annotations', label: 'Select all annotations', shortcut: '⌘ ⇧ A' },
+  ];
+  return (
+    <div className="mb-dropdown" role="menu" aria-label="Selection" style={{ left: '195px' }}>
+      {items.map(it => (
+        <button
+          key={it.id}
+          type="button"
+          role="menuitem"
+          className="mb-dd-item"
+          onClick={() => { onAction(it.id); onClose(); }}
+        >
+          <span className="lbl"><span className="check" /><span>{it.label}</span></span>
+          <span className="shortcut">{it.shortcut}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ToolsDropdown({ onAction, onClose }) {
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    function onDocClick(e) {
+      if (!e.target.closest('.mb-dropdown, .mb-menu')) onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('mousedown', onDocClick);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('mousedown', onDocClick);
+    };
+  }, [onClose]);
+  // Mirrors DEFAULT_TOOLS in plugins/design/dev-server/use-tool-mode.tsx —
+  // kept in sync by hand because the menubar lives in the dev-server shell
+  // (no shared bundle with the canvas iframes).
+  const tools = [
+    { id: 'move',    label: 'Move',    shortcut: 'V' },
+    { id: 'hand',    label: 'Hand',    shortcut: 'H' },
+    { id: 'comment', label: 'Comment', shortcut: 'C' },
+    { id: 'pen',     label: 'Pen',     shortcut: 'B' },
+    { id: 'rect',    label: 'Rect',    shortcut: 'R' },
+    { id: 'ellipse', label: 'Ellipse', shortcut: 'O' },
+    { id: 'arrow',   label: 'Arrow',   shortcut: 'A' },
+    { id: 'eraser',  label: 'Eraser',  shortcut: 'E' },
+  ];
+  return (
+    <div className="mb-dropdown" role="menu" aria-label="Tools" style={{ left: '253px' }}>
+      {tools.map(t => (
+        <button
+          key={t.id}
+          type="button"
+          role="menuitem"
+          className="mb-dd-item"
+          onClick={() => { onAction(t.id); onClose(); }}
+        >
+          <span className="lbl"><span className="check" /><span>{t.label}</span></span>
+          <span className="shortcut">{t.shortcut}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Menubar({ activePath, project, tabsCount, openMenu, setOpenMenu, commentsPanelOpen, onToggleComments, onOpenSystem, sidebarOpen, onToggleSidebar, showHidden, onToggleShowHidden, onOpenHelp, annotationsVisible, onToggleAnnotations, postToActiveCanvas }) {
   const isSystem = activePath === SYSTEM_TAB;
   const stamp = isSystem ? 'SYSTEM' : (activePath ? 'CANVAS' : 'IDLE');
   const fileLabel = isSystem
@@ -832,12 +930,12 @@ function Menubar({ activePath, project, tabsCount, openMenu, setOpenMenu, commen
     { id: 'hidden',   label: 'Show hidden files',    shortcut: 'H',     checked: showHidden,         disabled: false },
     { id: 'layers',     label: 'Layers Panel',       phase: 'Phase 12', disabled: true },
     { id: 'inspector',  label: 'Inspector',          phase: 'Phase 12', disabled: true },
-    { id: 'annotate',   label: 'Annotations',        phase: 'Phase 5',  disabled: true },
+    { id: 'annotate',   label: 'Annotations',        shortcut: '⇧ P',   checked: annotationsVisible, disabled: false },
     { id: 'present',    label: 'Presentation Mode',  phase: 'Phase 6',  disabled: true },
   ];
 
   function onMenuClick(key) {
-    if (key === 'view') {
+    if (key === 'view' || key === 'selection' || key === 'tools') {
       setOpenMenu(openMenu === key ? null : key);
     } else if (key === 'help') {
       setOpenMenu(null);
@@ -854,7 +952,8 @@ function Menubar({ activePath, project, tabsCount, openMenu, setOpenMenu, commen
       <nav className="mb-menus" aria-label="Application menus">
         {MENU_NAMES.map(name => {
           const key = name.toLowerCase();
-          const interactive = key === 'view' || key === 'help';
+          const hasDropdown = key === 'view' || key === 'selection' || key === 'tools';
+          const interactive = hasDropdown || key === 'help';
           const open = openMenu === key;
           return (
             <button
@@ -862,8 +961,8 @@ function Menubar({ activePath, project, tabsCount, openMenu, setOpenMenu, commen
               type="button"
               className="mb-menu"
               role="menuitem"
-              aria-haspopup={key === 'view' ? 'menu' : undefined}
-              aria-expanded={key === 'view' ? open : undefined}
+              aria-haspopup={hasDropdown ? 'menu' : undefined}
+              aria-expanded={hasDropdown ? open : undefined}
               aria-disabled={interactive ? undefined : 'true'}
               title={interactive ? '' : 'Coming in a later phase'}
               onClick={() => onMenuClick(key)}
@@ -880,7 +979,23 @@ function Menubar({ activePath, project, tabsCount, openMenu, setOpenMenu, commen
             if (id === 'tree') onToggleSidebar();
             else if (id === 'comments') onToggleComments();
             else if (id === 'hidden') onToggleShowHidden();
+            else if (id === 'annotate') onToggleAnnotations();
           }}
+          onClose={() => setOpenMenu(null)}
+        />
+      )}
+      {openMenu === 'selection' && (
+        <SelectionDropdown
+          onAction={(id) => {
+            if (id === 'deselect-all') postToActiveCanvas({ dgn: 'selection-clear' });
+            else if (id === 'select-all-annotations') postToActiveCanvas({ dgn: 'annotation-select-all' });
+          }}
+          onClose={() => setOpenMenu(null)}
+        />
+      )}
+      {openMenu === 'tools' && (
+        <ToolsDropdown
+          onAction={(tool) => postToActiveCanvas({ dgn: 'tool-set', tool })}
           onClose={() => setOpenMenu(null)}
         />
       )}
@@ -1349,8 +1464,30 @@ function App() {
   const [showHidden, setShowHidden] = useState(() => readBoolStore(SHOW_HIDDEN_STORE, false));
   const [sectionsExpanded, setSectionsExpanded] = useState(() => readJsonStore(SECTIONS_STORE, {}));
   const [helpOpen, setHelpOpen] = useState(false);
+  const [annotationsVisible, setAnnotationsVisible] = useState(true);
   const wsRef = useRef(null);
   const iframesRef = useRef(new Map());
+
+  // Phase 5.1 — postMessage bridge from menubar dropdowns to the canvas iframe.
+  // The canvas-shell listens for these `dgn:*` messages and dispatches into the
+  // matching local provider (annotations visibility / both selection stores /
+  // tool mode). Mirrors the existing `force-clear` / `select-clear` channel.
+  const postToActiveCanvas = useCallback((payload) => {
+    const el = activePath ? iframesRef.current.get(activePath) : null;
+    if (!el || !el.contentWindow) return;
+    try { el.contentWindow.postMessage(payload, '*'); } catch {}
+  }, [activePath]);
+
+  const toggleAnnotations = useCallback(() => {
+    setAnnotationsVisible((v) => {
+      const next = !v;
+      const el = activePath ? iframesRef.current.get(activePath) : null;
+      if (el && el.contentWindow) {
+        try { el.contentWindow.postMessage({ dgn: 'view-annotations', visible: next }, '*'); } catch {}
+      }
+      return next;
+    });
+  }, [activePath]);
 
   // Sync theme to <html data-theme> + localStorage on every change.
   useEffect(() => {
@@ -1828,6 +1965,9 @@ function App() {
           showHidden={showHidden}
           onToggleShowHidden={() => setShowHidden(v => !v)}
           onOpenHelp={() => setHelpOpen(true)}
+          annotationsVisible={annotationsVisible}
+          onToggleAnnotations={toggleAnnotations}
+          postToActiveCanvas={postToActiveCanvas}
         />
         <Viewport
           tabs={tabs}

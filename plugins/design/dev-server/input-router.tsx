@@ -45,10 +45,17 @@ export type Tool =
   | "comment"
   | "pen"
   | "rect"
+  | "ellipse"
   | "arrow"
   | "eraser";
 
-const ANNOTATION_TOOLS = new Set<Tool>(["pen", "rect", "arrow", "eraser"]);
+const ANNOTATION_TOOLS = new Set<Tool>([
+  "pen",
+  "rect",
+  "ellipse",
+  "arrow",
+  "eraser",
+]);
 
 export function isAnnotationTool(t: Tool): boolean {
   return ANNOTATION_TOOLS.has(t);
@@ -116,6 +123,7 @@ export function classify(input: ClassifyInput): RouterAction {
     if (k === "c") return { kind: "tool", tool: "comment" };
     if (k === "b") return { kind: "tool", tool: "pen" };
     if (k === "r") return { kind: "tool", tool: "rect" };
+    if (k === "o") return { kind: "tool", tool: "ellipse" };
     if (k === "a") return { kind: "tool", tool: "arrow" };
     if (k === "e") return { kind: "tool", tool: "eraser" };
     if (input.key === "Escape") return { kind: "escape" };

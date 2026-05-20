@@ -12,13 +12,14 @@ import {
 } from "../use-tool-mode.tsx";
 
 describe("use-tool-mode / static", () => {
-  test("DEFAULT_TOOLS exposes V/H/C + Phase 5 draw set B/R/A/E", () => {
+  test("DEFAULT_TOOLS exposes V/H/C + Phase 5.1 draw set B/R/O/A/E", () => {
     expect(DEFAULT_TOOLS.map((t) => t.id)).toEqual([
       "move",
       "hand",
       "comment",
       "pen",
       "rect",
+      "ellipse",
       "arrow",
       "eraser",
     ]);
@@ -28,6 +29,7 @@ describe("use-tool-mode / static", () => {
       "C",
       "B",
       "R",
+      "O",
       "A",
       "E",
     ]);
@@ -44,6 +46,7 @@ describe("use-tool-mode / static", () => {
     expect(byId.comment).toBe("crosshair");
     expect(byId.pen).toBe("crosshair");
     expect(byId.rect).toBe("crosshair");
+    expect(byId.ellipse).toBe("crosshair");
     expect(byId.arrow).toBe("crosshair");
     expect(byId.eraser).toBe("cell");
   });

@@ -11,9 +11,11 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   type ArrowStroke,
+  type EllipseStroke,
   type PenStroke,
   type RectStroke,
   type Stroke,
+  type TextStroke,
   arrowHeadPoints,
   penPathD,
   rid,
@@ -242,6 +244,144 @@ describe('annotations-layer / rid', () => {
     const seen = new Set<string>();
     for (let i = 0; i < 50; i++) seen.add(rid());
     expect(seen.size).toBe(50);
+  });
+});
+
+describe('annotations-layer / Phase 5.1 ellipse + fill + text + thickness', () => {
+  test('ellipse stroke → <ellipse data-tool="ellipse" cx= cy= rx= ry=>', () => {
+    const e: EllipseStroke = {
+      id: 'e1',
+      tool: 'ellipse',
+      color: '#7a4ad3',
+      width: 2,
+      cx: 50,
+      cy: 60,
+      rx: 30,
+      ry: 20,
+      fill: null,
+    };
+    const svg = strokesToSvg([e]);
+    expect(svg).toContain('data-id="e1"');
+    expect(svg).toContain('data-tool="ellipse"');
+    expect(svg).toContain('cx="50"');
+    expect(svg).toContain('cy="60"');
+    expect(svg).toContain('rx="30"');
+    expect(svg).toContain('ry="20"');
+    expect(svg).toContain('fill="none"');
+  });
+
+  test('rect with fill is serialized with fill="..." (not none)', () => {
+    const r: RectStroke = {
+      id: 'r-fill',
+      tool: 'rect',
+      color: '#1d6cf0',
+      width: 2,
+      x: 0,
+      y: 0,
+      w: 50,
+      h: 50,
+      fill: '#fff4d6',
+    };
+    const svg = strokesToSvg([r]);
+    expect(svg).toContain('fill="#fff4d6"');
+    expect(svg).not.toContain('fill="none"');
+  });
+
+  test('ellipse with explicit fill survives serialization', () => {
+    const e: EllipseStroke = {
+      id: 'e-fill',
+      tool: 'ellipse',
+      color: '#1a8f3e',
+      width: 2,
+      cx: 100,
+      cy: 100,
+      rx: 40,
+      ry: 25,
+      fill: '#e6f4ea',
+    };
+    const svg = strokesToSvg([e]);
+    expect(svg).toContain('fill="#e6f4ea"');
+  });
+
+  test('text stroke → <text data-tool="text" data-anchor-id= data-font-size=>', () => {
+    const t: TextStroke = {
+      id: 't1',
+      tool: 'text',
+      color: '#1a1a1a',
+      fontSize: 14,
+      text: 'needs padding',
+      anchorId: 'r-host',
+    };
+    const svg = strokesToSvg([t]);
+    expect(svg).toContain('data-tool="text"');
+    expect(svg).toContain('data-anchor-id="r-host"');
+    expect(svg).toContain('data-font-size="14"');
+    expect(svg).toContain('>needs padding</text>');
+  });
+
+  test('text content is HTML-escaped (no tag injection)', () => {
+    const t: TextStroke = {
+      id: 't2',
+      tool: 'text',
+      color: '#000',
+      fontSize: 14,
+      text: '<script>alert(1)</script>',
+      anchorId: 'host',
+    };
+    const svg = strokesToSvg([t]);
+    expect(svg).toContain('&lt;script>alert(1)&lt;/script>');
+    expect(svg).not.toMatch(/<script[\s>]/);
+  });
+
+  test('pen thickness round-trips via stroke-width (thin=2 / thick=6)', () => {
+    const thick: PenStroke = {
+      id: 'pT',
+      tool: 'pen',
+      color: '#000',
+      width: 6,
+      points: [
+        [0, 0],
+        [10, 10],
+      ],
+    };
+    const svg = strokesToSvg([thick]);
+    expect(svg).toContain('stroke-width="6"');
+  });
+
+  test('ellipse hit-test: stroke band detection (no fill)', () => {
+    const e: EllipseStroke = {
+      id: 'e',
+      tool: 'ellipse',
+      color: '#000',
+      width: 2,
+      cx: 100,
+      cy: 100,
+      rx: 50,
+      ry: 50,
+      fill: null,
+    };
+    // On the perimeter
+    expect(strokeHitTest(e, 150, 100, 4)).toBe(true);
+    // Inside (no fill) → miss
+    expect(strokeHitTest(e, 100, 100, 4)).toBe(false);
+    // Far outside → miss
+    expect(strokeHitTest(e, 300, 300, 4)).toBe(false);
+  });
+
+  test('ellipse hit-test: filled ellipse hits inside', () => {
+    const e: EllipseStroke = {
+      id: 'e-fill',
+      tool: 'ellipse',
+      color: '#000',
+      width: 2,
+      cx: 100,
+      cy: 100,
+      rx: 50,
+      ry: 50,
+      fill: '#fff',
+    };
+    expect(strokeHitTest(e, 100, 100, 4)).toBe(true);
+    expect(strokeHitTest(e, 300, 300, 4)).toBe(false);
   });
 });
 

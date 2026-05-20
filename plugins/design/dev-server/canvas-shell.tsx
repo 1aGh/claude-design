@@ -58,6 +58,11 @@ import {
 import { ToolPalette } from "./tool-palette.tsx";
 import { AnnotationsLayer } from "./annotations-layer.tsx";
 import {
+  AnnotationSelectionProvider,
+  useAnnotationSelection,
+} from "./use-annotation-selection.tsx";
+import { AnnotationsVisibilityProvider } from "./use-annotations-visibility.tsx";
+import {
   SnapGuideOverlay,
   useViewportControllerContext,
   type ViewportControllerHandle,
@@ -121,6 +126,8 @@ const HALO_CSS = `
 .dc-canvas[data-active-tool="pen"] *,
 .dc-canvas[data-active-tool="rect"],
 .dc-canvas[data-active-tool="rect"] *,
+.dc-canvas[data-active-tool="ellipse"],
+.dc-canvas[data-active-tool="ellipse"] *,
 .dc-canvas[data-active-tool="arrow"],
 .dc-canvas[data-active-tool="arrow"] * {
   cursor: crosshair !important;
@@ -159,7 +166,11 @@ export function CanvasShell({
   // controller's `isPanDragActive` predicate can read the live tool state).
   return (
     <SelectionSetProvider>
-      <CanvasCore hostRef={hostRef}>{children}</CanvasCore>
+      <AnnotationSelectionProvider>
+        <AnnotationsVisibilityProvider>
+          <CanvasCore hostRef={hostRef}>{children}</CanvasCore>
+        </AnnotationsVisibilityProvider>
+      </AnnotationSelectionProvider>
     </SelectionSetProvider>
   );
 }
@@ -362,6 +373,7 @@ function CanvasRouter({
 }) {
   const { tool, setTool } = useToolMode();
   const selSet = useSelectionSet();
+  const annotSel = useAnnotationSelection();
   const ctxMenu = useContextMenu();
 
   // Hover state drives the floating .dc-cv-halo--hover overlay. The overlay
@@ -400,14 +412,25 @@ function CanvasRouter({
     const onMessage = (e: MessageEvent) => {
       const m = e.data as { dgn?: string } | null;
       if (!m || typeof m !== "object" || !m.dgn) return;
-      if (m.dgn === "force-clear" || m.dgn === "select-clear") {
+      if (
+        m.dgn === "force-clear" ||
+        m.dgn === "select-clear" ||
+        m.dgn === "selection-clear"
+      ) {
         selSet.clear();
+        annotSel.clear();
         setHoverEl(null);
+        return;
+      }
+      if (m.dgn === "tool-set") {
+        const t = (m as { tool?: string }).tool;
+        if (typeof t === "string") setTool(t as never);
+        return;
       }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [selSet]);
+  }, [selSet, annotSel, setTool]);
 
   // Cleanup any pending rAF on unmount.
   useEffect(
@@ -458,6 +481,7 @@ function CanvasRouter({
       onEscape: () => {
         ctxMenu.close();
         selSet.clear();
+        annotSel.clear();
         setHoverEl(null);
       },
       onDropComment: ({ clientX, clientY }) => {

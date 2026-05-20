@@ -236,6 +236,13 @@ describe("input-router / keydown — Phase 5 draw tools", () => {
     });
   });
 
+  test("O → tool ellipse (Phase 5.1)", () => {
+    expect(classify(base({ type: "keydown", key: "o" }))).toEqual({
+      kind: "tool",
+      tool: "ellipse",
+    });
+  });
+
   test("uppercase B (shift held) — still maps to pen (lowercased)", () => {
     expect(classify(base({ type: "keydown", key: "B", shiftKey: true }))).toEqual({
       kind: "tool",
@@ -267,6 +274,18 @@ describe("input-router / pointer events — Phase 5 annotation tools", () => {
   test("bare left-click in rect tool → no-op (SVG overlay claims)", () => {
     expect(
       classify(base({ type: "pointerdown", activeTool: "rect", button: 0 })).kind
+    ).toBe("no-op");
+  });
+
+  test("bare left-click in ellipse tool → no-op (Phase 5.1)", () => {
+    expect(
+      classify(base({ type: "pointerdown", activeTool: "ellipse", button: 0 })).kind
+    ).toBe("no-op");
+  });
+
+  test("pointermove in ellipse tool → no-op (SVG overlay owns it)", () => {
+    expect(
+      classify(base({ type: "pointermove", activeTool: "ellipse" })).kind
     ).toBe("no-op");
   });
 
