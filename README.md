@@ -1,8 +1,6 @@
-# Maude — Claude Code marketplace
+# Maude
 
 A personal marketplace of Claude Code plugins. Two plugins today, plus a `maude` CLI for scaffolding and running the bundled dev tooling.
-
-> **Renamed from `md-claude`.** See [`docs/MIGRATING-MD-CLAUDE-TO-MAUDE.md`](./docs/MIGRATING-MD-CLAUDE-TO-MAUDE.md) if you came from the old name.
 
 > **📚 Full docs: https://maude.iagh.cz** (or browse the source under [`site/content/docs/`](./site/content/docs/) until the public URL lands).
 > Contributing? See [CONTRIBUTING.md](./CONTRIBUTING.md). Security? See [SECURITY.md](./SECURITY.md).
