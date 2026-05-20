@@ -13,7 +13,8 @@
 - **Marketplace**: `/plugin marketplace add 1aGh/md-claude` → `/plugin marketplace add 1aGh/maude`. Plugin install syntax changed: `flow@md-claude` → `flow@maude`, `design@md-claude` → `design@maude`.
 - **Workspace scopes**: internal pnpm workspaces `@md-claude/site`, `@md-claude/dev-server`, `@md-claude/hub` renamed to `@maude/*`.
 - **Domain**: docs site canonical host moved to `maude.iagh.cz` (DNS + Vercel wiring done in post-merge step).
-- **Intentionally preserved as internal namespaces** (per DDR-032 sub-decision 2): CSS class identifiers `.mdcc-*`, CSS custom properties `--mdcc-*`, `site/components/mdcc/` paths, the `~/.config/mdcc/` XDG config path, and the `@maude/canvas-lib` virtual import specifier used by canvases.
+- **Canvas-lib virtual specifier renamed**: `@mdcc/canvas-lib` → `@maude/canvas-lib`. Any TSX canvas under a downstream `.design/` directory must update its `from "@mdcc/canvas-lib"` imports to `from "@maude/canvas-lib"` — the dev-server resolver no longer matches the old name.
+- **Intentionally preserved as internal namespaces** (per DDR-032 sub-decision 2): CSS class identifiers `.mdcc-*`, CSS custom properties `--mdcc-*`, `site/components/mdcc/` paths, and the `~/.config/mdcc/` XDG config path.
 
 ## 0.14.0
 
