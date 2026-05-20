@@ -1,0 +1,5 @@
+# mp3 / wav tracks ARE committed (committed-content directory).
+# Only hidden + temp files ignored.
+.DS_Store
+*.tmp
+*.part

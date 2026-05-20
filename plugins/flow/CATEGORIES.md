@@ -55,6 +55,7 @@ Operations that run once per project (or once per major restructure).
 | `/flow:setup-prd` | Draft a PRD + auto-generated phase plans + execution README. | Starting a multi-phase initiative. |
 | `/flow:setup-codebase-map` | Snapshot the architecture into `.ai/context/` for cross-session reuse. | After a big refactor, or when context drifts. |
 | `/flow:setup-context` | Prime the agent with the codebase map + CLAUDE.md. | Beginning of a session. |
+| `/flow:video-new-scene` | Scaffold a new Remotion scene under `scripts/video/final/src/scenes/`. | Adding a beat to the marketing video. |
 
 ### validate — specialized validators
 

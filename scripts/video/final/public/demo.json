@@ -1,0 +1,13 @@
+[
+  { "text": "maude", "startMs": 200, "endMs": 700, "timestampMs": 450, "confidence": 1.0 },
+  { "text": " canvas", "startMs": 700, "endMs": 1100, "timestampMs": 900, "confidence": 1.0 },
+  { "text": " first", "startMs": 1100, "endMs": 1500, "timestampMs": 1300, "confidence": 1.0 },
+  { "text": " design", "startMs": 1500, "endMs": 2000, "timestampMs": 1750, "confidence": 1.0 },
+  { "text": " for", "startMs": 2200, "endMs": 2500, "timestampMs": 2350, "confidence": 1.0 },
+  { "text": " Claude", "startMs": 2500, "endMs": 3000, "timestampMs": 2750, "confidence": 1.0 },
+  { "text": " Code", "startMs": 3000, "endMs": 3500, "timestampMs": 3250, "confidence": 1.0 },
+  { "text": " one", "startMs": 4000, "endMs": 4400, "timestampMs": 4200, "confidence": 1.0 },
+  { "text": " command", "startMs": 4400, "endMs": 5000, "timestampMs": 4700, "confidence": 1.0 },
+  { "text": " to", "startMs": 5200, "endMs": 5500, "timestampMs": 5350, "confidence": 1.0 },
+  { "text": " install", "startMs": 5500, "endMs": 6200, "timestampMs": 5850, "confidence": 1.0 }
+]

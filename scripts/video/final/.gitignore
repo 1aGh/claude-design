@@ -1,0 +1,30 @@
+node_modules/
+out/
+__qa__/
+
+# Whisper.cpp model + binaries cache (~466 MB).
+.whisper-cache/
+
+# Regression goldens: .diff/ is the per-run scratch; the *.png baselines
+# next to this .gitignore (under __goldens__/) ARE committed.
+__goldens__/.diff/
+
+# Captured scenes (phase 15.5 deliverable inputs) — regenerable from
+# scripts/video/tapes/ + scripts/video/playwright/. Local-only.
+public/scene-*.mp4
+public/scene-*.webm
+
+# sub.mjs-emitted caption JSONs sit next to each input MP4. Local-only;
+# patch transcription errors in JSON, do NOT commit Whisper output.
+# Hand-crafted reference JSONs (demo.json) are committed explicitly.
+public/scene-*.json
+
+# Phase 15.1 smoke baselines (Demo + DemoCaptioned compositions) ARE
+# committed so the workspace renders out-of-the-box anywhere:
+#   public/demo.mp4    — Demo composition output, used as DemoCaptioned input
+#   public/demo.json   — hand-crafted Caption[] fixture for DemoCaptioned
+#   public/ambient.aac — synth audio bed used by Demo + Final smoke
+# These are small (~600 KB total). Regenerable from the recipes in DDR-036
+# + scripts/video/README.md, but committed for friction-free smoke.
+
+*.log

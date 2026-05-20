@@ -18,12 +18,12 @@ mkdir -p "$W"
 rm -f "$W/terminal.mp4" "$W/browser.mp4" "$W/card.mp4" "$W/smoke.mp4" "$W/concat.txt"
 rm -rf "$W/playwright" "$W/normalized"
 
-echo "→ 1/4 Remotion card"
-pnpm exec remotion render \
-  scripts/video/smoke/card/index.tsx SmokeCard \
-  "$W/card.mp4" \
-  --mute \
-  --log=error
+echo "→ 1/4 Remotion card (via scripts/video/final/ workspace)"
+CARD_OUT="$REPO_ROOT/$W/card.mp4"
+(
+  cd "$REPO_ROOT/scripts/video/final"
+  pnpm run render SmokeCard "$CARD_OUT" --mute --log=error
+)
 
 echo "→ 2/4 VHS terminal"
 vhs scripts/video/smoke/terminal.tape >/dev/null

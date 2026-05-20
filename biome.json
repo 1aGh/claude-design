@@ -26,7 +26,10 @@
       "site/next-env.d.ts",
       "pnpm-lock.yaml",
       "scripts/video/.work/**",
-      "scripts/video/.cache/**"
+      "scripts/video/.cache/**",
+      "scripts/video/final/node_modules/**",
+      "scripts/video/final/out/**",
+      "scripts/video/final/__goldens__/**"
     ]
   },
   "formatter": {
