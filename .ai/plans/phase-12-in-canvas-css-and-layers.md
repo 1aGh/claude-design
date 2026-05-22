@@ -31,6 +31,8 @@ Three sub-deliverables sharing the Phase 4 canvas v2 substrate:
 
 **B. In-canvas CSS editor** (right sidebar when element selected) — input fields for the most-edited properties (color, background, padding, margin, border-radius, font-size, font-weight, width, height). Live preview via inline style; on commit (blur or Enter), server rewrites the source HTML to apply the change. DDR for "where do we write the change: inline style? class? CSS module?" Toggle via `I` key.
 
+> **Export entry point:** The Inspector Panel toolbar duplicates the Export affordance from [Phase 6.5](./phase-6.5-export.md). Same dialog, same `POST /api/export` endpoint — the panel just calls it with the layers-tree selection pre-filled as scope. No new engine work; Phase 6.5 ships the engine, Phase 12 adds the second caller.
+
 **C. Source-rewrite strategy** (DDR + implementation) — the most consequential decision. Options:
 - **Inline `style="..."`** — simple, ugly diffs, no class explosion
 - **New utility class with hash name** — clean diffs, requires CSS parsing

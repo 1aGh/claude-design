@@ -43,6 +43,32 @@
       }
       #canvas-mount-error:empty { display: none; }
     </style>
+    <!-- Phase 6.5 export — when the shell is loaded with `&hide-chrome=1`
+         (the exporters set this), suppress every dev-server overlay so the
+         capture only carries the artboard content. The runtime chrome —
+         tool palette, mini-world-map, comment pins, draw layer, snap guides,
+         selection halos, the artboard label button — is not part of the
+         design and would otherwise show up in PNG / PDF / SVG exports. -->
+    <style id="canvas-hide-chrome" media="not all">
+      .dc-tool-palette,
+      .dc-cv-halo,
+      .dc-cv-group-bbox,
+      .dc-mini-map,
+      .dc-mini-world-map,
+      .dc-world-map,
+      .dc-snap-guide,
+      .dc-annot-overlay,
+      .dc-annot-svg,
+      .dc-annot-chrome,
+      .dc-annot-ctx,
+      .cm-layer,
+      .cm-pin,
+      .cm-thread,
+      .cm-composer,
+      .dc-artboard-label,
+      [data-dc-overlay],
+      [data-mdcc-annotations] { display: none !important; }
+    </style>
     <!-- Tokens + DS component CSS — loaded by the host app via the canvas's
          .meta.json (set later via window.parent postMessage, OR by the dev-
          server when it knows the active DS). For now we load both common
@@ -73,6 +99,13 @@
       const tokensRel = params.get('tokens') || '';
       const componentsRel = params.get('components') || '';
       const layoutRel = params.get('layout') || '';
+      // Phase 6.5 — exporters pass ?hide-chrome=1 to flip the export-mode
+      // stylesheet from `media="not all"` to `media="all"`, hiding the
+      // dev-server overlays during capture. See `<style id="canvas-hide-chrome">`.
+      if (params.get('hide-chrome') === '1') {
+        const styleEl = document.getElementById('canvas-hide-chrome');
+        if (styleEl) styleEl.media = 'all';
+      }
 
       function showError(msg) {
         const el = document.getElementById('canvas-mount-error');

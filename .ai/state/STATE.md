@@ -4,13 +4,13 @@
 
 **Workflow:** feature-delivery — Maude v1.0 roadmap
 **Phase:** Phase 6.5 — Canvas export (UI-first, multi-format, scope-aware)
-**Status:** ready-for-validate (13/13 tasks · /flow:execute complete · smoke gate ✅ · awaiting /flow:done)
+**Status:** done (13/13 + v2 rewrite · DDR-041 captures the swap · 334/334 tests · awaiting push/PR)
 **Started:** 2026-05-22
-**Updated:** 2026-05-22
+**Updated:** 2026-05-23
 **Active task:** —
-**Active plan:** phase-6.5-export.md
+**Active plan:** —
 
-**Branch:** feat/phase-6.5-export
+**Branch:** feat/phase-6.5-export (committed, ready to push)
 
 ### Phase 15.5 v2.1 — Marketing demo video (previous, done)
 
