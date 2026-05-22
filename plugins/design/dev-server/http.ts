@@ -13,6 +13,8 @@ import { buildCanvasModule } from './canvas-build.ts';
 import { canvasLibPath } from './canvas-lib-resolver.ts';
 import { TranspileError } from './canvas-pipeline.ts';
 import type { Context } from './context.ts';
+import { isFormat, isScope, runExport } from './exporters/index.ts';
+import type { ActiveJsonShape } from './exporters/scope.ts';
 import type { Inspect } from './inspect.ts';
 import { canvasSlug, writeLocator } from './locator.ts';
 import { RUNTIME_PACKAGES, getRuntimeBundle, packageForSlug, slugFor } from './runtime-bundle.ts';
@@ -293,6 +295,85 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect): Http {
         return new Response(null, { status: 204 });
       }
       return new Response('Method not allowed', { status: 405 });
+    },
+
+    '/_api/export-history': async (req: Request) => {
+      // Phase 6.5 T10 — read-only recent-exports feed for the dialog's
+      // Recent tab. Writes happen as a side-effect of `/_api/export`.
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      const history = await api.loadExportHistory();
+      return Response.json({ history }, { headers: { 'Cache-Control': 'no-store' } });
+    },
+
+    '/_api/export': async (req: Request) => {
+      // Phase 6.5 — single dispatch endpoint for the export pipeline.
+      // POST body { format, scope, options? } → binary stream with
+      // Content-Disposition + Content-Type set by the adapter.
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      const body = await readJson<{
+        format?: unknown;
+        scope?: unknown;
+        options?: Record<string, unknown>;
+      }>(req, 64 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      if (!isFormat(body.format)) return new Response('unknown or missing format', { status: 400 });
+      if (!isScope(body.scope)) return new Response('unknown or missing scope', { status: 400 });
+      // `inspect.state` is the live `_active.json` — readers narrow to the
+      // resolver's subset locally so the export pipeline doesn't pin the
+      // wider ActiveState interface.
+      const activeJson = inspect.state as unknown as ActiveJsonShape;
+      try {
+        const result = await runExport({
+          format: body.format,
+          scope: body.scope,
+          options: body.options ?? {},
+          resolve: { activeJson, designRoot: ctx.paths.designRoot, repoRoot: ctx.paths.repoRoot },
+          ctx: {
+            designRoot: ctx.paths.designRoot,
+            repoRoot: ctx.paths.repoRoot,
+            // Adapters reach back into the server via this origin only when
+            // they need Playwright rendering (PNG / PDF / SVG / HTML). The
+            // host that received this request is, by definition, the one
+            // serving the canvas.
+            serverOrigin: new URL(req.url).origin,
+            // Mirror `client/app.jsx:85` — the per-DS tokensCssRel wins over
+            // the legacy top-level default (which still points at the pre-
+            // multi-DS layout `system/colors_and_type.css`). Without the
+            // per-DS path, the standalone `_canvas-shell.html` 404s on the
+            // tokens link and the rendered DOM uses `var(--bg-0)` unresolved
+            // → screenshots come out blank. See canvasShellUrl().
+            tokensCssRel:
+              ctx.cfg.designSystems?.[0]?.tokensCssRel ?? ctx.cfg.tokensCssRel,
+          },
+        });
+        // Fire-and-forget history append — failure here doesn't block the
+        // download. Synchronous await keeps the order: history reflects the
+        // export the moment the client sees a 200.
+        try {
+          await api.appendExportHistory({
+            format: body.format,
+            scope: body.scope,
+            options: body.options ?? {},
+            filename: result.filename,
+            at: new Date().toISOString(),
+          });
+        } catch {
+          /* ignore — history is best-effort */
+        }
+        // Bun.serve accepts Uint8Array directly; the cast satisfies the
+        // SharedArrayBuffer-strict BodyInit narrowing on @types/bun.
+        return new Response(result.body as unknown as BodyInit, {
+          status: 200,
+          headers: {
+            'Content-Type': result.contentType,
+            'Content-Disposition': `attachment; filename="${result.filename}"`,
+            'Cache-Control': 'no-store',
+          },
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return new Response(`export failed: ${msg}`, { status: 500 });
+      }
     },
 
     '/_canvas-state': async (req: Request) => {

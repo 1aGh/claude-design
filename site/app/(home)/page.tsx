@@ -80,7 +80,7 @@ export default function HomePage() {
             Plugins & Vibes<span style={{ color: 'var(--accent)' }}>.</span>
           </h1>
           <p className="mdcc-hero-punchline">
-            A Claude Code marketplace. Two plugins, one CLI, some vibes.
+            Vibe-design & vibe-code workflows for Claude Code. Two plugins, one CLI, some vibes.
           </p>
           <p>
             <code>design</code> iterates on HTML mocks. <code>flow</code> runs the agentic loop
@@ -130,7 +130,8 @@ export default function HomePage() {
         <div className="mdcc-section-head">
           <h2 id="cat-h">The catalog.</h2>
           <span className="mdcc-eyebrow">
-            {CATALOG_SIZE} shipping units · all · {stats.version}
+            {CATALOG_SIZE} shipping units · all · {stats.version} ·{' '}
+            <Link href="/roadmap">see the roadmap -&gt;</Link>
           </span>
         </div>
         <div className="mdcc-cat-grid">

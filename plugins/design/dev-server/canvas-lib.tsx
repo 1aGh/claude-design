@@ -1492,15 +1492,15 @@ const OVERLAY_CSS = `
   bottom: 16px;
   width: 196px;
   height: 132px;
-  background: var(--bg-1, rgba(255,255,255,0.98));
-  border: 1px solid var(--u-border-2, rgba(0,0,0,0.08));
-  border-radius: 8px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--bg-2, var(--bg-1, rgba(255,255,255,0.98)));
+  border: 1px solid var(--fg-0, #1c1917);
+  border-radius: 0;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 10px;
-  color: rgba(40,30,20,0.7);
+  color: var(--fg-1, rgba(40,30,20,0.7));
   z-index: 6;
   user-select: none;
-  box-shadow: 0 6px 24px rgba(0,0,0,0.08);
+  box-shadow: 4px 4px 0 var(--fg-0, #1c1917);
   overflow: hidden;
 }
 .dc-mm-hd {
@@ -1534,15 +1534,15 @@ const OVERLAY_CSS = `
   transform: translateX(-50%);
   display: flex;
   align-items: stretch;
-  background: rgba(255,255,255,0.94);
-  border: 1px solid rgba(0,0,0,0.12);
-  border-radius: 6px;
+  background: var(--bg-2, rgba(255,255,255,0.94));
+  border: 1px solid var(--fg-0, #1c1917);
+  border-radius: 0;
   overflow: hidden;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 11px;
-  color: rgba(40,30,20,0.85);
+  color: var(--fg-1, rgba(40,30,20,0.85));
   z-index: 6;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+  box-shadow: 4px 4px 0 var(--fg-0, #1c1917);
 }
 .dc-zoom-tb button {
   appearance: none;

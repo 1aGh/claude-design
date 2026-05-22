@@ -74,6 +74,27 @@ function noop(name: string) {
   };
 }
 
+// Phase 6.5 T9 — export hooks. The default registry items use noop() so the
+// menu still renders when the dialog provider isn't mounted; consumers wire
+// real `openExport(scope)` callbacks by passing a custom registry to
+// <ContextMenuProvider extra>. Pattern matches the existing Phase 5 noop
+// affordances.
+function defaultExportItem(label: string, scopeHint: string): MenuItem {
+  return {
+    id: `export-${scopeHint}`,
+    label,
+    shortcut: scopeHint === 'selection' ? '⌘E' : undefined,
+    onSelect: () => {
+      const detail = { scope: scopeHint };
+      try {
+        window.dispatchEvent(new CustomEvent('maude:open-export', { detail }));
+      } catch {
+        /* SSR / non-window environments */
+      }
+    },
+  };
+}
+
 const DEFAULT_REGISTRY: ContextRegistry = {
   element: [
     [
@@ -81,6 +102,9 @@ const DEFAULT_REGISTRY: ContextRegistry = {
       { id: 'copy-css', label: 'Copy CSS', shortcut: '⌘⇧C', onSelect: noop('copy-css') },
       { id: 'copy-id', label: 'Copy data-cd-id', onSelect: noop('copy-id') },
       { id: 'inspect', label: 'Inspect', shortcut: '⌥I', onSelect: noop('inspect') },
+    ],
+    [
+      defaultExportItem('Export selection…', 'selection'),
     ],
     [
       { id: 'hide', label: 'Hide', shortcut: '⌘⇧H', onSelect: noop('hide') },
@@ -91,6 +115,9 @@ const DEFAULT_REGISTRY: ContextRegistry = {
     [
       { id: 'rename', label: 'Rename', shortcut: '↵', onSelect: noop('rename-artboard') },
       { id: 'duplicate', label: 'Duplicate', shortcut: '⌘D', onSelect: noop('duplicate-artboard') },
+    ],
+    [
+      defaultExportItem('Export this artboard…', 'artboard'),
     ],
     [
       { id: 'fit-one', label: 'Fit just this artboard', onSelect: noop('fit-one') },
@@ -107,6 +134,10 @@ const DEFAULT_REGISTRY: ContextRegistry = {
       },
       { id: 'fit-view', label: 'Fit to view', shortcut: '1', onSelect: noop('fit-view') },
       { id: 'reset-view', label: 'Reset view', shortcut: '⌘0', onSelect: noop('reset-view') },
+    ],
+    [
+      defaultExportItem('Export project (ZIP)…', 'project-raw'),
+      defaultExportItem('Export canvas as separate…', 'canvas-as-separate'),
     ],
   ],
   overlay: [],
@@ -131,15 +162,15 @@ const MENU_CSS = `
 .dc-context-menu {
   position: fixed;
   z-index: 7;
-  background: var(--bg-1, #fff);
-  border: 1px solid var(--border-default, rgba(0,0,0,0.12));
-  border-radius: var(--radius-md, 6px);
-  box-shadow: var(--shadow-md, 0 8px 24px rgba(0,0,0,0.12));
+  background: var(--u-bg-2, var(--bg-1, #fff));
+  border: 1px solid var(--u-fg-0, #1c1917);
+  border-radius: 0;
+  box-shadow: 4px 4px 0 var(--u-fg-0, #1c1917);
   padding: 4px;
   min-width: 220px;
-  font: inherit;
+  font-family: var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 12px;
-  color: var(--fg-0, rgba(20,15,10,0.92));
+  color: var(--u-fg-0, var(--fg-0, rgba(20,15,10,0.92)));
   user-select: none;
 }
 .dc-context-menu .dc-menu-sep {
@@ -152,8 +183,8 @@ const MENU_CSS = `
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  padding: 6px 10px;
-  border-radius: var(--radius-sm, 4px);
+  padding: 5px 12px;
+  border-radius: 0;
   cursor: pointer;
   background: transparent;
   border: 0;
@@ -164,7 +195,7 @@ const MENU_CSS = `
 }
 .dc-context-menu .dc-menu-item:hover,
 .dc-context-menu .dc-menu-item:focus-visible {
-  background: var(--bg-3, rgba(0,0,0,0.05));
+  background: var(--u-bg-3, var(--bg-3, rgba(0,0,0,0.05)));
   outline: none;
 }
 .dc-context-menu .dc-menu-item[disabled] {

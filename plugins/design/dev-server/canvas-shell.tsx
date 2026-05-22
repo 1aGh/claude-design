@@ -51,6 +51,7 @@ import {
   type MenuItem,
   useContextMenu,
 } from './context-menu.tsx';
+import { ExportDialogProvider } from './export-dialog.tsx';
 import { type HoverTarget, resolveHoverTarget, useInputRouter } from './input-router.tsx';
 import { ToolPalette } from './tool-palette.tsx';
 import {
@@ -203,9 +204,11 @@ function CanvasCore({
   );
 
   return (
-    <ContextMenuProvider registry={registry}>
-      <CanvasRouter hostRef={hostRef}>{children}</CanvasRouter>
-    </ContextMenuProvider>
+    <ExportDialogProvider>
+      <ContextMenuProvider registry={registry}>
+        <CanvasRouter hostRef={hostRef}>{children}</CanvasRouter>
+      </ContextMenuProvider>
+    </ExportDialogProvider>
   );
 }
 
@@ -263,6 +266,23 @@ function buildRegistry(deps: {
     onSelect: () => controller?.reset(),
   };
 
+  // Phase 6.5 — context-menu → ExportDialog. Each entry dispatches a custom
+  // event the dialog provider listens for; this avoids prop-drilling the
+  // dialog handle through every menu callback. The scope arg prefills the
+  // dialog's scope dropdown so the user lands on the right resolution.
+  const exportItem = (id: string, label: string, scope: string, shortcut?: string): MenuItem => ({
+    id,
+    label,
+    shortcut,
+    onSelect: () => {
+      try {
+        window.dispatchEvent(new CustomEvent('maude:open-export', { detail: { scope } }));
+      } catch {
+        /* non-window environments */
+      }
+    },
+  });
+
   return {
     element: [
       [
@@ -298,6 +318,7 @@ function buildRegistry(deps: {
           },
         },
       ],
+      [exportItem('export-selection', 'Export selection…', 'selection', '⌘E')],
       [
         {
           id: 'hide',
@@ -334,8 +355,15 @@ function buildRegistry(deps: {
         fitItem,
         resetItem,
       ],
+      [exportItem('export-artboard', 'Export this artboard…', 'artboard')],
     ],
-    world: [[fitItem, resetItem]],
+    world: [
+      [fitItem, resetItem],
+      [
+        exportItem('export-canvas', 'Export canvas as separate…', 'canvas-as-separate'),
+        exportItem('export-project', 'Export project (ZIP)…', 'project-raw'),
+      ],
+    ],
     overlay: [],
   };
 }

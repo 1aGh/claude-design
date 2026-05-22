@@ -3,7 +3,7 @@ import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { parseArgs } from '../lib/argv.mjs';
 
-const SUBCOMMANDS = new Set(['serve', 'init', 'help']);
+const SUBCOMMANDS = new Set(['serve', 'init', 'export', 'help']);
 
 export async function run({ args, pkgRoot }) {
   const { positional } = parseArgs(args);
@@ -25,10 +25,13 @@ export async function run({ args, pkgRoot }) {
   if (sub === 'init') {
     return runInit({ args, pkgRoot });
   }
+  if (sub === 'export') {
+    return runExport({ args });
+  }
 }
 
 function usage() {
-  return `maude design <serve|init> [options]
+  return `maude design <serve|init|export> [options]
 
   serve [--port N] [--root PATH]
         Start the design plugin's dev server in the current repo. Equivalent
@@ -45,6 +48,13 @@ function usage() {
         --discovery-payload <path> reads a JSON file with answers + tokens and
         scaffolds Core + the derived specimens deterministically (this is the
         path skill 'design-system' uses when shelling out from Claude Code).
+
+  export <format> [--scope selection|artboard|canvas-as-separate|project-raw]
+         [--port N] [--out <path>] [--option key=value ...]
+        Drive the same POST /_api/export endpoint the UI uses. Auto-detects
+        port from .design/_server.json; requires a running dev server. The
+        response body is written to --out (default: current dir, server-
+        supplied filename). Formats: png pdf svg html pptx canva zip.
 `;
 }
 
@@ -96,6 +106,100 @@ async function runServe({ args, pkgRoot }) {
     process.stderr.write(`maude design serve: ${err.message}\n`);
     process.exit(1);
   });
+}
+
+async function runExport({ args }) {
+  // `maude design export <format> [--scope ...] [--port N] [--out <path>] [--option key=value]`
+  const subArgs = args.slice(args.indexOf('export') + 1);
+  const { positional, flags } = parseArgs(subArgs, {
+    booleans: ['help'],
+  });
+  if (flags.help) {
+    process.stdout.write(usage());
+    return;
+  }
+
+  const format = positional[0];
+  const VALID_FORMATS = new Set(['png', 'pdf', 'svg', 'html', 'pptx', 'canva', 'zip']);
+  if (!format || !VALID_FORMATS.has(format)) {
+    process.stderr.write(
+      `maude design export: missing or unknown <format>. Try one of: ${Array.from(VALID_FORMATS).join(', ')}\n`
+    );
+    process.exit(2);
+  }
+
+  const scope = flags.scope ?? 'canvas-as-separate';
+  const VALID_SCOPES = new Set(['selection', 'artboard', 'canvas-as-separate', 'project-raw']);
+  if (!VALID_SCOPES.has(scope)) {
+    process.stderr.write(`maude design export: unknown --scope "${scope}"\n`);
+    process.exit(2);
+  }
+
+  // Resolve port: --port > .design/_server.json
+  let port = flags.port ? Number(flags.port) : null;
+  if (!port) {
+    try {
+      const raw = await readFile(resolve(process.cwd(), '.design', '_server.json'), 'utf8');
+      port = JSON.parse(raw).port;
+    } catch {
+      /* no server.json — handled below */
+    }
+  }
+  if (!port) {
+    process.stderr.write(
+      'maude design export: no --port given and .design/_server.json not found. Start the dev server first (`maude design serve`).\n'
+    );
+    process.exit(1);
+  }
+
+  // Collect `--option key=value` repeated flags into an object.
+  const options = {};
+  const repeated = collectRepeatedFlag(subArgs, '--option');
+  for (const item of repeated) {
+    const eq = item.indexOf('=');
+    if (eq < 0) {
+      process.stderr.write(`maude design export: invalid --option "${item}" (expected key=value)\n`);
+      process.exit(2);
+    }
+    const key = item.slice(0, eq);
+    const value = item.slice(eq + 1);
+    // Coerce common JSON-ish values: true/false, numbers, arrays via comma.
+    options[key] = value === 'true' ? true : value === 'false' ? false : value;
+  }
+
+  const url = `http://localhost:${port}/_api/export`;
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ format, scope, options }),
+  });
+  if (!r.ok) {
+    const text = await r.text();
+    process.stderr.write(`maude design export: server returned ${r.status}: ${text}\n`);
+    process.exit(1);
+  }
+
+  const disp = r.headers.get('content-disposition') ?? '';
+  const serverFilename = /filename="([^"]+)"/.exec(disp)?.[1] ?? `export.${format}`;
+  const outPath = flags.out
+    ? resolve(process.cwd(), flags.out)
+    : resolve(process.cwd(), serverFilename);
+  const bytes = new Uint8Array(await r.arrayBuffer());
+  await writeFile(outPath, bytes);
+  process.stdout.write(`maude design export: wrote ${outPath} (${bytes.byteLength} bytes)\n`);
+}
+
+function collectRepeatedFlag(argv, name) {
+  const out = [];
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i] === name && argv[i + 1] !== undefined) {
+      out.push(argv[i + 1]);
+      i += 1;
+    } else if (argv[i].startsWith(`${name}=`)) {
+      out.push(argv[i].slice(name.length + 1));
+    }
+  }
+  return out;
 }
 
 async function runInit({ args, pkgRoot }) {

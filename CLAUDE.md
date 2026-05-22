@@ -124,6 +124,18 @@ When working on a brief the user provided via `/design:setup-ds` or `/design:new
 
 Never bump versions by hand or with `npm version` — the script is the single source of truth for keeping all three manifests in lockstep.
 
+## Site roadmap regen
+
+`site/lib/roadmap.json` is auto-generated from `.ai/plans/*.md` + `.ai/plans/archive/*.md` + `.ai/state/STATE.md` by `site/scripts/build-roadmap.mjs`. It feeds the public `/roadmap` page. Like `stats.json` it IS committed because Vercel uploads only `site/` and cannot see the `.ai/` sibling.
+
+**Whenever** you edit `.ai/state/STATE.md` History, archive a plan into `.ai/plans/archive/`, or add a new plan under `.ai/plans/`, run:
+
+```
+pnpm --filter @maude/site gen:roadmap
+```
+
+and include the resulting `site/lib/roadmap.json` diff in the same commit. This is the auto-update mechanism for `/flow:done` and any ad-hoc plan moves, no plugin-command hook needed — the rule lives here so it stays in context.
+
 ## Working on plugin internals locally
 
 For testing edits to plugin commands/skills/agents, the README's "Local development" section is the canonical recipe: point the marketplace at the local working tree (`/plugin marketplace add /absolute/path/to/maude`), then `/plugin marketplace update maude` + `/reload-plugins` after each edit. **Test in a scratch project** (`cd /tmp/scratch && claude`) rather than from this repo's directory — otherwise this repo's own `.ai/` workspace tangles with the plugin you're testing.

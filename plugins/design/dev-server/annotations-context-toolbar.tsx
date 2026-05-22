@@ -36,14 +36,14 @@ const TOOLBAR_CSS = `
   display: flex;
   align-items: center;
   gap: 6px;
-  background: var(--bg-1, rgba(255,255,255,0.98));
-  border: 1px solid var(--u-border-2, rgba(0,0,0,0.08));
-  border-radius: 8px;
+  background: var(--u-bg-2, var(--bg-1, rgba(255,255,255,0.98)));
+  border: 1px solid var(--u-fg-0, #1c1917);
+  border-radius: 0;
   padding: 6px 8px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.10);
-  font-family: ui-sans-serif, system-ui, sans-serif;
+  box-shadow: 4px 4px 0 var(--u-fg-0, #1c1917);
+  font-family: var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 12px;
-  color: var(--fg-0, #1a1a1a);
+  color: var(--u-fg-0, var(--fg-0, #1a1a1a));
   user-select: none;
   pointer-events: auto;
 }
@@ -79,8 +79,8 @@ const TOOLBAR_CSS = `
 .dc-annot-ctx-btn {
   appearance: none;
   background: transparent;
-  border: 1px solid rgba(0,0,0,0.12);
-  border-radius: 4px;
+  border: 1px solid var(--u-fg-0, rgba(0,0,0,0.6));
+  border-radius: 0;
   padding: 3px 8px;
   font: inherit;
   color: inherit;

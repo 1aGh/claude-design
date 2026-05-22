@@ -32,13 +32,13 @@ const PALETTE_CSS = `
   transform: translateX(-50%);
   display: flex;
   align-items: stretch;
-  background: var(--bg-1, rgba(255,255,255,0.98));
-  border: 1px solid var(--u-border-2, rgba(0,0,0,0.08));
-  border-radius: 8px;
-  box-shadow: 0 6px 24px rgba(0,0,0,0.08);
-  font-family: ui-sans-serif, system-ui, sans-serif;
+  background: var(--u-bg-2, var(--bg-1, rgba(255,255,255,0.98)));
+  border: 1px solid var(--u-fg-0, #1c1917);
+  border-radius: 0;
+  box-shadow: 4px 4px 0 var(--u-fg-0, #1c1917);
+  font-family: var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 12px;
-  color: var(--fg-0, #1a1a1a);
+  color: var(--u-fg-0, var(--fg-0, #1a1a1a));
   z-index: 6;
   user-select: none;
   /* Intentionally NO overflow:hidden — the zoom popover (.dc-tp-popover) is
@@ -54,14 +54,14 @@ const PALETTE_CSS = `
 }
 .dc-tool-palette .dc-tp-sep {
   width: 1px;
-  background: var(--u-border-3, rgba(0,0,0,0.08));
+  background: var(--u-border-subtle, rgba(0,0,0,0.08));
   margin: 6px 0;
 }
 .dc-tool-palette button {
   appearance: none;
   background: transparent;
   border: 0;
-  border-radius: 6px;
+  border-radius: 0;
   padding: 0;
   width: 32px;
   height: 32px;
@@ -85,10 +85,10 @@ const PALETTE_CSS = `
   min-width: 56px;
   padding: 0 8px;
   font-variant-numeric: tabular-nums;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 11px;
   letter-spacing: 0.04em;
-  border-radius: 6px;
+  border-radius: 0;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -98,21 +98,22 @@ const PALETTE_CSS = `
   position: absolute;
   right: 4px;
   bottom: 44px;
-  background: var(--bg-1, rgba(255,255,255,0.98));
-  border: 1px solid var(--u-border-2, rgba(0,0,0,0.08));
-  border-radius: 8px;
-  box-shadow: 0 6px 24px rgba(0,0,0,0.08);
+  background: var(--u-bg-2, var(--bg-1, rgba(255,255,255,0.98)));
+  border: 1px solid var(--u-fg-0, #1c1917);
+  border-radius: 0;
+  box-shadow: 4px 4px 0 var(--u-fg-0, #1c1917);
   display: flex;
   flex-direction: column;
   padding: 4px;
   min-width: 160px;
   z-index: 7;
+  font-family: var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
 }
 .dc-tp-popover button {
   appearance: none;
   background: transparent;
   border: 0;
-  border-radius: 6px;
+  border-radius: 0;
   padding: 6px 10px;
   text-align: left;
   font: inherit;
@@ -121,7 +122,6 @@ const PALETTE_CSS = `
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  font-family: ui-sans-serif, system-ui, sans-serif;
   width: 100%;
 }
 .dc-tp-popover button:hover { background: rgba(0,0,0,0.04); }
@@ -201,6 +201,22 @@ export function ToolPalette() {
       </div>
       <div className="dc-tp-sep" />
       <div className="dc-tp-group">
+        <button
+          type="button"
+          aria-label="Export (⌘E)"
+          title="Export (⌘E)"
+          onClick={() => {
+            // Phase 6.5 T9 — dispatch the same custom event the context-menu
+            // uses; the dialog provider opens with the default scope.
+            try {
+              window.dispatchEvent(new CustomEvent('maude:open-export', { detail: {} }));
+            } catch {
+              /* ignore — non-window environments */
+            }
+          }}
+        >
+          <span aria-hidden="true" style={{ fontSize: 14, lineHeight: 1 }}>⬇</span>
+        </button>
         <button
           type="button"
           aria-label={

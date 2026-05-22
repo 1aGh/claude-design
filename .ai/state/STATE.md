@@ -3,14 +3,39 @@
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
 **Workflow:** feature-delivery — Maude v1.0 roadmap
-**Phase:** Phase 15.5 v2.1 — Marketing demo video (single perfect cut, real maude in sandbox, voice-aligned copy)
-**Status:** done (24/24 tasks · /flow:done complete · demo.mp4 awaiting manual upload to v0.16.0 GitHub release)
-**Started:** 2026-05-20
-**Updated:** 2026-05-20
+**Phase:** Phase 6.5 — Canvas export (UI-first, multi-format, scope-aware)
+**Status:** done (13/13 + v2 rewrite · DDR-041 captures the swap · 334/334 tests · awaiting push/PR)
+**Started:** 2026-05-22
+**Updated:** 2026-05-23
 **Active task:** —
 **Active plan:** —
 
+**Branch:** feat/phase-6.5-export (committed, ready to push)
+
+### Phase 15.5 v2.1 — Marketing demo video (previous, done)
+
+Below history preserved for context — moved to archive on next /flow:done.
+
+---
+
 ## Execution Progress
+
+### feature-site-roadmap.md — /flow:execute complete (2026-05-22)
+
+- [x] T1: `site/scripts/build-roadmap.mjs` — parser for `.ai/plans/*` + archive + STATE History (both schemas: `Date|Phase|Status|Note` and older `When|Phase|Note`) + plans/README execution-order. Output: `site/lib/roadmap.json` with `{ generated, currentPhase, phases[] }`. 36 phases · 28 done · 1 in-progress · 6 planned · 1 icebox.
+- [x] T2: `site/components/mdcc/roadmap-timeline.tsx` — server component, ASCII status glyphs `[x]/[~]/[ ]/[*]`, grouped Shipped/In progress/Planned/Icebox, SKU stamp + per-row link to GitHub plan file. Added `.mdcc-roadmap-*` CSS (paper/phosphor, no glass, no Lucide).
+- [x] T3: `site/app/(home)/roadmap/page.tsx` — server-rendered route with TS narrowing cast at the JSON trust boundary.
+- [x] T4: `site/package.json` — `prebuild` + `predev` include `node scripts/build-roadmap.mjs`; new `gen:roadmap` script.
+- [x] T5: `site/.gitignore` — note extended for `lib/roadmap.json` (same Vercel-scope rationale as `stats.json`).
+- [x] T6: `site/lib/layout.shared.tsx` — `Roadmap` nav link added between Plugins and Source.
+- [x] T7: `site/app/(home)/page.tsx` — `see the roadmap ->` link added to catalog section eyebrow.
+- [x] T8: `CLAUDE.md` — new "Site roadmap regen" section under Release flow, mandates `pnpm --filter @maude/site gen:roadmap` whenever STATE.md History or plans/ change.
+- [x] T9: `.ai/release-guide.md` — pre-push smoke gains `gen:roadmap`; commit-stage block adds `site/lib/roadmap.json`.
+- [x] T10: smoke — `next build` PASS, `/roadmap` listed as static route, dev server returns 200, 36 phase SKUs render, status glyphs present.
+
+Validation: `pnpm --filter @maude/site types:check` PASS, `biome check` clean on changed files, generator deterministic across re-runs (modulo `.generated` timestamp).
+
+No DDR recorded — status taxonomy `done | in-progress | planned | icebox` matches the plan's default; commit-vs-gitignore for `roadmap.json` follows the established `stats.json` precedent.
 
 ### Active plan — phase-15.5-marketing-demo-video-30s.md (v2)
 

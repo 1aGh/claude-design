@@ -119,6 +119,16 @@ export interface GitCommitter {
   commits: number;
 }
 
+// Phase 6.5 T10 — export history. Five-deep ring buffer of recent exports
+// surfaced by the dialog's "Recent" tab + ⌘⇧E re-run.
+export interface ExportHistoryEntry {
+  format: string;
+  scope: string;
+  options?: Record<string, unknown>;
+  filename: string;
+  at: string;
+}
+
 export interface Api {
   // File tree
   fileSlug(file: string): string;
@@ -146,6 +156,9 @@ export interface Api {
   // Aggregate data
   buildIndexData(): Promise<unknown>;
   buildSystemData(): Promise<unknown>;
+  // Export history (Phase 6.5 T10)
+  loadExportHistory(): Promise<ExportHistoryEntry[]>;
+  appendExportHistory(entry: ExportHistoryEntry): Promise<void>;
 }
 
 export function createApi(ctx: Context, onCommentsChanged: (file: string) => void): Api {
@@ -694,6 +707,32 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
     };
   }
 
+  // ---------- Export history (Phase 6.5 T10) ----------
+  //
+  // 5-deep ring buffer persisted at `<designRoot>/_export-history.json`.
+  // Reads tolerate missing / malformed files (returns []). Writes truncate
+  // to most-recent-first.
+
+  const HISTORY_PATH = path.join(paths.designRoot, '_export-history.json');
+  const HISTORY_DEPTH = 5;
+
+  async function loadExportHistory(): Promise<ExportHistoryEntry[]> {
+    try {
+      const raw = await Bun.file(HISTORY_PATH).text();
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return [];
+      return arr.slice(0, HISTORY_DEPTH);
+    } catch {
+      return [];
+    }
+  }
+
+  async function appendExportHistory(entry: ExportHistoryEntry): Promise<void> {
+    const prev = await loadExportHistory();
+    const next = [entry, ...prev].slice(0, HISTORY_DEPTH);
+    await Bun.write(HISTORY_PATH, JSON.stringify(next, null, 2));
+  }
+
   function tokenKind(name: string, value: string): string {
     const n = name.toLowerCase();
     const v = String(value).trim();
@@ -853,5 +892,7 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
     saveAnnotations,
     buildIndexData,
     buildSystemData,
+    loadExportHistory,
+    appendExportHistory,
   };
 }
