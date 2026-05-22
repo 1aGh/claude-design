@@ -41,16 +41,20 @@ Most teams want Option A. Pick B only if you've already split into autonomous pa
 
 ## Option A setup
 
+Install the CLI (required, skills use it):
+
 ```bash
-cd my-monorepo
 npm i -g @1agh/maude
-maude init --name my-monorepo
 ```
 
 Inside Claude Code at the repo root:
 
 ```text
+/plugin marketplace add 1aGh/maude
+/plugin install flow@maude
+/plugin install design@maude
 /flow:init
+/design:init
 ```
 
 You'll end up with something like:

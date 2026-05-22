@@ -3,11 +3,19 @@ title: Next.js recipe
 description: Drop-in setup for a Next.js 15+ app. App Router, Tailwind, Vitest.
 ---
 
-Drop-in setup for a Next.js app. Five steps, four optional. App Router, Tailwind, Vitest assumed. Adjust where your stack diverges.
+Drop-in setup for a Next.js app. App Router, Tailwind, Vitest assumed. Adjust where your stack diverges.
 
 **Starting point:** existing Next.js 15+ app, pnpm or npm, Tailwind, App Router.
 
-## 1. Install the marketplace and CLI
+## 0. Install the CLI
+
+```bash
+npm i -g @1agh/maude              # or pnpm add -g
+```
+
+Required, not optional. Skills shell out to `maude`.
+
+## 1. Add the marketplace and install plugins
 
 In Claude Code:
 
@@ -17,25 +25,16 @@ In Claude Code:
 /plugin install design@maude     # optional, only if you want canvas-first design
 ```
 
-Then in your terminal:
+## 2. Init the workspace
 
-```bash
-npm i -g @1agh/maude              # or pnpm add -g
-```
-
-## 2. Scaffold the `.ai/` workspace
-
-```bash
-maude init --name my-app
-```
-
-Open Claude Code in the repo root and run:
+In your project root, inside Claude Code:
 
 ```text
 /flow:init
+/design:init                     # skip if you didn't install design
 ```
 
-The onboard command auto-detects your stack and writes `.ai/workflows.config.json`. For a Next.js + Tailwind + Vitest app you'll typically end up with:
+`/flow:init` auto-detects your stack and writes `.ai/workflows.config.json`. For a Next.js + Tailwind + Vitest app you'll typically end up with:
 
 ```json
 {
@@ -67,15 +66,9 @@ The onboard command auto-detects your stack and writes `.ai/workflows.config.jso
 }
 ```
 
-## 3. (Optional) Set up the design plugin
+## 3. (Optional) Use the design canvas loop
 
-Create a `.design/` directory at the repo root:
-
-```bash
-mkdir -p .design/system .design/ui
-```
-
-Drop your design tokens (CSS variables, JSON, whatever) into `.design/system/`. Boot the dev server:
+If you ran `/design:init`, the `.design/` directory is scaffolded. Boot the dev server:
 
 ```bash
 maude design serve --port 4399

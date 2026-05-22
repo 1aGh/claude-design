@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Walk plugins/{flow,design}/commands/*.md, write one MDX reference page per command.
-// Output lives at content/docs/reference/{flow,design}/<name>.mdx + meta.json.
+// Output lives at content/docs/commands-{flow,design}/<name>.mdx + meta.json.
 // Run as a prebuild step — see site/package.json `prebuild` script.
 
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../../');
-const docsRoot = resolve(__dirname, '../content/docs/reference');
+const docsRoot = resolve(__dirname, '../content/docs');
 const repoUrl = 'https://github.com/1aGh/maude/blob/main';
 
 const plugins = [
@@ -109,7 +109,7 @@ function relativeSourcePath(plugin, name) {
 
 async function emitPlugin(plugin) {
   const sourceDir = join(repoRoot, plugin.sourceDir);
-  const targetDir = join(docsRoot, plugin.slug);
+  const targetDir = join(docsRoot, `commands-${plugin.slug}`);
 
   let files;
   try {
@@ -224,41 +224,12 @@ This page is auto-generated from the command's frontmatter. The exact prompt Cla
   return pages.length;
 }
 
-async function emitIndex(counts) {
-  const lines = [
-    '---',
-    'title: Command reference',
-    'description: Auto-generated index of every /flow:* and /design:* slash command.',
-    '---',
-    '',
-    'Auto-generated from the source files under [`plugins/`](https://github.com/1aGh/maude/tree/main/plugins). Re-runs on every site build (`pnpm --filter @maude/site build`).',
-    '',
-  ];
-  for (const plugin of plugins) {
-    lines.push(
-      `- [${plugin.label} commands](/docs/reference/${plugin.slug}) — ${counts[plugin.slug]} commands`
-    );
-  }
-  lines.push('');
-  lines.push('For the hand-written, lifecycle-grouped overview pages, see:');
-  lines.push('');
-  lines.push('- [Flow commands](/docs/flow)');
-  lines.push('- [Design commands](/docs/design)');
-  await writeFile(join(docsRoot, 'index.mdx'), `${lines.join('\n')}\n`);
-
-  await writeFile(
-    join(docsRoot, 'meta.json'),
-    `${JSON.stringify({ title: 'Reference', pages: ['index', 'config-schema', '---Commands---', 'flow', 'design'] }, null, 2)}\n`
-  );
-}
-
 async function main() {
   await mkdir(docsRoot, { recursive: true });
   const counts = {};
   for (const plugin of plugins) {
     counts[plugin.slug] = await emitPlugin(plugin);
   }
-  await emitIndex(counts);
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
   console.log(`[command-reference] generated ${total} pages`);
 }

@@ -1,5 +1,5 @@
 ---
-title: Design commands
+title: Design canvas loop
 description: The /design:* slash commands. Canvas-first iteration on HTML/JSX mocks under .design/.
 ---
 
@@ -9,7 +9,17 @@ A zero-dep Node dev server injects an inspector overlay. **Cmd+Click any element
 
 ## Twelve commands
 
-Eight daily verbs (no prefix), three setup verbs (`setup-*` group), and one validator (`smoke`). The bare `/design` form was a v0.8 one-version compat stub redirecting to `/design:edit`. **Removed in v0.9**.
+Three setup verbs run once per project. Eight daily verbs drive the canvas loop. One validator (`smoke`) catches regressions. The bare `/design` form was a v0.8 one-version compat stub redirecting to `/design:edit`. **Removed in v0.9**.
+
+**Setup. One-shot bootstrapping.**
+
+| Command | What it does |
+| ------- | ------------ |
+| `/design:init` | One-time project init: dependency pre-flight, install hints, skeleton `.design/config.json`. Mirrors `/flow:init`. Auto-invoked when other commands hit a missing config. |
+| `/design:setup-ds <name> "[brief]"` | Create a design system (first one, additional, or re-bootstrap with `--force`). Thin wrapper around skill `design-system` in bootstrap mode. |
+| `/design:setup-docs [--full]` | Refresh `<designRoot>/README.md` + `INDEX.md`. "READ THIS FIRST" docs that live in the design root and stay current. Auto-runs after `/design:edit` and `/design:new`. |
+
+**Daily. The canvas loop.**
 
 | Command | What it does |
 | ------- | ------------ |
@@ -21,9 +31,11 @@ Eight daily verbs (no prefix), three setup verbs (`setup-*` group), and one vali
 | `/design:browse [--port <n>]` | Boot a local design browser. File tree of all canvases plus tabbed iframe preview on a free port. |
 | `/design:handoff [--target <label>] [--force]` | Migrate the active canvas (`_active.json`) to production code (target chosen from `.design/config.json` `handoffTargets`). |
 | `/design:help` | List all design commands grouped by category. |
-| `/design:init` | One-time project init: dependency pre-flight, install hints, skeleton `.design/config.json`. Mirrors `/flow:init`. Auto-invoked when other commands hit a missing config. |
-| `/design:setup-ds <name> "[brief]"` | Create a design system (first one, additional, or re-bootstrap with `--force`). Thin wrapper around skill `design-system` in bootstrap mode. |
-| `/design:setup-docs [--full]` | Refresh `<designRoot>/README.md` + `INDEX.md`. "READ THIS FIRST" docs that live in the design root and stay current. Auto-runs after `/design:edit` and `/design:new`. |
+
+**Validate.**
+
+| Command | What it does |
+| ------- | ------------ |
 | `/design:smoke` | Batch screenshot every UI canvas + preview specimen. Flag blank iframes and visible error overlays. Catches "build green ≠ user-visible green" regressions. |
 
 ## Dev server runtime files

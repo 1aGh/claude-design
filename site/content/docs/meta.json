@@ -3,13 +3,15 @@
   "pages": [
     "index",
     "getting-started",
-    "---Guides---",
+    "---Learn---",
     "cli",
-    "flow",
     "design",
+    "flow",
     "config",
-    "---Reference---",
-    "reference",
+    "---Look up---",
+    "commands-design",
+    "commands-flow",
+    "config-schema",
     "---Recipes---",
     "recipes"
   ]

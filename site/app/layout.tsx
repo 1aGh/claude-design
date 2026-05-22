@@ -21,11 +21,11 @@ export const metadata: Metadata = {
     template: '%s | maude',
   },
   description:
-    'A Claude Code marketplace. Two plugins, one CLI, some vibes. design iterates canvases. flow runs the agentic loop. maude is the plumbing.',
+    'Vibe-design & vibe-code workflows for Claude Code. Two plugins, one CLI, some vibes. design iterates canvases. flow runs the agentic loop. maude is the plumbing.',
   openGraph: {
     title: 'maude',
     description:
-      'A Claude Code marketplace. Two plugins, one CLI, some vibes. Plan, design, ship, all from inside Claude.',
+      'Vibe-design & vibe-code workflows for Claude Code. Two plugins, one CLI, some vibes. Plan, design, ship, all from inside Claude.',
     type: 'website',
     siteName: 'maude',
   },

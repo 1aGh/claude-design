@@ -1,11 +1,22 @@
 ---
-title: Flow commands
+title: Flow lifecycle
 description: All 30 /flow:* slash commands, grouped by lifecycle. Daily verbs stay terse, everything else uses a group-verb prefix.
 ---
 
 Thirty commands. Eleven run every feature cycle and stay one-word terse (`plan`, `execute`, `done`, `validate`). The rest belong to a group and wear the group as a prefix (`setup-prd`, `bug-rca`, `record-ddr`, `maintain-clean`). No subdirectory namespacing. Claude Code doesn't support it; the prefix is the working substitute.
 
 The canonical catalog: [`plugins/flow/CATEGORIES.md`](https://github.com/1aGh/maude/blob/main/plugins/flow/CATEGORIES.md). Live grouped index, one slash command away: `/flow:help`.
+
+## Setup. One-shot bootstrapping
+
+Run once per project (or once per major restructure).
+
+| Command | What it does |
+| ------- | ------------ |
+| `/flow:init` | Scaffold `.ai/`, auto-detect stack, populate `workflows.config.json`, defer to `/init` for `CLAUDE.md`. |
+| `/flow:setup-prd` | Draft a PRD + auto-generate phase plans + execution README. |
+| `/flow:setup-codebase-map` | Snapshot architecture into `.ai/context/` for cross-session reuse. |
+| `/flow:setup-context` | Prime the agent with the codebase map + `CLAUDE.md`. |
 
 ## Daily. Every-cycle workflow
 
@@ -22,17 +33,6 @@ The canonical catalog: [`plugins/flow/CATEGORIES.md`](https://github.com/1aGh/ma
 | `/flow:quick` | Trivial-change fast-path. Skip plan cycle, go edit, verify, commit. |
 | `/flow:release` | Walk the project's release runbook step-by-step with explicit confirmation. |
 | `/flow:help` | Auto-generated grouped index (built from frontmatter). |
-
-## Setup. One-shot bootstrapping
-
-Run once per project (or once per major restructure).
-
-| Command | What it does |
-| ------- | ------------ |
-| `/flow:init` | Scaffold `.ai/`, auto-detect stack, populate `workflows.config.json`, defer to `/init` for `CLAUDE.md`. |
-| `/flow:setup-prd` | Draft a PRD + auto-generate phase plans + execution README. |
-| `/flow:setup-codebase-map` | Snapshot architecture into `.ai/context/` for cross-session reuse. |
-| `/flow:setup-context` | Prime the agent with the codebase map + `CLAUDE.md`. |
 
 ## Validate. Specialized validators
 

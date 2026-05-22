@@ -1,39 +1,51 @@
 ---
 title: Getting Started
-description: Three commands and you're in. (Maybe four. Depends on your shell.)
+description: Four steps and you're in. (Maybe five. Depends on your shell.)
 ---
 
-Three commands and you're in. (Maybe four. Depends on your shell.) Five steps below, four of them optional. `npm install` and a handful of slash commands. No accounts, no API keys, no telemetry.
+Four steps and you're in. (Maybe five. Depends on your shell.) `npm install`, a marketplace, two plugins, two init commands. No accounts, no API keys, no telemetry.
 
-## 1. Install the marketplace
+## Install the CLI
+
+`maude` is required, not optional. Several skills shell out to it.
+
+```bash
+npm i -g @1agh/maude
+# or with pnpm
+pnpm add -g @1agh/maude
+```
+
+This gives you the `maude` binary that scaffolds the `.ai/` workspace and boots the design dev server. See [CLI](/docs/cli) for the full surface.
+
+## Add the marketplace
 
 Inside Claude Code:
 
 ```text
 /plugin marketplace add 1aGh/maude
+```
+
+`/plugin marketplace update maude` pulls future releases.
+
+## Install the plugins
+
+```text
 /plugin install design@maude
 /plugin install flow@maude
 ```
 
-Install one or both, they're independent. `/plugin marketplace update maude` pulls future releases.
+Install one or both, they're independent.
 
-## 2. Install the CLI (optional, recommended)
+## Init the workspace
 
-```bash
-npm i -g @1agh/maude
-# or skip the global install:
-npx @1agh/maude --help
+Inside Claude Code, in your project root:
+
+```text
+/flow:init
+/design:init
 ```
 
-This gives you `maude`. The binary that scaffolds the `.ai/` workspace and boots the design dev server. See [CLI](/docs/cli) for the full surface.
-
-## 3. Scaffold a project
-
-```bash
-maude init --name my-app
-```
-
-Copies the `.ai/` skeleton from the flow plugin into your repo:
+`/flow:init` scaffolds the `.ai/` second-brain:
 
 ```
 .ai/
@@ -46,39 +58,63 @@ Copies the `.ai/` skeleton from the flow plugin into your repo:
 └── scenarios/              # cross-platform UI scenarios
 ```
 
-For richer setup (stack auto-detect, branching model, changelog provider), run `/flow:init` inside Claude Code instead. It calls `maude init` first, then asks the right questions.
+It auto-detects your stack, writes `workflows.config.json`, and asks the right questions (branching model, changelog provider, platforms).
+
+`/design:init` scaffolds `.design/` and writes a skeleton `.design/config.json`. Skip it if you don't want the canvas loop.
 
 For `CLAUDE.md`, use Claude Code's built-in `/init`. Don't write it by hand.
 
-## 4. Run a slash command
+## Run a slash command
 
-Three good first commands:
+Design first, then ship.
+
+**Design loop** — start here if you're greenfielding a feature:
 
 | Command | What it does |
 | ------- | ------------ |
-| `/flow:status` | Tells you where you are. Safe to run anywhere. |
-| `/flow:plan "<feature>"` | Drafts a phase plan grounded in your PRD + design system. |
-| `/design:new <Name> "<brief>"` | Scaffolds a new design canvas under `.design/<name>/` and iterates on it. |
+| `/design:setup-ds <name> "<brief>"` | One-time per project. Bootstrap a design system (tokens, philosophy, specimens). |
+| `/design:new <Name> "<brief>"` | Scaffold a new multi-artboard canvas under `.design/ui/`. |
+| `/design:edit "<feedback>"` | Iterate on the open canvas. Cmd+Click an element first to scope the edit. |
 
-After the plan lands, `/flow:execute .ai/plans/<plan>.md` walks the implementation. `/flow:done` validates, commits, opens a PR, and archives the plan.
+**Flow loop** — ship the feature:
 
-## 5. Boot the design dev server (optional)
+| Command | What it does |
+| ------- | ------------ |
+| `/flow:setup-prd` | One-time per project. Draft a PRD and auto-generate phase plans. |
+| `/flow:plan "<feature>"` | Per-feature. Draft a phase plan grounded in PRD + design system. |
+| `/flow:execute` | Walk the plan task-by-task with the Edit-Verify loop. |
+| `/flow:done` | Validate, commit, open a PR, archive the plan. |
 
-If you've installed the `design` plugin and you have a `.design/` directory:
+`/flow:status` works anywhere and tells you where you are.
+
+## Open the design browser
+
+Two ways to boot the local design dev server. Both start the same server (file tree of every canvas, tabbed iframe preview, inspector overlay). Pick whichever fits where your hands are.
+
+**From inside Claude Code:**
+
+```text
+/design:browse
+```
+
+Auto-finds a free port starting at 4321 and opens your default browser. `--port <n>` to force a specific port.
+
+**From your terminal:**
 
 ```bash
 maude design serve --port 4399
-# → http://localhost:4399
 ```
 
-The server injects an inspector overlay into every HTML canvas. **Cmd+Click any element** to scope `/design:edit "<feedback>"` to that selection.
+Forwards to the same dev server. Useful when you're not in a Claude Code session, or you want to script it in `package.json`.
+
+Either way: **Cmd+Click any element** in a canvas to scope the next `/design:edit "<feedback>"` to that selection. `/design:new` also auto-starts the server if it isn't running, so you rarely need to boot it by hand.
 
 ## Next
 
 <Cards>
   <Card title="`maude` CLI reference" href="/docs/cli" />
-  <Card title="Flow commands by category" href="/docs/flow" />
-  <Card title="Design commands" href="/docs/design" />
+  <Card title="Design canvas loop" href="/docs/design" />
+  <Card title="Flow lifecycle" href="/docs/flow" />
   <Card title="`workflows.config.json` reference" href="/docs/config" />
   <Card title="Next.js recipe" href="/docs/recipes/nextjs" />
 </Cards>

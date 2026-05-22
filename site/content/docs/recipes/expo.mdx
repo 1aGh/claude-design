@@ -7,7 +7,15 @@ Drop-in setup for a native app. `design` is **optional** here. Its canvas-first 
 
 **Starting point:** existing Expo SDK 51+ app, pnpm / npm / yarn, TypeScript.
 
-## 1. Install the marketplace + CLI
+## 0. Install the CLI
+
+```bash
+npm i -g @1agh/maude              # or pnpm add -g
+```
+
+Required, not optional. Skills shell out to `maude`.
+
+## 1. Add the marketplace and install flow
 
 In Claude Code:
 
@@ -18,16 +26,9 @@ In Claude Code:
 
 The `design` plugin is **optional** for native. Its canvas-first loop targets HTML/JSX in the browser. For Expo, design typically lives upstream in Figma plus flow's `agent-device` automation for native verification.
 
-In your terminal:
+## 2. Init the workspace
 
-```bash
-npm i -g @1agh/maude
-maude init --name my-rn-app
-```
-
-## 2. Run `/flow:init`
-
-Inside Claude Code:
+In your project root, inside Claude Code:
 
 ```text
 /flow:init
@@ -84,9 +85,10 @@ Output: a markdown report under `.ai/scenarios/<name>/report.md` with per-step s
 ## 4. Try the loop
 
 ```text
-/flow:plan "<feature>"
-/flow:execute
-/flow:done
+/flow:setup-prd          # one-time. draft the PRD
+/flow:plan "<feature>"   # per-feature. draft a phase plan
+/flow:execute            # implement it
+/flow:done               # validate, commit, PR, archive
 ```
 
 `/flow:utils-verify` (called inside `/flow:execute`'s Edit-Verify loop) will spawn an `agent-device` smoke against the current simulator for UI tasks, in addition to running your Jest tests.

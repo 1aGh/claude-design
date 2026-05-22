@@ -13,6 +13,7 @@ dev-server/.cache/
 .design/_history/
 .design/_comments/
 .design/_canvas-state/
+.design/_export-history.json
 
 # AI workflow runtime — committed templates live in .ai/templates/
 .ai/state/HANDOFF.md

@@ -1,0 +1,31 @@
+---
+title: /design:export
+description: "Export aktivního canvasu — PNG / PDF / SVG / HTML / PPTX / Canva handoff bundle / project ZIP. Thin slash wrapper nad `POST /_api/export` (stejný engine jako UI dialog ⌘E)."
+---
+
+| Property | Value |
+| -------- | ----- |
+| **Command** | `/design:export` |
+| **Category** | `daily` |
+| **Argument hint** | `<png\|pdf\|svg\|html\|pptx\|canva\|zip> [--scope selection\|artboard\|canvas-as-separate\|project-raw] [--out <path>] [--option key=value]` |
+| **Source** | [`plugins/design/commands/export.md`](https://github.com/1aGh/maude/blob/main/plugins/design/commands/export.md) |
+
+## Description
+
+Export aktivního canvasu — PNG / PDF / SVG / HTML / PPTX / Canva handoff bundle / project ZIP. Thin slash wrapper nad `POST /_api/export` (stejný engine jako UI dialog ⌘E).
+
+## Invocation
+
+```text
+/design:export <png|pdf|svg|html|pptx|canva|zip> [--scope selection|artboard|canvas-as-separate|project-raw] [--out <path>] [--option key=value]
+```
+
+## Summary
+
+Pošle požadavek na běžící dev-server (`POST /_api/export`) se stejným payloadem, jaký posílá ⌘E dialog uvnitř canvasu. Server zapíše soubor a tenhle slash command ho dotáhne na disk (default cwd, nebo `--out &lt;path>`).
+
+## Source of truth
+
+This page is auto-generated from the command's frontmatter. The exact prompt Claude runs — including directives, edge-case handling, and tool-routing logic — lives in the source file:
+
+[**`plugins/design/commands/export.md`**](https://github.com/1aGh/maude/blob/main/plugins/design/commands/export.md) → read it for the full behavior.
