@@ -1861,8 +1861,25 @@ function App() {
   const activeFileComments = (activePath && activePath !== SYSTEM_TAB) ? (commentsByFile[activePath] || []) : [];
   const totalOpen = totalCounts(commentsByFile).open;
 
+  // Suppress the native browser context menu across the shell — the canvas
+  // input-router already handles right-click inside the canvas host, but
+  // sidebar / menubar / statusbar / floating chrome would otherwise leak the
+  // native menu on top of our `.dc-context-menu` (or alone, outside canvas).
+  // Editable fields (search box, future text inputs) keep the native menu so
+  // copy/paste still works.
+  const onShellContextMenu = useCallback((e) => {
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || (t.isContentEditable))) {
+      return;
+    }
+    e.preventDefault();
+  }, []);
+
   return (
-    <div className={'app' + (commentsPanelOpen ? ' with-rsidebar' : '') + (sidebarOpen ? '' : ' no-sidebar')}>
+    <div
+      className={'app' + (commentsPanelOpen ? ' with-rsidebar' : '') + (sidebarOpen ? '' : ' no-sidebar')}
+      onContextMenu={onShellContextMenu}
+    >
       <Sidebar
         groups={groups}
         activePath={activePath}

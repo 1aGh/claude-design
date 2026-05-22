@@ -459,15 +459,15 @@ const ANNOT_CSS = `
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--bg-1, rgba(255,255,255,0.98));
-  border: 1px solid var(--u-border-2, rgba(0,0,0,0.08));
-  border-radius: 8px;
+  background: var(--u-bg-2, var(--bg-1, rgba(255,255,255,0.98)));
+  border: 1px solid var(--u-fg-0, #1c1917);
+  border-radius: 0;
   padding: 6px 10px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 11px;
-  color: rgba(40,30,20,0.85);
+  color: var(--u-fg-0, rgba(40,30,20,0.85));
   z-index: 6;
-  box-shadow: 0 6px 24px rgba(0,0,0,0.08);
+  box-shadow: 4px 4px 0 var(--u-fg-0, #1c1917);
   user-select: none;
 }
 .dc-annot-chrome .dc-annot-swatches { display: flex; gap: 4px; }
@@ -1481,7 +1481,7 @@ function TextEditor({
           textAlign: 'center',
           color: existing?.color ?? '#1a1a1a',
           fontSize: `${fontSize}px`,
-          fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+          fontFamily: 'var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
           lineHeight: 1.25,
           outline: 'none',
           background: 'transparent',
@@ -1568,7 +1568,7 @@ function StrokeNode({
         fontSize={stroke.fontSize}
         textAnchor="middle"
         dominantBaseline="middle"
-        style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif' }}
+        style={{ fontFamily: 'var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)' }}
       >
         {stroke.text}
       </text>
