@@ -1,6 +1,6 @@
 ---
 name: feature-site-roadmap
-status: planned
+status: ready-for-validate
 created: 2026-05-22
 decisions: []
 ---
@@ -293,7 +293,7 @@ Nový scénář:
 
 ## Acceptance Criteria
 
-- [ ] T1–T10 splněny
+- [x] T1–T10 splněny
 - [ ] `site/lib/roadmap.json` deterministicky generován, committed
 - [ ] `/roadmap` route dostupná, renderuje všechny fáze s korektním statusem
 - [ ] CLAUDE.md obsahuje pravidlo o `gen:roadmap` při archivaci plánu / STATE.md edit

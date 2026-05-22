@@ -83,6 +83,7 @@ pnpm lint
 pnpm test
 pnpm --filter @maude/site gen:stats              # refresh derived stats
 pnpm --filter @maude/site gen:reference          # refresh derived reference docs
+pnpm --filter @maude/site gen:roadmap            # refresh roadmap from .ai/plans + STATE.md
 git diff --stat site/                                # capture any drift to commit
 ```
 
@@ -101,6 +102,7 @@ git add package.json \
         CHANGELOG.md \
         .changeset/ \
         site/lib/stats.json \
+        site/lib/roadmap.json \
         site/content/docs/reference/
 git status                                           # eyeball — no surprise additions
 git commit -m "chore: release v${VER}"
