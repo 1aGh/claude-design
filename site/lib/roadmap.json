@@ -1,11 +1,6 @@
 {
-  "generated": "2026-05-22T22:42:10.213Z",
-  "currentPhase": {
-    "id": "phase-6.5-export",
-    "title": "Phase 6.5: Canvas export (UI-first, multi-format, scope-aware)",
-    "branch": "feat/phase-6.5-export",
-    "status": "ready-for-validate (13/13 tasks · /flow:execute complete · smoke gate ✅ · awaiting /flow:done)"
-  },
+  "generated": "2026-05-23T07:37:52.687Z",
+  "currentPhase": null,
   "phases": [
     {
       "id": "client-tree-restructure",
@@ -61,6 +56,17 @@
       "planPath": ".ai/plans/archive/phase-3.6-canvas-tsx-format.md",
       "archived": true,
       "phaseKey": "3.6"
+    },
+    {
+      "id": "phase-6.5-export",
+      "title": "Phase 6.5: Canvas export (UI-first, multi-format, scope-aware)",
+      "status": "done",
+      "shipTarget": "v1.0",
+      "date": null,
+      "summary": "A first-class export feature surfaced from the canvas UI (not just CLI). One dialog covers seven formats × four scopes:",
+      "planPath": ".ai/plans/archive/phase-6.5-export.md",
+      "archived": true,
+      "phaseKey": "6.5"
     },
     {
       "id": "rename-md-claude-to-maude",
@@ -316,17 +322,6 @@
       "phaseKey": "6"
     },
     {
-      "id": "phase-6.5-export",
-      "title": "Phase 6.5: Canvas export (UI-first, multi-format, scope-aware)",
-      "status": "in-progress",
-      "shipTarget": "v1.0",
-      "date": null,
-      "summary": "A first-class export feature surfaced from the canvas UI (not just CLI). One dialog covers seven formats × four scopes:",
-      "planPath": ".ai/plans/phase-6.5-export.md",
-      "archived": false,
-      "phaseKey": "6.5"
-    },
-    {
       "id": "phase-8-live-collaboration-yjs-lan",
       "title": "Phase 8: Live collaboration — \"Ambient multiplayer\" (LAN, no hub)",
       "status": "planned",
@@ -391,6 +386,28 @@
       "planPath": ".ai/plans/phase-13-canvas-activity-overlay.md",
       "archived": false,
       "phaseKey": "13"
+    },
+    {
+      "id": "phase-16-intro-video-v3-wow",
+      "title": "Feature: Intro video v4 — total rebuild, scene-by-scene visual iteration",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "---",
+      "planPath": ".ai/plans/phase-16-intro-video-v3-wow.md",
+      "archived": false,
+      "phaseKey": "16"
+    },
+    {
+      "id": "phase-17-docs-site-infographics",
+      "title": "Feature: Docs site infographics + diagrams",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Add a small library of diagram primitives to the docs site and insert them into the highest-traffic pages. Today the docs are text-heavy markdown tables — accurate but visually flat. Adding SKU-sta...",
+      "planPath": ".ai/plans/phase-17-docs-site-infographics.md",
+      "archived": false,
+      "phaseKey": "17"
     },
     {
       "id": "phase-7-acp-chat-sidebar",
