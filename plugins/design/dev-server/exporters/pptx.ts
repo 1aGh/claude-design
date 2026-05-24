@@ -23,6 +23,12 @@ import {
 import type { Target } from './scope.ts';
 
 const PPTX_PLAYWRIGHT = path.join(import.meta.dir, '..', 'bin', '_pptx-playwright.mjs');
+const ENUMERATE_PLAYWRIGHT = path.join(
+  import.meta.dir,
+  '..',
+  'bin',
+  '_enumerate-artboards-playwright.mjs'
+);
 // dom-to-pptx ships a pre-bundled UMD that exposes `window.domToPptx`. The
 // exports map hides the bundle path (only `.` is listed), so we resolve via
 // the package.json directory instead of `require.resolve('dom-to-pptx/dist/…')`.
@@ -143,26 +149,28 @@ async function enumerateArtboards(
   ctx: ExportContext,
   timeoutSec: number
 ): Promise<string[]> {
+  // Spawn `bin/_enumerate-artboards-playwright.mjs` via subprocess instead of
+  // importing playwright directly — keeps chromium-bidi + playwright internals
+  // out of the `bun build --compile` graph for the standalone server binary.
   const url = canvasShellUrl(ctx, target.file);
-  // Bun has fetch but no headless rendering; we re-use playwright via a tiny
-  // inline call. Cheaper would be to extend the pptx shim to enumerate in a
-  // single browser session and emit N pptxs back-to-back. Wired that way in
-  // a follow-up if/when canvas-as-separate becomes hot path.
-  const { chromium } = await import('playwright');
-  const browser = await chromium.launch();
-  try {
-    const c = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-    const page = await c.newPage();
-    await page.goto(url, { waitUntil: 'networkidle', timeout: timeoutSec * 1000 });
-    const ids = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('[data-dc-screen]')).map(
-        (el) => el.getAttribute('data-dc-screen') ?? ''
-      )
+  const proc = Bun.spawn(
+    ['node', ENUMERATE_PLAYWRIGHT, '--url', url, '--timeout', String(timeoutSec)],
+    { cwd: path.dirname(ENUMERATE_PLAYWRIGHT), stdout: 'pipe', stderr: 'pipe' }
+  );
+  const [stdout, stderr] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  const code = await proc.exited;
+  if (code !== 0) {
+    throw new Error(
+      `_enumerate-artboards-playwright exited ${code}: ${stderr.trim() || stdout.trim()}`
     );
-    return ids.filter(Boolean);
-  } finally {
-    await browser.close();
   }
+  return stdout
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 /**
