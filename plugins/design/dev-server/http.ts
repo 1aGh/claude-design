@@ -342,8 +342,7 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect): Http {
             // per-DS path, the standalone `_canvas-shell.html` 404s on the
             // tokens link and the rendered DOM uses `var(--bg-0)` unresolved
             // → screenshots come out blank. See canvasShellUrl().
-            tokensCssRel:
-              ctx.cfg.designSystems?.[0]?.tokensCssRel ?? ctx.cfg.tokensCssRel,
+            tokensCssRel: ctx.cfg.designSystems?.[0]?.tokensCssRel ?? ctx.cfg.tokensCssRel,
           },
         });
         // Fire-and-forget history append — failure here doesn't block the

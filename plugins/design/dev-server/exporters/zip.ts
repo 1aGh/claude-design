@@ -17,8 +17,8 @@ import path from 'node:path';
 
 import JSZip from 'jszip';
 
-import type { Target } from './scope.ts';
 import type { ExportContext, ExportOptions, ExportResult } from './index.ts';
+import type { Target } from './scope.ts';
 
 type IncludeTag = 'system' | 'canvases' | 'assets' | 'meta';
 
@@ -37,9 +37,7 @@ function matchesGlob(p: string, glob: string): boolean {
     return re.test(p);
   }
   if (norm.includes('*')) {
-    const re = new RegExp(
-      `^${norm.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*')}$`
-    );
+    const re = new RegExp(`^${norm.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*')}$`);
     return re.test(p);
   }
   return p === norm || p.startsWith(`${norm}/`);

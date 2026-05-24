@@ -118,9 +118,7 @@ const STROKE_WIDTH_THIN = 2;
 const STROKE_WIDTH_THICK = 6;
 type Thickness = typeof STROKE_WIDTH_THIN | typeof STROKE_WIDTH_THICK;
 
-const FONT_SIZE_SMALL = 12;
 const FONT_SIZE_MEDIUM = 14;
-const FONT_SIZE_LARGE = 20;
 const DEFAULT_FONT_SIZE = FONT_SIZE_MEDIUM;
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -14,7 +14,12 @@ import path from 'node:path';
 
 import { PDFDocument } from 'pdf-lib';
 
-import { canvasShellUrl, type ExportContext, type ExportOptions, type ExportResult } from './index.ts';
+import {
+  type ExportContext,
+  type ExportOptions,
+  type ExportResult,
+  canvasShellUrl,
+} from './index.ts';
 import type { Target } from './scope.ts';
 
 const PDF_PLAYWRIGHT = path.join(import.meta.dir, '..', 'bin', '_pdf-playwright.mjs');
@@ -50,7 +55,10 @@ async function capturePdf(
   if (code !== 0) {
     throw new Error(`_pdf-playwright exited ${code}: ${stderr.trim() || stdout.trim()}`);
   }
-  return stdout.split('\n').map((s) => s.trim()).filter(Boolean);
+  return stdout
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 export async function run(

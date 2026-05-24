@@ -16,10 +16,10 @@ import path from 'node:path';
 import JSZip from 'jszip';
 
 import { buildHandoffMarkdown } from './canva-handoff-prompt.ts';
+import type { ExportContext, ExportOptions, ExportResult } from './index.ts';
 import { run as runPng } from './png.ts';
 import { run as runPptx } from './pptx.ts';
 import type { Target } from './scope.ts';
-import type { ExportContext, ExportOptions, ExportResult } from './index.ts';
 
 async function buildRasterBundle(
   elementTargets: Array<Extract<Target, { kind: 'element' }>>,
@@ -53,9 +53,9 @@ async function buildRasterBundle(
   zip.file('manifest.csv', rows.join('\n'));
   zip.file(
     'README.md',
-    `# Canva raster bundle\n\n` +
-      `Legacy reference-only handoff. PNGs in this folder are NOT editable in Canva — they import as flat images.\n\n` +
-      `For an **editable** Canva design (text, shapes, images), re-export without \`--canva=raster\` to get the PPTX + MCP-prompt bundle instead.\n`
+    '# Canva raster bundle\n\n' +
+      'Legacy reference-only handoff. PNGs in this folder are NOT editable in Canva — they import as flat images.\n\n' +
+      'For an **editable** Canva design (text, shapes, images), re-export without `--canva=raster` to get the PPTX + MCP-prompt bundle instead.\n'
   );
   const zipBytes = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
   return {
@@ -71,7 +71,11 @@ export async function run(
   ctx: ExportContext
 ): Promise<ExportResult> {
   if (!targets.length) {
-    return { filename: 'export.canva.zip', contentType: 'application/zip', body: new Uint8Array(0) };
+    return {
+      filename: 'export.canva.zip',
+      contentType: 'application/zip',
+      body: new Uint8Array(0),
+    };
   }
   const elementTargets = targets.filter(
     (t): t is Extract<Target, { kind: 'element' }> => t.kind === 'element'

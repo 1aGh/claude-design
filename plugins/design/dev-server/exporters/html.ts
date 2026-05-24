@@ -12,8 +12,13 @@ import path from 'node:path';
 
 import JSZip from 'jszip';
 
+import {
+  type ExportContext,
+  type ExportOptions,
+  type ExportResult,
+  canvasShellUrl,
+} from './index.ts';
 import type { Target } from './scope.ts';
-import { canvasShellUrl, type ExportContext, type ExportOptions, type ExportResult } from './index.ts';
 
 const HTML_PLAYWRIGHT = path.join(import.meta.dir, '..', 'bin', '_html-playwright.mjs');
 

@@ -1182,7 +1182,6 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
   );
 
   const showMiniMap = controls?.minimap !== false;
-  const showToolbar = controls?.toolbar !== false;
 
   // Drag-state bus (Phase 4.2). Single source of truth: only one artboard
   // drag is active at a time. DCArtboards write here when their local drag

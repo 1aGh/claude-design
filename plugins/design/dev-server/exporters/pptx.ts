@@ -14,7 +14,12 @@ import path from 'node:path';
 
 import path_dirname from 'node:path';
 
-import { canvasShellUrl, type ExportContext, type ExportOptions, type ExportResult } from './index.ts';
+import {
+  type ExportContext,
+  type ExportOptions,
+  type ExportResult,
+  canvasShellUrl,
+} from './index.ts';
 import type { Target } from './scope.ts';
 
 const PPTX_PLAYWRIGHT = path.join(import.meta.dir, '..', 'bin', '_pptx-playwright.mjs');
@@ -87,8 +92,9 @@ export async function run(
   try {
     // Resolve the artboard set we need to render. For `multi: true` we walk
     // `[data-dc-screen]` and render each separately, then merge.
-    const baseSlug = elementTargets[0]?.canvasSlug ?? 'export';
-    const target = elementTargets[0]!;
+    const target = elementTargets[0];
+    if (!target) throw new Error('pptx adapter: no element target');
+    const baseSlug = target.canvasSlug ?? 'export';
 
     // For canvas-as-separate (`multi: true`), render each artboard as its
     // own PPTX, then concatenate the slides into a single deck.
@@ -98,21 +104,13 @@ export async function run(
       for (let i = 0; i < artboardIds.length; i += 1) {
         const id = artboardIds[i];
         const outFile = path.join(tmp, `artboard-${i + 1}.pptx`);
-        await captureOne(
-          target,
-          ctx,
-          outFile,
-          timeoutSec,
-          bundlePath,
-          `[data-dc-screen="${id}"]`
-        );
+        await captureOne(target, ctx, outFile, timeoutSec, bundlePath, `[data-dc-screen="${id}"]`);
         perArtboardFiles.push(outFile);
       }
       const merged = await mergePptx(perArtboardFiles);
       return {
         filename: `${baseSlug}.pptx`,
-        contentType:
-          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        contentType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
         body: merged,
       };
     }
@@ -123,8 +121,7 @@ export async function run(
     const bytes = new Uint8Array(readFileSync(outFile));
     return {
       filename: `${baseSlug}.pptx`,
-      contentType:
-        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      contentType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
       body: bytes,
     };
   } finally {

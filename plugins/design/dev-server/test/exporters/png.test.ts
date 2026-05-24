@@ -25,8 +25,8 @@ describe('png adapter — contract', () => {
   });
 
   test('file-tree targets → throws (PNG cannot render a project)', async () => {
-    await expect(
-      run([{ kind: 'file-tree', paths: ['ui/Home.tsx'] }], {}, CTX)
-    ).rejects.toThrow(/element targets/i);
+    await expect(run([{ kind: 'file-tree', paths: ['ui/Home.tsx'] }], {}, CTX)).rejects.toThrow(
+      /element targets/i
+    );
   });
 });

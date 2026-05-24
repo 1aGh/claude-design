@@ -20,14 +20,7 @@ const args = Object.fromEntries(
   }, [])
 );
 
-const {
-  url,
-  selector,
-  out,
-  'bundle-path': bundlePath,
-  multi: multiFlag,
-  timeout = '15',
-} = args;
+const { url, selector, out, 'bundle-path': bundlePath, multi: multiFlag, timeout = '15' } = args;
 
 if (!url || !out || !bundlePath) {
   console.error(
@@ -55,10 +48,10 @@ try {
       world.style.zoom = '1';
       world.style.transform = 'none';
     }
-    document.querySelectorAll('[data-dc-screen]').forEach((el) => {
+    for (const el of document.querySelectorAll('[data-dc-screen]')) {
       el.style.left = '0px';
       el.style.top = '0px';
-    });
+    }
   });
   // dom-to-pptx ships a UMD bundle; addScriptTag exposes `window.domToPptx`.
   await page.addScriptTag({ path: bundlePath });
@@ -85,7 +78,7 @@ try {
   // byte array for transport across the playwright boundary.
   const bytesArray = await handle.evaluate(async (el) => {
     const target = el.closest('[data-dc-screen]') ?? el;
-    // biome-ignore lint: window.domToPptx is the UMD-injected entry.
+    // window.domToPptx is the UMD-injected entry.
     const { exportToPptx } = /** @type any */ (window).domToPptx;
     if (typeof exportToPptx !== 'function') {
       throw new Error('dom-to-pptx bundle did not expose exportToPptx');

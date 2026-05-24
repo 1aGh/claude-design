@@ -103,9 +103,7 @@ const DEFAULT_REGISTRY: ContextRegistry = {
       { id: 'copy-id', label: 'Copy data-cd-id', onSelect: noop('copy-id') },
       { id: 'inspect', label: 'Inspect', shortcut: '⌥I', onSelect: noop('inspect') },
     ],
-    [
-      defaultExportItem('Export selection…', 'selection'),
-    ],
+    [defaultExportItem('Export selection…', 'selection')],
     [
       { id: 'hide', label: 'Hide', shortcut: '⌘⇧H', onSelect: noop('hide') },
       { id: 'lock', label: 'Lock', shortcut: '⌘⇧L', onSelect: noop('lock') },
@@ -116,9 +114,7 @@ const DEFAULT_REGISTRY: ContextRegistry = {
       { id: 'rename', label: 'Rename', shortcut: '↵', onSelect: noop('rename-artboard') },
       { id: 'duplicate', label: 'Duplicate', shortcut: '⌘D', onSelect: noop('duplicate-artboard') },
     ],
-    [
-      defaultExportItem('Export this artboard…', 'artboard'),
-    ],
+    [defaultExportItem('Export this artboard…', 'artboard')],
     [
       { id: 'fit-one', label: 'Fit just this artboard', onSelect: noop('fit-one') },
       { id: 'reset-pos', label: 'Reset position', onSelect: noop('reset-artboard-pos') },

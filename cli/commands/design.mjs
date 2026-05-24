@@ -158,7 +158,9 @@ async function runExport({ args }) {
   for (const item of repeated) {
     const eq = item.indexOf('=');
     if (eq < 0) {
-      process.stderr.write(`maude design export: invalid --option "${item}" (expected key=value)\n`);
+      process.stderr.write(
+        `maude design export: invalid --option "${item}" (expected key=value)\n`
+      );
       process.exit(2);
     }
     const key = item.slice(0, eq);

@@ -17,16 +17,36 @@ const FORMATS = [
   // PNG/PDF/SVG/HTML/PPTX/Canva expect element targets — `canvas-as-separate`
   // against `active: null` resolves to [] → adapters short-circuit.
   { format: 'png', scope: 'canvas-as-separate', expectedExt: '.png', expectedMime: 'image/png' },
-  { format: 'pdf', scope: 'canvas-as-separate', expectedExt: '.pdf', expectedMime: 'application/pdf' },
-  { format: 'svg', scope: 'canvas-as-separate', expectedExt: '.svg', expectedMime: 'image/svg+xml' },
-  { format: 'html', scope: 'canvas-as-separate', expectedExt: '.zip', expectedMime: 'application/zip' },
+  {
+    format: 'pdf',
+    scope: 'canvas-as-separate',
+    expectedExt: '.pdf',
+    expectedMime: 'application/pdf',
+  },
+  {
+    format: 'svg',
+    scope: 'canvas-as-separate',
+    expectedExt: '.svg',
+    expectedMime: 'image/svg+xml',
+  },
+  {
+    format: 'html',
+    scope: 'canvas-as-separate',
+    expectedExt: '.zip',
+    expectedMime: 'application/zip',
+  },
   {
     format: 'pptx',
     scope: 'canvas-as-separate',
     expectedExt: '.pptx',
     expectedMime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   },
-  { format: 'canva', scope: 'canvas-as-separate', expectedExt: '.zip', expectedMime: 'application/zip' },
+  {
+    format: 'canva',
+    scope: 'canvas-as-separate',
+    expectedExt: '.zip',
+    expectedMime: 'application/zip',
+  },
   // ZIP consumes `project-raw` — designRoot walk over the sandbox returns at
   // least the fixture file.
   { format: 'zip', scope: 'project-raw', expectedExt: '.zip', expectedMime: 'application/zip' },

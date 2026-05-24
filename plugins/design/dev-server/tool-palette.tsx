@@ -215,7 +215,9 @@ export function ToolPalette() {
             }
           }}
         >
-          <span aria-hidden="true" style={{ fontSize: 14, lineHeight: 1 }}>⬇</span>
+          <span aria-hidden="true" style={{ fontSize: 14, lineHeight: 1 }}>
+            ⬇
+          </span>
         </button>
         <button
           type="button"

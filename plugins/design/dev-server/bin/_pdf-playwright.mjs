@@ -20,14 +20,7 @@ const args = Object.fromEntries(
   }, [])
 );
 
-const {
-  url,
-  selector,
-  out,
-  'out-dir': outDir,
-  multi: multiFlag,
-  timeout = '12',
-} = args;
+const { url, selector, out, 'out-dir': outDir, multi: multiFlag, timeout = '12' } = args;
 
 if (!url) {
   console.error('usage: _pdf-playwright.mjs --url <url> --selector <css> --out <path>');
@@ -83,9 +76,7 @@ try {
     });
     // Set the page size to the artboard's pixel dimensions so the resulting
     // PDF is exactly one artboard per page with no margin.
-    const targetPath = multi
-      ? join(outDir, `artboard-${i + 1}.pdf`)
-      : out;
+    const targetPath = multi ? join(outDir, `artboard-${i + 1}.pdf`) : out;
     // Crop trick: set the viewport to the artboard rect, scroll it into the
     // top-left corner, then page.pdf() with matching width/height.
     await page.setViewportSize({

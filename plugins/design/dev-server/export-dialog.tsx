@@ -33,18 +33,44 @@ export type Scope = 'selection' | 'artboard' | 'canvas-as-separate' | 'project-r
 const FORMAT_META: Record<Format, { label: string; description: string; defaultExt: string }> = {
   png: { label: 'PNG', description: 'Raster image, one per artboard.', defaultExt: '.png' },
   pdf: { label: 'PDF', description: 'Multi-page PDF, one page per artboard.', defaultExt: '.pdf' },
-  svg: { label: 'SVG', description: 'Vector wrapper over rendered HTML. Editable in Illustrator.', defaultExt: '.svg' },
-  html: { label: 'HTML', description: 'Standalone runnable bundle. Drop into a static host.', defaultExt: '.zip' },
-  pptx: { label: 'PPTX', description: 'Editable PowerPoint. Opens in Keynote, Google Slides.', defaultExt: '.pptx' },
-  canva: { label: 'Canva', description: 'PPTX + handoff prompt. Drag into Canva or feed to your Canva MCP.', defaultExt: '.zip' },
-  zip: { label: 'ZIP (source)', description: 'Entire .design/ as raw source files. No renders.', defaultExt: '.zip' },
+  svg: {
+    label: 'SVG',
+    description: 'Vector wrapper over rendered HTML. Editable in Illustrator.',
+    defaultExt: '.svg',
+  },
+  html: {
+    label: 'HTML',
+    description: 'Standalone runnable bundle. Drop into a static host.',
+    defaultExt: '.zip',
+  },
+  pptx: {
+    label: 'PPTX',
+    description: 'Editable PowerPoint. Opens in Keynote, Google Slides.',
+    defaultExt: '.pptx',
+  },
+  canva: {
+    label: 'Canva',
+    description: 'PPTX + handoff prompt. Drag into Canva or feed to your Canva MCP.',
+    defaultExt: '.zip',
+  },
+  zip: {
+    label: 'ZIP (source)',
+    description: 'Entire .design/ as raw source files. No renders.',
+    defaultExt: '.zip',
+  },
 };
 
 const SCOPE_META: Record<Scope, { label: string; description: string }> = {
   selection: { label: 'Selection', description: 'Just the currently-selected element.' },
   artboard: { label: 'Artboard', description: 'The single artboard containing the selection.' },
-  'canvas-as-separate': { label: 'Canvas → separate', description: 'Every artboard on the active canvas as N files.' },
-  'project-raw': { label: 'Project (raw)', description: 'The entire `.design/` tree, minus runtime files.' },
+  'canvas-as-separate': {
+    label: 'Canvas → separate',
+    description: 'Every artboard on the active canvas as N files.',
+  },
+  'project-raw': {
+    label: 'Project (raw)',
+    description: 'The entire `.design/` tree, minus runtime files.',
+  },
 };
 
 const VALID_SCOPES_PER_FORMAT: Record<Format, Scope[]> = {
@@ -198,7 +224,8 @@ export function ExportDialogProvider({ children }: { children: ReactNode }): Rea
           return;
         }
         const disp = r.headers.get('Content-Disposition') ?? '';
-        const filename = /filename="([^"]+)"/.exec(disp)?.[1] ?? `export${FORMAT_META[format].defaultExt}`;
+        const filename =
+          /filename="([^"]+)"/.exec(disp)?.[1] ?? `export${FORMAT_META[format].defaultExt}`;
         const blob = await r.blob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -292,7 +319,9 @@ const DialogShell = (() => {
       <dialog ref={ref} className="dc-export-dialog" onClose={onClose}>
         <header>
           <h2>Export</h2>
-          <button type="button" className="dc-ed-close" onClick={onClose}>Esc</button>
+          <button type="button" className="dc-ed-close" onClick={onClose}>
+            Esc
+          </button>
         </header>
         <div className="dc-ed-body">
           <div>
@@ -303,7 +332,9 @@ const DialogShell = (() => {
               onChange={(e) => setFormat(e.target.value as Format)}
             >
               {(Object.keys(FORMAT_META) as Format[]).map((f) => (
-                <option key={f} value={f}>{FORMAT_META[f].label}</option>
+                <option key={f} value={f}>
+                  {FORMAT_META[f].label}
+                </option>
               ))}
             </select>
             <p className="dc-ed-desc">{FORMAT_META[format].description}</p>
@@ -316,7 +347,9 @@ const DialogShell = (() => {
               onChange={(e) => setScope(e.target.value as Scope)}
             >
               {VALID_SCOPES_PER_FORMAT[format].map((s) => (
-                <option key={s} value={s}>{SCOPE_META[s].label}</option>
+                <option key={s} value={s}>
+                  {SCOPE_META[s].label}
+                </option>
               ))}
             </select>
             <p className="dc-ed-desc">{SCOPE_META[scope].description}</p>
@@ -335,7 +368,9 @@ const DialogShell = (() => {
                       setScope(h.scope);
                     }}
                   >
-                    <span>{FORMAT_META[h.format].label} · {SCOPE_META[h.scope].label}</span>
+                    <span>
+                      {FORMAT_META[h.format].label} · {SCOPE_META[h.scope].label}
+                    </span>
                     <span style={{ color: 'var(--fg-2, rgba(40,30,20,0.5))' }}>{h.filename}</span>
                   </button>
                 </li>
@@ -347,7 +382,9 @@ const DialogShell = (() => {
           <div className={`dc-ed-status${status.isError ? ' is-error' : ''}`}>{status.text}</div>
         )}
         <footer>
-          <button type="button" onClick={onClose} disabled={submitting}>Cancel</button>
+          <button type="button" onClick={onClose} disabled={submitting}>
+            Cancel
+          </button>
           <button
             type="button"
             className="dc-ed-primary"
@@ -360,6 +397,5 @@ const DialogShell = (() => {
       </dialog>
     );
   }
-  // biome-ignore lint/style/useNamingConvention: forwardRef shell wants a typed component.
   return Shell;
 })();

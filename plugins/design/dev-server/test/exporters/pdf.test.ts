@@ -25,9 +25,9 @@ describe('pdf adapter — contract', () => {
   });
 
   test('file-tree targets → throws', async () => {
-    await expect(
-      run([{ kind: 'file-tree', paths: ['ui/Home.tsx'] }], {}, CTX)
-    ).rejects.toThrow(/element targets/i);
+    await expect(run([{ kind: 'file-tree', paths: ['ui/Home.tsx'] }], {}, CTX)).rejects.toThrow(
+      /element targets/i
+    );
   });
 });
 

@@ -63,10 +63,10 @@ try {
       world.style.zoom = '1';
       world.style.transform = 'none';
     }
-    document.querySelectorAll('[data-dc-screen]').forEach((el) => {
+    for (const el of document.querySelectorAll('[data-dc-screen]')) {
       el.style.left = '0px';
       el.style.top = '0px';
-    });
+    }
   });
   // Inject dom-to-svg into the page. Bundle attaches its exports under
   // `window.domToSvg`.
@@ -75,21 +75,24 @@ try {
   const written = [];
 
   const serializeOne = async (handle) => {
-    return await handle.evaluate(async (el, opts) => {
-      const target = opts.widenToArtboard ? (el.closest('[data-dc-screen]') ?? el) : el;
-      // biome-ignore lint: window.domToSvg is the IIFE-injected entry.
-      const { elementToSVG, inlineResources } = /** @type any */ (window).domToSvg;
-      const svgDoc = elementToSVG(target);
-      // base64-embeds fonts + images so the SVG is portable outside the
-      // dev-server origin. Some external fetches fail silently — Affinity
-      // tolerates missing resources better than missing primitives.
-      try {
-        await inlineResources(svgDoc.documentElement);
-      } catch {
-        /* best-effort */
-      }
-      return new XMLSerializer().serializeToString(svgDoc);
-    }, { widenToArtboard: opts });
+    return await handle.evaluate(
+      async (el, opts) => {
+        const target = opts.widenToArtboard ? (el.closest('[data-dc-screen]') ?? el) : el;
+        // window.domToSvg is the IIFE-injected entry.
+        const { elementToSVG, inlineResources } = /** @type any */ (window).domToSvg;
+        const svgDoc = elementToSVG(target);
+        // base64-embeds fonts + images so the SVG is portable outside the
+        // dev-server origin. Some external fetches fail silently — Affinity
+        // tolerates missing resources better than missing primitives.
+        try {
+          await inlineResources(svgDoc.documentElement);
+        } catch {
+          /* best-effort */
+        }
+        return new XMLSerializer().serializeToString(svgDoc);
+      },
+      { widenToArtboard: opts }
+    );
   };
   const opts = { widenToArtboard: widen };
 
@@ -104,12 +107,14 @@ try {
       const handle = screens[i];
       const id = (await handle.getAttribute('data-dc-screen')) ?? `artboard-${i + 1}`;
       const svg = await handle.evaluate(async (el) => {
-        // biome-ignore lint: window.domToSvg is the IIFE-injected entry.
-        const { elementToSVG, inlineResources, formatXML } = /** @type any */ (
-          window
-        ).domToSvg;
+        // window.domToSvg is the IIFE-injected entry.
+        const { elementToSVG, inlineResources, formatXML } = /** @type any */ (window).domToSvg;
         const svgDoc = elementToSVG(el);
-        try { await inlineResources(svgDoc.documentElement); } catch { /* */ }
+        try {
+          await inlineResources(svgDoc.documentElement);
+        } catch {
+          /* */
+        }
         return formatXML(new XMLSerializer().serializeToString(svgDoc));
       });
       const target = join(outDir, `${id}.svg`);

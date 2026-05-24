@@ -54,10 +54,10 @@ try {
       world.style.zoom = '1';
       world.style.transform = 'none';
     }
-    document.querySelectorAll('[data-dc-screen]').forEach((el) => {
+    for (const el of document.querySelectorAll('[data-dc-screen]')) {
       el.style.left = '0px';
       el.style.top = '0px';
-    });
+    }
   });
 
   const written = [];
@@ -72,7 +72,7 @@ try {
     for (let i = 0; i < screens.length; i += 1) {
       const handle = screens[i];
       const id = (await handle.getAttribute('data-dc-screen')) ?? `artboard-${i + 1}`;
-      const html = await serializeOne(page, handle, false);
+      const html = await serializeOne(handle, false);
       const target = join(outDir, `${id}.html`);
       writeFileSync(target, html, 'utf8');
       written.push(target);
@@ -85,7 +85,7 @@ try {
     mkdirSync(dirname(out), { recursive: true });
     const handle = page.locator(selector ?? '[data-dc-screen]:first-of-type').first();
     await handle.waitFor({ state: 'visible', timeout: timeoutMs });
-    const html = await serializeOne(page, handle, widen);
+    const html = await serializeOne(handle, widen);
     writeFileSync(out, html, 'utf8');
     written.push(out);
   }
@@ -96,22 +96,23 @@ try {
   await browser.close();
 }
 
-async function serializeOne(page, locator, widenToArtboard) {
-  return await locator.evaluate((el, opts) => {
-    const target = opts.widenToArtboard ? (el.closest('[data-dc-screen]') ?? el) : el;
-    const cssChunks = [];
-    for (const sheet of Array.from(document.styleSheets)) {
-      try {
-        for (const rule of Array.from(sheet.cssRules)) {
-          cssChunks.push(rule.cssText);
+async function serializeOne(locator, widenToArtboard) {
+  return await locator.evaluate(
+    (el, opts) => {
+      const target = opts.widenToArtboard ? (el.closest('[data-dc-screen]') ?? el) : el;
+      const cssChunks = [];
+      for (const sheet of Array.from(document.styleSheets)) {
+        try {
+          for (const rule of Array.from(sheet.cssRules)) {
+            cssChunks.push(rule.cssText);
+          }
+        } catch {
+          // Cross-origin sheet — skip.
         }
-      } catch {
-        // Cross-origin sheet — skip.
       }
-    }
-    const styleBlock = `<style>${cssChunks.join('\n')}</style>`;
-    const innerHtml = target.outerHTML;
-    return `<!doctype html>
+      const styleBlock = `<style>${cssChunks.join('\n')}</style>`;
+      const innerHtml = target.outerHTML;
+      return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -122,5 +123,7 @@ ${styleBlock}
 </head>
 <body>${innerHtml}</body>
 </html>`;
-  }, { widenToArtboard });
+    },
+    { widenToArtboard }
+  );
 }

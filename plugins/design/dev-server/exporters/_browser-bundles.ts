@@ -27,11 +27,11 @@ async function buildIife(entry: string, globalName: string, cachePath: string): 
     minify: true,
   });
   if (!built.success) {
-    throw new Error(
-      `bundle ${entry} failed: ${built.logs.map((l) => l.message).join('; ')}`
-    );
+    throw new Error(`bundle ${entry} failed: ${built.logs.map((l) => l.message).join('; ')}`);
   }
-  const esm = await built.outputs[0]!.text();
+  const firstOutput = built.outputs[0];
+  if (!firstOutput) throw new Error(`bundle ${entry} produced no outputs`);
+  const esm = await firstOutput.text();
   // ESM → IIFE wrapper: evaluate the module as a Function body, then attach
   // its exports to `window[globalName]`. We can't use top-level `import`
   // inside a Function, so we transform `export {` to assignments via regex
@@ -41,18 +41,22 @@ async function buildIife(entry: string, globalName: string, cachePath: string): 
   let exportsBlock = '';
   if (exportsMatch) {
     body = esm.slice(0, exportsMatch.index);
-    const entries = exportsMatch[1]!
+    const captured = exportsMatch[1] ?? '';
+    const entries = captured
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean)
       .map((s) => {
         // `localName as exportedName` | bare `name`
         const m = s.match(/^(.+?)\s+as\s+(.+)$/);
-        if (m) return { local: m[1]!.trim(), exported: m[2]!.trim() };
+        if (m?.[1] && m[2]) return { local: m[1].trim(), exported: m[2].trim() };
         return { local: s, exported: s };
       });
     exportsBlock = entries
-      .map((e) => `globalThis[${JSON.stringify(globalName)}][${JSON.stringify(e.exported)}] = ${e.local};`)
+      .map(
+        (e) =>
+          `globalThis[${JSON.stringify(globalName)}][${JSON.stringify(e.exported)}] = ${e.local};`
+      )
       .join('\n');
   }
   const iife = `(function(){
@@ -69,10 +73,7 @@ async function buildIife(entry: string, globalName: string, cachePath: string): 
  * exports under `window[globalName]`. Caches under the OS temp dir so a long-
  * running dev server pays the build cost once.
  */
-export function getBrowserBundle(
-  packageName: string,
-  globalName: string
-): Promise<string> {
+export function getBrowserBundle(packageName: string, globalName: string): Promise<string> {
   const key = `${packageName}::${globalName}`;
   const existing = bundles.get(key);
   if (existing) return existing.ready;

@@ -63,21 +63,24 @@ try {
     // `zoom` (not `transform: scale`) on `.dc-world`, which actually shrinks
     // layout — getBoundingClientRect returns 818×512 instead of 1440×900
     // unless we zero both `zoom` and `transform` here.
-    await page.evaluate((sel) => {
-      const world = document.querySelector('.dc-world');
-      if (world) {
-        world.style.zoom = '1';
-        world.style.transform = 'none';
-      }
-      // Each artboard carries `style="left: …; top: …;"` so the world plane
-      // can position it as part of a multi-artboard layout. Pin the target
-      // to (0,0) so the screenshot clip starts at the viewport origin.
-      const ab = document.querySelector(sel);
-      if (ab) {
-        ab.style.left = '0px';
-        ab.style.top = '0px';
-      }
-    }, widen ? '[data-dc-screen]:first-of-type' : selector ?? '[data-dc-screen]:first-of-type');
+    await page.evaluate(
+      (sel) => {
+        const world = document.querySelector('.dc-world');
+        if (world) {
+          world.style.zoom = '1';
+          world.style.transform = 'none';
+        }
+        // Each artboard carries `style="left: …; top: …;"` so the world plane
+        // can position it as part of a multi-artboard layout. Pin the target
+        // to (0,0) so the screenshot clip starts at the viewport origin.
+        const ab = document.querySelector(sel);
+        if (ab) {
+          ab.style.left = '0px';
+          ab.style.top = '0px';
+        }
+      },
+      widen ? '[data-dc-screen]:first-of-type' : (selector ?? '[data-dc-screen]:first-of-type')
+    );
     const rect = await widenedHandle.evaluate((el) => {
       const r = el.getBoundingClientRect();
       return { x: r.left, y: r.top, width: r.width, height: r.height };
