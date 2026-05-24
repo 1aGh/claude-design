@@ -51,9 +51,10 @@ jobs:
         run: |
           pnpm --filter @maude/site gen:reference
           pnpm --filter @maude/site gen:stats
-          if ! git diff --quiet site/content/docs/reference site/lib/stats.json; then
+          DRIFT_PATHS="site/content/docs/commands-design site/content/docs/commands-flow site/content/docs/config-schema.mdx site/lib/stats.json"
+          if ! git diff --quiet -- $DRIFT_PATHS; then
             echo "::error::Generated site content is stale. Run \`pnpm --filter @maude/site gen:reference && pnpm --filter @maude/site gen:stats\` locally and commit the diff."
-            git --no-pager diff --stat site/content/docs/reference site/lib/stats.json
+            git --no-pager diff --stat -- $DRIFT_PATHS
             exit 1
           fi
 
