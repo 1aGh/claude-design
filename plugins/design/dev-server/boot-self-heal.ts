@@ -1,92 +1,87 @@
-// Boot-time self-heal — covers the gap between marketplace-cache installs
-// (git clone, honors .gitignore, no `npm install`) and what server.ts needs
-// at runtime. Two artifacts can be missing on a fresh clone:
+// Boot-time artifact check — Phase 19 / DDR-044, simplified in v0.18.1.
 //
-//   - dist/client.bundle.js     → 404 on /_client/*
-//   - node_modules/react        → 500 on /_canvas-runtime/*
+// The two artifacts the server cannot run without:
+//   - dist/client.bundle.js   (the React shell that hydrates the / route)
+//   - dist/runtime/react.js   (pre-built canvas-runtime bundle for TSX iframes)
 //
-// Per DDR-044 we commit the bundle + styles, so dist/ should be present.
-// For node_modules/ we self-heal: detect missing react, run `bun install
-// --production`. Opt out with MAUDE_NO_AUTOBUILD=1 for read-only-filesystem
-// deployments (e.g. immutable infra).
+// Both are committed to git per DDR-044 and ship in every distribution:
+// npm tarball (via package.json#files override of .gitignore), marketplace
+// cache (negation entries in .gitignore preserve them through git clone),
+// and bun --compile binary (embedded via the build pipeline).
 //
-// Phase 19. DDR-044.
+// v0.18.0 ALSO tried to `bun install --production` if node_modules/react
+// was missing. That assumption was wrong: (a) npm install of the root
+// @1agh/maude package never installs nested workspace deps, (b) the
+// compiled binary's import.meta.url resolves to the virtual /$bunfs/root
+// so existsSync against it always failed and the self-heal false-triggered,
+// (c) standalone bun --compile binaries don't inherit shell PATH the same
+// way subshells do, so even when bun WAS available, Bun.spawn(['bun',...])
+// failed with ENOENT. The greenfield npm-install user hit all three at
+// once and got a stacktrace. v0.18.1 drops the install/build attempt
+// entirely — pre-built runtime bundles ship with the artifact, no fix-up
+// pass needed.
 
 import { existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+
+import { DEV_SERVER_ROOT, DIST_DIR, RUNTIME_BUNDLES_DIR } from './paths.ts';
 
 export interface SelfHealOptions {
-  /** Plugin install directory (the dev-server root). Defaults to this file's dir. */
+  /** Defaults to DEV_SERVER_ROOT from paths.ts (real disk install dir). */
   here?: string;
-  /** Defaults to process.env.MAUDE_NO_AUTOBUILD === '1'. */
-  optOut?: boolean;
-  /** Defaults to Bun.spawn; tests override. */
-  spawn?: (cmd: readonly string[], cwd: string) => Promise<{ code: number }>;
   /** Defaults to console.error; tests override to capture. */
   log?: (msg: string) => void;
-  /** Defaults to process.exit; tests override to assert. */
+  /** Defaults to process.exit; tests override to assert without aborting. */
   exit?: (code: number) => never;
 }
 
 export interface SelfHealResult {
-  ran: ('install' | 'build')[];
-  skipped: 'all-present' | null;
+  /** Names of artifacts the check verified are present. */
+  verified: ('client.bundle.js' | 'runtime/react.js')[];
 }
 
+/**
+ * Verify the committed artifacts the dev-server depends on are reachable
+ * from the resolved install dir. If anything is missing, exit with a clear
+ * remediation message — this means the install is broken, not a transient
+ * first-boot gap. Always passes for npm installs, marketplace cache clones,
+ * and `bun --compile` binaries built on a freshly-built repo.
+ */
 export async function bootSelfHeal(opts: SelfHealOptions = {}): Promise<SelfHealResult> {
-  const here = opts.here ?? dirname(fileURLToPath(import.meta.url));
-  const optOut = opts.optOut ?? process.env.MAUDE_NO_AUTOBUILD === '1';
+  const here = opts.here ?? DEV_SERVER_ROOT;
   const log = opts.log ?? ((m) => console.error(m));
   const exit =
     opts.exit ??
     ((code: number) => {
       process.exit(code);
     });
-  const spawn = opts.spawn ?? defaultSpawn;
 
-  const distMissing = !existsSync(join(here, 'dist', 'client.bundle.js'));
-  const depsMissing = !existsSync(join(here, 'node_modules', 'react', 'package.json'));
+  const dist = here === DEV_SERVER_ROOT ? DIST_DIR : join(here, 'dist');
+  const runtime = here === DEV_SERVER_ROOT ? RUNTIME_BUNDLES_DIR : join(dist, 'runtime');
 
-  if (!distMissing && !depsMissing) return { ran: [], skipped: 'all-present' };
+  const missing: string[] = [];
+  if (!existsSync(join(dist, 'client.bundle.js'))) missing.push('dist/client.bundle.js');
+  if (!existsSync(join(runtime, 'react.js'))) missing.push('dist/runtime/react.js');
 
-  if (optOut) {
-    const missing = [
-      distMissing ? 'dist/client.bundle.js (run `bun run build.ts`)' : null,
-      depsMissing ? 'node_modules/react (run `bun install --production`)' : null,
-    ]
-      .filter(Boolean)
-      .join('\n  - ');
-    log(`\n  ⚠ first-boot artifacts missing and MAUDE_NO_AUTOBUILD=1 is set:\n  - ${missing}\n`);
+  if (missing.length > 0) {
+    log(
+      [
+        '',
+        '  ⚠ dev-server install is missing committed artifacts:',
+        ...missing.map((m) => `  - ${m}`),
+        '',
+        `  Looked under: ${here}`,
+        '',
+        '  This means your install is corrupted or pre-Phase-19.1. Fix:',
+        '    npm uninstall -g @1agh/maude && npm i -g @1agh/maude',
+        '  (or remove + re-add the marketplace plugin in Claude Code)',
+        '',
+      ].join('\n')
+    );
     exit(1);
   }
 
-  const ran: ('install' | 'build')[] = [];
-  if (depsMissing) {
-    log('  ⚠ first-boot: installing runtime deps (one-time, ~15s)…');
-    const { code } = await spawn(['bun', 'install', '--production'], here);
-    if (code !== 0) {
-      log(
-        `  ⚠ \`bun install --production\` exited ${code}. Set MAUDE_NO_AUTOBUILD=1 and run manually.`
-      );
-      exit(1);
-    }
-    ran.push('install');
-  }
-  if (distMissing) {
-    log('  ⚠ first-boot: building client assets (one-time, ~2s)…');
-    const { code } = await spawn(['bun', 'run', 'build.ts'], here);
-    if (code !== 0) {
-      log(`  ⚠ \`bun run build.ts\` exited ${code}. Set MAUDE_NO_AUTOBUILD=1 and run manually.`);
-      exit(1);
-    }
-    ran.push('build');
-  }
-  return { ran, skipped: null };
-}
-
-async function defaultSpawn(cmd: readonly string[], cwd: string): Promise<{ code: number }> {
-  const proc = Bun.spawn([...cmd], { cwd, stdout: 'inherit', stderr: 'inherit' });
-  const code = await proc.exited;
-  return { code };
+  return {
+    verified: ['client.bundle.js', 'runtime/react.js'],
+  };
 }

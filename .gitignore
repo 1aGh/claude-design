@@ -33,6 +33,10 @@ dev-server/.cache/
 plugins/design/dev-server/dist/*
 !plugins/design/dev-server/dist/client.bundle.js
 !plugins/design/dev-server/dist/styles.css
+# v0.18.1 (Phase 19.1) — pre-built /_canvas-runtime/*.js bundles ship in git
+# so npm-installed users don't need node_modules/react on disk to render TSX.
+!plugins/design/dev-server/dist/runtime/
+!plugins/design/dev-server/dist/runtime/*.js
 plugins/design/dev-server/bun.lock
 
 # Stub .keep written by dev-server before the inspect.ts fix landed (Phase 3.4)

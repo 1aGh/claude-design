@@ -18,10 +18,28 @@
 //   - In dev we externalise *nothing* — the four bundles together are
 //     self-contained. The importmap wires them together at runtime.
 
-import { dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
+import { DEV_SERVER_ROOT, RUNTIME_BUNDLES_DIR } from './paths.ts';
+
+// Real disk install root — synthetic entry points must anchor here so
+// Bun.build's resolver walks UP and finds node_modules/react on disk.
+// In compiled binaries, import.meta.url is the virtual `/$bunfs/root`
+// where no node_modules exists (Phase 19.1 / v0.18.1).
+const HERE = DEV_SERVER_ROOT;
+
+/**
+ * Read a pre-built runtime bundle from `dist/runtime/<slug>.js`. Returns
+ * null when missing → caller falls back to dynamic Bun.build (dev mode).
+ */
+async function loadPrebuiltRuntimeBundle(pkg: RuntimePackage): Promise<BundleCacheEntry | null> {
+  const path = join(RUNTIME_BUNDLES_DIR, `${slugFor(pkg)}.js`);
+  const file = Bun.file(path);
+  if (!(await file.exists())) return null;
+  const js = await file.text();
+  if (!js) return null;
+  return { js, etag: Bun.hash(js).toString(16) };
+}
 
 export const RUNTIME_PACKAGES = [
   'react',
@@ -99,10 +117,37 @@ const cache = new Map<RuntimePackage, BundleCacheEntry>();
  * each entry includes everything it needs; the four bundles only share state
  * at the browser level (via React's module-singleton convention — multiple
  * imports of "react" resolve to the same module thanks to the importmap).
+ *
+ * Two paths:
+ *   1. **Pre-built on disk** (Phase 19.1 / v0.18.1). Every release ships
+ *      `dist/runtime/<slug>.js` so npm-installed users + marketplace cache
+ *      users never need disk node_modules/react or Bun.build at request time.
+ *      Read from disk → return.
+ *   2. **Dynamic Bun.build** — only fires for dev (cd dev-server; bun
+ *      server.ts) where `dist/runtime/` may be empty/stale.
  */
-export async function getRuntimeBundle(pkg: RuntimePackage): Promise<BundleCacheEntry> {
+export interface GetRuntimeBundleOptions {
+  /** Skip the disk cache lookup — used by build.ts to force a fresh dynamic build. */
+  skipPrebuilt?: boolean;
+  /** Minify the dynamic build output — used by build.ts in release mode. */
+  minify?: boolean;
+}
+
+export async function getRuntimeBundle(
+  pkg: RuntimePackage,
+  opts: GetRuntimeBundleOptions = {}
+): Promise<BundleCacheEntry> {
   const hit = cache.get(pkg);
-  if (hit) return hit;
+  if (hit && !opts.skipPrebuilt) return hit;
+
+  // (1) Pre-built bundle path — try disk first (unless caller opts out).
+  if (!opts.skipPrebuilt) {
+    const prebuilt = await loadPrebuiltRuntimeBundle(pkg);
+    if (prebuilt) {
+      cache.set(pkg, prebuilt);
+      return prebuilt;
+    }
+  }
 
   // A throwaway entrypoint that re-exports every member of the target package.
   // We use named re-exports (default + an enumerated namespace) so the bundle
@@ -144,7 +189,7 @@ export async function getRuntimeBundle(pkg: RuntimePackage): Promise<BundleCache
     entrypoints: [entryName],
     target: 'browser',
     format: 'esm',
-    minify: false,
+    minify: opts.minify ?? false,
     splitting: false,
     define: {
       // Force React's production module (smaller, no dev-only `let React`

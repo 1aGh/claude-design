@@ -5,8 +5,7 @@
 // top-level fall-through for paths Bun's `routes` field doesn't cover.
 
 import { watch } from 'node:fs';
-import { dirname, join, posix } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, posix } from 'node:path';
 
 import type { Api } from './api.ts';
 import { buildCanvasModule } from './canvas-build.ts';
@@ -17,9 +16,12 @@ import { isFormat, isScope, runExport } from './exporters/index.ts';
 import type { ActiveJsonShape } from './exporters/scope.ts';
 import type { Inspect } from './inspect.ts';
 import { canvasSlug, writeLocator } from './locator.ts';
+import { DEV_SERVER_ROOT } from './paths.ts';
 import { RUNTIME_PACKAGES, getRuntimeBundle, packageForSlug, slugFor } from './runtime-bundle.ts';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
+// Real disk install root — never the virtual `/$bunfs/root` of compiled bins.
+// See paths.ts for the resolution logic + Phase 19.1 / v0.18.1 rationale.
+const HERE = DEV_SERVER_ROOT;
 
 export const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',

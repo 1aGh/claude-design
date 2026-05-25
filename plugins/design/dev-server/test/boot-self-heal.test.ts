@@ -1,7 +1,8 @@
-// Boot self-heal logic — Phase 19 / DDR-044.
-// Covers the marketplace-cache-install gap: if dist/ or node_modules/ is
-// missing on boot, self-heal runs bun install + build. Opt out with
-// MAUDE_NO_AUTOBUILD=1.
+// Boot artifact check — Phase 19 / DDR-044, simplified in v0.18.1.
+// v0.18.0 tried to `bun install` + `bun run build.ts` when node_modules/react
+// was missing; that misfired in every install scenario (see boot-self-heal.ts
+// header). v0.18.1 ships pre-built runtime bundles + just verifies they're
+// reachable. Missing artifact == broken install, not first-boot gap.
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -14,6 +15,7 @@ let TMP: string;
 
 beforeEach(() => {
   TMP = mkdtempSync(join(tmpdir(), 'maude-self-heal-'));
+  mkdirSync(join(TMP, 'dist', 'runtime'), { recursive: true });
 });
 
 afterEach(() => {
@@ -21,16 +23,10 @@ afterEach(() => {
 });
 
 function harness(extra: Partial<SelfHealOptions> = {}) {
-  const calls: { cmd: readonly string[]; cwd: string }[] = [];
   const logs: string[] = [];
   let exited: number | null = null;
   const opts: SelfHealOptions = {
     here: TMP,
-    optOut: false,
-    spawn: async (cmd, cwd) => {
-      calls.push({ cmd, cwd });
-      return { code: 0 };
-    },
     log: (m) => logs.push(m),
     exit: ((code: number) => {
       exited = code;
@@ -38,75 +34,54 @@ function harness(extra: Partial<SelfHealOptions> = {}) {
     }) as never,
     ...extra,
   };
-  return { opts, calls, logs, getExited: () => exited };
+  return { opts, logs, getExited: () => exited };
 }
 
-function seedDist() {
-  mkdirSync(join(TMP, 'dist'), { recursive: true });
+function seedAll() {
   writeFileSync(join(TMP, 'dist', 'client.bundle.js'), '/* stub */');
-}
-
-function seedDeps() {
-  mkdirSync(join(TMP, 'node_modules', 'react'), { recursive: true });
-  writeFileSync(join(TMP, 'node_modules', 'react', 'package.json'), '{}');
+  writeFileSync(join(TMP, 'dist', 'runtime', 'react.js'), '/* stub */');
 }
 
 describe('bootSelfHeal', () => {
-  test('skips when dist + node_modules both present', async () => {
-    seedDist();
-    seedDeps();
-    const { opts, calls } = harness();
+  test('passes when both required artifacts present', async () => {
+    seedAll();
+    const { opts, logs } = harness();
     const result = await bootSelfHeal(opts);
-    expect(result.skipped).toBe('all-present');
-    expect(result.ran).toEqual([]);
-    expect(calls).toEqual([]);
+    expect(result.verified).toEqual(['client.bundle.js', 'runtime/react.js']);
+    expect(logs).toEqual([]);
   });
 
-  test('runs `bun install --production` when node_modules/react is missing', async () => {
-    seedDist();
-    const { opts, calls } = harness();
-    const result = await bootSelfHeal(opts);
-    expect(result.ran).toEqual(['install']);
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.cmd).toEqual(['bun', 'install', '--production']);
-    expect(calls[0]?.cwd).toBe(TMP);
-  });
-
-  test('runs `bun run build.ts` when dist/client.bundle.js is missing', async () => {
-    seedDeps();
-    const { opts, calls } = harness();
-    const result = await bootSelfHeal(opts);
-    expect(result.ran).toEqual(['build']);
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.cmd).toEqual(['bun', 'run', 'build.ts']);
-  });
-
-  test('runs install BEFORE build when both missing (build needs deps)', async () => {
-    const { opts, calls } = harness();
-    const result = await bootSelfHeal(opts);
-    expect(result.ran).toEqual(['install', 'build']);
-    expect(calls[0]?.cmd).toEqual(['bun', 'install', '--production']);
-    expect(calls[1]?.cmd).toEqual(['bun', 'run', 'build.ts']);
-  });
-
-  test('MAUDE_NO_AUTOBUILD=1: exits 1 with remediation message; no spawn', async () => {
-    const { opts, calls, logs, getExited } = harness({ optOut: true });
+  test('exits 1 with remediation when dist/client.bundle.js missing', async () => {
+    writeFileSync(join(TMP, 'dist', 'runtime', 'react.js'), '/* stub */');
+    const { opts, logs, getExited } = harness();
     await expect(bootSelfHeal(opts)).rejects.toThrow('__exit:1');
     expect(getExited()).toBe(1);
-    expect(calls).toEqual([]);
-    expect(logs.join('\n')).toMatch(/MAUDE_NO_AUTOBUILD=1/);
-    expect(logs.join('\n')).toMatch(/dist\/client\.bundle\.js/);
-    expect(logs.join('\n')).toMatch(/node_modules\/react/);
+    const msg = logs.join('\n');
+    expect(msg).toMatch(/dist\/client\.bundle\.js/);
+    expect(msg).toMatch(/npm uninstall -g @1agh\/maude/);
   });
 
-  test('spawn failure aborts with exit 1 + remediation hint', async () => {
-    seedDist(); // only deps missing
-    const { opts, logs, getExited } = harness({
-      spawn: async () => ({ code: 42 }),
-    });
+  test('exits 1 with remediation when dist/runtime/react.js missing', async () => {
+    writeFileSync(join(TMP, 'dist', 'client.bundle.js'), '/* stub */');
+    const { opts, logs, getExited } = harness();
     await expect(bootSelfHeal(opts)).rejects.toThrow('__exit:1');
     expect(getExited()).toBe(1);
-    expect(logs.join('\n')).toMatch(/exited 42/);
-    expect(logs.join('\n')).toMatch(/MAUDE_NO_AUTOBUILD=1/);
+    const msg = logs.join('\n');
+    expect(msg).toMatch(/dist\/runtime\/react\.js/);
+  });
+
+  test('lists ALL missing artifacts in one message (not first-fail-only)', async () => {
+    // Nothing seeded — both missing.
+    const { opts, logs } = harness();
+    await expect(bootSelfHeal(opts)).rejects.toThrow('__exit:1');
+    const msg = logs.join('\n');
+    expect(msg).toMatch(/dist\/client\.bundle\.js/);
+    expect(msg).toMatch(/dist\/runtime\/react\.js/);
+  });
+
+  test('remediation surfaces the looked-under path so user can verify', async () => {
+    const { opts, logs } = harness();
+    await expect(bootSelfHeal(opts)).rejects.toThrow();
+    expect(logs.join('\n')).toContain(TMP);
   });
 });

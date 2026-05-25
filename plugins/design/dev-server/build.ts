@@ -136,6 +136,35 @@ async function buildCss(): Promise<{ outBytes: number; outPath: string }> {
   return { outBytes: code.byteLength, outPath };
 }
 
+// ---------- (b.5) Pre-built runtime bundles (Phase 19.1 / v0.18.1) ----------
+//
+// /_canvas-runtime/<slug>.js used to lazy-build on first request via Bun.build.
+// That required a real disk node_modules/react reachable by walking up from
+// the dev-server dir — false in compiled binaries (paths are virtual) AND
+// false in npm installs (npm doesn't install nested workspace deps).
+// Pre-building all 6 sub-bundles at release time + shipping in dist/runtime/
+// eliminates the runtime dependency on disk node_modules entirely.
+
+async function buildRuntimeBundles(): Promise<{ outDir: string; count: number; bytes: number }> {
+  // Defer import so build.ts can run in --dry-run without pulling react.
+  const { RUNTIME_PACKAGES, getRuntimeBundle, slugFor } = await import('./runtime-bundle.ts');
+  const outDir = join(DIST, 'runtime');
+  if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
+  let bytes = 0;
+  for (const pkg of RUNTIME_PACKAGES) {
+    const slug = slugFor(pkg);
+    // skipPrebuilt: don't reuse a previous build's output. minify in release.
+    const bundle = await getRuntimeBundle(pkg, {
+      skipPrebuilt: true,
+      minify: MODE === 'release',
+    });
+    const outPath = join(outDir, `${slug}.js`);
+    await Bun.write(outPath, bundle.js);
+    bytes += bundle.js.length;
+  }
+  return { outDir, count: RUNTIME_PACKAGES.length, bytes };
+}
+
 // ---------- (c) Server binary (bun build --compile, per-platform) ----------
 
 // Per-target oxc-parser binding embed. Bun 1.3.4+ regressed `--compile` NAPI
@@ -371,6 +400,15 @@ async function main() {
   const t2 = performance.now();
   console.log(
     `[build] styles.css        ${css.outBytes.toLocaleString()} B  (${(t2 - t1).toFixed(0)} ms)`
+  );
+
+  // Pre-built runtime bundles — ship to disk so /_canvas-runtime/* never
+  // needs a runtime Bun.build (which would need disk node_modules/react,
+  // absent in compiled binaries + npm installs). Phase 19.1 / v0.18.1.
+  const runtime = await buildRuntimeBundles();
+  const t2b = performance.now();
+  console.log(
+    `[build] dist/runtime/*.js ${runtime.bytes.toLocaleString()} B in ${runtime.count} files  (${(t2b - t2).toFixed(0)} ms)`
   );
 
   if (MODE === 'release') {
