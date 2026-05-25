@@ -11,11 +11,11 @@
  *
  * Authored under {{DS_NAME}}. Tokens + shared component classes load via the
  * dev-server's _shell.html harness — link tags arrive automatically from the
- * iframe's ?tokens= / ?components= query. Class names match the DS's
- * `_components.css` (`.btn`, `.tile`, `.sku`, `.seg`, ...). Bespoke classes go
- * into a sibling .module.css iff `css_mode === "modules"`; for `inline` (the
- * MDCC-DSN/01 default) prefer existing classes + `style={{}}` for arbitrary
- * one-off values.
+ * iframe's ?tokens= / ?components= query. Class names come from the DS's
+ * own `_components.css` — see `system/{{DS_NAME}}/preview/` for the available
+ * class shapes. Bespoke classes go into a sibling .module.css iff
+ * `css_mode === "modules"`; for `inline` prefer existing classes + `style={{}}`
+ * for arbitrary one-off values.
  *
  * The envelope primitives (`DesignCanvas`, `DCSection`, `DCArtboard`) and any
  * specimen helpers come from the dev-server-bundled canvas library via the
@@ -40,11 +40,11 @@ export default function {{COMPONENT_NAME}}() {
     <DesignCanvas>
       <DCSection id="overview" title="{{SUBTITLE}}">
         <DCArtboard id="primary" label="A · primary" width={1280} height={800}>
-          <div className="mdcc" data-theme="{{THEME_DEFAULT}}">
+          <div className="{{ROOT_CLASS}}" data-theme="{{THEME_DEFAULT}}">
             {/* Replace this scaffold with the actual canvas content. The
                 envelope this template was rendered against is in
                 {{HISTORY_DIR}}/000-envelope.md. */}
-            <h1 className="sku">{{NAME}}</h1>
+            <h1>{{NAME}}</h1>
             <p>{{BRIEF}}</p>
           </div>
         </DCArtboard>

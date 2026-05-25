@@ -19,13 +19,15 @@
 
 ## Foundations
 
-### One-accent rule
-
-Exactly one accent family lives in `colors_and_type.css`: `--accent`, `--accent-hover`, `--accent-active`, `--accent-fg`. **No `--accent2`.** Calls-to-attention compete with each other; one accent forces hierarchy decisions at design time, not runtime.
-
 ### Token contract
 
-All visuals reference `var(--*)` tokens declared in `colors_and_type.css`. No hardcoded hex / px / rem in canvases or production code. Adding a new visual concept means **extending the tokens CSS first**, never inventing values inline.
+All visuals reference `var(--*)` tokens declared in `colors_and_type.css`. Adding a new visual concept means **extending the tokens CSS first**, never inventing values inline in a canvas.
+
+{{color_space_block}}
+
+### Accent strategy
+
+{{accent_rules_block}}
 
 ### Active token families
 
@@ -33,8 +35,9 @@ All visuals reference `var(--*)` tokens declared in `colors_and_type.css`. No ha
 
 ## Hard rules (non-negotiable)
 
-- **Accessibility:** WCAG 2.1 AA contrast at every theme. Focus-visible always rendered. Touch targets ≥ 44×44. `prefers-reduced-motion: reduce` respected.
-- **No off-token colors / radii / spacings** in canvases. Extend tokens; don't inline.
+- **Accessibility:** WCAG 2.1 AA contrast at every theme. Focus-visible always rendered. `prefers-reduced-motion: reduce` respected.
+- **Touch targets:** {{touch_target_rule}}
+- **No off-token values** in canvases. Extend tokens; don't inline.
 - **No placeholder copy.** Real product strings only — no "Lorem Solutions Inc.", no "Click here".
 - **Type ladder:** {{type_scale_summary}}
 - **Motion:** every animation uses a `var(--dur-*)` and `var(--ease-*)` token. No magic numbers.
@@ -52,7 +55,8 @@ All visuals reference `var(--*)` tokens declared in `colors_and_type.css`. No ha
 ## Hard-stops the completeness-critic enforces
 
 - Core tokens present (`--accent`, `--bg-0..4`, `--fg-0..3`, `--dur-flip`)
-- Exactly one accent family
+- Accent family count matches the declared strategy ({{accent_strategy_summary}})
+- Color space matches the declared choice ({{color_space_summary}})
 - `system/{{ds_dirname}}/preview/` populated with at least 8 specimens
 - `colors_and_type.css` linked from every specimen
 - `prefers-reduced-motion: reduce` guard present in tokens CSS

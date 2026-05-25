@@ -273,7 +273,16 @@ If a researched option does not fit any catalogued family, either map it to the 
       "alternatives":   [ ["<alt-trio-a-1>", "<alt-trio-a-2>", "<alt-trio-a-3>"], ["<alt-trio-b-1>", "<alt-trio-b-2>", "<alt-trio-b-3>"] ],
       "confidence":     0.0,
       "rationale":      "<one sentence — connection to ds_signature_hypothesis + design_lineage + scope>"
-    }
+    },
+    "_structural_doc": "DDR-043 (bias-free templates) — the following structural decisions feed directly into the token CSS. They are NOT research-driven; infer them from vision-brief inputs (scope, audience, lineage, signature_hypothesis) and emit a recommendation. Stage 3 surfaces these as AskUserQuestion only when confidence < 0.85.",
+    "accent_strategy":     { "recommendation": "single | paired | chromatic-N", "alternatives": [], "confidence": 0.0, "rationale": "<one sentence — usually `single` unless brief calls for per-team / per-tenant / chromatic-palette>" },
+    "color_space":         { "recommendation": "oklch | hsl | hex | lab",       "alternatives": [], "confidence": 0.0, "rationale": "<one sentence — default oklch; hex/HSL when project requires legacy compat or designer comfort>" },
+    "spacing_base":        { "recommendation": "4 | 8 | golden | fluid-vh",     "alternatives": [], "confidence": 0.0, "rationale": "<one sentence — 4 for dense UIs, 8 for roomy, golden for editorial, fluid-vh for full-bleed>" },
+    "type_ratio":          { "recommendation": "1.067 | 1.125 | 1.200 | 1.250 | 1.333 | 1.500", "alternatives": [], "confidence": 0.0, "rationale": "<one sentence — smaller for dense data, larger for editorial / hero-heavy>" },
+    "easing_personality":  { "recommendation": "snappy | gentle | bouncy | mechanical | linear", "alternatives": [], "confidence": 0.0, "rationale": "<one sentence — derived from ds_signature_hypothesis + majak_3_codes (if `motion` ∈ trio)>" },
+    "layout_max_w":        { "recommendation": "1200px | 1280px | 1440px | none | column-based", "alternatives": [], "confidence": 0.0, "rationale": "<one sentence — none for mobile-first / immersive; 1200–1440 for desktop SaaS; column-based for editorial>" },
+    "radii_personality":   { "recommendation": "sharp | mild | soft | pill-heavy | mixed", "alternatives": [], "confidence": 0.0, "rationale": "<one sentence — sharp for brutalism, pill-heavy for consumer, mild for SaaS>" },
+    "shadow_strategy":     { "recommendation": "soft | hard | none | inset | accent-tinted", "alternatives": [], "confidence": 0.0, "rationale": "<one sentence — none for flat / brutalism, soft for default, accent-tinted for high-style consumer>" }
   },
 
   "fallback_used": false,

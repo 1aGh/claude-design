@@ -15,7 +15,8 @@ NOTES: Modal blocks the page; sheet slides from edge; alert is for irreversible 
   <link rel="stylesheet" href="../core/preview/_layout.css" />
   <style>
     .dialog-frame { background: var(--bg-0); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: var(--space-4); margin-bottom: 24px; position: relative; overflow: hidden; min-height: 220px; }
-    .dialog-frame .veil { position: absolute; inset: 0; background: rgba(0,0,0,0.4); }
+    /* Veil opacity is a base value, not a token (per foundations/opacity.html). Color-space-agnostic. */
+    .dialog-frame .veil { position: absolute; inset: 0; background: color-mix(in srgb, black 40%, transparent); }
     .dialog { background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); padding: var(--space-5); width: 360px; position: relative; }
     .dialog .title { font-family: var(--font-display); font-size: var(--type-lg); font-weight: 600; line-height: var(--lh-lg); margin: 0 0 8px; }
     .dialog .body  { color: var(--fg-1); margin: 0 0 var(--space-4); }
@@ -48,7 +49,7 @@ NOTES: Modal blocks the page; sheet slides from edge; alert is for irreversible 
 
     <h2>Sheet</h2>
     <div class="dialog-frame">
-      <div class="veil" style="background: rgba(0,0,0,0.25);"></div>
+      <div class="veil" style="background: color-mix(in srgb, black 25%, transparent);"></div>
       <aside class="dialog dialog-sheet" role="dialog" aria-labelledby="sheet-t">
         <p class="title" id="sheet-t">Player details</p>
         <p class="body">#9 · Forward · Captain</p>

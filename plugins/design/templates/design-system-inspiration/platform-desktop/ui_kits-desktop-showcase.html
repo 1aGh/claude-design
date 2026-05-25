@@ -132,6 +132,9 @@ NOTES:
         </div>
         <div class="spacer"></div>
         <input class="search" type="search" placeholder="search… (⌘ K)" />
+        <!-- Per-team accent picker. The inline `oklch(...)` values below are illustrative only — a real per-tenant
+             implementation should source team accents from a `--accent-team-*` family or compute analogous hues
+             from `--accent`. Don't hardcode tenant brand colors in the design system. -->
         <div class="accent-picker" role="group" aria-label="Accent">
           <button class="accent-swatch is-on" data-team="default" style="background: var(--accent);" aria-label="default"></button>
           <button class="accent-swatch" data-team="cyan" style="background: oklch(72% 0.16 220);" aria-label="cyan"></button>

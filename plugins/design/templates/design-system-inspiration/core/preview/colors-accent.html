@@ -1,10 +1,10 @@
 <!--
 SPECIMEN: colors-accent
 DEMONSTRATES: --accent, --accent-hover, --accent-active, --accent-fg
-COMPOSITION: 4-state swatch grid + contextual button + link sample, demonstrating one-accent rule
+COMPOSITION: 4-state swatch grid + contextual button + link sample, demonstrating the project's accent strategy
 COPY VOICE: action verbs ("Save", "Confirm", "Continue") — never "Click here" / "Get Started"
 WHEN SCAFFOLDED: always (Core)
-NOTES: This is THE place to demonstrate one-accent rule. The card should NOT show any --accent2 variant. accent-fg must clear WCAG AA against the accent background.
+NOTES: Demonstrates the project's declared `accentStrategy` from config.json. For `single` (default) the card shows one accent family; for `paired` or `chromatic-N` the card should be extended to show every family. accent-fg must clear WCAG AA against the accent background.
 -->
 <!doctype html>
 <html lang="en">
@@ -17,7 +17,7 @@ NOTES: This is THE place to demonstrate one-accent rule. The card should NOT sho
 <body class="app" data-theme="dark">
   <main class="specimen">
     <h1>Accent</h1>
-    <p class="lede">One accent family — four states. The one-accent rule means: when something needs attention, the answer is always this color, never a competing second hue. Sub-states cover hover, active, and the readable foreground that sits on top of it.</p>
+    <p class="lede">Accent family — four states (idle / hover / active / foreground). The project's `accentStrategy` declaration in <code>config.json</code> controls how many families exist; this specimen renders one. Extend it horizontally for `paired` or `chromatic-N` projects so every declared family appears side-by-side.</p>
 
     <div class="grid">
       <div class="swatch"><div class="chip" style="background: var(--accent);"></div><div class="meta"><strong>--accent</strong>Idle</div></div>
@@ -41,7 +41,7 @@ NOTES: This is THE place to demonstrate one-accent rule. The card should NOT sho
     </div>
 
     <footer class="legend">
-      <p>The one-accent rule: no <code>--accent2</code>. Calls-to-attention should compete with each other through hierarchy and size, not through parallel hues.</p>
+      <p>Accent count follows <code>config.accentStrategy</code>. For `single` projects, calls-to-attention compete through hierarchy and size rather than parallel hues. For `paired` / `chromatic-N` projects, each declared family takes its own semantic role (e.g. <code>--accent</code> = primary action, <code>--accent-2</code> = exploratory). The completeness-critic gates the family count against the declared strategy.</p>
     </footer>
   </main>
 </body>

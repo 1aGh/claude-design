@@ -17,6 +17,8 @@
   "extensions": [],
   "completenessProfile": "standard",
   "activeFamilies": {{active_families}},
+  "accentStrategy": "{{accent_strategy}}",
+  "colorSpace": "{{color_space}}",
   "designSystems": [
     {
       "name": "{{ds_dirname}}",

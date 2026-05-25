@@ -24,8 +24,9 @@ It is **not** auto-invoked by `/design:edit` or `/design:new` on a project with 
 
 ## What the agent should remember
 
-- **One accent.** No `--accent2`. Calls-to-attention compete; one accent forces hierarchy decisions.
-- **All visuals reference `var(--*)` tokens.** No hardcoded hex / px / rem in canvases.
+- **Accent strategy:** {{accent_strategy_summary}}. {{accent_rules_summary}}
+- **All visuals reference `var(--*)` tokens.** No off-token values in canvases.
+- **Color space:** {{color_space_summary}}.
 - **Voice:** {{voice_tone_summary}}
 - **Iconography:** {{iconography_summary}}
 - **Theme default:** `{{theme_default}}`. {{theme_extra}}
@@ -47,4 +48,4 @@ It is **not** auto-invoked by `/design:edit` or `/design:new` on a project with 
 
 ## How to extend
 
-If a canvas iteration needs a value not currently in the system, **extend `colors_and_type.css` first**. Adding a new variant of an existing token (e.g. `--accent-tertiary`) is fine; adding a parallel accent family (e.g. `--accent2`) violates the one-accent rule and the completeness-critic will block.
+If a canvas iteration needs a value not currently in the system, **extend `colors_and_type.css` first**. Adding a new variant of an existing token (e.g. `--accent-tertiary`) is fine. Adding a parallel accent family (e.g. `--accent2`) is only allowed if the project's declared `accentStrategy` in `config.json` permits it (e.g. `paired` or `chromatic-N`) — the completeness-critic enforces the declared strategy.

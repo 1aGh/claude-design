@@ -4,55 +4,59 @@
  * Authoritative token file. Every canvas in <designRoot>/ui/ links to this.
  * Production code should consume the same values (compiled to TS/JS or kept as CSS vars).
  *
- * Contract:
- * - OKLCH for accent + status colors (better gamut control than HSL/hex)
- * - One accent family only (no --accent2)
- * - Theme: {{theme_default}} (single-block) — duplicate for both-equal projects
- * - Motion durations + easings + reduced-motion guard
- * - 8-step type ladder, 4px-base spacing scale
+ * This file is the single source of truth for the project's visual language.
+ * Every concrete value below is supplied by the discovery payload — there are
+ * NO universal defaults baked into this template. Spacing, type, easing,
+ * shadows, max-width, accent strategy, and color space are all project-flavored.
+ *
+ * Two invariants this template does enforce:
+ *   1. `prefers-reduced-motion: reduce` collapses every duration to 1ms (a11y).
+ *   2. Tokens used by canvases live under one of the documented family prefixes
+ *      (--bg-*, --fg-*, --accent*, --border-*, --status-*, --space-*, --type-*,
+ *      --lh-*, --radius-*, --shadow-*, --dur-*, --ease-*, --layout-*, --font-*).
+ *
+ * Everything else — palette structure, type ladder, motion personality — is
+ * a project decision recorded during /design:setup-ds.
  */
 
 :root,
 .{{root_class}}[data-theme="{{theme_default}}"] {
   /* ─── Surfaces (deepest → highest) ─────────────────────────────────── */
-  --bg-0: {{bg_0_oklch}};   /* page bg                    */
-  --bg-1: {{bg_1_oklch}};   /* card / panel bg            */
-  --bg-2: {{bg_2_oklch}};   /* nested panel / popover     */
-  --bg-3: {{bg_3_oklch}};   /* input bg / subtle row hover */
-  --bg-4: {{bg_4_oklch}};   /* hover / pressed state      */
+  --bg-0: {{bg_0}};   /* page bg                    */
+  --bg-1: {{bg_1}};   /* card / panel bg            */
+  --bg-2: {{bg_2}};   /* nested panel / popover     */
+  --bg-3: {{bg_3}};   /* input bg / subtle row hover */
+  --bg-4: {{bg_4}};   /* hover / pressed state      */
 
   /* ─── Borders ──────────────────────────────────────────────────────── */
-  --border-subtle:  oklch(from var(--bg-1) calc(l + 0.04) c h);
-  --border-default: oklch(from var(--bg-1) calc(l + 0.08) c h);
-  --border-strong:  oklch(from var(--bg-1) calc(l + 0.14) c h);
+  --border-subtle:  {{border_subtle}};
+  --border-default: {{border_default}};
+  --border-strong:  {{border_strong}};
 
   /* ─── Text ─────────────────────────────────────────────────────────── */
-  --fg-0: {{fg_0_oklch}};   /* primary text                */
-  --fg-1: {{fg_1_oklch}};   /* secondary text              */
-  --fg-2: {{fg_2_oklch}};   /* tertiary / muted            */
-  --fg-3: {{fg_3_oklch}};   /* disabled                    */
+  --fg-0: {{fg_0}};   /* primary text                */
+  --fg-1: {{fg_1}};   /* secondary text              */
+  --fg-2: {{fg_2}};   /* tertiary / muted            */
+  --fg-3: {{fg_3}};   /* disabled                    */
 
-  /* ─── Accent (ONE family only) ─────────────────────────────────────── */
-  --accent:        {{accent_oklch}};
-  --accent-hover:  oklch(from var(--accent) calc(l - 0.04) c h);
-  --accent-active: oklch(from var(--accent) calc(l - 0.08) c h);
-  --accent-fg:     {{accent_fg_oklch}};
+  /* ─── Accent ({{accent_strategy_summary}}) ─────────────────────────── */
+{{accent_block}}
 
   /* ─── Status (only if "status" ∈ activeFamilies) ───────────────────── */
-  --status-success: oklch(70% 0.18 145);
-  --status-warn:    oklch(78% 0.16  85);
-  --status-error:   oklch(64% 0.21  25);
-  --status-info:    oklch(70% 0.13 230);
+  --status-success: {{status_success}};
+  --status-warn:    {{status_warn}};
+  --status-error:   {{status_error}};
+  --status-info:    {{status_info}};
 
   /* ─── Presence (only if "presence" ∈ activeFamilies) ───────────────── */
-  --presence-online:  var(--status-success);
-  --presence-away:    var(--status-warn);
-  --presence-offline: var(--fg-3);
+  --presence-online:  {{presence_online}};
+  --presence-away:    {{presence_away}};
+  --presence-offline: {{presence_offline}};
 
   /* ─── Shadows / elevation ──────────────────────────────────────────── */
-  --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.20);
-  --shadow-md: 0 4px 12px oklch(0 0 0 / 0.25);
-  --shadow-lg: 0 12px 32px oklch(0 0 0 / 0.30);
+  --shadow-sm: {{shadow_sm}};
+  --shadow-md: {{shadow_md}};
+  --shadow-lg: {{shadow_lg}};
 
   /* ─── Radii ────────────────────────────────────────────────────────── */
   --radius-xs: {{radius_xs}};
@@ -60,45 +64,45 @@
   --radius-md: {{radius_md}};
   --radius-lg: {{radius_lg}};
   --radius-xl: {{radius_xl}};
-  --radius-pill: 999px;
+  --radius-pill: {{radius_pill}};
 
-  /* ─── Spacing (4px base) ───────────────────────────────────────────── */
-  --space-0:  0;
-  --space-1:  4px;
-  --space-2:  8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 24px;
-  --space-6: 32px;
-  --space-7: 48px;
-  --space-8: 64px;
+  /* ─── Spacing ──────────────────────────────────────────────────────── */
+  --space-0: {{space_0}};
+  --space-1: {{space_1}};
+  --space-2: {{space_2}};
+  --space-3: {{space_3}};
+  --space-4: {{space_4}};
+  --space-5: {{space_5}};
+  --space-6: {{space_6}};
+  --space-7: {{space_7}};
+  --space-8: {{space_8}};
 
   /* ─── Typography ───────────────────────────────────────────────────── */
   --font-display: {{font_display}};
   --font-body:    {{font_body}};
   --font-mono:    {{font_mono}};
 
-  /* 8-step type scale */
-  --type-xs:   12px;  --lh-xs:   16px;
-  --type-sm:   13px;  --lh-sm:   18px;
-  --type-base: 14px;  --lh-base: 20px;
-  --type-md:   16px;  --lh-md:   22px;
-  --type-lg:   18px;  --lh-lg:   26px;
-  --type-xl:   22px;  --lh-xl:   30px;
-  --type-2xl:  28px;  --lh-2xl:  36px;
-  --type-3xl:  36px;  --lh-3xl:  44px;
+  /* Type scale */
+  --type-xs:   {{type_xs}};    --lh-xs:   {{lh_xs}};
+  --type-sm:   {{type_sm}};    --lh-sm:   {{lh_sm}};
+  --type-base: {{type_base}};  --lh-base: {{lh_base}};
+  --type-md:   {{type_md}};    --lh-md:   {{lh_md}};
+  --type-lg:   {{type_lg}};    --lh-lg:   {{lh_lg}};
+  --type-xl:   {{type_xl}};    --lh-xl:   {{lh_xl}};
+  --type-2xl:  {{type_2xl}};   --lh-2xl:  {{lh_2xl}};
+  --type-3xl:  {{type_3xl}};   --lh-3xl:  {{lh_3xl}};
 
   /* ─── Motion ───────────────────────────────────────────────────────── */
   --dur-flip:  {{dur_flip}};
   --dur-panel: {{dur_panel}};
   --dur-route: {{dur_route}};
   --dur-soft:  {{dur_soft}};
-  --ease-out:    cubic-bezier(0.22, 1, 0.36, 1);
-  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-out:    {{ease_out_curve}};
+  --ease-in-out: {{ease_in_out_curve}};
 
   /* ─── Layout ───────────────────────────────────────────────────────── */
-  --layout-max-w: 1200px;
-  --layout-gutter: var(--space-4);
+  --layout-max-w:  {{layout_max_w}};
+  --layout-gutter: {{layout_gutter}};
 }
 
 @media (prefers-reduced-motion: reduce) {

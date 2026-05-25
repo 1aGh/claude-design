@@ -4,7 +4,7 @@ DEMONSTRATES: forward-pointer to v1.x multiplayer features — live cursors with
 COMPOSITION: full mockup of a shared canvas with 3 cursors + awareness rail + typing indicator
 COPY VOICE: real names, real "X is editing" strings
 WHEN SCAFFOLDED: meta + presence family (typically v1.1+ projects with Yjs)
-NOTES: This is a forward-pointer specimen showing what the multiplayer UX looks like once Phase 8 (Yjs LAN) lands. The cursor color is per-user (hashed from user ID into an OKLCH band). Don't blink cursors — too noisy.
+NOTES: This is a forward-pointer specimen showing what the multiplayer UX looks like once Phase 8 (Yjs LAN) lands. Per-user cursor colors are illustrative only — the inline `oklch(...)` values below are NOT part of the project's design system. A real implementation should source per-user colors from a `--presence-user-*` family (token-driven) or derive from `--accent` via a deterministic hash on user ID. Don't blink cursors — too noisy.
 -->
 <!doctype html>
 <html lang="en">

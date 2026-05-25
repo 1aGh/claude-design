@@ -28,7 +28,7 @@ NOTES: Both themes use the SAME tokens (--bg-0..4 etc.); only their OKLCH values
     <p class="lede">The exact same UI rendered in both themes. Tokens carry the difference; the HTML structure is identical. If a component renders differently across themes (beyond color), that's a token-resolution bug, not a per-theme design.</p>
 
     <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 16px;">
-      <div class="pane app" data-theme="dark" style="background: oklch(16% 0.012 245); color: oklch(96% 0.008 245);">
+      <div class="pane app" data-theme="dark" style="background: var(--bg-0); color: var(--fg-0);">
         <h2 style="margin: 0 0 16px;">Dark</h2>
         <div class="card">
           <h3>Match recap</h3>
@@ -40,20 +40,20 @@ NOTES: Both themes use the SAME tokens (--bg-0..4 etc.); only their OKLCH values
         </div>
       </div>
 
-      <div class="pane app" data-theme="light" style="background: oklch(98% 0.005 245); color: oklch(20% 0.012 245);">
+      <div class="pane app" data-theme="light" style="background: var(--bg-0); color: var(--fg-0);">
         <h2 style="margin: 0 0 16px;">Light</h2>
-        <div class="card" style="background: oklch(95% 0.005 245); border-color: oklch(82% 0.010 245);">
+        <div class="card">
           <h3>Match recap</h3>
-          <p class="meta" style="color: oklch(48% 0.012 245);">vs. Sparta U17 · 3-1</p>
+          <p class="meta">vs. Sparta U17 · 3-1</p>
           <div class="row" style="gap: 8px;">
             <button class="btn-primary">View</button>
-            <button class="btn-secondary" style="background: oklch(91% 0.005 245); color: oklch(20% 0.012 245); border-color: oklch(78% 0.010 245);">Share</button>
+            <button class="btn-secondary">Share</button>
           </div>
         </div>
       </div>
     </div>
 
-    <footer class="legend"><p>Inline OKLCH values here are just for the specimen; real projects swap them via <code>[data-theme="light"]</code> selectors in <code>colors_and_type.css</code>. The cascade carries every component without per-component theme overrides.</p></footer>
+    <footer class="legend"><p>Both panes use the same <code>var(--*)</code> tokens; only the <code>data-theme</code> attribute changes. Real projects define both themes inside <code>colors_and_type.css</code> via <code>[data-theme="dark"]</code> and <code>[data-theme="light"]</code> selectors. The cascade carries every component without per-component theme overrides.</p></footer>
   </main>
 </body>
 </html>

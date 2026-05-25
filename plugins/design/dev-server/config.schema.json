@@ -116,6 +116,18 @@
       },
       "default": ["accent"]
     },
+    "accentStrategy": {
+      "type": "string",
+      "description": "How many --accent* families exist. The completeness-critic C7 gates the actual family count against this declaration. Default: 'single' (backwards-compatible). 'chromatic-N' is parameterized — write the literal N (e.g. 'chromatic-5'). Per DDR-043.",
+      "pattern": "^(single|paired|chromatic-[1-9][0-9]?)$",
+      "default": "single"
+    },
+    "colorSpace": {
+      "type": "string",
+      "enum": ["oklch", "hsl", "hex", "lab"],
+      "description": "Color space the project uses in tokens CSS. The completeness-critic V2 gates the actual token format against this declaration. Default: 'oklch' (backwards-compatible). Per DDR-043.",
+      "default": "oklch"
+    },
     "designSystems": {
       "type": "array",
       "description": "Design systems available in this project. Single-DS projects have one entry; multi-DS projects (marketing vs. admin vs. mobile) list each here. Each canvas's .meta.json declares which DS it uses via the 'designSystem' field.",

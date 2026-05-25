@@ -4,7 +4,7 @@ DEMONSTRATES: --presence-online, --presence-away, --presence-offline; presence d
 COMPOSITION: 4 avatars with presence dots (online / away / offline / idle) + a "live cursors" mockup with 3 simultaneous users
 COPY VOICE: real names, real timestamps
 WHEN SCAFFOLDED: presence family (IF "presence" ∈ activeFamilies — typically pro tools with multiplayer)
-NOTES: Presence dot is 8px circle bottom-right of 32-40px avatars (anchor on the visual bottom-right, not on a math grid). Cursor labels are subtle (pill at 11px, low opacity bg). Don't blink presence — too noisy in a busy view.
+NOTES: Presence dot is 8px circle bottom-right of 32-40px avatars (anchor on the visual bottom-right, not on a math grid). Per-user cursor colors below are illustrative only — the inline `oklch(...)` values are NOT part of the project's design system. A real implementation should source these from a `--presence-user-*` family or derive from `--accent` deterministically. Cursor labels are subtle (pill at 11px, low opacity bg). Don't blink presence — too noisy in a busy view.
 -->
 <!doctype html>
 <html lang="en">

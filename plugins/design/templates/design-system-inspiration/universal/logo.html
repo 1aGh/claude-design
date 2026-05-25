@@ -19,7 +19,8 @@ NOTES:
   <style>
     body { padding: 24px; display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
     .frame { padding: 18px 22px; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-1); }
-    .light { background: #ffffff; }
+    /* `.light` frame shows the mark on the opposite-theme surface — sourced from the project's tokens, not hardcoded white. */
+    .light { background: var(--bg-0-light, var(--bg-0)); }
     .label { font-family: var(--font-mono); font-size: 11px; font-weight: 500; color: var(--fg-2); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 10px; display: block; }
   </style>
 </head>

@@ -31,7 +31,7 @@ In multi-DS projects (`config.designSystems.length > 1`), produce one section pe
 
 ## Pre-flight
 
-1. **Read `config.json`.** Resolve `designRoot`, `tokensCssRel`, `completenessProfile` (`minimal | standard | strict`), `activeFamilies[]` (`accent | status | presence | mono`), `designSystems[]`.
+1. **Read `config.json`.** Resolve `designRoot`, `tokensCssRel`, `completenessProfile` (`minimal | standard | strict`), `activeFamilies[]` (`accent | status | presence | mono`), `designSystems[]`, `accentStrategy` (`single | paired | chromatic-N`, default `single`), `colorSpace` (`oklch | hsl | hex | lab`, default `oklch`).
 2. **Locate the target DS dir.** For single-DS: `<designRoot>/system/project/`. For multi-DS: `<designRoot>/system/<ds_name>/` where `ds_name` is in `designSystems[]`.
 3. **Refuse if dir doesn't exist.** Emit `{verdict: blocker, reason: "DS dir missing"}` and stop.
 4. **Refuse if dirname == project slug** (D2 divergence). `system/<projectName>/` is the wrong shape — the literal `project` is the single-DS convention; multi-DS uses semantic names (`marketing`, `admin`, …). Emit blocker C2 with the rename hint.
@@ -46,7 +46,7 @@ In multi-DS projects (`config.designSystems.length > 1`), produce one section pe
 | C4 | `<ds_root>/SKILL.md` exists with valid YAML frontmatter (`name`, `description`, `user-invocable`) | Read-skill metadata |
 | C5 | `<ds_root>/colors_and_type.css` exists at the path declared in `config.tokensCssRel` | Authoritative tokens |
 | C6 | Core vars present in tokens CSS: `--accent`, `--bg-0` through `--bg-4`, `--fg-0` through `--fg-3`, at least one `--dur-*` motion var | Minimum token contract |
-| C7 | Exactly **one** `--accent*` family (no `--accent2`, no `--accent-secondary`) | One-accent rule |
+| C7 | Accent family count matches `config.accentStrategy`: `single` → exactly 1; `paired` → exactly 2; `chromatic-N` → N families (1 ≤ N ≤ 12). Default if unset: `single` (backwards-compatible). | Discovery-driven, no longer universal |
 | C8 | `<ds_root>/preview/` exists with ≥ N specimens (TSX files), where N depends on `completenessProfile`: minimal=3, standard=8, strict=12 | Adaptive minimum |
 
 **Run C6 + C7 via `grep`:**
@@ -60,12 +60,19 @@ grep -qE '^\s*--fg-0\b'     "$TOKENS" || echo "C6 fail: --fg-0 missing"
 grep -qE '^\s*--fg-[1-3]\b' "$TOKENS" || echo "C6 fail: --fg-1..3 missing"
 grep -qE '^\s*--dur-'       "$TOKENS" || echo "C6 fail: no --dur-* token"
 
-# C7 — one-accent rule
-ACCENT_FAMILIES=$(grep -oE '^\s*--accent[a-z0-9-]*\b' "$TOKENS" | sed 's/-fg$//;s/-hover$//;s/-active$//' | sort -u | wc -l)
-[[ "$ACCENT_FAMILIES" -le 1 ]] || echo "C7 fail: multiple accent families detected"
+# C7 — accent-strategy gate (discovery-driven, default single)
+ACCENT_STRATEGY="${CONFIG_ACCENT_STRATEGY:-single}"
+ACCENT_FAMILIES=$(grep -oE '^\s*--accent[a-z0-9-]*\b' "$TOKENS" | sed -E 's/-(fg|hover|active|glow|edge|muted)$//' | sort -u | wc -l)
+case "$ACCENT_STRATEGY" in
+  single)        EXPECTED=1 ;;
+  paired)        EXPECTED=2 ;;
+  chromatic-*)   EXPECTED="${ACCENT_STRATEGY#chromatic-}" ;;
+  *)             EXPECTED=1 ;;
+esac
+[[ "$ACCENT_FAMILIES" -eq "$EXPECTED" ]] || echo "C7 fail: accent family count $ACCENT_FAMILIES does not match strategy $ACCENT_STRATEGY (expected $EXPECTED)"
 ```
 
-(The grep for C7 normalizes `--accent`, `--accent-hover`, `--accent-active`, `--accent-fg`, `--accent-glow`, `--accent-edge` to one family. `--accent2` / `--accent-secondary` count as separate families → fail.)
+(The grep for C7 normalizes `--accent`, `--accent-hover`, `--accent-active`, `--accent-fg`, `--accent-glow`, `--accent-edge`, `--accent-muted` to one family. `--accent2` / `--accent-secondary` count as separate families. With the default `single` strategy this remains a one-accent enforcement; projects that chose `paired` or `chromatic-N` during discovery get the count they declared.)
 
 **Run V20 via `grep`:**
 
@@ -88,7 +95,7 @@ Profile gate: `minimal` skips all of Tier 2; `standard` runs everything except V
 | # | Check | Profile | Gate (activeFamilies / config) |
 |---|---|---|---|
 | V1 | `<designRoot>/INDEX.md` exists | standard+ | always |
-| V2 | OKLCH used for ≥1 color in tokens CSS | standard+ | always |
+| V2 | Color space matches `config.colorSpace`: `oklch` → ≥1 `oklch(`; `hsl` → ≥1 `hsl(`; `hex` → ≥1 `#[0-9a-fA-F]{3,8}`; `lab` → ≥1 `lab(`. Default if unset: `oklch` (backwards-compatible). | standard+ | always |
 | V3 | Each `.tsx` specimen in `preview/` `<link>`s the tokens CSS | standard+ | per missing → 1 warning |
 | V4 | `<ds_root>/preview/colors-*.tsx` exists (≥1 file matching the prefix) | standard+ | always |
 | V5 | `<ds_root>/preview/type-*.tsx` exists (≥1) | standard+ | always |

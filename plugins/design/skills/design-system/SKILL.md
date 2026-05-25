@@ -436,7 +436,7 @@ This prevents token leakage when the DS coexists with another design system on t
 [data-team="emerald"] { --accent: oklch(70% 0.16 150); --accent-hover: oklch(66% 0.16 150); --accent-fg: oklch(14% 0.04 150); }
 ```
 
-This honors the one-accent rule (only `--accent*` family is overridden, never adds `--accent2`), but lets the live UI pick from a small palette. The `platform-desktop/ui_kits-desktop-showcase.tsx` reference template includes an accent picker that flips `data-team` on `<html>`.
+This pattern overrides the `--accent*` family per-tenant — compatible with any declared `accentStrategy` (the family count from config.json is preserved, only its hue values change per `data-team`). The `platform-desktop/ui_kits-desktop-showcase.tsx` reference template includes an accent picker that flips `data-team` on `<html>`.
 
 **Default:** skip this section unless the discovery brief explicitly mentions "per-team", "per-tenant", or "multi-brand". Most DSes don't need it.
 
@@ -465,6 +465,24 @@ discovery:
   hard_nos: ["{{Q10 picks}}"]
   iconography_vibe: "{{Q11}}"
   density: "{{Q12}}"
+  # Discovery-driven values for bias-free template rendering (DDR-026, 2026-05-25).
+  # Derived from the answers above OR captured as follow-up batches when Stage 3
+  # implies them. The agent MUST fill every field — there are no template
+  # defaults to fall back on; an unsubstituted `{{placeholder}}` leaks as a
+  # literal into the rendered tokens CSS.
+  accent_strategy:    "{{single | paired | chromatic-3 | chromatic-N}}"   # default: single
+  color_space:        "{{oklch | hsl | hex | lab}}"                       # default: oklch
+  spacing_base:       "{{4 | 8 | golden | fluid-vh}}"                     # default: 4 if Q12 dense; 8 if Q12 roomy
+  type_base_px:       "{{14 | 15 | 16 | 18}}"                             # default: 14 if Q12 dense; 16 if Q12 roomy
+  type_ratio:         "{{1.067 | 1.125 | 1.200 | 1.250 | 1.333 | 1.500}}" # default: 1.200; 1.125 if dense; 1.333 if editorial
+  ease_out_curve:     "{{cubic-bezier(…) | linear() | spring}}"           # researched per Q9; no universal default
+  ease_in_out_curve:  "{{cubic-bezier(…) | linear() | spring}}"           # researched per Q9; no universal default
+  layout_max_w:       "{{1200px | 1280px | 1440px | none | column-based}}" # default: 1200 if Q3 desktop-only; none if Q3 mobile-first
+  layout_gutter:      "{{var(--space-4) | var(--space-5) | …}}"           # default: var(--space-4)
+  shadow_strategy:    "{{soft | hard | none | inset | accent-tinted}}"    # default: soft; none if Q9 brutalism
+  border_strategy:    "{{relative-from-bg | fixed-token | inline-from-fg | hairline-mono}}"  # default: relative-from-bg
+  touch_target_min:   "{{44 | 48 | desktop-na}}"                          # computed: iOS=44, Android=48, desktop-only=desktop-na
+  radii_personality:  "{{sharp | mild | soft | pill-heavy | mixed}}"      # default: mild; sharp if Q9 brutalism
 round_0_research:
   payload_path: "{{abs path to <ds>-domain-research-discovery.json}}"
   fallback_used: {{bool from payload}}
