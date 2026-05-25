@@ -168,6 +168,15 @@ docs/cli.mdx
 - `site/components/mdcc/diagrams/_diagrams.css` — diagram-scoped
   styles (grid templates, mobile reflow). Imported once from
   `mdx.tsx`.
+- `site/lib/diagram-data.ts` — **konsolidovaný** data soubor pro
+  `LoopDiagram` nodes, `CommandFlow` steps, `FileTree` rows
+  a `CommandTree` source. Nahrazuje původně plánované oddělené
+  `commands.ts` + `loops.ts` + `install-steps.ts` (review feedback —
+  jeden zdroj místo tří).
+- `<designRoot>/ui/docs-infographics.tsx` — canvas návrh všech
+  osmi diagramů přes `/design:new` (Task 0). Slouží jako visual
+  spec pro Tasks 3–10. **NEMAZAT v Task 17** — zůstává jako
+  living design reference v design rootu.
 
 ### Files to Update
 
@@ -268,10 +277,65 @@ mismatch. The catalog aesthetic is intentionally typographic.
 
 ## Tasks
 
-Execute in order. Tasks 1–2 are scaffolding. Tasks 3–10 are
-diagram components (independent — could parallel, but
-`DiagramFrame` from Task 2 is the dependency). Tasks 11–16 insert
-diagrams into pages. Task 17 is validation.
+Execute in order. Task 0 je **design gate přes maude design plugin**
+(visual proposal → user approval). Tasks 1–2 jsou scaffolding.
+Tasks 3–10 jsou diagram komponenty (nezávislé — dají se
+paralelizovat, ale `DiagramFrame` z Task 2 je dependency).
+Tasks 11–16 vkládají diagramy do stránek. Task 17 je validace.
+
+### Task 0: GATE — visuální návrh přes `/design:new` (maude design)
+
+> Review feedback: "halfway review po Task 12 je pozdě, scope bude
+> už zacementovaný." Dogfooding maude design pluginu na vlastním
+> docs situ — jediný správný start.
+
+- **Do**: Před jakýmkoli scaffoldingem (Task 1+) vytvořit canvas
+  návrh všech osmi diagramů v maude design pluginu:
+
+  ```sh
+  /design:new docs-infographics
+  ```
+
+  Canvas obsahuje **8 artboardů** (jeden per diagram component):
+  `ArchitectureMap`, `CommandFlow`, `LoopDiagram`, `CommandTree`,
+  `FileTree`, `StatPanel`, `InspectorDiagram`, `DevServerSchema`.
+  Každý artboard ukáže jak komponenta bude vypadat ve final
+  podobě — s realistickými daty (ne lorem), SKU stampy, hairline
+  borders, token colors z `mdcc-tokens.css`.
+
+- **Iterace**: Použít `/design:edit` na feedback rounds dokud
+  layouty nesedí. Spustit `/design:critic` (panel) pro validaci
+  proti DS hard-stops (no gradients, no blur, hairline rule).
+  Cílit `signature-moment-critic` ≥ 4 / 5 (catalog aesthetic
+  doopravdy zní).
+
+- **Output**: `<designRoot>/ui/docs-infographics.tsx` (canvas
+  soubor) + screenshoty per artboard přes `/design:screenshot
+  --all-screens`. Screenshoty se použijí jako **visual spec**
+  pro Tasks 3–10 — implementace musí matchovat finální canvas
+  pixel-by-pixel-ish (token-level, ne pixel-level).
+
+- **Validate**:
+  - User signoff na canvas před Task 1. Bez signoff → STOP.
+  - `/design:critic` panel: 0 blockerů, signature-moment ≥ 4/5.
+  - Všech 8 artboardů má SKU stamp a realistic placeholder data
+    (no Lorem, no `TODO`).
+  - Screenshoty exportované do `<designRoot>/_history/docs-infographics/`.
+
+- **Gotcha**:
+  - Canvas používá `@maude/canvas-lib` (virtual specifier);
+    dev-server resolvuje na `plugins/design/dev-server/canvas-lib.tsx`.
+    NE-importovat z `_lib/`.
+  - Design plugin pracuje s `.design/` rootem v repo. Pokud
+    v repo `.design/` chybí, nejdřív `/design:init`.
+  - Catalog aesthetic z landing page (`site/app/(home)/page.tsx`)
+    je referenční. Canvas má rhymovat, ne tvořit nový jazyk.
+
+- **Proč přes maude design, ne ASCII paper sketches**:
+  Dogfooding. Plán předělává docs site, kterému chybí visual
+  layer — ten samý problem maude design plugin řeší. Pokud
+  design plugin nezvládne nadesignovat docs infografiku
+  v reasonable scope, to je samo o sobě discovery (a DDR).
 
 ### Task 1: ADD `_diagrams.css` token-scoped stylesheet
 
@@ -367,11 +431,17 @@ diagrams into pages. Task 17 is validation.
 ### Task 6: CREATE `CommandTree`
 
 - **Do**: Props: `{ plugin: 'design' | 'flow', sku?: string,
-  caption: string }`. Reads the catalog from a static data import
-  (`site/lib/commands.ts` — author this if it doesn't exist;
-  source of truth is the same frontmatter the
-  `build-command-reference.mjs` script consumes). Renders a
-  stylized ASCII-tree-style list:
+  caption: string }`. Reads the catalog from `site/lib/diagram-data.ts`
+  (the konsolidovaný data soubor — viz Files to Create). **Source-of-truth
+  wiring je mandatory** (review feedback Risk #1): jako součást tohoto
+  tasku PŘEPSAT `site/scripts/build-command-reference.mjs` aby
+  importoval z `diagram-data.ts` místo re-parsování `name:`/`category:`
+  frontmatter z `plugins/{flow,design}/commands/*.md`. Bez tohoto
+  wiringu = guaranteed drift. **Žádný `// TODO: wire to
+  build-command-reference` escape hatch** — review feedback explicitně
+  zamítá snapshot variantu.
+
+  Renders a stylized ASCII-tree-style list:
 
   ```
   /design:
@@ -392,12 +462,11 @@ diagrams into pages. Task 17 is validation.
   page. Hairline guide rules from group headers.
 - **Pattern**: Pure Berkeley Mono + `<a>` per leaf. No collapsible
   state — docs context, all-visible is fine.
-- **Gotcha**: If `commands.ts` import is added, wire it to the
-  build-command-reference script so the source of truth doesn't
-  drift. If too costly, hand-author the data file once and
-  document that it's a snapshot.
+- **Gotcha**: `build-command-reference.mjs` rewrite je součást tohoto
+  tasku (viz **Do** výše). Nepřeskakovat.
 - **Validate**: Tree renders both plugins. Links navigate to the
-  correct command pages.
+  correct command pages. `node site/scripts/build-command-reference.mjs`
+  generuje identický (nebo lepší) výstup z nového data zdroje.
 
 ### Task 7: CREATE `FileTree`
 
@@ -453,11 +522,25 @@ diagrams into pages. Task 17 is validation.
   with a caption between them: server-pid bootstrap → inspector
   push → snapshot stack. Replaces the existing markdown table on
   `design/index.mdx`.
+
+  **A11y mandatory** (review feedback): protože Task 14 maže
+  markdown tabulku, screen reader by jinak ztratil klíče. Komponenta
+  MUSÍ obsahovat buď:
+  - SVG `<desc>` element s plným textem všech klíčů a jejich rolí
+    (producer/consumer), nebo
+  - visually-hidden `<table>` (Tailwind `sr-only`) s identickou
+    strukturou jako původní markdown tabulka.
+
+  Doporučení: `sr-only` tabulka — pure HTML semantics, žádné
+  custom ARIA, screen reader announces table navigation natively.
+
 - **Pattern**: CSS Grid `grid-template-columns: 1fr 1fr 1fr` with
   hairline cell borders. Each cell `<details>`-collapsible on
   mobile (`< 640 px`) to save vertical space.
 - **Validate**: Each pane lists the documented keys verbatim from
-  CLAUDE.md "Dev server runtime contract" table.
+  CLAUDE.md "Dev server runtime contract" table. VoiceOver / NVDA
+  pass over the diagram čte všechny klíče (test přes
+  `a11y-auditor` subagent).
 
 ### Task 11: UPDATE `site/components/mdx.tsx` registry
 
@@ -483,7 +566,7 @@ diagrams into pages. Task 17 is validation.
 - **Do**:
   - After the `## Init the workspace` `.ai/` tree fence (line 55),
     add `<FileTree variant=".ai/" highlight={['workflows.config.json']} caption="The .ai/ skeleton" />` — REPLACES the existing ASCII fence (drop the fence, the diagram supersedes).
-  - Above `## Open the design browser`, add `<CommandFlow steps={INSTALL_STEPS} caption="Four steps and you're in" />`. Define `INSTALL_STEPS` as a data import from `site/lib/install-steps.ts` (author this file with the 4-step strip data).
+  - Above `## Open the design browser`, add `<CommandFlow steps={INSTALL_STEPS} caption="Four steps and you're in" />`. Definuj `INSTALL_STEPS` v `site/lib/diagram-data.ts` (konsolidovaný data soubor, viz Files to Create).
 - **Validate**: Replaced fence renders identically (no info lost)
   + the CommandFlow renders cleanly.
 
@@ -493,7 +576,7 @@ diagrams into pages. Task 17 is validation.
   - After the inspector-overlay paragraph (line 8), add
     `<InspectorDiagram caption="Cmd+Click scopes the next /design:edit" />`.
   - After the "Setup" table and before the "Daily" table inside
-    `## Twelve commands`, add `<LoopDiagram nodes={DESIGN_LOOP} caption="The canvas loop" />`. Author `DESIGN_LOOP` in `site/lib/loops.ts`: `init → setup-ds → new → edit → critic → handoff → repeat`.
+    `## Twelve commands`, add `<LoopDiagram nodes={DESIGN_LOOP} caption="The canvas loop" />`. Definuj `DESIGN_LOOP` v `site/lib/diagram-data.ts`: `init → setup-ds → new → edit → critic → handoff → repeat`.
   - REPLACE the markdown table inside `## Dev server runtime
     files` (lines 41–52 of current file) with `<DevServerSchema caption="Three files. One contract." />`.
   - At end of page (after `## Configure`), add `<CommandTree plugin="design" caption="All twelve commands by group" />`.
@@ -503,7 +586,7 @@ diagrams into pages. Task 17 is validation.
 ### Task 15: INSERT diagrams into `docs/flow.mdx`
 
 - **Do**:
-  - After the intro paragraph (line 8), add `<LoopDiagram nodes={FLOW_LOOP} caption="The lifecycle" />`. Author `FLOW_LOOP` in `site/lib/loops.ts`: `init → setup-prd → plan → execute → done → repeat`.
+  - After the intro paragraph (line 8), add `<LoopDiagram nodes={FLOW_LOOP} caption="The lifecycle" />`. Definuj `FLOW_LOOP` v `site/lib/diagram-data.ts`: `init → setup-prd → plan → execute → done → repeat`.
   - At end of page (after "## Naming history"), add `<CommandTree plugin="flow" caption="Thirty commands by group" />`.
 - **Validate**: Both diagrams render; tree links resolve to
   `commands-flow/<name>` pages.
@@ -513,13 +596,15 @@ diagrams into pages. Task 17 is validation.
 - **Do**:
   - After the install snippet (line 11), add `<FileTree variant="cli-subcommands" caption="The five subcommands" />`. FileTree shows: `maude/ → init / config / design / version / help`.
   - Inside `## maude init` after the bullet list (line 33), add
-    `<CommandFlow steps={INIT_FLOW} caption="From install to ready" />`. Author `INIT_FLOW` in `site/lib/install-steps.ts`: `install · maude init · /flow:init · ready`.
+    `<CommandFlow steps={INIT_FLOW} caption="From install to ready" />`. Definuj `INIT_FLOW` v `site/lib/diagram-data.ts`: `install · maude init · /flow:init · ready`.
 - **Validate**: Both render cleanly inline.
 
 ### Task 17: VALIDATION + smoke cleanup
 
 - **Do**:
   - Delete `site/content/docs/_smoke-diagrams.mdx` from Task 2.
+  - **NEMAZAT** `<designRoot>/ui/docs-infographics.tsx` z Task 0
+    — zůstává jako living design reference (viz Files to Create).
   - Run all validation commands below.
   - Visually walk every updated page at 1280 / 768 / 375 px.
   - Check `pnpm --filter @maude/site build` succeeds.
@@ -640,4 +725,125 @@ create**:
   bake in a halfway review after Task 12 (ArchitectureMap +
   StatPanel land on the docs index) before authoring the
   remaining six pages of inserts.
+
+---
+
+## Review feedback (2026-05-25)
+
+Review proběhl před schválením plánu. Shrnutí změn vlastněných
+tímto plánem:
+
+1. **Task 0** (NEW) — gate s **visuálním návrhem přes
+   `/design:new`** (maude design plugin). Canvas se všemi 8
+   artboardy v `<designRoot>/ui/docs-infographics.tsx`, validace
+   přes `/design:critic` panel. Dogfooding maude na vlastním docs
+   situ. Halfway review po Task 12 byl pozdě, paper sketches byly
+   slabší signál než reálný canvas.
+2. **Task 6** — `build-command-reference.mjs` rewrite je
+   **mandatory součást** tasku, ne TODO. Snapshot variantu plán
+   explicitně zamítá.
+3. **Task 10** — `DevServerSchema` MUSÍ obsahovat `sr-only`
+   tabulku (nebo SVG `<desc>`), protože Task 14 maže původní
+   markdown tabulku a screen reader by jinak ztratil klíče.
+4. **Konsolidace data files** — jeden `site/lib/diagram-data.ts`
+   místo původně plánovaných `commands.ts` + `loops.ts` +
+   `install-steps.ts`. Méně driftových míst.
+
+Co bylo zváženo a zamítnuto:
+
+- **9. komponenta `CommandEffects`** (matrix "co kterýkoli command
+  zapisuje/mění") — odloženo. Subtree research z review fáze
+  zachycen v Appendixu níže pro pozdější iteraci.
+
+---
+
+## Appendix A — Flow commands dependency subtree
+
+Reference material zachycený během review. **Není scope tohoto
+phase-17 planu** (review fáze, ne implementace). Slouží jako:
+
+1. Validační podklad pro `CommandTree` (Task 6) — strom by měl
+   strukturálně odpovídat skutečným command-to-command voláním.
+2. Seed pro potenciální budoucí `CommandEffects` komponentu, pokud
+   se rozhodneme přidat side-effects matrix do docs.
+
+### Subtree
+
+```
+USER
+├─ /flow:init                          [leaf] → Skill(flow:skill-loader)
+├─ /flow:setup-prd                     spawns scenario-runner|a11y|ds-guard (spec)
+│                                      WRITES .ai/prd.md, .ai/plans/*, STATE.md (seed)
+├─ /flow:setup-context                 [leaf, read-only]
+├─ /flow:setup-codebase-map            [leaf] → .ai/context/codebase-map.md
+├─ /flow:status                        [leaf, read-only]
+├─ /flow:plan                          Skill(skill-loader)
+│                                      WRITES .ai/plans/<feature>.md, STATE.md
+├─ /flow:execute                       ★ inner loop hub
+│   ├─ /flow:utils-verify  ←──── max 3× retry (Edit-Verify Loop)
+│   │   ├─ spawn: agent-browser | agent-device
+│   │   └─ spawn: a11y-auditor, design-system-guard (volitelně)
+│   ├─ /design:smoke                   (phase-end, DDR-021 trigger)
+│   ├─ spawn: code-simplifier
+│   └─ WRITES STATE.md (status, checkpoints)
+├─ /flow:quick                         → /flow:release-changelog (post-merge)
+├─ /flow:done                          ★★ fan-out hub
+│   ├─ /flow:validate
+│   │   ├─ /flow:validate-security
+│   │   │   └─ spawn: security-auditor + ethical-hacker (parallel)
+│   │   ├─ spawn: scenario-runner (5 platforms)
+│   │   ├─ spawn: a11y-auditor
+│   │   ├─ spawn: design-system-guard
+│   │   └─ WRITES .ai/logs/security-reviews/<branch>-<ts>.md
+│   ├─ /flow:review-code
+│   │   ├─ spawn: security-auditor + ethical-hacker (cache reuse)
+│   │   └─ spawn: code-simplifier
+│   ├─ /flow:record-ddr (per unrecorded decision)
+│   │   ├─ Skill(claude-md-keeper)
+│   │   └─ WRITES .ai/decisions/DDR-NNN-*.md + README.md index
+│   ├─ /flow:release-changelog        → .changeset/*
+│   ├─ /flow:record-retro             → Skill(claude-md-keeper)
+│   ├─ Skill(ddr-keeper)
+│   └─ WRITES STATE.md (phase=done, history)
+│       archives .ai/plans/<x>.md → archive/
+│       refreshes coverage-baseline.json
+├─ /flow:pause                         WRITES HANDOFF.md, STATE.md (paused)
+├─ /flow:resume                        reads HANDOFF.md; WRITES STATE.md (in-progress)
+├─ /flow:validate-a11y                 [leaf] spawn: a11y-auditor
+├─ /flow:validate-visual               [leaf] screenshot regression
+├─ /flow:bug-rca                       [leaf] → logs/rca/issue-<id>.md
+├─ /flow:bug-fix                       reads RCA; updates tracker MCP
+├─ /flow:scenario                      [leaf] Skill(scenario) + agent-browser/device
+├─ /flow:release                       [leaf] walks .ai/release-guide.md
+├─ /flow:record-execution              [leaf] implementation report
+├─ /flow:video-new-scene               [leaf] Remotion scaffold
+├─ /flow:maintain-ai-health            [leaf, audit only]
+├─ /flow:maintain-clean                [leaf]
+├─ /flow:maintain-discover             [leaf]
+├─ /flow:maintain-docs                 [leaf] Skill(skill-loader)
+└─ /flow:help                          [leaf] parses name: frontmatter
+```
+
+### Load-bearing state writes
+
+| Soubor | Producenti | Konzumenti |
+|--------|------------|------------|
+| `.ai/state/STATE.md` | `setup-prd` (seed), `execute` (in-progress + checkpoints), `done` (done + history), `pause` (paused), `resume` (in-progress) | `status`, `plan`, `done`, `pause`, `resume`, `maintain-ai-health` |
+| `.ai/state/HANDOFF.md` | jen `/flow:pause` | jen `/flow:resume` (single P/C) |
+| `.ai/plans/archive/` | jen `/flow:done` | + CLAUDE.md vyžaduje `pnpm gen:roadmap` po move |
+| `.ai/decisions/` | `/flow:record-ddr` | `/flow:done` (sweep), `/flow:validate` (drift) |
+| `.ai/logs/security-reviews/` | `validate`, `validate-security`, `review-code` | mtime = cache klíč pro reuse window |
+| `coverage-baseline.json` | `/flow:done` (jen na baselineBranch) | `/flow:validate` |
+
+### Klíčové vlastnosti
+
+- `/flow:done` je **fan-out hub** — 4 sub-commandy + 2 skills +
+  tracker + archive + STATE transition.
+- `/flow:validate` je **agent fan-out** — 5 subagentů, jediný
+  sub-command `validate-security`.
+- `/flow:execute ↔ /flow:utils-verify` je **inner loop** (3× retry).
+- `STATE.md` má **5 producentů** — schema parity je load-bearing;
+  změna v jednom musí ladit s ostatními čtyřmi.
+- Leaf commands bez explicitních spawnů: `validate-a11y`,
+  `validate-visual`, `maintain-clean`, `status`.
 
