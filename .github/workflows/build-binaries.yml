@@ -109,7 +109,12 @@ jobs:
         shell: bash
         run: |
           cd plugins/design/dev-server
-          bun install --frozen-lockfile
+          # Drop --frozen-lockfile: bun.lock is gitignored and gets generated
+          # on whatever host first ran it. Under --frozen, bun installs only
+          # the bindings the original host saw matching its OS/CPU filter —
+          # which on a cross-compile runner is the WRONG arch. Resolve fresh
+          # per host so each matrix cell gets its matching @oxc-parser/binding-*.
+          bun install
           bun run build.ts --release --target=${{ matrix.target }}
           ls -la dist/
           BIN="dist/maude-${{ matrix.slug }}${{ matrix.ext }}"
