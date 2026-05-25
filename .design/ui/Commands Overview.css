@@ -1,0 +1,263 @@
+/* ─────────────────────────────────────────────────────────────── *
+ *  Commands Overview · MDCC-DGM                                    *
+ *  Canvas-scoped styles. Token-only (no hex literals).             *
+ *  Lifted patterns: dgm-frame / ab-hd from docs-infographics       *
+ *  iter-3 backup (same DS, same chrome).                           *
+ * ─────────────────────────────────────────────────────────────── */
+
+/* ─── Artboard chrome (lifted from iter-3 docs-infographics) ─── */
+.ab-cmdo {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 700px;
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font-family: inherit;
+}
+
+.ab-cmdo .ab-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border-default);
+  background: var(--bg-1);
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.ab-cmdo .ab-hd .lead {
+  color: var(--fg-0);
+  letter-spacing: 0.5px;
+}
+
+.ab-cmdo .ab-hd .lead b {
+  color: var(--accent-active);
+  font-weight: 700;
+  letter-spacing: 2px;
+  margin-right: 8px;
+}
+
+.ab-cmdo .ab-hd .right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  color: var(--fg-1);
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+
+/* a11y note: chrome eyebrows + version chips stay at fg-1 to hold ≥4.5:1
+   against bg-1 at 11px (fg-2 lands ~3.6:1, fails AA body text). */
+
+.ab-cmdo .ab-hd .right .ok {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ab-cmdo .ab-hd .right .glyph {
+  color: var(--accent);
+}
+
+/* ─── Diagram frame ─── */
+.dgm-frame {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  border: 1px solid var(--border-default);
+  background: var(--bg-1);
+}
+
+.dgm-frame-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-default);
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+}
+
+.dgm-frame-hd .sku {
+  color: var(--accent-active);
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+
+.dgm-frame-hd .dgm-frame-ver {
+  color: var(--fg-1);
+  letter-spacing: 1px;
+}
+
+.dgm-frame-bd {
+  position: relative;
+  padding: 24px;
+  background: var(--bg-0);
+}
+
+.dgm-frame-bd > svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.dgm-frame-ft {
+  padding: 10px 16px;
+  border-top: 1px solid var(--border-default);
+  background: var(--bg-1);
+  color: var(--fg-1);
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+}
+
+/* ─── Screen-reader-only mirror ─── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.sr-only table { border-collapse: collapse; }
+
+/* ─── SVG class hooks (style hooks only; geometry stays inline) ─── */
+.dgm-node-cmd rect,
+.dgm-node-cmd-hub rect {
+  fill: var(--bg-1);
+  /* border-strong (~4.3:1) instead of border-default (~1.8:1) — */
+  /* satisfies WCAG 1.4.11 non-text contrast since rect silhouette */
+  /* is information-carrying (rectangle = command, per legend). */
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+
+.dgm-node-cmd-hub rect {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
+.dgm-node-cmd text,
+.dgm-node-cmd-hub text {
+  font-family: inherit;
+  fill: var(--fg-0);
+}
+
+.dgm-node-cmd-hub text.cmd {
+  fill: var(--accent-active);
+}
+
+.dgm-node-user rect {
+  fill: var(--bg-2);
+  stroke: var(--border-strong);
+  stroke-width: 1.5;
+}
+
+.dgm-node-user text {
+  fill: var(--fg-0);
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+
+.dgm-node-agent ellipse {
+  fill: var(--bg-1);
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+
+.dgm-node-agent text {
+  fill: var(--fg-1);
+  font-style: italic;
+  font-family: inherit;
+}
+
+.dgm-node-skill rect {
+  fill: var(--bg-1);
+  stroke: var(--border-strong);
+  stroke-width: 1;
+  stroke-dasharray: 3 2;
+}
+
+.dgm-node-skill text {
+  fill: var(--fg-1);
+  font-family: inherit;
+}
+
+.dgm-node-file polygon {
+  fill: var(--bg-2);
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+
+.dgm-node-file text {
+  fill: var(--fg-0);
+  font-family: inherit;
+  font-weight: 700;
+}
+
+.dgm-node-file-hub polygon {
+  fill: var(--bg-2);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
+.dgm-node-file-hub text.path {
+  fill: var(--accent-active);
+}
+
+/* ─── Edge styles ─── */
+.edge-spawn { stroke: var(--fg-1); stroke-width: 1; fill: none; }
+.edge-spawn-hub { stroke: var(--accent); stroke-width: 1.5; fill: none; }
+/* edge-read uses fg-1 (~6.6:1) instead of fg-2 (~3.8:1) — dashed = "reads file"
+   is information-carrying, must clear WCAG 1.4.11 3:1 non-text with margin. */
+.edge-read { stroke: var(--fg-1); stroke-width: 1; stroke-dasharray: 4 2; fill: none; }
+.edge-write { stroke: var(--accent); stroke-width: 1; fill: none; }
+/* edge-loop: stylistic alias of edge-read for the inner-loop arcs (utils-verify
+   retry, /design:edit snapshot-edit cycle). Same look, named for grep-discovery. */
+.edge-loop { stroke: var(--fg-1); stroke-width: 1; stroke-dasharray: 3 2; fill: none; }
+
+/* ─── Subgraph wrapper (section dividers + group cards) ─── */
+.dgm-subgraph {
+  fill: none;
+  stroke: var(--border-subtle);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+}
+
+/* ─── Section rule (between flow + design parts of the canvas, if used) ─── */
+.section-rule {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 0 8px;
+  border-top: 1px solid var(--border-default);
+}
+
+.section-rule .sku {
+  color: var(--accent-active);
+  font-weight: 700;
+  letter-spacing: 2px;
+  font-size: 11px;
+}
+
+.section-rule .label {
+  color: var(--fg-0);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.section-rule .meta {
+  margin-left: auto;
+  color: var(--fg-2);
+  font-size: 11px;
+  letter-spacing: 1.5px;
+}

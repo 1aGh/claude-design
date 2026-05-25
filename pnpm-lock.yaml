@@ -18,27 +18,12 @@ importers:
         specifier: ^1.60.0
         version: 1.60.0
     optionalDependencies:
-      '@1agh/maude-darwin-arm64':
-        specifier: 0.17.1
-        version: 0.17.1
-      '@1agh/maude-darwin-x64':
-        specifier: 0.17.1
-        version: 0.17.1
-      '@1agh/maude-linux-arm64':
-        specifier: 0.17.1
-        version: 0.17.1
       '@1agh/maude-linux-arm64-musl':
-        specifier: 0.17.1
-        version: 0.17.1
-      '@1agh/maude-linux-x64':
-        specifier: 0.17.1
-        version: 0.17.1
+        specifier: 0.18.0
+        version: 0.18.0
       '@1agh/maude-linux-x64-musl':
-        specifier: 0.17.1
-        version: 0.17.1
-      '@1agh/maude-win32-x64':
-        specifier: 0.17.1
-        version: 0.17.1
+        specifier: 0.18.0
+        version: 0.18.0
 
   plugins/design/dev-server:
     dependencies:
@@ -51,6 +36,15 @@ importers:
       jszip:
         specifier: ^3.10.1
         version: 3.10.1
+      lightningcss:
+        specifier: ^1.27.0
+        version: 1.32.0
+      magic-string:
+        specifier: ^0.30.21
+        version: 0.30.21
+      oxc-parser:
+        specifier: ^0.131.0
+        version: 0.131.0
       pdf-lib:
         specifier: ^1.17.1
         version: 1.17.1
@@ -60,6 +54,12 @@ importers:
       pptxgenjs:
         specifier: ^4.0.1
         version: 4.0.1
+      react:
+        specifier: ^19.0.0
+        version: 19.2.6
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.6(react@19.2.6)
     devDependencies:
       '@oxc-parser/binding-darwin-arm64':
         specifier: 0.131.0
@@ -94,24 +94,9 @@ importers:
       bun-types:
         specifier: ^1.3.14
         version: 1.3.14
-      lightningcss:
-        specifier: ^1.27.0
-        version: 1.32.0
-      magic-string:
-        specifier: ^0.30.21
-        version: 0.30.21
-      oxc-parser:
-        specifier: ^0.131.0
-        version: 0.131.0
       playwright:
         specifier: ^1.60.0
         version: 1.60.0
-      react:
-        specifier: ^19.0.0
-        version: 19.2.6
-      react-dom:
-        specifier: ^19.0.0
-        version: 19.2.6(react@19.2.6)
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -169,44 +154,17 @@ importers:
 
 packages:
 
-  '@1agh/maude-darwin-arm64@0.17.1':
-    resolution: {integrity: sha512-HofAjidKShYf9/gp8disoVFEHWEHk0hlBKob3HV+np/3grcvpZvGdDSE1uq2DCs9JVOqIMdwvlKj6y5uh2GZGA==}
-    cpu: [arm64]
-    os: [darwin]
-
-  '@1agh/maude-darwin-x64@0.17.1':
-    resolution: {integrity: sha512-KS2adhA2weSTEv792apaX/yTbhfWns3e6Xr6E0Q+2S1wyk8aRSYOgg/N0Dvdo4u7HvjhAXXK7o4JFdiPx8f45A==}
-    cpu: [x64]
-    os: [darwin]
-
-  '@1agh/maude-linux-arm64-musl@0.17.1':
-    resolution: {integrity: sha512-sIgdmDTvIqmghXePhyRbC5Ky6nz6Nfw+JqySAXzewyd75wf54xHvAN4elfZwjnu3xBDy70cjU/ZVYCjIlbSW2w==}
+  '@1agh/maude-linux-arm64-musl@0.18.0':
+    resolution: {integrity: sha512-Aa/LezfoYWi42Tu7q2XpkxmMgAm1l1QwwgyPojVQO+mT1RCQwctkUoDOMVJT5v6cZofHelfBU+gRtF6ou0KogA==}
     cpu: [arm64]
     os: [linux]
     libc: [musl]
 
-  '@1agh/maude-linux-arm64@0.17.1':
-    resolution: {integrity: sha512-3zAV3Ab6btR9RIbdjx2sKnXVrDyUoKCeakoO6osY3NjPm2AAhLh92O3nAx5XgXEC3yyFA6s7TzJxZORGDs35EQ==}
-    cpu: [arm64]
-    os: [linux]
-    libc: [glibc]
-
-  '@1agh/maude-linux-x64-musl@0.17.1':
-    resolution: {integrity: sha512-pr5ed07BOePRRuZkwyaFugn21K4GYqvfBES+I8RaRGHOcpr+xPwvTFMDbA/A/kHYkWa9ii196nnH3vAtZpBKsw==}
+  '@1agh/maude-linux-x64-musl@0.18.0':
+    resolution: {integrity: sha512-Z0iwh4OwFMTr/dSXsB80xZj/g6kvZlwHigL4w6sxM6Td7PTrssnYg+pVaz2wlTenmljgpYQefasQ1dPN5zM4Zg==}
     cpu: [x64]
     os: [linux]
     libc: [musl]
-
-  '@1agh/maude-linux-x64@0.17.1':
-    resolution: {integrity: sha512-ZDjBXTw9aV1n8oWkB/LOb2Df5A9E9oV/8FiCdpRk1XRyKqlCoWjJyCbKhsCLIf41CEAxFcHlBv+gru3Z61OPpg==}
-    cpu: [x64]
-    os: [linux]
-    libc: [glibc]
-
-  '@1agh/maude-win32-x64@0.17.1':
-    resolution: {integrity: sha512-hylWU3k/xaXBjeBGaNXFxTSt8u7a36vdZzA/DrFNSGoijIwtPgwqlNlmjqXJ9Wr8ipu9xkNxJ8haHXWaRkK/kg==}
-    cpu: [x64]
-    os: [win32]
 
   '@alloc/quick-lru@5.2.0':
     resolution: {integrity: sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==}
@@ -830,12 +788,14 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   '@oxc-parser/binding-linux-arm64-musl@0.131.0':
     resolution: {integrity: sha512-vtPiwmfVTAXzaxDKsOXG+LwgRAA7WEnaeHzhS5z0GE89gAK18KSXnly7Z6saXXq6L3dVMyK44uoTI03zKxrpmw==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   '@oxc-parser/binding-linux-ppc64-gnu@0.131.0':
     resolution: {integrity: sha512-8AW8L7w5cGHSdZPcyZX2yR0+GUODsT15rbRjfdD54rv6DMbtuEB19ysLOpKJlRGfH6UNYNpCHaU1uJWgTWf1/w==}
@@ -870,12 +830,14 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   '@oxc-parser/binding-linux-x64-musl@0.131.0':
     resolution: {integrity: sha512-b2BO82O8azXAyf7EUgOPKu145nWypbNyk07HbU09fkzhm9lEA5oPvaN/M8Nlo7tOErVTa2WOgS4QbOnxAPXdDQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   '@oxc-parser/binding-openharmony-arm64@0.131.0':
     resolution: {integrity: sha512-GHO9glZaX7LkX/OGfluEPf1yjg+ehiFbUdowbX6uNWOQhmwKWU4m4+nZ9FJkrHNKuxyI1KKertMdGjVKCApKWA==}
@@ -2830,25 +2792,10 @@ packages:
 
 snapshots:
 
-  '@1agh/maude-darwin-arm64@0.17.1':
+  '@1agh/maude-linux-arm64-musl@0.18.0':
     optional: true
 
-  '@1agh/maude-darwin-x64@0.17.1':
-    optional: true
-
-  '@1agh/maude-linux-arm64-musl@0.17.1':
-    optional: true
-
-  '@1agh/maude-linux-arm64@0.17.1':
-    optional: true
-
-  '@1agh/maude-linux-x64-musl@0.17.1':
-    optional: true
-
-  '@1agh/maude-linux-x64@0.17.1':
-    optional: true
-
-  '@1agh/maude-win32-x64@0.17.1':
+  '@1agh/maude-linux-x64-musl@0.18.0':
     optional: true
 
   '@alloc/quick-lru@5.2.0': {}
