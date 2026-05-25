@@ -228,8 +228,8 @@ export function bunCacheRemediation(pkg: string, log: string): string | null {
   const basePkg = pkg.split('/')[0] ?? pkg;
   return [
     `  ⚠ Bun's global package cache for "${basePkg}" appears to be in a bad state`,
-    `    (truncated install, EISDIR/ENOENT on an index file).`,
-    ``,
+    '    (truncated install, EISDIR/ENOENT on an index file).',
+    '',
     `    Fix: run \`bun pm cache rm ${basePkg}\` then reload the page.`,
   ].join('\n');
 }

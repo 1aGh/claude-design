@@ -17,13 +17,13 @@
 import { spawn } from 'node:child_process';
 
 import { createApi } from './api.ts';
+import { bootSelfHeal } from './boot-self-heal.ts';
 import { createContext } from './context.ts';
 import { createFsWatch } from './fs-watch.ts';
 import { createHttp } from './http.ts';
 import { createInspect } from './inspect.ts';
 import { startHeapWatch } from './mem.ts';
 import { createWs } from './ws.ts';
-import { bootSelfHeal } from './boot-self-heal.ts';
 
 // Phase 19 / DDR-044 — covers the marketplace-cache-install gap where
 // node_modules/ ships empty (git clone honors .gitignore). Auto-installs +
