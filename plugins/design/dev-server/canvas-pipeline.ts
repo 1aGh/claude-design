@@ -16,6 +16,11 @@
 // Toolchain matches scripts/migrate-canvases.ts (codemod) and canvas-edit.ts
 // (AST-aware /design:edit element edits) — same oxc-parser + magic-string pair
 // in three call sites, one mental model.
+//
+// `bun build --compile` requires a per-target entry stub that sets
+// NAPI_RS_NATIVE_LIBRARY_PATH before this file's transitive imports load
+// oxc-parser. The pipeline itself is unaware of the workaround — it's a
+// build-layer concern. See DDR-042-oxc-parser-bun-compile-workaround.md.
 
 import MagicString from 'magic-string';
 import { parseSync } from 'oxc-parser';
