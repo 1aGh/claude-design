@@ -45,6 +45,8 @@ There is **no test suite, lint config, or build step** in this repo — the plug
 
 The server is zero-dep (`node:http` + `node:crypto` for WS handshake) and resolves the **target repo root** in this order: `--root <path>` arg → `$CLAUDE_PROJECT_DIR` → `process.cwd()`. It deliberately never uses `__dirname` for the project root, because the plugin can be installed centrally (npm global) and serve any repo.
 
+**Path resolution rule ([DDR-045](.ai/decisions/DDR-045-real-disk-path-resolution-for-compiled-dev-server.md)):** every dev-server module that needs a filesystem-relative path MUST import from `plugins/design/dev-server/paths.ts` (`DEV_SERVER_ROOT`, `DIST_DIR`, `CLIENT_DIR`, `RUNTIME_BUNDLES_DIR`). NEVER compute `dirname(fileURLToPath(import.meta.url))` locally — inside `bun --compile` standalone binaries that resolves to the virtual `/$bunfs/root` and every `existsSync` against it silently returns false. Two production releases (v0.18.0 and v0.18.1) shipped broken because of this bug; the lesson is in DDR-045.
+
 It writes three runtime files into `<designRoot>/` that the orchestrator (`/design` slash command) relies on:
 
 | File | Role |
