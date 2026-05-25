@@ -15,7 +15,7 @@
 //
 // Per DDR-009 (Bun runtime authoritative) + DDR-012 (React 19 unified) + DDR-014 (Lightning CSS).
 
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -142,6 +142,54 @@ function oxcBindingSlug(slug: string): string {
   return slug;
 }
 
+// npm/bun's installer respects each package's `os`/`cpu` fields and skips
+// platform sub-packages whose filter doesn't match the host (the bindings
+// declare e.g. `"cpu": ["x64"]`). For cross-compile targets — most notably
+// darwin-x64 built on a darwin-arm64 CI runner — this means the matching
+// `@oxc-parser/binding-<oxcSlug>` is NOT in node_modules even though it's
+// listed as a direct devDependency. Fetch + extract the tarball manually so
+// `with { type: 'file' }` resolution succeeds during `bun build --compile`.
+async function ensureBindingForTarget(oxcSlug: string): Promise<void> {
+  const bindingDir = join(ROOT, 'node_modules', '@oxc-parser', `binding-${oxcSlug}`);
+  const bindingFile = join(bindingDir, `parser.${oxcSlug}.node`);
+  if (existsSync(bindingFile)) return; // host install already placed it
+
+  // Read the installed oxc-parser version so the tarball URL stays in sync.
+  // Walk up from build.ts to find the workspace-visible oxc-parser package.json
+  // (pnpm hoists it under node_modules/.pnpm, then symlinks at workspace level).
+  let oxcVersion = '0.131.0';
+  const candidates = [
+    join(ROOT, 'node_modules', 'oxc-parser', 'package.json'),
+    join(ROOT, '..', '..', '..', 'node_modules', 'oxc-parser', 'package.json'),
+  ];
+  for (const c of candidates) {
+    if (existsSync(c)) {
+      oxcVersion = JSON.parse(readFileSync(c, 'utf8')).version;
+      break;
+    }
+  }
+
+  console.log(`[build] cross-compile: fetching @oxc-parser/binding-${oxcSlug}@${oxcVersion}`);
+  const tarballUrl = `https://registry.npmjs.org/@oxc-parser/binding-${oxcSlug}/-/binding-${oxcSlug}-${oxcVersion}.tgz`;
+  const response = await fetch(tarballUrl);
+  if (!response.ok) {
+    throw new Error(`failed to fetch ${tarballUrl}: HTTP ${response.status}`);
+  }
+  const tmpTgz = join(ROOT, `.binding-${oxcSlug}.tgz`);
+  await Bun.write(tmpTgz, await response.arrayBuffer());
+  mkdirSync(bindingDir, { recursive: true });
+  // npm pack output: `package/parser.<oxcSlug>.node` + `package/package.json`.
+  // --strip-components=1 drops the leading `package/` so files land in bindingDir.
+  const tarProc = Bun.spawn(['tar', 'xf', tmpTgz, '-C', bindingDir, '--strip-components=1'], {
+    stdout: 'inherit',
+    stderr: 'inherit',
+  });
+  const tarCode = await tarProc.exited;
+  if (tarCode !== 0)
+    throw new Error(`tar extraction failed for binding-${oxcSlug} (exit ${tarCode})`);
+  unlinkSync(tmpTgz);
+}
+
 export function writeCompileEntry(target: PlatformTarget): string {
   const slug = platformSlug(target);
   const oxcSlug = oxcBindingSlug(slug);
@@ -205,6 +253,9 @@ async function buildServerBinary(target: PlatformTarget): Promise<{ outPath: str
       throw new Error(`bun build --compile (legacy) failed for ${target} (exit ${code})`);
     return { outPath };
   }
+  // Make sure the target's NAPI binding is on disk even if bun/npm's os/cpu
+  // filter skipped it (cross-compile case — see ensureBindingForTarget docs).
+  await ensureBindingForTarget(oxcBindingSlug(slug));
   const entry = writeCompileEntry(target);
   const proc = Bun.spawn(
     [
