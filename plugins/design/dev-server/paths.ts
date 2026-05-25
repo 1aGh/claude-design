@@ -67,19 +67,14 @@ function isVirtualBunfsPath(p: string | null): boolean {
 }
 
 function isDevServerDir(dir: string): boolean {
-  // Two anchors that the dev-server source tree always has and an arbitrary
-  // sibling directory wouldn't: http.ts (canonical entry route table) AND
-  // package.json with name "@maude/dev-server" (catches the case where some
-  // unrelated tree happens to have an http.ts).
-  if (!existsSync(join(dir, 'http.ts'))) return false;
-  const pkgPath = join(dir, 'package.json');
-  if (!existsSync(pkgPath)) return false;
-  try {
-    const text = require('node:fs').readFileSync(pkgPath, 'utf8') as string;
-    return /"@maude\/dev-server"/.test(text);
-  } catch {
-    return false;
-  }
+  // Anchor: http.ts is the route-table file — unique enough to identify the
+  // dev-server install dir. We do NOT also require package.json: npm excludes
+  // nested workspace package.json files from tarballs by default, so checking
+  // for it caused walk-up to silently fall through to /$bunfs/root for every
+  // npm-installed user. Discovered in v0.18.1 retro. Process.execPath walk-up
+  // only traverses node_modules layers above the binary, so false-match risk
+  // from a stray http.ts file in the user's working tree is negligible.
+  return existsSync(join(dir, 'http.ts'));
 }
 
 function resolveDevServerRoot(): string {
