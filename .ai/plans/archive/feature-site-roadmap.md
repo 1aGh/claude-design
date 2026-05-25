@@ -1,7 +1,8 @@
 ---
 name: feature-site-roadmap
-status: ready-for-validate
+status: done
 created: 2026-05-22
+completed: 2026-05-25
 decisions: []
 ---
 
@@ -310,3 +311,25 @@ Pouze pokud během implementace nastane jeden z těchto:
 
 - **DDR-?**: status taxonomy (`done | in-progress | planned | icebox`) — pokud se ukáže, že potřebujeme víc stavů (např. `blocked`, `paused`), zaznamenat rozšíření.
 - **DDR-?**: `roadmap.json` commit-or-gitignore — pokud Vercel uplink změní scope a `roadmap.json` by mohl být regenerován na Vercelu z monorepo siblingu, DDR potvrdí switch na gitignore. Dnes je commit-and-track.
+
+Žádné nové DDR během exekuce nevznikly — status taxonomy + commit-tracked JSON precedent (stats.json) drželi.
+
+---
+
+## Retro
+
+Doneseno v commitu `6188889` (2026-05-23). Closeout (archive + History row + roadmap.json regen) doklepnut 2026-05-25.
+
+**Co fungovalo:**
+- Pattern lift z `build-stats.mjs` byl správný — `sh()` helper + `repoRoot` resolve šel přesně tak, jak plán předpokládal. Žádný drift od existující konvence.
+- Auto-update bez plugin-command hooku se osvědčil — pravidlo v `CLAUDE.md` ("Site roadmap regen") je v kontextu pokaždé, takže si toho agent všimne přirozeně. Žádná modifikace `plugins/flow/commands/done.md` nepotřebná (user explicitně chtěl).
+- `lib/roadmap.json` committed (stejně jako `stats.json`) byla čistá volba — Vercel uploaduje jen `site/` a generator nemá přístup k siblingu `.ai/`.
+
+**Co bylo jinak než plán:**
+- Plán psal o 36 fázích / 28 done / 1 in-progress / 6 planned / 1 icebox. Při closeoutu dataset narostl na 41 / 32 / 0 / 8 / 1 (Phase 18 + 19 mezitím shippnuly, žádná aktivní in-progress).
+- Status glyph pro icebox je `[*]` v komponentě (ne `[❄]` z plánu) — emoji nezapadalo do paper/phosphor ASCII estetiky.
+- T6 nav link skončil v `site/lib/layout.shared.tsx`, ne v `(home)/layout.tsx` — Fumadocs home layout dělá nav přes shared config.
+
+**Lessons:**
+- Když user píše "auto-update přes pravidlo v CLAUDE.md, ne přes hook", má pravdu — load-bearing pravidlo v always-loaded souboru je robustnější než command hook, protože nevyžaduje konkrétní entrypoint.
+- Generator deterministic check (`run 2×, git diff`) modulo `generated` timestamp byl správný plán pro CI sanity, ale neaktivován — site nemá test suite. Manuálně ověřeno.
