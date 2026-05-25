@@ -1,5 +1,69 @@
 # @1agh/maude
 
+## 0.17.2
+
+### Patch Changes
+
+- 4ad09d6: **fix(dev-server): work around Bun 1.3.4+ `--compile` NAPI embedding regression**
+
+  Every `@1agh/maude-<slug>` binary published since v0.17.0 crashed on startup
+  with `Cannot find native binding ... oxc-parser/src-js/bindings.js:575`. Root
+  cause: Bun 1.3.4 introduced a regression in `bun build --compile` that no
+  longer embeds NAPI-RS platform sub-package bindings (the
+  `@oxc-parser/binding-<slug>/parser.<slug>.node` asset). Bun 1.3.3 worked;
+  1.3.4 through 1.3.14 (the version `setup-bun@v2` shipped to CI) all break the
+  same way. Confirmed via bisect.
+
+  The fix is a build-layer workaround that keeps oxc-parser intact (no parser
+  swap, no perf regression, no edits to `canvas-pipeline.ts` /
+  `canvas-edit.ts` / `canvas-lib-inline.ts` / `handoff.ts`):
+
+  - `build.ts:writeCompileEntry(target)` generates two thin files per `--target`
+    under `dist/.compile-entries/` (gitignored): an `init-oxc-<slug>.ts` leaf
+    module that embeds the matching platform binding as an asset via
+    `with { type: 'file' }` and sets `NAPI_RS_NATIVE_LIBRARY_PATH` from the
+    resolved virtual path, then a `server-<slug>.ts` entry that imports the
+    init module BEFORE `../../server.ts`.
+  - NAPI-RS's `bindings.js` honors `NAPI_RS_NATIVE_LIBRARY_PATH` before its
+    broken platform-detection switch, so the env-var setup bypasses the
+    regression entirely.
+  - All 7 `@oxc-parser/binding-<slug>` packages are now direct devDependencies
+    of `plugins/design/dev-server/` so pnpm symlinks them at workspace level
+    (Bun's bundler can't otherwise resolve them — pnpm hides them inside
+    oxc-parser's nested node_modules as transitive optionalDependencies).
+  - New `test/compile-entry.test.ts` (6 tests, 62 expectations) locks the
+    generator's contract: per-target file paths, init-before-server import
+    order, POSIX path separators, idempotence.
+
+  See DDR-042 for the full options matrix (why not babel, why not subprocess,
+  why not external + ship). Upstream Bun issue filed (draft in
+  `.ai/dev-logs/upstream-bun-issue-draft.md`) — when fixed upstream, the entry
+  stub generation can be removed.
+
+- a6c76b0: **fix(cli): make `maude design serve` work when postinstall was skipped**
+
+  `runServe` now resolves the platform binary lazily when the side-channel file
+  (`cli/.platform-binary-path`) is absent — looks up the sibling `@1agh/maude-<slug>` package via filesystem + `require.resolve`, then caches the result.
+  Postinstall becomes an optimization, not a correctness requirement, so global
+  installs under Bun (no postinstall by default), `npm --ignore-scripts`, pnpm
+  strict-scripts, and Docker layer rebuilds work the same as a vanilla
+  `npm i -g @1agh/maude`.
+
+  When no binary is available **and** we're not in a local source checkout
+  (`packages/maude-darwin-arm64/` marker), the dispatcher hard-fails with an
+  actionable hint (clean reinstall recipe + `npm rebuild` alternative) instead of
+  falling through to `bun run server.ts` and crashing on missing `magic-string`
+  or `oxc-parser` native bindings — those `node_modules` are not in the
+  published tarball.
+
+  In a local dev tree the source fallback is preserved, but a pre-flight check
+  verifies `magic-string` and `oxc-parser` are resolvable first and surfaces a
+  `pnpm install` hint instead of a cryptic stack trace if they're not (catches
+  the npm optional-deps native-binding bug, npm#4828).
+
+  Adds `MAUDE_FORCE_SOURCE=1` env override so maintainers hacking on
+  `plugins/design/dev-server/` can skip the binary and run from source.
+
 ## 0.17.1
 
 ### Patch Changes
