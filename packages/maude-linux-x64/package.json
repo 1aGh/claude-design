@@ -8,17 +8,8 @@
     "type": "git",
     "url": "git+https://github.com/1aGh/maude.git"
   },
-  "os": [
-    "linux"
-  ],
-  "cpu": [
-    "x64"
-  ],
-  "libc": [
-    "glibc"
-  ],
-  "files": [
-    "maude",
-    "README.md"
-  ]
+  "os": ["linux"],
+  "cpu": ["x64"],
+  "libc": ["glibc"],
+  "files": ["maude", "README.md"]
 }

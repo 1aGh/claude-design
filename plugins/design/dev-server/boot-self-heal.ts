@@ -66,7 +66,9 @@ export async function bootSelfHeal(opts: SelfHealOptions = {}): Promise<SelfHeal
     log('  ⚠ first-boot: installing runtime deps (one-time, ~15s)…');
     const { code } = await spawn(['bun', 'install', '--production'], here);
     if (code !== 0) {
-      log(`  ⚠ \`bun install --production\` exited ${code}. Set MAUDE_NO_AUTOBUILD=1 and run manually.`);
+      log(
+        `  ⚠ \`bun install --production\` exited ${code}. Set MAUDE_NO_AUTOBUILD=1 and run manually.`
+      );
       exit(1);
     }
     ran.push('install');
