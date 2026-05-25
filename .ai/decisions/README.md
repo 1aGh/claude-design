@@ -10,6 +10,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
 
+- [DDR-044: Marketplace install vs npm install — commit `client.bundle.js` + `styles.css`; self-heal `node_modules/` on first boot](DDR-044-marketplace-install-vs-npm-install-artifact-strategy.md) — 2026-05-25, design/dev-server/marketplace-install/gitignore/distribution/self-heal/phase-19
 - [DDR-021: `/design:smoke` is the gate for infra changes + bulk multi-canvas operations](DDR-021-design-smoke-gate-for-infra-and-bulk-ui-work.md) — 2026-05-19, design/dev-server/smoke/render-gate/validation/flow-execute/phase-3.6
 - [DDR-020: Single dev-server runtime — `server.ts` (Bun) authoritative, `server.mjs` sunset](DDR-020-single-dev-server-runtime-bun.md) — 2026-05-19, design/dev-server/bun/server.mjs/server.ts/sunset/runtime/phase-3.6
 - [DDR-019: Canvas format — `.tsx` files transpiled by Bun, with auto-injected `data-cd-id` and shared `_shell.html`](DDR-019-canvas-tsx-format.md) — 2026-05-18, design/dev-server/canvas/tsx/oxc/magic-string/bun-transpiler/data-cd-id/handoff/shadcn/phase-3.6

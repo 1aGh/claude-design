@@ -92,13 +92,54 @@ Hard-stops: missing Node → abort with install hint; missing git → abort with
 **Detect target first.**
 
 - Read `<repo>/.design/config.json`. Compute `designRoot` (default `.design`).
-- For `first-bootstrap`: check that `<designRoot>/system/` is empty (or `designSystems[]` is empty). Target dirname is `project` (literal — never `<slug-of-project>/`).
-- For `additional-ds`: target dirname is the kebab-case slug of the user-provided name (`<name>`).
-- For `re-bootstrap`: target is the existing `system/<name>/` dir; refuse unless `--force`.
+- For `first-bootstrap`: check that `<designRoot>/system/` is empty (or `designSystems[]` is empty). **Name-resolution rule (Phase 19 / DDR-044):**
+  - If user passed no `<name>` → default to literal `project`; record `name_source: "default"` in vision-brief.
+  - If user passed `<name>` exactly equal to the repo basename (`basename(repo)` matches the slug) → warn: `You passed '<name>'; the conventional default for first-bootstrap is 'project' (auto-detected by /design:edit). Continue with '<name>'? [Y/n]`. Proceed on Y/enter. Record `name_source: "user"`.
+  - Otherwise → honor `<name>`; record `name_source: "user"`.
+  - Net effect: user-supplied names are NEVER silently overridden, AND the completeness-critic C2 dirname check reads `name_source` and skips the divergence flag when the user explicitly chose the name.
+- For `additional-ds`: target dirname is the kebab-case slug of the user-provided name (`<name>`); always `name_source: "user"`.
+- For `re-bootstrap`: target is the existing `system/<name>/` dir; refuse unless `--force`. Preserve the existing brief's `name_source` if present; default to `"user"` if absent (legacy briefs predating Phase 19).
 
 > **3-stage architecture (DDR-033, 2026-05-20).** Discovery is split into three stages that move from **abstract to concrete** the way a designer would talk to a stakeholder: **Stage 1 — Vision (extract)** conversational free-text prompts; **Stage 2 — Research (synthesize)** the `ux-research-agent` consumes the rich vision-brief and returns recommendations with per-decision confidence; **Stage 3 — Refinement (decide)** the skill asks the user only where research is uncertain. **Zero hardcoded option ladders in Stage 3.** Pre-3-stage v1 (12 fixed Qs in 3 rounds) is archived at `_DISCOVERY-v1.md` for diff reference. The reasons for the rewrite are documented in DDR-033.
 
 > **Hard rule — Stage 1 is plain prose, NOT AskUserQuestion.** The AskUserQuestion tool is a multi-choice picker (min 2 labeled options, auto-"Other" affordance always rendered as N+1 item — schema-enforced, no bypass). Stage 1 needs free-text capture with skip-per-prompt; the tool cannot deliver that UX. Skill emits one chat message per batch with numbered prompts; user replies in one chat message with `1. … 2. …` headings. Parser splits on the heading boundary. See DDR-033 + DF-4 / DF-7 / DF-8 in the plan for the deep research that ruled this in. **Stage 0 + Stage 3 use AskUserQuestion** (4 concrete picks each, with auto-"Other" for overrides).
+
+> **Tool-availability check (Phase 19 / DDR-044).** Before Stage 0 fires, probe `AskUserQuestion` with a single trivial question (e.g. confirm bootstrap mode). On `InputValidationError`, permission denial, or "don't-ask mode" rejection, **switch Stage 0 + Stage 3 to numbered-prose mode** for the remainder of the session. Stage 1 is unaffected (already prose-only). Do NOT hard-depend on AskUserQuestion — the dev-server-bootstrap retro (2026-05-25) hit this exact failure and the flow only survived because the agent improvised. Codify the fallback so it isn't tribal knowledge.
+>
+> **Numbered-prose fallback shape** — emit one chat message of the form below, then await a single reply containing `1. <answer>` lines. Parser is the same split-on-heading logic Stage 1 already uses.
+>
+> Stage 0 fallback (single Q, single answer):
+>
+> ```
+> AskUserQuestion is unavailable in this session — answering via chat instead.
+>
+> Co je tohle za projekt?
+>   1. Produkt pro veřejnost  — chceš oslovit externí lidi, zákazníky, širší komunitu
+>   2. Interní nástroj         — pro tebe a tvůj tým nebo firmu, audience zná kontext
+>   3. Osobní projekt          — pro sebe, portfolio, vlastní tool, experiment
+>   4. Open-source knihovna    — pro vývojáře co tvůj kód budou používat
+>
+> Reply with: 1 / 2 / 3 / 4 (or paste your own answer).
+> ```
+>
+> Stage 3 fallback (N Qs in one batch, each with N labeled options):
+>
+> ```
+> AskUserQuestion is unavailable — answering Stage 3 via chat. One reply, format:
+>   1. <choice for Q1>
+>   2. <choice for Q2>
+>   …
+>
+> Q1. <prompt from research recommendations>
+>   a) <option 1>
+>   b) <option 2>
+>   c) <option 3>
+>   d) <option 4>
+>
+> Q2. …
+> ```
+>
+> Default to letter codes (`a/b/c/d`) for the per-Q options so the heading split on `1. / 2. / …` stays unambiguous.
 
 #### Stage 0 — Scope gate (one AskUserQuestion, only hardcoded choice in the whole flow)
 
@@ -213,6 +254,8 @@ Odpověz v jednom message. Napiš `skip` u jakékoli otázky kterou chceš přes
 
 ```json
 {
+  "name": "<DS slug — same as system/<name>/ dirname>",
+  "name_source": "user | default",
   "scope": "<from Stage 0: market | internal | personal | oss>",
   "elevator_pitch": "<P1>",
   "success_essay": "<P2>",
@@ -238,6 +281,8 @@ Odpověz v jednom message. Napiš `skip` u jakékoli otázky kterou chceš přes
 ```
 
 `_pastier_chapter_coverage` is an internal audit field — QA that every Pastier chapter in scope has a source prompt.
+
+`name_source` is added by the Detect-target step (above) — `"user"` when the user passed `<name>` explicitly, `"default"` when first-bootstrap auto-applied `project`. The completeness-critic's C2 (dirname convention) reads this field; user-supplied names do not trigger the C2 warning. Phase 19 / DDR-044. Legacy briefs predating Phase 19 lack the field — readers MUST default to `"user"` (treat as explicit, do not flag).
 
 **`<brief>` argument shortcut.** If `/design:setup-ds <name> "<rich brief>"` was invoked with a paragraph that covers some of P1 / P5 / P10 inline, pre-fill those vision-brief fields from the brief and **skip the corresponding Stage 1 prompts** — print a one-line `→ Skipping P5 (covered in brief: "<excerpt>")` per skipped prompt so the user can correct if the heuristic misfired. Stages 2 + 3 always run regardless.
 
@@ -778,11 +823,17 @@ The critic emits a JSON verdict. If it returns **blockers**, the bootstrap flow 
 
 > **This step exists because completeness-critic is structural only.** It cannot see that the rendered output looks like a generic public-component-library template. The screenshots feed the aesthetic critics in the next step AND give the user a fast visual proof.
 
-Use the canonical screenshot helper — `${CLAUDE_PLUGIN_ROOT}/dev-server/bin/screenshot.sh`. It auto-detects `agent-browser` and falls back to `npx playwright` so the step doesn't silently skip when one engine is missing. If both are unavailable, surface a warning in the next-step block ("install agent-browser or playwright for visual verification") and continue with source-HTML-only review — make the gap explicit.
+Use the canonical screenshot helper — `${CLAUDE_PLUGIN_ROOT}/dev-server/bin/screenshot.sh`. It auto-detects `agent-browser` and falls back to `npx playwright` so the step doesn't silently skip when one engine is missing. If both are unavailable, surface a warning in the next-step block ("install agent-browser or playwright for visual verification") and continue with source-only review — make the gap explicit.
 
-**1. No dev server needed for raw-canvas screenshots.** Use `file://` URLs via the helper's `--url` flag. The dev server's `http://localhost:<port>/...` URL wraps the canvas in browse chrome (file tree + tabbed iframe), and aesthetic critics would score that wrapping as part of the design — caught on the studio-2 bootstrap retro (BAD-2). `file://` bypasses the wrapping and gives the critics a clean canvas to score.
+**1. TSX specimens require the dev-server.** Pre-Phase-19 spec said "use `file://` URLs". That worked for the HTML era. The current scaffold ships `.tsx` (DDR-019) — the browser can't compile JSX on its own, so `file://*.tsx` shows raw source. `screenshot.sh` now hard-errors with exit 2 on `file://*.tsx`. Route through the dev-server instead: it transpiles TSX via `_canvas-shell.html?canvas=<rel>` and the canvas-shell route returns just the canvas (no file-tree / tab chrome — same clean composition the `file://` path used to give for HTML specimens). Phase 19 / DDR-044.
 
-**2. Screenshot 3 signature specimens** to `<designRoot>/_history/_system/<ds>-000-bootstrap-screenshots/`:
+**2. Boot the dev-server first** if it isn't already up (the bootstrap-check helper handles this):
+
+```bash
+PORT=$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/server-up.sh")
+```
+
+**3. Screenshot 3 signature specimens** to `<designRoot>/_history/_system/<ds>-000-bootstrap-screenshots/`:
 
 - `colors-accent.png` — proves the accent color renders as intended
 - `empty-state.png` — proves the brand/personality moment (mascot, copy voice) lands
@@ -792,11 +843,15 @@ Use the canonical screenshot helper — `${CLAUDE_PLUGIN_ROOT}/dev-server/bin/sc
 OUT_DIR="<designRoot>/_history/_system/<ds>-000-bootstrap-screenshots"
 mkdir -p "$OUT_DIR"
 for specimen in colors-accent empty-state ui_kits-desktop-showcase; do
+  REL="system/<ds>/preview/${specimen}.tsx"
+  URL_ENC=$(printf '%s' "$REL" | sed 's/ /%20/g')
   bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" \
-    --url "file://<absolute-repo-root>/<designRoot>/system/<ds>/preview/${specimen}.tsx" \
+    --url "http://localhost:${PORT}/_canvas-shell.html?canvas=${URL_ENC}" \
     --full --out "$OUT_DIR/${specimen}.png"
 done
 ```
+
+**Degraded mode:** if `server-up.sh` fails (e.g. Bun not on PATH, port locked, marketplace-cache install not yet self-healed), DO NOT silently fall back to `file://` on the TSX. Surface the warning in the next-step block (`"visual sanity skipped — could not boot dev-server: <reason>; aesthetic critics will run source-only"`) and continue. Source-only review is OK as a degraded path; ghosting the warning is what bit the studio-2 / new-repo retros.
 
 **3. Read each screenshot back** with the `Read` tool so they're in your visual context. Direct visual scrutiny BEFORE you spawn the aesthetic critics — if the accent is obviously the wrong hue or the layout is obviously broken, fix it in source NOW rather than asking critics to confirm what you can already see.
 

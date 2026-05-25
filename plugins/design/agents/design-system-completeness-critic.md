@@ -34,14 +34,14 @@ In multi-DS projects (`config.designSystems.length > 1`), produce one section pe
 1. **Read `config.json`.** Resolve `designRoot`, `tokensCssRel`, `completenessProfile` (`minimal | standard | strict`), `activeFamilies[]` (`accent | status | presence | mono`), `designSystems[]`, `accentStrategy` (`single | paired | chromatic-N`, default `single`), `colorSpace` (`oklch | hsl | hex | lab`, default `oklch`).
 2. **Locate the target DS dir.** For single-DS: `<designRoot>/system/project/`. For multi-DS: `<designRoot>/system/<ds_name>/` where `ds_name` is in `designSystems[]`.
 3. **Refuse if dir doesn't exist.** Emit `{verdict: blocker, reason: "DS dir missing"}` and stop.
-4. **Refuse if dirname == project slug** (D2 divergence). `system/<projectName>/` is the wrong shape — the literal `project` is the single-DS convention; multi-DS uses semantic names (`marketing`, `admin`, …). Emit blocker C2 with the rename hint.
+4. **Refuse if dirname == project slug** (D2 divergence) **UNLESS the user supplied the name explicitly**. Read `<designRoot>/_history/_system/<ds>-vision-brief.json#name_source`; if value is `"user"` (or `<vision-brief.json>` is absent — legacy briefs predating Phase 19 default to `user`), DO NOT emit C2 — the user's choice overrides the convention. Only when `name_source: "default"` AND dirname diverges from the literal `project` is C2 raised. The single-DS convention exists so `/design:edit` auto-detection works without `--ds=<name>`; informing the user about it (during `/design:setup-ds` name-validation) is `setup-ds.md`'s job, not the critic's. Phase 19 / DDR-044.
 
 ## Tier 1 — Core (blocker, regardless of profile)
 
 | # | Check | Notes |
 |---|---|---|
 | C1 | `<designRoot>/README.md` exists | Orchestration layer — read by any agent picking up the repo |
-| C2 | At least one valid DS dir under `<designRoot>/system/`: either `project/` (single-DS default) OR `<name>/` matching a `config.designSystems[]` entry. **Reject** if dirname == project slug | Prevents D2 divergence |
+| C2 | At least one valid DS dir under `<designRoot>/system/`: either `project/` (single-DS default) OR `<name>/` matching a `config.designSystems[]` entry. **Reject** if dirname == project slug AND `vision-brief.json#name_source == "default"` (i.e. the convention was auto-applied, not user-chosen). User-supplied names are honored — see Pre-flight step 4 + DDR-044 | Prevents D2 divergence without overriding explicit user intent |
 | C3 | `<ds_root>/README.md` exists | Philosophy layer — required for hard-rules + voice |
 | C4 | `<ds_root>/SKILL.md` exists with valid YAML frontmatter (`name`, `description`, `user-invocable`) | Read-skill metadata |
 | C5 | `<ds_root>/colors_and_type.css` exists at the path declared in `config.tokensCssRel` | Authoritative tokens |

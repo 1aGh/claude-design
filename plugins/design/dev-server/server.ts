@@ -23,6 +23,12 @@ import { createHttp } from './http.ts';
 import { createInspect } from './inspect.ts';
 import { startHeapWatch } from './mem.ts';
 import { createWs } from './ws.ts';
+import { bootSelfHeal } from './boot-self-heal.ts';
+
+// Phase 19 / DDR-044 — covers the marketplace-cache-install gap where
+// node_modules/ ships empty (git clone honors .gitignore). Auto-installs +
+// builds on first boot; opt out with MAUDE_NO_AUTOBUILD=1.
+await bootSelfHeal();
 
 const ctx = createContext();
 

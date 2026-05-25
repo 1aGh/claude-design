@@ -1,5 +1,5 @@
 {
-  "generated": "2026-05-25T15:07:27.238Z",
+  "generated": "2026-05-25T15:28:45.375Z",
   "currentPhase": null,
   "phases": [
     {
@@ -344,6 +344,17 @@
       "phaseKey": "18"
     },
     {
+      "id": "phase-19-dev-server-bootstrap-fixes",
+      "title": "Phase 19 — Dev-server first-boot bootstrap fixes",
+      "status": "done",
+      "shipTarget": null,
+      "date": "2026-05-25",
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
+      "archived": true,
+      "phaseKey": "19"
+    },
+    {
       "id": "phase-8-live-collaboration-yjs-lan",
       "title": "Phase 8: Live collaboration — \"Ambient multiplayer\" (LAN, no hub)",
       "status": "planned",
@@ -430,17 +441,6 @@
       "planPath": ".ai/plans/phase-17-docs-site-infographics.md",
       "archived": false,
       "phaseKey": "17"
-    },
-    {
-      "id": "phase-19-dev-server-bootstrap-fixes",
-      "title": "Phase 19 — Dev-server first-boot bootstrap fixes",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/phase-19-dev-server-bootstrap-fixes.md",
-      "archived": false,
-      "phaseKey": "19"
     },
     {
       "id": "phase-7-acp-chat-sidebar",

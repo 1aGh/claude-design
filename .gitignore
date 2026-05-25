@@ -25,8 +25,14 @@ dev-server/.cache/
 .ai/logs/
 .claude/settings.local.json
 
-# Phase 3.4 — dev-server build output (binaries ship via npm sub-packages)
-plugins/design/dev-server/dist/
+# Phase 3.4 — dev-server build output (binaries ship via npm sub-packages).
+# Phase 19 / DDR-044 — client.bundle.js + styles.css ARE committed so
+# marketplace cache installs (which honor .gitignore on git clone) work
+# out of the box. Per-platform `maude-*` binaries stay ignored (~70-120 MB
+# each — distributed via @1agh/maude-<platform> sub-packages).
+plugins/design/dev-server/dist/*
+!plugins/design/dev-server/dist/client.bundle.js
+!plugins/design/dev-server/dist/styles.css
 plugins/design/dev-server/bun.lock
 
 # Stub .keep written by dev-server before the inspect.ts fix landed (Phase 3.4)

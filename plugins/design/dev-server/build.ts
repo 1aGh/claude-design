@@ -65,13 +65,29 @@ function ensureDist() {
   if (!existsSync(DIST)) mkdirSync(DIST, { recursive: true });
 }
 
+async function readPluginVersion(): Promise<{ version: string }> {
+  // plugins/design/dev-server/ → plugins/design/.claude-plugin/plugin.json
+  const manifest = join(ROOT, '..', '.claude-plugin', 'plugin.json');
+  try {
+    const parsed = JSON.parse(await Bun.file(manifest).text()) as { version?: unknown };
+    if (typeof parsed.version === 'string') return { version: parsed.version };
+  } catch {
+    /* fall through to dev default */
+  }
+  return { version: 'dev' };
+}
+
 // ---------- (a) Client JSX bundle ----------
 
 async function buildClient(): Promise<{ outBytes: number; outPath: string }> {
   ensureDist();
   const outPath = join(DIST, 'client.bundle.js');
-  // Read package.json version at build time for the wordmark sub-line.
-  const pkg = JSON.parse(await Bun.file(join(ROOT, '..', '..', '..', 'package.json')).text());
+  // Wordmark sub-line version. Read from plugins/design/.claude-plugin/plugin.json —
+  // that file ships in both npm installs AND marketplace-cache clones (it's the
+  // plugin manifest, always present). The old `../../../package.json` hop
+  // resolved to the repo root in dev but ENOENT'd in marketplace caches where
+  // the maude bundle isn't installed as a package. DDR-044, Phase 19.
+  const pkg = await readPluginVersion();
   const result = await Bun.build({
     entrypoints: [join(ROOT, 'client/app.jsx')],
     outdir: DIST,

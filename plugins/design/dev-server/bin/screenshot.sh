@@ -64,6 +64,18 @@ else
   [ -z "$OUT" ]     && { echo "screenshot.sh: --out required for single-shot modes" >&2; exit 2; }
 fi
 
+# TSX specimens cannot be opened via file:// — the browser would see raw JSX.
+# They must go through the dev-server route (http://localhost:PORT/<rel>),
+# which transpiles via _canvas-shell.html?canvas=<rel>. Phase 19 / DDR-044.
+case "$URL" in
+  file://*.tsx)
+    echo "screenshot.sh: TSX specimens cannot be screenshot via file:// (the browser sees raw JSX)." >&2
+    echo "  Use --port instead — the dev-server compiles TSX through _canvas-shell.html?canvas=<rel>." >&2
+    echo "  Example: screenshot.sh --port 4399 --full --out shot.png  (set the active canvas in the browser first)" >&2
+    exit 2
+    ;;
+esac
+
 # ---------- url resolution ----------
 if [ -z "$URL" ]; then
   REPO="${ROOT:-${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}}"

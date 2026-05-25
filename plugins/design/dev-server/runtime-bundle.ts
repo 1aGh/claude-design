@@ -194,7 +194,12 @@ export async function getRuntimeBundle(pkg: RuntimePackage): Promise<BundleCache
         return `[${lvl}] ${l.message}`;
       })
       .join('\n');
-    throw new Error(`Failed to build runtime bundle for "${pkg}":\n${msg || '(no log messages)'}`);
+    const remediation = bunCacheRemediation(pkg, msg);
+    throw new Error(
+      `Failed to build runtime bundle for "${pkg}":\n${msg || '(no log messages)'}${
+        remediation ? `\n\n${remediation}` : ''
+      }`
+    );
   }
 
   const out = built.outputs[0];
@@ -204,6 +209,29 @@ export async function getRuntimeBundle(pkg: RuntimePackage): Promise<BundleCache
   const entry = { js, etag };
   cache.set(pkg, entry);
   return entry;
+}
+
+/**
+ * Detect the "Bun's global install cache is in a bad state" failure mode and
+ * return a one-paragraph remediation message. Returns null when the build
+ * failure has a different shape (real syntax error, missing package, etc.) —
+ * the original log is enough then.
+ *
+ * Symptoms: log messages like `EISDIR reading '/Users/foo/.bun/install/cache/
+ * react@19.2.6@@@1 @@1/index.js'` or `ENOENT … .bun/install/cache/<pkg>@…`.
+ * Surfacing the cache path + the exact `bun pm cache rm <pkg>` command saves
+ * the user from grepping the error to figure out what to do. Phase 19 / DDR-044.
+ */
+export function bunCacheRemediation(pkg: string, log: string): string | null {
+  const cacheHit = /(EISDIR|ENOENT).*\.bun\/install\/cache\/([\w@/.-]+?)(?:@@@|\/)/i.test(log);
+  if (!cacheHit) return null;
+  const basePkg = pkg.split('/')[0] ?? pkg;
+  return [
+    `  ⚠ Bun's global package cache for "${basePkg}" appears to be in a bad state`,
+    `    (truncated install, EISDIR/ENOENT on an index file).`,
+    ``,
+    `    Fix: run \`bun pm cache rm ${basePkg}\` then reload the page.`,
+  ].join('\n');
 }
 
 function escapeRegex(s: string): string {
