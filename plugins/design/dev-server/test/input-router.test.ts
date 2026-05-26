@@ -354,3 +354,49 @@ describe('input-router / crossedDragThreshold', () => {
     expect(crossedDragThreshold(50, 50, 48, 49)).toBe(false); // hypot ≈ 2.24
   });
 });
+
+describe('input-router / keydown — undo + redo (Phase 20)', () => {
+  test('Cmd+Z → undo', () => {
+    expect(classify(base({ type: 'keydown', key: 'z', metaKey: true })).kind).toBe('undo');
+  });
+
+  test('Cmd+Shift+Z → redo', () => {
+    expect(
+      classify(base({ type: 'keydown', key: 'z', metaKey: true, shiftKey: true })).kind
+    ).toBe('redo');
+  });
+
+  test('Ctrl+Z → undo (Windows / Linux mac-less)', () => {
+    expect(classify(base({ type: 'keydown', key: 'z', ctrlKey: true })).kind).toBe('undo');
+  });
+
+  test('Ctrl+Y → redo (Windows convention)', () => {
+    expect(classify(base({ type: 'keydown', key: 'y', ctrlKey: true })).kind).toBe('redo');
+  });
+
+  test('Cmd+Y → redo (mac users with Windows muscle-memory)', () => {
+    expect(classify(base({ type: 'keydown', key: 'y', metaKey: true })).kind).toBe('redo');
+  });
+
+  test('Cmd+Z inside editable → no-op (browser native text undo wins)', () => {
+    expect(
+      classify(base({ type: 'keydown', key: 'z', metaKey: true, isEditable: true })).kind
+    ).toBe('no-op');
+  });
+
+  test('Cmd+Opt+Z → no-op (Alt is reserved for browser text gestures)', () => {
+    expect(
+      classify(base({ type: 'keydown', key: 'z', metaKey: true, altKey: true })).kind
+    ).toBe('no-op');
+  });
+
+  test('bare Z → no-op (Z is not a tool letter; needs Cmd)', () => {
+    expect(classify(base({ type: 'keydown', key: 'z' })).kind).toBe('no-op');
+  });
+
+  test('Cmd+Shift+Y → no-op (only Cmd+Y; we do not over-claim)', () => {
+    expect(
+      classify(base({ type: 'keydown', key: 'y', metaKey: true, shiftKey: true })).kind
+    ).toBe('no-op');
+  });
+});

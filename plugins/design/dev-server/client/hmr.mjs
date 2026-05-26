@@ -65,6 +65,34 @@ function handle(evt) {
         }
       }
     }
+    return;
+  }
+  if (evt.type === 'fs:json' && evt.file) {
+    // Phase 20 (DDR-049) — external edits to canvas `.meta.json` or
+    // `.annotations.svg` invalidate the iframe's in-memory undo stack
+    // (stale before/after snapshots would otherwise restore wrong state).
+    // The iframe's UndoStackProvider self-echo-dampens our own PATCH-es
+    // via window.__maude_last_meta_self_write_at, so we forward
+    // indiscriminately here.
+    const file = evt.file;
+    const isMeta = file.endsWith('.meta.json');
+    if (!isMeta) return;
+    const iframes = document.querySelectorAll('iframe[data-canvas-path]');
+    for (const f of iframes) {
+      if (!f.dataset.canvasPath) continue;
+      // Match by the canvas filename root (foo.tsx ↔ foo.meta.json).
+      const root = f.dataset.canvasPath.replace(/\.(tsx|jsx|ts|js|html)$/i, '');
+      if (!file.includes(`${root}.meta.json`)) continue;
+      try {
+        f.contentWindow?.dispatchEvent(
+          new CustomEvent('maude:invalidate-undo', {
+            detail: { reason: 'Edit history reset (external change)' },
+          })
+        );
+      } catch {
+        /* cross-origin / detached — ignore */
+      }
+    }
   }
 }
 

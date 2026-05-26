@@ -92,7 +92,9 @@ export type RouterAction =
   | { kind: 'drop-comment'; clientX: number; clientY: number }
   | { kind: 'context-menu'; clientX: number; clientY: number }
   | { kind: 'tool'; tool: Tool }
-  | { kind: 'escape' };
+  | { kind: 'escape' }
+  | { kind: 'undo' }
+  | { kind: 'redo' };
 
 export interface ClassifyInput {
   type: 'pointermove' | 'pointerdown' | 'contextmenu' | 'keydown';
@@ -125,6 +127,15 @@ export function classify(input: ClassifyInput): RouterAction {
     if (input.metaKey || input.ctrlKey || input.altKey) {
       // Esc with modifiers still dismisses.
       if (input.key === 'Escape') return { kind: 'escape' };
+      // Undo / redo (Phase 20). Alt is reserved — Cmd+Opt+Z is a browser
+      // text-input gesture we don't claim. `metaKey || ctrlKey` covers both
+      // mac and Windows / Linux without a platform sniff.
+      const k = (input.key || '').toLowerCase();
+      if (!input.altKey && (input.metaKey || input.ctrlKey)) {
+        if (k === 'z' && input.shiftKey) return { kind: 'redo' };
+        if (k === 'z') return { kind: 'undo' };
+        if (k === 'y' && !input.shiftKey) return { kind: 'redo' };
+      }
       return { kind: 'no-op' };
     }
     const k = (input.key || '').toLowerCase();
@@ -242,6 +253,10 @@ export interface RouterCallbacks {
   onContextMenu?: (a: Extract<RouterAction, { kind: 'context-menu' }>) => void;
   onTool?: (a: Extract<RouterAction, { kind: 'tool' }>) => void;
   onEscape?: () => void;
+  /** Phase 20 — Cmd+Z / Ctrl+Z. */
+  onUndo?: () => void;
+  /** Phase 20 — Cmd+Shift+Z / Ctrl+Y / Cmd+Y. */
+  onRedo?: () => void;
 }
 
 export interface UseInputRouterOptions {
@@ -306,6 +321,12 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
           break;
         case 'escape':
           callbacks.onEscape?.();
+          break;
+        case 'undo':
+          callbacks.onUndo?.();
+          break;
+        case 'redo':
+          callbacks.onRedo?.();
           break;
         case 'no-op':
           break;
@@ -428,7 +449,12 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
         isEditable: isEditableTarget(e.target),
         activeTool: getActiveTool(),
       });
-      if (action.kind === 'tool' || action.kind === 'escape') {
+      if (
+        action.kind === 'tool' ||
+        action.kind === 'escape' ||
+        action.kind === 'undo' ||
+        action.kind === 'redo'
+      ) {
         e.preventDefault();
       }
       dispatch(action);

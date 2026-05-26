@@ -35,12 +35,14 @@ import { createPortal } from 'react-dom';
 
 import { AnnotationContextToolbar } from './annotations-context-toolbar.tsx';
 import { useViewportControllerContext, useWorldRefContext } from './canvas-lib.tsx';
+import { createAnnotationStrokesCommand } from './commands/annotation-strokes-command.ts';
 import { crossedDragThreshold } from './input-router.tsx';
 import { AnnotationResizeOverlay } from './use-annotation-resize.tsx';
 import { useAnnotationSelectionOptional } from './use-annotation-selection.tsx';
 import { useAnnotationsVisibility } from './use-annotations-visibility.tsx';
 import { useSelectionSetOptional } from './use-selection-set.tsx';
 import { useToolMode } from './use-tool-mode.tsx';
+import { useUndoStackOptional } from './use-undo-stack.tsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -651,6 +653,13 @@ export function AnnotationsLayer() {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const drawingRef = useRef<Stroke | null>(null);
   drawingRef.current = drawing;
+  /**
+   * Phase 20 — latest strokes mirror so command builders can read the
+   * pre-mutation snapshot synchronously (React state isn't refreshed
+   * between rapid taps in the same tick).
+   */
+  const strokesRef = useRef<Stroke[]>(strokes);
+  strokesRef.current = strokes;
 
   const isDraw = tool === 'pen' || tool === 'rect' || tool === 'arrow' || tool === 'ellipse';
   const isErase = tool === 'eraser';
@@ -685,56 +694,86 @@ export function AnnotationsLayer() {
     };
   }, []);
 
-  const scheduleSave = useCallback((next: readonly Stroke[]) => {
+  const undoStack = useUndoStackOptional();
+  const undoStackRef = useRef(undoStack);
+  undoStackRef.current = undoStack;
+
+  /**
+   * Direct fire-and-forget PUT — used as the `putFn` injected into
+   * `AnnotationStrokesCommand`. The 200 ms scheduled-save debounce
+   * (legacy path) is cleared the moment we push a command, so the
+   * server only sees one PUT per edit instead of two-step racing.
+   */
+  const putStrokes = useCallback((next: readonly Stroke[]) => {
     const file = fileRef.current;
-    if (!file) return;
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      saveTimerRef.current = null;
-      const svg = strokesToSvg(next);
-      void fetch('/_api/annotations', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file, svg }),
-      }).catch(() => {
-        /* swallow — the user will see uncommitted state until the next stroke */
+    if (!file) return Promise.resolve();
+    const svg = strokesToSvg(next);
+    return fetch('/_api/annotations', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file, svg }),
+    })
+      .then(() => undefined)
+      .catch(() => {
+        /* swallow — user sees uncommitted state until the next stroke */
       });
-    }, 200);
   }, []);
+
+  /**
+   * Single entry point for every stroke mutation. Builds an undo command,
+   * applies optimistic React state, and pushes onto the stack (which calls
+   * the command's `do()` to PUT). Cancels any pending debounced save first
+   * — DDR-049 gotcha: a queued auto-save flushing AFTER our PUT would race
+   * the stack into a stale state.
+   */
+  const commitStrokes = useCallback(
+    (prev: readonly Stroke[], next: readonly Stroke[], label?: string) => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      const cmd = createAnnotationStrokesCommand({
+        before: prev,
+        after: next,
+        putFn: putStrokes,
+        ...(label ? { label } : {}),
+      });
+      // Optimistic local apply happens here; command.do() inside push() also
+      // calls putStrokes(next) so the server sees the same payload.
+      setStrokesState(next as Stroke[]);
+      void undoStackRef.current.push(cmd);
+    },
+    [putStrokes]
+  );
 
   const setStrokes = useCallback(
     (next: Stroke[]) => {
-      setStrokesState(next);
-      scheduleSave(next);
+      const prev = strokesRef.current;
+      commitStrokes(prev, next);
     },
-    [scheduleSave]
+    [commitStrokes]
   );
 
   const strokesStore = useMemo<StrokesStoreValue>(() => {
     const updateStroke = (id: string, patch: Partial<Stroke>): void => {
-      setStrokesState((prev) => {
-        const next = prev.map((s) => (s.id === id ? ({ ...s, ...patch } as Stroke) : s));
-        scheduleSave(next);
-        return next;
-      });
+      const prev = strokesRef.current;
+      const next = prev.map((s) => (s.id === id ? ({ ...s, ...patch } as Stroke) : s));
+      commitStrokes(prev, next);
     };
     const deleteStrokes = (ids: string[]): void => {
       const set = new Set(ids);
-      setStrokesState((prev) => {
-        const next = prev.filter(
-          (s) => !set.has(s.id) && !(s.tool === 'text' && set.has(s.anchorId))
-        );
-        scheduleSave(next);
-        return next;
-      });
+      const prev = strokesRef.current;
+      const next = prev.filter(
+        (s) => !set.has(s.id) && !(s.tool === 'text' && set.has(s.anchorId))
+      );
+      if (next.length === prev.length) return;
+      commitStrokes(prev, next);
     };
     const translateStrokes = (ids: string[], dx: number, dy: number): void => {
       const set = new Set(ids);
-      setStrokesState((prev) => {
-        const next = prev.map((s) => (set.has(s.id) ? translateOne(s, dx, dy) : s));
-        scheduleSave(next);
-        return next;
-      });
+      const prev = strokesRef.current;
+      const next = prev.map((s) => (set.has(s.id) ? translateOne(s, dx, dy) : s));
+      commitStrokes(prev, next, `move ${ids.length} stroke${ids.length === 1 ? '' : 's'}`);
     };
     return {
       strokes,
@@ -743,7 +782,7 @@ export function AnnotationsLayer() {
       deleteStrokes,
       translateStrokes,
     };
-  }, [strokes, setStrokes, scheduleSave]);
+  }, [strokes, setStrokes, commitStrokes]);
 
   // Menubar bridge (Phase 5.1 Task 10) — listen for postMessages from the
   // dev-server shell. `selection-clear` + `tool-set` live in canvas-shell
@@ -795,23 +834,21 @@ export function AnnotationsLayer() {
     (wx: number, wy: number) => {
       const zoom = vp?.zoom || 1;
       const tol = 8 / zoom;
-      setStrokesState((prev) => {
-        for (let i = prev.length - 1; i >= 0; i--) {
-          const candidate = prev[i];
-          if (candidate && strokeHitTest(candidate, wx, wy, tol)) {
-            const removedId = candidate.id;
-            const next = prev
-              .slice(0, i)
-              .concat(prev.slice(i + 1))
-              .filter((s) => !(s.tool === 'text' && s.anchorId === removedId));
-            scheduleSave(next);
-            return next;
-          }
+      const prev = strokesRef.current;
+      for (let i = prev.length - 1; i >= 0; i--) {
+        const candidate = prev[i];
+        if (candidate && strokeHitTest(candidate, wx, wy, tol)) {
+          const removedId = candidate.id;
+          const next = prev
+            .slice(0, i)
+            .concat(prev.slice(i + 1))
+            .filter((s) => !(s.tool === 'text' && s.anchorId === removedId));
+          commitStrokes(prev, next, 'erase 1 stroke');
+          return;
         }
-        return prev;
-      });
+      }
     },
-    [vp, scheduleSave]
+    [vp, commitStrokes]
   );
 
   const beginStroke = useCallback(
@@ -936,11 +973,9 @@ export function AnnotationsLayer() {
     if (final && !isStrokeMeaningful(final)) final = null;
     if (final) {
       const committed = final;
-      setStrokesState((prev) => {
-        const next = [...prev, committed];
-        scheduleSave(next);
-        return next;
-      });
+      const prev = strokesRef.current;
+      const next = [...prev, committed];
+      commitStrokes(prev, next, `draw ${committed.tool}`);
       // T18 — auto-select the freshly drawn shape so the user can immediately
       // see + adjust it. annotSel is optional (some test harnesses mount
       // AnnotationsLayer without the provider), so guard the call.
@@ -956,7 +991,7 @@ export function AnnotationsLayer() {
       if (!stickyOnThis) setTool('move');
     }
     setDrawing(null);
-  }, [isActive, isErase, visible, scheduleSave, annotSel, setTool, sticky]);
+  }, [isActive, isErase, visible, commitStrokes, annotSel, setTool, sticky]);
 
   // T21 — abort a mid-stroke draw without committing. Dispatched by the
   // canvas-shell Esc handler (`maude:cancel-stroke`). Safe to call when
@@ -1187,33 +1222,36 @@ export function AnnotationsLayer() {
   const commitText = useCallback(
     (anchorId: string, text: string) => {
       const trimmed = text.trim();
-      setStrokesState((prev) => {
-        const existing = prev.find((s) => s.tool === 'text' && s.anchorId === anchorId) as
-          | TextStroke
-          | undefined;
-        let next: Stroke[];
-        if (trimmed.length === 0) {
-          next = existing ? prev.filter((s) => s.id !== existing.id) : prev;
-        } else if (existing) {
-          next = prev.map((s) => (s.id === existing.id ? { ...existing, text: trimmed } : s));
-        } else {
-          next = [
-            ...prev,
-            {
-              id: rid(),
-              tool: 'text',
-              color: '#1a1a1a',
-              fontSize: DEFAULT_FONT_SIZE,
-              text: trimmed,
-              anchorId,
-            } as TextStroke,
-          ];
-        }
-        scheduleSave(next);
-        return next;
-      });
+      const prev = strokesRef.current;
+      const existing = prev.find((s) => s.tool === 'text' && s.anchorId === anchorId) as
+        | TextStroke
+        | undefined;
+      let next: Stroke[];
+      let label = 'edit text';
+      if (trimmed.length === 0) {
+        if (!existing) return; // nothing to do
+        next = prev.filter((s) => s.id !== existing.id);
+        label = 'delete text';
+      } else if (existing) {
+        if (existing.text === trimmed) return; // identity edit
+        next = prev.map((s) => (s.id === existing.id ? { ...existing, text: trimmed } : s));
+      } else {
+        next = [
+          ...prev,
+          {
+            id: rid(),
+            tool: 'text',
+            color: '#1a1a1a',
+            fontSize: DEFAULT_FONT_SIZE,
+            text: trimmed,
+            anchorId,
+          } as TextStroke,
+        ];
+        label = 'add text';
+      }
+      commitStrokes(prev, next, label);
     },
-    [scheduleSave]
+    [commitStrokes]
   );
 
   // Keyboard: arrow nudge + Backspace/Delete remove selected strokes.

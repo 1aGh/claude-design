@@ -82,9 +82,11 @@ import {
 } from 'react';
 
 import { CanvasShell } from './canvas-shell.tsx';
+import { createMoveArtboardsCommand, diffLayoutPositions } from './commands/move-artboards-command.ts';
 import { type DragState, useArtboardDrag } from './use-artboard-drag.tsx';
 import { useSelectionSetOptional } from './use-selection-set.tsx';
 import { ToolProvider, useToolModeOptional } from './use-tool-mode.tsx';
+import { UndoStackProvider, useUndoStackOptional } from './use-undo-stack.tsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Module constants
@@ -448,6 +450,26 @@ interface PersistedArtboardLayout {
   y: number;
 }
 
+/**
+ * Phase 20 (DDR-049) — last timestamp at which THIS iframe wrote canvas
+ * meta. Read by `use-undo-stack.tsx` to discriminate self-echo fs:json
+ * events from genuine external edits.
+ */
+declare global {
+  interface Window {
+    __maude_last_meta_self_write_at?: number;
+  }
+}
+
+const META_SELF_ECHO_WINDOW_MS = 500;
+
+/** Recent enough to be our own PATCH echoing back through fs-watch. */
+export function isMetaSelfEcho(now: number = Date.now()): boolean {
+  if (typeof window === 'undefined') return false;
+  const last = window.__maude_last_meta_self_write_at ?? 0;
+  return now - last < META_SELF_ECHO_WINDOW_MS;
+}
+
 function patchCanvasMeta(patch: {
   viewport?: ViewportState;
   layout?: { artboards: ArtboardRect[] };
@@ -469,6 +491,10 @@ function patchCanvasMeta(patch: {
       })),
     };
   }
+  // Stamp the self-write timestamp BEFORE the fetch so the round-trip
+  // (PATCH → server write → fs:json broadcast → iframe message) lands
+  // safely inside the echo window even on a fast network.
+  window.__maude_last_meta_self_write_at = Date.now();
   fetch('/_api/canvas-meta', {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
@@ -1082,11 +1108,24 @@ export function useViewportControllerContext(): ViewportControllerHandle | null 
 // drag). A single source-of-truth: only one drag can be active at a time, so
 // the bus holds a single DragState. Each DCArtboard's hook writes here when
 // non-idle and resets to idle on release.
+/** Optional metadata accompanying a position commit. */
+export interface CommitPositionsOptions {
+  /**
+   * HUD / undo-stack label override. Default = `"move N artboard(s)"`.
+   * Distribute / align gestures pass their own label so undo HUD reads
+   * `"Undo: equal-space 4 artboards"` instead of `"Undo: move 4 artboards"`.
+   */
+  label?: string;
+}
+
 interface DragStateBus {
   current: DragState;
   setCurrent: (s: DragState) => void;
   /** Commit drag positions — DesignCanvas wires this to patchCanvasMeta. */
-  commitPositions: (moved: { id: string; x: number; y: number }[]) => void;
+  commitPositions: (
+    moved: { id: string; x: number; y: number }[],
+    opts?: CommitPositionsOptions
+  ) => void;
 }
 
 const DragStateContext = createContext<DragStateBus | null>(null);
@@ -1115,10 +1154,17 @@ interface DesignCanvasProps {
  * via `useToolModeOptional` (hand-mode bare-drag pan).
  */
 export function DesignCanvas(props: DesignCanvasProps) {
+  // Phase 20 — per-canvas-iframe undo/redo stack (DDR-049). The provider
+  // wraps both DesignCanvasInner (so artboard commits push commands) AND
+  // the CanvasShell tree (so input-router Cmd+Z / Cmd+Shift+Z + the HUD
+  // share the same context). Scope is per iframe — switching canvases
+  // mounts a fresh provider with an empty stack.
   return (
-    <ToolProvider>
-      <DesignCanvasInner {...props} />
-    </ToolProvider>
+    <UndoStackProvider>
+      <ToolProvider>
+        <DesignCanvasInner {...props} />
+      </ToolProvider>
+    </UndoStackProvider>
   );
 }
 DesignCanvas.displayName = 'DesignCanvas';
@@ -1269,19 +1315,46 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
   // hook is non-idle; SnapGuideOverlay (in canvas-shell) reads guides.
   const [dragCurrent, setDragCurrent] = useState<DragState>({ kind: 'idle' });
 
-  const commitArtboardPositions = useCallback((moved: { id: string; x: number; y: number }[]) => {
-    const movedById = new Map(moved.map((m) => [m.id, m]));
-    const next = artboardsRef.current.map((r) => {
-      const m = movedById.get(r.id);
-      if (m) return { ...r, x: m.x, y: m.y };
-      return r;
-    });
-    // Optimistic local update — DOM reflects the new position the moment
-    // the drag drops, no iframe reload required. The PATCH below catches
-    // the server up; if it fails we already logged it via `patchCanvasMeta`.
-    setArtboards(next);
-    patchCanvasMeta({ layout: { artboards: next } });
+  const undoStack = useUndoStackOptional();
+  // Stable ref so the commit callback (memoized once, on mount) always reads
+  // the latest stack value without re-creating the callback on every render.
+  const undoStackRef = useRef(undoStack);
+  undoStackRef.current = undoStack;
+
+  /**
+   * Applies a full artboard layout: optimistic local React state update +
+   * server PATCH. Used as the `patchFn` for `MoveArtboardsCommand` — both
+   * the initial commit (do) and the undo/redo replay route through here.
+   */
+  const applyArtboardLayout = useCallback((layout: ArtboardRect[]) => {
+    setArtboards(layout);
+    patchCanvasMeta({ layout: { artboards: layout } });
   }, []);
+
+  const commitArtboardPositions = useCallback(
+    (moved: { id: string; x: number; y: number }[], opts?: CommitPositionsOptions) => {
+      const movedById = new Map(moved.map((m) => [m.id, m]));
+      const before = artboardsRef.current;
+      const next = before.map((r) => {
+        const m = movedById.get(r.id);
+        if (m) return { ...r, x: m.x, y: m.y };
+        return r;
+      });
+      // Phase 20 — skip pushing no-op drags (click-without-movement). The
+      // user got back what they had, no edit happened, undo would do nothing.
+      if (!diffLayoutPositions(before, next)) return;
+      const cmd = createMoveArtboardsCommand({
+        before,
+        after: next,
+        patchFn: (layout) => applyArtboardLayout(layout as ArtboardRect[]),
+        label: opts?.label,
+      });
+      // push() invokes cmd.do() (= applyArtboardLayout(next)) BEFORE updating
+      // the stack, so the optimistic local + PATCH flow is preserved.
+      void undoStackRef.current.push(cmd);
+    },
+    [applyArtboardLayout]
+  );
 
   const dragBus = useMemo<DragStateBus>(
     () => ({

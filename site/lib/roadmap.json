@@ -1,5 +1,5 @@
 {
-  "generated": "2026-05-26T10:49:53.633Z",
+  "generated": "2026-05-26T11:35:25.825Z",
   "currentPhase": null,
   "phases": [
     {
@@ -78,6 +78,17 @@
       "planPath": ".ai/plans/archive/fix-binary-oxc-parser-binding.md",
       "archived": true,
       "phaseKey": null
+    },
+    {
+      "id": "phase-20-canvas-undo-redo",
+      "title": "Feature: Canvas Undo / Redo (Cmd+Z / Cmd+Shift+Z)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports (DDR-045 paths, DDR-013 module layout, DDR-048 input-router classify table).",
+      "planPath": ".ai/plans/archive/phase-20-canvas-undo-redo.md",
+      "archived": true,
+      "phaseKey": "20"
     },
     {
       "id": "phase-3.6-canvas-tsx-format",
@@ -474,17 +485,6 @@
       "planPath": ".ai/plans/phase-17-docs-site-infographics.md",
       "archived": false,
       "phaseKey": "17"
-    },
-    {
-      "id": "phase-20-canvas-undo-redo",
-      "title": "Feature: Canvas Undo / Redo (Cmd+Z / Cmd+Shift+Z)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports (DDR-045 paths, DDR-013 module layout, DDR-048 input-router classify table).",
-      "planPath": ".ai/plans/phase-20-canvas-undo-redo.md",
-      "archived": false,
-      "phaseKey": "20"
     },
     {
       "id": "phase-a-deps-and-preflight",

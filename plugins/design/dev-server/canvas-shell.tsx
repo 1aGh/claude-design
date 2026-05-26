@@ -38,6 +38,7 @@ import {
 
 import { AnnotationsLayer } from './annotations-layer.tsx';
 import { ArtboardMarqueeOverlay } from './artboard-marquee.tsx';
+import { type AlignMode, alignLabel, equalSpacingLabel } from './commands/equal-spacing-command.ts';
 import { ContextualToolbar } from './contextual-toolbar.tsx';
 import { EqualSpacingHandles } from './equal-spacing-handles.tsx';
 import { ElementMarqueeOverlay } from './marquee-overlay.tsx';
@@ -70,6 +71,8 @@ import {
 import { AnnotationsVisibilityProvider } from './use-annotations-visibility.tsx';
 import { type Selection, SelectionSetProvider, useSelectionSet } from './use-selection-set.tsx';
 import { useToolMode } from './use-tool-mode.tsx';
+import { useUndoStack } from './use-undo-stack.tsx';
+import { UndoHud } from './undo-hud.tsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Styles — halos render as `position: fixed` siblings of the canvas. Reading
@@ -402,7 +405,7 @@ function CanvasCore({
         }
       }
       if (moved.length === 0) return;
-      dragBus.commitPositions(moved);
+      dragBus.commitPositions(moved, { label: equalSpacingLabel(sorted.length) });
     },
     [artboardsCtx, dragBus, selSet.selected]
   );
@@ -422,9 +425,7 @@ function CanvasCore({
    * axis). This matches Figma / Sketch / FigJam align semantics.
    */
   const alignArtboards = useCallback(
-    (
-      mode: 'left' | 'right' | 'center-x' | 'top' | 'bottom' | 'center-y'
-    ) => {
+    (mode: AlignMode) => {
       if (!artboardsCtx || !dragBus) return;
       const ids = new Set(
         selSet.selected.filter((s) => !!s.artboardId).map((s) => s.artboardId as string)
@@ -475,7 +476,7 @@ function CanvasCore({
         moved.push({ id: r.id, x: Math.round(nx), y: Math.round(ny) });
       }
       if (moved.length === 0) return;
-      dragBus.commitPositions(moved);
+      dragBus.commitPositions(moved, { label: alignLabel(mode, targets.length) });
     },
     [artboardsCtx, dragBus, selSet.selected]
   );
@@ -788,6 +789,7 @@ function CanvasRouter({
   const selSet = useSelectionSet();
   const annotSel = useAnnotationSelection();
   const ctxMenu = useContextMenu();
+  const undoStack = useUndoStack();
 
   // Hover state drives the floating .dc-cv-halo--hover overlay. The overlay
   // itself reads getBoundingClientRect on every rAF tick to follow pan/zoom.
@@ -889,6 +891,12 @@ function CanvasRouter({
         ctxMenu.open(ctxTarget);
       },
       onTool: ({ tool: t }) => setTool(t),
+      onUndo: () => {
+        void undoStack.undo();
+      },
+      onRedo: () => {
+        void undoStack.redo();
+      },
       onEscape: () => {
         // T21 — abort any mid-stroke draw FIRST. The annotations layer
         // listens for `maude:cancel-stroke` and drops the in-progress
@@ -1018,6 +1026,7 @@ function CanvasRouter({
         alignArtboards={alignArtboards}
       />
       <SnapGuideOverlay />
+      <UndoHud />
     </>
   );
 }

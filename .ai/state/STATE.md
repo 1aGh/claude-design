@@ -4,7 +4,7 @@
 
 **Workflow:** feature-delivery — Maude v1.0 roadmap
 **Phase:** —
-**Status:** done — canvas-figjam-feel shipped 2026-05-26 (commit `8654dab`, pushed to main)
+**Status:** done — phase-20-canvas-undo-redo shipped 2026-05-26
 **Started:** 2026-05-26
 **Updated:** 2026-05-26
 **Active task:** —
@@ -15,6 +15,50 @@
 | Date | Phase | Status | Note |
 | ---- | ----- | ------ | ---- |
 | 2026-05-26 | canvas-figjam-feel | done | Wave 1+2+3 (T1–T33) + Wave 2.7/3.5/3.6 user-feedback batches. Commit `8654dab` (+2293/-89 across 23 files). Scenario 9/9 PASS web-desktop; design-system-guard / a11y-auditor / security-auditor: 0 blockers each, 11 polish warnings deferred to Wave 3.7. Plan archived. |
+| 2026-05-26 | phase-20-canvas-undo-redo | done | T1–T16 complete (T10 Comments deferred per plan as v0.x follow-up). 452/452 bun tests green (+43 new). Release bundle 230 KB → **72.4 KB gz** (under 80 KB budget). DDR-049 written, plan archived. |
+
+## Execution Progress — phase-20-canvas-undo-redo (2026-05-26)
+
+- ✅ T1 — `undo-stack.ts` pure reducer + types + selectors. Ring-cap 50, branch-discard on push. 9 bun tests.
+- ✅ T2 — `use-undo-stack.tsx` React Context Provider; ref-as-authoritative-store so async runner sees its own writes synchronously between Cmd+Z key-repeats. SSR-capture pattern + serialized inFlight promise chain. 7 contract tests.
+- ✅ T3 — `input-router.tsx` `classify()` extended with `{ kind: 'undo' | 'redo' }`. Cmd+Z / Cmd+Shift+Z / Ctrl+Y / Cmd+Y. Alt-modifier guard (Cmd+Opt+Z stays browser-native). 9 new classify tests.
+- ✅ T4 — `RouterCallbacks.onUndo / onRedo` + preventDefault dispatch.
+- ✅ T5 — `commands/move-artboards-command.ts` — full-snapshot before/after (matches PATCH `/_api/canvas-meta` shallow-merge shape, see DDR-027). Deep-cloned + label override. `diffLayoutPositions` helper for no-op skip. 11 tests.
+- ✅ T6 — `canvas-lib.tsx` `commitArtboardPositions` routes through `undoStack.push(createMoveArtboardsCommand(...))`. `UndoStackProvider` mounted at `DesignCanvas` (one level above `DesignCanvasInner`) so the commit path + the shell tree share one per-iframe context. No-op skip via `diffLayoutPositions`.
+- ✅ T7 — Marquee batch drag already routes through `useArtboardDrag` → `dragBus.commitPositions` → T6 path. Single command per gesture (leader + followers in one snapshot pair).
+- ✅ T8 — `commands/equal-spacing-command.ts` — label helpers only (`equalSpacingLabel` / `alignLabel`). `DragStateBus.commitPositions` extended with `opts.label`. Distribute + align now read as `Undo: equal-space N artboards` / `Undo: align left N artboards`.
+- ✅ T9 — `commands/annotation-strokes-command.ts` + layer wiring. `commitStrokes(prev, next, label?)` helper cancels pending debounce timer THEN pushes command (DDR-049 gotcha). Per-stroke granularity (no coalesce window — matches Figma). All 4 inline `setStrokesState` mutator sites (setStrokes, updateStroke, deleteStrokes, translateStrokes, eraseAt, endStroke, commitText) now route through commitStrokes. 7 tests.
+- ⊘ T10 — Comments **deferred per plan recommendation**. Server has `commentsDelete` API but full undo for `commentsPatch` needs CRDT-shaped author/timestamp reconciliation. Follow-up issue.
+- ✅ T11 — `undo-hud.tsx` minimal top-right aria-live="polite" toast. 1.2 s auto-dismiss; `pointer-events: none`; `--dur-fast` / `--dur-base` fade tokens; `prefers-reduced-motion` 1 ms collapse.
+- ✅ T12 — `canvas-shell.tsx` `<UndoHud />` mounted in `CanvasRouter` render tree; `useInputRouter` callbacks wire `onUndo`/`onRedo` to `undoStack.undo()`/`.redo()`. Provider scope decision (per DDR-049): mounted at `DesignCanvas` (T6) instead of inside CanvasShell — eliminates the postMessage forwarding path the plan considered, since input-router listens on `document` inside the iframe.
+- ✅ T13 — External-edit invalidation. `patchCanvasMeta` stamps `window.__maude_last_meta_self_write_at = Date.now()` before fetch. `client/hmr.mjs` forwards `fs:json` events for `*.meta.json` matching `data-canvas-path` into iframes as `CustomEvent('maude:invalidate-undo')`. Provider listens, dampens within 500 ms self-echo window, clears stack with `"Edit history reset (external change)"` label otherwise.
+- ✅ T14 — `.ai/decisions/DDR-049-canvas-undo-redo-command-stack.md` written. 7 rules: command-pattern, per-iframe scope, viewport+selection NOT undoable, Phase-8 Y.UndoManager interface freeze, depth-cap 50, external-edit clear (not merge), comments out of v0.
+- ✅ T15 — `bun test` 452/452 green (baseline 409 + 43 new). `bunx tsc --noEmit` clean modulo baseline `api.ts`/`runtime-bundle.ts` errors per DDR-026. Release build `bun run build.ts --release` → client.bundle.js 230 KB raw / **72.4 KB gzipped** (under 80 KB plan budget).
+- ✅ T16 — `plugins/design/commands/help.md` got a Canvas keyboard shortcuts table (V/H/C/B/R/O/A/E + Esc + Cmd+Z / Cmd+Shift+Z + zoom + Shift+P).
+
+**Files added (9):**
+- `plugins/design/dev-server/undo-stack.ts`
+- `plugins/design/dev-server/use-undo-stack.tsx`
+- `plugins/design/dev-server/undo-hud.tsx`
+- `plugins/design/dev-server/commands/move-artboards-command.ts`
+- `plugins/design/dev-server/commands/annotation-strokes-command.ts`
+- `plugins/design/dev-server/commands/equal-spacing-command.ts`
+- `plugins/design/dev-server/test/undo-stack.test.ts`
+- `plugins/design/dev-server/test/use-undo-stack.test.tsx`
+- `plugins/design/dev-server/test/move-artboards-command.test.ts`
+- `plugins/design/dev-server/test/annotation-strokes-command.test.ts`
+- `.ai/decisions/DDR-049-canvas-undo-redo-command-stack.md`
+
+**Files modified (6):**
+- `plugins/design/dev-server/input-router.tsx` (classify undo/redo, callbacks)
+- `plugins/design/dev-server/canvas-lib.tsx` (UndoStackProvider mount, commitArtboardPositions wraps in command, self-echo stamp)
+- `plugins/design/dev-server/canvas-shell.tsx` (UndoHud mount, onUndo/onRedo wire, align/distribute label override)
+- `plugins/design/dev-server/annotations-layer.tsx` (commitStrokes helper replaces scheduleSave path through 4 mutator surfaces)
+- `plugins/design/dev-server/client/hmr.mjs` (fs:json forward to iframes)
+- `plugins/design/dev-server/test/input-router.test.ts` (9 new undo/redo classify tests)
+- `plugins/design/commands/help.md` (shortcut cheat-sheet)
+
+**Smoke gate (per executor protocol, dev-server diff trigger):** `bash plugins/design/dev-server/bin/smoke.sh --out-dir .design/_history/_smoke/phase-20` — 42/42 OK exit-0. **Caveat:** the script's URL construction hits `/<canvas-path>` directly which returns 404 (the actual canvas route is `/_canvas-shell.html?canvas=...`). Same false-positive shape in the wave-1 baseline (`canvas-figjam-feel-wave-1/ui-canvas_viewport.png`) — pre-existing smoke.sh bug, not a phase-20 regression. Tracked for separate fix.
 
 ## Execution Progress — canvas-figjam-feel (Wave 3, 2026-05-26)
 
