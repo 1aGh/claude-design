@@ -1,7 +1,9 @@
 #!/usr/bin/env node
+import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 // maude — Maude CLI. Scaffold .ai workspace, run dev servers, manage config.
 import { fileURLToPath } from 'node:url';
+import { runUpdateCheck } from '../lib/update-check.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -16,9 +18,23 @@ const COMMANDS = {
   version: () => import('../commands/version.mjs'),
 };
 
+function readCurrentVersion() {
+  try {
+    const raw = readFileSync(resolve(PKG_ROOT, 'package.json'), 'utf8');
+    return JSON.parse(raw).version || null;
+  } catch {
+    return null;
+  }
+}
+
 async function main(argv) {
   const args = argv.slice(2);
   const cmd = args[0];
+
+  // Print "update available" notice (from cached registry data) before
+  // dispatch, so it lands on stderr ahead of any subcommand output. Hot
+  // path is sync + non-blocking — the stale-cache refresh is detached.
+  runUpdateCheck(readCurrentVersion());
 
   if (!cmd || cmd === '--help' || cmd === '-h') {
     const { run } = await COMMANDS.help();
