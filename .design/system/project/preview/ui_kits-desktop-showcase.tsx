@@ -14,7 +14,7 @@ import "./ui_kits-desktop-showcase.css";
 export default function UiKitsDesktopShowcase() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01 · SHOWCASE</span><span className="crumbs"><span>maude</span><span>design system</span><span>ds in use</span><span>desktop showcase</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01 · SHOWCASE</span><span className="crumbs"><span>maude</span><span>design system</span><span>ds in use</span><span>desktop showcase</span></span><ThemeToggle /></header>
 
           <main className="stage">
             <div className="stage-hd">

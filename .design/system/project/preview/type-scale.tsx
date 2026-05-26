@@ -9,6 +9,10 @@
  * @history     .design/_history/type-scale/
  * @handoff     bunx shadcn add file://./type-scale.registry.json
  */
+import "../colors_and_type.css";
+import "./_layout.css";
+
+import { ThemeToggle } from "./_specimen-controls";
 import "./type-scale.css";
 
 export default function TypeScale() {
@@ -17,7 +21,7 @@ export default function TypeScale() {
           <header className="specimen-hd">
             <span className="sku">MDCC-DSN/01.type-scale</span>
             <span className="crumbs"><span>maude</span><span>design system</span><span>type</span><span>scale</span></span>
-            <span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span>
+            <ThemeToggle />
           </header>
           <main className="specimen">
             <section className="specimen-title">

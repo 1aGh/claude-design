@@ -9,13 +9,18 @@
  * @history     .design/_history/components-cards/
  * @handoff     bunx shadcn add file://./components-cards.registry.json
  */
+
+import "../colors_and_type.css";
+import "./_layout.css";
+
+import { ThemeToggle } from "./_specimen-controls";
 export default function ComponentsCards() {
   return (
     <>
           <header className="specimen-hd">
             <span className="sku">MDCC-DSN/01.components-cards</span>
             <span className="crumbs"><span>maude</span><span>design system</span><span>components</span><span>cards</span></span>
-            <span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span>
+            <ThemeToggle />
           </header>
           <main className="specimen">
             <section className="specimen-title">

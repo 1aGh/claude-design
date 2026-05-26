@@ -9,6 +9,10 @@
  * @history     .design/_history/colors-themes-side-by-side/
  * @handoff     bunx shadcn add file://./colors-themes-side-by-side.registry.json
  */
+import "../colors_and_type.css";
+import "./_layout.css";
+
+import { ThemeToggle } from "./_specimen-controls";
 import "./colors-themes-side-by-side.css";
 
 export default function ColorsThemesSideBySide() {
@@ -17,7 +21,7 @@ export default function ColorsThemesSideBySide() {
           <header className="specimen-hd">
             <span className="sku">MDCC-DSN/01.colors-themes-side-by-side</span>
             <span className="crumbs"><span>maude</span><span>design system</span><span>color</span><span>themes</span></span>
-            <span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span>
+            <ThemeToggle />
           </header>
           <main className="specimen">
             <section className="specimen-title">

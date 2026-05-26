@@ -12,7 +12,7 @@
 export default function Selection() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.selection</span><span className="crumbs"><span>maude</span><span>design system</span><span>foundation</span><span>selection</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.selection</span><span className="crumbs"><span>maude</span><span>design system</span><span>foundation</span><span>selection</span></span><ThemeToggle /></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Selection</h1><p className="lede">Highlight a sentence below. The accent fills the bg, accent-fg becomes the ink. No prefab "hide the system default" tricks. Selection is a real interaction. The DS makes it readable.</p></section>
             <dl className="specimen-meta"><div><dt>Token</dt><dd>--accent / --accent-fg</dd></div><div><dt>Hook</dt><dd>::selection (global, set in _layout.css)</dd></div></dl>

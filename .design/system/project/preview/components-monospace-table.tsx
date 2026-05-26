@@ -14,7 +14,7 @@ import "./components-monospace-table.css";
 export default function ComponentsMonospaceTable() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.components-monospace-table</span><span className="crumbs"><span>maude</span><span>design system</span><span>dev</span><span>mono-table</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.components-monospace-table</span><span className="crumbs"><span>maude</span><span>design system</span><span>dev</span><span>mono-table</span></span><ThemeToggle /></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Monospace table</h1><p className="lede">Pure data grid. Tabular numerics (<code>font-variant-numeric: tabular-nums</code>) so column rule lines up. Header rows split data into logical groups without a separator block.</p></section>
             <dl className="specimen-meta"><div><dt>Numerals</dt><dd>tabular-nums</dd></div><div><dt>Density</dt><dd>compact (--space-2 vertical)</dd></div></dl>

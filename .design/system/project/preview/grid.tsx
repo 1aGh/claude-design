@@ -9,12 +9,16 @@
  * @history     .design/_history/grid/
  * @handoff     bunx shadcn add file://./grid.registry.json
  */
+import "../colors_and_type.css";
+import "./_layout.css";
+
+import { ThemeToggle } from "./_specimen-controls";
 import "./grid.css";
 
 export default function Grid() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.grid</span><span className="crumbs"><span>maude</span><span>design system</span><span>foundation</span><span>grid</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.grid</span><span className="crumbs"><span>maude</span><span>design system</span><span>foundation</span><span>grid</span></span><ThemeToggle /></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Grid</h1><p className="lede">12 columns on desktop. <code>--layout-max-w</code> 1240px. <code>--layout-prose</code> 72ch for long-form. The dev-server canvas tightens further with <code>auto-fill minmax(220px, 1fr)</code> tile grids.</p></section>
             <dl className="specimen-meta"><div><dt>Columns</dt><dd>12 · desktop</dd></div><div><dt>Max width</dt><dd>1240px</dd></div><div><dt>Prose</dt><dd>72ch</dd></div></dl>

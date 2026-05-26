@@ -10,6 +10,9 @@
  * @handoff     bunx shadcn add file://./components-toggles.registry.json
  */
 
+import "../colors_and_type.css";
+import "./_layout.css";
+
 import { useState } from "react";
 export default function ComponentsToggles() {
   return (

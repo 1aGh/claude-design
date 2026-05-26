@@ -9,12 +9,16 @@
  * @history     .design/_history/state-system/
  * @handoff     bunx shadcn add file://./state-system.registry.json
  */
+import "../colors_and_type.css";
+import "./_layout.css";
+
+import { ThemeToggle } from "./_specimen-controls";
 import "./state-system.css";
 
 export default function StateSystem() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.state-system</span><span className="crumbs"><span>maude</span><span>design system</span><span>universal</span><span>state-system</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.state-system</span><span className="crumbs"><span>maude</span><span>design system</span><span>universal</span><span>state-system</span></span><ThemeToggle /></header>
           <main className="specimen">
             <section className="specimen-title"><h1>State system</h1><p className="lede">Chrome-state family. Four sections, four moments where the UI has to talk: 404, success, loading, and empty. Each one earns its copy the same way. Specific nouns, real commands, no filler.</p></section>
             <dl className="specimen-meta"><div><dt>Status</dt><dd>published</dd></div><div><dt>Family</dt><dd>chrome states</dd></div><div><dt>Sections</dt><dd>4</dd></div><div><dt>Density</dt><dd>balanced-docs</dd></div></dl>

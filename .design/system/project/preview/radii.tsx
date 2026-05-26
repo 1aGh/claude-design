@@ -9,10 +9,15 @@
  * @history     .design/_history/radii/
  * @handoff     bunx shadcn add file://./radii.registry.json
  */
+
+import "../colors_and_type.css";
+import "./_layout.css";
+
+import { ThemeToggle } from "./_specimen-controls";
 export default function Radii() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.radii</span><span className="crumbs"><span>maude</span><span>design system</span><span>foundation</span><span>radii</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.radii</span><span className="crumbs"><span>maude</span><span>design system</span><span>foundation</span><span>radii</span></span><ThemeToggle /></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Radii</h1><p className="lede">Sharp corners. The radius scale has three meaningful values (0, 2, 4) and <code>--radius-lg / --radius-xl</code> clamp to 4 so nothing gets rounded over. If you find yourself reaching for 12 or 16, you're on the wrong DS.</p></section>
             <dl className="specimen-meta"><div><dt>Steps</dt><dd>3 unique (xs/sm/md)</dd></div><div><dt>Maximum</dt><dd>4px (--radius-md / lg / xl all clamp)</dd></div></dl>

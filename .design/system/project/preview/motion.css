@@ -1,8 +1,154 @@
-.motion-row{display:grid;grid-template-columns:120px 1fr 200px;gap:var(--space-5);align-items:center;padding:var(--space-4) 0;border-bottom:1px solid var(--border-subtle);}
-  .motion-row .label{font-family:var(--font-mono);font-size:var(--type-xs);letter-spacing:var(--tracking-sku);text-transform:uppercase;color:var(--fg-2);}
-  .demo-btn{padding:var(--space-3) var(--space-5);border:1px solid var(--border-strong);background:var(--bg-1);color:var(--fg-0);font:inherit;font-family:var(--font-mono);font-size:var(--type-sm);cursor:pointer;}
-  .demo-btn:hover{background:var(--fg-0);color:var(--bg-0);}
-  .demo-flip{transition:background var(--dur-flip) var(--ease-out),color var(--dur-flip) var(--ease-out);}
-  .demo-panel{transition:background var(--dur-panel) var(--ease-out),color var(--dur-panel) var(--ease-out);}
-  .demo-soft{transition:background var(--dur-soft) var(--ease-out),color var(--dur-soft) var(--ease-out);}
-  .demo-route{transition:background var(--dur-route) linear;}
+/*
+ * motion.css — bespoke styles for the motion specimen.
+ *
+ * Phase 3.7 update: the specimen now plays continuous looping demos on first
+ * paint (no hover required). Maude's "no animations beyond hover" rule still
+ * applies to *product chrome*; this specimen page is where the motion vocab
+ * is demonstrated. Loops are small, bounded (overflow:hidden), token-derived,
+ * and collapse to 1ms when prefers-reduced-motion is set (tokens already do
+ * this in colors_and_type.css; we belt-and-suspenders the rule below).
+ */
+
+.motion-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 240px;
+  gap: var(--space-5);
+  align-items: center;
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.motion-row .label {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-sku);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+
+/* ─── Continuous-loop stage (visible on first paint) ────────────────────── */
+.motion-stage {
+  position: relative;
+  width: 240px;
+  height: 28px;
+  overflow: hidden;                 /* bounded geometry — non-negotiable     */
+  border: 1px solid var(--border-default);
+  background: var(--bg-1);
+}
+.motion-stage::after {
+  /* mid-stage hairline tick — gives the slide a reference point so the eye
+     can read the cadence without staring at the absolute edges. */
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: var(--border-subtle);
+  pointer-events: none;
+}
+.motion-dot {
+  position: absolute;
+  top: 50%;
+  left: 4px;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  background: var(--accent);
+  /* keyframes attached per duration; transform-only = compositor-friendly */
+}
+
+@keyframes motion-slide-x {
+  from { transform: translateX(0); }
+  to   { transform: translateX(208px); }     /* 240 - 4 (left) - 14 (dot) - 14 (right padding) */
+}
+
+/* Durations hardcoded (not via var(--dur-*)) because the tokens collapse to
+   1ms under OS-level prefers-reduced-motion, which would make the demos
+   imperceptible — and this page exists EXCLUSIVELY to demonstrate motion.
+   Other surfaces still honor the token collapse + the universal animation
+   killswitch in _layout.css (which uses `!important`, so we use `!important`
+   here too to win specificity at the @media-reduce branch).
+   The <ReducedMotionToggle> sets `data-rm="true"` on the root → override
+   below pauses everything for reviewers who want to see the off-state. */
+.motion-stage--flip  .motion-dot { animation: motion-slide-x 90ms  var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1)) infinite alternate !important; }
+.motion-stage--panel .motion-dot { animation: motion-slide-x 140ms var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1)) infinite alternate !important; }
+.motion-stage--soft  .motion-dot { animation: motion-slide-x 180ms var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1)) infinite alternate !important; }
+.motion-stage--route .motion-dot { animation: motion-slide-x 1ms   linear                                         infinite alternate !important; }
+
+/* Toggle-driven override — explicit reviewer control. Wins because the
+   selector is more specific than the universal killswitch's `*`. */
+:root[data-rm="true"] .motion-stage--flip  .motion-dot,
+:root[data-rm="true"] .motion-stage--panel .motion-dot,
+:root[data-rm="true"] .motion-stage--soft  .motion-dot,
+:root[data-rm="true"] .motion-stage--route .motion-dot {
+  animation: none !important;
+  transform: translateX(0);
+}
+
+/* ─── ReducedMotionToggle chrome ─────────────────────────────────────────── */
+.rm-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-sku);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.rm-toggle__label { color: var(--fg-3); }
+.rm-toggle button {
+  appearance: none;
+  border: var(--rule-thin);
+  background: var(--bg-1);
+  padding: 2px 8px;
+  font: inherit;
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-sku);
+  color: var(--fg-0);
+  cursor: pointer;
+}
+.rm-toggle button[data-rm-state="off"] {
+  /* Motion is OFF (paused) — show the "muted" state. */
+  background: var(--bg-3);
+  color: var(--fg-2);
+}
+.rm-toggle button[data-rm-state="on"] {
+  /* Motion is ON (default) — small accent border to signal "live". */
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ─── Easing graphs — SVG curves ───────────────────────────────────────── */
+.easing-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 240px;
+  gap: var(--space-5);
+  align-items: center;
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.easing-row .label {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-sku);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.easing-graph {
+  width: 240px;
+  height: 96px;
+  display: block;
+  border: 1px solid var(--border-default);
+  background: var(--bg-1);
+}
+.easing-graph .grid-line { stroke: var(--border-subtle); stroke-width: 1; }
+.easing-graph .axis      { stroke: var(--border-default); stroke-width: 1; }
+.easing-graph .curve     { stroke: var(--accent); stroke-width: 2; fill: none; }
+.easing-graph .end-dot   { fill: var(--accent); }
+
+/* Note: OS-level `prefers-reduced-motion: reduce` is INTENTIONALLY ignored on
+   this specimen — see the hardcoded-duration comment above. Use the
+   ReducedMotionToggle to flip motion off; that toggle is the reviewer's
+   explicit override.  This is the only specimen in the DS that deviates from
+   OS-level reduced-motion. */

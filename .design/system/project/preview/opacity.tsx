@@ -9,10 +9,15 @@
  * @history     .design/_history/opacity/
  * @handoff     bunx shadcn add file://./opacity.registry.json
  */
+
+import "../colors_and_type.css";
+import "./_layout.css";
+
+import { ThemeToggle } from "./_specimen-controls";
 export default function Opacity() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.opacity</span><span className="crumbs"><span>maude</span><span>design system</span><span>foundation</span><span>opacity</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.opacity</span><span className="crumbs"><span>maude</span><span>design system</span><span>foundation</span><span>opacity</span></span><ThemeToggle /></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Opacity</h1><p className="lede">Disabled is 0.5. Press-armed is 0.7. Scrim is 0.6. That's it. No graduated alpha-fog for "atmosphere".</p></section>
             <dl className="specimen-meta"><div><dt>Levels</dt><dd>4</dd></div><div><dt>Use</dt><dd>state, not decoration</dd></div></dl>

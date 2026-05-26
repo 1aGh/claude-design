@@ -9,10 +9,15 @@
  * @history     .design/_history/focus/
  * @handoff     bunx shadcn add file://./focus.registry.json
  */
+
+import "../colors_and_type.css";
+import "./_layout.css";
+
+import { ThemeToggle } from "./_specimen-controls";
 export default function Focus() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.focus</span><span className="crumbs"><span>maude</span><span>design system</span><span>foundation</span><span>focus</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.focus</span><span className="crumbs"><span>maude</span><span>design system</span><span>foundation</span><span>focus</span></span><ThemeToggle /></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Focus ring</h1><p className="lede">2px solid accent. Same color, same thickness, every focusable thing. Buttons, inputs, links, toggles, switches, tabs. Press <kbd>Tab</kbd>. You can see where you are.</p></section>
             <dl className="specimen-meta"><div><dt>Token</dt><dd>--shadow-focus · 0 0 0 2px var(--accent)</dd></div><div><dt>Trigger</dt><dd>:focus-visible</dd></div></dl>

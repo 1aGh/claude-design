@@ -9,12 +9,16 @@
  * @history     .design/_history/ui-kits-desktop-index/
  * @handoff     bunx shadcn add file://./ui_kits-desktop-index.registry.json
  */
+import "../colors_and_type.css";
+import "./_layout.css";
+
+import { ThemeToggle } from "./_specimen-controls";
 import "./ui_kits-desktop-index.css";
 
 export default function UiKitsDesktopIndex() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01 · INDEX</span><span className="crumbs"><span>maude</span><span>design system</span><span>desktop</span><span>index</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01 · INDEX</span><span className="crumbs"><span>maude</span><span>design system</span><span>desktop</span><span>index</span></span><ThemeToggle /></header>
           <main className="specimen">
             <section className="specimen-title">
               <h1>Catalog index</h1>

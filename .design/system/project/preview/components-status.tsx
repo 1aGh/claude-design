@@ -9,10 +9,15 @@
  * @history     .design/_history/components-status/
  * @handoff     bunx shadcn add file://./components-status.registry.json
  */
+
+import "../colors_and_type.css";
+import "./_layout.css";
+
+import { ThemeToggle } from "./_specimen-controls";
 export default function ComponentsStatus() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.components-status</span><span className="crumbs"><span>maude</span><span>design system</span><span>status</span><span>components</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.components-status</span><span className="crumbs"><span>maude</span><span>design system</span><span>status</span><span>components</span></span><ThemeToggle /></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Status indicators</h1><p className="lede">Badges (outline + solid), dots, inline label-value pairs. All squared corners. The semantic color does the talking; no decorative iconography.</p></section>
             <dl className="specimen-meta"><div><dt>Variants</dt><dd>badge · badge--solid · dot · inline-state</dd></div></dl>

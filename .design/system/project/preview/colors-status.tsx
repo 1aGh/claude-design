@@ -9,10 +9,15 @@
  * @history     .design/_history/colors-status/
  * @handoff     bunx shadcn add file://./colors-status.registry.json
  */
+
+import "../colors_and_type.css";
+import "./_layout.css";
+
+import { ThemeToggle } from "./_specimen-controls";
 export default function ColorsStatus() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.colors-status</span><span className="crumbs"><span>maude</span><span>design system</span><span>color</span><span>status</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.colors-status</span><span className="crumbs"><span>maude</span><span>design system</span><span>color</span><span>status</span></span><ThemeToggle /></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Status family</h1><p className="lede">Four semantic colors. Distinct from <code>--accent</code> (which is brand, not status). The amber-warn is hue-shifted from accent so they can co-exist without bleeding into each other.</p></section>
             <dl className="specimen-meta"><div><dt>Tokens</dt><dd>4 · success/warn/error/info</dd></div><div><dt>Hue separation</dt><dd>warn-accent ≥ 35° tilt</dd></div></dl>

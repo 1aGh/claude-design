@@ -9,10 +9,15 @@
  * @history     .design/_history/borders/
  * @handoff     bunx shadcn add file://./borders.registry.json
  */
+
+import "../colors_and_type.css";
+import "./_layout.css";
+
+import { ThemeToggle } from "./_specimen-controls";
 export default function Borders() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.borders</span><span className="crumbs"><span>maude</span><span>design system</span><span>foundation</span><span>borders</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.borders</span><span className="crumbs"><span>maude</span><span>design system</span><span>foundation</span><span>borders</span></span><ThemeToggle /></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Borders</h1><p className="lede">1px hairlines do the depth work. No shadows, no glow. Three weights cover everything from "barely there" row separators to "this is the page section" h2 underlines.</p></section>
             <dl className="specimen-meta"><div><dt>Tokens</dt><dd>3</dd></div><div><dt>Width</dt><dd>1px (default) · 2px (--border-width-strong)</dd></div></dl>

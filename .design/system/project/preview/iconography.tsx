@@ -14,7 +14,7 @@ import "./iconography.css";
 export default function Iconography() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.iconography</span><span className="crumbs"><span>maude</span><span>design system</span><span>foundation</span><span>iconography</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.iconography</span><span className="crumbs"><span>maude</span><span>design system</span><span>foundation</span><span>iconography</span></span><ThemeToggle /></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Iconography</h1><p className="lede">ASCII / Unicode-glyph icons first. Characters do the work, inherit the mono baseline automatically. SVG glyphs for domain nouns that need their own mark live under <code>assets/glyphs/</code>. No emoji, ever.</p></section>
             <dl className="specimen-meta"><div><dt>Family</dt><dd>industry-specific</dd></div><div><dt>Unicode glyphs</dt><dd>20+</dd></div><div><dt>SVG glyphs</dt><dd>4 (plugin · canvas · slash-command · file-tree)</dd></div></dl>

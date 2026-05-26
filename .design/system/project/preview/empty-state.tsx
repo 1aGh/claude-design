@@ -9,12 +9,16 @@
  * @history     .design/_history/empty-state/
  * @handoff     bunx shadcn add file://./empty-state.registry.json
  */
+import "../colors_and_type.css";
+import "./_layout.css";
+
+import { ThemeToggle } from "./_specimen-controls";
 import "./empty-state.css";
 
 export default function EmptyState() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.empty-state</span><span className="crumbs"><span>maude</span><span>design system</span><span>universal</span><span>empty-state</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.empty-state</span><span className="crumbs"><span>maude</span><span>design system</span><span>universal</span><span>empty-state</span></span><ThemeToggle /></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Empty states</h1><p className="lede">An empty state in this DS is a voice exam. If the copy says "Get Started" or "No items yet", you failed. If it tells the reader exactly what they're looking at and how to make it not-empty in two sentences, you passed.</p></section>
             <dl className="specimen-meta"><div><dt>Family</dt><dd>universal</dd></div><div><dt>Voice</dt><dd>htmx-grain direct fragments</dd></div></dl>

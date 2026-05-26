@@ -9,10 +9,15 @@
  * @history     .design/_history/elevation/
  * @handoff     bunx shadcn add file://./elevation.registry.json
  */
+
+import "../colors_and_type.css";
+import "./_layout.css";
+
+import { ThemeToggle } from "./_specimen-controls";
 export default function Elevation() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.elevation</span><span className="crumbs"><span>maude</span><span>design system</span><span>foundation</span><span>elevation</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.elevation</span><span className="crumbs"><span>maude</span><span>design system</span><span>foundation</span><span>elevation</span></span><ThemeToggle /></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Elevation</h1><p className="lede">There isn't a shadow ladder. <code>--shadow-sm/md/lg</code> are all <code>none</code>. Depth in this DS is bg-shift + 1px rule, repeated. The only blur in the system is <code>--shadow-focus</code>. That's the focus ring.</p></section>
             <dl className="specimen-meta"><div><dt>Shadow tokens</dt><dd>none / none / none / focus-ring only</dd></div><div><dt>Depth method</dt><dd>bg-shift + hairline</dd></div></dl>

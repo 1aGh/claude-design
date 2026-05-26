@@ -9,6 +9,10 @@
  * @history     .design/_history/colors-accent/
  * @handoff     bunx shadcn add file://./colors-accent.registry.json
  */
+import "../colors_and_type.css";
+import "./_layout.css";
+
+import { ThemeToggle } from "./_specimen-controls";
 import "./colors-accent.css";
 
 export default function ColorsAccent() {
@@ -17,7 +21,7 @@ export default function ColorsAccent() {
           <header className="specimen-hd">
             <span className="sku">MDCC-DSN/01.colors-accent</span>
             <span className="crumbs"><span>maude</span><span>design system</span><span>color</span><span>accent</span></span>
-            <span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span>
+            <ThemeToggle />
           </header>
           <main className="specimen">
             <section className="specimen-title">

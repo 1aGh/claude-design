@@ -9,12 +9,16 @@
  * @history     .design/_history/components-log-stream/
  * @handoff     bunx shadcn add file://./components-log-stream.registry.json
  */
+import "../colors_and_type.css";
+import "./_layout.css";
+
+import { ThemeToggle } from "./_specimen-controls";
 import "./components-log-stream.css";
 
 export default function ComponentsLogStream() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.components-log-stream</span><span className="crumbs"><span>maude</span><span>design system</span><span>dev</span><span>log-stream</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.components-log-stream</span><span className="crumbs"><span>maude</span><span>design system</span><span>dev</span><span>log-stream</span></span><ThemeToggle /></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Log stream</h1><p className="lede">Timestamp + level + message. Three columns, mono everything. Level is a 4-letter caps tag in the status family color. No icon, no emoji.</p></section>
             <dl className="specimen-meta"><div><dt>Levels</dt><dd>info · ok · warn · err · debug</dd></div><div><dt>Cols</dt><dd>120 / 60 / 1fr</dd></div></dl>

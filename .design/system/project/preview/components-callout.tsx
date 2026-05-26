@@ -9,12 +9,16 @@
  * @history     .design/_history/components-callout/
  * @handoff     bunx shadcn add file://./components-callout.registry.json
  */
+import "../colors_and_type.css";
+import "./_layout.css";
+
+import { ThemeToggle } from "./_specimen-controls";
 import "./components-callout.css";
 
 export default function ComponentsCallout() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.components-callout</span><span className="crumbs"><span>maude</span><span>design system</span><span>components</span><span>callout</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.components-callout</span><span className="crumbs"><span>maude</span><span>design system</span><span>components</span><span>callout</span></span><ThemeToggle /></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Callouts</h1><p className="lede">Five flavors. Left-border in the semantic color, eyebrow in the same color, body in <code>--fg-1</code>. No icons by default. The rule + eyebrow do the work.</p></section>
             <dl className="specimen-meta"><div><dt>Flavors</dt><dd>info · warn · err · ok · note</dd></div><div><dt>Pattern</dt><dd>4px left rule + matching eyebrow</dd></div></dl>

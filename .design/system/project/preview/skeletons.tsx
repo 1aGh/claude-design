@@ -9,12 +9,16 @@
  * @history     .design/_history/skeletons/
  * @handoff     bunx shadcn add file://./skeletons.registry.json
  */
+import "../colors_and_type.css";
+import "./_layout.css";
+
+import { ThemeToggle } from "./_specimen-controls";
 import "./skeletons.css";
 
 export default function Skeletons() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.skeletons</span><span className="crumbs"><span>maude</span><span>design system</span><span>status</span><span>skeletons</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.skeletons</span><span className="crumbs"><span>maude</span><span>design system</span><span>status</span><span>skeletons</span></span><ThemeToggle /></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Skeletons</h1><p className="lede">Flat <code>--bg-2</code> rectangles with a hairline border. No shimmer animation. The catalog hard-NO on "animations beyond hover" applies. Skeletons say "loading", not "look at me".</p></section>
             <dl className="specimen-meta"><div><dt>Token</dt><dd>--bg-2 fill · --border-subtle outline</dd></div><div><dt>Animation</dt><dd>none. By design.</dd></div></dl>

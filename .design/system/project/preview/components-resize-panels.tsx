@@ -9,12 +9,16 @@
  * @history     .design/_history/components-resize-panels/
  * @handoff     bunx shadcn add file://./components-resize-panels.registry.json
  */
+import "../colors_and_type.css";
+import "./_layout.css";
+
+import { ThemeToggle } from "./_specimen-controls";
 import "./components-resize-panels.css";
 
 export default function ComponentsResizePanels() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.components-resize-panels</span><span className="crumbs"><span>maude</span><span>design system</span><span>platform-desktop</span><span>resize</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.components-resize-panels</span><span className="crumbs"><span>maude</span><span>design system</span><span>platform-desktop</span><span>resize</span></span><ThemeToggle /></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Resize panels</h1><p className="lede">Two-pane split with a draggable gutter. The dev-server's left-tree + right-iframe anatomy. Tree uses Unicode disclosure glyphs (<code>▾</code> / <code>▸</code>) inline, selected={true} row carries the accent stamp.</p></section>
             <dl className="specimen-meta"><div><dt>Layout</dt><dd>260px / 6 / 1fr</dd></div><div><dt>Min/max</dt><dd>180-480 / 6 / open</dd></div></dl>

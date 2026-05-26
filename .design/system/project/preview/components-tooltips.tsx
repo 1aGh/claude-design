@@ -9,10 +9,15 @@
  * @history     .design/_history/components-tooltips/
  * @handoff     bunx shadcn add file://./components-tooltips.registry.json
  */
+
+import "../colors_and_type.css";
+import "./_layout.css";
+
+import { ThemeToggle } from "./_specimen-controls";
 export default function ComponentsTooltips() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.components-tooltips</span><span className="crumbs"><span>maude</span><span>design system</span><span>components</span><span>tooltips</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.components-tooltips</span><span className="crumbs"><span>maude</span><span>design system</span><span>components</span><span>tooltips</span></span><ThemeToggle /></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Tooltips</h1><p className="lede">Inverted-ink chip on hover/focus. Solid bg, no backdrop blur. <code>--dur-soft</code> opacity fade only. Reduced-motion users get an instant chip.</p></section>
             <dl className="specimen-meta"><div><dt>Trigger</dt><dd>hover · focus-visible</dd></div><div><dt>Duration</dt><dd>--dur-soft (180ms)</dd></div></dl>

@@ -9,12 +9,16 @@
  * @history     .design/_history/components-terminal-pane/
  * @handoff     bunx shadcn add file://./components-terminal-pane.registry.json
  */
+import "../colors_and_type.css";
+import "./_layout.css";
+
+import { ThemeToggle } from "./_specimen-controls";
 import "./components-terminal-pane.css";
 
 export default function ComponentsTerminalPane() {
   return (
     <>
-          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.components-terminal-pane</span><span className="crumbs"><span>maude</span><span>design system</span><span>dev</span><span>terminal</span></span><span className="theme-toggle" role="tablist" aria-label="Theme"><button data-theme="light">LIGHT</button><button data-theme="dark">DARK</button></span></header>
+          <header className="specimen-hd"><span className="sku">MDCC-DSN/01.components-terminal-pane</span><span className="crumbs"><span>maude</span><span>design system</span><span>dev</span><span>terminal</span></span><ThemeToggle /></header>
           <main className="specimen">
             <section className="specimen-title"><h1>Terminal pane</h1><p className="lede">A terminal-flavored block for showing CLI session history inside the dev-server or a marketplace install demo. The prompt is amber-rust; the cursor is a solid block, not a blinking line. Reduced-motion respects the catalog hard NO.</p></section>
             <dl className="specimen-meta"><div><dt>Prompt</dt><dd>--accent</dd></div><div><dt>Cursor</dt><dd>solid block, no blink</dd></div></dl>
