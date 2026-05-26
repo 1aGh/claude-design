@@ -3,12 +3,12 @@
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
 **Workflow:** feature-delivery — Maude v1.0 roadmap
-**Phase:** phase-3.7-setup-ds-hardening-and-motion-subsystem
-**Status:** in-progress — workstreams B + C (T3–T14) complete; awaiting /done gate
+**Phase:** —
+**Status:** done — phase-3.7-setup-ds-hardening-and-motion-subsystem shipped 2026-05-26
 **Started:** 2026-05-26
 **Updated:** 2026-05-26
-**Active task:** phase-3.7-setup-ds-hardening-and-motion-subsystem
-**Active plan:** .ai/plans/phase-3.7-setup-ds-hardening-and-motion-subsystem.md
+**Active task:** —
+**Active plan:** —
 
 ## History
 
@@ -17,7 +17,7 @@
 | 2026-05-26 | canvas-figjam-feel | done | Wave 1+2+3 (T1–T33) + Wave 2.7/3.5/3.6 user-feedback batches. Commit `8654dab` (+2293/-89 across 23 files). Scenario 9/9 PASS web-desktop; design-system-guard / a11y-auditor / security-auditor: 0 blockers each, 11 polish warnings deferred to Wave 3.7. Plan archived. |
 | 2026-05-26 | phase-20-canvas-undo-redo | done | T1–T16 complete (T10 Comments deferred per plan as v0.x follow-up). 452/452 bun tests green (+43 new). Release bundle 230 KB → **72.4 KB gz** (under 80 KB budget). DDR-049 written, plan archived. |
 | 2026-05-26 | phase-20-canvas-undo-redo | fix | Post-ship bug fixes (user-reported within hours of commit `274cae4`): (1) annotation undo silently PUT-ed the prior SVG but the iframe's React strokes state didn't refresh — folded `setStrokesState` into `putStrokes`; (2) switching canvases lost all history — refactored to `CommandRecord` (serializable payload) + per-canvas `window.top` store. DDR-049 rev 2 supersedes the "per-iframe-ephemeral" rule. 461/461 bun tests green (+9 net). |
-| 2026-05-26 | phase-3.7-setup-ds-hardening-and-motion-subsystem | in-progress | T3–T14 (workstreams B + C) complete. T0–T2 had already shipped (commits `1ff39de`, `0f6b847`). canvas-lib motion subsystem (`<MotionDemo>` × 8 roles + helpers + `motion/react` peer-dep), motion.tsx.tpl + motion.css.tpl + _motion-readme.md.tpl + _components.css.tpl, SUB-AGENT-PROMPTS.md (extracted from SKILL.md + 3 mandatory safety blocks: ANIMATION SAFETY, RELATIVE-URL SAFETY, PLACEHOLDER POLICY), SKILL.md A4 bypass discipline + A5 4-kola AskUserQuestion gate, handoff.ts motion-inline + force-add `motion` dep, motion-critic auto-route doc, completeness-critic V21+V22 motion checks, design-system-keeper Pass A.5 motion-reinvention, scripts/migrate-motion-specimen.ts codemod, slash command doc sweep (setup-ds/new/edit/critic), 7 new canvas-lib-motion bun tests. 468/468 bun tests green. tsc clean modulo pre-existing baseline (api.ts + runtime-bundle.ts(314) per CLAUDE.md). Awaiting /flow:done gate. |
+| 2026-05-26 | phase-3.7-setup-ds-hardening-and-motion-subsystem | done | Commit `38b299f` (+1765/-12 across 24 files). T3–T14 (workstreams B + C) shipped; T0–T2 had landed in `1ff39de`. T0–T2 had already shipped (commits `1ff39de`, `0f6b847`). canvas-lib motion subsystem (`<MotionDemo>` × 8 roles + helpers + `motion/react` peer-dep), motion.tsx.tpl + motion.css.tpl + _motion-readme.md.tpl + _components.css.tpl, SUB-AGENT-PROMPTS.md (extracted from SKILL.md + 3 mandatory safety blocks: ANIMATION SAFETY, RELATIVE-URL SAFETY, PLACEHOLDER POLICY), SKILL.md A4 bypass discipline + A5 4-kola AskUserQuestion gate, handoff.ts motion-inline + force-add `motion` dep, motion-critic auto-route doc, completeness-critic V21+V22 motion checks, design-system-keeper Pass A.5 motion-reinvention, scripts/migrate-motion-specimen.ts codemod, slash command doc sweep (setup-ds/new/edit/critic), 7 new canvas-lib-motion bun tests. 468/468 bun tests green. tsc clean modulo pre-existing baseline (api.ts + runtime-bundle.ts(314) per CLAUDE.md). Awaiting /flow:done gate. |
 
 ## Execution Progress — phase-3.7-setup-ds-hardening-and-motion-subsystem (2026-05-26)
 

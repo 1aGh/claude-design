@@ -1,5 +1,5 @@
 {
-  "generated": "2026-05-26T11:35:25.825Z",
+  "generated": "2026-05-26T12:50:10.314Z",
   "currentPhase": null,
   "phases": [
     {
@@ -100,6 +100,17 @@
       "planPath": ".ai/plans/archive/phase-3.6-canvas-tsx-format.md",
       "archived": true,
       "phaseKey": "3.6"
+    },
+    {
+      "id": "phase-3.7-setup-ds-hardening-and-motion-subsystem",
+      "title": "Phase 3.7 — `/design:setup-ds` hardening + motion subsystem unification",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Two interlocked workstreams, one phase, because the visual-sanity gate (workstream A) is the same screenshot pass that catches the motion regressions workstream B prevents — splitting them would re...",
+      "planPath": ".ai/plans/archive/phase-3.7-setup-ds-hardening-and-motion-subsystem.md",
+      "archived": true,
+      "phaseKey": "3.7"
     },
     {
       "id": "phase-6.5-export",
@@ -386,17 +397,6 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
-    },
-    {
-      "id": "phase-3.7-setup-ds-hardening-and-motion-subsystem",
-      "title": "Phase 3.7 — `/design:setup-ds` hardening + motion subsystem unification",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Two interlocked workstreams, one phase, because the visual-sanity gate (workstream A) is the same screenshot pass that catches the motion regressions workstream B prevents — splitting them would re...",
-      "planPath": ".ai/plans/phase-3.7-setup-ds-hardening-and-motion-subsystem.md",
-      "archived": false,
-      "phaseKey": "3.7"
     },
     {
       "id": "phase-8-live-collaboration-yjs-lan",

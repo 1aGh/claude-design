@@ -474,3 +474,25 @@ Skip the 5-platform matrix — dev-server has no mobile/native surface.
 - Tasks 8-13 (critic + agent doc updates) are read-mostly-write-little — single agent can sweep them.
 - Task 14 (tests + manual smoke) is the validation gate — runs last.
 - Token-cost expectation: this phase is ~12 files touched + 6 new files. With AST-aware edit paths from Phase 3.6, individual task cost should average ~30-50 K tokens; total phase ~600 K. Split across 2 sessions if context pressure hits.
+
+---
+
+## Retro (2026-05-26, commit `38b299f`)
+
+Closed across 2 sessions per plan's "split if context pressure hits" guidance. Session 1 (`1ff39de`) landed T0–T2 + project-DS motion specimen rewrite (`0f6b847`); session 2 (`38b299f`) landed T3–T14.
+
+**What worked**
+- Extracting `SUB-AGENT-PROMPTS.md` out of SKILL.md *with* the three MANDATORY safety blocks bundled was the right shape — adding them inline to SKILL.md would have buried them under bootstrap orchestration. The sibling-file pattern matches `_pastier-probe-templates.md` so cold readers grok the convention.
+- `<MotionDemo>` design — bounded geometry baked into the component (inline `overflow: hidden` on the root) makes the sparkle-on-tile regression structurally impossible. A future agent CANNOT ship the studyfi-imprint failure mode through this surface.
+- Test choice — locked the 8-role vocabulary with a structural assertion against the source string AND the `buildLibMap` walk. Pattern catches both renames (vocabulary stays grep-able for critics) and refactors that lose transitive deps.
+- `_components.css.tpl` motion role classes — same 8-role vocabulary at the CSS layer means a canvas can opt into the discipline without the JS dep. Tree-shake-friendly default.
+
+**What didn't**
+- Phase 3.7 added `motion` + `motion/react` to `RUNTIME_PACKAGES` (the externals list) but **forgot to update the importmap in `_shell.html`** — the two are hand-maintained, not derived. Smoke ran clean structurally (all PNGs reported OK because agent-browser's mount probe passes for non-canvas pages too) but the actual canvas iframe got `TypeError: Failed to resolve module specifier "motion/react"`. Caught only because user ran a motion-using canvas live. **Fix: when adding to `RUNTIME_PACKAGES`, ALSO add to `_shell.html` importmap. A future refactor should derive the importmap from RUNTIME_PACKAGES at server-start to make the two impossible to drift apart.** DDR-worthy if the importmap is touched again.
+- Concurrent commit `3f586e4` (phase-20 follow-up bug fix) silently reverted my canvas-lib.tsx motion additions mid-session. Recovery was straightforward (re-apply via Edit; tests pin shape) but cost ~15 min of confusion. Lesson: when working alongside an active concurrent commit train, `git status` checks more often than the heartbeat of completed tasks would suggest.
+- DDR-049 slug double-claim — same date, same phase number conflict. Both files coexist; cross-links work; but the next time DDR numbers are claimed, the script should verify uniqueness before write. Optional CI check.
+
+**What to change next time**
+- **For `/flow:plan`:** when a phase touches `RUNTIME_PACKAGES`, the plan template should add an explicit "importmap also updated?" line item. The two-list-must-stay-in-sync pattern is dev-server-internal load-bearing knowledge that's invisible from the file diff alone.
+- **For `/flow:execute`:** the DDR-021 smoke gate fires on dev-server changes but uses agent-browser's mount probe as success criterion. That probe is too lenient — it returns `OK` when ANY body text is present (acceptable for non-canvas pages, false-positive for canvases that loaded the shell but failed mid-import). Add a console-error probe to the agent-browser path (already in playwright fallback). Bug class: "build green ≠ canvas actually mounted" — exactly what DDR-021 was meant to prevent.
+- **For `/flow:done`:** ran the smoke gate via the slash skill at the end, NOT during `/flow:execute` step 3.5 (which the plan invocation should have triggered). The auto-fire path should be tightened so executors don't end up with the gate as a manual afterthought.
