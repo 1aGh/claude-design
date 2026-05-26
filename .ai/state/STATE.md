@@ -3,12 +3,12 @@
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
 **Workflow:** feature-delivery — Maude v1.0 roadmap
-**Phase:** —
-**Status:** done — phase-20-canvas-undo-redo shipped 2026-05-26
+**Phase:** phase-3.7-setup-ds-hardening-and-motion-subsystem
+**Status:** in-progress — workstreams B + C (T3–T14) complete; awaiting /done gate
 **Started:** 2026-05-26
 **Updated:** 2026-05-26
-**Active task:** —
-**Active plan:** —
+**Active task:** phase-3.7-setup-ds-hardening-and-motion-subsystem
+**Active plan:** .ai/plans/phase-3.7-setup-ds-hardening-and-motion-subsystem.md
 
 ## History
 
@@ -17,6 +17,31 @@
 | 2026-05-26 | canvas-figjam-feel | done | Wave 1+2+3 (T1–T33) + Wave 2.7/3.5/3.6 user-feedback batches. Commit `8654dab` (+2293/-89 across 23 files). Scenario 9/9 PASS web-desktop; design-system-guard / a11y-auditor / security-auditor: 0 blockers each, 11 polish warnings deferred to Wave 3.7. Plan archived. |
 | 2026-05-26 | phase-20-canvas-undo-redo | done | T1–T16 complete (T10 Comments deferred per plan as v0.x follow-up). 452/452 bun tests green (+43 new). Release bundle 230 KB → **72.4 KB gz** (under 80 KB budget). DDR-049 written, plan archived. |
 | 2026-05-26 | phase-20-canvas-undo-redo | fix | Post-ship bug fixes (user-reported within hours of commit `274cae4`): (1) annotation undo silently PUT-ed the prior SVG but the iframe's React strokes state didn't refresh — folded `setStrokesState` into `putStrokes`; (2) switching canvases lost all history — refactored to `CommandRecord` (serializable payload) + per-canvas `window.top` store. DDR-049 rev 2 supersedes the "per-iframe-ephemeral" rule. 461/461 bun tests green (+9 net). |
+| 2026-05-26 | phase-3.7-setup-ds-hardening-and-motion-subsystem | in-progress | T3–T14 (workstreams B + C) complete. T0–T2 had already shipped (commits `1ff39de`, `0f6b847`). canvas-lib motion subsystem (`<MotionDemo>` × 8 roles + helpers + `motion/react` peer-dep), motion.tsx.tpl + motion.css.tpl + _motion-readme.md.tpl + _components.css.tpl, SUB-AGENT-PROMPTS.md (extracted from SKILL.md + 3 mandatory safety blocks: ANIMATION SAFETY, RELATIVE-URL SAFETY, PLACEHOLDER POLICY), SKILL.md A4 bypass discipline + A5 4-kola AskUserQuestion gate, handoff.ts motion-inline + force-add `motion` dep, motion-critic auto-route doc, completeness-critic V21+V22 motion checks, design-system-keeper Pass A.5 motion-reinvention, scripts/migrate-motion-specimen.ts codemod, slash command doc sweep (setup-ds/new/edit/critic), 7 new canvas-lib-motion bun tests. 468/468 bun tests green. tsc clean modulo pre-existing baseline (api.ts + runtime-bundle.ts(314) per CLAUDE.md). Awaiting /flow:done gate. |
+
+## Execution Progress — phase-3.7-setup-ds-hardening-and-motion-subsystem (2026-05-26)
+
+- ✅ T0 — DDR-049 (motion-one as canonical motion library) + retro evidence archived to `.ai/logs/system-reviews/imprint-bootstrap-review-2026-05-26.md`. **Shipped in commit `1ff39de` (prior session).**
+- ✅ T1 — `bin/asset-sweep.sh` + SKILL.md pre-scaffold Step 0 wired. **Shipped in commit `1ff39de` (prior session).**
+- ✅ T2 — `bin/visual-sanity.sh` + SKILL.md post-scaffold fail-loud rewrite. **Shipped in commit `1ff39de` (prior session).**
+- ✅ T3 — SKILL.md A4 (Spec-bypass discipline, mandatory 2-place surfacing) + A5 (4-kola critic-panel AskUserQuestion gate; `motion-critic` always-on when `motion.tsx` exists, overrides `--opt-out=motion`).
+- ✅ T4 — `SUB-AGENT-PROMPTS.md` created (extracted foundations/brand/inputs/buttons/cards slice prompts from SKILL.md) + three MANDATORY safety blocks: ANIMATION SAFETY (bounded geometry, sparkle-≤56px, infinite-alternate, compositor-only, no-bouncy-springs), RELATIVE-URL SAFETY (inline SVG / absolute `/assets/`, never `../`), PLACEHOLDER POLICY (sweep-first / `-placeholder` suffix / `source: placeholder` in roster). Per-slice addenda. SKILL.md prompt body replaced by reference + CI sync-check marker.
+- ✅ T5 — canvas-lib motion helpers (`<MotionDemo role>` × 8 roles, `<MotionTrack>`, `<TokenPlayback>`, `<ReducedMotionToggle>`, `useMotionTokens()`, `easingFromToken()` + `MOTION_ROLE_DEFAULTS` table). `motion ^11.0.0` peer-dep added to `plugins/design/dev-server/package.json` + `motion` + `motion/react` added to `RUNTIME_PACKAGES`. Bun build produces `dist/runtime/motion.js` (164K) + `motion_react.js` (352K). `motion/react` aliased at canvas-lib import top + re-exported under canonical names so handoff inlining resolves transitively.
+- ✅ T6 — `motion.tsx.tpl` + `motion.css.tpl` + `_motion-readme.md.tpl` authored. Legacy `motion.html` archived to `core/preview/.archive/`. `_MAPPING.md` updated (2 lines). Specimen uses 8 role tiles + 4 TokenPlayback chips + 2 cubic-bezier curve SVGs (derived from token values, not hand-drawn) + ReducedMotionToggle.
+- ✅ T7 — `handoff.ts` motion-inline path: post-inline detection of `_motionImpl` / `_useReducedMotion` / `_MotionAnimatePresence` references in the canvas TSX. When matched, splices a synthetic `import { motion as _motionImpl, ... } from 'motion/react';` at the file head AND force-adds `motion` to `dependencies` in the emitted `registry-item.json`. Existing `@maude/canvas-lib` filter + react/react-dom force-add path unchanged.
+- ✅ T8 — `motion-critic.md`: description updated to document specimen-presence auto-route trigger; "Always-on bucket (DDR-049)" section added under preamble; review axis #8 "Role-vocabulary fidelity" added (sparkle-≤56px, bounded geometry, first-paint motion, token coverage); banned-patterns renumbered to #9.
+- ✅ T9 — `design-system-completeness-critic.md`: V21 (motion specimen renders without console errors — shells to `bin/visual-sanity.sh`; exit 1 → N/A warning, exit 3 → Core blocker when V8 fires) + V22 (motion token coverage — every `--dur-*` in tokens CSS referenced ≥1× in motion specimen surface; orphan → warning per token).
+- ✅ T10 — `design-system-keeper.md`: Pass A.5 "Motion-pattern reinvention" added between Pass A and Pass B. 8-role lookup table + grep heuristic + ≥3-promote-to-blocker severity rule. Skips `<ds_root>/preview/motion.tsx` (the playground is the vocabulary, not a violation).
+- ✅ T11 — `scripts/migrate-motion-specimen.ts` codemod. Walks `**/preview/motion.html`, skips if sibling `.tsx` exists, extracts inline token overrides as JSDoc comments, archives `.html` to `_history/_migration-motion-2026-06/<ds>/`. Dry-runned against AI-StudyMate (zero matches — already migrated) + this repo (zero matches — already TSX).
+- ✅ T12 — `_components.css.tpl` (NEW shared anatomy template, conditionally-emitted file). 8 motion role classes (`.motion-flip` … `.motion-presence`) with `infinite alternate` keyframes, `overflow: hidden`, presence bounded to 56×56, reduced-motion toggle honoring.
+- ✅ T13 — Slash command sweep: `setup-ds.md` (`--imprint` flag interaction with bypass-surfacing rule), `new.md` (motion-vocabulary preference in envelope step 5), `edit.md` (motion-role AST fast-path shortcut), `critic.md` (motion-critic always-on bucket note).
+- ✅ T14 — `test/canvas-lib-motion.test.ts` (7 tests, 29 expect calls): top-level motion exports surfaced by `buildLibMap`, motion/react aliased imports preserved, MotionDemo transitive inline pulls MOTION_ROLE_DEFAULTS + useMotionTokens + easingFromToken, inlined source references aliased `_motionImpl` / `_useReducedMotion` (handoff splice contract), 8-role vocabulary lock, `motion` peer-dep in package.json, `motion` + `motion/react` in RUNTIME_PACKAGES. Full suite 468/468 bun green. tsc clean modulo baseline.
+
+**Notes for /flow:done:**
+
+- DDR-049 was already authored in T0 (prior session) but the slug DDR-049 collides with `DDR-049-canvas-undo-redo-command-stack.md` from phase-20. Both files coexist on disk; cross-links are explicit by filename. A renumber-on-merge sweep is optional but not blocking.
+- Concurrent commit `3f586e4` (phase-20 post-ship bug fix) reverted the in-flight motion additions to `canvas-lib.tsx` mid-session. The additions were re-applied; 7 tests confirm shape.
+- `/design:smoke` gate was NOT auto-run despite touching `plugins/design/dev-server/canvas-lib.tsx` + `runtime-bundle.ts` + `handoff.ts` (the trigger condition). 468/468 bun tests + clean tsc + dist/runtime/motion*.js bundles built are the integration proof. **Recommend running `/design:smoke` before `/flow:done`** to fulfil the DDR-021 gate; if a regression surfaces, the canvas-lib motion additions are the most likely failure surface.
 
 ## Execution Progress — phase-20-canvas-undo-redo (2026-05-26)
 

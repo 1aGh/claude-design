@@ -65,6 +65,26 @@ When `config.json.designSystems[]` has more than one entry:
 
 ## Bootstrap flow (create / extend / re-bootstrap a DS)
 
+### Spec-bypass discipline (mandatory — applies to every BOOTSTRAP step below)
+
+> **The autonomy permit covers execution speed, not scope renegotiation.** When the user said `pokracuj autonomně` (or equivalent) earlier in the session, when the brief contradicts the spec, when `--quick` / `--imprint` flags request an abbreviated path, or when an upstream check (asset sweep, dev-server boot, visual sanity) fails and a continuation path exists — the agent MAY deviate, but it MUST surface the deviation in two places, every time, without exception:
+>
+> 1. **A 1-line note in the chat:** `Deviating from skill spec: <step name> — <reason>. Say 'stop' to abort, otherwise continuing.`
+> 2. **A row appended to `<designRoot>/_history/_system/<target_ds>-bypass-log.md`** with format `\| <ISO timestamp> \| <step> \| <reason> \| <recovery taken> \|`. Create the file if missing with a 2-line markdown header.
+>
+> Closes D-1 + D-5 in the imprint-bootstrap retro (`.ai/logs/system-reviews/imprint-bootstrap-review-2026-05-26.md`): the studyfi bootstrap silently elided Stage 2 research because the agent inferred imprint mode meant "skip research". Silent elision is the failure mode this rule exists to eliminate.
+
+| Bypass-routine type | Surfacing |
+| --- | --- |
+| `--quick` flag skips Kolo 2-3 critics | 1-line chat + log row. No `AskUserQuestion` (user asked for `--quick` explicitly). |
+| `--imprint` flag steers Stage 2 research toward a brand prior | 1-line chat + log row. The brand-prior steer is the bypass payload. |
+| Dev-server boot fails during visual sanity | `AskUserQuestion` (non-routine — user couldn't predict the failure). Selection logged. |
+| Brief contradicts Stage 0 scope (e.g. user picked Pro Tool but brief says "playful tactile bouncy") | `AskUserQuestion` resolving which signal wins. Selection logged. |
+| Asset-sweep returns multiple hits for one noun | `AskUserQuestion` picking the production asset. Selection logged. |
+| Sub-mode forces a Stage skip (`additional-ds` skipping Stage 0) | 1-line chat + log row. Spec-defined behavior, but still log it. |
+
+The bypass log is per-DS (path embeds `<target_ds>`) so multi-DS projects don't cross-pollute.
+
 ### Pre-Flight (light)
 
 Bootstrap-mode Pre-Flight is **minimal** — checks only hard deps + presence of skeleton config. Rich environment onboarding (soft dep hints, install offers, CLAUDE.md / .ai/ recommendations) is the responsibility of `/design:init` (which the bootstrap entry-point auto-invokes when needed).
@@ -639,7 +659,11 @@ After Batch A writes, the main agent reads the freshly-written `colors_and_type.
 
 Group the remaining files into **5–8 slices** (per the `fanout:` block of the roster). For each slice, spawn one `general-purpose` sub-agent. **Fire all slices in a single message** (multiple Agent tool calls in parallel) — that's the whole point.
 
-**Sub-agent prompt template** (use verbatim, substitute the slice details):
+**Sub-agent prompt template — loaded from `plugins/design/templates/design-system-inspiration/SUB-AGENT-PROMPTS.md`** (extracted in Phase 3.7 / DDR-049 so the template can carry the three MANDATORY safety blocks — ANIMATION SAFETY, RELATIVE-URL SAFETY, PLACEHOLDER POLICY — without bloating this file). Read `SUB-AGENT-PROMPTS.md` once at scaffold-time; the sections under "MANDATORY SAFETY BLOCKS" are appended verbatim to every slice prompt, and the section under "Sub-agent prompt template" is the body. Per-slice addenda (foundations / brand + voice / core components / etc.) are sourced from the "Per-slice prompt addenda" section of that file.
+
+> **Sync rule (CI-enforceable).** SKILL.md MUST literally contain the string `SUB-AGENT-PROMPTS.md` (this line is the marker). Renaming the sibling file without updating this reference is the drift risk Phase 3.7's risk register flagged.
+
+The legacy inline template is preserved below for diff reference and as a fallback when the sibling file is unreadable. **Prefer the sibling file** — it carries the safety blocks; the inline copy intentionally does NOT (so an agent that loads only this file gets a clear "missing safety blocks" signal and is prompted to read the sibling).
 
 ```
 You are scaffolding part of a design system. Write {{N}} specimen TSX files in
@@ -875,9 +899,22 @@ Additional specimens (capture when scaffolded): `empty-state` (brand/voice momen
 
 **Read each captured PNG with the `Read` tool** so they're in your visual context. Direct visual scrutiny BEFORE you spawn the aesthetic critics — if the accent is obviously the wrong hue, the motion specimen is blank on first frame, or a logo shows the broken-image icon, fix it in source NOW rather than asking critics to confirm what you can already see.
 
-### 4 kola značky — critic panel (mandatory)
+### 4 kola značky — critic panel (mandatory; user picks coverage)
 
 > **The completeness-critic does not catch aesthetic gaps.** It returns `pass` for generic public-component-library output. This step is non-negotiable, especially when discovery captured strong references in the research payload.
+
+**Panel-coverage gate (explicit choice, not inference — closes D-5).** Before spawning critics, surface a single `AskUserQuestion`:
+
+```
+Q: Which critic panel do you want to run?
+   1. Full 4 kola (recommended) — Kolo 1 + 2 + 3, all seven critics. ~2-3 min.
+   2. Imprint-only — Kolo 1 + a11y + motion-critic (if motion.tsx exists). ~45s. Skip aesthetics.
+   3. Custom subset — pick critics manually.
+```
+
+Selection is recorded to the bypass log (rows 2 + 3 are spec deviations). **Imprint-only** still includes `motion-critic` when `system/<ds>/preview/motion.tsx` exists — motion-critic is in the always-on bucket alongside `a11y-auditor` whenever a motion specimen is present (DDR-049). The `--opt-out=motion` scope flag does NOT override this; the only way to skip motion-critic is to not scaffold the motion specimen at all.
+
+When the user accepted `--quick` earlier, default to option 2 but STILL surface the question (the user can upgrade to Full at this point — a `--quick` flag was per-stage discipline, not blanket scope-renegotiation; closes D-5).
 
 The seven critic agents are grouped into Pastier's three brand-quality kola (Frekvence is intentionally dropped — outside DS surface). **Kolo 1 runs first** (Srozumitelnost — structural floor must hold before aesthetics matter); **Kola 2 + 3 fire in parallel** in a single message, multiple Agent calls. Default specimen target is `colors-accent.tsx` (the accent showcase); when the bootstrap produced a `ui_kits-desktop-showcase.tsx` run a second pass on it too — it's the highest-fidelity "DS in use" artifact.
 

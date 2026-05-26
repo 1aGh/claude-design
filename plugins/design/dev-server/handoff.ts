@@ -554,6 +554,16 @@ export async function emitRegistryItem(opts: EmitOptions): Promise<RegistryItem>
   // The trick: replace `DesignCanvas`, `DCArtboard`, `DCSection` in the
   // libMap with their static-frame variants before BFS. The static variants
   // have empty deps, so the transitive walk never reaches the engine code.
+  //
+  // Phase 3.7 / DDR-049 — motion helpers (MotionDemo, MotionTrack,
+  // TokenPlayback, ReducedMotionToggle, useMotionTokens, easingFromToken)
+  // depend on aliased imports from motion/react (_motionImpl,
+  // _useReducedMotion, _MotionAnimatePresence). When any of those land in the
+  // inlined output, splice the matching motion/react import line at the file
+  // head AND force-add "motion" to the registry-item's dependencies. The
+  // consumer's npm install + Next.js bundler resolves motion → bunx shadcn
+  // add lands an animated component with zero manual wiring.
+  let motionUsed = false;
   if (opts.designRoot) {
     const libPath = canvasLibPath(opts.designRoot);
     const libFile = Bun.file(libPath);
@@ -563,6 +573,19 @@ export async function emitRegistryItem(opts: EmitOptions): Promise<RegistryItem>
       applyHandoffStaticOverrides(libMap);
       const inlined = inlineUsedExports(tsx, libMap);
       tsx = inlined.content;
+      // Detect motion-helper usage from the inlined surface (the body refs
+      // _motionImpl / _useReducedMotion / _MotionAnimatePresence). We probe
+      // the post-inline source so we don't false-positive on a canvas that
+      // imports a non-motion helper sharing a name prefix.
+      motionUsed =
+        /\b_motionImpl\b/.test(tsx) ||
+        /\b_useReducedMotion\b/.test(tsx) ||
+        /\b_MotionAnimatePresence\b/.test(tsx);
+      if (motionUsed) {
+        const motionImport =
+          "import { motion as _motionImpl, useReducedMotion as _useReducedMotion, AnimatePresence as _MotionAnimatePresence } from 'motion/react';\n";
+        tsx = `${motionImport}${tsx}`;
+      }
     }
   }
 
@@ -578,6 +601,7 @@ export async function emitRegistryItem(opts: EmitOptions): Promise<RegistryItem>
   const depSet = new Set(depsFiltered);
   depSet.add('react');
   depSet.add('react-dom');
+  if (motionUsed) depSet.add('motion');
   const finalDeps = [...depSet].sort();
 
   // Compute slug for `name` field — kebab-case of the file stem.

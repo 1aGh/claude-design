@@ -53,6 +53,13 @@ export const RUNTIME_PACKAGES = [
   // (DDR-024 deferred path) and any high-end designer-tool overlays a canvas
   // wants to draw via WebGL.
   'pixi.js',
+  // Phase 3.7 / DDR-049 — Motion One (motion/react) is the canonical motion
+  // library for the canvas-lib + handoff pipeline. Externalised here so the
+  // canvas-lib motion helpers (<MotionDemo>, etc.) resolve through the same
+  // importmap path; consumers of /design:handoff still see a "motion" peer
+  // dep declaration on the registry-item.json output.
+  'motion',
+  'motion/react',
 ] as const;
 
 export type RuntimePackage = (typeof RUNTIME_PACKAGES)[number];

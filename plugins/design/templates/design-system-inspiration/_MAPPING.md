@@ -37,7 +37,7 @@ Every project — regardless of discovery — gets:
 - `core/preview/colors-{text,surfaces,accent}.html` → 3 token specimens
 - `core/preview/type-scale.html` → 1 typography specimen
 - `core/preview/spacing-scale.html` → 1 spacing specimen
-- `core/preview/motion.html` → 1 motion specimen
+- `core/preview/motion.tsx.tpl` + `motion.css.tpl` + `_motion-readme.md.tpl` → 1 motion specimen (Phase 3.7 / DDR-049 — TSX playground with 8 role tiles via `<MotionDemo>` from `@maude/canvas-lib`; legacy `.html` archived to `.archive/`)
 - `core/preview/components-{buttons,cards,inputs}.html` → 3 component specimens
 
 **Core minimum: 10 preview specimens (excluding `.tpl` docs and `_layout.css`).**
@@ -248,7 +248,7 @@ The skill batches scaffold writes by dependency closure so independent files can
 | Dir | `dependency_closure` |
 |---|---|
 | `core/colors_and_type.css.tpl`, `core/SKILL.md.tpl`, `core/README.*.tpl`, `core/config.json.tpl`, `core/preview/_layout.css` | `root` |
-| `core/preview/colors-{text,surfaces,accent}.html`, `type-scale.html`, `spacing-scale.html`, `motion.html` | `tokens-only` |
+| `core/preview/colors-{text,surfaces,accent}.html`, `type-scale.html`, `spacing-scale.html`, `motion.tsx.tpl` + `motion.css.tpl` | `tokens-only` |
 | `foundations/*.html` | `tokens-only` |
 | `core/preview/components-{buttons,cards,inputs}.html` | `tokens + chrome + template` |
 | `universal/*.html`, `universal/empty-state.html.tpl`, `universal/logo.html` | `tokens + chrome + template` |

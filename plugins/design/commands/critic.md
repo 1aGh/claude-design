@@ -148,7 +148,7 @@ Write `<designRoot>/_history/<slug>/critique/<NNN>-PANEL.md` (schema in `skills/
 | `graphic-design-critic` | Composition, hierarchy, balance, density, rhythm, white-space, gestalt. |
 | `brand-critic` | Logo integrity, asset ladder, voice/tone alignment, photography style, brand drift. |
 | `typography-critic` | Pairings, scale ladder, leading, measure, tracking, numerals, vertical rhythm, fallbacks. |
-| `motion-critic` | Duration tokens, easing, choreography, prefers-reduced-motion, compositor properties. |
+| `motion-critic` | Duration tokens, easing, choreography, prefers-reduced-motion, compositor properties, role-vocabulary fidelity (Phase 3.7 / DDR-049 — 8-role canvas-lib vocabulary, bounded geometry, sparkle-≤56px, motion specimen looping on first paint). **Always-on bucket alongside `a11y-critic` whenever `system/<ds>/preview/motion.tsx` exists — `--opt-out=motion` cannot disable it during DS bootstrap.** |
 | `a11y-critic` | WCAG 2.1 AA — contrast, keyboard, focus, landmarks, labels, touch targets, ARIA. **Always in panel.** |
 | `copy-critic` | Microcopy, action verbs, empty/error states, tone, casing, i18n readiness. |
 | `frontend-critic` | JSX patterns, semantic HTML, hooks, keys, performance gotchas, hydration. |

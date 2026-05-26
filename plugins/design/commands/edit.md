@@ -203,6 +203,8 @@ It skips:
 
 **When the AST path does NOT run** (no selection, v=1 selection, multi-element feedback, structural change), fall through to step 3.5 + step 5 unchanged.
 
+**Motion-role feedback shortcut (Phase 3.7 / DDR-049).** When feedback names a motion role (`"make the panel snappier"`, `"slower flip"`, `"this should use spring"`) AND the selected element is a `<MotionDemo role="…">`, the AST fast-path can target the `role` prop directly: `ATTR=role`, `NEW_VALUE="<one of: flip|panel|route|soft|spring|scroll|drag|presence>"`. This is faster than a full-file rewrite and keeps the canvas-lib vocabulary intact (the role-→-token mapping in canvas-lib's `MOTION_ROLE_DEFAULTS` already encodes the speed change). If the feedback names a NEW role outside the 8-vocabulary, fall through to the full-file path (the request is structural, not a prop swap).
+
 The token-cost win is the headline result: the orchestrator reads ~5 KB of canvas state (`_active.json` excerpt + one selection record) instead of the full canvas TSX, and writes 0 bytes of file diff outside the targeted attribute byte range. Tracked against the Phase 3.6 budget "< 30 % of pre-phase token cost on a 1-element edit."
 
 ### 3.5 Pre-edit context screenshot — **mandatory when any of**:

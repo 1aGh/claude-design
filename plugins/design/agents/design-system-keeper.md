@@ -97,6 +97,48 @@ then it's a `pattern-reinvention` warning. Otherwise downgrade to an `info` line
   If a divergence is intentional, leave a one-line JSX comment in the candidate explaining what `.pcard` does that `.dc-card` doesn't.
 ```
 
+## Pass A.5 — Motion-pattern reinvention (Phase 3.7 / DDR-049)
+
+**Goal:** when the candidate canvas hand-rolls `@keyframes` / `transition` declarations for a role that already exists in canvas-lib's `<MotionDemo>` vocabulary, surface a pattern-reinvention warning urging the author to lift the helper instead of re-deriving from tokens.
+
+**Step 1 — Detect hand-rolled motion in the candidate:**
+
+```bash
+grep -nE '@keyframes\s+([a-zA-Z_-]+)|transition\s*:[^;]*var\(--dur-' "$CANVAS_PATH"
+```
+
+Captures: `(line_no, keyframe_name_or_transition_decl)`.
+
+**Step 2 — Compare against the canvas-lib role table (8 roles, fixed):**
+
+| Role | Token | Easing | Keyframe shape (paraphrase) |
+| --- | --- | --- | --- |
+| `flip` | `--dur-flip` | `--ease-out` | `y: [0, -12, 0]` (or single-shot `translateY`) |
+| `panel` | `--dur-panel` | `--ease-in-out` | `x: [-80, 0, -80]` / drawer slide |
+| `route` | `--dur-route` | `--ease-out` | `opacity: [0, 1, 0], scale: [0.92, 1, 0.92]` |
+| `soft` | `--dur-soft` | `--ease-out` | `opacity: [0, 1, 0]` |
+| `spring` | `--dur-panel` | spring | `y: [0, -16, 0]` (spring) |
+| `scroll` | `--dur-route` | `--ease-in-out` | `x: [0, 24, 0]` |
+| `drag` | `--dur-flip` | `--ease-out` | `rotate: [0, 4, 0]` |
+| `presence` | `--dur-soft` | `--ease-out` | sparkle on ≤56px elements only |
+
+Match heuristic:
+- `@keyframes flip { … }` whose body translates `y` / `transform` is a `flip` reinvention.
+- `transition: transform var(--dur-panel) var(--ease-in-out)` is a `panel` reinvention.
+- Any `@keyframes` using `scale: 0 → 1 → 0` or `opacity: 0 → 1 → 0` on an element larger than 56px in any dimension is BOTH a reinvention AND a bounded-geometry violation (cross-reference with `motion-critic`'s sparkle-≤56px rule).
+
+**Step 3 — Surface findings:** one warning per match. Format:
+
+```
+- motion-reinvention | line N — `@keyframes flip` re-implements canvas-lib role `flip`
+  Lift `<MotionDemo role="flip" />` from `@maude/canvas-lib` instead.
+  If a divergence is intentional (e.g. a one-off marketing animation that doesn't fit the 8-role vocabulary), leave a one-line JSX comment explaining why.
+```
+
+**Severity:** warning by default. Stacking ≥3 motion-reinventions on a single canvas promotes to blocker with `top_blockers[].category = "motion-mass-reinvention"`, matching the existing pattern-reinvention severity ladder (Phase 3.7 deliberately uses the same threshold so the keeper doesn't accumulate a confusing per-pass tier ladder).
+
+The motion specimen itself (`<ds_root>/preview/motion.tsx`) is **exempt** — that file's job is to be the playground that exercises the vocabulary; it doesn't need to lift from itself. Skip Pass A.5 when `CANVAS_PATH` ends with `/preview/motion.tsx`.
+
 ## Pass B — Token-usage audit
 
 **Goal:** for every `var(--TOKEN)` usage in the candidate canvas, check that the property it sits on matches the role the DS Token usage guide assigns to that token. Surface mismatches as warnings.

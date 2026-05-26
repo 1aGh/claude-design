@@ -33,6 +33,7 @@
     "jszip": "^3.10.1",
     "lightningcss": "^1.27.0",
     "magic-string": "^0.30.21",
+    "motion": "^11.0.0",
     "oxc-parser": "^0.131.0",
     "pdf-lib": "^1.17.1",
     "pixi.js": "^8",

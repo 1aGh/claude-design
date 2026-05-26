@@ -81,6 +81,12 @@ import {
   useState,
 } from 'react';
 
+import {
+  AnimatePresence as _MotionAnimatePresence,
+  motion as _motionImpl,
+  useReducedMotion as _useReducedMotion,
+} from 'motion/react';
+
 import { CanvasShell } from './canvas-shell.tsx';
 import {
   buildMoveArtboardsRecord,
@@ -2210,3 +2216,358 @@ export function useArtboardBounds(ref: RefObject<HTMLElement | null>): {
 // Re-export `useRef` so `useArtboardBounds` consumers can keep a single
 // import line from `@maude/canvas-lib`.
 export { useRef };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Motion subsystem (Phase 3.7 / DDR-049 — Motion One is the canonical runtime)
+//
+// These helpers are tree-shakeable. A canvas that does not import any of them
+// pays no bundle cost (motion/react is externalised via RUNTIME_PACKAGES, so
+// even when imported the byte cost lives in a single shared runtime bundle,
+// not per-canvas).
+//
+// Roles map 1:1 to the 8 motion-vocabulary names enforced by motion-critic +
+// design-system-keeper. Each role binds to a DS duration + easing token from
+// colors_and_type.css; useMotionTokens() reads the live CSS custom property
+// values so the binding survives token edits without rebuilding canvas-lib.
+//
+// Bounded-geometry guarantee — every <MotionDemo> root sets `overflow: hidden`
+// in inline style. That defends against sparkle-on-tile overflow regardless of
+// the host class chrome. See SUB-AGENT-PROMPTS.md → ANIMATION SAFETY.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type MotionRole =
+  | 'flip'
+  | 'panel'
+  | 'route'
+  | 'soft'
+  | 'spring'
+  | 'scroll'
+  | 'drag'
+  | 'presence';
+
+export type MotionLoop = 'always' | 'hover' | 'once';
+
+interface RoleConfig {
+  durationToken: string;
+  easingToken: string;
+  keyframes: Record<string, number[]>;
+  fallbackMs: number;
+}
+
+export const MOTION_ROLE_DEFAULTS: Record<MotionRole, RoleConfig> = {
+  flip: {
+    durationToken: '--dur-flip',
+    easingToken: '--ease-out',
+    keyframes: { y: [0, -12, 0] },
+    fallbackMs: 220,
+  },
+  panel: {
+    durationToken: '--dur-panel',
+    easingToken: '--ease-in-out',
+    keyframes: { x: [-80, 0, -80] },
+    fallbackMs: 320,
+  },
+  route: {
+    durationToken: '--dur-route',
+    easingToken: '--ease-out',
+    keyframes: { opacity: [0, 1, 0], scale: [0.92, 1, 0.92] },
+    fallbackMs: 480,
+  },
+  soft: {
+    durationToken: '--dur-soft',
+    easingToken: '--ease-out',
+    keyframes: { opacity: [0, 1, 0] },
+    fallbackMs: 160,
+  },
+  spring: {
+    durationToken: '--dur-panel',
+    easingToken: 'spring',
+    keyframes: { y: [0, -16, 0] },
+    fallbackMs: 320,
+  },
+  scroll: {
+    durationToken: '--dur-route',
+    easingToken: '--ease-in-out',
+    keyframes: { x: [0, 24, 0] },
+    fallbackMs: 480,
+  },
+  drag: {
+    durationToken: '--dur-flip',
+    easingToken: '--ease-out',
+    keyframes: { rotate: [0, 4, 0] },
+    fallbackMs: 220,
+  },
+  presence: {
+    durationToken: '--dur-soft',
+    easingToken: '--ease-out',
+    keyframes: { opacity: [0, 1], scale: [0.9, 1] },
+    fallbackMs: 160,
+  },
+};
+
+/**
+ * Reads --dur-* + --ease-* CSS custom properties from documentElement and
+ * returns a plain map suitable for plugging into motion/react's transition
+ * config. ms values parsed to numbers; easing tokens returned as strings (the
+ * raw token value, e.g. "cubic-bezier(0, 0, 0.2, 1)" — motion/react accepts
+ * the string form).
+ */
+export function useMotionTokens(): {
+  durations: Record<string, number>;
+  easings: Record<string, string>;
+} {
+  const [snap, setSnap] = useState(() => readMotionTokensOnce());
+  useEffect(() => {
+    setSnap(readMotionTokensOnce());
+    if (typeof MutationObserver === 'undefined') return;
+    const obs = new MutationObserver(() => setSnap(readMotionTokensOnce()));
+    obs.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme', 'data-reduced-motion'],
+    });
+    return () => obs.disconnect();
+  }, []);
+  return snap;
+}
+
+function readMotionTokensOnce(): {
+  durations: Record<string, number>;
+  easings: Record<string, string>;
+} {
+  if (typeof window === 'undefined' || typeof getComputedStyle === 'undefined') {
+    return { durations: {}, easings: {} };
+  }
+  const cs = getComputedStyle(document.documentElement);
+  const durations: Record<string, number> = {};
+  const easings: Record<string, string> = {};
+  const durKeys = ['--dur-flip', '--dur-panel', '--dur-route', '--dur-soft'];
+  const easeKeys = ['--ease-out', '--ease-in', '--ease-in-out'];
+  for (const k of durKeys) {
+    const raw = cs.getPropertyValue(k).trim();
+    if (!raw) continue;
+    const n = parseFloat(raw);
+    if (Number.isFinite(n)) {
+      durations[k] = raw.endsWith('s') && !raw.endsWith('ms') ? n * 1000 : n;
+    }
+  }
+  for (const k of easeKeys) {
+    const raw = cs.getPropertyValue(k).trim();
+    if (raw) easings[k] = raw;
+  }
+  return { durations, easings };
+}
+
+/**
+ * Maps a DS easing token name to the value motion/react's `transition.ease`
+ * accepts. Returns the live CSS string when readable, otherwise a sane default
+ * matching Material's "standard" curve.
+ */
+export function easingFromToken(
+  token: string,
+  easings: Record<string, string>
+): string | undefined {
+  const live = easings[token];
+  if (live) return live;
+  if (token === '--ease-out') return 'cubic-bezier(0, 0, 0.2, 1)';
+  if (token === '--ease-in') return 'cubic-bezier(0.4, 0, 1, 1)';
+  if (token === '--ease-in-out') return 'cubic-bezier(0.4, 0, 0.2, 1)';
+  return undefined;
+}
+
+interface MotionDemoProps {
+  role: MotionRole;
+  loop?: MotionLoop;
+  children?: ReactNode;
+  small?: boolean;
+  className?: string;
+  label?: string;
+}
+
+/**
+ * The foundational motion building block. Wraps motion/react's animated <div>
+ * with token-bound duration + easing + reduced-motion short-circuit.
+ *
+ * Default loop="always" so initial paint shows motion — the "looks dead at
+ * rest" failure mode is the regression Phase 3.7 exists to prevent.
+ */
+export function MotionDemo({
+  role,
+  loop = 'always',
+  children,
+  small = false,
+  className,
+  label,
+}: MotionDemoProps) {
+  const cfg = MOTION_ROLE_DEFAULTS[role];
+  const tokens = useMotionTokens();
+  const reduced = _useReducedMotion();
+  const durationMs = tokens.durations[cfg.durationToken] ?? cfg.fallbackMs;
+  const isSpring = cfg.easingToken === 'spring';
+  const ease = isSpring ? undefined : easingFromToken(cfg.easingToken, tokens.easings);
+  const repeat = reduced || loop === 'once' ? 0 : Infinity;
+  const repeatType: 'reverse' | 'loop' = loop === 'always' ? 'reverse' : 'loop';
+  const animate = reduced ? undefined : cfg.keyframes;
+
+  return (
+    <div
+      className={`motion-demo${className ? ` ${className}` : ''}`}
+      data-role={role}
+      data-small={small ? 'true' : undefined}
+      style={{ overflow: 'hidden', position: 'relative' }}
+    >
+      <_motionImpl.div
+        animate={animate}
+        transition={{
+          duration: durationMs / 1000,
+          ease,
+          type: isSpring ? 'spring' : 'tween',
+          repeat,
+          repeatType,
+        }}
+        className="motion-demo__target"
+        aria-label={label}
+        style={small ? { width: 32, height: 32 } : undefined}
+      >
+        {children ?? <div className="motion-demo__chip" />}
+      </_motionImpl.div>
+    </div>
+  );
+}
+
+interface MotionTrackProps {
+  children: ReactNode;
+  staggerMs?: number;
+  className?: string;
+}
+
+/**
+ * Row container with CSS animation-delay stagger between children.
+ */
+export function MotionTrack({ children, staggerMs = 40, className }: MotionTrackProps) {
+  const items = Array.isArray(children) ? children : [children];
+  return (
+    <div
+      className={`motion-track${className ? ` ${className}` : ''}`}
+      style={{ display: 'flex', gap: 12, alignItems: 'center' }}
+    >
+      {items.map((c, i) => (
+        <div key={i} style={{ animationDelay: `${i * staggerMs}ms` }}>
+          {c}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface TokenPlaybackProps {
+  duration: string;
+  easing?: string;
+  label?: string;
+  keyframes?: Record<string, number[]>;
+}
+
+/**
+ * Click-to-fire single-shot replay chip. Used in the motion specimen so
+ * reviewers can probe a single token without hovering a card.
+ */
+export function TokenPlayback({
+  duration,
+  easing = '--ease-out',
+  label,
+  keyframes = { y: [0, -8, 0] },
+}: TokenPlaybackProps) {
+  const tokens = useMotionTokens();
+  const reduced = _useReducedMotion();
+  const durationMs = tokens.durations[duration] ?? 220;
+  const ease = easing === 'spring' ? undefined : easingFromToken(easing, tokens.easings);
+  const [tick, setTick] = useState(0);
+  const fire = useCallback(() => {
+    if (!reduced) setTick((n) => n + 1);
+  }, [reduced]);
+  return (
+    <button
+      type="button"
+      className="token-playback"
+      onClick={fire}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 8,
+        fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+        fontSize: 12,
+        padding: '6px 10px',
+        border: '1px solid var(--border-1, currentColor)',
+        borderRadius: 4,
+        background: 'transparent',
+        color: 'inherit',
+        cursor: 'pointer',
+      }}
+    >
+      <span style={{ opacity: 0.6 }}>{label ?? duration}</span>
+      <_motionImpl.span
+        key={tick}
+        animate={tick === 0 ? undefined : keyframes}
+        transition={{
+          duration: durationMs / 1000,
+          ease,
+          type: easing === 'spring' ? 'spring' : 'tween',
+        }}
+        style={{
+          display: 'inline-block',
+          width: 8,
+          height: 8,
+          background: 'var(--accent, currentColor)',
+          borderRadius: '50%',
+        }}
+      />
+      <span style={{ fontVariantNumeric: 'tabular-nums' }}>{durationMs}ms</span>
+    </button>
+  );
+}
+
+/**
+ * Chrome toggle for the motion specimen — flips data-reduced-motion="true"
+ * on <html> so reviewers can eyeball both branches without OS settings.
+ * Inspection aid, never a replacement for prefers-reduced-motion.
+ */
+export function ReducedMotionToggle() {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    const el = document.documentElement;
+    const initial = el.getAttribute('data-reduced-motion') === 'true';
+    setOn(initial);
+  }, []);
+  const toggle = useCallback(() => {
+    const el = document.documentElement;
+    const next = !on;
+    if (next) el.setAttribute('data-reduced-motion', 'true');
+    else el.removeAttribute('data-reduced-motion');
+    setOn(next);
+  }, [on]);
+  return (
+    <button
+      type="button"
+      className="reduced-motion-toggle"
+      onClick={toggle}
+      aria-pressed={on}
+      style={{
+        fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+        fontSize: 11,
+        padding: '4px 8px',
+        border: '1px solid var(--border-1, currentColor)',
+        borderRadius: 3,
+        background: on ? 'var(--accent, currentColor)' : 'transparent',
+        color: on ? 'var(--bg-0, white)' : 'inherit',
+        cursor: 'pointer',
+      }}
+    >
+      reduced-motion: {on ? 'on' : 'off'}
+    </button>
+  );
+}
+
+export {
+  _motionImpl as motion,
+  _useReducedMotion as useReducedMotion,
+  _MotionAnimatePresence as AnimatePresence,
+};
