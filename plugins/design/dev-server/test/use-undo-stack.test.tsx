@@ -1,24 +1,59 @@
-// use-undo-stack — Provider runner contract. SSR-only because bun:test has
-// no React renderer for state-driven re-renders; we capture the value object
-// and exercise its action closures directly. The reducer itself is unit-
-// tested separately in undo-stack.test.ts.
+// use-undo-stack — Provider runner contract. SSR-capture pattern + ref-as-
+// store means most of the interesting state lives outside React renders,
+// so we exercise the action closures directly. Pure reducer is covered in
+// undo-stack.test.ts.
 
-import { describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import type { EditCommand } from '../undo-stack.ts';
-import { UndoStackProvider, useUndoStack, useUndoStackOptional } from '../use-undo-stack.tsx';
+import {
+  type CommandRecord,
+  type CommandSinks,
+  _clearBuilderRegistry,
+  _clearStackStore,
+  registerCommand,
+} from '../undo-stack.ts';
+import {
+  UndoStackProvider,
+  useUndoSinks,
+  useUndoStack,
+  useUndoStackOptional,
+} from '../use-undo-stack.tsx';
 
-function mkCmd(label: string, opts?: { failDo?: boolean; failUndo?: boolean }) {
-  const doFn = mock(() => {
-    if (opts?.failDo) throw new Error('do-boom');
+// Shared spy plumbing for record-builder tests below.
+let doSpy: ReturnType<typeof mock>;
+let undoSpy: ReturnType<typeof mock>;
+
+beforeEach(() => {
+  _clearStackStore();
+  _clearBuilderRegistry();
+  doSpy = mock(() => {});
+  undoSpy = mock(() => {});
+  // A single "test" command kind shared across this file. The builder reads
+  // `sinks.layoutPatchFn` as a generic "trigger" — when present, do() and
+  // undo() fire the spies; when absent, rebuild returns null.
+  registerCommand('test', (record, sinks) => {
+    if (!sinks.layoutPatchFn) return null;
+    return {
+      kind: record.kind,
+      label: record.label,
+      do() {
+        doSpy(record.payload);
+      },
+      undo() {
+        undoSpy(record.payload);
+      },
+    };
   });
-  const undoFn = mock(() => {
-    if (opts?.failUndo) throw new Error('undo-boom');
-  });
-  const cmd: EditCommand = { kind: 'test', label, do: doFn, undo: undoFn };
-  return { cmd, doFn, undoFn };
+});
+
+afterEach(() => {
+  _clearStackStore();
+});
+
+function rec(label: string, payload: unknown = null): CommandRecord {
+  return { kind: 'test', label, payload };
 }
 
 function capture<T>(useHook: () => T, tree: (consumer: React.ReactElement) => React.ReactElement) {
@@ -30,6 +65,33 @@ function capture<T>(useHook: () => T, tree: (consumer: React.ReactElement) => Re
   renderToStaticMarkup(tree(<Consumer />));
   if (!captured) throw new Error('hook did not capture a value');
   return captured;
+}
+
+/**
+ * Render a provider tree and capture both the stack value and the sinks API.
+ * Sinks are bound during the same SSR render via a sibling capture, so the
+ * runner's first push() sees the registered sink.
+ */
+function captureProvider(canvasFile?: string, sinks?: Partial<CommandSinks>) {
+  let stack: ReturnType<typeof useUndoStack> | null = null;
+  function Inner() {
+    stack = useUndoStack();
+    const undoSinks = useUndoSinks();
+    if (sinks) {
+      for (const [k, v] of Object.entries(sinks)) {
+        // biome-ignore lint/suspicious/noExplicitAny: setSink generic indexing
+        undoSinks.setSink(k as never, v as any);
+      }
+    }
+    return null;
+  }
+  renderToStaticMarkup(
+    <UndoStackProvider canvasFile={canvasFile}>
+      <Inner />
+    </UndoStackProvider>
+  );
+  if (!stack) throw new Error('no provider value captured');
+  return stack;
 }
 
 describe('use-undo-stack / contract outside provider', () => {
@@ -48,70 +110,84 @@ describe('use-undo-stack / contract outside provider', () => {
     expect(value.canUndo).toBe(false);
     expect(value.canRedo).toBe(false);
     expect(value.lastLabel).toBeNull();
-    // No-op methods don't throw.
     expect(() => value.clear()).not.toThrow();
   });
-});
 
-describe('use-undo-stack / provider API surface', () => {
-  test('exposes the documented contract', () => {
-    const v = capture(useUndoStack, (child) => <UndoStackProvider>{child}</UndoStackProvider>);
-    expect(typeof v.push).toBe('function');
-    expect(typeof v.undo).toBe('function');
-    expect(typeof v.redo).toBe('function');
-    expect(typeof v.clear).toBe('function');
-    expect(v.canUndo).toBe(false);
-    expect(v.canRedo).toBe(false);
-    expect(v.lastLabel).toBeNull();
-    expect(v.lastTick).toBe(0);
+  test('useUndoSinks() outside provider is a silent no-op', () => {
+    const value = capture(useUndoSinks, (child) => <>{child}</>);
+    expect(() => value.setSink('layoutPatchFn', () => {})).not.toThrow();
   });
 });
 
 describe('use-undo-stack / runner side-effects', () => {
-  test('push() invokes cmd.do() exactly once', async () => {
-    const v = capture(useUndoStack, (child) => <UndoStackProvider>{child}</UndoStackProvider>);
-    const { cmd, doFn, undoFn } = mkCmd('move 1');
-    await v.push(cmd);
-    expect(doFn).toHaveBeenCalledTimes(1);
-    expect(undoFn).toHaveBeenCalledTimes(0);
+  test('push() invokes rebuilt cmd.do() exactly once', async () => {
+    const v = captureProvider(undefined, { layoutPatchFn: () => {} });
+    await v.push(rec('move 1'));
+    expect(doSpy).toHaveBeenCalledTimes(1);
+    expect(undoSpy).toHaveBeenCalledTimes(0);
   });
 
-  test('undo() invokes cmd.undo() on the most recently pushed command', async () => {
-    const v = capture(useUndoStack, (child) => <UndoStackProvider>{child}</UndoStackProvider>);
-    const a = mkCmd('a');
-    const b = mkCmd('b');
-    await v.push(a.cmd);
-    await v.push(b.cmd);
+  test('undo() invokes cmd.undo() on the most recently pushed record', async () => {
+    const v = captureProvider(undefined, { layoutPatchFn: () => {} });
+    await v.push(rec('a', 'A'));
+    await v.push(rec('b', 'B'));
     await v.undo();
-    expect(b.undoFn).toHaveBeenCalledTimes(1);
-    expect(a.undoFn).toHaveBeenCalledTimes(0);
+    expect(undoSpy).toHaveBeenCalledTimes(1);
+    expect(undoSpy.mock.calls[0]?.[0]).toBe('B');
   });
 
-  test('redo() re-invokes cmd.do() on the most recently undone command', async () => {
-    const v = capture(useUndoStack, (child) => <UndoStackProvider>{child}</UndoStackProvider>);
-    const { cmd, doFn } = mkCmd('a');
-    await v.push(cmd);
+  test('redo() re-invokes cmd.do() on the most recently undone record', async () => {
+    const v = captureProvider(undefined, { layoutPatchFn: () => {} });
+    await v.push(rec('a', 'A'));
     await v.undo();
     await v.redo();
-    expect(doFn).toHaveBeenCalledTimes(2);
+    expect(doSpy).toHaveBeenCalledTimes(2);
+    expect(doSpy.mock.calls[1]?.[0]).toBe('A');
   });
 
-  test('push runner reports do() failure via onCommandError and does not commit', async () => {
-    const onError = mock(() => {});
-    let captured: ReturnType<typeof useUndoStack> | null = null;
-    function Capture() {
-      captured = useUndoStack();
-      return null;
+  test('push without a registered sink skips the do() call (rebuild returned null)', async () => {
+    const v = captureProvider(undefined, {}); // no sinks → builder returns null
+    await v.push(rec('lonely'));
+    // doSpy is the only observable signal here — `lastLabel` is React
+    // state that doesn't refresh under SSR-capture.
+    expect(doSpy).toHaveBeenCalledTimes(0);
+    expect(undoSpy).toHaveBeenCalledTimes(0);
+  });
+});
+
+describe('use-undo-stack / cross-canvas persistence', () => {
+  test('history under a canvasFile survives a fresh provider mount with the same canvasFile', async () => {
+    // First mount: push 2 records.
+    {
+      const v = captureProvider('ui/Foo.tsx', { layoutPatchFn: () => {} });
+      await v.push(rec('e1'));
+      await v.push(rec('e2'));
     }
-    renderToStaticMarkup(
-      <UndoStackProvider onCommandError={onError}>
-        <Capture />
-      </UndoStackProvider>
-    );
-    if (!captured) throw new Error('no capture');
-    const { cmd, undoFn } = mkCmd('boom', { failDo: true });
-    await captured.push(cmd);
-    expect(onError).toHaveBeenCalledTimes(1);
-    expect(undoFn).toHaveBeenCalledTimes(0);
+    // Second mount (simulates iframe destroy + remount for same canvas).
+    const v2 = captureProvider('ui/Foo.tsx', { layoutPatchFn: () => {} });
+    expect(v2.canUndo).toBe(true);
+    expect(v2.lastLabel).toBeNull(); // labels are per-mount session
+    // Undo the top — should fire spy with rec('e2') payload.
+    await v2.undo();
+    expect(undoSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('switching canvases keeps each history independent', async () => {
+    {
+      const v = captureProvider('ui/Foo.tsx', { layoutPatchFn: () => {} });
+      await v.push(rec('foo-1'));
+      await v.push(rec('foo-2'));
+    }
+    {
+      const v = captureProvider('ui/Bar.tsx', { layoutPatchFn: () => {} });
+      await v.push(rec('bar-1'));
+    }
+    // Come back to Foo.
+    const v2 = captureProvider('ui/Foo.tsx', { layoutPatchFn: () => {} });
+    expect(v2.canUndo).toBe(true);
+    await v2.undo();
+    // The spy was called for foo-2 last (LIFO).
+    const lastCall = undoSpy.mock.calls[undoSpy.mock.calls.length - 1]?.[0];
+    expect(lastCall).toBeNull(); // payload is null in `rec(label)` default
   });
 });

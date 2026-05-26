@@ -1,7 +1,7 @@
-# DDR-049 — Canvas undo / redo via per-iframe in-memory command stack
+# DDR-049 — Canvas undo / redo via per-canvas command-record stack
 
-**Status:** Accepted — 2026-05-26.
-**Supersedes:** none.
+**Status:** Accepted — 2026-05-26. **Revised 2026-05-26 (rev 2)** — see § "Rev 2 — cross-canvas persistence" at the bottom.
+**Supersedes:** rev 1 of this DDR ("per-iframe-ephemeral" scope) — the user-facing fix landed hours after the initial commit when bug reports surfaced two issues.
 **Related:** [DDR-013](DDR-013-server-modular-split-typescript.md) (module-split + ≤300 LOC convention), [DDR-048](DDR-048-dev-server-system-view-no-shell-bias.md) (input-router classify table provenance), [DDR-027](DDR-027-canvas-meta-layout-positions-only.md) (size is JSX-authoritative — only positions persist), [DDR-046](DDR-046-canvas-chrome-three-state-halo-language.md) (HUD chrome consistency), [DDR-047](DDR-047-collab-scope-cut-no-lan-mode-hub-admin-ui.md) (Phase 8 Yjs is intentionally deferred — see "Phase 8 forward-compat" below).
 
 ## Context
@@ -132,4 +132,56 @@ For v0 we leave comments off the stack. Follow-up issue: design a CRDT-shaped co
 - `test/move-artboards-command.test.ts` — 11 tests (do/undo, label, deep-clone, layout diff).
 - `test/annotation-strokes-command.test.ts` — 7 tests.
 
-Manual smoke (Validation #8 in `.ai/plans/phase-20-canvas-undo-redo.md`): drag → Cmd+Z → restore; marquee batch → Cmd+Z → all restored; equal-spacing distribute → Cmd+Z → original; annotation stroke add/erase → Cmd+Z → reversed; depth cap at 50; external `.meta.json` edit → "Edit history reset"; Cmd+Z inside textarea → browser native; switch canvas → empty stack; cross-platform Mac Cmd+Z + Win/Linux Ctrl+Z/Y.
+Manual smoke (Validation #8 in `.ai/plans/phase-20-canvas-undo-redo.md`): drag → Cmd+Z → restore; marquee batch → Cmd+Z → all restored; equal-spacing distribute → Cmd+Z → original; annotation stroke add/erase → Cmd+Z → reversed; depth cap at 50; external `.meta.json` edit → "Edit history reset"; Cmd+Z inside textarea → browser native; switch canvas → empty stack (**reverted in rev 2** — see below); cross-platform Mac Cmd+Z + Win/Linux Ctrl+Z/Y.
+
+---
+
+## Rev 2 — cross-canvas persistence + annotation local-state fix (2026-05-26)
+
+The rev-1 ship was followed within hours by two real bug reports from the user:
+
+1. **`/design:edit` annotation undo didn't visually update.** Server SVG reverted on Cmd+Z but the iframe's React `strokes` state stayed at the post-edit value. The `putStrokes` closure called the PUT but never called `setStrokesState`, so undo/redo round-tripped the server while the canvas painted stale strokes until the next user-initiated edit.
+2. **Switching canvases lost history entirely.** Per the rev-1 rule "scope: per-canvas-iframe, in-memory, ephemeral," the user got an empty stack every time they re-opened a canvas they'd been editing. The user's expectation: `"Ano historie per canvas ale musi si to pamatovat i kdyz prepipan mezi canvas"` — per-canvas history, but must persist across switches.
+
+### Fixes
+
+**Bug 1** — fold `setStrokesState` into `putStrokes`. Every PUT (initial, undo, redo) now refreshes the iframe's local React state in the same call. The `commitStrokes` helper no longer needs its own optimistic `setStrokesState` because `push()` calls `cmd.do() = putStrokes(next)` which does both.
+
+**Bug 2** — promote the stack from per-iframe-ephemeral to per-canvas-session-persistent. Three architectural shifts:
+
+1. **The stack now stores `CommandRecord[]`, not `EditCommand[]`.** A `CommandRecord = { kind, label, payload }` is a fully serializable description of an edit. The `payload` carries the inverse data (full before/after layout snapshots for moves, full Stroke[] pairs for annotations) — anything the command's `do()` / `undo()` needs to replay.
+
+2. **Commands are rebuilt per iframe mount via a registry.** Each `commands/*-command.ts` calls `registerCommand(kind, builder)` at module-load time. The builder takes a record + the current iframe's `CommandSinks` and returns a runnable `EditCommand`. Sinks (`layoutPatchFn`, `strokesPutFn`) are bound by descendants of `UndoStackProvider` via `useUndoSinks().setSink(...)` inside a `useEffect`. When the iframe unmounts, the closures it created go away — but the records survive, ready to be rebuilt against the next iframe's fresh closures.
+
+3. **The state map lives on `window.top` (with `globalThis` fallback for tests), keyed by canvas file path.** Same-origin iframes share `window.top`, so closing Foo.tsx, opening Bar.tsx, and coming back to Foo.tsx finds `window.top.__maude_undo_stacks.get('ui/Foo.tsx')` populated with the original history. The provider's `loadStackState(canvasFile)` hydrates on mount; every reducer transition `saveStackState`s back.
+
+### Updated rules table
+
+Rules from rev 1 stay intact EXCEPT rule 2:
+
+- **Rule 2 (rev 2):** **Per-canvas, in-memory, session-scoped** (was: per-canvas-iframe, ephemeral). Stack persists across canvas switches in `window.top.__maude_undo_stacks: Map<canvasFile, UndoStackState>`. Page reload destroys it (no localStorage). Multiple iframes of the SAME canvas share one stack (a degenerate case the dev-server doesn't intentionally produce, but the design tolerates).
+
+### Why not just persist EditCommand[]?
+
+Tried that path mentally — won't work. Each EditCommand holds closures over the iframe-mount-time `setArtboards`/`setStrokes`/`patchCanvasMeta` references. When the iframe unmounts, those refs point to dead React state. Calling `cmd.undo()` after a remount would set state on an unmounted component (no-op at best, crash at worst). The record + registry split is the minimum architecture that survives iframe lifecycle.
+
+### Why not localStorage?
+
+Serializable records would technically allow it. We don't because:
+- An edit on canvas Foo.tsx that survives a tab close + reopen would have nothing to undo against — the file might have been edited externally between sessions, and the in-memory `before` snapshot is no longer reachable from any concrete prior file state.
+- Page reload is also when external-edit invalidation should happen most aggressively (the user likely reloaded BECAUSE they edited externally).
+- localStorage scope leak across multiple repos / multiple dev-server instances would be a debugging nightmare.
+
+In-memory session scope is the right ceiling.
+
+### Test surface added
+
+- `test/undo-stack.test.ts` — extended with `command builder registry` (3 tests) + `cross-iframe persistence` (3 tests using `_clearStackStore()` test seam).
+- `test/use-undo-stack.test.tsx` — extended with `cross-canvas persistence` (2 tests verifying state survives a captureProvider remount with the same `canvasFile`, and isolation across different canvasFiles).
+- `test/move-artboards-command.test.ts` / `test/annotation-strokes-command.test.ts` — internals (createCommand) unchanged; the registry side-effect runs on module load.
+
+Total: 461 / 461 bun tests green (was 452 after rev 1, +9 net).
+
+### Forward-compat note unchanged
+
+Rule 4 still holds — Phase 8 Yjs swap replaces the impl, not the interface. `UndoStackValue.push` taking a `CommandRecord` is in fact a BETTER fit for `Y.UndoManager`: Y-doc commands ARE serializable transactions, no closures involved.

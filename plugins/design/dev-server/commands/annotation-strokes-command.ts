@@ -7,21 +7,39 @@
  *             `PUT /_api/annotations` which replaces the entire SVG; we
  *             match that shape rather than diffing.
  *
+ *             Per DDR-049 rev 2 the runtime command is rebuilt per iframe
+ *             mount from a serializable `CommandRecord` so the stack
+ *             survives canvas switches. The `putFn` here also updates the
+ *             iframe's local React strokes state (see annotations-layer
+ *             `putStrokes`) so undo/redo visibly refresh, not just PUT.
+ *
  *             Why per-stroke commands (not coalesced into a 300 ms window):
  *             matches Figma/FigJam — Cmd+Z reverts the most recent tap or
- *             pen stroke individually. Coalescing into windows lead to a
+ *             pen stroke individually. Coalescing into windows led to a
  *             matoucí "why did Cmd+Z erase two of my last lines?" UX.
  */
 
 import type { Stroke } from '../annotations-layer.tsx';
-import type { EditCommand } from '../undo-stack.ts';
+import type {
+  CommandRecord,
+  CommandSinks,
+  EditCommand,
+} from '../undo-stack.ts';
+import { registerCommand } from '../undo-stack.ts';
 
 /**
  * Push-once callable that submits a full `Stroke[]` to the server (or its
- * test stub). The annotations layer's `commitStrokes` helper wraps the
- * production fetch + cancels any pending debounced auto-save first.
+ * test stub) AND updates the iframe's local strokes state. The
+ * annotations-layer `putStrokes` is the production binding.
  */
 export type StrokesPutFn = (next: readonly Stroke[]) => void | Promise<void>;
+
+export interface AnnotationStrokesPayload {
+  before: readonly Stroke[];
+  after: readonly Stroke[];
+}
+
+export const ANNOTATION_STROKES_KIND = 'annotation-strokes';
 
 export interface AnnotationStrokesCommandInit {
   before: readonly Stroke[];
@@ -40,7 +58,7 @@ export function createAnnotationStrokesCommand(
   const before = init.before.map(cloneStroke);
   const after = init.after.map(cloneStroke);
   const label = init.label ?? defaultLabel(before, after);
-  const kind = init.kind ?? 'annotation-strokes';
+  const kind = init.kind ?? ANNOTATION_STROKES_KIND;
 
   return {
     kind,
@@ -53,6 +71,39 @@ export function createAnnotationStrokesCommand(
     },
   };
 }
+
+/**
+ * Build a persistable record from the same inputs as `createAnnotationStrokesCommand`.
+ * Used by the consumer alongside the EditCommand so the runtime side-effect
+ * and the stored shape share one snapshot.
+ */
+export function buildAnnotationStrokesRecord(opts: {
+  before: readonly Stroke[];
+  after: readonly Stroke[];
+  label?: string;
+}): CommandRecord<AnnotationStrokesPayload> {
+  const before = opts.before.map(cloneStroke);
+  const after = opts.after.map(cloneStroke);
+  return {
+    kind: ANNOTATION_STROKES_KIND,
+    label: opts.label ?? defaultLabel(before, after),
+    payload: { before, after },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Registry
+
+registerCommand<AnnotationStrokesPayload>(ANNOTATION_STROKES_KIND, (record, sinks) => {
+  const putFn = sinks.strokesPutFn as StrokesPutFn | undefined;
+  if (!putFn) return null;
+  return createAnnotationStrokesCommand({
+    before: record.payload.before,
+    after: record.payload.after,
+    putFn,
+    label: record.label,
+  });
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Internals

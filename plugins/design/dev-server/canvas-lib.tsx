@@ -82,11 +82,18 @@ import {
 } from 'react';
 
 import { CanvasShell } from './canvas-shell.tsx';
-import { createMoveArtboardsCommand, diffLayoutPositions } from './commands/move-artboards-command.ts';
+import {
+  buildMoveArtboardsRecord,
+  diffLayoutPositions,
+} from './commands/move-artboards-command.ts';
 import { type DragState, useArtboardDrag } from './use-artboard-drag.tsx';
 import { useSelectionSetOptional } from './use-selection-set.tsx';
 import { ToolProvider, useToolModeOptional } from './use-tool-mode.tsx';
-import { UndoStackProvider, useUndoStackOptional } from './use-undo-stack.tsx';
+import {
+  UndoStackProvider,
+  useUndoSinks,
+  useUndoStackOptional,
+} from './use-undo-stack.tsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Module constants
@@ -1154,13 +1161,15 @@ interface DesignCanvasProps {
  * via `useToolModeOptional` (hand-mode bare-drag pan).
  */
 export function DesignCanvas(props: DesignCanvasProps) {
-  // Phase 20 — per-canvas-iframe undo/redo stack (DDR-049). The provider
-  // wraps both DesignCanvasInner (so artboard commits push commands) AND
+  // Phase 20 — per-canvas undo/redo stack (DDR-049 rev 2). The provider
+  // wraps both DesignCanvasInner (so artboard commits push records) AND
   // the CanvasShell tree (so input-router Cmd+Z / Cmd+Shift+Z + the HUD
-  // share the same context). Scope is per iframe — switching canvases
-  // mounts a fresh provider with an empty stack.
+  // share the same context). Stack state is keyed by canvas file path in
+  // `window.top.__maude_undo_stacks` so it survives canvas switches —
+  // close Foo.tsx, open Bar.tsx, come back to Foo.tsx → history intact.
+  const canvasFile = readCanvasMetaFile() ?? undefined;
   return (
-    <UndoStackProvider>
+    <UndoStackProvider canvasFile={canvasFile}>
       <ToolProvider>
         <DesignCanvasInner {...props} />
       </ToolProvider>
@@ -1316,6 +1325,7 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
   const [dragCurrent, setDragCurrent] = useState<DragState>({ kind: 'idle' });
 
   const undoStack = useUndoStackOptional();
+  const undoSinks = useUndoSinks();
   // Stable ref so the commit callback (memoized once, on mount) always reads
   // the latest stack value without re-creating the callback on every render.
   const undoStackRef = useRef(undoStack);
@@ -1323,13 +1333,22 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
 
   /**
    * Applies a full artboard layout: optimistic local React state update +
-   * server PATCH. Used as the `patchFn` for `MoveArtboardsCommand` — both
-   * the initial commit (do) and the undo/redo replay route through here.
+   * server PATCH. Used as the `layoutPatchFn` sink registered with the
+   * undo stack — both the initial commit (do) and every undo/redo replay
+   * route through here, so React state always tracks the server.
    */
-  const applyArtboardLayout = useCallback((layout: ArtboardRect[]) => {
-    setArtboards(layout);
-    patchCanvasMeta({ layout: { artboards: layout } });
+  const applyArtboardLayout = useCallback((layout: unknown) => {
+    setArtboards(layout as ArtboardRect[]);
+    patchCanvasMeta({ layout: { artboards: layout as ArtboardRect[] } });
   }, []);
+
+  // Register the layout patch sink with the undo provider so the rebuilt
+  // MoveArtboardsCommand (after a canvas switch + return) can apply layouts
+  // through THIS iframe's React state, not the gone iframe's stale closures.
+  useEffect(() => {
+    undoSinks.setSink('layoutPatchFn', applyArtboardLayout);
+    return () => undoSinks.setSink('layoutPatchFn', undefined);
+  }, [undoSinks, applyArtboardLayout]);
 
   const commitArtboardPositions = useCallback(
     (moved: { id: string; x: number; y: number }[], opts?: CommitPositionsOptions) => {
@@ -1343,17 +1362,16 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
       // Phase 20 — skip pushing no-op drags (click-without-movement). The
       // user got back what they had, no edit happened, undo would do nothing.
       if (!diffLayoutPositions(before, next)) return;
-      const cmd = createMoveArtboardsCommand({
-        before,
-        after: next,
-        patchFn: (layout) => applyArtboardLayout(layout as ArtboardRect[]),
-        label: opts?.label,
+      const record = buildMoveArtboardsRecord({
+        before: before.map((r) => ({ id: r.id, x: r.x, y: r.y, w: r.w, h: r.h })),
+        after: next.map((r) => ({ id: r.id, x: r.x, y: r.y, w: r.w, h: r.h })),
+        ...(opts?.label ? { label: opts.label } : {}),
       });
-      // push() invokes cmd.do() (= applyArtboardLayout(next)) BEFORE updating
-      // the stack, so the optimistic local + PATCH flow is preserved.
-      void undoStackRef.current.push(cmd);
+      // push() invokes the rebuilt cmd.do() = applyArtboardLayout(next) BEFORE
+      // updating the stack, so the optimistic local + PATCH flow is preserved.
+      void undoStackRef.current.push(record);
     },
-    [applyArtboardLayout]
+    []
   );
 
   const dragBus = useMemo<DragStateBus>(

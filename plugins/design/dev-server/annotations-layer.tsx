@@ -35,14 +35,14 @@ import { createPortal } from 'react-dom';
 
 import { AnnotationContextToolbar } from './annotations-context-toolbar.tsx';
 import { useViewportControllerContext, useWorldRefContext } from './canvas-lib.tsx';
-import { createAnnotationStrokesCommand } from './commands/annotation-strokes-command.ts';
+import { buildAnnotationStrokesRecord } from './commands/annotation-strokes-command.ts';
 import { crossedDragThreshold } from './input-router.tsx';
 import { AnnotationResizeOverlay } from './use-annotation-resize.tsx';
 import { useAnnotationSelectionOptional } from './use-annotation-selection.tsx';
 import { useAnnotationsVisibility } from './use-annotations-visibility.tsx';
 import { useSelectionSetOptional } from './use-selection-set.tsx';
 import { useToolMode } from './use-tool-mode.tsx';
-import { useUndoStackOptional } from './use-undo-stack.tsx';
+import { useUndoSinks, useUndoStackOptional } from './use-undo-stack.tsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -695,16 +695,25 @@ export function AnnotationsLayer() {
   }, []);
 
   const undoStack = useUndoStackOptional();
+  const undoSinks = useUndoSinks();
   const undoStackRef = useRef(undoStack);
   undoStackRef.current = undoStack;
 
   /**
-   * Direct fire-and-forget PUT — used as the `putFn` injected into
-   * `AnnotationStrokesCommand`. The 200 ms scheduled-save debounce
-   * (legacy path) is cleared the moment we push a command, so the
-   * server only sees one PUT per edit instead of two-step racing.
+   * Apply a `Stroke[]` snapshot: update local React state AND fire-and-forget
+   * PUT to the server. Used as the `putFn` injected into the
+   * `AnnotationStrokesCommand` — both the initial push AND every undo/redo
+   * replay route through here, so the iframe's `strokes` state always
+   * tracks the server. (Without the setStrokesState here, Cmd+Z would
+   * silently PUT the prior SVG but the canvas would keep painting the
+   * post-edit strokes until the user reloaded.)
+   *
+   * The 200 ms scheduled-save debounce (legacy path) is cleared the moment
+   * we push a command, so the server only sees one PUT per edit instead
+   * of two-step racing.
    */
   const putStrokes = useCallback((next: readonly Stroke[]) => {
+    setStrokesState(next as Stroke[]);
     const file = fileRef.current;
     if (!file) return Promise.resolve();
     const svg = strokesToSvg(next);
@@ -719,12 +728,21 @@ export function AnnotationsLayer() {
       });
   }, []);
 
+  // Register the strokes put sink with the undo provider so the rebuilt
+  // AnnotationStrokesCommand (after a canvas switch + return) routes through
+  // THIS iframe's React state, not the gone iframe's stale closures.
+  useEffect(() => {
+    undoSinks.setSink('strokesPutFn', putStrokes);
+    return () => undoSinks.setSink('strokesPutFn', undefined);
+  }, [undoSinks, putStrokes]);
+
   /**
-   * Single entry point for every stroke mutation. Builds an undo command,
-   * applies optimistic React state, and pushes onto the stack (which calls
-   * the command's `do()` to PUT). Cancels any pending debounced save first
-   * — DDR-049 gotcha: a queued auto-save flushing AFTER our PUT would race
-   * the stack into a stale state.
+   * Single entry point for every stroke mutation. Builds an undo record
+   * and pushes onto the stack — `push()` rebuilds the command via the
+   * registered `strokesPutFn` sink and calls `cmd.do() = putStrokes(next)`,
+   * which both updates local state and PUTs. Cancels any pending debounced
+   * save first — DDR-049 gotcha: a queued auto-save flushing AFTER our PUT
+   * would race the stack into a stale state.
    */
   const commitStrokes = useCallback(
     (prev: readonly Stroke[], next: readonly Stroke[], label?: string) => {
@@ -732,18 +750,14 @@ export function AnnotationsLayer() {
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
       }
-      const cmd = createAnnotationStrokesCommand({
+      const record = buildAnnotationStrokesRecord({
         before: prev,
         after: next,
-        putFn: putStrokes,
         ...(label ? { label } : {}),
       });
-      // Optimistic local apply happens here; command.do() inside push() also
-      // calls putStrokes(next) so the server sees the same payload.
-      setStrokesState(next as Stroke[]);
-      void undoStackRef.current.push(cmd);
+      void undoStackRef.current.push(record);
     },
-    [putStrokes]
+    []
   );
 
   const setStrokes = useCallback(

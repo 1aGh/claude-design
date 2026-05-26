@@ -16,6 +16,7 @@
 | ---- | ----- | ------ | ---- |
 | 2026-05-26 | canvas-figjam-feel | done | Wave 1+2+3 (T1–T33) + Wave 2.7/3.5/3.6 user-feedback batches. Commit `8654dab` (+2293/-89 across 23 files). Scenario 9/9 PASS web-desktop; design-system-guard / a11y-auditor / security-auditor: 0 blockers each, 11 polish warnings deferred to Wave 3.7. Plan archived. |
 | 2026-05-26 | phase-20-canvas-undo-redo | done | T1–T16 complete (T10 Comments deferred per plan as v0.x follow-up). 452/452 bun tests green (+43 new). Release bundle 230 KB → **72.4 KB gz** (under 80 KB budget). DDR-049 written, plan archived. |
+| 2026-05-26 | phase-20-canvas-undo-redo | fix | Post-ship bug fixes (user-reported within hours of commit `274cae4`): (1) annotation undo silently PUT-ed the prior SVG but the iframe's React strokes state didn't refresh — folded `setStrokesState` into `putStrokes`; (2) switching canvases lost all history — refactored to `CommandRecord` (serializable payload) + per-canvas `window.top` store. DDR-049 rev 2 supersedes the "per-iframe-ephemeral" rule. 461/461 bun tests green (+9 net). |
 
 ## Execution Progress — phase-20-canvas-undo-redo (2026-05-26)
 

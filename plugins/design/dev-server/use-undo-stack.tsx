@@ -2,14 +2,19 @@
  * @file       use-undo-stack.tsx — React Context + Provider for the undo stack
  * @scope      plugins/design/dev-server/use-undo-stack.tsx
  * @purpose    Wraps the pure `undoReducer` (undo-stack.ts) in React state,
- *             owns the async runner that awaits `cmd.do()` / `cmd.undo()`
- *             before applying the next state transition, and exposes the
- *             `lastLabel` HUD signal.
+ *             owns the async runner that awaits side-effects before applying
+ *             the next state transition, exposes the `lastLabel` HUD signal,
+ *             AND persists the stack across canvas switches via
+ *             `window.top.__maude_undo_stacks` keyed by canvas file path
+ *             (DDR-049 rev 2).
  *
- * Scope per DDR-049 — provider is mounted per canvas iframe inside
- * `CanvasShell`. Switching canvases mounts a fresh provider with an empty
- * stack. External edits to the same canvas file clear the stack via
- * `onExternalEdit` (the canvas-shell wires that to the HMR signal).
+ * Two roles in one provider:
+ *   1. **State authority** — ref-as-store synchronously between awaited
+ *      side-effects (Cmd+Z at 30 Hz key-repeat needs to see its own writes).
+ *   2. **Sinks registry** — descendants (DesignCanvasInner for layout,
+ *      AnnotationsLayer for strokes) register their side-effect functions
+ *      via `useUndoSinks().setSink(name, fn)`. The provider merges them
+ *      and uses them when rebuilding commands from records.
  */
 
 import {
@@ -24,11 +29,15 @@ import {
 } from 'react';
 
 import {
+  type CommandRecord,
+  type CommandSinks,
   type EditCommand,
   type UndoStackState,
   canRedo as canRedoOf,
   canUndo as canUndoOf,
-  createUndoStackState,
+  loadStackState,
+  rebuildCommand,
+  saveStackState,
   undoReducer,
 } from './undo-stack.ts';
 
@@ -37,37 +46,27 @@ import {
 
 export interface UndoStackValue {
   /**
-   * Push a fresh command. The runner calls `cmd.do()` first — the new state
-   * is committed only after the side-effect resolves. Awaiting the returned
-   * promise is optional; the HUD reads `lastLabel` once the runner finishes.
+   * Push a fresh command. The runner calls the rebuilt command's `do()` —
+   * the new state is committed only after the side-effect resolves.
+   * Awaiting the returned promise is optional.
    */
-  push: (cmd: EditCommand) => Promise<void>;
+  push: (record: CommandRecord) => Promise<void>;
   /** Undo the top of `past`. No-op when empty. */
   undo: () => Promise<void>;
   /** Redo the top of `future`. No-op when empty. */
   redo: () => Promise<void>;
-  /** Drop both stacks (external edit, canvas switch). */
+  /** Drop both stacks (external edit). */
   clear: (reason?: string) => void;
   canUndo: boolean;
   canRedo: boolean;
-  /**
-   * One-line label of the most recent operation. HUD reads this. `null` when
-   * nothing's happened since mount or `clear()` was called without a reason.
-   */
+  /** Most recent operation label. HUD reads this. */
   lastLabel: string | null;
-  /**
-   * Monotonic counter that increments on every push / undo / redo / clear.
-   * HUD subscribes to bump its auto-dismiss timer even when the same label
-   * appears twice in a row (e.g. Cmd+Z Cmd+Z on identical drags).
-   */
+  /** Monotonic counter — HUD subscribes to bump dismiss timer per op. */
   lastTick: number;
 }
 
 const UndoStackContext = createContext<UndoStackValue | null>(null);
 
-// No-op default — when a consumer reads the hook outside a provider (DS
-// specimens, legacy mounts) all methods become silent no-ops. This is the
-// same defensive pattern as `useSelectionSetOptional` / `useToolModeOptional`.
 const NOOP_VALUE: UndoStackValue = {
   push: () => Promise.resolve(),
   undo: () => Promise.resolve(),
@@ -80,49 +79,97 @@ const NOOP_VALUE: UndoStackValue = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Sinks context — descendants register side-effect functions here.
+
+export interface UndoSinksValue {
+  /** Register or replace a sink. Pass `undefined` to unregister. */
+  setSink: <K extends keyof CommandSinks>(key: K, fn: CommandSinks[K]) => void;
+}
+
+const UndoSinksContext = createContext<UndoSinksValue | null>(null);
+
+const NOOP_SINKS: UndoSinksValue = { setSink: () => {} };
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Provider
 
 export interface UndoStackProviderProps {
   children: ReactNode;
   /**
-   * Optional async-failure hook. Fires when `cmd.do()` / `.undo()` throws or
-   * the returned promise rejects. The reducer never commits the transition
-   * for a failed side-effect (push: cmd not appended; undo: stays in past;
-   * redo: stays in future) — this hook is informational so the HUD can show
-   * "Undo failed". Defaults to a console.warn.
+   * Canvas file path (e.g. `.design/ui/Foo.tsx` or repo-relative). Required
+   * for cross-canvas persistence — the stack is keyed by this string in the
+   * `window.top.__maude_undo_stacks` Map. Two iframes with the same canvas
+   * file share one stack; switching canvases gets a fresh stack keyed under
+   * a different path.
+   *
+   * Optional only because some test harnesses mount the provider standalone;
+   * an empty / undefined value disables persistence (stack is ephemeral).
    */
-  onCommandError?: (err: unknown, op: 'do' | 'undo', cmd: EditCommand) => void;
+  canvasFile?: string;
+  /**
+   * Optional async-failure hook. Fires when a command's `do()` / `undo()`
+   * throws or rejects. The reducer never commits the transition for a failed
+   * side-effect (push: cmd not appended; undo: stays in past; redo: stays in
+   * future). Defaults to a console.warn.
+   */
+  onCommandError?: (
+    err: unknown,
+    op: 'do' | 'undo',
+    record: CommandRecord
+  ) => void;
 }
 
-export function UndoStackProvider({ children, onCommandError }: UndoStackProviderProps) {
+export function UndoStackProvider({
+  children,
+  canvasFile,
+  onCommandError,
+}: UndoStackProviderProps) {
   // Ref is the authoritative store — the async runner reads + writes it
-  // synchronously between awaited side-effects, so a Cmd+Z keyrepeat at
-  // 30 Hz sees its own predecessor's commit even when React hasn't yet
-  // re-rendered. `useState` mirrors the ref purely to schedule a re-render
-  // for context consumers (HUD canUndo/canRedo readouts).
-  const stateRef = useRef<UndoStackState>(createUndoStackState());
+  // synchronously between awaited side-effects.
+  const stateRef = useRef<UndoStackState>(
+    canvasFile ? loadStackState(canvasFile) : { past: [], future: [] }
+  );
   const [, setRenderToken] = useState(0);
+
+  // Sinks live in a ref so writes don't churn re-renders; the runner reads
+  // them on every push/undo/redo.
+  const sinksRef = useRef<CommandSinks>({});
+
+  // canvasFile ref tracks the current key — used for persistence + for
+  // re-hydration when the consumer remounts under a different file.
+  const fileRef = useRef<string | undefined>(canvasFile);
+
+  // Re-hydrate state when canvasFile changes (e.g. parent shell remounts
+  // the provider for a new canvas). For the typical iframe lifecycle the
+  // provider unmounts entirely on canvas switch so this branch is rarely
+  // hit — it's a safety net for test harnesses that swap files in place.
+  useEffect(() => {
+    if (canvasFile === fileRef.current) return;
+    fileRef.current = canvasFile;
+    stateRef.current = canvasFile ? loadStackState(canvasFile) : { past: [], future: [] };
+    setRenderToken((t) => t + 1);
+  }, [canvasFile]);
 
   const writeState = useCallback((next: UndoStackState) => {
     stateRef.current = next;
+    if (fileRef.current) saveStackState(fileRef.current, next);
     setRenderToken((t) => t + 1);
   }, []);
 
   const [lastLabel, setLastLabel] = useState<string | null>(null);
   const [lastTick, setLastTick] = useState(0);
 
-  // Serialize concurrent ops. Cmd+Z held down can repeat at ~30 Hz; the runner
-  // awaits each side-effect before applying state. A simple promise chain
-  // queues subsequent calls without spawning parallel PATCH-es out of order.
+  // Serialize concurrent ops. Cmd+Z held down can repeat at ~30 Hz; the
+  // runner awaits each side-effect before applying state.
   const inFlightRef = useRef<Promise<void>>(Promise.resolve());
 
   const reportError = useCallback(
-    (err: unknown, op: 'do' | 'undo', cmd: EditCommand) => {
+    (err: unknown, op: 'do' | 'undo', record: CommandRecord) => {
       if (onCommandError) {
-        onCommandError(err, op, cmd);
+        onCommandError(err, op, record);
         return;
       }
-      console.warn(`[undo-stack] ${op} failed for "${cmd.label}":`, err);
+      console.warn(`[undo-stack] ${op} failed for "${record.label}":`, err);
     },
     [onCommandError]
   );
@@ -140,19 +187,34 @@ export function UndoStackProvider({ children, onCommandError }: UndoStackProvide
     return next;
   }, []);
 
+  /**
+   * Build a runnable EditCommand from a record using the iframe's current
+   * sinks. Returns `null` when the kind isn't registered or its required
+   * sink isn't bound — the runner skips the entry and bumps a label so the
+   * user sees `"(skipped: …)"` in the HUD instead of silent failure.
+   */
+  const build = useCallback((record: CommandRecord): EditCommand | null => {
+    return rebuildCommand(record, sinksRef.current);
+  }, []);
+
   const push = useCallback(
-    (cmd: EditCommand): Promise<void> =>
+    (record: CommandRecord): Promise<void> =>
       enqueue(async () => {
+        const cmd = build(record);
+        if (!cmd) {
+          bumpLabel(`(skipped: ${record.kind})`);
+          return;
+        }
         try {
           await cmd.do();
         } catch (err) {
-          reportError(err, 'do', cmd);
+          reportError(err, 'do', record);
           return;
         }
-        writeState(undoReducer(stateRef.current, { type: 'push', cmd }));
-        bumpLabel(cmd.label);
+        writeState(undoReducer(stateRef.current, { type: 'push', record }));
+        bumpLabel(record.label);
       }),
-    [enqueue, reportError, bumpLabel, writeState]
+    [enqueue, build, reportError, bumpLabel, writeState]
   );
 
   const undo = useCallback(
@@ -162,8 +224,13 @@ export function UndoStackProvider({ children, onCommandError }: UndoStackProvide
         if (!canUndoOf(cur)) return;
         const top = cur.past[cur.past.length - 1];
         if (!top) return;
+        const cmd = build(top);
+        if (!cmd) {
+          bumpLabel(`(skipped: ${top.kind})`);
+          return;
+        }
         try {
-          await top.undo();
+          await cmd.undo();
         } catch (err) {
           reportError(err, 'undo', top);
           return;
@@ -171,7 +238,7 @@ export function UndoStackProvider({ children, onCommandError }: UndoStackProvide
         writeState(undoReducer(stateRef.current, { type: 'undo' }));
         bumpLabel(`Undo: ${top.label}`);
       }),
-    [enqueue, reportError, bumpLabel, writeState]
+    [enqueue, build, reportError, bumpLabel, writeState]
   );
 
   const redo = useCallback(
@@ -181,8 +248,13 @@ export function UndoStackProvider({ children, onCommandError }: UndoStackProvide
         if (!canRedoOf(cur)) return;
         const top = cur.future[cur.future.length - 1];
         if (!top) return;
+        const cmd = build(top);
+        if (!cmd) {
+          bumpLabel(`(skipped: ${top.kind})`);
+          return;
+        }
         try {
-          await top.do();
+          await cmd.do();
         } catch (err) {
           reportError(err, 'do', top);
           return;
@@ -190,45 +262,50 @@ export function UndoStackProvider({ children, onCommandError }: UndoStackProvide
         writeState(undoReducer(stateRef.current, { type: 'redo' }));
         bumpLabel(`Redo: ${top.label}`);
       }),
-    [enqueue, reportError, bumpLabel, writeState]
+    [enqueue, build, reportError, bumpLabel, writeState]
   );
 
   const clear = useCallback(
     (reason?: string) => {
-      writeState(createUndoStackState());
+      writeState({ past: [], future: [] });
       bumpLabel(reason ?? null);
     },
     [bumpLabel, writeState]
   );
 
-  /**
-   * Phase 20 — external-edit invalidation. Listen for an explicit window
-   * event broadcast by the dev-server shell when an `fs:json` event for
-   * this canvas's `.meta.json` arrives from outside. Inside the iframe we
-   * read `canvas-lib`'s self-echo timestamp (window.__maude_last_meta_self_write_at)
-   * to skip events that are our own PATCH bouncing back through fs-watch.
-   *
-   * Iframe reload (the dominant external-edit case — .tsx file save) naturally
-   * resets the stack by unmounting the provider, so we don't have to listen
-   * for that.
-   */
+  // External-edit invalidation. Listen for an explicit window event
+  // dispatched by client/hmr.mjs when an external .meta.json change arrives.
+  // The self-echo guard ignores our own PATCH bouncing back through fs-watch
+  // (see canvas-lib's `__maude_last_meta_self_write_at`).
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const onInvalidate = (ev: Event) => {
-      // Self-echo guard: PATCH writes stamp `__maude_last_meta_self_write_at`
-      // before the fetch. If we're inside the echo window, this fs:json is
-      // ours bouncing back — don't clear the user's history.
       const w = window as unknown as { __maude_last_meta_self_write_at?: number };
       const last = w.__maude_last_meta_self_write_at ?? 0;
       if (Date.now() - last < 500) return;
       const reason =
         (ev as CustomEvent<{ reason?: string }>).detail?.reason ?? 'External edit detected';
-      writeState(createUndoStackState());
+      writeState({ past: [], future: [] });
       bumpLabel(reason);
     };
     window.addEventListener('maude:invalidate-undo', onInvalidate);
     return () => window.removeEventListener('maude:invalidate-undo', onInvalidate);
   }, [writeState, bumpLabel]);
+
+  // Sinks API exposed via a sibling context — descendants register their
+  // own side-effect functions without prop-drilling.
+  const sinksApi = useMemo<UndoSinksValue>(
+    () => ({
+      setSink: (key, fn) => {
+        if (fn === undefined) {
+          delete sinksRef.current[key];
+        } else {
+          (sinksRef.current as Record<string, unknown>)[key] = fn as unknown;
+        }
+      },
+    }),
+    []
+  );
 
   const value = useMemo<UndoStackValue>(
     () => ({
@@ -248,33 +325,35 @@ export function UndoStackProvider({ children, onCommandError }: UndoStackProvide
     [push, undo, redo, clear, lastLabel, lastTick]
   );
 
-  return <UndoStackContext.Provider value={value}>{children}</UndoStackContext.Provider>;
+  return (
+    <UndoStackContext.Provider value={value}>
+      <UndoSinksContext.Provider value={sinksApi}>{children}</UndoSinksContext.Provider>
+    </UndoStackContext.Provider>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Hooks
 
-/**
- * Required hook — throws outside a provider. Internal canvas-shell wiring
- * should use this so a missing provider mount is loud.
- */
 export function useUndoStack(): UndoStackValue {
   const ctx = useContext(UndoStackContext);
   if (!ctx) throw new Error('useUndoStack must be used inside <UndoStackProvider>');
   return ctx;
 }
 
-/**
- * Optional hook — silent no-op fallback. Use this in mutators (canvas-lib
- * `commitArtboardPositions`, annotations layer, equal-spacing handles) so
- * DS specimens / legacy mounts that don't carry the provider still work.
- */
 export function useUndoStackOptional(): UndoStackValue {
   return useContext(UndoStackContext) ?? NOOP_VALUE;
 }
 
-/** For tests / external integrations. */
-export { UndoStackContext };
+/**
+ * Sinks-registration hook. Use a setSink call inside a useEffect — register
+ * on mount, unregister on unmount.
+ */
+export function useUndoSinks(): UndoSinksValue {
+  return useContext(UndoSinksContext) ?? NOOP_SINKS;
+}
+
+export { UndoStackContext, UndoSinksContext };
 
 // Re-export the EditCommand type for ergonomic single-import in consumers.
-export type { EditCommand } from './undo-stack.ts';
+export type { CommandRecord, EditCommand } from './undo-stack.ts';

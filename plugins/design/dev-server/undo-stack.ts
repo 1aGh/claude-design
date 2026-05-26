@@ -6,32 +6,37 @@
  *             supplied side-effects so this file stays trivially testable
  *             under `bun:test`.
  *
- * Scope (DDR-049):
- *   - Per-canvas-iframe, in-memory, ephemerality is a feature: switching
- *     canvases or receiving an external file edit clears the stack.
- *   - Command-pattern (inverse payload), NOT snapshot. Each mutator emits a
- *     command holding the minimum diff needed to invert itself.
- *   - Depth-capped at 50 — typical session has 10–30 edits before save.
- *     The cap is a ring (shift oldest from `past` when full).
- *   - Future-discarded on push (canonical undo-stack behavior).
- *   - Viewport + selection are intentionally NOT pushed (Figma/Sketch
- *     convention — viewport is ephemeral navigation, selection is not an
- *     edit).
+ * Scope (DDR-049 rev 2):
+ *   - **Persistent per-canvas, in-memory, session-scoped.** The stack lives
+ *     in `window.top.__maude_undo_stacks` keyed by canvas file path so it
+ *     survives canvas switches (close Foo.tsx, open Bar.tsx, come back to
+ *     Foo.tsx → history still there). Reload destroys it. The original
+ *     "per-iframe-ephemeral" rule from rev 1 was UX-wrong.
+ *   - Stack stores SERIALIZABLE `CommandRecord`s (kind + label + payload),
+ *     NOT EditCommand closures. Closures captured by patchFn/putFn point
+ *     to the iframe's React state — when that iframe unmounts (canvas
+ *     switch), the closures become invalid. Rebuilding from the record
+ *     using the fresh iframe's sinks side-steps the lifecycle issue.
+ *   - Command-pattern semantics intact: each kind ships its own builder
+ *     that turns a payload + sinks into a runnable EditCommand.
+ *   - Depth cap = 50 per canvas. Future-discarded on push. Viewport +
+ *     selection NOT undoable (Figma convention).
  *
  * Async note. `cmd.do()` and `cmd.undo()` may return a Promise (server
  * PATCH/PUT). The reducer itself is synchronous and never awaits — the
- * runner inside `use-undo-stack.tsx` is responsible for awaiting the
- * side-effect BEFORE dispatching the state transition. Reducer-pure
- * keeps reasoning + tests trivial.
+ * runner inside `use-undo-stack.tsx` awaits the side-effect BEFORE
+ * dispatching the state transition. Reducer-pure keeps reasoning + tests
+ * trivial.
  */
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Types
+// Runtime command shape
 
 /**
- * A single reversible edit. `kind` is freeform — used for telemetry + the
- * HUD's debug branch only; orchestration looks at `label`. Implementations
- * live under `./commands/*.ts` and each owns its own inverse payload shape.
+ * A single reversible edit, ready to execute. Built on demand from a
+ * `CommandRecord` + `CommandSinks` via the registry below. Holds closures
+ * bound to the CURRENT iframe's React state — never persist this; persist
+ * the `CommandRecord` instead.
  */
 export interface EditCommand {
   readonly kind: string;
@@ -40,26 +45,93 @@ export interface EditCommand {
   undo(): Promise<void> | void;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Persistent record shape — what the stack actually stores
+
+/**
+ * Serializable description of a reversible edit. Each `kind` corresponds
+ * to a registered builder (see `registerCommand` below). Payload shape is
+ * the kind's contract — see `commands/*-command.ts` for definitions.
+ */
+export interface CommandRecord<P = unknown> {
+  readonly kind: string;
+  readonly label: string;
+  readonly payload: P;
+}
+
+/**
+ * Per-iframe side-effect surface. Populated by descendants of the
+ * `UndoStackProvider` via `useUndoSinks().setSinks(...)`. Each consumer
+ * provides only the sink it owns; the provider merges. Unbound sinks are
+ * `undefined` — builders fail gracefully (returning `null` makes the
+ * runner skip the entry with a warning rather than crash).
+ */
+export interface CommandSinks {
+  /** Wired by canvas-lib `DesignCanvasInner`. */
+  layoutPatchFn?: unknown;
+  /** Wired by `AnnotationsLayer`. */
+  strokesPutFn?: unknown;
+}
+
+export type CommandBuilder<P = unknown> = (
+  record: CommandRecord<P>,
+  sinks: CommandSinks
+) => EditCommand | null;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Reducer state + actions
+
 export interface UndoStackState {
-  past: readonly EditCommand[];
-  future: readonly EditCommand[];
+  past: readonly CommandRecord[];
+  future: readonly CommandRecord[];
 }
 
 export type UndoAction =
-  | { type: 'push'; cmd: EditCommand }
+  | { type: 'push'; record: CommandRecord }
   | { type: 'undo' }
   | { type: 'redo' }
-  | { type: 'clear' };
+  | { type: 'clear' }
+  | { type: 'hydrate'; state: UndoStackState };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
 
 /**
- * Ring cap. When `past.length === MAX_DEPTH` and a new command is pushed,
- * the oldest entry is dropped. 50 ≈ 3–5 minutes of intense iteration
- * before the user can no longer undo to the start.
+ * Ring cap per canvas. When `past.length === MAX_DEPTH` and a new record
+ * arrives, the oldest entry is dropped. 50 ≈ 3–5 minutes of intense
+ * iteration before the user can no longer undo to the start.
  */
 export const MAX_DEPTH = 50;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Builder registry
+
+const BUILDERS = new Map<string, CommandBuilder>();
+
+/** Register a builder for a command kind. Idempotent. */
+export function registerCommand<P>(kind: string, builder: CommandBuilder<P>): void {
+  BUILDERS.set(kind, builder as CommandBuilder);
+}
+
+/**
+ * Rebuild a runnable `EditCommand` from a persisted record + the iframe's
+ * current sinks. Returns `null` when the kind isn't registered or the
+ * required sink isn't bound — the runner treats `null` as "skip this entry,
+ * something's misconfigured" rather than crashing.
+ */
+export function rebuildCommand(
+  record: CommandRecord,
+  sinks: CommandSinks
+): EditCommand | null {
+  const builder = BUILDERS.get(record.kind);
+  if (!builder) return null;
+  return builder(record, sinks);
+}
+
+/** Test seam — reset the registry between bun:test cases. */
+export function _clearBuilderRegistry(): void {
+  BUILDERS.clear();
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Factory + reducer
@@ -72,7 +144,7 @@ export function undoReducer(state: UndoStackState, action: UndoAction): UndoStac
   switch (action.type) {
     case 'push': {
       const next = state.past.length >= MAX_DEPTH ? state.past.slice(1) : state.past;
-      return { past: [...next, action.cmd], future: [] };
+      return { past: [...next, action.record], future: [] };
     }
     case 'undo': {
       if (state.past.length === 0) return state;
@@ -94,6 +166,8 @@ export function undoReducer(state: UndoStackState, action: UndoAction): UndoStac
     }
     case 'clear':
       return createUndoStackState();
+    case 'hydrate':
+      return action.state;
   }
 }
 
@@ -108,12 +182,62 @@ export function canRedo(state: UndoStackState): boolean {
   return state.future.length > 0;
 }
 
-/** Top of `past` — the command an `undo` will invert. */
-export function peekUndo(state: UndoStackState): EditCommand | null {
+/** Top of `past` — the record an `undo` will invert. */
+export function peekUndo(state: UndoStackState): CommandRecord | null {
   return state.past[state.past.length - 1] ?? null;
 }
 
-/** Top of `future` — the command a `redo` will re-apply. */
-export function peekRedo(state: UndoStackState): EditCommand | null {
+/** Top of `future` — the record a `redo` will re-apply. */
+export function peekRedo(state: UndoStackState): CommandRecord | null {
   return state.future[state.future.length - 1] ?? null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cross-iframe persistent store (DDR-049 rev 2)
+//
+// Lives on the topmost window of the dev-server (same-origin — all canvas
+// iframes are children of /index.html). The map is keyed by canvas file path,
+// so switching from Foo.tsx → Bar.tsx → Foo.tsx replays the original Foo
+// history into the freshly-mounted iframe.
+
+interface StoreHost {
+  __maude_undo_stacks?: Map<string, UndoStackState>;
+}
+
+/**
+ * Prefer `window.top` so all canvas iframes (children of the dev-server
+ * shell) read + write the same Map. Falls back to `window` (when top is
+ * cross-origin — shouldn't happen in our same-origin setup), then to
+ * `globalThis` (Node / Bun test runtime where window is absent).
+ */
+function getStoreHost(): StoreHost {
+  if (typeof window !== 'undefined') {
+    try {
+      return (window.top ?? window) as unknown as StoreHost;
+    } catch {
+      return window as unknown as StoreHost;
+    }
+  }
+  return globalThis as unknown as StoreHost;
+}
+
+function ensureStoreMap(): Map<string, UndoStackState> {
+  const host = getStoreHost();
+  if (!host.__maude_undo_stacks) host.__maude_undo_stacks = new Map();
+  return host.__maude_undo_stacks;
+}
+
+/** Load saved state for a canvas file. Returns empty state on miss. */
+export function loadStackState(canvasFile: string): UndoStackState {
+  return ensureStoreMap().get(canvasFile) ?? createUndoStackState();
+}
+
+/** Persist state for a canvas file. */
+export function saveStackState(canvasFile: string, state: UndoStackState): void {
+  ensureStoreMap().set(canvasFile, state);
+}
+
+/** Test seam — wipe the cross-iframe store between bun:test cases. */
+export function _clearStackStore(): void {
+  getStoreHost().__maude_undo_stacks = new Map();
 }
