@@ -77,7 +77,12 @@ describe('marquee-overlay / applyMarqueeMode', () => {
 
   test('intersect keeps only ids present in both sets', () => {
     const { stub, log } = makeStub();
-    applyMarqueeMode(stub, 'intersect', [sel('a'), sel('b'), sel('c')], [sel('b'), sel('c'), sel('d')]);
+    applyMarqueeMode(
+      stub,
+      'intersect',
+      [sel('a'), sel('b'), sel('c')],
+      [sel('b'), sel('c'), sel('d')]
+    );
     expect(log).toEqual([{ method: 'replace', payload: [sel('b'), sel('c')] }]);
   });
 

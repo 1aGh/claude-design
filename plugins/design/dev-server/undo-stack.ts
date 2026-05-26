@@ -119,10 +119,7 @@ export function registerCommand<P>(kind: string, builder: CommandBuilder<P>): vo
  * required sink isn't bound — the runner treats `null` as "skip this entry,
  * something's misconfigured" rather than crashing.
  */
-export function rebuildCommand(
-  record: CommandRecord,
-  sinks: CommandSinks
-): EditCommand | null {
+export function rebuildCommand(record: CommandRecord, sinks: CommandSinks): EditCommand | null {
   const builder = BUILDERS.get(record.kind);
   if (!builder) return null;
   return builder(record, sinks);

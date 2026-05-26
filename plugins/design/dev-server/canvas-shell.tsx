@@ -38,12 +38,6 @@ import {
 
 import { AnnotationsLayer } from './annotations-layer.tsx';
 import { ArtboardMarqueeOverlay } from './artboard-marquee.tsx';
-import { type AlignMode, alignLabel, equalSpacingLabel } from './commands/equal-spacing-command.ts';
-import { ContextualToolbar } from './contextual-toolbar.tsx';
-import { EqualSpacingHandles } from './equal-spacing-handles.tsx';
-import { ElementMarqueeOverlay } from './marquee-overlay.tsx';
-import { useCursorModifiers } from './use-cursor-modifiers.tsx';
-import { useKeyboardDiscipline } from './use-keyboard-discipline.tsx';
 import {
   type ArtboardRect,
   SnapGuideOverlay,
@@ -52,6 +46,7 @@ import {
   useDragStateContext,
   useViewportControllerContext,
 } from './canvas-lib.tsx';
+import { type AlignMode, alignLabel, equalSpacingLabel } from './commands/equal-spacing-command.ts';
 import { CommentsOverlay } from './comments-overlay.tsx';
 import {
   ContextMenuProvider,
@@ -61,18 +56,23 @@ import {
   type MenuItem,
   useContextMenu,
 } from './context-menu.tsx';
+import { ContextualToolbar } from './contextual-toolbar.tsx';
+import { EqualSpacingHandles } from './equal-spacing-handles.tsx';
 import { ExportDialogProvider } from './export-dialog.tsx';
 import { type HoverTarget, resolveHoverTarget, useInputRouter } from './input-router.tsx';
+import { ElementMarqueeOverlay } from './marquee-overlay.tsx';
 import { ToolPalette } from './tool-palette.tsx';
+import { UndoHud } from './undo-hud.tsx';
 import {
   AnnotationSelectionProvider,
   useAnnotationSelection,
 } from './use-annotation-selection.tsx';
 import { AnnotationsVisibilityProvider } from './use-annotations-visibility.tsx';
+import { useCursorModifiers } from './use-cursor-modifiers.tsx';
+import { useKeyboardDiscipline } from './use-keyboard-discipline.tsx';
 import { type Selection, SelectionSetProvider, useSelectionSet } from './use-selection-set.tsx';
 import { useToolMode } from './use-tool-mode.tsx';
 import { useUndoStack } from './use-undo-stack.tsx';
-import { UndoHud } from './undo-hud.tsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Styles — halos render as `position: fixed` siblings of the canvas. Reading
@@ -537,19 +537,11 @@ function buildRegistry(deps: {
   clearSelection: () => void;
   selSet: { selected: Selection[] };
   distributeArtboards: (axis: 'x' | 'y') => void;
-  alignArtboards: (
-    mode: 'left' | 'right' | 'center-x' | 'top' | 'bottom' | 'center-y'
-  ) => void;
+  alignArtboards: (mode: 'left' | 'right' | 'center-x' | 'top' | 'bottom' | 'center-y') => void;
   focusArtboard: (artboardId: string) => void;
 }): ContextRegistry {
-  const {
-    controller,
-    clearSelection,
-    selSet,
-    distributeArtboards,
-    alignArtboards,
-    focusArtboard,
-  } = deps;
+  const { controller, clearSelection, selSet, distributeArtboards, alignArtboards, focusArtboard } =
+    deps;
 
   // T24 — distribute commands are only enabled when ≥ 3 artboards are
   // selected. Below that, the menu items render as `disabled` so the user
@@ -781,9 +773,7 @@ function CanvasRouter({
   hostRef: RefObject<HTMLDivElement | null>;
   children: ReactNode;
   distributeArtboards: (axis: 'x' | 'y') => void;
-  alignArtboards: (
-    mode: 'left' | 'right' | 'center-x' | 'top' | 'bottom' | 'center-y'
-  ) => void;
+  alignArtboards: (mode: 'left' | 'right' | 'center-x' | 'top' | 'bottom' | 'center-y') => void;
 }) {
   const { tool, setTool, clearSticky } = useToolMode();
   const selSet = useSelectionSet();
@@ -1115,9 +1105,7 @@ function MultiArtboardToolbar({
   alignArtboards,
 }: {
   distributeArtboards: (axis: 'x' | 'y') => void;
-  alignArtboards: (
-    mode: 'left' | 'right' | 'center-x' | 'top' | 'bottom' | 'center-y'
-  ) => void;
+  alignArtboards: (mode: 'left' | 'right' | 'center-x' | 'top' | 'bottom' | 'center-y') => void;
 }) {
   ensureMultiToolbarStyles();
   const { selected } = useSelectionSet();

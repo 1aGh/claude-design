@@ -20,11 +20,7 @@
  */
 
 import type { Stroke } from '../annotations-layer.tsx';
-import type {
-  CommandRecord,
-  CommandSinks,
-  EditCommand,
-} from '../undo-stack.ts';
+import type { CommandRecord, CommandSinks, EditCommand } from '../undo-stack.ts';
 import { registerCommand } from '../undo-stack.ts';
 
 /**
@@ -51,9 +47,7 @@ export interface AnnotationStrokesCommandInit {
   kind?: string;
 }
 
-export function createAnnotationStrokesCommand(
-  init: AnnotationStrokesCommandInit
-): EditCommand {
+export function createAnnotationStrokesCommand(init: AnnotationStrokesCommandInit): EditCommand {
   const { putFn } = init;
   const before = init.before.map(cloneStroke);
   const after = init.after.map(cloneStroke);

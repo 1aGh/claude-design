@@ -109,16 +109,7 @@ describe('canvas-lib motion inline (handoff path)', () => {
     // The 8-role vocabulary is part of the DS contract — design-system-keeper
     // + motion-critic both grep against it. Lock the role list with a
     // structural assertion against the source.
-    for (const role of [
-      'flip',
-      'panel',
-      'route',
-      'soft',
-      'spring',
-      'scroll',
-      'drag',
-      'presence',
-    ]) {
+    for (const role of ['flip', 'panel', 'route', 'soft', 'spring', 'scroll', 'drag', 'presence']) {
       expect(libSource).toContain(`  ${role}: {`);
     }
   });

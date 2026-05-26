@@ -361,9 +361,9 @@ describe('input-router / keydown — undo + redo (Phase 20)', () => {
   });
 
   test('Cmd+Shift+Z → redo', () => {
-    expect(
-      classify(base({ type: 'keydown', key: 'z', metaKey: true, shiftKey: true })).kind
-    ).toBe('redo');
+    expect(classify(base({ type: 'keydown', key: 'z', metaKey: true, shiftKey: true })).kind).toBe(
+      'redo'
+    );
   });
 
   test('Ctrl+Z → undo (Windows / Linux mac-less)', () => {
@@ -385,9 +385,9 @@ describe('input-router / keydown — undo + redo (Phase 20)', () => {
   });
 
   test('Cmd+Opt+Z → no-op (Alt is reserved for browser text gestures)', () => {
-    expect(
-      classify(base({ type: 'keydown', key: 'z', metaKey: true, altKey: true })).kind
-    ).toBe('no-op');
+    expect(classify(base({ type: 'keydown', key: 'z', metaKey: true, altKey: true })).kind).toBe(
+      'no-op'
+    );
   });
 
   test('bare Z → no-op (Z is not a tool letter; needs Cmd)', () => {
@@ -395,8 +395,8 @@ describe('input-router / keydown — undo + redo (Phase 20)', () => {
   });
 
   test('Cmd+Shift+Y → no-op (only Cmd+Y; we do not over-claim)', () => {
-    expect(
-      classify(base({ type: 'keydown', key: 'y', metaKey: true, shiftKey: true })).kind
-    ).toBe('no-op');
+    expect(classify(base({ type: 'keydown', key: 'y', metaKey: true, shiftKey: true })).kind).toBe(
+      'no-op'
+    );
   });
 });

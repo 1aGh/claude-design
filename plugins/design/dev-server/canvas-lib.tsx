@@ -95,11 +95,7 @@ import {
 import { type DragState, useArtboardDrag } from './use-artboard-drag.tsx';
 import { useSelectionSetOptional } from './use-selection-set.tsx';
 import { ToolProvider, useToolModeOptional } from './use-tool-mode.tsx';
-import {
-  UndoStackProvider,
-  useUndoSinks,
-  useUndoStackOptional,
-} from './use-undo-stack.tsx';
+import { UndoStackProvider, useUndoSinks, useUndoStackOptional } from './use-undo-stack.tsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Module constants
@@ -1475,7 +1471,7 @@ export function DCArtboard({
   children: ReactNode;
 }) {
   const ctx = useWorldContext();
-  const controller = useViewportControllerContext();
+  const _controller = useViewportControllerContext();
   const toolMode = useToolModeOptional();
   const selSet = useSelectionSetOptional();
   const dragBus = useDragStateContext();
@@ -1560,11 +1556,7 @@ export function DCArtboard({
       style={{ left: liveX, top: liveY, width: rect.w, height: rect.h }}
       {...handleProps}
     >
-      <button
-        type="button"
-        className="dc-artboard-label sku"
-        aria-label={`Artboard ${label}`}
-      >
+      <button type="button" className="dc-artboard-label sku" aria-label={`Artboard ${label}`}>
         {label}
       </button>
       <div className="dc-artboard-body">{children}</div>
@@ -2345,7 +2337,7 @@ function readMotionTokensOnce(): {
   for (const k of durKeys) {
     const raw = cs.getPropertyValue(k).trim();
     if (!raw) continue;
-    const n = parseFloat(raw);
+    const n = Number.parseFloat(raw);
     if (Number.isFinite(n)) {
       durations[k] = raw.endsWith('s') && !raw.endsWith('ms') ? n * 1000 : n;
     }
@@ -2404,7 +2396,7 @@ export function MotionDemo({
   const durationMs = tokens.durations[cfg.durationToken] ?? cfg.fallbackMs;
   const isSpring = cfg.easingToken === 'spring';
   const ease = isSpring ? undefined : easingFromToken(cfg.easingToken, tokens.easings);
-  const repeat = reduced || loop === 'once' ? 0 : Infinity;
+  const repeat = reduced || loop === 'once' ? 0 : Number.POSITIVE_INFINITY;
   const repeatType: 'reverse' | 'loop' = loop === 'always' ? 'reverse' : 'loop';
   const animate = reduced ? undefined : cfg.keyframes;
 
@@ -2451,6 +2443,7 @@ export function MotionTrack({ children, staggerMs = 40, className }: MotionTrack
       style={{ display: 'flex', gap: 12, alignItems: 'center' }}
     >
       {items.map((c, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: stagger row is index-positional by design; no reorder/insertion semantics
         <div key={i} style={{ animationDelay: `${i * staggerMs}ms` }}>
           {c}
         </div>

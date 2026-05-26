@@ -124,7 +124,7 @@ function walk(dir: string, out: string[] = []): string[] {
   }
   for (const e of entries) {
     const p = join(dir, e);
-    let s;
+    let s: ReturnType<typeof statSync>;
     try {
       s = statSync(p);
     } catch {
@@ -170,10 +170,14 @@ function extractInlineTokenOverrides(htmlSource: string): Record<string, string>
   return overrides;
 }
 
+// biome-ignore lint/correctness/noUnusedVariables: kept as planned API surface for the codemod; no callers yet
 function planFor(htmlPath: string, archiveRoot: string): MigrationPlan {
   const tsxPath = htmlPath.replace(/\.html$/, '.tsx');
   const cssPath = htmlPath.replace(/\.html$/, '.css');
-  const archivePath = join(archiveRoot, relative(archiveRoot.split('/_history')[0] ?? '/', htmlPath));
+  const archivePath = join(
+    archiveRoot,
+    relative(archiveRoot.split('/_history')[0] ?? '/', htmlPath)
+  );
   const alreadyMigrated = existsSync(tsxPath);
   const htmlSource = alreadyMigrated ? '' : (Bun.file(htmlPath).text() as unknown as string);
   return {
@@ -187,7 +191,10 @@ function planFor(htmlPath: string, archiveRoot: string): MigrationPlan {
   } as MigrationPlan;
 }
 
-async function migrateOne(htmlPath: string, opts: CliOpts): Promise<'migrated' | 'skipped' | 'failed'> {
+async function migrateOne(
+  htmlPath: string,
+  opts: CliOpts
+): Promise<'migrated' | 'skipped' | 'failed'> {
   const tsxPath = htmlPath.replace(/\.html$/, '.tsx');
   const cssPath = htmlPath.replace(/\.html$/, '.css');
 
@@ -196,7 +203,9 @@ async function migrateOne(htmlPath: string, opts: CliOpts): Promise<'migrated' |
     return 'skipped';
   }
 
-  const htmlSource = await Bun.file(htmlPath).text().catch(() => '');
+  const htmlSource = await Bun.file(htmlPath)
+    .text()
+    .catch(() => '');
   if (!htmlSource) {
     console.error(`FAIL   ${htmlPath} — could not read`);
     return 'failed';
@@ -210,7 +219,7 @@ async function migrateOne(htmlPath: string, opts: CliOpts): Promise<'migrated' |
     return 'failed';
   }
   let tsxOut = await Bun.file(tplTsxPath).text();
-  let cssOut = await Bun.file(tplCssPath).text();
+  const cssOut = await Bun.file(tplCssPath).text();
 
   // Default placeholder substitution. The template ships {{ds_dirname}} +
   // {{project_label}} placeholders; the codemod derives them from the htmlPath
@@ -231,7 +240,9 @@ async function migrateOne(htmlPath: string, opts: CliOpts): Promise<'migrated' |
   }
 
   if (opts.dryRun) {
-    console.log(`DRY    ${htmlPath} → ${tsxPath} (+ ${cssPath}) ${Object.keys(overrides).length} overrides`);
+    console.log(
+      `DRY    ${htmlPath} → ${tsxPath} (+ ${cssPath}) ${Object.keys(overrides).length} overrides`
+    );
     return 'migrated';
   }
 

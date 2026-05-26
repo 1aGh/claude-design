@@ -82,6 +82,7 @@ export function UndoHud() {
   return (
     <div
       className="dc-undo-hud"
+      // biome-ignore lint/a11y/useSemanticElements: <output> is form-scoped; this HUD is a global status overlay outside any form
       data-visible={visible ? 'true' : 'false'}
       role="status"
       aria-live="polite"

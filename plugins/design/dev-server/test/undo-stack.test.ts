@@ -111,7 +111,9 @@ describe('undoReducer', () => {
       s = undoReducer(s, { type: 'push', record: r });
     }
     expect(s.past.length).toBe(MAX_DEPTH);
+    // biome-ignore lint/style/noNonNullAssertion: records pushed sequentially above; index guaranteed in range
     expect(s.past[0]).toBe(records[5]!);
+    // biome-ignore lint/style/noNonNullAssertion: records pushed sequentially above; index guaranteed in range
     expect(s.past[s.past.length - 1]).toBe(records[records.length - 1]!);
   });
 

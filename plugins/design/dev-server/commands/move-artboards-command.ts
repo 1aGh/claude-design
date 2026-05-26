@@ -17,11 +17,7 @@
  * stale layout.
  */
 
-import type {
-  CommandRecord,
-  CommandSinks,
-  EditCommand,
-} from '../undo-stack.ts';
+import type { CommandRecord, CommandSinks, EditCommand } from '../undo-stack.ts';
 import { registerCommand } from '../undo-stack.ts';
 
 export interface ArtboardLayoutEntry {
@@ -64,8 +60,7 @@ export function createMoveArtboardsCommand(init: MoveArtboardsCommandInit): Edit
   const beforeSnapshot = before.map(cloneEntry);
   const afterSnapshot = after.map(cloneEntry);
   const movedCount = countMoved(beforeSnapshot, afterSnapshot);
-  const label =
-    init.label ?? `move ${movedCount} artboard${movedCount === 1 ? '' : 's'}`;
+  const label = init.label ?? `move ${movedCount} artboard${movedCount === 1 ? '' : 's'}`;
   const kind = init.kind ?? MOVE_ARTBOARDS_KIND;
 
   return {

@@ -16,8 +16,8 @@ import { useEffect, useRef, useState } from 'react';
 
 import {
   type EqualSpacingResult,
-  detectEqualSpacing,
   type SpacingAxis,
+  detectEqualSpacing,
 } from './equal-spacing-detector.ts';
 import { useSelectionSet } from './use-selection-set.tsx';
 
@@ -103,12 +103,12 @@ interface ScreenRect {
   h: number;
 }
 
-function resolveSelectionRects(
-  sels: Array<{ id?: string; selector: string }>
-): ScreenRect[] {
+function resolveSelectionRects(sels: Array<{ id?: string; selector: string }>): ScreenRect[] {
   const rects: ScreenRect[] = [];
   for (const s of sels) {
-    const el = s.id ? document.querySelector(`[data-cd-id="${cssEscape(s.id)}"]`) : safeQuery(s.selector);
+    const el = s.id
+      ? document.querySelector(`[data-cd-id="${cssEscape(s.id)}"]`)
+      : safeQuery(s.selector);
     if (!el) continue;
     const b = (el as HTMLElement).getBoundingClientRect();
     if (b.width === 0 && b.height === 0) continue;
@@ -119,10 +119,10 @@ function resolveSelectionRects(
 
 function unionBbox(rects: ScreenRect[]): ScreenRect | null {
   if (rects.length === 0) return null;
-  let left = Infinity;
-  let top = Infinity;
-  let right = -Infinity;
-  let bottom = -Infinity;
+  let left = Number.POSITIVE_INFINITY;
+  let top = Number.POSITIVE_INFINITY;
+  let right = Number.NEGATIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
   for (const r of rects) {
     if (r.x < left) left = r.x;
     if (r.y < top) top = r.y;

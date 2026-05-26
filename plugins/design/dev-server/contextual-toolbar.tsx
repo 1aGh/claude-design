@@ -207,9 +207,7 @@ export function ContextualToolbar() {
 
   return (
     <div ref={ref} className="dc-elem-ctx-tb" role="toolbar" aria-label="Element actions">
-      <span className="dc-elem-ctx-count">
-        {count === 1 ? '1 element' : `${count} elements`}
-      </span>
+      <span className="dc-elem-ctx-count">{count === 1 ? '1 element' : `${count} elements`}</span>
       <button
         type="button"
         title="Copy CSS selector"

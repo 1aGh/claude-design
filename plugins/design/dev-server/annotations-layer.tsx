@@ -1091,6 +1091,7 @@ export function AnnotationsLayer() {
     by: number;
   } | null>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: commitStrokes/strokesStore are stable refs from parent context; manual dep list reflects effect-trigger semantics, not internal callbacks
   useEffect(() => {
     if (typeof document === 'undefined') return;
     if (tool !== 'move') return;

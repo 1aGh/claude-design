@@ -112,11 +112,7 @@ export interface UndoStackProviderProps {
    * side-effect (push: cmd not appended; undo: stays in past; redo: stays in
    * future). Defaults to a console.warn.
    */
-  onCommandError?: (
-    err: unknown,
-    op: 'do' | 'undo',
-    record: CommandRecord
-  ) => void;
+  onCommandError?: (err: unknown, op: 'do' | 'undo', record: CommandRecord) => void;
 }
 
 export function UndoStackProvider({

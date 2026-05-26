@@ -46,7 +46,9 @@ describe('createMoveArtboardsCommand', () => {
     const patchFn = mock(() => {});
     const cmd = createMoveArtboardsCommand({ before, after, patchFn });
     // Poison the source arrays in place.
+    // biome-ignore lint/style/noNonNullAssertion: test invariant — arrays literally constructed two lines above
     after[0]!.x = 9999;
+    // biome-ignore lint/style/noNonNullAssertion: test invariant — arrays literally constructed two lines above
     before[1]!.y = -777;
     await cmd.do();
     expect(patchFn.mock.calls[0]?.[0]).toEqual([A2, B]);

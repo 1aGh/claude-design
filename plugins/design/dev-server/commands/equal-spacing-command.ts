@@ -15,13 +15,7 @@
  *             command keeps the future Yjs swap (Phase 8) one-for-one.
  */
 
-export type AlignMode =
-  | 'left'
-  | 'right'
-  | 'center-x'
-  | 'top'
-  | 'bottom'
-  | 'center-y';
+export type AlignMode = 'left' | 'right' | 'center-x' | 'top' | 'bottom' | 'center-y';
 
 /** "equal-space 3 artboards" — N must be ≥ 3 (distribute requires it). */
 export function equalSpacingLabel(n: number): string {
