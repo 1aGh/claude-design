@@ -160,8 +160,7 @@ export function normalizeDesignSystems<T extends DevServerConfig>(cfg: T): T {
       ...entry,
       path: p,
       tokensCssRel:
-        entry.tokensCssRel?.replace(/^\/+/, '') ??
-        path.posix.join(p, 'colors_and_type.css'),
+        entry.tokensCssRel?.replace(/^\/+/, '') ?? path.posix.join(p, 'colors_and_type.css'),
     };
   });
   return { ...cfg, designSystems };

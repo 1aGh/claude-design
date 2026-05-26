@@ -45,22 +45,22 @@ function makeMultiDsSandbox(): MultiDsSandbox {
   mkdirSync(join(designRoot, 'system', 'alpha', 'preview'), { recursive: true });
   writeFileSync(
     join(designRoot, 'system', 'alpha', 'colors_and_type.css'),
-    `:root {\n  --color-bg: #fbfaf7;\n  --accent: #9CACFF;\n  --color-text-primary: #000000;\n  --fs-base: 1rem;\n  --font-body: 'Inter', sans-serif;\n}\n`
+    ":root {\n  --color-bg: #fbfaf7;\n  --accent: #9CACFF;\n  --color-text-primary: #000000;\n  --fs-base: 1rem;\n  --font-body: 'Inter', sans-serif;\n}\n"
   );
   writeFileSync(
     join(designRoot, 'system', 'alpha', 'preview', 'colors-accent.tsx'),
-    `export default function ColorsAccent() { return <div>alpha accent</div>; }\n`
+    'export default function ColorsAccent() { return <div>alpha accent</div>; }\n'
   );
 
   // Beta — different palette + names.
   mkdirSync(join(designRoot, 'system', 'beta', 'preview'), { recursive: true });
   writeFileSync(
     join(designRoot, 'system', 'beta', 'colors_and_type.css'),
-    `:root {\n  --bg-0: oklch(13% 0.012 60);\n  --accent: oklch(72% 0.16 55);\n  --type-base: 14px;\n}\n`
+    ':root {\n  --bg-0: oklch(13% 0.012 60);\n  --accent: oklch(72% 0.16 55);\n  --type-base: 14px;\n}\n'
   );
   writeFileSync(
     join(designRoot, 'system', 'beta', 'preview', 'colors-accent.tsx'),
-    `export default function ColorsAccent() { return <div>beta accent</div>; }\n`
+    'export default function ColorsAccent() { return <div>beta accent</div>; }\n'
   );
 
   mkdirSync(join(designRoot, 'ui'), { recursive: true });
