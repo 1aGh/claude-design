@@ -52,7 +52,7 @@
     },
     "tokensCssRel": {
       "type": "string",
-      "description": "Path to the design system CSS, relative to designRoot. New canvases <link> to this file.",
+      "description": "Project-wide tokens CSS path, relative to designRoot. Used as the fallback when 'designSystems' is unset OR when an entry omits its own 'tokensCssRel'. New canvases <link> to this file by default. Per DDR-048, per-DS entries auto-resolve to '<designSystems[i].path>/colors_and_type.css' when their own field is missing.",
       "default": "system/colors_and_type.css"
     },
     "teamAccentDefault": {
@@ -130,7 +130,7 @@
     },
     "designSystems": {
       "type": "array",
-      "description": "Design systems available in this project. Single-DS projects have one entry; multi-DS projects (marketing vs. admin vs. mobile) list each here. Each canvas's .meta.json declares which DS it uses via the 'designSystem' field.",
+      "description": "Design systems available in this project. Single-DS projects have one entry; multi-DS projects (marketing vs. admin vs. mobile) list each here. Each canvas's .meta.json declares which DS it uses via the 'designSystem' field. The System view's DS picker iterates this array.",
       "items": {
         "type": "object",
         "required": ["name", "path"],
@@ -138,13 +138,39 @@
           "name": {
             "type": "string",
             "pattern": "^[a-z][a-z0-9-]*$",
-            "description": "Kebab-case slug. Used to match canvas .meta.json.designSystem references."
+            "description": "Kebab-case slug. Used to match canvas .meta.json.designSystem references and as the ?ds=<name> query param on /_system-data."
           },
           "path": {
             "type": "string",
-            "description": "Folder under designRoot (e.g. 'system/marketing')."
+            "description": "Folder under designRoot (e.g. 'system/marketing'). The DS-scoped System view reads tokens, previews, and ui_kits from inside this folder."
           },
-          "description": { "type": "string" }
+          "description": { "type": "string" },
+          "tokensCssRel": {
+            "type": "string",
+            "description": "Per-DS tokens CSS path, relative to designRoot. When omitted, auto-resolves to '<path>/colors_and_type.css' (DDR-048). Set explicitly when the DS's tokens live under a non-standard filename."
+          },
+          "rootClass": {
+            "type": "string",
+            "description": "Optional root class applied to canvases in this DS (overrides the project-wide rootClass for this DS's previews + new canvases)."
+          },
+          "themeDefault": {
+            "type": "string",
+            "enum": ["dark", "light"],
+            "description": "Per-DS theme default. Overrides the project-wide themeDefault when rendering this DS's specimens."
+          },
+          "themes": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Optional list of theme names this DS supports (used by the System view's theme toggle when more than one theme is declared)."
+          },
+          "newCanvasDir": {
+            "type": "string",
+            "description": "Override of the project-wide newCanvasDir for canvases scaffolded inside this DS."
+          },
+          "newComponentDir": {
+            "type": "string",
+            "description": "Override of the project-wide newComponentDir for components scaffolded inside this DS."
+          }
         },
         "additionalProperties": false
       },

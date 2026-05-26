@@ -83,6 +83,10 @@ Making the defaults look obviously unfinished (gray on gray, square corners, no 
 - `plugins/design/skills/design-system/SKILL.md` — extend discovery payload with new placeholder fields
 - `cli/commands/design.mjs` — neutral defaults + new placeholder keys
 
+## Follow-ups
+
+- [DDR-048](DDR-048-dev-server-system-view-no-shell-bias.md) — extends bias-free into the dev-server runtime: the System view (MDCC-DSN/01) now renders user tokens regardless of naming convention, instead of leaking the Maude chrome theme through hardcoded `--bg-0..4 / --fg-0..3 / --accent*` reads against `document.documentElement`.
+
 ## What this DDR does not change
 
 - Token NAMES (`--bg-0`, `--accent`, `--dur-flip`, etc.) — these remain the canonical contract.

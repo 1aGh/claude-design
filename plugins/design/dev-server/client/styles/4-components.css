@@ -36,13 +36,43 @@
 
 /* CV-09 header — SKU framing, hairline divider underneath. */
 .sv-header {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-5);
   border-bottom: 2px solid var(--u-fg-0);
   padding-bottom: var(--u-s-3);
   margin-bottom: var(--u-s-5);
+}
+.sv-header .sv-title { flex: 1 1 auto; }
+.sv-ds-picker {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--u-s-2);
+  font-family: var(--u-font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-sku);
+  text-transform: uppercase;
+  color: var(--u-fg-2);
+}
+.sv-ds-picker select {
+  font-family: var(--u-font-mono);
+  font-size: 11px;
+  color: var(--u-fg-0);
+  background: var(--u-bg-1);
+  border: 1px solid var(--u-border);
+  border-radius: var(--u-r-sm);
+  padding: 2px 6px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.sv-ds-description {
+  font-family: var(--u-font-body);
+  font-size: var(--type-sm);
+  line-height: 1.5;
+  color: var(--u-fg-1);
+  margin: 0 0 var(--u-s-5);
+  max-width: 72ch;
 }
 .sv-sku {
   font-family: var(--u-font-mono);

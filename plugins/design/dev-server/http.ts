@@ -218,8 +218,20 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect): Http {
     '/_index-data': async () =>
       Response.json(await api.buildIndexData(), { headers: { 'Cache-Control': 'no-store' } }),
 
-    '/_system-data': async () =>
-      Response.json(await api.buildSystemData(), { headers: { 'Cache-Control': 'no-store' } }),
+    '/_system-data': async (req: Request) => {
+      // DDR-048 — `?ds=<name>` scopes to one design system (per-DS tokens,
+      // per-DS preview gallery). Omitted = legacy top-level scan for
+      // backwards compat with single-DS projects.
+      const dsName = new URL(req.url).searchParams.get('ds');
+      const data = await api.buildSystemData(dsName);
+      if (data === null) {
+        return Response.json(
+          { error: 'unknown design system', ds: dsName },
+          { status: 404, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(data, { headers: { 'Cache-Control': 'no-store' } });
+    },
 
     '/_comments-all': async () =>
       Response.json(await api.loadAllComments(), { headers: { 'Cache-Control': 'no-store' } }),

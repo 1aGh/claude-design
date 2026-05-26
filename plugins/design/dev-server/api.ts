@@ -155,7 +155,7 @@ export interface Api {
   saveAnnotations(file: string, svg: string): Promise<boolean>;
   // Aggregate data
   buildIndexData(): Promise<unknown>;
-  buildSystemData(): Promise<unknown>;
+  buildSystemData(dsName?: string | null): Promise<unknown>;
   // Export history (Phase 6.5 T10)
   loadExportHistory(): Promise<ExportHistoryEntry[]>;
   appendExportHistory(entry: ExportHistoryEntry): Promise<void>;
@@ -765,9 +765,34 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
     return tokens;
   }
 
-  async function buildSystemData() {
-    const sysAbs = path.join(paths.designRoot, paths.systemDirRel);
-    const sysRel = path.posix.join(paths.designRel, paths.systemDirRel);
+  /**
+   * Build the System view payload.
+   *
+   * - When `dsName` is null/undefined, scope to the top-level system dir
+   *   (`paths.systemDirRel`) and read tokens from `cfg.tokensCssRel`. This is
+   *   the legacy single-DS shape every pre-DDR-048 caller sees.
+   * - When `dsName` is provided, scope to the matching `designSystems[]` entry:
+   *   `sysAbs`/`sysRel` point at the DS folder, `tokensAbs` reads from the
+   *   per-DS `tokensCssRel` (auto-resolved by `normalizeDesignSystems`), and
+   *   the previews/ui_kits galleries are restricted to that DS subtree.
+   *
+   * Returns `null` when `dsName` is set but not found in `cfg.designSystems` so
+   * the HTTP handler can 404 instead of silently falling back.
+   *
+   * DDR-048 — system view renders user tokens only; the per-DS scope is what
+   * keeps multi-DS projects from blending the wrong tokens into the wrong
+   * preview gallery.
+   */
+  async function buildSystemData(dsName?: string | null) {
+    let dsEntry: NonNullable<typeof cfg.designSystems>[number] | null = null;
+    if (dsName) {
+      dsEntry = cfg.designSystems?.find((d) => d.name === dsName) ?? null;
+      if (!dsEntry) return null;
+    }
+
+    const scopedSystemRel = dsEntry ? dsEntry.path : paths.systemDirRel;
+    const sysAbs = path.join(paths.designRoot, scopedSystemRel);
+    const sysRel = path.posix.join(paths.designRel, scopedSystemRel);
 
     let readme: string | null = null;
     let readmePath: string | null = null;
@@ -794,8 +819,12 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
 
     let tokens: ReturnType<typeof parseTokens> = [];
     let tokensPath: string | null = null;
+    // Per-DS tokens path (auto-resolved by normalizeDesignSystems) wins; the
+    // top-level cfg.tokensCssRel is a project-wide fallback for legacy
+    // single-DS configs that don't declare `designSystems[]`. DDR-048.
+    const tokensCssRel = dsEntry?.tokensCssRel ?? cfg.tokensCssRel;
     try {
-      const tokensAbs = path.join(paths.designRoot, cfg.tokensCssRel);
+      const tokensAbs = path.join(paths.designRoot, tokensCssRel);
       const css = await readFile(tokensAbs, 'utf8');
       tokens = parseTokens(css);
       tokensPath = path.relative(paths.repoRoot, tokensAbs);
@@ -812,16 +841,21 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
     async function galleryFor(folderName: string) {
       const matches: { abs: string; rel: string }[] = [];
       try {
-        const subs = await readdir(sysAbs, { withFileTypes: true });
-        for (const s of subs) {
-          if (!s.isDirectory()) continue;
-          const candidate = path.join(sysAbs, s.name, folderName);
-          try {
-            const st = await statp(candidate);
-            if (st.isDirectory())
-              matches.push({ abs: candidate, rel: path.posix.join(sysRel, s.name, folderName) });
-          } catch {
-            /* ignore */
+        // When scoped to a single DS (sysAbs IS the DS folder), only check
+        // the DS-relative `<folderName>` subdir — scanning sub-dirs here
+        // would treat the DS's own `preview/` as a sibling DS root.
+        if (!dsEntry) {
+          const subs = await readdir(sysAbs, { withFileTypes: true });
+          for (const s of subs) {
+            if (!s.isDirectory()) continue;
+            const candidate = path.join(sysAbs, s.name, folderName);
+            try {
+              const st = await statp(candidate);
+              if (st.isDirectory())
+                matches.push({ abs: candidate, rel: path.posix.join(sysRel, s.name, folderName) });
+            } catch {
+              /* ignore */
+            }
           }
         }
         try {
@@ -856,10 +890,30 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
     const previewGallery = await galleryFor('preview');
     const uiKitsGallery = await galleryFor('ui_kits');
 
+    // Always advertise the available DSes so the client can render the picker
+    // even when the initial fetch was unscoped — avoids a second roundtrip.
+    const availableDesignSystems = (cfg.designSystems ?? []).map((d) => ({
+      name: d.name,
+      path: d.path,
+      description: d.description ?? null,
+    }));
+
     return {
       project: cfg.name,
       designRoot: paths.designRel,
       systemDir: sysRel,
+      ds: dsEntry
+        ? {
+            name: dsEntry.name,
+            path: dsEntry.path,
+            description: dsEntry.description ?? null,
+            rootClass: dsEntry.rootClass ?? null,
+            themeDefault: dsEntry.themeDefault ?? null,
+          }
+        : null,
+      availableDesignSystems,
+      defaultDesignSystem:
+        cfg.defaultDesignSystem ?? availableDesignSystems[0]?.name ?? null,
       readme,
       readmePath,
       tokens,
@@ -867,8 +921,8 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
       tokensPath,
       previewGallery,
       uiKitsGallery,
-      rootClass: cfg.rootClass,
-      themeDefault: cfg.themeDefault,
+      rootClass: dsEntry?.rootClass ?? cfg.rootClass,
+      themeDefault: dsEntry?.themeDefault ?? cfg.themeDefault,
       teamAccentDefault: cfg.teamAccentDefault,
     };
   }

@@ -78,7 +78,28 @@ function loadConfig() {
     console.error(`  warn: ${CONFIG_PATH} is not valid JSON: ${e.message}. Using defaults.`);
     return { ...DEFAULT_CONFIG, _source: 'defaults (config invalid)' };
   }
-  return { ...DEFAULT_CONFIG, ...parsed, _source: '.design/config.json' };
+  return normalizeDesignSystems({ ...DEFAULT_CONFIG, ...parsed, _source: '.design/config.json' });
+}
+
+/**
+ * Mirror of context.ts `normalizeDesignSystems` for the legacy Node entry.
+ * Auto-derives per-DS `tokensCssRel = <entry.path>/colors_and_type.css` when
+ * missing so the System view can find tokens regardless of multi-DS layout.
+ * DDR-048. Keep in lock-step with the .ts version until DDR-009 retires this.
+ */
+function normalizeDesignSystems(cfg) {
+  if (!cfg.designSystems?.length) return cfg;
+  const designSystems = cfg.designSystems.map((entry) => {
+    const p = String(entry.path).replace(/^\/+|\/+$/g, '');
+    return {
+      ...entry,
+      path: p,
+      tokensCssRel:
+        (entry.tokensCssRel ?? '').toString().replace(/^\/+/, '') ||
+        path.posix.join(p, 'colors_and_type.css'),
+    };
+  });
+  return { ...cfg, designSystems };
 }
 
 const CFG = loadConfig();
@@ -962,9 +983,22 @@ function parseTokens(css) {
   return tokens;
 }
 
-async function buildSystemData() {
-  const sysAbs = path.join(DESIGN_ROOT, SYSTEM_DIR_REL);
-  const sysRel = path.posix.join(DESIGN_REL, SYSTEM_DIR_REL);
+/**
+ * Build the System view payload. When `dsName` is set, scope to that DS entry
+ * (per-DS tokens + per-DS preview/ui_kits gallery). Returns null when the
+ * name is set but not registered in `CFG.designSystems` so the caller can
+ * 404 instead of silently falling back to shell defaults. DDR-048.
+ */
+async function buildSystemData(dsName) {
+  let dsEntry = null;
+  if (dsName) {
+    dsEntry = (CFG.designSystems || []).find((d) => d.name === dsName) || null;
+    if (!dsEntry) return null;
+  }
+
+  const scopedSystemRel = dsEntry ? dsEntry.path : SYSTEM_DIR_REL;
+  const sysAbs = path.join(DESIGN_ROOT, scopedSystemRel);
+  const sysRel = path.posix.join(DESIGN_REL, scopedSystemRel);
 
   // README — try canonical locations (designRoot/README.md, system/README.md, system/<project>/README.md)
   let readme = null, readmePath = null;
@@ -986,11 +1020,13 @@ async function buildSystemData() {
     } catch {}
   }
 
-  // Tokens
+  // Tokens — per-DS path wins; top-level CFG.tokensCssRel is the fallback
+  // for legacy single-DS configs that don't declare `designSystems[]`.
+  const tokensCssRel = (dsEntry && dsEntry.tokensCssRel) || CFG.tokensCssRel;
   let tokens = [];
   let tokensPath = null;
   try {
-    const tokensAbs = path.join(DESIGN_ROOT, CFG.tokensCssRel);
+    const tokensAbs = path.join(DESIGN_ROOT, tokensCssRel);
     const css = await fs.readFile(tokensAbs, 'utf8');
     tokens = parseTokens(css);
     tokensPath = path.relative(REPO_ROOT, tokensAbs);
@@ -1005,14 +1041,19 @@ async function buildSystemData() {
     // Look one level deep — system/<project>/<folderName>/...
     const matches = [];
     try {
-      const subs = await fs.readdir(sysAbs, { withFileTypes: true });
-      for (const s of subs) {
-        if (!s.isDirectory()) continue;
-        const candidate = path.join(sysAbs, s.name, folderName);
-        try {
-          const stat = await fs.stat(candidate);
-          if (stat.isDirectory()) matches.push({ abs: candidate, rel: path.posix.join(sysRel, s.name, folderName) });
-        } catch {}
+      // When scoped to one DS (sysAbs IS the DS folder), only check the
+      // DS-relative `<folderName>` subdir. Scanning sub-dirs here would
+      // misread the DS's own `preview/` as a sibling DS root.
+      if (!dsEntry) {
+        const subs = await fs.readdir(sysAbs, { withFileTypes: true });
+        for (const s of subs) {
+          if (!s.isDirectory()) continue;
+          const candidate = path.join(sysAbs, s.name, folderName);
+          try {
+            const stat = await fs.stat(candidate);
+            if (stat.isDirectory()) matches.push({ abs: candidate, rel: path.posix.join(sysRel, s.name, folderName) });
+          } catch {}
+        }
       }
       // Also accept top-level system/<folderName>/
       try {
@@ -1037,10 +1078,27 @@ async function buildSystemData() {
   const previewGallery = await galleryFor('preview');
   const uiKitsGallery  = await galleryFor('ui_kits');
 
+  const availableDesignSystems = (CFG.designSystems || []).map((d) => ({
+    name: d.name,
+    path: d.path,
+    description: d.description || null,
+  }));
+
   return {
     project: CFG.name,
     designRoot: DESIGN_REL,
     systemDir: sysRel,
+    ds: dsEntry
+      ? {
+          name: dsEntry.name,
+          path: dsEntry.path,
+          description: dsEntry.description || null,
+          rootClass: dsEntry.rootClass || null,
+          themeDefault: dsEntry.themeDefault || null,
+        }
+      : null,
+    availableDesignSystems,
+    defaultDesignSystem: CFG.defaultDesignSystem || availableDesignSystems[0]?.name || null,
     readme,
     readmePath,
     tokens,
@@ -1048,8 +1106,8 @@ async function buildSystemData() {
     tokensPath,
     previewGallery,
     uiKitsGallery,
-    rootClass: CFG.rootClass,
-    themeDefault: CFG.themeDefault,
+    rootClass: (dsEntry && dsEntry.rootClass) || CFG.rootClass,
+    themeDefault: (dsEntry && dsEntry.themeDefault) || CFG.themeDefault,
     teamAccentDefault: CFG.teamAccentDefault,
   };
 }
@@ -1105,8 +1163,16 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify(data));
       return;
     }
-    if (reqPath === '/_system-data') {
-      const data = await buildSystemData();
+    if (reqPath === '/_system-data' || reqPath.startsWith('/_system-data?')) {
+      // DDR-048 — `?ds=<name>` scopes to one DS; omitted = legacy unscoped.
+      const sysUrl = new URL(reqPath, 'http://x');
+      const dsName = sysUrl.searchParams.get('ds');
+      const data = await buildSystemData(dsName);
+      if (data === null) {
+        res.writeHead(404, { 'Content-Type': MIME['.json'], 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify({ error: 'unknown design system', ds: dsName }));
+        return;
+      }
       res.writeHead(200, { 'Content-Type': MIME['.json'], 'Cache-Control': 'no-store' });
       res.end(JSON.stringify(data));
       return;

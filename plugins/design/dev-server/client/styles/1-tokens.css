@@ -1,13 +1,20 @@
-/* @layer tokens — project DS bridge for the dev-server shell.
+/* @layer tokens — SHELL theme for the dev-server UI itself.
  *
- * Source of truth: .design/system/project/colors_and_type.css (MDCC-DSN/01).
- * The OKLCH ladders below are pasted in so the dev-server bundle stays
- * self-contained (a relative `@import` would have to cross from
- * plugins/design/dev-server/ into the repo's .design/ folder — fragile
- * once installed centrally). If the DS evolves, re-sync this file
- * manually and keep the values verbatim.
+ * ⚠ This is NOT a template for user design systems and NOT a fallback for
+ * the System view's token ladder. It themes the dev-server chrome — sidebar,
+ * status bar, header, menubar, comments panel, System tab outer shell. The
+ * amber-rust "catalog stamp" aesthetic below belongs to Maude as a tool, not
+ * to any project that runs against it.
  *
- * Two themes — both first-class, both equal:
+ * Per DDR-048, the System view (MDCC-DSN/01) reads user tokens from the
+ * project's own `colors_and_type.css` (parsed by the server, returned via
+ * /_system-data) and renders them by raw value — never by `var(--name)`
+ * resolving against this document. That isolation is load-bearing: prior
+ * to DDR-048 the System view leaked these shell tokens into the user's
+ * "design system overview" because both happened to share the canonical
+ * `--bg-0..4 / --fg-0..3 / --accent*` naming.
+ *
+ * Two shell themes — both first-class, both equal:
  *   :root + [data-theme="light"]  — paper-light (cream + ink)
  *   [data-theme="dark"]            — phosphor-dark (default for dev-server)
  *

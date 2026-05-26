@@ -31,6 +31,7 @@ export interface DevServerConfig {
   designRoot: string;
   canvasGroups: CanvasGroup[];
   designSystems?: DesignSystemEntry[];
+  defaultDesignSystem?: string;
   rootClass: string;
   themeDefault: 'dark' | 'light';
   tokensCssRel: string;
@@ -124,16 +125,50 @@ function loadConfig(repoRoot: string): DevServerConfig {
   try {
     raw = readFileSync(configPath, 'utf8');
   } catch {
-    return { ...DEFAULT_CONFIG, _source: 'defaults' };
+    return normalizeConfig({ ...DEFAULT_CONFIG, _source: 'defaults' });
   }
   try {
     const parsed = JSON.parse(raw);
-    return { ...DEFAULT_CONFIG, ...parsed, _source: '.design/config.json' };
+    return normalizeConfig({ ...DEFAULT_CONFIG, ...parsed, _source: '.design/config.json' });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error(`  warn: ${configPath} is not valid JSON: ${msg}. Using defaults.`);
-    return { ...DEFAULT_CONFIG, _source: 'defaults (config invalid)' };
+    return normalizeConfig({ ...DEFAULT_CONFIG, _source: 'defaults (config invalid)' });
   }
+}
+
+/**
+ * Fill in per-DS `tokensCssRel` defaults so the system view can read each DS's
+ * tokens without forcing every config author to spell out the path. When an
+ * entry omits `tokensCssRel`, derive it from `<entry.path>/colors_and_type.css`
+ * — the scaffold layout `/design:setup-ds` produces. Also strips leading /
+ * trailing slashes from `entry.path` so downstream `path.posix.join` calls
+ * don't produce double-slash artifacts.
+ *
+ * The top-level `cfg.tokensCssRel` is preserved untouched as the
+ * project-wide fallback for legacy single-DS configs that don't declare
+ * `designSystems[]` at all.
+ *
+ * DDR-048: the system view renders user tokens only; this normalization is the
+ * load-bearing step that makes per-DS rendering possible.
+ */
+export function normalizeDesignSystems<T extends DevServerConfig>(cfg: T): T {
+  if (!cfg.designSystems?.length) return cfg;
+  const designSystems = cfg.designSystems.map((entry) => {
+    const p = entry.path.replace(/^\/+|\/+$/g, '');
+    return {
+      ...entry,
+      path: p,
+      tokensCssRel:
+        entry.tokensCssRel?.replace(/^\/+/, '') ??
+        path.posix.join(p, 'colors_and_type.css'),
+    };
+  });
+  return { ...cfg, designSystems };
+}
+
+function normalizeConfig(cfg: DevServerConfig): DevServerConfig {
+  return normalizeDesignSystems(cfg);
 }
 
 export function createContext(): Context {
