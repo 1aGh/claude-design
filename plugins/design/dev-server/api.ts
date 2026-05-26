@@ -839,12 +839,12 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
       }
       const items: { label: string; path: string; group: string }[] = [];
       for (const m of matches) {
-        const files = await findFiles(m.abs, m.rel, ['.html']);
+        const files = await findFiles(m.abs, m.rel, ['.tsx', '.html']);
         for (const f of files) {
           const fname = f
             .split('/')
             .pop()
-            ?.replace(/\.html$/i, '');
+            ?.replace(/\.(tsx|html)$/i, '');
           const group = f.split('/').slice(-2, -1)[0] || folderName;
           const label = fname.toLowerCase() === 'index' ? group : fname;
           items.push({ label, path: f, group });

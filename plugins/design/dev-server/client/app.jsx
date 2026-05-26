@@ -1073,7 +1073,7 @@ function Viewport({ tabs, activePath, registerIframe, systemData, onOpenFromSyst
         if (t.path === SYSTEM_TAB) {
           return (
             <div key={t.path} className={'system-view' + (t.path === activePath ? ' active' : '')}>
-              <SystemView data={systemData} onOpen={onOpenFromSystem} />
+              <SystemView data={systemData} onOpen={onOpenFromSystem} cfg={cfg} />
             </div>
           );
         }
@@ -1152,7 +1152,7 @@ function TypeLadder() {
   );
 }
 
-function SystemView({ data, onOpen }) {
+function SystemView({ data, onOpen, cfg }) {
   if (!data) {
     return <div className="sv-empty"><p>Loading design system…</p></div>;
   }
@@ -1176,15 +1176,15 @@ function SystemView({ data, onOpen }) {
         </div>
       ) : (
         <>
-          <Gallery title="preview" items={previewGallery} onOpen={onOpen} kind="preview" />
-          <Gallery title="ui kits"  items={uiKitsGallery}  onOpen={onOpen} kind="ui_kits" />
+          <Gallery title="preview" items={previewGallery} onOpen={onOpen} kind="preview" cfg={cfg} />
+          <Gallery title="ui kits"  items={uiKitsGallery}  onOpen={onOpen} kind="ui_kits" cfg={cfg} />
         </>
       )}
     </div>
   );
 }
 
-function Gallery({ title, items, onOpen, kind }) {
+function Gallery({ title, items, onOpen, kind, cfg }) {
   if (!items || items.length === 0) return null;
   return (
     <section className="sv-section">
@@ -1193,7 +1193,7 @@ function Gallery({ title, items, onOpen, kind }) {
         {items.map(p => (
           <article key={p.path} className="sv-preview-card" onClick={() => onOpen(p.path)}>
             <div className="sv-preview-frame">
-              <iframe src={urlOf(p.path)} title={p.label} scrolling="no" />
+              <iframe src={canvasUrl(p.path, cfg)} title={p.label} scrolling="no" />
             </div>
             <div className="sv-preview-foot">
               <strong>{p.label}</strong>

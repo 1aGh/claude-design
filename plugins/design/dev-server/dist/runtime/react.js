@@ -1,1 +1,535 @@
-var Ct=Object.defineProperty;var mt=(t,e)=>{for(var r in e)Ct(t,r,{get:e[r],enumerable:!0,configurable:!0,set:(n)=>e[r]=()=>n})};var E={};mt(E,{version:()=>Tt,useTransition:()=>xt,useSyncExternalStore:()=>vt,useState:()=>at,useRef:()=>_t,useReducer:()=>Et,useOptimistic:()=>yt,useMemo:()=>lt,useLayoutEffect:()=>ct,useInsertionEffect:()=>pt,useImperativeHandle:()=>it,useId:()=>ft,useEffectEvent:()=>st,useEffect:()=>ut,useDeferredValue:()=>ot,useDebugValue:()=>nt,useContext:()=>rt,useCallback:()=>et,useActionState:()=>tt,use:()=>F,unstable_useCacheRefresh:()=>V,startTransition:()=>J,memo:()=>Z,lazy:()=>X,isValidElement:()=>W,forwardRef:()=>Q,createRef:()=>G,createElement:()=>B,createContext:()=>K,cloneElement:()=>z,cacheSignal:()=>D,cache:()=>q,__COMPILER_RUNTIME:()=>b,__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE:()=>U,Suspense:()=>L,StrictMode:()=>N,PureComponent:()=>k,Profiler:()=>I,Fragment:()=>Y,Component:()=>M,Children:()=>$,Activity:()=>O});var v=Symbol.for("react.transitional.element"),ht=Symbol.for("react.portal"),wt=Symbol.for("react.fragment"),At=Symbol.for("react.strict_mode"),dt=Symbol.for("react.profiler"),gt=Symbol.for("react.consumer"),jt=Symbol.for("react.context"),Ht=Symbol.for("react.forward_ref"),Pt=Symbol.for("react.suspense"),St=Symbol.for("react.memo"),d=Symbol.for("react.lazy"),Ot=Symbol.for("react.activity"),m=Symbol.iterator;function $t(t){if(t===null||typeof t!=="object")return null;return t=m&&t[m]||t["@@iterator"],typeof t==="function"?t:null}var g={isMounted:function(){return!1},enqueueForceUpdate:function(){},enqueueReplaceState:function(){},enqueueSetState:function(){}},j=Object.assign,H={};function l(t,e,r){this.props=t,this.context=e,this.refs=H,this.updater=r||g}l.prototype.isReactComponent={};l.prototype.setState=function(t,e){if(typeof t!=="object"&&typeof t!=="function"&&t!=null)throw Error("takes an object of state variables to update or a function which returns an object of state variables.");this.updater.enqueueSetState(this,t,e,"setState")};l.prototype.forceUpdate=function(t){this.updater.enqueueForceUpdate(this,t,"forceUpdate")};function P(){}P.prototype=l.prototype;function x(t,e,r){this.props=t,this.context=e,this.refs=H,this.updater=r||g}var T=x.prototype=new P;T.constructor=x;j(T,l.prototype);T.isPureReactComponent=!0;var h=Array.isArray;function a(){}var f={H:null,A:null,T:null,S:null},S=Object.prototype.hasOwnProperty;function R(t,e,r){var n=r.ref;return{$$typeof:v,type:t,key:e,ref:n!==void 0?n:null,props:r}}function Mt(t,e){return R(t.type,e,t.props)}function C(t){return typeof t==="object"&&t!==null&&t.$$typeof===v}function Yt(t){var e={"=":"=0",":":"=2"};return"$"+t.replace(/[=:]/g,function(r){return e[r]})}var w=/\/+/g;function _(t,e){return typeof t==="object"&&t!==null&&t.key!=null?Yt(""+t.key):e.toString(36)}function It(t){switch(t.status){case"fulfilled":return t.value;case"rejected":throw t.reason;default:switch(typeof t.status==="string"?t.then(a,a):(t.status="pending",t.then(function(e){t.status==="pending"&&(t.status="fulfilled",t.value=e)},function(e){t.status==="pending"&&(t.status="rejected",t.reason=e)})),t.status){case"fulfilled":return t.value;case"rejected":throw t.reason}}throw t}function c(t,e,r,n,o){var u=typeof t;if(u==="undefined"||u==="boolean")t=null;var s=!1;if(t===null)s=!0;else switch(u){case"bigint":case"string":case"number":s=!0;break;case"object":switch(t.$$typeof){case v:case ht:s=!0;break;case d:return s=t._init,c(s(t._payload),e,r,n,o)}}if(s)return o=o(t),s=n===""?"."+_(t,0):n,h(o)?(r="",s!=null&&(r=s.replace(w,"$&/")+"/"),c(o,e,r,"",function(Rt){return Rt})):o!=null&&(C(o)&&(o=Mt(o,r+(o.key==null||t&&t.key===o.key?"":(""+o.key).replace(w,"$&/")+"/")+s)),e.push(o)),1;s=0;var p=n===""?".":n+":";if(h(t))for(var i=0;i<t.length;i++)n=t[i],u=p+_(n,i),s+=c(n,e,r,u,o);else if(i=$t(t),typeof i==="function")for(t=i.call(t),i=0;!(n=t.next()).done;)n=n.value,u=p+_(n,i++),s+=c(n,e,r,u,o);else if(u==="object"){if(typeof t.then==="function")return c(It(t),e,r,n,o);throw e=String(t),Error("Objects are not valid as a React child (found: "+(e==="[object Object]"?"object with keys {"+Object.keys(t).join(", ")+"}":e)+"). If you meant to render a collection of children, use an array instead.")}return s}function y(t,e,r){if(t==null)return t;var n=[],o=0;return c(t,n,"","",function(u){return e.call(r,u,o++)}),n}function kt(t){if(t._status===-1){var e=t._result;e=e(),e.then(function(r){if(t._status===0||t._status===-1)t._status=1,t._result=r},function(r){if(t._status===0||t._status===-1)t._status=2,t._result=r}),t._status===-1&&(t._status=0,t._result=e)}if(t._status===1)return t._result.default;throw t._result}var A=typeof reportError==="function"?reportError:function(t){if(typeof window==="object"&&typeof window.ErrorEvent==="function"){var e=new window.ErrorEvent("error",{bubbles:!0,cancelable:!0,message:typeof t==="object"&&t!==null&&typeof t.message==="string"?String(t.message):String(t),error:t});if(!window.dispatchEvent(e))return}else if(typeof process==="object"&&typeof process.emit==="function"){process.emit("uncaughtException",t);return}console.error(t)},Nt={map:y,forEach:function(t,e,r){y(t,function(){e.apply(this,arguments)},r)},count:function(t){var e=0;return y(t,function(){e++}),e},toArray:function(t){return y(t,function(e){return e})||[]},only:function(t){if(!C(t))throw Error("React.Children.only expected to receive a single React element child.");return t}};var O=Ot,$=Nt,M=l,Y=wt,I=dt,k=x,N=At,L=Pt,U=f,b={__proto__:null,c:function(t){return f.H.useMemoCache(t)}},q=function(t){return function(){return t.apply(null,arguments)}},D=function(){return null},z=function(t,e,r){if(t===null||t===void 0)throw Error("The argument must be a React element, but you passed "+t+".");var n=j({},t.props),o=t.key;if(e!=null)for(u in e.key!==void 0&&(o=""+e.key),e)!S.call(e,u)||u==="key"||u==="__self"||u==="__source"||u==="ref"&&e.ref===void 0||(n[u]=e[u]);var u=arguments.length-2;if(u===1)n.children=r;else if(1<u){for(var s=Array(u),p=0;p<u;p++)s[p]=arguments[p+2];n.children=s}return R(t.type,o,n)},K=function(t){return t={$$typeof:jt,_currentValue:t,_currentValue2:t,_threadCount:0,Provider:null,Consumer:null},t.Provider=t,t.Consumer={$$typeof:gt,_context:t},t},B=function(t,e,r){var n,o={},u=null;if(e!=null)for(n in e.key!==void 0&&(u=""+e.key),e)S.call(e,n)&&n!=="key"&&n!=="__self"&&n!=="__source"&&(o[n]=e[n]);var s=arguments.length-2;if(s===1)o.children=r;else if(1<s){for(var p=Array(s),i=0;i<s;i++)p[i]=arguments[i+2];o.children=p}if(t&&t.defaultProps)for(n in s=t.defaultProps,s)o[n]===void 0&&(o[n]=s[n]);return R(t,u,o)},G=function(){return{current:null}},Q=function(t){return{$$typeof:Ht,render:t}},W=C,X=function(t){return{$$typeof:d,_payload:{_status:-1,_result:t},_init:kt}},Z=function(t,e){return{$$typeof:St,type:t,compare:e===void 0?null:e}},J=function(t){var e=f.T,r={};f.T=r;try{var n=t(),o=f.S;o!==null&&o(r,n),typeof n==="object"&&n!==null&&typeof n.then==="function"&&n.then(a,A)}catch(u){A(u)}finally{e!==null&&r.types!==null&&(e.types=r.types),f.T=e}},V=function(){return f.H.useCacheRefresh()},F=function(t){return f.H.use(t)},tt=function(t,e,r){return f.H.useActionState(t,e,r)},et=function(t,e){return f.H.useCallback(t,e)},rt=function(t){return f.H.useContext(t)},nt=function(){},ot=function(t,e){return f.H.useDeferredValue(t,e)},ut=function(t,e){return f.H.useEffect(t,e)},st=function(t){return f.H.useEffectEvent(t)},ft=function(){return f.H.useId()},it=function(t,e,r){return f.H.useImperativeHandle(t,e,r)},pt=function(t,e){return f.H.useInsertionEffect(t,e)},ct=function(t,e){return f.H.useLayoutEffect(t,e)},lt=function(t,e){return f.H.useMemo(t,e)},yt=function(t,e){return f.H.useOptimistic(t,e)},Et=function(t,e,r){return f.H.useReducer(t,e,r)},_t=function(t){return f.H.useRef(t)},at=function(t){return f.H.useState(t)},vt=function(t,e,r){return f.H.useSyncExternalStore(t,e,r)},xt=function(){return f.H.useTransition()},Tt="19.2.6";var{Activity:Ut,Children:bt,Component:qt,Fragment:Dt,Profiler:zt,PureComponent:Kt,StrictMode:Bt,Suspense:Gt,__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE:Qt,__COMPILER_RUNTIME:Wt,act:Xt,cache:Zt,cacheSignal:Jt,captureOwnerStack:Vt,cloneElement:Ft,createContext:te,createElement:ee,createRef:re,forwardRef:ne,isValidElement:oe,lazy:ue,memo:se,startTransition:fe,unstable_useCacheRefresh:ie,use:pe,useActionState:ce,useCallback:le,useContext:ye,useDebugValue:Ee,useDeferredValue:_e,useEffect:ae,useEffectEvent:ve,useId:xe,useImperativeHandle:Te,useInsertionEffect:Re,useLayoutEffect:Ce,useMemo:me,useOptimistic:he,useReducer:we,useRef:Ae,useState:de,useSyncExternalStore:ge,useTransition:je,version:He}=E;var Se=E;export{He as version,je as useTransition,ge as useSyncExternalStore,de as useState,Ae as useRef,we as useReducer,he as useOptimistic,me as useMemo,Ce as useLayoutEffect,Re as useInsertionEffect,Te as useImperativeHandle,xe as useId,ve as useEffectEvent,ae as useEffect,_e as useDeferredValue,Ee as useDebugValue,ye as useContext,le as useCallback,ce as useActionState,pe as use,ie as unstable_useCacheRefresh,fe as startTransition,se as memo,ue as lazy,oe as isValidElement,ne as forwardRef,Se as default,re as createRef,ee as createElement,te as createContext,Ft as cloneElement,Vt as captureOwnerStack,Jt as cacheSignal,Zt as cache,Xt as act,Wt as __COMPILER_RUNTIME,Qt as __CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,Gt as Suspense,Bt as StrictMode,Kt as PureComponent,zt as Profiler,Dt as Fragment,qt as Component,bt as Children,Ut as Activity};
+var __create = Object.create;
+var __getProtoOf = Object.getPrototypeOf;
+var __defProp = Object.defineProperty;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __toESM = (mod, isNodeMode, target) => {
+  target = mod != null ? __create(__getProtoOf(mod)) : {};
+  const to = isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target;
+  for (let key of __getOwnPropNames(mod))
+    if (!__hasOwnProp.call(to, key))
+      __defProp(to, key, {
+        get: () => mod[key],
+        enumerable: true
+      });
+  return to;
+};
+var __commonJS = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports);
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, {
+      get: all[name],
+      enumerable: true,
+      configurable: true,
+      set: (newValue) => all[name] = () => newValue
+    });
+};
+var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
+
+// ../../../node_modules/.pnpm/react@19.2.6/node_modules/react/cjs/react.production.js
+var exports_react_production = {};
+__export(exports_react_production, {
+  version: () => $version,
+  useTransition: () => $useTransition,
+  useSyncExternalStore: () => $useSyncExternalStore,
+  useState: () => $useState,
+  useRef: () => $useRef,
+  useReducer: () => $useReducer,
+  useOptimistic: () => $useOptimistic,
+  useMemo: () => $useMemo,
+  useLayoutEffect: () => $useLayoutEffect,
+  useInsertionEffect: () => $useInsertionEffect,
+  useImperativeHandle: () => $useImperativeHandle,
+  useId: () => $useId,
+  useEffectEvent: () => $useEffectEvent,
+  useEffect: () => $useEffect,
+  useDeferredValue: () => $useDeferredValue,
+  useDebugValue: () => $useDebugValue,
+  useContext: () => $useContext,
+  useCallback: () => $useCallback,
+  useActionState: () => $useActionState,
+  use: () => $use,
+  unstable_useCacheRefresh: () => $unstable_useCacheRefresh,
+  startTransition: () => $startTransition,
+  memo: () => $memo,
+  lazy: () => $lazy,
+  isValidElement: () => $isValidElement,
+  forwardRef: () => $forwardRef,
+  createRef: () => $createRef,
+  createElement: () => $createElement,
+  createContext: () => $createContext,
+  cloneElement: () => $cloneElement,
+  cacheSignal: () => $cacheSignal,
+  cache: () => $cache,
+  __COMPILER_RUNTIME: () => $__COMPILER_RUNTIME,
+  __CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE: () => $__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
+  Suspense: () => $Suspense,
+  StrictMode: () => $StrictMode,
+  PureComponent: () => $PureComponent,
+  Profiler: () => $Profiler,
+  Fragment: () => $Fragment,
+  Component: () => $Component,
+  Children: () => $Children,
+  Activity: () => $Activity
+});
+function getIteratorFn(maybeIterable) {
+  if (maybeIterable === null || typeof maybeIterable !== "object")
+    return null;
+  maybeIterable = MAYBE_ITERATOR_SYMBOL && maybeIterable[MAYBE_ITERATOR_SYMBOL] || maybeIterable["@@iterator"];
+  return typeof maybeIterable === "function" ? maybeIterable : null;
+}
+function Component(props, context, updater) {
+  this.props = props;
+  this.context = context;
+  this.refs = emptyObject;
+  this.updater = updater || ReactNoopUpdateQueue;
+}
+function ComponentDummy() {}
+function PureComponent(props, context, updater) {
+  this.props = props;
+  this.context = context;
+  this.refs = emptyObject;
+  this.updater = updater || ReactNoopUpdateQueue;
+}
+function noop() {}
+function ReactElement(type, key, props) {
+  var refProp = props.ref;
+  return {
+    $$typeof: REACT_ELEMENT_TYPE,
+    type,
+    key,
+    ref: refProp !== undefined ? refProp : null,
+    props
+  };
+}
+function cloneAndReplaceKey(oldElement, newKey) {
+  return ReactElement(oldElement.type, newKey, oldElement.props);
+}
+function isValidElement(object) {
+  return typeof object === "object" && object !== null && object.$$typeof === REACT_ELEMENT_TYPE;
+}
+function escape(key) {
+  var escaperLookup = { "=": "=0", ":": "=2" };
+  return "$" + key.replace(/[=:]/g, function(match) {
+    return escaperLookup[match];
+  });
+}
+function getElementKey(element, index) {
+  return typeof element === "object" && element !== null && element.key != null ? escape("" + element.key) : index.toString(36);
+}
+function resolveThenable(thenable) {
+  switch (thenable.status) {
+    case "fulfilled":
+      return thenable.value;
+    case "rejected":
+      throw thenable.reason;
+    default:
+      switch (typeof thenable.status === "string" ? thenable.then(noop, noop) : (thenable.status = "pending", thenable.then(function(fulfilledValue) {
+        thenable.status === "pending" && (thenable.status = "fulfilled", thenable.value = fulfilledValue);
+      }, function(error) {
+        thenable.status === "pending" && (thenable.status = "rejected", thenable.reason = error);
+      })), thenable.status) {
+        case "fulfilled":
+          return thenable.value;
+        case "rejected":
+          throw thenable.reason;
+      }
+  }
+  throw thenable;
+}
+function mapIntoArray(children, array, escapedPrefix, nameSoFar, callback) {
+  var type = typeof children;
+  if (type === "undefined" || type === "boolean")
+    children = null;
+  var invokeCallback = false;
+  if (children === null)
+    invokeCallback = true;
+  else
+    switch (type) {
+      case "bigint":
+      case "string":
+      case "number":
+        invokeCallback = true;
+        break;
+      case "object":
+        switch (children.$$typeof) {
+          case REACT_ELEMENT_TYPE:
+          case REACT_PORTAL_TYPE:
+            invokeCallback = true;
+            break;
+          case REACT_LAZY_TYPE:
+            return invokeCallback = children._init, mapIntoArray(invokeCallback(children._payload), array, escapedPrefix, nameSoFar, callback);
+        }
+    }
+  if (invokeCallback)
+    return callback = callback(children), invokeCallback = nameSoFar === "" ? "." + getElementKey(children, 0) : nameSoFar, isArrayImpl(callback) ? (escapedPrefix = "", invokeCallback != null && (escapedPrefix = invokeCallback.replace(userProvidedKeyEscapeRegex, "$&/") + "/"), mapIntoArray(callback, array, escapedPrefix, "", function(c) {
+      return c;
+    })) : callback != null && (isValidElement(callback) && (callback = cloneAndReplaceKey(callback, escapedPrefix + (callback.key == null || children && children.key === callback.key ? "" : ("" + callback.key).replace(userProvidedKeyEscapeRegex, "$&/") + "/") + invokeCallback)), array.push(callback)), 1;
+  invokeCallback = 0;
+  var nextNamePrefix = nameSoFar === "" ? "." : nameSoFar + ":";
+  if (isArrayImpl(children))
+    for (var i = 0;i < children.length; i++)
+      nameSoFar = children[i], type = nextNamePrefix + getElementKey(nameSoFar, i), invokeCallback += mapIntoArray(nameSoFar, array, escapedPrefix, type, callback);
+  else if (i = getIteratorFn(children), typeof i === "function")
+    for (children = i.call(children), i = 0;!(nameSoFar = children.next()).done; )
+      nameSoFar = nameSoFar.value, type = nextNamePrefix + getElementKey(nameSoFar, i++), invokeCallback += mapIntoArray(nameSoFar, array, escapedPrefix, type, callback);
+  else if (type === "object") {
+    if (typeof children.then === "function")
+      return mapIntoArray(resolveThenable(children), array, escapedPrefix, nameSoFar, callback);
+    array = String(children);
+    throw Error("Objects are not valid as a React child (found: " + (array === "[object Object]" ? "object with keys {" + Object.keys(children).join(", ") + "}" : array) + "). If you meant to render a collection of children, use an array instead.");
+  }
+  return invokeCallback;
+}
+function mapChildren(children, func, context) {
+  if (children == null)
+    return children;
+  var result = [], count = 0;
+  mapIntoArray(children, result, "", "", function(child) {
+    return func.call(context, child, count++);
+  });
+  return result;
+}
+function lazyInitializer(payload) {
+  if (payload._status === -1) {
+    var ctor = payload._result;
+    ctor = ctor();
+    ctor.then(function(moduleObject) {
+      if (payload._status === 0 || payload._status === -1)
+        payload._status = 1, payload._result = moduleObject;
+    }, function(error) {
+      if (payload._status === 0 || payload._status === -1)
+        payload._status = 2, payload._result = error;
+    });
+    payload._status === -1 && (payload._status = 0, payload._result = ctor);
+  }
+  if (payload._status === 1)
+    return payload._result.default;
+  throw payload._result;
+}
+var REACT_ELEMENT_TYPE, REACT_PORTAL_TYPE, REACT_FRAGMENT_TYPE, REACT_STRICT_MODE_TYPE, REACT_PROFILER_TYPE, REACT_CONSUMER_TYPE, REACT_CONTEXT_TYPE, REACT_FORWARD_REF_TYPE, REACT_SUSPENSE_TYPE, REACT_MEMO_TYPE, REACT_LAZY_TYPE, REACT_ACTIVITY_TYPE, MAYBE_ITERATOR_SYMBOL, ReactNoopUpdateQueue, assign, emptyObject, pureComponentPrototype, isArrayImpl, ReactSharedInternals, hasOwnProperty, userProvidedKeyEscapeRegex, reportGlobalError, Children, $Activity, $Children, $Component, $Fragment, $Profiler, $PureComponent, $StrictMode, $Suspense, $__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, $__COMPILER_RUNTIME, $cache = function(fn) {
+  return function() {
+    return fn.apply(null, arguments);
+  };
+}, $cacheSignal = function() {
+  return null;
+}, $cloneElement = function(element, config, children) {
+  if (element === null || element === undefined)
+    throw Error("The argument must be a React element, but you passed " + element + ".");
+  var props = assign({}, element.props), key = element.key;
+  if (config != null)
+    for (propName in config.key !== undefined && (key = "" + config.key), config)
+      !hasOwnProperty.call(config, propName) || propName === "key" || propName === "__self" || propName === "__source" || propName === "ref" && config.ref === undefined || (props[propName] = config[propName]);
+  var propName = arguments.length - 2;
+  if (propName === 1)
+    props.children = children;
+  else if (1 < propName) {
+    for (var childArray = Array(propName), i = 0;i < propName; i++)
+      childArray[i] = arguments[i + 2];
+    props.children = childArray;
+  }
+  return ReactElement(element.type, key, props);
+}, $createContext = function(defaultValue) {
+  defaultValue = {
+    $$typeof: REACT_CONTEXT_TYPE,
+    _currentValue: defaultValue,
+    _currentValue2: defaultValue,
+    _threadCount: 0,
+    Provider: null,
+    Consumer: null
+  };
+  defaultValue.Provider = defaultValue;
+  defaultValue.Consumer = {
+    $$typeof: REACT_CONSUMER_TYPE,
+    _context: defaultValue
+  };
+  return defaultValue;
+}, $createElement = function(type, config, children) {
+  var propName, props = {}, key = null;
+  if (config != null)
+    for (propName in config.key !== undefined && (key = "" + config.key), config)
+      hasOwnProperty.call(config, propName) && propName !== "key" && propName !== "__self" && propName !== "__source" && (props[propName] = config[propName]);
+  var childrenLength = arguments.length - 2;
+  if (childrenLength === 1)
+    props.children = children;
+  else if (1 < childrenLength) {
+    for (var childArray = Array(childrenLength), i = 0;i < childrenLength; i++)
+      childArray[i] = arguments[i + 2];
+    props.children = childArray;
+  }
+  if (type && type.defaultProps)
+    for (propName in childrenLength = type.defaultProps, childrenLength)
+      props[propName] === undefined && (props[propName] = childrenLength[propName]);
+  return ReactElement(type, key, props);
+}, $createRef = function() {
+  return { current: null };
+}, $forwardRef = function(render) {
+  return { $$typeof: REACT_FORWARD_REF_TYPE, render };
+}, $isValidElement, $lazy = function(ctor) {
+  return {
+    $$typeof: REACT_LAZY_TYPE,
+    _payload: { _status: -1, _result: ctor },
+    _init: lazyInitializer
+  };
+}, $memo = function(type, compare) {
+  return {
+    $$typeof: REACT_MEMO_TYPE,
+    type,
+    compare: compare === undefined ? null : compare
+  };
+}, $startTransition = function(scope) {
+  var prevTransition = ReactSharedInternals.T, currentTransition = {};
+  ReactSharedInternals.T = currentTransition;
+  try {
+    var returnValue = scope(), onStartTransitionFinish = ReactSharedInternals.S;
+    onStartTransitionFinish !== null && onStartTransitionFinish(currentTransition, returnValue);
+    typeof returnValue === "object" && returnValue !== null && typeof returnValue.then === "function" && returnValue.then(noop, reportGlobalError);
+  } catch (error) {
+    reportGlobalError(error);
+  } finally {
+    prevTransition !== null && currentTransition.types !== null && (prevTransition.types = currentTransition.types), ReactSharedInternals.T = prevTransition;
+  }
+}, $unstable_useCacheRefresh = function() {
+  return ReactSharedInternals.H.useCacheRefresh();
+}, $use = function(usable) {
+  return ReactSharedInternals.H.use(usable);
+}, $useActionState = function(action, initialState, permalink) {
+  return ReactSharedInternals.H.useActionState(action, initialState, permalink);
+}, $useCallback = function(callback, deps) {
+  return ReactSharedInternals.H.useCallback(callback, deps);
+}, $useContext = function(Context) {
+  return ReactSharedInternals.H.useContext(Context);
+}, $useDebugValue = function() {}, $useDeferredValue = function(value, initialValue) {
+  return ReactSharedInternals.H.useDeferredValue(value, initialValue);
+}, $useEffect = function(create, deps) {
+  return ReactSharedInternals.H.useEffect(create, deps);
+}, $useEffectEvent = function(callback) {
+  return ReactSharedInternals.H.useEffectEvent(callback);
+}, $useId = function() {
+  return ReactSharedInternals.H.useId();
+}, $useImperativeHandle = function(ref, create, deps) {
+  return ReactSharedInternals.H.useImperativeHandle(ref, create, deps);
+}, $useInsertionEffect = function(create, deps) {
+  return ReactSharedInternals.H.useInsertionEffect(create, deps);
+}, $useLayoutEffect = function(create, deps) {
+  return ReactSharedInternals.H.useLayoutEffect(create, deps);
+}, $useMemo = function(create, deps) {
+  return ReactSharedInternals.H.useMemo(create, deps);
+}, $useOptimistic = function(passthrough, reducer) {
+  return ReactSharedInternals.H.useOptimistic(passthrough, reducer);
+}, $useReducer = function(reducer, initialArg, init) {
+  return ReactSharedInternals.H.useReducer(reducer, initialArg, init);
+}, $useRef = function(initialValue) {
+  return ReactSharedInternals.H.useRef(initialValue);
+}, $useState = function(initialState) {
+  return ReactSharedInternals.H.useState(initialState);
+}, $useSyncExternalStore = function(subscribe, getSnapshot, getServerSnapshot) {
+  return ReactSharedInternals.H.useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+}, $useTransition = function() {
+  return ReactSharedInternals.H.useTransition();
+}, $version = "19.2.6";
+var init_react_production = __esm(() => {
+  REACT_ELEMENT_TYPE = Symbol.for("react.transitional.element");
+  REACT_PORTAL_TYPE = Symbol.for("react.portal");
+  REACT_FRAGMENT_TYPE = Symbol.for("react.fragment");
+  REACT_STRICT_MODE_TYPE = Symbol.for("react.strict_mode");
+  REACT_PROFILER_TYPE = Symbol.for("react.profiler");
+  REACT_CONSUMER_TYPE = Symbol.for("react.consumer");
+  REACT_CONTEXT_TYPE = Symbol.for("react.context");
+  REACT_FORWARD_REF_TYPE = Symbol.for("react.forward_ref");
+  REACT_SUSPENSE_TYPE = Symbol.for("react.suspense");
+  REACT_MEMO_TYPE = Symbol.for("react.memo");
+  REACT_LAZY_TYPE = Symbol.for("react.lazy");
+  REACT_ACTIVITY_TYPE = Symbol.for("react.activity");
+  MAYBE_ITERATOR_SYMBOL = Symbol.iterator;
+  ReactNoopUpdateQueue = {
+    isMounted: function() {
+      return false;
+    },
+    enqueueForceUpdate: function() {},
+    enqueueReplaceState: function() {},
+    enqueueSetState: function() {}
+  };
+  assign = Object.assign;
+  emptyObject = {};
+  Component.prototype.isReactComponent = {};
+  Component.prototype.setState = function(partialState, callback) {
+    if (typeof partialState !== "object" && typeof partialState !== "function" && partialState != null)
+      throw Error("takes an object of state variables to update or a function which returns an object of state variables.");
+    this.updater.enqueueSetState(this, partialState, callback, "setState");
+  };
+  Component.prototype.forceUpdate = function(callback) {
+    this.updater.enqueueForceUpdate(this, callback, "forceUpdate");
+  };
+  ComponentDummy.prototype = Component.prototype;
+  pureComponentPrototype = PureComponent.prototype = new ComponentDummy;
+  pureComponentPrototype.constructor = PureComponent;
+  assign(pureComponentPrototype, Component.prototype);
+  pureComponentPrototype.isPureReactComponent = true;
+  isArrayImpl = Array.isArray;
+  ReactSharedInternals = { H: null, A: null, T: null, S: null };
+  hasOwnProperty = Object.prototype.hasOwnProperty;
+  userProvidedKeyEscapeRegex = /\/+/g;
+  reportGlobalError = typeof reportError === "function" ? reportError : function(error) {
+    if (typeof window === "object" && typeof window.ErrorEvent === "function") {
+      var event = new window.ErrorEvent("error", {
+        bubbles: true,
+        cancelable: true,
+        message: typeof error === "object" && error !== null && typeof error.message === "string" ? String(error.message) : String(error),
+        error
+      });
+      if (!window.dispatchEvent(event))
+        return;
+    } else if (typeof process === "object" && typeof process.emit === "function") {
+      process.emit("uncaughtException", error);
+      return;
+    }
+    console.error(error);
+  };
+  Children = {
+    map: mapChildren,
+    forEach: function(children, forEachFunc, forEachContext) {
+      mapChildren(children, function() {
+        forEachFunc.apply(this, arguments);
+      }, forEachContext);
+    },
+    count: function(children) {
+      var n = 0;
+      mapChildren(children, function() {
+        n++;
+      });
+      return n;
+    },
+    toArray: function(children) {
+      return mapChildren(children, function(child) {
+        return child;
+      }) || [];
+    },
+    only: function(children) {
+      if (!isValidElement(children))
+        throw Error("React.Children.only expected to receive a single React element child.");
+      return children;
+    }
+  };
+  $Activity = REACT_ACTIVITY_TYPE;
+  $Children = Children;
+  $Component = Component;
+  $Fragment = REACT_FRAGMENT_TYPE;
+  $Profiler = REACT_PROFILER_TYPE;
+  $PureComponent = PureComponent;
+  $StrictMode = REACT_STRICT_MODE_TYPE;
+  $Suspense = REACT_SUSPENSE_TYPE;
+  $__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE = ReactSharedInternals;
+  $__COMPILER_RUNTIME = {
+    __proto__: null,
+    c: function(size) {
+      return ReactSharedInternals.H.useMemoCache(size);
+    }
+  };
+  $isValidElement = isValidElement;
+});
+
+// ../../../node_modules/.pnpm/react@19.2.6/node_modules/react/index.js
+var require_react = __commonJS((exports, module) => {
+  init_react_production();
+  if (true) {
+    module.exports = exports_react_production;
+  } else {}
+});
+
+// synth:/Volumes/D/git/claude-design/plugins/design/dev-server/.runtime-bundle-react-entry.tsx
+var __mod__ = __toESM(require_react(), 1);
+var {
+  Activity,
+  Children: Children2,
+  Component: Component2,
+  Fragment,
+  Profiler,
+  PureComponent: PureComponent2,
+  StrictMode,
+  Suspense,
+  __CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
+  __COMPILER_RUNTIME,
+  act,
+  cache,
+  cacheSignal,
+  captureOwnerStack,
+  cloneElement,
+  createContext,
+  createElement,
+  createRef,
+  forwardRef,
+  isValidElement: isValidElement2,
+  lazy,
+  memo,
+  startTransition,
+  unstable_useCacheRefresh,
+  use,
+  useActionState,
+  useCallback,
+  useContext,
+  useDebugValue,
+  useDeferredValue,
+  useEffect,
+  useEffectEvent,
+  useId,
+  useImperativeHandle,
+  useInsertionEffect,
+  useLayoutEffect,
+  useMemo,
+  useOptimistic,
+  useReducer,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  useTransition,
+  version
+} = __mod__;
+var __runtime_bundle_react_entry_default = __mod__;
+export {
+  version,
+  useTransition,
+  useSyncExternalStore,
+  useState,
+  useRef,
+  useReducer,
+  useOptimistic,
+  useMemo,
+  useLayoutEffect,
+  useInsertionEffect,
+  useImperativeHandle,
+  useId,
+  useEffectEvent,
+  useEffect,
+  useDeferredValue,
+  useDebugValue,
+  useContext,
+  useCallback,
+  useActionState,
+  use,
+  unstable_useCacheRefresh,
+  startTransition,
+  memo,
+  lazy,
+  isValidElement2 as isValidElement,
+  forwardRef,
+  __runtime_bundle_react_entry_default as default,
+  createRef,
+  createElement,
+  createContext,
+  cloneElement,
+  captureOwnerStack,
+  cacheSignal,
+  cache,
+  act,
+  __COMPILER_RUNTIME,
+  __CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
+  Suspense,
+  StrictMode,
+  PureComponent2 as PureComponent,
+  Profiler,
+  Fragment,
+  Component2 as Component,
+  Children2 as Children,
+  Activity
+};

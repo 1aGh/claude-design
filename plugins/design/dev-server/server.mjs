@@ -1022,9 +1022,9 @@ async function buildSystemData() {
     } catch {}
     const items = [];
     for (const m of matches) {
-      const files = await findFiles(m.abs, m.rel, ['.html']);
+      const files = await findFiles(m.abs, m.rel, ['.tsx', '.html']);
       for (const f of files) {
-        const fname = f.split('/').pop().replace(/\.html$/i, '');
+        const fname = f.split('/').pop().replace(/\.(tsx|html)$/i, '');
         const group = f.split('/').slice(-2, -1)[0] || folderName;
         // For "index.html" prefer the group name as the label (e.g. "desktop", "mobile")
         const label = (fname.toLowerCase() === 'index') ? group : fname;
