@@ -78,9 +78,10 @@ export function ToolProvider({
   initial?: Tool;
 }) {
   const [tool, setToolState] = useState<Tool>(initial);
-  const [sticky, setSticky] = useState<{ tool: Tool | null; locked: boolean }>(
-    () => ({ tool: null, locked: false })
-  );
+  const [sticky, setSticky] = useState<{ tool: Tool | null; locked: boolean }>(() => ({
+    tool: null,
+    locked: false,
+  }));
   const setTool = useCallback((t: Tool) => {
     setToolState(t);
     // Single-click on a different tool clears any sticky lock — sticky is

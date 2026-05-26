@@ -15,7 +15,7 @@
  *             owns the rAF loop that follows pan/zoom + pointer drags.
  */
 
-import { useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef } from 'react';
 
 import {
   type ArrowStroke,
@@ -91,7 +91,12 @@ function resizeStroke(
   if (start.tool === 'ellipse') {
     // Treat the four corners as the bbox of the ellipse. Drag any corner →
     // recompute the AABB and derive cx/cy/rx/ry from the diagonal anchor.
-    const bbox = { x: start.cx - start.rx, y: start.cy - start.ry, w: start.rx * 2, h: start.ry * 2 };
+    const bbox = {
+      x: start.cx - start.rx,
+      y: start.cy - start.ry,
+      w: start.rx * 2,
+      h: start.ry * 2,
+    };
     const left = corner === 'nw' || corner === 'sw' ? wx : bbox.x;
     const right = corner === 'ne' || corner === 'se' ? wx : bbox.x + bbox.w;
     const top = corner === 'nw' || corner === 'ne' ? wy : bbox.y;
@@ -118,10 +123,8 @@ function resizeStroke(
     // (single-point pen stroke) we skip that axis to avoid div-by-zero.
     const bb = strokeBBox(start);
     if (!bb) return null;
-    const anchorX =
-      corner === 'nw' || corner === 'sw' ? bb.x + bb.w : bb.x;
-    const anchorY =
-      corner === 'nw' || corner === 'ne' ? bb.y + bb.h : bb.y;
+    const anchorX = corner === 'nw' || corner === 'sw' ? bb.x + bb.w : bb.x;
+    const anchorY = corner === 'nw' || corner === 'ne' ? bb.y + bb.h : bb.y;
     const newLeft = corner === 'nw' || corner === 'sw' ? wx : bb.x;
     const newTop = corner === 'nw' || corner === 'ne' ? wy : bb.y;
     const newRight = corner === 'ne' || corner === 'se' ? wx : bb.x + bb.w;
@@ -129,7 +132,8 @@ function resizeStroke(
     const sx = bb.w === 0 ? 1 : (newRight - newLeft) / bb.w;
     const sy = bb.h === 0 ? 1 : (newBottom - newTop) / bb.h;
     const scaled = start.points.map(
-      ([px, py]) => [anchorX + (px - anchorX) * sx, anchorY + (py - anchorY) * sy] as [number, number]
+      ([px, py]) =>
+        [anchorX + (px - anchorX) * sx, anchorY + (py - anchorY) * sy] as [number, number]
     );
     return { points: scaled } as Partial<PenStroke>;
   }
@@ -175,7 +179,7 @@ export function AnnotationResizeOverlay({
     corner: Corner;
   } | null>(null);
 
-  const selectedId = annotSel.selectedIds.length === 1 ? annotSel.selectedIds[0] ?? null : null;
+  const selectedId = annotSel.selectedIds.length === 1 ? (annotSel.selectedIds[0] ?? null) : null;
   const selectedStroke: Stroke | null = useMemo(() => {
     if (!selectedId || !store) return null;
     return store.strokes.find((s) => s.id === selectedId) ?? null;

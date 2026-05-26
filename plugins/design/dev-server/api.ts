@@ -912,8 +912,7 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
           }
         : null,
       availableDesignSystems,
-      defaultDesignSystem:
-        cfg.defaultDesignSystem ?? availableDesignSystems[0]?.name ?? null,
+      defaultDesignSystem: cfg.defaultDesignSystem ?? availableDesignSystems[0]?.name ?? null,
       readme,
       readmePath,
       tokens,

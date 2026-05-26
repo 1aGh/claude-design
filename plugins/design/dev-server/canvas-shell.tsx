@@ -292,9 +292,7 @@ function CanvasCore({
     (axis: 'x' | 'y') => {
       if (!artboardsCtx || !dragBus) return;
       const ids = new Set(
-        selSet.selected
-          .filter((s) => !!s.artboardId)
-          .map((s) => s.artboardId as string)
+        selSet.selected.filter((s) => !!s.artboardId).map((s) => s.artboardId as string)
       );
       if (ids.size < 3) return;
       const targets: ArtboardRect[] = artboardsCtx.artboards.filter((r) => ids.has(r.id));
@@ -875,10 +873,7 @@ function MultiArtboardToolbar({
   const ref = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
 
-  const artboardSelections = useMemo(
-    () => selected.filter((s) => !!s.artboardId),
-    [selected]
-  );
+  const artboardSelections = useMemo(() => selected.filter((s) => !!s.artboardId), [selected]);
   const artboardCount = artboardSelections.length;
   const enabled = artboardCount >= 3;
 
@@ -960,7 +955,7 @@ function MultiArtboardToolbar({
         onClick={() => distributeArtboards('x')}
       >
         <span className="dc-mab-icon" aria-hidden="true">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
             <rect x="0.5" y="3" width="3" height="8" fill="currentColor" />
             <rect x="5.5" y="3" width="3" height="8" fill="currentColor" />
             <rect x="10.5" y="3" width="3" height="8" fill="currentColor" />
@@ -980,7 +975,7 @@ function MultiArtboardToolbar({
         onClick={() => distributeArtboards('y')}
       >
         <span className="dc-mab-icon" aria-hidden="true">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
             <rect x="3" y="0.5" width="8" height="3" fill="currentColor" />
             <rect x="3" y="5.5" width="8" height="3" fill="currentColor" />
             <rect x="3" y="10.5" width="8" height="3" fill="currentColor" />

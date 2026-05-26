@@ -655,8 +655,8 @@ export function AnnotationsLayer() {
   const isErase = tool === 'eraser';
   const isActive = isDraw || isErase;
   // T20 — rect + ellipse expose stroke weight too (FigJam ships thickness on
-   // every shape). The annotation toolbar reads supportsThickness to decide
-   // whether to render the Thin / Thick chips.
+  // every shape). The annotation toolbar reads supportsThickness to decide
+  // whether to render the Thin / Thick chips.
   const supportsThickness =
     tool === 'pen' || tool === 'arrow' || tool === 'rect' || tool === 'ellipse';
   const supportsFill = tool === 'rect' || tool === 'ellipse';
@@ -1289,9 +1289,7 @@ export function AnnotationsLayer() {
           />
         ) : null}
         <AnnotationContextToolbar />
-        {visible && tool === 'move' ? (
-          <AnnotationResizeOverlay store={strokesStore} />
-        ) : null}
+        {visible && tool === 'move' ? <AnnotationResizeOverlay store={strokesStore} /> : null}
         {isActive ? (
           <AnnotationsChrome
             color={color}
@@ -1618,10 +1616,10 @@ function AnnotGroupBbox({
   const handle = 6;
   const inset = 3;
   const handles = [
-    { x: x - inset, y: y - inset },
-    { x: x + w - handle + inset, y: y - inset },
-    { x: x - inset, y: y + h - handle + inset },
-    { x: x + w - handle + inset, y: y + h - handle + inset },
+    { corner: 'nw', x: x - inset, y: y - inset },
+    { corner: 'ne', x: x + w - handle + inset, y: y - inset },
+    { corner: 'sw', x: x - inset, y: y + h - handle + inset },
+    { corner: 'se', x: x + w - handle + inset, y: y + h - handle + inset },
   ];
   return (
     <g pointerEvents="none">
@@ -1637,9 +1635,9 @@ function AnnotGroupBbox({
         vectorEffect="non-scaling-stroke"
         rx={2}
       />
-      {handles.map((c, i) => (
+      {handles.map((c) => (
         <rect
-          key={i}
+          key={c.corner}
           x={c.x}
           y={c.y}
           width={handle}
