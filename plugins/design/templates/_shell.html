@@ -94,11 +94,20 @@
 
     <script type="module">
       const params = new URLSearchParams(location.search);
-      const canvasRel = params.get('canvas');
-      const designRel = params.get('designRel') || '.design';
-      const tokensRel = params.get('tokens') || '';
-      const componentsRel = params.get('components') || '';
-      const layoutRel = params.get('layout') || '';
+      const designRel = (params.get('designRel') || '.design').replace(/^\/+|\/+$/g, '');
+      // Callers may pass paths either relative to designRoot (`ui/Foo.tsx` — the
+      // canonical contract) OR repo-relative (`.design/ui/Foo.tsx` — the form
+      // `_active.json` stores). Normalize to the canonical form so we never
+      // emit `/.design/.design/...` import URLs and 404 silently.
+      const stripDesignPrefix = (p) => {
+        if (!p) return p;
+        const s = p.replace(/^\/+/, '');
+        return s.startsWith(designRel + '/') ? s.slice(designRel.length + 1) : s;
+      };
+      const canvasRel = stripDesignPrefix(params.get('canvas'));
+      const tokensRel = stripDesignPrefix(params.get('tokens') || '');
+      const componentsRel = stripDesignPrefix(params.get('components') || '');
+      const layoutRel = stripDesignPrefix(params.get('layout') || '');
       // Phase 6.5 — exporters pass ?hide-chrome=1 to flip the export-mode
       // stylesheet from `media="not all"` to `media="all"`, hiding the
       // dev-server overlays during capture. See `<style id="canvas-hide-chrome">`.
