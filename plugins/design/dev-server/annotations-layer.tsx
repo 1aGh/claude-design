@@ -758,7 +758,7 @@ export function AnnotationsLayer() {
    * and pushes onto the stack — `push()` rebuilds the command via the
    * registered `strokesPutFn` sink and calls `cmd.do() = putStrokes(next)`,
    * which both updates local state and PUTs. Cancels any pending debounced
-   * save first — DDR-049 gotcha: a queued auto-save flushing AFTER our PUT
+   * save first — DDR-050 gotcha: a queued auto-save flushing AFTER our PUT
    * would race the stack into a stale state.
    */
   const commitStrokes = useCallback(

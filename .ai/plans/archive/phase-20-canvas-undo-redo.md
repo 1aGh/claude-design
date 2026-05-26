@@ -86,7 +86,7 @@ S každou novou interaktivní vrstvou (Phase 5 draw, Phase 5.1 annotations FigJa
 - `plugins/design/dev-server/test/input-router-undo.test.ts` — classify Cmd+Z / Cmd+Shift+Z / Cmd+Y / isEditable guard.
 - `plugins/design/dev-server/test/move-artboards-command.test.ts` — inverze pozic, idempotence redo.
 - `plugins/design/dev-server/test/annotation-strokes-command.test.ts` — add/erase round-trip.
-- `.ai/decisions/DDR-049-canvas-undo-redo-command-stack.md` — viz Decisions sekce níže.
+- `.ai/decisions/DDR-050-canvas-undo-redo-command-stack.md` — viz Decisions sekce níže.
 
 ### Documentation
 
@@ -280,9 +280,9 @@ Execute in order. Each task is atomic and testable. Pure logic (Tasks 1–5) jde
 - **Gotcha**: HMR může proběhnout i pro JS reload (build watcher). Filtruj signál na file = current canvas file. Pokud aktuální `fs-watch.ts` neumí "external vs. self-induced" rozlišit, přidej krátký debounce (ignore reload do 300 ms po vlastním PATCH-i, považuj za echo).
 - **Validate**: Manual — drag artboard, otevři `.meta.json` ručně v editoru, zapiš, focus zpět na canvas, Cmd+Z → HUD "Edit history reset", undo no-op.
 
-### Task 14: DDR-049 — Canvas Undo/Redo Command Stack
+### Task 14: DDR-050 — Canvas Undo/Redo Command Stack
 
-- **Do**: Napiš `.ai/decisions/DDR-049-canvas-undo-redo-command-stack.md` s rozhodnutími:
+- **Do**: Napiš `.ai/decisions/DDR-050-canvas-undo-redo-command-stack.md` s rozhodnutími:
   1. Command-pattern (inverse-payload), ne snapshot.
   2. Per-canvas-iframe scope, in-memory, ephemerální. Žádná persistence napříč session-y.
   3. Viewport + selection **ne**-undoable.
@@ -349,10 +349,10 @@ Aplikuje se na user-facing UI features. Toto je **dev-server vnitřní UI** (int
   - [ ] Tests (`bun test` — target 295+ tests, 0 fail)
   - [ ] Build (`bun run build.ts` — bundle ≤ 80 KB gz)
   - [ ] Manual smoke list (10 items in Validation #8) — všechny zelené
-- [ ] DDR-049 napsaný a linked z STATE.md
+- [ ] DDR-050 napsaný a linked z STATE.md
 - [ ] `plugins/design/commands/help.md` updated (shortcut tabulka)
 - [ ] Code follows project conventions, no regressions in DDR-048 input-router classify
-- [ ] Phase 8 forward-compat note v DDR-049 explicit — `UndoStackContext` interface freeze
+- [ ] Phase 8 forward-compat note v DDR-050 explicit — `UndoStackContext` interface freeze
 
 ---
 
@@ -378,5 +378,5 @@ Mitigace: rozdělit do dvou commitů — (a) core stack + artboard/marquee/equal
 - **Async runner needed ref-as-authoritative-store, not useState + stateRef-mirror.** First implementation followed the standard pattern (state owned by `useState`, refreshed into `stateRef` during render). It worked for one synchronous push but failed any subsequent `undo()` in the SSR-capture test because the captured `undo` closure read `stateRef.current` which was set during the initial render and never re-set. Refactored to: `stateRef` IS the store; `setState` is purely for triggering re-renders; `writeState` updates both atomically. This also matches the future Y.UndoManager swap (Yjs owns its own store via subscribe). Lesson: when a hook's actions need to read state BETWEEN React renders (here: serialized async runner over 30 Hz key-repeat), the ref must be authoritative.
 - **Annotations layer had FIVE inline `setStrokesState((prev) => …)` sites scattered across the file** — eraseAt, endStroke, commitText, updateStroke, deleteStrokes, translateStrokes. The plan called out three; we found five plus one mount-time loader (correctly excluded). Lesson: when adding a cross-cutting mutator wrap, grep for the underlying state setter across the file before estimating scope. The estimate was off by ~60%; total file diff was 200 LOC instead of the planned ~80.
 - **Smoke gate caught a pre-existing bug, not a regression.** `smoke.sh` reports OK on 404 "Not found" pages because it doesn't validate response semantically — it just confirms a screenshot was taken. The wave-1 baseline had the same false-positive shape; phase-20 is innocent. Worth filing for a separate fix in the dev-server bin scripts (validate that the iframe DOM contains the expected `[data-dc-screen]` or `.specimen-hd` marker before declaring OK).
-- **DDR-049's "Phase 8 forward-compat" rule is the most load-bearing part of the design.** The public `UndoStackValue` interface is now frozen — Yjs swap is a one-file diff. If we had let consumers (canvas-lib, annotations-layer) reach into implementation details, the migration would touch every command site. The discipline cost was zero (the natural shape of push/undo/redo/clear matches Y.UndoManager 1:1).
+- **DDR-050's "Phase 8 forward-compat" rule is the most load-bearing part of the design.** The public `UndoStackValue` interface is now frozen — Yjs swap is a one-file diff. If we had let consumers (canvas-lib, annotations-layer) reach into implementation details, the migration would touch every command site. The discipline cost was zero (the natural shape of push/undo/redo/clear matches Y.UndoManager 1:1).
 - **Plan's "rozdělit do dvou commitů" advice paid off.** Comments out of v0 was clearly the right call — the server CRDT shape for commentsPatch reconciliation needs Phase-8-Yjs as scaffolding. Ship the 90% now, follow-up on the 10%.

@@ -7,7 +7,7 @@
  *             `PUT /_api/annotations` which replaces the entire SVG; we
  *             match that shape rather than diffing.
  *
- *             Per DDR-049 rev 2 the runtime command is rebuilt per iframe
+ *             Per DDR-050 rev 2 the runtime command is rebuilt per iframe
  *             mount from a serializable `CommandRecord` so the stack
  *             survives canvas switches. The `putFn` here also updates the
  *             iframe's local React strokes state (see annotations-layer

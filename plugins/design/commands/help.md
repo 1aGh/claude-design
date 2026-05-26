@@ -65,7 +65,7 @@ Cheat-sheet for the in-canvas chrome — independent of slash commands. Always p
 | `B` / `R` / `O` / `A`        | Pen / Rectangle / Ellipse / Arrow annotation tools  |
 | `E`                          | Eraser (annotations)                                |
 | `Esc`                        | Cancel current gesture, clear selection, back to V  |
-| `Cmd+Z` / `Ctrl+Z`           | **Undo** the last canvas edit (Phase 20, DDR-049)   |
+| `Cmd+Z` / `Ctrl+Z`           | **Undo** the last canvas edit (Phase 20, DDR-050)   |
 | `Cmd+Shift+Z` / `Ctrl+Y` / `Cmd+Y` | **Redo** the last undone edit                 |
 | `Cmd+0`                      | Fit canvas to screen                                |
 | `Cmd+1`                      | Actual size (100 %)                                 |

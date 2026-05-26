@@ -1,6 +1,7 @@
-# DDR-049 — Canvas undo / redo via per-canvas command-record stack
+# DDR-050 — Canvas undo / redo via per-canvas command-record stack
 
 **Status:** Accepted — 2026-05-26. **Revised 2026-05-26 (rev 2)** — see § "Rev 2 — cross-canvas persistence" at the bottom.
+**Renumbered 2026-05-26:** originally drafted as DDR-049; collided with [DDR-049 Motion One](DDR-049-motion-one-as-canonical-motion-library.md) which was authored in a parallel work stream and merged first. Code references in commits `274cae4`, `3f586e4`, `ce624ef` and inline comments still say "DDR-049" for the undo work — those refer to THIS document; cross-reference accordingly.
 **Supersedes:** rev 1 of this DDR ("per-iframe-ephemeral" scope) — the user-facing fix landed hours after the initial commit when bug reports surfaced two issues.
 **Related:** [DDR-013](DDR-013-server-modular-split-typescript.md) (module-split + ≤300 LOC convention), [DDR-048](DDR-048-dev-server-system-view-no-shell-bias.md) (input-router classify table provenance), [DDR-027](DDR-027-canvas-meta-layout-positions-only.md) (size is JSX-authoritative — only positions persist), [DDR-046](DDR-046-canvas-chrome-three-state-halo-language.md) (HUD chrome consistency), [DDR-047](DDR-047-collab-scope-cut-no-lan-mode-hub-admin-ui.md) (Phase 8 Yjs is intentionally deferred — see "Phase 8 forward-compat" below).
 

@@ -464,7 +464,7 @@ interface PersistedArtboardLayout {
 }
 
 /**
- * Phase 20 (DDR-049) — last timestamp at which THIS iframe wrote canvas
+ * Phase 20 (DDR-050) — last timestamp at which THIS iframe wrote canvas
  * meta. Read by `use-undo-stack.tsx` to discriminate self-echo fs:json
  * events from genuine external edits.
  */
@@ -1167,7 +1167,7 @@ interface DesignCanvasProps {
  * via `useToolModeOptional` (hand-mode bare-drag pan).
  */
 export function DesignCanvas(props: DesignCanvasProps) {
-  // Phase 20 — per-canvas undo/redo stack (DDR-049 rev 2). The provider
+  // Phase 20 — per-canvas undo/redo stack (DDR-050 rev 2). The provider
   // wraps both DesignCanvasInner (so artboard commits push records) AND
   // the CanvasShell tree (so input-router Cmd+Z / Cmd+Shift+Z + the HUD
   // share the same context). Stack state is keyed by canvas file path in

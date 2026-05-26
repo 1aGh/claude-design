@@ -4,7 +4,7 @@
  * @scope      plugins/design/dev-server/commands/equal-spacing-command.ts
  * @purpose    Distribute + align both call `dragBus.commitPositions(moved)`,
  *             which wraps the move in a generic MoveArtboardsCommand. Per
- *             DDR-049 the underlying command type is shared (the inverse
+ *             DDR-050 the underlying command type is shared (the inverse
  *             payload is identical — a layout snapshot pair) and only the
  *             HUD label differs. These helpers compute the labels.
  *

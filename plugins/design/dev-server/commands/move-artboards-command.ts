@@ -6,13 +6,13 @@
  *             `patchFn` (in production, `applyArtboardLayout`; in tests, a
  *             spy). The command is rebuilt per iframe mount from a
  *             `CommandRecord` so the stack survives canvas switches
- *             (DDR-049 rev 2).
+ *             (DDR-050 rev 2).
  *
  * Why full snapshots, not a sparse diff. The server-side endpoint
  * (`PATCH /_api/canvas-meta`, see api.ts:523–528) shallow-merges patch.layout
  * over the existing meta. A sparse `{ artboards: [movedOnly] }` would drop
  * every unchanged rect on its head. Storing the full array is simpler and
- * resilient — the external-edit invalidation (DDR-049 rule 6) clears the
+ * resilient — the external-edit invalidation (DDR-050 rule 6) clears the
  * stack whenever the file changes outside our PATCH so we never restore a
  * stale layout.
  */

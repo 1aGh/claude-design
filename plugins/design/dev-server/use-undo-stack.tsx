@@ -6,7 +6,7 @@
  *             the next state transition, exposes the `lastLabel` HUD signal,
  *             AND persists the stack across canvas switches via
  *             `window.top.__maude_undo_stacks` keyed by canvas file path
- *             (DDR-049 rev 2).
+ *             (DDR-050 rev 2).
  *
  * Two roles in one provider:
  *   1. **State authority** — ref-as-store synchronously between awaited

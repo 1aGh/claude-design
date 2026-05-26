@@ -6,7 +6,7 @@
  *             supplied side-effects so this file stays trivially testable
  *             under `bun:test`.
  *
- * Scope (DDR-049 rev 2):
+ * Scope (DDR-050 rev 2):
  *   - **Persistent per-canvas, in-memory, session-scoped.** The stack lives
  *     in `window.top.__maude_undo_stacks` keyed by canvas file path so it
  *     survives canvas switches (close Foo.tsx, open Bar.tsx, come back to
@@ -193,7 +193,7 @@ export function peekRedo(state: UndoStackState): CommandRecord | null {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Cross-iframe persistent store (DDR-049 rev 2)
+// Cross-iframe persistent store (DDR-050 rev 2)
 //
 // Lives on the topmost window of the dev-server (same-origin — all canvas
 // iframes are children of /index.html). The map is keyed by canvas file path,
