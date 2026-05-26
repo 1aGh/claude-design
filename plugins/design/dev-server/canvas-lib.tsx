@@ -181,8 +181,11 @@ const ENGINE_CSS = `
 .dc-canvas .dc-artboard {
   background: var(--bg-0, #ffffff);
   color: var(--fg-0, #2a2520);
-  border: 1px solid var(--fg-0, #2a2520);
-  box-shadow: 6px 6px 0 var(--fg-0, #2a2520);
+  /* Quiet frame chrome — FigJam Section / Figma Frame canonical. The Memphis
+     hard-shadow is the Maude brand on USER CONTENT inside artboards; the frame
+     itself stays calm so user content reads as loud. */
+  border: 1px solid color-mix(in oklab, var(--fg-0, #2a2520) 22%, transparent);
+  border-radius: 2px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -218,25 +221,15 @@ button.dc-artboard-label:focus-visible { outline: 2px solid var(--accent, #d63b1
 /* Phase 4.2 — drag chrome. */
 .dc-canvas[data-active-tool="move"] .dc-artboard-label { cursor: grab; }
 .dc-canvas[data-active-tool="move"] .dc-artboard-label:active { cursor: grabbing; }
-.dc-canvas .dc-artboard.dc-dragging { opacity: 0.3; }
-.dc-canvas .dc-artboard-ghost {
-  position: absolute;
-  pointer-events: none;
-  opacity: 0.5;
-  background: var(--bg-0, #ffffff);
-  border: 1px solid var(--fg-0, #2a2520);
-  box-shadow: 6px 6px 0 var(--fg-0, #2a2520);
-  z-index: 4;
-}
-.dc-canvas .dc-artboard-ghost-label {
-  background: var(--bg-2, #e8e3d8);
-  border-bottom: 1px solid var(--fg-0, #2a2520);
-  padding: 6px 14px;
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--fg-1, #4a3f30);
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+/* Post-Wave-2 — direct artboard drag. The article itself updates its
+   inline left/top during drag (no ghost placeholder, no opacity fade on
+   the original). Compositor handles the pixel movement; halo + group
+   bbox naturally follow via getBoundingClientRect on the article. */
+.dc-canvas .dc-artboard.dc-dragging {
+  z-index: 5;
+  /* Keep the cursor consistent with the label's grabbing affordance even
+     when the pointer drifts off the label strip during the drag. */
+  cursor: grabbing;
 }
 `.trim();
 
@@ -286,6 +279,12 @@ export interface WorldContextValue {
 const WorldContext = createContext<WorldContextValue | null>(null);
 
 function useWorldContext(): WorldContextValue | null {
+  return useContext(WorldContext);
+}
+
+/** Read-only access to the artboard list + viewport state. Used by overlays
+ *  that need to operate on artboards directly (distribute, marquee, etc.). */
+export function useArtboardsContext(): WorldContextValue | null {
   return useContext(WorldContext);
 }
 
@@ -1407,50 +1406,41 @@ export function DCArtboard({
   const isFollower = !!followerOffset;
   const isInDrag = isLeader || isFollower;
 
-  // Ghost position (world coords).
-  let ghostX = 0;
-  let ghostY = 0;
+  // Live drag position (world coords). The article's own `left/top` updates
+  // each frame while the drag is in flight — no ghost placeholder, no faded
+  // original. commitFromState then persists the final position on settle.
+  let liveX = rect.x;
+  let liveY = rect.y;
   if (busDrag?.kind === 'dragging') {
     if (isLeader) {
-      ghostX = busDrag.leaderRect.x;
-      ghostY = busDrag.leaderRect.y;
+      liveX = busDrag.leaderRect.x;
+      liveY = busDrag.leaderRect.y;
     } else if (isFollower && followerOffset) {
-      ghostX = busDrag.leaderRect.x + followerOffset.offsetX;
-      ghostY = busDrag.leaderRect.y + followerOffset.offsetY;
+      liveX = busDrag.leaderRect.x + followerOffset.offsetX;
+      liveY = busDrag.leaderRect.y + followerOffset.offsetY;
     }
   }
 
   const handleProps = dragHook.bindHandle();
 
   return (
-    <>
-      <article
-        className={`dc-artboard dc-positioned${isInDrag ? ' dc-dragging' : ''}`}
-        data-dc-screen={id}
-        aria-current={isActive ? 'true' : undefined}
-        style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}
-        {...handleProps}
+    <article
+      className={`dc-artboard dc-positioned${isInDrag ? ' dc-dragging' : ''}`}
+      data-dc-screen={id}
+      aria-current={isActive ? 'true' : undefined}
+      style={{ left: liveX, top: liveY, width: rect.w, height: rect.h }}
+      {...handleProps}
+    >
+      <button
+        type="button"
+        className="dc-artboard-label sku"
+        onClick={onFocus}
+        aria-label={`Focus artboard ${label}`}
       >
-        <button
-          type="button"
-          className="dc-artboard-label sku"
-          onClick={onFocus}
-          aria-label={`Focus artboard ${label}`}
-        >
-          {label}
-        </button>
-        <div className="dc-artboard-body">{children}</div>
-      </article>
-      {isInDrag ? (
-        <div
-          className="dc-artboard-ghost"
-          aria-hidden="true"
-          style={{ left: ghostX, top: ghostY, width: rect.w, height: rect.h }}
-        >
-          <div className="dc-artboard-ghost-label">{label}</div>
-        </div>
-      ) : null}
-    </>
+        {label}
+      </button>
+      <div className="dc-artboard-body">{children}</div>
+    </article>
   );
 }
 DCArtboard.displayName = 'DCArtboard';

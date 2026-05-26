@@ -100,6 +100,34 @@ const PALETTE_CSS = `
   background: var(--accent, #d63b1f);
   border-radius: 1px;
 }
+/* T19 — sticky-tool lock badge. Tiny accent square in the top-right corner
+   of the active tool button, fades in 50 ms after a double-click. The badge
+   reads "armed across draws" so the user understands the tool will stay
+   selected after each shape commit. */
+.dc-tool-palette button[data-sticky="true"] {
+  /* Keep the tinted active background; add a hairline ring so the lock state
+     is readable even when the button is also aria-pressed. */
+  box-shadow: inset 0 0 0 1px var(--accent, #d63b1f);
+}
+.dc-tool-palette button .dc-tp-sticky-badge {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  background: var(--accent, #d63b1f);
+  border-radius: 1px;
+  box-shadow: 0 0 0 1px var(--bg-0, #ffffff);
+  opacity: 0;
+  transition: opacity 50ms linear 50ms;
+  pointer-events: none;
+}
+.dc-tool-palette button[data-sticky="true"] .dc-tp-sticky-badge {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dc-tool-palette button .dc-tp-sticky-badge { transition: none; }
+}
 .dc-tool-palette .dc-tp-zoom {
   min-width: 56px;
   padding: 0 8px;
@@ -168,7 +196,7 @@ const DRAW_TOOLS = ['pen', 'rect', 'ellipse', 'arrow', 'eraser'] as const;
 
 export function ToolPalette() {
   ensurePaletteStyles();
-  const { tool, setTool, tools } = useToolMode();
+  const { tool, setTool, tools, sticky, toggleSticky } = useToolMode();
   const controller = useViewportControllerContext();
   const visibilityCtx = useAnnotationsVisibility();
   const [mounted, setMounted] = useState(false);
@@ -195,16 +223,25 @@ export function ToolPalette() {
 
   const renderToolButton = (id: string, label: string, shortcut: string) => {
     const Icon = TOOL_ICONS[id];
+    const isDraw = (DRAW_TOOLS as readonly string[]).includes(id);
+    const isSticky = sticky.locked && sticky.tool === (id as never);
+    const stickyHint = isDraw ? ' · double-click to lock' : '';
     return (
       <button
         key={id}
         type="button"
-        aria-label={`${label} (${shortcut})`}
+        aria-label={`${label} (${shortcut})${isSticky ? ' — locked' : stickyHint}`}
         aria-pressed={tool === id}
-        title={`${label} (${shortcut})`}
+        data-sticky={isSticky ? 'true' : undefined}
+        title={`${label} (${shortcut})${stickyHint}`}
         onClick={() => setTool(id as never)}
+        onDoubleClick={() => {
+          if (!isDraw) return;
+          toggleSticky(id as never);
+        }}
       >
         {Icon ? <Icon /> : <span style={{ fontSize: 11 }}>{shortcut}</span>}
+        {isSticky ? <span className="dc-tp-sticky-badge" aria-hidden="true" /> : null}
       </button>
     );
   };

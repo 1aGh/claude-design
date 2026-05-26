@@ -147,7 +147,10 @@ export function AnnotationContextToolbar() {
       return { color: false, fill: false, thickness: false, fontSize: false };
     }
     const allFillable = selectedStrokes.every((s) => s.tool === 'rect' || s.tool === 'ellipse');
-    const allThickness = selectedStrokes.every((s) => s.tool === 'pen' || s.tool === 'arrow');
+    // T20 — rect + ellipse now carry stroke weight too.
+    const allThickness = selectedStrokes.every(
+      (s) => s.tool === 'pen' || s.tool === 'arrow' || s.tool === 'rect' || s.tool === 'ellipse'
+    );
     const anyText = selectedStrokes.some((s) => s.tool === 'text');
     return {
       color: true,
@@ -226,7 +229,8 @@ export function AnnotationContextToolbar() {
     (w: number) => {
       if (!store) return;
       for (const s of selectedStrokes) {
-        if (s.tool === 'pen' || s.tool === 'arrow') {
+        // T20 — rect + ellipse now carry stroke weight.
+        if (s.tool === 'pen' || s.tool === 'arrow' || s.tool === 'rect' || s.tool === 'ellipse') {
           store.updateStroke(s.id, { width: w } as Partial<Stroke>);
         }
       }
@@ -263,7 +267,11 @@ export function AnnotationContextToolbar() {
     : undefined;
   const uniqThickness = caps.thickness
     ? uniformValue(
-        selectedStrokes.map((s) => (s.tool === 'pen' || s.tool === 'arrow' ? s.width : undefined))
+        selectedStrokes.map((s) =>
+          s.tool === 'pen' || s.tool === 'arrow' || s.tool === 'rect' || s.tool === 'ellipse'
+            ? s.width
+            : undefined
+        )
       )
     : undefined;
   const uniqFontSize = caps.fontSize

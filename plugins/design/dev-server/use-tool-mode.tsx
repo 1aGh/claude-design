@@ -54,6 +54,13 @@ interface ToolContextValue {
   tool: Tool;
   setTool: (t: Tool) => void;
   tools: readonly ToolDescriptor[];
+  /** T19 — sticky-tool double-click lock. When `sticky.locked === true` AND
+   *  `sticky.tool === tool`, draw tools stay armed after each shape commit
+   *  (T18 auto-flip is suppressed). Single-click on any other tool clears
+   *  sticky; Esc clears + flips to Move. */
+  sticky: { tool: Tool | null; locked: boolean };
+  toggleSticky: (t: Tool) => void;
+  clearSticky: () => void;
 }
 
 const ToolContext = createContext<ToolContextValue | null>(null);
@@ -71,7 +78,25 @@ export function ToolProvider({
   initial?: Tool;
 }) {
   const [tool, setToolState] = useState<Tool>(initial);
-  const setTool = useCallback((t: Tool) => setToolState(t), []);
+  const [sticky, setSticky] = useState<{ tool: Tool | null; locked: boolean }>(
+    () => ({ tool: null, locked: false })
+  );
+  const setTool = useCallback((t: Tool) => {
+    setToolState(t);
+    // Single-click on a different tool clears any sticky lock — sticky is
+    // a per-tool flag, not global.
+    setSticky((prev) => (prev.locked && prev.tool === t ? prev : { tool: null, locked: false }));
+  }, []);
+  const toggleSticky = useCallback((t: Tool) => {
+    setSticky((prev) => {
+      if (prev.locked && prev.tool === t) return { tool: null, locked: false };
+      return { tool: t, locked: true };
+    });
+    setToolState(t);
+  }, []);
+  const clearSticky = useCallback(() => {
+    setSticky({ tool: null, locked: false });
+  }, []);
 
   // Body cursor sync — applied to the canvas iframe's body (this hook runs
   // inside the iframe context). The viewport-controller still owns the
@@ -88,7 +113,10 @@ export function ToolProvider({
     };
   }, [tool, tools]);
 
-  const value = useMemo<ToolContextValue>(() => ({ tool, setTool, tools }), [tool, setTool, tools]);
+  const value = useMemo<ToolContextValue>(
+    () => ({ tool, setTool, tools, sticky, toggleSticky, clearSticky }),
+    [tool, setTool, tools, sticky, toggleSticky, clearSticky]
+  );
 
   return <ToolContext.Provider value={value}>{children}</ToolContext.Provider>;
 }

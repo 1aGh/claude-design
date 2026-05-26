@@ -469,16 +469,30 @@ export function resolveHoverTarget(
   const artboardEl = hit.closest?.('[data-dc-screen]') ?? null;
   const artboardId = artboardEl?.getAttribute('data-dc-screen') ?? null;
 
-  // Hover-target hard ceiling = `.dc-artboard-body`. The artboard chrome
-  // (article root + label button + body wrapper) is never a selection
-  // candidate — those carry `data-cd-id` from the pipeline pass but visually
-  // selecting them makes the WHOLE artboard outline, which looks like the
-  // canvas viewport is selected. If the user landed on chrome (the label
-  // button or empty body padding), bail.
+  // Hover-target hard ceiling = `.dc-artboard-body`. Inner DOM content lives
+  // there; chrome lives outside (label, header, article root). The two paths
+  // diverge from here:
+  //   * hit ∈ body → resolve to the deepest stamped element (existing
+  //     deep/top logic below).
+  //   * hit ∈ chrome (label/header/article-root) → the user wants to select
+  //     the WHOLE artboard. Return the article element itself with no cdId;
+  //     consumers (hoverTargetToSelection) fall back to a
+  //     `[data-dc-screen="…"]` selector that wraps the whole frame. This is
+  //     what enables Cmd+Shift+Click multi-select of artboards (T24 / G8).
   const bodyEl = hit.closest?.('.dc-artboard-body') ?? null;
-  if (!bodyEl) return null;
+  if (!bodyEl) {
+    if (artboardEl && artboardId) {
+      return { el: artboardEl, cdId: null, artboardId };
+    }
+    return null;
+  }
   if (hit === bodyEl) {
-    // Clicked exactly on the body wrapper, no inner element under cursor.
+    // Clicked the body wrapper itself (empty padding inside an artboard, no
+    // user content under the cursor). Promote to "select whole artboard" so
+    // the gesture stays consistent with chrome clicks above.
+    if (artboardEl && artboardId) {
+      return { el: artboardEl, cdId: null, artboardId };
+    }
     return null;
   }
 

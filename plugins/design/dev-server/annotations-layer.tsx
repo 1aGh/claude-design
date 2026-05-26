@@ -35,6 +35,7 @@ import { createPortal } from 'react-dom';
 
 import { AnnotationContextToolbar } from './annotations-context-toolbar.tsx';
 import { useViewportControllerContext, useWorldRefContext } from './canvas-lib.tsx';
+import { AnnotationResizeOverlay } from './use-annotation-resize.tsx';
 import { useAnnotationSelectionOptional } from './use-annotation-selection.tsx';
 import { useAnnotationsVisibility } from './use-annotations-visibility.tsx';
 import { useSelectionSetOptional } from './use-selection-set.tsx';
@@ -618,7 +619,7 @@ export { useAnnotationsVisibility } from './use-annotations-visibility.tsx';
 
 export function AnnotationsLayer() {
   ensureAnnotStyles();
-  const { tool } = useToolMode();
+  const { tool, setTool, sticky } = useToolMode();
   const controller = useViewportControllerContext();
   const vp = controller?.viewport ?? null;
   const worldRef = useWorldRefContext();
@@ -653,7 +654,11 @@ export function AnnotationsLayer() {
   const isDraw = tool === 'pen' || tool === 'rect' || tool === 'arrow' || tool === 'ellipse';
   const isErase = tool === 'eraser';
   const isActive = isDraw || isErase;
-  const supportsThickness = tool === 'pen' || tool === 'arrow';
+  // T20 — rect + ellipse expose stroke weight too (FigJam ships thickness on
+   // every shape). The annotation toolbar reads supportsThickness to decide
+   // whether to render the Thin / Thick chips.
+  const supportsThickness =
+    tool === 'pen' || tool === 'arrow' || tool === 'rect' || tool === 'ellipse';
   const supportsFill = tool === 'rect' || tool === 'ellipse';
 
   // Load existing annotations on mount.
@@ -839,7 +844,7 @@ export function AnnotationsLayer() {
           id,
           tool: 'rect',
           color,
-          width: STROKE_WIDTH_THIN,
+          width,
           x: wx,
           y: wy,
           w: 0,
@@ -851,7 +856,7 @@ export function AnnotationsLayer() {
           id,
           tool: 'ellipse',
           color,
-          width: STROKE_WIDTH_THIN,
+          width,
           cx: wx,
           cy: wy,
           rx: 0,
@@ -935,9 +940,38 @@ export function AnnotationsLayer() {
         scheduleSave(next);
         return next;
       });
+      // T18 — auto-select the freshly drawn shape so the user can immediately
+      // see + adjust it. annotSel is optional (some test harnesses mount
+      // AnnotationsLayer without the provider), so guard the call.
+      if (annotSel) annotSel.replace(committed.id);
+    }
+    // T18 / T19 — flip the tool back to Move after every commit UNLESS sticky
+    // mode is locked on this tool. Sticky lets the user draw many shapes in a
+    // row (canonical pattern: tldraw double-click to lock). Eraser stays
+    // armed by default — that tool is destructive, not constructive.
+    const toolJustUsed = cur.tool;
+    if (toolJustUsed !== 'eraser') {
+      const stickyOnThis = sticky.locked && sticky.tool === toolJustUsed;
+      if (!stickyOnThis) setTool('move');
     }
     setDrawing(null);
-  }, [isActive, isErase, visible, scheduleSave]);
+  }, [isActive, isErase, visible, scheduleSave, annotSel, setTool, sticky]);
+
+  // T21 — abort a mid-stroke draw without committing. Dispatched by the
+  // canvas-shell Esc handler (`maude:cancel-stroke`). Safe to call when
+  // nothing is being drawn — the early-return on drawingRef keeps it
+  // a no-op.
+  const cancelStroke = useCallback(() => {
+    if (!drawingRef.current) return;
+    setDrawing(null);
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onCancel = () => cancelStroke();
+    document.addEventListener('maude:cancel-stroke', onCancel);
+    return () => document.removeEventListener('maude:cancel-stroke', onCancel);
+  }, [cancelStroke]);
 
   const renderStrokes = useMemo(
     () => (drawing ? [...strokes, drawing] : strokes),
@@ -1064,8 +1098,9 @@ export function AnnotationsLayer() {
         return;
       }
 
-      // Empty world — start a drag-select gesture. A small movement falls
-      // back to a "click on empty world → clear selection" (Figma-style).
+      // Empty world — start a drag-select gesture. A bare click without
+      // moving is a no-op (post-Wave-2 feedback: click-on-empty-space
+      // does NOT clear selection; Esc is the canonical deselect).
       const addToSelection = e.shiftKey;
       let moved = false;
       const onMove = (mv: PointerEvent) => {
@@ -1080,8 +1115,8 @@ export function AnnotationsLayer() {
         document.removeEventListener('pointerup', onUp, true);
         document.removeEventListener('pointercancel', onUp, true);
         if (!moved) {
-          // True click on empty world → clear (unless modifier add-mode).
-          if (!addToSelection && annotSel.selectedIds.length > 0) annotSel.clear();
+          // Click without movement on empty world → no-op. Selection
+          // survives accidental misses; Esc is how the user deselects.
           return;
         }
         const final = marqueeRef.current;
@@ -1100,13 +1135,10 @@ export function AnnotationsLayer() {
             hits.push(s.id);
           }
         }
-        if (addToSelection) {
-          annotSel.add(hits);
-        } else if (hits.length === 0) {
-          annotSel.clear();
-        } else {
-          annotSel.replace(hits);
-        }
+        // Marquee that captured no strokes — preserve existing selection.
+        if (hits.length === 0) return;
+        if (addToSelection) annotSel.add(hits);
+        else annotSel.replace(hits);
       };
       document.addEventListener('pointermove', onMove, true);
       document.addEventListener('pointerup', onUp, true);
@@ -1257,6 +1289,9 @@ export function AnnotationsLayer() {
           />
         ) : null}
         <AnnotationContextToolbar />
+        {visible && tool === 'move' ? (
+          <AnnotationResizeOverlay store={strokesStore} />
+        ) : null}
         {isActive ? (
           <AnnotationsChrome
             color={color}
@@ -1382,8 +1417,14 @@ function AnnotationsSvg({
         <StrokeNode key={s.id} stroke={s} anchorsById={anchorsById} interactive={selectMode} />
       ))}
       {selectedStrokes.map((s) => (
-        <SelectionHalo key={`halo-${s.id}`} stroke={s} anchorsById={anchorsById} />
+        <SelectionHalo
+          key={`halo-${s.id}`}
+          stroke={s}
+          anchorsById={anchorsById}
+          multi={selectedStrokes.length > 1}
+        />
       ))}
+      <AnnotGroupBbox selectedStrokes={selectedStrokes} anchorsById={anchorsById} />
       {marquee ? (
         <rect
           className="dc-annot-marquee"
@@ -1507,12 +1548,26 @@ function TextEditor({
 function SelectionHalo({
   stroke,
   anchorsById,
+  multi,
 }: {
   stroke: Stroke;
   anchorsById: Map<string, RectStroke | EllipseStroke>;
+  multi: boolean;
 }) {
   const bbox = strokeBBox(stroke, anchorsById);
   if (!bbox) return null;
+  // T17 + post-Wave-2 fix — annotation halo idioms:
+  //   * Single select → 2 px solid border, NO ring, NO corner ticks.
+  //     The resize overlay (T23) renders the corner handles in screen-space,
+  //     so painting SVG ticks here too would duplicate them. The element
+  //     halo uses CSS box-shadow for the 18% ring; the SVG equivalent (a
+  //     second outline rect) reads as "double frame" rather than a halo —
+  //     user feedback flagged this immediately. Solid 2 px is enough signal
+  //     once the resize handles claim the corners.
+  //   * Multi member → 1.5 px solid full accent, no ring, no ticks (group
+  //     bbox above carries the container affordance).
+  // Marquee STAYS dashed (drawn elsewhere) — dashed is reserved for the
+  // ambient group-container + active-gesture idioms per DDR-046 rev 2.
   const pad = 4;
   return (
     <rect
@@ -1522,12 +1577,81 @@ function SelectionHalo({
       height={bbox.h + pad * 2}
       fill="none"
       stroke="var(--accent, #d63b1f)"
-      strokeWidth={1.5}
-      strokeDasharray="4 3"
+      strokeWidth={multi ? 1.5 : 2}
       vectorEffect="non-scaling-stroke"
       pointerEvents="none"
       rx={2}
     />
+  );
+}
+
+// T17 — group bbox dashed rect for multi-stroke annotation selection. Mirrors
+// the element-side GroupBbox idiom (1 px dashed accent + 6 × 6 corner handles).
+function AnnotGroupBbox({
+  selectedStrokes,
+  anchorsById,
+}: {
+  selectedStrokes: readonly Stroke[];
+  anchorsById: Map<string, RectStroke | EllipseStroke>;
+}) {
+  if (selectedStrokes.length < 2) return null;
+  let xMin = Number.POSITIVE_INFINITY;
+  let yMin = Number.POSITIVE_INFINITY;
+  let xMax = Number.NEGATIVE_INFINITY;
+  let yMax = Number.NEGATIVE_INFINITY;
+  let any = false;
+  for (const s of selectedStrokes) {
+    const b = strokeBBox(s, anchorsById);
+    if (!b) continue;
+    any = true;
+    if (b.x < xMin) xMin = b.x;
+    if (b.y < yMin) yMin = b.y;
+    if (b.x + b.w > xMax) xMax = b.x + b.w;
+    if (b.y + b.h > yMax) yMax = b.y + b.h;
+  }
+  if (!any) return null;
+  const pad = 6;
+  const x = xMin - pad;
+  const y = yMin - pad;
+  const w = xMax - xMin + pad * 2;
+  const h = yMax - yMin + pad * 2;
+  const handle = 6;
+  const inset = 3;
+  const handles = [
+    { x: x - inset, y: y - inset },
+    { x: x + w - handle + inset, y: y - inset },
+    { x: x - inset, y: y + h - handle + inset },
+    { x: x + w - handle + inset, y: y + h - handle + inset },
+  ];
+  return (
+    <g pointerEvents="none">
+      <rect
+        x={x}
+        y={y}
+        width={w}
+        height={h}
+        fill="none"
+        stroke="var(--accent, #d63b1f)"
+        strokeWidth={1}
+        strokeDasharray="4 3"
+        vectorEffect="non-scaling-stroke"
+        rx={2}
+      />
+      {handles.map((c, i) => (
+        <rect
+          key={i}
+          x={c.x}
+          y={c.y}
+          width={handle}
+          height={handle}
+          fill="var(--accent, #d63b1f)"
+          stroke="var(--bg-0, #ffffff)"
+          strokeWidth={1}
+          vectorEffect="non-scaling-stroke"
+          rx={1}
+        />
+      ))}
+    </g>
   );
 }
 

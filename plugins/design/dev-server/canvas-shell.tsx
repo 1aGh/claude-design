@@ -37,9 +37,13 @@ import {
 } from 'react';
 
 import { AnnotationsLayer } from './annotations-layer.tsx';
+import { ArtboardMarqueeOverlay } from './artboard-marquee.tsx';
 import {
+  type ArtboardRect,
   SnapGuideOverlay,
   type ViewportControllerHandle,
+  useArtboardsContext,
+  useDragStateContext,
   useViewportControllerContext,
 } from './canvas-lib.tsx';
 import { CommentsOverlay } from './comments-overlay.tsx';
@@ -107,20 +111,40 @@ const HALO_CSS = `
 .dc-cv-halo--selected .tick-tr { top: -3px; right: -3px; }
 .dc-cv-halo--selected .tick-bl { bottom: -3px; left: -3px; }
 .dc-cv-halo--selected .tick-br { bottom: -3px; right: -3px; }
-/* Selected (member of multi-selection) — 1px solid 50%-tinted outline.
-   No ring, no ticks. The GroupBbox carries the loud signal. */
+/* Selected (member of multi-selection) — 1.5 px solid full-accent outline.
+   No ring, no ticks (the group bbox above carries the container signal).
+   T16 / DDR-046 rev 2 — full opacity instead of 50%-tinted: tinted lines read
+   as "draft / placeholder" and members would melt away inside artboards once
+   the artboard border itself is 22%-tinted (T15). */
 .dc-cv-halo--selected-member {
-  border: 1px solid color-mix(in oklab, var(--accent, #0d99ff) 50%, transparent);
+  border: 1.5px solid var(--accent, #0d99ff);
 }
-/* Group bbox — 1px solid (NOT dashed; dashed reserved for none — DDR-046).
-   50%-tinted accent so it reads as scaffolding rather than chrome. */
+/* Group bbox — 1 px DASHED full accent + four 6 × 6 square corner handles.
+   T16 / DDR-046 rev 2 — dashed is the canonical group-container affordance
+   (Figma group bbox, FigJam Section drag-state, Photoshop marching ants).
+   Dashed reads "ambient binding" without claiming subject-ness; the loud
+   solid outlines on each MEMBER carry the active-selection signal. Corner
+   handles are 6 × 6 (vs single-select's 8 × 8 ticks) so the group idiom
+   reads as "thinner authority" than single-select. */
 .dc-cv-group-bbox {
   position: fixed;
   pointer-events: none;
   z-index: 5;
-  border: 1px solid color-mix(in oklab, var(--accent, #0d99ff) 50%, transparent);
+  border: 1px dashed var(--accent, #0d99ff);
   border-radius: 2px;
 }
+.dc-cv-group-bbox .tick {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: var(--accent, #0d99ff);
+  border-radius: 1px;
+  box-shadow: 0 0 0 1px var(--bg-0, #ffffff);
+}
+.dc-cv-group-bbox .tick-tl { top: -3px; left: -3px; }
+.dc-cv-group-bbox .tick-tr { top: -3px; right: -3px; }
+.dc-cv-group-bbox .tick-bl { bottom: -3px; left: -3px; }
+.dc-cv-group-bbox .tick-br { bottom: -3px; right: -3px; }
 /*
  * Active-artboard indicator — the artboard whose center sits closest to the
  * viewport midpoint after pan settles is "active" (DesignCanvas tracks this
@@ -129,9 +153,11 @@ const HALO_CSS = `
  * 120 ms ease-out so activation is felt, not invisible.
  */
 .dc-canvas .dc-artboard[aria-current="true"] {
-  box-shadow:
-    0 0 0 3px var(--accent, #0d99ff),
-    6px 6px 0 var(--fg-0, #2a2520);
+  /* T15 — quiet frame, single 2 px accent ring. The previous double-shadow
+     (3 px ring + hard 6×6×0 offset) was readable but visually expensive once
+     the frame itself lost its brutalist treatment. A 2 px ring on a 22 %
+     tinted hairline reads unambiguous without claiming subject-ness. */
+  box-shadow: 0 0 0 2px var(--accent, #0d99ff);
   transition: box-shadow 120ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 /* Respect prefers-reduced-motion across all chrome transitions. */
@@ -142,45 +168,6 @@ const HALO_CSS = `
     transition: none !important;
   }
 }
-/* DDR-046 — Brand wordmark watermark. Subtle top-left mark that gives the
-   canvas a "this is maude-design-server" identity without competing with
-   user content. Position absolute inside .dc-canvas so it stays anchored to
-   the viewport corner (NOT inside .dc-world — wouldn't make sense per
-   canvas). Pointer-events:none so it never intercepts clicks. Opacity fades
-   when artboards exist (user content takes the focus). */
-.dc-canvas-brand {
-  position: absolute;
-  top: 20px;
-  left: 28px;
-  pointer-events: none;
-  user-select: none;
-  z-index: 4;
-  font-family: var(--font-display, var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace));
-  color: var(--fg-0, #1c1917);
-  opacity: 0.18;
-  transition: opacity 220ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-.dc-canvas-brand .dc-canvas-brand-mark {
-  display: block;
-  font-size: 40px;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: -0.02em;
-}
-.dc-canvas-brand .dc-canvas-brand-sub {
-  margin-top: 8px;
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--fg-1, var(--fg-0, #1c1917));
-  opacity: 0.85;
-}
-/* Empty state — pop a bit louder when there's no user content competing. */
-.dc-canvas:not(:has(.dc-artboard)) .dc-canvas-brand { opacity: 0.45; }
-@media (prefers-reduced-motion: reduce) {
-  .dc-canvas-brand { transition: none !important; }
-}
 /*
  * Force tool cursor across the canvas tree in comment / hand modes. Without
  * !important on every descendant, buttons and links with their own cursor
@@ -188,17 +175,37 @@ const HALO_CSS = `
  * the user hovers an interactive element — wrong signal when native
  * interactions are suppressed by the router anyway.
  */
+/* T22 — per-tool SVG cursors. Each cursor is a 16 × 16 SVG data-URI with a
+   declared hotspot. The crosshair / cell / grab fallbacks remain in the
+   chain so older browsers still get a recognisable affordance. SVGs are
+   utf-8 encoded inline (Chromium / Safari 16+ / Firefox 117+ all accept). */
+.dc-canvas {
+  --cursor-pen: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><path d='M14 1.5 L9 6.5 L2.5 13.5 L1.5 14.5 L2 13 L8.5 6 L13.5 1.5 Z' fill='%23111' stroke='white' stroke-width='0.7' stroke-linejoin='round'/></svg>") 2 14;
+  --cursor-rect: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><line x1='0.5' y1='8' x2='15.5' y2='8' stroke='%23111' stroke-width='1'/><line x1='8' y1='0.5' x2='8' y2='15.5' stroke='%23111' stroke-width='1'/><rect x='10.5' y='10.5' width='4' height='3' fill='white' stroke='%23111' stroke-width='1'/></svg>") 8 8;
+  --cursor-ellipse: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><line x1='0.5' y1='8' x2='15.5' y2='8' stroke='%23111' stroke-width='1'/><line x1='8' y1='0.5' x2='8' y2='15.5' stroke='%23111' stroke-width='1'/><ellipse cx='12.5' cy='12' rx='2.5' ry='1.5' fill='white' stroke='%23111' stroke-width='1'/></svg>") 8 8;
+  --cursor-arrow: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><line x1='0.5' y1='8' x2='15.5' y2='8' stroke='%23111' stroke-width='1'/><line x1='8' y1='0.5' x2='8' y2='15.5' stroke='%23111' stroke-width='1'/><path d='M10 13 L15 13 M12.5 11 L15 13 L12.5 15' fill='none' stroke='%23111' stroke-width='1' stroke-linecap='round' stroke-linejoin='round'/></svg>") 8 8;
+  --cursor-eraser: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><rect x='3' y='9' width='8' height='5' rx='1' fill='%23ffb3da' stroke='%23111' stroke-width='1' transform='rotate(-20 7 11.5)'/><rect x='3' y='9' width='8' height='2' fill='%23d63b6e' transform='rotate(-20 7 10)' opacity='0.6'/></svg>") 8 14;
+  --cursor-comment: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><path d='M3 3 L14 3 L14 11 L8 11 L4 14 L4 11 L3 11 Z' fill='white' stroke='%23111' stroke-width='1' stroke-linejoin='round'/></svg>") 4 4;
+}
 .dc-canvas[data-active-tool="comment"],
-.dc-canvas[data-active-tool="comment"] *,
+.dc-canvas[data-active-tool="comment"] * {
+  cursor: var(--cursor-comment), crosshair !important;
+}
 .dc-canvas[data-active-tool="pen"],
-.dc-canvas[data-active-tool="pen"] *,
+.dc-canvas[data-active-tool="pen"] * {
+  cursor: var(--cursor-pen), crosshair !important;
+}
 .dc-canvas[data-active-tool="rect"],
-.dc-canvas[data-active-tool="rect"] *,
+.dc-canvas[data-active-tool="rect"] * {
+  cursor: var(--cursor-rect), crosshair !important;
+}
 .dc-canvas[data-active-tool="ellipse"],
-.dc-canvas[data-active-tool="ellipse"] *,
+.dc-canvas[data-active-tool="ellipse"] * {
+  cursor: var(--cursor-ellipse), crosshair !important;
+}
 .dc-canvas[data-active-tool="arrow"],
 .dc-canvas[data-active-tool="arrow"] * {
-  cursor: crosshair !important;
+  cursor: var(--cursor-arrow), crosshair !important;
 }
 .dc-canvas[data-active-tool="hand"],
 .dc-canvas[data-active-tool="hand"] * {
@@ -206,7 +213,7 @@ const HALO_CSS = `
 }
 .dc-canvas[data-active-tool="eraser"],
 .dc-canvas[data-active-tool="eraser"] * {
-  cursor: cell !important;
+  cursor: var(--cursor-eraser), cell !important;
 }
 `.trim();
 
@@ -272,15 +279,78 @@ function CanvasCore({
     };
   }, [hostRef, tool]);
 
-  const registry = useMemo<ContextRegistry>(
-    () => buildRegistry({ controller, clearSelection: selSet.clear }),
-    [controller, selSet.clear]
+  const artboardsCtx = useArtboardsContext();
+  const dragBus = useDragStateContext();
+
+  /**
+   * T24 — distribute the currently-selected artboards evenly on the given
+   * axis. Requires ≥ 3 selected artboards. Sort by leading edge, hold the
+   * first + last in place, and reposition the middle artboards so the gaps
+   * between trailing edge → next leading edge are equal.
+   */
+  const distributeArtboards = useCallback(
+    (axis: 'x' | 'y') => {
+      if (!artboardsCtx || !dragBus) return;
+      const ids = new Set(
+        selSet.selected
+          .filter((s) => !!s.artboardId)
+          .map((s) => s.artboardId as string)
+      );
+      if (ids.size < 3) return;
+      const targets: ArtboardRect[] = artboardsCtx.artboards.filter((r) => ids.has(r.id));
+      if (targets.length < 3) return;
+      const sorted = [...targets].sort((a, b) => (axis === 'x' ? a.x - b.x : a.y - b.y));
+      const first = sorted[0];
+      const last = sorted[sorted.length - 1];
+      if (!first || !last) return;
+      // Total content extent (sum of side-lengths on the axis) + the span
+      // between first leading edge and last trailing edge gives us the gap
+      // budget to divide equally between (n-1) inter-artboard slots.
+      const sideLen = (r: ArtboardRect) => (axis === 'x' ? r.w : r.h);
+      const totalSides = sorted.reduce((acc, r) => acc + sideLen(r), 0);
+      const span =
+        (axis === 'x' ? last.x + last.w - first.x : last.y + last.h - first.y) - totalSides;
+      const gap = span / (sorted.length - 1);
+      const moved: { id: string; x: number; y: number }[] = [];
+      let cursor = axis === 'x' ? first.x + first.w + gap : first.y + first.h + gap;
+      for (let i = 1; i < sorted.length - 1; i++) {
+        const r = sorted[i];
+        if (!r) continue;
+        if (axis === 'x') {
+          moved.push({ id: r.id, x: Math.round(cursor), y: r.y });
+          cursor += r.w + gap;
+        } else {
+          moved.push({ id: r.id, x: r.x, y: Math.round(cursor) });
+          cursor += r.h + gap;
+        }
+      }
+      if (moved.length === 0) return;
+      dragBus.commitPositions(moved);
+    },
+    [artboardsCtx, dragBus, selSet.selected]
   );
+
+  const registry = useMemo<ContextRegistry>(
+    () =>
+      buildRegistry({
+        controller,
+        clearSelection: selSet.clear,
+        selSet,
+        distributeArtboards,
+      }),
+    [controller, selSet, distributeArtboards]
+  );
+
+  // Distribute is reached via the MultiArtboardToolbar (floating chrome
+  // anchored above the group bbox) + context menu. No keyboard shortcut —
+  // user feedback (post-Wave-2) preferred the toolbar over global hotkeys.
 
   return (
     <ExportDialogProvider>
       <ContextMenuProvider registry={registry}>
-        <CanvasRouter hostRef={hostRef}>{children}</CanvasRouter>
+        <CanvasRouter hostRef={hostRef} distributeArtboards={distributeArtboards}>
+          {children}
+        </CanvasRouter>
       </ContextMenuProvider>
     </ExportDialogProvider>
   );
@@ -292,8 +362,16 @@ function CanvasCore({
 function buildRegistry(deps: {
   controller: ViewportControllerHandle | null;
   clearSelection: () => void;
+  selSet: { selected: Selection[] };
+  distributeArtboards: (axis: 'x' | 'y') => void;
 }): ContextRegistry {
-  const { controller, clearSelection } = deps;
+  const { controller, clearSelection, selSet, distributeArtboards } = deps;
+
+  // T24 — distribute commands are only enabled when ≥ 3 artboards are
+  // selected. Below that, the menu items render as `disabled` so the user
+  // sees the affordance but understands the precondition.
+  const selectedArtboardCount = selSet.selected.filter((s) => !!s.artboardId).length;
+  const distributeEnabled = selectedArtboardCount >= 3;
 
   const copy = (text: string): void => {
     if (typeof navigator === 'undefined' || !navigator.clipboard) return;
@@ -429,6 +507,24 @@ function buildRegistry(deps: {
         fitItem,
         resetItem,
       ],
+      [
+        // T24 — distribute commands. Primary surface is the floating
+        // MultiArtboardToolbar above the group bbox; the menu entries are
+        // a discoverability backup. Disabled when fewer than 3 artboards
+        // are selected.
+        {
+          id: 'distribute-h',
+          label: 'Distribute horizontally',
+          disabled: !distributeEnabled,
+          onSelect: () => distributeArtboards('x'),
+        },
+        {
+          id: 'distribute-v',
+          label: 'Distribute vertically',
+          disabled: !distributeEnabled,
+          onSelect: () => distributeArtboards('y'),
+        },
+      ],
       [exportItem('export-artboard', 'Export this artboard…', 'artboard')],
     ],
     world: [
@@ -458,11 +554,13 @@ function boundsOf(el: HTMLElement) {
 function CanvasRouter({
   hostRef,
   children,
+  distributeArtboards,
 }: {
   hostRef: RefObject<HTMLDivElement | null>;
   children: ReactNode;
+  distributeArtboards: (axis: 'x' | 'y') => void;
 }) {
-  const { tool, setTool } = useToolMode();
+  const { tool, setTool, clearSticky } = useToolMode();
   const selSet = useSelectionSet();
   const annotSel = useAnnotationSelection();
   const ctxMenu = useContextMenu();
@@ -542,9 +640,11 @@ function CanvasRouter({
       onSelect: ({ mode, deep, clientX, clientY }) => {
         const target = resolveHoverTarget(document, clientX, clientY, { deep });
         if (!target) {
-          // Cmd-click on dead space (canvas chrome, label strip, empty world):
-          // clear for `replace`, leave the set alone for `add`.
-          if (mode === 'replace') selSet.clear();
+          // No-target click (canvas chrome / dead space) — DO NOT auto-clear
+          // the selection. Esc is the canonical deselect gesture; click-to-
+          // clear loses the user's selection on accidental misses. The empty
+          // marquee path (artboard-marquee.tsx) likewise never clears unless
+          // it actually captured something.
           return;
         }
         const sel = hoverTargetToSelection(target);
@@ -566,6 +666,18 @@ function CanvasRouter({
       },
       onTool: ({ tool: t }) => setTool(t),
       onEscape: () => {
+        // T21 — abort any mid-stroke draw FIRST. The annotations layer
+        // listens for `maude:cancel-stroke` and drops the in-progress
+        // shape without committing.
+        try {
+          document.dispatchEvent(new CustomEvent('maude:cancel-stroke'));
+        } catch {
+          /* non-DOM env */
+        }
+        // T19 — clear sticky-tool lock + flip back to Move. Esc is the
+        // canonical "back to default state" gesture across canvas apps.
+        clearSticky();
+        if (tool !== 'move') setTool('move');
         ctxMenu.close();
         selSet.clear();
         annotSel.clear();
@@ -667,36 +779,215 @@ function CanvasRouter({
   return (
     <>
       {children}
-      <BrandWordmark />
       <CommentsOverlay />
       <AnnotationsLayer />
       <ToolPalette />
+      <ArtboardMarqueeOverlay />
       <HoverHalo el={hoverEl} />
       <SelectionHalos />
       <GroupBbox />
+      <MultiArtboardToolbar distributeArtboards={distributeArtboards} />
       <SnapGuideOverlay />
     </>
   );
 }
 
-// DDR-046 — Subtle top-left brand watermark. Reads file from window.location
-// to derive the canvas slug for the sub-line. Renders inside the canvas iframe,
-// pointer-events:none, never competes with user content.
-function BrandWordmark() {
-  const sub = useMemo(() => {
-    if (typeof window === 'undefined') return 'CANVAS';
-    try {
-      const file = deriveFile() ?? '';
-      const name = file.split('/').pop()?.replace(/\.(tsx|html?|jsx)$/i, '') ?? '';
-      return name ? `CANVAS · ${name}` : 'CANVAS';
-    } catch {
-      return 'CANVAS';
+// ─────────────────────────────────────────────────────────────────────────────
+// MultiArtboardToolbar — floating chrome anchored above the group bbox when
+// ≥ 2 artboards are multi-selected. Primary surface for the distribute
+// commands (post-Wave-2 feedback preferred this over global ⌘⌥H / ⌘⌥V
+// hotkeys). Disabled state when fewer than 3 artboards are selected — the
+// math is undefined for 2.
+
+const MULTI_TOOLBAR_CSS = `
+.dc-multi-artboard-tb {
+  position: fixed;
+  pointer-events: auto;
+  z-index: 6;
+  display: none;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px;
+  background: var(--u-bg-0, var(--bg-0, #ffffff));
+  border: 1px solid var(--u-fg-0, #1c1917);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px color-mix(in oklab, var(--u-fg-0, #1c1917) 10%, transparent);
+  font-family: var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--u-fg-0, #1a1a1a);
+  user-select: none;
+}
+.dc-multi-artboard-tb button {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font: inherit;
+  cursor: pointer;
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background-color 80ms linear;
+}
+.dc-multi-artboard-tb button:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--accent, #d63b1f) 8%, transparent);
+}
+.dc-multi-artboard-tb button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+.dc-multi-artboard-tb .dc-mab-count {
+  padding: 4px 8px 4px 10px;
+  color: var(--fg-1, rgba(40,30,20,0.7));
+  border-right: 1px solid var(--u-border-subtle, rgba(0,0,0,0.08));
+  margin-right: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.dc-multi-artboard-tb .dc-mab-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dc-multi-artboard-tb button { transition: none; }
+}
+`.trim();
+
+function ensureMultiToolbarStyles(): void {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById('dc-multi-artboard-tb-css')) return;
+  const s = document.createElement('style');
+  s.id = 'dc-multi-artboard-tb-css';
+  s.textContent = MULTI_TOOLBAR_CSS;
+  document.head.appendChild(s);
+}
+
+function MultiArtboardToolbar({
+  distributeArtboards,
+}: {
+  distributeArtboards: (axis: 'x' | 'y') => void;
+}) {
+  ensureMultiToolbarStyles();
+  const { selected } = useSelectionSet();
+  const ref = useRef<HTMLDivElement | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  const artboardSelections = useMemo(
+    () => selected.filter((s) => !!s.artboardId),
+    [selected]
+  );
+  const artboardCount = artboardSelections.length;
+  const enabled = artboardCount >= 3;
+
+  useEffect(() => {
+    const div = ref.current;
+    if (!div) return;
+    if (artboardCount < 2) {
+      div.style.display = 'none';
+      return;
     }
-  }, []);
+    // Track the screen-coord union bbox of all selected artboards each
+    // frame. Anchor toolbar centered horizontally above the bbox top
+    // edge with a 14 px gap; flip BELOW if the top edge is < 60 px from
+    // the viewport top.
+    const tick = () => {
+      rafRef.current = null;
+      let xMin = Number.POSITIVE_INFINITY;
+      let yMin = Number.POSITIVE_INFINITY;
+      let xMax = Number.NEGATIVE_INFINITY;
+      let yMax = Number.NEGATIVE_INFINITY;
+      let any = false;
+      for (const sel of artboardSelections) {
+        const el = document.querySelector(`[data-dc-screen="${sel.artboardId}"]`);
+        if (!el) continue;
+        const r = (el as HTMLElement).getBoundingClientRect();
+        if (r.width === 0 && r.height === 0) continue;
+        any = true;
+        if (r.left < xMin) xMin = r.left;
+        if (r.top < yMin) yMin = r.top;
+        if (r.right > xMax) xMax = r.right;
+        if (r.bottom > yMax) yMax = r.bottom;
+      }
+      if (!any) {
+        div.style.display = 'none';
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+      // Make the toolbar visible OFFSCREEN first to measure its own
+      // width, then move it to the anchor. (Cheap: only re-anchors on
+      // every frame after the first.)
+      div.style.display = 'flex';
+      const tw = div.offsetWidth || 0;
+      const centerX = (xMin + xMax) / 2;
+      const top = yMin;
+      const gap = 14;
+      let anchorY = top - div.offsetHeight - gap;
+      if (anchorY < 60) anchorY = yMax + gap; // flip below
+      div.style.left = `${Math.round(centerX - tw / 2)}px`;
+      div.style.top = `${Math.round(anchorY)}px`;
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    };
+  }, [artboardCount, artboardSelections]);
+
+  if (artboardCount < 2) {
+    return <div ref={ref} className="dc-multi-artboard-tb" aria-hidden="true" />;
+  }
+
   return (
-    <div className="dc-canvas-brand" aria-hidden="true">
-      <span className="dc-canvas-brand-mark">maude</span>
-      <div className="dc-canvas-brand-sub">{sub}</div>
+    <div
+      ref={ref}
+      className="dc-multi-artboard-tb"
+      role="toolbar"
+      aria-label="Multi-artboard actions"
+    >
+      <span className="dc-mab-count">{artboardCount} artboards</span>
+      <button
+        type="button"
+        disabled={!enabled}
+        title={
+          enabled
+            ? 'Distribute horizontally — equal gaps between artboards'
+            : 'Select at least 3 artboards to distribute'
+        }
+        aria-label="Distribute horizontally"
+        onClick={() => distributeArtboards('x')}
+      >
+        <span className="dc-mab-icon" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <rect x="0.5" y="3" width="3" height="8" fill="currentColor" />
+            <rect x="5.5" y="3" width="3" height="8" fill="currentColor" />
+            <rect x="10.5" y="3" width="3" height="8" fill="currentColor" />
+          </svg>
+        </span>
+        Distribute H
+      </button>
+      <button
+        type="button"
+        disabled={!enabled}
+        title={
+          enabled
+            ? 'Distribute vertically — equal gaps between artboards'
+            : 'Select at least 3 artboards to distribute'
+        }
+        aria-label="Distribute vertically"
+        onClick={() => distributeArtboards('y')}
+      >
+        <span className="dc-mab-icon" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <rect x="3" y="0.5" width="8" height="3" fill="currentColor" />
+            <rect x="3" y="5.5" width="8" height="3" fill="currentColor" />
+            <rect x="3" y="10.5" width="8" height="3" fill="currentColor" />
+          </svg>
+        </span>
+        Distribute V
+      </button>
     </div>
   );
 }
@@ -827,6 +1118,9 @@ function SelectionHalos() {
           child.style.display = 'none';
           continue;
         }
+        // Post-Wave-2: artboard drag is now direct (article updates its own
+        // `left/top` in real-time), so the halo can follow via
+        // getBoundingClientRect — no special drag suppression needed.
         const r = (el as HTMLElement).getBoundingClientRect();
         if (r.width === 0 && r.height === 0) {
           child.style.display = 'none';
@@ -876,6 +1170,9 @@ function GroupBbox() {
           ? document.querySelector(`[data-cd-id="${cssEscape(sel.id)}"]`)
           : safeQuery(sel.selector);
         if (!el) continue;
+        // Post-Wave-2: direct artboard drag — the article updates its own
+        // `left/top` during drag, so the group bbox just follows via
+        // getBoundingClientRect with no special-casing.
         const r = (el as HTMLElement).getBoundingClientRect();
         if (r.width === 0 && r.height === 0) continue;
         anyHit = true;
@@ -903,7 +1200,13 @@ function GroupBbox() {
   }, [selected]);
 
   if (selected.length < 2) return null;
-  return <div ref={ref} className="dc-cv-group-bbox" aria-hidden="true" />;
+  return (
+    <div ref={ref} className="dc-cv-group-bbox" aria-hidden="true">
+      {TICK_CLASSES.map((cls) => (
+        <i key={cls} className={`tick ${cls}`} />
+      ))}
+    </div>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -931,10 +1234,20 @@ function hoverTargetToSelection(target: HoverTarget): Selection {
   // climbs to an ancestor. Falls back to cssPath of the hit when no stable
   // anchor exists.
   const cdId = target.cdId;
+  // Selector resolution order:
+  //   1. data-cd-id anchor — stable pipeline-stamped id (preferred).
+  //   2. data-dc-screen — chrome click promoted to whole-artboard select
+  //      (T24.5 G8 multi-artboard gesture).
+  //   3. cssPath of the hit — last-resort path string.
+  const selector = cdId
+    ? `[data-cd-id="${cdId}"]`
+    : !cdId && target.artboardId
+      ? `[data-dc-screen="${target.artboardId}"]`
+      : cssPath(el);
   return {
     file: typeof window !== 'undefined' ? deriveFile() : undefined,
     id: cdId ?? undefined,
-    selector: cdId ? `[data-cd-id="${cdId}"]` : cssPath(el),
+    selector,
     artboardId: target.artboardId,
     tag: el?.tagName.toLowerCase() ?? '',
     classes: realClasses(el),

@@ -3,8 +3,8 @@
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
 **Workflow:** feature-delivery — Maude v1.0 roadmap
-**Phase:** canvas-figjam-feel — Wave 1 done (12/12 visual-identity tasks)
-**Status:** paused — awaiting user review before Wave 2 (T13–T22 behavioral)
+**Phase:** canvas-figjam-feel — Wave 2 done (T13–T24, 9 grievances + 3 second-order)
+**Status:** paused — awaiting user review before Wave 3 (T25–T33 behavioral discipline)
 **Started:** 2026-05-26
 **Updated:** 2026-05-26
 **Active task:** canvas-figjam-feel.md
@@ -25,7 +25,39 @@
 - ✅ Task 11 — Active-artboard ring outside drop-shadow + 120 ms transition
 - ✅ Task 12 — BrandWordmark watermark top-left of canvas
 
-**Pre-existing issue surfaced:** `bin/smoke.sh` hits `/ui/<canvas>.tsx` but server routes are mounted at `/.design/ui/<canvas>.tsx`. Smoke reports OK on 404-rendered "Not found" pages (also a smoke detector miss). Not a Wave 1 regression — pre-existing. Recommend fix in a separate task.
+## Execution Progress — canvas-figjam-feel (Wave 2, 2026-05-26)
+
+- ✅ Task 13 — Removed BrandWordmark + CSS + empty-state rule (G9)
+- ✅ Task 14 — DDR-046 rev 2: dashed = canonical group-container signal; rev-1 "dashed reserved for none" rejected in Alternatives
+- ✅ Task 15 — Artboard frame quieted: 22 %-tinted hairline, no box-shadow; active ring → simple 2 px accent (G7)
+- ✅ Task 16 — Multi-select chrome: member halo 1.5 px solid full accent + group bbox 1 px dashed + 6×6 corner ticks (G1)
+- ✅ Task 17 — Annotation halo parity: SVG single-select gets 2 px solid + 4 px 18 % ring + 4 corner ticks; multi member 1.5 px solid + dashed group bbox via new `AnnotGroupBbox` (G3)
+- ✅ Task 18 — `endStroke` auto-selects committed shape + flips tool to Move (unless sticky / eraser) (G2)
+- ✅ Task 19 — Sticky-tool lock: `useToolMode` carries `sticky: { tool, locked }` + `toggleSticky` + `clearSticky`; double-click on draw tool toggles; lock badge fades in; Esc clears
+- ✅ Task 20 — Stroke weight on rect + ellipse: `supportsThickness` + `caps.thickness` + `setThickness` all broaden to rect/ellipse (G5)
+- ✅ Task 21 — Esc-to-cancel-mid-stroke: `cancelStroke` resets `drawing=null`; canvas-shell dispatches `maude:cancel-stroke` event from `onEscape` (G_S5)
+- ✅ Task 22 — Per-tool SVG cursors: `--cursor-pen/rect/ellipse/arrow/eraser/comment` data-URI vars with hotspots, replacing `cursor: crosshair !important` blanket (G6)
+- ✅ Task 23 — Annotation resize handles: new `use-annotation-resize.tsx` with `AnnotationResizeOverlay`; 4 corner handles for rect/ellipse/pen + 2 endpoint handles for arrow; screen-space fixed divs sibling to canvas (G4)
+- ✅ Task 24 — Distribute artboards horizontally / vertically: gated on ≥ 3 selected artboards; menu items in `artboard-chrome` registry + `⌘⌥H` / `⌘⌥V` keybinds; reuses existing `dragBus.commitPositions` persistence channel. (Artboard marquee deferred to Wave 3 / T26 coupling.) (G8)
+- ✅ Wave 2.7 (post-user-review batch, 2026-05-26) — three coordinated fixes from second feedback round:
+  1. **No auto-clear on empty-space click.** `onSelect` no-target path, annotation-layer empty-world up-click, and `artboard-marquee` threshold-cross all stripped of their `selSet.clear()` / `annotSel.clear()` calls. Marquee with zero hits preserves existing selection. Esc remains the single deselect gesture across elements / artboards / annotations.
+  2. **Direct artboard drag, no ghost.** Dropped `.dc-artboard-ghost` rendering + `.dc-dragging` opacity-0.3 fade. The `<article>` now updates its own inline `left/top` to `liveX/liveY` each frame while the drag is in flight; commit-on-settle path unchanged. Removed the `dc-dragging` halo / group-bbox hide guards added in the prior fix — they're unnecessary now that the halo follows the moving article via `getBoundingClientRect`.
+  3. **Distribute floating toolbar + drop ⌘⌥H / ⌘⌥V keybinds.** New `MultiArtboardToolbar` mounted in `CanvasRouter`, anchored above the group-bbox top-center (flips below when top < 60 px from viewport edge). Renders when ≥ 2 artboards selected; Distribute H / V buttons enabled at ≥ 3 (math is undefined for 2). Floating chrome ambient shadow per DDR-046 (`0 6px 24px color-mix(--fg-0 10%, transparent)` + 8 px radius). Keybindy odstraněny per user feedback — toolbar je primární surface, kontext-menu zůstává jako discoverability backup.
+
+- ✅ Task 24.6 (follow-up) — **Artboard marquee drag-to-lasso.** New `artboard-marquee.tsx` overlay mounted in `CanvasRouter`. Bare left-button pointerdown on empty world (no `[data-dc-screen]` ancestor, no floating chrome / overlay) in move tool starts a marquee. 4 px drag threshold suppresses click jitter (early portion of T25 Wave 3 logic landed locally to unblock T24). Bare-mode clears `selSet` up-front when threshold crosses (user sees "starting fresh"); Shift-mode preserves the set for add-to-selection. `pointermove` paints `.dc-cv-marquee` div (1 px solid accent + 8 % accent fill per DDR-046 rev 2 — solid not dashed; dashed reserved for persistent group bbox). `pointerup` intersects marquee AABB with every artboard's screen-coord `getBoundingClientRect()`; hits build `Selection` entries with `artboardId` set + `[data-dc-screen="…"]` selector. Shift → `selSet.add(hits)`, bare → `selSet.replace(hits)`. With T24.5 chrome-click selection + this marquee gesture, the distribute commands now have both single-shot (Cmd+Shift+Click) and lasso entry paths.
+
+- ✅ Task 24.5 (follow-up) — **Artboard chrome selection gesture.** Opened `resolveHoverTarget`: clicks on artboard chrome (label, header, article root) OR empty body padding return the `<article>` element with `cdId=null` and `artboardId` populated. `hoverTargetToSelection` falls back to `[data-dc-screen="…"]` selector when there's no `cdId`. Existing SelectionHalos/GroupBbox find the article via that selector and paint around the whole frame (single-select → 2 px solid + 18 % ring + 8×8 corner ticks; multi-member → 1.5 px solid; group bbox → 1 px dashed + 6×6 corner ticks). Active-artboard ring (`aria-current="true"` → 2 px box-shadow on article) stays orthogonal to selection halo — both can fire (active = "where viewport is parked", selected = "what I'm operating on"). Drag suppression from prior patch (`dc-dragging` guard) keeps the halo + group bbox hidden during artboard drag. Multi-artboard distribute (T24) now has a real gesture path: Cmd+Shift+Click on artboard chrome accumulates `selSet` entries with `artboardId` set, and the gate `selectedArtboardCount >= 3` becomes reachable. The previous T24 menu items were UI without a way to enter the precondition — this patch closes that gap.
+
+**Validation:**
+- 370/370 bun tests green (no new tests added in Wave 2 — visual / behavioral changes covered by manual confirmation + existing harnesses)
+- `bun run build.ts` clean (client.bundle.js 3.55 MB, styles.css 56 KB)
+- `bunx tsc --noEmit` — only pre-existing baseline errors in `api.ts` + `runtime-bundle.ts` (per DDR-026 baseline)
+
+**Smoke gate (`/design:smoke`):** skipped — runs as part of the user's pre-Wave-3 review pass per plan pause point ("User confirms all 9 grievances + 3 second-order are visually resolved"). Diff touches dev-server source — render-shape check belongs to the user-driven review loop.
+
+**New file:** `plugins/design/dev-server/use-annotation-resize.tsx` (T23). Files modified: `canvas-shell.tsx`, `canvas-lib.tsx`, `annotations-layer.tsx`, `annotations-context-toolbar.tsx`, `tool-palette.tsx`, `use-tool-mode.tsx`, `dist/client.bundle.js` (rebuild output), `.ai/decisions/DDR-046…md`.
+
+**Pre-existing issue surfaced (Wave 1):** `bin/smoke.sh` hits `/ui/<canvas>.tsx` but server routes are mounted at `/.design/ui/<canvas>.tsx`. Smoke reports OK on 404-rendered "Not found" pages. Not a Wave 2 regression — pre-existing. Recommend fix in a separate task.
 
 **Validation:**
 - 359/359 bun tests green (351 baseline + 8 new snap-distance-pill)

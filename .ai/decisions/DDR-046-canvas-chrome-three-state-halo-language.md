@@ -1,7 +1,7 @@
 # DDR-046: canvas chrome — three-state halo language (hover / selected / group) + marquee as the fourth idiom
 
-- **Date:** 2026-05-26
-- **Status:** Accepted
+- **Date:** 2026-05-26 (rev 1) · 2026-05-26 (rev 2 — dashed clarified as group-container signal)
+- **Status:** Accepted (rev 2)
 - **Tags:** design, canvas-lib, dev-server, canvas-shell, snap-guides, halo, visual-identity, phase-canvas-figjam-feel
 - **Related:** [DDR-025](./DDR-025-canvas-lib-single-source-in-dev-server.md), [DDR-026](./DDR-026-universal-canvas-input-grammar.md), [DDR-028](./DDR-028-snap-tolerance-in-world-units.md), [`.ai/plans/canvas-figjam-feel.md`](../plans/canvas-figjam-feel.md)
 
@@ -19,10 +19,12 @@ The design-critic pass on `Canvas Viewport.tsx` (the spec) vs. `canvas-shell.tsx
 | ----- | ------ | --------------- | ----------- | ----- |
 | **Hover** | `1.5 px solid` | `color-mix(in oklab, var(--accent) 60%, transparent)` | `inset 0 0 0 1px var(--bg-0)` — white inner ring for contrast on dark elements | `.dc-cv-halo--hover` |
 | **Selected (single)** | `2 px solid var(--accent)` | full accent | `box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 18%, transparent)` ring + four `8 × 8` filled-accent corner ticks at `inset: -3px` | `.dc-cv-halo--selected` + four `<i class="tick tick-tl/tr/bl/br" />` children |
-| **Selected (member of multi)** | `1 px solid` | `color-mix(in oklab, var(--accent) 50%, transparent)` | no ring, no ticks (group bbox carries the loud signal) | `.dc-cv-halo--selected-member` |
-| **Group bbox** | `1 px solid` | `color-mix(in oklab, var(--accent) 50%, transparent)` | union bbox of all selected members | `.dc-cv-group-bbox` |
+| **Selected (member of multi)** | `1.5 px solid var(--accent)` | full accent (no tint — opacity weakens the signal once the group bbox carries the container affordance) | no ring, no ticks (group bbox carries the loud signal) | `.dc-cv-halo--selected-member` |
+| **Group bbox** | `1 px dashed var(--accent)` | full accent | union bbox of all selected members + four `6 × 6` filled-accent square corner handles at `inset: -3px` (smaller than single-select ticks — "thinner authority") | `.dc-cv-group-bbox` |
 
-**Fifth idiom — marquee** (referenced here because it's the visual sibling): `1 px solid var(--accent)` border + `color-mix(in oklab, var(--accent) 8%, transparent)` fill (translucent so content reads through). `border-radius: 0`. Non-dashed. Class `.dc-cv-marquee`. Dashed lines are deliberately NOT used anywhere — they read as "work-in-progress" old-school and clash with the brutalist DS direction.
+**Why dashed for group, solid for selection.** Dashed = "ambient grouping affordance" — the user reads "these things are bound together" without the dashed border claiming subject-ness. Solid = "this thing is the active subject of my edit." Every direct-manipulation tool reaches for the same vocabulary (Figma group bbox, FigJam Section drag-state, Photoshop selection "marching ants"). Members carry the full-opacity solid outline so each one reads as individually selected; the dashed dashed bbox above them reads as the *container* of the selection.
+
+**Fifth idiom — marquee** (active gesture, visually distinct from group-bbox): `1 px solid var(--accent)` border + `color-mix(in oklab, var(--accent) 8%, transparent)` fill (translucent so content reads through). `border-radius: 0`. Class `.dc-cv-marquee`. Solid (not dashed) because marquee is an **active gesture** the user is currently dragging — dashed is reserved for the **persistent multi-select state** (the group bbox above). Both are "container" affordances semantically, but the visual idioms split: gesture = solid + tinted-fill, persistent state = dashed-outline.
 
 **Snap guides** (separate layer — `SnapGuideOverlay`) get their own color family per [DDR-046-supplement: snap chrome](./DDR-046-canvas-chrome-three-state-halo-language.md#snap-chrome-supplement):
 
@@ -63,7 +65,7 @@ The design-critic pass on `Canvas Viewport.tsx` (the spec) vs. `canvas-shell.tsx
 
 1. **Color-only differentiation (keep one border weight; vary only color).** Rejected — colorblind users would lose all signal. The 1.5 px vs 2 px vs 1 px weight is the primary discriminator; the opacity / hue is secondary.
 
-2. **Dashed border for one of the states.** Considered for group-bbox (currently dashed in the implementation). Rejected — dashed reads "work-in-progress / draft" and clashes with the DS brutalist direction. Reserve dashed for explicit transient states only, e.g. marquee-during-drag if we ever decide to differentiate marquee-in-progress vs marquee-pending-selection. Currently marquee is solid; dashed remains unused.
+2. **Dashed border reserved for none — rev 1's choice (~~superseded by rev 2~~).** rev 1 banned dashed entirely as "work-in-progress / draft" idiom that would clash with the brutalist DS direction. That was wrong. Every direct-manipulation reference (Figma, FigJam, Photoshop, Illustrator, Affinity) uses dashed for the **group-container** affordance precisely because it reads as "ambient binding, not active subject." Treating dashed as taboo collapsed multi-select chrome back to one weight + one color, defeating the whole DDR. Rev 2 restores dashed as the canonical Group bbox idiom while keeping single-select solid (subject) and marquee solid + filled (active gesture). The DS brutalist direction is honored on **chrome SHADOW + RADIUS** (hard 4×4×0 offset + 0-radius on app shell), not on selection-chrome stroke style — those are different axes.
 
 3. **Per-element class stamping (CSS class on the actual element, not a fixed overlay).** Rejected per DDR-026 — CSS `zoom` on the world plane scales a 2 px outline to subpixel at low zoom. Position-fixed overlays reading `getBoundingClientRect()` per rAF tick keep the chrome at constant CSS pixel weight.
 

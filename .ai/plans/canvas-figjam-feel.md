@@ -676,9 +676,11 @@ Run these commands to confirm zero regressions:
 ## Acceptance Criteria
 
 - [x] Wave 1 (T1–T12) completed 2026-05-26
-- [ ] Wave 2 (T13–T24) completed — all 9 user grievances + 3 second-order issues resolved
+- [x] Wave 2 (T13–T24) completed 2026-05-26 — all 9 user grievances + 3 second-order issues resolved (artboard marquee sub-task deferred to Wave 3 / T26)
+- [x] Wave 2 follow-up patches (2026-05-26) — annotation halo simplified (drop SVG ring + corner ticks; resize handles play that role); T24.5 artboard chrome selection gesture wired through `resolveHoverTarget` opening + `[data-dc-screen]` selector fallback; T24.6 artboard marquee drag-to-lasso overlay
+- [x] Wave 2.7 (2026-05-26, post-user-review batch) — three coordinated UX fixes: (1) no auto-clear on empty-space click — Esc is the single deselect gesture (elements / artboards / annotations); (2) direct artboard drag (drop `.dc-artboard-ghost`, drop `.dc-dragging` opacity-0.3, article updates `live X/Y` inline) — halo + group-bbox follow naturally via `getBoundingClientRect`; (3) distribute commands move to `MultiArtboardToolbar` floating chrome anchored above the group bbox (≥ 2 artboards visible, ≥ 3 enabled), keyboard shortcuts `⌘⌥H` / `⌘⌥V` removed per user feedback
 - [ ] Wave 3 (T25–T33) completed — original behavioral discipline
-- [ ] DDR-046 amended (Task 14) — dashed = group-container signal, not "reserved for none"
+- [x] DDR-046 amended (Task 14) — dashed = group-container signal, not "reserved for none"
 - [ ] `bun test plugins/design/dev-server/` green — baseline 359 + tests added per task
 - [ ] `/flow:utils-verify` passes after each task (Edit-Verify Loop, max 3 iterations)
 - [ ] `/flow:validate` passes overall:
