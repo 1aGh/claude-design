@@ -17,13 +17,6 @@ importers:
       '@playwright/test':
         specifier: ^1.60.0
         version: 1.60.0
-    optionalDependencies:
-      '@1agh/maude-linux-arm64-musl':
-        specifier: 0.18.0
-        version: 0.18.0
-      '@1agh/maude-linux-x64-musl':
-        specifier: 0.18.0
-        version: 0.18.0
 
   plugins/design/dev-server:
     dependencies:
@@ -153,18 +146,6 @@ importers:
         version: 6.0.3
 
 packages:
-
-  '@1agh/maude-linux-arm64-musl@0.18.0':
-    resolution: {integrity: sha512-Aa/LezfoYWi42Tu7q2XpkxmMgAm1l1QwwgyPojVQO+mT1RCQwctkUoDOMVJT5v6cZofHelfBU+gRtF6ou0KogA==}
-    cpu: [arm64]
-    os: [linux]
-    libc: [musl]
-
-  '@1agh/maude-linux-x64-musl@0.18.0':
-    resolution: {integrity: sha512-Z0iwh4OwFMTr/dSXsB80xZj/g6kvZlwHigL4w6sxM6Td7PTrssnYg+pVaz2wlTenmljgpYQefasQ1dPN5zM4Zg==}
-    cpu: [x64]
-    os: [linux]
-    libc: [musl]
 
   '@alloc/quick-lru@5.2.0':
     resolution: {integrity: sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==}
@@ -2791,12 +2772,6 @@ packages:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
 snapshots:
-
-  '@1agh/maude-linux-arm64-musl@0.18.0':
-    optional: true
-
-  '@1agh/maude-linux-x64-musl@0.18.0':
-    optional: true
 
   '@alloc/quick-lru@5.2.0': {}
 

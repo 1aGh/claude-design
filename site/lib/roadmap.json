@@ -1,5 +1,5 @@
 {
-  "generated": "2026-05-26T06:39:55.599Z",
+  "generated": "2026-05-26T09:02:56.842Z",
   "currentPhase": null,
   "phases": [
     {
@@ -21,6 +21,17 @@
       "date": null,
       "summary": "This plan converts the retro at .ai/logs/system-reviews/design-system-bootstrap-review.md (R1–R6) into sequenced work, plus folds in the multi-DS portion of the old Phase 5 (Tasks 2–7) since multi-...",
       "planPath": ".ai/plans/archive/design-system-init.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "dev-server-system-view-bias-free",
+      "title": "Feature: Dev-server system view — bias-free token + type rendering",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/dev-server-system-view-bias-free.md",
       "archived": true,
       "phaseKey": null
     },
@@ -450,6 +461,50 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/canvas-figjam-feel.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "phase-a-deps-and-preflight",
+      "title": "Phase A — Plugin dependency manifest + preflight + `maude doctor`",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "---",
+      "planPath": ".ai/plans/phase-a-deps-and-preflight.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "phase-b-orchestration-speed",
+      "title": "Phase B — Orchestration speed: parallel fan-out + batch tool calls + lazy-load skills",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "---",
+      "planPath": ".ai/plans/phase-b-orchestration-speed.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "phase-c-sidecar-monitor-background",
+      "title": "Phase C — Sidecar cache + Monitor + background work",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "---",
+      "planPath": ".ai/plans/phase-c-sidecar-monitor-background.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "phase-d-config-hardening",
+      "title": "Phase D — `workflows.config.json` hardening: lint, drift detect, init re-run, validate gate",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "---",
+      "planPath": ".ai/plans/phase-d-config-hardening.md",
       "archived": false,
       "phaseKey": null
     },
