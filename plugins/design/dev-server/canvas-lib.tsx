@@ -66,6 +66,7 @@
 
 import {
   type CSSProperties,
+  Fragment,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
@@ -108,11 +109,62 @@ const ENGINE_CSS = `
   inset: 0;
   overflow: hidden;
   outline: none;
+  /* DDR-046 — snap-layer magenta is distinct from --accent so the snap chrome
+     never visually melts into the selection halo during a drag-snap gesture.
+     OKLCH default approximates FigJam magenta in the project's color space. */
+  --guide-magenta: oklch(62% 0.28 350);
   background-color: var(--bg-1, #f4f1ea);
   background-image:
     linear-gradient(var(--border-subtle, rgba(0,0,0,0.08)) 1px, transparent 1px),
     linear-gradient(90deg, var(--border-subtle, rgba(0,0,0,0.08)) 1px, transparent 1px);
   background-size: 24px 24px;
+}
+/* DDR-046 — Snap guides. Sibling kind = confident magenta + glow + distance
+   pill. Grid kind = lighter gray fallback, no pill. Width 2 px (up from 1 px)
+   so the line stays readable at zoom < 0.8. */
+.dc-snap-guide {
+  position: fixed;
+  pointer-events: none;
+  z-index: 6;
+  animation: dc-snap-spawn 80ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform-origin: center;
+}
+.dc-snap-guide--sibling {
+  background: var(--guide-magenta, oklch(62% 0.28 350));
+  box-shadow: 0 0 4px color-mix(in oklab, var(--guide-magenta, oklch(62% 0.28 350)) 35%, transparent);
+}
+.dc-snap-guide--grid {
+  background: color-mix(in oklab, var(--fg-3, var(--fg-1, #4a3f30)) 40%, transparent);
+}
+.dc-snap-pill {
+  position: fixed;
+  pointer-events: none;
+  z-index: 7;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: #fff;
+  background: var(--guide-magenta, oklch(62% 0.28 350));
+  padding: 3px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  animation: dc-snap-pill-spawn 80ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes dc-snap-spawn {
+  from { opacity: 0; transform: scaleY(0.92); }
+  to   { opacity: 1; transform: scaleY(1); }
+}
+@keyframes dc-snap-pill-spawn {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.88); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dc-snap-guide,
+  .dc-snap-pill {
+    animation: none !important;
+  }
 }
 .dc-canvas:focus { outline: none; }
 .dc-world {
@@ -1410,6 +1462,15 @@ DCArtboard.displayName = 'DCArtboard';
 // come from `dragBus.current.snap.guides`; world→screen projection uses the
 // live viewport (`v.x + worldCoord * v.zoom` — same convention as `writeTransform`).
 
+// DDR-046 — render kind-aware snap guides + distance pills. `kind === 'sibling'`
+// gets the confident magenta + glow; `kind === 'grid'` gets a lighter gray (the
+// grid is fallback when no sibling fires). Pre-DDR-046 guides emit no `kind`
+// field — treat as sibling for back-compat. The `Δ{Math.round(delta)}` pill
+// renders mid-span when |delta| > 0 and screen-span exceeds 60 px (smaller
+// spans hide the pill so it never overlaps the line itself).
+const MIN_PILL_SPAN_PX = 60;
+const GUIDE_THICKNESS_PX = 2;
+
 export function SnapGuideOverlay() {
   const dragBus = useDragStateContext();
   const world = useWorldContext();
@@ -1421,49 +1482,78 @@ export function SnapGuideOverlay() {
   return (
     <>
       {s.snap.guides.map((g, i) => {
+        const kindClass = g.kind === 'grid' ? 'dc-snap-guide--grid' : 'dc-snap-guide--sibling';
+        const delta = g.delta ?? 0;
+        const showPill = g.kind !== 'grid' && Math.abs(delta) > 0;
         if (g.axis === 'x') {
           const sx = vp.x + g.pos * vp.zoom;
           const sFrom = vp.y + g.from * vp.zoom;
           const sTo = vp.y + g.to * vp.zoom;
+          const screenSpan = sTo - sFrom;
           return (
-            <div
+            <Fragment
               // biome-ignore lint/suspicious/noArrayIndexKey: guides are positional
               key={`x-${i}`}
-              className="dc-snap-guide"
-              style={{
-                position: 'fixed',
-                pointerEvents: 'none',
-                background: 'var(--accent, #d63b1f)',
-                left: sx,
-                top: sFrom,
-                width: 1,
-                height: Math.max(1, sTo - sFrom),
-                zIndex: 6,
-              }}
-              aria-hidden="true"
-            />
+            >
+              <div
+                className={`dc-snap-guide ${kindClass}`}
+                style={{
+                  left: sx - GUIDE_THICKNESS_PX / 2,
+                  top: sFrom,
+                  width: GUIDE_THICKNESS_PX,
+                  height: Math.max(GUIDE_THICKNESS_PX, screenSpan),
+                }}
+                aria-hidden="true"
+              />
+              {showPill && screenSpan >= MIN_PILL_SPAN_PX && (
+                <div
+                  className="dc-snap-pill"
+                  style={{
+                    left: sx,
+                    top: sFrom + screenSpan / 2,
+                    transform: 'translate(-50%, -50%)',
+                  }}
+                  aria-hidden="true"
+                >
+                  Δ{Math.round(Math.abs(delta))}
+                </div>
+              )}
+            </Fragment>
           );
         }
         const sy = vp.y + g.pos * vp.zoom;
         const sFrom = vp.x + g.from * vp.zoom;
         const sTo = vp.x + g.to * vp.zoom;
+        const screenSpan = sTo - sFrom;
         return (
-          <div
+          <Fragment
             // biome-ignore lint/suspicious/noArrayIndexKey: guides are positional
             key={`y-${i}`}
-            className="dc-snap-guide"
-            style={{
-              position: 'fixed',
-              pointerEvents: 'none',
-              background: 'var(--accent, #d63b1f)',
-              left: sFrom,
-              top: sy,
-              width: Math.max(1, sTo - sFrom),
-              height: 1,
-              zIndex: 6,
-            }}
-            aria-hidden="true"
-          />
+          >
+            <div
+              className={`dc-snap-guide ${kindClass}`}
+              style={{
+                left: sFrom,
+                top: sy - GUIDE_THICKNESS_PX / 2,
+                width: Math.max(GUIDE_THICKNESS_PX, screenSpan),
+                height: GUIDE_THICKNESS_PX,
+              }}
+              aria-hidden="true"
+            />
+            {showPill && screenSpan >= MIN_PILL_SPAN_PX && (
+              <div
+                className="dc-snap-pill"
+                style={{
+                  left: sFrom + screenSpan / 2,
+                  top: sy,
+                  transform: 'translate(-50%, -50%)',
+                }}
+                aria-hidden="true"
+              >
+                Δ{Math.round(Math.abs(delta))}
+              </div>
+            )}
+          </Fragment>
         );
       })}
     </>
@@ -1484,6 +1574,14 @@ export function DCPostIt({ children }: { children: ReactNode }) {
 // same vocabulary; if a DS wants to restyle, it can target `.dc-mm` /
 // `.dc-zoom-tb` directly.
 
+// DDR-046 — Floating chrome (mini-map, zoom HUD, tool palette, popovers, comment
+// composer, export dialog) drops the brutalist 4 × 4 × 0 hard offset shadow in
+// favor of a soft ambient. The hard offset stays on app-shell chrome only
+// (menubar, header, tab strip) — that's the project's intentional brutalist
+// identity. Floating layer = soft. App frame = hard.
+const FLOATING_SHADOW = '0 6px 24px color-mix(in oklab, var(--fg-0, #1c1917) 10%, transparent)';
+const FLOATING_RADIUS = '8px';
+
 const OVERLAY_CSS = `
 .dc-mm {
   position: absolute;
@@ -1491,15 +1589,15 @@ const OVERLAY_CSS = `
   bottom: 16px;
   width: 196px;
   height: 132px;
-  background: var(--bg-2, var(--bg-1, rgba(255,255,255,0.98)));
+  background: var(--bg-0, #ffffff);
   border: 1px solid var(--fg-0, #1c1917);
-  border-radius: 0;
+  border-radius: ${FLOATING_RADIUS};
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 10px;
   color: var(--fg-1, rgba(40,30,20,0.7));
   z-index: 6;
   user-select: none;
-  box-shadow: 4px 4px 0 var(--fg-0, #1c1917);
+  box-shadow: ${FLOATING_SHADOW};
   overflow: hidden;
 }
 .dc-mm-hd {
@@ -1508,6 +1606,7 @@ const OVERLAY_CSS = `
   letter-spacing: 0.05em;
   text-transform: uppercase;
   font-size: 9px;
+  background: var(--bg-1, #f4f1ea);
 }
 .dc-mm-body {
   position: relative;
@@ -1515,15 +1614,21 @@ const OVERLAY_CSS = `
   height: calc(100% - 22px);
   overflow: hidden;
   cursor: pointer;
+  background: var(--bg-1, #f4f1ea);
 }
 .dc-mm-rect {
   position: absolute;
-  background: rgba(0,0,0,0.06);
-  border: 1px solid rgba(0,0,0,0.18);
+  background: color-mix(in oklab, var(--fg-0, #1c1917) 14%, transparent);
+  border: 1px solid color-mix(in oklab, var(--fg-0, #1c1917) 28%, transparent);
+  border-radius: 1px;
 }
+/* Filled viewport indicator — FigJam / Figma both ship a tinted fill, not
+   outline-only. Reads from a glance as "what slice of the world you're on". */
 .dc-mm-vp {
   position: absolute;
-  border: 2px solid #d63b1f;
+  background: color-mix(in oklab, var(--accent, #d63b1f) 12%, transparent);
+  border: 1.5px solid var(--accent, #d63b1f);
+  border-radius: 1px;
   pointer-events: none;
 }
 .dc-zoom-tb {
@@ -1533,15 +1638,15 @@ const OVERLAY_CSS = `
   transform: translateX(-50%);
   display: flex;
   align-items: stretch;
-  background: var(--bg-2, rgba(255,255,255,0.94));
+  background: var(--bg-0, #ffffff);
   border: 1px solid var(--fg-0, #1c1917);
-  border-radius: 0;
+  border-radius: ${FLOATING_RADIUS};
   overflow: hidden;
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 11px;
   color: var(--fg-1, rgba(40,30,20,0.85));
   z-index: 6;
-  box-shadow: 4px 4px 0 var(--fg-0, #1c1917);
+  box-shadow: ${FLOATING_SHADOW};
 }
 .dc-zoom-tb button {
   appearance: none;
@@ -1554,10 +1659,11 @@ const OVERLAY_CSS = `
   cursor: pointer;
   min-width: 36px;
   text-align: center;
+  transition: background 80ms linear;
 }
 .dc-zoom-tb button:last-child { border-right: 0; }
-.dc-zoom-tb button:hover { background: rgba(0,0,0,0.04); }
-.dc-zoom-tb button:focus-visible { outline: 2px solid #d63b1f; outline-offset: -2px; }
+.dc-zoom-tb button:hover { background: color-mix(in oklab, var(--fg-0, #1c1917) 5%, transparent); }
+.dc-zoom-tb button:focus-visible { outline: 2px solid var(--accent, #d63b1f); outline-offset: -2px; }
 .dc-zoom-tb-pct { font-variant-numeric: tabular-nums; min-width: 52px; }
 `.trim();
 

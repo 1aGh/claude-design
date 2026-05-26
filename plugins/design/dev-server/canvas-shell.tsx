@@ -69,43 +69,117 @@ import { useToolMode } from './use-tool-mode.tsx';
 // plane would otherwise scale a 2 px outline to 0.84 px at 42 % zoom (subpixel
 // = invisible). No per-element class stamping is used.
 
+// DDR-046 — Three-state halo language. Each state has its own border weight,
+// color treatment, and geometric idiom so 8+ semantic states (hover / selected
+// / member-of-multi / group / snap-sibling / snap-grid / marquee / annotation
+// / active-artboard) stay visually distinct. Painting one with another's
+// idiom is a regression.
 const HALO_CSS = `
 .dc-cv-halo {
   position: fixed;
   pointer-events: none;
   z-index: 5;
-  border: 2px solid var(--accent, #d63b1f);
   box-sizing: border-box;
   border-radius: 2px;
   transition: opacity 60ms linear;
 }
+/* Hover — lighter 1.5px tinted line + white inner ring for contrast on dark
+   elements. NO ring, NO ticks. Synchronous paint (no debounce). */
 .dc-cv-halo--hover {
-  border-width: 2px;
-  opacity: 0.85;
+  border: 1.5px solid color-mix(in oklab, var(--accent, #0d99ff) 60%, transparent);
+  box-shadow: inset 0 0 0 1px var(--bg-0, #ffffff);
 }
+/* Selected (single) — 2px solid + 18% ring halo + 4 filled corner ticks.
+   Ticks are <i class="tick tick-*"> children at inset:-3px, 8x8, accent fill. */
 .dc-cv-halo--selected {
-  border-width: 2px;
-  box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent, #d63b1f) 18%, transparent);
+  border: 2px solid var(--accent, #0d99ff);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent, #0d99ff) 18%, transparent);
 }
+.dc-cv-halo--selected .tick {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: var(--accent, #0d99ff);
+  border-radius: 1px;
+  box-shadow: 0 0 0 1px var(--bg-0, #ffffff);
+}
+.dc-cv-halo--selected .tick-tl { top: -3px; left: -3px; }
+.dc-cv-halo--selected .tick-tr { top: -3px; right: -3px; }
+.dc-cv-halo--selected .tick-bl { bottom: -3px; left: -3px; }
+.dc-cv-halo--selected .tick-br { bottom: -3px; right: -3px; }
+/* Selected (member of multi-selection) — 1px solid 50%-tinted outline.
+   No ring, no ticks. The GroupBbox carries the loud signal. */
+.dc-cv-halo--selected-member {
+  border: 1px solid color-mix(in oklab, var(--accent, #0d99ff) 50%, transparent);
+}
+/* Group bbox — 1px solid (NOT dashed; dashed reserved for none — DDR-046).
+   50%-tinted accent so it reads as scaffolding rather than chrome. */
 .dc-cv-group-bbox {
   position: fixed;
   pointer-events: none;
   z-index: 5;
-  border: 1px dashed var(--accent, #d63b1f);
+  border: 1px solid color-mix(in oklab, var(--accent, #0d99ff) 50%, transparent);
   border-radius: 2px;
-  opacity: 0.85;
 }
 /*
  * Active-artboard indicator — the artboard whose center sits closest to the
  * viewport midpoint after pan settles is "active" (DesignCanvas tracks this
- * for keyboard jumps + the /design:edit context anchor). Phase 4 shipped a
- * 2 px accent ring there; that's too loud next to selection halos. Keep it
- * subtle: 1 px outline at low opacity. The drop-shadow stays untouched.
+ * for keyboard jumps + the /design:edit context anchor). DDR-046 — ring sits
+ * OUTSIDE the hard drop-shadow so it's visible at any pan distance / zoom.
+ * 120 ms ease-out so activation is felt, not invisible.
  */
 .dc-canvas .dc-artboard[aria-current="true"] {
   box-shadow:
-    6px 6px 0 var(--fg-0, #2a2520),
-    0 0 0 1px color-mix(in oklab, var(--accent, #d63b1f) 40%, transparent);
+    0 0 0 3px var(--accent, #0d99ff),
+    6px 6px 0 var(--fg-0, #2a2520);
+  transition: box-shadow 120ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* Respect prefers-reduced-motion across all chrome transitions. */
+@media (prefers-reduced-motion: reduce) {
+  .dc-cv-halo,
+  .dc-cv-group-bbox,
+  .dc-canvas .dc-artboard[aria-current="true"] {
+    transition: none !important;
+  }
+}
+/* DDR-046 — Brand wordmark watermark. Subtle top-left mark that gives the
+   canvas a "this is maude-design-server" identity without competing with
+   user content. Position absolute inside .dc-canvas so it stays anchored to
+   the viewport corner (NOT inside .dc-world — wouldn't make sense per
+   canvas). Pointer-events:none so it never intercepts clicks. Opacity fades
+   when artboards exist (user content takes the focus). */
+.dc-canvas-brand {
+  position: absolute;
+  top: 20px;
+  left: 28px;
+  pointer-events: none;
+  user-select: none;
+  z-index: 4;
+  font-family: var(--font-display, var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace));
+  color: var(--fg-0, #1c1917);
+  opacity: 0.18;
+  transition: opacity 220ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.dc-canvas-brand .dc-canvas-brand-mark {
+  display: block;
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.dc-canvas-brand .dc-canvas-brand-sub {
+  margin-top: 8px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-1, var(--fg-0, #1c1917));
+  opacity: 0.85;
+}
+/* Empty state — pop a bit louder when there's no user content competing. */
+.dc-canvas:not(:has(.dc-artboard)) .dc-canvas-brand { opacity: 0.45; }
+@media (prefers-reduced-motion: reduce) {
+  .dc-canvas-brand { transition: none !important; }
 }
 /*
  * Force tool cursor across the canvas tree in comment / hand modes. Without
@@ -593,6 +667,7 @@ function CanvasRouter({
   return (
     <>
       {children}
+      <BrandWordmark />
       <CommentsOverlay />
       <AnnotationsLayer />
       <ToolPalette />
@@ -601,6 +676,28 @@ function CanvasRouter({
       <GroupBbox />
       <SnapGuideOverlay />
     </>
+  );
+}
+
+// DDR-046 — Subtle top-left brand watermark. Reads file from window.location
+// to derive the canvas slug for the sub-line. Renders inside the canvas iframe,
+// pointer-events:none, never competes with user content.
+function BrandWordmark() {
+  const sub = useMemo(() => {
+    if (typeof window === 'undefined') return 'CANVAS';
+    try {
+      const file = deriveFile() ?? '';
+      const name = file.split('/').pop()?.replace(/\.(tsx|html?|jsx)$/i, '') ?? '';
+      return name ? `CANVAS · ${name}` : 'CANVAS';
+    } catch {
+      return 'CANVAS';
+    }
+  }, []);
+  return (
+    <div className="dc-canvas-brand" aria-hidden="true">
+      <span className="dc-canvas-brand-mark">maude</span>
+      <div className="dc-canvas-brand-sub">{sub}</div>
+    </div>
   );
 }
 
@@ -654,6 +751,27 @@ function HoverHalo({ el }: { el: Element | null }) {
 // SelectionHalos — N floating overlays, one per selected element. Resolves
 // elements by `data-cd-id` when present, falling back to the selector path.
 
+// DDR-046 — single-select halo carries 4 corner ticks; multi-select members get
+// the lighter 1px tinted outline (no ticks). The GroupBbox renders the loud
+// signal when selected.length > 1.
+const TICK_CLASSES = ['tick-tl', 'tick-tr', 'tick-bl', 'tick-br'] as const;
+
+function makeSelectedNode(withTicks: boolean): HTMLDivElement {
+  const child = document.createElement('div');
+  child.className = withTicks
+    ? 'dc-cv-halo dc-cv-halo--selected'
+    : 'dc-cv-halo dc-cv-halo--selected-member';
+  child.setAttribute('aria-hidden', 'true');
+  if (withTicks) {
+    for (const cls of TICK_CLASSES) {
+      const tick = document.createElement('i');
+      tick.className = `tick ${cls}`;
+      child.appendChild(tick);
+    }
+  }
+  return child;
+}
+
 function SelectionHalos() {
   const { selected } = useSelectionSet();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -669,15 +787,33 @@ function SelectionHalos() {
       rafRef.current = null;
       const c = containerRef.current;
       if (!c) return;
-      // Match the rendered halo count to selected.length; reuse DOM nodes.
+      const wantsTicks = selected.length === 1;
+      const wantClass = wantsTicks
+        ? 'dc-cv-halo dc-cv-halo--selected'
+        : 'dc-cv-halo dc-cv-halo--selected-member';
+      // Match rendered halo count to selected.length; reuse DOM nodes.
       while (c.children.length < selected.length) {
-        const child = document.createElement('div');
-        child.className = 'dc-cv-halo dc-cv-halo--selected';
-        child.setAttribute('aria-hidden', 'true');
-        c.appendChild(child);
+        c.appendChild(makeSelectedNode(wantsTicks));
       }
       while (c.children.length > selected.length) {
         c.removeChild(c.lastChild as Node);
+      }
+      // When selection size crosses 1↔N+, swap class + tick children on each
+      // existing node so reused nodes adopt the new visual idiom.
+      for (let i = 0; i < c.children.length; i++) {
+        const child = c.children[i] as HTMLDivElement;
+        if (child.className !== wantClass) {
+          child.className = wantClass;
+          // Strip any existing ticks, then re-append if needed.
+          while (child.firstChild) child.removeChild(child.firstChild);
+          if (wantsTicks) {
+            for (const cls of TICK_CLASSES) {
+              const t = document.createElement('i');
+              t.className = `tick ${cls}`;
+              child.appendChild(t);
+            }
+          }
+        }
       }
       for (let i = 0; i < selected.length; i++) {
         const sel = selected[i];

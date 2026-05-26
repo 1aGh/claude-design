@@ -24,6 +24,9 @@ import { useToolMode } from './use-tool-mode.tsx';
 // 32 × 32 buttons with iconography. Grouped pill segments separated by 1 px
 // dividers — visual cue that nav / draw / view-controls are distinct kinds.
 
+// DDR-046 — floating chrome ambient shadow + 8 px radius (NOT brutalist).
+// Active-tool state: 14% tint bg + 2px accent underbar + accent fg, replacing
+// the previous full-accent flood (too loud at 32 × 32 in a quiet chrome).
 const PALETTE_CSS = `
 .dc-tool-palette {
   position: absolute;
@@ -32,10 +35,10 @@ const PALETTE_CSS = `
   transform: translateX(-50%);
   display: flex;
   align-items: stretch;
-  background: var(--u-bg-2, var(--bg-1, rgba(255,255,255,0.98)));
+  background: var(--u-bg-0, var(--bg-0, #ffffff));
   border: 1px solid var(--u-fg-0, #1c1917);
-  border-radius: 0;
-  box-shadow: 4px 4px 0 var(--u-fg-0, #1c1917);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px color-mix(in oklab, var(--u-fg-0, #1c1917) 10%, transparent);
   font-family: var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 12px;
   color: var(--u-fg-0, var(--fg-0, #1a1a1a));
@@ -43,8 +46,7 @@ const PALETTE_CSS = `
   user-select: none;
   /* Intentionally NO overflow:hidden — the zoom popover (.dc-tp-popover) is
      a position:absolute child anchored above the toolbar; clipping the
-     parent would hide it. Inner buttons have their own border-radius so the
-     rounded outer corners are preserved by content shape, not overflow. */
+     parent would hide it. */
 }
 .dc-tool-palette .dc-tp-group {
   display: flex;
@@ -61,7 +63,7 @@ const PALETTE_CSS = `
   appearance: none;
   background: transparent;
   border: 0;
-  border-radius: 0;
+  border-radius: 6px;
   padding: 0;
   width: 32px;
   height: 32px;
@@ -70,16 +72,33 @@ const PALETTE_CSS = `
   justify-content: center;
   color: var(--fg-1, rgba(40,30,20,0.75));
   cursor: pointer;
+  position: relative;
   transition: background-color 80ms linear, color 80ms linear;
 }
-.dc-tool-palette button:hover { background: rgba(0,0,0,0.04); color: var(--fg-0, #1a1a1a); }
+.dc-tool-palette button:hover {
+  background: color-mix(in oklab, var(--accent, #d63b1f) 8%, transparent);
+  color: var(--fg-0, #1a1a1a);
+}
 .dc-tool-palette button:focus-visible {
   outline: 2px solid var(--accent, #d63b1f);
   outline-offset: -2px;
 }
+/* DDR-046 — Active tool: tinted background + accent underbar + accent text.
+   The underbar is rendered via ::after so the visual stays inside the 6 px
+   radius without leaking past the button edge. */
 .dc-tool-palette button[aria-pressed="true"] {
+  background: color-mix(in oklab, var(--accent, #d63b1f) 14%, transparent);
+  color: var(--accent, #d63b1f);
+}
+.dc-tool-palette button[aria-pressed="true"]::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 2px;
+  height: 2px;
   background: var(--accent, #d63b1f);
-  color: var(--accent-fg, #fff);
+  border-radius: 1px;
 }
 .dc-tool-palette .dc-tp-zoom {
   min-width: 56px;
@@ -88,7 +107,7 @@ const PALETTE_CSS = `
   font-family: var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 11px;
   letter-spacing: 0.04em;
-  border-radius: 0;
+  border-radius: 6px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -98,10 +117,10 @@ const PALETTE_CSS = `
   position: absolute;
   right: 4px;
   bottom: 44px;
-  background: var(--u-bg-2, var(--bg-1, rgba(255,255,255,0.98)));
+  background: var(--u-bg-0, var(--bg-0, #ffffff));
   border: 1px solid var(--u-fg-0, #1c1917);
-  border-radius: 0;
-  box-shadow: 4px 4px 0 var(--u-fg-0, #1c1917);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px color-mix(in oklab, var(--u-fg-0, #1c1917) 10%, transparent);
   display: flex;
   flex-direction: column;
   padding: 4px;

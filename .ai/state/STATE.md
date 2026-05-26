@@ -3,12 +3,35 @@
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
 **Workflow:** feature-delivery — Maude v1.0 roadmap
-**Phase:** Phase 19 — Dev-server first-boot bootstrap fixes
-**Status:** done (8/8 · DDR-044 captured artifact strategy · 11/11 new tests · 351/351 dev-server tests · live curl smoke 200 on /_client/* + /_canvas-runtime/* · v0.18.0 release)
-**Started:** 2026-05-25
-**Updated:** 2026-05-25
-**Active task:** —
-**Active plan:** —
+**Phase:** canvas-figjam-feel — Wave 1 done (12/12 visual-identity tasks)
+**Status:** paused — awaiting user review before Wave 2 (T13–T22 behavioral)
+**Started:** 2026-05-26
+**Updated:** 2026-05-26
+**Active task:** canvas-figjam-feel.md
+**Active plan:** .ai/plans/canvas-figjam-feel.md
+
+## Execution Progress — canvas-figjam-feel (Wave 1)
+
+- ✅ Task 1 — DDR-046: 3-state halo language
+- ✅ Task 2 — Refactor HALO_CSS to 3-state language
+- ✅ Task 3 — SelectionHalos: append 4 corner ticks (single-vs-multi class swap)
+- ✅ Task 4 — SnapGuide.delta + .kind + bun:test (6 fixtures, 359/359 green)
+- ✅ Task 5 — `--guide-magenta` token + SnapGuideOverlay color routing (2 px width)
+- ✅ Task 6 — DistancePill `Δ{N}` mid-span callout
+- ✅ Task 7 — Spawn-fade animation + prefers-reduced-motion
+- ✅ Task 8 — Mini-map polish (--bg-0 body, filled viewport, ambient shadow)
+- ✅ Task 9 — Drop brutalist shadow on floating chrome (tool-palette, context-menu, export-dialog, annotation chrome)
+- ✅ Task 10 — Tool palette active state: 14% tint + 2 px accent underbar
+- ✅ Task 11 — Active-artboard ring outside drop-shadow + 120 ms transition
+- ✅ Task 12 — BrandWordmark watermark top-left of canvas
+
+**Pre-existing issue surfaced:** `bin/smoke.sh` hits `/ui/<canvas>.tsx` but server routes are mounted at `/.design/ui/<canvas>.tsx`. Smoke reports OK on 404-rendered "Not found" pages (also a smoke detector miss). Not a Wave 1 regression — pre-existing. Recommend fix in a separate task.
+
+**Validation:**
+- 359/359 bun tests green (351 baseline + 8 new snap-distance-pill)
+- `bun run build.ts` clean
+- `bun tsc --noEmit` — only pre-existing api.ts / runtime-bundle.ts errors (per DDR-026 baseline)
+- Manual canvas-shell screenshot at `/tmp/canvas-viewport-wave1.png` confirms wordmark + ambient-shadow chrome renders
 
 **Branch:** main (Phase 18 + Phase 19 committed + tagged v0.18.0)
 

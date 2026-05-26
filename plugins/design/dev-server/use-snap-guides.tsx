@@ -40,6 +40,13 @@ export interface Rect {
 
 export type SnapAxis = 'x' | 'y';
 
+/** DDR-046 — `kind` lets SnapGuideOverlay route grid vs sibling guides to
+ *  different visual treatments (grid = lighter gray fallback; sibling = full
+ *  magenta confidence). `delta` is the signed correction the snap applied;
+ *  the overlay renders a `Δ{Math.round(delta)}` pill mid-span when |delta| > 0
+ *  and the guide span > 60 px. */
+export type SnapKind = 'grid' | 'sibling';
+
 export interface SnapGuide {
   /** `"x"` → vertical line (snapping X coord). Line sits at `pos` on X,
    *  spans `from..to` on Y. `"y"` is the dual: horizontal line at `pos` on Y,
@@ -48,6 +55,12 @@ export interface SnapGuide {
   pos: number;
   from: number;
   to: number;
+  /** Signed pixel delta the snap corrected (additive: `proposed + delta`).
+   *  Optional for back-compat with pre-DDR-046 readers. */
+  delta?: number;
+  /** Whether the winning candidate came from the grid pass or a sibling edge.
+   *  Optional for back-compat. */
+  kind?: SnapKind;
 }
 
 export interface SnapResult {
@@ -76,6 +89,8 @@ interface AxisCandidate {
   /** Perpendicular extent — `from..to` of the would-be guide. */
   from: number;
   to: number;
+  /** Whether this candidate came from the grid pass or the sibling pass. */
+  kind: SnapKind;
 }
 
 function nearestGridDelta(coord: number, gridSize: number, tolerance: number): number | null {
@@ -108,12 +123,17 @@ function pickClosest(cands: AxisCandidate[]): AxisCandidate | null {
 function mergeAtPos(axis: SnapAxis, winner: AxisCandidate, cands: AxisCandidate[]): SnapGuide {
   let from = winner.from;
   let to = winner.to;
+  let worstDelta = winner.delta;
   for (const c of cands) {
     if (Math.abs(c.pos - winner.pos) > 0.001) continue;
     if (c.from < from) from = c.from;
     if (c.to > to) to = c.to;
+    // Distance pill shows the worst-case correction among merged candidates,
+    // not the average (per DDR-046 — "render the pixels the user actually
+    // had to be corrected by").
+    if (Math.abs(c.delta) > Math.abs(worstDelta)) worstDelta = c.delta;
   }
-  return { axis, pos: winner.pos, from, to };
+  return { axis, pos: winner.pos, from, to, delta: worstDelta, kind: winner.kind };
 }
 
 export function computeSnap(proposed: Rect, others: Rect[], opts: SnapOptions): SnapResult {
@@ -140,6 +160,7 @@ export function computeSnap(proposed: Rect, others: Rect[], opts: SnapOptions): 
       pos: propLeft + gridX,
       from: propTop,
       to: propBottom,
+      kind: 'grid',
     });
   }
   const gridY = nearestGridDelta(propTop, gridSize, tolerance);
@@ -149,6 +170,7 @@ export function computeSnap(proposed: Rect, others: Rect[], opts: SnapOptions): 
       pos: propTop + gridY,
       from: propLeft,
       to: propRight,
+      kind: 'grid',
     });
   }
 
@@ -177,6 +199,7 @@ export function computeSnap(proposed: Rect, others: Rect[], opts: SnapOptions): 
         pos: otherCoord,
         from: Math.min(propTop, oTop),
         to: Math.max(propBottom, oBottom),
+        kind: 'sibling',
       });
     }
 
@@ -196,6 +219,7 @@ export function computeSnap(proposed: Rect, others: Rect[], opts: SnapOptions): 
         pos: otherCoord,
         from: Math.min(propLeft, oLeft),
         to: Math.max(propRight, oRight),
+        kind: 'sibling',
       });
     }
   }

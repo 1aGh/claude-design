@@ -158,10 +158,10 @@ const MENU_CSS = `
 .dc-context-menu {
   position: fixed;
   z-index: 7;
-  background: var(--u-bg-2, var(--bg-1, #fff));
+  background: var(--u-bg-0, var(--bg-0, #fff));
   border: 1px solid var(--u-fg-0, #1c1917);
-  border-radius: 0;
-  box-shadow: 4px 4px 0 var(--u-fg-0, #1c1917);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px color-mix(in oklab, var(--u-fg-0, #1c1917) 10%, transparent);
   padding: 4px;
   min-width: 220px;
   font-family: var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);

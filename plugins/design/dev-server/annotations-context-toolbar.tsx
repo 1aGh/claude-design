@@ -36,11 +36,11 @@ const TOOLBAR_CSS = `
   display: flex;
   align-items: center;
   gap: 6px;
-  background: var(--u-bg-2, var(--bg-1, rgba(255,255,255,0.98)));
+  background: var(--u-bg-0, var(--bg-0, rgba(255,255,255,0.98)));
   border: 1px solid var(--u-fg-0, #1c1917);
-  border-radius: 0;
+  border-radius: 8px;
   padding: 6px 8px;
-  box-shadow: 4px 4px 0 var(--u-fg-0, #1c1917);
+  box-shadow: 0 6px 24px color-mix(in oklab, var(--u-fg-0, #1c1917) 10%, transparent);
   font-family: var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 12px;
   color: var(--u-fg-0, var(--fg-0, #1a1a1a));

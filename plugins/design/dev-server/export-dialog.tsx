@@ -115,9 +115,9 @@ const DIALOG_CSS = `
 .dc-export-dialog {
   border: 1px solid var(--u-fg-0, #1c1917);
   padding: 0;
-  border-radius: 0;
-  background: var(--u-bg-2, var(--bg-1, #fff));
-  box-shadow: 4px 4px 0 var(--u-fg-0, #1c1917);
+  border-radius: 8px;
+  background: var(--u-bg-0, var(--bg-0, #fff));
+  box-shadow: 0 6px 24px color-mix(in oklab, var(--u-fg-0, #1c1917) 10%, transparent);
   font-family: var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   color: var(--u-fg-0, var(--fg-0, #1a1a1a));
   width: min(640px, 100vw - 48px);

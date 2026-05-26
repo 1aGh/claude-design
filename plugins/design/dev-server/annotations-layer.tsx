@@ -457,15 +457,15 @@ const ANNOT_CSS = `
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--u-bg-2, var(--bg-1, rgba(255,255,255,0.98)));
+  background: var(--u-bg-0, var(--bg-0, rgba(255,255,255,0.98)));
   border: 1px solid var(--u-fg-0, #1c1917);
-  border-radius: 0;
+  border-radius: 8px;
   padding: 6px 10px;
   font-family: var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 11px;
   color: var(--u-fg-0, rgba(40,30,20,0.85));
   z-index: 6;
-  box-shadow: 4px 4px 0 var(--u-fg-0, #1c1917);
+  box-shadow: 0 6px 24px color-mix(in oklab, var(--u-fg-0, #1c1917) 10%, transparent);
   user-select: none;
 }
 .dc-annot-chrome .dc-annot-swatches { display: flex; gap: 4px; }
