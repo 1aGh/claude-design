@@ -4,7 +4,7 @@
   "brief": "Multi-artboard meta-design of the Maude dev-server canvas (this very tool) — every distinct canvas-viewport state that v1.0 → v1.3 will ship, broken down by screen. Synthesized from .ai/plans/phase-{4,5,6,8,12}.md. Scope: features that touch the canvas viewport itself (infinite canvas + pan/zoom + mini-map, draw tools, pin-comments, presentation mode, live collab, inspector + layers). Explicitly NOT in scope: app shell chrome (left file-tree, top header, tabs row, status bar, system view, comments-list panel) — those live in a separate canvas covering Phase 3.5.",
   "platform": "desktop",
   "created": "2026-05-14T21:22:36Z",
-  "last_modified": "2026-05-25T12:57:39.116Z",
+  "last_modified": "2026-05-26T10:33:31.153Z",
   "designSystem": "project",
   "opt_out_scope": "palette",
   "iteration_count": 0,
@@ -173,8 +173,62 @@
   "css_mode": "inline",
   "data_cd_id_version": 1,
   "viewport": {
-    "x": -224.65476841755714,
-    "y": -1381.1719741647344,
-    "zoom": 0.7691450272790693
+    "x": 446.35805871920365,
+    "y": 17.22303588245893,
+    "zoom": 0.15131584691682426
+  },
+  "layout": {
+    "artboards": [
+      {
+        "id": "idle",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "zoomed",
+        "x": 1058,
+        "y": 0
+      },
+      {
+        "id": "draw",
+        "x": 2116,
+        "y": 0
+      },
+      {
+        "id": "pin",
+        "x": 1058,
+        "y": 899
+      },
+      {
+        "id": "presentation",
+        "x": 1511,
+        "y": 1199
+      },
+      {
+        "id": "collab",
+        "x": 2418,
+        "y": 1498
+      },
+      {
+        "id": "inspector",
+        "x": 907,
+        "y": 2098
+      },
+      {
+        "id": "tree",
+        "x": 3889.6101492989737,
+        "y": 3465.1767405814703
+      },
+      {
+        "id": "dsview",
+        "x": 3989.0721067559684,
+        "y": 1960
+      },
+      {
+        "id": "comments",
+        "x": 302,
+        "y": 2696.920666778729
+      }
+    ]
   }
 }

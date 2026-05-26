@@ -18,7 +18,7 @@
   },
   "scripts": {
     "start": "bun run plugins/design/dev-server/server.ts",
-    "dev": "bun run plugins/design/dev-server/server.ts --port 4399",
+    "dev": "bun run plugins/design/dev-server/server.ts --port 4555",
     "dev:site": "pnpm --filter @maude/site dev --port 4398",
     "build": "pnpm -r --if-present run build",
     "build:binary": "bun run plugins/design/dev-server/build.ts --release",
