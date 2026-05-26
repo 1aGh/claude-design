@@ -27,15 +27,24 @@ import path from 'node:path';
 
 import type { BunPlugin } from 'bun';
 
+import { DEV_SERVER_ROOT } from './paths.ts';
+
 export const CANVAS_LIB_SPECIFIER = '@maude/canvas-lib';
 
 /**
  * Returns the dev-server-internal canvas-lib path. The `_designRoot` parameter
  * is retained for one minor (back-compat with callers we don't control) but
  * ignored — canvas-lib now ships with the dev-server install (DDR-025).
+ *
+ * Uses DEV_SERVER_ROOT (paths.ts) instead of `import.meta.dir` per DDR-045 —
+ * inside `bun --compile` standalone binaries `import.meta.dir` resolves to the
+ * virtual `/$bunfs/root` and any subsequent `existsSync` / `fs.watch` against
+ * that path silently fails. Same bug class as v0.18.0/0.18.1; this one surfaces
+ * as `[canvas-lib] failed to watch ... '/$bunfs/root/canvas-lib.tsx'` at boot
+ * and disables canvas-lib HMR.
  */
 export function canvasLibPath(_designRoot?: string): string {
-  return path.join(import.meta.dir, 'canvas-lib.tsx');
+  return path.join(DEV_SERVER_ROOT, 'canvas-lib.tsx');
 }
 
 export interface CanvasLibResolverOptions {

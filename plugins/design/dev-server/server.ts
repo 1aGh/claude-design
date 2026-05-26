@@ -46,41 +46,88 @@ const http = createHttp(ctx, api, inspect);
 const fsWatch = createFsWatch(ctx);
 
 // Port: --port arg > $PORT > $MDCC_DEV_PORT > 4399.
-function resolvePort(): number {
+// When the port wasn't explicitly chosen and the default is busy (another
+// project's dev-server is running on the same machine), walk up to 4408 before
+// giving up. Explicit ports stay fatal so users notice their own collisions.
+function resolvePort(): { port: number; explicit: boolean } {
   const i = process.argv.indexOf('--port');
-  if (i !== -1 && process.argv[i + 1]) return Number(process.argv[i + 1]);
+  if (i !== -1 && process.argv[i + 1]) return { port: Number(process.argv[i + 1]), explicit: true };
   const env = process.env.PORT ?? process.env.MDCC_DEV_PORT;
-  if (env) return Number(env);
-  return 4399;
+  if (env) return { port: Number(env), explicit: true };
+  return { port: 4399, explicit: false };
 }
 
-const PORT = resolvePort();
+const { port: BASE_PORT, explicit: PORT_EXPLICIT } = resolvePort();
 
-const server = Bun.serve<{ id: string; remote: string }, never>({
-  port: PORT,
-  hostname: '127.0.0.1',
-  development: process.env.NODE_ENV !== 'production',
-  routes: http.routes,
-  async fetch(req, srv) {
-    // WebSocket upgrade.
-    if (new URL(req.url).pathname.startsWith('/_ws')) {
-      const ok = srv.upgrade(req, {
-        data: {
-          id: crypto.randomUUID(),
-          remote: req.headers.get('x-forwarded-for') ?? '127.0.0.1',
-        },
-      });
-      if (ok) return undefined as unknown as Response;
-      return new Response('Upgrade failed', { status: 400 });
+type BunServer = ReturnType<typeof Bun.serve<{ id: string; remote: string }, never>>;
+
+function startServer(port: number): BunServer {
+  return Bun.serve<{ id: string; remote: string }, never>({
+    port,
+    hostname: '127.0.0.1',
+    development: process.env.NODE_ENV !== 'production',
+    routes: http.routes,
+    async fetch(req, srv) {
+      // WebSocket upgrade.
+      if (new URL(req.url).pathname.startsWith('/_ws')) {
+        const ok = srv.upgrade(req, {
+          data: {
+            id: crypto.randomUUID(),
+            remote: req.headers.get('x-forwarded-for') ?? '127.0.0.1',
+          },
+        });
+        if (ok) return undefined as unknown as Response;
+        return new Response('Upgrade failed', { status: 400 });
+      }
+      return http.fetch(req);
+    },
+    websocket: ws.handler,
+    error(e) {
+      console.error('[bun.serve error]', e);
+      return new Response('Server error', { status: 500 });
+    },
+  });
+}
+
+function isAddrInUse(e: unknown): boolean {
+  if (!e || typeof e !== 'object') return false;
+  const err = e as { code?: string; errno?: number };
+  return err.code === 'EADDRINUSE';
+}
+
+let server: BunServer;
+{
+  const MAX_TRIES = PORT_EXPLICIT ? 1 : 10;
+  let lastErr: unknown;
+  let bound: BunServer | null = null;
+  for (let i = 0; i < MAX_TRIES; i++) {
+    const tryPort = BASE_PORT + i;
+    try {
+      bound = startServer(tryPort);
+      if (i > 0) {
+        console.log(`[port] ${BASE_PORT} busy, using ${tryPort} instead.`);
+      }
+      break;
+    } catch (e) {
+      lastErr = e;
+      if (!isAddrInUse(e)) throw e;
     }
-    return http.fetch(req);
-  },
-  websocket: ws.handler,
-  error(e) {
-    console.error('[bun.serve error]', e);
-    return new Response('Server error', { status: 500 });
-  },
-});
+  }
+  if (!bound) {
+    if (PORT_EXPLICIT) {
+      console.error(
+        `\n  Port ${BASE_PORT} is in use. Pick a different one with --port <N> or $PORT.\n`
+      );
+    } else {
+      console.error(
+        `\n  Ports ${BASE_PORT}-${BASE_PORT + MAX_TRIES - 1} are all in use. ` +
+          `Stop a running dev-server or pass --port <N>.\n`
+      );
+    }
+    throw lastErr;
+  }
+  server = bound;
+}
 
 await Bun.write(
   ctx.paths.serverInfoFile,
