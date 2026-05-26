@@ -19,26 +19,26 @@ importers:
         version: 1.60.0
     optionalDependencies:
       '@1agh/maude-darwin-arm64':
-        specifier: 0.19.1
-        version: 0.19.1
+        specifier: 0.20.0
+        version: 0.20.0
       '@1agh/maude-darwin-x64':
-        specifier: 0.19.1
-        version: 0.19.1
+        specifier: 0.20.0
+        version: 0.20.0
       '@1agh/maude-linux-arm64':
-        specifier: 0.19.1
-        version: 0.19.1
+        specifier: 0.20.0
+        version: 0.20.0
       '@1agh/maude-linux-arm64-musl':
-        specifier: 0.19.1
-        version: 0.19.1
+        specifier: 0.20.0
+        version: 0.20.0
       '@1agh/maude-linux-x64':
-        specifier: 0.19.1
-        version: 0.19.1
+        specifier: 0.20.0
+        version: 0.20.0
       '@1agh/maude-linux-x64-musl':
-        specifier: 0.19.1
-        version: 0.19.1
+        specifier: 0.20.0
+        version: 0.20.0
       '@1agh/maude-win32-x64':
-        specifier: 0.19.1
-        version: 0.19.1
+        specifier: 0.20.0
+        version: 0.20.0
 
   plugins/design/dev-server:
     dependencies:
@@ -78,6 +78,12 @@ importers:
       react-dom:
         specifier: ^19.0.0
         version: 19.2.6(react@19.2.6)
+      y-protocols:
+        specifier: ^1.0.7
+        version: 1.0.7(yjs@13.6.30)
+      yjs:
+        specifier: ^13.6.30
+        version: 13.6.30
     devDependencies:
       '@oxc-parser/binding-darwin-arm64':
         specifier: 0.131.0
@@ -172,42 +178,42 @@ importers:
 
 packages:
 
-  '@1agh/maude-darwin-arm64@0.19.1':
-    resolution: {integrity: sha512-Vti9GhBX62mPkZz3ebnk7vmWMMOvBOIbpTRgrUcafGPFIeqIHM3gp8fsxpc0v3IAj9+CnQL8mOG2Nqe85plWeg==}
+  '@1agh/maude-darwin-arm64@0.20.0':
+    resolution: {integrity: sha512-R7z4a3q+IeEVGul2D/hoHiQjJQh6KmYviItDMVXUxYUkSx6sDeA3NQvEsQ9GdQLuAXPzRheOAlaWkP9zNtk20w==}
     cpu: [arm64]
     os: [darwin]
 
-  '@1agh/maude-darwin-x64@0.19.1':
-    resolution: {integrity: sha512-DxGzNCKqLROhBOhfRM3k/vyF5kQw7PIXzAu1pjy8EwIxXcBcgQ6TqVQdqHujslFFBtV0WSSZihgT64yXx35Mdw==}
+  '@1agh/maude-darwin-x64@0.20.0':
+    resolution: {integrity: sha512-gTHJYpcUxrL0pvm9rA7/BxqPVOHBEVoIP4m4aL7F6zpl1FYZZmgYgnLWeh9xxBlG4wsoT54+vNrD+SeYMsPhHA==}
     cpu: [x64]
     os: [darwin]
 
-  '@1agh/maude-linux-arm64-musl@0.19.1':
-    resolution: {integrity: sha512-bWPWmYHKVVF31NL2xLQKXVYpt4rMqwEcA6deY6jZFbGd4t/U++Bk0oTM9Cm3dTYRTpY1tzYQH6luLTWs4m5iRw==}
+  '@1agh/maude-linux-arm64-musl@0.20.0':
+    resolution: {integrity: sha512-8EyxQ+g9Gpgl4DlSKBa4psmDWazecxmoP+5NOgVOzVBbvrld1HWR7KAg2sW5/W1zARzdbKEro2LwKuChRmgYeQ==}
     cpu: [arm64]
     os: [linux]
     libc: [musl]
 
-  '@1agh/maude-linux-arm64@0.19.1':
-    resolution: {integrity: sha512-mXKgiqJzBYCc6sz6SQ8kDv+oK8GJn52pmjCfk3Jjb4QoOZ0a3d7w7QN9xuDwSbl8fh92xUMcW1tX+SjvI5ONhQ==}
+  '@1agh/maude-linux-arm64@0.20.0':
+    resolution: {integrity: sha512-n0XOj+CS4tCEOecpME6hAoO7vpqsbHsVlmbkeEPCjwjBmtaJYpofTPaL8BLq4N9rO2i9oXaaQbGaeaKg6RWbPg==}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
 
-  '@1agh/maude-linux-x64-musl@0.19.1':
-    resolution: {integrity: sha512-CbBDhPZgKiXp7p2Yx9zHjv4e8vnYDne5ul90siRtH9vvXgIWRSyPaXWGV+mBPCnhyyGob/sJZCrt8k0ALUFr4g==}
+  '@1agh/maude-linux-x64-musl@0.20.0':
+    resolution: {integrity: sha512-t7qyGM1A1y8EArHeNsQikqXdcGVrUItsLOSSejvXxekku+WLkoERcl0R3JnzDUuIYurgX6UPcQfLtecu3m5iOQ==}
     cpu: [x64]
     os: [linux]
     libc: [musl]
 
-  '@1agh/maude-linux-x64@0.19.1':
-    resolution: {integrity: sha512-9U6S1UFEDWj3rZ3zQyOT5Ik+Z6vFgfayc9wffbmaljFt6ziEXKBIm3/Oa6hIuOvQs8ZAPOLlnB4yxtbQK7MlZQ==}
+  '@1agh/maude-linux-x64@0.20.0':
+    resolution: {integrity: sha512-c7ZlxakXKg9nYXxwBATEy5/oEBSn0c/PJBGlw2DNOXmdffCEakz3mAAe2OEms941c+Kdta4RxUZLTCplkeq0VA==}
     cpu: [x64]
     os: [linux]
     libc: [glibc]
 
-  '@1agh/maude-win32-x64@0.19.1':
-    resolution: {integrity: sha512-dZtQaq4Q21gbTmEAaAL6f2ETGdVtm1Q5gDeHEY+Mvv+NaG+9duRbvd6FuBqXYxVQccpEaj88wWcTCnZD+HQl3w==}
+  '@1agh/maude-win32-x64@0.20.0':
+    resolution: {integrity: sha512-ZaBqCmYAddOAtHShCXvgRiVPIuTHGtAsVlqC+ZHCpT7/peLj2JGW+27ieGGSHZY+rHSe51KXHGtYwNNz24x5pw==}
     cpu: [x64]
     os: [win32]
 
@@ -2026,6 +2032,9 @@ packages:
   ismobilejs@1.1.1:
     resolution: {integrity: sha512-VaFW53yt8QO61k2WJui0dHf4SlL8lxBofUuUmwBo0ljPk0Drz2TiuDW4jo3wDcv41qy/SxrJ+VAzJ/qYqsmzRw==}
 
+  isomorphic.js@0.2.5:
+    resolution: {integrity: sha512-PIeMbHqMt4DnUP3MA/Flc0HElYjMXArsw1qwJZcm9sqR8mq3l8NYizFMty0pWwE/tzIGH3EKK5+jes5mAr85yw==}
+
   jiti@2.7.0:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
@@ -2046,6 +2055,11 @@ packages:
 
   jszip@3.10.1:
     resolution: {integrity: sha512-xXDvecyTpGLrqFrvkrUSoxxfJI5AH7U8zxxtVclpsUtMCq4JQ290LY8AW5c7Ggnr/Y/oK+bQMbqK2qmtk3pN4g==}
+
+  lib0@0.2.117:
+    resolution: {integrity: sha512-DeXj9X5xDCjgKLU/7RR+/HQEVzuuEUiwldwOGsHK/sfAfELGWEyTcf0x+uOvCvK3O2zPmZePXWL85vtia6GyZw==}
+    engines: {node: '>=16'}
+    hasBin: true
 
   lie@3.3.0:
     resolution: {integrity: sha512-UaiMJzeWRlEujzAuw5LokY1L5ecNQYZKfmyZ9L7wDHb/p5etKaxXhohBcrw0EYby+G/NA52vRSN4N39dxHAIwQ==}
@@ -2863,6 +2877,16 @@ packages:
     engines: {node: '>= 8'}
     hasBin: true
 
+  y-protocols@1.0.7:
+    resolution: {integrity: sha512-YSVsLoXxO67J6eE/nV4AtFtT3QEotZf5sK5BHxFBXso7VDUT3Tx07IfA6hsu5Q5OmBdMkQVmFZ9QOA7fikWvnw==}
+    engines: {node: '>=16.0.0', npm: '>=8.0.0'}
+    peerDependencies:
+      yjs: ^13.0.0
+
+  yjs@13.6.30:
+    resolution: {integrity: sha512-vv/9h42eCMC81ZHDFswuu/MKzkl/vyq1BhaNGfHyOonwlG4CJbQF4oiBBJPvfdeCt/PlVDWh7Nov9D34YY09uQ==}
+    engines: {node: '>=16.0.0', npm: '>=8.0.0'}
+
   zod@4.4.3:
     resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
 
@@ -2871,25 +2895,25 @@ packages:
 
 snapshots:
 
-  '@1agh/maude-darwin-arm64@0.19.1':
+  '@1agh/maude-darwin-arm64@0.20.0':
     optional: true
 
-  '@1agh/maude-darwin-x64@0.19.1':
+  '@1agh/maude-darwin-x64@0.20.0':
     optional: true
 
-  '@1agh/maude-linux-arm64-musl@0.19.1':
+  '@1agh/maude-linux-arm64-musl@0.20.0':
     optional: true
 
-  '@1agh/maude-linux-arm64@0.19.1':
+  '@1agh/maude-linux-arm64@0.20.0':
     optional: true
 
-  '@1agh/maude-linux-x64-musl@0.19.1':
+  '@1agh/maude-linux-x64-musl@0.20.0':
     optional: true
 
-  '@1agh/maude-linux-x64@0.19.1':
+  '@1agh/maude-linux-x64@0.20.0':
     optional: true
 
-  '@1agh/maude-win32-x64@0.19.1':
+  '@1agh/maude-win32-x64@0.20.0':
     optional: true
 
   '@alloc/quick-lru@5.2.0': {}
@@ -4598,6 +4622,8 @@ snapshots:
 
   ismobilejs@1.1.1: {}
 
+  isomorphic.js@0.2.5: {}
+
   jiti@2.7.0: {}
 
   js-binary-schema-parser@2.0.3: {}
@@ -4621,6 +4647,10 @@ snapshots:
       pako: 1.0.11
       readable-stream: 2.3.8
       setimmediate: 1.0.5
+
+  lib0@0.2.117:
+    dependencies:
+      isomorphic.js: 0.2.5
 
   lie@3.3.0:
     dependencies:
@@ -5759,6 +5789,15 @@ snapshots:
   which@2.0.2:
     dependencies:
       isexe: 2.0.0
+
+  y-protocols@1.0.7(yjs@13.6.30):
+    dependencies:
+      lib0: 0.2.117
+      yjs: 13.6.30
+
+  yjs@13.6.30:
+    dependencies:
+      lib0: 0.2.117
 
   zod@4.4.3: {}
 

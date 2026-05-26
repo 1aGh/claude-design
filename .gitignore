@@ -15,6 +15,11 @@ dev-server/.cache/
 .design/_canvas-state/
 .design/_export-history.json
 
+# Phase 8 / DDR-051 — Yjs collab cache. JSON snapshots in _comments/ remain the
+# canonical persistence format; `.ydoc.bin` is regenerated from JSON on cold open.
+.design/_state/*
+!.design/_state/.gitkeep
+
 # AI workflow runtime — committed templates live in .ai/templates/
 .ai/state/HANDOFF.md
 .ai/device/

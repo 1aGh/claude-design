@@ -1,0 +1,17 @@
+---
+'@1agh/maude': minor
+---
+
+**Phase 8 foundation — Yjs collab runtime (Tasks 0–1).** Loopback-only multiplayer is now possible on a single machine: two browser tabs on the same canvas, or two Claude Code instances editing the same repo, can share a per-canvas Y.Doc + Awareness state. DDR-051 spells out the persistence contract — JSON snapshots in `.design/_comments/<slug>.json` stay canonical (legible in PRs, cold-clone safe); `.ydoc.bin` lives under `.design/_state/` (gitignored) as a real-time cache regenerated from JSON on first open; force-snapshot before `.git/HEAD` changes (Task 7) protects in-flight edits from being silently discarded by a branch switch.
+
+**New runtime deps.** `yjs ^13.6.30` + `y-protocols ^1.0.7` (≈37 KB gz combined) added to `plugins/design/dev-server/`. Workspace-only — end users still see zero npm runtime deps because everything bundles into the standalone dev-server binary.
+
+**New collab module.** `plugins/design/dev-server/collab/` (5 files / 544 LOC, each ≤ DDR-013's 300-LOC ceiling): `protocol.ts` encodes/decodes the y-websocket binary frames (sync + awareness); `room.ts` owns one Y.Doc per canvas slug with debounced (800 ms) JSON + binary flush; `registry.ts` is the get-or-create surface (lazy room creation, drop-when-empty); `persistence.ts` wires the seed flow (`.ydoc.bin` → JSON → empty) + the `comments` Y.Array projection back through `api.saveCommentsForFile`; `index.ts` is the public surface.
+
+**New collab WS endpoint.** `WS /_ws/collab/<canvas-slug>` speaks the binary y-websocket protocol. Loopback-only per DDR-047 — the `host:` request header is checked against `127.0.0.1` / `::1` / `localhost` (any port); non-loopback returns **HTTP 403** with body `cross-machine collab requires Phase 9 hub deploy`. The legacy `/_ws` JSON inspector channel is preserved untouched; `ws.ts`'s `WsData` becomes a discriminated union (`inspector` | `collab`) so both protocols share one Bun.serve `websocket` handler. Cross-machine collab stays gated to v1.1 (Phase 9 hub deploy) — no `--bind 0.0.0.0` flag exists.
+
+**Verification.** 494/494 bun tests green (+21 new: 4 loopback-host-gate tests, 9 protocol round-trip tests, 8 room behavior tests covering debounced flush, idempotent re-flush, awareness-state cleanup-by-`__connId`, single-seed-under-concurrent-connect, peer-to-peer convergence via Y.Doc update). `bun tsc --noEmit` clean modulo the pre-existing `api.ts(883)` + `runtime-bundle.ts(314)` baseline (CLAUDE.md). Manual loopback smoke: `curl -H 'host: example.com' http://127.0.0.1:4451/_ws/collab/foo` → 403 with expected body; loopback host without WS upgrade headers → 400 (host check passes, upgrade fails correctly).
+
+**Scope cut for this ship.** Phase 8 Tasks 2–8 (cursor + selection awareness rendering, comments-as-Y.Array client migration, AI activity heartbeat banner, draw annotation sync, participant chrome + follow mode, persistence + git-lifecycle reconciliation, multi-tab stress harness, 5 collab scenarios) are deferred to follow-up sessions. The foundation in this ship is what Phase 9 (cross-machine hub deploy) builds on; Tasks 2–8 are user-visible features that ride on the runtime that just shipped.
+
+See `.ai/decisions/DDR-051-collab-persistence-json-snapshot-at-quiescence.md` for the persistence contract, `.ai/decisions/DDR-047-collab-scope-cut-no-lan-mode-hub-admin-ui.md` for the v1.0/v1.1 split, and `.ai/plans/phase-8-live-collaboration-yjs-lan.md` for the full task list.

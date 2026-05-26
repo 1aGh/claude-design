@@ -18,12 +18,13 @@ import { spawn } from 'node:child_process';
 
 import { createApi } from './api.ts';
 import { bootSelfHeal } from './boot-self-heal.ts';
+import { createCollab } from './collab/index.ts';
 import { createContext } from './context.ts';
 import { createFsWatch } from './fs-watch.ts';
 import { createHttp } from './http.ts';
 import { createInspect } from './inspect.ts';
 import { startHeapWatch } from './mem.ts';
-import { createWs } from './ws.ts';
+import { createWs, isLoopbackHost, parseCollabSlug, type WsData } from './ws.ts';
 
 // Phase 19 / DDR-044 — covers the marketplace-cache-install gap where
 // node_modules/ ships empty (git clone honors .gitignore). Auto-installs +
@@ -41,7 +42,8 @@ const api = createApi(ctx, async (file) => {
 const inspect = createInspect(ctx, (file) => api.loadCommentsForFile(file));
 await inspect.load();
 
-const ws = createWs(ctx, api, inspect);
+const collab = createCollab(ctx, api);
+const ws = createWs(ctx, api, inspect, collab);
 const http = createHttp(ctx, api, inspect);
 const fsWatch = createFsWatch(ctx);
 
@@ -59,21 +61,46 @@ function resolvePort(): { port: number; explicit: boolean } {
 
 const { port: BASE_PORT, explicit: PORT_EXPLICIT } = resolvePort();
 
-type BunServer = ReturnType<typeof Bun.serve<{ id: string; remote: string }, never>>;
+type BunServer = ReturnType<typeof Bun.serve<WsData, never>>;
 
 function startServer(port: number): BunServer {
-  return Bun.serve<{ id: string; remote: string }, never>({
+  return Bun.serve<WsData, never>({
     port,
     hostname: '127.0.0.1',
     development: process.env.NODE_ENV !== 'production',
     routes: http.routes,
     async fetch(req, srv) {
-      // WebSocket upgrade.
-      if (new URL(req.url).pathname.startsWith('/_ws')) {
+      const pathname = new URL(req.url).pathname;
+
+      // Phase 8 — collab WS, binary y-websocket protocol. Loopback-only;
+      // DDR-047 makes cross-machine collab a Phase 9 hub-deploy story, not
+      // a `--bind 0.0.0.0` flag on this server.
+      const collabSlug = parseCollabSlug(pathname);
+      if (collabSlug !== null) {
+        if (!isLoopbackHost(req.headers.get('host'))) {
+          return new Response('cross-machine collab requires Phase 9 hub deploy', {
+            status: 403,
+          });
+        }
         const ok = srv.upgrade(req, {
           data: {
             id: crypto.randomUUID(),
             remote: req.headers.get('x-forwarded-for') ?? '127.0.0.1',
+            kind: 'collab',
+            slug: collabSlug,
+          },
+        });
+        if (ok) return undefined as unknown as Response;
+        return new Response('Upgrade failed', { status: 400 });
+      }
+
+      // Legacy inspector WS — JSON frames, designer-facing live tab state.
+      if (pathname.startsWith('/_ws')) {
+        const ok = srv.upgrade(req, {
+          data: {
+            id: crypto.randomUUID(),
+            remote: req.headers.get('x-forwarded-for') ?? '127.0.0.1',
+            kind: 'inspector',
           },
         });
         if (ok) return undefined as unknown as Response;
@@ -167,6 +194,11 @@ if (!process.env.NO_OPEN) {
 async function shutdown() {
   console.log('\n  Stopping…');
   fsWatch.stop();
+  try {
+    await collab.registry.destroyAll();
+  } catch {
+    /* best-effort flush; the JSON snapshot is the ground truth anyway */
+  }
   try {
     await Bun.write(ctx.paths.serverInfoFile, '').catch(() => {});
     // Remove the file by writing empty then unlinking.

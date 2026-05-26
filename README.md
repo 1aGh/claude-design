@@ -72,6 +72,13 @@ Then inside Claude Code (with `flow@maude` installed):
 - **Claude Code** — desktop app, CLI, or IDE extension.
 - Optional: **`agent-browser`** for design screenshot evidence.
 
+## Collaboration model
+
+Two clean paths, no middle ground ([DDR-047](.ai/decisions/DDR-047-collab-scope-cut-no-lan-mode-hub-admin-ui.md)):
+
+- **v1.0 — git handoff OR loopback multi-tab.** Push / pull is the cross-machine story. On a single machine, two browser tabs (or two Claude Code instances editing the same repo) sync cursors, comments, and annotations live over loopback WebSocket. The dev server refuses any non-loopback `host` header on the collab WS endpoint.
+- **v1.1 — deploy a hub** (Phase 9, in-flight). Cross-machine live collab needs a hub binary you deploy yourself. No tunnel mode; no shared cloud.
+
 ## What's where
 
 User-facing docs live in two places — the README points you the right way:

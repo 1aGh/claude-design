@@ -3,17 +3,18 @@
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
 **Workflow:** feature-delivery — Maude v1.0 roadmap
-**Phase:** —
-**Status:** done — phase-3.7-setup-ds-hardening-and-motion-subsystem shipped 2026-05-26
+**Phase:** phase-8-live-collaboration-yjs-lan (Tasks 0–1 partial ship; Tasks 2–8 follow up)
+**Status:** ship-ready — Task 0 + Task 1 complete + verified; awaiting commit/PR; Tasks 2–8 deferred to follow-up session(s)
 **Started:** 2026-05-26
 **Updated:** 2026-05-26
-**Active task:** —
-**Active plan:** —
+**Active task:** — (Tasks 2–8 are the next work; pick up via /flow:execute on remaining phase-8 tasks)
+**Active plan:** .ai/plans/phase-8-live-collaboration-yjs-lan.md
 
 ## History
 
 | Date | Phase | Status | Note |
 | ---- | ----- | ------ | ---- |
+| 2026-05-26 | phase-8-live-collaboration-yjs-lan | partial-ship | Tasks 0 + 1 complete (foundation: DDR-051 + Yjs runtime + loopback-only collab WS endpoint). Tasks 2–8 deferred to follow-up session. **Task 0 (DDR-051):** JSON snapshot at quiescence (800 ms debounce) is canonical; `.ydoc.bin` is a gitignored cache regenerated from JSON on cold open; force-snapshot before git-lifecycle events. `.design/_state/.gitkeep` + `.gitignore` stanza. **Task 1 (Yjs server integration):** `yjs@13.6.30` + `y-protocols@1.0.7` added; new `plugins/design/dev-server/collab/` module (5 files / 544 LOC: protocol.ts, room.ts, registry.ts, persistence.ts, index.ts); `server.ts` dispatches `/_ws/collab/:slug` with loopback `host:` header gate (returns 403 + body `cross-machine collab requires Phase 9 hub deploy`); `ws.ts` rewritten with discriminated `WsData` union (`inspector` \| `collab`); README "Collaboration model" section added. **Verification:** 494/494 bun tests green (+21 new: collab-loopback × 4, collab-protocol × 9, collab-room × 8); tsc clean modulo pre-existing api.ts + runtime-bundle.ts(314) baseline; manual loopback smoke: `curl -H 'host: example.com' http://127.0.0.1:4451/_ws/collab/foo` → **403 Forbidden** with expected body, loopback host → 400 (upgrade-handshake-missing, which is correct). Awaiting commit. |
 | 2026-05-26 | canvas-figjam-feel | done | Wave 1+2+3 (T1–T33) + Wave 2.7/3.5/3.6 user-feedback batches. Commit `8654dab` (+2293/-89 across 23 files). Scenario 9/9 PASS web-desktop; design-system-guard / a11y-auditor / security-auditor: 0 blockers each, 11 polish warnings deferred to Wave 3.7. Plan archived. |
 | 2026-05-26 | phase-20-canvas-undo-redo | done | T1–T16 complete (T10 Comments deferred per plan as v0.x follow-up). 452/452 bun tests green (+43 new). Release bundle 230 KB → **72.4 KB gz** (under 80 KB budget). DDR-050 written (originally DDR-049; renumbered after same-day collision with motion-one DDR-049). Plan archived. |
 | 2026-05-26 | phase-20-canvas-undo-redo | fix | Post-ship bug fixes (user-reported within hours of commit `274cae4`): (1) annotation undo silently PUT-ed the prior SVG but the iframe's React strokes state didn't refresh — folded `setStrokesState` into `putStrokes`; (2) switching canvases lost all history — refactored to `CommandRecord` (serializable payload) + per-canvas `window.top` store. DDR-050 rev 2 supersedes the "per-iframe-ephemeral" rule. Commit `3f586e4`. 461/461 bun tests green (+9 net). |
