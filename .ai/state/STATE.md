@@ -3,12 +3,18 @@
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
 **Workflow:** feature-delivery — Maude v1.0 roadmap
-**Phase:** canvas-figjam-feel — Wave 3 done (9/9, T25–T33)
-**Status:** ready-for-review — user-side smoke + critic panel + commit pending
+**Phase:** —
+**Status:** done — canvas-figjam-feel shipped 2026-05-26 (commit `8654dab`, pushed to main)
 **Started:** 2026-05-26
 **Updated:** 2026-05-26
-**Active task:** canvas-figjam-feel.md — Wave 3 complete; next is `/flow:done` or user-side critic pass
-**Active plan:** .ai/plans/canvas-figjam-feel.md
+**Active task:** —
+**Active plan:** —
+
+## History
+
+| Date | Phase | Status | Note |
+| ---- | ----- | ------ | ---- |
+| 2026-05-26 | canvas-figjam-feel | done | Wave 1+2+3 (T1–T33) + Wave 2.7/3.5/3.6 user-feedback batches. Commit `8654dab` (+2293/-89 across 23 files). Scenario 9/9 PASS web-desktop; design-system-guard / a11y-auditor / security-auditor: 0 blockers each, 11 polish warnings deferred to Wave 3.7. Plan archived. |
 
 ## Execution Progress — canvas-figjam-feel (Wave 3, 2026-05-26)
 

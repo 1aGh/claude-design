@@ -722,3 +722,39 @@ User-supplied feedback after Wave 1 → task assignment:
 Critic + research artifacts:
 - design-critic rev 2 report — inline in this session (9 blockers, 4 warnings, ordering recommendation)
 - ux-research-agent payload — `.design/_history/_system/maude-canvas-4d4b0f9f-domain-research-ux-patterns.json` (17 queries, FigJam Section vs Figma Frame, tldraw STROKE_SIZES, FigJam color-preview-attached-to-cursor pattern, Excalidraw resize anti-patterns)
+
+---
+
+## Retro
+
+Closed 2026-05-26 with commit `8654dab` — 23 files, +2293/-89 lines.
+
+**What worked**
+
+- **Three-wave structure** (visual → behavioral → user-grievance) absorbed two rounds of post-implementation feedback (Wave 3.5, Wave 3.6) without rebuilding the plan. The user-grievance traceability table at the end let me jump straight from a one-line complaint to the right code surface every time.
+- **Live agent-browser verification** beat the heavy critic-panel loop. Every Wave 3.5/3.6 fix landed with a `pointerdown→pointerup→click` synthetic-event probe that asserted the exact behavior the user described — caught the G3/G7 root cause (chrome filters missing toolbar surfaces) in one session, where a static-only review would have missed it.
+- **DDR-046 as a load-bearing anchor**. Rev 2's "dashed = group container, solid = active subject, dashed+fill = marquee" idiom held up through every Wave 3 addition. The pattern repeated cleanly for ContextualToolbar (floating chrome contract) and EqualSpacingHandles (decorative non-accent pink). Future floating-overlay additions should cite DDR-046 by default.
+- **Scenario spec written AFTER implementation, BEFORE /done**. The 9-step `canvas-figjam-feel` spec at `.ai/scenarios/canvas-figjam-feel/spec.md` codified what the user-grievance fixes are actually checking. Future regression runs read this file, not the plan's prose. Spec-after-implementation worked here because the plan's "Validation" section was already a rough scenario — formalizing it into a runnable spec was a 1-hour task.
+
+**What didn't**
+
+- **Canvas-cache mtime gate had a fatal blind spot.** `canvasCache` in `http.ts` invalidated only on `_lib/` file events. After DDR-025 moved canvas-lib into the dev-server, edits to `canvas-shell.tsx` / `contextual-toolbar.tsx` / etc. **never** flushed the cache — the iframe served pre-edit bundles regardless of hard reload. Cost me ≥ 30 min of G3/G7 debugging chasing phantom bugs that were already fixed in source. Fix landed in this commit (recursive `fs.watch` over `DEV_SERVER_ROOT`). Pre-`/flow:done` rule for future maude-on-itself dev: rebuild + restart dev-server after any `plugins/design/dev-server/**/*.tsx` edit until cache invalidation is more granular.
+- **The "click-on-empty clears selection" decision was reverted twice.** Wave 2.7 dropped click-clear in favor of Esc-only. Wave 3.5 (G1) brought it back. Both decisions were user-grievance-driven, both felt right at the moment. The lesson: empty-world click-handling is a load-bearing UX call deserving its own DDR rather than living in one-line plan revisions. Add a follow-up: DDR-049 (or similar) — "click-to-deselect is the default; Esc is the explicit-deselect fallback. Floating chrome surfaces are not 'empty world' — they're listed in marquee chrome filters."
+- **Synthetic event scripts in scenario-runner needed careful ordering** (`pointerdown(buttons=1) → mousedown → pointerup(buttons=0) → mouseup → click`). agent-browser has no native modifier-click. Spec.md now documents the working recipe in a "Tooling notes" comment, but the next scenario author will hit the same trap. Either upstream a helper to `.ai/scenarios/_lib/` or land a PR against agent-browser's `click` for `--meta` / `--shift` flags.
+
+**What to change in /plan or /execute next time**
+
+- **/plan should include a "scenario spec stub" section** for any UI-touching feature, mirroring the existing "Validation" section but in the scenario-runner protocol (steps + assertions + screenshots). The plan template's Validation section is verbose prose — the scenario spec is executable. Both, not either-or.
+- **/execute should check `bundle freshness` before declaring a task complete** when working in the dev-server-on-itself dogfooding loop. A quick `grep -c <recent-string> dist/client.bundle.js` after each edit would have caught the stale-cache issue immediately. Could ship as a `flow:utils-verify` extension for this repo specifically.
+- **The "user picks scope" interrupt pattern** (AskUserQuestion at session start for Wave 3 scope, again at /flow:done for validate intensity) was the right tradeoff between blind-autonomy and stop-and-ask. Worth promoting to a /flow:execute convention for any wave > 5 tasks.
+
+**Follow-up scopes (not blocking the commit)**
+
+- Wave 3.7 polish: token-discipline (pink-dot token, hardcoded easings, danger color, gradient slash, OKLCH palette, accent fallback) per design-system-guard's 6 warnings — single-pass refactor across `equal-spacing-handles.tsx`, `annotations-context-toolbar.tsx`, `marquee-overlay.tsx`, `canvas-shell.tsx`.
+- a11y polish: focus rings + touch-target min-height + white-swatch border + keyboard-nudge AT-bail. Greppable, one-pass across `.dc-elem-ctx-tb button`, `.dc-multi-artboard-tb button`, `.dc-annot-ctx-sw`, `.dc-annot-ctx-btn`.
+- Element-marquee scenario + LOD scenario (spec.md "Follow-ups" §).
+- DDR-049 (proposed) — empty-world-click deselect contract + floating chrome filter discipline.
+
+**Time-in-execution**
+
+Plan rev 1 (Wave 1) + rev 2 (Wave 2) was committed 2026-05-26 morning. Wave 3 + 3.5 + 3.6 ran across this session — net ~6 hours of execution (excluding the heavy /validate batch which ran in parallel during commit prep).

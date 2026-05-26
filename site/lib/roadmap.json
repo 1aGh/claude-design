@@ -1,7 +1,18 @@
 {
-  "generated": "2026-05-26T09:02:56.842Z",
+  "generated": "2026-05-26T10:49:53.633Z",
   "currentPhase": null,
   "phases": [
+    {
+      "id": "canvas-figjam-feel",
+      "title": "Feature: Canvas viewport — FigJam-grade direct-manipulation feel",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/archive/canvas-figjam-feel.md",
+      "archived": true,
+      "phaseKey": null
+    },
     {
       "id": "client-tree-restructure",
       "title": "Client tree restructure — sidecar nesting, DS-primary section, hidden-files toggle",
@@ -366,6 +377,17 @@
       "phaseKey": "19"
     },
     {
+      "id": "phase-3.7-setup-ds-hardening-and-motion-subsystem",
+      "title": "Phase 3.7 — `/design:setup-ds` hardening + motion subsystem unification",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Two interlocked workstreams, one phase, because the visual-sanity gate (workstream A) is the same screenshot pass that catches the motion regressions workstream B prevents — splitting them would re...",
+      "planPath": ".ai/plans/phase-3.7-setup-ds-hardening-and-motion-subsystem.md",
+      "archived": false,
+      "phaseKey": "3.7"
+    },
+    {
       "id": "phase-8-live-collaboration-yjs-lan",
       "title": "Phase 8: Live collaboration foundation (multi-tab + hub-ready)",
       "status": "planned",
@@ -454,15 +476,15 @@
       "phaseKey": "17"
     },
     {
-      "id": "canvas-figjam-feel",
-      "title": "Feature: Canvas viewport — FigJam-grade direct-manipulation feel",
+      "id": "phase-20-canvas-undo-redo",
+      "title": "Feature: Canvas Undo / Redo (Cmd+Z / Cmd+Shift+Z)",
       "status": "planned",
       "shipTarget": null,
       "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
-      "planPath": ".ai/plans/canvas-figjam-feel.md",
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports (DDR-045 paths, DDR-013 module layout, DDR-048 input-router classify table).",
+      "planPath": ".ai/plans/phase-20-canvas-undo-redo.md",
       "archived": false,
-      "phaseKey": null
+      "phaseKey": "20"
     },
     {
       "id": "phase-a-deps-and-preflight",
