@@ -612,6 +612,23 @@ function translateOne(s: Stroke, dx: number, dy: number): Stroke {
   return s; // text inherits its host's bbox
 }
 
+/**
+ * Reference-equal stroke comparison — true when the two arrays carry the same
+ * stroke object references in the same order. Used by the annotation drag
+ * onPointerUp to skip pushing an undo record when the gesture didn't actually
+ * move anything (zero movement OR snapshot mapped through a no-op translate
+ * back to the original references — `translateOne` short-circuits when dx=dy=0
+ * because new objects are still created, so we compare references defensively).
+ */
+export function strokesShallowEqual(a: readonly Stroke[], b: readonly Stroke[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 // Annotations visibility now lives in use-annotations-visibility.tsx so the
 // ToolPalette (a sibling under CanvasRouter, not a descendant of this layer)
 // can read the same state. Re-exported here for back-compat.
@@ -1050,11 +1067,19 @@ export function AnnotationsLayer() {
   //   - Cmd / Cmd+Shift falls through to element-selection (we bail).
   // Once a stroke is selected, clicking inside its bbox starts a drag.
 
+  /**
+   * Annotation drag state. Snapshot of strokes captured at pointerdown so the
+   * whole gesture (pointermove × N → pointerup) commits as ONE undo record at
+   * release time. Without the snapshot, each pointermove tick became its own
+   * `translateStrokes` call and each call became its own undo record — Cmd+Z
+   * had to be pressed dozens of times to walk back a single drag.
+   */
   const dragStateRef = useRef<{
     pointerId: number;
     startWX: number;
     startWY: number;
     movedIds: string[];
+    snapshot: Stroke[];
   } | null>(null);
 
   // Drag-select marquee state. World-coord rectangle (anchor + cursor); the
@@ -1123,29 +1148,51 @@ export function AnnotationsLayer() {
           annotSel.replace(strokeId);
           ids = [strokeId];
         }
+        // Capture a snapshot of all strokes at drag start. Every pointermove
+        // re-translates FROM the snapshot using the cumulative cursor delta
+        // (NOT a delta-from-last-frame mutation), so dragging back to origin
+        // restores positions exactly. Optimistic state-only updates during
+        // the move; ONE undo record + ONE server PUT fires on pointerup.
+        const dragSnapshot = strokesRef.current.slice();
         dragStateRef.current = {
           pointerId: e.pointerId,
           startWX: wx,
           startWY: wy,
           movedIds: ids,
+          snapshot: dragSnapshot,
         };
+        const movedSet = new Set(ids);
         const onMove = (mv: PointerEvent) => {
           const st = dragStateRef.current;
           if (!st || mv.pointerId !== st.pointerId) return;
           const [cwx, cwy] = screenToWorld(mv.clientX, mv.clientY);
           const dx = cwx - st.startWX;
           const dy = cwy - st.startWY;
-          if (dx === 0 && dy === 0) return;
-          strokesStore.translateStrokes(st.movedIds, dx, dy);
-          st.startWX = cwx;
-          st.startWY = cwy;
+          // Drag-back-to-origin: restore exact references so the pointerup
+          // shallow-equality check skips committing a no-op record.
+          const next =
+            dx === 0 && dy === 0
+              ? st.snapshot
+              : st.snapshot.map((s) => (movedSet.has(s.id) ? translateOne(s, dx, dy) : s));
+          // Local React state only. No commitStrokes — no PUT, no undo push.
+          setStrokesState(next);
         };
         const onUp = (up: PointerEvent) => {
-          if (up.pointerId !== dragStateRef.current?.pointerId) return;
+          const st = dragStateRef.current;
+          if (!st || up.pointerId !== st.pointerId) return;
           dragStateRef.current = null;
           document.removeEventListener('pointermove', onMove, true);
           document.removeEventListener('pointerup', onUp, true);
           document.removeEventListener('pointercancel', onUp, true);
+          // Commit the gesture as ONE record. Skip on zero-movement
+          // (click without drag past threshold or drag back to origin).
+          const final = strokesRef.current;
+          if (strokesShallowEqual(st.snapshot, final)) return;
+          commitStrokes(
+            st.snapshot,
+            final,
+            `move ${st.movedIds.length} stroke${st.movedIds.length === 1 ? '' : 's'}`
+          );
         };
         document.addEventListener('pointermove', onMove, true);
         document.addEventListener('pointerup', onUp, true);

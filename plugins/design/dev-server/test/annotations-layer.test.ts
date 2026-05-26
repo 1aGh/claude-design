@@ -20,6 +20,7 @@ import {
   penPathD,
   rid,
   strokeHitTest,
+  strokesShallowEqual,
   strokesToSvg,
 } from '../annotations-layer.tsx';
 
@@ -415,5 +416,48 @@ describe('annotations-layer / strokes round-trip is stable for arrays', () => {
 
   test('identical input yields identical output (no randomness)', () => {
     expect(strokesToSvg(sample)).toBe(strokesToSvg(sample));
+  });
+});
+
+describe('annotations-layer / strokesShallowEqual (drag no-op gate)', () => {
+  const pen: PenStroke = {
+    id: 'p',
+    tool: 'pen',
+    color: '#000',
+    width: 2,
+    points: [[0, 0]],
+  };
+  const rect: RectStroke = {
+    id: 'r',
+    tool: 'rect',
+    color: '#000',
+    width: 2,
+    x: 0,
+    y: 0,
+    w: 10,
+    h: 10,
+    fill: null,
+  };
+
+  test('same reference → true', () => {
+    const arr = [pen, rect];
+    expect(strokesShallowEqual(arr, arr)).toBe(true);
+  });
+
+  test('different references but same entries (same order) → true', () => {
+    expect(strokesShallowEqual([pen, rect], [pen, rect])).toBe(true);
+  });
+
+  test('different entry reference at any slot → false', () => {
+    const penClone: PenStroke = { ...pen };
+    expect(strokesShallowEqual([pen, rect], [penClone, rect])).toBe(false);
+  });
+
+  test('different length → false', () => {
+    expect(strokesShallowEqual([pen], [pen, rect])).toBe(false);
+  });
+
+  test('empty arrays → true', () => {
+    expect(strokesShallowEqual([], [])).toBe(true);
   });
 });
