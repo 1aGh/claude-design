@@ -35,6 +35,7 @@ import { createPortal } from 'react-dom';
 
 import { AnnotationContextToolbar } from './annotations-context-toolbar.tsx';
 import { useViewportControllerContext, useWorldRefContext } from './canvas-lib.tsx';
+import { crossedDragThreshold } from './input-router.tsx';
 import { AnnotationResizeOverlay } from './use-annotation-resize.tsx';
 import { useAnnotationSelectionOptional } from './use-annotation-selection.tsx';
 import { useAnnotationsVisibility } from './use-annotations-visibility.tsx';
@@ -1104,8 +1105,9 @@ export function AnnotationsLayer() {
       const addToSelection = e.shiftKey;
       let moved = false;
       const onMove = (mv: PointerEvent) => {
-        const distSq = (mv.clientX - startClientX) ** 2 + (mv.clientY - startClientY) ** 2;
-        if (!moved && distSq < 16) return; // 4 px threshold
+        if (!moved && !crossedDragThreshold(startClientX, startClientY, mv.clientX, mv.clientY)) {
+          return;
+        }
         moved = true;
         const [cwx, cwy] = screenToWorld(mv.clientX, mv.clientY);
         setMarquee({ ax: wx, ay: wy, bx: cwx, by: cwy });

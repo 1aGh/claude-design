@@ -18,10 +18,9 @@
 import { useEffect, useRef } from 'react';
 
 import { useArtboardsContext } from './canvas-lib.tsx';
+import { DRAG_THRESHOLD_PX } from './input-router.tsx';
 import { type Selection, useSelectionSet } from './use-selection-set.tsx';
 import { useToolMode } from './use-tool-mode.tsx';
-
-const DRAG_THRESHOLD_PX = 4;
 
 const MARQUEE_CSS = `
 .dc-cv-marquee {

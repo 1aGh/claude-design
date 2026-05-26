@@ -38,6 +38,10 @@ import {
 
 import { AnnotationsLayer } from './annotations-layer.tsx';
 import { ArtboardMarqueeOverlay } from './artboard-marquee.tsx';
+import { EqualSpacingHandles } from './equal-spacing-handles.tsx';
+import { ElementMarqueeOverlay } from './marquee-overlay.tsx';
+import { useCursorModifiers } from './use-cursor-modifiers.tsx';
+import { useKeyboardDiscipline } from './use-keyboard-discipline.tsx';
 import {
   type ArtboardRect,
   SnapGuideOverlay,
@@ -278,6 +282,14 @@ function CanvasCore({
       host.removeAttribute('data-active-tool');
     };
   }, [hostRef, tool]);
+
+  // T28 — modifier-aware cursor (Alt → copy on cd-id, Shift → crosshair on
+  // body padding). CSS-driven once data-mod-* is reflected on the host.
+  useCursorModifiers(hostRef);
+  // T29 — arrow nudge (artboards) + Cmd+A select-all (active artboard).
+  // Cmd+D duplicate deferred; no live duplicate channel for either artboards
+  // or stamped elements yet.
+  useKeyboardDiscipline();
 
   const artboardsCtx = useArtboardsContext();
   const dragBus = useDragStateContext();
@@ -781,9 +793,11 @@ function CanvasRouter({
       <AnnotationsLayer />
       <ToolPalette />
       <ArtboardMarqueeOverlay />
+      <ElementMarqueeOverlay />
       <HoverHalo el={hoverEl} />
       <SelectionHalos />
       <GroupBbox />
+      <EqualSpacingHandles />
       <MultiArtboardToolbar distributeArtboards={distributeArtboards} />
       <SnapGuideOverlay />
     </>
