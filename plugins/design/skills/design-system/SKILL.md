@@ -487,9 +487,28 @@ This pattern overrides the `--accent*` family per-tenant — compatible with any
 
 **3. `[data-theme="dark|light"]` parameterization.** Always emit at least `[data-theme="dark"]` (or `[data-theme="light"]`, whichever is the default). When `config.json.themeDefault == "both"`, emit both blocks with identical token shapes but different surface/text values. The completeness-critic V18 enforces this.
 
-### Pre-scaffold — claim scan + emit `_scaffold-roster.yaml`
+### Pre-scaffold — real-asset sweep + claim scan + emit `_scaffold-roster.yaml`
 
-**Step 1 — Claim scan (mandatory before roster).** Read the draft README + SKILL.md you're about to author for this DS. `grep` the prose for these substrings: `mascot`, `glyph`, `logotype`, `wordmark`, `illustration`, `hedgehog`, `character`, `mark`. For every match, ensure the receiving file (logo.tsx for wordmark/mark, ≥1 `assets/glyphs/*.svg` for glyph, etc.) is **listed as a `pending` row in the roster you're about to emit**. See `_MAPPING.md` "Claim → receipt" for the canonical claim→file table. This pre-emission scan is what prevents the `assets/glyphs/` empty-directory regression the studio-2 retro flagged (BAD-4).
+**Step 0 — Real-asset sweep (mandatory; closes D-2 from the imprint retro).** Before ANY placeholder asset gets written in Batch A, grep the target repo for production sources of brand assets. The cost is < 1 s on a 20k-file monorepo, < 2 s on 50k-file. The cost of NOT running it (placeholder bleed into Batch C sub-agent prompts; user catching the made-up "S" SVG mid-flow) is one full fix-pass.
+
+```bash
+bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/asset-sweep.sh" \
+  --root "$CLAUDE_PROJECT_DIR" \
+  --query "logo,mark,wordmark,mascot,glyph,illustration"
+```
+
+The helper emits one JSON object — keys = nouns, values = repo-relative paths (sorted, deduped). For each noun:
+
+| Hits | Action |
+| --- | --- |
+| **Exactly 1** at a conventional path (e.g. `packages/ui/.../logo/`, `frontend/.../public/logo.svg`) | Copy the asset 1:1 into `<designRoot>/system/<ds>/assets/<noun>/`. Record the source path in the roster's `assets:` block so Batch C sub-agents reference the real asset, not a placeholder. |
+| **Exactly 1** at a non-conventional path | Treat as 1-hit but post a 1-line "auto-picked <path> for <noun>" so the user can correct. |
+| **Multiple hits** | `AskUserQuestion` with each hit as an option ("Use <path> as the canonical <noun>?" / "None — author placeholder"). Default = the first hit at the most conventional-looking path. |
+| **Zero hits** | Placeholder authorship is permitted. The placeholder filename MUST end `-placeholder.svg` so it's visually obvious in greps (e.g. `assets/logo/logo-placeholder.svg`). Roster's `assets:` block records `source: placeholder`. |
+
+The substring-match policy is documented in `asset-sweep.sh --help`: noun matches case-insensitively against basename OR parent directory segment, with `-maxdepth 6` and standard build/vendor excludes (`node_modules/`, `.git/`, `.design/_history/`, `.next/`, `dist/`, `build/`, `coverage/`, `.turbo/`, `.cache/`). False-positive bleed across overlapping nouns (e.g. `mark` substring-matching `Wordmark.svg`) is resolved at the AskUserQuestion step — the agent does NOT auto-pick when multiple nouns claim the same file.
+
+**Step 1 — Claim scan (mandatory before roster).** Read the draft README + SKILL.md you're about to author for this DS. `grep` the prose for these substrings: `mascot`, `glyph`, `logotype`, `wordmark`, `illustration`, `hedgehog`, `character`, `mark`. For every match, ensure the receiving file (logo.tsx for wordmark/mark, ≥1 `assets/glyphs/*.svg` for glyph, etc.) is **listed as a `pending` row in the roster you're about to emit**. See `_MAPPING.md` "Claim → receipt" for the canonical claim→file table. This pre-emission scan is what prevents the `assets/glyphs/` empty-directory regression the studio-2 retro flagged (BAD-4). **Cross-reference with Step 0:** for every claim where the sweep returned a hit, the corresponding roster row's `source:` field flags the real-asset copy (so downstream sub-agents don't re-invent).
 
 **Step 2 — Emit `_scaffold-roster.yaml`.** The main agent writes the roster to `<designRoot>/_history/_system/<ds>-000-scaffold-roster.yaml`. The roster lists every file the scaffold will produce, plus its dependency closure and batch assignment. **The roster is the contract.** Sub-agents write their slice, then update `status: written` (with a `loc: <N>` field) on each row. Main agent reconciles at the end — any row stuck in `pending` is a regression flag.
 
@@ -819,41 +838,42 @@ all_ds:      false
 
 The critic emits a JSON verdict. If it returns **blockers**, the bootstrap flow surfaces them in the next-step block and recommends the user re-run with `--force` after addressing each. Warnings are listed in the completion message but do NOT block. Tier 3 (free-form) acknowledgements are listed informationally.
 
-### Visual sanity check (mandatory — canonical screenshot helper)
+### Visual sanity check (mandatory — fail loud, never silently elide)
 
-> **This step exists because completeness-critic is structural only.** It cannot see that the rendered output looks like a generic public-component-library template. The screenshots feed the aesthetic critics in the next step AND give the user a fast visual proof.
+> **This step exists because completeness-critic is structural only.** It cannot see that the rendered output looks like a generic public-component-library template, that the motion specimen is dead-on-arrival, or that a logo asset 404s because of a relative-URL gotcha in canvas-shell routing. The screenshots feed the aesthetic critics in the next step AND give the user a fast visual proof.
+>
+> **Closes D-3 + D-4 in the imprint-bootstrap retro** (`.ai/logs/system-reviews/imprint-bootstrap-review-2026-05-26.md`): both failure modes were caught by the user, not the loop, because the visual sanity step was treated as soft + skipped when dev-server boot "looked heavy". Phase 3.7 flips it: dev-server boot is **mandatory**; failure surfaces as `AskUserQuestion`, never silently elided.
 
-Use the canonical screenshot helper — `${CLAUDE_PLUGIN_ROOT}/dev-server/bin/screenshot.sh`. It auto-detects `agent-browser` and falls back to `npx playwright` so the step doesn't silently skip when one engine is missing. If both are unavailable, surface a warning in the next-step block ("install agent-browser or playwright for visual verification") and continue with source-only review — make the gap explicit.
-
-**1. TSX specimens require the dev-server.** Pre-Phase-19 spec said "use `file://` URLs". That worked for the HTML era. The current scaffold ships `.tsx` (DDR-019) — the browser can't compile JSX on its own, so `file://*.tsx` shows raw source. `screenshot.sh` now hard-errors with exit 2 on `file://*.tsx`. Route through the dev-server instead: it transpiles TSX via `_canvas-shell.html?canvas=<rel>` and the canvas-shell route returns just the canvas (no file-tree / tab chrome — same clean composition the `file://` path used to give for HTML specimens). Phase 19 / DDR-044.
-
-**2. Boot the dev-server first** if it isn't already up (the bootstrap-check helper handles this):
+Use the canonical helper — `${CLAUDE_PLUGIN_ROOT}/dev-server/bin/visual-sanity.sh`. It boots the dev-server (via `server-up.sh`), screenshots N specimens (via `screenshot.sh`), writes them + a `_manifest.json` under `<designRoot>/_history/_system/<ds>-visual-sanity-<ISO>/`, and exits with a distinct code per failure mode.
 
 ```bash
-PORT=$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/server-up.sh")
+bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/visual-sanity.sh" \
+  --ds "<ds-name>" \
+  --specimens "colors-accent,motion,ui_kits-desktop-showcase,empty-state,logo"
+# Pass only specimens that were actually written this run — derive from the
+# reconciled roster (rows with status: written), not a hardcoded list.
 ```
 
-**3. Screenshot 3 signature specimens** to `<designRoot>/_history/_system/<ds>-000-bootstrap-screenshots/`:
+**Signature trio (mandatory when present):**
 
-- `colors-accent.png` — proves the accent color renders as intended
-- `empty-state.png` — proves the brand/personality moment (mascot, copy voice) lands
-- `ui_kits-desktop-showcase.png` — proves the DS works on a real product surface (the multi-screen showcase, not the catalog launcher)
+- `colors-accent` — proves the accent color renders as intended (the single highest-signal token decision)
+- `motion` — proves motion plays on initial paint, not just on hover. Catches the dead-on-arrival regression Phase 3.7 workstream B exists to prevent. **`motion-critic` is auto-routed in the panel below when this specimen exists, regardless of opt-out scope.**
+- `ui_kits-desktop-showcase` — proves the DS works on a real product surface (the multi-screen showcase, not the catalog launcher)
 
-```bash
-OUT_DIR="<designRoot>/_history/_system/<ds>-000-bootstrap-screenshots"
-mkdir -p "$OUT_DIR"
-for specimen in colors-accent empty-state ui_kits-desktop-showcase; do
-  REL="system/<ds>/preview/${specimen}.tsx"
-  URL_ENC=$(printf '%s' "$REL" | sed 's/ /%20/g')
-  bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" \
-    --url "http://localhost:${PORT}/_canvas-shell.html?canvas=${URL_ENC}" \
-    --full --out "$OUT_DIR/${specimen}.png"
-done
-```
+Additional specimens (capture when scaffolded): `empty-state` (brand/voice moment), `logo` (asset integrity — was D-4 in the retro), `components-buttons` (the most-trafficked component).
 
-**Degraded mode:** if `server-up.sh` fails (e.g. Bun not on PATH, port locked, marketplace-cache install not yet self-healed), DO NOT silently fall back to `file://` on the TSX. Surface the warning in the next-step block (`"visual sanity skipped — could not boot dev-server: <reason>; aesthetic critics will run source-only"`) and continue. Source-only review is OK as a degraded path; ghosting the warning is what bit the studio-2 / new-repo retros.
+**TSX specimens require the dev-server.** Pre-Phase-19 spec said "use `file://` URLs". That worked for the HTML era. The current scaffold ships `.tsx` (DDR-019) — the browser can't compile JSX on its own, so `file://*.tsx` shows raw source. `screenshot.sh` hard-errors with exit 2 on `file://*.tsx`. The helper routes through the dev-server's `_canvas-shell.html?canvas=<rel>` transpile path. Phase 19 / DDR-044.
 
-**3. Read each screenshot back** with the `Read` tool so they're in your visual context. Direct visual scrutiny BEFORE you spawn the aesthetic critics — if the accent is obviously the wrong hue or the layout is obviously broken, fix it in source NOW rather than asking critics to confirm what you can already see.
+**Handle helper exit codes — never silently elide.** The helper's exit codes map 1:1 onto the recovery path:
+
+| Exit | Meaning | Action |
+| --- | --- | --- |
+| `0` | All specimens captured | `Read` each PNG into context (mandatory — direct visual scrutiny BEFORE spawning aesthetic critics). |
+| `1` | Dev-server boot failed | **`AskUserQuestion`** — "Dev-server boot failed: `<reason from _server.log>`. Skip visual sanity (aesthetic critics run source-only) or fix and retry?" Record selection to `<designRoot>/_history/_system/<ds>-bypass-log.md`. |
+| `3` | One or more screenshot(s) failed | Surface the failing specimen names; treat as a soft warning (continue with the captured PNGs), and add a `recommend /design:edit "<specimen> failed to render"` line to the next-step block. |
+| `4` | No requested specimens existed on disk | Indicates a scaffold gap. Re-check the roster reconciliation; the bypass-log records the gap. |
+
+**Read each captured PNG with the `Read` tool** so they're in your visual context. Direct visual scrutiny BEFORE you spawn the aesthetic critics — if the accent is obviously the wrong hue, the motion specimen is blank on first frame, or a logo shows the broken-image icon, fix it in source NOW rather than asking critics to confirm what you can already see.
 
 ### 4 kola značky — critic panel (mandatory)
 
@@ -916,8 +936,9 @@ Kolo 3 — Konzistence:
   brand:               <N> blockers, <N> warnings
   copy:                <N> blockers, <N> warnings
 
-Visual proof — screenshots saved to .design/_history/_system/000-bootstrap-screenshots/:
-  colors-accent.png · empty-state.png · ui_kits-desktop-index.png
+Visual proof — screenshots saved to .design/_history/_system/<ds>-visual-sanity-<ISO>/:
+  colors-accent.png · motion.png · ui_kits-desktop-showcase.png · empty-state.png · logo.png
+  (_manifest.json records which were captured / missing / failed)
 
 [IF aspiration < 3.0 OR any Kolo-2 blocker:]
 ⚠ Kolo 2 (Atraktivita) did NOT pass. The DS is structurally valid but does not match the brief's quality bar.
