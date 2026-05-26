@@ -1,5 +1,5 @@
 {
-  "generated": "2026-05-26T12:50:10.314Z",
+  "generated": "2026-05-26T13:01:10.477Z",
   "currentPhase": null,
   "phases": [
     {
@@ -485,6 +485,17 @@
       "planPath": ".ai/plans/phase-17-docs-site-infographics.md",
       "archived": false,
       "phaseKey": "17"
+    },
+    {
+      "id": "phase-21-annotation-vocabulary-figjam",
+      "title": "Phase 21 — Annotation vocabulary expansion (FigJam-feel)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Today the annotation toolkit ships pen / rect / ellipse / arrow / text (anchored only) / eraser. Real review workflows that the user keeps reaching FigJam for need three things we don't have:",
+      "planPath": ".ai/plans/phase-21-annotation-vocabulary-figjam.md",
+      "archived": false,
+      "phaseKey": "21"
     },
     {
       "id": "phase-a-deps-and-preflight",
