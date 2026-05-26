@@ -120,8 +120,7 @@ let server: BunServer;
       );
     } else {
       console.error(
-        `\n  Ports ${BASE_PORT}-${BASE_PORT + MAX_TRIES - 1} are all in use. ` +
-          `Stop a running dev-server or pass --port <N>.\n`
+        `\n  Ports ${BASE_PORT}-${BASE_PORT + MAX_TRIES - 1} are all in use. Stop a running dev-server or pass --port <N>.\n`
       );
     }
     throw lastErr;

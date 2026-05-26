@@ -1,5 +1,103 @@
 # @1agh/maude
 
+## 0.19.0
+
+### Minor Changes
+
+- 14aa7f9: `feat(design)`: bias-free design plugin templates
+
+  Strip every visual prior from `plugins/design/templates/` so the discovery flow becomes the only place visual choices are made. Previously the templates smuggled a complete "Linear-ish dark dashboard" opinion into every project that ran `/design:setup-ds`: a 4 px spacing scale, an 8-step type ladder, specific easing curves, OKLCH-only color space as a hard rule, a one-accent rule as a structural ban, a 1200 px max-width, 44 × 44 touch targets (Apple-flavored), Inter font, indigo accent, and a dark slate background — none of which the discovery had asked for.
+
+  Three coordinated changes (per [DDR-043](.ai/decisions/DDR-043-bias-free-design-plugin-templates.md)):
+
+  - **Templates become true skeletons.** Every hardcoded numeric / curve / hue in `core/colors_and_type.css.tpl`, `README.philosophy.md.tpl`, `SKILL.md.tpl`, `canvas.tsx.template` is now a `{{placeholder}}` fed by the discovery payload. The only hardcoded values that remain are the `prefers-reduced-motion: reduce` 1 ms collapse (a11y) and the token NAME contract.
+  - **Critic gates become discovery-driven.** `design-system-completeness-critic` C7 (one-accent) and V2 (OKLCH-required) now read `config.accentStrategy` and `config.colorSpace` and gate accordingly. Defaults preserve backwards compatibility: missing fields → `single` + `oklch`. Existing downstream projects keep passing without any config change.
+  - **`maude design init --no-discovery` defaults are deliberately neutral.** The CLI now emits an achromatic grayscale palette with zero radii, no shadows, system fonts, and a graphite accent — so the output looks obviously unfinished and the designer is nudged toward `/design:setup-ds` instead of unconsciously shipping the default aesthetic. Previously this mode produced a polished-looking dark indigo dashboard that designers kept.
+
+  Also cleaned the worst bias injections in 7 inspiration specimens (`logo.html`, `ui_kits-mobile-showcase.html`, `colors-themes-side-by-side.html`, `colors-accent.html`, plus NOTES comments on the presence/team-accent demos clarifying that their hardcoded OKLCH values are illustrative only).
+
+  No breaking changes — every existing downstream project's `colors_and_type.css` still parses, the critic still passes with the backwards-compat defaults, and the dev-server / canvas runtime are untouched. Run `/design:setup-ds` to take advantage of the wider design space.
+
+- 8728c24: `feat(cli)`: notify users when a newer `@1agh/maude` is published
+
+  Every `maude` invocation now prints a one-line stderr notice when a newer version is available on npm — covers `maude init`, `maude config`, `maude design serve|init|export`, `maude help`, `maude version`, plus the legacy `mdcc` alias (which already prints its own deprecation warning and now follows it with the update hint when one exists).
+
+  **Hot path is sync and never blocks on the network.** The hook in `cli/bin/maude.mjs` reads `~/.cache/maude/update-check.json` (respects `XDG_CACHE_HOME`) and only prints a notice if the cached `latest` is greater than the installed version. A detached child process refreshes the cache from `https://registry.npmjs.org/@1agh/maude/latest` with a 3 s timeout whenever the cache is missing or older than 24 h. The notice therefore appears on the run _after_ a new release rolls into cache — same lag pattern as `update-notifier`, and the price of not adding latency to every CLI call.
+
+  **Skip conditions** (any one wins): `MAUDE_NO_UPDATE_CHECK=1`, `NO_UPDATE_NOTIFIER=1`, `CI=true`, or stderr is not a TTY (pipes, redirects, CI logs). Zero new dependencies — uses `node:https` via global `fetch` and `node:child_process` for the detached refresh.
+
+  Output:
+
+  ```
+    ⚠ maude update available: 0.18.2 → 0.19.0
+      Run: npm i -g @1agh/maude@latest   (or pnpm add -g / bun add -g)
+  ```
+
+  Verified by priming the cache with a fake newer version (notice fires), by setting `CI=true` / `MAUDE_NO_UPDATE_CHECK=1` (silent), and by running the detached child directly against the npm registry (cache populated with the current published version). Unit tests cover the `cmpSemver` comparator under `cli/lib/update-check.test.mjs`.
+
+- 10df682: `fix(dev-server)`: marketplace-cache install boots cleanly on first try
+
+  Before this release, the documented happy-path — `/plugin marketplace add 1aGh/maude` → `/design:setup-ds project` → `/design:browse` — failed with a 404 on `/_client/client.bundle.js` and a 500 on `/_canvas-runtime/*` on a fresh machine. The marketplace install mechanism does a `git clone` (honors `.gitignore`), so `dist/` and `node_modules/` arrived empty even though `npm pack` shipped them. Three independent packaging gaps stacked into one broken first boot.
+
+  Seven coordinated fixes ship together (per [DDR-044](.ai/decisions/DDR-044-marketplace-install-vs-npm-install-artifact-strategy.md)):
+
+  - **Commit `dist/client.bundle.js` + `dist/styles.css` to git** (~270 KB) so marketplace clones get them out of the box. Per-platform binaries (~70–120 MB each) stay gitignored — they ship via `optionalDependencies` sub-packages per DDR-015.
+  - **`bun run build.ts` no longer ENOENT-crashes outside the monorepo.** The brittle `../../../package.json` read at `build.ts:73-74` now resolves `plugins/design/.claude-plugin/plugin.json` (always present in both npm and marketplace installs) with a try/catch fallback to `version: 'dev'`.
+  - **Boot-time self-heal in `server.ts`.** On startup, if `dist/client.bundle.js` or `node_modules/react/package.json` is missing, the server auto-runs `bun install --production` + `bun run build.ts` before writing `_server.json`. New `MAUDE_NO_AUTOBUILD=1` env flag opts out for read-only-filesystem deployments (server exits 1 with a remediation message instead). React, react-dom, lightningcss, magic-string, and oxc-parser moved from `devDependencies` → `dependencies` so `--production` pulls them. Extracted to a standalone `boot-self-heal.ts` module with full test coverage.
+  - **`runtime-bundle.ts` translates Bun-cache-corruption errors** (EISDIR/ENOENT on `~/.bun/install/cache/<pkg>@<version>/…`) into a one-line remediation: `Run \`bun pm cache rm <pkg>\` then reload the page.`New exported`bunCacheRemediation()` helper covers subpath specifiers (`react/jsx-runtime`→`bun pm cache rm react`).
+  - **`screenshot.sh` rejects `file://*.tsx`** with exit 2 and a hint pointing at `--port` — the dev-server's `_canvas-shell.html?canvas=<rel>` route is the only way to render TSX (browsers can't compile JSX). The bootstrap skill's "Visual sanity" step has been rewritten to require the dev-server first (the HTML-era `file://` recipe silently no-op'd on TSX scaffolds).
+  - **AskUserQuestion fallback documented in `SKILL.md` + `setup-ds.md`.** Stages 0 + 3 now declare a numbered-prose fallback for when the tool is unavailable (don't-ask mode, permission denial). Copy-pasteable templates included. Stage 1 is already prose-only by design.
+  - **Single-DS name-convention tension resolved.** New `name_source: "user" | "default"` field on `vision-brief.json`. `setup-ds` warns if `<name>` matches the repo basename (`/design:edit` auto-detection works best with the literal `project` for single-DS) but honors the user's choice either way. The completeness-critic's C2 dirname check now reads `name_source` — user-supplied names never trigger the divergence flag. Legacy briefs predating this release default to `"user"` (no false positives).
+
+  No breaking changes. Existing installs continue working with their committed `dist/` artifacts; the self-heal only fires on the gap scenarios. Source-of-record retro at `.ai/logs/system-reviews/maude-dev-server-bootstrap-review.md` (2026-05-25).
+
+### Patch Changes
+
+- e6bbb7b: `fix(dev-server)`: auto-increment port on collision + canvas-lib watch in compiled binary
+
+  Two unrelated dev-server bugs surfaced from a single `maude design serve` invocation in a second repo on a machine where the dev-server was already running for another project.
+
+  **Port collision (blocker).** `resolvePort()` returned 4399 unconditionally when neither `--port` nor `$PORT`/`$MDCC_DEV_PORT` was set, so the second `maude design serve` invocation on the same machine died with `EADDRINUSE`. Each running instance writes its own `_server.json` into its own `<designRoot>/`, so there was no other obstacle to parallel runs — just the hardcoded port. Fix: when the port is implicit, walk 4399 → 4408 retrying on `EADDRINUSE` and log `[port] 4399 busy, using 4400 instead.` on success. Explicit `--port`/`$PORT` stays a hard failure (so users notice their own collisions). `_server.json` records the actual bound port, so `server-up.sh` and the orchestrator pick up the right URL.
+
+  **canvas-lib watch ENOENT in compiled binary (cleanup).** Follow-up promised in the v0.18.2 changeset. `canvasLibPath()` joined `import.meta.dir` with `canvas-lib.tsx` — inside `bun --compile` standalone binaries that resolves to the virtual `/$bunfs/root`, so `fs.watch` failed with `ENOENT: ... '/$bunfs/root/canvas-lib.tsx'` at boot. Same DDR-045 bug class as v0.18.1 (`existsSync` against virtual fs) but for `fs.watch`. Fix: route through `DEV_SERVER_ROOT` from `paths.ts`. Side benefit: canvas-lib HMR now actually works in the compiled binary.
+
+  Verified by running a second dev-server against a scratch project while another was already listening on 4399 — the second instance bound 4400 cleanly and wrote `port: 4400` into its `_server.json`. No canvas-lib watch warning in the boot log.
+
+- 8100943: `fix(dev-server)`: greenfield `npm i -g @1agh/maude` actually boots (Phase 19.1)
+
+  v0.18.0 shipped seven fixes but had a load-bearing architectural bug that broke the very scenario it was supposed to repair. Three reports crashed `maude design serve` on a clean machine immediately:
+
+  ```
+  ⚠ first-boot: installing runtime deps (one-time, ~15s)…
+  ENOENT: no such file or directory, posix_spawn 'bun'
+  ```
+
+  **Root cause:** the boot self-heal, http route resolver, and runtime-bundle synthetic-entrypoint anchor all used `dirname(fileURLToPath(import.meta.url))` to find the dev-server install dir. In a `bun --compile` standalone binary that resolves to the **virtual** `/$bunfs/root` — bun's embedded filesystem — NOT a real disk path. Every `existsSync` check against it returned false, self-heal false-triggered, tried to `bun install` + `bun build`, ran into PATH inheritance issues in the spawned subprocess, and crashed. Even users who DID have bun installed hit this because compiled-binary spawn-context doesn't inherit shell PATH the same way subshells do. And even if the spawn HAD worked, npm install of the root `@1agh/maude` package never installs nested workspace deps (`plugins/design/dev-server/package.json`'s react/react-dom/etc.) — so the install target wouldn't exist either.
+
+  **Three coordinated fixes:**
+
+  1. **New `paths.ts` module** with `DEV_SERVER_ROOT`, `DIST_DIR`, `CLIENT_DIR`, `RUNTIME_BUNDLES_DIR` constants. Resolves the real disk path across all three runtime modes: (a) dev (`bun server.ts` — uses `import.meta.url`), (b) npm install (walks up from `process.execPath` past `@1agh/maude-<plat>/maude` to find `@1agh/maude/plugins/design/dev-server/`), (c) marketplace cache (same walk-up logic). Detects `/$bunfs/*` and `B:/~BUN/*` virtual paths explicitly. Falls back gracefully when nothing matches. Wired into `http.ts`, `runtime-bundle.ts`, `boot-self-heal.ts` (all consumers replaced).
+
+  2. **Pre-built runtime bundles ship in `dist/runtime/<slug>.js`.** Every release build now also produces 6 minified bundles (react, react-dom, react-dom/client, react/jsx-runtime, react/jsx-dev-runtime, pixi.js — total ~1.1 MB minified). Committed to git via `.gitignore` negation pattern (same precedent as `client.bundle.js` per DDR-044). `runtime-bundle.ts` now checks `dist/runtime/<slug>.js` first and serves it directly with no Bun.build call. Dynamic build remains as fallback for dev mode. This eliminates the runtime dependency on disk `node_modules/react` entirely — npm installs no longer need anything beyond what the tarball ships.
+
+  3. **`boot-self-heal.ts` radically simplified.** Dropped the `bun install` + `bun build` attempt (rooted in the broken assumption about paths and the wrong premise that npm would install nested deps). Now just verifies the two committed artifacts exist: `dist/client.bundle.js` and `dist/runtime/react.js`. If either is missing, prints a one-screen remediation with the looked-under path + the exact reinstall command. No more spawn, no more PATH issues, no more first-boot crashes — either the install is correct (passes silently) or it's broken (fails fast with actionable hint).
+
+  **Verified end-to-end:** the simulated npm install layout (binary at `<tmp>/lib/node_modules/@1agh/maude-darwin-arm64/maude`, dist at `<tmp>/lib/node_modules/@1agh/maude/plugins/design/dev-server/dist/`) resolves correctly via `paths.ts` walk-up, server boots without self-heal warnings, and curl smoke against `/_client/*` and `/_canvas-runtime/*` returns 200 across all 6 runtime sub-bundles. Pre-existing 351-test suite still green; 5 new tests cover `paths.ts` resolution and the simplified self-heal behavior (8 → 5 tests, drop install/build path coverage that no longer applies).
+
+  **Bundle size delta:** +1.1 MB committed (6 minified runtime bundles). Acceptable per DDR-044 precedent (committed artifacts > runtime dependency on disk + PATH that may not exist).
+
+  No breaking changes — v0.18.0 users who happened to have everything aligned still work, and the failure path is now graceful rather than catastrophic.
+
+- 4b8f35d: `fix(dev-server)`: paths.ts walk-up no longer requires package.json anchor
+
+  v0.18.1 shipped `paths.ts` to resolve real disk install root via `process.execPath` walk-up — but the `isDevServerDir()` check required BOTH `http.ts` AND `package.json` to be present. Turns out npm excludes nested workspace `package.json` files from the published tarball by default, so `plugins/design/dev-server/package.json` is absent in every npm install. The walk-up silently fell through to the virtual `/$bunfs/root`, self-heal then reported `dist/client.bundle.js` and `dist/runtime/react.js` missing (against the virtual path), and printed an unhelpful reinstall hint to a user whose install was actually correct.
+
+  Fix: drop the `package.json` check. `http.ts` alone is a sufficient anchor — process.execPath walk-up only traverses node_modules layers above the binary, so false-match risk from a stray `http.ts` somewhere in the user's tree is negligible.
+
+  Verified end-to-end against a real npm install of v0.18.1: replaced the binary in `~/.nvm/.../node_modules/@1agh/maude/node_modules/@1agh/maude-darwin-arm64/maude` with the fix, ran `maude design serve` in a fresh scratch project, server booted without self-heal warnings, `/_client/client.bundle.js` + `/_canvas-runtime/react.js` + `/_canvas-runtime/react-dom_client.js` all returned 200. Greenfield `npm i -g @1agh/maude` is now actually clean.
+
+  (Bonus deferred: `canvas-lib-resolver.ts` still uses `import.meta.url` for `fs.watch`, which logs a benign ENOENT warning against `/$bunfs/root/canvas-lib.tsx` in compiled binaries — doesn't block boot but should adopt `paths.ts` in a follow-up.)
+
 ## 0.17.2
 
 ### Patch Changes

@@ -37,7 +37,11 @@ function shouldSkip() {
 // Compare semver x.y.z (ignoring prerelease/build metadata). Returns
 // positive if a > b, negative if a < b, 0 if equal.
 export function cmpSemver(a, b) {
-  const parse = (v) => String(v).split(/[-+]/)[0].split('.').map((n) => Number(n) || 0);
+  const parse = (v) =>
+    String(v)
+      .split(/[-+]/)[0]
+      .split('.')
+      .map((n) => Number(n) || 0);
   const pa = parse(a);
   const pb = parse(b);
   for (let i = 0; i < 3; i += 1) {
@@ -136,6 +140,6 @@ export function runUpdateCheck(currentVersion) {
 
 // Entrypoint when invoked as a detached refresh child:
 //   node cli/lib/update-check.mjs --refresh
-if (process.argv[1] && process.argv[1].endsWith('update-check.mjs') && process.argv.includes('--refresh')) {
+if (process.argv[1]?.endsWith('update-check.mjs') && process.argv.includes('--refresh')) {
   refreshCache().catch(() => process.exit(0));
 }

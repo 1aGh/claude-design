@@ -1,5 +1,5 @@
 {
-  "generated": "2026-05-25T16:41:12.477Z",
+  "generated": "2026-05-26T06:30:48.204Z",
   "currentPhase": null,
   "phases": [
     {
@@ -356,18 +356,18 @@
     },
     {
       "id": "phase-8-live-collaboration-yjs-lan",
-      "title": "Phase 8: Live collaboration — \"Ambient multiplayer\" (LAN, no hub)",
+      "title": "Phase 8: Live collaboration foundation (multi-tab + hub-ready)",
       "status": "planned",
       "shipTarget": "v1.0",
       "date": null,
-      "summary": "Add Figma-grade live collaboration for ephemeral and add-only state — multi-cursor presence, selection awareness, viewport sync, and Yjs-backed comment threads — implemented as a local-first WebSoc...",
+      "summary": "Lay down the Yjs runtime, Awareness protocol, and persistence layer that Phase 9 needs — and as a side-effect, enable multi-tab collab on a single machine: two browser tabs (or two Claude Code inst...",
       "planPath": ".ai/plans/phase-8-live-collaboration-yjs-lan.md",
       "archived": false,
       "phaseKey": "8"
     },
     {
       "id": "phase-9-self-hosted-hub-file-sync",
-      "title": "Phase 9 (v1.1 work): Self-hostable hub + bidirectional file sync",
+      "title": "Phase 9 (v1.1): Self-hostable hub + bidirectional file sync — THE collaboration story",
       "status": "planned",
       "shipTarget": "v1.1",
       "date": null,
@@ -441,6 +441,17 @@
       "planPath": ".ai/plans/phase-17-docs-site-infographics.md",
       "archived": false,
       "phaseKey": "17"
+    },
+    {
+      "id": "canvas-figjam-feel",
+      "title": "Feature: Canvas viewport — FigJam-grade direct-manipulation feel",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
+      "planPath": ".ai/plans/canvas-figjam-feel.md",
+      "archived": false,
+      "phaseKey": null
     },
     {
       "id": "phase-7-acp-chat-sidebar",
