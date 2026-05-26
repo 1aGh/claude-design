@@ -30,6 +30,30 @@
 import { type RefObject, useEffect } from 'react';
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Drag-vs-click threshold (T25)
+//
+// 4 px screen-pixel hypot separates "click" from "drag" — Microsoft Win32
+// canonical (`SM_CXDRAG`/`SM_CYDRAG` default), also d3-drag and tldraw default.
+// Owned here so artboard-drag, artboard-marquee, element-marquee, annotation-
+// drag-vs-tap, and any future drag-class gesture all read the same constant.
+// Wheel + pinch-zoom are EXEMPT — threshold is for `pointerdown → pointermove`
+// drag classification only.
+
+export const DRAG_THRESHOLD_PX = 4;
+
+/** True once the pointer has moved ≥ DRAG_THRESHOLD_PX from its start. */
+export function crossedDragThreshold(
+  startX: number,
+  startY: number,
+  curX: number,
+  curY: number
+): boolean {
+  const dx = curX - startX;
+  const dy = curY - startY;
+  return Math.hypot(dx, dy) >= DRAG_THRESHOLD_PX;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Types
 
 /**

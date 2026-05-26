@@ -2,7 +2,14 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { type ClassifyInput, type Tool, classify, isEditableTarget } from '../input-router.tsx';
+import {
+  type ClassifyInput,
+  DRAG_THRESHOLD_PX,
+  type Tool,
+  classify,
+  crossedDragThreshold,
+  isEditableTarget,
+} from '../input-router.tsx';
 
 const base = (over: Partial<ClassifyInput>): ClassifyInput => ({
   type: 'pointermove',
@@ -312,5 +319,38 @@ describe('input-router / isEditableTarget', () => {
   test('contentEditable=true → true', () => {
     const el = { tagName: 'DIV', isContentEditable: true } as HTMLElement;
     expect(isEditableTarget(el)).toBe(true);
+  });
+});
+
+// T25 — Drag-vs-click threshold. Centralized here so every drag-class gesture
+// (artboard drag, artboard marquee, element marquee, annotation pen/rect/etc.)
+// reads the same value. Microsoft Win32 SM_CXDRAG default + d3-drag convention.
+describe('input-router / crossedDragThreshold', () => {
+  test('constant is 4', () => {
+    expect(DRAG_THRESHOLD_PX).toBe(4);
+  });
+
+  test('no movement → false', () => {
+    expect(crossedDragThreshold(100, 200, 100, 200)).toBe(false);
+  });
+
+  test('3 px move (sub-threshold) → false', () => {
+    expect(crossedDragThreshold(0, 0, 3, 0)).toBe(false);
+    expect(crossedDragThreshold(0, 0, 2, 2)).toBe(false); // hypot ≈ 2.83
+  });
+
+  test('exactly 4 px → true (boundary inclusive)', () => {
+    expect(crossedDragThreshold(0, 0, 4, 0)).toBe(true);
+    expect(crossedDragThreshold(0, 0, 0, 4)).toBe(true);
+  });
+
+  test('5 px diagonal → true', () => {
+    // 3-4-5 right triangle: hypot = 5
+    expect(crossedDragThreshold(10, 20, 13, 24)).toBe(true);
+  });
+
+  test('negative deltas — hypot is direction-agnostic', () => {
+    expect(crossedDragThreshold(50, 50, 47, 46)).toBe(true); // hypot = 5
+    expect(crossedDragThreshold(50, 50, 48, 49)).toBe(false); // hypot ≈ 2.24
   });
 });

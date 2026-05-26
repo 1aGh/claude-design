@@ -51,7 +51,7 @@ function shouldIgnoreTarget(t: EventTarget | null): boolean {
   // Skip floating chrome and existing overlays (their click handlers run).
   if (
     el.closest(
-      '.dc-mm, .dc-zoom-tb, .dc-tool-palette, .dc-context-menu, .dc-cv-halo, .dc-cv-group-bbox, .cm-composer, .cm-thread, .cm-mention-popup, .cm-pin, .dc-annot-svg, .dc-annot-ctx, .dc-tp-popover, .dc-annot-resize-handle'
+      '.dc-mm, .dc-zoom-tb, .dc-tool-palette, .dc-context-menu, .dc-cv-halo, .dc-cv-group-bbox, .cm-composer, .cm-thread, .cm-mention-popup, .cm-pin, .dc-annot-svg, .dc-annot-ctx, .dc-tp-popover, .dc-annot-resize-handle, .dc-multi-artboard-tb, .dc-elem-ctx-tb, .dc-cv-eq-spacing-layer'
     )
   ) {
     return true;
@@ -124,7 +124,12 @@ export function ArtboardMarqueeOverlay() {
       stateRef.current = null;
       const div = overlayRef.current;
       if (div) div.style.display = 'none';
-      if (!s.crossed) return;
+      if (!s.crossed) {
+        // Bare click on empty world without drag → clear selection
+        // (post-Wave-3 user feedback). Shift-click preserves it.
+        if (!s.shift) selSet.clear();
+        return;
+      }
       if (!artboardsCtx) return;
 
       // Intersect the marquee AABB with each artboard's screen-coord bbox.

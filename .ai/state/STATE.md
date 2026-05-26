@@ -3,12 +3,148 @@
 > Schema + rules live in `.claude/skills/workflow-state/SKILL.md`.
 
 **Workflow:** feature-delivery — Maude v1.0 roadmap
-**Phase:** canvas-figjam-feel — Wave 2 done (T13–T24, 9 grievances + 3 second-order)
-**Status:** paused — awaiting user review before Wave 3 (T25–T33 behavioral discipline)
+**Phase:** canvas-figjam-feel — Wave 3 done (9/9, T25–T33)
+**Status:** ready-for-review — user-side smoke + critic panel + commit pending
 **Started:** 2026-05-26
 **Updated:** 2026-05-26
-**Active task:** canvas-figjam-feel.md
+**Active task:** canvas-figjam-feel.md — Wave 3 complete; next is `/flow:done` or user-side critic pass
 **Active plan:** .ai/plans/canvas-figjam-feel.md
+
+## Execution Progress — canvas-figjam-feel (Wave 3, 2026-05-26)
+
+- ✅ T25 — Centralized `DRAG_THRESHOLD_PX = 4` + `crossedDragThreshold` helper in `input-router.tsx`; consumers (`use-artboard-drag`, `artboard-marquee`, `annotations-layer`) all import from there. 6 new bun tests cover boundary + diagonal + negative-delta cases.
+- ✅ T26 — `marquee-overlay.tsx` (ElementMarqueeOverlay) — drag from empty body padding inside an artboard lassos `[data-cd-id]` elements. Aseprite modifier vocab (bare=replace, Shift=add, Alt=subtract, Shift+Alt=intersect) evaluated at pointerup so user can flip mid-drag. Mounted in CanvasRouter. 12 new tests (modeOf table + applyMarqueeMode set algebra incl. subtract/intersect identity).
+- ✅ T27 — `equal-spacing-detector.ts` (pure 3+ rect distributed-spacing check, both axes, configurable tolerance) + `equal-spacing-handles.tsx` (pink-dot #FF24BD overlay with mid-span gap pills, hover-gated within union bbox + 40 px padding, prefers-reduced-motion honored). 10 detector tests.
+- ✅ T28 — `use-cursor-modifiers.tsx` tracks Alt/Shift/Meta as `data-mod-*` on the canvas host. CSS rules flip cursor to `copy` on `[data-cd-id]` / `[data-dc-screen]` when Alt+move-tool, `crosshair` on `.dc-artboard-body` when Shift+move-tool. Reads pointermove modifier state too (handles modifier-press-outside-window). 8 reducer tests.
+- ✅ T29 — `use-keyboard-discipline.tsx`: Arrow nudge (1 px) + Shift+Arrow (10 px) on selected artboards via `dragBus.commitPositions`; Cmd+A selects all stamped elements in active artboard. Element-level nudge + Cmd+D duplicate deferred — no live transform / duplicate channel yet (documented in file header). 3 nudgeDelta tests.
+
+**Validation so far:** 409/409 bun tests green (pre-Wave-3 baseline + 39 new across T25–T29). `bunx tsc --noEmit` clean modulo the pre-existing `api.ts` + `runtime-bundle.ts` baseline errors per DDR-026.
+
+**Files added (9):**
+- `plugins/design/dev-server/marquee-overlay.tsx`
+- `plugins/design/dev-server/equal-spacing-detector.ts`
+- `plugins/design/dev-server/equal-spacing-handles.tsx`
+- `plugins/design/dev-server/use-cursor-modifiers.tsx`
+- `plugins/design/dev-server/use-keyboard-discipline.tsx`
+- `plugins/design/dev-server/test/marquee-overlay.test.ts`
+- `plugins/design/dev-server/test/equal-spacing-detector.test.ts`
+- `plugins/design/dev-server/test/use-cursor-modifiers.test.ts`
+- `plugins/design/dev-server/test/use-keyboard-discipline.test.ts`
+
+**Files modified (6):**
+- `plugins/design/dev-server/input-router.tsx` (+ matching test)
+- `plugins/design/dev-server/use-artboard-drag.tsx`
+- `plugins/design/dev-server/artboard-marquee.tsx`
+- `plugins/design/dev-server/annotations-layer.tsx`
+- `plugins/design/dev-server/canvas-shell.tsx` (overlay mounts + hook wiring)
+
+**Completed after resume (T31 → T32 → T33 → T30):**
+
+- ✅ T31 — `data-cv-zoom-lod` attribute on `.dc-canvas` driven by `artboardsCtx?.viewport?.zoom` (settle-cadence, not per-frame). CSS rules in `HALO_CSS` hide ticks + distance pills + active-artboard ring below 0.35 zoom; `font-smooth` sharpening above 4.0.
+- ✅ T32 — `onWheel` in `canvas-lib.tsx` clamps `deltaY` to `[−50, 50]` before the exp() zoom-rate in the `ctrlKey || metaKey` branch. Brings trackpad-pinch (small deltas) and mouse-wheel (±100 notch) onto the same perceived-speed curve. Bare two-finger trackpad pan unaffected (no clamp).
+- ✅ T33 — `fit()` / `reset()` now route through the existing `animateTo` (200 ms cubic ease-out, honors `prefers-reduced-motion` → instant). New double-click handler in CanvasRouter: dblclick on `[data-dc-screen]` chrome → `controller.jumpTo(rect)` for that artboard; dblclick on empty world → `controller.fit()`. Bails on floating chrome (`.dc-mm`, `.dc-zoom-tb`, `.dc-tool-palette`, `.dc-context-menu`, annotation surfaces, comment surfaces) AND on artboard body content with `data-cd-id` (preserves native dblclick text-select / link behavior).
+- ✅ T30 (G_S1 collapse) — `annotations-context-toolbar.tsx` swatch row collapsed: when `caps.fill` is true the toolbar now shows a `Stroke | Fill` segmented toggle + ONE swatch row that switches palette by mode. Cuts ~7 controls. Default mode = `stroke`; toggle hides when caps.fill is false (pen / arrow). Delete moved to right-side overflow via `margin-left: auto` on `.dc-annot-ctx-overflow`.
+- ✅ T30 (new ContextualToolbar) — new `contextual-toolbar.tsx` selection-anchored floating chrome for ELEMENT selections (entries with `data-cd-id`). Anchored above the union bbox (flip-below when top < 60 px), same chrome idiom as `MultiArtboardToolbar`. Actions: Copy CSS (selector), Copy ID (data-cd-id), Comment (postMessage `dgn: 'comment-compose'`). Auto-hides when only artboards or only annotations are selected (those have their own toolbars). Mounted in `CanvasRouter` alongside `EqualSpacingHandles` and `MultiArtboardToolbar`.
+
+**Final validation:**
+- **409/409 bun tests green** (baseline 370 + 39 new for Wave 3 across T25–T29; T30–T33 verified via typecheck + build smoke since they're DOM-bound).
+- `bunx tsc --noEmit` — only pre-existing baseline errors in `api.ts` + `runtime-bundle.ts` per DDR-026.
+- `bun run build.ts` — clean (`client.bundle.js` 3.55 MB, `styles.css` 56.7 KB, runtime/* 2.29 MB / 6 files).
+
+**Files added in Wave 3 (10):**
+- `plugins/design/dev-server/marquee-overlay.tsx` (T26)
+- `plugins/design/dev-server/equal-spacing-detector.ts` (T27)
+- `plugins/design/dev-server/equal-spacing-handles.tsx` (T27)
+- `plugins/design/dev-server/use-cursor-modifiers.tsx` (T28)
+- `plugins/design/dev-server/use-keyboard-discipline.tsx` (T29)
+- `plugins/design/dev-server/contextual-toolbar.tsx` (T30)
+- `plugins/design/dev-server/test/marquee-overlay.test.ts`
+- `plugins/design/dev-server/test/equal-spacing-detector.test.ts`
+- `plugins/design/dev-server/test/use-cursor-modifiers.test.ts`
+- `plugins/design/dev-server/test/use-keyboard-discipline.test.ts`
+
+**Files modified in Wave 3 (8):**
+- `plugins/design/dev-server/input-router.tsx` (+ matching test) — T25 canonical threshold + helper
+- `plugins/design/dev-server/use-artboard-drag.tsx` — re-import threshold from input-router
+- `plugins/design/dev-server/artboard-marquee.tsx` — re-import threshold
+- `plugins/design/dev-server/annotations-layer.tsx` — `crossedDragThreshold` helper + Wave-2 lint sweep
+- `plugins/design/dev-server/canvas-shell.tsx` — overlay mounts, hook wiring, LOD effect, dblclick zoom, CSS rules for LOD
+- `plugins/design/dev-server/canvas-lib.tsx` — T32 wheel clamp + T33 fit/reset routed through animateTo
+- `plugins/design/dev-server/annotations-context-toolbar.tsx` — T30 G_S1 collapse + Delete-to-overflow
+- `dist/client.bundle.js` + `dist/styles.css` (rebuild output)
+
+**Deferred from Wave 3 (documented in code):**
+- T29 `Cmd+D` duplicate — no live duplicate channel for either artboards or stamped elements yet (would need source-TSX writeback or CSS-transform overlay). Header note in `use-keyboard-discipline.tsx`.
+- T29 element-level Arrow nudge — same architectural reason; only artboard nudge ships.
+- T30 ContextualToolbar `Duplicate` / `Delete` actions — same reason; v1 ships read-only (Copy CSS / Copy ID / Comment).
+- T28 Alt-drag-duplicates affordance — cursor flips to `copy` (preview), but actual drag-duplicate logic isn't wired. Header note in `use-cursor-modifiers.tsx`.
+
+## Execution Progress — canvas-figjam-feel (Wave 3.5 post-review fixes, 2026-05-26)
+
+User-side review of Wave 3 surfaced 7 grievances; all addressed:
+
+- ✅ **G1** — Click-on-empty deselect re-enabled. Reverts Wave-2.7 fix #1: a bare click on empty world (annotations marquee path) now clears annotation selection; bare click on empty world outside any artboard (artboard-marquee path) clears element/artboard selection. Shift-click preserves selection for additive workflows. Esc remains as the secondary deselect gesture.
+- ✅ **G2** — Dropped dblclick-on-artboard auto-zoom. T33's artboard zoom-to was too magnetic and conflicted with native dblclick text-select inside chrome. Kept dblclick-on-empty → `controller.fit()` (discoverable "back to overview"); artboard zoom remains reachable via Cmd+1 + zoom HUD.
+- ✅ **G3** — ContextualToolbar Comment button now opens the composer. Old code only posted `dgn: 'comment-compose'` to the parent; the actual composer listens on the iframe-level `cm:open-composer` CustomEvent. Toolbar now dispatches that event with cursor coords derived from the selected element's bbox (right edge, vertical midpoint), so the composer lands beside the element rather than at viewport origin.
+- ✅ **G4** — Comment composer position. `computeAnchor` in `comments-overlay.tsx` now prefers the cursor click point (composer drops 8 px below the cursor) over the element bottom-left anchor. The element-rect fallback survives for entry points without a cursor.
+- ✅ **G5** — Annotation marquee no longer fires during artboard drag. The annotation-layer pointerdown handler now bails when pointerdown lands inside any `[data-dc-screen]` artboard without hitting an actual stroke — the artboard drag / element-marquee already own that gesture, so racing the annotation marquee against them was the source of the visual noise.
+- ✅ **G6** — FigJam-style 11-color palette. Replaced the muddy 6-color stroke + 6-color fill palettes with a unified 11-color palette (black / gray / red / orange / yellow / green / teal / blue / purple / pink / white) used in both Stroke and Fill modes. Identical color identity across modes preserves the swatch row when the user flips the mode toggle.
+- ✅ **G7** — Align commands. New `alignArtboards(mode)` in `canvas-shell.tsx` covers 6 modes (left / right / center-x / top / bottom / center-y). Enabled at ≥ 2 artboards (alignment well-defined). 6 new icon buttons added to `MultiArtboardToolbar` before the existing 2 distribute buttons, separated by a hairline divider. 6 new menu entries in the artboard-chrome context-menu registry as discoverability backup.
+
+**Validation:**
+- 409/409 bun tests still green.
+- `bunx tsc --noEmit` clean (only the pre-existing api.ts / runtime-bundle.ts baseline errors).
+- `bun run build.ts` clean.
+
+**Files modified in Wave 3.5:**
+- `plugins/design/dev-server/annotations-layer.tsx` — G1 + G5
+- `plugins/design/dev-server/artboard-marquee.tsx` — G1
+- `plugins/design/dev-server/canvas-shell.tsx` — G2 (dblclick scope) + G7 (alignArtboards + MultiArtboardToolbar align buttons + context-menu entries)
+- `plugins/design/dev-server/annotations-context-toolbar.tsx` — G6 (palette swap)
+- `plugins/design/dev-server/contextual-toolbar.tsx` — G3 (dispatch CustomEvent + bbox-derived anchor)
+- `plugins/design/dev-server/comments-overlay.tsx` — G4 (`computeAnchor` cursor-first)
+
+## Execution Progress — canvas-figjam-feel (Wave 3.6 user-feedback batch, 2026-05-26)
+
+User retested after Wave 3.5, found 4 remaining issues:
+
+- ✅ **G2v2** — Dropped `controller.jumpTo` from artboard label button onClick. Single-click on artboard chrome no longer auto-zooms. `fit-one` context-menu entry rewired through new `focusArtboard(id)` callback (looks up rect from artboardsCtx and calls jumpTo directly).
+- ✅ **G6v3** — Reverted Thick from 10 → 6 (user feedback: too thick). Thin stays at 3. Thickness controls hidden when swatchMode = 'fill' (already shipped in G6v2).
+- ✅ **G3v3 + G7v3 root cause (single shared bug):** the G1 fix re-enabled "click-on-empty clears selection" via the doc-level marquee `pointerup`-without-crossed handlers. But the marquee chrome filters (`shouldIgnoreTarget` in `artboard-marquee.tsx`, `isChromeTarget` in `marquee-overlay.tsx`, `CHROME_SELECTOR` in `annotations-layer.tsx`) didn't list the floating toolbar surfaces. When the user clicked any button on `MultiArtboardToolbar` or `ContextualToolbar` or `EqualSpacingHandles`:
+  1. `pointerdown` lands on the button — marquee handlers see it, target NOT recognized as chrome → enter pending state.
+  2. User releases without dragging → `pointerup` fires.
+  3. `s.crossed === false` → my G1 path runs `selSet.clear()` BEFORE the button's `onClick` (synchronous DOM event order, capture phase doc listener fires first).
+  4. Button `onClick` then runs `distributeArtboards()` / `alignArtboards()` / `openComposerForSelection()` — closure reads the just-cleared selection → bails on `< 3` / `!primary` guard.
+
+  **Fix:** added `.dc-multi-artboard-tb, .dc-elem-ctx-tb, .dc-cv-eq-spacing-layer` (plus the previously-missing `.cm-composer, .cm-thread, .cm-mention-popup, .cm-pin, .dc-annot-resize-handle` in annotations-layer) to all three chrome filters. Doc-level marquee bails when pointerdown lands on these surfaces, selection survives the click.
+
+  **Live verified via agent-browser:** before fix — `pointerdown→pointerup→click` on Distribute H button leaves `haloCount: 0` (selection cleared). After fix — `haloCount: 3 → 3` (selection survives), distribute fires, artboard moves. G3 composer also renders at `(571, 79)`.
+
+  **G1 still works:** clicking actual empty world (no artboard, no toolbar) → selSet cleared (`afterSelect: 2 → afterEmptyClick: 0` verified live).
+
+**Bonus structural fix:** extended canvas-build mtime cache invalidation to watch the entire dev-server source tree (not just `_lib/canvas-lib.tsx`). Without this, edits to `canvas-shell.tsx`, `contextual-toolbar.tsx`, etc. don't surface to canvas iframes — the stale-bundle behaviour that masked half of G3/G7 debugging. Recursive `fs.watch` over `DEV_SERVER_ROOT`, filtered to `.tsx` (server-only `.ts` skipped — doesn't bundle into canvas), excluding `test/`, `dist/`, `client/`.
+
+**Validation:**
+- 409/409 bun tests green
+- `bunx tsc --noEmit` clean (DDR-026 baseline only)
+- agent-browser live tests on `localhost:4555` Canvas Viewport: G2v2 (no zoom on label click) + G3 (Comment composer renders) + G7 (selection survives toolbar button click + distribute moves artboards) + G1-regression-check (empty-world click still clears) all pass.
+
+**Files modified in Wave 3.6:**
+- `plugins/design/dev-server/canvas-lib.tsx` — G2v2 (label button no longer wires jumpTo)
+- `plugins/design/dev-server/canvas-shell.tsx` — G2v2 (focusArtboard callback in registry, fit-one menu rewire)
+- `plugins/design/dev-server/annotations-layer.tsx` — G6v3 (thick 10→6) + chrome filter expansion
+- `plugins/design/dev-server/annotations-context-toolbar.tsx` — G6v3 (thick 10→6 label + value)
+- `plugins/design/dev-server/artboard-marquee.tsx` — chrome filter expansion (toolbar surfaces)
+- `plugins/design/dev-server/marquee-overlay.tsx` — chrome filter expansion
+- `plugins/design/dev-server/http.ts` — recursive `fs.watch` for dev-server source tree
+
+**Next step:** `/flow:done` (full `/validate` → commit → PR) — or first run the design-critic panel + smoke screenshots so the user-side review pass per plan acceptance criteria is recorded.
+
+
+
+**Rebase note (2026-05-26):** User landed 4 commits during pause (`6427f3b` release v0.19.1, `311e0db` phase-d plan, `93e2f02` stats.json, `3a77ee1` biome lint sweep on Wave 2 — touched annotations-context-toolbar etc.). Working tree absorbed cleanly; all Wave 3 mods + new files survived. Stale `UU` index markers on `package.json` / `pnpm-lock.yaml` cleared after first `git status` re-read; no conflict markers present.
+
+
 
 ## Execution Progress — canvas-figjam-feel (Wave 1)
 

@@ -25,9 +25,25 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type Stroke, useStrokesStore } from './annotations-layer.tsx';
 import { useAnnotationSelectionOptional } from './use-annotation-selection.tsx';
 
-const PALETTE = ['#d63b1f', '#f5a623', '#1a8f3e', '#1d6cf0', '#7a4ad3', '#1a1a1a'] as const;
+// G6 — FigJam-style 11-color palette. Same colors for both stroke and fill
+// so the swatch row identity stays consistent when the user flips the
+// Stroke|Fill mode toggle (only the target attribute changes, not the
+// visual vocabulary).
+const PALETTE = [
+  '#1E1E1E', // black
+  '#757575', // gray
+  '#E03E3E', // red
+  '#F26B3F', // orange
+  '#F2C744', // yellow
+  '#4CAF50', // green
+  '#14B8A6', // teal
+  '#3B82F6', // blue
+  '#8B5CF6', // purple
+  '#EC4899', // pink
+  '#FFFFFF', // white
+] as const;
 
-const FILL_PALETTE = ['#fff4d6', '#e6f4ea', '#e3edff', '#f0e8fb', '#ffe5e0', '#f4f1ee'] as const;
+const FILL_PALETTE = PALETTE;
 
 const TOOLBAR_CSS = `
 .dc-annot-ctx {
@@ -94,6 +110,42 @@ const TOOLBAR_CSS = `
 .dc-annot-ctx-btn:hover { background: rgba(0,0,0,0.04); }
 .dc-annot-ctx-btn--danger { color: #b3271a; }
 .dc-annot-ctx-btn--danger:hover { background: rgba(214,59,31,0.08); }
+
+/* T30 / G_S1 — collapsed Stroke|Fill mode toggle. Shown only when the
+   selection supports both stroke + fill (rect / ellipse). When the toggle is
+   present the swatch row beneath shows ONE palette at a time. */
+.dc-annot-ctx-mode {
+  display: inline-flex;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(0,0,0,0.18);
+}
+.dc-annot-ctx-mode-btn {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 3px 8px;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+.dc-annot-ctx-mode-btn[aria-pressed="true"] {
+  background: color-mix(in oklab, var(--accent, #d63b1f) 14%, transparent);
+  color: var(--accent, #d63b1f);
+  font-weight: 600;
+}
+.dc-annot-ctx-mode-btn:not([aria-pressed="true"]):hover {
+  background: rgba(0,0,0,0.04);
+}
+/* Trailing overflow Delete — quiet by default, expressive on hover.
+   Keyboard Backspace remains the primary delete affordance. */
+.dc-annot-ctx-overflow {
+  margin-left: auto;
+}
 `.trim();
 
 function ensureToolbarStyles(): void {
@@ -122,6 +174,8 @@ function unionRect(rects: DOMRect[]): { x: number; y: number; w: number; h: numb
   return { x: xMin, y: yMin, w: xMax - xMin, h: yMax - yMin };
 }
 
+type SwatchMode = 'stroke' | 'fill';
+
 export function AnnotationContextToolbar() {
   ensureToolbarStyles();
   const annotSel = useAnnotationSelectionOptional();
@@ -129,6 +183,10 @@ export function AnnotationContextToolbar() {
   const ref = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
   const [, force] = useState({});
+  // T30 / G_S1 — collapsed Stroke|Fill toggle state. Defaults to 'stroke';
+  // auto-reverts to 'stroke' whenever caps.fill is false so the toggle
+  // can't get stranded on a hidden mode after the selection changes type.
+  const [swatchMode, setSwatchMode] = useState<SwatchMode>('stroke');
 
   const selectedStrokes = useMemo<Stroke[]>(() => {
     if (!annotSel || !store) return [];
@@ -278,6 +336,15 @@ export function AnnotationContextToolbar() {
     ? uniformValue(selectedStrokes.map((s) => (s.tool === 'text' ? s.fontSize : undefined)))
     : undefined;
 
+  // T30 / G_S1 — when caps.fill is false we never enter fill mode. The
+  // useEffect below could call setSwatchMode('stroke') but reading the
+  // effective mode inline avoids an extra render cycle.
+  const effectiveMode: SwatchMode = caps.fill ? swatchMode : 'stroke';
+  const showPalette = effectiveMode === 'stroke' ? PALETTE : FILL_PALETTE;
+  const onSwatchClick =
+    effectiveMode === 'stroke' ? (c: string) => setColor(c) : (c: string) => setFill(c);
+  const activeValue = effectiveMode === 'stroke' ? uniqColor : (uniqFill ?? null);
+
   return (
     <div
       ref={ref}
@@ -286,52 +353,60 @@ export function AnnotationContextToolbar() {
       aria-label="Annotation properties"
       style={{ display: 'flex', top: -9999, left: -9999 }}
     >
-      {PALETTE.map((c) => (
+      {caps.fill ? (
+        <>
+          <div className="dc-annot-ctx-mode" role="radiogroup" aria-label="Swatch target">
+            <button
+              type="button"
+              className="dc-annot-ctx-mode-btn"
+              aria-pressed={effectiveMode === 'stroke'}
+              onClick={() => setSwatchMode('stroke')}
+            >
+              Stroke
+            </button>
+            <button
+              type="button"
+              className="dc-annot-ctx-mode-btn"
+              aria-pressed={effectiveMode === 'fill'}
+              onClick={() => setSwatchMode('fill')}
+            >
+              Fill
+            </button>
+          </div>
+          <div className="dc-annot-ctx-sep" />
+        </>
+      ) : null}
+      {effectiveMode === 'fill' ? (
+        <button
+          type="button"
+          className="dc-annot-ctx-sw dc-annot-ctx-fill--none"
+          aria-label="No fill"
+          aria-pressed={uniqFill == null}
+          title="No fill"
+          onClick={() => setFill(null)}
+        />
+      ) : null}
+      {showPalette.map((c) => (
         <button
           key={c}
           type="button"
           className="dc-annot-ctx-sw"
-          aria-label={`Color ${c}`}
-          aria-pressed={uniqColor === c}
-          title={`Color ${c}`}
+          aria-label={`${effectiveMode === 'stroke' ? 'Color' : 'Fill'} ${c}`}
+          aria-pressed={activeValue === c}
+          title={`${effectiveMode === 'stroke' ? 'Color' : 'Fill'} ${c}`}
           style={{ background: c }}
-          onClick={() => setColor(c)}
+          onClick={() => onSwatchClick(c)}
         />
       ))}
-      {caps.fill ? (
-        <>
-          <div className="dc-annot-ctx-sep" />
-          <button
-            type="button"
-            className="dc-annot-ctx-sw dc-annot-ctx-fill--none"
-            aria-label="No fill"
-            aria-pressed={uniqFill == null}
-            title="No fill"
-            onClick={() => setFill(null)}
-          />
-          {FILL_PALETTE.map((c) => (
-            <button
-              key={c}
-              type="button"
-              className="dc-annot-ctx-sw"
-              aria-label={`Fill ${c}`}
-              aria-pressed={uniqFill === c}
-              title={`Fill ${c}`}
-              style={{ background: c }}
-              onClick={() => setFill(c)}
-            />
-          ))}
-        </>
-      ) : null}
-      {caps.thickness ? (
+      {caps.thickness && effectiveMode === 'stroke' ? (
         <>
           <div className="dc-annot-ctx-sep" />
           <button
             type="button"
             className="dc-annot-ctx-btn"
-            aria-pressed={uniqThickness === 2}
-            title="Thin (2px)"
-            onClick={() => setThickness(2)}
+            aria-pressed={uniqThickness === 3}
+            title="Thin (3px)"
+            onClick={() => setThickness(3)}
           >
             Thin
           </button>
@@ -378,10 +453,9 @@ export function AnnotationContextToolbar() {
           </button>
         </>
       ) : null}
-      <div className="dc-annot-ctx-sep" />
       <button
         type="button"
-        className="dc-annot-ctx-btn dc-annot-ctx-btn--danger"
+        className="dc-annot-ctx-btn dc-annot-ctx-btn--danger dc-annot-ctx-overflow"
         title="Delete (Backspace)"
         aria-label="Delete selected annotations"
         onClick={remove}

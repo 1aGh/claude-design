@@ -1143,14 +1143,22 @@ function computeThreadAnchor(comment: OverlayComment): { x: number; y: number } 
 }
 
 function computeAnchor(state: ComposerState): { x: number; y: number } {
-  // Try the selected element first — its live screen rect gives the most
-  // natural anchor (composer sits flush under the element the user clicked).
+  // G4 — anchor to the cursor click point first. Earlier versions anchored to
+  // the selected element's bottom-left, which landed the composer flush in
+  // the corner regardless of where the user clicked — surprising for the
+  // common case of "I clicked the middle of an element, expecting the
+  // composer to appear near my cursor". The element-rect path remains as a
+  // fallback for entry points that don't carry a cursor (e.g. opening the
+  // composer from a contextual toolbar button — those should set clientX/Y
+  // to a sensible anchor before dispatching).
+  if (state.clientX || state.clientY) {
+    return { x: state.clientX, y: state.clientY + 8 };
+  }
   if (state.selection.selector) {
     const rect = screenRectFor(state.selection.selector);
     if (rect) {
       return { x: rect.x, y: rect.y + rect.h + 8 };
     }
   }
-  // Fall back to the raw click point — composer drops 8px below the cursor.
-  return { x: state.clientX, y: state.clientY + 8 };
+  return { x: 16, y: 16 };
 }

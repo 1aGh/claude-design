@@ -700,9 +700,22 @@ export function useViewportController(opts: ViewportControllerOptions): Viewport
     [applyViewport]
   );
 
+  // Forward-decl ref — fit / reset run animations that need `animateTo`, but
+  // `animateTo` is declared further down (depends on applyViewport). Resolve
+  // the ordering with a ref the animateTo callback writes to on definition.
+  const animateToRef = useRef<((t: ViewportState, d?: number) => void) | null>(null);
+
+  // T33 — programmatic zoom is eased. Direct user-driven gestures
+  // (wheel, pinch, drag-to-pan) still call `applyViewport` directly so
+  // input feel stays 1:1 with the cursor; only fit/reset/zoom-to-rect
+  // ease over 200 ms. `animateTo` honors `prefers-reduced-motion` and
+  // returns instantly under that media query.
+  const PROGRAMMATIC_EASE_MS = 200;
   const fit = useCallback(() => {
     const next = computeFitRef.current();
-    applyViewport(next);
+    const a = animateToRef.current;
+    if (a) a(next, PROGRAMMATIC_EASE_MS);
+    else applyViewport(next);
   }, [applyViewport]);
 
   const reset = useCallback(() => {
@@ -713,8 +726,15 @@ export function useViewportController(opts: ViewportControllerOptions): Viewport
     }
     const cx = host.clientWidth / 2;
     const cy = host.clientHeight / 2;
-    zoomAt(1 / vpRef.current.zoom, cx, cy);
-  }, [hostRef, applyViewport, zoomAt]);
+    const v = vpRef.current;
+    // Target: same world-coord under cursor, zoom = 1.
+    const wx = (cx - v.x) / v.zoom;
+    const wy = (cy - v.y) / v.zoom;
+    const target: ViewportState = { x: cx - wx, y: cy - wy, zoom: 1 };
+    const a = animateToRef.current;
+    if (a) a(target, PROGRAMMATIC_EASE_MS);
+    else applyViewport(target);
+  }, [hostRef, applyViewport]);
 
   const zoomIn = useCallback(() => {
     const host = hostRef.current;
@@ -766,6 +786,10 @@ export function useViewportController(opts: ViewportControllerOptions): Viewport
     },
     [applyViewport]
   );
+
+  // Keep the ref pointed at the latest `animateTo` so the earlier-declared
+  // fit / reset callbacks can call it without circular dependency.
+  animateToRef.current = animateTo;
 
   const jumpTo = useCallback(
     (rect: ArtboardRect) => {
@@ -844,7 +868,13 @@ export function useViewportController(opts: ViewportControllerOptions): Viewport
       // without a physical Ctrl press — so the same branch covers both
       // Ctrl+wheel (mouse) and pinch-zoom (trackpad).
       if (e.ctrlKey || e.metaKey) {
-        const factor = Math.exp(-e.deltaY * WHEEL_ZOOM_K);
+        // T32 — clamp deltaY into [-50, 50] before the exp() to bring
+        // trackpad-pinch (small per-frame delta) and mouse-wheel (one
+        // notch = ±100) onto the same perceived-speed curve. Mouse-wheel
+        // users still get smooth zoom (clamped notches accumulate at the
+        // same exp rate), trackpad-pinch users no longer outpace them.
+        const clamped = Math.max(-50, Math.min(50, e.deltaY));
+        const factor = Math.exp(-clamped * WHEEL_ZOOM_K);
         zoomAt(factor, cx, cy);
         return;
       }
@@ -1394,9 +1424,11 @@ export function DCArtboard({
     );
   }
   const isActive = ctx.activeArtboardId === id;
-  const onFocus = () => {
-    if (controller) controller.jumpTo(rect);
-  };
+  // G2v2 — earlier the label single-click called `controller.jumpTo(rect)`,
+  // auto-zooming on every click. Per post-Wave-3.5 feedback this was
+  // surprising. The label button stays for a11y (focus + screen-reader
+  // label) but no longer mutates the viewport. Cmd+1 + the zoom HUD still
+  // expose the manual zoom path.
 
   // Am I involved in the current drag (as leader or follower)?
   const busDrag = dragBus?.current;
@@ -1434,8 +1466,7 @@ export function DCArtboard({
       <button
         type="button"
         className="dc-artboard-label sku"
-        onClick={onFocus}
-        aria-label={`Focus artboard ${label}`}
+        aria-label={`Artboard ${label}`}
       >
         {label}
       </button>

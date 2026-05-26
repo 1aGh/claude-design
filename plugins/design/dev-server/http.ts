@@ -192,6 +192,33 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect): Http {
   }
   void libWatcher;
 
+  // G7v2 — canvas-lib.tsx transitively imports many dev-server siblings
+  // (canvas-shell, contextual-toolbar, equal-spacing-handles, ...). Editing
+  // any of them invalidates the bundled canvas output. Without watching them
+  // the mtime-keyed `canvasCache` keeps serving the stale bundle and the
+  // user sees pre-edit behaviour even after a hard iframe reload.
+  //
+  // Recursive watch over DEV_SERVER_ROOT, filtered to .tsx — server-only .ts
+  // (api / http / context / etc.) doesn't reach the canvas. Test files
+  // (`test/`) and built output (`dist/`, `client/`) also skipped.
+  let devSrcWatcher: ReturnType<typeof watch> | null = null;
+  try {
+    devSrcWatcher = watch(DEV_SERVER_ROOT, { recursive: true }, (_evt, filename) => {
+      if (!filename) return;
+      if (!filename.endsWith('.tsx')) return;
+      if (filename.startsWith('test/') || filename.startsWith('test\\')) return;
+      if (filename.startsWith('dist/') || filename.startsWith('client/')) return;
+      canvasCache.clear();
+      ctx.bus.emit('fs:any', `_lib/${filename}`);
+    });
+  } catch (err) {
+    console.warn(
+      '[dev-server-src] failed to watch source tree:',
+      err instanceof Error ? err.message : err
+    );
+  }
+  void devSrcWatcher;
+
   async function readJson<T = unknown>(req: Request, max = 256 * 1024): Promise<T | null> {
     try {
       const text = await req.text();

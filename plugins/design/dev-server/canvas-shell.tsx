@@ -38,6 +38,7 @@ import {
 
 import { AnnotationsLayer } from './annotations-layer.tsx';
 import { ArtboardMarqueeOverlay } from './artboard-marquee.tsx';
+import { ContextualToolbar } from './contextual-toolbar.tsx';
 import { EqualSpacingHandles } from './equal-spacing-handles.tsx';
 import { ElementMarqueeOverlay } from './marquee-overlay.tsx';
 import { useCursorModifiers } from './use-cursor-modifiers.tsx';
@@ -219,6 +220,26 @@ const HALO_CSS = `
 .dc-canvas[data-active-tool="eraser"] * {
   cursor: var(--cursor-eraser), cell !important;
 }
+
+/* T31 — Level of detail. Below 0.35 zoom we hide pre-attentive chrome that
+   becomes visual noise (corner ticks, distance pills, active-artboard ring,
+   snap pills). Above 4.0 we coax the browser into crisper text rendering.
+   The "normal" band 0.35..4.0 carries the full chrome. */
+.dc-canvas[data-cv-zoom-lod="low"] .dc-cv-halo .tick,
+.dc-canvas[data-cv-zoom-lod="low"] .dc-cv-group-bbox .tick {
+  display: none;
+}
+.dc-canvas[data-cv-zoom-lod="low"] .dc-snap-pill,
+.dc-canvas[data-cv-zoom-lod="low"] .dc-cv-eq-pill {
+  display: none;
+}
+.dc-canvas[data-cv-zoom-lod="low"] .dc-artboard[aria-current="true"] {
+  box-shadow: none;
+}
+.dc-canvas[data-cv-zoom-lod="crisp"] {
+  -webkit-font-smoothing: subpixel-antialiased;
+  font-smooth: always;
+}
 `.trim();
 
 function ensureHaloStyles(): void {
@@ -294,6 +315,52 @@ function CanvasCore({
   const artboardsCtx = useArtboardsContext();
   const dragBus = useDragStateContext();
 
+  // T33 — programmatic-zoom easing via double-click on empty world only.
+  // Per post-Wave-3 user feedback, dblclick-on-artboard auto-zoom was
+  // surprising (interfered with native dblclick text-select inside chrome
+  // and felt magnetic). We keep the dblclick-empty → `fit()` path because
+  // it's a discoverable "back to overview" gesture; artboard zoom is still
+  // reachable via Cmd+1 and the zoom HUD.
+  useEffect(() => {
+    if (!controller) return;
+    const host = hostRef.current;
+    if (!host) return;
+    const onDbl = (e: MouseEvent) => {
+      const t = e.target as Element | null;
+      if (!t || !t.closest) return;
+      // Floating chrome / overlays / drawn user content / any artboard
+      // surface → leave alone. Only dblclick that lands on the canvas
+      // background outside every artboard triggers `fit()`.
+      if (
+        t.closest(
+          '.dc-mm, .dc-zoom-tb, .dc-tool-palette, .dc-context-menu, .dc-annot-svg, .dc-annot-ctx, .cm-composer, .cm-thread, .cm-mention-popup, .cm-pin'
+        )
+      ) {
+        return;
+      }
+      if (t.closest('[data-dc-screen]')) return; // any part of an artboard
+      e.preventDefault();
+      controller.fit();
+    };
+    host.addEventListener('dblclick', onDbl);
+    return () => host.removeEventListener('dblclick', onDbl);
+  }, [controller, hostRef]);
+
+  // T31 — level-of-detail attribute on `.dc-canvas`. CSS rules hide
+  // pre-attentive chrome (ticks, distance pills, accent ring) below 0.35
+  // zoom and sharpen text above 4.0. tldraw's textShadowLod = 0.35 is the
+  // canonical threshold. Reads the published viewport (settle-cadence) so
+  // the LOD doesn't flicker between bands mid-zoom — chrome should settle
+  // once per gesture, not on every frame.
+  const publishedZoom = artboardsCtx?.viewport?.zoom ?? 1;
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const lod = publishedZoom < 0.35 ? 'low' : publishedZoom > 4 ? 'crisp' : 'normal';
+    host.setAttribute('data-cv-zoom-lod', lod);
+    return () => host.removeAttribute('data-cv-zoom-lod');
+  }, [hostRef, publishedZoom]);
+
   /**
    * T24 — distribute the currently-selected artboards evenly on the given
    * axis. Requires ≥ 3 selected artboards. Sort by leading edge, hold the
@@ -340,6 +407,95 @@ function CanvasCore({
     [artboardsCtx, dragBus, selSet.selected]
   );
 
+  /**
+   * G7 — align selected artboards to a common edge / midline. Requires ≥ 2
+   * selected artboards. Six modes:
+   *   - 'left'      → all artboards share the minimum x of the set
+   *   - 'right'     → all artboards share the maximum (x + w) edge
+   *   - 'center-x'  → all artboards share the midpoint of the set's x extent
+   *   - 'top'       → all artboards share the minimum y
+   *   - 'bottom'    → all artboards share the maximum (y + h) edge
+   *   - 'center-y'  → all artboards share the midpoint of the set's y extent
+   *
+   * Holds the reference edge constant; only the perpendicular axis stays as
+   * each artboard already was (alignment doesn't relocate on the orthogonal
+   * axis). This matches Figma / Sketch / FigJam align semantics.
+   */
+  const alignArtboards = useCallback(
+    (
+      mode: 'left' | 'right' | 'center-x' | 'top' | 'bottom' | 'center-y'
+    ) => {
+      if (!artboardsCtx || !dragBus) return;
+      const ids = new Set(
+        selSet.selected.filter((s) => !!s.artboardId).map((s) => s.artboardId as string)
+      );
+      if (ids.size < 2) return;
+      const targets: ArtboardRect[] = artboardsCtx.artboards.filter((r) => ids.has(r.id));
+      if (targets.length < 2) return;
+
+      // Union bbox for center modes.
+      let xMin = Number.POSITIVE_INFINITY;
+      let yMin = Number.POSITIVE_INFINITY;
+      let xMax = Number.NEGATIVE_INFINITY;
+      let yMax = Number.NEGATIVE_INFINITY;
+      for (const r of targets) {
+        if (r.x < xMin) xMin = r.x;
+        if (r.y < yMin) yMin = r.y;
+        if (r.x + r.w > xMax) xMax = r.x + r.w;
+        if (r.y + r.h > yMax) yMax = r.y + r.h;
+      }
+      const cx = (xMin + xMax) / 2;
+      const cy = (yMin + yMax) / 2;
+
+      const moved: { id: string; x: number; y: number }[] = [];
+      for (const r of targets) {
+        let nx = r.x;
+        let ny = r.y;
+        switch (mode) {
+          case 'left':
+            nx = xMin;
+            break;
+          case 'right':
+            nx = xMax - r.w;
+            break;
+          case 'center-x':
+            nx = cx - r.w / 2;
+            break;
+          case 'top':
+            ny = yMin;
+            break;
+          case 'bottom':
+            ny = yMax - r.h;
+            break;
+          case 'center-y':
+            ny = cy - r.h / 2;
+            break;
+        }
+        if (Math.round(nx) === r.x && Math.round(ny) === r.y) continue;
+        moved.push({ id: r.id, x: Math.round(nx), y: Math.round(ny) });
+      }
+      if (moved.length === 0) return;
+      dragBus.commitPositions(moved);
+    },
+    [artboardsCtx, dragBus, selSet.selected]
+  );
+
+  /**
+   * G2v2 — "Fit just this artboard" context-menu entry previously bridged
+   * via a synthetic click on the label button (which used to call
+   * controller.jumpTo). Now that the label is purely a11y, the menu entry
+   * needs a direct path: look the rect up from the live artboards list and
+   * call jumpTo straight on the controller.
+   */
+  const focusArtboard = useCallback(
+    (artboardId: string) => {
+      if (!controller || !artboardsCtx) return;
+      const rect = artboardsCtx.artboards.find((r) => r.id === artboardId);
+      if (rect) controller.jumpTo(rect);
+    },
+    [controller, artboardsCtx]
+  );
+
   const registry = useMemo<ContextRegistry>(
     () =>
       buildRegistry({
@@ -347,8 +503,10 @@ function CanvasCore({
         clearSelection: selSet.clear,
         selSet,
         distributeArtboards,
+        alignArtboards,
+        focusArtboard,
       }),
-    [controller, selSet, distributeArtboards]
+    [controller, selSet, distributeArtboards, alignArtboards, focusArtboard]
   );
 
   // Distribute is reached via the MultiArtboardToolbar (floating chrome
@@ -358,7 +516,11 @@ function CanvasCore({
   return (
     <ExportDialogProvider>
       <ContextMenuProvider registry={registry}>
-        <CanvasRouter hostRef={hostRef} distributeArtboards={distributeArtboards}>
+        <CanvasRouter
+          hostRef={hostRef}
+          distributeArtboards={distributeArtboards}
+          alignArtboards={alignArtboards}
+        >
           {children}
         </CanvasRouter>
       </ContextMenuProvider>
@@ -374,14 +536,27 @@ function buildRegistry(deps: {
   clearSelection: () => void;
   selSet: { selected: Selection[] };
   distributeArtboards: (axis: 'x' | 'y') => void;
+  alignArtboards: (
+    mode: 'left' | 'right' | 'center-x' | 'top' | 'bottom' | 'center-y'
+  ) => void;
+  focusArtboard: (artboardId: string) => void;
 }): ContextRegistry {
-  const { controller, clearSelection, selSet, distributeArtboards } = deps;
+  const {
+    controller,
+    clearSelection,
+    selSet,
+    distributeArtboards,
+    alignArtboards,
+    focusArtboard,
+  } = deps;
 
   // T24 — distribute commands are only enabled when ≥ 3 artboards are
   // selected. Below that, the menu items render as `disabled` so the user
   // sees the affordance but understands the precondition.
+  // G7 — align commands are enabled at ≥ 2 (alignment is well-defined with 2).
   const selectedArtboardCount = selSet.selected.filter((s) => !!s.artboardId).length;
   const distributeEnabled = selectedArtboardCount >= 3;
+  const alignEnabled = selectedArtboardCount >= 2;
 
   const copy = (text: string): void => {
     if (typeof navigator === 'undefined' || !navigator.clipboard) return;
@@ -504,18 +679,53 @@ function buildRegistry(deps: {
           id: 'fit-one',
           label: 'Fit just this artboard',
           onSelect: (target) => {
-            if (!controller || !target.artboardId) return;
-            // controller exposes jumpTo(rect) — DCArtboard.onFocus uses the
-            // same pattern. The artboard label button already wires to
-            // onFocus; dispatch a synthetic click as the simplest bridge.
-            const btn = (target.el ?? document)
-              .closest?.('[data-dc-screen]')
-              ?.querySelector('button.dc-artboard-label');
-            (btn as HTMLButtonElement | null)?.click();
+            if (!target.artboardId) return;
+            focusArtboard(target.artboardId);
           },
         },
         fitItem,
         resetItem,
+      ],
+      [
+        // G7 — align commands. Six modes; gated on ≥ 2 selected artboards
+        // (alignment is well-defined with 2). Primary surface is the
+        // MultiArtboardToolbar; menu entries are discoverability backup.
+        {
+          id: 'align-left',
+          label: 'Align left',
+          disabled: !alignEnabled,
+          onSelect: () => alignArtboards('left'),
+        },
+        {
+          id: 'align-center-x',
+          label: 'Align center (horizontal)',
+          disabled: !alignEnabled,
+          onSelect: () => alignArtboards('center-x'),
+        },
+        {
+          id: 'align-right',
+          label: 'Align right',
+          disabled: !alignEnabled,
+          onSelect: () => alignArtboards('right'),
+        },
+        {
+          id: 'align-top',
+          label: 'Align top',
+          disabled: !alignEnabled,
+          onSelect: () => alignArtboards('top'),
+        },
+        {
+          id: 'align-center-y',
+          label: 'Align center (vertical)',
+          disabled: !alignEnabled,
+          onSelect: () => alignArtboards('center-y'),
+        },
+        {
+          id: 'align-bottom',
+          label: 'Align bottom',
+          disabled: !alignEnabled,
+          onSelect: () => alignArtboards('bottom'),
+        },
       ],
       [
         // T24 — distribute commands. Primary surface is the floating
@@ -565,10 +775,14 @@ function CanvasRouter({
   hostRef,
   children,
   distributeArtboards,
+  alignArtboards,
 }: {
   hostRef: RefObject<HTMLDivElement | null>;
   children: ReactNode;
   distributeArtboards: (axis: 'x' | 'y') => void;
+  alignArtboards: (
+    mode: 'left' | 'right' | 'center-x' | 'top' | 'bottom' | 'center-y'
+  ) => void;
 }) {
   const { tool, setTool, clearSticky } = useToolMode();
   const selSet = useSelectionSet();
@@ -798,7 +1012,11 @@ function CanvasRouter({
       <SelectionHalos />
       <GroupBbox />
       <EqualSpacingHandles />
-      <MultiArtboardToolbar distributeArtboards={distributeArtboards} />
+      <ContextualToolbar />
+      <MultiArtboardToolbar
+        distributeArtboards={distributeArtboards}
+        alignArtboards={alignArtboards}
+      />
       <SnapGuideOverlay />
     </>
   );
@@ -863,6 +1081,12 @@ const MULTI_TOOLBAR_CSS = `
   align-items: center;
   justify-content: center;
 }
+.dc-multi-artboard-tb .dc-mab-divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--u-border-subtle, rgba(0,0,0,0.10));
+  margin: 0 4px;
+}
 @media (prefers-reduced-motion: reduce) {
   .dc-multi-artboard-tb button { transition: none; }
 }
@@ -879,8 +1103,12 @@ function ensureMultiToolbarStyles(): void {
 
 function MultiArtboardToolbar({
   distributeArtboards,
+  alignArtboards,
 }: {
   distributeArtboards: (axis: 'x' | 'y') => void;
+  alignArtboards: (
+    mode: 'left' | 'right' | 'center-x' | 'top' | 'bottom' | 'center-y'
+  ) => void;
 }) {
   ensureMultiToolbarStyles();
   const { selected } = useSelectionSet();
@@ -889,7 +1117,8 @@ function MultiArtboardToolbar({
 
   const artboardSelections = useMemo(() => selected.filter((s) => !!s.artboardId), [selected]);
   const artboardCount = artboardSelections.length;
-  const enabled = artboardCount >= 3;
+  const distributeOk = artboardCount >= 3;
+  const alignOk = artboardCount >= 2;
 
   useEffect(() => {
     const div = ref.current;
@@ -957,11 +1186,105 @@ function MultiArtboardToolbar({
       aria-label="Multi-artboard actions"
     >
       <span className="dc-mab-count">{artboardCount} artboards</span>
+      {/* G7 — align cluster. Icon-only to keep the toolbar narrow; full
+          label lives in the tooltip + the right-click menu. Enabled at ≥ 2
+          artboards (alignment is well-defined with 2). */}
       <button
         type="button"
-        disabled={!enabled}
+        disabled={!alignOk}
+        title={alignOk ? 'Align left' : 'Select at least 2 artboards to align'}
+        aria-label="Align left"
+        onClick={() => alignArtboards('left')}
+      >
+        <span className="dc-mab-icon" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+            <line x1="0.5" y1="0.5" x2="0.5" y2="13.5" stroke="currentColor" />
+            <rect x="1" y="2" width="7" height="3" fill="currentColor" />
+            <rect x="1" y="9" width="11" height="3" fill="currentColor" />
+          </svg>
+        </span>
+      </button>
+      <button
+        type="button"
+        disabled={!alignOk}
+        title={alignOk ? 'Align center (horizontal)' : 'Select at least 2 artboards to align'}
+        aria-label="Align center horizontally"
+        onClick={() => alignArtboards('center-x')}
+      >
+        <span className="dc-mab-icon" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+            <line x1="7" y1="0.5" x2="7" y2="13.5" stroke="currentColor" />
+            <rect x="3.5" y="2" width="7" height="3" fill="currentColor" />
+            <rect x="1.5" y="9" width="11" height="3" fill="currentColor" />
+          </svg>
+        </span>
+      </button>
+      <button
+        type="button"
+        disabled={!alignOk}
+        title={alignOk ? 'Align right' : 'Select at least 2 artboards to align'}
+        aria-label="Align right"
+        onClick={() => alignArtboards('right')}
+      >
+        <span className="dc-mab-icon" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+            <line x1="13.5" y1="0.5" x2="13.5" y2="13.5" stroke="currentColor" />
+            <rect x="6" y="2" width="7" height="3" fill="currentColor" />
+            <rect x="2" y="9" width="11" height="3" fill="currentColor" />
+          </svg>
+        </span>
+      </button>
+      <button
+        type="button"
+        disabled={!alignOk}
+        title={alignOk ? 'Align top' : 'Select at least 2 artboards to align'}
+        aria-label="Align top"
+        onClick={() => alignArtboards('top')}
+      >
+        <span className="dc-mab-icon" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+            <line x1="0.5" y1="0.5" x2="13.5" y2="0.5" stroke="currentColor" />
+            <rect x="2" y="1" width="3" height="7" fill="currentColor" />
+            <rect x="9" y="1" width="3" height="11" fill="currentColor" />
+          </svg>
+        </span>
+      </button>
+      <button
+        type="button"
+        disabled={!alignOk}
+        title={alignOk ? 'Align center (vertical)' : 'Select at least 2 artboards to align'}
+        aria-label="Align center vertically"
+        onClick={() => alignArtboards('center-y')}
+      >
+        <span className="dc-mab-icon" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+            <line x1="0.5" y1="7" x2="13.5" y2="7" stroke="currentColor" />
+            <rect x="2" y="3.5" width="3" height="7" fill="currentColor" />
+            <rect x="9" y="1.5" width="3" height="11" fill="currentColor" />
+          </svg>
+        </span>
+      </button>
+      <button
+        type="button"
+        disabled={!alignOk}
+        title={alignOk ? 'Align bottom' : 'Select at least 2 artboards to align'}
+        aria-label="Align bottom"
+        onClick={() => alignArtboards('bottom')}
+      >
+        <span className="dc-mab-icon" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+            <line x1="0.5" y1="13.5" x2="13.5" y2="13.5" stroke="currentColor" />
+            <rect x="2" y="6" width="3" height="7" fill="currentColor" />
+            <rect x="9" y="2" width="3" height="11" fill="currentColor" />
+          </svg>
+        </span>
+      </button>
+      <span className="dc-mab-divider" aria-hidden="true" />
+      <button
+        type="button"
+        disabled={!distributeOk}
         title={
-          enabled
+          distributeOk
             ? 'Distribute horizontally — equal gaps between artboards'
             : 'Select at least 3 artboards to distribute'
         }
@@ -975,13 +1298,12 @@ function MultiArtboardToolbar({
             <rect x="10.5" y="3" width="3" height="8" fill="currentColor" />
           </svg>
         </span>
-        Distribute H
       </button>
       <button
         type="button"
-        disabled={!enabled}
+        disabled={!distributeOk}
         title={
-          enabled
+          distributeOk
             ? 'Distribute vertically — equal gaps between artboards'
             : 'Select at least 3 artboards to distribute'
         }
@@ -995,7 +1317,6 @@ function MultiArtboardToolbar({
             <rect x="3" y="10.5" width="8" height="3" fill="currentColor" />
           </svg>
         </span>
-        Distribute V
       </button>
     </div>
   );

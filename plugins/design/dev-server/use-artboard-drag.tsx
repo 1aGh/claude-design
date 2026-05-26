@@ -36,14 +36,17 @@ import {
   useState,
 } from 'react';
 
+import { DRAG_THRESHOLD_PX as INPUT_DRAG_THRESHOLD_PX } from './input-router.tsx';
 import type { Selection } from './use-selection-set.tsx';
 import { type Rect, type SnapResult, computeSnap } from './use-snap-guides.tsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
 
-/** Screen-pixel distance the cursor must travel before pending → dragging. */
-export const DRAG_THRESHOLD_PX = 4;
+/** Screen-pixel distance the cursor must travel before pending → dragging.
+ *  Re-export from `input-router` so artboard-drag, marquees, and annotation
+ *  drag-vs-tap share the same canonical value (T25). */
+export const DRAG_THRESHOLD_PX = INPUT_DRAG_THRESHOLD_PX;
 
 /** Default grid + tolerance (world units). Documented in DDR-028. */
 export const DEFAULT_GRID_SIZE = 40;
@@ -136,7 +139,7 @@ export function dragReducer(state: DragState, ev: DragEvent): DragState {
       const dxClient = ev.clientX - state.startClientX;
       const dyClient = ev.clientY - state.startClientY;
       if (state.kind === 'pending') {
-        if (Math.abs(dxClient) < DRAG_THRESHOLD_PX && Math.abs(dyClient) < DRAG_THRESHOLD_PX) {
+        if (Math.hypot(dxClient, dyClient) < DRAG_THRESHOLD_PX) {
           return state;
         }
       }

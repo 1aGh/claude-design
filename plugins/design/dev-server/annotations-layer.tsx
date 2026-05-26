@@ -116,7 +116,7 @@ const FILL_PALETTE = [
   '#f4f1ee', // paper
 ] as const;
 
-const STROKE_WIDTH_THIN = 2;
+const STROKE_WIDTH_THIN = 3;
 const STROKE_WIDTH_THICK = 6;
 type Thickness = typeof STROKE_WIDTH_THIN | typeof STROKE_WIDTH_THICK;
 
@@ -1040,7 +1040,7 @@ export function AnnotationsLayer() {
     // the main tool palette, the in-canvas draw chrome, the minimap, and the
     // right-click menu. Clicks on these route to their own handlers.
     const CHROME_SELECTOR =
-      '.dc-annot-ctx, .dc-tool-palette, .dc-annot-chrome, .dc-mm, .dc-context-menu, .dc-tp-popover';
+      '.dc-annot-ctx, .dc-tool-palette, .dc-annot-chrome, .dc-mm, .dc-context-menu, .dc-tp-popover, .dc-multi-artboard-tb, .dc-elem-ctx-tb, .dc-cv-eq-spacing-layer, .cm-composer, .cm-thread, .cm-mention-popup, .cm-pin, .dc-annot-resize-handle';
 
     const onDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
@@ -1048,6 +1048,11 @@ export function AnnotationsLayer() {
       const target = e.target as Element | null;
       if (target?.closest?.(CHROME_SELECTOR)) return; // chrome owns its clicks
       const strokeId = findStrokeId(target);
+      // When pointerdown lands inside an artboard but not on a stroke, the
+      // gesture belongs to artboard-drag / element-marquee — not the
+      // annotation marquee. Bailing here keeps the annotation marquee from
+      // racing the artboard drag (post-Wave-3 user grievance G5).
+      if (!strokeId && target?.closest?.('[data-dc-screen]')) return;
       const [wx, wy] = screenToWorld(e.clientX, e.clientY);
       const startClientX = e.clientX;
       const startClientY = e.clientY;
@@ -1100,8 +1105,8 @@ export function AnnotationsLayer() {
       }
 
       // Empty world — start a drag-select gesture. A bare click without
-      // moving is a no-op (post-Wave-2 feedback: click-on-empty-space
-      // does NOT clear selection; Esc is the canonical deselect).
+      // moving clears annotation selection (post-Wave-3 feedback: click-to-
+      // deselect is back; Esc also still works).
       const addToSelection = e.shiftKey;
       let moved = false;
       const onMove = (mv: PointerEvent) => {
@@ -1117,8 +1122,10 @@ export function AnnotationsLayer() {
         document.removeEventListener('pointerup', onUp, true);
         document.removeEventListener('pointercancel', onUp, true);
         if (!moved) {
-          // Click without movement on empty world → no-op. Selection
-          // survives accidental misses; Esc is how the user deselects.
+          // Click without movement on empty world → clear annotation
+          // selection (post-Wave-3 user feedback). Shift-click preserves
+          // existing selection for additive-mode workflows.
+          if (!addToSelection) annotSel.clear();
           return;
         }
         const final = marqueeRef.current;
@@ -1818,7 +1825,7 @@ function AnnotationsChrome({
             type="button"
             className="dc-annot-btn"
             aria-pressed={thickness === STROKE_WIDTH_THIN}
-            title="Thin (2px)"
+            title="Thin (3px)"
             onClick={() => setThickness(STROKE_WIDTH_THIN)}
           >
             Thin
