@@ -1658,6 +1658,13 @@ function App() {
             setSelected(m.selected);
           } else if (m.type === 'comments' && typeof m.file === 'string') {
             setCommentsByFile(prev => ({ ...prev, [m.file]: m.comments || [] }));
+          } else if (m.type === 'ai-activity' && typeof m.file === 'string') {
+            // Phase 8 Task 4 — relay to every open iframe; each canvas's
+            // AiBanner filters by its own file path. Lightweight broadcast
+            // (one envelope per change, not per iframe count).
+            for (const el of iframesRef.current.values()) {
+              try { el.contentWindow.postMessage({ dgn: 'ai-activity', file: m.file, entry: m.entry }, '*'); } catch {}
+            }
           }
         } catch {}
       });

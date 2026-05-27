@@ -1,11 +1,6 @@
 // DDR-051 persistence wiring — bridges Room callbacks to the existing JSON
-// snapshots (Phase 6 _comments/<slug>.json) + the new `.ydoc.bin` cache under
-// _state/<slug>.ydoc.bin.
-//
-// Task 1 lays the framework in place but is still empty: the Y.Doc has no
-// shared types yet. Task 3 fills `applyJsonSeed` / `serializeJson` for the
-// `comments` Y.Array. Task 5 will add `annotations`. Keeping the framework
-// here means Task 3/5 implementations stay focused on the projection logic.
+// snapshots (Phase 6 _comments/<slug>.json) + Phase 5 annotations.svg + the
+// new `.ydoc.bin` cache under _state/<slug>.ydoc.bin.
 
 import path from 'node:path';
 
@@ -17,7 +12,9 @@ import { ensureStateDir, type RoomCallbacks } from './room.ts';
 
 /**
  * Y.Doc shared-type names. Frozen on Task 1 so client + server agree even
- * before they're populated.
+ * before they're populated. Task 3 added `comments`; Task 5 adds `annotations`
+ * (a Y.Map holding the SVG string under the `svg` key — LWW shape, mirrors
+ * the current /_api/annotations PUT semantics).
  */
 export const Y_TYPES = {
   comments: 'comments',
@@ -29,25 +26,25 @@ export interface PersistenceDeps {
   ctx: Context;
   api: Api;
   /**
-   * Resolve a canvas slug back to the repo-relative `file` path the comments
-   * API expects. The collab WS sends slugs (URL-safe), the comments path
-   * round-trips through Api.fileSlug. We invert by scanning loadAllComments
-   * once per cold open — sufficient for Task 1; Task 3 cache by slug.
+   * Resolve a canvas slug back to the repo-relative `file` path the api
+   * expects. The collab WS sends slugs (URL-safe), the comments path
+   * round-trips through Api.fileSlug. Persistence callers may also call
+   * `noteFile(file)` to populate the lookup table — server-side write paths
+   * (comments + annotations) call this so the room can locate the canvas
+   * even when no prior JSON file existed.
    */
   fileForSlug: (slug: string) => Promise<string | null>;
+  /** Best-effort cache primer — see fileForSlug above. */
+  noteFile?: (file: string) => void;
 }
 
 /**
  * Build the RoomCallbacks the registry plugs into createRoom().
  *
- * Each call to persistJson serializes the live Y.Doc into the existing JSON
- * file format. Each call to persistBinary writes the binary Y state to
- * `<designRoot>/_state/<slug>.ydoc.bin`.
- *
- * Seed order per DDR-051 §2:
- *   1. Try `.ydoc.bin` → Y.applyUpdate → done.
- *   2. Else read JSON snapshots → seed Y.Doc transactionally → done.
- *   3. Else empty Y.Doc.
+ * persistJson now serializes BOTH `comments` (Y.Array) and `annotations`
+ * (Y.Map → `svg` string) back to their existing on-disk formats. Each is
+ * skipped when the Y type is empty / unset — the JSON file stays whatever
+ * the prior legacy write produced.
  */
 export function createPersistence(deps: PersistenceDeps): RoomCallbacks {
   const { ctx, api, fileForSlug } = deps;
@@ -76,39 +73,46 @@ export function createPersistence(deps: PersistenceDeps): RoomCallbacks {
       return;
     }
 
-    // Step 2 — try JSON snapshots. Task 1 wires only the comments path; Task 3
-    // populates the Y.Array projection. Until then the Y.Doc starts empty
-    // intentionally and the JSON file remains the source of truth that the
-    // legacy REST endpoints serve from.
+    // Step 2 — seed each Y type from its existing on-disk source.
     const file = await fileForSlug(slug);
     if (!file) return;
 
-    const comments = await api.loadCommentsForFile(file);
-    if (!comments.length) return;
+    const [comments, svg] = await Promise.all([
+      api.loadCommentsForFile(file),
+      api.loadAnnotations(file),
+    ]);
 
-    // Seed inside a transaction so the doc.on('update') handler emits a single
-    // initial update. Origin tagged 'seed' to suppress broadcast back to
-    // anyone (the room's broadcaster ignores non-RoomConn origins).
+    if (comments.length === 0 && !svg) return;
+
     doc.transact(() => {
-      const arr = doc.getArray<unknown>(Y_TYPES.comments);
-      // Push the existing JSON rows verbatim. Comments are pure data; Y.Array
-      // of plain objects is the right shape per Task 3.
-      arr.push(comments);
+      if (comments.length > 0) {
+        const arr = doc.getArray<unknown>(Y_TYPES.comments);
+        arr.push(comments);
+      }
+      if (svg && typeof svg === 'string') {
+        const map = doc.getMap<string>(Y_TYPES.annotations);
+        map.set('svg', svg);
+      }
     }, 'seed');
   }
 
   async function persistJson(slug: string, doc: Y.Doc): Promise<void> {
-    // Task 1 placeholder — Task 3 fills this with the comments-array
-    // projection that writes back through api.saveCommentsForFile(). Until
-    // then we no-op so an in-flight Y.Doc doesn't clobber the on-disk JSON
-    // that legacy REST writes still own.
     const file = await fileForSlug(slug);
     if (!file) return;
+
+    // Comments — Y.Array projection back to JSON.
     const arr = doc.getArray(Y_TYPES.comments);
-    if (arr.length === 0) return;
-    // Comments stored as plain objects; toJSON yields the snapshot.
-    const list = arr.toArray() as Parameters<Api['saveCommentsForFile']>[1];
-    await api.saveCommentsForFile(file, list);
+    if (arr.length > 0) {
+      const list = arr.toArray() as Parameters<Api['saveCommentsForFile']>[1];
+      await api.saveCommentsForFile(file, list);
+    }
+
+    // Annotations — Y.Map.svg → annotations.svg file. Task 5.
+    const map = doc.getMap<unknown>(Y_TYPES.annotations);
+    const svg = map.get('svg');
+    if (typeof svg === 'string' && svg) {
+      await api.saveAnnotations(file, svg);
+    }
   }
 
   async function persistBinary(slug: string, state: Uint8Array): Promise<void> {

@@ -34,6 +34,7 @@ import {
 import { createPortal } from 'react-dom';
 
 import { AnnotationContextToolbar } from './annotations-context-toolbar.tsx';
+import { useCollab } from './use-collab.tsx';
 import { useViewportControllerContext, useWorldRefContext } from './canvas-lib.tsx';
 import { buildAnnotationStrokesRecord } from './commands/annotation-strokes-command.ts';
 import { crossedDragThreshold } from './input-router.tsx';
@@ -710,6 +711,41 @@ export function AnnotationsLayer() {
       cancelled = true;
     };
   }, []);
+
+  // Phase 8 Task 5 — observe the Y.Map.annotations for live updates from
+  // other tabs. Mirror of the comments-overlay Y.Array observe pattern. When
+  // the SVG round-trips through svgToStrokes(), drop the result if it's
+  // identical to our current strokes (avoids React re-render churn on echos).
+  const collab = useCollab();
+  useEffect(() => {
+    if (!collab) return;
+    const map = collab.doc.getMap<string>('annotations');
+    const apply = () => {
+      const svg = map.get('svg');
+      if (typeof svg !== 'string' || !svg) return;
+      const next = svgToStrokes(svg);
+      // setStrokesState uses functional form to bail on identity-equal updates;
+      // the canonical strokesShallowEqual lives in canvas-undo helpers and the
+      // overhead isn't worth pulling in here. Equal-length + same first/last
+      // id catches the common-no-op case; React's diff handles the rest.
+      setStrokesState((prev) =>
+        prev.length === next.length &&
+        prev[0]?.id === next[0]?.id &&
+        prev[prev.length - 1]?.id === next[next.length - 1]?.id
+          ? prev
+          : next
+      );
+    };
+    apply();
+    map.observe(apply);
+    return () => {
+      try {
+        map.unobserve(apply);
+      } catch {
+        /* doc destroyed before unmount */
+      }
+    };
+  }, [collab]);
 
   const undoStack = useUndoStackOptional();
   const undoSinks = useUndoSinks();

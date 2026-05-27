@@ -8,6 +8,7 @@ import { watch } from 'node:fs';
 import { join, posix } from 'node:path';
 
 import type { Api } from './api.ts';
+import type { AiActivity } from './collab/ai-activity.ts';
 import { buildCanvasModule } from './canvas-build.ts';
 import { canvasLibPath } from './canvas-lib-resolver.ts';
 import { TranspileError } from './canvas-pipeline.ts';
@@ -157,7 +158,7 @@ export interface Http {
   fetch(req: Request): Promise<Response>;
 }
 
-export function createHttp(ctx: Context, api: Api, inspect: Inspect): Http {
+export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActivity): Http {
   // Cache invalidation — when canvas-lib changes, every cached canvas bundle
   // is stale because canvas-lib is inlined into each one via the resolver
   // plugin. Drop the whole cache so the next request rebuilds with the fresh
@@ -313,6 +314,62 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect): Http {
       if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
       const name = await api.gitCurrentUser();
       return Response.json({ name }, { headers: { 'Cache-Control': 'no-store' } });
+    },
+
+    '/_api/ai': async (req: Request) => {
+      // Phase 8 Task 4 — read-only snapshot of the current AI activity map.
+      // GET → { entries: [{ file, author, startedAt, lastHeartbeat }, …] }
+      // Clients use this on mount to backfill the banner state without
+      // waiting for the next bus event.
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      return Response.json(
+        { entries: ai.list() },
+        { headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
+    '/_api/ai/start': async (req: Request) => {
+      // Phase 8 Task 4 — `/design:edit` (or any external slash command driving
+      // Claude work) POSTs here when work begins. body = { file, author }.
+      // Replaces any prior entry for the file.
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      const body = await readJson<{ file?: string; author?: string }>(req);
+      if (!body || typeof body.file !== 'string' || !body.file.trim()) {
+        return new Response('body.file required', { status: 400 });
+      }
+      const author =
+        typeof body.author === 'string' && body.author.trim()
+          ? body.author.trim().slice(0, 120)
+          : 'Claude';
+      const entry = ai.start(body.file.trim(), author);
+      return Response.json(entry, { headers: { 'Cache-Control': 'no-store' } });
+    },
+
+    '/_api/ai/heartbeat': async (req: Request) => {
+      // Refresh the lastHeartbeat. Returns 404 if no entry — slash command
+      // can treat that as "the server bounced; re-issue /start".
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      const body = await readJson<{ file?: string }>(req);
+      if (!body || typeof body.file !== 'string' || !body.file.trim()) {
+        return new Response('body.file required', { status: 400 });
+      }
+      const entry = ai.heartbeat(body.file.trim());
+      if (!entry) return new Response('no active entry', { status: 404 });
+      return Response.json(entry, { headers: { 'Cache-Control': 'no-store' } });
+    },
+
+    '/_api/ai/end': async (req: Request) => {
+      // Explicit completion (normal or error). Banner clears immediately.
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      const body = await readJson<{ file?: string }>(req);
+      if (!body || typeof body.file !== 'string' || !body.file.trim()) {
+        return new Response('body.file required', { status: 400 });
+      }
+      const cleared = ai.end(body.file.trim());
+      return Response.json(
+        { cleared },
+        { status: cleared ? 200 : 404, headers: { 'Cache-Control': 'no-store' } }
+      );
     },
 
     '/_api/annotations': async (req: Request) => {

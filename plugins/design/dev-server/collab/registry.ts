@@ -27,6 +27,13 @@ export interface Registry {
    * downstreams it to peers but skips the in-flight debounce loop.
    */
   syncRoomFromComments(slug: string, comments: readonly unknown[]): void;
+  /**
+   * Phase 8 Task 5 bridge — same shape as syncRoomFromComments but for the
+   * `annotations` Y.Map. The PUT /_api/annotations endpoint passes the
+   * post-write SVG; the room replaces `Y.Map.svg` so collab peers see the
+   * updated stroke set without waiting for a cold-open re-seed.
+   */
+  syncRoomFromAnnotations(slug: string, svg: string): void;
   /** Flush every dirty room synchronously. DDR-051 branch-switch path. */
   flushAll(): Promise<void>;
   /** Tear down everything (e.g. on server shutdown). */
@@ -63,6 +70,15 @@ export function createRegistry(callbacks: RoomCallbacks): Registry {
     }, 'inspector-write');
   }
 
+  function syncRoomFromAnnotations(slug: string, svg: string): void {
+    const room = rooms.get(slug);
+    if (!room) return;
+    room.doc.transact(() => {
+      const map = room.doc.getMap<string>(Y_TYPES.annotations);
+      map.set('svg', svg);
+    }, 'inspector-write');
+  }
+
   async function flushAll(): Promise<void> {
     await Promise.all(Array.from(rooms.values(), (r) => r.flush()));
   }
@@ -81,5 +97,14 @@ export function createRegistry(callbacks: RoomCallbacks): Registry {
     await Promise.all(all.map((r) => r.destroy()));
   }
 
-  return { get, peek, syncRoomFromComments, flushAll, destroyAll, drop, size: () => rooms.size };
+  return {
+    get,
+    peek,
+    syncRoomFromComments,
+    syncRoomFromAnnotations,
+    flushAll,
+    destroyAll,
+    drop,
+    size: () => rooms.size,
+  };
 }

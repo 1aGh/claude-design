@@ -36,6 +36,7 @@ import {
   useState,
 } from 'react';
 
+import { AiBanner } from './ai-banner.tsx';
 import { AnnotationsLayer } from './annotations-layer.tsx';
 import { ArtboardMarqueeOverlay } from './artboard-marquee.tsx';
 import {
@@ -69,6 +70,7 @@ import {
   useAnnotationSelection,
 } from './use-annotation-selection.tsx';
 import { AnnotationsVisibilityProvider } from './use-annotations-visibility.tsx';
+import { ParticipantsChrome } from './participants-chrome.tsx';
 import { useCollab } from './use-collab.tsx';
 import { useCursorModifiers } from './use-cursor-modifiers.tsx';
 import { useKeyboardDiscipline } from './use-keyboard-discipline.tsx';
@@ -1054,6 +1056,8 @@ function CanvasRouter({
       <SnapGuideOverlay />
       <UndoHud />
       <CursorsOverlay />
+      <AiBanner />
+      <ParticipantsChrome />
     </>
   );
 }

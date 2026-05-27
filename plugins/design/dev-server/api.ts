@@ -167,7 +167,15 @@ export interface Api {
   appendExportHistory(entry: ExportHistoryEntry): Promise<void>;
 }
 
-export function createApi(ctx: Context, onCommentsChanged: (file: string) => void): Api {
+export interface ApiHooks {
+  onCommentsChanged: (file: string) => void;
+  /** Phase 8 Task 5 — fires after a successful PUT /_api/annotations write. */
+  onAnnotationsChanged?: (file: string, svg: string) => void;
+}
+
+export function createApi(ctx: Context, hooks: ApiHooks): Api {
+  const onCommentsChanged = hooks.onCommentsChanged;
+  const onAnnotationsChanged = hooks.onAnnotationsChanged;
   const { paths, cfg } = ctx;
 
   function fileSlug(file: string): string {
@@ -582,6 +590,7 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
     // content fully, so we don't try to sanitize beyond a tag check.
     if (!/^\s*<svg[\s>]/i.test(svg)) return false;
     await Bun.write(annotationsPath(file), svg);
+    onAnnotationsChanged?.(file, svg);
     return true;
   }
 

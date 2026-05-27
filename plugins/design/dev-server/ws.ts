@@ -95,6 +95,11 @@ export function createWs(ctx: Context, api: Api, inspect: Inspect, collab: Colla
   ctx.bus.on('comments', ({ file, comments }: { file: string; comments: unknown[] }) =>
     broadcast({ type: 'comments', file, comments })
   );
+  // Phase 8 Task 4 — AI activity banner. `entry` is null on clear / explicit
+  // end / heartbeat-grace expiry; non-null carries { file, author, …timestamps }.
+  ctx.bus.on('ai-activity', ({ file, entry }: { file: string; entry: unknown }) =>
+    broadcast({ type: 'ai-activity', file, entry })
+  );
 
   // HMR broadcaster — turns fs:any change events into `canvas-hmr` messages.
   // The iframe-side client (in _shell.html) decides reload strategy from `mode`.

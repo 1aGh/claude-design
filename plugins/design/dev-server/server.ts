@@ -18,6 +18,7 @@ import { spawn } from 'node:child_process';
 
 import { createApi } from './api.ts';
 import { bootSelfHeal } from './boot-self-heal.ts';
+import { createAiActivity } from './collab/ai-activity.ts';
 import { createCollab } from './collab/index.ts';
 import { createContext } from './context.ts';
 import { createFsWatch } from './fs-watch.ts';
@@ -39,24 +40,34 @@ const ctx = createContext();
 // binding is set.
 let collab: ReturnType<typeof createCollab> | null = null;
 
-const api = createApi(ctx, async (file) => {
-  // After every comments mutation, re-broadcast the updated list.
-  const comments = await api.loadCommentsForFile(file);
-  ctx.bus.emit('comments', { file, comments });
-  // Phase 8 Task 3 — bridge into the live Y.Array so collab peers see the
-  // change without waiting for cold-open re-seeding. No-op when no room is
-  // live for this canvas slug.
-  if (collab) {
-    collab.registry.syncRoomFromComments(api.fileSlug(file), comments);
-  }
+const api = createApi(ctx, {
+  onCommentsChanged: async (file) => {
+    // After every comments mutation, re-broadcast the updated list.
+    const comments = await api.loadCommentsForFile(file);
+    ctx.bus.emit('comments', { file, comments });
+    // Phase 8 Task 3 — bridge into the live Y.Array so collab peers see the
+    // change without waiting for cold-open re-seeding. No-op when no room is
+    // live for this canvas slug.
+    if (collab) {
+      collab.registry.syncRoomFromComments(api.fileSlug(file), comments);
+    }
+  },
+  // Phase 8 Task 5 — same bridge for annotations. PUT /_api/annotations writes
+  // the SVG blob to disk; we mirror it into the live Y.Map for collab peers.
+  onAnnotationsChanged: (file, svg) => {
+    if (collab) {
+      collab.registry.syncRoomFromAnnotations(api.fileSlug(file), svg);
+    }
+  },
 });
 
 const inspect = createInspect(ctx, (file) => api.loadCommentsForFile(file));
 await inspect.load();
 
 collab = createCollab(ctx, api);
+const aiActivity = createAiActivity(ctx);
 const ws = createWs(ctx, api, inspect, collab);
-const http = createHttp(ctx, api, inspect);
+const http = createHttp(ctx, api, inspect, aiActivity);
 const fsWatch = createFsWatch(ctx);
 
 // Port: --port arg > $PORT > $MDCC_DEV_PORT > 4399.
@@ -210,6 +221,11 @@ async function shutdown() {
     if (collab) await collab.registry.destroyAll();
   } catch {
     /* best-effort flush; the JSON snapshot is the ground truth anyway */
+  }
+  try {
+    aiActivity.stop();
+  } catch {
+    /* janitor cleanup is best-effort */
   }
   try {
     await Bun.write(ctx.paths.serverInfoFile, '').catch(() => {});
