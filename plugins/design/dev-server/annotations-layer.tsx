@@ -690,6 +690,10 @@ export function AnnotationsLayer() {
   const supportsFill = tool === 'rect' || tool === 'ellipse';
 
   // Load existing annotations on mount.
+  // Phase 8 Task 5 — seed lastAppliedSvgRef so the first Y.Map observe (when
+  // collab connects shortly after this fetch lands) doesn't re-apply the
+  // same content we just hydrated from REST.
+  const lastAppliedSvgRef = useRef<string>('');
   useEffect(() => {
     const file = deriveFile();
     fileRef.current = file;
@@ -702,7 +706,10 @@ export function AnnotationsLayer() {
       .then((text) => {
         if (cancelled) return;
         const loaded = svgToStrokes(text);
-        if (loaded.length) setStrokesState(loaded);
+        if (loaded.length) {
+          setStrokesState(loaded);
+          lastAppliedSvgRef.current = text;
+        }
       })
       .catch(() => {
         /* network blip — start with an empty annotation set */
@@ -713,9 +720,11 @@ export function AnnotationsLayer() {
   }, []);
 
   // Phase 8 Task 5 — observe the Y.Map.annotations for live updates from
-  // other tabs. Mirror of the comments-overlay Y.Array observe pattern. When
-  // the SVG round-trips through svgToStrokes(), drop the result if it's
-  // identical to our current strokes (avoids React re-render churn on echos).
+  // other tabs. Bail when the incoming SVG STRING is identical to the one
+  // we last applied (covers the local echo round-trip without missing real
+  // foreign changes). The prior length+first/last-id check was wrong: a
+  // resize / move keeps the same id list, so all three predicates matched
+  // even though geometry changed — foreign edits silently disappeared.
   const collab = useCollab();
   useEffect(() => {
     if (!collab) return;
@@ -723,18 +732,9 @@ export function AnnotationsLayer() {
     const apply = () => {
       const svg = map.get('svg');
       if (typeof svg !== 'string' || !svg) return;
-      const next = svgToStrokes(svg);
-      // setStrokesState uses functional form to bail on identity-equal updates;
-      // the canonical strokesShallowEqual lives in canvas-undo helpers and the
-      // overhead isn't worth pulling in here. Equal-length + same first/last
-      // id catches the common-no-op case; React's diff handles the rest.
-      setStrokesState((prev) =>
-        prev.length === next.length &&
-        prev[0]?.id === next[0]?.id &&
-        prev[prev.length - 1]?.id === next[next.length - 1]?.id
-          ? prev
-          : next
-      );
+      if (svg === lastAppliedSvgRef.current) return;
+      lastAppliedSvgRef.current = svg;
+      setStrokesState(svgToStrokes(svg));
     };
     apply();
     map.observe(apply);
@@ -770,6 +770,10 @@ export function AnnotationsLayer() {
     const file = fileRef.current;
     if (!file) return Promise.resolve();
     const svg = strokesToSvg(next);
+    // Phase 8 Task 5 — record the SVG we just authored locally so the
+    // server-broadcast echo (PUT → onAnnotationsChanged → syncRoom* →
+    // Y.Map.observe) doesn't trigger a redundant setStrokesState.
+    lastAppliedSvgRef.current = svg;
     return fetch('/_api/annotations', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
