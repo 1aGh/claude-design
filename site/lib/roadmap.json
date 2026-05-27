@@ -1,5 +1,5 @@
 {
-  "generated": "2026-05-26T13:45:31.602Z",
+  "generated": "2026-05-27T06:45:17.650Z",
   "currentPhase": null,
   "phases": [
     {
@@ -499,7 +499,7 @@
     },
     {
       "id": "phase-a-deps-and-preflight",
-      "title": "Phase A — Plugin dependency manifest + preflight + `maude doctor`",
+      "title": "Phase A — `maude doctor`: deps preflight + config health + quality gates",
       "status": "planned",
       "shipTarget": null,
       "date": null,
@@ -527,17 +527,6 @@
       "date": null,
       "summary": "---",
       "planPath": ".ai/plans/phase-c-sidecar-monitor-background.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "phase-d-config-hardening",
-      "title": "Phase D — `workflows.config.json` hardening: lint, drift detect, init re-run, validate gate",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "---",
-      "planPath": ".ai/plans/phase-d-config-hardening.md",
       "archived": false,
       "phaseKey": null
     },
