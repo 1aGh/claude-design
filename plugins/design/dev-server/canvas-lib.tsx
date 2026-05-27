@@ -88,6 +88,7 @@ import {
 } from 'motion/react';
 
 import { CanvasShell } from './canvas-shell.tsx';
+import { CollabProvider, canvasSlugFromPath } from './use-collab.tsx';
 import {
   buildMoveArtboardsRecord,
   diffLayoutPositions,
@@ -1170,11 +1171,20 @@ export function DesignCanvas(props: DesignCanvasProps) {
   // `window.top.__maude_undo_stacks` so it survives canvas switches —
   // close Foo.tsx, open Bar.tsx, come back to Foo.tsx → history intact.
   const canvasFile = readCanvasMetaFile() ?? undefined;
+  // Phase 8 / DDR-051 — open a Yjs collab session for this canvas iff we can
+  // derive a stable slug. The slug must match `api.fileSlug` server-side so
+  // both ends agree on the room key. When the canvas was opened via a URL
+  // that doesn't yield a slug (e.g. preview iframes without `canvas=`),
+  // CollabProvider is omitted; useCollab() falls back gracefully to null.
+  const collabSlug = canvasSlugFromPath(canvasFile);
+  const inner = (
+    <ToolProvider>
+      <DesignCanvasInner {...props} />
+    </ToolProvider>
+  );
   return (
     <UndoStackProvider canvasFile={canvasFile}>
-      <ToolProvider>
-        <DesignCanvasInner {...props} />
-      </ToolProvider>
+      {collabSlug ? <CollabProvider slug={collabSlug}>{inner}</CollabProvider> : inner}
     </UndoStackProvider>
   );
 }

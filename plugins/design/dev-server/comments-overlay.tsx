@@ -34,6 +34,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { useCollab } from './use-collab.tsx';
 import { useSelectionSetOptional } from './use-selection-set.tsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -229,6 +230,34 @@ export function CommentsOverlay(): React.ReactNode {
   // re-attaching the listener on every comments mutation.
   const commentsRef = useRef<OverlayComment[]>(comments);
   commentsRef.current = comments;
+
+  // Phase 8 Task 3 — when a collab room is connected, the Y.Array of comments
+  // is the live source of truth. observe() fires on every remote mutation
+  // (added pins from another tab, resolved-from-inspector via the registry
+  // bridge, etc.) and on the local seed. Both paths converge on the same
+  // JSON projection — last-write-wins between Y.Array and postMessage is
+  // safe because they carry identical content; the Y.Array path just
+  // reaches us first (no 800 ms debounce delay).
+  const collab = useCollab();
+  useEffect(() => {
+    if (!collab) return;
+    const arr = collab.doc.getArray<OverlayComment>('comments');
+    const sync = () => {
+      // toArray() snapshot the current Y.Array into a plain JS list.
+      setComments(arr.toArray() as OverlayComment[]);
+    };
+    // Initial fill — covers the case where Y.Doc was already seeded by the
+    // time this overlay mounted.
+    if (arr.length > 0) sync();
+    arr.observe(sync);
+    return () => {
+      try {
+        arr.unobserve(sync);
+      } catch {
+        /* doc destroyed before unmount — observer already gone */
+      }
+    };
+  }, [collab]);
 
   // Listen for the shell's broadcast channels. Schema matches the legacy
   // overlay so the shell-side glue in client/app.jsx (~line 1672) keeps

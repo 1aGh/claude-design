@@ -306,6 +306,15 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect): Http {
       return Response.json({ committers }, { headers: { 'Cache-Control': 'no-store' } });
     },
 
+    '/_api/git-user': async (req: Request) => {
+      // Phase 8 — local `git config user.name` for the collab Awareness peer
+      // identity. Color-hash derives from this; falls back to anonymous-<pid>
+      // client-side when empty.
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      const name = await api.gitCurrentUser();
+      return Response.json({ name }, { headers: { 'Cache-Control': 'no-store' } });
+    },
+
     '/_api/annotations': async (req: Request) => {
       // Phase 5 — `<designRoot>/<slug>.annotations.svg` read / overwrite.
       // GET ?file=<repo-relative-canvas-path>           → SVG text (empty if absent)

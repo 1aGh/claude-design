@@ -60,6 +60,14 @@ export const RUNTIME_PACKAGES = [
   // dep declaration on the registry-item.json output.
   'motion',
   'motion/react',
+  // Phase 8 / DDR-051 — Yjs + y-protocols for the canvas-shell collab client.
+  // Each canvas iframe opens a WS to /_ws/collab/:slug and owns a per-iframe
+  // Y.Doc + Awareness instance. Externalised here so the client-side
+  // use-collab.tsx + cursors-overlay.tsx resolve via the importmap; canvases
+  // that don't use collab pay zero bundle cost (tree-shaken).
+  'yjs',
+  'y-protocols/sync',
+  'y-protocols/awareness',
 ] as const;
 
 export type RuntimePackage = (typeof RUNTIME_PACKAGES)[number];

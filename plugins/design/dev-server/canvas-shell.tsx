@@ -57,6 +57,7 @@ import {
   useContextMenu,
 } from './context-menu.tsx';
 import { ContextualToolbar } from './contextual-toolbar.tsx';
+import { CursorsOverlay } from './cursors-overlay.tsx';
 import { EqualSpacingHandles } from './equal-spacing-handles.tsx';
 import { ExportDialogProvider } from './export-dialog.tsx';
 import { type HoverTarget, resolveHoverTarget, useInputRouter } from './input-router.tsx';
@@ -68,6 +69,7 @@ import {
   useAnnotationSelection,
 } from './use-annotation-selection.tsx';
 import { AnnotationsVisibilityProvider } from './use-annotations-visibility.tsx';
+import { useCollab } from './use-collab.tsx';
 import { useCursorModifiers } from './use-cursor-modifiers.tsx';
 import { useKeyboardDiscipline } from './use-keyboard-discipline.tsx';
 import { type Selection, SelectionSetProvider, useSelectionSet } from './use-selection-set.tsx';
@@ -363,6 +365,40 @@ function CanvasCore({
     host.setAttribute('data-cv-zoom-lod', lod);
     return () => host.removeAttribute('data-cv-zoom-lod');
   }, [hostRef, publishedZoom]);
+
+  // Phase 8 — publish local cursor (world coords) + viewport to Awareness
+  // so foreign peers can render our cursor on their CursorsOverlay. The
+  // collab.publishAwareness call is already throttled to ~30 Hz internally
+  // (use-collab.tsx) — we just need to compute screen → world per move.
+  const collab = useCollab();
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host || !collab || !controller) return;
+    const onMove = (e: MouseEvent) => {
+      const v = controller.viewport;
+      // screen → world: world = (screen - viewport.{x,y}) / zoom.
+      const worldX = (e.clientX - v.x) / Math.max(v.zoom, 0.0001);
+      const worldY = (e.clientY - v.y) / Math.max(v.zoom, 0.0001);
+      collab.publishAwareness({ cursor: { x: worldX, y: worldY } });
+    };
+    const onLeave = () => {
+      collab.publishAwareness({ cursor: null });
+    };
+    host.addEventListener('mousemove', onMove);
+    host.addEventListener('mouseleave', onLeave);
+    return () => {
+      host.removeEventListener('mousemove', onMove);
+      host.removeEventListener('mouseleave', onLeave);
+    };
+  }, [hostRef, collab, controller]);
+
+  // Phase 8 — publish viewport when it settles. The CursorsOverlay only
+  // needs the LOCAL viewport (to transform foreign world coords back to
+  // screen), but exposing ours over Awareness sets up Task 6's follow-mode.
+  useEffect(() => {
+    if (!collab || !controller) return;
+    collab.publishAwareness({ viewport: controller.viewport });
+  }, [collab, controller, controller?.viewport.x, controller?.viewport.y, controller?.viewport.zoom]);
 
   /**
    * T24 — distribute the currently-selected artboards evenly on the given
@@ -1017,6 +1053,7 @@ function CanvasRouter({
       />
       <SnapGuideOverlay />
       <UndoHud />
+      <CursorsOverlay />
     </>
   );
 }

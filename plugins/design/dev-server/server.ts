@@ -33,16 +33,28 @@ await bootSelfHeal();
 
 const ctx = createContext();
 
+// Forward-declared so the api.commentsAdd/patch/delete/addReply callback can
+// reach into the collab registry (Phase 8 Task 3 bridge). collab is initialized
+// synchronously below; the callback only fires at runtime, by which point the
+// binding is set.
+let collab: ReturnType<typeof createCollab> | null = null;
+
 const api = createApi(ctx, async (file) => {
   // After every comments mutation, re-broadcast the updated list.
   const comments = await api.loadCommentsForFile(file);
   ctx.bus.emit('comments', { file, comments });
+  // Phase 8 Task 3 — bridge into the live Y.Array so collab peers see the
+  // change without waiting for cold-open re-seeding. No-op when no room is
+  // live for this canvas slug.
+  if (collab) {
+    collab.registry.syncRoomFromComments(api.fileSlug(file), comments);
+  }
 });
 
 const inspect = createInspect(ctx, (file) => api.loadCommentsForFile(file));
 await inspect.load();
 
-const collab = createCollab(ctx, api);
+collab = createCollab(ctx, api);
 const ws = createWs(ctx, api, inspect, collab);
 const http = createHttp(ctx, api, inspect);
 const fsWatch = createFsWatch(ctx);
@@ -195,7 +207,7 @@ async function shutdown() {
   console.log('\n  Stopping…');
   fsWatch.stop();
   try {
-    await collab.registry.destroyAll();
+    if (collab) await collab.registry.destroyAll();
   } catch {
     /* best-effort flush; the JSON snapshot is the ground truth anyway */
   }

@@ -140,6 +140,12 @@ export interface Api {
   commentsDelete(id: string): Promise<boolean>;
   commentsAddReply(id: string, payload: { body: string; author?: string }): Promise<Comment | null>;
   gitCommitters(): Promise<GitCommitter[]>;
+  /**
+   * Phase 8 — local `git config user.name`, cached for the process lifetime.
+   * Used by the collab client to derive a stable color hash per peer.
+   * Empty string when git is unset; the client falls back to `anonymous-<pid>`.
+   */
+  gitCurrentUser(): Promise<string>;
   parseMentions(text: string): string[];
   // Canvas state
   loadCanvasState(file: string): Promise<Record<string, unknown> | null>;
@@ -936,6 +942,7 @@ export function createApi(ctx: Context, onCommentsChanged: (file: string) => voi
     commentsDelete,
     commentsAddReply,
     gitCommitters,
+    gitCurrentUser,
     parseMentions,
     loadCanvasState,
     saveCanvasState,
