@@ -433,6 +433,15 @@ function CanvasCore({
     collab.publishAwareness({ selection: { cssPath: first.selector, bounds } });
   }, [collab, selSet.selected]);
 
+  // Phase 8 — publish annotation selection (Phase 5 strokes). Separate from
+  // selSet because annotations have their own selection registry. Peers
+  // render halos by querying `[data-id="<id>"]` so the same halo follows
+  // resize / move (SVG re-emits with the same data-id).
+  useEffect(() => {
+    if (!collab) return;
+    collab.publishAwareness({ annotationSelection: annotSel.selectedIds });
+  }, [collab, annotSel.selectedIds]);
+
   /**
    * T24 — distribute the currently-selected artboards evenly on the given
    * axis. Requires ≥ 3 selected artboards. Sort by leading edge, hold the

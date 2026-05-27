@@ -91,6 +91,13 @@ export interface CollabAwarenessState {
    * publish (so it's a hint, not a live ref). Null when nothing selected.
    */
   selection: { cssPath: string; bounds: { x: number; y: number; w: number; h: number } } | null;
+  /**
+   * Currently-selected annotation stroke IDs (Phase 5). Strokes are addressed
+   * by their stable `data-id` attribute, so peers can resolve halos via
+   * `document.querySelectorAll('[data-id="<id>"]')`. Empty when nothing
+   * annotation-shaped is selected.
+   */
+  annotationSelection: string[];
   viewport: { x: number; y: number; zoom: number };
   /**
    * Server-side `disconnect` matches awareness states to outgoing peers by
@@ -161,6 +168,7 @@ export function useForeignAwareness(): ForeignAwareness[] {
           color: s.color,
           cursor: s.cursor ?? null,
           selection: s.selection ?? null,
+          annotationSelection: Array.isArray(s.annotationSelection) ? s.annotationSelection : [],
           viewport: s.viewport ?? { x: 0, y: 0, zoom: 1 },
         });
       }
@@ -261,6 +269,7 @@ export function CollabProvider({ slug, children }: CollabProviderProps): JSX.Ele
       color: myColor,
       cursor: null,
       selection: null,
+      annotationSelection: [],
       viewport: { x: 0, y: 0, zoom: 1 },
       __connId: myConnId,
     } satisfies CollabAwarenessState);
@@ -434,6 +443,7 @@ export function CollabProvider({ slug, children }: CollabProviderProps): JSX.Ele
           color: current.color ?? myColor,
           cursor: current.cursor ?? null,
           selection: current.selection ?? null,
+          annotationSelection: current.annotationSelection ?? [],
           viewport: current.viewport ?? { x: 0, y: 0, zoom: 1 },
           __connId: myConnId,
           ...next,

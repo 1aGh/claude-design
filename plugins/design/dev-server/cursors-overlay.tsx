@@ -20,7 +20,7 @@
 import { memo, useEffect, useState } from 'react';
 
 import { useViewportControllerContext } from './canvas-lib.tsx';
-import { type ForeignAwareness, useForeignAwareness } from './use-collab.tsx';
+import { type ForeignAwareness, useCollab, useForeignAwareness } from './use-collab.tsx';
 
 const CURSOR_CSS = `
 .dc-cursor-overlay {
@@ -140,12 +140,65 @@ const Cursor = memo(function Cursor({ peer, viewport }: CursorProps): JSX.Elemen
 });
 
 /**
- * Foreign-selection halo. The peer publishes selection.cssPath (a CSS
- * locator usable inside the same canvas iframe — it's `[data-cd-id="…"]`
- * for canvas-shell selections). Re-resolve to live screen bounds on every
- * render so pan / zoom / hydration changes don't desync the rect. Falls
- * back to the published `bounds` (screen-px at publish time) when the
- * cssPath can't be resolved locally.
+ * Foreign-selection halos for stamped annotation strokes. Each peer publishes
+ * `annotationSelection: string[]` — stroke `data-id` values from Phase 5.
+ * We resolve each via `[data-id="<id>"]` and render an outlined rect at the
+ * element's current screen bounds. Re-runs every render so geometry changes
+ * (resize, move) stay in sync without manual re-publish.
+ */
+interface PeerAnnotationSelectionProps {
+  peer: ForeignAwareness;
+}
+
+const PeerAnnotationSelection = memo(function PeerAnnotationSelection({
+  peer,
+}: PeerAnnotationSelectionProps): JSX.Element | null {
+  if (!peer.annotationSelection || peer.annotationSelection.length === 0) return null;
+  if (typeof document === 'undefined') return null;
+  const rects: { id: string; x: number; y: number; w: number; h: number }[] = [];
+  for (const id of peer.annotationSelection) {
+    try {
+      const el = document.querySelector(`[data-id="${CSS.escape(id)}"]`);
+      if (!el) continue;
+      const r = (el as Element).getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) continue;
+      // Pad by 3px so the halo sits OUTSIDE the stroke instead of clipping it.
+      rects.push({ id, x: r.left - 3, y: r.top - 3, w: r.width + 6, h: r.height + 6 });
+    } catch {
+      /* invalid id token — skip */
+    }
+  }
+  if (rects.length === 0) return null;
+  return (
+    <>
+      {rects.map((r, i) => (
+        <div
+          key={r.id}
+          className="dc-peer-selection"
+          style={{
+            transform: `translate(${r.x}px, ${r.y}px)`,
+            width: r.w,
+            height: r.h,
+            borderColor: peer.color,
+          }}
+        >
+          {i === 0 && (
+            <div className="dc-peer-selection__label" style={{ background: peer.color }}>
+              {peer.name}
+            </div>
+          )}
+        </div>
+      ))}
+    </>
+  );
+});
+
+/**
+ * Foreign-selection halo for canvas-shell elements (cdId-based selSet).
+ * The peer publishes selection.cssPath; we re-resolve in the local DOM
+ * each render so pan / zoom / hydration changes don't desync. Falls back
+ * to the published `bounds` (screen-px at publish time) when cssPath
+ * can't be resolved locally.
  */
 interface PeerSelectionProps {
   peer: ForeignAwareness;
@@ -204,10 +257,34 @@ export function CursorsOverlay(): JSX.Element {
   useEffect(() => {
     setVp({ x: liveVp.x, y: liveVp.y, zoom: liveVp.zoom });
   }, [liveVp.x, liveVp.y, liveVp.zoom]);
+
+  // Bump a render tick whenever annotations change so PeerAnnotationSelection
+  // re-resolves [data-id] bounds. Without this, a peer resizing a stroke
+  // would propagate via Y.Map → local annotations-layer re-render — but the
+  // sibling CursorsOverlay wouldn't re-render, so the annotation halo would
+  // sit on the OLD bounds until awareness independently changed.
+  const collab = useCollab();
+  const [, bumpAnnotTick] = useState(0);
+  useEffect(() => {
+    if (!collab) return;
+    const map = collab.doc.getMap('annotations');
+    const onChange = () => bumpAnnotTick((n) => n + 1);
+    map.observe(onChange);
+    return () => {
+      try {
+        map.unobserve(onChange);
+      } catch {
+        /* doc destroyed */
+      }
+    };
+  }, [collab]);
   return (
     <div className="dc-cursor-overlay" aria-hidden="true">
       {peers.map((peer) => (
         <PeerSelection key={`sel-${peer.clientID}`} peer={peer} />
+      ))}
+      {peers.map((peer) => (
+        <PeerAnnotationSelection key={`asel-${peer.clientID}`} peer={peer} />
       ))}
       {peers.map((peer) => (
         <Cursor key={peer.clientID} peer={peer} viewport={vp} />
