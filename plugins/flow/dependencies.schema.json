@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "maude plugin — runtime dependency manifest",
+  "description": "Declares CLI binaries, MCP servers, and runtime packages the plugin's commands / agents / skills shell out to. Consumed by maude doctor (cli/commands/doctor.mjs) and preflight.sh / preflight.mjs. Schema is shared between plugins — each plugin ships its own dependencies.json + (symlink to) this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "plugin", "dependencies"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "1",
+      "description": "Manifest schema version. Bumped when the dependency entry shape changes incompatibly."
+    },
+    "plugin": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Plugin name (matches plugins/<plugin>/.claude-plugin/plugin.json `name`)."
+    },
+    "dependencies": {
+      "type": "array",
+      "minItems": 0,
+      "items": { "$ref": "#/$defs/Dependency" }
+    }
+  },
+  "$defs": {
+    "Dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "hardness", "check"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*$",
+          "description": "Unique identifier within the manifest. Lowercase, hyphenated."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["cli", "mcp", "node-package", "bun-package", "system-tool"],
+          "description": "What kind of dependency. `cli` = on PATH; `mcp` = MCP server / tool; `node-package` / `bun-package` = installed via npm/bun; `system-tool` = OS-provided (curl, jq)."
+        },
+        "hardness": {
+          "type": "string",
+          "enum": ["hard", "soft"],
+          "description": "`hard` = missing blocks plugin use; `soft` = graceful degradation possible (fallback path, warning only)."
+        },
+        "check": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "How to detect presence. For CLI/system-tool/package: shell command + expected exit. For MCP: tool name to probe.",
+          "properties": {
+            "command": {
+              "type": "string",
+              "description": "Shell command executed via `bash -c`. Pipes allowed. Defaults to `<id> --version`."
+            },
+            "expectExit": {
+              "type": "integer",
+              "default": 0,
+              "description": "Expected exit code. Anything else = missing/broken."
+            },
+            "minVersion": {
+              "type": "string",
+              "description": "Minimum semver. Comparator extracts `vX.Y.Z` from check.command stdout."
+            },
+            "mcp": {
+              "type": "string",
+              "description": "MCP server name. For type=mcp only."
+            },
+            "tool": {
+              "type": "string",
+              "description": "Specific tool name on the MCP server. For type=mcp only."
+            }
+          }
+        },
+        "install": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Install commands per platform. `preferred` is OS-agnostic / fallback; per-platform keys override.",
+          "properties": {
+            "preferred": { "type": "string" },
+            "darwin": { "type": "string" },
+            "linux": { "type": "string" },
+            "win32": { "type": "string" }
+          }
+        },
+        "autoInstall": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, `maude doctor --fix` may run install.preferred after per-dep confirmation prompt."
+        },
+        "fallbackBehavior": {
+          "type": "string",
+          "description": "What the plugin does when this soft dep is missing. Human-readable; surfaces in maude doctor's report."
+        },
+        "usedBy": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Repo-relative paths (or path globs) of plugin files that reference this dependency. Aids debugging — doctor surfaces this when explaining a miss."
+        },
+        "docsUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "Where to read more."
+        }
+      }
+    }
+  }
+}

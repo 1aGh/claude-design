@@ -14,7 +14,9 @@ const COMMANDS = {
   init: () => import('../commands/init.mjs'),
   config: () => import('../commands/config.mjs'),
   design: () => import('../commands/design.mjs'),
+  doctor: () => import('../commands/doctor.mjs'),
   help: () => import('../commands/help.mjs'),
+  hub: () => import('../commands/hub.mjs'),
   version: () => import('../commands/version.mjs'),
 };
 
@@ -47,7 +49,9 @@ async function main(argv) {
 
   const loader = COMMANDS[cmd];
   if (!loader) {
-    process.stderr.write(`maude: unknown command "${cmd}"\nRun \`maude help\` for usage.\n`);
+    process.stderr.write(
+      `maude: unknown command "${cmd}"\nKnown: ${Object.keys(COMMANDS).join(', ')}.\nRun \`maude help\` for usage.\n`
+    );
     process.exit(2);
   }
   const { run } = await loader();

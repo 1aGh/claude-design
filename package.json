@@ -52,7 +52,11 @@
   "files": [
     "cli",
     "plugins/design/dev-server",
+    "plugins/design/dependencies.json",
+    "plugins/design/dependencies.schema.json",
     "plugins/design/templates",
+    "plugins/flow/dependencies.json",
+    "plugins/flow/dependencies.schema.json",
     "plugins/flow/templates",
     "plugins/flow/.claude-plugin/config.schema.json",
     "LICENSE",
@@ -84,5 +88,9 @@
     "@biomejs/biome": "^1.9.4",
     "@changesets/cli": "^2.27.10",
     "@playwright/test": "^1.60.0"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1"
   }
 }

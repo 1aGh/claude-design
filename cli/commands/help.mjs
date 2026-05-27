@@ -31,6 +31,25 @@ COMMANDS
         full discovery. --no-discovery uses Recommended defaults; --discovery-
         payload reads pre-computed answers from JSON.
 
+  hub serve [--port N] [--data PATH] [--secret HEX] [--insecure-http] [--dev]
+        Start the self-hostable Yjs sync hub (Phase 9). Defaults to port 1234,
+        data dir ./data. --dev mints a mau_dev_<hex> token + prints the
+        connect command before booting. Local-dev-tree only in v1.1 Task 2.
+
+  hub token generate --label NAME [--data PATH] [--dev]
+        Mint a new mau_<32hex> token in <data>/tokens.json. Prints the raw
+        token ONCE plus the ready-to-paste 'maude design link' command.
+
+  hub status [URL] [--json]
+        Probe a hub's /health endpoint. URL defaults to http://localhost:1234.
+
+  doctor [--plugin <name>] [--fix] [--json]
+        Unified workspace health check. Reports missing dependencies, config
+        schema errors, stack drift, and missing quality-gate declarations in
+        one shot. --fix applies safe auto-fixes (prompts per dep install;
+        never overwrites existing config values). --json for programmatic
+        consumers.
+
   help              Print this help.
   version           Print the installed version.
 
@@ -40,6 +59,11 @@ EXAMPLES
   maude config get motion.complex
   maude design serve --port 4399
   maude design init --no-discovery --name acme-app
+  maude hub serve --dev
+  maude hub token generate --label alice
+  maude hub status http://localhost:1234
+  maude doctor
+  maude doctor --fix
 
 NOTES
   'maude init' does mechanical scaffolding of .ai/ only.

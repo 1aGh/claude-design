@@ -549,9 +549,9 @@ Execute in order. Each task is atomic and testable.
 
 ### A28 — WRITE DDR for combined scope
 
-- **Do:** Write `.ai/decisions/DDR-052-maude-doctor-deps-config-quality.md`. Title: "`maude doctor` as unified workspace diagnostic (deps + config + quality), single user-facing CLI surface, slash commands call internal libs directly." Cite: (a) audit findings from this planning round; (b) `biome-recurring-failures-review.md` (Layer 4 motivation); (c) `feedback-no-redundant-tooling-over-pnpm` memory (why no `maude quality run` wrapper).
-- **Pattern:** mirror existing DDRs in `.ai/decisions/`. Next free DDR number = 052 (047/048/049/050/051 are taken — verify via `ls .ai/decisions/DDR-*.md | tail -10` immediately before writing in case more shipped between plan time and impl time).
-- **Validate:** DDR linked from CLAUDE.md. `ls .ai/decisions/DDR-052-*.md` exists.
+- **Do:** Write `.ai/decisions/DDR-053-maude-doctor-deps-config-quality.md`. Title: "`maude doctor` as unified workspace diagnostic (deps + config + quality), single user-facing CLI surface, slash commands call internal libs directly." Cite: (a) audit findings from this planning round; (b) `biome-recurring-failures-review.md` (Layer 4 motivation); (c) `feedback-no-redundant-tooling-over-pnpm` memory (why no `maude quality run` wrapper).
+- **Pattern:** mirror existing DDRs in `.ai/decisions/`. Next free DDR number = 053 (047/048/049/050/051/052 are taken — 052 went to the parallel hocuspocus-vs-partykit hub decision shipped in commit `41d9ad9`. Verify via `ls .ai/decisions/DDR-*.md | tail -10` immediately before writing in case more shipped between plan time and impl time).
+- **Validate:** DDR linked from CLAUDE.md. `ls .ai/decisions/DDR-053-*.md` exists.
 
 ---
 
@@ -607,7 +607,7 @@ Not applicable — pure CLI + plugin command changes, no UI surface.
 - [ ] Ajv + dep schemas bundled in published npm package (verified via `npm pack --dry-run`)
 - [ ] Unit tests cover: stack-detect (7+ fixtures incl. quality detection), config-lint (6 fixtures incl. enum + non-string `quality.<gate>`), doctor command (7+ cases — healthy / dep-missing / schema-error / drift / additions / --fix / --json), preflight lib
 - [ ] README + CLAUDE.md + `maude --help` document `maude doctor`; NO mention of `maude quality run`, `maude config validate`, or `maude config diff`
-- [ ] DDR-052 written (verify number not taken at impl time); CLAUDE.md links it
+- [ ] DDR-053 written (verify number not taken at impl time); CLAUDE.md links it
 - [ ] Version bumped via `scripts/bump-version.sh minor` (new feature)
 - [ ] **Outcome metric:** after Phase A ships and is in active use, the rate of `chore(lint): biome ...` emergency cleanup commits drops to <1/quarter (today's baseline: 6/month, see `biome-recurring-failures-review.md`)
 
@@ -615,8 +615,8 @@ Not applicable — pure CLI + plugin command changes, no UI surface.
 
 ## Decisions to record
 
-- DDR-052 (this plan): `maude doctor` as unified workspace diagnostic + `quality` flat-map declaration + no-wrapper-over-pnpm. Verify number at impl time — 047 through 051 are taken.
-- Maybe DDR-053: SessionStart hook policy (warn-only vs blocking) once we observe how often users actually act on the warning.
+- DDR-053 (this plan): `maude doctor` as unified workspace diagnostic + `quality` flat-map declaration + no-wrapper-over-pnpm. 047 through 052 are taken at impl time (052 = hub hocuspocus/partykit, shipped in `41d9ad9`).
+- Maybe DDR-054: SessionStart hook policy (warn-only vs blocking) once we observe how often users actually act on the warning.
 
 ---
 
@@ -632,13 +632,25 @@ Not applicable — pure CLI + plugin command changes, no UI surface.
 
 ---
 
+## Retro — PR 1+2 slice (A1–A13), 2026-05-27
+
+**What worked.** The plan's "5 PR" decomposition held cleanly through the slice — A1-A10 stayed self-contained as the Foundation PR, A3-A4-A11-A12-A13 layered Doctor on top with zero cross-coupling. The Ajv-vs-string-suggestion duality the plan called out paid off: tests revealed that the schema's `tests:` field is a `description`-only enum, NOT a JSON Schema `enum` constraint, so the Levenshtein helper carries the suggestion duty alone for that specific key — caught at A9 test-write time, not at A25 dogfood time.
+
+**What surprised.** (1) The bash detector's "no root tsconfig → language=javascript" branch was technically faithful but useless in this monorepo where every workspace has its own tsconfig. The plan's A6 said "port 1:1" but A25 expected `typescript` to be detected. Resolved with a workspace deep-scan extension (one level into `packages/*` + `apps/*` + `plugins/*` + `site` + `scripts`). The plan should declare deep-scan an intentional extension, not a 1:1 port. (2) DDR collision: by the time PR 1+2 landed, DDR-052 was claimed by the parallel hub workstream. The plan's "verify DDR number at impl time" hedge worked — A28 retargets to DDR-053 in the same edit. Worth amending future plans to NEVER hardcode a target number; always cite as "next free DDR" with a fixed slug.
+
+**What to change next time.** The plan's "code-simplifier polish pass per task" guidance in `/flow:execute` was overhead-not-value for this slice: every CLI file was already under 250 LOC, already lint-clean after the initial write, and the simplifier rules would re-shuffle imports the same way biome's `organizeImports` already does. Worth carving an explicit "skip simplifier for new pure-data / new pure-CLI files under N LOC" rule into `/flow:execute` step 2.d so the next session doesn't pay the cost.
+
+**What landed off-plan.** Plan A26 was deferred to PR 5 in original sequencing, but the packaging gap (`package.json` `files[]` not including dep manifests) had to land in this slice — otherwise `maude doctor` on a tarball install reports "manifest not found" and PR 5 wouldn't be testable in isolation. Folded into PR 1+2's commit; PR 5 task A26 can be marked done early.
+
+**Cross-workstream surface.** A parallel `phase-9` hub slice landed `cli/commands/hub.mjs` + dispatcher / help wiring while PR 1+2 was in flight. Conflict surfaced at commit-time as a working-tree mid-air-collision: the hub session's edits to `maude.mjs` and `help.mjs` clobbered the doctor registration. Re-merge took 3 minutes (re-add `doctor` to dispatcher map + help text + examples block) but was avoidable: the plan should either lock those two files via a CODEOWNERS-style hint, or sequence dispatcher-touching tasks across phases through STATE.md's "active plan" rather than wall-clock interleaving.
+
 ## History
 
 **2026-05-27** — this plan absorbs the former `phase-d-config-hardening.md`. Originally both Phase A (deps + preflight + `maude doctor`) and Phase D (config validation + drift + quality gates) independently specified a `maude doctor` command. Merging avoids:
 
 - Two plans claiming `cli/commands/doctor.mjs` ownership.
 - Two `--fix` / `--json` flag definitions.
-- Phase A reserving DDR-047 (already shipped — bumped to DDR-052 in A28).
+- Phase A reserving DDR-047 (already shipped — bumped to DDR-053 in A28).
 - Confusion between "deps health" and "config health" as user-mental-models — they're both "is my workspace OK?", one command, one answer.
 
 The merge keeps Phase A's structural skeleton (8 Solution layers numbered through preflight + hooks) and folds Phase D's scope in as Layers 2, 7, and most of the new tasks (A6-A12, A17-A25). Slash command bindings (A18-A23) replace Phase D's Tasks 11-12d verbatim. Outcome metric (cleanup-commit rate) comes from Phase D's retro reference.

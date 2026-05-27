@@ -13,6 +13,12 @@ Per-repo configuration consumed by the flow plugin's commands, skills, and subag
 
 ---
 
+## `$schema`
+
+**Type:** `string`
+
+Pointer to this schema (editor support). Stripped at consumption time.
+
 ## `name`
 
 **Type:** `string`
@@ -392,6 +398,12 @@ Percentage-point drop that triggers the warning. e.g. `1.0` means a 1-point drop
 **Type:** `string` · **Default:** `"main"`
 
 Branch whose coverage is considered authoritative. /flow:done writes the baseline only when the active branch matches this value (typically `main`).
+
+## `quality`
+
+**Type:** `object`
+
+Map of gate name → shell command string. Gate names are free-form (conventional names: `lint`, `format`, `typecheck`, `tests`, `build`). Each command is executed as-is via `eval` by the slash command that consumes the gate. Missing gate → slash command emits a one-line warning and skips (never fabricates a command). v1 deliberately keeps this a flat string map — no per-gate object shape, no `order`, no `scope`. Populate via `maude doctor --fix`, which detects from `package.json` scripts + tool presence. Existing user values are never overwritten — additions only.
 
 ## `integrations`
 

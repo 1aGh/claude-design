@@ -6,6 +6,10 @@
   "additionalProperties": false,
   "required": ["name"],
   "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Pointer to this schema (editor support). Stripped at consumption time."
+    },
     "name": {
       "type": "string",
       "description": "Short project / product name. Resolves the `<project>` placeholder in commands and file paths (e.g. `.ai/<project>-prd.md` → `.ai/<name>-prd.md`)."
@@ -302,6 +306,14 @@
             }
           }
         }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "description": "Map of gate name → shell command string. Gate names are free-form (conventional names: `lint`, `format`, `typecheck`, `tests`, `build`). Each command is executed as-is via `eval` by the slash command that consumes the gate. Missing gate → slash command emits a one-line warning and skips (never fabricates a command). v1 deliberately keeps this a flat string map — no per-gate object shape, no `order`, no `scope`. Populate via `maude doctor --fix`, which detects from `package.json` scripts + tool presence. Existing user values are never overwritten — additions only.",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
       }
     },
     "integrations": {

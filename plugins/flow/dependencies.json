@@ -1,0 +1,143 @@
+{
+  "$schema": "./dependencies.schema.json",
+  "version": "1",
+  "plugin": "flow",
+  "dependencies": [
+    {
+      "id": "node",
+      "type": "cli",
+      "hardness": "hard",
+      "check": {
+        "command": "node --version",
+        "expectExit": 0,
+        "minVersion": "20.0.0"
+      },
+      "install": {
+        "preferred": "https://nodejs.org/en/download",
+        "darwin": "brew install node@22"
+      },
+      "autoInstall": false,
+      "usedBy": ["commands/init.md"],
+      "docsUrl": "https://nodejs.org"
+    },
+    {
+      "id": "git",
+      "type": "cli",
+      "hardness": "hard",
+      "check": {
+        "command": "git --version",
+        "expectExit": 0
+      },
+      "install": {
+        "darwin": "brew install git",
+        "linux": "apt-get install -y git || dnf install -y git"
+      },
+      "autoInstall": false,
+      "usedBy": ["commands/init.md", "commands/done.md", "commands/quick.md"],
+      "docsUrl": "https://git-scm.com"
+    },
+    {
+      "id": "maude",
+      "type": "cli",
+      "hardness": "soft",
+      "check": {
+        "command": "maude --version",
+        "expectExit": 0
+      },
+      "install": {
+        "preferred": "npm i -g @1agh/maude"
+      },
+      "autoInstall": false,
+      "fallbackBehavior": "/flow:init and /flow:done work without maude CLI but cannot read/write workflows.config.json via `maude config`.",
+      "usedBy": ["commands/init.md"],
+      "docsUrl": "https://github.com/1aGh/maude"
+    },
+    {
+      "id": "agent-browser",
+      "type": "cli",
+      "hardness": "soft",
+      "check": {
+        "command": "agent-browser --version",
+        "expectExit": 0
+      },
+      "install": {
+        "preferred": "npm i -g @anthropic-ai/agent-browser"
+      },
+      "autoInstall": true,
+      "fallbackBehavior": "/flow:scenario and a11y-auditor degrade to screenshot-less reports. Web scenarios cannot run.",
+      "usedBy": [
+        "commands/scenario.md",
+        "commands/validate.md",
+        "commands/utils-verify.md",
+        "agents/scenario-runner.md",
+        "agents/a11y-auditor.md",
+        "skills/agent-browser/SKILL.md"
+      ],
+      "docsUrl": "https://github.com/anthropics/agent-browser"
+    },
+    {
+      "id": "agent-device",
+      "type": "cli",
+      "hardness": "soft",
+      "check": {
+        "command": "agent-device --version",
+        "expectExit": 0
+      },
+      "install": {
+        "preferred": "Requires Xcode + Android SDK. See agent-device docs."
+      },
+      "autoInstall": false,
+      "fallbackBehavior": "/flow:scenario skips native (iOS/Android) variants. Web variants still run via agent-browser.",
+      "usedBy": [
+        "commands/scenario.md",
+        "agents/scenario-runner.md",
+        "skills/agent-device/SKILL.md"
+      ],
+      "docsUrl": "https://github.com/anthropics/agent-device"
+    },
+    {
+      "id": "jq",
+      "type": "system-tool",
+      "hardness": "soft",
+      "check": {
+        "command": "jq --version",
+        "expectExit": 0
+      },
+      "install": {
+        "darwin": "brew install jq",
+        "linux": "apt-get install -y jq || dnf install -y jq",
+        "win32": "winget install jqlang.jq"
+      },
+      "autoInstall": false,
+      "fallbackBehavior": "Slash commands' bash blocks that read .ai/workflows.config.json via jq cannot run. /flow:validate and /flow:utils-verify quality gates need this.",
+      "usedBy": [
+        "commands/validate.md",
+        "commands/utils-verify.md",
+        "commands/quick.md",
+        "commands/done.md"
+      ]
+    },
+    {
+      "id": "askuserquestion-mcp",
+      "type": "mcp",
+      "hardness": "soft",
+      "check": {
+        "mcp": "AskUserQuestion",
+        "tool": "ask"
+      },
+      "fallbackBehavior": "Question prompts fall back to numbered-prose chat. No multi-select UI.",
+      "usedBy": ["skills/question-protocol/SKILL.md"]
+    },
+    {
+      "id": "terminal-skills-mcp",
+      "type": "mcp",
+      "hardness": "soft",
+      "check": {
+        "mcp": "terminal-skills",
+        "tool": "search_skills"
+      },
+      "fallbackBehavior": "skill-loader falls back to built-in plugin skills → matching agents → WebFetch on library docs.",
+      "usedBy": ["skills/skill-loader/SKILL.md"]
+    }
+  ]
+}

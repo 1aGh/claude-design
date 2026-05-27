@@ -1,0 +1,147 @@
+{
+  "$schema": "./dependencies.schema.json",
+  "version": "1",
+  "plugin": "design",
+  "dependencies": [
+    {
+      "id": "node",
+      "type": "cli",
+      "hardness": "hard",
+      "check": {
+        "command": "node --version",
+        "expectExit": 0,
+        "minVersion": "20.0.0"
+      },
+      "install": {
+        "preferred": "https://nodejs.org/en/download",
+        "darwin": "brew install node@22",
+        "linux": "https://nodejs.org/en/download/package-manager"
+      },
+      "autoInstall": false,
+      "usedBy": ["commands/init.md", "commands/browse.md", "dev-server/server.ts"],
+      "docsUrl": "https://nodejs.org"
+    },
+    {
+      "id": "git",
+      "type": "cli",
+      "hardness": "hard",
+      "check": {
+        "command": "git --version",
+        "expectExit": 0
+      },
+      "install": {
+        "darwin": "brew install git",
+        "linux": "apt-get install -y git || dnf install -y git"
+      },
+      "autoInstall": false,
+      "usedBy": ["commands/init.md", "dev-server/collab/git-lifecycle.ts"],
+      "docsUrl": "https://git-scm.com"
+    },
+    {
+      "id": "bun",
+      "type": "cli",
+      "hardness": "hard",
+      "check": {
+        "command": "bun --version",
+        "expectExit": 0,
+        "minVersion": "1.3.0"
+      },
+      "install": {
+        "preferred": "curl -fsSL https://bun.sh/install | bash",
+        "darwin": "brew install oven-sh/bun/bun",
+        "win32": "powershell -c \"irm bun.sh/install.ps1 | iex\""
+      },
+      "autoInstall": false,
+      "fallbackBehavior": "dev-server is migrating to Bun authoritatively (DDR-009). Some build steps (bun run build.ts, bun test) require Bun and have no Node fallback.",
+      "usedBy": ["dev-server/package.json", "dev-server/build.ts", "dev-server/bin/smoke.sh"],
+      "docsUrl": "https://bun.com"
+    },
+    {
+      "id": "agent-browser",
+      "type": "cli",
+      "hardness": "soft",
+      "check": {
+        "command": "agent-browser --version",
+        "expectExit": 0
+      },
+      "install": {
+        "preferred": "npm i -g @anthropic-ai/agent-browser"
+      },
+      "autoInstall": true,
+      "fallbackBehavior": "Screenshot helpers fall back to `npx playwright` (slower, less reliable). /design:smoke and several critics need agent-browser for full coverage.",
+      "usedBy": [
+        "commands/screenshot.md",
+        "commands/new.md",
+        "commands/edit.md",
+        "commands/smoke.md",
+        "dev-server/bin/screenshot.sh",
+        "dev-server/bin/smoke.sh",
+        "agents/design-critic.md",
+        "agents/graphic-design-critic.md",
+        "agents/a11y-critic.md"
+      ],
+      "docsUrl": "https://github.com/anthropics/agent-browser"
+    },
+    {
+      "id": "playwright",
+      "type": "cli",
+      "hardness": "soft",
+      "check": {
+        "command": "npx --no-install playwright --version",
+        "expectExit": 0
+      },
+      "install": {
+        "preferred": "npm i -g playwright && npx playwright install chromium"
+      },
+      "autoInstall": false,
+      "fallbackBehavior": "Screenshot scripts use playwright as a fallback when agent-browser is missing. Without either, screenshot helpers will fail.",
+      "usedBy": ["dev-server/bin/_screenshot-playwright.mjs", "dev-server/bin/screenshot.sh"],
+      "docsUrl": "https://playwright.dev"
+    },
+    {
+      "id": "maude",
+      "type": "cli",
+      "hardness": "soft",
+      "check": {
+        "command": "maude --version",
+        "expectExit": 0
+      },
+      "install": {
+        "preferred": "npm i -g @1agh/maude"
+      },
+      "autoInstall": false,
+      "fallbackBehavior": "Slash commands still work; `maude` CLI provides faster scaffolding (init / config / design serve) without going through Claude.",
+      "usedBy": ["commands/init.md", "skills/design/SKILL.md"],
+      "docsUrl": "https://github.com/1aGh/maude"
+    },
+    {
+      "id": "jq",
+      "type": "system-tool",
+      "hardness": "soft",
+      "check": {
+        "command": "jq --version",
+        "expectExit": 0
+      },
+      "install": {
+        "darwin": "brew install jq",
+        "linux": "apt-get install -y jq || dnf install -y jq",
+        "win32": "winget install jqlang.jq"
+      },
+      "autoInstall": false,
+      "fallbackBehavior": "Slash commands' bash blocks that read .ai/workflows.config.json via jq degrade to inline node one-liners; harder to read but functional.",
+      "usedBy": ["dev-server/bin/bootstrap-check.sh", "dev-server/bin/server-up.sh"]
+    },
+    {
+      "id": "askuserquestion-mcp",
+      "type": "mcp",
+      "hardness": "soft",
+      "check": {
+        "mcp": "AskUserQuestion",
+        "tool": "ask"
+      },
+      "fallbackBehavior": "Discovery + critic-panel rounds fall back to numbered-prose chat. Slower, fewer options per round, no preview side-pane.",
+      "usedBy": ["skills/design-system/SKILL.md", "commands/setup-ds.md", "commands/new.md"],
+      "docsUrl": "https://docs.claude.com/en/docs/claude-code"
+    }
+  ]
+}
