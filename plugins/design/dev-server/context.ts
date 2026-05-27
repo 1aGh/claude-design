@@ -25,6 +25,12 @@ export interface DesignSystemEntry {
   newComponentDir?: string;
 }
 
+export interface LinkedHub {
+  url: string;
+  linkedAt: number;
+  adopt?: boolean;
+}
+
 export interface DevServerConfig {
   name: string;
   projectLabel: string | null;
@@ -39,6 +45,7 @@ export interface DevServerConfig {
   handoffTargets: unknown[];
   newCanvasDir: string;
   newComponentDir: string;
+  linkedHub?: LinkedHub;
   _source: ConfigSource;
 }
 

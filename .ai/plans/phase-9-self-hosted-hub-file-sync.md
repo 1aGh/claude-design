@@ -222,7 +222,7 @@ A user who has been running Phase 8 (loopback multi-tab + git push/pull for cros
 - **Pattern:** Same UX rhythm as `git remote add` + `git push --set-upstream origin main` — familiar to engineers.
 - **Validate:** Round-trip linking, unlinking, status all work locally against `maude hub serve`.
 
-### Task 4: Bidirectional file sync agent (the hard part)
+### Task 4: Bidirectional file sync agent (the hard part) ✅ 2026-05-27
 
 - **Do:** In `plugins/design/dev-server/runtime/sync/`:
   1. **Yjs client** — connects to hub via Hocuspocus client lib (`@hocuspocus/provider`); per canvas a Y.Doc is loaded.
@@ -233,6 +233,7 @@ A user who has been running Phase 8 (loopback multi-tab + git push/pull for cros
   6. **Y.Doc → disk codec** — for v1.1, treat HTML body as `Y.Text` (no parse / serialize asymmetry). On Y.Doc text update → write to disk at 800ms quiescence. Comments/annotations stay as Y.Array → JSON snapshot.
 - **Pattern:** Echo prevention is borrowed from Syncthing's "weak hash + sequence number" approach. Chokidar's `awaitWriteFinish` option handles partial writes.
 - **Validate:** Stress test: `for i in {1..100}; do echo "<button>$i</button>" > .design/screen.html; sleep 0.1; done` → hub state matches final write; no echo loop; no missed events.
+- **Shipped:** `plugins/design/dev-server/sync/{echo-guard,atomic-write,codec,fs-mirror,agent,hubs-config,index}.ts` (7 modules, ~900 LoC) + tests `test/sync-{echo-guard,atomic-write,codec,fs-mirror,agent,hubs-config,runtime}.test.ts` (75 tests). Config: `linkedHub` field added to `config.schema.json` + `DevServerConfig` interface; `@hocuspocus/provider` ^4.0.0 added to dev-server deps; sync runtime auto-boots in `server.ts` when linked (no-op for solo). Defaults: SHA-256 echo TTL = 1500ms, fs-mirror quiet window = 250ms, Y.Doc → disk debounce = 800ms (matches DDR-051 Phase 8 room flush). Adopt mode pushes local disk state to hub (one-shot, cleared after first reconcile). HocuspocusProvider import is dynamic so unlinked projects don't pay the load cost. **100-event stress (plan validate criterion): bounded `< 100` doc transitions, no echo loop, doc + disk + peer all converge on final write** — proven in `sync-agent.test.ts > 100-event scenario from plan validate`. **Deferred to follow-up:** real-hub WSS integration test (belongs in Task 11 stress matrix alongside hub-restart resilience, cross-continent, token rotation mid-session); bridging the existing Phase 8 dev-server collab room → hub Y.Doc (browser-tab Y.Doc currently uses the local room; linked-mode dual-source-of-truth needs a separate decision — likely DDR after Task 5 awareness work). 605/605 dev-server tests pass; full suite green.
 
 ### Task 5: Awareness layer on hub
 

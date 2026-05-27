@@ -26,6 +26,7 @@ import { createFsWatch } from './fs-watch.ts';
 import { createHttp } from './http.ts';
 import { createInspect } from './inspect.ts';
 import { startHeapWatch } from './mem.ts';
+import { createSyncRuntime } from './sync/index.ts';
 import { type WsData, createWs, isLoopbackHost, parseCollabSlug } from './ws.ts';
 
 // Phase 19 / DDR-044 — covers the marketplace-cache-install gap where
@@ -199,6 +200,18 @@ await Bun.write(
 fsWatch.start();
 startHeapWatch();
 
+// Phase 9 Task 4 — bidirectional sync agent. No-op when the project isn't
+// linked to a hub (`.design/config.json` has no `linkedHub` field). Kicked
+// off after fsWatch so the agent's bus subscription receives every fs event.
+const syncRuntime = createSyncRuntime(ctx);
+if (syncRuntime) {
+  try {
+    await syncRuntime.start();
+  } catch (err) {
+    console.error('[sync] startup failed — continuing in solo mode:', err);
+  }
+}
+
 const url = `http://localhost:${server.port}`;
 console.log(`\n  ${ctx.projectLabel} — local browser`);
 console.log('  ─────────────────────────────');
@@ -219,6 +232,11 @@ if (!process.env.NO_OPEN) {
 async function shutdown() {
   console.log('\n  Stopping…');
   fsWatch.stop();
+  try {
+    if (syncRuntime) await syncRuntime.stop();
+  } catch {
+    /* best-effort — provider sockets will be closed by process exit anyway */
+  }
   try {
     if (collab) await collab.registry.destroyAll();
   } catch {

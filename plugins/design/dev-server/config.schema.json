@@ -180,6 +180,26 @@
       "type": ["string", "null"],
       "description": "Name of the DS used when a canvas's .meta.json has no 'designSystem' field. For single-DS projects, this is the only DS. For multi-DS, pick the most common.",
       "default": null
+    },
+    "linkedHub": {
+      "type": "object",
+      "description": "Pairs this repo with a Maude hub for cross-machine file sync (Phase 9 Task 3+4). Written by 'maude design link <url> --token <hex>'. Token NEVER lives in this committed config — it's stored per-machine in ~/.config/maude/hubs.json. When present, 'maude design serve' starts the bidirectional Yjs↔fs sync agent (Task 4).",
+      "required": ["url", "linkedAt"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "Hub base URL (normalized — trailing slash trimmed, scheme + host lowercased). The sync agent constructs ws(s)://<host> from this for the HocuspocusProvider connection."
+        },
+        "linkedAt": {
+          "type": "number",
+          "description": "Unix-ms timestamp from when 'maude design link' was first run on this repo."
+        },
+        "adopt": {
+          "type": "boolean",
+          "description": "When true, the first sync after boot pushes local disk state up to the hub unconditionally (use case: bootstrapping the hub from a populated repo, or hub-was-wiped recovery). Cleared after first successful adopt."
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

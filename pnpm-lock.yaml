@@ -24,9 +24,34 @@ importers:
       '@playwright/test':
         specifier: ^1.60.0
         version: 1.60.0
+    optionalDependencies:
+      '@1agh/maude-darwin-arm64':
+        specifier: 0.22.2
+        version: 0.22.2
+      '@1agh/maude-darwin-x64':
+        specifier: 0.22.2
+        version: 0.22.2
+      '@1agh/maude-linux-arm64':
+        specifier: 0.22.2
+        version: 0.22.2
+      '@1agh/maude-linux-arm64-musl':
+        specifier: 0.22.2
+        version: 0.22.2
+      '@1agh/maude-linux-x64':
+        specifier: 0.22.2
+        version: 0.22.2
+      '@1agh/maude-linux-x64-musl':
+        specifier: 0.22.2
+        version: 0.22.2
+      '@1agh/maude-win32-x64':
+        specifier: 0.22.2
+        version: 0.22.2
 
   plugins/design/dev-server:
     dependencies:
+      '@hocuspocus/provider':
+        specifier: ^4.0.0
+        version: 4.1.0(y-protocols@1.0.7(yjs@13.6.30))(yjs@13.6.30)
       dom-to-pptx:
         specifier: ^1.1.9
         version: 1.1.9
@@ -182,6 +207,45 @@ importers:
         version: 6.0.3
 
 packages:
+
+  '@1agh/maude-darwin-arm64@0.22.2':
+    resolution: {integrity: sha512-YJUc0eT031Z90nb18WXpjJN626ZKY+1Uneeq3lMG2dea7zkaUZth2lxUfdzv70/Pu+bXWrReagWQHMcU7YJxPQ==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@1agh/maude-darwin-x64@0.22.2':
+    resolution: {integrity: sha512-BEL9x0vsiz3n5niUD+/slJbDYzwhb4WO9IpLUJxuxYRdyBF0HN7hCk3GZJBhBjbY9wkUj1OrHp8kCgK8t+yK+g==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@1agh/maude-linux-arm64-musl@0.22.2':
+    resolution: {integrity: sha512-4lwQWdWjS37Wgn5ATLegF6V1/74pHututzCuPMT3iERakTEyatgNcy2QT1f0VUyQuiOn64nOInbjnjbyelxnzA==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  '@1agh/maude-linux-arm64@0.22.2':
+    resolution: {integrity: sha512-vkT0beyt6oiYcfts1EPeujbJyMyBXVEGExwvGKB4cVioa8qzQHu/jt5Gz+BYg/UPetKLMRwtk/50wIIBtQ49/w==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@1agh/maude-linux-x64-musl@0.22.2':
+    resolution: {integrity: sha512-ygq679x6GzIepX0X+U2Vb5Ur52bk3WNeKhlGNcPJU7IHXEnoOaUR+3k8zEMwsWUQIj4n4bQyne5lUaIwHZ6E5w==}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  '@1agh/maude-linux-x64@0.22.2':
+    resolution: {integrity: sha512-726BxQDt793Ml8iRCCNN2Uj/KKwh1+pPCtBLfZusEi791YYrVLqRDxu7YeoPuRp/wZToqftK0beUBq9AEj3IFQ==}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@1agh/maude-win32-x64@0.22.2':
+    resolution: {integrity: sha512-+hSAQ3UVxoV/BgtIcqDVbuOm07xHydhtUpQU0bU3BAtrzeJ5oDIMAlqNeCePUdGo+oSY3suwmLljdTyx19e2eg==}
+    cpu: [x64]
+    os: [win32]
 
   '@alloc/quick-lru@5.2.0':
     resolution: {integrity: sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==}
@@ -3035,6 +3099,27 @@ packages:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
 snapshots:
+
+  '@1agh/maude-darwin-arm64@0.22.2':
+    optional: true
+
+  '@1agh/maude-darwin-x64@0.22.2':
+    optional: true
+
+  '@1agh/maude-linux-arm64-musl@0.22.2':
+    optional: true
+
+  '@1agh/maude-linux-arm64@0.22.2':
+    optional: true
+
+  '@1agh/maude-linux-x64-musl@0.22.2':
+    optional: true
+
+  '@1agh/maude-linux-x64@0.22.2':
+    optional: true
+
+  '@1agh/maude-win32-x64@0.22.2':
+    optional: true
 
   '@alloc/quick-lru@5.2.0': {}
 
