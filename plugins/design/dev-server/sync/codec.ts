@@ -35,6 +35,20 @@ export const Y_SYNC_TYPES = {
   html: 'html',
 } as const;
 
+/**
+ * Hard caps on hub-pushed content (DDR-054 §2d — closes attacker F7). yjs
+ * has no upstream-enforced size cap; the codec is the consumer's guard.
+ * Mirrors the existing /_api/annotations 1 MB cap (api.ts) so the sync path
+ * doesn't bypass the HTTP-layer guard.
+ */
+export const MAX_HTML_BYTES = 4 * 1024 * 1024;
+export const MAX_COMMENTS_BYTES = 1 * 1024 * 1024;
+export const MAX_ANNOTATIONS_BYTES = 1 * 1024 * 1024;
+
+function byteLengthUtf8(s: string): number {
+  return Buffer.byteLength(s, 'utf8');
+}
+
 /* ---------------------------------------------------------------- HTML */
 
 export function htmlFromDoc(doc: Y.Doc): string {
@@ -49,6 +63,12 @@ export function htmlFromDoc(doc: Y.Doc): string {
  * distinguish self-originated updates from peer/remote ones.
  */
 export function applyHtmlToDoc(doc: Y.Doc, next: string, origin?: unknown): boolean {
+  if (byteLengthUtf8(next) > MAX_HTML_BYTES) {
+    console.warn(
+      `[sync/codec] refusing HTML apply > ${MAX_HTML_BYTES} bytes (got ${byteLengthUtf8(next)}). DDR-054 §2d.`
+    );
+    return false;
+  }
   const yText = doc.getText(Y_SYNC_TYPES.html);
   const current = yText.toString();
   if (current === next) return false;
@@ -102,6 +122,12 @@ export function applyCommentsToDoc(doc: Y.Doc, next: CommentsSnapshot, origin?: 
   // (transactions still fire `update` events, which would re-enter the loop).
   const before = JSON.stringify(arr.toArray());
   const after = JSON.stringify(next);
+  if (byteLengthUtf8(after) > MAX_COMMENTS_BYTES) {
+    console.warn(
+      `[sync/codec] refusing comments apply > ${MAX_COMMENTS_BYTES} bytes (got ${byteLengthUtf8(after)}). DDR-054 §2d.`
+    );
+    return false;
+  }
   if (before === after) return false;
 
   doc.transact(() => {
@@ -121,6 +147,12 @@ export function annotationsFromDoc(doc: Y.Doc): string | null {
 }
 
 export function applyAnnotationsToDoc(doc: Y.Doc, next: string | null, origin?: unknown): boolean {
+  if (next !== null && byteLengthUtf8(next) > MAX_ANNOTATIONS_BYTES) {
+    console.warn(
+      `[sync/codec] refusing annotations apply > ${MAX_ANNOTATIONS_BYTES} bytes (got ${byteLengthUtf8(next)}). DDR-054 §2d.`
+    );
+    return false;
+  }
   const map = doc.getMap<unknown>(Y_TYPES.annotations);
   const current = map.get('svg');
   const currentStr = typeof current === 'string' ? current : null;

@@ -5,7 +5,7 @@
 // honors linkedHub config, discovers canvases, wires up agents, and
 // dispatches fs events through the bus correctly.
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -39,6 +39,9 @@ function writeHubsConfig(url: string, token: string): void {
   const cfgPath = process.env.HUBS_CONFIG_PATH;
   if (!cfgPath) throw new Error('HUBS_CONFIG_PATH not set by beforeEach');
   writeFileSync(cfgPath, JSON.stringify({ hubs: { [url]: { token, linkedAt: 1 } } }));
+  // Match the CLI's saveHubsConfig mode so the DDR-054 §2h mode-warning
+  // doesn't fire on every test.
+  chmodSync(cfgPath, 0o600);
 }
 
 function makeCtx(linkedHub?: DevServerConfig['linkedHub']): Context {
@@ -208,14 +211,17 @@ describe('createSyncRuntime', () => {
 });
 
 describe('discoverCanvases', () => {
-  test('finds .html and .tsx files in canvasGroups', async () => {
+  test('finds .html files but EXCLUDES .tsx (DDR-054 §2b)', async () => {
     const ctx = makeCtx({ url: 'https://h.example.com', linkedAt: 1 });
     writeFileSync(join(ctx.paths.designRoot, 'ui', 'a.html'), '');
     writeFileSync(join(ctx.paths.designRoot, 'ui', 'b.tsx'), '');
 
     const list = await discoverCanvases(ctx);
     const slugs = list.map((c) => c.slug).sort();
-    expect(slugs).toEqual(['ui-a', 'ui-b']);
+    // .tsx is deliberately refused — hostile-hub-pushed JSX would be
+    // transpiled and executed in iframe same-origin. Solo-mode editing
+    // of .tsx is unaffected.
+    expect(slugs).toEqual(['ui-a']);
   });
 
   test('skips dirs starting with _ (e.g. _history, _comments)', async () => {

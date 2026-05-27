@@ -298,9 +298,21 @@ function bytesToString(bytes: Uint8Array): string {
   return new TextDecoder().decode(bytes);
 }
 
+// Reviver strips dangerous keys at parse time so a malicious hub-pushed
+// payload (or a planted commit) can't seed `__proto__` / `constructor` /
+// `prototype` own-properties into the comment objects yjs subsequently
+// serializes to other peers. Modern V8/Bun block direct Object.prototype
+// pollution at parse, but the reviver also closes the cross-machine
+// propagation surface where an unsafe `for…in` on a peer would re-pollute.
+// DDR-054 §2g (defender M2).
 function tryParseJsonArray(s: string): unknown[] | null {
   try {
-    const parsed = JSON.parse(s);
+    const parsed = JSON.parse(s, (key, value) => {
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+        return undefined;
+      }
+      return value;
+    });
     return Array.isArray(parsed) ? parsed : null;
   } catch {
     return null;

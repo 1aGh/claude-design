@@ -6,10 +6,15 @@
 // event would miss the hash match and incorrectly bubble the (truncated) state
 // up to Y.Doc — corrupting the live state.
 //
-// Pattern: write to `<path>.tmp.<random>`, then `renameSync` to the final
-// path. POSIX rename is atomic when source + destination are on the same
-// filesystem; the watch sees the final-content-already-present rename event
-// rather than a stream of in-flight chunks.
+// Pattern: open `<path>.tmp.<random-128-bit>` with O_CREAT|O_EXCL ('wx' in
+// Node), write bytes, close, `renameSync` to the final path. POSIX rename is
+// atomic when source + destination are on the same filesystem; the watch sees
+// the final-content-already-present rename event rather than a stream of
+// in-flight chunks. O_EXCL + 128-bit suffix defeats pre-created symlinks on
+// shared-tenant hosts (DDR-054 §2c — closes attacker Chain C + defender L1).
+//
+// File mode 0o600 on the staging file so other tenants on shared hosts can't
+// read in-flight content before the rename.
 //
 // Windows note: rename of a file the watcher has open returns EBUSY. The
 // plan's Task 4 step 4 acknowledges this as a known minor risk for v1.1;
@@ -17,19 +22,24 @@
 // jitter.
 
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, mkdirSync, openSync, renameSync, unlinkSync, writeSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 const RETRY_DELAY_MS = 25;
+// 'wx' = O_CREAT | O_EXCL — fails if the target already exists, including as
+// a dangling/live symlink. Plus O_TRUNC is implied; mode 0o600 sets owner-only.
+const TMP_OPEN_FLAGS = 'wx' as const;
+const TMP_OPEN_MODE = 0o600;
 
 /**
  * Write `bytes` to `path` atomically. Returns the absolute path written
  * (same as input — convenience for chaining).
  *
- * Bytes are written via Node's synchronous `writeFileSync` to a sibling
- * `.tmp.<random>` file, then `renameSync` moves it into place. On POSIX the
- * rename is atomic; on Windows there is a small window where the watcher may
- * see a brief gap, retried once on EBUSY.
+ * Bytes are written via Node's synchronous `openSync` with `O_CREAT|O_EXCL`
+ * (fails on pre-existing tmp / symlink), then `renameSync` moves it into
+ * place. 128-bit random suffix; mode 0o600. On POSIX the rename is atomic;
+ * on Windows there is a small window where the watcher may see a brief gap,
+ * retried once on EBUSY.
  *
  * `bytes` accepts string (UTF-8 encoded) or Uint8Array (written verbatim).
  */
@@ -38,10 +48,17 @@ export function atomicWrite(path: string, bytes: string | Uint8Array): string {
   // when present) and removes the per-canvas burden of creating _comments/
   // before the agent's first flush.
   mkdirSync(dirname(path), { recursive: true });
-  const suffix = randomBytes(4).toString('hex');
+  // 16 bytes = 32 hex chars = 128 bits. Unforgeable in practice against a
+  // local racer (vs. the prior 32-bit value which was brute-forceable in ms).
+  const suffix = randomBytes(16).toString('hex');
   const tmp = `${path}.tmp.${suffix}`;
+  let fd: number | null = null;
   try {
-    writeFileSync(tmp, bytes);
+    fd = openSync(tmp, TMP_OPEN_FLAGS, TMP_OPEN_MODE);
+    const buf = typeof bytes === 'string' ? Buffer.from(bytes, 'utf8') : Buffer.from(bytes);
+    writeSync(fd, buf, 0, buf.byteLength, 0);
+    closeSync(fd);
+    fd = null;
     try {
       renameSync(tmp, path);
     } catch (err) {
@@ -60,8 +77,15 @@ export function atomicWrite(path: string, bytes: string | Uint8Array): string {
       }
     }
   } catch (err) {
-    // Best-effort cleanup of the .tmp on failure — don't mask the original
-    // exception with a cleanup error.
+    // Best-effort cleanup of the .tmp + fd on failure — don't mask the
+    // original exception with a cleanup error.
+    if (fd !== null) {
+      try {
+        closeSync(fd);
+      } catch {
+        /* ignore */
+      }
+    }
     try {
       unlinkSync(tmp);
     } catch {

@@ -1,6 +1,6 @@
 // hubs-config reader tests — Phase 9 Task 4.
 
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -48,18 +48,26 @@ describe('normalizeUrl', () => {
   });
 });
 
+// Write the test hubs.json with mode 0600 so the DDR-054 §2h mode-warning
+// logic doesn't fire on every test. The warning has its own dedicated test
+// below.
+function writeCfg(content: string): void {
+  writeFileSync(cfgPath, content);
+  chmodSync(cfgPath, 0o600);
+}
+
 describe('loadHubsConfig + getHubToken', () => {
   test('returns empty hubs when file missing', () => {
     expect(loadHubsConfig()).toEqual({ hubs: {} });
   });
 
   test('returns empty hubs on malformed JSON', () => {
-    writeFileSync(cfgPath, '{ not json');
+    writeCfg('{ not json');
     expect(loadHubsConfig()).toEqual({ hubs: {} });
   });
 
   test('returns empty hubs when hubs field is absent', () => {
-    writeFileSync(cfgPath, '{"unrelated":true}');
+    writeCfg('{"unrelated":true}');
     expect(loadHubsConfig()).toEqual({ hubs: {} });
   });
 
@@ -69,32 +77,54 @@ describe('loadHubsConfig + getHubToken', () => {
         'https://hub.example.com': { token: 'mau_abc', linkedAt: 123 },
       },
     };
-    writeFileSync(cfgPath, JSON.stringify(cfg));
+    writeCfg(JSON.stringify(cfg));
     expect(loadHubsConfig()).toEqual(cfg);
   });
 
   test('getHubToken returns token for matching URL', () => {
-    writeFileSync(
-      cfgPath,
+    writeCfg(
       JSON.stringify({ hubs: { 'https://hub.example.com': { token: 'mau_abc', linkedAt: 1 } } })
     );
     expect(getHubToken('https://hub.example.com')).toBe('mau_abc');
   });
 
   test('getHubToken normalizes URL before lookup', () => {
-    writeFileSync(
-      cfgPath,
+    writeCfg(
       JSON.stringify({ hubs: { 'https://hub.example.com': { token: 'mau_xyz', linkedAt: 1 } } })
     );
     expect(getHubToken('HTTPS://Hub.example.COM/')).toBe('mau_xyz');
   });
 
   test('getHubToken returns null when URL unknown', () => {
-    writeFileSync(cfgPath, JSON.stringify({ hubs: {} }));
+    writeCfg(JSON.stringify({ hubs: {} }));
     expect(getHubToken('https://nowhere.example.com')).toBeNull();
   });
 
   test('getHubToken returns null on malformed url', () => {
     expect(getHubToken('not a url')).toBeNull();
+  });
+
+  test('DDR-054 §2h — warns once when hubs.json is world/group readable', () => {
+    writeFileSync(
+      cfgPath,
+      JSON.stringify({ hubs: { 'https://hub.example.com': { token: 'tok', linkedAt: 1 } } })
+    );
+    // Permissive mode — should trigger a warn on first load.
+    chmodSync(cfgPath, 0o644);
+    const warnings: unknown[][] = [];
+    const origWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args);
+    };
+    try {
+      loadHubsConfig();
+      loadHubsConfig(); // second call — should NOT warn again (warn-once)
+    } finally {
+      console.warn = origWarn;
+    }
+    const modeWarnings = warnings.filter(
+      (w) => typeof w[0] === 'string' && w[0].includes('chmod 600')
+    );
+    expect(modeWarnings.length).toBe(1);
   });
 });

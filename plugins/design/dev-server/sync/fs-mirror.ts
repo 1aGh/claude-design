@@ -16,7 +16,7 @@
 // `ctx.bus.on('fs:any', (path) => reader.notify(path))` once at boot.
 
 import { readFile } from 'node:fs/promises';
-import { join as nodeJoin } from 'node:path';
+import { isAbsolute, join as nodeJoin, resolve as nodeResolve, sep as pathSep } from 'node:path';
 
 import { hashBytes } from './echo-guard.ts';
 
@@ -79,6 +79,16 @@ export function createFsReader(opts: FsReaderOptions): FsReader {
     timers.delete(relPath);
     if (stopped) return;
     const abs = join(opts.rootDir, relPath);
+    // Defense-in-depth — confirm the joined path stays under rootDir. The agent's
+    // absolute-path equality check in applyFromFs already constrains the impact,
+    // but adding the guard prevents future-refactor regressions from re-opening
+    // the surface. DDR-054 §2f (defender M1 + attacker F12).
+    const safeRoot = nodeResolve(opts.rootDir);
+    const norm = nodeResolve(abs);
+    if (norm !== safeRoot && !norm.startsWith(safeRoot + pathSep)) {
+      // Silent drop — never read out-of-tree files.
+      return;
+    }
     let bytes: Buffer;
     try {
       bytes = await readFile(abs);
@@ -103,6 +113,9 @@ export function createFsReader(opts: FsReaderOptions): FsReader {
   return {
     notify(relPath) {
       if (stopped) return;
+      // Reject obvious traversal attempts before the timer is even armed.
+      // DDR-054 §2f (defender M1 + attacker F12).
+      if (relPath.includes('..') || isAbsolute(relPath)) return;
       if (!opts.accept(relPath)) return;
       const prev = timers.get(relPath);
       if (prev) clearTimeout(prev);

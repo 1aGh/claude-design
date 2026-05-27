@@ -17,7 +17,7 @@
 // the provider lib didn't install for some reason) prints a useful error
 // instead of crashing the dev-server boot.
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -86,6 +86,28 @@ export function createSyncRuntime(
   if (!linked) return null;
   const linkedHub = linked;
 
+  // DDR-054 §2a — CI environment gate. Closes the supply-chain side-door
+  // where a future CI workflow runs `maude design serve` and a PR-controlled
+  // linkedHub.url silently grants a remote actor write access in an
+  // environment carrying GITHUB_TOKEN. Override via MAUDE_SYNC_IN_CI=1.
+  if (
+    !process.env.MAUDE_SYNC_IN_CI &&
+    (process.env.CI === 'true' || process.env.CI === '1' || !!process.env.GITHUB_ACTIONS)
+  ) {
+    console.warn(
+      '[sync] disabled in CI environment (CI / GITHUB_ACTIONS detected). DDR-054 §2a. Set MAUDE_SYNC_IN_CI=1 to override.'
+    );
+    return null;
+  }
+
+  // DDR-054 §2e — scheme allowlist. Refuse plaintext to non-loopback hosts
+  // (closes attacker F9 cleartext token exfil and the F2 last-mile chain).
+  const schemeError = checkUrlScheme(linkedHub.url);
+  if (schemeError) {
+    console.error(`[sync] refusing to start: ${schemeError}`);
+    return null;
+  }
+
   const resolvedToken = getHubToken(linkedHub.url);
   if (!resolvedToken) {
     console.warn(
@@ -137,6 +159,8 @@ export function createSyncRuntime(
     });
 
     const adoptOnce = opts.adopt ?? !!linkedHub.adopt;
+    let adoptReconciled = 0;
+    const adoptTarget = canvases.length;
 
     for (const canvas of canvases) {
       try {
@@ -161,7 +185,17 @@ export function createSyncRuntime(
         agents.set(canvas.slug, agent);
 
         // Cold-start reconcile fires once the provider has hub state.
-        void provider.onceSynced().then(() => agent.reconcile());
+        void provider.onceSynced().then(async () => {
+          await agent.reconcile();
+          if (adoptOnce) {
+            adoptReconciled++;
+            if (adoptReconciled === adoptTarget) {
+              // All canvases adopted — clear the flag from .design/config.json
+              // so re-running serve doesn't re-trigger. DDR-054 §2i.
+              clearAdoptFlag(ctx);
+            }
+          }
+        });
       } catch (err) {
         console.error(`[sync/${canvas.slug}] failed to start:`, err);
       }
@@ -209,10 +243,17 @@ export function createSyncRuntime(
 /* ---------------------------------------------------------------- discovery */
 
 /**
- * Scan `<designRoot>/{ui,system}/` for `.html` and `.tsx` canvas files and
- * return one CanvasDescriptor per. Mirrors the existing api.ts file-tree scan
- * but specialised for the sync runtime (we only need the three paths per
- * canvas, not the full metadata).
+ * Scan `<designRoot>/{ui,system}/` for `.html` canvas files and return one
+ * CanvasDescriptor per. Mirrors the existing api.ts file-tree scan but
+ * specialised for the sync runtime (we only need the three paths per canvas,
+ * not the full metadata).
+ *
+ * DDR-054 §2b — `.tsx` canvases are deliberately EXCLUDED from sync. The
+ * dev-server transpiles `.tsx` to JavaScript and serves it as
+ * `application/javascript` in iframe same-origin; a hostile hub pushing
+ * arbitrary TypeScript source would result in RCE. `.tsx` stays editable in
+ * solo mode; per-canvas opt-in via `.meta.json.syncable: true` is deferred to
+ * Task 8 (alongside CSP + iframe sandbox).
  */
 export async function discoverCanvases(ctx: Context): Promise<CanvasDescriptor[]> {
   const out: CanvasDescriptor[] = [];
@@ -246,7 +287,8 @@ async function walk(
       continue;
     }
     const ext = path.extname(entry.name).toLowerCase();
-    if (ext !== '.html' && ext !== '.tsx') continue;
+    // DDR-054 §2b — refuse .tsx; only .html canvases sync.
+    if (ext !== '.html') continue;
     const slug = slugFor(abs, designRoot, designRel);
     acc.push({
       slug,
@@ -330,4 +372,61 @@ export function toWsUrl(httpUrl: string): string {
   if (httpUrl.startsWith('https://')) return `wss://${httpUrl.slice('https://'.length)}`;
   if (httpUrl.startsWith('http://')) return `ws://${httpUrl.slice('http://'.length)}`;
   return httpUrl;
+}
+
+/**
+ * Rewrite .design/config.json to drop `linkedHub.adopt`. Called once after
+ * all canvases finish their first adopt-reconcile. DDR-054 §2i (defender I5).
+ * Best-effort — failure logs and leaves the disk flag in place; the only
+ * downstream cost is the user being prompted to re-run adopt.
+ */
+function clearAdoptFlag(ctx: Context): void {
+  const cfgPath = path.join(ctx.paths.repoRoot, '.design', 'config.json');
+  if (!existsSync(cfgPath)) return;
+  try {
+    const raw = JSON.parse(readFileSync(cfgPath, 'utf8')) as {
+      linkedHub?: { adopt?: boolean; lastAdoptedAt?: number };
+    };
+    if (!raw?.linkedHub?.adopt) return;
+    raw.linkedHub.adopt = undefined;
+    raw.linkedHub.lastAdoptedAt = Date.now();
+    // Strip undefined values via stringify/parse so the JSON output is clean.
+    const cleaned = JSON.parse(JSON.stringify(raw));
+    writeFileSync(cfgPath, `${JSON.stringify(cleaned, null, 2)}\n`, 'utf8');
+    console.log('[sync] adopt complete — cleared linkedHub.adopt from .design/config.json');
+  } catch (err) {
+    console.warn(
+      '[sync] failed to clear linkedHub.adopt:',
+      err instanceof Error ? err.message : err
+    );
+  }
+}
+
+/**
+ * Refuse non-loopback ws:// / http:// (cleartext token exposure to MITM).
+ * DDR-054 §2e (attacker F9). Returns null on accept, error string on refuse.
+ *
+ * Loopback hosts (localhost, 127.0.0.1, [::1], ::1) keep ws:// allowed for
+ * local hub development. Non-http(s)/ws(s) schemes are refused outright.
+ */
+export function checkUrlScheme(url: string): string | null {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return `invalid hub URL: ${url}`;
+  }
+  const proto = u.protocol.toLowerCase();
+  if (proto !== 'http:' && proto !== 'https:' && proto !== 'ws:' && proto !== 'wss:') {
+    return `unsupported hub URL scheme: ${proto} (expected https:// or wss://)`;
+  }
+  const isPlaintext = proto === 'http:' || proto === 'ws:';
+  if (!isPlaintext) return null;
+  const host = u.hostname.toLowerCase();
+  const isLoopback =
+    host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
+  if (!isLoopback) {
+    return `plaintext URL (${proto}//) is only allowed for loopback hosts. Use wss:// for ${host} or change the host to localhost.`;
+  }
+  return null;
 }
