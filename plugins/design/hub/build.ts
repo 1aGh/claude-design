@@ -113,7 +113,9 @@ if (existsSync(ADMIN_SRC)) {
     (sum, f) => sum + statSync(join(ADMIN_DEST, f)).size,
     0
   );
-  console.log(`[hub-build] copied src/admin → dist/admin (${Math.round(adminBytes / 1024)} KB raw)`);
+  console.log(
+    `[hub-build] copied src/admin → dist/admin (${Math.round(adminBytes / 1024)} KB raw)`
+  );
 } else {
   console.warn('[hub-build] WARNING: src/admin missing — admin UI will not ship.');
 }
