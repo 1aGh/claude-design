@@ -19,6 +19,7 @@ import { spawn } from 'node:child_process';
 import { createApi } from './api.ts';
 import { bootSelfHeal } from './boot-self-heal.ts';
 import { createAiActivity } from './collab/ai-activity.ts';
+import { createGitLifecycle } from './collab/git-lifecycle.ts';
 import { createCollab } from './collab/index.ts';
 import { createContext } from './context.ts';
 import { createFsWatch } from './fs-watch.ts';
@@ -66,6 +67,7 @@ await inspect.load();
 
 collab = createCollab(ctx, api);
 const aiActivity = createAiActivity(ctx);
+const gitLifecycle = createGitLifecycle(ctx, collab.registry);
 const ws = createWs(ctx, api, inspect, collab);
 const http = createHttp(ctx, api, inspect, aiActivity);
 const fsWatch = createFsWatch(ctx);
@@ -226,6 +228,11 @@ async function shutdown() {
     aiActivity.stop();
   } catch {
     /* janitor cleanup is best-effort */
+  }
+  try {
+    gitLifecycle.stop();
+  } catch {
+    /* watcher cleanup is best-effort */
   }
   try {
     await Bun.write(ctx.paths.serverInfoFile, '').catch(() => {});

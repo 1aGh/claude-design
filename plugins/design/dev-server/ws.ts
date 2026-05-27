@@ -100,6 +100,13 @@ export function createWs(ctx: Context, api: Api, inspect: Inspect, collab: Colla
   ctx.bus.on('ai-activity', ({ file, entry }: { file: string; entry: unknown }) =>
     broadcast({ type: 'ai-activity', file, entry })
   );
+  // Phase 8 Task 7 — git lifecycle. `.git/HEAD` watcher emits this AFTER
+  // registry.flushAll() so any in-flight Y.Doc state is already on disk by
+  // the time the client renders the reload prompt. Inspector clients +
+  // canvas iframes both subscribe.
+  ctx.bus.on('git-lifecycle', (payload: unknown) =>
+    broadcast({ type: 'git-lifecycle', payload })
+  );
 
   // HMR broadcaster — turns fs:any change events into `canvas-hmr` messages.
   // The iframe-side client (in _shell.html) decides reload strategy from `mode`.

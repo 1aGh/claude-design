@@ -1483,6 +1483,10 @@ function App() {
   const [activePath, setActivePath] = useState(null);
   const [selected, setSelected] = useState(null);
   const [wsConnected, setWsConnected] = useState(false);
+  // Phase 8 Task 7 — git lifecycle reload prompt. Server has already flushed
+  // every dirty Y.Doc to disk by the time this state populates, so accepting
+  // the reload is data-loss-safe (DDR-051 §3).
+  const [gitLifecycle, setGitLifecycle] = useState(null);
   const [search, setSearch] = useState('');
   const [systemData, setSystemData] = useState(null);
   // Loaded once at boot from /_config — informs canvasUrl() so TSX iframes
@@ -1664,6 +1668,16 @@ function App() {
             // (one envelope per change, not per iframe count).
             for (const el of iframesRef.current.values()) {
               try { el.contentWindow.postMessage({ dgn: 'ai-activity', file: m.file, entry: m.entry }, '*'); } catch {}
+            }
+          } else if (m.type === 'git-lifecycle' && m.payload) {
+            // Phase 8 Task 7 — branch switch / pull mid-session. Server has
+            // already flushed every dirty Y.Doc to JSON; just prompt the user.
+            // Single confirm covers all open iframes — reload reseeds them all.
+            setGitLifecycle(m.payload);
+            // Also relay to iframes so canvas-level "Reload?" UI (if any)
+            // can react. Outer banner is the primary prompt.
+            for (const el of iframesRef.current.values()) {
+              try { el.contentWindow.postMessage({ dgn: 'git-lifecycle', payload: m.payload }, '*'); } catch {}
             }
           }
         } catch {}
@@ -2007,6 +2021,57 @@ function App() {
       className={'app' + (commentsPanelOpen ? ' with-rsidebar' : '') + (sidebarOpen ? '' : ' no-sidebar')}
       onContextMenu={onShellContextMenu}
     >
+      {gitLifecycle && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'fixed',
+            top: 12,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 10002,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            padding: '8px 14px',
+            background: '#dbeafe',
+            color: '#1e40af',
+            border: '1px solid #93c5fd',
+            borderRadius: 999,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+            font: '500 13px/1.2 system-ui, -apple-system, sans-serif',
+          }}
+        >
+          <span>Repo state changed — reload to sync?</span>
+          <button
+            type="button"
+            onClick={() => { try { window.location.reload(); } catch {} }}
+            style={{
+              padding: '3px 10px',
+              background: '#2563eb',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 4,
+              font: '500 11px/1.2 system-ui',
+              cursor: 'pointer',
+            }}
+          >Reload</button>
+          <button
+            type="button"
+            onClick={() => setGitLifecycle(null)}
+            style={{
+              padding: '3px 10px',
+              background: 'transparent',
+              color: '#1e40af',
+              border: '1px solid #93c5fd',
+              borderRadius: 4,
+              font: '500 11px/1.2 system-ui',
+              cursor: 'pointer',
+            }}
+          >Dismiss</button>
+        </div>
+      )}
       <Sidebar
         groups={groups}
         activePath={activePath}
