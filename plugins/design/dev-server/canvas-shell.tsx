@@ -86,6 +86,28 @@ import { useUndoStack } from './use-undo-stack.tsx';
 // plane would otherwise scale a 2 px outline to 0.84 px at 42 % zoom (subpixel
 // = invisible). No per-element class stamping is used.
 
+// HUD-namespace token block. System-review 2026-05-27 (D-4) flagged that the
+// dev-server chrome (toolbar + minimap + halos + marquee + AI banner) used
+// `var(--accent, …)` which inherited the canvas DS palette — a violet StudyFi
+// canvas turned the floating cursor toolbar violet. The HUD owns its own
+// `--maude-hud-*` token family, set on `:root` of the canvas iframe document
+// here. Canvas DSs do NOT define `--maude-hud-*`, so HUD CSS resolves against
+// this block regardless of what the imported `:root { --accent: … }` looks like.
+//
+// Defaults match the existing inline fallback color (`#d63b1f`, Maude brand
+// orange-rust) so no visual change to the default theme. Users who want to
+// re-theme the HUD can set `--maude-hud-accent` etc. via a `<style>` block
+// AFTER this one (CSS cascade — later wins).
+const HUD_TOKENS_CSS = `
+:root {
+  --maude-hud-accent:        #d63b1f;
+  --maude-hud-accent-hover:  #b8331b;
+  --maude-hud-accent-active: #962a16;
+  --maude-hud-accent-fg:     #ffffff;
+  --maude-hud-accent-tint:   color-mix(in oklab, #d63b1f 14%, transparent);
+}
+`;
+
 // DDR-046 — Three-state halo language. Each state has its own border weight,
 // color treatment, and geometric idiom so 8+ semantic states (hover / selected
 // / member-of-multi / group / snap-sibling / snap-grid / marquee / annotation
@@ -103,20 +125,20 @@ const HALO_CSS = `
 /* Hover — lighter 1.5px tinted line + white inner ring for contrast on dark
    elements. NO ring, NO ticks. Synchronous paint (no debounce). */
 .dc-cv-halo--hover {
-  border: 1.5px solid color-mix(in oklab, var(--accent, #0d99ff) 60%, transparent);
+  border: 1.5px solid color-mix(in oklab, var(--maude-hud-accent, #0d99ff) 60%, transparent);
   box-shadow: inset 0 0 0 1px var(--bg-0, #ffffff);
 }
 /* Selected (single) — 2px solid + 18% ring halo + 4 filled corner ticks.
    Ticks are <i class="tick tick-*"> children at inset:-3px, 8x8, accent fill. */
 .dc-cv-halo--selected {
-  border: 2px solid var(--accent, #0d99ff);
-  box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent, #0d99ff) 18%, transparent);
+  border: 2px solid var(--maude-hud-accent, #0d99ff);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--maude-hud-accent, #0d99ff) 18%, transparent);
 }
 .dc-cv-halo--selected .tick {
   position: absolute;
   width: 8px;
   height: 8px;
-  background: var(--accent, #0d99ff);
+  background: var(--maude-hud-accent, #0d99ff);
   border-radius: 1px;
   box-shadow: 0 0 0 1px var(--bg-0, #ffffff);
 }
@@ -130,7 +152,7 @@ const HALO_CSS = `
    as "draft / placeholder" and members would melt away inside artboards once
    the artboard border itself is 22%-tinted (T15). */
 .dc-cv-halo--selected-member {
-  border: 1.5px solid var(--accent, #0d99ff);
+  border: 1.5px solid var(--maude-hud-accent, #0d99ff);
 }
 /* Group bbox — 1 px DASHED full accent + four 6 × 6 square corner handles.
    T16 / DDR-046 rev 2 — dashed is the canonical group-container affordance
@@ -143,14 +165,14 @@ const HALO_CSS = `
   position: fixed;
   pointer-events: none;
   z-index: 5;
-  border: 1px dashed var(--accent, #0d99ff);
+  border: 1px dashed var(--maude-hud-accent, #0d99ff);
   border-radius: 2px;
 }
 .dc-cv-group-bbox .tick {
   position: absolute;
   width: 6px;
   height: 6px;
-  background: var(--accent, #0d99ff);
+  background: var(--maude-hud-accent, #0d99ff);
   border-radius: 1px;
   box-shadow: 0 0 0 1px var(--bg-0, #ffffff);
 }
@@ -170,7 +192,7 @@ const HALO_CSS = `
      (3 px ring + hard 6×6×0 offset) was readable but visually expensive once
      the frame itself lost its brutalist treatment. A 2 px ring on a 22 %
      tinted hairline reads unambiguous without claiming subject-ness. */
-  box-shadow: 0 0 0 2px var(--accent, #0d99ff);
+  box-shadow: 0 0 0 2px var(--maude-hud-accent, #0d99ff);
   transition: box-shadow 120ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 /* Respect prefers-reduced-motion across all chrome transitions. */
@@ -252,6 +274,15 @@ const HALO_CSS = `
 
 function ensureHaloStyles(): void {
   if (typeof document === 'undefined') return;
+  // HUD tokens MUST be injected before HALO_CSS so the cascade resolves
+  // `var(--maude-hud-accent, …)` against the dev-server's brand defaults
+  // even when the canvas DS's tokens.css later sets `:root { --accent: … }`.
+  if (!document.getElementById('dc-cv-hud-tokens-css')) {
+    const t = document.createElement('style');
+    t.id = 'dc-cv-hud-tokens-css';
+    t.textContent = HUD_TOKENS_CSS;
+    document.head.appendChild(t);
+  }
   if (document.getElementById('dc-cv-halo-css')) return;
   const s = document.createElement('style');
   s.id = 'dc-cv-halo-css';
@@ -1148,7 +1179,7 @@ const MULTI_TOOLBAR_CSS = `
   transition: background-color 80ms linear;
 }
 .dc-multi-artboard-tb button:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--accent, #d63b1f) 8%, transparent);
+  background: color-mix(in oklab, var(--maude-hud-accent, #d63b1f) 8%, transparent);
 }
 .dc-multi-artboard-tb button:disabled {
   cursor: default;

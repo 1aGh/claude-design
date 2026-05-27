@@ -68,7 +68,7 @@ const CTX_TOOLBAR_CSS = `
   transition: background-color 80ms linear;
 }
 .dc-elem-ctx-tb button:hover {
-  background: color-mix(in oklab, var(--accent, #d63b1f) 8%, transparent);
+  background: color-mix(in oklab, var(--maude-hud-accent, #d63b1f) 8%, transparent);
 }
 .dc-elem-ctx-tb .dc-elem-ctx-count {
   padding: 4px 8px 4px 10px;

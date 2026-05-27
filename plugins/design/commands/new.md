@@ -115,13 +115,28 @@ DS_ROOT=$(jq -r --arg ds "$TARGET_DS"   '.designSystems[] | select(.name == $ds)
 [[ -z "$DS_ROOT" ]] && DS_ROOT="system/project" && DS_TOKENS="$TOKENS_REL"
 ```
 
-### 2. Server lifecycle check (auto-start pokud chybí)
+### 2. Server lifecycle check + runtime-bundle health probe
 
 ```bash
 PORT=$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/server-up.sh" --root "$REPO_ROOT")
+
+# Parse-clean ≠ run-clean. Probe each /_canvas-runtime/*.js URL the canvas-lib
+# pulls in (motion, motion/react, react, react-dom, react/jsx-runtime, …) and
+# compare body size to the on-disk pre-built bundle. A stale dev-server process
+# can cache a broken dynamic Bun.build (e.g. 409-line motion_react.js with a
+# hoisting bug → "ReferenceError: AcceleratedAnimation is not defined" at
+# iframe boot). Restart on detected defect.
+bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/runtime-health.sh" \
+  --port "$PORT" \
+  --root "$REPO_ROOT" \
+  --restart \
+  --quiet \
+  || { echo "✗ runtime bundles defective even after restart — abort /design:new (see stderr)"; exit 1; }
 ```
 
-Helper detekuje běžící server (PID + `curl /_health`), startuje znovu pokud stale, poll-uje 10 s. Stdout = port; diagnostic na stderr.
+`server-up.sh` detekuje běžící server (PID + `curl /_health`), startuje znovu pokud stale, poll-uje 10 s. Stdout = port; diagnostic na stderr.
+
+`runtime-health.sh` HEAD-probes každý `/_canvas-runtime/<slug>.js` URL a porovná velikost s on-disk pre-built v `<plugin>/dev-server/dist/runtime/`. Ratio < 0.5 = defective dynamic build → `--restart` auto-kill + respawn + jediné re-probe; pokud i restart selže, helper exit 3 a `/design:new` abortuje (canvas by se mountoval s broken runtime). Vyřešeno per system-review 2026-05-27 (D-1): parse-clean nestačí, runtime bundle musí být run-clean ještě před generation step.
 
 ### 3. Validate name + resolve target path
 
@@ -202,6 +217,29 @@ Wall time ~30–60s when fresh; ~0s on cache hit (the agent reads the cache, val
 - Agent fails entirely (no payload written) → **do not block scaffold**. Surface a warning in the final print (`UX patterns research failed — frontend-design generation proceeded without domain pool; quality may regress to generic-template default`) and continue with envelope-only generation.
 - Payload reports `fallback_used: true` → continue normally but surface in final print (`UX patterns research fell back to LLM-knowledge mode — review canvas IA carefully`).
 - `/design:edit` does NOT run this step. Edit stays rýchlý — research is on-demand only via `--research` flag (future, not currently shipped).
+
+### 4.6. Artboard-count + scope pre-question (when count is ambiguous from brief)
+
+**Fires when:** the brief doesn't explicitly name an artboard count (no "3 artboardy", "5-screen flow", "single canvas with 2 artboards" phrasing). Goal: surface the **render-budget cost** of large canvases BEFORE generation, so users opting for 8+ artboards know the pan/zoom perf wall they'll hit on trackpad-driven zoom.
+
+System-review 2026-05-27 (D-3) flagged that a previous run offered "8 (recommended)" without surfacing perf cost — user picked 8 and reported "pan/zoom strašně seká" once the canvas mounted. The "recommended" tag pushed the choice without surfacing the trade-off. Render-budget heuristic: **≥ 8 artboards on a `--perfect`-shaped canvas with non-trivial CSS hits the canvas-lib pan/zoom perf wall** (~ 2000+ DOM nodes inside a transformable root).
+
+Surface a one-shot `AskUserQuestion` (skip when `--no-critic` or `--quick` — those modes user opted-out of `--perfect`'s default density):
+
+```
+Brief implies a multi-screen canvas but doesn't fix the artboard count. Pick:
+  (a) 4–5 artboards — snappy pan/zoom; covers the brief's headline flows.
+  (b) 6–7 artboards — balanced; pan/zoom feels normal on trackpad. (default)
+  (c) 8+ artboards — comprehensive coverage; expect pan/zoom to stutter on
+      trackpad-based zoom (canvas-lib transform-root hits perf wall around
+      ~2000 DOM nodes). Use when the brief explicitly demands breadth.
+```
+
+**Do NOT mark any option "recommended" without naming the trade-off in the same label.** The label IS the trade-off; the "recommended" tag is for cost-neutral defaults. Render budget is not cost-neutral.
+
+**Auto Mode (AskUserQuestion denied):** default to (b) 6–7 artboards (median safe density). Stamp the auto-pick in the final print: `Artboard density: 6–7 (Auto Mode default; brief did not name a count)`.
+
+**Brief explicitly names a count:** skip this question, use the brief's count verbatim. Even when the count crosses the 8-threshold (user explicitly opted in), still flag the perf cost in the final print so the connection between "I asked for 10" and "now my zoom stutters" is documented: `Artboard density: 10 (per brief) — pan/zoom may stutter on trackpad; consider /design:edit "reduce to N artboards" if interaction feels heavy.`
 
 ### 5. Build envelope
 
@@ -357,7 +395,7 @@ Pokud validation fails, do not write. Re-prompt jednou s konkrétním fix-list. 
 
 ### 9. Post-write reality check — per-artboard screenshots
 
-**Always fires, regardless of `--no-critic`.** Reality check, ne quality check. Capture přes agent-browser na server URL (ne `file://`).
+**Always fires, regardless of `--no-critic`.** Reality check, ne quality check. Capture přes agent-browser na server URL (ne `file://`). **Per-artboard screenshot is a BLOCKER condition for `/design:new`, ne footnote** — system-review 2026-05-27 (D-2) flagged that single-PNG fallbacks > 5 MB silently bypass visual verification, and per-screen failures used to be logged as `⚠` and continued. New contract: per-screen succeeds, OR the loop halts and surfaces an AskUserQuestion.
 
 **Per-artboard element screenshots are the default for `/design:new`** because new canvases are typically multi-artboard (3–8) and DesignCanvas's pan/zoom viewport means a single full-page snapshot misses everything outside the visible viewport. The canonical screenshot helper handles navigation, mount-poll, per-screen loop, and the agent-browser CLI gotchas in one call:
 
@@ -365,11 +403,23 @@ Pokud validation fails, do not write. Re-prompt jednou s konkrétním fix-list. 
 HIST="$DESIGN_ROOT/_history/$SLUG"
 mkdir -p "$HIST"
 
+# First pass — preferred engine.
 bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" \
   --all-screens \
   --out-dir "$HIST" \
-  --timeout 10 \
-  || echo "⚠ baseline screenshots failed — see screenshot.sh stderr above"
+  --timeout 10
+PER_SCREEN_EXIT=$?
+
+# Second pass — playwright fallback (only when first pass failed).
+if [ "$PER_SCREEN_EXIT" -ne 0 ]; then
+  echo "→ agent-browser per-screen failed; retrying with playwright engine" >&2
+  bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" \
+    --all-screens \
+    --engine playwright \
+    --out-dir "$HIST" \
+    --timeout 15
+  PER_SCREEN_EXIT=$?
+fi
 ```
 
 The helper:
@@ -377,20 +427,34 @@ The helper:
 - Resolves URL from `_server.json` + `_active.json` (no manual port/URL math).
 - Polls for `[data-dc-screen]`/`[data-dc-slot]` mount up to `--timeout`s (Babel/React canvases need 2–4 s).
 - Scrolls each artboard into view (defeats `DesignCanvas` pan/zoom lazy-mount) and captures `<HIST>/<NNN>-screen-<id>.png`.
-- Picks engine `agent-browser` > `playwright` fallback automatically.
+- Picks engine `agent-browser` > `playwright` fallback automatically when `--engine auto`; explicit `--engine playwright` forces the second-pass shim.
 - Stdout = written paths (one per line); diagnostic + engine choice in stderr.
 
 **Why per-artboard wins for canvases (retro 2026-05-09).** During the iOS Bikeshare Signup session, full-page snapshots showed only 1 of 6 artboards because DesignCanvas pans/zooms its world independently of document scroll. `[data-dc-screen]` element screenshots captured all 6 cleanly. See SKILL.md "Post-write reality check" for the full explanation.
 
-**Fallback for ≤ 3 artboards** (cheaper, single image):
+**Per-screen FAIL handling — both engines exhausted (`PER_SCREEN_EXIT ≠ 0`):**
 
-```bash
-bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --full --out "$HIST/000-baseline.png"
+Do NOT silently fall back to a single full-page PNG. The full-page fallback produces 30–60 MB images for multi-artboard canvases — too large for the orchestrator to Read into context, so "verification" becomes a path string the agent never inspected. System-review 2026-05-27 (D-2) flagged this as the root of "mobile artboards reported missing even though authored". Instead, surface a one-shot AskUserQuestion:
+
+```
+Per-artboard screenshot failed on both agent-browser and playwright engines.
+The canvas TSX wrote cleanly; this is a visual-verification gap, not a render
+failure. Pick:
+  (a) Retry once — sometimes a fresh /_health + mount poll succeeds. (default)
+  (b) Launch agent-browser interactively — I'll open the URL and you tell me
+      what you see; I'll continue based on your readout.
+  (c) Accept the gap as known-unverified — proceed to the critic panel
+      WITHOUT a baseline screenshot. The print step will flag this loud.
+  (d) Abort /design:new — don't continue without visual confirmation.
 ```
 
-State which approach was used in the print step (engine choice + per-screen vs. full is logged on the helper's stderr).
+Auto Mode (AskUserQuestion denied) → default to (c) but **the final print MUST stamp `⚠ visual verification SKIPPED — per-artboard capture failed on both engines; canvas IA was not visually confirmed`** so the user sees the gap before they discover it via "kde jsou mobile screens?". The critic panel runs WITHOUT a baseline screenshot path; signature-moment-critic and design-critic both flag absent baseline as a warning.
 
-Pokud blank render / timeout → warn `⚠ canvas rendered blank — likely JSX error`. Don't auto-rollback. Path tohoto screenshotu jde do final print + chat.md iteration 0 row.
+**Per-screen partial fail (some IDs captured, some failed):** Helper returns the captured paths on stdout and exit 3. Treat this as success-with-gap — record which artboard IDs failed in the print + chat.md iter-0 row; do NOT auto-retry the failed IDs (signal that those artboards have render issues worth investigating manually).
+
+**Pokud blank render / timeout on ALL artboards** → warn `⚠ canvas rendered blank — likely JSX error`. Don't auto-rollback (user can open browser + see console). Path tohoto screenshotu (or the absent-baseline marker) jde do final print + chat.md iteration 0 row.
+
+**No `--full` shortcut for ≤ 3 artboards.** The single-PNG path was removed per system-review D-2 — even 1 artboard at 1200×760 with a full page panable canvas can produce a misleading PNG (offscreen content cropped, transform state ambiguous). The per-screen path is mandatory; if it fails, the AskUserQuestion above is the only escape hatch.
 
 Detaily a failure handling: SKILL.md "Post-write reality check".
 
@@ -504,9 +568,11 @@ For a new canvas:
   Pattern: multi-artboard canvas (DesignCanvas + N artboards)
   Sidecar: <DESIGN_ROOT>/<NEW_CANVAS_DIR>/<Name>.meta.json
   Generation: {frontend-design specialist | orchestrator-direct fallback}
-  Baseline: <DESIGN_ROOT>/_history/<slug>/000-baseline.png
+  Baseline: <DESIGN_ROOT>/_history/<slug>/NNN-screen-<id>.png (per-artboard set) | (absent — see "Visual verification" below)
+  Visual verification: { confirmed (N of N artboards captured) | partial (M of N — failed: <id-list>) | ⚠ SKIPPED — per-artboard capture failed on both agent-browser + playwright engines; canvas IA was NOT visually confirmed (user accepted gap) | aborted }
 
   Mode: {--perfect (default) | --perfect-iter N | --quick | --no-critic}
+  Artboard density: {N (per brief) | N (chosen via AskUserQuestion) | N (Auto Mode default — brief did not name a count)} {if N ≥ 8: "— pan/zoom may stutter on trackpad; /design:edit \"reduce to M\" if heavy"}
   Opt-out scope: {palette (default) | aesthetic | full} {if inferred from brief: "(inferred from brief — user confirmed via AskUserQuestion)"}
   UX research: {cache hit — reusing <date> | fresh — <N>s wall-clock | fallback (LLM-knowledge) — review IA | unavailable — generation on DS + brief only}
   Critic panel ({default = signature-moment + design + frontend + a11y; --quick = signature-moment only;
@@ -518,7 +584,7 @@ For a new canvas:
   {if user opted into --quick / --no-critic via flag or AskUserQuestion: "Critic mode: <flag> per user choice"}
   {iteration log for each iter — score delta, fixes applied}
   {if stable-but-bland: "Lowest axes: <list>. Targeted feedback would lift these."}
-  {if baseline screenshot covers only some artboards: "Baseline: 000-baseline.png (first 3 artboards only — lazy-mount limit; rest unverified)"}
+  {if Visual verification = SKIPPED: "⚠ Critic panel ran WITHOUT baseline screenshots — aspiration scoring is degraded. Mobile/desktop artboards exist in TSX but were not visually confirmed to render. Open <DESIGN_ROOT>/<NEW_CANVAS_DIR>/<Name>.tsx in the browser to verify before iterating."}
 
   Docs: <designRoot>/INDEX.md added entry; <designRoot>/README.md updated.
   {if INDEX.md was missing and /design:setup-docs --full was invoked: "Docs: bootstrapped via /design:setup-docs --full"}

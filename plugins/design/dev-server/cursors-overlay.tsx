@@ -54,7 +54,7 @@ const CURSOR_CSS = `
   font-weight: 500;
   font-size: 11px;
   line-height: 1.2;
-  color: var(--accent-fg, #fff);
+  color: var(--maude-hud-accent-fg, #fff);
   border-radius: var(--radius-sm, 2px);
   white-space: nowrap;
   max-width: 180px;
@@ -81,7 +81,7 @@ const CURSOR_CSS = `
   font-weight: 600;
   font-size: 10px;
   line-height: 1.3;
-  color: var(--accent-fg, #fff);
+  color: var(--maude-hud-accent-fg, #fff);
   border-radius: var(--radius-sm, 2px) var(--radius-sm, 2px) 0 0;
   white-space: nowrap;
 }

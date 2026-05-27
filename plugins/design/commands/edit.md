@@ -117,13 +117,26 @@ fi
 
 **What the orchestrator does with those paths:** if `LOAD_CSS=1`, the orchestrator `Read`s both files BEFORE building the prompt for `frontend-design`. The class names in `_components.css` show what's available (`.btn`, `.btn--ghost`, `.tile`, `.sku`, `.seg`, ...), and `colors_and_type.css` shows the token namespace — both seed the LLM with the exact vocabulary the canvas already speaks. For `css_mode: "tailwind"` canvases skip (Tailwind utilities self-describe); for `css_mode: "modules"` load the canvas's `<Slug>.module.css` sidecar instead. The canvas-lib read ALWAYS happens for `.tsx` canvases (any mode) — the lib is the project's authoring vocabulary and missing it is the most common reason a `/design:edit` suggests re-inventing a helper that already exists.
 
-### 2. Server lifecycle (vždy první)
+### 2. Server lifecycle (vždy první) + runtime-bundle health probe
 
 ```bash
 PORT=$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/server-up.sh" --root "$REPO_ROOT")
+
+# Parse-clean ≠ run-clean. A stale server process can cache a broken dynamic
+# build of /_canvas-runtime/*.js (the canvas TSX serves fine, but the iframe
+# throws at module-eval time). System-review 2026-05-27 D-1. --restart auto-kills
+# and respawns; helper exits 3 only when the restarted server is still defective.
+bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/runtime-health.sh" \
+  --port "$PORT" \
+  --root "$REPO_ROOT" \
+  --restart \
+  --quiet \
+  || { echo "✗ runtime bundles defective even after restart — abort /design:edit (see stderr)"; exit 1; }
 ```
 
-Helper detekuje běžící server (PID + `curl /_health`), startuje znovu při stale, poll-uje 10 s, stdout = port. Diagnostic na stderr (`✓ server alive pid=… port=…` / `→ starting dev server …`).
+`server-up.sh` detekuje běžící server (PID + `curl /_health`), startuje znovu při stale, poll-uje 10 s, stdout = port. Diagnostic na stderr (`✓ server alive pid=… port=…` / `→ starting dev server …`).
+
+`runtime-health.sh` ověří že každý `/_canvas-runtime/<slug>.js` server vrací bytes blízko on-disk pre-built bundle (ratio ≥ 0.5). Ratio níž → defective dynamic Bun.build → auto-restart + jediné re-probe; pokud nepomůže, `/design:edit` abortuje a doporučí `lsof -i :$PORT` + manual restart.
 
 ### 3. Read active canvas + selected element + open comments
 

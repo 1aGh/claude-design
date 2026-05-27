@@ -25,6 +25,7 @@ Per-canvas hooks (`/design:edit` step 7, `/design:new` step 9, `/design:setup-ds
 ## Postup
 
 1. **Server lifecycle** — `PORT=$(bash "${CLAUDE_PLUGIN_ROOT}/dev-server/bin/server-up.sh")`.
+1a. **Runtime-bundle health** — `bash "${CLAUDE_PLUGIN_ROOT}/dev-server/bin/runtime-health.sh" --port "$PORT" --restart --quiet`. Smoke's whole purpose is "did I break the iframe?" — a stale dev-server serving a defective `/_canvas-runtime/*.js` will produce blanket `ERROR` rows across every canvas with the same `ReferenceError` (and no source change explains it). Probing the runtime bundles first separates "I broke a canvas" from "the server is broken". System-review 2026-05-27 (D-1).
 2. **Run smoke** — `bash "${CLAUDE_PLUGIN_ROOT}/dev-server/bin/smoke.sh" [$ARGUMENTS]`.
 3. **Read every PNG.** When the report has > 5 canvases, **Read each PNG into the conversation, not a sample.** This is the rule from Phase 3.6.1 retro learning #4 — the agent screenshotted 38 specimens, sampled 3, called it good; user opened `colors-accent` and triple-chrome was pre-attentive in 2 s. Some visual regressions are catchable by human glance and miss-able by sampling. Don't skip.
 4. **If exit ≠ 0:**

@@ -484,11 +484,11 @@ const ANNOT_CSS = `
   appearance: none;
 }
 .dc-annot-chrome .dc-annot-sw[aria-pressed="true"] {
-  box-shadow: 0 0 0 2px var(--accent, #d63b1f);
+  box-shadow: 0 0 0 2px var(--maude-hud-accent, #d63b1f);
   border-color: transparent;
 }
 .dc-annot-chrome .dc-annot-sw:focus-visible {
-  outline: 2px solid var(--accent, #d63b1f);
+  outline: 2px solid var(--maude-hud-accent, #d63b1f);
   outline-offset: 2px;
 }
 .dc-annot-chrome .dc-annot-sep {
@@ -517,7 +517,7 @@ const ANNOT_CSS = `
     linear-gradient(135deg, transparent 47%, #d63b1f 47%, #d63b1f 53%, transparent 53%);
 }
 .dc-annot-chrome .dc-annot-fill[aria-pressed="true"] {
-  box-shadow: 0 0 0 2px var(--accent, #d63b1f);
+  box-shadow: 0 0 0 2px var(--maude-hud-accent, #d63b1f);
   border-color: transparent;
 }
 .dc-annot-chrome .dc-annot-btn {
@@ -533,13 +533,13 @@ const ANNOT_CSS = `
   text-transform: uppercase;
 }
 .dc-annot-chrome .dc-annot-btn[aria-pressed="true"] {
-  background: var(--accent, #d63b1f);
-  color: var(--accent-fg, #fff);
+  background: var(--maude-hud-accent, #d63b1f);
+  color: var(--maude-hud-accent-fg, #fff);
   border-color: transparent;
 }
 .dc-annot-chrome .dc-annot-btn:hover { background: rgba(0,0,0,0.04); }
 .dc-annot-chrome .dc-annot-btn:focus-visible {
-  outline: 2px solid var(--accent, #d63b1f);
+  outline: 2px solid var(--maude-hud-accent, #d63b1f);
   outline-offset: 2px;
 }
 .dc-annot-input {
@@ -568,8 +568,8 @@ const ANNOT_CSS = `
 /* Drag-select marquee — rendered while user is dragging to select strokes. */
 .dc-annot-marquee {
   pointer-events: none;
-  fill: color-mix(in oklab, var(--accent, #d63b1f) 8%, transparent);
-  stroke: var(--accent, #d63b1f);
+  fill: color-mix(in oklab, var(--maude-hud-accent, #d63b1f) 8%, transparent);
+  stroke: var(--maude-hud-accent, #d63b1f);
   stroke-width: 1;
   stroke-dasharray: 4 3;
 }
@@ -1723,7 +1723,7 @@ function SelectionHalo({
       width={bbox.w + pad * 2}
       height={bbox.h + pad * 2}
       fill="none"
-      stroke="var(--accent, #d63b1f)"
+      stroke="var(--maude-hud-accent, #d63b1f)"
       strokeWidth={multi ? 1.5 : 2}
       vectorEffect="non-scaling-stroke"
       pointerEvents="none"
@@ -1778,7 +1778,7 @@ function AnnotGroupBbox({
         width={w}
         height={h}
         fill="none"
-        stroke="var(--accent, #d63b1f)"
+        stroke="var(--maude-hud-accent, #d63b1f)"
         strokeWidth={1}
         strokeDasharray="4 3"
         vectorEffect="non-scaling-stroke"
@@ -1791,7 +1791,7 @@ function AnnotGroupBbox({
           y={c.y}
           width={handle}
           height={handle}
-          fill="var(--accent, #d63b1f)"
+          fill="var(--maude-hud-accent, #d63b1f)"
           stroke="var(--bg-0, #ffffff)"
           strokeWidth={1}
           vectorEffect="non-scaling-stroke"

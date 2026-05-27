@@ -40,7 +40,7 @@ const BANNER_CSS = `
   display: flex;
   align-items: center;
   gap: 10px;
-  background: var(--accent-tint, oklch(92% 0.040 55));
+  background: var(--maude-hud-accent-tint, oklch(92% 0.040 55));
   color: var(--fg-0, #111);
   border: 1px solid var(--border-default, rgba(0,0,0,0.16));
   border-radius: var(--radius-md, 4px);
@@ -57,7 +57,7 @@ const BANNER_CSS = `
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--accent, oklch(56% 0.170 50));
+  background: var(--maude-hud-accent, oklch(56% 0.170 50));
   flex: 0 0 auto;
   animation: dc-ai-banner-pulse 1.4s ease-in-out infinite;
 }

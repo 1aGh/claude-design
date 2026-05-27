@@ -73,7 +73,7 @@ const TOOLBAR_CSS = `
   appearance: none;
 }
 .dc-annot-ctx-sw[aria-pressed="true"] {
-  box-shadow: 0 0 0 2px var(--accent, #d63b1f);
+  box-shadow: 0 0 0 2px var(--maude-hud-accent, #d63b1f);
   border-color: transparent;
 }
 .dc-annot-ctx-fill--none {
@@ -103,8 +103,8 @@ const TOOLBAR_CSS = `
   cursor: pointer;
 }
 .dc-annot-ctx-btn[aria-pressed="true"] {
-  background: var(--accent, #d63b1f);
-  color: var(--accent-fg, #fff);
+  background: var(--maude-hud-accent, #d63b1f);
+  color: var(--maude-hud-accent-fg, #fff);
   border-color: transparent;
 }
 .dc-annot-ctx-btn:hover { background: rgba(0,0,0,0.04); }
@@ -134,8 +134,8 @@ const TOOLBAR_CSS = `
   line-height: 1;
 }
 .dc-annot-ctx-mode-btn[aria-pressed="true"] {
-  background: color-mix(in oklab, var(--accent, #d63b1f) 14%, transparent);
-  color: var(--accent, #d63b1f);
+  background: color-mix(in oklab, var(--maude-hud-accent, #d63b1f) 14%, transparent);
+  color: var(--maude-hud-accent, #d63b1f);
   font-weight: 600;
 }
 .dc-annot-ctx-mode-btn:not([aria-pressed="true"]):hover {

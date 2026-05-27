@@ -41,7 +41,7 @@ const CHROME_CSS = `
   font-size: 10px;
   line-height: 1;
   letter-spacing: 0.02em;
-  color: var(--accent-fg, #fff);
+  color: var(--maude-hud-accent-fg, #fff);
   border: 1.5px solid var(--bg-0, #fff);
   margin-left: -6px;
   cursor: pointer;
@@ -57,11 +57,11 @@ const CHROME_CSS = `
   transition-delay: 0ms;
 }
 .dc-participant:focus-visible {
-  outline: 2px solid var(--accent, oklch(56% 0.170 50));
+  outline: 2px solid var(--maude-hud-accent, oklch(56% 0.170 50));
   outline-offset: 2px;
 }
 .dc-participant--following {
-  outline: 1.5px solid var(--accent, oklch(56% 0.170 50));
+  outline: 1.5px solid var(--maude-hud-accent, oklch(56% 0.170 50));
   outline-offset: 1.5px;
 }
 .dc-participant-popover {
@@ -89,8 +89,8 @@ const CHROME_CSS = `
 .dc-participant-popover__btn {
   display: inline-block;
   padding: 4px 10px;
-  background: var(--accent, oklch(56% 0.170 50));
-  color: var(--accent-fg, #fff);
+  background: var(--maude-hud-accent, oklch(56% 0.170 50));
+  color: var(--maude-hud-accent-fg, #fff);
   border: none;
   border-radius: var(--radius-sm, 2px);
   font-family: inherit;
@@ -100,7 +100,7 @@ const CHROME_CSS = `
   cursor: pointer;
   letter-spacing: 0.02em;
 }
-.dc-participant-popover__btn:hover { background: var(--accent-hover, var(--accent, oklch(50% 0.170 50))); }
+.dc-participant-popover__btn:hover { background: var(--maude-hud-accent-hover, var(--maude-hud-accent, oklch(50% 0.170 50))); }
 .dc-participant-popover__btn--stop {
   background: var(--bg-3, #e5e5e5);
   color: var(--fg-0, #111);

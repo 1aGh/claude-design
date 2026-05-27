@@ -228,7 +228,7 @@ button.dc-artboard-label {
   display: block;
   width: 100%;
 }
-button.dc-artboard-label:focus-visible { outline: 2px solid var(--accent, #d63b1f); outline-offset: -2px; }
+button.dc-artboard-label:focus-visible { outline: 2px solid var(--maude-hud-accent, #d63b1f); outline-offset: -2px; }
 /* Active-artboard ring is in canvas-shell HALO_CSS (subtle 1 px tint). */
 /* Phase 4.2 — drag chrome. */
 .dc-canvas[data-active-tool="move"] .dc-artboard-label { cursor: grab; }
@@ -1762,8 +1762,8 @@ const OVERLAY_CSS = `
    outline-only. Reads from a glance as "what slice of the world you're on". */
 .dc-mm-vp {
   position: absolute;
-  background: color-mix(in oklab, var(--accent, #d63b1f) 12%, transparent);
-  border: 1.5px solid var(--accent, #d63b1f);
+  background: color-mix(in oklab, var(--maude-hud-accent, #d63b1f) 12%, transparent);
+  border: 1.5px solid var(--maude-hud-accent, #d63b1f);
   border-radius: 1px;
   pointer-events: none;
 }
@@ -1799,7 +1799,7 @@ const OVERLAY_CSS = `
 }
 .dc-zoom-tb button:last-child { border-right: 0; }
 .dc-zoom-tb button:hover { background: color-mix(in oklab, var(--fg-0, #1c1917) 5%, transparent); }
-.dc-zoom-tb button:focus-visible { outline: 2px solid var(--accent, #d63b1f); outline-offset: -2px; }
+.dc-zoom-tb button:focus-visible { outline: 2px solid var(--maude-hud-accent, #d63b1f); outline-offset: -2px; }
 .dc-zoom-tb-pct { font-variant-numeric: tabular-nums; min-width: 52px; }
 `.trim();
 

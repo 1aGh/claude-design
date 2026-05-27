@@ -27,8 +27,8 @@ const MARQUEE_CSS = `
   position: fixed;
   pointer-events: none;
   z-index: 5;
-  border: 1px solid var(--accent, #0d99ff);
-  background: color-mix(in oklab, var(--accent, #0d99ff) 8%, transparent);
+  border: 1px solid var(--maude-hud-accent, #0d99ff);
+  background: color-mix(in oklab, var(--maude-hud-accent, #0d99ff) 8%, transparent);
   display: none;
 }
 `.trim();

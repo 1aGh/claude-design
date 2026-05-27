@@ -139,7 +139,7 @@ const DIALOG_CSS = `
 .dc-export-dialog .dc-ed-recent button:hover { background: rgba(0,0,0,0.04); border-color: rgba(0,0,0,0.06); }
 .dc-export-dialog footer { padding: 12px 20px; border-top: 1px solid var(--u-border-subtle, rgba(0,0,0,0.08)); display: flex; justify-content: flex-end; gap: 8px; }
 .dc-export-dialog footer button { padding: 8px 14px; border-radius: 0; border: 1px solid var(--u-fg-0, rgba(0,0,0,0.12)); background: var(--u-bg-1, var(--bg-0, #fafafa)); font: inherit; font-size: 12px; cursor: pointer; color: inherit; }
-.dc-export-dialog footer button.dc-ed-primary { background: var(--accent, #1a1a1a); color: var(--accent-fg, #fff); border-color: transparent; }
+.dc-export-dialog footer button.dc-ed-primary { background: var(--maude-hud-accent, #1a1a1a); color: var(--maude-hud-accent-fg, #fff); border-color: transparent; }
 .dc-export-dialog footer button:disabled { opacity: 0.4; cursor: not-allowed; }
 .dc-export-dialog .dc-ed-status { padding: 8px 20px; font-size: 12px; color: var(--fg-1, rgba(40,30,20,0.65)); border-top: 1px solid var(--u-border-subtle, rgba(0,0,0,0.08)); }
 .dc-export-dialog .dc-ed-status.is-error { color: var(--status-error, #c0392b); }

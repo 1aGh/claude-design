@@ -34,7 +34,7 @@ const RESIZE_CSS = `
   position: fixed;
   width: 8px;
   height: 8px;
-  background: var(--accent, #d63b1f);
+  background: var(--maude-hud-accent, #d63b1f);
   border: 1px solid var(--bg-0, #ffffff);
   border-radius: 1px;
   box-shadow: 0 0 0 0.5px color-mix(in oklab, var(--fg-0, #1c1917) 30%, transparent);

@@ -76,19 +76,19 @@ const PALETTE_CSS = `
   transition: background-color 80ms linear, color 80ms linear;
 }
 .dc-tool-palette button:hover {
-  background: color-mix(in oklab, var(--accent, #d63b1f) 8%, transparent);
+  background: color-mix(in oklab, var(--maude-hud-accent, #d63b1f) 8%, transparent);
   color: var(--fg-0, #1a1a1a);
 }
 .dc-tool-palette button:focus-visible {
-  outline: 2px solid var(--accent, #d63b1f);
+  outline: 2px solid var(--maude-hud-accent, #d63b1f);
   outline-offset: -2px;
 }
 /* DDR-046 — Active tool: tinted background + accent underbar + accent text.
    The underbar is rendered via ::after so the visual stays inside the 6 px
    radius without leaking past the button edge. */
 .dc-tool-palette button[aria-pressed="true"] {
-  background: color-mix(in oklab, var(--accent, #d63b1f) 14%, transparent);
-  color: var(--accent, #d63b1f);
+  background: color-mix(in oklab, var(--maude-hud-accent, #d63b1f) 14%, transparent);
+  color: var(--maude-hud-accent, #d63b1f);
 }
 .dc-tool-palette button[aria-pressed="true"]::after {
   content: "";
@@ -97,7 +97,7 @@ const PALETTE_CSS = `
   right: 6px;
   bottom: 2px;
   height: 2px;
-  background: var(--accent, #d63b1f);
+  background: var(--maude-hud-accent, #d63b1f);
   border-radius: 1px;
 }
 /* T19 — sticky-tool lock badge. Tiny accent square in the top-right corner
@@ -107,7 +107,7 @@ const PALETTE_CSS = `
 .dc-tool-palette button[data-sticky="true"] {
   /* Keep the tinted active background; add a hairline ring so the lock state
      is readable even when the button is also aria-pressed. */
-  box-shadow: inset 0 0 0 1px var(--accent, #d63b1f);
+  box-shadow: inset 0 0 0 1px var(--maude-hud-accent, #d63b1f);
 }
 .dc-tool-palette button .dc-tp-sticky-badge {
   position: absolute;
@@ -115,7 +115,7 @@ const PALETTE_CSS = `
   right: 3px;
   width: 6px;
   height: 6px;
-  background: var(--accent, #d63b1f);
+  background: var(--maude-hud-accent, #d63b1f);
   border-radius: 1px;
   box-shadow: 0 0 0 1px var(--bg-0, #ffffff);
   opacity: 0;
