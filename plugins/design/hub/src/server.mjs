@@ -1,34 +1,36 @@
 #!/usr/bin/env node
 // Maude Hub — self-hostable Yjs sync backend.
 //
-// Phase 9 (v1.1) Task 1 skeleton. Hocuspocus over PartyKit — see
+// Phase 9 (v1.1). Hocuspocus over PartyKit — see
 // .ai/decisions/DDR-052-hocuspocus-over-partykit-for-hub.md.
 //
 // Environment (consumed only when run as a CLI / main module):
 //   PORT              listen port (default 1234)
-//   DATA_DIR          SQLite + future state dir (default ./data)
-//   HUB_SECRET        shared bearer token; if unset → permissive dev mode
+//   DATA_DIR          SQLite + tokens.json dir (default ./data)
+//   HUB_SECRET        escape-hatch token; tokens.json is the primary store
 //   HUB_INSECURE_HTTP if '1', logs note non-TLS (TLS terminates upstream)
 //
-// Auth is a Task 1 stub — exact-match against HUB_SECRET when set, else
-// accept-and-warn. Phase 9 Task 6 hardens this with HMAC + rate limit and
-// per-token records in a `tokens` SQLite table.
-//
-// The published binary is dist/hub.bundle.mjs (bun build). For local dev:
-//   node plugins/design/hub/src/server.mjs
+// Auth: tokens.json next to hub.db is checked first; HUB_SECRET is a fallback
+// for headless / scripted setups. With NEITHER configured the hub runs in
+// permissive dev mode and prints a warning on every connect. Phase 9 Task 6
+// hardens this with HMAC-SHA256 stored in SQLite + per-token rate limit.
 
 import { existsSync, mkdirSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { Server } from '@hocuspocus/server';
 import { SQLite } from '@hocuspocus/extension-sqlite';
 
+import { readTokensFile, verifyToken } from './tokens.mjs';
+
+const HUB_VERSION = readOwnVersion();
+
 /**
  * @typedef {Object} HubConfig
  * @property {number} [port]          Listen port (default 1234).
- * @property {string} [dataDir]       Directory for hub.db (default ./data).
- * @property {string} [secret]        Shared bearer token. Empty → dev mode.
+ * @property {string} [dataDir]       Directory for hub.db + tokens.json (default ./data).
+ * @property {string} [secret]        Optional HUB_SECRET escape hatch.
  * @property {boolean} [insecureHttp] Cosmetic — logs `http://` instead of `ws://`.
  * @property {boolean} [verbose]      Log lifecycle hooks. Default true.
  */
@@ -44,6 +46,7 @@ export function createHub(config = {}) {
   const dataDir = config.dataDir ?? resolve(process.cwd(), 'data');
   const secret = config.secret ?? '';
   const verbose = config.verbose ?? true;
+  const startedAt = Date.now();
 
   if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
   const sqlitePath = join(dataDir, 'hub.db');
@@ -55,19 +58,46 @@ export function createHub(config = {}) {
       new SQLite({ database: sqlitePath }),
     ],
 
-    // Task 1 auth stub. Two modes:
-    //   1. secret === ''   → accept any token, label peer 'anon' (dev only).
-    //   2. secret set      → exact match against the configured value.
-    // Phase 9 Task 6 replaces this with HMAC-SHA256 against per-token rows.
     async onAuthenticate({ token, documentName }) {
-      if (secret === '') {
-        if (verbose) console.warn(`[hub] secret unset; accepting any token for documentName=${documentName}`);
+      const match = verifyToken(dataDir, token, secret);
+      if (match) {
+        return { user: { name: match.label, source: match.source, dev: !!match.dev } };
+      }
+      // No tokens.json entries and no HUB_SECRET → permissive dev mode.
+      const { tokens } = readTokensFile(dataDir);
+      if (tokens.length === 0 && secret === '') {
+        if (verbose) console.warn(`[hub] no tokens configured; accepting any token for documentName=${documentName}`);
         return { user: { name: 'anon', anon: true } };
       }
-      if (token !== secret) {
-        throw new Error('invalid token');
+      throw new Error('invalid token');
+    },
+
+    async onRequest({ request, response }) {
+      if (!request.url) return;
+      if (request.method === 'GET' && (request.url === '/health' || request.url.startsWith('/health?'))) {
+        const { tokens } = readTokensFile(dataDir);
+        const body = JSON.stringify({
+          ok: true,
+          version: HUB_VERSION,
+          uptimeMs: Date.now() - startedAt,
+          port,
+          dataDir,
+          tokenCount: tokens.length,
+          authMode: tokens.length > 0 ? 'tokens.json' : (secret ? 'env-secret' : 'dev'),
+        });
+        response.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'Content-Length': Buffer.byteLength(body),
+        });
+        response.end(body);
+        // Short-circuit Hocuspocus' default `200 Welcome to Hocuspocus!` writer.
+        // Its requestHandler swallows falsy throws ("if (error) throw error;")
+        // — this is the framework's documented bail-from-onRequest contract.
+        // eslint-disable-next-line no-throw-literal
+        throw null;
       }
-      return { user: { name: 'authed' } };
+      // Fall through — Hocuspocus' default handler responds to unknown routes.
     },
 
     async onConnect({ documentName }) {
@@ -81,7 +111,7 @@ export function createHub(config = {}) {
     },
   });
 
-  return { server, sqlitePath, port, secret };
+  return { server, sqlitePath, port, secret, dataDir, startedAt, version: HUB_VERSION };
 }
 
 /** Run the hub as a CLI process. */
@@ -101,10 +131,17 @@ async function runAsMain() {
   }
 
   const scheme = insecureHttp ? 'http' : 'ws';
-  console.log(`[hub] Maude Hub listening on ${scheme}://0.0.0.0:${port}`);
+  console.log(`[hub] Maude Hub v${HUB_VERSION} listening on ${scheme}://0.0.0.0:${port}`);
+  console.log(`[hub] data dir: ${dataDir}`);
   console.log(`[hub] SQLite at ${sqlitePath}`);
-  if (secret === '') {
-    console.warn('[hub] HUB_SECRET unset — running in permissive dev mode. Do NOT expose to the internet.');
+
+  const { tokens } = readTokensFile(dataDir);
+  if (tokens.length === 0 && secret === '') {
+    console.warn('[hub] no tokens configured — running in permissive dev mode. Do NOT expose to the internet.');
+  } else if (tokens.length > 0) {
+    console.log(`[hub] tokens.json contains ${tokens.length} token(s).`);
+  } else {
+    console.log('[hub] HUB_SECRET is set — accepting that single token.');
   }
 
   const shutdown = (signal) => {
@@ -117,6 +154,16 @@ async function runAsMain() {
   };
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
+}
+
+function readOwnVersion() {
+  try {
+    const require = createRequire(import.meta.url);
+    const pkg = require('../package.json');
+    return pkg.version || '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
 }
 
 // Auto-start only when invoked directly (`node src/server.mjs` or the bundled

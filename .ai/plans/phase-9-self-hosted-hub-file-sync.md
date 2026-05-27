@@ -156,7 +156,7 @@ A user who has been running Phase 8 (loopback multi-tab + git push/pull for cros
 - **Validate:** `node plugins/design/hub/dist/hub.bundle.mjs` boots on `localhost:1234`. Two `y-websocket` clients can connect and sync.
 - **Shipped:** `plugins/design/hub/{package.json,src/server.mjs,build.ts,test/two-client-sync.test.mjs,.gitignore,README.md}` + `pnpm-workspace.yaml` (`better-sqlite3` `allowBuilds`) + `pnpm-lock.yaml` (regenerated). Bundle 333 KB (5 MB budget). Two-`HocuspocusProvider`-client convergence in 54 ms via `node --test --test-force-exit`. Runtime constraint discovered + recorded: hub is **Node-only** — Hocuspocus' `crossws` adapter rejects Bun/Deno, and `better-sqlite3` isn't Bun-compatible (Bun#4290). `bun build` for bundling stays. Bundler: Bun.build (not esbuild) per project convention (DDR-009 dev-server lineage).
 
-### Task 2: `maude hub serve|deploy|token|status` (minimal CLI)
+### Task 2: `maude hub serve|deploy|token|status` (minimal CLI) ◐ 2026-05-27 (serve + token generate + status only — deploy + token rotate deferred)
 
 - **Do:** `cli/commands/hub.mjs` exposes the minimum CLI surface for v1.1. Most users won't touch CLI tokens — they'll use the in-hub admin UI from Task 2.5. CLI exists for headless / scripted setup.
   - `maude hub serve [--port N] [--data <path>] [--secret <hex>] [--insecure-http]` — runs the bundled Hocuspocus locally (for testing, contributor dev, or self-hosted deploy). `--secret` sets `HUB_SECRET`; if unset, generates one and prints bootstrap link. `--insecure-http` allows non-TLS for localhost dev.
