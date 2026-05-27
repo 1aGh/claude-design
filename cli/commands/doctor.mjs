@@ -252,96 +252,107 @@ function printReport({ depsByPlugin, configReport, summary }) {
 async function applyFixes({ repoRoot, configFsPath, depsByPlugin, configReport }) {
   let configChanged = false;
 
+  // ── Config edits ───────────────────────────────────────────────────────
+  // Run FIRST — deterministic (filesystem only) and must not be blocked by
+  // an interactive prompt that may never resolve on a non-TTY stdin (CI,
+  // scripted spawns with empty input). Dep prompts come AFTER.
+  if (configReport.exists) {
+    const config = JSON.parse(readFileSync(configFsPath, 'utf8'));
+
+    // Drop unknown additionalProperties errors.
+    for (const e of configReport.schema.errors) {
+      if (e.message.startsWith('unknown property')) {
+        const parts = e.path.split('/').filter(Boolean);
+        let cur = config;
+        for (let i = 0; i < parts.length - 1; i++) cur = cur?.[parts[i]];
+        if (cur && parts.length > 0) {
+          delete cur[parts[parts.length - 1]];
+          configChanged = true;
+        }
+      }
+    }
+
+    // Apply drift — silent (detector returned a concrete value, so we know
+    // declared is wrong or stale).
+    if (configReport.drift.length > 0) {
+      if (!config.stack) config.stack = {};
+      for (const d of configReport.drift) {
+        config.stack[d.key] = d.detected;
+        configChanged = true;
+      }
+    }
+
+    // Add missing quality gates — silent additive merge.
+    if (configReport.qualityAdditions.length > 0) {
+      if (!config.quality) config.quality = {};
+      for (const a of configReport.qualityAdditions) {
+        if (!config.quality[a.gate]) {
+          config.quality[a.gate] = a.command;
+          configChanged = true;
+        }
+      }
+    }
+
+    if (configChanged) {
+      writeFileSync(configFsPath, `${JSON.stringify(config, null, 2)}\n`);
+      process.stdout.write(`\n  ✓ wrote ${CONFIG_PATH}\n`);
+    } else {
+      process.stdout.write('\n  (no config edits applied)\n');
+    }
+
+    // Note: invalid-enum errors (e.g. tests: "node-test") are NEVER auto-
+    // fixed — the user picks the migration target. Surface the leftover.
+    const remaining = configReport.schema.errors.filter(
+      (e) => !e.message.startsWith('unknown property')
+    );
+    if (remaining.length > 0) {
+      process.stdout.write(
+        `\n  ⚠ ${remaining.length} schema error${remaining.length === 1 ? '' : 's'} not auto-fixed — user decision required:\n`
+      );
+      for (const e of remaining) {
+        process.stdout.write(`    ${e.path}: ${e.message}\n`);
+      }
+    }
+  }
+
   // ── Dependency installs ────────────────────────────────────────────────
   const installable = [];
   for (const env of Object.values(depsByPlugin)) {
     if (!env.results) continue;
     for (const r of env.results) {
       if (r.status !== 'missing') continue;
-      // Find the original dep entry to read autoInstall + install commands.
-      // checkAll dropped the manifest entry but kept r.install — we use that.
       installable.push(r);
     }
   }
-  // Per-dep prompt — no silent installs.
+  // Per-dep prompt — no silent installs. Skip when stdin is not a TTY
+  // (CI runners, scripted spawns) so config edits above are never bypassed
+  // by a never-resolving readline prompt against closed stdin.
   if (installable.length > 0) {
-    process.stdout.write('\n--- Dependency installs (per-dep prompt) ---\n');
-    const rl = createInterface({ input: stdin, output: stdout });
-    for (const r of installable) {
-      const cmd = (r.install && (r.install[process.platform] || r.install.preferred)) || null;
-      if (!cmd) {
-        process.stdout.write(`  skip ${r.id} — no install command declared\n`);
-        continue;
+    if (!stdin.isTTY) {
+      process.stdout.write(
+        `\n--- Dependency installs skipped (non-interactive stdin; ${installable.length} missing) ---\n`
+      );
+    } else {
+      process.stdout.write('\n--- Dependency installs (per-dep prompt) ---\n');
+      const rl = createInterface({ input: stdin, output: stdout });
+      for (const r of installable) {
+        const cmd = (r.install && (r.install[process.platform] || r.install.preferred)) || null;
+        if (!cmd) {
+          process.stdout.write(`  skip ${r.id} — no install command declared\n`);
+          continue;
+        }
+        // eslint-disable-next-line no-await-in-loop
+        const ans = await rl.question(`  Install ${r.id} via \`${cmd}\`? [y/N] `);
+        const norm = (ans || '').trim().toLowerCase();
+        if (norm === 'y' || norm === 'yes') {
+          process.stdout.write(`  running: ${cmd}\n`);
+          const res = spawnSync('bash', ['-c', cmd], { stdio: 'inherit' });
+          if (res.status !== 0) process.stdout.write(`  ✗ install failed (exit ${res.status})\n`);
+        } else {
+          process.stdout.write(`  skipped ${r.id}\n`);
+        }
       }
-      // eslint-disable-next-line no-await-in-loop
-      const ans = await rl.question(`  Install ${r.id} via \`${cmd}\`? [y/N] `);
-      if (ans.trim().toLowerCase() === 'y' || ans.trim().toLowerCase() === 'yes') {
-        process.stdout.write(`  running: ${cmd}\n`);
-        const res = spawnSync('bash', ['-c', cmd], { stdio: 'inherit' });
-        if (res.status !== 0) process.stdout.write(`  ✗ install failed (exit ${res.status})\n`);
-      } else {
-        process.stdout.write(`  skipped ${r.id}\n`);
-      }
-    }
-    rl.close();
-  }
-
-  // ── Config edits ────────────────────────────────────────────────────────
-  if (!configReport.exists) return;
-  const config = JSON.parse(readFileSync(configFsPath, 'utf8'));
-
-  // Drop unknown additionalProperties errors.
-  for (const e of configReport.schema.errors) {
-    if (e.message.startsWith('unknown property')) {
-      const parts = e.path.split('/').filter(Boolean);
-      let cur = config;
-      for (let i = 0; i < parts.length - 1; i++) cur = cur?.[parts[i]];
-      if (cur && parts.length > 0) {
-        delete cur[parts[parts.length - 1]];
-        configChanged = true;
-      }
-    }
-  }
-
-  // Apply drift — silent (detector returned a concrete value, so we know
-  // declared is wrong or stale).
-  if (configReport.drift.length > 0) {
-    if (!config.stack) config.stack = {};
-    for (const d of configReport.drift) {
-      config.stack[d.key] = d.detected;
-      configChanged = true;
-    }
-  }
-
-  // Add missing quality gates — silent additive merge.
-  if (configReport.qualityAdditions.length > 0) {
-    if (!config.quality) config.quality = {};
-    for (const a of configReport.qualityAdditions) {
-      if (!config.quality[a.gate]) {
-        config.quality[a.gate] = a.command;
-        configChanged = true;
-      }
-    }
-  }
-
-  if (configChanged) {
-    writeFileSync(configFsPath, `${JSON.stringify(config, null, 2)}\n`);
-    process.stdout.write(`\n  ✓ wrote ${CONFIG_PATH}\n`);
-  } else {
-    process.stdout.write('\n  (no config edits applied)\n');
-  }
-
-  // Note: invalid-enum errors (e.g. tests: "node-test") are NEVER auto-
-  // fixed — the user picks the migration target. Surface the leftover.
-  const remaining = configReport.schema.errors.filter(
-    (e) => !e.message.startsWith('unknown property')
-  );
-  if (remaining.length > 0) {
-    process.stdout.write(
-      `\n  ⚠ ${remaining.length} schema error${remaining.length === 1 ? '' : 's'} not auto-fixed — user decision required:\n`
-    );
-    for (const e of remaining) {
-      process.stdout.write(`    ${e.path}: ${e.message}\n`);
+      rl.close();
     }
   }
 
