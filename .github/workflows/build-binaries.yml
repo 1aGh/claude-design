@@ -105,8 +105,24 @@ jobs:
         with:
           bun-version: '1.3.x'
 
+      - name: Verify runtime bundle sizes
+        # Same guard as publish-main, run here too because the matrix
+        # publishes per-platform sub-packages BEFORE publish-main runs.
+        # If committed bundles are defective we want to fail every matrix
+        # cell up-front rather than ship broken binaries to npm.
+        shell: bash
+        run: bash plugins/design/dev-server/bin/check-runtime-bundles.sh
+
       - name: Build binary for ${{ matrix.target }}
         shell: bash
+        # MAUDE_SKIP_RUNTIME_BUILD=1 — embed git-committed dist/runtime/*.js
+        # into the standalone binary verbatim. Without this, every per-platform
+        # matrix cell would rebuild dist/runtime/ from its own Bun.build, which
+        # is environment-sensitive (v0.22.0 motion regression). Bundles ride
+        # along with the binary at compile time, so the same artifacts that
+        # ship in the npm tarball ship inside every binary too.
+        env:
+          MAUDE_SKIP_RUNTIME_BUILD: '1'
         run: |
           cd plugins/design/dev-server
           # Drop --frozen-lockfile: bun.lock is gitignored and gets generated
@@ -222,6 +238,18 @@ jobs:
         run: bash scripts/check-version-parity.sh
 
       - name: Build
+        # MAUDE_SKIP_RUNTIME_BUILD=1 — skip the dist/runtime/*.js regen and
+        # ship the bundles committed in git verbatim. v0.22.0 shipped a
+        # defective Ubuntu-CI motion_react.js because `pnpm build` ran
+        # buildRuntimeBundles() and overwrote the authoritative on-disk
+        # artifacts with environment-sensitive Bun.build output. Treating
+        # git as the source of truth makes the release platform-agnostic:
+        # whatever the maintainer commits is what ships. The next step
+        # (Verify runtime bundle sizes) gates the on-disk artifacts so
+        # nothing under-sized slips through even if the maintainer commits
+        # a bad bundle from their workstation.
+        env:
+          MAUDE_SKIP_RUNTIME_BUILD: '1'
         run: pnpm build
 
       - name: Verify runtime bundle sizes

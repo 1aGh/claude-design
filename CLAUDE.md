@@ -129,6 +129,8 @@ When working on a brief the user provided via `/design:setup-ds` or `/design:new
 
 Never bump versions by hand or with `npm version` — the script is the single source of truth for keeping all three manifests in lockstep.
 
+**Runtime bundles (`plugins/design/dev-server/dist/runtime/*.js`) are committed and authoritative for the release.** Both CI jobs (per-platform `build-binaries` matrix + `publish-main`) set `MAUDE_SKIP_RUNTIME_BUILD=1` on the build step, so `pnpm build` reuses the on-disk bundles verbatim instead of regenerating them. Reason: Bun.build's output for `motion`/`motion/react` is environment-sensitive — v0.22.0 shipped a 13 kB `motion_react.js` (working size 155 kB+) because Ubuntu CI's `pnpm build` overwrote the good local bundle with broken regen output. Whatever you commit is what ships. To regenerate locally before a release: `cd plugins/design/dev-server && bun run build.ts` (dev mode) or `bun run build:binary` (release/minified). The `check-runtime-bundles.sh` step in CI validates every `dist/runtime/*.js` against the per-slug floor in `.min-sizes.json` — if a maintainer commits a bad bundle, the release fails loud before `npm publish`.
+
 ## Site roadmap regen
 
 `site/lib/roadmap.json` is auto-generated from `.ai/plans/*.md` + `.ai/plans/archive/*.md` + `.ai/state/STATE.md` by `site/scripts/build-roadmap.mjs`. It feeds the public `/roadmap` page. Like `stats.json` it IS committed because Vercel uploads only `site/` and cannot see the `.ai/` sibling.

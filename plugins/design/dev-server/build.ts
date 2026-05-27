@@ -405,11 +405,25 @@ async function main() {
   // Pre-built runtime bundles — ship to disk so /_canvas-runtime/* never
   // needs a runtime Bun.build (which would need disk node_modules/react,
   // absent in compiled binaries + npm installs). Phase 19.1 / v0.18.1.
-  const runtime = await buildRuntimeBundles();
-  const t2b = performance.now();
-  console.log(
-    `[build] dist/runtime/*.js ${runtime.bytes.toLocaleString()} B in ${runtime.count} files  (${(t2b - t2).toFixed(0)} ms)`
-  );
+  //
+  // MAUDE_SKIP_RUNTIME_BUILD=1 — skip the regen and trust the committed
+  // dist/runtime/*.js. Set in CI publish-main so the npm tarball ships
+  // exactly what was committed in git (platform-agnostic). v0.22.0 shipped
+  // a broken Ubuntu-CI motion_react.js because the on-disk authoritative
+  // bundle got overwritten by `pnpm build`; this flag prevents that class
+  // of regression. The check-runtime-bundles.sh step still validates the
+  // on-disk artifacts against .min-sizes.json after the build.
+  if (process.env.MAUDE_SKIP_RUNTIME_BUILD === '1') {
+    console.log(
+      `[build] dist/runtime/*.js SKIPPED (MAUDE_SKIP_RUNTIME_BUILD=1 — using committed pre-built)`
+    );
+  } else {
+    const runtime = await buildRuntimeBundles();
+    const t2b = performance.now();
+    console.log(
+      `[build] dist/runtime/*.js ${runtime.bytes.toLocaleString()} B in ${runtime.count} files  (${(t2b - t2).toFixed(0)} ms)`
+    );
+  }
 
   if (MODE === 'release') {
     const targets: PlatformTarget[] = FLAG_TARGET
