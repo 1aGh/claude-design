@@ -195,7 +195,7 @@ As a <user> I want <goal> so that <benefit>
 
 ## Metadata
 
-- **GitHub Issue**: #<number> — <title>
+- **Ticket**: <id> — <title> (provider per `integrations.tracker.provider`; omit line if provider is `none`)
 - **Type**: [New Capability/Enhancement/Refactor/Bug Fix]
 - **Complexity**: [Low/Medium/High]
 - **App/Package**: [which workspace member]

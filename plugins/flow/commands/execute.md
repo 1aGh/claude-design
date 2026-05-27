@@ -40,7 +40,7 @@ If `.ai/state/STATE.md` already exists, update **Status** to `in-progress` and *
 - Understand all tasks and their dependencies
 - Note the validation commands to run
 - Review the testing strategy
-- Note the GitHub issue number from plan metadata (for commit/PR linking)
+- Note the ticket ID from plan metadata (for commit/PR linking; format depends on `integrations.tracker.provider` — GitHub numeric, ClickUp `CU-…`, etc.)
 
 ### Agent Activation
 
@@ -212,7 +212,7 @@ If the user confirms, execute the commit workflow (follow `.claude/commands/comm
 
 After the commit succeeds, ask:
 
-> **Committed. Ready to push and create a PR?** I'll rebase onto main, push, and create the PR with the issue linked.
+> **Committed. Ready to push and create a PR?** I'll rebase onto main, push, and create the PR with the ticket linked (`Closes #N` for `provider === github`; for other providers, link via the `/flow:bug-fix` tracker-sync step or a commented PR URL on the ticket).
 
 If the user confirms, execute the push workflow (follow `.claude/commands/push.md` steps).
 

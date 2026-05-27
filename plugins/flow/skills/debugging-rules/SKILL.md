@@ -134,7 +134,7 @@ Fix the root cause, not the symptom:
 |---|---|
 | `/flow:utils-verify` fails during `/flow:execute` | Apply Phase 1 before the iteration counter increments. Symptom fixes burn iterations. |
 | `/flow:validate` blocker (scenario, a11y, design) | Phase 1 evidence gathering before fix attempt. Cross-platform divergence often points to a config / build / env delta. |
-| GitHub issue triage | `/flow:bug-rca` produces an RCA document = Phase 1 + 2 output. `/flow:bug-fix` continues with Phase 4 (failing test → minimal fix). |
+| Ticket triage | `/flow:bug-rca` produces an RCA document = Phase 1 + 2 output. `/flow:bug-fix` continues with Phase 4 (failing test → minimal fix). Provider per `integrations.tracker.provider`. |
 | 3+ failed fix attempts | Stop, write a DDR proposing an architectural change. Don't attempt fix #4. |
 
 ## Red flags — STOP and follow process
@@ -214,6 +214,6 @@ From debugging sessions across many projects:
 ## Related
 
 - `testing-rules` — TDD iron law (failing test before fix in Phase 4 step 1)
-- `/flow:bug-rca` — formal RCA flow for GitHub issues (Phase 1 + 2 codified)
+- `/flow:bug-rca` — formal RCA flow for tracker tickets (Phase 1 + 2 codified; provider via `integrations.tracker`)
 - `/flow:bug-fix` — implementation of the RCA-identified fix (Phase 4)
 - `/flow:utils-verify`, `/flow:validate` — gates that surface bugs early

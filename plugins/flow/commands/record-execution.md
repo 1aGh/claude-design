@@ -21,7 +21,7 @@ Save to: `.ai/logs/execution-reports/<feature-name>.md`
 ### Meta Information
 
 - Plan file: [path to plan that guided this implementation]
-- GitHub Issue: #<number> (if linked)
+- Ticket: <id> (if linked; provider per `integrations.tracker.provider`)
 - Files added: [list with paths]
 - Files modified: [list with paths]
 - Lines changed: +X -Y

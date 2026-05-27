@@ -13,7 +13,9 @@ keywords: [status, where, state, awareness, branch, progress]
 > track of where things stand. This is READ-ONLY — it never modifies files,
 > branches, or remote state.
 
-## Repository Auto-Detection
+## Repository Auto-Detection (GitHub only)
+
+Used by the GitHub branches of Step 2 (ticket view), Step 4 (PR status), and Step 6 (sprint snapshot). Skip when neither the tracker nor the PR flow goes through GitHub.
 
 ```bash
 REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || git remote get-url origin | sed 's|.*github.com[:/]||;s|\.git$||')"
@@ -49,33 +51,39 @@ git log origin/main..HEAD --oneline 2>/dev/null | head -10
 
 ---
 
-## Step 2: Active Story Detection
+## Step 2: Active Ticket Detection
 
-Extract the issue number from the branch name. Convention: `<name>/<number>-<slug>`.
+Extract the ticket ID from the branch name. Convention: `<name>/<id>-<slug>`. The numeric regex below matches GitHub-style IDs (`feat/123-foo`); for non-GitHub providers with alphanumeric IDs (e.g. `feat/CU-abc123-foo`), ticket-ID extraction from branch names is provider-specific — implement when needed in a follow-up DDR. For now, set `ISSUE_NUM` manually if your tracker uses non-numeric IDs.
 
 ```bash
 BRANCH=$(git branch --show-current)
 ISSUE_NUM=$(echo "$BRANCH" | grep -oE '/[0-9]+' | head -1 | tr -d '/')
-echo "Detected issue: $ISSUE_NUM"
+echo "Detected ticket: $ISSUE_NUM"
 ```
 
-If an issue number is found:
+If a ticket ID is found, fetch it according to `integrations.tracker.provider` in `.ai/workflows.config.json`:
+
+- **`github` or unset** → run the GitHub CLI snippet below.
+- **Any other provider** → call the MCP tool named in `integrations.tracker.mcp` (ClickUp: `mcp__claude_ai_ClickUp_clickup_get_task`; Linear / Jira / Notion / Asana / Shortcut each have their own MCP). Pass `integrations.tracker.defaults` through untouched. Map the response's title / status / labels / assignees onto the same Display slots as the GitHub flow.
+- **`none`** → skip the ticket section; display `Story: (no tracker configured)` and jump to Step 3.
+
+GitHub-only snippet:
 
 ```bash
 export GODEBUG=x509negativeserial=1
 gh issue view "$ISSUE_NUM" --repo "$REPO" --json number,title,state,labels,assignees --jq '{number, title, state, labels: [.labels[].name], assignees: [.assignees[].login]}'
 ```
 
-If no issue number detected from branch name:
+If no ticket ID detected from branch name:
 
-- Note: "No linked issue detected from branch name."
+- Note: "No linked ticket detected from branch name."
 - Skip to Step 3.
 
 ### Display
 
-- **Story:** #NNN — Title
-- **State:** Open/Closed
-- **Labels:** `label1`, `label2`
+- **Story:** <id> — Title
+- **State:** Open/Closed (provider-specific equivalent — e.g. ClickUp `status.status`, Linear `state.name`)
+- **Labels:** `label1`, `label2` (or provider-specific tags / custom fields)
 
 ---
 
@@ -196,7 +204,13 @@ If no changed files:
 
 ## Step 6: Sprint Snapshot (1-line)
 
-Only fetch if we were able to connect to GitHub in earlier steps.
+Provider-aware:
+
+- **`integrations.tracker.provider === github`** (or unset) → run the GitHub CLI snippet below.
+- **Any other provider** → call the MCP tool that lists tickets for the current user (ClickUp: `mcp__claude_ai_ClickUp_clickup_filter_tasks` with `defaults.userId` / `defaults.workspaceId`; Linear: `…_search_issues` with `assignee: me`; etc.). Return the open-ticket count.
+- **`none`** → skip this step.
+
+GitHub-only snippet:
 
 ```bash
 export GODEBUG=x509negativeserial=1
@@ -211,7 +225,7 @@ gh issue list \
 
 ### Display
 
-- **My open issues:** N total
+- **My open tickets:** N total (skipped when `provider === none`)
 
 ---
 
@@ -249,7 +263,7 @@ Present everything as a single, scannable dashboard:
    Changes:    2 files uncommitted
    Stash:      0 entries
 
-📋 Story:      #123 — Add Button variant for compact mode
+📋 Ticket:     #123 — Add Button variant for compact mode
    State:      Open · Priority: High · 3pts
 
 📝 Plan:       plans/add-button-variant.md
@@ -262,7 +276,7 @@ Present everything as a single, scannable dashboard:
    Lint:       ✅ Pass
    Types:      ❌ 2 errors in src/button.tsx
 
-📊 Sprint:     8 open issues assigned to me
+📊 Sprint:     8 open tickets assigned to me
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

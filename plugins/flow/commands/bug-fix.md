@@ -2,18 +2,12 @@
 name: flow:bug-fix
 category: bug
 type: command
-description: Implement fix from RCA document for GitHub issue
-keywords: [bug, fix, implement, github-issue, rca, patch]
-argument-hint: "github-issue-id"
+description: Implement fix from RCA document for a ticket
+keywords: [bug, fix, implement, ticket, rca, patch]
+argument-hint: "ticket-id"
 ---
 
-# Implement Fix: GitHub Issue #$ARGUMENTS
-
-## Repository Auto-Detection
-
-```bash
-REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || git remote get-url origin | sed 's|.*github.com[:/]||;s|\.git$||')"
-```
+# Implement Fix: Ticket $ARGUMENTS
 
 ## Package Manager Auto-Detection
 
@@ -25,26 +19,31 @@ REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || git r
 
 ## Prerequisites
 
-- RCA document exists at `logs/rca/issue-$ARGUMENTS.md` (produced by `/flow:bug-rca`)
+- RCA document exists at `logs/rca/issue-$ARGUMENTS.md` (produced by `/flow:bug-rca`). The `issue-` filename prefix is provider-agnostic — `$ARGUMENTS` may be a GitHub number, a ClickUp ID like `CU-abc123`, or any slug.
 
 ## Tracker context
 
 Read `integrations.tracker.provider` from `.ai/workflows.config.json`:
 
-- **`github` or unset** → use `gh issue view $ARGUMENTS --repo "$REPO"` (below) for live context.
-- **Any other provider** → resolve via the MCP tool named in `integrations.tracker.mcp` (e.g. `mcp__claude_ai_ClickUp_clickup_get_task`). Pass `integrations.tracker.defaults` through untouched.
+- **`github` or unset** → resolve the repo and use the GitHub CLI for live context:
+  ```bash
+  REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || git remote get-url origin | sed 's|.*github.com[:/]||;s|\.git$||')"
+  ```
+- **Any other provider** → resolve via the MCP tool named in `integrations.tracker.mcp` (e.g. `mcp__claude_ai_ClickUp_clickup_get_task`). Pass `integrations.tracker.defaults` through untouched. Skip the `REPO=…` shell snippet entirely.
 - **`none`** → rely on the RCA document only; the human-provided text is the source of truth.
 
 ## RCA Document to Reference
 
 Read RCA: `logs/rca/issue-$ARGUMENTS.md`
 
-**Optional — View GitHub issue for context (when provider is `github`):**
+**Optional — View ticket via GitHub CLI (when provider is `github`):**
 
 ```bash
 export GODEBUG=x509negativeserial=1
 gh issue view $ARGUMENTS --repo "$REPO"
 ```
+
+For non-GitHub providers, the live ticket view was fetched in the "Tracker context" step above via MCP.
 
 ## Implementation Instructions
 
@@ -99,13 +98,16 @@ After all validations pass, ask:
 
 > **Fix validated. Ready to commit?**
 
-If confirmed, commit using a conventional `fix:` subject that references the ticket (e.g. `fix(auth): handle null session — refs #123`).
+If confirmed, commit using a conventional `fix:` subject that references the ticket. The reference format depends on `integrations.tracker.provider`:
+
+- `provider === github` → `fix(auth): handle null session — refs #$ARGUMENTS` (GitHub PR will auto-close via `Closes #$ARGUMENTS`).
+- Any other provider → `fix(auth): handle null session — refs <provider>-$ARGUMENTS` (e.g. `refs CU-abc123` for ClickUp). Auto-close happens via the "Tracker sync" step below, not via PR body syntax.
 
 After commit, ask:
 
 > **Committed. Ready to push and create a PR?**
 
-If confirmed, `git push -u origin <branch>` and `gh pr create` with the RCA summary in the body.
+If confirmed, `git push -u origin <branch>` and (when a git host with PR support is configured) create the PR with the RCA summary in the body. For GitHub: `gh pr create`. Include `Closes #$ARGUMENTS` in the body **only when `provider === github`** — for other providers, `Closes #N` is GitHub-specific syntax that won't auto-close your ticket.
 
 ### Tracker sync (optional)
 

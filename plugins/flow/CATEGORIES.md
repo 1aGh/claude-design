@@ -71,7 +71,7 @@ Called by the `/flow:validate` parent or directly when you want only one check.
 
 | Command | Description | Typical trigger |
 | ------- | ----------- | --------------- |
-| `/flow:bug-rca` | Analyze and document root cause for a GitHub issue. | Opening a bug. |
+| `/flow:bug-rca` | Analyze and document root cause for a ticket (provider per `integrations.tracker`). | Opening a bug. |
 | `/flow:bug-fix` | Implement the fix from the RCA document. | After RCA. |
 
 ### record — knowledge capture
