@@ -6,19 +6,14 @@
 
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { after, before, beforeEach, test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
-const BIN = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  '..',
-  'bin',
-  'maude.mjs'
-);
+const BIN = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'maude.mjs');
 
 const PORT = Number.parseInt(process.env.HUB_TEST_PORT_DESIGN ?? '14396', 10);
 const URL = `http://127.0.0.1:${PORT}`;
@@ -75,8 +70,12 @@ function runCli(args) {
     });
     let stdout = '';
     let stderr = '';
-    child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
-    child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
     }, 8000);

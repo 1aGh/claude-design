@@ -8,16 +8,16 @@
 // already exposes flushAll(). The integration with .git/HEAD writes is
 // exercised manually in the Task 7 acceptance test (Phase 8 plan validate row).
 
-import { existsSync, mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { createGitLifecycle } from '../collab/git-lifecycle.ts';
-import { createBus, type Context } from '../context.ts';
 import { createRegistry } from '../collab/registry.ts';
 import type { RoomCallbacks } from '../collab/room.ts';
+import { type Context, createBus } from '../context.ts';
 
 function ctxFor(repoRoot: string): Context {
   return {

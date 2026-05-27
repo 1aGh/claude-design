@@ -22,7 +22,7 @@ function withTmpConfig(fn) {
   try {
     return fn(path);
   } finally {
-    if (prior === undefined) delete process.env.HUBS_CONFIG_PATH;
+    if (prior === undefined) process.env.HUBS_CONFIG_PATH = undefined;
     else process.env.HUBS_CONFIG_PATH = prior;
     rmSync(dir, { recursive: true, force: true });
   }

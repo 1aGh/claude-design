@@ -6,8 +6,8 @@ import { describe, expect, test } from 'bun:test';
 
 import * as Y from 'yjs';
 
-import { createRegistry } from '../collab/registry.ts';
 import { Y_TYPES } from '../collab/persistence.ts';
+import { createRegistry } from '../collab/registry.ts';
 import type { RoomCallbacks } from '../collab/room.ts';
 
 function noopCallbacks(): RoomCallbacks {

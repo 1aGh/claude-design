@@ -1,10 +1,10 @@
 // /health endpoint returns the documented JSON shape.
 
-import { afterEach, beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, beforeEach, test } from 'node:test';
 
 import { createHub } from '../src/server.mjs';
 import { addToken } from '../src/tokens.mjs';

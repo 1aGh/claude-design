@@ -11,7 +11,7 @@
 //   bun run build.ts --release   minified bundle, prints size
 //   bun run build.ts --dry-run   exit 0 without writing files
 
-import { existsSync, mkdirSync, statSync, renameSync, unlinkSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, renameSync, statSync, unlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -74,7 +74,11 @@ if (emitted !== finalPath) {
 for (const sibling of readdirSync(DIST)) {
   const p = join(DIST, sibling);
   if (p !== finalPath && (sibling.startsWith('server') || sibling.endsWith('.bundle.mjs.map'))) {
-    try { unlinkSync(p); } catch { /* best-effort */ }
+    try {
+      unlinkSync(p);
+    } catch {
+      /* best-effort */
+    }
   }
 }
 

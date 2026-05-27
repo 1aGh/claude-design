@@ -8,10 +8,10 @@ import { watch } from 'node:fs';
 import { join, posix } from 'node:path';
 
 import type { Api } from './api.ts';
-import type { AiActivity } from './collab/ai-activity.ts';
 import { buildCanvasModule } from './canvas-build.ts';
 import { canvasLibPath } from './canvas-lib-resolver.ts';
 import { TranspileError } from './canvas-pipeline.ts';
+import type { AiActivity } from './collab/ai-activity.ts';
 import type { Context } from './context.ts';
 import { isFormat, isScope, runExport } from './exporters/index.ts';
 import type { ActiveJsonShape } from './exporters/scope.ts';

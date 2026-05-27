@@ -58,8 +58,7 @@ export async function runLink({ args, cwd = process.cwd(), forceAdopt = false })
   const probe = await probeHealth(normUrl);
   if (!probe.ok && !flags.force) {
     process.stderr.write(
-      `maude design link: cannot reach ${normUrl}/health (${probe.error}).\n` +
-        '  Pass --force to link anyway (e.g. hub is behind a firewall + you trust the URL).\n'
+      `maude design link: cannot reach ${normUrl}/health (${probe.error}).\n  Pass --force to link anyway (e.g. hub is behind a firewall + you trust the URL).\n`
     );
     process.exit(1);
   }
@@ -83,12 +82,7 @@ export async function runLink({ args, cwd = process.cwd(), forceAdopt = false })
   writeDesignConfig(designConfigPath, cfg);
 
   process.stdout.write(
-    `[design link] linked ${cwd} to ${normUrl}.\n` +
-      `  token:   stored in ~/.config/maude/hubs.json (per-machine, never committed)\n` +
-      `  config:  .design/config.json.linkedHub = { url, linkedAt${adopt ? ', adopt: true' : ''} }\n` +
-      `  hub:     ${probe.ok ? `v${probe.version}, uptime ${Math.round((probe.uptimeMs ?? 0) / 1000)}s, ${probe.tokenCount} token(s) (${probe.authMode})` : 'NOT REACHED — linked anyway (--force)'}\n\n` +
-      `Next step: start 'maude design serve' — the linked sync agent ${adopt ? 'will push local state up to the hub on first connect' : 'will mirror hub state to disk on first connect'}.\n` +
-      '  (Sync agent lands in Phase 9 Task 4.)\n'
+    `[design link] linked ${cwd} to ${normUrl}.\n  token:   stored in ~/.config/maude/hubs.json (per-machine, never committed)\n  config:  .design/config.json.linkedHub = { url, linkedAt${adopt ? ', adopt: true' : ''} }\n  hub:     ${probe.ok ? `v${probe.version}, uptime ${Math.round((probe.uptimeMs ?? 0) / 1000)}s, ${probe.tokenCount} token(s) (${probe.authMode})` : 'NOT REACHED — linked anyway (--force)'}\n\nNext step: start 'maude design serve' — the linked sync agent ${adopt ? 'will push local state up to the hub on first connect' : 'will mirror hub state to disk on first connect'}.\n  (Sync agent lands in Phase 9 Task 4.)\n`
   );
 }
 
@@ -116,7 +110,7 @@ export async function runUnlink({ args, cwd = process.cwd() }) {
     return;
   }
   const url = cfg.linkedHub.url;
-  delete cfg.linkedHub;
+  cfg.linkedHub = undefined;
   writeDesignConfig(designConfigPath, cfg);
 
   let tokenRemoved = false;
@@ -125,10 +119,7 @@ export async function runUnlink({ args, cwd = process.cwd() }) {
   }
 
   process.stdout.write(
-    `[design unlink] dropped link to ${url}.\n` +
-      `  config:  removed .design/config.json.linkedHub\n` +
-      `  token:   ${tokenRemoved ? 'cleared from ~/.config/maude/hubs.json' : flags['keep-token'] ? 'kept (--keep-token)' : '(none to clear)'}\n` +
-      '  files:   .design/*.html etc. untouched — repo is now in solo mode.\n'
+    `[design unlink] dropped link to ${url}.\n  config:  removed .design/config.json.linkedHub\n  token:   ${tokenRemoved ? 'cleared from ~/.config/maude/hubs.json' : flags['keep-token'] ? 'kept (--keep-token)' : '(none to clear)'}\n  files:   .design/*.html etc. untouched — repo is now in solo mode.\n`
   );
 }
 
@@ -190,13 +181,7 @@ export async function runStatus({ args, cwd = process.cwd() }) {
 
   const uptimeS = Math.round((probe.uptimeMs ?? 0) / 1000);
   process.stdout.write(
-    `Maude design — linked mode\n` +
-      `  hub URL:      ${url}\n` +
-      `  linked at:    ${new Date(cfg.linkedHub.linkedAt).toISOString()}\n` +
-      `  adopt mode:   ${cfg.linkedHub.adopt ? 'yes (push-on-first-sync)' : 'no (hub-wins)'}\n` +
-      `  token stored: ${hubRecord ? 'yes (~/.config/maude/hubs.json)' : "NO — re-run 'maude design link'"}\n` +
-      `  hub status:   ${probe.ok ? `up — v${probe.version}, ${uptimeS}s uptime, ${probe.tokenCount} token(s), ${probe.authMode}` : `UNREACHABLE — ${probe.error}`}\n` +
-      `  sync agent:   not-implemented (Phase 9 Task 4 follow-up)\n`
+    `Maude design — linked mode\n  hub URL:      ${url}\n  linked at:    ${new Date(cfg.linkedHub.linkedAt).toISOString()}\n  adopt mode:   ${cfg.linkedHub.adopt ? 'yes (push-on-first-sync)' : 'no (hub-wins)'}\n  token stored: ${hubRecord ? 'yes (~/.config/maude/hubs.json)' : "NO — re-run 'maude design link'"}\n  hub status:   ${probe.ok ? `up — v${probe.version}, ${uptimeS}s uptime, ${probe.tokenCount} token(s), ${probe.authMode}` : `UNREACHABLE — ${probe.error}`}\n  sync agent:   not-implemented (Phase 9 Task 4 follow-up)\n`
   );
 }
 

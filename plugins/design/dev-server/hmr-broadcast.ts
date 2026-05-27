@@ -91,9 +91,9 @@ export function createHmrBroadcaster(
     // softer follow-up within the debounce window.
     if (pendingMsg) {
       // meta is the lightest signal — it doesn't trigger a reload, just
-       // re-fetches the sidecar. CSS still ranks above it so a same-window
-       // CSS write wins over a meta echo.
-       const rank: Record<HmrMessage['mode'], number> = { meta: 0, css: 1, module: 2, hard: 3 };
+      // re-fetches the sidecar. CSS still ranks above it so a same-window
+      // CSS write wins over a meta echo.
+      const rank: Record<HmrMessage['mode'], number> = { meta: 0, css: 1, module: 2, hard: 3 };
       if (rank[msg.mode] < rank[pendingMsg.mode]) {
         // Keep the existing (harder) message; just refresh the timer.
       } else {

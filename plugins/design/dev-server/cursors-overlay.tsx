@@ -204,7 +204,9 @@ interface PeerSelectionProps {
   peer: ForeignAwareness;
 }
 
-const PeerSelection = memo(function PeerSelection({ peer }: PeerSelectionProps): JSX.Element | null {
+const PeerSelection = memo(function PeerSelection({
+  peer,
+}: PeerSelectionProps): JSX.Element | null {
   if (!peer.selection) return null;
   const { cssPath, bounds } = peer.selection;
 

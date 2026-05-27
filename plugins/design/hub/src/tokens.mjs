@@ -11,9 +11,9 @@
 // Task 6 (auth hardening) replaces this with HMAC-SHA256-hashed records in
 // SQLite — the file then becomes a one-way export used only by `token rotate`.
 
-import { existsSync, readFileSync, writeFileSync, chmodSync } from 'node:fs';
-import { join } from 'node:path';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const TOKEN_PREFIX = 'mau_';
 const DEV_PREFIX = 'mau_dev_';

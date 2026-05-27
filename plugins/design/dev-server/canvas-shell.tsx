@@ -63,6 +63,7 @@ import { EqualSpacingHandles } from './equal-spacing-handles.tsx';
 import { ExportDialogProvider } from './export-dialog.tsx';
 import { type HoverTarget, resolveHoverTarget, useInputRouter } from './input-router.tsx';
 import { ElementMarqueeOverlay } from './marquee-overlay.tsx';
+import { ParticipantsChrome } from './participants-chrome.tsx';
 import { ToolPalette } from './tool-palette.tsx';
 import { UndoHud } from './undo-hud.tsx';
 import {
@@ -71,7 +72,6 @@ import {
   useAnnotationSelectionOptional,
 } from './use-annotation-selection.tsx';
 import { AnnotationsVisibilityProvider } from './use-annotations-visibility.tsx';
-import { ParticipantsChrome } from './participants-chrome.tsx';
 import { useCollab } from './use-collab.tsx';
 import { useCursorModifiers } from './use-cursor-modifiers.tsx';
 import { useKeyboardDiscipline } from './use-keyboard-discipline.tsx';
@@ -429,6 +429,7 @@ function CanvasCore({
   // Phase 8 — publish viewport when it settles. The CursorsOverlay only
   // needs the LOCAL viewport (to transform foreign world coords back to
   // screen), but exposing ours over Awareness sets up Task 6's follow-mode.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: deliberate settle-cadence — re-publish only when x/y/zoom change, not on every viewport field.
   useEffect(() => {
     if (!collab || !controller) return;
     collab.publishAwareness({ viewport: controller.viewport });

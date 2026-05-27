@@ -92,17 +92,11 @@ async function runServe({ args, pkgRoot }) {
 
   if (flags.dev) {
     const dataDir = env.DATA_DIR ?? resolve(process.cwd(), 'data');
-    const { addToken } = await import(
-      resolveHubModule(hubRoot, 'src/tokens.mjs')
-    );
+    const { addToken } = await import(resolveHubModule(hubRoot, 'src/tokens.mjs'));
     const port = env.PORT ?? '1234';
     const record = addToken(dataDir, { label: 'dev', dev: true });
     process.stdout.write(
-      `[hub] --dev token written to ${dataDir}/tokens.json:\n` +
-        `      label: ${record.label}\n` +
-        `      value: ${record.value}\n\n` +
-        '      Connect from a peer:\n' +
-        `        maude design link http://localhost:${port} --token=${record.value}\n\n`
+      `[hub] --dev token written to ${dataDir}/tokens.json:\n      label: ${record.label}\n      value: ${record.value}\n\n      Connect from a peer:\n        maude design link http://localhost:${port} --token=${record.value}\n\n`
     );
   }
 
@@ -149,13 +143,7 @@ async function runToken({ args, pkgRoot }) {
   const record = addToken(dataDir, { label, dev: !!flags.dev });
 
   process.stdout.write(
-    `[hub] token written to ${dataDir}/tokens.json:\n` +
-      `  label:      ${record.label}\n` +
-      `  value:      ${record.value}\n` +
-      `  created:    ${new Date(record.createdAt).toISOString()}\n\n` +
-      `Connect from a peer (replace HOST):\n` +
-      `  maude design link https://HOST --token=${record.value}\n\n` +
-      `Restart the hub if it is already running for the new token to take effect.\n`
+    `[hub] token written to ${dataDir}/tokens.json:\n  label:      ${record.label}\n  value:      ${record.value}\n  created:    ${new Date(record.createdAt).toISOString()}\n\nConnect from a peer (replace HOST):\n  maude design link https://HOST --token=${record.value}\n\nRestart the hub if it is already running for the new token to take effect.\n`
   );
 }
 
@@ -175,7 +163,9 @@ async function runStatus({ args }) {
   try {
     const res = await fetch(target);
     if (!res.ok) {
-      process.stderr.write(`maude hub status: ${target} returned ${res.status} ${res.statusText}\n`);
+      process.stderr.write(
+        `maude hub status: ${target} returned ${res.status} ${res.statusText}\n`
+      );
       process.exit(1);
     }
     payload = await res.json();

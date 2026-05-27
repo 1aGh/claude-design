@@ -29,6 +29,7 @@ dev-server/.cache/
 .ai/scenarios/**/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9][0-9][0-9]/
 .ai/logs/
 .claude/settings.local.json
+.claude/worktrees/
 
 # Phase 3.4 — dev-server build output (binaries ship via npm sub-packages).
 # Phase 19 / DDR-044 — client.bundle.js + styles.css ARE committed so

@@ -1,11 +1,11 @@
 // tokens.mjs unit tests — file read/write, addToken idempotence-on-label,
 // verifyToken constant-time matching + HUB_SECRET fallback.
 
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { test } from 'node:test';
 
 import {
   addToken,

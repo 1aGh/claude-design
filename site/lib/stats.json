@@ -1,5 +1,5 @@
 {
-  "version": "v0.20.0",
+  "version": "v0.21.0",
   "nodeRange": ">=20",
   "publishedDate": "2026-05-26",
   "contributors": 1,
@@ -15,7 +15,7 @@
       "agents": 6
     },
     "maude": {
-      "subcommands": 7
+      "subcommands": 10
     }
   },
   "pageUpdated": {
@@ -64,7 +64,7 @@
     "commands-flow/validate-visual.mdx": "2026-05-23",
     "commands-flow/validate.mdx": "2026-05-23",
     "commands-flow/video-new-scene.mdx": "2026-05-23",
-    "config-schema.mdx": "2026-05-23",
+    "config-schema.mdx": "2026-05-27",
     "config.mdx": "2026-05-20",
     "design/bootstrap.mdx": "2026-05-20",
     "design/categories.mdx": "2026-05-23",

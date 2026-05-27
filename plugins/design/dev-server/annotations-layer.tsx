@@ -34,13 +34,13 @@ import {
 import { createPortal } from 'react-dom';
 
 import { AnnotationContextToolbar } from './annotations-context-toolbar.tsx';
-import { useCollab } from './use-collab.tsx';
 import { useViewportControllerContext, useWorldRefContext } from './canvas-lib.tsx';
 import { buildAnnotationStrokesRecord } from './commands/annotation-strokes-command.ts';
 import { crossedDragThreshold } from './input-router.tsx';
 import { AnnotationResizeOverlay } from './use-annotation-resize.tsx';
 import { useAnnotationSelectionOptional } from './use-annotation-selection.tsx';
 import { useAnnotationsVisibility } from './use-annotations-visibility.tsx';
+import { useCollab } from './use-collab.tsx';
 import { useSelectionSetOptional } from './use-selection-set.tsx';
 import { useToolMode } from './use-tool-mode.tsx';
 import { useUndoSinks, useUndoStackOptional } from './use-undo-stack.tsx';

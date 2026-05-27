@@ -19,8 +19,8 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 
-import { Server } from '@hocuspocus/server';
 import { SQLite } from '@hocuspocus/extension-sqlite';
+import { Server } from '@hocuspocus/server';
 
 import { readTokensFile, verifyToken } from './tokens.mjs';
 
@@ -54,9 +54,7 @@ export function createHub(config = {}) {
   const server = new Server({
     port,
 
-    extensions: [
-      new SQLite({ database: sqlitePath }),
-    ],
+    extensions: [new SQLite({ database: sqlitePath })],
 
     async onAuthenticate({ token, documentName }) {
       const match = verifyToken(dataDir, token, secret);
@@ -66,7 +64,10 @@ export function createHub(config = {}) {
       // No tokens.json entries and no HUB_SECRET → permissive dev mode.
       const { tokens } = readTokensFile(dataDir);
       if (tokens.length === 0 && secret === '') {
-        if (verbose) console.warn(`[hub] no tokens configured; accepting any token for documentName=${documentName}`);
+        if (verbose)
+          console.warn(
+            `[hub] no tokens configured; accepting any token for documentName=${documentName}`
+          );
         return { user: { name: 'anon', anon: true } };
       }
       throw new Error('invalid token');
@@ -74,7 +75,10 @@ export function createHub(config = {}) {
 
     async onRequest({ request, response }) {
       if (!request.url) return;
-      if (request.method === 'GET' && (request.url === '/health' || request.url.startsWith('/health?'))) {
+      if (
+        request.method === 'GET' &&
+        (request.url === '/health' || request.url.startsWith('/health?'))
+      ) {
         const { tokens } = readTokensFile(dataDir);
         const body = JSON.stringify({
           ok: true,
@@ -83,7 +87,7 @@ export function createHub(config = {}) {
           port,
           dataDir,
           tokenCount: tokens.length,
-          authMode: tokens.length > 0 ? 'tokens.json' : (secret ? 'env-secret' : 'dev'),
+          authMode: tokens.length > 0 ? 'tokens.json' : secret ? 'env-secret' : 'dev',
         });
         response.writeHead(200, {
           'Content-Type': 'application/json',
@@ -137,7 +141,9 @@ async function runAsMain() {
 
   const { tokens } = readTokensFile(dataDir);
   if (tokens.length === 0 && secret === '') {
-    console.warn('[hub] no tokens configured — running in permissive dev mode. Do NOT expose to the internet.');
+    console.warn(
+      '[hub] no tokens configured — running in permissive dev mode. Do NOT expose to the internet.'
+    );
   } else if (tokens.length > 0) {
     console.log(`[hub] tokens.json contains ${tokens.length} token(s).`);
   } else {
@@ -146,7 +152,8 @@ async function runAsMain() {
 
   const shutdown = (signal) => {
     console.log(`[hub] ${signal} received, shutting down`);
-    server.destroy()
+    server
+      .destroy()
       .catch((err) => {
         console.error('[hub] shutdown error:', err);
       })

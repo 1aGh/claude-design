@@ -88,12 +88,12 @@ import {
 } from 'motion/react';
 
 import { CanvasShell } from './canvas-shell.tsx';
-import { CollabProvider, canvasSlugFromPath } from './use-collab.tsx';
 import {
   buildMoveArtboardsRecord,
   diffLayoutPositions,
 } from './commands/move-artboards-command.ts';
 import { type DragState, useArtboardDrag } from './use-artboard-drag.tsx';
+import { CollabProvider, canvasSlugFromPath } from './use-collab.tsx';
 import { useSelectionSetOptional } from './use-selection-set.tsx';
 import { ToolProvider, useToolModeOptional } from './use-tool-mode.tsx';
 import { UndoStackProvider, useUndoSinks, useUndoStackOptional } from './use-undo-stack.tsx';

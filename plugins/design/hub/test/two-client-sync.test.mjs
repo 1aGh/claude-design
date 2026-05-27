@@ -7,11 +7,11 @@
 // boundary line: `bun build.ts` bundles fine (it never runs the code),
 // `bun test` does not.
 
-import { afterEach, beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, beforeEach, test } from 'node:test';
 
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import * as Y from 'yjs';
