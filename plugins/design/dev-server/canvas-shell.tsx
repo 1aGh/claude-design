@@ -68,6 +68,7 @@ import { UndoHud } from './undo-hud.tsx';
 import {
   AnnotationSelectionProvider,
   useAnnotationSelection,
+  useAnnotationSelectionOptional,
 } from './use-annotation-selection.tsx';
 import { AnnotationsVisibilityProvider } from './use-annotations-visibility.tsx';
 import { ParticipantsChrome } from './participants-chrome.tsx';
@@ -436,11 +437,15 @@ function CanvasCore({
   // Phase 8 — publish annotation selection (Phase 5 strokes). Separate from
   // selSet because annotations have their own selection registry. Peers
   // render halos by querying `[data-id="<id>"]` so the same halo follows
-  // resize / move (SVG re-emits with the same data-id).
+  // resize / move (SVG re-emits with the same data-id). `Optional` flavor
+  // because CanvasCore is mounted INSIDE the AnnotationSelectionProvider
+  // tree but TypeScript / a defensive boot path can't always prove it.
+  const annotSelForPublish = useAnnotationSelectionOptional();
+  const annotSelectedIds = annotSelForPublish?.selectedIds;
   useEffect(() => {
     if (!collab) return;
-    collab.publishAwareness({ annotationSelection: annotSel.selectedIds });
-  }, [collab, annotSel.selectedIds]);
+    collab.publishAwareness({ annotationSelection: annotSelectedIds ?? [] });
+  }, [collab, annotSelectedIds]);
 
   /**
    * T24 — distribute the currently-selected artboards evenly on the given
