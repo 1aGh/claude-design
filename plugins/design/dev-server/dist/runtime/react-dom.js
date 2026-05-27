@@ -193,7 +193,7 @@ var require_react_dom = __commonJS((exports, module) => {
   } else {}
 });
 
-// synth:/Volumes/D/git/claude-design/plugins/design/dev-server/.runtime-bundle-react-dom-entry.tsx
+// synth:/Users/iagh/git/claude-design/plugins/design/dev-server/.runtime-bundle-react-dom-entry.tsx
 var __mod__ = __toESM(require_react_dom(), 1);
 var {
   __DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,

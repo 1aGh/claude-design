@@ -11,13 +11,24 @@
 //   bun run build.ts --release   minified bundle, prints size
 //   bun run build.ts --dry-run   exit 0 without writing files
 
-import { existsSync, mkdirSync, readdirSync, renameSync, statSync, unlinkSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const DIST = join(ROOT, 'dist');
 const ENTRY = join(ROOT, 'src/server.mjs');
+const ADMIN_SRC = join(ROOT, 'src/admin');
+const ADMIN_DEST = join(DIST, 'admin');
 
 const ARGS = new Set(process.argv.slice(2));
 const MODE: 'dev' | 'release' | 'dry' = ARGS.has('--dry-run')
@@ -90,4 +101,19 @@ const BUDGET_KB = 5 * 1024;
 if (sizeKb > BUDGET_KB) {
   console.error(`[hub-build] over budget: ${sizeKb} KB > ${BUDGET_KB} KB ceiling`);
   process.exit(1);
+}
+
+// Copy src/admin → dist/admin so the bundle's admin-assets.mjs (which reads
+// `<dirname(import.meta.url)>/admin/*`) finds the files alongside the bundle.
+// This is the Task 2.5 packaging contract — see src/admin-assets.mjs.
+if (existsSync(ADMIN_SRC)) {
+  if (existsSync(ADMIN_DEST)) rmSync(ADMIN_DEST, { recursive: true, force: true });
+  cpSync(ADMIN_SRC, ADMIN_DEST, { recursive: true });
+  const adminBytes = readdirSync(ADMIN_DEST).reduce(
+    (sum, f) => sum + statSync(join(ADMIN_DEST, f)).size,
+    0
+  );
+  console.log(`[hub-build] copied src/admin → dist/admin (${Math.round(adminBytes / 1024)} KB raw)`);
+} else {
+  console.warn('[hub-build] WARNING: src/admin missing — admin UI will not ship.');
 }

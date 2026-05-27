@@ -223,7 +223,10 @@ var floor = Math.floor;
 var abs = Math.abs;
 var min = (a, b) => a < b ? a : b;
 var max = (a, b) => a > b ? a : b;
-var isNegativeZero = (n) => n !== 0 ? n < 0 : 1 / n < 0;
+
+// ../../../node_modules/.pnpm/yjs@13.6.30/node_modules/yjs/dist/yjs.mjs
+import * as encoding from "lib0/encoding";
+import * as decoding from "lib0/decoding";
 
 // ../../../node_modules/.pnpm/lib0@0.2.117/node_modules/lib0/binary.js
 var BIT1 = 1;
@@ -249,7 +252,6 @@ var BIT30 = 1 << 29;
 var BIT31 = 1 << 30;
 var BIT32 = 1 << 31;
 var BITS5 = 31;
-var BITS6 = 63;
 var BITS7 = 127;
 var BITS17 = BIT18 - 1;
 var BITS18 = BIT19 - 1;
@@ -265,13 +267,22 @@ var BITS27 = BIT28 - 1;
 var BITS28 = BIT29 - 1;
 var BITS29 = BIT30 - 1;
 var BITS30 = BIT31 - 1;
-var BITS31 = 2147483647;
 
-// ../../../node_modules/.pnpm/lib0@0.2.117/node_modules/lib0/number.js
-var MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER;
-var MIN_SAFE_INTEGER = Number.MIN_SAFE_INTEGER;
-var LOWEST_INT32 = 1 << 31;
-var isInteger = Number.isInteger || ((num) => typeof num === "number" && isFinite(num) && floor(num) === num);
+// ../../../node_modules/.pnpm/lib0@0.2.117/node_modules/lib0/webcrypto.js
+var subtle = crypto.subtle;
+var getRandomValues = crypto.getRandomValues.bind(crypto);
+
+// ../../../node_modules/.pnpm/lib0@0.2.117/node_modules/lib0/random.js
+var uint32 = () => getRandomValues(new Uint32Array(1))[0];
+var uuidv4Template = [1e7] + -1000 + -4000 + -8000 + -100000000000;
+var uuidv4 = () => uuidv4Template.replace(/[018]/g, (c) => (c ^ uint32() & 15 >> c / 4).toString(16));
+
+// ../../../node_modules/.pnpm/lib0@0.2.117/node_modules/lib0/time.js
+var getUnixTime = Date.now;
+
+// ../../../node_modules/.pnpm/lib0@0.2.117/node_modules/lib0/promise.js
+var create3 = (f) => new Promise(f);
+var all = Promise.all.bind(Promise);
 
 // ../../../node_modules/.pnpm/lib0@0.2.117/node_modules/lib0/string.js
 var fromCharCode = String.fromCharCode;
@@ -299,510 +310,6 @@ if (utf8TextDecoder && utf8TextDecoder.decode(new Uint8Array).length === 1) {
   utf8TextDecoder = null;
 }
 var repeat = (source, n) => unfold(n, () => source).join("");
-
-// ../../../node_modules/.pnpm/lib0@0.2.117/node_modules/lib0/encoding.js
-class Encoder {
-  constructor() {
-    this.cpos = 0;
-    this.cbuf = new Uint8Array(100);
-    this.bufs = [];
-  }
-}
-var createEncoder = () => new Encoder;
-var length = (encoder) => {
-  let len = encoder.cpos;
-  for (let i = 0;i < encoder.bufs.length; i++) {
-    len += encoder.bufs[i].length;
-  }
-  return len;
-};
-var toUint8Array = (encoder) => {
-  const uint8arr = new Uint8Array(length(encoder));
-  let curPos = 0;
-  for (let i = 0;i < encoder.bufs.length; i++) {
-    const d = encoder.bufs[i];
-    uint8arr.set(d, curPos);
-    curPos += d.length;
-  }
-  uint8arr.set(new Uint8Array(encoder.cbuf.buffer, 0, encoder.cpos), curPos);
-  return uint8arr;
-};
-var verifyLen = (encoder, len) => {
-  const bufferLen = encoder.cbuf.length;
-  if (bufferLen - encoder.cpos < len) {
-    encoder.bufs.push(new Uint8Array(encoder.cbuf.buffer, 0, encoder.cpos));
-    encoder.cbuf = new Uint8Array(max(bufferLen, len) * 2);
-    encoder.cpos = 0;
-  }
-};
-var write = (encoder, num) => {
-  const bufferLen = encoder.cbuf.length;
-  if (encoder.cpos === bufferLen) {
-    encoder.bufs.push(encoder.cbuf);
-    encoder.cbuf = new Uint8Array(bufferLen * 2);
-    encoder.cpos = 0;
-  }
-  encoder.cbuf[encoder.cpos++] = num;
-};
-var writeUint8 = write;
-var writeVarUint = (encoder, num) => {
-  while (num > BITS7) {
-    write(encoder, BIT8 | BITS7 & num);
-    num = floor(num / 128);
-  }
-  write(encoder, BITS7 & num);
-};
-var writeVarInt = (encoder, num) => {
-  const isNegative = isNegativeZero(num);
-  if (isNegative) {
-    num = -num;
-  }
-  write(encoder, (num > BITS6 ? BIT8 : 0) | (isNegative ? BIT7 : 0) | BITS6 & num);
-  num = floor(num / 64);
-  while (num > 0) {
-    write(encoder, (num > BITS7 ? BIT8 : 0) | BITS7 & num);
-    num = floor(num / 128);
-  }
-};
-var _strBuffer = new Uint8Array(30000);
-var _maxStrBSize = _strBuffer.length / 3;
-var _writeVarStringNative = (encoder, str) => {
-  if (str.length < _maxStrBSize) {
-    const written = utf8TextEncoder.encodeInto(str, _strBuffer).written || 0;
-    writeVarUint(encoder, written);
-    for (let i = 0;i < written; i++) {
-      write(encoder, _strBuffer[i]);
-    }
-  } else {
-    writeVarUint8Array(encoder, encodeUtf8(str));
-  }
-};
-var _writeVarStringPolyfill = (encoder, str) => {
-  const encodedString = unescape(encodeURIComponent(str));
-  const len = encodedString.length;
-  writeVarUint(encoder, len);
-  for (let i = 0;i < len; i++) {
-    write(encoder, encodedString.codePointAt(i));
-  }
-};
-var writeVarString = utf8TextEncoder && utf8TextEncoder.encodeInto ? _writeVarStringNative : _writeVarStringPolyfill;
-var writeBinaryEncoder = (encoder, append) => writeUint8Array(encoder, toUint8Array(append));
-var writeUint8Array = (encoder, uint8Array) => {
-  const bufferLen = encoder.cbuf.length;
-  const cpos = encoder.cpos;
-  const leftCopyLen = min(bufferLen - cpos, uint8Array.length);
-  const rightCopyLen = uint8Array.length - leftCopyLen;
-  encoder.cbuf.set(uint8Array.subarray(0, leftCopyLen), cpos);
-  encoder.cpos += leftCopyLen;
-  if (rightCopyLen > 0) {
-    encoder.bufs.push(encoder.cbuf);
-    encoder.cbuf = new Uint8Array(max(bufferLen * 2, rightCopyLen));
-    encoder.cbuf.set(uint8Array.subarray(leftCopyLen));
-    encoder.cpos = rightCopyLen;
-  }
-};
-var writeVarUint8Array = (encoder, uint8Array) => {
-  writeVarUint(encoder, uint8Array.byteLength);
-  writeUint8Array(encoder, uint8Array);
-};
-var writeOnDataView = (encoder, len) => {
-  verifyLen(encoder, len);
-  const dview = new DataView(encoder.cbuf.buffer, encoder.cpos, len);
-  encoder.cpos += len;
-  return dview;
-};
-var writeFloat32 = (encoder, num) => writeOnDataView(encoder, 4).setFloat32(0, num, false);
-var writeFloat64 = (encoder, num) => writeOnDataView(encoder, 8).setFloat64(0, num, false);
-var writeBigInt64 = (encoder, num) => writeOnDataView(encoder, 8).setBigInt64(0, num, false);
-var floatTestBed = new DataView(new ArrayBuffer(4));
-var isFloat32 = (num) => {
-  floatTestBed.setFloat32(0, num);
-  return floatTestBed.getFloat32(0) === num;
-};
-var writeAny = (encoder, data) => {
-  switch (typeof data) {
-    case "string":
-      write(encoder, 119);
-      writeVarString(encoder, data);
-      break;
-    case "number":
-      if (isInteger(data) && abs(data) <= BITS31) {
-        write(encoder, 125);
-        writeVarInt(encoder, data);
-      } else if (isFloat32(data)) {
-        write(encoder, 124);
-        writeFloat32(encoder, data);
-      } else {
-        write(encoder, 123);
-        writeFloat64(encoder, data);
-      }
-      break;
-    case "bigint":
-      write(encoder, 122);
-      writeBigInt64(encoder, data);
-      break;
-    case "object":
-      if (data === null) {
-        write(encoder, 126);
-      } else if (isArray(data)) {
-        write(encoder, 117);
-        writeVarUint(encoder, data.length);
-        for (let i = 0;i < data.length; i++) {
-          writeAny(encoder, data[i]);
-        }
-      } else if (data instanceof Uint8Array) {
-        write(encoder, 116);
-        writeVarUint8Array(encoder, data);
-      } else {
-        write(encoder, 118);
-        const keys = Object.keys(data);
-        writeVarUint(encoder, keys.length);
-        for (let i = 0;i < keys.length; i++) {
-          const key = keys[i];
-          writeVarString(encoder, key);
-          writeAny(encoder, data[key]);
-        }
-      }
-      break;
-    case "boolean":
-      write(encoder, data ? 120 : 121);
-      break;
-    default:
-      write(encoder, 127);
-  }
-};
-
-class RleEncoder extends Encoder {
-  constructor(writer) {
-    super();
-    this.w = writer;
-    this.s = null;
-    this.count = 0;
-  }
-  write(v) {
-    if (this.s === v) {
-      this.count++;
-    } else {
-      if (this.count > 0) {
-        writeVarUint(this, this.count - 1);
-      }
-      this.count = 1;
-      this.w(this, v);
-      this.s = v;
-    }
-  }
-}
-var flushUintOptRleEncoder = (encoder) => {
-  if (encoder.count > 0) {
-    writeVarInt(encoder.encoder, encoder.count === 1 ? encoder.s : -encoder.s);
-    if (encoder.count > 1) {
-      writeVarUint(encoder.encoder, encoder.count - 2);
-    }
-  }
-};
-
-class UintOptRleEncoder {
-  constructor() {
-    this.encoder = new Encoder;
-    this.s = 0;
-    this.count = 0;
-  }
-  write(v) {
-    if (this.s === v) {
-      this.count++;
-    } else {
-      flushUintOptRleEncoder(this);
-      this.count = 1;
-      this.s = v;
-    }
-  }
-  toUint8Array() {
-    flushUintOptRleEncoder(this);
-    return toUint8Array(this.encoder);
-  }
-}
-var flushIntDiffOptRleEncoder = (encoder) => {
-  if (encoder.count > 0) {
-    const encodedDiff = encoder.diff * 2 + (encoder.count === 1 ? 0 : 1);
-    writeVarInt(encoder.encoder, encodedDiff);
-    if (encoder.count > 1) {
-      writeVarUint(encoder.encoder, encoder.count - 2);
-    }
-  }
-};
-
-class IntDiffOptRleEncoder {
-  constructor() {
-    this.encoder = new Encoder;
-    this.s = 0;
-    this.count = 0;
-    this.diff = 0;
-  }
-  write(v) {
-    if (this.diff === v - this.s) {
-      this.s = v;
-      this.count++;
-    } else {
-      flushIntDiffOptRleEncoder(this);
-      this.count = 1;
-      this.diff = v - this.s;
-      this.s = v;
-    }
-  }
-  toUint8Array() {
-    flushIntDiffOptRleEncoder(this);
-    return toUint8Array(this.encoder);
-  }
-}
-
-class StringEncoder {
-  constructor() {
-    this.sarr = [];
-    this.s = "";
-    this.lensE = new UintOptRleEncoder;
-  }
-  write(string) {
-    this.s += string;
-    if (this.s.length > 19) {
-      this.sarr.push(this.s);
-      this.s = "";
-    }
-    this.lensE.write(string.length);
-  }
-  toUint8Array() {
-    const encoder = new Encoder;
-    this.sarr.push(this.s);
-    this.s = "";
-    writeVarString(encoder, this.sarr.join(""));
-    writeUint8Array(encoder, this.lensE.toUint8Array());
-    return toUint8Array(encoder);
-  }
-}
-
-// ../../../node_modules/.pnpm/lib0@0.2.117/node_modules/lib0/error.js
-var create3 = (s) => new Error(s);
-var methodUnimplemented = () => {
-  throw create3("Method unimplemented");
-};
-var unexpectedCase = () => {
-  throw create3("Unexpected case");
-};
-
-// ../../../node_modules/.pnpm/lib0@0.2.117/node_modules/lib0/decoding.js
-var errorUnexpectedEndOfArray = create3("Unexpected end of array");
-var errorIntegerOutOfRange = create3("Integer out of Range");
-
-class Decoder {
-  constructor(uint8Array) {
-    this.arr = uint8Array;
-    this.pos = 0;
-  }
-}
-var createDecoder = (uint8Array) => new Decoder(uint8Array);
-var hasContent = (decoder) => decoder.pos !== decoder.arr.length;
-var readUint8Array = (decoder, len) => {
-  const view = new Uint8Array(decoder.arr.buffer, decoder.pos + decoder.arr.byteOffset, len);
-  decoder.pos += len;
-  return view;
-};
-var readVarUint8Array = (decoder) => readUint8Array(decoder, readVarUint(decoder));
-var readUint8 = (decoder) => decoder.arr[decoder.pos++];
-var readVarUint = (decoder) => {
-  let num = 0;
-  let mult = 1;
-  const len = decoder.arr.length;
-  while (decoder.pos < len) {
-    const r = decoder.arr[decoder.pos++];
-    num = num + (r & BITS7) * mult;
-    mult *= 128;
-    if (r < BIT8) {
-      return num;
-    }
-    if (num > MAX_SAFE_INTEGER) {
-      throw errorIntegerOutOfRange;
-    }
-  }
-  throw errorUnexpectedEndOfArray;
-};
-var readVarInt = (decoder) => {
-  let r = decoder.arr[decoder.pos++];
-  let num = r & BITS6;
-  let mult = 64;
-  const sign = (r & BIT7) > 0 ? -1 : 1;
-  if ((r & BIT8) === 0) {
-    return sign * num;
-  }
-  const len = decoder.arr.length;
-  while (decoder.pos < len) {
-    r = decoder.arr[decoder.pos++];
-    num = num + (r & BITS7) * mult;
-    mult *= 128;
-    if (r < BIT8) {
-      return sign * num;
-    }
-    if (num > MAX_SAFE_INTEGER) {
-      throw errorIntegerOutOfRange;
-    }
-  }
-  throw errorUnexpectedEndOfArray;
-};
-var _readVarStringPolyfill = (decoder) => {
-  let remainingLen = readVarUint(decoder);
-  if (remainingLen === 0) {
-    return "";
-  } else {
-    let encodedString = String.fromCodePoint(readUint8(decoder));
-    if (--remainingLen < 100) {
-      while (remainingLen--) {
-        encodedString += String.fromCodePoint(readUint8(decoder));
-      }
-    } else {
-      while (remainingLen > 0) {
-        const nextLen = remainingLen < 1e4 ? remainingLen : 1e4;
-        const bytes = decoder.arr.subarray(decoder.pos, decoder.pos + nextLen);
-        decoder.pos += nextLen;
-        encodedString += String.fromCodePoint.apply(null, bytes);
-        remainingLen -= nextLen;
-      }
-    }
-    return decodeURIComponent(escape(encodedString));
-  }
-};
-var _readVarStringNative = (decoder) => utf8TextDecoder.decode(readVarUint8Array(decoder));
-var readVarString = utf8TextDecoder ? _readVarStringNative : _readVarStringPolyfill;
-var readFromDataView = (decoder, len) => {
-  const dv = new DataView(decoder.arr.buffer, decoder.arr.byteOffset + decoder.pos, len);
-  decoder.pos += len;
-  return dv;
-};
-var readFloat32 = (decoder) => readFromDataView(decoder, 4).getFloat32(0, false);
-var readFloat64 = (decoder) => readFromDataView(decoder, 8).getFloat64(0, false);
-var readBigInt64 = (decoder) => readFromDataView(decoder, 8).getBigInt64(0, false);
-var readAnyLookupTable = [
-  (decoder) => {
-    return;
-  },
-  (decoder) => null,
-  readVarInt,
-  readFloat32,
-  readFloat64,
-  readBigInt64,
-  (decoder) => false,
-  (decoder) => true,
-  readVarString,
-  (decoder) => {
-    const len = readVarUint(decoder);
-    const obj = {};
-    for (let i = 0;i < len; i++) {
-      const key = readVarString(decoder);
-      obj[key] = readAny(decoder);
-    }
-    return obj;
-  },
-  (decoder) => {
-    const len = readVarUint(decoder);
-    const arr = [];
-    for (let i = 0;i < len; i++) {
-      arr.push(readAny(decoder));
-    }
-    return arr;
-  },
-  readVarUint8Array
-];
-var readAny = (decoder) => readAnyLookupTable[127 - readUint8(decoder)](decoder);
-
-class RleDecoder extends Decoder {
-  constructor(uint8Array, reader) {
-    super(uint8Array);
-    this.reader = reader;
-    this.s = null;
-    this.count = 0;
-  }
-  read() {
-    if (this.count === 0) {
-      this.s = this.reader(this);
-      if (hasContent(this)) {
-        this.count = readVarUint(this) + 1;
-      } else {
-        this.count = -1;
-      }
-    }
-    this.count--;
-    return this.s;
-  }
-}
-class UintOptRleDecoder extends Decoder {
-  constructor(uint8Array) {
-    super(uint8Array);
-    this.s = 0;
-    this.count = 0;
-  }
-  read() {
-    if (this.count === 0) {
-      this.s = readVarInt(this);
-      const isNegative = isNegativeZero(this.s);
-      this.count = 1;
-      if (isNegative) {
-        this.s = -this.s;
-        this.count = readVarUint(this) + 2;
-      }
-    }
-    this.count--;
-    return this.s;
-  }
-}
-class IntDiffOptRleDecoder extends Decoder {
-  constructor(uint8Array) {
-    super(uint8Array);
-    this.s = 0;
-    this.count = 0;
-    this.diff = 0;
-  }
-  read() {
-    if (this.count === 0) {
-      const diff = readVarInt(this);
-      const hasCount = diff & 1;
-      this.diff = floor(diff / 2);
-      this.count = 1;
-      if (hasCount) {
-        this.count = readVarUint(this) + 2;
-      }
-    }
-    this.s += this.diff;
-    this.count--;
-    return this.s;
-  }
-}
-
-class StringDecoder {
-  constructor(uint8Array) {
-    this.decoder = new UintOptRleDecoder(uint8Array);
-    this.str = readVarString(this.decoder);
-    this.spos = 0;
-  }
-  read() {
-    const end = this.spos + this.decoder.read();
-    const res = this.str.slice(this.spos, end);
-    this.spos = end;
-    return res;
-  }
-}
-
-// ../../../node_modules/.pnpm/lib0@0.2.117/node_modules/lib0/webcrypto.js
-var subtle = crypto.subtle;
-var getRandomValues = crypto.getRandomValues.bind(crypto);
-
-// ../../../node_modules/.pnpm/lib0@0.2.117/node_modules/lib0/random.js
-var uint32 = () => getRandomValues(new Uint32Array(1))[0];
-var uuidv4Template = [1e7] + -1000 + -4000 + -8000 + -100000000000;
-var uuidv4 = () => uuidv4Template.replace(/[018]/g, (c) => (c ^ uint32() & 15 >> c / 4).toString(16));
-
-// ../../../node_modules/.pnpm/lib0@0.2.117/node_modules/lib0/time.js
-var getUnixTime = Date.now;
-
-// ../../../node_modules/.pnpm/lib0@0.2.117/node_modules/lib0/promise.js
-var create4 = (f) => new Promise(f);
-var all = Promise.all.bind(Promise);
 
 // ../../../node_modules/.pnpm/lib0@0.2.117/node_modules/lib0/conditions.js
 var undefinedToNull = (v) => v === undefined ? null : v;
@@ -1009,6 +516,83 @@ var hasConf = (name) => hasParam("--" + name) || getVariable(name) !== null;
 var production = hasConf("production");
 var forceColor = isNode && isOneOf(process.env.FORCE_COLOR, ["true", "1", "2"]);
 var supportsColor = forceColor || !hasParam("--no-colors") && !hasConf("no-color") && (!isNode || process.stdout.isTTY) && (!isNode || hasParam("--color") || getVariable("COLORTERM") !== null || (getVariable("TERM") || "").includes("color"));
+
+// ../../../node_modules/.pnpm/lib0@0.2.117/node_modules/lib0/number.js
+var MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER;
+var MIN_SAFE_INTEGER = Number.MIN_SAFE_INTEGER;
+var LOWEST_INT32 = 1 << 31;
+
+// ../../../node_modules/.pnpm/lib0@0.2.117/node_modules/lib0/encoding.js
+var write = (encoder, num) => {
+  const bufferLen = encoder.cbuf.length;
+  if (encoder.cpos === bufferLen) {
+    encoder.bufs.push(encoder.cbuf);
+    encoder.cbuf = new Uint8Array(bufferLen * 2);
+    encoder.cpos = 0;
+  }
+  encoder.cbuf[encoder.cpos++] = num;
+};
+var writeVarUint = (encoder, num) => {
+  while (num > BITS7) {
+    write(encoder, BIT8 | BITS7 & num);
+    num = floor(num / 128);
+  }
+  write(encoder, BITS7 & num);
+};
+var _strBuffer = new Uint8Array(30000);
+var _maxStrBSize = _strBuffer.length / 3;
+var _writeVarStringNative = (encoder, str) => {
+  if (str.length < _maxStrBSize) {
+    const written = utf8TextEncoder.encodeInto(str, _strBuffer).written || 0;
+    writeVarUint(encoder, written);
+    for (let i = 0;i < written; i++) {
+      write(encoder, _strBuffer[i]);
+    }
+  } else {
+    writeVarUint8Array(encoder, encodeUtf8(str));
+  }
+};
+var _writeVarStringPolyfill = (encoder, str) => {
+  const encodedString = unescape(encodeURIComponent(str));
+  const len = encodedString.length;
+  writeVarUint(encoder, len);
+  for (let i = 0;i < len; i++) {
+    write(encoder, encodedString.codePointAt(i));
+  }
+};
+var writeVarString = utf8TextEncoder && utf8TextEncoder.encodeInto ? _writeVarStringNative : _writeVarStringPolyfill;
+var writeUint8Array = (encoder, uint8Array) => {
+  const bufferLen = encoder.cbuf.length;
+  const cpos = encoder.cpos;
+  const leftCopyLen = min(bufferLen - cpos, uint8Array.length);
+  const rightCopyLen = uint8Array.length - leftCopyLen;
+  encoder.cbuf.set(uint8Array.subarray(0, leftCopyLen), cpos);
+  encoder.cpos += leftCopyLen;
+  if (rightCopyLen > 0) {
+    encoder.bufs.push(encoder.cbuf);
+    encoder.cbuf = new Uint8Array(max(bufferLen * 2, rightCopyLen));
+    encoder.cbuf.set(uint8Array.subarray(leftCopyLen));
+    encoder.cpos = rightCopyLen;
+  }
+};
+var writeVarUint8Array = (encoder, uint8Array) => {
+  writeVarUint(encoder, uint8Array.byteLength);
+  writeUint8Array(encoder, uint8Array);
+};
+var floatTestBed = new DataView(new ArrayBuffer(4));
+
+// ../../../node_modules/.pnpm/lib0@0.2.117/node_modules/lib0/error.js
+var create4 = (s) => new Error(s);
+var methodUnimplemented = () => {
+  throw create4("Method unimplemented");
+};
+var unexpectedCase = () => {
+  throw create4("Unexpected case");
+};
+
+// ../../../node_modules/.pnpm/lib0@0.2.117/node_modules/lib0/decoding.js
+var errorUnexpectedEndOfArray = create4("Unexpected end of array");
+var errorIntegerOutOfRange = create4("Integer out of Range");
 
 // ../../../node_modules/.pnpm/lib0@0.2.117/node_modules/lib0/buffer.js
 var createUint8ArrayFromLen = (len) => new Uint8Array(len);
@@ -1404,7 +988,7 @@ var $ = (o) => {
 var assert = production ? () => {} : (o, schema) => {
   const err = new ValidationError;
   if (!schema.check(o, err)) {
-    throw create3(`Expected value to be of type ${schema.constructor.name}.
+    throw create4(`Expected value to be of type ${schema.constructor.name}.
 ${err.toString()}`);
   }
 };
@@ -1429,7 +1013,7 @@ class PatternMatcher {
           return p.h(o, s);
         }
       }
-      throw create3("Unhandled pattern");
+      throw create4("Unhandled pattern");
     };
   }
 }
@@ -1729,8 +1313,8 @@ var mergeDeleteSets = (dss) => {
   sortAndMergeDeleteSet(merged);
   return merged;
 };
-var addToDeleteSet = (ds, client, clock, length2) => {
-  setIfUndefined(ds.clients, client, () => []).push(new DeleteItem(clock, length2));
+var addToDeleteSet = (ds, client, clock, length) => {
+  setIfUndefined(ds.clients, client, () => []).push(new DeleteItem(clock, length));
 };
 var createDeleteSet = () => new DeleteSet;
 var createDeleteSetFromStructStore = (ss) => {
@@ -1757,12 +1341,12 @@ var createDeleteSetFromStructStore = (ss) => {
   return ds;
 };
 var writeDeleteSet = (encoder, ds) => {
-  writeVarUint(encoder.restEncoder, ds.clients.size);
+  encoding.writeVarUint(encoder.restEncoder, ds.clients.size);
   from2(ds.clients.entries()).sort((a, b) => b[0] - a[0]).forEach(([client, dsitems]) => {
     encoder.resetDsCurVal();
-    writeVarUint(encoder.restEncoder, client);
+    encoding.writeVarUint(encoder.restEncoder, client);
     const len = dsitems.length;
-    writeVarUint(encoder.restEncoder, len);
+    encoding.writeVarUint(encoder.restEncoder, len);
     for (let i = 0;i < len; i++) {
       const item = dsitems[i];
       encoder.writeDsClock(item.clock);
@@ -1772,11 +1356,11 @@ var writeDeleteSet = (encoder, ds) => {
 };
 var readDeleteSet = (decoder) => {
   const ds = new DeleteSet;
-  const numClients = readVarUint(decoder.restDecoder);
+  const numClients = decoding.readVarUint(decoder.restDecoder);
   for (let i = 0;i < numClients; i++) {
     decoder.resetDsCurVal();
-    const client = readVarUint(decoder.restDecoder);
-    const numberOfDeletes = readVarUint(decoder.restDecoder);
+    const client = decoding.readVarUint(decoder.restDecoder);
+    const numberOfDeletes = decoding.readVarUint(decoder.restDecoder);
     if (numberOfDeletes > 0) {
       const dsField = setIfUndefined(ds.clients, client, () => []);
       for (let i2 = 0;i2 < numberOfDeletes; i2++) {
@@ -1788,11 +1372,11 @@ var readDeleteSet = (decoder) => {
 };
 var readAndApplyDeleteSet = (decoder, transaction, store) => {
   const unappliedDS = new DeleteSet;
-  const numClients = readVarUint(decoder.restDecoder);
+  const numClients = decoding.readVarUint(decoder.restDecoder);
   for (let i = 0;i < numClients; i++) {
     decoder.resetDsCurVal();
-    const client = readVarUint(decoder.restDecoder);
-    const numberOfDeletes = readVarUint(decoder.restDecoder);
+    const client = decoding.readVarUint(decoder.restDecoder);
+    const numberOfDeletes = decoding.readVarUint(decoder.restDecoder);
     const structs = store.clients.get(client) || [];
     const state = getState(store, client);
     for (let i2 = 0;i2 < numberOfDeletes; i2++) {
@@ -1828,7 +1412,7 @@ var readAndApplyDeleteSet = (decoder, transaction, store) => {
   }
   if (unappliedDS.clients.size > 0) {
     const ds = new UpdateEncoderV2;
-    writeVarUint(ds.restEncoder, 0);
+    encoding.writeVarUint(ds.restEncoder, 0);
     writeDeleteSet(ds, unappliedDS);
     return ds.toUint8Array();
   }
@@ -1873,13 +1457,13 @@ class Doc extends ObservableV2 {
     this.isLoaded = false;
     this.isSynced = false;
     this.isDestroyed = false;
-    this.whenLoaded = create4((resolve) => {
+    this.whenLoaded = create3((resolve) => {
       this.on("load", () => {
         this.isLoaded = true;
         resolve(this);
       });
     });
-    const provideSyncedPromise = () => create4((resolve) => {
+    const provideSyncedPromise = () => create3((resolve) => {
       const eventHandler = (isSynced) => {
         if (isSynced === undefined || isSynced === true) {
           this.off("sync", eventHandler);
@@ -1998,49 +1582,49 @@ class DSDecoderV1 {
   }
   resetDsCurVal() {}
   readDsClock() {
-    return readVarUint(this.restDecoder);
+    return decoding.readVarUint(this.restDecoder);
   }
   readDsLen() {
-    return readVarUint(this.restDecoder);
+    return decoding.readVarUint(this.restDecoder);
   }
 }
 
 class UpdateDecoderV1 extends DSDecoderV1 {
   readLeftID() {
-    return createID(readVarUint(this.restDecoder), readVarUint(this.restDecoder));
+    return createID(decoding.readVarUint(this.restDecoder), decoding.readVarUint(this.restDecoder));
   }
   readRightID() {
-    return createID(readVarUint(this.restDecoder), readVarUint(this.restDecoder));
+    return createID(decoding.readVarUint(this.restDecoder), decoding.readVarUint(this.restDecoder));
   }
   readClient() {
-    return readVarUint(this.restDecoder);
+    return decoding.readVarUint(this.restDecoder);
   }
   readInfo() {
-    return readUint8(this.restDecoder);
+    return decoding.readUint8(this.restDecoder);
   }
   readString() {
-    return readVarString(this.restDecoder);
+    return decoding.readVarString(this.restDecoder);
   }
   readParentInfo() {
-    return readVarUint(this.restDecoder) === 1;
+    return decoding.readVarUint(this.restDecoder) === 1;
   }
   readTypeRef() {
-    return readVarUint(this.restDecoder);
+    return decoding.readVarUint(this.restDecoder);
   }
   readLen() {
-    return readVarUint(this.restDecoder);
+    return decoding.readVarUint(this.restDecoder);
   }
   readAny() {
-    return readAny(this.restDecoder);
+    return decoding.readAny(this.restDecoder);
   }
   readBuf() {
-    return copyUint8Array(readVarUint8Array(this.restDecoder));
+    return copyUint8Array(decoding.readVarUint8Array(this.restDecoder));
   }
   readJSON() {
-    return JSON.parse(readVarString(this.restDecoder));
+    return JSON.parse(decoding.readVarString(this.restDecoder));
   }
   readKey() {
-    return readVarString(this.restDecoder);
+    return decoding.readVarString(this.restDecoder);
   }
 }
 
@@ -2053,11 +1637,11 @@ class DSDecoderV2 {
     this.dsCurrVal = 0;
   }
   readDsClock() {
-    this.dsCurrVal += readVarUint(this.restDecoder);
+    this.dsCurrVal += decoding.readVarUint(this.restDecoder);
     return this.dsCurrVal;
   }
   readDsLen() {
-    const diff = readVarUint(this.restDecoder) + 1;
+    const diff = decoding.readVarUint(this.restDecoder) + 1;
     this.dsCurrVal += diff;
     return diff;
   }
@@ -2067,16 +1651,16 @@ class UpdateDecoderV2 extends DSDecoderV2 {
   constructor(decoder) {
     super(decoder);
     this.keys = [];
-    readVarUint(decoder);
-    this.keyClockDecoder = new IntDiffOptRleDecoder(readVarUint8Array(decoder));
-    this.clientDecoder = new UintOptRleDecoder(readVarUint8Array(decoder));
-    this.leftClockDecoder = new IntDiffOptRleDecoder(readVarUint8Array(decoder));
-    this.rightClockDecoder = new IntDiffOptRleDecoder(readVarUint8Array(decoder));
-    this.infoDecoder = new RleDecoder(readVarUint8Array(decoder), readUint8);
-    this.stringDecoder = new StringDecoder(readVarUint8Array(decoder));
-    this.parentInfoDecoder = new RleDecoder(readVarUint8Array(decoder), readUint8);
-    this.typeRefDecoder = new UintOptRleDecoder(readVarUint8Array(decoder));
-    this.lenDecoder = new UintOptRleDecoder(readVarUint8Array(decoder));
+    decoding.readVarUint(decoder);
+    this.keyClockDecoder = new decoding.IntDiffOptRleDecoder(decoding.readVarUint8Array(decoder));
+    this.clientDecoder = new decoding.UintOptRleDecoder(decoding.readVarUint8Array(decoder));
+    this.leftClockDecoder = new decoding.IntDiffOptRleDecoder(decoding.readVarUint8Array(decoder));
+    this.rightClockDecoder = new decoding.IntDiffOptRleDecoder(decoding.readVarUint8Array(decoder));
+    this.infoDecoder = new decoding.RleDecoder(decoding.readVarUint8Array(decoder), decoding.readUint8);
+    this.stringDecoder = new decoding.StringDecoder(decoding.readVarUint8Array(decoder));
+    this.parentInfoDecoder = new decoding.RleDecoder(decoding.readVarUint8Array(decoder), decoding.readUint8);
+    this.typeRefDecoder = new decoding.UintOptRleDecoder(decoding.readVarUint8Array(decoder));
+    this.lenDecoder = new decoding.UintOptRleDecoder(decoding.readVarUint8Array(decoder));
   }
   readLeftID() {
     return new ID(this.clientDecoder.read(), this.leftClockDecoder.read());
@@ -2103,13 +1687,13 @@ class UpdateDecoderV2 extends DSDecoderV2 {
     return this.lenDecoder.read();
   }
   readAny() {
-    return readAny(this.restDecoder);
+    return decoding.readAny(this.restDecoder);
   }
   readBuf() {
-    return readVarUint8Array(this.restDecoder);
+    return decoding.readVarUint8Array(this.restDecoder);
   }
   readJSON() {
-    return readAny(this.restDecoder);
+    return decoding.readAny(this.restDecoder);
   }
   readKey() {
     const keyClock = this.keyClockDecoder.read();
@@ -2125,68 +1709,68 @@ class UpdateDecoderV2 extends DSDecoderV2 {
 
 class DSEncoderV1 {
   constructor() {
-    this.restEncoder = createEncoder();
+    this.restEncoder = encoding.createEncoder();
   }
   toUint8Array() {
-    return toUint8Array(this.restEncoder);
+    return encoding.toUint8Array(this.restEncoder);
   }
   resetDsCurVal() {}
   writeDsClock(clock) {
-    writeVarUint(this.restEncoder, clock);
+    encoding.writeVarUint(this.restEncoder, clock);
   }
   writeDsLen(len) {
-    writeVarUint(this.restEncoder, len);
+    encoding.writeVarUint(this.restEncoder, len);
   }
 }
 
 class UpdateEncoderV1 extends DSEncoderV1 {
   writeLeftID(id2) {
-    writeVarUint(this.restEncoder, id2.client);
-    writeVarUint(this.restEncoder, id2.clock);
+    encoding.writeVarUint(this.restEncoder, id2.client);
+    encoding.writeVarUint(this.restEncoder, id2.clock);
   }
   writeRightID(id2) {
-    writeVarUint(this.restEncoder, id2.client);
-    writeVarUint(this.restEncoder, id2.clock);
+    encoding.writeVarUint(this.restEncoder, id2.client);
+    encoding.writeVarUint(this.restEncoder, id2.clock);
   }
   writeClient(client) {
-    writeVarUint(this.restEncoder, client);
+    encoding.writeVarUint(this.restEncoder, client);
   }
   writeInfo(info) {
-    writeUint8(this.restEncoder, info);
+    encoding.writeUint8(this.restEncoder, info);
   }
   writeString(s) {
-    writeVarString(this.restEncoder, s);
+    encoding.writeVarString(this.restEncoder, s);
   }
   writeParentInfo(isYKey) {
-    writeVarUint(this.restEncoder, isYKey ? 1 : 0);
+    encoding.writeVarUint(this.restEncoder, isYKey ? 1 : 0);
   }
   writeTypeRef(info) {
-    writeVarUint(this.restEncoder, info);
+    encoding.writeVarUint(this.restEncoder, info);
   }
   writeLen(len) {
-    writeVarUint(this.restEncoder, len);
+    encoding.writeVarUint(this.restEncoder, len);
   }
   writeAny(any2) {
-    writeAny(this.restEncoder, any2);
+    encoding.writeAny(this.restEncoder, any2);
   }
   writeBuf(buf) {
-    writeVarUint8Array(this.restEncoder, buf);
+    encoding.writeVarUint8Array(this.restEncoder, buf);
   }
   writeJSON(embed) {
-    writeVarString(this.restEncoder, JSON.stringify(embed));
+    encoding.writeVarString(this.restEncoder, JSON.stringify(embed));
   }
   writeKey(key) {
-    writeVarString(this.restEncoder, key);
+    encoding.writeVarString(this.restEncoder, key);
   }
 }
 
 class DSEncoderV2 {
   constructor() {
-    this.restEncoder = createEncoder();
+    this.restEncoder = encoding.createEncoder();
     this.dsCurrVal = 0;
   }
   toUint8Array() {
-    return toUint8Array(this.restEncoder);
+    return encoding.toUint8Array(this.restEncoder);
   }
   resetDsCurVal() {
     this.dsCurrVal = 0;
@@ -2194,13 +1778,13 @@ class DSEncoderV2 {
   writeDsClock(clock) {
     const diff = clock - this.dsCurrVal;
     this.dsCurrVal = clock;
-    writeVarUint(this.restEncoder, diff);
+    encoding.writeVarUint(this.restEncoder, diff);
   }
   writeDsLen(len) {
     if (len === 0) {
       unexpectedCase();
     }
-    writeVarUint(this.restEncoder, len - 1);
+    encoding.writeVarUint(this.restEncoder, len - 1);
     this.dsCurrVal += len;
   }
 }
@@ -2210,30 +1794,30 @@ class UpdateEncoderV2 extends DSEncoderV2 {
     super();
     this.keyMap = new Map;
     this.keyClock = 0;
-    this.keyClockEncoder = new IntDiffOptRleEncoder;
-    this.clientEncoder = new UintOptRleEncoder;
-    this.leftClockEncoder = new IntDiffOptRleEncoder;
-    this.rightClockEncoder = new IntDiffOptRleEncoder;
-    this.infoEncoder = new RleEncoder(writeUint8);
-    this.stringEncoder = new StringEncoder;
-    this.parentInfoEncoder = new RleEncoder(writeUint8);
-    this.typeRefEncoder = new UintOptRleEncoder;
-    this.lenEncoder = new UintOptRleEncoder;
+    this.keyClockEncoder = new encoding.IntDiffOptRleEncoder;
+    this.clientEncoder = new encoding.UintOptRleEncoder;
+    this.leftClockEncoder = new encoding.IntDiffOptRleEncoder;
+    this.rightClockEncoder = new encoding.IntDiffOptRleEncoder;
+    this.infoEncoder = new encoding.RleEncoder(encoding.writeUint8);
+    this.stringEncoder = new encoding.StringEncoder;
+    this.parentInfoEncoder = new encoding.RleEncoder(encoding.writeUint8);
+    this.typeRefEncoder = new encoding.UintOptRleEncoder;
+    this.lenEncoder = new encoding.UintOptRleEncoder;
   }
   toUint8Array() {
-    const encoder = createEncoder();
-    writeVarUint(encoder, 0);
-    writeVarUint8Array(encoder, this.keyClockEncoder.toUint8Array());
-    writeVarUint8Array(encoder, this.clientEncoder.toUint8Array());
-    writeVarUint8Array(encoder, this.leftClockEncoder.toUint8Array());
-    writeVarUint8Array(encoder, this.rightClockEncoder.toUint8Array());
-    writeVarUint8Array(encoder, toUint8Array(this.infoEncoder));
-    writeVarUint8Array(encoder, this.stringEncoder.toUint8Array());
-    writeVarUint8Array(encoder, toUint8Array(this.parentInfoEncoder));
-    writeVarUint8Array(encoder, this.typeRefEncoder.toUint8Array());
-    writeVarUint8Array(encoder, this.lenEncoder.toUint8Array());
-    writeUint8Array(encoder, toUint8Array(this.restEncoder));
-    return toUint8Array(encoder);
+    const encoder = encoding.createEncoder();
+    encoding.writeVarUint(encoder, 0);
+    encoding.writeVarUint8Array(encoder, this.keyClockEncoder.toUint8Array());
+    encoding.writeVarUint8Array(encoder, this.clientEncoder.toUint8Array());
+    encoding.writeVarUint8Array(encoder, this.leftClockEncoder.toUint8Array());
+    encoding.writeVarUint8Array(encoder, this.rightClockEncoder.toUint8Array());
+    encoding.writeVarUint8Array(encoder, encoding.toUint8Array(this.infoEncoder));
+    encoding.writeVarUint8Array(encoder, this.stringEncoder.toUint8Array());
+    encoding.writeVarUint8Array(encoder, encoding.toUint8Array(this.parentInfoEncoder));
+    encoding.writeVarUint8Array(encoder, this.typeRefEncoder.toUint8Array());
+    encoding.writeVarUint8Array(encoder, this.lenEncoder.toUint8Array());
+    encoding.writeUint8Array(encoder, encoding.toUint8Array(this.restEncoder));
+    return encoding.toUint8Array(encoder);
   }
   writeLeftID(id2) {
     this.clientEncoder.write(id2.client);
@@ -2262,13 +1846,13 @@ class UpdateEncoderV2 extends DSEncoderV2 {
     this.lenEncoder.write(len);
   }
   writeAny(any2) {
-    writeAny(this.restEncoder, any2);
+    encoding.writeAny(this.restEncoder, any2);
   }
   writeBuf(buf) {
-    writeVarUint8Array(this.restEncoder, buf);
+    encoding.writeVarUint8Array(this.restEncoder, buf);
   }
   writeJSON(embed) {
-    writeAny(this.restEncoder, embed);
+    encoding.writeAny(this.restEncoder, embed);
   }
   writeKey(key) {
     const clock = this.keyMap.get(key);
@@ -2283,9 +1867,9 @@ class UpdateEncoderV2 extends DSEncoderV2 {
 var writeStructs = (encoder, structs, client, clock) => {
   clock = max(clock, structs[0].id.clock);
   const startNewStructs = findIndexSS(structs, clock);
-  writeVarUint(encoder.restEncoder, structs.length - startNewStructs);
+  encoding.writeVarUint(encoder.restEncoder, structs.length - startNewStructs);
   encoder.writeClient(client);
-  writeVarUint(encoder.restEncoder, clock);
+  encoding.writeVarUint(encoder.restEncoder, clock);
   const firstStruct = structs[startNewStructs];
   firstStruct.write(encoder, clock - firstStruct.id.clock);
   for (let i = startNewStructs + 1;i < structs.length; i++) {
@@ -2304,19 +1888,19 @@ var writeClientsStructs = (encoder, store, _sm) => {
       sm.set(client, 0);
     }
   });
-  writeVarUint(encoder.restEncoder, sm.size);
+  encoding.writeVarUint(encoder.restEncoder, sm.size);
   from2(sm.entries()).sort((a, b) => b[0] - a[0]).forEach(([client, clock]) => {
     writeStructs(encoder, store.clients.get(client), client, clock);
   });
 };
 var readClientsStructRefs = (decoder, doc2) => {
   const clientRefs = create();
-  const numOfStateUpdates = readVarUint(decoder.restDecoder);
+  const numOfStateUpdates = decoding.readVarUint(decoder.restDecoder);
   for (let i = 0;i < numOfStateUpdates; i++) {
-    const numberOfStructs = readVarUint(decoder.restDecoder);
+    const numberOfStructs = decoding.readVarUint(decoder.restDecoder);
     const refs = new Array(numberOfStructs);
     const client = decoder.readClient();
-    let clock = readVarUint(decoder.restDecoder);
+    let clock = decoding.readVarUint(decoder.restDecoder);
     clientRefs.set(client, { i: 0, refs });
     for (let i2 = 0;i2 < numberOfStructs; i2++) {
       const info = decoder.readInfo();
@@ -2328,7 +1912,7 @@ var readClientsStructRefs = (decoder, doc2) => {
           break;
         }
         case 10: {
-          const len = readVarUint(decoder.restDecoder);
+          const len = decoding.readVarUint(decoder.restDecoder);
           refs[i2] = new Skip(createID(client, clock), len);
           clock += len;
           break;
@@ -2438,7 +2022,7 @@ var integrateStructs = (transaction, store, clientsStructRefs) => {
   if (restStructs.clients.size > 0) {
     const encoder = new UpdateEncoderV2;
     writeClientsStructs(encoder, restStructs, new Map);
-    writeVarUint(encoder.restEncoder, 0);
+    encoding.writeVarUint(encoder.restEncoder, 0);
     return { missing: missingSV, update: encoder.toUint8Array() };
   }
   return null;
@@ -2473,8 +2057,8 @@ var readUpdateV2 = (decoder, ydoc, transactionOrigin, structDecoder = new Update
   }
   const dsRest = readAndApplyDeleteSet(structDecoder, transaction, store);
   if (store.pendingDs) {
-    const pendingDSUpdate = new UpdateDecoderV2(createDecoder(store.pendingDs));
-    readVarUint(pendingDSUpdate.restDecoder);
+    const pendingDSUpdate = new UpdateDecoderV2(decoding.createDecoder(store.pendingDs));
+    decoding.readVarUint(pendingDSUpdate.restDecoder);
     const dsRest2 = readAndApplyDeleteSet(pendingDSUpdate, transaction, store);
     if (dsRest && dsRest2) {
       store.pendingDs = mergeUpdatesV2([dsRest, dsRest2]);
@@ -2492,7 +2076,7 @@ var readUpdateV2 = (decoder, ydoc, transactionOrigin, structDecoder = new Update
 }, transactionOrigin, false);
 var readUpdate = (decoder, ydoc, transactionOrigin) => readUpdateV2(decoder, ydoc, transactionOrigin, new UpdateDecoderV1(decoder));
 var applyUpdateV2 = (ydoc, update, transactionOrigin, YDecoder = UpdateDecoderV2) => {
-  const decoder = createDecoder(update);
+  const decoder = decoding.createDecoder(update);
   readUpdateV2(decoder, ydoc, transactionOrigin, new YDecoder(decoder));
 };
 var applyUpdate = (ydoc, update, transactionOrigin) => applyUpdateV2(ydoc, update, transactionOrigin, UpdateDecoderV1);
@@ -2522,20 +2106,20 @@ var encodeStateAsUpdateV2 = (doc2, encodedTargetStateVector = new Uint8Array([0]
 var encodeStateAsUpdate = (doc2, encodedTargetStateVector) => encodeStateAsUpdateV2(doc2, encodedTargetStateVector, new UpdateEncoderV1);
 var readStateVector = (decoder) => {
   const ss = new Map;
-  const ssLength = readVarUint(decoder.restDecoder);
+  const ssLength = decoding.readVarUint(decoder.restDecoder);
   for (let i = 0;i < ssLength; i++) {
-    const client = readVarUint(decoder.restDecoder);
-    const clock = readVarUint(decoder.restDecoder);
+    const client = decoding.readVarUint(decoder.restDecoder);
+    const clock = decoding.readVarUint(decoder.restDecoder);
     ss.set(client, clock);
   }
   return ss;
 };
-var decodeStateVector = (decodedState) => readStateVector(new DSDecoderV1(createDecoder(decodedState)));
+var decodeStateVector = (decodedState) => readStateVector(new DSDecoderV1(decoding.createDecoder(decodedState)));
 var writeStateVector = (encoder, sv) => {
-  writeVarUint(encoder.restEncoder, sv.size);
+  encoding.writeVarUint(encoder.restEncoder, sv.size);
   from2(sv.entries()).sort((a, b) => b[0] - a[0]).forEach(([client, clock]) => {
-    writeVarUint(encoder.restEncoder, client);
-    writeVarUint(encoder.restEncoder, clock);
+    encoding.writeVarUint(encoder.restEncoder, client);
+    encoding.writeVarUint(encoder.restEncoder, clock);
   });
   return encoder;
 };
@@ -2576,10 +2160,10 @@ class ID {
 var compareIDs = (a, b) => a === b || a !== null && b !== null && a.client === b.client && a.clock === b.clock;
 var createID = (client, clock) => new ID(client, clock);
 var writeID = (encoder, id2) => {
-  writeVarUint(encoder, id2.client);
-  writeVarUint(encoder, id2.clock);
+  encoding.writeVarUint(encoder, id2.client);
+  encoding.writeVarUint(encoder, id2.clock);
 };
-var readID = (decoder) => createID(readVarUint(decoder), readVarUint(decoder));
+var readID = (decoder) => createID(decoding.readVarUint(decoder), decoding.readVarUint(decoder));
 var findRootTypeKey = (type) => {
   for (const [key, value] of type.doc.share.entries()) {
     if (value === type) {
@@ -2623,12 +2207,12 @@ class PermanentUserData {
         event.changes.added.forEach((item) => {
           item.content.getContent().forEach((encodedDs) => {
             if (encodedDs instanceof Uint8Array) {
-              this.dss.set(userDescription, mergeDeleteSets([this.dss.get(userDescription) || createDeleteSet(), readDeleteSet(new DSDecoderV1(createDecoder(encodedDs)))]));
+              this.dss.set(userDescription, mergeDeleteSets([this.dss.get(userDescription) || createDeleteSet(), readDeleteSet(new DSDecoderV1(decoding.createDecoder(encodedDs)))]));
             }
           });
         });
       });
-      this.dss.set(userDescription, mergeDeleteSets(ds.map((encodedDs) => readDeleteSet(new DSDecoderV1(createDecoder(encodedDs))))));
+      this.dss.set(userDescription, mergeDeleteSets(ds.map((encodedDs) => readDeleteSet(new DSDecoderV1(decoding.createDecoder(encodedDs))))));
       ids.observe((event) => event.changes.added.forEach((item) => item.content.getContent().forEach(addClientId)));
       ids.forEach(addClientId);
     };
@@ -2760,44 +2344,44 @@ var createRelativePositionFromTypeIndex = (type, index, assoc = 0) => {
 var writeRelativePosition = (encoder, rpos) => {
   const { type, tname, item, assoc } = rpos;
   if (item !== null) {
-    writeVarUint(encoder, 0);
+    encoding.writeVarUint(encoder, 0);
     writeID(encoder, item);
   } else if (tname !== null) {
-    writeUint8(encoder, 1);
-    writeVarString(encoder, tname);
+    encoding.writeUint8(encoder, 1);
+    encoding.writeVarString(encoder, tname);
   } else if (type !== null) {
-    writeUint8(encoder, 2);
+    encoding.writeUint8(encoder, 2);
     writeID(encoder, type);
   } else {
     throw unexpectedCase();
   }
-  writeVarInt(encoder, assoc);
+  encoding.writeVarInt(encoder, assoc);
   return encoder;
 };
 var encodeRelativePosition = (rpos) => {
-  const encoder = createEncoder();
+  const encoder = encoding.createEncoder();
   writeRelativePosition(encoder, rpos);
-  return toUint8Array(encoder);
+  return encoding.toUint8Array(encoder);
 };
 var readRelativePosition = (decoder) => {
   let type = null;
   let tname = null;
   let itemID = null;
-  switch (readVarUint(decoder)) {
+  switch (decoding.readVarUint(decoder)) {
     case 0:
       itemID = readID(decoder);
       break;
     case 1:
-      tname = readVarString(decoder);
+      tname = decoding.readVarString(decoder);
       break;
     case 2: {
       type = readID(decoder);
     }
   }
-  const assoc = hasContent(decoder) ? readVarInt(decoder) : 0;
+  const assoc = decoding.hasContent(decoder) ? decoding.readVarInt(decoder) : 0;
   return new RelativePosition(type, tname, itemID, assoc);
 };
-var decodeRelativePosition = (uint8Array) => readRelativePosition(createDecoder(uint8Array));
+var decodeRelativePosition = (uint8Array) => readRelativePosition(decoding.createDecoder(uint8Array));
 var getItemWithOffset = (store, id2) => {
   const item = getItem(store, id2);
   const diff = id2.clock - item.id.clock;
@@ -2900,10 +2484,10 @@ var encodeSnapshotV2 = (snapshot, encoder = new DSEncoderV2) => {
   return encoder.toUint8Array();
 };
 var encodeSnapshot = (snapshot) => encodeSnapshotV2(snapshot, new DSEncoderV1);
-var decodeSnapshotV2 = (buf, decoder = new DSDecoderV2(createDecoder(buf))) => {
+var decodeSnapshotV2 = (buf, decoder = new DSDecoderV2(decoding.createDecoder(buf))) => {
   return new Snapshot(readDeleteSet(decoder), readStateVector(decoder));
 };
-var decodeSnapshot = (buf) => decodeSnapshotV2(buf, new DSDecoderV1(createDecoder(buf)));
+var decodeSnapshot = (buf) => decodeSnapshotV2(buf, new DSDecoderV1(decoding.createDecoder(buf)));
 var createSnapshot = (ds, sm) => new Snapshot(ds, sm);
 var emptySnapshot = createSnapshot(createDeleteSet(), new Map);
 var snapshot = (doc2) => createSnapshot(createDeleteSetFromStructStore(doc2.store), getStateVector(doc2.store));
@@ -2934,7 +2518,7 @@ var createDocFromSnapshot = (originDoc, snapshot2, newDoc = new Doc) => {
         size2++;
       }
     });
-    writeVarUint(encoder.restEncoder, size2);
+    encoding.writeVarUint(encoder.restEncoder, size2);
     for (const [client, clock] of sv) {
       if (clock === 0) {
         continue;
@@ -2944,9 +2528,9 @@ var createDocFromSnapshot = (originDoc, snapshot2, newDoc = new Doc) => {
       }
       const structs = originDoc.store.clients.get(client) || [];
       const lastStructIndex = findIndexSS(structs, clock - 1);
-      writeVarUint(encoder.restEncoder, lastStructIndex + 1);
+      encoding.writeVarUint(encoder.restEncoder, lastStructIndex + 1);
       encoder.writeClient(client);
-      writeVarUint(encoder.restEncoder, 0);
+      encoding.writeVarUint(encoder.restEncoder, 0);
       for (let i = 0;i <= lastStructIndex; i++) {
         structs[i].write(encoder, 0);
       }
@@ -2957,7 +2541,7 @@ var createDocFromSnapshot = (originDoc, snapshot2, newDoc = new Doc) => {
   return newDoc;
 };
 var snapshotContainsUpdateV2 = (snapshot2, update, YDecoder = UpdateDecoderV2) => {
-  const updateDecoder = new YDecoder(createDecoder(update));
+  const updateDecoder = new YDecoder(decoding.createDecoder(update));
   const lazyDecoder = new LazyStructReader(updateDecoder, false);
   for (let curr = lazyDecoder.curr;curr !== null; curr = lazyDecoder.next()) {
     if ((snapshot2.sv.get(curr.id.client) || 0) < curr.id.clock + curr.length) {
@@ -3515,15 +3099,15 @@ class UndoManager extends ObservableV2 {
   }
 }
 function* lazyStructReaderGenerator(decoder) {
-  const numOfStateUpdates = readVarUint(decoder.restDecoder);
+  const numOfStateUpdates = decoding.readVarUint(decoder.restDecoder);
   for (let i = 0;i < numOfStateUpdates; i++) {
-    const numberOfStructs = readVarUint(decoder.restDecoder);
+    const numberOfStructs = decoding.readVarUint(decoder.restDecoder);
     const client = decoder.readClient();
-    let clock = readVarUint(decoder.restDecoder);
+    let clock = decoding.readVarUint(decoder.restDecoder);
     for (let i2 = 0;i2 < numberOfStructs; i2++) {
       const info = decoder.readInfo();
       if (info === 10) {
-        const len = readVarUint(decoder.restDecoder);
+        const len = decoding.readVarUint(decoder.restDecoder);
         yield new Skip(createID(client, clock), len);
         clock += len;
       } else if ((BITS5 & info) !== 0) {
@@ -3558,7 +3142,7 @@ class LazyStructReader {
 var logUpdate = (update) => logUpdateV2(update, UpdateDecoderV1);
 var logUpdateV2 = (update, YDecoder = UpdateDecoderV2) => {
   const structs = [];
-  const updateDecoder = new YDecoder(createDecoder(update));
+  const updateDecoder = new YDecoder(decoding.createDecoder(update));
   const lazyDecoder = new LazyStructReader(updateDecoder, false);
   for (let curr = lazyDecoder.curr;curr !== null; curr = lazyDecoder.next()) {
     structs.push(curr);
@@ -3570,7 +3154,7 @@ var logUpdateV2 = (update, YDecoder = UpdateDecoderV2) => {
 var decodeUpdate = (update) => decodeUpdateV2(update, UpdateDecoderV1);
 var decodeUpdateV2 = (update, YDecoder = UpdateDecoderV2) => {
   const structs = [];
-  const updateDecoder = new YDecoder(createDecoder(update));
+  const updateDecoder = new YDecoder(decoding.createDecoder(update));
   const lazyDecoder = new LazyStructReader(updateDecoder, false);
   for (let curr = lazyDecoder.curr;curr !== null; curr = lazyDecoder.next()) {
     structs.push(curr);
@@ -3593,7 +3177,7 @@ class LazyStructWriter {
 var mergeUpdates = (updates) => mergeUpdatesV2(updates, UpdateDecoderV1, UpdateEncoderV1);
 var encodeStateVectorFromUpdateV2 = (update, YEncoder = DSEncoderV2, YDecoder = UpdateDecoderV2) => {
   const encoder = new YEncoder;
-  const updateDecoder = new LazyStructReader(new YDecoder(createDecoder(update)), false);
+  const updateDecoder = new LazyStructReader(new YDecoder(decoding.createDecoder(update)), false);
   let curr = updateDecoder.curr;
   if (curr !== null) {
     let size2 = 0;
@@ -3604,8 +3188,8 @@ var encodeStateVectorFromUpdateV2 = (update, YEncoder = DSEncoderV2, YDecoder = 
       if (currClient !== curr.id.client) {
         if (currClock !== 0) {
           size2++;
-          writeVarUint(encoder.restEncoder, currClient);
-          writeVarUint(encoder.restEncoder, currClock);
+          encoding.writeVarUint(encoder.restEncoder, currClient);
+          encoding.writeVarUint(encoder.restEncoder, currClock);
         }
         currClient = curr.id.client;
         currClock = 0;
@@ -3620,16 +3204,16 @@ var encodeStateVectorFromUpdateV2 = (update, YEncoder = DSEncoderV2, YDecoder = 
     }
     if (currClock !== 0) {
       size2++;
-      writeVarUint(encoder.restEncoder, currClient);
-      writeVarUint(encoder.restEncoder, currClock);
+      encoding.writeVarUint(encoder.restEncoder, currClient);
+      encoding.writeVarUint(encoder.restEncoder, currClock);
     }
-    const enc = createEncoder();
-    writeVarUint(enc, size2);
-    writeBinaryEncoder(enc, encoder.restEncoder);
+    const enc = encoding.createEncoder();
+    encoding.writeVarUint(enc, size2);
+    encoding.writeBinaryEncoder(enc, encoder.restEncoder);
     encoder.restEncoder = enc;
     return encoder.toUint8Array();
   } else {
-    writeVarUint(encoder.restEncoder, 0);
+    encoding.writeVarUint(encoder.restEncoder, 0);
     return encoder.toUint8Array();
   }
 };
@@ -3637,7 +3221,7 @@ var encodeStateVectorFromUpdate = (update) => encodeStateVectorFromUpdateV2(upda
 var parseUpdateMetaV2 = (update, YDecoder = UpdateDecoderV2) => {
   const from3 = new Map;
   const to = new Map;
-  const updateDecoder = new LazyStructReader(new YDecoder(createDecoder(update)), false);
+  const updateDecoder = new LazyStructReader(new YDecoder(decoding.createDecoder(update)), false);
   let curr = updateDecoder.curr;
   if (curr !== null) {
     let currClient = curr.id.client;
@@ -3673,7 +3257,7 @@ var mergeUpdatesV2 = (updates, YDecoder = UpdateDecoderV2, YEncoder = UpdateEnco
   if (updates.length === 1) {
     return updates[0];
   }
-  const updateDecoders = updates.map((update) => new YDecoder(createDecoder(update)));
+  const updateDecoders = updates.map((update) => new YDecoder(decoding.createDecoder(update)));
   let lazyStructDecoders = updateDecoders.map((decoder) => new LazyStructReader(decoder, true));
   let currWrite = null;
   const updateEncoder = new YEncoder;
@@ -3760,7 +3344,7 @@ var diffUpdateV2 = (update, sv, YDecoder = UpdateDecoderV2, YEncoder = UpdateEnc
   const state = decodeStateVector(sv);
   const encoder = new YEncoder;
   const lazyStructWriter = new LazyStructWriter(encoder);
-  const decoder = new YDecoder(createDecoder(update));
+  const decoder = new YDecoder(decoding.createDecoder(update));
   const reader = new LazyStructReader(decoder, false);
   while (reader.curr) {
     const curr = reader.curr;
@@ -3791,8 +3375,8 @@ var diffUpdateV2 = (update, sv, YDecoder = UpdateDecoderV2, YEncoder = UpdateEnc
 var diffUpdate = (update, sv) => diffUpdateV2(update, sv, UpdateDecoderV1, UpdateEncoderV1);
 var flushLazyStructWriter = (lazyWriter) => {
   if (lazyWriter.written > 0) {
-    lazyWriter.clientStructs.push({ written: lazyWriter.written, restEncoder: toUint8Array(lazyWriter.encoder.restEncoder) });
-    lazyWriter.encoder.restEncoder = createEncoder();
+    lazyWriter.clientStructs.push({ written: lazyWriter.written, restEncoder: encoding.toUint8Array(lazyWriter.encoder.restEncoder) });
+    lazyWriter.encoder.restEncoder = encoding.createEncoder();
     lazyWriter.written = 0;
   }
 };
@@ -3803,7 +3387,7 @@ var writeStructToLazyStructWriter = (lazyWriter, struct, offset) => {
   if (lazyWriter.written === 0) {
     lazyWriter.currClient = struct.id.client;
     lazyWriter.encoder.writeClient(struct.id.client);
-    writeVarUint(lazyWriter.encoder.restEncoder, struct.id.clock + offset);
+    encoding.writeVarUint(lazyWriter.encoder.restEncoder, struct.id.clock + offset);
   }
   struct.write(lazyWriter.encoder, offset);
   lazyWriter.written++;
@@ -3811,15 +3395,15 @@ var writeStructToLazyStructWriter = (lazyWriter, struct, offset) => {
 var finishLazyStructWriting = (lazyWriter) => {
   flushLazyStructWriter(lazyWriter);
   const restEncoder = lazyWriter.encoder.restEncoder;
-  writeVarUint(restEncoder, lazyWriter.clientStructs.length);
+  encoding.writeVarUint(restEncoder, lazyWriter.clientStructs.length);
   for (let i = 0;i < lazyWriter.clientStructs.length; i++) {
     const partStructs = lazyWriter.clientStructs[i];
-    writeVarUint(restEncoder, partStructs.written);
-    writeUint8Array(restEncoder, partStructs.restEncoder);
+    encoding.writeVarUint(restEncoder, partStructs.written);
+    encoding.writeUint8Array(restEncoder, partStructs.restEncoder);
   }
 };
 var convertUpdateFormat = (update, blockTransformer, YDecoder, YEncoder) => {
-  const updateDecoder = new YDecoder(createDecoder(update));
+  const updateDecoder = new YDecoder(decoding.createDecoder(update));
   const lazyDecoder = new LazyStructReader(updateDecoder, false);
   const updateEncoder = new YEncoder;
   const lazyWriter = new LazyStructWriter(updateEncoder);
@@ -3941,7 +3525,7 @@ class YEvent {
   get keys() {
     if (this._keys === null) {
       if (this.transaction.doc._transactionCleanups.length === 0) {
-        throw create3(errorComputeChanges);
+        throw create4(errorComputeChanges);
       }
       const keys2 = new Map;
       const target = this.target;
@@ -3997,7 +3581,7 @@ class YEvent {
     let changes = this._changes;
     if (changes === null) {
       if (this.transaction.doc._transactionCleanups.length === 0) {
-        throw create3(errorComputeChanges);
+        throw create4(errorComputeChanges);
       }
       const target = this.target;
       const added = create2();
@@ -4426,7 +4010,7 @@ var typeListInsertGenericsAfter = (transaction, parent, referenceItem, content) 
   });
   packJsonContent();
 };
-var lengthExceeded = () => create3("Length exceeded!");
+var lengthExceeded = () => create4("Length exceeded!");
 var typeListInsertGenerics = (transaction, parent, index, content) => {
   if (index > parent._length) {
     throw lengthExceeded();
@@ -4474,12 +4058,12 @@ var typeListPushGenerics = (transaction, parent, content) => {
   }
   return typeListInsertGenericsAfter(transaction, parent, n, content);
 };
-var typeListDelete = (transaction, parent, index, length2) => {
-  if (length2 === 0) {
+var typeListDelete = (transaction, parent, index, length) => {
+  if (length === 0) {
     return;
   }
   const startIndex = index;
-  const startLength = length2;
+  const startLength = length;
   const marker = findMarker(parent, index);
   let n = parent._start;
   if (marker !== null) {
@@ -4494,21 +4078,21 @@ var typeListDelete = (transaction, parent, index, length2) => {
       index -= n.length;
     }
   }
-  while (length2 > 0 && n !== null) {
+  while (length > 0 && n !== null) {
     if (!n.deleted) {
-      if (length2 < n.length) {
-        getItemCleanStart(transaction, createID(n.id.client, n.id.clock + length2));
+      if (length < n.length) {
+        getItemCleanStart(transaction, createID(n.id.client, n.id.clock + length));
       }
       n.delete(transaction);
-      length2 -= n.length;
+      length -= n.length;
     }
     n = n.right;
   }
-  if (length2 > 0) {
+  if (length > 0) {
     throw lengthExceeded();
   }
   if (parent._searchMarker) {
-    updateMarkerChanges(parent._searchMarker, startIndex, -startLength + length2);
+    updateMarkerChanges(parent._searchMarker, startIndex, -startLength + length);
   }
 };
 var typeMapDelete = (transaction, parent, key) => {
@@ -4652,13 +4236,13 @@ class YArray extends AbstractType {
   unshift(content) {
     this.insert(0, content);
   }
-  delete(index, length2 = 1) {
+  delete(index, length = 1) {
     if (this.doc !== null) {
       transact(this.doc, (transaction) => {
-        typeListDelete(transaction, this, index, length2);
+        typeListDelete(transaction, this, index, length);
       });
     } else {
-      this._prelimContent.splice(index, length2);
+      this._prelimContent.splice(index, length);
     }
   }
   get(index) {
@@ -4940,13 +4524,13 @@ var insertText = (transaction, parent, currPos, text2, attributes) => {
   currPos.forward();
   insertNegatedAttributes(transaction, parent, currPos, negatedAttributes);
 };
-var formatText = (transaction, parent, currPos, length2, attributes) => {
+var formatText = (transaction, parent, currPos, length, attributes) => {
   const doc2 = transaction.doc;
   const ownClientId = doc2.clientID;
   minimizeAttributeChanges(currPos, attributes);
   const negatedAttributes = insertAttributes(transaction, parent, currPos, attributes);
   iterationLoop:
-    while (currPos.right !== null && (length2 > 0 || negatedAttributes.size > 0 && (currPos.right.deleted || currPos.right.content.constructor === ContentFormat))) {
+    while (currPos.right !== null && (length > 0 || negatedAttributes.size > 0 && (currPos.right.deleted || currPos.right.content.constructor === ContentFormat))) {
       if (!currPos.right.deleted) {
         switch (currPos.right.content.constructor) {
           case ContentFormat: {
@@ -4956,7 +4540,7 @@ var formatText = (transaction, parent, currPos, length2, attributes) => {
               if (equalAttrs(attr, value)) {
                 negatedAttributes.delete(key);
               } else {
-                if (length2 === 0) {
+                if (length === 0) {
                   break iterationLoop;
                 }
                 negatedAttributes.set(key, value);
@@ -4968,18 +4552,18 @@ var formatText = (transaction, parent, currPos, length2, attributes) => {
             break;
           }
           default:
-            if (length2 < currPos.right.length) {
-              getItemCleanStart(transaction, createID(currPos.right.id.client, currPos.right.id.clock + length2));
+            if (length < currPos.right.length) {
+              getItemCleanStart(transaction, createID(currPos.right.id.client, currPos.right.id.clock + length));
             }
-            length2 -= currPos.right.length;
+            length -= currPos.right.length;
             break;
         }
       }
       currPos.forward();
     }
-  if (length2 > 0) {
+  if (length > 0) {
     let newlines = "";
-    for (;length2 > 0; length2--) {
+    for (;length > 0; length--) {
       newlines += `
 `;
     }
@@ -5106,20 +4690,20 @@ var cleanupYTextAfterTransaction = (transaction) => {
     }
   });
 };
-var deleteText = (transaction, currPos, length2) => {
-  const startLength = length2;
+var deleteText = (transaction, currPos, length) => {
+  const startLength = length;
   const startAttrs = copy(currPos.currentAttributes);
   const start = currPos.right;
-  while (length2 > 0 && currPos.right !== null) {
+  while (length > 0 && currPos.right !== null) {
     if (currPos.right.deleted === false) {
       switch (currPos.right.content.constructor) {
         case ContentType:
         case ContentEmbed:
         case ContentString:
-          if (length2 < currPos.right.length) {
-            getItemCleanStart(transaction, createID(currPos.right.id.client, currPos.right.id.clock + length2));
+          if (length < currPos.right.length) {
+            getItemCleanStart(transaction, createID(currPos.right.id.client, currPos.right.id.clock + length));
           }
-          length2 -= currPos.right.length;
+          length -= currPos.right.length;
           currPos.right.delete(transaction);
           break;
       }
@@ -5131,7 +4715,7 @@ var deleteText = (transaction, currPos, length2) => {
   }
   const parent = (currPos.left || currPos.right).parent;
   if (parent._searchMarker) {
-    updateMarkerChanges(parent._searchMarker, currPos.index, -startLength + length2);
+    updateMarkerChanges(parent._searchMarker, currPos.index, -startLength + length);
   }
   return currPos;
 };
@@ -5527,21 +5111,21 @@ class YText extends AbstractType {
       this._pending.push(() => this.insertEmbed(index, embed, attributes || {}));
     }
   }
-  delete(index, length2) {
-    if (length2 === 0) {
+  delete(index, length) {
+    if (length === 0) {
       return;
     }
     const y = this.doc;
     if (y !== null) {
       transact(y, (transaction) => {
-        deleteText(transaction, findPosition(transaction, this, index, true), length2);
+        deleteText(transaction, findPosition(transaction, this, index, true), length);
       });
     } else {
-      this._pending.push(() => this.delete(index, length2));
+      this._pending.push(() => this.delete(index, length));
     }
   }
-  format(index, length2, attributes) {
-    if (length2 === 0) {
+  format(index, length, attributes) {
+    if (length === 0) {
       return;
     }
     const y = this.doc;
@@ -5551,10 +5135,10 @@ class YText extends AbstractType {
         if (pos.right === null) {
           return;
         }
-        formatText(transaction, this, pos, length2, attributes);
+        formatText(transaction, this, pos, length, attributes);
       });
     } else {
-      this._pending.push(() => this.format(index, length2, attributes));
+      this._pending.push(() => this.format(index, length, attributes));
     }
   }
   removeAttribute(attributeName) {
@@ -5711,18 +5295,18 @@ class YXmlFragment extends AbstractType {
       const pc = this._prelimContent;
       const index = ref === null ? 0 : pc.findIndex((el) => el === ref) + 1;
       if (index === 0 && ref !== null) {
-        throw create3("Reference item not found");
+        throw create4("Reference item not found");
       }
       pc.splice(index, 0, ...content);
     }
   }
-  delete(index, length2 = 1) {
+  delete(index, length = 1) {
     if (this.doc !== null) {
       transact(this.doc, (transaction) => {
-        typeListDelete(transaction, this, index, length2);
+        typeListDelete(transaction, this, index, length);
       });
     } else {
-      this._prelimContent.splice(index, length2);
+      this._prelimContent.splice(index, length);
     }
   }
   toArray() {
@@ -5964,9 +5548,9 @@ class YXmlText extends YText {
 var readYXmlText = (decoder) => new YXmlText;
 
 class AbstractStruct {
-  constructor(id2, length2) {
+  constructor(id2, length) {
     this.id = id2;
-    this.length = length2;
+    this.length = length;
   }
   get deleted() {
     throw methodUnimplemented();
@@ -6875,7 +6459,7 @@ class Skip extends AbstractStruct {
   }
   write(encoder, offset) {
     encoder.writeInfo(structSkipRefNumber);
-    writeVarUint(encoder.restEncoder, this.length - offset);
+    encoding.writeVarUint(encoder.restEncoder, this.length - offset);
   }
   getMissing(transaction, store) {
     return null;
@@ -6888,7 +6472,7 @@ if (glo[importIdentifier] === true) {
 }
 glo[importIdentifier] = true;
 
-// synth:/Volumes/D/git/claude-design/plugins/design/dev-server/.runtime-bundle-yjs-entry.tsx
+// synth:/Users/iagh/git/claude-design/plugins/design/dev-server/.runtime-bundle-yjs-entry.tsx
 var {
   AbsolutePosition: AbsolutePosition2,
   AbstractConnector: AbstractConnector2,

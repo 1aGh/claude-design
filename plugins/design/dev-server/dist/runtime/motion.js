@@ -4843,7 +4843,7 @@ var cancelSync = stepsOrder.reduce((acc, key) => {
   acc[key] = (process) => cancelFrame(process);
   return acc;
 }, {});
-// synth:/Volumes/D/git/claude-design/plugins/design/dev-server/.runtime-bundle-motion-entry.tsx
+// synth:/Users/iagh/git/claude-design/plugins/design/dev-server/.runtime-bundle-motion-entry.tsx
 var {
   MotionValue: MotionValue2,
   animate: animate2,

@@ -68,6 +68,17 @@ export const RUNTIME_PACKAGES = [
   'yjs',
   'y-protocols/sync',
   'y-protocols/awareness',
+  // Phase 8 follow-up — lib0 sub-paths are imported DIRECTLY by use-collab.tsx
+  // (a transitive dep of canvas-lib.tsx via canvas-shell). Without these in
+  // RUNTIME_PACKAGES the canvas Bun.build at request time tries to resolve
+  // `lib0/decoding` from the user's project node_modules and fails — lib0 is
+  // only a transitive dep of yjs and pnpm/npm don't hoist it to a path
+  // reachable from a user canvas entrypoint. Externalising routes the import
+  // through the importmap to a dedicated /_canvas-runtime/lib0_*.js bundle.
+  // Bug shipped in v0.21.0; every canvas that uses @maude/canvas-lib (i.e.
+  // every real canvas) returned HTTP 500 "Bundle failed".
+  'lib0/decoding',
+  'lib0/encoding',
 ] as const;
 
 export type RuntimePackage = (typeof RUNTIME_PACKAGES)[number];

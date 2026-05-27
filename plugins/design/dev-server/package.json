@@ -31,6 +31,7 @@
     "dom-to-pptx": "^1.1.9",
     "dom-to-svg": "^0.12.2",
     "jszip": "^3.10.1",
+    "lib0": "^0.2.117",
     "lightningcss": "^1.27.0",
     "magic-string": "^0.30.21",
     "motion": "^11.0.0",

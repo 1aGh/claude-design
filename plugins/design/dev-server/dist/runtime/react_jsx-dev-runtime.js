@@ -46,7 +46,7 @@ var require_jsx_dev_runtime = __commonJS((exports, module) => {
   } else {}
 });
 
-// synth:/Volumes/D/git/claude-design/plugins/design/dev-server/.runtime-bundle-react_jsx-dev-runtime-entry.tsx
+// synth:/Users/iagh/git/claude-design/plugins/design/dev-server/.runtime-bundle-react_jsx-dev-runtime-entry.tsx
 var __mod__ = __toESM(require_jsx_dev_runtime(), 1);
 var {
   Fragment,

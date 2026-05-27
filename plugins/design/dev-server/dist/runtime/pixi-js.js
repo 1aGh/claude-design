@@ -51619,7 +51619,7 @@ init_sayHello();
 init_utils();
 extensions.add(browserExt, webworkerExt);
 
-// synth:/Volumes/D/git/claude-design/plugins/design/dev-server/.runtime-bundle-pixi-js-entry.tsx
+// synth:/Users/iagh/git/claude-design/plugins/design/dev-server/.runtime-bundle-pixi-js-entry.tsx
 var {
   AbstractBitmapFont: AbstractBitmapFont2,
   AbstractBitmapTextPipe: AbstractBitmapTextPipe2,

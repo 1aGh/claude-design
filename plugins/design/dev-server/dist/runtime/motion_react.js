@@ -9793,7 +9793,7 @@ var ReorderItem = /* @__PURE__ */ forwardRef3(ReorderItemComponent);
 // ../../../node_modules/.pnpm/motion@11.18.2_react-dom@19.2.6_react@19.2.6__react@19.2.6/node_modules/motion/dist/es/motion/lib/react.mjs
 "use client";
 
-// synth:/Volumes/D/git/claude-design/plugins/design/dev-server/.runtime-bundle-motion_react-entry.tsx
+// synth:/Users/iagh/git/claude-design/plugins/design/dev-server/.runtime-bundle-motion_react-entry.tsx
 var {
   AcceleratedAnimation: AcceleratedAnimation2,
   AnimatePresence: AnimatePresence2,

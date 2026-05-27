@@ -10341,7 +10341,7 @@ var require_client = __commonJS((exports, module) => {
   } else {}
 });
 
-// synth:/Volumes/D/git/claude-design/plugins/design/dev-server/.runtime-bundle-react-dom_client-entry.tsx
+// synth:/Users/iagh/git/claude-design/plugins/design/dev-server/.runtime-bundle-react-dom_client-entry.tsx
 var __mod__ = __toESM(require_client(), 1);
 var {
   createRoot,

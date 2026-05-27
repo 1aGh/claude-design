@@ -37,12 +37,17 @@ function usage() {
         Start the self-hostable Yjs sync hub in the current process tree.
         --port           listen port (default 1234, env PORT)
         --data           hub.db + tokens.json dir (default ./data, env DATA_DIR)
-        --secret         HUB_SECRET escape-hatch token (env HUB_SECRET)
+        --secret         HUB_SECRET escape-hatch token (env HUB_SECRET).
+                         If unset on an empty hub, a one-time bootstrap link is
+                         printed to logs — open it in a browser to claim admin.
         --insecure-http  cosmetic log-only flag for non-TLS dev
         --dev            generate a one-shot mau_dev_<hex> token, print the
                          connect command, then run the hub. Convenience for
                          contributor onboarding — drops tokens.json on exit
                          is NOT performed (tokens persist; clean by hand).
+
+        On boot the hub prints its /admin URL. The admin UI generates invite
+        tokens, lists peers, and rotates tokens without shelling into the host.
 
   token generate --label NAME [--data PATH] [--dev]
         Generate a new mau_<32hex> token and append it to
@@ -51,9 +56,12 @@ function usage() {
 
         --dev produces a mau_dev_<hex> token (convention only — same auth).
 
+        Equivalent to the "Generate invite" button in the /admin UI — use
+        whichever is more convenient for the deploy.
+
   status [URL] [--json]
-        HTTP GET <url>/health, print uptime/version/token-count. URL defaults
-        to http://localhost:1234. --json emits the raw response.
+        HTTP GET <url>/health, print uptime/version/token-count/peers. URL
+        defaults to http://localhost:1234. --json emits the raw response.
 
 NOTES
   Local dev only in v1.1 Task 2 slice — production-install packaging
@@ -64,6 +72,12 @@ EXAMPLES
   maude hub serve --port 4400
   maude hub token generate --label alice
   maude hub status http://localhost:4400
+
+  # Recommended flow on a fresh deploy:
+  #   1. maude hub serve            → copy bootstrap link from logs
+  #   2. open the link in browser   → first-run wizard, mint admin secret
+  #   3. click "Generate invite"    → copy 'maude design link …' command
+  #   4. paste on the peer machine  → linked
 `;
 }
 

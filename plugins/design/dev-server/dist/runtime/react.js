@@ -437,7 +437,7 @@ var require_react = __commonJS((exports, module) => {
   } else {}
 });
 
-// synth:/Volumes/D/git/claude-design/plugins/design/dev-server/.runtime-bundle-react-entry.tsx
+// synth:/Users/iagh/git/claude-design/plugins/design/dev-server/.runtime-bundle-react-entry.tsx
 var __mod__ = __toESM(require_react(), 1);
 var {
   Activity,
