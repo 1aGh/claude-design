@@ -224,6 +224,17 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Verify runtime bundle sizes
+        # Guard against shipping defective /_canvas-runtime/<slug>.js artifacts.
+        # Bun.build's output for `motion` + `motion/react` is environment-sensitive
+        # — v0.22.0 shipped a 13 kB motion_react.js (working is 155 kB+) that
+        # parsed cleanly but threw `ReferenceError: AcceleratedAnimation is not
+        # defined` at module-eval time, breaking every canvas using motion.
+        # This step asserts each bundle ≥ its declared floor in
+        # plugins/design/dev-server/dist/runtime/.min-sizes.json. Hard-fails
+        # the publish before npm sees the bad tarball.
+        run: bash plugins/design/dev-server/bin/check-runtime-bundles.sh
+
       - name: Verify tarball shape
         run: bash scripts/check-tarball-shape.sh
 

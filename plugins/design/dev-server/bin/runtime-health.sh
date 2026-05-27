@@ -8,9 +8,14 @@
 # server returns HTTP 200, but the iframe throws at module-eval time with
 # `ReferenceError: AcceleratedAnimation is not defined` (or similar).
 #
-# Parse-clean ≠ run-clean. This helper closes that gap: probe every URL the
-# canvas-lib pulls in, compare byte-count to the disk pre-built, fail loud
-# when the served body is suspiciously small.
+# Parse-clean ≠ run-clean. This helper closes that gap with TWO checks:
+#   1. Per-bundle absolute floor — served body MUST clear the size declared
+#      in dist/runtime/.min-sizes.json. This catches the v0.22.0 regression
+#      class where the installed bundle on disk is ITSELF defective (so
+#      compare-to-disk would trivially pass).
+#   2. Compare-to-disk ratio — served body MUST be ≥ threshold × on-disk
+#      size. Catches the original case where disk is good but the running
+#      dev-server returned a defective dynamic Bun.build cached in memory.
 #
 # Usage:
 #   runtime-health.sh [--port N] [--root <repo>] [--threshold 0.5]
@@ -67,6 +72,26 @@ if [ ! -d "$PREBUILT_DIR" ]; then
   exit 1
 fi
 
+# Absolute-floor manifest. Optional — if missing we fall back to the
+# disk-ratio check alone (older installs from before .min-sizes.json shipped).
+MIN_SIZES_MANIFEST="$PREBUILT_DIR/.min-sizes.json"
+floor_for() {
+  local slug="$1"
+  [ -f "$MIN_SIZES_MANIFEST" ] || { echo ""; return; }
+  if command -v jq >/dev/null 2>&1; then
+    jq -r --arg k "$slug" '.[$k] // empty' "$MIN_SIZES_MANIFEST" 2>/dev/null
+  else
+    python3 -c '
+import json, sys
+try:
+  with open("'"$MIN_SIZES_MANIFEST"'") as f: data = json.load(f)
+  v = data.get("'"$slug"'")
+  print(v if v is not None else "")
+except Exception: print("")
+' 2>/dev/null
+  fi
+}
+
 # ---------- resolve port from _server.json if not given ----------
 DESIGN_ROOT="$REPO/.design"
 STATE="$DESIGN_ROOT/_server.json"
@@ -101,9 +126,17 @@ probe_one() {
     echo "✗ $slug — served HTTP error (curl failed for $url)" >&2
     return 1
   }
-  # Floor at 256 bytes — any working ESM bundle is bigger than that.
+  # Hard floor at 256 bytes — any working ESM bundle is bigger than that.
   if [ "$served" -lt 256 ]; then
     echo "✗ $slug — served body $served B < 256 B floor (server returned empty)" >&2
+    return 1
+  fi
+  # Absolute floor from .min-sizes.json (independent of disk — catches the
+  # case where the SHIPPED bundle is itself defective, like v0.22.0 motion_react).
+  local abs_floor
+  abs_floor=$(floor_for "$slug")
+  if [ -n "$abs_floor" ] && [ "$served" -lt "$abs_floor" ]; then
+    echo "✗ $slug — served $served B < absolute floor $abs_floor B (declared in .min-sizes.json — defective bundle in install)" >&2
     return 1
   fi
   # Threshold ratio: served must be ≥ threshold × disk.
@@ -113,7 +146,7 @@ probe_one() {
   local ok
   ok=$(awk -v r="$ratio" -v t="$THRESHOLD" 'BEGIN{print (r >= t) ? 1 : 0}')
   if [ "$ok" = "1" ]; then
-    [ $QUIET -eq 0 ] && echo "✓ $slug — $served B / $disk_size B disk (ratio $ratio)" >&2
+    [ $QUIET -eq 0 ] && echo "✓ $slug — $served B / $disk_size B disk (ratio $ratio${abs_floor:+, floor ${abs_floor} B})" >&2
     return 0
   fi
   echo "✗ $slug — served $served B / $disk_size B disk (ratio $ratio < $THRESHOLD) — defective dynamic build" >&2
@@ -139,8 +172,16 @@ fi
 
 echo "" >&2
 echo "✗ runtime-health FAIL — $FAIL_COUNT bundle(s) below threshold:$FAIL_LIST" >&2
-echo "  These bundles look like defective dynamic Bun.build output." >&2
+echo "  These bundles look defective." >&2
 echo "  The canvas TSX will parse + serve cleanly, but the iframe will throw at runtime." >&2
+echo "" >&2
+echo "  If the failure was from the 'absolute floor' check (see lines above):" >&2
+echo "    → the SHIPPED bundle on disk is itself defective (rare release-time regression)." >&2
+echo "    → --restart will NOT help; upgrade the package: \`npm i -g @1agh/maude@latest\`" >&2
+echo "      (or for marketplace installs: \`/plugin marketplace update maude\`)." >&2
+echo "  If the failure was from the 'ratio < threshold' check:" >&2
+echo "    → the running server cached a defective dynamic Bun.build output." >&2
+echo "    → --restart will respawn the server and load the (good) disk pre-built." >&2
 
 if [ "$RESTART" -eq 1 ]; then
   echo "→ --restart given; killing server and respawning via server-up.sh" >&2
