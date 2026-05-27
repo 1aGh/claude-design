@@ -1,0 +1,15 @@
+# Build output — released to npm as part of the @1agh/maude tarball (see
+# top-level package.json "files"). Per workspace, the dist tree is rebuilt
+# on `pnpm --filter @maude/hub build`, so we never commit it.
+dist/
+
+# Runtime SQLite state when running the hub locally for dev / tests.
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Bun / Node caches
+node_modules/
+.bun-cache/

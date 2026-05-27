@@ -1,0 +1,89 @@
+#!/usr/bin/env bun
+// Bundle src/server.mjs → dist/hub.bundle.mjs.
+//
+// Mirrors plugins/design/dev-server/build.ts conventions per DDR-009
+// (Bun runtime authoritative). The Hocuspocus + Yjs + ws + sql-tagged-template
+// graph inlines; SQLite's native binding (better-sqlite3 / Bun's bun:sqlite)
+// stays external so it loads at runtime against the host platform.
+//
+// Modes:
+//   bun run build.ts             dev bundle (no minify)
+//   bun run build.ts --release   minified bundle, prints size
+//   bun run build.ts --dry-run   exit 0 without writing files
+
+import { existsSync, mkdirSync, statSync, renameSync, unlinkSync, readdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = dirname(fileURLToPath(import.meta.url));
+const DIST = join(ROOT, 'dist');
+const ENTRY = join(ROOT, 'src/server.mjs');
+
+const ARGS = new Set(process.argv.slice(2));
+const MODE: 'dev' | 'release' | 'dry' = ARGS.has('--dry-run')
+  ? 'dry'
+  : ARGS.has('--release')
+    ? 'release'
+    : 'dev';
+
+if (!existsSync(ENTRY)) {
+  console.error(`[hub-build] missing entry: ${ENTRY}`);
+  process.exit(1);
+}
+
+if (MODE === 'dry') {
+  console.log('[hub-build] dry-run OK; entry exists, no output written.');
+  process.exit(0);
+}
+
+if (!existsSync(DIST)) mkdirSync(DIST, { recursive: true });
+
+const result = await Bun.build({
+  entrypoints: [ENTRY],
+  outdir: DIST,
+  target: 'node',
+  format: 'esm',
+  minify: MODE === 'release',
+  // Native SQLite bindings load at runtime against the host platform.
+  // Hocuspocus' sqlite extension uses better-sqlite3 by default.
+  external: ['better-sqlite3', 'bun:sqlite', 'node:sqlite'],
+  // Stable single-file emit; entry basename is `server` from `src/server.mjs`.
+  // We rename below for the dist/hub.bundle.mjs contract.
+});
+
+if (!result.success) {
+  for (const log of result.logs) console.error(log);
+  process.exit(1);
+}
+
+// Bun.build emits dist/server.js (format=esm, target=node). Rename to the
+// Phase 9 plan's contract path: dist/hub.bundle.mjs.
+const emitted = result.outputs[0]?.path;
+if (!emitted) {
+  console.error('[hub-build] Bun.build produced no output paths');
+  process.exit(1);
+}
+const finalPath = join(DIST, 'hub.bundle.mjs');
+if (emitted !== finalPath) {
+  if (existsSync(finalPath)) unlinkSync(finalPath);
+  renameSync(emitted, finalPath);
+}
+
+// Tidy any sibling chunks Bun may have emitted (e.g. dist/server.js.map in
+// minified mode) so the dist directory has one canonical file per release.
+for (const sibling of readdirSync(DIST)) {
+  const p = join(DIST, sibling);
+  if (p !== finalPath && (sibling.startsWith('server') || sibling.endsWith('.bundle.mjs.map'))) {
+    try { unlinkSync(p); } catch { /* best-effort */ }
+  }
+}
+
+const sizeKb = Math.round(statSync(finalPath).size / 1024);
+console.log(`[hub-build] ${MODE} → dist/hub.bundle.mjs (${sizeKb} KB)`);
+
+// Phase 9 plan Validation §1 budget: hub bundle ≤ 5 MB.
+const BUDGET_KB = 5 * 1024;
+if (sizeKb > BUDGET_KB) {
+  console.error(`[hub-build] over budget: ${sizeKb} KB > ${BUDGET_KB} KB ceiling`);
+  process.exit(1);
+}

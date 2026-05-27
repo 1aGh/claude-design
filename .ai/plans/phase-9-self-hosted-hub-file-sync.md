@@ -143,16 +143,18 @@ A user who has been running Phase 8 (loopback multi-tab + git push/pull for cros
 
 ## Tasks
 
-### Task 0: Architectural DDR — Hocuspocus over PartyKit
+### Task 0: Architectural DDR — Hocuspocus over PartyKit ✅ 2026-05-27
 
 - **Do:** Record DDR explaining the rejection of PartyKit (research-collab.md § Self-hostable framework comparison): `partyserver` is hard-coupled to Cloudflare Workers / Durable Objects; "run anywhere" claim breaks on plain VPS. Hocuspocus chosen for: production-proven (TipTap's collab backend), Node-native, MIT, `extension-sqlite` for zero-config persistence, `extension-redis` available later if hub needs to scale horizontally.
 - **Validate:** DDR in `.ai/decisions/`, signed off.
+- **Shipped:** `.ai/decisions/DDR-052-hocuspocus-over-partykit-for-hub.md`.
 
-### Task 1: Hub workspace + Hocuspocus skeleton
+### Task 1: Hub workspace + Hocuspocus skeleton ✅ 2026-05-27
 
 - **Do:** Add `plugins/design/hub/` to `pnpm-workspace.yaml`. Stub `package.json` (`"private": true`, `"name": "@maude/hub"`). Install `@hocuspocus/server`, `@hocuspocus/extension-sqlite`. Write `src/server.mjs` that instantiates Hocuspocus with: SQLite persistence at `/data/<project-id>/`, token auth via `onAuthenticate`, awareness enabled. Listens on `$PORT` (default 1234). esbuild bundles to `dist/hub.bundle.mjs` so the published npm tarball ships the hub binary.
 - **Pattern:** `https://tiptap.dev/docs/hocuspocus/server/configure` — copy the canonical setup.
 - **Validate:** `node plugins/design/hub/dist/hub.bundle.mjs` boots on `localhost:1234`. Two `y-websocket` clients can connect and sync.
+- **Shipped:** `plugins/design/hub/{package.json,src/server.mjs,build.ts,test/two-client-sync.test.mjs,.gitignore,README.md}` + `pnpm-workspace.yaml` (`better-sqlite3` `allowBuilds`) + `pnpm-lock.yaml` (regenerated). Bundle 333 KB (5 MB budget). Two-`HocuspocusProvider`-client convergence in 54 ms via `node --test --test-force-exit`. Runtime constraint discovered + recorded: hub is **Node-only** — Hocuspocus' `crossws` adapter rejects Bun/Deno, and `better-sqlite3` isn't Bun-compatible (Bun#4290). `bun build` for bundling stays. Bundler: Bun.build (not esbuild) per project convention (DDR-009 dev-server lineage).
 
 ### Task 2: `maude hub serve|deploy|token|status` (minimal CLI)
 
