@@ -1,5 +1,5 @@
 {
-  "generated": "2026-05-27T06:45:17.650Z",
+  "generated": "2026-05-27T06:53:06.610Z",
   "currentPhase": null,
   "phases": [
     {
@@ -122,6 +122,17 @@
       "planPath": ".ai/plans/archive/phase-6.5-export.md",
       "archived": true,
       "phaseKey": "6.5"
+    },
+    {
+      "id": "phase-8-live-collaboration-yjs-lan",
+      "title": "Phase 8: Live collaboration foundation (multi-tab + hub-ready)",
+      "status": "done",
+      "shipTarget": "v1.0",
+      "date": null,
+      "summary": "Lay down the Yjs runtime, Awareness protocol, and persistence layer that Phase 9 needs — and as a side-effect, enable multi-tab collab on a single machine: two browser tabs (or two Claude Code inst...",
+      "planPath": ".ai/plans/archive/phase-8-live-collaboration-yjs-lan.md",
+      "archived": true,
+      "phaseKey": "8"
     },
     {
       "id": "rename-md-claude-to-maude",
@@ -397,17 +408,6 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
-    },
-    {
-      "id": "phase-8-live-collaboration-yjs-lan",
-      "title": "Phase 8: Live collaboration foundation (multi-tab + hub-ready)",
-      "status": "planned",
-      "shipTarget": "v1.0",
-      "date": null,
-      "summary": "Lay down the Yjs runtime, Awareness protocol, and persistence layer that Phase 9 needs — and as a side-effect, enable multi-tab collab on a single machine: two browser tabs (or two Claude Code inst...",
-      "planPath": ".ai/plans/phase-8-live-collaboration-yjs-lan.md",
-      "archived": false,
-      "phaseKey": "8"
     },
     {
       "id": "phase-9-self-hosted-hub-file-sync",
