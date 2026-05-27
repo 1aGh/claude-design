@@ -13,7 +13,7 @@
 // silently discards them. Force-snapshot is the cheap escape valve: pay the
 // full sync cost once at branch-switch time.
 
-import { existsSync, watch, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, watch } from 'node:fs';
 import path from 'node:path';
 
 import type { Context } from '../context.ts';

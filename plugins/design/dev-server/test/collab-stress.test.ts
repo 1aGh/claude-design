@@ -45,73 +45,77 @@ describe('multi-tab stress (Phase 8 Task 8)', () => {
     }
   });
 
-  test('30 Hz × STRESS_MS × 2 peers — bounded RSS + Y.Doc growth', async () => {
-    const room = createRoom('stress-slug', {
-      async seed() {},
-      async persistJson() {},
-      async persistBinary() {},
-    });
-    cleanupRoom = () => room.destroy();
-
-    const A = makeConn('peer-a');
-    const B = makeConn('peer-b');
-    await room.connect(A);
-    await room.connect(B);
-
-    // Each peer has its own local Awareness instance to model what real
-    // clients do — they don't share a memory address space with the server's
-    // awareness. We pump updates by setting state on the server-side
-    // awareness directly (the server's room.awareness is what the real WS
-    // peers' setLocalState() would land in via applyAwarenessUpdate).
-    const awA = new Awareness(new Y.Doc());
-    const awB = new Awareness(new Y.Doc());
-    awA.setLocalState({ name: 'Alice', color: '#f00', cursor: { x: 0, y: 0 }, __connId: A.id });
-    awB.setLocalState({ name: 'Bob', color: '#0f0', cursor: { x: 0, y: 0 }, __connId: B.id });
-
-    const rssBefore = process.memoryUsage().rss;
-    const docSizeBefore = Y.encodeStateAsUpdate(room.doc).byteLength;
-
-    const start = Date.now();
-    const tickInterval = 33; // ~30 Hz
-    let aX = 0;
-    let bX = 0;
-    let updates = 0;
-    while (Date.now() - start < STRESS_MS) {
-      aX = (aX + 1) % 1000;
-      bX = (bX + 7) % 1000;
-      awA.setLocalState({
-        name: 'Alice',
-        color: '#f00',
-        cursor: { x: aX, y: aX },
-        __connId: A.id,
+  test(
+    '30 Hz × STRESS_MS × 2 peers — bounded RSS + Y.Doc growth',
+    async () => {
+      const room = createRoom('stress-slug', {
+        async seed() {},
+        async persistJson() {},
+        async persistBinary() {},
       });
-      awB.setLocalState({
-        name: 'Bob',
-        color: '#0f0',
-        cursor: { x: bX, y: bX },
-        __connId: B.id,
-      });
-      updates += 2;
-      await Bun.sleep(tickInterval);
-    }
+      cleanupRoom = () => room.destroy();
 
-    const rssAfter = process.memoryUsage().rss;
-    const docSizeAfter = Y.encodeStateAsUpdate(room.doc).byteLength;
+      const A = makeConn('peer-a');
+      const B = makeConn('peer-b');
+      await room.connect(A);
+      await room.connect(B);
 
-    const rssGrowthMb = (rssAfter - rssBefore) / (1024 * 1024);
-    const docGrowth = docSizeAfter - docSizeBefore;
+      // Each peer has its own local Awareness instance to model what real
+      // clients do — they don't share a memory address space with the server's
+      // awareness. We pump updates by setting state on the server-side
+      // awareness directly (the server's room.awareness is what the real WS
+      // peers' setLocalState() would land in via applyAwarenessUpdate).
+      const awA = new Awareness(new Y.Doc());
+      const awB = new Awareness(new Y.Doc());
+      awA.setLocalState({ name: 'Alice', color: '#f00', cursor: { x: 0, y: 0 }, __connId: A.id });
+      awB.setLocalState({ name: 'Bob', color: '#0f0', cursor: { x: 0, y: 0 }, __connId: B.id });
 
-    console.log(
-      `[stress] ${updates} awareness updates over ${STRESS_MS} ms → ` +
-        `RSS Δ=${rssGrowthMb.toFixed(1)} MB, Y.Doc Δ=${docGrowth} bytes`
-    );
+      const rssBefore = process.memoryUsage().rss;
+      const docSizeBefore = Y.encodeStateAsUpdate(room.doc).byteLength;
 
-    expect(rssGrowthMb).toBeLessThan(RSS_GROWTH_LIMIT_MB);
-    expect(docGrowth).toBeLessThan(YDOC_GROWTH_LIMIT_BYTES);
+      const start = Date.now();
+      const tickInterval = 33; // ~30 Hz
+      let aX = 0;
+      let bX = 0;
+      let updates = 0;
+      while (Date.now() - start < STRESS_MS) {
+        aX = (aX + 1) % 1000;
+        bX = (bX + 7) % 1000;
+        awA.setLocalState({
+          name: 'Alice',
+          color: '#f00',
+          cursor: { x: aX, y: aX },
+          __connId: A.id,
+        });
+        awB.setLocalState({
+          name: 'Bob',
+          color: '#0f0',
+          cursor: { x: bX, y: bX },
+          __connId: B.id,
+        });
+        updates += 2;
+        await Bun.sleep(tickInterval);
+      }
 
-    // Disconnect both peers; size should go to 0.
-    room.disconnect(A);
-    room.disconnect(B);
-    expect(room.size()).toBe(0);
-  }, STRESS_MS + 5_000);
+      const rssAfter = process.memoryUsage().rss;
+      const docSizeAfter = Y.encodeStateAsUpdate(room.doc).byteLength;
+
+      const rssGrowthMb = (rssAfter - rssBefore) / (1024 * 1024);
+      const docGrowth = docSizeAfter - docSizeBefore;
+
+      console.log(
+        `[stress] ${updates} awareness updates over ${STRESS_MS} ms → ` +
+          `RSS Δ=${rssGrowthMb.toFixed(1)} MB, Y.Doc Δ=${docGrowth} bytes`
+      );
+
+      expect(rssGrowthMb).toBeLessThan(RSS_GROWTH_LIMIT_MB);
+      expect(docGrowth).toBeLessThan(YDOC_GROWTH_LIMIT_BYTES);
+
+      // Disconnect both peers; size should go to 0.
+      room.disconnect(A);
+      room.disconnect(B);
+      expect(room.size()).toBe(0);
+    },
+    STRESS_MS + 5_000
+  );
 });

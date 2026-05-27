@@ -40,20 +40,24 @@ const BANNER_CSS = `
   display: flex;
   align-items: center;
   gap: 10px;
-  background: #fef3c7;
-  color: #78350f;
-  border: 1px solid #fcd34d;
-  border-radius: 999px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-  font: 500 13px/1.2 system-ui, -apple-system, sans-serif;
+  background: var(--accent-tint, oklch(92% 0.040 55));
+  color: var(--fg-0, #111);
+  border: 1px solid var(--border-default, rgba(0,0,0,0.16));
+  border-radius: var(--radius-md, 4px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
+  font-weight: 500;
+  font-size: 12px;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
   pointer-events: none;
   user-select: none;
 }
 .dc-ai-banner__dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: #d97706;
+  background: var(--accent, oklch(56% 0.170 50));
   flex: 0 0 auto;
   animation: dc-ai-banner-pulse 1.4s ease-in-out infinite;
 }
@@ -175,6 +179,7 @@ export function AiBanner(): JSX.Element | null {
 
   if (!entry) return null;
   return (
+    // biome-ignore lint/a11y/useSemanticElements: <output> is a form-result element; role="status" on a div is the canonical live-region banner pattern (APG).
     <div className="dc-ai-banner" role="status" aria-live="polite">
       <span className="dc-ai-banner__dot" aria-hidden="true" />
       <span>{entry.author} is editing this canvas — your changes may conflict</span>

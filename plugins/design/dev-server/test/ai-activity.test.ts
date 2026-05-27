@@ -2,8 +2,8 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { createAiActivity, HEARTBEAT_GRACE_MS } from '../collab/ai-activity.ts';
-import { createBus, type Context } from '../context.ts';
+import { HEARTBEAT_GRACE_MS, createAiActivity } from '../collab/ai-activity.ts';
+import { type Context, createBus } from '../context.ts';
 
 function makeCtx(): { ctx: Context; events: { file: string; entry: unknown }[] } {
   const events: { file: string; entry: unknown }[] = [];
@@ -21,7 +21,7 @@ function makeCtx(): { ctx: Context; events: { file: string; entry: unknown }[] }
 describe('AiActivity', () => {
   test('start adds an entry and emits bus event', () => {
     const { ctx, events } = makeCtx();
-    let clock = 1000;
+    const clock = 1000;
     const ai = createAiActivity(ctx, () => clock);
     const entry = ai.start('ui/Foo.tsx', 'Claude');
     expect(entry.file).toBe('ui/Foo.tsx');
@@ -68,7 +68,7 @@ describe('AiActivity', () => {
 
   test('end clears the entry and emits a null', () => {
     const { ctx, events } = makeCtx();
-    let clock = 1000;
+    const clock = 1000;
     const ai = createAiActivity(ctx, () => clock);
     ai.start('ui/Foo.tsx', 'Claude');
     const ok = ai.end('ui/Foo.tsx');
@@ -89,7 +89,7 @@ describe('AiActivity', () => {
 
   test('list returns all live entries', () => {
     const { ctx } = makeCtx();
-    let clock = 1000;
+    const clock = 1000;
     const ai = createAiActivity(ctx, () => clock);
     ai.start('ui/Foo.tsx', 'Claude');
     ai.start('ui/Bar.tsx', 'Claude');

@@ -400,7 +400,38 @@ function CanvasCore({
   useEffect(() => {
     if (!collab || !controller) return;
     collab.publishAwareness({ viewport: controller.viewport });
-  }, [collab, controller, controller?.viewport.x, controller?.viewport.y, controller?.viewport.zoom]);
+  }, [
+    collab,
+    controller,
+    controller?.viewport.x,
+    controller?.viewport.y,
+    controller?.viewport.zoom,
+  ]);
+
+  // Phase 8 — publish local selection so foreign PeerSelection halos can
+  // render around what *I* selected. Convert the first entry's selector
+  // (CSS path the peer resolves in their own DOM) + current bounds. The
+  // bounds are screen-px from publish time — peers re-resolve cssPath
+  // when possible and fall back to bounds otherwise.
+  useEffect(() => {
+    if (!collab) return;
+    const first = selSet.selected[0];
+    if (!first || !first.selector) {
+      collab.publishAwareness({ selection: null });
+      return;
+    }
+    const b = first.bounds;
+    const bounds =
+      b && typeof b === 'object'
+        ? {
+            x: Number(b.x) || 0,
+            y: Number(b.y) || 0,
+            w: Number(b.w) || 0,
+            h: Number(b.h) || 0,
+          }
+        : { x: 0, y: 0, w: 0, h: 0 };
+    collab.publishAwareness({ selection: { cssPath: first.selector, bounds } });
+  }, [collab, selSet.selected]);
 
   /**
    * T24 — distribute the currently-selected artboards evenly on the given

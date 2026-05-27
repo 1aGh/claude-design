@@ -322,10 +322,7 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       // Clients use this on mount to backfill the banner state without
       // waiting for the next bus event.
       if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
-      return Response.json(
-        { entries: ai.list() },
-        { headers: { 'Cache-Control': 'no-store' } }
-      );
+      return Response.json({ entries: ai.list() }, { headers: { 'Cache-Control': 'no-store' } });
     },
 
     '/_api/ai/start': async (req: Request) => {

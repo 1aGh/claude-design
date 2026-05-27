@@ -156,6 +156,32 @@
               if (msg.mode === 'hard' || !msg.file || (canvasRel && msg.file === canvasRel)) {
                 location.reload();
               }
+            } else if (msg.mode === 'meta') {
+              // Phase 8 — canvas-meta sidecar changed. Filter to our own canvas:
+              // `<canvasRel>.meta.json` strip → must equal canvasRel without ext.
+              if (!canvasRel || !msg.file) return;
+              const metaBase = msg.file.replace(/\.meta\.json$/i, '');
+              const myBase = canvasRel.replace(/\.(tsx|html)$/i, '');
+              if (metaBase !== myBase) return;
+              // Echo guard — when WE just PATCHed the meta, skip the round-trip.
+              const lastSelf = (window).__maude_last_meta_self_write_at || 0;
+              if (Date.now() - lastSelf < 2000) return;
+              // Re-fetch + broadcast to the canvas via window event. canvas-lib
+              // listens for `maude:meta-refreshed` and re-applies layout +
+              // viewport in-place (no full reload — preserves tool / undo state).
+              const metaFileParam = encodeURIComponent(designRel + '/' + canvasRel);
+              fetch('/_api/canvas-meta?file=' + metaFileParam, {
+                headers: { 'Cache-Control': 'no-store' },
+              })
+                .then((r) => (r.ok ? r.json() : null))
+                .then((j) => {
+                  if (!j || typeof j !== 'object') return;
+                  window.__canvas_meta__ = j;
+                  document.dispatchEvent(new CustomEvent('maude:meta-refreshed', { detail: j }));
+                })
+                .catch(() => {
+                  /* network blip — next interaction will retry */
+                });
             }
           } catch (e) {
             console.warn('[canvas-shell] HMR message parse error', e);
@@ -188,6 +214,11 @@
         // The fetch runs in parallel with imports; failure is non-fatal (the
         // canvas falls through to default grid + fit-to-screen).
         const metaFileParam = encodeURIComponent(designRel + '/' + canvasRel);
+        // Phase 8 — expose designRel + canvasRel-without-prefix on window so
+        // collab-slug derivation can strip the prefix consistently with
+        // server-side api.fileSlug (which trims paths.designRel).
+        window.__canvas_design_rel__ = designRel;
+        window.__canvas_rel__ = canvasRel;
         const metaFetch = fetch('/_api/canvas-meta?file=' + metaFileParam, {
           headers: { 'Cache-Control': 'no-store' },
         })

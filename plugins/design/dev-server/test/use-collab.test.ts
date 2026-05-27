@@ -65,7 +65,7 @@ describe('canvasSlugFromPath', () => {
     for (const s of samples) {
       const slug = canvasSlugFromPath(s);
       expect(slug).not.toBeNull();
-      expect(re.test(slug!)).toBe(true);
+      if (slug !== null) expect(re.test(slug)).toBe(true);
     }
   });
 });

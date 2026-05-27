@@ -25,10 +25,13 @@ const DEBOUNCE_MS = 50;
 
 export interface HmrMessage {
   type: 'canvas-hmr';
-  mode: 'css' | 'module' | 'hard';
+  mode: 'css' | 'module' | 'hard' | 'meta';
   /**
    * Canvas-relative path of the file that changed, slash-normalised. Absent
    * when mode === 'hard' (the change is global — every canvas reloads).
+   *
+   * For mode === 'meta' this is the `<base>.meta.json` path; iframe peels off
+   * the `.meta.json` suffix to compare against its own `canvasRel`.
    */
   file?: string;
   /** Cache-bust token — etag-like. Caller appends to <link> href. */
@@ -70,6 +73,13 @@ export function createHmrBroadcaster(
     if (ext === '.css') {
       return { type: 'canvas-hmr', mode: 'css', file: rel, version, scope: 'canvas' };
     }
+    // Phase 8 — canvas-meta sidecar (`<base>.meta.json`) carries the
+    // artboard layout / viewport. Emit a `meta` mode so foreign tabs can
+    // re-fetch + re-apply the layout WITHOUT a full reload (which would
+    // lose React state like tool mode, undo stack, scroll position).
+    if (rel.endsWith('.meta.json')) {
+      return { type: 'canvas-hmr', mode: 'meta', file: rel, version, scope: 'canvas' };
+    }
     if (ext === '.tsx' || ext === '.jsx' || ext === '.ts' || ext === '.js') {
       return { type: 'canvas-hmr', mode: 'module', file: rel, version, scope: 'canvas' };
     }
@@ -80,7 +90,10 @@ export function createHmrBroadcaster(
     // Coalesce: hard > module > css. If a hard reload is queued, ignore any
     // softer follow-up within the debounce window.
     if (pendingMsg) {
-      const rank: Record<HmrMessage['mode'], number> = { css: 0, module: 1, hard: 2 };
+      // meta is the lightest signal — it doesn't trigger a reload, just
+       // re-fetches the sidecar. CSS still ranks above it so a same-window
+       // CSS write wins over a meta echo.
+       const rank: Record<HmrMessage['mode'], number> = { meta: 0, css: 1, module: 2, hard: 3 };
       if (rank[msg.mode] < rank[pendingMsg.mode]) {
         // Keep the existing (harder) message; just refresh the timer.
       } else {

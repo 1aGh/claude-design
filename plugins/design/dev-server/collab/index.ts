@@ -4,8 +4,8 @@
 import type { Api } from '../api.ts';
 import type { Context } from '../context.ts';
 
-import { createPersistence, Y_TYPES } from './persistence.ts';
-import { createRegistry, type Registry } from './registry.ts';
+import { Y_TYPES, createPersistence } from './persistence.ts';
+import { type Registry, createRegistry } from './registry.ts';
 
 export { Y_TYPES };
 export type { Registry } from './registry.ts';

@@ -17,8 +17,8 @@
  */
 
 import {
-  createContext,
   type ReactNode,
+  createContext,
   useCallback,
   useContext,
   useEffect,
@@ -61,13 +61,16 @@ const COLOR_PALETTE = [
 ] as const;
 
 export function colorForName(name: string): string {
-  if (!name) return COLOR_PALETTE[0]!;
+  // COLOR_PALETTE is a non-empty const tuple; the explicit `?? '#000'`
+  // fallback is unreachable but satisfies `noUncheckedIndexedAccess`.
+  const FALLBACK = '#000000';
+  if (!name) return COLOR_PALETTE[0] ?? FALLBACK;
   let hash = 5381;
   for (let i = 0; i < name.length; i++) {
     hash = ((hash << 5) + hash + name.charCodeAt(i)) | 0;
   }
   const idx = ((hash % COLOR_PALETTE.length) + COLOR_PALETTE.length) % COLOR_PALETTE.length;
-  return COLOR_PALETTE[idx]!;
+  return COLOR_PALETTE[idx] ?? FALLBACK;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -178,13 +181,21 @@ export function useForeignAwareness(): ForeignAwareness[] {
 // Slug derivation — must match `api.fileSlug` server-side.
 
 /**
- * Mirror of `api.fileSlug`. Strips the designRel prefix, normalizes
- * separators + casing, and drops the `.tsx` / `.html` extension. Same regex
- * pattern the server-side WS upgrade matches.
+ * Mirror of server-side `api.fileSlug`. The input is the canvas path as the
+ * shell stored it on `window.__canvas_meta_file__` (e.g. `.design/ui/Foo.tsx`).
+ * Strip the designRel prefix (read from `window.__canvas_design_rel__`, set
+ * by _shell.html) so both sides land on the same slug — without this both
+ * tabs open a `design-ui-foo` room while the server's inspector bridge
+ * pushes into `ui-foo`, and the rooms never converge.
  */
 export function canvasSlugFromPath(canvasRel: string | null | undefined): string | null {
   if (!canvasRel) return null;
-  const p = canvasRel.replace(/^\/+|\/+$/g, '');
+  let p = canvasRel.replace(/^\/+|\/+$/g, '');
+  if (typeof window !== 'undefined') {
+    const w = window as unknown as { __canvas_design_rel__?: string };
+    const designRel = (w.__canvas_design_rel__ ?? '').replace(/^\/+|\/+$/g, '');
+    if (designRel && p.startsWith(`${designRel}/`)) p = p.slice(designRel.length + 1);
+  }
   const slug = p
     .replace(/\//g, '-')
     .replace(/\s+/g, '_')
@@ -207,10 +218,12 @@ const AWARENESS_THROTTLE_MS = 33; // ~30 Hz
 
 export function CollabProvider({ slug, children }: CollabProviderProps): JSX.Element {
   // Y.Doc + Awareness are recreated whenever the slug changes (switching
-  // canvases tears down the prior session cleanly). Each is `useMemo`'d on
-  // slug so React doesn't dispose them across re-renders.
+  // canvases tears down the prior session cleanly). The useMemo factory
+  // bodies don't read `slug` — slug IS the cache key, intentionally.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: slug is the cache key
   const doc = useMemo(() => new Y.Doc(), [slug]);
   const awareness = useMemo(() => new Awareness(doc), [doc]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: slug is the cache key
   const myConnId = useMemo(() => crypto.randomUUID(), [slug]);
 
   const [myName, setMyName] = useState('anonymous');

@@ -1238,6 +1238,22 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
     setArtboards(initialArtboards());
   }, [initialArtboards]);
 
+  // Phase 8 — foreign canvas-meta change. The shell-level HMR client
+  // re-fetches `<canvas>.meta.json` and dispatches `maude:meta-refreshed`
+  // when *another* tab PATCHed the layout (drag, distribute, align). We
+  // re-apply positions in-place — no full reload — so the user's tool mode,
+  // undo stack, scroll, and selection state survive. Self-writes are
+  // suppressed at the dispatch site via the `__maude_last_meta_self_write_at`
+  // echo timestamp.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onRefresh = () => {
+      setArtboards(initialArtboards());
+    };
+    document.addEventListener('maude:meta-refreshed', onRefresh);
+    return () => document.removeEventListener('maude:meta-refreshed', onRefresh);
+  }, [initialArtboards]);
+
   // Stable refs so the controller's callbacks always see the latest values.
   const artboardsRef = useRef(artboards);
   artboardsRef.current = artboards;

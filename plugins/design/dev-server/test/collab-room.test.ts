@@ -5,8 +5,8 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import * as Y from 'yjs';
 
-import { createRoom, type RoomCallbacks, type RoomConn } from '../collab/room.ts';
 import { encodeHandshake, encodeSyncUpdate, handleMessage } from '../collab/protocol.ts';
+import { type RoomCallbacks, type RoomConn, createRoom } from '../collab/room.ts';
 
 function makeConn(id: string): RoomConn & { recv: Uint8Array[] } {
   const recv: Uint8Array[] = [];
@@ -72,10 +72,9 @@ describe('Room', () => {
 
     // B replays the frame against its own doc; the comment lands.
     const docB = new Y.Doc();
-    const awBStub = (
-      await import('y-protocols/awareness')
-    ).Awareness;
+    const awBStub = (await import('y-protocols/awareness')).Awareness;
     const awB = new awBStub(docB);
+    // biome-ignore lint/style/noNonNullAssertion: recv.length asserted in the prior expect()
     handleMessage(B.recv[0]!, docB, awB, { send() {} });
     expect(docB.getArray('comments').length).toBe(1);
 

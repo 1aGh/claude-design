@@ -120,9 +120,8 @@ export function createRoom(slug: string, callbacks: RoomCallbacks): Room {
   doc.on('update', (update: Uint8Array, origin: unknown) => {
     if (destroyed) return;
     // Don't echo back to the origin — they already have it; reduces noise.
-    const except = origin && typeof origin === 'object' && 'id' in origin
-      ? (origin as RoomConn)
-      : undefined;
+    const except =
+      origin && typeof origin === 'object' && 'id' in origin ? (origin as RoomConn) : undefined;
     broadcast(encodeSyncUpdate(update), except);
     scheduleFlush();
   });
@@ -130,13 +129,15 @@ export function createRoom(slug: string, callbacks: RoomCallbacks): Room {
   // Awareness changes -> broadcast (NOT persisted; ephemeral by design).
   awareness.on(
     'update',
-    ({ added, updated, removed }: { added: number[]; updated: number[]; removed: number[] }, origin: unknown) => {
+    (
+      { added, updated, removed }: { added: number[]; updated: number[]; removed: number[] },
+      origin: unknown
+    ) => {
       if (destroyed) return;
       const changed = added.concat(updated, removed);
       if (changed.length === 0) return;
-      const except = origin && typeof origin === 'object' && 'id' in origin
-        ? (origin as RoomConn)
-        : undefined;
+      const except =
+        origin && typeof origin === 'object' && 'id' in origin ? (origin as RoomConn) : undefined;
       broadcast(encodeAwarenessFrame(awareness, changed), except);
     }
   );

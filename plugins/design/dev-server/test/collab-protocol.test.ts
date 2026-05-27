@@ -26,6 +26,7 @@ describe('encodeHandshake', () => {
     const aw = new Awareness(doc);
     const frames = encodeHandshake(doc, aw);
     expect(frames.length).toBeGreaterThanOrEqual(1);
+    // biome-ignore lint/style/noNonNullAssertion: length asserted above
     expect(readType(frames[0]!)).toBe(MESSAGE_SYNC);
   });
 
@@ -35,7 +36,9 @@ describe('encodeHandshake', () => {
     aw.setLocalState({ name: 'Alice', __connId: 'a' });
     const frames = encodeHandshake(doc, aw);
     expect(frames.length).toBe(2);
+    // biome-ignore lint/style/noNonNullAssertion: length asserted above
     expect(readType(frames[0]!)).toBe(MESSAGE_SYNC);
+    // biome-ignore lint/style/noNonNullAssertion: length asserted above
     expect(readType(frames[1]!)).toBe(MESSAGE_AWARENESS);
   });
 

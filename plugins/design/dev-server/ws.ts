@@ -104,9 +104,7 @@ export function createWs(ctx: Context, api: Api, inspect: Inspect, collab: Colla
   // registry.flushAll() so any in-flight Y.Doc state is already on disk by
   // the time the client renders the reload prompt. Inspector clients +
   // canvas iframes both subscribe.
-  ctx.bus.on('git-lifecycle', (payload: unknown) =>
-    broadcast({ type: 'git-lifecycle', payload })
-  );
+  ctx.bus.on('git-lifecycle', (payload: unknown) => broadcast({ type: 'git-lifecycle', payload }));
 
   // HMR broadcaster — turns fs:any change events into `canvas-hmr` messages.
   // The iframe-side client (in _shell.html) decides reload strategy from `mode`.

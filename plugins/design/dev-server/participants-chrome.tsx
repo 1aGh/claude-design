@@ -27,68 +27,86 @@ const CHROME_CSS = `
   z-index: 10000;
   display: flex;
   align-items: center;
-  gap: -6px;
   pointer-events: auto;
+  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
 }
 .dc-participant {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font: 600 11px/1 system-ui, -apple-system, sans-serif;
-  color: #fff;
-  border: 2px solid #fff;
+  font-weight: 600;
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--accent-fg, #fff);
+  border: 1.5px solid var(--bg-0, #fff);
   margin-left: -6px;
   cursor: pointer;
   position: relative;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
   user-select: none;
   transition: transform 120ms ease, z-index 0ms 120ms;
 }
 .dc-participant:first-child { margin-left: 0; }
 .dc-participant:hover {
-  transform: scale(1.08);
+  transform: scale(1.06);
   z-index: 10;
   transition-delay: 0ms;
 }
+.dc-participant:focus-visible {
+  outline: 2px solid var(--accent, oklch(56% 0.170 50));
+  outline-offset: 2px;
+}
 .dc-participant--following {
-  outline: 2px solid #06b6d4;
-  outline-offset: 1px;
+  outline: 1.5px solid var(--accent, oklch(56% 0.170 50));
+  outline-offset: 1.5px;
 }
 .dc-participant-popover {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% + 8px);
   right: 0;
-  min-width: 140px;
-  padding: 8px 10px;
-  background: #1f2937;
-  color: #f9fafb;
-  border-radius: 6px;
-  font: 12px/1.3 system-ui, -apple-system, sans-serif;
+  min-width: 168px;
+  padding: 10px 12px;
+  background: var(--bg-1, #fff);
+  color: var(--fg-0, #111);
+  border: 1px solid var(--border-default, rgba(0,0,0,0.16));
+  border-radius: var(--radius-md, 4px);
+  font-size: 12px;
+  line-height: 1.35;
   white-space: nowrap;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.10);
   z-index: 11;
 }
 .dc-participant-popover__name {
   font-weight: 600;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+  color: var(--fg-0, #111);
+  letter-spacing: 0.01em;
 }
 .dc-participant-popover__btn {
   display: inline-block;
-  padding: 3px 8px;
-  background: #06b6d4;
-  color: #022c33;
+  padding: 4px 10px;
+  background: var(--accent, oklch(56% 0.170 50));
+  color: var(--accent-fg, #fff);
   border: none;
-  border-radius: 4px;
-  font: 500 11px/1.2 system-ui, -apple-system, sans-serif;
+  border-radius: var(--radius-sm, 2px);
+  font-family: inherit;
+  font-weight: 500;
+  font-size: 11px;
+  line-height: 1.3;
   cursor: pointer;
+  letter-spacing: 0.02em;
 }
+.dc-participant-popover__btn:hover { background: var(--accent-hover, var(--accent, oklch(50% 0.170 50))); }
 .dc-participant-popover__btn--stop {
-  background: #fca5a5;
-  color: #7f1d1d;
+  background: var(--bg-3, #e5e5e5);
+  color: var(--fg-0, #111);
+  border: 1px solid var(--border-subtle, rgba(0,0,0,0.12));
 }
+.dc-participant-popover__btn--stop:hover { background: var(--bg-4, #d8d8d8); }
 @media (prefers-reduced-motion: reduce) {
   .dc-participant { transition: none; }
 }
@@ -107,8 +125,10 @@ function initialsFor(name: string): string {
   const cleaned = name.trim();
   if (!cleaned) return '?';
   const parts = cleaned.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
-  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase();
+  const first = parts[0] ?? '';
+  if (parts.length === 1) return first.slice(0, 2).toUpperCase();
+  const second = parts[1] ?? '';
+  return ((first[0] ?? '') + (second[0] ?? '')).toUpperCase();
 }
 
 interface AvatarProps {
@@ -137,11 +157,23 @@ function Avatar({ peer, isFollowing, onToggleFollow }: AvatarProps): JSX.Element
       className={`dc-participant${isFollowing ? ' dc-participant--following' : ''}`}
       style={{ background: peer.color }}
       onClick={() => setOpen((v) => !v)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          setOpen((v) => !v);
+        }
+      }}
+      // biome-ignore lint/a11y/useSemanticElements: 28px round chip needs raw <div> + inline bg + custom focus ring; <button> reset is more code than the rule saves.
+      role="button"
+      tabIndex={0}
       title={peer.name}
       aria-label={peer.name}
+      aria-expanded={open}
     >
       {initialsFor(peer.name)}
       {open && (
+        // biome-ignore lint/a11y/useKeyWithClickEvents: stop-propagation wrapper; keyboard focus stays in the button child.
+        // biome-ignore lint/a11y/useSemanticElements: popover wrapper carries no semantic role; the inner <button> is the actionable element.
         <div className="dc-participant-popover" onClick={(e) => e.stopPropagation()}>
           <div className="dc-participant-popover__name">{peer.name}</div>
           <button

@@ -50,14 +50,40 @@ const CURSOR_CSS = `
   top: 18px;
   left: 14px;
   padding: 2px 6px;
-  font: 500 11px/1.2 system-ui, -apple-system, sans-serif;
-  color: #fff;
-  border-radius: 4px;
+  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
+  font-weight: 500;
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--accent-fg, #fff);
+  border-radius: var(--radius-sm, 2px);
   white-space: nowrap;
   max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+.dc-peer-selection {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  border: 2px solid;
+  border-radius: var(--radius-sm, 2px);
+  box-sizing: border-box;
+  will-change: transform, width, height;
+}
+.dc-peer-selection__label {
+  position: absolute;
+  top: -18px;
+  left: -2px;
+  padding: 1px 5px;
+  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
+  font-weight: 600;
+  font-size: 10px;
+  line-height: 1.3;
+  color: var(--accent-fg, #fff);
+  border-radius: var(--radius-sm, 2px) var(--radius-sm, 2px) 0 0;
+  white-space: nowrap;
 }
 @media (prefers-reduced-motion: reduce) {
   .dc-cursor { transition: none !important; }
@@ -114,6 +140,55 @@ const Cursor = memo(function Cursor({ peer, viewport }: CursorProps): JSX.Elemen
 });
 
 /**
+ * Foreign-selection halo. The peer publishes selection.cssPath (a CSS
+ * locator usable inside the same canvas iframe — it's `[data-cd-id="…"]`
+ * for canvas-shell selections). Re-resolve to live screen bounds on every
+ * render so pan / zoom / hydration changes don't desync the rect. Falls
+ * back to the published `bounds` (screen-px at publish time) when the
+ * cssPath can't be resolved locally.
+ */
+interface PeerSelectionProps {
+  peer: ForeignAwareness;
+}
+
+const PeerSelection = memo(function PeerSelection({ peer }: PeerSelectionProps): JSX.Element | null {
+  if (!peer.selection) return null;
+  const { cssPath, bounds } = peer.selection;
+
+  let rect: { x: number; y: number; w: number; h: number } | null = bounds ?? null;
+  if (cssPath && typeof document !== 'undefined') {
+    try {
+      const el = document.querySelector(cssPath);
+      if (el && el instanceof Element) {
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) {
+          rect = { x: r.left, y: r.top, w: r.width, h: r.height };
+        }
+      }
+    } catch {
+      /* invalid selector — fall through to published bounds */
+    }
+  }
+  if (!rect) return null;
+
+  return (
+    <div
+      className="dc-peer-selection"
+      style={{
+        transform: `translate(${rect.x}px, ${rect.y}px)`,
+        width: rect.w,
+        height: rect.h,
+        borderColor: peer.color,
+      }}
+    >
+      <div className="dc-peer-selection__label" style={{ background: peer.color }}>
+        {peer.name}
+      </div>
+    </div>
+  );
+});
+
+/**
  * Subscribes to foreign awareness + the local viewport. Renders one Cursor per
  * peer. Reads viewport from `useViewportControllerContext` — if the canvas
  * doesn't expose a controller (rare edge case), falls back to identity.
@@ -131,6 +206,9 @@ export function CursorsOverlay(): JSX.Element {
   }, [liveVp.x, liveVp.y, liveVp.zoom]);
   return (
     <div className="dc-cursor-overlay" aria-hidden="true">
+      {peers.map((peer) => (
+        <PeerSelection key={`sel-${peer.clientID}`} peer={peer} />
+      ))}
       {peers.map((peer) => (
         <Cursor key={peer.clientID} peer={peer} viewport={vp} />
       ))}
