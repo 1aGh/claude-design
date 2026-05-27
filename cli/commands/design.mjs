@@ -3,8 +3,18 @@ import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { basename, dirname, join, resolve } from 'node:path';
 import { parseArgs } from '../lib/argv.mjs';
+import { runAdopt, runLink, runStatus, runUnlink } from '../lib/design-link.mjs';
 
-const SUBCOMMANDS = new Set(['serve', 'init', 'export', 'help']);
+const SUBCOMMANDS = new Set([
+  'serve',
+  'init',
+  'export',
+  'link',
+  'unlink',
+  'status',
+  'adopt',
+  'help',
+]);
 
 export async function run({ args, pkgRoot }) {
   const { positional } = parseArgs(args);
@@ -20,19 +30,17 @@ export async function run({ args, pkgRoot }) {
     process.exit(2);
   }
 
-  if (sub === 'serve') {
-    return runServe({ args, pkgRoot });
-  }
-  if (sub === 'init') {
-    return runInit({ args, pkgRoot });
-  }
-  if (sub === 'export') {
-    return runExport({ args });
-  }
+  if (sub === 'serve') return runServe({ args, pkgRoot });
+  if (sub === 'init') return runInit({ args, pkgRoot });
+  if (sub === 'export') return runExport({ args });
+  if (sub === 'link') return runLink({ args });
+  if (sub === 'unlink') return runUnlink({ args });
+  if (sub === 'status') return runStatus({ args });
+  if (sub === 'adopt') return runAdopt({ args });
 }
 
 function usage() {
-  return `maude design <serve|init|export> [options]
+  return `maude design <serve|init|export|link|unlink|status|adopt> [options]
 
   serve [--port N] [--root PATH]
         Start the design plugin's dev server in the current repo. Equivalent
@@ -56,6 +64,28 @@ function usage() {
         port from .design/_server.json; requires a running dev server. The
         response body is written to --out (default: current dir, server-
         supplied filename). Formats: png pdf svg html pptx canva zip.
+
+  link <url> --token <hex> [--adopt] [--force]
+        Pair this clone with a Maude hub. Writes .design/config.json's
+        linkedHub field (committed) plus the per-machine token to
+        ~/.config/maude/hubs.json (NEVER committed). --adopt signals to the
+        sync agent (Phase 9 Task 4) to push local state up unconditionally on
+        first connect — use it when bootstrapping a hub from a populated repo.
+        --force skips the /health reachability probe (e.g. behind a firewall
+        + trusted URL).
+
+  adopt <url> --token <hex>
+        Alias of 'link --adopt'. Shipped as a discoverable subcommand so
+        first-time bootstrap reads like 'git remote add' + 'git push -f'.
+
+  unlink [--keep-token]
+        Drop linkedHub from .design/config.json + remove the per-machine
+        token (unless --keep-token). Repo returns to solo mode. Local
+        .design/*.html etc. are untouched.
+
+  status [--json]
+        Print whether this repo is linked, the configured hub URL, when
+        it was linked, and a live /health probe of the hub.
 `;
 }
 

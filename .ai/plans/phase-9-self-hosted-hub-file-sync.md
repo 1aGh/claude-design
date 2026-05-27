@@ -206,7 +206,7 @@ A user who has been running Phase 8 (loopback multi-tab + git push/pull for cros
   - Bootstrap key single-use enforced (reuse returns 401).
   - `/admin/api/*` unauthenticated request returns 401.
 
-### Task 3: `maude design link|unlink|status|adopt`
+### Task 3: `maude design link|unlink|status|adopt` ✅ 2026-05-27
 
 - **Do:** `cli/commands/design.mjs` extends:
   - `maude design link <url> --token <hex>` — pings hub, performs first-sync handshake. Conflict resolution: **two modes only** for v1.1:
