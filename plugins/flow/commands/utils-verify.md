@@ -41,30 +41,33 @@ Use during `/execute` after each task (Edit-Verify Loop). For a full cross-platf
    ```
    - Affected unit/integration tests (only the tests touching changed files — not the full `quality.tests` suite).
 
-3. **Web UI smoke (if diff contains web sources):**
-   ```bash
-   # Quick smoke — agent-browser, web-desktop only, < 30s
-   agent-browser open http://localhost:4000/<route-relevant-to-task>
-   agent-browser snapshot -c             # compact snapshot, context-cheap
-   agent-browser screenshot .ai/device/verify/$(date +%s)-<task>.png
-   ```
-   - Smoke verifies: page loads without crash, key elements from the plan are in the snapshot
-   - **Not** a full scenario — that's `/validate`. Here we catch obvious 500s, missing imports, runtime crashes.
+3. **UI smoke (parallel — fire only the legs the diff triggers):**
 
-4. **Native smoke (if diff contains RN sources):**
-   ```bash
-   IPHONE_UDID=$(xcrun simctl list devices booted -j | python3 -c "import json,sys;d=json.load(sys.stdin)['devices'];print(next((dev['udid'] for k,v in d.items() if 'iOS' in k for dev in v if 'iPhone' in dev['name']), ''))")
-   agent-device --platform ios open com.<project>.<bundle> --udid $IPHONE_UDID
-   agent-device snapshot -i              # accessibility snapshot
-   agent-device screenshot .ai/device/verify/$(date +%s)-ios.png
-   ```
-   - Smoke = app starts, navigation to affected screen works, no red-screen / crash dialog
+   Web smoke and native smoke are independent. **When the diff contains both web and native sources, run both legs in parallel in a single assistant message** (one Bash call for web, one for native); when only one applies, run just that one. Optional subagents (step 4) join the same parallel batch when their triggers fire.
 
-5. **Subagents (optional, recommended for UI tasks):**
+   - **Web (diff contains web sources):**
+     ```bash
+     # Quick smoke — agent-browser, web-desktop only, < 30s
+     agent-browser open http://localhost:4000/<route-relevant-to-task>
+     agent-browser snapshot -c             # compact snapshot, context-cheap
+     agent-browser screenshot .ai/device/verify/$(date +%s)-<task>.png
+     ```
+     - Verifies: page loads without crash, key elements from the plan are in the snapshot.
+     - **Not** a full scenario — that's `/validate`. Here we catch obvious 500s, missing imports, runtime crashes.
+   - **Native (diff contains RN sources):**
+     ```bash
+     IPHONE_UDID=$(xcrun simctl list devices booted -j | python3 -c "import json,sys;d=json.load(sys.stdin)['devices'];print(next((dev['udid'] for k,v in d.items() if 'iOS' in k for dev in v if 'iPhone' in dev['name']), ''))")
+     agent-device --platform ios open com.<project>.<bundle> --udid $IPHONE_UDID
+     agent-device snapshot -i              # accessibility snapshot
+     agent-device screenshot .ai/device/verify/$(date +%s)-ios.png
+     ```
+     - Smoke = app starts, navigation to affected screen works, no red-screen / crash dialog.
+
+4. **Subagents (optional, recommended for UI tasks) — add to the same parallel batch as step 3 when triggered:**
    - `a11y-auditor` — quick a11y check of affected UI files
    - `design-system-guard` — conformance with the project design system
 
-6. **Report:**
+5. **Report:**
    ```
    ✓ types: pass
    ✓ lint: pass (3 files)
@@ -73,14 +76,14 @@ Use during `/execute` after each task (Edit-Verify Loop). For a full cross-platf
    ⚠ a11y: 1 warning — Button on screen X missing accessible name
    ```
 
-7. **Config drift nudge (soft, never blocks):**
+6. **Config drift nudge (soft, never blocks):**
    ```bash
    maude doctor --json | jq -e '(.summary.driftCount + .summary.qualityAdditions) == 0' >/dev/null \
      || echo "⚠ config drift / missing quality gates — run \`maude doctor --fix\` when convenient (not blocking)"
    ```
    A nudge only. Gate failures in Step 2 ARE blockers; this is not.
 
-8. If something fails, propose a fix or return to the edit-verify loop in `/execute` (max 3 iterations per task).
+7. If something fails, propose a fix or return to the edit-verify loop in `/execute` (max 3 iterations per task).
 
 ## What /flow:utils-verify does NOT do
 

@@ -79,22 +79,15 @@ The skill treats `$BRIEF` as the answer to discovery Question 1 (product one-lin
 
 Vyvolej skill `design` se vstupem: `new $ARGUMENTS`.
 
-Načti `.design/config.json`:
+**One pre-flight call instead of 4–8 sequential jq reads.** `prep.sh` reads `.design/config.json` + `_active.json` + `_preflight.json` + `_server.json` in a single pass and exports the resolved vars (`REPO_ROOT`, `NAME`, `DESIGN_ROOT`, `ROOT_CLASS`, `THEME`, `TOKENS_REL`, `NEW_CANVAS_DIR`, `NEW_COMPONENT_DIR`, `TEAM_ACCENT`, `DEFAULT_DS`, `KNOWN_DS`, `ACCENT_STRATEGY`, `COLOR_SPACE`, `DEPS_OK`, `DEPS_MISSING`, `SERVER_UP`, `SERVER_PORT`). The DS-presence gate (`bootstrap-check.sh`, step 0) stays separate — it owns the 0/10/11 exit-code contract.
 
 ```bash
-CFG=.design/config.json
-NAME=$(jq -r '.name // "Project"' "$CFG")
-DESIGN_ROOT=$(jq -r '.designRoot // ".design"' "$CFG")
-ROOT_CLASS=$(jq -r '.rootClass // "app"' "$CFG")
-THEME=$(jq -r '.themeDefault // "dark"' "$CFG")
-TOKENS_REL=$(jq -r '.tokensCssRel // "system/colors_and_type.css"' "$CFG")
-NEW_CANVAS_DIR=$(jq -r '.newCanvasDir // "ui/project"' "$CFG")
-NEW_COMPONENT_DIR=$(jq -r '.newComponentDir // "ui/project/components"' "$CFG")
-TEAM_DEFAULT=$(jq -r '.teamAccentDefault // empty' "$CFG")
+eval "$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/prep.sh" --shell-export --shape new --root "$REPO_ROOT")"
+CFG="$REPO_ROOT/.design/config.json"
+TEAM_DEFAULT="$TEAM_ACCENT"   # downstream alias
 
-# Resolve target DS (multi-DS aware)
+# Resolve target DS (multi-DS aware) — DEFAULT_DS / KNOWN_DS already exported by prep.sh
 DS_FLAG=$(grep -oE -- '--ds=[a-z][a-z0-9-]*' <<< "$ARGS" | cut -d= -f2)
-DEFAULT_DS=$(jq -r '.defaultDesignSystem // "project"' "$CFG")
 TARGET_DS="${DS_FLAG:-$DEFAULT_DS}"
 
 # Validate against designSystems[]
@@ -522,7 +515,11 @@ Iter 1 ready (opt_out_scope = <scope>). Pick:
 
 This exists because the user signaled exploration — they should get to see iter-1 cheaply before the loop reshapes it. **For `opt_out_scope = palette` (default), do NOT fire this checkpoint** — the existing `--perfect` contract runs unconditionally. Auto Mode (AskUserQuestion denied) → default to (a) and proceed.
 
+**Spawn the panel as one parallel batch.** All critics read the same hot-off-the-press canvas + baseline screenshots — there's no inter-critic dependency within an iteration. **In a single assistant message, spawn the selected panel using parallel Agent tool calls** (4 critics in the default panel; one batch, not four sequential spawns). The `design-system-keeper` from step 9.5 is spawned in this same message (already specified there). The orchestrator merges all verdicts at the end of the iteration.
+
 **Pass `opt_out_scope` to every critic in the panel.** Each `Agent` invocation's prompt MUST include the scope verbatim alongside `canvas_path`, `screenshot_path`, etc. Each critic agent reads `opt_out_scope` and adjusts severity per its own spec — `design-critic` / `graphic-design-critic` / `typography-critic` / `signature-moment-critic` downgrade matching DS-rule blockers to warnings; `a11y-critic` / `frontend-critic` / `copy-critic` ignore the parameter (their blockers are universal).
+
+**Pass the DS context inline too (B16 — avoid re-reads).** `/design:new` already resolved the design system in step 1. Hand each critic the resolved values in its spawn prompt — `root_class: <ROOT_CLASS>`, `tokens_path: <abs DS_TOKENS>`, `components_css: <abs DS_ROOT/preview/_components.css>`, `ds_root: <abs DS_ROOT>`, `ds_name: <TARGET_DS>`, `theme: <THEME>` — so the critics that need DS conformance context (`design-critic`, `graphic-design-critic`, `typography-critic`) don't each re-`Read` `.design/config.json` + the tokens CSS. Subagents inherit CLAUDE.md + MCP + skills but NOT this conversation, so the resolved DS context must travel in the prompt.
 
 **Panel composition — bar by mode (minimum the orchestrator MUST spawn):**
 

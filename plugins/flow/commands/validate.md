@@ -29,16 +29,29 @@ Stack **drift** and missing **quality additions** are warning-only at this step 
 
 > Reads gates from `.ai/workflows.config.json` → `quality` per the `flow:quality-gates` skill. Each gate is a blocker; a missing gate skips with a warning (never fabricated). `tests` and `build` run in Steps 2–3 below — preserving the overall fail-fast order format → lint → typecheck → tests → build.
 
+`typecheck` and `lint` are pure read-only scans with no dependency on each other.
+
+**In a single assistant message, run these two checks in parallel using two Bash tool calls:**
+
+- typecheck:
+  ```bash
+  CMD=$(jq -r '.quality.typecheck // empty' .ai/workflows.config.json)
+  if [[ -n "$CMD" ]]; then echo "→ typecheck: $CMD"; eval "$CMD" || { echo "::error::typecheck gate failed (\`$CMD\`)"; exit 1; }
+  else echo "⚠ quality.typecheck not declared — run \`maude doctor --fix\` (skipping)"; fi
+  ```
+- lint:
+  ```bash
+  CMD=$(jq -r '.quality.lint // empty' .ai/workflows.config.json)
+  if [[ -n "$CMD" ]]; then echo "→ lint: $CMD"; eval "$CMD" || { echo "::error::lint gate failed (\`$CMD\`) — try \`pnpm biome check --fix\` or \`maude doctor --fix\`"; exit 1; }
+  else echo "⚠ quality.lint not declared — run \`maude doctor --fix\` (skipping)"; fi
+  ```
+
+When both return, run `format` (must follow lint so we don't flag lint-suggested fixes):
+
 ```bash
-for gate in format lint typecheck; do
-  CMD=$(jq -r ".quality.$gate // empty" .ai/workflows.config.json)
-  if [[ -n "$CMD" ]]; then
-    echo "→ $gate: $CMD"
-    eval "$CMD" || { echo "::error::$gate gate failed (\`$CMD\`) — try \`pnpm biome check --fix\` or \`maude doctor --fix\`"; exit 1; }
-  else
-    echo "⚠ quality.$gate not declared — run \`maude doctor --fix\` (skipping)"
-  fi
-done
+CMD=$(jq -r '.quality.format // empty' .ai/workflows.config.json)
+if [[ -n "$CMD" ]]; then echo "→ format: $CMD"; eval "$CMD" || { echo "::error::format gate failed (\`$CMD\`)"; exit 1; }
+else echo "⚠ quality.format not declared — run \`maude doctor --fix\` (skipping)"; fi
 ```
 
 ### 2. Tests — `config.quality.tests`
@@ -105,51 +118,44 @@ for gate in $(jq -r '.quality | keys[]' .ai/workflows.config.json); do
 done
 ```
 
-### 4. Cross-platform scenario (validation backbone)
+### 4. Cross-platform + a11y + design + security (parallel fan-out)
 
-**Spawn the `scenario-runner` subagent** (`.claude/agents/scenario-runner.md`).
+> Resolve config **once, here**, and pass the relevant values inline in each spawn prompt. Subagents inherit CLAUDE.md + MCP + skills but NOT this conversation, so handing them the resolved knobs saves each one a re-read of `.ai/workflows.config.json`.
 
-- The subagent figures out which scenarios are relevant to the diff (reads `.ai/scenarios/` + the active plan).
-- If the feature touches UI and **no scenario exists** → **HARD FAIL**: block until a scenario is written (`/scenario new <name>`).
-- The subagent decides scope (web-only / native-only / all 5 platforms) based on touched files.
-- It runs scenarios in parallel per the protocol in `.claude/skills/scenario/SKILL.md`.
-- Returns JSON with: `report_path`, `platforms_run`, `results`, `blockers`, `parity_ok`, `follow_ups`.
+```bash
+SEV_FLOOR=$(jq -r '.security.severityFloor // "medium"'        .ai/workflows.config.json)
+INCLUDE_AI=$(jq -r '.security.includeAi // true'               .ai/workflows.config.json)
+SEC_SCOPE=$(jq -rc '.security.scope // ["classic","ai"]'       .ai/workflows.config.json)
+SEC_ENABLED=$(jq -r '.skills.securityRules.enabled // true'    .ai/workflows.config.json)
+```
 
-**Gate:**
+**In a single assistant message, spawn the following subagents using parallel Agent tool calls:**
+
+- `scenario-runner` — runs the cross-platform scenario per `.claude/skills/scenario/SKILL.md`. It picks scope (web-only / native-only / all 5 platforms) from the diff and reads `.ai/scenarios/` + the active plan. Returns JSON: `report_path`, `platforms_run`, `results`, `blockers`, `parity_ok`, `follow_ups`.
+- `a11y-auditor` — live axe-core scan via agent-browser over affected routes (reads the scenario screenshot directory as it fills; does not block on scenario completion). Reports WCAG 2.1 AA blockers + warnings.
+- `design-system-guard` — token + component conformance against the project design system. Enforces: allowed effects (gradients/glass/blur), iconography family + stroke width, typography roles (UI typeface vs monospace for numbers/timecodes/IDs/CLI), single customizable color token, allowed palette, dark/light priority, mobile tap targets (44×44), prefers-reduced-motion fallback. **Uses scenario screenshots as primary evidence** (not just static grep).
+- `security-auditor` — defender pass (OWASP-class static + grep over changed files: injection, secrets, authN/Z, crypto, SSRF, XSS, deserialization, path traversal, supply chain, logging, error handling). **Pass inline in the spawn prompt:** `severityFloor: <SEV_FLOOR>`, `includeAi: <INCLUDE_AI>`, `scope: <SEC_SCOPE>` — do not re-read config.
+- `ethical-hacker` — adversarial review: chained exploits + AI/MCP attack surface (prompt injection in tool outputs, confused-deputy across MCP servers, the trifecta = private data + untrusted content + outbound exfil in one agent loop, tool-description injection in newly added MCP servers). **Pass inline:** the same three security knobs.
+
+Skip the `security-auditor` + `ethical-hacker` pair entirely when `SEC_ENABLED == false`; skip only the AI/MCP lens when `INCLUDE_AI == false` (the defender pass still runs). Reuse a fresh security report (`.ai/logs/security-reviews/<branch>-*.md` within the last hour, same HEAD) instead of re-running.
+
+**Wait for all five to complete before evaluating the exit gates in §5.**
+
+### 5. Exit gates
+
+Evaluate after all five subagents return. **Stop on first hard fail**, accumulate soft warnings.
+
+**Scenario:**
+- If the feature touches UI and **no scenario exists** → HARD FAIL: block until a scenario is written (`/scenario new <name>`).
 - `blockers > 0` → `/validate` fails. Fix, retry.
-- `parity_ok == false` → cross-platform divergence. Requires a DDR (why the divergence is intentional) **or** a fix for parity.
-- `SKIPPED` platform only because of an unbooted sim → warning, not fail. But if the user should have run ios-phone and the sim wasn't booted, that's a soft fail (they should have booted it).
+- `parity_ok == false` → cross-platform divergence. Requires a DDR (why the divergence is intentional) **or** a parity fix.
+- `SKIPPED` platform only because of an unbooted sim → warning, not fail. But if the user should have run ios-phone and the sim wasn't booted, that's a soft fail.
 
-### 5. A11y (for UI projects)
+**A11y / design (UI projects):** WCAG 2.1 AA blockers and design-system violations are blockers (report file:line in §8).
 
-**Spawn the `a11y-auditor` subagent.** The subagent can use agent-browser for a live axe-core run over affected routes (not just static analysis). Reports WCAG 2.1 AA blockers + warnings per the project a11y rules.
-
-### 6. Design consistency (for UI projects)
-
-**Spawn the `design-system-guard` subagent.** The subagent compares the affected UI against the project design system, enforcing rules such as:
-- Allowed effects (gradients, glass, blur)
-- Iconography family and stroke width
-- Typography roles (UI typeface vs monospace for numbers / timecodes / IDs / CLI)
-- Single customizable color token (where applicable)
-- Allowed color palette
-- Dark/light mode priority
-- Mobile tap target sizes (e.g. 44×44)
-- prefers-reduced-motion fallback
-
-The subagent **must use screenshots from the scenario report** as primary evidence (not just grep static analysis), because the scenario provides rendered cross-platform proof.
-
-### 6.5 Security
-
-**Spawn the `security-auditor` and `ethical-hacker` subagents in parallel.** The defender catches OWASP-class findings against changed files (injection, secrets, authN/Z, crypto, SSRF, XSS, deserialization, path traversal, supply chain, logging, error handling). The attacker threat-models the change for chained exploits and **AI/MCP attack surface** — prompt injection in tool outputs, confused-deputy across MCP servers, the trifecta (private data + untrusted content + outbound exfil in one agent loop), tool-description injection in newly added MCP servers. Reports aggregate to `.ai/logs/security-reviews/<branch>-<ts>.md`.
-
-**Gate:**
-
-- Any finding at severity ≥ `security.severityFloor` (default `medium`) → `/flow:validate` fails.
-- Skip the AI/MCP lens when `security.includeAi: false` in config (e.g. backend-only services with no model surface). The defender pass still runs.
+**Security:** aggregates to `.ai/logs/security-reviews/<branch>-<ts>.md`.
+- Any finding at severity ≥ `severityFloor` (default `medium`) → `/flow:validate` fails.
 - `ethical-hacker.exploit_chains > 0` is informational by itself, never a blocker — **but** a chain that combines a medium defender finding with a medium attacker finding promotes to high and counts as a blocker.
-- Reuses a fresh report (`.ai/logs/security-reviews/<branch>-*.md` within last hour, same HEAD) instead of re-running.
-
-Skip the whole step when `skills.securityRules.enabled: false`.
 
 ### 7. Doc / decision drift
 

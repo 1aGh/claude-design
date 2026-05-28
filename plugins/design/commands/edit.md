@@ -56,12 +56,11 @@ Headless Chrome (and many real user browsers / OS accessibility settings) defaul
 
 Vyvolej skill `design` se vstupem `$ARGUMENTS`.
 
+**One pre-flight call instead of the config jq reads + the step-3 slug compute.** `prep.sh --shape edit` reads `.design/config.json` + `_active.json` + `_server.json` in a single pass and exports `DESIGN_ROOT`, `ROOT_CLASS`, `TOKENS_REL`, plus the active-canvas context `ACTIVE_CANVAS`, `SELECTED_FILE`, `SEL_VALID`, `OPEN_TABS`, `ACTIVE_SLUG`, and the server probe `SERVER_UP` / `SERVER_PORT`. Step 3's slug no longer needs a separate `slug.sh` call (use `$ACTIVE_SLUG`); step 2 still runs `server-up.sh` because that helper *starts* a stale/absent server — `prep.sh` only probes.
+
 ```bash
-# Read per-repo config (or query running server's /_config)
-CFG=.design/config.json
-DESIGN_ROOT=$(jq -r '.designRoot // ".design"' "$CFG" 2>/dev/null || echo ".design")
-ROOT_CLASS=$(jq -r '.rootClass // "app"'           "$CFG" 2>/dev/null || echo "app")
-TOKENS_REL=$(jq -r '.tokensCssRel // "system/colors_and_type.css"' "$CFG" 2>/dev/null || echo "system/colors_and_type.css")
+eval "$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/prep.sh" --shell-export --shape edit --root "$REPO_ROOT")"
+CFG="$REPO_ROOT/.design/config.json"
 ```
 
 ### 1.5 Auto-load DS context for inline-mode canvases (Phase 3.6 Task 12c)
@@ -125,7 +124,7 @@ if [ "${ACTIVE##*.}" = "tsx" ]; then
 fi
 ```
 
-**What the orchestrator does with those paths:** if `LOAD_CSS=1`, the orchestrator `Read`s both files BEFORE building the prompt for `frontend-design`. The class names in `_components.css` show what's available (`.btn`, `.btn--ghost`, `.tile`, `.sku`, `.seg`, ...), and `colors_and_type.css` shows the token namespace — both seed the LLM with the exact vocabulary the canvas already speaks. For `css_mode: "tailwind"` canvases skip (Tailwind utilities self-describe); for `css_mode: "modules"` load the canvas's `<Slug>.module.css` sidecar instead. The canvas-lib read ALWAYS happens for `.tsx` canvases (any mode) — the lib is the project's authoring vocabulary and missing it is the most common reason a `/design:edit` suggests re-inventing a helper that already exists.
+**What the orchestrator does with those paths:** if `LOAD_CSS=1`, the orchestrator `Read`s both files BEFORE building the prompt for `frontend-design`. **Read `_components.css`, `colors_and_type.css`, and the canvas-lib (the always-on `.tsx` read below) in parallel — one assistant message, multiple Read tool calls** — they're independent files and serialising them just adds round-trips. The class names in `_components.css` show what's available (`.btn`, `.btn--ghost`, `.tile`, `.sku`, `.seg`, ...), and `colors_and_type.css` shows the token namespace — both seed the LLM with the exact vocabulary the canvas already speaks. For `css_mode: "tailwind"` canvases skip (Tailwind utilities self-describe); for `css_mode: "modules"` load the canvas's `<Slug>.module.css` sidecar instead. The canvas-lib read ALWAYS happens for `.tsx` canvases (any mode) — the lib is the project's authoring vocabulary and missing it is the most common reason a `/design:edit` suggests re-inventing a helper that already exists.
 
 ### 2. Server lifecycle (vždy první) + runtime-bundle health probe
 
@@ -163,8 +162,10 @@ SEL_VALID=$([[ -n "$SELECTED" && "$SEL_FILE" == "$ACTIVE" ]] && echo 1 || echo 0
 # inline (server keeps it in sync), so this is a single read.
 OPEN_COMMENTS=$(jq -c '[(.active_comments // [])[] | select(.status != "resolved")]' "$DESIGN_ROOT/_active.json" 2>/dev/null || echo '[]')
 
-# Slug + COMMENTS_FILE for the resolve path (single source of truth: dev-server/bin/slug.sh).
-SLUG=$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/slug.sh" "${ACTIVE#$DESIGN_ROOT/}")
+# Slug + COMMENTS_FILE for the resolve path. prep.sh (step 1) already computed
+# the slug via slug.sh — reuse $ACTIVE_SLUG; fall back to a direct slug.sh call
+# only if prep didn't run (e.g. ACTIVE changed after pre-flight).
+SLUG="${ACTIVE_SLUG:-$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/slug.sh" "${ACTIVE#$DESIGN_ROOT/}")}"
 COMMENTS_FILE="$DESIGN_ROOT/_comments/$SLUG.json"
 ```
 
@@ -415,7 +416,13 @@ If the fast-path runs but ds-keeper produces 0 token-usage findings, the orchest
 
 Default loop **multi-axis** stop condition: `correctness == 0 AND aspiration ≥ 4.0 AND specificity == "pass" AND no_gains_for_1_round`. Když plateau → exit `stable-but-bland` s diagnostic (lowest 2 axes), místo silent success na "blockers == 0 ale bland."
 
-Each iteration: pick panel → spawn parallel via Agent calls → parse JSON verdicts → write NNN-PANEL.md → check exit conditions → auto-fix top 3 blockers → repeat. Track best snapshot, restore on divergence.
+**Per iteration, decide the panel set first, then spawn it in one parallel batch.** The decision block selects which critics run:
+
+1. **`DRIFT_FEEDBACK=1`** (step 8a) → `[design-system-keeper, design-critic]`, cap 2 iter.
+2. **else** → the routed panel from the table above (default 4-critic set; add `signature-moment-critic` when feedback carries polish/nicer/elegant cues; `--perfect --all` → every critic).
+3. **`design-system-keeper`** (step 7.5) joins the same batch when `RUN_KEEPER=1`.
+
+Then: **spawn the selected set in a single assistant message using parallel Agent tool calls** → parse JSON verdicts → write NNN-PANEL.md → check exit conditions → auto-fix top 3 blockers → repeat. Even when the selected set is a single critic, keep the explicit "spawn in parallel" framing so the habit holds. Track best snapshot, restore on divergence.
 
 ### 9. Refresh docs (auto)
 

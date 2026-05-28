@@ -54,6 +54,8 @@ For non-GitHub providers, the live ticket view was fetched in the "Tracker conte
 - Review the proposed fix strategy
 - Note all files to modify
 
+> **Batch the context load:** the RCA document and the live ticket view (GitHub `gh issue view` or the provider MCP fetch from the Tracker-context step) are independent — **fetch them in parallel in a single assistant message**. Once the RCA names its "files to modify", read that whole set in one parallel batch too, rather than one Read at a time.
+
 ### 2. Verify Current State
 
 Before making changes:

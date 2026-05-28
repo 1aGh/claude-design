@@ -38,13 +38,18 @@ If a criterion can't be met, **don't skip** — record a blocker in STATE.md and
 
 Walk through `## Decisions to record` in the plan. For each unrecorded item run `/flow:record-ddr` (or do it inline). **No decision is lost.** The `ddr-keeper` skill provides a quality gate.
 
-### 4. Code review (`/flow:review-code`)
+### 4. Code review (parallel fan-out)
 
-Run `/flow:review-code` on uncommitted changes. This version sequences:
+Run `/flow:review-code` on uncommitted changes. The audit and the simplifier read the **same diff** and produce **independent** outputs, so they run concurrently; the recheck is sequential after both finish.
 
-1. Audit pass — finds correctness / quality / convention findings; `security-auditor` + `ethical-hacker` cover security (defender + attacker reports land in `.ai/logs/security-reviews/`; `/flow:review-code` reuses them if fresh for HEAD).
-2. `code-simplifier` subagent pass — auto-fixes stylistic issues (clarity, nesting, naming).
-3. Recheck — re-run static checks + affected tests. If the simplifier broke something, revert.
+**In a single assistant message, spawn these subagents in parallel using parallel Agent tool calls:**
+
+- `security-auditor` + `ethical-hacker` — audit pass (defender + attacker; reports land in `.ai/logs/security-reviews/`; reused if fresh for HEAD). These two are themselves a parallel pair — spawn both here, in the same message, not in a nested sub-block.
+- `code-simplifier` — auto-fixes stylistic issues (clarity, nesting, naming) on a working copy.
+
+> **Race guard:** `code-simplifier` mutates files while the auditors read them. To keep the audit reading the original, the simplifier must write to a staging copy (`.git/maude-simplifier-staging/`) or return a patch rather than editing in place — the auditors always read the committed/working originals. Apply the simplifier's patch only **after** all three return.
+
+After all three return: apply the simplifier patch, then run a recheck pass (static checks + affected tests) on the simplified diff to confirm no regressions. If the simplifier broke something, revert its patch.
 
 **Hard gate:**
 

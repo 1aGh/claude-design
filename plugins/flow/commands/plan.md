@@ -53,6 +53,10 @@ If the feature involves a repeatable pattern (e.g., "add docs for all components
 
 > Before planning, assess the feature's complexity and domain to select the right depth and context.
 
+The three assessment passes below read **different, independent inputs** — complexity reads the feature + codebase map, domain reads `.claude/agents/` + `package.json`, the DS reference reads the PRD + design-system doc. None depends on another's output.
+
+**Run them in parallel: in a single assistant message, batch the reads/scans for Complexity Detection, Domain Detection, and Design System Reference together** (multiple Read / Grep tool calls in one message). Only the task-enumeration in **Write the Plan** (Step 6) waits for all three to land.
+
 ### Complexity Detection
 
 Evaluate the feature and classify:
@@ -207,6 +211,8 @@ As a <user> I want <goal> so that <benefit>
 ## Context References
 
 ### Must-Read Files
+
+> When consuming this section during `/flow:execute`, **read every file listed here in parallel in a single assistant message** (multiple Read tool calls) — they're independent context loads.
 
 - `path/to/file.ts` (lines X-Y) — Why: [reason]
 

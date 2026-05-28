@@ -42,7 +42,14 @@ This command **does NOT create a canvas** — use `/design:new` for that. It als
 
 ### Step 1 — Detect environment
 
-Read `<repo>/.design/config.json`. If it doesn't exist:
+One pre-flight call resolves config presence + the known-DS set in a single pass (instead of a bare `.design/config.json` read):
+
+```bash
+eval "$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/prep.sh" --shell-export --shape setup-ds)"
+# → CONFIG_PRESENT, KNOWN_DS, DEFAULT_DS, REPO_ROOT, DESIGN_ROOT, ACCENT_STRATEGY, COLOR_SPACE
+```
+
+If `CONFIG_PRESENT=false`:
 
 ```
 → .design/config.json missing. Running /design:init first to initialize the project…
@@ -50,7 +57,7 @@ Read `<repo>/.design/config.json`. If it doesn't exist:
 
 Then auto-invoke `/design:init --skip-prompts` so the user isn't double-prompted. After it returns, continue.
 
-If config exists, skip onboard.
+If config exists (`CONFIG_PRESENT=true`), skip onboard. `KNOWN_DS` already tells you whether `<name>` collides with an existing DS (drives the first-bootstrap / additional-ds / re-bootstrap sub-mode decision in Step 2).
 
 ### Step 1.5 — Cache inspiration library inventory
 
@@ -90,7 +97,7 @@ See `plugins/design/skills/design-system/SKILL.md` "Bootstrap flow" for the cano
 7.5. **Animation-contract gate (fail closed — DDR-049).** If `system/<ds>/preview/motion.tsx` was scaffolded, grep it: it MUST import `@maude/canvas-lib` AND reference the vocabulary (`<MotionDemo` or `<MotionTrack`). A specimen that is pure-CSS `@keyframes` only (no canvas-lib import) violates the Animation tooling contract (`skills/design-system/SKILL.md`). On miss → either **regenerate the specimen** against the contract, or, if a zero-JS specimen is genuinely intended, record the deviation in `_history/_system/<ds>-bypass-log.md` with a one-line reason. Do NOT accept a silently-pure-CSS motion specimen. (`motion-critic` in step 10 also blocks it; this gate catches it before the panel so the regen happens once.)
 8. Copy-claim → asset-receipt sweep, then auto-run completeness-critic.
 9. Visual sanity — 3 signature specimen screenshots via `dev-server/bin/screenshot.sh`.
-10. **4 kola značky panel** — Kolo 1 (Srozumitelnost: completeness + a11y) → Kolo 2 (Atraktivita: graphic-design + signature-moment) → Kolo 3 (Konzistence: typography + brand + copy), fired in parallel where independent. Honest verdicts surface in the completion block.
+10. **4 kola značky panel** — **Kolo 1 (Srozumitelnost: completeness + a11y) runs first** (the structural floor must hold before aesthetics matter, and Kolo 2 reads Kolo 1's blocker count to set severity). After Kolo 1 returns, **Kola 2 + 3 fire together as one parallel batch** (single assistant message, multiple Agent calls): Kolo 2 (Atraktivita: graphic-design + signature-moment) + Kolo 3 (Konzistence: typography + brand + copy). Honest verdicts surface in the completion block. Canonical spec (gating + verdicts + parallelism) lives in `plugins/design/skills/design-system/SKILL.md` post-scaffold gate — this is a pointer.
 11. Post-flight — print next-step block.
 
 ### Step 4 — Return
