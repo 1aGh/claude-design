@@ -16,8 +16,9 @@ describe('classifyChange', () => {
   const hasSibling = () => true;
 
   test('sibling-tsx CSS → module reload keyed on the .tsx', () => {
-    const msg = classifyChange('system/x/preview/motion.css', (cssRel) =>
-      cssRel === 'system/x/preview/motion.css'
+    const msg = classifyChange(
+      'system/x/preview/motion.css',
+      (cssRel) => cssRel === 'system/x/preview/motion.css'
     );
     expect(msg?.mode).toBe('module');
     expect(msg?.file).toBe('system/x/preview/motion.tsx');

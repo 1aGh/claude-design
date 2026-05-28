@@ -474,7 +474,7 @@ async function main() {
   // on-disk artifacts against .min-sizes.json after the build.
   if (process.env.MAUDE_SKIP_RUNTIME_BUILD === '1') {
     console.log(
-      `[build] dist/runtime/*.js SKIPPED (MAUDE_SKIP_RUNTIME_BUILD=1 — using committed pre-built)`
+      '[build] dist/runtime/*.js SKIPPED (MAUDE_SKIP_RUNTIME_BUILD=1 — using committed pre-built)'
     );
   } else {
     const runtime = await buildRuntimeBundles();
