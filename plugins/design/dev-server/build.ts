@@ -114,6 +114,58 @@ async function buildClient(): Promise<{ outBytes: number; outPath: string }> {
   return { outBytes: out.size, outPath };
 }
 
+// ---------- (a.5) Comment mount layer (shell-owned comments) ----------
+//
+// canvas-comment-mount.tsx → dist/comment-mount.js. Loaded by _shell.html via
+// a `<script type="module">`; its `mountCanvas(...)` wraps any canvas default
+// export in the lite comment provider tree. React + the other canvas-runtime
+// packages are EXTERNAL (bare specifiers resolved by _shell.html's importmap)
+// so this bundle shares the single React/yjs singletons with the canvas
+// module — inlining a second React would break hooks ("invalid hook call").
+
+const COMMENT_MOUNT_EXTERNALS = [
+  'react',
+  'react-dom',
+  'react-dom/client',
+  'react/jsx-runtime',
+  'react/jsx-dev-runtime',
+  'yjs',
+  'y-protocols/sync',
+  'y-protocols/awareness',
+  'lib0/decoding',
+  'lib0/encoding',
+];
+
+async function buildCommentMount(): Promise<{ outBytes: number; outPath: string }> {
+  ensureDist();
+  const outPath = join(DIST, 'comment-mount.js');
+  const result = await Bun.build({
+    entrypoints: [join(ROOT, 'canvas-comment-mount.tsx')],
+    outdir: DIST,
+    target: 'browser',
+    format: 'esm',
+    naming: 'comment-mount.js',
+    external: COMMENT_MOUNT_EXTERNALS,
+    minify: MODE === 'release',
+    sourcemap: MODE === 'dev' ? 'inline' : 'none',
+    define: {
+      // ALWAYS production React — like canvas-build.ts. React is external and
+      // resolves through the importmap to the dev-server's PRODUCTION runtime
+      // bundles, where `react/jsx-dev-runtime`'s `jsxDEV` is a no-op (undefined
+      // at call time). Emitting dev jsx (`jsxDEV`) against a production runtime
+      // throws "jsxDEV is not a function". Both halves must agree on the JSX
+      // flavour — production jsx (`react/jsx-runtime`) is the contract.
+      'process.env.NODE_ENV': '"production"',
+    },
+  });
+  if (!result.success) {
+    const messages = result.logs.map((l) => l.message ?? String(l)).join('\n');
+    throw new Error(`Comment-mount build failed:\n${messages}`);
+  }
+  const out = Bun.file(outPath);
+  return { outBytes: out.size, outPath };
+}
+
 // ---------- (b) CSS bundle (Lightning CSS) ----------
 
 async function buildCss(): Promise<{ outBytes: number; outPath: string }> {
@@ -325,6 +377,7 @@ async function buildServerBinary(target: PlatformTarget): Promise<{ outPath: str
 
 async function watch() {
   await buildClient();
+  await buildCommentMount();
   await buildCss();
   console.log('[build:watch] initial build complete; watching client/ + server source...');
 
@@ -396,10 +449,16 @@ async function main() {
     `[build] client.bundle.js  ${client.outBytes.toLocaleString()} B  (${(t1 - t0).toFixed(0)} ms)`
   );
 
+  const commentMount = await buildCommentMount();
+  const t1b = performance.now();
+  console.log(
+    `[build] comment-mount.js  ${commentMount.outBytes.toLocaleString()} B  (${(t1b - t1).toFixed(0)} ms)`
+  );
+
   const css = await buildCss();
   const t2 = performance.now();
   console.log(
-    `[build] styles.css        ${css.outBytes.toLocaleString()} B  (${(t2 - t1).toFixed(0)} ms)`
+    `[build] styles.css        ${css.outBytes.toLocaleString()} B  (${(t2 - t1b).toFixed(0)} ms)`
   );
 
   // Pre-built runtime bundles — ship to disk so /_canvas-runtime/* never
@@ -444,4 +503,11 @@ if (import.meta.main) {
   await main();
 }
 
-export { buildClient, buildCss, buildServerBinary, PLATFORM_MATRIX, type PlatformTarget };
+export {
+  buildClient,
+  buildCommentMount,
+  buildCss,
+  buildServerBinary,
+  PLATFORM_MATRIX,
+  type PlatformTarget,
+};

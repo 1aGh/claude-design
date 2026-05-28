@@ -64,7 +64,7 @@ function urlOf(p) {
 // canvases keep the legacy "serve the file with inspector + Babel injected"
 // path. Phase 3.6 contract; the path argument is repo-root-relative
 // (e.g. ".design/ui/Foo.tsx").
-function canvasUrl(p, cfg) {
+function canvasUrl(p, cfg, opts) {
   if (!p.endsWith('.tsx')) return urlOf(p);
   const designRel = (cfg?.designRel || '.design').replace(/^\/+|\/+$/g, '');
   // Path under designRoot.
@@ -77,6 +77,10 @@ function canvasUrl(p, cfg) {
   const params = new URLSearchParams();
   params.set('canvas', rel);
   params.set('designRel', designRel);
+  // Gallery thumbnails suppress the shell-owned comment layer (`?comments=0`)
+  // so previews stay non-interactive; opening the same canvas as a real tab
+  // omits the flag and gets comments. See canvas-comment-mount.tsx.
+  if (opts?.thumbnail) params.set('comments', '0');
   const ds0 = cfg?.designSystems?.[0];
   // Specimen detection: anything under `system/<ds>/preview/` belongs to that
   // specific DS, so it must render with *that* DS's tokens — not always the
@@ -1306,7 +1310,7 @@ function Gallery({ title, items, onOpen, kind, cfg }) {
         {items.map(p => (
           <article key={p.path} className="sv-preview-card" onClick={() => onOpen(p.path)}>
             <div className="sv-preview-frame">
-              <iframe src={canvasUrl(p.path, cfg)} title={p.label} scrolling="no" />
+              <iframe src={canvasUrl(p.path, cfg, { thumbnail: true })} title={p.label} scrolling="no" />
             </div>
             <div className="sv-preview-foot">
               <strong>{p.label}</strong>

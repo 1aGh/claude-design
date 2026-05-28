@@ -122,6 +122,18 @@ export function ToolProvider({
   return <ToolContext.Provider value={value}>{children}</ToolContext.Provider>;
 }
 
+/**
+ * Mount a `ToolProvider` only when none exists above us. When the shell-owned
+ * comment mount layer (canvas-comment-mount.tsx) already provides one,
+ * `DesignCanvas` consumes that instance instead of double-mounting. The hook
+ * is called unconditionally; only the returned tree branches (hook rules).
+ */
+export function MaybeToolProvider({ children }: { children: ReactNode }) {
+  const outer = useContext(ToolContext);
+  if (outer) return <>{children}</>;
+  return <ToolProvider>{children}</ToolProvider>;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Hook
 

@@ -38,6 +38,7 @@ dev-server/.cache/
 # each — distributed via @1agh/maude-<platform> sub-packages).
 plugins/design/dev-server/dist/*
 !plugins/design/dev-server/dist/client.bundle.js
+!plugins/design/dev-server/dist/comment-mount.js
 !plugins/design/dev-server/dist/styles.css
 # v0.18.1 (Phase 19.1) — pre-built /_canvas-runtime/*.js bundles ship in git
 # so npm-installed users don't need node_modules/react on disk to render TSX.

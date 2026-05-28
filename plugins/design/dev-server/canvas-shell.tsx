@@ -48,7 +48,6 @@ import {
   useViewportControllerContext,
 } from './canvas-lib.tsx';
 import { type AlignMode, alignLabel, equalSpacingLabel } from './commands/equal-spacing-command.ts';
-import { CommentsOverlay } from './comments-overlay.tsx';
 import {
   ContextMenuProvider,
   type ContextRegistry,
@@ -59,6 +58,15 @@ import {
 } from './context-menu.tsx';
 import { ContextualToolbar } from './contextual-toolbar.tsx';
 import { CursorsOverlay } from './cursors-overlay.tsx';
+import {
+  cssEscape,
+  cssPath,
+  deriveFile,
+  domPath,
+  hoverTargetToSelection,
+  realClasses,
+  shortText,
+} from './dom-selection.ts';
 import { EqualSpacingHandles } from './equal-spacing-handles.tsx';
 import { ExportDialogProvider } from './export-dialog.tsx';
 import { type HoverTarget, resolveHoverTarget, useInputRouter } from './input-router.tsx';
@@ -75,7 +83,11 @@ import { AnnotationsVisibilityProvider } from './use-annotations-visibility.tsx'
 import { useCollab } from './use-collab.tsx';
 import { useCursorModifiers } from './use-cursor-modifiers.tsx';
 import { useKeyboardDiscipline } from './use-keyboard-discipline.tsx';
-import { type Selection, SelectionSetProvider, useSelectionSet } from './use-selection-set.tsx';
+import {
+  MaybeSelectionSetProvider,
+  type Selection,
+  useSelectionSet,
+} from './use-selection-set.tsx';
 import { useToolMode } from './use-tool-mode.tsx';
 import { useUndoStack } from './use-undo-stack.tsx';
 
@@ -303,14 +315,17 @@ export function CanvasShell({
   ensureHaloStyles();
   // ToolProvider is mounted by DesignCanvas one level up (so the viewport
   // controller's `isPanDragActive` predicate can read the live tool state).
+  // SelectionSetProvider is mounted via MaybeSelectionSetProvider — the shell-
+  // owned comment mount layer provides one, in which case CanvasShell consumes
+  // that single instance so the comment router + halos share one selection set.
   return (
-    <SelectionSetProvider>
+    <MaybeSelectionSetProvider>
       <AnnotationSelectionProvider>
         <AnnotationsVisibilityProvider>
           <CanvasCore hostRef={hostRef}>{children}</CanvasCore>
         </AnnotationsVisibilityProvider>
       </AnnotationSelectionProvider>
-    </SelectionSetProvider>
+    </MaybeSelectionSetProvider>
   );
 }
 
@@ -1020,103 +1035,18 @@ function CanvasRouter({
         annotSel.clear();
         setHoverEl(null);
       },
-      onDropComment: ({ clientX, clientY }) => {
-        // First try deep mode — preferred when the user clicks exactly on
-        // a stamped element. When the deep hit lands on an element with
-        // `pointer-events: none` (decorative <svg> children, overlay icons),
-        // elementFromPoint propagates past it and `resolveHoverTarget`
-        // returns null because the next-closest hit is `.dc-artboard-body`
-        // itself.
-        let target = resolveHoverTarget(document, clientX, clientY, { deep: true });
-        if (!target) target = resolveHoverTarget(document, clientX, clientY, { deep: false });
-        // Phase 6 fallback — when both resolveHoverTarget passes bail (the
-        // `hit === bodyEl` early-exit triggers on `pointer-events: none`
-        // decorations), enumerate every element under the click point and
-        // climb the first one that has `data-cd-id`. This is how clicks on
-        // SVG logos / icon glyphs land on the actual stamped wrapper.
-        if (!target && typeof document.elementsFromPoint === 'function') {
-          const stack = document.elementsFromPoint(clientX, clientY);
-          for (const candidate of stack) {
-            const stamped = (candidate as Element).closest?.('[data-cd-id]') as HTMLElement | null;
-            if (!stamped) continue;
-            if (!stamped.closest('.dc-artboard-body')) continue;
-            const artboardEl = stamped.closest('[data-dc-screen]');
-            target = {
-              el: stamped,
-              cdId: stamped.getAttribute('data-cd-id'),
-              artboardId: artboardEl?.getAttribute('data-dc-screen') ?? null,
-            };
-            break;
-          }
-        }
-        if (!target) {
-          // Floating comment fallback — no element anchor, just a click
-          // point. The overlay still renders a pin at the stored bounds.
-          if (typeof window === 'undefined' || typeof document === 'undefined') return;
-          const floatingSel: Selection = {
-            file: deriveFile(),
-            id: undefined,
-            selector: '',
-            artboardId: null,
-            tag: '',
-            classes: '',
-            text: '',
-            dom_path: [],
-            bounds: { x: clientX - 12, y: clientY - 12, w: 24, h: 24 },
-            html: '',
-          };
-          try {
-            document.dispatchEvent(
-              new CustomEvent('cm:open-composer', {
-                detail: { selection: floatingSel, clientX, clientY },
-              })
-            );
-          } catch {
-            /* ignore */
-          }
-          try {
-            window.parent.postMessage({ dgn: 'comment-compose', selection: floatingSel }, '*');
-          } catch {
-            /* parent detached */
-          }
-          return;
-        }
-        const sel = hoverTargetToSelection(target);
-        // Commit the target to the selection set so the halo persists while
-        // the composer is open. The user clears by:
-        //   - submit / cancel on the composer (overlay dispatches force-clear)
-        //   - pressing Esc inside the canvas (router's onEscape → clear)
-        //   - clicking another element in comment mode (this handler runs
-        //     again and replaces)
-        selSet.replace(sel);
-        if (typeof window === 'undefined' || typeof document === 'undefined') return;
-        // Phase 6 — open the in-place composer inside the iframe at the click
-        // point. Custom event is iframe-local so the overlay can subscribe
-        // without round-tripping through the parent shell.
-        try {
-          document.dispatchEvent(
-            new CustomEvent('cm:open-composer', {
-              detail: { selection: sel, clientX, clientY },
-            })
-          );
-        } catch {
-          /* CustomEvent absent — fall through to legacy parent path */
-        }
-        // Still post to parent for back-compat with any legacy `.html` mocks
-        // whose inspector script consumes `comment-compose`.
-        try {
-          window.parent.postMessage({ dgn: 'comment-compose', selection: sel }, '*');
-        } catch {
-          /* parent detached */
-        }
-      },
+      // onDropComment is intentionally absent — the comment drop is owned by
+      // the shell-owned comment mount layer's router (canvas-comment-mount.tsx),
+      // which sits as an ancestor capture-listener over this canvas. In comment
+      // mode that ancestor claims `drop-comment` before this router sees it.
     },
   });
 
   return (
     <>
       {children}
-      <CommentsOverlay />
+      {/* CommentsOverlay is mounted ONCE by the shell-owned comment mount layer
+          (canvas-comment-mount.tsx), not here — single instance per surface. */}
       <AnnotationsLayer />
       <ToolPalette />
       <ArtboardMarqueeOverlay />
@@ -1667,137 +1597,6 @@ function classifyContextKind(target: HoverTarget | null): ContextTargetKind {
   if (target.cdId) return 'element';
   if (target.artboardId) return 'artboard-chrome';
   return 'world';
-}
-
-function hoverTargetToSelection(target: HoverTarget): Selection {
-  const el = target.el;
-  const rect =
-    el && (el as HTMLElement).getBoundingClientRect
-      ? (el as HTMLElement).getBoundingClientRect()
-      : null;
-  // `cdId` is the hit element's OWN data-cd-id (deep mode); resolver never
-  // climbs to an ancestor. Falls back to cssPath of the hit when no stable
-  // anchor exists.
-  const cdId = target.cdId;
-  // Selector resolution order:
-  //   1. data-cd-id anchor — stable pipeline-stamped id (preferred).
-  //   2. data-dc-screen — chrome click promoted to whole-artboard select
-  //      (T24.5 G8 multi-artboard gesture).
-  //   3. cssPath of the hit — last-resort path string.
-  const selector = cdId
-    ? `[data-cd-id="${cdId}"]`
-    : !cdId && target.artboardId
-      ? `[data-dc-screen="${target.artboardId}"]`
-      : cssPath(el);
-  return {
-    file: typeof window !== 'undefined' ? deriveFile() : undefined,
-    id: cdId ?? undefined,
-    selector,
-    artboardId: target.artboardId,
-    tag: el?.tagName.toLowerCase() ?? '',
-    classes: realClasses(el),
-    text: shortText(el, 240),
-    dom_path: domPath(el),
-    bounds: rect
-      ? {
-          x: Math.round(rect.left),
-          y: Math.round(rect.top),
-          w: Math.round(rect.width),
-          h: Math.round(rect.height),
-        }
-      : null,
-    html: el ? (el.outerHTML ?? '').slice(0, 4000) : '',
-  };
-}
-
-function deriveFile(): string | undefined {
-  try {
-    const p = window.location.pathname;
-    if (p === '/_canvas-shell.html' || p === '/_canvas-shell') {
-      const qs = new URLSearchParams(window.location.search);
-      const canvas = qs.get('canvas') ?? '';
-      const designRel = (qs.get('designRel') ?? '.design').replace(/^\/+|\/+$/g, '');
-      return `${designRel}/${canvas}`;
-    }
-    return decodeURIComponent(p).replace(/^\//, '');
-  } catch {
-    return undefined;
-  }
-}
-
-function realClasses(el: Element | null): string {
-  if (!el) return '';
-  return (el.getAttribute('class') ?? '')
-    .trim()
-    .split(/\s+/)
-    .filter((c) => c && !c.startsWith('dgn-') && !c.startsWith('dc-cv-'))
-    .join(' ');
-}
-
-function shortText(el: Element | null, max: number): string {
-  if (!el) return '';
-  const t = ((el as HTMLElement).innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
-  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
-}
-
-function cssPath(el: Element | null): string {
-  if (!el) return '';
-  const path: string[] = [];
-  let cur: Element | null = el;
-  while (cur && cur.nodeType === 1 && path.length < 8) {
-    const dscEl = cur.getAttribute?.('data-dc-element');
-    if (dscEl) {
-      path.unshift(`[data-dc-element="${dscEl}"]`);
-      break;
-    }
-    const dscSc = cur.getAttribute?.('data-dc-screen');
-    if (dscSc) {
-      path.unshift(`[data-dc-screen="${dscSc}"]`);
-      break;
-    }
-    let sel = cur.nodeName.toLowerCase();
-    if (cur.id) {
-      sel = `#${cur.id}`;
-      path.unshift(sel);
-      break;
-    }
-    const cls = realClasses(cur).split(/\s+/).filter(Boolean).slice(0, 2);
-    if (cls.length) sel += `.${cls.join('.')}`;
-    let sib = 1;
-    let n: Element | null = cur.previousElementSibling;
-    while (n) {
-      sib++;
-      n = n.previousElementSibling;
-    }
-    sel += `:nth-child(${sib})`;
-    path.unshift(sel);
-    cur = cur.parentElement;
-  }
-  return path.join(' > ');
-}
-
-function domPath(el: Element | null): string[] {
-  const hops: string[] = [];
-  let cur = el;
-  while (cur && cur.nodeType === 1 && hops.length < 8) {
-    let label = cur.nodeName.toLowerCase();
-    const dEl = cur.getAttribute?.('data-dc-element');
-    const dSc = cur.getAttribute?.('data-dc-screen');
-    if (dEl) label += `[data-dc-element="${dEl}"]`;
-    else if (dSc) label += `[data-dc-screen="${dSc}"]`;
-    else if (cur.id) label += `#${cur.id}`;
-    const cls = realClasses(cur).split(/\s+/).filter(Boolean).slice(0, 2);
-    if (cls.length && !dEl && !dSc) label += `.${cls.join('.')}`;
-    hops.unshift(label);
-    cur = cur.parentElement;
-  }
-  return hops;
-}
-
-function cssEscape(s: string): string {
-  // Minimal CSS.escape polyfill — only handles chars actually present in
-  // pipeline-stamped IDs (alphanumerics + `-` + `_`).
-  return s.replace(/[^a-zA-Z0-9_-]/g, (c) => `\\${c}`);
 }
 
 function safeQuery(selector: string): Element | null {

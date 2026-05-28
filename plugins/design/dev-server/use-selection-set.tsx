@@ -189,6 +189,18 @@ export function SelectionSetProvider({
   return <SelectionSetContext.Provider value={value}>{children}</SelectionSetContext.Provider>;
 }
 
+/**
+ * Mount a `SelectionSetProvider` only when none exists above us. The shell-
+ * owned comment mount layer provides one so both the lite comment router and
+ * `CanvasShell` share a single selection set. Hook called unconditionally;
+ * only the returned tree branches (hook rules).
+ */
+export function MaybeSelectionSetProvider({ children }: { children: ReactNode }) {
+  const outer = useContext(SelectionSetContext);
+  if (outer) return <>{children}</>;
+  return <SelectionSetProvider>{children}</SelectionSetProvider>;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Hooks
 

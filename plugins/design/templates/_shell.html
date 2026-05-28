@@ -122,6 +122,10 @@
         const styleEl = document.getElementById('canvas-hide-chrome');
         if (styleEl) styleEl.media = 'all';
       }
+      // Shell-owned comment layer toggle. Gallery thumbnails pass `?comments=0`
+      // so the comment chrome is suppressed in previews; opened tabs omit it
+      // (comments on). hide-chrome exports also suppress comments.
+      const commentsEnabled = params.get('comments') !== '0' && params.get('hide-chrome') !== '1';
 
       function showError(msg) {
         const el = document.getElementById('canvas-mount-error');
@@ -234,10 +238,13 @@
             window.__canvas_meta_file__ = designRel + '/' + canvasRel;
           });
         try {
-          const [{ createRoot }, mod, react] = await Promise.all([
-            import('react-dom/client'),
+          // mountCanvas (dist/comment-mount.js) owns the React root + the lite
+          // comment provider tree. It externalizes react / react-dom/client to
+          // the importmap so the canvas module and the comment layer share one
+          // React singleton (inlining a second React would break hooks).
+          const [{ mountCanvas }, mod] = await Promise.all([
+            import('/_client/comment-mount.js'),
             import(canvasUrl),
-            import('react'),
             metaFetch,
           ]);
           const Canvas = mod.default;
@@ -246,8 +253,11 @@
               'Canvas module at ' + canvasUrl + ' has no default export (or it is not a component).'
             );
           }
-          const root = createRoot(document.getElementById('canvas-root'));
-          root.render(react.createElement(Canvas));
+          mountCanvas(Canvas, {
+            rootEl: document.getElementById('canvas-root'),
+            file: designRel + '/' + canvasRel,
+            commentsEnabled,
+          });
         } catch (err) {
           showError((err && err.stack) || String(err));
         }

@@ -95,7 +95,7 @@ import {
 import { type DragState, useArtboardDrag } from './use-artboard-drag.tsx';
 import { CollabProvider, canvasSlugFromPath } from './use-collab.tsx';
 import { useSelectionSetOptional } from './use-selection-set.tsx';
-import { ToolProvider, useToolModeOptional } from './use-tool-mode.tsx';
+import { MaybeToolProvider, useToolModeOptional } from './use-tool-mode.tsx';
 import { UndoStackProvider, useUndoSinks, useUndoStackOptional } from './use-undo-stack.tsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1161,7 +1161,10 @@ interface DesignCanvasProps {
  *
  * `ToolProvider` lives above `DesignCanvasInner` so the viewport
  * controller's `isPanDragActive` predicate can read the live tool state
- * via `useToolModeOptional` (hand-mode bare-drag pan).
+ * via `useToolModeOptional` (hand-mode bare-drag pan). It's wrapped in
+ * `MaybeToolProvider` so when the shell-owned comment mount layer
+ * (canvas-comment-mount.tsx) already provides a ToolProvider, DesignCanvas
+ * consumes that single instance instead of double-mounting.
  */
 export function DesignCanvas(props: DesignCanvasProps) {
   // Phase 20 — per-canvas undo/redo stack (DDR-050 rev 2). The provider
@@ -1178,9 +1181,9 @@ export function DesignCanvas(props: DesignCanvasProps) {
   // CollabProvider is omitted; useCollab() falls back gracefully to null.
   const collabSlug = canvasSlugFromPath(canvasFile);
   const inner = (
-    <ToolProvider>
+    <MaybeToolProvider>
       <DesignCanvasInner {...props} />
-    </ToolProvider>
+    </MaybeToolProvider>
   );
   return (
     <UndoStackProvider canvasFile={canvasFile}>

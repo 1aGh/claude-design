@@ -268,6 +268,16 @@ export interface UseInputRouterOptions {
   callbacks: RouterCallbacks;
   /** When false, listeners are not attached. Defaults to true. */
   enabled?: boolean;
+  /**
+   * Allowlist of action kinds this router is permitted to CLAIM (preventDefault
+   * + stopImmediatePropagation + dispatch). Any classified action outside the
+   * set is downgraded to `no-op` so it propagates untouched to other listeners.
+   * Omit to claim everything (the default — used by the full DesignCanvas
+   * router). The shell-owned comment mount layer passes a narrow set so it can
+   * coexist as an ANCESTOR capture-listener over a UI canvas's own router
+   * without swallowing select / context-menu / undo gestures it doesn't own.
+   */
+  claimableActions?: ReadonlySet<RouterAction['kind']>;
 }
 
 export function isEditableTarget(t: EventTarget | null): boolean {
@@ -295,12 +305,20 @@ export function isOverlayTarget(t: EventTarget | null): boolean {
 }
 
 export function useInputRouter(opts: UseInputRouterOptions): void {
-  const { hostRef, getActiveTool, isSpaceHeld, callbacks, enabled = true } = opts;
+  const { hostRef, getActiveTool, isSpaceHeld, callbacks, enabled = true, claimableActions } = opts;
 
   useEffect(() => {
     if (!enabled) return;
     const host = hostRef.current;
     if (!host) return;
+
+    // Downgrade any action this router isn't permitted to claim to no-op so it
+    // propagates untouched (no preventDefault / no dispatch). Identity pass-
+    // through when no allowlist is configured.
+    const claim = (action: RouterAction): RouterAction =>
+      claimableActions && action.kind !== 'no-op' && !claimableActions.has(action.kind)
+        ? { kind: 'no-op' }
+        : action;
 
     const dispatch = (action: RouterAction): void => {
       switch (action.kind) {
@@ -334,18 +352,20 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
     };
 
     const onPointerMove = (e: PointerEvent): void => {
-      const action = classify({
-        type: 'pointermove',
-        button: e.button,
-        metaKey: e.metaKey,
-        ctrlKey: e.ctrlKey,
-        shiftKey: e.shiftKey,
-        altKey: e.altKey,
-        clientX: e.clientX,
-        clientY: e.clientY,
-        spaceHeld: isSpaceHeld?.() ?? false,
-        activeTool: getActiveTool(),
-      });
+      const action = claim(
+        classify({
+          type: 'pointermove',
+          button: e.button,
+          metaKey: e.metaKey,
+          ctrlKey: e.ctrlKey,
+          shiftKey: e.shiftKey,
+          altKey: e.altKey,
+          clientX: e.clientX,
+          clientY: e.clientY,
+          spaceHeld: isSpaceHeld?.() ?? false,
+          activeTool: getActiveTool(),
+        })
+      );
       dispatch(action);
     };
 
@@ -354,18 +374,20 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
       // their own clicks. The router is in capture phase, so we have to
       // bail HERE before classify can claim the event.
       if (isOverlayTarget(e.target)) return;
-      const action = classify({
-        type: 'pointerdown',
-        button: e.button,
-        metaKey: e.metaKey,
-        ctrlKey: e.ctrlKey,
-        shiftKey: e.shiftKey,
-        altKey: e.altKey,
-        clientX: e.clientX,
-        clientY: e.clientY,
-        spaceHeld: isSpaceHeld?.() ?? false,
-        activeTool: getActiveTool(),
-      });
+      const action = claim(
+        classify({
+          type: 'pointerdown',
+          button: e.button,
+          metaKey: e.metaKey,
+          ctrlKey: e.ctrlKey,
+          shiftKey: e.shiftKey,
+          altKey: e.altKey,
+          clientX: e.clientX,
+          clientY: e.clientY,
+          spaceHeld: isSpaceHeld?.() ?? false,
+          activeTool: getActiveTool(),
+        })
+      );
       if (action.kind !== 'no-op') {
         // Suppress native behavior on every event the router claims —
         // button presses don't fire, inputs don't focus, the canvas
@@ -386,18 +408,20 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
      */
     const onMouseDown = (e: MouseEvent): void => {
       if (isOverlayTarget(e.target)) return;
-      const action = classify({
-        type: 'pointerdown',
-        button: e.button,
-        metaKey: e.metaKey,
-        ctrlKey: e.ctrlKey,
-        shiftKey: e.shiftKey,
-        altKey: e.altKey,
-        clientX: e.clientX,
-        clientY: e.clientY,
-        spaceHeld: isSpaceHeld?.() ?? false,
-        activeTool: getActiveTool(),
-      });
+      const action = claim(
+        classify({
+          type: 'pointerdown',
+          button: e.button,
+          metaKey: e.metaKey,
+          ctrlKey: e.ctrlKey,
+          shiftKey: e.shiftKey,
+          altKey: e.altKey,
+          clientX: e.clientX,
+          clientY: e.clientY,
+          spaceHeld: isSpaceHeld?.() ?? false,
+          activeTool: getActiveTool(),
+        })
+      );
       if (action.kind !== 'no-op') {
         e.preventDefault();
         e.stopImmediatePropagation();
@@ -414,41 +438,55 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
       if (isOverlayTarget(e.target)) return;
       const tool = getActiveTool();
       const mod = e.metaKey || e.ctrlKey;
-      const wouldRoute =
-        tool === 'comment' || (tool === 'move' && mod && e.button === 0) || e.button === 2;
-      if (wouldRoute) {
+      // Map the click to the action kind the matching pointerdown would have
+      // produced, then honor the claim allowlist so a scoped router (the
+      // comment mount layer) doesn't suppress clicks it never claimed.
+      const wouldRouteKind: RouterAction['kind'] | null =
+        tool === 'comment'
+          ? 'drop-comment'
+          : tool === 'move' && mod && e.button === 0
+            ? 'select'
+            : e.button === 2
+              ? 'context-menu'
+              : null;
+      if (wouldRouteKind && (!claimableActions || claimableActions.has(wouldRouteKind))) {
         e.preventDefault();
         e.stopImmediatePropagation();
       }
     };
 
     const onContextMenu = (e: MouseEvent): void => {
+      const action = claim(
+        classify({
+          type: 'contextmenu',
+          clientX: e.clientX,
+          clientY: e.clientY,
+          metaKey: e.metaKey,
+          ctrlKey: e.ctrlKey,
+          shiftKey: e.shiftKey,
+          altKey: e.altKey,
+          activeTool: getActiveTool(),
+        })
+      );
+      if (action.kind === 'no-op') return; // not ours to claim — let it bubble
       e.preventDefault();
       e.stopImmediatePropagation();
-      const action = classify({
-        type: 'contextmenu',
-        clientX: e.clientX,
-        clientY: e.clientY,
-        metaKey: e.metaKey,
-        ctrlKey: e.ctrlKey,
-        shiftKey: e.shiftKey,
-        altKey: e.altKey,
-        activeTool: getActiveTool(),
-      });
       dispatch(action);
     };
 
     const onKeyDown = (e: KeyboardEvent): void => {
-      const action = classify({
-        type: 'keydown',
-        key: e.key,
-        metaKey: e.metaKey,
-        ctrlKey: e.ctrlKey,
-        shiftKey: e.shiftKey,
-        altKey: e.altKey,
-        isEditable: isEditableTarget(e.target),
-        activeTool: getActiveTool(),
-      });
+      const action = claim(
+        classify({
+          type: 'keydown',
+          key: e.key,
+          metaKey: e.metaKey,
+          ctrlKey: e.ctrlKey,
+          shiftKey: e.shiftKey,
+          altKey: e.altKey,
+          isEditable: isEditableTarget(e.target),
+          activeTool: getActiveTool(),
+        })
+      );
       if (
         action.kind === 'tool' ||
         action.kind === 'escape' ||
@@ -486,7 +524,7 @@ export function useInputRouter(opts: UseInputRouterOptions): void {
       } as EventListenerOptions);
       doc.removeEventListener('keydown', onKeyDown, true);
     };
-  }, [enabled, hostRef, getActiveTool, isSpaceHeld, callbacks]);
+  }, [enabled, hostRef, getActiveTool, isSpaceHeld, callbacks, claimableActions]);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

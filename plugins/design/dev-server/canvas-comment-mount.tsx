@@ -1,0 +1,384 @@
+/**
+ * @file       canvas-comment-mount.tsx — shell-owned comment layer + mountCanvas
+ * @scope      plugins/design/dev-server/canvas-comment-mount.tsx
+ * @purpose    The canvas mount harness (`_shell.html`) calls `mountCanvas`
+ *             instead of rendering the canvas default-export raw. mountCanvas
+ *             wraps ANY default export — a `DesignCanvas` UI canvas OR a bare
+ *             DS specimen — in a LITE comment provider tree so the in-place
+ *             comment tool works on every mounted surface.
+ *
+ * Why a single shell-owned layer (DDR — see plan §"Key decision"):
+ *   - Comments used to be mounted only by `DesignCanvas` (ToolProvider +
+ *     SelectionSetProvider + CommentsOverlay + the onDropComment router
+ *     branch). Bare specimens (`system/<ds>/preview/*.tsx`) never render
+ *     DesignCanvas, so they had no comment tool at all.
+ *   - Hoisting the comment subsystem here makes it universal. `DesignCanvas`
+ *     becomes a CONSUMER of the shell-provided ToolProvider / SelectionSet /
+ *     CommentsOverlay (via MaybeToolProvider / MaybeSelectionSetProvider and
+ *     by dropping its own <CommentsOverlay/>).
+ *
+ * Coexistence with the UI-canvas router: this layer's input router is an
+ * ANCESTOR capture-listener over the canvas. On a UI canvas, `CanvasShell`
+ * still runs its OWN router (hover / select / context-menu / undo). To avoid
+ * swallowing those gestures, this router passes a narrow `claimableActions`
+ * allowlist — `drop-comment` / `tool` / `escape` / `hover`. `hover` never
+ * preventDefaults so the inner router's halo is unaffected; everything else
+ * (select / context-menu / undo) propagates untouched to the inner router.
+ */
+
+import {
+  type ComponentType,
+  type ReactNode,
+  createElement,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { createRoot } from 'react-dom/client';
+
+import { CommentsOverlay } from './comments-overlay.tsx';
+import { deriveFile, hoverTargetToSelection } from './dom-selection.ts';
+import { type RouterAction, resolveHoverTarget, useInputRouter } from './input-router.tsx';
+import {
+  MaybeSelectionSetProvider,
+  type Selection,
+  useSelectionSet,
+} from './use-selection-set.tsx';
+import { MaybeToolProvider, useToolMode } from './use-tool-mode.tsx';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cursor CSS for the generic mount host. canvas-lib's HALO_CSS keys comment-
+// mode cursors on `.dc-canvas[data-active-tool]`, which is absent in a bare
+// specimen. We mirror the comment-tool cursor keyed on the mount host's
+// `data-active-tool` attribute so the affordance ships even with no canvas-lib
+// CSS present. The host is `display: contents` (so specimen layout is byte-
+// identical) — a `display:contents` box can't paint a cursor, so the rule
+// targets descendants of the host, not the host box itself.
+
+const MC_CURSOR_CSS = `
+[data-mc-host][data-active-tool="comment"] *,
+body[data-active-tool="comment"] * {
+  cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><path d='M3 3 L14 3 L14 11 L8 11 L4 14 L4 11 L3 11 Z' fill='white' stroke='%23111' stroke-width='1' stroke-linejoin='round'/></svg>") 4 4, crosshair !important;
+}
+`.trim();
+
+function ensureMountCursorStyles(): void {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById('mc-cursor-css')) return;
+  const s = document.createElement('style');
+  s.id = 'mc-cursor-css';
+  s.textContent = MC_CURSOR_CSS;
+  document.head.appendChild(s);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CommentHost — owns the lite comment subsystem: the input router (comment-
+// scoped), the single CommentsOverlay, the comment-mode cursor attribute, and
+// the parent `dgn:'tool-set'` listener (so the outer menubar comment toggle
+// reaches the iframe).
+
+// Only these action kinds are claimed by the mount-layer router; the rest
+// propagate to a UI canvas's own router. `tool` + `escape` are also handled by
+// the inner router on UI canvases — idempotent (same shared provider). `hover`
+// is dispatched too (it never preventDefaults, so the inner router's own hover
+// halo on a UI canvas is unaffected) — we only PAINT the mount-layer preview
+// halo on a bare specimen, where there is no inner CanvasShell halo.
+const COMMENT_CLAIMS: ReadonlySet<RouterAction['kind']> = new Set<RouterAction['kind']>([
+  'drop-comment',
+  'tool',
+  'escape',
+  'hover',
+]);
+
+// True when no DesignCanvas/CanvasShell is mounted on this surface — i.e. a
+// bare DS specimen. On a UI canvas (`.dc-canvas` present) the inner shell owns
+// hover-halo painting + `resolveHoverTarget` element anchoring, so the lite
+// layer defers to it.
+function isBareSpecimen(): boolean {
+  return typeof document !== 'undefined' && !document.querySelector('.dc-canvas');
+}
+
+// Deepest non-chrome element under a point — the comment anchor for a bare
+// specimen (specimens aren't stamped with `data-cd-id` and have no
+// `.dc-artboard-body`, so `resolveHoverTarget` returns null for them).
+function pickSpecimenEl(clientX: number, clientY: number): HTMLElement | null {
+  if (typeof document === 'undefined') return null;
+  const hit = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
+  if (!hit) return null;
+  // Never anchor to comment chrome or the document root.
+  if (hit.closest('.cm-composer, .cm-thread, .cm-mention-popup, .cm-pin, [data-mc-hover-halo]')) {
+    return null;
+  }
+  const tag = hit.tagName;
+  if (tag === 'HTML' || tag === 'BODY') return null;
+  return hit;
+}
+
+function CommentHost({ children, file }: { children: ReactNode; file: string | undefined }) {
+  ensureMountCursorStyles();
+  const { tool, setTool } = useToolMode();
+  const selSet = useSelectionSet();
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  // Hover-preview halo target (bare specimens only — see isBareSpecimen).
+  const [hoverEl, setHoverEl] = useState<HTMLElement | null>(null);
+
+  // Latest tool for the router (read at event time, not captured).
+  const toolRef = useRef(tool);
+  toolRef.current = tool;
+  const getActiveTool = useMemo(() => () => toolRef.current, []);
+
+  // Drop the preview halo whenever we leave comment mode.
+  useEffect(() => {
+    if (tool !== 'comment') setHoverEl(null);
+  }, [tool]);
+
+  // Reflect the active tool onto the host (and body, since the host is
+  // display:contents and can't carry a paintable cursor). Comment-mode CSS
+  // keys off `[data-active-tool="comment"]`.
+  useEffect(() => {
+    const host = hostRef.current;
+    if (host) host.setAttribute('data-active-tool', tool);
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.setAttribute('data-active-tool', tool);
+    }
+    return () => {
+      host?.removeAttribute('data-active-tool');
+    };
+  }, [tool]);
+
+  // Parent `dgn:'tool-set'` — the outer dev-server menubar posts this when the
+  // user toggles the comment tool. Mirrors canvas-shell's listener so the
+  // toggle reaches bare specimens too (which have no inner shell listener).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onMessage = (e: MessageEvent) => {
+      const m = e.data as { dgn?: string; tool?: string } | null;
+      if (!m || typeof m !== 'object' || m.dgn !== 'tool-set') return;
+      if (typeof m.tool === 'string') setTool(m.tool as never);
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [setTool]);
+
+  useInputRouter({
+    hostRef,
+    getActiveTool,
+    claimableActions: COMMENT_CLAIMS,
+    callbacks: {
+      onHover: ({ clientX, clientY }) => {
+        // Paint a preview halo only on bare specimens; a UI canvas's own
+        // CanvasShell HoverHalo owns the comment-mode preview there.
+        if (toolRef.current !== 'comment' || !isBareSpecimen()) {
+          setHoverEl(null);
+          return;
+        }
+        const el = pickSpecimenEl(clientX, clientY);
+        setHoverEl((prev) => (prev === el ? prev : el));
+      },
+      onTool: ({ tool: t }) => setTool(t),
+      onEscape: () => {
+        if (toolRef.current !== 'move') setTool('move');
+        setHoverEl(null);
+        selSet.clear();
+        if (typeof window !== 'undefined') {
+          try {
+            window.parent.postMessage({ dgn: 'force-clear' }, '*');
+          } catch {
+            /* parent detached */
+          }
+        }
+      },
+      onDropComment: ({ clientX, clientY }) => dropComment(clientX, clientY, selSet, file),
+    },
+  });
+
+  // `display: contents` keeps the specimen's own flex/grid layout byte-
+  // identical — the host box contributes nothing to layout. The fixed-position
+  // CommentsOverlay renders fine as a child regardless.
+  return (
+    <div data-mc-host ref={hostRef} style={{ display: 'contents' }}>
+      {children}
+      {hoverEl ? <MountHoverHalo el={hoverEl} /> : null}
+      <CommentsOverlay />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MountHoverHalo — fixed-position outline tracking the hovered element's screen
+// bounds via rAF. Inline-styled (no dependency on canvas-lib's HALO_CSS, which
+// a bare specimen doesn't load). Mirrors canvas-shell's HoverHalo visually.
+
+function MountHoverHalo({ el }: { el: HTMLElement }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const targetRef = useRef<HTMLElement>(el);
+  targetRef.current = el;
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const tick = () => {
+      rafRef.current = null;
+      const div = ref.current;
+      const t = targetRef.current;
+      if (div && t?.isConnected) {
+        const r = t.getBoundingClientRect();
+        if (r.width === 0 && r.height === 0) {
+          div.style.display = 'none';
+        } else {
+          div.style.display = 'block';
+          div.style.left = `${Math.round(r.left)}px`;
+          div.style.top = `${Math.round(r.top)}px`;
+          div.style.width = `${Math.round(r.width)}px`;
+          div.style.height = `${Math.round(r.height)}px`;
+        }
+      } else if (div) {
+        div.style.display = 'none';
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      aria-hidden="true"
+      data-mc-hover-halo=""
+      style={{
+        position: 'fixed',
+        display: 'none',
+        pointerEvents: 'none',
+        zIndex: 2147483646,
+        border: '2px solid var(--maude-hud-accent, #d63b1f)',
+        borderRadius: '3px',
+        boxSizing: 'border-box',
+      }}
+    />
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Comment drop — generic path lifted from canvas-shell's onDropComment. Works
+// with or without artboards: deep/shallow resolveHoverTarget → elementsFromPoint
+// data-cd-id climb → floating fallback. Dispatches `cm:open-composer` for the
+// in-iframe overlay + posts `comment-compose` to the parent for legacy mocks.
+
+function dropComment(
+  clientX: number,
+  clientY: number,
+  selSet: { replace: (s: Selection) => void },
+  file: string | undefined
+): void {
+  if (typeof document === 'undefined') return;
+  let target = resolveHoverTarget(document, clientX, clientY, { deep: true });
+  if (!target) target = resolveHoverTarget(document, clientX, clientY, { deep: false });
+  // UI-canvas recovery — when both passes bail on a `pointer-events: none`
+  // decoration, enumerate the stack and climb the first `data-cd-id` ancestor
+  // inside an artboard body. Skipped on bare specimens, which instead anchor to
+  // the exact hovered element below (so the pin matches the hover preview halo).
+  if (!target && !isBareSpecimen() && typeof document.elementsFromPoint === 'function') {
+    const stack = document.elementsFromPoint(clientX, clientY);
+    for (const candidate of stack) {
+      const stamped = (candidate as Element).closest?.('[data-cd-id]') as HTMLElement | null;
+      if (!stamped) continue;
+      if (!stamped.closest('.dc-artboard-body')) continue;
+      const artboardEl = stamped.closest('[data-dc-screen]');
+      target = {
+        el: stamped,
+        cdId: stamped.getAttribute('data-cd-id'),
+        artboardId: artboardEl?.getAttribute('data-dc-screen') ?? null,
+      };
+      break;
+    }
+  }
+
+  // Bare-specimen anchor — specimens have no `.dc-artboard-body`, so
+  // resolveHoverTarget bails. Anchor to the EXACT element under the cursor (the
+  // same one pickSpecimenEl highlights for the hover preview), via its own
+  // data-cd-id when stamped, else a cssPath selector — so the dropped pin lands
+  // on the previewed element instead of floating.
+  if (!target && isBareSpecimen()) {
+    const el = pickSpecimenEl(clientX, clientY);
+    if (el) target = { el, cdId: el.getAttribute('data-cd-id'), artboardId: null };
+  }
+
+  if (!target) {
+    // Floating comment — no element anchor, just the click point (e.g. a click
+    // on empty canvas/specimen dead space). The overlay renders a pin at the
+    // stored bounds.
+    const floatingSel: Selection = {
+      file,
+      id: undefined,
+      selector: '',
+      artboardId: null,
+      tag: '',
+      classes: '',
+      text: '',
+      dom_path: [],
+      bounds: { x: clientX - 12, y: clientY - 12, w: 24, h: 24 },
+      html: '',
+    };
+    openComposer(floatingSel, clientX, clientY);
+    return;
+  }
+
+  const sel = hoverTargetToSelection(target, file);
+  selSet.replace(sel);
+  openComposer(sel, clientX, clientY);
+}
+
+function openComposer(selection: Selection, clientX: number, clientY: number): void {
+  if (typeof document !== 'undefined') {
+    try {
+      document.dispatchEvent(
+        new CustomEvent('cm:open-composer', { detail: { selection, clientX, clientY } })
+      );
+    } catch {
+      /* CustomEvent absent — fall through to parent path */
+    }
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      window.parent.postMessage({ dgn: 'comment-compose', selection }, '*');
+    } catch {
+      /* parent detached */
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// mountCanvas — the shell harness entry. Renders the canvas wrapped in the lite
+// comment tree, or bare when comments are disabled (gallery thumbnails pass
+// `commentsEnabled: false` via `?comments=0`).
+
+export interface MountCanvasOptions {
+  rootEl: HTMLElement;
+  /** Canvas file key (designRel-prefixed). Defaults to `deriveFile()`. */
+  file?: string;
+  /** When false, the comment layer is skipped — the canvas renders raw. */
+  commentsEnabled: boolean;
+}
+
+export function mountCanvas(Canvas: ComponentType, opts: MountCanvasOptions): void {
+  const root = createRoot(opts.rootEl);
+  if (!opts.commentsEnabled) {
+    root.render(createElement(Canvas));
+    return;
+  }
+  const file = opts.file ?? deriveFile();
+  root.render(
+    createElement(
+      MaybeToolProvider,
+      null,
+      createElement(
+        MaybeSelectionSetProvider,
+        null,
+        createElement(CommentHost, { file }, createElement(Canvas))
+      )
+    )
+  );
+}
