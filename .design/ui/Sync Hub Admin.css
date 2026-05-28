@@ -1,0 +1,277 @@
+/*
+ * Sync Hub Admin — layout-only rules · MDCC-DSN/01
+ *
+ * Component anatomy (buttons, tiles, inputs, badges, tables) comes from the
+ * DS _components.css. This file only carries page-layout glue: the catalog
+ * header strip, the app header, the centered auth column, the 2×2 dashboard
+ * grid, the fingerprint identity card, the issued-credential modal + scrim,
+ * and the edge-state column. Every value is a token — no raw hex/px colors.
+ */
+
+/* ─── Artboard root fill ─────────────────────────────────────────────── */
+.hub-frame {
+  width: 100%;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font-family: var(--font-body);
+  font-size: var(--type-base);
+  line-height: var(--lh-base);
+}
+
+/* ─── Catalog header strip (lifted shape from Commands Overview AbHd) ─── */
+.ab-hd {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-2) var(--space-5);
+  border-bottom: var(--rule-strong);
+  background: var(--bg-2);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  line-height: var(--lh-xs);
+  letter-spacing: var(--tracking-sku);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.ab-hd .lead { color: var(--fg-1); }
+.ab-hd .lead b { color: var(--fg-0); }
+.ab-hd .right { display: inline-flex; align-items: center; gap: var(--space-4); }
+.ab-hd .ok { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--fg-1); }
+.ab-hd .ok .glyph { color: var(--accent); font-size: 9px; }
+
+/* ─── App header (M mark + auth state) ───────────────────────────────── */
+.hub-hd {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-4) var(--space-6);
+  border-bottom: var(--rule-thin);
+  background: var(--bg-1);
+}
+.hub-brand { display: inline-flex; align-items: center; gap: var(--space-4); }
+.hub-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 26px; height: 26px;
+  border: var(--rule-strong);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--type-md);
+  line-height: 1;
+}
+.hub-title { font-family: var(--font-display); font-size: var(--type-lg); line-height: 1; color: var(--fg-0); letter-spacing: var(--tracking-tight); }
+.hub-title small { color: var(--fg-2); font-size: var(--type-xs); letter-spacing: var(--tracking-sku); text-transform: uppercase; margin-left: var(--space-3); }
+.hub-auth { display: inline-flex; align-items: center; gap: var(--space-3); font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-1); letter-spacing: var(--tracking-wide); }
+
+/* ─── Main + centered auth column ────────────────────────────────────── */
+.hub-main { flex: 1; padding: var(--space-7) var(--space-6); }
+.hub-center { max-width: 440px; margin: 0 auto; padding-top: var(--space-6); }
+
+/* Brand lockup — auth screens are composed around the mark (login-hero) */
+.hub-hero { display: flex; align-items: center; gap: var(--space-4); margin: 0 0 var(--space-7); }
+.hub-hero-mark {
+  display: inline-grid; place-items: center;
+  width: 46px; height: 46px;
+  border: var(--rule-strong);
+  background: var(--accent); color: var(--accent-fg);
+  font-family: var(--font-display); font-weight: 700; font-size: var(--type-2xl); line-height: 1;
+}
+.hub-hero-wm { font-family: var(--font-display); font-size: var(--type-xl); line-height: 1.1; color: var(--fg-0); letter-spacing: var(--tracking-tight); }
+.hub-hero-wm small { display: block; margin-top: 3px; font-size: var(--type-xs); letter-spacing: var(--tracking-eyebrow); text-transform: uppercase; color: var(--fg-2); }
+
+/* display:contents so the inert background keeps the hub-frame flex layout */
+.hub-behind { display: contents; }
+.hub-eyebrow { margin: 0 0 var(--space-3); }
+.hub-center h2 { font-family: var(--font-display); font-size: var(--type-2xl); line-height: var(--lh-2xl); margin: 0 0 var(--space-3); letter-spacing: var(--tracking-tight); }
+.hub-lede { color: var(--fg-1); margin: 0 0 var(--space-5); }
+.hub-hint { font-size: var(--type-xs); line-height: var(--lh-xs); color: var(--fg-2); margin: var(--space-4) 0 0; letter-spacing: var(--tracking-wide); }
+.hub-hint code { font-family: var(--font-mono); color: var(--fg-1); background: var(--mono-cell-bg); padding: 0 4px; }
+
+/* form rows */
+.hub-actions { display: flex; align-items: center; gap: var(--space-4); margin-top: var(--space-5); }
+.input--pw { letter-spacing: 0.25em; }
+
+/* ─── Fingerprint identity card (phishing defense) ───────────────────── */
+.fp {
+  border: var(--rule-thin);
+  border-left: 4px solid var(--accent);
+  background: var(--bg-2);
+  padding: var(--space-4) var(--space-5);
+  margin: var(--space-5) 0;
+}
+.fp-row { display: flex; justify-content: space-between; gap: var(--space-4); padding: var(--space-2) 0; }
+.fp-row + .fp-row { border-top: 1px dashed var(--border-subtle); }
+.fp-k { font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-sku); text-transform: uppercase; color: var(--fg-2); }
+.fp-v { font-family: var(--font-mono); font-size: var(--type-sm); color: var(--fg-0); text-align: right; word-break: break-all; }
+.fp-v .grp { color: var(--accent); }
+
+/* ─── Dashboard 2×2 grid ─────────────────────────────────────────────── */
+.hub-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-5);
+  max-width: var(--layout-max-w);
+  margin: 0 auto;
+}
+.tile-bd .card-title { font-family: var(--font-display); font-size: var(--type-lg); line-height: var(--lh-lg); margin: 0 0 var(--space-2); color: var(--fg-0); }
+.tile .tile-hd .live { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--status-success); }
+
+/* dl status grid */
+.kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-2) var(--space-5);
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+}
+.kv dt { color: var(--fg-2); letter-spacing: var(--tracking-sku); text-transform: uppercase; font-size: var(--type-xs); align-self: center; }
+.kv dd { margin: 0; color: var(--fg-0); text-align: right; }
+.kv dd .unit { color: var(--fg-2); }
+
+/* tables — peers + tokens */
+.tbl { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: var(--type-sm); }
+.tbl caption { text-align: left; }
+.tbl th {
+  text-align: left;
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-sku);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  font-weight: 600;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: var(--rule-thin);
+}
+.tbl th.num, .tbl td.num { text-align: right; }
+.tbl td { padding: var(--space-3); border-bottom: 1px solid var(--border-subtle); color: var(--fg-0); vertical-align: middle; }
+.tbl tr:last-child td { border-bottom: 0; }
+.tbl .doc { color: var(--fg-1); }
+.tbl .user { display: inline-flex; align-items: center; gap: var(--space-3); }
+.tbl .ago { color: var(--fg-2); }
+.tbl td.act { text-align: right; padding-block: var(--space-2); }
+.tbl .empty td { color: var(--fg-2); text-align: center; padding: var(--space-6) var(--space-3); font-style: normal; letter-spacing: var(--tracking-wide); }
+
+/* user swatch dot (peer color) */
+.swatch { width: 9px; height: 9px; border: 1px solid var(--border-strong); display: inline-block; }
+
+/* ─── Issued-credential modal + scrim (signature moment) ─────────────── */
+.scrim {
+  position: absolute;
+  inset: 0;
+  /* hard-edges: NO blur. Solid token wash over the dimmed dashboard. */
+  background: color-mix(in oklab, var(--bg-0) 78%, transparent);
+  display: grid;
+  place-items: center;
+  padding: var(--space-7);
+}
+.dim { filter: none; opacity: 0.42; pointer-events: none; }
+
+.issued {
+  width: 560px;
+  max-width: 100%;
+  background: var(--bg-1);
+  border: var(--rule-strong);
+  box-shadow: var(--shadow-focus);
+}
+.issued-hd {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3) var(--space-5);
+  border-bottom: var(--rule-thin);
+  background: var(--bg-2);
+}
+.issued-hd .stamp {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-sku);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.issued-bd { padding: var(--space-5); }
+.issued-bd h2 { font-family: var(--font-display); font-size: var(--type-xl); line-height: var(--lh-xl); margin: 0 0 var(--space-2); letter-spacing: var(--tracking-tight); }
+.issued-bd p { color: var(--fg-1); margin: 0 0 var(--space-4); }
+
+/* command block — the receipt */
+.cmd {
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+  line-height: var(--lh-sm);
+  background: var(--bg-3);
+  border: var(--rule-thin);
+  color: var(--fg-0);
+  padding: var(--space-4);
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0 0 var(--space-4);
+}
+.cmd .flag { color: var(--accent); }
+.cmd .cont { color: var(--fg-1); }  /* fg-3 on bg-3 = 2.1:1; fg-1 = 8.2:1 (live shell glyph) */
+
+/* tear line between command + token stub */
+.tear {
+  border: 0;
+  border-top: 1px dashed var(--border-default);
+  margin: var(--space-4) calc(-1 * var(--space-5));
+  position: relative;
+}
+
+/* token stub */
+.stub { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-4); margin-bottom: var(--space-4); }
+.stub .lbl { font-size: var(--type-xs); letter-spacing: var(--tracking-sku); text-transform: uppercase; color: var(--fg-2); }
+.stub code { font-family: var(--font-mono); font-size: var(--type-sm); color: var(--accent); word-break: break-all; }
+.issued-meta { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-4); font-family: var(--font-mono); font-size: 10px; letter-spacing: var(--tracking-sku); text-transform: uppercase; color: var(--fg-2); }  /* fg-3 = 2.5:1; fg-2 = 4.85:1 (live metadata) */
+.issued-ft { display: flex; justify-content: flex-end; gap: var(--space-3); padding: var(--space-3) var(--space-5); border-top: var(--rule-thin); background: var(--bg-2); }
+
+/* copied flash on the copy button */
+.copied { color: var(--status-success) !important; border-color: var(--status-success) !important; }
+
+/* ─── Edge / empty states column ─────────────────────────────────────── */
+.states { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: var(--space-5); }
+.state-blk h3 { font-family: var(--font-display); font-size: var(--type-md); line-height: var(--lh-md); margin: 0 0 var(--space-3); color: var(--fg-1); letter-spacing: var(--tracking-tight); }
+.state-blk h3 .sku { margin-left: var(--space-3); }
+
+/* inline rotate confirm */
+.confirm {
+  border: var(--rule-thin);
+  border-left: 4px solid var(--status-warn);
+  background: var(--bg-2);
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+}
+.confirm p { margin: 0; color: var(--fg-1); font-size: var(--type-sm); }
+.confirm p b { color: var(--fg-0); }
+.confirm .confirm-act { display: inline-flex; gap: var(--space-3); flex-shrink: 0; }
+
+/* callouts (auth expired / rate limit) — hairline left rule, squared.
+   BEM .callout--info/--error is a deliberate forward-migration of the DS
+   `.call.info` / Docs Site `.callout .tip` shapes onto one consistent API. */
+.callout {
+  display: flex;
+  gap: var(--space-4);
+  border: var(--rule-thin);
+  background: var(--bg-1);
+  padding: var(--space-4) var(--space-5);
+  font-size: var(--type-sm);
+}
+.callout .glyph { font-family: var(--font-mono); font-weight: 700; flex-shrink: 0; }
+.callout .body { color: var(--fg-1); }
+.callout .body b { color: var(--fg-0); }
+.callout .body code { font-family: var(--font-mono); color: var(--fg-1); background: var(--mono-cell-bg); padding: 0 4px; }
+.callout--info  { border-left: 4px solid var(--status-info); }
+.callout--info .glyph { color: var(--status-info); }
+.callout--error { border-left: 4px solid var(--status-error); }
+.callout--error .glyph { color: var(--status-error); }
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
