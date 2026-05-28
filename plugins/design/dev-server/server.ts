@@ -203,7 +203,7 @@ startHeapWatch();
 // Phase 9 Task 4 — bidirectional sync agent. No-op when the project isn't
 // linked to a hub (`.design/config.json` has no `linkedHub` field). Kicked
 // off after fsWatch so the agent's bus subscription receives every fs event.
-const syncRuntime = createSyncRuntime(ctx);
+const syncRuntime = createSyncRuntime(ctx, collab ? { registry: collab.registry } : {});
 if (syncRuntime) {
   try {
     await syncRuntime.start();

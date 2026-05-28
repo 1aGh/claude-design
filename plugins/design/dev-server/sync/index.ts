@@ -21,6 +21,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 
+import type { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
 import type { Context } from '../context.ts';
@@ -32,9 +33,25 @@ import { getHubToken } from './hubs-config.ts';
 /** A minimum-surface stand-in for the HocuspocusProvider's runtime API. */
 export interface SyncProvider {
   readonly document: Y.Doc;
+  /**
+   * The provider's hub-synced Awareness, when it exposes one. Phase 9 Task 5
+   * bridges this to the collab Room's Awareness so cursors relay through the
+   * hub. Optional — a provider without awareness (or a test stub) just skips
+   * the bridge.
+   */
+  readonly awareness?: Awareness;
   /** Resolves when the first hub sync handshake completes. */
   onceSynced(): Promise<void>;
   destroy(): void;
+}
+
+/**
+ * Structural surface of the collab registry the runtime needs for Task 5.
+ * Defined here (rather than imported from collab/) to avoid a dev-server
+ * module cycle — the real `Registry` satisfies it.
+ */
+export interface AwarenessRegistry {
+  attachHubAwareness(slug: string, awareness: Awareness): () => void;
 }
 
 /** Factory the runtime calls per discovered canvas. Default uses Hocuspocus. */
@@ -60,6 +77,12 @@ export interface CreateSyncRuntimeOptions {
   adopt?: boolean;
   /** Discovery override — pass an explicit canvas list instead of scanning. */
   canvases?: CanvasDescriptor[];
+  /**
+   * Collab registry — when provided, each provider's Awareness is bridged to
+   * the matching Room so cursors relay through the hub (Task 5). Omitted in
+   * unit tests that only exercise the file-sync path.
+   */
+  registry?: AwarenessRegistry;
 }
 
 /**
@@ -121,6 +144,7 @@ export function createSyncRuntime(
   const echoGuard = createEchoGuard();
   const agents = new Map<string, CanvasSyncAgent>();
   const providers = new Map<string, SyncProvider>();
+  const awarenessDetaches: Array<() => void> = [];
   let fsReader: FsReader | null = null;
   let busUnsub: (() => void) | null = null;
   let started = false;
@@ -184,6 +208,13 @@ export function createSyncRuntime(
         agent.start();
         agents.set(canvas.slug, agent);
 
+        // Task 5 — bridge the provider's hub-synced Awareness to the Room so
+        // browser cursors relay cross-machine. No-op when the provider exposes
+        // no awareness or no registry was passed (file-sync-only tests).
+        if (opts.registry && provider.awareness) {
+          awarenessDetaches.push(opts.registry.attachHubAwareness(canvas.slug, provider.awareness));
+        }
+
         // Cold-start reconcile fires once the provider has hub state.
         void provider.onceSynced().then(async () => {
           await agent.reconcile();
@@ -209,6 +240,14 @@ export function createSyncRuntime(
   async function stop(): Promise<void> {
     if (stopped) return;
     stopped = true;
+    for (const detach of awarenessDetaches) {
+      try {
+        detach();
+      } catch {
+        /* best-effort — registry teardown also clears bridges on destroyAll */
+      }
+    }
+    awarenessDetaches.length = 0;
     busUnsub?.();
     busUnsub = null;
     fsReader?.stop();
@@ -348,6 +387,9 @@ async function defaultProviderFactory(args: {
   });
   return {
     document,
+    // HocuspocusProvider creates a hub-synced Awareness by default; expose it
+    // so the runtime can bridge it to the collab Room (Task 5).
+    awareness: provider.awareness as Awareness | undefined,
     onceSynced(): Promise<void> {
       return new Promise<void>((resolve) => {
         if (provider.synced) {

@@ -112,10 +112,163 @@ export interface CollabAwarenessState {
 export type ForeignAwareness = Omit<CollabAwarenessState, '__connId'> & { clientID: number };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Untrusted-input sanitization at the awareness trust boundary.
+//
+// Phase 8 awareness was loopback-only — every state came from a trusted local
+// tab. Phase 9 (Task 5) bridges awareness through a SEMI-TRUSTED hub (DDR-054),
+// so foreign states are now attacker-influenceable. `useForeignAwareness` is
+// the single chokepoint where remote state is read before it reaches the
+// cursor / participant render sinks, so all validation lives here. Fields are
+// validated for VALUE, not just type:
+//   - color: re-derived locally from the (sanitized) name and the wire value
+//     is DISCARDED — a hub-chosen `color` string would otherwise flow into an
+//     inline `style` and a `url(...)` value beacons every viewer's browser.
+//     The palette is deterministic, so re-derivation is visually identical.
+//   - name: control / bidi / zero-width chars stripped, length-capped — blocks
+//     identity spoofing + render bloat.
+//   - cursor / viewport: finite-number gated — a NaN/Infinity would poison the
+//     CSS transform / the local viewport controller during Follow mode.
+//   - selection.cssPath: charset + length allowlist before it reaches
+//     `querySelector` — blocks selector-complexity DoS + arbitrary DOM probing.
+//   - annotationSelection: per-id token + array-length capped — blocks a
+//     querySelector render-storm.
+//   - peer count capped — blocks an unbounded-clients memory/render DoS.
+
+const MAX_FOREIGN_PEERS = 64;
+const MAX_NAME_LEN = 64;
+const MAX_CSSPATH_LEN = 512;
+const MAX_ANNOTATION_IDS = 256;
+const MAX_ANNOTATION_ID_LEN = 128;
+
+// Charset of every selector the canvas-shell `cssPath()` emits
+// (`[data-*="..."]`, `#id`, `tag.cls:nth-child(N)`, ` > ` combinators).
+const CSSPATH_ALLOWED = /^[A-Za-z0-9 ._#>:[\]="'()-]+$/;
+// `cssPath()` only ever emits `:nth-child(N)` as a parenthesised construct.
+// Functional pseudo-classes (`:has()`, `:is()`, `:where()`, `:not()`) trigger
+// per-render subtree walks → a malicious hub peer could publish a deeply
+// nested `:has()` selector and pin every viewer's main thread (querySelector
+// re-runs each render). So after stripping the legit `:nth-child/of-type(N)`
+// forms, any residual paren means a functional pseudo — reject. The charset
+// allowlist alone was wider than the generator (the original DoS hole).
+const CSSPATH_NTH = /:nth-(child|of-type)\(\d{1,4}\)/g;
+const ANNOTATION_ID_ALLOWED = /^[A-Za-z0-9._:-]+$/;
+
+function isSafeCssPath(p: string): boolean {
+  if (p.length > MAX_CSSPATH_LEN || !CSSPATH_ALLOWED.test(p)) return false;
+  const stripped = p.replace(CSSPATH_NTH, '');
+  return !stripped.includes('(') && !stripped.includes(')');
+}
+
+function isFiniteNum(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v);
+}
+
+// Control (C0/C1), zero-width, and bidi-override code points get stripped from
+// displayed strings so a remote peer can't spoof another's identity or hide
+// payloads in labels. A charCode scan (not a regex literal with raw control
+// chars) sidesteps biome's noControlCharactersInRegex while keeping the same
+// semantics — same approach as the hub's sanitizeForLog (DDR-053).
+function isUnsafeCodePoint(cp: number): boolean {
+  return (
+    cp <= 0x1f ||
+    (cp >= 0x7f && cp <= 0x9f) ||
+    (cp >= 0x200b && cp <= 0x200f) ||
+    (cp >= 0x202a && cp <= 0x202e) ||
+    (cp >= 0x2066 && cp <= 0x2069) ||
+    cp === 0xfeff
+  );
+}
+
+function sanitizeName(raw: unknown): string {
+  if (typeof raw !== 'string') return 'anonymous';
+  let cleaned = '';
+  for (const ch of raw) {
+    if (!isUnsafeCodePoint(ch.codePointAt(0) ?? 0)) cleaned += ch;
+  }
+  cleaned = cleaned.trim().slice(0, MAX_NAME_LEN);
+  return cleaned || 'anonymous';
+}
+
+function sanitizeCursor(raw: unknown): { x: number; y: number } | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const c = raw as { x?: unknown; y?: unknown };
+  return isFiniteNum(c.x) && isFiniteNum(c.y) ? { x: c.x, y: c.y } : null;
+}
+
+function sanitizeViewport(raw: unknown): { x: number; y: number; zoom: number } {
+  const fallback = { x: 0, y: 0, zoom: 1 };
+  if (!raw || typeof raw !== 'object') return fallback;
+  const v = raw as { x?: unknown; y?: unknown; zoom?: unknown };
+  if (!isFiniteNum(v.x) || !isFiniteNum(v.y) || !isFiniteNum(v.zoom) || v.zoom <= 0)
+    return fallback;
+  return { x: v.x, y: v.y, zoom: v.zoom };
+}
+
+function sanitizeSelection(raw: unknown): CollabAwarenessState['selection'] {
+  if (!raw || typeof raw !== 'object') return null;
+  const s = raw as { cssPath?: unknown; bounds?: unknown };
+  const b = s.bounds as { x?: unknown; y?: unknown; w?: unknown; h?: unknown } | undefined;
+  const bounds =
+    b && isFiniteNum(b.x) && isFiniteNum(b.y) && isFiniteNum(b.w) && isFiniteNum(b.h)
+      ? { x: b.x, y: b.y, w: b.w, h: b.h }
+      : null;
+  // Only keep cssPath if it matches the locator grammar — otherwise drop it and
+  // let the renderer fall back to the (validated) bounds.
+  const cssPath = typeof s.cssPath === 'string' && isSafeCssPath(s.cssPath) ? s.cssPath : '';
+  if (!cssPath && !bounds) return null;
+  return { cssPath, bounds: bounds ?? { x: 0, y: 0, w: 0, h: 0 } };
+}
+
+function sanitizeAnnotationSelection(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const id of raw) {
+    if (out.length >= MAX_ANNOTATION_IDS) break;
+    if (
+      typeof id === 'string' &&
+      id.length <= MAX_ANNOTATION_ID_LEN &&
+      ANNOTATION_ID_ALLOWED.test(id)
+    )
+      out.push(id);
+  }
+  return out;
+}
+
+/**
+ * Validate + normalize one foreign awareness state at the trust boundary.
+ * Returns null for states that can't be a peer (no usable name). `color` is
+ * always re-derived locally from the sanitized name — the wire value is never
+ * trusted, which is what closes the hub CSS-`url()` exfil channel. Exported so
+ * the hostile-input matrix can exercise it without a React harness.
+ */
+export function sanitizeForeignState(clientID: number, state: unknown): ForeignAwareness | null {
+  if (!state || typeof state !== 'object') return null;
+  const s = state as Partial<CollabAwarenessState>;
+  if (typeof s.name !== 'string') return null;
+  const name = sanitizeName(s.name);
+  return {
+    clientID,
+    name,
+    color: colorForName(name),
+    cursor: sanitizeCursor(s.cursor),
+    selection: sanitizeSelection(s.selection),
+    annotationSelection: sanitizeAnnotationSelection(s.annotationSelection),
+    viewport: sanitizeViewport(s.viewport),
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Context.
 
 interface CollabValue {
   doc: Y.Doc;
+  /**
+   * SECURITY INVARIANT: in linked mode this Awareness carries states relayed
+   * from a SEMI-TRUSTED hub (DDR-054). Foreign states are untrusted input —
+   * read them ONLY through `useForeignAwareness`, which sanitizes every field
+   * at the trust boundary (`sanitizeForeignState`). Do NOT call
+   * `awareness.getStates()` directly in render code; that bypasses the gate.
+   */
   awareness: Awareness;
   /** Local peer's session-stable color (derived from git user.name). */
   myColor: string;
@@ -158,19 +311,10 @@ export function useForeignAwareness(): ForeignAwareness[] {
       const myId = awareness.clientID;
       for (const [clientID, state] of awareness.getStates() as Map<number, unknown>) {
         if (clientID === myId) continue;
-        if (!state || typeof state !== 'object') continue;
-        const s = state as Partial<CollabAwarenessState>;
-        // Guard against partial states from stale peers / older protocol versions.
-        if (typeof s.name !== 'string' || typeof s.color !== 'string') continue;
-        out.push({
-          clientID,
-          name: s.name,
-          color: s.color,
-          cursor: s.cursor ?? null,
-          selection: s.selection ?? null,
-          annotationSelection: Array.isArray(s.annotationSelection) ? s.annotationSelection : [],
-          viewport: s.viewport ?? { x: 0, y: 0, zoom: 1 },
-        });
+        if (out.length >= MAX_FOREIGN_PEERS) break; // bound DoS via unbounded peers
+        // Sanitize every now-remote field at this trust boundary (Task 5).
+        const peer = sanitizeForeignState(clientID, state);
+        if (peer) out.push(peer);
       }
       return out;
     }

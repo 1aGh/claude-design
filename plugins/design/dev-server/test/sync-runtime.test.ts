@@ -10,11 +10,18 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
 import type { Context, DevServerConfig } from '../context.ts';
 import { createBus } from '../context.ts';
-import { type SyncProvider, createSyncRuntime, discoverCanvases, toWsUrl } from '../sync/index.ts';
+import {
+  type AwarenessRegistry,
+  type SyncProvider,
+  createSyncRuntime,
+  discoverCanvases,
+  toWsUrl,
+} from '../sync/index.ts';
 
 let dir: string;
 let cfgPathEnv: string | undefined;
@@ -112,6 +119,7 @@ function inMemoryProviderFactory(): {
     peers.set(args.documentName, { local, peer });
     return {
       document: local,
+      awareness: new Awareness(local),
       async onceSynced() {
         // Synced immediately for the in-memory pair.
       },
@@ -207,6 +215,35 @@ describe('createSyncRuntime', () => {
 
     expect(peerOf('ui-screen').getText('html').toString()).toBe('<button>local</button>');
     await runtime?.stop();
+  });
+
+  test('attaches each provider awareness to the registry and detaches on stop', async () => {
+    const url = 'https://hub.example.com';
+    writeHubsConfig(url, 'mau_test');
+    const ctx = makeCtx({ url, linkedAt: 1 });
+
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'screen.html'), '<button>hi</button>');
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'modal.html'), '<dialog>x</dialog>');
+
+    const attached: string[] = [];
+    let detachCount = 0;
+    const registry: AwarenessRegistry = {
+      attachHubAwareness(slug, _awareness) {
+        attached.push(slug);
+        return () => {
+          detachCount++;
+        };
+      },
+    };
+
+    const { factory } = inMemoryProviderFactory();
+    const runtime = createSyncRuntime(ctx, { providerFactory: factory, registry });
+    await runtime?.start();
+
+    expect(attached.sort()).toEqual(['ui-modal', 'ui-screen']);
+
+    await runtime?.stop();
+    expect(detachCount).toBe(2);
   });
 });
 

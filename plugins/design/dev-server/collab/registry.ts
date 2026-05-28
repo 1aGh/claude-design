@@ -6,6 +6,9 @@
 // call into (Phase 8 Task 7) to force-snapshot every dirty room before a reload
 // prompt — see DDR-051 §3.
 
+import type { Awareness } from 'y-protocols/awareness';
+
+import { bridgeAwareness } from './awareness-bridge.ts';
 import { Y_TYPES } from './persistence.ts';
 import type { Room, RoomCallbacks } from './room.ts';
 import { createRoom } from './room.ts';
@@ -34,6 +37,16 @@ export interface Registry {
    * updated stroke set without waiting for a cold-open re-seed.
    */
   syncRoomFromAnnotations(slug: string, svg: string): void;
+  /**
+   * Phase 9 Task 5 — attach the hub-side Awareness (from a sync provider) for
+   * a slug so the Room's Awareness (browser peers) is bridged bidirectionally
+   * to the hub. While attached, cursors / selections / viewport relay
+   * cross-machine through Hocuspocus. Idempotent per slug; returns a detach
+   * fn. If a room is already live the bridge wires immediately, otherwise it
+   * wires when the room is next created. Awareness is ephemeral — this writes
+   * no files (see awareness-bridge.ts on why F14 is untouched).
+   */
+  attachHubAwareness(slug: string, awareness: Awareness): () => void;
   /** Flush every dirty room synchronously. DDR-051 branch-switch path. */
   flushAll(): Promise<void>;
   /** Tear down everything (e.g. on server shutdown). */
@@ -46,14 +59,45 @@ export interface Registry {
 
 export function createRegistry(callbacks: RoomCallbacks): Registry {
   const rooms = new Map<string, Room>();
+  // Hub-side Awareness per slug (lives as long as the sync provider). Rooms
+  // churn as browser tabs come and go; the bridge is re-wired each time a room
+  // is (re)created for a slug that has an attached hub Awareness.
+  const hubAwareness = new Map<string, Awareness>();
+  const bridges = new Map<string, () => void>();
+
+  function wireBridge(slug: string, room: Room): void {
+    if (bridges.has(slug)) return;
+    const hub = hubAwareness.get(slug);
+    if (!hub) return;
+    bridges.set(slug, bridgeAwareness(room.awareness, hub));
+  }
+
+  function teardownBridge(slug: string): void {
+    const detach = bridges.get(slug);
+    if (detach) {
+      detach();
+      bridges.delete(slug);
+    }
+  }
 
   function get(slug: string): Room {
     let room = rooms.get(slug);
     if (!room) {
       room = createRoom(slug, callbacks);
       rooms.set(slug, room);
+      wireBridge(slug, room);
     }
     return room;
+  }
+
+  function attachHubAwareness(slug: string, awareness: Awareness): () => void {
+    hubAwareness.set(slug, awareness);
+    const room = rooms.get(slug);
+    if (room) wireBridge(slug, room);
+    return () => {
+      teardownBridge(slug);
+      if (hubAwareness.get(slug) === awareness) hubAwareness.delete(slug);
+    };
   }
 
   function peek(slug: string): Room | null {
@@ -87,11 +131,17 @@ export function createRegistry(callbacks: RoomCallbacks): Registry {
     const room = rooms.get(slug);
     if (!room) return;
     if (room.size() > 0) return; // still active, leave it
+    // Tear the bridge down before room.destroy() runs awareness.destroy() —
+    // a late relay must not fire against a dead Awareness. The hub Awareness
+    // stays registered, so a reconnecting browser re-wires via get().
+    teardownBridge(slug);
     rooms.delete(slug);
     await room.destroy();
   }
 
   async function destroyAll(): Promise<void> {
+    for (const slug of Array.from(bridges.keys())) teardownBridge(slug);
+    hubAwareness.clear();
     const all = Array.from(rooms.values());
     rooms.clear();
     await Promise.all(all.map((r) => r.destroy()));
@@ -102,6 +152,7 @@ export function createRegistry(callbacks: RoomCallbacks): Registry {
     peek,
     syncRoomFromComments,
     syncRoomFromAnnotations,
+    attachHubAwareness,
     flushAll,
     destroyAll,
     drop,
