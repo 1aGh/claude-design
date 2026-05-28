@@ -118,13 +118,13 @@ the nested workspace via the `video:smoke:card` script.
 ## Adding a new scene
 
 ```sh
-/flow:video-new-scene <scene-id> <duration-seconds> "<caption>"
+/video-new-scene <scene-id> <duration-seconds> "<caption>"
 ```
 
 Example:
 
 ```sh
-/flow:video-new-scene 03-setup-ds-flow 6.0 "Vision -> research -> refinement"
+/video-new-scene 03-setup-ds-flow 6.0 "Vision -> research -> refinement"
 ```
 
 The command:

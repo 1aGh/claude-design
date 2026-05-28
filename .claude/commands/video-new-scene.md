@@ -1,9 +1,5 @@
 ---
-name: flow:video-new-scene
-category: setup
-type: command
 description: "Scaffold a new Remotion scene under scripts/video/final/src/scenes/ — composition + storyboard row + Root.tsx registration"
-keywords: [video, remotion, scene, scaffold, marketing, demo]
 argument-hint: "<scene-id> <duration-seconds> \"<caption>\""
 ---
 
@@ -13,10 +9,16 @@ Generate a Remotion scene under `scripts/video/final/src/scenes/<scene-id>/`,
 register the `<Composition>` in `Root.tsx`, and append a row to
 `scripts/video/storyboard.md` (creating it if missing).
 
+> Repo-local command — this scaffolder is specific to maude's own marketing-video
+> pipeline (`scripts/video/`), which is not part of the published `flow` plugin or
+> the `maude init` skeleton. It lives in `.claude/commands/` and runs only in this
+> repo. See the migration note in the Phase 15.1 retro for why it was pulled out of
+> `plugins/flow/commands/`.
+
 ## Arguments
 
 ```
-/flow:video-new-scene <scene-id> <duration-seconds> "<caption>" [--force]
+/video-new-scene <scene-id> <duration-seconds> "<caption>" [--force]
 ```
 
 | Arg | Required | Shape | Example |

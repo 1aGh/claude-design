@@ -10,9 +10,9 @@
       "agents": 13
     },
     "flow": {
-      "commands": 31,
+      "commands": 30,
       "skills": 18,
-      "agents": 6
+      "agents": 7
     },
     "maude": {
       "subcommands": 10
@@ -63,7 +63,6 @@
     "commands-flow/validate-security.mdx": "2026-05-23",
     "commands-flow/validate-visual.mdx": "2026-05-23",
     "commands-flow/validate.mdx": "2026-05-23",
-    "commands-flow/video-new-scene.mdx": "2026-05-23",
     "config-schema.mdx": "2026-05-27",
     "config.mdx": "2026-05-20",
     "design/bootstrap.mdx": "2026-05-20",
