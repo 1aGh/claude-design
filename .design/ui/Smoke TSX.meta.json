@@ -23,9 +23,18 @@
   "css_mode": "inline",
   "data_cd_id_version": 1,
   "viewport": {
-    "x": 568.5,
-    "y": 475,
-    "zoom": 1
+    "x": 282.1861278202324,
+    "y": 199.34062898612063,
+    "zoom": 0.4634045427326825
   },
-  "last_modified": "2026-05-26T08:02:18.103Z"
+  "last_modified": "2026-05-28T23:39:16.806Z",
+  "layout": {
+    "artboards": [
+      {
+        "id": "primary",
+        "x": -80,
+        "y": 160
+      }
+    ]
+  }
 }

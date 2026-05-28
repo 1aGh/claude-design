@@ -4,7 +4,7 @@
   "brief": "Multi-artboard meta-design of the Maude dev-server canvas (this very tool) — every distinct canvas-viewport state that v1.0 → v1.3 will ship, broken down by screen. Synthesized from .ai/plans/phase-{4,5,6,8,12}.md. Scope: features that touch the canvas viewport itself (infinite canvas + pan/zoom + mini-map, draw tools, pin-comments, presentation mode, live collab, inspector + layers). Explicitly NOT in scope: app shell chrome (left file-tree, top header, tabs row, status bar, system view, comments-list panel) — those live in a separate canvas covering Phase 3.5.",
   "platform": "desktop",
   "created": "2026-05-14T21:22:36Z",
-  "last_modified": "2026-05-26T12:49:05.560Z",
+  "last_modified": "2026-05-28T22:28:32.343Z",
   "designSystem": "project",
   "opt_out_scope": "palette",
   "iteration_count": 0,
@@ -173,9 +173,9 @@
   "css_mode": "inline",
   "data_cd_id_version": 1,
   "viewport": {
-    "x": -721.4431608493292,
-    "y": -172.40556970325918,
-    "zoom": 0.5362830056057832
+    "x": 292.26618384603375,
+    "y": 91.37275610386746,
+    "zoom": 0.13488448904134293
   },
   "layout": {
     "artboards": [
@@ -201,7 +201,7 @@
       },
       {
         "id": "presentation",
-        "x": 1674,
+        "x": 1706,
         "y": 1038
       },
       {
