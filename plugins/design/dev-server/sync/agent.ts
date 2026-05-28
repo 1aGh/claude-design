@@ -66,6 +66,14 @@ export interface CanvasSyncAgentOptions {
   flushMs?: number;
   /** Injected for tests — defaults to atomicWrite. */
   writer?: (path: string, bytes: string | Uint8Array) => void;
+  /**
+   * Called when a non-adopt reconcile (cold-start / post-git-pull) overwrites
+   * differing, non-empty local content with hub state — i.e. the local peer
+   * had divergent work that hub-wins discarded. Lets the runtime surface a
+   * "hub overwrote your local changes" notification (Phase 9 Task 8). v1.1
+   * resolution is always hub-wins; the interactive 3-way prompt is deferred.
+   */
+  onConflict?: (info: { slug: string; kind: 'cold-start-hub-wins' }) => void;
 }
 
 export interface CanvasSyncAgent {
@@ -245,6 +253,12 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
     lastComments = docCommentsStr;
     lastAnnotations = docAnnotations;
     if (localHtml !== docHtml) {
+      // Local had divergent, non-empty content that hub-wins is discarding —
+      // notify so the user knows their local edits were overwritten (Task 8).
+      // An absent/empty local file is a clean first-sync, not a conflict.
+      if (localHtml !== null && localHtml.trim() !== '') {
+        opts.onConflict?.({ slug, kind: 'cold-start-hub-wins' });
+      }
       const hash = hashBytes(docHtml);
       echoGuard.record(paths.html, hash);
       writer(paths.html, docHtml);

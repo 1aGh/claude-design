@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { basename, dirname, join, resolve } from 'node:path';
 import { parseArgs } from '../lib/argv.mjs';
 import { runAdopt, runLink, runStatus, runUnlink } from '../lib/design-link.mjs';
+import { writeGitignoreBlock } from '../lib/gitignore-block.mjs';
 
 const SUBCOMMANDS = new Set([
   'serve',
@@ -455,8 +456,14 @@ async function runInit({ args, pkgRoot }) {
 
   // Build explicit copy plan: [srcPath, destPath, transform?]
   const plan = buildCorePlan({ inspirationRoot, designDir, dsName });
-  const previewFiles = await readdir(join(inspirationRoot, 'core', 'preview'));
-  for (const f of previewFiles) {
+  // withFileTypes + file filter: core/preview/ contains a `.archive` dir that
+  // readFile would choke on with EISDIR.
+  const previewEntries = await readdir(join(inspirationRoot, 'core', 'preview'), {
+    withFileTypes: true,
+  });
+  for (const entry of previewEntries) {
+    if (!entry.isFile()) continue;
+    const f = entry.name;
     plan.push({
       src: resolve(inspirationRoot, 'core', 'preview', f),
       dest: resolve(designDir, 'system', dsName, 'preview', f),
@@ -485,6 +492,16 @@ async function runInit({ args, pkgRoot }) {
     }
     if (exists) stats.replaced.push(rel(designDir, destPath));
     else stats.created.push(rel(designDir, destPath));
+  }
+
+  // Phase 9 Task 9 (DDR-056) — write the design-runtime .gitignore block so a
+  // fresh project ignores per-machine runtime state (and stays correct if it
+  // later links to a hub). Idempotent + skipped under --dry-run.
+  if (!flags['dry-run']) {
+    const { action } = writeGitignoreBlock(cwd, { designRel: '.design' });
+    if (action !== 'unchanged') {
+      process.stdout.write(`  .gitignore: ${action} maude design-runtime block\n`);
+    }
   }
 
   printSummary(stats);

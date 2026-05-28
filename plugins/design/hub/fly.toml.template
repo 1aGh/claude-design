@@ -1,0 +1,53 @@
+# Maude Hub — Fly.io deploy template.
+#
+# Phase 9 Task 7. `maude hub deploy fly` writes this to ./fly.toml with the
+# app-name / region placeholders substituted, then prints the `fly launch` /
+# `fly deploy` next steps. Fly gives auto-cert (TLS), auto-restart, persistent
+# volume — the one-command path. ~$0.45/mo on the 256MB shared-cpu-1 arm tier.
+#
+# Docs: https://fly.io/docs/reference/configuration/
+
+app = "{{APP_NAME}}"
+primary_region = "{{REGION}}"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "1234"
+  DATA_DIR = "/data"
+  # HUB_PUBLIC_URL is set so the admin UI prints the correct bootstrap link.
+  # Fly terminates TLS, so the hub sees http:// internally but advertises https.
+  HUB_PUBLIC_URL = "https://{{APP_NAME}}.fly.dev"
+
+# Persistent Yjs state (hub.db) + token store (tokens.db) survive restarts.
+[mounts]
+  source = "maude_hub_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 1234
+  force_https = true
+  # Keep one machine warm for collab; flip to "stop" to save money on idle
+  # solo-test hubs (cold-start adds ~2s to the first connect).
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 200
+    soft_limit = 150
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+
+[checks.health]
+  type = "http"
+  port = 1234
+  method = "GET"
+  path = "/health"
+  interval = "30s"
+  timeout = "3s"
+  grace_period = "8s"

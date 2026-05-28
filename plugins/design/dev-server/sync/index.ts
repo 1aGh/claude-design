@@ -26,9 +26,15 @@ import * as Y from 'yjs';
 
 import type { Context } from '../context.ts';
 import { type CanvasSyncAgent, createCanvasSyncAgent } from './agent.ts';
+import {
+  type ConnectionMonitor,
+  type ProviderStatus,
+  createConnectionMonitor,
+} from './connection-state.ts';
 import { type EchoGuard, createEchoGuard } from './echo-guard.ts';
 import { type FsReader, createFsReader } from './fs-mirror.ts';
 import { getHubToken } from './hubs-config.ts';
+import { type SyncStatusStore, createSyncStatusStore } from './status.ts';
 
 /** A minimum-surface stand-in for the HocuspocusProvider's runtime API. */
 export interface SyncProvider {
@@ -42,6 +48,12 @@ export interface SyncProvider {
   readonly awareness?: Awareness;
   /** Resolves when the first hub sync handshake completes. */
   onceSynced(): Promise<void>;
+  /**
+   * Subscribe to WS connection-status transitions (Phase 9 Task 8 offline
+   * mode). Returns an unsubscribe fn. Optional — a test stub or a provider
+   * without status events just isn't monitored (treated as always-online).
+   */
+  onStatus?(cb: (status: ProviderStatus) => void): () => void;
   destroy(): void;
 }
 
@@ -68,6 +80,8 @@ export interface SyncRuntime {
   size(): number;
   /** Test inspection — get the agent for a slug if one was created. */
   agentFor(slug: string): CanvasSyncAgent | undefined;
+  /** Current offline/sync status payload (Task 8), or null when unlinked. */
+  status(): import('./status.ts').SyncStatusPayload | null;
 }
 
 export interface CreateSyncRuntimeOptions {
@@ -83,6 +97,14 @@ export interface CreateSyncRuntimeOptions {
    * unit tests that only exercise the file-sync path.
    */
   registry?: AwarenessRegistry;
+  /**
+   * Override the offline-mode connection monitor (Task 8 test injection —
+   * lets tests pass injectable timers/clock). Defaults to a real monitor that
+   * writes `_sync.json` + broadcasts 'sync:status' on the bus.
+   */
+  connectionMonitor?: ConnectionMonitor;
+  /** Override the status store (Task 8 test injection). */
+  statusStore?: SyncStatusStore;
 }
 
 /**
@@ -145,10 +167,18 @@ export function createSyncRuntime(
   const agents = new Map<string, CanvasSyncAgent>();
   const providers = new Map<string, SyncProvider>();
   const awarenessDetaches: Array<() => void> = [];
+  const statusDetaches: Array<() => void> = [];
   let fsReader: FsReader | null = null;
   let busUnsub: (() => void) | null = null;
   let started = false;
   let stopped = false;
+
+  // Task 8 — offline-mode status surface, initialized in start() once the
+  // canvas count is known. The store writes `_sync.json` + broadcasts
+  // 'sync:status' on the bus; the monitor aggregates provider WS status into
+  // online/offline/escalated and feeds every change to the store.
+  let statusStore: SyncStatusStore | null = null;
+  let monitor: ConnectionMonitor | null = null;
 
   async function start(): Promise<void> {
     if (started || stopped) return;
@@ -161,6 +191,22 @@ export function createSyncRuntime(
       );
       return;
     }
+
+    statusStore =
+      opts.statusStore ??
+      createSyncStatusStore({
+        url: linkedHub.url,
+        canvases: canvases.length,
+        write: (payload) => {
+          const file = path.join(ctx.paths.designRoot, '_sync.json');
+          writeFileSync(file, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+        },
+        broadcast: (payload) => ctx.bus.emit('sync:status', payload),
+      });
+    const store = statusStore;
+    monitor =
+      opts.connectionMonitor ?? createConnectionMonitor({ onChange: (snap) => store.update(snap) });
+    const mon = monitor;
 
     const reader = createFsReader({
       rootDir: ctx.paths.designRoot,
@@ -204,9 +250,26 @@ export function createSyncRuntime(
           },
           echoGuard,
           adopt: adoptOnce,
+          onConflict: (info) => store.addConflict(info),
         });
         agent.start();
         agents.set(canvas.slug, agent);
+
+        // Task 8 — feed this provider's WS status into the offline monitor.
+        if (provider.onStatus) {
+          statusDetaches.push(provider.onStatus((s) => mon.noteProviderStatus(canvas.slug, s)));
+        } else {
+          // No status events (test stub) — treat as connected so the monitor
+          // doesn't sit in the boot 'connecting' state forever.
+          mon.noteProviderStatus(canvas.slug, 'connected');
+        }
+        // Count local edits (agent-origin doc updates) toward queuedOps while
+        // the hub is unreachable — the banner's "N edits queued" figure.
+        const onLocalUpdate = (_u: Uint8Array, origin: unknown) => {
+          if (origin === agent.origin) mon.noteLocalEdit();
+        };
+        provider.document.on('update', onLocalUpdate);
+        statusDetaches.push(() => provider.document.off('update', onLocalUpdate));
 
         // Task 5 — bridge the provider's hub-synced Awareness to the Room so
         // browser cursors relay cross-machine. No-op when the provider exposes
@@ -248,6 +311,15 @@ export function createSyncRuntime(
       }
     }
     awarenessDetaches.length = 0;
+    for (const detach of statusDetaches) {
+      try {
+        detach();
+      } catch {
+        /* best-effort */
+      }
+    }
+    statusDetaches.length = 0;
+    monitor?.stop();
     busUnsub?.();
     busUnsub = null;
     fsReader?.stop();
@@ -276,6 +348,7 @@ export function createSyncRuntime(
     stop,
     size: () => agents.size,
     agentFor: (slug) => agents.get(slug),
+    status: () => statusStore?.get() ?? null,
   };
 }
 
@@ -390,6 +463,16 @@ async function defaultProviderFactory(args: {
     // HocuspocusProvider creates a hub-synced Awareness by default; expose it
     // so the runtime can bridge it to the collab Room (Task 5).
     awareness: provider.awareness as Awareness | undefined,
+    onStatus(cb: (status: ProviderStatus) => void): () => void {
+      // HocuspocusProvider emits 'status' with { status: 'connected' |
+      // 'connecting' | 'disconnected' } on every WS transition (Task 8).
+      const handler = (evt: { status?: string }) => {
+        const s = evt?.status;
+        if (s === 'connected' || s === 'connecting' || s === 'disconnected') cb(s);
+      };
+      provider.on('status', handler);
+      return () => provider.off('status', handler);
+    },
     onceSynced(): Promise<void> {
       return new Promise<void>((resolve) => {
         if (provider.synced) {

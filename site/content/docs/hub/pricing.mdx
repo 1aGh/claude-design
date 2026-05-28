@@ -1,0 +1,36 @@
+---
+title: Hub pricing
+description: What a self-hosted Maude hub actually costs per month, across providers. No SaaS markup — you pay the box, not us.
+---
+
+The hub is a small Node process: ~256 MB RAM, a few MB of SQLite on disk, near-zero CPU at rest. It costs whatever the cheapest always-on box on your provider costs. There is no Maude SaaS tier and no per-seat fee — you pay the infrastructure, nothing else.
+
+| Provider | Tier | ~Cost/mo | TLS | Notes |
+|---|---|---|---|---|
+| **Fly.io** | shared-cpu-1x, 256 MB, arm | **~$0.45** | auto | Cheapest. `auto_stop_machines` can park idle hubs; cold start adds ~2s. Free allowance often covers a single small hub. |
+| **AWS Lightsail** | t4g.nano + 10 GB disk | **~$4–6** | Caddy | Flat, predictable. Static IP included. |
+| **Hetzner CX11** | 1 vCPU, 2 GB | **~$4** | Caddy | Best price/perf in the EU. |
+| **DigitalOcean / Vultr / Linode** | smallest droplet | **~$5–6** | Caddy | Universal Docker story. |
+| **Coolify on a $5 VPS** | any $5 box | **~$5** | Coolify | Cheapest *sovereign* option with a PaaS UI. |
+| **AWS EC2 + ALB** | t4g.nano + gp3 + ALB | **~$15–20** | ACM | Only worth it if you're already on AWS; the ALB is the cost. |
+| **Render** | free tier | $0 | auto | **Not recommended for collab** — free instances sleep after 15 min idle, which drops live connections. |
+| **Railway** | trial / $5 | ~$5 | auto | Fine, but no cheaper than a VPS. |
+
+## Reading the table
+
+- **Fly free-ish tier** is the cheapest real option. A single 256 MB machine fits comfortably; if you enable `auto_stop_machines`, an idle hub costs almost nothing, at the price of a ~2s cold start on the first reconnect of the day.
+- **Flat-rate VPS** (Lightsail, Hetzner, DO) is the most predictable. No surprise egress bills at hub scale — Yjs sync traffic is tiny.
+- **Render's free tier sleeps.** A sleeping hub drops every connected peer. Use it only to kick the tires, never for a team.
+- **EC2 + ALB** is the expensive outlier, and the cost is the load balancer, not the compute. Only pick it if ALB-terminated TLS + existing AWS tooling matter to you.
+
+## What drives cost
+
+Practically nothing scales with usage at indie-team size:
+
+- **RAM** is the binding constraint — 256 MB is plenty for a few peers and dozens of canvases.
+- **Disk** is SQLite: a few MB per project. A 3 GB volume is overkill and chosen for headroom.
+- **Egress** is Yjs deltas + awareness frames — kilobytes, not gigabytes.
+
+If you outgrow a single 256 MB box you have a much bigger collaboration story than v1.1 targets, and Hocuspocus' `extension-redis` (horizontal scale) is the documented next step.
+
+See [Deploy a hub](/docs/hub/deploy) for the per-provider setup commands.

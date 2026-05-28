@@ -4,7 +4,7 @@
 // the route table without rewriting this module. The `fetch` export is the
 // top-level fall-through for paths Bun's `routes` field doesn't cover.
 
-import { watch } from 'node:fs';
+import { existsSync, readFileSync, watch } from 'node:fs';
 import { join, posix } from 'node:path';
 
 import type { Api } from './api.ts';
@@ -240,6 +240,23 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       }),
 
     '/_active': () => Response.json(inspect.state),
+
+    // Phase 9 Task 8 — offline-mode banner poll fallback. The linked-mode sync
+    // runtime writes `_sync.json`; browser tabs also get live pushes over the
+    // WS ('sync:status'). Returns `{ linked: false }` in solo mode.
+    '/_sync-status': () => {
+      const file = join(ctx.paths.designRoot, '_sync.json');
+      if (!existsSync(file)) {
+        return Response.json({ linked: false }, { headers: { 'Cache-Control': 'no-store' } });
+      }
+      try {
+        return Response.json(JSON.parse(readFileSync(file, 'utf8')), {
+          headers: { 'Cache-Control': 'no-store' },
+        });
+      } catch {
+        return Response.json({ linked: false }, { headers: { 'Cache-Control': 'no-store' } });
+      }
+    },
 
     '/_config': () => Response.json(ctx.cfg),
 

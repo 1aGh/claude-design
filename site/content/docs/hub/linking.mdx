@@ -1,0 +1,98 @@
+---
+title: Linking peers
+description: maude design link / unlink / status / adopt — pair a local repo with a hub, mirror .design/ bidirectionally, and survive the hub going offline.
+---
+
+Once a hub is deployed ([Deploy a hub](/docs/hub/deploy)), each collaborator pairs their local repo with it. After linking, the existing `maude design serve` does double duty: it serves your browser canvas AND keeps `.design/*.html` mirrored against the hub's Yjs state. Claude Code never sees Yjs — it reads and writes plain files exactly as in solo mode.
+
+## Link
+
+```bash
+maude design link https://maude-hub-acme.fly.dev --token mau_a3f9c8b2...
+```
+
+The token comes from the hub admin UI's "Generate invite" button (or `maude hub token generate`). It's stored per-machine in `~/.config/maude/hubs.json` (mode 0600, **never committed**). The `linkedHub: { url }` pointer lands in `.design/config.json`, which **is** committed — so a teammate who `git pull`s gets the hub URL and only needs their own token.
+
+### The trust gate
+
+Linking to a **non-loopback** hub grants that hub the same write access to your `.design/` as you have (hub-pushed content lands on disk verbatim, like `git pull` from a stranger). So the first link to a remote hub asks for confirmation:
+
+```text
+⚠ Linking to a NON-LOCAL hub.
+    URL:    https://maude-hub-acme.fly.dev
+    scheme: https
+    host:   maude-hub-acme.fly.dev
+  A linked hub can write to your .design/ files. Only link to hubs you trust.
+Link this repo to https://maude-hub-acme.fly.dev? [y/N]
+```
+
+Confirm once and the hub is recorded in your per-machine trust list — re-linking won't re-prompt. `--yes` confirms non-interactively (for scripts); a non-TTY without `--yes` refuses. Loopback hubs (local dev) are exempt. The trust list lives per-machine, never in a committed file, so a malicious PR can't pre-seed trust. See [DDR-054](https://github.com/1aGh/maude/blob/main/.ai/decisions/DDR-054-task-5-awareness-trust-boundary.md).
+
+## Adopt — seed an empty hub from your repo
+
+When you've deployed a fresh hub and want to push your existing canvases up to it:
+
+```bash
+maude design adopt https://maude-hub-acme.fly.dev --token mau_...
+# alias for: maude design link <url> --token ... --adopt
+```
+
+`--adopt` pushes local `.design/*.html`, annotation SVGs, and comment JSON up to the hub unconditionally. Use it for first-time bootstrap from a populated repo, or hub-was-wiped recovery. The default (no `--adopt`) is **hub-wins**: if the hub already has state, hub state replaces your local disk — the right choice when joining an already-active project.
+
+> v1.1 ships exactly two conflict modes: **hub-wins** (default) and **adopt** (push). There is no `--peer-wins`; it's a confusion vector deferred to v1.2.
+
+## Status
+
+```bash
+maude design status            # human-readable
+maude design status --json     # parseable for tooling
+```
+
+Shows the hub URL, link time, adopt mode, whether your token is stored, hub reachability, and the sync agent's state (last sync, queued ops, conflict/offline state).
+
+## Unlink
+
+```bash
+maude design unlink              # drops linkedHub + token, leaves files alone
+maude design unlink --keep-token # keep the token in hubs.json
+```
+
+Your `.design/` files are untouched — the repo returns to solo mode. The gitignore block (see below) is left in place; its rules are harmless in solo mode.
+
+## What's in git vs. what isn't
+
+Linked mode uses one gitignore strategy in v1.1 — **`full`**: canvases and their JSON snapshots stay in git (cold backup, PR-reviewable `.html` diffs, bootstrap-from-clone), while regenerable runtime state is ignored.
+
+```text
+# maude:begin (design plugin runtime — gitignored even in linked mode)
+.design/_state/        # binary CRDT logs (regenerable from hub)
+.design/_server.json
+.design/_server.log
+.design/_active.json
+.design/_history/
+.design/_chat/         # ACP transcripts (per-machine)
+# maude:end
+```
+
+Committed: `.design/config.json` (carries the `linkedHub` URL), `.design/*.html`, `*.layout.json`, `*.annotations.svg`, `_comments/*.json`, `system/`. `maude design init` and `maude design link --adopt` write the block between the markers, idempotently — re-running never duplicates it, and `unlink` leaves it intact. See [DDR-056](https://github.com/1aGh/maude/blob/main/.ai/decisions/DDR-056-linked-mode-gitignore-strategy.md).
+
+## When the hub goes offline
+
+The sync agent tolerates the hub disappearing — your laptop on a plane, a Fly restart, a flaky network:
+
+- After the WS closes and 3 reconnect attempts fail over ~30s, the agent enters **offline mode**. A yellow banner appears across the canvas chrome: *"Working offline · N edits queued · will sync when hub reconnects."*
+- Local edits keep working — the Y.Doc accepts updates and the agent buffers them in `.design/_state/<slug>.ydoc.bin`.
+- On reconnect, the agent runs Yjs sync v2, the banner flashes green *"Synced"* for 3s, then disappears. Queued edits land within ~2s.
+- If you stay offline for **> 24h**, the banner escalates to red: *"Long offline — your changes may conflict. Consider `git commit && git push` as backup."*
+
+## When `git pull` brings new disk state while linked
+
+If a `git pull` changes a canvas the hub also knows about, the agent detects the hash divergence and prompts:
+
+```text
+Local changes from git pull on screen.html.
+  [P] Push to hub   [D] Discard local, accept hub   [A] Abort
+(defaults to Push in 30s)
+```
+
+Comments and annotations are additive CRDT operations — they merge without loss. Only HTML body conflicts (rare) resolve last-write-wins, with a notification to the disadvantaged peer.

@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { test } from 'node:test';
@@ -32,8 +32,10 @@ function withDataDir(fn) {
 test('hub help prints subcommand summary on stdout', () => {
   const res = runCli(['hub', 'help']);
   assert.equal(res.status, 0, res.stderr);
-  assert.match(res.stdout, /maude hub <serve\|token\|status>/);
+  assert.match(res.stdout, /maude hub <serve\|token\|status\|deploy>/);
   assert.match(res.stdout, /token generate --label NAME/);
+  assert.match(res.stdout, /token rotate --label NAME/);
+  assert.match(res.stdout, /deploy <fly\|docker>/);
 });
 
 test('hub token generate without --label exits 2', () => {
@@ -73,6 +75,79 @@ test('hub token generate --dev uses mau_dev_ prefix', () => {
     assert.equal(res.status, 0, res.stderr);
     assert.match(res.stdout, /value:\s+mau_dev_[0-9a-f]{32}/);
   });
+});
+
+test('hub token rotate mints a fresh value for an existing label', () => {
+  withDataDir((dataDir) => {
+    const gen = runCli(['hub', 'token', 'generate', '--label', 'alice', '--data', dataDir]);
+    const firstValue = /value:\s+(mau_[0-9a-f]{32})/.exec(gen.stdout)?.[1];
+    assert.ok(firstValue, 'generate printed a value');
+
+    const rot = runCli(['hub', 'token', 'rotate', '--label', 'alice', '--data', dataDir]);
+    assert.equal(rot.status, 0, rot.stderr);
+    const rotatedValue = /value:\s+(mau_[0-9a-f]{32})/.exec(rot.stdout)?.[1];
+    assert.ok(rotatedValue, 'rotate printed a value');
+    assert.notEqual(rotatedValue, firstValue, 'rotate changed the value');
+    assert.match(rot.stdout, /rotated in/);
+    // Still exactly one token under that label.
+    assert.equal(readTokens(dataDir).tokens.length, 1);
+  });
+});
+
+test('hub token rotate on a missing label exits 1', () => {
+  withDataDir((dataDir) => {
+    const res = runCli(['hub', 'token', 'rotate', '--label', 'ghost', '--data', dataDir]);
+    assert.equal(res.status, 1);
+    assert.match(res.stderr, /no token with label "ghost"/);
+  });
+});
+
+test('hub deploy fly emits fly.toml + Dockerfile with substituted placeholders', () => {
+  withDataDir((outDir) => {
+    const res = runCli([
+      'hub',
+      'deploy',
+      'fly',
+      '--name',
+      'maude-hub-test',
+      '--region',
+      'fra',
+      '--out',
+      outDir,
+    ]);
+    assert.equal(res.status, 0, res.stderr);
+    const flyToml = readFileSync(join(outDir, 'fly.toml'), 'utf8');
+    assert.match(flyToml, /app = "maude-hub-test"/);
+    assert.match(flyToml, /primary_region = "fra"/);
+    assert.doesNotMatch(flyToml, /\{\{/, 'no unsubstituted placeholders');
+    assert.ok(existsSync(join(outDir, 'Dockerfile')), 'Dockerfile copied alongside');
+  });
+});
+
+test('hub deploy docker emits compose + Caddyfile with the image tag', () => {
+  withDataDir((outDir) => {
+    const res = runCli(['hub', 'deploy', 'docker', '--tag', 'v9.9.9', '--out', outDir]);
+    assert.equal(res.status, 0, res.stderr);
+    const compose = readFileSync(join(outDir, 'docker-compose.yml'), 'utf8');
+    assert.match(compose, /ghcr\.io\/1agh\/maude-hub:v9\.9\.9/);
+    assert.doesNotMatch(compose, /\{\{/, 'no unsubstituted placeholders');
+    assert.ok(existsSync(join(outDir, 'Caddyfile')), 'Caddyfile emitted');
+  });
+});
+
+test('hub deploy refuses to overwrite without --force', () => {
+  withDataDir((outDir) => {
+    runCli(['hub', 'deploy', 'docker', '--out', outDir]);
+    const res = runCli(['hub', 'deploy', 'docker', '--out', outDir]);
+    assert.equal(res.status, 1);
+    assert.match(res.stderr, /already exists.*--force/s);
+  });
+});
+
+test('hub deploy with an unknown target exits 2', () => {
+  const res = runCli(['hub', 'deploy', 'kubernetes']);
+  assert.equal(res.status, 2);
+  assert.match(res.stderr, /target must be one of/);
 });
 
 test('hub status against an unreachable URL exits 1 with diagnostic', () => {

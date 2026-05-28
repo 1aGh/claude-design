@@ -106,6 +106,13 @@ export function createWs(ctx: Context, api: Api, inspect: Inspect, collab: Colla
   // canvas iframes both subscribe.
   ctx.bus.on('git-lifecycle', (payload: unknown) => broadcast({ type: 'git-lifecycle', payload }));
 
+  // Phase 9 Task 8 — hub-down offline mode. The linked-mode sync runtime emits
+  // 'sync:status' on every connection-state change (online / connecting /
+  // offline / offline-long, queued-op count, conflict notices). Browser tabs
+  // render the offline/synced/escalation banner from this. Solo mode never
+  // emits, so this is a no-op for unlinked projects.
+  ctx.bus.on('sync:status', (payload: unknown) => broadcast({ type: 'sync:status', payload }));
+
   // HMR broadcaster — turns fs:any change events into `canvas-hmr` messages.
   // The iframe-side client (in _shell.html) decides reload strategy from `mode`.
   createHmrBroadcaster(ctx, (msg) => broadcast(msg));

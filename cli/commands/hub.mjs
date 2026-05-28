@@ -1,16 +1,16 @@
 // maude hub — self-hostable Yjs sync hub control plane.
 //
-// Phase 9 Task 2 (minimal subset): serve + token generate + status.
-// Token rotate, deploy fly|docker land in subsequent slices.
+// Phase 9 Task 2 + Task 7: serve + token generate|rotate + status + deploy.
 // See .ai/plans/phase-9-self-hosted-hub-file-sync.md.
 
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { parseArgs } from '../lib/argv.mjs';
 
-const SUBCOMMANDS = new Set(['serve', 'token', 'status', 'help']);
+const SUBCOMMANDS = new Set(['serve', 'token', 'status', 'deploy', 'help']);
 
 export async function run({ args, pkgRoot }) {
   const { positional } = parseArgs(args);
@@ -28,30 +28,31 @@ export async function run({ args, pkgRoot }) {
   if (sub === 'serve') return runServe({ args, pkgRoot });
   if (sub === 'token') return runToken({ args, pkgRoot });
   if (sub === 'status') return runStatus({ args });
+  if (sub === 'deploy') return runDeploy({ args, pkgRoot });
 }
 
 function usage() {
-  return `maude hub <serve|token|status> [options]
+  return `maude hub <serve|token|status|deploy> [options]
 
   serve [--port N] [--data PATH] [--secret HEX] [--insecure-http] [--dev]
         Start the self-hostable Yjs sync hub in the current process tree.
         --port           listen port (default 1234, env PORT)
-        --data           hub.db + tokens.json dir (default ./data, env DATA_DIR)
+        --data           hub.db + tokens.db dir (default ./data, env DATA_DIR)
         --secret         HUB_SECRET escape-hatch token (env HUB_SECRET).
                          If unset on an empty hub, a one-time bootstrap link is
                          printed to logs — open it in a browser to claim admin.
         --insecure-http  cosmetic log-only flag for non-TLS dev
         --dev            generate a one-shot mau_dev_<hex> token, print the
                          connect command, then run the hub. Convenience for
-                         contributor onboarding — drops tokens.json on exit
-                         is NOT performed (tokens persist; clean by hand).
+                         contributor onboarding — token persists in tokens.db
+                         after exit (clean the --data dir by hand to reset).
 
         On boot the hub prints its /admin URL. The admin UI generates invite
         tokens, lists peers, and rotates tokens without shelling into the host.
 
   token generate --label NAME [--data PATH] [--dev]
-        Generate a new mau_<32hex> token and append it to
-        <data>/tokens.json with the given label. Prints the raw token ONCE,
+        Generate a new mau_<32hex> token and store it (HMAC-hashed) in
+        <data>/tokens.db with the given label. Prints the raw token ONCE,
         plus the ready-to-paste 'maude design link' connect command.
 
         --dev produces a mau_dev_<hex> token (convention only — same auth).
@@ -59,19 +60,43 @@ function usage() {
         Equivalent to the "Generate invite" button in the /admin UI — use
         whichever is more convenient for the deploy.
 
+  token rotate --label NAME [--data PATH]
+        Invalidate the named token and mint a fresh value with the same label
+        + scope. Prints the new raw token ONCE. New connections with the OLD
+        token are rejected immediately; ALREADY-CONNECTED peers stay until they
+        reconnect — use the /admin UI "Rotate" button (kicks live sessions) or
+        restart the hub to force-disconnect them now.
+
   status [URL] [--json]
         HTTP GET <url>/health, print uptime/version/token-count/peers. URL
         defaults to http://localhost:1234. --json emits the raw response.
 
+  deploy <fly|docker> [--name NAME] [--region CODE] [--tag TAG] [--out DIR] [--force]
+        Emit the deploy templates for the chosen target into the current
+        directory (or --out DIR) with placeholders substituted, then print the
+        exact commands to run next. Does NOT execute fly/docker for you —
+        review the emitted files first, then run the printed command.
+
+        fly     → fly.toml (+ reuses plugins/design/hub/Dockerfile).
+                  --name   app name (default maude-hub-<rand>)
+                  --region Fly region code (default iad)
+        docker  → docker-compose.yml + Caddyfile (universal — Lightsail, EC2,
+                  Hetzner, DigitalOcean, Coolify, home server).
+                  --tag    ghcr.io/1agh/maude-hub image tag (default latest)
+
 NOTES
-  Local dev only in v1.1 Task 2 slice — production-install packaging
-  (adding plugins/design/hub to package.json:files + dep hoisting) lands
-  in a follow-up slice. For now, run inside a 'maude' source checkout.
+  serve / token / deploy run inside a 'maude' source checkout (they read the
+  bundled hub workspace at plugins/design/hub). Production hubs run the
+  published Docker image (ghcr.io/1agh/maude-hub) — see 'maude hub deploy'.
+  status works from anywhere (plain HTTP GET against /health).
 
 EXAMPLES
   maude hub serve --port 4400
   maude hub token generate --label alice
+  maude hub token rotate --label alice
   maude hub status http://localhost:4400
+  maude hub deploy fly --name maude-hub-acme --region fra
+  maude hub deploy docker --tag latest --out ./deploy
 
   # Recommended flow on a fresh deploy:
   #   1. maude hub serve            → copy bootstrap link from logs
@@ -106,11 +131,12 @@ async function runServe({ args, pkgRoot }) {
 
   if (flags.dev) {
     const dataDir = env.DATA_DIR ?? resolve(process.cwd(), 'data');
+    if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
     const { addToken } = await import(resolveHubModule(hubRoot, 'src/tokens.mjs'));
     const port = env.PORT ?? '1234';
     const record = addToken(dataDir, { label: 'dev', dev: true });
     process.stdout.write(
-      `[hub] --dev token written to ${dataDir}/tokens.json:\n      label: ${record.label}\n      value: ${record.value}\n\n      Connect from a peer:\n        maude design link http://localhost:${port} --token=${record.value}\n\n`
+      `[hub] --dev token written to ${dataDir}/tokens.db:\n      label: ${record.label}\n      value: ${record.value}\n\n      Connect from a peer:\n        maude design link http://localhost:${port} --token=${record.value}\n\n`
     );
   }
 
@@ -132,10 +158,9 @@ async function runToken({ args, pkgRoot }) {
   const tail = args.slice(args.indexOf('token') + 1);
   const op = tail[0];
 
-  if (op !== 'generate') {
+  if (op !== 'generate' && op !== 'rotate') {
     process.stderr.write(
-      `maude hub token: only "generate" is supported in v1.1 Task 2 slice.\n` +
-        `"rotate" lands in a follow-up. Use "generate" with --label to mint a new token.\n`
+      `maude hub token: unknown op "${op ?? ''}". Use "generate" or "rotate" with --label.\n`
     );
     process.exit(2);
   }
@@ -143,21 +168,41 @@ async function runToken({ args, pkgRoot }) {
   const { flags } = parseArgs(tail.slice(1), { booleans: ['dev'] });
   const label = flags.label;
   if (!label || typeof label !== 'string') {
-    process.stderr.write('maude hub token generate: --label <name> is required.\n');
+    process.stderr.write(`maude hub token ${op}: --label <name> is required.\n`);
     process.exit(2);
   }
   const dataDir = flags.data ? resolve(String(flags.data)) : resolve(process.cwd(), 'data');
 
   const hubRoot = findHubRoot(pkgRoot);
   if (!hubRoot) {
-    process.stderr.write('maude hub token generate: hub workspace not found.\n');
+    process.stderr.write(`maude hub token ${op}: hub workspace not found.\n`);
     process.exit(1);
   }
-  const { addToken } = await import(resolveHubModule(hubRoot, 'src/tokens.mjs'));
-  const record = addToken(dataDir, { label, dev: !!flags.dev });
+  const { addToken, rotateToken } = await import(resolveHubModule(hubRoot, 'src/tokens.mjs'));
 
+  // better-sqlite3 won't create the parent dir; the running hub does this in
+  // createHub, but a CLI generate against a fresh --data path must too.
+  if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
+
+  let record;
+  if (op === 'rotate') {
+    try {
+      record = rotateToken(dataDir, label);
+    } catch (err) {
+      process.stderr.write(`maude hub token rotate: ${err.message}\n`);
+      process.exit(1);
+    }
+  } else {
+    record = addToken(dataDir, { label, dev: !!flags.dev });
+  }
+
+  const verb = op === 'rotate' ? 'rotated' : 'written';
+  const liveNote =
+    op === 'rotate'
+      ? 'Old token is rejected on new connections immediately. Already-connected\npeers persist until they reconnect — use the /admin UI "Rotate" button (kicks\nlive sessions) or restart the hub to force-disconnect them now.\n'
+      : 'Restart the hub if it is already running for the new token to take effect.\n';
   process.stdout.write(
-    `[hub] token written to ${dataDir}/tokens.json:\n  label:      ${record.label}\n  value:      ${record.value}\n  created:    ${new Date(record.createdAt).toISOString()}\n\nConnect from a peer (replace HOST):\n  maude design link https://HOST --token=${record.value}\n\nRestart the hub if it is already running for the new token to take effect.\n`
+    `[hub] token ${verb} in ${dataDir}/tokens.db:\n  label:      ${record.label}\n  value:      ${record.value}\n  created:    ${new Date(record.createdAt).toISOString()}\n\nConnect from a peer (replace HOST):\n  maude design link https://HOST --token=${record.value}\n\n${liveNote}`
   );
 }
 
@@ -194,15 +239,175 @@ async function runStatus({ args }) {
   }
 
   const uptimeS = Math.round((payload.uptimeMs ?? 0) / 1000);
+  // `dataDir` is omitted from the unauthenticated /health payload (it's a
+  // server filesystem path — recon over-share). Only print it if present.
+  const dataDirLine = payload.dataDir ? `  dataDir:    ${payload.dataDir}\n` : '';
   process.stdout.write(
-    `Maude Hub @ ${url}\n` +
-      `  ok:         ${payload.ok}\n` +
-      `  version:    ${payload.version}\n` +
-      `  uptime:     ${formatDuration(uptimeS)}\n` +
-      `  port:       ${payload.port}\n` +
-      `  dataDir:    ${payload.dataDir}\n` +
-      `  tokens:     ${payload.tokenCount} (mode: ${payload.authMode})\n`
+    `Maude Hub @ ${url}
+  ok:         ${payload.ok}
+  version:    ${payload.version}
+  uptime:     ${formatDuration(uptimeS)}
+  port:       ${payload.port}
+${dataDirLine}  tokens:     ${payload.tokenCount} (mode: ${payload.authMode})
+`
   );
+}
+
+// ---------------------------------------------------------------- deploy
+
+const VALID_TARGETS = new Set(['fly', 'docker']);
+// Fly app names: lowercase alnum + hyphen, must start/end alnum.
+const FLY_NAME_REGEX = /^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$/;
+const REGION_REGEX = /^[a-z]{3}$/;
+const IMAGE_TAG_REGEX = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$/;
+
+function runDeploy({ args, pkgRoot }) {
+  const tail = args.slice(args.indexOf('deploy') + 1);
+  const { flags, positional } = parseArgs(tail, { booleans: ['force'] });
+  const target = positional[0];
+
+  if (!target || !VALID_TARGETS.has(target)) {
+    process.stderr.write(
+      `maude hub deploy: target must be one of ${[...VALID_TARGETS].join(' | ')} (got "${target ?? ''}").\n`
+    );
+    process.exit(2);
+  }
+
+  const hubRoot = findHubRoot(pkgRoot);
+  if (!hubRoot) {
+    process.stderr.write(
+      'maude hub deploy: hub workspace not found.\n\n' +
+        'Deploy templates ship in the maude source tree. Run inside a checkout,\n' +
+        'or clone https://github.com/1aGh/maude and run from there.\n'
+    );
+    process.exit(1);
+  }
+
+  const outDir = flags.out ? resolve(String(flags.out)) : process.cwd();
+
+  if (target === 'fly') return deployFly({ hubRoot, outDir, flags });
+  return deployDocker({ hubRoot, outDir, flags });
+}
+
+function deployFly({ hubRoot, outDir, flags }) {
+  const appName = flags.name ? String(flags.name) : `maude-hub-${randHex(4)}`;
+  if (!FLY_NAME_REGEX.test(appName)) {
+    process.stderr.write(
+      `maude hub deploy fly: invalid --name "${appName}" (lowercase alphanumeric + hyphen, 2-63 chars).\n`
+    );
+    process.exit(2);
+  }
+  const region = flags.region ? String(flags.region) : 'iad';
+  if (!REGION_REGEX.test(region)) {
+    process.stderr.write(
+      `maude hub deploy fly: invalid --region "${region}" (3-letter Fly code, e.g. iad, fra, nrt).\n`
+    );
+    process.exit(2);
+  }
+
+  const flyToml = renderTemplate(hubRoot, 'fly.toml.template', {
+    APP_NAME: appName,
+    REGION: region,
+  });
+  const flyOut = resolve(outDir, 'fly.toml');
+  guardOverwrite(flyOut, flags.force, 'fly.toml');
+  writeFileSync(flyOut, flyToml, 'utf8');
+
+  // The Dockerfile is referenced by fly.toml [build]; copy it alongside so a
+  // `fly deploy` from outDir finds it (Fly builds remotely from the context).
+  const dockerfileSrc = resolve(hubRoot, 'Dockerfile');
+  const dockerfileOut = resolve(outDir, 'Dockerfile');
+  if (existsSync(dockerfileSrc) && (flags.force || !existsSync(dockerfileOut))) {
+    copyFileSync(dockerfileSrc, dockerfileOut);
+  }
+
+  process.stdout.write(
+    `[hub deploy fly] wrote:
+  ${flyOut}
+  ${dockerfileOut} (copied)
+
+App:    ${appName}
+Region: ${region}
+URL:    https://${appName}.fly.dev
+
+Next steps (review fly.toml first, then run):
+  fly launch --copy-config --no-deploy --name ${appName} --region ${region}
+  fly volumes create maude_hub_data --region ${region} --size 3 --yes
+  fly deploy
+
+After deploy, the boot logs print a single-use /admin bootstrap link.
+Open it → "Generate invite" → copy the \`maude design link …\` command.
+Hub auth uses the token store; HUB_SECRET stays unset unless you want a
+headless escape hatch (\`fly secrets set HUB_SECRET=$(openssl rand -hex 32)\`).
+`
+  );
+}
+
+function deployDocker({ hubRoot, outDir, flags }) {
+  const tag = flags.tag ? String(flags.tag) : 'latest';
+  if (!IMAGE_TAG_REGEX.test(tag)) {
+    process.stderr.write(`maude hub deploy docker: invalid --tag "${tag}".\n`);
+    process.exit(2);
+  }
+
+  const compose = renderTemplate(hubRoot, 'docker-compose.yml.template', { IMAGE_TAG: tag });
+  const composeOut = resolve(outDir, 'docker-compose.yml');
+  guardOverwrite(composeOut, flags.force, 'docker-compose.yml');
+  writeFileSync(composeOut, compose, 'utf8');
+
+  // Caddyfile uses {$ENV} runtime substitution — no placeholders to render.
+  const caddySrc = resolve(hubRoot, 'Caddyfile.template');
+  const caddyOut = resolve(outDir, 'Caddyfile');
+  guardOverwrite(caddyOut, flags.force, 'Caddyfile');
+  copyFileSync(caddySrc, caddyOut);
+
+  process.stdout.write(
+    `[hub deploy docker] wrote:
+  ${composeOut}
+  ${caddyOut}
+
+Image: ghcr.io/1agh/maude-hub:${tag}
+
+Next steps (point DNS at this box, then run):
+  cat > .env <<EOF
+  HUB_SECRET=$(openssl rand -hex 32)
+  PUBLIC_DOMAIN=maude-hub.example.com
+  ACME_EMAIL=you@example.com
+  EOF
+  docker compose up -d
+  docker compose logs hub          # copy the single-use /admin bootstrap link
+
+Caddy fetches a Let's Encrypt cert for PUBLIC_DOMAIN automatically and
+proxies WSS to the hub. Works on Lightsail, EC2, Hetzner, DigitalOcean,
+Coolify, or a home server. See the hub-deploy docs for per-provider notes.
+`
+  );
+}
+
+function renderTemplate(hubRoot, name, vars) {
+  const path = resolve(hubRoot, name);
+  if (!existsSync(path)) {
+    process.stderr.write(`maude hub deploy: template not found: ${path}\n`);
+    process.exit(1);
+  }
+  let out = readFileSync(path, 'utf8');
+  for (const [key, value] of Object.entries(vars)) {
+    out = out.replaceAll(`{{${key}}}`, value);
+  }
+  return out;
+}
+
+function guardOverwrite(path, force, label) {
+  if (existsSync(path) && !force) {
+    process.stderr.write(
+      `maude hub deploy: ${label} already exists at ${path}. Pass --force to overwrite.\n`
+    );
+    process.exit(1);
+  }
+}
+
+function randHex(bytes) {
+  return randomBytes(bytes).toString('hex');
 }
 
 // ---------------------------------------------------------------- helpers

@@ -1,0 +1,18 @@
+# Keep the Docker build context clean + reproducible. The Dockerfile's
+# `COPY . .` runs AFTER `bun install --frozen-lockfile`, so a stray local
+# node_modules can't reintroduce dependency resolution — but excluding it (plus
+# runtime state) keeps image layers small and avoids contaminating the build
+# with a maintainer's local artifacts.
+node_modules/
+dist/
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.bun-cache/
+docker-compose*.yml
+Caddyfile
+fly.toml
+.dockerignore
+Dockerfile

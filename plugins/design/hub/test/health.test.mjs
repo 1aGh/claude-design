@@ -37,7 +37,10 @@ test('GET /health returns JSON with expected fields', async () => {
   assert.equal(typeof body.uptimeMs, 'number');
   assert.ok(body.uptimeMs >= 0);
   assert.equal(body.port, PORT);
-  assert.equal(body.dataDir, dataDir);
+  // dataDir is a server filesystem path — deliberately OMITTED from the
+  // unauthenticated /health payload (recon over-share; security review).
+  // It stays in the authenticated /admin/api/status response.
+  assert.equal(body.dataDir, undefined);
   assert.equal(body.tokenCount, 0);
   assert.equal(body.authMode, 'dev');
 });

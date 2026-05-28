@@ -15,6 +15,7 @@ import { dirname, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 
 import { parseArgs } from './argv.mjs';
+import { BEGIN_MARKER, writeGitignoreBlock } from './gitignore-block.mjs';
 import { addHub, getHub, isHubTrusted, normalizeUrl, removeHub, trustHub } from './hubs-config.mjs';
 
 const DESIGN_CONFIG_PATH = '.design/config.json';
@@ -127,6 +128,13 @@ export async function runLink({ args, cwd = process.cwd(), forceAdopt = false })
   // already trusted on this machine.
   if (!alreadyTrusted) trustHub(normUrl);
 
+  // Phase 9 Task 9 (DDR-056) — solo→linked transition. On --adopt, offer to add
+  // the design-runtime .gitignore block if it's missing, so the shared repo
+  // ignores per-machine runtime state. Default yes; --yes / non-TTY auto-adds.
+  if (adopt) {
+    await maybeWriteGitignoreBlock(cwd, !!flags.yes);
+  }
+
   process.stdout.write(
     `[design link] linked ${cwd} to ${normUrl}.\n  token:   stored in ~/.config/maude/hubs.json (per-machine, never committed)\n  config:  .design/config.json.linkedHub = { url, linkedAt${adopt ? ', adopt: true' : ''} }\n  hub:     ${probe.ok ? `v${probe.version}, uptime ${Math.round((probe.uptimeMs ?? 0) / 1000)}s, ${probe.tokenCount} token(s) (${probe.authMode})` : 'NOT REACHED — linked anyway (--force)'}\n\nNext step: start 'maude design serve' — the linked sync agent ${adopt ? 'will push local state up to the hub on first connect' : 'will mirror hub state to disk on first connect'}.\n`
   );
@@ -200,6 +208,7 @@ export async function runStatus({ args, cwd = process.cwd() }) {
   const url = cfg.linkedHub.url;
   const hubRecord = getHub(url);
   const probe = await probeHealth(url);
+  const sync = readSyncState(resolve(cwd, '.design', '_sync.json'));
 
   const payload = {
     mode: 'linked',
@@ -216,9 +225,9 @@ export async function runStatus({ args, cwd = process.cwd() }) {
           authMode: probe.authMode,
         }
       : { reachable: false, error: probe.error },
-    // Sync agent surfaces ('lastSync', 'pendingOps', 'conflictState') land
-    // in Phase 9 Task 4. For now report n/a.
-    sync: { agent: 'not-implemented' },
+    // Task 8 — the running sync agent writes `.design/_sync.json` with the live
+    // offline/online state, queued-op count, last sync, and conflict log.
+    sync: sync ?? { agent: 'idle', detail: 'no _sync.json — sync agent not running' },
   };
 
   if (flags.json) {
@@ -227,9 +236,51 @@ export async function runStatus({ args, cwd = process.cwd() }) {
   }
 
   const uptimeS = Math.round((probe.uptimeMs ?? 0) / 1000);
+  const syncLine = sync
+    ? `${sync.state}${sync.queuedOps ? ` — ${sync.queuedOps} edit(s) queued` : ''}${
+        sync.lastSyncAt ? `, last sync ${new Date(sync.lastSyncAt).toISOString()}` : ''
+      }${sync.conflicts?.length ? `, ${sync.conflicts.length} conflict notice(s)` : ''}`
+    : 'idle (start `maude design serve` in linked mode)';
   process.stdout.write(
-    `Maude design — linked mode\n  hub URL:      ${url}\n  linked at:    ${new Date(cfg.linkedHub.linkedAt).toISOString()}\n  adopt mode:   ${cfg.linkedHub.adopt ? 'yes (push-on-first-sync)' : 'no (hub-wins)'}\n  token stored: ${hubRecord ? 'yes (~/.config/maude/hubs.json)' : "NO — re-run 'maude design link'"}\n  hub status:   ${probe.ok ? `up — v${probe.version}, ${uptimeS}s uptime, ${probe.tokenCount} token(s), ${probe.authMode}` : `UNREACHABLE — ${probe.error}`}\n  sync agent:   not-implemented (Phase 9 Task 4 follow-up)\n`
+    `Maude design — linked mode\n  hub URL:      ${url}\n  linked at:    ${new Date(cfg.linkedHub.linkedAt).toISOString()}\n  adopt mode:   ${cfg.linkedHub.adopt ? 'yes (push-on-first-sync)' : 'no (hub-wins)'}\n  token stored: ${hubRecord ? 'yes (~/.config/maude/hubs.json)' : "NO — re-run 'maude design link'"}\n  hub status:   ${probe.ok ? `up — v${probe.version}, ${uptimeS}s uptime, ${probe.tokenCount} token(s), ${probe.authMode}` : `UNREACHABLE — ${probe.error}`}\n  sync agent:   ${syncLine}\n`
   );
+}
+
+/**
+ * On --adopt, add the design-runtime .gitignore block if missing. Prompts
+ * [Y/n] in a TTY (default yes); auto-adds with --yes or non-interactively.
+ * Idempotent — a repo that already has the block is left untouched.
+ */
+async function maybeWriteGitignoreBlock(cwd, assumeYes) {
+  const gitignorePath = resolve(cwd, '.gitignore');
+  const current = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
+  if (current.includes(BEGIN_MARKER)) return; // already present — nothing to do
+
+  let add = assumeYes || !process.stdin.isTTY;
+  if (!add) {
+    add = await promptYesNo(
+      'Add the Maude design-runtime .gitignore block (ignores per-machine runtime state)? [Y/n] ',
+      true
+    );
+  }
+  if (!add) {
+    process.stdout.write(
+      '[design link] skipped .gitignore block — add it later with another `maude design adopt`.\n'
+    );
+    return;
+  }
+  const { action } = writeGitignoreBlock(cwd, { designRel: '.design' });
+  process.stdout.write(`[design link] .gitignore: ${action} maude design-runtime block.\n`);
+}
+
+/** Read the sync agent's `_sync.json` runtime state, or null when absent. */
+function readSyncState(p) {
+  if (!existsSync(p)) return null;
+  try {
+    return JSON.parse(readFileSync(p, 'utf8'));
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------- helpers
@@ -273,13 +324,18 @@ function isLoopbackUrl(normUrl) {
   }
 }
 
-/** Promise-resolving [y/N] prompt. Prompt + echo go to stderr (stdout is data). */
-function promptYesNo(question) {
+/**
+ * Promise-resolving prompt. Prompt + echo go to stderr (stdout is data).
+ * `defaultYes` controls how an empty answer resolves ([Y/n] vs [y/N]).
+ */
+function promptYesNo(question, defaultYes = false) {
   return new Promise((res) => {
     const rl = createInterface({ input: process.stdin, output: process.stderr });
     rl.question(question, (answer) => {
       rl.close();
-      res(/^y(es)?$/i.test(answer.trim()));
+      const trimmed = answer.trim();
+      if (trimmed === '') return res(defaultYes);
+      res(/^y(es)?$/i.test(trimmed));
     });
   });
 }
