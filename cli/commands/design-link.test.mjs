@@ -202,7 +202,8 @@ test('status --json emits structured payload', async () => {
   assert.equal(payload.url, URL);
   assert.equal(payload.tokenStored, true);
   assert.equal(payload.hub.reachable, true);
-  assert.equal(payload.sync.agent, 'not-implemented');
+  // No `maude design serve` running in this test → no _sync.json → idle.
+  assert.equal(payload.sync.agent, 'idle');
   cleanup();
 });
 

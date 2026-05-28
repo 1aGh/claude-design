@@ -15,6 +15,7 @@ import * as Y from 'yjs';
 
 import type { Context, DevServerConfig } from '../context.ts';
 import { createBus } from '../context.ts';
+import { createConnectionMonitor } from '../sync/connection-state.ts';
 import {
   type AwarenessRegistry,
   type SyncProvider,
@@ -22,6 +23,7 @@ import {
   discoverCanvases,
   toWsUrl,
 } from '../sync/index.ts';
+import { createSyncStatusStore } from '../sync/status.ts';
 
 let dir: string;
 let cfgPathEnv: string | undefined;
@@ -244,6 +246,119 @@ describe('createSyncRuntime', () => {
 
     await runtime?.stop();
     expect(detachCount).toBe(2);
+  });
+
+  test('Task 8: provider going offline drives the status to offline + surfaces queued edits', async () => {
+    const url = 'https://hub.example.com';
+    writeHubsConfig(url, 'mau_test');
+    const ctx = makeCtx({ url, linkedAt: 1 });
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'screen.html'), '<button>hi</button>');
+
+    // Provider stub that exposes onStatus so the test can drive WS transitions.
+    let emitStatus: ((s: 'connected' | 'connecting' | 'disconnected') => void) | null = null;
+    const doc = new Y.Doc();
+    const factory = () => ({
+      document: doc,
+      onStatus(cb: (s: 'connected' | 'connecting' | 'disconnected') => void) {
+        emitStatus = cb;
+        return () => {
+          emitStatus = null;
+        };
+      },
+      async onceSynced() {},
+      destroy() {
+        doc.destroy();
+      },
+    });
+
+    // Fake-timer monitor so the 30s grace window fires deterministically.
+    let nowMs = 1_000;
+    const timers: Array<{ fireAt: number; cb: () => void }> = [];
+    const monitor = createConnectionMonitor({
+      graceMs: 30_000,
+      now: () => nowMs,
+      setTimer: (cb, ms) => {
+        const t = { fireAt: nowMs + ms, cb };
+        timers.push(t);
+        return t as unknown as ReturnType<typeof setTimeout>;
+      },
+      clearTimer: (h) => {
+        const i = timers.indexOf(h as unknown as { fireAt: number; cb: () => void });
+        if (i >= 0) timers.splice(i, 1);
+      },
+      onChange: (snap) => store.update(snap),
+    });
+    const writes: import('../sync/status.ts').SyncStatusPayload[] = [];
+    const store = createSyncStatusStore({
+      url,
+      canvases: 1,
+      write: (p) => writes.push(p),
+    });
+
+    const runtime = createSyncRuntime(ctx, {
+      providerFactory: factory,
+      connectionMonitor: monitor,
+      statusStore: store,
+    });
+    await runtime?.start();
+
+    // Connected → online.
+    emitStatus?.('connected');
+    expect(runtime?.status()?.state).toBe('online');
+
+    // Disconnect, advance past the grace window → offline.
+    emitStatus?.('disconnected');
+    nowMs += 31_000;
+    for (const t of [...timers]) {
+      if (t.fireAt <= nowMs) {
+        timers.splice(timers.indexOf(t), 1);
+        t.cb();
+      }
+    }
+    const offlineStatus = runtime?.status();
+    expect(offlineStatus?.state).toBe('offline');
+    expect(offlineStatus?.url).toBe(url);
+    expect(offlineStatus?.offlineSince).not.toBeNull();
+    // _sync.json mirror got the offline payload too.
+    expect(writes.at(-1)?.state).toBe('offline');
+
+    // Reconnect → back online with a green flash.
+    emitStatus?.('connected');
+    expect(runtime?.status()?.state).toBe('online');
+    expect(runtime?.status()?.flash).toBe('synced');
+
+    await runtime?.stop();
+  });
+
+  test('Task 8: hub-wins reconcile over divergent local content records a conflict', async () => {
+    const url = 'https://hub.example.com';
+    writeHubsConfig(url, 'mau_test');
+    const ctx = makeCtx({ url, linkedAt: 1 });
+    // Local disk has divergent, non-empty content.
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'screen.html'), '<button>LOCAL EDIT</button>');
+
+    // Provider whose doc already carries different hub state.
+    const factory = () => {
+      const document = new Y.Doc();
+      document.getText('html').insert(0, '<button>HUB STATE</button>');
+      return {
+        document,
+        async onceSynced() {},
+        destroy() {
+          document.destroy();
+        },
+      };
+    };
+
+    const runtime = createSyncRuntime(ctx, { providerFactory: factory });
+    await runtime?.start();
+    // Reconcile fires after onceSynced resolves.
+    await new Promise((res) => setTimeout(res, 20));
+
+    const status = runtime?.status();
+    expect(status?.conflicts.length).toBeGreaterThanOrEqual(1);
+    expect(status?.conflicts[0].kind).toBe('cold-start-hub-wins');
+    await runtime?.stop();
   });
 });
 

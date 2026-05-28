@@ -1,0 +1,93 @@
+---
+title: Deploy a hub
+description: One self-hostable Yjs sync hub, deployable to Fly or any box that runs Docker. No SaaS, no Cloudflare account, no Yjs knowledge required.
+---
+
+The Maude hub is the only cross-machine collaboration path in v1.1. Phase 8 multi-tab collab is loopback-only — to share a canvas with someone on another network, you deploy a hub, they `maude design link` to it, and both `.design/` folders mirror through it.
+
+The hub is a pre-configured [Hocuspocus](https://tiptap.dev/docs/hocuspocus) server (production-tested, MIT, Node-native — [DDR-052](https://github.com/1aGh/maude/blob/main/.ai/decisions/DDR-052-hocuspocus-over-partykit-for-hub.md) explains why not PartyKit) with token auth and SQLite persistence. You never touch Yjs.
+
+Two deploy targets ship in v1.1: **Fly** (one command) and **Docker** (everywhere else). Both run the same image.
+
+## Fly.io — the one-command path
+
+Cheapest and least ops. ~$0.45/mo on the 256MB shared-cpu-1 tier. Auto-cert, auto-restart, persistent volume.
+
+```bash
+maude hub deploy fly --name maude-hub-acme --region fra
+# writes fly.toml + Dockerfile, then prints the next commands:
+fly launch --copy-config --no-deploy --name maude-hub-acme --region fra
+fly volumes create maude_hub_data --region fra --size 3 --yes
+fly deploy
+```
+
+After `fly deploy`, the boot logs print a **single-use `/admin` bootstrap link** (valid 24h). Open it → "Generate invite" → copy the `maude design link …` command → send it to your collaborator. See [Linking peers](/docs/hub/linking).
+
+`maude hub deploy` never runs `fly` for you — it emits the files and prints the commands so you can review `fly.toml` first.
+
+## Docker — everywhere else
+
+The `docker` target emits a `docker-compose.yml` + `Caddyfile`. Caddy fetches a Let's Encrypt cert for your domain automatically and proxies WSS to the hub. This same stack runs on every provider below.
+
+```bash
+maude hub deploy docker --tag latest --out ./deploy
+cd deploy
+cat > .env <<EOF
+HUB_SECRET=$(openssl rand -hex 32)
+PUBLIC_DOMAIN=maude-hub.example.com
+ACME_EMAIL=you@example.com
+EOF
+docker compose up -d
+docker compose logs hub      # copy the single-use /admin bootstrap link
+```
+
+Point a DNS A/AAAA record at the box first, then `docker compose up -d`. The image is `ghcr.io/1agh/maude-hub` (multi-arch amd64 + arm64, published on every release tag).
+
+### AWS Lightsail
+
+`t4g.nano` (arm) + a 10 GB block-storage disk + Lightsail's static IP. ~$4–6/mo.
+
+- Attach the static IP, point your DNS at it.
+- Install Docker, drop the emitted `docker-compose.yml` + `Caddyfile`, `docker compose up -d`.
+- Route 53 (or any DNS) for `PUBLIC_DOMAIN`.
+
+### AWS EC2 + ALB
+
+For teams already on AWS. `t4g.nano` EC2 + a **gp3 EBS** volume mounted at `/data` + an ALB with an ACM cert (ALB upgrades WebSockets natively, so you can skip Caddy and let the ALB terminate TLS). ~$15–20/mo.
+
+> Avoid EFS for `/data` — Yjs persistence is small-write-heavy and EFS per-op latency hurts. Use gp3 EBS unless you genuinely need multi-AZ HA.
+
+### Hetzner / DigitalOcean / Vultr / Linode
+
+The universal path. Any `$4–6/mo` VPS (Hetzner CX11, a DO droplet, etc.): install Docker, drop the compose stack + Caddyfile, point DNS, `docker compose up -d`. Caddy handles TLS.
+
+### Coolify
+
+If you want a self-hosted PaaS layer on a `$5` VPS, Coolify gives you deploy/restart/TLS as a UI. The Maude hub is just a Docker app — point Coolify at `ghcr.io/1agh/maude-hub`, set `HUB_SECRET` + `HUB_PUBLIC_URL`, mount a volume at `/data`.
+
+### Cloudflare Tunnel (home server, no public IP)
+
+Advanced — only if you can't get a public IP. Run the hub locally via Docker, then expose it with `cloudflared tunnel` (Cloudflare terminates TLS upstream). This is the **only** mention of tunnels in v1.1, and it's user-driven, not Maude-provided.
+
+```bash
+docker compose up -d            # hub on localhost, no Caddy needed
+cloudflared tunnel --url http://localhost:1234
+```
+
+Set `HUB_PUBLIC_URL` to the tunnel's https URL so the admin bootstrap link is correct.
+
+## Transport hardening
+
+- **WSS is mandatory.** The hub refuses to boot over plaintext `http://` to a non-loopback host. TLS terminates at your proxy (Fly / Caddy / ALB / Cloudflare / Tailscale), so the hub itself sees `http://` internally — `HUB_PUBLIC_URL` must declare the `https://` URL. Local dev sets `HUB_INSECURE_HTTP=1` to opt out.
+- **Token auth on every connection.** Tokens are stored HMAC-SHA256-hashed at rest (the raw value never lands on disk). Per-token rate limit: 100 auths / 60s.
+- **Bootstrap key is single-use** and not reissued after consumption — fall back to `HUB_SECRET` if you miss the window.
+
+## Self-host checklist
+
+1. `maude hub deploy <fly|docker>` → review the emitted files.
+2. Run the printed deploy command.
+3. Open the single-use `/admin` bootstrap link from the logs.
+4. "Generate invite" → copy the `maude design link …` command.
+5. Send it to each collaborator → they paste it in their repo. See [Linking peers](/docs/hub/linking).
+
+For local contributor testing without a cloud account, see [`plugins/design/hub/CONTRIBUTING.md`](https://github.com/1aGh/maude/blob/main/plugins/design/hub/CONTRIBUTING.md).

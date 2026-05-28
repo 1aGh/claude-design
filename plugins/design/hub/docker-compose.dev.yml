@@ -1,0 +1,30 @@
+# Maude Hub — local dev Compose stack (Phase 9 Task 10, Level 2).
+#
+# No Caddy, no TLS, port 1234 bound straight to the host. Builds the image from
+# the local Dockerfile instead of pulling from GHCR, so you test YOUR changes.
+#
+#   cd plugins/design/hub
+#   docker compose -f docker-compose.dev.yml up --build
+#   # hub on http://localhost:1234 — bootstrap link printed in the logs
+#
+# HUB_INSECURE_HTTP=1 lets the hub serve over plain http:// to a non-loopback
+# host (the container's own hostname), which the production WSS guard would
+# otherwise refuse. Dev only — never set this on a public deploy.
+
+services:
+  hub:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "1234:1234"
+    environment:
+      HUB_PUBLIC_URL: http://localhost:1234
+      HUB_INSECURE_HTTP: "1"
+      # Leave HUB_SECRET unset → hub prints a single-use bootstrap link on boot.
+    volumes:
+      - hub-dev-data:/data
+
+volumes:
+  hub-dev-data: {}

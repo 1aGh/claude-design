@@ -1,0 +1,17 @@
+# Maude Hub — Caddy reverse proxy with automatic TLS.
+#
+# Phase 9 Task 7. Paired with docker-compose.yml.template. Caddy obtains and
+# renews a Let's Encrypt cert for {$PUBLIC_DOMAIN} automatically and proxies
+# both plain HTTP (admin UI, /health) and the WebSocket upgrade (Yjs sync)
+# transparently — no special WS config needed; reverse_proxy upgrades by default.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$PUBLIC_DOMAIN} {
+	reverse_proxy hub:1234 {
+		header_up X-Real-IP {remote_host}
+	}
+	encode gzip
+}

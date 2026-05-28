@@ -1,0 +1,38 @@
+---
+title: The hub
+description: Self-hostable Yjs sync hub for cross-machine canvas collaboration. Deploy once, link your peers, share canvases over the internet — no SaaS, no Cloudflare account, no Yjs knowledge.
+---
+
+Maude's design plugin is canvas-first and local-first. Phase 8 added live multi-tab collaboration — but only on `localhost`. The **hub** is how you collaborate across the internet: a small, self-hostable service that relays Yjs state between machines, without exposing anyone's laptop and without a SaaS account.
+
+## The mental model
+
+Three copies of the truth, same as solo mode plus one:
+
+1. **Live (Y.Doc)** — canonical on the hub, replicated to every connected peer.
+2. **Disk (`.design/*.html`)** — each peer's local mirror, regenerated from the Y.Doc. **This is what Claude Code reads and writes.**
+3. **Git** — each peer's local history, reconciled via `git push` / `pull` as usual.
+
+You and your collaborator each run `maude design serve` against your own clone. Edits flow: your `/design:edit` writes a file → the sync agent pushes it to the hub → the hub broadcasts → their agent writes their disk → their browser updates. Nobody learns Yjs.
+
+## What you actually do
+
+```bash
+# Once, on a VPS or Fly account:
+maude hub deploy fly
+# → open the printed /admin bootstrap link → "Generate invite" → copy command
+
+# Each peer, in their repo:
+maude design link https://maude-hub-acme.fly.dev --token mau_...
+
+# Daily, unchanged:
+maude design serve            # browser canvas, now live with the hub
+```
+
+## Read next
+
+- **[Deploy a hub](/docs/hub/deploy)** — Fly one-command path + Docker on any VPS, per-provider notes, transport hardening.
+- **[Hub pricing](/docs/hub/pricing)** — what it costs per month, by provider. (Spoiler: ~$0.45–$6.)
+- **[Linking peers](/docs/hub/linking)** — `link` / `adopt` / `unlink` / `status`, the trust gate, the gitignore strategy, and offline-mode behavior.
+
+The hub wraps [Hocuspocus](https://tiptap.dev/docs/hocuspocus) (production-tested, MIT, Node-native). Why not PartyKit / Liveblocks: [DDR-052](https://github.com/1aGh/maude/blob/main/.ai/decisions/DDR-052-hocuspocus-over-partykit-for-hub.md).

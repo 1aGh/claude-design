@@ -181,10 +181,22 @@ export function createHub(config = {}) {
       const method = request.method ?? 'GET';
 
       if (method === 'GET' && (url === '/health' || url.startsWith('/health?'))) {
+        // /health is UNAUTHENTICATED and internet-reachable on a deploy (the
+        // fly.toml + compose health check + `maude hub status` all hit it).
+        // Omit `dataDir` (a server filesystem path) from the public payload —
+        // it's a recon over-share. The authenticated /admin/api/status keeps
+        // the full payload (operator already has admin access there).
         respondJson(
           response,
           200,
-          buildStatusPayload({ dataDir, secret, port, startedAt, peersCount: peers.size })
+          buildStatusPayload({
+            dataDir,
+            secret,
+            port,
+            startedAt,
+            peersCount: peers.size,
+            exposeDataDir: false,
+          })
         );
         bailFromOnRequest();
       }
@@ -420,14 +432,23 @@ function formatInviteResponse(record, publicUrl) {
   };
 }
 
-function buildStatusPayload({ dataDir, secret, port, startedAt, peersCount }) {
+function buildStatusPayload({
+  dataDir,
+  secret,
+  port,
+  startedAt,
+  peersCount,
+  exposeDataDir = true,
+}) {
   const { tokens } = readTokens(dataDir);
   return {
     ok: true,
     version: HUB_VERSION,
     uptimeMs: Date.now() - startedAt,
     port,
-    dataDir,
+    // `dataDir` is a server filesystem path — only included for authenticated
+    // callers (/admin/api/status). The unauthenticated /health omits it.
+    ...(exposeDataDir ? { dataDir } : {}),
     tokenCount: tokens.length,
     authMode: tokens.length > 0 ? 'tokens' : secret ? 'env-secret' : 'dev',
     peersCount: peersCount ?? 0,

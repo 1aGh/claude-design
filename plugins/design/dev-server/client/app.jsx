@@ -1490,6 +1490,73 @@ function CommentsPanel({ commentsByFile, filter, setFilter, activePath, focusedI
   );
 }
 
+// ---------- Sync banner (Phase 9 Task 8 — hub-down offline mode) ----------
+
+// Renders nothing when online with no flash (the common case). Yellow strip
+// while offline (with queued-edit count), red when offline > 24h, green flash
+// for 3s right after a reconnect. Driven entirely by the 'sync:status' payload
+// the dev-server's linked-mode sync runtime broadcasts.
+function SyncBanner({ status }) {
+  if (!status || status.linked === false) return null;
+  const { state, queuedOps, flash, conflicts } = status;
+  const showFlash = flash === 'synced';
+  const offline = state === 'offline' || state === 'offline-long';
+  if (!offline && !showFlash) return null;
+
+  let bg;
+  let fg;
+  let border;
+  let text;
+  if (showFlash) {
+    bg = '#dcfce7';
+    fg = '#166534';
+    border = '#86efac';
+    text = 'Synced with hub';
+  } else if (state === 'offline-long') {
+    bg = '#fee2e2';
+    fg = '#991b1b';
+    border = '#fca5a5';
+    text = `Long offline — ${queuedOps} edit(s) queued. Consider \`git commit && git push\` as backup.`;
+  } else {
+    bg = '#fef9c3';
+    fg = '#854d0e';
+    border = '#fde047';
+    text = `Working offline · ${queuedOps} edit(s) queued · will sync when the hub reconnects.`;
+  }
+  const conflictNote =
+    conflicts && conflicts.length > 0 ? ` (${conflicts.length} conflict notice(s))` : '';
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      style={{
+        position: 'fixed',
+        top: 12,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 10003,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        padding: '8px 14px',
+        background: bg,
+        color: fg,
+        border: `1px solid ${border}`,
+        borderRadius: 999,
+        boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+        font: '500 13px/1.2 system-ui, -apple-system, sans-serif',
+        maxWidth: '80vw',
+      }}
+    >
+      <span>
+        {text}
+        {conflictNote}
+      </span>
+    </div>
+  );
+}
+
 // ---------- App ----------
 
 function App() {
@@ -1503,6 +1570,9 @@ function App() {
   // every dirty Y.Doc to disk by the time this state populates, so accepting
   // the reload is data-loss-safe (DDR-051 §3).
   const [gitLifecycle, setGitLifecycle] = useState(null);
+  // Phase 9 Task 8 — hub-down offline mode banner. Driven by the 'sync:status'
+  // WS message the linked-mode sync runtime emits. null in solo mode.
+  const [syncStatus, setSyncStatus] = useState(null);
   const [search, setSearch] = useState('');
   const [systemData, setSystemData] = useState(null);
   // Loaded once at boot from /_config — informs canvasUrl() so TSX iframes
@@ -1685,6 +1755,9 @@ function App() {
             for (const el of iframesRef.current.values()) {
               try { el.contentWindow.postMessage({ dgn: 'ai-activity', file: m.file, entry: m.entry }, '*'); } catch {}
             }
+          } else if (m.type === 'sync:status' && m.payload) {
+            // Phase 9 Task 8 — hub connection state for the offline banner.
+            setSyncStatus(m.payload);
           } else if (m.type === 'git-lifecycle' && m.payload) {
             // Phase 8 Task 7 — branch switch / pull mid-session. Server has
             // already flushed every dirty Y.Doc to JSON; just prompt the user.
@@ -2042,6 +2115,7 @@ function App() {
       className={'app' + (commentsPanelOpen ? ' with-rsidebar' : '') + (sidebarOpen ? '' : ' no-sidebar')}
       onContextMenu={onShellContextMenu}
     >
+      <SyncBanner status={syncStatus} />
       {gitLifecycle && (
         <div
           role="status"

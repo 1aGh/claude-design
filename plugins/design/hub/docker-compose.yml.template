@@ -1,0 +1,49 @@
+# Maude Hub — production Docker Compose stack (hub + Caddy TLS).
+#
+# Phase 9 Task 7. `maude hub deploy docker` writes this to ./docker-compose.yml
+# alongside ./Caddyfile, then prints the next steps. Universal — runs anywhere
+# Docker runs (AWS Lightsail / EC2, Hetzner, DigitalOcean, Vultr, Linode,
+# Coolify, home server). Caddy fetches a Let's Encrypt cert automatically for
+# $PUBLIC_DOMAIN and proxies WSS to the hub.
+#
+# Required environment (put in a .env file next to this compose file):
+#   HUB_SECRET      escape-hatch admin/auth secret (hex). Generate with:
+#                     openssl rand -hex 32
+#   PUBLIC_DOMAIN   the public hostname pointed at this box (DNS A/AAAA record),
+#                   e.g. maude-hub.example.com
+#   ACME_EMAIL      contact email for Let's Encrypt expiry notices
+
+services:
+  hub:
+    image: ghcr.io/1agh/maude-hub:{{IMAGE_TAG}}
+    restart: unless-stopped
+    environment:
+      HUB_SECRET: ${HUB_SECRET:?set HUB_SECRET in .env — openssl rand -hex 32}
+      # Caddy terminates TLS; the hub advertises the public https URL so the
+      # admin bootstrap link is correct.
+      HUB_PUBLIC_URL: https://${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in .env}
+    volumes:
+      - hub-data:/data
+    expose:
+      - "1234"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - hub
+
+volumes:
+  hub-data: {}
+  caddy-data: {}
+  caddy-config: {}
