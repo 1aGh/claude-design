@@ -9,6 +9,7 @@
  * @history     .design/_history/components-monospace-table/
  * @handoff     bunx shadcn add file://./components-monospace-table.registry.json
  */
+import { ThemeToggle } from "./_specimen-controls";
 import "./components-monospace-table.css";
 
 export default function ComponentsMonospaceTable() {

@@ -9,6 +9,7 @@
  * @history     .design/_history/components-diff-view/
  * @handoff     bunx shadcn add file://./components-diff-view.registry.json
  */
+import { ThemeToggle } from "./_specimen-controls";
 import "./components-diff-view.css";
 
 export default function ComponentsDiffView() {

@@ -9,6 +9,8 @@
  * @history     .design/_history/selection/
  * @handoff     bunx shadcn add file://./selection.registry.json
  */
+import { ThemeToggle } from "./_specimen-controls";
+
 export default function Selection() {
   return (
     <>

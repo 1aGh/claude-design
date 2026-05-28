@@ -9,6 +9,7 @@
  * @history     .design/_history/iconography/
  * @handoff     bunx shadcn add file://./iconography.registry.json
  */
+import { ThemeToggle } from "./_specimen-controls";
 import "./iconography.css";
 
 export default function Iconography() {
@@ -65,10 +66,25 @@ export default function Iconography() {
 
             <h2 data-no="03">SVG glyphs <span className="h2-aside">domain nouns</span></h2>
             <div className="glyph-grid">
-              <div className="gly"><img className="gly-svg" src="../assets/glyphs/plugin.svg" alt="" /><div className="gly-name">plugin</div></div>
-              <div className="gly"><img className="gly-svg" src="../assets/glyphs/canvas.svg" alt="" /><div className="gly-name">canvas</div></div>
-              <div className="gly"><img className="gly-svg" src="../assets/glyphs/slash-command.svg" alt="" /><div className="gly-name">slash-command</div></div>
-              <div className="gly"><img className="gly-svg" src="../assets/glyphs/file-tree.svg" alt="" /><div className="gly-name">file-tree</div></div>
+              {/* Inline SVG, not <img src="../assets/…"> — _canvas-shell.html resolves
+                  relative URLs against the SHELL location, not the canvas file (Phase 3.7
+                  RELATIVE-URL SAFETY rule; same pattern as logo.tsx). currentColor tints. */}
+              <div className="gly">
+                <svg className="gly-svg" viewBox="0 0 16 16" width="16" height="16" role="img" aria-label="plugin"><g fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="square"><rect x="3" y="5" width="10" height="8" /><line x1="5" y1="5" x2="5" y2="2" /><line x1="11" y1="5" x2="11" y2="2" /><line x1="6.5" y1="13" x2="6.5" y2="15" /><line x1="9.5" y1="13" x2="9.5" y2="15" /></g></svg>
+                <div className="gly-name">plugin</div>
+              </div>
+              <div className="gly">
+                <svg className="gly-svg" viewBox="0 0 16 16" width="16" height="16" role="img" aria-label="canvas"><g fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="square"><rect x="2" y="3" width="12" height="10" /><line x1="2" y1="6" x2="14" y2="6" /><circle cx="4" cy="4.5" r="0.4" fill="currentColor" stroke="none" /><circle cx="6" cy="4.5" r="0.4" fill="currentColor" stroke="none" /><circle cx="8" cy="4.5" r="0.4" fill="currentColor" stroke="none" /><rect x="4" y="8" width="4" height="3" /></g></svg>
+                <div className="gly-name">canvas</div>
+              </div>
+              <div className="gly">
+                <svg className="gly-svg" viewBox="0 0 16 16" width="16" height="16" role="img" aria-label="slash-command"><g fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="square"><rect x="1.5" y="3.5" width="13" height="9" /><text x="3.5" y="11" fontFamily="'Berkeley Mono','JetBrains Mono',ui-monospace,monospace" fontSize="8" fontWeight="700" fill="currentColor" stroke="none">/_</text></g></svg>
+                <div className="gly-name">slash-command</div>
+              </div>
+              <div className="gly">
+                <svg className="gly-svg" viewBox="0 0 16 16" width="16" height="16" role="img" aria-label="file-tree"><g fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="square"><line x1="3" y1="2.5" x2="3" y2="13.5" /><line x1="3" y1="5.5" x2="6" y2="5.5" /><line x1="3" y1="8.5" x2="6" y2="8.5" /><line x1="3" y1="11.5" x2="6" y2="11.5" /><line x1="6.5" y1="4.5" x2="13" y2="4.5" /><line x1="6.5" y1="7.5" x2="13" y2="7.5" /><line x1="6.5" y1="10.5" x2="13" y2="10.5" /></g></svg>
+                <div className="gly-name">file-tree</div>
+              </div>
             </div>
             <p style={{ marginTop: 'var(--space-4)', color: 'var(--fg-2)', fontSize: 'var(--type-sm)' }}>Each glyph: 16×16 grid, 1px stroke, <code>currentColor</code> so the host context tints it. Drop new ones into <code>assets/glyphs/</code> and add a row above when new nouns enter the DS.</p>
 

@@ -9,6 +9,7 @@
  * @history     .design/_history/ui-kits-desktop-showcase/
  * @handoff     bunx shadcn add file://./ui_kits-desktop-showcase.registry.json
  */
+import { ThemeToggle } from "./_specimen-controls";
 import "./ui_kits-desktop-showcase.css";
 
 export default function UiKitsDesktopShowcase() {
