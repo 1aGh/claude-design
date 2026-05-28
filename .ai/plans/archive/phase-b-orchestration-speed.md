@@ -284,14 +284,14 @@ Top hits by file with current estimated wall-clock impact:
 
 ## Acceptance criteria
 
-- [ ] All B1–B16 tasks completed; each rewrite verified via tool-use log inspection
-- [ ] Wall-clock targets met on representative repos (≥ 4 of 5 commands hit target; document any miss)
-- [ ] No regression in: scaffold quality (`/design:new`, `/design:setup-ds`), critic verdict accuracy, validate gate strictness
-- [ ] design-system skill split: `/design:edit` no longer loads bootstrap content into context
-- [ ] Skill-loader skill split: rule catalogs lazy-loaded
-- [ ] security-auditor split: regex catalog separated from agent persona
-- [ ] `prep.sh` exists and replaces 4–8 sequential calls in the three commands
-- [ ] DDR-048 written: "Parallel-fan-out + lazy-load + unified prep.sh as orchestration speed pattern" with the canonical wording for future commands
+- [x] All B1–B16 tasks completed; each rewrite verified via tool-use log inspection — shipped in `67f3f29`
+- [~] Wall-clock targets met on representative repos — **not formally measured** (no before/after `time` comparison run); qualitative confirmation only: user's real `/design:setup-ds` + `/design:new` run was "very smooth, high-quality output". Hard numbers deferred.
+- [x] No regression in: scaffold quality (`/design:new`, `/design:setup-ds`), critic verdict accuracy, validate gate strictness — confirmed empirically by the user's real bootstrap+create run (no quality drop, critic verdicts intact)
+- [x] design-system skill split: `/design:edit` no longer loads bootstrap content into context — `SKILL.md` 1102→112 ř., `_read.md` + `_bootstrap.md`
+- [x] Skill-loader skill split: rule catalogs lazy-loaded — `_expertise-mapping.md` + `_resolution-strategy.md`
+- [x] security-auditor split: regex catalog separated from agent persona — `_security-regex-catalog.md`
+- [x] `prep.sh` exists and replaces 4–8 sequential calls in the three commands — wired into new/edit/setup-ds
+- [x] DDR written — shipped as **DDR-059** (plan text said DDR-048; number shifted due to intervening DDR allocations). Canonical wording for future commands recorded there.
 
 ---
 
@@ -317,3 +317,21 @@ Top hits by file with current estimated wall-clock impact:
 - PR3: Lever 3 skill splits (B10–B12)
 - PR4: Lever 4 prep.sh (B13–B14)
 - PR5: Lever 5 pass-through (B15–B16) + DDR-048 + before/after measurements
+
+---
+
+## Retro
+
+_Closed out 2026-05-29. Code shipped 2026-05-28 in `67f3f29`; closeout deferred until the user had run the changed commands for real._
+
+**What worked**
+- Single-commit ship of all 16 tasks held together — the parallel-fan-out rewrites, the three skill splits, `prep.sh`, and pass-through config all landed coherently with DDR-059 capturing the canonical wording. Verifying assumptions against the official Claude Code docs (progressive disclosure, 500-line SKILL budget, one-level-deep nesting, API-default parallel tool use, subagent inheritance) before committing meant no rework.
+- **The two scariest risk-notes dissolved in practice.** The plan flagged (a) "Kolo gating in B4 might be wrong" and (b) "lazy-load only helps if Claude actually respects it" as the things most likely to break quality. The user's real `/design:setup-ds` + `/design:new` run came back "very smooth, high-quality output" — no critic-verdict regression, scaffold quality intact. The B4 kolo boundary (Kolo 1 → Kola 2+3) held as a real data dependency without serializing the independent critics inside each kolo.
+- Splitting `design-system/SKILL.md` 1102→112 lines is the highest-leverage change for the daily `/design:edit` path — that turn no longer parses ~1 KB of bootstrap-only markdown.
+
+**What didn't / what to change next time**
+- **Wall-clock targets (acceptance #2) were never empirically measured.** The whole point was latency, yet no before/after `time` comparison was run on the five target commands. Qualitative "felt smooth" is weaker evidence than the plan asked for. Next perf-phase: capture the baseline `time` numbers _before_ touching anything, or the win is unprovable.
+- **DDR number drifted** (plan said DDR-048, shipped as DDR-059) because the plan was authored before several intervening DDR allocations. Plans that pre-name a DDR number rot; reference DDRs by title/slug in plan text and let the number resolve at write-time.
+- **Closeout/commit hygiene gotcha (process, not Phase B):** by the time `/flow:done` was invoked, Phase B was already committed+pushed and the working tree had moved on to in-flight Phase 9.1 work. The `/flow:done` template assumes the feature's diff is uncommitted-and-ready — running its validate/review/commit steps verbatim would have audited the wrong tree and risked sweeping 9.1 into a Phase B commit. Lesson: `/flow:done` needs a guard for "feature already committed; only the retro+archive bookkeeping remains" so it doesn't mis-target a dirty unrelated tree.
+
+**Net:** delivered, validated by real use, latency-win believed-but-unmeasured.
