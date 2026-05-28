@@ -77,17 +77,27 @@ function canvasUrl(p, cfg) {
   const params = new URLSearchParams();
   params.set('canvas', rel);
   params.set('designRel', designRel);
-  // Resolve tokens path. Prefer the first designSystem's tokensCssRel — that's
-  // the project's authoritative tokens file (e.g. `system/project/colors_and_type.css`).
-  // The top-level cfg.tokensCssRel is the legacy default (`system/colors_and_type.css`)
-  // and points to a file that usually doesn't exist in DS-bootstrapped projects.
   const ds0 = cfg?.designSystems?.[0];
-  const tokens = ds0?.tokensCssRel || cfg?.tokensCssRel;
+  // Specimen detection: anything under `system/<ds>/preview/` belongs to that
+  // specific DS, so it must render with *that* DS's tokens — not always the
+  // first one. In a multi-DS project this is what keeps each design system's
+  // preview distinct (beta previews use beta tokens, not alpha's).
+  const specMatch = rel.match(/^system\/([^/]+)\/preview\//);
+  const specDsEntry = specMatch
+    ? cfg?.designSystems?.find(
+        (d) => d.path === `system/${specMatch[1]}` || d.path.endsWith(`/${specMatch[1]}`)
+      )
+    : null;
+  // Resolve tokens path. For a specimen, prefer the matching DS's tokensCssRel
+  // (fall back to the `system/<ds>/colors_and_type.css` convention). Otherwise
+  // prefer the first designSystem's tokensCssRel — the project's authoritative
+  // tokens file. The top-level cfg.tokensCssRel is the legacy default
+  // (`system/colors_and_type.css`) and usually doesn't exist post-bootstrap.
+  const tokens = specMatch
+    ? (specDsEntry?.tokensCssRel || `system/${specMatch[1]}/colors_and_type.css`)
+    : (ds0?.tokensCssRel || cfg?.tokensCssRel);
   if (tokens) params.set('tokens', tokens);
   if (cfg?.componentsCssRel) params.set('components', cfg.componentsCssRel);
-  // Specimen detection: anything under `system/<ds>/preview/` gets the layout
-  // chrome CSS so its `.specimen-hd` / `_layout.css`-baked treatment renders.
-  const specMatch = rel.match(/^system\/([^/]+)\/preview\//);
   if (specMatch) {
     const ds = specMatch[1];
     params.set('layout', `system/${ds}/preview/_layout.css`);
@@ -418,7 +428,7 @@ function CanvasRow({ primary, sidecars, depth, kind, activePath, onOpen, openCou
   );
 }
 
-function Tree({ node, activePath, onOpen, commentsByFile, depth = 1, kind, showHidden, search, dsFolders, onOpenSystem }) {
+function Tree({ node, activePath, onOpen, commentsByFile, depth = 1, kind, showHidden, search, dsFolders, activeDsName, onOpenSystem }) {
   const dirs = Object.keys(node).filter(k => k !== '_files').sort();
   const files = node._files || [];
   // VS Code-style sidecar grouping. Canvas (`.tsx`/`.html`) becomes the primary
@@ -480,6 +490,7 @@ function Tree({ node, activePath, onOpen, commentsByFile, depth = 1, kind, showH
             kind={kind}
             showHidden={showHidden}
             search={search}
+            activeDsName={activeDsName}
             onOpenSystem={onOpenSystem}
           />
         );
@@ -491,7 +502,7 @@ function Tree({ node, activePath, onOpen, commentsByFile, depth = 1, kind, showH
               dsName={dsMatch.name}
               depth={depth}
               defaultOpen={true}
-              active={activePath === SYSTEM_TAB}
+              active={activePath === SYSTEM_TAB && dsMatch.name === activeDsName}
               onOpenSystem={onOpenSystem}
             >
               {childTree}
@@ -529,7 +540,7 @@ function sectionMetaFor(g) {
   return { title: g.label.toUpperCase(), pillFromCount: true };
 }
 
-function Sidebar({ groups, activePath, onOpen, onOpenSystem, wsConnected, search, setSearch, commentsByFile, showHidden, sectionsExpanded, onToggleSection }) {
+function Sidebar({ groups, activePath, activeDsName, onOpen, onOpenSystem, wsConnected, search, setSearch, commentsByFile, showHidden, sectionsExpanded, onToggleSection }) {
   const filteredGroups = useMemo(() => {
     if (!search) return groups;
     return groups.map(g => ({ ...g, tree: filterTree(g.tree, search), filtered: !!search }));
@@ -624,6 +635,7 @@ function Sidebar({ groups, activePath, onOpen, onOpenSystem, wsConnected, search
                   showHidden={showHidden}
                   search={search}
                   dsFolders={g.dsFolders}
+                  activeDsName={activeDsName}
                   onOpenSystem={isDs ? onOpenSystem : undefined}
                 />
               ) : (
@@ -1707,8 +1719,13 @@ function App() {
     setFocusedCommentId(null);
   }, []);
 
-  const openSystem = useCallback(() => {
-    if (!systemData) loadSystemData();
+  const openSystem = useCallback((dsName) => {
+    // DsFolderRow passes the clicked DS name → scope the System view to it so
+    // each folder shows its own tokens + previews. The no-arg callers (menubar,
+    // keyboard reopen) only load default data on first open.
+    const ds = typeof dsName === 'string' ? dsName : undefined;
+    if (ds) loadSystemData(ds);
+    else if (!systemData) loadSystemData();
     openTab(SYSTEM_TAB);
   }, [systemData, loadSystemData, openTab]);
 
@@ -2075,6 +2092,7 @@ function App() {
       <Sidebar
         groups={groups}
         activePath={activePath}
+        activeDsName={activePath === SYSTEM_TAB ? (systemData?.ds?.name ?? null) : null}
         onOpen={openTab}
         onOpenSystem={openSystem}
         wsConnected={wsConnected}
