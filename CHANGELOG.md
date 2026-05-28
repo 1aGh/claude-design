@@ -1,5 +1,96 @@
 # @1agh/maude
 
+## 0.23.0
+
+### Minor Changes
+
+- c21c7d4: Phase 9 Task 4 — bidirectional file sync agent for the linked-hub story (THE hard part).
+
+  When `.design/config.json` declares a `linkedHub` and `~/.config/maude/hubs.json` has a matching token, `maude design serve` now mirrors each canvas's Y.Doc (held by a `@hocuspocus/provider` client talking to the hub) with the on-disk `.html` / `_comments/<slug>.json` / `.annotations.svg` files. Edits from peers land on disk so Claude Code's `Read` / `Edit` / `Write` see them; local file writes propagate up through the hub to other peers — both directions immune to echo loops via SHA-256 fingerprinting + atomic `.tmp` → rename writes.
+
+  Solo mode (no `linkedHub`) is bit-for-bit unchanged.
+
+  New modules under `plugins/design/dev-server/sync/`: `echo-guard.ts` (1500 ms TTL hash queue), `atomic-write.ts` (POSIX rename + Windows EBUSY retry), `codec.ts` (Y.Text ↔ HTML body with minimal-diff ops; Y.Array ↔ comments JSON; Y.Map.svg ↔ annotations.svg), `fs-mirror.ts` (250 ms quiet-window file reader), `agent.ts` (per-canvas orchestrator with 800 ms Y.Doc → disk debounce matching DDR-051; cold-start reconcile with hub-wins default + `adopt` one-shot push-local-up), `hubs-config.ts` (Bun-side token reader), `index.ts` (`createSyncRuntime(ctx)` wiring — dynamic `@hocuspocus/provider` import so unlinked installs don't pay the cost).
+
+  75 new tests including a 100-event stress scenario proving doc + disk + peer convergence under `< 200` doc transitions (no echo amplification). Real-hub WSS integration tests deferred to Task 11's stress matrix.
+
+- 57cd33b: Phase 9 Task 4 hardening pass — addresses chained-finding audit on the bidirectional file sync agent (DDR-054).
+
+  `/flow:done` review-only on the Task 4 ship surfaced 1 CRITICAL + 4 HIGH chained findings (defender saw 0 blockers in-isolation; attacker promoted by composing with pre-existing dev-server behavior). DDR-054 pins the linked-mode trust model: the hub is a semi-trusted writer with the same disk privilege as the local user. Four architectural items remain DOCUMENTED RISKS until Tasks 5/6/8 land; this hardening commit ships the 8 quick wins.
+
+  Fixes:
+
+  - CI environment gate in `createSyncRuntime` (`CI` / `GITHUB_ACTIONS`) — closes future-CI supply-chain side-door (override via `MAUDE_SYNC_IN_CI=1`).
+  - Refuse `.tsx` canvases in sync discovery — closes worst lane of hostile-hub RCE (Bun.Transpiler turning hub-pushed JSX into JS).
+  - Symlink-safe atomic write: `openSync(tmp, 'wx', 0o600)` + 128-bit random suffix — closes shared-tenant tmp-symlink race.
+  - Hard size caps in codec (`4 MB` HTML, `1 MB` comments, `1 MB` SVG) — closes single-canvas memory-exhaustion DoS.
+  - Scheme allowlist via new `checkUrlScheme()` — refuses `http://` / `ws://` to non-loopback hosts (closes cleartext-token-over-MITM).
+  - Path-containment guards in `fs-mirror.notify` (rejects `..` + absolute) + `fire` (resolved-path-under-rootDir check) — defensive against future refactors that might pipe untrusted paths into the bus.
+  - `JSON.parse` reviver stripping `__proto__` / `constructor` / `prototype` keys in agent's comments-from-disk parser — closes cross-machine prototype-pollution surface.
+  - `0600` mode warn-once on `~/.config/maude/hubs.json` read (POSIX only) — nudges users back to owner-only token storage if a permissions drift happens.
+  - Auto-clear `linkedHub.adopt: true` after first successful adopt-reconcile + writes `lastAdoptedAt` attestation — closes "re-running serve re-pushes local state" loop.
+
+  102/102 sync tests (+27 net new); 632/632 full dev-server suite green; biome lint clean. Deferred items (hub-trust prompt, adopt manifest, CSP+iframe sandbox, `.claudeignore` strategy, collab-room↔sync-agent file ownership) mapped to natural-home tasks in DDR-054 §3.
+
+- 8b89dcb: Phase 9 Task 5 — awareness over WSS (cursors/selections/viewport relay through the hub).
+
+  In linked mode the dev-server now bridges the collab Room's Awareness to the sync
+  provider's hub-synced Awareness, so a browser cursor published on one peer reaches
+  cross-continent peers via Hocuspocus (which relays awareness between document peers
+  by default — no hub change needed). The bridge uses shared-origin echo prevention
+  and is owned by the collab registry, which wires it on room creation and re-wires
+  across room churn while the provider persists.
+
+  Awareness is ephemeral and writes no files, so this is a provable no-op in solo
+  mode (the rendering path is untouched) and does not intersect the comments/annotations
+  file-ownership question (DDR-054 F14), which remains deferred to the doc-content bridge.
+
+  Because linked-mode awareness now arrives from a semi-trusted hub, all foreign
+  peer state (name/color/cursor/selection/annotations) is sanitized at the single
+  `useForeignAwareness` read chokepoint before it reaches the cursor/participant
+  render sinks: the wire color is discarded and re-derived locally, the selection
+  selector is restricted to the locator grammar (rejecting functional pseudo-classes
+  that would cause a render-time DoS), display names are control/bidi-stripped and
+  length-capped, and peer/annotation counts are bounded.
+
+- 2096faa: Phase 9 Task 6 — auth + transport hardening (hub-side HMAC token store + per-token
+  rate limit + WSS boot guard; CLI-side trust gate, adopt manifest, linked-mode banner).
+
+  **Hub:** the token store moves from a plaintext `tokens.json` to a SQLite `tokens`
+  table whose `hash` column holds `hmac_sha256(token, hubKey)` — the raw token value
+  is never written to disk, so a leaked store yields no replayable credentials. A
+  pre-Task-6 `tokens.json` is imported once on first open (raw values hashed in) and
+  renamed aside. `onAuthenticate` now rate-limits each token to 100 authentications
+  per 60s window (caps reconnection/replay floods on a leaked token), and `createHub`
+  refuses to boot when `HUB_PUBLIC_URL` is plaintext `http://` to a non-loopback host
+  unless `HUB_INSECURE_HTTP=1` (TLS terminates upstream — Fly auto-cert / Caddy ACME /
+  Cloudflare Tunnel / Tailscale Funnel).
+
+  **CLI:** `maude design link`/`adopt` against a non-loopback hub now requires explicit
+  trust (DDR-054 F2) — an interactive `[y/N]` confirmation (or `--yes` non-interactively;
+  refuses in a non-TTY without `--yes`) that prints the URL/scheme/host warning, then
+  records the hub **per-machine** (in `~/.config/maude/hubs.json` under `trusted[]`, like
+  `~/.ssh/known_hosts`) so re-linking doesn't re-prompt. Trust is deliberately NOT a
+  committable repo file — that would let a malicious PR pre-seed trust and bypass the
+  gate. `--adopt` prints the manifest of local files it will upload and stores an
+  `adoptedAt` attestation in `~/.config/maude/hubs.json` (DDR-054 F4). Every non-loopback
+  link prints the DDR-054 linked-mode preview banner (F3). Loopback hubs are exempt from
+  all gating — solo/local-dev behavior is unchanged.
+
+### Patch Changes
+
+- 43d943c: Design dev-server — the in-place comment tool now works on bare DS specimens, not just `DesignCanvas` UI canvases.
+
+  The comment subsystem (tool palette, overlay, drop routing, tool/selection providers) used to be mounted only by `DesignCanvas`. Bare DS specimens (`system/<ds>/preview/*.tsx`) have no canvas-lib envelope, so they had no comment tool at all. The comment layer is now **shell-owned**: the canvas mount harness (`_shell.html`) renders a single comment layer (new `mountCanvas` / `dist/comment-mount.js`) around any canvas default export, and `DesignCanvas` consumes the shell-provided providers instead of creating its own (so there's still exactly one `CommentsOverlay` per surface — no double-mount). In comment mode on a specimen you now get a hover-preview halo showing which element you're about to comment on, and the dropped pin anchors to that element. The comment layer lives only inside the canvas iframe (the outer app and gallery thumbnails stay uncommentable via `?comments=0`). See DDR-055.
+
+- c97b040: Flow plugin — decouple from GitHub issues.
+
+  The `/flow:bug-rca`, `/flow:bug-fix`, `/flow:status`, `/flow:plan`, `/flow:execute`, `/flow:record-execution` commands and the `debugging-rules` skill are now provider-aware. They honor `integrations.tracker.provider` from `.ai/workflows.config.json` end-to-end — frontmatter, headers, prompts, and example output all speak in terms of "ticket" instead of "GitHub Issue". The GitHub CLI flow (`gh issue view`, `Closes #N`, `REPO=$(gh repo view …)`) is preserved behind explicit `provider === github` guards, so existing GitHub-tracker setups behave identically. ClickUp, Linear, Jira, Notion, Asana, and Shortcut users now have a clean path: set `integrations.tracker.provider` + `integrations.tracker.mcp` and the same flow commands resolve tickets through the MCP server. Schema (`plugins/flow/.claude-plugin/config.schema.json`) and `ai-skeleton` template were already wired for this — only the command/skill text was missing.
+
+- aa50f45: Design dev-server — fix multi-DS file-tree selection and per-DS preview.
+
+  In a project with more than one design system, clicking any DS folder in the file tree highlighted _every_ DS folder (because `DsFolderRow` keyed its active state on a single shared `SYSTEM_TAB` constant), and `openSystem` ignored the clicked DS name so the System view always showed whichever DS was already loaded. Each DS folder now highlights independently (matched against the loaded `systemData.ds.name`) and clicking a folder loads that specific DS's tokens + previews. Also fixes a related leak in `canvasUrl`: a `system/<ds>/preview/` specimen now renders with _its own_ DS's `tokensCssRel` instead of always falling back to `designSystems[0]`, so beta previews no longer render with alpha's tokens.
+
 ## 0.22.0
 
 ### Minor Changes
