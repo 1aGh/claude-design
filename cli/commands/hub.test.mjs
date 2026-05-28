@@ -3,11 +3,13 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+
+import { readTokens } from '../../plugins/design/hub/src/tokens.mjs';
 
 const BIN = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'maude.mjs');
 
@@ -40,7 +42,7 @@ test('hub token generate without --label exits 2', () => {
   assert.match(res.stderr, /--label <name> is required/);
 });
 
-test('hub token generate writes tokens.json + prints the connect command', () => {
+test('hub token generate persists to the store + prints the connect command', () => {
   withDataDir((dataDir) => {
     const res = runCli(['hub', 'token', 'generate', '--label', 'alice', '--data', dataDir]);
     assert.equal(res.status, 0, res.stderr);
@@ -48,11 +50,11 @@ test('hub token generate writes tokens.json + prints the connect command', () =>
     assert.match(res.stdout, /value:\s+mau_[0-9a-f]{32}/);
     assert.match(res.stdout, /maude design link/);
 
-    const raw = readFileSync(join(dataDir, 'tokens.json'), 'utf8');
-    const parsed = JSON.parse(raw);
-    assert.equal(parsed.tokens.length, 1);
-    assert.equal(parsed.tokens[0].label, 'alice');
-    assert.match(parsed.tokens[0].value, /^mau_[0-9a-f]{32}$/);
+    const { tokens } = readTokens(dataDir);
+    assert.equal(tokens.length, 1);
+    assert.equal(tokens[0].label, 'alice');
+    // The raw value is never persisted — only labels/metadata are listable.
+    assert.equal(tokens[0].value, undefined);
   });
 });
 
@@ -61,8 +63,7 @@ test('hub token generate --label is idempotent (overwrites in place)', () => {
     runCli(['hub', 'token', 'generate', '--label', 'alice', '--data', dataDir]);
     runCli(['hub', 'token', 'generate', '--label', 'alice', '--data', dataDir]);
 
-    const parsed = JSON.parse(readFileSync(join(dataDir, 'tokens.json'), 'utf8'));
-    assert.equal(parsed.tokens.length, 1);
+    assert.equal(readTokens(dataDir).tokens.length, 1);
   });
 });
 

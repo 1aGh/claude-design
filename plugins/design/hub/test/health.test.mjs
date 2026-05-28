@@ -42,14 +42,14 @@ test('GET /health returns JSON with expected fields', async () => {
   assert.equal(body.authMode, 'dev');
 });
 
-test('tokenCount + authMode reflect tokens.json state', async () => {
+test('tokenCount + authMode reflect token store state', async () => {
   addToken(dataDir, { label: 'alice' });
   addToken(dataDir, { label: 'bob' });
 
   const res = await fetch(`http://127.0.0.1:${PORT}/health`);
   const body = await res.json();
   assert.equal(body.tokenCount, 2);
-  assert.equal(body.authMode, 'tokens.json');
+  assert.equal(body.authMode, 'tokens');
 });
 
 test('uptimeMs grows monotonically across two probes', async () => {

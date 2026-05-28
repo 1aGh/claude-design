@@ -7,16 +7,17 @@
 //
 // Environment (consumed only when run as a CLI / main module):
 //   PORT                    listen port (default 1234)
-//   DATA_DIR                SQLite + tokens.json dir (default ./data)
-//   HUB_SECRET              escape-hatch token; tokens.json is the primary store
-//   HUB_INSECURE_HTTP       if '1', logs note non-TLS (TLS terminates upstream)
+//   DATA_DIR                tokens.db + hub.db dir (default ./data)
+//   HUB_SECRET              escape-hatch token; the token store is primary
+//   HUB_INSECURE_HTTP       if '1', allow plaintext HTTP to a public host (testing)
 //   HUB_PUBLIC_URL          base URL printed in admin / bootstrap logs
 //   HUB_ADMIN_RATE_LIMIT    'off' disables the per-IP rate limiter (dev only)
 //
-// Auth: tokens.json next to hub.db is checked first; HUB_SECRET is a fallback
-// for headless / scripted setups. With NEITHER configured the hub runs in
-// permissive dev mode and prints a warning on every connect. Phase 9 Task 6
-// hardens this with HMAC-SHA256 stored in SQLite.
+// Auth: the SQLite token store (tokens.db, HMAC-SHA256 at rest — Task 6) is
+// checked first; HUB_SECRET is a fallback for headless / scripted setups. With
+// NEITHER configured the hub runs in permissive dev mode and warns on every
+// connect. Connections are rate-limited to 100 auths/min per token; the hub
+// refuses to boot over plaintext HTTP to a non-loopback host (TLS upstream).
 //
 // Admin: /admin serves a vanilla-JS single-page UI (src/admin/). /admin/api/*
 // JSON routes mint tokens, rotate them, list peers, and report hub status.
@@ -54,7 +55,7 @@ import {
   assertValidLabel,
   listTokenLabels,
   matchesScope,
-  readTokensFile,
+  readTokens,
   recordTokenUse,
   rotateToken,
   verifyToken,
@@ -65,6 +66,10 @@ const DOCUMENT_NAME_REGEX = /^[A-Za-z0-9._/\-]{1,256}$/;
 const PUBLIC_URL_REGEX = /^https?:\/\/[^\s;'"<>`]+$/;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 5;
+// Task 6: per-token connection rate limit. onAuthenticate fires once per WS
+// upgrade, so this caps reconnection storms / token-replay floods per token.
+export const CONN_RATE_LIMIT_MAX = 100;
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 
 /**
  * @typedef {Object} HubConfig
@@ -72,7 +77,7 @@ const RATE_LIMIT_MAX = 5;
  * @property {string} [dataDir]
  * @property {string} [secret]
  * @property {string} [publicUrl]
- * @property {boolean} [insecureHttp]
+ * @property {boolean} [insecureHttp]  allow plaintext HTTP to a public host (testing only)
  * @property {boolean} [verbose]
  * @property {boolean} [rateLimit]  default true; set false in tests/dev
  */
@@ -90,6 +95,7 @@ export function createHub(config = {}) {
   const publicUrl = config.publicUrl ?? `http://localhost:${port}`;
   const verbose = config.verbose ?? true;
   const rateLimit = config.rateLimit ?? true;
+  const insecureHttp = config.insecureHttp ?? false;
   const startedAt = Date.now();
 
   // DDR-053 §5: refuse to boot if publicUrl can be weaponized into shell
@@ -100,14 +106,31 @@ export function createHub(config = {}) {
     );
   }
 
+  // Task 6 (transport hardening): refuse to serve a PUBLIC hub over plaintext
+  // HTTP. TLS terminates upstream (Fly auto-cert / Caddy ACME / Cloudflare /
+  // Tailscale Funnel) so the hub itself sees http://, but HUB_PUBLIC_URL must
+  // declare https:// for any non-loopback host. Loopback (local dev) is exempt;
+  // HUB_INSECURE_HTTP=1 overrides for explicit non-TLS testing.
+  if (!insecureHttp) {
+    const u = new URL(publicUrl);
+    if (u.protocol === 'http:' && !LOOPBACK_HOSTS.has(u.hostname)) {
+      throw new Error(
+        `refusing to serve a public hub over plaintext HTTP (publicUrl=${publicUrl}). Set HUB_PUBLIC_URL to an https:// URL (TLS terminates at your proxy), or set HUB_INSECURE_HTTP=1 for local-only testing.`
+      );
+    }
+  }
+
   if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
   const sqlitePath = join(dataDir, 'hub.db');
 
   /** @type {Map<string, { socketId: string, documentName: string, user: string, connectedAt: number, connection: any }>} */
   const peers = new Map();
 
-  /** Per-IP rate limit buckets: ip → { count, windowStart } */
+  /** Per-IP rate limit buckets (admin API): ip → { count, windowStart } */
   const rateBuckets = new Map();
+
+  /** Per-token rate limit buckets (WS auth): label → { count, windowStart } */
+  const connBuckets = new Map();
 
   const server = new Server({
     port,
@@ -126,11 +149,21 @@ export function createHub(config = {}) {
         if (!matchesScope(match.scope, documentName)) {
           throw new Error('token not authorized for this documentName');
         }
+        // Task 6: per-token rate limit. A leaked/abused token can't be used to
+        // mount a reconnection / replay flood beyond 100 auths/min.
+        if (rateLimit && !checkConnRateLimit(connBuckets, match.label)) {
+          if (verbose) {
+            console.warn(
+              `[hub] rate limit exceeded for token label=${sanitizeForLog(match.label)}`
+            );
+          }
+          throw new Error('rate limit exceeded for this token');
+        }
         if (match.source === 'file') recordTokenUse(dataDir, match.label);
         return { user: { name: match.label, source: match.source, dev: !!match.dev } };
       }
-      // No tokens.json entries and no HUB_SECRET → permissive dev mode.
-      const { tokens } = readTokensFile(dataDir);
+      // No tokens configured and no HUB_SECRET → permissive dev mode.
+      const { tokens } = readTokens(dataDir);
       if (tokens.length === 0 && secret === '') {
         if (verbose) {
           console.warn(
@@ -388,7 +421,7 @@ function formatInviteResponse(record, publicUrl) {
 }
 
 function buildStatusPayload({ dataDir, secret, port, startedAt, peersCount }) {
-  const { tokens } = readTokensFile(dataDir);
+  const { tokens } = readTokens(dataDir);
   return {
     ok: true,
     version: HUB_VERSION,
@@ -396,7 +429,7 @@ function buildStatusPayload({ dataDir, secret, port, startedAt, peersCount }) {
     port,
     dataDir,
     tokenCount: tokens.length,
-    authMode: tokens.length > 0 ? 'tokens.json' : secret ? 'env-secret' : 'dev',
+    authMode: tokens.length > 0 ? 'tokens' : secret ? 'env-secret' : 'dev',
     peersCount: peersCount ?? 0,
   };
 }
@@ -448,6 +481,23 @@ function checkRateLimit(buckets, request) {
   }
   bucket.count += 1;
   return bucket.count <= RATE_LIMIT_MAX;
+}
+
+/**
+ * Per-token connection rate limit (Task 6). Returns true when the token is
+ * within budget (CONN_RATE_LIMIT_MAX auths per 60s window). Keyed by token
+ * label so a single compromised token is throttled regardless of source IP.
+ * Exported for unit testing — the production caller is onAuthenticate.
+ */
+export function checkConnRateLimit(buckets, label) {
+  const now = Date.now();
+  const bucket = buckets.get(label);
+  if (!bucket || now - bucket.windowStart >= RATE_LIMIT_WINDOW_MS) {
+    buckets.set(label, { count: 1, windowStart: now });
+    return true;
+  }
+  bucket.count += 1;
+  return bucket.count <= CONN_RATE_LIMIT_MAX;
 }
 
 function respondRateLimited(response) {
@@ -602,7 +652,7 @@ async function runAsMain() {
 
   let built;
   try {
-    built = createHub({ port, dataDir, secret, publicUrl, rateLimit });
+    built = createHub({ port, dataDir, secret, publicUrl, rateLimit, insecureHttp });
   } catch (err) {
     console.error('[hub] config error:', err.message);
     process.exit(1);
@@ -637,7 +687,7 @@ async function runAsMain() {
     console.log('');
   } else {
     // Tell the operator why no link was printed when one might be expected.
-    const { tokens } = readTokensFile(dataDir);
+    const { tokens } = readTokens(dataDir);
     if (tokens.length === 0 && secret === '') {
       console.warn(
         '[hub] Hub unclaimed window closed (prior bootstrap consumed or expired). Restart with HUB_SECRET=<value> to set admin.'
@@ -645,13 +695,13 @@ async function runAsMain() {
     }
   }
 
-  const { tokens } = readTokensFile(dataDir);
+  const { tokens } = readTokens(dataDir);
   if (tokens.length === 0 && secret === '') {
     console.warn(
       '[hub] no tokens configured — running in permissive dev mode. Do NOT expose to the internet.'
     );
   } else if (tokens.length > 0) {
-    console.log(`[hub] tokens.json contains ${tokens.length} token(s).`);
+    console.log(`[hub] token store contains ${tokens.length} token(s).`);
   } else {
     console.log('[hub] HUB_SECRET is set — accepting that single token.');
   }

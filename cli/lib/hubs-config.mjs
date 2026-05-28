@@ -12,8 +12,15 @@
 //         "linkedAt": 1716800000000
 //       },
 //       ...
-//     }
+//     },
+//     "trusted": ["https://maude-hub-foo.fly.dev", ...]
 //   }
+//
+// `trusted` is the per-machine trust allowlist for non-loopback hubs (the
+// `maude design link` confirmation, DDR-054 F2). It lives here — NOT in a
+// committable repo file — on purpose: a committable allowlist would let an
+// attacker pre-seed trust via a PR and bypass the link-time confirmation
+// (trust laundering). Trust is a per-machine decision, like `~/.ssh/known_hosts`.
 
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -68,11 +75,20 @@ export function saveHubsConfig(config) {
   }
 }
 
-/** Upsert a hub entry. Same URL replaces the existing record. */
-export function addHub(url, token) {
+/**
+ * Upsert a hub entry. Same URL replaces the existing record. `extra` merges
+ * additional per-machine attestations (e.g. `adoptedAt` — the timestamp this
+ * machine pushed its local state up via `--adopt`, used by the sync runtime to
+ * avoid re-adopting; DDR-054 F4).
+ *
+ * @param {string} url
+ * @param {string} token
+ * @param {{ adoptedAt?: number }} [extra]
+ */
+export function addHub(url, token, extra = {}) {
   const norm = normalizeUrl(url);
   const cfg = loadHubsConfig();
-  cfg.hubs[norm] = { token, linkedAt: Date.now() };
+  cfg.hubs[norm] = { token, linkedAt: Date.now(), ...extra };
   saveHubsConfig(cfg);
   return cfg.hubs[norm];
 }
@@ -96,6 +112,28 @@ export function getHub(url) {
   const norm = normalizeUrl(url);
   const cfg = loadHubsConfig();
   return cfg.hubs[norm] ?? null;
+}
+
+/**
+ * Per-machine trust check for a non-loopback hub (DDR-054 F2). Trust is stored
+ * here, not in a committable repo file, so a malicious PR cannot pre-seed it.
+ */
+export function isHubTrusted(url) {
+  const norm = normalizeUrl(url);
+  const cfg = loadHubsConfig();
+  return Array.isArray(cfg.trusted) && cfg.trusted.includes(norm);
+}
+
+/** Record a hub as trusted on THIS machine. Idempotent. */
+export function trustHub(url) {
+  const norm = normalizeUrl(url);
+  const cfg = loadHubsConfig();
+  if (!Array.isArray(cfg.trusted)) cfg.trusted = [];
+  if (!cfg.trusted.includes(norm)) {
+    cfg.trusted.push(norm);
+    saveHubsConfig(cfg);
+  }
+  return norm;
 }
 
 /**

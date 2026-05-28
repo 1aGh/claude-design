@@ -6,7 +6,7 @@
 
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -203,5 +203,57 @@ test('status --json emits structured payload', async () => {
   assert.equal(payload.tokenStored, true);
   assert.equal(payload.hub.reachable, true);
   assert.equal(payload.sync.agent, 'not-implemented');
+  cleanup();
+});
+
+// --------------------------------------------------- DDR-054 F2/F4 trust gate
+
+const REMOTE_URL = 'http://hub.invalid:9999'; // .invalid never resolves (RFC 6761)
+
+test('linking a non-loopback hub without --yes (non-TTY) refuses', async () => {
+  // The spawned child has no TTY on stdin, so the gate must refuse rather
+  // than silently link a remote hub in a script.
+  const res = await runCli(['design', 'link', REMOTE_URL, '--token', 'mau_x', '--force']);
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /requires confirmation/);
+  // No link written.
+  const cfg = JSON.parse(readFileSync(join(workspace, '.design/config.json'), 'utf8'));
+  assert.equal(cfg.linkedHub, undefined);
+  cleanup();
+});
+
+test('linking a non-loopback hub with --yes records trust + links', async () => {
+  const res = await runCli(['design', 'link', REMOTE_URL, '--token', 'mau_x', '--yes', '--force']);
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stderr, /confirmed via --yes/);
+  assert.match(res.stderr, /experimental v1\.1 preview/); // F3 banner
+
+  const cfg = JSON.parse(readFileSync(join(workspace, '.design/config.json'), 'utf8'));
+  assert.equal(cfg.linkedHub.url, REMOTE_URL);
+
+  // Trust is recorded PER-MACHINE (hubs.json), never in a committable repo file.
+  const hubs = JSON.parse(readFileSync(hubsConfigPath, 'utf8'));
+  assert.ok(hubs.trusted.includes(REMOTE_URL), 'hub should be trusted on this machine');
+  assert.equal(
+    existsSync(join(workspace, '.maude/trusted-hubs')),
+    false,
+    'no committable trust file'
+  );
+
+  // Re-linking the now-trusted hub no longer needs --yes.
+  const second = await runCli(['design', 'link', REMOTE_URL, '--token', 'mau_y', '--force']);
+  assert.equal(second.status, 0, second.stderr);
+  cleanup();
+});
+
+test('--adopt against a non-loopback hub lists the upload manifest in the gate', async () => {
+  writeFileSync(join(workspace, '.design/screen.html'), '<button>hi</button>', 'utf8');
+  const res = await runCli(['design', 'adopt', REMOTE_URL, '--token', 'mau_x', '--yes', '--force']);
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stderr, /will UPLOAD 1 local file/);
+  assert.match(res.stderr, /\.design\/screen\.html/);
+
+  const hubs = JSON.parse(readFileSync(hubsConfigPath, 'utf8'));
+  assert.equal(typeof hubs.hubs[REMOTE_URL].adoptedAt, 'number'); // F4 attestation
   cleanup();
 });

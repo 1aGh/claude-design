@@ -10,19 +10,21 @@
 //
 // Token NEVER lands in .design/config.json — that's git-committed.
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { createInterface } from 'node:readline';
 
 import { parseArgs } from './argv.mjs';
-import { addHub, getHub, normalizeUrl, removeHub } from './hubs-config.mjs';
+import { addHub, getHub, isHubTrusted, normalizeUrl, removeHub, trustHub } from './hubs-config.mjs';
 
 const DESIGN_CONFIG_PATH = '.design/config.json';
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 
 // ---------------------------------------------------------------- link
 
 export async function runLink({ args, cwd = process.cwd(), forceAdopt = false }) {
   const tail = args.slice(args.indexOf(forceAdopt ? 'adopt' : 'link') + 1);
-  const { flags, positional } = parseArgs(tail, { booleans: ['adopt', 'force'] });
+  const { flags, positional } = parseArgs(tail, { booleans: ['adopt', 'force', 'yes'] });
   const url = positional[0];
   const token = flags.token;
 
@@ -52,6 +54,46 @@ export async function runLink({ args, cwd = process.cwd(), forceAdopt = false })
     process.exit(2);
   }
 
+  const cfg = readDesignConfig(designConfigPath);
+
+  // DDR-054 F2/F4: linking to a non-loopback hub grants a remote actor the same
+  // write access to .design/ as the local user (hub-pushed content lands on
+  // disk verbatim, like `git pull` from a stranger). Require explicit trust for
+  // a new remote hub. Trust is checked PER-MACHINE (`isHubTrusted`), never from
+  // a committable repo file — a committed allowlist (or the committed
+  // `linkedHub.url` itself) would let a malicious PR pre-seed trust and bypass
+  // this gate (trust laundering). Loopback dev hubs are exempt.
+  const loopback = isLoopbackUrl(normUrl);
+  const alreadyTrusted = loopback || isHubTrusted(normUrl);
+  const manifest = adopt ? collectAdoptManifest(cwd) : [];
+
+  if (!alreadyTrusted) {
+    process.stderr.write(trustGateText(normUrl, adopt, manifest));
+    if (flags.yes) {
+      process.stderr.write('  → confirmed via --yes\n');
+    } else if (process.stdin.isTTY) {
+      const question = adopt
+        ? `Link this repo to ${normUrl} AND push local design state up to it? [y/N] `
+        : `Link this repo to ${normUrl}? [y/N] `;
+      const ok = await promptYesNo(question);
+      if (!ok) {
+        process.stderr.write('maude design link: aborted — hub not trusted.\n');
+        process.exit(1);
+      }
+    } else {
+      process.stderr.write(
+        `maude design link: linking to a non-local hub (${normUrl}) requires confirmation.\n  Re-run in an interactive terminal, or pass --yes to confirm non-interactively.\n`
+      );
+      process.exit(1);
+    }
+    // NOTE: trust is recorded AFTER the link succeeds (below), not here — an
+    // aborted link (probe fail without --force, config write throws) must not
+    // leave a persisted trust that silently skips the gate on a later re-link.
+  } else if (adopt && manifest.length > 0) {
+    // Trusted (e.g. localhost) adopt — surface the manifest informationally.
+    process.stdout.write(adoptManifestText(normUrl, manifest));
+  }
+
   // Reachability probe — best-effort. Hub auth happens on WS upgrade (Task 4),
   // so a successful /health response only tells us the hub is up + reachable.
   // Token validity is verified when the sync agent connects for real.
@@ -63,11 +105,10 @@ export async function runLink({ args, cwd = process.cwd(), forceAdopt = false })
     process.exit(1);
   }
 
-  // Write hub side: tokens.json next to the user's other config.
-  const hubRecord = addHub(normUrl, token);
+  // Write hub side: token (+ adopt attestation) in ~/.config/maude/hubs.json.
+  const hubRecord = addHub(normUrl, token, adopt ? { adoptedAt: Date.now() } : {});
 
   // Write project side: linkedHub field on .design/config.json.
-  const cfg = readDesignConfig(designConfigPath);
   const existing = cfg.linkedHub;
   if (existing && !flags.force) {
     process.stdout.write(
@@ -81,9 +122,15 @@ export async function runLink({ args, cwd = process.cwd(), forceAdopt = false })
   };
   writeDesignConfig(designConfigPath, cfg);
 
+  // Record per-machine trust only now that the link fully succeeded, so a
+  // later re-link to this hub won't re-prompt. Skipped for loopback + hubs
+  // already trusted on this machine.
+  if (!alreadyTrusted) trustHub(normUrl);
+
   process.stdout.write(
-    `[design link] linked ${cwd} to ${normUrl}.\n  token:   stored in ~/.config/maude/hubs.json (per-machine, never committed)\n  config:  .design/config.json.linkedHub = { url, linkedAt${adopt ? ', adopt: true' : ''} }\n  hub:     ${probe.ok ? `v${probe.version}, uptime ${Math.round((probe.uptimeMs ?? 0) / 1000)}s, ${probe.tokenCount} token(s) (${probe.authMode})` : 'NOT REACHED — linked anyway (--force)'}\n\nNext step: start 'maude design serve' — the linked sync agent ${adopt ? 'will push local state up to the hub on first connect' : 'will mirror hub state to disk on first connect'}.\n  (Sync agent lands in Phase 9 Task 4.)\n`
+    `[design link] linked ${cwd} to ${normUrl}.\n  token:   stored in ~/.config/maude/hubs.json (per-machine, never committed)\n  config:  .design/config.json.linkedHub = { url, linkedAt${adopt ? ', adopt: true' : ''} }\n  hub:     ${probe.ok ? `v${probe.version}, uptime ${Math.round((probe.uptimeMs ?? 0) / 1000)}s, ${probe.tokenCount} token(s) (${probe.authMode})` : 'NOT REACHED — linked anyway (--force)'}\n\nNext step: start 'maude design serve' — the linked sync agent ${adopt ? 'will push local state up to the hub on first connect' : 'will mirror hub state to disk on first connect'}.\n`
   );
+  if (!loopback) process.stderr.write(linkedModeBanner());
 }
 
 // ---------------------------------------------------------------- adopt
@@ -213,4 +260,104 @@ async function probeHealth(url) {
   } catch (err) {
     return { ok: false, error: err.message };
   }
+}
+
+// ----------------------------------------------------- trust gate (DDR-054 F2/F4)
+
+/** True when the hub URL points at the local machine (no remote-write risk). */
+function isLoopbackUrl(normUrl) {
+  try {
+    return LOOPBACK_HOSTS.has(new URL(normUrl).hostname);
+  } catch {
+    return false;
+  }
+}
+
+/** Promise-resolving [y/N] prompt. Prompt + echo go to stderr (stdout is data). */
+function promptYesNo(question) {
+  return new Promise((res) => {
+    const rl = createInterface({ input: process.stdin, output: process.stderr });
+    rl.question(question, (answer) => {
+      rl.close();
+      res(/^y(es)?$/i.test(answer.trim()));
+    });
+  });
+}
+
+/**
+ * Files `--adopt` would push up to the hub: top-level canvases + annotation
+ * SVGs + comment JSON snapshots (the git-tracked sync surface per Task 9).
+ */
+function collectAdoptManifest(cwd) {
+  const base = resolve(cwd, '.design');
+  const files = [];
+  try {
+    for (const f of readdirSync(base)) {
+      if (f.endsWith('.html') || f.endsWith('.annotations.svg')) {
+        try {
+          files.push({ rel: `.design/${f}`, bytes: statSync(resolve(base, f)).size });
+        } catch {
+          /* skip unreadable */
+        }
+      }
+    }
+  } catch {
+    /* no .design — manifest stays empty */
+  }
+  const commentsDir = resolve(base, '_comments');
+  try {
+    for (const f of readdirSync(commentsDir)) {
+      if (!f.endsWith('.json')) continue;
+      try {
+        files.push({
+          rel: `.design/_comments/${f}`,
+          bytes: statSync(resolve(commentsDir, f)).size,
+        });
+      } catch {
+        /* skip unreadable */
+      }
+    }
+  } catch {
+    /* no comments dir */
+  }
+  return files;
+}
+
+function adoptManifestText(normUrl, manifest) {
+  const lines = manifest.map((f) => `    ${f.rel} (${f.bytes} B)`).join('\n');
+  return `[design link] --adopt will push ${manifest.length} local file(s) up to ${normUrl}:\n${lines}\n`;
+}
+
+function trustGateText(normUrl, adopt, manifest) {
+  let url;
+  try {
+    url = new URL(normUrl);
+  } catch {
+    url = { protocol: '?', hostname: normUrl };
+  }
+  const scheme = `${url.protocol.replace(':', '')}${url.protocol === 'http:' ? ' (NOT encrypted — token + edits travel in cleartext)' : ''}`;
+  let out = `
+⚠ Linking to a NON-LOCAL hub.
+    URL:    ${normUrl}
+    scheme: ${scheme}
+    host:   ${url.hostname}
+  A linked hub can write to your .design/ files (treat like \`git pull\` from a stranger).
+  Only link to hubs you operate or fully trust. See DDR-054 for the trust model.
+`;
+  if (adopt) {
+    const list = manifest.map((f) => `    ${f.rel} (${f.bytes} B)`).join('\n');
+    out +=
+      manifest.length > 0
+        ? `\n  --adopt will UPLOAD ${manifest.length} local file(s) to this hub:\n${list}\n`
+        : '\n  --adopt is set but no local canvases/comments/annotations were found to upload.\n';
+  }
+  return out;
+}
+
+function linkedModeBanner() {
+  return `
+⚠ Linked mode is an experimental v1.1 preview. Hub-pushed content is written
+  to your .design/ files as untrusted input. Only link to hubs you operate or
+  fully trust. See DDR-054 for the trust model.
+`;
 }

@@ -32,7 +32,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 
-import { readTokensFile } from './tokens.mjs';
+import { readTokens } from './tokens.mjs';
 
 const TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -129,7 +129,7 @@ export function issueBootstrap(dataDir, { now = Date.now(), ttlMs = TTL_MS } = {
  * @returns {BootstrapRecord | null}
  */
 export function maybeIssueOnBoot(dataDir, { secret = '', now = Date.now(), ttlMs = TTL_MS } = {}) {
-  const { tokens } = readTokensFile(dataDir);
+  const { tokens } = readTokens(dataDir);
   if (tokens.length > 0 || secret) return null;
 
   // Prior consumption marker present → refuse to reissue (DDR-053 §2).
