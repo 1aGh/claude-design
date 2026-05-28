@@ -1,28 +1,28 @@
 ---
 title: /flow:bug-fix
-description: "Implement fix from RCA document for GitHub issue"
+description: "Implement fix from RCA document for a ticket"
 ---
 
 | Property | Value |
 | -------- | ----- |
 | **Command** | `/flow:bug-fix` |
 | **Category** | `bug` |
-| **Argument hint** | `github-issue-id` |
+| **Argument hint** | `ticket-id` |
 | **Source** | [`plugins/flow/commands/bug-fix.md`](https://github.com/1aGh/maude/blob/main/plugins/flow/commands/bug-fix.md) |
 
 ## Description
 
-Implement fix from RCA document for GitHub issue
+Implement fix from RCA document for a ticket
 
 ## Invocation
 
 ```text
-/flow:bug-fix github-issue-id
+/flow:bug-fix ticket-id
 ```
 
 ## Summary
 
-- RCA document exists at `logs/rca/issue-$ARGUMENTS.md` (produced by `/flow:bug-rca`)
+- RCA document exists at `logs/rca/issue-$ARGUMENTS.md` (produced by `/flow:bug-rca`). The `issue-` filename prefix is provider-agnostic — `$ARGUMENTS` may be a GitHub number, a ClickUp ID like `CU-abc123`, or any slug.
 
 ## Source of truth
 
