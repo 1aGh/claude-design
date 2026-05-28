@@ -42,6 +42,16 @@ eval "$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/bootstrap-check.sh" --shell-exp
 
 The skill treats `$ARGUMENTS` (the feedback the user passed to `/design:edit`) as the answer to discovery Question 1 (product one-liner) and runs Round 1 Q2–Q4 + Round 2 Q5–Q8, confirms direction, and scaffolds before returning here. After scaffold, the active canvas may be unset (user hasn't opened anything yet) — in that case, fall through to step 1's "no active canvas" error path, which now points the user at `/design:new` to scaffold their first canvas.
 
+#### 0.5 Motion-complaint fast-path (matchMedia-first — D-3)
+
+When the feedback is a motion complaint — it mentions `motion`, `animace`, `animation`, `nehýbe se`, `animace nefunguje`, `not animating`, `nereaguje`, "stuck / frozen / dead" — the **FIRST diagnostic is `prefers-reduced-motion`, before reading any CSS or component code**:
+
+```bash
+agent-browser eval "matchMedia('(prefers-reduced-motion: reduce)').matches"
+```
+
+Headless Chrome (and many real user browsers / OS accessibility settings) default `prefers-reduced-motion: reduce` to **true**, and the design tokens *correctly* collapse `--dur-*` to `1ms` in that branch — so "nothing animates" is the system working as designed, not a CSS bug. If the probe returns `true`, that is almost certainly the whole story: surface it to the user ("motion is suppressed by `prefers-reduced-motion: reduce` in this browser/OS — toggle it via the specimen's `<ReducedMotionToggle>` or your OS settings to see it play") instead of chasing the CSS. Only if the probe returns `false` does a real motion bug warrant reading the keyframes/`motion/react` code. The probe is ~1 agent-browser call and belongs before any code reading — studyfi burned ~2 user round-trips chasing CSS that was working.
+
 ### 1. Resolve config
 
 Vyvolej skill `design` se vstupem `$ARGUMENTS`.
@@ -287,6 +297,8 @@ Read the canvas file. **If selection is valid**, build scoped prompt (selector +
 - The Babel/UMD React mount pattern (pokud existuje)
 - All existing tokens (`var(--*)` references)
 
+**Touch the paired `.tsx` after editing a sibling `.css` (D-2 — highest-ROI fix).** For `css_mode` canvases that carry a sibling `<slug>.css` (NOT Tailwind / inline modes), the dev-server's canvas-build **inlines the CSS at module init and the bundle cache keys on the `.tsx` mtime** — so a CSS-only edit is invisible until something bumps the `.tsx` mtime (or a server restart). After editing any `<slug>.css`, `touch <slug>.tsx` so the canvas-build re-inlines the CSS. Without this, the confirmation screenshot in step 7 reflects the *pre-edit* CSS — studyfi burned 5 identical "nothing changed" screenshots on exactly this. (Tailwind/inline-mode canvases have no sibling `.css`, so this does not apply to them.)
+
 ### 6. Validate
 
 ```bash
@@ -312,6 +324,16 @@ curl -s -m 2 -X POST -H 'content-type: application/json' \
 **Always fires, regardless of `--no-critic`.** Reality check (does the file render?), ne quality check.
 
 ```bash
+# D-2 — if the active canvas is css_mode with a sibling <slug>.css that we just
+# edited, bump the .tsx mtime so canvas-build re-inlines the CSS BEFORE the
+# screenshot (the bundle cache keys on the .tsx mtime; a CSS-only edit is
+# otherwise invisible until restart). No-op when there's no sibling .css.
+ABS_ACTIVE="$REPO_ROOT/$DESIGN_ROOT/${ACTIVE#$DESIGN_ROOT/}"
+SIBLING_CSS="${ABS_ACTIVE%.tsx}.css"
+if [ "${ACTIVE##*.}" = "tsx" ] && [ -f "$SIBLING_CSS" ]; then
+  touch "$ABS_ACTIVE" && echo "→ touched $(basename "$ABS_ACTIVE") to re-inline sibling CSS"
+fi
+
 OUT="$DESIGN_ROOT/_history/$SLUG/$NNN-baseline.png"
 bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --full --out "$OUT" \
   || echo "⚠ baseline screenshot not written"

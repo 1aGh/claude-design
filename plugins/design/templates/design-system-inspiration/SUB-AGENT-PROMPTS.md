@@ -25,9 +25,9 @@ The three MANDATORY safety blocks (ANIMATION SAFETY, RELATIVE-URL SAFETY, PLACEH
 ### RELATIVE-URL SAFETY (mandatory — applies to any specimen referencing assets, logos, glyphs)
 
 - The dev-server serves canvases via `/_canvas-shell.html?canvas=<rel-path>`. **Relative URLs (`../foo.svg`, `./assets/logo.svg`) resolve against the SHELL's URL, not the canvas file's location.** Result: 404 / broken-image icon. Studyfi imprint retro D-4 was caught by the user mid-flow because of exactly this.
-- **Always inline SVGs** in JSX. Use `useId()` for any `<filter id>` / `<linearGradient id>` so multiple instances of the same component don't collide on a single page. OR
-- **Always use absolute paths rooted at `/assets/...`** served from the dev-server's static mount. The `system/<ds>/assets/` directory is mounted at `/assets/<ds>/` in production-handoff mode.
-- **Forbidden:** `<img src="../foo.svg">`, `<image href="./logo.svg">`, `url('../bg.png')` inside inline `<style>` blocks. Any of these surviving in a specimen is a graphic-design-critic blocker.
+- **Always inline SVGs** in JSX. Use `useId()` for any `<filter id>` / `<linearGradient id>` so multiple instances of the same component don't collide on a single page. This is the **strongly-preferred** default. OR
+- **Use an absolute path that mirrors the real on-disk location under the repo root** — the ONE correct form is `/<designRoot>/system/<ds>/assets/<file>`, e.g. `/.design/system/<ds>/assets/logo.svg` (with the default `designRoot` of `.design`). The dev-server's fall-through serves any file by its real path under the repo root (`http.ts` `safePathUnderRoot`); there is **no `/assets/<ds>/` alias** — that earlier wording was wrong and 404s. Substitute the project's actual `designRoot` (read `config.json` `designRoot`) if it isn't `.design`.
+- **Forbidden:** `<img src="../foo.svg">`, `<image href="./logo.svg">`, `url('../bg.png')` inside inline `<style>` blocks, AND the bogus `/assets/<ds>/…` alias. Any of these surviving in a specimen is a graphic-design-critic blocker.
 
 ### PLACEHOLDER POLICY (mandatory — applies to logo / mark / wordmark / mascot / glyph / illustration claims)
 
@@ -134,7 +134,8 @@ SAFETY BLOCKS — apply to every file in your slice:
   + compositor-only + reduced-motion + no-bouncy-springs.
 - **RELATIVE-URL SAFETY** (see SUB-AGENT-PROMPTS.md). Mandatory if your slice
   references ANY asset (logo, glyph, illustration, background image). Inline
-  SVG with `useId()`, OR absolute `/assets/<ds>/...` path. NEVER relative.
+  SVG with `useId()`, OR absolute `/<designRoot>/system/<ds>/assets/...` path
+  (e.g. `/.design/system/<ds>/assets/...`). NEVER relative, NEVER `/assets/<ds>/`.
 - **PLACEHOLDER POLICY** (see SUB-AGENT-PROMPTS.md). Mandatory if your slice
   scaffolds the `logo` / `empty-state` specimen or any brand-asset surface.
   Read the roster `assets:` block FIRST. If `source:` is populated, copy the
@@ -212,13 +213,17 @@ The base template above applies to every slice. Each slice gets a small addendum
 
 **Apply RELATIVE-URL SAFETY in full.** The `iconography` specimen tends to reference glyph SVGs; the `focus` specimen sometimes references focus-ring fixtures. Inline ALL SVGs.
 
+**Restraint-default type ladder (D-8).** The `type-scale` specimen demonstrates the scale the tokens already encode — do NOT reintroduce drama the tokens deliberately held back. The default ceiling is **type-scale ratio ≤ 1.2, optical-size ≤ 72, display weight ≤ semibold, tracking ≥ -0.02em**. If `colors_and_type.css` already carries a more dramatic ladder (a high-confidence research recommendation explicitly asked for maximalism), mirror what the tokens declare — never push *beyond* the tokens on your own initiative. Restraint is the default; the user opts UP via `/design:edit`, not the sub-agent.
+
+**Research type-fidelity (D-7).** Read the research payload's type recommendation (in the discovery payload / DS README). **Mirror its PRIMARY display-face ROLE exactly.** A "grotesque" direction yields a grotesque display face even when an open-source serif is more convenient to wire up — do NOT let font availability flip the role. Distinguish the **display role** from the **body-accent role**: a recommendation like `display-grotesque-editorial-serif` means a grotesque sans for the DISPLAY face *with* an editorial serif for BODY accents — it does NOT mean the serif is the display face. If the named face is unavailable, substitute within the SAME classification (grotesque → grotesque, not grotesque → serif) and note the substitution so it lands in the bypass-log. (Studyfi read "serif" off `display-grotesque-editorial-serif` and picked Fraunces as the display face — inverting the roles.)
+
 ### Slice: `brand + voice` (empty-state, logo)
 
 **Apply PLACEHOLDER POLICY in full.** This slice is the highest-risk for placeholder-bleed. The `logo` specimen MUST start by reading the roster's `assets:` block:
 - If `assets.logo.source` is a real path, the specimen `<img>`s / inlines the real asset.
 - If `assets.logo.source` is empty, fall back to a `-placeholder` SVG with the rationale in the JSX comment block. Set `source: placeholder` on roster update.
 
-**Apply RELATIVE-URL SAFETY in full.** Logo specimens are 100% asset-bound. Inline SVG is the default; absolute `/assets/<ds>/logo.svg` is the alternative.
+**Apply RELATIVE-URL SAFETY in full.** Logo specimens are 100% asset-bound. Inline SVG is the default; absolute `/<designRoot>/system/<ds>/assets/logo.svg` (e.g. `/.design/system/<ds>/assets/logo.svg`) is the alternative — never the bogus `/assets/<ds>/` alias.
 
 ### Slice: `core components` (components-buttons, components-cards, components-inputs)
 
@@ -229,6 +234,8 @@ Buttons frequently get hover transitions — apply ANIMATION SAFETY (compositor-
 No slice-specific addenda — the base template covers them.
 
 ### Slice: `ui_kits-*-showcase` (main agent OR signature sub-agent)
+
+**Showcase-from-real-app (D-6) — read the real layout BEFORE composing, for existing products.** If the prompt injects real layout paths (the orchestrator passes the app's `AppLayout` + primary-nav component paths when the DS is for a shipped product), you MUST **read those files first and mirror that UX, restyling only** — apply the DS tokens + signature treatment to the *real* screen anatomy. Do NOT invent a plausible-but-fictional product UX when a real one was handed to you; inventing it is the studyfi D-6 regression that forced a ~5500-LOC rebuild. If NO real layout paths are injected (greenfield DS), compose a project-specific mock from `domain_nouns` per the creativity rubric — that path is unchanged.
 
 **Apply ANIMATION SAFETY.** Showcase is the highest-density "DS in use" artifact; presence cursors, route transitions, and panel slides all show up here. Every animation must be bounded + reduced-motion-safe + token-derived.
 

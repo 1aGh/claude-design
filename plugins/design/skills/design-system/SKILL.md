@@ -132,8 +132,11 @@ for a justified zero-JS surface; never reinvent keyframes for a named role.
 | Brief contradicts Stage 0 scope (e.g. user picked Pro Tool but brief says "playful tactile bouncy") | `AskUserQuestion` resolving which signal wins. Selection logged. |
 | Asset-sweep returns multiple hits for one noun | `AskUserQuestion` picking the production asset. Selection logged. |
 | Sub-mode forces a Stage skip (`additional-ds` skipping Stage 0) | 1-line chat + log row. Spec-defined behavior, but still log it. |
+| Socket-close / batch cohort failure during fan-out | Re-spawn the failed slices (≤ fan-out ceiling — see "Batches B + C"), then **reconcile** (the recovery routes THROUGH reconciliation, not around it). 1-line chat + log row. Never report complete with a `pending` or absent per-platform showcase. |
 
 The bypass log is per-DS (path embeds `<target_ds>`) so multi-DS projects don't cross-pollute.
+
+**Bypass-log enforcement (D-9) — the write is non-optional and happens on the FIRST deviation, not retroactively.** The log row is written *at the moment of deviation*, not reconstructed at end-of-bootstrap from memory (retroactive logging loses rows). As an end-of-bootstrap check: if **no `<ds>-bypass-log.md` exists** AND any of {visual-sanity skip, font substitution, `--quick`} occurred during the run, **that is itself a reconciliation failure** — the bootstrap did something loggable and didn't log it. Treat a missing-but-required bypass-log the same as a `pending` roster row: do not report the bootstrap complete until the log exists and carries a row for each deviation.
 
 ### Pre-Flight (light)
 
@@ -657,9 +660,16 @@ files:
   - { path: "preview/empty-state.tsx",             batch: C, deps: [tokens, chrome, template], status: pending, signature: true }
   - { path: "preview/logo.tsx",                    batch: C, deps: [tokens, chrome, assets], status: pending, signature: true }
   # … gated entries appended based on Q2/Q3 (audience-pro/*, audience-developer/*, status/*, presence, etc.)
-  # … always ends with the highest-leverage composition:
+  # … always ends with the highest-leverage compositions:
+  # one showcase+index PER in-scope platform (Q3) — desktop-only here is a template stub, expand at emit time
   - { path: "preview/ui_kits-desktop-showcase.tsx", batch: C, deps: [tokens, chrome, template, ALL], status: pending, signature: true }
   - { path: "preview/ui_kits-desktop-index.tsx",    batch: C, deps: [ALL specimens written], status: pending }   # written LAST so it can link to peers
+  # … if Q3 includes mobile, emit the mobile pair too (slugs match the library's platform-mobile/ convention):
+  - { path: "preview/ui_kits-mobile-showcase.tsx",  batch: C, deps: [tokens, chrome, template, ALL], status: pending, signature: true }   # only if mobile ∈ Q3
+  - { path: "preview/ui_kits-mobile-index.tsx",     batch: C, deps: [ALL specimens written], status: pending }   # only if mobile ∈ Q3; written LAST
+  # … if Q3 includes tablet, emit the tablet pair too:
+  - { path: "preview/ui_kits-tablet-showcase.tsx",  batch: C, deps: [tokens, chrome, template, ALL], status: pending, signature: true }   # only if tablet ∈ Q3
+  - { path: "preview/ui_kits-tablet-index.tsx",     batch: C, deps: [ALL specimens written], status: pending }   # only if tablet ∈ Q3; written LAST
 # Batch B fan-out groups — sub-agents claim these slices
 fanout:
   - { batch: B, slice: "color tokens",        files: [colors-text, colors-surfaces, colors-accent] }
@@ -671,16 +681,25 @@ fanout:
   - { batch: C, slice: "universal b",         files: [components-tables, components-callout] }
   - { batch: C, slice: "brand + voice",       files: [empty-state, logo] }
   - { batch: C, slice: "audience-pro",        files: [components-command-palette, components-shortcuts-overlay, …] }   # only if Q2 = pro
+  # … ONE showcase slice PER in-scope platform — never lump platforms into one slice (keeps each within the leaner-prompt budget; see fan-out ceiling below). The *-index.tsx is written LAST by the main agent, not a sub-agent.
+  - { batch: C, slice: "showcase-desktop",    files: [ui_kits-desktop-showcase] }   # desktop default-on
+  - { batch: C, slice: "showcase-mobile",     files: [ui_kits-mobile-showcase] }    # only if mobile ∈ Q3
+  - { batch: C, slice: "showcase-tablet",     files: [ui_kits-tablet-showcase] }    # only if tablet ∈ Q3
   # … plus other gated slices
 ```
 
-Reconciliation rule: after Batch C completes, the main agent reads the roster, asserts every row is `written`, and rejects the bootstrap as incomplete otherwise. The `ui_kits-*-index.tsx` is always last because it links every peer — written after the rest by the main agent, not a sub-agent.
+Reconciliation rule (failure-proof — runs after EVERY batch attempt, including partial or failed fan-out): the main agent reads the roster, asserts every row is `written`, and rejects the bootstrap as incomplete otherwise. **Reconciliation is not gated on batch success** — it runs even when a fan-out cohort partially or wholly failed (e.g. socket-close), because that is exactly when rows silently stay `pending`. Two non-negotiable assertions:
+
+1. **Expected-set from Q3, not just rows-that-exist.** Derive the expected showcase set from the in-scope platforms (Q3): for every in-scope platform there MUST be a `written` `ui_kits-<platform>-showcase` row. A **missing-entirely** showcase (the row was never emitted because a platform was overlooked at roster-build time) is the **same hard-fail** as a `pending` one — assert against the Q3-derived expected set, never against the rows that happen to be in the roster. This is the gate that catches "mobile in scope but no mobile showcase".
+2. **Socket-failure recovery routes THROUGH reconciliation, not around it.** When a batch cohort fails (socket-close, timeout, exceeded fan-out ceiling), re-spawn the failed slices (≤ the fan-out ceiling — see below), then reconcile again. Never report the bootstrap complete with a `pending` or absent showcase. The studyfi bootstrap regression was two-fold — the mobile row was never emitted AND reconciliation was skipped after the socket failure — so both halves must hold or it recurs ("Scaffold roster as contract ⚠️ never reconciled after socket failure (rows stayed pending)").
+
+The `ui_kits-*-index.tsx` is always last because it links every peer — written after the rest by the main agent, not a sub-agent.
 
 ### Scaffold (3-batch fan-out)
 
 The inspiration library at `plugins/design/templates/design-system-inspiration/` has **11 category dirs** holding **~67 reference HTML specimens**. The skill walks the categories, picks files matching the project profile, and **GENERATES** project-flavored versions in `system/<ds>/preview/`. **Scaffold output is flat** — category prefixes live only in the library; the scaffolded files all land directly under `preview/`. See `_MAPPING.md` for the full inventory, gating rules, and the `dependency_closure` column that drives batching.
 
-**Scaffold is fan-out work, not serial work.** Independent file writes are pure leaves of a DAG: every specimen depends only on `colors_and_type.css` + `_layout.css` (chrome) + zero or one reference template. Serial scaffold of 25–30 specimens in the main agent burns context and produces quality drift (early specimens get full creative attention; late specimens get token-swapped). Fan-out fixes both: 5–8 sub-agents in parallel, each with a fresh attention budget per specimen slice.
+**Scaffold is fan-out work, not serial work.** Independent file writes are pure leaves of a DAG: every specimen depends only on `colors_and_type.css` + `_layout.css` (chrome) + zero or one reference template. Serial scaffold of 25–30 specimens in the main agent burns context and produces quality drift (early specimens get full creative attention; late specimens get token-swapped). Fan-out fixes both: **3–4 concurrent sub-agents per batch**, each with a fresh attention budget per specimen slice. (Ceiling lowered from 5–8 — see the fan-out section below for the socket-budget rationale.)
 
 #### Batch A — main agent writes serially
 
@@ -689,6 +708,8 @@ The dependency root. Main agent writes these **in order, alone** because every l
 > **Canvas-lib note (DDR-025):** Per Phase 4.0.5 canvas-lib ships with the dev-server install at `plugins/design/dev-server/canvas-lib.tsx`. Bootstrap **does not** scaffold a project-side copy — the virtual specifier `@maude/canvas-lib` resolves directly at canvas build time. UI mock canvases keep importing `DesignCanvas` / `DCSection` / `DCArtboard` from `@maude/canvas-lib` without any per-project setup.
 
 1. `colors_and_type.css` — tokens. Substitute discovery values (accent OKLCH, fonts, density-derived `--space-*` defaults, Q9-derived shadow/treatment tokens like `--shadow-glow` or `--scanline-alpha`).
+   - **Restraint-default type ladder (D-8).** Editorial / display DSes default to a **restrained ladder — type-scale ratio ≤ 1.2, optical-size ≤ 72, weight ≤ semibold for the display face, tracking ≥ -0.02em.** The user opts **UP** via `/design:edit` ("make the display bigger / heavier / more dramatic"), never down. This is a **default, not a hard-stop** — discovery may legitimately call for maximalism, and a high-confidence research recommendation that explicitly wants drama (opsz-144, ratio 1.25, a black display weight) wins. The rule exists so the scaffold *starts restrained and dials up on request* rather than shipping melodramatic type the user has to walk back (studyfi shipped a 1.25 / opsz-144 / black scale the user re-tuned by hand).
+   - **Research type-fidelity (D-7).** When substituting the font tokens from the research payload's type recommendation: **mirror the research's PRIMARY display-face ROLE exactly.** A "grotesque" direction MUST yield a grotesque display face even when an open-source serif is more convenient to wire up — do **not** let font availability flip the role. Distinguish the **display-face role** from the **body-accent role**: a recommendation phrased like `display-grotesque-editorial-serif` means a grotesque sans is the DISPLAY face *with* an editorial serif reserved for BODY accents — the serif is NOT the display face. If the named face is unavailable, substitute within the **same role / classification** (grotesque → grotesque, never grotesque → serif) and **log the substitution to the bypass-log**. (Studyfi's research said `display-grotesque-editorial-serif`; the scaffold read "serif", picked Fraunces as the display face, and inverted the intended roles — D-7.)
 2. `<designRoot>/system/<ds>/preview/_layout.css` — chrome. **Bakes Q9 signature treatment into the body background + h1 treatment.** Examples:
    - Q9 = `gradient discipline` → soft accent halo at top-right, light vignette at bottom
    - Q9 = `CRT scanlines + phosphor glow` → repeating-linear-gradient scanlines + h1 text-shadow with accent glow + body::before SVG film-grain + body::after CRT roll animation (reduced-motion safe)
@@ -696,6 +717,7 @@ The dependency root. Main agent writes these **in order, alone** because every l
    - Q9 = `brutalism` → no shadows at all; thick `--border-strong` outlines; sharp corners override on key elements
    - Q9 = `soft-shadow depth ladder` → richer `--shadow-md/lg` with longer offsets; cards float higher
    - The treatment is **the project's first impression** — every specimen inherits it via `_layout.css`.
+   - **Token-role separation (D-5) — no dual-purpose tokens.** Decorative / background tokens (a mesh, gradient, glow, or scanline backdrop family — e.g. `--mesh-*`, `--shadow-glow`, `--scanline-alpha`) are **single-role: backdrop only.** Specimens that need to demonstrate accent *tints* on surfaces use `--accent-muted` / surface tokens (`--bg-1..4`), **never** the backdrop family. Don't dual-purpose a decorative backdrop token as a fill on a product surface — that's how studyfi's mesh tokens leaked into component fills and read as noise (D-5). One token, one role.
 3. **`<designRoot>/system/<ds>/preview/_components.css`** — shared component anatomy. **Emit when Q9 family ≠ `none` AND the signature treatment repeats across 3+ components** (typical: a bevel pattern on button + tile + segmented + switch; a recessed-bay pattern on input + checkbox + radio). Promotes `.btn`, `.tile`, `.input`, `.switch`, `.seg`, `.pill`, etc. out of per-specimen `<style>` blocks into one authoritative file. Specimens then carry only their demonstration-specific CSS inline. **Skip** when Q9 family = `none` AND Q12 family = `roomy` — inline styles are fine and `_components.css` adds noise. Sub-agents in Batch C MUST receive this file (when present) as part of their reference bundle and reference its class names instead of re-implementing the anatomy.
 4. `<designRoot>/system/<ds>/README.md` — philosophy (substitutes mood references + hard-NOs from Q10 + signature treatment summary + voice block).
 5. `<designRoot>/system/<ds>/SKILL.md` — the per-DS skill pointer.
@@ -707,7 +729,9 @@ After Batch A writes, the main agent reads the freshly-written `colors_and_type.
 
 #### Batches B + C — parallel fan-out via sub-agents
 
-Group the remaining files into **5–8 slices** (per the `fanout:` block of the roster). For each slice, spawn one `general-purpose` sub-agent. **Fire all slices in a single message** (multiple Agent tool calls in parallel) — that's the whole point.
+Group the remaining files into slices (per the `fanout:` block of the roster). For each slice, spawn one `general-purpose` sub-agent.
+
+**Fan-out ceiling: 3–4 concurrent sub-agents per batch, prompts ≤ ~2 KB each.** **Fire all slices in a single message** (multiple Agent tool calls in parallel) — but bounded to ≤ 4 at a time. Rationale (retro D-1, verbatim): "8 simultaneous long-running (15–40 min) general-purpose agents exceed the API socket budget and fail as a cohort; recovery with 3 leaner agents succeeded first try." If a batch has **> 4 slices, dispatch them in sequential waves of ≤ 4**, reconciling (the reconciliation rule above) between waves so a failed wave is caught and re-spawned before the next wave fires. Keep the parallel-in-one-message mechanism — just bound the cohort size.
 
 **Sub-agent prompt template — loaded from `plugins/design/templates/design-system-inspiration/SUB-AGENT-PROMPTS.md`** (extracted in Phase 3.7 / DDR-049 so the template can carry the three MANDATORY safety blocks — ANIMATION SAFETY, RELATIVE-URL SAFETY, PLACEHOLDER POLICY — without bloating this file). Read `SUB-AGENT-PROMPTS.md` once at scaffold-time; the sections under "MANDATORY SAFETY BLOCKS" are appended verbatim to every slice prompt, and the section under "Sub-agent prompt template" is the body. Per-slice addenda (foundations / brand + voice / core components / etc.) are sourced from the "Per-slice prompt addenda" section of that file.
 
@@ -853,15 +877,15 @@ Sub-agents are stateless — give each a complete brief, do not assume shared co
 #### Sequencing
 
 ```
-Batch A (main agent, serial)         ← ~7 files, 2-3 minutes
+Batch A (main agent, serial)              ← ~7 files, 2-3 minutes
   ↓ blocks all of B + C
-Batch B (5 sub-agents, parallel)     ← ~12-14 files in ~4-6 minutes wall-clock
-Batch C (3-5 sub-agents, parallel)   ← ~10-15 files in ~4-6 minutes wall-clock
+Batch B (≤4 sub-agents/wave, parallel)    ← ~12-14 files; > 4 slices → sequential waves of ≤4, reconcile between
+Batch C (≤4 sub-agents/wave, parallel)    ← ~10-15 files; same wave discipline
   ↓ blocks ui_kits-*-index.tsx
-Index files (main agent, serial)     ← 1-2 files linking every peer; written LAST
+Index files (main agent, serial)          ← 1-2 files linking every peer; written LAST
 ```
 
-Batch B and Batch C can also fire **simultaneously** — they have disjoint dependency sets. The wall-clock total drops to ~4-6 minutes vs the 15-25 minutes of serial scaffold.
+Batch B and Batch C can also fire **simultaneously** — they have disjoint dependency sets — **but the combined concurrent cohort still respects the 3–4 ceiling**; when their slices together exceed 4, wave them. The wall-clock total stays in the ~4-6 minute range vs the 15-25 minutes of serial scaffold (a couple of extra waves cost little, and avoid the cohort-failure that a 8-wide fan-out triggers).
 
 For each file in the computed set the sub-agent:
 
@@ -882,6 +906,11 @@ Scaffold sources (walk in order, apply gate, generate):
 **ui_kit handling** — `platform-<platform>/ui_kits-<platform>-{index,showcase}.html` is **not optional** for any in-scope platform. The two files serve distinct roles:
 - `ui_kits-<platform>-index.tsx` — **catalog/launcher** (links to platform-specific specimens)
 - `ui_kits-<platform>-showcase.tsx` — **full product mock** (multi-screen + theme/accent picker — the highest-leverage "DS in use" artifact)
+
+**Showcase-from-real-app (D-6) — when the DS is for an EXISTING product, the showcase mirrors the real UX, it does NOT invent one.** Detect "existing product" first: the bootstrap is for a shipped app when the brief names one, `config.json` flags it, or the repo carries an app layout (e.g. an `AppLayout` + primary nav under `src/`/`app/`). When existing:
+- The orchestrator **finds the real layout** — `AppLayout` + the primary nav components — and passes their absolute paths into the showcase slice prompt (source-of-truth injection; the sub-agent can't read what it isn't given).
+- The showcase sub-agent MUST **read the app's real layout first and mirror that UX, restyling only** — apply the DS tokens/treatment to the *real* screen anatomy. It MUST NOT invent a plausible-but-fictional product UX. (Studyfi invented both showcases, which cost a full ~5500-LOC rebuild once the real app layout was consulted.)
+- **Greenfield / no-existing-app DSes keep the invent-a-plausible-UX path** — there's nothing to read, so the rubric's "project-specific reality from `domain_nouns`" composition stands.
 
 Both flatten into `system/<ds>/preview/` at scaffold time. **Never scaffold a platform-* directory as an empty stub.** Empty `ui_kits/<platform>/` is the regression the studio bootstrap produced — completeness-critic V12/V13 enforces non-emptiness.
 
@@ -958,13 +987,15 @@ Additional specimens (capture when scaffolded): `empty-state` (brand/voice momen
 ```
 Q: Which critic panel do you want to run?
    1. Full 4 kola (recommended) — Kolo 1 + 2 + 3, all seven critics. ~2-3 min.
-   2. Imprint-only — Kolo 1 + a11y + motion-critic (if motion.tsx exists). ~45s. Skip aesthetics.
-   3. Custom subset — pick critics manually.
+   2. Imprint-only — Kolo 1 + Kolo 2 + a11y + motion-critic (if motion.tsx exists). ~90s. Trims Kolo 3 (typography/brand/copy). [during bootstrap Kolo 2 is mandatory — see below; outside bootstrap option 2 also skips Kolo 2 aesthetics]
+   3. Custom subset — pick critics manually (Kolo 2 still forced during bootstrap).
 ```
 
 Selection is recorded to the bypass log (rows 2 + 3 are spec deviations). **Imprint-only** still includes `motion-critic` when `system/<ds>/preview/motion.tsx` exists — motion-critic is in the always-on bucket alongside `a11y-auditor` whenever a motion specimen is present (DDR-049). The `--opt-out=motion` scope flag does NOT override this; the only way to skip motion-critic is to not scaffold the motion specimen at all.
 
 When the user accepted `--quick` earlier, default to option 2 but STILL surface the question (the user can upgrade to Full at this point — a `--quick` flag was per-stage discipline, not blanket scope-renegotiation; closes D-5).
+
+**Kolo 2 (Atraktivita) is NOT skippable during a `first-bootstrap` or `additional-ds` run.** `--quick` / imprint-only may trim **Kolo 3** (typography / brand / copy), but **Kolo 2 always runs** — the signature-moment + graphic-design critics are the only instruments that detect "hezké ale ne wow", and that failure mode is invisible without them (studyfi shipped a 3.8/3.7 that the user spent an evening re-tuning because Kolo 2 ran only post-hoc on request). So during bootstrap, option 2 (Imprint-only) still fires Kolo 2; the trim it offers is Kolo 3 only. (Outside bootstrap — a routine `/design:critic` on an existing canvas — the full opt-out menu still applies.)
 
 The seven critic agents are grouped into Pastier's three brand-quality kola (Frekvence is intentionally dropped — outside DS surface). **Kolo 1 runs first** (Srozumitelnost — structural floor must hold before aesthetics matter); **Kola 2 + 3 fire in parallel** in a single message, multiple Agent calls. Default specimen target is `colors-accent.tsx` (the accent showcase); when the bootstrap produced a `ui_kits-desktop-showcase.tsx` run a second pass on it too — it's the highest-fidelity "DS in use" artifact.
 
@@ -982,11 +1013,12 @@ The seven critic agents are grouped into Pastier's three brand-quality kola (Fre
 
 | Outcome | Action |
 |---|---|
-| All critics pass, aspiration_score ≥ 3.5 | Print "Bootstrap complete — aesthetic check passed" |
+| All critics pass, aspiration_score ≥ 4.0 | Print "Bootstrap complete — aesthetic check passed". This is the ONLY band that prints a clean silent pass. |
+| `3.0 ≤ aspiration_score < 4.0` (the "hezké ale ne wow" band) | Still print complete, but it is NOT silent — append a **"What would take this from hezké to wow"** block with the signature-moment-critic's **top 2 specific lifts** (its actual notes, e.g. studyfi's "mesh never enters a product surface" — NOT a generic nag). The DS is shippable; the block exists so the user sees the concrete next move instead of an evening of self-tuning. |
 | Any graphic-design blocker, OR aspiration_score < 3.0 | Print "Bootstrap complete with aesthetic warnings — DS scaffold is structurally valid but does NOT match the brief's quality bar yet. Run `/design:edit` on the flagged specimens before calling this done." Surface the top 3 blockers verbatim. |
 | Both completeness AND aesthetic critics flagged blockers | Print "Bootstrap produced a structurally broken AND aesthetically weak DS. Recommend `/design:setup-ds <name> --force` after revising the brief." |
 
-**Never silently report "Bootstrap complete" when aspiration_score < 3.0.** That's the regression mode the studio bootstrap landed in.
+**The silent-pass bar is `≥ 4.0`, not `≥ 3.5`.** "Hezké ale ne wow" *is* a 3.5–3.8 — studyfi scored 3.8/3.7 and the loop reported a silent "passed" while the user re-tuned typography + background by hand. A `3.0 ≤ score < 4.0` MUST surface the "to wow" block; a `< 3.0` is the hard "does not match the quality bar" path. Don't over-correct into nagging — the middle band still says **complete**, it just refuses to be silent. (Bar raised 3.5 → 4.0 per DDR-056.)
 
 ### Post-Flight (slim)
 
@@ -1034,6 +1066,13 @@ Visual proof — screenshots saved to .design/_history/_system/<ds>-visual-sanit
     2. <blocker 2 summary>
     3. <blocker 3 summary>
   Recommended: /design:edit "<specific fix>" --perfect, then re-run /design:critic to confirm.
+
+[ELSE IF 3.0 ≤ aspiration < 4.0:]   # the "hezké ale ne wow" middle band — complete, but not silent
+✓ Bootstrap complete (aspiration <X.Y>/5 — hezké, but not yet wow).
+  What would take this from hezké to wow (signature-moment-critic's top 2 specific lifts):
+    1. <signature-moment lift 1 — the critic's actual note, e.g. "mesh never enters a product surface">
+    2. <signature-moment lift 2>
+  Optional: /design:edit "<the lift you want>" --perfect to push past 4.0.
 
 Daily verbs:
   /design:edit "<feedback>"   — iterate on a specimen

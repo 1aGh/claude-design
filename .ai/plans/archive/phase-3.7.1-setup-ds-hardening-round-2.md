@@ -181,17 +181,27 @@ This repo has **no test/lint/build for plugin markdown** (per CLAUDE.md). Valida
 
 ## Acceptance Criteria
 
-- [ ] Task 1: roster template + fanout emit a showcase+index per in-scope platform (mobile no longer omittable)
-- [ ] Task 2: reconciliation runs on partial/failed batches and hard-fails on absent (not just pending) per-platform showcase
-- [ ] Task 3: fan-out ceiling 3–4 with sequential waves; both 5–8 occurrences updated
-- [ ] Task 4: aspiration silent-pass raised to ≥ 4.0; 3.0–4.0 middle band surfaces specific "to wow" lifts; Kolo 2 non-skippable in bootstrap; DDR recorded if warranted
-- [ ] Task 5: restraint-default type ladder in Batch A + sub-agent type slice
-- [ ] Task 6: research type-fidelity rule (display-face role preserved across substitution)
-- [ ] Task 7: showcase-from-real-app rule (read AppLayout first for existing products)
-- [ ] Task 8: edit.md touches paired `.tsx` after sibling `.css`
-- [ ] Task 9: edit.md matchMedia-first motion pre-flight
-- [ ] Task 10: bypass-log enforcement + asset-path format resolved to one verified truth + token-role separation
-- [ ] Task 11: CLAUDE.md pointer added only if DDR/convention warrants it
-- [ ] All marker greps pass; SUB-AGENT-PROMPTS.md sync marker survives; no contradictory fan-out counts
-- [ ] Manual `/design:setup-ds` smoke with mobile in scope confirms the three felt failures are closed
-- [ ] No DDR-worthy decision left unrecorded (aspiration bar change is the candidate)
+- [x] Task 1: roster template + fanout emit a showcase+index per in-scope platform (mobile no longer omittable)
+- [x] Task 2: reconciliation runs on partial/failed batches and hard-fails on absent (not just pending) per-platform showcase
+- [x] Task 3: fan-out ceiling 3–4 with sequential waves; both 5–8 occurrences updated
+- [x] Task 4: aspiration silent-pass raised to ≥ 4.0; 3.0–4.0 middle band surfaces specific "to wow" lifts; Kolo 2 non-skippable in bootstrap; DDR recorded (DDR-056)
+- [x] Task 5: restraint-default type ladder in Batch A + sub-agent type slice
+- [x] Task 6: research type-fidelity rule (display-face role preserved across substitution)
+- [x] Task 7: showcase-from-real-app rule (read AppLayout first for existing products)
+- [x] Task 8: edit.md touches paired `.tsx` after sibling `.css`
+- [x] Task 9: edit.md matchMedia-first motion pre-flight
+- [x] Task 10: bypass-log enforcement + asset-path format resolved to one verified truth (`/<designRoot>/system/<ds>/assets/…`; the `/assets/<ds>/` alias is fictional — verified against `http.ts` `safePathUnderRoot`) + token-role separation
+- [x] Task 11: CLAUDE.md pointer added (DDR-056 warranted it)
+- [x] All marker greps pass; SUB-AGENT-PROMPTS.md sync marker survives (3 refs); no contradictory fan-out counts
+- [ ] Manual `/design:setup-ds` smoke with mobile in scope confirms the three felt failures are closed — DEFERRED (needs a scratch repo + interactive bootstrap; spec-only edits can't self-test this)
+- [x] No DDR-worthy decision left unrecorded (DDR-056 records the aspiration bar change)
+
+---
+
+## Retro
+
+- **The plan was drop-in-ready prose.** Almost every task carried its replacement language verbatim (D-1…D-9 prevention lines), so execution was lift-and-place + a grep. The hardest 20% was reconciling each new rule with the *surrounding* spec it didn't quote — e.g. Task 3's cap also contradicted the sequencing diagram at line 877 and the "Scaffold is fan-out work" paragraph at 700, neither of which the task named. Lesson for `/plan`: when a task changes a number/threshold, enumerate **every** occurrence (the plan caught 683+710 but missed the diagram); a `grep -n` in the task body would have surfaced all three.
+- **Verify-before-write paid off on Task 10b.** The plan correctly flagged "VERIFY the real mount before writing — do not guess". Checking `http.ts` proved the `/assets/<ds>/` alias was fictional (no route exists; handoff.ts has zero asset logic) and the retro's `/.design/system/<ds>/assets/…` form was right. Had I trusted either the old text or the retro blindly, the fix would have re-introduced a 404. This is the single highest-value step in the phase.
+- **Two markdown gotchas cost a re-edit each:** (1) `**every** in-scope platform` split the literal phrase the validate-grep wanted — markdown bold inside a grep target breaks the marker. (2) An `old_string` with curly apostrophes/em-dashes failed to match; switched to a shorter unique tail. Lesson: keep validation-marker phrases free of inline markdown, and match on short ASCII-only anchors.
+- **STATE.md needed care, not the templated overwrite.** The `/execute`+`/done` templates say "set Status=in-progress / phase=this plan", but STATE.md was mid-flight on phase-9. Followed the existing "side-task done, phase-9 unchanged" precedent (rows at 2026-05-28 / 2026-05-27) instead of clobbering. The flow templates should special-case a parallel side-task that isn't the tracked phase.
+- **No build/test/scenario gate applies to plugin-markdown work.** `/validate`'s heavy machinery (cross-platform scenario, a11y, build) had nothing to act on; the real gate was grep markers + a one-time manual `/design:setup-ds` smoke (deferred — can't self-test interactively). For spec-only phases, `/done` should route to a lighter gate explicitly rather than implying the full pipeline ran.
