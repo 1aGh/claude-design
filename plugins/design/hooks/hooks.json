@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/dev-server/bin/preflight.sh --quiet --warn-only",
+            "timeout": 8
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -14,14 +14,47 @@ keywords: [validate, full, pipeline, scenario, cross-platform, a11y, design-syst
 
 Run in this order. **Stop on first hard fail**, accumulate soft warnings.
 
-### 1. Static analysis
-- Type-check (whole project)
-- Lint (whole project)
-- Format check (Prettier / Biome / gofmt)
+### 0.5 Config health (blocker)
 
-### 2. Tests
-- Unit + integration: full suite
-- Coverage report (just report, don't block on threshold)
+> Reads the workspace's own config sanity before doing anything else. A schema error (e.g. an invalid `stack.tests` enum or a non-string `quality.<gate>`) silently degrades downstream skills, so it blocks here.
+
+```bash
+maude doctor --json | jq -e '.summary.schemaErrors == 0' >/dev/null \
+  || { echo "::error::config schema errors in .ai/workflows.config.json — run \`maude doctor --fix\`"; exit 1; }
+```
+
+Stack **drift** and missing **quality additions** are warning-only at this step (surface them in the Step 8 report; don't block — `/flow:validate` runs on feature branches and shouldn't force a config edit mid-feature). Never call `maude doctor --fix` from validate — print the fix command and let the user run it.
+
+### 1. Static analysis — `config.quality.{format,lint,typecheck}`
+
+> Reads gates from `.ai/workflows.config.json` → `quality` per the `flow:quality-gates` skill. Each gate is a blocker; a missing gate skips with a warning (never fabricated). `tests` and `build` run in Steps 2–3 below — preserving the overall fail-fast order format → lint → typecheck → tests → build.
+
+```bash
+for gate in format lint typecheck; do
+  CMD=$(jq -r ".quality.$gate // empty" .ai/workflows.config.json)
+  if [[ -n "$CMD" ]]; then
+    echo "→ $gate: $CMD"
+    eval "$CMD" || { echo "::error::$gate gate failed (\`$CMD\`) — try \`pnpm biome check --fix\` or \`maude doctor --fix\`"; exit 1; }
+  else
+    echo "⚠ quality.$gate not declared — run \`maude doctor --fix\` (skipping)"
+  fi
+done
+```
+
+### 2. Tests — `config.quality.tests`
+
+```bash
+CMD=$(jq -r '.quality.tests // empty' .ai/workflows.config.json)
+if [[ -n "$CMD" ]]; then
+  echo "→ tests: $CMD"
+  eval "$CMD" || { echo "::error::tests gate failed (\`$CMD\`)"; exit 1; }
+else
+  echo "⚠ quality.tests not declared — run \`maude doctor --fix\` (skipping)"
+fi
+```
+
+- Full suite (the `tests` gate command runs unit + integration).
+- Coverage report (just report, don't block on threshold).
 
 #### 2a. Coverage-trend warning (opt-in, non-blocking)
 
@@ -44,9 +77,33 @@ When `skills.coverageTrend.enabled` is `true` **and** the runner emits a parseab
 
 Baseline refresh is handled by `/flow:done` (only on the `baselineBranch`, default `main`), not here — `/validate` runs on feature branches too and a feature-branch drop is exactly what the warning is for.
 
-### 3. Build
-- Production build for each app/package from `.ai/context/codebase-map.md`
-- Bundle size delta if tooling is available (`size-limit`, `bundlewatch`)
+### 3. Build — `config.quality.build`
+
+```bash
+CMD=$(jq -r '.quality.build // empty' .ai/workflows.config.json)
+if [[ -n "$CMD" ]]; then
+  echo "→ build: $CMD"
+  eval "$CMD" || { echo "::error::build gate failed (\`$CMD\`)"; exit 1; }
+else
+  echo "⚠ quality.build not declared — run \`maude doctor --fix\` (skipping)"
+fi
+```
+
+- Production build for each app/package from `.ai/context/codebase-map.md`.
+- Bundle size delta if tooling is available (`size-limit`, `bundlewatch`).
+
+### 3.5 Custom quality gates (project-specific CI mirror)
+
+> Any `config.quality.*` gate **beyond** the five conventional ones (`format`, `lint`, `typecheck`, `tests`, `build`) runs here, in declaration order. This is how a project mirrors its full CI surface locally (e.g. version-parity, tarball-shape, generated-content drift) so `/flow:validate` catches what CI would catch — before push. All blocker.
+
+```bash
+for gate in $(jq -r '.quality | keys[]' .ai/workflows.config.json); do
+  case "$gate" in format|lint|typecheck|tests|build) continue;; esac
+  CMD=$(jq -r ".quality[\"$gate\"]" .ai/workflows.config.json)
+  echo "→ $gate: $CMD"
+  eval "$CMD" || { echo "::error::$gate gate failed (\`$CMD\`)"; exit 1; }
+done
+```
 
 ### 4. Cross-platform scenario (validation backbone)
 
@@ -135,6 +192,14 @@ For multi-commit branches use `git merge-base main HEAD` as the diff base instea
 ✓ a11y: 0 blockers, 2 warnings (file:line)
 ✓ design system: 0 violations
 ✓ DDR drift: 0 (all decisions recorded)
+```
+
+Append a non-blocking config-health line (drift + missing quality gates from Step 0.5):
+
+```bash
+maude doctor --json | jq -r '
+  "→ config: \(.summary.driftCount) stack drift(s), \(.summary.qualityAdditions) quality addition(s)"
+  + (if (.summary.driftCount + .summary.qualityAdditions) > 0 then " — run `maude doctor --fix`" else " (clean)" end)'
 ```
 
 If everything is green → safely continue to `/done`.

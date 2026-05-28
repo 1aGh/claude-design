@@ -20,18 +20,32 @@ This command does **not** create a design system. That's `/design:setup-ds <name
 
 ## Step 1 — Pre-flight
 
+The dependency list (node, git, maude, agent-browser, …) is **not** a hardcoded `command -v` chain — it is sourced from `plugins/design/dependencies.json` via the shared `preflight.sh` helper (Task A14). Editing that manifest (e.g. adding `vhs` as a soft dep) surfaces in the next `/design:init` run with no change to this command.
+
 ```bash
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+CACHE="$REPO_ROOT/.design/_preflight.json"
+mkdir -p "$REPO_ROOT/.design"
 
-# Hard deps (abort on miss)
-NODE_OK=false; command -v node &>/dev/null && \
-  [[ "$(node -v | sed 's/v//;s/\..*//')" -ge 20 ]] && NODE_OK=true
-GIT_OK=false;  git -C "$REPO_ROOT" rev-parse &>/dev/null && GIT_OK=true
+# ── Cross-command short-circuit (Task A15) ────────────────────────────────
+# Skip the whole dependency preflight if a sibling command already ran it
+# this session: cache must be < 5 min old AND have all hard deps passing.
+# node is a hard dep so this probe is always available + portable.
+FRESH=$(node -e "try{const c=require('$CACHE');process.stdout.write(String(c.all_hard_pass===true && Date.now()-Date.parse(c.checked)<300000))}catch{process.stdout.write('false')}")
 
-# Soft deps (warn on miss, never auto-install)
-MAUDE_OK=false;          command -v maude &>/dev/null && MAUDE_OK=true
-AGENT_BROWSER_OK=false; command -v agent-browser &>/dev/null && AGENT_BROWSER_OK=true
+if [[ "$FRESH" == "true" ]]; then
+  echo "preflight cached (<5min, all hard deps pass) — skipping dependency check"
+  DEPS_OK=1
+  DEPS_MISSING="$(node -e "try{process.stdout.write((require('$CACHE').soft_warnings||[]).join(','))}catch{}")"
+else
+  # Human-readable dep table (✓/✗/⚠ + install hint), then machine vars.
+  # --cache writes <designRoot>/_preflight.json for the short-circuit above.
+  bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/preflight.sh" --cache "$CACHE"
+  eval "$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/preflight.sh" --shell-export --cache "$CACHE")"
+  # Exposes: $DEPS_OK (1 if all HARD deps pass, else 0), $DEPS_MISSING (csv of missing ids).
+fi
 
+# Environment state (NOT dependencies — stays inline)
 CLAUDE_MD_OK=false
 [[ -f "$REPO_ROOT/CLAUDE.md" || -f "$REPO_ROOT/.claude/CLAUDE.md" ]] && CLAUDE_MD_OK=true
 
@@ -45,7 +59,7 @@ DESIGN_CONFIG_OK=false
 [[ -f "$REPO_ROOT/.design/config.json" ]] && DESIGN_CONFIG_OK=true
 ```
 
-**Hard-stops:** missing Node → abort with install hint; missing git → abort with `run git init first`.
+**Hard-stops:** `$DEPS_OK` is `0` when any **hard** dep (node ≥ 20, git) is missing or outdated — abort, surfacing the install hint the preflight table already printed (missing Node → install hint; missing git → `run git init first`). Soft misses (`$DEPS_MISSING`) flow to the Step 3 prompt, never abort.
 
 **Print pre-flight summary block** (table format):
 

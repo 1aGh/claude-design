@@ -24,10 +24,22 @@ Use during `/execute` after each task (Edit-Verify Loop). For a full cross-platf
    - RN files (`apps/mobile/`, `apps/native/`, etc.) → agent-device smoke
    - Pure backend / config → static checks only
 
-2. **Static checks (always):**
-   - Type-check (only affected projects if monorepo)
-   - Lint on affected files
-   - Affected unit/integration tests
+2. **Static checks (always) — `config.quality.{format,lint}` + affected tests:**
+
+   Run the project's declared `format` + `lint` gates (per the `flow:quality-gates` skill). `typecheck`, the full `tests` suite, and `build` are `/flow:validate`'s job — the inner loop runs only the two fast gates plus *affected* tests.
+
+   ```bash
+   for gate in format lint; do
+     CMD=$(jq -r ".quality.$gate // empty" .ai/workflows.config.json)
+     if [[ -n "$CMD" ]]; then
+       echo "→ $gate: $CMD"
+       eval "$CMD" || { echo "::error::$gate gate failed (\`$CMD\`)"; exit 1; }
+     else
+       echo "⚠ quality.$gate not declared — run \`maude doctor --fix\` (skipping)"
+     fi
+   done
+   ```
+   - Affected unit/integration tests (only the tests touching changed files — not the full `quality.tests` suite).
 
 3. **Web UI smoke (if diff contains web sources):**
    ```bash
@@ -61,7 +73,14 @@ Use during `/execute` after each task (Edit-Verify Loop). For a full cross-platf
    ⚠ a11y: 1 warning — Button on screen X missing accessible name
    ```
 
-7. If something fails, propose a fix or return to the edit-verify loop in `/execute` (max 3 iterations per task).
+7. **Config drift nudge (soft, never blocks):**
+   ```bash
+   maude doctor --json | jq -e '(.summary.driftCount + .summary.qualityAdditions) == 0' >/dev/null \
+     || echo "⚠ config drift / missing quality gates — run \`maude doctor --fix\` when convenient (not blocking)"
+   ```
+   A nudge only. Gate failures in Step 2 ARE blockers; this is not.
+
+8. If something fails, propose a fix or return to the edit-verify loop in `/execute` (max 3 iterations per task).
 
 ## What /flow:utils-verify does NOT do
 

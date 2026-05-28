@@ -10,15 +10,15 @@
   },
   "platforms": [],
   "stack": {
-    "language": "javascript",
-    "framework": "none",
+    "language": "typescript",
+    "framework": "next.js",
     "packageManager": "pnpm",
     "buildTool": "none",
     "monorepo": true,
     "ci": "github-actions",
-    "tests": "node-test",
+    "tests": "unknown",
     "css": "none",
-    "router": "none"
+    "router": "next-app"
   },
   "conventions": {
     "branchingModel": "github-flow",
@@ -92,5 +92,15 @@
       "releaseGuide": ".ai/release-guide.md",
       "scope": "@1agh/maude"
     }
+  },
+  "quality": {
+    "lint": "pnpm lint",
+    "format": "pnpm format",
+    "tests": "pnpm test && pnpm test:dev-server",
+    "build": "pnpm --filter @maude/site build",
+    "parity": "bash scripts/check-version-parity.sh",
+    "tarball": "bash scripts/check-tarball-shape.sh",
+    "tokens": "pnpm --filter @maude/site sync:tokens:check",
+    "site-content": "pnpm --filter @maude/site gen:reference && pnpm --filter @maude/site gen:stats && { git diff --quiet -- site/content/docs/ site/lib/stats.json || { echo \"site reference/stats stale — commit the regen diff\"; exit 1; }; }"
   }
 }

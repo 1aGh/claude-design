@@ -12,7 +12,7 @@
 // because every consumer wants the same table format.
 
 import { spawnSync } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 const SEM_RE = /(\d+)\.(\d+)\.(\d+)/;
@@ -172,16 +172,39 @@ function colorFor(g) {
 // ─── CLI entry — `node cli/lib/preflight.mjs --plugin design --json` ──────
 
 function parseFlags(args) {
-  const out = { plugin: null, mode: 'text' };
+  const out = { plugin: null, mode: 'text', cache: null };
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === '--plugin') out.plugin = args[++i];
+    else if (a === '--cache') out.cache = args[++i];
     else if (a === '--json') out.mode = 'json';
     else if (a === '--shell-export') out.mode = 'shell-export';
     else if (a === '--quiet') out.mode = 'quiet';
     else if (a === '--warn-only') out.mode = 'warn-only';
   }
   return out;
+}
+
+// Cross-command short-circuit cache (Phase A, Task A15). Written after a
+// successful check so sibling commands within the freshness window skip the
+// whole preflight. Path is caller-supplied (design → <designRoot>/_preflight.json,
+// flow → .ai/state/_preflight.json) because this lib runs with cwd = the maude
+// package root when shelled from preflight.sh, not the target repo.
+async function writeCache(cachePath, env) {
+  const payload = {
+    checked: new Date().toISOString(),
+    plugin: env.plugin,
+    all_hard_pass: env.summary.allHardPass,
+    soft_warnings: env.results
+      .filter((r) => r.hardness === 'soft' && r.status === 'missing')
+      .map((r) => r.id),
+  };
+  try {
+    await writeFile(resolve(cachePath), `${JSON.stringify(payload, null, 2)}\n`);
+  } catch {
+    // Cache is a best-effort optimization; a write failure (read-only FS,
+    // missing parent dir) must never break the preflight itself.
+  }
 }
 
 function manifestPathForPlugin(pluginName) {
@@ -195,6 +218,7 @@ async function main(argv) {
     process.exit(2);
   }
   const env = await checkAll(manifestPathForPlugin(flags.plugin));
+  if (flags.cache) await writeCache(flags.cache, env);
   if (flags.mode === 'json') {
     process.stdout.write(`${JSON.stringify(env, null, 2)}\n`);
   } else if (flags.mode === 'shell-export') {

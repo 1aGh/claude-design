@@ -19,6 +19,8 @@ Input: `$ARGUMENTS` — optionally a path to the plan file. If missing, use the 
 
 If anything in `/validate` fails → stop. Return to `/execute` to fix. After the fix, run `/done` again.
 
+> **Quality gates** (`config.quality.*` — format / lint / typecheck / tests / build) run **inside** `/flow:validate` (Phase A Layer 7, see the `flow:quality-gates` skill). `/flow:done` adds no separate gate invocation — single source of truth, no double CI time.
+
 **Key gate:** the scenario report must have `blockers == 0` AND `parity_ok == true` (or a clear DDR explaining intentional divergence).
 
 ### 2. Acceptance criteria check

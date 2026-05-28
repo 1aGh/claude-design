@@ -14,21 +14,45 @@ Sets up everything the `flow` plugin needs to operate on a new (or existing) rep
 2. Populating `.ai/workflows.config.json` with detected stack values.
 3. Recommending `/init` for `CLAUDE.md` if missing.
 
-## Pre-Flight A: `maude` CLI available?
+## Pre-Flight A: dependency check (sourced from manifest)
+
+The dependency list (node, git, maude, agent-browser, agent-device, jq, …) is **not** a hardcoded `command -v` chain — it is sourced from `plugins/flow/dependencies.json` via the shared `preflight.mjs` lib (Task A14). Editing that manifest surfaces in the next `/flow:init` run with no change to this command.
 
 ```bash
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+PKG_ROOT="$(cd "$CLAUDE_PLUGIN_ROOT/../.." && pwd)"   # maude install root (holds plugins/flow/dependencies.json)
+CACHE="$REPO_ROOT/.ai/state/_preflight.json"
+mkdir -p "$REPO_ROOT/.ai/state"
 
-if command -v maude &>/dev/null; then
+# ── Cross-command short-circuit (Task A15) ────────────────────────────────
+# Skip the dependency preflight if a sibling command already ran it this
+# session: cache must be < 5 min old AND have all hard deps passing.
+FRESH=$(node -e "try{const c=require('$CACHE');process.stdout.write(String(c.all_hard_pass===true && c.plugin==='flow' && Date.now()-Date.parse(c.checked)<300000))}catch{process.stdout.write('false')}")
+
+if [[ "$FRESH" == "true" ]]; then
+  echo "preflight cached (<5min, all hard deps pass) — skipping dependency check"
+  DEPS_OK=1
+  DEPS_MISSING="$(node -e "try{process.stdout.write((require('$CACHE').soft_warnings||[]).join(','))}catch{}")"
+else
+  # preflight.mjs resolves the manifest relative to cwd → run from PKG_ROOT
+  # (mirrors preflight.sh). --cache path is absolute so it lands in the repo.
+  ( cd "$PKG_ROOT" && node cli/lib/preflight.mjs --plugin flow --cache "$CACHE" )   # human table
+  eval "$(cd "$PKG_ROOT" && node cli/lib/preflight.mjs --plugin flow --shell-export --cache "$CACHE")"
+  # Exposes: $DEPS_OK (1 if all HARD deps pass), $DEPS_MISSING (csv of missing ids).
+fi
+
+# maude is a soft dep — its absence flips degraded mode, never aborts.
+if [[ ",$DEPS_MISSING," == *",maude,"* ]]; then
+  MAUDE_AVAILABLE=false
+else
   MAUDE_AVAILABLE=true
   MAUDE_VERSION="$(maude --version 2>/dev/null || echo 'unknown')"
-else
-  MAUDE_AVAILABLE=false
 fi
 ```
 
-- **Available** → `> Found maude ($MAUDE_VERSION). Will scaffold .ai/ in Step 1.`
-- **Missing** → `> maude not on PATH. Run \`npm i -g @1agh/maude\` then re-run /flow:init. Continuing in degraded mode — config-file population in Step 3 will be manual.`
+- **`$DEPS_OK == 0`** (a hard dep — node ≥ 20 / git — missing) → abort, surfacing the install hint the preflight table already printed.
+- **`MAUDE_AVAILABLE=true`** → `> Found maude ($MAUDE_VERSION). Will scaffold .ai/ in Step 1.`
+- **`MAUDE_AVAILABLE=false`** → `> maude not on PATH. Run \`npm i -g @1agh/maude\` then re-run /flow:init. Continuing in degraded mode — config-file population in Step 3 will be manual.`
 
 ## Pre-Flight B: `CLAUDE.md` exists?
 
@@ -261,9 +285,32 @@ Ask for these — everything else has a sensible auto-detected or default value:
 
 For everything else (boundaries, motion ceilings, density map, bilingual, breakpoints, …) — leave defaults. The user tunes later via `maude config set` once the project shape clarifies.
 
+## Step 3.5: Drift check (only when re-running on existing config)
+
+> Skip entirely if `.ai/workflows.config.json` did **not** exist before Step 1 (fresh onboard — Step 4 writes everything from detection, nothing to reconcile).
+
+Re-running `/flow:init` after a stack change (JS → TS, added a framework, switched test runner) should propagate the change **without** clobbering values the user hand-tuned later (`prohibited`, `boundaries`, `motion` ceilings, density map). Step 4's setters are blind overwrites, so gate them behind a per-key prompt first.
+
+```bash
+maude doctor --json > /tmp/flow-init-doctor.json
+```
+
+Parse the `config.drift` + `config.qualityAdditions` arrays:
+
+- **For each stack drift row** (`{ key, declared, detected }`):
+  - If `declared` is `"unknown"` / `""` / `null` / `"(unset)"` → silently apply detected (no real value to protect).
+  - Else (declared disagrees with a concrete detected value) → ask: `keep declared <X>  |  apply detected <Y>  |  skip this key`. **Default = keep.**
+- **For each quality addition** (`{ gate, command }`) → ask: `add quality.<gate>: "<command>"  |  skip`. **Default = add** (additive, no overwrite risk).
+
+Apply the chosen overrides via `maude config set` (e.g. `maude config set stack.language typescript`, `maude config set quality.lint "pnpm lint"`).
+
+> **Never** in the drift list: `prohibited`, `boundaries`, `motion` ceilings, `responsive.densityMap`. The detector doesn't touch them, so a re-run can **never** eat a tuned value — re-running `/flow:init` is safe.
+
+Schema-error keys (e.g. an invalid `stack.tests` enum) are **not** auto-fixed here — `maude doctor` flags them; the user picks the migration target.
+
 ## Step 4: Propagate detected + answered values to `workflows.config.json`
 
-> Skip if `MAUDE_AVAILABLE=false`.
+> Skip if `MAUDE_AVAILABLE=false`. On a **re-run** (config already existed), Step 3.5 already reconciled stack + quality drift interactively — in that case Step 4 only writes the freshly-*answered* identity/convention values, not the blind stack overwrites (those went through the keep/apply/skip gate).
 
 ### 4a. Identity & top-level
 

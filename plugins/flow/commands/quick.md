@@ -73,9 +73,24 @@ Follow existing conventions in the codebase:
 
 ### 3. Verify
 
-Run `verify-work` to confirm the change passes quality gates.
+Run the two fast quality gates on **staged files only** (`format` + `lint`, per the `flow:quality-gates` skill). Full `typecheck` / `tests` / `build` belong to `/flow:validate` — `quick` stays fast.
 
-Read and follow the steps in `.claude/commands/verify-work.md`.
+```bash
+STAGED=$(git diff --cached --name-only)
+[[ -z "$STAGED" ]] && { echo "no staged files — nothing to verify"; exit 0; }
+for gate in format lint; do
+  CMD=$(jq -r ".quality.$gate // empty" .ai/workflows.config.json)
+  if [[ -n "$CMD" ]]; then
+    echo "→ $gate (staged): $CMD"
+    # Pass staged files as args; gates that ignore positional args scan all — gate's choice.
+    eval "$CMD -- $STAGED" 2>/dev/null || eval "$CMD" || { echo "::error::$gate gate failed (\`$CMD\`)"; exit 1; }
+  else
+    echo "⚠ quality.$gate not declared — run \`maude doctor --fix\` (skipping)"
+  fi
+done
+```
+
+Then run `/flow:utils-verify` for the affected-tests + smoke portion.
 
 ### 4. Handle Results
 

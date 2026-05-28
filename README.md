@@ -66,6 +66,18 @@ Then inside Claude Code (with `flow@maude` installed):
 
 `/init` writes the `CLAUDE.md` Claude auto-loads every session (conventions, build commands, gotchas). `/flow:init` handles the structured workspace config — they're complementary, not duplicates.
 
+### Health check — `maude doctor`
+
+`maude doctor` reports missing dependencies, config schema errors, stack drift, and missing quality-gate declarations in one shot. `--fix` applies safe auto-fixes (prompts per dependency install; never overwrites existing user config values). `--json` for programmatic consumers. Run it after stack changes or before opening a PR.
+
+```sh
+maude doctor          # full health check (deps + config + quality)
+maude doctor --fix    # install missing deps (per-item prompt) + apply safe config fixes
+maude doctor --json   # machine-readable envelope
+```
+
+**Quality gates** are declared in `.ai/workflows.config.json` under the top-level `quality` map — a flat `gate → shell command` mapping (e.g. `{ "lint": "pnpm lint", "tests": "pnpm test" }`). Flow commands (`/flow:validate`, `/flow:utils-verify`, `/flow:quick`) read it directly and run each via `eval`. There is **no `maude quality run` wrapper** — `pnpm <script>` is already the runner. Hook it into your own pre-commit tool with a one-liner: `eval $(jq -r '.quality.lint' .ai/workflows.config.json)`. Populate the block by running `maude doctor --fix` once your `package.json` scripts exist (additive — it never overwrites a command you tuned).
+
 ## Runtime requirements
 
 - **Node ≥ 20** — for the dev server and CLI. Zero npm runtime deps.

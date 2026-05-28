@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"${CLAUDE_PLUGIN_ROOT}/../..\" && node cli/lib/preflight.mjs --plugin flow --warn-only",
+            "timeout": 8
+          }
+        ]
+      }
+    ]
+  }
+}

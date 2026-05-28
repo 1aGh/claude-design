@@ -27,7 +27,7 @@ These live at the root of `.ai/` (not in subfolders) and are referenced by `work
 
 - `<name>-prd.md` — product requirements / brief
 - `<name>-design-system.md` — design system reference (look & feel, tokens, density)
-- `workflows.config.json` — config consumed by all flow commands and skills
+- `workflows.config.json` — config consumed by all flow commands and skills. The optional top-level `quality` map (lint / format / typecheck / tests / build → shell command) is **not** scaffolded here — run `maude doctor --fix` once your `package.json` scripts exist and it detects + adds them (additive, never overwrites your edits).
 
 ## Conventions
 

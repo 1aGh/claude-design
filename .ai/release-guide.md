@@ -31,6 +31,23 @@ gh run list --workflow=version-parity.yml --branch=main --limit 1
 ls .changeset/*.md 2>/dev/null | grep -v README.md   # at least one pending changeset
 ```
 
+### Config health + quality gates (blocker)
+
+The release walker runs the workspace's own config sanity check, then every declared quality gate — a schema error or a failing gate aborts before the bump (per the `flow:quality-gates` skill, release pre-flight runs **all** gates, no filter):
+
+```bash
+# Step 1: config schema must be clean
+maude doctor --json | jq -e '.summary.schemaErrors == 0' >/dev/null \
+  || { echo "::error::config schema errors — run \`maude doctor --fix\`"; exit 1; }
+
+# Step 2: every declared quality gate (format/lint/typecheck/tests/build, …) in order
+for gate in $(jq -r '.quality | keys[]' .ai/workflows.config.json); do
+  cmd=$(jq -r ".quality[\"$gate\"]" .ai/workflows.config.json)
+  echo "→ $gate: $cmd"
+  eval "$cmd" || { echo "::error::release pre-flight: $gate gate failed (\`$cmd\`)"; exit 1; }
+done
+```
+
 ## Author changesets (optional — usually done during feature work)
 
 Skip this step if `.changeset/` already has at least one non-README `.md`. Otherwise, for each user-facing change since the last release:
@@ -72,7 +89,13 @@ pnpm biome check --fix
 pnpm lint                                            # confirm clean
 ```
 
-If `pnpm biome check --fix` reports remaining errors (non-format), do NOT proceed — those are real issues that need triage outside the release flow.
+After `pnpm run changeset:version`, re-run the `format` + `lint` gates. **If only `format` errors remain**, the bump expanded the sub-package arrays (the `JSON.stringify` mechanism above) — apply the format-fix and re-stage:
+
+```bash
+pnpm biome format --write .                          # fix the expanded arrays
+```
+
+**Any other gate failure is real debt** that should have been caught upstream by the Pre-flight gate loop — abort the release and triage it outside the release flow. Don't `--fix` your way past a `lint`/`typecheck`/`tests`/`build` failure at release time.
 
 ## Pre-push smoke
 
