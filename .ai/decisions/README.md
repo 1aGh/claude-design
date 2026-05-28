@@ -10,6 +10,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
 
+- [DDR-060: The TSX-only canvas migration silently broke the HTML-centric linked-mode sync (and the collab roadmap's `.html` assumption)](DDR-060-tsx-only-format-breaks-html-centric-sync.md) — 2026-05-28, design/dev-server/sync/linked-mode/tsx/security/csp/sandbox/phase-9/phase-9.1
 - [DDR-049: Motion One (`motion/react`) is the canonical motion library; CSS-only is an opt-in escape hatch](DDR-049-motion-one-as-canonical-motion-library.md) — 2026-05-26, design/dev-server/canvas-lib/motion/handoff/registry-item/sub-agent-vocab/phase-3.7
 - [DDR-045: Real-disk path resolution for compiled dev-server binaries — centralize in `paths.ts`, walk up from `process.execPath`, anchor on `http.ts` only](DDR-045-real-disk-path-resolution-for-compiled-dev-server.md) — 2026-05-25, design/dev-server/bun-compile/paths/npm-install/marketplace-cache/phase-19.1/phase-19.2
 - [DDR-044: Marketplace install vs npm install — commit `client.bundle.js` + `styles.css`; self-heal `node_modules/` on first boot](DDR-044-marketplace-install-vs-npm-install-artifact-strategy.md) — 2026-05-25, design/dev-server/marketplace-install/gitignore/distribution/self-heal/phase-19

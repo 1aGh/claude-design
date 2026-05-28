@@ -1,5 +1,7 @@
 # Phase 10 (v1.2 work): Structured CRDT HTML co-editing
 
+> **⚠ STALE FORMAT ASSUMPTION — [DDR-060](../decisions/DDR-060-tsx-only-format-breaks-html-centric-sync.md) (2026-05-28):** this plan is written against `.design/*.html` (`data-cd-id` injection into HTML, HTML↔Y.XmlFragment bridge). Phase 3.6 (2026-05-18) made `.tsx` the **only** canvas format — there are no `.html` canvases in real projects. The whole collab branch (Phase 8 → 9 → 10) inherited the `.html` assumption from before the migration. Before this phase is scheduled, its representation layer must be re-scoped onto `.tsx` (or whatever the structured-edit surface is post-migration), and it depends on `phase-9.1-tsx-sync-unblock.md` landing the CSP/sandbox + `.tsx`-sync gate first. Do not start Task 0's fidelity spike against `.html` — it would measure a corpus that no longer exists.
+
 > **Not in v1.0 MVP — and not even v1.1.** Captured as a concrete plan so v1.0 Phase 8 (ambient multiplayer) and v1.1 Phase 9 (hub + file sync) can be designed with the future in mind. Ship target: only if v1.1 surfaces real-world incidents of "two peers garbled the same inspector edit." Decision trigger in PRD § Out-of-scope. Realistic ship target: 6-8 weeks after v1.1 GA if pursued.
 
 ## Description

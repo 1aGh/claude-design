@@ -5,6 +5,7 @@
 - **Phase:** 9 (self-hostable hub + file sync)
 - **Supersedes:** —
 - **Superseded by:** —
+- **Amended by:** [DDR-060](./DDR-060-tsx-only-format-breaks-html-centric-sync.md) — §2b's ".tsx not synced, .html still works" mitigation is invalidated by the TSX-only format migration (Phase 3.6): `.tsx` is the **only** canvas format, so "only `.html` syncs" now means **nothing syncs** in a real project. See DDR-060 for the contradiction + remediation sequencing.
 - **Related:**
   - [DDR-047](./DDR-047-collab-scope-cut-no-lan-mode-hub-admin-ui.md) — collab scope cut + hub admin UI decision
   - [DDR-051](./DDR-051-collab-persistence-json-snapshot-at-quiescence.md) — JSON snapshot canonical + .ydoc.bin cache
@@ -80,6 +81,8 @@ Closes the supply-chain side-door where a future CI workflow runs `maude design 
 ```
 
 Rationale: the F1 RCE is sharper for `.tsx` (transpile-and-execute) than for `.html` (still bad — XSS in same-origin — but Task 8's CSP+sandbox closes that). Refusing `.tsx` for sync now removes the worst lane without waiting for the cross-slice CSP work. `.tsx` canvases stay editable solo, just not synced. Future opt-in via per-canvas `.meta.json.syncable: true` if a project explicitly needs it (deferred to Task 8).
+
+> **⚠ Amended by [DDR-060](./DDR-060-tsx-only-format-breaks-html-centric-sync.md) (2026-05-28):** this paragraph's "existing code finds both .tsx and .html" / ".tsx stays editable solo, just not synced" framing was already stale when written — Phase 3.6 (2026-05-18) made `.tsx` the **only** canvas format. So "only `.html` syncs" means **sync is a no-op for every real project** (`discoverCanvases()` returns `[]` → no peer, no `_sync.json`). The deferred `.meta.json.syncable` opt-in never shipped (still a comment at `sync/index.ts:367`). The `.tsx` guard stays — removing it re-opens F1 — but the real fix (CSP + sandboxed canvas origin, then the opt-in) is sequenced in `.ai/plans/phase-9.1-tsx-sync-unblock.md`.
 
 #### 2c. Symlink-safe atomic write (Chain C, L1)
 
