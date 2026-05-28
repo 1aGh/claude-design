@@ -63,6 +63,56 @@ When `config.json.designSystems[]` has more than one entry:
 
 ---
 
+## Animation tooling contract (authoritative — DDR-049)
+
+**This is the single source of truth for how animation is authored in Maude.**
+It applies identically to **specimens** (`system/<ds>/preview/*.tsx`) and
+**canvases** (`ui/*.tsx`). When `/design:new`, `/design:edit`, `/design:setup-ds`,
+or any critic touches motion, this section wins over any looser phrasing
+elsewhere. Other docs (`commands/new.md`, `templates/.../SUB-AGENT-PROMPTS.md`,
+`agents/motion-critic.md`, `agents/design-system-keeper.md`) link here rather
+than restating the rule.
+
+**Default — Motion One via canvas-lib (MUST).** Any animated UI MUST use the
+canvas-lib motion vocabulary from `@maude/canvas-lib`, which wraps Motion One
+(`motion/react`):
+- `<MotionDemo role>` — the 8 canonical roles: `flip` · `panel` · `route` ·
+  `soft` · `spring` · `scroll` · `drag` · `presence`. Each binds a `--dur-*` +
+  `--ease-*` token pair, clips its own bounds (`overflow:hidden`), and defaults
+  to `loop="always"` so motion is visible on first paint (closes the
+  "looks dead until you hover/replay" failure mode).
+- `<MotionTrack>` (staggered rows), `<TokenPlayback>` (replay chip),
+  `<ReducedMotionToggle>` (in-browser reduced-motion preview), `useMotionTokens()`,
+  `easingFromToken()`.
+- `motion/react` is declared as a peer dep of canvas-lib and emitted into
+  `/design:handoff`'s `registry-item.json` automatically — handed-off canvases
+  animate in a Next.js + shadcn target with no manual `npm i`.
+
+**Escape hatch — pure-CSS `.motion-*` classes (opt-in, must be justified).**
+Zero-JS surfaces may use the role classes shipped in `_components.css`
+(`.motion-flip … .motion-presence`) — same token bindings, same bounded
+keyframes, no JS. Legitimate ONLY for declared zero-runtime cases: static hero,
+a single hover/focus transition, an accessibility-first marketing page. Choosing
+the escape hatch over `<MotionDemo>` MUST be recorded with a one-line reason
+(canvas `.meta.json` note, or the DS bypass log for a specimen).
+
+**Never:**
+- Hand-roll `@keyframes` for any of the 8 roles when a `<MotionDemo role>` /
+  `.motion-*` equivalent exists. (`motion-critic` + `design-system-keeper`
+  enforce this — warning in ordinary canvases, **blocker in the `motion.tsx`
+  specimen**, which is the teaching artifact and must model the canonical path.)
+- Add `!important` reduced-motion overrides anywhere except the motion
+  specimen's `<ReducedMotionToggle>` chrome. Tokens already collapse `--dur-*`
+  to `1ms` under `@media (prefers-reduced-motion: reduce)`; with `motion/react`
+  use `useReducedMotion()` and short-circuit the `animate` prop.
+
+**Decision rule when generating:** brief implies motion (`animate`, `transition`,
+`play`, `loop`, `slide`, `fade`, drag/drop, route transitions, presence cursors,
+scroll-linked) → reach for `<MotionDemo role>` first; drop to `.motion-*` only
+for a justified zero-JS surface; never reinvent keyframes for a named role.
+
+---
+
 ## Bootstrap flow (create / extend / re-bootstrap a DS)
 
 ### Spec-bypass discipline (mandatory — applies to every BOOTSTRAP step below)

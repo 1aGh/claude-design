@@ -2303,11 +2303,18 @@ export const MOTION_ROLE_DEFAULTS: Record<MotionRole, RoleConfig> = {
   spring: {
     durationToken: '--dur-panel',
     easingToken: 'spring',
-    keyframes: { y: [0, -16, 0] },
+    // Spring physics animate toward a single target; a 3-point array
+    // (`[0,-16,0]`) makes motion/react's spring no-op (no movement). Use a
+    // 2-point target and let `repeatType: 'reverse'` carry the return leg.
+    keyframes: { y: [0, -16] },
     fallbackMs: 320,
   },
   scroll: {
-    durationToken: '--dur-route',
+    // `--dur-route` is intentionally ~instant (route changes are snap, often
+    // 1ms), which makes a scroll-linked drift imperceptible. Bind to the
+    // longer `--dur-soft` so the demo (and any time-driven scroll fallback)
+    // is actually visible.
+    durationToken: '--dur-soft',
     easingToken: '--ease-in-out',
     keyframes: { x: [0, 24, 0] },
     fallbackMs: 480,
@@ -2428,6 +2435,11 @@ export function MotionDemo({
   const repeat = reduced || loop === 'once' ? 0 : Number.POSITIVE_INFINITY;
   const repeatType: 'reverse' | 'loop' = loop === 'always' ? 'reverse' : 'loop';
   const animate = reduced ? undefined : cfg.keyframes;
+  // DS durations are micro-interaction speeds (often <200ms). Looping them with
+  // no gap strobes ~10×/s. Insert a rest between cycles so each loop replays the
+  // REAL token speed, then pauses — readable cadence, not a flicker. Spring's
+  // own settle is the pause, so it skips the extra delay.
+  const repeatDelay = loop === 'always' && !isSpring ? 0.9 : 0;
 
   return (
     <div
@@ -2444,6 +2456,7 @@ export function MotionDemo({
           type: isSpring ? 'spring' : 'tween',
           repeat,
           repeatType,
+          repeatDelay,
         }}
         className="motion-demo__target"
         aria-label={label}

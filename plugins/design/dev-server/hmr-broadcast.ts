@@ -17,6 +17,7 @@
 // loaded via the importmap + Bun.build-produced ESM — there's no React Fast
 // Refresh runtime to register with. Full-reload is the reliable path.
 
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 import type { Context } from './context.ts';
@@ -64,26 +65,11 @@ export function createHmrBroadcaster(
   }
 
   function classify(filename: string): HmrMessage | null {
-    const rel = filename.replace(/\\/g, '/');
-    const ext = path.extname(rel).toLowerCase();
-    const version = Date.now();
-    if (rel.startsWith('_lib/')) {
-      return { type: 'canvas-hmr', mode: 'hard', scope: 'lib', version };
-    }
-    if (ext === '.css') {
-      return { type: 'canvas-hmr', mode: 'css', file: rel, version, scope: 'canvas' };
-    }
-    // Phase 8 — canvas-meta sidecar (`<base>.meta.json`) carries the
-    // artboard layout / viewport. Emit a `meta` mode so foreign tabs can
-    // re-fetch + re-apply the layout WITHOUT a full reload (which would
-    // lose React state like tool mode, undo stack, scroll position).
-    if (rel.endsWith('.meta.json')) {
-      return { type: 'canvas-hmr', mode: 'meta', file: rel, version, scope: 'canvas' };
-    }
-    if (ext === '.tsx' || ext === '.jsx' || ext === '.ts' || ext === '.js') {
-      return { type: 'canvas-hmr', mode: 'module', file: rel, version, scope: 'canvas' };
-    }
-    return null;
+    return classifyChange(filename, (cssRel) => {
+      const root = ctx.paths?.designRoot;
+      if (!root) return false; // no root resolved → can't probe; keep css swap
+      return existsSync(path.join(root, cssRel.replace(/\.css$/i, '.tsx')));
+    });
   }
 
   function enqueue(msg: HmrMessage) {
@@ -125,3 +111,48 @@ export function createHmrBroadcaster(
 // Helpers — exported for tests.
 
 export const HMR_DEBOUNCE_MS = DEBOUNCE_MS;
+
+/**
+ * Classify a changed design-root-relative path into an HMR message. Pure +
+ * fs-injected (`hasSiblingTsx`) so it unit-tests without touching disk.
+ *
+ * CSS routing is the load-bearing part. A canvas/specimen sibling stylesheet
+ * (e.g. `system/x/preview/motion.css` next to `motion.tsx`, pulled in via
+ * `import './motion.css'`) is INLINED into the built module as a `<style>` tag
+ * by canvas-build.ts — there is NO `<link>` for it. The iframe's `mode:'css'`
+ * handler swaps `<link href>` only, so a link swap for inlined CSS is a silent
+ * no-op and the edit never reaches the browser (the bug this fixes). For those
+ * we emit `mode:'module'` keyed on the sibling `.tsx`, so the open canvas
+ * reloads and re-inlines the fresh CSS via the existing module-reload path.
+ * Link-mounted CSS (DS tokens, `_components.css`, `_layout.css` — no sibling
+ * `.tsx`) keeps the fast, state-preserving css swap.
+ */
+export function classifyChange(
+  filename: string,
+  hasSiblingTsx: (cssRel: string) => boolean
+): HmrMessage | null {
+  const rel = filename.replace(/\\/g, '/');
+  const ext = path.extname(rel).toLowerCase();
+  const version = Date.now();
+  if (rel.startsWith('_lib/')) {
+    return { type: 'canvas-hmr', mode: 'hard', scope: 'lib', version };
+  }
+  if (ext === '.css') {
+    if (hasSiblingTsx(rel)) {
+      const siblingTsx = rel.replace(/\.css$/i, '.tsx');
+      return { type: 'canvas-hmr', mode: 'module', file: siblingTsx, version, scope: 'canvas' };
+    }
+    return { type: 'canvas-hmr', mode: 'css', file: rel, version, scope: 'canvas' };
+  }
+  // Phase 8 — canvas-meta sidecar (`<base>.meta.json`) carries the
+  // artboard layout / viewport. Emit a `meta` mode so foreign tabs can
+  // re-fetch + re-apply the layout WITHOUT a full reload (which would
+  // lose React state like tool mode, undo stack, scroll position).
+  if (rel.endsWith('.meta.json')) {
+    return { type: 'canvas-hmr', mode: 'meta', file: rel, version, scope: 'canvas' };
+  }
+  if (ext === '.tsx' || ext === '.jsx' || ext === '.ts' || ext === '.js') {
+    return { type: 'canvas-hmr', mode: 'module', file: rel, version, scope: 'canvas' };
+  }
+  return null;
+}

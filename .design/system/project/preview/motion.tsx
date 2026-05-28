@@ -22,6 +22,33 @@ import "../colors_and_type.css";
 import "./_layout.css";
 import "./motion.css";
 import { ThemeToggle, ReducedMotionToggle } from "./_specimen-controls";
+// Canonical motion vocabulary (DDR-049 — "Animation tooling contract"). These
+// wrap motion/react with token-bound duration + easing + reduced-motion
+// short-circuit. The duration-bar demos above are the restrained CSS baseline;
+// this section exercises the richer orchestrated patterns through the library.
+import { MotionDemo, MotionTrack, TokenPlayback } from "@maude/canvas-lib";
+
+// Visible payload for a MotionDemo — the lib's default chip ships no CSS, so the
+// specimen supplies its own token-styled box.
+function Pellet({ label }: { label?: string }) {
+  return (
+    <div
+      style={{
+        width: 40,
+        height: 40,
+        borderRadius: "var(--radius-2, 8px)",
+        background: "var(--accent, #6366f1)",
+        display: "grid",
+        placeItems: "center",
+        color: "var(--accent-fg, #fff)",
+        fontSize: 11,
+        fontWeight: 600,
+      }}
+    >
+      {label}
+    </div>
+  );
+}
 
 export default function Motion() {
   return (
@@ -99,8 +126,92 @@ export default function Motion() {
           <EasingGraph x1={0.65} y1={0.00} x2={0.35} y2={1.00} label="ease-in-out" />
         </div>
 
+        {/* ── Vocabulary in motion (canvas-lib) ─────────────────────────── */}
+        <h2 data-no="03">
+          Vocabulary in motion <span className="h2-aside">orchestrated · canvas-lib</span>
+        </h2>
+        <p style={{ color: "var(--fg-1)", margin: "0 0 var(--space-4)" }}>
+          The eight roles from <code>@maude/canvas-lib</code> (<code>motion/react</code> under the
+          hood), each token-bound and looping on first paint. This is the canonical path the{" "}
+          <strong>Animation tooling contract</strong> mandates — no hand-rolled <code>@keyframes</code>.
+          Flip the reduced-motion toggle above; every role short-circuits to its end state.
+        </p>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
+            gap: "var(--space-4)",
+            margin: "0 0 var(--space-6)",
+          }}
+        >
+          {(
+            [
+              ["flip", "y twitch"],
+              ["panel", "slide in/out"],
+              ["soft", "fade"],
+              ["route", "snap (1ms)"],
+              ["spring", "spring rise"],
+              ["scroll", "x drift"],
+              ["drag", "tilt"],
+              ["presence", "pop in"],
+            ] as const
+          ).map(([role, blurb]) => (
+            <div
+              key={role}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "var(--space-2)",
+                padding: "var(--space-4)",
+                border: "1px solid var(--bg-3, #e5e7eb)",
+                borderRadius: "var(--radius-2, 8px)",
+                background: "var(--bg-1, #fafafa)",
+              }}
+            >
+              <span className="label">{role}</span>
+              <span style={{ color: "var(--fg-1)", fontSize: 12 }}>{blurb}</span>
+              <div style={{ minHeight: 56, display: "grid", placeItems: "center" }}>
+                <MotionDemo role={role} label={`${role} role demo, looping`}>
+                  <Pellet />
+                </MotionDemo>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Orchestration — staggered entrance track */}
+        <div className="motion-row">
+          <span className="label">stagger</span>
+          <span style={{ color: "var(--fg-1)" }}>
+            <code>&lt;MotionTrack staggerMs=&#123;90&#125;&gt;</code> — five springs entering 90ms
+            apart. Orchestration without hand-wiring delays.
+          </span>
+          <MotionTrack staggerMs={90}>
+            {[0, 1, 2, 3, 4].map((i) => (
+              <MotionDemo key={i} role="spring" small label={`stagger pellet ${i + 1}`}>
+                <Pellet label={String(i + 1)} />
+              </MotionDemo>
+            ))}
+          </MotionTrack>
+        </div>
+
+        {/* Click-to-fire replay chips */}
+        <div className="motion-row">
+          <span className="label">replay</span>
+          <span style={{ color: "var(--fg-1)" }}>
+            <code>&lt;TokenPlayback&gt;</code> — single-shot, click to fire. Probe one token without
+            waiting for the loop.
+          </span>
+          <div style={{ display: "flex", gap: "var(--space-3)", flexWrap: "wrap" }}>
+            <TokenPlayback duration="--dur-panel" easing="--ease-out" label="panel" />
+            <TokenPlayback duration="--dur-soft" easing="--ease-out" label="soft" />
+            <TokenPlayback duration="--dur-flip" easing="--ease-out" label="flip" />
+          </div>
+        </div>
+
         {/* ── Hard rules ────────────────────────────────────────────────── */}
-        <h2 data-no="03">Hard rules <span className="h2-aside">what motion is NOT</span></h2>
+        <h2 data-no="04">Hard rules <span className="h2-aside">what motion is NOT</span></h2>
         <div className="anti">
           <p style={{ margin: '0 0 var(--space-2)' }}>
             <strong>No animations on product chrome.</strong> <code>.specimen-hd</code> doesn't animate in. <code>.specimen-title</code> doesn't fade up. The page is just <em>there</em>. Looping demos belong on the motion specimen page; the rest of the DS is still hover-driven.

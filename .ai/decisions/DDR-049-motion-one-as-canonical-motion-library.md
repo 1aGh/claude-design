@@ -89,8 +89,34 @@ Five coordinated rules:
 - **Lottie / Rive integration** stays out of scope. Both are useful for hero pieces but break the "token-driven, AI-readable" invariant — the lottie JSON is opaque to graphic-design-critic and motion-critic.
 - **Sub-agent prompts in `SUB-AGENT-PROMPTS.md` may drift from `SKILL.md`** as the skill evolves. Tracked in this phase's risk register; a CI grep check "SKILL.md must reference SUB-AGENT-PROMPTS.md by exact filename" is the mitigation.
 
+## Enforcement addendum (2026-05-28)
+
+DDR-049 declared the policy but generation didn't enforce it: a `/design:setup-ds`
+run shipped a `motion.tsx` specimen that was 100% hand-rolled `@keyframes` (zero
+`@maude/canvas-lib`), directly violating the MUST in `SUB-AGENT-PROMPTS.md`. RCA:
+[`.ai/logs/rca/hmr-inlined-css-dropped.md`](../logs/rca/hmr-inlined-css-dropped.md)
+(Part 2). The decision is unchanged; enforcement is now tightened:
+
+1. **One authoritative contract.** `skills/design-system/SKILL.md` → "Animation
+   tooling contract" is the single source of truth (default = `<MotionDemo>`;
+   `.motion-*` = justified-only escape hatch; never reinvent role keyframes).
+   `commands/new.md`, `SUB-AGENT-PROMPTS.md`, `agents/motion-critic.md` now link
+   it instead of restating partial rules.
+2. **One verb — MUST, for specimens and canvases alike.** `new.md` changed from
+   "SHOULD prefer" to MUST.
+3. **Fail closed at scaffold.** `/design:setup-ds` step 7.5 greps the generated
+   `motion.tsx` for the canvas-lib import + `<MotionDemo>`/`<MotionTrack>`; a
+   pure-CSS specimen is regenerated or must be logged in the DS bypass log.
+4. **`motion-critic` blocks at 1 occurrence in `motion.tsx`** (the teaching
+   artifact), keeping the ≥3-reinvention threshold for ordinary canvases.
+
+Note: the HMR fix in the same RCA (Part 1 — module-inlined sibling CSS now
+triggers a module reload via `hmr-broadcast.ts classifyChange`) is a prerequisite
+for the escape-hatch path to be observably editable in the browser at all.
+
 ## Cross-links
 
+- RCA (this addendum's origin): [`.ai/logs/rca/hmr-inlined-css-dropped.md`](../logs/rca/hmr-inlined-css-dropped.md)
 - Phase 3.7 plan: [`.ai/plans/phase-3.7-setup-ds-hardening-and-motion-subsystem.md`](../plans/phase-3.7-setup-ds-hardening-and-motion-subsystem.md)
 - Source retro: [`.ai/logs/system-reviews/imprint-bootstrap-review-2026-05-26.md`](../logs/system-reviews/imprint-bootstrap-review-2026-05-26.md) (divergences D-3, D-4 + improvement actions §3)
 - Flow plugin motion rules (parallel discipline, must stay consistent): `plugins/flow/skills/motion-rules/SKILL.md`
