@@ -1,7 +1,7 @@
 {
   "version": "v0.23.0",
   "nodeRange": ">=20",
-  "publishedDate": "2026-05-27",
+  "publishedDate": "2026-05-28",
   "contributors": 1,
   "plugins": {
     "design": {
@@ -72,6 +72,10 @@
     "design/multi-ds.mdx": "2026-05-15",
     "flow.mdx": "2026-05-23",
     "getting-started.mdx": "2026-05-23",
+    "hub/deploy.mdx": "2026-05-28",
+    "hub/index.mdx": "2026-05-28",
+    "hub/linking.mdx": "2026-05-28",
+    "hub/pricing.mdx": "2026-05-28",
     "index.mdx": "2026-05-23",
     "recipes/expo.mdx": "2026-05-23",
     "recipes/monorepo.mdx": "2026-05-23",
