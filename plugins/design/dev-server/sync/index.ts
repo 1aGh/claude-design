@@ -184,11 +184,15 @@ export function createSyncRuntime(
     if (started || stopped) return;
     started = true;
 
-    const canvases = opts.canvases ?? (await discoverCanvases(ctx));
+    const scan = opts.canvases ? { canvases: opts.canvases, tsxCount: 0 } : await scanCanvases(ctx);
+    const canvases = scan.canvases;
     if (canvases.length === 0) {
-      console.log(
-        `[sync] linked to ${linkedHub.url} — no canvases discovered under ${ctx.paths.designRoot}.`
-      );
+      // DDR-060 / 9.1-D — the silent early-return made linked mode look healthy
+      // while syncing nothing (TSX-only projects: discovery admits .html only,
+      // .tsx needs the opt-in + sandbox gate that 9.1-A/B ship). Surface the gap
+      // loudly: a warn, a `_sync.json` the CLI + browser banner read, and a bus
+      // broadcast so open tabs render it immediately.
+      surfaceNoSyncable(ctx, linkedHub.url, scan.tsxCount);
       return;
     }
 
@@ -360,21 +364,44 @@ export function createSyncRuntime(
  * specialised for the sync runtime (we only need the three paths per canvas,
  * not the full metadata).
  *
- * DDR-054 §2b — `.tsx` canvases are deliberately EXCLUDED from sync. The
- * dev-server transpiles `.tsx` to JavaScript and serves it as
+ * DDR-054 §2b / DDR-060 — `.tsx` canvases are deliberately EXCLUDED from sync.
+ * The dev-server transpiles `.tsx` to JavaScript and serves it as
  * `application/javascript` in iframe same-origin; a hostile hub pushing
- * arbitrary TypeScript source would result in RCE. `.tsx` stays editable in
- * solo mode; per-canvas opt-in via `.meta.json.syncable: true` is deferred to
- * Task 8 (alongside CSP + iframe sandbox).
+ * arbitrary TypeScript source would result in RCE (the audit's CRITICAL F1).
+ * Since Phase 3.6 made `.tsx` the ONLY canvas format, this means real projects
+ * discover zero syncable canvases — surfaced loudly by `surfaceNoSyncable`
+ * (9.1-D) rather than silently. The per-canvas opt-in (`.meta.json.syncable:
+ * true`) + CSP/sandbox gate that make `.tsx` syncable land in 9.1-A/B.
  */
 export async function discoverCanvases(ctx: Context): Promise<CanvasDescriptor[]> {
+  return (await scanCanvases(ctx)).canvases;
+}
+
+/** Result of a canvas-group scan: syncable descriptors + a tally of the .tsx
+ *  canvases that exist but are NOT yet syncable (DDR-060 — they need the
+ *  per-canvas opt-in + sandbox gate). The tsx count feeds 9.1-D's loud
+ *  zero-syncable surface so the message can say *why* nothing syncs. */
+export interface CanvasScan {
+  canvases: CanvasDescriptor[];
+  tsxCount: number;
+}
+
+export async function scanCanvases(ctx: Context): Promise<CanvasScan> {
   const out: CanvasDescriptor[] = [];
+  const counter = { tsx: 0 };
   for (const group of ctx.cfg.canvasGroups) {
     const groupAbs = path.join(ctx.paths.designRoot, group.path);
     if (!existsSync(groupAbs)) continue;
-    await walk(groupAbs, ctx.paths.designRoot, ctx.paths.commentsDir, ctx.paths.designRel, out);
+    await walk(
+      groupAbs,
+      ctx.paths.designRoot,
+      ctx.paths.commentsDir,
+      ctx.paths.designRel,
+      out,
+      counter
+    );
   }
-  return out;
+  return { canvases: out, tsxCount: counter.tsx };
 }
 
 async function walk(
@@ -382,7 +409,8 @@ async function walk(
   designRoot: string,
   commentsDir: string,
   designRel: string,
-  acc: CanvasDescriptor[]
+  acc: CanvasDescriptor[],
+  counter: { tsx: number }
 ): Promise<void> {
   let entries: import('node:fs').Dirent[];
   try {
@@ -395,11 +423,16 @@ async function walk(
     if (entry.isDirectory()) {
       // Skip plugin runtime dirs.
       if (entry.name.startsWith('_')) continue;
-      await walk(abs, designRoot, commentsDir, designRel, acc);
+      await walk(abs, designRoot, commentsDir, designRel, acc, counter);
       continue;
     }
     const ext = path.extname(entry.name).toLowerCase();
-    // DDR-054 §2b — refuse .tsx; only .html canvases sync.
+    // DDR-054 §2b — refuse .tsx; only .html canvases sync. Tally the .tsx
+    // canvases so the zero-syncable surface (9.1-D) can report the real reason.
+    if (ext === '.tsx') {
+      counter.tsx += 1;
+      continue;
+    }
     if (ext !== '.html') continue;
     const slug = slugFor(abs, designRoot, designRel);
     acc.push({
@@ -408,6 +441,67 @@ async function walk(
       comments: path.join(commentsDir, `${slug}.json`),
       annotations: path.join(designRoot, `${slug}.annotations.svg`),
     });
+  }
+}
+
+/**
+ * The shape written to `<designRoot>/_sync.json` (and broadcast on the
+ * 'sync:status' bus) when the project is linked but has zero syncable
+ * canvases. DDR-060 / 9.1-D. Distinct from the live SyncStatusPayload — the
+ * `notSyncable` discriminator lets the CLI status line and the browser banner
+ * render the "linked but nothing syncs" state instead of a healthy one.
+ */
+export interface NoSyncablePayload {
+  linked: true;
+  notSyncable: true;
+  url: string;
+  reason: string;
+  /** Count of .tsx canvases present (syncable once 9.1-A/B land). */
+  tsxCount: number;
+  canvases: 0;
+  updatedAt: number;
+}
+
+/** Build the zero-syncable payload (exported for the CLI + tests). */
+export function buildNoSyncablePayload(
+  url: string,
+  tsxCount: number,
+  designRoot: string
+): NoSyncablePayload {
+  const reason =
+    tsxCount > 0
+      ? `${tsxCount} TSX canvas(es) found but none are syncable — TSX bodies need opt-in (.meta.json syncable: true) + the sandbox gate (DDR-060). Nothing syncs until 9.1-A/B land.`
+      : `no canvases found under ${designRoot}.`;
+  return {
+    linked: true,
+    notSyncable: true,
+    url,
+    reason,
+    tsxCount,
+    canvases: 0,
+    updatedAt: Date.now(),
+  };
+}
+
+/**
+ * 9.1-D — replace the silent zero-canvas early-return with a loud surface:
+ * a warn line, a `_sync.json` the CLI + browser read, and a bus broadcast.
+ * Best-effort on the write/broadcast — a failure there must never throw into
+ * the boot path (solo mode for unlinked projects is unaffected either way).
+ */
+function surfaceNoSyncable(ctx: Context, url: string, tsxCount: number): void {
+  const payload = buildNoSyncablePayload(url, tsxCount, ctx.paths.designRoot);
+  console.warn(`[sync] linked to ${url} but 0 syncable canvases — ${payload.reason}`);
+  try {
+    const file = path.join(ctx.paths.designRoot, '_sync.json');
+    writeFileSync(file, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+  } catch {
+    /* best-effort — never throw into boot */
+  }
+  try {
+    ctx.bus.emit('sync:status', payload);
+  } catch {
+    /* best-effort */
   }
 }
 

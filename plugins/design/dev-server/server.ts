@@ -142,6 +142,87 @@ function startServer(port: number): BunServer {
   });
 }
 
+// T2 (9.1-A) — the segregated canvas-content origin. A second Bun.serve on its
+// own (OS-assigned) port, sharing this process's ctx / api / inspect / collab /
+// ws. Canvas iframes load from here; hub-pushed JSX that executes in a canvas
+// can therefore only reach THIS origin (locked further by the CSP on the shell
+// + an iframe sandbox), never the main origin's /_api/export, /_config,
+// /_sync-status, /_comments, or arbitrary repo files. Routes are a hard
+// allowlist: Bun matches `routes` before `fetch`, so we expose ONLY the two
+// gated API endpoints the runtime needs here and 403 everything else in fetch.
+function startCanvasServer(port: number): BunServer {
+  return Bun.serve<WsData, never>({
+    port,
+    hostname: '127.0.0.1',
+    development: process.env.NODE_ENV !== 'production',
+    // Hard allowlist of route-table endpoints (Bun matches `routes` before
+    // `fetch`). Only the collab/display-data endpoints the canvas runtime needs
+    // — see http.isCanvasSafeRoute for the trust rationale. The dynamic
+    // /_api/comments/<id>/reply POST is fetch-handled + gated there.
+    routes: {
+      '/_health': http.routes['/_health'],
+      '/_api/git-user': http.routes['/_api/git-user'],
+      '/_api/canvas-meta': http.routes['/_api/canvas-meta'],
+      '/_api/annotations': http.routes['/_api/annotations'],
+      '/_api/git-committers': http.routes['/_api/git-committers'],
+      '/_api/ai': http.routes['/_api/ai'],
+      '/_comments': http.routes['/_comments'],
+    },
+    async fetch(req, srv) {
+      const pathname = new URL(req.url).pathname;
+
+      // Collab WS — shared registry, loopback-only (same gate as the main origin).
+      const collabSlug = parseCollabSlug(pathname);
+      if (collabSlug !== null) {
+        if (!isLoopbackHost(req.headers.get('host'))) {
+          return new Response('cross-machine collab requires Phase 9 hub deploy', { status: 403 });
+        }
+        const ok = srv.upgrade(req, {
+          data: {
+            id: crypto.randomUUID(),
+            remote: req.headers.get('x-forwarded-for') ?? '127.0.0.1',
+            kind: 'collab',
+            slug: collabSlug,
+          },
+        });
+        if (ok) return undefined as unknown as Response;
+        return new Response('Upgrade failed', { status: 400 });
+      }
+
+      // HMR-only socket — canvas iframes listen for `canvas-hmr` here. Carries
+      // NO privileged inspector feed and ignores inbound messages (ws.ts).
+      if (pathname.startsWith('/_ws')) {
+        const ok = srv.upgrade(req, {
+          data: {
+            id: crypto.randomUUID(),
+            remote: req.headers.get('x-forwarded-for') ?? '127.0.0.1',
+            kind: 'canvas-hmr',
+          },
+        });
+        if (ok) return undefined as unknown as Response;
+        return new Response('Upgrade failed', { status: 400 });
+      }
+
+      // Canvas mount harness with the strict CSP ALWAYS on (F1 gate).
+      if (pathname === '/_canvas-shell.html' || pathname === '/_canvas-shell') {
+        return http.serveCanvasShell(true);
+      }
+
+      // Allowlist gate — runtime bundles, comment-mount, transpiled .tsx + CSS/
+      // assets under designRoot. Everything else is refused at the door.
+      if (!http.isCanvasSafeRoute(pathname)) {
+        return new Response('Forbidden (canvas origin)', { status: 403 });
+      }
+      return http.fetch(req);
+    },
+    websocket: ws.handler,
+    error(e) {
+      console.error('[bun.serve canvas-origin error]', e);
+      return new Response('Server error', { status: 500 });
+    },
+  });
+}
+
 function isAddrInUse(e: unknown): boolean {
   if (!e || typeof e !== 'object') return false;
   const err = e as { code?: string; errno?: number };
@@ -181,6 +262,19 @@ let server: BunServer;
   server = bound;
 }
 
+// T2 (9.1-A) — segregated canvas-content origin. EXPERIMENTAL + OFF BY DEFAULT
+// (phase-9.1 WIP). When `MAUDE_CANVAS_ORIGIN_SPLIT=1`, boot a second listener on
+// an OS-assigned free port and advertise it as `canvasOrigin`; the client then
+// loads canvas iframes cross-origin (sandbox + CSP — the F1 fix). When OFF (the
+// default), no second listener boots and `canvasOrigin` stays undefined, so the
+// client keeps the proven same-origin behavior (zero regression). The split is
+// in flux — its interactive-feature parity (comment composer, presence) is not
+// yet complete, so it must not be the default until phase-9.1 finishes it.
+const CANVAS_ORIGIN_SPLIT = process.env.MAUDE_CANVAS_ORIGIN_SPLIT === '1';
+const canvasServer = CANVAS_ORIGIN_SPLIT ? startCanvasServer(0) : null;
+const canvasOrigin = canvasServer ? `http://localhost:${canvasServer.port}` : undefined;
+if (canvasOrigin) ctx.canvasOrigin = canvasOrigin;
+
 await Bun.write(
   ctx.paths.serverInfoFile,
   JSON.stringify(
@@ -188,6 +282,7 @@ await Bun.write(
       pid: process.pid,
       port: server.port,
       url: `http://localhost:${server.port}`,
+      ...(canvasOrigin ? { canvasOrigin } : {}),
       started: new Date().toISOString(),
       project: ctx.cfg.name,
       config_source: ctx.cfg._source,
@@ -261,6 +356,11 @@ async function shutdown() {
     /* ignore */
   }
   server.stop();
+  try {
+    canvasServer?.stop();
+  } catch {
+    /* best-effort */
+  }
   process.exit(0);
 }
 

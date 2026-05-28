@@ -1210,6 +1210,22 @@
     color: var(--u-fg-1);
   }
 
+  .sb-sync {
+    cursor: help;
+  }
+
+  .sb-sync-dot {
+    background: var(--u-status-warn);
+    border-radius: 50%;
+    flex: none;
+    width: 7px;
+    height: 7px;
+  }
+
+  .sb-sync .sb-key {
+    color: var(--u-fg-2);
+  }
+
   .sb-spacer {
     border-right: 1px solid var(--u-border-subtle);
     flex: 1 0 auto;

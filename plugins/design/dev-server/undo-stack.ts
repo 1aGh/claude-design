@@ -203,14 +203,30 @@ interface StoreHost {
 
 /**
  * Prefer `window.top` so all canvas iframes (children of the dev-server
- * shell) read + write the same Map. Falls back to `window` (when top is
- * cross-origin — shouldn't happen in our same-origin setup), then to
- * `globalThis` (Node / Bun test runtime where window is absent).
+ * shell) read + write the same Map. Falls back to `window` when top is
+ * cross-origin — which IS the case under the T2 (9.1-A) segregated canvas
+ * origin: the canvas iframe and the shell are different origins, so any
+ * PROPERTY access on `window.top` throws SecurityError. Then `globalThis`
+ * (Node / Bun test runtime where window is absent).
+ *
+ * Note: merely reading `window.top` (the reference) never throws — only
+ * touching a property of a cross-origin window does. So the guard MUST poke a
+ * property inside the try, or the cross-origin throw escapes into React render
+ * (it did: the UndoStackProvider's useRef initializer crashed the whole canvas
+ * mount to 0 children). Under A1 each iframe falls back to its own `window`
+ * store — undo works per-session; cross-close/reopen sharing via window.top is
+ * intentionally dropped for the origin isolation (see DDR-0xx / phase-9.1).
  */
 function getStoreHost(): StoreHost {
   if (typeof window !== 'undefined') {
     try {
-      return (window.top ?? window) as unknown as StoreHost;
+      const top = window.top;
+      if (top && top !== window) {
+        // Poke a property — throws if `top` is a cross-origin window.
+        void (top as unknown as StoreHost).__maude_undo_stacks;
+        return top as unknown as StoreHost;
+      }
+      return window as unknown as StoreHost;
     } catch {
       return window as unknown as StoreHost;
     }

@@ -4,6 +4,7 @@
 // the route table without rewriting this module. The `fetch` export is the
 // top-level fall-through for paths Bun's `routes` field doesn't cover.
 
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, watch } from 'node:fs';
 import { join, posix } from 'node:path';
 
@@ -50,6 +51,42 @@ export const MIME: Record<string, string> = {
 function ext(p: string): string {
   const i = p.lastIndexOf('.');
   return i === -1 ? '' : p.slice(i).toLowerCase();
+}
+
+/**
+ * T2 (9.1-A) — build the strict CSP for the canvas-content shell. Every inline
+ * `<script>` (importmap, module bootstrap, inspector) is allowlisted by sha256
+ * hash so we never resort to `'unsafe-inline'`. `connect-src` is locked so
+ * hub-pushed JSX can't beacon out / hit IMDS / LAN; `ws:`/`wss:` stay for the
+ * HMR + collab sockets (same-origin in the POC; tightened to the canvas origin
+ * when the origin split lands). `style-src 'unsafe-inline'` is intentional —
+ * specimens use `style={{…}}` attributes + injected `<style>`; style injection
+ * is not the F1 RCE vector (script + connect are). No `'unsafe-eval'` — the
+ * POC verifies the runtime (motion/pixi/Bun.build output) doesn't need it.
+ */
+export function cspForCanvasShell(html: string): string {
+  const hashes: string[] = [];
+  // Match inline <script> blocks only (no src=). `[^>]*` excludes any with src.
+  const re = /<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi;
+  let m: RegExpExecArray | null;
+  // biome-ignore lint/suspicious/noAssignInExpressions: standard regex-exec loop.
+  while ((m = re.exec(html)) !== null) {
+    const body = m[1] ?? '';
+    const digest = createHash('sha256').update(body, 'utf8').digest('base64');
+    hashes.push(`'sha256-${digest}'`);
+  }
+  const scriptSrc = ["'self'", ...hashes].join(' ');
+  return [
+    "default-src 'none'",
+    `script-src ${scriptSrc}`,
+    "connect-src 'self' ws: wss:",
+    "img-src 'self' data: blob:",
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self' data:",
+    "frame-src 'self'",
+    "base-uri 'none'",
+    "object-src 'none'",
+  ].join('; ');
 }
 
 function safePathUnderRoot(reqUrl: string, repoRoot: string): string | null {
@@ -156,6 +193,22 @@ async function serveFile(absPath: string, headers: Record<string, string> = {}):
 export interface Http {
   routes: Record<string, (req: Request) => Response | Promise<Response>>;
   fetch(req: Request): Promise<Response>;
+  /**
+   * T2 (9.1-A) — build the canvas mount-harness response. `applyCsp` adds the
+   * strict CSP (always on for the segregated canvas origin; the legacy main
+   * origin keeps it env-gated for the POC). Shared so both listeners produce
+   * byte-identical HTML.
+   */
+  serveCanvasShell(applyCsp: boolean): Promise<Response>;
+  /**
+   * T2 (9.1-A) — allowlist gate for the segregated canvas origin. Returns true
+   * only for the routes the canvas runtime legitimately needs (shell, runtime
+   * bundles, comment-mount, transpiled .tsx + CSS/assets under designRoot,
+   * git-user, canvas-meta, health). Everything else is 403'd at the door so
+   * hub-pushed JSX can't reach /_api/export, /_config, /_sync-status, comments,
+   * the app shell, or arbitrary repo files. WS upgrades are gated in server.ts.
+   */
+  isCanvasSafeRoute(pathname: string): boolean;
 }
 
 export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActivity): Http {
@@ -258,7 +311,7 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       }
     },
 
-    '/_config': () => Response.json(ctx.cfg),
+    '/_config': () => Response.json({ ...ctx.cfg, canvasOrigin: ctx.canvasOrigin }),
 
     '/_index-data': async () =>
       Response.json(await api.buildIndexData(), { headers: { 'Cache-Control': 'no-store' } }),
@@ -602,14 +655,10 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       // Query parameter ?canvas=<path-relative-to-designRoot> tells the shell
       // which canvas to import + mount. See plugins/design/templates/_shell.html.
       if (pathname === '/_canvas-shell.html' || pathname === '/_canvas-shell') {
-        const shellHtml = await Bun.file(join(TEMPLATES_DIR, '_shell.html')).text();
-        // Inject inspector overlay — Cmd+Click selection + Shift/C+Click
-        // add-comment flow. Without this, TSX canvases mount fine but lose
-        // every interactive devtool.
-        const injected = inspect.injectInspector(shellHtml);
-        return new Response(injected, {
-          headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
-        });
+        // The segregated canvas origin (server.ts) calls serveCanvasShell(true)
+        // directly with CSP always on; on the legacy main origin the CSP stays
+        // env-gated (MAUDE_CSP_POC) for the POC / backwards-compat.
+        return serveCanvasShell(process.env.MAUDE_CSP_POC === '1');
       }
 
       // Fall-through: serve user repo files (designRoot + everything under repoRoot).
@@ -639,5 +688,72 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
     }
   }
 
-  return { routes, fetch };
+  async function serveCanvasShell(applyCsp: boolean): Promise<Response> {
+    const shellHtml = await Bun.file(join(TEMPLATES_DIR, '_shell.html')).text();
+    // Inject inspector overlay — Cmd+Click selection + add-comment flow.
+    const injected = inspect.injectInspector(shellHtml);
+    const headers: Record<string, string> = {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
+    };
+    if (applyCsp) headers['Content-Security-Policy'] = cspForCanvasShell(injected);
+    return new Response(injected, { headers });
+  }
+
+  // Canvas assets the segregated origin may serve out of designRoot. Excludes
+  // `.json` so no `*.meta.json` / `config.json` / `_comments/*.json` leaks via
+  // the static lane (canvas-meta goes through the gated /_api route instead).
+  const CANVAS_ASSET_EXTS = new Set([
+    '.tsx',
+    '.css',
+    '.svg',
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.gif',
+    '.webp',
+    '.ico',
+    '.woff',
+    '.woff2',
+    '.ttf',
+    '.otf',
+  ]);
+
+  // Exact API paths the canvas iframe needs (collab + display data). See
+  // isCanvasSafeRoute for the trust rationale. Mutations are limited to inert
+  // collab data (annotations SVG, comment replies via the dynamic route).
+  const CANVAS_SAFE_API = new Set([
+    '/_api/git-user', // presence display name
+    '/_api/canvas-meta', // layout/viewport sidecar (GET + PATCH)
+    '/_api/annotations', // annotation SVG (GET + PUT) — drives the collab bridge
+    '/_api/git-committers', // @mention autocomplete
+    '/_api/ai', // AI-activity banner
+    '/_comments', // per-file comment list (renders pins)
+  ]);
+
+  function isCanvasSafeRoute(pathname: string): boolean {
+    if (pathname === '/_canvas-shell.html' || pathname === '/_canvas-shell') return true;
+    if (pathname === '/_health') return true;
+    if (pathname === '/_client/comment-mount.js') return true;
+    if (pathname.startsWith('/_canvas-runtime/')) return true;
+    // Collab + display-data endpoints the canvas runtime legitimately calls from
+    // inside the iframe. All are reads or inert collab writes (annotations SVG,
+    // comment replies) — the "safe to sync" set per DDR-054. None expose code
+    // execution, secrets, export, /_config, /_sync-status, or files outside
+    // designRoot/annotations; the canvas origin's CSP `connect-src 'self'` still
+    // confines the iframe so hub-pushed JSX can't reach IMDS/LAN/main-origin.
+    if (CANVAS_SAFE_API.has(pathname)) return true;
+    // POST /_api/comments/<id>/reply — dynamic path (fetch-handled).
+    if (/^\/_api\/comments\/[A-Za-z0-9_]+\/reply$/.test(pathname)) return true;
+    const designPrefix = `/${ctx.paths.designRel.replace(/^\/+|\/+$/g, '')}/`;
+    if (pathname.startsWith(designPrefix)) {
+      const rest = pathname.slice(designPrefix.length);
+      // Reject runtime/state dirs+files (_comments, _sync.json, _history, …).
+      if (rest.split('/').some((seg) => seg.startsWith('_'))) return false;
+      return CANVAS_ASSET_EXTS.has(ext(pathname));
+    }
+    return false;
+  }
+
+  return { routes, fetch, serveCanvasShell, isCanvasSafeRoute };
 }

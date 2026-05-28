@@ -236,11 +236,13 @@ export async function runStatus({ args, cwd = process.cwd() }) {
   }
 
   const uptimeS = Math.round((probe.uptimeMs ?? 0) / 1000);
-  const syncLine = sync
-    ? `${sync.state}${sync.queuedOps ? ` — ${sync.queuedOps} edit(s) queued` : ''}${
-        sync.lastSyncAt ? `, last sync ${new Date(sync.lastSyncAt).toISOString()}` : ''
-      }${sync.conflicts?.length ? `, ${sync.conflicts.length} conflict notice(s)` : ''}`
-    : 'idle (start `maude design serve` in linked mode)';
+  const syncLine = sync?.notSyncable
+    ? `linked but 0 syncable canvases — ${sync.reason}`
+    : sync
+      ? `${sync.state}${sync.queuedOps ? ` — ${sync.queuedOps} edit(s) queued` : ''}${
+          sync.lastSyncAt ? `, last sync ${new Date(sync.lastSyncAt).toISOString()}` : ''
+        }${sync.conflicts?.length ? `, ${sync.conflicts.length} conflict notice(s)` : ''}`
+      : 'idle (start `maude design serve` in linked mode)';
   process.stdout.write(
     `Maude design — linked mode\n  hub URL:      ${url}\n  linked at:    ${new Date(cfg.linkedHub.linkedAt).toISOString()}\n  adopt mode:   ${cfg.linkedHub.adopt ? 'yes (push-on-first-sync)' : 'no (hub-wins)'}\n  token stored: ${hubRecord ? 'yes (~/.config/maude/hubs.json)' : "NO — re-run 'maude design link'"}\n  hub status:   ${probe.ok ? `up — v${probe.version}, ${uptimeS}s uptime, ${probe.tokenCount} token(s), ${probe.authMode}` : `UNREACHABLE — ${probe.error}`}\n  sync agent:   ${syncLine}\n`
   );

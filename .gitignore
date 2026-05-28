@@ -8,7 +8,9 @@ dev-server/.cache/
 # .design/ runtime — server pid/port, active-tab state, snapshot history
 # (source-of-truth files like config.json / README.md / INDEX.md / system/ ARE committed)
 .design/_server.json
+.design/_server.log
 .design/_active.json
+.design/_sync.json
 .design/_locator.json
 .design/_history/
 .design/_comments/

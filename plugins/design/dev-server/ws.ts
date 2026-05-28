@@ -25,6 +25,16 @@ export type WsData =
       remote: string;
       kind: 'collab';
       slug: string;
+    }
+  | {
+      // T2 (9.1-A) — HMR-only socket for the segregated canvas origin. Receives
+      // ONLY `canvas-hmr` broadcasts; never the privileged inspector feed
+      // (comments / ai-activity / git-lifecycle / sync:status / selection) and
+      // ignores all inbound messages. Hub-pushed canvas code on the canvas
+      // origin can open this, but it leaks nothing and mutates nothing.
+      id: string;
+      remote: string;
+      kind: 'canvas-hmr';
     };
 
 /**
@@ -77,10 +87,23 @@ export function createWs(ctx: Context, api: Api, inspect: Inspect, collab: Colla
     }
   }
 
+  // Privileged inspector feed — comments, selection, ai-activity, git-lifecycle,
+  // sync:status, fs:*. ONLY the same-origin inspector clients (the shell) get it.
   function broadcast(payload: unknown) {
     const msg = typeof payload === 'string' ? payload : JSON.stringify(payload);
     for (const ws of clients) {
       if (ws.data.kind !== 'inspector') continue;
+      send(ws, msg);
+    }
+  }
+
+  // HMR feed — `canvas-hmr` reload signals. Safe to deliver to the segregated
+  // canvas origin, so both inspector (shell) AND canvas-hmr (canvas iframe)
+  // sockets receive it. T2 (9.1-A).
+  function broadcastHmr(payload: unknown) {
+    const msg = typeof payload === 'string' ? payload : JSON.stringify(payload);
+    for (const ws of clients) {
+      if (ws.data.kind !== 'inspector' && ws.data.kind !== 'canvas-hmr') continue;
       send(ws, msg);
     }
   }
@@ -115,7 +138,8 @@ export function createWs(ctx: Context, api: Api, inspect: Inspect, collab: Colla
 
   // HMR broadcaster — turns fs:any change events into `canvas-hmr` messages.
   // The iframe-side client (in _shell.html) decides reload strategy from `mode`.
-  createHmrBroadcaster(ctx, (msg) => broadcast(msg));
+  // Uses broadcastHmr so the segregated canvas origin's HMR-only sockets get it.
+  createHmrBroadcaster(ctx, (msg) => broadcastHmr(msg));
 
   // Bind a connection to its room. Stored per-socket so close() can find the
   // right room to disconnect from. Multiplexed via ws.data.id.
@@ -145,6 +169,11 @@ export function createWs(ctx: Context, api: Api, inspect: Inspect, collab: Colla
         await room.connect(conn);
         return;
       }
+      if (ws.data.kind === 'canvas-hmr') {
+        // HMR-only: join the broadcast set but get NO inspector snapshot.
+        clients.add(ws);
+        return;
+      }
       clients.add(ws);
       send(ws, { type: 'snapshot', state: inspect.state });
     },
@@ -166,6 +195,9 @@ export function createWs(ctx: Context, api: Api, inspect: Inspect, collab: Colla
       clients.delete(ws);
     },
     async message(ws, raw) {
+      // HMR-only canvas-origin socket: never accepts inbound messages (the
+      // canvas iframe only listens for canvas-hmr; it never sends).
+      if (ws.data.kind === 'canvas-hmr') return;
       if (ws.data.kind === 'collab') {
         const binding = collabConns.get(ws.data.id);
         if (!binding) return;

@@ -103,10 +103,10 @@ function canvasUrl(p, cfg, opts) {
   if (tokens) params.set('tokens', tokens);
   if (cfg?.componentsCssRel) params.set('components', cfg.componentsCssRel);
   if (specMatch) {
-    const ds = specMatch[1];
-    params.set('layout', `system/${ds}/preview/_layout.css`);
+    const dsName = specMatch[1];
+    params.set('layout', `system/${dsName}/preview/_layout.css`);
     if (!cfg?.componentsCssRel) {
-      params.set('components', `system/${ds}/preview/_components.css`);
+      params.set('components', `system/${dsName}/preview/_components.css`);
     }
   } else if (ds0?.path) {
     // UI canvas — load the project DS's `_components.css` so the dc-canvas /
@@ -116,7 +116,11 @@ function canvasUrl(p, cfg, opts) {
       params.set('components', `${ds0.path}/preview/_components.css`);
     }
   }
-  return `/_canvas-shell.html?${params.toString()}`;
+  // T2 (9.1-A) — load the iframe from the segregated canvas origin when the
+  // server advertises one; fall back to a same-origin relative URL otherwise
+  // (older server, tests). The trailing path + query are identical either way.
+  const origin = cfg?.canvasOrigin || '';
+  return `${origin}/_canvas-shell.html?${params.toString()}`;
 }
 
 function basename(p) {
@@ -1100,6 +1104,14 @@ function Viewport({ tabs, activePath, registerIframe, systemData, onOpenFromSyst
             src={canvasUrl(t.path, cfg)}
             className={t.path === activePath ? 'active' : ''}
             data-path={t.path}
+            // T2 (9.1-A) — only sandbox + delegate clipboard when the canvas is
+            // served cross-origin (canvasOrigin present = the split is on). In
+            // the default same-origin mode these attrs are omitted so behavior
+            // is identical to pre-9.1. allow-same-origin gives the cross-origin
+            // frame its OWN origin (own WS/fetch/storage), NOT the parent's.
+            {...(cfg?.canvasOrigin
+              ? { sandbox: 'allow-scripts allow-same-origin', allow: 'clipboard-write' }
+              : {})}
           />
         );
       })}
@@ -1310,7 +1322,7 @@ function Gallery({ title, items, onOpen, kind, cfg }) {
         {items.map(p => (
           <article key={p.path} className="sv-preview-card" onClick={() => onOpen(p.path)}>
             <div className="sv-preview-frame">
-              <iframe src={canvasUrl(p.path, cfg, { thumbnail: true })} title={p.label} scrolling="no" />
+              <iframe src={canvasUrl(p.path, cfg, { thumbnail: true })} title={p.label} scrolling="no" {...(cfg?.canvasOrigin ? { sandbox: 'allow-scripts allow-same-origin' } : {})} />
             </div>
             <div className="sv-preview-foot">
               <strong>{p.label}</strong>
@@ -1352,7 +1364,7 @@ function StatusBarSlot({ label, children, className = '' }) {
   );
 }
 
-function StatusBar({ activePath, selected, wsConnected, openCount, theme, onToggleTheme, onClearSelected }) {
+function StatusBar({ activePath, selected, wsConnected, openCount, theme, onToggleTheme, onClearSelected, syncStatus }) {
   const isSystem = activePath === SYSTEM_TAB;
   const text = selected && selected.selector
     ? selected.selector + (selected.text ? ` — "${selected.text.slice(0, 60)}"` : '')
@@ -1384,6 +1396,18 @@ function StatusBar({ activePath, selected, wsConnected, openCount, theme, onTogg
         <span className={'sb-live-dot' + (wsConnected ? ' connected' : '')} aria-hidden="true" />
         <span className="sb-key">{wsConnected ? 'live' : 'reconnecting'}</span>
       </StatusBarSlot>
+
+      {/* DDR-060 / 9.1-D — linked-to-hub-but-nothing-syncs state lives here in the
+          status bar (DS-styled, hover for detail) instead of a floating off-brand
+          pill. Only shown when the project is linked + has 0 syncable canvases. */}
+      {syncStatus?.notSyncable && (
+        <StatusBarSlot label="Hub sync" className="sb-sync">
+          <span className="sb-sync-dot" aria-hidden="true" />
+          <span className="sb-key" title={syncStatus.reason || 'Linked to a hub, but no canvases are syncable.'}>
+            0 syncable{syncStatus.tsxCount > 0 ? ` · ${syncStatus.tsxCount} tsx` : ''}
+          </span>
+        </StatusBarSlot>
+      )}
 
       <span className="sb-spacer" />
 
@@ -1498,6 +1522,10 @@ function CommentsPanel({ commentsByFile, filter, setFilter, activePath, focusedI
 // the dev-server's linked-mode sync runtime broadcasts.
 function SyncBanner({ status }) {
   if (!status || status.linked === false) return null;
+  // DDR-060 / 9.1-D — the "linked but 0 syncable" state is surfaced in the
+  // status bar (sb-sync slot), NOT as a floating banner. This component owns
+  // only the transient offline / reconnect-flash banner (Task 8).
+  if (status.notSyncable) return null;
   const { state, queuedOps, flash, conflicts } = status;
   const showFlash = flash === 'synced';
   const offline = state === 'offline' || state === 'offline-long';
@@ -1593,7 +1621,27 @@ function App() {
           // legacy default; designSystems[0].tokensCssRel is the project's
           // authoritative value (post DS-bootstrap).
           designSystems: data.designSystems,
+          // T2 (9.1-A) — segregated canvas-content origin. canvasUrl() prepends
+          // it so iframes load cross-origin (hub-pushed JSX is then walled off
+          // from the main origin's /_api). Absent on older servers → relative
+          // URL fallback keeps same-origin behavior.
+          canvasOrigin: data.canvasOrigin,
         });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+  // Backfill the sync banner on mount from /_sync-status. The 'sync:status' WS
+  // broadcast is one-shot for the zero-syncable case (DDR-060 / 9.1-D), so a
+  // tab that connects after boot would otherwise miss it. {linked:false} (solo)
+  // leaves the banner null.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/_sync-status')
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled || !data || data.linked === false) return;
+        setSyncStatus(data);
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -2221,6 +2269,7 @@ function App() {
           theme={theme}
           onToggleTheme={toggleTheme}
           onClearSelected={clearSelected}
+          syncStatus={syncStatus}
         />
       </div>
       {commentsPanelOpen && (

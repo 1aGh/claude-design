@@ -117,6 +117,13 @@ export interface Context {
   projectLabel: string;
   paths: Paths;
   bus: Bus;
+  /**
+   * T2 (9.1-A) — origin of the segregated canvas-content server (e.g.
+   * `http://localhost:51234`), set by server.ts once the second listener binds.
+   * The client reads it via /_config to build absolute, cross-origin iframe
+   * URLs. Undefined in tests / before the canvas listener boots.
+   */
+  canvasOrigin?: string;
 }
 
 function resolveRepoRoot(): string {

@@ -207,6 +207,35 @@ test('status --json emits structured payload', async () => {
   cleanup();
 });
 
+test('status reports zero-syncable when _sync.json is notSyncable (DDR-060 / 9.1-D)', async () => {
+  await runCli(['design', 'link', URL, '--token', 'mau_test']);
+  // Simulate the dev-server having written a zero-syncable _sync.json.
+  writeFileSync(
+    join(workspace, '.design/_sync.json'),
+    JSON.stringify({
+      linked: true,
+      notSyncable: true,
+      url: URL,
+      reason: '4 TSX canvas(es) found but none are syncable — see DDR-060.',
+      tsxCount: 4,
+      canvases: 0,
+      updatedAt: Date.now(),
+    }),
+    'utf8'
+  );
+
+  const human = await runCli(['design', 'status']);
+  assert.equal(human.status, 0, human.stderr);
+  assert.match(human.stdout, /0 syncable canvases/);
+  assert.match(human.stdout, /DDR-060/);
+
+  const json = await runCli(['design', 'status', '--json']);
+  const payload = JSON.parse(json.stdout);
+  assert.equal(payload.sync.notSyncable, true);
+  assert.equal(payload.sync.tsxCount, 4);
+  cleanup();
+});
+
 // --------------------------------------------------- DDR-054 F2/F4 trust gate
 
 const REMOTE_URL = 'http://hub.invalid:9999'; // .invalid never resolves (RFC 6761)

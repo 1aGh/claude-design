@@ -253,11 +253,24 @@
               'Canvas module at ' + canvasUrl + ' has no default export (or it is not a component).'
             );
           }
+          const rootEl = document.getElementById('canvas-root');
           mountCanvas(Canvas, {
-            rootEl: document.getElementById('canvas-root'),
+            rootEl,
             file: designRel + '/' + canvasRel,
             commentsEnabled,
           });
+          // T2 (9.1-A) diagnostic — tell the parent the canvas mounted + how many
+          // root children it rendered. Lets the shell (and tooling) confirm a
+          // cross-origin canvas actually rendered, which a parent-page screenshot
+          // of an OOPIF cannot show. Harmless heartbeat; ignored if unhandled.
+          setTimeout(() => {
+            try {
+              window.parent.postMessage(
+                { dgn: 'canvas-mounted', file: designRel + '/' + canvasRel, children: rootEl ? rootEl.children.length : 0 },
+                '*'
+              );
+            } catch (e) { /* parent gone */ }
+          }, 800);
         } catch (err) {
           showError((err && err.stack) || String(err));
         }

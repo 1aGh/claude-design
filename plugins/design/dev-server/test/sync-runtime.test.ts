@@ -5,7 +5,15 @@
 // honors linkedHub config, discovers canvases, wires up agents, and
 // dispatches fs events through the bus correctly.
 
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -19,8 +27,10 @@ import { createConnectionMonitor } from '../sync/connection-state.ts';
 import {
   type AwarenessRegistry,
   type SyncProvider,
+  buildNoSyncablePayload,
   createSyncRuntime,
   discoverCanvases,
+  scanCanvases,
   toWsUrl,
 } from '../sync/index.ts';
 import { createSyncStatusStore } from '../sync/status.ts';
@@ -170,6 +180,41 @@ describe('createSyncRuntime', () => {
     expect(runtime?.size()).toBe(2);
     expect(runtime?.agentFor('ui-screen')).toBeDefined();
     expect(runtime?.agentFor('ui-modal')).toBeDefined();
+
+    await runtime?.stop();
+  });
+
+  test('9.1-D: TSX-only project surfaces zero-syncable loudly (no silent no-op)', async () => {
+    const url = 'https://hub.example.com';
+    writeHubsConfig(url, 'mau_test');
+    const ctx = makeCtx({ url, linkedAt: 1 });
+
+    // Real (TSX-only) project: discovery admits .html only, so these don't sync.
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'screen.tsx'), 'export default () => null;');
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'modal.tsx'), 'export default () => null;');
+
+    const events: unknown[] = [];
+    ctx.bus.on('sync:status', (p) => events.push(p));
+
+    const { factory } = inMemoryProviderFactory();
+    const runtime = createSyncRuntime(ctx, { providerFactory: factory });
+    await runtime?.start();
+
+    // No agents — but the state is now LOUD, not silent.
+    expect(runtime?.size()).toBe(0);
+
+    const syncFile = join(ctx.paths.designRoot, '_sync.json');
+    expect(existsSync(syncFile)).toBe(true);
+    const payload = JSON.parse(readFileSync(syncFile, 'utf8'));
+    expect(payload.notSyncable).toBe(true);
+    expect(payload.tsxCount).toBe(2);
+    expect(payload.canvases).toBe(0);
+    expect(payload.url).toBe(url);
+    expect(payload.reason).toContain('DDR-060');
+
+    // The browser banner gets the same payload over the bus.
+    expect(events).toHaveLength(1);
+    expect((events[0] as { notSyncable?: boolean }).notSyncable).toBe(true);
 
     await runtime?.stop();
   });
@@ -384,6 +429,35 @@ describe('discoverCanvases', () => {
 
     const list = await discoverCanvases(ctx);
     expect(list.map((c) => c.slug)).toEqual(['ui-real']);
+  });
+});
+
+describe('scanCanvases', () => {
+  test('tallies .tsx canvases separately from syncable .html', async () => {
+    const ctx = makeCtx({ url: 'https://h.example.com', linkedAt: 1 });
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'a.html'), '');
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'b.tsx'), '');
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'c.tsx'), '');
+
+    const scan = await scanCanvases(ctx);
+    expect(scan.canvases.map((c) => c.slug)).toEqual(['ui-a']);
+    expect(scan.tsxCount).toBe(2);
+  });
+});
+
+describe('buildNoSyncablePayload', () => {
+  test('TSX-only project: reason names the count + DDR-060', () => {
+    const p = buildNoSyncablePayload('https://h.example.com', 3, '/proj/.design');
+    expect(p.notSyncable).toBe(true);
+    expect(p.tsxCount).toBe(3);
+    expect(p.reason).toContain('3 TSX canvas(es)');
+    expect(p.reason).toContain('DDR-060');
+  });
+
+  test('empty project: reason reports no canvases under the design root', () => {
+    const p = buildNoSyncablePayload('https://h.example.com', 0, '/proj/.design');
+    expect(p.tsxCount).toBe(0);
+    expect(p.reason).toContain('no canvases found under /proj/.design');
   });
 });
 

@@ -799,6 +799,16 @@
   background: var(--u-status-error);
 }
 .sb-live .sb-key { color: var(--u-fg-1); }
+/* DDR-060 / 9.1-D — linked-but-0-syncable indicator. Warn dot (heads-up, not
+   error), DS-tokened, hover the label for the full reason via the title attr. */
+.sb-sync { cursor: help; }
+.sb-sync-dot {
+  width: 7px; height: 7px;
+  background: var(--u-status-warn);
+  border-radius: 50%;
+  flex: none;
+}
+.sb-sync .sb-key { color: var(--u-fg-2); }
 .sb-spacer {
   flex: 1 0 auto;
   border-right: 1px solid var(--u-border-subtle);
