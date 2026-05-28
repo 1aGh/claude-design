@@ -1,7 +1,9 @@
-# DDR-057 — `maude doctor` as unified workspace diagnostic (deps + config + quality); slash commands call internal libs directly
+# DDR-058 — `maude doctor` as unified workspace diagnostic (deps + config + quality); slash commands call internal libs directly
+
+> **Renumbered from DDR-057 → DDR-058 (2026-05-28):** Phase A merged onto a `main` that had gained PR #25 (phase-9), whose `DDR-056-linked-mode-gitignore` collided with the setup-ds aspiration DDR — that one took 057, cascading this one to 058. The "always cite next-free DDR, never hardcode a number" lesson (twice now) stands.
 
 **Status:** Accepted — 2026-05-28.
-**Supersedes:** the never-shipped DDR number Phase A originally reserved (047, then 053 in the plan text — both taken by the time PR 3–5 landed; 053 = hub admin auth, 054–056 also taken). This DDR is the canonical record for Phase A (`.ai/plans/phase-a-deps-and-preflight.md`).
+**Supersedes:** the never-shipped DDR number Phase A originally reserved (047, then 053 in the plan text — taken before PR 3–5 landed). 053 = hub admin auth; 054 = linked-mode trust; 055 = shell comment layer; 056 = linked-mode gitignore (PR #25); 057 = the setup-ds aspiration bar (renumbered from 056 in the same merge). This DDR is the canonical record for Phase A (`.ai/plans/archive/phase-a-deps-and-preflight.md`).
 **Related:** the `biome-recurring-failures-review.md` system review (Layer 5 motivation), [DDR-043](DDR-043-bias-free-design-plugin-templates.md) (bias-free templates — same "no opinionated defaults" spirit applied to the design plugin), [DDR-026] (the accepted dev-server tsc baseline that shapes the `typecheck` decision below), and the `feedback-no-redundant-tooling-over-pnpm` + `flow-plugin-project-agnostic` memories.
 
 ## Context

@@ -1,4 +1,6 @@
-# DDR-056 — `/design:setup-ds` aspiration silent-pass bar raised from 3.5 to 4.0
+# DDR-057 — `/design:setup-ds` aspiration silent-pass bar raised from 3.5 to 4.0
+
+> **Renumbered from DDR-056 → DDR-057 (2026-05-28):** collided with the merged `DDR-056-linked-mode-gitignore-strategy` (PR #25, phase-9 Task 9), which keeps 056 (already public on `main`). This one moved to 057.
 
 **Status:** Accepted — 2026-05-28.
 **Supersedes:** none (tightens the threshold matrix introduced for the signature-moment-critic).

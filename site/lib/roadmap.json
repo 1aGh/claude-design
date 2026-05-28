@@ -1,5 +1,5 @@
 {
-  "generated": "2026-05-28T10:59:34.908Z",
+  "generated": "2026-05-28T11:44:41.826Z",
   "currentPhase": null,
   "phases": [
     {
@@ -135,6 +135,17 @@
       "phaseKey": "3.7"
     },
     {
+      "id": "phase-3.7.1-setup-ds-hardening-round-2",
+      "title": "Feature: setup-ds hardening round 2 — reconciliation, aspiration bar, restraint",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is plugin-internal spec/prompt engineering (markdown skills + commands + template...",
+      "planPath": ".ai/plans/archive/phase-3.7.1-setup-ds-hardening-round-2.md",
+      "archived": true,
+      "phaseKey": "3.7.1"
+    },
+    {
       "id": "phase-6.5-export",
       "title": "Phase 6.5: Canvas export (UI-first, multi-format, scope-aware)",
       "status": "done",
@@ -166,6 +177,17 @@
       "planPath": ".ai/plans/archive/phase-9-self-hosted-hub-file-sync.md",
       "archived": true,
       "phaseKey": "9"
+    },
+    {
+      "id": "phase-a-deps-and-preflight",
+      "title": "Phase A — `maude doctor`: deps preflight + config health + quality gates",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "---",
+      "planPath": ".ai/plans/archive/phase-a-deps-and-preflight.md",
+      "archived": true,
+      "phaseKey": null
     },
     {
       "id": "rename-md-claude-to-maude",
@@ -518,17 +540,6 @@
       "planPath": ".ai/plans/phase-21-annotation-vocabulary-figjam.md",
       "archived": false,
       "phaseKey": "21"
-    },
-    {
-      "id": "phase-a-deps-and-preflight",
-      "title": "Phase A — `maude doctor`: deps preflight + config health + quality gates",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "---",
-      "planPath": ".ai/plans/phase-a-deps-and-preflight.md",
-      "archived": false,
-      "phaseKey": null
     },
     {
       "id": "phase-b-orchestration-speed",

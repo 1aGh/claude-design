@@ -1018,7 +1018,7 @@ The seven critic agents are grouped into Pastier's three brand-quality kola (Fre
 | Any graphic-design blocker, OR aspiration_score < 3.0 | Print "Bootstrap complete with aesthetic warnings — DS scaffold is structurally valid but does NOT match the brief's quality bar yet. Run `/design:edit` on the flagged specimens before calling this done." Surface the top 3 blockers verbatim. |
 | Both completeness AND aesthetic critics flagged blockers | Print "Bootstrap produced a structurally broken AND aesthetically weak DS. Recommend `/design:setup-ds <name> --force` after revising the brief." |
 
-**The silent-pass bar is `≥ 4.0`, not `≥ 3.5`.** "Hezké ale ne wow" *is* a 3.5–3.8 — studyfi scored 3.8/3.7 and the loop reported a silent "passed" while the user re-tuned typography + background by hand. A `3.0 ≤ score < 4.0` MUST surface the "to wow" block; a `< 3.0` is the hard "does not match the quality bar" path. Don't over-correct into nagging — the middle band still says **complete**, it just refuses to be silent. (Bar raised 3.5 → 4.0 per DDR-056.)
+**The silent-pass bar is `≥ 4.0`, not `≥ 3.5`.** "Hezké ale ne wow" *is* a 3.5–3.8 — studyfi scored 3.8/3.7 and the loop reported a silent "passed" while the user re-tuned typography + background by hand. A `3.0 ≤ score < 4.0` MUST surface the "to wow" block; a `< 3.0` is the hard "does not match the quality bar" path. Don't over-correct into nagging — the middle band still says **complete**, it just refuses to be silent. (Bar raised 3.5 → 4.0 per DDR-057.)
 
 ### Post-Flight (slim)
 
