@@ -29,11 +29,19 @@ export interface SyncStatusPayload extends SyncStatusSnapshot {
   canvases: number;
   /** Recent conflict notifications (most-recent-last, capped). */
   conflicts: SyncConflict[];
+  /**
+   * Phase 9.2 (DDR-064) — true when the unified single-shared-doc model is
+   * active (MAUDE_SHARED_DOC). Lets `maude design status` + the browser banner
+   * show which collaboration model is running. Absent/false = the two-doc path.
+   */
+  sharedDoc?: boolean;
 }
 
 export interface SyncStatusStoreOptions {
   url: string;
   canvases: number;
+  /** Phase 9.2 (DDR-064) — surfaced in the payload so readers show the model. */
+  sharedDoc?: boolean;
   /** Persist the JSON payload (best-effort). */
   write: (payload: SyncStatusPayload) => void;
   /** Broadcast the payload to browser tabs (best-effort). */
@@ -74,6 +82,7 @@ export function createSyncStatusStore(opts: SyncStatusStoreOptions): SyncStatusS
       url: opts.url,
       canvases: opts.canvases,
       conflicts: conflicts.slice(),
+      ...(opts.sharedDoc ? { sharedDoc: true } : {}),
     };
   }
 

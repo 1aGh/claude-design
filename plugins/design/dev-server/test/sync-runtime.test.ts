@@ -638,6 +638,25 @@ describe('shared-doc convergence (MAUDE_SHARED_DOC ON)', () => {
     await runtime?.stop();
   });
 
+  test('Task 11 — status surfaces the shared-doc model in _sync.json', async () => {
+    const url = 'https://hub.example.com';
+    writeHubsConfig(url, 'mau_test');
+    const ctx = makeCtx({ url, linkedAt: 1 });
+    ctx.sharedDoc = true;
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'screen.html'), '<button>hi</button>');
+
+    const registry = countingRegistry();
+    const { factory } = inMemoryProviderFactory();
+    const runtime = createSyncRuntime(ctx, { providerFactory: factory, registry });
+    await runtime?.start();
+
+    expect(runtime?.status()?.sharedDoc).toBe(true);
+    const payload = JSON.parse(readFileSync(join(ctx.paths.designRoot, '_sync.json'), 'utf8'));
+    expect(payload.sharedDoc).toBe(true);
+
+    await runtime?.stop();
+  });
+
   // Phase D (Task 8) — the body-gating security invariant under the shared-doc
   // path: a `.tsx` body crosses the hub ONLY with the syncable opt-in (Lock 1) +
   // the canvasOrigin sandbox (Lock 2). The gate is discovery-exclusion: an

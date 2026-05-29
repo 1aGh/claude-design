@@ -239,7 +239,7 @@ export async function runStatus({ args, cwd = process.cwd() }) {
   const syncLine = sync?.notSyncable
     ? `linked but 0 syncable canvases — ${sync.reason}`
     : sync
-      ? `${sync.state}${sync.queuedOps ? ` — ${sync.queuedOps} edit(s) queued` : ''}${
+      ? `${sync.state}${sync.sharedDoc ? ' [shared-doc]' : ''}${sync.queuedOps ? ` — ${sync.queuedOps} edit(s) queued` : ''}${
           sync.lastSyncAt ? `, last sync ${new Date(sync.lastSyncAt).toISOString()}` : ''
         }${sync.conflicts?.length ? `, ${sync.conflicts.length} conflict notice(s)` : ''}`
       : 'idle (start `maude design serve` in linked mode)';

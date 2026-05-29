@@ -251,6 +251,7 @@ export function createSyncRuntime(
       createSyncStatusStore({
         url: linkedHub.url,
         canvases: canvases.length,
+        sharedDoc: useSharedDoc,
         write: (payload) => {
           const file = path.join(ctx.paths.designRoot, '_sync.json');
           writeFileSync(file, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');

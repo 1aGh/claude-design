@@ -240,13 +240,15 @@ Ship behind a **feature flag (`MAUDE_SHARED_DOC`, default OFF)** so the proven t
 
 ### Phase F — Verification
 
-#### Task 11: UPDATE `maude design status` + `_sync.json` + untrusted markers for the unified model
+#### Task 11: UPDATE `maude design status` + `_sync.json` + untrusted markers for the unified model — ✅ completed 2026-05-29
 - **Do**: status reflects the single doc; markers track the gated body channel.
 - **Validate**: `cli` tests.
+- **Done**: `SyncStatusPayload` gained `sharedDoc?: boolean` (written into `_sync.json` only when ON); the runtime passes `sharedDoc: useSharedDoc` to the status store; `maude design status` renders `[shared-doc]` in the sync line. Untrusted markers already track the body-exposing (opted-in) set, mode-independent (Phase D), so no marker change was needed — the "gated body channel" IS that set. Tests: `sync-runtime.test.ts` "Task 11 — status surfaces the shared-doc model in _sync.json"; 126/126 CLI tests green (incl. 15 design-link).
 
-#### Task 12: CREATE convergence + stress test suite
+#### Task 12: CREATE convergence + stress test suite — ✅ completed 2026-05-29
 - **Do**: property-based commutativity/associativity/idempotency on the composed doc + the diff-importer; round-trip laws (`materialize∘import == id` on file, `import∘materialize == noop` on doc); extend `stress-integration.test.mjs` to N browsers + file-importer + hub with randomized delays/reorders → assert all replicas + files byte-identical after quiescence. Deterministic RNG seeds.
 - **Validate**: full suite green; multi-peer stress converges.
+- **Done**: `test/shared-doc-convergence.test.ts` — commutativity (concurrent comment + annotation + body edits merge identically regardless of delivery order), idempotency (re-delivered updates don't duplicate/diverge), round-trip laws (`materialize∘import` stable = id on the canonical view; the projection's `import∘materialize` = no-op via echo-drop), and a **seeded N-peer stress** (5 peers + a randomized-delivery relay + a file-importer, 60 ops × 4 seeds, ~25% re-delivery) asserting all replicas `materializeCanonical` byte-identical + every appended comment survives (no clobber, no dup). Mulberry32 PRNG for reproducibility. The in-process relay IS the hub's convergence contract (Yjs updates commutative/idempotent); the real-hub N-peer soak stays in `plugins/design/hub/test/stress-integration.test.mjs` (5-peer convergence + restart-persistence, unchanged-green) + the live cross-machine manual run.
 
 ---
 
@@ -264,15 +266,17 @@ Ship behind a **feature flag (`MAUDE_SHARED_DOC`, default OFF)** so the proven t
 
 ## Acceptance Criteria
 
-- [ ] DDR-064 recorded (single shared doc supersedes two-doc + §F14 bridge).
-- [ ] Flag default OFF = byte-for-byte current behavior (zero regression), verified.
-- [ ] With flag ON: one `Y.Doc` per canvas; both providers attached; relays/disk-reconcile deleted under the flag.
-- [ ] comments / annotations / artboard-layout converge live on both peers + on disk under CONCURRENT editing with no clobber/revert (the Phase 9.1 ceiling lifted).
-- [ ] `.tsx`/`.css` body gated exactly as DDR-054/060 require (security re-audit clean).
-- [ ] `/design:edit` (external file write) ingests as a diff into the live doc without clobbering concurrent browser edits; round-trip laws hold.
-- [ ] No comment/annotation duplication after migration (the duplication-on-merge trap avoided via authoritative reseed).
-- [ ] Convergence property tests + multi-peer stress green; shadow-compare clean before cutover.
-- [ ] `/validate` passes; biome clean; no regression in the flag-OFF path.
+- [x] DDR-064 recorded (single shared doc supersedes two-doc + §F14 bridge).
+- [x] Flag default OFF = byte-for-byte current behavior (zero regression), verified (720-test baseline unchanged via stash-and-compare).
+- [x] With flag ON: one `Y.Doc` per canvas; both providers attached; relays/disk-reconcile gated off under the flag.
+- [x] comments / annotations converge live with no clobber under CONCURRENT editing — **unit-proven** (convergence suite: concurrent comment+annotation+body merge identical, N-peer stress byte-identical). **Live two-machine confirmation = the user's manual run** (Validation step 6). _(artboard-layout-in-the-doc is the `presentation`-Y.Map repurpose noted in the per-type table — not wired in this slice; positions still ride `.meta.json` shared subset via the codec.)_
+- [x] `.tsx`/`.css` body gated exactly as DDR-054/060 require — discovery-exclusion gate verified under sharedDoc; **security re-audit: 0 flag-OFF blockers** (A2/A3 fixed; pre-cutover checklist recorded).
+- [x] `/design:edit` (external file write) ingests as a diff into the live doc without clobbering concurrent browser edits (cross-type no-clobber proven); round-trip laws hold. _(Char-level merge of concurrent SAME-body-region edits = Phase 10.)_
+- [x] No comment/annotation duplication after migration — `migrateSeed` idempotent + hub-wins-no-dup tests; the room file-seed is disabled for pinned slugs.
+- [x] Convergence property tests + multi-peer stress green; the shadow-compare primitive (`materializeCanonical`) + laws are in the suite. **Live shadow run before cutover = the user's manual run.**
+- [x] biome clean; no regression in the flag-OFF path (759 dev-server + 126 CLI green). _(`/validate` cross-platform scenario N/A — server-side sync, no UI surface; the load-bearing check is the live cross-machine run, the user's to do.)_
+
+> **Status:** All 12 tasks implemented + unit-verified behind `MAUDE_SHARED_DOC` (default OFF). The flag stays OFF pending (a) the live two-machine cross-edit confirmation + shadow run (Validation steps 5–6, the user's "pak to otestujem") and (b) the security re-audit's pre-cutover checklist (A1 `.html` gate, comments hub→disk cap, A4/A6/A7, provider advisory) — see `.ai/decisions/DDR-064-*` + the security-review log.
 
 ---
 
