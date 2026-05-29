@@ -6,7 +6,7 @@
 
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, watch } from 'node:fs';
-import { join, posix } from 'node:path';
+import { dirname, join, posix, resolve, sep } from 'node:path';
 
 import type { Api } from './api.ts';
 import { buildCanvasModule } from './canvas-build.ts';
@@ -133,15 +133,59 @@ const DIST_DIR = join(HERE, 'dist');
 const CLIENT_DIR = join(HERE, 'client');
 const TEMPLATES_DIR = join(HERE, '..', 'templates');
 
-// In-memory transpile cache. Key = absolute canvas path; value = the last
-// transpile keyed by mtime. Repeat GETs against an unchanged source skip the
-// parse + ID-injection + Bun.Transpiler entirely.
+// In-memory transpile cache. Key = absolute canvas path. Repeat GETs against an
+// unchanged source skip the parse + ID-injection + Bun.Transpiler + Bun.build
+// entirely.
 interface CanvasCacheEntry {
-  mtimeMs: number;
+  /** Freshness signature over the .tsx AND every directly-imported sibling/
+   *  relative `.css` it inlines (Bun.build extracts `import "./x.css"` into a
+   *  `<style>` tag — there is no `<link>`). Rebuild when ANY of them changes.
+   *  A prior version keyed only on the .tsx mtime, so editing a sibling
+   *  `<canvas>.css` was a cache HIT: the HMR reload (mode:'module') re-served the
+   *  stale inlined CSS and the edit only showed once the .tsx itself changed.
+   *  (DDR-064 collab dogfooding finding, 2026-05-29.) */
+  sig: string;
   etag: string;
   js: string;
+  /** Absolute paths of the relative `.css` imports inlined into this build —
+   *  re-statted each request to recompute `sig` without re-reading the source. */
+  cssDeps: string[];
 }
 const canvasCache = new Map<string, CanvasCacheEntry>();
+
+/** Relative `.css` import specifiers in a canvas source → absolute paths (the
+ *  files Bun.build inlines). Bare / virtual specifiers (`@maude/…`, npm) are
+ *  skipped — only on-disk relative CSS affects the inlined output. Resolved
+ *  paths are clamped to `designRoot`: a canvas source is attacker-influenced
+ *  under linked mode (DDR-054), and these paths are `stat`-ed for mtime, so a
+ *  `../../../etc/…` specifier must not let the freshness probe reach outside the
+ *  design tree. Legit DS imports (`../../system/<ds>/…`) stay inside designRoot. */
+function cssDepsFromSource(source: string, canvasAbsPath: string, designRoot: string): string[] {
+  const dir = dirname(canvasAbsPath);
+  const root = resolve(designRoot);
+  const deps: string[] = [];
+  const re = /import\s+["']([^"']+\.css)["']/g;
+  let m: RegExpExecArray | null = re.exec(source);
+  while (m !== null) {
+    if (m[1].startsWith('.')) {
+      const abs = resolve(dir, m[1]);
+      if (abs === root || abs.startsWith(root + sep)) deps.push(abs);
+    }
+    m = re.exec(source);
+  }
+  return deps;
+}
+
+/** mtime signature over the .tsx + its inlined CSS deps. A missing/unreadable
+ *  file contributes 0 — a delete is itself a change, so the signature differs. */
+function canvasFreshnessSig(tsxAbsPath: string, cssDeps: string[]): string {
+  const parts: string[] = [];
+  for (const p of [tsxAbsPath, ...cssDeps]) {
+    const mt = Bun.file(p).lastModified;
+    parts.push(`${p}@${Number.isFinite(mt) ? mt : 0}`);
+  }
+  return parts.join('|');
+}
 
 async function serveCanvasTsx(
   absPath: string,
@@ -152,12 +196,16 @@ async function serveCanvasTsx(
   const file = Bun.file(absPath);
   if (!(await file.exists())) return new Response('Not found', { status: 404 });
 
-  // `stat` via Bun.file().lastModified — falls back to 0 if unavailable.
-  const mtimeMs = typeof file.lastModified === 'number' ? file.lastModified : 0;
+  // Freshness = the .tsx mtime AND every inlined sibling `.css` mtime. Keying on
+  // the .tsx alone meant a direct edit to `<canvas>.css` was a cache HIT, so the
+  // HMR reload (mode:'module') re-served the stale inlined CSS — the edit only
+  // surfaced once the .tsx itself changed (DDR-064 dogfooding finding).
   let cached = canvasCache.get(absPath);
+  const sig = canvasFreshnessSig(absPath, cached?.cssDeps ?? []);
 
-  if (!cached || cached.mtimeMs !== mtimeMs) {
+  if (!cached || cached.sig !== sig) {
     const source = await file.text();
+    const cssDeps = cssDepsFromSource(source, absPath, ctx.paths.designRoot);
     let result: Awaited<ReturnType<typeof buildCanvasModule>>;
     try {
       result = await buildCanvasModule(absPath, source, {
@@ -176,7 +224,14 @@ async function serveCanvasTsx(
         headers: { 'Content-Type': 'text/plain; charset=utf-8' },
       });
     }
-    cached = { mtimeMs, etag: result.etag, js: result.js };
+    // Recompute the signature against the freshly-parsed deps — this very edit
+    // may have added or removed a `.css` import.
+    cached = {
+      sig: canvasFreshnessSig(absPath, cssDeps),
+      etag: result.etag,
+      js: result.js,
+      cssDeps,
+    };
     canvasCache.set(absPath, cached);
     // Persist the locator map. Awaited so the inspector / Phase-12 layers
     // panel sees a consistent (cdId -> source) view by the time the canvas

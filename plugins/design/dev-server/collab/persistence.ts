@@ -59,6 +59,16 @@ export function createPersistence(deps: PersistenceDeps): RoomCallbacks {
   const { ctx, api, fileForSlug } = deps;
   const stateDir = ensureStateDir(ctx.paths.designRoot);
 
+  // Per-slug latch: have we ever projected a NON-empty comments array for this
+  // canvas? We write an empty `[]` to disk only AFTER content has been seen — a
+  // genuine delete-all — never from a doc that was never populated (cold start
+  // before seed/migrate completes), which would clobber a non-empty local file.
+  // This closes the receiving-peer gap where a delete-all on one peer left
+  // stragglers on the other: the old `arr.length > 0` guard skipped the write
+  // when the array emptied, so the deletion never reached the peer's JSON file
+  // (the file the sidebar reads), even though the Y.Doc had converged (DDR-064).
+  const seenComments = new Set<string>();
+
   function ydocBinPath(slug: string): string {
     return path.join(stateDir, `${slug}.ydoc.bin`);
   }
@@ -116,10 +126,15 @@ export function createPersistence(deps: PersistenceDeps): RoomCallbacks {
     const file = await fileForSlug(slug);
     if (!file) return;
 
-    // Comments — Y.Array projection back to JSON.
+    // Comments — Y.Array projection back to JSON. Write whenever the doc holds
+    // comments, OR when it just emptied after previously holding some (so a
+    // delete-all materializes on EVERY peer's disk, not just the originator's).
+    // The seenComments latch keeps a never-populated doc (cold start) from
+    // clobbering a non-empty local file with [].
     const arr = doc.getArray(Y_TYPES.comments);
-    if (arr.length > 0) {
-      const list = arr.toArray() as Parameters<Api['saveCommentsForFile']>[1];
+    const list = arr.toArray() as Parameters<Api['saveCommentsForFile']>[1];
+    if (list.length > 0) seenComments.add(slug);
+    if (list.length > 0 || seenComments.has(slug)) {
       await api.saveCommentsForFile(file, list);
     }
 

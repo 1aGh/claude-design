@@ -135,6 +135,15 @@ export interface Api {
   loadCommentsForFile(file: string): Promise<Comment[]>;
   saveCommentsForFile(file: string, list: Comment[]): Promise<void>;
   loadAllComments(): Promise<Record<string, Comment[]>>;
+  /**
+   * Resolve a canvas URL slug back to its repo-relative `file` path by scanning
+   * the ACTUAL canvas files under each canvas group — independent of whether the
+   * canvas has any comments yet. The inverse of `fileSlug`. Returns null when no
+   * canvas matches. Load-bearing for collab: a peer that has not yet received any
+   * comment for a canvas must still resolve the file to MATERIALIZE the first
+   * hub-pushed comment to disk (the receiving-peer projection gap, DDR-064).
+   */
+  fileForSlug(slug: string): Promise<string | null>;
   commentsAdd(payload: Partial<Comment> & { file: string; text: string }): Promise<Comment | null>;
   commentsPatch(id: string, patch: Partial<Comment>): Promise<Comment | null>;
   commentsDelete(id: string): Promise<boolean>;
@@ -255,6 +264,28 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       .replace(/\.(tsx|html)$/i, '')
       .replace(/^\.+/, '')
       .toLowerCase();
+  }
+
+  async function fileForSlug(slug: string): Promise<string | null> {
+    // Authoritative slug → canvas-file resolver: enumerate the real canvas
+    // files under each canvas group and match by the canonical slug. Unlike a
+    // comments-file scan, this resolves even when the canvas has NO comments yet
+    // — the fix for the receiving-peer projection gap where a fresh peer could
+    // not locate the file to write the first hub-pushed comment (DDR-064).
+    for (const g of cfg.canvasGroups) {
+      const groupAbs = path.join(paths.designRoot, g.path);
+      const groupRel = path.posix.join(paths.designRel, g.path);
+      let files: string[];
+      try {
+        files = await findHtmlFiles(groupAbs, groupRel);
+      } catch {
+        continue;
+      }
+      for (const rel of files) {
+        if (fileSlug(rel) === slug) return rel;
+      }
+    }
+    return null;
   }
 
   function commentsPath(file: string): string {
@@ -1019,6 +1050,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     loadCommentsForFile,
     saveCommentsForFile,
     loadAllComments,
+    fileForSlug,
     commentsAdd,
     commentsPatch,
     commentsDelete,

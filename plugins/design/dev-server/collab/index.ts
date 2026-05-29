@@ -29,15 +29,21 @@ export interface Collab {
  */
 export function createCollab(ctx: Context, api: Api): Collab {
   // Inverse of api.fileSlug — we have the URL slug, need the canonical
-  // repo-relative path the api expects. The current fileSlug() is destructive
-  // (loses the extension + the designRel prefix), so we round-trip by
-  // scanning loadAllComments — cheap enough at room-open time, and a fresh
-  // canvas with no comments yet just returns null (an empty Y.Doc is correct
-  // in that case).
+  // repo-relative path the api expects.
   //
-  // Task 3 will tighten this to a slug -> file lookup table maintained from
-  // the index/file-tree state so we don't need to read every JSON file.
+  // Primary: api.fileForSlug scans the ACTUAL canvas files, so it resolves even
+  // when the canvas has no comments yet. This is the fix for the receiving-peer
+  // projection gap — a peer that hasn't yet got a comment for a canvas must
+  // still locate the file to MATERIALIZE the first hub-pushed comment to disk
+  // (DDR-064). The old comments-file scan was chicken-and-egg here: no comments
+  // → null → persistJson bailed → the incoming comment never hit disk.
+  //
+  // Fallback: a canvas whose file the scan missed (renamed/moved with an orphan
+  // comments file) still resolves via its existing comments file, preserving
+  // the prior behavior for that edge.
   async function fileForSlug(slug: string): Promise<string | null> {
+    const byCanvas = await api.fileForSlug(slug);
+    if (byCanvas) return byCanvas;
     const all = await api.loadAllComments();
     for (const [file] of Object.entries(all)) {
       if (api.fileSlug(file) === slug) return file;

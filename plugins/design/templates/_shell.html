@@ -170,12 +170,27 @@
               const v = msg.version || Date.now();
               // Match by exact filename when we have one; otherwise refresh all.
               const targetFile = (msg.file || '').split('/').pop();
+              let matched = false;
               for (const link of document.querySelectorAll('link[rel="stylesheet"]')) {
                 const href = link.getAttribute('href') || '';
                 if (!targetFile || href.includes(targetFile)) {
                   const base = href.split('?')[0];
                   link.setAttribute('href', base + '?v=' + v);
+                  matched = true;
                 }
+              }
+              // A per-canvas `<slug>.css` imported by the TSX is INLINED into the
+              // canvas module as a <style> by Bun.build — there is no <link> to
+              // swap, so the loop above matches nothing and the edit is silently
+              // dropped until a manual hard-reload (RCA hmr-inlined-css-dropped).
+              // When nothing matched AND the changed CSS lives in THIS canvas's
+              // directory, reload so the rebuilt module re-inlines the fresh CSS.
+              // Scoped to same-dir so an unrelated specimen's CSS write doesn't
+              // reload every open tab.
+              if (!matched && msg.file && canvasRel) {
+                const cssDir = msg.file.replace(/[^/]+$/, '');
+                const canvasDir = canvasRel.replace(/[^/]+$/, '');
+                if (cssDir === canvasDir) location.reload();
               }
             } else if (msg.mode === 'module' || msg.mode === 'hard') {
               // Only reload when the change touches *this* canvas (or `_lib`).
