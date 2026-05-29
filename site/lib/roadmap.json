@@ -1,5 +1,5 @@
 {
-  "generated": "2026-05-28T12:53:52.341Z",
+  "generated": "2026-05-29T08:25:50.558Z",
   "currentPhase": null,
   "phases": [
     {
@@ -186,6 +186,17 @@
       "date": null,
       "summary": "---",
       "planPath": ".ai/plans/archive/phase-a-deps-and-preflight.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "phase-b-orchestration-speed",
+      "title": "Phase B — Orchestration speed: parallel fan-out + batch tool calls + lazy-load skills",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "---",
+      "planPath": ".ai/plans/archive/phase-b-orchestration-speed.md",
       "archived": true,
       "phaseKey": null
     },
@@ -470,7 +481,7 @@
       "status": "planned",
       "shipTarget": null,
       "date": null,
-      "summary": "9.1-A is the hard dependency for 9.1-B/9.1-C. 9.1-D is independent and solo-safe — ship it first as the honest interim.",
+      "summary": "Three strategies were weighed for \"make .tsx sync safe\":",
       "planPath": ".ai/plans/phase-9.1-tsx-sync-unblock.md",
       "archived": false,
       "phaseKey": "9.1"
@@ -553,13 +564,13 @@
       "phaseKey": "21"
     },
     {
-      "id": "phase-b-orchestration-speed",
-      "title": "Phase B — Orchestration speed: parallel fan-out + batch tool calls + lazy-load skills",
+      "id": "canvas-chrome-theme-inheritance",
+      "title": "Feature: Canvas-shell chrome follows the Maude theme + per-artboard theme override",
       "status": "planned",
       "shipTarget": null,
       "date": null,
-      "summary": "---",
-      "planPath": ".ai/plans/phase-b-orchestration-speed.md",
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is a risky dev-server refactor (repoints CSS custom-property sources across the w...",
+      "planPath": ".ai/plans/canvas-chrome-theme-inheritance.md",
       "archived": false,
       "phaseKey": null
     },
