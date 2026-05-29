@@ -1,5 +1,5 @@
 {
-  "generated": "2026-05-29T08:25:50.558Z",
+  "generated": "2026-05-29T10:48:19.872Z",
   "currentPhase": null,
   "phases": [
     {
@@ -177,6 +177,17 @@
       "planPath": ".ai/plans/archive/phase-9-self-hosted-hub-file-sync.md",
       "archived": true,
       "phaseKey": "9"
+    },
+    {
+      "id": "phase-9.1-tsx-sync-unblock",
+      "title": "Phase 9.1: Unblock linked-mode sync for the TSX-only canvas format",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Three strategies were weighed for \"make .tsx sync safe\":",
+      "planPath": ".ai/plans/archive/phase-9.1-tsx-sync-unblock.md",
+      "archived": true,
+      "phaseKey": "9.1"
     },
     {
       "id": "phase-a-deps-and-preflight",
@@ -476,17 +487,6 @@
       "phaseKey": "19"
     },
     {
-      "id": "phase-9.1-tsx-sync-unblock",
-      "title": "Phase 9.1: Unblock linked-mode sync for the TSX-only canvas format",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Three strategies were weighed for \"make .tsx sync safe\":",
-      "planPath": ".ai/plans/phase-9.1-tsx-sync-unblock.md",
-      "archived": false,
-      "phaseKey": "9.1"
-    },
-    {
       "id": "phase-10-structured-crdt-html-coediting",
       "title": "Phase 10 (v1.2 work): Structured CRDT HTML co-editing",
       "status": "planned",
@@ -582,6 +582,17 @@
       "date": null,
       "summary": "---",
       "planPath": ".ai/plans/phase-c-sidecar-monitor-background.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "security-disclaimer-docs",
+      "title": "Feature: User-facing security disclaimer in the docs",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Add a user-facing \"Is maude safe?\" page to the docs site that explains the threat model honestly: what runs where, what's trusted vs untrusted, and the mechanisms that make each mode safe. Audience...",
+      "planPath": ".ai/plans/security-disclaimer-docs.md",
       "archived": false,
       "phaseKey": null
     },
