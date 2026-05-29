@@ -12,8 +12,6 @@ Today the annotation toolkit ships `pen / rect / ellipse / arrow / text (anchore
 
 Out of scope (deliberately deferred): triangle / diamond / hexagon shapes, freeform polygon, stamps/emoji, connectors that snap to artboard anchors, sticky-note auto-layout grids. The brief explicitly says "nemusíme mít úplně vše" — we ship a 3-item core that closes the FigJam parity gap users actually feel.
 
-**Plus a drive-by cursor polish.** From the same review session: the existing per-tool cursors are illegible — the shape tools (`rect` / `ellipse` / `arrow`) all render a near-identical full-bleed thin crosshair with an indistinct corner badge, the dark 0.7px-stroke glyphs vanish on dark / busy canvases, and the cursor even flips appearance when the pointer crosses from the canvas body into the chrome gutter (two cursor systems that drifted apart). This phase reworks the whole cursor set into one legible source-of-truth module — see Task 11. It rides along here because Phase 21's new `sticky` + `text` tools need cursors anyway, so it's the same surface.
-
 ## User Story
 
 As a designer reviewing a canvas, I want to drop a yellow sticky on a button with "approve copy?", connect it with a soft-corner rect to a side-note text label, and recolor the arrow to a single-headed dashed line — without leaving the canvas or asking a teammate to "just open FigJam for this one comment".
@@ -25,7 +23,6 @@ Concrete gaps the user hits today (verbatim from the brief):
 - **Sticky note** — there is no sticky-equivalent. Workaround = filled rect + double-click + type. The result has no resize handles after the first commit (handle is wired for stroke shapes, not for text-bearing cards), no padding around the text, no visual cue that this is an "annotation" vs a "design element", and the colors live in the stroke palette so they read as ink, not paper.
 - **Rounded corners** — `rect` writes `<rect>` without `rx`/`ry`. FigJam ships a 3-step radius selector (square / soft / pill) and the absence is the most-noticed visual gap when porting a Figma mock review into Maude.
 - **Arrow direction / shape** — `ArrowStroke` is hardcoded end-only with a triangle head. Users want: line (no head), back-arrow (start-only), two-way (both ends), and at least one head variant beyond triangle. The serialization (`<g><line/><polyline/></g>`) doesn't even round-trip extra metadata yet.
-- **Tool cursors** — `rect` / `ellipse` / `arrow` render an almost-identical full-bleed thin crosshair with a tiny indistinct corner badge; the dark 0.7px-stroke glyphs disappear on dark / busy canvases; and the cursor changes between the canvas body (custom SVG via `canvas-shell.tsx` `--cursor-*`) and the chrome gutter (native `crosshair` / `cell` via `use-tool-mode.tsx`). Verbatim from the brief: "ty kurzory co teď používáme jsou hrozný a nepřehledný."
 
 ## Solution
 
@@ -38,23 +35,19 @@ Concrete gaps the user hits today (verbatim from the brief):
 | Schema round-trip | Bump SVG `data-tool` set: `sticky`, plus `data-r` on rect for cornerRadius, `data-start-head` / `data-end-head` / `data-dash` on arrow. Standalone text writes `x`+`y` attributes and no `data-anchor-id`. Parser falls back to current behavior when new attributes are absent — the existing `.annotations.svg` files keep loading byte-identical. |
 | Tool palette | Add two icon buttons: Sticky (`N` shortcut — "Note", since `S` is taken by Shift-marquee) + Text (`T`). Both behave as draw-tools — sticky-tool double-click lock applies. |
 | Undo / persist | Reuse `commitStrokes` + `AnnotationStrokesCommand` — every new mutation routes through the same undo sink (DDR-049). Zero new command types. |
-| Tool cursors (redesign) | New `canvas-cursors.ts` single-source module: 24×24 utf-8 inline-SVG glyphs mirroring the palette icons (`canvas-icons.tsx`), every mark drawn as a fat white halo under dark ink (filled glyphs = white-fill + dark-outline) so it stays legible on light AND dark canvases, precise per-tool hotspots, distinct shape badges (square / circle / arrow / folded-note). Exports `TOOL_CURSORS` (full `url(...) hx hy, fallback` — consumed by `use-tool-mode.tsx` body cursor) + `CURSOR_VARS_CSS` (`--cursor-*` lines — interpolated into `canvas-shell.tsx` HALO_CSS). Unifies the two cursor systems so they can't drift again. `move` / `hand` keep native `default` / `grab`. |
 
 ## Metadata
 
 - **GitHub Issue**: — (drive-by; brief in command-args)
 - **Type**: Enhancement (Phase 5.1 follow-up)
-- **Complexity**: Medium (one new schema type, two field extensions, two new tools, three new toolbar chip groups, one new cursor module; no new render path, no new undo command, no new server route)
+- **Complexity**: Medium (one new schema type, two field extensions, two new tools, three new toolbar chip groups; no new render path, no new undo command, no new server route)
 - **App/Package**: `plugins/design` — dev-server only
 - **Depends on**: Phase 5.1 (annotations-figjam) + Phase 20 (canvas-undo-redo, command sink). Both archived.
 - **Parallel with**: None — annotations layer is owned by this phase end-to-end.
 - **Affected files**:
   - `plugins/design/dev-server/annotations-layer.tsx` — extend `Stroke` union (`+StickyStroke`), bump `RectStroke` + `ArrowStroke` + `TextStroke`, extend `strokeToSvgEl` / `svgToStrokes` / `strokeBBox` / `strokeHitTest` / `translateOne` / `isStrokeMeaningful` / `normalizeRect`, add sticky inline editor, register tool branches in `beginStroke` / `moveStroke` / `endStroke`.
   - `plugins/design/dev-server/annotations-context-toolbar.tsx` — new chip groups (cornerRadius for rect/sticky, arrowDir + dash for arrow, fontSize already wired), recompute `caps`.
-  - `plugins/design/dev-server/canvas-cursors.ts` — **NEW** (Task 11). Single source of truth for per-tool cursors. Exports `TOOL_CURSORS` + `CURSOR_VARS_CSS`.
-  - `plugins/design/dev-server/use-tool-mode.tsx` — register `sticky` + `text` descriptors; cursor for every draw tool now sourced from `canvas-cursors.ts` (`move`/`hand` stay native).
-  - `plugins/design/dev-server/canvas-shell.tsx` — interpolate `CURSOR_VARS_CSS` into HALO_CSS (replaces the hand-rolled `--cursor-*` block, lines ~230-235); add `[data-active-tool="text"]` + `[data-active-tool="sticky"]` selector rules.
-  - `plugins/design/dev-server/canvas-comment-mount.tsx` — swap the inline comment cursor (`MC_CURSOR_CSS`, ~line 62) for `TOOL_CURSORS.comment` so the bare-specimen mount matches the canvas.
+  - `plugins/design/dev-server/use-tool-mode.tsx` — register `sticky` + `text` descriptors (cursor: `crosshair` for sticky, `text` for text-standalone).
   - `plugins/design/dev-server/input-router.tsx` — extend `Tool` union with `'sticky' | 'text'`, classify `N` and `T`, add to `ANNOTATION_TOOLS` set.
   - `plugins/design/dev-server/tool-palette.tsx` — add sticky + text to `DRAW_TOOLS`, ensure icons resolve.
   - `plugins/design/dev-server/canvas-icons.tsx` — add `IconSticky` + `IconText` + register in `TOOL_ICONS`.
@@ -77,16 +70,14 @@ Concrete gaps the user hits today (verbatim from the brief):
 - `plugins/design/dev-server/annotations-layer.tsx:885-963` — `beginStroke` / `moveStroke` / `endStroke`. Pattern to mirror for sticky (drag-create rect) and text (single-click commit).
 - `plugins/design/dev-server/annotations-layer.tsx:1264-1316` — `commitText` + double-click editor. The sticky inline editor reuses this state machine but with a `foreignObject` host instead of an absolute-positioned overlay.
 - `plugins/design/dev-server/annotations-context-toolbar.tsx:203-219` — `caps` intersection. Add `cornerRadius` (rect-or-sticky-only), `arrowDir` (arrow-only), `dash` (arrow-only). `fontSize` already supports `text`; extend to `sticky`.
-- `plugins/design/dev-server/use-tool-mode.tsx:38-51` — `DEFAULT_TOOLS` registry. Two new entries (`sticky` / `text`); their `cursor` (and every other draw tool's) comes from `canvas-cursors.ts` — Task 11.
-- `plugins/design/dev-server/canvas-shell.tsx:225-264` — HALO_CSS `--cursor-*` definitions + the `.dc-canvas[data-active-tool="…"] *` cursor-override rules. Task 11 replaces the hardcoded SVG block with `${CURSOR_VARS_CSS}` and adds `text` / `sticky` rules.
-- `plugins/design/dev-server/canvas-comment-mount.tsx:59-64` — `MC_CURSOR_CSS`, the comment cursor for bare-specimen mounts (no canvas-lib CSS present). Task 11 points it at the shared `TOOL_CURSORS.comment`.
+- `plugins/design/dev-server/use-tool-mode.tsx:38-51` — `DEFAULT_TOOLS` registry. Two new entries; cursors `crosshair` (sticky drag) and `text` (text I-beam).
 - `plugins/design/dev-server/input-router.tsx:66-149` — `Tool` union + key classifier + `ANNOTATION_TOOLS` set. All three need updating.
 - `plugins/design/dev-server/canvas-icons.tsx:122-131` — `TOOL_ICONS` map; add two entries.
 - `plugins/design/dev-server/test/annotations-layer.test.ts` — round-trip test pattern to mirror.
 
 ### Files to Create
 
-- `plugins/design/dev-server/canvas-cursors.ts` — single source of truth for per-tool cursors (Task 11). Everything else is additive in existing files.
+- None this phase. All work is additive in existing files.
 
 ### Documentation
 
@@ -184,7 +175,7 @@ Execute in dependency order. Every task ends with a `bun test` run (`cd plugins/
 
 - **Do**:
   - `input-router.tsx`: extend `Tool` to `... | 'sticky' | 'text'`. Add `n` → `{ kind: 'tool', tool: 'sticky' }` and `t` → `{ kind: 'tool', tool: 'text' }` in `classify()`. Add both to `ANNOTATION_TOOLS`.
-  - `use-tool-mode.tsx:38-51`: append `{ id: 'sticky', label: 'Sticky', shortcut: 'N', cursor: TOOL_CURSORS.sticky }` and `{ id: 'text', label: 'Text', shortcut: 'T', cursor: TOOL_CURSORS.text }` to `DEFAULT_TOOLS` (cursors come from the new `canvas-cursors.ts` — Task 11; if Task 11 hasn't landed yet, native `'crosshair'` / `'text'` are an acceptable placeholder that Task 11 then overwrites).
+  - `use-tool-mode.tsx:38-51`: append `{ id: 'sticky', label: 'Sticky', shortcut: 'N', cursor: 'crosshair' }` and `{ id: 'text', label: 'Text', shortcut: 'T', cursor: 'text' }` to `DEFAULT_TOOLS`.
   - `tool-palette.tsx:192`: extend `DRAW_TOOLS = ['pen', 'rect', 'ellipse', 'sticky', 'arrow', 'text', 'eraser']` (insert positions per "Patterns to Follow").
   - `canvas-icons.tsx`: add `IconSticky` + `IconText` (paths in Design Decisions); register both in `TOOL_ICONS`.
 - **Gotcha**: `T` shortcut collides with no existing classifier path, but verify against the menubar keymap (`client/app.jsx`) — Phase 5.1 added a few menubar bindings. If a collision exists, fall back to keeping the tool button but no shortcut (palette tooltip drops the `(T)` suffix).
@@ -246,23 +237,7 @@ Execute in dependency order. Every task ends with a `bun test` run (`cd plugins/
   - This is the canary that pins us against accidentally introducing a "phantom default" (e.g. always emitting `data-end-head="triangle"` would silently bloat every legacy SVG on first load → save cycle).
 - **Validate**: `bun test test/annotations-layer.test.ts`.
 
-### Task 11: REDESIGN tool cursors — legible SVG set (new `canvas-cursors.ts`)
-
-> Drive-by from the same review session as the sticky/text/shape work. Independent of Tasks 5-9 (only needs the tools to exist, which Task 4 delivers) — keep it late so it can assign cursors for `sticky` + `text` in the same pass. Pure chrome polish: no schema, no test, no undo path.
-
-- **Do**:
-  - Create `plugins/design/dev-server/canvas-cursors.ts` — the single source of truth. Export `TOOL_CURSORS: Record<string, string>` (full `url(...) hx hy, <fallback>` per tool) and `CURSOR_VARS_CSS: string` (`--cursor-<tool>: url(...) hx hy;`, one line per tool).
-  - Redesign every draw / annotation cursor as a **24×24 utf-8 inline SVG**, glyphs mirroring the Lucide-style palette icons (`canvas-icons.tsx`) so the cursor IS the tool icon. Draw each mark twice — a fat WHITE halo underneath, dark ink on top (filled glyphs = white-fill + dark-outline) — so it reads on light AND dark canvases (this is the core legibility fix). Precise hotspots: pencil tip, crosshair centre (shape tools), bubble tail (comment), working corner (eraser), I-beam centre (text), crosshair centre (sticky). Shape tools keep a compact precise crosshair for placement PLUS a distinct lower-right badge (square / circle / arrow / folded-note) so `rect` / `ellipse` / `arrow` / `sticky` are finally distinguishable from each other.
-  - Include `text` + `sticky` entries (Task 4 references `TOOL_CURSORS.text` / `.sticky`). `move` and `hand` are deliberately omitted — native `default` arrow + `grab` hand are the right affordance; reinventing the system pointer only hurts.
-  - `use-tool-mode.tsx`: import `TOOL_CURSORS`; set each draw tool's `cursor` field to the matching value. Update the cursor comment block (lines 42-45) — it no longer falls back to native `crosshair`/`cell`.
-  - `canvas-shell.tsx`: interpolate `${CURSOR_VARS_CSS}` into the `.dc-canvas { … }` block of HALO_CSS, replacing the hand-rolled `--cursor-*` lines (~230-235); add `[data-active-tool="text"]` + `[data-active-tool="sticky"]` selector rules alongside the existing per-tool rules.
-  - `canvas-comment-mount.tsx`: swap the inline comment cursor in `MC_CURSOR_CSS` (~line 62) for `${TOOL_CURSORS.comment}` so the bare-specimen mount matches.
-- **Gotcha (the bug this fixes)**: there are TWO cursor systems and they had drifted — `canvas-shell.tsx`'s `--cursor-*` CSS (scoped to `.dc-canvas[data-active-tool] *` with `!important`, paints over canvas content) and `use-tool-mode.tsx`'s `document.body.style.cursor` (native keywords, paints over the gutter / chrome outside `.dc-canvas`). Sourcing BOTH off `canvas-cursors.ts` is the fix — do not reintroduce a second hardcoded cursor string anywhere.
-- **Gotcha (encoding — load-bearing)**: single-quotes only inside the SVG, `%23` for every `#`, no literal `"`. One stray `"` or raw `#` silently drops the cursor to the native fallback with no error. utf-8 inline data-URI (Chromium / Safari 16+ / Firefox 117+ all accept; the existing cursors already rely on this).
-- **Validate**: manual — cycle every tool (V / H / C / B / R / O / A / E / N / T), confirm each cursor is distinct + legible over BOTH a white artboard and a dark one, and that the cursor no longer changes appearance crossing from the canvas into the gutter. No unit test (cursors are CSS strings — visual check only). Recommended: render the eight SVGs in a scratch HTML swatch sheet on light + dark strips and eyeball before wiring, then delete the scratch file.
-- **Validate**: `cd plugins/design/dev-server && bun run tsc --noEmit` (new module must type-clean) + `bun run build.ts` (canvas-comment-mount bundle regenerates; confirm `dist/` artifacts build).
-
-### Task 12: DOC sweep — Phase 5.1 plan + DDR cross-link
+### Task 11: DOC sweep — Phase 5.1 plan + DDR cross-link
 
 - **Do**:
   - Add a one-paragraph "Phase 21 follow-up" note to the archived Phase 5.1 plan's execution log (so future readers see the linkage without grepping).
@@ -309,11 +284,10 @@ Run these commands to confirm zero regressions:
 
 ## Acceptance Criteria
 
-- [ ] All 12 tasks completed
+- [ ] All 11 tasks completed
 - [ ] `bun test --bail` green; new tests added per Tasks 2 + 10
 - [ ] `bun run tsc --noEmit` clean (zero new errors)
 - [ ] Sticky + standalone text + rect rounded corners + arrow direction + arrow dash all visible in tool palette / context toolbar
-- [ ] Tool cursors redesigned (Task 11): every draw tool has a distinct, legible cursor on both light and dark canvases; the two cursor systems (`canvas-shell.tsx` + `use-tool-mode.tsx`) are unified off `canvas-cursors.ts`; cursor no longer changes crossing canvas→gutter
 - [ ] Legacy `.annotations.svg` files load + round-trip byte-identical (Task 10 fixture test passes)
 - [ ] `/design:smoke` passes
 - [ ] `scenario-runner`: 0 blockers on web-desktop; ios / ipad / android skipped with justification
