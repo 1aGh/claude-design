@@ -61,6 +61,19 @@ function byteLengthUtf8(s: string): number {
   return Buffer.byteLength(s, 'utf8');
 }
 
+// DDR-054 §2g — strip dangerous keys at parse time so a hostile hub-pushed (or
+// planted-commit) payload can't seed `__proto__` / `constructor` / `prototype`
+// own-properties that yjs then serializes to other peers / writes to disk that
+// Claude reads. Mirrors the agent's comments reviver; applied to the `.meta.json`
+// parse paths (Phase D security re-audit finding A3 — the reviver had been
+// applied only to the comments lane, not the symmetric meta lane).
+function parseJsonSafe(s: string): unknown {
+  return JSON.parse(s, (key, value) => {
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') return undefined;
+    return value;
+  });
+}
+
 /* ---------------------------------------------------------------- HTML */
 
 export function htmlFromDoc(doc: Y.Doc): string {
@@ -223,7 +236,7 @@ export function metaFromDoc(doc: Y.Doc): string | null {
 export function applyMetaToDoc(doc: Y.Doc, fullMetaJson: string, origin?: unknown): boolean {
   let obj: unknown;
   try {
-    obj = JSON.parse(fullMetaJson);
+    obj = parseJsonSafe(fullMetaJson);
   } catch {
     return false;
   }
@@ -257,7 +270,7 @@ export function mergeSharedMetaIntoLocal(
 ): string | null {
   let shared: unknown;
   try {
-    shared = JSON.parse(sharedJson);
+    shared = parseJsonSafe(sharedJson);
   } catch {
     return null;
   }
@@ -265,7 +278,7 @@ export function mergeSharedMetaIntoLocal(
   let local: Record<string, unknown> = {};
   if (localMetaJson) {
     try {
-      const parsed = JSON.parse(localMetaJson);
+      const parsed = parseJsonSafe(localMetaJson);
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         local = parsed as Record<string, unknown>;
       }

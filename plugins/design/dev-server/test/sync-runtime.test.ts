@@ -637,6 +637,53 @@ describe('shared-doc convergence (MAUDE_SHARED_DOC ON)', () => {
 
     await runtime?.stop();
   });
+
+  // Phase D (Task 8) — the body-gating security invariant under the shared-doc
+  // path: a `.tsx` body crosses the hub ONLY with the syncable opt-in (Lock 1) +
+  // the canvasOrigin sandbox (Lock 2). The gate is discovery-exclusion: an
+  // opted-out `.tsx` is never in the sync set, so no provider attaches to a doc
+  // for it and its body is never exposed (DDR-054 F1 / DDR-060).
+  test('Phase D — an opted-OUT .tsx body never gets a shared doc/provider (gate holds)', async () => {
+    const url = 'https://hub.example.com';
+    writeHubsConfig(url, 'mau_test');
+    // canvasOrigin set === Lock 2 (sandbox) active.
+    const ctx = makeCtx({ url, linkedAt: 1 }, 'http://localhost:9');
+    ctx.sharedDoc = true;
+
+    // Opted-IN .tsx (Lock 1 + Lock 2 both set) → body may sync.
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'opted.tsx'), 'export default () => null;');
+    writeFileSync(
+      join(ctx.paths.designRoot, 'ui', 'opted.meta.json'),
+      JSON.stringify({ syncable: true })
+    );
+    // Opted-OUT .tsx (no Lock 1) → body MUST NOT cross the hub.
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'secret.tsx'), 'export default () => SECRET;');
+    writeFileSync(
+      join(ctx.paths.designRoot, 'ui', 'secret.meta.json'),
+      JSON.stringify({ syncable: false })
+    );
+
+    const registry = countingRegistry();
+    const { factory } = inMemoryProviderFactory();
+    const runtime = createSyncRuntime(ctx, { providerFactory: factory, registry });
+    await runtime?.start();
+
+    // Only the opted-in canvas is in the sync set.
+    expect(runtime?.size()).toBe(1);
+    // The opted-in canvas got a shared doc (room created via getDoc)…
+    expect(registry.peek('ui-opted')).not.toBeNull();
+    // …the opted-out one NEVER did — no provider, no doc, body unexposed.
+    expect(registry.peek('ui-secret')).toBeNull();
+
+    // The untrusted marker lists ONLY the body-exposing (opted-in) canvas.
+    const index = JSON.parse(
+      readFileSync(join(ctx.paths.designRoot, '_untrusted', 'INDEX.json'), 'utf8')
+    );
+    const markedSlugs = index.canvases.map((c: { slug: string }) => c.slug);
+    expect(markedSlugs).toEqual(['ui-opted']);
+
+    await runtime?.stop();
+  });
 });
 
 describe('discoverCanvases', () => {

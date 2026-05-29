@@ -22,7 +22,7 @@ import { describe, expect, test } from 'bun:test';
 import * as Y from 'yjs';
 
 import { Y_TYPES } from '../collab/persistence.ts';
-import { applyHtmlToDoc } from '../sync/codec.ts';
+import { MAX_HTML_BYTES, applyHtmlToDoc } from '../sync/codec.ts';
 import { createEchoGuard, hashBytes } from '../sync/echo-guard.ts';
 import { ORIGINS } from '../sync/origins.ts';
 import { createDocProjection } from '../sync/projection.ts';
@@ -188,6 +188,31 @@ describe('projection loop-freedom', () => {
     // Body updated; the concurrent comment SURVIVED (independent Y-type).
     expect(doc.getText('html').toString()).toBe(body);
     expect(doc.getArray(Y_TYPES.comments).toArray()).toEqual([{ id: 'live', text: 'mine' }]);
+  });
+});
+
+describe('projection hub→disk hardening (security re-audit A2 + A3)', () => {
+  test('A2 — refuses to materialize an oversized (hub-pushed) body to disk', async () => {
+    const { doc, writes, projection } = makeProjection(PATHS);
+    // Simulate a hub raw-update that bypassed the codec import cap: an oversized
+    // body lands directly in the shared doc.
+    doc.getText('html').insert(0, 'x'.repeat(MAX_HTML_BYTES + 1));
+    await projection.flush();
+    // The doc→file lane must refuse it — no disk-fill DoS.
+    expect(writes.find((w) => w.path === PATHS.html)).toBeUndefined();
+  });
+
+  test('A3 — a meta file with __proto__ is imported without polluting Object.prototype', () => {
+    const { doc, projection } = makeProjection(PATHS);
+    const malicious = JSON.stringify({ __proto__: { polluted: 'yes' }, title: 'ok' });
+    projection.applyFromFs({ path: PATHS.meta, bytes: enc(malicious), hash: hashBytes(malicious) });
+    // The dangerous key was stripped at parse time — no prototype pollution and
+    // the stored shared meta carries only the safe key.
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    const stored = doc.getText('meta').toString();
+    expect(stored).not.toContain('__proto__');
+    expect(stored).not.toContain('polluted');
+    expect(stored).toContain('ok');
   });
 });
 

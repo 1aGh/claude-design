@@ -30,6 +30,9 @@ import type * as Y from 'yjs';
 
 import { atomicWrite } from './atomic-write.ts';
 import {
+  MAX_CSS_BYTES,
+  MAX_HTML_BYTES,
+  MAX_META_BYTES,
   applyAnnotationsToDoc,
   applyCommentsToDoc,
   applyCssToDoc,
@@ -145,6 +148,20 @@ export function createDocProjection(opts: DocProjectionOptions): DocProjection {
     opts.echoGuard?.record(path, hashBytes(value));
   }
 
+  // Security re-audit (Phase D, finding A2 / DDR-054 §2d): the codec's
+  // MAX_*_BYTES caps guard the file→doc *import* lane, but hub-pushed content
+  // arrives as raw Yjs updates through the provider (NOT via applyXToDoc), so it
+  // bypasses those caps. This doc→file lane is the consumer's guard on that
+  // direction — refuse to materialize an oversized hub-pushed body to disk
+  // (disk-fill DoS). Returns true when the write is allowed.
+  function withinCap(path: string, value: string, max: number): boolean {
+    if (Buffer.byteLength(value, 'utf8') <= max) return true;
+    console.warn(
+      `[projection/${slug}] refusing doc→file write of ${path} > ${max} bytes (hub-pushed oversize). DDR-054 §2d.`
+    );
+    return false;
+  }
+
   // ----- doc → file (html / css / meta only; room owns comments/annotations)
 
   function writeHtmlIfChanged(): void {
@@ -156,6 +173,7 @@ export function createDocProjection(opts: DocProjectionOptions): DocProjection {
       lastHtml = next;
       return;
     }
+    if (!withinCap(paths.html, next, MAX_HTML_BYTES)) return;
     recordEcho(paths.html, next);
     writer(paths.html, next);
     lastHtml = next;
@@ -167,6 +185,7 @@ export function createDocProjection(opts: DocProjectionOptions): DocProjection {
     if (next === lastCss) return;
     lastCss = next;
     if (next === null) return; // doc carries no css yet — nothing to write
+    if (!withinCap(paths.css, next, MAX_CSS_BYTES)) return;
     recordEcho(paths.css, next);
     writer(paths.css, next);
   }
@@ -180,6 +199,7 @@ export function createDocProjection(opts: DocProjectionOptions): DocProjection {
     const local = readLocal(paths.meta);
     const merged = mergeSharedMetaIntoLocal(local, shared);
     if (merged === null || merged === local) return; // unparseable / disk matches
+    if (!withinCap(paths.meta, merged, MAX_META_BYTES)) return;
     recordEcho(paths.meta, merged);
     writer(paths.meta, merged);
   }
