@@ -35,6 +35,7 @@ import {
 import { type EchoGuard, createEchoGuard } from './echo-guard.ts';
 import { type FsReader, createFsReader } from './fs-mirror.ts';
 import { getHubToken } from './hubs-config.ts';
+import { type DocProjection, createDocProjection } from './projection.ts';
 import { type SyncStatusStore, createSyncStatusStore } from './status.ts';
 import { writeUntrustedMarkers } from './untrusted.ts';
 
@@ -196,6 +197,11 @@ export function createSyncRuntime(
   const providerFactory = opts.providerFactory ?? defaultProviderFactory;
   const echoGuard = createEchoGuard();
   const agents = new Map<string, CanvasSyncAgent>();
+  // Phase 9.2 (DDR-064) — under sharedDoc the disk handler is a loop-free
+  // projection (sole owner of html/css/meta doc→file + all-types file→doc),
+  // created INSTEAD of an agent. Exactly one of agents/projections is populated
+  // per run (chosen by useSharedDoc).
+  const projections = new Map<string, DocProjection>();
   const providers = new Map<string, SyncProvider>();
   const awarenessDetaches: Array<() => void> = [];
   const statusDetaches: Array<() => void> = [];
@@ -268,10 +274,15 @@ export function createSyncRuntime(
         );
       },
       onRead: (evt) => {
+        const abs = path.join(ctx.paths.designRoot, evt.path);
+        // Dispatch to whichever disk handler owns this path. Only one of
+        // agents/projections is populated (useSharedDoc decides); the projector
+        // exposes the same applyFromFs(evt) shape as the agent.
         for (const agent of agents.values()) {
-          const abs = path.join(ctx.paths.designRoot, evt.path);
-          const changed = agent.applyFromFs({ path: abs, bytes: evt.bytes, hash: evt.hash });
-          if (changed) break; // a path belongs to at most one canvas
+          if (agent.applyFromFs({ path: abs, bytes: evt.bytes, hash: evt.hash })) return;
+        }
+        for (const proj of projections.values()) {
+          if (proj.applyFromFs({ path: abs, bytes: evt.bytes, hash: evt.hash })) return;
         }
       },
     });
@@ -307,22 +318,40 @@ export function createSyncRuntime(
           document: sharedYDoc,
         });
         providers.set(canvas.slug, provider);
-        const agent = createCanvasSyncAgent({
-          slug: canvas.slug,
-          doc: provider.document,
-          paths: {
-            html: canvas.html,
-            comments: canvas.comments,
-            annotations: canvas.annotations,
-            meta: canvas.meta,
-            css: canvas.css,
-          },
-          echoGuard,
-          adopt: adoptOnce,
-          onConflict: (info) => store.addConflict(info),
-        });
-        agent.start();
-        agents.set(canvas.slug, agent);
+        const canvasPaths = {
+          html: canvas.html,
+          comments: canvas.comments,
+          annotations: canvas.annotations,
+          meta: canvas.meta,
+          css: canvas.css,
+        };
+        // Phase 9.2 (DDR-064) — the disk handler. Under sharedDoc it's a
+        // loop-free projection (html/css/meta doc→file + all-types file→doc;
+        // the collab room keeps comments/annotations doc→file, so no
+        // double-write). Flag-OFF keeps the proven two-doc agent.
+        let agent: CanvasSyncAgent | undefined;
+        let projection: DocProjection | undefined;
+        if (useSharedDoc && sharedYDoc) {
+          projection = createDocProjection({
+            slug: canvas.slug,
+            doc: provider.document,
+            paths: canvasPaths,
+            echoGuard,
+          });
+          projection.start();
+          projections.set(canvas.slug, projection);
+        } else {
+          agent = createCanvasSyncAgent({
+            slug: canvas.slug,
+            doc: provider.document,
+            paths: canvasPaths,
+            echoGuard,
+            adopt: adoptOnce,
+            onConflict: (info) => store.addConflict(info),
+          });
+          agent.start();
+          agents.set(canvas.slug, agent);
+        }
 
         // Task 8 — feed this provider's WS status into the offline monitor.
         if (provider.onStatus) {
@@ -333,12 +362,18 @@ export function createSyncRuntime(
           mon.noteProviderStatus(canvas.slug, 'connected');
         }
         // Count local edits (agent-origin doc updates) toward queuedOps while
-        // the hub is unreachable — the banner's "N edits queued" figure.
-        const onLocalUpdate = (_u: Uint8Array, origin: unknown) => {
-          if (origin === agent.origin) mon.noteLocalEdit();
-        };
-        provider.document.on('update', onLocalUpdate);
-        statusDetaches.push(() => provider.document.off('update', onLocalUpdate));
+        // the hub is unreachable — the banner's "N edits queued" figure. Under
+        // sharedDoc there is no agent origin to key off (browser edits carry a
+        // RoomConn origin); queued-edit counting in that mode is a known gap
+        // (offline-banner accuracy only, not data) deferred past Phase C.
+        if (agent) {
+          const agentOrigin = agent.origin;
+          const onLocalUpdate = (_u: Uint8Array, origin: unknown) => {
+            if (origin === agentOrigin) mon.noteLocalEdit();
+          };
+          provider.document.on('update', onLocalUpdate);
+          statusDetaches.push(() => provider.document.off('update', onLocalUpdate));
+        }
 
         // Task 5 — bridge the provider's hub-synced Awareness to the Room so
         // browser cursors relay cross-machine. No-op when the provider exposes
@@ -369,16 +404,17 @@ export function createSyncRuntime(
         // wholesale-replace clobber path (the Phase 9.1 ceiling): with one doc,
         // CRDT merge handles concurrency, no last-writer-wins blob copy.
         const reg = opts.registry;
-        if (!useSharedDoc && reg?.syncRoomFromComments) {
+        if (!useSharedDoc && agent && reg?.syncRoomFromComments) {
+          const agentOrigin = agent.origin;
           const slug = canvas.slug;
           const provComments = provider.document.getArray(Y_TYPES.comments);
           const provAnn = provider.document.getMap(Y_TYPES.annotations);
           const onComments = (_e: unknown, tx: { origin: unknown }) => {
-            if (tx.origin === agent.origin) return;
+            if (tx.origin === agentOrigin) return;
             reg.syncRoomFromComments?.(slug, provComments.toArray());
           };
           const onAnn = (_e: unknown, tx: { origin: unknown }) => {
-            if (tx.origin === agent.origin) return;
+            if (tx.origin === agentOrigin) return;
             const svg = provAnn.get('svg');
             if (typeof svg === 'string') reg.syncRoomFromAnnotations?.(slug, svg);
           };
@@ -392,6 +428,14 @@ export function createSyncRuntime(
 
         // Cold-start reconcile fires once the provider has hub state.
         void provider.onceSynced().then(async () => {
+          if (projection) {
+            // sharedDoc: materialize the converged doc to disk (safe — never
+            // clobbers non-empty local with an empty doc value). The
+            // authoritative push-local-up seed + adopt is Phase E.
+            projection.reconcile();
+            return;
+          }
+          if (!agent) return;
           await agent.reconcile();
           if (adoptOnce) {
             adoptReconciled++;
@@ -417,7 +461,7 @@ export function createSyncRuntime(
     store.update(mon.snapshot());
 
     console.log(
-      `[sync] linked to ${linkedHub.url} — ${agents.size}/${canvases.length} canvas(es) syncing${adoptOnce ? ' (adopt mode — pushing local up)' : ''}.`
+      `[sync] linked to ${linkedHub.url} — ${agents.size + projections.size}/${canvases.length} canvas(es) syncing${useSharedDoc ? ' (shared-doc)' : ''}${adoptOnce ? ' (adopt mode — pushing local up)' : ''}.`
     );
   }
 
@@ -464,6 +508,19 @@ export function createSyncRuntime(
       }
     }
     agents.clear();
+    // Phase 9.2 (DDR-064) — final doc→file flush + stop the projectors BEFORE
+    // tearing down providers (so the converged doc lands on disk). The shared
+    // doc itself is owned by the collab room and destroyed by registry teardown,
+    // not here.
+    for (const proj of projections.values()) {
+      try {
+        await proj.flush();
+        proj.stop();
+      } catch {
+        /* best-effort */
+      }
+    }
+    projections.clear();
     for (const provider of providers.values()) {
       try {
         provider.destroy();
@@ -477,7 +534,9 @@ export function createSyncRuntime(
   return {
     start,
     stop,
-    size: () => agents.size,
+    // Under sharedDoc the per-canvas handler is a projection, not an agent;
+    // count both so size() reflects the synced-canvas count in either mode.
+    size: () => agents.size + projections.size,
     agentFor: (slug) => agents.get(slug),
     status: () => statusStore?.get() ?? null,
   };

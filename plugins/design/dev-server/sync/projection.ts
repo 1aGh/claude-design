@@ -1,0 +1,348 @@
+// Loop-free bidirectional disk projection for the shared-doc path — Phase 9.2
+// (DDR-064 Tasks 6 + 7).
+//
+// In the two-doc world (flag OFF) the sync AGENT mirrored a SECOND doc to disk.
+// Under MAUDE_SHARED_DOC there is ONE doc per canvas (the collab room's), so the
+// file stops being a reconciliation medium and becomes a materialized
+// PROJECTION of the doc (Zed's principle). This module owns that projection:
+//
+//   doc → file  (browser/hub edits converged): debounced, hash-gated, writes the
+//                human-readable files. The projector writes html/css/meta ONLY —
+//                the collab room already persists comments + annotations doc→file
+//                (persistence.ts), so projecting them here too would double-write.
+//   file → doc  (external edit by /design:edit, a human, git): diff the file
+//                against the doc's current materialization and apply ONLY the
+//                delta as Yjs ops tagged ORIGINS.FILE_IMPORT — never a wholesale
+//                replace (that was the Phase 9.1 clobber). All 5 types import.
+//
+// Loop freedom rests on two guards, exactly as the agent's:
+//   1. echo hash — every doc→file write records sha256(bytes); the fs event it
+//      triggers carries the same hash → consume() drops it.
+//   2. origin    — a file→doc import is tagged FILE_IMPORT; the projector's own
+//      doc.on('update') skips that origin so it doesn't re-project what it just
+//      imported.
+// Plus a per-path circuit breaker: a file that fails to PARSE 3× in a row is
+// quarantined until its checksum changes, so an unparseable file can't spin.
+
+import { existsSync, readFileSync } from 'node:fs';
+
+import type * as Y from 'yjs';
+
+import { atomicWrite } from './atomic-write.ts';
+import {
+  applyAnnotationsToDoc,
+  applyCommentsToDoc,
+  applyCssToDoc,
+  applyHtmlToDoc,
+  applyMetaToDoc,
+  cssFromDoc,
+  htmlFromDoc,
+  mergeSharedMetaIntoLocal,
+  metaFromDoc,
+} from './codec.ts';
+import { type EchoGuard, hashBytes } from './echo-guard.ts';
+import { ORIGINS } from './origins.ts';
+
+export const PROJECT_FLUSH_MS = 800;
+export const CIRCUIT_MAX_STRIKES = 3;
+
+export interface ProjectionPaths {
+  /** Absolute path to the canvas body (`.html` or opted-in `.tsx`). */
+  html: string;
+  /** Absolute path to `_comments/<slug>.json`. */
+  comments: string;
+  /** Absolute path to `<slug>.annotations.svg`. */
+  annotations: string;
+  /** Absolute path to the canvas `.meta.json` sibling (optional). */
+  meta?: string;
+  /** Absolute path to the canvas `.css` sibling (optional). */
+  css?: string;
+}
+
+export interface DocProjectionOptions {
+  slug: string;
+  doc: Y.Doc;
+  paths: ProjectionPaths;
+  /**
+   * Echo guard shared with the rest of the sync runtime so a doc→file write here
+   * is recognized as an echo when its fs event arrives. Optional — a standalone
+   * test can omit it (echo handling then relies on the hash-equality drop only).
+   */
+  echoGuard?: EchoGuard;
+  /** Injected for tests — defaults to atomicWrite. */
+  writer?: (path: string, bytes: string | Uint8Array) => void;
+  /** Override the 800 ms debounce. Tests use 0 to flush on the next microtask. */
+  flushMs?: number;
+  /** Circuit-breaker threshold (consecutive parse failures per path). */
+  maxStrikes?: number;
+}
+
+export interface DocProjection {
+  readonly slug: string;
+  /** Subscribe to doc updates (doc→file). Idempotent. */
+  start(): void;
+  /**
+   * Apply an external file edit to the doc (file→doc). Returns true when the doc
+   * changed. Mirrors the agent's `applyFromFs` signature so the runtime's
+   * fs-reader can dispatch to either uniformly.
+   */
+  applyFromFs(evt: { path: string; bytes: Uint8Array; hash: string }): boolean;
+  /** Project the doc's current html/css/meta to disk now (initial materialize).
+   *  SAFE: never writes an empty doc value over non-empty local content — the
+   *  authoritative push-local-up seed is Phase E (migrate-seed). */
+  reconcile(): void;
+  /** Force the pending doc→file flush immediately. */
+  flush(): Promise<void>;
+  /** Stop the doc listener + timers. */
+  stop(): void;
+  /** Test/inspection — the origin used on file→doc imports. */
+  readonly importOrigin: object;
+}
+
+export function createDocProjection(opts: DocProjectionOptions): DocProjection {
+  const { slug, doc, paths } = opts;
+  const flushMs = opts.flushMs ?? PROJECT_FLUSH_MS;
+  const writer = opts.writer ?? atomicWrite;
+  const maxStrikes = opts.maxStrikes ?? CIRCUIT_MAX_STRIKES;
+  const importOrigin = ORIGINS.FILE_IMPORT;
+
+  let started = false;
+  let stopped = false;
+  let dirty = false;
+  let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // doc→file last-written hashes (skip redundant writes).
+  let lastHtml: string | null = null;
+  let lastMeta: string | null = null;
+  let lastCss: string | null = null;
+
+  // Circuit breaker: per-path { hash, strikes }. A file that fails to PARSE
+  // maxStrikes times in a row is quarantined until its checksum changes.
+  const quarantine = new Map<string, { hash: string; strikes: number }>();
+
+  function onDocUpdate(_u: Uint8Array, origin: unknown): void {
+    if (stopped) return;
+    // Skip our own file→doc import — the file is already current, re-projecting
+    // would be a redundant write. (Migration seed is on disk already too.)
+    if (origin === ORIGINS.FILE_IMPORT || origin === ORIGINS.MIGRATION) return;
+    scheduleFlush();
+  }
+
+  function scheduleFlush(): void {
+    dirty = true;
+    if (flushMs === 0) {
+      queueMicrotask(() => void flush());
+      return;
+    }
+    if (flushTimer) clearTimeout(flushTimer);
+    flushTimer = setTimeout(() => {
+      flushTimer = null;
+      void flush();
+    }, flushMs);
+  }
+
+  function recordEcho(path: string, value: string): void {
+    opts.echoGuard?.record(path, hashBytes(value));
+  }
+
+  // ----- doc → file (html / css / meta only; room owns comments/annotations)
+
+  function writeHtmlIfChanged(): void {
+    const next = htmlFromDoc(doc);
+    if (next === lastHtml) return;
+    // Don't clobber a non-empty local body with an empty doc (cold-start before
+    // the doc is seeded — the safe-reconcile invariant; full adopt is Phase E).
+    if (next === '') {
+      lastHtml = next;
+      return;
+    }
+    recordEcho(paths.html, next);
+    writer(paths.html, next);
+    lastHtml = next;
+  }
+
+  function writeCssIfChanged(): void {
+    if (!paths.css) return;
+    const next = cssFromDoc(doc);
+    if (next === lastCss) return;
+    lastCss = next;
+    if (next === null) return; // doc carries no css yet — nothing to write
+    recordEcho(paths.css, next);
+    writer(paths.css, next);
+  }
+
+  function writeMetaIfChanged(): void {
+    if (!paths.meta) return;
+    const shared = metaFromDoc(doc);
+    if (shared === lastMeta) return;
+    lastMeta = shared;
+    if (shared === null) return; // doc carries no shared meta yet
+    const local = readLocal(paths.meta);
+    const merged = mergeSharedMetaIntoLocal(local, shared);
+    if (merged === null || merged === local) return; // unparseable / disk matches
+    recordEcho(paths.meta, merged);
+    writer(paths.meta, merged);
+  }
+
+  async function flush(): Promise<void> {
+    if (!dirty || stopped) return;
+    dirty = false;
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    try {
+      writeHtmlIfChanged();
+      writeCssIfChanged();
+      writeMetaIfChanged();
+    } catch (err) {
+      dirty = true;
+      console.error(`[projection/${slug}] flush failed:`, err);
+    }
+  }
+
+  // ----- file → doc (all five types; diff-import, FILE_IMPORT origin)
+
+  /** Returns true if the path is currently quarantined for `hash`. */
+  function isQuarantined(path: string, hash: string): boolean {
+    const q = quarantine.get(path);
+    return !!q && q.hash === hash && q.strikes >= maxStrikes;
+  }
+
+  /** Record a parse failure; quarantine after maxStrikes for this exact hash. */
+  function strike(path: string, hash: string): void {
+    const q = quarantine.get(path);
+    if (q && q.hash === hash) q.strikes += 1;
+    else quarantine.set(path, { hash, strikes: 1 });
+    if ((quarantine.get(path)?.strikes ?? 0) >= maxStrikes) {
+      console.warn(
+        `[projection/${slug}] quarantined ${path} after ${maxStrikes} parse failures; ignoring until its checksum changes.`
+      );
+    }
+  }
+
+  /** Clear any circuit-breaker state for a path (it parsed / changed). */
+  function clearStrike(path: string): void {
+    quarantine.delete(path);
+  }
+
+  function applyFromFs(evt: { path: string; bytes: Uint8Array; hash: string }): boolean {
+    if (stopped) return false;
+    // Echo of our own doc→file write — drop.
+    if (opts.echoGuard?.consume(evt.path, evt.hash)) return false;
+    // Circuit breaker — a file that won't parse can't spin the loop.
+    if (isQuarantined(evt.path, evt.hash)) return false;
+
+    const str = bytesToString(evt.bytes);
+
+    if (evt.path === paths.html) {
+      clearStrike(evt.path);
+      const changed = applyHtmlToDoc(doc, str, importOrigin);
+      if (changed) lastHtml = htmlFromDoc(doc);
+      return changed;
+    }
+    if (paths.css && evt.path === paths.css) {
+      clearStrike(evt.path);
+      const changed = applyCssToDoc(doc, str, importOrigin);
+      if (changed) lastCss = str;
+      return changed;
+    }
+    if (paths.meta && evt.path === paths.meta) {
+      // applyMetaToDoc parses internally; a parse failure returns false. Detect
+      // it explicitly so the circuit breaker can quarantine a broken sidecar.
+      if (!isParseableJsonObject(str)) {
+        strike(evt.path, evt.hash);
+        return false;
+      }
+      clearStrike(evt.path);
+      const changed = applyMetaToDoc(doc, str, importOrigin);
+      if (changed) lastMeta = metaFromDoc(doc);
+      return changed;
+    }
+    if (evt.path === paths.comments) {
+      const parsed = tryParseJsonArray(str);
+      if (parsed === null) {
+        strike(evt.path, evt.hash);
+        return false;
+      }
+      clearStrike(evt.path);
+      return applyCommentsToDoc(doc, parsed, importOrigin);
+    }
+    if (evt.path === paths.annotations) {
+      clearStrike(evt.path);
+      return applyAnnotationsToDoc(doc, str, importOrigin);
+    }
+    return false;
+  }
+
+  function reconcile(): void {
+    if (stopped) return;
+    // Materialize the converged doc to disk (html/css/meta). The *IfChanged
+    // writers already guard against clobbering non-empty local with empty doc
+    // values, so this is safe to run at cold start before the authoritative
+    // seed (Phase E) — it only writes what the doc actually holds.
+    writeHtmlIfChanged();
+    writeCssIfChanged();
+    writeMetaIfChanged();
+  }
+
+  return {
+    slug,
+    importOrigin,
+    start() {
+      if (started) return;
+      doc.on('update', onDocUpdate);
+      started = true;
+    },
+    applyFromFs,
+    reconcile,
+    flush,
+    stop() {
+      stopped = true;
+      doc.off('update', onDocUpdate);
+      if (flushTimer) {
+        clearTimeout(flushTimer);
+        flushTimer = null;
+      }
+    },
+  };
+}
+
+/* ---------------------------------------------------------------- helpers */
+
+function readLocal(p: string): string | null {
+  if (!existsSync(p)) return null;
+  try {
+    return readFileSync(p, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+function bytesToString(bytes: Uint8Array): string {
+  return new TextDecoder().decode(bytes);
+}
+
+function isParseableJsonObject(s: string): boolean {
+  try {
+    const v = JSON.parse(s);
+    return !!v && typeof v === 'object' && !Array.isArray(v);
+  } catch {
+    return false;
+  }
+}
+
+// Same proto-pollution-safe reviver the agent uses (DDR-054 §2g): strip
+// dangerous keys at parse time so a hostile file can't seed __proto__ into the
+// comment objects yjs serializes to peers.
+function tryParseJsonArray(s: string): unknown[] | null {
+  try {
+    const parsed = JSON.parse(s, (key, value) => {
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') return undefined;
+      return value;
+    });
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
