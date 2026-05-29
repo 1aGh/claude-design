@@ -64,6 +64,19 @@ else
   [ -z "$OUT" ]     && { echo "screenshot.sh: --out required for single-shot modes" >&2; exit 2; }
 fi
 
+# agent-browser ignores RELATIVE screenshot paths (it writes to its own
+# ~/.agent-browser/tmp instead), which strands the PNG and trips the
+# missing-file guard below. Canonicalize OUT / OUT_DIR to absolute up front so
+# captures land where the caller asked.
+if [ -n "$OUT" ]; then
+  mkdir -p "$(dirname "$OUT")" 2>/dev/null || true
+  OUT="$(cd "$(dirname "$OUT")" 2>/dev/null && pwd)/$(basename "$OUT")"
+fi
+if [ -n "$OUT_DIR" ]; then
+  mkdir -p "$OUT_DIR" 2>/dev/null || true
+  OUT_DIR="$(cd "$OUT_DIR" 2>/dev/null && pwd)"
+fi
+
 # TSX specimens cannot be opened via file:// — the browser would see raw JSX.
 # They must go through the dev-server route (http://localhost:PORT/<rel>),
 # which transpiles via _canvas-shell.html?canvas=<rel>. Phase 19 / DDR-044.
@@ -97,7 +110,11 @@ if [ -z "$URL" ]; then
 
   # URL-encode spaces (rough); leave other chars alone.
   ACTIVE_ENC=$(printf '%s' "$ACTIVE" | sed 's/ /%20/g')
-  URL="http://localhost:${PORT}/${ACTIVE_ENC}"
+  # Canvases mount through the canvas shell. The bare `/<rel>` route 404s when
+  # the canvas-origin sandbox is on (default since phase-9.1); only
+  # `/_canvas-shell.html?canvas=<rel>` renders the canvas (valid in both
+  # split-on and legacy same-origin modes).
+  URL="http://localhost:${PORT}/_canvas-shell.html?canvas=${ACTIVE_ENC}"
 fi
 
 # ---------- selector mapping ----------

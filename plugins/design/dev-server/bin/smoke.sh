@@ -78,6 +78,10 @@ if [ -z "$OUT_DIR" ]; then
   OUT_DIR="$DESIGN_ROOT/_history/_smoke/$TS"
 fi
 mkdir -p "$OUT_DIR"
+# agent-browser ignores RELATIVE screenshot paths (writes to ~/.agent-browser/tmp
+# instead), which silently strands every PNG. Canonicalize to absolute so the
+# captured evidence actually lands in OUT_DIR. See DDR-021.
+OUT_DIR="$(cd "$OUT_DIR" && pwd)"
 
 # ---------- engine resolution ----------
 if [ "$ENGINE" = "auto" ]; then
@@ -216,6 +220,8 @@ probe_agent_browser() {
     for (const s of sel) { const el = document.querySelector(s); if (el && el.innerText) return el.innerText.slice(0, 120); }
     const body = document.body && document.body.innerText || '';
     if (body.startsWith('Error:') || body.startsWith('SyntaxError:') || body.startsWith('ReferenceError:')) return body.slice(0, 120);
+    const t = body.trim();
+    if (t === 'Not found' || t.startsWith('Forbidden (canvas origin)')) return 'route-error: ' + t.slice(0, 80);
     return '';
   })()" 2>/dev/null)
   # Strip wrapping quotes that agent-browser eval adds for strings.
@@ -228,16 +234,24 @@ probe_agent_browser() {
     return
   fi
 
+  # The PNG IS the evidence (DDR-021). A missing/empty file means agent-browser
+  # never wrote it (relative path, capture crash, …) — that is a FAILURE, not an
+  # OK. The old code fell straight through to "OK" here, which is exactly how a
+  # broken canvas route ("Not found" 404 + no PNG) masqueraded as 43/43 green.
+  if [ ! -s "$out_png" ]; then
+    echo "ERROR"
+    echo "screenshot-not-written"
+    echo "$out_png"
+    return
+  fi
   # PNG size sanity — < 2 KB usually means blank background only.
-  if [ -s "$out_png" ]; then
-    local size
-    size=$(wc -c < "$out_png" 2>/dev/null | tr -d ' ')
-    if [ -n "$size" ] && [ "$size" -lt 2048 ]; then
-      echo "BLANK"
-      echo "png-${size}B"
-      echo "$out_png"
-      return
-    fi
+  local size
+  size=$(wc -c < "$out_png" 2>/dev/null | tr -d ' ')
+  if [ -n "$size" ] && [ "$size" -lt 2048 ]; then
+    echo "BLANK"
+    echo "png-${size}B"
+    echo "$out_png"
+    return
   fi
 
   echo "OK"
@@ -267,7 +281,11 @@ while IFS= read -r CANVAS; do
   N=$((N + 1))
   REL="${CANVAS#$DESIGN_ROOT/}"
   REL_ENC=$(urlencode_path "$REL")
-  URL="http://localhost:$PORT/$REL_ENC"
+  # Canvases render through the canvas shell, not the bare path. The bare
+  # `/<rel>` route 404s when the canvas-origin sandbox is on (default since
+  # phase-9.1) — only `/_canvas-shell.html?canvas=<rel>` mounts the canvas
+  # (works in both split-on and legacy same-origin modes).
+  URL="http://localhost:$PORT/_canvas-shell.html?canvas=$REL_ENC"
   SLUG=$(bash "$SLUG_HELPER" "$REL" 2>/dev/null || printf '%s' "$REL" | tr '/ ' '__' | tr '[:upper:]' '[:lower:]')
   OUT_PNG="$OUT_DIR/$SLUG.png"
 
