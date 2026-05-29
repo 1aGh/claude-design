@@ -1,5 +1,5 @@
 {
-  "generated": "2026-05-29T14:47:24.379Z",
+  "generated": "2026-05-29T18:06:15.464Z",
   "currentPhase": null,
   "phases": [
     {
@@ -507,6 +507,17 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
+    },
+    {
+      "id": "phase-9.2-shared-collab-doc",
+      "title": "Feature: Rock-solid shared collaboration doc — converge the two per-canvas Y.Docs into one",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Linked-mode collaboration today keeps two separate Y.Doc instances per canvas in the dev-server and reconciles them through a side channel (disk files + wholesale-replace relays). That side-channel...",
+      "planPath": ".ai/plans/phase-9.2-shared-collab-doc.md",
+      "archived": false,
+      "phaseKey": "9.2"
     },
     {
       "id": "phase-10-structured-crdt-html-coediting",
