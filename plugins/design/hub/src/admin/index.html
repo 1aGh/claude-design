@@ -1,98 +1,180 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Maude Hub · Admin</title>
-<link rel="stylesheet" href="/admin/style.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Maude Hub · Admin</title>
+  <link rel="stylesheet" href="/admin/style.css">
 </head>
 <body>
 <a class="skip-nav" href="#main-content">Skip to main content</a>
-<header>
-  <h1><span class="m" aria-hidden="true">M</span> Maude Hub</h1>
-  <div class="auth" id="auth-state" hidden>
-    <span class="dot ok" aria-hidden="true"></span> authenticated
-    <button id="forget" class="ghost" type="button">forget on this device</button>
-  </div>
-</header>
-
-<main id="main-content">
-  <section id="onboard" hidden>
-    <h2>First-run setup</h2>
-    <p>This hub has no admin yet. Paste your <code>HUB_SECRET</code> below, or open the one-time bootstrap URL you received in the server logs.</p>
-    <form id="onboard-form">
-      <label for="onboard-secret">HUB_SECRET</label>
-      <input id="onboard-secret" name="secret" type="password" autocomplete="off" required>
-      <button type="submit">Sign in</button>
-    </form>
-    <p class="hint">Stored in this browser's localStorage only — clear it to sign out everywhere.</p>
-    <div id="onboard-error" class="error" role="alert" hidden></div>
-  </section>
-
-  <section id="bootstrap" hidden>
-    <h2>Welcome</h2>
-    <p>You're using a one-time bootstrap link. Confirm to claim this hub as admin — the link will be consumed and can't be reused.</p>
-    <p class="hint" id="bootstrap-identity"></p>
-    <form id="bootstrap-form">
-      <button type="submit">Claim hub</button>
-    </form>
-    <div id="bootstrap-error" class="error" role="alert" hidden></div>
-  </section>
-
-  <section id="dash" hidden>
-    <div class="grid">
-      <article class="card" id="card-invite">
-        <h2>Generate invite</h2>
-        <form id="invite-form">
-          <label for="invite-label">Label this invite</label>
-          <input id="invite-label" type="text" placeholder="alice" required maxlength="64" pattern="[A-Za-z0-9 _\-.]+">
-          <button type="submit">Generate token</button>
-        </form>
-        <p class="hint">One-time token (shown once). Copy the command below into the peer's terminal.</p>
-        <div id="invite-error" class="error" role="alert" hidden></div>
-      </article>
-
-      <article class="card" id="card-peers">
-        <h2>Connected peers</h2>
-        <table aria-labelledby="card-peers-title">
-          <caption id="card-peers-title" class="sr-only">Connected peers</caption>
-          <thead><tr><th scope="col">Document</th><th scope="col">User</th><th scope="col">Connected</th></tr></thead>
-          <tbody id="peers-rows"><tr class="empty"><td colspan="3">No peers connected.</td></tr></tbody>
-        </table>
-      </article>
-
-      <article class="card" id="card-status">
-        <h2>Hub status</h2>
-        <dl id="status-dl">
-          <dt>uptime</dt><dd id="s-uptime">—</dd>
-          <dt>version</dt><dd id="s-version">—</dd>
-          <dt>port</dt><dd id="s-port">—</dd>
-          <dt>data dir</dt><dd id="s-data">—</dd>
-          <dt>tokens</dt><dd id="s-tokens">—</dd>
-          <dt>peers</dt><dd id="s-peers">—</dd>
-        </dl>
-      </article>
-
-      <article class="card" id="card-tokens">
-        <h2>Active tokens</h2>
-        <table aria-labelledby="card-tokens-title">
-          <caption id="card-tokens-title" class="sr-only">Active tokens</caption>
-          <thead><tr><th scope="col">Label</th><th scope="col">Created</th><th scope="col">Last used</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
-          <tbody id="tokens-rows"><tr class="empty"><td colspan="4">No tokens yet.</td></tr></tbody>
-        </table>
-      </article>
+<div class="mdcc hub-frame">
+  <header class="hub-hd">
+    <span class="hub-brand">
+      <span class="hub-mark" aria-hidden="true">M</span>
+      <span class="hub-title">Maude Hub<small>self-hosted sync</small></span>
+    </span>
+    <div class="hub-auth" id="auth-state" hidden>
+      <span class="dot dot--success" aria-hidden="true"></span> authenticated
+      <button id="forget" type="button" class="btn btn--quiet btn--sm">forget on this device</button>
     </div>
-  </section>
-</main>
+  </header>
 
+  <main id="main-content" class="hub-main">
+
+    <!-- SIGN IN -->
+    <section id="onboard" hidden>
+      <div class="hub-center">
+        <div class="hub-hero">
+          <span class="hub-hero-mark" aria-hidden="true">M</span>
+          <span class="hub-hero-wm">Maude Hub<small>self-hosted sync</small></span>
+        </div>
+        <p class="eyebrow hub-eyebrow">SESSION</p>
+        <h2>Sign in</h2>
+        <p class="hub-lede">This hub is already claimed. Paste your <code>HUB_SECRET</code> to manage tokens and watch peers.</p>
+        <form id="onboard-form">
+          <div class="field">
+            <label class="field-label" for="onboard-secret">HUB_SECRET</label>
+            <input id="onboard-secret" class="input input--mono input--pw" type="password" name="secret" autocomplete="off" required>
+          </div>
+          <div class="hub-actions">
+            <button type="submit" class="btn btn--primary">Sign in<span class="kbd" aria-hidden="true">⏎</span></button>
+            <span class="sku sku--ghost">BEARER · /admin/api</span>
+          </div>
+        </form>
+        <p class="hub-hint">Stored in this browser's <code>localStorage</code> only — clear it to sign out everywhere. No cookie, no server session.</p>
+        <div id="onboard-error" class="callout callout--error" role="alert" hidden></div>
+      </div>
+    </section>
+
+    <!-- FIRST-RUN CLAIM -->
+    <section id="bootstrap" hidden>
+      <div class="hub-center">
+        <div class="hub-hero">
+          <span class="hub-hero-mark" aria-hidden="true">M</span>
+          <span class="hub-hero-wm">Maude Hub<small>self-hosted sync</small></span>
+        </div>
+        <p class="eyebrow hub-eyebrow">ONE-TIME BOOTSTRAP LINK</p>
+        <h2>Welcome</h2>
+        <p class="hub-lede">This hub has no admin yet. Confirm to claim it — the link is consumed and can't be reused. Verify the fingerprint matches your server logs before you trust it.</p>
+        <div class="fp" aria-label="Hub identity">
+          <p id="bootstrap-identity" class="fp-identity">Verifying hub identity…</p>
+        </div>
+        <form id="bootstrap-form">
+          <div class="hub-actions">
+            <button type="submit" class="btn btn--primary btn--lg">Claim hub</button>
+            <span class="badge badge--warn">EXPIRES 24H</span>
+          </div>
+        </form>
+        <p class="hub-hint">Single-use. After you claim, <code>/admin</code> requires <code>HUB_SECRET</code> — there is no second bootstrap link.</p>
+        <div id="bootstrap-error" class="callout callout--error" role="alert" hidden></div>
+      </div>
+    </section>
+
+    <!-- DASHBOARD -->
+    <section id="dash" hidden>
+      <div class="hub-grid">
+
+        <article class="tile" id="card-invite">
+          <div class="tile-hd">
+            <span>Generate invite</span>
+            <span class="sku">HUB-ADM/03·INVITE</span>
+          </div>
+          <div class="tile-bd">
+            <h3 class="card-title">Issue a one-time link</h3>
+            <form id="invite-form">
+              <div class="field">
+                <label class="field-label" for="invite-label">Label this invite</label>
+                <input id="invite-label" class="input input--mono" type="text" placeholder="alice" required maxlength="64" pattern="[A-Za-z0-9 _\-.]+">
+              </div>
+              <div class="hub-actions" style="margin-top:var(--space-4)">
+                <button type="submit" class="btn btn--primary">Generate token<span class="kbd" aria-hidden="true">⏎</span></button>
+              </div>
+            </form>
+            <p class="hub-hint">One-time token, shown once. The command below goes into the peer's terminal.</p>
+            <div id="invite-error" class="callout callout--error" role="alert" hidden></div>
+          </div>
+        </article>
+
+        <article class="tile" id="card-peers">
+          <div class="tile-hd">
+            <span class="live"><span class="dot dot--success" aria-hidden="true"></span> Connected peers</span>
+            <span class="sku">HUB-ADM/04·PEERS</span>
+          </div>
+          <div class="tile-bd">
+            <table class="tbl" aria-labelledby="card-peers-cap">
+              <caption id="card-peers-cap" class="sr-only">Connected peers</caption>
+              <thead><tr><th scope="col">Document</th><th scope="col">User</th><th scope="col" class="num">Connected</th></tr></thead>
+              <tbody id="peers-rows"><tr class="empty"><td colspan="3">No peers connected.</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="tile" id="card-status">
+          <div class="tile-hd">
+            <span>Hub status</span>
+            <span class="sku">HUB-ADM/05·STATUS</span>
+          </div>
+          <div class="tile-bd">
+            <dl class="kv" id="status-dl">
+              <dt>uptime</dt><dd id="s-uptime">—</dd>
+              <dt>version</dt><dd id="s-version">—</dd>
+              <dt>port</dt><dd id="s-port">—</dd>
+              <dt>data dir</dt><dd id="s-data">—</dd>
+              <dt>tokens</dt><dd id="s-tokens">—</dd>
+              <dt>peers</dt><dd id="s-peers">—</dd>
+            </dl>
+          </div>
+        </article>
+
+        <article class="tile" id="card-tokens">
+          <div class="tile-hd">
+            <span>Active tokens</span>
+            <span class="sku">HUB-ADM/06·TOKENS</span>
+          </div>
+          <div class="tile-bd">
+            <table class="tbl" aria-labelledby="card-tokens-cap">
+              <caption id="card-tokens-cap" class="sr-only">Active tokens</caption>
+              <thead><tr><th scope="col">Label</th><th scope="col">Created</th><th scope="col">Last used</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+              <tbody id="tokens-rows"><tr class="empty"><td colspan="4">No tokens yet.</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- Token issued dialog -->
 <dialog id="token-modal" aria-labelledby="token-modal-title">
-  <h2 id="token-modal-title">Invite ready</h2>
-  <p>Copy the command below into the peer's terminal. The token is shown only once — close this dialog and it's gone.</p>
-  <pre id="token-command"></pre>
-  <button id="token-copy" type="button">Copy command</button>
-  <span id="copy-status" class="sr-only" aria-live="polite" aria-atomic="true"></span>
-  <p class="hint">Raw token: <code id="token-raw"></code></p>
-  <form method="dialog"><button type="submit" class="ghost">Done</button></form>
+  <div class="issued">
+    <div class="issued-hd">
+      <span class="sku sku--accent">INVITE ISSUED</span>
+      <span class="stamp" id="token-modal-stamp"></span>
+    </div>
+    <div class="issued-bd">
+      <h2 id="token-modal-title">Invite ready</h2>
+      <p>Copy the command into the peer's terminal. The token is shown <b>once</b> — close this and it's gone.</p>
+      <pre id="token-command" class="cmd"></pre>
+      <div class="hub-actions" style="margin-top:0">
+        <button id="token-copy" type="button" class="btn btn--primary">Copy command</button>
+        <span class="sr-only" id="copy-status" aria-live="polite" aria-atomic="true"></span>
+        <span class="sku sku--ghost">⌘C · CLIPBOARD</span>
+      </div>
+      <hr class="tear">
+      <div class="stub">
+        <span class="lbl">Raw token</span>
+        <code id="token-raw"></code>
+      </div>
+    </div>
+    <div class="issued-ft">
+      <form method="dialog">
+        <button type="submit" class="btn btn--ghost">Done</button>
+      </form>
+    </div>
+  </div>
 </dialog>
 
 <script type="module" src="/admin/app.js"></script>

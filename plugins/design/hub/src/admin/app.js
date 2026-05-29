@@ -108,7 +108,10 @@ async function loadIdentityForBootstrapView() {
     state.hubIdentity = await res.json();
     const slot = $('bootstrap-identity');
     if (slot) {
-      slot.textContent = `Claiming ${state.hubIdentity.publicUrl} (fingerprint ${state.hubIdentity.hostFingerprint})`;
+      slot.innerHTML = `\
+<div class="fp-row"><span class="fp-k">Claiming</span><span class="fp-v">${escapeHtml(state.hubIdentity.publicUrl)}</span></div>\
+<div class="fp-row"><span class="fp-k">Fingerprint</span><span class="fp-v fp-hash">${escapeHtml(state.hubIdentity.hostFingerprint)}</span></div>\
+${state.hubIdentity.version ? `<div class="fp-row"><span class="fp-k">Version</span><span class="fp-v">${escapeHtml(state.hubIdentity.version)}</span></div>` : ''}`;
     }
   } catch {
     /* identity is informational — UI still functional without it */
@@ -150,8 +153,8 @@ function renderTokens(t) {
     .map(
       (r) =>
         `<tr><td>${escapeHtml(r.label)}${r.dev ? ' <code>dev</code>' : ''}</td>` +
-        `<td>${formatTime(r.createdAt)}</td>` +
-        `<td>${formatTime(r.lastUsedAt)}</td>` +
+        `<td>${escapeHtml(formatTime(r.createdAt))}</td>` +
+        `<td>${escapeHtml(formatTime(r.lastUsedAt))}</td>` +
         `<td><button class="ghost" data-rotate="${escapeHtml(r.label)}">Rotate</button></td></tr>`
     )
     .join('');
@@ -171,7 +174,7 @@ function renderPeers(p) {
       (peer) =>
         `<tr><td><code>${escapeHtml(peer.documentName)}</code></td>` +
         `<td>${escapeHtml(peer.user || 'anon')}</td>` +
-        `<td>${formatTime(peer.connectedAt)}</td></tr>`
+        `<td>${escapeHtml(formatTime(peer.connectedAt))}</td></tr>`
     )
     .join('');
 }
@@ -199,6 +202,8 @@ async function rotate(label) {
 function showInvite({ token, command }) {
   $('token-command').textContent = command;
   $('token-raw').textContent = token;
+  const stampEl = $('token-modal-stamp');
+  if (stampEl) stampEl.textContent = `${new Date().toISOString().replace('T', ' ').slice(0, 16)}Z`;
   const modal = $('token-modal');
   const opener = document.activeElement;
   modal.addEventListener(
