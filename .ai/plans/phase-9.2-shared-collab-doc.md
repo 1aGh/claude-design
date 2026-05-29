@@ -227,14 +227,16 @@ Ship behind a **feature flag (`MAUDE_SHARED_DOC`, default OFF)** so the proven t
 
 ### Phase E — Migration (escape the duplication trap)
 
-#### Task 9: CREATE `sync/migrate-seed.ts` — one-time authoritative reseed
+#### Task 9: CREATE `sync/migrate-seed.ts` — one-time authoritative reseed — ✅ completed 2026-05-29
 - **Do**: on first cutover per canvas, pick ONE authoritative source (hub binary if present, else the local files), **clear+rebuild** the shared doc's types item-by-item inside a `transact(fn, MIGRATION)` (NOT `applyUpdate` of two docs). Persist the resulting binary on the hub as canonical; fan out to peers from that single history.
 - **Gotcha**: this is THE step that avoids comment/annotation duplication (dmonad-confirmed). Snapshot `_history/<slug>/` + files first (rollback).
 - **Validate**: reseed twice → identical state (idempotent); no duplicated comments.
+- **Done**: `sync/migrate-seed.ts` `migrateSeed()` runs once per canvas in the `onceSynced` handler (sharedDoc), BEFORE `projection.reconcile()`. Decision: doc non-empty after provider sync (hub HAD state) → **hub-wins**, leave the doc + snapshot divergent local files to `_history/<slug>/pre-shared-doc-migration/` (rollback); doc empty (hub was empty) → **adopt**, clear+rebuild from local files via the `apply*` codecs inside `transact(fn, ORIGINS.MIGRATION)`. NEVER `applyUpdate` two docs. Idempotent (re-run with hub state → no-op; re-adopt → byte-identical). **The other half of Risk 1**: the room's local file-seed is now DISABLED for pinned slugs under sharedDoc — `createPersistence` gained a `shouldSeed?` predicate, `createCollab` passes `(slug) => !(ctx.sharedDoc && registry.isPinned(slug))` (late-bound ref breaks the persistence↔registry cycle), `registry.isPinned()` added. So after the migrate-seed runs, the file-seed can't re-introduce duplicate items. 7 tests in `test/shared-doc-migrate.test.ts` (adopt, empty, idempotent-no-dup, hub-wins-no-dup, snapshot, seed-disable-for-pinned, docIsEmpty).
 
-#### Task 10: ADD shadow-compare + per-canvas cutover
+#### Task 10: ADD shadow-compare + per-canvas cutover — ✅ primitive + law done; live runtime shadow-mode is a cutover activity (2026-05-29)
 - **Do**: with the flag in a "shadow" mode, run both paths, materialize both to canonical bytes, diff, log divergences (no user impact). Flip reads per-canvas once shadow is clean. Keep the two-doc path dead-but-present one full cycle, then delete in a follow-up.
 - **Validate**: shadow run over the scratch two-peer setup → zero divergence before cutover.
+- **Done (primitive + law) / scoped:** `sync/materialize.ts` provides `materializeCanonical(doc)` — the deterministic byte-stable view of the 5 synced types that is the comparison primitive both shadow-compare and the round-trip convergence laws build on (two converged docs → byte-equal). The **shadow-compare law** is asserted deterministically in the Phase F convergence suite (`materialize∘import == id`, `import∘materialize == noop`, commutative/idempotent merge → identical materialization). **Per-canvas cutover** is the flag itself — `MAUDE_SHARED_DOC` is per-project/process and OFF by default; the two-doc path stays "dead-but-present" (the entire flag-OFF branch is untouched). The **live runtime shadow-mode** (running BOTH paths simultaneously against a real two-peer hub and logging divergences) is inherently a cutover-time activity on the live `/private/tmp/maude-scratch` setup — it's layered on the same `materializeCanonical` primitive and is part of the user's manual validation (Validation step 5/6), not unit-testable here.
 
 ### Phase F — Verification
 

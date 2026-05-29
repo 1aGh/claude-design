@@ -45,8 +45,21 @@ export function createCollab(ctx: Context, api: Api): Collab {
     return null;
   }
 
-  const persistence = createPersistence({ ctx, api, fileForSlug });
+  // Phase 9.2 (DDR-064) — under sharedDoc, disable the room's local file-seed
+  // for pinned (provider-attached) slugs so it can't push duplicate Y.Array
+  // items against the hub's canonical items (Risk 1). The registry is created
+  // from the persistence callbacks, so break the cycle with a late-bound ref
+  // (the predicate is only consulted at room-seed time, after `registry` is
+  // assigned). Flag-OFF → predicate returns true → seed unchanged.
+  let registryRef: Registry | null = null;
+  const persistence = createPersistence({
+    ctx,
+    api,
+    fileForSlug,
+    shouldSeed: (slug) => !(ctx.sharedDoc && registryRef?.isPinned(slug)),
+  });
   const registry = createRegistry(persistence);
+  registryRef = registry;
 
   // File = truth (the file-sync collaboration model + DDR-051): when a synced
   // file changes on disk from OUTSIDE the API path — the sync agent writing a

@@ -79,6 +79,11 @@ export interface Registry {
   pin(slug: string): void;
   /** Release a pin (provider detached on runtime stop). Idempotent. */
   unpin(slug: string): void;
+  /** True when a slug is pinned (a shared-doc provider is attached). Used to
+   *  disable the room's local file-seed for that slug under sharedDoc — the
+   *  migrate-seed + provider own initial population, so a duplicate file-seed
+   *  can't re-introduce items (DDR-064 Risk 1). */
+  isPinned(slug: string): boolean;
   /** Flush every dirty room synchronously. DDR-051 branch-switch path. */
   flushAll(): Promise<void>;
   /** Tear down everything (e.g. on server shutdown). */
@@ -156,6 +161,10 @@ export function createRegistry(callbacks: RoomCallbacks): Registry {
     pinned.delete(slug);
   }
 
+  function isPinned(slug: string): boolean {
+    return pinned.has(slug);
+  }
+
   function syncRoomFromComments(slug: string, comments: readonly unknown[]): void {
     const room = rooms.get(slug);
     if (!room) return;
@@ -221,6 +230,7 @@ export function createRegistry(callbacks: RoomCallbacks): Registry {
     attachHubAwareness,
     pin,
     unpin,
+    isPinned,
     flushAll,
     destroyAll,
     drop,

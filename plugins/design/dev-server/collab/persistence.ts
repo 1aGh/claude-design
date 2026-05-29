@@ -36,6 +36,15 @@ export interface PersistenceDeps {
   fileForSlug: (slug: string) => Promise<string | null>;
   /** Best-effort cache primer — see fileForSlug above. */
   noteFile?: (file: string) => void;
+  /**
+   * Phase 9.2 (DDR-064) — when this returns false for a slug, `seed` is a no-op
+   * for it. The shared-doc path passes a predicate that returns false for
+   * pinned (provider-attached) slugs, so the local file-seed can't push fresh
+   * Y.Array items that would DUPLICATE the hub's canonical items on merge
+   * (Risk 1). The migrate-seed + provider own initial population for those
+   * slugs. Absent → always seed (flag-OFF behavior, unchanged).
+   */
+  shouldSeed?: (slug: string) => boolean;
 }
 
 /**
@@ -66,6 +75,13 @@ export function createPersistence(deps: PersistenceDeps): RoomCallbacks {
   }
 
   async function seed(slug: string, doc: Y.Doc): Promise<void> {
+    // Phase 9.2 (DDR-064) — under sharedDoc the migrate-seed + hub provider own
+    // initial population for a pinned slug; a local file-seed here would push
+    // fresh Y.Array items that DUPLICATE the hub's canonical items on merge
+    // (Risk 1). Skip seeding when the predicate says so. Flag-OFF / unpinned →
+    // always seeds (predicate absent or returns true).
+    if (deps.shouldSeed && !deps.shouldSeed(slug)) return;
+
     // Step 1 — try the binary cache.
     const binary = await readBinary(slug);
     if (binary && binary.byteLength > 0) {

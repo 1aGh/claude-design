@@ -35,6 +35,7 @@ import {
 import { type EchoGuard, createEchoGuard } from './echo-guard.ts';
 import { type FsReader, createFsReader } from './fs-mirror.ts';
 import { getHubToken } from './hubs-config.ts';
+import { migrateSeed } from './migrate-seed.ts';
 import { type DocProjection, createDocProjection } from './projection.ts';
 import { type SyncStatusStore, createSyncStatusStore } from './status.ts';
 import { writeUntrustedMarkers } from './untrusted.ts';
@@ -429,9 +430,23 @@ export function createSyncRuntime(
         // Cold-start reconcile fires once the provider has hub state.
         void provider.onceSynced().then(async () => {
           if (projection) {
-            // sharedDoc: materialize the converged doc to disk (safe — never
-            // clobbers non-empty local with an empty doc value). The
-            // authoritative push-local-up seed + adopt is Phase E.
+            // Phase E (DDR-064 Task 9) — one-time authoritative seed BEFORE
+            // materializing: escapes the duplication trap by picking ONE source
+            // (hub-wins if the synced doc holds state; adopt local files only
+            // when the hub was empty), inside a MIGRATION transaction. The room
+            // file-seed is disabled for this pinned slug (createCollab
+            // shouldSeed), so no duplicate items can be introduced afterward.
+            const result = migrateSeed({
+              slug: canvas.slug,
+              doc: provider.document,
+              paths: canvasPaths,
+              historyDir: path.join(ctx.paths.historyDir, canvas.slug),
+            });
+            if (result === 'local-adopt') {
+              console.log(`[sync/${canvas.slug}] shared-doc: adopted local state (hub was empty).`);
+            }
+            // Then materialize the converged doc to disk (safe — never clobbers
+            // non-empty local with an empty doc value).
             projection.reconcile();
             return;
           }
