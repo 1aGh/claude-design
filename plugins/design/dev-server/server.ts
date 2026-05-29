@@ -36,6 +36,14 @@ await bootSelfHeal();
 
 const ctx = createContext();
 
+// Phase 9.2 (DDR-064) — `MAUDE_SHARED_DOC` feature flag. OPT-IN (default OFF),
+// the inverse of MAUDE_CANVAS_ORIGIN_SPLIT's opt-out parsing: only an explicit
+// truthy value enables the single-shared-doc path. OFF = the proven two-doc +
+// disk-reconcile path = byte-for-byte current behavior. The flag is threaded
+// onto ctx here (before createCollab / createSyncRuntime read it) so every
+// downstream consumer sees one source of truth.
+ctx.sharedDoc = /^(1|true|on|yes)$/i.test(process.env.MAUDE_SHARED_DOC ?? '');
+
 // Forward-declared so the api.commentsAdd/patch/delete/addReply callback can
 // reach into the collab registry (Phase 8 Task 3 bridge). collab is initialized
 // synchronously below; the callback only fires at runtime, by which point the

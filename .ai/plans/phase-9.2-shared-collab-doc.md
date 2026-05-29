@@ -170,15 +170,17 @@ Ship behind a **feature flag (`MAUDE_SHARED_DOC`, default OFF)** so the proven t
 
 ### Phase A — Foundation (flag + single-doc ownership)
 
-#### Task 1: ADD feature flag `MAUDE_SHARED_DOC` (default OFF)
+#### Task 1: ADD feature flag `MAUDE_SHARED_DOC` (default OFF) — ✅ completed 2026-05-29
 - **Do**: read in `server.ts` (mirror `MAUDE_CANVAS_ORIGIN_SPLIT` parsing); thread a `sharedDoc: boolean` into `Context`. Default OFF = current two-doc path = zero regression.
 - **Validate**: `bun test` (no behavior change when off).
+- **Done**: `context.ts` gains optional `sharedDoc?: boolean`; `server.ts` parses `MAUDE_SHARED_DOC` with the OPT-IN regex `/^(1|true|on|yes)$/i` (inverse of CANVAS_ORIGIN_SPLIT's opt-out) and sets `ctx.sharedDoc` right after `createContext()`, before `createCollab`/`createSyncRuntime` read it. Flag is threaded but dormant — nothing reads it until Phase B, so flag-OFF is byte-for-byte current behavior (720 baseline tests unchanged).
 
-#### Task 2: REFACTOR registry to own ONE `Y.Doc` per slug
+#### Task 2: REFACTOR registry to own ONE `Y.Doc` per slug — ✅ completed 2026-05-29
 - **Do**: in `collab/registry.ts`/`room.ts`, expose `getDoc(slug)` returning a single cached `Y.Doc` (the room's doc). When the flag is OFF, behavior is unchanged. Pin a single `yjs` import (guard the "imported twice" trap — verify the bundled client + server share one instance).
 - **Pattern**: `y-websocket-server`'s `getYDoc` cache.
 - **Gotcha**: the room is created lazily on browser connect; the doc must exist independent of a live browser when linked (so the hub provider can attach at serve start).
 - **Validate**: `bun test test/collab-*`.
+- **Done**: `registry.getDoc(slug): Y.Doc` returns `get(slug).doc` (reuses get-or-create → doc/awareness/persistence/bridge set up once; y-websocket-server `getYDoc` cache pattern). Created independent of a browser conn (verified: `peek` null → `getDoc` → room exists with `size()===0`). Risk 2: single `yjs@13.6.30` in node_modules (no nested copy); new `test/shared-doc-foundation.test.ts` asserts `getDoc(x) instanceof Y.Doc` (test's own yjs import) + caching + identity with `room.doc` (5 tests). NOTE for Phase B: a `getDoc`-created room is NOT auto-dropped by `drop`'s `size()===0` check — Phase B must teach the lifecycle that an attached provider keeps it alive. Nothing calls `getDoc` yet (flag-OFF), so no room leaks in Phase A.
 
 ### Phase B — Convergence (the core: one doc, both providers)
 

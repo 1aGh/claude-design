@@ -25,6 +25,21 @@ export interface Registry {
   /** Existence check — returns the live room if any, else null. NEVER creates. */
   peek(slug: string): Room | null;
   /**
+   * Phase 9.2 (DDR-064) — the single cached `Y.Doc` for a slug, creating the
+   * owning Room if necessary. This is the seam the shared-doc path attaches its
+   * hub-facing `HocuspocusProvider` to (Phase B): the doc must exist
+   * independent of a live browser connection so the provider can attach at
+   * serve start. Repeated calls return the SAME instance (the room's doc) —
+   * the y-websocket-server `getYDoc(name)` single-cache pattern.
+   *
+   * Phase A: defined but unused (the flag-OFF two-doc path never calls it), so
+   * adding it is behavior-neutral. NOTE: a room created via `getDoc` (no
+   * browser conn) is NOT auto-dropped by the `size()===0` check in `drop` until
+   * Phase B teaches the lifecycle that an attached provider keeps it alive;
+   * for Phase A nothing calls `getDoc`, so no room leaks.
+   */
+  getDoc(slug: string): import('yjs').Doc;
+  /**
    * Phase 8 Task 3 bridge — inspector-channel writes (REST `/_api/comments*`
    * or the legacy WS comments-add path) call this so the live Y.Array sees
    * the change and broadcasts it to collab peers. No-op when no room is
@@ -110,6 +125,13 @@ export function createRegistry(callbacks: RoomCallbacks): Registry {
     return rooms.get(slug) ?? null;
   }
 
+  function getDoc(slug: string): import('yjs').Doc {
+    // Reuse get-or-create so the doc, awareness, persistence schedule, and
+    // (idempotent) awareness-bridge wiring are all set up exactly once. The
+    // room's doc IS the single shared doc for this slug.
+    return get(slug).doc;
+  }
+
   function syncRoomFromComments(slug: string, comments: readonly unknown[]): void {
     const room = rooms.get(slug);
     if (!room) return;
@@ -164,6 +186,7 @@ export function createRegistry(callbacks: RoomCallbacks): Registry {
   return {
     get,
     peek,
+    getDoc,
     syncRoomFromComments,
     syncRoomFromAnnotations,
     attachHubAwareness,

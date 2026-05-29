@@ -131,6 +131,16 @@ export interface Context {
    * origin's `frame-ancestors`. Undefined in tests / before boot.
    */
   mainOrigin?: string;
+  /**
+   * Phase 9.2 (DDR-064) — `MAUDE_SHARED_DOC` feature flag. When true, the
+   * collab room's Y.Doc becomes the SINGLE shared doc per canvas: the
+   * hub-facing HocuspocusProvider attaches to it directly (no second doc, no
+   * disk-mediated reconcile). Default `false`/undefined = the proven two-doc
+   * path = zero regression. Set by server.ts from the env; tests set it
+   * directly on the Context they construct. Threaded through Phase A; the flag
+   * gates behavior starting in Phase B.
+   */
+  sharedDoc?: boolean;
 }
 
 function resolveRepoRoot(): string {
