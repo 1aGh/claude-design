@@ -48,7 +48,7 @@ const STYLES = `
 .dc-cv-eq-pill {
   position: absolute;
   transform: translate(-50%, calc(-100% - 8px));
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-family: var(--maude-chrome-font-mono, ui-monospace, SFMono-Regular, monospace);
   font-size: 10px;
   padding: 2px 5px;
   background: #FF24BD;

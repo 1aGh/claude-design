@@ -462,15 +462,15 @@ const ANNOT_CSS = `
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--u-bg-0, var(--bg-0, rgba(255,255,255,0.98)));
-  border: 1px solid var(--u-fg-0, #1c1917);
+  background: var(--maude-chrome-bg-0, rgba(255,255,255,0.98));
+  border: 1px solid var(--maude-chrome-fg-0, #1c1917);
   border-radius: 8px;
   padding: 6px 10px;
-  font-family: var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-family: var(--maude-chrome-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 11px;
-  color: var(--u-fg-0, rgba(40,30,20,0.85));
+  color: var(--maude-chrome-fg-0, rgba(40,30,20,0.85));
   z-index: 6;
-  box-shadow: 0 6px 24px color-mix(in oklab, var(--u-fg-0, #1c1917) 10%, transparent);
+  box-shadow: 0 6px 24px var(--maude-chrome-shadow, color-mix(in oklab, #1c1917 10%, transparent));
   user-select: none;
 }
 .dc-annot-chrome .dc-annot-swatches { display: flex; gap: 4px; }
@@ -1792,7 +1792,7 @@ function AnnotGroupBbox({
           width={handle}
           height={handle}
           fill="var(--maude-hud-accent, #d63b1f)"
-          stroke="var(--bg-0, #ffffff)"
+          stroke="var(--maude-chrome-bg-0, #ffffff)"
           strokeWidth={1}
           vectorEffect="non-scaling-stroke"
           rx={1}

@@ -125,10 +125,13 @@ const ENGINE_CSS = `
      never visually melts into the selection halo during a drag-snap gesture.
      OKLCH default approximates FigJam magenta in the project's color space. */
   --guide-magenta: oklch(62% 0.28 350);
-  background-color: var(--bg-1, #f4f1ea);
+  /* Canvas-shell chrome — the workspace plane + dotted grid follow the Maude
+     chrome theme (--maude-chrome-*), NOT the DS palette. See canvas-shell.tsx
+     HUD_TOKENS_CSS. Artboards (.dc-artboard) keep the DS theme. */
+  background-color: var(--maude-chrome-bg-1, #f4f1ea);
   background-image:
-    linear-gradient(var(--border-subtle, rgba(0,0,0,0.08)) 1px, transparent 1px),
-    linear-gradient(90deg, var(--border-subtle, rgba(0,0,0,0.08)) 1px, transparent 1px);
+    linear-gradient(var(--maude-chrome-border, rgba(0,0,0,0.08)) 1px, transparent 1px),
+    linear-gradient(90deg, var(--maude-chrome-border, rgba(0,0,0,0.08)) 1px, transparent 1px);
   background-size: 24px 24px;
 }
 /* DDR-046 — Snap guides. Sibling kind = confident magenta + glow + distance
@@ -146,13 +149,13 @@ const ENGINE_CSS = `
   box-shadow: 0 0 4px color-mix(in oklab, var(--guide-magenta, oklch(62% 0.28 350)) 35%, transparent);
 }
 .dc-snap-guide--grid {
-  background: color-mix(in oklab, var(--fg-3, var(--fg-1, #4a3f30)) 40%, transparent);
+  background: color-mix(in oklab, var(--maude-chrome-fg-1, #4a3f30) 40%, transparent);
 }
 .dc-snap-pill {
   position: fixed;
   pointer-events: none;
   z-index: 7;
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-family: var(--maude-chrome-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 11px;
   font-weight: 600;
   line-height: 1;
@@ -1718,7 +1721,8 @@ export function DCPostIt({ children }: { children: ReactNode }) {
 // favor of a soft ambient. The hard offset stays on app-shell chrome only
 // (menubar, header, tab strip) — that's the project's intentional brutalist
 // identity. Floating layer = soft. App frame = hard.
-const FLOATING_SHADOW = '0 6px 24px color-mix(in oklab, var(--fg-0, #1c1917) 10%, transparent)';
+const FLOATING_SHADOW =
+  '0 6px 24px var(--maude-chrome-shadow, color-mix(in oklab, #1c1917 10%, transparent))';
 const FLOATING_RADIUS = '8px';
 
 const OVERLAY_CSS = `
@@ -1728,12 +1732,12 @@ const OVERLAY_CSS = `
   bottom: 16px;
   width: 196px;
   height: 132px;
-  background: var(--bg-0, #ffffff);
-  border: 1px solid var(--fg-0, #1c1917);
+  background: var(--maude-chrome-bg-0, #ffffff);
+  border: 1px solid var(--maude-chrome-fg-0, #1c1917);
   border-radius: ${FLOATING_RADIUS};
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-family: var(--maude-chrome-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 10px;
-  color: var(--fg-1, rgba(40,30,20,0.7));
+  color: var(--maude-chrome-fg-1, rgba(40,30,20,0.7));
   z-index: 6;
   user-select: none;
   box-shadow: ${FLOATING_SHADOW};
@@ -1741,11 +1745,11 @@ const OVERLAY_CSS = `
 }
 .dc-mm-hd {
   padding: 5px 8px 4px;
-  border-bottom: 1px solid rgba(0,0,0,0.08);
+  border-bottom: 1px solid var(--maude-chrome-border, rgba(0,0,0,0.08));
   letter-spacing: 0.05em;
   text-transform: uppercase;
   font-size: 9px;
-  background: var(--bg-1, #f4f1ea);
+  background: var(--maude-chrome-bg-1, #f4f1ea);
 }
 .dc-mm-body {
   position: relative;
@@ -1753,12 +1757,12 @@ const OVERLAY_CSS = `
   height: calc(100% - 22px);
   overflow: hidden;
   cursor: pointer;
-  background: var(--bg-1, #f4f1ea);
+  background: var(--maude-chrome-bg-1, #f4f1ea);
 }
 .dc-mm-rect {
   position: absolute;
-  background: color-mix(in oklab, var(--fg-0, #1c1917) 14%, transparent);
-  border: 1px solid color-mix(in oklab, var(--fg-0, #1c1917) 28%, transparent);
+  background: color-mix(in oklab, var(--maude-chrome-fg-0, #1c1917) 14%, transparent);
+  border: 1px solid color-mix(in oklab, var(--maude-chrome-fg-0, #1c1917) 28%, transparent);
   border-radius: 1px;
 }
 /* Filled viewport indicator — FigJam / Figma both ship a tinted fill, not
@@ -1777,13 +1781,13 @@ const OVERLAY_CSS = `
   transform: translateX(-50%);
   display: flex;
   align-items: stretch;
-  background: var(--bg-0, #ffffff);
-  border: 1px solid var(--fg-0, #1c1917);
+  background: var(--maude-chrome-bg-0, #ffffff);
+  border: 1px solid var(--maude-chrome-fg-0, #1c1917);
   border-radius: ${FLOATING_RADIUS};
   overflow: hidden;
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-family: var(--maude-chrome-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 11px;
-  color: var(--fg-1, rgba(40,30,20,0.85));
+  color: var(--maude-chrome-fg-1, rgba(40,30,20,0.85));
   z-index: 6;
   box-shadow: ${FLOATING_SHADOW};
 }
@@ -1791,7 +1795,7 @@ const OVERLAY_CSS = `
   appearance: none;
   background: transparent;
   border: 0;
-  border-right: 1px solid rgba(0,0,0,0.08);
+  border-right: 1px solid var(--maude-chrome-border, rgba(0,0,0,0.08));
   padding: 7px 12px;
   font: inherit;
   color: inherit;
@@ -1801,7 +1805,7 @@ const OVERLAY_CSS = `
   transition: background 80ms linear;
 }
 .dc-zoom-tb button:last-child { border-right: 0; }
-.dc-zoom-tb button:hover { background: color-mix(in oklab, var(--fg-0, #1c1917) 5%, transparent); }
+.dc-zoom-tb button:hover { background: color-mix(in oklab, var(--maude-chrome-fg-0, #1c1917) 5%, transparent); }
 .dc-zoom-tb button:focus-visible { outline: 2px solid var(--maude-hud-accent, #d63b1f); outline-offset: -2px; }
 .dc-zoom-tb-pct { font-variant-numeric: tabular-nums; min-width: 52px; }
 `.trim();

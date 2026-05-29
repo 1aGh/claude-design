@@ -113,35 +113,35 @@ const ExportDialogContext = createContext<ExportDialogValue | null>(null);
 
 const DIALOG_CSS = `
 .dc-export-dialog {
-  border: 1px solid var(--u-fg-0, #1c1917);
+  border: 1px solid var(--maude-chrome-fg-0, #1c1917);
   padding: 0;
   border-radius: 8px;
-  background: var(--u-bg-0, var(--bg-0, #fff));
-  box-shadow: 0 6px 24px color-mix(in oklab, var(--u-fg-0, #1c1917) 10%, transparent);
-  font-family: var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  color: var(--u-fg-0, var(--fg-0, #1a1a1a));
+  background: var(--maude-chrome-bg-0, #fff);
+  box-shadow: 0 6px 24px var(--maude-chrome-shadow, color-mix(in oklab, #1c1917 10%, transparent));
+  font-family: var(--maude-chrome-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  color: var(--maude-chrome-fg-0, #1a1a1a);
   width: min(640px, 100vw - 48px);
   max-height: min(560px, 100vh - 48px);
   overflow: hidden;
 }
 .dc-export-dialog::backdrop { background: rgba(20, 20, 30, 0.32); }
-.dc-export-dialog header { padding: 16px 20px; border-bottom: 1px solid var(--u-border-subtle, rgba(0,0,0,0.08)); display: flex; justify-content: space-between; align-items: center; }
+.dc-export-dialog header { padding: 16px 20px; border-bottom: 1px solid var(--maude-chrome-border, rgba(0,0,0,0.08)); display: flex; justify-content: space-between; align-items: center; }
 .dc-export-dialog header h2 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.005em; }
-.dc-export-dialog header .dc-ed-close { background: transparent; border: 0; cursor: pointer; padding: 4px 8px; color: var(--fg-1, rgba(40,30,20,0.6)); font: inherit; font-size: 12px; }
+.dc-export-dialog header .dc-ed-close { background: transparent; border: 0; cursor: pointer; padding: 4px 8px; color: var(--maude-chrome-fg-1, rgba(40,30,20,0.6)); font: inherit; font-size: 12px; }
 .dc-export-dialog .dc-ed-body { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px 20px; }
-.dc-export-dialog label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-2, rgba(40,30,20,0.5)); margin-bottom: 6px; }
-.dc-export-dialog select { width: 100%; padding: 8px 10px; border-radius: 0; border: 1px solid var(--u-fg-0, rgba(0,0,0,0.12)); background: var(--u-bg-1, var(--bg-0, #fafafa)); font: inherit; font-size: 13px; color: inherit; }
-.dc-export-dialog .dc-ed-desc { font-size: 12px; color: var(--fg-1, rgba(40,30,20,0.65)); margin-top: 6px; line-height: 1.4; }
-.dc-export-dialog .dc-ed-recent { padding: 12px 20px; border-top: 1px solid var(--u-border-subtle, rgba(0,0,0,0.08)); background: var(--bg-2, rgba(0,0,0,0.02)); }
-.dc-export-dialog .dc-ed-recent h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-2, rgba(40,30,20,0.5)); margin: 0 0 8px; }
+.dc-export-dialog label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--maude-chrome-fg-1, rgba(40,30,20,0.5)); margin-bottom: 6px; }
+.dc-export-dialog select { width: 100%; padding: 8px 10px; border-radius: 0; border: 1px solid var(--maude-chrome-fg-0, rgba(0,0,0,0.12)); background: var(--maude-chrome-bg-1, #fafafa); font: inherit; font-size: 13px; color: inherit; }
+.dc-export-dialog .dc-ed-desc { font-size: 12px; color: var(--maude-chrome-fg-1, rgba(40,30,20,0.65)); margin-top: 6px; line-height: 1.4; }
+.dc-export-dialog .dc-ed-recent { padding: 12px 20px; border-top: 1px solid var(--maude-chrome-border, rgba(0,0,0,0.08)); background: var(--maude-chrome-bg-2, rgba(0,0,0,0.02)); }
+.dc-export-dialog .dc-ed-recent h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--maude-chrome-fg-1, rgba(40,30,20,0.5)); margin: 0 0 8px; }
 .dc-export-dialog .dc-ed-recent ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; max-height: 120px; overflow-y: auto; }
 .dc-export-dialog .dc-ed-recent button { display: flex; justify-content: space-between; gap: 12px; padding: 5px 12px; background: transparent; border: 1px solid transparent; border-radius: 0; cursor: pointer; font: inherit; font-size: 12px; color: inherit; width: 100%; text-align: left; }
-.dc-export-dialog .dc-ed-recent button:hover { background: rgba(0,0,0,0.04); border-color: rgba(0,0,0,0.06); }
-.dc-export-dialog footer { padding: 12px 20px; border-top: 1px solid var(--u-border-subtle, rgba(0,0,0,0.08)); display: flex; justify-content: flex-end; gap: 8px; }
-.dc-export-dialog footer button { padding: 8px 14px; border-radius: 0; border: 1px solid var(--u-fg-0, rgba(0,0,0,0.12)); background: var(--u-bg-1, var(--bg-0, #fafafa)); font: inherit; font-size: 12px; cursor: pointer; color: inherit; }
+.dc-export-dialog .dc-ed-recent button:hover { background: color-mix(in oklab, var(--maude-chrome-fg-0, #1c1917) 5%, transparent); border-color: color-mix(in oklab, var(--maude-chrome-fg-0, #1c1917) 8%, transparent); }
+.dc-export-dialog footer { padding: 12px 20px; border-top: 1px solid var(--maude-chrome-border, rgba(0,0,0,0.08)); display: flex; justify-content: flex-end; gap: 8px; }
+.dc-export-dialog footer button { padding: 8px 14px; border-radius: 0; border: 1px solid var(--maude-chrome-fg-0, rgba(0,0,0,0.12)); background: var(--maude-chrome-bg-1, #fafafa); font: inherit; font-size: 12px; cursor: pointer; color: inherit; }
 .dc-export-dialog footer button.dc-ed-primary { background: var(--maude-hud-accent, #1a1a1a); color: var(--maude-hud-accent-fg, #fff); border-color: transparent; }
 .dc-export-dialog footer button:disabled { opacity: 0.4; cursor: not-allowed; }
-.dc-export-dialog .dc-ed-status { padding: 8px 20px; font-size: 12px; color: var(--fg-1, rgba(40,30,20,0.65)); border-top: 1px solid var(--u-border-subtle, rgba(0,0,0,0.08)); }
+.dc-export-dialog .dc-ed-status { padding: 8px 20px; font-size: 12px; color: var(--maude-chrome-fg-1, rgba(40,30,20,0.65)); border-top: 1px solid var(--maude-chrome-border, rgba(0,0,0,0.08)); }
 .dc-export-dialog .dc-ed-status.is-error { color: var(--status-error, #c0392b); }
 `;
 
@@ -371,7 +371,9 @@ const DialogShell = (() => {
                     <span>
                       {FORMAT_META[h.format].label} · {SCOPE_META[h.scope].label}
                     </span>
-                    <span style={{ color: 'var(--fg-2, rgba(40,30,20,0.5))' }}>{h.filename}</span>
+                    <span style={{ color: 'var(--maude-chrome-fg-1, rgba(40,30,20,0.5))' }}>
+                      {h.filename}
+                    </span>
                   </button>
                 </li>
               ))}

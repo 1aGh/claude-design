@@ -23,11 +23,11 @@ const HUD_CSS = `
   z-index: 7;
   pointer-events: none;
   padding: 6px 10px;
-  background: var(--bg-2, rgba(20, 20, 20, 0.85));
-  color: var(--fg-1, rgba(255, 255, 255, 0.85));
-  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  background: var(--maude-chrome-bg-2, rgba(20, 20, 20, 0.85));
+  color: var(--maude-chrome-fg-1, rgba(255, 255, 255, 0.85));
+  border: 1px solid var(--maude-chrome-border, rgba(255, 255, 255, 0.08));
   border-radius: 6px;
-  font: 11px var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font: 11px var(--maude-chrome-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   letter-spacing: 0.02em;
   user-select: none;
   opacity: 0;

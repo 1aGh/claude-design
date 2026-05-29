@@ -41,8 +41,8 @@ const BANNER_CSS = `
   align-items: center;
   gap: 10px;
   background: var(--maude-hud-accent-tint, oklch(92% 0.040 55));
-  color: var(--fg-0, #111);
-  border: 1px solid var(--border-default, rgba(0,0,0,0.16));
+  color: var(--maude-chrome-fg-0, #111);
+  border: 1px solid var(--maude-chrome-border, rgba(0,0,0,0.16));
   border-radius: var(--radius-md, 4px);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   font-family: var(--font-sans, system-ui, -apple-system, sans-serif);

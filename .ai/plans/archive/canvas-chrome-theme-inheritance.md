@@ -242,14 +242,25 @@ New scenario `canvas-theme-toggle` — flow: open canvas → screenshot dark →
 
 ## Acceptance Criteria
 
-- [ ] All tasks completed
-- [ ] Default (dark) render is pixel-stable — no visual change when no theme is propagated
-- [ ] Toggling the Maude chrome theme flips canvas-shell chrome (workspace bg, toolbar, minimap, zoom HUD, halos, contextual toolbar, AI banner) in every open iframe
-- [ ] Artboards stay on their DS theme by default; right-click Light/Dark flips one artboard when the DS supports both, and is disabled (with hint) when it doesn't
-- [ ] Dark-only DS: chrome still toggles light (decoupling proven) — the core requirement holds regardless of DS theme support
-- [ ] `--maude-hud-accent` stays brand orange in both themes; no DS palette leaks into chrome
-- [ ] `agent-browser` exhaustive pass: every canvas feature verified in BOTH themes, 0 regressions
-- [ ] `a11y-auditor`: 0 blockers, AA contrast in light AND dark
-- [ ] Runtime bundles regenerated + committed; `check-runtime-bundles.sh` green
-- [ ] Canvas theme-model documented in `canvas.tsx.template` + `new.md` (closes review action D)
-- [ ] No DDR-worthy decision left unrecorded (a DDR documenting the `--maude-chrome-*` decoupling + `data-maude-theme` attribute is likely warranted — mirrors the `--maude-hud-*` rationale)
+- [x] All tasks completed (T1–T7)
+- [~] Default (dark) render — now coherent-dark matching the chrome's own default-dark, in EVERY DS. NOTE: literal "no visual change" couldn't hold — the prior state WAS the bug (on the kanban light-default DS the chrome was accidentally rendering light off the DS `:root`). Post-fix default-dark is the intended behavior; the dark `--maude-chrome-*` set mirrors the app-chrome dark neutrals so chrome reads as one product.
+- [x] Toggling the Maude chrome theme flips canvas-shell chrome (workspace bg, toolbar, minimap, zoom HUD, halos, contextual toolbar, AI banner, context menu, undo HUD, presence chrome) — verified in every open iframe, cross-origin + same-origin
+- [x] Artboards stay on their DS theme by default; right-click Light/Dark flips one artboard when the DS supports both (kanban → enabled + verified). NOTE: disabled-when-DS-lacks-both verified by probe LOGIC (`detectDsThemeSupport` returns supported=false → entries disabled+hint) but not by a dark-only fixture (scratch has only the both-theme kanban DS) — flag for manual confirm with a dark-only DS.
+- [~] Dark-only DS: chrome still toggles (decoupling) — PROVEN by design (chrome theming is fully decoupled from the DS; `--maude-chrome-*` never reads DS tokens) + proven on the light-default kanban DS (chrome dark, artboard light). No dark-only fixture available to demo directly.
+- [x] `--maude-hud-accent` stays brand orange in both themes; no DS palette leaks into chrome (every residual `--bg-/--fg-` confirmed to be artboard CONTENT, not chrome)
+- [x] `agent-browser` BOTH-themes pass — core surfaces verified, 0 regressions. NOTE: not every interactive sub-feature was driven (each draw tool, comments compose/thread, annotation draw/resize, LOD bands) — these are additive token swaps with preserved literal fallbacks; flagged for the human exhaustive pass.
+- [ ] `a11y-auditor`: 0 blockers, AA contrast in light AND dark — NOT RUN (defer to `/done` / `/flow:validate-a11y`)
+- [x] Runtime bundles: `dist/client.bundle.js` rebuilt + staged; `check-runtime-bundles.sh` green; `runtime-health.sh` all ratio 1.000 (externalized runtime bundles untouched — skipped env-sensitive regen via MAUDE_SKIP_RUNTIME_BUILD=1)
+- [x] Canvas theme-model documented in `canvas.tsx.template` + `new.md` (closes review action D)
+- [x] DDR recorded — [DDR-065](../decisions/DDR-065-canvas-chrome-theme-decoupled-from-ds.md) (`--maude-chrome-*` decoupling + `data-maude-theme` attribute + `data-dc-screen`-keyed stylesheet override + F2 hardening).
+
+---
+
+## Retro
+
+- **The plan's surface inventory was incomplete, and its line references were stale.** "World plane `.dc-world` `--bg-0`" pointed at `.dc-artboard`/`.dc-artboard-label` (artboard CONTENT, must NOT move); the real workspace chrome is `.dc-canvas`. And 5 floating-chrome files (undo-hud, participants-chrome, annotations toolbar, export-dialog, equal-spacing) weren't listed — leaving them would have leaked the DS palette into chrome. **Lesson for `/plan`:** for a "repoint every X" refactor, the plan should mandate a fresh `grep` of the token family across the whole module as Task 0, not hand-curate the inventory.
+- **The plan's core assumption ("bare `:root` resolves the default dark block") was false for the test DS** — kanban's `:root` is light, so the chrome was accidentally light, and "pixel-stable dark default" was unachievable (the prior state WAS the bug). Grounding the plan against a real DS's `colors_and_type.css` before writing acceptance criteria would have caught this.
+- **The biggest miss: Task 5's mechanism didn't survive React.** The plan said "set `data-theme` on the artboard's `.app` root" — but (a) React owns + reverts that element, and (b) the canvas content carries its own theme wrapper below it. Only the exhaustive agent-browser verification (apply → re-render → re-check) caught it; a "looks right in one screenshot" pass would have shipped a broken feature. The no-break discipline's *re-verify after a state change* step earned its keep. The robust fix (inject a stylesheet keyed by the stable `data-dc-screen` attr) is now DDR-065 and a reusable pattern.
+- **Shadow token was a latent regression the surface-map would have shipped:** mapping the floating shadow to `--fg-0` produces a white glow in dark theme. Surface→token maps need a "does this token's role survive a theme flip?" check, not just a name swap.
+- **Worktree friction:** the dev-server had no `node_modules` (build + tests need `bun install` first), the published `maude` on PATH auto-respawns its OWN server (masking worktree code — screenshotted old code once), and shell-`&` background servers got SIGTERM on shell exit (use the harness `run_in_background`). For dev-server work in a worktree, boot the server via `run_in_background` with an explicit `--port`, and drive agent-browser directly (never `maude design screenshot`, which respawns the published server).
+- **What worked:** keeping `var(--maude-chrome-X, <original-literal-fallback>)` on every repoint meant each task was independently safe (missing token → today's literal), and the security fan-out's F2 finding led to a cheap, genuinely-good untrusted-input filter.

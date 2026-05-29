@@ -29,6 +29,19 @@
  * server (canvas-pipeline.ts pass 1). Don't author them by hand — they'd be
  * stripped + replaced. `/design:handoff` strips them again before the registry
  * sidecar leaves dev (production has no business with dev-time scaffolding).
+ *
+ * Theme model (two ISOLATED layers — system-review D9):
+ *   • Canvas-shell CHROME (workspace plane, floating toolbar, minimap, zoom
+ *     HUD, halos) auto-follows the Maude dev-server theme via `data-maude-theme`
+ *     on the iframe <html> — the dev-server sets it; never theme the chrome
+ *     from canvas code.
+ *   • ARTBOARDS keep THEIR design system's theme. The `data-theme` on the
+ *     `{{ROOT_CLASS}}` wrapper pins this artboard to a specific DS theme block;
+ *     leave it at the DS default ({{THEME_DEFAULT}}). Do NOT hardcode a theme
+ *     the DS doesn't intend — a reviewer flips an individual artboard at will
+ *     via right-click → Theme ▸ Light / Dark / Follow chrome (enabled when the
+ *     DS ships both light + dark token blocks). Only pin a non-default theme
+ *     when the canvas is intentionally single-theme.
  */
 
 import { useState } from "react";

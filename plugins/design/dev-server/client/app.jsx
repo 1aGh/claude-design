@@ -1689,6 +1689,17 @@ function App() {
       document.documentElement.setAttribute('data-theme', theme);
       localStorage.setItem(THEME_STORE, theme);
     } catch {}
+    // System-review D9 — the canvas-shell chrome (workspace plane, floating
+    // toolbar, minimap, zoom HUD, halos) follows the Maude theme. Broadcast to
+    // EVERY open canvas iframe (not just activePath — several may be open); the
+    // iframe's canvas-shell sets `data-maude-theme` and re-themes its floating
+    // chrome via the --maude-chrome-* family. Artboards keep their DS theme.
+    // Mirrors the git-lifecycle broadcast-to-all loop below. On the initial
+    // mount run iframesRef is empty (no canvas open yet) — a freshly-loaded
+    // iframe instead gets the current theme from the `dgn:'loaded'` handler.
+    for (const el of iframesRef.current.values()) {
+      try { el.contentWindow.postMessage({ dgn: 'theme', theme }, '*'); } catch {}
+    }
   }, [theme]);
 
   // Persist sidebar / hidden-files / DS-body toggles. Mirror theme pattern.
@@ -1991,6 +2002,10 @@ function App() {
         const el = [...iframesRef.current.entries()].find(([k]) => k === m.file)?.[1];
         if (el && el.contentWindow) {
           try { el.contentWindow.postMessage({ dgn: 'comments-set', comments: list }, '*'); } catch {}
+          // System-review D9 — seed the just-loaded canvas with the current
+          // chrome theme so a canvas opened AFTER a theme toggle starts
+          // correct (no flash from the dark default).
+          try { el.contentWindow.postMessage({ dgn: 'theme', theme }, '*'); } catch {}
           if (focusedCommentId && list.some(c => c.id === focusedCommentId)) {
             try { el.contentWindow.postMessage({ dgn: 'comment-focus', id: focusedCommentId }, '*'); } catch {}
           }
@@ -1999,7 +2014,7 @@ function App() {
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [commentsByFile, focusedCommentId, cfg]);
+  }, [commentsByFile, focusedCommentId, cfg, theme]);
 
   // Tell the active canvas iframe to drop any persistent selection (canvas
   // SelectionSet) — used when the comment composer closes via submit /

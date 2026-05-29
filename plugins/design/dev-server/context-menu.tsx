@@ -55,6 +55,15 @@ export interface MenuItem {
   shortcut?: string;
   destructive?: boolean;
   disabled?: boolean;
+  /**
+   * Optional nested flyout (e.g. `Theme ▸ DS default / Light / Dark / Follow
+   * chrome`). When present the row opens a submenu on hover / ArrowRight /
+   * click and `onSelect` on THIS item is not invoked — only the chosen leaf's
+   * `onSelect` fires. A disabled leaf carries `disabledHint` for its title.
+   */
+  submenu?: MenuItem[];
+  /** Hover/title hint shown when the item is `disabled` (a11y affordance). */
+  disabledHint?: string;
   onSelect: (target: ContextTarget) => void;
 }
 
@@ -158,20 +167,20 @@ const MENU_CSS = `
 .dc-context-menu {
   position: fixed;
   z-index: 7;
-  background: var(--u-bg-0, var(--bg-0, #fff));
-  border: 1px solid var(--u-fg-0, #1c1917);
+  background: var(--maude-chrome-bg-0, #fff);
+  border: 1px solid var(--maude-chrome-fg-0, #1c1917);
   border-radius: 8px;
-  box-shadow: 0 6px 24px color-mix(in oklab, var(--u-fg-0, #1c1917) 10%, transparent);
+  box-shadow: 0 6px 24px var(--maude-chrome-shadow, color-mix(in oklab, #1c1917 10%, transparent));
   padding: 4px;
   min-width: 220px;
-  font-family: var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-family: var(--maude-chrome-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 12px;
-  color: var(--u-fg-0, var(--fg-0, rgba(20,15,10,0.92)));
+  color: var(--maude-chrome-fg-0, rgba(20,15,10,0.92));
   user-select: none;
 }
 .dc-context-menu .dc-menu-sep {
   height: 1px;
-  background: var(--border-subtle, rgba(0,0,0,0.08));
+  background: var(--maude-chrome-border, rgba(0,0,0,0.08));
   margin: 4px -4px;
 }
 .dc-context-menu .dc-menu-item {
@@ -191,7 +200,7 @@ const MENU_CSS = `
 }
 .dc-context-menu .dc-menu-item:hover,
 .dc-context-menu .dc-menu-item:focus-visible {
-  background: var(--u-bg-3, var(--bg-3, rgba(0,0,0,0.05)));
+  background: color-mix(in oklab, var(--maude-chrome-fg-0, #1c1917) 8%, transparent);
   outline: none;
 }
 .dc-context-menu .dc-menu-item[disabled] {
@@ -204,11 +213,28 @@ const MENU_CSS = `
   color: var(--accent-fg, #fff);
 }
 .dc-context-menu .dc-menu-shortcut {
-  color: var(--fg-2, rgba(40,30,20,0.55));
+  color: var(--maude-chrome-fg-1, rgba(40,30,20,0.55));
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
+/* Submenu flyout (Theme ▸ …). Anchored to the right of its parent row; flips
+   left near the viewport edge via .is-flip. Reuses .dc-menu-item styling. */
+.dc-context-menu .dc-menu-sub { position: relative; }
+.dc-context-menu .dc-menu-caret { color: var(--maude-chrome-fg-1, rgba(40,30,20,0.55)); font-size: 11px; }
+.dc-context-menu .dc-menu-flyout {
+  position: absolute;
+  top: -5px;
+  left: calc(100% + 3px);
+  min-width: 196px;
+  padding: 4px;
+  background: var(--maude-chrome-bg-0, #fff);
+  border: 1px solid var(--maude-chrome-fg-0, #1c1917);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px var(--maude-chrome-shadow, color-mix(in oklab, #1c1917 10%, transparent));
+  z-index: 8;
+}
+.dc-context-menu .dc-menu-flyout.is-flip { left: auto; right: calc(100% + 3px); }
 `.trim();
 
 function ensureMenuStyles(): void {
@@ -346,25 +372,143 @@ function ContextMenuView({
           <div key={sectionKey} role="group">
             {si > 0 ? <div className="dc-menu-sep" aria-hidden="true" /> : null}
             {section.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                role="menuitem"
-                disabled={item.disabled}
-                className={`dc-menu-item${item.destructive ? ' is-destructive' : ''}`}
-                onClick={() => {
-                  if (item.disabled) return;
-                  item.onSelect(target);
-                  onClose();
-                }}
-              >
-                <span>{item.label}</span>
-                {item.shortcut ? <span className="dc-menu-shortcut">{item.shortcut}</span> : null}
-              </button>
+              <MenuItemRow key={item.id} item={item} target={target} onClose={onClose} />
             ))}
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MenuItemRow — a single menu row. Plain rows render a button; rows with a
+// `submenu` render a flyout (opens on hover / ArrowRight / click). Additive:
+// existing flat registries (no `submenu`) take the plain-button path unchanged.
+
+function MenuItemRow({
+  item,
+  target,
+  onClose,
+}: {
+  item: MenuItem;
+  target: ContextTarget;
+  onClose: () => void;
+}) {
+  const [subOpen, setSubOpen] = useState(false);
+  const [flip, setFlip] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const flyoutRef = useRef<HTMLDivElement>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  if (!item.submenu || item.submenu.length === 0) {
+    return (
+      <button
+        type="button"
+        role="menuitem"
+        disabled={item.disabled}
+        title={item.disabled ? item.disabledHint : undefined}
+        className={`dc-menu-item${item.destructive ? ' is-destructive' : ''}`}
+        onClick={() => {
+          if (item.disabled) return;
+          item.onSelect(target);
+          onClose();
+        }}
+      >
+        <span>{item.label}</span>
+        {item.shortcut ? <span className="dc-menu-shortcut">{item.shortcut}</span> : null}
+      </button>
+    );
+  }
+
+  const cancelClose = () => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  };
+  const open = (focusFirst = false) => {
+    cancelClose();
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r && typeof window !== 'undefined') setFlip(r.right + 200 > window.innerWidth);
+    setSubOpen(true);
+    if (focusFirst) {
+      setTimeout(() => {
+        flyoutRef.current
+          ?.querySelector<HTMLButtonElement>('button.dc-menu-item:not([disabled])')
+          ?.focus();
+      }, 0);
+    }
+  };
+  const scheduleClose = () => {
+    cancelClose();
+    closeTimer.current = setTimeout(() => setSubOpen(false), 140);
+  };
+
+  return (
+    <div className="dc-menu-sub" onMouseEnter={() => open()} onMouseLeave={scheduleClose}>
+      <button
+        ref={btnRef}
+        type="button"
+        role="menuitem"
+        aria-haspopup="menu"
+        aria-expanded={subOpen}
+        disabled={item.disabled}
+        className="dc-menu-item"
+        onClick={() => (subOpen ? setSubOpen(false) : open())}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            open(true);
+          } else if (e.key === 'ArrowLeft' || e.key === 'Escape') {
+            if (subOpen) {
+              e.stopPropagation();
+              setSubOpen(false);
+            }
+          }
+        }}
+      >
+        <span>{item.label}</span>
+        <span className="dc-menu-caret" aria-hidden="true">
+          ▸
+        </span>
+      </button>
+      {subOpen ? (
+        <div
+          ref={flyoutRef}
+          className={`dc-menu-flyout${flip ? ' is-flip' : ''}`}
+          role="menu"
+          onMouseEnter={cancelClose}
+          onMouseLeave={scheduleClose}
+        >
+          {item.submenu.map((sub) => (
+            <button
+              key={sub.id}
+              type="button"
+              role="menuitem"
+              disabled={sub.disabled}
+              title={sub.disabled ? sub.disabledHint : undefined}
+              className={`dc-menu-item${sub.destructive ? ' is-destructive' : ''}`}
+              onClick={() => {
+                if (sub.disabled) return;
+                sub.onSelect(target);
+                onClose();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'ArrowLeft' || e.key === 'Escape') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setSubOpen(false);
+                  btnRef.current?.focus();
+                }
+              }}
+            >
+              <span>{sub.label}</span>
+              {sub.shortcut ? <span className="dc-menu-shortcut">{sub.shortcut}</span> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

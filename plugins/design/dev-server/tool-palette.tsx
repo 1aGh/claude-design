@@ -35,13 +35,13 @@ const PALETTE_CSS = `
   transform: translateX(-50%);
   display: flex;
   align-items: stretch;
-  background: var(--u-bg-0, var(--bg-0, #ffffff));
-  border: 1px solid var(--u-fg-0, #1c1917);
+  background: var(--maude-chrome-bg-0, #ffffff);
+  border: 1px solid var(--maude-chrome-fg-0, #1c1917);
   border-radius: 8px;
-  box-shadow: 0 6px 24px color-mix(in oklab, var(--u-fg-0, #1c1917) 10%, transparent);
-  font-family: var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  box-shadow: 0 6px 24px var(--maude-chrome-shadow, color-mix(in oklab, #1c1917 10%, transparent));
+  font-family: var(--maude-chrome-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 12px;
-  color: var(--u-fg-0, var(--fg-0, #1a1a1a));
+  color: var(--maude-chrome-fg-0, #1a1a1a);
   z-index: 6;
   user-select: none;
   /* Intentionally NO overflow:hidden — the zoom popover (.dc-tp-popover) is
@@ -56,7 +56,7 @@ const PALETTE_CSS = `
 }
 .dc-tool-palette .dc-tp-sep {
   width: 1px;
-  background: var(--u-border-subtle, rgba(0,0,0,0.08));
+  background: var(--maude-chrome-border, rgba(0,0,0,0.08));
   margin: 6px 0;
 }
 .dc-tool-palette button {
@@ -70,14 +70,14 @@ const PALETTE_CSS = `
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--fg-1, rgba(40,30,20,0.75));
+  color: var(--maude-chrome-fg-1, rgba(40,30,20,0.75));
   cursor: pointer;
   position: relative;
   transition: background-color 80ms linear, color 80ms linear;
 }
 .dc-tool-palette button:hover {
   background: color-mix(in oklab, var(--maude-hud-accent, #d63b1f) 8%, transparent);
-  color: var(--fg-0, #1a1a1a);
+  color: var(--maude-chrome-fg-0, #1a1a1a);
 }
 .dc-tool-palette button:focus-visible {
   outline: 2px solid var(--maude-hud-accent, #d63b1f);
@@ -117,7 +117,7 @@ const PALETTE_CSS = `
   height: 6px;
   background: var(--maude-hud-accent, #d63b1f);
   border-radius: 1px;
-  box-shadow: 0 0 0 1px var(--bg-0, #ffffff);
+  box-shadow: 0 0 0 1px var(--maude-chrome-bg-0, #ffffff);
   opacity: 0;
   transition: opacity 50ms linear 50ms;
   pointer-events: none;
@@ -132,7 +132,7 @@ const PALETTE_CSS = `
   min-width: 56px;
   padding: 0 8px;
   font-variant-numeric: tabular-nums;
-  font-family: var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-family: var(--maude-chrome-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 11px;
   letter-spacing: 0.04em;
   border-radius: 6px;
@@ -145,16 +145,16 @@ const PALETTE_CSS = `
   position: absolute;
   right: 4px;
   bottom: 44px;
-  background: var(--u-bg-0, var(--bg-0, #ffffff));
-  border: 1px solid var(--u-fg-0, #1c1917);
+  background: var(--maude-chrome-bg-0, #ffffff);
+  border: 1px solid var(--maude-chrome-fg-0, #1c1917);
   border-radius: 8px;
-  box-shadow: 0 6px 24px color-mix(in oklab, var(--u-fg-0, #1c1917) 10%, transparent);
+  box-shadow: 0 6px 24px var(--maude-chrome-shadow, color-mix(in oklab, #1c1917 10%, transparent));
   display: flex;
   flex-direction: column;
   padding: 4px;
   min-width: 160px;
   z-index: 7;
-  font-family: var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-family: var(--maude-chrome-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
 }
 .dc-tp-popover button {
   appearance: none;
@@ -171,7 +171,7 @@ const PALETTE_CSS = `
   gap: 16px;
   width: 100%;
 }
-.dc-tp-popover button:hover { background: rgba(0,0,0,0.04); }
+.dc-tp-popover button:hover { background: color-mix(in oklab, var(--maude-chrome-fg-0, #1c1917) 5%, transparent); }
 .dc-tp-popover .dc-tp-kbd {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;

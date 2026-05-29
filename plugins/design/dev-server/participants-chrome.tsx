@@ -42,7 +42,7 @@ const CHROME_CSS = `
   line-height: 1;
   letter-spacing: 0.02em;
   color: var(--maude-hud-accent-fg, #fff);
-  border: 1.5px solid var(--bg-0, #fff);
+  border: 1.5px solid var(--maude-chrome-bg-0, #fff);
   margin-left: -6px;
   cursor: pointer;
   position: relative;
@@ -70,20 +70,20 @@ const CHROME_CSS = `
   right: 0;
   min-width: 168px;
   padding: 10px 12px;
-  background: var(--bg-1, #fff);
-  color: var(--fg-0, #111);
-  border: 1px solid var(--border-default, rgba(0,0,0,0.16));
+  background: var(--maude-chrome-bg-1, #fff);
+  color: var(--maude-chrome-fg-0, #111);
+  border: 1px solid var(--maude-chrome-border, rgba(0,0,0,0.16));
   border-radius: var(--radius-md, 4px);
   font-size: 12px;
   line-height: 1.35;
   white-space: nowrap;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.10);
+  box-shadow: 0 6px 18px var(--maude-chrome-shadow, rgba(0,0,0,0.10));
   z-index: 11;
 }
 .dc-participant-popover__name {
   font-weight: 600;
   margin-bottom: 8px;
-  color: var(--fg-0, #111);
+  color: var(--maude-chrome-fg-0, #111);
   letter-spacing: 0.01em;
 }
 .dc-participant-popover__btn {
@@ -102,11 +102,11 @@ const CHROME_CSS = `
 }
 .dc-participant-popover__btn:hover { background: var(--maude-hud-accent-hover, var(--maude-hud-accent, oklch(50% 0.170 50))); }
 .dc-participant-popover__btn--stop {
-  background: var(--bg-3, #e5e5e5);
-  color: var(--fg-0, #111);
-  border: 1px solid var(--border-subtle, rgba(0,0,0,0.12));
+  background: color-mix(in oklab, var(--maude-chrome-fg-0, #111) 10%, transparent);
+  color: var(--maude-chrome-fg-0, #111);
+  border: 1px solid var(--maude-chrome-border, rgba(0,0,0,0.12));
 }
-.dc-participant-popover__btn--stop:hover { background: var(--bg-4, #d8d8d8); }
+.dc-participant-popover__btn--stop:hover { background: color-mix(in oklab, var(--maude-chrome-fg-0, #111) 16%, transparent); }
 @media (prefers-reduced-motion: reduce) {
   .dc-participant { transition: none; }
 }

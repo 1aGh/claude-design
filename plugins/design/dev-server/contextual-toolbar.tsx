@@ -41,14 +41,14 @@ const CTX_TOOLBAR_CSS = `
   align-items: stretch;
   gap: 2px;
   padding: 4px;
-  background: var(--u-bg-0, var(--bg-0, #ffffff));
-  border: 1px solid var(--u-fg-0, #1c1917);
+  background: var(--maude-chrome-bg-0, #ffffff);
+  border: 1px solid var(--maude-chrome-fg-0, #1c1917);
   border-radius: 8px;
-  box-shadow: 0 6px 24px color-mix(in oklab, var(--u-fg-0, #1c1917) 10%, transparent);
-  font-family: var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  box-shadow: 0 6px 24px var(--maude-chrome-shadow, color-mix(in oklab, #1c1917 10%, transparent));
+  font-family: var(--maude-chrome-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 11px;
   letter-spacing: 0.02em;
-  color: var(--u-fg-0, #1a1a1a);
+  color: var(--maude-chrome-fg-0, #1a1a1a);
   user-select: none;
   opacity: 0;
   transition: opacity 100ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -72,8 +72,8 @@ const CTX_TOOLBAR_CSS = `
 }
 .dc-elem-ctx-tb .dc-elem-ctx-count {
   padding: 4px 8px 4px 10px;
-  color: var(--fg-1, rgba(40,30,20,0.7));
-  border-right: 1px solid var(--u-border-subtle, rgba(0,0,0,0.08));
+  color: var(--maude-chrome-fg-1, rgba(40,30,20,0.7));
+  border-right: 1px solid var(--maude-chrome-border, rgba(0,0,0,0.08));
   margin-right: 2px;
   font-variant-numeric: tabular-nums;
 }
