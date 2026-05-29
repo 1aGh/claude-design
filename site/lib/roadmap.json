@@ -1,5 +1,5 @@
 {
-  "generated": "2026-05-29T10:48:19.872Z",
+  "generated": "2026-05-29T11:29:55.403Z",
   "currentPhase": null,
   "phases": [
     {
@@ -571,6 +571,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is a risky dev-server refactor (repoints CSS custom-property sources across the w...",
       "planPath": ".ai/plans/canvas-chrome-theme-inheritance.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "hub-admin-redesign",
+      "title": "Feature: Rework Hub Admin UI according to Sync Hub Admin design",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate design files and existing IDs before implementing. Every JS-referenced ID must be preserved verbatim.",
+      "planPath": ".ai/plans/hub-admin-redesign.md",
       "archived": false,
       "phaseKey": null
     },
