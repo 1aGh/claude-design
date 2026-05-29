@@ -267,15 +267,21 @@ let server: BunServer;
 // the canvas listener serves its first shell.
 ctx.mainOrigin = `http://localhost:${server.port}`;
 
-// T2 (9.1-A) — segregated canvas-content origin. EXPERIMENTAL + OFF BY DEFAULT
-// (phase-9.1 WIP). When `MAUDE_CANVAS_ORIGIN_SPLIT=1`, boot a second listener on
-// an OS-assigned free port and advertise it as `canvasOrigin`; the client then
-// loads canvas iframes cross-origin (sandbox + CSP — the F1 fix). When OFF (the
-// default), no second listener boots and `canvasOrigin` stays undefined, so the
-// client keeps the proven same-origin behavior (zero regression). The split is
-// in flux — its interactive-feature parity (comment composer, presence) is not
-// yet complete, so it must not be the default until phase-9.1 finishes it.
-const CANVAS_ORIGIN_SPLIT = process.env.MAUDE_CANVAS_ORIGIN_SPLIT === '1';
+// T2 (9.1-A) — segregated canvas-content origin. ON BY DEFAULT (opt-OUT) since
+// phase-9.1: a second listener binds an OS-assigned free port, advertised as
+// `canvasOrigin`, and the client loads canvas iframes cross-origin under the
+// strict CSP + sandbox + route-allowlist (the F1 containment). This is purely
+// protective — for a solo user it sandboxes their OWN canvas code (no untrusted
+// content, no exfil concern), and interactive-feature parity (selection,
+// comments, presence, motion) is verified. It does NOT by itself enable
+// untrusted `.tsx` sync — that still requires the per-canvas `syncable` opt-in
+// (sync/index.ts), so the WebRTC/self-nav exfil residual only applies to a
+// canvas explicitly opted into syncing (DDR-060 + the F1 re-audit report).
+// Set `MAUDE_CANVAS_ORIGIN_SPLIT=0` (or false/off/no) to fall back to the legacy
+// same-origin path.
+const CANVAS_ORIGIN_SPLIT = !/^(0|false|off|no)$/i.test(
+  process.env.MAUDE_CANVAS_ORIGIN_SPLIT ?? ''
+);
 const canvasServer = CANVAS_ORIGIN_SPLIT ? startCanvasServer(0) : null;
 const canvasOrigin = canvasServer ? `http://localhost:${canvasServer.port}` : undefined;
 if (canvasOrigin) ctx.canvasOrigin = canvasOrigin;

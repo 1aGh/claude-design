@@ -28,6 +28,26 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Canvas</title>
+    <script>
+      // T2 (9.1 / DDR-060 F1 re-audit) — best-effort WebRTC denial in the canvas
+      // iframe. CSP `webrtc 'block'` is specified but UNIMPLEMENTED in shipping
+      // Chrome/Firefox as of 2026 (Chromium #40188662, Firefox bug 1783489), so
+      // it is currently a no-op, and `connect-src 'self'` does NOT cover WebRTC
+      // (it is not Fetch). Hub-pushed canvas JS could otherwise exfil via
+      // ICE/STUN. Locking these to undefined raises the bar against the naive
+      // case before any canvas module loads. NOT bulletproof — a nested
+      // same-origin (about:blank) frame can re-acquire them — so WebRTC exfil
+      // stays a DOCUMENTED residual of opt-in linked mode (see the linked-mode
+      // README banner). `webrtc 'block'` stays in the CSP for when browsers
+      // enforce it. The canvas runtime itself uses zero WebRTC.
+      for (var __k of ['RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCDataChannel']) {
+        try {
+          Object.defineProperty(window, __k, { value: undefined, configurable: false, writable: false });
+        } catch (_) {
+          /* already locked / not present */
+        }
+      }
+    </script>
     <style>
       :root {
         color-scheme: light dark;

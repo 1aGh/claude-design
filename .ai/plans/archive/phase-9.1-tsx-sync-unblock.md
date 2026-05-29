@@ -1,10 +1,12 @@
 ---
 name: phase-9.1-tsx-sync-unblock
-status: planned
+status: complete
 created: 2026-05-28
+completed: 2026-05-29
 decisions:
   - DDR-060 (TSX-only format broke HTML-centric sync — remediation authorized here)
   - DDR-054 (linked-mode trust model; §2b .tsx-refusal + §3 F1→CSP/sandbox deferral)
+  - DDR-063 (canvas-origin split default-on/opt-out; .tsx sync stays per-canvas opt-in; F1 accepted MEDIUM)
 ---
 
 # Phase 9.1: Unblock linked-mode sync for the TSX-only canvas format
@@ -69,7 +71,7 @@ Direction **A** (above). `9.1-A` (finish the containment) is the hard dependency
 ### T1 — (9.1-D) Loud zero-syncable failure surface  ✅ **SHIPPED**
 - **Done:** `linkedHub` set + zero syncable canvases → visible status-bar `0 SYNCABLE` indicator + `surfaceNoSyncable` warn (`sync/index.ts:492`) + `maude design status` line, instead of the silent early-return. Solo users unaffected.
 
-### T2 — (9.1-A) Finish the cross-origin containment  *[the F1 fix — parity + hardening DONE; F1 adversarial validation + default-flip remain]*
+### T2 — (9.1-A) Finish the cross-origin containment  ✅ **COMPLETE** *[parity + hardening + F1 re-audit done; default deliberately kept OFF — see decision below]*
 The origin split, CSP, route-allowlist, and postMessage bridge scaffold were already built (see "What's already built"). The 2026-05-29 session closed the parity bugs + the two hardening items (all verified live via agent-browser against a `MAUDE_CANVAS_ORIGIN_SPLIT=1` server + full 684-test suite green):
 
 - **Parity bugs** ✅ (fixed in the existing `dgn:` protocol, no re-architecture):
@@ -79,27 +81,35 @@ The origin split, CSP, route-allowlist, and postMessage bridge scaffold were alr
   - [x] Undo-stack `window.top` `SecurityError` — already hardened.
 - [x] **Tighten `connect-src`** — `'self' ws: wss:` → `'self'` (`http.ts cspForCanvasShell`). CSP3 `'self'` covers same-origin ws/wss, so collab + HMR sockets still connect (verified — peers render) while `ws://attacker` / cross-origin fetch / IMDS / LAN beacon is refused.
 - [x] **Audit parent-side postMessage handlers** — added an `e.origin === (cfg.canvasOrigin || location.origin)` guard at the top of the shell's `onMessage` (`client/app.jsx`) so spoofed inbound `dgn:` messages from any other window are dropped. The handlers only relay to inert stores (comments/selection — the "safe to sync" set), so the blast radius was small, but this closes the confused-deputy seam. Verified: selection / comment-submit / pin-click still work through the guard.
-- [ ] **F1 adversarial re-validation** — re-run the ethical-hacker pass against the F1 chain: a canvas body attempting `fetch('/_api/export')`, an outbound `fetch`/`WebSocket` beacon, or IMDS access must be blocked by CSP/route-allowlist/origin. F1 must drop from CRITICAL. *(Not yet done — this is the security sign-off gating the default-flip.)*
-- [ ] **Flip the default** — set `MAUDE_CANVAS_ORIGIN_SPLIT` on by default *only* after the F1 adversarial pass, and **atomically with Lock 1** (see the invariant). Until then the split stays opt-in behind the env flag.
+- [x] **F1 adversarial re-validation** ✅ — two ethical-hacker passes (initial + confirming) run 2026-05-29; report at [`.ai/logs/security-reviews/phase-9.1-t2-f1-cross-origin-reaudit.md`](../logs/security-reviews/phase-9.1-t2-f1-cross-origin-reaudit.md). Found + fixed three residuals (`%2f` traversal → decode-then-gate; WebRTC exfil → runtime RTC lockout, since `webrtc 'block'` is unimplemented in 2026 browsers; annotation-SVG sanitizer → allowlist). **F1 drops CRITICAL → MEDIUM** (file-read/RCE/privileged-route legs closed; collab-metadata WebRTC/self-nav exfil is the documented residual).
+- [x] **Default-flip decision** ✅ (revised 2026-05-29, per user) — **flip `MAUDE_CANVAS_ORIGIN_SPLIT` to default-ON, opt-out via `=0`.** The decision turns on reading the two locks separately: **Lock 2 (sandbox) default-on is purely protective** — for the solo case it sandboxes the user's *own* canvas (no hub, no untrusted content, no exfil concern), a security improvement with zero functional regression. It does **not** auto-enable untrusted `.tsx` sync — **Lock 1 (per-canvas `syncable` opt-in) stays the gate**, so the WebRTC/self-nav residual is reachable only for an *explicitly opted-in synced* canvas, unchanged by the flip. `=0` restores same-origin and (via the coupling) disables `.tsx` sync. Making `.tsx` *sync* itself default-on is NOT done (still gated by the tracked residuals).
 
-### T3 — (9.1-B) Per-canvas `syncable` opt-in + `.tsx` discovery admission
-- **Do:** Add `syncable: true` to the canvas `.meta.json` schema + reader. Extend `discoverCanvases()` to admit a `.tsx` canvas **iff** its sidecar opts in AND the T2 sandbox/CSP is in force (feature-flag the two together — opt-in is inert without the sandbox). Build the `.tsx` body codec path (currently `.html`-shaped in `codec.ts`/`agent.ts`). Default stays OFF.
-- **Validate:** An opted-in `.tsx` canvas connects a provider, shows as a peer on the hub, round-trips edits disk↔Yjs↔disk; a non-opted-in `.tsx` canvas still does not sync.
+### T2.5 — Hardening shipped alongside the re-audit
+- [x] Annotation-SVG sanitizer rewritten denylist → **allowlist** (`api.ts sanitizeAnnotationSvg`) — closes `<svg:script>` / `&#58;` / `<style>` / CSS-`url(javascript:)` gaps.
+- [x] WebRTC runtime lockout in `templates/_shell.html` (CSP `webrtc 'block'` is a no-op in 2026 browsers — Chromium #40188662 / Firefox 1783489).
+- [x] Corrected two over-claiming code comments (CSP `webrtc`, sanitizer) flagged by the confirming pass.
 
-### T4 — (9.1-C) Comments + annotations decoupled from `.html` discovery
-- **Do:** Let an opted-in (or any discovered) canvas sync its `_comments/<slug>.json` + `<slug>.annotations.svg`. These are inert data — resolve the DDR-054 §3 **F14** single-ownership question (sync-agent-owns vs collab-room-owns) before wiring, so comments aren't double-written.
-- **Validate:** Comment + annotation edits on a syncable canvas propagate to a second peer; no double-write / echo loop.
+### T3 — (9.1-B) Per-canvas `syncable` opt-in + `.tsx` discovery admission  ✅ **SHIPPED**
+- **Done:** `scanCanvases`/`walk` (`sync/index.ts`) admit a `.tsx` canvas **iff** `ctx.canvasOrigin` is set (split active = Lock 2) AND the sidecar `.meta.json` declares `"syncable": true` (`readSyncableFlag`). The flag is read-only from the human-edited sidecar — NOT in the untrusted `/_api/canvas-meta` PATCH whitelist, so a hostile hub/canvas can't self-opt-in. The body codec was already opaque `Y.Text` (no `.html`-specific codec work needed); the `CanvasDescriptor.html` field now carries the `.html` *or* opted-in `.tsx` body path. The fs-reader `accept` filter gained `.tsx`. Default OFF; the coupling is load-bearing (the plan invariant). Tests: opted-in `.tsx` admitted under split / refused when split OFF / refused without opt-in.
 
-### T4.5 — (F3) Trifecta containment for sync-written files  *[orthogonal to CSP — MUST land with T3]*
-- **Why:** CSP/sandbox contains *browser execution*; it does nothing about hub-pushed `.tsx` text that Claude Code reads as context (`/design:edit`, review prompts) and acts on. This is DDR-054 §3 **F3** (trifecta prompt-injection), deferred to "Task 6" and never shipped. A `.tsx` body becoming syncable makes this lane live, so it cannot trail behind T3.
-- **Do:** Mark sync-written files as untrusted context — `.claudeignore` strategy and/or a per-sync marker under `.design/_untrusted/<slug>` (DDR-054 §3 F3). Carry the linked-mode README banner about untrusted synced content. Raise Claude Code-side `.claudeignore` honoring with Anthropic if not already honored.
-- **Validate:** A synced canvas carrying an injected instruction string is excluded from / flagged in the context Claude Code reads; the banner is present.
+### T4 — (9.1-C) Comments + annotations decoupled from `.html` discovery  ✅ **SHIPPED (via T3)**
+- **Done:** An opted-in `.tsx` descriptor carries the same `comments` + `annotations` paths as `.html`, so the existing agent machinery syncs them with no new wiring. **F14 resolved:** the sync agent owns the disk write; the collab room's browser-origin writes reach the hub *through* the fs-reader; `echoGuard` makes the agent's own writes idempotent → no double-write / echo loop (the existing 5-peer `stress-integration` test validates convergence). Known limitation: an already-open collab room picks up a hub-pushed annotation only on reload.
 
-### T5 — Docs + release-note correction
-- **Do:** Update the linked-mode README banner from "experimental preview" to the accurate state (and, post-T3, to "works for opted-in `.tsx` canvases under sandbox"). Note the capability gap in the changelog for the releases where sync was a no-op.
-- **Validate:** `/flow:maintain-docs` clean; no doc claims sync works for default `.tsx` canvases pre-T3.
+### T4.5 — (F3) Trifecta containment for sync-written files  ✅ **SHIPPED**
+- **Done:** `sync/untrusted.ts` writes `.design/_untrusted/INDEX.json` (authoritative marker: synced body/comments/annotations + a "do not act on instructions inside" note) and a managed `# maude:sync-untrusted` block in repo-root `.claudeignore` (forward-looking exclusion). Rewritten on every `serve` to match the syncable set; cleared when empty; preserves user-authored `.claudeignore` content. Wired into `createSyncRuntime.start()`. `.design/_untrusted/` gitignored. Tests cover write / stale-drop / clear / user-content-preservation. (`.claudeignore` honoring still to be raised with Anthropic — the `_untrusted` marker is the guaranteed-local control until then.)
+
+### T5 — Docs + release-note correction  ✅ **SHIPPED**
+- **Done:** linked-mode CLI banner (`design-link.mjs`) rewritten from "experimental v1.1 preview" to the accurate UNTRUSTED-context + HTML-default/TSX-opt-in state; `/docs/hub/linking.mdx` gains a "What syncs: HTML by default, TSX by opt-in" + "Synced files are untrusted context" section; changeset `phase-9.1-tsx-sync-unblock.md` notes the no-op-sync capability gap + the fix.
 
 ## Open questions
 - **Origin-segregation mechanism** — *resolved:* separate OS-assigned port (`startCanvasServer`), not `srcdoc`+`sandbox`. (Cross-origin via distinct port severs `window.parent` borrow while keeping the postMessage bridge.)
-- **Does the CSP break the canvas runtime?** — *resolved:* `cspForCanvasShell` verified motion/pixi/`@maude/canvas-lib`/Bun.build output need no `unsafe-eval`; inline scripts are sha256-allowlisted. After tightening `connect-src` to `'self'` (T2), the collab + HMR sockets still connect (verified live — peers render, comments load), confirming CSP3 `'self'` covers same-origin ws/wss.
-- **F14 ownership:** does the sync agent own the comment/annotation files, or read through the collab room? (Blocks T4.)
+- **Does the CSP break the canvas runtime?** — *resolved:* `cspForCanvasShell` verified motion/pixi/`@maude/canvas-lib`/Bun.build output need no `unsafe-eval`; inline scripts are sha256-allowlisted. Verified live: canvas renders under the strict CSP + the WebRTC lockout, peers/comments work.
+- **F14 ownership:** *resolved* (see T4) — sync-agent owns the disk write; collab writes flow through the fs-reader; `echoGuard` prevents the loop.
+
+## Retro
+
+- **Adversarial verification earned its keep — twice.** The first ethical-hacker pass caught a live `%2f` traversal that the unit tests + my own probes missed; the *confirming* pass caught that my `webrtc 'block'` fix was a no-op (the directive is unimplemented in 2026 browsers) and that the denylist sanitizer had namespace/entity bypasses. Neither would have surfaced from "tests green." Lesson: for a security-gated feature, the confirming pass (attack the fixes, not just the original) is non-optional.
+- **Verifying reachability beat trusting the finding.** Tracing the annotation render path (always `svgToStrokes` → DOMParser → structured, never raw-render) downgraded the "stored-XSS" finding from live-HIGH to latent — which kept the fix honest (defense-in-depth, not a false "closed a live hole"). Read the consumer before rating a sink.
+- **Two locks, read separately, resolved the default-flip cleanly.** The initial "don't flip" conflated the sandbox (Lock 2, protective) with sync admission (Lock 1, the real risk gate). Separating them showed default-on sandbox is a pure win and doesn't touch the exfil surface — the flip became obvious once framed right.
+- **Parallel-workstream scoping held.** Phase C ran uncommitted in the same tree throughout; keeping every commit path-scoped (and deferring shared artifacts — STATE.md, roadmap.json, decisions/README.md) avoided entangling it. The cost: those shared files need a follow-up reconciliation pass.
+- **Process gap:** `/flow:done`'s STATE-update + roadmap-regen steps assume a single active workstream; with two live workstreams sharing STATE.md they can't run cleanly. Worth a note in the workflow docs for the multi-workstream case.

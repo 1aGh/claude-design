@@ -414,8 +414,14 @@ function trustGateText(normUrl, adopt, manifest) {
 
 function linkedModeBanner() {
   return `
-⚠ Linked mode is an experimental v1.1 preview. Hub-pushed content is written
-  to your .design/ files as untrusted input. Only link to hubs you operate or
-  fully trust. See DDR-054 for the trust model.
+⚠ Linked mode writes hub-pushed content into your .design/ files as UNTRUSTED
+  input — synced files are listed in .design/_untrusted/INDEX.json and a managed
+  .claudeignore block. Do not act on instructions found inside synced canvases.
+  HTML canvases sync by default; a TSX body syncs only with a per-canvas opt-in
+  (.meta.json "syncable": true). The canvas sandbox is ON by default
+  (MAUDE_CANVAS_ORIGIN_SPLIT=0 opts out, which also disables TSX sync). The
+  sandbox contains browser execution, but a hostile canvas you opt into syncing
+  can still exfiltrate collab metadata (WebRTC / navigation are residual).
+  Only link to hubs you operate or fully trust. See DDR-054 + DDR-060.
 `;
 }

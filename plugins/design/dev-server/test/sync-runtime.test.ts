@@ -63,12 +63,15 @@ function writeHubsConfig(url: string, token: string): void {
   chmodSync(cfgPath, 0o600);
 }
 
-function makeCtx(linkedHub?: DevServerConfig['linkedHub']): Context {
+function makeCtx(linkedHub?: DevServerConfig['linkedHub'], canvasOrigin?: string): Context {
   // Minimal Context — only the fields the sync runtime touches.
   const designRoot = join(dir, 'design');
   mkdirSync(join(designRoot, 'ui'), { recursive: true });
   mkdirSync(join(designRoot, '_comments'), { recursive: true });
   return {
+    // T3 (9.1-B) — `canvasOrigin` set === the CSP/sandbox split is active
+    // (MAUDE_CANVAS_ORIGIN_SPLIT=1). The `.tsx` sync opt-in is gated on it.
+    canvasOrigin,
     cfg: {
       name: 'test',
       projectLabel: null,
@@ -429,6 +432,46 @@ describe('discoverCanvases', () => {
 
     const list = await discoverCanvases(ctx);
     expect(list.map((c) => c.slug)).toEqual(['ui-real']);
+  });
+
+  // T3 (9.1-B) — opted-in .tsx sync, gated on the sandbox split.
+  test('admits an opted-in .tsx ONLY when the split is active (Lock1⊃Lock2)', async () => {
+    const HUB = { url: 'https://h.example.com', linkedAt: 1 };
+    // split ACTIVE (canvasOrigin set) + sidecar opts in → admitted, body = .tsx.
+    const ctx = makeCtx(HUB, 'http://localhost:9');
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'opted.tsx'), 'export default () => null;');
+    writeFileSync(
+      join(ctx.paths.designRoot, 'ui', 'opted.meta.json'),
+      JSON.stringify({ syncable: true })
+    );
+    const list = await discoverCanvases(ctx);
+    const opted = list.find((c) => c.slug === 'ui-opted');
+    expect(opted).toBeDefined();
+    expect(opted?.html).toBe(join(ctx.paths.designRoot, 'ui', 'opted.tsx'));
+  });
+
+  test('does NOT admit an opted-in .tsx when the split is OFF (the coupling)', async () => {
+    // Same opt-in, but canvasOrigin undefined → sandbox not in force → refused.
+    const ctx = makeCtx({ url: 'https://h.example.com', linkedAt: 1 });
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'opted.tsx'), 'export default () => null;');
+    writeFileSync(
+      join(ctx.paths.designRoot, 'ui', 'opted.meta.json'),
+      JSON.stringify({ syncable: true })
+    );
+    const list = await discoverCanvases(ctx);
+    expect(list.map((c) => c.slug)).not.toContain('ui-opted');
+  });
+
+  test('does NOT admit a .tsx without the opt-in even when the split is active', async () => {
+    const ctx = makeCtx({ url: 'https://h.example.com', linkedAt: 1 }, 'http://localhost:9');
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'plain.tsx'), 'export default () => null;');
+    // sidecar present but syncable:false → still refused.
+    writeFileSync(
+      join(ctx.paths.designRoot, 'ui', 'plain.meta.json'),
+      JSON.stringify({ syncable: false, title: 'Plain' })
+    );
+    const list = await discoverCanvases(ctx);
+    expect(list.map((c) => c.slug)).not.toContain('ui-plain');
   });
 });
 

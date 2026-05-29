@@ -256,7 +256,7 @@ test('linking a non-loopback hub with --yes records trust + links', async () => 
   const res = await runCli(['design', 'link', REMOTE_URL, '--token', 'mau_x', '--yes', '--force']);
   assert.equal(res.status, 0, res.stderr);
   assert.match(res.stderr, /confirmed via --yes/);
-  assert.match(res.stderr, /experimental v1\.1 preview/); // F3 banner
+  assert.match(res.stderr, /UNTRUSTED/); // F3 linked-mode banner
 
   const cfg = JSON.parse(readFileSync(join(workspace, '.design/config.json'), 'utf8'));
   assert.equal(cfg.linkedHub.url, REMOTE_URL);

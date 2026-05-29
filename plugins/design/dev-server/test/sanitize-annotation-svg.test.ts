@@ -58,4 +58,43 @@ describe('sanitizeAnnotationSvg — A3', () => {
     expect(out.toLowerCase()).not.toContain('<use');
     expect(out.toLowerCase()).not.toContain('javascript:');
   });
+
+  // Bypasses the F1 confirming pass found against the prior denylist — the
+  // allowlist must close all of them.
+  test('drops namespaced <svg:script> (denylist missed this)', () => {
+    const out = sanitizeAnnotationSvg(
+      '<svg xmlns="http://www.w3.org/2000/svg" data-mdcc-annotations="1"><svg:script>alert(1)</svg:script></svg>'
+    );
+    expect(out.toLowerCase()).not.toContain('<svg:script');
+    expect(out.toLowerCase()).not.toContain('script>');
+  });
+
+  test('drops <style> (CSS @import / url(javascript:) exfil lane)', () => {
+    const out = sanitizeAnnotationSvg(
+      '<svg xmlns="http://www.w3.org/2000/svg" data-mdcc-annotations="1"><style>@import url("//evil")</style></svg>'
+    );
+    expect(out.toLowerCase()).not.toContain('<style');
+  });
+
+  test('strips style= (CSS url(javascript:)) and entity-encoded xlink:href on survivors', () => {
+    const out = sanitizeAnnotationSvg(
+      '<svg xmlns="http://www.w3.org/2000/svg" data-mdcc-annotations="1">' +
+        '<rect x="0" y="0" width="9" height="9" style="fill:url(javascript:alert(1))"/>' +
+        '<text xlink:href="javascript&#58;alert(1)">hi</text></svg>'
+    );
+    expect(out).not.toMatch(/\sstyle\s*=/i);
+    expect(out).not.toMatch(/href\s*=/i);
+    // The legit elements + safe attrs survive.
+    expect(out).toContain('<rect');
+    expect(out).toContain('width="9"');
+    expect(out).toContain('<text');
+  });
+
+  test('drops <set>/<animate> animation elements (attribute-name vector)', () => {
+    const out = sanitizeAnnotationSvg(
+      '<svg xmlns="http://www.w3.org/2000/svg" data-mdcc-annotations="1"><rect><set attributeName="onload" to="alert(1)"/></rect></svg>'
+    );
+    expect(out.toLowerCase()).not.toContain('<set');
+    expect(out.toLowerCase()).not.toContain('<animate');
+  });
 });

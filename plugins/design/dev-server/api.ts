@@ -174,31 +174,64 @@ export interface ApiHooks {
 }
 
 /**
- * A3 (DDR-060 F1 re-audit) — strip executable constructs from an annotation SVG
- * before it is persisted / synced / mirrored into the collab Y.Map. The legit
- * annotation vocabulary (`strokesToSvg`) is presentational only — svg/path/rect/
- * ellipse/g/line/polyline/text — so removing `<script>`, `<foreignObject>`,
- * `<image>`, `<use>`, `on*=` event-handler attributes, and `javascript:` URLs is
- * zero-regression on real annotations. It neutralises a cross-slug stored-XSS
- * payload at the write boundary regardless of any future raw-render consumer.
- * Tag-based stripping (not a full HTML parser) — the dev server is zero-dep and
- * the input shape is narrow; the `<svg` prefix gate already ran upstream.
+ * Elements the annotation tool legitimately emits (`strokesToSvg` in
+ * annotations-layer.tsx). This is the WHOLE vocabulary — purely presentational.
+ */
+const ANNOTATION_SVG_ELEMENTS = new Set([
+  'svg',
+  'g',
+  'path',
+  'rect',
+  'ellipse',
+  'line',
+  'polyline',
+  'text',
+]);
+
+/**
+ * A3 (DDR-060 F1 re-audit) — sanitize an annotation SVG before it is persisted /
+ * synced / mirrored into the collab Y.Map. ALLOWLIST, not denylist (the F1
+ * confirming pass showed a denylist loses the race: `<svg:script>` via namespace,
+ * `javascript&#58;` via HTML entity, `<style>@import url()>`, CSS `url(javascript:)`
+ * all slipped a tag-name denylist). Two rules, both keyed to the fixed legit
+ * vocabulary so they're zero-regression on real annotations:
+ *
+ *   1. Element allowlist — drop the markup of any tag whose LOCAL name (namespace
+ *      stripped, so `svg:script` → `script`) isn't in ANNOTATION_SVG_ELEMENTS.
+ *      Dropped-tag text content survives as inert text (not in a script/style
+ *      context), which is harmless.
+ *   2. Attribute denylist on survivors — the legit vocabulary uses none of
+ *      `on*=`, `style=`, or any `href`, so stripping them closes inline handlers,
+ *      CSS `url(javascript:)`, and entity-encoded `xlink:href` in one pass.
+ *
+ * The current consumer (`svgToStrokes` → DOMParser image/svg+xml → structured
+ * strokes → React) never raw-renders this string, so the live XSS risk is already
+ * nil; this keeps "inert" TRUE for any future raw-render consumer and for the
+ * synced file a peer / Claude-context ingests (defense-in-depth, DDR-054 §3).
  */
 export function sanitizeAnnotationSvg(svg: string): string {
   return (
     svg
-      // Drop dangerous elements wholesale (open→close, incl. self-closing).
+      // 1. Remove the CONTENT of executable / instruction-bearing elements (not
+      //    just their tags) so an injected script body / `@import` / prompt-
+      //    injection string can't survive as inert text a future raw-renderer or
+      //    Claude-context read might act on. Namespace-tolerant (`svg:script`),
+      //    non-greedy to the first matching dangerous close tag.
       .replace(
-        /<\s*(script|foreignObject|image|use|iframe|embed|object|a)\b[\s\S]*?<\s*\/\s*\1\s*>/gi,
+        /<\s*(?:[\w-]+:)?(?:script|style|foreignObject|title|desc)\b[\s\S]*?<\s*\/\s*(?:[\w-]+:)?(?:script|style|foreignObject|title|desc)\s*>/gi,
         ''
       )
-      .replace(/<\s*(script|foreignObject|image|use|iframe|embed|object|a)\b[^>]*\/\s*>/gi, '')
-      // Drop a lone opening tag of those elements (defensive, in case unclosed).
-      .replace(/<\s*(script|foreignObject|image|use|iframe|embed|object)\b[^>]*>/gi, '')
-      // Strip inline event handlers: on...="..." / on...='...' / on...=bare.
-      .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-      // Neutralise javascript:/data:text-html URLs in any remaining attribute.
-      .replace(/((?:href|xlink:href|src)\s*=\s*)("|')?\s*javascript:[^"'>\s]*/gi, '$1$2')
+      // 2. Element allowlist — drop the markup of any tag whose LOCAL name isn't
+      //    in the fixed annotation vocabulary. `[^>]*` stops at the first `>`;
+      //    annotation attrs never contain a literal `>`.
+      .replace(/<\/?\s*([a-zA-Z][\w:-]*)\b[^>]*>/g, (match, rawName: string) => {
+        const local = String(rawName).split(':').pop()?.toLowerCase() ?? '';
+        return ANNOTATION_SVG_ELEMENTS.has(local) ? match : '';
+      })
+      // 3. Attribute denylist on the surviving allowlisted elements — the legit
+      //    vocabulary uses no on*= / style= / *href=, so stripping them closes
+      //    inline handlers, CSS url(javascript:), and entity-encoded hrefs.
+      .replace(/\s(?:on[a-z]+|style|(?:[\w-]+:)?href)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
   );
 }
 

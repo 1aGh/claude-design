@@ -35,6 +35,7 @@ import { type EchoGuard, createEchoGuard } from './echo-guard.ts';
 import { type FsReader, createFsReader } from './fs-mirror.ts';
 import { getHubToken } from './hubs-config.ts';
 import { type SyncStatusStore, createSyncStatusStore } from './status.ts';
+import { writeUntrustedMarkers } from './untrusted.ts';
 
 /** A minimum-surface stand-in for the HocuspocusProvider's runtime API. */
 export interface SyncProvider {
@@ -186,6 +187,11 @@ export function createSyncRuntime(
 
     const scan = opts.canvases ? { canvases: opts.canvases, tsxCount: 0 } : await scanCanvases(ctx);
     const canvases = scan.canvases;
+    // T4.5 (DDR-054 §3 F3) — every syncable canvas can receive hub-pushed
+    // content, so the whole set is untrusted Claude-context. Mark it (writes
+    // `_untrusted/INDEX.json` + a managed `.claudeignore` block; clears both
+    // when the set is empty). Best-effort — never throws into boot.
+    writeUntrustedMarkers(ctx, canvases, linkedHub.url);
     if (canvases.length === 0) {
       // DDR-060 / 9.1-D — the silent early-return made linked mode look healthy
       // while syncing nothing (TSX-only projects: discovery admits .html only,
@@ -216,7 +222,10 @@ export function createSyncRuntime(
       rootDir: ctx.paths.designRoot,
       accept: (rel) => {
         const ext = path.extname(rel).toLowerCase();
-        return ext === '.html' || ext === '.json' || ext === '.svg';
+        // `.tsx` added in T3 (9.1-B) so local edits to an opted-in syncable
+        // `.tsx` body propagate. Non-syncable `.tsx` changes still notify but
+        // match no agent in onRead (descriptor-scoped) → harmless no-op.
+        return ext === '.html' || ext === '.tsx' || ext === '.json' || ext === '.svg';
       },
       onRead: (evt) => {
         for (const agent of agents.values()) {
@@ -389,6 +398,14 @@ export interface CanvasScan {
 export async function scanCanvases(ctx: Context): Promise<CanvasScan> {
   const out: CanvasDescriptor[] = [];
   const counter = { tsx: 0 };
+  // T3 (9.1-B) — LOAD-BEARING coupling (the plan's "two locks flip together"
+  // invariant): a `.tsx` body is admitted to sync ONLY when the cross-origin
+  // CSP/sandbox containment is active (`ctx.canvasOrigin` is set — Lock 2). The
+  // sandbox is now ON BY DEFAULT, but a user can opt out with
+  // MAUDE_CANVAS_ORIGIN_SPLIT=0; if they do, `canvasOrigin` is undefined and NO
+  // `.tsx` syncs — the per-canvas opt-in is inert without the sandbox, and
+  // decoupling them would re-open the CRITICAL F1 RCE (DDR-060, DDR-054 §F1).
+  const splitActive = !!ctx.canvasOrigin;
   for (const group of ctx.cfg.canvasGroups) {
     const groupAbs = path.join(ctx.paths.designRoot, group.path);
     if (!existsSync(groupAbs)) continue;
@@ -398,10 +415,28 @@ export async function scanCanvases(ctx: Context): Promise<CanvasScan> {
       ctx.paths.commentsDir,
       ctx.paths.designRel,
       out,
-      counter
+      counter,
+      splitActive
     );
   }
   return { canvases: out, tsxCount: counter.tsx };
+}
+
+/**
+ * T3 (9.1-B) — per-canvas sync opt-in. A `.tsx` canvas is syncable only if its
+ * sibling `<name>.meta.json` declares `"syncable": true`. The flag is set by a
+ * human editing the sidecar; it is deliberately NOT in the untrusted
+ * `/_api/canvas-meta` PATCH whitelist (api.ts), so a hostile canvas/hub cannot
+ * flip its own body into the sync set. Missing sidecar / parse error → false.
+ */
+function readSyncableFlag(bodyAbs: string): boolean {
+  const metaAbs = bodyAbs.replace(/\.(tsx|html)$/i, '.meta.json');
+  try {
+    const obj = JSON.parse(readFileSync(metaAbs, 'utf8'));
+    return obj && typeof obj === 'object' && obj.syncable === true;
+  } catch {
+    return false;
+  }
 }
 
 async function walk(
@@ -410,7 +445,8 @@ async function walk(
   commentsDir: string,
   designRel: string,
   acc: CanvasDescriptor[],
-  counter: { tsx: number }
+  counter: { tsx: number },
+  splitActive: boolean
 ): Promise<void> {
   let entries: import('node:fs').Dirent[];
   try {
@@ -423,19 +459,28 @@ async function walk(
     if (entry.isDirectory()) {
       // Skip plugin runtime dirs.
       if (entry.name.startsWith('_')) continue;
-      await walk(abs, designRoot, commentsDir, designRel, acc, counter);
+      await walk(abs, designRoot, commentsDir, designRel, acc, counter, splitActive);
       continue;
     }
     const ext = path.extname(entry.name).toLowerCase();
-    // DDR-054 §2b — refuse .tsx; only .html canvases sync. Tally the .tsx
-    // canvases so the zero-syncable surface (9.1-D) can report the real reason.
+    // T3 (9.1-B) — a `.tsx` syncs ONLY when the sandbox is active AND the
+    // sidecar opts in (see readSyncableFlag + the splitActive coupling above).
+    // Otherwise tally it for 9.1-D's loud zero-syncable surface so the message
+    // can explain *why* it isn't syncing.
     if (ext === '.tsx') {
-      counter.tsx += 1;
+      if (!(splitActive && readSyncableFlag(abs))) {
+        counter.tsx += 1;
+        continue;
+      }
+      // falls through to descriptor push (body = the .tsx file)
+    } else if (ext !== '.html') {
       continue;
     }
-    if (ext !== '.html') continue;
     const slug = slugFor(abs, designRoot, designRel);
     acc.push({
+      // `html` is the canvas BODY path — `.html` or an opted-in `.tsx`. The
+      // sync codec treats the body as opaque Y.Text, so the field name is
+      // historical; both formats round-trip identically (DDR-060).
       slug,
       html: abs,
       comments: path.join(commentsDir, `${slug}.json`),
@@ -470,7 +515,7 @@ export function buildNoSyncablePayload(
 ): NoSyncablePayload {
   const reason =
     tsxCount > 0
-      ? `${tsxCount} TSX canvas(es) found but none are syncable — TSX bodies need opt-in (.meta.json syncable: true) + the sandbox gate (DDR-060). Nothing syncs until 9.1-A/B land.`
+      ? `${tsxCount} TSX canvas(es) found but none are syncable — a TSX body syncs only when the canvas opts in (.meta.json "syncable": true). The canvas sandbox is on by default; MAUDE_CANVAS_ORIGIN_SPLIT=0 disables it (and TSX sync with it). See DDR-060.`
       : `no canvases found under ${designRoot}.`;
   return {
     linked: true,

@@ -69,9 +69,14 @@ function ext(p: string): string {
  * `webrtc 'block'` (A6, DDR-060 F1 re-audit) — `connect-src` governs only
  * fetch/XHR/WebSocket/sendBeacon; WebRTC does NOT flow through Fetch, so an
  * `RTCPeerConnection` with an attacker STUN/TURN hostname smuggles bytes out via
- * ICE DNS/STUN even under `connect-src 'self'`. The dedicated `webrtc` directive
- * is the only CSP control for it. The canvas runtime uses zero WebRTC (presence
- * rides the same-origin collab WS), so blocking it is free.
+ * ICE DNS/STUN even under `connect-src 'self'`. ⚠️ This directive is specified
+ * (CSP3) but UNIMPLEMENTED in shipping Chrome/Firefox as of 2026 (Chromium
+ * #40188662, Firefox bug 1783489) — currently a NO-OP. The enforceable control
+ * today is the RTC-constructor lockout in `templates/_shell.html`; this directive
+ * is kept for when browsers honor it. WebRTC + self-navigation exfil remain
+ * DOCUMENTED residuals of opt-in linked mode (the reachable data is collab
+ * metadata, not repo files — traversal is closed). Do NOT treat this as a closed
+ * exfil lane. The canvas runtime itself uses zero WebRTC.
  *
  * `frame-ancestors` (A6) — restricts who may embed the canvas document. The
  * legit embedder is the main dev-server origin, so we allowlist exactly that
