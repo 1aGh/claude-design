@@ -1,6 +1,9 @@
 // Public surface of the collab module. Bundles the registry + persistence
 // wiring so ws.ts + server.ts don't need to know about the internal split.
 
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+
 import type { Api } from '../api.ts';
 import type { Context } from '../context.ts';
 
@@ -14,6 +17,8 @@ export type { CollabConn } from './protocol.ts';
 
 export interface Collab {
   registry: Registry;
+  /** Tear down the fs-driven re-seed subscription (server shutdown). */
+  dispose(): void;
 }
 
 /**
@@ -43,5 +48,53 @@ export function createCollab(ctx: Context, api: Api): Collab {
   const persistence = createPersistence({ ctx, api, fileForSlug });
   const registry = createRegistry(persistence);
 
-  return { registry };
+  // File = truth (the file-sync collaboration model + DDR-051): when a synced
+  // file changes on disk from OUTSIDE the API path — the sync agent writing a
+  // hub-pushed diff, or `design:edit` editing a JSON/SVG directly — fan the
+  // change back out to the browser, since none of these go through the API's
+  // onCommentsChanged. Two consumers, two reasons:
+  //   - the live collab room (canvas pins / annotation strokes) — re-seeded so
+  //     its in-memory doc stops clobbering the external change on next persist
+  //     (the cross-machine "comment reverts to []" bug). Only when a room is
+  //     mounted (peek, never create).
+  //   - the shell's comments SIDEBAR — driven solely by the 'comments' WS event
+  //     (app.jsx), which otherwise fires only on API writes. Emit it here too so
+  //     a hub-pushed comment shows up on the peer's sidebar without a reload.
+  // The registry's no-op guards make an identical re-seed free, so this can't
+  // loop against the room's own persist (which also writes the file).
+  const reseedFromDisk = async (rel: string): Promise<void> => {
+    const cm = /^_comments\/(.+)\.json$/.exec(rel);
+    const am = /^(.+)\.annotations\.svg$/.exec(rel);
+    const slug = cm?.[1] ?? am?.[1];
+    if (!slug) return;
+    const abs = path.join(ctx.paths.designRoot, rel);
+    try {
+      if (cm) {
+        // Prefer the canonical loader (validates + default-fills the Comment
+        // shape) keyed by the canvas file; fall back to the raw array when the
+        // slug isn't mapped yet (e.g. a freshly-synced file with no prior load).
+        const file = await fileForSlug(slug);
+        const parsed = file
+          ? await api.loadCommentsForFile(file)
+          : JSON.parse(readFileSync(abs, 'utf8'));
+        if (!Array.isArray(parsed)) return;
+        if (registry.peek(slug)) registry.syncRoomFromComments(slug, parsed);
+        if (file) ctx.bus.emit('comments', { file, comments: parsed });
+      } else if (registry.peek(slug)) {
+        registry.syncRoomFromAnnotations(slug, readFileSync(abs, 'utf8'));
+      }
+    } catch {
+      /* file vanished mid-flight or unreadable — leave state as-is */
+    }
+  };
+  const unsubFs = ctx.bus.on('fs:any', (rel: string) => {
+    void reseedFromDisk(rel);
+  });
+
+  return {
+    registry,
+    dispose() {
+      unsubFs?.();
+    },
+  };
 }

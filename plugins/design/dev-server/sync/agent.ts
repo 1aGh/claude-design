@@ -37,9 +37,14 @@ import {
   annotationsFromDoc,
   applyAnnotationsToDoc,
   applyCommentsToDoc,
+  applyCssToDoc,
   applyHtmlToDoc,
+  applyMetaToDoc,
   commentsFromDoc,
+  cssFromDoc,
   htmlFromDoc,
+  mergeSharedMetaIntoLocal,
+  metaFromDoc,
 } from './codec.ts';
 import { type EchoGuard, hashBytes } from './echo-guard.ts';
 
@@ -52,6 +57,14 @@ export interface CanvasSyncPaths {
   comments: string;
   /** Absolute path to <designRoot>/<slug>.annotations.svg. */
   annotations: string;
+  /** Absolute path to the canvas `.meta.json` (sibling of the body). Optional:
+   *  when set (always, in production wiring), shared meta keys (layout/artboards)
+   *  sync while per-user viewport stays local (Phase 9.1 Gap 2). Omitted in
+   *  older test constructions → meta sync is simply inert. */
+  meta?: string;
+  /** Absolute path to the canvas's sibling `.css` (Phase 9.1 Gap 3). Optional —
+   *  inline-CSS canvases have none; omitted/absent → css sync is inert. */
+  css?: string;
 }
 
 export interface CanvasSyncAgentOptions {
@@ -113,6 +126,8 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
   let lastHtml: string | null = null;
   let lastComments: string | null = null;
   let lastAnnotations: string | null = null;
+  let lastMeta: string | null = null;
+  let lastCss: string | null = null;
 
   function onDocUpdate(_update: Uint8Array, updateOrigin: unknown): void {
     if (stopped) return;
@@ -149,6 +164,8 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
       writeHtmlIfChanged();
       writeCommentsIfChanged();
       writeAnnotationsIfChanged();
+      writeMetaIfChanged();
+      writeCssIfChanged();
     } catch (err) {
       dirty = true;
       console.error(`[sync/${slug}] flush failed:`, err);
@@ -194,6 +211,31 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
     lastAnnotations = value;
   }
 
+  function writeMetaIfChanged(): void {
+    if (!paths.meta) return;
+    const shared = metaFromDoc(doc);
+    if (shared === lastMeta) return;
+    lastMeta = shared;
+    if (shared === null) return; // doc carries no shared meta yet — nothing to merge down
+    const local = readLocal(paths.meta);
+    const merged = mergeSharedMetaIntoLocal(local, shared);
+    if (merged === null || merged === local) return; // unparseable, or disk already matches
+    const hash = hashBytes(merged);
+    echoGuard.record(paths.meta, hash);
+    writer(paths.meta, merged);
+  }
+
+  function writeCssIfChanged(): void {
+    if (!paths.css) return;
+    const next = cssFromDoc(doc);
+    if (next === lastCss) return;
+    lastCss = next;
+    if (next === null) return; // doc carries no css yet — nothing to write
+    const hash = hashBytes(next);
+    echoGuard.record(paths.css, hash);
+    writer(paths.css, next);
+  }
+
   function applyFromFs(evt: { path: string; bytes: Uint8Array; hash: string }): boolean {
     if (stopped) return false;
     // Echo of our own atomicWrite — drop.
@@ -217,6 +259,18 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
       if (changed) lastAnnotations = str;
       return changed;
     }
+    if (paths.meta && evt.path === paths.meta) {
+      // Local meta changed (canvas-meta PATCH / design:edit) → push its SHARED
+      // subset (layout/artboards, minus per-user viewport) into the doc.
+      const changed = applyMetaToDoc(doc, str, origin);
+      if (changed) lastMeta = metaFromDoc(doc);
+      return changed;
+    }
+    if (paths.css && evt.path === paths.css) {
+      const changed = applyCssToDoc(doc, str, origin);
+      if (changed) lastCss = str;
+      return changed;
+    }
     return false;
   }
 
@@ -225,12 +279,16 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
     const localHtml = readLocal(paths.html);
     const localComments = readLocal(paths.comments);
     const localAnnotations = readLocal(paths.annotations);
+    const localMeta = paths.meta ? readLocal(paths.meta) : null;
+    const localCss = paths.css ? readLocal(paths.css) : null;
 
     const docHtml = htmlFromDoc(doc);
     const docComments = commentsFromDoc(doc);
     const docCommentsStr =
       docComments.length > 0 ? `${JSON.stringify(docComments, null, 2)}\n` : '';
     const docAnnotations = annotationsFromDoc(doc) ?? '';
+    const docMeta = metaFromDoc(doc);
+    const docCss = cssFromDoc(doc);
 
     if (adopt) {
       // Push local up: doc takes its values from disk. Hub becomes our
@@ -241,9 +299,13 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
         if (parsed !== null) applyCommentsToDoc(doc, parsed, origin);
       }
       if (localAnnotations !== null) applyAnnotationsToDoc(doc, localAnnotations, origin);
+      if (paths.meta && localMeta !== null) applyMetaToDoc(doc, localMeta, origin);
+      if (paths.css && localCss !== null) applyCssToDoc(doc, localCss, origin);
       lastHtml = localHtml ?? '';
       lastComments = localComments ?? '';
       lastAnnotations = localAnnotations ?? '';
+      lastMeta = metaFromDoc(doc);
+      lastCss = cssFromDoc(doc);
       adopt = false;
       return;
     }
@@ -252,6 +314,8 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
     lastHtml = docHtml;
     lastComments = docCommentsStr;
     lastAnnotations = docAnnotations;
+    lastMeta = docMeta;
+    lastCss = docCss;
     if (localHtml !== docHtml) {
       // Local had divergent, non-empty content that hub-wins is discarding —
       // notify so the user knows their local edits were overwritten (Task 8).
@@ -272,6 +336,23 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
       const hash = hashBytes(docAnnotations);
       echoGuard.record(paths.annotations, hash);
       writer(paths.annotations, docAnnotations);
+    }
+    // Meta: merge the doc's shared subset (layout/artboards) into local,
+    // preserving this machine's viewport + syncable. Only writes when the merge
+    // actually changes the file (a fresh peer with no local viewport, or an
+    // artboard layout the hub carries that local lacks).
+    if (paths.meta && docMeta !== null) {
+      const merged = mergeSharedMetaIntoLocal(localMeta, docMeta);
+      if (merged !== null && merged !== localMeta) {
+        const hash = hashBytes(merged);
+        echoGuard.record(paths.meta, hash);
+        writer(paths.meta, merged);
+      }
+    }
+    if (paths.css && docCss !== null && localCss !== docCss) {
+      const hash = hashBytes(docCss);
+      echoGuard.record(paths.css, hash);
+      writer(paths.css, docCss);
     }
   }
 

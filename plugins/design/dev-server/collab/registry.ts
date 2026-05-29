@@ -13,6 +13,12 @@ import { Y_TYPES } from './persistence.ts';
 import type { Room, RoomCallbacks } from './room.ts';
 import { createRoom } from './room.ts';
 
+/** Structural equality via canonical JSON — used by the syncRoomFrom* no-op
+ *  guards. Comment lists are small; stringify is cheap + dependency-free. */
+function jsonEqual(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 export interface Registry {
   /** Get-or-create. Reuses an existing room for the same slug. */
   get(slug: string): Room;
@@ -107,8 +113,15 @@ export function createRegistry(callbacks: RoomCallbacks): Registry {
   function syncRoomFromComments(slug: string, comments: readonly unknown[]): void {
     const room = rooms.get(slug);
     if (!room) return;
+    const arr = room.doc.getArray<unknown>(Y_TYPES.comments);
+    // No-op guard (load-bearing): skip when the room already holds this exact
+    // list. The wholesale delete+push always emits a doc update, which schedules
+    // a persist → file write → fs event → re-seed … so without this equality
+    // short-circuit, re-seeding the live room from a disk change (sync-agent or
+    // design:edit write — see createCollab's fs hook) would spin an 800ms
+    // persist storm. Equality breaks the loop after a single convergence.
+    if (jsonEqual(arr.toArray(), comments)) return;
     room.doc.transact(() => {
-      const arr = room.doc.getArray<unknown>(Y_TYPES.comments);
       if (arr.length > 0) arr.delete(0, arr.length);
       if (comments.length > 0) arr.push(comments as unknown[]);
     }, 'inspector-write');
@@ -117,8 +130,9 @@ export function createRegistry(callbacks: RoomCallbacks): Registry {
   function syncRoomFromAnnotations(slug: string, svg: string): void {
     const room = rooms.get(slug);
     if (!room) return;
+    const map = room.doc.getMap<string>(Y_TYPES.annotations);
+    if (map.get('svg') === svg) return; // no-op guard — same rationale as comments
     room.doc.transact(() => {
-      const map = room.doc.getMap<string>(Y_TYPES.annotations);
       map.set('svg', svg);
     }, 'inspector-write');
   }

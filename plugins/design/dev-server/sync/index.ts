@@ -24,6 +24,7 @@ import path from 'node:path';
 import type { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
+import { Y_TYPES } from '../collab/persistence.ts';
 import type { Context } from '../context.ts';
 import { type CanvasSyncAgent, createCanvasSyncAgent } from './agent.ts';
 import {
@@ -65,6 +66,12 @@ export interface SyncProvider {
  */
 export interface AwarenessRegistry {
   attachHubAwareness(slug: string, awareness: Awareness): () => void;
+  /** Phase 9.1 — relay a hub-pushed comment/annotation snapshot into a live
+   *  room (wholesale, in-process) so the peer's canvas reflects it immediately
+   *  and the room's own debounced persist can't clobber the synced state back.
+   *  Optional so file-sync-only tests can pass a minimal registry. */
+  syncRoomFromComments?(slug: string, comments: readonly unknown[]): void;
+  syncRoomFromAnnotations?(slug: string, svg: string): void;
 }
 
 /** Factory the runtime calls per discovered canvas. Default uses Hocuspocus. */
@@ -118,6 +125,11 @@ export interface CanvasDescriptor {
   html: string;
   comments: string;
   annotations: string;
+  /** The canvas `.meta.json` sidecar (sibling of the body). Phase 9.1 Gap 2 —
+   *  shared keys (layout/artboards) sync; per-user viewport stays local. */
+  meta: string;
+  /** The canvas's sibling `.css` (Phase 9.1 Gap 3), synced as opaque text. */
+  css: string;
 }
 
 /**
@@ -225,7 +237,10 @@ export function createSyncRuntime(
         // `.tsx` added in T3 (9.1-B) so local edits to an opted-in syncable
         // `.tsx` body propagate. Non-syncable `.tsx` changes still notify but
         // match no agent in onRead (descriptor-scoped) → harmless no-op.
-        return ext === '.html' || ext === '.tsx' || ext === '.json' || ext === '.svg';
+        // `.css` added in Gap 3 so the canvas's sibling stylesheet syncs.
+        return (
+          ext === '.html' || ext === '.tsx' || ext === '.json' || ext === '.svg' || ext === '.css'
+        );
       },
       onRead: (evt) => {
         for (const agent of agents.values()) {
@@ -260,6 +275,8 @@ export function createSyncRuntime(
             html: canvas.html,
             comments: canvas.comments,
             annotations: canvas.annotations,
+            meta: canvas.meta,
+            css: canvas.css,
           },
           echoGuard,
           adopt: adoptOnce,
@@ -289,6 +306,43 @@ export function createSyncRuntime(
         // no awareness or no registry was passed (file-sync-only tests).
         if (opts.registry && provider.awareness) {
           awarenessDetaches.push(opts.registry.attachHubAwareness(canvas.slug, provider.awareness));
+        }
+
+        // Relay hub-pushed comment/annotation changes straight into the live
+        // room — IN-PROCESS + synchronous, so the room's in-memory doc is
+        // updated BEFORE its 800ms persist timer can flush stale pre-sync state
+        // back over the file (the disk-mediated re-seed in createCollab loses
+        // that race under an actively-edited peer; this is the tight path that
+        // actually closes the "comment reverts" clobber). Wholesale-replace via
+        // syncRoomFrom* → no duplication. Skip agent-origin updates (our own
+        // disk→doc apply — the file is authoritative there; a local design:edit
+        // reaches the room via createCollab's fs hook instead).
+        //
+        // CRITICAL: observe the comment + annotation Y-types SEPARATELY, not the
+        // whole-doc update. A whole-doc relay re-applies BOTH types on every
+        // change, so a comment sync would re-push the (stale) annotation and
+        // clobber an annotation the peer just drew but hasn't synced yet — and
+        // vice versa. Per-type observers keep the two lanes independent.
+        const reg = opts.registry;
+        if (reg?.syncRoomFromComments) {
+          const slug = canvas.slug;
+          const provComments = provider.document.getArray(Y_TYPES.comments);
+          const provAnn = provider.document.getMap(Y_TYPES.annotations);
+          const onComments = (_e: unknown, tx: { origin: unknown }) => {
+            if (tx.origin === agent.origin) return;
+            reg.syncRoomFromComments?.(slug, provComments.toArray());
+          };
+          const onAnn = (_e: unknown, tx: { origin: unknown }) => {
+            if (tx.origin === agent.origin) return;
+            const svg = provAnn.get('svg');
+            if (typeof svg === 'string') reg.syncRoomFromAnnotations?.(slug, svg);
+          };
+          provComments.observe(onComments);
+          provAnn.observe(onAnn);
+          statusDetaches.push(() => {
+            provComments.unobserve(onComments);
+            provAnn.unobserve(onAnn);
+          });
         }
 
         // Cold-start reconcile fires once the provider has hub state.
@@ -494,6 +548,10 @@ async function walk(
       html: abs,
       comments: path.join(commentsDir, `${slug}.json`),
       annotations: path.join(designRoot, `${slug}.annotations.svg`),
+      // The `.meta.json` sidecar sits next to the body: `Foo.tsx` → `Foo.meta.json`.
+      meta: abs.replace(/\.(tsx|html)$/i, '.meta.json'),
+      // The `.css` sibling: `Foo.tsx` → `Foo.css` (absent for inline-CSS canvases).
+      css: abs.replace(/\.(tsx|html)$/i, '.css'),
     });
   }
 }

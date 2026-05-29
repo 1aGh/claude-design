@@ -35,6 +35,8 @@ function desc(slug: string, body: string): CanvasDescriptor {
     html: join(designRoot, body),
     comments: join(designRoot, '_comments', `${slug}.json`),
     annotations: join(designRoot, `${slug}.annotations.svg`),
+    meta: join(designRoot, body.replace(/\.(tsx|html)$/i, '.meta.json')),
+    css: join(designRoot, body.replace(/\.(tsx|html)$/i, '.css')),
   };
 }
 
@@ -51,12 +53,16 @@ describe('writeUntrustedMarkers — T4.5', () => {
     expect(index.hubUrl).toBe(HUB);
     expect(index.canvases[0].slug).toBe('ui-a');
     expect(index.canvases[0].body).toBe('.design/ui/a.tsx');
+    expect(index.canvases[0].meta).toBe('.design/ui/a.meta.json'); // Gap 2: meta is untrusted too
+    expect(index.canvases[0].css).toBe('.design/ui/a.css'); // Gap 3: css too
     expect(index.note.toLowerCase()).toContain('untrusted');
 
     const ci = readFileSync(join(repoRoot, '.claudeignore'), 'utf8');
     expect(ci).toContain('maude:sync-untrusted begin');
     expect(ci).toContain('.design/ui/a.tsx');
     expect(ci).toContain('.design/ui-a.annotations.svg');
+    expect(ci).toContain('.design/ui/a.meta.json');
+    expect(ci).toContain('.design/ui/a.css');
     expect(ci).toContain('maude:sync-untrusted end');
   });
 

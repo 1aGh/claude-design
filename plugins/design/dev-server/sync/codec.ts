@@ -33,6 +33,16 @@ import { Y_TYPES } from '../collab/persistence.ts';
 export const Y_SYNC_TYPES = {
   /** The canvas HTML body, as opaque Y.Text. */
   html: 'html',
+  /** The canvas's sibling `.css` (e.g. `Kanban App.css`), as opaque Y.Text.
+   *  Edited via files (design:edit), not a live browser surface, so it mirrors
+   *  wholesale like the body — no per-user keys, no room-clobber. Phase 9.1
+   *  Gap 3. */
+  css: 'css',
+  /** The canvas `.meta.json` SHARED subset (layout/artboards/structure) as an
+   *  opaque canonical-JSON Y.Text. Per-user keys (viewport pan/zoom) + the
+   *  security opt-in (syncable) are stripped before sync — see META_LOCAL_KEYS
+   *  + sharedMetaCanonical. Phase 9.1 Gap 2. */
+  meta: 'meta',
 } as const;
 
 /**
@@ -44,6 +54,8 @@ export const Y_SYNC_TYPES = {
 export const MAX_HTML_BYTES = 4 * 1024 * 1024;
 export const MAX_COMMENTS_BYTES = 1 * 1024 * 1024;
 export const MAX_ANNOTATIONS_BYTES = 1 * 1024 * 1024;
+export const MAX_META_BYTES = 1 * 1024 * 1024;
+export const MAX_CSS_BYTES = 4 * 1024 * 1024;
 
 function byteLengthUtf8(s: string): number {
   return Buffer.byteLength(s, 'utf8');
@@ -164,6 +176,136 @@ export function applyAnnotationsToDoc(doc: Y.Doc, next: string | null, origin?: 
     } else {
       map.set('svg', next);
     }
+  }, origin);
+  return true;
+}
+
+/* ---------------------------------------------------------------- meta */
+
+/**
+ * Keys of a canvas `.meta.json` that are PER-MACHINE and MUST NOT cross the hub:
+ *   - `viewport`      — this user's pan/zoom; syncing it would yank a
+ *                        collaborator's camera around on every pan.
+ *   - `last_modified` — a local write timestamp; syncing it churns with no signal.
+ *   - `syncable`      — the security opt-in (DDR-054). A peer/hub must NEVER be
+ *                        able to flip another repo's sync gate, so it stays local
+ *                        and human-edited — same rationale that keeps it out of
+ *                        the /_api/canvas-meta PATCH whitelist.
+ * Everything else (title, sections/artboards, `layout` rects, css_mode, …) is
+ * shared canvas structure and DOES sync — that's how an artboard move on one
+ * machine reaches the other's disk.
+ */
+export const META_LOCAL_KEYS = ['viewport', 'last_modified', 'syncable'] as const;
+
+/** Canonical JSON of the SHARED subset of a parsed meta object: local keys
+ *  dropped, remaining keys sorted so equal content always serializes byte-equal
+ *  (stable → the no-op guards stay quiet and sync doesn't churn). */
+function sharedMetaCanonical(meta: Record<string, unknown>): string {
+  const out: Record<string, unknown> = {};
+  for (const k of Object.keys(meta).sort()) {
+    if ((META_LOCAL_KEYS as readonly string[]).includes(k)) continue;
+    out[k] = meta[k];
+  }
+  return JSON.stringify(out);
+}
+
+/** The synced shared-meta JSON string held in the doc, or null when unset. */
+export function metaFromDoc(doc: Y.Doc): string | null {
+  const s = doc.getText(Y_SYNC_TYPES.meta).toString();
+  return s.length > 0 ? s : null;
+}
+
+/**
+ * Apply a FULL `.meta.json` string to the doc as its shared subset: parse, strip
+ * per-user/security keys, store the canonical shared JSON in a Y.Text. Returns
+ * false on parse error / over-cap / no change.
+ */
+export function applyMetaToDoc(doc: Y.Doc, fullMetaJson: string, origin?: unknown): boolean {
+  let obj: unknown;
+  try {
+    obj = JSON.parse(fullMetaJson);
+  } catch {
+    return false;
+  }
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
+  const shared = sharedMetaCanonical(obj as Record<string, unknown>);
+  if (byteLengthUtf8(shared) > MAX_META_BYTES) {
+    console.warn(
+      `[sync/codec] refusing meta apply > ${MAX_META_BYTES} bytes (got ${byteLengthUtf8(shared)}). DDR-054 §2d.`
+    );
+    return false;
+  }
+  const t = doc.getText(Y_SYNC_TYPES.meta);
+  if (t.toString() === shared) return false;
+  doc.transact(() => {
+    if (t.length > 0) t.delete(0, t.length);
+    t.insert(0, shared);
+  }, origin);
+  return true;
+}
+
+/**
+ * Merge the synced shared-meta into a local `.meta.json` string, PRESERVING the
+ * local per-user/security keys (META_LOCAL_KEYS). Shared keys become exactly
+ * what the doc holds (so a deletion on the source propagates); the local keys
+ * are layered back on top. Returns the merged JSON (2-space, trailing newline)
+ * ready to write, or null when the shared payload is unparseable.
+ */
+export function mergeSharedMetaIntoLocal(
+  localMetaJson: string | null,
+  sharedJson: string
+): string | null {
+  let shared: unknown;
+  try {
+    shared = JSON.parse(sharedJson);
+  } catch {
+    return null;
+  }
+  if (!shared || typeof shared !== 'object' || Array.isArray(shared)) return null;
+  let local: Record<string, unknown> = {};
+  if (localMetaJson) {
+    try {
+      const parsed = JSON.parse(localMetaJson);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        local = parsed as Record<string, unknown>;
+      }
+    } catch {
+      /* unparseable local meta — treat as empty; the shared subset becomes the base */
+    }
+  }
+  const merged: Record<string, unknown> = { ...(shared as Record<string, unknown>) };
+  for (const k of META_LOCAL_KEYS) {
+    if (k in local) merged[k] = local[k];
+  }
+  return `${JSON.stringify(merged, null, 2)}\n`;
+}
+
+/* ---------------------------------------------------------------- css */
+
+/** The synced canvas CSS string held in the doc, or null when unset/empty. */
+export function cssFromDoc(doc: Y.Doc): string | null {
+  const s = doc.getText(Y_SYNC_TYPES.css).toString();
+  return s.length > 0 ? s : null;
+}
+
+/**
+ * Apply the canvas's `.css` to the doc as opaque Y.Text (wholesale replace).
+ * CSS round-trips byte-identically (we write exactly the doc string back), so a
+ * wholesale delete+insert can't churn; the equality short-circuit keeps it quiet
+ * when unchanged. Returns false on over-cap / no change.
+ */
+export function applyCssToDoc(doc: Y.Doc, next: string, origin?: unknown): boolean {
+  if (byteLengthUtf8(next) > MAX_CSS_BYTES) {
+    console.warn(
+      `[sync/codec] refusing CSS apply > ${MAX_CSS_BYTES} bytes (got ${byteLengthUtf8(next)}). DDR-054 §2d.`
+    );
+    return false;
+  }
+  const t = doc.getText(Y_SYNC_TYPES.css);
+  if (t.toString() === next) return false;
+  doc.transact(() => {
+    if (t.length > 0) t.delete(0, t.length);
+    t.insert(0, next);
   }, origin);
   return true;
 }

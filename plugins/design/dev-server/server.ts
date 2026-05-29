@@ -344,7 +344,10 @@ async function shutdown() {
     /* best-effort — provider sockets will be closed by process exit anyway */
   }
   try {
-    if (collab) await collab.registry.destroyAll();
+    if (collab) {
+      collab.dispose();
+      await collab.registry.destroyAll();
+    }
   } catch {
     /* best-effort flush; the JSON snapshot is the ground truth anyway */
   }
