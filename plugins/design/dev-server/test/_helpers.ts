@@ -45,12 +45,16 @@ export function nextPort(): number {
   return portCounter;
 }
 
-export async function bootServer(root: string, port: number): Promise<Subprocess> {
+export async function bootServer(
+  root: string,
+  port: number,
+  extraEnv?: Record<string, string>
+): Promise<Subprocess> {
   const serverPath = join(import.meta.dir, '..', 'server.ts');
   const proc = spawn({
     cmd: ['bun', 'run', serverPath, '--port', String(port), '--root', root],
     cwd: join(import.meta.dir, '..'),
-    env: { ...process.env, NO_OPEN: '1', NODE_ENV: 'test' },
+    env: { ...process.env, NO_OPEN: '1', NODE_ENV: 'test', ...extraEnv },
     stdout: 'pipe',
     stderr: 'pipe',
   });

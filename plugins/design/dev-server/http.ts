@@ -65,8 +65,22 @@ function ext(p: string): string {
  * specimens use `style={{…}}` attributes + injected `<style>`; style injection
  * is not the F1 RCE vector (script + connect are). No `'unsafe-eval'` — the
  * POC verifies the runtime (motion/pixi/Bun.build output) doesn't need it.
+ *
+ * `webrtc 'block'` (A6, DDR-060 F1 re-audit) — `connect-src` governs only
+ * fetch/XHR/WebSocket/sendBeacon; WebRTC does NOT flow through Fetch, so an
+ * `RTCPeerConnection` with an attacker STUN/TURN hostname smuggles bytes out via
+ * ICE DNS/STUN even under `connect-src 'self'`. The dedicated `webrtc` directive
+ * is the only CSP control for it. The canvas runtime uses zero WebRTC (presence
+ * rides the same-origin collab WS), so blocking it is free.
+ *
+ * `frame-ancestors` (A6) — restricts who may embed the canvas document. The
+ * legit embedder is the main dev-server origin, so we allowlist exactly that
+ * (`mainOrigin`) plus `'self'`; an arbitrary external page can no longer reframe
+ * the canvas. When `mainOrigin` is unknown (tests / pre-boot) the directive is
+ * OMITTED rather than set to `'self'` — `'self'` alone would forbid the legit
+ * cross-origin embed and blank the canvas.
  */
-export function cspForCanvasShell(html: string): string {
+export function cspForCanvasShell(html: string, mainOrigin?: string): string {
   const hashes: string[] = [];
   // Match inline <script> blocks only (no src=). `[^>]*` excludes any with src.
   const re = /<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi;
@@ -78,7 +92,7 @@ export function cspForCanvasShell(html: string): string {
     hashes.push(`'sha256-${digest}'`);
   }
   const scriptSrc = ["'self'", ...hashes].join(' ');
-  return [
+  const directives = [
     "default-src 'none'",
     `script-src ${scriptSrc}`,
     "connect-src 'self'",
@@ -88,7 +102,11 @@ export function cspForCanvasShell(html: string): string {
     "frame-src 'self'",
     "base-uri 'none'",
     "object-src 'none'",
-  ].join('; ');
+    "form-action 'none'",
+    "webrtc 'block'",
+  ];
+  if (mainOrigin) directives.push(`frame-ancestors 'self' ${mainOrigin}`);
+  return directives.join('; ');
 }
 
 function safePathUnderRoot(reqUrl: string, repoRoot: string): string | null {
@@ -698,7 +716,7 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'no-store',
     };
-    if (applyCsp) headers['Content-Security-Policy'] = cspForCanvasShell(injected);
+    if (applyCsp) headers['Content-Security-Policy'] = cspForCanvasShell(injected, ctx.mainOrigin);
     return new Response(injected, { headers });
   }
 
@@ -734,9 +752,28 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
   ]);
 
   function isCanvasSafeRoute(pathname: string): boolean {
-    if (pathname === '/_canvas-shell.html' || pathname === '/_canvas-shell') return true;
-    if (pathname === '/_health') return true;
-    if (pathname === '/_client/comment-mount.js') return true;
+    // A1/A2 (DDR-060 F1 re-audit, phase-9.1-t2-f1-cross-origin-reaudit.md) —
+    // DECODE + NORMALIZE before gating. `URL.pathname` preserves `%2f` (it does
+    // NOT decode it to `/`), so a raw allowlist check on the encoded path is
+    // fooled: `/.design/..%2fsite%2fx.css` reads as ONE opaque segment under the
+    // designRoot with an asset ext (the `_`-segment + ext checks see no literal
+    // slash to split on), yet `safePathUnderRoot` later DECODES the same `%2f`,
+    // turns `..%2f` into a real `../`, and climbs out of the designRoot — re-
+    // confined only to repoRoot. That decode mismatch let a hub-pushed canvas
+    // read any repo `.tsx`/`.css`/`.svg`/font + `_history` snapshots. Decoding
+    // here makes the gate agree with the resolver: `..%2f` → `../`, normalize
+    // collapses it, and the path no longer matches designPrefix → 403. A
+    // malformed escape (`%ZZ`) throws → reject. This gate runs ONLY on the
+    // segregated canvas origin (server.ts), so the main origin is untouched.
+    let safe: string;
+    try {
+      safe = posix.normalize(decodeURIComponent(pathname));
+    } catch {
+      return false;
+    }
+    if (safe === '/_canvas-shell.html' || safe === '/_canvas-shell') return true;
+    if (safe === '/_health') return true;
+    if (safe === '/_client/comment-mount.js') return true;
     // Canvas-chrome stylesheets (composer / thread / pin / cursor CSS). Inert
     // static assets from the dev-server distribution — no secrets, no code
     // exec, no repo content. Without this the cross-origin canvas 403s e.g.
@@ -744,23 +781,23 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
     // unstyled and, missing `position: fixed`, collapses to the top-left (0,0).
     // Allowed by pattern (not per-file) so future chrome CSS can't silently
     // regress the same way.
-    if (pathname.startsWith('/_client/') && ext(pathname) === '.css') return true;
-    if (pathname.startsWith('/_canvas-runtime/')) return true;
+    if (safe.startsWith('/_client/') && ext(safe) === '.css') return true;
+    if (safe.startsWith('/_canvas-runtime/')) return true;
     // Collab + display-data endpoints the canvas runtime legitimately calls from
     // inside the iframe. All are reads or inert collab writes (annotations SVG,
     // comment replies) — the "safe to sync" set per DDR-054. None expose code
     // execution, secrets, export, /_config, /_sync-status, or files outside
     // designRoot/annotations; the canvas origin's CSP `connect-src 'self'` still
     // confines the iframe so hub-pushed JSX can't reach IMDS/LAN/main-origin.
-    if (CANVAS_SAFE_API.has(pathname)) return true;
+    if (CANVAS_SAFE_API.has(safe)) return true;
     // POST /_api/comments/<id>/reply — dynamic path (fetch-handled).
-    if (/^\/_api\/comments\/[A-Za-z0-9_]+\/reply$/.test(pathname)) return true;
+    if (/^\/_api\/comments\/[A-Za-z0-9_]+\/reply$/.test(safe)) return true;
     const designPrefix = `/${ctx.paths.designRel.replace(/^\/+|\/+$/g, '')}/`;
-    if (pathname.startsWith(designPrefix)) {
-      const rest = pathname.slice(designPrefix.length);
+    if (safe.startsWith(designPrefix)) {
+      const rest = safe.slice(designPrefix.length);
       // Reject runtime/state dirs+files (_comments, _sync.json, _history, …).
       if (rest.split('/').some((seg) => seg.startsWith('_'))) return false;
-      return CANVAS_ASSET_EXTS.has(ext(pathname));
+      return CANVAS_ASSET_EXTS.has(ext(safe));
     }
     return false;
   }

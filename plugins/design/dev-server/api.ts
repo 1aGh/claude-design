@@ -173,6 +173,35 @@ export interface ApiHooks {
   onAnnotationsChanged?: (file: string, svg: string) => void;
 }
 
+/**
+ * A3 (DDR-060 F1 re-audit) — strip executable constructs from an annotation SVG
+ * before it is persisted / synced / mirrored into the collab Y.Map. The legit
+ * annotation vocabulary (`strokesToSvg`) is presentational only — svg/path/rect/
+ * ellipse/g/line/polyline/text — so removing `<script>`, `<foreignObject>`,
+ * `<image>`, `<use>`, `on*=` event-handler attributes, and `javascript:` URLs is
+ * zero-regression on real annotations. It neutralises a cross-slug stored-XSS
+ * payload at the write boundary regardless of any future raw-render consumer.
+ * Tag-based stripping (not a full HTML parser) — the dev server is zero-dep and
+ * the input shape is narrow; the `<svg` prefix gate already ran upstream.
+ */
+export function sanitizeAnnotationSvg(svg: string): string {
+  return (
+    svg
+      // Drop dangerous elements wholesale (open→close, incl. self-closing).
+      .replace(
+        /<\s*(script|foreignObject|image|use|iframe|embed|object|a)\b[\s\S]*?<\s*\/\s*\1\s*>/gi,
+        ''
+      )
+      .replace(/<\s*(script|foreignObject|image|use|iframe|embed|object|a)\b[^>]*\/\s*>/gi, '')
+      // Drop a lone opening tag of those elements (defensive, in case unclosed).
+      .replace(/<\s*(script|foreignObject|image|use|iframe|embed|object)\b[^>]*>/gi, '')
+      // Strip inline event handlers: on...="..." / on...='...' / on...=bare.
+      .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+      // Neutralise javascript:/data:text-html URLs in any remaining attribute.
+      .replace(/((?:href|xlink:href|src)\s*=\s*)("|')?\s*javascript:[^"'>\s]*/gi, '$1$2')
+  );
+}
+
 export function createApi(ctx: Context, hooks: ApiHooks): Api {
   const onCommentsChanged = hooks.onCommentsChanged;
   const onAnnotationsChanged = hooks.onAnnotationsChanged;
@@ -586,11 +615,22 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     if (typeof svg !== 'string') return false;
     if (svg.length > 1024 * 1024) return false;
     // Cheap content gate — must look like an <svg> document. Avoids accidental
-    // writes of arbitrary blobs through this endpoint. The client controls the
-    // content fully, so we don't try to sanitize beyond a tag check.
+    // writes of arbitrary blobs through this endpoint.
     if (!/^\s*<svg[\s>]/i.test(svg)) return false;
-    await Bun.write(annotationsPath(file), svg);
-    onAnnotationsChanged?.(file, svg);
+    // A3 (DDR-060 F1 re-audit) — sanitize active content before persisting.
+    // This endpoint is on the canvas-origin allowlist (DDR-054 "inert collab
+    // write") and accepts ANY `file`, so a hub-pushed canvas can write a
+    // sibling's `.annotations.svg`. The persisted SVG is currently consumed only
+    // via `svgToStrokes` (DOMParser image/svg+xml → structured strokes → React
+    // re-render), so a `<script>`/`on*` payload is parsed inertly and discarded
+    // — the stored-XSS chain is LATENT today, not live. We sanitize anyway so
+    // "inert" stays true for any future raw-render consumer and for the synced
+    // file a peer/Claude-context ingests. The legit annotation vocabulary
+    // (strokesToSvg) is purely presentational — path/rect/ellipse/g/line/
+    // polyline/text — so stripping executable constructs is zero-regression.
+    const clean = sanitizeAnnotationSvg(svg);
+    await Bun.write(annotationsPath(file), clean);
+    onAnnotationsChanged?.(file, clean);
     return true;
   }
 

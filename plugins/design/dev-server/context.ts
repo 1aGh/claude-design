@@ -124,6 +124,13 @@ export interface Context {
    * URLs. Undefined in tests / before the canvas listener boots.
    */
   canvasOrigin?: string;
+  /**
+   * T2 (9.1-A) — origin of the MAIN dev-server listener (e.g.
+   * `http://localhost:4399`), set by server.ts once the primary listener binds.
+   * Used by `cspForCanvasShell` to allowlist the legit embedder in the canvas
+   * origin's `frame-ancestors`. Undefined in tests / before boot.
+   */
+  mainOrigin?: string;
 }
 
 function resolveRepoRoot(): string {

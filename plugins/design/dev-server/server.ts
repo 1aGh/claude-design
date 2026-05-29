@@ -262,6 +262,11 @@ let server: BunServer;
   server = bound;
 }
 
+// T2 (9.1-A) — advertise the main origin so the canvas origin's CSP can
+// allowlist it in `frame-ancestors` (the legit embedder). Must be set before
+// the canvas listener serves its first shell.
+ctx.mainOrigin = `http://localhost:${server.port}`;
+
 // T2 (9.1-A) — segregated canvas-content origin. EXPERIMENTAL + OFF BY DEFAULT
 // (phase-9.1 WIP). When `MAUDE_CANVAS_ORIGIN_SPLIT=1`, boot a second listener on
 // an OS-assigned free port and advertise it as `canvasOrigin`; the client then
