@@ -17,6 +17,8 @@ keywords: [status, where, state, awareness, branch, progress]
 
 Used by the GitHub branches of Step 2 (ticket view), Step 4 (PR status), and Step 6 (sprint snapshot). Skip when neither the tracker nor the PR flow goes through GitHub.
 
+**Run repo detection only when `integrations.tracker.provider === "github"` or unset — skip for MCP-backed providers and `"none"`.**
+
 ```bash
 REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || git remote get-url origin | sed 's|.*github.com[:/]||;s|\.git$||')"
 ```
@@ -207,7 +209,7 @@ If no changed files:
 Provider-aware:
 
 - **`integrations.tracker.provider === github`** (or unset) → run the GitHub CLI snippet below.
-- **Any other provider** → call the MCP tool that lists tickets for the current user (ClickUp: `mcp__claude_ai_ClickUp_clickup_filter_tasks` with `defaults.userId` / `defaults.workspaceId`; Linear: `…_search_issues` with `assignee: me`; etc.). Return the open-ticket count.
+- **Any other provider** → call the MCP tool that lists tickets for the current user (ClickUp: `mcp__claude_ai_ClickUp_clickup_filter_tasks` with `defaults.userId` / `defaults.workspaceId`; Linear: `…_search_issues` with `assignee: me`; etc.). Read `integrations.tracker.mcp` for the exact tool prefix; pass `integrations.tracker.defaults` through untouched. Return the open-ticket count. If the MCP call fails or returns zero results, display `0 open tickets assigned to me`.
 - **`none`** → skip this step.
 
 GitHub-only snippet:
@@ -225,7 +227,7 @@ gh issue list \
 
 ### Display
 
-- **My open tickets:** N total (skipped when `provider === none`)
+- **📊 Sprint:** N open tickets assigned to me — label must always read "open tickets", never a provider-qualified form like "GitHub tickets" or "ClickUp tickets". Omit this row entirely when `provider === none`.
 
 ---
 
