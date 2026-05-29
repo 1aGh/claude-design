@@ -73,6 +73,14 @@ export function createRoom(slug: string, callbacks: RoomCallbacks): Room {
   const awareness = new Awareness(doc);
 
   const conns = new Map<string, RoomConn>();
+  // clientID → owning conn.id, learned from the origin of each awareness update.
+  // Server-authoritative: we do NOT trust a client-supplied `__connId` (awareness
+  // is attacker-influenceable through a semi-trusted hub — DDR-054). On disconnect
+  // we remove exactly the clientIDs this conn published so other peers drop the
+  // avatar immediately, instead of waiting out the ~30s awareness timeout (which
+  // let phantom peers pile up on rapid reconnects — the cross-origin repro that
+  // surfaced this latent bug).
+  const connByClient = new Map<number, string>();
   let dirty = false;
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let destroyed = false;
@@ -138,6 +146,13 @@ export function createRoom(slug: string, callbacks: RoomCallbacks): Room {
       if (changed.length === 0) return;
       const except =
         origin && typeof origin === 'object' && 'id' in origin ? (origin as RoomConn) : undefined;
+      // Learn which clientIDs belong to which conn from the update origin, so
+      // disconnect() can evict them precisely.
+      if (except) {
+        for (const id of added) connByClient.set(id, except.id);
+        for (const id of updated) connByClient.set(id, except.id);
+        for (const id of removed) connByClient.delete(id);
+      }
       broadcast(encodeAwarenessFrame(awareness, changed), except);
     }
   );
@@ -161,16 +176,14 @@ export function createRoom(slug: string, callbacks: RoomCallbacks): Room {
 
   function disconnect(conn: RoomConn): void {
     conns.delete(conn.id);
-    // Awareness states keyed by the conn token; clean them up so other peers'
-    // cursor renderers can drop the avatar.
-    const states = awareness.getStates();
+    // Remove the awareness states this conn published (tracked by update origin
+    // in connByClient) so other peers' cursor renderers drop the avatar now,
+    // not after the ~30s awareness timeout.
     const stale: number[] = [];
-    for (const clientId of states.keys()) {
-      // Bridge: our Awareness state setters tag the state with `__connId`
-      // matching conn.id; remove states whose owning conn just left.
-      const state = states.get(clientId) as { __connId?: string } | undefined;
-      if (state && state.__connId === conn.id) stale.push(clientId);
+    for (const [clientId, connId] of connByClient) {
+      if (connId === conn.id) stale.push(clientId);
     }
+    for (const clientId of stale) connByClient.delete(clientId);
     if (stale.length) removeAwarenessStates(awareness, stale, conn);
   }
 

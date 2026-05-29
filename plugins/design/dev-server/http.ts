@@ -56,10 +56,12 @@ function ext(p: string): string {
 /**
  * T2 (9.1-A) — build the strict CSP for the canvas-content shell. Every inline
  * `<script>` (importmap, module bootstrap, inspector) is allowlisted by sha256
- * hash so we never resort to `'unsafe-inline'`. `connect-src` is locked so
- * hub-pushed JSX can't beacon out / hit IMDS / LAN; `ws:`/`wss:` stay for the
- * HMR + collab sockets (same-origin in the POC; tightened to the canvas origin
- * when the origin split lands). `style-src 'unsafe-inline'` is intentional —
+ * hash so we never resort to `'unsafe-inline'`. `connect-src 'self'` is locked
+ * to the document's own origin so hub-pushed JSX can't beacon out / hit IMDS /
+ * LAN — and `'self'` covers same-origin `ws:`/`wss:` (CSP3), so the HMR + collab
+ * sockets (which connect to the canvas origin the iframe loads from) still work
+ * while `ws://attacker` / `wss://attacker` exfil is refused. `style-src
+ * 'unsafe-inline'` is intentional —
  * specimens use `style={{…}}` attributes + injected `<style>`; style injection
  * is not the F1 RCE vector (script + connect are). No `'unsafe-eval'` — the
  * POC verifies the runtime (motion/pixi/Bun.build output) doesn't need it.
@@ -79,7 +81,7 @@ export function cspForCanvasShell(html: string): string {
   return [
     "default-src 'none'",
     `script-src ${scriptSrc}`,
-    "connect-src 'self' ws: wss:",
+    "connect-src 'self'",
     "img-src 'self' data: blob:",
     "style-src 'self' 'unsafe-inline'",
     "font-src 'self' data:",
@@ -735,6 +737,14 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
     if (pathname === '/_canvas-shell.html' || pathname === '/_canvas-shell') return true;
     if (pathname === '/_health') return true;
     if (pathname === '/_client/comment-mount.js') return true;
+    // Canvas-chrome stylesheets (composer / thread / pin / cursor CSS). Inert
+    // static assets from the dev-server distribution — no secrets, no code
+    // exec, no repo content. Without this the cross-origin canvas 403s e.g.
+    // `/_client/comments-overlay.css`, so the in-iframe comment composer renders
+    // unstyled and, missing `position: fixed`, collapses to the top-left (0,0).
+    // Allowed by pattern (not per-file) so future chrome CSS can't silently
+    // regress the same way.
+    if (pathname.startsWith('/_client/') && ext(pathname) === '.css') return true;
     if (pathname.startsWith('/_canvas-runtime/')) return true;
     // Collab + display-data endpoints the canvas runtime legitimately calls from
     // inside the iframe. All are reads or inert collab writes (annotations SVG,

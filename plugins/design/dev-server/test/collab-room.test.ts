@@ -3,9 +3,15 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
+import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
-import { encodeHandshake, encodeSyncUpdate, handleMessage } from '../collab/protocol.ts';
+import {
+  encodeAwarenessFrame,
+  encodeHandshake,
+  encodeSyncUpdate,
+  handleMessage,
+} from '../collab/protocol.ts';
 import { type RoomCallbacks, type RoomConn, createRoom } from '../collab/room.ts';
 
 function makeConn(id: string): RoomConn & { recv: Uint8Array[] } {
@@ -140,24 +146,29 @@ describe('Room', () => {
     await room.destroy();
   });
 
-  test('disconnect cleans up awareness states tagged with __connId', async () => {
+  test('disconnect removes the awareness states a conn published', async () => {
     const cb = makeCallbacks();
     const room = createRoom('aw-cleanup-slug', cb);
     const A = makeConn('a');
     await room.connect(A);
 
-    // Simulate Alice publishing her awareness state with the matching __connId.
-    room.awareness.setLocalState({ name: 'Alice', __connId: 'a' });
-    expect(room.awareness.getStates().size).toBe(1);
+    // Alice (conn A) publishes her awareness over the wire — the server learns
+    // her clientID belongs to conn 'a' from the update origin (server-authoritative;
+    // it does NOT trust a client-supplied __connId). Mirrors the real receive path.
+    const clientDoc = new Y.Doc();
+    const clientAw = new Awareness(clientDoc);
+    clientAw.setLocalState({ name: 'Alice' });
+    room.receive(A, encodeAwarenessFrame(clientAw, [clientAw.clientID]));
+    expect(room.awareness.getStates().has(clientAw.clientID)).toBe(true);
 
     room.disconnect(A);
     expect(room.size()).toBe(0);
-    // Awareness state owned by the disconnected conn is gone.
-    const states = room.awareness.getStates();
-    for (const s of states.values()) {
-      expect((s as { __connId?: string }).__connId).not.toBe('a');
-    }
+    // The disconnected conn's awareness state is dropped immediately — no waiting
+    // out the ~30s awareness timeout (the phantom-accumulation bug).
+    expect(room.awareness.getStates().has(clientAw.clientID)).toBe(false);
 
+    clientAw.destroy();
+    clientDoc.destroy();
     await room.destroy();
   });
 

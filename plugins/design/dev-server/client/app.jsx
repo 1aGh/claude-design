@@ -1912,6 +1912,14 @@ function App() {
   // ----- Inbound messages from iframes -----
   useEffect(() => {
     function onMessage(e) {
+      // Cross-origin hardening (DDR-054): only accept dgn control messages from
+      // the canvas-content origin — the split origin when on, else our own origin
+      // for the same-origin iframe. Drops spoofed messages from any other window.
+      // The handlers below relay to inert stores (comments / selection — the
+      // "safe to sync" set), so the blast radius was small, but unchecked inbound
+      // postMessage is a confused-deputy seam the F1 hardening should close.
+      const expectedOrigin = cfg?.canvasOrigin || window.location.origin;
+      if (e.origin !== expectedOrigin) return;
       const m = e.data;
       if (!m || typeof m !== 'object' || !m.dgn) return;
       if (m.dgn === 'select' && m.selection) {
@@ -1991,7 +1999,7 @@ function App() {
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [commentsByFile, focusedCommentId]);
+  }, [commentsByFile, focusedCommentId, cfg]);
 
   // Tell the active canvas iframe to drop any persistent selection (canvas
   // SelectionSet) — used when the comment composer closes via submit /
