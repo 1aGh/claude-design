@@ -378,6 +378,47 @@ describe('createSyncRuntime', () => {
     await runtime?.stop();
   });
 
+  test('writes _sync.json on a clean fast connect (regression: status must not read "idle" while sync is healthy)', async () => {
+    const url = 'https://hub.example.com';
+    writeHubsConfig(url, 'mau_test');
+    const ctx = makeCtx({ url, linkedAt: 1 });
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'screen.html'), '<button>hi</button>');
+
+    // Provider that — like the real wrapper after the fix — reports its current
+    // status the instant a subscriber attaches, and is already synced. No later
+    // WS *transition* fires (the monitor starts 'online', so a 'connected' note
+    // is a no-op), so the only thing that writes `_sync.json` is the runtime's
+    // initial status persist. Before the fix this left the file absent and
+    // `maude design status` reported "idle / sync agent not running".
+    const doc = new Y.Doc();
+    const factory = () => ({
+      document: doc,
+      onStatus(cb: (s: 'connected' | 'connecting' | 'disconnected') => void) {
+        cb('connected');
+        return () => {};
+      },
+      async onceSynced() {},
+      destroy() {
+        doc.destroy();
+      },
+    });
+
+    const runtime = createSyncRuntime(ctx, { providerFactory: factory });
+    await runtime?.start();
+
+    // Live status reflects an online agent...
+    expect(runtime?.status()?.state).toBe('online');
+    // ...and it has been persisted to _sync.json (what `maude design status` reads).
+    const syncFile = join(ctx.paths.designRoot, '_sync.json');
+    expect(existsSync(syncFile)).toBe(true);
+    const payload = JSON.parse(readFileSync(syncFile, 'utf8'));
+    expect(payload.state).toBe('online');
+    expect(payload.canvases).toBe(1);
+    expect(payload.notSyncable).toBeUndefined();
+
+    await runtime?.stop();
+  });
+
   test('Task 8: hub-wins reconcile over divergent local content records a conflict', async () => {
     const url = 'https://hub.example.com';
     writeHubsConfig(url, 'mau_test');

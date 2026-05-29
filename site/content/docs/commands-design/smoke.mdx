@@ -22,7 +22,7 @@ Batch screenshot every UI canvas (`&lt;designRoot>/ui/*.tsx`) + every preview sp
 
 ## Summary
 
-Wraps `${CLAUDE_PLUGIN_ROOT}/dev-server/bin/smoke.sh`. Single source of truth lives in the helper; this command exists so you can invoke smoke as a slash, and so `/flow:execute` can call it as a phase-end gate.
+Wraps the bundled `smoke.sh` helper, invoked via `maude design smoke` (the on-PATH `maude` binary dispatches to it — DDR-062). Single source of truth lives in the helper; this command exists so you can invoke smoke as a slash, and so `/flow:execute` can call it as a phase-end gate.
 
 ## Source of truth
 

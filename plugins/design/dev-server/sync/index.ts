@@ -308,6 +308,15 @@ export function createSyncRuntime(
       }
     }
 
+    // Persist an initial status snapshot so `_sync.json` exists — and `maude
+    // design status` + the browser banner report "agent running" — from the
+    // moment serve boots. The ConnectionMonitor only emits on *transitions* and
+    // starts in 'online', so on a clean fast localhost connect (provider
+    // reaches 'connected' at/before subscribe → no transition fires) nothing
+    // would otherwise be written, and status would read "idle / sync agent not
+    // running" while sync is in fact healthy. This was the observed bug.
+    store.update(mon.snapshot());
+
     console.log(
       `[sync] linked to ${linkedHub.url} — ${agents.size}/${canvases.length} canvas(es) syncing${adoptOnce ? ' (adopt mode — pushing local up)' : ''}.`
     );
@@ -596,6 +605,19 @@ async function defaultProviderFactory(args: {
     token: args.token,
     document,
     connect: true,
+    // Make a rejected handshake LOUD instead of an invisible reconnect loop.
+    // The most common cause is a scope-bound token (DDR-053 default scope =
+    // label) that can't authorize this canvas's flat-slug documentName — that
+    // failure mode previously looked identical to "hub unreachable / offline".
+    onAuthenticationFailed: (data: { reason?: string }) => {
+      const reason = (data?.reason ?? 'unknown reason').replace(/[\r\n]/g, ' ').slice(0, 200);
+      console.warn(
+        `[sync] hub REJECTED auth for documentName="${args.documentName}": ${reason}.
+       If this is "token not authorized for this documentName", the token's scope
+       does not cover this canvas — mint a hub-wide token (\`maude hub token generate
+       --scope '*'\` or an admin-UI invite) and re-link. The peer keeps retrying until then.`
+      );
+    },
   });
   return {
     document,
@@ -610,6 +632,15 @@ async function defaultProviderFactory(args: {
         if (s === 'connected' || s === 'connecting' || s === 'disconnected') cb(s);
       };
       provider.on('status', handler);
+      // Seed the subscriber with the provider's CURRENT status immediately. On
+      // localhost the WS can reach 'connected'/synced inside the constructor —
+      // before this listener attaches — so waiting for the *next* transition
+      // would leave the connection monitor un-seeded and `_sync.json` never
+      // written (status reads "idle / sync agent not running" while sync is in
+      // fact healthy). Reading provider.status closes that race; it always
+      // reflects the true current state, so a missed event can't strand us.
+      const cur = provider.status;
+      if (cur === 'connected' || cur === 'connecting' || cur === 'disconnected') cb(cur);
       return () => provider.off('status', handler);
     },
     onceSynced(): Promise<void> {

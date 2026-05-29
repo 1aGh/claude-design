@@ -77,6 +77,55 @@ test('hub token generate --dev uses mau_dev_ prefix', () => {
   });
 });
 
+test("hub token generate --scope '*' mints a hub-wide (wildcard) token", () => {
+  withDataDir((dataDir) => {
+    // Array-arg spawn (no shell) → '*' is passed literally, not glob-expanded.
+    const res = runCli([
+      'hub',
+      'token',
+      'generate',
+      '--label',
+      'peer',
+      '--scope',
+      '*',
+      '--data',
+      dataDir,
+    ]);
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(res.stdout, /scope:\s+\*/);
+    const { tokens } = readTokens(dataDir);
+    assert.equal(tokens.length, 1);
+    // Wildcard is stored as NULL and surfaced as '*' — authorizes any documentName.
+    assert.equal(tokens[0].scope, '*');
+  });
+});
+
+test('hub token generate --scope <value> binds the token to that documentName prefix', () => {
+  withDataDir((dataDir) => {
+    const res = runCli([
+      'hub',
+      'token',
+      'generate',
+      '--label',
+      'peer',
+      '--scope',
+      'team-x',
+      '--data',
+      dataDir,
+    ]);
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(res.stdout, /scope:\s+team-x/);
+    assert.equal(readTokens(dataDir).tokens[0].scope, 'team-x');
+  });
+});
+
+test('hub token generate without --scope defaults the scope to the label (DDR-053)', () => {
+  withDataDir((dataDir) => {
+    runCli(['hub', 'token', 'generate', '--label', 'alice', '--data', dataDir]);
+    assert.equal(readTokens(dataDir).tokens[0].scope, 'alice');
+  });
+});
+
 test('hub token rotate mints a fresh value for an existing label', () => {
   withDataDir((dataDir) => {
     const gen = runCli(['hub', 'token', 'generate', '--label', 'alice', '--data', dataDir]);

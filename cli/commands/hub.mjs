@@ -50,12 +50,17 @@ function usage() {
         On boot the hub prints its /admin URL. The admin UI generates invite
         tokens, lists peers, and rotates tokens without shelling into the host.
 
-  token generate --label NAME [--data PATH] [--dev]
+  token generate --label NAME [--data PATH] [--dev] [--scope SCOPE]
         Generate a new mau_<32hex> token and store it (HMAC-hashed) in
         <data>/tokens.db with the given label. Prints the raw token ONCE,
         plus the ready-to-paste 'maude design link' connect command.
 
         --dev produces a mau_dev_<hex> token (convention only — same auth).
+        --scope '*' mints a hub-wide token (authorizes any canvas). Omitted →
+                 the scope defaults to the label (DDR-053). Canvas sync uses a
+                 flat per-canvas slug as the documentName, so a label-scoped
+                 token will NOT authorize a real canvas — pass --scope '*' for
+                 a peer that syncs canvases (this is what /admin invites do).
 
         Equivalent to the "Generate invite" button in the /admin UI — use
         whichever is more convenient for the deploy.
@@ -193,7 +198,17 @@ async function runToken({ args, pkgRoot }) {
       process.exit(1);
     }
   } else {
-    record = addToken(dataDir, { label, dev: !!flags.dev });
+    // --scope '*' mints a hub-wide token (authorizes any documentName); an
+    // explicit value scopes it to that prefix. Omitted → addToken defaults the
+    // scope to the label (DDR-053 §3). NOTE: canvas sync uses flat per-canvas
+    // slugs as the documentName, so a label-scoped token does NOT authorize a
+    // canvas unless its label equals the slug — pass --scope '*' for sync use.
+    const scope = typeof flags.scope === 'string' ? flags.scope : undefined;
+    record = addToken(dataDir, {
+      label,
+      dev: !!flags.dev,
+      ...(scope !== undefined ? { scope } : {}),
+    });
   }
 
   const verb = op === 'rotate' ? 'rotated' : 'written';
@@ -201,8 +216,13 @@ async function runToken({ args, pkgRoot }) {
     op === 'rotate'
       ? 'Old token is rejected on new connections immediately. Already-connected\npeers persist until they reconnect — use the /admin UI "Rotate" button (kicks\nlive sessions) or restart the hub to force-disconnect them now.\n'
       : 'Restart the hub if it is already running for the new token to take effect.\n';
+  const shownScope = record.scope ?? '*';
+  const scopeNote =
+    shownScope === '*'
+      ? 'hub-wide — authorizes any canvas'
+      : `only authorizes documentName "${shownScope}" or "${shownScope}/…" — canvas sync uses flat slugs, so pass --scope '*' for whole-hub sync`;
   process.stdout.write(
-    `[hub] token ${verb} in ${dataDir}/tokens.db:\n  label:      ${record.label}\n  value:      ${record.value}\n  created:    ${new Date(record.createdAt).toISOString()}\n\nConnect from a peer (replace HOST):\n  maude design link https://HOST --token=${record.value}\n\n${liveNote}`
+    `[hub] token ${verb} in ${dataDir}/tokens.db:\n  label:      ${record.label}\n  value:      ${record.value}\n  scope:      ${shownScope} (${scopeNote})\n  created:    ${new Date(record.createdAt).toISOString()}\n\nConnect from a peer (replace HOST):\n  maude design link https://HOST --token=${record.value}\n\n${liveNote}`
   );
 }
 

@@ -15,7 +15,7 @@
       "agents": 7
     },
     "maude": {
-      "subcommands": 12
+      "subcommands": 16
     }
   },
   "pageUpdated": {
@@ -73,7 +73,7 @@
     "getting-started.mdx": "2026-05-23",
     "hub/deploy.mdx": "2026-05-28",
     "hub/index.mdx": "2026-05-28",
-    "hub/linking.mdx": "2026-05-28",
+    "hub/linking.mdx": "2026-05-29",
     "hub/pricing.mdx": "2026-05-28",
     "index.mdx": "2026-05-23",
     "recipes/expo.mdx": "2026-05-23",
