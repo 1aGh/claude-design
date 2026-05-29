@@ -8,7 +8,7 @@ description: How to scaffold .design/ in a new project, from cold-start to a usa
 Two paths to the same result:
 
 1. **Inside Claude Code** (recommended). Interactive discovery, project-flavored output, full specimen library.
-2. **From the terminal** (CI / scripted). `maude design init --no-discovery` with Recommended defaults.
+2. **From the terminal** (CI / scripted). `maude design init --no-discovery` scaffolds a neutral skeleton you finish by hand later.
 
 ## Path 1. Inside Claude Code
 
@@ -19,11 +19,11 @@ Two paths to the same result:
 What happens:
 
 1. **Onboard runs first** (if `.design/config.json` is missing). `/design:init` does dependency pre-flight (Node 20+, git), writes a skeleton config with empty `designSystems: []`, and prints install hints for soft deps (agent-browser, maude, CLAUDE.md / `.ai/` recommendations).
-2. **Skill `design-system` loads in bootstrap mode.** It detects `first-bootstrap` (no DS yet) and runs an 8-question discovery split across two `AskUserQuestion` rounds. Identity (audience, platforms, theme) plus brand (mood references, brand color, typography, content tone).
+2. **Skill `design-system` loads in bootstrap mode.** It detects `first-bootstrap` (no DS yet) and runs **3-stage discovery** (DDR-033): **Stage 1 — Vision** (free-text prose prompts about product, audience, mood, and voice — no brand-name option ladders to bias you), **Stage 2 — Research** (the `ux-research-agent` builds a domain reference pool from the web and returns per-decision recommendations with confidence), **Stage 3 — Refinement** (a short `AskUserQuestion` round, but only where research is uncertain).
 3. **Direction confirmation.** The skill echoes a two-sentence proposed direction. You say yes or correct it.
 4. **Mapping to file set.** The skill consults `_MAPPING.md` to compute which specimens to scaffold based on the discovery answers. A consumer marketing site gets ~12 specimens, a pro-tool with multiplayer gets ~22.
 5. **Generation.** Tokens are derived from the brand color (OKLCH-converted, with hover / active / fg auto-computed). The README, SKILL.md, INDEX, and config are generated from `.tpl` templates. Each specimen is **generated fresh** using the inspiration library as reference, not copied verbatim, never with placeholder copy.
-6. **Completeness-critic auto-runs.** 3-tier rules (Core blocker / Conventional warning / Free-form acknowledged) calibrated by `completenessProfile`. The scaffold completes when there are no blockers.
+6. **Post-scaffold critic panel runs.** The `design-system-completeness-critic` checks 3-tier rules (Core blocker / Conventional warning / Free-form acknowledged) calibrated by `completenessProfile`, alongside a11y and signature-moment critics. The scaffold completes when there are no blockers **and** the aspiration score clears the silent-pass bar (**≥ 4.0**, DDR-057); a 3.0–4.0 "nice but not wow" score still completes but surfaces the signature-moment-critic's top-2 lifts.
 7. **Next steps printed.**
 
 Alternative entries (all triggered transparently):
@@ -40,7 +40,7 @@ cd /path/to/repo
 maude design init --no-discovery --name acme
 ```
 
-Produces ~16 files using Recommended defaults:
+Produces the Core file set (~19 files) as a neutral skeleton:
 
 ```
 .design/
@@ -53,18 +53,19 @@ Produces ~16 files using Recommended defaults:
     ├── colors_and_type.css
     └── preview/
         ├── _layout.css
+        ├── _components.css
         ├── colors-text.html
         ├── colors-surfaces.html
         ├── colors-accent.html
         ├── type-scale.html
         ├── spacing-scale.html
-        ├── motion.html
+        ├── motion.tsx          # + motion.css + _motion-readme.md
         ├── components-buttons.html
         ├── components-cards.html
         └── components-inputs.html
 ```
 
-After the Core scaffold, open Claude Code and run `/design:setup-ds project "<one-line product brief>" --force` to re-run with the full 8-question discovery. You'll get a richer, project-flavored result.
+After the Core scaffold, open Claude Code and run `/design:setup-ds project "<one-line product brief>" --force` to re-run with the full 3-stage discovery. You'll get a richer, project-flavored result.
 
 ## Adding a second design system
 
@@ -74,7 +75,7 @@ Multi-DS opt-in (e.g., a marketing DS sibling to your admin DS):
 > /design:setup-ds marketing "consumer-facing marketing site for product launch"
 ```
 
-The skill detects `additional-ds` mode (config exists, `marketing` not in `designSystems[]`), runs reduced discovery (7 Qs + Q_purpose + an inheritance picker), and scaffolds `system/marketing/` alongside the existing DS. Subsequent `/design:new --ds=marketing "<Name>" "<brief>"` creates canvases scoped to that DS.
+The skill detects `additional-ds` mode (config exists, `marketing` not in `designSystems[]`), runs the same 3-stage discovery plus a `Q_purpose` prompt up front and an inheritance picker between research and refinement, and scaffolds `system/marketing/` alongside the existing DS. Subsequent `/design:new --ds=marketing "<Name>" "<brief>"` creates canvases scoped to that DS.
 
 See [Multi-DS](/docs/design/multi-ds) for the full multi-DS workflow.
 
@@ -86,7 +87,7 @@ To rerun discovery on an existing DS (after a product pivot, brand refresh, etc.
 > /design:setup-ds project --force
 ```
 
-The skill detects `re-bootstrap` mode and pre-fills all 8 questions with the current values. Hit enter to keep each, or change to re-generate the affected files. Without `--force`, the command refuses with a list of safer alternatives (`/design:edit` for incremental, `/design:setup-ds <new-name>` for a sibling DS).
+The skill detects `re-bootstrap` mode, lossy-infers Stage 1 (Vision) from the existing DS (README + tokens + layout), and you confirm or correct it in one pass; Stage 2 (Research) always re-runs. Changed answers re-generate the affected files. Without `--force`, the command refuses with a list of safer alternatives (`/design:edit` for incremental, `/design:setup-ds <new-name>` for a sibling DS).
 
 ## What the bootstrap produces
 
@@ -98,7 +99,7 @@ The skill detects `re-bootstrap` mode and pre-fills all 8 questions with the cur
 | `.design/system/<ds>/README.md` | Philosophy layer. Audience, mood, voice, hard rules |
 | `.design/system/<ds>/SKILL.md` | Read-skill metadata loaded by any agent iterating on a canvas |
 | `.design/system/<ds>/colors_and_type.css` | Authoritative tokens (OKLCH, one-accent rule, reduced-motion guard) |
-| `.design/system/<ds>/preview/` | Browsable specimens. At least 8 in `standard` profile |
+| `.design/system/<ds>/preview/` | Browsable specimens. Count is profile-driven (`completenessProfile`); a full bootstrap scaffolds ~25–30 |
 | `.design/system/<ds>/assets/{logos,glyphs}/` | Brand assets (may start empty) |
 
 Browse them: `maude design serve`, then `http://localhost:4399`.

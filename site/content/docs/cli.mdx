@@ -11,7 +11,7 @@ npx @1agh/maude <cmd>
 
 **`maude` is intentionally small.** Mechanical scaffolding and config. That's it. The interesting setup happens inside Claude Code via `/flow:init`, which calls `maude init` as step one.
 
-Five subcommands: `init`, `config`, `design serve`, `design init`, `version` / `help`. Pure ESM. Zero runtime deps beyond Node 20+.
+Subcommands: `init`, `config`, `doctor`, `cache`, `design` (`serve` · `init` · `export` · `link`/`adopt`/`unlink`/`status`), `hub` (`serve` · `token` · `status` · `deploy`), `version` / `help`. Pure ESM, Node 20+. Thin dependency surface — Ajv for config-linting, plus the per-platform dev-server binary pulled in via `optionalDependencies`.
 
 ## `maude init`
 
@@ -52,7 +52,36 @@ maude config set motion.complex 1200
 maude config set theme dark
 ```
 
-Validates known keys against the flow plugin's `config.schema.json`. Unknown keys are written as-is but warned.
+`maude config` does **no** schema validation — it's a typed read/write, nothing more. To lint the config against the flow plugin's `config.schema.json`, run [`maude doctor`](#maude-doctor).
+
+## `maude doctor`
+
+One umbrella diagnostic for the workspace. In a single pass it reports missing plugin dependencies (per-plugin), `.ai/workflows.config.json` schema errors, stack drift, and missing quality-gate declarations.
+
+```bash
+maude doctor [--plugin <design|flow>] [--fix] [--json]
+```
+
+- `--plugin`. Scope the dependency section to one plugin. The config section is always global.
+- `--fix`. Apply safe auto-fixes — per-dep install prompts, drop unknown config keys, apply detected drift, add missing quality gates. **Never silent**, and existing user values are never overwritten.
+- `--json`. Machine-readable envelope.
+
+This is where config validation lives — `maude config` itself does none. (DDR-058.)
+
+## `maude cache`
+
+Inspect and manage the sidecar cache the orchestration uses to skip repeated research, codebase-intelligence, and design-context work.
+
+```bash
+maude cache list                      # layers with entry counts, sizes, last write
+maude cache stats                     # hit/miss counters + hit-rate per layer
+maude cache inspect <layer> [key]     # list entries in a layer, or print one
+maude cache clear [layer[/key]]       # wipe one entry, one layer, or everything
+maude cache get <layer> <key>         # print a fresh value (exit 1 on miss/stale)
+maude cache put <layer> <key> [file]  # write a value from a file or stdin
+```
+
+Layers: `research/domain`, `research/project`, `codebase-intelligence`, `design-context`, `security`, `scenario`, `validate`. (DDR-061.)
 
 ## `maude design serve`
 
@@ -80,7 +109,7 @@ maude design init [--name <slug>] [--ds <name>] [--force] [--dry-run]
 
 **Refuses to run interactively.** Full discovery requires Claude Code. Use `/design:setup-ds <name>` there. The CLI helper exists for CI / scripted contexts:
 
-- `--no-discovery`. Scaffold Core only (~10 files: README, INDEX, config.json, tokens, 9 specimens) with Recommended defaults (Inter + IBM Plex + JetBrains Mono, indigo accent, dark theme, `standard` profile).
+- `--no-discovery`. Scaffold Core only (~10 files: README, INDEX, config.json, tokens, specimens) with a deliberately **neutral skeleton** — system fonts, achromatic grayscale, light theme, a single neutral-graphite accent. It's intentionally unfinished so you're nudged to run real discovery instead of unconsciously shipping a default aesthetic (DDR-043).
 - `--discovery-payload <path>`. Read pre-computed answers and tokens from JSON and scaffold Core + derived specimens deterministically. This is the path skill `design-system` (bootstrap mode) uses when shelling out from Claude Code.
 - `--name <slug>`. Project name token. Defaults to the current directory basename.
 - `--ds <name>`. Design system name (kebab-case). Defaults to `project` (single-DS convention).
@@ -99,6 +128,47 @@ maude design init --discovery-payload /tmp/discovery.json --name acme
 
 For everything beyond a Core scaffold (audience-specific specimens, platform-conditional adds, brand-color discovery), use `/design:setup-ds` inside Claude Code.
 
+## `maude design export`
+
+Drive the same export endpoint the dev-server UI uses (⌘E). Requires a running server — the port is auto-detected from `.design/_server.json`.
+
+```bash
+maude design export <png|pdf|svg|html|pptx|canva|zip> \
+  [--scope selection|artboard|canvas-as-separate|project-raw] \
+  [--out <path>] [--option key=value ...]
+```
+
+The response body is written to `--out` (default: current dir, server-supplied filename). `canva` emits a PPTX payload plus a `.canva-handoff.md` artifact; `zip` bundles the whole project.
+
+## `maude design link` / `adopt` / `unlink` / `status`
+
+Pair a clone with a self-hostable [sync hub](/docs/hub) so `.design/` mirrors bidirectionally. Claude Code still reads and writes plain files — it never sees Yjs.
+
+```bash
+maude design link <url> --token <hex> [--adopt] [--force]
+maude design adopt <url> --token <hex>     # alias for: link --adopt
+maude design unlink [--keep-token]
+maude design status [--json]
+```
+
+The `linkedHub` pointer lands in committed `.design/config.json`; the token is stored per-machine in `~/.config/maude/hubs.json` (mode 0600, never committed). The first link to a non-loopback hub asks for confirmation — a linked hub gets write access to your `.design/`. See [Linking peers](/docs/hub/linking).
+
+## `maude hub`
+
+Run or deploy the self-hostable Yjs sync hub that backs linked mode.
+
+```bash
+maude hub serve [--port N] [--data PATH] [--secret HEX] [--dev]
+maude hub token generate --label <name> [--scope '*']
+maude hub token rotate --label <name>
+maude hub status [URL] [--json]
+maude hub deploy <fly|docker> [--name N] [--region R] [--out DIR]
+```
+
+- `serve`. Boot the hub (default port `1234`). On an empty hub it prints a one-time bootstrap link to claim admin; the `/admin` UI then mints invite tokens and rotates them without shelling into the host.
+- `token generate`. Mint a `mau_<hex>` token (HMAC-hashed at rest). Pass `--scope '*'` for a peer that syncs canvases — this is what the `/admin` "Generate invite" button does.
+- `deploy`. Emit Fly or Docker templates with placeholders filled, then print the exact commands to run. It does **not** run `fly`/`docker` for you. See [Deploy a hub](/docs/hub/deploy).
+
 ## `maude version` / `maude help`
 
 What they say on the tin.
@@ -111,6 +181,6 @@ maude help
 ## Where the source lives
 
 - `cli/bin/maude.mjs` (legacy alias: `cli/bin/mdcc.mjs`). Argv parser and subcommand dispatch.
-- `cli/commands/{init,config,design,help,version}.mjs`. One file per subcommand.
+- `cli/commands/{init,config,doctor,cache,design,hub,help,version}.mjs`. One file per subcommand (`preflight` + `scenario-report` are internal helpers).
 
-Pure ESM, no deps beyond Node 20+. PRs welcome at [github.com/1aGh/maude](https://github.com/1aGh/maude).
+Pure ESM, Node 20+ — Ajv is the only library dependency (config-linting); the dev-server binary ships via `optionalDependencies`. PRs welcome at [github.com/1aGh/maude](https://github.com/1aGh/maude).

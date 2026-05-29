@@ -1,5 +1,5 @@
 {
-  "generated": "2026-05-29T20:04:16.318Z",
+  "generated": "2026-05-29T21:25:04.238Z",
   "currentPhase": null,
   "phases": [
     {
@@ -595,6 +595,28 @@
       "planPath": ".ai/plans/phase-21-annotation-vocabulary-figjam.md",
       "archived": false,
       "phaseKey": "21"
+    },
+    {
+      "id": "phase-22-annotation-brief-board",
+      "title": "Phase 22 — Annotation brief-board → `/design:new` ingest",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Today a canvas is born from a text brief (/design:new \"<name>\" \"<brief>\"). There is no way to start from a blank surface, sketch intent with sticky notes / text / arrows, and then ask Claude to rea...",
+      "planPath": ".ai/plans/phase-22-annotation-brief-board.md",
+      "archived": false,
+      "phaseKey": "22"
+    },
+    {
+      "id": "phase-23-canvas-images-link-unfurl",
+      "title": "Phase 23 — Canvas media: drag-and-drop images + paste-link chips",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "The user wants to drop images onto the canvas (drag a .png from Finder, or paste from clipboard) and paste links that render as a preview chip (favicon + title) — the FigJam move where reference ma...",
+      "planPath": ".ai/plans/phase-23-canvas-images-link-unfurl.md",
+      "archived": false,
+      "phaseKey": "23"
     },
     {
       "id": "canvas-chrome-theme-inheritance",

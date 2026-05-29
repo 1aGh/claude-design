@@ -97,7 +97,7 @@ Every flow command/skill is project-agnostic. They read `.ai/workflows.config.js
 
 ### `.ai/` skeleton vs. this repo's own `.ai/`
 
-`plugins/flow/templates/ai-skeleton/` is the template that `maude init` copies into a target project. This repo also has its own `.ai/` directory at the root — that's Maude *dogfooding* flow on itself (see README "Local development" section). **The two are independent.** Edits to `plugins/flow/templates/ai-skeleton/` only affect future `maude init` runs in other repos; edits to `/Volumes/D/git/claude-design/.ai/` only affect work on this repo.
+`plugins/flow/templates/ai-skeleton/` is the template that `maude init` copies into a target project. This repo also has its own `.ai/` directory at the root — that's Maude *dogfooding* flow on itself (see README "Local development" section). **The two are independent.** Edits to `plugins/flow/templates/ai-skeleton/` only affect future `maude init` runs in other repos; edits to this repo's own root `.ai/` only affect work on this repo.
 
 `cli/commands/init.mjs` does string templating during the copy: it replaces `PROJECT_NAME` and rewrites the `$schema` ref in `workflows.config.json` from a relative path to an absolute GitHub raw URL (because after npm install the schema is no longer at a stable relative location). When changing the skeleton, keep this rewrite in mind for any files added to the `TEMPLATED` list.
 
@@ -136,7 +136,7 @@ When working on a brief the user provided via `/design:setup-ds` or `/design:new
 1. `scripts/bump-version.sh patch` (or `minor`/`major`/explicit `X.Y.Z`) — updates all three version fields together.
 2. `scripts/check-version-parity.sh` — sanity check (also runs in CI on PRs touching `package.json` or the design plugin manifest; note the workflow does not currently watch the flow plugin manifest, so don't bypass the local script).
 3. `git commit -am "chore: release vX.Y.Z" && git tag vX.Y.Z && git push --follow-tags`.
-4. The `v*` tag triggers `.github/workflows/publish.yml`, which re-runs parity, asserts the tag matches `package.json`, and publishes to npm with `--access public --provenance`. The same `v*` tag also triggers `.github/workflows/hub-image.yml`, which builds + pushes the multi-arch `ghcr.io/1agh/maude-hub` Docker image.
+4. The `v*` tag triggers `.github/workflows/build-binaries.yml` (job `publish-main`), which re-runs parity, asserts the tag matches `package.json`, and publishes to npm with `--access public --provenance`. The same `v*` tag also triggers `.github/workflows/hub-image.yml`, which builds + pushes the multi-arch `ghcr.io/1agh/maude-hub` Docker image.
 
 Never bump versions by hand or with `npm version` — the script is the single source of truth for keeping all three manifests in lockstep.
 

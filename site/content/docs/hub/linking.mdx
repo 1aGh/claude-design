@@ -26,7 +26,7 @@ Linking to a **non-loopback** hub grants that hub the same write access to your 
 Link this repo to https://maude-hub-acme.fly.dev? [y/N]
 ```
 
-Confirm once and the hub is recorded in your per-machine trust list — re-linking won't re-prompt. `--yes` confirms non-interactively (for scripts); a non-TTY without `--yes` refuses. Loopback hubs (local dev) are exempt. The trust list lives per-machine, never in a committed file, so a malicious PR can't pre-seed trust. See [DDR-054](https://github.com/1aGh/maude/blob/main/.ai/decisions/DDR-054-task-5-awareness-trust-boundary.md).
+Confirm once and the hub is recorded in your per-machine trust list — re-linking won't re-prompt. `--yes` confirms non-interactively (for scripts); a non-TTY without `--yes` refuses. Loopback hubs (local dev) are exempt. The trust list lives per-machine, never in a committed file, so a malicious PR can't pre-seed trust. See [DDR-054](https://github.com/1aGh/maude/blob/main/.ai/decisions/DDR-054-linked-mode-trust-model-and-task-4-hardening.md).
 
 ## What syncs: HTML by default, TSX by opt-in
 
@@ -84,12 +84,15 @@ Your `.design/` files are untouched — the repo returns to solo mode. The gitig
 Linked mode uses one gitignore strategy in v1.1 — **`full`**: canvases and their JSON snapshots stay in git (cold backup, PR-reviewable `.html` diffs, bootstrap-from-clone), while regenerable runtime state is ignored.
 
 ```text
-# maude:begin (design plugin runtime — gitignored even in linked mode)
-.design/_state/        # binary CRDT logs (regenerable from hub)
+# maude:begin
+# Maude design plugin runtime — gitignored even in linked mode (DDR-056).
+.design/_state/        # binary CRDT cache (regenerable from hub)
 .design/_server.json
 .design/_server.log
 .design/_active.json
+.design/_sync.json     # linked-mode offline/sync status
 .design/_history/
+.design/_canvas-state/ # per-machine canvas undo/redo + scratch
 .design/_chat/         # ACP transcripts (per-machine)
 # maude:end
 ```

@@ -5,9 +5,9 @@ description: Vibe-design & vibe-code workflows for Claude Code. Two plugins, one
 
 Two plugins, one CLI, and the `.ai/` workspace they both pretend not to need. You're probably here for `design` or `flow`. `maude` is the plumbing. Cmd-K skips ahead.
 
-- **`design`**. Canvas-first iteration on HTML / JSX mocks under `.design/`. Zero-dep dev server. Cmd+Click inspector overlay so Claude knows which element the feedback is about.
+- **`design`**. Canvas-first iteration on `.tsx` canvases under `.design/`. A Bun dev server tracks the active tab + your selection over WebSocket, so Cmd+Click any element and Claude knows which element the feedback is about. An optional self-hostable hub mirrors `.design/` across collaborators.
 - **`flow`**. The agentic loop that ships things eventually. Second-brain `.ai/` workspace, project-agnostic via per-repo `workflows.config.json`. Same plugin runs in Next.js, Expo, Go, anything.
-- **`maude`** (legacy alias: `mdcc`). Small CLI. Scaffolds the `.ai/` workspace, reads and writes config, boots the design dev server.
+- **`maude`** (legacy alias: `mdcc`). Small CLI. Scaffolds the `.ai/` workspace, reads and writes config, boots the design dev server, runs health diagnostics (`doctor`), manages the sidecar cache, and hosts the optional sync hub.
 
 Open-source. MIT. No telemetry, no signup, no _book a demo_ button. If it crashes, `git pull` and try again. That's the entire support contract.
 
@@ -22,7 +22,7 @@ Open-source. MIT. No telemetry, no signup, no _book a demo_ button. If it crashe
   <Card
     title="`maude` CLI"
     href="/docs/cli"
-    description="Subcommands: init, config, design serve, design init."
+    description="Subcommands: init, config, doctor, cache, design, hub."
   />
   <Card
     title="Design canvas loop"
@@ -43,6 +43,11 @@ Open-source. MIT. No telemetry, no signup, no _book a demo_ button. If it crashe
     title="Recipes"
     href="/docs/recipes/nextjs"
     description="Drop-in setups for Next.js, Expo, and pnpm monorepos."
+  />
+  <Card
+    title="Self-host the hub"
+    href="/docs/hub"
+    description="Optional Yjs sync hub — mirror `.design/` across collaborators. You run it; there's no SaaS tier."
   />
 </Cards>
 

@@ -16,10 +16,11 @@ Default verbs. No prefix.
 | `/design:edit "<feedback>"` | Iterate on the active canvas with auto-critic loop |
 | `/design:new "<Name>" "<brief>"` | Scaffold a new multi-artboard canvas project |
 | `/design:critic` | Spawn the critic panel (or single agent / all critics) |
-| `/design:browse` | Boot the local dev server |
+| `/design:browse` | Boot a local design browser (file tree + tabbed iframe preview) |
 | `/design:rollback` | Undo the last edit (snapshot-based) |
 | `/design:screenshot` | Capture a screenshot of the active canvas |
 | `/design:handoff` | Migrate the active canvas to a production target |
+| `/design:export` | Export the active canvas (PNG / PDF / SVG / HTML / PPTX / Canva / ZIP) |
 | `/design:help` | Print the grouped command index |
 
 The bare `/design` form was a v0.8 one-version compat stub redirecting to `/design:edit`. **Removed in v0.9**. Only `/design:edit` resolves.
@@ -71,7 +72,7 @@ This makes autocomplete predictable.
 
 1. Pick the group from the table above. If none fits, propose a new group in `plugins/design/CATEGORIES.md` (with prose justification) before adding the file.
 2. Create `plugins/design/commands/<group>-<verb>.md` (or `<verb>.md` for `daily`).
-3. Set frontmatter: `name: <verb-or-group-verb>`, `category: <group>`, `description: <one-liner>`, `argument-hint:` if any.
+3. Set frontmatter: `name: design:<verb-or-group-verb>` (the `design:` prefix is load-bearing — without it the bare slug collides with built-ins, DDR-006), `category: <group>`, `description: <one-liner>`, `argument-hint:` if any.
 4. `/design:help` picks it up automatically. No manual catalog update needed.
 
 The auto-generated reference pages under `/docs/commands-design/` are produced by `site/scripts/build-command-reference.mjs` from each command file's frontmatter on every `pnpm prebuild`.

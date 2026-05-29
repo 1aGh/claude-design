@@ -78,7 +78,7 @@ Set `HUB_PUBLIC_URL` to the tunnel's https URL so the admin bootstrap link is co
 
 ## Transport hardening
 
-- **WSS is mandatory.** The hub refuses to boot over plaintext `http://` to a non-loopback host. TLS terminates at your proxy (Fly / Caddy / ALB / Cloudflare / Tailscale), so the hub itself sees `http://` internally — `HUB_PUBLIC_URL` must declare the `https://` URL. Local dev sets `HUB_INSECURE_HTTP=1` to opt out.
+- **WSS is mandatory.** The hub refuses to boot over plaintext `http://` to a non-loopback host. TLS terminates at your proxy (Fly / Caddy / ALB / Cloudflare, or any upstream TLS terminator), so the hub itself sees `http://` internally — `HUB_PUBLIC_URL` must declare the `https://` URL. Local dev sets `HUB_INSECURE_HTTP=1` to opt out.
 - **Token auth on every connection.** Tokens are stored HMAC-SHA256-hashed at rest (the raw value never lands on disk). Per-token rate limit: 100 auths / 60s.
 - **Bootstrap key is single-use** and not reissued after consumption — fall back to `HUB_SECRET` if you miss the window.
 
