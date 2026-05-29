@@ -1,7 +1,8 @@
 ---
 name: phase-9.2-shared-collab-doc
-status: planned
+status: done
 created: 2026-05-29
+closed: 2026-05-29
 supersedes:
   - DDR-054 §F14 (doc-content bridge) — the deferred "bridge the two docs" item; this REPLACES the bridge with a single shared doc
 relates_to:
@@ -289,3 +290,26 @@ Ship behind a **feature flag (`MAUDE_SHARED_DOC`, default OFF)** so the proven t
 5. **Migration data loss** (MEDIUM) — **Mitigation:** snapshot `_history/` + files first; shadow-compare + per-canvas cutover behind the flag; keep old path warm one cycle.
 6. **Security regression in body gating** (MEDIUM) — the shared doc must not leak the gated body to the hub. **Mitigation:** Task 8 + a dedicated security re-audit (DDR-054).
 7. **Scope creep into full character-level body co-edit** (LOW) — that's phase-10; this phase delivers the shared-doc FOUNDATION + a gated body channel, not necessarily live character-merge on the `.tsx`. Keep them separate.
+
+---
+
+## Retro (2026-05-29)
+
+**What worked**
+- **Default-OFF flag + per-phase atomic commits + stash-and-compare** let a high-risk 12-task collab-doc refactor land on a shared `main` tree with a *proven* zero-regression flag-OFF path (the 720-test baseline byte-identical at every phase). The risky convergence is real code, fully unit-verified, but dormant until the user's live cutover — exactly the rollout discipline the plan called for.
+- **Convergence was provable WITHOUT a live hub**: an in-process re-broadcast relay IS the hub's CRDT contract (commutative/idempotent updates), so the seeded N-peer stress + the round-trip laws gave a deterministic gate. Reusing the proven `codec.ts` codecs inside `projection.ts` (no logic duplication) kept the new disk-projection small and trustworthy.
+- **The adversarial security re-audit earned its keep**: it caught two REAL new-code gaps (A2 doc→file size caps, A3 meta `__proto__` reviver — the M2 fix had been propagated to comments but not meta) that the happy-path tests missed, both fixed inline.
+
+**What didn't / friction**
+- **Git index phantom-staged residue**: a `git stash push/pop` during Phase-A baseline verification left a staged *reverse* of the committed changes that resurfaced before every subsequent phase commit, needing a `git reset` each time. Cost a few diagnostic detours. (Machine/environment quirk, not the code.)
+- A stray `cd` into `dev-server/` made one `bun test` run from the repo root, sweeping in hub `.mjs` tests (wrong runner) → a scary "60 fail" that was pure cwd artifact. Always pin the cwd for the test runner.
+
+**Pivots (re-sequencing within the plan)**
+- **Task 5 (origin sentinels) moved Phase B → Phase C**: the "exactly one disk write" echo test is only well-defined once `projection.ts` is the *sole* disk owner; defining the `DISK_PROJECTION`/`FILE_IMPORT`/`MIGRATION` sentinels in Phase B would have been speculative (their consumers didn't exist yet).
+- **Task 8 separate-body-channel decoupling DEFERRED**: the security invariant (body crosses hub only with both locks) is already met by *discovery exclusion*; the "comments-sync-for-opted-out-canvases" decoupling is a granularity feature whose re-arch would change flag-OFF discovery + needs the live re-audit. Verified+re-audited the existing gate instead.
+
+**For the next /plan**
+- For a flag-guarded multi-phase refactor where **flag-ON needs live validation I can't perform**, mark up front which phases are unit-verifiable vs live-only, and sequence the migration/seed (here Phase E) as the explicit prerequisite for *any* flag-ON test — so the "done but dormant" boundary is unambiguous from the start.
+- The convergence/migration parts of this kind of plan benefit from naming the duplication-on-merge trap (Risk 1) as a Phase-0 reading, since it shapes both the seed AND the room-seed-disable decision that are easy to miss.
+
+**Status at close:** all 12 tasks implemented + unit-verified behind `MAUDE_SHARED_DOC` (default OFF). NOT yet cut over — the flag stays OFF pending (a) the live two-machine cross-edit + shadow run and (b) the security re-audit's pre-cutover checklist (DDR-064 + `.ai/logs/security-reviews/phase-9.2-shared-collab-doc.md`). This `/done` closes the *implementation* phase; cutover is a separate, user-driven step.
