@@ -456,7 +456,7 @@ This pattern overrides the `--accent*` family per-tenant — compatible with any
 **Step 0 — Real-asset sweep (mandatory; closes D-2 from the imprint retro).** Before ANY placeholder asset gets written in Batch A, grep the target repo for production sources of brand assets. The cost is < 1 s on a 20k-file monorepo, < 2 s on 50k-file. The cost of NOT running it (placeholder bleed into Batch C sub-agent prompts; user catching the made-up "S" SVG mid-flow) is one full fix-pass.
 
 ```bash
-bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/asset-sweep.sh" \
+maude design asset-sweep \
   --root "$CLAUDE_PROJECT_DIR" \
   --query "logo,mark,wordmark,mascot,glyph,illustration"
 ```
@@ -838,10 +838,10 @@ The critic emits a JSON verdict. If it returns **blockers**, the bootstrap flow 
 >
 > **Closes D-3 + D-4 in the imprint-bootstrap retro** (`.ai/logs/system-reviews/imprint-bootstrap-review-2026-05-26.md`): both failure modes were caught by the user, not the loop, because the visual sanity step was treated as soft + skipped when dev-server boot "looked heavy". Phase 3.7 flips it: dev-server boot is **mandatory**; failure surfaces as `AskUserQuestion`, never silently elided.
 
-Use the canonical helper — `${CLAUDE_PLUGIN_ROOT}/dev-server/bin/visual-sanity.sh`. It boots the dev-server (via `server-up.sh`), screenshots N specimens (via `screenshot.sh`), writes them + a `_manifest.json` under `<designRoot>/_history/_system/<ds>-visual-sanity-<ISO>/`, and exits with a distinct code per failure mode.
+Use the canonical helper — `maude design visual-sanity` (on-PATH `maude` dispatches to the bundled helper — DDR-062). It boots the dev-server (via `server-up`), screenshots N specimens (via `screenshot`), writes them + a `_manifest.json` under `<designRoot>/_history/_system/<ds>-visual-sanity-<ISO>/`, and exits with a distinct code per failure mode.
 
 ```bash
-bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/visual-sanity.sh" \
+maude design visual-sanity \
   --ds "<ds-name>" \
   --specimens "colors-accent,motion,ui_kits-desktop-showcase,empty-state,logo"
 # Pass only specimens that were actually written this run — derive from the

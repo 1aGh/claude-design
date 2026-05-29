@@ -28,10 +28,10 @@ Project-specific hodnoty (designRoot, rootClass, tokens path, themeDefault) při
 
 ### 0. Pre-flight: bootstrap detection
 
-Before any edit work, check whether the project has a usable design system. Canonical recipe — `${CLAUDE_PLUGIN_ROOT}/dev-server/bin/bootstrap-check.sh` — populates `HAS_DS`, `CONFIG_PRESENT`, `REPO_ROOT`, `KNOWN_DS`, `DEFAULT_DS`, `BOOTSTRAP_EXIT`:
+Before any edit work, check whether the project has a usable design system. Canonical recipe — `maude design bootstrap-check` (on-PATH `maude` dispatches to the bundled helper — DDR-062) — populates `HAS_DS`, `CONFIG_PRESENT`, `REPO_ROOT`, `KNOWN_DS`, `DEFAULT_DS`, `BOOTSTRAP_EXIT`:
 
 ```bash
-eval "$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/bootstrap-check.sh" --shell-export)"
+eval "$(maude design bootstrap-check --shell-export)"
 ```
 
 | State | Action |
@@ -59,7 +59,7 @@ Vyvolej skill `design` se vstupem `$ARGUMENTS`.
 **One pre-flight call instead of the config jq reads + the step-3 slug compute.** `prep.sh --shape edit` reads `.design/config.json` + `_active.json` + `_server.json` in a single pass and exports `DESIGN_ROOT`, `ROOT_CLASS`, `TOKENS_REL`, plus the active-canvas context `ACTIVE_CANVAS`, `SELECTED_FILE`, `SEL_VALID`, `OPEN_TABS`, `ACTIVE_SLUG`, and the server probe `SERVER_UP` / `SERVER_PORT`. Step 3's slug no longer needs a separate `slug.sh` call (use `$ACTIVE_SLUG`); step 2 still runs `server-up.sh` because that helper *starts* a stale/absent server — `prep.sh` only probes.
 
 ```bash
-eval "$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/prep.sh" --shell-export --shape edit --root "$REPO_ROOT")"
+eval "$(maude design prep --shell-export --shape edit --root "$REPO_ROOT")"
 CFG="$REPO_ROOT/.design/config.json"
 ```
 
@@ -99,43 +99,70 @@ if [ "${SEL_VALID:-0}" = "1" ]; then
   LOAD_CSS=1
 fi
 
+CANVAS_LIB="$CLAUDE_PLUGIN_ROOT/dev-server/canvas-lib.tsx"
+DCTX=""   # cached DS-context pack (empty = cache miss → read the raw files)
+
 if [ "$LOAD_CSS" = "1" ] && [ "${ACTIVE##*.}" = "tsx" ] && [ "$CSS_MODE" = "inline" ]; then
   # Use the design system's tokensCssRel + the DS-specific `_components.css`.
   DS_NAME=$(jq -r '.designSystem // "project"' "$META_PATH" 2>/dev/null || echo "project")
   DS_PREVIEW_DIR=$(jq -r ".designSystems[] | select(.name==\"$DS_NAME\") | .path" "$CFG" 2>/dev/null || echo "system/$DS_NAME")
   COMPONENTS_CSS="$REPO_ROOT/$DESIGN_ROOT/$DS_PREVIEW_DIR/preview/_components.css"
   TOKENS_CSS="$REPO_ROOT/$DESIGN_ROOT/$TOKENS_REL"
-  # Surface paths for the orchestrator to `Read` ahead of dispatch.
-  echo "→ pre-loading DS context: $COMPONENTS_CSS"
-  echo "→ pre-loading DS context: $TOKENS_CSS"
+
+  # Sidecar cache (Phase C / DDR-061): cache the extracted DS vocabulary
+  # (component class names + token names + canvas-lib exports) per
+  # (DS-name, sha-of-the-three-source-files). A repeated /design:edit on the
+  # same canvas reads the compact digest instead of re-reading ~6 KB CSS +
+  # the ~58 KB canvas-lib. Invalidates the moment ANY of the three files change.
+  # Access via the `maude` CLI (declared dep, on PATH) — cli/lib is NOT beside
+  # the plugin in a marketplace install (DDR-061).
+  TOKENS_SHA=$(cat "$COMPONENTS_CSS" "$TOKENS_CSS" "$CANVAS_LIB" 2>/dev/null | git hash-object --stdin | cut -c1-12)
+  DCTX=$(maude cache get design-context "$DS_NAME/$TOKENS_SHA" 2>/dev/null)
+
+  if [ -n "$DCTX" ]; then
+    echo "→ DS context cache HIT ($DS_NAME/$TOKENS_SHA) — seeding from cached vocabulary, skipping CSS + canvas-lib reads"
+  else
+    echo "→ DS context cache MISS ($DS_NAME/$TOKENS_SHA) — pre-loading: $COMPONENTS_CSS"
+    echo "→ pre-loading DS context: $TOKENS_CSS"
+  fi
 fi
 
-# Always pre-load the dev-server-bundled canvas-lib for every TSX canvas —
-# the lib is the authoring vocabulary (envelope + helpers + hooks the canvas
-# can compose from). Cold-edit on a canvas without seeing the available
-# helpers is a known foot-gun (Phase 3.6.1 Task 13). Per DDR-025 / Phase
-# 4.0.5 the lib ships with the dev-server install at
-# `plugins/design/dev-server/canvas-lib.tsx`. Cost: ~58 KB read, idempotent.
-if [ "${ACTIVE##*.}" = "tsx" ]; then
-  CANVAS_LIB="$CLAUDE_PLUGIN_ROOT/dev-server/canvas-lib.tsx"
-  if [ -f "$CANVAS_LIB" ]; then
-    echo "→ pre-loading canvas-lib: $CANVAS_LIB"
-  fi
+# Pre-load the dev-server-bundled canvas-lib for every TSX canvas UNLESS the
+# DS-context cache already covered it (the lib sha is folded into TOKENS_SHA, so
+# a hit means its export vocabulary is in $DCTX). The lib is the authoring
+# vocabulary (envelope + helpers + hooks the canvas can compose from); cold-edit
+# without it is a known foot-gun (Phase 3.6.1 Task 13). Per DDR-025 it ships
+# with the dev-server install. Cost when read: ~58 KB, idempotent.
+if [ "${ACTIVE##*.}" = "tsx" ] && [ -z "$DCTX" ] && [ -f "$CANVAS_LIB" ]; then
+  echo "→ pre-loading canvas-lib: $CANVAS_LIB"
 fi
 ```
 
-**What the orchestrator does with those paths:** if `LOAD_CSS=1`, the orchestrator `Read`s both files BEFORE building the prompt for `frontend-design`. **Read `_components.css`, `colors_and_type.css`, and the canvas-lib (the always-on `.tsx` read below) in parallel — one assistant message, multiple Read tool calls** — they're independent files and serialising them just adds round-trips. The class names in `_components.css` show what's available (`.btn`, `.btn--ghost`, `.tile`, `.sku`, `.seg`, ...), and `colors_and_type.css` shows the token namespace — both seed the LLM with the exact vocabulary the canvas already speaks. For `css_mode: "tailwind"` canvases skip (Tailwind utilities self-describe); for `css_mode: "modules"` load the canvas's `<Slug>.module.css` sidecar instead. The canvas-lib read ALWAYS happens for `.tsx` canvases (any mode) — the lib is the project's authoring vocabulary and missing it is the most common reason a `/design:edit` suggests re-inventing a helper that already exists.
+**What the orchestrator does with those paths:**
+
+- **Cache HIT (`$DCTX` non-empty):** seed the `frontend-design` prompt directly from the cached pack — `classNames` (what `_components.css` offers: `.btn`, `.tile`, `.sku`, `.seg`, …), `tokenNames` (the `colors_and_type.css` namespace), and `libExports` (the canvas-lib authoring vocabulary). **Skip the CSS + canvas-lib Reads entirely.** This is the C5 win — repeat edits on an unchanged DS pay zero read cost.
+- **Cache MISS:** if `LOAD_CSS=1`, `Read` `_components.css` + `colors_and_type.css`, and (for any `.tsx`) the canvas-lib, **in parallel — one assistant message, multiple Read tool calls** (independent files; serialising just adds round-trips). Then extract the vocabulary and write the pack so the next edit hits:
+
+  ```sh
+  # Build the pack JSON from the parsed vocabulary, then store it:
+  #   { "dsName": "...", "classNames": [...from _components.css...],
+  #     "tokenNames": [...--tokens from colors_and_type.css...],
+  #     "libExports": [...exported names from canvas-lib.tsx...] }
+  printf '%s' "$PACK_JSON" | maude cache put design-context "$DS_NAME/$TOKENS_SHA"
+  ```
+
+For `css_mode: "tailwind"` canvases skip (Tailwind utilities self-describe); for `css_mode: "modules"` load the canvas's `<Slug>.module.css` sidecar instead. Missing the canvas-lib vocabulary is the most common reason a `/design:edit` suggests re-inventing a helper that already exists — so on a miss the lib read is non-negotiable, and on a hit `libExports` carries that same vocabulary forward.
 
 ### 2. Server lifecycle (vždy první) + runtime-bundle health probe
 
 ```bash
-PORT=$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/server-up.sh" --root "$REPO_ROOT")
+PORT=$(maude design server-up --root "$REPO_ROOT")
 
 # Parse-clean ≠ run-clean. A stale server process can cache a broken dynamic
 # build of /_canvas-runtime/*.js (the canvas TSX serves fine, but the iframe
 # throws at module-eval time). System-review 2026-05-27 D-1. --restart auto-kills
 # and respawns; helper exits 3 only when the restarted server is still defective.
-bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/runtime-health.sh" \
+maude design runtime-health \
   --port "$PORT" \
   --root "$REPO_ROOT" \
   --restart \
@@ -165,7 +192,7 @@ OPEN_COMMENTS=$(jq -c '[(.active_comments // [])[] | select(.status != "resolved
 # Slug + COMMENTS_FILE for the resolve path. prep.sh (step 1) already computed
 # the slug via slug.sh — reuse $ACTIVE_SLUG; fall back to a direct slug.sh call
 # only if prep didn't run (e.g. ACTIVE changed after pre-flight).
-SLUG="${ACTIVE_SLUG:-$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/slug.sh" "${ACTIVE#$DESIGN_ROOT/}")}"
+SLUG="${ACTIVE_SLUG:-$(maude design slug "${ACTIVE#$DESIGN_ROOT/}")}"
 COMMENTS_FILE="$DESIGN_ROOT/_comments/$SLUG.json"
 ```
 
@@ -204,7 +231,7 @@ if [ "$ACTIVE_EXT" = "tsx" ] && [ "$SEL_V" = "2" ] && [ -n "$SEL_ID" ] && [ "$AS
   #   ATTR=className   NEW_VALUE="btn btn--ghost"
   #   ATTR=style.color NEW_VALUE='"#facc15"'   # JS expression for style.*
   #   ATTR=aria-label  NEW_VALUE="Save changes"
-  bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/canvas-edit.sh" \
+  maude design canvas-edit \
        "$ACTIVE" "$SEL_ID" "$ATTR" "$NEW_VALUE"
   AST_EDITED=1
 fi
@@ -246,12 +273,12 @@ OUT="$HIST/$N-context.png"
 
 # Canonical helper — auto-resolves URL from _server.json + _active.json,
 # polls for canvas mount, picks engine (agent-browser > playwright fallback).
-bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --full --out "$OUT"
+maude design screenshot --full --out "$OUT"
 
 # If the selected element has a data-dc-element="<id>", grab a focused crop too:
 if [ "$SEL_VALID" = "1" ] && [[ "$(jq -r '.selected.selector // empty' "$DESIGN_ROOT/_active.json")" == *"data-dc-element="* ]]; then
   EL_ID=$(jq -r '.selected.selector' "$DESIGN_ROOT/_active.json" | sed -nE 's/.*data-dc-element="([^"]+)".*/\1/p')
-  bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --element "$EL_ID" --out "$HIST/$N-context-element.png"
+  maude design screenshot --element "$EL_ID" --out "$HIST/$N-context-element.png"
 fi
 ```
 
@@ -324,6 +351,8 @@ curl -s -m 2 -X POST -H 'content-type: application/json' \
 
 **Always fires, regardless of `--no-critic`.** Reality check (does the file render?), ne quality check.
 
+**Background overlap (Phase C / DDR-061).** When the critic panel will run (not `--no-critic`), fire this capture as a **background Bash call** (`run_in_background: true`) and spend the wait on step-8 prep — resolving the opt-out scope, the routed panel set (8a/8b decision), the per-critic inline DS context (already cached from step 1.5), and the `RUN_KEEPER` ds-keeper context. Hold the batch ready; when the background job completes you are notified (do **not** poll/sleep), then `Read` the PNG for the reality check and spawn the prepped panel. The CSS-mtime `touch` below must happen **before** the capture is launched, so do it first, then background the screenshot. If `run_in_background` is unavailable, fall back to the synchronous capture — it just blocks — and prep afterward. (`--no-critic` runs the capture synchronously; there's no panel to overlap with.)
+
 ```bash
 # D-2 — if the active canvas is css_mode with a sibling <slug>.css that we just
 # edited, bump the .tsx mtime so canvas-build re-inlines the CSS BEFORE the
@@ -336,7 +365,7 @@ if [ "${ACTIVE##*.}" = "tsx" ] && [ -f "$SIBLING_CSS" ]; then
 fi
 
 OUT="$DESIGN_ROOT/_history/$SLUG/$NNN-baseline.png"
-bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --full --out "$OUT" \
+maude design screenshot --full --out "$OUT" \
   || echo "⚠ baseline screenshot not written"
 ```
 

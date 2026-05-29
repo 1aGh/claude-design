@@ -44,7 +44,7 @@ Run `/flow:review-code` on uncommitted changes. The audit and the simplifier rea
 
 **In a single assistant message, spawn these subagents in parallel using parallel Agent tool calls:**
 
-- `security-auditor` + `ethical-hacker` — audit pass (defender + attacker; reports land in `.ai/logs/security-reviews/`; reused if fresh for HEAD). These two are themselves a parallel pair — spawn both here, in the same message, not in a nested sub-block.
+- `security-auditor` + `ethical-hacker` — audit pass (defender + attacker; reports land in `.ai/logs/security-reviews/`). **First `maude cache get security "$(git rev-parse HEAD)" --ttl-ms 3600000`** (Phase C / DDR-061, the shared `security/<head-sha>` layer, TTL 1 h) — a non-empty result means a fresh review exists for this HEAD: reuse its report + verdict and skip the spawn. This is the same window `/flow:validate` and `/flow:validate-security` use (one source of truth, recipe in `validate-security.md` pre-flight step 3). On miss, these two are a parallel pair — spawn both here, in the same message, not in a nested sub-block.
 - `code-simplifier` — auto-fixes stylistic issues (clarity, nesting, naming) on a working copy.
 
 > **Race guard:** `code-simplifier` mutates files while the auditors read them. To keep the audit reading the original, the simplifier must write to a staging copy (`.git/maude-simplifier-staging/`) or return a patch rather than editing in place — the auditors always read the committed/working originals. Apply the simplifier's patch only **after** all three return.

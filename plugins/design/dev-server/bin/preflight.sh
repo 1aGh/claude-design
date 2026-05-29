@@ -13,9 +13,16 @@
 #   preflight.sh --warn-only        # same as --quiet (SessionStart hook)
 #
 # Resolution (DDR-045): never compute paths from `dirname $0` inside a
-# `bun --compile` standalone binary — that maps to /$bunfs/root. The CLI
-# entry stays Node, so we resolve via $CLAUDE_PLUGIN_ROOT first, with the
-# script-dir fallback only used when running uncompiled from the repo.
+# `bun --compile` standalone binary — that maps to /$bunfs/root.
+#
+# Resolution (DDR-061): in a MARKETPLACE install the plugin is copied alone into
+# `cache/<marketplace>/<plugin>/<version>/` — there is NO sibling `$PKG_ROOT/cli/`.
+# So: use the sibling `cli/lib` when it exists (running uncompiled from the repo
+# or an npm package, where cli/ is present); otherwise reach the check through
+# the on-PATH `maude` binary (a declared plugin dependency), which resolves the
+# manifest from its own package root. Fixing a straggler — the relative-path
+# crash (`Cannot find module …/cache/maude/cli/lib/preflight.mjs`) that the cache
+# steps already avoid by calling on-PATH `maude`.
 #
 # Exit: 0 if all hard deps pass; 1 otherwise.
 
@@ -23,10 +30,14 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 PKG_ROOT="$(cd "$PLUGIN_ROOT/../.." && pwd)"
 
-# The Node lib needs cwd to be the package root (it resolves dependencies.json
-# via `plugins/<plugin>/dependencies.json`). Subshell so we don't mutate the
-# caller's cwd.
-(
-  cd "$PKG_ROOT" || exit 1
-  exec node "$PKG_ROOT/cli/lib/preflight.mjs" --plugin design "$@"
-)
+if [ -f "$PKG_ROOT/cli/lib/preflight.mjs" ]; then
+  # Sibling cli/ present (repo / npm package). The Node lib needs cwd = package
+  # root (it resolves `plugins/<plugin>/dependencies.json`). Subshell preserves
+  # the caller's cwd.
+  ( cd "$PKG_ROOT" || exit 1; exec node "$PKG_ROOT/cli/lib/preflight.mjs" --plugin design "$@" )
+elif command -v maude >/dev/null 2>&1; then
+  exec maude preflight --plugin design "$@"
+else
+  echo "preflight: no cli/lib beside the plugin and 'maude' not on PATH — install maude (npm i -g @1agh/maude)." >&2
+  exit 1
+fi

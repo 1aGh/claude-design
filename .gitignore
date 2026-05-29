@@ -23,6 +23,16 @@ dev-server/.cache/
 .design/_state/*
 !.design/_state/.gitkeep
 
+# Phase C / DDR-061 — sidecar cache (cli/lib/cache.mjs). The research/domain
+# and codebase-intelligence layers ARE committed (SHA-keyed, shareable across
+# collaborators — mirrors the site/lib/roadmap.json "commit it" decision). The
+# brief/run/HEAD-specific layers + local telemetry stay out of git.
+.ai/cache/*
+!.ai/cache/codebase-intelligence/
+!.ai/cache/research/
+.ai/cache/research/*
+!.ai/cache/research/domain/
+
 # AI workflow runtime — committed templates live in .ai/templates/
 .ai/state/HANDOFF.md
 .ai/device/

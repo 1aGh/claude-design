@@ -78,6 +78,23 @@ maude doctor --json   # machine-readable envelope
 
 **Quality gates** are declared in `.ai/workflows.config.json` under the top-level `quality` map — a flat `gate → shell command` mapping (e.g. `{ "lint": "pnpm lint", "tests": "pnpm test" }`). Flow commands (`/flow:validate`, `/flow:utils-verify`, `/flow:quick`) read it directly and run each via `eval`. There is **no `maude quality run` wrapper** — `pnpm <script>` is already the runner. Hook it into your own pre-commit tool with a one-liner: `eval $(jq -r '.quality.lint' .ai/workflows.config.json)`. Populate the block by running `maude doctor --fix` once your `package.json` scripts exist (additive — it never overwrites a command you tuned).
 
+### Sidecar cache — `maude cache`
+
+Flow + design commands reuse expensive cross-session work through a small sidecar cache at `.ai/cache/` ([DDR-061](.ai/decisions/DDR-061-sidecar-cache-monitor-background-orchestration.md)): domain research (skips 30–90 s of WebSearch on a same-domain brief), codebase-intelligence scans (skips rescan when the tree is unchanged), parsed design-system vocabulary, and security-review reuse (one shared 1-hour window across `/flow:validate`, `/flow:done`, `/flow:validate-security`). Correctness comes first — most layers are content-addressed (a changed input changes the key → guaranteed miss), and a stale entry is never served speculatively.
+
+```sh
+maude cache list              # layers, entry counts, sizes, last-write time
+maude cache stats             # hit/miss counters + hit-rate per layer
+maude cache inspect <layer>   # list a layer's entries; add a <key> to print one
+maude cache clear [layer]     # wipe one layer (or everything)
+```
+
+The `research/domain` and `codebase-intelligence` layers are **committed** (deterministic on a given tree, so collaborators share the hit); the per-brief, design-context, security, and scenario layers are gitignored. `maude init` drops a `.ai/.gitignore` that encodes the split.
+
+### Plugins call `maude` for executable logic
+
+Plugin slash-commands reach all executable logic through the on-PATH `maude` binary — never a relative `cli/lib/*.mjs` path or a raw `$CLAUDE_PLUGIN_ROOT/dev-server/bin/*.sh` invocation ([DDR-062](.ai/decisions/DDR-062-plugins-reach-executable-logic-via-maude.md)). The marketplace copies each plugin alone (no sibling `cli/`, no `dev-server/`), and a flow command's `$CLAUDE_PLUGIN_ROOT` points at the flow plugin (which has no dev-server at all) — so the only contract that holds across every install shape is `maude`, which resolves bundled helpers from its own package root. Cache/preflight go via `maude cache …` / `maude preflight …`; the design dev-server's bash helpers go via **`maude design <verb>`** (`screenshot`, `server-up`, `prep`, `slug`, `smoke`, `runtime-health`, …) — see `maude design help`. Keep the global `maude` current; a stale binary means stale helpers.
+
 ## Runtime requirements
 
 - **Node ≥ 20** — for the dev server and CLI. Zero npm runtime deps.

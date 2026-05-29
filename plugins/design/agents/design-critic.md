@@ -49,11 +49,11 @@ opt_out_scope      # one of "palette" | "aesthetic" | "full" — see SKILL.md "O
 1. **Read inputs.** Canvas + tokens CSS (`<designRoot>/<config.tokensCssRel>`). If tokens CSS unreadable, fail loud — without authoritative tokens you can't judge compliance.
 2. **Capture screenshot if missing.** Use the canonical helper — it resolves URL, polls for canvas mount, and picks engine (`agent-browser` > `playwright` fallback):
    ```bash
-   bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --full --out "<screenshots/NNN.full.png>"
+   maude design screenshot --full --out "<screenshots/NNN.full.png>"
    ```
    If `selected` is set, also capture an element-scoped screenshot. Prefer `--element <id>` when the saved selector contains `data-dc-element="…"`; otherwise pass the full selector via `--selector`:
    ```bash
-   bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --element "<id>" --out "<screenshots/NNN.element.png>"
+   maude design screenshot --element "<id>" --out "<screenshots/NNN.element.png>"
    ```
    The orchestrator may have passed `screenshots.full` / `screenshots.screens` / `screenshots.element` paths in the input envelope — if so, read those directly and skip the capture step.
 3. **Load review references** (read these once, apply yourself — no nested invocations):

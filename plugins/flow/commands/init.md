@@ -34,10 +34,22 @@ if [[ "$FRESH" == "true" ]]; then
   DEPS_OK=1
   DEPS_MISSING="$(node -e "try{process.stdout.write((require('$CACHE').soft_warnings||[]).join(','))}catch{}")"
 else
-  # preflight.mjs resolves the manifest relative to cwd → run from PKG_ROOT
-  # (mirrors preflight.sh). --cache path is absolute so it lands in the repo.
-  ( cd "$PKG_ROOT" && node cli/lib/preflight.mjs --plugin flow --cache "$CACHE" )   # human table
-  eval "$(cd "$PKG_ROOT" && node cli/lib/preflight.mjs --plugin flow --shell-export --cache "$CACHE")"
+  # Reach preflight via the one contract (DDR-061): the sibling `cli/lib` when it
+  # exists (running uncompiled from the repo), else the on-PATH `maude` binary —
+  # the marketplace install copies the plugin alone, so there is NO sibling cli/.
+  # maude is a SOFT dep for flow, so if NEITHER is available, degrade gracefully
+  # (that absence is exactly what the preflight would report) rather than crash
+  # with MODULE_NOT_FOUND on `cache/<mkt>/cli/lib/preflight.mjs`.
+  if [ -f "$PKG_ROOT/cli/lib/preflight.mjs" ]; then
+    ( cd "$PKG_ROOT" && node cli/lib/preflight.mjs --plugin flow --cache "$CACHE" )            # human table
+    eval "$(cd "$PKG_ROOT" && node cli/lib/preflight.mjs --plugin flow --shell-export --cache "$CACHE")"
+  elif command -v maude >/dev/null 2>&1; then
+    maude preflight --plugin flow --cache "$CACHE"                                             # human table
+    eval "$(maude preflight --plugin flow --shell-export --cache "$CACHE")"
+  else
+    echo "preflight: 'maude' not installed and no sibling cli/ — degraded mode (maude soft-missing)."
+    DEPS_OK=1; DEPS_MISSING="maude"
+  fi
   # Exposes: $DEPS_OK (1 if all HARD deps pass), $DEPS_MISSING (csv of missing ids).
 fi
 

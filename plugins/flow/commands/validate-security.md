@@ -36,6 +36,13 @@ This is the standalone sibling of `/flow:validate-a11y` and `/flow:validate-visu
    git diff --name-only                    # uncommitted too
    ```
    If diff is empty → print `"No changes to review."` and exit.
+3. **Reuse a fresh review (Phase C / DDR-061 — `security/<head-sha>` cache).** Don't re-audit a tree that was just audited. This is the single source of truth for the "don't re-audit the same HEAD within 1 h" window — `done.md` and `validate.md` call the SAME layer, so the three commands can no longer drift.
+   Access the cache via the `maude` CLI (declared dep, on PATH — `cli/lib` is NOT beside the plugin in a marketplace install; DDR-061). `maude cache get` prints the cached value on a fresh hit and is silent on miss/stale, so a non-empty capture means "reuse":
+   ```bash
+   HEAD_SHA=$(git rev-parse HEAD 2>/dev/null || echo nohead)
+   REUSE=$(maude cache get security "$HEAD_SHA" --ttl-ms 3600000)   # 1 h window
+   ```
+   If `$REUSE` is non-empty (a report fresh within 1 h for this exact HEAD), print `"Reusing security review <reportPath> (HEAD <head-sha>)."`, surface its verdict, and **skip spawning `security-auditor` + `ethical-hacker`**. Otherwise run the protocol below, then record the result in Aggregate.
 
 ## Run protocol
 
@@ -95,6 +102,14 @@ Write `.ai/logs/security-reviews/<branch>-<YYYYMMDD-HHMM>.md`:
 
 ## Next step
 <if FAIL: which specific finding to fix first; if PASS WITH WARNINGS: should-fix list; if PASS: continue to /flow:review-code or /flow:done>
+```
+
+**Record the result in the `security/<head-sha>` cache** so `/flow:done` and `/flow:validate` on the same HEAD within the hour reuse it instead of re-spawning:
+
+```bash
+printf '{"reportPath":"%s","verdict":"%s","blockers":%s}' \
+  "$REPORT_PATH" "$VERDICT" "${BLOCKERS:-0}" \
+  | maude cache put security "$HEAD_SHA"
 ```
 
 ## Gate

@@ -40,8 +40,8 @@ if [[ "$FRESH" == "true" ]]; then
 else
   # Human-readable dep table (✓/✗/⚠ + install hint), then machine vars.
   # --cache writes <designRoot>/_preflight.json for the short-circuit above.
-  bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/preflight.sh" --cache "$CACHE"
-  eval "$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/preflight.sh" --shell-export --cache "$CACHE")"
+  maude preflight --plugin design --cache "$CACHE"
+  eval "$(maude preflight --plugin design --shell-export --cache "$CACHE")"
   # Exposes: $DEPS_OK (1 if all HARD deps pass, else 0), $DEPS_MISSING (csv of missing ids).
 fi
 

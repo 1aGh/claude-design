@@ -31,7 +31,45 @@ researched_at:   <ISO date, current>
 
 If `cached_payload` is provided AND the file exists AND its `brief_sha8` matches the SHA-8 hash of the current `brief` (exact-match, not fuzzy), **read it, return its path, skip fresh research**. Print: `Cache hit: <path> — reusing prior research from <researched_at>`. Fuzzy semantic matching is NOT permitted — two briefs whose hashes differ get fresh research, even if they're "in the same domain", because the caller chose to write a different brief and that intent matters.
 
-If cache miss, run fresh research per the relevant mode below.
+If cache miss, run the sidecar-cache check (Step 0.5) before falling through to fresh research.
+
+---
+
+## Step 0.5 — Sidecar cache (two-layer, Phase C / DDR-061)
+
+The `cached_payload` short-circuit above is an **exact-brief** match the caller hands you. The sidecar cache adds two more layers that survive across sessions (and, when committed, across collaborators) — checked here, written at the end of a fresh run. Access it through the **`maude` CLI** (`maude cache get/put`) — a declared plugin dependency that's always on PATH. Do **not** reach for `cli/lib/cache.mjs` by relative path: the marketplace copies each plugin alone into `cache/<marketplace>/<plugin>/<version>/`, so the repo's `cli/` is never beside the plugin (see DDR-061). The cache root resolves automatically to `$CLAUDE_PROJECT_DIR/.ai/cache`.
+
+**Keys (compute once):**
+
+```sh
+# Domain slug: product_type + industry from the vision-brief (or the brief's core
+# domain nouns), lowercased, non-alphanumerics → "-", repeats collapsed.
+DOMAIN_KEY="<domain-slug>--<mode>"        # e.g. finance-dashboard-fintech--discovery
+BRIEF_SHA=$(printf '%s' "<brief>" | git hash-object --stdin | cut -c1-8)
+PROJECT_KEY="${BRIEF_SHA}--<mode>"
+```
+
+**Check (before any WebSearch):** `maude cache get` prints the value (compact JSON) on a fresh hit and exits 0; on miss/stale it prints nothing and exits 1, so a `$(…)` capture is empty exactly when you must do fresh work.
+
+```sh
+PROJECT_HIT=$(maude cache get research/project "$PROJECT_KEY" --ttl-ms 2592000000)   # 30 days
+DOMAIN_HIT=$(maude cache get research/domain  "$DOMAIN_KEY"  --ttl-ms 604800000)     # 7 days
+```
+
+1. **Project layer** (`research/project`, key `$PROJECT_KEY`, TTL **30 days**). If `$PROJECT_HIT` is non-empty, write it to `output_path` and return — same as a `cached_payload` hit. This is the cross-session form of the exact-brief cache.
+2. **Domain layer** (`research/domain`, key `$DOMAIN_KEY`, TTL **7 days**). If `$DOMAIN_HIT` is non-empty, **skip the 6–8 WebSearch calls** and reuse the domain-generic anchors (mood clusters, color OKLCH options, typography pairings, voice tones, signature treatments, iconography vibes, density references). Then run ONLY the project-specific refinement pass (anti-references, confidence scoring, final anchor selection for THIS brief). Set `cache_hit: true`, `queries_run: 0` in the payload.
+
+**Write (at the end of a fresh or domain-refined run):** `maude cache put` reads the value JSON from a file (or stdin).
+
+```sh
+maude cache put research/project "$PROJECT_KEY" "$output_path" --meta '{"mode":"<mode>"}'
+# On a genuine WebSearch run (domain miss), also write the domain-generic subset:
+maude cache put research/domain "$DOMAIN_KEY" domain-subset.json --meta '{"mode":"<mode>"}'
+```
+
+- Always write the **full payload** to `research/project` under `$PROJECT_KEY`.
+- On a genuine WebSearch run (domain miss), also write the **domain-generic subset** (strip anti-references + per-brief confidence — keep only the reusable mood/color/type/signature/iconography/density anchors) to `research/domain` under `$DOMAIN_KEY`.
+- **Correctness > hit-rate.** Never reuse a domain payload for a brief whose domain slug differs. A wrong domain payload silently biases every downstream DS in that domain (Phase C risk note). When in doubt, miss and re-research.
 
 ---
 
@@ -404,7 +442,7 @@ If WebSearch returns thin results (< 3 distinct domain-relevant products) after 
 - **One JSON file, one mode.** Don't mix `discovery` and `ux-patterns` outputs in the same payload.
 - **No editing.** You write your payload, period. Even if you notice a problem in the existing DS, surface it in `research_quality_notes` and let the caller decide.
 - **No pre-set brand preferences.** The agent has no allow-list or deny-list of products. Whatever WebSearch + analysis surfaces as genuinely fitting the brief is a valid anchor. If a well-known product is the best reference, that's fine; if a niche specialty publication is the best reference, that's fine too. Trust the research.
-- **Respect cache.** Brief-hash exact match ⇒ skip fresh research. Fuzzy semantic similarity does NOT count as a cache hit.
+- **Respect cache.** Brief-hash exact match (caller `cached_payload` or `research/project` sidecar layer) ⇒ skip fresh research. A fresh `research/domain` hit ⇒ skip WebSearch, run only project refinement. Fuzzy semantic similarity does NOT count as a brief-level hit; only a same-domain-slug match counts as a domain-level hit (Step 0.5).
 
 ## Output (back to caller)
 
@@ -422,4 +460,5 @@ That's it. The caller reads the payload itself. Do not echo any of the payload c
 - Scaffold effect families (Q9 / Q11 / Q12 vocabulary): `plugins/design/templates/design-system-inspiration/_MAPPING.md`
 - Caller — `/design:setup-ds` Round 0: `plugins/design/skills/design-system/SKILL.md` (section "Round 0 — domain research")
 - Caller — `/design:new` step 4.5: `plugins/design/commands/new.md` (section "4.5. UX patterns research")
-- Cache directory + key pattern: `<designRoot>/_history/_system/<ds>-<brief-sha8>-domain-research-<mode>.json`
+- Legacy caller-provided cache (exact brief): `<designRoot>/_history/_system/<ds>-<brief-sha8>-domain-research-<mode>.json`
+- Sidecar cache (Phase C / DDR-061): `.ai/cache/research/domain/<slug>--<mode>.json` (generic, 7 d, committed) + `.ai/cache/research/project/<brief-sha8>--<mode>.json` (per-brief, 30 d, gitignored). Access via `maude cache get/put` (the reachable contract — `cli/lib/cache.mjs` is NOT beside the plugin in a marketplace install; see DDR-061). Manage with `maude cache list|inspect research/domain`.

@@ -39,6 +39,7 @@ Run output lives under `.ai/device/scenario-runs/` (already gitignored as part o
 │   ├── ios-phone.sh
 │   ├── ios-tablet.sh
 │   └── android-phone.sh
+├── covers.json                            # OPTIONAL: { web/native/shared git pathspecs } — enables C15 skip + C18 web-only (DDR-061)
 └── README.md                              # scenario goal, fixtures, expected end state
 
 .ai/device/scenario-runs/<scenario-name>/  # ALWAYS: gitignored run outputs
@@ -133,13 +134,96 @@ wait                                                          # all natives done
 
 ---
 
+## Phase C speed levers — covers manifest, skip, background boot, web-only (DDR-061)
+
+Three levers cut the cost of the slowest daily command. All are **safe-by-default**: a missing `covers.json`, no git, or a disabled `run_in_background` each falls back to today's full synchronous run.
+
+### Covers manifest — `.ai/scenarios/<name>/covers.json`
+
+Each repeatable scenario declares the source globs it exercises, split by platform tier:
+
+```json
+{
+  "web":    ["app/(video)/**", "components/VideoTape/**"],
+  "native": ["expo-app/app/video/**", "expo-app/components/VideoTape/**"],
+  "shared": ["packages/api-client/**", "packages/types/**"]
+}
+```
+
+Entries are **git pathspecs** (a trailing `/**` is treated as the directory). All three tiers contribute to the route-aware skip hash; `web` vs `native`/`shared` membership drives the web-only skip. A scenario with no `covers.json` opts out of both skips (always runs).
+
+### C15 — route-aware skip (fills the orphaned `scenario/` cache layer)
+
+Before running, hash the content of every covered file and key the `scenario/<name>/<covers-sha>` cache on it. If the covered files are unchanged since the last **green** run, reuse the cached report instead of re-running. `--force` bypasses.
+
+```bash
+COVERS=".ai/scenarios/$SCENARIO/covers.json"
+if [ -f "$COVERS" ] && ! grep -q -- '--force' <<< "$ARGUMENTS"; then
+  PATHSPECS=$(jq -r '[.web[]?,.native[]?,.shared[]?] | .[]' "$COVERS" | sed 's#/\*\*$##')
+  COVERS_SHA=$( (cd "$REPO" && git ls-files -- $PATHSPECS 2>/dev/null | sort | xargs cat 2>/dev/null) \
+                  | git hash-object --stdin | cut -c1-12)
+  HIT=$(maude cache get scenario "$SCENARIO/$COVERS_SHA" 2>/dev/null)
+  if [ -n "$HIT" ] && [ "$(jq -r '.result' <<< "$HIT")" = "green" ]; then
+    echo "Scenario \`$SCENARIO\` last passed green on this exact covered-file set at $(jq -r '.ranAt' <<< "$HIT") — skipping. Use --force to re-run."
+    echo "  Report: $(jq -r '.reportPath' <<< "$HIT")"
+    exit 0
+  fi
+fi
+```
+
+After a green run, record it (only on green — a failed run must re-run next time):
+
+```bash
+printf '{"result":"green","ranAt":"%s","reportPath":"%s","coversSha":"%s"}' \
+  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$REPORT_PATH" "$COVERS_SHA" \
+  | maude cache put scenario "$SCENARIO/$COVERS_SHA"
+```
+
+**Granularity vs `/flow:validate --force`-clean (C13):** C13 skips the *whole* validate only when the entire tree is unchanged. C15 skips *one scenario* when *its* covered files are unchanged — it fires far more often, because most diffs don't touch every scenario's routes.
+
+### C16 — background sim/AVD boot via Monitor
+
+A cold iPad sim or Android AVD boot is 30–60 s and blocks nothing useful. Fire the boots in the background, **Monitor** the booted state, and run the web variants (~20–30 s) while they come up. By the time web finishes, the natives are up — run them with no extra wait.
+
+```bash
+# Fire boots in the background — do NOT wait.
+xcrun simctl boot "iPad Air 11-inch (M3)" 2>/dev/null   # run_in_background: true
+emulator -avd Pixel_7_API_34 -no-window -no-snapshot 2>/dev/null &   # or: agent-device boot --platform android
+# Monitor readiness (pushes a line when each is up) while web runs:
+#   xcrun simctl bootstatus <udid> -b      → exits 0 when booted
+#   adb wait-for-device && adb shell getprop sys.boot_completed
+```
+
+Total wall-clock ≈ `max(web, sim-boot + native)` instead of `sim-boot + web + native`. **Fallback:** if `run_in_background` is disabled by the sandbox, fall back to today's synchronous boot in the pre-flight (per the Phase C risk note) — no behavior loss.
+
+### C18 — web-only scope skip (enforced)
+
+When the in-scope diff is **web-only** — every changed file matches a `web` pathspec and **none** match `native` or `shared` — skip native pre-flight entirely: don't boot or detect sims, mark native platforms `skipped: web-only change` in the report (not a fail).
+
+```bash
+NATIVE_SPECS=$(jq -r '[.native[]?,.shared[]?] | .[]' "$COVERS" 2>/dev/null | sed 's#/\*\*$##')
+CHANGED=$(git -C "$REPO" diff --name-only "$BASE"..HEAD 2>/dev/null)
+WEB_ONLY=1
+for g in $NATIVE_SPECS; do printf '%s\n' "$CHANGED" | grep -q "^$g" && WEB_ONLY=0; done
+# WEB_ONLY=1 → run only web-desktop + web-mobile; skip all simctl/adb calls.
+```
+
 ## Running an existing scenario
 
 ```bash
 SCENARIO=flashcards-review-first-3
+# 0. Route-aware skip (C15) + web-only scope (C18) — see "Phase C speed levers"
+#    above for the full recipes. Run them BEFORE creating the run dir:
+#      - covers-unchanged-since-green  → skip, reuse cached report, exit 0
+#      - web-only diff                 → run only web variants; skip native pre-flight
+
 RUN_DIR=".ai/device/scenario-runs/$SCENARIO/$(date +%Y-%m-%d-%H%M)"
 mkdir -p "$RUN_DIR"/{web-desktop,web-mobile,ios-phone,ios-tablet,android-phone}
 echo "RUN_DIR=$RUN_DIR" > /tmp/scenario-run.env
+
+# 1. Background sim/AVD boot (C16) — fire boots with run_in_background, Monitor
+#    readiness, and let the web variants below run WHILE the sims come up.
+#    (Skip this block entirely when WEB_ONLY=1 from C18.)
 
 # Detect simulator UDIDs / Android serial up-front (fail fast if missing)
 IPHONE_UDID=$(xcrun simctl list devices booted -j | python3 -c "import json,sys;d=json.load(sys.stdin)['devices'];print(next((dev['udid'] for k,v in d.items() if 'iOS' in k for dev in v if 'iPhone' in dev['name']), ''))")
@@ -154,8 +238,10 @@ WEB_PID=$!
 [ -n "$ANDROID_SERIAL" ] && runners/android-phone.sh "$ANDROID_SERIAL" || echo "skipped: no AVD running"      > "$RUN_DIR/android-phone/result.txt" &
 wait
 
-# Generate report.md from result.txt + screenshots in $RUN_DIR
-# (TODO: write a generator; for now author manually following the report shape below)
+# Generate report.md deterministically from result.txt + screenshots in $RUN_DIR
+# (Phase C / DDR-061 — the long-standing "report generator" TODO, now shipped).
+maude scenario-report "$RUN_DIR"
+# Then author ONLY the two <!-- LLM-AUTHORED --> prose sections it leaves.
 ```
 
 ---
@@ -223,7 +309,7 @@ agent-browser has no equivalent record/replay — author web variants as bash di
 ## TODO (not yet implemented)
 
 - **Auto-author from prompt** — `/scenario "review first 3 flashcards"` should generate runners. Today: manual.
-- **Report generator** — script that walks `runs/<ts>/<platform>/result.txt + step-*.png` and emits `report.md` with the pivot table. Today: manual.
+- ~~**Report generator**~~ — **SHIPPED (Phase C / DDR-061):** `maude scenario-report <run-dir>` walks `<run>/<platform>/result.txt + step-*.png + counters.json` and emits the TL;DR / counter-delta / pivot / path-listing sections of `report.md`; the LLM authors only the two prose sections. Source: `plugins/design/dev-server/bin/scenario-report.mjs`.
 - **iOS-tablet runner** — boot `iPad Air 11-inch (M3)` once, fork `ios-phone` runner with explicit `--udid`. Tab-bar Y likely ~1180 points (re-measure on first run; iPad Air 11" is 820×1180 points).
 - **Android-phone runner** — boot AVD (e.g. `Pixel_7_API_34`), use `agent-device --platform android --serial <serial>`. Per the agent-device skill, `find` auto-resolves to nearest hittable ancestor on Android, so coordinate fallbacks should rarely be needed.
 - **Per-step `result.txt` schema** — currently only "pass / fail: reason" at platform level. Per-step pass/fail with timing would let the report flag exactly which step diverged.

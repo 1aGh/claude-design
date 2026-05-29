@@ -19,6 +19,16 @@ COMMANDS
         against the flow plugin's config.schema.json. Values that parse as
         JSON (numbers, booleans, arrays, objects) are stored typed.
 
+  cache get <layer> <key> [--ttl-ms N]
+  cache put <layer> <key> [file] [--meta JSON]
+  cache list | stats | inspect <layer> [key] | clear [layer]
+        Inspect and manage the sidecar cache (.ai/cache/, Phase C / DDR-061)
+        that reuses expensive cross-session work (domain research, codebase
+        scans, design-context parsing, security reviews). 'get'/'put' are the
+        programmatic surface plugin commands call (maude on PATH is the reachable
+        contract — see DDR-061); 'list' shows layers + sizes; 'stats' shows
+        hit-rate; 'inspect' pretty-prints entries; 'clear' wipes a layer or all.
+
   design serve [--port N] [--root PATH]
         Start the design plugin's dev server in the current repo. Equivalent
         to invoking 'claude-design-server'. Forwards all remaining args.
@@ -31,6 +41,20 @@ COMMANDS
         full discovery. --no-discovery uses Recommended defaults; --discovery-
         payload reads pre-computed answers from JSON.
 
+  design <screenshot|server-up|prep|slug|bootstrap-check|runtime-health
+          |smoke|canvas-edit|handoff|asset-sweep|visual-sanity> [args]
+        Dispatch to the dev-server's bundled bash helper of the same name.
+        maude resolves it from its own package root and sets CLAUDE_PLUGIN_ROOT
+        for the child; stdout/stderr/exit-code pass straight through. This is
+        the contract plugin markdown uses instead of a raw bin path (DDR-062).
+        See 'maude design help' for usage.
+
+  scenario-report <run-dir> [--out <path>]
+        Deterministically generate the mechanical sections of a cross-platform
+        scenario report.md (TL;DR, counter-delta parity, per-step pivot, path
+        listing) from a scenario run directory. The LLM authors only the prose
+        sections. Used by /flow:scenario + the scenario-runner agent (DDR-061).
+
   hub serve [--port N] [--data PATH] [--secret HEX] [--insecure-http] [--dev]
         Start the self-hostable Yjs sync hub (Phase 9). Defaults to port 1234,
         data dir ./data. --dev mints a mau_dev_<hex> token + prints the
@@ -42,6 +66,11 @@ COMMANDS
 
   hub status [URL] [--json]
         Probe a hub's /health endpoint. URL defaults to http://localhost:1234.
+
+  preflight --plugin <design|flow> [--json|--shell-export|--warn-only] [--cache PATH]
+        Run a plugin's dependency health check (the engine behind 'doctor').
+        Plugin bin scripts + hooks call this via PATH instead of a relative
+        cli/lib path that the marketplace never copies beside a plugin (DDR-061).
 
   doctor [--plugin <name>] [--fix] [--json]
         Unified workspace health check. Reports missing dependencies, config
@@ -57,8 +86,13 @@ EXAMPLES
   maude init --name acme-app
   maude config set platforms '["web-desktop","web-mobile"]'
   maude config get motion.complex
+  maude cache list
+  maude cache clear research/domain
   maude design serve --port 4399
   maude design init --no-discovery --name acme-app
+  maude design slug "Some Canvas Name"
+  maude design smoke --changed-only
+  maude scenario-report .ai/device/scenario-runs/signup/2026-05-29-1200
   maude hub serve --dev
   maude hub token generate --label alice
   maude hub status http://localhost:1234

@@ -25,12 +25,15 @@ Given the feature in scope (passed in your prompt or read from `.ai/state/STATE.
 
 If the feature is not clear from STATE.md, read the active `.ai/plans/<x>.plan.md` → `## Files to create / modify` section and infer from affected directories.
 
+**C18 — web-only scope skip (enforced, Phase C / DDR-061).** When the in-scope diff is **web-only**, you MUST skip native pre-flight entirely — no `simctl`/`adb` calls, no sim detection. Determine web-only via the scenario's `covers.json` (the `scenario` skill's "Phase C speed levers" recipe): the diff touches only `web` pathspecs and **none** of `native`/`shared`. Mark `ios-phone`/`ios-tablet`/`android-phone` as `skipped: web-only change` in the report — this is a deliberate scope decision, **not** a fail. When there's no `covers.json`, fall back to the scope-decision table below (don't assume web-only).
+
 ## Pre-flight
 
 1. `agent-browser --version` (need >= installed) + `agent-device --version` (need >= 0.14.0)
-2. `xcrun simctl list devices booted -j` → parse UDID iPhone + iPad
-3. `adb devices` → parse Android serial
-4. For each platform where the sim/AVD is missing: record `result.txt = "skipped: <reason>"` and continue. **Skip is not a fail.**
+2. **C15 route-aware skip + C16 background boot (Phase C / DDR-061):** before detecting sims, run the `scenario` skill's C15 covers-unchanged check — if the covered files are unchanged since the last green run, reuse the cached report and return early (no run). Otherwise, unless web-only (C18), fire the sim/AVD boots with `run_in_background: true` and Monitor their booted state so they come up while the web variants run. Fall back to synchronous boot if `run_in_background` is disabled.
+3. `xcrun simctl list devices booted -j` → parse UDID iPhone + iPad *(skip when web-only)*
+4. `adb devices` → parse Android serial *(skip when web-only)*
+5. For each platform where the sim/AVD is missing: record `result.txt = "skipped: <reason>"` and continue. **Skip is not a fail.**
 
 ## Run protocol
 
@@ -42,15 +45,20 @@ Follow `.claude/skills/scenario/SKILL.md` — section "Running an existing scena
 
 ## Report
 
-Create `.ai/device/scenario-runs/<scenario>/<YYYY-MM-DD-HHMM>/report.md` following the "Report shape" section in the scenario SKILL.md:
+**Generate the mechanical sections deterministically (Phase C / DDR-061):**
 
-1. TL;DR table — per platform PASS/FAIL/SKIPPED, steps reached, tooling
-2. Counter-delta verification — cross-platform parity signal (must match identically)
-3. Per-step pivot table — rows = platforms, columns = step thumbnails (markdown image embeds)
-4. What surprised us — non-obvious findings, UX divergence, broken expectations
-5. Recommended follow-ups — testIDs to add, fragile selectors to replace, behavior parity gaps
+```bash
+maude scenario-report ".ai/device/scenario-runs/<scenario>/<YYYY-MM-DD-HHMM>"
+```
 
-Wrap path-listing details inside `<details>` at the end.
+This writes `report.md` with the TL;DR table (PASS/FAIL/SKIPPED · steps reached · tooling), the counter-delta parity table (reads each `<platform>/counters.json` if the runner wrote one), the per-step pivot (rows = platforms, columns = step thumbnails), and a collapsed `<details>` path-listing. If a runner records counter deltas, write them to `<platform>/counters.json` (e.g. `{"mastered":"+3","remaining":"-3"}`) so the generator can compute the parity verdict.
+
+**You author ONLY the prose** — the generator leaves two `<!-- LLM-AUTHORED -->` placeholders:
+
+1. **What surprised us** — non-obvious findings, UX divergence, broken expectations
+2. **Recommended follow-ups** — testIDs to add, fragile selectors to replace, behavior parity gaps
+
+Replace each placeholder with real prose; delete the comment. Don't re-hand-author the tables the script already produced.
 
 ## Output to caller
 

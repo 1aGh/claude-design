@@ -22,20 +22,24 @@ Wrapper around the `agent-browser` + `agent-device` skills. Full protocol in `.c
 
 ## Process — existing scenario
 
+0. **Route-aware skip + scope (Phase C / DDR-061)** — see the `scenario` skill's "Phase C speed levers" for the recipes:
+   - **C15 skip:** if `.ai/scenarios/<name>/covers.json` exists and its covered files are unchanged since the last **green** run (the `scenario/<name>/<covers-sha>` cache), print "last passed green on this exact covered-file set — skipping. Use `--force` to re-run." and reuse the cached report.
+   - **C18 web-only:** if the in-scope diff touches only `web` pathspecs (no `native`/`shared`), run only the web variants and mark native platforms `skipped: web-only change` — don't boot or detect sims at all.
+
 1. **Pre-flight:**
    - `agent-browser --version` + `agent-device --version` — verify install
+   - **C16 — background sim/AVD boot:** unless web-only (C18), fire `xcrun simctl boot` + AVD start with `run_in_background: true` and **Monitor** their booted state (`simctl bootstatus` / `adb wait-for-device`); proceed to run the web variants while they come up. Fall back to synchronous boot if `run_in_background` is disabled.
    - `xcrun simctl list devices booted` — find UDIDs of iPhone + iPad sims (if any)
    - `adb devices` — find Android serial (if any)
    - Platforms without a booted sim/AVD are **skipped** with a `result.txt` reason, not a fail of the whole run
 
-2. **Run** per the protocol in the `scenario` skill — web in parallel (sequential between web variants) + native (parallel among themselves).
+2. **Run** per the protocol in the `scenario` skill — web in parallel (sequential between web variants) + native (parallel among themselves). By the time the web variants finish, the C16 background boots have completed, so natives run with no extra wait.
 
-3. **Generate the report** at `.ai/device/scenario-runs/<name>/<YYYY-MM-DD-HHMM>/report.md` with sections:
-   - TL;DR table (per platform: PASS/FAIL/SKIPPED)
-   - Counter-delta verification (cross-platform parity signal)
-   - Per-step pivot table (rows = platforms, columns = step thumbnails)
-   - What surprised us
-   - Recommended follow-ups (testIDs to add, etc.)
+3. **Generate the report** deterministically (Phase C / DDR-061) — don't hand-author the mechanical tables:
+   ```bash
+   maude scenario-report ".ai/device/scenario-runs/<name>/<YYYY-MM-DD-HHMM>"
+   ```
+   This walks each `<platform>/result.txt` + `step-*.png` (+ optional `counters.json`) and writes `report.md` with the TL;DR table, counter-delta parity table, per-step pivot, and a collapsed path-listing. **You author ONLY the two prose sections** it leaves as `<!-- LLM-AUTHORED -->` placeholders — "What surprised us" and "Recommended follow-ups" (testIDs to add, fragile selectors, parity gaps). Replace each placeholder comment with real prose; delete the comment.
 
 4. **Next-step suggestion:** _"Scenario `<name>` ran: <X>/<Y> platforms pass. Report: `<path>`. Post to PR?"_
 

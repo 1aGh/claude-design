@@ -63,6 +63,8 @@ The shared canvas library (`DesignCanvas`, `DCSection`, `DCArtboard`, helpers, h
 
 ### Dev-server helpers (`plugins/design/dev-server/bin/`)
 
+> **Invoked via `maude design <verb>`, never a raw bin path ([DDR-062](.ai/decisions/DDR-062-plugins-reach-executable-logic-via-maude.md)).** Plugin markdown calls `maude design screenshot` / `server-up` / `prep` / `slug` / `bootstrap-check` / `runtime-health` / `smoke` / `canvas-edit` / `handoff` / `asset-sweep` / `visual-sanity` — the on-PATH `maude` binary dispatches to the bundled `.sh` of the same name, resolving it from maude's own package root and setting `CLAUDE_PLUGIN_ROOT` authoritatively for the child (stdout/stderr/exit-code pass straight through, so `$(…)` capture + non-zero gating are preserved). The scripts below are still the single source of truth; the table's "Callers" column lists the slash commands, which reach them through `maude design <verb>`. `cli/lib/plugin-cli-reachability.test.mjs` bans direct `bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/*.sh"` invocations in plugin markdown. (`check-runtime-bundles.sh` + `_*-playwright.mjs` stay direct — CI / internal-only, not on the whitelist.)
+
 Single source of truth for the bash recipes that used to be duplicated across `/design:new`, `/design:edit`, `/design:screenshot`, `/design:setup-ds`, and every critic agent:
 
 | Helper | Purpose | Callers |

@@ -54,10 +54,10 @@ Načti `<canvas>.meta.json` (kvůli `title` + `subtitle` → registry `title`/`d
 
 Stejně jako `/design:critic` — `_history/<slug>/<NNN>-critic.md` posledního běhu. `blockers: 0` ⇒ pokračuj, jinak fail.
 
-### 3. Shell out na `bin/handoff.sh`
+### 3. Run the handoff helper via `maude design handoff`
 
 ```bash
-bash plugins/design/dev-server/bin/handoff.sh "$CANVAS" "$DESIGN_ROOT"
+maude design handoff "$CANVAS" "$DESIGN_ROOT"
 ```
 
 Wrapper zavolá `bun run handoff.ts --emit <canvas> <designRoot>`. Skript:

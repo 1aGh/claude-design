@@ -277,6 +277,118 @@ Separately, two cross-command duplications are cheap to fold in now that Lever 1
 
 ---
 
+## Lever 6 — Unify plugin → CLI entrypoint (one reachable contract: `maude`)
+
+> **Follow-up PR7** — distinct from the shipped PR1–3 cache work. Builds on the DDR-061 reachability finding + the `maude cache get/put` / `maude preflight` fixes already landed this session.
+
+### Why
+
+A plugin command today reaches executable logic two different ways, and **both** have bitten us:
+
+1. **Relative `cli/lib/*.mjs`** (`$PKG_ROOT/cli/lib/…`) — **broken in every marketplace install**: the marketplace copies each plugin alone into `cache/<marketplace>/<plugin>/<version>/`, so the repo's sibling `cli/` is never present. This crashed `/design:init`'s preflight live (`Cannot find module …/cache/maude/cli/lib/preflight.mjs`). Already fixed for cache (`maude cache get/put`) and preflight (`maude preflight`) this session; guarded by `cli/lib/plugin-cli-reachability.test.mjs`.
+2. **`$CLAUDE_PLUGIN_ROOT/dev-server/bin/X.sh`** — depends on `CLAUDE_PLUGIN_ROOT` being set in the bash environment. In a real `/design:init` run this came back **EMPTY**, forcing the orchestrator to `find` the plugin by hand. Fragile by construction.
+
+`maude` is already a declared plugin dependency that the user must keep current — so there is **one robust contract** worth standardizing on: **plugin markdown invokes only the on-PATH `maude` binary; `maude` resolves everything from its own install location.** This lever finishes the migration for the design plugin's shell helpers. (Flow is already clean: preflight goes via `maude preflight`, the rest is inline bash; flow has no `dev-server/bin`.)
+
+The key feasibility fact: **the design dev-server ships INSIDE the maude npm package** (`package.json` `files` includes `plugins/design/dev-server`). So `maude design <verb>` can dispatch to `<pkgRoot>/plugins/design/dev-server/bin/<verb>.sh`, where `pkgRoot` is resolved from the maude binary's own `__dirname` (`cli/bin/maude.mjs` → `PKG_ROOT`) — **never** from `CLAUDE_PLUGIN_ROOT`. The shell scripts stay shell; only the *invocation* changes.
+
+### Inventory — `dev-server/bin/*.sh` → `maude design <verb>`
+
+| Script | Markdown / agent callers | Proposed command | Convert? |
+|---|---|---|---|
+| `screenshot.sh` | screenshot.md, edit.md, new.md, setup-ds.md, skills/design/SKILL.md, signature-moment-critic.md, design-critic.md | `maude design screenshot` | ✅ |
+| `server-up.sh` | new.md, screenshot.md, smoke.md, edit.md, skills/design/SKILL.md | `maude design server-up` | ✅ |
+| `prep.sh` | new.md, edit.md, setup-ds.md | `maude design prep` | ✅ |
+| `slug.sh` | screenshot.md, edit.md | `maude design slug` | ✅ |
+| `bootstrap-check.sh` | new.md, edit.md | `maude design bootstrap-check` | ✅ |
+| `runtime-health.sh` | smoke.md, new.md, edit.md | `maude design runtime-health` | ✅ |
+| `smoke.sh` | smoke.md | `maude design smoke` | ✅ |
+| `canvas-edit.sh` | edit.md | `maude design canvas-edit` | ✅ |
+| `handoff.sh` | handoff.md | `maude design handoff` | ✅ |
+| `asset-sweep.sh` | skills/design-system/_bootstrap.md | `maude design asset-sweep` | ✅ |
+| `visual-sanity.sh` | _bootstrap.md, design-system-completeness-critic.md | `maude design visual-sanity` | ✅ |
+| `preflight.sh` | design init.md | (already `maude preflight`) | — done |
+| `check-runtime-bundles.sh` | CI / `prepublishOnly` only — no markdown caller | (stays a bin script) | ❌ keep |
+| `_*-playwright.mjs` | called internally by `screenshot.sh`/export, not from markdown | (internal shim) | ❌ keep |
+
+Verb names map 1:1 to the script basename for mechanical clarity (no behavior rename in this PR).
+
+### Dispatch mechanism (the load-bearing design)
+
+`cli/commands/design.mjs` gains a generic bin-dispatch for a **whitelisted** verb set. When `maude` execs the bundled script it **sets `CLAUDE_PLUGIN_ROOT` itself** from its own reliable `pkgRoot` — so the scripts (which still resolve their siblings via `$CLAUDE_PLUGIN_ROOT` / `SCRIPT_DIR`) keep working unchanged, but the resolution is now authoritative instead of depending on Claude Code's environment:
+
+```js
+const BIN_VERBS = new Set([
+  'screenshot', 'server-up', 'prep', 'slug', 'bootstrap-check',
+  'runtime-health', 'smoke', 'canvas-edit', 'handoff', 'asset-sweep', 'visual-sanity',
+]);
+
+function runBinDispatch(verb, { args, pkgRoot }) {
+  if (!BIN_VERBS.has(verb)) { /* unknown → usage, exit 2 */ }
+  const pluginRoot = join(pkgRoot, 'plugins', 'design');           // reliable, from maude's own __dirname
+  const script = join(pluginRoot, 'dev-server', 'bin', `${verb}.sh`);
+  const rest = args.slice(1);                                       // drop the verb token
+  const child = spawnSync('bash', [script, ...rest], {
+    stdio: 'inherit',
+    env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot },        // ← authoritative resolution
+  });
+  process.exit(child.status ?? 1);                                  // pass-through exit code
+}
+```
+
+The verb whitelist (not arbitrary `<verb>.sh` exec) keeps this from becoming a path-traversal / arbitrary-script-exec surface.
+
+### Tasks
+
+#### C21 — `maude design <verb>` bin-dispatch in `cli/commands/design.mjs`
+
+- **Files:** `cli/commands/design.mjs` (extend `SUBCOMMANDS` + add `runBinDispatch`), `cli/commands/help.mjs` (+ `maude design help` usage), `cli/commands/design.test.mjs` (new/extend).
+- **Do:** Implement the dispatch above. Whitelist the 11 verbs. `stdio: 'inherit'` so stdout/stderr/exit-code pass straight through to the markdown caller (preserves `$(maude design slug …)` capture + `eval $(maude design prep --shell-export)` + non-zero gating). Set `CLAUDE_PLUGIN_ROOT` in the child env from `pkgRoot`.
+- **Audit:** confirm each bundled `.sh` resolves correctly when launched by absolute path with `CLAUDE_PLUGIN_ROOT` set by maude — they already use `${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}`-style resolution (DDR-045), so no script body change expected; flag any that hard-require an env var maude doesn't set.
+- **Gotcha:** `prep.sh --shell-export` / `slug.sh` are consumed via command substitution — dispatch must emit **only** the script's stdout (no maude banner) on those paths. `stdio: 'inherit'` satisfies this (maude writes nothing of its own).
+- **Validate:** `maude design slug "Some Canvas Name"` → kebab slug on stdout, exit 0, from any cwd; `maude design prep --shape edit --shell-export` → the same `export …` block the bin emits; unknown verb → exit 2. Marketplace-layout check: run with a `pkgRoot` whose `plugins/design/dev-server/bin/<verb>.sh` exists but `CLAUDE_PLUGIN_ROOT` is unset in the parent env → still resolves (maude sets it).
+
+#### C22 — Rewire design command/skill/agent markdown to `maude design <verb>`
+
+- **Files (≈11):** `commands/{new,edit,screenshot,setup-ds,smoke,handoff}.md`, `skills/design/SKILL.md`, `skills/design-system/_bootstrap.md`, `agents/{signature-moment-critic,design-critic,design-system-completeness-critic}.md`.
+- **Do:** Replace every `bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/<verb>.sh" <args>` with `maude design <verb> <args>`. Drop now-dead `CLAUDE_PLUGIN_ROOT`-resolution preamble where it existed only to locate the bin. Keep `$CLAUDE_PLUGIN_ROOT` references that point at **non-bin** plugin assets (e.g. `canvas-lib.tsx`, `agents/_ux-research-config.json`) — those are plugin data the markdown legitimately reads, not executable logic. (A follow-up could add `maude design cat <asset>` but it is OUT OF SCOPE here.)
+- **Gotcha:** preserve exact arg order + capture idioms (`PORT=$(maude design server-up …)`, `eval "$(maude design prep --shell-export …)"`).
+- **Validate:** `grep -rn 'dev-server/bin/' plugins/design/commands plugins/design/skills plugins/design/agents` returns **zero** invocation hits (only comments/inventory references, if any).
+
+#### C23 — Extend the reachability guard to ban `CLAUDE_PLUGIN_ROOT/dev-server/bin` in markdown
+
+- **File:** `cli/lib/plugin-cli-reachability.test.mjs`.
+- **Do:** Add a second assertion: no plugin command/skill/agent markdown may contain `$CLAUDE_PLUGIN_ROOT/dev-server/bin/` or `CLAUDE_PLUGIN_ROOT}/dev-server/bin/` as an **invocation** (i.e. preceded by `bash `/`sh `/`exec `). Comments and the plan's inventory table are exempt (scope the grep to `plugins/**/*.md` invocation lines). Keeps the existing `node cli/lib/*.mjs` assertion.
+- **Validate:** test passes after C22; temporarily re-introducing a `bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/smoke.sh"` in a command makes it fail.
+
+#### C24 — DDR-062 + amend DDR-008
+
+- **Do:** Write **DDR-062** (verified free) — *"Plugins reach ALL executable logic through the on-PATH `maude` CLI; never `$CLAUDE_PLUGIN_ROOT/dev-server/bin` nor a relative `cli/lib`. `maude` resolves bundled helpers from its own package root and sets `CLAUDE_PLUGIN_ROOT` authoritatively for them."* Cross-link DDR-061 (the reachability finding it generalizes) + DDR-045 (real-disk path resolution). **Amend DDR-008** (`dev-server/bin/` as canonical helper home) with a note: the bin scripts remain the canonical home, but are now **maude-internal implementation** invoked via `maude design <verb>`, not called directly from plugin markdown.
+- **Validate:** DDR-062 added to `.ai/decisions/README.md` index; DDR-008 carries the amendment note.
+
+#### C25 — Docs: `maude design help`, README, CLAUDE.md
+
+- **Do:** `maude design help` lists the new verbs grouped (lifecycle: serve/init/export/link/…; dev-tooling: screenshot/prep/slug/smoke/…). README "Sidecar cache" sibling note → generalize to "plugins call `maude …` for all executable logic". CLAUDE.md "dev-server helpers" table: add a one-liner that callers now go through `maude design <verb>`.
+- **Validate:** `maude design help` renders both groups; CLAUDE.md table updated.
+
+### Risk / rollback
+
+- **Behavior parity is the whole risk.** Each rewired call must produce byte-identical stdout + the same exit code as the old `bash …/bin/X.sh` (capture idioms + gating depend on it). Mitigation: `stdio: 'inherit'` (maude adds nothing); convert + verify **one command end-to-end** (`/design:smoke`, which uses server-up + runtime-health + smoke) before doing the rest. Honors the no-break exhaustive-verify rule: inventory first, per-helper parity check, agent-browser smoke of `/design:new` + `/design:edit` after.
+- **Version skew:** `maude design <verb>` runs the bin scripts from **maude's** package copy, not the marketplace plugin's copy. In production both track the same release; document that a stale global `maude` means stale helpers (same caveat as `maude cache get/put`). Rollback is clean: revert C22 (markdown) and the dispatch is dead code — the bin scripts are untouched, so old `$CLAUDE_PLUGIN_ROOT/dev-server/bin` calls would work again.
+- **`check-runtime-bundles.sh`** intentionally stays a direct bin script (CI/`prepublishOnly` only, never plugin markdown) — do not route it through maude.
+
+### Acceptance criteria (Lever 6)
+
+- [x] `maude design <verb>` dispatches all 11 whitelisted helpers; stdout/exit-code pass-through verified; unknown verb → exit 2 — _C21; `design.test.mjs` covers slug capture + unknown→2 + help._
+- [x] `maude` sets `CLAUDE_PLUGIN_ROOT` from its own `pkgRoot` for the child — helpers resolve with `CLAUDE_PLUGIN_ROOT` UNSET in the parent env — _C21; test scrubs the env var + runs from a temp cwd._
+- [x] Zero `dev-server/bin/` **invocations** remain in `plugins/design/{commands,skills,agents}/**/*.md` — _C22; also fixed the cross-plugin-broken flow `execute.md` smoke/server-up calls._
+- [x] `cli/lib/plugin-cli-reachability.test.mjs` extended; green; catches a re-introduced bin-path invocation — _C23 (verified the regex matches `bash …` + `$(…)` forms, ignores prose/.mjs)._
+- [x] DDR-062 written + indexed; DDR-008 amended — _C24._
+- [ ] `/design:smoke`, `/design:new`, `/design:edit` verified end-to-end via agent-browser after rewire (no regression) — _NOT run this session (heavy 40-canvas + interactive flows); recommend running before commit/`/done`. Dispatch verified functionally instead (slug/prep/bootstrap-check capture from a clean cwd)._
+- [x] Flow plugin `execute.md` rewired (was cross-plugin-broken); `check-runtime-bundles.sh` + `_*-playwright.mjs` untouched (intentionally off the whitelist)
+
+---
+
 ## Validation
 
 1. **Cache hit-rate measurement:** instrument `cli/lib/cache.mjs` with a counter. After a representative work week, `maude cache stats` reports hits/misses per layer. Target: `research/domain` >50 % hit rate after first week; `codebase-intelligence` >70 %.
@@ -295,24 +407,24 @@ Separately, two cross-command duplications are cheap to fold in now that Lever 1
 
 ## Acceptance criteria
 
-- [ ] `cli/lib/cache.mjs` exists, schema-validated, tested with concurrent writes
-- [ ] `ux-research-agent` caches domain + project layers; cache hit on similar-domain run skips WebSearch
-- [ ] `codebase-intelligence` caches keyed on git SHA; second `/flow:plan` on same branch skips rescan
-- [ ] design-context cache shaves CSS reads from repeated `/design:edit` calls
-- [ ] `maude cache` CLI subcommand works (`list`, `clear`, `inspect`)
-- [ ] `server-watch.sh` exists; `/design:new` uses Monitor instead of polling
-- [ ] Dev-server boot returns `ready: false` immediately, flips on build complete; no silent hang
-- [ ] `run_in_background` screenshot + parallel critic prep wired into `/design:new` and `/design:edit`
-- [ ] Critic verdicts stream as files land; orchestrator tails via Monitor
-- [ ] a11y-auditor starts on first screenshot, not after scenario-runner completes
-- [ ] Skip-if-clean implemented for `/flow:validate` and `/design:new`
-- [ ] Scenario `covers` manifest + route-aware skip wired (C15 fills the orphaned `scenario/` cache layer from C1)
-- [ ] Sim/AVD boot runs in background via Monitor; cold `/flow:scenario` overlaps the web run with the boot
-- [ ] Deterministic `scenario-report.mjs` generates `report.md`; LLM authors only the prose sections
-- [ ] Web-only diff skips native scenario pre-flight (no `simctl`/`adb` calls)
-- [ ] `/design:smoke --changed-only` screenshots only changed canvases; escalates to full set on dev-server/canvas-lib/template change
-- [ ] Security-review reuse consolidated into `cache.mjs` (`security/<head-sha>`); done / validate / validate-security share one window
-- [ ] DDR-049 written: "Cache layout, Monitor pattern, background-overlap orchestration as Phase C of skills optimization"
+- [x] `cli/lib/cache.mjs` exists, schema-validated, tested with concurrent writes — _PR1 (2026-05-29): 17 unit tests + 8 CLI e2e tests; atomic tempfile+rename, path-traversal guard, stale-on-error fallback._
+- [x] `ux-research-agent` caches domain + project layers; cache hit on similar-domain run skips WebSearch — _PR1: Step 0.5 two-layer wiring (research/domain 7 d + research/project 30 d)._
+- [x] `codebase-intelligence` caches keyed on git SHA; second `/flow:plan` on same branch skips rescan — _PR2: freshness gate keyed on `hash(HEAD + git status --porcelain)`._
+- [x] design-context cache shaves CSS reads from repeated `/design:edit` calls — _PR2: DS-vocabulary pack keyed on `hash(_components.css + colors_and_type.css + canvas-lib.tsx)` in edit.md + new.md §1.5._
+- [x] `maude cache` CLI subcommand works (`list`, `clear`, `inspect`) — _PR3: + `stats`; registered in bin + help._
+- [ ] `server-watch.sh` exists; `/design:new` uses Monitor instead of polling — _PR4, deferred this session._
+- [ ] Dev-server boot returns `ready: false` immediately, flips on build complete; no silent hang — _PR4, deferred this session._
+- [x] `run_in_background` screenshot + parallel critic prep wired into `/design:new` and `/design:edit` — _PR5/C10._
+- [x] Critic verdicts stream as files land; orchestrator tails via Monitor — _PR5/C11 (SKILL.md "Streaming critic verdicts"; PANEL.md still written last as the loop's consolidated source)._
+- [x] a11y-auditor starts on first screenshot, not after scenario-runner completes — _PR5/C12 (concurrency section + `scenario_screenshot_dir` passed inline)._
+- [x] Skip-if-clean implemented for `/flow:validate` and `/design:new` — _PR5/C13 (`validate` cache layer) + C14 (`brief_sha` short-circuit)._
+- [x] Scenario `covers` manifest + route-aware skip wired (C15 fills the orphaned `scenario/` cache layer from C1) — _PR6/C15._
+- [x] Sim/AVD boot runs in background via Monitor; cold `/flow:scenario` overlaps the web run with the boot — _PR6/C16._
+- [x] Deterministic `scenario-report.mjs` generates `report.md`; LLM authors only the prose sections — _PR6/C17 (`maude scenario-report`)._
+- [x] Web-only diff skips native scenario pre-flight (no `simctl`/`adb` calls) — _PR6/C18._
+- [x] `/design:smoke --changed-only` screenshots only changed canvases; escalates to full set on dev-server/canvas-lib/template change — _PR6/C19._
+- [x] Security-review reuse consolidated into `cache.mjs` (`security/<head-sha>`); done / validate / validate-security share one window — _PR1 (rode with C2): canonical recipe in `validate-security.md` pre-flight; `done.md` + `validate.md` reference it._
+- [x] DDR written: "Cache layout, Monitor pattern, background-overlap orchestration as Phase C of skills optimization" — _**DDR-061**, not 049 (049 was already taken by motion-one); PR4–6 conventions pre-recorded._
 - [ ] All Phase B wall-clock targets still met (no regression from cache misses or Monitor overhead)
 
 ---
@@ -336,14 +448,16 @@ Separately, two cross-command duplications are cheap to fold in now that Lever 1
 ## Estimated effort
 
 ~3.5 weeks of focused work. ~30 commits. Group into ~6 PRs:
-- PR1: cache library + research layer (C1, C2, C3, C6) — C20 can ride here since it only needs C2
-- PR2: codebase-intelligence + design-context caches (C4, C5)
-- PR3: maude cache CLI + DDR (C7 + DDR-049 + README updates)
-- PR4: Monitor + async dev-server (C8, C9)
-- PR5: background overlap + streaming + skip-if-clean (C10–C14)
-- PR6: scenario speed + smoke incremental + review-cache consolidation (C15–C20)
+- ✅ PR1: cache library + research layer (C1, C2, C3, C6) — C20 rode here (only needs C2). **Shipped 2026-05-29.**
+- ✅ PR2: codebase-intelligence + design-context caches (C4, C5). **Shipped 2026-05-29.**
+- ✅ PR3: maude cache CLI + DDR (C7 + **DDR-061** + README updates). **Shipped 2026-05-29.**
+- ⏳ PR4: Monitor + async dev-server (C8, C9) — _NOT started; deferred (touches dev-server runtime, needs the no-break exhaustive-verify pass). Skipped this session per user scope choice._
+- ✅ PR5: background overlap + streaming + skip-if-clean (C10–C14) — **Built 2026-05-29 (uncommitted).** C10 (new.md + edit.md background screenshot + critic-prep overlap), C11 (SKILL.md streaming critic verdicts via Monitor of `critique/`, PANEL.md still written last), C12 (a11y-auditor concurrency section + validate.md `scenario_screenshot_dir`), C13 (validate.md skip-if-clean via `validate` cache layer + step 8b record-green), C14 (new.md step 3.6 identical-brief short-circuit + `brief_sha` in meta).
+- ✅ PR6: scenario speed + smoke incremental (C15–C19; C20 already shipped in PR1) — **Built 2026-05-29 (uncommitted).** C15 (`covers.json` contract + route-aware skip via `scenario/<name>/<covers-sha>` cache), C16 (background sim/AVD boot + Monitor), C17 (`plugins/design/dev-server/bin/scenario-report.mjs` + `maude scenario-report` CLI; resolves the SKILL.md TODO), C18 (web-only scope skip enforced in scenario-runner), C19 (`smoke.sh --changed-only` + `.last-smoke.json` baseline + escalation; `/flow:execute` defaults to it).
+- ✅ PR7: unify plugin → CLI entrypoint (C21–C25, Lever 6) — **Built 2026-05-29 (uncommitted).** C21 (`maude design <verb>` bin-dispatch in design.mjs, 11-verb whitelist, `design.test.mjs`), C22 (every design + flow markdown invocation rewired to `maude design <verb>`; zero bin invocations remain), C23 (`plugin-cli-reachability.test.mjs` extended — DDR-062 guard), C24 (DDR-062 written + indexed; DDR-008 amended), C25 (`maude design help` + `maude help` + README + CLAUDE.md).
 
 ## Decisions to record
 
-- DDR-049 (this plan): Cache layout convention + Monitor pattern + background-overlap orchestration. Extend to cover the scenario `covers`-manifest contract, the deterministic report-generator convention, and the unified `security/<head-sha>` review-cache (Lever 5).
-- Possibly DDR-050 once observed: cache pruning policy / repo size thresholds.
+- **DDR-061** (this plan; renumbered from the originally-reserved DDR-049/060 — both taken): Cache layout convention + Monitor pattern + background-overlap orchestration. Covers the scenario `covers`-manifest contract, the deterministic report-generator convention, and the unified `security/<head-sha>` review-cache (Lever 5); PR4–6 conventions pre-recorded.
+- **DDR-062** (Lever 6 / PR7; verified free at authoring): plugins reach ALL executable logic via the on-PATH `maude` CLI — never `$CLAUDE_PLUGIN_ROOT/dev-server/bin` nor relative `cli/lib`; `maude` resolves bundled helpers from its own package root + sets `CLAUDE_PLUGIN_ROOT` authoritatively. Amends DDR-008.
+- Possibly **DDR-063** once observed: cache pruning policy / repo size thresholds.

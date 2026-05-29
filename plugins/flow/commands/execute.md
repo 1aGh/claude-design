@@ -149,8 +149,8 @@ After the last task, compute the phase diff (`git diff --name-only $(git merge-b
 
 When triggered:
 
-1. Boot server if needed: `PORT=$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/server-up.sh")` (no-op if already up).
-2. Run smoke: `bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/smoke.sh" --out-dir "<designRoot>/_history/_smoke/<phase-slug>"`.
+1. Boot server if needed: `PORT=$(maude design server-up)` (no-op if already up). _(Flow markdown reaches the design dev-server helpers through the on-PATH `maude` binary — `$CLAUDE_PLUGIN_ROOT` here is the **flow** plugin root, which has no `dev-server/`. See DDR-062.)_
+2. Run smoke **incrementally**: `maude design smoke --changed-only --out-dir "<designRoot>/_history/_smoke/<phase-slug>"`. Per Phase C / DDR-061, `--changed-only` screenshots only the canvases changed since the last smoke run — but it **auto-escalates to the full set** the moment the diff touches `dev-server/**`, `canvas-lib.tsx`, or a `canvas*.tsx.template` (exactly the dev-server / runtime-library / template triggers above), so the "everything could break" shapes still get a full sweep. Manual `/design:smoke` and release/CI stay full-set.
 3. **Read every PNG in the output dir.** Per DDR-021, when smoke returns > 5 images the executor MUST `Read` each PNG into context — no sampling. Phase 3.6.1 retro learning #4 documents the failure mode: the agent screenshotted 38 specimens, sampled 3, called it good; user found triple-chrome in `colors-accent` in 2 seconds. Pre-attentive bugs miss-sample.
 4. **If smoke exits non-zero (any `BLANK` / `ERROR`):**
    - Mark the phase as `❌ SMOKE-BLOCKED` in the output report.

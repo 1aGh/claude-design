@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd \"${CLAUDE_PLUGIN_ROOT}/../..\" && node cli/lib/preflight.mjs --plugin flow --warn-only",
+            "command": "PKG=\"${CLAUDE_PLUGIN_ROOT}/../..\"; if [ -f \"$PKG/cli/lib/preflight.mjs\" ]; then (cd \"$PKG\" && node cli/lib/preflight.mjs --plugin flow --warn-only); elif command -v maude >/dev/null 2>&1; then maude preflight --plugin flow --warn-only; fi",
             "timeout": 8
           }
         ]

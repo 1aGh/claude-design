@@ -1,0 +1,10 @@
+# Sidecar cache — Phase C / DDR-061 (cli/lib/cache.mjs).
+# Commit the shareable, content-addressed layers (research/domain + codebase-
+# intelligence are SHA-keyed and reusable across collaborators); keep the
+# brief/run/HEAD-specific layers (research/project, design-context, scenario,
+# security) and the local telemetry (_stats.json, README.md) out of git.
+cache/*
+!cache/codebase-intelligence/
+!cache/research/
+cache/research/*
+!cache/research/domain/

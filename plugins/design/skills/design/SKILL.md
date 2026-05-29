@@ -96,10 +96,10 @@ The orchestrator passes `opt_out_scope: <scope>` in every critic's input envelop
 
 ## Server lifecycle — every command starts here
 
-The dev server is the source of truth for "what is the user looking at right now". Canonical recipe is `${CLAUDE_PLUGIN_ROOT}/dev-server/bin/server-up.sh` — it checks `_server.json`, verifies PID + `/_health`, respawns if stale, polls 10 s, and prints the port on stdout:
+The dev server is the source of truth for "what is the user looking at right now". Canonical recipe is `maude design server-up` (on-PATH `maude` dispatches to the bundled helper — DDR-062) — it checks `_server.json`, verifies PID + `/_health`, respawns if stale, polls 10 s, and prints the port on stdout:
 
 ```bash
-PORT=$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/server-up.sh" --root "$REPO_ROOT")
+PORT=$(maude design server-up --root "$REPO_ROOT")
 ```
 
 Diagnostic goes to stderr (`✓ server alive pid=… port=…` / `→ starting dev server …` / `✗ server start timeout`). The helper passes the user's repo root explicitly — the plugin is installed centrally and serves *any* repo, never assume `__dirname`. **Never start a second instance** by hand; `server-up.sh` is idempotent and the only sanctioned path. Server auto-opens the browser on its own boot (unless `NO_OPEN=1`).
@@ -225,12 +225,12 @@ Default. Edits the active canvas inline.
 
 **Always fires after a successful edit / generate, regardless of `--no-critic`.** This is reality check (does the file render?), not quality check (is it good?). It's cheap, costs one helper call, and is the baseline both critics and rollback compare against.
 
-Single source of truth is `${CLAUDE_PLUGIN_ROOT}/dev-server/bin/screenshot.sh`. It resolves URL from `_server.json` + `_active.json`, polls for canvas mount (Babel/React takes 2–4 s), selects engine (`agent-browser` > `playwright` fallback), and emits diagnostic on stderr.
+Single source of truth is `maude design screenshot` (on-PATH `maude` dispatches to the bundled helper — DDR-062). It resolves URL from `_server.json` + `_active.json`, polls for canvas mount (Babel/React takes 2–4 s), selects engine (`agent-browser` > `playwright` fallback), and emits diagnostic on stderr.
 
 ```bash
 HIST="<designRoot>/_history/$SLUG"
 OUT="$HIST/$NNN-baseline.png"
-bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --full --out "$OUT"
+maude design screenshot --full --out "$OUT"
 ```
 
 Why this step matters:
@@ -242,7 +242,7 @@ Why this step matters:
 **Lazy-mount + pan-zoom caveat (canvases since commit 7a00561).** `DesignCanvas` has its own pan/zoom viewport and lazy-mounts artboards as they enter view. A single full-page screenshot at default viewport height captures only what's currently positioned in the canvas viewport — typically 1–3 artboards out of 6+. For canvases with > 3 artboards, **per-screen element screenshots are the reliable unit** — use `--all-screens`:
 
 ```bash
-bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" \
+maude design screenshot \
   --all-screens --out-dir "$HIST" --timeout 10
 ```
 
@@ -283,7 +283,7 @@ Apply the change to that element only — match the selector / dom path. Do NOT 
 
 Use the Edit tool with `old_string` matching a unique substring of the selected element's HTML. If the outerHTML appears multiple times verbatim, fall back to the longer dom-path match (find the parent context that disambiguates).
 
-**Selection screenshot is mandatory** before building the scoped prompt. The selection JSON gives you WHAT (selector + outerHTML + bounds); only a screenshot gives you WHERE-IN-CONTEXT (neighbors, alignment, the visual conversation the element is part of). Call `bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --full --out "<out>"` (plus an `--element <id>` shot when the selector contains `data-dc-element="…"`) and `Read` the PNG into your context BEFORE the Edit tool call. See `/design:edit` step 3.5 for the canonical snippet. Editing from JSON describe alone is *tapping in the dark*; the studio iter-4 sidebar-active-item incident (3 rollback iterations before landing) is the canonical cost of skipping. Reference: `.ai/logs/system-reviews/design-edit-screenshot-habits-review.md`.
+**Selection screenshot is mandatory** before building the scoped prompt. The selection JSON gives you WHAT (selector + outerHTML + bounds); only a screenshot gives you WHERE-IN-CONTEXT (neighbors, alignment, the visual conversation the element is part of). Call `maude design screenshot --full --out "<out>"` (plus an `--element <id>` shot when the selector contains `data-dc-element="…"`) and `Read` the PNG into your context BEFORE the Edit tool call. See `/design:edit` step 3.5 for the canonical snippet. Editing from JSON describe alone is *tapping in the dark*; the studio iter-4 sidebar-active-item incident (3 rollback iterations before landing) is the canonical cost of skipping. Reference: `.ai/logs/system-reviews/design-edit-screenshot-habits-review.md`.
 
 ### `/design:new <name> "<brief>"` — scaffold new canvas project
 
@@ -321,9 +321,9 @@ Operates on `_active.json`. Output goes to `_history/<slug>/screenshots/<NNN>-<a
 All paths funnel through the canonical helper:
 
 ```bash
-bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --full --out "<out>"
-bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --screen <id> --out "<out>"
-bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --all-screens --out-dir "<dir>"
+maude design screenshot --full --out "<out>"
+maude design screenshot --screen <id> --out "<out>"
+maude design screenshot --all-screens --out-dir "<dir>"
 ```
 
 The helper picks `agent-browser` first, falls back to `npx playwright`, polls for canvas mount, and verifies PNG size > 0 before returning. Inline `agent-browser navigate + screenshot` blocks are deprecated — use the helper everywhere.
@@ -401,6 +401,25 @@ The **selected element** narrows the same routing — if `_active.json.selected`
 The orchestrator spawns the picked critics **in parallel** with one message containing N `Agent` tool calls. Each critic writes its own report; the orchestrator parses each JSON verdict, aggregates, and writes `<NNN>-PANEL.md`.
 
 **Every Agent invocation MUST pass `opt_out_scope`** in the prompt — read from the canvas's `<active>.meta.json` `opt_out_scope` field, or override from `--opt-out=<scope>` flag, or default `palette`. Critics that honor the scope (design-stack) will downgrade their DS-rule findings; critics that ignore it (a11y / frontend / copy) emit `"opt_out_applied": "n/a"` for auditability. The auto-fix loop's SOLID stop condition reads each critic's post-downgrade `blockers` count — so honoring scope at critic level naturally flows into the loop's exit logic without separate filter code.
+
+### Streaming critic verdicts (Phase C / DDR-061)
+
+Each critic writes its own `critique/<NNN>-<agent>.md` (verdict JSON at the bottom) **the moment it finishes** — they don't buffer until the whole panel completes. Use that to drop perceived latency: **start a Monitor on the critique directory as the panel spawns**, and print a one-line status as each report lands rather than one silent block at the end:
+
+```sh
+# Monitor emits one line per critic report that appears since the panel started.
+# Seed COUNT from the iteration's NNN prefix so prior iterations' files don't match.
+until [ "$(ls "$CRITIQUE_DIR"/${NNN}-*-critic.md 2>/dev/null | wc -l)" -ge "$PANEL_SIZE" ]; do
+  for f in "$CRITIQUE_DIR"/${NNN}-*-critic.md; do
+    [ -f "$f" ] && grep -l '"passed"' "$f" >/dev/null 2>&1 && echo "✓ $(basename "$f" .md | sed 's/^[0-9]*-//'): landed"
+  done
+  sleep 1
+done
+```
+
+Print `✓ a11y-critic: 0 blockers, 2 warnings` as each verdict JSON becomes readable. **The consolidated `<NNN>-PANEL.md` is still written LAST**, after every critic has returned — it stays the single source the auto-fix loop reads (the loop never consumes the partial per-critic files for its stop condition; it reads PANEL.md). Streaming is a *display* optimization layered on top; it must not change the consolidated contract.
+
+**Fallback:** if `run_in_background` / Monitor is unavailable (restrictive sandbox), spawn the panel synchronously as before and write PANEL.md when all return — no behavior loss, just no progressive print.
 
 ### Panel consolidation report
 
@@ -500,9 +519,9 @@ append_to_chat_md(iter=0, feedback, selected, snapshot_id, edit_summary, critic_
 for iter in 1..max_iter:
   # 1. Run critic panel (routing logic above)
   panel = pick_panel(canvas, feedback, selected)   # routing forces signature-moment-critic for /design:new
-  spawn panel in parallel
+  spawn panel in parallel                           # optionally Monitor critique/ for progressive per-critic status (Phase C / DDR-061)
   parse JSON verdicts → aggregate
-  write iter NNN-PANEL.md
+  write iter NNN-PANEL.md                            # written LAST, after all critics return — the loop reads THIS, not the partial per-critic files
 
   correctness = sum_blockers_across(panel except signature-moment-critic)
   aspiration  = signature-moment-critic.aspiration_score (or 5 if not in panel)
@@ -821,7 +840,7 @@ If you're authoring a new helper that should be shared across all canvases (e.g.
 |---|---|---|
 | Generate new canvas (for `/design:new`) | See "Generation invocation" below — try Skill, fall back transparently | Required for `/design:new`. Envelope adapts to repo config. |
 | Slider explorer | `Skill(skill: "playground:playground", args: <envelope>)` | Optional, only when feedback mentions playground/explorer/tweak/slider. |
-| Screenshot canvas | `Bash: bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --full --out "<out>"` | Helper resolves URL from `_server.json` + `_active.json`. Never call `agent-browser` directly. |
+| Screenshot canvas | `Bash: maude design screenshot --full --out "<out>"` | Helper resolves URL from `_server.json` + `_active.json`. Never call `agent-browser` directly. |
 | Spawn specialist critic | `Agent(subagent_type: "design-critic" \| "signature-moment-critic" \| ..., ...)` | Subagents run inline (no nested agents). Critics are exposed as `Agent` types from the design plugin. |
 | Server lifecycle | `Bash: curl + nohup` | See "Server lifecycle" section. |
 

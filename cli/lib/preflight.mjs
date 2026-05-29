@@ -207,17 +207,23 @@ async function writeCache(cachePath, env) {
   }
 }
 
-function manifestPathForPlugin(pluginName) {
-  return resolve(`plugins/${pluginName}/dependencies.json`);
+function manifestPathForPlugin(pluginName, pkgRoot = process.cwd()) {
+  return resolve(pkgRoot, 'plugins', pluginName, 'dependencies.json');
 }
 
-async function main(argv) {
-  const flags = parseFlags(argv.slice(2));
+// Shared runnable for both the `maude preflight` command and the direct
+// `node cli/lib/preflight.mjs` entry. `pkgRoot` is where `plugins/<x>/
+// dependencies.json` lives (the maude package root) — resolved independently
+// of the caller's cwd, so the command works from any target repo. (DDR-061:
+// the marketplace install has no sibling cli/, so callers reach this through
+// the on-PATH `maude` binary, which passes its own package root as pkgRoot.)
+export async function runPreflight({ args, pkgRoot = process.cwd() }) {
+  const flags = parseFlags(args);
   if (!flags.plugin) {
-    process.stderr.write('preflight.mjs: pass --plugin <design|flow>\n');
+    process.stderr.write('preflight: pass --plugin <design|flow>\n');
     process.exit(2);
   }
-  const env = await checkAll(manifestPathForPlugin(flags.plugin));
+  const env = await checkAll(manifestPathForPlugin(flags.plugin, pkgRoot));
   if (flags.cache) await writeCache(flags.cache, env);
   if (flags.mode === 'json') {
     process.stdout.write(`${JSON.stringify(env, null, 2)}\n`);
@@ -247,9 +253,10 @@ async function main(argv) {
   process.exit(env.summary.allHardPass ? 0 : 1);
 }
 
-// Entry guard — only run main() when invoked directly.
+// Entry guard — only run when invoked directly (`node cli/lib/preflight.mjs`).
+// The package root is the cwd here (preflight.sh `cd`s to it before exec).
 if (import.meta.url === `file://${process.argv[1]}`) {
-  main(process.argv).catch((err) => {
+  runPreflight({ args: process.argv.slice(2), pkgRoot: process.cwd() }).catch((err) => {
     process.stderr.write(`preflight: ${err.message}\n`);
     process.exit(1);
   });

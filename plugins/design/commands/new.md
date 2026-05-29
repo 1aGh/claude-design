@@ -61,10 +61,10 @@ Opt-out flagy (pro vědomé výjimky):
 
 ### 0. Pre-flight: bootstrap detection
 
-Before scaffolding a canvas, check whether the project has a usable design system. Canonical recipe is `${CLAUDE_PLUGIN_ROOT}/dev-server/bin/bootstrap-check.sh` — exits 0 (ready) / 10 (needs `/design:init`) / 11 (needs `/design:setup-ds`). Use `--shell-export` to populate `HAS_DS`/`CONFIG_PRESENT`/`KNOWN_DS`/`DEFAULT_DS`/`REPO_ROOT`/`BOOTSTRAP_EXIT`:
+Before scaffolding a canvas, check whether the project has a usable design system. Canonical recipe is `maude design bootstrap-check` (the on-PATH `maude` binary dispatches to the bundled helper — DDR-062) — exits 0 (ready) / 10 (needs `/design:init`) / 11 (needs `/design:setup-ds`). Use `--shell-export` to populate `HAS_DS`/`CONFIG_PRESENT`/`KNOWN_DS`/`DEFAULT_DS`/`REPO_ROOT`/`BOOTSTRAP_EXIT`:
 
 ```bash
-eval "$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/bootstrap-check.sh" --shell-export)"
+eval "$(maude design bootstrap-check --shell-export)"
 ```
 
 | State | Action |
@@ -82,7 +82,7 @@ Vyvolej skill `design` se vstupem: `new $ARGUMENTS`.
 **One pre-flight call instead of 4–8 sequential jq reads.** `prep.sh` reads `.design/config.json` + `_active.json` + `_preflight.json` + `_server.json` in a single pass and exports the resolved vars (`REPO_ROOT`, `NAME`, `DESIGN_ROOT`, `ROOT_CLASS`, `THEME`, `TOKENS_REL`, `NEW_CANVAS_DIR`, `NEW_COMPONENT_DIR`, `TEAM_ACCENT`, `DEFAULT_DS`, `KNOWN_DS`, `ACCENT_STRATEGY`, `COLOR_SPACE`, `DEPS_OK`, `DEPS_MISSING`, `SERVER_UP`, `SERVER_PORT`). The DS-presence gate (`bootstrap-check.sh`, step 0) stays separate — it owns the 0/10/11 exit-code contract.
 
 ```bash
-eval "$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/prep.sh" --shell-export --shape new --root "$REPO_ROOT")"
+eval "$(maude design prep --shell-export --shape new --root "$REPO_ROOT")"
 CFG="$REPO_ROOT/.design/config.json"
 TEAM_DEFAULT="$TEAM_ACCENT"   # downstream alias
 
@@ -108,10 +108,27 @@ DS_ROOT=$(jq -r --arg ds "$TARGET_DS"   '.designSystems[] | select(.name == $ds)
 [[ -z "$DS_ROOT" ]] && DS_ROOT="system/project" && DS_TOKENS="$TOKENS_REL"
 ```
 
+### 1.5 Cache the DS-context pack (Phase C / DDR-061)
+
+Build (or reuse) the compact DS-context pack — component class names + token names + canvas-lib exports — keyed on `(DS-name, sha-of-the-source-files)`, the **same layer and key scheme** `/design:edit` step 1.5 uses. This lets step 1's "resolve DS context to pass `frontend-design`" AND the B16 inline critic-context (step where `design-critic` / `graphic-design-critic` / `typography-critic` get `tokens_path` + `components_css`) seed from the cached vocabulary instead of each re-`Read`ing `colors_and_type.css` + `_components.css`.
+
+Access the cache via the `maude` CLI (declared dep, on PATH) — `cli/lib` is NOT beside the plugin in a marketplace install (DDR-061).
+
+```bash
+COMPONENTS_CSS="$REPO_ROOT/$DESIGN_ROOT/$DS_ROOT/preview/_components.css"
+TOKENS_CSS="$REPO_ROOT/$DESIGN_ROOT/$DS_TOKENS"
+CANVAS_LIB="$CLAUDE_PLUGIN_ROOT/dev-server/canvas-lib.tsx"
+TOKENS_SHA=$(cat "$COMPONENTS_CSS" "$TOKENS_CSS" "$CANVAS_LIB" 2>/dev/null | git hash-object --stdin | cut -c1-12)
+DCTX=$(maude cache get design-context "$TARGET_DS/$TOKENS_SHA" 2>/dev/null)
+[ -n "$DCTX" ] && echo "→ DS context cache HIT ($TARGET_DS/$TOKENS_SHA)" || echo "→ DS context cache MISS — read the CSS once, then write the pack (see edit.md §1.5 recipe)"
+```
+
+On a hit, hand the cached `classNames` / `tokenNames` / `libExports` to `frontend-design` and the DS-conformance critics directly. On a miss, `Read` the files once, then `printf '%s' "$PACK_JSON" | maude cache put design-context "$TARGET_DS/$TOKENS_SHA"` (identical pack shape to edit.md) so the next `/design:new` or `/design:edit` against this unchanged DS hits.
+
 ### 2. Server lifecycle check + runtime-bundle health probe
 
 ```bash
-PORT=$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/server-up.sh" --root "$REPO_ROOT")
+PORT=$(maude design server-up --root "$REPO_ROOT")
 
 # Parse-clean ≠ run-clean. Probe each /_canvas-runtime/*.js URL the canvas-lib
 # pulls in (motion, motion/react, react, react-dom, react/jsx-runtime, …) and
@@ -119,7 +136,7 @@ PORT=$(bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/server-up.sh" --root "$REPO_ROOT
 # can cache a broken dynamic Bun.build (e.g. 409-line motion_react.js with a
 # hoisting bug → "ReferenceError: AcceleratedAnimation is not defined" at
 # iframe boot). Restart on detected defect.
-bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/runtime-health.sh" \
+maude design runtime-health \
   --port "$PORT" \
   --root "$REPO_ROOT" \
   --restart \
@@ -138,6 +155,40 @@ bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/runtime-health.sh" \
 - Reject pokud target file existuje (suggest `<Name> v2`).
 
 **TSX is the only canvas format.** Legacy `.html` canvases have been migrated; the html-to-jsx codemod was removed alongside the migration. New canvases are authored as TSX from `canvas.tsx.template`.
+
+### 3.6. Short-circuit on identical brief (Phase C / DDR-061)
+
+Before the expensive UX research (step 4.5) + generation (step 6), check whether a previous `/design:new` already produced a canvas from a **byte-identical brief in this same DS**. Each canvas's `.meta.json` carries a `brief_sha` (stamped at step 11); scan the canvas dir for a match.
+
+```bash
+BRIEF_SHA8=$(printf '%s' "$BRIEF" | shasum -a 256 | cut -c1-8)   # reused by step 4.5's research cache key
+EXISTING_MATCH=""; EXISTING_TS=""
+while IFS= read -r m; do
+  [ -f "$m" ] || continue
+  MSHA=$(jq -r '.brief_sha // empty'      "$m" 2>/dev/null)
+  MDS=$(jq  -r '.designSystem // "project"' "$m" 2>/dev/null)
+  if [ "$MSHA" = "$BRIEF_SHA8" ] && [ "$MDS" = "$TARGET_DS" ]; then
+    EXISTING_MATCH="${m%.meta.json}.tsx"
+    EXISTING_TS=$(jq -r '.last_modified // .created // "unknown"' "$m" 2>/dev/null)
+    break
+  fi
+done < <(find "$DESIGN_ROOT/$NEW_CANVAS_DIR" -maxdepth 2 -name '*.meta.json' 2>/dev/null)
+```
+
+**If `$EXISTING_MATCH` is set:** surface a one-shot AskUserQuestion:
+
+```
+Same brief already produced a canvas in this DS:
+  <EXISTING_MATCH> (created <EXISTING_TS>)
+Pick:
+  (a) Open the existing canvas — don't regenerate. (default)
+  (b) Re-run anyway — generate a fresh canvas. Step 3's existing-file guard
+      forces a distinct name, so the prior file is preserved.
+```
+
+On **(a)** → print the existing path, tell the user to click it in the browser file tree to make it active, and **exit without generating**. On **(b)** → continue to step 4 (the new canvas gets a distinct name; the prior is untouched).
+
+**Auto Mode (AskUserQuestion denied):** default to **(b) re-run** — a `/design:new` invocation should produce a canvas (silently producing nothing surprises the user), and the cost is already bounded by the `--quick`/`--no-critic`/budget guards. Stamp `Identical-brief match found (<EXISTING_MATCH>); re-ran per Auto Mode default` in the final print so the collision is visible.
 
 ### 4. Resolve mobile/desktop + opt-out scope
 
@@ -392,12 +443,20 @@ Pokud validation fails, do not write. Re-prompt jednou s konkrétním fix-list. 
 
 **Per-artboard element screenshots are the default for `/design:new`** because new canvases are typically multi-artboard (3–8) and DesignCanvas's pan/zoom viewport means a single full-page snapshot misses everything outside the visible viewport. The canonical screenshot helper handles navigation, mount-poll, per-screen loop, and the agent-browser CLI gotchas in one call:
 
+**Background overlap (Phase C / DDR-061).** Fire the per-artboard capture with `run_in_background: true` and spend the wait window on critic-prompt prep — capturing screenshots and *building* the critic spawn prompts have no data dependency. Concretely:
+
+1. Launch the `screenshot.sh --all-screens` call below as a **background Bash call** (`run_in_background: true`). Do not block on it.
+2. While it runs, do the prep that step 9.5 + step 10 would otherwise do *after* the capture: collect the ds-keeper `EXISTING_JSON`, resolve each critic's inline DS context (`root_class` / `tokens_path` / `components_css` / `ds_root` — already cached from step 1.5), read `<Name>.meta.json`, and draft each per-critic spawn prompt. Hold the batch ready.
+3. When the background screenshot job completes you are notified — **do not poll or sleep**. Then `Read` the PNGs for the reality check, run the step-9 FAIL/partial handling, and spawn the prepped critic batch (step 10), which consumes those screenshot paths.
+
+This hides the ~3–5 s capture inside the prompt-prep window (validation target 3: scaffold→critic-spawn within ~200 ms of prep-alone time). The step-9 BLOCKER contract is unchanged — it just evaluates after the job completes, not inline. **If `run_in_background` is unavailable** (restrictive sandbox / permission mode), fall back to the synchronous capture below — identical recipe, it just blocks — and do the prep afterward.
+
 ```bash
 HIST="$DESIGN_ROOT/_history/$SLUG"
 mkdir -p "$HIST"
 
 # First pass — preferred engine.
-bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" \
+maude design screenshot \
   --all-screens \
   --out-dir "$HIST" \
   --timeout 10
@@ -406,7 +465,7 @@ PER_SCREEN_EXIT=$?
 # Second pass — playwright fallback (only when first pass failed).
 if [ "$PER_SCREEN_EXIT" -ne 0 ]; then
   echo "→ agent-browser per-screen failed; retrying with playwright engine" >&2
-  bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" \
+  maude design screenshot \
     --all-screens \
     --engine playwright \
     --out-dir "$HIST" \
@@ -517,6 +576,8 @@ This exists because the user signaled exploration — they should get to see ite
 
 **Spawn the panel as one parallel batch.** All critics read the same hot-off-the-press canvas + baseline screenshots — there's no inter-critic dependency within an iteration. **In a single assistant message, spawn the selected panel using parallel Agent tool calls** (4 critics in the default panel; one batch, not four sequential spawns). The `design-system-keeper` from step 9.5 is spawned in this same message (already specified there). The orchestrator merges all verdicts at the end of the iteration.
 
+**The iter-1 spawn prompts were already drafted during the step-9 background-screenshot window (Phase C / DDR-061)** — by the time the capture job completes you hold the prepped batch, so iter-1 critic spawn fires immediately after the reality check rather than starting prompt-prep cold.
+
 **Pass `opt_out_scope` to every critic in the panel.** Each `Agent` invocation's prompt MUST include the scope verbatim alongside `canvas_path`, `screenshot_path`, etc. Each critic agent reads `opt_out_scope` and adjusts severity per its own spec — `design-critic` / `graphic-design-critic` / `typography-critic` / `signature-moment-critic` downgrade matching DS-rule blockers to warnings; `a11y-critic` / `frontend-critic` / `copy-critic` ignore the parameter (their blockers are universal).
 
 **Pass the DS context inline too (B16 — avoid re-reads).** `/design:new` already resolved the design system in step 1. Hand each critic the resolved values in its spawn prompt — `root_class: <ROOT_CLASS>`, `tokens_path: <abs DS_TOKENS>`, `components_css: <abs DS_ROOT/preview/_components.css>`, `ds_root: <abs DS_ROOT>`, `ds_name: <TARGET_DS>`, `theme: <THEME>` — so the critics that need DS conformance context (`design-critic`, `graphic-design-critic`, `typography-critic`) don't each re-`Read` `.design/config.json` + the tokens CSS. Subagents inherit CLAUDE.md + MCP + skills but NOT this conversation, so the resolved DS context must travel in the prompt.
@@ -552,7 +613,7 @@ Bootstrap a chat transcript: write `<DESIGN_ROOT>/_history/<slug>/chat.md` with 
 ### 11. Bootstrap docs
 
 For a new canvas:
-1. Write `<DESIGN_ROOT>/<NEW_CANVAS_DIR>/<Name>.meta.json` from the brief (title, subtitle from one-line, brief, platform from --mobile flag, sections+artboards extracted from generated JSX, **`opt_out_scope` from step 4**, **`designSystem: $TARGET_DS` from step 1**). Subsequent `/design:edit` iterations on this canvas read these fields and inherit the scope + DS automatically — no re-asking on every edit. In multi-DS projects, the `designSystem` field is what `flow:design-system-guard` and `design-system-completeness-critic` use to scope their checks to the right DS.
+1. Write `<DESIGN_ROOT>/<NEW_CANVAS_DIR>/<Name>.meta.json` from the brief (title, subtitle from one-line, brief, platform from --mobile flag, sections+artboards extracted from generated JSX, **`opt_out_scope` from step 4**, **`designSystem: $TARGET_DS` from step 1**, **`brief_sha: $BRIEF_SHA8` from step 3.6** — the byte-identical-brief key the step-3.6 short-circuit scans on the next run). Subsequent `/design:edit` iterations on this canvas read these fields and inherit the scope + DS automatically — no re-asking on every edit. In multi-DS projects, the `designSystem` field is what `flow:design-system-guard` and `design-system-completeness-critic` use to scope their checks to the right DS.
 2. **If `<DESIGN_ROOT>/INDEX.md` doesn't exist** → invoke `/design:setup-docs --full` (regenerates both INDEX.md and README.md from all canvases). **Do NOT improvise a hand-written INDEX.md** — `/design:setup-docs` is the source of truth and the AUTO-MAINTAINED marker depends on it. Improvised INDEX gets overwritten on next `/design:setup-docs` run, and any rows added by hand are lost.
 3. **Else** (INDEX.md exists) → add a row to `<DESIGN_ROOT>/INDEX.md` for the new canvas (or invoke `/design:setup-docs` without `--full` to do the incremental update for you).
 4. If `<DESIGN_ROOT>/README.md` doesn't exist after step 2, generate it via `/design:setup-docs --full` flow.
@@ -606,7 +667,7 @@ For a new canvas:
 - **`frontend-design` Skill nedostupný** → **NE fail** — fall back to orchestrator-direct generation (viz krok 6). Final print MUSÍ flagnout `Generation: orchestrator-direct fallback` + suggestion `/plugin install frontend-design@claude-plugins-official` pro lepší kvalitu příští spuštění.
 - **Generated HTML porušuje validaci** (chybí tokens, hardcoded colors, single-page wrapper bez DCArtboard, …) → re-prompt jednou. Pokud zase rozbité, fail s detail.
 - **Post-write screenshot fails / canvas renders blank** → warn `⚠ canvas rendered blank — likely JSX error` ale neabortuj. Soubor existuje, user ho může otevřít manually + zjistit error v console.
-- **Screenshot reports success but file is missing** → použij canonical helper `dev-server/bin/screenshot.sh`. Helper detekuje silent-fail (PNG < 1 KB) a exit-codes 3. Inline `agent-browser screenshot …` voláním napřímo se vyhni — má CLI quirky kolem `--full` separátoru a `--output` které helper řeší za tebe.
+- **Screenshot reports success but file is missing** → použij canonical helper přes `maude design screenshot`. Helper detekuje silent-fail (PNG < 1 KB) a exit-codes 3. Inline `agent-browser screenshot …` voláním napřímo se vyhni — má CLI quirky kolem `--full` separátoru a `--output` které helper řeší za tebe.
 
 ### `--perfect` cost when budget tight
 

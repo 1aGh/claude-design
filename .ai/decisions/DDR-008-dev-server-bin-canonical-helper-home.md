@@ -1,9 +1,11 @@
 # DDR-008: `plugins/design/dev-server/bin/` is the canonical home for shared bash helpers
 
 - **Date:** 2026-05-15
-- **Status:** Accepted
+- **Status:** Accepted (amended 2026-05-29 — see Amendment)
 - **Tags:** design, dev-server, bash, helpers, dry, ci, npm-distribution
-- **Related:** [DDR-007](./DDR-007-stable-element-id-schema-data-dc-attrs.md), `plugins/design/dev-server/bin/{screenshot,bootstrap-check,server-up,slug}.sh`, `package.json` `files` allowlist, `CLAUDE.md` § Dev-server helpers
+- **Related:** [DDR-007](./DDR-007-stable-element-id-schema-data-dc-attrs.md), [DDR-062](./DDR-062-plugins-reach-executable-logic-via-maude.md) (invocation contract — see Amendment), `plugins/design/dev-server/bin/{screenshot,bootstrap-check,server-up,slug}.sh`, `package.json` `files` allowlist, `CLAUDE.md` § Dev-server helpers
+
+> **Amendment (2026-05-29, [DDR-062](./DDR-062-plugins-reach-executable-logic-via-maude.md)):** the bin scripts remain the canonical home for the shared bash recipes — but they are now **maude-internal implementation**, invoked from plugin markdown via **`maude design <verb>`**, NOT called directly as `bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/<x>.sh"`. The direct-invocation form broke in marketplace installs (dev-server not copied beside the plugin) and in flow commands (whose `$CLAUDE_PLUGIN_ROOT` has no `dev-server/`). `check-runtime-bundles.sh` + the `_*-playwright.mjs` shim stay direct (CI / internal-only, never plugin markdown).
 
 ## Context
 

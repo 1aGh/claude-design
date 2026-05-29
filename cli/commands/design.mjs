@@ -1,4 +1,5 @@
-import { execSync, spawn } from 'node:child_process';
+import { execSync, spawn, spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -17,6 +18,27 @@ const SUBCOMMANDS = new Set([
   'help',
 ]);
 
+// Dev-tooling verbs that dispatch to the dev-server's bundled bash helpers
+// (Phase C / DDR-062). Plugin markdown invokes these via `maude design <verb>`
+// rather than `bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/<verb>.sh"` — the
+// marketplace never copies the dev-server beside a plugin, and CLAUDE_PLUGIN_ROOT
+// is unreliable in a real run. `maude` resolves the helper from its OWN package
+// root and sets CLAUDE_PLUGIN_ROOT authoritatively for the child. The whitelist
+// (not arbitrary `<verb>.sh` exec) keeps this off the path-traversal surface.
+const BIN_VERBS = new Set([
+  'screenshot',
+  'server-up',
+  'prep',
+  'slug',
+  'bootstrap-check',
+  'runtime-health',
+  'smoke',
+  'canvas-edit',
+  'handoff',
+  'asset-sweep',
+  'visual-sanity',
+]);
+
 export async function run({ args, pkgRoot }) {
   const { positional } = parseArgs(args);
   const sub = positional[0];
@@ -25,6 +47,10 @@ export async function run({ args, pkgRoot }) {
     process.stdout.write(usage());
     return;
   }
+
+  // Dev-tooling verbs dispatch to the bundled bash helpers (DDR-062). Checked
+  // before SUBCOMMANDS so the whitelist owns the bin surface.
+  if (BIN_VERBS.has(sub)) return runBinDispatch(sub, { args, pkgRoot });
 
   if (!SUBCOMMANDS.has(sub)) {
     process.stderr.write(`maude design: unknown subcommand "${sub}"\n${usage()}`);
@@ -40,8 +66,56 @@ export async function run({ args, pkgRoot }) {
   if (sub === 'adopt') return runAdopt({ args });
 }
 
+// Run a whitelisted dev-server bash helper, resolving it from maude's OWN
+// package root (NOT $CLAUDE_PLUGIN_ROOT) and setting CLAUDE_PLUGIN_ROOT
+// authoritatively for the child so the script's sibling-resolution still works
+// (DDR-045 / DDR-062). `stdio: 'inherit'` so the helper's stdout/stderr/exit-code
+// pass straight through — preserves `$(maude design slug …)` capture,
+// `eval "$(maude design prep --shell-export …)"`, and non-zero gating idioms.
+// maude writes nothing of its own on this path (no banner on stdout).
+function runBinDispatch(verb, { args, pkgRoot }) {
+  if (!BIN_VERBS.has(verb)) {
+    process.stderr.write(`maude design: "${verb}" is not a dev-tooling verb.\n${usage()}`);
+    process.exit(2);
+  }
+  const pluginRoot = join(pkgRoot, 'plugins', 'design');
+  const script = join(pluginRoot, 'dev-server', 'bin', `${verb}.sh`);
+  if (!existsSync(script)) {
+    process.stderr.write(
+      `maude design ${verb}: helper not found at ${script}. Reinstall maude (the dev-server bin ships in the npm package).\n`
+    );
+    process.exit(1);
+  }
+  const rest = args.slice(args.indexOf(verb) + 1); // everything after the verb token
+  const child = spawnSync('bash', [script, ...rest], {
+    stdio: 'inherit',
+    env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot },
+  });
+  if (child.error) {
+    process.stderr.write(`maude design ${verb}: ${child.error.message}\n`);
+    process.exit(1);
+  }
+  process.exit(child.status ?? 1); // pass-through exit code
+}
+
 function usage() {
-  return `maude design <serve|init|export|link|unlink|status|adopt> [options]
+  return `maude design <verb> [options]
+
+Lifecycle:
+  serve · init · export · link · adopt · unlink · status
+
+Dev-tooling (dispatch to the dev-server bash helpers — DDR-062):
+  screenshot · server-up · prep · slug · bootstrap-check · runtime-health
+  smoke · canvas-edit · handoff · asset-sweep · visual-sanity
+        Invoke the bundled helper of the same name. maude resolves it from its
+        own package root and sets CLAUDE_PLUGIN_ROOT for the child; stdout,
+        stderr, and exit code pass straight through (so command-substitution
+        capture and non-zero gating work unchanged). Args after the verb are
+        forwarded verbatim, e.g.:
+          maude design slug "Some Canvas Name"
+          PORT=$(maude design server-up --root "$REPO")
+          eval "$(maude design prep --shell-export --shape edit --root "$REPO")"
+          maude design smoke --changed-only
 
   serve [--port N] [--root PATH]
         Start the design plugin's dev server in the current repo. Equivalent

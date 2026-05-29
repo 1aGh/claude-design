@@ -249,5 +249,5 @@ No slice-specific addenda — the base template covers them.
 - Discovery probe templates (sibling): `plugins/design/skills/design-system/_pastier-probe-templates.md`
 - Motion library decision: `.ai/decisions/DDR-049-motion-one-as-canonical-motion-library.md`
 - Imprint-bootstrap retro (source of D-1 … D-5): `.ai/logs/system-reviews/imprint-bootstrap-review-2026-05-26.md`
-- Asset sweep helper: `plugins/design/dev-server/bin/asset-sweep.sh`
-- Visual sanity helper: `plugins/design/dev-server/bin/visual-sanity.sh`
+- Asset sweep helper: `maude design asset-sweep` (on-PATH `maude` dispatches to the bundled helper — DDR-062)
+- Visual sanity helper: `maude design visual-sanity` (on-PATH `maude` dispatches to the bundled helper — DDR-062)

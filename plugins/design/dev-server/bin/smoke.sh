@@ -10,6 +10,9 @@
 #            [--include-system 0|1]   (default 1)
 #            [--timeout <secs>]       (default 8)
 #            [--engine auto|agent-browser|playwright]
+#            [--changed-only]         (default off — screenshot only canvases changed
+#                                      since the last smoke run; escalates to the full
+#                                      set when dev-server / canvas-lib / templates changed)
 #
 # Reads:
 #   $DESIGN_ROOT/_server.json   (must exist — caller runs server-up.sh first)
@@ -31,6 +34,7 @@ OUT_DIR=""
 INCLUDE_SYSTEM=1
 TIMEOUT=8
 ENGINE="auto"
+CHANGED_ONLY=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -39,8 +43,9 @@ while [ $# -gt 0 ]; do
     --include-system) INCLUDE_SYSTEM="$2"; shift 2 ;;
     --timeout)        TIMEOUT="$2"; shift 2 ;;
     --engine)         ENGINE="$2"; shift 2 ;;
+    --changed-only)   CHANGED_ONLY=1; shift ;;
     --help|-h)
-      sed -n '2,28p' "$0" | sed 's/^# \?//'
+      sed -n '2,30p' "$0" | sed 's/^# \?//'
       exit 0
       ;;
     *)
@@ -106,6 +111,57 @@ CANVASES=$(printf '%s' "$CANVASES" | sed '/^$/d')
 COUNT=$(printf '%s' "$CANVASES" | grep -c .)
 [ "$COUNT" -gt 0 ] || { echo "smoke.sh: no canvases found (ui/*.tsx or system/*/preview/*.tsx)" >&2; exit 1; }
 echo "→ found $COUNT canvases" >&2
+
+# ---------- --changed-only incremental filter (Phase C / DDR-061) ----------
+# Default smoke screenshots every canvas. --changed-only narrows to the canvases
+# touched since the last recorded smoke run, UNLESS the diff touches an
+# "everything could break" shape (dev-server, canvas-lib, canvas templates) — then
+# it escalates back to the full set. Correctness > speed: no baseline, no git, or
+# an escalation trigger all fall back to the full set.
+MARKER="$DESIGN_ROOT/_history/_smoke/.last-smoke.json"
+if [ "$CHANGED_ONLY" = "1" ]; then
+  LAST_SHA=""
+  if [ -f "$MARKER" ] && command -v jq >/dev/null 2>&1; then
+    LAST_SHA=$(jq -r '.sha // empty' "$MARKER" 2>/dev/null)
+  fi
+  if ! command -v git >/dev/null 2>&1 || ! git -C "$REPO" rev-parse HEAD >/dev/null 2>&1; then
+    echo "→ --changed-only: no git in $REPO — running full set" >&2
+  elif [ -z "$LAST_SHA" ]; then
+    echo "→ --changed-only: no prior smoke baseline ($MARKER) — running full set" >&2
+  else
+    # All paths changed between the last smoke and the current working tree
+    # (committed + uncommitted), plus untracked canvases.
+    CHANGED=$(
+      { git -C "$REPO" diff --name-only "$LAST_SHA" -- 2>/dev/null
+        git -C "$REPO" ls-files --others --exclude-standard -- .design/ui .design/system 2>/dev/null
+      } | sort -u
+    )
+    if printf '%s\n' "$CHANGED" | grep -qE 'dev-server/|canvas-lib\.tsx|canvas[^/]*\.tsx\.template'; then
+      echo "→ --changed-only: dev-server / canvas-lib / template changed — escalating to FULL set" >&2
+    else
+      # Keep only canvases whose repo-relative path is in the changed set.
+      FILTERED=""
+      while IFS= read -r CANVAS; do
+        [ -z "$CANVAS" ] && continue
+        REL_REPO="${CANVAS#$REPO/}"
+        if printf '%s\n' "$CHANGED" | grep -qxF "$REL_REPO"; then
+          FILTERED="$FILTERED$CANVAS"$'\n'
+        fi
+      done <<< "$CANVASES"
+      CANVASES=$(printf '%s' "$FILTERED" | sed '/^$/d')
+      COUNT=$(printf '%s' "$CANVASES" | grep -c .)
+      if [ "$COUNT" -eq 0 ]; then
+        echo "→ --changed-only: no canvas .tsx changed since last smoke ($LAST_SHA) — nothing to screenshot" >&2
+        # Refresh the marker so the next run diffs from here, then exit clean.
+        mkdir -p "$(dirname "$MARKER")"
+        printf '{"sha":"%s","ts":"%s","mode":"changed-only-noop"}' \
+          "$(git -C "$REPO" rev-parse HEAD 2>/dev/null)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$MARKER"
+        exit 0
+      fi
+      echo "→ --changed-only: $COUNT changed canvas(es) since $LAST_SHA" >&2
+    fi
+  fi
+fi
 
 # ---------- helpers ----------
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -263,6 +319,15 @@ done <<< "$CANVASES"
 
 echo "→ report: $MD" >&2
 echo "→ tsv:    $TSV" >&2
+
+# Record this run as the baseline for the next --changed-only diff (Phase C / DDR-061).
+if command -v git >/dev/null 2>&1 && git -C "$REPO" rev-parse HEAD >/dev/null 2>&1; then
+  mkdir -p "$DESIGN_ROOT/_history/_smoke"
+  printf '{"sha":"%s","ts":"%s","mode":"%s","count":%d,"failed":%d}' \
+    "$(git -C "$REPO" rev-parse HEAD 2>/dev/null)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    "$([ "$CHANGED_ONLY" = "1" ] && echo changed-only || echo full)" "$COUNT" "$FAILED" \
+    > "$DESIGN_ROOT/_history/_smoke/.last-smoke.json"
+fi
 
 if [ $FAILED -gt 0 ]; then
   echo "✗ smoke: $FAILED / $COUNT canvases failed" >&2

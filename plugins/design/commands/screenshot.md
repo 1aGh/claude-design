@@ -1,7 +1,7 @@
 ---
 name: design:screenshot
 category: daily
-description: Capture screenshot aktivního canvasu — full, jednoho screenu, elementu, nebo všech screens v smyčce. Wrapper přes `dev-server/bin/screenshot.sh` (agent-browser primárně, playwright fallback).
+description: Capture screenshot aktivního canvasu — full, jednoho screenu, elementu, nebo všech screens v smyčce. Wrapper přes `maude design screenshot` (agent-browser primárně, playwright fallback).
 argument-hint: "[--screen|--element <id> | --selector <css> | --full | --all-screens] [--area <n>]"
 ---
 
@@ -9,7 +9,7 @@ argument-hint: "[--screen|--element <id> | --selector <css> | --full | --all-scr
 
 Otevře aktivní canvas (`_active.json`) přes server URL (ne `file://`), zachytí screenshot, uloží do `.design/_history/<slug>/screenshots/<NNN>-<area>.png` (gitignored).
 
-Single source of truth pro screenshot logiku je `${CLAUDE_PLUGIN_ROOT}/dev-server/bin/screenshot.sh`. Tento command jen mapuje slash-command flagy na helper a vyřeší cestu output souboru.
+Single source of truth pro screenshot logiku je `maude design screenshot` (on-PATH `maude` dispatchuje do bundled helperu — DDR-062). Tento command jen mapuje slash-command flagy na helper a vyřeší cestu output souboru.
 
 **Vstup `$ARGUMENTS`:**
 
@@ -37,18 +37,18 @@ Vyvolej skill `design` se vstupem: `screenshot $ARGUMENTS`.
 
 Skill:
 
-1. **Server lifecycle** — `PORT=$(${CLAUDE_PLUGIN_ROOT}/dev-server/bin/server-up.sh)`.
+1. **Server lifecycle** — `PORT=$(maude design server-up)`.
 2. **Parse args** — extrahuj jeden ze single-shot módů, `--all-screens`, `--area`.
-3. **Compute slug** — `SLUG=$(${CLAUDE_PLUGIN_ROOT}/dev-server/bin/slug.sh "${ACTIVE#$DESIGN_ROOT/}")`.
+3. **Compute slug** — `SLUG=$(maude design slug "${ACTIVE#$DESIGN_ROOT/}")`.
 4. **Output path:**
    - Single-shot: `OUT="$DESIGN_ROOT/_history/$SLUG/screenshots/$(NNN)-$AREA.png"`, kde `NNN` je další v sekvenci pro daný area (žádné colliding názvy).
    - `--all-screens`: `OUT_DIR="$DESIGN_ROOT/_history/$SLUG/screenshots/"`; helper sám vytvoří `NNN-screen-<id>.png`.
 5. **Volání helperu:**
    ```bash
-   bash "${CLAUDE_PLUGIN_ROOT}/dev-server/bin/screenshot.sh" \
+   maude design screenshot \
      --screen "$SCREEN_ID" --out "$OUT"
    # nebo
-   bash "${CLAUDE_PLUGIN_ROOT}/dev-server/bin/screenshot.sh" \
+   maude design screenshot \
      --all-screens --out-dir "$OUT_DIR"
    ```
    Helper sám resolvuje URL ze `_server.json` + `_active.json` a zvolí engine (`agent-browser` > `playwright` fallback). Diagnostic jde do stderr, written paths do stdout — composable.

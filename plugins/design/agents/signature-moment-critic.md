@@ -63,11 +63,11 @@ Mock fidelity is also slightly affected — under `aesthetic`/`full`, an emoji f
 
 1. **Read inputs.** Canvas + tokens CSS. Screenshot is essential here — your axes are mostly visual. If missing, capture via the canonical helper — it resolves URL, scrolls each artboard into view (defeats `DesignCanvas` lazy-mount), and picks engine:
    ```bash
-   bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --full --out "<screenshots/NNN-aspiration.full.png>"
+   maude design screenshot --full --out "<screenshots/NNN-aspiration.full.png>"
    ```
 2. **Capture per-artboard screenshots when the canvas is multi-artboard** — one per `<DCArtboard id="…">`. The helper iterates `[data-dc-screen]` / `[data-dc-slot]` automatically:
    ```bash
-   bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/screenshot.sh" --all-screens --out-dir "<screenshots-dir>"
+   maude design screenshot --all-screens --out-dir "<screenshots-dir>"
    ```
    Each artboard gets its own `<NNN>-screen-<id>.png`. The orchestrator may have passed `screenshots.screens` map in the input envelope — read those directly and skip the capture.
 3. **Identify canvas type** — onboarding / dashboard / form / list / settings / marketing / pricing. Affects axis weighting (e.g. marketing canvases need higher signature-moment than settings).

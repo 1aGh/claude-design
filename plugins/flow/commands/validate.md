@@ -14,6 +14,31 @@ keywords: [validate, full, pipeline, scenario, cross-platform, a11y, design-syst
 
 Run in this order. **Stop on first hard fail**, accumulate soft warnings.
 
+### 0. Skip-if-clean (fast-path) — Phase C / DDR-061
+
+> The full pipeline is expensive (the cross-platform scenario alone is 2–3 min cold). Don't re-run it when the tree is byte-identical to the last **green** validate within the last 24 h. `--force` in `$ARGUMENTS` bypasses this gate.
+
+```bash
+if ! grep -q -- '--force' <<< "$ARGUMENTS"; then
+  BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "detached")
+  # Tree fingerprint = committed HEAD + uncommitted working-tree state. A
+  # HEAD-only `git diff <last-sha>..HEAD` would miss dirty edits; folding in
+  # `git status --porcelain` catches both new commits AND uncommitted changes.
+  TREE_SHA=$(printf '%s\n%s' "$(git rev-parse HEAD 2>/dev/null)" "$(git status --porcelain 2>/dev/null)" | git hash-object --stdin | cut -c1-12)
+  LAST=$(maude cache get validate "$BRANCH" --ttl-ms 86400000 2>/dev/null)   # 24 h fresh window
+  if [ -n "$LAST" ] \
+     && [ "$(jq -r '.tree_sha' <<< "$LAST")" = "$TREE_SHA" ] \
+     && [ "$(jq -r '.result'   <<< "$LAST")" = "green" ]; then
+    echo "✓ Last validate passed GREEN at $(jq -r '.validatedAt' <<< "$LAST") on this exact tree ($TREE_SHA) — skipping."
+    echo "  Report: $(jq -r '.reportPath // "(none recorded)"' <<< "$LAST")"
+    echo "  Use --force to re-run."
+    exit 0
+  fi
+fi
+```
+
+The `validate` cache layer is keyed on the **branch name** and auto-gitignored (the `.ai/cache/*` rule). It's written only on a green pipeline (Step 8b) — a failed validate writes nothing, so a red tree always re-validates.
+
 ### 0.5 Config health (blocker)
 
 > Reads the workspace's own config sanity before doing anything else. A schema error (e.g. an invalid `stack.tests` enum or a non-string `quality.<gate>`) silently degrades downstream skills, so it blocks here.
@@ -132,12 +157,12 @@ SEC_ENABLED=$(jq -r '.skills.securityRules.enabled // true'    .ai/workflows.con
 **In a single assistant message, spawn the following subagents using parallel Agent tool calls:**
 
 - `scenario-runner` — runs the cross-platform scenario per `.claude/skills/scenario/SKILL.md`. It picks scope (web-only / native-only / all 5 platforms) from the diff and reads `.ai/scenarios/` + the active plan. Returns JSON: `report_path`, `platforms_run`, `results`, `blockers`, `parity_ok`, `follow_ups`.
-- `a11y-auditor` — live axe-core scan via agent-browser over affected routes (reads the scenario screenshot directory as it fills; does not block on scenario completion). Reports WCAG 2.1 AA blockers + warnings.
+- `a11y-auditor` — live axe-core scan via agent-browser over affected routes. **Pass inline:** `scenario_screenshot_dir: <the run dir scenario-runner writes to>` so it can Monitor that directory and fold per-step frames in as supplementary evidence as they land (Phase C / DDR-061). It runs concurrently with `scenario-runner` and **does not block on scenario completion** — step-4 wall-clock is ≈ `max(scenario-runner, a11y-auditor)`. Reports WCAG 2.1 AA blockers + warnings.
 - `design-system-guard` — token + component conformance against the project design system. Enforces: allowed effects (gradients/glass/blur), iconography family + stroke width, typography roles (UI typeface vs monospace for numbers/timecodes/IDs/CLI), single customizable color token, allowed palette, dark/light priority, mobile tap targets (44×44), prefers-reduced-motion fallback. **Uses scenario screenshots as primary evidence** (not just static grep).
 - `security-auditor` — defender pass (OWASP-class static + grep over changed files: injection, secrets, authN/Z, crypto, SSRF, XSS, deserialization, path traversal, supply chain, logging, error handling). **Pass inline in the spawn prompt:** `severityFloor: <SEV_FLOOR>`, `includeAi: <INCLUDE_AI>`, `scope: <SEC_SCOPE>` — do not re-read config.
 - `ethical-hacker` — adversarial review: chained exploits + AI/MCP attack surface (prompt injection in tool outputs, confused-deputy across MCP servers, the trifecta = private data + untrusted content + outbound exfil in one agent loop, tool-description injection in newly added MCP servers). **Pass inline:** the same three security knobs.
 
-Skip the `security-auditor` + `ethical-hacker` pair entirely when `SEC_ENABLED == false`; skip only the AI/MCP lens when `INCLUDE_AI == false` (the defender pass still runs). Reuse a fresh security report (`.ai/logs/security-reviews/<branch>-*.md` within the last hour, same HEAD) instead of re-running.
+Skip the `security-auditor` + `ethical-hacker` pair entirely when `SEC_ENABLED == false`; skip only the AI/MCP lens when `INCLUDE_AI == false` (the defender pass still runs). **Before spawning, reuse a fresh review via the shared `security/<head-sha>` cache** (Phase C / DDR-061): `maude cache get security "$(git rev-parse HEAD)" --ttl-ms 3600000` — a non-empty result is a fresh (≤ 1 h) hit. This is the same cache layer `/flow:validate-security` writes and `/flow:done` reads — one window, no per-command drift (exact recipe in `validate-security.md` pre-flight step 3). On reuse, surface the cached verdict + report path and skip the spawn; on miss, run the pair and let aggregation write the cache entry.
 
 **Wait for all five to complete before evaluating the exit gates in §5.**
 
@@ -209,6 +234,20 @@ maude doctor --json | jq -r '
 ```
 
 If everything is green → safely continue to `/done`.
+
+### 8b. Record the green result (Phase C / DDR-061)
+
+When the pipeline finished **GREEN** (every hard gate passed, scenario `blockers == 0`, no security finding ≥ `severityFloor`), persist the result so a back-to-back `/flow:validate` on the same tree short-circuits at Step 0:
+
+```bash
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "detached")
+TREE_SHA=$(printf '%s\n%s' "$(git rev-parse HEAD 2>/dev/null)" "$(git status --porcelain 2>/dev/null)" | git hash-object --stdin | cut -c1-12)
+printf '{"tree_sha":"%s","result":"green","validatedAt":"%s","reportPath":"%s"}' \
+  "$TREE_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${SCENARIO_REPORT_PATH:-}" \
+  | maude cache put validate "$BRANCH"
+```
+
+**Only write on GREEN.** A red/blocked result writes nothing — the next run must re-validate. (Use the same `TREE_SHA` fingerprint recipe as Step 0 so a true no-op re-run matches; if a gate mutated the tree, the fingerprint legitimately differs and the skip won't fire — correctness over hit-rate.)
 
 ## What /validate does NOT do
 

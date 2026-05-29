@@ -74,6 +74,9 @@ export async function run({ args, pkgRoot }) {
   const result = await copyTree(skeleton, aiDir, {
     force: !!flags.force,
     dryRun: !!flags['dry-run'],
+    // npm strips `.gitignore` from published tarballs, so the cache-ignore
+    // template ships as `gitignore` and is renamed to `.gitignore` on copy.
+    rename: (name) => (name === 'gitignore' ? '.gitignore' : name),
     transformMatch: (p) => TEMPLATED.some((t) => p.endsWith(t)),
     transform: ({ srcPath, contents }) => {
       let out = contents.replaceAll(PLACEHOLDER, projectName);

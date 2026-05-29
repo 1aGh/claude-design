@@ -10,6 +10,8 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
 
+- [DDR-062: Plugins reach ALL executable logic through the on-PATH `maude` CLI (`maude design <verb>` dispatch)](DDR-062-plugins-reach-executable-logic-via-maude.md) — 2026-05-29, design/flow/dev-server/cli/marketplace/npm-distribution/reachability/dispatch/phase-c/lever-6
+- [DDR-061: Sidecar cache layout + Monitor pattern + background-overlap orchestration (Phase C)](DDR-061-sidecar-cache-monitor-background-orchestration.md) — 2026-05-29, flow/design/cache/cli/orchestration/latency/invalidation/monitor/background/phase-c
 - [DDR-060: The TSX-only canvas migration silently broke the HTML-centric linked-mode sync (and the collab roadmap's `.html` assumption)](DDR-060-tsx-only-format-breaks-html-centric-sync.md) — 2026-05-28, design/dev-server/sync/linked-mode/tsx/security/csp/sandbox/phase-9/phase-9.1
 - [DDR-049: Motion One (`motion/react`) is the canonical motion library; CSS-only is an opt-in escape hatch](DDR-049-motion-one-as-canonical-motion-library.md) — 2026-05-26, design/dev-server/canvas-lib/motion/handoff/registry-item/sub-agent-vocab/phase-3.7
 - [DDR-045: Real-disk path resolution for compiled dev-server binaries — centralize in `paths.ts`, walk up from `process.execPath`, anchor on `http.ts` only](DDR-045-real-disk-path-resolution-for-compiled-dev-server.md) — 2026-05-25, design/dev-server/bun-compile/paths/npm-install/marketplace-cache/phase-19.1/phase-19.2

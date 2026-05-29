@@ -40,6 +40,24 @@ agent-browser set device "iPhone 16"
 # (re-run steps 2–4)
 ```
 
+## Concurrency — start on first screenshot, don't wait for scenario-runner (Phase C / DDR-061)
+
+During `/flow:validate` step 4 you are spawned **in the same parallel batch as `scenario-runner`** — you do **not** wait for it to finish. Your live axe-core scans (the Live audit protocol above) open the affected web routes yourself via `agent-browser`, so start them the moment you're spawned; the total step-4 wall-clock should be ≈ `max(scenario-runner, you)`, not the sum.
+
+When the spawn prompt passes `scenario_screenshot_dir: <path>`, you MAY **Monitor that directory** and fold the per-step PNGs in as *supplementary* visual evidence — states scenario-runner drove that you can't easily reach in a fresh live session (mid-flow modals, error states, native-only screens). Use them as they land:
+
+```sh
+# Notified per new frame; never blocks on scenario-runner completion.
+until [ -f "$SCENARIO_SCREENSHOT_DIR/.done" ]; do
+  for png in "$SCENARIO_SCREENSHOT_DIR"/**/step-*.png; do
+    [ -f "$png" ] && echo "supplementary frame: $png"
+  done
+  sleep 2
+done
+```
+
+**Never block on scenario-runner.** If `scenario_screenshot_dir` is absent or never fills, your live scans alone are the audit — the screenshots are additive context, not a dependency. Your blockers come from live axe + the hard-stop checklist, not from waiting on another agent.
+
 ## Hard-stop checklist (must catch)
 
 From `a11y-rules skill (bundled in flow plugin)` — for each changed UI component:
