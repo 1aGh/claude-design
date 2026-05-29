@@ -68,6 +68,17 @@ export interface Registry {
    * no files (see awareness-bridge.ts on why F14 is untouched).
    */
   attachHubAwareness(slug: string, awareness: Awareness): () => void;
+  /**
+   * Phase 9.2 (DDR-064) — pin a room so `drop` won't destroy it when the last
+   * browser leaves. The shared-doc path pins a slug while a hub
+   * `HocuspocusProvider` is attached to its `getDoc(slug)`: destroying the
+   * room (→ `doc.destroy()`) would pull the doc out from under the live
+   * provider. Self-gating — only the flag-ON sync runtime calls `pin`, so the
+   * flag-OFF `drop` lifecycle is byte-for-byte unchanged. Idempotent.
+   */
+  pin(slug: string): void;
+  /** Release a pin (provider detached on runtime stop). Idempotent. */
+  unpin(slug: string): void;
   /** Flush every dirty room synchronously. DDR-051 branch-switch path. */
   flushAll(): Promise<void>;
   /** Tear down everything (e.g. on server shutdown). */
@@ -85,6 +96,11 @@ export function createRegistry(callbacks: RoomCallbacks): Registry {
   // is (re)created for a slug that has an attached hub Awareness.
   const hubAwareness = new Map<string, Awareness>();
   const bridges = new Map<string, () => void>();
+  // Phase 9.2 (DDR-064) — slugs whose room must survive the last-browser-leaves
+  // drop because a shared-doc hub provider is attached to its doc. Only the
+  // flag-ON sync runtime ever adds to this; flag-OFF leaves it empty so `drop`
+  // is unchanged.
+  const pinned = new Set<string>();
 
   function wireBridge(slug: string, room: Room): void {
     if (bridges.has(slug)) return;
@@ -132,6 +148,14 @@ export function createRegistry(callbacks: RoomCallbacks): Registry {
     return get(slug).doc;
   }
 
+  function pin(slug: string): void {
+    pinned.add(slug);
+  }
+
+  function unpin(slug: string): void {
+    pinned.delete(slug);
+  }
+
   function syncRoomFromComments(slug: string, comments: readonly unknown[]): void {
     const room = rooms.get(slug);
     if (!room) return;
@@ -167,6 +191,11 @@ export function createRegistry(callbacks: RoomCallbacks): Registry {
     const room = rooms.get(slug);
     if (!room) return;
     if (room.size() > 0) return; // still active, leave it
+    // Phase 9.2 (DDR-064) — a pinned room has a shared-doc hub provider attached
+    // to its doc; destroying it would yank the doc out from under the provider.
+    // Leave it (with zero browser conns) until runtime stop / server shutdown.
+    // Empty in the flag-OFF path → no behavior change.
+    if (pinned.has(slug)) return;
     // Tear the bridge down before room.destroy() runs awareness.destroy() —
     // a late relay must not fire against a dead Awareness. The hub Awareness
     // stays registered, so a reconnecting browser re-wires via get().
@@ -190,6 +219,8 @@ export function createRegistry(callbacks: RoomCallbacks): Registry {
     syncRoomFromComments,
     syncRoomFromAnnotations,
     attachHubAwareness,
+    pin,
+    unpin,
     flushAll,
     destroyAll,
     drop,

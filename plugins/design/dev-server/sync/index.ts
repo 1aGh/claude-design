@@ -72,6 +72,17 @@ export interface AwarenessRegistry {
    *  Optional so file-sync-only tests can pass a minimal registry. */
   syncRoomFromComments?(slug: string, comments: readonly unknown[]): void;
   syncRoomFromAnnotations?(slug: string, svg: string): void;
+  /**
+   * Phase 9.2 (DDR-064) — the single cached `Y.Doc` for a slug. When present
+   * AND `ctx.sharedDoc` is set, the runtime attaches the HocuspocusProvider to
+   * THIS doc instead of a fresh one (the convergence: one doc, both providers).
+   * Optional so file-sync-only tests can pass a minimal registry.
+   */
+  getDoc?(slug: string): Y.Doc;
+  /** Keep a shared-doc room alive while its provider is attached (drop guard). */
+  pin?(slug: string): void;
+  /** Release the shared-doc pin on runtime stop. */
+  unpin?(slug: string): void;
 }
 
 /** Factory the runtime calls per discovered canvas. Default uses Hocuspocus. */
@@ -79,6 +90,13 @@ export type ProviderFactory = (args: {
   url: string;
   token: string;
   documentName: string;
+  /**
+   * Phase 9.2 (DDR-064) — when set, the provider MUST attach to this existing
+   * `Y.Doc` (the shared room doc) instead of creating its own. The runtime
+   * passes it only when `ctx.sharedDoc` is on and the registry exposes
+   * `getDoc`. Default factory: `args.document ?? new Y.Doc()`.
+   */
+  document?: Y.Doc;
 }) => SyncProvider | Promise<SyncProvider>;
 
 export interface SyncRuntime {
@@ -181,6 +199,13 @@ export function createSyncRuntime(
   const providers = new Map<string, SyncProvider>();
   const awarenessDetaches: Array<() => void> = [];
   const statusDetaches: Array<() => void> = [];
+  // Phase 9.2 (DDR-064) — slugs pinned in the registry because a provider is
+  // attached to their shared doc; released on stop(). Empty unless sharedDoc.
+  const pinnedSlugs = new Set<string>();
+  // The shared-doc convergence path is active only when the flag is ON AND the
+  // registry can hand us the canvas's single doc. Flag OFF / no registry / a
+  // minimal test registry without getDoc → the proven two-doc path, unchanged.
+  const useSharedDoc = !!ctx.sharedDoc && typeof opts.registry?.getDoc === 'function';
   let fsReader: FsReader | null = null;
   let busUnsub: (() => void) | null = null;
   let started = false;
@@ -262,10 +287,24 @@ export function createSyncRuntime(
 
     for (const canvas of canvases) {
       try {
+        // Phase 9.2 (DDR-064) — when sharedDoc is on, the provider attaches to
+        // the collab room's single Y.Doc (registry.getDoc) instead of a fresh
+        // one, so browser edits flow straight into the doc that syncs to the
+        // hub — no disk hop, no relay, no clobber. Pin the room so the
+        // last-browser-leaves drop can't destroy the doc out from under the
+        // provider. NB: cold-start seeding of a divergent local+hub doc is the
+        // duplication trap (Risk 1) — made safe by Phase E (migrate-seed); the
+        // flag stays OFF until then.
+        const sharedYDoc = useSharedDoc ? opts.registry?.getDoc?.(canvas.slug) : undefined;
+        if (useSharedDoc && sharedYDoc) {
+          opts.registry?.pin?.(canvas.slug);
+          pinnedSlugs.add(canvas.slug);
+        }
         const provider = await providerFactory({
           url: linkedHub.url,
           token,
           documentName: canvas.slug,
+          document: sharedYDoc,
         });
         providers.set(canvas.slug, provider);
         const agent = createCanvasSyncAgent({
@@ -323,8 +362,14 @@ export function createSyncRuntime(
         // change, so a comment sync would re-push the (stale) annotation and
         // clobber an annotation the peer just drew but hasn't synced yet — and
         // vice versa. Per-type observers keep the two lanes independent.
+        //
+        // Phase 9.2 (DDR-064): under sharedDoc the provider IS attached to the
+        // room's doc, so there is no second doc to relay into — the room already
+        // has every change. Skipping the relay is what RETIRES the
+        // wholesale-replace clobber path (the Phase 9.1 ceiling): with one doc,
+        // CRDT merge handles concurrency, no last-writer-wins blob copy.
         const reg = opts.registry;
-        if (reg?.syncRoomFromComments) {
+        if (!useSharedDoc && reg?.syncRoomFromComments) {
           const slug = canvas.slug;
           const provComments = provider.document.getArray(Y_TYPES.comments);
           const provAnn = provider.document.getMap(Y_TYPES.annotations);
@@ -387,6 +432,16 @@ export function createSyncRuntime(
       }
     }
     awarenessDetaches.length = 0;
+    // Phase 9.2 (DDR-064) — release shared-doc pins so the rooms can be dropped
+    // / destroyed normally on shutdown. Empty unless sharedDoc was active.
+    for (const slug of pinnedSlugs) {
+      try {
+        opts.registry?.unpin?.(slug);
+      } catch {
+        /* best-effort */
+      }
+    }
+    pinnedSlugs.clear();
     for (const detach of statusDetaches) {
       try {
         detach();
@@ -641,6 +696,7 @@ async function defaultProviderFactory(args: {
   url: string;
   token: string;
   documentName: string;
+  document?: Y.Doc;
 }): Promise<SyncProvider> {
   // biome-ignore lint/suspicious/noExplicitAny: dynamic import of optional dep.
   let mod: any;
@@ -655,7 +711,9 @@ async function defaultProviderFactory(args: {
   // the scheme. The provider also accepts http(s):// and upgrades internally
   // in newer versions, but ws:// is explicit + portable.
   const wsUrl = toWsUrl(args.url);
-  const document = new Y.Doc();
+  // Phase 9.2 (DDR-064) — attach to the shared room doc when the runtime
+  // injected one; otherwise own a fresh doc (the legacy two-doc path).
+  const document = args.document ?? new Y.Doc();
   // biome-ignore lint/suspicious/noExplicitAny: provider runtime is typed at the call site.
   const provider: any = new mod.HocuspocusProvider({
     url: wsUrl,

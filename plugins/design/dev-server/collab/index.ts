@@ -78,9 +78,15 @@ export function createCollab(ctx: Context, api: Api): Collab {
           ? await api.loadCommentsForFile(file)
           : JSON.parse(readFileSync(abs, 'utf8'));
         if (!Array.isArray(parsed)) return;
-        if (registry.peek(slug)) registry.syncRoomFromComments(slug, parsed);
+        // Phase 9.2 (DDR-064): under sharedDoc the hub provider is attached to
+        // the single room doc, so a hub-pushed comment is ALREADY in the room —
+        // the wholesale re-seed (last-writer-wins blob copy) is the retired
+        // clobber path. The agent's diff-aware applyFromFs handles external
+        // file→doc imports instead. The sidebar still needs the 'comments' bus
+        // emit, so keep that unconditionally.
+        if (!ctx.sharedDoc && registry.peek(slug)) registry.syncRoomFromComments(slug, parsed);
         if (file) ctx.bus.emit('comments', { file, comments: parsed });
-      } else if (registry.peek(slug)) {
+      } else if (!ctx.sharedDoc && registry.peek(slug)) {
         registry.syncRoomFromAnnotations(slug, readFileSync(abs, 'utf8'));
       }
     } catch {

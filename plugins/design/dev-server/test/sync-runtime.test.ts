@@ -21,6 +21,9 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
+import { Y_TYPES } from '../collab/persistence.ts';
+import { createRegistry } from '../collab/registry.ts';
+import type { RoomCallbacks } from '../collab/room.ts';
 import type { Context, DevServerConfig } from '../context.ts';
 import { createBus } from '../context.ts';
 import { createConnectionMonitor } from '../sync/connection-state.ts';
@@ -120,8 +123,15 @@ function inMemoryProviderFactory(): {
     url: string;
     token: string;
     documentName: string;
+    document?: Y.Doc;
   }): SyncProvider {
-    const local = new Y.Doc();
+    // Phase 9.2 (DDR-064): when the runtime injects a doc (sharedDoc ON), the
+    // provider MUST attach to it — that's the whole point of convergence. The
+    // peer is a second doc cross-linked through a mock transport, modelling
+    // "another machine on the hub". We own `local` only when we created it, so
+    // we don't destroy the registry-owned shared doc on teardown.
+    const ownsLocal = !args.document;
+    const local = args.document ?? new Y.Doc();
     const peer = new Y.Doc();
     local.on('update', (update: Uint8Array, origin: unknown) => {
       if (origin === TRANSPORT) return;
@@ -139,7 +149,7 @@ function inMemoryProviderFactory(): {
         // Synced immediately for the in-memory pair.
       },
       destroy() {
-        local.destroy();
+        if (ownsLocal) local.destroy();
         peer.destroy();
       },
     };
@@ -447,6 +457,184 @@ describe('createSyncRuntime', () => {
     const status = runtime?.status();
     expect(status?.conflicts.length).toBeGreaterThanOrEqual(1);
     expect(status?.conflicts[0].kind).toBe('cold-start-hub-wins');
+    await runtime?.stop();
+  });
+});
+
+// Phase 9.2 (DDR-064) — the convergence core: ONE shared Y.Doc per canvas, the
+// hub provider attached to it instead of a fresh doc. These prove (Task 3) that
+// browser↔hub propagation flows through the single doc with the in-process
+// relay RETIRED, and (Task 3 lifecycle) that a provider-pinned room survives the
+// last-browser-leaves drop. Flag-OFF behavior is covered by every other test in
+// this file running with `ctx.sharedDoc` unset.
+describe('shared-doc convergence (MAUDE_SHARED_DOC ON)', () => {
+  function noopCallbacks(): RoomCallbacks {
+    return { async seed() {}, async persistJson() {}, async persistBinary() {} };
+  }
+
+  /** The real registry wrapped to COUNT relay calls, so a test can assert the
+   *  wholesale syncRoomFrom* clobber path was never used under sharedDoc. All
+   *  other methods delegate to the real registry (closures over its state). */
+  function countingRegistry() {
+    const real = createRegistry(noopCallbacks());
+    let relayCalls = 0;
+    let awarenessAttaches = 0;
+    const wrapped: AwarenessRegistry & {
+      getDoc(slug: string): Y.Doc;
+      peek: typeof real.peek;
+      get: typeof real.get;
+      drop: typeof real.drop;
+      destroyAll: typeof real.destroyAll;
+      relayCalls(): number;
+      awarenessAttaches(): number;
+    } = {
+      getDoc: (slug) => real.getDoc(slug),
+      peek: (slug) => real.peek(slug),
+      get: (slug) => real.get(slug),
+      drop: (slug) => real.drop(slug),
+      destroyAll: () => real.destroyAll(),
+      pin: (slug) => real.pin(slug),
+      unpin: (slug) => real.unpin(slug),
+      attachHubAwareness: (slug, awareness) => {
+        awarenessAttaches++;
+        return real.attachHubAwareness(slug, awareness);
+      },
+      syncRoomFromComments: (slug, comments) => {
+        relayCalls++;
+        real.syncRoomFromComments(slug, comments);
+      },
+      syncRoomFromAnnotations: (slug, svg) => {
+        relayCalls++;
+        real.syncRoomFromAnnotations(slug, svg);
+      },
+      relayCalls: () => relayCalls,
+      awarenessAttaches: () => awarenessAttaches,
+    };
+    return wrapped;
+  }
+
+  test('browser edit on the shared doc reaches the hub peer with NO relay', async () => {
+    const url = 'https://hub.example.com';
+    writeHubsConfig(url, 'mau_test');
+    const ctx = makeCtx({ url, linkedAt: 1 });
+    ctx.sharedDoc = true; // flag ON
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'screen.html'), '<button>hi</button>');
+
+    const registry = countingRegistry();
+    const { factory, peerOf } = inMemoryProviderFactory();
+    const runtime = createSyncRuntime(ctx, { providerFactory: factory, registry });
+    await runtime?.start();
+
+    // The provider is attached to the SAME doc the registry hands the browser.
+    const shared = registry.getDoc('ui-screen');
+    // Browser-style edit — a doc mutation whose origin is NOT the agent origin
+    // (exactly what a browser conn or the inspector-write path produces).
+    shared.getArray(Y_TYPES.comments).push([{ id: 'c1', text: 'hi' }]);
+
+    // Converges to the hub peer through the provider transport — one doc.
+    expect(peerOf('ui-screen').getArray(Y_TYPES.comments).toArray()).toEqual([
+      { id: 'c1', text: 'hi' },
+    ]);
+    // And the wholesale relay (the Phase 9.1 clobber path) was NEVER invoked.
+    expect(registry.relayCalls()).toBe(0);
+
+    await runtime?.stop();
+  });
+
+  test('hub-pushed edit lands in the shared doc (provider applies to the room doc)', async () => {
+    const url = 'https://hub.example.com';
+    writeHubsConfig(url, 'mau_test');
+    const ctx = makeCtx({ url, linkedAt: 1 });
+    ctx.sharedDoc = true;
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'screen.html'), '<button>hi</button>');
+
+    const registry = countingRegistry();
+    const { factory, peerOf } = inMemoryProviderFactory();
+    const runtime = createSyncRuntime(ctx, { providerFactory: factory, registry });
+    await runtime?.start();
+
+    // Another machine on the hub adds a comment → reaches our shared doc.
+    peerOf('ui-screen')
+      .getArray(Y_TYPES.comments)
+      .push([{ id: 'h1', text: 'from peer' }]);
+    expect(registry.getDoc('ui-screen').getArray(Y_TYPES.comments).toArray()).toEqual([
+      { id: 'h1', text: 'from peer' },
+    ]);
+    expect(registry.relayCalls()).toBe(0);
+
+    await runtime?.stop();
+  });
+
+  test('two-way merge: concurrent comment + annotation on both sides converge (no clobber)', async () => {
+    const url = 'https://hub.example.com';
+    writeHubsConfig(url, 'mau_test');
+    const ctx = makeCtx({ url, linkedAt: 1 });
+    ctx.sharedDoc = true;
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'screen.html'), '<button>hi</button>');
+
+    const registry = countingRegistry();
+    const { factory, peerOf } = inMemoryProviderFactory();
+    const runtime = createSyncRuntime(ctx, { providerFactory: factory, registry });
+    await runtime?.start();
+
+    const shared = registry.getDoc('ui-screen');
+    const peer = peerOf('ui-screen');
+    // Local adds a comment; the hub peer concurrently sets an annotation.
+    shared.getArray(Y_TYPES.comments).push([{ id: 'local-c', text: 'mine' }]);
+    peer.getMap(Y_TYPES.annotations).set('svg', '<svg><rect/></svg>');
+
+    // Both survive on both replicas — the CRDT merged, nothing clobbered.
+    expect(shared.getArray(Y_TYPES.comments).toArray()).toEqual([{ id: 'local-c', text: 'mine' }]);
+    expect(shared.getMap(Y_TYPES.annotations).get('svg')).toBe('<svg><rect/></svg>');
+    expect(peer.getArray(Y_TYPES.comments).toArray()).toEqual([{ id: 'local-c', text: 'mine' }]);
+    expect(peer.getMap(Y_TYPES.annotations).get('svg')).toBe('<svg><rect/></svg>');
+    expect(registry.relayCalls()).toBe(0);
+
+    await runtime?.stop();
+  });
+
+  test('a provider-pinned shared room survives the last-browser-leaves drop, released on stop', async () => {
+    const url = 'https://hub.example.com';
+    writeHubsConfig(url, 'mau_test');
+    const ctx = makeCtx({ url, linkedAt: 1 });
+    ctx.sharedDoc = true;
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'screen.html'), '<button>hi</button>');
+
+    const registry = countingRegistry();
+    const { factory } = inMemoryProviderFactory();
+    const runtime = createSyncRuntime(ctx, { providerFactory: factory, registry });
+    await runtime?.start();
+
+    // The room exists (created by getDoc at attach) with zero browser conns.
+    expect(registry.peek('ui-screen')).not.toBeNull();
+    // The last-browser-leaves close handler calls drop; pinned → NOT destroyed,
+    // or the doc would be yanked out from under the live provider.
+    await registry.drop('ui-screen');
+    expect(registry.peek('ui-screen')).not.toBeNull();
+
+    // Runtime stop releases the pin → drop now destroys normally.
+    await runtime?.stop();
+    await registry.drop('ui-screen');
+    expect(registry.peek('ui-screen')).toBeNull();
+  });
+
+  test('Task 4 — the provider awareness is still bridged on the shared-doc path', async () => {
+    const url = 'https://hub.example.com';
+    writeHubsConfig(url, 'mau_test');
+    const ctx = makeCtx({ url, linkedAt: 1 });
+    ctx.sharedDoc = true;
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'screen.html'), '<button>hi</button>');
+
+    const registry = countingRegistry();
+    const { factory } = inMemoryProviderFactory();
+    const runtime = createSyncRuntime(ctx, { providerFactory: factory, registry });
+    await runtime?.start();
+
+    // Presence bridging is mode-independent (the attachHubAwareness call sits
+    // outside the sharedDoc branch). Confirm it still fires here so cursors
+    // relay cross-machine under the new path too.
+    expect(registry.awarenessAttaches()).toBe(1);
+
     await runtime?.stop();
   });
 });
