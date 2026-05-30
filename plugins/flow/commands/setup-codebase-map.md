@@ -77,6 +77,22 @@ For monorepos, also check workspace root and key app `package.json` files.
 - Read any `.claude/rules/*.md` for path-scoped constraints
 - Read any `.ai/docs/rules.md` for app-scoped constraints
 
+### 6.5 Map Design Artifacts (design plugin)
+
+If the project uses the design plugin, capture its canvas workspace so a fresh session sees the design surface alongside the code. **Read-only.**
+
+1. Resolve the design root: `paths.designRoot` from `.ai/workflows.config.json` (default `.design`). If the directory doesn't exist → skip this section entirely.
+2. Read `<designRoot>/config.json` → `designSystems[].name` + `defaultDesignSystem` for the list of design systems.
+3. Walk `<designRoot>/**/*.meta.json` (excluding `_history/`). For each, read `title`, `designSystem` (falls back to `defaultDesignSystem`), `status` (default `draft`), `tags`, and `last_modified`.
+
+```bash
+DESIGN_ROOT=$(jq -r '.paths.designRoot // ".design"' .ai/workflows.config.json 2>/dev/null || echo ".design")
+if [ -d "$DESIGN_ROOT" ]; then
+  jq -r '.defaultDesignSystem as $d | .designSystems[]? | "- \(.name)\(if .name==$d then " (default)" else "" end): '"$DESIGN_ROOT"'/system/\(.name)/"' "$DESIGN_ROOT/config.json" 2>/dev/null
+  find "$DESIGN_ROOT" -name '*.meta.json' -not -path '*/_history/*' 2>/dev/null | wc -l
+fi
+```
+
 ### 7. Write Output
 
 Create directory if needed:
@@ -151,6 +167,21 @@ The output file must follow this structure:
 - <hard rules from CLAUDE.md>
 - <prohibited packages>
 - <branching rules>
+
+## Design artifacts
+
+> Only when the design plugin is in use (`<designRoot>` exists). Omit this section otherwise.
+
+### Design systems
+
+- project: .design/system/project/ (default)
+- marketing: .design/system/marketing/
+
+### Canvases (15 total)
+
+- DarkModeToggle.tsx (DS: project, status: ready-for-handoff, last edit: 2026-05-20)
+- Settings.tsx (DS: project, status: in-review, last edit: 2026-05-14)
+- ...
 ```
 
 ## Refresh

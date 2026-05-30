@@ -42,6 +42,11 @@
           "type": "string",
           "description": "Living codebase snapshot. Default: `.ai/context/codebase-map.md`.",
           "default": ".ai/context/codebase-map.md"
+        },
+        "designRoot": {
+          "type": "string",
+          "description": "Root of the design plugin's canvas workspace, relative to repo root. Where flow looks for `.meta.json` sidecars + canvases when bridging to design (`/flow:plan` canvas detection, `/flow:done` handoff sweep, `codebase-intelligence` design-artifacts section). Mirrors the design plugin's own default. Flow reads this directory read-only — it never writes into the design root except the `/flow:done` handoff sweep's meta status update. Default: `.design`.",
+          "default": ".design"
         }
       }
     },

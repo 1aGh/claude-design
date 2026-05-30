@@ -76,6 +76,15 @@ Hard rules extracted from `CLAUDE.md`:
 - Branching rules
 - Legal restrictions
 
+### Design artifacts
+
+Present only when the project uses the design plugin (`<designRoot>` exists — resolve from `paths.designRoot`, default `.design`). Captures the canvas workspace so design surfaces aren't invisible to a code-only snapshot:
+
+- **Design systems** — one line per DS (`name`, path, `(default)` marker) from `<designRoot>/config.json`.
+- **Canvases** — total count, then one line per canvas: filename, its `designSystem` (or the default), declared `status` (`draft` / `in-review` / `ready-for-handoff` / `handed-off`), and `last_modified`. Canvases marked `ready-for-handoff` are the ones a `/flow:done` will offer to hand off.
+
+Omit the whole section when `<designRoot>` is absent — the snapshot must stay clean for code-only projects.
+
 ## Analysis Techniques
 
 ### Directory Scanning
@@ -138,6 +147,24 @@ Read `.github/workflows/*.yml` files, extract:
 - `name` field
 - `on` triggers (push, PR, schedule, dispatch)
 - Key `steps` to determine purpose
+
+### Design Artifact Scanning
+
+Only when `<designRoot>` (default `.design`, from `paths.designRoot`) exists — **read-only**:
+
+```bash
+DESIGN_ROOT=$(jq -r '.paths.designRoot // ".design"' .ai/workflows.config.json 2>/dev/null || echo ".design")
+if [ -d "$DESIGN_ROOT" ]; then
+  # Design systems (name + default marker)
+  jq -r '.defaultDesignSystem as $d | .designSystems[]? | "\(.name)\(if .name==$d then " (default)" else "" end)"' "$DESIGN_ROOT/config.json" 2>/dev/null
+  # Canvases: one line per sidecar (format-agnostic — sidecars, not .tsx/.html)
+  find "$DESIGN_ROOT" -name '*.meta.json' -not -path '*/_history/*' 2>/dev/null | while IFS= read -r m; do
+    jq -r '"\(input_filename | sub(".*/";"") | sub(".meta.json";".tsx")) (DS: \(.designSystem // "default"), status: \(.status // "draft"), last edit: \(.last_modified // "?" | sub("T.*";"")))"' "$m" 2>/dev/null
+  done
+fi
+```
+
+Counts and the default-DS fall-back keep the section honest on sidecars that predate the `status`/`designSystem`/`tags` fields (older canvases simply show `draft` / `default`).
 
 ## Monorepo Handling
 

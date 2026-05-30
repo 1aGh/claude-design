@@ -18,6 +18,26 @@
       "type": "string",
       "description": "The full brief that produced this canvas (from /design:new). Preserved for handoff."
     },
+    "brief_sha": {
+      "type": "string",
+      "description": "Hash of the brief that produced this canvas (stamped at /design:new step 11). Used by /design:new to short-circuit regeneration when a byte-identical brief in the same DS already produced a canvas."
+    },
+    "tags": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string" },
+      "description": "Free-form labels for the canvas — feature slugs ('dark-mode'), surfaces ('settings'), or themes. Read by flow's /flow:plan design-canvas detection (Phase 11) to match a feature name against canvases via exact tag match (the canvas slug substring match is the other half of the heuristic). Optional."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "in-review", "ready-for-handoff", "handed-off"],
+      "default": "draft",
+      "description": "Lifecycle state of the canvas. 'draft' = work in progress; 'in-review' = awaiting feedback; 'ready-for-handoff' = approved, eligible for /design:handoff; 'handed-off' = shipped to production code (see handoffCommit). Hand-set by the user, or flipped to 'handed-off' by flow's /flow:done handoff sweep (Phase 11) after a successful /design:handoff. Optional — absent means 'draft'."
+    },
+    "handoffCommit": {
+      "type": "string",
+      "description": "Git commit SHA (full or short) of the commit that handed this canvas off to production code. Written by /flow:done's handoff sweep when it flips status to 'handed-off'. Optional."
+    },
     "platform": {
       "type": "string",
       "enum": ["desktop", "mobile", "tablet", "responsive", "tv", "watch", "other"],

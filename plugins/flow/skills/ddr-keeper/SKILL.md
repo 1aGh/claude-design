@@ -44,8 +44,25 @@ A decision is DDR-worthy if any of:
    - At least 2 alternatives in `Alternatives considered` (even if one is "do nothing")
    - `Consequences` split into positive and negative (every decision has both)
    - `Revisit when` — a concrete trigger condition for re-evaluation, not "if we have problems"
-4. **Cross-link** — back-link DDR from active plan and from commit message that implements it.
-5. **Index** — append to `.ai/decisions/README.md`.
+4. **Canvas reference (UI-affecting DDRs)** — see below.
+5. **Cross-link** — back-link DDR from active plan and from commit message that implements it.
+6. **Index** — append to `.ai/decisions/README.md`.
+
+## Canvas reference for UI-affecting decisions
+
+A decision about how something *looks or behaves* should point at the canvas that embodies it — otherwise the next reader has the rationale but not the pixels.
+
+**Heuristic — trigger the prompt when both hold:**
+
+1. The DDR title or context contains a UI keyword: `UI`, `UX`, `layout`, `color`, `colour`, `typography`, `font`, `spacing`, `interaction`, `animation`, `motion`, `component`, `icon`, `theme`, `density`, `responsive`, `accessibility`/`a11y` *applied to a visual surface*.
+2. The project uses the design plugin (`<designRoot>` exists — resolve `paths.designRoot`, default `.design`).
+
+**When triggered**, ask once: _"This decision touches UI. Does it reference a specific canvas? [Type a `.design/...` path or N]"_
+
+- **A path** → validate it exists. If it does, record it as the `**Related canvas:**` header line in the DDR (the design-plugin equivalent of the existing `**Tags:**` line — DDRs use `**Field:**` header lines, not YAML frontmatter). If the path doesn't resolve, **warn** (`"⚠ <path> not found — recording anyway; create or fix the link later"`) and record it regardless — the canvas may be authored after the decision.
+- **N** → omit the `**Related canvas:**` line entirely. Don't nag; many UI decisions legitimately predate any canvas.
+
+Skip the prompt silently when either condition fails (non-UI DDR, or no design plugin) — it must not add friction to backend/infra DDRs.
 
 ## Anti-patterns
 

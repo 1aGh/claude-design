@@ -6,7 +6,8 @@
   "paths": {
     "prd": ".ai/PROJECT_NAME-prd.md",
     "designSystem": ".ai/PROJECT_NAME-design-system.md",
-    "codebaseMap": ".ai/context/codebase-map.md"
+    "codebaseMap": ".ai/context/codebase-map.md",
+    "designRoot": ".design"
   },
   "platforms": ["web-desktop"],
   "stack": {

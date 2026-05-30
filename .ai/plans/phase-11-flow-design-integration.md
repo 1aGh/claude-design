@@ -125,12 +125,12 @@ Four wired-up integrations:
 
 ## Acceptance criteria
 
-- [ ] `paths.designRoot` documented in config schema + skeleton defaults.
-- [ ] Canvas `.meta.json` status enum formalized; `handoffCommit` field defined.
-- [ ] `/flow:plan` detects matching canvases by slug/tag; surfaces in plan context.
-- [ ] `/flow:done` lists handoff-ready canvases; sequential dispatch on accept; meta updates committed.
-- [ ] `codebase-intelligence` snapshot includes Design artifacts section.
-- [ ] `ddr-keeper` prompts for canvas reference on UI-related DDRs.
-- [ ] DDR recorded for soft-vs-hard handoff prompt decision.
-- [ ] No regression: flow works on projects without `.design/`.
-- [ ] End-to-end scenario passes.
+- [x] `paths.designRoot` documented in config schema + skeleton defaults. — config.schema.json `paths.designRoot` (default `.design`) + ai-skeleton workflows.config.json.
+- [x] Canvas `.meta.json` status enum formalized; `handoffCommit` field defined. — canvas-meta.schema.json gained `status` enum (`draft`/`in-review`/`ready-for-handoff`/`handed-off`), `handoffCommit`, `tags`; drive-by `brief_sha` to fix prior `additionalProperties:false` drift.
+- [x] `/flow:plan` detects matching canvases by slug/tag; surfaces in plan context. — plan.md "Design Canvas Detection" + "Design canvases" template subsection; bash heuristic verified (TAG + SLUG match).
+- [x] `/flow:done` lists handoff-ready canvases; sequential dispatch on accept; meta updates committed. — done.md step 4c (sweep + Y/N/S prompt + sequential `/design:handoff --canvas`) + step 5b (meta status flip in a follow-up commit, no `--amend`).
+- [x] `codebase-intelligence` snapshot includes Design artifacts section. — setup-codebase-map.md (step 6.5 + output format) + codebase-intelligence SKILL.md (schema + scanning technique); verified against real `.design/` (43 canvases).
+- [x] `ddr-keeper` prompts for canvas reference on UI-related DDRs. — ddr-keeper SKILL.md heuristic + record-ddr.md `**Related canvas:**` header line.
+- [x] DDR recorded for soft-vs-hard handoff prompt decision. — DDR-066, indexed in `.ai/decisions/README.md`.
+- [x] No regression: flow works on projects without `.design/`. — every integration guards `[ -d "$DESIGN_ROOT" ]` and skips silently; `paths.designRoot` is optional in the schema (test: config without it still validates).
+- [x] End-to-end scenario passes. — deterministic seam covered by `cli/lib/flow-design-integration.test.mjs` (17 tests: schema contract + done-sweep round-trip + markdown wiring guards); 143/143 full CLI suite green. LLM-orchestrated flow documented in the Scenario coverage table above.

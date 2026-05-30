@@ -21,6 +21,7 @@ A DDR (Design Decision Record) is a formal record of a non-trivial decision that
    - Which one did you pick and why?
    - What are the consequences (positive and negative)?
    - Is there a superseding condition (when to revisit)?
+   - **(UI-affecting decisions only)** If the title/context mentions UI concerns (`UI`, `layout`, `color`, `typography`, `interaction`, `spacing`, `component`, `motion`, etc.) and the project uses the design plugin, also ask: _"This decision touches UI. Does it reference a specific canvas? [Type a `.design/...` path or N]"_. See the `ddr-keeper` skill for the full heuristic. Validate the path exists; if the user gives a path that doesn't, warn and record it anyway (the canvas may land later).
 
 3. **Write** to `.ai/decisions/DDR-<NNN>-<kebab-title>.md`:
 
@@ -30,6 +31,7 @@ A DDR (Design Decision Record) is a formal record of a non-trivial decision that
 **Status:** Accepted | Proposed | Superseded by DDR-<NNN>
 **Date:** <YYYY-MM-DD>
 **Tags:** <e.g. video, playbook, auth, infra, ux>
+**Related canvas:** <.design/... path — only when a UI-affecting DDR references one; omit the line otherwise>
 
 ## Context
 What is the problem? What constraints exist? What is blocked until we decide?

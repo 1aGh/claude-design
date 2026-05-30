@@ -79,6 +79,40 @@ ELSE (none):
 
 The override path is intentional: not every PR ships user-visible change (chore, infra, internal refactor). The reminder exists so the team makes that call **consciously**, not by forgetting.
 
+### 4c. Design handoff sweep (soft gate — design plugin)
+
+> Skip silently when the project has no design plugin. This is a **soft prompt, not an enforced gate** — see [DDR-066](../../../.ai/decisions/DDR-066-soft-handoff-prompt-in-flow-done.md): auto-handoff would burn user context and `/design:handoff` is itself an active decision (which target, which DS), so flow surfaces the choice and lets the user decide.
+
+Before committing, surface any canvas the user marked **`ready-for-handoff`** so an approved design doesn't ship a feature without its production-ready registry drop.
+
+1. **Resolve + scan (read-only).** Resolve `paths.designRoot` from `.ai/workflows.config.json` (default `.design`). If the directory doesn't exist → skip this step silently. Otherwise scan sidecars for `status: ready-for-handoff`:
+
+   ```bash
+   DESIGN_ROOT=$(jq -r '.paths.designRoot // ".design"' .ai/workflows.config.json 2>/dev/null || echo ".design")
+   [ -d "$DESIGN_ROOT" ] && while IFS= read -r f; do
+     [ "$(jq -r '.status // "draft"' "$f")" = "ready-for-handoff" ] && echo "${f%.meta.json}.tsx"
+   done < <(find "$DESIGN_ROOT" -name '*.meta.json' -not -path '*/_history/*' 2>/dev/null)
+   ```
+
+2. **If none → skip silently.** No prompt, no noise.
+
+3. **If any → prompt once** with the sorted list (path + title):
+
+   ```
+   N canvases are marked ready-for-handoff:
+     - .design/ui/DarkModeToggle.tsx  "Dark Mode Toggle"
+     - .design/ui/Settings.tsx        "Settings"
+   Run /design:handoff before closing?
+     [Y] all   [N] skip, close anyway   [S] select a subset
+   ```
+
+   - **[N]** → continue to Commit unchanged. The canvases stay `ready-for-handoff`.
+   - **[Y] / [S]** → dispatch handoff per accepted canvas **sequentially** (not parallel — handoff trims shared CSS per canvas; interleaved writes can corrupt the slice). For each: run `/design:handoff --canvas "<path>"`. If a canvas's latest critique has open blockers, `/design:handoff` fails by design — **report that canvas as skipped, do NOT auto-`--force`** (forcing past a blocker is the user's call, not flow's). Each successful handoff emits a `<Slug>.registry.json` sidecar in `<designRoot>/`.
+
+4. **Stage the emitted sidecars.** The `.registry.json` files land in the working tree — stage them so they ride in the **same feature commit** (step 5). Record the list of successfully-handed-off canvas paths for step 5b.
+
+> The meta status flip (`status → handed-off`, `handoffCommit → <sha>`) happens **after** the feature commit exists — see step 5b. Doing it here would have no SHA to record yet.
+
 ### 5. Commit
 
 Conventional commit. Format:
@@ -96,6 +130,24 @@ Scenario: .ai/device/scenario-runs/<name>/<ts>/report.md
 - Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `ci`.
 - **Stage specific files**, not `git add -A` (secrets / out-of-scope changes).
 - **NEVER** use `--no-verify` or `--amend` unless the user asked for it.
+
+### 5b. Mark handed-off canvases (only if step 4c handed any off)
+
+Skip unless step 4c successfully handed off at least one canvas. For each such canvas, flip its sidecar status and stamp the feature commit's SHA, then commit the bookkeeping as **one** follow-up commit (this is the only write a flow command makes into the design root):
+
+```bash
+SHA=$(git rev-parse HEAD)   # the feature commit from step 5 — the commit that carries the registry drop
+for META in "$@"; do        # $@ = the .meta.json sidecars for canvases handed off in 4c
+  tmp=$(mktemp)
+  jq --arg sha "$SHA" '.status = "handed-off" | .handoffCommit = $sha' "$META" > "$tmp" && mv "$tmp" "$META"
+done
+git add <those .meta.json files>
+git commit -m "chore(design): mark <N> canvases handed-off
+
+Refs: <feature commit subject> ($SHA)"
+```
+
+`handoffCommit` points at the feature commit (which contains the registry sidecars), not at this bookkeeping commit — so a reader can find the actual handoff payload from the meta. No `--amend`; the bookkeeping is a clean separate commit.
 
 ### 6. Push & PR (optional — ask)
 

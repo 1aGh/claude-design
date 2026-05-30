@@ -53,9 +53,9 @@ If the feature involves a repeatable pattern (e.g., "add docs for all components
 
 > Before planning, assess the feature's complexity and domain to select the right depth and context.
 
-The three assessment passes below read **different, independent inputs** — complexity reads the feature + codebase map, domain reads `.claude/agents/` + `package.json`, the DS reference reads the PRD + design-system doc. None depends on another's output.
+The assessment passes below read **different, independent inputs** — complexity reads the feature + codebase map, domain reads `.claude/agents/` + `package.json`, the DS reference reads the PRD + design-system doc, and canvas detection reads `<designRoot>/**/*.meta.json`. None depends on another's output.
 
-**Run them in parallel: in a single assistant message, batch the reads/scans for Complexity Detection, Domain Detection, and Design System Reference together** (multiple Read / Grep tool calls in one message). Only the task-enumeration in **Write the Plan** (Step 6) waits for all three to land.
+**Run them in parallel: in a single assistant message, batch the reads/scans for Complexity Detection, Domain Detection, Design System Reference, and Design Canvas Detection together** (multiple Read / Grep / find tool calls in one message). Only the task-enumeration in **Write the Plan** (Step 6) waits for all of them to land.
 
 ### Complexity Detection
 
@@ -101,6 +101,31 @@ If the feature touches UI, **always** read both files. Also:
 
 - Search existing code (via `.ai/context/codebase-map.md` if it exists) for components that can be reused. No custom build until the registry is exhausted.
 - Designs from Claude Design (https://claude.ai/design/) are an input to the plan — reference URLs in the **Design Decisions** section.
+
+### Design Canvas Detection (design plugin)
+
+> Distinct from the **Design System Reference** above: that reads the flow project's `*-design-system.md` doc; this reads the **design plugin's** `.design/` canvas workspace (`/design:new` mockups). When both exist, the canvases are the more concrete input — they're the finished pixels the plan should ground the implementation in.
+
+If the project uses the design plugin, surface canvases relevant to `$ARGUMENTS` so the plan grounds itself in the approved mockups instead of re-deriving them. **Read-only scan — never modify `.design/` from a flow command.**
+
+1. **Resolve the design root.** Read `paths.designRoot` from `.ai/workflows.config.json` (default `.design`). If the directory doesn't exist → **skip this whole subsection silently** (keeps `/flow:plan` fully functional on projects without the design plugin — no regression).
+
+2. **Walk the sidecars.** Enumerate `<designRoot>/**/*.meta.json` (sidecar-driven, so it's canvas-format-agnostic — TSX is the only canvas format today; legacy `.html` canvases were migrated). Each sidecar's canvas file is the sibling with the same basename (`<Name>.meta.json` → `<Name>.tsx`). Read each sidecar's `title`, `subtitle`, `tags`, `status`, and `last_modified`.
+
+   ```bash
+   DESIGN_ROOT=$(jq -r '.paths.designRoot // ".design"' .ai/workflows.config.json 2>/dev/null || echo ".design")
+   [ -d "$DESIGN_ROOT" ] && find "$DESIGN_ROOT" -name '*.meta.json' -not -path '*/_history/*' 2>/dev/null
+   ```
+
+3. **Match against the feature.** Kebab-normalize `$ARGUMENTS` to a feature slug (e.g. `Dark mode toggle` → `dark-mode`). A canvas matches if **either**:
+   - **Tag exact match** — the feature slug (or a token of it) is an exact element of the sidecar's `tags[]` array (e.g. feature `dark-mode` matches a canvas tagged `["dark-mode"]`).
+   - **Slug substring match** — the feature slug appears in the canvas file's basename or its containing folder (e.g. `dark-mode` matches `DarkModeToggle.tsx` / `dark-mode-toggle.tsx` after kebab-folding the filename).
+
+4. **Surface matches in plan context.** For every matched canvas, add an entry to the plan's **Context References → Design canvases** subsection (see template): canvas path, title, `status`, tags, and the one-line subtitle/brief. Flag any match whose `status` is `ready-for-handoff` or `handed-off` — those are the most authoritative.
+
+5. **Fallback when nothing matches.** If `.design/` exists but no canvas matched the slug/tags, surface the **5 most recently edited** canvases (by sidecar `last_modified`, falling back to file mtime) as a "recent design activity" hint — the feature may relate to one even without a naming match.
+
+6. **Screenshots (optional, only if the dev-server is already running).** There is no persistent thumbnail cache to read offline. If `<designRoot>/_server.json` shows a live instance, you MAY capture an on-demand thumbnail per matched canvas with `maude design screenshot` (DDR-062) and inline it; otherwise reference the path only. Never boot the server just to plan — that's a side effect a read-only planning pass shouldn't have.
 
 ## Planning Process
 
@@ -219,6 +244,14 @@ As a <user> I want <goal> so that <benefit>
 ### Files to Create
 
 - `path/to/new.ts` — [purpose]
+
+### Design canvases
+
+> Populated by Design Canvas Detection. Remove this section if the project has no `.design/` or no canvas matched.
+
+| Canvas | Status | Tags | Notes |
+| ------ | ------ | ---- | ----- |
+| `.design/ui/DarkModeToggle.tsx` | `ready-for-handoff` | dark-mode | [what the mockup shows; ground the implementation here] |
 
 ### Documentation
 
