@@ -67,6 +67,12 @@ Design system reference. Default: `.ai/&lt;name>-design-system.md`.
 
 Living codebase snapshot. Default: `.ai/context/codebase-map.md`.
 
+### `paths.designRoot`
+
+**Type:** `string` · **Default:** `".design"`
+
+Root of the design plugin's canvas workspace, relative to repo root. Where flow looks for `.meta.json` sidecars + canvases when bridging to design (`/flow:plan` canvas detection, `/flow:done` handoff sweep, `codebase-intelligence` design-artifacts section). Mirrors the design plugin's own default. Flow reads this directory read-only — it never writes into the design root except the `/flow:done` handoff sweep's meta status update. Default: `.design`.
+
 ## `platforms`
 
 **Type:** `enum("web-desktop", "web-mobile", "ios-phone", "ios-tablet", "android-phone", "android-tablet", "macos", "windows", "linux")[]` · **Default:** `["web-desktop"]` · **Unique items**
