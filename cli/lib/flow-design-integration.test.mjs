@@ -114,11 +114,11 @@ test('flow config: paths.designRoot carries a default of .design', () => {
 
 test('done sweep round-trip: ready-for-handoff → handed-off + handoffCommit both valid', () => {
   const before = { title: 'Canvas', sections: [], status: 'ready-for-handoff', tags: ['feat'] };
-  assert.equal(validateMeta(before), true, 'before: ' + JSON.stringify(validateMeta.errors));
+  assert.equal(validateMeta(before), true, `before: ${JSON.stringify(validateMeta.errors)}`);
 
   // what /flow:done step 5b writes:
   const after = { ...before, status: 'handed-off', handoffCommit: 'deadbeef0123' };
-  assert.equal(validateMeta(after), true, 'after: ' + JSON.stringify(validateMeta.errors));
+  assert.equal(validateMeta(after), true, `after: ${JSON.stringify(validateMeta.errors)}`);
 });
 
 // ── 4. markdown wiring guards (a deleted section fails here) ────────────────

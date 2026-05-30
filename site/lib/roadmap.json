@@ -1,7 +1,18 @@
 {
-  "generated": "2026-05-29T21:25:04.238Z",
+  "generated": "2026-05-30T06:37:30.770Z",
   "currentPhase": null,
   "phases": [
+    {
+      "id": "canvas-chrome-theme-inheritance",
+      "title": "Feature: Canvas-shell chrome follows the Maude theme + per-artboard theme override",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is a risky dev-server refactor (repoints CSS custom-property sources across the w...",
+      "planPath": ".ai/plans/archive/canvas-chrome-theme-inheritance.md",
+      "archived": true,
+      "phaseKey": null
+    },
     {
       "id": "canvas-figjam-feel",
       "title": "Feature: Canvas viewport — FigJam-grade direct-manipulation feel",
@@ -267,6 +278,17 @@
       "phaseKey": null
     },
     {
+      "id": "security-disclaimer-docs",
+      "title": "Feature: User-facing security disclaimer in the docs",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Add a user-facing \"Is maude safe?\" page to the docs site that explains the threat model honestly: what runs where, what's trusted vs untrusted, and the mechanisms that make each mode safe. Audience...",
+      "planPath": ".ai/plans/archive/security-disclaimer-docs.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
       "id": "setup-ds-pastier-framework",
       "title": "Feature: Setup-DS — 3-stage discovery (Vision → Research → Refinement) inspired by Pastier",
       "status": "done",
@@ -298,6 +320,17 @@
       "planPath": ".ai/plans/archive/phase-3-flow-changelog.md",
       "archived": true,
       "phaseKey": "3"
+    },
+    {
+      "id": "phase-11-flow-design-integration",
+      "title": "Phase 11: Flow ↔ Design integration",
+      "status": "done",
+      "shipTarget": "v1.0 late / v1.1",
+      "date": "2026-05-13",
+      "summary": "Close the gap between flow and design plugins. Flow commands (/flow:plan, /flow:done) become aware of .design/ — /flow:plan automatically detects canvases relevant to a feature and pulls them into...",
+      "planPath": ".ai/plans/archive/phase-11-flow-design-integration.md",
+      "archived": true,
+      "phaseKey": "11"
     },
     {
       "id": "phase-2-docs-site-fumadocs",
@@ -531,17 +564,6 @@
       "phaseKey": "10"
     },
     {
-      "id": "phase-11-flow-design-integration",
-      "title": "Phase 11: Flow ↔ Design integration",
-      "status": "planned",
-      "shipTarget": "v1.0 late / v1.1",
-      "date": null,
-      "summary": "Close the gap between flow and design plugins. Flow commands (/flow:plan, /flow:done) become aware of .design/ — /flow:plan automatically detects canvases relevant to a feature and pulls them into...",
-      "planPath": ".ai/plans/phase-11-flow-design-integration.md",
-      "archived": false,
-      "phaseKey": "11"
-    },
-    {
       "id": "phase-12-in-canvas-css-and-layers",
       "title": "Phase 12: In-canvas CSS editor + Layers panel",
       "status": "planned",
@@ -617,28 +639,6 @@
       "planPath": ".ai/plans/phase-23-canvas-images-link-unfurl.md",
       "archived": false,
       "phaseKey": "23"
-    },
-    {
-      "id": "canvas-chrome-theme-inheritance",
-      "title": "Feature: Canvas-shell chrome follows the Maude theme + per-artboard theme override",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is a risky dev-server refactor (repoints CSS custom-property sources across the w...",
-      "planPath": ".ai/plans/canvas-chrome-theme-inheritance.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "security-disclaimer-docs",
-      "title": "Feature: User-facing security disclaimer in the docs",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Add a user-facing \"Is maude safe?\" page to the docs site that explains the threat model honestly: what runs where, what's trusted vs untrusted, and the mechanisms that make each mode safe. Audience...",
-      "planPath": ".ai/plans/security-disclaimer-docs.md",
-      "archived": false,
-      "phaseKey": null
     },
     {
       "id": "phase-7-acp-chat-sidebar",

@@ -134,3 +134,13 @@ Four wired-up integrations:
 - [x] DDR recorded for soft-vs-hard handoff prompt decision. — DDR-066, indexed in `.ai/decisions/README.md`.
 - [x] No regression: flow works on projects without `.design/`. — every integration guards `[ -d "$DESIGN_ROOT" ]` and skips silently; `paths.designRoot` is optional in the schema (test: config without it still validates).
 - [x] End-to-end scenario passes. — deterministic seam covered by `cli/lib/flow-design-integration.test.mjs` (17 tests: schema contract + done-sweep round-trip + markdown wiring guards); 143/143 full CLI suite green. LLM-orchestrated flow documented in the Scenario coverage table above.
+
+---
+
+## Retro
+
+- **Plan was pre-migration.** It assumed `**/*.html` canvases and a "Phase 4 thumbnail cache" — both gone (TSX is the only format; no persistent thumbnail cache exists). Detection had to become sidecar-driven (`*.meta.json`, format-agnostic) and screenshots demoted to "only if the server is already up." Lesson for `/plan`: when a plan sits unexecuted across a migration, re-validate its file-format and infra assumptions against current reality before writing tasks.
+- **Schema drift caught en route.** `canvas-meta.schema.json` had `additionalProperties:false` yet `new.md` already wrote an undeclared `brief_sha`. Because the schema is documentation-only (no runtime ajv validation), the drift was silent. Added `brief_sha` as a drive-by. Lesson: a documentation-only schema with `additionalProperties:false` is a latent trap — either validate it at runtime or relax the constraint.
+- **Handoff bookkeeping needed a two-commit shape.** `handoffCommit` can't reference its own commit; `done.md` forbids `--amend`. Resolved by pointing `handoffCommit` at the feature commit (which carries the registry drop) and flipping `status` in a separate follow-up commit. Clean, but worth remembering for any "stamp the commit into a file the commit contains" pattern.
+- **Shared/concurrent `main` tree.** The start-of-session "(clean)" snapshot was stale; concurrent work + an unnecessary `npm run build` I ran left ~14 foreign files dirty. Followed the repo's established "standalone close-out on main" pattern: staged only the 14 Phase 11 files atomically, left concurrent work untouched, did not clobber the active Phase 9.1 STATE block. Lesson: don't run repo-wide build/format gates on a shared tree — scope every gate to your own files.
+- **Right-sized the gates.** No app UI, no canvas/runtime change → cross-platform scenario, a11y, design-system-guard, `/design:smoke`, and the security fan-out were all correctly skipped as inapplicable rather than run for show. The deterministic seam (schemas + wiring) got a real, durable test instead.
