@@ -22,129 +22,176 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { type Stroke, useStrokesStore } from './annotations-layer.tsx';
+import {
+  FILL_PALETTE,
+  STROKE_PALETTE,
+  type Stroke,
+  useStrokesStore,
+} from './annotations-layer.tsx';
+import {
+  IconArrowBothHeads,
+  IconArrowEndHead,
+  IconArrowNone,
+  IconArrowStartHead,
+  IconCornerPill,
+  IconCornerSoft,
+  IconCornerSquare,
+  IconDash,
+  IconLetterA,
+  IconLineThick,
+  IconLineThin,
+  IconTrash,
+} from './canvas-icons.tsx';
 import { useAnnotationSelectionOptional } from './use-annotation-selection.tsx';
 
-// G6 — FigJam-style 11-color palette. Same colors for both stroke and fill
-// so the swatch row identity stays consistent when the user flips the
-// Stroke|Fill mode toggle (only the target attribute changes, not the
-// visual vocabulary).
-const PALETTE = [
-  '#1E1E1E', // black
-  '#757575', // gray
-  '#E03E3E', // red
-  '#F26B3F', // orange
-  '#F2C744', // yellow
-  '#4CAF50', // green
-  '#14B8A6', // teal
-  '#3B82F6', // blue
-  '#8B5CF6', // purple
-  '#EC4899', // pink
-  '#FFFFFF', // white
-] as const;
+// Phase 21 — the swatch palettes come from annotations-layer so the draw-time
+// chrome and this per-selection toolbar share ONE hue family. STROKE mode shows
+// saturated inks; FILL mode shows the index-paired light tints (FigJam: a
+// saturated outline over a pale wash of the same hue). They're referenced
+// INSIDE the component (render time) — never at module top-level — because
+// annotations-layer ↔ this file form an import cycle and a top-level read would
+// hit the TDZ before STROKE_PALETTE initializes.
 
-const FILL_PALETTE = PALETTE;
-
+// Phase 21 — dark "property bar" matching FigJam's selection toolbar. A
+// near-black rounded pill that floats above the selection; swatches + icons sit
+// on dark so colour reads true. Fixed dark values (not canvas tokens) so the
+// bar looks identical on any canvas / DS.
+const CTX_SURFACE = '#26262b';
 const TOOLBAR_CSS = `
 .dc-annot-ctx {
   position: fixed;
   z-index: 7;
   display: flex;
   align-items: center;
-  gap: 6px;
-  background: var(--u-bg-0, var(--bg-0, rgba(255,255,255,0.98)));
-  border: 1px solid var(--u-fg-0, #1c1917);
-  border-radius: 8px;
-  padding: 6px 8px;
-  box-shadow: 0 6px 24px color-mix(in oklab, var(--u-fg-0, #1c1917) 10%, transparent);
+  gap: 2px;
+  background: ${CTX_SURFACE};
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 5px 7px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.34), 0 2px 6px rgba(0,0,0,0.22);
   font-family: var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 12px;
-  color: var(--u-fg-0, var(--fg-0, #1a1a1a));
+  color: rgba(255,255,255,0.85);
   user-select: none;
   pointer-events: auto;
 }
+/* Swatches sit in a tight touching band so the colour row reads as ONE
+   control, not a loose ramp (graphic-critic blocker 1). 22px hit target. */
+.dc-annot-ctx-swrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
 .dc-annot-ctx-sw {
-  width: 16px;
-  height: 16px;
-  border-radius: 3px;
-  border: 1px solid rgba(0,0,0,0.12);
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.16);
   cursor: pointer;
   padding: 0;
+  margin: 0;
   appearance: none;
+  transition: transform 80ms ease;
 }
+.dc-annot-ctx-sw:hover { transform: scale(1.1); }
 .dc-annot-ctx-sw[aria-pressed="true"] {
-  box-shadow: 0 0 0 2px var(--maude-hud-accent, #d63b1f);
+  box-shadow: 0 0 0 2px ${CTX_SURFACE}, 0 0 0 3px rgba(255,255,255,0.92);
   border-color: transparent;
 }
+.dc-annot-ctx-sw:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 1px;
+}
 .dc-annot-ctx-fill--none {
-  background: #fff;
+  background: #3a3a40;
   position: relative;
 }
 .dc-annot-ctx-fill--none::after {
   content: "";
-  position: absolute; inset: 2px;
+  position: absolute; inset: 4px;
+  border-radius: 50%;
   background:
-    linear-gradient(135deg, transparent 47%, #d63b1f 47%, #d63b1f 53%, transparent 53%);
+    linear-gradient(135deg, transparent 44%, rgba(255,255,255,0.55) 44%, rgba(255,255,255,0.55) 56%, transparent 56%);
 }
 .dc-annot-ctx-sep {
   width: 1px;
-  align-self: stretch;
-  background: rgba(0,0,0,0.10);
-  margin: 0 2px;
+  height: 16px;
+  align-self: center;
+  background: rgba(255,255,255,0.09);
+  margin: 0 4px;
 }
-.dc-annot-ctx-btn {
-  appearance: none;
-  background: transparent;
-  border: 1px solid var(--u-fg-0, rgba(0,0,0,0.6));
-  border-radius: 0;
-  padding: 3px 8px;
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-}
-.dc-annot-ctx-btn[aria-pressed="true"] {
-  background: var(--maude-hud-accent, #d63b1f);
-  color: var(--maude-hud-accent-fg, #fff);
-  border-color: transparent;
-}
-.dc-annot-ctx-btn:hover { background: rgba(0,0,0,0.04); }
-.dc-annot-ctx-btn--danger { color: #b3271a; }
-.dc-annot-ctx-btn--danger:hover { background: rgba(214,59,31,0.08); }
-
-/* T30 / G_S1 — collapsed Stroke|Fill mode toggle. Shown only when the
-   selection supports both stroke + fill (rect / ellipse). When the toggle is
-   present the swatch row beneath shows ONE palette at a time. */
+/* Collapsed Stroke|Fill mode toggle (rect / ellipse selections). */
 .dc-annot-ctx-mode {
   display: inline-flex;
-  border-radius: 6px;
+  border-radius: 7px;
   overflow: hidden;
-  border: 1px solid rgba(0,0,0,0.18);
+  background: rgba(255,255,255,0.07);
+  padding: 2px;
+  gap: 2px;
 }
 .dc-annot-ctx-mode-btn {
   appearance: none;
   background: transparent;
   border: 0;
-  padding: 3px 8px;
+  border-radius: 5px;
+  padding: 3px 9px;
   font: inherit;
-  color: inherit;
+  color: rgba(255,255,255,0.6);
   cursor: pointer;
   font-size: 11px;
   letter-spacing: 0.02em;
-  text-transform: uppercase;
   line-height: 1;
 }
 .dc-annot-ctx-mode-btn[aria-pressed="true"] {
-  background: color-mix(in oklab, var(--maude-hud-accent, #d63b1f) 14%, transparent);
-  color: var(--maude-hud-accent, #d63b1f);
+  background: rgba(255,255,255,0.16);
+  color: #ffffff;
   font-weight: 600;
 }
 .dc-annot-ctx-mode-btn:not([aria-pressed="true"]):hover {
-  background: rgba(0,0,0,0.04);
+  color: rgba(255,255,255,0.9);
 }
-/* Trailing overflow Delete — quiet by default, expressive on hover.
-   Keyboard Backspace remains the primary delete affordance. */
-.dc-annot-ctx-overflow {
-  margin-left: auto;
+.dc-annot-ctx-mode-btn:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: -1px;
+}
+
+/* Icon buttons — light glyph on dark, white-tint hover, white-tint active.
+   26px to sit closer to the 20px swatch rhythm (graphic-critic blocker 2). */
+.dc-annot-ctx-ibtn {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,0.78);
+  cursor: pointer;
+  padding: 0;
+  position: relative;
+  transition: background-color 80ms linear, color 80ms linear;
+}
+.dc-annot-ctx-ibtn:hover {
+  background: rgba(255,255,255,0.1);
+  color: #ffffff;
+}
+.dc-annot-ctx-ibtn[aria-pressed="true"] {
+  background: rgba(255,255,255,0.18);
+  color: #ffffff;
+}
+.dc-annot-ctx-ibtn:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: -2px;
+}
+.dc-annot-ctx-ibtn--danger { color: rgba(255,255,255,0.7); }
+.dc-annot-ctx-ibtn--danger:hover {
+  background: color-mix(in oklab, #ff5a4d 26%, transparent);
+  color: #ffffff;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dc-annot-ctx-ibtn, .dc-annot-ctx-sw { transition: none; }
 }
 `.trim();
 
@@ -202,19 +249,36 @@ export function AnnotationContextToolbar() {
   // Capabilities — intersection across selected types.
   const caps = useMemo(() => {
     if (selectedStrokes.length === 0) {
-      return { color: false, fill: false, thickness: false, fontSize: false };
+      return {
+        color: false,
+        fill: false,
+        thickness: false,
+        fontSize: false,
+        cornerRadius: false,
+        arrowDir: false,
+        dash: false,
+      };
     }
     const allFillable = selectedStrokes.every((s) => s.tool === 'rect' || s.tool === 'ellipse');
     // T20 — rect + ellipse now carry stroke weight too.
     const allThickness = selectedStrokes.every(
       (s) => s.tool === 'pen' || s.tool === 'arrow' || s.tool === 'rect' || s.tool === 'ellipse'
     );
-    const anyText = selectedStrokes.some((s) => s.tool === 'text');
+    // Phase 21 — fontSize applies to text + sticky; cornerRadius to rect +
+    // sticky; arrow direction + dash to arrows.
+    const fontSizeApplicable = selectedStrokes.some(
+      (s) => s.tool === 'text' || s.tool === 'sticky'
+    );
+    const allRectOrSticky = selectedStrokes.every((s) => s.tool === 'rect' || s.tool === 'sticky');
+    const allArrow = selectedStrokes.every((s) => s.tool === 'arrow');
     return {
       color: true,
       fill: allFillable,
       thickness: allThickness,
-      fontSize: anyText,
+      fontSize: fontSizeApplicable,
+      cornerRadius: allRectOrSticky,
+      arrowDir: allArrow,
+      dash: allArrow,
     };
   }, [selectedStrokes]);
 
@@ -299,8 +363,45 @@ export function AnnotationContextToolbar() {
     (sz: number) => {
       if (!store) return;
       for (const s of selectedStrokes) {
-        if (s.tool === 'text') {
+        // Phase 21 — sticky carries fontSize too.
+        if (s.tool === 'text' || s.tool === 'sticky') {
           store.updateStroke(s.id, { fontSize: sz } as Partial<Stroke>);
+        }
+      }
+    },
+    [store, selectedStrokes]
+  );
+  // Phase 21 — corner radius (rect + sticky).
+  const setCornerRadius = useCallback(
+    (r: number) => {
+      if (!store) return;
+      for (const s of selectedStrokes) {
+        if (s.tool === 'rect' || s.tool === 'sticky') {
+          store.updateStroke(s.id, { cornerRadius: r } as Partial<Stroke>);
+        }
+      }
+    },
+    [store, selectedStrokes]
+  );
+  // Phase 21 — arrow head direction (None / Start / End / Both).
+  const setArrowDir = useCallback(
+    (startHead: 'none' | 'triangle', endHead: 'none' | 'triangle') => {
+      if (!store) return;
+      for (const s of selectedStrokes) {
+        if (s.tool === 'arrow') {
+          store.updateStroke(s.id, { startHead, endHead } as Partial<Stroke>);
+        }
+      }
+    },
+    [store, selectedStrokes]
+  );
+  // Phase 21 — arrow dash toggle.
+  const setDashed = useCallback(
+    (dashed: boolean) => {
+      if (!store) return;
+      for (const s of selectedStrokes) {
+        if (s.tool === 'arrow') {
+          store.updateStroke(s.id, { dashed } as Partial<Stroke>);
         }
       }
     },
@@ -333,14 +434,47 @@ export function AnnotationContextToolbar() {
       )
     : undefined;
   const uniqFontSize = caps.fontSize
-    ? uniformValue(selectedStrokes.map((s) => (s.tool === 'text' ? s.fontSize : undefined)))
+    ? uniformValue(
+        selectedStrokes.map((s) =>
+          s.tool === 'text' || s.tool === 'sticky' ? s.fontSize : undefined
+        )
+      )
+    : undefined;
+  // Phase 21 — uniform corner radius across rect/sticky (default per type: rect
+  // sharp = 0, sticky soft = 8).
+  const uniqRadius = caps.cornerRadius
+    ? uniformValue(
+        selectedStrokes.map((s) =>
+          s.tool === 'rect'
+            ? (s.cornerRadius ?? 0)
+            : s.tool === 'sticky'
+              ? (s.cornerRadius ?? 8)
+              : undefined
+        )
+      )
+    : undefined;
+  // Phase 21 — uniform arrow head pair (default start none / end triangle).
+  const uniqStartHead = caps.arrowDir
+    ? uniformValue(
+        selectedStrokes.map((s) => (s.tool === 'arrow' ? (s.startHead ?? 'none') : undefined))
+      )
+    : undefined;
+  const uniqEndHead = caps.arrowDir
+    ? uniformValue(
+        selectedStrokes.map((s) => (s.tool === 'arrow' ? (s.endHead ?? 'triangle') : undefined))
+      )
+    : undefined;
+  const uniqDashed = caps.dash
+    ? uniformValue(
+        selectedStrokes.map((s) => (s.tool === 'arrow' ? (s.dashed ?? false) : undefined))
+      )
     : undefined;
 
   // T30 / G_S1 — when caps.fill is false we never enter fill mode. The
   // useEffect below could call setSwatchMode('stroke') but reading the
   // effective mode inline avoids an extra render cycle.
   const effectiveMode: SwatchMode = caps.fill ? swatchMode : 'stroke';
-  const showPalette = effectiveMode === 'stroke' ? PALETTE : FILL_PALETTE;
+  const showPalette = effectiveMode === 'stroke' ? STROKE_PALETTE : FILL_PALETTE;
   const onSwatchClick =
     effectiveMode === 'stroke' ? (c: string) => setColor(c) : (c: string) => setFill(c);
   const activeValue = effectiveMode === 'stroke' ? uniqColor : (uniqFill ?? null);
@@ -376,48 +510,52 @@ export function AnnotationContextToolbar() {
           <div className="dc-annot-ctx-sep" />
         </>
       ) : null}
-      {effectiveMode === 'fill' ? (
-        <button
-          type="button"
-          className="dc-annot-ctx-sw dc-annot-ctx-fill--none"
-          aria-label="No fill"
-          aria-pressed={uniqFill == null}
-          title="No fill"
-          onClick={() => setFill(null)}
-        />
-      ) : null}
-      {showPalette.map((c) => (
-        <button
-          key={c}
-          type="button"
-          className="dc-annot-ctx-sw"
-          aria-label={`${effectiveMode === 'stroke' ? 'Color' : 'Fill'} ${c}`}
-          aria-pressed={activeValue === c}
-          title={`${effectiveMode === 'stroke' ? 'Color' : 'Fill'} ${c}`}
-          style={{ background: c }}
-          onClick={() => onSwatchClick(c)}
-        />
-      ))}
+      <div className="dc-annot-ctx-swrow" role="radiogroup" aria-label="Color">
+        {effectiveMode === 'fill' ? (
+          <button
+            type="button"
+            className="dc-annot-ctx-sw dc-annot-ctx-fill--none"
+            aria-label="No fill"
+            aria-pressed={uniqFill == null}
+            title="No fill"
+            onClick={() => setFill(null)}
+          />
+        ) : null}
+        {showPalette.map((c) => (
+          <button
+            key={c}
+            type="button"
+            className="dc-annot-ctx-sw"
+            aria-label={`${effectiveMode === 'stroke' ? 'Color' : 'Fill'} ${c}`}
+            aria-pressed={activeValue === c}
+            title={`${effectiveMode === 'stroke' ? 'Color' : 'Fill'} ${c}`}
+            style={{ background: c }}
+            onClick={() => onSwatchClick(c)}
+          />
+        ))}
+      </div>
       {caps.thickness && effectiveMode === 'stroke' ? (
         <>
           <div className="dc-annot-ctx-sep" />
           <button
             type="button"
-            className="dc-annot-ctx-btn"
+            className="dc-annot-ctx-ibtn"
+            aria-label="Thin stroke"
             aria-pressed={uniqThickness === 3}
             title="Thin (3px)"
             onClick={() => setThickness(3)}
           >
-            Thin
+            <IconLineThin />
           </button>
           <button
             type="button"
-            className="dc-annot-ctx-btn"
+            className="dc-annot-ctx-ibtn"
+            aria-label="Thick stroke"
             aria-pressed={uniqThickness === 6}
             title="Thick (6px)"
             onClick={() => setThickness(6)}
           >
-            Thick
+            <IconLineThick />
           </button>
         </>
       ) : null}
@@ -426,41 +564,140 @@ export function AnnotationContextToolbar() {
           <div className="dc-annot-ctx-sep" />
           <button
             type="button"
-            className="dc-annot-ctx-btn"
+            className="dc-annot-ctx-ibtn"
+            aria-label="Small text"
             aria-pressed={uniqFontSize === 12}
             title="Small (12px)"
             onClick={() => setFontSize(12)}
           >
-            S
+            <IconLetterA size={13} />
           </button>
           <button
             type="button"
-            className="dc-annot-ctx-btn"
+            className="dc-annot-ctx-ibtn"
+            aria-label="Medium text"
             aria-pressed={uniqFontSize === 14}
             title="Medium (14px)"
             onClick={() => setFontSize(14)}
           >
-            M
+            <IconLetterA size={16} />
           </button>
           <button
             type="button"
-            className="dc-annot-ctx-btn"
+            className="dc-annot-ctx-ibtn"
+            aria-label="Large text"
             aria-pressed={uniqFontSize === 20}
             title="Large (20px)"
             onClick={() => setFontSize(20)}
           >
-            L
+            <IconLetterA size={19} />
           </button>
         </>
       ) : null}
+      {caps.cornerRadius ? (
+        <>
+          <div className="dc-annot-ctx-sep" />
+          <button
+            type="button"
+            className="dc-annot-ctx-ibtn"
+            aria-label="Square corners"
+            aria-pressed={uniqRadius === 0}
+            title="Square corners"
+            onClick={() => setCornerRadius(0)}
+          >
+            <IconCornerSquare />
+          </button>
+          <button
+            type="button"
+            className="dc-annot-ctx-ibtn"
+            aria-label="Soft corners"
+            aria-pressed={uniqRadius === 8}
+            title="Soft corners"
+            onClick={() => setCornerRadius(8)}
+          >
+            <IconCornerSoft />
+          </button>
+          <button
+            type="button"
+            className="dc-annot-ctx-ibtn"
+            aria-label="Pill corners"
+            aria-pressed={uniqRadius === 999}
+            title="Pill corners"
+            onClick={() => setCornerRadius(999)}
+          >
+            <IconCornerPill />
+          </button>
+        </>
+      ) : null}
+      {caps.arrowDir ? (
+        <>
+          <div className="dc-annot-ctx-sep" />
+          <button
+            type="button"
+            className="dc-annot-ctx-ibtn"
+            aria-label="Line, no arrowheads"
+            aria-pressed={uniqStartHead === 'none' && uniqEndHead === 'none'}
+            title="Line (no heads)"
+            onClick={() => setArrowDir('none', 'none')}
+          >
+            <IconArrowNone />
+          </button>
+          <button
+            type="button"
+            className="dc-annot-ctx-ibtn"
+            aria-label="Arrowhead at start"
+            aria-pressed={uniqStartHead === 'triangle' && uniqEndHead === 'none'}
+            title="Head at start"
+            onClick={() => setArrowDir('triangle', 'none')}
+          >
+            <IconArrowStartHead />
+          </button>
+          <button
+            type="button"
+            className="dc-annot-ctx-ibtn"
+            aria-label="Arrowhead at end"
+            aria-pressed={uniqStartHead === 'none' && uniqEndHead === 'triangle'}
+            title="Head at end"
+            onClick={() => setArrowDir('none', 'triangle')}
+          >
+            <IconArrowEndHead />
+          </button>
+          <button
+            type="button"
+            className="dc-annot-ctx-ibtn"
+            aria-label="Arrowheads at both ends"
+            aria-pressed={uniqStartHead === 'triangle' && uniqEndHead === 'triangle'}
+            title="Heads at both ends"
+            onClick={() => setArrowDir('triangle', 'triangle')}
+          >
+            <IconArrowBothHeads />
+          </button>
+        </>
+      ) : null}
+      {caps.dash ? (
+        <>
+          <div className="dc-annot-ctx-sep" />
+          <button
+            type="button"
+            className="dc-annot-ctx-ibtn"
+            aria-label="Dashed line"
+            aria-pressed={uniqDashed === true}
+            title="Dashed line"
+            onClick={() => setDashed(!(uniqDashed === true))}
+          >
+            <IconDash />
+          </button>
+        </>
+      ) : null}
+      <div className="dc-annot-ctx-sep" />
       <button
         type="button"
-        className="dc-annot-ctx-btn dc-annot-ctx-btn--danger dc-annot-ctx-overflow"
+        className="dc-annot-ctx-ibtn dc-annot-ctx-ibtn--danger"
         title="Delete (Backspace)"
         aria-label="Delete selected annotations"
         onClick={remove}
       >
-        Delete
+        <IconTrash />
       </button>
     </div>
   );

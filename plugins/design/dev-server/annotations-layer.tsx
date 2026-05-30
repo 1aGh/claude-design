@@ -34,9 +34,10 @@ import {
 import { createPortal } from 'react-dom';
 
 import { AnnotationContextToolbar } from './annotations-context-toolbar.tsx';
+import { IconLineThick, IconLineThin } from './canvas-icons.tsx';
 import { useViewportControllerContext, useWorldRefContext } from './canvas-lib.tsx';
 import { buildAnnotationStrokesRecord } from './commands/annotation-strokes-command.ts';
-import { crossedDragThreshold } from './input-router.tsx';
+import { type Tool, crossedDragThreshold } from './input-router.tsx';
 import { AnnotationResizeOverlay } from './use-annotation-resize.tsx';
 import { useAnnotationSelectionOptional } from './use-annotation-selection.tsx';
 import { useAnnotationsVisibility } from './use-annotations-visibility.tsx';
@@ -67,6 +68,8 @@ export interface RectStroke {
   w: number;
   h: number;
   fill?: string | null;
+  /** Phase 21 — corner radius (rx/ry). Absent / 0 = sharp 90° corners (back-compat). */
+  cornerRadius?: number;
 }
 export interface EllipseStroke {
   id: string;
@@ -88,6 +91,12 @@ export interface ArrowStroke {
   y1: number;
   x2: number;
   y2: number;
+  /** Phase 21 — head on the (x1,y1) start. Absent = 'none' (back-compat). */
+  startHead?: 'none' | 'triangle';
+  /** Phase 21 — head on the (x2,y2) end. Absent = 'triangle' (back-compat). */
+  endHead?: 'none' | 'triangle';
+  /** Phase 21 — dashed shaft (stroke-dasharray). Absent / false = solid. */
+  dashed?: boolean;
 }
 export interface TextStroke {
   id: string;
@@ -95,28 +104,83 @@ export interface TextStroke {
   color: string;
   fontSize: number;
   text: string;
-  anchorId: string;
+  /**
+   * Host shape id for anchored text (double-click a rect/ellipse). Phase 21
+   * relaxed this to optional: standalone text (the `text` tool) carries no
+   * anchor and renders at its own world `(x, y)` instead.
+   */
+  anchorId?: string;
+  /** Phase 21 — world coords for standalone (unanchored) text. */
+  x?: number;
+  y?: number;
 }
-export type Stroke = PenStroke | RectStroke | EllipseStroke | ArrowStroke | TextStroke;
+/** Phase 21 — sticky note: a paper-tone card with its own word-wrapped text. */
+export interface StickyStroke {
+  id: string;
+  tool: 'sticky';
+  color: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  text: string;
+  fontSize: number;
+  /** Corner radius; defaults to STICKY_CORNER_RADIUS (8 = soft). */
+  cornerRadius?: number;
+}
+export type Stroke =
+  | PenStroke
+  | RectStroke
+  | EllipseStroke
+  | ArrowStroke
+  | TextStroke
+  | StickyStroke;
 
-const PALETTE = [
-  '#d63b1f', // accent red — first slot mirrors the default DS accent
-  '#f5a623', // amber
-  '#1a8f3e', // green
-  '#1d6cf0', // blue
-  '#7a4ad3', // purple
-  '#1a1a1a', // ink
+/**
+ * Phase 21 — what the inline editor is currently bound to. `anchored` edits
+ * the text hosted by a rect/ellipse; `sticky` edits a card body; `standalone`
+ * re-edits a free text node; `pending` is a not-yet-born text caret (no stroke
+ * exists until real text is committed).
+ */
+type EditingTarget =
+  | { kind: 'anchored'; anchorId: string; host: RectStroke | EllipseStroke }
+  | { kind: 'sticky'; sticky: StickyStroke }
+  | { kind: 'standalone'; text: TextStroke }
+  | { kind: 'pending'; x: number; y: number }
+  | null;
+
+// Phase 21 colour system — a single coherent hue family used everywhere.
+// FigJam model: stroke (saturated ink) is INDEPENDENT of fill, and fills are
+// light TINTS of the same hue (index-paired with STROKE_PALETTE). Stickies use
+// their own lightened paper set (STICKY_PALETTE). Exported so the draw-time
+// chrome AND the per-selection context toolbar share ONE palette instead of
+// drifting apart.
+export const STROKE_PALETTE = [
+  '#e5484d', // red (default — markup ink)
+  '#f2762a', // orange
+  '#e0a500', // amber
+  '#30a46c', // green
+  '#3b82f6', // blue
+  '#8b5cf6', // purple
+  '#e93d82', // pink
+  '#7c7c7c', // gray
+  '#1f1f1f', // ink
 ] as const;
-type PaletteColor = (typeof PALETTE)[number];
-const DEFAULT_COLOR: PaletteColor = PALETTE[0];
+type PaletteColor = (typeof STROKE_PALETTE)[number];
+const DEFAULT_COLOR: PaletteColor = STROKE_PALETTE[0];
 
-const FILL_PALETTE = [
-  '#fff4d6', // amber tint
-  '#e6f4ea', // green tint
-  '#e3edff', // blue tint
-  '#f0e8fb', // purple tint
-  '#ffe5e0', // red tint
-  '#f4f1ee', // paper
+// Light tints, index-paired to STROKE_PALETTE — picking "blue fill" gives a
+// pale blue wash under a saturated stroke, exactly like FigJam shapes.
+export const FILL_PALETTE = [
+  '#fbe0e1', // red tint
+  '#fce6d6', // orange tint
+  '#fbeec2', // amber tint
+  '#d9f1e2', // green tint
+  '#e0ebfd', // blue tint
+  '#ebe3fc', // purple tint
+  '#fbdfeb', // pink tint
+  '#ededed', // gray tint
+  '#e7e7e7', // ink tint
 ] as const;
 
 const STROKE_WIDTH_THIN = 3;
@@ -125,6 +189,23 @@ type Thickness = typeof STROKE_WIDTH_THIN | typeof STROKE_WIDTH_THICK;
 
 const FONT_SIZE_MEDIUM = 14;
 const DEFAULT_FONT_SIZE = FONT_SIZE_MEDIUM;
+
+// Phase 21 — sticky-note paper tints. FigJam-style desaturated tints, wholly
+// separate from the stroke ink PALETTE and the translucent FILL_PALETTE so
+// stickies read as "paper", not "ink". Slot 0 (yellow) is the default.
+export const STICKY_PALETTE = [
+  '#ffe27a', // yellow (default — warm FigJam paper)
+  '#ffc1d4', // pink
+  '#a9d6ff', // blue
+  '#b3e6b8', // green
+  '#d8c2fb', // purple
+  '#f2ece1', // paper-white
+] as const;
+const DEFAULT_STICKY_COLOR = STICKY_PALETTE[0];
+const STICKY_CORNER_RADIUS = 8;
+const STICKY_DEFAULT_W = 200;
+const STICKY_DEFAULT_H = 160;
+const STICKY_MIN_SIZE = 40;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pure helpers — exported for unit tests.
@@ -165,11 +246,39 @@ export function arrowHeadPoints(
 
 function strokeToSvgEl(s: Stroke): string {
   if (s.tool === 'text') {
-    return `<text data-id="${esc(s.id)}" data-tool="text" data-anchor-id="${esc(
-      s.anchorId
-    )}" data-font-size="${s.fontSize}" fill="${esc(
-      s.color
-    )}" text-anchor="middle" dominant-baseline="middle">${esc(s.text)}</text>`;
+    // Phase 21 — anchored text keeps the byte-identical Phase 5.1 form;
+    // standalone text (no anchorId) writes its own world x/y and omits
+    // data-anchor-id (so the parser routes it back to the standalone branch).
+    if (s.anchorId != null && s.anchorId !== '') {
+      return `<text data-id="${esc(s.id)}" data-tool="text" data-anchor-id="${esc(
+        s.anchorId
+      )}" data-font-size="${s.fontSize}" fill="${esc(
+        s.color
+      )}" text-anchor="middle" dominant-baseline="middle">${esc(s.text)}</text>`;
+    }
+    const tx = s.x ?? 0;
+    const ty = s.y ?? 0;
+    return `<text data-id="${esc(s.id)}" data-tool="text" x="${tx}" y="${ty}" data-font-size="${
+      s.fontSize
+    }" fill="${esc(s.color)}" text-anchor="start" dominant-baseline="hanging">${esc(s.text)}</text>`;
+  }
+  if (s.tool === 'sticky') {
+    // Phase 21 — sticky body lives in an allowlisted <text> child so it
+    // survives sanitizeAnnotationSvg (which strips <foreignObject>, DDR-060
+    // F1). The live canvas re-renders this stroke with a foreignObject so the
+    // text word-wraps; the persisted <text> is the inert, sanitizer-safe form.
+    const r = s.cornerRadius ?? STICKY_CORNER_RADIUS;
+    const w = Math.max(0, s.w);
+    const h = Math.max(0, s.h);
+    return `<g data-id="${esc(s.id)}" data-tool="sticky" data-r="${r}" data-fs="${
+      s.fontSize
+    }" fill="${esc(s.color)}"><rect x="${s.x}" y="${
+      s.y
+    }" width="${w}" height="${h}" rx="${r}" ry="${r}"/><text data-sticky-body="1" x="${
+      s.x + 12
+    }" y="${s.y + 12}" font-size="${
+      s.fontSize
+    }" fill="#1a1a1a" dominant-baseline="hanging">${esc(s.text)}</text></g>`;
   }
   const common = `data-id="${esc(s.id)}" data-tool="${s.tool}" stroke="${esc(s.color)}" stroke-width="${s.width}" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"`;
   if (s.tool === 'pen') {
@@ -177,10 +286,14 @@ function strokeToSvgEl(s: Stroke): string {
   }
   if (s.tool === 'rect') {
     const fill = s.fill ? esc(s.fill) : 'none';
+    // Phase 21 — corner radius: append rx/ry/data-r ONLY when > 0 so legacy
+    // sharp-corner rects serialize byte-identically (Task 10 canary).
+    const r = s.cornerRadius ?? 0;
+    const round = r > 0 ? ` rx="${r}" ry="${r}" data-r="${r}"` : '';
     return `<rect ${common} fill="${fill}" x="${s.x}" y="${s.y}" width="${Math.max(
       0,
       s.w
-    )}" height="${Math.max(0, s.h)}"/>`;
+    )}" height="${Math.max(0, s.h)}"${round}/>`;
   }
   if (s.tool === 'ellipse') {
     const fill = s.fill ? esc(s.fill) : 'none';
@@ -189,8 +302,30 @@ function strokeToSvgEl(s: Stroke): string {
       s.rx
     )}" ry="${Math.max(0, s.ry)}"/>`;
   }
-  const head = arrowHeadPoints(s.x1, s.y1, s.x2, s.y2, s.width);
-  return `<g ${common} fill="none"><line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}"/><polyline points="${head}" fill="${esc(s.color)}"/></g>`;
+  // arrow — Phase 21 adds optional start/end heads + dash. Defaults
+  // (startHead 'none', endHead 'triangle', solid) emit the byte-identical
+  // Phase 5.1 form: data-* attrs + extra polyline + dasharray appear only for
+  // non-default values.
+  const endHead = s.endHead ?? 'triangle';
+  const startHead = s.startHead ?? 'none';
+  const dashed = s.dashed ?? false;
+  const dataAttrs =
+    (startHead !== 'none' ? ` data-start-head="${startHead}"` : '') +
+    (endHead !== 'triangle' ? ` data-end-head="${endHead}"` : '') +
+    (dashed ? ' data-dash="1"' : '');
+  const dash = dashed ? ' stroke-dasharray="6 4"' : '';
+  const heads =
+    (startHead === 'triangle'
+      ? `<polyline points="${arrowHeadPoints(s.x2, s.y2, s.x1, s.y1, s.width)}" fill="${esc(
+          s.color
+        )}"/>`
+      : '') +
+    (endHead === 'triangle'
+      ? `<polyline points="${arrowHeadPoints(s.x1, s.y1, s.x2, s.y2, s.width)}" fill="${esc(
+          s.color
+        )}"/>`
+      : '');
+  return `<g ${common} fill="none"${dataAttrs}><line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}"${dash}/>${heads}</g>`;
 }
 
 export function strokesToSvg(strokes: readonly Stroke[]): string {
@@ -238,13 +373,44 @@ export function svgToStrokes(svgText: string): Stroke[] {
         if (points.length) out.push({ id, tool: 'pen', color, width, points });
         continue;
       }
+      if (tool === 'sticky') {
+        // Phase 21 — sticky reads geometry off its <rect> child, paper tint
+        // off the group fill, body text off the inner <text>.
+        const rectEl = el.querySelector('rect');
+        const x = Number.parseFloat(rectEl?.getAttribute('x') || '0');
+        const y = Number.parseFloat(rectEl?.getAttribute('y') || '0');
+        const w = Number.parseFloat(rectEl?.getAttribute('width') || '0');
+        const h = Number.parseFloat(rectEl?.getAttribute('height') || '0');
+        const cornerRadius =
+          Number.parseFloat(el.getAttribute('data-r') || String(STICKY_CORNER_RADIUS)) || 0;
+        const fontSize =
+          Number.parseFloat(el.getAttribute('data-fs') || String(DEFAULT_FONT_SIZE)) ||
+          DEFAULT_FONT_SIZE;
+        const stickyColor = el.getAttribute('fill') || DEFAULT_STICKY_COLOR;
+        const body = el.querySelector('text');
+        out.push({
+          id,
+          tool: 'sticky',
+          color: stickyColor,
+          x,
+          y,
+          w,
+          h,
+          text: body?.textContent ?? '',
+          fontSize,
+          cornerRadius,
+        });
+        continue;
+      }
       if (tool === 'rect') {
         const x = Number.parseFloat(el.getAttribute('x') || '0');
         const y = Number.parseFloat(el.getAttribute('y') || '0');
         const w = Number.parseFloat(el.getAttribute('width') || '0');
         const h = Number.parseFloat(el.getAttribute('height') || '0');
         const fill = parseFill(el.getAttribute('fill'));
-        out.push({ id, tool: 'rect', color, width, x, y, w, h, fill });
+        // Phase 21 — corner radius; absent ⇒ 0 (sharp, back-compat).
+        const cornerRadius = Number.parseFloat(el.getAttribute('data-r') || '0') || 0;
+        out.push({ id, tool: 'rect', color, width, x, y, w, h, fill, cornerRadius });
         continue;
       }
       if (tool === 'ellipse') {
@@ -259,7 +425,7 @@ export function svgToStrokes(svgText: string): Stroke[] {
       if (tool === 'arrow') {
         const line = el.querySelector('line');
         if (line) {
-          out.push({
+          const arrow: ArrowStroke = {
             id,
             tool: 'arrow',
             color,
@@ -268,23 +434,47 @@ export function svgToStrokes(svgText: string): Stroke[] {
             y1: Number.parseFloat(line.getAttribute('y1') || '0'),
             x2: Number.parseFloat(line.getAttribute('x2') || '0'),
             y2: Number.parseFloat(line.getAttribute('y2') || '0'),
-          });
+          };
+          // Phase 21 — heads + dash. Serializer only writes a data-* attribute
+          // for a NON-default value, so a legacy arrow carries none of these
+          // and stays { startHead/endHead/dashed: undefined } → defaults on
+          // re-serialize (byte-identical, Task 10 canary).
+          if (el.getAttribute('data-start-head') === 'triangle') arrow.startHead = 'triangle';
+          if (el.getAttribute('data-end-head') === 'none') arrow.endHead = 'none';
+          const dashRaw = el.getAttribute('data-dash');
+          if (dashRaw === '1' || dashRaw === 'true') arrow.dashed = true;
+          out.push(arrow);
         }
         continue;
       }
       if (tool === 'text') {
-        const anchorId = el.getAttribute('data-anchor-id') || '';
+        const rawAnchor = el.getAttribute('data-anchor-id');
         const fontSize =
           Number.parseFloat(el.getAttribute('data-font-size') || String(DEFAULT_FONT_SIZE)) ||
           DEFAULT_FONT_SIZE;
         const inkColor = el.getAttribute('fill') || color;
+        const body = (el.textContent || '').trim();
+        // Phase 21 — standalone text (no data-anchor-id) carries world x/y
+        // instead of a host id.
+        if (!rawAnchor) {
+          out.push({
+            id,
+            tool: 'text',
+            color: inkColor,
+            fontSize,
+            text: body,
+            x: Number.parseFloat(el.getAttribute('x') || '0'),
+            y: Number.parseFloat(el.getAttribute('y') || '0'),
+          });
+          continue;
+        }
         out.push({
           id,
           tool: 'text',
           color: inkColor,
           fontSize,
-          text: (el.textContent || '').trim(),
-          anchorId,
+          text: body,
+          anchorId: rawAnchor,
         });
       }
     }
@@ -312,8 +502,26 @@ function pointSegmentDist(
 }
 
 export function strokeHitTest(s: Stroke, wx: number, wy: number, tol: number): boolean {
-  if (s.tool === 'text') return false;
+  if (s.tool === 'text') {
+    // Anchored text isn't independently hit-testable (it inherits its host).
+    // Standalone text (Phase 21) uses its synthetic bbox so the eraser can
+    // reach it.
+    if (s.anchorId != null && s.anchorId !== '') return false;
+    const bb = strokeBBox(s);
+    if (!bb) return false;
+    return (
+      wx >= bb.x - tol && wx <= bb.x + bb.w + tol && wy >= bb.y - tol && wy <= bb.y + bb.h + tol
+    );
+  }
   const t = Math.max(tol, 'width' in s ? s.width : 2);
+  if (s.tool === 'sticky') {
+    // Sticky is a solid paper card — filled-rect hit anywhere inside.
+    const xMin = Math.min(s.x, s.x + s.w);
+    const xMax = Math.max(s.x, s.x + s.w);
+    const yMin = Math.min(s.y, s.y + s.h);
+    const yMax = Math.max(s.y, s.y + s.h);
+    return wx >= xMin - t && wx <= xMax + t && wy >= yMin - t && wy <= yMax + t;
+  }
   if (s.tool === 'pen') {
     if (s.points.length === 1) {
       const p = s.points[0] as WorldPoint;
@@ -362,7 +570,8 @@ export function strokeHitTest(s: Stroke, wx: number, wy: number, tol: number): b
   return onLeft || onRight || onTop || onBottom;
 }
 
-function normalizeRect(r: RectStroke): RectStroke {
+/** Flip a negative-extent box so x/y is the top-left and w/h are positive. */
+function normalizeBox<T extends { x: number; y: number; w: number; h: number }>(r: T): T {
   if (r.w >= 0 && r.h >= 0) return r;
   return {
     ...r,
@@ -373,11 +582,23 @@ function normalizeRect(r: RectStroke): RectStroke {
   };
 }
 
+function normalizeRect(r: RectStroke): RectStroke {
+  return normalizeBox(r);
+}
+
+// Phase 21 — sticky shares rect's drag-to-create flip (x = min, w = abs(w)).
+function normalizeSticky(s: StickyStroke): StickyStroke {
+  return normalizeBox(s);
+}
+
 function isStrokeMeaningful(s: Stroke): boolean {
   if (s.tool === 'pen') return s.points.length >= 2;
   if (s.tool === 'rect') return Math.abs(s.w) >= 4 && Math.abs(s.h) >= 4;
   if (s.tool === 'ellipse') return s.rx >= 2 && s.ry >= 2;
   if (s.tool === 'text') return s.text.trim().length > 0;
+  // Sticky below a readable floor is discarded like a 2×2 rect.
+  if (s.tool === 'sticky')
+    return Math.abs(s.w) >= STICKY_MIN_SIZE && Math.abs(s.h) >= STICKY_MIN_SIZE;
   return Math.hypot(s.x2 - s.x1, s.y2 - s.y1) >= 4;
 }
 
@@ -418,9 +639,29 @@ export function strokeBBox(
       h: Math.abs(s.y2 - s.y1),
     };
   }
-  // text → inherit from anchor
-  const host = anchors?.get(s.anchorId);
-  return host ? strokeBBox(host) : null;
+  if (s.tool === 'sticky') {
+    return {
+      x: Math.min(s.x, s.x + s.w),
+      y: Math.min(s.y, s.y + s.h),
+      w: Math.abs(s.w),
+      h: Math.abs(s.h),
+    };
+  }
+  // text — anchored inherits its host's bbox; standalone (Phase 21) gets a
+  // synthetic bbox from its world (x, y) so it's selectable and the context
+  // toolbar can position against it.
+  if (s.anchorId != null && s.anchorId !== '') {
+    const host = anchors?.get(s.anchorId);
+    return host ? strokeBBox(host) : null;
+  }
+  const tx = s.x ?? 0;
+  const ty = s.y ?? 0;
+  return {
+    x: tx,
+    y: ty,
+    w: Math.max(8, s.text.length * s.fontSize * 0.55),
+    h: s.fontSize * 1.2,
+  };
 }
 
 function isEditable(t: EventTarget | null): boolean {
@@ -454,93 +695,113 @@ function deriveFile(): string | undefined {
 const ANNOT_CSS = `
 .dc-annot-chrome {
   /* Stacks directly above the centered tool toolbar (which is bottom:16px,
-     32px tall → top edge ~ bottom:48px). 8 px gap → chrome at bottom:60px. */
+     32px tall → top edge ~ bottom:48px). 8 px gap → chrome at bottom:60px.
+     Phase 21 — dark "marker tray" matching the FigJam selection bar. */
   position: absolute;
   left: 50%;
-  bottom: 60px;
+  bottom: 64px;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 8px;
-  background: var(--maude-chrome-bg-0, rgba(255,255,255,0.98));
-  border: 1px solid var(--maude-chrome-fg-0, #1c1917);
-  border-radius: 8px;
-  padding: 6px 10px;
+  gap: 2px;
+  background: #26262b;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 5px 8px;
   font-family: var(--maude-chrome-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 11px;
-  color: var(--maude-chrome-fg-0, rgba(40,30,20,0.85));
+  color: rgba(255,255,255,0.85);
   z-index: 6;
-  box-shadow: 0 6px 24px var(--maude-chrome-shadow, color-mix(in oklab, #1c1917 10%, transparent));
+  box-shadow: 0 8px 28px rgba(0,0,0,0.34), 0 2px 6px rgba(0,0,0,0.22);
   user-select: none;
 }
-.dc-annot-chrome .dc-annot-swatches { display: flex; gap: 4px; }
+.dc-annot-chrome .dc-annot-swatches { display: flex; align-items: center; gap: 1px; }
 .dc-annot-chrome .dc-annot-sw {
-  width: 18px;
-  height: 18px;
-  border-radius: 3px;
-  border: 1px solid rgba(0,0,0,0.12);
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.16);
   cursor: pointer;
   padding: 0;
   appearance: none;
+  transition: transform 80ms ease;
 }
+.dc-annot-chrome .dc-annot-sw:hover { transform: scale(1.1); }
 .dc-annot-chrome .dc-annot-sw[aria-pressed="true"] {
-  box-shadow: 0 0 0 2px var(--maude-hud-accent, #d63b1f);
+  box-shadow: 0 0 0 2px #26262b, 0 0 0 3px rgba(255,255,255,0.92);
   border-color: transparent;
 }
 .dc-annot-chrome .dc-annot-sw:focus-visible {
-  outline: 2px solid var(--maude-hud-accent, #d63b1f);
-  outline-offset: 2px;
+  outline: 2px solid #ffffff;
+  outline-offset: 1px;
 }
 .dc-annot-chrome .dc-annot-sep {
   width: 1px;
-  align-self: stretch;
-  background: rgba(0,0,0,0.08);
-  margin: 0 2px;
+  height: 16px;
+  align-self: center;
+  background: rgba(255,255,255,0.09);
+  margin: 0 4px;
 }
 .dc-annot-chrome .dc-annot-fill {
-  width: 18px;
-  height: 18px;
-  border-radius: 3px;
-  border: 1px solid rgba(0,0,0,0.18);
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.16);
   cursor: pointer;
   padding: 0;
   appearance: none;
   position: relative;
+  transition: transform 80ms ease;
+}
+.dc-annot-chrome .dc-annot-fill:hover { transform: scale(1.1); }
+.dc-annot-chrome .dc-annot-fill:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 1px;
 }
 .dc-annot-chrome .dc-annot-fill--none {
-  background: #fff;
+  background: #3a3a40;
 }
 .dc-annot-chrome .dc-annot-fill--none::after {
   content: "";
-  position: absolute; inset: 2px;
+  position: absolute; inset: 4px;
+  border-radius: 50%;
   background:
-    linear-gradient(135deg, transparent 47%, #d63b1f 47%, #d63b1f 53%, transparent 53%);
+    linear-gradient(135deg, transparent 44%, rgba(255,255,255,0.55) 44%, rgba(255,255,255,0.55) 56%, transparent 56%);
 }
 .dc-annot-chrome .dc-annot-fill[aria-pressed="true"] {
-  box-shadow: 0 0 0 2px var(--maude-hud-accent, #d63b1f);
+  box-shadow: 0 0 0 2px #26262b, 0 0 0 3px rgba(255,255,255,0.92);
   border-color: transparent;
 }
-.dc-annot-chrome .dc-annot-btn {
+/* Phase 21 — icon buttons (light glyph on dark, white-tint active). */
+.dc-annot-chrome .dc-annot-ibtn {
   appearance: none;
   background: transparent;
-  border: 1px solid rgba(0,0,0,0.12);
-  border-radius: 3px;
-  padding: 4px 8px;
-  font: inherit;
-  color: inherit;
+  border: 0;
+  border-radius: 7px;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,0.78);
   cursor: pointer;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  padding: 0;
+  transition: background-color 80ms linear, color 80ms linear;
 }
-.dc-annot-chrome .dc-annot-btn[aria-pressed="true"] {
-  background: var(--maude-hud-accent, #d63b1f);
-  color: var(--maude-hud-accent-fg, #fff);
-  border-color: transparent;
+.dc-annot-chrome .dc-annot-ibtn:hover {
+  background: rgba(255,255,255,0.1);
+  color: #ffffff;
 }
-.dc-annot-chrome .dc-annot-btn:hover { background: rgba(0,0,0,0.04); }
-.dc-annot-chrome .dc-annot-btn:focus-visible {
-  outline: 2px solid var(--maude-hud-accent, #d63b1f);
-  outline-offset: 2px;
+.dc-annot-chrome .dc-annot-ibtn[aria-pressed="true"] {
+  background: rgba(255,255,255,0.18);
+  color: #ffffff;
+}
+.dc-annot-chrome .dc-annot-ibtn:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: -2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dc-annot-chrome .dc-annot-ibtn, .dc-annot-chrome .dc-annot-sw, .dc-annot-chrome .dc-annot-fill { transition: none; }
 }
 .dc-annot-input {
   position: absolute;
@@ -572,6 +833,25 @@ const ANNOT_CSS = `
   stroke: var(--maude-hud-accent, #d63b1f);
   stroke-width: 1;
   stroke-dasharray: 4 3;
+}
+/* Phase 21 — sticky-note body. Word-wrapped multi-line text inside the card's
+   foreignObject. The editor textarea (.dc-sticky-editor) mirrors the same box
+   metrics so the read↔edit swap doesn't shift the text. */
+.dc-sticky-body {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #2a2a28;
+  font-family: var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  line-height: 1.35;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: hidden;
 }
 `.trim();
 
@@ -610,7 +890,11 @@ function translateOne(s: Stroke, dx: number, dy: number): Stroke {
   if (s.tool === 'ellipse') return { ...s, cx: s.cx + dx, cy: s.cy + dy };
   if (s.tool === 'arrow')
     return { ...s, x1: s.x1 + dx, y1: s.y1 + dy, x2: s.x2 + dx, y2: s.y2 + dy };
-  return s; // text inherits its host's bbox
+  if (s.tool === 'sticky') return { ...s, x: s.x + dx, y: s.y + dy };
+  // text — anchored inherits its host's bbox (moves with the host); standalone
+  // (Phase 21) carries its own world (x, y) and translates directly.
+  if (s.anchorId != null && s.anchorId !== '') return s;
+  return { ...s, x: (s.x ?? 0) + dx, y: (s.y ?? 0) + dy };
 }
 
 /**
@@ -640,7 +924,7 @@ export { useAnnotationsVisibility } from './use-annotations-visibility.tsx';
 
 export function AnnotationsLayer() {
   ensureAnnotStyles();
-  const { tool, setTool, sticky } = useToolMode();
+  const { tool, setTool, sticky, tools } = useToolMode();
   const controller = useViewportControllerContext();
   const vp = controller?.viewport ?? null;
   const worldRef = useWorldRefContext();
@@ -652,6 +936,13 @@ export function AnnotationsLayer() {
   const [color, setColor] = useState<string>(DEFAULT_COLOR);
   const [fill, setFill] = useState<string | null>(null);
   const [thickness, setThickness] = useState<Thickness>(STROKE_WIDTH_THIN);
+  // Phase 21 — draw-time paper tint for the sticky tool (recolor-after via the
+  // context toolbar). Separate from `color` (ink for pen/rect/text/arrow).
+  const [stickyColor, setStickyColor] = useState<string>(DEFAULT_STICKY_COLOR);
+  // Phase 21 — a standalone-text caret waiting for its first keystroke. No
+  // stroke exists yet (mirrors anchored text: the stroke is born on commit,
+  // so an abandoned empty caret leaves nothing behind / no undo record).
+  const [pendingText, setPendingText] = useState<{ x: number; y: number } | null>(null);
   const visibilityCtx = useAnnotationsVisibility();
   const visible = visibilityCtx?.visible ?? true;
   const setVisible = useCallback(
@@ -679,7 +970,13 @@ export function AnnotationsLayer() {
   const strokesRef = useRef<Stroke[]>(strokes);
   strokesRef.current = strokes;
 
-  const isDraw = tool === 'pen' || tool === 'rect' || tool === 'arrow' || tool === 'ellipse';
+  const isDraw =
+    tool === 'pen' ||
+    tool === 'rect' ||
+    tool === 'arrow' ||
+    tool === 'ellipse' ||
+    tool === 'sticky' ||
+    tool === 'text';
   const isErase = tool === 'eraser';
   const isActive = isDraw || isErase;
   // T20 — rect + ellipse expose stroke weight too (FigJam ships thickness on
@@ -835,7 +1132,7 @@ export function AnnotationsLayer() {
       const set = new Set(ids);
       const prev = strokesRef.current;
       const next = prev.filter(
-        (s) => !set.has(s.id) && !(s.tool === 'text' && set.has(s.anchorId))
+        (s) => !set.has(s.id) && !(s.tool === 'text' && s.anchorId != null && set.has(s.anchorId))
       );
       if (next.length === prev.length) return;
       commitStrokes(prev, next);
@@ -983,6 +1280,30 @@ export function AnnotationsLayer() {
           x2: wx,
           y2: wy,
         });
+      } else if (tool === 'sticky') {
+        // Phase 21 — drag-create a paper card. Default size if the user just
+        // taps (no drag) is applied in endStroke.
+        setDrawing({
+          id,
+          tool: 'sticky',
+          color: stickyColor,
+          x: wx,
+          y: wy,
+          w: 0,
+          h: 0,
+          text: '',
+          fontSize: DEFAULT_FONT_SIZE,
+          cornerRadius: STICKY_CORNER_RADIUS,
+        });
+      } else if (tool === 'text') {
+        // Phase 21 — single click drops an editable caret at the click point.
+        // No stroke is created until the user commits real text (mirrors the
+        // anchored double-click flow), so an empty caret leaves nothing behind.
+        setPendingText({ x: wx, y: wy });
+        if (annotSel) annotSel.clear();
+        const stickyOnText = sticky.locked && sticky.tool === 'text';
+        if (!stickyOnText) setTool('move');
+        return true;
       }
       return true;
     },
@@ -991,6 +1312,7 @@ export function AnnotationsLayer() {
       color,
       fill,
       thickness,
+      stickyColor,
       supportsThickness,
       supportsFill,
       isActive,
@@ -998,6 +1320,9 @@ export function AnnotationsLayer() {
       visible,
       screenToWorld,
       eraseAt,
+      annotSel,
+      sticky,
+      setTool,
     ]
   );
 
@@ -1028,6 +1353,9 @@ export function AnnotationsLayer() {
         if (cur.tool === 'arrow') {
           return { ...cur, x2: wx, y2: wy };
         }
+        if (cur.tool === 'sticky') {
+          return { ...cur, w: wx - cur.x, h: wy - cur.y };
+        }
         return cur;
       });
     },
@@ -1041,6 +1369,15 @@ export function AnnotationsLayer() {
     if (!cur) return;
     let final: Stroke | null = cur;
     if (cur.tool === 'rect') final = normalizeRect(cur);
+    else if (cur.tool === 'sticky') {
+      const norm = normalizeSticky(cur);
+      // A bare tap (or a drag too small to be a usable card) drops a
+      // default-sized note at the tap point — FigJam parity.
+      final =
+        Math.abs(norm.w) < STICKY_MIN_SIZE || Math.abs(norm.h) < STICKY_MIN_SIZE
+          ? { ...norm, w: STICKY_DEFAULT_W, h: STICKY_DEFAULT_H }
+          : norm;
+    }
     if (final && !isStrokeMeaningful(final)) final = null;
     if (final) {
       const committed = final;
@@ -1051,6 +1388,9 @@ export function AnnotationsLayer() {
       // see + adjust it. annotSel is optional (some test harnesses mount
       // AnnotationsLayer without the provider), so guard the call.
       if (annotSel) annotSel.replace(committed.id);
+      // Phase 21 — a fresh sticky opens in edit mode (FigJam parity: drop a
+      // note, type immediately). Only meaningful deviation from rect/ellipse.
+      if (committed.tool === 'sticky') setEditingId(committed.id);
     }
     // T18 / T19 — flip the tool back to Move after every commit UNLESS sticky
     // mode is locked on this tool. Sticky lets the user draw many shapes in a
@@ -1144,7 +1484,12 @@ export function AnnotationsLayer() {
       if (
         id &&
         t &&
-        (t === 'pen' || t === 'rect' || t === 'ellipse' || t === 'arrow' || t === 'text')
+        (t === 'pen' ||
+          t === 'rect' ||
+          t === 'ellipse' ||
+          t === 'arrow' ||
+          t === 'text' ||
+          t === 'sticky')
       ) {
         return id;
       }
@@ -1155,7 +1500,7 @@ export function AnnotationsLayer() {
     // the main tool palette, the in-canvas draw chrome, the minimap, and the
     // right-click menu. Clicks on these route to their own handlers.
     const CHROME_SELECTOR =
-      '.dc-annot-ctx, .dc-tool-palette, .dc-annot-chrome, .dc-mm, .dc-context-menu, .dc-tp-popover, .dc-multi-artboard-tb, .dc-elem-ctx-tb, .dc-cv-eq-spacing-layer, .cm-composer, .cm-thread, .cm-mention-popup, .cm-pin, .dc-annot-resize-handle';
+      '.dc-annot-ctx, .dc-tool-palette, .dc-annot-chrome, .dc-mm, .dc-context-menu, .dc-tp-popover, .dc-multi-artboard-tb, .dc-elem-ctx-tb, .dc-cv-eq-spacing-layer, .cm-composer, .cm-thread, .cm-mention-popup, .cm-pin, .dc-annot-resize-handle, .dc-annot-editor';
 
     const onDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
@@ -1274,7 +1619,10 @@ export function AnnotationsLayer() {
         const yMax = Math.max(final.ay, final.by);
         const hits: string[] = [];
         for (const s of strokesStoreRef.current.strokes) {
-          if (s.tool === 'text') continue; // text inherits its host's bbox
+          // Anchored text inherits its host's bbox (selected with the host);
+          // standalone text (Phase 21) has its own synthetic bbox and IS
+          // marquee-selectable.
+          if (s.tool === 'text' && s.anchorId != null && s.anchorId !== '') continue;
           const bb = strokeBBox(s);
           if (!bb) continue;
           if (bb.x + bb.w >= xMin && bb.x <= xMax && bb.y + bb.h >= yMin && bb.y <= yMax) {
@@ -1302,7 +1650,9 @@ export function AnnotationsLayer() {
   const strokesStoreRef = useRef(strokesStore);
   strokesStoreRef.current = strokesStore;
 
-  // Double-click on a selected rect/ellipse enters text-edit mode.
+  // Double-click enters text-edit mode: rect/ellipse (anchored text), sticky
+  // (its own body), or a standalone text node (re-edit in place). Anchored text
+  // nodes are edited via their host, so a data-anchor-id text node is skipped.
   useEffect(() => {
     if (typeof document === 'undefined') return;
     if (tool !== 'move') return;
@@ -1312,7 +1662,13 @@ export function AnnotationsLayer() {
       if (!node) return;
       const id = node.getAttribute('data-id');
       const t = node.getAttribute('data-tool');
-      if (id && (t === 'rect' || t === 'ellipse')) {
+      if (!id) return;
+      if (t === 'rect' || t === 'ellipse' || t === 'sticky') {
+        e.preventDefault();
+        setEditingId(id);
+        return;
+      }
+      if (t === 'text' && !node.getAttribute('data-anchor-id')) {
         e.preventDefault();
         setEditingId(id);
       }
@@ -1355,6 +1711,103 @@ export function AnnotationsLayer() {
     },
     [commitStrokes]
   );
+
+  // Phase 21 — sticky body edit. Sticky text is freeform (newlines preserved,
+  // no trim) and the card persists even when blank, so this only updates text.
+  const commitStickyText = useCallback(
+    (id: string, text: string) => {
+      const prev = strokesRef.current;
+      const existing = prev.find((s) => s.id === id && s.tool === 'sticky') as
+        | StickyStroke
+        | undefined;
+      if (!existing || existing.text === text) return;
+      const next = prev.map((s) => (s.id === id ? { ...existing, text } : s));
+      commitStrokes(prev, next, 'edit sticky');
+    },
+    [commitStrokes]
+  );
+
+  // Phase 21 — re-edit an EXISTING standalone text node. Empty text deletes it
+  // (same rule as anchored text).
+  const commitStandaloneText = useCallback(
+    (id: string, text: string) => {
+      const trimmed = text.trim();
+      const prev = strokesRef.current;
+      const existing = prev.find((s) => s.id === id && s.tool === 'text') as TextStroke | undefined;
+      if (!existing) return;
+      if (trimmed.length === 0) {
+        commitStrokes(
+          prev,
+          prev.filter((s) => s.id !== id),
+          'delete text'
+        );
+        return;
+      }
+      if (existing.text === trimmed) return;
+      commitStrokes(
+        prev,
+        prev.map((s) => (s.id === id ? { ...existing, text: trimmed } : s)),
+        'edit text'
+      );
+    },
+    [commitStrokes]
+  );
+
+  // Phase 21 — born-on-commit standalone text (from the text-tool caret). An
+  // empty caret persists nothing — ONE undo record only when real text lands.
+  const createStandaloneText = useCallback(
+    (x: number, y: number, text: string) => {
+      const trimmed = text.trim();
+      if (trimmed.length === 0) return;
+      const prev = strokesRef.current;
+      const id = rid();
+      const next: Stroke[] = [
+        ...prev,
+        { id, tool: 'text', color, fontSize: DEFAULT_FONT_SIZE, text: trimmed, x, y },
+      ];
+      commitStrokes(prev, next, 'add text');
+      if (annotSel) annotSel.replace(id);
+    },
+    [commitStrokes, color, annotSel]
+  );
+
+  // Phase 21 — resolve what (if anything) is being edited, and route a single
+  // commit call to the right writer. `editingId` doubles as the host id
+  // (anchored) OR the sticky/standalone stroke id; `pendingText` is the
+  // not-yet-born text caret.
+  const editingTarget = useMemo<EditingTarget>(() => {
+    if (pendingText) return { kind: 'pending', x: pendingText.x, y: pendingText.y };
+    if (!editingId) return null;
+    const host = anchorsById.get(editingId);
+    if (host) return { kind: 'anchored', anchorId: editingId, host };
+    const s = strokesById.get(editingId);
+    if (s?.tool === 'sticky') return { kind: 'sticky', sticky: s };
+    if (s?.tool === 'text' && (s.anchorId == null || s.anchorId === ''))
+      return { kind: 'standalone', text: s };
+    return null;
+  }, [pendingText, editingId, anchorsById, strokesById]);
+
+  const editingTargetRef = useRef(editingTarget);
+  editingTargetRef.current = editingTarget;
+
+  const commitEditing = useCallback(
+    (text: string) => {
+      const target = editingTargetRef.current;
+      setEditingId(null);
+      setPendingText(null);
+      if (!target) return;
+      if (target.kind === 'anchored') commitText(target.anchorId, text);
+      else if (target.kind === 'sticky') commitStickyText(target.sticky.id, text);
+      else if (target.kind === 'standalone') commitStandaloneText(target.text.id, text);
+      else if (target.kind === 'pending') createStandaloneText(target.x, target.y, text);
+    },
+    [commitText, commitStickyText, commitStandaloneText, createStandaloneText]
+  );
+
+  const cancelEditing = useCallback(() => {
+    setEditingId(null);
+    setPendingText(null);
+  }, []);
 
   // Keyboard: arrow nudge + Backspace/Delete remove selected strokes.
   useEffect(() => {
@@ -1412,6 +1865,7 @@ export function AnnotationsLayer() {
         <AnnotationsInput
           isActive={isActive}
           visible={visible}
+          cursor={tools.find((t) => t.id === tool)?.cursor ?? 'crosshair'}
           beginStroke={beginStroke}
           moveStroke={moveStroke}
           endStroke={endStroke}
@@ -1424,25 +1878,20 @@ export function AnnotationsLayer() {
             selectMode={tool === 'move'}
             selectedStrokes={selectedStrokes}
             marquee={marquee}
-            editingId={editingId}
-            existingTextFor={(anchorId) =>
-              strokes.find((s) => s.tool === 'text' && s.anchorId === anchorId) as
-                | TextStroke
-                | undefined
-            }
-            onCommitText={(anchorId, text) => {
-              commitText(anchorId, text);
-              setEditingId(null);
-            }}
-            onCancelEdit={() => setEditingId(null)}
+            editingTarget={editingTarget}
+            onCommitEdit={commitEditing}
+            onCancelEdit={cancelEditing}
           />
         ) : null}
         <AnnotationContextToolbar />
         {visible && tool === 'move' ? <AnnotationResizeOverlay store={strokesStore} /> : null}
         {isActive ? (
           <AnnotationsChrome
+            tool={tool}
             color={color}
             setColor={setColor}
+            stickyColor={stickyColor}
+            setStickyColor={setStickyColor}
             supportsFill={supportsFill}
             fill={fill}
             setFill={setFill}
@@ -1466,12 +1915,16 @@ AnnotationsLayer.displayName = 'AnnotationsLayer';
 function AnnotationsInput({
   isActive,
   visible,
+  cursor,
   beginStroke,
   moveStroke,
   endStroke,
 }: {
   isActive: boolean;
   visible: boolean;
+  /** Active-tool cursor (crosshair / text / cell) — applied to the capture
+   *  overlay so the affordance shows over the whole canvas while drawing. */
+  cursor: string;
   beginStroke: (e: ReactPointerEvent<HTMLDivElement>, spaceHeld: boolean) => boolean;
   moveStroke: (e: ReactPointerEvent<HTMLDivElement>) => void;
   endStroke: () => void;
@@ -1509,7 +1962,10 @@ function AnnotationsInput({
     <div
       className="dc-annot-input"
       aria-hidden="true"
-      style={{ pointerEvents: interactive ? 'auto' : 'none' }}
+      style={{
+        pointerEvents: interactive ? 'auto' : 'none',
+        cursor: interactive ? cursor : 'default',
+      }}
       onPointerDown={(e) => {
         beginStroke(e, spaceHeldRef.current);
       }}
@@ -1534,9 +1990,8 @@ function AnnotationsSvg({
   selectMode,
   selectedStrokes,
   marquee,
-  editingId,
-  existingTextFor,
-  onCommitText,
+  editingTarget,
+  onCommitEdit,
   onCancelEdit,
 }: {
   worldRef: ReturnType<typeof useWorldRefContext>;
@@ -1545,9 +2000,8 @@ function AnnotationsSvg({
   selectMode: boolean;
   selectedStrokes: readonly Stroke[];
   marquee: { ax: number; ay: number; bx: number; by: number } | null;
-  editingId: string | null;
-  existingTextFor: (anchorId: string) => TextStroke | undefined;
-  onCommitText: (anchorId: string, text: string) => void;
+  editingTarget: EditingTarget;
+  onCommitEdit: (text: string) => void;
   onCancelEdit: () => void;
 }) {
   const [, force] = useState({});
@@ -1558,10 +2012,31 @@ function AnnotationsSvg({
   }, [worldRef]);
   const target = worldRef?.current ?? null;
   if (!target) return null;
+  // A sticky whose body is being edited hides its read-only text so the
+  // editor textarea (rendered below at the same bbox) isn't double-painted.
+  const editingStickyId = editingTarget?.kind === 'sticky' ? editingTarget.sticky.id : null;
+  const anchoredExisting =
+    editingTarget?.kind === 'anchored'
+      ? (strokes.find((s) => s.tool === 'text' && s.anchorId === editingTarget.anchorId) as
+          | TextStroke
+          | undefined)
+      : undefined;
   return createPortal(
     <svg className="dc-annot-svg" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        {/* Phase 21 — soft "lifted paper" drop shadow for sticky notes. */}
+        <filter id="dc-sticky-shadow" x="-25%" y="-25%" width="150%" height="170%">
+          <feDropShadow dx="0" dy="4" stdDeviation="8" floodColor="#000000" floodOpacity="0.28" />
+        </filter>
+      </defs>
       {strokes.map((s) => (
-        <StrokeNode key={s.id} stroke={s} anchorsById={anchorsById} interactive={selectMode} />
+        <StrokeNode
+          key={s.id}
+          stroke={s}
+          anchorsById={anchorsById}
+          interactive={selectMode}
+          editing={s.id === editingStickyId}
+        />
       ))}
       {selectedStrokes.map((s) => (
         <SelectionHalo
@@ -1582,12 +2057,41 @@ function AnnotationsSvg({
           vectorEffect="non-scaling-stroke"
         />
       ) : null}
-      {editingId ? (
+      {editingTarget?.kind === 'anchored' ? (
         <TextEditor
-          anchorId={editingId}
-          host={anchorsById.get(editingId) ?? null}
-          existing={existingTextFor(editingId)}
-          onCommit={onCommitText}
+          anchorId={editingTarget.anchorId}
+          host={editingTarget.host}
+          existing={anchoredExisting}
+          onCommit={(_anchorId, text) => onCommitEdit(text)}
+          onCancel={onCancelEdit}
+        />
+      ) : null}
+      {editingTarget?.kind === 'sticky' ? (
+        <StickyEditor
+          sticky={editingTarget.sticky}
+          onCommit={onCommitEdit}
+          onCancel={onCancelEdit}
+        />
+      ) : null}
+      {editingTarget?.kind === 'standalone' ? (
+        <StandaloneTextEditor
+          x={editingTarget.text.x ?? 0}
+          y={editingTarget.text.y ?? 0}
+          fontSize={editingTarget.text.fontSize}
+          color={editingTarget.text.color}
+          initialText={editingTarget.text.text}
+          onCommit={onCommitEdit}
+          onCancel={onCancelEdit}
+        />
+      ) : null}
+      {editingTarget?.kind === 'pending' ? (
+        <StandaloneTextEditor
+          x={editingTarget.x}
+          y={editingTarget.y}
+          fontSize={DEFAULT_FONT_SIZE}
+          color={DEFAULT_COLOR}
+          initialText=""
+          onCommit={onCommitEdit}
           onCancel={onCancelEdit}
         />
       ) : null}
@@ -1653,6 +2157,7 @@ function TextEditor({
     <foreignObject x={bbox.x} y={bbox.y} width={Math.max(20, bbox.w)} height={Math.max(20, bbox.h)}>
       <div
         ref={ref}
+        className="dc-annot-editor"
         contentEditable
         suppressContentEditableWarning
         aria-label="Edit annotation text"
@@ -1687,6 +2192,154 @@ function TextEditor({
         }}
       >
         {initial}
+      </div>
+    </foreignObject>
+  );
+}
+
+// Phase 21 — sticky body editor. A textarea hosted in a foreignObject at the
+// card's bbox, so it word-wraps + moves with CSS zoom natively. Commit on blur,
+// cancel on Esc; Enter inserts a newline (sticky is multi-line).
+function StickyEditor({
+  sticky,
+  onCommit,
+  onCancel,
+}: {
+  sticky: StickyStroke;
+  onCommit: (text: string) => void;
+  onCancel: () => void;
+}) {
+  // A flex-centered contentEditable (NOT a textarea) so the edit view matches
+  // the committed `.dc-sticky-body` exactly — text stays centered, no jump on
+  // commit. Multi-line: Enter inserts a line break; Esc cancels; blur commits.
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.focus();
+    try {
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(r);
+      }
+    } catch {
+      /* selection API blocked */
+    }
+  }, []);
+  const x = Math.min(sticky.x, sticky.x + sticky.w);
+  const y = Math.min(sticky.y, sticky.y + sticky.h);
+  const w = Math.abs(sticky.w);
+  const h = Math.abs(sticky.h);
+  return (
+    <foreignObject x={x} y={y} width={w} height={h}>
+      <div
+        xmlns="http://www.w3.org/1999/xhtml"
+        ref={ref}
+        className="dc-annot-editor dc-sticky-body"
+        contentEditable
+        suppressContentEditableWarning
+        aria-label="Edit sticky note text"
+        style={{ fontSize: `${sticky.fontSize}px`, outline: 'none', cursor: 'text' }}
+        onBlur={() => onCommit(ref.current?.innerText ?? '')}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            onCancel();
+          }
+        }}
+      >
+        {sticky.text}
+      </div>
+    </foreignObject>
+  );
+}
+
+// Phase 21 — standalone text editor. A single-line contentEditable box anchored
+// at the world (x, y). Enter / blur / outside-click commit; Esc cancels.
+function StandaloneTextEditor({
+  x,
+  y,
+  fontSize,
+  color,
+  initialText,
+  onCommit,
+  onCancel,
+}: {
+  x: number;
+  y: number;
+  fontSize: number;
+  color: string;
+  initialText: string;
+  onCommit: (text: string) => void;
+  onCancel: () => void;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.focus();
+    try {
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(r);
+      }
+    } catch {
+      /* selection API blocked */
+    }
+  }, []);
+  // Commit on outside click.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onDown = (e: PointerEvent) => {
+      const el = ref.current;
+      if (!el) return;
+      if (el.contains(e.target as Node)) return;
+      onCommit(el.innerText || '');
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    return () => document.removeEventListener('pointerdown', onDown, true);
+  }, [onCommit]);
+  return (
+    <foreignObject x={x} y={y} width={600} height={Math.max(24, fontSize * 1.6)}>
+      <div
+        xmlns="http://www.w3.org/1999/xhtml"
+        ref={ref}
+        className="dc-annot-editor"
+        contentEditable
+        suppressContentEditableWarning
+        aria-label="Edit text"
+        style={{
+          display: 'inline-block',
+          minWidth: '8px',
+          whiteSpace: 'pre',
+          padding: '0 2px',
+          color,
+          fontSize: `${fontSize}px`,
+          fontFamily: 'var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
+          lineHeight: 1.2,
+          outline: 'none',
+          background: 'transparent',
+          cursor: 'text',
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            onCancel();
+            return;
+          }
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            onCommit(ref.current?.innerText || '');
+          }
+        }}
+      >
+        {initialText}
       </div>
     </foreignObject>
   );
@@ -1809,10 +2462,13 @@ function StrokeNode({
   stroke,
   anchorsById,
   interactive,
+  editing = false,
 }: {
   stroke: Stroke;
   anchorsById: Map<string, RectStroke | EllipseStroke>;
   interactive: boolean;
+  /** Phase 21 — sticky-only: hide the read-only body while its editor is up. */
+  editing?: boolean;
 }) {
   // In Move mode, individual stroke nodes claim pointer events so we can
   // hit-test them from the doc-level capture listener. In draw mode the
@@ -1820,27 +2476,87 @@ function StrokeNode({
   const hitMode = interactive ? 'visiblePainted' : ('none' as const);
   const strokeHit = interactive ? 'stroke' : ('none' as const);
   if (stroke.tool === 'text') {
-    const host = anchorsById.get(stroke.anchorId);
-    const bbox = host ? strokeBBox(host) : null;
-    if (!bbox) return null;
-    const cx = bbox.x + bbox.w / 2;
-    const cy = bbox.y + bbox.h / 2;
+    // Anchored text renders centered in its host; standalone (Phase 21) renders
+    // top-left-anchored at its own world (x, y).
+    if (stroke.anchorId != null && stroke.anchorId !== '') {
+      const host = anchorsById.get(stroke.anchorId);
+      const bbox = host ? strokeBBox(host) : null;
+      if (!bbox) return null;
+      const cx = bbox.x + bbox.w / 2;
+      const cy = bbox.y + bbox.h / 2;
+      return (
+        <text
+          data-id={stroke.id}
+          data-tool="text"
+          data-anchor-id={stroke.anchorId}
+          data-font-size={stroke.fontSize}
+          x={cx}
+          y={cy}
+          fill={stroke.color}
+          fontSize={stroke.fontSize}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          style={{
+            fontFamily: 'var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
+          }}
+        >
+          {stroke.text}
+        </text>
+      );
+    }
     return (
       <text
         data-id={stroke.id}
         data-tool="text"
-        data-anchor-id={stroke.anchorId}
         data-font-size={stroke.fontSize}
-        x={cx}
-        y={cy}
+        x={stroke.x ?? 0}
+        y={stroke.y ?? 0}
         fill={stroke.color}
         fontSize={stroke.fontSize}
-        textAnchor="middle"
-        dominantBaseline="middle"
+        textAnchor="start"
+        dominantBaseline="hanging"
+        pointerEvents={interactive ? 'visiblePainted' : 'none'}
         style={{ fontFamily: 'var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)' }}
       >
         {stroke.text}
       </text>
+    );
+  }
+  if (stroke.tool === 'sticky') {
+    const x = Math.min(stroke.x, stroke.x + stroke.w);
+    const y = Math.min(stroke.y, stroke.y + stroke.h);
+    const w = Math.abs(stroke.w);
+    const h = Math.abs(stroke.h);
+    const r = stroke.cornerRadius ?? STICKY_CORNER_RADIUS;
+    return (
+      <g data-id={stroke.id} data-tool="sticky" pointerEvents={hitMode}>
+        {/* Paper card: soft drop shadow + hairline edge so it reads as a
+            lifted sticky, not a flat colored box (FigJam-style). */}
+        <rect
+          x={x}
+          y={y}
+          width={w}
+          height={h}
+          rx={r}
+          ry={r}
+          fill={stroke.color}
+          stroke="rgba(0,0,0,0.05)"
+          strokeWidth={1}
+          vectorEffect="non-scaling-stroke"
+          filter="url(#dc-sticky-shadow)"
+        />
+        {editing ? null : (
+          <foreignObject x={x} y={y} width={w} height={h} pointerEvents="none">
+            <div
+              xmlns="http://www.w3.org/1999/xhtml"
+              className="dc-sticky-body"
+              style={{ fontSize: `${stroke.fontSize}px` }}
+            >
+              {stroke.text}
+            </div>
+          </foreignObject>
+        )}
+      </g>
     );
   }
   const common = {
@@ -1858,6 +2574,7 @@ function StrokeNode({
   if (stroke.tool === 'rect') {
     const x = Math.min(stroke.x, stroke.x + stroke.w);
     const y = Math.min(stroke.y, stroke.y + stroke.h);
+    const r = stroke.cornerRadius ?? 0;
     return (
       <rect
         {...common}
@@ -1866,6 +2583,8 @@ function StrokeNode({
         y={y}
         width={Math.abs(stroke.w)}
         height={Math.abs(stroke.h)}
+        rx={r}
+        ry={r}
         pointerEvents={hitMode}
       />
     );
@@ -1883,11 +2602,31 @@ function StrokeNode({
       />
     );
   }
-  const head = arrowHeadPoints(stroke.x1, stroke.y1, stroke.x2, stroke.y2, stroke.width);
+  // arrow — Phase 21 renders per-side heads + optional dash.
+  const endHead = stroke.endHead ?? 'triangle';
+  const startHead = stroke.startHead ?? 'none';
+  const dashed = stroke.dashed ?? false;
   return (
     <g {...common} fill="none" pointerEvents={hitMode}>
-      <line x1={stroke.x1} y1={stroke.y1} x2={stroke.x2} y2={stroke.y2} />
-      <polyline points={head} fill={stroke.color} />
+      <line
+        x1={stroke.x1}
+        y1={stroke.y1}
+        x2={stroke.x2}
+        y2={stroke.y2}
+        strokeDasharray={dashed ? '6 4' : undefined}
+      />
+      {startHead === 'triangle' ? (
+        <polyline
+          points={arrowHeadPoints(stroke.x2, stroke.y2, stroke.x1, stroke.y1, stroke.width)}
+          fill={stroke.color}
+        />
+      ) : null}
+      {endHead === 'triangle' ? (
+        <polyline
+          points={arrowHeadPoints(stroke.x1, stroke.y1, stroke.x2, stroke.y2, stroke.width)}
+          fill={stroke.color}
+        />
+      ) : null}
     </g>
   );
 }
@@ -1897,8 +2636,11 @@ function StrokeNode({
 // + presentation toggle + help button.
 
 function AnnotationsChrome({
+  tool,
   color,
   setColor,
+  stickyColor,
+  setStickyColor,
   supportsFill,
   fill,
   setFill,
@@ -1906,8 +2648,11 @@ function AnnotationsChrome({
   thickness,
   setThickness,
 }: {
+  tool: Tool;
   color: string;
   setColor: (c: string) => void;
+  stickyColor: string;
+  setStickyColor: (c: string) => void;
   supportsFill: boolean;
   fill: string | null;
   setFill: (f: string | null) => void;
@@ -1915,10 +2660,32 @@ function AnnotationsChrome({
   thickness: Thickness;
   setThickness: (t: Thickness) => void;
 }) {
+  // Sticky tool picks a paper tint (its own palette); every other draw tool
+  // picks ink from the stroke PALETTE.
+  if (tool === 'sticky') {
+    return (
+      <div className="dc-annot-chrome" role="toolbar" aria-label="Sticky note tools">
+        <div className="dc-annot-swatches" role="radiogroup" aria-label="Sticky color">
+          {STICKY_PALETTE.map((c) => (
+            <button
+              key={c}
+              type="button"
+              className="dc-annot-sw"
+              aria-pressed={c === stickyColor}
+              aria-label={`Sticky color ${c}`}
+              title={`Sticky color ${c}`}
+              style={{ background: c }}
+              onClick={() => setStickyColor(c)}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="dc-annot-chrome" role="toolbar" aria-label="Annotation tools">
       <div className="dc-annot-swatches" role="radiogroup" aria-label="Stroke color">
-        {PALETTE.map((c) => (
+        {STROKE_PALETTE.map((c) => (
           <button
             key={c}
             type="button"
@@ -1963,21 +2730,23 @@ function AnnotationsChrome({
           <div className="dc-annot-sep" />
           <button
             type="button"
-            className="dc-annot-btn"
+            className="dc-annot-ibtn"
+            aria-label="Thin stroke"
             aria-pressed={thickness === STROKE_WIDTH_THIN}
             title="Thin (3px)"
             onClick={() => setThickness(STROKE_WIDTH_THIN)}
           >
-            Thin
+            <IconLineThin />
           </button>
           <button
             type="button"
-            className="dc-annot-btn"
+            className="dc-annot-ibtn"
+            aria-label="Thick stroke"
             aria-pressed={thickness === STROKE_WIDTH_THICK}
             title="Thick (6px)"
             onClick={() => setThickness(STROKE_WIDTH_THICK)}
           >
-            Thick
+            <IconLineThick />
           </button>
         </>
       ) : null}

@@ -13,6 +13,7 @@
     "typecheck": "bun tsc --noEmit"
   },
   "devDependencies": {
+    "@happy-dom/global-registrator": "^20.9.0",
     "@oxc-parser/binding-darwin-arm64": "0.131.0",
     "@oxc-parser/binding-darwin-x64": "0.131.0",
     "@oxc-parser/binding-linux-arm64-gnu": "0.131.0",
@@ -24,6 +25,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "bun-types": "^1.3.14",
+    "happy-dom": "^20.9.0",
     "playwright": "^1.60.0",
     "typescript": "^6.0.3"
   },

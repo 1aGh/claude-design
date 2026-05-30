@@ -229,6 +229,20 @@ describe('input-router / keydown — Phase 5 draw tools', () => {
     });
   });
 
+  test('N → tool sticky (Phase 21)', () => {
+    expect(classify(base({ type: 'keydown', key: 'n' }))).toEqual({
+      kind: 'tool',
+      tool: 'sticky',
+    });
+  });
+
+  test('T → tool text (Phase 21)', () => {
+    expect(classify(base({ type: 'keydown', key: 't' }))).toEqual({
+      kind: 'tool',
+      tool: 'text',
+    });
+  });
+
   test('uppercase B (shift held) — still maps to pen (lowercased)', () => {
     expect(classify(base({ type: 'keydown', key: 'B', shiftKey: true }))).toEqual({
       kind: 'tool',
@@ -266,6 +280,13 @@ describe('input-router / pointer events — Phase 5 annotation tools', () => {
 
   test('pointermove in ellipse tool → no-op (SVG overlay owns it)', () => {
     expect(classify(base({ type: 'pointermove', activeTool: 'ellipse' })).kind).toBe('no-op');
+  });
+
+  test('sticky + text tools own bare pointer events (Phase 21 — SVG overlay claims)', () => {
+    for (const activeTool of ['sticky', 'text'] as const) {
+      expect(classify(base({ type: 'pointerdown', activeTool, button: 0 })).kind).toBe('no-op');
+      expect(classify(base({ type: 'pointermove', activeTool })).kind).toBe('no-op');
+    }
   });
 
   test('cmd+left-click in arrow tool → select replace (escape hatch to move)', () => {

@@ -14,11 +14,14 @@ import {
   type EllipseStroke,
   type PenStroke,
   type RectStroke,
+  STICKY_PALETTE,
+  type StickyStroke,
   type Stroke,
   type TextStroke,
   arrowHeadPoints,
   penPathD,
   rid,
+  strokeBBox,
   strokeHitTest,
   strokesShallowEqual,
   strokesToSvg,
@@ -459,5 +462,233 @@ describe('annotations-layer / strokesShallowEqual (drag no-op gate)', () => {
 
   test('empty arrays → true', () => {
     expect(strokesShallowEqual([], [])).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 21 — sticky / standalone-text / rect-radius / arrow-heads write path.
+// Parse + byte-identical round-trip live in annotations-roundtrip.test.ts
+// (they need a DOMParser, registered there via happy-dom).
+
+describe('annotations-layer / Phase 21 sticky serialization', () => {
+  const sticky: StickyStroke = {
+    id: 'st1',
+    tool: 'sticky',
+    color: STICKY_PALETTE[0],
+    x: 40,
+    y: 50,
+    w: 200,
+    h: 160,
+    text: 'approve copy?',
+    fontSize: 14,
+    cornerRadius: 8,
+  };
+
+  test('sticky → <g data-tool="sticky"> with rect + inert <text> body', () => {
+    const svg = strokesToSvg([sticky]);
+    expect(svg).toContain('data-id="st1"');
+    expect(svg).toContain('data-tool="sticky"');
+    expect(svg).toContain('data-r="8"');
+    expect(svg).toContain('data-fs="14"');
+    expect(svg).toContain(`fill="${STICKY_PALETTE[0]}"`);
+    expect(svg).toContain('<rect x="40" y="50" width="200" height="160" rx="8" ry="8"/>');
+    // Body text lives in an allowlisted <text> (survives sanitizeAnnotationSvg,
+    // which strips <foreignObject>). NEVER a foreignObject in the persisted SVG.
+    expect(svg).not.toContain('foreignObject');
+    expect(svg).toContain('>approve copy?</text>');
+  });
+
+  test('sticky default color is the yellow paper tint (slot 0)', () => {
+    expect(STICKY_PALETTE[0]).toBe('#ffe27a');
+    expect(STICKY_PALETTE).toHaveLength(6);
+  });
+
+  test('sticky body text is HTML-escaped (no tag injection)', () => {
+    const svg = strokesToSvg([{ ...sticky, text: '<script>x</script>' }]);
+    expect(svg).toContain('&lt;script>x&lt;/script>');
+    expect(svg).not.toMatch(/<script[\s>]/);
+  });
+});
+
+describe('annotations-layer / Phase 21 rect corner radius serialization', () => {
+  const base: RectStroke = {
+    id: 'r',
+    tool: 'rect',
+    color: '#1d6cf0',
+    width: 2,
+    x: 0,
+    y: 0,
+    w: 50,
+    h: 50,
+  };
+
+  test('cornerRadius 0 (or absent) emits NO rx/ry/data-r (byte-compat)', () => {
+    expect(strokesToSvg([base])).not.toContain('rx=');
+    expect(strokesToSvg([{ ...base, cornerRadius: 0 }])).not.toContain('data-r=');
+  });
+
+  test('cornerRadius 8 emits rx/ry + data-r', () => {
+    const svg = strokesToSvg([{ ...base, cornerRadius: 8 }]);
+    expect(svg).toContain('rx="8" ry="8" data-r="8"');
+  });
+
+  test('cornerRadius 999 (pill) round-trips the literal value', () => {
+    expect(strokesToSvg([{ ...base, cornerRadius: 999 }])).toContain('data-r="999"');
+  });
+});
+
+describe('annotations-layer / Phase 21 arrow heads + dash serialization', () => {
+  const base: ArrowStroke = {
+    id: 'a',
+    tool: 'arrow',
+    color: '#1a8f3e',
+    width: 2,
+    x1: 0,
+    y1: 0,
+    x2: 100,
+    y2: 0,
+  };
+
+  test('default arrow (endHead triangle, no start, solid) emits the legacy form', () => {
+    const svg = strokesToSvg([base]);
+    // Exactly one polyline (the end head), no data-* head attrs, no dasharray.
+    expect(svg.match(/<polyline/g) ?? []).toHaveLength(1);
+    expect(svg).not.toContain('data-start-head');
+    expect(svg).not.toContain('data-end-head');
+    expect(svg).not.toContain('data-dash');
+    expect(svg).not.toContain('stroke-dasharray');
+  });
+
+  test('no heads (line) emits zero polylines + data-end-head="none"', () => {
+    const svg = strokesToSvg([{ ...base, startHead: 'none', endHead: 'none' }]);
+    expect(svg.match(/<polyline/g) ?? []).toHaveLength(0);
+    expect(svg).toContain('data-end-head="none"');
+    expect(svg).not.toContain('data-start-head');
+  });
+
+  test('both heads emit two polylines + data-start-head="triangle"', () => {
+    const svg = strokesToSvg([{ ...base, startHead: 'triangle', endHead: 'triangle' }]);
+    expect(svg.match(/<polyline/g) ?? []).toHaveLength(2);
+    expect(svg).toContain('data-start-head="triangle"');
+    expect(svg).not.toContain('data-end-head'); // triangle is the default
+  });
+
+  test('start-only head: one polyline + both head data-attrs', () => {
+    const svg = strokesToSvg([{ ...base, startHead: 'triangle', endHead: 'none' }]);
+    expect(svg.match(/<polyline/g) ?? []).toHaveLength(1);
+    expect(svg).toContain('data-start-head="triangle"');
+    expect(svg).toContain('data-end-head="none"');
+  });
+
+  test('dashed arrow emits stroke-dasharray + data-dash="1"', () => {
+    const svg = strokesToSvg([{ ...base, dashed: true }]);
+    expect(svg).toContain('stroke-dasharray="6 4"');
+    expect(svg).toContain('data-dash="1"');
+  });
+});
+
+describe('annotations-layer / Phase 21 standalone text serialization', () => {
+  test('standalone text writes x/y and OMITS data-anchor-id', () => {
+    const t: TextStroke = {
+      id: 't-std',
+      tool: 'text',
+      color: '#1a1a1a',
+      fontSize: 14,
+      text: 'label',
+      x: 120,
+      y: 80,
+    };
+    const svg = strokesToSvg([t]);
+    expect(svg).toContain('data-tool="text"');
+    expect(svg).toContain('x="120"');
+    expect(svg).toContain('y="80"');
+    expect(svg).not.toContain('data-anchor-id');
+    expect(svg).toContain('>label</text>');
+  });
+
+  test('anchored text still writes data-anchor-id (back-compat, unchanged)', () => {
+    const t: TextStroke = {
+      id: 't-anc',
+      tool: 'text',
+      color: '#1a1a1a',
+      fontSize: 14,
+      text: 'anchored',
+      anchorId: 'r-host',
+    };
+    const svg = strokesToSvg([t]);
+    expect(svg).toContain('data-anchor-id="r-host"');
+    expect(svg).not.toContain('x=');
+  });
+});
+
+describe('annotations-layer / Phase 21 sticky + standalone-text geometry', () => {
+  const sticky: StickyStroke = {
+    id: 'st',
+    tool: 'sticky',
+    color: STICKY_PALETTE[2],
+    x: 10,
+    y: 20,
+    w: 200,
+    h: 160,
+    text: 'note',
+    fontSize: 14,
+  };
+
+  test('sticky bbox is its rect extent', () => {
+    expect(strokeBBox(sticky)).toEqual({ x: 10, y: 20, w: 200, h: 160 });
+  });
+
+  test('sticky bbox normalizes negative extent (mid-drag)', () => {
+    expect(strokeBBox({ ...sticky, x: 100, y: 100, w: -40, h: -30 })).toEqual({
+      x: 60,
+      y: 70,
+      w: 40,
+      h: 30,
+    });
+  });
+
+  test('sticky is a filled-rect hit anywhere inside', () => {
+    expect(strokeHitTest(sticky, 100, 100, 4)).toBe(true); // interior
+    expect(strokeHitTest(sticky, 10, 20, 4)).toBe(true); // corner
+    expect(strokeHitTest(sticky, 500, 500, 4)).toBe(false); // far outside
+  });
+
+  test('standalone text has a synthetic selectable bbox at its (x, y)', () => {
+    const t: TextStroke = {
+      id: 't',
+      tool: 'text',
+      color: '#000',
+      fontSize: 14,
+      text: 'hello',
+      x: 50,
+      y: 60,
+    };
+    const bb = strokeBBox(t);
+    expect(bb?.x).toBe(50);
+    expect(bb?.y).toBe(60);
+    expect(bb?.w).toBeGreaterThan(0);
+    expect(bb?.h).toBeCloseTo(14 * 1.2, 4);
+  });
+
+  test('standalone text is eraser-hittable; anchored text is not', () => {
+    const std: TextStroke = {
+      id: 't',
+      tool: 'text',
+      color: '#000',
+      fontSize: 14,
+      text: 'hi',
+      x: 0,
+      y: 0,
+    };
+    expect(strokeHitTest(std, 2, 2, 4)).toBe(true);
+    const anchored: TextStroke = {
+      id: 't2',
+      tool: 'text',
+      color: '#000',
+      fontSize: 14,
+      text: 'hi',
+      anchorId: 'host',
+    };
+    expect(strokeHitTest(anchored, 2, 2, 4)).toBe(false);
   });
 });

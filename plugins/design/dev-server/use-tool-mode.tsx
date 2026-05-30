@@ -21,6 +21,7 @@ import {
   useState,
 } from 'react';
 
+import { TOOL_CURSORS } from './canvas-cursors.ts';
 import type { Tool } from './input-router.tsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -35,19 +36,21 @@ export interface ToolDescriptor {
   cursor: string;
 }
 
+// Phase 21 — every tool ships a custom 32×32 SVG cursor (canvas-cursors.ts)
+// with a white outline halo so the glyph reads on any background. The native
+// crosshair/text/cell were thin + tiny ("pen almost invisible"); these mirror
+// the tool-palette icons. `move` keeps the system arrow on purpose.
 export const DEFAULT_TOOLS: readonly ToolDescriptor[] = Object.freeze([
-  { id: 'move', label: 'Move', shortcut: 'V', cursor: 'default' },
-  { id: 'hand', label: 'Hand', shortcut: 'H', cursor: 'grab' },
-  { id: 'comment', label: 'Comment', shortcut: 'C', cursor: 'crosshair' },
-  // Phase 5 — draw / annotation tools. Cursors stay as `crosshair` for pen /
-  // rect / arrow (the pen-tip glyph is reserved for the system text caret).
-  // Eraser uses `cell` as the closest cross-browser substitute for a rubber
-  // affordance (no native rubber cursor exists).
-  { id: 'pen', label: 'Pen', shortcut: 'B', cursor: 'crosshair' },
-  { id: 'rect', label: 'Rect', shortcut: 'R', cursor: 'crosshair' },
-  { id: 'ellipse', label: 'Ellipse', shortcut: 'O', cursor: 'crosshair' },
-  { id: 'arrow', label: 'Arrow', shortcut: 'A', cursor: 'crosshair' },
-  { id: 'eraser', label: 'Eraser', shortcut: 'E', cursor: 'cell' },
+  { id: 'move', label: 'Move', shortcut: 'V', cursor: TOOL_CURSORS.move },
+  { id: 'hand', label: 'Hand', shortcut: 'H', cursor: TOOL_CURSORS.hand },
+  { id: 'comment', label: 'Comment', shortcut: 'C', cursor: TOOL_CURSORS.comment },
+  { id: 'pen', label: 'Pen', shortcut: 'B', cursor: TOOL_CURSORS.pen },
+  { id: 'rect', label: 'Rect', shortcut: 'R', cursor: TOOL_CURSORS.rect },
+  { id: 'ellipse', label: 'Ellipse', shortcut: 'O', cursor: TOOL_CURSORS.ellipse },
+  { id: 'sticky', label: 'Sticky', shortcut: 'N', cursor: TOOL_CURSORS.sticky },
+  { id: 'arrow', label: 'Arrow', shortcut: 'A', cursor: TOOL_CURSORS.arrow },
+  { id: 'text', label: 'Text', shortcut: 'T', cursor: TOOL_CURSORS.text },
+  { id: 'eraser', label: 'Eraser', shortcut: 'E', cursor: TOOL_CURSORS.eraser },
 ]);
 
 interface ToolContextValue {

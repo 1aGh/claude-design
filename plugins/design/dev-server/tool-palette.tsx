@@ -189,7 +189,9 @@ function ensurePaletteStyles(): void {
 }
 
 const NAV_TOOLS = ['move', 'hand', 'comment'] as const;
-const DRAW_TOOLS = ['pen', 'rect', 'ellipse', 'arrow', 'eraser'] as const;
+// Phase 21 — sticky clusters with the paper primitives (after ellipse); text
+// sits at the constructive end before the destructive eraser, which stays last.
+const DRAW_TOOLS = ['pen', 'rect', 'ellipse', 'sticky', 'arrow', 'text', 'eraser'] as const;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Component

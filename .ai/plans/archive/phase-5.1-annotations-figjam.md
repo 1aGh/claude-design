@@ -455,3 +455,14 @@ The Phase 5 scenario gap (`canvas-annotations`) is subsumed by `canvas-annotatio
 - Run the formal `a11y-auditor` pass against the new chrome before the next ship-and-tag cycle.
 - Pilot the full `canvas-annotations-figjam` scenario end-to-end (14 steps) — gives us the "0 blockers parity" gate the plan asked for.
 - Consider a DDR formalizing the "chrome container = `overflow: visible`" rule so the trap doesn't recur a third time.
+
+---
+
+## Phase 21 follow-up (annotation vocabulary expansion — 2026-05-30)
+
+[`phase-21-annotation-vocabulary-figjam.md`](../phase-21-annotation-vocabulary-figjam.md) **extends** this phase's schema, render path, and selection store — same `Stroke` union, same `commitStrokes` undo sink (DDR-049), same `.annotations.svg` wire format — with three FigJam-parity additions: **sticky notes** (`StickyStroke`), **standalone text** (`TextStroke.anchorId` relaxed to optional + world `x/y`), and **shape/arrow polish** (rect `cornerRadius`; arrow `startHead`/`endHead`/`dashed`). New tools `N` (sticky) + `T` (text) join the palette; context toolbar gains `Square/Soft/Pill`, `None/Start/End/Both`, and `Dash` chip groups. Every legacy `.annotations.svg` still loads byte-identical (canary fixture `test/fixtures/phase-20-annotations.svg`).
+
+**Two divergences from the Phase-21 plan worth flagging here so future readers see them next to the schema they touch:**
+
+1. **Sticky text is persisted in an allowlisted `<text>` child, NOT a `<foreignObject>`.** The plan assumed a persisted `foreignObject` was fine ("Chrome/Safari render it identically"). It is not — `sanitizeAnnotationSvg` (DDR-060 F1) strips `<foreignObject>` on every PUT as an XSS vector, so a foreignObject-persisted sticky would lose its text on the first save. The live in-canvas render still uses a `foreignObject` (React DOM, never sanitized) for word-wrap; the persisted form is `<g data-tool="sticky"><rect .../><text data-sticky-body>…</text></g>` (all allowlisted). Verified end-to-end: a browser-authored sticky survives `sanitizeAnnotationSvg` byte-intact and re-parses (tests in `test/annotations-roundtrip.test.ts`).
+2. **The parse-path tests need a DOMParser, which bun:test does not expose.** Added `happy-dom` + `@happy-dom/global-registrator` as **devDependencies**, registered file-scoped (beforeAll/afterAll) in `test/annotations-roundtrip.test.ts` only — the rest of the suite stays DOM-free. This is what finally makes the "live smoke" + byte-identical-round-trip gate this very retro asked for an actual automated test rather than a manual step. (The Phase-21 live smoke was still run via agent-browser: sticky create/edit/resize/recolor, standalone text, arrow Both+Dash, reload-persists — 0 console errors.)

@@ -12,7 +12,7 @@ import {
 } from '../use-tool-mode.tsx';
 
 describe('use-tool-mode / static', () => {
-  test('DEFAULT_TOOLS exposes V/H/C + Phase 5.1 draw set B/R/O/A/E', () => {
+  test('DEFAULT_TOOLS exposes V/H/C + draw set B/R/O/N/A/T/E (Phase 21 sticky+text)', () => {
     expect(DEFAULT_TOOLS.map((t) => t.id)).toEqual([
       'move',
       'hand',
@@ -20,26 +20,54 @@ describe('use-tool-mode / static', () => {
       'pen',
       'rect',
       'ellipse',
+      'sticky',
       'arrow',
+      'text',
       'eraser',
     ]);
-    expect(DEFAULT_TOOLS.map((t) => t.shortcut)).toEqual(['V', 'H', 'C', 'B', 'R', 'O', 'A', 'E']);
+    expect(DEFAULT_TOOLS.map((t) => t.shortcut)).toEqual([
+      'V',
+      'H',
+      'C',
+      'B',
+      'R',
+      'O',
+      'N',
+      'A',
+      'T',
+      'E',
+    ]);
   });
 
   test('DEFAULT_TOOLS is immutable (Object.freeze applied)', () => {
     expect(Object.isFrozen(DEFAULT_TOOLS)).toBe(true);
   });
 
-  test('default cursors per tool', () => {
+  test('default cursors per tool (Phase 21 — custom SVG cursors + native fallback)', () => {
     const byId = Object.fromEntries(DEFAULT_TOOLS.map((t) => [t.id, t.cursor]));
+    // Move keeps the system arrow; every other tool ships a data-URI SVG cursor
+    // that falls back to the right native cursor if the image is rejected.
     expect(byId.move).toBe('default');
-    expect(byId.hand).toBe('grab');
-    expect(byId.comment).toBe('crosshair');
-    expect(byId.pen).toBe('crosshair');
-    expect(byId.rect).toBe('crosshair');
-    expect(byId.ellipse).toBe('crosshair');
-    expect(byId.arrow).toBe('crosshair');
-    expect(byId.eraser).toBe('cell');
+    for (const id of [
+      'hand',
+      'comment',
+      'pen',
+      'rect',
+      'ellipse',
+      'sticky',
+      'arrow',
+      'text',
+      'eraser',
+    ]) {
+      expect(byId[id]).toContain('url("data:image/svg+xml,');
+      expect(byId[id]).toContain('32'); // 32×32 cursor
+    }
+    // Native fallbacks are preserved after the custom URL.
+    expect(byId.hand).toMatch(/, grab$/);
+    expect(byId.text).toMatch(/, text$/);
+    expect(byId.eraser).toMatch(/, cell$/);
+    expect(byId.pen).toMatch(/, crosshair$/);
+    expect(byId.rect).toMatch(/, crosshair$/);
   });
 });
 

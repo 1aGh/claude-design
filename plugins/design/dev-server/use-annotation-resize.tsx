@@ -22,6 +22,7 @@ import {
   type EllipseStroke,
   type PenStroke,
   type RectStroke,
+  type StickyStroke,
   type Stroke,
   type StrokesStoreValue,
   strokeBBox,
@@ -58,9 +59,17 @@ function ensureResizeStyles(): void {
 
 type Corner = 'nw' | 'ne' | 'sw' | 'se' | 'ep1' | 'ep2';
 
-/** Stroke types that expose resize handles in v1. Text inherits anchor bbox. */
-function isResizable(s: Stroke): s is RectStroke | EllipseStroke | ArrowStroke | PenStroke {
-  return s.tool === 'rect' || s.tool === 'ellipse' || s.tool === 'arrow' || s.tool === 'pen';
+/** Stroke types that expose resize handles. Text inherits its anchor bbox. */
+function isResizable(
+  s: Stroke
+): s is RectStroke | EllipseStroke | ArrowStroke | PenStroke | StickyStroke {
+  return (
+    s.tool === 'rect' ||
+    s.tool === 'ellipse' ||
+    s.tool === 'arrow' ||
+    s.tool === 'pen' ||
+    s.tool === 'sticky'
+  );
 }
 
 /**
@@ -75,7 +84,9 @@ function resizeStroke(
   wx: number,
   wy: number
 ): Partial<Stroke> | null {
-  if (start.tool === 'rect') {
+  if (start.tool === 'rect' || start.tool === 'sticky') {
+    // Sticky resizes exactly like a rect — it shares x / y / w / h. Text
+    // re-wraps inside the foreignObject automatically (no special handling).
     const bbox = { x: start.x, y: start.y, w: start.w, h: start.h };
     const left = corner === 'nw' || corner === 'sw' ? wx : bbox.x;
     const right = corner === 'ne' || corner === 'se' ? wx : bbox.x + bbox.w;
@@ -86,7 +97,7 @@ function resizeStroke(
       y: Math.min(top, bottom),
       w: Math.abs(right - left),
       h: Math.abs(bottom - top),
-    } as Partial<RectStroke>;
+    } as Partial<RectStroke | StickyStroke>;
   }
   if (start.tool === 'ellipse') {
     // Treat the four corners as the bbox of the ellipse. Drag any corner →

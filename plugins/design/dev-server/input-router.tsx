@@ -63,9 +63,27 @@ export function crossedDragThreshold(
  * returns `no-op` for the corresponding pointer events so the SVG overlay
  * can grab them natively.
  */
-export type Tool = 'move' | 'hand' | 'comment' | 'pen' | 'rect' | 'ellipse' | 'arrow' | 'eraser';
+export type Tool =
+  | 'move'
+  | 'hand'
+  | 'comment'
+  | 'pen'
+  | 'rect'
+  | 'ellipse'
+  | 'arrow'
+  | 'sticky'
+  | 'text'
+  | 'eraser';
 
-const ANNOTATION_TOOLS = new Set<Tool>(['pen', 'rect', 'ellipse', 'arrow', 'eraser']);
+const ANNOTATION_TOOLS = new Set<Tool>([
+  'pen',
+  'rect',
+  'ellipse',
+  'arrow',
+  'sticky',
+  'text',
+  'eraser',
+]);
 
 export function isAnnotationTool(t: Tool): boolean {
   return ANNOTATION_TOOLS.has(t);
@@ -146,6 +164,11 @@ export function classify(input: ClassifyInput): RouterAction {
     if (k === 'r') return { kind: 'tool', tool: 'rect' };
     if (k === 'o') return { kind: 'tool', tool: 'ellipse' };
     if (k === 'a') return { kind: 'tool', tool: 'arrow' };
+    // Phase 21 — N = sticky Note ('S' is taken by the shell Design-system view
+    // + Shift-marquee); T = standalone Text. Both are bare letters the shell
+    // yields when focus is inside the canvas iframe (app.jsx onKey bail).
+    if (k === 'n') return { kind: 'tool', tool: 'sticky' };
+    if (k === 't') return { kind: 'tool', tool: 'text' };
     if (k === 'e') return { kind: 'tool', tool: 'eraser' };
     if (input.key === 'Escape') return { kind: 'escape' };
     return { kind: 'no-op' };

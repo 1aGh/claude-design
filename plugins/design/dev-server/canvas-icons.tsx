@@ -102,6 +102,26 @@ export function IconEraser(props: IconProps) {
   );
 }
 
+// Phase 21 — sticky note: folded-corner square (dog-ear at the top-right).
+export function IconSticky(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 5h12l4 4v10H4z" />
+      <path d="M16 5v4h4" />
+    </Svg>
+  );
+}
+
+// Phase 21 — standalone text: capital-T glyph (cap bar + stem).
+export function IconText(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 6h16" />
+      <path d="M12 6v12" />
+    </Svg>
+  );
+}
+
 export function IconPresentation(props: IconProps) {
   return (
     <Svg {...props}>
@@ -119,6 +139,114 @@ export function IconChevronDown(props: IconProps) {
   );
 }
 
+// ── Phase 21 context-toolbar icons ──────────────────────────────────────────
+// Corner radius: a square whose corners show the chosen rounding.
+export function IconCornerSquare(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="5" y="5" width="14" height="14" rx="0.5" />
+    </Svg>
+  );
+}
+export function IconCornerSoft(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="5" y="5" width="14" height="14" rx="4" />
+    </Svg>
+  );
+}
+export function IconCornerPill(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="5" y="5" width="14" height="14" rx="7" />
+    </Svg>
+  );
+}
+
+// Arrow direction: a shaft with chevron head(s) on the chosen end(s).
+export function IconArrowNone(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 12h16" />
+    </Svg>
+  );
+}
+export function IconArrowStartHead(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 12h16" />
+      <path d="M9 7l-5 5 5 5" />
+    </Svg>
+  );
+}
+export function IconArrowEndHead(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 12h16" />
+      <path d="M15 7l5 5-5 5" />
+    </Svg>
+  );
+}
+export function IconArrowBothHeads(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M5 12h14" />
+      <path d="M9 7l-5 5 5 5" />
+      <path d="M15 7l5 5-5 5" />
+    </Svg>
+  );
+}
+
+// Dashed line toggle.
+export function IconDash(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M3 12h4" />
+      <path d="M10 12h4" />
+      <path d="M17 12h4" />
+    </Svg>
+  );
+}
+
+// Stroke weight: thin vs thick rule.
+export function IconLineThin(props: IconProps) {
+  return (
+    <Svg {...props} strokeWidth={1.25}>
+      <path d="M4 12h16" />
+    </Svg>
+  );
+}
+export function IconLineThick(props: IconProps) {
+  return (
+    <Svg {...props} strokeWidth={3.75}>
+      <path d="M4 12h16" />
+    </Svg>
+  );
+}
+
+// Letter "A" — font-size chips render it at three sizes (S / M / L).
+export function IconLetterA(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M12 5L6 19" />
+      <path d="M12 5l6 14" />
+      <path d="M8.5 14h7" />
+    </Svg>
+  );
+}
+
+// Trash — delete selected annotations.
+export function IconTrash(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 7h16" />
+      <path d="M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2" />
+      <path d="M6 7l1 12a1 1 0 001 1h8a1 1 0 001-1l1-12" />
+      <path d="M10 11v6M14 11v6" />
+    </Svg>
+  );
+}
+
 export const TOOL_ICONS: Record<string, (p: IconProps) => JSX.Element> = {
   move: IconMove,
   hand: IconHand,
@@ -126,6 +254,8 @@ export const TOOL_ICONS: Record<string, (p: IconProps) => JSX.Element> = {
   pen: IconPen,
   rect: IconRect,
   ellipse: IconEllipse,
+  sticky: IconSticky,
   arrow: IconArrow,
+  text: IconText,
   eraser: IconEraser,
 };

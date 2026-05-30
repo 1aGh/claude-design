@@ -284,15 +284,15 @@ Run these commands to confirm zero regressions:
 
 ## Acceptance Criteria
 
-- [ ] All 11 tasks completed
-- [ ] `bun test --bail` green; new tests added per Tasks 2 + 10
-- [ ] `bun run tsc --noEmit` clean (zero new errors)
-- [ ] Sticky + standalone text + rect rounded corners + arrow direction + arrow dash all visible in tool palette / context toolbar
-- [ ] Legacy `.annotations.svg` files load + round-trip byte-identical (Task 10 fixture test passes)
-- [ ] `/design:smoke` passes
-- [ ] `scenario-runner`: 0 blockers on web-desktop; ios / ipad / android skipped with justification
-- [ ] `a11y-auditor`: 0 blockers (two new tool buttons + sticky textarea)
-- [ ] `design-system-guard`: N/A (dev-server internal chrome, no project DS applies)
-- [ ] DDRs written only if any decision diverges from this plan (none expected)
-- [ ] Phase 5.1 archived plan gains a one-paragraph "Phase 21 follow-up" cross-link
-- [ ] No regression in existing draw / select / context-toolbar flows
+- [x] All 11 tasks completed
+- [x] `bun test` green (801 pass / 1 pre-existing `canvas-route` fail, unrelated); +43 net new tests (Tasks 2 + 10 in `test/annotations-roundtrip.test.ts`, write-path + geometry in `test/annotations-layer.test.ts`)
+- [x] `bun tsc --noEmit` clean — 3 errors = the DDR-026 baseline (`api.ts` ×2 + `runtime-bundle.ts`), zero new. NB: only `input-router.tsx` of the affected files is in the tsc program; the other `.tsx` are caught by tests + build + smoke (tsconfig `include` is `*.ts`, root `.tsx` are only checked transitively).
+- [x] Sticky + standalone text + rect rounded corners + arrow direction + arrow dash all visible in tool palette / context toolbar (verified via agent-browser live smoke)
+- [x] Legacy `.annotations.svg` files load + round-trip byte-identical (Task 10 fixture `test/fixtures/phase-20-annotations.svg` passes)
+- [x] `/design:smoke` equivalent: booted the LOCAL `server.ts` (working-tree source, not the published global `maude`), drove agent-browser — canvas renders 0-error, sticky create/edit/resize/recolor + standalone text + arrow Both+Dash all work, reload-persists; the browser-authored SVG round-trips byte-identical + survives `sanitizeAnnotationSvg`
+- [ ] `scenario-runner`: deferred to `/done` (live agent-browser smoke covered the same web-desktop flow with 0 blockers; ios/ipad/android skip is justified — annotation tooling is mouse+keyboard)
+- [ ] `a11y-auditor`: deferred to `/done` (new tool buttons carry `aria-label`+shortcut hints; sticky textarea + standalone editor carry `aria-label`; corner/arrow/dash chips carry `aria-label`+`aria-pressed`)
+- [x] `design-system-guard`: N/A (dev-server internal chrome, no project DS applies)
+- [x] DDRs: the only divergence — sticky text persists in an allowlisted `<text>` child, NOT a `<foreignObject>` (the plan's assumption), because `sanitizeAnnotationSvg`/DDR-060 F1 strips `foreignObject`. Documented in the Phase 5.1 follow-up note rather than a new DDR (it's a direct consequence of existing DDR-060). Surfaced for the user to escalate to a DDR if desired.
+- [x] Phase 5.1 archived plan gains a "Phase 21 follow-up" cross-link
+- [x] No regression in existing draw / select / context-toolbar flows (full suite green modulo the pre-existing fail)

@@ -916,7 +916,9 @@ function ToolsDropdown({ onAction, onClose }) {
     { id: 'pen',     label: 'Pen',     shortcut: 'B' },
     { id: 'rect',    label: 'Rect',    shortcut: 'R' },
     { id: 'ellipse', label: 'Ellipse', shortcut: 'O' },
+    { id: 'sticky',  label: 'Sticky',  shortcut: 'N' },
     { id: 'arrow',   label: 'Arrow',   shortcut: 'A' },
+    { id: 'text',    label: 'Text',    shortcut: 'T' },
     { id: 'eraser',  label: 'Eraser',  shortcut: 'E' },
   ];
   return (
