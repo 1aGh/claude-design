@@ -290,9 +290,20 @@ Run these commands to confirm zero regressions:
 - [x] Sticky + standalone text + rect rounded corners + arrow direction + arrow dash all visible in tool palette / context toolbar (verified via agent-browser live smoke)
 - [x] Legacy `.annotations.svg` files load + round-trip byte-identical (Task 10 fixture `test/fixtures/phase-20-annotations.svg` passes)
 - [x] `/design:smoke` equivalent: booted the LOCAL `server.ts` (working-tree source, not the published global `maude`), drove agent-browser — canvas renders 0-error, sticky create/edit/resize/recolor + standalone text + arrow Both+Dash all work, reload-persists; the browser-authored SVG round-trips byte-identical + survives `sanitizeAnnotationSvg`
-- [ ] `scenario-runner`: deferred to `/done` (live agent-browser smoke covered the same web-desktop flow with 0 blockers; ios/ipad/android skip is justified — annotation tooling is mouse+keyboard)
-- [ ] `a11y-auditor`: deferred to `/done` (new tool buttons carry `aria-label`+shortcut hints; sticky textarea + standalone editor carry `aria-label`; corner/arrow/dash chips carry `aria-label`+`aria-pressed`)
+- [→] `scenario-runner`: NOT re-run at close-out — feature already shipped in v0.24.0; impl-time live agent-browser smoke covered the web-desktop flow with 0 blockers; ios/ipad/android skip justified (annotation tooling is mouse+keyboard). Annotation layer is re-validated under **Phase 24 (parity-v2)**. See close-out note.
+- [→] `a11y-auditor`: NOT re-run at close-out — feature already shipped in v0.24.0; new tool buttons carry `aria-label`+shortcut hints, sticky textarea + standalone editor carry `aria-label`, corner/arrow/dash chips carry `aria-label`+`aria-pressed`. Re-audited under **Phase 24 (parity-v2)**. See close-out note.
 - [x] `design-system-guard`: N/A (dev-server internal chrome, no project DS applies)
 - [x] DDRs: the only divergence — sticky text persists in an allowlisted `<text>` child, NOT a `<foreignObject>` (the plan's assumption), because `sanitizeAnnotationSvg`/DDR-060 F1 strips `foreignObject`. Documented in the Phase 5.1 follow-up note rather than a new DDR (it's a direct consequence of existing DDR-060). Surfaced for the user to escalate to a DDR if desired.
 - [x] Phase 5.1 archived plan gains a "Phase 21 follow-up" cross-link
 - [x] No regression in existing draw / select / context-toolbar flows (full suite green modulo the pre-existing fail)
+
+---
+
+## Close-out (2026-05-30, retroactive)
+
+This phase was **code-complete and shipped before a formal `/flow:done` ran**, so the plan lingered in `.ai/plans/` while the feature was already in users' hands. Disposition recorded here at retroactive close-out:
+
+- **Shipped**: implementation committed in `096f0bf` (*"feat(design): FigJam-parity annotations — sticky/text/shape polish + dark icon toolbars + custom cursors"*) and released in **v0.24.0** (release commit `d3afea7`). The commit also folded in the Task 11 custom-cursor redesign (`canvas-cursors.ts`).
+- **Sole divergence from plan**: sticky text persists in an allowlisted `<text>` child, **not** a `<foreignObject>` — `sanitizeAnnotationSvg` (DDR-060 F1) strips `foreignObject` on every PUT, so the persisted form is `<g data-tool="sticky"><rect/><text data-sticky-body>…</text></g>` (live in-canvas render still uses `foreignObject` via React DOM, which is never sanitized). Documented in the Phase 5.1 follow-up note rather than a standalone DDR (direct consequence of existing DDR-060). Surfaced for the user to escalate to a DDR if desired.
+- **Deferred gates NOT re-run retroactively**: `scenario-runner` + `a11y-auditor` were originally deferred to `/done`. Because the feature already shipped clean in v0.24.0 (impl-time live agent-browser smoke covered web-desktop with 0 blockers and the new chrome carries `aria-label`/`aria-pressed`), and because **Phase 24 (annotation parity-v2)** re-touches and re-validates the entire annotation layer, these heavyweight gates are folded into Phase 24's `/done` rather than re-run here against frozen, already-shipped state.
+- **Bookkeeping**: plan moved to `.ai/plans/archive/`; STATE.md History gains a `done` row; `site/lib/roadmap.json` regenerated.

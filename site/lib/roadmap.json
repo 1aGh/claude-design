@@ -1,5 +1,5 @@
 {
-  "generated": "2026-05-30T15:29:00.218Z",
+  "generated": "2026-05-30T19:30:39.586Z",
   "currentPhase": null,
   "phases": [
     {
@@ -133,6 +133,17 @@
       "planPath": ".ai/plans/archive/phase-20-canvas-undo-redo.md",
       "archived": true,
       "phaseKey": "20"
+    },
+    {
+      "id": "phase-21-annotation-vocabulary-figjam",
+      "title": "Phase 21 — Annotation vocabulary expansion (FigJam-feel)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Today the annotation toolkit ships pen / rect / ellipse / arrow / text (anchored only) / eraser. Real review workflows that the user keeps reaching FigJam for need three things we don't have:",
+      "planPath": ".ai/plans/archive/phase-21-annotation-vocabulary-figjam.md",
+      "archived": true,
+      "phaseKey": "21"
     },
     {
       "id": "phase-3.6-canvas-tsx-format",
@@ -606,17 +617,6 @@
       "planPath": ".ai/plans/phase-17-docs-site-infographics.md",
       "archived": false,
       "phaseKey": "17"
-    },
-    {
-      "id": "phase-21-annotation-vocabulary-figjam",
-      "title": "Phase 21 — Annotation vocabulary expansion (FigJam-feel)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Today the annotation toolkit ships pen / rect / ellipse / arrow / text (anchored only) / eraser. Real review workflows that the user keeps reaching FigJam for need three things we don't have:",
-      "planPath": ".ai/plans/phase-21-annotation-vocabulary-figjam.md",
-      "archived": false,
-      "phaseKey": "21"
     },
     {
       "id": "phase-22-annotation-brief-board",
