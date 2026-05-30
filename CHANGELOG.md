@@ -1,5 +1,132 @@
 # @1agh/maude
 
+## 0.24.0
+
+### Minor Changes
+
+- 7a1c3c7: Canvas-shell chrome now follows the Maude dev-server theme, decoupled from the design system.
+
+  - The canvas workspace plane, floating tool palette, minimap, zoom HUD, selection halos, contextual toolbar, context menu, undo HUD, AI banner, and presence chrome now flip dark↔light **with** the chrome theme toggle, in every open canvas — via a self-contained `--maude-chrome-*` token family keyed by a `data-maude-theme` attribute and propagated over the existing `dgn:*` postMessage bridge. The brand accent stays theme-agnostic; no design-system palette leaks into the chrome (closes system-review D9).
+  - **Artboards keep their design system's theme by default.** A new right-click **Theme ▸ DS default / Light / Dark / Follow chrome** submenu flips an individual artboard at will; Light/Dark are enabled only when the DS ships both light + dark token blocks (detected by a runtime probe). The override is applied via an injected stylesheet keyed by the artboard's stable id, so it survives canvas re-renders.
+  - `/design:new` + the canvas template now document the two-layer theme model so generated canvases don't hardcode a non-default artboard theme.
+
+- 0531c5b: Phase 11 — flow ⇄ design integration. Flow commands are now aware of the design plugin's `.design/` canvas workspace:
+
+  - `/flow:plan <feature>` detects canvases matching the feature by tag or slug and grounds the plan in them (new **Design canvases** context section).
+  - `/flow:done` surfaces canvases marked `ready-for-handoff` and offers a soft handoff sweep before close (`/design:handoff` per canvas, then a follow-up commit stamping `status: handed-off` + `handoffCommit`). Soft-prompt rationale recorded in DDR-066.
+  - `codebase-intelligence` / `/flow:setup-codebase-map` snapshots now include a **Design artifacts** section (design systems + per-canvas status).
+  - `ddr-keeper` / `/flow:record-ddr` prompt for a `Related canvas` reference on UI-affecting decisions.
+  - New `paths.designRoot` config key (default `.design`); canvas `.meta.json` schema formalizes a `status` enum, `handoffCommit`, and `tags`. All integrations skip silently on projects without a design root (no regression).
+
+- Phase 21 — FigJam-parity canvas annotations. The annotation toolkit gains the three primitives reviewers kept leaving Maude for FigJam to do, plus a professional visual pass on the whole annotation chrome.
+
+  **New annotation vocabulary** (back-compatible — every pre-existing `.annotations.svg` round-trips byte-identical):
+
+  - **Sticky notes** (`N` tool) — paper-tone cards with their own word-wrapped text: drag to create, drop straight into an inline editor, recolour from a paper palette, resize with corner handles. Body text persists in an allowlisted `<text>` child (never a `<foreignObject>`) so it survives the annotation-SVG sanitizer (DDR-060 F1); the live canvas re-renders it with a `foreignObject` for word-wrap.
+  - **Standalone text** (`T` tool) — free-floating text not anchored to a host shape; single-click to drop a caret, type, Enter commits. `TextStroke.anchorId` relaxed to optional with world `(x, y)`.
+  - **Shape + arrow polish** — rect corner radius (square / soft / pill); arrow head direction (none / start / end / both) and a dashed-line toggle.
+
+  **Visual overhaul (FigJam parity):**
+
+  - Dark floating property bar + draw-time tray with icon buttons and circular colour dots (replaces the old squared text chips).
+  - A unified, FigJam-style colour system: a single hue family where **stroke is a saturated ink and fill is the index-paired light tint**, independent of each other.
+  - Sticky notes get a soft drop-shadow + centred text.
+  - **Custom 32×32 SVG tool cursors** (`canvas-cursors.ts`) with a white-outline halo so each glyph reads on light _and_ dark canvases, with per-tool hotspots — replacing the tiny, near-invisible native `crosshair`/`text` cursors.
+
+- f50ffad: Phase 9 Tasks 7–11 — hub deploy tooling, hub-down offline mode, linked-mode gitignore,
+  contributor dev workflow, and real-hub integration tests. Completes the phase-9
+  self-hostable-hub feature work.
+
+  **Deploy (Task 7):** `maude hub deploy fly|docker` emits ready-to-run config
+  (`Dockerfile`, `fly.toml`, `docker-compose.yml` + `Caddyfile`) with placeholders
+  substituted, then prints the exact next commands — it never runs `fly`/`docker` for you.
+  `maude hub token rotate --label <name>` mints a fresh value for an existing label. A new
+  CI workflow publishes a multi-arch (amd64 + arm64) `ghcr.io/1agh/maude-hub` image on every
+  release tag. New docs at `/docs/hub` (deploy recipes for Fly / AWS Lightsail / EC2+ALB /
+  Hetzner / DigitalOcean / Coolify / Cloudflare-Tunnel, a pricing table, and the
+  link/adopt/unlink/status + offline-mode UX). The release image now installs from a committed
+  `bun.lock` with `--frozen-lockfile` (no fresh dependency resolution at build time).
+
+  **Hub-down offline mode (Task 8):** when the hub becomes unreachable, the linked-mode sync
+  runtime enters offline mode — local edits keep working and queue, a yellow canvas banner
+  shows the queued-edit count, and on reconnect a green "Synced" flash clears it (escalating to
+  a red "consider git commit && push" banner after 24h offline). `maude design status` reports
+  the live state. A hub-wins reconcile that overwrites divergent local content now surfaces a
+  conflict notice.
+
+  **Linked-mode gitignore (Task 9):** a single `full` strategy (DDR-056) — canvases + their JSON
+  snapshots stay in git (cold backup, PR-reviewable diffs, bootstrap-from-clone) while
+  regenerable per-machine runtime state is ignored. `maude design init` and `maude design link
+--adopt` write an idempotent `# maude:begin/end` block.
+
+  **Contributor workflow (Task 10):** `plugins/design/hub/CONTRIBUTING.md` (plain-Node + Docker
+  levels); `maude hub serve --dev` is zero-config.
+
+  Solo (unlinked) projects are unaffected — the sync runtime is a no-op and the offline banner
+  never renders.
+
+- e720040: Phase 9.1 — unblock linked-mode sync for the TSX-only canvas format, safely (DDR-060).
+
+  **The gap being fixed:** linked-mode sync (Phase 9) only ever admitted `.html` canvases,
+  but `.tsx` has been the only canvas format since Phase 3.6 — so for every real project,
+  sync was a silent no-op (`maude design status` looked healthy while syncing nothing). This
+  phase makes `.tsx` syncable without re-opening the audit's CRITICAL **F1** (hub-pushed JSX →
+  RCE/exfil).
+
+  **Canvas-origin containment (T2 / 9.1-A, now ON by default — opt out with
+  `MAUDE_CANVAS_ORIGIN_SPLIT=0`):** canvas iframes are served from a segregated origin under a
+  strict CSP + route-allowlist + iframe sandbox, so a hostile canvas can't reach `/_api/export`,
+  `/_config`, repo files, cloud IMDS, or the LAN. In solo mode this purely sandboxes your own
+  canvas code (a security improvement, zero functional regression). An F1 adversarial re-audit
+  found and this release closes three residuals: a `%2f`-encoded path-traversal that leaked repo
+  source (decode-then-gate fix), a missing WebRTC exfil control (best-effort `RTCPeerConnection`
+  lockout in the canvas shell + `webrtc` CSP directive for when browsers enforce it), and an
+  annotation-SVG sanitizer hardened from a denylist to an allowlist. F1 drops from CRITICAL to
+  MEDIUM — the remaining WebRTC/self-navigation exfil applies only to a canvas you _opt into
+  syncing_, and the reachable data is collab metadata, not repo files.
+
+  **Per-canvas `.tsx` sync opt-in (T3 / 9.1-B):** a `.tsx` body syncs only when BOTH the
+  sandbox is active (`MAUDE_CANVAS_ORIGIN_SPLIT=1`) AND its `.meta.json` sidecar declares
+  `"syncable": true` — coupled deliberately (the opt-in is inert without the sandbox) and
+  hand-set only (not settable by a remote hub or a canvas). `.html` canvases sync as before.
+  Default behavior is unchanged: nothing syncs until you opt in.
+
+  **Untrusted-context marking (T4.5 / F3):** every synced canvas is flagged as untrusted
+  Claude-context — `.design/_untrusted/INDEX.json` + a managed `# maude:sync-untrusted` block in
+  `.claudeignore` list the synced body/comments/annotations so an injected instruction string
+  can't steer a `/design:edit`. Rewritten each `serve`, cleared when nothing syncs.
+
+  **Docs (T5):** the linked-mode CLI banner + `/docs/hub/linking` now describe the HTML-by-
+  default / TSX-by-opt-in model and the untrusted-context markers.
+
+  Solo (unlinked) projects now get the protective canvas sandbox by default (no behavior change
+  beyond stronger isolation of their own canvas code; `MAUDE_CANVAS_ORIGIN_SPLIT=0` restores the
+  legacy same-origin path). Actually _syncing_ a `.tsx` from a hub still requires the explicit
+  per-canvas `syncable` opt-in — that surface is unchanged.
+
+- bc6b1bc: `maude doctor` — one umbrella diagnostic for workspace health, plus declarative quality gates.
+
+  - **`maude doctor`** reports missing dependencies (per-plugin, from `plugins/<plugin>/dependencies.json`), `.ai/workflows.config.json` schema errors, stack drift, and missing quality-gate declarations in one report. `--fix` applies safe auto-fixes (per-dep install prompt; config edits are additive and never overwrite an existing user value); `--json` for programmatic consumers; `--plugin` scopes the deps section.
+  - **Declarative quality gates.** New optional top-level `quality` map in `workflows.config.json` (`gate → shell-command` string). Flow commands read it directly via `jq` + `eval` — `/flow:utils-verify` + `/flow:quick` run `format`+`lint`; `/flow:validate` runs `format → lint → typecheck → tests → build` then any custom gates; the release pre-flight runs all. No `maude quality run` wrapper — `pnpm <script>` is already the runner. Gate set is per-project and user-owned; the `ai-skeleton` template ships no `quality` block (populate via `maude doctor --fix`).
+  - **Manifest-sourced preflight.** `/design:init` + `/flow:init` now source their dependency table from `dependencies.json` (no hardcoded `command -v` chain), with a `_preflight.json` 5-minute cross-command cache and a SessionStart hook that warns (deps only) when a hard dependency is missing. `/flow:init` re-runs are now drift-aware (per-key keep/apply/skip; never clobbers tuned `prohibited`/`boundaries`/`motion`).
+
+  See [DDR-058](.ai/decisions/DDR-058-maude-doctor-deps-config-quality.md) for the unified-diagnostic + no-wrapper-over-pnpm rationale and the `eval`-of-config trust boundary.
+
+### Patch Changes
+
+- 02e890f: Hub admin UI redesigned to match MDCC-DSN/01 design language (dark-theme-only, hard-edges anatomy, Berkeley Mono, catalog SKU labels, tile grid dashboard).
+- d159d9d: `/design:setup-ds` hardening round 2 — the bootstrap no longer silently drops a mandatory per-platform showcase, refuses to call "fine but not wow" output a clean pass, and defaults to restrained, research-faithful typography.
+
+  Driven by the `new-studyfi` bootstrap retro. Changes to the design plugin's authoritative spec (`SKILL.md`, `SUB-AGENT-PROMPTS.md`, `commands/edit.md`):
+
+  - **Per-platform showcase, never dropped.** The scaffold roster + fan-out now emit a `ui_kits-<platform>-showcase`/`-index` pair per in-scope platform (Q3), and reconciliation asserts the Q3-derived expected set — an absent mobile/tablet showcase is the same hard-fail as a `pending` one. Reconciliation also runs after partial/failed fan-out batches (not just the happy path), and socket-failure recovery routes back through it.
+  - **Fan-out ceiling 3–4** (was 5–8) with sequential waves of ≤4, reconciling between waves — fixes the cohort socket-budget failure that 8 simultaneous long-running agents triggered.
+  - **Aspiration bar raised 3.5 → 4.0** ([DDR-057](.ai/decisions/DDR-057-aspiration-pass-bar-raised-to-4.md)). Only `≥ 4.0` prints a clean silent pass; `3.0–4.0` still completes but surfaces the signature-moment-critic's top-2 specific lifts ("what would take this from hezké to wow") instead of a silent "passed". Kolo 2 (Atraktivita) is non-skippable during a first-bootstrap / additional-ds run.
+  - **Restraint-default typography** (ratio ≤ 1.2, optical-size ≤ 72, display weight ≤ semibold) — opt UP via `/design:edit`, not down. **Research type-fidelity** — mirror the research's primary display-face role exactly; font availability must not flip a grotesque direction into a serif.
+  - **Showcase-from-real-app** — for an existing product, the showcase sub-agent reads the real `AppLayout` + nav and restyles, rather than inventing a fictional product UX.
+  - **`/design:edit` fixes** — touch the paired `.tsx` after editing a sibling `.css` (the canvas-build bundle keys on `.tsx` mtime, so a CSS-only edit was otherwise invisible); a matchMedia-first fast-path for motion complaints (headless/OS `prefers-reduced-motion: reduce` correctly suppresses motion — rule that out before chasing CSS).
+  - **Asset-path correction** — the documented absolute form for specimen assets is `/<designRoot>/system/<ds>/assets/…` (e.g. `/.design/system/<ds>/assets/logo.svg`); the previously-documented `/assets/<ds>/` alias does not exist and 404s.
+
 ## 0.23.0
 
 ### Minor Changes
