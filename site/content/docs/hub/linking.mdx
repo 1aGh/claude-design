@@ -3,7 +3,7 @@ title: Linking peers
 description: maude design link / unlink / status / adopt — pair a local repo with a hub, mirror .design/ bidirectionally, and survive the hub going offline.
 ---
 
-Once a hub is deployed ([Deploy a hub](/docs/hub/deploy)), each collaborator pairs their local repo with it. After linking, the existing `maude design serve` does double duty: it serves your browser canvas AND keeps `.design/*.html` mirrored against the hub's Yjs state. Claude Code never sees Yjs — it reads and writes plain files exactly as in solo mode.
+Once a hub is deployed ([Deploy a hub](/docs/hub/deploy)), each collaborator pairs their local repo with it. After linking, the existing `maude design serve` does double duty: it serves your browser canvas AND mirrors your `.design/` canvases against the hub's Yjs state. Claude Code never sees Yjs — it reads and writes plain files exactly as in solo mode.
 
 ## Link
 
@@ -28,9 +28,9 @@ Link this repo to https://maude-hub-acme.fly.dev? [y/N]
 
 Confirm once and the hub is recorded in your per-machine trust list — re-linking won't re-prompt. `--yes` confirms non-interactively (for scripts); a non-TTY without `--yes` refuses. Loopback hubs (local dev) are exempt. The trust list lives per-machine, never in a committed file, so a malicious PR can't pre-seed trust. See [DDR-054](https://github.com/1aGh/maude/blob/main/.ai/decisions/DDR-054-linked-mode-trust-model-and-task-4-hardening.md).
 
-## What syncs: HTML by default, TSX by opt-in
+## What syncs: TSX canvases, by per-canvas opt-in
 
-`.html` canvases sync as soon as you link. **`.tsx` canvases do not sync by default** — a `.tsx` body is executable code, so a hostile hub pushing one would otherwise run arbitrary JS in your browser ([DDR-060](https://github.com/1aGh/maude/blob/main/.ai/decisions/DDR-060-tsx-only-format-breaks-html-centric-sync.md), the audit's CRITICAL **F1**). Since the canvas format has been `.tsx`-only since Phase 3.6, that means a typical project syncs **nothing** until you opt in — `maude design status` says so loudly (`0 syncable · N tsx`).
+Your canvases are `.tsx` — the only canvas format since Phase 3.6 ([DDR-060](https://github.com/1aGh/maude/blob/main/.ai/decisions/DDR-060-tsx-only-format-breaks-html-centric-sync.md)). A `.tsx` body is executable code, so a hostile hub pushing one would otherwise run arbitrary JS in your browser (the audit's CRITICAL **F1**). For that reason **nothing syncs the moment you link** — a `.tsx` canvas crosses the wire only once you explicitly opt it in. `maude design status` shows the gap loudly (`0 syncable · N tsx`).
 
 To make a `.tsx` canvas syncable, BOTH locks must hold (they are deliberately coupled — the opt-in is inert without the sandbox):
 
@@ -57,7 +57,7 @@ maude design adopt https://maude-hub-acme.fly.dev --token mau_...
 # alias for: maude design link <url> --token ... --adopt
 ```
 
-`--adopt` pushes local `.design/*.html`, annotation SVGs, and comment JSON up to the hub unconditionally. Use it for first-time bootstrap from a populated repo, or hub-was-wiped recovery. The default (no `--adopt`) is **hub-wins**: if the hub already has state, hub state replaces your local disk — the right choice when joining an already-active project.
+`--adopt` pushes your local canvases, annotation SVGs, and comment JSON up to the hub unconditionally. Use it for first-time bootstrap from a populated repo, or hub-was-wiped recovery. The default (no `--adopt`) is **hub-wins**: if the hub already has state, hub state replaces your local disk — the right choice when joining an already-active project.
 
 > v1.1 ships exactly two conflict modes: **hub-wins** (default) and **adopt** (push). There is no `--peer-wins`; it's a confusion vector deferred to v1.2.
 
@@ -81,7 +81,7 @@ Your `.design/` files are untouched — the repo returns to solo mode. The gitig
 
 ## What's in git vs. what isn't
 
-Linked mode uses one gitignore strategy in v1.1 — **`full`**: canvases and their JSON snapshots stay in git (cold backup, PR-reviewable `.html` diffs, bootstrap-from-clone), while regenerable runtime state is ignored.
+Linked mode uses one gitignore strategy in v1.1 — **`full`**: canvases and their JSON snapshots stay in git (cold backup, PR-reviewable canvas diffs, bootstrap-from-clone), while regenerable runtime state is ignored.
 
 ```text
 # maude:begin
@@ -97,7 +97,7 @@ Linked mode uses one gitignore strategy in v1.1 — **`full`**: canvases and the
 # maude:end
 ```
 
-Committed: `.design/config.json` (carries the `linkedHub` URL), `.design/*.html`, `*.layout.json`, `*.annotations.svg`, `_comments/*.json`, `system/`. `maude design init` and `maude design link --adopt` write the block between the markers, idempotently — re-running never duplicates it, and `unlink` leaves it intact. See [DDR-056](https://github.com/1aGh/maude/blob/main/.ai/decisions/DDR-056-linked-mode-gitignore-strategy.md).
+Committed: `.design/config.json` (carries the `linkedHub` URL), your `.tsx` canvases + their `.meta.json` sidecars, `*.layout.json`, `*.annotations.svg`, `_comments/*.json`, `system/`. `maude design init` and `maude design link --adopt` write the block between the markers, idempotently — re-running never duplicates it, and `unlink` leaves it intact. See [DDR-056](https://github.com/1aGh/maude/blob/main/.ai/decisions/DDR-056-linked-mode-gitignore-strategy.md).
 
 ## When the hub goes offline
 
@@ -113,9 +113,9 @@ The sync agent tolerates the hub disappearing — your laptop on a plane, a Fly 
 If a `git pull` changes a canvas the hub also knows about, the agent detects the hash divergence and prompts:
 
 ```text
-Local changes from git pull on screen.html.
+Local changes from git pull on Dashboard.tsx.
   [P] Push to hub   [D] Discard local, accept hub   [A] Abort
 (defaults to Push in 30s)
 ```
 
-Comments and annotations are additive CRDT operations — they merge without loss. Only HTML body conflicts (rare) resolve last-write-wins, with a notification to the disadvantaged peer.
+Comments and annotations are additive CRDT operations — they merge without loss. Only canvas-body conflicts (rare) resolve last-write-wins, with a notification to the disadvantaged peer.

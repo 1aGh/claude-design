@@ -11,7 +11,7 @@ A personal marketplace of Claude Code plugins. Two plugins today, plus a `maude`
 
 | Plugin | What it does |
 | ------ | ------------ |
-| **`design`** | Canvas-first iteration on HTML/JSX mocks under `.design/` — element selection via Cmd+Click, auto-managed dev server, chained UX/DS critique. |
+| **`design`** | Canvas-first iteration on TSX/JSX mocks under `.design/` — element selection via Cmd+Click, auto-managed dev server, chained UX/DS critique. |
 | **`flow`** | Generic agentic workflow loop with a second-brain `.ai/` workspace. `/flow:plan`, `/flow:execute`, `/flow:utils-verify`, `/flow:validate`, `/flow:done`, `/flow:init`, `/flow:record-ddr`, `/flow:scenario`, …. Project-agnostic via `<project>` placeholders + per-repo `.ai/workflows.config.json`. |
 
 Plus the **`maude`** CLI — `maude init` scaffolds a fresh `.ai/` workspace from the flow plugin skeleton; `maude design serve` boots the design dev server. The legacy `mdcc` alias still works (prints a deprecation warning) and will be removed in v0.17.x.
@@ -107,6 +107,10 @@ Two clean paths, no middle ground ([DDR-047](.ai/decisions/DDR-047-collab-scope-
 
 - **v1.0 — git handoff OR loopback multi-tab.** Push / pull is the cross-machine story. On a single machine, two browser tabs (or two Claude Code instances editing the same repo) sync cursors, comments, and annotations live over loopback WebSocket. The dev server refuses any non-loopback `host` header on the collab WS endpoint.
 - **v1.1 — deploy a hub** (Phase 9, in-flight). Cross-machine live collab needs a hub binary you deploy yourself. No tunnel mode; no shared cloud.
+
+## Security
+
+Solo mode (the default) is fully local — no accounts, no telemetry, no network trust surface, and the canvas sandbox is on by default. Linked (hub) mode is opt-in and carries a documented trust model with disclosed, bounded residuals (hub-pushed content is treated as untrusted input). The full account — what runs where, what the canvas sandbox does and doesn't close, `.tsx` sync's double opt-in, untrusted-context handling — is at [`/docs/security`](https://maude.iagh.cz/docs/security) (source: [`site/content/docs/security.mdx`](./site/content/docs/security.mdx)). To **report** a vulnerability, see [SECURITY.md](./SECURITY.md).
 
 ## What's where
 

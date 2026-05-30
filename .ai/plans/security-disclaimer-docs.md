@@ -1,6 +1,6 @@
 ---
 name: security-disclaimer-docs
-status: planned
+status: implemented
 created: 2026-05-29
 ---
 
@@ -79,8 +79,8 @@ This is a **security disclaimer, not marketing**. It MUST be accurate, not reass
 
 ## Acceptance Criteria
 
-- [ ] `security.mdx` created, registered in nav, builds clean.
-- [ ] README has a brief Security section linking the docs page + `SECURITY.md`.
-- [ ] Every claim is DDR-traceable; residuals (F1 MEDIUM, WebRTC/self-nav metadata leak for opted-in sync) are disclosed.
-- [ ] No contradiction with `hub/linking.mdx` or `SECURITY.md`; no overclaiming.
-- [ ] `/flow:maintain-docs` clean.
+- [x] `security.mdx` created, registered in nav, builds clean. _(193/193 pages; `docs/security` route prerendered, 118 KB.)_
+- [x] README has a brief Security section linking the docs page + `SECURITY.md`.
+- [x] Every claim is DDR-traceable; residuals (F1 MEDIUM, WebRTC/self-nav metadata leak for opted-in sync) are disclosed. _(Re-verified vs DDR-053/054/056/060/062/063 + DDR-064 (newer). Two plan-outline corrections applied: token "hashed at rest" is the **hub** store only (HMAC-SHA256, `tokens.mjs`, DDR-053 Task 6) — the **client** token stays plaintext-0600, kept distinct in the page; the frozen-lockfile hub image is cited to DDR-054 "untrusted-to-peers" + the release rule, not DDR-056 (which is gitignore). `.claudeignore` context-exclusion is disclosed as pending Claude Code honoring it.)_
+- [x] No contradiction with `hub/linking.mdx` or `SECURITY.md`; no overclaiming. _(Cross-doc facts consistent; reporting policy linked not duplicated; only "100% safe"/"unhackable" occurrence is the honesty negation.)_
+- [~] `/flow:maintain-docs` — substituted a targeted cross-doc consistency check (the tree-wide scan is out of scope for a 3-file docs change). Full run can be folded into `/flow:done` if desired.

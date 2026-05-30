@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `Maude` — a Claude Code marketplace (defined by `.claude-plugin/marketplace.json`) shipping two plugins plus an npm-published CLI. Project was renamed from `md-claude` in v0.15.0; see [`docs/MIGRATING-MD-CLAUDE-TO-MAUDE.md`](docs/MIGRATING-MD-CLAUDE-TO-MAUDE.md).
 
-- **`plugins/design`** — canvas-first iteration on HTML/JSX mocks under a project's `<designRoot>` (default `.design/`). Includes a zero-dep Node dev server (`plugins/design/dev-server/server.mjs`) that injects an inspector overlay for Cmd+Click element selection and tracks active-canvas state over WebSocket.
+- **`plugins/design`** — canvas-first iteration on TSX/JSX mocks under a project's `<designRoot>` (default `.design/`). Includes a zero-dep Node dev server (`plugins/design/dev-server/server.mjs`) that injects an inspector overlay for Cmd+Click element selection and tracks active-canvas state over WebSocket.
 - **`plugins/flow`** — generic agentic workflow loop with a second-brain `.ai/` workspace. Project-agnostic via `<project>` placeholders + per-repo `.ai/workflows.config.json` (schema at `plugins/flow/.claude-plugin/config.schema.json`).
 - **`cli/`** — `maude` CLI (entry `cli/bin/maude.mjs`, subcommands in `cli/commands/`). Published as `@1agh/maude` on npm. Bins: `maude` (primary), `mdcc` (legacy alias — prints deprecation warning, drop in v0.17.x), `maude-safe`/`mdcc-safe` (per-call platform-detection fallback), `claude-design-server` (direct dev-server alias).
 

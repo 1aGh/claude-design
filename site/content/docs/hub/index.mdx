@@ -10,7 +10,7 @@ Maude's design plugin is canvas-first and local-first. Phase 8 added live multi-
 Three copies of the truth, same as solo mode plus one:
 
 1. **Live (Y.Doc)** — canonical on the hub, replicated to every connected peer.
-2. **Disk (`.design/*.html`)** — each peer's local mirror, regenerated from the Y.Doc. **This is what Claude Code reads and writes.**
+2. **Disk (`.design/**/*.tsx`)** — each peer's local mirror, regenerated from the Y.Doc. **This is what Claude Code reads and writes.**
 3. **Git** — each peer's local history, reconciled via `git push` / `pull` as usual.
 
 You and your collaborator each run `maude design serve` against your own clone. Edits flow: your `/design:edit` writes a file → the sync agent pushes it to the hub → the hub broadcasts → their agent writes their disk → their browser updates. Nobody learns Yjs.

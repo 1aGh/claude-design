@@ -3,7 +3,7 @@ title: Expo (React Native) recipe
 description: Drop-in setup for an Expo + React Native app. Native scenarios via flow:scenario, agent-device automation.
 ---
 
-Drop-in setup for a native app. `design` is **optional** here. Its canvas-first loop targets HTML/JSX. For Expo, design typically lives upstream in Figma. Flow's `agent-device` skill handles native verification.
+Drop-in setup for a native app. `design` is **optional** here. Its canvas-first loop targets web UI (TSX canvases in the browser). For Expo, design typically lives upstream in Figma. Flow's `agent-device` skill handles native verification.
 
 **Starting point:** existing Expo SDK 51+ app, pnpm / npm / yarn, TypeScript.
 
@@ -24,7 +24,7 @@ In Claude Code:
 /plugin install flow@maude
 ```
 
-The `design` plugin is **optional** for native. Its canvas-first loop targets HTML/JSX in the browser. For Expo, design typically lives upstream in Figma plus flow's `agent-device` automation for native verification.
+The `design` plugin is **optional** for native. Its canvas-first loop targets web UI — TSX canvases in the browser. For Expo, design typically lives upstream in Figma plus flow's `agent-device` automation for native verification.
 
 ## 2. Init the workspace
 
