@@ -143,7 +143,17 @@ describe('canvas-cursors / resolveToolCursor (untrusted token → trusted cursor
         return 'pen';
       },
     };
-    for (const tok of [null, undefined, 42, {}, [], ['pen'], true, Symbol('pen'), hostileCoercible]) {
+    for (const tok of [
+      null,
+      undefined,
+      42,
+      {},
+      [],
+      ['pen'],
+      true,
+      Symbol('pen'),
+      hostileCoercible,
+    ]) {
       // biome-ignore lint/suspicious/noExplicitAny: deliberate hostile-input test
       expect(resolveToolCursor(tok as any)).toBeNull();
     }
