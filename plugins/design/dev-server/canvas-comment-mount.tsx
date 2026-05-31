@@ -48,29 +48,14 @@ import {
 import { MaybeToolProvider, useToolMode } from './use-tool-mode.tsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Cursor CSS for the generic mount host. canvas-lib's HALO_CSS keys comment-
-// mode cursors on `.dc-canvas[data-active-tool]`, which is absent in a bare
-// specimen. We mirror the comment-tool cursor keyed on the mount host's
-// `data-active-tool` attribute so the affordance ships even with no canvas-lib
-// CSS present. The host is `display: contents` (so specimen layout is byte-
-// identical) — a `display:contents` box can't paint a cursor, so the rule
-// targets descendants of the host, not the host box itself.
-
-const MC_CURSOR_CSS = `
-[data-mc-host][data-active-tool="comment"] *,
-body[data-active-tool="comment"] * {
-  cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><path d='M3 3 L14 3 L14 11 L8 11 L4 14 L4 11 L3 11 Z' fill='white' stroke='%23111' stroke-width='1' stroke-linejoin='round'/></svg>") 4 4, crosshair !important;
-}
-`.trim();
-
-function ensureMountCursorStyles(): void {
-  if (typeof document === 'undefined') return;
-  if (document.getElementById('mc-cursor-css')) return;
-  const s = document.createElement('style');
-  s.id = 'mc-cursor-css';
-  s.textContent = MC_CURSOR_CSS;
-  document.head.appendChild(s);
-}
+// Phase 24 — the comment-mode cursor (and every other tool cursor) is owned
+// SOLELY by use-tool-mode.tsx, whose `* { cursor: <Kenney glyph> !important }`
+// rule is injected by the ToolProvider this layer mounts (MaybeToolProvider) —
+// so it covers bare DS specimens too. The old `[data-mc-host]…`/`body[…]`
+// comment-cursor rule used to live here, but its higher specificity shadowed
+// the unified Kenney cursor on UI canvases (comment-mount stamps
+// `data-active-tool` on <body>, so `body[data-active-tool="comment"] *` matched
+// there as well). Removed so the single source of truth wins. See DDR-067.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CommentHost — owns the lite comment subsystem: the input router (comment-
@@ -116,7 +101,6 @@ function pickSpecimenEl(clientX: number, clientY: number): HTMLElement | null {
 }
 
 function CommentHost({ children, file }: { children: ReactNode; file: string | undefined }) {
-  ensureMountCursorStyles();
   const { tool, setTool } = useToolMode();
   const selSet = useSelectionSet();
   const hostRef = useRef<HTMLDivElement | null>(null);

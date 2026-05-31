@@ -12,14 +12,13 @@ import {
 } from '../use-tool-mode.tsx';
 
 describe('use-tool-mode / static', () => {
-  test('DEFAULT_TOOLS exposes V/H/C + draw set B/R/O/N/A/T/E (Phase 21 sticky+text)', () => {
+  test('DEFAULT_TOOLS exposes V/H/C + draw set B/R/N/A/T/E (Phase 24 single Shape tool)', () => {
     expect(DEFAULT_TOOLS.map((t) => t.id)).toEqual([
       'move',
       'hand',
       'comment',
       'pen',
-      'rect',
-      'ellipse',
+      'shape',
       'sticky',
       'arrow',
       'text',
@@ -31,7 +30,6 @@ describe('use-tool-mode / static', () => {
       'C',
       'B',
       'R',
-      'O',
       'N',
       'A',
       'T',
@@ -43,17 +41,16 @@ describe('use-tool-mode / static', () => {
     expect(Object.isFrozen(DEFAULT_TOOLS)).toBe(true);
   });
 
-  test('default cursors per tool (Phase 21 — custom SVG cursors + native fallback)', () => {
+  test('cursors per tool (Phase 24 — ONE Kenney library for every tool + native fallback)', () => {
     const byId = Object.fromEntries(DEFAULT_TOOLS.map((t) => [t.id, t.cursor]));
-    // Move keeps the system arrow; every other tool ships a data-URI SVG cursor
-    // that falls back to the right native cursor if the image is rejected.
-    expect(byId.move).toBe('default');
+    // Phase 24 — EVERY tool (incl. move) ships a Kenney data-URI SVG cursor that
+    // falls back to the right native cursor if the image is rejected.
     for (const id of [
+      'move',
       'hand',
       'comment',
       'pen',
-      'rect',
-      'ellipse',
+      'shape',
       'sticky',
       'arrow',
       'text',
@@ -63,11 +60,12 @@ describe('use-tool-mode / static', () => {
       expect(byId[id]).toContain('32'); // 32×32 cursor
     }
     // Native fallbacks are preserved after the custom URL.
+    expect(byId.move).toMatch(/, default$/);
     expect(byId.hand).toMatch(/, grab$/);
     expect(byId.text).toMatch(/, text$/);
     expect(byId.eraser).toMatch(/, cell$/);
     expect(byId.pen).toMatch(/, crosshair$/);
-    expect(byId.rect).toMatch(/, crosshair$/);
+    expect(byId.shape).toMatch(/, crosshair$/);
   });
 });
 

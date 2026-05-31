@@ -97,4 +97,36 @@ describe('sanitizeAnnotationSvg — A3', () => {
     expect(out.toLowerCase()).not.toContain('<set');
     expect(out.toLowerCase()).not.toContain('<animate');
   });
+
+  // Phase 24 (DDR-067 security review) — a handler glued onto the previous
+  // attribute's closing quote with NO separating whitespace is a distinct
+  // attribute to HTML/SVG parsers; the old `\s`-anchored denylist missed it.
+  test('strips a quote-glued on*= handler (no separating whitespace)', () => {
+    const out = sanitizeAnnotationSvg(
+      '<svg xmlns="http://www.w3.org/2000/svg" data-mdcc-annotations="1">' +
+        '<circle cx="1" cy="1" r="2"onload="alert(document.cookie)"/>' +
+        '<rect x="0" y="0" width="9" height="9"onclick=\'evil()\'/></svg>'
+    );
+    // (a bare /on\w+=/ would false-match `data-mdcc-annotations="1"` — target
+    // the actual handler names instead)
+    expect(out).not.toMatch(/\bon(?:load|click|error|mouse\w+|focus)\s*=/i);
+    expect(out).not.toContain('alert(document.cookie)');
+    expect(out).not.toContain('evil()');
+    // The legit element + its real attributes survive intact.
+    expect(out).toContain('<circle');
+    expect(out).toContain('r="2"');
+    expect(out).toContain('<rect');
+    expect(out).toContain('width="9"');
+  });
+
+  // Phase 24 — the new shape/arrowhead vocabulary survives byte-intact.
+  test('keeps Phase 24 <polygon>/<circle> + data-* attrs byte-intact', () => {
+    const phase24 =
+      '<svg xmlns="http://www.w3.org/2000/svg" data-mdcc-annotations="1">' +
+      '<polygon data-id="pg" data-tool="polygon" stroke="#222" stroke-width="2" fill="none" data-shape="diamond" points="20,0 40,20 20,40 0,20"/>' +
+      '<g data-id="a" data-tool="arrow" stroke="#111" stroke-width="2" fill="none" data-start-head="circle" data-line-type="curved"><path d="M0 0 Q10 10 20 0"/><circle cx="20" cy="0" r="6" fill="#111"/></g>' +
+      '<g data-id="st" data-tool="sticky" data-r="8" data-fs="16" fill="#fce8a6" data-bold="1" data-align="center"><rect x="0" y="0" width="200" height="200" rx="8" ry="8"/><text data-sticky-body="1" x="12" y="12" font-size="16" fill="#1a1a1a" dominant-baseline="hanging">x</text></g>' +
+      '</svg>';
+    expect(sanitizeAnnotationSvg(phase24)).toBe(phase24);
+  });
 });

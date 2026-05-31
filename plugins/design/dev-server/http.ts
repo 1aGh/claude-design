@@ -153,6 +153,26 @@ interface CanvasCacheEntry {
 }
 const canvasCache = new Map<string, CanvasCacheEntry>();
 
+// Per-process boot id, folded into every canvas ETag. The canvas transpile
+// BUNDLES the shared chrome (canvas-lib → tool-palette / annotations-layer /
+// use-tool-mode / canvas-cursors / …), but the freshness sig + base etag only
+// track the canvas file + its inlined CSS — NOT those chrome sources. So a
+// chrome edit left the etag unchanged → the browser's `If-None-Match` matched →
+// 304 → the user kept getting the STALE transpile even after a server restart
+// (the recurring "my cursor / chrome change didn't show up" bug). Folding the
+// boot id in means a restart — the expected workflow after a dev-server source
+// edit (see CLAUDE.md) — changes every canvas etag, so a normal reload re-fetches
+// fresh chrome. (DDR-067.)
+const RUNTIME_BOOT_ID = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+
+// Bumped by the chrome source watchers (below) on every canvas-lib / dev-server
+// `.tsx`/`.ts` edit. Folded into the canvas ETag so a LIVE chrome edit (no
+// restart) also changes the etag — otherwise clearing `canvasCache` re-transpiles
+// fresh on the server, but the unchanged canvas SOURCE yields the same
+// `result.etag`, the browser's `If-None-Match` matches → 304 → the user still
+// gets the stale bundle even after the HMR hard-reload. (DDR-067.)
+let CHROME_EPOCH = 0;
+
 /** Relative `.css` import specifiers in a canvas source → absolute paths (the
  *  files Bun.build inlines). Bare / virtual specifiers (`@maude/…`, npm) are
  *  skipped — only on-disk relative CSS affects the inlined output. Resolved
@@ -228,7 +248,10 @@ async function serveCanvasTsx(
     // may have added or removed a `.css` import.
     cached = {
       sig: canvasFreshnessSig(absPath, cssDeps),
-      etag: result.etag,
+      // Fold in the boot id (restart) + chrome epoch (live edit) so a chrome
+      // change busts the browser's cached transpile even when the canvas source
+      // (hence result.etag) is unchanged. See RUNTIME_BOOT_ID / CHROME_EPOCH.
+      etag: `${result.etag}-${RUNTIME_BOOT_ID}-${CHROME_EPOCH}`,
       js: result.js,
       cssDeps,
     };
@@ -309,6 +332,7 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
   ctx.bus.on('fs:any', (rel: string) => {
     if (rel.startsWith('_lib/')) {
       canvasCache.clear();
+      CHROME_EPOCH++;
     }
   });
 
@@ -316,6 +340,7 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
   try {
     libWatcher = watch(canvasLibPath(), () => {
       canvasCache.clear();
+      CHROME_EPOCH++;
       ctx.bus.emit('fs:any', '_lib/canvas-lib.tsx');
     });
   } catch (err) {
@@ -327,21 +352,27 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
   void libWatcher;
 
   // G7v2 — canvas-lib.tsx transitively imports many dev-server siblings
-  // (canvas-shell, contextual-toolbar, equal-spacing-handles, ...). Editing
-  // any of them invalidates the bundled canvas output. Without watching them
-  // the mtime-keyed `canvasCache` keeps serving the stale bundle and the
-  // user sees pre-edit behaviour even after a hard iframe reload.
+  // (canvas-shell, contextual-toolbar, equal-spacing-handles, tool-palette,
+  // use-tool-mode, ...). Editing any of them invalidates the bundled canvas
+  // output. Without watching them the mtime-keyed `canvasCache` keeps serving
+  // the stale bundle and the user sees pre-edit behaviour even after a hard
+  // iframe reload.
   //
-  // Recursive watch over DEV_SERVER_ROOT, filtered to .tsx — server-only .ts
-  // (api / http / context / etc.) doesn't reach the canvas. Test files
-  // (`test/`) and built output (`dist/`, `client/`) also skipped.
+  // Recursive watch over DEV_SERVER_ROOT, filtered to .tsx AND .ts: the chrome
+  // graph includes plain `.ts` modules that DO reach the canvas
+  // (`canvas-cursors.ts`, `canvas-arrowheads.ts`) — the prior `.tsx`-only filter
+  // skipped them, so cursor edits never busted the cache (the recurring stale-
+  // cursor bug, DDR-067). Server-only `.ts` (api / http / context) also clears
+  // here, which is harmless (a needless rebuild, not a stale serve). Test files
+  // (`test/`), built output (`dist/`, `client/`), and node_modules are skipped.
   let devSrcWatcher: ReturnType<typeof watch> | null = null;
   try {
     devSrcWatcher = watch(DEV_SERVER_ROOT, { recursive: true }, (_evt, filename) => {
       if (!filename) return;
-      if (!filename.endsWith('.tsx')) return;
+      if (!filename.endsWith('.tsx') && !filename.endsWith('.ts')) return;
       if (filename.startsWith('test/') || filename.startsWith('test\\')) return;
       if (filename.startsWith('dist/') || filename.startsWith('client/')) return;
+      if (filename.includes('node_modules')) return;
       canvasCache.clear();
       ctx.bus.emit('fs:any', `_lib/${filename}`);
     });

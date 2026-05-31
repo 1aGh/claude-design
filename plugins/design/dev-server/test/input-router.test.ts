@@ -201,10 +201,10 @@ describe('input-router / keydown — Phase 5 draw tools', () => {
     });
   });
 
-  test('R → tool rect', () => {
+  test('R → tool shape (Phase 24 — single Shape tool)', () => {
     expect(classify(base({ type: 'keydown', key: 'r' }))).toEqual({
       kind: 'tool',
-      tool: 'rect',
+      tool: 'shape',
     });
   });
 
@@ -222,11 +222,18 @@ describe('input-router / keydown — Phase 5 draw tools', () => {
     });
   });
 
-  test('O → tool ellipse (Phase 5.1)', () => {
+  test('O → tool shape (Phase 24 — legacy ellipse key now arms Shape)', () => {
     expect(classify(base({ type: 'keydown', key: 'o' }))).toEqual({
       kind: 'tool',
-      tool: 'ellipse',
+      tool: 'shape',
     });
+  });
+
+  test('shape tool owns bare pointer events (SVG overlay claims)', () => {
+    expect(classify(base({ type: 'pointerdown', activeTool: 'shape', button: 0 })).kind).toBe(
+      'no-op'
+    );
+    expect(classify(base({ type: 'pointermove', activeTool: 'shape' })).kind).toBe('no-op');
   });
 
   test('N → tool sticky (Phase 21)', () => {

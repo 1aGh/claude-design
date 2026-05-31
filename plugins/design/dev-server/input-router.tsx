@@ -68,6 +68,11 @@ export type Tool =
   | 'hand'
   | 'comment'
   | 'pen'
+  // Phase 24 — `shape` is the single active draw tool that produces rect /
+  // ellipse / polygon strokes (the kind is chosen via the palette popover).
+  // `rect` / `ellipse` stay in the union as the stroke discriminants they
+  // always were, but are no longer directly selectable active tools.
+  | 'shape'
   | 'rect'
   | 'ellipse'
   | 'arrow'
@@ -77,6 +82,7 @@ export type Tool =
 
 const ANNOTATION_TOOLS = new Set<Tool>([
   'pen',
+  'shape',
   'rect',
   'ellipse',
   'arrow',
@@ -161,8 +167,9 @@ export function classify(input: ClassifyInput): RouterAction {
     if (k === 'h') return { kind: 'tool', tool: 'hand' };
     if (k === 'c') return { kind: 'tool', tool: 'comment' };
     if (k === 'b') return { kind: 'tool', tool: 'pen' };
-    if (k === 'r') return { kind: 'tool', tool: 'rect' };
-    if (k === 'o') return { kind: 'tool', tool: 'ellipse' };
+    // Phase 24 — R (and legacy O) both arm the single Shape tool; the specific
+    // primitive is picked from the palette's shape-kind popover.
+    if (k === 'r' || k === 'o') return { kind: 'tool', tool: 'shape' };
     if (k === 'a') return { kind: 'tool', tool: 'arrow' };
     // Phase 21 — N = sticky Note ('S' is taken by the shell Design-system view
     // + Shift-marquee); T = standalone Text. Both are bare letters the shell

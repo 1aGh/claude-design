@@ -194,6 +194,11 @@ const ANNOTATION_SVG_ELEMENTS = new Set([
   'ellipse',
   'line',
   'polyline',
+  // Phase 24 — `polygon` (diamond / triangle shape primitives + closed arrowhead
+  // outlines + diamond heads) and `circle` (circle arrowhead). Inert shape
+  // elements with no script capability — same safety class as the rest.
+  'polygon',
+  'circle',
   'text',
 ]);
 
@@ -240,7 +245,16 @@ export function sanitizeAnnotationSvg(svg: string): string {
       // 3. Attribute denylist on the surviving allowlisted elements — the legit
       //    vocabulary uses no on*= / style= / *href=, so stripping them closes
       //    inline handlers, CSS url(javascript:), and entity-encoded hrefs.
-      .replace(/\s(?:on[a-z]+|style|(?:[\w-]+:)?href)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+      //    The leading boundary is a LOOKBEHIND on whitespace / quote / slash
+      //    (not a consumed `\s`) so a handler glued to the previous attribute's
+      //    closing quote — `<circle r="2"onload="…"/>`, which HTML/SVG parsers
+      //    accept as a distinct attribute — is also stripped (Phase 24 security
+      //    review, DDR-067). The non-consuming lookbehind leaves the preceding
+      //    quote intact so the legit attribute it belonged to survives.
+      .replace(
+        /(?<=[\s"'/])(?:on[a-z]+|style|(?:[\w-]+:)?href)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi,
+        ''
+      )
   );
 }
 

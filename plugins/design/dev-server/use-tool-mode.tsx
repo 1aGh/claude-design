@@ -36,6 +36,13 @@ export interface ToolDescriptor {
   cursor: string;
 }
 
+/**
+ * Phase 24 — the six primitives the single Shape tool can draw. Maps onto the
+ * stroke model: square/rounded → `rect` (cornerRadius 0 / 8); circle →
+ * `ellipse`; diamond/triangle/triangle-down → `polygon`.
+ */
+export type ShapeKind = 'square' | 'rounded' | 'circle' | 'diamond' | 'triangle' | 'triangle-down';
+
 // Phase 21 — every tool ships a custom 32×32 SVG cursor (canvas-cursors.ts)
 // with a white outline halo so the glyph reads on any background. The native
 // crosshair/text/cell were thin + tiny ("pen almost invisible"); these mirror
@@ -45,8 +52,9 @@ export const DEFAULT_TOOLS: readonly ToolDescriptor[] = Object.freeze([
   { id: 'hand', label: 'Hand', shortcut: 'H', cursor: TOOL_CURSORS.hand },
   { id: 'comment', label: 'Comment', shortcut: 'C', cursor: TOOL_CURSORS.comment },
   { id: 'pen', label: 'Pen', shortcut: 'B', cursor: TOOL_CURSORS.pen },
-  { id: 'rect', label: 'Rect', shortcut: 'R', cursor: TOOL_CURSORS.rect },
-  { id: 'ellipse', label: 'Ellipse', shortcut: 'O', cursor: TOOL_CURSORS.ellipse },
+  // Phase 24 — one Shape tool replaces the separate Rect (R) + Ellipse (O)
+  // buttons; the primitive is chosen from the palette popover.
+  { id: 'shape', label: 'Shape', shortcut: 'R', cursor: TOOL_CURSORS.shape },
   { id: 'sticky', label: 'Sticky', shortcut: 'N', cursor: TOOL_CURSORS.sticky },
   { id: 'arrow', label: 'Arrow', shortcut: 'A', cursor: TOOL_CURSORS.arrow },
   { id: 'text', label: 'Text', shortcut: 'T', cursor: TOOL_CURSORS.text },
@@ -64,6 +72,9 @@ interface ToolContextValue {
   sticky: { tool: Tool | null; locked: boolean };
   toggleSticky: (t: Tool) => void;
   clearSticky: () => void;
+  /** Phase 24 — the primitive the Shape tool will draw next. */
+  shapeKind: ShapeKind;
+  setShapeKind: (k: ShapeKind) => void;
 }
 
 const ToolContext = createContext<ToolContextValue | null>(null);
@@ -101,25 +112,60 @@ export function ToolProvider({
   const clearSticky = useCallback(() => {
     setSticky({ tool: null, locked: false });
   }, []);
+  const [shapeKind, setShapeKind] = useState<ShapeKind>('square');
 
-  // Body cursor sync — applied to the canvas iframe's body (this hook runs
-  // inside the iframe context). The viewport-controller still owns the
-  // grabbing/grab cursor swap during space-pan; this only sets the resting
-  // cursor for the active tool.
+  // Cursor sync — applied inside the canvas (this hook runs in the canvas
+  // context). The active tool's cursor is set on <body> AND forced across the
+  // whole canvas working area via an `!important` rule, so the custom cursor
+  // shows EVERYWHERE — including over artboard CONTENT, whose own `cursor:
+  // pointer`/`text`/… would otherwise win (Phase 24, the "custom cursors in the
+  // whole app" requirement; FigJam behaviour). Chrome that lives OUTSIDE
+  // `.dc-world` (tool palette, context toolbar, resize handles) is intentionally
+  // NOT matched, so its buttons/handles keep their affordance cursors. The
+  // viewport-controller still owns the grab/grabbing swap during space-pan.
   useEffect(() => {
     if (typeof document === 'undefined') return;
     const desc = tools.find((t) => t.id === tool);
     if (!desc) return;
     const prev = document.body.style.cursor;
     document.body.style.cursor = desc.cursor;
+    let styleEl = document.getElementById('dc-tool-cursor') as HTMLStyleElement | null;
+    if (!styleEl) {
+      styleEl = document.createElement('style');
+      styleEl.id = 'dc-tool-cursor';
+      document.head.appendChild(styleEl);
+    }
+    // Truly GLOBAL inside the canvas document — `*` so it covers the empty grid
+    // host, `.dc-world`, every artboard + its content, AND the floating chrome
+    // (minimap, toolbar). The earlier `.dc-world`-scoped rule left the empty
+    // canvas / minimap on their own cursors; the brief is "prostě všude". (Mirrors
+    // the outer-shell `*` rule so both documents are uniformly covered.)
+    styleEl.textContent = `* { cursor: ${desc.cursor} !important; }`;
+    // Phase 24 — broadcast the active tool TOKEN to the OUTER app shell (this
+    // hook runs in the canvas iframe) so the shell shows the same custom cursor
+    // across the whole maude UI (sidebar / top bar). We send the tool *id*, NOT
+    // the cursor string: the shell resolves it against its own trusted
+    // TOOL_CURSORS copy (resolveToolCursor), so an untrusted synced canvas
+    // (DDR-054) can only pick a known, always-visible glyph — it can't inject an
+    // invisible/displaced cursor as a clickjacking aid (phase-24 ethical-hacker
+    // Finding 2; DDR-067).
+    if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
+      try {
+        window.parent.postMessage({ dgn: 'tool-cursor', tool }, '*');
+      } catch {
+        /* cross-origin parent rejected — shell keeps its default cursor */
+      }
+    }
     return () => {
       document.body.style.cursor = prev;
+      const el = document.getElementById('dc-tool-cursor');
+      if (el) el.textContent = '';
     };
   }, [tool, tools]);
 
   const value = useMemo<ToolContextValue>(
-    () => ({ tool, setTool, tools, sticky, toggleSticky, clearSticky }),
-    [tool, setTool, tools, sticky, toggleSticky, clearSticky]
+    () => ({ tool, setTool, tools, sticky, toggleSticky, clearSticky, shapeKind, setShapeKind }),
+    [tool, setTool, tools, sticky, toggleSticky, clearSticky, shapeKind]
   );
 
   return <ToolContext.Provider value={value}>{children}</ToolContext.Provider>;
