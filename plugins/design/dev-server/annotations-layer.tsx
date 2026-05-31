@@ -893,6 +893,97 @@ function normalizeBox<T extends { x: number; y: number; w: number; h: number }>(
   };
 }
 
+/**
+ * Phase 24 — draw-time resize modifiers (FigJam parity, mirror of the
+ * `use-annotation-resize.tsx` set so create + resize feel identical):
+ *   • `shift` — lock to 1:1 (square / circle); the larger drag axis sets the
+ *               side, each axis keeps its own sign so the drag direction holds.
+ *   • `alt`   — grow from the pointer-down point as CENTER (symmetric).
+ * With neither held the box is `{ x: down, w: cursor − down }` — byte-identical
+ * to the previous corner-drag math.
+ */
+export interface DrawMods {
+  shift: boolean;
+  alt: boolean;
+}
+
+/** Constrain a draw drag (`ax,ay` = pointer-down anchor; `wx,wy` = cursor). */
+export function constrainDrawBox(
+  ax: number,
+  ay: number,
+  wx: number,
+  wy: number,
+  mods: DrawMods
+): { x: number; y: number; w: number; h: number } {
+  let dx = wx - ax;
+  let dy = wy - ay;
+  if (mods.shift) {
+    const side = Math.max(Math.abs(dx), Math.abs(dy));
+    dx = (dx < 0 ? -1 : 1) * side;
+    dy = (dy < 0 ? -1 : 1) * side;
+  }
+  if (mods.alt) {
+    // Anchor is the center → span ±|d| on each axis around it.
+    return { x: ax - dx, y: ay - dy, w: 2 * dx, h: 2 * dy };
+  }
+  return { x: ax, y: ay, w: dx, h: dy };
+}
+
+/**
+ * Apply the draw-time modifiers to the in-progress stroke. Shared by the
+ * pointer-move handler and the live keydown/keyup re-apply, so holding Shift /
+ * Alt updates the draft even without moving the cursor. `anchor` is the
+ * pointer-down point; pen / text carry no box so they pass through unchanged.
+ */
+export function applyDrawModifiers(
+  cur: Stroke,
+  anchor: { x: number; y: number },
+  wx: number,
+  wy: number,
+  mods: DrawMods
+): Stroke {
+  if (cur.tool === 'rect' || cur.tool === 'polygon') {
+    const b = constrainDrawBox(anchor.x, anchor.y, wx, wy, mods);
+    return { ...cur, x: b.x, y: b.y, w: b.w, h: b.h };
+  }
+  if (cur.tool === 'ellipse') {
+    const b = constrainDrawBox(anchor.x, anchor.y, wx, wy, mods);
+    return {
+      ...cur,
+      cx: b.x + b.w / 2,
+      cy: b.y + b.h / 2,
+      rx: Math.abs(b.w) / 2,
+      ry: Math.abs(b.h) / 2,
+    };
+  }
+  if (cur.tool === 'sticky') {
+    // Stickies are always 1:1 — force the square constraint; Alt still centers.
+    const b = constrainDrawBox(anchor.x, anchor.y, wx, wy, { shift: true, alt: mods.alt });
+    return { ...cur, x: b.x, y: b.y, w: b.w, h: b.h };
+  }
+  if (cur.tool === 'arrow') {
+    let x2 = wx;
+    let y2 = wy;
+    if (mods.shift) {
+      // Snap the shaft to the nearest 45° around the anchor (its midpoint
+      // under Alt), keeping the cursor's distance.
+      const dx = wx - anchor.x;
+      const dy = wy - anchor.y;
+      const dist = Math.hypot(dx, dy);
+      const step = Math.PI / 4;
+      const ang = Math.round(Math.atan2(dy, dx) / step) * step;
+      x2 = anchor.x + Math.cos(ang) * dist;
+      y2 = anchor.y + Math.sin(ang) * dist;
+    }
+    if (mods.alt) {
+      // Anchor is the midpoint → the start end mirrors the dragged end.
+      return { ...cur, x1: 2 * anchor.x - x2, y1: 2 * anchor.y - y2, x2, y2 };
+    }
+    return { ...cur, x1: anchor.x, y1: anchor.y, x2, y2 };
+  }
+  return cur;
+}
+
 function normalizeRect(r: RectStroke): RectStroke {
   return normalizeBox(r);
 }
@@ -1288,6 +1379,11 @@ export function AnnotationsLayer() {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const drawingRef = useRef<Stroke | null>(null);
   drawingRef.current = drawing;
+  // Phase 24 — pointer-down anchor + last cursor (world coords) for the active
+  // draw, so the resize modifiers (Shift 1:1 / Alt from-center) can re-constrain
+  // the draft on a bare keydown/keyup, not just on pointer-move.
+  const drawAnchorRef = useRef<{ x: number; y: number } | null>(null);
+  const lastDrawPointRef = useRef<{ x: number; y: number } | null>(null);
   /**
    * Phase 20 — latest strokes mirror so command builders can read the
    * pre-mutation snapshot synchronously (React state isn't refreshed
@@ -1565,6 +1661,8 @@ export function AnnotationsLayer() {
         /* some browsers reject capture on synthetic events */
       }
       const [wx, wy] = screenToWorld(e.clientX, e.clientY);
+      drawAnchorRef.current = { x: wx, y: wy };
+      lastDrawPointRef.current = { x: wx, y: wy };
       if (isErase) {
         eraseAt(wx, wy);
         return true;
@@ -1691,6 +1789,9 @@ export function AnnotationsLayer() {
         return;
       }
       setGhost(null);
+      lastDrawPointRef.current = { x: wx, y: wy };
+      const anchor = drawAnchorRef.current;
+      const mods: DrawMods = { shift: e.shiftKey, alt: e.altKey };
       setDrawing((cur) => {
         if (!cur) return cur;
         if (cur.tool === 'pen') {
@@ -1698,26 +1799,11 @@ export function AnnotationsLayer() {
           if (last && Math.hypot(wx - last[0], wy - last[1]) < 1) return cur;
           return { ...cur, points: [...cur.points, [wx, wy] as WorldPoint] };
         }
-        if (cur.tool === 'rect' || cur.tool === 'polygon') {
-          return { ...cur, w: wx - cur.x, h: wy - cur.y };
-        }
-        if (cur.tool === 'ellipse') {
-          const rx = Math.abs(wx - cur.cx);
-          const ry = Math.abs(wy - cur.cy);
-          return { ...cur, rx, ry };
-        }
-        if (cur.tool === 'arrow') {
-          return { ...cur, x2: wx, y2: wy };
-        }
-        if (cur.tool === 'sticky') {
-          // Phase 24 — stickies are 1:1. Snap to a square whose side follows the
-          // larger drag axis, preserving the drag direction (sign of w/h).
-          const dw = wx - cur.x;
-          const dh = wy - cur.y;
-          const side = Math.max(Math.abs(dw), Math.abs(dh));
-          return { ...cur, w: Math.sign(dw || 1) * side, h: Math.sign(dh || 1) * side };
-        }
-        return cur;
+        // Phase 24 — Shift (1:1) / Alt (from-center) apply to every box + arrow
+        // shape, mirroring the resize handles. The anchor is the pointer-down
+        // point; without it (shouldn't happen mid-draw) fall back to no change.
+        if (!anchor) return cur;
+        return applyDrawModifiers(cur, anchor, wx, wy, mods);
       });
     },
     [isActive, isErase, visible, screenToWorld, eraseAt, ghostCapable]
@@ -1781,6 +1867,8 @@ export function AnnotationsLayer() {
       const stickyOnThis = sticky.locked && sticky.tool === toolJustUsed;
       if (!stickyOnThis) setTool('move');
     }
+    drawAnchorRef.current = null;
+    lastDrawPointRef.current = null;
     setDrawing(null);
   }, [isActive, isErase, visible, commitStrokes, annotSel, setTool, sticky]);
 
@@ -1790,6 +1878,8 @@ export function AnnotationsLayer() {
   // a no-op.
   const cancelStroke = useCallback(() => {
     if (!drawingRef.current) return;
+    drawAnchorRef.current = null;
+    lastDrawPointRef.current = null;
     setDrawing(null);
   }, []);
 
@@ -1799,6 +1889,30 @@ export function AnnotationsLayer() {
     document.addEventListener('maude:cancel-stroke', onCancel);
     return () => document.removeEventListener('maude:cancel-stroke', onCancel);
   }, [cancelStroke]);
+
+  // Phase 24 — holding/releasing Shift or Alt mid-draw re-constrains the draft
+  // at the last cursor position (FigJam: the modifier engages while held, no
+  // pointer-move needed). Pen / text carry no box, so they're skipped.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onKey = (e: KeyboardEvent) => {
+      const cur = drawingRef.current;
+      const anchor = drawAnchorRef.current;
+      const p = lastDrawPointRef.current;
+      if (!cur || !anchor || !p) return;
+      if (e.key !== 'Shift' && e.key !== 'Alt') return;
+      if (cur.tool === 'pen' || cur.tool === 'text') return;
+      e.preventDefault();
+      const mods: DrawMods = { shift: e.shiftKey, alt: e.altKey };
+      setDrawing((c) => (c ? applyDrawModifiers(c, anchor, p.x, p.y, mods) : c));
+    };
+    document.addEventListener('keydown', onKey, true);
+    document.addEventListener('keyup', onKey, true);
+    return () => {
+      document.removeEventListener('keydown', onKey, true);
+      document.removeEventListener('keyup', onKey, true);
+    };
+  }, []);
 
   const renderStrokes = useMemo(
     () => (drawing ? [...strokes, drawing] : strokes),
