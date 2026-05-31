@@ -247,15 +247,184 @@ export function IconTrash(props: IconProps) {
   );
 }
 
+// ── Phase 24 shape-tool icons ────────────────────────────────────────────────
+// IconShape — the Shape tool button: a square + circle composite (FigJam-style).
+export function IconShape(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="4" y="4" width="11" height="11" rx="1.5" />
+      <circle cx="15" cy="15" r="5" />
+    </Svg>
+  );
+}
+export function IconSquare(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="4" y="4" width="16" height="16" rx="0.5" />
+    </Svg>
+  );
+}
+export function IconRoundedSquare(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="4" y="4" width="16" height="16" rx="4" />
+    </Svg>
+  );
+}
+export function IconCircle(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="8" />
+    </Svg>
+  );
+}
+export function IconDiamond(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M12 3l9 9-9 9-9-9z" />
+    </Svg>
+  );
+}
+export function IconTriangle(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M12 4l8 16H4z" />
+    </Svg>
+  );
+}
+export function IconTriangleDown(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 4h16l-8 16z" />
+    </Svg>
+  );
+}
+
+// ── Phase 24 arrowhead-picker icons ──────────────────────────────────────────
+// Each shows a short shaft ending in the head style on the right.
+export function IconArrowheadLine(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M3 12h13" />
+      <path d="M12 8l5 4-5 4" />
+    </Svg>
+  );
+}
+export function IconArrowheadTriangle(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M3 12h11" />
+      <path d="M13 8l6 4-6 4z" fill="currentColor" />
+    </Svg>
+  );
+}
+export function IconArrowheadTriangleOutline(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M3 12h11" />
+      <path d="M13 8l6 4-6 4z" />
+    </Svg>
+  );
+}
+export function IconArrowheadCircle(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M3 12h11" />
+      <circle cx="17" cy="12" r="3" fill="currentColor" />
+    </Svg>
+  );
+}
+export function IconArrowheadDiamond(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M3 12h10" />
+      <path d="M17 8l4 4-4 4-4-4z" fill="currentColor" />
+    </Svg>
+  );
+}
+
+// ── Phase 24 line-type icons ─────────────────────────────────────────────────
+export function IconLineStraight(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 12h16" />
+    </Svg>
+  );
+}
+export function IconLineCurved(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 18C4 9 20 15 20 6" />
+    </Svg>
+  );
+}
+export function IconLineElbow(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 6v6a2 2 0 002 2h14" />
+    </Svg>
+  );
+}
+
+// ── Phase 24 text-style icons ────────────────────────────────────────────────
+export function IconBold(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M7 5h6a3.5 3.5 0 010 7H7zM7 12h7a3.5 3.5 0 010 7H7z" />
+    </Svg>
+  );
+}
+export function IconStrike(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M5 12h14" />
+      <path d="M8 7a4 3 0 016-1M16 16a4 3 0 01-7 1" />
+    </Svg>
+  );
+}
+export function IconAlignLeft(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 6h16M4 12h10M4 18h13" />
+    </Svg>
+  );
+}
+export function IconAlignCenter(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 6h16M7 12h10M5 18h14" />
+    </Svg>
+  );
+}
+export function IconAlignRight(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 6h16M10 12h10M7 18h13" />
+    </Svg>
+  );
+}
+
 export const TOOL_ICONS: Record<string, (p: IconProps) => JSX.Element> = {
   move: IconMove,
   hand: IconHand,
   comment: IconComment,
   pen: IconPen,
+  // Phase 24 — single Shape tool. rect/ellipse kept for any legacy lookups.
+  shape: IconShape,
   rect: IconRect,
   ellipse: IconEllipse,
   sticky: IconSticky,
   arrow: IconArrow,
   text: IconText,
   eraser: IconEraser,
+};
+
+// Phase 24 — shape-kind → icon, for the palette popover + context toolbar.
+export const SHAPE_KIND_ICONS: Record<string, (p: IconProps) => JSX.Element> = {
+  square: IconSquare,
+  rounded: IconRoundedSquare,
+  circle: IconCircle,
+  diamond: IconDiamond,
+  triangle: IconTriangle,
+  'triangle-down': IconTriangleDown,
 };

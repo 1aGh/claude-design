@@ -22,6 +22,7 @@
  */
 
 import {
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   createContext,
   useCallback,
@@ -34,6 +35,13 @@ import {
 import { createPortal } from 'react-dom';
 
 import { AnnotationContextToolbar } from './annotations-context-toolbar.tsx';
+import {
+  ARROW_HEADS,
+  type ArrowHead,
+  type ArrowLineType,
+  type SvgPrimitive,
+  arrowPrimitives,
+} from './canvas-arrowheads.ts';
 import { IconLineThick, IconLineThin } from './canvas-icons.tsx';
 import { useViewportControllerContext, useWorldRefContext } from './canvas-lib.tsx';
 import { buildAnnotationStrokesRecord } from './commands/annotation-strokes-command.ts';
@@ -43,13 +51,28 @@ import { useAnnotationSelectionOptional } from './use-annotation-selection.tsx';
 import { useAnnotationsVisibility } from './use-annotations-visibility.tsx';
 import { useCollab } from './use-collab.tsx';
 import { useSelectionSetOptional } from './use-selection-set.tsx';
-import { useToolMode } from './use-tool-mode.tsx';
+import { type ShapeKind, useToolMode } from './use-tool-mode.tsx';
 import { useUndoSinks, useUndoStackOptional } from './use-undo-stack.tsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 
 type WorldPoint = readonly [number, number];
+
+// Phase 24 — arrow style enums are OWNED by canvas-arrowheads.ts (so that
+// module imports nothing back from here — no cycle, see DDR-067) and re-exported
+// here for back-compat (context-toolbar etc. import them from this module).
+export type { ArrowHead, ArrowLineType } from './canvas-arrowheads.ts';
+/** Phase 24 — polygon shape primitives (diamond + the two triangle pointings). */
+export type PolygonShape = 'diamond' | 'triangle' | 'triangle-down';
+/** Phase 24 — horizontal alignment for text + sticky bodies. */
+export type TextAlign = 'left' | 'center' | 'right';
+
+/** Phase 24 — cursor-following ghost placeholder descriptor (pure chrome). */
+type GhostDescriptor =
+  | { kind: 'text'; x: number; y: number; color: string }
+  | { kind: 'sticky'; x: number; y: number; color: string }
+  | { kind: 'shape'; x: number; y: number; shapeKind: ShapeKind; color: string };
 
 export interface PenStroke {
   id: string;
@@ -82,6 +105,27 @@ export interface EllipseStroke {
   ry: number;
   fill?: string | null;
 }
+/**
+ * Phase 24 — diamond / triangle / triangle-down primitives. Stored as a bbox
+ * (x/y/w/h, exactly like a rect) + a `shape` discriminant; the actual SVG
+ * points are derived from the bbox at serialize + render time. Brand-new on
+ * disk (`<polygon data-tool="polygon" data-shape="…">`), so no back-compat
+ * constraint — only idempotent round-trip.
+ */
+export interface PolygonStroke {
+  id: string;
+  tool: 'polygon';
+  shape: PolygonShape;
+  color: string;
+  width: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  fill?: string | null;
+  /** Dashed outline (stroke-dasharray). Absent / false = solid. */
+  dashed?: boolean;
+}
 export interface ArrowStroke {
   id: string;
   tool: 'arrow';
@@ -91,12 +135,14 @@ export interface ArrowStroke {
   y1: number;
   x2: number;
   y2: number;
-  /** Phase 21 — head on the (x1,y1) start. Absent = 'none' (back-compat). */
-  startHead?: 'none' | 'triangle';
-  /** Phase 21 — head on the (x2,y2) end. Absent = 'triangle' (back-compat). */
-  endHead?: 'none' | 'triangle';
+  /** Head on the (x1,y1) start. Absent = 'none' (back-compat). Phase 24 widened the enum. */
+  startHead?: ArrowHead;
+  /** Head on the (x2,y2) end. Absent = 'triangle' (back-compat). Phase 24 widened the enum. */
+  endHead?: ArrowHead;
   /** Phase 21 — dashed shaft (stroke-dasharray). Absent / false = solid. */
   dashed?: boolean;
+  /** Phase 24 — shaft routing. Absent = 'straight' (back-compat). */
+  lineType?: ArrowLineType;
 }
 export interface TextStroke {
   id: string;
@@ -113,6 +159,15 @@ export interface TextStroke {
   /** Phase 21 — world coords for standalone (unanchored) text. */
   x?: number;
   y?: number;
+  /** Phase 24 — bold weight. Absent / false = normal (back-compat). */
+  bold?: boolean;
+  /** Phase 24 — strikethrough. Absent / false = none (back-compat). */
+  strike?: boolean;
+  /**
+   * Phase 24 — horizontal alignment. Absent default differs by kind: anchored
+   * text = 'center' (legacy, byte-identical), standalone = 'left'.
+   */
+  align?: TextAlign;
 }
 /** Phase 21 — sticky note: a paper-tone card with its own word-wrapped text. */
 export interface StickyStroke {
@@ -127,11 +182,18 @@ export interface StickyStroke {
   fontSize: number;
   /** Corner radius; defaults to STICKY_CORNER_RADIUS (8 = soft). */
   cornerRadius?: number;
+  /** Phase 24 — bold body weight. Absent / false = normal. */
+  bold?: boolean;
+  /** Phase 24 — strikethrough body. Absent / false = none. */
+  strike?: boolean;
+  /** Phase 24 — body alignment. Absent = 'left' (FigJam sticky default). */
+  align?: TextAlign;
 }
 export type Stroke =
   | PenStroke
   | RectStroke
   | EllipseStroke
+  | PolygonStroke
   | ArrowStroke
   | TextStroke
   | StickyStroke;
@@ -167,7 +229,12 @@ export const STROKE_PALETTE = [
   '#1f1f1f', // ink
 ] as const;
 type PaletteColor = (typeof STROKE_PALETTE)[number];
-const DEFAULT_COLOR: PaletteColor = STROKE_PALETTE[0];
+// Phase 24 — default markup ink is BLACK (the `#1f1f1f` ink swatch, slot 8) for
+// EVERY ink tool (pen / shape / arrow / text). It's a palette member so the
+// draw chrome + per-selection toolbar highlight it as the active swatch; the
+// other hues stay one click away. (Stickies keep their warm-paper default —
+// DEFAULT_STICKY_COLOR — they're paper, not ink.)
+const DEFAULT_COLOR: PaletteColor = STROKE_PALETTE[8];
 
 // Light tints, index-paired to STROKE_PALETTE — picking "blue fill" gives a
 // pale blue wash under a saturated stroke, exactly like FigJam shapes.
@@ -190,22 +257,33 @@ type Thickness = typeof STROKE_WIDTH_THIN | typeof STROKE_WIDTH_THICK;
 const FONT_SIZE_MEDIUM = 14;
 const DEFAULT_FONT_SIZE = FONT_SIZE_MEDIUM;
 
-// Phase 21 — sticky-note paper tints. FigJam-style desaturated tints, wholly
-// separate from the stroke ink PALETTE and the translucent FILL_PALETTE so
-// stickies read as "paper", not "ink". Slot 0 (yellow) is the default.
+// Phase 24 — sticky-note paper tints. A muted/desaturated FigJam-style set
+// (Image #2): a warm paper yellow default, then white/grey + soft pastels.
+// Wholly separate from the stroke ink PALETTE and the translucent FILL_PALETTE
+// so stickies read as "paper", not "ink". Slot 0 (yellow) is the default.
+// Existing stickies keep their stored hex; only NEW stickies pick up the new
+// default tint.
 export const STICKY_PALETTE = [
-  '#ffe27a', // yellow (default — warm FigJam paper)
-  '#ffc1d4', // pink
-  '#a9d6ff', // blue
-  '#b3e6b8', // green
-  '#d8c2fb', // purple
-  '#f2ece1', // paper-white
+  '#fce8a6', // muted yellow (default — warm paper)
+  '#ffffff', // white
+  '#e6e4e0', // light grey
+  '#f7c5c0', // salmon
+  '#f8d2a6', // peach
+  '#bfe3c0', // mint
+  '#a9dbdb', // aqua
+  '#bcd2f0', // light blue
+  '#cfc4ec', // lavender
+  '#f3c4dd', // light pink
 ] as const;
 const DEFAULT_STICKY_COLOR = STICKY_PALETTE[0];
 const STICKY_CORNER_RADIUS = 8;
+// Phase 24 — stickies are 1:1; the default tap size is a square.
 const STICKY_DEFAULT_W = 200;
-const STICKY_DEFAULT_H = 160;
+const STICKY_DEFAULT_H = 200;
 const STICKY_MIN_SIZE = 40;
+// Phase 24 — a bare tap with the Shape tool drops a default-sized shape at the
+// tap point (FigJam parity: click commits, drag sizes). Square aspect.
+const SHAPE_DEFAULT_SIZE = 120;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pure helpers — exported for unit tests.
@@ -227,21 +305,92 @@ export function penPathD(points: readonly WorldPoint[]): string {
   return d;
 }
 
-export function arrowHeadPoints(
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number,
-  width: number
+// Phase 24 — moved to canvas-arrowheads.ts (single source for shaft + heads).
+// Re-exported so the existing test import (`from '../annotations-layer.tsx'`)
+// and the byte-identical canary keep working.
+export { arrowHeadPoints } from './canvas-arrowheads.ts';
+
+/**
+ * Phase 24 — polygon vertices derived from the bbox. `diamond` = the four
+ * edge-midpoints; `triangle` = apex-up; `triangle-down` = apex-down. Every
+ * shape's vertices span the FULL bbox, so a parse-back via the points' min/max
+ * recovers x/y/w/h exactly (idempotent round-trip).
+ */
+export function polygonVertices(
+  shape: PolygonShape,
+  x: number,
+  y: number,
+  w: number,
+  h: number
+): Array<[number, number]> {
+  if (shape === 'diamond') {
+    return [
+      [x + w / 2, y],
+      [x + w, y + h / 2],
+      [x + w / 2, y + h],
+      [x, y + h / 2],
+    ];
+  }
+  if (shape === 'triangle') {
+    return [
+      [x + w / 2, y],
+      [x + w, y + h],
+      [x, y + h],
+    ];
+  }
+  // triangle-down — apex at the bottom.
+  return [
+    [x, y],
+    [x + w, y],
+    [x + w / 2, y + h],
+  ];
+}
+
+/** Vertices as an SVG `points` string. */
+export function polygonPoints(
+  shape: PolygonShape,
+  x: number,
+  y: number,
+  w: number,
+  h: number
 ): string {
-  const angle = Math.atan2(y2 - y1, x2 - x1);
-  const len = 12 + width * 2;
-  const wing = Math.PI / 7;
-  const ax = x2 - Math.cos(angle - wing) * len;
-  const ay = y2 - Math.sin(angle - wing) * len;
-  const bx = x2 - Math.cos(angle + wing) * len;
-  const by = y2 - Math.sin(angle + wing) * len;
-  return `${ax},${ay} ${x2},${y2} ${bx},${by}`;
+  return polygonVertices(shape, x, y, w, h)
+    .map(([px, py]) => `${px},${py}`)
+    .join(' ');
+}
+
+/** Even-odd ray-cast point-in-polygon test. */
+function pointInPolygon(px: number, py: number, pts: ReadonlyArray<[number, number]>): boolean {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const a = pts[i];
+    const b = pts[j];
+    if (!a || !b) continue;
+    const [xi, yi] = a;
+    const [xj, yj] = b;
+    if (yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/** Parse a polygon `points` string back into its bounding box. */
+function polygonBBox(points: string): { x: number; y: number; w: number; h: number } | null {
+  let xMin = Number.POSITIVE_INFINITY;
+  let yMin = Number.POSITIVE_INFINITY;
+  let xMax = Number.NEGATIVE_INFINITY;
+  let yMax = Number.NEGATIVE_INFINITY;
+  for (const pair of points.trim().split(/\s+/)) {
+    const [px, py] = pair.split(',').map((n) => Number.parseFloat(n));
+    if (px == null || py == null || Number.isNaN(px) || Number.isNaN(py)) continue;
+    if (px < xMin) xMin = px;
+    if (px > xMax) xMax = px;
+    if (py < yMin) yMin = py;
+    if (py > yMax) yMax = py;
+  }
+  if (!Number.isFinite(xMin)) return null;
+  return { x: xMin, y: yMin, w: xMax - xMin, h: yMax - yMin };
 }
 
 function strokeToSvgEl(s: Stroke): string {
@@ -249,18 +398,34 @@ function strokeToSvgEl(s: Stroke): string {
     // Phase 21 — anchored text keeps the byte-identical Phase 5.1 form;
     // standalone text (no anchorId) writes its own world x/y and omits
     // data-anchor-id (so the parser routes it back to the standalone branch).
+    // Phase 24 — bold/strike/align serialize ONLY for non-default values, so a
+    // legacy text node stays byte-identical (weight/deco/alignAttr are empty).
+    const weight = s.bold ? ' font-weight="700"' : '';
+    const deco = s.strike ? ' text-decoration="line-through"' : '';
     if (s.anchorId != null && s.anchorId !== '') {
+      const align = s.align ?? 'center'; // anchored default = centre (legacy)
+      const anchor = align === 'left' ? 'start' : align === 'right' ? 'end' : 'middle';
+      const alignAttr = align !== 'center' ? ` data-align="${align}"` : '';
       return `<text data-id="${esc(s.id)}" data-tool="text" data-anchor-id="${esc(
         s.anchorId
       )}" data-font-size="${s.fontSize}" fill="${esc(
         s.color
-      )}" text-anchor="middle" dominant-baseline="middle">${esc(s.text)}</text>`;
+      )}"${weight}${deco} text-anchor="${anchor}" dominant-baseline="middle"${alignAttr}>${esc(
+        s.text
+      )}</text>`;
     }
     const tx = s.x ?? 0;
     const ty = s.y ?? 0;
+    const align = s.align ?? 'left'; // standalone default = left
+    const anchor = align === 'left' ? 'start' : align === 'right' ? 'end' : 'middle';
+    const alignAttr = align !== 'left' ? ` data-align="${align}"` : '';
     return `<text data-id="${esc(s.id)}" data-tool="text" x="${tx}" y="${ty}" data-font-size="${
       s.fontSize
-    }" fill="${esc(s.color)}" text-anchor="start" dominant-baseline="hanging">${esc(s.text)}</text>`;
+    }" fill="${esc(
+      s.color
+    )}"${weight}${deco} text-anchor="${anchor}" dominant-baseline="hanging"${alignAttr}>${esc(
+      s.text
+    )}</text>`;
   }
   if (s.tool === 'sticky') {
     // Phase 21 — sticky body lives in an allowlisted <text> child so it
@@ -270,9 +435,17 @@ function strokeToSvgEl(s: Stroke): string {
     const r = s.cornerRadius ?? STICKY_CORNER_RADIUS;
     const w = Math.max(0, s.w);
     const h = Math.max(0, s.h);
+    // Phase 24 — bold/strike/align on the <g> data-attrs, emitted ONLY for
+    // non-default values (sticky default align = left) so Phase-21 stickies
+    // serialize byte-identically.
+    const align = s.align ?? 'left';
+    const styleAttrs =
+      (s.bold ? ' data-bold="1"' : '') +
+      (s.strike ? ' data-strike="1"' : '') +
+      (align !== 'left' ? ` data-align="${align}"` : '');
     return `<g data-id="${esc(s.id)}" data-tool="sticky" data-r="${r}" data-fs="${
       s.fontSize
-    }" fill="${esc(s.color)}"><rect x="${s.x}" y="${
+    }" fill="${esc(s.color)}"${styleAttrs}><rect x="${s.x}" y="${
       s.y
     }" width="${w}" height="${h}" rx="${r}" ry="${r}"/><text data-sticky-body="1" x="${
       s.x + 12
@@ -302,30 +475,61 @@ function strokeToSvgEl(s: Stroke): string {
       s.rx
     )}" ry="${Math.max(0, s.ry)}"/>`;
   }
-  // arrow — Phase 21 adds optional start/end heads + dash. Defaults
-  // (startHead 'none', endHead 'triangle', solid) emit the byte-identical
-  // Phase 5.1 form: data-* attrs + extra polyline + dasharray appear only for
-  // non-default values.
-  const endHead = s.endHead ?? 'triangle';
+  if (s.tool === 'polygon') {
+    // Phase 24 — bbox-derived points + data-shape. Normalize the bbox so a
+    // negative-extent (mid-flip) stroke serializes idempotently.
+    const nx = Math.min(s.x, s.x + s.w);
+    const ny = Math.min(s.y, s.y + s.h);
+    const nw = Math.abs(s.w);
+    const nh = Math.abs(s.h);
+    const fill = s.fill ? esc(s.fill) : 'none';
+    const dash = s.dashed ? ' stroke-dasharray="6 4"' : '';
+    const dashAttr = s.dashed ? ' data-dash="1"' : '';
+    return `<polygon ${common} fill="${fill}" data-shape="${s.shape}" points="${polygonPoints(
+      s.shape,
+      nx,
+      ny,
+      nw,
+      nh
+    )}"${dash}${dashAttr}/>`;
+  }
+  // arrow — Phase 24 reduces to ordered SVG primitives (canvas-arrowheads), the
+  // same primitives StrokeNode renders. Defaults (startHead 'none', endHead
+  // 'triangle', lineType 'straight', solid) reduce to exactly
+  // [<line>, <polyline fill=color>] → the byte-identical Phase 5.1 form. data-*
+  // attrs appear only for non-default values.
   const startHead = s.startHead ?? 'none';
+  const endHead = s.endHead ?? 'triangle';
+  const lineType = s.lineType ?? 'straight';
   const dashed = s.dashed ?? false;
+  // esc() every interpolated value (defence-in-depth, Phase 24 security review
+  // DDR-067) — heads are clamped on parse, but a value reaching serialize must
+  // never be able to break out of the attribute.
   const dataAttrs =
-    (startHead !== 'none' ? ` data-start-head="${startHead}"` : '') +
-    (endHead !== 'triangle' ? ` data-end-head="${endHead}"` : '') +
+    (startHead !== 'none' ? ` data-start-head="${esc(startHead)}"` : '') +
+    (endHead !== 'triangle' ? ` data-end-head="${esc(endHead)}"` : '') +
+    (lineType !== 'straight' ? ` data-line-type="${esc(lineType)}"` : '') +
     (dashed ? ' data-dash="1"' : '');
-  const dash = dashed ? ' stroke-dasharray="6 4"' : '';
-  const heads =
-    (startHead === 'triangle'
-      ? `<polyline points="${arrowHeadPoints(s.x2, s.y2, s.x1, s.y1, s.width)}" fill="${esc(
-          s.color
-        )}"/>`
-      : '') +
-    (endHead === 'triangle'
-      ? `<polyline points="${arrowHeadPoints(s.x1, s.y1, s.x2, s.y2, s.width)}" fill="${esc(
-          s.color
-        )}"/>`
-      : '');
-  return `<g ${common} fill="none"${dataAttrs}><line x1="${s.x1}" y1="${s.y1}" x2="${s.x2}" y2="${s.y2}"${dash}/>${heads}</g>`;
+  const body = arrowPrimitives(s).map(svgPrimitiveToString).join('');
+  return `<g ${common} fill="none"${dataAttrs}>${body}</g>`;
+}
+
+/** Format one arrow SVG primitive for the persisted string (byte-identical to
+ *  the Phase-5.1 `<line>`/`<polyline>` forms for the legacy default arrow). */
+function svgPrimitiveToString(p: SvgPrimitive): string {
+  const dash = 'dash' in p && p.dash ? ' stroke-dasharray="6 4"' : '';
+  switch (p.el) {
+    case 'line':
+      return `<line x1="${p.x1}" y1="${p.y1}" x2="${p.x2}" y2="${p.y2}"${dash}/>`;
+    case 'path':
+      return `<path d="${p.d}"${dash}/>`;
+    case 'polyline':
+      return `<polyline points="${p.points}" fill="${esc(p.fill)}"/>`;
+    case 'polygon':
+      return `<polygon points="${p.points}" fill="${esc(p.fill)}"/>`;
+    case 'circle':
+      return `<circle cx="${p.cx}" cy="${p.cy}" r="${p.r}" fill="${esc(p.fill)}"/>`;
+  }
 }
 
 export function strokesToSvg(strokes: readonly Stroke[]): string {
@@ -352,6 +556,38 @@ function parseFill(raw: string | null): string | null {
   const v = raw.trim().toLowerCase();
   if (!v || v === 'none' || v === 'transparent') return null;
   return raw;
+}
+
+/**
+ * Phase 24 — recover an arrow's two endpoints from its shaft. A straight arrow
+ * persists a `<line>`; a curved/elbow arrow persists a `<path>` whose first and
+ * last coordinate pairs are the endpoints (the bow control / elbow corner sit
+ * between them, so first-pair = start, last-pair = end recovers the ends
+ * exactly → idempotent re-serialize).
+ */
+function arrowEndpoints(el: Element): { x1: number; y1: number; x2: number; y2: number } | null {
+  const line = el.querySelector('line');
+  if (line) {
+    return {
+      x1: Number.parseFloat(line.getAttribute('x1') || '0'),
+      y1: Number.parseFloat(line.getAttribute('y1') || '0'),
+      x2: Number.parseFloat(line.getAttribute('x2') || '0'),
+      y2: Number.parseFloat(line.getAttribute('y2') || '0'),
+    };
+  }
+  const path = el.querySelector('path');
+  if (path) {
+    const nums = (path.getAttribute('d') || '').match(/-?\d+(?:\.\d+)?/g);
+    if (nums && nums.length >= 4) {
+      return {
+        x1: Number.parseFloat(nums[0] as string),
+        y1: Number.parseFloat(nums[1] as string),
+        x2: Number.parseFloat(nums[nums.length - 2] as string),
+        y2: Number.parseFloat(nums[nums.length - 1] as string),
+      };
+    }
+  }
+  return null;
 }
 
 export function svgToStrokes(svgText: string): Stroke[] {
@@ -388,7 +624,7 @@ export function svgToStrokes(svgText: string): Stroke[] {
           DEFAULT_FONT_SIZE;
         const stickyColor = el.getAttribute('fill') || DEFAULT_STICKY_COLOR;
         const body = el.querySelector('text');
-        out.push({
+        const sticky: StickyStroke = {
           id,
           tool: 'sticky',
           color: stickyColor,
@@ -399,7 +635,15 @@ export function svgToStrokes(svgText: string): Stroke[] {
           text: body?.textContent ?? '',
           fontSize,
           cornerRadius,
-        });
+        };
+        // Phase 24 — style attrs; absent ⇒ defaults (normal / left), left unset.
+        if (el.getAttribute('data-bold') === '1') sticky.bold = true;
+        if (el.getAttribute('data-strike') === '1') sticky.strike = true;
+        const sticAlign = el.getAttribute('data-align');
+        if (sticAlign === 'left' || sticAlign === 'center' || sticAlign === 'right') {
+          sticky.align = sticAlign;
+        }
+        out.push(sticky);
         continue;
       }
       if (tool === 'rect') {
@@ -422,25 +666,62 @@ export function svgToStrokes(svgText: string): Stroke[] {
         out.push({ id, tool: 'ellipse', color, width, cx, cy, rx, ry, fill });
         continue;
       }
+      if (tool === 'polygon') {
+        // Phase 24 — recover the bbox from the points; shape from data-shape.
+        const shapeRaw = el.getAttribute('data-shape');
+        const shape: PolygonShape =
+          shapeRaw === 'triangle' || shapeRaw === 'triangle-down' ? shapeRaw : 'diamond';
+        const bb = polygonBBox(el.getAttribute('points') || '');
+        if (bb) {
+          const fill = parseFill(el.getAttribute('fill'));
+          const poly: PolygonStroke = {
+            id,
+            tool: 'polygon',
+            shape,
+            color,
+            width,
+            x: bb.x,
+            y: bb.y,
+            w: bb.w,
+            h: bb.h,
+            fill,
+          };
+          const dashRaw = el.getAttribute('data-dash');
+          if (dashRaw === '1' || dashRaw === 'true') poly.dashed = true;
+          out.push(poly);
+        }
+        continue;
+      }
       if (tool === 'arrow') {
-        const line = el.querySelector('line');
-        if (line) {
+        // Phase 24 — shaft is a <line> (straight) OR a <path> (curved/elbow).
+        // Recover the two endpoints from whichever is present.
+        const ends = arrowEndpoints(el);
+        if (ends) {
           const arrow: ArrowStroke = {
             id,
             tool: 'arrow',
             color,
             width,
-            x1: Number.parseFloat(line.getAttribute('x1') || '0'),
-            y1: Number.parseFloat(line.getAttribute('y1') || '0'),
-            x2: Number.parseFloat(line.getAttribute('x2') || '0'),
-            y2: Number.parseFloat(line.getAttribute('y2') || '0'),
+            x1: ends.x1,
+            y1: ends.y1,
+            x2: ends.x2,
+            y2: ends.y2,
           };
-          // Phase 21 — heads + dash. Serializer only writes a data-* attribute
-          // for a NON-default value, so a legacy arrow carries none of these
-          // and stays { startHead/endHead/dashed: undefined } → defaults on
-          // re-serialize (byte-identical, Task 10 canary).
-          if (el.getAttribute('data-start-head') === 'triangle') arrow.startHead = 'triangle';
-          if (el.getAttribute('data-end-head') === 'none') arrow.endHead = 'none';
+          // Heads + dash + line-type. The serializer writes a data-* attribute
+          // only for a NON-default value, so a legacy arrow carries none of
+          // these and stays { startHead/endHead/dashed/lineType: undefined } →
+          // defaults on re-serialize (byte-identical, canary). Phase 24 widened
+          // the head enum, so read the literal value rather than match a single
+          // string.
+          // Clamp to the known head vocabulary — an out-of-vocab / poisoned
+          // value (hub-pushed SVG) is rejected, never cast through unchecked
+          // (Phase 24 security review, DDR-067).
+          const sh = el.getAttribute('data-start-head');
+          if (sh && ARROW_HEADS.has(sh)) arrow.startHead = sh as ArrowHead;
+          const eh = el.getAttribute('data-end-head');
+          if (eh && ARROW_HEADS.has(eh)) arrow.endHead = eh as ArrowHead;
+          const lt = el.getAttribute('data-line-type');
+          if (lt === 'curved' || lt === 'elbow' || lt === 'straight') arrow.lineType = lt;
           const dashRaw = el.getAttribute('data-dash');
           if (dashRaw === '1' || dashRaw === 'true') arrow.dashed = true;
           out.push(arrow);
@@ -454,10 +735,18 @@ export function svgToStrokes(svgText: string): Stroke[] {
           DEFAULT_FONT_SIZE;
         const inkColor = el.getAttribute('fill') || color;
         const body = (el.textContent || '').trim();
+        // Phase 24 — bold / strike / align. `data-align` is the round-trip
+        // source of truth (text-anchor is derived from it). Absent ⇒ default
+        // (normal / per-kind align), left unset so legacy nodes round-trip.
+        const isBold = el.getAttribute('font-weight') === '700';
+        const isStrike = (el.getAttribute('text-decoration') || '').includes('line-through');
+        const da = el.getAttribute('data-align');
+        const align: TextAlign | undefined =
+          da === 'left' || da === 'center' || da === 'right' ? da : undefined;
         // Phase 21 — standalone text (no data-anchor-id) carries world x/y
         // instead of a host id.
         if (!rawAnchor) {
-          out.push({
+          const t: TextStroke = {
             id,
             tool: 'text',
             color: inkColor,
@@ -465,17 +754,25 @@ export function svgToStrokes(svgText: string): Stroke[] {
             text: body,
             x: Number.parseFloat(el.getAttribute('x') || '0'),
             y: Number.parseFloat(el.getAttribute('y') || '0'),
-          });
+          };
+          if (isBold) t.bold = true;
+          if (isStrike) t.strike = true;
+          if (align) t.align = align;
+          out.push(t);
           continue;
         }
-        out.push({
+        const t: TextStroke = {
           id,
           tool: 'text',
           color: inkColor,
           fontSize,
           text: body,
           anchorId: rawAnchor,
-        });
+        };
+        if (isBold) t.bold = true;
+        if (isStrike) t.strike = true;
+        if (align) t.align = align;
+        out.push(t);
       }
     }
     return out;
@@ -549,6 +846,20 @@ export function strokeHitTest(s: Stroke, wx: number, wy: number, tol: number): b
     const dist = Math.abs(Math.sqrt(d) - 1);
     return dist <= band;
   }
+  if (s.tool === 'polygon') {
+    const nx = Math.min(s.x, s.x + s.w);
+    const ny = Math.min(s.y, s.y + s.h);
+    const pts = polygonVertices(s.shape, nx, ny, Math.abs(s.w), Math.abs(s.h));
+    // Filled → inside-hit; always allow an edge-proximity hit (covers the
+    // stroke-only outline + a tolerance band on a filled shape).
+    if (s.fill && pointInPolygon(wx, wy, pts)) return true;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i] as [number, number];
+      const b = pts[(i + 1) % pts.length] as [number, number];
+      if (pointSegmentDist(wx, wy, a[0], a[1], b[0], b[1]) <= t) return true;
+    }
+    return false;
+  }
   // rect — inside when filled, edge-only otherwise.
   const x = s.x;
   const y = s.y;
@@ -594,6 +905,7 @@ function normalizeSticky(s: StickyStroke): StickyStroke {
 function isStrokeMeaningful(s: Stroke): boolean {
   if (s.tool === 'pen') return s.points.length >= 2;
   if (s.tool === 'rect') return Math.abs(s.w) >= 4 && Math.abs(s.h) >= 4;
+  if (s.tool === 'polygon') return Math.abs(s.w) >= 4 && Math.abs(s.h) >= 4;
   if (s.tool === 'ellipse') return s.rx >= 2 && s.ry >= 2;
   if (s.tool === 'text') return s.text.trim().length > 0;
   // Sticky below a readable floor is discarded like a 2×2 rect.
@@ -620,7 +932,7 @@ export function strokeBBox(
     }
     return { x: xMin, y: yMin, w: xMax - xMin, h: yMax - yMin };
   }
-  if (s.tool === 'rect') {
+  if (s.tool === 'rect' || s.tool === 'polygon') {
     return {
       x: Math.min(s.x, s.x + s.w),
       y: Math.min(s.y, s.y + s.h),
@@ -834,18 +1146,19 @@ const ANNOT_CSS = `
   stroke-width: 1;
   stroke-dasharray: 4 3;
 }
-/* Phase 21 — sticky-note body. Word-wrapped multi-line text inside the card's
-   foreignObject. The editor textarea (.dc-sticky-editor) mirrors the same box
-   metrics so the read↔edit swap doesn't shift the text. */
+/* Phase 24 — sticky-note body. Word-wrapped multi-line text inside the card's
+   foreignObject. Text sits TOP-LEFT (FigJam parity); the editor contentEditable
+   mirrors the same box metrics so the read-edit swap doesn't shift the text.
+   text-align is overridden inline per-sticky when align is not left. */
 .dc-sticky-body {
   width: 100%;
   height: 100%;
   box-sizing: border-box;
   padding: 14px 16px;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
+  align-items: flex-start;
+  justify-content: flex-start;
+  text-align: left;
   color: #2a2a28;
   font-family: var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   line-height: 1.35;
@@ -853,6 +1166,15 @@ const ANNOT_CSS = `
   overflow-wrap: anywhere;
   overflow: hidden;
 }
+/* Phase 24 — while editing an annotation's text (a text label OR a sticky body,
+   both carry the dc-annot-editor class), force the I-beam. The important flag
+   plus the class selector beat use-tool-mode's blanket star-cursor rule (you
+   usually open the editor from MOVE mode, whose move glyph would otherwise sit
+   over the text you're typing into). The element's inline text cursor can't win
+   that fight on its own — a non-important inline style loses to !important.
+   See DDR-067. (No backticks in this comment: the whole block is a JS template
+   literal, so a backtick here would terminate the string.) */
+.dc-annot-editor, .dc-annot-editor * { cursor: text !important; }
 `.trim();
 
 function ensureAnnotStyles(): void {
@@ -886,7 +1208,7 @@ function translateOne(s: Stroke, dx: number, dy: number): Stroke {
   if (s.tool === 'pen') {
     return { ...s, points: s.points.map(([x, y]) => [x + dx, y + dy] as WorldPoint) };
   }
-  if (s.tool === 'rect') return { ...s, x: s.x + dx, y: s.y + dy };
+  if (s.tool === 'rect' || s.tool === 'polygon') return { ...s, x: s.x + dx, y: s.y + dy };
   if (s.tool === 'ellipse') return { ...s, cx: s.cx + dx, cy: s.cy + dy };
   if (s.tool === 'arrow')
     return { ...s, x1: s.x1 + dx, y1: s.y1 + dy, x2: s.x2 + dx, y2: s.y2 + dy };
@@ -924,7 +1246,7 @@ export { useAnnotationsVisibility } from './use-annotations-visibility.tsx';
 
 export function AnnotationsLayer() {
   ensureAnnotStyles();
-  const { tool, setTool, sticky, tools } = useToolMode();
+  const { tool, setTool, sticky, tools, shapeKind } = useToolMode();
   const controller = useViewportControllerContext();
   const vp = controller?.viewport ?? null;
   const worldRef = useWorldRefContext();
@@ -943,6 +1265,10 @@ export function AnnotationsLayer() {
   // stroke exists yet (mirrors anchored text: the stroke is born on commit,
   // so an abandoned empty caret leaves nothing behind / no undo record).
   const [pendingText, setPendingText] = useState<{ x: number; y: number } | null>(null);
+  // Phase 24 — ghost placeholder: world coords the cursor is hovering while a
+  // shape/sticky/text tool is armed and nothing is being drawn yet. Pure chrome
+  // (low-opacity, pointer-events:none) — never selectable, hit-tested, or saved.
+  const [ghost, setGhost] = useState<{ x: number; y: number } | null>(null);
   const visibilityCtx = useAnnotationsVisibility();
   const visible = visibilityCtx?.visible ?? true;
   const setVisible = useCallback(
@@ -971,20 +1297,22 @@ export function AnnotationsLayer() {
   strokesRef.current = strokes;
 
   const isDraw =
-    tool === 'pen' ||
-    tool === 'rect' ||
-    tool === 'arrow' ||
-    tool === 'ellipse' ||
-    tool === 'sticky' ||
-    tool === 'text';
+    tool === 'pen' || tool === 'shape' || tool === 'arrow' || tool === 'sticky' || tool === 'text';
   const isErase = tool === 'eraser';
   const isActive = isDraw || isErase;
-  // T20 — rect + ellipse expose stroke weight too (FigJam ships thickness on
-  // every shape). The annotation toolbar reads supportsThickness to decide
-  // whether to render the Thin / Thick chips.
-  const supportsThickness =
-    tool === 'pen' || tool === 'arrow' || tool === 'rect' || tool === 'ellipse';
-  const supportsFill = tool === 'rect' || tool === 'ellipse';
+  // T20 / Phase 24 — every shape primitive carries stroke weight (FigJam ships
+  // thickness on all of them). The annotation toolbar reads supportsThickness
+  // to decide whether to render the Thin / Thick chips.
+  const supportsThickness = tool === 'pen' || tool === 'arrow' || tool === 'shape';
+  const supportsFill = tool === 'shape';
+  // Phase 24 — tools that show a cursor-following ghost placeholder.
+  const ghostCapable = tool === 'shape' || tool === 'sticky' || tool === 'text';
+
+  // Clear the ghost when the active tool stops being ghost-capable (or
+  // visibility toggles) so a stale ghost never lingers after a tool change.
+  useEffect(() => {
+    if (!ghostCapable || !visible) setGhost(null);
+  }, [ghostCapable, visible]);
 
   // Load existing annotations on mount.
   // Phase 8 Task 5 — seed lastAppliedSvgRef so the first Y.Map observe (when
@@ -1228,6 +1556,7 @@ export function AnnotationsLayer() {
       // We do NOT stopPropagation — viewport-controller listens on the host
       // ancestor and never claims a bare-left/no-space pointerdown anyway.
       e.preventDefault();
+      setGhost(null); // a draw is starting — the ghost placeholder is done
       try {
         (e.target as Element & { setPointerCapture?: (id: number) => void }).setPointerCapture?.(
           e.pointerId
@@ -1245,30 +1574,49 @@ export function AnnotationsLayer() {
       const activeFill = supportsFill ? fill : null;
       if (tool === 'pen') {
         setDrawing({ id, tool: 'pen', color, width, points: [[wx, wy]] });
-      } else if (tool === 'rect') {
-        setDrawing({
-          id,
-          tool: 'rect',
-          color,
-          width,
-          x: wx,
-          y: wy,
-          w: 0,
-          h: 0,
-          fill: activeFill,
-        });
-      } else if (tool === 'ellipse') {
-        setDrawing({
-          id,
-          tool: 'ellipse',
-          color,
-          width,
-          cx: wx,
-          cy: wy,
-          rx: 0,
-          ry: 0,
-          fill: activeFill,
-        });
+      } else if (tool === 'shape') {
+        // Phase 24 — the single Shape tool maps its kind onto a stroke type:
+        // circle → ellipse; square/rounded → rect (cornerRadius 0 / 8);
+        // diamond/triangle/triangle-down → polygon.
+        if (shapeKind === 'circle') {
+          setDrawing({
+            id,
+            tool: 'ellipse',
+            color,
+            width,
+            cx: wx,
+            cy: wy,
+            rx: 0,
+            ry: 0,
+            fill: activeFill,
+          });
+        } else if (shapeKind === 'square' || shapeKind === 'rounded') {
+          setDrawing({
+            id,
+            tool: 'rect',
+            color,
+            width,
+            x: wx,
+            y: wy,
+            w: 0,
+            h: 0,
+            fill: activeFill,
+            cornerRadius: shapeKind === 'rounded' ? 8 : 0,
+          });
+        } else {
+          setDrawing({
+            id,
+            tool: 'polygon',
+            shape: shapeKind,
+            color,
+            width,
+            x: wx,
+            y: wy,
+            w: 0,
+            h: 0,
+            fill: activeFill,
+          });
+        }
       } else if (tool === 'arrow') {
         setDrawing({
           id,
@@ -1309,6 +1657,7 @@ export function AnnotationsLayer() {
     },
     [
       tool,
+      shapeKind,
       color,
       fill,
       thickness,
@@ -1335,6 +1684,13 @@ export function AnnotationsLayer() {
         eraseAt(wx, wy);
         return;
       }
+      // Phase 24 — ghost placeholder. While nothing is being drawn, track the
+      // cursor so a translucent preview can follow it; an active draw hides it.
+      if (drawingRef.current == null) {
+        if (ghostCapable) setGhost({ x: wx, y: wy });
+        return;
+      }
+      setGhost(null);
       setDrawing((cur) => {
         if (!cur) return cur;
         if (cur.tool === 'pen') {
@@ -1342,7 +1698,7 @@ export function AnnotationsLayer() {
           if (last && Math.hypot(wx - last[0], wy - last[1]) < 1) return cur;
           return { ...cur, points: [...cur.points, [wx, wy] as WorldPoint] };
         }
-        if (cur.tool === 'rect') {
+        if (cur.tool === 'rect' || cur.tool === 'polygon') {
           return { ...cur, w: wx - cur.x, h: wy - cur.y };
         }
         if (cur.tool === 'ellipse') {
@@ -1354,12 +1710,17 @@ export function AnnotationsLayer() {
           return { ...cur, x2: wx, y2: wy };
         }
         if (cur.tool === 'sticky') {
-          return { ...cur, w: wx - cur.x, h: wy - cur.y };
+          // Phase 24 — stickies are 1:1. Snap to a square whose side follows the
+          // larger drag axis, preserving the drag direction (sign of w/h).
+          const dw = wx - cur.x;
+          const dh = wy - cur.y;
+          const side = Math.max(Math.abs(dw), Math.abs(dh));
+          return { ...cur, w: Math.sign(dw || 1) * side, h: Math.sign(dh || 1) * side };
         }
         return cur;
       });
     },
-    [isActive, isErase, visible, screenToWorld, eraseAt]
+    [isActive, isErase, visible, screenToWorld, eraseAt, ghostCapable]
   );
 
   const endStroke = useCallback(() => {
@@ -1368,8 +1729,27 @@ export function AnnotationsLayer() {
     const cur = drawingRef.current;
     if (!cur) return;
     let final: Stroke | null = cur;
-    if (cur.tool === 'rect') final = normalizeRect(cur);
-    else if (cur.tool === 'sticky') {
+    // Phase 24 — a bare tap (both axes below the drag threshold) drops a
+    // default-sized shape at the tap point so "click to place" works like
+    // FigJam; a real drag sizes it. A thin/degenerate drag still gets discarded
+    // by isStrokeMeaningful below.
+    const isTap = (w: number, h: number) => Math.abs(w) < 4 && Math.abs(h) < 4;
+    if (cur.tool === 'rect') {
+      const norm = normalizeRect(cur);
+      final = isTap(norm.w, norm.h)
+        ? { ...norm, x: cur.x, y: cur.y, w: SHAPE_DEFAULT_SIZE, h: SHAPE_DEFAULT_SIZE }
+        : norm;
+    } else if (cur.tool === 'polygon') {
+      const norm = normalizeBox(cur);
+      final = isTap(norm.w, norm.h)
+        ? { ...norm, x: cur.x, y: cur.y, w: SHAPE_DEFAULT_SIZE, h: SHAPE_DEFAULT_SIZE }
+        : norm;
+    } else if (cur.tool === 'ellipse') {
+      final =
+        cur.rx < 2 && cur.ry < 2
+          ? { ...cur, rx: SHAPE_DEFAULT_SIZE / 2, ry: SHAPE_DEFAULT_SIZE / 2 }
+          : cur;
+    } else if (cur.tool === 'sticky') {
       const norm = normalizeSticky(cur);
       // A bare tap (or a drag too small to be a usable card) drops a
       // default-sized note at the tap point — FigJam parity.
@@ -1424,6 +1804,15 @@ export function AnnotationsLayer() {
     () => (drawing ? [...strokes, drawing] : strokes),
     [strokes, drawing]
   );
+
+  // Phase 24 — the ghost descriptor handed to the SVG layer. Suppressed while a
+  // draw is in progress (the real preview takes over) so the two never overlap.
+  const ghostPreview = useMemo<GhostDescriptor | null>(() => {
+    if (!ghost || !ghostCapable || drawing) return null;
+    if (tool === 'text') return { kind: 'text', x: ghost.x, y: ghost.y, color };
+    if (tool === 'sticky') return { kind: 'sticky', x: ghost.x, y: ghost.y, color: stickyColor };
+    return { kind: 'shape', x: ghost.x, y: ghost.y, shapeKind, color };
+  }, [ghost, ghostCapable, drawing, tool, shapeKind, color, stickyColor]);
 
   const anchorsById = useMemo(() => {
     const map = new Map<string, RectStroke | EllipseStroke>();
@@ -1487,6 +1876,7 @@ export function AnnotationsLayer() {
         (t === 'pen' ||
           t === 'rect' ||
           t === 'ellipse' ||
+          t === 'polygon' ||
           t === 'arrow' ||
           t === 'text' ||
           t === 'sticky')
@@ -1641,7 +2031,10 @@ export function AnnotationsLayer() {
 
     document.addEventListener('pointerdown', onDown, true);
     return () => document.removeEventListener('pointerdown', onDown, true);
-  }, [tool, annotSel, elementSel, screenToWorld, strokesStore]);
+    // commitStrokes is included defensively (it is a stable useCallback([]) ref,
+    // so this never re-binds the listener) to remove the latent stale-closure
+    // trap flagged in the Phase 24 frontend review.
+  }, [tool, annotSel, elementSel, screenToWorld, strokesStore, commitStrokes]);
 
   // Latest marquee + strokes refs for the doc-level pointerup callback
   // (avoids re-binding the listener on every state tick).
@@ -1869,6 +2262,7 @@ export function AnnotationsLayer() {
           beginStroke={beginStroke}
           moveStroke={moveStroke}
           endStroke={endStroke}
+          onLeave={() => setGhost(null)}
         />
         {visible ? (
           <AnnotationsSvg
@@ -1878,6 +2272,7 @@ export function AnnotationsLayer() {
             selectMode={tool === 'move'}
             selectedStrokes={selectedStrokes}
             marquee={marquee}
+            ghost={ghostPreview}
             editingTarget={editingTarget}
             onCommitEdit={commitEditing}
             onCancelEdit={cancelEditing}
@@ -1919,6 +2314,7 @@ function AnnotationsInput({
   beginStroke,
   moveStroke,
   endStroke,
+  onLeave,
 }: {
   isActive: boolean;
   visible: boolean;
@@ -1928,6 +2324,8 @@ function AnnotationsInput({
   beginStroke: (e: ReactPointerEvent<HTMLDivElement>, spaceHeld: boolean) => boolean;
   moveStroke: (e: ReactPointerEvent<HTMLDivElement>) => void;
   endStroke: () => void;
+  /** Phase 24 — clear the ghost placeholder when the pointer leaves the canvas. */
+  onLeave: () => void;
 }) {
   const worldRef = useWorldRefContext();
   const host = worldRef?.current?.parentElement ?? null;
@@ -1972,6 +2370,7 @@ function AnnotationsInput({
       onPointerMove={moveStroke}
       onPointerUp={endStroke}
       onPointerCancel={endStroke}
+      onPointerLeave={onLeave}
     />,
     host
   );
@@ -1990,6 +2389,7 @@ function AnnotationsSvg({
   selectMode,
   selectedStrokes,
   marquee,
+  ghost,
   editingTarget,
   onCommitEdit,
   onCancelEdit,
@@ -2000,6 +2400,7 @@ function AnnotationsSvg({
   selectMode: boolean;
   selectedStrokes: readonly Stroke[];
   marquee: { ax: number; ay: number; bx: number; by: number } | null;
+  ghost: GhostDescriptor | null;
   editingTarget: EditingTarget;
   onCommitEdit: (text: string) => void;
   onCancelEdit: () => void;
@@ -2057,6 +2458,7 @@ function AnnotationsSvg({
           vectorEffect="non-scaling-stroke"
         />
       ) : null}
+      {ghost ? <GhostPreview ghost={ghost} /> : null}
       {editingTarget?.kind === 'anchored' ? (
         <TextEditor
           anchorId={editingTarget.anchorId}
@@ -2080,6 +2482,9 @@ function AnnotationsSvg({
           fontSize={editingTarget.text.fontSize}
           color={editingTarget.text.color}
           initialText={editingTarget.text.text}
+          bold={editingTarget.text.bold}
+          strike={editingTarget.text.strike}
+          align={editingTarget.text.align ?? 'left'}
           onCommit={onCommitEdit}
           onCancel={onCancelEdit}
         />
@@ -2153,6 +2558,9 @@ function TextEditor({
   const bbox = strokeBBox(host);
   if (!bbox) return null;
   const fontSize = existing?.fontSize ?? DEFAULT_FONT_SIZE;
+  // Phase 24 — match the committed render's bold / strike / align (anchored
+  // default align = centre).
+  const align = existing?.align ?? 'center';
   return (
     <foreignObject x={bbox.x} y={bbox.y} width={Math.max(20, bbox.w)} height={Math.max(20, bbox.h)}>
       <div
@@ -2166,13 +2574,16 @@ function TextEditor({
           height: '100%',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
+          justifyContent:
+            align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center',
           padding: '0 8px',
           boxSizing: 'border-box',
-          textAlign: 'center',
+          textAlign: align,
           color: existing?.color ?? '#1a1a1a',
           fontSize: `${fontSize}px`,
           fontFamily: 'var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
+          fontWeight: existing?.bold ? 700 : undefined,
+          textDecoration: existing?.strike ? 'line-through' : undefined,
           lineHeight: 1.25,
           outline: 'none',
           background: 'transparent',
@@ -2242,7 +2653,7 @@ function StickyEditor({
         contentEditable
         suppressContentEditableWarning
         aria-label="Edit sticky note text"
-        style={{ fontSize: `${sticky.fontSize}px`, outline: 'none', cursor: 'text' }}
+        style={{ ...stickyBodyStyle(sticky), outline: 'none', cursor: 'text' }}
         onBlur={() => onCommit(ref.current?.innerText ?? '')}
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
@@ -2265,6 +2676,9 @@ function StandaloneTextEditor({
   fontSize,
   color,
   initialText,
+  bold,
+  strike,
+  align,
   onCommit,
   onCancel,
 }: {
@@ -2273,6 +2687,9 @@ function StandaloneTextEditor({
   fontSize: number;
   color: string;
   initialText: string;
+  bold?: boolean;
+  strike?: boolean;
+  align?: TextAlign;
   onCommit: (text: string) => void;
   onCancel: () => void;
 }) {
@@ -2322,6 +2739,9 @@ function StandaloneTextEditor({
           color,
           fontSize: `${fontSize}px`,
           fontFamily: 'var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
+          fontWeight: bold ? 700 : undefined,
+          textDecoration: strike ? 'line-through' : undefined,
+          textAlign: align ?? 'left',
           lineHeight: 1.2,
           outline: 'none',
           background: 'transparent',
@@ -2458,6 +2878,86 @@ function AnnotGroupBbox({
 // ─────────────────────────────────────────────────────────────────────────────
 // Stroke renderer
 
+/**
+ * Phase 24 — inline style for a sticky body (read view + editor share it so the
+ * read↔edit swap doesn't shift). Applies bold / strike / align atop the
+ * `.dc-sticky-body` defaults (top-left).
+ */
+function stickyBodyStyle(s: StickyStroke): CSSProperties {
+  const align = s.align ?? 'left';
+  return {
+    fontSize: `${s.fontSize}px`,
+    fontWeight: s.bold ? 700 : undefined,
+    textDecoration: s.strike ? 'line-through' : undefined,
+    textAlign: align,
+    justifyContent: align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center',
+  };
+}
+
+/**
+ * Phase 24 — the translucent cursor-following ghost placeholder. Pure chrome:
+ * `pointer-events:none`, never added to `strokes`, so it can't be selected,
+ * hit-tested, erased, or persisted. Static (no animation) — reduced-motion safe.
+ * Geometry mirrors what a click/tap would create at the cursor (shape +
+ * SHAPE_DEFAULT_SIZE top-left at cursor; sticky default square; text I-beam).
+ */
+function GhostPreview({ ghost }: { ghost: GhostDescriptor }) {
+  const { x, y } = ghost;
+  if (ghost.kind === 'text') {
+    const h = 22;
+    return (
+      <path
+        d={`M${x - 4} ${y}H${x + 4}M${x} ${y}V${y + h}M${x - 4} ${y + h}H${x + 4}`}
+        stroke={ghost.color}
+        strokeWidth={1.5}
+        strokeOpacity={0.5}
+        fill="none"
+        vectorEffect="non-scaling-stroke"
+        pointerEvents="none"
+      />
+    );
+  }
+  if (ghost.kind === 'sticky') {
+    const s = STICKY_DEFAULT_W;
+    return (
+      <rect
+        x={x}
+        y={y}
+        width={s}
+        height={s}
+        rx={STICKY_CORNER_RADIUS}
+        ry={STICKY_CORNER_RADIUS}
+        fill={ghost.color}
+        fillOpacity={0.32}
+        stroke={ghost.color}
+        strokeOpacity={0.55}
+        strokeWidth={1.5}
+        vectorEffect="non-scaling-stroke"
+        pointerEvents="none"
+      />
+    );
+  }
+  // shape — dashed outline of the default-sized primitive at the cursor.
+  const sz = SHAPE_DEFAULT_SIZE;
+  const common = {
+    fill: 'none',
+    stroke: ghost.color,
+    strokeWidth: 2,
+    strokeOpacity: 0.5,
+    strokeDasharray: '6 5',
+    vectorEffect: 'non-scaling-stroke' as const,
+    pointerEvents: 'none' as const,
+  };
+  if (ghost.shapeKind === 'circle') {
+    return <ellipse cx={x + sz / 2} cy={y + sz / 2} rx={sz / 2} ry={sz / 2} {...common} />;
+  }
+  if (ghost.shapeKind === 'square' || ghost.shapeKind === 'rounded') {
+    const r = ghost.shapeKind === 'rounded' ? 8 : 0;
+    return <rect x={x} y={y} width={sz} height={sz} rx={r} ry={r} {...common} />;
+  }
+  return <polygon points={polygonPoints(ghost.shapeKind, x, y, sz, sz)} {...common} />;
+}
+
 function StrokeNode({
   stroke,
   anchorsById,
@@ -2478,32 +2978,46 @@ function StrokeNode({
   if (stroke.tool === 'text') {
     // Anchored text renders centered in its host; standalone (Phase 21) renders
     // top-left-anchored at its own world (x, y).
+    // Phase 24 — bold / strike / align applied to the rendered <text>.
+    const textStyle = {
+      fontFamily: 'var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
+      fontWeight: stroke.bold ? 700 : undefined,
+      textDecoration: stroke.strike ? 'line-through' : undefined,
+    } as const;
     if (stroke.anchorId != null && stroke.anchorId !== '') {
       const host = anchorsById.get(stroke.anchorId);
       const bbox = host ? strokeBBox(host) : null;
       if (!bbox) return null;
-      const cx = bbox.x + bbox.w / 2;
       const cy = bbox.y + bbox.h / 2;
+      const align = stroke.align ?? 'center';
+      const pad = 8;
+      const anchor = align === 'left' ? 'start' : align === 'right' ? 'end' : 'middle';
+      const tx =
+        align === 'left'
+          ? bbox.x + pad
+          : align === 'right'
+            ? bbox.x + bbox.w - pad
+            : bbox.x + bbox.w / 2;
       return (
         <text
           data-id={stroke.id}
           data-tool="text"
           data-anchor-id={stroke.anchorId}
           data-font-size={stroke.fontSize}
-          x={cx}
+          x={tx}
           y={cy}
           fill={stroke.color}
           fontSize={stroke.fontSize}
-          textAnchor="middle"
+          textAnchor={anchor}
           dominantBaseline="middle"
-          style={{
-            fontFamily: 'var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
-          }}
+          style={textStyle}
         >
           {stroke.text}
         </text>
       );
     }
+    const align = stroke.align ?? 'left';
+    const anchor = align === 'left' ? 'start' : align === 'right' ? 'end' : 'middle';
     return (
       <text
         data-id={stroke.id}
@@ -2513,10 +3027,10 @@ function StrokeNode({
         y={stroke.y ?? 0}
         fill={stroke.color}
         fontSize={stroke.fontSize}
-        textAnchor="start"
+        textAnchor={anchor}
         dominantBaseline="hanging"
         pointerEvents={interactive ? 'visiblePainted' : 'none'}
-        style={{ fontFamily: 'var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)' }}
+        style={textStyle}
       >
         {stroke.text}
       </text>
@@ -2550,7 +3064,7 @@ function StrokeNode({
             <div
               xmlns="http://www.w3.org/1999/xhtml"
               className="dc-sticky-body"
-              style={{ fontSize: `${stroke.fontSize}px` }}
+              style={stickyBodyStyle(stroke)}
             >
               {stroke.text}
             </div>
@@ -2602,33 +3116,52 @@ function StrokeNode({
       />
     );
   }
-  // arrow — Phase 21 renders per-side heads + optional dash.
-  const endHead = stroke.endHead ?? 'triangle';
-  const startHead = stroke.startHead ?? 'none';
-  const dashed = stroke.dashed ?? false;
+  if (stroke.tool === 'polygon') {
+    const nx = Math.min(stroke.x, stroke.x + stroke.w);
+    const ny = Math.min(stroke.y, stroke.y + stroke.h);
+    return (
+      <polygon
+        {...common}
+        data-shape={stroke.shape}
+        fill={stroke.fill ?? 'none'}
+        points={polygonPoints(stroke.shape, nx, ny, Math.abs(stroke.w), Math.abs(stroke.h))}
+        strokeDasharray={stroke.dashed ? '6 4' : undefined}
+        pointerEvents={hitMode}
+      />
+    );
+  }
+  // arrow — Phase 24 renders the SAME ordered primitives the serializer emits
+  // (canvas-arrowheads), so the on-canvas and persisted forms can never drift.
   return (
     <g {...common} fill="none" pointerEvents={hitMode}>
-      <line
-        x1={stroke.x1}
-        y1={stroke.y1}
-        x2={stroke.x2}
-        y2={stroke.y2}
-        strokeDasharray={dashed ? '6 4' : undefined}
-      />
-      {startHead === 'triangle' ? (
-        <polyline
-          points={arrowHeadPoints(stroke.x2, stroke.y2, stroke.x1, stroke.y1, stroke.width)}
-          fill={stroke.color}
-        />
-      ) : null}
-      {endHead === 'triangle' ? (
-        <polyline
-          points={arrowHeadPoints(stroke.x1, stroke.y1, stroke.x2, stroke.y2, stroke.width)}
-          fill={stroke.color}
-        />
-      ) : null}
+      {arrowPrimitives(stroke).map((p, i) => renderArrowPrimitive(p, i))}
     </g>
   );
+}
+
+/** Map one arrow primitive to JSX (heads inherit stroke from the parent <g>). */
+function renderArrowPrimitive(p: SvgPrimitive, key: number): JSX.Element {
+  switch (p.el) {
+    case 'line':
+      return (
+        <line
+          key={key}
+          x1={p.x1}
+          y1={p.y1}
+          x2={p.x2}
+          y2={p.y2}
+          strokeDasharray={p.dash ? '6 4' : undefined}
+        />
+      );
+    case 'path':
+      return <path key={key} d={p.d} strokeDasharray={p.dash ? '6 4' : undefined} />;
+    case 'polyline':
+      return <polyline key={key} points={p.points} fill={p.fill} />;
+    case 'polygon':
+      return <polygon key={key} points={p.points} fill={p.fill} />;
+    case 'circle':
+      return <circle key={key} cx={p.cx} cy={p.cy} r={p.r} fill={p.fill} />;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

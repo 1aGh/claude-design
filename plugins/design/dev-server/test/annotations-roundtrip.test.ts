@@ -67,6 +67,39 @@ describe('annotations round-trip / back-compat canary (Task 10)', () => {
   });
 });
 
+describe('annotations round-trip / Phase-21 back-compat canary (Phase 24, Task 2)', () => {
+  // A frozen Phase-21-era canvas — sticky + rounded rect + arrow-both-heads-
+  // dashed. Phase 24 must round-trip it BYTE-IDENTICAL (the new polygon /
+  // 6-head / line-type / bold-strike-align fields all serialize only for
+  // non-default values, so a Phase-21 scene gains zero bytes).
+  test('a frozen Phase-21 SVG round-trips BYTE-IDENTICAL', async () => {
+    const fixture = await Bun.file(
+      new URL('./fixtures/phase-21-annotations.svg', import.meta.url)
+    ).text();
+    expect(fixture.endsWith('</svg>')).toBe(true);
+    expect(reparse(fixture)).toBe(fixture);
+  });
+
+  test('parsing the Phase-21 fixture keeps each shape free of phantom Phase-24 fields', async () => {
+    const fixture = await Bun.file(
+      new URL('./fixtures/phase-21-annotations.svg', import.meta.url)
+    ).text();
+    const strokes = svgToStrokes(fixture);
+    expect(strokes.map((s) => s.tool)).toEqual(['sticky', 'rect', 'arrow']);
+    const sticky = strokes.find((s) => s.tool === 'sticky') as StickyStroke;
+    // No phantom bold/strike/align on a plain sticky.
+    expect(sticky.bold).toBeUndefined();
+    expect(sticky.strike).toBeUndefined();
+    expect(sticky.align).toBeUndefined();
+    expect(sticky.cornerRadius).toBe(8);
+    const arrow = strokes.find((s) => s.tool === 'arrow') as ArrowStroke;
+    expect(arrow.startHead).toBe('triangle');
+    expect(arrow.endHead).toBeUndefined(); // triangle is the default → unset
+    expect(arrow.dashed).toBe(true);
+    expect(arrow.lineType).toBeUndefined(); // straight default → no phantom
+  });
+});
+
 describe('annotations round-trip / sticky', () => {
   const sticky: StickyStroke = {
     id: 'st1',
@@ -272,5 +305,215 @@ describe('annotations round-trip / mixed scene idempotency', () => {
     ];
     const svg = strokesToSvg(scene);
     expect(reparse(svg)).toBe(svg);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 24 — polygon, full arrowhead set + line-type, text/sticky bold/strike/
+// align. Parse needs a DOMParser (registered via happy-dom above).
+
+describe('annotations round-trip / Phase 24 polygon', () => {
+  for (const shape of ['diamond', 'triangle', 'triangle-down'] as const) {
+    test(`${shape} round-trips its bbox + shape + fill`, () => {
+      const poly = {
+        id: `pg-${shape}`,
+        tool: 'polygon' as const,
+        shape,
+        color: '#e5484d',
+        width: 3,
+        x: 10,
+        y: 20,
+        w: 80,
+        h: 60,
+        fill: '#fbe0e1',
+      };
+      const svg = strokesToSvg([poly]);
+      expect(svg).toContain(`data-shape="${shape}"`);
+      const [parsed] = svgToStrokes(svg) as Array<typeof poly>;
+      expect(parsed?.tool).toBe('polygon');
+      expect(parsed?.shape).toBe(shape);
+      expect(parsed?.x).toBeCloseTo(10, 4);
+      expect(parsed?.y).toBeCloseTo(20, 4);
+      expect(parsed?.w).toBeCloseTo(80, 4);
+      expect(parsed?.h).toBeCloseTo(60, 4);
+      expect(parsed?.fill).toBe('#fbe0e1');
+      expect(reparse(svg)).toBe(svg); // idempotent
+    });
+  }
+
+  test('dashed polygon round-trips the dash flag', () => {
+    const svg = strokesToSvg([
+      {
+        id: 'pg',
+        tool: 'polygon',
+        shape: 'diamond',
+        color: '#222',
+        width: 2,
+        x: 0,
+        y: 0,
+        w: 40,
+        h: 40,
+        dashed: true,
+      },
+    ]);
+    expect(svg).toContain('data-dash="1"');
+    const [parsed] = svgToStrokes(svg) as Array<{ dashed?: boolean }>;
+    expect(parsed?.dashed).toBe(true);
+  });
+});
+
+describe('annotations round-trip / Phase 24 full arrowhead set + line-type', () => {
+  const heads: ArrowStroke['startHead'][] = [
+    'none',
+    'line',
+    'triangle',
+    'triangle-outline',
+    'circle',
+    'diamond',
+  ];
+  for (const start of heads) {
+    for (const end of heads) {
+      test(`heads start=${start} end=${end} round-trip`, () => {
+        const arrow: ArrowStroke = {
+          id: 'a',
+          tool: 'arrow',
+          color: '#1a8f3e',
+          width: 3,
+          x1: 0,
+          y1: 0,
+          x2: 100,
+          y2: 20,
+          startHead: start,
+          endHead: end,
+        };
+        const svg = strokesToSvg([arrow]);
+        const [parsed] = svgToStrokes(svg) as ArrowStroke[];
+        expect(parsed?.startHead ?? 'none').toBe(start);
+        expect(parsed?.endHead ?? 'triangle').toBe(end);
+        expect(reparse(svg)).toBe(svg);
+      });
+    }
+  }
+
+  for (const lineType of ['straight', 'curved', 'elbow'] as const) {
+    test(`lineType=${lineType} round-trips + endpoints recover from the shaft`, () => {
+      const arrow: ArrowStroke = {
+        id: 'a',
+        tool: 'arrow',
+        color: '#3b82f6',
+        width: 2,
+        x1: 12,
+        y1: 8,
+        x2: 90,
+        y2: 64,
+        lineType,
+      };
+      const svg = strokesToSvg([arrow]);
+      const [parsed] = svgToStrokes(svg) as ArrowStroke[];
+      expect(parsed?.lineType ?? 'straight').toBe(lineType);
+      // Endpoints survive whether the shaft is a <line> or a <path>.
+      expect(parsed?.x1).toBeCloseTo(12, 4);
+      expect(parsed?.y1).toBeCloseTo(8, 4);
+      expect(parsed?.x2).toBeCloseTo(90, 4);
+      expect(parsed?.y2).toBeCloseTo(64, 4);
+      expect(reparse(svg)).toBe(svg);
+    });
+  }
+});
+
+describe('annotations round-trip / Phase 24 text + sticky bold/strike/align', () => {
+  for (const align of ['left', 'center', 'right'] as const) {
+    test(`standalone text align=${align} + bold + strike round-trips`, () => {
+      const t: TextStroke = {
+        id: 't',
+        tool: 'text',
+        color: '#1a1a1a',
+        fontSize: 36,
+        text: 'huge',
+        x: 10,
+        y: 20,
+        bold: true,
+        strike: true,
+        align,
+      };
+      const [parsed] = svgToStrokes(strokesToSvg([t])) as TextStroke[];
+      expect(parsed?.bold).toBe(true);
+      expect(parsed?.strike).toBe(true);
+      // 'left' is the standalone default → serializer omits it → parser leaves undefined.
+      expect(parsed?.align ?? 'left').toBe(align);
+    });
+  }
+
+  test('anchored text default (centre, no bold/strike) stays byte-identical', () => {
+    const t: TextStroke = {
+      id: 't',
+      tool: 'text',
+      color: '#1a1a1a',
+      fontSize: 14,
+      text: 'x',
+      anchorId: 'h',
+    };
+    const svg = strokesToSvg([t]);
+    expect(svg).not.toContain('data-align');
+    expect(svg).not.toContain('font-weight');
+    expect(svg).not.toContain('text-decoration');
+    expect(reparse(svg)).toBe(svg);
+  });
+
+  test('sticky bold/strike/align round-trips; a plain sticky gains no attrs', () => {
+    const plain: StickyStroke = {
+      id: 'st',
+      tool: 'sticky',
+      color: '#fce8a6',
+      x: 0,
+      y: 0,
+      w: 200,
+      h: 200,
+      text: 'note',
+      fontSize: 16,
+    };
+    const plainSvg = strokesToSvg([plain]);
+    expect(plainSvg).not.toContain('data-bold');
+    expect(plainSvg).not.toContain('data-align');
+    const styled: StickyStroke = { ...plain, bold: true, strike: true, align: 'center' };
+    const svg = strokesToSvg([styled]);
+    expect(svg).toContain('data-bold="1"');
+    expect(svg).toContain('data-strike="1"');
+    expect(svg).toContain('data-align="center"');
+    const [parsed] = svgToStrokes(svg) as StickyStroke[];
+    expect(parsed?.bold).toBe(true);
+    expect(parsed?.strike).toBe(true);
+    expect(parsed?.align).toBe('center');
+  });
+});
+
+describe('annotations round-trip / Phase 24 arrowhead parse-clamp (DDR-067 security)', () => {
+  // A hub-pushed SVG with an out-of-vocabulary / poisoned data-*-head must be
+  // REJECTED on parse (not cast through unchecked) so it can never reach the
+  // serializer to attempt a quote-breakout.
+  test('an out-of-vocab data-start-head is dropped, not cast through', () => {
+    const dirty =
+      '<svg xmlns="http://www.w3.org/2000/svg" data-mdcc-annotations="1">' +
+      '<g data-id="a" data-tool="arrow" stroke="#111" stroke-width="2" fill="none" ' +
+      'data-start-head="t&quot;onload=&quot;alert(1)" data-end-head="evil">' +
+      '<line x1="0" y1="0" x2="50" y2="0"/></g></svg>';
+    const [parsed] = svgToStrokes(dirty) as ArrowStroke[];
+    expect(parsed?.tool).toBe('arrow');
+    expect(parsed?.startHead).toBeUndefined(); // poisoned → rejected
+    expect(parsed?.endHead).toBeUndefined(); // 'evil' → rejected
+    // Re-serializing the clamped stroke emits NO poisoned attribute.
+    const reserialized = strokesToSvg(svgToStrokes(dirty));
+    expect(reserialized).not.toContain('onload');
+    expect(reserialized).not.toContain('evil');
+  });
+
+  test('a valid expanded head (circle/diamond) still round-trips', () => {
+    const ok =
+      '<svg xmlns="http://www.w3.org/2000/svg" data-mdcc-annotations="1">' +
+      '<g data-id="a" data-tool="arrow" stroke="#111" stroke-width="2" fill="none" data-start-head="circle" data-end-head="diamond">' +
+      '<line x1="0" y1="0" x2="50" y2="0"/><polygon points="0,0 0,0 0,0" fill="#111"/><polygon points="0,0 0,0 0,0 0,0" fill="#111"/></g></svg>';
+    const [parsed] = svgToStrokes(ok) as ArrowStroke[];
+    expect(parsed?.startHead).toBe('circle');
+    expect(parsed?.endHead).toBe('diamond');
   });
 });

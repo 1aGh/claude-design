@@ -13,6 +13,7 @@ import {
   type ArrowStroke,
   type EllipseStroke,
   type PenStroke,
+  type PolygonStroke,
   type RectStroke,
   STICKY_PALETTE,
   type StickyStroke,
@@ -20,6 +21,8 @@ import {
   type TextStroke,
   arrowHeadPoints,
   penPathD,
+  polygonPoints,
+  polygonVertices,
   rid,
   strokeBBox,
   strokeHitTest,
@@ -498,9 +501,9 @@ describe('annotations-layer / Phase 21 sticky serialization', () => {
     expect(svg).toContain('>approve copy?</text>');
   });
 
-  test('sticky default color is the yellow paper tint (slot 0)', () => {
-    expect(STICKY_PALETTE[0]).toBe('#ffe27a');
-    expect(STICKY_PALETTE).toHaveLength(6);
+  test('sticky default color is the muted yellow paper tint (slot 0); 10 muted tints (Phase 24)', () => {
+    expect(STICKY_PALETTE[0]).toBe('#fce8a6');
+    expect(STICKY_PALETTE).toHaveLength(10);
   });
 
   test('sticky body text is HTML-escaped (no tag injection)', () => {
@@ -690,5 +693,82 @@ describe('annotations-layer / Phase 21 sticky + standalone-text geometry', () =>
       anchorId: 'host',
     };
     expect(strokeHitTest(anchored, 2, 2, 4)).toBe(false);
+  });
+});
+
+describe('annotations-layer / Phase 24 polygon geometry', () => {
+  test('polygonVertices span the full bbox for every shape', () => {
+    for (const shape of ['diamond', 'triangle', 'triangle-down'] as const) {
+      const pts = polygonVertices(shape, 10, 20, 80, 60);
+      const xs = pts.map((p) => p[0]);
+      const ys = pts.map((p) => p[1]);
+      expect(Math.min(...xs)).toBeCloseTo(10, 4);
+      expect(Math.max(...xs)).toBeCloseTo(90, 4);
+      expect(Math.min(...ys)).toBeCloseTo(20, 4);
+      expect(Math.max(...ys)).toBeCloseTo(80, 4);
+    }
+  });
+
+  test('diamond has 4 vertices; triangles have 3', () => {
+    expect(polygonVertices('diamond', 0, 0, 10, 10)).toHaveLength(4);
+    expect(polygonVertices('triangle', 0, 0, 10, 10)).toHaveLength(3);
+    expect(polygonVertices('triangle-down', 0, 0, 10, 10)).toHaveLength(3);
+  });
+
+  test('polygonPoints serializes vertices as an SVG points string', () => {
+    expect(polygonPoints('diamond', 0, 0, 10, 10)).toBe('5,0 10,5 5,10 0,5');
+  });
+
+  test('polygon serializes as <polygon data-tool="polygon" data-shape=...>', () => {
+    const p: PolygonStroke = {
+      id: 'pg',
+      tool: 'polygon',
+      shape: 'triangle',
+      color: '#e5484d',
+      width: 2,
+      x: 0,
+      y: 0,
+      w: 40,
+      h: 40,
+    };
+    const svg = strokesToSvg([p]);
+    expect(svg).toContain('data-tool="polygon"');
+    expect(svg).toContain('data-shape="triangle"');
+    expect(svg).toContain('points="20,0 40,40 0,40"');
+  });
+
+  test('polygon bbox is its normalized extent', () => {
+    const p: PolygonStroke = {
+      id: 'pg',
+      tool: 'polygon',
+      shape: 'diamond',
+      color: '#000',
+      width: 2,
+      x: 100,
+      y: 100,
+      w: -40,
+      h: -30,
+    };
+    expect(strokeBBox(p)).toEqual({ x: 60, y: 70, w: 40, h: 30 });
+  });
+
+  test('filled diamond hit-tests inside; stroke-only hits the edge not the centre', () => {
+    const filled: PolygonStroke = {
+      id: 'd',
+      tool: 'polygon',
+      shape: 'diamond',
+      color: '#000',
+      width: 2,
+      x: 0,
+      y: 0,
+      w: 100,
+      h: 100,
+      fill: '#eee',
+    };
+    expect(strokeHitTest(filled, 50, 50, 4)).toBe(true); // centre, filled
+    expect(strokeHitTest(filled, 5, 5, 4)).toBe(false); // outside the diamond (in a bbox corner)
+    const outline: PolygonStroke = { ...filled, fill: null };
+    expect(strokeHitTest(outline, 50, 50, 4)).toBe(false); // centre, not filled
+    expect(strokeHitTest(outline, 25, 25, 4)).toBe(true); // on the NW edge midpoint line
   });
 });

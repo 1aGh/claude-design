@@ -2,8 +2,10 @@
  * @file       use-annotation-resize.tsx — Task 23 (Wave 2, G4)
  * @scope      plugins/design/dev-server/use-annotation-resize.tsx
  * @purpose    Screen-space corner / endpoint handles for the selected
- *             annotation. Per-tool resize math; modifier semantics (Shift
- *             aspect-lock, Alt scale-from-center) are deferred to a follow-up.
+ *             annotation. Per-tool resize math with FigJam resize modifiers:
+ *             Shift = lock aspect ratio (45° angle snap for arrows), Alt =
+ *             scale from center, Shift+Alt = both. Modifiers update live on
+ *             keydown/keyup mid-drag (re-applied at the last pointer position).
  *
  *             Handles are `position: fixed` DOM siblings of the canvas (the
  *             same pattern element selection uses) — they stay 8 × 8 CSS px
@@ -21,6 +23,7 @@ import {
   type ArrowStroke,
   type EllipseStroke,
   type PenStroke,
+  type PolygonStroke,
   type RectStroke,
   type StickyStroke,
   type Stroke,
@@ -43,9 +46,16 @@ const RESIZE_CSS = `
   pointer-events: auto;
   touch-action: none;
 }
-.dc-annot-resize-handle[data-corner="nw"], .dc-annot-resize-handle[data-corner="se"] { cursor: nwse-resize; }
-.dc-annot-resize-handle[data-corner="ne"], .dc-annot-resize-handle[data-corner="sw"] { cursor: nesw-resize; }
-.dc-annot-resize-handle[data-corner="ep1"], .dc-annot-resize-handle[data-corner="ep2"] { cursor: move; }
+/* Phase 24 — '!important' so the scale/move affordance beats use-tool-mode's
+   blanket '* { cursor: <tool> !important }' (move mode). Without it the move
+   glyph clobbered the resize cursors and the user saw no scale affordance over
+   a handle. Specificity already wins ('.class[attr]' > '*'); the '!important'
+   is what lets it through against the other '!important' rule. See DDR-067.
+   NOTE: keep this comment backtick-free — it lives inside the RESIZE_CSS
+   template literal and a stray backtick closes it (bun parse fail, §6). */
+.dc-annot-resize-handle[data-corner="nw"], .dc-annot-resize-handle[data-corner="se"] { cursor: nwse-resize !important; }
+.dc-annot-resize-handle[data-corner="ne"], .dc-annot-resize-handle[data-corner="sw"] { cursor: nesw-resize !important; }
+.dc-annot-resize-handle[data-corner="ep1"], .dc-annot-resize-handle[data-corner="ep2"] { cursor: move !important; }
 `.trim();
 
 function ensureResizeStyles(): void {
@@ -62,10 +72,11 @@ type Corner = 'nw' | 'ne' | 'sw' | 'se' | 'ep1' | 'ep2';
 /** Stroke types that expose resize handles. Text inherits its anchor bbox. */
 function isResizable(
   s: Stroke
-): s is RectStroke | EllipseStroke | ArrowStroke | PenStroke | StickyStroke {
+): s is RectStroke | EllipseStroke | PolygonStroke | ArrowStroke | PenStroke | StickyStroke {
   return (
     s.tool === 'rect' ||
     s.tool === 'ellipse' ||
+    s.tool === 'polygon' ||
     s.tool === 'arrow' ||
     s.tool === 'pen' ||
     s.tool === 'sticky'
@@ -73,75 +84,188 @@ function isResizable(
 }
 
 /**
+ * Resize modifiers (FigJam-parity). Held during a handle drag:
+ *   • `shift` — lock to the start aspect ratio (45° angle snap for arrows;
+ *               always-1:1 stickies ignore it — they're square regardless).
+ *   • `alt`   — scale symmetrically around the stroke's center / midpoint.
+ * Both together combine (ratio-locked AND center-anchored). With neither held
+ * the result is byte-identical to the pre-modifier behaviour.
+ */
+export interface ResizeMods {
+  shift: boolean;
+  alt: boolean;
+}
+
+const NO_MODS: ResizeMods = { shift: false, alt: false };
+
+const isWestCorner = (c: Corner): boolean => c === 'nw' || c === 'sw';
+const isNorthCorner = (c: Corner): boolean => c === 'nw' || c === 'ne';
+
+/**
+ * Shared bbox resize for rect / polygon / sticky / ellipse. Returns the new
+ * axis-aligned box for the dragged `corner` moving to world (wx, wy):
+ *   • normal  — the diagonally-opposite corner is the fixed anchor.
+ *   • Alt     — the box's center is the fixed anchor (symmetric scale).
+ *   • Shift   — keep the start aspect ratio (the dominant axis drives scale).
+ *   • square  — force 1:1 regardless of Shift (sticky notes).
+ * The no-modifier branch is algebraically identical to the previous
+ * min/max corner math (verified against the resize round-trip tests).
+ */
+function bboxResize(
+  bbox: { x: number; y: number; w: number; h: number },
+  corner: Corner,
+  wx: number,
+  wy: number,
+  mods: ResizeMods,
+  square: boolean
+): { x: number; y: number; w: number; h: number } {
+  const { x, y, w, h } = bbox;
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  const isW = isWestCorner(corner);
+  const isN = isNorthCorner(corner);
+  const anchorX = isW ? x + w : x;
+  const anchorY = isN ? y + h : y;
+
+  // Raw extents from the dragged corner — center-relative under Alt.
+  let nw = mods.alt ? 2 * Math.abs(wx - cx) : Math.abs(wx - anchorX);
+  let nh = mods.alt ? 2 * Math.abs(wy - cy) : Math.abs(wy - anchorY);
+
+  if (square) {
+    const side = Math.max(nw, nh, 1);
+    nw = side;
+    nh = side;
+  } else if (mods.shift && w > 0 && h > 0) {
+    const s = Math.max(nw / w, nh / h);
+    nw = w * s;
+    nh = h * s;
+  }
+  nw = Math.max(1, nw);
+  nh = Math.max(1, nh);
+
+  let nx: number;
+  let ny: number;
+  if (mods.alt) {
+    nx = cx - nw / 2;
+    ny = cy - nh / 2;
+  } else {
+    // Grow away from the anchor toward the cursor's side (handles flips).
+    nx = wx < anchorX ? anchorX - nw : anchorX;
+    ny = wy < anchorY ? anchorY - nh : anchorY;
+  }
+  return { x: nx, y: ny, w: nw, h: nh };
+}
+
+/**
  * Per-tool resize math. Given a stroke + the moved corner + the new world
  * coords for that corner, returns a patched stroke. `start` is the stroke at
  * the moment the drag began (used as the source-of-truth for scaling math —
- * avoids drift from rounding successive deltas).
+ * avoids drift from rounding successive deltas). `mods` carries the live
+ * FigJam resize modifiers (Shift aspect-lock, Alt scale-from-center).
  */
-function resizeStroke(
+export function resizeStroke(
   start: Stroke,
   corner: Corner,
   wx: number,
-  wy: number
+  wy: number,
+  mods: ResizeMods = NO_MODS
 ): Partial<Stroke> | null {
-  if (start.tool === 'rect' || start.tool === 'sticky') {
-    // Sticky resizes exactly like a rect — it shares x / y / w / h. Text
-    // re-wraps inside the foreignObject automatically (no special handling).
-    const bbox = { x: start.x, y: start.y, w: start.w, h: start.h };
-    const left = corner === 'nw' || corner === 'sw' ? wx : bbox.x;
-    const right = corner === 'ne' || corner === 'se' ? wx : bbox.x + bbox.w;
-    const top = corner === 'nw' || corner === 'ne' ? wy : bbox.y;
-    const bottom = corner === 'sw' || corner === 'se' ? wy : bbox.y + bbox.h;
-    return {
-      x: Math.min(left, right),
-      y: Math.min(top, bottom),
-      w: Math.abs(right - left),
-      h: Math.abs(bottom - top),
-    } as Partial<RectStroke | StickyStroke>;
+  if (start.tool === 'rect' || start.tool === 'sticky' || start.tool === 'polygon') {
+    // Rect / polygon / sticky all resize via their shared x / y / w / h bbox.
+    // Text re-wraps inside the foreignObject automatically. Sticky stays 1:1.
+    const box = bboxResize(
+      { x: start.x, y: start.y, w: start.w, h: start.h },
+      corner,
+      wx,
+      wy,
+      mods,
+      start.tool === 'sticky'
+    );
+    return box as Partial<RectStroke | StickyStroke | PolygonStroke>;
   }
   if (start.tool === 'ellipse') {
-    // Treat the four corners as the bbox of the ellipse. Drag any corner →
-    // recompute the AABB and derive cx/cy/rx/ry from the diagonal anchor.
-    const bbox = {
-      x: start.cx - start.rx,
-      y: start.cy - start.ry,
-      w: start.rx * 2,
-      h: start.ry * 2,
-    };
-    const left = corner === 'nw' || corner === 'sw' ? wx : bbox.x;
-    const right = corner === 'ne' || corner === 'se' ? wx : bbox.x + bbox.w;
-    const top = corner === 'nw' || corner === 'ne' ? wy : bbox.y;
-    const bottom = corner === 'sw' || corner === 'se' ? wy : bbox.y + bbox.h;
-    const nx = Math.min(left, right);
-    const ny = Math.min(top, bottom);
-    const nw = Math.abs(right - left);
-    const nh = Math.abs(bottom - top);
+    // Treat the four corners as the bbox of the ellipse, then derive cx/cy/rx/ry.
+    const box = bboxResize(
+      { x: start.cx - start.rx, y: start.cy - start.ry, w: start.rx * 2, h: start.ry * 2 },
+      corner,
+      wx,
+      wy,
+      mods,
+      false
+    );
     return {
-      cx: nx + nw / 2,
-      cy: ny + nh / 2,
-      rx: Math.max(1, nw / 2),
-      ry: Math.max(1, nh / 2),
+      cx: box.x + box.w / 2,
+      cy: box.y + box.h / 2,
+      rx: Math.max(1, box.w / 2),
+      ry: Math.max(1, box.h / 2),
     } as Partial<EllipseStroke>;
   }
   if (start.tool === 'arrow') {
-    if (corner === 'ep1') return { x1: wx, y1: wy } as Partial<ArrowStroke>;
-    if (corner === 'ep2') return { x2: wx, y2: wy } as Partial<ArrowStroke>;
-    return null;
+    if (corner !== 'ep1' && corner !== 'ep2') return null;
+    const otherX = corner === 'ep1' ? start.x2 : start.x1;
+    const otherY = corner === 'ep1' ? start.y2 : start.y1;
+    const midX = (start.x1 + start.x2) / 2;
+    const midY = (start.y1 + start.y2) / 2;
+    // Alt pins the midpoint (both ends mirror); otherwise the far end is fixed.
+    const refX = mods.alt ? midX : otherX;
+    const refY = mods.alt ? midY : otherY;
+    let dragX = wx;
+    let dragY = wy;
+    if (mods.shift) {
+      // Snap the shaft angle (relative to the reference) to 45° increments.
+      const dx = wx - refX;
+      const dy = wy - refY;
+      const dist = Math.hypot(dx, dy);
+      const step = Math.PI / 4;
+      const ang = Math.round(Math.atan2(dy, dx) / step) * step;
+      dragX = refX + Math.cos(ang) * dist;
+      dragY = refY + Math.sin(ang) * dist;
+    }
+    if (mods.alt) {
+      const mirrorX = 2 * midX - dragX;
+      const mirrorY = 2 * midY - dragY;
+      return corner === 'ep1'
+        ? ({ x1: dragX, y1: dragY, x2: mirrorX, y2: mirrorY } as Partial<ArrowStroke>)
+        : ({ x2: dragX, y2: dragY, x1: mirrorX, y1: mirrorY } as Partial<ArrowStroke>);
+    }
+    return corner === 'ep1'
+      ? ({ x1: dragX, y1: dragY } as Partial<ArrowStroke>)
+      : ({ x2: dragX, y2: dragY } as Partial<ArrowStroke>);
   }
   if (start.tool === 'pen') {
-    // Scale all points by (newW / oldW, newH / oldH) around the opposite
-    // corner anchor. When the drag-start bbox has 0 width/height on an axis
-    // (single-point pen stroke) we skip that axis to avoid div-by-zero.
+    // Scale all points around an anchor — the opposite corner (normal) or the
+    // bbox center (Alt). Shift forces a uniform scale (dominant axis wins).
+    // A 0-extent axis (single-point pen stroke) keeps scale 1 (no div-by-zero).
     const bb = strokeBBox(start);
     if (!bb) return null;
-    const anchorX = corner === 'nw' || corner === 'sw' ? bb.x + bb.w : bb.x;
-    const anchorY = corner === 'nw' || corner === 'ne' ? bb.y + bb.h : bb.y;
-    const newLeft = corner === 'nw' || corner === 'sw' ? wx : bb.x;
-    const newTop = corner === 'nw' || corner === 'ne' ? wy : bb.y;
-    const newRight = corner === 'ne' || corner === 'se' ? wx : bb.x + bb.w;
-    const newBottom = corner === 'sw' || corner === 'se' ? wy : bb.y + bb.h;
-    const sx = bb.w === 0 ? 1 : (newRight - newLeft) / bb.w;
-    const sy = bb.h === 0 ? 1 : (newBottom - newTop) / bb.h;
+    const cx = bb.x + bb.w / 2;
+    const cy = bb.y + bb.h / 2;
+    const isW = isWestCorner(corner);
+    const isN = isNorthCorner(corner);
+    let anchorX: number;
+    let anchorY: number;
+    let sx: number;
+    let sy: number;
+    if (mods.alt) {
+      anchorX = cx;
+      anchorY = cy;
+      sx = bb.w === 0 ? 1 : (wx - cx) / (isW ? -bb.w / 2 : bb.w / 2);
+      sy = bb.h === 0 ? 1 : (wy - cy) / (isN ? -bb.h / 2 : bb.h / 2);
+    } else {
+      anchorX = isW ? bb.x + bb.w : bb.x;
+      anchorY = isN ? bb.y + bb.h : bb.y;
+      const newLeft = isW ? wx : bb.x;
+      const newTop = isN ? wy : bb.y;
+      const newRight = isW ? bb.x + bb.w : wx;
+      const newBottom = isN ? bb.y + bb.h : wy;
+      sx = bb.w === 0 ? 1 : (newRight - newLeft) / bb.w;
+      sy = bb.h === 0 ? 1 : (newBottom - newTop) / bb.h;
+    }
+    if (mods.shift) {
+      const s = Math.max(Math.abs(sx), Math.abs(sy));
+      sx = (sx < 0 ? -1 : 1) * s;
+      sy = (sy < 0 ? -1 : 1) * s;
+    }
     const scaled = start.points.map(
       ([px, py]) =>
         [anchorX + (px - anchorX) * sx, anchorY + (py - anchorY) * sy] as [number, number]
@@ -189,6 +313,9 @@ export function AnnotationResizeOverlay({
     startStroke: Stroke;
     corner: Corner;
   } | null>(null);
+  // Last pointer position (client coords) during a drag — lets a mid-drag
+  // Shift/Alt keydown re-apply the resize without waiting for a pointermove.
+  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
 
   const selectedId = annotSel.selectedIds.length === 1 ? (annotSel.selectedIds[0] ?? null) : null;
   const selectedStroke: Stroke | null = useMemo(() => {
@@ -274,28 +401,48 @@ export function AnnotationResizeOverlay({
         /* some browsers reject capture on synthetic events */
       }
     };
+    const applyResize = (clientX: number, clientY: number, mods: ResizeMods) => {
+      const d = dragRef.current;
+      if (!d || !store) return;
+      const [wx, wy] = screenToWorld(clientX, clientY);
+      const patch = resizeStroke(d.startStroke, d.corner, wx, wy, mods);
+      if (patch) store.updateStroke(d.startStroke.id, patch);
+    };
     const onMove = (e: PointerEvent) => {
       const d = dragRef.current;
       if (!d || e.pointerId !== d.pointerId) return;
-      if (!store) return;
-      const [wx, wy] = screenToWorld(e.clientX, e.clientY);
-      const patch = resizeStroke(d.startStroke, d.corner, wx, wy);
-      if (patch) store.updateStroke(d.startStroke.id, patch);
+      lastPointRef.current = { x: e.clientX, y: e.clientY };
+      applyResize(e.clientX, e.clientY, { shift: e.shiftKey, alt: e.altKey });
+    };
+    // Holding/releasing Shift or Alt mid-drag re-runs the resize at the last
+    // known pointer position so the constraint flips live, FigJam-style.
+    const onKey = (e: KeyboardEvent) => {
+      if (!dragRef.current) return;
+      if (e.key !== 'Shift' && e.key !== 'Alt') return;
+      const p = lastPointRef.current;
+      if (!p) return;
+      e.preventDefault();
+      applyResize(p.x, p.y, { shift: e.shiftKey, alt: e.altKey });
     };
     const onUp = (e: PointerEvent) => {
       const d = dragRef.current;
       if (!d || e.pointerId !== d.pointerId) return;
       dragRef.current = null;
+      lastPointRef.current = null;
     };
     c.addEventListener('pointerdown', onDown);
     document.addEventListener('pointermove', onMove);
     document.addEventListener('pointerup', onUp);
     document.addEventListener('pointercancel', onUp);
+    document.addEventListener('keydown', onKey, true);
+    document.addEventListener('keyup', onKey, true);
     return () => {
       c.removeEventListener('pointerdown', onDown);
       document.removeEventListener('pointermove', onMove);
       document.removeEventListener('pointerup', onUp);
       document.removeEventListener('pointercancel', onUp);
+      document.removeEventListener('keydown', onKey, true);
+      document.removeEventListener('keyup', onKey, true);
     };
   }, [selectedStroke, store, screenToWorld]);
 

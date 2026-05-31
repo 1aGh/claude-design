@@ -253,53 +253,19 @@ const HALO_CSS = `
     transition: none !important;
   }
 }
-/*
- * Force tool cursor across the canvas tree in comment / hand modes. Without
- * !important on every descendant, buttons and links with their own cursor
- * declaration would flip the cursor away from the tool affordance the moment
- * the user hovers an interactive element — wrong signal when native
- * interactions are suppressed by the router anyway.
- */
-/* T22 — per-tool SVG cursors. Each cursor is a 16 × 16 SVG data-URI with a
-   declared hotspot. The crosshair / cell / grab fallbacks remain in the
-   chain so older browsers still get a recognisable affordance. SVGs are
-   utf-8 encoded inline (Chromium / Safari 16+ / Firefox 117+ all accept). */
-.dc-canvas {
-  --cursor-pen: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><path d='M14 1.5 L9 6.5 L2.5 13.5 L1.5 14.5 L2 13 L8.5 6 L13.5 1.5 Z' fill='%23111' stroke='white' stroke-width='0.7' stroke-linejoin='round'/></svg>") 2 14;
-  --cursor-rect: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><line x1='0.5' y1='8' x2='15.5' y2='8' stroke='%23111' stroke-width='1'/><line x1='8' y1='0.5' x2='8' y2='15.5' stroke='%23111' stroke-width='1'/><rect x='10.5' y='10.5' width='4' height='3' fill='white' stroke='%23111' stroke-width='1'/></svg>") 8 8;
-  --cursor-ellipse: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><line x1='0.5' y1='8' x2='15.5' y2='8' stroke='%23111' stroke-width='1'/><line x1='8' y1='0.5' x2='8' y2='15.5' stroke='%23111' stroke-width='1'/><ellipse cx='12.5' cy='12' rx='2.5' ry='1.5' fill='white' stroke='%23111' stroke-width='1'/></svg>") 8 8;
-  --cursor-arrow: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><line x1='0.5' y1='8' x2='15.5' y2='8' stroke='%23111' stroke-width='1'/><line x1='8' y1='0.5' x2='8' y2='15.5' stroke='%23111' stroke-width='1'/><path d='M10 13 L15 13 M12.5 11 L15 13 L12.5 15' fill='none' stroke='%23111' stroke-width='1' stroke-linecap='round' stroke-linejoin='round'/></svg>") 8 8;
-  --cursor-eraser: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><rect x='3' y='9' width='8' height='5' rx='1' fill='%23ffb3da' stroke='%23111' stroke-width='1' transform='rotate(-20 7 11.5)'/><rect x='3' y='9' width='8' height='2' fill='%23d63b6e' transform='rotate(-20 7 10)' opacity='0.6'/></svg>") 8 14;
-  --cursor-comment: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><path d='M3 3 L14 3 L14 11 L8 11 L4 14 L4 11 L3 11 Z' fill='white' stroke='%23111' stroke-width='1' stroke-linejoin='round'/></svg>") 4 4;
-}
-.dc-canvas[data-active-tool="comment"],
-.dc-canvas[data-active-tool="comment"] * {
-  cursor: var(--cursor-comment), crosshair !important;
-}
-.dc-canvas[data-active-tool="pen"],
-.dc-canvas[data-active-tool="pen"] * {
-  cursor: var(--cursor-pen), crosshair !important;
-}
-.dc-canvas[data-active-tool="rect"],
-.dc-canvas[data-active-tool="rect"] * {
-  cursor: var(--cursor-rect), crosshair !important;
-}
-.dc-canvas[data-active-tool="ellipse"],
-.dc-canvas[data-active-tool="ellipse"] * {
-  cursor: var(--cursor-ellipse), crosshair !important;
-}
-.dc-canvas[data-active-tool="arrow"],
-.dc-canvas[data-active-tool="arrow"] * {
-  cursor: var(--cursor-arrow), crosshair !important;
-}
-.dc-canvas[data-active-tool="hand"],
-.dc-canvas[data-active-tool="hand"] * {
-  cursor: grab !important;
-}
-.dc-canvas[data-active-tool="eraser"],
-.dc-canvas[data-active-tool="eraser"] * {
-  cursor: var(--cursor-eraser), cell !important;
-}
+/* Phase 24 — per-tool cursors are owned SOLELY by use-tool-mode.tsx, which
+   injects ONE unified Kenney-glyph rule ('* { cursor: <tool> !important }')
+   into the same document. The old T22 per-tool '.dc-canvas[data-active-tool=…]'
+   rules used to live here, but their higher specificity ('.class[attr] *'
+   beats '*') silently SHADOWED the new cursors for comment/pen/arrow/hand/
+   eraser — they kept showing the stale 16px glyphs (or their native fallback)
+   while move/shape/sticky/text (which had no shadowing rule) correctly showed
+   the Kenney set. Removing them lets the single source of truth win for every
+   tool. 'data-active-tool' is still set on '.dc-canvas' (see CanvasCore) and
+   keyed by canvas-lib's move-mode label cursor + use-cursor-modifiers — those
+   stay. See DDR-067 / Phase 24. NOTE: keep this comment backtick-free — it
+   lives inside the HALO_CSS template literal and a stray backtick closes it
+   (bun parse fail, DDR-067 §6). */
 
 /* T31 — Level of detail. Below 0.35 zoom we hide pre-attentive chrome that
    becomes visual noise (corner ticks, distance pills, active-artboard ring,

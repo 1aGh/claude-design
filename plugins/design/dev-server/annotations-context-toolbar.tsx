@@ -20,29 +20,92 @@
  *   - font-size: only when at least one stroke is text (and the rest are its host)
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
+  type ArrowHead,
+  type ArrowLineType,
   FILL_PALETTE,
+  STICKY_PALETTE,
   STROKE_PALETTE,
   type Stroke,
+  type TextAlign,
   useStrokesStore,
 } from './annotations-layer.tsx';
 import {
-  IconArrowBothHeads,
-  IconArrowEndHead,
+  IconAlignCenter,
+  IconAlignLeft,
+  IconAlignRight,
   IconArrowNone,
-  IconArrowStartHead,
+  IconArrowheadCircle,
+  IconArrowheadDiamond,
+  IconArrowheadLine,
+  IconArrowheadTriangle,
+  IconArrowheadTriangleOutline,
+  IconBold,
+  IconChevronDown,
   IconCornerPill,
   IconCornerSoft,
   IconCornerSquare,
   IconDash,
-  IconLetterA,
+  IconLineCurved,
+  IconLineElbow,
+  IconLineStraight,
   IconLineThick,
   IconLineThin,
+  IconStrike,
   IconTrash,
 } from './canvas-icons.tsx';
 import { useAnnotationSelectionOptional } from './use-annotation-selection.tsx';
+
+// Phase 24 — arrowhead + line-type option metadata (icon + label per value),
+// driving the per-end head dropdowns + the line-type dropdown.
+const HEAD_ICON: Record<ArrowHead, (p: { size?: number }) => ReactNode> = {
+  none: IconArrowNone,
+  line: IconArrowheadLine,
+  triangle: IconArrowheadTriangle,
+  'triangle-outline': IconArrowheadTriangleOutline,
+  circle: IconArrowheadCircle,
+  diamond: IconArrowheadDiamond,
+};
+const HEAD_OPTIONS: ReadonlyArray<{ value: ArrowHead; label: string }> = [
+  { value: 'none', label: 'None' },
+  { value: 'line', label: 'Line' },
+  { value: 'triangle', label: 'Triangle' },
+  { value: 'triangle-outline', label: 'Triangle (outline)' },
+  { value: 'circle', label: 'Circle' },
+  { value: 'diamond', label: 'Diamond' },
+];
+const LINETYPE_ICON: Record<ArrowLineType, (p: { size?: number }) => ReactNode> = {
+  straight: IconLineStraight,
+  curved: IconLineCurved,
+  elbow: IconLineElbow,
+};
+const LINETYPE_OPTIONS: ReadonlyArray<{ value: ArrowLineType; label: string }> = [
+  { value: 'straight', label: 'Straight' },
+  { value: 'curved', label: 'Curved' },
+  { value: 'elbow', label: 'Elbow' },
+];
+// Phase 24 — text alignment (text + sticky) + named font-size presets.
+const ALIGN_ICON: Record<TextAlign, (p: { size?: number }) => ReactNode> = {
+  left: IconAlignLeft,
+  center: IconAlignCenter,
+  right: IconAlignRight,
+};
+const ALIGN_OPTIONS: ReadonlyArray<{ value: TextAlign; label: string }> = [
+  { value: 'left', label: 'Align left' },
+  { value: 'center', label: 'Align center' },
+  { value: 'right', label: 'Align right' },
+];
+const FONT_SIZE_PRESETS: ReadonlyArray<{ px: number; label: string }> = [
+  { px: 12, label: 'Small' },
+  { px: 16, label: 'Medium' },
+  { px: 24, label: 'Large' },
+  { px: 36, label: 'Extra large' },
+  { px: 64, label: 'Huge' },
+];
+const FONT_SIZE_MIN = 8;
+const FONT_SIZE_MAX = 200;
 
 // Phase 21 — the swatch palettes come from annotations-layer so the draw-time
 // chrome and this per-selection toolbar share ONE hue family. STROKE mode shows
@@ -190,6 +253,91 @@ const TOOLBAR_CSS = `
   background: color-mix(in oklab, #ff5a4d 26%, transparent);
   color: #ffffff;
 }
+/* Phase 24 — icon dropdown (arrowhead / line-type / text-align). The wrapper
+   anchors the menu directly above the trigger. */
+.dc-annot-ctx-dd { position: relative; display: inline-flex; }
+.dc-annot-ctx-dd-trigger { padding-right: 9px; }
+.dc-annot-ctx-dd-caret {
+  position: absolute;
+  right: 1px;
+  bottom: 2px;
+  display: inline-flex;
+  opacity: 0.5;
+  pointer-events: none;
+}
+.dc-annot-ctx-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 1px;
+  padding: 4px;
+  background: ${CTX_SURFACE};
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 9px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.4), 0 2px 6px rgba(0,0,0,0.24);
+  z-index: 9;
+}
+.dc-annot-ctx-menu button[aria-checked="true"] {
+  background: rgba(255,255,255,0.18);
+  color: #ffffff;
+}
+/* Font-size dropdown — wider trigger showing the current px + a vertical menu
+   of named presets and a numeric input. */
+.dc-annot-ctx-fs-trigger {
+  width: auto;
+  min-width: 30px;
+  padding: 0 14px 0 7px;
+  font-variant-numeric: tabular-nums;
+}
+.dc-annot-ctx-fs-val { font-size: 12px; }
+.dc-annot-ctx-fs-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px;
+  min-width: 132px;
+  background: ${CTX_SURFACE};
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 9px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.4), 0 2px 6px rgba(0,0,0,0.24);
+  z-index: 9;
+}
+.dc-annot-ctx-fs-item {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  padding: 5px 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font: inherit;
+  font-size: 12px;
+  color: rgba(255,255,255,0.85);
+  cursor: pointer;
+}
+.dc-annot-ctx-fs-item:hover { background: rgba(255,255,255,0.1); }
+.dc-annot-ctx-fs-item[aria-checked="true"] { background: rgba(255,255,255,0.18); color: #fff; }
+.dc-annot-ctx-fs-px { opacity: 0.5; font-variant-numeric: tabular-nums; }
+.dc-annot-ctx-fs-input {
+  margin-top: 3px;
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 6px;
+  padding: 4px 8px;
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+}
+.dc-annot-ctx-fs-input:focus-visible { outline: 2px solid #fff; outline-offset: -1px; }
 @media (prefers-reduced-motion: reduce) {
   .dc-annot-ctx-ibtn, .dc-annot-ctx-sw { transition: none; }
 }
@@ -269,14 +417,17 @@ export function AnnotationContextToolbar() {
     const fontSizeApplicable = selectedStrokes.some(
       (s) => s.tool === 'text' || s.tool === 'sticky'
     );
-    const allRectOrSticky = selectedStrokes.every((s) => s.tool === 'rect' || s.tool === 'sticky');
+    // Phase 24 — the corner-radius control is rect-only now. Stickies have a
+    // fixed soft radius (no switch); the sticky-color swatch row is handled
+    // separately below.
+    const allRect = selectedStrokes.every((s) => s.tool === 'rect');
     const allArrow = selectedStrokes.every((s) => s.tool === 'arrow');
     return {
       color: true,
       fill: allFillable,
       thickness: allThickness,
       fontSize: fontSizeApplicable,
-      cornerRadius: allRectOrSticky,
+      cornerRadius: allRect,
       arrowDir: allArrow,
       dash: allArrow,
     };
@@ -371,6 +522,40 @@ export function AnnotationContextToolbar() {
     },
     [store, selectedStrokes]
   );
+  // Phase 24 — bold / strike / align on text + sticky bodies.
+  const setBold = useCallback(
+    (bold: boolean) => {
+      if (!store) return;
+      for (const s of selectedStrokes) {
+        if (s.tool === 'text' || s.tool === 'sticky') {
+          store.updateStroke(s.id, { bold } as Partial<Stroke>);
+        }
+      }
+    },
+    [store, selectedStrokes]
+  );
+  const setStrike = useCallback(
+    (strike: boolean) => {
+      if (!store) return;
+      for (const s of selectedStrokes) {
+        if (s.tool === 'text' || s.tool === 'sticky') {
+          store.updateStroke(s.id, { strike } as Partial<Stroke>);
+        }
+      }
+    },
+    [store, selectedStrokes]
+  );
+  const setAlign = useCallback(
+    (align: TextAlign) => {
+      if (!store) return;
+      for (const s of selectedStrokes) {
+        if (s.tool === 'text' || s.tool === 'sticky') {
+          store.updateStroke(s.id, { align } as Partial<Stroke>);
+        }
+      }
+    },
+    [store, selectedStrokes]
+  );
   // Phase 21 — corner radius (rect + sticky).
   const setCornerRadius = useCallback(
     (r: number) => {
@@ -383,14 +568,31 @@ export function AnnotationContextToolbar() {
     },
     [store, selectedStrokes]
   );
-  // Phase 21 — arrow head direction (None / Start / End / Both).
-  const setArrowDir = useCallback(
-    (startHead: 'none' | 'triangle', endHead: 'none' | 'triangle') => {
+  // Phase 24 — per-end arrowhead + line-type (replaces the 4 fixed direction
+  // presets with two head dropdowns + a routing dropdown).
+  const setStartHead = useCallback(
+    (startHead: ArrowHead) => {
       if (!store) return;
       for (const s of selectedStrokes) {
-        if (s.tool === 'arrow') {
-          store.updateStroke(s.id, { startHead, endHead } as Partial<Stroke>);
-        }
+        if (s.tool === 'arrow') store.updateStroke(s.id, { startHead } as Partial<Stroke>);
+      }
+    },
+    [store, selectedStrokes]
+  );
+  const setEndHead = useCallback(
+    (endHead: ArrowHead) => {
+      if (!store) return;
+      for (const s of selectedStrokes) {
+        if (s.tool === 'arrow') store.updateStroke(s.id, { endHead } as Partial<Stroke>);
+      }
+    },
+    [store, selectedStrokes]
+  );
+  const setLineType = useCallback(
+    (lineType: ArrowLineType) => {
+      if (!store) return;
+      for (const s of selectedStrokes) {
+        if (s.tool === 'arrow') store.updateStroke(s.id, { lineType } as Partial<Stroke>);
       }
     },
     [store, selectedStrokes]
@@ -440,6 +642,32 @@ export function AnnotationContextToolbar() {
         )
       )
     : undefined;
+  // Phase 24 — uniform bold / strike / align across the text-bearing selection.
+  // Align default differs per kind: anchored text = centre, standalone + sticky
+  // = left (matches the serializer defaults so the active-state reads true).
+  const uniqBold = caps.fontSize
+    ? uniformValue(
+        selectedStrokes.map((s) =>
+          s.tool === 'text' || s.tool === 'sticky' ? !!s.bold : undefined
+        )
+      )
+    : undefined;
+  const uniqStrike = caps.fontSize
+    ? uniformValue(
+        selectedStrokes.map((s) =>
+          s.tool === 'text' || s.tool === 'sticky' ? !!s.strike : undefined
+        )
+      )
+    : undefined;
+  const uniqAlign = caps.fontSize
+    ? uniformValue(
+        selectedStrokes.map((s) => {
+          if (s.tool === 'sticky') return s.align ?? 'left';
+          if (s.tool === 'text') return s.align ?? (s.anchorId ? 'center' : 'left');
+          return undefined;
+        })
+      )
+    : undefined;
   // Phase 21 — uniform corner radius across rect/sticky (default per type: rect
   // sharp = 0, sticky soft = 8).
   const uniqRadius = caps.cornerRadius
@@ -464,6 +692,11 @@ export function AnnotationContextToolbar() {
         selectedStrokes.map((s) => (s.tool === 'arrow' ? (s.endHead ?? 'triangle') : undefined))
       )
     : undefined;
+  const uniqLineType = caps.arrowDir
+    ? uniformValue(
+        selectedStrokes.map((s) => (s.tool === 'arrow' ? (s.lineType ?? 'straight') : undefined))
+      )
+    : undefined;
   const uniqDashed = caps.dash
     ? uniformValue(
         selectedStrokes.map((s) => (s.tool === 'arrow' ? (s.dashed ?? false) : undefined))
@@ -474,10 +707,21 @@ export function AnnotationContextToolbar() {
   // useEffect below could call setSwatchMode('stroke') but reading the
   // effective mode inline avoids an extra render cycle.
   const effectiveMode: SwatchMode = caps.fill ? swatchMode : 'stroke';
-  const showPalette = effectiveMode === 'stroke' ? STROKE_PALETTE : FILL_PALETTE;
+  // Phase 24 — a sticky selection picks its PAPER TINT, not stroke ink. The
+  // pre-Phase-24 toolbar showed STROKE_PALETTE for stickies (a latent bug):
+  // sticky has no stroke, so its swatch must paint the muted STICKY_PALETTE and
+  // write to `color` (the paper tint). No Stroke|Fill toggle for sticky
+  // (caps.fill is already false).
+  const allSticky = selectedStrokes.every((s) => s.tool === 'sticky');
+  const showPalette = allSticky
+    ? STICKY_PALETTE
+    : effectiveMode === 'stroke'
+      ? STROKE_PALETTE
+      : FILL_PALETTE;
   const onSwatchClick =
-    effectiveMode === 'stroke' ? (c: string) => setColor(c) : (c: string) => setFill(c);
-  const activeValue = effectiveMode === 'stroke' ? uniqColor : (uniqFill ?? null);
+    !allSticky && effectiveMode === 'fill' ? (c: string) => setFill(c) : (c: string) => setColor(c);
+  const activeValue = allSticky || effectiveMode === 'stroke' ? uniqColor : (uniqFill ?? null);
+  const swatchKind = allSticky ? 'Sticky color' : effectiveMode === 'stroke' ? 'Color' : 'Fill';
 
   return (
     <div
@@ -526,9 +770,9 @@ export function AnnotationContextToolbar() {
             key={c}
             type="button"
             className="dc-annot-ctx-sw"
-            aria-label={`${effectiveMode === 'stroke' ? 'Color' : 'Fill'} ${c}`}
+            aria-label={`${swatchKind} ${c}`}
             aria-pressed={activeValue === c}
-            title={`${effectiveMode === 'stroke' ? 'Color' : 'Fill'} ${c}`}
+            title={`${swatchKind} ${c}`}
             style={{ background: c }}
             onClick={() => onSwatchClick(c)}
           />
@@ -562,36 +806,37 @@ export function AnnotationContextToolbar() {
       {caps.fontSize ? (
         <>
           <div className="dc-annot-ctx-sep" />
+          <FontSizeDropdown value={uniqFontSize} onPick={setFontSize} />
           <button
             type="button"
             className="dc-annot-ctx-ibtn"
-            aria-label="Small text"
-            aria-pressed={uniqFontSize === 12}
-            title="Small (12px)"
-            onClick={() => setFontSize(12)}
+            aria-label="Bold"
+            aria-pressed={uniqBold === true}
+            title="Bold"
+            onClick={() => setBold(!(uniqBold === true))}
           >
-            <IconLetterA size={13} />
+            <IconBold />
           </button>
           <button
             type="button"
             className="dc-annot-ctx-ibtn"
-            aria-label="Medium text"
-            aria-pressed={uniqFontSize === 14}
-            title="Medium (14px)"
-            onClick={() => setFontSize(14)}
+            aria-label="Strikethrough"
+            aria-pressed={uniqStrike === true}
+            title="Strikethrough"
+            onClick={() => setStrike(!(uniqStrike === true))}
           >
-            <IconLetterA size={16} />
+            <IconStrike />
           </button>
-          <button
-            type="button"
-            className="dc-annot-ctx-ibtn"
-            aria-label="Large text"
-            aria-pressed={uniqFontSize === 20}
-            title="Large (20px)"
-            onClick={() => setFontSize(20)}
-          >
-            <IconLetterA size={19} />
-          </button>
+          <IconDropdown
+            ariaLabel="Text alignment"
+            value={uniqAlign ?? 'left'}
+            options={ALIGN_OPTIONS}
+            renderIcon={(v) => {
+              const I = ALIGN_ICON[v as TextAlign];
+              return I ? <I size={16} /> : null;
+            }}
+            onPick={(v) => setAlign(v as TextAlign)}
+          />
         </>
       ) : null}
       {caps.cornerRadius ? (
@@ -632,46 +877,36 @@ export function AnnotationContextToolbar() {
       {caps.arrowDir ? (
         <>
           <div className="dc-annot-ctx-sep" />
-          <button
-            type="button"
-            className="dc-annot-ctx-ibtn"
-            aria-label="Line, no arrowheads"
-            aria-pressed={uniqStartHead === 'none' && uniqEndHead === 'none'}
-            title="Line (no heads)"
-            onClick={() => setArrowDir('none', 'none')}
-          >
-            <IconArrowNone />
-          </button>
-          <button
-            type="button"
-            className="dc-annot-ctx-ibtn"
-            aria-label="Arrowhead at start"
-            aria-pressed={uniqStartHead === 'triangle' && uniqEndHead === 'none'}
-            title="Head at start"
-            onClick={() => setArrowDir('triangle', 'none')}
-          >
-            <IconArrowStartHead />
-          </button>
-          <button
-            type="button"
-            className="dc-annot-ctx-ibtn"
-            aria-label="Arrowhead at end"
-            aria-pressed={uniqStartHead === 'none' && uniqEndHead === 'triangle'}
-            title="Head at end"
-            onClick={() => setArrowDir('none', 'triangle')}
-          >
-            <IconArrowEndHead />
-          </button>
-          <button
-            type="button"
-            className="dc-annot-ctx-ibtn"
-            aria-label="Arrowheads at both ends"
-            aria-pressed={uniqStartHead === 'triangle' && uniqEndHead === 'triangle'}
-            title="Heads at both ends"
-            onClick={() => setArrowDir('triangle', 'triangle')}
-          >
-            <IconArrowBothHeads />
-          </button>
+          <IconDropdown
+            ariaLabel="Start arrowhead"
+            value={uniqStartHead ?? 'none'}
+            options={HEAD_OPTIONS}
+            renderIcon={(v) => {
+              const I = HEAD_ICON[v as ArrowHead];
+              return I ? <I size={16} /> : null;
+            }}
+            onPick={(v) => setStartHead(v as ArrowHead)}
+          />
+          <IconDropdown
+            ariaLabel="End arrowhead"
+            value={uniqEndHead ?? 'triangle'}
+            options={HEAD_OPTIONS}
+            renderIcon={(v) => {
+              const I = HEAD_ICON[v as ArrowHead];
+              return I ? <I size={16} /> : null;
+            }}
+            onPick={(v) => setEndHead(v as ArrowHead)}
+          />
+          <IconDropdown
+            ariaLabel="Line type"
+            value={uniqLineType ?? 'straight'}
+            options={LINETYPE_OPTIONS}
+            renderIcon={(v) => {
+              const I = LINETYPE_ICON[v as ArrowLineType];
+              return I ? <I size={16} /> : null;
+            }}
+            onPick={(v) => setLineType(v as ArrowLineType)}
+          />
         </>
       ) : null}
       {caps.dash ? (
@@ -703,6 +938,174 @@ export function AnnotationContextToolbar() {
   );
 }
 AnnotationContextToolbar.displayName = 'AnnotationContextToolbar';
+
+/**
+ * Phase 24 — a compact icon dropdown for the context toolbar (arrowhead per
+ * end, line-type). Trigger shows the current value's icon + a caret; the menu
+ * is a single row of icon-only radio items. Closes on outside-pointerdown or
+ * Escape. Reuses the existing `.dc-annot-ctx-ibtn` button styling.
+ */
+function IconDropdown({
+  ariaLabel,
+  value,
+  options,
+  renderIcon,
+  onPick,
+}: {
+  ariaLabel: string;
+  value: string;
+  options: ReadonlyArray<{ value: string; label: string }>;
+  renderIcon: (v: string) => ReactNode;
+  onPick: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('keydown', onKey, true);
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('keydown', onKey, true);
+    };
+  }, [open]);
+  const current = options.find((o) => o.value === value);
+  return (
+    <div ref={ref} className="dc-annot-ctx-dd">
+      <button
+        type="button"
+        className="dc-annot-ctx-ibtn dc-annot-ctx-dd-trigger"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`${ariaLabel}: ${current?.label ?? value}`}
+        title={ariaLabel}
+        onClick={() => setOpen((o) => !o)}
+      >
+        {renderIcon(value)}
+        <span className="dc-annot-ctx-dd-caret" aria-hidden="true">
+          <IconChevronDown size={8} />
+        </span>
+      </button>
+      {open ? (
+        <div className="dc-annot-ctx-menu" role="menu" aria-label={ariaLabel}>
+          {options.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              role="menuitemradio"
+              aria-checked={o.value === value}
+              aria-label={o.label}
+              title={o.label}
+              className="dc-annot-ctx-ibtn"
+              onClick={() => {
+                onPick(o.value);
+                setOpen(false);
+              }}
+            >
+              {renderIcon(o.value)}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Phase 24 — font-size control: named presets (Small → Huge) + a numeric input
+ * for an arbitrary px value (clamped 8–200, applied on Enter / blur). The
+ * trigger shows the current size, or "—" when the selection is mixed.
+ */
+function FontSizeDropdown({
+  value,
+  onPick,
+}: {
+  value: number | undefined;
+  onPick: (n: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('keydown', onKey, true);
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('keydown', onKey, true);
+    };
+  }, [open]);
+  const applyInput = (raw: string) => {
+    const n = Math.round(Number(raw));
+    if (Number.isFinite(n) && n >= FONT_SIZE_MIN && n <= FONT_SIZE_MAX) onPick(n);
+  };
+  return (
+    <div ref={ref} className="dc-annot-ctx-dd">
+      <button
+        type="button"
+        className="dc-annot-ctx-ibtn dc-annot-ctx-fs-trigger"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Font size: ${value != null ? `${value} pixels` : 'mixed'}`}
+        title="Font size"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="dc-annot-ctx-fs-val">{value != null ? value : '—'}</span>
+        <span className="dc-annot-ctx-dd-caret" aria-hidden="true">
+          <IconChevronDown size={8} />
+        </span>
+      </button>
+      {open ? (
+        <div className="dc-annot-ctx-fs-menu" role="menu" aria-label="Font size">
+          {FONT_SIZE_PRESETS.map((p) => (
+            <button
+              key={p.px}
+              type="button"
+              role="menuitemradio"
+              aria-checked={value === p.px}
+              className="dc-annot-ctx-fs-item"
+              onClick={() => {
+                onPick(p.px);
+                setOpen(false);
+              }}
+            >
+              <span>{p.label}</span>
+              <span className="dc-annot-ctx-fs-px">{p.px}</span>
+            </button>
+          ))}
+          <input
+            key={value ?? 'mixed'}
+            className="dc-annot-ctx-fs-input"
+            type="number"
+            min={FONT_SIZE_MIN}
+            max={FONT_SIZE_MAX}
+            defaultValue={value ?? ''}
+            aria-label="Custom font size in pixels"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                applyInput((e.target as HTMLInputElement).value);
+                setOpen(false);
+              }
+            }}
+            onBlur={(e) => applyInput(e.target.value)}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function uniformValue<T>(values: (T | undefined)[]): T | undefined {
   const filtered = values.filter((v) => v !== undefined) as T[];

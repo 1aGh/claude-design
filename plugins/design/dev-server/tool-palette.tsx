@@ -14,10 +14,15 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-import { IconChevronDown, IconPresentation, TOOL_ICONS } from './canvas-icons.tsx';
+import {
+  IconChevronDown,
+  IconPresentation,
+  SHAPE_KIND_ICONS,
+  TOOL_ICONS,
+} from './canvas-icons.tsx';
 import { useViewportControllerContext } from './canvas-lib.tsx';
 import { useAnnotationsVisibility } from './use-annotations-visibility.tsx';
-import { useToolMode } from './use-tool-mode.tsx';
+import { type ShapeKind, useToolMode } from './use-tool-mode.tsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Styles — pulled from menubar tokens (`.mb` family). Centered bottom toolbar,
@@ -177,6 +182,39 @@ const PALETTE_CSS = `
   font-size: 11px;
   opacity: 0.55;
 }
+/* Phase 24 — Shape tool button + its kind popover. The wrapper is the popover's
+   positioning context so it anchors directly above the button. */
+.dc-tool-palette .dc-tp-shape {
+  position: relative;
+  display: inline-flex;
+}
+.dc-tool-palette .dc-tp-shape > button { position: relative; }
+.dc-tool-palette .dc-tp-shape-caret {
+  position: absolute;
+  right: 2px;
+  bottom: 1px;
+  display: inline-flex;
+  opacity: 0.5;
+  pointer-events: none;
+}
+.dc-tp-shape-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  background: var(--maude-chrome-bg-0, #ffffff);
+  border: 1px solid var(--maude-chrome-fg-0, #1c1917);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px var(--maude-chrome-shadow, color-mix(in oklab, #1c1917 10%, transparent));
+  z-index: 8;
+}
+.dc-tp-shape-popover button[aria-checked="true"] {
+  background: color-mix(in oklab, var(--maude-hud-accent, #d63b1f) 14%, transparent);
+  color: var(--maude-hud-accent, #d63b1f);
+}
 `.trim();
 
 function ensurePaletteStyles(): void {
@@ -189,31 +227,59 @@ function ensurePaletteStyles(): void {
 }
 
 const NAV_TOOLS = ['move', 'hand', 'comment'] as const;
-// Phase 21 — sticky clusters with the paper primitives (after ellipse); text
-// sits at the constructive end before the destructive eraser, which stays last.
-const DRAW_TOOLS = ['pen', 'rect', 'ellipse', 'sticky', 'arrow', 'text', 'eraser'] as const;
+// Phase 24 — the two rect/ellipse buttons collapse into one Shape tool (with a
+// kind popover); sticky/arrow/text/eraser keep their order.
+const DRAW_TOOLS = ['pen', 'shape', 'sticky', 'arrow', 'text', 'eraser'] as const;
+
+// Phase 24 — the Shape tool's primitive picker (popover order matches FigJam).
+const SHAPE_KINDS: ReadonlyArray<{ kind: ShapeKind; label: string }> = [
+  { kind: 'square', label: 'Square' },
+  { kind: 'rounded', label: 'Rounded square' },
+  { kind: 'circle', label: 'Circle' },
+  { kind: 'diamond', label: 'Diamond' },
+  { kind: 'triangle', label: 'Triangle' },
+  { kind: 'triangle-down', label: 'Triangle down' },
+];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Component
 
 export function ToolPalette() {
   ensurePaletteStyles();
-  const { tool, setTool, tools, sticky, toggleSticky } = useToolMode();
+  const { tool, setTool, tools, sticky, toggleSticky, shapeKind, setShapeKind } = useToolMode();
   const controller = useViewportControllerContext();
   const visibilityCtx = useAnnotationsVisibility();
   const [mounted, setMounted] = useState(false);
   const [zoomOpen, setZoomOpen] = useState(false);
+  const [shapeOpen, setShapeOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => setMounted(true), []);
   useEffect(() => {
-    if (!zoomOpen) return;
+    if (!zoomOpen && !shapeOpen) return;
     const onDown = (e: PointerEvent) => {
-      if (!containerRef.current?.contains(e.target as Node)) setZoomOpen(false);
+      if (!containerRef.current?.contains(e.target as Node)) {
+        setZoomOpen(false);
+        setShapeOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setZoomOpen(false);
+        setShapeOpen(false);
+      }
     };
     document.addEventListener('pointerdown', onDown, true);
-    return () => document.removeEventListener('pointerdown', onDown, true);
-  }, [zoomOpen]);
+    document.addEventListener('keydown', onKey, true);
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('keydown', onKey, true);
+    };
+  }, [zoomOpen, shapeOpen]);
+  // Close the shape popover whenever the tool changes away from Shape.
+  useEffect(() => {
+    if (tool !== 'shape') setShapeOpen(false);
+  }, [tool]);
 
   if (!mounted) return null;
 
@@ -248,6 +314,63 @@ export function ToolPalette() {
     );
   };
 
+  // Phase 24 — the single Shape tool. The button shows the CURRENT shape-kind
+  // glyph (so the toolbar reflects what you'll draw); first click arms the tool,
+  // clicking it again (or the caret) opens the 6-kind popover.
+  const renderShapeButton = () => {
+    const isShape = tool === 'shape';
+    const isSticky = sticky.locked && sticky.tool === 'shape';
+    const KindIcon = SHAPE_KIND_ICONS[shapeKind] ?? TOOL_ICONS.shape;
+    return (
+      <span key="shape" className="dc-tp-shape">
+        <button
+          type="button"
+          aria-label={`Shape (R) — ${shapeKind}, click again for shape types`}
+          aria-pressed={isShape}
+          aria-haspopup="menu"
+          aria-expanded={shapeOpen}
+          data-sticky={isSticky ? 'true' : undefined}
+          title="Shape (R) · double-click to lock"
+          onClick={() => {
+            if (!isShape) setTool('shape');
+            else setShapeOpen((o) => !o);
+          }}
+          onDoubleClick={() => toggleSticky('shape')}
+        >
+          {KindIcon ? <KindIcon /> : null}
+          <span className="dc-tp-shape-caret" aria-hidden="true">
+            <IconChevronDown size={9} />
+          </span>
+          {isSticky ? <span className="dc-tp-sticky-badge" aria-hidden="true" /> : null}
+        </button>
+        {shapeOpen ? (
+          <div className="dc-tp-shape-popover" role="menu" aria-label="Shape type">
+            {SHAPE_KINDS.map(({ kind, label }) => {
+              const Icon = SHAPE_KIND_ICONS[kind];
+              return (
+                <button
+                  key={kind}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={shapeKind === kind}
+                  aria-label={label}
+                  title={label}
+                  onClick={() => {
+                    setShapeKind(kind);
+                    setTool('shape');
+                    setShapeOpen(false);
+                  }}
+                >
+                  {Icon ? <Icon /> : null}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+      </span>
+    );
+  };
+
   return (
     <div ref={containerRef} className="dc-tool-palette" role="toolbar" aria-label="Canvas tools">
       <div className="dc-tp-group">
@@ -255,7 +378,13 @@ export function ToolPalette() {
       </div>
       <div className="dc-tp-sep" />
       <div className="dc-tp-group">
-        {drawList.map((t) => (t ? renderToolButton(t.id, t.label, t.shortcut) : null))}
+        {drawList.map((t) =>
+          t
+            ? t.id === 'shape'
+              ? renderShapeButton()
+              : renderToolButton(t.id, t.label, t.shortcut)
+            : null
+        )}
       </div>
       <div className="dc-tp-sep" />
       <div className="dc-tp-group">

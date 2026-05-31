@@ -80,7 +80,10 @@ describe('TSX canvas route', () => {
       expect(r.headers.get('content-type')).toMatch(/javascript/);
       const etag = r.headers.get('etag');
       expect(etag).toBeTruthy();
-      expect(etag).toMatch(/^[0-9a-f]+$/i);
+      // Phase 24 (DDR-067) — the canvas etag is `<source-hash>-<bootId>-<epoch>`:
+      // the boot id + chrome epoch are folded in so a chrome edit (which doesn't
+      // change the canvas source hash) still busts the browser's cached transpile.
+      expect(etag).toMatch(/^[0-9a-f]+-[a-z0-9]+-\d+$/i);
       const body = await r.text();
       // Body should contain data-cd-id metadata + an export — proves the two
       // passes ran end to end.
