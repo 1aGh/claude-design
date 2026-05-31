@@ -27,6 +27,70 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 
+// ─── cross-origin export bridge ──────────────────────────────────────────────
+// This dialog renders INSIDE the canvas iframe. Since phase-9.1 the canvas is
+// served from a segregated origin (default ON) whose CSP is `connect-src 'self'`
+// and whose route allowlist deliberately excludes the privileged /_api/export +
+// /_api/export-history (DDR-060). A direct in-iframe fetch therefore 403s
+// ("Forbidden (canvas origin)"). When the parent is cross-origin we ask the
+// trusted main shell (app.jsx onMessage) to run the request same-origin via a
+// `dgn` postMessage — the channel comments/selection already use. When the split
+// is OFF (same-origin iframe) we fall through to the direct fetch.
+
+/** True when framed by a different origin (the canvas-origin split is on). */
+function isCrossOriginFramed(): boolean {
+  if (typeof window === 'undefined' || window.parent === window) return false;
+  try {
+    // Same-origin parent → this read succeeds → split is OFF, use direct fetch.
+    void window.parent.location.href;
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+/** Parent (main shell) origin, for postMessage targeting. */
+function parentOrigin(): string {
+  try {
+    if (document.referrer) return new URL(document.referrer).origin;
+  } catch {
+    /* fall through to wildcard */
+  }
+  return '*';
+}
+
+let bridgeSeq = 0;
+
+/**
+ * Post one request to the parent shell and resolve with its matching reply.
+ * Only accepts a reply from the parent window (source check) with the matching
+ * id; rejects on a 60 s timeout so a dropped reply can't hang the dialog.
+ */
+function bridgeRequest<T>(
+  reqDgn: string,
+  resDgn: string,
+  extra: Record<string, unknown>
+): Promise<T> {
+  bridgeSeq += 1;
+  const id = `exp-${bridgeSeq}`;
+  return new Promise((resolve, reject) => {
+    const onMsg = (e: MessageEvent) => {
+      if (e.source !== window.parent) return;
+      const m = e.data as { dgn?: string; id?: string } | null;
+      if (!m || typeof m !== 'object' || m.dgn !== resDgn || m.id !== id) return;
+      clearTimeout(timer);
+      window.removeEventListener('message', onMsg);
+      resolve(m as unknown as T);
+    };
+    const timer = setTimeout(() => {
+      window.removeEventListener('message', onMsg);
+      reject(new Error('export bridge timed out'));
+    }, 60_000);
+    window.addEventListener('message', onMsg);
+    window.parent.postMessage({ dgn: reqDgn, id, ...extra }, parentOrigin());
+  });
+}
+
 export type Format = 'png' | 'pdf' | 'svg' | 'html' | 'pptx' | 'canva' | 'zip';
 export type Scope = 'selection' | 'artboard' | 'canvas-as-separate' | 'project-raw';
 
@@ -167,6 +231,15 @@ export function ExportDialogProvider({ children }: { children: ReactNode }): Rea
   // Pre-load history when the dialog opens; refresh after each export.
   const loadHistory = useCallback(async () => {
     try {
+      if (isCrossOriginFramed()) {
+        const res = await bridgeRequest<{ history?: ExportHistoryEntry[] }>(
+          'export-history-request',
+          'export-history-result',
+          {}
+        );
+        setHistory(Array.isArray(res.history) ? res.history : []);
+        return;
+      }
       const r = await fetch('/_api/export-history');
       if (!r.ok) return;
       const data = (await r.json()) as { history: ExportHistoryEntry[] };
@@ -213,6 +286,23 @@ export function ExportDialogProvider({ children }: { children: ReactNode }): Rea
       setSubmitting(true);
       setStatus(null);
       try {
+        if (isCrossOriginFramed()) {
+          // Bridge through the main shell — the iframe can't reach /_api/export
+          // (canvas origin 403s it). The parent runs the export + triggers the
+          // download, then replies with the saved filename or an error string.
+          const res = await bridgeRequest<{ ok?: boolean; filename?: string; error?: string }>(
+            'export-request',
+            'export-result',
+            { payload: { format, scope, options } }
+          );
+          if (!res.ok) {
+            setStatus({ text: `Export failed: ${res.error || 'unknown'}`, isError: true });
+            return;
+          }
+          setStatus({ text: `Saved ${res.filename ?? 'export'}`, isError: false });
+          void loadHistory();
+          return;
+        }
         const r = await fetch('/_api/export', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },

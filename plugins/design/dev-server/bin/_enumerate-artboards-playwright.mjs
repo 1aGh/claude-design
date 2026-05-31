@@ -4,7 +4,7 @@
 // merge. Lives as a subprocess (not a direct import) so `bun build --compile`
 // of the dev-server binary doesn't pull in playwright + chromium-bidi deep deps.
 
-import { chromium } from 'playwright';
+import { launchChromium } from './_pw-launch.mjs';
 
 const args = process.argv.slice(2);
 let url;
@@ -24,7 +24,7 @@ if (!url) {
 }
 
 const timeoutMs = timeoutSec * 1000;
-const browser = await chromium.launch();
+const browser = await launchChromium();
 try {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await ctx.newPage();

@@ -94,8 +94,18 @@
         "preferred": "npm i -g playwright && npx playwright install chromium"
       },
       "autoInstall": false,
-      "fallbackBehavior": "Screenshot scripts use playwright as a fallback when agent-browser is missing. Without either, screenshot helpers will fail.",
-      "usedBy": ["dev-server/bin/_screenshot-playwright.mjs", "dev-server/bin/screenshot.sh"],
+      "fallbackBehavior": "Screenshot scripts use playwright as a fallback when agent-browser is missing. The rendered export formats (PNG/PDF/SVG/HTML/PPTX/Canva) require it outright. NOTE: the `--version` check above only proves the npm package resolves — the Chromium BINARY is a separate install (`npx playwright install chromium`). If it's missing, exports fail at runtime with an actionable message from dev-server/bin/_pw-launch.mjs; screenshot helpers fall back to agent-browser.",
+      "usedBy": [
+        "dev-server/bin/_pw-launch.mjs",
+        "dev-server/bin/_screenshot-playwright.mjs",
+        "dev-server/bin/_png-playwright.mjs",
+        "dev-server/bin/_pdf-playwright.mjs",
+        "dev-server/bin/_svg-playwright.mjs",
+        "dev-server/bin/_html-playwright.mjs",
+        "dev-server/bin/_pptx-playwright.mjs",
+        "dev-server/bin/_enumerate-artboards-playwright.mjs",
+        "dev-server/bin/screenshot.sh"
+      ],
       "docsUrl": "https://playwright.dev"
     },
     {

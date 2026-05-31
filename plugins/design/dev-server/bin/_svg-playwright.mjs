@@ -18,7 +18,7 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { chromium } from 'playwright';
+import { launchChromium } from './_pw-launch.mjs';
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((acc, cur, i, all) => {
@@ -49,7 +49,7 @@ const widen = widenFlag !== undefined;
 const multi = multiFlag !== undefined;
 const timeoutMs = Number(timeout) * 1000;
 
-const browser = await chromium.launch();
+const browser = await launchChromium();
 try {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await ctx.newPage();
@@ -107,15 +107,19 @@ try {
       const handle = screens[i];
       const id = (await handle.getAttribute('data-dc-screen')) ?? `artboard-${i + 1}`;
       const svg = await handle.evaluate(async (el) => {
-        // window.domToSvg is the IIFE-injected entry.
-        const { elementToSVG, inlineResources, formatXML } = /** @type any */ (window).domToSvg;
+        // window.domToSvg is the IIFE-injected entry. Note: dom-to-svg exports
+        // only elementToSVG / inlineResources / documentToSVG — there is NO
+        // `formatXML` pretty-printer (calling it threw "formatXML is not a
+        // function" and 500'd every canvas-as-separate SVG export). Serialize
+        // straight to a string, matching serializeOne above.
+        const { elementToSVG, inlineResources } = /** @type any */ (window).domToSvg;
         const svgDoc = elementToSVG(el);
         try {
           await inlineResources(svgDoc.documentElement);
         } catch {
           /* */
         }
-        return formatXML(new XMLSerializer().serializeToString(svgDoc));
+        return new XMLSerializer().serializeToString(svgDoc);
       });
       const target = join(outDir, `${id}.svg`);
       writeFileSync(target, svg, 'utf8');

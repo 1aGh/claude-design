@@ -2573,7 +2573,71 @@ function App() {
             } catch {}
           }
         }
+      } else if (m.dgn === 'export-request' && m.id && m.payload) {
+        // The export dialog renders inside the canvas iframe (canvas origin),
+        // but /_api/export is a privileged MAIN-origin endpoint deliberately
+        // kept off the canvas allowlist (DDR-060). A direct in-iframe fetch
+        // therefore 403s ("Forbidden (canvas origin)"). Bridge it: run the
+        // export here on the trusted main origin, stream the download, and
+        // report status back to the iframe. Origin is already validated
+        // (e.origin === expectedOrigin) above, so only the real canvas iframe
+        // can ask — this is NOT a generic fetch proxy.
+        void runBridgedExport(e.source, m.id, m.payload);
+      } else if (m.dgn === 'export-history-request' && m.id) {
+        // Same bridge for the dialog's Recent tab (/_api/export-history is
+        // also main-origin-only).
+        void runBridgedHistory(e.source, m.id);
       }
+    }
+    // Reply target for the export bridge: the canvas iframe's own origin.
+    const replyOrigin = cfg?.canvasOrigin || window.location.origin;
+    async function runBridgedExport(source, id, payload) {
+      const reply = (msg) => {
+        try {
+          if (source) source.postMessage({ dgn: 'export-result', id, ...msg }, replyOrigin);
+        } catch {}
+      };
+      try {
+        const r = await fetch('/_api/export', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!r.ok) {
+          reply({ ok: false, error: (await r.text()) || String(r.status) });
+          return;
+        }
+        const disp = r.headers.get('Content-Disposition') || '';
+        const fn = /filename="([^"]+)"/.exec(disp);
+        const filename = (fn && fn[1]) || 'export';
+        const blob = await r.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        reply({ ok: true, filename });
+      } catch (err) {
+        reply({ ok: false, error: err && err.message ? err.message : String(err) });
+      }
+    }
+    async function runBridgedHistory(source, id) {
+      let history = [];
+      try {
+        const r = await fetch('/_api/export-history');
+        if (r.ok) {
+          const data = await r.json();
+          if (Array.isArray(data.history)) history = data.history;
+        }
+      } catch {
+        /* best-effort — empty list */
+      }
+      try {
+        if (source) source.postMessage({ dgn: 'export-history-result', id, history }, replyOrigin);
+      } catch {}
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);

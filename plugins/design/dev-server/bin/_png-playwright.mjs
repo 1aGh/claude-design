@@ -7,7 +7,7 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { chromium } from 'playwright';
+import { launchChromium } from './_pw-launch.mjs';
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((acc, cur, i, all) => {
@@ -37,7 +37,7 @@ const multi = multiFlag !== undefined;
 const timeoutMs = Number(timeout) * 1000;
 const deviceScaleFactor = Math.max(1, Math.min(4, Number(scale) || 1));
 
-const browser = await chromium.launch();
+const browser = await launchChromium();
 try {
   // 1440x900 matches the canvas viewport the design tool uses everywhere;
   // exporters resize per-target before each shot to fit the artboard exactly.
