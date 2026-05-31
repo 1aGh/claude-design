@@ -318,12 +318,12 @@ export function CanvasShell({
 }) {
   ensureHaloStyles();
 
-  // D9 — "Follow chrome" artboards. When the chrome theme flips (the theme
-  // postMessage handler in CanvasRouter updates `data-maude-theme` on <html>),
-  // re-point every artboard the user marked as a follower at the new theme.
-  // A single observer per canvas (cleaned up on unmount) — no per-artboard
-  // listeners to leak. The override itself is a CSS rule keyed by data-dc-screen
-  // (see setArtboardTheme), so it survives React re-renders without flicker.
+  // theme-default-follow — every un-pinned artboard tracks the chrome theme.
+  // When it flips (the theme postMessage handler in CanvasRouter updates
+  // `data-maude-theme` on <html>), re-theme them. A single observer per canvas
+  // (cleaned up on unmount) — no per-artboard listeners to leak. The rule is a
+  // CSS block keyed by data-dc-screen (see rebuildArtboardThemeStyle), so it
+  // survives React re-renders without flicker.
   useEffect(() => {
     if (typeof MutationObserver === 'undefined' || typeof document === 'undefined') return;
     const obs = new MutationObserver(() => applyArtboardFollowers());
@@ -331,7 +331,23 @@ export function CanvasShell({
       attributes: true,
       attributeFilter: ['data-maude-theme'],
     });
-    return () => obs.disconnect();
+    // Initial follow — theme every un-pinned artboard once the DS stylesheet has
+    // parsed. The observer only fires on a `data-maude-theme` CHANGE, which may
+    // not happen on first paint (the chrome theme can already equal the canvas
+    // default), so first paint needs its own trigger. `window 'load'` guarantees
+    // every <link>/<style> sheet is parsed → collectThemeDeclarations sees the
+    // DS tokens. Runs immediately if the document is already complete.
+    let onLoad: (() => void) | null = null;
+    if (document.readyState === 'complete') {
+      applyArtboardFollowers();
+    } else {
+      onLoad = () => applyArtboardFollowers();
+      window.addEventListener('load', onLoad, { once: true });
+    }
+    return () => {
+      obs.disconnect();
+      if (onLoad) window.removeEventListener('load', onLoad);
+    };
   }, []);
 
   // ToolProvider is mounted by DesignCanvas one level up (so the viewport
@@ -681,11 +697,14 @@ function CanvasCore({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Per-artboard theme override (D9). The canvas-shell CHROME follows the Maude
-// theme via `data-maude-theme`; ARTBOARDS keep their DS theme by default. This
-// block backs the right-click `Theme ▸ DS default / Light / Dark / Follow
-// chrome` submenu — it re-themes a single artboard by stamping its
-// `.dc-artboard` <article> with the DS's theme-wrapper convention.
+// Artboard theme (D9 + theme-default-follow, 2026-05-31). The status-bar theme
+// toggle (vpravo dole) is the SINGLE SOURCE OF TRUTH: the canvas-shell chrome
+// AND every artboard follow it by default via `data-maude-theme`. The right-
+// click `Theme ▸ DS default / Light / Dark / Follow chrome` submenu PINS one
+// artboard to override that default — re-themed by stamping its content wrapper
+// with the DS's theme-wrapper convention. (Before this date the default was the
+// inverse — artboards kept their own DS theme and following was opt-in — which
+// produced the recurring "canvas dark / chrome light" mismatch.)
 //
 // DS theme-wrapper conventions vary (`.mdcc[data-theme]`, `.app[data-theme]`,
 // bare `[data-theme]`, …) and there's no reliable config flag, so we DETECT it
@@ -734,7 +753,12 @@ function detectDsThemeSupport(): DsThemeSupport {
       }
     }
     document.body.removeChild(host);
-    _dsThemeSupport = found;
+    // Cache only a POSITIVE detection. With follow-chrome now the artboard
+    // default, this can run on first paint — before the DS stylesheet has
+    // parsed — where the probe reads empty tokens and wrongly reports
+    // unsupported. Caching that would permanently disable theming; instead
+    // re-probe until support is confirmed (or the DS genuinely has one theme).
+    if (found.supported) _dsThemeSupport = found;
     return found;
   } catch {
     return fallback;
@@ -796,12 +820,20 @@ function collectThemeDeclarations(theme: 'light' | 'dark'): string {
       }
     }
   }
-  _themeDecls[theme] = decls;
+  // Cache only a NON-EMPTY result — same first-paint race as detectDsThemeSupport:
+  // a scan that runs before the DS stylesheet parses finds nothing, and caching
+  // '' would freeze the artboard un-themed forever. Leave it uncached so the
+  // post-load rebuild (window 'load' / the theme MutationObserver) repopulates it.
+  if (decls) _themeDecls[theme] = decls;
   return decls;
 }
 
-const _artboardThemes = new Map<string, 'light' | 'dark'>();
-const _artboardFollowers = new Set<string>();
+// Every artboard FOLLOWS the chrome theme by default (the status-bar toggle is
+// the source of truth). A per-artboard pin OVERRIDES that: 'ds' = the design
+// system's native theme (opt out of following entirely), 'light' / 'dark' = a
+// fixed theme. Absence from this map = follow chrome.
+type ArtboardPin = 'ds' | 'light' | 'dark';
+const _artboardPins = new Map<string, ArtboardPin>();
 
 function cssEsc(v: string): string {
   return typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(v) : v;
@@ -820,6 +852,21 @@ function artboardScopeSelector(screenId: string): string {
   return `${base} [data-theme],${base}[data-theme]`;
 }
 
+// Like artboardScopeSelector but matches EVERY artboard except the pinned ones —
+// backs the default-follow rule, which themes all un-pinned artboards in one
+// declaration. Pinned ids are :not()-excluded so the per-screen pin rule never
+// has to out-specify this global one (they target disjoint elements).
+function globalArtboardScopeSelector(excludeIds: string[]): string {
+  const { wrapperClass } = detectDsThemeSupport();
+  const not = excludeIds.map((id) => `:not([data-dc-screen="${cssEsc(id)}"])`).join('');
+  const base = `[data-dc-screen]${not}`;
+  if (wrapperClass) {
+    const c = cssEsc(wrapperClass);
+    return `${base} .${c},${base}.${c}`;
+  }
+  return `${base} [data-theme],${base}[data-theme]`;
+}
+
 function rebuildArtboardThemeStyle(): void {
   if (typeof document === 'undefined') return;
   let el = document.getElementById('dc-artboard-theme-css') as HTMLStyleElement | null;
@@ -829,8 +876,20 @@ function rebuildArtboardThemeStyle(): void {
     document.head.appendChild(el);
   }
   let css = '';
-  for (const [screenId, theme] of _artboardThemes) {
-    const decls = collectThemeDeclarations(theme);
+  // (1) Default — every un-pinned artboard follows the chrome theme. Pinned
+  // artboards are :not()-excluded so this rule never competes with their
+  // per-screen rule below. When the DS doesn't define the chrome theme's tokens
+  // (collectThemeDeclarations → ''), nothing is emitted and the artboard keeps
+  // its native DS theme — there's no alternate palette to follow to.
+  const pinnedIds = [..._artboardPins.keys()];
+  const followDecls = collectThemeDeclarations(currentChromeTheme());
+  if (followDecls) css += `${globalArtboardScopeSelector(pinnedIds)}{${followDecls}}\n`;
+  // (2) Explicit per-artboard pins. 'ds' emits nothing (the :not() above already
+  // released that artboard back to its native DS theme); 'light' / 'dark'
+  // re-declare the chosen theme's tokens scoped to that one artboard.
+  for (const [screenId, pin] of _artboardPins) {
+    if (pin === 'ds') continue;
+    const decls = collectThemeDeclarations(pin);
     if (decls) css += `${artboardScopeSelector(screenId)}{${decls}}\n`;
   }
   el.textContent = css;
@@ -843,28 +902,26 @@ function currentChromeTheme(): 'light' | 'dark' {
 }
 
 /**
- * Set (or clear) a single artboard's theme override, keyed by its stable
- * `data-dc-screen` id. `theme === null` → remove the override (DS default).
- * `follow === true` → mirror the live chrome theme and keep tracking toggles.
+ * Pin a single artboard's theme (keyed by its stable `data-dc-screen` id), or
+ * clear the pin so it returns to the default — following the chrome theme.
+ *   'follow' → remove the pin (default: track the chrome theme toggle)
+ *   'ds'     → pin to the design system's native theme (stop following)
+ *   'light' / 'dark' → pin to a fixed theme
  */
-function setArtboardTheme(screenId: string, theme: 'light' | 'dark' | null, follow = false): void {
-  _artboardFollowers.delete(screenId);
-  if (follow) {
-    _artboardFollowers.add(screenId);
-    _artboardThemes.set(screenId, currentChromeTheme());
-  } else if (theme === null) {
-    _artboardThemes.delete(screenId);
-  } else {
-    _artboardThemes.set(screenId, theme);
-  }
+function setArtboardTheme(screenId: string, mode: 'follow' | ArtboardPin): void {
+  if (mode === 'follow') _artboardPins.delete(screenId);
+  else _artboardPins.set(screenId, mode);
   rebuildArtboardThemeStyle();
 }
 
-/** Re-point every "Follow chrome" artboard at the current chrome theme. */
+/**
+ * Re-theme every following artboard when the chrome theme flips. The
+ * default-follow rule in rebuildArtboardThemeStyle reads currentChromeTheme()
+ * live, so a plain rebuild re-points every un-pinned artboard at the new theme
+ * in one shot. Kept under the original name so the MutationObserver call site
+ * and the initial 'load' trigger stay untouched.
+ */
 function applyArtboardFollowers(): void {
-  if (_artboardFollowers.size === 0) return;
-  const t = currentChromeTheme();
-  for (const id of _artboardFollowers) _artboardThemes.set(id, t);
   rebuildArtboardThemeStyle();
 }
 
@@ -952,10 +1009,11 @@ function buildRegistry(deps: {
     },
   });
 
-  // D9 — per-artboard theme override, keyed by the stable `data-dc-screen` id
-  // (target.artboardId) via an injected stylesheet (see setArtboardTheme). The
-  // DS-supports-both probe gates the explicit Light/Dark entries; "DS default"
-  // + "Follow chrome" are always available.
+  // Per-artboard theme PIN, keyed by the stable `data-dc-screen` id
+  // (target.artboardId) via an injected stylesheet (see setArtboardTheme).
+  // Following the chrome theme is the default; this submenu overrides it for one
+  // artboard. The DS-supports-both probe gates Light / Dark / "Follow chrome"
+  // (all no-ops on a single-theme DS); only "DS default" is always meaningful.
   const themeSupport = detectDsThemeSupport();
   const themeHint = 'This design system defines only one theme';
   const themeItem: MenuItem = {
@@ -969,7 +1027,7 @@ function buildRegistry(deps: {
         id: 'theme-ds-default',
         label: 'DS default',
         onSelect: (target) => {
-          if (target.artboardId) setArtboardTheme(target.artboardId, null);
+          if (target.artboardId) setArtboardTheme(target.artboardId, 'ds');
         },
       },
       {
@@ -992,11 +1050,11 @@ function buildRegistry(deps: {
       },
       {
         id: 'theme-follow',
-        label: 'Follow chrome',
+        label: 'Follow chrome (default)',
         disabled: !themeSupport.supported,
         disabledHint: themeHint,
         onSelect: (target) => {
-          if (target.artboardId) setArtboardTheme(target.artboardId, null, true);
+          if (target.artboardId) setArtboardTheme(target.artboardId, 'follow');
         },
       },
     ],
