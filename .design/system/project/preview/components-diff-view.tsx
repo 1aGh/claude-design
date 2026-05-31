@@ -9,6 +9,8 @@
  * @history     .design/_history/components-diff-view/
  * @handoff     bunx shadcn add file://./components-diff-view.registry.json
  */
+import "../colors_and_type.css";
+import "./_layout.css";
 import { ThemeToggle } from "./_specimen-controls";
 import "./components-diff-view.css";
 

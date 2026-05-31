@@ -19,6 +19,7 @@
  */
 
 @import url("../colors_and_type.css");
+@import url("./_components.css"); /* .btn/.input/.select/.textarea — pulled here so every specimen importing _layout.css gets them (mirrors pre-TSX global injection). */
 
 * { box-sizing: border-box; }
 *::selection { background: var(--accent); color: var(--accent-fg); }

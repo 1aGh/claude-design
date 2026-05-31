@@ -9,6 +9,8 @@
  * @history     .design/_history/iconography/
  * @handoff     bunx shadcn add file://./iconography.registry.json
  */
+import "../colors_and_type.css";
+import "./_layout.css";
 import { ThemeToggle } from "./_specimen-controls";
 import "./iconography.css";
 

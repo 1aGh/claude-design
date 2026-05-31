@@ -9,6 +9,8 @@
  * @history     .design/_history/components-monospace-table/
  * @handoff     bunx shadcn add file://./components-monospace-table.registry.json
  */
+import "../colors_and_type.css";
+import "./_layout.css";
 import { ThemeToggle } from "./_specimen-controls";
 import "./components-monospace-table.css";
 
