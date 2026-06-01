@@ -22,6 +22,7 @@ export * from './primitives.ts';
 export * from './geometry.ts';
 export * from './palette.ts';
 export * from './composition.ts';
+export * from './brush.ts';
 export * from './layout.ts';
 export * from './serialize.ts';
 export * from './optimize.ts';

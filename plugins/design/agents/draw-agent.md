@@ -94,7 +94,10 @@ path text group place use defs symbol snap transformString squareViewBox boxView
 VIEWBOX` · gradients/filters: `linearGradient radialGradient filter fe blurFilter
 dropShadowFilter grainFilter pattern mask clipPath` · `pchipPath pchipEval
 routeConnector centroid convexHull overshoot EQUAL_AREA_CIRCLE_SCALE
-equalWeightCircleDiameter centroidCenter` · color: `contrastRatio meetsWcag apcaLc
+equalWeightCircleDiameter centroidCenter blobPath` · brush/engraving: `brushStroke
+roughenFilter scatterAlong hatch crossHatch contourLines stippleFill` (contourLines
+= form-following engraving lines from one stroke; stippleFill = graded tonal dots —
+clip both to a shape for volume) · color: `contrastRatio meetsWcag apcaLc
 oklchToRgb oklchToHex oklchRamp colorDistribution valueRange bestHarmony harmonize
 harmonyDistance HARMONY_TEMPLATES parseColor parseOklch relativeLuminance
 CURRENT_COLOR` · **composition: `armature snapToFocal assignSlots balanceMoment
