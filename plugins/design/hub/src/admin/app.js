@@ -8,6 +8,14 @@
 const LS_KEY = 'maude-hub-secret';
 const $ = (id) => document.getElementById(id);
 
+// Resolve the admin API base from where THIS page is served so the UI works
+// mounted at the root (/admin) AND behind a path-stripping reverse proxy that
+// rewrites e.g. /hub/admin → /admin. The hub itself only ever sees /admin/api/*
+// (the proxy strips the prefix), but the browser's address bar carries the
+// prefix — so we must address the API relative to location.pathname, never as
+// an absolute "/admin/api". Trailing slash tolerated (defensive).
+const API_BASE = `${location.pathname.replace(/\/+$/, '')}/api`;
+
 const state = {
   secret: localStorage.getItem(LS_KEY) || '',
   bootstrapKey: new URLSearchParams(location.search).get('key') || '',
@@ -19,7 +27,9 @@ const state = {
 // bootstrap POST or accidental tab refresh doesn't leak the key into the
 // browser's address bar / session history.
 if (state.bootstrapKey) {
-  history.replaceState({}, '', '/admin');
+  // Strip only the ?key= query; keep the current pathname (which carries any
+  // reverse-proxy prefix like /hub/admin) so we don't navigate off-mount.
+  history.replaceState({}, '', location.pathname);
 }
 
 function showOnly(id) {
@@ -36,7 +46,7 @@ async function api(path, opts = {}) {
   if (opts.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
-  const res = await fetch(`/admin/api${path}`, { ...opts, headers });
+  const res = await fetch(`${API_BASE}${path}`, { ...opts, headers });
   if (res.status === 401) {
     state.secret = '';
     localStorage.removeItem(LS_KEY);
@@ -103,7 +113,7 @@ function render() {
 async function loadIdentityForBootstrapView() {
   if (state.hubIdentity) return; // memoize
   try {
-    const res = await fetch('/admin/api/identity');
+    const res = await fetch(`${API_BASE}/identity`);
     if (!res.ok) return;
     state.hubIdentity = await res.json();
     const slot = $('bootstrap-identity');
@@ -248,7 +258,7 @@ $('bootstrap-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   $('bootstrap-error').hidden = true;
   try {
-    const res = await fetch('/admin/api/bootstrap', {
+    const res = await fetch(`${API_BASE}/bootstrap`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key: state.bootstrapKey }),

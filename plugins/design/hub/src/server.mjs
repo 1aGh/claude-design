@@ -205,7 +205,11 @@ export function createHub(config = {}) {
         bailFromOnRequest();
       }
       if (url === '/admin/') {
-        response.writeHead(301, { Location: '/admin' });
+        // RELATIVE redirect (not '/admin') so it survives a path-stripping
+        // reverse proxy: the browser is at <prefix>/admin/ and resolves
+        // '../admin' against it → <prefix>/admin, preserving the mount prefix.
+        // An absolute '/admin' would drop the prefix and 404 on the proxy.
+        response.writeHead(301, { Location: '../admin' });
         response.end();
         bailFromOnRequest();
       }

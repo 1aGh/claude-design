@@ -4,7 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Maude Hub · Admin</title>
-  <link rel="stylesheet" href="/admin/style.css">
+  <!-- Relative asset refs (no leading slash) so the admin UI works mounted at
+       the root (/admin) AND behind a path-stripping reverse proxy (e.g. nginx
+       `location /hub` rewriting to /admin). The page's canonical path has no
+       trailing slash, so `admin/<file>` resolves to `<prefix>/admin/<file>`. -->
+  <link rel="stylesheet" href="admin/style.css">
 </head>
 <body>
 <a class="skip-nav" href="#main-content">Skip to main content</a>
@@ -177,6 +181,6 @@
   </div>
 </dialog>
 
-<script type="module" src="/admin/app.js"></script>
+<script type="module" src="admin/app.js"></script>
 </body>
 </html>

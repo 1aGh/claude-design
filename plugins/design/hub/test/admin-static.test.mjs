@@ -41,10 +41,14 @@ test('GET /admin?key=... still returns the shell (key is consumed client-side)',
   assert.match(res.headers.get('content-type') ?? '', /^text\/html/);
 });
 
-test('GET /admin/ canonicalizes to /admin (301)', async () => {
+test('GET /admin/ canonicalizes to /admin (301, relative Location)', async () => {
   const res = await fetch(`http://127.0.0.1:${PORT}/admin/`, { redirect: 'manual' });
   assert.equal(res.status, 301);
-  assert.equal(res.headers.get('location'), '/admin');
+  // Relative Location so the redirect survives a path-stripping reverse proxy
+  // (../admin resolves to <prefix>/admin from the browser's <prefix>/admin/).
+  assert.equal(res.headers.get('location'), '../admin');
+  // Sanity: the browser resolves it to the canonical no-slash path at the root.
+  assert.equal(new URL(res.headers.get('location'), 'http://h/admin/').pathname, '/admin');
 });
 
 test('GET /admin/style.css returns CSS', async () => {
