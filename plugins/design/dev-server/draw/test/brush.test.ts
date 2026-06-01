@@ -1,5 +1,14 @@
 import { describe, expect, test } from 'bun:test';
-import { brushStroke, contourLines, crossHatch, engraveLines, hatch, roughenFilter, scatterAlong, stippleFill } from '../brush.ts';
+import {
+  brushStroke,
+  contourLines,
+  crossHatch,
+  engraveLines,
+  hatch,
+  roughenFilter,
+  scatterAlong,
+  stippleFill,
+} from '../brush.ts';
 import type { Point } from '../primitives.ts';
 import { circle } from '../primitives.ts';
 import { toSvg } from '../serialize.ts';
@@ -91,14 +100,19 @@ describe('L3 scatterAlong (stamp along a path)', () => {
 describe('L4 hatch / crossHatch (engraving line shading)', () => {
   const region = { x: 0, y: 0, width: 100, height: 60 };
   test('hatch fills a region with parallel lines; tighter spacing = more lines (darker)', () => {
-    const sparse = hatch(region, { angle: 45, spacing: 12 }) as { el: string; children: Array<{ el: string }> };
+    const sparse = hatch(region, { angle: 45, spacing: 12 }) as {
+      el: string;
+      children: Array<{ el: string }>;
+    };
     const dense = hatch(region, { angle: 45, spacing: 4 }) as { children: unknown[] };
     expect(sparse.el).toBe('group');
     expect(sparse.children.every((c) => c.el === 'line')).toBe(true);
     expect(dense.children.length).toBeGreaterThan(sparse.children.length);
   });
   test('weightVar makes alternating lines differ in width (burin swell)', () => {
-    const g = hatch(region, { spacing: 8, weight: 1, weightVar: 0.5 }) as { children: Array<{ strokeWidth?: number }> };
+    const g = hatch(region, { spacing: 8, weight: 1, weightVar: 0.5 }) as {
+      children: Array<{ strokeWidth?: number }>;
+    };
     const widths = new Set(g.children.map((c) => c.strokeWidth));
     expect(widths.size).toBeGreaterThan(1);
   });
@@ -111,26 +125,59 @@ describe('L4 hatch / crossHatch (engraving line shading)', () => {
 
 describe('L5 contourLines + stippleFill (form-following engraving + graded tone)', () => {
   test('contourLines emits one offset path per offset, following the stroke', () => {
-    const g = contourLines([{ x: 0, y: 0 }, { x: 50, y: 10 }, { x: 100, y: 0 }], { offsets: [-8, -4, 0, 4, 8], color: '#caa' }) as { el: string; children: Array<{ el: string; d: string; stroke?: string; fill?: string }> };
+    const g = contourLines(
+      [
+        { x: 0, y: 0 },
+        { x: 50, y: 10 },
+        { x: 100, y: 0 },
+      ],
+      { offsets: [-8, -4, 0, 4, 8], color: '#caa' }
+    ) as { el: string; children: Array<{ el: string; d: string; stroke?: string; fill?: string }> };
     expect(g.children).toHaveLength(5);
-    expect(g.children.every((c) => c.el === 'path' && c.fill === 'none' && c.stroke === '#caa')).toBe(true);
+    expect(
+      g.children.every((c) => c.el === 'path' && c.fill === 'none' && c.stroke === '#caa')
+    ).toBe(true);
     expect(g.children[0].d.startsWith('M')).toBe(true);
     expect(g.children[0].d).toContain('C'); // smooth
   });
   test('contourLines count+spacing centers the family on the stroke; deterministic', () => {
-    const a = contourLines([{ x: 0, y: 0 }, { x: 100, y: 0 }], { count: 6, spacing: 5 }) as { children: unknown[] };
+    const a = contourLines(
+      [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+      ],
+      { count: 6, spacing: 5 }
+    ) as { children: unknown[] };
     expect(a.children).toHaveLength(6);
-    expect(JSON.stringify(contourLines([{ x: 0, y: 0 }, { x: 100, y: 0 }], { count: 6, spacing: 5 }))).toBe(JSON.stringify(a));
+    expect(
+      JSON.stringify(
+        contourLines(
+          [
+            { x: 0, y: 0 },
+            { x: 100, y: 0 },
+          ],
+          { count: 6, spacing: 5 }
+        )
+      )
+    ).toBe(JSON.stringify(a));
   });
   test('stippleFill density grades the dot count (light vs dark) + deterministic', () => {
     const region = { x: 0, y: 0, width: 100, height: 100 };
-    const dark = stippleFill(region, { dots: 400, density: () => 1, seed: 3 }) as { children: unknown[] };
-    const light = stippleFill(region, { dots: 400, density: () => 0.1, seed: 3 }) as { children: unknown[] };
+    const dark = stippleFill(region, { dots: 400, density: () => 1, seed: 3 }) as {
+      children: unknown[];
+    };
+    const light = stippleFill(region, { dots: 400, density: () => 0.1, seed: 3 }) as {
+      children: unknown[];
+    };
     expect(dark.children.length).toBeGreaterThan(light.children.length * 3);
-    expect(JSON.stringify(stippleFill(region, { dots: 400, density: () => 1, seed: 3 }))).toBe(JSON.stringify(dark));
+    expect(JSON.stringify(stippleFill(region, { dots: 400, density: () => 1, seed: 3 }))).toBe(
+      JSON.stringify(dark)
+    );
   });
   test('stippleFill dots land inside the region', () => {
-    const g = stippleFill({ x: 10, y: 20, width: 80, height: 60 }, { dots: 100, seed: 2 }) as { children: Array<{ cx: number; cy: number }> };
+    const g = stippleFill({ x: 10, y: 20, width: 80, height: 60 }, { dots: 100, seed: 2 }) as {
+      children: Array<{ cx: number; cy: number }>;
+    };
     for (const d of g.children) {
       expect(d.cx).toBeGreaterThanOrEqual(10);
       expect(d.cx).toBeLessThanOrEqual(90);
@@ -147,11 +194,16 @@ describe('L6 engraveLines (organic per-line burin marks)', () => {
     { x: 120, y: 0 },
   ];
   test('each line is a tapered filled brushStroke (closed path), deterministic', () => {
-    const g = engraveLines(stroke, { count: 8, spacing: 5, seed: 4 }) as { el: string; children: Array<{ el: string; d: string; fill?: string }> };
+    const g = engraveLines(stroke, { count: 8, spacing: 5, seed: 4 }) as {
+      el: string;
+      children: Array<{ el: string; d: string; fill?: string }>;
+    };
     expect(g.el).toBe('group');
     expect(g.children.length).toBeGreaterThan(4);
     expect(g.children.every((c) => c.el === 'path' && c.d.trimEnd().endsWith('Z'))).toBe(true); // filled outline, not stroke
-    expect(JSON.stringify(engraveLines(stroke, { count: 8, spacing: 5, seed: 4 }))).toBe(JSON.stringify(g));
+    expect(JSON.stringify(engraveLines(stroke, { count: 8, spacing: 5, seed: 4 }))).toBe(
+      JSON.stringify(g)
+    );
   });
   test('different seeds → different (jittered) output', () => {
     expect(JSON.stringify(engraveLines(stroke, { count: 8, seed: 1 }))).not.toBe(

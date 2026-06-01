@@ -1,0 +1,31 @@
+---
+title: /design:draw
+description: "Nakresli production-grade SVG (logo / ikona / ilustrace / diagram / spot) přes deterministický geometry engine — žádné LLM-guessed path data. Naplánuj → vygeneruj N kandidátů → vyrenderuj přes draw-proof ladder (16/24/48/256 × light/dark/flatten) → pairwise-rank → keep-best → rubric critique → iteruj (cap 3–4). Output buď jako asset .svg, nebo inline do aktivního canvasu. Default: po draw-agentovi spustí draw-critic. Opt out přes --no-critic."
+---
+
+| Property | Value |
+| -------- | ----- |
+| **Command** | `/design:draw` |
+| **Category** | `daily` |
+| **Argument hint** | `\"<brief>\" [--type icon\|logo\|illustration\|diagram\|spot] [--grid 0\|1\|4\|8] [--asset [<path>] \| --inline [--into <canvas>]] [--perfect [N]] [--no-critic]` |
+| **Source** | [`plugins/design/commands/draw.md`](https://github.com/1aGh/maude/blob/main/plugins/design/commands/draw.md) |
+
+## Description
+
+Nakresli production-grade SVG (logo / ikona / ilustrace / diagram / spot) přes deterministický geometry engine — žádné LLM-guessed path data. Naplánuj → vygeneruj N kandidátů → vyrenderuj přes draw-proof ladder (16/24/48/256 × light/dark/flatten) → pairwise-rank → keep-best → rubric critique → iteruj (cap 3–4). Output buď jako asset .svg, nebo inline do aktivního canvasu. Default: po draw-agentovi spustí draw-critic. Opt out přes --no-critic.
+
+## Invocation
+
+```text
+/design:draw \"<brief>\" [--type icon|logo|illustration|diagram|spot] [--grid 0|1|4|8] [--asset [<path>] | --inline [--into <canvas>]] [--perfect [N]] [--no-critic]
+```
+
+## Summary
+
+Generuje **produkční vektorovou grafiku** přes geometry engine (`plugins/design/dev-server/draw/`) a **vizuálně ji ověří** — renderuje, screenshotuje, pairwise-rankuje, kritizuje proti 30-check rubrice a iteruje do konvergence. Žádné free-hand `&lt;path d>` souřadnice: LLM určuje *záměr*, engine počítá *souřadnice* (to el
+
+## Source of truth
+
+This page is auto-generated from the command's frontmatter. The exact prompt Claude runs — including directives, edge-case handling, and tool-routing logic — lives in the source file:
+
+[**`plugins/design/commands/draw.md`**](https://github.com/1aGh/maude/blob/main/plugins/design/commands/draw.md) → read it for the full behavior.

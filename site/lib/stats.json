@@ -1,13 +1,13 @@
 {
   "version": "v0.25.0",
   "nodeRange": ">=20",
-  "publishedDate": "2026-05-30",
+  "publishedDate": "2026-06-01",
   "contributors": 1,
   "plugins": {
     "design": {
-      "commands": 13,
+      "commands": 14,
       "skills": 3,
-      "agents": 13
+      "agents": 16
     },
     "flow": {
       "commands": 30,

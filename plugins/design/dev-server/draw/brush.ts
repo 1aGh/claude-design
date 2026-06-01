@@ -21,18 +21,18 @@
  *             Pure + deterministic (seeded LCG, no `Math.random`); React-free.
  */
 
+import type { Rect } from './geometry.ts';
 import {
   path,
   type DrawPrimitive,
   type DrawStyle,
   type Point,
+  circle,
   fe,
   filter,
   group,
   line,
-  circle,
 } from './primitives.ts';
-import type { Rect } from './geometry.ts';
 
 function fmt(n: number): string {
   return Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
@@ -346,7 +346,14 @@ export interface HatchOpts {
  * spacing reads darker, exactly as in real line engraving.
  */
 export function hatch(region: Rect, opts: HatchOpts = {}): DrawPrimitive {
-  const { angle = 45, spacing = 6, weight = 0.8, color = 'currentColor', weightVar = 0, round = true } = opts;
+  const {
+    angle = 45,
+    spacing = 6,
+    weight = 0.8,
+    color = 'currentColor',
+    weightVar = 0,
+    round = true,
+  } = opts;
   const cx = region.x + region.width / 2;
   const cy = region.y + region.height / 2;
   const rad = (angle * Math.PI) / 180;
@@ -386,7 +393,9 @@ export interface CrossHatchOpts extends HatchOpts {
 export function crossHatch(region: Rect, opts: CrossHatchOpts = {}): DrawPrimitive {
   const a1 = opts.angle ?? 45;
   const a2 = opts.angle2 ?? a1 + 90;
-  return group([hatch(region, { ...opts, angle: a1 }), hatch(region, { ...opts, angle: a2 })], { id: 'crosshatch' });
+  return group([hatch(region, { ...opts, angle: a1 }), hatch(region, { ...opts, angle: a2 })], {
+    id: 'crosshatch',
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -438,8 +447,17 @@ export interface ContourOpts {
  * (`lengthProfile`) for the hand-engraved fade.
  */
 export function contourLines(centerline: Point[], opts: ContourOpts = {}): DrawPrimitive {
-  const { count = 8, spacing = 4, lengthProfile, weight = 0.7, weightVar = 0, color = 'currentColor', round = true } = opts;
-  const offsets = opts.offsets ?? Array.from({ length: count }, (_, k) => (k - (count - 1) / 2) * spacing);
+  const {
+    count = 8,
+    spacing = 4,
+    lengthProfile,
+    weight = 0.7,
+    weightVar = 0,
+    color = 'currentColor',
+    round = true,
+  } = opts;
+  const offsets =
+    opts.offsets ?? Array.from({ length: count }, (_, k) => (k - (count - 1) / 2) * spacing);
   const C = smoothCenterline(centerline, 16);
   const m = C.length;
   const N: Point[] = [];
@@ -464,7 +482,10 @@ export function contourLines(centerline: Point[], opts: ContourOpts = {}): DrawP
           d: openSmoothPath(pts),
           fill: 'none',
           stroke: color,
-          strokeWidth: Math.max(0.15, weightVar ? weight * (1 + (k % 2 ? weightVar : -weightVar)) : weight),
+          strokeWidth: Math.max(
+            0.15,
+            weightVar ? weight * (1 + (k % 2 ? weightVar : -weightVar)) : weight
+          ),
           strokeLinecap: round ? 'round' : 'butt',
           strokeLinejoin: 'round',
         })
@@ -507,7 +528,14 @@ export function stippleFill(region: Rect, opts: StippleOpts = {}): DrawPrimitive
     const ny = rnd();
     const keep = density ? density(nx, ny) : 1;
     if (rnd() <= keep) {
-      out.push(circle({ cx: region.x + nx * region.width, cy: region.y + ny * region.height, r: dotR * (0.6 + rnd() * 0.8), fill: color }));
+      out.push(
+        circle({
+          cx: region.x + nx * region.width,
+          cy: region.y + ny * region.height,
+          r: dotR * (0.6 + rnd() * 0.8),
+          fill: color,
+        })
+      );
     }
   }
   return group(out, { id: 'stipple' });
@@ -568,7 +596,8 @@ export function engraveLines(centerline: Point[], opts: EngraveOpts = {}): DrawP
     return s / 4294967296;
   };
 
-  const base = opts.offsets ?? Array.from({ length: count }, (_, k) => (k - (count - 1) / 2) * spacing);
+  const base =
+    opts.offsets ?? Array.from({ length: count }, (_, k) => (k - (count - 1) / 2) * spacing);
   const C = smoothCenterline(centerline, 14);
   const m = C.length;
   const N: Point[] = [];

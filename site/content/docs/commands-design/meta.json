@@ -3,6 +3,7 @@
   "pages": [
     "browse",
     "critic",
+    "draw",
     "edit",
     "export",
     "handoff",

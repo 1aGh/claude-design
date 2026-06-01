@@ -390,6 +390,7 @@ function apcaLum(color: Rgb | string): number {
   const { r, g, b } = typeof color === 'string' ? parseColor(color) : color;
   // APCA uses a straight 2.4 power (not the WCAG piecewise linearization).
   const y = 0.2126 * (r / 255) ** 2.4 + 0.7152 * (g / 255) ** 2.4 + 0.0722 * (b / 255) ** 2.4;
+  // biome-ignore lint/suspicious/noApproximativeNumericConstant: APCA-0.98G blkClmp exponent (1.414) for the 0.022 black-soft-clamp — a defined spec constant, NOT √2.
   return y < 0.022 ? y + (0.022 - y) ** 1.414 : y;
 }
 
