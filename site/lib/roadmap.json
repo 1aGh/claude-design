@@ -1,5 +1,5 @@
 {
-  "generated": "2026-05-31T18:08:14.292Z",
+  "generated": "2026-06-01T12:55:19.990Z",
   "currentPhase": null,
   "phases": [
     {
@@ -76,6 +76,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/archive/dev-server-system-view-bias-free.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "export-pipeline-fixes",
+      "title": "Feature: Export pipeline fixes — 6 bugs (size, chrome leak, selection/artboard scoping, SVG bg, HTML artboard, PPTX validity)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan touches the export pipeline that was just hardened (graceful Playwright-miss...",
+      "planPath": ".ai/plans/archive/export-pipeline-fixes.md",
       "archived": true,
       "phaseKey": null
     },

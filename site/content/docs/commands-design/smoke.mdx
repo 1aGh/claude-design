@@ -1,6 +1,6 @@
 ---
 title: /design:smoke
-description: "Batch screenshot every UI canvas (`<designRoot>/ui/*.tsx`) + every preview specimen (`<designRoot>/system/*/preview/*.tsx`); flag blank iframes + visible error overlays. Exit non-zero on any failure. Catches the \"build green ≠ user-visible green\" class of regression that bypasses per-canvas hooks. See DDR-021."
+description: "Batch screenshot every UI canvas (`<designRoot>/ui/*.tsx`) + every preview specimen (`<designRoot>/system/*/preview/*.tsx`); flag blank iframes, visible error overlays, AND preview specimens that render UNSTYLED (lost their token CSS). Adds a static import-graph lint + a runtime computed-style gate on specimens. Exit non-zero on any failure. Catches the \"build green ≠ user-visible green\" class of regression that bypasses per-canvas hooks. See DDR-021 + DDR-068."
 ---
 
 | Property | Value |
@@ -12,7 +12,7 @@ description: "Batch screenshot every UI canvas (`<designRoot>/ui/*.tsx`) + every
 
 ## Description
 
-Batch screenshot every UI canvas (`&lt;designRoot>/ui/*.tsx`) + every preview specimen (`&lt;designRoot>/system/*/preview/*.tsx`); flag blank iframes + visible error overlays. Exit non-zero on any failure. Catches the "build green ≠ user-visible green" class of regression that bypasses per-canvas hooks. See DDR-021.
+Batch screenshot every UI canvas (`&lt;designRoot>/ui/*.tsx`) + every preview specimen (`&lt;designRoot>/system/*/preview/*.tsx`); flag blank iframes, visible error overlays, AND preview specimens that render UNSTYLED (lost their token CSS). Adds a static import-graph lint + a runtime computed-style gate on specimens. Exit non-zero on any failure. Catches the "build green ≠ user-visible green" class of regression that bypasses per-canvas hooks. See DDR-021 + DDR-068.
 
 ## Invocation
 
