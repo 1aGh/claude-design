@@ -246,6 +246,66 @@ export function centroidCenter(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Organic blobs — smooth closed curves (the staple of organic/funky design)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface BlobOpts {
+  /** Number of lobes / control points (default 7). More = busier silhouette. */
+  lobes?: number;
+  /** Radius variance 0–1 (default 0.28). 0 = perfect ellipse; higher = wobblier. */
+  irregularity?: number;
+  /** Integer seed for the deterministic radius jitter (default 1). */
+  seed?: number;
+  /** ry/rx squish (default 1 = round). */
+  squish?: number;
+  /** Start-angle rotation in radians (default 0). */
+  rotation?: number;
+}
+
+/**
+ * A smooth, closed organic blob path centered at (cx, cy) with mean radius
+ * `baseR`. Lobe radii are jittered by a seeded LCG (deterministic — no
+ * `Math.random`), then connected with a closed Catmull-Rom spline rendered as
+ * cubic Béziers. The bread-and-butter shape for organic / funky compositions
+ * (place the blob centers on a `composition.armature()`, don't scatter them).
+ * Returns an `M … C … Z` `d` string for `path({ d })`.
+ */
+export function blobPath(cx: number, cy: number, baseR: number, opts: BlobOpts = {}): string {
+  const lobes = Math.max(3, opts.lobes ?? 7);
+  const irr = opts.irregularity ?? 0.28;
+  const squish = opts.squish ?? 1;
+  const rot = opts.rotation ?? 0;
+  let s = (opts.seed ?? 1) >>> 0 || 1;
+  const rnd = () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+
+  const pts: Point[] = [];
+  for (let i = 0; i < lobes; i++) {
+    const a = rot + (i / lobes) * Math.PI * 2;
+    const r = baseR * (1 + (rnd() * 2 - 1) * irr);
+    pts.push({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r * squish });
+  }
+
+  const n = pts.length;
+  const P = (i: number): Point => pts[((i % n) + n) % n];
+  let d = `M${fmt(P(0).x)} ${fmt(P(0).y)}`;
+  for (let i = 0; i < n; i++) {
+    const p0 = P(i - 1);
+    const p1 = P(i);
+    const p2 = P(i + 1);
+    const p3 = P(i + 2);
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C${fmt(c1x)} ${fmt(c1y)} ${fmt(c2x)} ${fmt(c2y)} ${fmt(p2.x)} ${fmt(p2.y)}`;
+  }
+  return `${d} Z`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // A* connector routing (obstacle-aware, chamfered corners)
 // ─────────────────────────────────────────────────────────────────────────────
 

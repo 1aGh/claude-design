@@ -67,9 +67,32 @@ const ATTR_DIALECT: Record<string, { svg: string; jsx: string }> = {
   textAnchor: { svg: 'text-anchor', jsx: 'textAnchor' },
   dominantBaseline: { svg: 'dominant-baseline', jsx: 'dominantBaseline' },
   letterSpacing: { svg: 'letter-spacing', jsx: 'letterSpacing' },
+  stopColor: { svg: 'stop-color', jsx: 'stopColor' },
+  stopOpacity: { svg: 'stop-opacity', jsx: 'stopOpacity' },
+  clipPath: { svg: 'clip-path', jsx: 'clipPath' },
+  floodColor: { svg: 'flood-color', jsx: 'floodColor' },
+  floodOpacity: { svg: 'flood-opacity', jsx: 'floodOpacity' },
+  colorInterpolationFilters: {
+    svg: 'color-interpolation-filters',
+    jsx: 'colorInterpolationFilters',
+  },
 };
 
-const CONTAINER_TAGS = new Set(['svg', 'g', 'defs', 'symbol', 'text', 'title', 'desc']);
+const CONTAINER_TAGS = new Set([
+  'svg',
+  'g',
+  'defs',
+  'symbol',
+  'text',
+  'title',
+  'desc',
+  'linearGradient',
+  'radialGradient',
+  'filter',
+  'pattern',
+  'mask',
+  'clipPath',
+]);
 
 function num(n: number): string {
   if (Number.isInteger(n)) return String(n);
@@ -130,6 +153,23 @@ function pushStyle(
     if (d) attrs.push(['strokeDasharray', d]);
   }
   if (s.id !== undefined) attrs.push(['id', s.id]);
+  if (s.filter !== undefined) attrs.push(['filter', s.filter]);
+  if (s.mask !== undefined) attrs.push(['mask', s.mask]);
+  if (s.clipPath !== undefined) attrs.push(['clipPath', s.clipPath]);
+  if (s.mixBlendMode !== undefined) attrs.push(['mixBlendMode', s.mixBlendMode]);
+}
+
+function feToNode(fp: {
+  fe: string;
+  attrs?: Record<string, string | number>;
+  children?: unknown[];
+}): SvgNode {
+  const attrs: Array<[string, string]> = Object.entries(fp.attrs ?? {}).map(([k, v]) => [
+    k,
+    String(v),
+  ]);
+  const kids = (fp.children ?? []) as Array<Parameters<typeof feToNode>[0]>;
+  return { tag: fp.fe, attrs, children: kids.map(feToNode) };
 }
 
 function primitiveToNode(p: DrawPrimitive, defaultColor: string): SvgNode {
@@ -209,6 +249,12 @@ function primitiveToNode(p: DrawPrimitive, defaultColor: string): SvgNode {
       if (p.transform) attrs.push(['transform', p.transform]);
       if (p.opacity !== undefined) attrs.push(['opacity', num(p.opacity)]);
       if (p.id !== undefined) attrs.push(['id', p.id]);
+      // Groups carry the compositing surface — filter / mask / clip / blend — so
+      // a whole sub-drawing can be warped, masked, or blended at once.
+      if (p.filter !== undefined) attrs.push(['filter', p.filter]);
+      if (p.mask !== undefined) attrs.push(['mask', p.mask]);
+      if (p.clipPath !== undefined) attrs.push(['clipPath', p.clipPath]);
+      if (p.mixBlendMode !== undefined) attrs.push(['mixBlendMode', p.mixBlendMode]);
       return { tag: 'g', attrs, children: p.children.map((c) => primitiveToNode(c, defaultColor)) };
     }
     case 'defs':
@@ -236,7 +282,71 @@ function primitiveToNode(p: DrawPrimitive, defaultColor: string): SvgNode {
       pushStyle(attrs, p, true, defaultColor);
       return { tag: 'use', attrs, children: [] };
     }
+    case 'linearGradient': {
+      const attrs: Array<[string, string]> = [['id', p.id]];
+      if (p.x1 !== undefined) attrs.push(['x1', num(p.x1)]);
+      if (p.y1 !== undefined) attrs.push(['y1', num(p.y1)]);
+      if (p.x2 !== undefined) attrs.push(['x2', num(p.x2)]);
+      if (p.y2 !== undefined) attrs.push(['y2', num(p.y2)]);
+      if (p.gradientUnits !== undefined) attrs.push(['gradientUnits', p.gradientUnits]);
+      return { tag: 'linearGradient', attrs, children: p.stops.map(stopNode) };
+    }
+    case 'radialGradient': {
+      const attrs: Array<[string, string]> = [['id', p.id]];
+      if (p.cx !== undefined) attrs.push(['cx', num(p.cx)]);
+      if (p.cy !== undefined) attrs.push(['cy', num(p.cy)]);
+      if (p.r !== undefined) attrs.push(['r', num(p.r)]);
+      if (p.fx !== undefined) attrs.push(['fx', num(p.fx)]);
+      if (p.fy !== undefined) attrs.push(['fy', num(p.fy)]);
+      if (p.gradientUnits !== undefined) attrs.push(['gradientUnits', p.gradientUnits]);
+      return { tag: 'radialGradient', attrs, children: p.stops.map(stopNode) };
+    }
+    case 'filter': {
+      const attrs: Array<[string, string]> = [['id', p.id]];
+      if (p.x !== undefined) attrs.push(['x', String(p.x)]);
+      if (p.y !== undefined) attrs.push(['y', String(p.y)]);
+      if (p.width !== undefined) attrs.push(['width', String(p.width)]);
+      if (p.height !== undefined) attrs.push(['height', String(p.height)]);
+      if (p.colorInterpolationFilters !== undefined)
+        attrs.push(['colorInterpolationFilters', p.colorInterpolationFilters]);
+      return { tag: 'filter', attrs, children: p.prims.map(feToNode) };
+    }
+    case 'pattern': {
+      const attrs: Array<[string, string]> = [
+        ['id', p.id],
+        ['width', num(p.width)],
+        ['height', num(p.height)],
+        ['patternUnits', p.patternUnits ?? 'userSpaceOnUse'],
+      ];
+      if (p.patternTransform !== undefined) attrs.push(['patternTransform', p.patternTransform]);
+      return {
+        tag: 'pattern',
+        attrs,
+        children: p.children.map((c) => primitiveToNode(c, defaultColor)),
+      };
+    }
+    case 'mask':
+      return {
+        tag: 'mask',
+        attrs: [['id', p.id]],
+        children: p.children.map((c) => primitiveToNode(c, defaultColor)),
+      };
+    case 'clipPath':
+      return {
+        tag: 'clipPath',
+        attrs: [['id', p.id]],
+        children: p.children.map((c) => primitiveToNode(c, defaultColor)),
+      };
   }
+}
+
+function stopNode(s: { offset: number; color: string; opacity?: number }): SvgNode {
+  const attrs: Array<[string, string]> = [
+    ['offset', num(s.offset)],
+    ['stopColor', s.color],
+  ];
+  if (s.opacity !== undefined) attrs.push(['stopOpacity', num(s.opacity)]);
+  return { tag: 'stop', attrs, children: [] };
 }
 
 /**
@@ -295,6 +405,16 @@ function renderNode(node: SvgNode, dialect: Dialect, indent: string): string {
     attrParts.push('xmlns="http://www.w3.org/2000/svg"');
   }
   for (const [key, value] of node.attrs) {
+    // `mix-blend-mode` is CSS-only — emit a dialect-correct `style` (SVG: a
+    // CSS string; JSX: a React style object) rather than a presentation attr.
+    if (key === 'mixBlendMode') {
+      attrParts.push(
+        dialect === 'svg'
+          ? `style="mix-blend-mode:${escapeAttr(value)}"`
+          : `style={{ mixBlendMode: "${escapeAttr(value)}" }}`
+      );
+      continue;
+    }
     attrParts.push(`${attrName(key, dialect)}="${escapeAttr(value)}"`);
   }
   const attrStr = attrParts.length ? ` ${attrParts.join(' ')}` : '';

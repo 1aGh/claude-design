@@ -233,3 +233,184 @@ export function colorDistribution(shares: AreaShare[]): DistributionResult {
   }
   return { byRole, accentRatio: accent, dominantRole, ok: accent > 0 && accent <= 0.15 };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Color harmony — Cohen-Or et al. eight hue-wheel templates (SIGGRAPH 2006)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** One wedge of a harmonic template: a sector centered at `center`° (relative to
+ *  the template's rotation) spanning `arc`° of the hue wheel. */
+export interface HarmonyWedge {
+  center: number;
+  arc: number;
+}
+
+/**
+ * The eight Cohen-Or harmonic templates (`i V L I T Y X` + achromatic `N`),
+ * expressed as hue-wheel wedges relative to a rotation. These encode the classic
+ * schemes: `i` = monochromatic, `I` = complementary, `V`/`Y` = analogous /
+ * split, `X` = double-complementary, `T` = a 180° span. Used BOTH to generate a
+ * harmonious palette (snap hues into the wedges) AND to score harmony (distance
+ * of a palette's hues to the nearest template).
+ */
+export const HARMONY_TEMPLATES: Record<string, HarmonyWedge[]> = {
+  i: [{ center: 0, arc: 18 }],
+  V: [{ center: 0, arc: 93.6 }],
+  L: [
+    { center: 0, arc: 18 },
+    { center: 90, arc: 79.2 },
+  ],
+  I: [
+    { center: 0, arc: 18 },
+    { center: 180, arc: 18 },
+  ],
+  T: [{ center: 0, arc: 180 }],
+  Y: [
+    { center: 0, arc: 93.6 },
+    { center: 180, arc: 18 },
+  ],
+  X: [
+    { center: 0, arc: 93.6 },
+    { center: 180, arc: 93.6 },
+  ],
+};
+
+/** Smallest absolute angular difference between two hues (degrees, 0–180). */
+export function hueDelta(a: number, b: number): number {
+  const d = Math.abs(((a - b) % 360) + 360) % 360;
+  return d > 180 ? 360 - d : d;
+}
+
+/** Angular distance from hue `h` to the nearest edge of a wedge (0 if inside). */
+function distToWedge(h: number, w: HarmonyWedge, rotation: number): number {
+  const d = hueDelta(h, w.center + rotation);
+  return Math.max(0, d - w.arc / 2);
+}
+
+function minDistToTemplate(h: number, tmpl: HarmonyWedge[], rotation: number): number {
+  let best = Number.POSITIVE_INFINITY;
+  for (const w of tmpl) best = Math.min(best, distToWedge(h, w, rotation));
+  return best;
+}
+
+/**
+ * Saturation-weighted distance of a hue set to a harmonic template at a given
+ * rotation — the Cohen-Or harmony metric. 0 = every hue inside a wedge
+ * (harmonious); larger = more disharmony. `sats` (0–1, default 1) weight vivid
+ * colors more (a gray hue barely matters).
+ */
+export function harmonyDistance(
+  hues: number[],
+  template: keyof typeof HARMONY_TEMPLATES,
+  rotation: number,
+  sats?: number[]
+): number {
+  const tmpl = HARMONY_TEMPLATES[template];
+  let sum = 0;
+  for (let i = 0; i < hues.length; i++) {
+    const s = sats?.[i] ?? 1;
+    sum += s * minDistToTemplate(hues[i], tmpl, rotation);
+  }
+  return sum;
+}
+
+export interface HarmonyFit {
+  template: keyof typeof HARMONY_TEMPLATES;
+  rotation: number;
+  distance: number;
+}
+
+/**
+ * Find the best-fitting harmonic template + rotation for a hue set (brute search
+ * over templates × rotations at 2° steps). The returned `distance` is the
+ * discriminating critic metric: ≈0 = harmonious, large = "fighting colors".
+ */
+export function bestHarmony(hues: number[], sats?: number[]): HarmonyFit {
+  let best: HarmonyFit = { template: 'i', rotation: 0, distance: Number.POSITIVE_INFINITY };
+  for (const template of Object.keys(HARMONY_TEMPLATES) as (keyof typeof HARMONY_TEMPLATES)[]) {
+    for (let rotation = 0; rotation < 360; rotation += 2) {
+      const distance = harmonyDistance(hues, template, rotation, sats);
+      if (distance < best.distance) best = { template, rotation, distance };
+    }
+  }
+  return best;
+}
+
+/**
+ * Snap each hue into the nearest wedge of a template (rotated) — generation-side
+ * harmonization. Hues already inside a wedge are unchanged; outliers clamp to the
+ * nearest wedge edge. Returns the harmonized hues (use these to build the palette).
+ */
+export function harmonize(
+  hues: number[],
+  template: keyof typeof HARMONY_TEMPLATES,
+  rotation = 0
+): number[] {
+  const tmpl = HARMONY_TEMPLATES[template];
+  return hues.map((h) => {
+    let best = h;
+    let bestD = Number.POSITIVE_INFINITY;
+    for (const w of tmpl) {
+      const lo = w.center + rotation - w.arc / 2;
+      const hi = w.center + rotation + w.arc / 2;
+      const inside = distToWedge(h, w, rotation) === 0;
+      if (inside) return ((h % 360) + 360) % 360;
+      // distance to each edge; clamp to the closer one
+      const dLo = hueDelta(h, lo);
+      const dHi = hueDelta(h, hi);
+      const edge = dLo < dHi ? lo : hi;
+      const d = Math.min(dLo, dHi);
+      if (d < bestD) {
+        bestD = d;
+        best = edge;
+      }
+    }
+    return ((best % 360) + 360) % 360;
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Value / contrast — value does the work, color gets the credit
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The WCAG-luminance value range (max − min) across a color set, 0–1. The
+ * "muddy / washed-out" detector: a composition whose colors differ in hue but
+ * cluster in a narrow value band reads as flat soup (exactly the failure that
+ * sank the pastel + the neon-overlap backgrounds). A premium composition needs a
+ * value range that actually spans (rule of thumb: ≥ ~0.35 for a scene with depth).
+ */
+export function valueRange(colors: Array<Rgb | string>): number {
+  if (colors.length === 0) return 0;
+  const ls = colors.map((c) => relativeLuminance(c));
+  return Math.max(...ls) - Math.min(...ls);
+}
+
+function apcaLum(color: Rgb | string): number {
+  const { r, g, b } = typeof color === 'string' ? parseColor(color) : color;
+  // APCA uses a straight 2.4 power (not the WCAG piecewise linearization).
+  const y = 0.2126 * (r / 255) ** 2.4 + 0.7152 * (g / 255) ** 2.4 + 0.0722 * (b / 255) ** 2.4;
+  return y < 0.022 ? y + (0.022 - y) ** 1.414 : y;
+}
+
+/**
+ * APCA lightness contrast (Lc) between text and background — the perceptual
+ * contrast metric WCAG 3 is built on (value does the perceptual work). Returns
+ * |Lc| 0–~108. Thresholds (text): Lc 90 body-preferred, 75 body-min, 60 content,
+ * 45 large/heavy; Lc 15 is the floor for ANY visible element. Implements the
+ * APCA-0.98G constants; pin the version before treating a number as standard.
+ */
+export function apcaLc(text: Rgb | string, bg: Rgb | string): number {
+  const ytxt = apcaLum(text);
+  const ybg = apcaLum(bg);
+  let sapc: number;
+  let out: number;
+  if (ybg > ytxt) {
+    sapc = (ybg ** 0.56 - ytxt ** 0.57) * 1.14;
+    out = sapc < 0.1 ? 0 : (sapc - 0.027) * 100;
+  } else {
+    sapc = (ybg ** 0.65 - ytxt ** 0.62) * 1.14;
+    out = sapc > -0.1 ? 0 : (sapc + 0.027) * 100;
+  }
+  return Math.abs(out);
+}

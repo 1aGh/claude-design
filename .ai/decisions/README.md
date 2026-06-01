@@ -10,6 +10,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
 
+- [DDR-074: Draw engine composition layer + discriminating critic metrics (φ rejected)](DDR-074-draw-composition-layer-and-discriminating-critic-metrics.md) — 2026-06-01, design/dev-server/draw/composition/armature/color-harmony/apca/vme-balance/critic-metrics/golden-ratio-myth/deep-research
 - [DDR-071: SVGO as the single new dev-server dependency for the draw engine](DDR-071-svgo-dependency.md) — 2026-06-01, design/dev-server/draw/svgo/dependency/npm/files-manifest/frozen-lockfile/maude-doctor/packaging
 - [DDR-070: SVG generation via a deterministic geometry engine + rank-not-score verify loop](DDR-070-svg-generation-geometry-engine.md) — 2026-06-01, design/dev-server/draw/svg/geometry-engine/draw-agent/verify-loop/vlm-as-judge/optical-adjustment/regression-prevention
 - [DDR-069: PPTX export via svg2pptx (native editable shapes) with a PNG fallback](DDR-069-pptx-native-via-svg2pptx.md) — 2026-06-01, design/dev-server/export/pptx/svg2pptx/python-dependency/canva/keynote/fonts/regression-prevention

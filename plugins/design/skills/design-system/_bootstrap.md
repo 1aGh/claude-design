@@ -859,6 +859,59 @@ all_ds:      false
 
 The critic emits a JSON verdict. If it returns **blockers**, the bootstrap flow surfaces them in the next-step block and recommends the user re-run with `--force` after addressing each. Warnings are listed in the completion message but do NOT block. Tier 3 (free-form) acknowledgements are listed informationally.
 
+### Seed organic artifacts (opt-in) → `draw-agent`
+
+> **Why this step exists.** A DS scaffolded from tokens is *hard, systematic data* — colors, type ramp, spacing scale. What it lacks is the **organic layer** that gives a real product warmth: section **backgrounds** (gradient mesh / aurora / topographic), tileable **patterns** (dot / hatch / grain), decorative **spot art / textures**, and an optional starter **brand mark**. The `draw` geometry engine produces exactly these as vector art — gradients, radial glows, `feTurbulence` grain, `<pattern>` tiles, masks, blend modes — and verifies them on its own proof ladder. This is where draw plugs into bootstrap.
+
+**Gating — interactive + opt-in only.**
+- **NEVER** run this in the non-interactive `maude design init --no-discovery` path. That path ships the deliberately-unfinished neutral skeleton (DDR-026); auto-generating lush organic art there contradicts the "nudge the user toward real decisions" intent and would re-introduce a hardcoded aesthetic (DDR-043).
+- Fires only in interactive BOOTSTRAP, **after** the scaffold + asset receipts, **before** the visual-sanity check (so the artifacts are screenshotted and run through the 4-kola gate like any other specimen).
+- Surface **one** `AskUserQuestion` (multiSelect), skip the whole step if the user picks none or accepted `--quick`:
+
+```
+Q: Seed organic artifacts via the draw engine? (grounded in your palette + mood)
+   [ ] Backgrounds — full-bleed section scenes (gradient mesh / aurora / topographic)
+   [ ] Patterns — tileable <pattern> defs (dots / hatch / grain texture)
+   [ ] Spot art / textures — small decorative compositions
+   [ ] Brand mark — a starter wordmark/lettermark lockup
+   [ ] None — skip (default)
+```
+
+**Grounded in discovery, never hardcoded (DDR-043).** Every artifact is generated from the **just-scaffolded** palette + the Stage-1 vision, not from engine defaults. Read the OKLCH ramp from `system/<ds>/colors_and_type.css` and pass it, plus the discovered mood / voice / domain, as the `draw-agent` brief — so the background mesh uses the project's accent + bg tiers, the grain matches the mood, etc. A neutral-skeleton DS (no discovery run) has no palette to ground against → another reason this is interactive-only.
+
+**Generation (cap the fan-out at ≤ 3 artifacts — same ceiling as the scaffold sub-agents).** For each chosen artifact, spawn `draw-agent` in **asset** mode:
+
+```
+Agent(
+  description: "seed <artifact> for <ds>",
+  subagent_type: "design:draw-agent",
+  prompt: <<EOF
+brief:         "<artifact> for the <ds> design system — <Stage-1 mood/voice, verbatim>. Use the DS palette below; organic, not systematic."
+type:          "spot"        # backgrounds / patterns / textures   (logo for the brand mark)
+grid:          0             # organic — no pixel snap (1 for the brand mark)
+output_mode:   "asset"
+output_path:   "<designRoot>/system/<ds>/assets/<slug>.svg"
+slug:          "<ds>-<artifact>"
+config:        <contents of .design/config.json>
+designRoot:    "<abs designRoot>"
+opt_out_scope: "aesthetic"   # the artifact IS the brand expression; don't grade it against DS-token restraint
+# Palette context — the actual OKLCH tokens just scaffolded:
+palette:       "<paste the --bg-*/--fg-*/--accent* values from colors_and_type.css>"
+max_rounds:    3
+candidates_n:  2
+EOF
+)
+```
+
+The agent runs its plan → generate-N → draw-proof ladder → pairwise-rank → keep-best loop and writes the optimized SVG asset. Backgrounds/patterns/spot are the `spot` type (decorative); the brand mark is `logo` (and its HARD floor — 16px legibility + single-color flatten — DOES apply).
+
+**Wire the artifacts into the DS (so they're not orphan files):**
+1. Assets land under `system/<ds>/assets/`. Add a roster receipt row (`status: written`) for each so reconciliation + completeness see them.
+2. Generate (or extend) a `system/<ds>/preview/textures.tsx` specimen that renders the backgrounds + a tiled swatch of each pattern + the spot art (import the SVGs via `dangerouslySetInnerHTML` or inline `<svg>`). This makes them browseable and gives the critic panel something to score.
+3. **Append `textures` to the visual-sanity `--specimens` list below**, and add it as a second critic-panel target — so the organic layer goes through the same 4-kola gate.
+
+**Failure handling:** a `draw-agent` that can't converge → skip that one artifact, surface a one-line warning in the next-step block (`organic-seed: <artifact> skipped — re-run /design:draw "<brief>" --asset manually`), and continue. The artifact layer is additive polish; never let it block the structural bootstrap.
+
 ### Visual sanity check (mandatory — fail loud, never silently elide)
 
 > **This step exists because completeness-critic is structural only.** It cannot see that the rendered output looks like a generic public-component-library template, that the motion specimen is dead-on-arrival, or that a logo asset 404s because of a relative-URL gotcha in canvas-shell routing. The screenshots feed the aesthetic critics in the next step AND give the user a fast visual proof.

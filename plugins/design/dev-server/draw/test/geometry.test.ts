@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
   EQUAL_AREA_CIRCLE_SCALE,
+  blobPath,
   centroid,
   centroidCenter,
   chamferCorners,
@@ -136,6 +137,35 @@ describe('A* connector routing', () => {
     const a = routeConnector({ x: 0, y: 0 }, { x: 100, y: 0 }, [obstacle], { grid: 10 });
     const b = routeConnector({ x: 0, y: 0 }, { x: 100, y: 0 }, [obstacle], { grid: 10 });
     expect(a).toEqual(b);
+  });
+});
+
+describe('blobPath (organic closed curve)', () => {
+  test('is a closed cubic-Bézier path', () => {
+    const d = blobPath(50, 50, 30, { lobes: 7, seed: 3 });
+    expect(d.startsWith('M')).toBe(true);
+    expect(d).toContain('C');
+    expect(d.trimEnd().endsWith('Z')).toBe(true);
+  });
+  test('deterministic for a given seed; different seeds differ', () => {
+    expect(blobPath(50, 50, 30, { seed: 7 })).toBe(blobPath(50, 50, 30, { seed: 7 }));
+    expect(blobPath(50, 50, 30, { seed: 7 })).not.toBe(blobPath(50, 50, 30, { seed: 8 }));
+  });
+  test('control points stay within the irregularity envelope of the radius', () => {
+    const cx = 100;
+    const cy = 100;
+    const baseR = 40;
+    const irr = 0.3;
+    const d = blobPath(cx, cy, baseR, { lobes: 8, irregularity: irr, seed: 5 });
+    const nums = Array.from(d.matchAll(/-?\d+\.?\d*/g), (m) => Number(m[0]));
+    // coords come in x,y pairs after the M/C letters; check anchor distances
+    let maxD = 0;
+    for (let i = 0; i + 1 < nums.length; i += 2) {
+      maxD = Math.max(maxD, Math.hypot(nums[i] - cx, nums[i + 1] - cy));
+    }
+    // Bézier control points overshoot anchors a bit; allow generous envelope.
+    expect(maxD).toBeLessThan(baseR * (1 + irr) * 1.7);
+    expect(maxD).toBeGreaterThan(baseR * 0.5);
   });
 });
 

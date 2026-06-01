@@ -91,5 +91,15 @@ via an injected absolute path (`MAUDE_DRAW_ENGINE`) resolved next to the bin dir
 - **Scope guardrails:** the engine covers `icon | logo | illustration | diagram |
   spot`. Out of scope: full multi-artboard layout generation (stays `/design:new`)
   and photorealism (no vector method does it).
+- **Seed-artifact source for DS bootstrap (added post-Phase-25).** `/design:setup-ds`
+  routes to `draw-agent` for an **opt-in organic-artifact layer** — backgrounds,
+  `<pattern>` tiles, spot textures, and a starter brand mark — generated from the
+  *just-discovered* palette + mood (DDR-043: discovery-driven, never hardcoded;
+  never in the `--no-discovery` neutral skeleton). This is the "organic vs hard
+  token data" gap: tokens are systematic; the `spot` type + the gradient / grain /
+  pattern / mask / blend toolkit bring warmth. Wired in `_bootstrap.md` before the
+  visual-sanity check so artifacts flow through the 4-kola critic gate. The
+  toolkit (gradients, filters incl. `feTurbulence` grain, patterns, masks/clips,
+  `mix-blend-mode`) is the engine-v2 surface this organic layer needs.
 - **Maintenance invariant:** the SVG↔JSX parity (one node tree feeds both
   serializers) is a tested invariant — keep it, same discipline as DDR-067.

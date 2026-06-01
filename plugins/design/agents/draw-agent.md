@@ -91,11 +91,15 @@ console.log(E.toJsx(prims, opts)); // inline form for canvas embedding
 
 Engine surface (from `draw/index.ts`): `rect circle ellipse line polyline polygon
 path text group place use defs symbol snap transformString squareViewBox boxViewBox
-VIEWBOX` · `pchipPath pchipEval routeConnector centroid convexHull overshoot
-EQUAL_AREA_CIRCLE_SCALE equalWeightCircleDiameter centroidCenter` · `contrastRatio
-meetsWcag oklchToRgb oklchToHex oklchRamp colorDistribution parseColor parseOklch
-relativeLuminance CURRENT_COLOR` · `snapToGrid modularScale placeLabels diagram` ·
-`toSvg toJsx primitivesToNodes` · `optimizeSvg isValidSvg`.
+VIEWBOX` · gradients/filters: `linearGradient radialGradient filter fe blurFilter
+dropShadowFilter grainFilter pattern mask clipPath` · `pchipPath pchipEval
+routeConnector centroid convexHull overshoot EQUAL_AREA_CIRCLE_SCALE
+equalWeightCircleDiameter centroidCenter` · color: `contrastRatio meetsWcag apcaLc
+oklchToRgb oklchToHex oklchRamp colorDistribution valueRange bestHarmony harmonize
+harmonyDistance HARMONY_TEMPLATES parseColor parseOklch relativeLuminance
+CURRENT_COLOR` · **composition: `armature snapToFocal assignSlots balanceMoment
+dominanceRatio`** · `snapToGrid modularScale placeLabels diagram` · `toSvg toJsx
+primitivesToNodes` · `optimizeSvg isValidSvg`.
 
 Default fills/strokes to **`currentColor`** so the mark inherits theme color and
 survives dark-mode + the single-color flatten test (the engine already defaults
@@ -114,10 +118,35 @@ Write a short plan to `<designRoot>/_draw/<slug>.plan.md`:
 
 Do NOT draw before the plan exists. (SVGThinker: planning primitives-first is the dominant quality lever.)
 
+### 0.5 Compose on an armature — the anti-soup law (MANDATORY for multi-element work)
+
+For any illustration / diagram / spot / background (anything with >1 placed
+element), you **MUST** compose on a constructed armature, not random-scatter.
+Random placement is the documented cause of "blob soup" — apply the
+`_draw-design-rules.md` **Generation discipline G1–G6**:
+
+```ts
+const arm = E.armature(box, 'dynamic-symmetry'); // or 'thirds' / 'rabatment'
+const slots = E.assignSlots(n, arm);             // place ON focals, never random
+// G2 dominance: make ONE element clearly largest (dominanceRatio ≥ 1.3)
+// G3 value:     structure colors dark base → mid support → BRIGHT focal (valueRange ≥ 0.35)
+// G4 harmony:   const fit = E.bestHarmony(hues); // distance ≈ 0; or harmonize(...)
+// G5 balance:   E.balanceMoment(elements, box).score ≥ 0.75 — nudge if off
+// G6 space:     fill a SUBSET of focals; keep one quadrant calm
+```
+
+Self-check these metrics from the primitive list BEFORE rendering. If
+`dominanceRatio < 1.3`, `valueRange < 0.35`, `balanceMoment.score < 0.75`, or
+`bestHarmony.distance` is large → fix the composition in code; do not ship it and
+hope the critic blesses it. **φ is not a goal** — never gate on it (it's a
+debunked myth; see the rubric's Phase-25.1 corrections).
+
 ### 1. Build N candidates (`candidates_n`, ≥ 2)
 
 One build script per candidate (`<slug>-cN.build.ts`), each a genuinely different
-*approach* (not a tweak). Emit each to `<designRoot>/_draw/<slug>-cN.svg`.
+*approach* (not a tweak) — but EVERY candidate obeys 0.5 (compose on an armature;
+candidates differ in armature kind / palette template / focal choice, never in
+"random seed"). Emit each to `<designRoot>/_draw/<slug>-cN.svg`.
 
 ### 2. Render + read
 

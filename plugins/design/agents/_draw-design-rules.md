@@ -2,10 +2,59 @@
 
 > Reference doc, **not** a slash command (underscore prefix). Read by both
 > `draw-agent` (generation + self-verify) and `draw-critic` (independent judge).
-> Distilled from the Phase 25 deep research (sources at the bottom of the plan).
-> Every check below is **yes/no or measurable** — no vibes. The agent verifies
-> the objective ones from the **SVG source / primitive list / palette tokens**,
+> Distilled from the Phase 25 + Phase 25.1 deep research (DDR-070; the 25.1
+> "what makes good design objectively good" pass is cited inline). Every check
+> below is **yes/no or measurable** — no vibes. The agent verifies the objective
+> ones from the **SVG source / primitive list / palette tokens / engine metrics**,
 > never by asking a vision model (VLMs misread text, counts, and color).
+
+---
+
+## ⚠️ Phase-25.1 corrections — read these first
+
+The deep research overturned several "common knowledge" rules. These govern everything below:
+
+1. **The golden ratio (φ) is NOT a quality signal.** Peer-reviewed evidence (Naini 2024; Markowsky 1992; Blake 1921) debunks the φ-and-beauty myth. **Never** gate generation or critique on φ, and never reward "it aligns to φ". φ is at most ONE optional armature among several (`armature(box,'golden')`), with no special status — prefer `thirds` / `rabatment` / `dynamic-symmetry`.
+
+2. **Armature/grid alignment is a GENERATION tool, NOT a critic gate.** Fitting *any* proportion grid to a finished image is mathematically non-discriminating — a dense enough armature aligns with *anything* (Blake 1921). So: **place elements ON the armature when generating** (`composition.armature()` → `assignSlots()`), but the critic must score with the DISCRIMINATING metrics below (balance moment, value range, harmony distance, dominance, APCA) — never "does it sit on a grid".
+
+3. **"Blob soup" is a generation-architecture failure, not a taste failure.** Random placement avoids overlap only ~3–12% of the time (Shiripour 2021). The fix is structural: compose on an armature, don't scatter-then-hope.
+
+---
+
+## Generation discipline — the anti-soup rules (MANDATORY for draw-agent)
+
+Before drawing any multi-element composition (illustration / diagram / spot / background), the agent MUST:
+
+| # | Rule | How (engine) |
+|---|---|---|
+| G1 | **Compose on an armature** — place focal + primary elements on construction focal points, never random-scatter. | `const arm = armature(box, 'dynamic-symmetry'\|'thirds'\|'rabatment'); place on arm.focals / assignSlots(n, arm)`. |
+| G2 | **One dominant focal element.** The largest element's visual weight ≥ ~1.3× the next (a clear primary, not competing foci). | `dominanceRatio(elements) ≥ 1.3` — make the focal bigger/brighter. |
+| G3 | **Value does the work.** Span a real luminance range — deep darks ↔ bright lights. A scene with depth wants `valueRange ≥ ~0.35`; a flat mid-value set reads as muddy soup. | `valueRange(keyColors)`; structure colors as base(dark) → support(mid) → focal(bright). |
+| G4 | **Harmonize the palette via a template**, don't pick hues at random. 2–3 related hues (often warm-focal vs cool-field) beat a 9-hue spectrum. | `bestHarmony(hues)` to check (`distance ≈ 0`); `harmonize(hues, template, rot)` to snap. |
+| G5 | **Balance the masses.** Net visual moment about the center near zero (asymmetry is fine if it balances). | `balanceMoment(elements, box).score ≥ ~0.75`. |
+| G6 | **Active negative space.** Leave breathing room around the focal; don't fill every quadrant. | place supports on a SUBSET of focals; keep one quadrant calm. |
+
+A composition that ignores G1–G5 is the failure mode the user called "hnusný" — fix it in generation, not by asking the critic to bless it.
+
+---
+
+## Discriminating critic metrics — measure, don't vibe (for draw-critic)
+
+The critic scores on these COMPUTED metrics (from the primitive list / palette / rendered raster), NOT on armature-presence and NOT on a gut score. Each has a measurable threshold; below threshold is a real finding, not a nag.
+
+| Metric | Compute | Pass threshold | Catches |
+|---|---|---|---|
+| **Value range** | `valueRange(colors)` (max−min WCAG luminance) | ≥ 0.35 for scenes/backgrounds with intended depth | the "washed-out pastel" + "muddy near-equal-value overlap" failures (the C + B variants) |
+| **Hue harmony** | `bestHarmony(hues).distance` (Cohen-Or, sat-weighted) | ≤ ~30 (≈0 ideal) | "fighting colors" / random-spectrum soup |
+| **Visual balance** | `balanceMoment(elements, box).score` (VME) | ≥ 0.75 | left/bottom-heavy, dead-quadrant layouts |
+| **Dominance** | `dominanceRatio(elements)` | ≥ 1.3 (one clear focal) | "everything equally loud", no focal point |
+| **Text contrast** | `apcaLc(fg, bg)` (APCA Lc) | body ≥ 75 · large/heavy ≥ 60 · any visible el ≥ 15 | illegible text / invisible elements |
+| **WCAG (text)** | `contrastRatio` / `meetsWcag` | AA (4.5 / 3) | accessibility floor |
+
+**Aggregation:** report each axis separately (per Ngo — the *summed* score has weak human correlation, so don't average them into one number). A composition **fails** if it misses ANY of: value-range, balance, dominance (these three are the anti-soup core), or any HARD floor below. **Raise the bar:** a background with `valueRange < 0.25` OR `balance < 0.6` OR `dominance < 1.15` is NOT "portfolio-grade" regardless of how pretty the colors are — that was the leniency that passed the soup.
+
+**Do NOT score:** φ-conformance, armature-alignment, root-ratio presence (all non-discriminating / debunked).
 
 ## How to read this
 

@@ -66,9 +66,33 @@ Put `"opt_out_applied": "<scope>"` in the verdict footer.
    then read the resulting PNGs. If proofs can't be captured, continue source-only and cap the score (note it).
 3. **Identify the type's dominant checks** (see the per-type table in the rubric).
 
-## Scoring — verify objective checks from SOURCE
+## Scoring — measure, don't vibe (the Phase-25.1 metrics)
 
-Walk all 30 checks. For each, decide **pass / fail / n-a** and cite evidence.
+> **Why you got fooled before.** The first version of this critic scored "blob
+> soup" backgrounds at 4.x/"portfolio-grade" because it judged on a gut feel. The
+> deep research (rubric § "Discriminating critic metrics") replaces vibe-scoring
+> with COMPUTED metrics. Compute these from the primitive list / palette FIRST —
+> they are the gate that stops mediocrity passing as wow.
+
+**Compute + report each (don't average them into one number — per-axis):**
+
+| Metric | Compute | Pass | Fails → |
+|---|---|---|---|
+| **Value range** | `valueRange(keyColors)` | ≥ 0.35 (scenes/bg) | washed-out / muddy soup |
+| **Hue harmony** | `bestHarmony(hues).distance` | ≤ ~30 (≈0 ideal) | fighting colors / random spectrum |
+| **Balance** | `balanceMoment(els, box).score` | ≥ 0.75 | dead-quadrant / lop-sided |
+| **Dominance** | `dominanceRatio(els)` | ≥ 1.3 | no focal / competing foci |
+| **Text contrast** | `apcaLc(fg,bg)` | body ≥ 75 · large ≥ 60 · any el ≥ 15 | illegible / invisible |
+
+**Anti-soup gate (non-negotiable for illustration/spot/background):** the mark
+**FAILS** if `valueRange < 0.25` OR `balance < 0.6` OR `dominance < 1.15` —
+regardless of how nice the colors are. Do NOT pass that as portfolio-grade.
+
+**Do NOT score** φ-conformance, armature-alignment, or root-ratio presence —
+they are non-discriminating (a dense grid fits anything) and φ-beauty is a
+debunked myth. Armatures are the generator's tool; you judge the *result*.
+
+Then walk the type-relevant rubric checks below. For each, decide **pass / fail / n-a** and cite evidence.
 
 - **HARD floor (the gate):**
   - **WCAG (13)** — compute `contrastRatio()` on the actual fill/stroke vs background tokens. Don't ask the image.
@@ -81,13 +105,18 @@ Walk all 30 checks. For each, decide **pass / fail / n-a** and cite evidence.
 
 ## Aggregate → verdict
 
+- **Discriminating-metric gate:** for illustration/spot/background, a failed anti-soup gate (value-range / balance / dominance below the floors above) ⇒ `passed: false`. This is the gate that was missing before.
 - **HARD floor:** any failed HARD check ⇒ `passed: false`, `hard_pass: false`. Non-negotiable.
 - **STRONG:** each unjustified STRONG failure is a blocker. A STRONG deviation *with* a sound one-line reason is a warning, not a blocker.
 - **SOFT:** warnings / notes only; never block.
 
 ```
-passed = hard_pass AND (count of unjustified STRONG failures == 0)
+passed = hard_pass
+         AND (no anti-soup gate failed)
+         AND (count of unjustified STRONG failures == 0)
 ```
+
+Put the computed metric values (`value_range`, `harmony_distance`, `balance`, `dominance`, worst `apca_lc`) in the verdict JSON so the orchestrator's loop can act on them.
 
 ## Report format
 

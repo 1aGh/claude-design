@@ -54,6 +54,38 @@ export interface DrawStyle {
   dash?: boolean | number[];
   /** Optional id (for `<use href>` targets, testing hooks, a11y). */
   id?: string;
+  /** `url(#id)` of a {@link filter} (blur / shadow / grain / glow). */
+  filter?: string;
+  /** `url(#id)` of a {@link mask} (vignette / scrim / fade overlay). */
+  mask?: string;
+  /** `url(#id)` of a {@link clipPath}. */
+  clipPath?: string;
+  /** CSS compositing — `'multiply' | 'screen' | 'overlay' | 'soft-light' | …`. */
+  mixBlendMode?: string;
+}
+
+/** `gradientUnits` mode. `objectBoundingBox` (default) uses 0–1 coords. */
+export type GradientUnits = 'objectBoundingBox' | 'userSpaceOnUse';
+
+/** One color stop of a gradient. `offset` 0–1; optional per-stop opacity. */
+export interface GradientStop {
+  offset: number;
+  color: string;
+  opacity?: number;
+}
+
+/**
+ * A single SVG filter-primitive node (`feGaussianBlur`, `feTurbulence`,
+ * `feDropShadow`, `feColorMatrix`, `feMerge` + `feMergeNode`, …). Open-ended by
+ * design — the filter sub-language has dozens of elements, so this is a generic
+ * `{ tag, attrs, children }` rather than an enumerated union. Attr keys are
+ * camelCase (`stdDeviation`, `baseFrequency`, `floodColor`); the serializer
+ * maps the few kebab ones (`flood-color`) per dialect.
+ */
+export interface FePrimitive {
+  fe: string;
+  attrs?: Record<string, string | number>;
+  children?: FePrimitive[];
 }
 
 /** Text-specific attributes layered on top of {@link DrawStyle}. */
@@ -90,7 +122,7 @@ export type DrawPrimitive =
   | ({ el: 'text'; x: number; y: number; content: string } & TextAttrs & DrawStyle)
   | ({ el: 'group'; children: DrawPrimitive[]; transform?: string } & Pick<
       DrawStyle,
-      'opacity' | 'id'
+      'opacity' | 'id' | 'filter' | 'mask' | 'clipPath' | 'mixBlendMode'
     >)
   | { el: 'defs'; children: DrawPrimitive[] }
   | { el: 'symbol'; id: string; children: DrawPrimitive[]; viewBox?: string }
@@ -102,7 +134,49 @@ export type DrawPrimitive =
       width?: number;
       height?: number;
       transform?: string;
-    } & DrawStyle);
+    } & DrawStyle)
+  | {
+      el: 'linearGradient';
+      id: string;
+      stops: GradientStop[];
+      x1?: number;
+      y1?: number;
+      x2?: number;
+      y2?: number;
+      gradientUnits?: GradientUnits;
+    }
+  | {
+      el: 'radialGradient';
+      id: string;
+      stops: GradientStop[];
+      cx?: number;
+      cy?: number;
+      r?: number;
+      fx?: number;
+      fy?: number;
+      gradientUnits?: GradientUnits;
+    }
+  | {
+      el: 'filter';
+      id: string;
+      prims: FePrimitive[];
+      x?: string | number;
+      y?: string | number;
+      width?: string | number;
+      height?: string | number;
+      colorInterpolationFilters?: 'sRGB' | 'linearRGB';
+    }
+  | {
+      el: 'pattern';
+      id: string;
+      width: number;
+      height: number;
+      children: DrawPrimitive[];
+      patternUnits?: GradientUnits;
+      patternTransform?: string;
+    }
+  | { el: 'mask'; id: string; children: DrawPrimitive[] }
+  | { el: 'clipPath'; id: string; children: DrawPrimitive[] };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Grid snapping
@@ -142,6 +216,10 @@ function styleOf<T extends DrawStyle>(o: T): DrawStyle {
   if (o.strokeOpacity !== undefined) s.strokeOpacity = o.strokeOpacity;
   if (o.dash !== undefined) s.dash = o.dash;
   if (o.id !== undefined) s.id = o.id;
+  if (o.filter !== undefined) s.filter = o.filter;
+  if (o.mask !== undefined) s.mask = o.mask;
+  if (o.clipPath !== undefined) s.clipPath = o.clipPath;
+  if (o.mixBlendMode !== undefined) s.mixBlendMode = o.mixBlendMode;
   return s;
 }
 
@@ -236,12 +314,32 @@ export function text(
 
 export function group(
   children: DrawPrimitive[],
-  o: { transform?: string; opacity?: number; id?: string } = {}
+  o: {
+    transform?: string;
+    opacity?: number;
+    id?: string;
+    filter?: string;
+    mask?: string;
+    clipPath?: string;
+    mixBlendMode?: string;
+  } = {}
 ): DrawPrimitive {
-  const out: DrawPrimitive = { el: 'group', children };
-  if (o.transform !== undefined) (out as { transform?: string }).transform = o.transform;
-  if (o.opacity !== undefined) (out as { opacity?: number }).opacity = o.opacity;
-  if (o.id !== undefined) (out as { id?: string }).id = o.id;
+  const out = { el: 'group' as const, children } as DrawPrimitive & {
+    transform?: string;
+    opacity?: number;
+    id?: string;
+    filter?: string;
+    mask?: string;
+    clipPath?: string;
+    mixBlendMode?: string;
+  };
+  if (o.transform !== undefined) out.transform = o.transform;
+  if (o.opacity !== undefined) out.opacity = o.opacity;
+  if (o.id !== undefined) out.id = o.id;
+  if (o.filter !== undefined) out.filter = o.filter;
+  if (o.mask !== undefined) out.mask = o.mask;
+  if (o.clipPath !== undefined) out.clipPath = o.clipPath;
+  if (o.mixBlendMode !== undefined) out.mixBlendMode = o.mixBlendMode;
   return out;
 }
 
@@ -278,6 +376,193 @@ export function use(
   if (o.height !== undefined) out.height = o.height;
   if (o.transform !== undefined) out.transform = o.transform;
   return out;
+}
+
+/**
+ * A linear gradient definition (place inside `defs(...)` and reference with
+ * `fill: 'url(#id)'`). Coords default to a top→bottom sweep in objectBoundingBox
+ * space — exactly what a sky/backdrop wants.
+ */
+export function linearGradient(o: {
+  id: string;
+  stops: GradientStop[];
+  x1?: number;
+  y1?: number;
+  x2?: number;
+  y2?: number;
+  gradientUnits?: GradientUnits;
+}): DrawPrimitive {
+  const g = { el: 'linearGradient' as const, id: o.id, stops: o.stops };
+  const out = g as DrawPrimitive & {
+    x1?: number;
+    y1?: number;
+    x2?: number;
+    y2?: number;
+    gradientUnits?: GradientUnits;
+  };
+  if (o.x1 !== undefined) out.x1 = o.x1;
+  if (o.y1 !== undefined) out.y1 = o.y1;
+  if (o.x2 !== undefined) out.x2 = o.x2;
+  if (o.y2 !== undefined) out.y2 = o.y2;
+  if (o.gradientUnits !== undefined) out.gradientUnits = o.gradientUnits;
+  return out;
+}
+
+/** A radial gradient definition (e.g. a sun/glow). Reference with `fill: 'url(#id)'`. */
+export function radialGradient(o: {
+  id: string;
+  stops: GradientStop[];
+  cx?: number;
+  cy?: number;
+  r?: number;
+  fx?: number;
+  fy?: number;
+  gradientUnits?: GradientUnits;
+}): DrawPrimitive {
+  const g = { el: 'radialGradient' as const, id: o.id, stops: o.stops };
+  const out = g as DrawPrimitive & {
+    cx?: number;
+    cy?: number;
+    r?: number;
+    fx?: number;
+    fy?: number;
+    gradientUnits?: GradientUnits;
+  };
+  if (o.cx !== undefined) out.cx = o.cx;
+  if (o.cy !== undefined) out.cy = o.cy;
+  if (o.r !== undefined) out.r = o.r;
+  if (o.fx !== undefined) out.fx = o.fx;
+  if (o.fy !== undefined) out.fy = o.fy;
+  if (o.gradientUnits !== undefined) out.gradientUnits = o.gradientUnits;
+  return out;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Filters / patterns / masks / clips — the rest of the legit design toolkit.
+// Place each inside `defs(...)` and reference it from a style field:
+//   filter → `filter: 'url(#id)'` · pattern → `fill: 'url(#id)'`
+//   mask   → `mask: 'url(#id)'`   · clipPath → `clipPath: 'url(#id)'`
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A generic filter primitive — `fe('feGaussianBlur', { stdDeviation: 4 })`. */
+export function fe(
+  tag: string,
+  attrs?: Record<string, string | number>,
+  children?: FePrimitive[]
+): FePrimitive {
+  const out: FePrimitive = { fe: tag };
+  if (attrs) out.attrs = attrs;
+  if (children) out.children = children;
+  return out;
+}
+
+/** A `<filter>` def assembled from filter primitives (build them with {@link fe}). */
+export function filter(
+  id: string,
+  prims: FePrimitive[],
+  region?: {
+    x?: string | number;
+    y?: string | number;
+    width?: string | number;
+    height?: string | number;
+    colorInterpolationFilters?: 'sRGB' | 'linearRGB';
+  }
+): DrawPrimitive {
+  const out = { el: 'filter' as const, id, prims } as DrawPrimitive & {
+    x?: string | number;
+    y?: string | number;
+    width?: string | number;
+    height?: string | number;
+    colorInterpolationFilters?: 'sRGB' | 'linearRGB';
+  };
+  if (region?.x !== undefined) out.x = region.x;
+  if (region?.y !== undefined) out.y = region.y;
+  if (region?.width !== undefined) out.width = region.width;
+  if (region?.height !== undefined) out.height = region.height;
+  if (region?.colorInterpolationFilters !== undefined)
+    out.colorInterpolationFilters = region.colorInterpolationFilters;
+  return out;
+}
+
+/** Convenience: a Gaussian-blur filter. */
+export function blurFilter(id: string, stdDeviation: number): DrawPrimitive {
+  return filter(id, [fe('feGaussianBlur', { in: 'SourceGraphic', stdDeviation })]);
+}
+
+/** Convenience: a soft drop-shadow filter (a generous filter region by default). */
+export function dropShadowFilter(
+  id: string,
+  o: { dx?: number; dy?: number; blur?: number; color?: string; opacity?: number } = {}
+): DrawPrimitive {
+  const attrs: Record<string, string | number> = {
+    dx: o.dx ?? 0,
+    dy: o.dy ?? 2,
+    stdDeviation: o.blur ?? 3,
+    floodColor: o.color ?? '#000000',
+    floodOpacity: o.opacity ?? 0.3,
+  };
+  return filter(id, [fe('feDropShadow', attrs)], {
+    x: '-30%',
+    y: '-30%',
+    width: '160%',
+    height: '160%',
+  });
+}
+
+/**
+ * Convenience: a film-grain / noise overlay filter (feTurbulence → desaturate →
+ * fade). Apply to a full-bleed rect with a low opacity + `mix-blend-mode` for a
+ * tasteful textured overlay.
+ */
+export function grainFilter(
+  id: string,
+  o: { frequency?: number; octaves?: number; opacity?: number } = {}
+): DrawPrimitive {
+  const freq = o.frequency ?? 0.9;
+  const oct = o.octaves ?? 2;
+  const op = o.opacity ?? 0.5;
+  return filter(id, [
+    fe('feTurbulence', {
+      type: 'fractalNoise',
+      baseFrequency: freq,
+      numOctaves: oct,
+      stitchTiles: 'stitch',
+      result: 'noise',
+    }),
+    fe('feColorMatrix', { in: 'noise', type: 'saturate', values: 0 }),
+    fe('feComponentTransfer', undefined, [fe('feFuncA', { type: 'linear', slope: op })]),
+  ]);
+}
+
+/** A tiled `<pattern>` def. Build the tile from any primitives (dots, stripes, grid). */
+export function pattern(o: {
+  id: string;
+  width: number;
+  height: number;
+  children: DrawPrimitive[];
+  patternUnits?: GradientUnits;
+  patternTransform?: string;
+}): DrawPrimitive {
+  const out = {
+    el: 'pattern' as const,
+    id: o.id,
+    width: o.width,
+    height: o.height,
+    children: o.children,
+  } as DrawPrimitive & { patternUnits?: GradientUnits; patternTransform?: string };
+  if (o.patternUnits !== undefined) out.patternUnits = o.patternUnits;
+  if (o.patternTransform !== undefined) out.patternTransform = o.patternTransform;
+  return out;
+}
+
+/** A `<mask>` def (white shows, black hides) — vignettes, edge fades, scrims. */
+export function mask(id: string, children: DrawPrimitive[]): DrawPrimitive {
+  return { el: 'mask', id, children };
+}
+
+/** A `<clipPath>` def. */
+export function clipPath(id: string, children: DrawPrimitive[]): DrawPrimitive {
+  return { el: 'clipPath', id, children };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
