@@ -128,6 +128,12 @@
       "description": "Color space the project uses in tokens CSS. The completeness-critic V2 gates the actual token format against this declaration. Default: 'oklch' (backwards-compatible). Per DDR-043.",
       "default": "oklch"
     },
+    "aestheticAmbition": {
+      "type": "string",
+      "enum": ["restrained", "confident", "expressive", "maximalist"],
+      "description": "How chromatically/decoratively expressive the DS is. Inferred by ux-research-agent from brand character during /design:setup-ds (NOT a picker), then anchors the structural knobs (accentStrategy, shadow/decor) and sets the default opt_out_scope for canvases under this DS (restrained|confident → palette, expressive → aesthetic, maximalist → full). Default 'restrained' is the legacy/no-bootstrap fallback only — a bootstrapped DS always writes the inferred value. Per DDR-073.",
+      "default": "restrained"
+    },
     "designSystems": {
       "type": "array",
       "description": "Design systems available in this project. Single-DS projects have one entry; multi-DS projects (marketing vs. admin vs. mobile) list each here. Each canvas's .meta.json declares which DS it uses via the 'designSystem' field. The System view's DS picker iterates this array.",

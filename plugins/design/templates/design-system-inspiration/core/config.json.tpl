@@ -19,6 +19,7 @@
   "activeFamilies": {{active_families}},
   "accentStrategy": "{{accent_strategy}}",
   "colorSpace": "{{color_space}}",
+  "aestheticAmbition": "{{aesthetic_ambition}}",
   "designSystems": [
     {
       "name": "{{ds_dirname}}",

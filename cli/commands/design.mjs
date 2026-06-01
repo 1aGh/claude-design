@@ -683,6 +683,7 @@ function defaultPayload({ projectName, dsName }) {
     fg_1: 'oklch(35% 0 0)',
     fg_2: 'oklch(55% 0 0)',
     fg_3: 'oklch(75% 0 0)',
+    aesthetic_ambition: 'restrained',
     accent_strategy: 'single',
     accent_strategy_summary: 'single accent — discovery has not been run',
     accent_block:

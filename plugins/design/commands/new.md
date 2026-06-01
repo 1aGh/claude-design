@@ -209,10 +209,20 @@ if [ -z "$SCOPE" ]; then
     # Surface AskUserQuestion before continuing — propose INFERRED, options a/b/c, default a.
     SCOPE=<user_choice_or_palette_in_auto_mode>
   else
-    SCOPE="palette"   # silent default
+    # 3. DS-default from config.aestheticAmbition (DDR-073). The DS's inferred ambition sets the
+    #    default scope, so an expressive/maximalist DS doesn't need --opt-out on every canvas.
+    #    Legacy/missing field → "restrained" → palette = old behavior (zero regression).
+    AMB=$(jq -r '.aestheticAmbition // "restrained"' "${DESIGN_ROOT:-.design}/config.json" 2>/dev/null)
+    case "$AMB" in
+      maximalist) SCOPE="full" ;;
+      expressive) SCOPE="aesthetic" ;;
+      *)          SCOPE="palette" ;;   # restrained | confident | legacy/missing
+    esac
   fi
 fi
 ```
+
+**Explicit `--opt-out` and plain-language signals still win** (steps 1–2 precede the DS default). A11y is enforced at every scope regardless. The DS default just means "born expressive ⇒ canvases default to `aesthetic`" instead of the universal hardcoded `palette`.
 
 The resolved `SCOPE` is persisted on the canvas's `.meta.json` `opt_out_scope` field (step 11) and passed to every critic in the auto-fix loop (step 10).
 

@@ -153,9 +153,24 @@ Every `signature_treatment_options[i]` in the payload MUST set `family` to one o
 | `hard-edges` | Radii collapse to `0/2/4`; shadows removed except focus ring; borders bumped to `--border-strong`; thicker outlines on key elements. Brutalist / no-nonsense. |
 | `depth-stretch` | Shadow ladder stretched — `--shadow-md/lg/xl` get longer offsets and softer blurs; cards float higher; hover state lifts more. Soft-floaty depth. |
 | `inset-recess` | Tokens add `--shadow-inset-sm/md`; inputs + toggles use inset-shadow surfaces; never inside chrome with text on it (accessibility). Hardware-toggle / recessed feel. |
+| `chromatic-blocks` | Multiple `--accent-*` filled surfaces used as **structural blocks** (Memphis / Canva / Figma-Config); bold high-chroma colour fields where **colour carries the hierarchy**, not just an accent dot. Requires `accentStrategy ≥ chromatic-3` (the scaffold emits N accent families). Fills use real accent/surface tokens — never a decorative-backdrop token as a product fill (D-5). For `expressive`/`maximalist` ambition. |
+| `gradient-mesh` | Body bg = soft multi-stop **mesh / aurora** gradient (Figma / Stripe-marketing); tokens add a single-role `--mesh-*` backdrop family (backdrop ONLY, per D-5); cards stay accent-tinted, not mesh-filled. Honours `prefers-reduced-motion` (no animated mesh under reduce). For `expressive`/`maximalist` ambition; overridden to a solid translucent fill when Q10 hard-NOs include "no gradients". |
 | `none` | No body-level treatment; `_layout.css` stays minimal; chrome reads flat. The opt-out value. |
 
 The agent may also propose treatments outside this catalog — when it does, it must either map them to the closest family OR flag in `research_quality_notes` that a new family ID is needed (which then becomes a spec-change conversation, not a silent extension).
+
+### Aesthetic ambition → structural knobs (anchor inference — DDR-073)
+
+`aesthetic_ambition` is the **inferred anchor** for the whole DS (the `ux-research-agent` reads it from brand character — Probe A lineage + Probe B Zrcadlo+Charakter — NOT a picker). It is emitted BEFORE the per-knob structural decisions, and those decisions **derive from it** instead of each defaulting conservative. The scaffold writes the inferred value into `config.json.aestheticAmbition`, which also sets the default `opt_out_scope` for canvases under this DS (so expressiveness is a DS property, not a per-canvas flag).
+
+| Pole | `accentStrategy` | shadow / decor | favoured Q9 families | default `opt_out_scope` |
+|---|---|---|---|---|
+| `restrained` | `single` | soft / none | `none`, `chrome-glow`, `inset-recess`, `hard-edges` | `palette` |
+| `confident` | `single \| paired` | soft, +1 chromatic-surface tolerance | `chrome-glow`, `depth-stretch`, `frosted-blur` | `palette` |
+| `expressive` | `paired \| chromatic-3` | accent-tinted, gradients OK | `gradient-mesh`, `chromatic-blocks`, `frosted-blur` | `aesthetic` |
+| `maximalist` | `chromatic-N` | bold, colour-as-structure | `chromatic-blocks`, `gradient-mesh`, `body-pattern` | `full` |
+
+**Anti-funnel invariant:** absence of a clear brand-character signal does NOT mean `restrained` — it means low confidence, so Stage 3 ASKS across the full scale (incl. a multi-colour palette option). High-confidence skip is legitimate only when the character is unambiguous, at **both** ends of the scale. Q10 hard-NOs still override (e.g. "no gradients" disables `gradient-mesh`).
 
 ### Q10 hard NOs — sub-agent guardrails
 

@@ -232,6 +232,7 @@ Odpověz v jednom message. Napiš `skip` u jakékoli otázky kterou chceš přes
   "author_voice": "<P9 — may be null>",
   "ds_signature_hypothesis": "<P10 — may be 'no preference'>",
   "ds_signature_anti": "<P11 — may be null>",
+  "aesthetic_ambition_signal": "<nullable — ONLY set when the user volunteered an expressiveness cue in free-text (e.g. P1/P5/P10 said 'barevné jako Figma', 'extravagantní', 'klidný minimalismus'). NOT a prompted field — no Stage 1 question asks for it. A high-weight hint for Stage 2's inference, never a hard pin. Leave null when no cue was volunteered (the common case).>",
   "_pastier_chapter_coverage": {
     "zrcadlo": ["P2", "P3"],
     "facka":   ["P4", "P6"],
@@ -269,12 +270,20 @@ researched_at:   <current ISO date>
 
 `BRIEF_SHA8 = printf '%s' "$(cat <vision-brief.json>)" | shasum -a 256 | cut -c1-8`. Exact hash match for cache reuse; `--force` always re-researches.
 
-The agent's prompt has been extended with **5 Pastier probe templates** (`A. Ulice / B. Zrcadlo + Charakter / C. OST / D. Kmen / E. Confidence evaluation`) — see `_pastier-probe-templates.md` in this folder. The probes structure the WebSearch queries against the vision-brief fields. The agent's response payload extends the existing `discovery` schema with a new `recommendations` block:
+The agent's prompt has been extended with **5 Pastier probe templates** (`A. Ulice / B. Zrcadlo + Charakter / C. OST / D. Kmen / E. Confidence evaluation`) — see `_pastier-probe-templates.md` in this folder. The probes structure the WebSearch queries against the vision-brief fields. The agent's response payload extends the existing `discovery` schema with a new `recommendations` block.
+
+> **Aesthetic ambition is inferred here, not asked (DDR-073).** The agent reads the brand character (Probe A lineage + Probe B Zrcadlo+Charakter + the product-description fields above, plus `aesthetic_ambition_signal` if the user volunteered one) and infers `aesthetic_ambition` ∈ `restrained | confident | expressive | maximalist` as the **anchor** of the `recommendations` block — the structural knobs (`accent_strategy`, `shadow_strategy`, `radii_personality`, `type_ratio`) derive FROM it. **No Stage 0 / Stage 1 question asks for it.** Confidence is honest: ambiguous brand character → `< 0.60` → Stage 3 asks across the full scale; absence of signal is NEVER read as `restrained`. The full schema lives in `ux-research-agent.md`; this is the bootstrap-side summary.
 
 ```jsonc
 {
-  /* … existing fields (mood_clusters, color_oklch_options, …) … */
+  /* … existing fields (mood_clusters, color_oklch_options, palette_options, …) … */
   "recommendations": {
+    "aesthetic_ambition": {
+      "recommendation": "expressive",
+      "alternatives":   ["confident", "maximalist"],
+      "confidence":     0.78,
+      "rationale":      "Probe B charakter='hravý experimentátor' + design_lineage='Figma / Gumroad' + primary_emotion='radost' → multi-accent expressive. Considered restrained, ruled out: every anchor is colour-forward."
+    },
     "palette": {
       "recommendation": { /* primary OKLCH option */ },
       "alternatives":   [ /* 2 OKLCH options */ ],
@@ -317,6 +326,17 @@ For each decision in `recommendations`:
 | **≥ 0.85** | **Skip Q.** Surface only in the final 3-sentence confirm. |
 | **0.60–0.85** | **1 Q with pre-pick.** Recommended option is first; 2 alternatives from `alternatives[]`; auto-"Other" affordance for user-written override; one option labeled `skip (keep recommendation)`. |
 | **< 0.60** | **1 Q without pre-pick.** 3 alternatives (research's top 3) with `recommended` flag on the first; auto-"Other" for user-written. |
+
+**Anchor decision first — `aesthetic_ambition` (DDR-073).** Process the anchor before the other decisions; its outcome pre-fills the derived structural knobs (a confident `expressive` reading means you never separately ask "single or chromatic accent?" — `accent_strategy` rode along). It follows the same confidence gate: high confidence → skip (only shown in the confirm), `< 0.60` → ask. **The ambiguous-ambition Q opens the FULL scale (never a binary), and when it lands ≥ `expressive` the palette sub-question presents a coordinated multi-colour palette from `palette_options[]`, not a single swatch.** Question shape (plain language, no jargon):
+
+```
+Z tvého briefu mi vychází, že tenhle DS je spíš VÝRAZNĚJŠÍ / barevný — <jedna věta proč, z brand charakteru>.
+Sedí to, nebo to chceš posunout?
+  ○ Sedí, jdeme výrazně (vyberu multi-color paletu)   (Recommended)
+  ○ Spíš klidněji / míň barev                          (→ confident / restrained)
+  ○ Ještě víc / barva jako struktura                   (→ maximalist)
+  ○ Ukaž mi konkrétní palety na výběr                  (surfaces palette_options[])
+```
 
 Counts observed in dogfood (DF-10, DF-11):
 
@@ -410,7 +430,7 @@ Compute `activeFamilies[]`:
 
 ### Accent color heuristic (Q6 "pick for me")
 
-When the user lets the skill pick the OKLCH accent, **read the mood cues in Q1 + Q5 + Q6 label before picking lightness**:
+When the skill picks the OKLCH accent itself, **read the mood cues in the vision-brief + lineage before picking lightness**. This ladder is **per-swatch**: for `aesthetic_ambition ≥ expressive` the DS carries a *coordinated palette* (`palette_options[]`), so apply the ladder to EACH `--accent*` family — distinct hues (spaced ≥ 40° apart) that read as one set, not a single accent. For `restrained`/`confident`, one accent.
 
 | Mood cue | Target L | Target C | Notes |
 |---|---|---|---|
@@ -418,7 +438,7 @@ When the user lets the skill pick the OKLCH accent, **read the mood cues in Q1 +
 | "electric", "vibrant", "neon", "highlighter" | L 72–80 | C 0.18–0.24 | Bright, sits forward on dark |
 | "muted", "earthy", "natural", "stone" | L 55–62 | C 0.08–0.13 | Low chroma; reads quiet |
 | "pastel", "soft", "creamy" | L 75–85 | C 0.08–0.12 | High L, low C |
-| default (no mood cue) | L 68–72 | C 0.14–0.18 | Mid-range, "tasteful default" |
+| no explicit mood cue | — | — | **Do NOT fall to a single "tasteful default" accent.** Route to the `aesthetic_ambition` inference (DDR-073): `restrained`/`confident` → one mid-range accent (L 66–72, C 0.10–0.16); `expressive`/`maximalist` → a coordinated multi-hue palette (per-swatch L/C from the cue rows above, hues ≥ 40° apart, reading as one chromatic identity). |
 
 **Why this exists:** picking accent OKLCH from mood cues alone (without checking lightness for the cue) is a known failure mode — e.g. "burnt / lava / warm" briefs default to high-L oranges that render as candy / pumpkin rather than the deep, technical warmth the mood word implied. Always **screenshot the accent in context** (step 7 below) before declaring the color final.
 
@@ -599,6 +619,7 @@ The dependency root. Main agent writes these **in order, alone** because every l
 > **Canvas-lib note (DDR-025):** Per Phase 4.0.5 canvas-lib ships with the dev-server install at `plugins/design/dev-server/canvas-lib.tsx`. Bootstrap **does not** scaffold a project-side copy — the virtual specifier `@maude/canvas-lib` resolves directly at canvas build time. UI mock canvases keep importing `DesignCanvas` / `DCSection` / `DCArtboard` from `@maude/canvas-lib` without any per-project setup.
 
 1. `colors_and_type.css` — tokens. Substitute discovery values (accent OKLCH, fonts, density-derived `--space-*` defaults, Q9-derived shadow/treatment tokens like `--shadow-glow` or `--scanline-alpha`).
+   - **Aesthetic-ambition-derived accent families (DDR-073).** Emit `--accent*` families to match the `accentStrategy` that was derived from `aesthetic_ambition`: `single` → `--accent` only; `paired` → `--accent` + `--accent-2`; `chromatic-N` → `--accent` … `--accent-N` taken from `palette_options[]` (hues ≥ 40° apart, each with its hover / active / fg derivations). The family count MUST equal the declared `config.aestheticAmbition` strategy so completeness-critic C7 passes. **Also write the inferred ambition into `config.json` `aestheticAmbition` (the `{{aesthetic_ambition}}` placeholder)** — that value sets the per-canvas default opt-out scope (`restrained`/`confident` → `palette`, `expressive` → `aesthetic`, `maximalist` → `full`; consumed by `/design:new` + `/design:edit`).
    - **Restraint-default type ladder (D-8).** Editorial / display DSes default to a **restrained ladder — type-scale ratio ≤ 1.2, optical-size ≤ 72, weight ≤ semibold for the display face, tracking ≥ -0.02em.** The user opts **UP** via `/design:edit` ("make the display bigger / heavier / more dramatic"), never down. This is a **default, not a hard-stop** — discovery may legitimately call for maximalism, and a high-confidence research recommendation that explicitly wants drama (opsz-144, ratio 1.25, a black display weight) wins. The rule exists so the scaffold *starts restrained and dials up on request* rather than shipping melodramatic type the user has to walk back (studyfi shipped a 1.25 / opsz-144 / black scale the user re-tuned by hand).
    - **Research type-fidelity (D-7).** When substituting the font tokens from the research payload's type recommendation: **mirror the research's PRIMARY display-face ROLE exactly.** A "grotesque" direction MUST yield a grotesque display face even when an open-source serif is more convenient to wire up — do **not** let font availability flip the role. Distinguish the **display-face role** from the **body-accent role**: a recommendation phrased like `display-grotesque-editorial-serif` means a grotesque sans is the DISPLAY face *with* an editorial serif reserved for BODY accents — the serif is NOT the display face. If the named face is unavailable, substitute within the **same role / classification** (grotesque → grotesque, never grotesque → serif) and **log the substitution to the bypass-log**. (Studyfi's research said `display-grotesque-editorial-serif`; the scaffold read "serif", picked Fraunces as the display face, and inverted the intended roles — D-7.)
 2. `<designRoot>/system/<ds>/preview/_layout.css` — chrome. **Bakes Q9 signature treatment into the body background + h1 treatment.** Examples:
@@ -607,6 +628,8 @@ The dependency root. Main agent writes these **in order, alone** because every l
    - Q9 = `glassmorphism` → backdrop-filter blur on cards; `.specimen` gets a faint frosted backdrop
    - Q9 = `brutalism` → no shadows at all; thick `--border-strong` outlines; sharp corners override on key elements
    - Q9 = `soft-shadow depth ladder` → richer `--shadow-md/lg` with longer offsets; cards float higher
+   - Q9 = `chromatic-blocks` (DDR-073, `expressive`/`maximalist`) → bold `--accent*`-filled structural blocks where colour carries the hierarchy; mild→sharp radii; NO decorative backdrop (the colour fields ARE the treatment). Fills use real accent/surface tokens (D-5).
+   - Q9 = `gradient-mesh` (DDR-073, `expressive`/`maximalist`) → soft multi-stop `--mesh-*` mesh/aurora body bg + accent-tinted cards; reduced-motion safe (static mesh under `reduce`); overridden to a solid translucent fill when Q10 hard-NOs include "no gradients".
    - The treatment is **the project's first impression** — every specimen inherits it via `_layout.css`.
    - **Token-role separation (D-5) — no dual-purpose tokens.** Decorative / background tokens (a mesh, gradient, glow, or scanline backdrop family — e.g. `--mesh-*`, `--shadow-glow`, `--scanline-alpha`) are **single-role: backdrop only.** Specimens that need to demonstrate accent *tints* on surfaces use `--accent-muted` / surface tokens (`--bg-1..4`), **never** the backdrop family. Don't dual-purpose a decorative backdrop token as a fill on a product surface — that's how studyfi's mesh tokens leaked into component fills and read as noise (D-5). One token, one role.
 3. **`<designRoot>/system/<ds>/preview/_components.css`** — shared component anatomy. **Emit when Q9 family ≠ `none` AND the signature treatment repeats across 3+ components** (typical: a bevel pattern on button + tile + segmented + switch; a recessed-bay pattern on input + checkbox + radio). Promotes `.btn`, `.tile`, `.input`, `.switch`, `.seg`, `.pill`, etc. out of per-specimen `<style>` blocks into one authoritative file. Specimens then carry only their demonstration-specific CSS inline. **Skip** when Q9 family = `none` AND Q12 family = `roomy` — inline styles are fine and `_components.css` adds noise. Sub-agents in Batch C MUST receive this file (when present) as part of their reference bundle and reference its class names instead of re-implementing the anatomy.

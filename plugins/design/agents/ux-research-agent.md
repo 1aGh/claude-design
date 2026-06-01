@@ -163,7 +163,8 @@ If a researched option does not fit any catalogued family, either map it to the 
 10. **Probe A (continued)** → `iconography_vibe_options[]` (3). `family` per Rule 4.
 11. **Probe D (Kmen)** → `density_options[]` (3) — biased by `vision-brief.audience` + `vision-brief.scope` + `vision-brief.author_voice`. `family` per Rule 4.
 12. **Probe A (continued)** → `anti_references[]` (2–3) + `current_trends[]` (2–3 with `still_alive` flag).
-13. **Probe E (Confidence)** → build the `recommendations` block. **For each of the 6 design decisions** (`palette`, `typography`, `signature_treatment`, `majak_3_codes`, `density`, `voice`) compute:
+12.5. **Probe B/E → infer the ANCHOR `aesthetic_ambition`** (DDR-073) ∈ `restrained | confident | expressive | maximalist` from brand character (Probe A lineage + Probe B Zrcadlo+Charakter + the product-description fields + `aesthetic_ambition_signal` if volunteered). This is computed FIRST. **If inferred ambition ≥ `expressive`, also populate `palette_options[]`** (a coordinated 2–5 colour set). Derive the structural knobs (`accent_strategy`, `shadow_strategy`, `radii_personality`, `type_ratio`) FROM the inferred pole via `_MAPPING.md` § "Aesthetic ambition → structural knobs" — never default them conservative.
+13. **Probe E (Confidence)** → build the `recommendations` block. **For each design decision** — the anchor `aesthetic_ambition` FIRST, then `palette`, `typography`, `signature_treatment`, `majak_3_codes`, `density`, `voice`, plus the derived structural knobs — compute:
     - `recommendation` — the primary pick (links to the `recommended: true` entry in the corresponding `*_options[]` array)
     - `alternatives[]` — 1–2 other options worth considering
     - `confidence` — `[0.0, 1.0]` per the heuristic in `_pastier-probe-templates.md` § E (high ≥ 0.85 = brief specific + research consensus; mid 0.60–0.85 = brief specific OR research consensus; low < 0.60 = brief vague + research thin)
@@ -217,6 +218,22 @@ If a researched option does not fit any catalogued family, either map it to the 
       "recommended": false
     }
   ],
+
+  "palette_options": [
+    {
+      "id": "<palette-id>",
+      "label": "<human-readable — e.g. 'Figma-bold trio (anchor: Figma Config)'>",
+      "swatches": [
+        { "role": "accent",   "oklch": "oklch(<L> <C> <H>)", "note": "<what this hue leads / where it sits>" },
+        { "role": "accent-2", "oklch": "oklch(<L> <C> <H>)", "note": "<…>" },
+        { "role": "accent-3", "oklch": "oklch(<L> <C> <H>)", "note": "<…>" }
+      ],
+      "domain_rationale": "<one sentence — why this coordinated set fits the brand character / lineage>",
+      "anchor_examples": ["<product>", "<product>"],
+      "recommended": false
+    }
+  ],
+  "_palette_options_doc": "ONLY populated when inferred aesthetic_ambition ≥ expressive — a coordinated 2–5 colour set (the DS's chromatic identity), not a single swatch. recommendations.palette may point at one of these instead of color_oklch_options. Each swatch maps to an --accent / --accent-2 / --accent-3 … family, so accentStrategy = chromatic-N where N = swatch count. Empty for restrained / confident (single-accent poles use color_oklch_options).",
 
   "typography_pairing_options": [
     {
@@ -295,9 +312,18 @@ If a researched option does not fit any catalogued family, either map it to the 
   ],
 
   "recommendations": {
-    "_doc": "Stage 3 (DDR-033) reads this block per-decision to decide skip / pre-fill / ask. Confidence is MANDATORY.",
+    "_doc": "Stage 3 (DDR-033) reads this block per-decision to decide skip / pre-fill / ask. Confidence is MANDATORY. aesthetic_ambition is the ANCHOR (DDR-073) — compute it FIRST; the structural knobs below derive from it.",
+
+    "aesthetic_ambition": {
+      "_doc": "ANCHOR decision (DDR-073). Inferred from brand character — Probe A lineage + Probe B Zrcadlo+Charakter + the vision-brief product-description fields + aesthetic_ambition_signal (if the user volunteered one). NOT a picker; no Stage 0/1 question asks for it. The structural knobs (accent_strategy, shadow_strategy, radii_personality, type_ratio) derive from this pole.",
+      "recommendation": "restrained | confident | expressive | maximalist",
+      "alternatives":   [ "<adjacent pole>", "<adjacent pole>" ],
+      "confidence":     0.0,
+      "rationale":      "<one sentence naming the brand-character signals (lineage / character / emotion / anchor chroma) that cluster on this temperature. MANDATORY audit clause when recommending `restrained` or `confident`: name the expressive end you considered and why you ruled it out — this counters the model's own minimal-bias. e.g. 'character=quiet craftsman + lineage=Stripe docs + every anchor low-chroma → restrained; considered confident, ruled out: no colour-forward cue anywhere in the brief or anchors.'>"
+    },
+
     "palette": {
-      "recommendation":  { "id": "<links to color_oklch_options[].id>" },
+      "recommendation":  { "id": "<links to color_oklch_options[].id — OR palette_options[].id when aesthetic_ambition ≥ expressive (a coordinated multi-colour set, not one swatch)>" },
       "alternatives":    [ { "id": "<alt-1>" }, { "id": "<alt-2>" } ],
       "confidence":      0.85,
       "rationale":       "<one sentence — vision-brief field(s) + research evidence + why this pick>"
@@ -312,15 +338,15 @@ If a researched option does not fit any catalogued family, either map it to the 
       "confidence":     0.0,
       "rationale":      "<one sentence — connection to ds_signature_hypothesis + design_lineage + scope>"
     },
-    "_structural_doc": "DDR-043 (bias-free templates) — the following structural decisions feed directly into the token CSS. They are NOT research-driven; infer them from vision-brief inputs (scope, audience, lineage, signature_hypothesis) and emit a recommendation. Stage 3 surfaces these as AskUserQuestion only when confidence < 0.85.",
-    "accent_strategy":     { "recommendation": "single | paired | chromatic-N", "alternatives": [], "confidence": 0.0, "rationale": "<one sentence — usually `single` unless brief calls for per-team / per-tenant / chromatic-palette>" },
+    "_structural_doc": "These structural decisions feed the token CSS. Per DDR-073 (extending DDR-043's deferred 'Stage 3 question expansion') they are DERIVED FROM aesthetic_ambition via the ambition→knobs mapping in _MAPPING.md § 'Aesthetic ambition → structural knobs' — NOT defaulted conservative. Their confidence INHERITS the anchor's: when aesthetic_ambition confidence is low, these are low too and Stage 3 surfaces them. NEVER emit a high-confidence conservative knob (e.g. `single`/`soft`) to fill an ambiguous vacuum — that was the funnel this DDR removed.",
+    "accent_strategy":     { "recommendation": "single | paired | chromatic-N", "alternatives": [], "confidence": 0.0, "rationale": "<one sentence — DERIVED from aesthetic_ambition: restrained→single, confident→single|paired, expressive→paired|chromatic-3, maximalist→chromatic-N. Add families beyond the pole only when the brief explicitly calls for per-team / per-tenant variants.>" },
     "color_space":         { "recommendation": "oklch | hsl | hex | lab",       "alternatives": [], "confidence": 0.0, "rationale": "<one sentence — default oklch; hex/HSL when project requires legacy compat or designer comfort>" },
     "spacing_base":        { "recommendation": "4 | 8 | golden | fluid-vh",     "alternatives": [], "confidence": 0.0, "rationale": "<one sentence — 4 for dense UIs, 8 for roomy, golden for editorial, fluid-vh for full-bleed>" },
     "type_ratio":          { "recommendation": "1.067 | 1.125 | 1.200 | 1.250 | 1.333 | 1.500", "alternatives": [], "confidence": 0.0, "rationale": "<one sentence — smaller for dense data, larger for editorial / hero-heavy>" },
     "easing_personality":  { "recommendation": "snappy | gentle | bouncy | mechanical | linear", "alternatives": [], "confidence": 0.0, "rationale": "<one sentence — derived from ds_signature_hypothesis + majak_3_codes (if `motion` ∈ trio)>" },
     "layout_max_w":        { "recommendation": "1200px | 1280px | 1440px | none | column-based", "alternatives": [], "confidence": 0.0, "rationale": "<one sentence — none for mobile-first / immersive; 1200–1440 for desktop SaaS; column-based for editorial>" },
     "radii_personality":   { "recommendation": "sharp | mild | soft | pill-heavy | mixed", "alternatives": [], "confidence": 0.0, "rationale": "<one sentence — sharp for brutalism, pill-heavy for consumer, mild for SaaS>" },
-    "shadow_strategy":     { "recommendation": "soft | hard | none | inset | accent-tinted", "alternatives": [], "confidence": 0.0, "rationale": "<one sentence — none for flat / brutalism, soft for default, accent-tinted for high-style consumer>" }
+    "shadow_strategy":     { "recommendation": "soft | hard | none | inset | accent-tinted", "alternatives": [], "confidence": 0.0, "rationale": "<one sentence — DERIVED from aesthetic_ambition: restrained→soft|none, confident→soft, expressive/maximalist→accent-tinted or bold; none for flat / brutalism>" }
   },
 
   "fallback_used": false,
@@ -333,6 +359,8 @@ If a researched option does not fit any catalogued family, either map it to the 
 - **`≥ 0.85`** — vision-brief is specific on this decision AND research found ≥ 3-anchor consensus. Stage 3 will SKIP the question and the user will only see the pick in the final confirm.
 - **`0.60 – 0.85`** — brief is specific OR research found consensus, but not both. Stage 3 will ASK with the recommendation pre-filled as the first option.
 - **`< 0.60`** — brief is vague AND research found conflicting / thin evidence. Stage 3 will ASK without a pre-pick; user must choose from `alternatives[]` or write their own.
+
+- **Anchor rule (DDR-073) — applies to `aesthetic_ambition` + the structural knobs that inherit from it.** `aesthetic_ambition` confidence reflects how strongly the brand-character anchors cluster on ONE temperature — it is a signal read, NOT a default. **Absence of a clear signal is `< 0.60` (→ Stage 3 asks across the full scale, incl. a multi-colour palette), NEVER a high-confidence `restrained`.** When you recommend `restrained`/`confident`, the `rationale` MUST carry the audit clause (name the expressive end you considered + why you ruled it out). The derived knobs (`accent_strategy`, `shadow_strategy`, …) inherit the anchor's confidence — do not independently emit a high-confidence conservative value when the anchor is uncertain.
 
 `null` confidence is reserved for total agent failure (no payload written) — Stage 3 cannot proceed; the flow stops and offers re-run / abort.
 
