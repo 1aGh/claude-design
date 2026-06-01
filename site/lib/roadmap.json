@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-01T21:07:16.127Z",
+  "generated": "2026-06-01T21:11:23.042Z",
   "currentPhase": null,
   "phases": [
     {
@@ -329,6 +329,17 @@
       "date": null,
       "summary": "Add a user-facing \"Is maude safe?\" page to the docs site that explains the threat model honestly: what runs where, what's trusted vs untrusted, and the mechanisms that make each mode safe. Audience...",
       "planPath": ".ai/plans/archive/security-disclaimer-docs.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "setup-ds-aesthetic-ambition",
+      "title": "Feature: setup-ds aesthetic-ambition axis (rozbít single-accent funnel)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is a spec/infrastructure change to the design plugin's bootstrap flow — pure mark...",
+      "planPath": ".ai/plans/archive/setup-ds-aesthetic-ambition.md",
       "archived": true,
       "phaseKey": null
     },
@@ -672,17 +683,6 @@
       "planPath": ".ai/plans/phase-23-canvas-images-link-unfurl.md",
       "archived": false,
       "phaseKey": "23"
-    },
-    {
-      "id": "setup-ds-aesthetic-ambition",
-      "title": "Feature: setup-ds aesthetic-ambition axis (rozbít single-accent funnel)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is a spec/infrastructure change to the design plugin's bootstrap flow — pure mark...",
-      "planPath": ".ai/plans/setup-ds-aesthetic-ambition.md",
-      "archived": false,
-      "phaseKey": null
     },
     {
       "id": "phase-7-acp-chat-sidebar",
