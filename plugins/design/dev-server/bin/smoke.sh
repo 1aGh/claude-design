@@ -4,6 +4,14 @@
 # per-canvas hooks in /design:edit step 7 / /design:new step 9 — typically
 # dev-server infra changes or bulk multi-canvas migrations. See DDR-021.
 #
+# Beyond "does it render", preview specimens are also gated on "does it render
+# STYLED" (DDR-068): a static import-graph lint (every specimen reaches
+# _layout.css — its single CSS entry, which @imports the tokens + _components.css
+# — and every shared preview/_*.css has >=1 importer) plus a runtime
+# computed-style check (the DS token contract `--bg-0` must resolve on the body,
+# else the canvas's import graph lost the token CSS and every var()-driven rule
+# is dead — the specimen mounts with content but renders unstyled).
+#
 # Usage:
 #   smoke.sh [--root <repo>]
 #            [--out-dir <dir>]
@@ -27,7 +35,7 @@
 # Stdout: one line per canvas, tab-separated:
 #   STATUS \t FILE \t SCREENSHOT \t DETAIL
 # Stderr: diagnostic / progress.
-# Exit:   0 = all green / 3 = at least one blank/error / 1 = missing deps / 2 = bad args.
+# Exit:   0 = all green / 3 = at least one blank/error/unstyled/lint-fail / 1 = missing deps / 2 = bad args.
 
 REPO=""
 OUT_DIR=""
@@ -176,6 +184,59 @@ urlencode_path() {
   printf '%s' "$1" | sed 's/ /%20/g'
 }
 
+# Static import-graph lint (DDR-068). Runs once before render. The dev-server
+# inlines ONLY the CSS a canvas's import graph produces (canvas-build.ts), so a
+# forgotten import is a silently unstyled specimen that still "has content" and
+# sails past the per-canvas render checks below. Asserts, per DS preview dir:
+#   (1) every specimen reaches `_layout.css` (direct `import`, or its own css
+#       `@import`s it) — _layout.css is the single CSS entry that pulls tokens
+#       (colors_and_type.css) + controls (_components.css);
+#   (2) every shared `preview/_*.css` has >=1 importer (no orphan partial — the
+#       class of bug where `.btn`/`.input` in _components.css loaded NOWHERE).
+# Appends violations to $MD; sets LINT_FAILED. Anchored to real `^import` lines
+# so a specimen that DISPLAYS a css filename in its content isn't a false match.
+LINT_FAILED=0
+lint_specimen_imports() {
+  local SQ Q preview tsx base css imp impfile reached n=0
+  SQ=$(printf '\047'); Q="[\"$SQ]"   # bracket class matching either quote style
+  for preview in "$DESIGN_ROOT"/system/*/preview; do
+    [ -d "$preview" ] || continue
+    # (1) every specimen reaches _layout.css
+    for tsx in "$preview"/*.tsx; do
+      [ -e "$tsx" ] || continue
+      base=$(basename "$tsx"); case "$base" in _*) continue ;; esac
+      grep -qE "^[[:space:]]*import[^;]*${Q}[^\"$SQ]*_layout\.css" "$tsx" && continue
+      reached=0
+      while IFS= read -r imp; do
+        impfile="$preview/$(basename "$imp")"
+        [ -f "$impfile" ] || continue
+        if grep -qE "@import[^;]*_layout\.css" "$impfile"; then reached=1; break; fi
+      done < <(grep -oE "import[[:space:]]+${Q}[^\"$SQ]*\.css" "$tsx" 2>/dev/null | grep -oE "[^\"$SQ]*\.css$")
+      if [ "$reached" -eq 0 ]; then
+        printf 'LINT-FAIL  %s — never reaches _layout.css (no DS tokens/layout/components)\n' "${tsx#$DESIGN_ROOT/}" >&2
+        printf '| ✗ LINT | `%s` | — | never reaches _layout.css |\n' "${tsx#$DESIGN_ROOT/}" >> "$MD"
+        n=$((n + 1))
+      fi
+    done
+    # (2) every shared _*.css partial has an importer
+    for css in "$preview"/_*.css; do
+      [ -e "$css" ] || continue
+      base=$(basename "$css")
+      grep -qsE "^[[:space:]]*import[^;]*${Q}[^\"$SQ]*${base}${Q}" "$preview"/*.tsx && continue
+      grep -qsE "@import[^;]*${base}" "$preview"/*.css "$preview"/../*.css && continue
+      printf 'LINT-FAIL  %s — orphan shared partial (no specimen or css imports it)\n' "${css#$DESIGN_ROOT/}" >&2
+      printf '| ✗ LINT | `%s` | — | orphan shared partial |\n' "${css#$DESIGN_ROOT/}" >> "$MD"
+      n=$((n + 1))
+    done
+  done
+  LINT_FAILED=$n
+  if [ "$n" -eq 0 ]; then
+    echo "→ import-graph lint: clean" >&2
+  else
+    echo "✗ import-graph lint: $n violation(s) — see report" >&2
+  fi
+}
+
 # Probe a canvas via agent-browser. Returns three lines on stdout:
 #   <status>   one of OK / BLANK / ERROR
 #   <detail>   short summary string
@@ -183,6 +244,7 @@ urlencode_path() {
 probe_agent_browser() {
   local url="$1"
   local out_png="$2"
+  local is_specimen="$3"   # 1 → apply the DDR-068 computed-style gate
 
   agent-browser open "$url" >/dev/null 2>&1 || { echo "ERROR"; echo "open-failed"; echo ""; return; }
 
@@ -254,6 +316,35 @@ probe_agent_browser() {
     return
   fi
 
+  # Computed-style gate (DDR-068) — "mounts with content" ≠ "rendered styled". A
+  # specimen whose import graph dropped the token CSS passes every check above
+  # (it has text, no error, a >2 KB screenshot) yet every var()-driven rule is
+  # dead. Confirm the DS token contract actually resolved at runtime: --bg-0 is
+  # defined on :root by colors_and_type.css (DDR-043 name contract) and inherits
+  # to <body>, so an empty value means the token CSS never loaded. Scoped to DS
+  # preview specimens — ui/ app canvases may legitimately opt out of the tokens.
+  if [ "$is_specimen" = "1" ]; then
+    local styled
+    styled=$(agent-browser eval "(() => {
+      const b = document.body; if (!b) return 'unstyled:no-body';
+      const cs = getComputedStyle(b);
+      const tok = (cs.getPropertyValue('--bg-0').trim() || cs.getPropertyValue('--fg-0').trim() || cs.getPropertyValue('--accent').trim());
+      if (tok) return 'styled';
+      return 'unstyled:no-tokens(ff=' + ((cs.fontFamily||'').replace(/[\"\\n]/g,'').slice(0,18)) + ')';
+    })()" 2>/dev/null)
+    styled=$(printf '%s' "$styled" | sed 's/^"//; s/"$//')
+    # Only an EXPLICIT unstyled* verdict fails — a blank/garbled eval (browser
+    # hiccup) falls through to OK, since the DOM already mounted without error.
+    case "$styled" in
+      unstyled*)
+        echo "UNSTYLED"
+        echo "$styled"
+        echo "$out_png"
+        return
+        ;;
+    esac
+  fi
+
   echo "OK"
   echo "ok"
   echo "$out_png"
@@ -274,6 +365,13 @@ printf 'status\tfile\tscreenshot\tdetail\n' > "$TSV"
   echo "|---|---|---|---|"
 } > "$MD"
 
+# Static import-graph lint before rendering (DDR-068) — only meaningful when
+# system specimens are in scope (they own the shared _layout.css / _components.css
+# chain). Violations are folded into the final exit code alongside render fails.
+if [ "$INCLUDE_SYSTEM" = "1" ] && [ -d "$DESIGN_ROOT/system" ]; then
+  lint_specimen_imports
+fi
+
 FAILED=0
 N=0
 while IFS= read -r CANVAS; do
@@ -288,11 +386,13 @@ while IFS= read -r CANVAS; do
   URL="http://localhost:$PORT/_canvas-shell.html?canvas=$REL_ENC"
   SLUG=$(bash "$SLUG_HELPER" "$REL" 2>/dev/null || printf '%s' "$REL" | tr '/ ' '__' | tr '[:upper:]' '[:lower:]')
   OUT_PNG="$OUT_DIR/$SLUG.png"
+  # DS preview specimens get the computed-style gate; ui/ app canvases don't.
+  case "$REL" in system/*/preview/*) IS_SPECIMEN=1 ;; *) IS_SPECIMEN=0 ;; esac
 
   printf '  [%d/%d] %s … ' "$N" "$COUNT" "$REL" >&2
 
   if [ "$ENGINE" = "agent-browser" ]; then
-    RESULT=$(probe_agent_browser "$URL" "$OUT_PNG")
+    RESULT=$(probe_agent_browser "$URL" "$OUT_PNG" "$IS_SPECIMEN")
   else
     # Playwright fallback — coarser: just screenshot, accept any PNG > 2 KB as OK.
     # See _screenshot-playwright.mjs for the underlying tool.
@@ -314,10 +414,11 @@ while IFS= read -r CANVAS; do
   SHOT=$(printf '%s\n' "$RESULT" | sed -n '3p')
 
   case "$STATUS" in
-    OK)    SYM="✓"; echo "$SYM" >&2 ;;
-    BLANK) SYM="✗"; FAILED=$((FAILED + 1)); echo "$SYM blank ($DETAIL)" >&2 ;;
-    ERROR) SYM="⚠"; FAILED=$((FAILED + 1)); echo "$SYM error ($DETAIL)" >&2 ;;
-    *)     SYM="?"; FAILED=$((FAILED + 1)); echo "? unknown ($STATUS)" >&2 ;;
+    OK)       SYM="✓"; echo "$SYM" >&2 ;;
+    BLANK)    SYM="✗"; FAILED=$((FAILED + 1)); echo "$SYM blank ($DETAIL)" >&2 ;;
+    ERROR)    SYM="⚠"; FAILED=$((FAILED + 1)); echo "$SYM error ($DETAIL)" >&2 ;;
+    UNSTYLED) SYM="✗"; FAILED=$((FAILED + 1)); echo "$SYM unstyled ($DETAIL)" >&2 ;;
+    *)        SYM="?"; FAILED=$((FAILED + 1)); echo "? unknown ($STATUS)" >&2 ;;
   esac
 
   printf '%s\t%s\t%s\t%s\n' "$STATUS" "$REL" "$SHOT" "$DETAIL" >> "$TSV"
@@ -326,12 +427,13 @@ while IFS= read -r CANVAS; do
   printf '%s\t%s\t%s\t%s\n' "$STATUS" "$REL" "$SHOT" "$DETAIL"
 done <<< "$CANVASES"
 
+TOTAL_FAIL=$((FAILED + LINT_FAILED))
 {
   echo
-  if [ $FAILED -eq 0 ]; then
-    echo "**Result:** ✓ all $COUNT canvases rendered."
+  if [ $TOTAL_FAIL -eq 0 ]; then
+    echo "**Result:** ✓ all $COUNT canvases rendered styled; import-graph lint clean."
   else
-    echo "**Result:** ✗ $FAILED / $COUNT canvases failed."
+    echo "**Result:** ✗ $FAILED / $COUNT canvases failed render/style; $LINT_FAILED import-graph lint violation(s)."
   fi
 } >> "$MD"
 
@@ -347,9 +449,9 @@ if command -v git >/dev/null 2>&1 && git -C "$REPO" rev-parse HEAD >/dev/null 2>
     > "$DESIGN_ROOT/_history/_smoke/.last-smoke.json"
 fi
 
-if [ $FAILED -gt 0 ]; then
-  echo "✗ smoke: $FAILED / $COUNT canvases failed" >&2
+if [ $TOTAL_FAIL -gt 0 ]; then
+  echo "✗ smoke: $FAILED / $COUNT canvases failed render/style; $LINT_FAILED lint violation(s)" >&2
   exit 3
 fi
-echo "✓ smoke: all $COUNT canvases rendered" >&2
+echo "✓ smoke: all $COUNT canvases rendered styled; import-graph lint clean" >&2
 exit 0

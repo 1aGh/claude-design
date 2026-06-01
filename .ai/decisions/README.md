@@ -10,6 +10,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
 
+- [DDR-068: Preview specimens import `_layout.css` as sole CSS entry; `/design:smoke` gates on computed style](DDR-068-specimen-css-entry-and-smoke-style-gate.md) — 2026-06-01, design/dev-server/smoke/render-gate/css/import-graph/regression-prevention/ux
 - [DDR-066: `/flow:done` offers handoff as a soft prompt, never auto-runs it](DDR-066-soft-handoff-prompt-in-flow-done.md) — 2026-05-30, flow/design/handoff/cross-plugin/ux
 - [DDR-062: Plugins reach ALL executable logic through the on-PATH `maude` CLI (`maude design <verb>` dispatch)](DDR-062-plugins-reach-executable-logic-via-maude.md) — 2026-05-29, design/flow/dev-server/cli/marketplace/npm-distribution/reachability/dispatch/phase-c/lever-6
 - [DDR-061: Sidecar cache layout + Monitor pattern + background-overlap orchestration (Phase C)](DDR-061-sidecar-cache-monitor-background-orchestration.md) — 2026-05-29, flow/design/cache/cli/orchestration/latency/invalidation/monitor/background/phase-c

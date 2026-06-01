@@ -1,7 +1,7 @@
 ---
 name: design:smoke
 category: validate
-description: Batch screenshot every UI canvas (`<designRoot>/ui/*.tsx`) + every preview specimen (`<designRoot>/system/*/preview/*.tsx`); flag blank iframes + visible error overlays. Exit non-zero on any failure. Catches the "build green ≠ user-visible green" class of regression that bypasses per-canvas hooks. See DDR-021.
+description: Batch screenshot every UI canvas (`<designRoot>/ui/*.tsx`) + every preview specimen (`<designRoot>/system/*/preview/*.tsx`); flag blank iframes, visible error overlays, AND preview specimens that render UNSTYLED (lost their token CSS). Adds a static import-graph lint + a runtime computed-style gate on specimens. Exit non-zero on any failure. Catches the "build green ≠ user-visible green" class of regression that bypasses per-canvas hooks. See DDR-021 + DDR-068.
 argument-hint: "[--include-system 0|1] [--timeout <secs>] [--out-dir <dir>]"
 ---
 
@@ -49,11 +49,21 @@ Path is gitignored under the existing `_history/` pattern.
 
 | Status | Meaning |
 |---|---|
-| `OK` | Canvas mounted (any of `[data-dc-screen]` / `[data-dc-slot]` / `[data-cd-id]` present, OR body has text), no visible error overlay, PNG > 2 KB. |
+| `OK` | Canvas mounted (any of `[data-dc-screen]` / `[data-dc-slot]` / `[data-cd-id]` present, OR body has text), no visible error overlay, PNG > 2 KB. For preview specimens, also passed the computed-style gate (tokens resolved). |
 | `BLANK` | No DC markers and body text empty after `--timeout` seconds. OR PNG < 2 KB. Likely a runtime error broke the React mount before any output. |
 | `ERROR` | A visible error overlay was detected (react-error-overlay, body text starting with `Error:`/`SyntaxError:`/`ReferenceError:`). Canvas partially mounted but the page is showing an error. |
+| `UNSTYLED` | **(preview specimens only — DDR-068)** Canvas mounted with content and no error, but the DS token contract `--bg-0` does **not** resolve on `<body>` — its import graph lost the token CSS, so every `var()`-driven rule is dead. It *renders*, but unstyled (the exact class the prior `745bcf0` "verified rendering" + the old blank-only smoke both missed). Detail carries the UA-default font as evidence, e.g. `unstyled:no-tokens(ff=Times)`. |
 
-The helper exits `0` if everything is `OK`, `3` if any canvas is `BLANK` or `ERROR`.
+### Import-graph lint (static, pre-render — DDR-068)
+
+Before the render loop, when `--include-system 1`, smoke statically lints the DS preview import graph (the dev-server inlines only the CSS a canvas's imports produce — `canvas-build.ts` — so a forgotten import silently unstyles a specimen that still "has content"):
+
+- **every preview specimen reaches `_layout.css`** — directly via `import`, or via its own co-located CSS `@import`ing it. `_layout.css` is the single CSS entry point that `@import`s the tokens (`colors_and_type.css`) + the controls (`_components.css`).
+- **every shared `preview/_*.css` partial has ≥ 1 importer** — no orphan partial (the class of bug where `.btn`/`.input` lived in `_components.css` but nothing imported it, so native controls rendered unstyled everywhere).
+
+Violations print as `LINT-FAIL <file> — …` and land in `report.md`. The lint is anchored to real `^import` lines, so a specimen that *displays* a CSS filename in its content is not a false match.
+
+The helper exits `0` only if every canvas is `OK` **and** the import-graph lint is clean; `3` if any canvas is `BLANK` / `ERROR` / `UNSTYLED` or the lint finds a violation.
 
 ## Flags
 
