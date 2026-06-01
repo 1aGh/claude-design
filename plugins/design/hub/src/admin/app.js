@@ -193,7 +193,7 @@ function renderPeers(p) {
 
 async function generateInvite(label) {
   const data = await api('/token', { method: 'POST', body: JSON.stringify({ label }) });
-  showInvite(data);
+  showInvite(data, label);
   await refresh();
 }
 
@@ -205,13 +205,17 @@ async function rotate(label) {
   )
     return;
   const data = await api('/token/rotate', { method: 'POST', body: JSON.stringify({ label }) });
-  showInvite(data);
+  showInvite(data, label);
   await refresh();
 }
 
-function showInvite({ token, command }) {
+function showInvite({ token, command }, label) {
   $('token-command').textContent = command;
   $('token-raw').textContent = token;
+  const titleEl = $('token-modal-title');
+  if (titleEl) titleEl.textContent = label ? `Invite ready — for "${label}"` : 'Invite ready';
+  const scopeEl = $('token-scope');
+  if (scopeEl) scopeEl.textContent = label ? `SCOPE · ${label}` : 'SCOPE';
   const stampEl = $('token-modal-stamp');
   if (stampEl) stampEl.textContent = `${new Date().toISOString().replace('T', ' ').slice(0, 16)}Z`;
   const modal = $('token-modal');
@@ -298,13 +302,15 @@ $('forget').addEventListener('click', () => {
 $('token-copy').addEventListener('click', async () => {
   try {
     await navigator.clipboard.writeText($('token-command').textContent);
-    $('token-copy').textContent = 'Copied ✓';
+    $('token-copy').textContent = '✓ Command copied';
+    $('token-copy').classList.add('copied');
     // SR-announce the success via a sibling live region (button label
     // mutations don't trigger re-announcement on most screen readers).
     const status = $('copy-status');
     if (status) status.textContent = 'Command copied to clipboard';
     setTimeout(() => {
       $('token-copy').textContent = 'Copy command';
+      $('token-copy').classList.remove('copied');
       if (status) status.textContent = '';
     }, 1500);
   } catch {

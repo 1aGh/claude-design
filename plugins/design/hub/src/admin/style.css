@@ -1,8 +1,18 @@
 /* Maude Hub Admin — MDCC-DSN/01 dark-theme-only
-   Tokens inlined from colors_and_type.css [data-theme="dark"] block.
-   Component anatomy ported from _components.css (used subset). */
+   Handoff source of truth: .design/ui/Sync Hub Admin.{tsx,css} (project DS).
+   Tokens inlined from system/project/colors_and_type.css [data-theme="dark"];
+   component anatomy is the used subset of the DS _components.css. Self-contained
+   — the hub ships standalone with no design-system dependency.
+
+   NOTE: tokens live on `:root, .mdcc` (not just `.mdcc`). The token-issued
+   <dialog> renders in the top layer as a sibling of `.hub-frame.mdcc`, so when
+   the custom properties were scoped to `.mdcc` only, NOTHING inside the modal
+   resolved (transparent bg, no border, invalid `calc(... var(--space-7))` width,
+   black-on-dark text → "modal pops up but I can't see it"). Hoisting to :root
+   makes every element — including top-layer dialogs + ::backdrop — see them. */
 
 /* ─── 1. Tokens ─── */
+:root,
 .mdcc {
   --bg-0: oklch(13% 0.012 60);
   --bg-1: oklch(17% 0.014 60);
@@ -44,14 +54,22 @@
   --type-md: 15px;
   --lh-md: 24px;
   --type-lg: 18px;
+  --lh-lg: 28px;
+  --type-xl: 22px;
+  --lh-xl: 30px;
+  --type-2xl: 28px;
+  --lh-2xl: 36px;
   --tracking-normal: 0;
   --tracking-wide: 0.04em;
   --tracking-sku: 0.12em;
   --tracking-eyebrow: 0.18em;
+  --tracking-tight: -0.01em;
   --font-body: "Berkeley Mono", "TX-02", "JetBrains Mono", "IBM Plex Mono", ui-monospace,
     SFMono-Regular, Menlo, monospace;
   --font-mono: "Berkeley Mono", "TX-02", "JetBrains Mono", "IBM Plex Mono", ui-monospace,
     SFMono-Regular, Menlo, monospace;
+  /* The project DS uses a mono face for display too — keep the terminal aesthetic. */
+  --font-display: var(--font-mono);
   --radius-sm: 2px;
   --rule-thin: 1px solid var(--border-subtle);
   --rule-strong: 1px solid var(--border-strong);
@@ -65,6 +83,13 @@
 /* ─── 2. Reset ─── */
 * {
   box-sizing: border-box;
+}
+/* The `hidden` attribute toggles auth chip / sections / inline errors. A class
+   that sets `display` (.hub-auth, .callout) is author-origin and would otherwise
+   beat the UA `[hidden] { display:none }` rule, leaving "hidden" nodes visible
+   (spurious authenticated chip + empty error box). Force it. */
+[hidden] {
+  display: none !important;
 }
 html,
 body {
@@ -105,8 +130,10 @@ form {
   margin: 0;
 }
 
-/* ─── 3. Hub layout ─── */
+/* ─── 3. Hub frame + header ─── */
 .hub-frame {
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
   background: var(--bg-0);
   color: var(--fg-0);
@@ -116,105 +143,136 @@ form {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-3) var(--space-6);
+  padding: var(--space-4) var(--space-6);
   border-bottom: var(--rule-thin);
-  background: var(--bg-2);
+  background: var(--bg-1);
   position: sticky;
   top: 0;
   z-index: 10;
 }
 .hub-brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-.hub-mark {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
+  gap: var(--space-4);
+}
+.hub-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: var(--rule-strong);
   background: var(--accent);
   color: var(--accent-fg);
-  font-size: var(--type-sm);
+  font-family: var(--font-display);
   font-weight: 700;
+  font-size: var(--type-md);
+  line-height: 1;
   flex-shrink: 0;
 }
 .hub-title {
-  font-size: var(--type-sm);
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: var(--type-lg);
+  line-height: 1;
   color: var(--fg-0);
-  display: flex;
+  letter-spacing: var(--tracking-tight);
+  display: inline-flex;
   align-items: baseline;
-  gap: var(--space-2);
+  gap: var(--space-3);
 }
 .hub-title small {
   font-size: var(--type-xs);
   color: var(--fg-2);
   font-weight: 400;
+  letter-spacing: var(--tracking-sku);
+  text-transform: uppercase;
 }
 .hub-auth {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: var(--space-3);
+  font-family: var(--font-mono);
   font-size: var(--type-xs);
   color: var(--fg-1);
+  letter-spacing: var(--tracking-wide);
 }
 
+/* ─── 4. Main + centered auth column ─── */
 .hub-main {
-  max-width: var(--layout-max-w);
-  margin: 0 auto;
+  flex: 1;
+  padding: var(--space-7) var(--space-6);
 }
-
 .hub-center {
   max-width: 440px;
-  margin: var(--space-8) auto;
-  padding: var(--space-6);
-  border: var(--rule-thin);
-  background: var(--bg-1);
+  margin: 0 auto;
+  padding-top: var(--space-6);
 }
 
+/* Brand lockup — auth screens compose around the mark (login hero) */
 .hub-hero {
   display: flex;
   align-items: center;
   gap: var(--space-4);
-  margin-bottom: var(--space-6);
-  padding-bottom: var(--space-5);
-  border-bottom: var(--rule-thin);
+  margin: 0 0 var(--space-7);
 }
 .hub-hero-mark {
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: inline-grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border: var(--rule-strong);
   background: var(--accent);
   color: var(--accent-fg);
-  font-size: var(--type-lg);
+  font-family: var(--font-display);
   font-weight: 700;
+  font-size: var(--type-2xl);
+  line-height: 1;
   flex-shrink: 0;
 }
 .hub-hero-wm {
+  font-family: var(--font-display);
+  font-size: var(--type-xl);
+  line-height: 1.1;
+  color: var(--fg-0);
+  letter-spacing: var(--tracking-tight);
   display: flex;
   flex-direction: column;
-  gap: 2px;
 }
 .hub-hero-wm small {
+  display: block;
+  margin-top: 3px;
   font-size: var(--type-xs);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
   color: var(--fg-2);
 }
 
 .hub-eyebrow {
-  margin: 0 0 var(--space-2);
+  margin: 0 0 var(--space-3);
+}
+.hub-center h2 {
+  font-family: var(--font-display);
+  font-size: var(--type-2xl);
+  line-height: var(--lh-2xl);
+  margin: 0 0 var(--space-3);
+  letter-spacing: var(--tracking-tight);
+  font-weight: 600;
 }
 .hub-lede {
   color: var(--fg-1);
-  margin: var(--space-3) 0 var(--space-5);
+  margin: 0 0 var(--space-5);
 }
 .hub-hint {
-  color: var(--fg-2);
   font-size: var(--type-xs);
-  margin: var(--space-3) 0 0;
+  line-height: var(--lh-xs);
+  color: var(--fg-2);
+  margin: var(--space-4) 0 0;
+  letter-spacing: var(--tracking-wide);
+}
+.hub-hint code {
+  font-family: var(--font-mono);
+  color: var(--fg-1);
+  background: var(--mono-cell-bg);
+  padding: 0 4px;
 }
 .hub-actions {
   display: flex;
@@ -223,13 +281,24 @@ form {
   margin-top: var(--space-5);
   flex-wrap: wrap;
 }
+.input--pw {
+  letter-spacing: 0.25em;
+}
+.field-help {
+  font-size: var(--type-xs);
+  line-height: var(--lh-xs);
+  color: var(--fg-2);
+  margin: var(--space-3) 0 0;
+  letter-spacing: var(--tracking-wide);
+}
 
-/* ─── Fingerprint identity card ─── */
+/* ─── 5. Fingerprint identity card (phishing defense) ─── */
 .fp {
   border: var(--rule-thin);
+  border-left: 4px solid var(--accent);
   background: var(--bg-2);
-  padding: var(--space-4);
-  margin: var(--space-4) 0;
+  padding: var(--space-4) var(--space-5);
+  margin: var(--space-5) 0;
   font-family: var(--font-mono);
 }
 .fp-identity {
@@ -239,117 +308,143 @@ form {
 }
 .fp-row {
   display: flex;
+  justify-content: space-between;
   gap: var(--space-4);
-  align-items: baseline;
-  padding: 2px 0;
+  padding: var(--space-2) 0;
+}
+.fp-row + .fp-row {
+  border-top: 1px dashed var(--border-subtle);
 }
 .fp-k {
+  font-family: var(--font-mono);
   font-size: var(--type-xs);
+  letter-spacing: var(--tracking-sku);
+  text-transform: uppercase;
   color: var(--fg-2);
-  min-width: 80px;
   flex-shrink: 0;
 }
 .fp-v {
-  font-size: var(--type-xs);
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
   color: var(--fg-0);
+  text-align: right;
   word-break: break-all;
 }
 .fp-hash {
   letter-spacing: 0.05em;
 }
 
-/* ─── Dashboard grid ─── */
+/* ─── 6. Dashboard 2×2 grid ─── */
 .hub-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  border-top: var(--rule-thin);
-  border-left: var(--rule-thin);
-}
-.hub-grid .tile {
-  border-top: 0;
-  border-left: 0;
-  border-right: var(--rule-thin);
-  border-bottom: var(--rule-thin);
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-5);
+  max-width: var(--layout-max-w);
+  margin: 0 auto;
 }
 .tile-hd .live {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: var(--space-2);
+  color: var(--status-success);
 }
 
-/* ─── Status KV ─── */
+/* status dl */
 .kv {
   display: grid;
-  grid-template-columns: 100px 1fr;
-  gap: var(--space-1) var(--space-4);
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-2) var(--space-5);
   margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
 }
 .kv dt {
-  font-family: var(--font-mono);
-  font-size: var(--type-xs);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-sku);
   color: var(--fg-2);
-  padding: 2px 0;
-  align-self: start;
+  letter-spacing: var(--tracking-sku);
+  text-transform: uppercase;
+  font-size: var(--type-xs);
+  align-self: center;
 }
 .kv dd {
   margin: 0;
-  font-family: var(--font-mono);
-  font-size: var(--type-xs);
   color: var(--fg-0);
+  text-align: right;
   word-break: break-all;
-  padding: 2px 0;
-  border-bottom: 1px solid var(--border-subtle);
+}
+.kv dd .unit {
+  color: var(--fg-2);
 }
 
-/* ─── Table ─── */
+/* tables — peers + tokens */
 .tbl {
   width: 100%;
   border-collapse: collapse;
-}
-.tbl th {
   font-family: var(--font-mono);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-sku);
-  color: var(--fg-2);
-  font-size: 10px;
-  padding: var(--space-2) var(--space-3);
-  border-bottom: var(--rule-thin);
-  background: var(--bg-2);
+  font-size: var(--type-sm);
+}
+.tbl caption {
   text-align: left;
 }
-.tbl td {
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--border-subtle);
-  color: var(--fg-1);
+.tbl th {
+  text-align: left;
   font-size: var(--type-xs);
+  letter-spacing: var(--tracking-sku);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  font-weight: 600;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: var(--rule-thin);
+}
+.tbl th.num,
+.tbl td.num {
+  text-align: right;
+}
+.tbl td {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--fg-0);
+  font-size: var(--type-sm);
+  vertical-align: middle;
 }
 .tbl tbody tr:last-child td {
   border-bottom: 0;
 }
+.tbl .doc {
+  color: var(--fg-1);
+}
+.tbl .user {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.tbl .ago {
+  color: var(--fg-2);
+}
+.tbl td.act {
+  text-align: right;
+  padding-block: var(--space-2);
+}
 .tbl tr.empty td {
   color: var(--fg-2);
   text-align: center;
-  font-style: italic;
-  padding: var(--space-5);
-}
-.tbl .num {
-  text-align: right;
+  font-style: normal;
+  letter-spacing: var(--tracking-wide);
+  padding: var(--space-6) var(--space-3);
 }
 .tbl code {
-  font-size: 10px;
+  font-size: var(--type-xs);
 }
 
-/* ─── Peer swatch ─── */
+/* peer color swatch */
 .swatch {
   display: inline-block;
   width: 9px;
   height: 9px;
+  border: 1px solid var(--border-strong);
   flex-shrink: 0;
 }
 
-/* ─── Token issued dialog ─── */
+/* ─── 7. Issued-credential modal (signature moment) ─── */
 dialog {
   border: 0;
   background: transparent;
@@ -358,110 +453,166 @@ dialog {
   max-width: 100%;
 }
 dialog::backdrop {
-  background: oklch(0% 0 0 / 0.7);
+  /* hard-edge token wash over the dimmed dashboard — no blur */
+  background: color-mix(in oklab, var(--bg-0) 78%, transparent);
 }
 
 .issued {
   width: min(560px, calc(100vw - var(--space-7)));
-  border: var(--rule-thin);
   background: var(--bg-1);
-  display: grid;
-  grid-template-rows: auto 1fr auto;
+  border: var(--rule-strong);
+  box-shadow: var(--shadow-focus);
 }
 .issued-hd {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-3) var(--space-5);
   border-bottom: var(--rule-thin);
   background: var(--bg-2);
 }
 .issued-hd .stamp {
   font-family: var(--font-mono);
   font-size: var(--type-xs);
+  letter-spacing: var(--tracking-sku);
+  text-transform: uppercase;
   color: var(--fg-2);
 }
 .issued-bd {
   padding: var(--space-5);
 }
 .issued-bd h2 {
-  margin: 0 0 var(--space-3);
+  font-family: var(--font-display);
+  font-size: var(--type-xl);
+  line-height: var(--lh-xl);
+  margin: 0 0 var(--space-2);
+  letter-spacing: var(--tracking-tight);
 }
 .issued-bd p {
   color: var(--fg-1);
-  font-size: var(--type-sm);
-}
-.issued-ft {
-  padding: var(--space-3) var(--space-4);
-  border-top: var(--rule-thin);
-  display: flex;
-  justify-content: flex-end;
+  margin: 0 0 var(--space-4);
 }
 
+/* command block — the receipt */
 .cmd {
   font-family: var(--font-mono);
-  font-size: var(--type-xs);
-  background: var(--mono-cell-bg);
-  color: var(--mono-cell-fg);
+  font-size: var(--type-sm);
+  line-height: var(--lh-sm);
+  background: var(--bg-3);
   border: var(--rule-thin);
+  color: var(--fg-0);
   padding: var(--space-4);
-  overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-all;
-  margin: var(--space-4) 0;
+  margin: 0 0 var(--space-4);
 }
+.cmd .flag {
+  color: var(--accent);
+}
+.cmd .cont {
+  color: var(--fg-1);
+}
+
+/* tear line between command + token stub (edge-bleed) */
 .tear {
   border: 0;
-  border-top: 2px dashed var(--border-subtle);
-  margin: var(--space-5) 0;
+  border-top: 1px dashed var(--border-default);
+  margin: var(--space-4) calc(-1 * var(--space-5));
 }
+
+/* token stub */
 .stub {
   display: flex;
+  justify-content: space-between;
   align-items: baseline;
   gap: var(--space-4);
-  font-size: var(--type-xs);
+  margin-bottom: var(--space-4);
 }
 .stub .lbl {
-  color: var(--fg-2);
-  font-family: var(--font-mono);
-  text-transform: uppercase;
+  font-size: var(--type-xs);
   letter-spacing: var(--tracking-sku);
+  text-transform: uppercase;
+  color: var(--fg-2);
   flex-shrink: 0;
 }
 .stub code {
-  background: var(--bg-3);
-  color: var(--fg-1);
-  padding: var(--space-2) var(--space-3);
-  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+  background: transparent;
+  color: var(--accent);
+  padding: 0;
   word-break: break-all;
-  flex: 1;
+}
+.issued-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-sku);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.issued-ft {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border-top: var(--rule-thin);
+  background: var(--bg-2);
 }
 
-/* ─── Callouts + errors ─── */
+/* copied flash on the copy button */
+.copied {
+  color: var(--status-success) !important;
+  border-color: var(--status-success) !important;
+  background: transparent !important;
+}
+
+/* ─── 8. Callouts + inline errors ─── */
 .callout {
-  padding: var(--space-3) var(--space-4);
-  font-size: var(--type-xs);
+  display: flex;
+  gap: var(--space-4);
+  border: var(--rule-thin);
+  background: var(--bg-1);
+  padding: var(--space-4) var(--space-5);
+  font-size: var(--type-sm);
   margin-top: var(--space-4);
 }
+.callout .glyph {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.callout .body {
+  color: var(--fg-1);
+}
+.callout .body b {
+  color: var(--fg-0);
+}
+.callout .body code,
+.callout code {
+  font-family: var(--font-mono);
+  color: var(--fg-1);
+  background: var(--mono-cell-bg);
+  padding: 0 4px;
+}
 .callout--info {
-  border: 1px solid var(--status-info);
+  border-left: 4px solid var(--status-info);
+}
+.callout--info .glyph {
   color: var(--status-info);
-  background: color-mix(in oklab, var(--status-info) 8%, var(--bg-0));
 }
 .callout--error {
-  border: 1px solid var(--status-error);
-  color: var(--status-error);
-  background: color-mix(in oklab, var(--status-error) 8%, var(--bg-0));
+  border-left: 4px solid var(--status-error);
+  color: var(--fg-1);
 }
-.error {
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--status-error);
+.callout--error .glyph {
   color: var(--status-error);
-  font-size: var(--type-xs);
-  margin-top: var(--space-3);
 }
 
-/* ─── DS components (ported subset) ─── */
+/* ─── 9. DS components (ported subset) ─── */
 
 /* SKU */
 .sku {
@@ -609,6 +760,7 @@ dialog::backdrop {
   font-size: var(--type-xs);
   padding: 3px var(--space-3);
   cursor: pointer;
+  border-radius: var(--radius-sm);
 }
 .ghost:hover {
   background: var(--bg-2);
@@ -691,10 +843,10 @@ dialog::backdrop {
   border: 0;
   background: transparent;
   padding: 0;
-  color: var(--fg-0);
+  color: var(--fg-2);
 }
 .tile-bd {
-  padding: var(--space-4);
+  padding: var(--space-5);
   overflow: auto;
 }
 .tile-bd p {
@@ -702,10 +854,12 @@ dialog::backdrop {
   margin: 0 0 var(--space-3);
 }
 .card-title {
+  font-family: var(--font-display);
+  font-size: var(--type-lg);
+  line-height: var(--lh-lg);
   font-weight: 600;
-  margin: 0 0 var(--space-3);
+  margin: 0 0 var(--space-2);
   color: var(--fg-0);
-  font-size: var(--type-sm);
 }
 
 /* Dots */
@@ -743,7 +897,7 @@ dialog::backdrop {
   color: var(--status-warn);
 }
 
-/* ─── A11y ─── */
+/* ─── 10. A11y ─── */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -770,6 +924,7 @@ dialog::backdrop {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  :root,
   .mdcc {
     --dur-flip: 1ms;
   }
