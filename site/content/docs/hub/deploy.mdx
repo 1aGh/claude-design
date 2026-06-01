@@ -76,6 +76,36 @@ cloudflared tunnel --url http://localhost:1234
 
 Set `HUB_PUBLIC_URL` to the tunnel's https URL so the admin bootstrap link is correct.
 
+## Behind an existing reverse proxy (sub-path mount)
+
+Already run an nginx/Caddy in front of a box — a shared dev/PR-preview server, say — and want the hub on a path like `https://example.com/hub` instead of its own subdomain? The admin UI serves **mount-relative** assets and API calls, so the hub runs correctly under any path prefix as long as the proxy strips that prefix before forwarding.
+
+Set `HUB_PUBLIC_URL` to the full public URL **including the path** so the single-use bootstrap link and every `maude design link …` invite command carry the prefix:
+
+```bash
+HUB_PUBLIC_URL=https://example.com/hub
+```
+
+nginx — strip the prefix, forward to the hub, and pass the WebSocket upgrade (the same shape as a typical path-based PR-preview route):
+
+```nginx
+location /hub/ {
+    rewrite ^/hub/(.*)$ /$1 break;   # strip /hub before forwarding
+    proxy_pass http://127.0.0.1:1234;
+    proxy_set_header Host $host;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;      # Yjs WebSocket sync
+    proxy_set_header Connection "upgrade";
+    proxy_read_timeout 7d;                        # long-lived collab sockets
+}
+```
+
+Caddy does the same with [`handle_path`](https://caddyserver.com/docs/caddyfile/directives/handle_path), which strips the matched prefix automatically: `handle_path /hub/* { reverse_proxy 127.0.0.1:1234 }`.
+
+The hub itself always sees root paths (`/admin`, `/admin/api/*`, `/health`) — the proxy strips the prefix — so nothing in the hub config changes. Open `https://example.com/hub/admin` and the bootstrap flow works exactly as on a root-mounted deploy.
+
+> Sub-path serving landed **after v0.24.0**. The published `ghcr.io/1agh/maude-hub:latest` only picks it up on the next release — if you need it before then, build the image from source: `docker build -t maude-hub plugins/design/hub`.
+
 ## Transport hardening
 
 - **WSS is mandatory.** The hub refuses to boot over plaintext `http://` to a non-loopback host. TLS terminates at your proxy (Fly / Caddy / ALB / Cloudflare, or any upstream TLS terminator), so the hub itself sees `http://` internally — `HUB_PUBLIC_URL` must declare the `https://` URL. Local dev sets `HUB_INSECURE_HTTP=1` to opt out.

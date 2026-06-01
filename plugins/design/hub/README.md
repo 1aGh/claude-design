@@ -47,7 +47,7 @@ the raw token value is never written to disk).
 | `PORT` | `1234` | Listen port. TLS terminates upstream (Caddy / Fly auto-cert / ALB). |
 | `DATA_DIR` | `./data` | `hub.db` (Y.Doc state) + `tokens.db` (HMAC token store) + `admin.json` / `bootstrap.json`. Mount as a volume in Docker / Fly. |
 | `HUB_SECRET` | _(unset)_ | Escape-hatch bearer token. The token store is primary; `HUB_SECRET` is a fallback for headless setups. **Store empty AND `HUB_SECRET` unset = permissive dev mode** (accepts any token, warns). |
-| `HUB_PUBLIC_URL` | `https://localhost:$PORT` | Base URL printed in admin / bootstrap logs and embedded in invite commands. Must be `https://` for any non-loopback host (see transport hardening). |
+| `HUB_PUBLIC_URL` | `https://localhost:$PORT` | Base URL printed in admin / bootstrap logs and embedded in invite commands. Must be `https://` for any non-loopback host (see transport hardening). May include a **path prefix** (e.g. `https://example.com/hub`) to mount the hub under a sub-path behind a path-stripping proxy — see [Reverse proxy & sub-path](#reverse-proxy--sub-path). |
 | `HUB_INSECURE_HTTP` | _(unset)_ | If `1`, allows the hub to boot with a plaintext `http://` `HUB_PUBLIC_URL` to a non-loopback host. **Local testing only.** |
 | `HUB_ADMIN_RATE_LIMIT` | _(on)_ | `off` disables the per-IP admin-API rate limiter (dev only). |
 
@@ -67,6 +67,32 @@ the raw token value is never written to disk).
   attempts per 60s window — a leaked token can't drive a reconnection / replay flood.
 - **Scope-bound tokens.** A token authorizes only its own `documentName` prefix
   unless minted with `scope: '*'` (DDR-053 §3).
+
+## Reverse proxy & sub-path
+
+The hub serves its admin UI with **mount-relative** asset + API references, so it
+runs correctly either at a domain root (`https://hub.example.com/admin`) **or**
+under a path prefix (`https://example.com/hub/admin`) behind a proxy that strips
+the prefix. The hub always sees root paths (`/admin`, `/admin/api/*`, `/health`);
+the prefix lives only in the browser URL and in `HUB_PUBLIC_URL`.
+
+To mount under `/hub`, set `HUB_PUBLIC_URL=https://example.com/hub` (so the
+bootstrap + invite links carry the prefix) and strip the prefix in the proxy:
+
+```nginx
+location /hub/ {
+    rewrite ^/hub/(.*)$ /$1 break;   # strip /hub before forwarding
+    proxy_pass http://127.0.0.1:1234;
+    proxy_set_header Host $host;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;      # Yjs WebSocket sync
+    proxy_set_header Connection "upgrade";
+    proxy_read_timeout 7d;
+}
+```
+
+Caddy: `handle_path /hub/* { reverse_proxy 127.0.0.1:1234 }` (strips the prefix
+automatically). Full deployment guide: [Deploy a hub → sub-path mount](https://github.com/1aGh/maude/blob/main/site/content/docs/hub/deploy.mdx).
 
 ## Connect a peer
 
