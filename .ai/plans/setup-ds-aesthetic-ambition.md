@@ -285,3 +285,22 @@ Run these to confirm zero regressions:
 
 1. **Anti-funnel calibration — how hard to push the agent against its own minimal bias.** The remaining risk is the LLM lazily inferring `restrained` even from an expressive brief. Mitigations baked into the plan: (a) ambiguity → `<0.60` → ask (never silent restrained); (b) two-ended worked examples in Probe B; (c) broadened anchors. Open question for execute: should Probe E additionally require an explicit "I considered the expressive end and ruled it out because <X>" audit line in `research_quality_notes` whenever it infers `restrained`/`confident` — forcing the agent to justify the conservative read rather than defaulting to it? Recommended: **yes** (cheap, high-leverage against the bias). Confirm.
 2. **Should a strong free-text expressiveness cue in Stage 1 (e.g. P10 "barevné jako Figma") hard-pin ambition** (skip inference, set `expressive`+ directly), or just feed it as a high-weight signal into the inference? Recommended: **feed as high-weight signal** (keeps research in the loop to refine the exact pole), but a hard-pin is defensible when the cue is unambiguous. Confirm at execute.
+
+---
+
+## Retro (executed 2026-06-01, commit `5e5c408`)
+
+**What worked**
+- The diagnosis was the leverage. Every task had a `file:line` anchor before any edit, so the 11 edits were surgical — no exploratory thrash mid-execute.
+- The **inference-not-picker pivot** (user's correction mid-plan) made the change *smaller and cleaner* than the original Stage-0-picker design: it reuses the existing `recommendations`/confidence machinery instead of bolting on UI, and it resolved the DDR-033 tension entirely. Lesson for `/plan`: when a feature adds a "knob", first ask whether the existing inference pipeline can carry it before designing a new prompt.
+- Right-sized verification held up: biome (2 files), CLI tests 143/143, reachability 2/2, and a live `--no-discovery` end-to-end smoke caught the real risk (placeholder leak) without the cost of the full UI/scenario/security pipeline (genuinely N/A here).
+
+**What didn't / surprises**
+- **Plan undercounted the file set (9 → 10 actual + the schema).** The plan missed `cli/commands/design.mjs`: adding a `{{placeholder}}` to `config.json.tpl` silently requires a matching key in `defaultPayload()` or `--no-discovery` leaks the literal. **Lesson:** when `/plan` adds a template placeholder, it must trace EVERY substituter (discovery scaffold AND the CLI `--no-discovery` payload), not just the scaffold path.
+- **The repo was a live concurrent battlefield.** During this session `main` advanced under me 4+ times (draw engine DDR-070/071 + tsx-sync DDR-072 all landed concurrently), branches switched mid-`git`-script, and DDR/number collisions forced two renumbers (070→072→073). Two `git diff` reads returned empty mid-script purely from HEAD moving between commands. **Lesson:** in a shared tree, never trust a multi-command bash snapshot — re-read state atomically right before any mutation, and guard `HEAD==main` inside the same command that commits.
+
+**What to change in `/plan` or `/execute`**
+- `/plan` should add a checklist item: "for every new template placeholder, list its substituters and confirm each has a default."
+- `/execute` + `/done` should, on a detectably-concurrent tree (HEAD moved since session start, or target files in others' uncommitted set), default to per-file additive-diff verification before commit (the `git diff <file> | grep '^-'` check that confirmed no concurrent content was clobbered here).
+
+**Deferred (not a blocker, but the real acceptance gate):** Task 12 dogfood (`/design:setup-ds maxtest` + `mintest`) is interactive and was not run. Implementation is statically verified; behavioral proof that a maximalist brief actually yields a colourful multi-accent DS (and that a minimal brief stays byte-compatible) is still pending a scratch-session run.
