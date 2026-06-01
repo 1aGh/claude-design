@@ -33,6 +33,17 @@ export type Target =
       file: string;
       /** True when `cssPath` is expected to match many elements; the adapter iterates. */
       multi?: boolean;
+      /**
+       * True when the adapter should widen `cssPath` to its closest
+       * `[data-dc-screen]` ancestor before capture — i.e. "export the artboard
+       * containing this element". `selection` scope sets this `false` so the
+       * raster/vector captures the element EXACTLY (the item-3 bug was every
+       * single-target export hard-widening). `artboard` scope sets it `true`
+       * only in the fallback where we have a descendant selector but no
+       * artboard id; when the id IS known we target `[data-dc-screen="<id>"]`
+       * directly and leave this `false`.
+       */
+      widen?: boolean;
     }
   | {
       kind: 'file-tree';
@@ -49,6 +60,21 @@ export interface ActiveJsonShape {
     | null;
 }
 
+/**
+ * Submit-time hints captured from the LIVE iframe (the export dialog snapshots
+ * the canvas selection + the artboard under the viewport centre and rides them
+ * on the export `options` bag). The resolver prefers these over `activeJson`
+ * because opening the dialog / clicking Export can drop the persisted
+ * `_active.json.selected`, and they survive the cross-origin bridge unchanged.
+ * See the export-pipeline-fixes plan Task 1 + the selection-passthrough DDR.
+ */
+export interface ExportScopeHints {
+  /** Live selection at submit time. `selector` wins over `activeJson.selected`. */
+  selection?: { selector?: string; file?: string } | null;
+  /** `data-dc-screen` id of the artboard to export for `scope=artboard`. */
+  artboardId?: string | null;
+}
+
 export interface ResolveScopeArgs {
   scope: Scope;
   activeJson: ActiveJsonShape;
@@ -56,6 +82,33 @@ export interface ResolveScopeArgs {
   designRoot: string;
   /** Absolute path to repo root. Required for `project-raw` to bound the walk. */
   repoRoot?: string;
+  /**
+   * The export `options` bag, threaded from `runExport`. Read additively so
+   * existing callers (and the pure unit tests) that omit it stay green.
+   */
+  options?: Record<string, unknown>;
+}
+
+/** Narrow the free-form options bag to the selection/artboard hints we read. */
+function readHints(options: Record<string, unknown> | undefined): ExportScopeHints {
+  if (!options || typeof options !== 'object') return {};
+  const sel = options.selection;
+  const selection =
+    sel && typeof sel === 'object'
+      ? {
+          selector:
+            typeof (sel as Record<string, unknown>).selector === 'string'
+              ? ((sel as Record<string, unknown>).selector as string)
+              : undefined,
+          file:
+            typeof (sel as Record<string, unknown>).file === 'string'
+              ? ((sel as Record<string, unknown>).file as string)
+              : undefined,
+        }
+      : null;
+  const artboardId =
+    typeof options.artboardId === 'string' && options.artboardId ? options.artboardId : null;
+  return { selection, artboardId };
 }
 
 const RAW_EXCLUDES = new Set([
@@ -86,6 +139,16 @@ function slugify(file: string, designRel: string): string {
     .replace(/\.(tsx|html)$/i, '')
     .replace(/^\.+/, '')
     .toLowerCase();
+}
+
+/**
+ * Escape a value for use inside a double-quoted CSS attribute selector
+ * (`[data-dc-screen="<here>"]`). Artboard ids are normally plain slugs, but a
+ * stray `"` or `\` would break out of the selector — escape defensively so the
+ * id is matched literally.
+ */
+function cssAttrEscape(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
 interface SelectionShape {
@@ -147,37 +210,70 @@ export async function resolveScope(args: ResolveScopeArgs): Promise<Target[]> {
   if (!activeFile) return [];
   const slug = slugify(activeFile, designRel);
   const sel = firstSelection(activeJson.selected);
+  const hints = readHints(args.options);
 
   if (scope === 'selection') {
-    const selector = sel?.selector ?? sel?.cssPath;
-    if (!sel || !selector) {
-      // Plan: "Falls back to artboard if no selection." Recurse with the
-      // artboard scope so the fallback semantics live in one place.
+    // Prefer the live submit-time snapshot over the persisted `_active.json`
+    // selection — the dialog can clear the canvas selection before the bridged
+    // export runs, leaving `activeJson.selected` null (item 3 root cause #1).
+    const selector = hints.selection?.selector ?? sel?.selector ?? sel?.cssPath;
+    if (!selector) {
+      // No selection anywhere → fall back to artboard scope so the export
+      // still produces something useful. Single fallback site.
       return resolveScope({ ...args, scope: 'artboard' });
     }
-    const file = sel.file ?? activeFile;
+    const file = hints.selection?.file ?? sel?.file ?? activeFile;
     return [
       {
         kind: 'element',
         cssPath: selector,
         canvasSlug: slugify(file, designRel),
         file,
+        // Capture the element EXACTLY — do NOT widen to the enclosing artboard
+        // (item 3 root cause #2: every single-target export hard-widened).
+        widen: false,
       },
     ];
   }
 
   if (scope === 'artboard') {
-    // The adapter handles "closest [data-dc-screen] ancestor" at render time
-    // via Playwright. Server-side we only know the selection's selector — we
-    // pass it through with a marker and the adapter widens to the artboard.
-    // If no selection, fall back to "first artboard on the active canvas".
-    const baseSelector = sel?.selector ?? sel?.cssPath ?? '[data-dc-screen]:first-of-type';
+    // Preferred path: the dialog captured which artboard is active (the
+    // selection's host, or the artboard under the viewport centre). Target it
+    // by id so EVERY format (PDF included — its shim doesn't widen) renders
+    // the right artboard, not `:first-of-type` (item 5 root cause).
+    if (hints.artboardId) {
+      return [
+        {
+          kind: 'element',
+          cssPath: `[data-dc-screen="${cssAttrEscape(hints.artboardId)}"]`,
+          canvasSlug: slug,
+          file: activeFile,
+          widen: false,
+        },
+      ];
+    }
+    // Fallback: we only have a descendant selector → pass it through and let
+    // the adapter widen to the closest `[data-dc-screen]` ancestor.
+    const descendant = hints.selection?.selector ?? sel?.selector ?? sel?.cssPath;
+    if (descendant) {
+      return [
+        {
+          kind: 'element',
+          cssPath: descendant,
+          canvasSlug: slug,
+          file: activeFile,
+          widen: true,
+        },
+      ];
+    }
+    // Last resort — first artboard on the active canvas.
     return [
       {
         kind: 'element',
-        cssPath: baseSelector,
+        cssPath: '[data-dc-screen]:first-of-type',
         canvasSlug: slug,
         file: activeFile,
+        widen: false,
       },
     ];
   }

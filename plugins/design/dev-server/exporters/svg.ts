@@ -44,7 +44,10 @@ async function captureSvg(
   if (target.multi) {
     args.push('--multi', '1', '--out-dir', outDir);
   } else {
-    args.push('--widen-to-artboard', '1', '--out', path.join(outDir, `${target.canvasSlug}.svg`));
+    // Widen to the enclosing artboard only when scope.ts requested it; a
+    // `selection` target captures the element exactly.
+    if (target.widen) args.push('--widen-to-artboard', '1');
+    args.push('--out', path.join(outDir, `${target.canvasSlug}.svg`));
   }
 
   // Run via `node` so the shim's `import 'playwright'` resolves against

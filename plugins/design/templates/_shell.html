@@ -65,27 +65,54 @@
     </style>
     <!-- Phase 6.5 export — when the shell is loaded with `&hide-chrome=1`
          (the exporters set this), suppress every dev-server overlay so the
-         capture only carries the artboard content. The runtime chrome —
-         tool palette, mini-world-map, comment pins, draw layer, snap guides,
-         selection halos, the artboard label button — is not part of the
-         design and would otherwise show up in PNG / PDF / SVG exports. -->
+         capture only carries the artboard content. The runtime chrome — tool
+         palette, mini-map, presence avatars + cursors, comment pins, draw
+         layer, snap guides, selection halos, toolbars, the artboard label
+         button — is not part of the design and would otherwise leak into PNG /
+         PDF / SVG exports. The selector list MUST track the live class names:
+         the previous list referenced `.dc-mini-map` / `.dc-world-map`, which
+         never existed (the real minimap is `.dc-mm`), and omitted the presence
+         avatars `.dc-participants`, so both leaked — see export-pipeline-fixes
+         Task 2. The bootstrap below flips this block's `media` from `not all`
+         to `all` only when `?hide-chrome=1`, so the live editor keeps chrome. -->
     <style id="canvas-hide-chrome" media="not all">
+      /* Minimap + zoom + tool palette (and its portaled popovers) */
+      .dc-mm,
+      .dc-zoom-tb,
       .dc-tool-palette,
+      .dc-tp-popover,
+      .dc-tp-shape-popover,
+      .dc-context-menu,
+      /* Presence — avatars (top-right) + live cursors */
+      .dc-participants,
+      .dc-cursor-overlay,
+      /* Selection + manipulation chrome */
       .dc-cv-halo,
       .dc-cv-group-bbox,
-      .dc-mini-map,
-      .dc-mini-world-map,
-      .dc-world-map,
+      .dc-cv-eq-spacing-layer,
+      .dc-multi-artboard-tb,
+      .dc-elem-ctx-tb,
       .dc-snap-guide,
-      .dc-annot-overlay,
+      .dc-snap-pill,
+      /* Annotations (FigJam-style draw layer) */
       .dc-annot-svg,
-      .dc-annot-chrome,
       .dc-annot-ctx,
+      .dc-annot-resize-handle,
+      /* Comments — pins, threads, composer, @mention popup */
       .cm-layer,
       .cm-pin,
       .cm-thread,
       .cm-composer,
+      .cm-mention-popup,
+      /* Inspector pin overlay injected into every served shell (inspect.ts) */
+      .dgn-pin,
+      #dgn-pin-layer,
+      /* HUDs + banners */
+      .dc-ai-banner,
+      .dc-undo-hud,
+      /* Artboard title/label button (editor affordance, not design content) */
       .dc-artboard-label,
+      /* Generic opt-in hooks for any future floating overlay */
       [data-dc-overlay],
       [data-mdcc-annotations] { display: none !important; }
     </style>

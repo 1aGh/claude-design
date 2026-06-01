@@ -20,13 +20,22 @@ const args = Object.fromEntries(
   }, [])
 );
 
-const { url, selector, out, 'out-dir': outDir, multi: multiFlag, timeout = '12' } = args;
+const {
+  url,
+  selector,
+  out,
+  'out-dir': outDir,
+  'widen-to-artboard': widenFlag,
+  multi: multiFlag,
+  timeout = '12',
+} = args;
 
 if (!url) {
   console.error('usage: _pdf-playwright.mjs --url <url> --selector <css> --out <path>');
   process.exit(2);
 }
 
+const widen = widenFlag !== undefined;
 const multi = multiFlag !== undefined;
 const timeoutMs = Number(timeout) * 1000;
 
@@ -63,12 +72,20 @@ try {
   });
 
   for (let i = 0; i < screens.length; i += 1) {
-    const handle = screens[i];
-    // Pin each artboard to (0,0) right before its capture so the world's
-    // multi-artboard layout doesn't push the bbox off the viewport.
+    // Widen a descendant selector to its enclosing artboard when requested
+    // (artboard-via-descendant fallback); selection / artboard-by-id targets
+    // pass through unchanged.
+    const handle =
+      widen && !multi
+        ? await screens[i].evaluateHandle((el) => el.closest('[data-dc-screen]') ?? el)
+        : screens[i];
+    // Pin the captured element's own artboard to (0,0) right before its
+    // capture so the world's multi-artboard layout doesn't push the bbox off
+    // the viewport.
     await handle.evaluate((el) => {
-      el.style.left = '0px';
-      el.style.top = '0px';
+      const ab = el.closest('[data-dc-screen]') ?? el;
+      ab.style.left = '0px';
+      ab.style.top = '0px';
     });
     const rect = await handle.evaluate((el) => {
       const r = el.getBoundingClientRect();

@@ -89,7 +89,10 @@ export async function runExport(args: {
   resolve: Omit<ResolveScopeArgs, 'scope'>;
   ctx: ExportContext;
 }): Promise<ExportResult> {
-  const targets = await resolveScope({ ...args.resolve, scope: args.scope });
+  // Thread the options bag into the resolver so submit-time selection /
+  // active-artboard hints (DDR — selection-passthrough) win over the persisted
+  // `_active.json`. Additive — existing `resolve` callers stay valid.
+  const targets = await resolveScope({ ...args.resolve, scope: args.scope, options: args.options });
   const adapter = getAdapter(args.format);
   if (!adapter) {
     throw new Error(`unknown format: ${args.format}`);

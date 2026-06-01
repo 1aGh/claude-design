@@ -28,6 +28,17 @@ interface CaptureOptions {
   timeoutSec?: number;
 }
 
+/**
+ * Coerce an arbitrary `options.scale` into the 1–3 preset range (default 2×).
+ * Exported for unit coverage of the item-1 default/clamp behaviour.
+ */
+export function clampScale(raw: unknown): 1 | 2 | 3 {
+  const n = Math.round(Number(raw));
+  if (n === 1) return 1;
+  if (n === 3) return 3;
+  return 2;
+}
+
 async function captureElement(
   target: Extract<Target, { kind: 'element' }>,
   ctx: ExportContext,
@@ -48,7 +59,12 @@ async function captureElement(
   if (target.multi) {
     args.push('--multi', '1', '--out-dir', outDir);
   } else {
-    args.push('--widen-to-artboard', '1', '--out', path.join(outDir, `${target.canvasSlug}.png`));
+    // Only widen to the enclosing artboard when scope.ts asked for it
+    // (artboard-via-descendant fallback). `selection` scope sets widen=false so
+    // the capture is the element exactly; artboard-by-id targets the screen
+    // element directly and needs no widening.
+    if (target.widen) args.push('--widen-to-artboard', '1');
+    args.push('--out', path.join(outDir, `${target.canvasSlug}.png`));
   }
   const proc = Bun.spawn(['node', ...args], {
     cwd: path.dirname(PNG_PLAYWRIGHT),
@@ -101,7 +117,10 @@ export async function run(
 
   const tmp = mkdtempSync(path.join(tmpdir(), 'maude-png-'));
   const captureOpts: CaptureOptions = {
-    scale: (options.scale as 1 | 2 | 3 | undefined) ?? 1,
+    // Default 2× — a single-scale PNG was uselessly small (item 1). The dialog
+    // sends an explicit scale; this default covers direct API / curl callers.
+    // Clamped to the 1–3 preset range; the shim re-clamps deviceScaleFactor ≤ 4.
+    scale: clampScale(options.scale),
     timeoutSec: (options.timeoutSec as number | undefined) ?? 8,
   };
 

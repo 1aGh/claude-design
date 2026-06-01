@@ -109,6 +109,24 @@
       "docsUrl": "https://playwright.dev"
     },
     {
+      "id": "svg2pptx",
+      "type": "cli",
+      "hardness": "soft",
+      "check": {
+        "command": "svg2pptx --version",
+        "expectExit": 0
+      },
+      "install": {
+        "preferred": "pip install svg2pptx",
+        "darwin": "pipx install svg2pptx || python3 -m pip install svg2pptx",
+        "linux": "pipx install svg2pptx || python3 -m pip install svg2pptx"
+      },
+      "autoInstall": false,
+      "fallbackBehavior": "PPTX/Canva export uses svg2pptx (Python) to emit NATIVE, editable PowerPoint shapes + text boxes from the artboard SVG — editable in PowerPoint / Keynote / Canva. Without it (or python3), export falls back to a non-editable PNG-per-slide deck (faithful, universal, Canva-safe). Set MAUDE_SVG2PPTX to a custom svg2pptx executable (e.g. a venv path, or `python3 -m svg2pptx`) when it isn't on PATH. See DDR-069.",
+      "usedBy": ["dev-server/exporters/pptx.ts"],
+      "docsUrl": "https://github.com/benouinirachid/svg2pptx"
+    },
+    {
       "id": "maude",
       "type": "cli",
       "hardness": "soft",

@@ -40,7 +40,13 @@ async function capturePdf(
     String(timeoutSec),
   ];
   if (target.multi) args.push('--multi', '1', '--out-dir', outDir);
-  else args.push('--out', path.join(outDir, `${target.canvasSlug}.pdf`));
+  else {
+    // Widen to the enclosing artboard only when scope.ts requested it
+    // (artboard-via-descendant fallback). selection / artboard-by-id targets
+    // already point at the exact element / screen.
+    if (target.widen) args.push('--widen-to-artboard', '1');
+    args.push('--out', path.join(outDir, `${target.canvasSlug}.pdf`));
+  }
 
   const proc = Bun.spawn(['node', ...args], {
     cwd: path.dirname(PDF_PLAYWRIGHT),

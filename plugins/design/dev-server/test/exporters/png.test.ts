@@ -8,7 +8,7 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { run } from '../../exporters/png.ts';
+import { clampScale, run } from '../../exporters/png.ts';
 
 const CTX = {
   designRoot: '/tmp/.design',
@@ -28,5 +28,28 @@ describe('png adapter — contract', () => {
     await expect(run([{ kind: 'file-tree', paths: ['ui/Home.tsx'] }], {}, CTX)).rejects.toThrow(
       /element targets/i
     );
+  });
+});
+
+describe('png clampScale — size presets (item 1)', () => {
+  test('defaults to 2× when scale is absent / invalid', () => {
+    expect(clampScale(undefined)).toBe(2);
+    expect(clampScale(null)).toBe(2);
+    expect(clampScale('nonsense')).toBe(2);
+    expect(clampScale(0)).toBe(2);
+  });
+
+  test('honours the 1×/2×/3× presets (number or string)', () => {
+    expect(clampScale(1)).toBe(1);
+    expect(clampScale(2)).toBe(2);
+    expect(clampScale(3)).toBe(3);
+    expect(clampScale('1')).toBe(1);
+    expect(clampScale('3')).toBe(3);
+  });
+
+  test('clamps out-of-range / fractional values to the preset set', () => {
+    expect(clampScale(4)).toBe(2); // above max → safe default
+    expect(clampScale(2.6)).toBe(3); // rounds to nearest preset
+    expect(clampScale(1.2)).toBe(1);
   });
 });

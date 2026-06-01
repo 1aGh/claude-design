@@ -40,7 +40,10 @@ async function captureHtml(
   if (target.multi) {
     args.push('--multi', '1', '--out-dir', outDir);
   } else {
-    args.push('--widen-to-artboard', '1', '--out', path.join(outDir, `${target.canvasSlug}.html`));
+    // Widen to the enclosing artboard only when scope.ts requested it; a
+    // `selection` target serializes the element exactly.
+    if (target.widen) args.push('--widen-to-artboard', '1');
+    args.push('--out', path.join(outDir, `${target.canvasSlug}.html`));
   }
   const proc = Bun.spawn(['node', ...args], {
     cwd: path.dirname(HTML_PLAYWRIGHT),

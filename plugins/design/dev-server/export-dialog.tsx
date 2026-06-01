@@ -24,6 +24,8 @@ import {
   useState,
 } from 'react';
 
+import { useSelectionSetOptional } from './use-selection-set.tsx';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 
@@ -93,6 +95,69 @@ function bridgeRequest<T>(
 
 export type Format = 'png' | 'pdf' | 'svg' | 'html' | 'pptx' | 'canva' | 'zip';
 export type Scope = 'selection' | 'artboard' | 'canvas-as-separate' | 'project-raw';
+
+// ─── PNG size presets (item 1) ───────────────────────────────────────────────
+// Resolution multiplier applied as Chromium `deviceScaleFactor`. The native
+// artboard is 1440×900; 2× → 2880×1800. Default 2× because a single-scale PNG
+// was uselessly small. The shim clamps deviceScaleFactor ≤ 4.
+type PngScale = 1 | 2 | 3;
+const PNG_SCALES: ReadonlyArray<{ value: PngScale; label: string }> = [
+  { value: 1, label: '1× (native)' },
+  { value: 2, label: '2× (retina)' },
+  { value: 3, label: '3× (max)' },
+];
+const DEFAULT_PNG_SCALE: PngScale = 2;
+
+/**
+ * The artboard under the viewport centre — the export dialog's notion of "the
+ * active artboard" when nothing is selected. getBoundingClientRect is in
+ * screen coords (post-zoom) so the centre-distance metric is zoom-invariant.
+ * Returns undefined off-DOM (tests) or when the canvas has no artboards.
+ */
+function activeArtboardId(): string | undefined {
+  if (typeof document === 'undefined' || typeof window === 'undefined') return undefined;
+  const screens = Array.from(document.querySelectorAll('[data-dc-screen]'));
+  if (!screens.length) return undefined;
+  const cx = window.innerWidth / 2;
+  const cy = window.innerHeight / 2;
+  let best: Element | null = null;
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (const el of screens) {
+    const r = el.getBoundingClientRect();
+    const dx = (r.left + r.right) / 2 - cx;
+    const dy = (r.top + r.bottom) / 2 - cy;
+    const d = dx * dx + dy * dy;
+    if (d < bestDist) {
+      bestDist = d;
+      best = el;
+    }
+  }
+  return best?.getAttribute('data-dc-screen') ?? undefined;
+}
+
+/**
+ * Snapshot the live canvas selection + active artboard at submit time so the
+ * export is independent of whether opening the dialog cleared the persisted
+ * `_active.json.selected`. Rides the `options` bag through the cross-origin
+ * bridge into `resolveScope` (see scope.ts `ExportScopeHints`). `selSet` is the
+ * optional selection-set context — null when the dialog is mounted outside a
+ * provider (tests), in which case we still contribute the viewport-centre
+ * artboard id.
+ */
+function captureScopeHints(
+  selSet: {
+    selected: Array<{ selector?: string; file?: string; artboardId?: string | null }>;
+  } | null
+): { selection?: { selector: string; file?: string }; artboardId?: string } {
+  const out: { selection?: { selector: string; file?: string }; artboardId?: string } = {};
+  const sel = selSet?.selected?.[0];
+  if (sel?.selector) {
+    out.selection = { selector: sel.selector, ...(sel.file ? { file: sel.file } : {}) };
+  }
+  const artboardId = (sel?.artboardId ?? undefined) || activeArtboardId();
+  if (artboardId) out.artboardId = artboardId;
+  return out;
+}
 
 const FORMAT_META: Record<Format, { label: string; description: string; defaultExt: string }> = {
   png: { label: 'PNG', description: 'Raster image, one per artboard.', defaultExt: '.png' },
@@ -386,6 +451,20 @@ const DialogShell = (() => {
     const { ref, openState, onClose, onSubmit, history, submitting, status } = props;
     const [format, setFormat] = useState<Format>('png');
     const [scope, setScope] = useState<Scope>('artboard');
+    const [pngScale, setPngScale] = useState<PngScale>(DEFAULT_PNG_SCALE);
+    // Optional — the dialog can be mounted in tests without a provider.
+    const selSet = useSelectionSetOptional();
+
+    // Build the options bag at submit time: snapshot the live selection /
+    // active artboard (items 3 & 5) plus the PNG size (item 1).
+    const handleSubmit = useCallback(() => {
+      const options: Record<string, unknown> = {};
+      const hints = captureScopeHints(selSet);
+      if (hints.selection) options.selection = hints.selection;
+      if (hints.artboardId) options.artboardId = hints.artboardId;
+      if (format === 'png') options.scale = pngScale;
+      onSubmit(format, scope, options);
+    }, [selSet, format, scope, pngScale, onSubmit]);
 
     useEffect(() => {
       if (!openState) return;
@@ -444,6 +523,25 @@ const DialogShell = (() => {
             </select>
             <p className="dc-ed-desc">{SCOPE_META[scope].description}</p>
           </div>
+          {format === 'png' && (
+            <div>
+              <label htmlFor="dc-ed-png-scale">Size</label>
+              <select
+                id="dc-ed-png-scale"
+                value={pngScale}
+                onChange={(e) => setPngScale(Number(e.target.value) as PngScale)}
+              >
+                {PNG_SCALES.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+              <p className="dc-ed-desc">
+                Resolution multiplier. 2× ≈ 2880×1800 for a 1440×900 artboard.
+              </p>
+            </div>
+          )}
         </div>
         {history.length > 0 && (
           <div className="dc-ed-recent">
@@ -481,7 +579,7 @@ const DialogShell = (() => {
             type="button"
             className="dc-ed-primary"
             disabled={submitting}
-            onClick={() => onSubmit(format, scope, {})}
+            onClick={handleSubmit}
           >
             {submitting ? 'Exporting…' : 'Export'}
           </button>
