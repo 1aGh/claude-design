@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-01T14:06:35.412Z",
+  "generated": "2026-06-01T21:07:16.127Z",
   "currentPhase": null,
   "phases": [
     {
@@ -166,6 +166,17 @@
       "planPath": ".ai/plans/archive/phase-24-annotations-figjam-parity-v2.md",
       "archived": true,
       "phaseKey": "24"
+    },
+    {
+      "id": "phase-25-designer-draw-svg-agent",
+      "title": "Feature: `design:draw` — principle-grounded SVG generation agent + deterministic geometry engine",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. The load-bearing prior art for this whole feature already lives in the repo: plugins/d...",
+      "planPath": ".ai/plans/archive/phase-25-designer-draw-svg-agent.md",
+      "archived": true,
+      "phaseKey": "25"
     },
     {
       "id": "phase-3.6-canvas-tsx-format",
@@ -661,17 +672,6 @@
       "planPath": ".ai/plans/phase-23-canvas-images-link-unfurl.md",
       "archived": false,
       "phaseKey": "23"
-    },
-    {
-      "id": "phase-25-designer-draw-svg-agent",
-      "title": "Feature: `design:draw` — principle-grounded SVG generation agent + deterministic geometry engine",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. The load-bearing prior art for this whole feature already lives in the repo: plugins/d...",
-      "planPath": ".ai/plans/phase-25-designer-draw-svg-agent.md",
-      "archived": false,
-      "phaseKey": "25"
     },
     {
       "id": "setup-ds-aesthetic-ambition",

@@ -371,3 +371,24 @@ Not a multi-platform UI feature. Verification backbone:
 **Strongest objective anchors** (the non-negotiable core the engine enforces in code): WCAG ratios, the 4/8pt scale, modular type ratios, 45–75ch measure, proximity (intra<inter), the squint test, and the optical-correction trio (overshoot, centroid-centering, single focal point).
 
 **The hard truth from the SVG-generation research** (why the engine exists): LLMs free-handing SVG quantize coordinates to integers, hallucinate/drift coordinates, mis-order paths (occlusion), and degrade colors — and the defects accumulate over edits. Fix = the LLM specifies *intent*, deterministic code computes *coordinates*; plan before drawing; verify with a short **rank-not-score, keep-best** loop (cap 3–4) on real browser renders; and verify text/counts/color from the *source*, never from the vision model.
+
+---
+
+## Retro
+
+Closed out 2026-06-01 across three commits — `0b4a4a3` (Milestones A–H: engine + serialize + agents + `/design:draw` + new/edit routing + DDR-070/071), `9edbfdf` (engine v2: gradients/filters/patterns/masks/blend + composition layer + principle-grounded critics + DDR-074), `4942e65` (brush + engraving layer).
+
+**What worked**
+- **Draw-as-code held up.** The `SvgPrimitive`→single-source-serialize pattern (DDR-067) generalized cleanly to the whole vocabulary; the SVG↔JSX parity invariant + the SVGO validity gate caught every malformed build. The `maude design draw-build/draw-proof/svg-optimize` verbs + the `MAUDE_DRAW_ENGINE` injected-path trick made the engine runnable portably without a bundler specifier.
+- **The verify loop earned its keep.** Reading proof PNGs into context (DDR-021) caught real defects the build couldn't — the pastel "muddy" variant, the neon overlap, the hero-text↔blob collision — before they shipped.
+- **Research-driven correction beat intuition.** The deep-research pass overturned the golden-ratio assumption (myth, non-discriminating as a gate) and reframed "blob soup" as a *generation-architecture* failure (random vs armature-constrained). That produced the composition layer + the discriminating critic metrics (value-range / harmony-distance / VME balance / dominance / APCA) instead of vibe-scoring.
+
+**What didn't / surprised**
+- **Procedural composition has a soul ceiling.** Repeated attempts at a tattoo/engraving crest stayed "competent but soulless" no matter how many primitives were added (hatch → contour → stipple → engraveLines). The honest learning: a brush/engraving *toolkit* is the right deliverable; the soul in the reference art comes from a human (or a high-latitude visual agent) **drawing the forms** and applying the brushes — not from a generator composing the whole. Don't promise auto-soul from procedural generation.
+- **Critics were too lenient initially** — they passed "soup" at 4.x/"portfolio-grade". Root cause was gut-scoring; fixed by grounding them on computed metrics + an anti-soup gate. Lesson: a critic without a measurable floor drifts generous.
+- **Shared-tree concurrency was constant.** A second session committed Phase-9.1 TSX-sync work (DDR-072/073) to `main` throughout. Staging only own files atomically (per the scope-to-repo-state rule) kept commits clean; a spurious `dist/client.bundle.js` rebuild from server boots had to be excluded twice.
+
+**For next /plan or /execute**
+- When a plan's deliverable is "good-looking output", separate **mechanism** (testable, plannable) from **aesthetics** (judgment, has a ceiling) up front, and set expectations on the latter — don't let "make it dope" become an open-ended iteration loop.
+- The DDR README index has drifted badly (~40 of 73 DDRs unindexed, pre-existing) — worth a dedicated `/flow:maintain` backfill, separate from feature work.
+- Follow-ups deferred (not blockers): wire `draw-agent` to *apply* the brush/engraving toolkit per-form (the realistic path to soul); `inkBleedFilter` preset; round-cap for `taper:'none'`. The `setup-ds` organic-seed step is specced but not yet exercised live.
