@@ -370,6 +370,7 @@ HAS_ANIM=$(grep -cE "@keyframes|transition[: -]|animation:|prefers-reduced-motio
 HAS_FORMS=$(grep -cE "<input|<textarea|<select|<form|<label" "$CANVAS")
 HAS_NAV=$(grep -cE "<nav|role=\"navigation\"|breadcrumb|sub-rail|sub-nav" "$CANVAS")
 HAS_LOGO=$(grep -cE "logos?/|wordmark|brand-mark" "$CANVAS")
+HAS_CUSTOM_SVG=$(grep -cE "<svg [^>]*viewBox|\.svg[\"']|DrawProof|dangerouslySetInnerHTML" "$CANVAS")  # custom vector mark
 HAS_TYPE_HEAVY=$(grep -cE "<p>|t-body|t-meta|t-title|article|prose" "$CANVAS")  # >5 = type-heavy
 HAS_HEAVY_JSX=$(grep -cE "useState|useEffect|useMemo|useCallback|map\\(|\\.filter\\(|key=" "$CANVAS")
 HAS_USER_STRINGS=$(grep -cE ">[A-Z][a-zA-Z ]{3,}<|placeholder=|aria-label=|title=" "$CANVAS")  # any user-facing copy
@@ -389,6 +390,7 @@ HAS_USER_STRINGS=$(grep -cE ">[A-Z][a-zA-Z ]{3,}<|placeholder=|aria-label=|title
 | `frontend-critic` |   | `HAS_HEAVY_JSX > 10` OR feedback mentions `code|jsx|component|hook|prop|key warning|render` |
 | `info-architecture-critic` |   | `HAS_NAV > 0` OR feedback mentions `nav|navigation|hierarchy|menu|breadcrumb|search|filter|sitemap` |
 | `graphic-design-critic` |   | feedback mentions `composition|layout|visual|hierarchy|balance|density|rhythm|alignment|spacing` |
+| `draw-critic` |   | `HAS_CUSTOM_SVG > 0` OR feedback mentions `logo\|icon\|illustration\|diagram\|svg\|vector\|mark\|draw` — judges **standalone vector art** on the favicon / single-color-flatten / keyline-grid / WCAG axes the other critics don't (see `agents/_draw-design-rules.md`). |
 
 If the routing produces just `design-critic + a11y-critic` (minimum panel), that's fine — those two cover most baseline-quality cases. The conditional ones fire when the canvas / feedback genuinely calls for them.
 

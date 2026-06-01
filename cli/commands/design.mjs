@@ -37,6 +37,9 @@ const BIN_VERBS = new Set([
   'handoff',
   'asset-sweep',
   'visual-sanity',
+  'draw-build',
+  'draw-proof',
+  'svg-optimize',
 ]);
 
 export async function run({ args, pkgRoot }) {
@@ -107,6 +110,7 @@ Lifecycle:
 Dev-tooling (dispatch to the dev-server bash helpers — DDR-062):
   screenshot · server-up · prep · slug · bootstrap-check · runtime-health
   smoke · canvas-edit · handoff · asset-sweep · visual-sanity
+  draw-build · draw-proof · svg-optimize
         Invoke the bundled helper of the same name. maude resolves it from its
         own package root and sets CLAUDE_PLUGIN_ROOT for the child; stdout,
         stderr, and exit code pass straight through (so command-substitution

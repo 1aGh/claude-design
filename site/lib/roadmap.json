@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-01T13:16:52.406Z",
+  "generated": "2026-06-01T14:06:35.412Z",
   "currentPhase": null,
   "phases": [
     {
@@ -672,6 +672,17 @@
       "planPath": ".ai/plans/phase-25-designer-draw-svg-agent.md",
       "archived": false,
       "phaseKey": "25"
+    },
+    {
+      "id": "setup-ds-aesthetic-ambition",
+      "title": "Feature: setup-ds aesthetic-ambition axis (rozbít single-accent funnel)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is a spec/infrastructure change to the design plugin's bootstrap flow — pure mark...",
+      "planPath": ".ai/plans/setup-ds-aesthetic-ambition.md",
+      "archived": false,
+      "phaseKey": null
     },
     {
       "id": "phase-7-acp-chat-sidebar",

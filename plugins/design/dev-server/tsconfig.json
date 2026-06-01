@@ -21,6 +21,13 @@
     "forceConsistentCasingInFileNames": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["*.ts", "client/**/*.ts", "client/**/*.tsx", "client/**/*.jsx", "test/**/*.ts"],
+  "include": [
+    "*.ts",
+    "draw/**/*.ts",
+    "client/**/*.ts",
+    "client/**/*.tsx",
+    "client/**/*.jsx",
+    "test/**/*.ts"
+  ],
   "exclude": ["node_modules", "dist", "**/*.test.ts"]
 }

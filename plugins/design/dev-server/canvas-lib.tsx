@@ -29,6 +29,9 @@
  *                      Standalone it renders a fixed-size block at its given
  *                      width/height (specimens / legacy uses).
  *   DCPostIt           <aside class="dc-postit"> — sticky-note annotation.
+ *   DrawProof          (Phase 25) Renders one vector mark across a size ladder
+ *                      × {light, dark, single-color flatten} as labeled
+ *                      DCArtboards — the draw engine's render/verify harness.
  *
  *   Specimen helpers ───────────────────────────────────────────────────────
  *   SpecimenHeader     The .specimen-hd row (sku + crumbs + ThemeToggle).
@@ -1596,6 +1599,113 @@ export function DCArtboard({
   );
 }
 DCArtboard.displayName = 'DCArtboard';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DrawProof (Phase 25) — the render/verify harness for the draw engine. Renders
+// ONE vector mark across a size ladder × {light, dark, single-color flatten} as
+// labeled DCArtboards, so a single `maude design screenshot --all-screens`
+// operationalizes the whole graphic rubric at once:
+//   • per-size legibility (does the 16px instance survive the favicon test?)
+//   • dark-mode correctness (does `currentColor` flip cleanly?)
+//   • the single-color flatten test (pure #000 on #fff — logo must hold)
+// Reference frames are FIXED (not DS tokens) on purpose: the flatten/legibility
+// tests must be objective, independent of whichever DS the canvas declares.
+// Additive export (DDR-025) — no existing canvas-lib surface changes.
+
+const DRAW_PROOF_MODES = {
+  light: { bg: '#ffffff', fg: '#111111', label: 'light' },
+  dark: { bg: '#111111', fg: '#f5f5f5', label: 'dark' },
+  flatten: { bg: '#ffffff', fg: '#000000', label: 'single-color flatten' },
+} as const;
+
+export type DrawProofMode = keyof typeof DRAW_PROOF_MODES;
+
+/**
+ * Render a single mark across the verification ladder. `mark` is the inline SVG
+ * (the engine's `toJsx` output, dropped in as JSX). Each mode becomes one
+ * labeled DCArtboard (a `--all-screens` target) showing the mark at every size,
+ * so the proof PNGs are `proof-<mode>.png`.
+ */
+export function DrawProof({
+  mark,
+  name = 'mark',
+  sizes = [16, 24, 48, 256],
+  modes = ['light', 'dark', 'flatten'],
+}: {
+  mark: ReactNode;
+  name?: string;
+  sizes?: number[];
+  modes?: DrawProofMode[];
+}) {
+  const maxSize = Math.max(...sizes, 64);
+  const cellGap = 32;
+  const padding = 32;
+  const boardWidth =
+    padding * 2 + sizes.reduce((acc, s) => acc + Math.max(s, 56), 0) + cellGap * (sizes.length - 1);
+  const boardHeight = padding * 2 + maxSize + 28;
+
+  return (
+    <DesignCanvas>
+      <style>{'.dp-cell svg{display:block;width:100%;height:100%}'}</style>
+      {modes.map((mode) => {
+        const m = DRAW_PROOF_MODES[mode];
+        return (
+          <DCArtboard
+            key={mode}
+            id={`proof-${mode}`}
+            label={`${name} · ${m.label}`}
+            width={boardWidth}
+            height={boardHeight}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'flex-end',
+                gap: cellGap,
+                padding,
+                minHeight: boardHeight,
+                background: m.bg,
+                color: m.fg,
+                boxSizing: 'border-box',
+              }}
+            >
+              {sizes.map((s) => (
+                <figure
+                  key={s}
+                  style={{
+                    margin: 0,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 8,
+                  }}
+                >
+                  <span
+                    className="dp-cell"
+                    style={{ display: 'inline-block', width: s, height: s, color: m.fg }}
+                  >
+                    {mark}
+                  </span>
+                  <figcaption
+                    style={{
+                      fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                      fontSize: 11,
+                      color: m.fg,
+                      opacity: 0.65,
+                    }}
+                  >
+                    {s}px
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+          </DCArtboard>
+        );
+      })}
+    </DesignCanvas>
+  );
+}
+DrawProof.displayName = 'DrawProof';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SnapGuideOverlay (Phase 4.2) — renders 1 px guide lines while a drag is in

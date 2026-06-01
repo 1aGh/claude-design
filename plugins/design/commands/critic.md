@@ -1,7 +1,7 @@
 ---
 name: design:critic
 category: daily
-description: Spawn critic panel (or single agent / all critics) na aktivním canvasu — design + a11y + až 7 specialistů (graphic, brand, typography, motion, copy, frontend, info-architecture). Default = orchestrator routes panel based on canvas content + feedback. Honors opt_out_scope from canvas .meta.json or --opt-out= flag. Use --system-only to audit the design system itself (structural completeness) instead of the active canvas.
+description: Spawn critic panel (or single agent / all critics) na aktivním canvasu — design + a11y + až 9 specialistů (graphic, brand, typography, motion, copy, frontend, info-architecture, signature-moment, draw). Default = orchestrator routes panel based on canvas content + feedback. Honors opt_out_scope from canvas .meta.json or --opt-out= flag. Use --system-only to audit the design system itself (structural completeness) instead of the active canvas.
 argument-hint: "[--agent <name>] [--all] [--panel] [--system-only [--ds=<name>] [--all-ds]] [--opt-out=palette|aesthetic|full]"
 ---
 
@@ -16,7 +16,7 @@ Tento command **nepouští auto-fix loop** — to dělají `/design:edit` a `/de
 | Flag | Behavior |
 |---|---|
 | (none) | **Routed panel** — orchestrator vybere critics podle obsahu canvasu + posledního feedbacku (viz `skills/design/SKILL.md` "Critic panel routing"). Vždy zahrnuje `design-critic` + `a11y-critic`, dál podmíněně. |
-| `--agent <name>` | Jen jeden specialista. Dostupní: `design-critic`, `graphic-design-critic`, `brand-critic`, `typography-critic`, `motion-critic`, `a11y-critic`, `copy-critic`, `frontend-critic`, `info-architecture-critic`, `signature-moment-critic`. |
+| `--agent <name>` | Jen jeden specialista. Dostupní: `design-critic`, `graphic-design-critic`, `brand-critic`, `typography-critic`, `motion-critic`, `a11y-critic`, `copy-critic`, `frontend-critic`, `info-architecture-critic`, `signature-moment-critic`, `draw-critic`. |
 | `--all` | Všech 9 critics paralelně. Heavy — utratí 9× tool calls. Použij pro "exhaustive polish before handoff". |
 | `--panel` | Alias for default (no flag). |
 | `--opt-out=<scope>` | Override the canvas's persisted scope for this critique only. Without this flag, scope is read from `<active>.meta.json` `opt_out_scope` (default `palette`). Passes to every spawned critic — design-stack critics downgrade matching DS-rule blockers per scope; a11y / frontend / copy critics ignore it. See SKILL.md "Opt-out scope". |
@@ -64,7 +64,7 @@ ARGS="$@"
 if [[ "$ARGS" == *"--agent "* ]]; then
   PANEL=( $(extract --agent value) )
 elif [[ "$ARGS" == *"--all"* ]]; then
-  PANEL=(design-critic graphic-design-critic brand-critic typography-critic motion-critic a11y-critic copy-critic frontend-critic info-architecture-critic signature-moment-critic)
+  PANEL=(design-critic graphic-design-critic brand-critic typography-critic motion-critic a11y-critic copy-critic frontend-critic info-architecture-critic signature-moment-critic draw-critic)
 else
   # Routed panel — see skills/design/SKILL.md "Critic panel routing"
   PANEL=( $(route_panel "$CANVAS" "$LAST_FEEDBACK" "$SELECTED") )
@@ -154,6 +154,7 @@ Write `<designRoot>/_history/<slug>/critique/<NNN>-PANEL.md` (schema in `skills/
 | `frontend-critic` | JSX patterns, semantic HTML, hooks, keys, performance gotchas, hydration. |
 | `info-architecture-critic` | Nav depth, hierarchy, taxonomy, findability, URL hygiene, cross-surface consistency. |
 | `signature-moment-critic` | **Aspiration axis** — měří *presence of greatness*, ne absence of badness. 5 axes (signature compositional moment per artboard, brand prominence, mock fidelity, restraint, negative space) + specificity gate (no Lorem / placeholders). **Always in panel pro `/design:new` a polish-cued `/design:edit`.** Zavírá gap mezi "passes correctness" a "would screenshot for portfolio". |
+| `draw-critic` | **Standalone vector art** (logo / icon / illustration / diagram / spot) — 30-check draw rubric s HARD floor (WCAG · 4/8pt grid · 16px legibility · single-color flatten). Routed když canvas nese custom `<svg>` mark nebo feedback zmiňuje `logo\|icon\|illustration\|diagram\|svg\|vector`. Gap, který `graphic-design-critic` nepokrývá (ten řeší kompozici celého canvasu, ne mark). |
 | `design-system-completeness-critic` | **Structural completeness of the design system itself** — tokens, philosophy, specimens, shape. 3-tier rules (Core blocker / Conventional warning gated by `activeFamilies` + `completenessProfile` / Free-form acknowledged). **Spawned only via `--system-only`** (or auto-run at the end of skill `design-system` bootstrap flow). NOT included in canvas critic panels — different scope. |
 
 Full critic prompts: `${CLAUDE_PLUGIN_ROOT}/agents/<name>.md`.

@@ -34,6 +34,7 @@ test('buildBlock includes the runtime paths and is marker-wrapped', () => {
     '.design/_active.json',
     '.design/_sync.json',
     '.design/_history/',
+    '.design/_draw/',
     '.design/_chat/',
   ]) {
     assert.ok(block.includes(p), `missing ${p}`);
