@@ -783,6 +783,58 @@ describe('scanCanvases', () => {
   });
 });
 
+// DDR-072 — project-level TSX opt-in (linkedHub.syncTsx). A .tsx with no
+// explicit sidecar verdict defaults to syncable when the project flag is on;
+// the per-canvas sidecar still wins; the sandbox coupling is preserved.
+describe('scanCanvases — project-level syncTsx (DDR-072)', () => {
+  test('syncTsx:true + sandbox ON admits a .tsx WITHOUT a per-canvas opt-in', async () => {
+    const ctx = makeCtx(
+      { url: 'https://h.example.com', linkedAt: 1, syncTsx: true },
+      'http://localhost:9'
+    );
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'free.tsx'), 'export default () => null;');
+    const scan = await scanCanvases(ctx);
+    const free = scan.canvases.find((c) => c.slug === 'ui-free');
+    expect(free).toBeDefined();
+    expect(free?.html).toBe(join(ctx.paths.designRoot, 'ui', 'free.tsx'));
+    expect(scan.tsxCount).toBe(0);
+  });
+
+  test('syncTsx:true is INERT when the sandbox split is OFF (Lock-2 coupling preserved)', async () => {
+    // canvasOrigin undefined → sandbox not in force → no .tsx syncs, flag or not.
+    const ctx = makeCtx({ url: 'https://h.example.com', linkedAt: 1, syncTsx: true });
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'free.tsx'), 'export default () => null;');
+    const scan = await scanCanvases(ctx);
+    expect(scan.canvases.map((c) => c.slug)).not.toContain('ui-free');
+    expect(scan.tsxCount).toBe(1);
+  });
+
+  test('per-canvas "syncable": false OVERRIDES syncTsx:true (sidecar wins)', async () => {
+    const ctx = makeCtx(
+      { url: 'https://h.example.com', linkedAt: 1, syncTsx: true },
+      'http://localhost:9'
+    );
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'secret.tsx'), 'export default () => null;');
+    writeFileSync(
+      join(ctx.paths.designRoot, 'ui', 'secret.meta.json'),
+      JSON.stringify({ syncable: false, title: 'Secret' })
+    );
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'open.tsx'), 'export default () => null;');
+    const scan = await scanCanvases(ctx);
+    const slugs = scan.canvases.map((c) => c.slug);
+    expect(slugs).toContain('ui-open'); // no sidecar → project default
+    expect(slugs).not.toContain('ui-secret'); // explicit opt-out wins
+  });
+
+  test('without the flag (syncTsx absent) a .tsx still needs the per-canvas opt-in', async () => {
+    const ctx = makeCtx({ url: 'https://h.example.com', linkedAt: 1 }, 'http://localhost:9');
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'plain.tsx'), 'export default () => null;');
+    const scan = await scanCanvases(ctx);
+    expect(scan.canvases.map((c) => c.slug)).not.toContain('ui-plain');
+    expect(scan.tsxCount).toBe(1);
+  });
+});
+
 describe('buildNoSyncablePayload', () => {
   test('TSX-only project: reason names the count + DDR-060', () => {
     const p = buildNoSyncablePayload('https://h.example.com', 3, '/proj/.design');

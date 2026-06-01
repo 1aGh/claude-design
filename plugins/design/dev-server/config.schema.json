@@ -197,6 +197,10 @@
         "adopt": {
           "type": "boolean",
           "description": "When true, the first sync after boot pushes local disk state up to the hub unconditionally (use case: bootstrapping the hub from a populated repo, or hub-was-wiped recovery). Cleared after first successful adopt."
+        },
+        "syncTsx": {
+          "type": "boolean",
+          "description": "DDR-072 — project-level TSX sync opt-in. When true, ALL .tsx canvases sync to this hub without a per-canvas .meta.json \"syncable\": true. A per-canvas \"syncable\": false still excludes individual canvases (the sidecar always wins). Inert unless the cross-origin sandbox is active (MAUDE_CANVAS_ORIGIN_SPLIT != 0) — the DDR-060 Lock-2 coupling is preserved. Broadens the WebRTC/self-nav exfil residual to every synced canvas, so only enable for hubs you operate or fully trust; the dev-server prints a loud boot banner against non-loopback hubs."
         }
       },
       "additionalProperties": false

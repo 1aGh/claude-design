@@ -29,6 +29,15 @@ export interface LinkedHub {
   url: string;
   linkedAt: number;
   adopt?: boolean;
+  /**
+   * DDR-072 — project-level TSX sync opt-in. When true, EVERY `.tsx` canvas
+   * syncs to this hub without a per-canvas `.meta.json "syncable": true`. A
+   * per-canvas `"syncable": false` still excludes an individual canvas (the
+   * sidecar always wins). Inert unless the cross-origin sandbox is active
+   * (`MAUDE_CANVAS_ORIGIN_SPLIT != 0`) — the Lock-2 coupling from DDR-060 is
+   * preserved. Only for hubs you operate or fully trust.
+   */
+  syncTsx?: boolean;
 }
 
 export interface DevServerConfig {

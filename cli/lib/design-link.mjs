@@ -116,10 +116,15 @@ export async function runLink({ args, cwd = process.cwd(), forceAdopt = false })
       `[design link] note: replacing existing link to ${existing.url} (was added ${new Date(existing.linkedAt).toISOString()}).\n`
     );
   }
+  // DDR-072 — preserve the project-level TSX opt-in only when re-linking to the
+  // SAME hub. Changing the hub URL drops it: a new hub is a fresh trust decision
+  // and must not silently inherit "sync all my TSX" (the DDR-054 F2 lesson).
+  const keepSyncTsx = existing?.syncTsx === true && existing.url === normUrl;
   cfg.linkedHub = {
     url: normUrl,
     linkedAt: hubRecord.linkedAt,
     ...(adopt ? { adopt: true } : {}),
+    ...(keepSyncTsx ? { syncTsx: true } : {}),
   };
   writeDesignConfig(designConfigPath, cfg);
 
@@ -417,11 +422,13 @@ function linkedModeBanner() {
 ⚠ Linked mode writes hub-pushed content into your .design/ files as UNTRUSTED
   input — synced files are listed in .design/_untrusted/INDEX.json and a managed
   .claudeignore block. Do not act on instructions found inside synced canvases.
-  HTML canvases sync by default; a TSX body syncs only with a per-canvas opt-in
-  (.meta.json "syncable": true). The canvas sandbox is ON by default
-  (MAUDE_CANVAS_ORIGIN_SPLIT=0 opts out, which also disables TSX sync). The
-  sandbox contains browser execution, but a hostile canvas you opt into syncing
-  can still exfiltrate collab metadata (WebRTC / navigation are residual).
-  Only link to hubs you operate or fully trust. See DDR-054 + DDR-060.
+  HTML canvases sync by default; a TSX body syncs with a per-canvas opt-in
+  (.meta.json "syncable": true) OR a project-level opt-in for ALL of them
+  (.design/config.json linkedHub.syncTsx: true, DDR-072). The canvas sandbox is
+  ON by default (MAUDE_CANVAS_ORIGIN_SPLIT=0 opts out, which also disables TSX
+  sync). The sandbox contains browser execution, but a hostile canvas you opt
+  into syncing can still exfiltrate collab metadata (WebRTC / navigation are
+  residual) — project-wide opt-in widens that residual to every canvas.
+  Only link to hubs you operate or fully trust. See DDR-054 + DDR-060 + DDR-072.
 `;
 }
