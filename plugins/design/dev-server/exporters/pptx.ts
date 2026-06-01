@@ -177,7 +177,7 @@ export async function mergeDecks(decks: Uint8Array[]): Promise<Uint8Array> {
       if (!slideEntry) continue;
       count += 1;
       next.file(`ppt/slides/slide${count}.xml`, await slideEntry.async('string'));
-      const relsName = sn.replace('ppt/slides/', 'ppt/slides/_rels/') + '.rels';
+      const relsName = `${sn.replace('ppt/slides/', 'ppt/slides/_rels/')}.rels`;
       const relsEntry = zip.file(relsName);
       if (relsEntry) {
         next.file(`ppt/slides/_rels/slide${count}.xml.rels`, await relsEntry.async('string'));
