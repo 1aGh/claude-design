@@ -1,10 +1,10 @@
 # Feature: Dependency freshness sweep + Biome v2 / Motion v12 major migration
 
-> **Why now.** Dependabot PR #27 (GitHub Actions) and #31 (patch-and-minor group, 26 updates) are **already merged** to `main` (squash, green). What remains is **PR #30 — the `majors` group**, which fails the `Quality` gate for a *real* reason (not a flake): Biome v2 has a breaking config-format change and `@biomejs/biome` 1→2 makes the current `biome.json` invalid. `motion` 11→12 additionally needs the committed runtime bundles regenerated. This plan turns "#30 is red, leave it" into a tracked, low-risk migration, and folds in a **full repo dependency-freshness sweep** so we carry no residual tech debt.
+> **Why now.** Dependabot PR #27 (GitHub Actions) and #31 (patch-and-minor group, 26 updates) are **already merged** to `main` (squash, green). What remains is **the `majors` group PR — now #33** (dependabot superseded the original #30 after #31 merged; #33 is the narrowed group with exactly the 2 real majors), which fails the `Quality` gate for a *real* reason (not a flake): Biome v2 has a breaking config-format change and `@biomejs/biome` 1→2 makes the current `biome.json` invalid. `motion` 11→12 additionally needs the committed runtime bundles regenerated. This plan turns "#33 is red, leave it" into a tracked, low-risk migration, and folds in a **full repo dependency-freshness sweep** so we carry no residual tech debt.
 
 ## Description
 
-Land every outstanding dependency bump across the pnpm workspace (`.`, `site`, `plugins/design/dev-server`, `plugins/design/hub`) and the side projects (`plugins/design/hub` bun.lock, `scripts/video/final`), splitting the work by **risk tier** so the safe majority ships in one pass and the two genuinely-breaking majors (Biome v2, Motion v12) get the migration care they need. End state: `pnpm outdated -r` is empty (or only intentional holdbacks), `Quality` is green, and PR #30 is closed (superseded by this work) or merged after rebasing onto the migrated `main`.
+Land every outstanding dependency bump across the pnpm workspace (`.`, `site`, `plugins/design/dev-server`, `plugins/design/hub`) and the side projects (`plugins/design/hub` bun.lock, `scripts/video/final`), splitting the work by **risk tier** so the safe majority ships in one pass and the two genuinely-breaking majors (Biome v2, Motion v12) get the migration care they need. End state: `pnpm outdated -r` is empty (or only intentional holdbacks), `Quality` is green, and the majors PR (#33) is closed (superseded by this work) or merged after rebasing onto the migrated `main`.
 
 ## User Story
 
@@ -12,13 +12,13 @@ As a **maintainer of Maude**, I want **all dependencies current and the two brea
 
 ## Problem
 
-- **PR #30 is a real failure, not a flake.** `@biomejs/biome` 1.9.4 → 2.4.16: the CI log shows `× Biome exited because the configuration resulted in errors` — v2 renamed/restructured config keys (`files.ignore` → `files.includes` with negated globs; `organizeImports` → `assist`; new rule defaults), so the pinned-to-1.9.4 `biome.json` (86 lines, schema `https://biomejs.dev/schemas/1.9.4/schema.json`) is rejected outright.
+- **The majors PR (#33, ex-#30) is a real failure, not a flake.** `@biomejs/biome` 1.9.4 → 2.4.16: the CI log shows `× Biome exited because the configuration resulted in errors` — v2 renamed/restructured config keys (`files.ignore` → `files.includes` with negated globs; `organizeImports` → `assist`; new rule defaults), so the pinned-to-1.9.4 `biome.json` (86 lines, schema `https://biomejs.dev/schemas/1.9.4/schema.json`) is rejected outright.
 - **Motion 12 touches committed, environment-sensitive artifacts.** `motion` 11.18.2 → 12.40.0 affects `plugins/design/dev-server/dist/runtime/motion.js` + `motion_react.js`, which are **committed and authoritative for the release** (CLAUDE.md "Runtime bundles" + the v0.22.0 13 kB `motion_react.js` regression). A naive bump without regenerating + validating these bundles ships broken canvases.
 - **The rest is stale-but-safe and just needs a sweep.** `pnpm outdated -r` (2026-06-02) lists ~12 more packages within minor/patch range that post-date the #31 snapshot.
 
 ## Context — current `pnpm outdated -r` (2026-06-02, post #27/#31 merge)
 
-**Tier 0 — breaking majors (this plan's core, = PR #30):**
+**Tier 0 — breaking majors (this plan's core, = PR #33, ex-#30):**
 
 | Package | Current | Latest | Dependent | Migration cost |
 | ------- | ------- | ------ | --------- | -------------- |
@@ -73,7 +73,7 @@ As a **maintainer of Maude**, I want **all dependencies current and the two brea
 
 ### Group D — Land + close out
 - [ ] **D1 — Full `/flow:validate`** on the combined branch (format → lint → tests → build → custom gates: parity/tarball/tokens/site-content). All green.
-- [ ] **D2 — Decide PR #30:** either (a) close #30 with a comment pointing at this branch's commits (cleanest — our migration supersedes dependabot's raw bump), or (b) rebase #30 onto migrated `main` and squash-merge if it now passes. Recommend (a).
+- [ ] **D2 — Decide the majors PR (#33):** either (a) close #33 with a comment pointing at this branch's commits (cleanest — our migration supersedes dependabot's raw bump), or (b) rebase #33 onto migrated `main` and squash-merge if it now passes. Recommend (a). (Original #30 already auto-closed.)
 - [ ] **D3 — Merge** to `main` via squash (repo policy: no merge commits, no rebase-merge, admin bypass via the `1aGh` account). Confirm CI green on `main`.
 - [ ] **D4 — `pnpm outdated -r` == empty** (or document intentional holdbacks). STATE.md History row + `pnpm --filter @maude/site gen:roadmap`. Retro: capture any motion/biome gotchas for next major sweep.
 
