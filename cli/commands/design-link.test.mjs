@@ -136,6 +136,52 @@ test('adopt subcommand is an alias of link --adopt', async () => {
   cleanup();
 });
 
+test('DDR-079: link without a flag omits syncTsx (= default ON, restore-proof)', async () => {
+  const res = await runCli(['design', 'link', URL, '--token', 'mau_test']);
+  assert.equal(res.status, 0, res.stderr);
+  const cfg = JSON.parse(readFileSync(join(workspace, '.design/config.json'), 'utf8'));
+  // We never write syncTsx:true to encode the default — absence means on.
+  assert.equal(cfg.linkedHub.syncTsx, undefined);
+  assert.match(res.stdout, /TSX sync: on by default/);
+  cleanup();
+});
+
+test('DDR-079: link --no-sync-tsx records syncTsx:false (project opt-out)', async () => {
+  const res = await runCli(['design', 'link', URL, '--token', 'mau_test', '--no-sync-tsx']);
+  assert.equal(res.status, 0, res.stderr);
+  const cfg = JSON.parse(readFileSync(join(workspace, '.design/config.json'), 'utf8'));
+  assert.equal(cfg.linkedHub.syncTsx, false);
+  assert.match(res.stdout, /TSX sync: off \(opted out/);
+  cleanup();
+});
+
+test('DDR-079: link --sync-tsx pins syncTsx:true explicitly', async () => {
+  const res = await runCli(['design', 'link', URL, '--token', 'mau_test', '--sync-tsx']);
+  assert.equal(res.status, 0, res.stderr);
+  const cfg = JSON.parse(readFileSync(join(workspace, '.design/config.json'), 'utf8'));
+  assert.equal(cfg.linkedHub.syncTsx, true);
+  cleanup();
+});
+
+test('DDR-079: status surfaces the migration advisory when syncTsx is unset', async () => {
+  await runCli(['design', 'link', URL, '--token', 'mau_test']);
+  const res = await runCli(['design', 'status']);
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout, /TSX sync:\s+on \(default/);
+  assert.match(res.stdout, /syncTsx is not set/);
+  cleanup();
+});
+
+test('DDR-079: status --json reports effective + explicit syncTsx', async () => {
+  await runCli(['design', 'link', URL, '--token', 'mau_test', '--no-sync-tsx']);
+  const res = await runCli(['design', 'status', '--json']);
+  assert.equal(res.status, 0, res.stderr);
+  const payload = JSON.parse(res.stdout);
+  assert.equal(payload.syncTsx, false);
+  assert.equal(payload.syncTsxExplicit, false);
+  cleanup();
+});
+
 test('link against unreachable URL exits 1 unless --force', async () => {
   const dead = 'http://127.0.0.1:1';
   const fail = await runCli(['design', 'link', dead, '--token', 'mau_test']);

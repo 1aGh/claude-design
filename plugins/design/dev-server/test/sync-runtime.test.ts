@@ -783,11 +783,11 @@ describe('scanCanvases', () => {
   });
 });
 
-// DDR-072 — project-level TSX opt-in (linkedHub.syncTsx). A .tsx with no
-// explicit sidecar verdict defaults to syncable when the project flag is on;
-// the per-canvas sidecar still wins; the sandbox coupling is preserved.
-describe('scanCanvases — project-level syncTsx (DDR-072)', () => {
-  test('syncTsx:true + sandbox ON admits a .tsx WITHOUT a per-canvas opt-in', async () => {
+// DDR-079 (was DDR-072) — TSX sync defaults ON. A .tsx with no explicit sidecar
+// verdict syncs by default; `syncTsx: false` opts the project out; the per-canvas
+// sidecar still wins; the Lock-2 sandbox coupling is preserved.
+describe('scanCanvases — project-level syncTsx default-on (DDR-079)', () => {
+  test('explicit syncTsx:true + sandbox ON admits a .tsx WITHOUT a per-canvas opt-in', async () => {
     const ctx = makeCtx(
       { url: 'https://h.example.com', linkedAt: 1, syncTsx: true },
       'http://localhost:9'
@@ -826,12 +826,40 @@ describe('scanCanvases — project-level syncTsx (DDR-072)', () => {
     expect(slugs).not.toContain('ui-secret'); // explicit opt-out wins
   });
 
-  test('without the flag (syncTsx absent) a .tsx still needs the per-canvas opt-in', async () => {
+  test('DDR-079: without the flag (syncTsx absent) a .tsx is admitted BY DEFAULT', async () => {
     const ctx = makeCtx({ url: 'https://h.example.com', linkedAt: 1 }, 'http://localhost:9');
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'plain.tsx'), 'export default () => null;');
+    const scan = await scanCanvases(ctx);
+    expect(scan.canvases.map((c) => c.slug)).toContain('ui-plain'); // default ON
+    expect(scan.tsxCount).toBe(0);
+  });
+
+  test('DDR-079: syncTsx:false opts the whole project OUT (.tsx not admitted)', async () => {
+    const ctx = makeCtx(
+      { url: 'https://h.example.com', linkedAt: 1, syncTsx: false },
+      'http://localhost:9'
+    );
     writeFileSync(join(ctx.paths.designRoot, 'ui', 'plain.tsx'), 'export default () => null;');
     const scan = await scanCanvases(ctx);
     expect(scan.canvases.map((c) => c.slug)).not.toContain('ui-plain');
     expect(scan.tsxCount).toBe(1);
+  });
+
+  test('DDR-079: per-canvas "syncable": true still admits one .tsx even when project opted out', async () => {
+    const ctx = makeCtx(
+      { url: 'https://h.example.com', linkedAt: 1, syncTsx: false },
+      'http://localhost:9'
+    );
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'keep.tsx'), 'export default () => null;');
+    writeFileSync(
+      join(ctx.paths.designRoot, 'ui', 'keep.meta.json'),
+      JSON.stringify({ syncable: true, title: 'Keep' })
+    );
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'drop.tsx'), 'export default () => null;');
+    const scan = await scanCanvases(ctx);
+    const slugs = scan.canvases.map((c) => c.slug);
+    expect(slugs).toContain('ui-keep'); // sidecar opt-in wins over project opt-out
+    expect(slugs).not.toContain('ui-drop'); // project opted out
   });
 });
 

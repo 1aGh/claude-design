@@ -1,10 +1,10 @@
 ## DDR-072 — Project-level TSX sync opt-in (`linkedHub.syncTsx`) — coarse-grained equivalent of the per-canvas `syncable` flag
 
-- **Status:** Accepted — 2026-06-01
+- **Status:** Superseded by [DDR-079](./DDR-079-tsx-sync-default-on.md) — 2026-06-02. The `linkedHub.syncTsx` field, the per-canvas `.meta.json "syncable"` override, and the Lock-2 sandbox coupling all stand; only the DEFAULT flipped (off→on, opt-in→opt-out). The Context/Decision below describe the original opt-in design — read DDR-079 for current behavior.
 - **Authors:** 1aGh (surfaced during live remote-hub dogfood — linked repo synced 0 of 55 TSX canvases)
 - **Phase:** 9.1 (TSX sync unblock) — ergonomics follow-up
 - **Supersedes:** —
-- **Superseded by:** —
+- **Superseded by:** [DDR-079](./DDR-079-tsx-sync-default-on.md) — default-off opt-in proved a recurring footgun; flipped to default-on opt-out.
 - **Amends:** [DDR-060](./DDR-060-tsx-only-format-breaks-html-centric-sync.md) §4 (9.1-B) — relaxes "Default stays off (solo-safe)" to add a *project-scoped* default-on switch, while keeping the global default off and the sandbox coupling intact.
 - **Related:**
   - [DDR-060](./DDR-060-tsx-only-format-breaks-html-centric-sync.md) — TSX-only migration broke HTML-centric sync; established the per-canvas `.meta.json "syncable": true` opt-in (9.1-B) + the Lock-1/Lock-2 coupling.
