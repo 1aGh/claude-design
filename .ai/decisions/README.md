@@ -10,6 +10,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
 
+- [DDR-076: An empty hub doc never clobbers a non-empty local canvas (cold-start seeds local UP)](DDR-076-empty-hub-doc-never-clobbers-local-canvas.md) — 2026-06-02, design/dev-server/sync/linked-mode/cold-start/hub-wins/data-loss/reconcile/agent
 - [DDR-074: Draw engine composition layer + discriminating critic metrics (φ rejected)](DDR-074-draw-composition-layer-and-discriminating-critic-metrics.md) — 2026-06-01, design/dev-server/draw/composition/armature/color-harmony/apca/vme-balance/critic-metrics/golden-ratio-myth/deep-research
 - [DDR-071: SVGO as the single new dev-server dependency for the draw engine](DDR-071-svgo-dependency.md) — 2026-06-01, design/dev-server/draw/svgo/dependency/npm/files-manifest/frozen-lockfile/maude-doctor/packaging
 - [DDR-070: SVG generation via a deterministic geometry engine + rank-not-score verify loop](DDR-070-svg-generation-geometry-engine.md) — 2026-06-01, design/dev-server/draw/svg/geometry-engine/draw-agent/verify-loop/vlm-as-judge/optical-adjustment/regression-prevention

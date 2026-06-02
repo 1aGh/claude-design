@@ -317,15 +317,30 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
     lastMeta = docMeta;
     lastCss = docCss;
     if (localHtml !== docHtml) {
-      // Local had divergent, non-empty content that hub-wins is discarding —
-      // notify so the user knows their local edits were overwritten (Task 8).
-      // An absent/empty local file is a clean first-sync, not a conflict.
-      if (localHtml !== null && localHtml.trim() !== '') {
-        opts.onConflict?.({ slug, kind: 'cold-start-hub-wins' });
+      // DATA-LOSS GUARD: an EMPTY hub doc at cold-start means the hub holds no
+      // body for this slug yet (fresh / never-seeded hub) — NOT an authoritative
+      // "this canvas is blank". Overwriting a non-empty local body with it would
+      // silently destroy the canvas (observed in the wild: a fresh hub emptied
+      // every local .tsx on first connect). The comments/annotations/meta/css
+      // branches below already skip empty-doc writes, and the shared-doc
+      // projection path documents the same "never clobber non-empty local with
+      // an empty doc value" rule — the HTML body was the one branch missing it.
+      // Resolution: seed the doc FROM local instead, so the body survives AND
+      // the hub gets our content (local→doc, exactly like a first-sync seed).
+      if (docHtml === '' && localHtml !== null && localHtml.trim() !== '') {
+        applyHtmlToDoc(doc, localHtml, origin);
+        lastHtml = localHtml;
+      } else {
+        // Local had divergent, non-empty content that hub-wins is discarding —
+        // notify so the user knows their local edits were overwritten (Task 8).
+        // An absent/empty local file is a clean first-sync, not a conflict.
+        if (localHtml !== null && localHtml.trim() !== '') {
+          opts.onConflict?.({ slug, kind: 'cold-start-hub-wins' });
+        }
+        const hash = hashBytes(docHtml);
+        echoGuard.record(paths.html, hash);
+        writer(paths.html, docHtml);
       }
-      const hash = hashBytes(docHtml);
-      echoGuard.record(paths.html, hash);
-      writer(paths.html, docHtml);
     }
     if (docCommentsStr !== '' && localComments !== docCommentsStr) {
       const hash = hashBytes(docCommentsStr);

@@ -202,6 +202,34 @@ describe('CanvasSyncAgent — cold start reconciliation', () => {
     expect(htmlFromDoc(docB)).toBe('<button>hub-v2</button>');
   });
 
+  test('empty hub doc does NOT clobber a non-empty local body — seeds local up instead (data-loss guard)', async () => {
+    // Local holds the real canvas body; the hub is fresh — no state for this
+    // slug yet (docB starts empty → docHtml === ''). The old behaviour wrote
+    // the empty doc over disk and emptied the file; the guard must keep local.
+    writeFileSync(paths().html, '<button>real-canvas</button>');
+
+    let conflicts = 0;
+    agent = createCanvasSyncAgent({
+      slug: 'screen',
+      doc: docB,
+      paths: paths(),
+      echoGuard: createEchoGuard(),
+      flushMs: 0,
+      onConflict: () => {
+        conflicts++;
+      },
+    });
+    agent.start();
+    await agent.reconcile();
+
+    // The local body MUST survive — an empty hub must never empty a real canvas.
+    expect(readFileSync(paths().html, 'utf8')).toBe('<button>real-canvas</button>');
+    // …and it is seeded UP to the hub instead of being discarded (local→doc).
+    expect(htmlFromDoc(docA)).toBe('<button>real-canvas</button>');
+    // An empty-hub seed is not a "hub overwrote your local" conflict.
+    expect(conflicts).toBe(0);
+  });
+
   test('identical disk + doc states: no disk write', async () => {
     writeFileSync(paths().html, '<button>same</button>');
     applyHtmlToDoc(docA, '<button>same</button>');
