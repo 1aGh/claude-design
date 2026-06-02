@@ -434,6 +434,21 @@ form {
 .tbl code {
   font-size: var(--type-xs);
 }
+/* Bounded scroll for the peer/token lists. Without this the card grows with
+   every connected peer and the page becomes endlessly tall; here the rows
+   scroll inside a fixed-height box and the header stays pinned so the columns
+   keep reading while scrolling. */
+.tbl-scroll {
+  max-height: 18rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.tbl-scroll .tbl thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-1);
+  z-index: 1;
+}
 
 /* peer color swatch */
 .swatch {
@@ -813,6 +828,29 @@ dialog::backdrop {
   border-color: var(--accent);
   background: var(--bg-1);
   box-shadow: 0 0 0 2px var(--accent-tint);
+}
+.check {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  margin: 0 0 var(--space-4);
+  cursor: pointer;
+  font-size: var(--type-sm);
+  color: var(--fg-1);
+  line-height: 1.4;
+}
+.check input[type="checkbox"] {
+  flex: none;
+  margin-top: 0.15em;
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--accent);
+}
+.check-note {
+  display: block;
+  color: var(--fg-2);
+  font-size: var(--type-xs);
+  margin-top: var(--space-2);
 }
 .input--mono,
 .input--pw {

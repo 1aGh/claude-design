@@ -191,8 +191,11 @@ function renderPeers(p) {
 
 // -------------------------------- actions ---------------------------------
 
-async function generateInvite(label) {
-  const data = await api('/token', { method: 'POST', body: JSON.stringify({ label }) });
+async function generateInvite(label, wildcard) {
+  // wildcard === true → scope '*' (authorizes every canvas, needed for sync).
+  // Otherwise omit scope so the hub defaults it to the label (DDR-053).
+  const body = wildcard ? { label, scope: '*' } : { label };
+  const data = await api('/token', { method: 'POST', body: JSON.stringify(body) });
   showInvite(data, label);
   await refresh();
 }
@@ -209,13 +212,17 @@ async function rotate(label) {
   await refresh();
 }
 
-function showInvite({ token, command }, label) {
+function showInvite({ token, command, scope }, label) {
   $('token-command').textContent = command;
   $('token-raw').textContent = token;
   const titleEl = $('token-modal-title');
   if (titleEl) titleEl.textContent = label ? `Invite ready — for "${label}"` : 'Invite ready';
   const scopeEl = $('token-scope');
-  if (scopeEl) scopeEl.textContent = label ? `SCOPE · ${label}` : 'SCOPE';
+  if (scopeEl) {
+    // The hub normalizes a wildcard token's scope back to '*' in the response.
+    const sc = scope ?? '*';
+    scopeEl.textContent = sc === '*' ? 'SCOPE · hub-wide (all canvases)' : `SCOPE · ${sc}`;
+  }
   const stampEl = $('token-modal-stamp');
   if (stampEl) stampEl.textContent = `${new Date().toISOString().replace('T', ' ').slice(0, 16)}Z`;
   const modal = $('token-modal');
@@ -283,9 +290,10 @@ $('invite-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const label = $('invite-label').value.trim();
   if (!label) return;
+  const wildcard = $('invite-wildcard')?.checked ?? true;
   $('invite-error').hidden = true;
   try {
-    await generateInvite(label);
+    await generateInvite(label, wildcard);
     $('invite-label').value = '';
   } catch (err) {
     $('invite-error').textContent = err.message;

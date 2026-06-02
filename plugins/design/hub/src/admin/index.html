@@ -91,6 +91,12 @@
                 <label class="field-label" for="invite-label">Label this invite</label>
                 <input id="invite-label" class="input input--mono" type="text" placeholder="alice" required maxlength="64" pattern="[A-Za-z0-9 _\-.]+">
               </div>
+              <label class="check" for="invite-wildcard">
+                <input id="invite-wildcard" type="checkbox" checked>
+                <span class="check-txt">Hub-wide — authorize <strong>all</strong> canvases
+                  <span class="check-note">Required for canvas sync (peers use a per-canvas slug as the document name). Uncheck to scope the token to the label only — a label-scoped token will NOT authorize synced canvases.</span>
+                </span>
+              </label>
               <div class="hub-actions" style="margin-top:var(--space-4)">
                 <button type="submit" class="btn btn--primary">Generate token<span class="kbd" aria-hidden="true">⏎</span></button>
               </div>
@@ -106,11 +112,13 @@
             <span class="sku">HUB-ADM/04·PEERS</span>
           </div>
           <div class="tile-bd">
-            <table class="tbl" aria-labelledby="card-peers-cap">
-              <caption id="card-peers-cap" class="sr-only">Connected peers</caption>
-              <thead><tr><th scope="col">Document</th><th scope="col">User</th><th scope="col" class="num">Connected</th></tr></thead>
-              <tbody id="peers-rows"><tr class="empty"><td colspan="3">No peers connected.</td></tr></tbody>
-            </table>
+            <div class="tbl-scroll">
+              <table class="tbl" aria-labelledby="card-peers-cap">
+                <caption id="card-peers-cap" class="sr-only">Connected peers</caption>
+                <thead><tr><th scope="col">Document</th><th scope="col">User</th><th scope="col" class="num">Connected</th></tr></thead>
+                <tbody id="peers-rows"><tr class="empty"><td colspan="3">No peers connected.</td></tr></tbody>
+              </table>
+            </div>
           </div>
         </article>
 
@@ -137,11 +145,13 @@
             <span class="sku">HUB-ADM/06·TOKENS</span>
           </div>
           <div class="tile-bd">
-            <table class="tbl" aria-labelledby="card-tokens-cap">
-              <caption id="card-tokens-cap" class="sr-only">Active tokens</caption>
-              <thead><tr><th scope="col">Label</th><th scope="col">Created</th><th scope="col">Last used</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
-              <tbody id="tokens-rows"><tr class="empty"><td colspan="4">No tokens yet.</td></tr></tbody>
-            </table>
+            <div class="tbl-scroll">
+              <table class="tbl" aria-labelledby="card-tokens-cap">
+                <caption id="card-tokens-cap" class="sr-only">Active tokens</caption>
+                <thead><tr><th scope="col">Label</th><th scope="col">Created</th><th scope="col">Last used</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+                <tbody id="tokens-rows"><tr class="empty"><td colspan="4">No tokens yet.</td></tr></tbody>
+              </table>
+            </div>
           </div>
         </article>
 
