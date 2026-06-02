@@ -17,6 +17,9 @@ dev-server/.cache/
 .design/_canvas-state/
 .design/_export-history.json
 .design/_untrusted/
+# Auto-managed by the linked-mode sync runtime (lists hub-synced UNTRUSTED files).
+# Machine-local state, regenerated on sync — never committed.
+.claudeignore
 
 # Phase 8 / DDR-051 — Yjs collab cache. JSON snapshots in _comments/ remain the
 # canonical persistence format; `.ydoc.bin` is regenerated from JSON on cold open.
