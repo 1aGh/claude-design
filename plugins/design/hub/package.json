@@ -19,7 +19,7 @@
     "@hocuspocus/extension-sqlite": "^4.0.0",
     "@hocuspocus/server": "^4.0.0",
     "better-sqlite3": "^12.10.0",
-    "yjs": "^13.6.0"
+    "yjs": "^13.6.31"
   },
   "devDependencies": {
     "@hocuspocus/provider": "^4.0.0"
