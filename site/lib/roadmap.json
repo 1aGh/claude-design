@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-02T09:44:26.449Z",
+  "generated": "2026-06-02T10:07:59.555Z",
   "currentPhase": null,
   "phases": [
     {
@@ -410,6 +410,17 @@
       "phaseKey": "2"
     },
     {
+      "id": "phase-13-canvas-activity-overlay",
+      "title": "Feature: Canvas Activity Overlay — live \"agent works here\" indicator",
+      "status": "done",
+      "shipTarget": null,
+      "date": "2026-05-15",
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — the dev-server is Bun-authoritative (DDR-009), the canvas lib is single-source in plu...",
+      "planPath": ".ai/plans/archive/phase-13-canvas-activity-overlay.md",
+      "archived": true,
+      "phaseKey": "13"
+    },
+    {
       "id": "phase-13-flow-command-categorization",
       "title": "Phase 13: Flow command categorization (strict prefix naming, no subfolders)",
       "status": "done",
@@ -641,17 +652,6 @@
       "phaseKey": "12"
     },
     {
-      "id": "phase-13-canvas-activity-overlay",
-      "title": "Feature: Canvas Activity Overlay — live \"agent works here\" indicator",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — the dev-server is Bun-authoritative (DDR-009), the canvas lib is single-source in plu...",
-      "planPath": ".ai/plans/phase-13-canvas-activity-overlay.md",
-      "archived": false,
-      "phaseKey": "13"
-    },
-    {
       "id": "phase-16-intro-video-v3-wow",
       "title": "Feature: Intro video v4 — total rebuild, scene-by-scene visual iteration",
       "status": "planned",
@@ -705,6 +705,17 @@
       "planPath": ".ai/plans/phase-7-acp-chat-sidebar.md",
       "archived": false,
       "phaseKey": "7"
+    },
+    {
+      "id": "setup-ds-round2-scaffold-integrity-and-devserver-fixes",
+      "title": "Feature: setup-ds Round-2 — scaffold-integrity gates + dev-server boot/export hardening",
+      "status": "icebox",
+      "shipTarget": "ICEBOX",
+      "date": null,
+      "summary": "The moodboard direction gates catch a disliked direction before the scaffold. They do not catch a scaffold that ran but produced silently-broken output — empty files trusted as written, a transpile...",
+      "planPath": ".ai/plans/setup-ds-round2-scaffold-integrity-and-devserver-fixes.md",
+      "archived": false,
+      "phaseKey": null
     }
   ]
 }

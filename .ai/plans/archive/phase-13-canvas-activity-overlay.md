@@ -1,5 +1,7 @@
 # Feature: Canvas Activity Overlay — live "agent works here" indicator
 
+> **Decision record:** [DDR-075](../decisions/DDR-075-canvas-activity-overlay-fs-watch-driven.md) (filed as -075, not the plan's reserved "-029" — that number was already taken; see the DDR's numbering note).
+
 Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — the dev-server is Bun-authoritative (DDR-009), the canvas lib is single-source in `plugins/design/dev-server/canvas-lib.tsx` (DDR-025).
 
 ## Description
@@ -261,13 +263,24 @@ Run these commands to confirm zero regressions:
 
 ## Acceptance Criteria
 
-- [ ] All 9 tasks completed (Task 7 may be deferred to a Phase 13.1 follow-up if budget runs short — note in `STATE.md` if so)
-- [ ] `bun test` passes for the dev-server workspace, including the two new test files
-- [ ] Smoke (Validation §3) shows visible pulse + corner badge during `/design:edit`
-- [ ] Multi-canvas smoke (§4) confirms scoping by file
-- [ ] Reduced-motion (§5) confirms a11y respect
-- [ ] Manual touch (§6) confirms agent-agnostic trigger
-- [ ] No regression in existing HMR / inspector / selection behavior (open + reload canvas, click an element, see selection ring AND activity overlay coexist correctly during edits)
-- [ ] DDR-029 filed and cross-linked from this plan
-- [ ] No DDR-worthy decision left unrecorded (the 3 s debounce, the file-level-first scope decision, and the inject-into-inspector CSS choice are the candidates — DDR-029 covers them)
-- [ ] Code follows project conventions: Bun.* APIs in server, bun:test in tests, no `node:fs` reads in server code where `Bun.file` works, single-source canvas-lib (no `_lib/` shadow)
+- [x] All 9 tasks completed (Task 7 per-artboard diff shipped, not deferred)
+- [x] `bun test` passes for the dev-server workspace — 1082 pass / 0 fail, incl. `activity.test.ts`, `use-canvas-activity.test.tsx`, `artboard-activity-overlay.test.tsx`
+- [x] Visible rim + corner badge on a canvas edit (verified live via agent-browser: `touch` → rim + badge "editing — Smoke TSX.tsx")
+- [x] Multi-canvas (§4) confirms scoping by file (touching Smoke TSX leaves Canvas Viewport dark)
+- [x] Reduced-motion (§5) — `@media (prefers-reduced-motion: reduce)` drops the pulse to a static rim (served + verified)
+- [x] Manual touch (§6) confirms agent-agnostic trigger (the whole live proof used `touch`, not a slash command)
+- [x] No regression — canvas renders cleanly (artboard + body, no mount error); 1082 tests green; overlay coexists with existing chrome
+- [x] DDR filed (**DDR-075** — "-029" was already taken) and cross-linked from this plan
+- [x] No DDR-worthy decision left unrecorded — DDR-075 covers the 3 s debounce, file-level-first scope, inject-into-inspector CSS, fs-watch-vs-push, the cross-bundle provider placement, and the snapshot-seed-across-reload
+- [x] Code follows conventions: `Bun.file`/`setTimeout` in `activity.ts` (no `node:fs` reads), `bun:test` for tests, single-source canvas-lib (overlay lives in dev-server `canvas-lib.tsx`, no `_lib/` shadow), `name:`/namespace conventions N/A (no new command)
+
+---
+
+## Retro
+
+- **fs-watch over agent-push was the right call.** The overlay (and everything built on it) is agent-agnostic for free — `/design:edit`, manual saves, `git checkout` all light up identically, no protocol to version. Worth the "no author attribution" tradeoff (which 13.2 then recovered from `ai-activity` separately).
+- **The cross-bundle React-context trap bit twice.** comment-mount.js and canvas-lib are separate bundles, so a provider mounted in one is invisible to consumers in the other (DCArtboard saw `null`). Both the activity context (13) and the agent context (13.2) had to live in `DesignCanvas` (canvas-lib), matching how the real ToolProvider already does. Captured in DDR-077; this should be a known prior for any future canvas-runtime context.
+- **HMR + overlays interact — verify the composition, not just the unit.** 13.1's soft-reload remount reset the activity provider and silently dropped the overlay until I made `_shell.html` keep a live `__maude_activity_seed__`. Unit tests were green throughout; only the live agent-browser run surfaced it. The `no-break-exhaustive-verify` rule earned its keep.
+- **Visual iteration is cheap when it's injected CSS.** 13.3 went through ~5 looks (scan beam → too forceful → wave → invisible → tide → "beam again" → final descending hard-edge wave) entirely in `inspect.ts` strings with no rebuild and a screenshot/short-video loop. Two gotchas paid for: a backtick in an injected-CSS comment crashed boot (the whole INSPECTOR_SCRIPT is a template literal), and `overflow:hidden` on the rim clipped the agent border's glow.
+- **The adversarial security pass found a real (if gated) spoof.** The `ai-activity` postMessage listeners trusted any sender; fixed in-flight with an `e.source === window.parent` guard across all three (incl. the pre-existing ai-banner). Lesson: when a feature *amplifies* a pre-existing accepted residual (here, into a named/durable identity), re-weigh that residual rather than inheriting its acceptance.
+- **Process:** four sub-phases (13 → 13.1 → 13.2 → 13.3) accreted from live user feedback after the first `/flow:validate`. Worked, but next time fold a known multi-part visual feature into one plan with explicit sub-phase acceptance rows so the validate/done gate runs once at the end, not mid-stream.

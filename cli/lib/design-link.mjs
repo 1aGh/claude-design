@@ -25,7 +25,9 @@ const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 
 export async function runLink({ args, cwd = process.cwd(), forceAdopt = false }) {
   const tail = args.slice(args.indexOf(forceAdopt ? 'adopt' : 'link') + 1);
-  const { flags, positional } = parseArgs(tail, { booleans: ['adopt', 'force', 'yes'] });
+  const { flags, positional } = parseArgs(tail, {
+    booleans: ['adopt', 'force', 'yes', 'sync-tsx', 'no-sync-tsx'],
+  });
   const url = positional[0];
   const token = flags.token;
 
@@ -116,15 +118,27 @@ export async function runLink({ args, cwd = process.cwd(), forceAdopt = false })
       `[design link] note: replacing existing link to ${existing.url} (was added ${new Date(existing.linkedAt).toISOString()}).\n`
     );
   }
-  // DDR-072 — preserve the project-level TSX opt-in only when re-linking to the
-  // SAME hub. Changing the hub URL drops it: a new hub is a fresh trust decision
-  // and must not silently inherit "sync all my TSX" (the DDR-054 F2 lesson).
-  const keepSyncTsx = existing?.syncTsx === true && existing.url === normUrl;
+  // DDR-079 — TSX sync defaults ON, so we only PERSIST `syncTsx` when it's an
+  // explicit choice; absence means "the default", and we never write
+  // `syncTsx: true` just to encode the default (that's what bit us — a value
+  // that git-restore could wipe to silently flip behavior). Precedence:
+  //   --no-sync-tsx → false (project-wide opt-out)
+  //   --sync-tsx    → true  (explicit, == default; useful to pin against a future
+  //                          default change or to self-document)
+  //   else, re-link to the SAME hub → carry the existing explicit value forward
+  //         (a NEW hub URL is a fresh trust decision — don't inherit, DDR-054 F2)
+  //   else          → omit (= on by default)
+  let syncTsx;
+  if (flags['no-sync-tsx']) syncTsx = false;
+  else if (flags['sync-tsx']) syncTsx = true;
+  else if (existing && existing.url === normUrl && typeof existing.syncTsx === 'boolean') {
+    syncTsx = existing.syncTsx;
+  }
   cfg.linkedHub = {
     url: normUrl,
     linkedAt: hubRecord.linkedAt,
     ...(adopt ? { adopt: true } : {}),
-    ...(keepSyncTsx ? { syncTsx: true } : {}),
+    ...(syncTsx !== undefined ? { syncTsx } : {}),
   };
   writeDesignConfig(designConfigPath, cfg);
 
@@ -140,8 +154,12 @@ export async function runLink({ args, cwd = process.cwd(), forceAdopt = false })
     await maybeWriteGitignoreBlock(cwd, !!flags.yes);
   }
 
+  const tsxSyncLine =
+    syncTsx === false
+      ? 'off (opted out — linkedHub.syncTsx: false)'
+      : 'on by default (DDR-079) — every .tsx body syncs; opt out with --no-sync-tsx or a canvas .meta.json "syncable": false';
   process.stdout.write(
-    `[design link] linked ${cwd} to ${normUrl}.\n  token:   stored in ~/.config/maude/hubs.json (per-machine, never committed)\n  config:  .design/config.json.linkedHub = { url, linkedAt${adopt ? ', adopt: true' : ''} }\n  hub:     ${probe.ok ? `v${probe.version}, uptime ${Math.round((probe.uptimeMs ?? 0) / 1000)}s, ${probe.tokenCount} token(s) (${probe.authMode})` : 'NOT REACHED — linked anyway (--force)'}\n\nNext step: start 'maude design serve' — the linked sync agent ${adopt ? 'will push local state up to the hub on first connect' : 'will mirror hub state to disk on first connect'}.\n`
+    `[design link] linked ${cwd} to ${normUrl}.\n  token:    stored in ~/.config/maude/hubs.json (per-machine, never committed)\n  config:   .design/config.json.linkedHub = { url, linkedAt${adopt ? ', adopt: true' : ''}${syncTsx !== undefined ? `, syncTsx: ${syncTsx}` : ''} }\n  TSX sync: ${tsxSyncLine}\n  hub:      ${probe.ok ? `v${probe.version}, uptime ${Math.round((probe.uptimeMs ?? 0) / 1000)}s, ${probe.tokenCount} token(s) (${probe.authMode})` : 'NOT REACHED — linked anyway (--force)'}\n\nNext step: start 'maude design serve' — the linked sync agent ${adopt ? 'will push local state up to the hub on first connect' : 'will mirror hub state to disk on first connect'}.\n`
   );
   if (!loopback) process.stderr.write(linkedModeBanner());
 }
@@ -220,6 +238,9 @@ export async function runStatus({ args, cwd = process.cwd() }) {
     url,
     linkedAt: cfg.linkedHub.linkedAt,
     adopt: !!cfg.linkedHub.adopt,
+    // DDR-079 — effective TSX-sync state: on unless explicitly opted out.
+    syncTsx: cfg.linkedHub.syncTsx !== false,
+    syncTsxExplicit: typeof cfg.linkedHub.syncTsx === 'boolean' ? cfg.linkedHub.syncTsx : null,
     tokenStored: !!hubRecord,
     hub: probe.ok
       ? {
@@ -249,8 +270,17 @@ export async function runStatus({ args, cwd = process.cwd() }) {
         }${sync.conflicts?.length ? `, ${sync.conflicts.length} conflict notice(s)` : ''}`
       : 'idle (start `maude design serve` in linked mode)';
   process.stdout.write(
-    `Maude design — linked mode\n  hub URL:      ${url}\n  linked at:    ${new Date(cfg.linkedHub.linkedAt).toISOString()}\n  adopt mode:   ${cfg.linkedHub.adopt ? 'yes (push-on-first-sync)' : 'no (hub-wins)'}\n  token stored: ${hubRecord ? 'yes (~/.config/maude/hubs.json)' : "NO — re-run 'maude design link'"}\n  hub status:   ${probe.ok ? `up — v${probe.version}, ${uptimeS}s uptime, ${probe.tokenCount} token(s), ${probe.authMode}` : `UNREACHABLE — ${probe.error}`}\n  sync agent:   ${syncLine}\n`
+    `Maude design — linked mode\n  hub URL:      ${url}\n  linked at:    ${new Date(cfg.linkedHub.linkedAt).toISOString()}\n  adopt mode:   ${cfg.linkedHub.adopt ? 'yes (push-on-first-sync)' : 'no (hub-wins)'}\n  TSX sync:     ${cfg.linkedHub.syncTsx === false ? 'off (opted out — linkedHub.syncTsx: false)' : 'on (default — DDR-079)'}\n  token stored: ${hubRecord ? 'yes (~/.config/maude/hubs.json)' : "NO — re-run 'maude design link'"}\n  hub status:   ${probe.ok ? `up — v${probe.version}, ${uptimeS}s uptime, ${probe.tokenCount} token(s), ${probe.authMode}` : `UNREACHABLE — ${probe.error}`}\n  sync agent:   ${syncLine}\n`
   );
+  // DDR-079 migration advisory: a config with no explicit `syncTsx` rides the
+  // default, which FLIPPED from off→on in maude 0.27. Surface it so an upgrader
+  // who relied on the old "TSX never syncs" behavior isn't surprised that every
+  // .tsx now goes to the hub.
+  if (cfg.linkedHub.syncTsx === undefined) {
+    process.stdout.write(
+      '\n  ℹ  syncTsx is not set, so it uses the DEFAULT — which is now ON (DDR-079, maude ≥ 0.27): every .tsx syncs to this hub.\n     Upgraded from an older maude and want the pre-0.27 behavior (no TSX sync)? Set  .design/config.json → linkedHub.syncTsx: false  (or  maude design link <url> --token … --no-sync-tsx).\n'
+    );
+  }
 }
 
 /**

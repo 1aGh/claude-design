@@ -183,3 +183,55 @@ test('summary line reflects counts (drift/additions tracked via package.json)', 
   const lintAdd = env.config.qualityAdditions.find((a) => a.gate === 'lint');
   assert.ok(lintAdd);
 });
+
+// ── DDR-079: design-hub / TSX-sync section (report-only, local) ──────────────
+function writeDesign(root, linkedHub) {
+  mkdirSync(join(root, '.design'), { recursive: true });
+  writeFileSync(
+    join(root, '.design/config.json'),
+    JSON.stringify({ name: 't', designRoot: '.design', ...(linkedHub ? { linkedHub } : {}) })
+  );
+}
+
+test('DDR-079: linked design config with no syncTsx → on (default) + advisory', () => {
+  const root = makeTempRepo();
+  writeFileSync(join(root, '.ai/workflows.config.json'), `${JSON.stringify({ name: 'x' })}\n`);
+  writeDesign(root, { url: 'https://hub.example.com', linkedAt: 1 });
+  const env = JSON.parse(spawnDoctor(['--json'], root).stdout);
+  assert.equal(env.design.linked, true);
+  assert.equal(env.design.hubUrl, 'https://hub.example.com');
+  assert.equal(env.design.tsxSync, 'on (default)');
+  assert.match(env.design.advisory, /defaults ON/);
+});
+
+test('DDR-079: syncTsx:false → off (opted out), no advisory', () => {
+  const root = makeTempRepo();
+  writeFileSync(join(root, '.ai/workflows.config.json'), `${JSON.stringify({ name: 'x' })}\n`);
+  writeDesign(root, { url: 'https://hub.example.com', linkedAt: 1, syncTsx: false });
+  const env = JSON.parse(spawnDoctor(['--json'], root).stdout);
+  assert.equal(env.design.tsxSync, 'off (opted out)');
+  assert.equal(env.design.advisory, null);
+});
+
+test('DDR-079: syncTsx:true → on (explicit), no advisory', () => {
+  const root = makeTempRepo();
+  writeFileSync(join(root, '.ai/workflows.config.json'), `${JSON.stringify({ name: 'x' })}\n`);
+  writeDesign(root, { url: 'https://hub.example.com', linkedAt: 1, syncTsx: true });
+  const env = JSON.parse(spawnDoctor(['--json'], root).stdout);
+  assert.equal(env.design.tsxSync, 'on (explicit)');
+  assert.equal(env.design.advisory, null);
+});
+
+test('design section reports solo when .design/config.json has no linkedHub', () => {
+  const root = makeTempRepo();
+  writeDesign(root, null);
+  const env = JSON.parse(spawnDoctor(['--json'], root).stdout);
+  assert.equal(env.design.exists, true);
+  assert.equal(env.design.linked, false);
+});
+
+test('design section absent when no .design/config.json', () => {
+  const root = makeTempRepo();
+  const env = JSON.parse(spawnDoctor(['--json'], root).stdout);
+  assert.equal(env.design.exists, false);
+});

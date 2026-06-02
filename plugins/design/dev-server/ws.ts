@@ -3,6 +3,7 @@
 
 import type { ServerWebSocket, WebSocketHandler } from 'bun';
 
+import type { Activity } from './activity.ts';
 import type { Api } from './api.ts';
 import type { Collab, RoomConn } from './collab/index.ts';
 import type { Context } from './context.ts';
@@ -76,7 +77,13 @@ export interface Ws {
   clientCount(): number;
 }
 
-export function createWs(ctx: Context, api: Api, inspect: Inspect, collab: Collab): Ws {
+export function createWs(
+  ctx: Context,
+  api: Api,
+  inspect: Inspect,
+  collab: Collab,
+  activity: Activity
+): Ws {
   const clients = new Set<ServerWebSocket<WsData>>();
 
   function send(ws: ServerWebSocket<WsData>, payload: unknown) {
@@ -141,6 +148,14 @@ export function createWs(ctx: Context, api: Api, inspect: Inspect, collab: Colla
   // Uses broadcastHmr so the segregated canvas origin's HMR-only sockets get it.
   createHmrBroadcaster(ctx, (msg) => broadcastHmr(msg));
 
+  // Phase 13 / DDR-029 — canvas activity overlay. activity.ts emits
+  // `activity:change` per file as edits land + go idle. The overlay renders
+  // INSIDE the canvas iframe, which (with the default origin split, DDR-054)
+  // holds a `canvas-hmr` socket — so this MUST use broadcastHmr, not broadcast,
+  // to reach it. The payload is just a canvas path + status (no secrets); it's
+  // the same exposure class the iframe already gets from `canvas-hmr` file paths.
+  ctx.bus.on('activity:change', (payload) => broadcastHmr({ type: 'activity', ...payload }));
+
   // Bind a connection to its room. Stored per-socket so close() can find the
   // right room to disconnect from. Multiplexed via ws.data.id.
   const collabConns = new Map<string, { roomSlug: string; conn: RoomConn }>();
@@ -175,7 +190,11 @@ export function createWs(ctx: Context, api: Api, inspect: Inspect, collab: Colla
         return;
       }
       clients.add(ws);
-      send(ws, { type: 'snapshot', state: inspect.state });
+      // Snapshot carries the inspector state AND the activity map so a client
+      // opening mid-edit seeds its overlay state (Phase 13). Inspector-origin
+      // sockets only — `canvas-hmr` sockets get no snapshot by design and rely
+      // on live `activity` broadcasts.
+      send(ws, { type: 'snapshot', state: inspect.state, activity: activity.state });
     },
     async close(ws) {
       if (ws.data.kind === 'collab') {

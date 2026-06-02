@@ -452,6 +452,8 @@ Pokud validation fails, do not write. Re-prompt jednou s konkrétním fix-list. 
 
 **Always fires, regardless of `--no-critic`.** Reality check, ne quality check. Capture přes agent-browser na server URL (ne `file://`). **Per-artboard screenshot is a BLOCKER condition for `/design:new`, ne footnote** — system-review 2026-05-27 (D-2) flagged that single-PNG fallbacks > 5 MB silently bypass visual verification, and per-screen failures used to be logged as `⚠` and continued. New contract: per-screen succeeds, OR the loop halts and surfaces an AskUserQuestion.
 
+> **Activity overlay (Phase 13 / DDR-029).** As the canvas file is written, any open tab shows a live "editing — `<file>`" overlay (pulsing rim + corner badge) on the affected artboard(s), fading out ~3 s after the last write. Automatic, fs-watch-driven, no action required; `hide-chrome` / export captures suppress it.
+
 **Per-artboard element screenshots are the default for `/design:new`** because new canvases are typically multi-artboard (3–8) and DesignCanvas's pan/zoom viewport means a single full-page snapshot misses everything outside the visible viewport. The canonical screenshot helper handles navigation, mount-poll, per-screen loop, and the agent-browser CLI gotchas in one call:
 
 **Background overlap (Phase C / DDR-061).** Fire the per-artboard capture with `run_in_background: true` and spend the wait window on critic-prompt prep — capturing screenshots and *building* the critic spawn prompts have no data dependency. Concretely:

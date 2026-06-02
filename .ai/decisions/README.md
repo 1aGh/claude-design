@@ -10,6 +10,8 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
 
+- [DDR-080: Moodboard direction gate — cheap pre-scaffold visual approval before the expensive bootstrap](DDR-080-moodboard-direction-gate.md) — 2026-06-02, design/setup-ds/bootstrap/moodboard/direction-gate/hero-preview/aesthetic-ambition/ddr-033/ddr-057/ddr-073
+- [DDR-079: TSX sync defaults ON for a linked project (supersedes DDR-072's opt-in)](DDR-079-tsx-sync-default-on.md) — 2026-06-02, design/dev-server/sync/linked-mode/syncTsx/default-on/opt-out/ux/ddr-072-superseded
 - [DDR-076: An empty hub doc never clobbers a non-empty local canvas (cold-start seeds local UP)](DDR-076-empty-hub-doc-never-clobbers-local-canvas.md) — 2026-06-02, design/dev-server/sync/linked-mode/cold-start/hub-wins/data-loss/reconcile/agent
 - [DDR-074: Draw engine composition layer + discriminating critic metrics (φ rejected)](DDR-074-draw-composition-layer-and-discriminating-critic-metrics.md) — 2026-06-01, design/dev-server/draw/composition/armature/color-harmony/apca/vme-balance/critic-metrics/golden-ratio-myth/deep-research
 - [DDR-071: SVGO as the single new dev-server dependency for the draw engine](DDR-071-svgo-dependency.md) — 2026-06-01, design/dev-server/draw/svgo/dependency/npm/files-manifest/frozen-lockfile/maude-doctor/packaging

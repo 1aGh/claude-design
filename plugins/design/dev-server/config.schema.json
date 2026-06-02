@@ -206,7 +206,8 @@
         },
         "syncTsx": {
           "type": "boolean",
-          "description": "DDR-072 — project-level TSX sync opt-in. When true, ALL .tsx canvases sync to this hub without a per-canvas .meta.json \"syncable\": true. A per-canvas \"syncable\": false still excludes individual canvases (the sidecar always wins). Inert unless the cross-origin sandbox is active (MAUDE_CANVAS_ORIGIN_SPLIT != 0) — the DDR-060 Lock-2 coupling is preserved. Broadens the WebRTC/self-nav exfil residual to every synced canvas, so only enable for hubs you operate or fully trust; the dev-server prints a loud boot banner against non-loopback hubs."
+          "default": true,
+          "description": "DDR-079 (supersedes DDR-072) — project-level TSX sync, ON BY DEFAULT. Omit the field to sync ALL .tsx canvases to this hub (the common case: a linked teammate sees the project's TSX without a hidden opt-in). Set false to opt the whole project OUT. A per-canvas .meta.json \"syncable\": false still excludes one canvas (the sidecar always wins). Inert unless the cross-origin sandbox is active (MAUDE_CANVAS_ORIGIN_SPLIT != 0) — the DDR-060 Lock-2 coupling is preserved. TSX bodies execute, so syncing broadens a WebRTC/self-nav exfil residual to every synced canvas — link only hubs you operate or trust; the dev-server prints a loud boot banner against non-loopback hubs."
         }
       },
       "additionalProperties": false

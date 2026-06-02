@@ -110,6 +110,10 @@
       /* HUDs + banners */
       .dc-ai-banner,
       .dc-undo-hud,
+      /* Activity overlay — live "agent works here" chrome (Phase 13 / DDR-029) */
+      .dc-activity-rim,
+      /* HMR "holding last good" toast (Phase 13.1 / DDR-077) */
+      .dc-hmr-holding,
       /* Artboard title/label button (editor affordance, not design content) */
       .dc-artboard-label,
       /* Generic opt-in hooks for any future floating overlay */
@@ -162,6 +166,52 @@
       const tokensRel = stripDesignPrefix(params.get('tokens') || '');
       const componentsRel = stripDesignPrefix(params.get('components') || '');
       const layoutRel = stripDesignPrefix(params.get('layout') || '');
+
+      // Phase 13.1 / DDR-077 — error-resilient HMR while an agent edits. Hoisted
+      // here so the HMR client (below) can soft-reload the canvas module instead
+      // of location.reload()-ing into a half-saved (broken) build.
+      const canvasUrl = canvasRel ? ('/' + designRel + '/' + canvasRel) : null;
+      const myFileKey = canvasRel ? (designRel + '/' + canvasRel) : null;
+      // True while an `ai-activity` entry is live for THIS canvas (an agent is
+      // running /design:edit|new on it). Mirrors ai-banner's gate: parent relays
+      // ai-activity via postMessage when embedded; the own-WS path (standalone /
+      // same-origin inspector socket) is handled in connectHmr below.
+      let agentEditing = false;
+      window.addEventListener('message', function (e) {
+        // DDR-078 security follow-up: only the trusted embedding parent relays
+        // ai-activity. Reject canvas self-posts (which could flip the HMR gate)
+        // and any non-parent source. Standalone gets it via its own WS below.
+        if (e.source !== window.parent || window.parent === window) return;
+        const m = e && e.data;
+        if (!m || typeof m !== 'object' || m.dgn !== 'ai-activity') return;
+        if (myFileKey && m.file === myFileKey) agentEditing = !!m.entry;
+      });
+
+      // Soft reload — re-import the canvas module (cache-busted) and swap it in
+      // via the runtime, holding the last good render on a build/import error
+      // (no white flash). Only used when an agent is editing; manual edits keep
+      // the plain location.reload() below.
+      function softReload(version) {
+        if (!canvasUrl) { location.reload(); return; }
+        const rt = window.__maudeCanvasRuntime;
+        if (!rt || !rt.remount) { location.reload(); return; }
+        import(canvasUrl + '?v=' + (version || Date.now()))
+          .then(function (mod) {
+            if (mod && typeof mod.default === 'function') {
+              rt.remount(mod.default);
+              if (rt.setHolding) rt.setHolding(false);
+            } else {
+              // No usable default export (rare) — fall back to a hard reload.
+              location.reload();
+            }
+          })
+          .catch(function (err) {
+            // Build/transpile/import error → keep the current render, surface a
+            // non-destructive "holding" toast. Next good build swaps it in.
+            if (rt.setHolding) rt.setHolding(true, (err && (err.message || String(err))) || 'build error');
+            console.warn('[canvas-shell] soft-reload held last good (build error):', err);
+          });
+      }
       // Phase 6.5 — exporters pass ?hide-chrome=1 to flip the export-mode
       // stylesheet from `media="not all"` to `media="all"`, hiding the
       // dev-server overlays during capture. See `<style id="canvas-hide-chrome">`.
@@ -192,7 +242,55 @@
         ws.addEventListener('message', (ev) => {
           try {
             const msg = JSON.parse(ev.data);
-            if (!msg || msg.type !== 'canvas-hmr') return;
+            if (!msg) return;
+            // Phase 13.1 / DDR-077 — own-WS path for the agent-active gate (this
+            // socket is the inspector channel in standalone / same-origin mode;
+            // embedded canvas-hmr sockets get ai-activity via the parent's
+            // postMessage relay handled above).
+            if (msg.type === 'ai-activity') {
+              if (myFileKey && msg.file === myFileKey) agentEditing = !!msg.entry;
+              return;
+            }
+            // Phase 13 / DDR-029 — canvas activity overlay. The server pushes
+            // `{ type:'activity', file, status, artboard_ids, ts }` as edits land
+            // + go idle; the injected runtime (use-canvas-activity.tsx) listens
+            // for the `maude:activity` document event. Same-document bridge — no
+            // second socket. The `snapshot` seed re-plays the activity map for a
+            // tab that opens mid-edit (inspector-origin only).
+            if (msg.type === 'activity') {
+              // Maintain a running activity seed (shape matches the snapshot's
+              // `activity.state`: camelCase artboardIds). Load-bearing for the
+              // Phase 13.1 soft-reload: a soft remount resets the activity
+              // provider WITHOUT a page reload (so no fresh snapshot), and the
+              // provider re-seeds from this map — without it the overlay would
+              // vanish on every agent .tsx save.
+              if (!window.__maude_activity_seed__) window.__maude_activity_seed__ = {};
+              if (msg.status === 'active') {
+                window.__maude_activity_seed__[msg.file] = {
+                  status: 'active', artboardIds: msg.artboard_ids || null, ts: msg.ts,
+                };
+              } else {
+                delete window.__maude_activity_seed__[msg.file];
+              }
+              document.dispatchEvent(new CustomEvent('maude:activity', { detail: msg }));
+              return;
+            }
+            if (msg.type === 'snapshot' && msg.activity && typeof msg.activity === 'object') {
+              // Stash so the provider can seed on mount even if it isn't listening
+              // yet (the snapshot can arrive before React mounts — a real race
+              // after the HMR reload that a canvas edit triggers). Also dispatch
+              // for any provider that IS already mounted (same-origin live case).
+              window.__maude_activity_seed__ = msg.activity;
+              for (const file in msg.activity) {
+                const e = msg.activity[file];
+                if (!e) continue;
+                document.dispatchEvent(new CustomEvent('maude:activity', {
+                  detail: { type: 'activity', file: file, status: e.status, artboard_ids: e.artboardIds || null, ts: e.ts },
+                }));
+              }
+              return;
+            }
+            if (msg.type !== 'canvas-hmr') return;
             if (msg.mode === 'css') {
               const v = msg.version || Date.now();
               // Match by exact filename when we have one; otherwise refresh all.
@@ -222,7 +320,14 @@
             } else if (msg.mode === 'module' || msg.mode === 'hard') {
               // Only reload when the change touches *this* canvas (or `_lib`).
               if (msg.mode === 'hard' || !msg.file || (canvasRel && msg.file === canvasRel)) {
-                location.reload();
+                // Phase 13.1 / DDR-077 — when an agent is live-editing, soft-
+                // reload (hold last good on a broken intermediate). Manual edits
+                // (or no runtime yet) keep the plain, immediate hard reload.
+                if (agentEditing && window.__maudeCanvasRuntime && window.__maudeCanvasRuntime.remount) {
+                  softReload(msg.version);
+                } else {
+                  location.reload();
+                }
               }
             } else if (msg.mode === 'meta') {
               // Phase 8 — canvas-meta sidecar changed. Filter to our own canvas:
@@ -276,7 +381,7 @@
           document.head.appendChild(layoutLink);
         }
 
-        const canvasUrl = '/' + designRel + '/' + canvasRel;
+        // canvasUrl is hoisted above (Phase 13.1) so the HMR soft-reload can use it.
         // Phase 4 T5 — read the canvas's sibling .meta.json and stash it on
         // window so DesignCanvas can seed `layout` + `viewport` synchronously.
         // The fetch runs in parallel with imports; failure is non-fatal (the

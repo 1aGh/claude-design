@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useViewportControllerContext } from './canvas-lib.tsx';
+import { type AgentPresence, useAgentPresence } from './use-agent-presence.tsx';
 import { type ForeignAwareness, useCollab, useForeignAwareness } from './use-collab.tsx';
 
 const CHROME_CSS = `
@@ -110,6 +111,34 @@ const CHROME_CSS = `
 @media (prefers-reduced-motion: reduce) {
   .dc-participant { transition: none; }
 }
+/* Phase 13.2 / DDR-078 — agent presence avatar. Looks like a peer chip + a
+   subtle ✦ marker so an agent reads as distinct from a human collaborator. */
+.dc-participant--agent { box-shadow: 0 1px 2px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04); }
+.dc-participant-agent-marker {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--maude-chrome-bg-0, #fff);
+  color: var(--maude-chrome-fg-0, #111);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  line-height: 1;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.14);
+  pointer-events: none;
+}
+.dc-participant-popover__sub {
+  font-size: 11px;
+  color: var(--maude-chrome-fg-2, #666);
+  margin-top: -4px;
+  margin-bottom: 6px;
+  white-space: normal;
+  max-width: 200px;
+}
 `.trim();
 
 function ensureChromeStyles(): void {
@@ -192,10 +221,63 @@ function Avatar({ peer, isFollowing, onToggleFollow }: AvatarProps): JSX.Element
   );
 }
 
+// Phase 13.2 / DDR-078 — an agent rendered as a presence peer. No "Follow"
+// (an agent has no viewport to mirror); a ✦ marker + an "AI agent" popover
+// subtitle distinguish it from a human collaborator.
+function AgentAvatar({ agent }: { agent: AgentPresence }): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (!rootRef.current) return;
+      if (!rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
+
+  return (
+    <div
+      ref={rootRef}
+      className="dc-participant dc-participant--agent"
+      style={{ background: agent.color }}
+      onClick={() => setOpen((v) => !v)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          setOpen((v) => !v);
+        }
+      }}
+      // biome-ignore lint/a11y/useSemanticElements: matches the peer Avatar chip pattern.
+      role="button"
+      tabIndex={0}
+      title={`${agent.name} (AI agent)`}
+      aria-label={`${agent.name}, AI agent`}
+      aria-expanded={open}
+    >
+      {initialsFor(agent.name)}
+      <span className="dc-participant-agent-marker" aria-hidden>
+        ✦
+      </span>
+      {open && (
+        // biome-ignore lint/a11y/useKeyWithClickEvents: stop-propagation wrapper; no actionable child.
+        // biome-ignore lint/a11y/useSemanticElements: popover wrapper carries no semantic role.
+        <div className="dc-participant-popover" onClick={(e) => e.stopPropagation()}>
+          <div className="dc-participant-popover__name">{agent.name}</div>
+          <div className="dc-participant-popover__sub">AI agent · {agent.author}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ParticipantsChrome(): JSX.Element | null {
   ensureChromeStyles();
   const collab = useCollab();
   const peers = useForeignAwareness();
+  const agent = useAgentPresence();
   const controller = useViewportControllerContext();
 
   const [followTarget, setFollowTarget] = useState<number | null>(null);
@@ -242,7 +324,9 @@ export function ParticipantsChrome(): JSX.Element | null {
     controller.setViewport(v);
   }, [controller, followTarget, peers]);
 
-  if (peers.length === 0) return null;
+  // Render whenever there's a human peer OR an active agent (so an agent shows
+  // even with no human collaborators connected).
+  if (peers.length === 0 && !agent) return null;
 
   return (
     <div className="dc-participants" aria-label="Active collaborators">
@@ -254,6 +338,7 @@ export function ParticipantsChrome(): JSX.Element | null {
           onToggleFollow={onToggleFollow}
         />
       ))}
+      {agent ? <AgentAvatar key={agent.id} agent={agent} /> : null}
     </div>
   );
 }

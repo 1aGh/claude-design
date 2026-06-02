@@ -246,16 +246,17 @@ export function createSyncRuntime(
       return;
     }
 
-    // DDR-072 — loud boot banner when the project-level TSX opt-in is on against
-    // a NON-loopback hub. Broadening from hand-picked canvases to "all .tsx"
-    // also broadens the WebRTC/self-nav exfil residual (the sandbox contains
-    // execution but not that lane) to every synced canvas, so this must never be
-    // silent: a sneaky PR that flips `linkedHub.syncTsx` surfaces here on the
-    // next `serve`. Loopback hubs (local dev) skip it — no remote exfil concern.
-    if (linkedHub.syncTsx === true && !isLoopbackHubUrl(linkedHub.url)) {
-      const tsxCount = canvases.filter((c) => c.html.toLowerCase().endsWith('.tsx')).length;
+    // DDR-079 — TSX sync defaults ON, so every linked non-loopback project that
+    // ships .tsx broadcasts the WebRTC/self-nav exfil residual (the sandbox
+    // contains execution but not that lane) to every synced canvas. The default
+    // traded a footgun (silent 0-syncable) for this surface, so the surface must
+    // be LOUD: a banner on every `serve` naming the count + the opt-outs. Fires
+    // unless explicitly opted out (`syncTsx: false`); loopback hubs (local dev)
+    // skip it — no remote exfil concern.
+    const tsxBodyCount = canvases.filter((c) => c.html.toLowerCase().endsWith('.tsx')).length;
+    if (linkedHub.syncTsx !== false && tsxBodyCount > 0 && !isLoopbackHubUrl(linkedHub.url)) {
       console.warn(
-        `[sync] syncTsx=true — ${tsxCount} TSX canvas BODIES will sync to ${linkedHub.url} (project-level opt-in, DDR-072). The sandbox contains execution, but the WebRTC/self-nav exfil residual now applies to ALL synced canvases — only for hubs you operate or fully trust. Set a canvas .meta.json "syncable": false to exclude it.`
+        `[sync] ${tsxBodyCount} TSX canvas BODIES will sync to ${linkedHub.url} (TSX sync is ON by default — DDR-079). The sandbox contains execution, but a WebRTC/self-nav exfil residual applies to every synced canvas — link only hubs you operate or trust. Opt out: linkedHub.syncTsx=false (whole project) or a canvas .meta.json "syncable": false (one canvas).`
       );
     }
 
@@ -612,12 +613,15 @@ export async function scanCanvases(ctx: Context): Promise<CanvasScan> {
   // `.tsx` syncs — the per-canvas opt-in is inert without the sandbox, and
   // decoupling them would re-open the CRITICAL F1 RCE (DDR-060, DDR-054 §F1).
   const splitActive = !!ctx.canvasOrigin;
-  // DDR-072 — project-level TSX opt-in. When `linkedHub.syncTsx` is true, a
-  // `.tsx` with no explicit sidecar verdict defaults to syncable (the per-canvas
-  // sidecar still wins either way — see resolveSyncable). Coupled with the
-  // sandbox via `splitActive` exactly like the per-canvas opt-in, so the flag is
-  // inert without the F1 containment (DDR-060 Lock-2 invariant).
-  const projectSyncTsx = ctx.cfg.linkedHub?.syncTsx === true;
+  // DDR-079 (supersedes DDR-072) — TSX sync defaults ON for a linked project.
+  // Absence of the flag = ON: a freshly-linked peer sees the project's TSX
+  // without a hidden per-project opt-in (the recurring "I linked but my teammate
+  // sees nothing" footgun). `linkedHub.syncTsx: false` is the explicit
+  // project-wide opt-out; a per-canvas `.meta.json "syncable": false` still wins
+  // for one canvas (see resolveSyncable). The Lock-2 sandbox coupling
+  // (`splitActive`) is UNTOUCHED — a `.tsx` still syncs ONLY when the cross-origin
+  // containment is active; decoupling them would re-open the F1 RCE (DDR-060).
+  const projectSyncTsx = ctx.cfg.linkedHub?.syncTsx !== false;
   for (const group of ctx.cfg.canvasGroups) {
     const groupAbs = path.join(ctx.paths.designRoot, group.path);
     if (!existsSync(groupAbs)) continue;
@@ -636,7 +640,7 @@ export async function scanCanvases(ctx: Context): Promise<CanvasScan> {
 }
 
 /**
- * T3 (9.1-B) + DDR-072 — resolve whether a `.tsx` body is syncable.
+ * T3 (9.1-B) + DDR-079 (was DDR-072) — resolve whether a `.tsx` body is syncable.
  *
  * Tri-state precedence:
  *  1. The sibling `<name>.meta.json` `"syncable"` boolean ALWAYS wins when
@@ -644,9 +648,10 @@ export async function scanCanvases(ctx: Context): Promise<CanvasScan> {
  *     sidecar; deliberately NOT in the untrusted `/_api/canvas-meta` PATCH
  *     whitelist (api.ts), so a hostile canvas/hub cannot flip its own body into
  *     or out of the sync set.
- *  2. Otherwise fall back to the project-level `linkedHub.syncTsx` default.
+ *  2. Otherwise fall back to `projectSyncTsx` — which now defaults to TRUE
+ *     (DDR-079); `linkedHub.syncTsx: false` is the explicit project-wide opt-out.
  *
- * Missing sidecar / parse error → no explicit verdict → the project default.
+ * Missing sidecar / parse error → no explicit verdict → the project default (on).
  */
 function resolveSyncable(bodyAbs: string, projectSyncTsx: boolean): boolean {
   const metaAbs = bodyAbs.replace(/\.(tsx|html)$/i, '.meta.json');
@@ -752,7 +757,7 @@ export function buildNoSyncablePayload(
 ): NoSyncablePayload {
   const reason =
     tsxCount > 0
-      ? `${tsxCount} TSX canvas(es) found but none are syncable — a TSX body syncs when the canvas opts in (.meta.json "syncable": true) OR the project opts in all of them (.design/config.json linkedHub.syncTsx: true, DDR-072). The canvas sandbox is on by default; MAUDE_CANVAS_ORIGIN_SPLIT=0 disables it (and TSX sync with it). See DDR-060.`
+      ? `${tsxCount} TSX canvas(es) found but none are syncable. TSX sync is ON by default (DDR-079), so this means it was opted OUT — either project-wide (.design/config.json linkedHub.syncTsx: false) or per canvas (.meta.json "syncable": false) — OR the cross-origin sandbox is off (MAUDE_CANVAS_ORIGIN_SPLIT=0 disables it, and TSX sync with it — DDR-060). Remove the opt-out / re-enable the sandbox to sync.`
       : `no canvases found under ${designRoot}.`;
   return {
     linked: true,

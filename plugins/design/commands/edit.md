@@ -388,6 +388,8 @@ curl -s -m 2 -X POST -H 'content-type: application/json' \
 
 **Always fires, regardless of `--no-critic`.** Reality check (does the file render?), ne quality check.
 
+> **Activity overlay (Phase 13 / DDR-029).** While each Edit/Write lands, any open canvas tab shows a live "editing — `<file>`" overlay (pulsing rim + corner badge) on the affected artboard(s), then cross-fades out ~3 s after the last write. It's fs-watch-driven and automatic — no action required. Exports and `hide-chrome` captures suppress it; the peripheral rim doesn't obstruct the reality-check screenshot.
+
 **Background overlap (Phase C / DDR-061).** When the critic panel will run (not `--no-critic`), fire this capture as a **background Bash call** (`run_in_background: true`) and spend the wait on step-8 prep — resolving the opt-out scope, the routed panel set (8a/8b decision), the per-critic inline DS context (already cached from step 1.5), and the `RUN_KEEPER` ds-keeper context. Hold the batch ready; when the background job completes you are notified (do **not** poll/sleep), then `Read` the PNG for the reality check and spawn the prepped panel. The CSS-mtime `touch` below must happen **before** the capture is launched, so do it first, then background the screenshot. If `run_in_background` is unavailable, fall back to the synchronous capture — it just blocks — and prep afterward. (`--no-critic` runs the capture synchronously; there's no panel to overlap with.)
 
 ```bash

@@ -38,7 +38,7 @@
     "micro": 300,
     "page": 500,
     "complex": 1000,
-    "customPulses": {}
+    "customPulses": { "canvasActivity": 2200 }
   },
   "responsive": {
     "approach": "mobile-first",

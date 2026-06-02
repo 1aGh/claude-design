@@ -27,9 +27,12 @@
  */
 
 import {
+  Component,
   type ComponentType,
+  Fragment,
   type ReactNode,
   createElement,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -347,6 +350,27 @@ export interface MountCanvasOptions {
   commentsEnabled: boolean;
 }
 
+// The lite provider tree wrapping a canvas component (tool + selection +
+// comment layer). Pulled out so both the live render and the error-fallback
+// render build the identical envelope.
+//
+// NB: the CanvasActivityProvider (Phase 13 / DDR-029) is NOT mounted here — it
+// lives inside `DesignCanvas` (canvas-lib). comment-mount.js and canvas-lib are
+// SEPARATE bundles, so a context provided here would be a different instance
+// from the one DCArtboard (canvas-lib) consumes. Same reasoning the real
+// ToolProvider lives in DesignCanvas, not in this layer's MaybeToolProvider.
+function buildCanvasTree(Canvas: ComponentType, file: string | undefined): ReactNode {
+  return createElement(
+    MaybeToolProvider,
+    null,
+    createElement(
+      MaybeSelectionSetProvider,
+      null,
+      createElement(CommentHost, { file }, createElement(Canvas))
+    )
+  );
+}
+
 export function mountCanvas(Canvas: ComponentType, opts: MountCanvasOptions): void {
   const root = createRoot(opts.rootEl);
   if (!opts.commentsEnabled) {
@@ -354,15 +378,146 @@ export function mountCanvas(Canvas: ComponentType, opts: MountCanvasOptions): vo
     return;
   }
   const file = opts.file ?? deriveFile();
-  root.render(
+  root.render(createElement(CanvasHmrRuntime, { initialCanvas: Canvas, file }));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 13.1 / DDR-077 — HMR error resilience during agent editing.
+//
+// When an agent (`/design:edit` / `/design:new`) live-edits a canvas, a
+// half-saved file (missing import, undefined symbol, transpile error) used to
+// blank the canvas to white: the shell did `location.reload()` straight into the
+// broken module. The shell now soft-reloads (import-before-swap, see
+// `templates/_shell.html`) so a build/import error never tears down the good
+// render. This runtime closes the remaining gap — a *render-time* throw — by
+// keeping the last good canvas mounted via an error boundary and surfacing a
+// "holding last good" toast instead of a white screen. Strictly gated by the
+// shell on agent-active; manual edits keep the plain reload (so this is inert
+// for solo hand-editing). The runtime exposes its swap/hold API on
+// `window.__maudeCanvasRuntime` (the same window-handshake style the shell
+// already uses for `__canvas_rel__` etc.).
+
+export interface CanvasRuntimeApi {
+  /** Swap in a freshly-imported canvas module's default export (success path). */
+  remount: (next: ComponentType) => void;
+  /** Show/hide the "holding last good" toast (build-error path from the shell). */
+  setHolding: (on: boolean, message?: string) => void;
+}
+
+const RUNTIME_KEY = '__maudeCanvasRuntime';
+
+/**
+ * Fires `onOk` only when its subtree COMMITS — i.e. renders without throwing. A
+ * render-time throw in the canvas unwinds to the boundary before this commits,
+ * so `onOk` never runs and `lastGood` is not advanced to a broken module.
+ */
+function OkSignal({
+  Canvas,
+  file,
+  onOk,
+}: {
+  Canvas: ComponentType;
+  file: string | undefined;
+  onOk: () => void;
+}) {
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fire once per mount (key=attempt remounts this).
+  useEffect(() => {
+    onOk();
+  }, []);
+  return buildCanvasTree(Canvas, file);
+}
+
+export class CanvasErrorBoundary extends Component<
+  {
+    attempt: number;
+    onError: () => void;
+    fallback: () => ReactNode;
+    children: ReactNode;
+  },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+  static getDerivedStateFromError(): { hasError: boolean } {
+    return { hasError: true };
+  }
+  componentDidCatch(): void {
+    this.props.onError();
+  }
+  componentDidUpdate(prev: { attempt: number }): void {
+    // A new canvas (new attempt) arrived → clear the error and try rendering it.
+    if (prev.attempt !== this.props.attempt && this.state.hasError) {
+      this.setState({ hasError: false });
+    }
+  }
+  render(): ReactNode {
+    if (this.state.hasError) return this.props.fallback();
+    return this.props.children;
+  }
+}
+
+function HmrHoldingToast({ message }: { message?: string }): ReactNode {
+  return createElement(
+    'div',
+    {
+      className: 'dc-hmr-holding',
+      role: 'status',
+      'aria-live': 'polite',
+      title: message ? `Holding last working render — ${message}` : 'Holding last working render',
+    },
+    '⏸ build error — držím poslední funkční verzi'
+  );
+}
+
+function CanvasHmrRuntime({
+  initialCanvas,
+  file,
+}: {
+  initialCanvas: ComponentType;
+  file: string | undefined;
+}): ReactNode {
+  const [{ canvas, attempt }, setCanvasState] = useState({ canvas: initialCanvas, attempt: 0 });
+  const [holding, setHoldingState] = useState<{ on: boolean; message?: string }>({ on: false });
+  const lastGood = useRef<ComponentType | null>(null);
+  const canvasRef = useRef(canvas);
+  canvasRef.current = canvas;
+
+  // Publish the runtime API for the shell HMR client.
+  useEffect(() => {
+    const api: CanvasRuntimeApi = {
+      remount: (next) => setCanvasState((s) => ({ canvas: next, attempt: s.attempt + 1 })),
+      setHolding: (on, message) => setHoldingState(on ? { on: true, message } : { on: false }),
+    };
+    (window as unknown as Record<string, unknown>)[RUNTIME_KEY] = api;
+    return () => {
+      (window as unknown as Record<string, unknown>)[RUNTIME_KEY] = undefined;
+    };
+  }, []);
+
+  const handleOk = useCallback(() => {
+    lastGood.current = canvasRef.current;
+    // The new canvas rendered clean → drop any holding state.
+    setHoldingState((h) => (h.on ? { on: false } : h));
+  }, []);
+
+  const handleError = useCallback(() => {
+    setHoldingState({ on: true, message: 'render error' });
+  }, []);
+
+  const fallback = useCallback((): ReactNode => {
+    const LG = lastGood.current;
+    return LG ? buildCanvasTree(LG, file) : null;
+  }, [file]);
+
+  return createElement(
+    Fragment,
+    null,
     createElement(
-      MaybeToolProvider,
-      null,
-      createElement(
-        MaybeSelectionSetProvider,
-        null,
-        createElement(CommentHost, { file }, createElement(Canvas))
-      )
-    )
+      CanvasErrorBoundary,
+      { attempt, onError: handleError, fallback },
+      // key=attempt → each soft-reload remounts a fresh subtree (and resets the
+      // boundary's child), matching the clean-slate semantics of a full reload.
+      createElement(OkSignal, { key: attempt, Canvas: canvas, file, onOk: handleOk })
+    ),
+    holding.on ? createElement(HmrHoldingToast, { message: holding.message }) : null
   );
 }
