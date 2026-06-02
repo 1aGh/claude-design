@@ -125,6 +125,10 @@ export function AiBanner(): JSX.Element | null {
 
     // postMessage relay path — parent sends `ai-activity` events.
     const onMessage = (e: MessageEvent) => {
+      // DDR-078 security follow-up: only the trusted embedding parent relays
+      // ai-activity. Reject canvas self-posts faking a "Claude is editing"
+      // banner. Standalone (no parent) uses the own-WS path below instead.
+      if (e.source !== window.parent || window.parent === window) return;
       const m = e.data as { dgn?: string; file?: string; entry?: AiEntry | null } | null;
       if (!m || typeof m !== 'object') return;
       if (m.dgn !== 'ai-activity') return;

@@ -16,6 +16,7 @@
 
 import { spawn } from 'node:child_process';
 
+import { createActivity } from './activity.ts';
 import { createApi } from './api.ts';
 import { bootSelfHeal } from './boot-self-heal.ts';
 import { createAiActivity } from './collab/ai-activity.ts';
@@ -77,7 +78,10 @@ await inspect.load();
 collab = createCollab(ctx, api);
 const aiActivity = createAiActivity(ctx);
 const gitLifecycle = createGitLifecycle(ctx, collab.registry);
-const ws = createWs(ctx, api, inspect, collab);
+// Phase 13 / DDR-029 — fs-watch-driven canvas activity overlay. Subscribes to
+// `fs:any` and emits `activity:change`; ws.ts forwards it to canvas iframes.
+const activity = createActivity(ctx);
+const ws = createWs(ctx, api, inspect, collab, activity);
 const http = createHttp(ctx, api, inspect, aiActivity);
 const fsWatch = createFsWatch(ctx);
 
@@ -346,6 +350,11 @@ if (!process.env.NO_OPEN) {
 async function shutdown() {
   console.log('\n  Stopping…');
   fsWatch.stop();
+  try {
+    activity.stop();
+  } catch {
+    /* timer cleanup is best-effort */
+  }
   try {
     if (syncRuntime) await syncRuntime.stop();
   } catch {

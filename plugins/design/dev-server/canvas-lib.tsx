@@ -90,12 +90,19 @@ import {
   useReducedMotion as _useReducedMotion,
 } from 'motion/react';
 
+import { ArtboardActivityOverlay } from './artboard-activity-overlay.tsx';
 import { CanvasShell } from './canvas-shell.tsx';
 import {
   buildMoveArtboardsRecord,
   diffLayoutPositions,
 } from './commands/move-artboards-command.ts';
+import { AgentPresenceProvider, useAgentPresence } from './use-agent-presence.tsx';
 import { type DragState, useArtboardDrag } from './use-artboard-drag.tsx';
+import {
+  CanvasActivityProvider,
+  matchesArtboard,
+  useCanvasActivity,
+} from './use-canvas-activity.tsx';
 import { CollabProvider, canvasSlugFromPath } from './use-collab.tsx';
 import { useSelectionSetOptional } from './use-selection-set.tsx';
 import { MaybeToolProvider, useToolModeOptional } from './use-tool-mode.tsx';
@@ -1192,9 +1199,22 @@ export function DesignCanvas(props: DesignCanvasProps) {
     </MaybeToolProvider>
   );
   return (
-    <UndoStackProvider canvasFile={canvasFile}>
-      {collabSlug ? <CollabProvider slug={collabSlug}>{inner}</CollabProvider> : inner}
-    </UndoStackProvider>
+    // Phase 13 / DDR-029 — the activity context MUST be provided here (canvas-lib
+    // bundle) so DCArtboard's `useCanvasActivity()` reads the SAME context
+    // instance. Providing it from comment-mount.js (a separate bundle) would
+    // create a second ActivityContext the consumer never sees. `canvasFile` is
+    // normalized to the server's design-root-relative activity key inside the
+    // provider (falls back to window.__canvas_rel__).
+    <CanvasActivityProvider file={canvasFile}>
+      {/* Phase 13.2 / DDR-078 — agent presence. Same canvas-lib-bundle rule as
+          the activity context: provided here so DCArtboard + ParticipantsChrome
+          (both canvas-lib) read one context instance. */}
+      <AgentPresenceProvider file={canvasFile}>
+        <UndoStackProvider canvasFile={canvasFile}>
+          {collabSlug ? <CollabProvider slug={collabSlug}>{inner}</CollabProvider> : inner}
+        </UndoStackProvider>
+      </AgentPresenceProvider>
+    </CanvasActivityProvider>
   );
 }
 DesignCanvas.displayName = 'DesignCanvas';
@@ -1510,6 +1530,12 @@ export function DCArtboard({
   const toolMode = useToolModeOptional();
   const selSet = useSelectionSetOptional();
   const dragBus = useDragStateContext();
+  // Phase 13 / DDR-029 — live "agent works here" overlay. Inert (present=false)
+  // outside CanvasActivityProvider, so specimens / legacy mounts never show it.
+  const activity = useCanvasActivity();
+  // Phase 13.2 / DDR-078 — when an agent is the editor, tint the overlay with
+  // its presence color + show its funny name instead of the generic file label.
+  const agent = useAgentPresence();
   const rect = ctx ? ctx.rectFor(id) : null;
 
   // Drag hook — always called (hook rules). Inert outside DesignCanvas
@@ -1583,19 +1609,40 @@ export function DCArtboard({
 
   const handleProps = dragHook.bindHandle();
 
+  // Phase 13 — overlay when THIS canvas is active and the change scope includes
+  // this artboard (null scope = file-level = every artboard). Rendered as a
+  // world-coord sibling of the <article> so it pans/zooms with the artboard.
+  const showActivity = activity.present && matchesArtboard(activity.artboardIds, id);
+  // Agent-driven → funny name + agent color; manual edit → file label + default hue.
+  const activityLabel = agent
+    ? agent.name
+    : activity.artboardIds
+      ? `${activity.fileLabel}:${label}`
+      : activity.fileLabel;
+
   return (
-    <article
-      className={`dc-artboard dc-positioned${isInDrag ? ' dc-dragging' : ''}`}
-      data-dc-screen={id}
-      aria-current={isActive ? 'true' : undefined}
-      style={{ left: liveX, top: liveY, width: rect.w, height: rect.h }}
-      {...handleProps}
-    >
-      <button type="button" className="dc-artboard-label sku" aria-label={`Artboard ${label}`}>
-        {label}
-      </button>
-      <div className="dc-artboard-body">{children}</div>
-    </article>
+    <>
+      <article
+        className={`dc-artboard dc-positioned${isInDrag ? ' dc-dragging' : ''}`}
+        data-dc-screen={id}
+        aria-current={isActive ? 'true' : undefined}
+        style={{ left: liveX, top: liveY, width: rect.w, height: rect.h }}
+        {...handleProps}
+      >
+        <button type="button" className="dc-artboard-label sku" aria-label={`Artboard ${label}`}>
+          {label}
+        </button>
+        <div className="dc-artboard-body">{children}</div>
+      </article>
+      {showActivity ? (
+        <ArtboardActivityOverlay
+          rect={{ x: liveX, y: liveY, w: rect.w, h: rect.h }}
+          label={activityLabel}
+          active={activity.active}
+          color={agent?.color}
+        />
+      ) : null}
+    </>
   );
 }
 DCArtboard.displayName = 'DCArtboard';
