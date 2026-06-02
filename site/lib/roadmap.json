@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-02T10:26:26.661Z",
+  "generated": "2026-06-02T10:37:38.526Z",
   "currentPhase": null,
   "phases": [
     {
@@ -694,6 +694,17 @@
       "planPath": ".ai/plans/phase-23-canvas-images-link-unfurl.md",
       "archived": false,
       "phaseKey": "23"
+    },
+    {
+      "id": "dependency-freshness-biome-v2-motion-v12-migration",
+      "title": "Feature: Dependency freshness sweep + Biome v2 / Motion v12 major migration",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Land every outstanding dependency bump across the pnpm workspace (., site, plugins/design/dev-server, plugins/design/hub) and the side projects (plugins/design/hub bun.lock, scripts/video/final), s...",
+      "planPath": ".ai/plans/dependency-freshness-biome-v2-motion-v12-migration.md",
+      "archived": false,
+      "phaseKey": null
     },
     {
       "id": "phase-7-acp-chat-sidebar",
