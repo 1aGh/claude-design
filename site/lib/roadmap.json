@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-02T11:11:25.996Z",
+  "generated": "2026-06-02T14:51:22.092Z",
   "currentPhase": null,
   "phases": [
     {
@@ -54,6 +54,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports.",
       "planPath": ".ai/plans/archive/decouple-flow-from-github-issues.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "dependency-freshness-biome-v2-motion-v12-migration",
+      "title": "Feature: Dependency freshness sweep + Biome v2 / Motion v12 major migration",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Land every outstanding dependency bump across the pnpm workspace (., site, plugins/design/dev-server, plugins/design/hub) and the side projects (plugins/design/hub bun.lock, scripts/video/final), s...",
+      "planPath": ".ai/plans/archive/dependency-freshness-biome-v2-motion-v12-migration.md",
       "archived": true,
       "phaseKey": null
     },
@@ -694,17 +705,6 @@
       "planPath": ".ai/plans/phase-23-canvas-images-link-unfurl.md",
       "archived": false,
       "phaseKey": "23"
-    },
-    {
-      "id": "dependency-freshness-biome-v2-motion-v12-migration",
-      "title": "Feature: Dependency freshness sweep + Biome v2 / Motion v12 major migration",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Land every outstanding dependency bump across the pnpm workspace (., site, plugins/design/dev-server, plugins/design/hub) and the side projects (plugins/design/hub bun.lock, scripts/video/final), s...",
-      "planPath": ".ai/plans/dependency-freshness-biome-v2-motion-v12-migration.md",
-      "archived": false,
-      "phaseKey": null
     },
     {
       "id": "phase-7-acp-chat-sidebar",
