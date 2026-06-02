@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-01T21:11:23.042Z",
+  "generated": "2026-06-02T07:49:24.511Z",
   "currentPhase": null,
   "phases": [
     {
@@ -683,6 +683,17 @@
       "planPath": ".ai/plans/phase-23-canvas-images-link-unfurl.md",
       "archived": false,
       "phaseKey": "23"
+    },
+    {
+      "id": "setup-ds-moodboard-and-direction-gates",
+      "title": "Feature: setup-ds — moodboard direction gate + Batch-A hero preview (fail-fast on direction)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan changes the design-plugin bootstrap spec (markdown skill + command docs + re...",
+      "planPath": ".ai/plans/setup-ds-moodboard-and-direction-gates.md",
+      "archived": false,
+      "phaseKey": null
     },
     {
       "id": "phase-7-acp-chat-sidebar",
