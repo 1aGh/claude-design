@@ -168,6 +168,6 @@ export const TOOL_CURSORS: Record<Tool, string> = Object.freeze({
  */
 export function resolveToolCursor(token: unknown): string | null {
   if (typeof token !== 'string' || !/^[a-z-]+$/.test(token)) return null;
-  if (!Object.prototype.hasOwnProperty.call(TOOL_CURSORS, token)) return null;
+  if (!Object.hasOwn(TOOL_CURSORS, token)) return null;
   return TOOL_CURSORS[token as Tool];
 }

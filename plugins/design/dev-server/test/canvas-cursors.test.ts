@@ -4,7 +4,7 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { TOOL_CURSORS, resolveToolCursor } from '../canvas-cursors.ts';
+import { resolveToolCursor, TOOL_CURSORS } from '../canvas-cursors.ts';
 
 const ALL_TOOLS = [
   'move',

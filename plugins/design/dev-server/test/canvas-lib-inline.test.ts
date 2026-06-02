@@ -3,7 +3,7 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { type LibMap, buildLibMap, inlineUsedExports } from '../canvas-lib-inline.ts';
+import { buildLibMap, inlineUsedExports, type LibMap } from '../canvas-lib-inline.ts';
 
 const LIB_PATH = '/virtual/_lib/canvas-lib.tsx';
 

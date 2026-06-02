@@ -8,13 +8,13 @@ import * as Y from 'yjs';
 
 import { Y_TYPES } from '../collab/persistence.ts';
 import {
-  Y_SYNC_TYPES,
   annotationsFromDoc,
   applyAnnotationsToDoc,
   applyCommentsToDoc,
   applyHtmlToDoc,
   commentsFromDoc,
   htmlFromDoc,
+  Y_SYNC_TYPES,
 } from '../sync/codec.ts';
 
 describe('HTML codec', () => {

@@ -15,9 +15,9 @@
 import { useEffect, useRef, useState } from 'react';
 
 import {
+  detectEqualSpacing,
   type EqualSpacingResult,
   type SpacingAxis,
-  detectEqualSpacing,
 } from './equal-spacing-detector.ts';
 import { useSelectionSet } from './use-selection-set.tsx';
 

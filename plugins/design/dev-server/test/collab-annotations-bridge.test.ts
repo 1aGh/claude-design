@@ -45,7 +45,7 @@ describe('Registry.syncRoomFromAnnotations', () => {
   test('inspector-write origin propagates through doc.update', () => {
     const r = createRegistry(noopCallbacks());
     const room = r.get('echo-slug');
-    let lastOrigin: unknown = undefined;
+    let lastOrigin: unknown;
     room.doc.on('update', (_update, origin) => {
       lastOrigin = origin;
     });

@@ -8,10 +8,9 @@
 //   - GET returns the merged meta
 //   - Paths that escape repoRoot are 400
 
+import { describe, expect, test } from 'bun:test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-
-import { describe, expect, test } from 'bun:test';
 
 import { bootServer, killProc, makeSandbox, nextPort } from './_helpers.ts';
 

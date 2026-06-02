@@ -9,12 +9,12 @@ import path from 'node:path';
 
 import { transpileCanvasSource } from '../canvas-pipeline.ts';
 import {
-  type RegistryItem,
   classifyImports,
   collectClassNames,
   emitRegistryItem,
   filterComponentsCss,
   filterTokensCss,
+  type RegistryItem,
   stripDataCdId,
   writeRegistryItem,
 } from '../handoff.ts';

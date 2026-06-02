@@ -11,6 +11,14 @@
 **Active plan:** —
 **Side-feature done 2026-06-02:** Phase 13.x (canvas activity overlay + HMR resilience + agent presence + wave visual) shipped on branch `feat/canvas-activity-overlay` (commit 1847d6f). Plan archived. DDR-075/077/078. _(Phase 9.1 above remains the paused main workflow.)_
 
+## Execution Progress — Dependency Freshness (Biome v2 / Motion v12) — branch `chore/deps-biome-v2-motion-v12`
+
+- Plan: `.ai/plans/dependency-freshness-biome-v2-motion-v12-migration.md` (in-progress 2026-06-02, pending commit + merge)
+- **Group A** — Tier-1 sweep already landed via #31 + hub re-sync; only the 2 majors remained. yjs lockstep confirmed (dev-server/hub/lockfile all 13.6.31).
+- **Group B** — Biome `^1.9.4` → `^2` (2.4.16). `biome.json` → **`biome.jsonc`** (comments need `.jsonc`); migrated `files.ignore` → `files.includes`; net-new v2 rules neutralized to v1 posture (off for intentional CSS `!important`/specificity, warn for deferred cleanup — a "tighten lint posture" follow-up is scoped out); `!**/*.html` excludes the v2-new HTML lint of bias-free reference templates; overlay-a11y override extended; 1 real fix (`roadmap-timeline` glyph `role="img"`) + a pre-existing broken JSON import-assertion in `DemoCaptioned.tsx`. Lint+format GREEN (52 warnings, 0 errors).
+- **Group C** — `motion` 11.18.2 → 12.40.0 + release-minified `dist/runtime/*.js` regen on macOS (also brought react/yjs bundles current with the post-#31 lockfile; old committed bundles were stale unminified dev builds). Floor 13/13, runtime-health clean, smoke 45/45, no regression. Patch changeset added.
+- **Group D** — gates manually GREEN; PR #33 already auto-closed by dependabot. Pending: commit (per-group) → push → PR → `/flow:done` (validate / History row / roadmap regen / retro).
+
 ## Execution Progress — Phase 13 (Canvas Activity Overlay)
 
 - Plan: .ai/plans/phase-13-canvas-activity-overlay.md (started + completed 2026-06-02)

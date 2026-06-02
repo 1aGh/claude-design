@@ -10,10 +10,10 @@ import { describe, expect, test } from 'bun:test';
 import * as Y from 'yjs';
 
 import {
-  META_LOCAL_KEYS,
   applyCssToDoc,
   applyMetaToDoc,
   cssFromDoc,
+  META_LOCAL_KEYS,
   mergeSharedMetaIntoLocal,
   metaFromDoc,
 } from '../sync/codec.ts';

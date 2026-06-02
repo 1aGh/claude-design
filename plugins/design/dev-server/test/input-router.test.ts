@@ -4,11 +4,11 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   type ClassifyInput,
-  DRAG_THRESHOLD_PX,
-  type Tool,
   classify,
   crossedDragThreshold,
+  DRAG_THRESHOLD_PX,
   isEditableTarget,
+  type Tool,
 } from '../input-router.tsx';
 
 const base = (over: Partial<ClassifyInput>): ClassifyInput => ({

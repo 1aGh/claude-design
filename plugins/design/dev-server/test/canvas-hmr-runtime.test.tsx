@@ -18,7 +18,7 @@ afterAll(() => {
 });
 
 import { act, createElement } from 'react';
-import { type Root, createRoot } from 'react-dom/client';
+import { createRoot, type Root } from 'react-dom/client';
 
 import { CanvasErrorBoundary } from '../canvas-comment-mount.tsx';
 

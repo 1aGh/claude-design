@@ -19,8 +19,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { test } from 'node:test';
-import addFormats from 'ajv-formats';
 import Ajv2020 from 'ajv/dist/2020.js';
+import addFormats from 'ajv-formats';
 import { lintConfig } from './config-lint.mjs';
 
 const read = (p) => readFileSync(resolve(p), 'utf8');

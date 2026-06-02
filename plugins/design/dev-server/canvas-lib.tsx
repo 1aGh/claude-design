@@ -68,13 +68,18 @@
  */
 
 import {
+  AnimatePresence as _MotionAnimatePresence,
+  motion as _motionImpl,
+  useReducedMotion as _useReducedMotion,
+} from 'motion/react';
+import {
   type CSSProperties,
+  createContext,
   Fragment,
+  isValidElement,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
-  createContext,
-  isValidElement,
   useCallback,
   useContext,
   useEffect,
@@ -83,12 +88,6 @@ import {
   useRef,
   useState,
 } from 'react';
-
-import {
-  AnimatePresence as _MotionAnimatePresence,
-  motion as _motionImpl,
-  useReducedMotion as _useReducedMotion,
-} from 'motion/react';
 
 import { ArtboardActivityOverlay } from './artboard-activity-overlay.tsx';
 import { CanvasShell } from './canvas-shell.tsx';
@@ -2204,11 +2203,7 @@ export function SpecimenHeader({
 }
 
 /** `<dl class="specimen-meta">` ladder. */
-export function SpecimenMeta({
-  entries,
-}: {
-  entries: Array<{ label: string; value: ReactNode }>;
-}) {
+export function SpecimenMeta({ entries }: { entries: Array<{ label: string; value: ReactNode }> }) {
   return (
     <dl className="specimen-meta">
       {entries.map(({ label, value }) => (
@@ -2227,13 +2222,7 @@ export function KbdHint({ children }: { children: ReactNode }) {
 }
 
 /** Inline `var(--name)` value visualiser — small chip + token name. */
-export function TokenChip({
-  name,
-  swatch,
-}: {
-  name: string;
-  swatch?: boolean;
-}) {
+export function TokenChip({ name, swatch }: { name: string; swatch?: boolean }) {
   return (
     <span className="token-chip" data-token={name}>
       {swatch ? (
@@ -2763,7 +2752,7 @@ export function ReducedMotionToggle() {
 }
 
 export {
+  _MotionAnimatePresence as AnimatePresence,
   _motionImpl as motion,
   _useReducedMotion as useReducedMotion,
-  _MotionAnimatePresence as AnimatePresence,
 };

@@ -2,11 +2,11 @@ import { Composition } from 'remotion';
 import { Demo } from './compositions/Demo';
 import { DemoCaptioned } from './compositions/DemoCaptioned';
 import { Final } from './compositions/Final';
+import { PlaceholderScene } from './scenes/_placeholder';
+import { SmokeScene } from './scenes/_smoke';
 import { IntroScene } from './scenes/01-intro';
 import { ContentScene } from './scenes/02-content';
 import { OutroScene } from './scenes/03-outro';
-import { PlaceholderScene } from './scenes/_placeholder';
-import { SmokeScene } from './scenes/_smoke';
 
 /**
  * Composition registry. One <Composition> per scene + the master Demo cut.

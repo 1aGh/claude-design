@@ -22,7 +22,7 @@ import { describe, expect, test } from 'bun:test';
 import * as Y from 'yjs';
 
 import { Y_TYPES } from '../collab/persistence.ts';
-import { MAX_HTML_BYTES, applyHtmlToDoc } from '../sync/codec.ts';
+import { applyHtmlToDoc, MAX_HTML_BYTES } from '../sync/codec.ts';
 import { createEchoGuard, hashBytes } from '../sync/echo-guard.ts';
 import { ORIGINS } from '../sync/origins.ts';
 import { createDocProjection } from '../sync/projection.ts';

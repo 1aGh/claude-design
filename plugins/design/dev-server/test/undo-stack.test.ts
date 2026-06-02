@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import {
-  type CommandRecord,
-  MAX_DEPTH,
   _clearBuilderRegistry,
   _clearStackStore,
+  type CommandRecord,
   canRedo,
   canUndo,
   createUndoStackState,
   loadStackState,
+  MAX_DEPTH,
   peekRedo,
   peekUndo,
   rebuildCommand,

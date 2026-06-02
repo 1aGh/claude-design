@@ -13,7 +13,7 @@ import * as html from './html.ts';
 import * as pdf from './pdf.ts';
 import * as png from './png.ts';
 import * as pptx from './pptx.ts';
-import { type ResolveScopeArgs, type Scope, type Target, resolveScope } from './scope.ts';
+import { type ResolveScopeArgs, resolveScope, type Scope, type Target } from './scope.ts';
 import * as svg from './svg.ts';
 import * as zip from './zip.ts';
 
@@ -100,8 +100,8 @@ export async function runExport(args: {
   return adapter.run(targets, args.options, args.ctx);
 }
 
-export { resolveScope };
 export type { Scope, Target };
+export { resolveScope };
 
 /**
  * Build the `_canvas-shell.html?canvas=…&tokens=…&components=…` URL the

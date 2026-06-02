@@ -71,7 +71,7 @@ describe('Registry inspector-bridge', () => {
   test('inspector-write origin triggers doc.update broadcast', async () => {
     const r = createRegistry(noopCallbacks());
     const room = r.get('echo-slug');
-    let lastOrigin: unknown = undefined;
+    let lastOrigin: unknown;
     room.doc.on('update', (_update, origin) => {
       lastOrigin = origin;
     });

@@ -7,10 +7,10 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import {
-  BEGIN_MARKER,
-  END_MARKER,
   applyBlock,
+  BEGIN_MARKER,
   buildBlock,
+  END_MARKER,
   hasBlock,
   writeGitignoreBlock,
 } from './gitignore-block.mjs';

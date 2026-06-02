@@ -42,10 +42,10 @@ import { ArtboardMarqueeOverlay } from './artboard-marquee.tsx';
 import {
   type ArtboardRect,
   SnapGuideOverlay,
-  type ViewportControllerHandle,
   useArtboardsContext,
   useDragStateContext,
   useViewportControllerContext,
+  type ViewportControllerHandle,
 } from './canvas-lib.tsx';
 import { type AlignMode, alignLabel, equalSpacingLabel } from './commands/equal-spacing-command.ts';
 import {

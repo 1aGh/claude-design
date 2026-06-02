@@ -5,6 +5,7 @@
 // honors linkedHub config, discovers canvases, wires up agents, and
 // dispatches fs events through the bus correctly.
 
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
   chmodSync,
   existsSync,
@@ -16,8 +17,6 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
@@ -29,10 +28,10 @@ import { createBus } from '../context.ts';
 import { createConnectionMonitor } from '../sync/connection-state.ts';
 import {
   type AwarenessRegistry,
-  type SyncProvider,
   buildNoSyncablePayload,
   createSyncRuntime,
   discoverCanvases,
+  type SyncProvider,
   scanCanvases,
   toWsUrl,
 } from '../sync/index.ts';
@@ -108,11 +107,7 @@ function makeCtx(linkedHub?: DevServerConfig['linkedHub'], canvasOrigin?: string
 }
 
 function inMemoryProviderFactory(): {
-  factory: (args: {
-    url: string;
-    token: string;
-    documentName: string;
-  }) => SyncProvider;
+  factory: (args: { url: string; token: string; documentName: string }) => SyncProvider;
   peerOf: (slug: string) => Y.Doc;
 } {
   // Map of slug -> { local, peer } Y.Docs cross-linked via applyUpdate.

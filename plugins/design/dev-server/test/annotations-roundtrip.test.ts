@@ -17,9 +17,9 @@ import {
   type RectStroke,
   type StickyStroke,
   type Stroke,
-  type TextStroke,
   strokesToSvg,
   svgToStrokes,
+  type TextStroke,
 } from '../annotations-layer.tsx';
 import { sanitizeAnnotationSvg } from '../api.ts';
 

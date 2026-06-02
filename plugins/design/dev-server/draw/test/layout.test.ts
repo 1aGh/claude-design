@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { Rect } from '../geometry.ts';
-import { type LabelItem, diagram, modularScale, placeLabels, snapToGrid } from '../layout.ts';
+import { diagram, type LabelItem, modularScale, placeLabels, snapToGrid } from '../layout.ts';
 import type { Point } from '../primitives.ts';
 
 describe('grid + modular scale', () => {

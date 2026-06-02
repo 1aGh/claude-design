@@ -7,7 +7,7 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { INSTALL_HINT, NO_BROWSER_EXIT, isMissingBrowserError } from '../../bin/_pw-launch.mjs';
+import { INSTALL_HINT, isMissingBrowserError, NO_BROWSER_EXIT } from '../../bin/_pw-launch.mjs';
 
 describe('_pw-launch — missing-browser classifier', () => {
   test('matches the real Playwright "Executable doesn\'t exist" message', () => {

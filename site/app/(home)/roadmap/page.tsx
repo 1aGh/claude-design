@@ -1,6 +1,6 @@
+import type { Metadata } from 'next';
 import { type CurrentPhase, type Phase, RoadmapTimeline } from '@/components/mdcc/roadmap-timeline';
 import roadmapJson from '@/lib/roadmap.json';
-import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
   title: 'Roadmap · Maude',

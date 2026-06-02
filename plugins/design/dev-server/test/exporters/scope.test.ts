@@ -4,11 +4,10 @@
 // `_active.json` shapes. `project-raw` exercises the fs walk inside a
 // throwaway temp dir; the other three branches don't touch disk.
 
+import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-
-import { describe, expect, test } from 'bun:test';
 
 import { type ActiveJsonShape, resolveScope } from '../../exporters/scope.ts';
 

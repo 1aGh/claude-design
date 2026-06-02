@@ -3,9 +3,9 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
-  type Selection,
   denormalizeSelectedWrite,
   normalizeSelectedRead,
+  type Selection,
 } from '../use-selection-set.tsx';
 
 const mkSel = (over: Partial<Selection> = {}): Selection => ({

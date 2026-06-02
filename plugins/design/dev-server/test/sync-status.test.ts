@@ -3,7 +3,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { SyncStatusSnapshot } from '../sync/connection-state.ts';
-import { type SyncStatusPayload, createSyncStatusStore } from '../sync/status.ts';
+import { createSyncStatusStore, type SyncStatusPayload } from '../sync/status.ts';
 
 function snap(partial: Partial<SyncStatusSnapshot> = {}): SyncStatusSnapshot {
   return {

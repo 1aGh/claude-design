@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import {
-  type LocatorMap,
   canvasSlug,
   clearLocatorSlug,
+  type LocatorMap,
   readLocator,
   readLocatorFile,
   writeLocator,

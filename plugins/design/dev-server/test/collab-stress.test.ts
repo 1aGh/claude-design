@@ -19,7 +19,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
-import { type RoomConn, createRoom } from '../collab/room.ts';
+import { createRoom, type RoomConn } from '../collab/room.ts';
 
 const STRESS_MS = Number(process.env.MAUDE_STRESS_MS ?? 10_000);
 const RSS_GROWTH_LIMIT_MB = 20;

@@ -51,7 +51,7 @@ const Database = require('better-sqlite3');
 
 const TOKEN_PREFIX = 'mau_';
 const DEV_PREFIX = 'mau_dev_';
-const LABEL_REGEX = /^[A-Za-z0-9 _.\-]{1,64}$/;
+const LABEL_REGEX = /^[A-Za-z0-9 _.-]{1,64}$/;
 
 /** One open Database handle per dataDir. Native init is expensive; cache it. */
 const dbCache = new Map();

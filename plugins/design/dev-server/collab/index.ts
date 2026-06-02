@@ -7,13 +7,13 @@ import path from 'node:path';
 import type { Api } from '../api.ts';
 import type { Context } from '../context.ts';
 
-import { Y_TYPES, createPersistence } from './persistence.ts';
-import { type Registry, createRegistry } from './registry.ts';
+import { createPersistence, Y_TYPES } from './persistence.ts';
+import { createRegistry, type Registry } from './registry.ts';
 
-export { Y_TYPES };
+export type { CollabConn } from './protocol.ts';
 export type { Registry } from './registry.ts';
 export type { Room, RoomConn } from './room.ts';
-export type { CollabConn } from './protocol.ts';
+export { Y_TYPES };
 
 export interface Collab {
   registry: Registry;

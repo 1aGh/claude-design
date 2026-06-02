@@ -15,7 +15,7 @@
  */
 
 import { type Rect, routeConnector } from './geometry.ts';
-import { type DrawPrimitive, type Point, group, polyline, rect, snap, text } from './primitives.ts';
+import { type DrawPrimitive, group, type Point, polyline, rect, snap, text } from './primitives.ts';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Grid + modular scale

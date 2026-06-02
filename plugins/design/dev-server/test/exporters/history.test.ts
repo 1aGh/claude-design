@@ -1,9 +1,8 @@
 // Phase 6.5 T10 — export history persistence + endpoint.
 
+import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-
-import { describe, expect, test } from 'bun:test';
 
 import { bootServer, killProc, makeSandbox, nextPort } from '../_helpers.ts';
 

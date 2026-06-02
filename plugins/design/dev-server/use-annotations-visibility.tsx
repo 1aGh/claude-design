@@ -8,7 +8,7 @@
  *             siblings under CanvasRouter all consume the same value.
  */
 
-import { type ReactNode, createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from 'react';
 
 export interface AnnotationsVisibilityValue {
   visible: boolean;

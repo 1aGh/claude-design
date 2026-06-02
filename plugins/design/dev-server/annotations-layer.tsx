@@ -23,8 +23,8 @@
 
 import {
   type CSSProperties,
-  type PointerEvent as ReactPointerEvent,
   createContext,
+  type PointerEvent as ReactPointerEvent,
   useCallback,
   useContext,
   useEffect,
@@ -39,13 +39,13 @@ import {
   ARROW_HEADS,
   type ArrowHead,
   type ArrowLineType,
-  type SvgPrimitive,
   arrowPrimitives,
+  type SvgPrimitive,
 } from './canvas-arrowheads.ts';
 import { IconLineThick, IconLineThin } from './canvas-icons.tsx';
 import { useViewportControllerContext, useWorldRefContext } from './canvas-lib.tsx';
 import { buildAnnotationStrokesRecord } from './commands/annotation-strokes-command.ts';
-import { type Tool, crossedDragThreshold } from './input-router.tsx';
+import { crossedDragThreshold, type Tool } from './input-router.tsx';
 import { AnnotationResizeOverlay } from './use-annotation-resize.tsx';
 import { useAnnotationSelectionOptional } from './use-annotation-selection.tsx';
 import { useAnnotationsVisibility } from './use-annotations-visibility.tsx';

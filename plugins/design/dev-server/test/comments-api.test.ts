@@ -11,10 +11,9 @@
 //     git sandbox; gracefully empty if git fails)
 //   - Reply on unknown id → 404
 
+import { describe, expect, test } from 'bun:test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-
-import { describe, expect, test } from 'bun:test';
 
 import { bootServer, killProc, makeSandbox, nextPort } from './_helpers.ts';
 

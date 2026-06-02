@@ -10,7 +10,7 @@
  * selection resets (the strokes themselves persist via `.annotations.svg`).
  */
 
-import { type ReactNode, createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from 'react';
 
 export interface AnnotationSelectionValue {
   selectedIds: string[];
@@ -34,11 +34,7 @@ function dedupe(ids: string[]): string[] {
   return out;
 }
 
-export function AnnotationSelectionProvider({
-  children,
-}: {
-  children: ReactNode;
-}) {
+export function AnnotationSelectionProvider({ children }: { children: ReactNode }) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const replace = useCallback((id: string | string[]) => {

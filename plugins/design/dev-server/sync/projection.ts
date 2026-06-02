@@ -30,9 +30,6 @@ import type * as Y from 'yjs';
 
 import { atomicWrite } from './atomic-write.ts';
 import {
-  MAX_CSS_BYTES,
-  MAX_HTML_BYTES,
-  MAX_META_BYTES,
   applyAnnotationsToDoc,
   applyCommentsToDoc,
   applyCssToDoc,
@@ -40,6 +37,9 @@ import {
   applyMetaToDoc,
   cssFromDoc,
   htmlFromDoc,
+  MAX_CSS_BYTES,
+  MAX_HTML_BYTES,
+  MAX_META_BYTES,
   mergeSharedMetaIntoLocal,
   metaFromDoc,
 } from './codec.ts';

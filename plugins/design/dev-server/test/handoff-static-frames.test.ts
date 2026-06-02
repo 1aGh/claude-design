@@ -5,7 +5,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { buildLibMap, inlineUsedExports } from '../canvas-lib-inline.ts';
-import { HANDOFF_STATIC_FRAME_EXPORTS, applyHandoffStaticOverrides } from '../handoff.ts';
+import { applyHandoffStaticOverrides, HANDOFF_STATIC_FRAME_EXPORTS } from '../handoff.ts';
 
 const LIB_PATH = '/virtual/_lib/canvas-lib.tsx';
 

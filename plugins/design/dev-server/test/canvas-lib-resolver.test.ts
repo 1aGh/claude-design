@@ -2,11 +2,10 @@
 // bundled canvas-lib (Phase 3.6.1 Task 2; relocated to dev-server in Phase
 // 4.0.5 per DDR-025).
 
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 
 import { buildCanvasModule } from '../canvas-build.ts';
 import {

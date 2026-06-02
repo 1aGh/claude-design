@@ -1,6 +1,7 @@
 import type { Caption } from '@remotion/captions';
 import { AbsoluteFill } from 'remotion';
-import captionsJson from '../../public/demo.json' assert { type: 'json' };
+import captionsJson from '../../public/demo.json';
+
 import { CaptionedClip } from '../lib/captioned-clip';
 
 /**

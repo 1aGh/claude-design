@@ -3,11 +3,10 @@
 // for the syncable set, cleared when empty, stale entries dropped on re-write,
 // and user-authored `.claudeignore` content outside the block preserved.
 
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import type { Context } from '../context.ts';
 import type { CanvasDescriptor } from '../sync/index.ts';

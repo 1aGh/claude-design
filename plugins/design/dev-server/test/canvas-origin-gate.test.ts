@@ -5,10 +5,9 @@
 // designRoot assets + the shell still serve; (4) the shell carries the hardened
 // CSP. See .ai/logs/security-reviews/phase-9.1-t2-f1-cross-origin-reaudit.md.
 
+import { describe, expect, test } from 'bun:test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-
-import { describe, expect, test } from 'bun:test';
 
 import { bootServer, killProc, makeSandbox, nextPort } from './_helpers.ts';
 

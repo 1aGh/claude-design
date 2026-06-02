@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'bun:test';
 import {
-  VIEWBOX,
   boxViewBox,
   circle,
   group,
@@ -13,6 +12,7 @@ import {
   text,
   transformString,
   use,
+  VIEWBOX,
 } from '../primitives.ts';
 
 describe('snap', () => {

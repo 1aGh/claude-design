@@ -62,7 +62,7 @@ import {
 } from './tokens.mjs';
 
 const HUB_VERSION = readOwnVersion();
-const DOCUMENT_NAME_REGEX = /^[A-Za-z0-9._/\-]{1,256}$/;
+const DOCUMENT_NAME_REGEX = /^[A-Za-z0-9._/-]{1,256}$/;
 const PUBLIC_URL_REGEX = /^https?:\/\/[^\s;'"<>`]+$/;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 5;

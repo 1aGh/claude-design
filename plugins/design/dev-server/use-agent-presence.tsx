@@ -21,7 +21,7 @@
  * same cross-bundle rule as the activity context (DDR-077 lesson).
  */
 
-import { type ReactNode, createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from 'react';
 
 import { colorForName } from './use-collab.tsx';
 

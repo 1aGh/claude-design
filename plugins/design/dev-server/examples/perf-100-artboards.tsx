@@ -20,9 +20,8 @@
  * Results land in .ai/decisions/DDR-024 + .ai/logs/phase-4-perf-<date>.md.
  */
 
-import { useEffect } from 'react';
-
 import { DCArtboard, DCSection, DesignCanvas } from '@maude/canvas-lib';
+import { useEffect } from 'react';
 
 const ARTBOARD_COUNT = 100;
 const NODES_PER_ARTBOARD = 30;

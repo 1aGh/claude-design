@@ -8,14 +8,14 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
+  commitFromState,
+  computeFollowers,
+  computeOthers,
   DEFAULT_GRID_SIZE,
   DEFAULT_SNAP_TOLERANCE,
   DRAG_THRESHOLD_PX,
   type DragEvent,
   type DragState,
-  commitFromState,
-  computeFollowers,
-  computeOthers,
   dragReducer,
   selectionsToArtboardIds,
 } from '../use-artboard-drag.tsx';

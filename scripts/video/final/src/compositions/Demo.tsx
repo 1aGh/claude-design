@@ -1,4 +1,4 @@
-import { TransitionSeries, linearTiming } from '@remotion/transitions';
+import { linearTiming, TransitionSeries } from '@remotion/transitions';
 import { fade } from '@remotion/transitions/fade';
 import { AbsoluteFill, Audio, staticFile } from 'remotion';
 import { IntroScene } from '../scenes/01-intro';

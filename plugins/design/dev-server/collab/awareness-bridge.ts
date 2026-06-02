@@ -27,8 +27,8 @@
 // originating clientID — the random 32-bit ids make local↔remote collisions
 // negligible.
 
-import { applyAwarenessUpdate, encodeAwarenessUpdate } from 'y-protocols/awareness';
 import type { Awareness } from 'y-protocols/awareness';
+import { applyAwarenessUpdate, encodeAwarenessUpdate } from 'y-protocols/awareness';
 
 interface AwarenessChange {
   added: number[];

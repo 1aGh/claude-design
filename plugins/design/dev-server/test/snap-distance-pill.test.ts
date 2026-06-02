@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { type Rect, type SnapOptions, computeSnap } from '../use-snap-guides.tsx';
+import { computeSnap, type Rect, type SnapOptions } from '../use-snap-guides.tsx';
 
 const DEFAULTS: SnapOptions = { gridSize: 40, tolerance: 8, disabled: false };
 const rect = (x: number, y: number, w = 100, h = 80): Rect => ({ x, y, w, h });

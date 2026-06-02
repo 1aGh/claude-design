@@ -4,11 +4,10 @@
 // no spawn): given a target, it writes two files (`init-oxc-<slug>.ts` +
 // `server-<slug>.ts`) under dist/.compile-entries/ and returns the entry path.
 
+import { describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-
-import { describe, expect, test } from 'bun:test';
 
 import { writeCompileEntry } from '../build.ts';
 
