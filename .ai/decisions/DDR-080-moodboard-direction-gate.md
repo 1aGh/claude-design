@@ -1,6 +1,6 @@
 # DDR-080 — Moodboard direction gate: a cheap pre-scaffold visual approval before the expensive bootstrap
 
-> **Numbering note (2026-06-02):** originally drafted as 079 because 075 (`canvas-activity-overlay`), 077 (`hmr-error-resilience`), and 078 (`agent-presence`) were taken by Phase 13 / 13.1 / 13.2 work in flight on `main` (untracked at drafting time). At merge (PR #32 → `main`), 079 had since been claimed by `DDR-079-tsx-sync-default-on.md` on `main`, so this DDR was renumbered to **080** per this note's own escalation rule.
+> **Numbering note (2026-06-02):** originally drafted as **DDR-079**, **renumbered to DDR-080** because `main` authoritatively landed `DDR-079-tsx-sync-default-on` (commits `620eff8` / `0d89fd0`) while this work was on a side-branch — that number is taken. 075 (`canvas-activity-overlay`), 077 (`hmr-error-resilience`), 078 (`agent-presence`) are likewise taken by Phase 13 / 13.1 / 13.2; **080 is the next free number on `main`.** (The predicted-collision clause in the first draft's note fired exactly as written.)
 
 **Status:** Accepted — 2026-06-02.
 **Supersedes:** none.
