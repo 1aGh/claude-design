@@ -1,6 +1,8 @@
 // `maude doctor` — unified workspace diagnostic.
 // Combines (1) plugin dependency preflight, (2) workflows.config.json schema
-// validation, (3) stack drift, (4) quality-gate additions into one report.
+// validation, (3) stack drift, (4) quality-gate additions, and (5) linked
+// design-hub / TSX-sync health (report-only, local signals — no network) into
+// one report.
 //
 // Flags:
 //   --plugin <name>   Scope deps section to one plugin. Config section is
@@ -23,6 +25,7 @@ import { stdin, stdout } from 'node:process';
 import { createInterface } from 'node:readline/promises';
 import { parseArgs } from '../lib/argv.mjs';
 import { lintConfig } from '../lib/config-lint.mjs';
+import { getHub } from '../lib/hubs-config.mjs';
 import { checkAll } from '../lib/preflight.mjs';
 import { detectQualityGates, detectStack } from '../lib/stack-detect.mjs';
 
@@ -115,6 +118,60 @@ export async function run({ args, pkgRoot }) {
     };
   }
 
+  // ── Design config: linked-hub + TSX-sync health (report-only) ────────────
+  // doctor's primary domain is .ai/workflows.config.json, but a linked design
+  // project's .design/config.json carries the one knob that has bitten users
+  // repeatedly — `linkedHub.syncTsx`. Surface it here so doctor is the one-stop
+  // health check. Report-only: under DDR-079 (default ON) every state is valid,
+  // so there is nothing to --fix and we NEVER impose an opt-out.
+  let designReport = { exists: false };
+  const designFsPath = resolve(repoRoot, '.design/config.json');
+  if (existsSync(designFsPath)) {
+    try {
+      const dcfg = JSON.parse(readFileSync(designFsPath, 'utf8'));
+      const linkedHub = dcfg.linkedHub;
+      if (!linkedHub) {
+        designReport = { exists: true, linked: false };
+      } else {
+        const syncTsx = linkedHub.syncTsx;
+        const tsxSync =
+          syncTsx === false
+            ? 'off (opted out)'
+            : syncTsx === true
+              ? 'on (explicit)'
+              : 'on (default)';
+        // Local-only signals — no network. `getHub` reads ~/.config/maude/
+        // hubs.json; the sync-agent state comes from the serve-written
+        // `_sync.json`. We deliberately DO NOT probe the hub's /health here:
+        // doctor must stay fast + offline (it runs in the release pre-flight),
+        // so live hub reachability stays in `maude design status`.
+        let tokenStored = false;
+        try {
+          tokenStored = !!getHub(linkedHub.url);
+        } catch {
+          /* hubs.json absent/unreadable on this machine → no token */
+        }
+        designReport = {
+          exists: true,
+          linked: true,
+          hubUrl: linkedHub.url,
+          adopt: !!linkedHub.adopt,
+          tsxSync,
+          tokenStored,
+          syncAgent: readSyncAgentState(resolve(repoRoot, '.design', '_sync.json')),
+          // DDR-079 migration advisory: a linked config with no explicit
+          // syncTsx rides the default, which flipped off→on in maude 0.27→0.28.
+          advisory:
+            syncTsx === undefined
+              ? 'TSX sync defaults ON (DDR-079) — every .tsx syncs to this hub. Opt out with linkedHub.syncTsx:false or `maude design link … --no-sync-tsx`.'
+              : null,
+        };
+      }
+    } catch (err) {
+      designReport = { exists: true, error: `invalid JSON: ${err.message}` };
+    }
+  }
+
   // ── Summary ─────────────────────────────────────────────────────────────
   const hardDepsMissing = Object.values(depsByPlugin)
     .filter((r) => r.summary)
@@ -132,12 +189,12 @@ export async function run({ args, pkgRoot }) {
 
   if (jsonMode) {
     process.stdout.write(
-      `${JSON.stringify({ deps: depsByPlugin, config: configReport, summary }, null, 2)}\n`
+      `${JSON.stringify({ deps: depsByPlugin, config: configReport, design: designReport, summary }, null, 2)}\n`
     );
     process.exit(summary.healthy ? 0 : 1);
   }
 
-  printReport({ depsByPlugin, configReport, summary });
+  printReport({ depsByPlugin, configReport, designReport, summary });
 
   // ── Fix path ────────────────────────────────────────────────────────────
   if (fix) {
@@ -151,11 +208,33 @@ export async function run({ args, pkgRoot }) {
   process.exit(summary.healthy ? 0 : 1);
 }
 
+// Read the serve-written `.design/_sync.json` and condense it to one line.
+// Local file only — never network. Returns null when the agent hasn't run.
+function readSyncAgentState(p) {
+  if (!existsSync(p)) return null;
+  try {
+    const s = JSON.parse(readFileSync(p, 'utf8'));
+    if (s.notSyncable) return `0 syncable — ${s.reason || 'see `maude design status`'}`;
+    if (s.state) {
+      const bits = [String(s.state), `${s.canvases ?? 0} canvas(es)`];
+      if (s.queuedOps) bits.push(`${s.queuedOps} queued`);
+      if (s.conflicts?.length) bits.push(`${s.conflicts.length} conflict notice(s)`);
+      return bits.join(', ');
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 function usage() {
   return `maude doctor [--plugin <name>] [--fix] [--json]
 
   Unified workspace diagnostic. Reports missing dependencies, config schema
-  errors, stack drift, and missing quality-gate declarations in one shot.
+  errors, stack drift, missing quality-gate declarations, and — when a
+  .design/config.json is linked — design-hub + TSX-sync health, in one shot.
+  (The design section is report-only and local; live hub reachability is
+  \`maude design status\`.)
 
   Flags:
     --plugin <name>   Scope dependency section to one plugin (design | flow).
@@ -170,7 +249,7 @@ function usage() {
 `;
 }
 
-function printReport({ depsByPlugin, configReport, summary }) {
+function printReport({ depsByPlugin, configReport, designReport, summary }) {
   process.stdout.write('maude doctor\n\n');
   for (const [name, env] of Object.entries(depsByPlugin)) {
     process.stdout.write(`  Dependencies (plugins/${name}):\n`);
@@ -233,6 +312,32 @@ function printReport({ depsByPlugin, configReport, summary }) {
       }
       process.stdout.write('\n');
     }
+  }
+
+  // Design / linked-hub health — report-only, local signals only (no network).
+  if (designReport?.exists) {
+    process.stdout.write('  Design hub (.design/config.json):\n');
+    if (designReport.error) {
+      process.stdout.write(`    ✗ ${designReport.error}\n`);
+    } else if (!designReport.linked) {
+      process.stdout.write('    solo — not linked to a hub.\n');
+    } else {
+      process.stdout.write(`    ✓ linked: ${designReport.hubUrl}\n`);
+      process.stdout.write(
+        `      token stored: ${designReport.tokenStored ? 'yes' : 'NO — run `maude design link`'}\n`
+      );
+      process.stdout.write(`      TSX sync:     ${designReport.tsxSync}\n`);
+      if (designReport.adopt)
+        process.stdout.write('      adopt mode:   yes (push-on-first-sync)\n');
+      process.stdout.write(
+        `      sync agent:   ${designReport.syncAgent || 'idle (start `maude design serve`)'}\n`
+      );
+      if (designReport.advisory) process.stdout.write(`    ℹ  ${designReport.advisory}\n`);
+      process.stdout.write(
+        '    (live hub reachability + full sync detail: `maude design status`)\n'
+      );
+    }
+    process.stdout.write('\n');
   }
 
   const parts = [];
