@@ -154,7 +154,7 @@ If a researched option does not fit any catalogued family, either map it to the 
 1. **Load runtime config (Step 0 above) + Pastier probe templates.** Pull both into context.
 2. **Parse `vision-brief.json`.** Inputs are now the FULL vision-brief (DDR-033) — not just a one-liner. Read every field; the Pastier probe templates describe how each field steers the research.
 3. **Run 6–8 diverse WebSearch queries** per Rule 1 AND the per-probe query patterns in the templates. Parallel where possible. Log each in `research_quality_notes`.
-4. **WebFetch 3–6 highest-signal results** for screenshots, "designed by" credits, on-page detail. Skip listicles; prefer case-study deep-dives, portfolios, niche specialty publications.
+4. **WebFetch 3–6 highest-signal results** for screenshots, "designed by" credits, on-page detail. Skip listicles; prefer case-study deep-dives, portfolios, niche specialty publications. **While you have each page open, harvest as many direct image URLs as the pages yield — target ~6–12 best-effort** (`og:image`, hero screenshot `<img src>`, portfolio thumbnail) into `reference_images[]` (schema below). The Stage-4 moodboard is a *dense* collage, so more imagery is better — but this is still strictly a **by-product of the WebFetch passes you already run**; do NOT add WebSearch/WebFetch calls solely to find images. **Bias the harvest toward stable direct URLs** — prefer `upload.wikimedia.org`, museum / gallery CDNs, and `og:image` over deep-linked app screenshots that rot or sit behind auth/CSP. The seed is a **floor, not a ceiling** — the moodboard's variant sub-agents gather their own direction-specific imagery on top. Best-effort: niche / non-English anchors may yield none, and that's fine (the moodboard degrades gracefully via CSS/SVG scraps + `onError` fallbacks — see the field doc).
 5. **Probe A (Ulice)** → `mood_clusters[]` (3) + `reference_products[]` (5–8) + `anti_references[]` (2–3 from user's anti-list cross-checked against actual products).
 6. **Probe A (continued)** → `color_oklch_options[]` (3) — each a domain-grounded OKLCH range anchored to a real product UI.
 7. **Probe A (continued)** → `typography_pairing_options[]` (3) — real pairings anchored to domain reading mode.
@@ -198,6 +198,16 @@ If a researched option does not fit any catalogued family, either map it to the 
       "source_url_for_screenshots": "<case-study or portfolio URL with visual evidence>"
     }
   ],
+
+  "reference_images": [
+    {
+      "url": "<direct image URL — og:image / hero screenshot <img src> / portfolio thumbnail; must end in an image content type, not an HTML page>",
+      "alt": "<one-line description of what the image shows>",
+      "anchor": "<the reference_products[].name this image illustrates>",
+      "source_query": "<which of the 6–8 queries surfaced the page this image came from>"
+    }
+  ],
+  "_reference_images_doc": "OPTIONAL, best-effort, target ~6–12 entries (raised from 3–6 — the Stage-4 moodboard is a DENSE collage, so more imagery is better; an empty array is still valid). Direct image URLs harvested as a by-product of the WebFetch passes in procedure step 4 (NOT a reason to add WebSearch calls solely for images). Bias toward STABLE direct URLs — upload.wikimedia.org / museum CDNs / og:image over auth-walled app screenshots that rot. The seed is a FLOOR, NOT A CEILING: the moodboard's per-variant sub-agents gather their OWN direction-specific imagery on top (their own WebSearch/WebFetch for their seed pole), so the default seed need not cover every direction. Consumed by the /design:setup-ds Stage-4 moodboard direction gate as a **reference provenance layer** scattered across a chaotic hand-assembled collage — each image is a pinned/taped scrap PAIRED with its reference_products[] entry (matched by `anchor` → reference_products[].name) showing the image PLUS the anchor name + its `why_relevant` + a source link (`url` / `source_url_for_screenshots`) + the `source_query`/`found_via_query` that surfaced it. That provenance (names + why + links) is the RELIABLE BACKBONE shown even when the image is absent or blocked; the <img> is the enriching layer (broken hotlink → labeled colour/treatment scrap + anchor name in the same slot). See _bootstrap.md § 'Stage 4 — Design-language moodboard', concern 5 + the image-density note. NEVER mandatory: niche / non-English / heritage anchors often have no harvestable image, so an empty array is valid — but reference_products[] (name + why_relevant + url + found_via_query) SHOULD be populated regardless, since it carries the provenance the panel needs. External-image reliability is an accepted risk (the moodboard never blocks on a failed load; CSS/SVG scraps keep it dense).",
 
   "mood_clusters": [
     {
@@ -487,6 +497,7 @@ That's it. The caller reads the payload itself. Do not echo any of the payload c
 - Runtime config (WebSearch source-type categories): `${CLAUDE_PLUGIN_ROOT}/agents/_ux-research-config.json` (or `plugins/design/agents/_ux-research-config.json` from worktree)
 - Scaffold effect families (Q9 / Q11 / Q12 vocabulary): `plugins/design/templates/design-system-inspiration/_MAPPING.md`
 - Caller — `/design:setup-ds` Round 0: `plugins/design/skills/design-system/SKILL.md` (section "Round 0 — domain research")
+- Downstream consumer of `reference_images[]` — the Stage-4 moodboard direction gate: `plugins/design/skills/design-system/_bootstrap.md` (section "Stage 4 — Design-language moodboard (direction gate)")
 - Caller — `/design:new` step 4.5: `plugins/design/commands/new.md` (section "4.5. UX patterns research")
 - Legacy caller-provided cache (exact brief): `<designRoot>/_history/_system/<ds>-<brief-sha8>-domain-research-<mode>.json`
 - Sidecar cache (Phase C / DDR-061): `.ai/cache/research/domain/<slug>--<mode>.json` (generic, 7 d, committed) + `.ai/cache/research/project/<brief-sha8>--<mode>.json` (per-brief, 30 d, gitignored). Access via `maude cache get/put` (the reachable contract — `cli/lib/cache.mjs` is NOT beside the plugin in a marketplace install; see DDR-061). Manage with `maude cache list|inspect research/domain`.
