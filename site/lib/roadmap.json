@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-02T07:49:24.511Z",
+  "generated": "2026-06-02T09:54:19.084Z",
   "currentPhase": null,
   "phases": [
     {
@@ -399,6 +399,17 @@
       "phaseKey": "2"
     },
     {
+      "id": "phase-13-canvas-activity-overlay",
+      "title": "Feature: Canvas Activity Overlay — live \"agent works here\" indicator",
+      "status": "done",
+      "shipTarget": null,
+      "date": "2026-05-15",
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — the dev-server is Bun-authoritative (DDR-009), the canvas lib is single-source in plu...",
+      "planPath": ".ai/plans/archive/phase-13-canvas-activity-overlay.md",
+      "archived": true,
+      "phaseKey": "13"
+    },
+    {
       "id": "phase-13-flow-command-categorization",
       "title": "Phase 13: Flow command categorization (strict prefix naming, no subfolders)",
       "status": "done",
@@ -628,17 +639,6 @@
       "planPath": ".ai/plans/phase-12-in-canvas-css-and-layers.md",
       "archived": false,
       "phaseKey": "12"
-    },
-    {
-      "id": "phase-13-canvas-activity-overlay",
-      "title": "Feature: Canvas Activity Overlay — live \"agent works here\" indicator",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — the dev-server is Bun-authoritative (DDR-009), the canvas lib is single-source in plu...",
-      "planPath": ".ai/plans/phase-13-canvas-activity-overlay.md",
-      "archived": false,
-      "phaseKey": "13"
     },
     {
       "id": "phase-16-intro-video-v3-wow",
