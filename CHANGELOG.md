@@ -1,5 +1,23 @@
 # @1agh/maude
 
+## 0.28.0
+
+### Minor Changes
+
+- d1baadf: design: live "agent works here" canvas activity overlay (Phase 13). When any tool — `/design:edit`, `/design:new`, an external editor, a script, `git checkout` — changes a canvas file under the design root, every open canvas tab now shows an animated rim + "editing — <file>" badge on the affected artboard(s), then cross-fades out ~3 s after the last write. It's fs-watch-driven (agent-agnostic, no push protocol), scoped per file (touching one canvas leaves the others dark), and refines to the changed `<DCArtboard>` when the edit is cleanly confined to one. Opacity-only pulse, `prefers-reduced-motion` aware, `aria-hidden`, suppressed in exports. See DDR-075.
+
+  design: HMR error resilience during agent editing (Phase 13.1). While an agent is live-editing a canvas, a half-saved file (missing import, undefined symbol, transpile error) no longer flashes the canvas to a white screen. The dev-server now soft-reloads (import-before-swap) instead of a hard `location.reload()`, and the canvas runtime keeps the last good render via an error boundary, surfacing an amber "build error — holding last working render" toast until a good build lands (then it swaps in). Strictly gated on the AI-activity signal, so manual hand-editing keeps the existing immediate reload. See DDR-077.
+
+  design: agent-colored editing border + wave wash (Phase 13.3). The "editing" indicator is a clear 2.5px border in the active agent's color with a softly breathing glow, plus a full-artboard wave behind it — a single gradient with a sharp bottom edge fading up to transparent, sweeping top→bottom and off past the bottom edge, looping. Compositor-only (opacity glow + transform tide), `prefers-reduced-motion` drops both to static, and it all carries the agent's color (DDR-078). The badge label is unchanged. See DDR-075.
+
+  design: agent presence (Phase 13.2). An agent editing a canvas now surfaces like another connected collaborator — a presence avatar in the top-right stack (with a subtle ✦ AI marker + an "AI agent" popover), and the activity overlay rim/badge tinted with the agent's own color + a deterministic funny name ("editing — Nimble Ferret"). Identity is derived client-side from the existing AI-activity signal (author + session start → funny name + shared peer-palette color); no Yjs awareness changes, no flow-command changes. MVP: one agent per canvas, avatar + overlay (no roaming cursor). See DDR-078.
+
+- 620eff8: design hub: **TSX canvas sync now defaults ON** for a linked project (DDR-079, supersedes DDR-072). Linking a hub and running `maude design serve` now syncs all your `.tsx` canvas bodies without a hidden per-project opt-in — fixing the recurring "I linked but my teammate sees nothing / 0 syncable" footgun (and `--adopt` now seeds a hub with no extra flag).
+
+  `linkedHub.syncTsx` becomes an **opt-OUT**: set `false` to disable project-wide, or a per-canvas `.meta.json "syncable": false` to exclude one canvas. New `maude design link` flags `--no-sync-tsx` / `--sync-tsx` set it without editing config. `maude design status` shows the effective TSX-sync state and prints a migration advisory when the field is unset (so upgraders learn the default flipped). `maude doctor` gains a design-hub health section (linked hub, token-stored, TSX-sync state, sync-agent state from `_sync.json`, + the same advisory) — local-only, no network probe, so it stays fast for the release pre-flight. The dev-server still prints a loud boot banner naming the count + opt-outs against non-loopback hubs.
+
+  Unchanged: the Lock-2 sandbox coupling (TSX only syncs when the cross-origin sandbox is active — `MAUDE_CANVAS_ORIGIN_SPLIT=0` still disables both), the per-canvas sidecar precedence, solo-mode (no sync), and the per-machine trust gate for new remote hubs.
+
 ## 0.27.0
 
 ### Minor Changes
