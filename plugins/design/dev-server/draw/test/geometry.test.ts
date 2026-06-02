@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import {
-  EQUAL_AREA_CIRCLE_SCALE,
   blobPath,
   centroid,
   centroidCenter,
   chamferCorners,
   convexHull,
+  EQUAL_AREA_CIRCLE_SCALE,
   equalWeightCircleDiameter,
   overshoot,
   pchipEval,

@@ -14,16 +14,6 @@
  */
 
 export {
-  AnimatedText,
-  CodeBlock,
-  GradientTransition,
-  MatrixRain,
-  Particles,
-  StaggeredMotion,
-  TypeWriter,
-} from 'remotion-bits';
-
-export {
   Animated,
   CustomEasing,
   Ease,
@@ -33,3 +23,12 @@ export {
   Scale,
   Size,
 } from 'remotion-animated';
+export {
+  AnimatedText,
+  CodeBlock,
+  GradientTransition,
+  MatrixRain,
+  Particles,
+  StaggeredMotion,
+  TypeWriter,
+} from 'remotion-bits';

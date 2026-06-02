@@ -177,7 +177,7 @@
       // ai-activity via postMessage when embedded; the own-WS path (standalone /
       // same-origin inspector socket) is handled in connectHmr below.
       let agentEditing = false;
-      window.addEventListener('message', function (e) {
+      window.addEventListener('message', (e) => {
         // DDR-078 security follow-up: only the trusted embedding parent relays
         // ai-activity. Reject canvas self-posts (which could flip the HMR gate)
         // and any non-parent source. Standalone gets it via its own WS below.
@@ -196,7 +196,7 @@
         const rt = window.__maudeCanvasRuntime;
         if (!rt || !rt.remount) { location.reload(); return; }
         import(canvasUrl + '?v=' + (version || Date.now()))
-          .then(function (mod) {
+          .then((mod) => {
             if (mod && typeof mod.default === 'function') {
               rt.remount(mod.default);
               if (rt.setHolding) rt.setHolding(false);
@@ -205,7 +205,7 @@
               location.reload();
             }
           })
-          .catch(function (err) {
+          .catch((err) => {
             // Build/transpile/import error → keep the current render, surface a
             // non-destructive "holding" toast. Next good build swaps it in.
             if (rt.setHolding) rt.setHolding(true, (err && (err.message || String(err))) || 'build error');

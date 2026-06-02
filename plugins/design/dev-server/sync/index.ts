@@ -29,15 +29,15 @@ import type { Context } from '../context.ts';
 import { type CanvasSyncAgent, createCanvasSyncAgent } from './agent.ts';
 import {
   type ConnectionMonitor,
-  type ProviderStatus,
   createConnectionMonitor,
+  type ProviderStatus,
 } from './connection-state.ts';
-import { type EchoGuard, createEchoGuard } from './echo-guard.ts';
-import { type FsReader, createFsReader } from './fs-mirror.ts';
+import { createEchoGuard, type EchoGuard } from './echo-guard.ts';
+import { createFsReader, type FsReader } from './fs-mirror.ts';
 import { getHubToken } from './hubs-config.ts';
 import { migrateSeed } from './migrate-seed.ts';
-import { type DocProjection, createDocProjection } from './projection.ts';
-import { type SyncStatusStore, createSyncStatusStore } from './status.ts';
+import { createDocProjection, type DocProjection } from './projection.ts';
+import { createSyncStatusStore, type SyncStatusStore } from './status.ts';
 import { writeUntrustedMarkers } from './untrusted.ts';
 
 /** A minimum-surface stand-in for the HocuspocusProvider's runtime API. */

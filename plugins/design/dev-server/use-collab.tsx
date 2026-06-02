@@ -16,9 +16,11 @@
  *     <CollabProvider> never resolve these specifiers and pay zero bundle cost.
  */
 
+import * as decoding from 'lib0/decoding';
+import * as encoding from 'lib0/encoding';
 import {
-  type ReactNode,
   createContext,
+  type ReactNode,
   useCallback,
   useContext,
   useEffect,
@@ -26,9 +28,6 @@ import {
   useRef,
   useState,
 } from 'react';
-
-import * as decoding from 'lib0/decoding';
-import * as encoding from 'lib0/encoding';
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate } from 'y-protocols/awareness';
 import { readSyncMessage, writeSyncStep1, writeUpdate } from 'y-protocols/sync';
 import * as Y from 'yjs';

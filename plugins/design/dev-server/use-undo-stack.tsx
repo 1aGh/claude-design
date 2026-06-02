@@ -18,8 +18,8 @@
  */
 
 import {
-  type ReactNode,
   createContext,
+  type ReactNode,
   useCallback,
   useContext,
   useEffect,
@@ -31,13 +31,13 @@ import {
 import {
   type CommandRecord,
   type CommandSinks,
-  type EditCommand,
-  type UndoStackState,
   canRedo as canRedoOf,
   canUndo as canUndoOf,
+  type EditCommand,
   loadStackState,
   rebuildCommand,
   saveStackState,
+  type UndoStackState,
   undoReducer,
 } from './undo-stack.ts';
 
@@ -349,7 +349,6 @@ export function useUndoSinks(): UndoSinksValue {
   return useContext(UndoSinksContext) ?? NOOP_SINKS;
 }
 
-export { UndoStackContext, UndoSinksContext };
-
 // Re-export the EditCommand type for ergonomic single-import in consumers.
 export type { CommandRecord, EditCommand } from './undo-stack.ts';
+export { UndoSinksContext, UndoStackContext };

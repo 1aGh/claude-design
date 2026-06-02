@@ -8,10 +8,9 @@
 //   - PUT rejects oversized bodies (>1 MB)
 //   - Unknown method → 405
 
+import { describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-
-import { describe, expect, test } from 'bun:test';
 
 import { bootServer, killProc, makeSandbox, nextPort } from './_helpers.ts';
 

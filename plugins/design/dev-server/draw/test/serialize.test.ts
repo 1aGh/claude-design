@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { path, circle, group, line, rect, text } from '../primitives.ts';
 import type { DrawPrimitive } from '../primitives.ts';
+import { circle, group, line, path, rect, text } from '../primitives.ts';
 import { primitivesToNodes, toJsx, toSvg } from '../serialize.ts';
 
 const SAMPLE: DrawPrimitive[] = [

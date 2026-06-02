@@ -8,12 +8,12 @@ import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
 import {
-  MESSAGE_AWARENESS,
-  MESSAGE_SYNC,
   encodeAwarenessFrame,
   encodeHandshake,
   encodeSyncUpdate,
   handleMessage,
+  MESSAGE_AWARENESS,
+  MESSAGE_SYNC,
 } from '../collab/protocol.ts';
 
 function readType(frame: Uint8Array): number {

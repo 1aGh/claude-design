@@ -8,7 +8,7 @@ import * as Y from 'yjs';
 
 import type { Api } from '../api.ts';
 import type { Context } from '../context.ts';
-import { type RoomCallbacks, ensureStateDir } from './room.ts';
+import { ensureStateDir, type RoomCallbacks } from './room.ts';
 
 /**
  * Y.Doc shared-type names. Frozen on Task 1 so client + server agree even

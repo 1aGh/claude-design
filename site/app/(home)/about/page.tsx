@@ -1,5 +1,5 @@
-import { SkuLabel } from '@/components/mdcc/sku-label';
 import type { Metadata } from 'next';
+import { SkuLabel } from '@/components/mdcc/sku-label';
 
 export const metadata: Metadata = {
   title: 'About the maker',

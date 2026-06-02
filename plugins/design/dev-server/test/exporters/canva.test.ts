@@ -4,9 +4,8 @@
 // + the empty/file-tree branches.
 
 import { describe, expect, test } from 'bun:test';
-
-import { buildHandoffMarkdown } from '../../exporters/canva-handoff-prompt.ts';
 import { run } from '../../exporters/canva.ts';
+import { buildHandoffMarkdown } from '../../exporters/canva-handoff-prompt.ts';
 
 const CTX = {
   designRoot: '/tmp/.design',

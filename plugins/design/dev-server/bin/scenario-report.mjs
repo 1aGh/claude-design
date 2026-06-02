@@ -21,7 +21,7 @@
 //
 // Output: <run-dir>/report.md (or --out), zero external dependencies (node:fs only).
 
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 
 const PLATFORM_ORDER = ['web-desktop', 'web-mobile', 'ios-phone', 'ios-tablet', 'android-phone'];

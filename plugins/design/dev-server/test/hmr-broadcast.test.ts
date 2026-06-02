@@ -3,7 +3,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { type Context, createBus } from '../context.ts';
-import { HMR_DEBOUNCE_MS, type HmrMessage, createHmrBroadcaster } from '../hmr-broadcast.ts';
+import { createHmrBroadcaster, HMR_DEBOUNCE_MS, type HmrMessage } from '../hmr-broadcast.ts';
 
 function mkCtx(): Context {
   const bus = createBus();

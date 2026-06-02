@@ -38,7 +38,7 @@ import {
 
 import { DRAG_THRESHOLD_PX as INPUT_DRAG_THRESHOLD_PX } from './input-router.tsx';
 import type { Selection } from './use-selection-set.tsx';
-import { type Rect, type SnapResult, computeSnap } from './use-snap-guides.tsx';
+import { computeSnap, type Rect, type SnapResult } from './use-snap-guides.tsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants

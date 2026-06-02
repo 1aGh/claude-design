@@ -2,7 +2,7 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { ECHO_TTL_MS, createEchoGuard, hashBytes } from '../sync/echo-guard.ts';
+import { createEchoGuard, ECHO_TTL_MS, hashBytes } from '../sync/echo-guard.ts';
 
 describe('hashBytes', () => {
   test('stable hex SHA-256 of bytes', () => {

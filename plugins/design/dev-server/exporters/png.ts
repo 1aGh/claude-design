@@ -14,10 +14,10 @@ import path from 'node:path';
 import JSZip from 'jszip';
 
 import {
+  canvasShellUrl,
   type ExportContext,
   type ExportOptions,
   type ExportResult,
-  canvasShellUrl,
 } from './index.ts';
 import type { Target } from './scope.ts';
 

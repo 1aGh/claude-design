@@ -1,0 +1,128 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": true,
+    "includes": [
+      "**",
+      // Biome v2 added experimental HTML linting that v1 had no equivalent for. The repo's only
+      // HTML is the bias-free design-system-inspiration reference templates (DDR-043) + the
+      // server shell — illustrative artifacts, never linted under v1. Excluding restores v1 scope.
+      "!**/*.html",
+      "!**/node_modules",
+      "!**/.changeset/**/*.md",
+      "!**/.ai",
+      "!**/.design",
+      "!**/plugins/**/dist",
+      "!**/plugins/design/dev-server/client",
+      "!**/plugins/design/dev-server/runtime",
+      "!**/plugins/design/dev-server/server.mjs",
+      "!**/site/.next",
+      "!**/site/.source",
+      "!**/site/.vercel",
+      "!**/site/app/mdcc-tokens.css",
+      "!**/site/content/docs/reference",
+      "!**/site/out",
+      "!**/site/next-env.d.ts",
+      "!**/pnpm-lock.yaml",
+      "!**/scripts/video/.work",
+      "!**/scripts/video/.cache",
+      "!**/scripts/video/final/node_modules",
+      "!**/scripts/video/final/out",
+      "!**/scripts/video/final/__goldens__"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100,
+    "lineEnding": "lf"
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "semicolons": "always",
+      "trailingCommas": "es5",
+      "arrowParentheses": "always"
+    }
+  },
+  "json": {
+    "formatter": {
+      "indentWidth": 2,
+      "trailingCommas": "none"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "style": {
+        "useNodejsImportProtocol": "warn",
+        // Biome v2 newly-enforced. Hand-tuned CSS specificity ordering (fumadocs/site
+        // overrides) — off, not a deferral. Re-enable only via a dedicated lint-posture PR.
+        "noDescendingSpecificity": "off",
+        // Biome v2 stricter; string concat is fine here. Deferred to the lint-posture follow-up.
+        "useTemplate": "warn"
+      },
+      "suspicious": {
+        "noConsole": "off",
+        // Biome v2 newly-enforced. Deferred to the lint-posture follow-up (may catch real bugs — revisit).
+        "useIterableCallbackReturn": "warn",
+        "noArrayIndexKey": "warn",
+        "noConfusingLabels": "warn"
+      },
+      "correctness": {
+        "noUnusedVariables": "warn",
+        // Match the lenient noUnusedVariables posture above; cleanup deferred.
+        "noUnusedImports": "warn",
+        "useExhaustiveDependencies": "warn"
+      },
+      "complexity": {
+        // Biome v2 newly-enforced. Intentional !important cascade control (a11y reduced-motion
+        // collapse, fumadocs overrides) — off, not a deferral.
+        "noImportantStyles": "off",
+        // Biome v2 stricter / unsafe-autofix only. Deferred to the lint-posture follow-up.
+        "useOptionalChain": "warn",
+        "useIndexOf": "warn",
+        "noUselessLoneBlockStatements": "warn",
+        "noUselessFragments": "warn"
+      },
+      "performance": {
+        // Biome v2 newly-enforced (delete → perf deopt). Deferred to the lint-posture follow-up.
+        "noDelete": "warn"
+      }
+    }
+  },
+  "overrides": [
+    {
+      // Custom interactive canvas-chrome overlays (inspector / annotations / participants /
+      // context-menu). These are bespoke pointer-driven surfaces over the design canvas, not
+      // semantic product UI — the established posture (since comments-overlay.tsx) is to exempt
+      // the semantic-element a11y rules here. Biome v2 promoted noStaticElementInteractions to
+      // recommended and tightened useAriaPropsSupportedByRole; both fall in the same exemption.
+      "includes": [
+        "**/plugins/design/dev-server/comments-overlay.tsx",
+        "**/plugins/design/dev-server/annotations-layer.tsx",
+        "**/plugins/design/dev-server/participants-chrome.tsx",
+        "**/plugins/design/dev-server/context-menu.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "useSemanticElements": "off",
+            "noNoninteractiveElementToInteractiveRole": "off",
+            "useKeyWithClickEvents": "off",
+            "useFocusableInteractive": "off",
+            "noStaticElementInteractions": "off",
+            "useAriaPropsSupportedByRole": "off"
+          }
+        }
+      }
+    }
+  ]
+}

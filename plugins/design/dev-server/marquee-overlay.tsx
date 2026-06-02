@@ -277,6 +277,6 @@ export function applyMarqueeMode(
   selSet.replace(next);
 }
 
+export type { Mode };
 // Re-export for tests.
 export { modeOf };
-export type { Mode };

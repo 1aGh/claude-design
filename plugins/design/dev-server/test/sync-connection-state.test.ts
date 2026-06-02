@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { type SyncStatusSnapshot, createConnectionMonitor } from '../sync/connection-state.ts';
+import { createConnectionMonitor, type SyncStatusSnapshot } from '../sync/connection-state.ts';
 
 /** A controllable timer queue: setTimer enqueues, advance() fires due timers. */
 function fakeClock() {

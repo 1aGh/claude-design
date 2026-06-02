@@ -4,14 +4,13 @@
 // populated from ONE source. These tests prove migrateSeed never duplicates
 // comments and is idempotent across re-runs (server restarts).
 
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import * as Y from 'yjs';
 
-import { Y_TYPES, createPersistence } from '../collab/persistence.ts';
+import { createPersistence, Y_TYPES } from '../collab/persistence.ts';
 import type { Context } from '../context.ts';
 import { applyCommentsToDoc, applyHtmlToDoc } from '../sync/codec.ts';
 import { docIsEmpty, migrateSeed } from '../sync/migrate-seed.ts';

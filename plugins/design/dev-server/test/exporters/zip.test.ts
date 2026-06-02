@@ -3,11 +3,10 @@
 // Real walk + bundle against a sandboxed designRoot, then unzip the result
 // and diff against expected contents.
 
+import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-
-import { describe, expect, test } from 'bun:test';
 import JSZip from 'jszip';
 
 import { resolveScope } from '../../exporters/scope.ts';

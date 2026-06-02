@@ -7,10 +7,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import {
-  type MetaSidecar,
   applyHeader,
   applyHeaderToSource,
   buildHeader,
+  type MetaSidecar,
 } from '../canvas-header.ts';
 
 const META: MetaSidecar = {

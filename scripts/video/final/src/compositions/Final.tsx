@@ -1,8 +1,8 @@
-import { TransitionSeries, linearTiming } from '@remotion/transitions';
+import { linearTiming, TransitionSeries } from '@remotion/transitions';
 import { fade } from '@remotion/transitions/fade';
 import { AbsoluteFill, Audio, Sequence, staticFile } from 'remotion';
-import { LowerThird } from '../lib/LowerThird';
 import { BrowserChrome, TerminalFrame } from '../lib/capture-frames';
+import { LowerThird } from '../lib/LowerThird';
 import { IntroScene } from '../scenes/01-intro';
 import { OutroScene } from '../scenes/03-outro';
 import { BenefitCard } from '../scenes/05-benefit-card';

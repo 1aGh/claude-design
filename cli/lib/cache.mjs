@@ -49,8 +49,8 @@ import { spawnSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   renameSync,
   rmSync,
   statSync,

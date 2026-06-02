@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { CanvasEditError, applyEdit, editAttribute } from '../canvas-edit.ts';
+import { applyEdit, CanvasEditError, editAttribute } from '../canvas-edit.ts';
 import { transpileCanvasSource } from '../canvas-pipeline.ts';
 
 const CANVAS = '/abs/Canvas.tsx';

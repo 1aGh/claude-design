@@ -1,8 +1,8 @@
+import Link from 'next/link';
 import { CopyButton } from '@/components/mdcc/copy-button';
 import { DemoVideo } from '@/components/mdcc/demo-video';
 import { SkuLabel } from '@/components/mdcc/sku-label';
 import stats from '@/lib/stats.json';
-import Link from 'next/link';
 
 const INSTALL_SNIPPET = `# 0. install the CLI (skills use it)
 npm i -g @1agh/maude

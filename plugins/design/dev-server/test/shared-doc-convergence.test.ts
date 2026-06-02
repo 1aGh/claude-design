@@ -24,11 +24,11 @@ import * as Y from 'yjs';
 
 import { Y_TYPES } from '../collab/persistence.ts';
 import {
-  Y_SYNC_TYPES,
   applyCommentsToDoc,
   applyCssToDoc,
   applyHtmlToDoc,
   applyMetaToDoc,
+  Y_SYNC_TYPES,
 } from '../sync/codec.ts';
 import { createEchoGuard, hashBytes } from '../sync/echo-guard.ts';
 import { materialize, materializeCanonical } from '../sync/materialize.ts';

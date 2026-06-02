@@ -14,10 +14,10 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import {
   type ActivityMessage,
-  type CanvasActivity,
-  CanvasActivityProvider,
   activityKey,
   applyActivityChange,
+  type CanvasActivity,
+  CanvasActivityProvider,
   matchesArtboard,
   useCanvasActivity,
 } from '../use-canvas-activity.tsx';

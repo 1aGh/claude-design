@@ -6,13 +6,13 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   type ArrowStroke,
+  applyDrawModifiers,
+  constrainDrawBox,
   type EllipseStroke,
   type PenStroke,
   type PolygonStroke,
   type RectStroke,
   type StickyStroke,
-  applyDrawModifiers,
-  constrainDrawBox,
 } from '../annotations-layer.tsx';
 
 const NONE = { shift: false, alt: false };

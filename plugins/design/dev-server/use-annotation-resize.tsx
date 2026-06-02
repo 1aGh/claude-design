@@ -297,11 +297,7 @@ function handlePositions(s: Stroke): Array<{ corner: Corner; x: number; y: numbe
   ];
 }
 
-export function AnnotationResizeOverlay({
-  store,
-}: {
-  store: StrokesStoreValue | null;
-}): ReactNode {
+export function AnnotationResizeOverlay({ store }: { store: StrokesStoreValue | null }): ReactNode {
   ensureResizeStyles();
   const annotSel = useAnnotationSelection();
   const controller = useViewportControllerContext();

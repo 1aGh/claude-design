@@ -23,15 +23,15 @@
 
 import type { Rect } from './geometry.ts';
 import {
-  path,
+  circle,
   type DrawPrimitive,
   type DrawStyle,
-  type Point,
-  circle,
   fe,
   filter,
   group,
   line,
+  type Point,
+  path,
 } from './primitives.ts';
 
 function fmt(n: number): string {

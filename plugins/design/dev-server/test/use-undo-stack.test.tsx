@@ -8,10 +8,10 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import {
-  type CommandRecord,
-  type CommandSinks,
   _clearBuilderRegistry,
   _clearStackStore,
+  type CommandRecord,
+  type CommandSinks,
   registerCommand,
 } from '../undo-stack.ts';
 import {

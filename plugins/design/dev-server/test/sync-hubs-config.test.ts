@@ -1,10 +1,9 @@
 // hubs-config reader tests — Phase 9 Task 4.
 
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { getHubToken, hubsConfigPath, loadHubsConfig, normalizeUrl } from '../sync/hubs-config.ts';
 

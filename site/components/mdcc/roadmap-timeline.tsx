@@ -180,7 +180,11 @@ export function RoadmapTimeline({
                         target="_blank"
                         rel="noopener noreferrer"
                       >
-                        <span className="mdcc-roadmap-glyph" aria-label={STATUS_ARIA[p.status]}>
+                        <span
+                          className="mdcc-roadmap-glyph"
+                          role="img"
+                          aria-label={STATUS_ARIA[p.status]}
+                        >
                           {STATUS_GLYPH[p.status]}
                         </span>
                         <span className="mdcc-roadmap-sku">

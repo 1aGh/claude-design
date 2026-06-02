@@ -33,7 +33,6 @@ import type * as Y from 'yjs';
 
 import { atomicWrite } from './atomic-write.ts';
 import {
-  Y_SYNC_TYPES,
   annotationsFromDoc,
   applyAnnotationsToDoc,
   applyCommentsToDoc,
@@ -45,6 +44,7 @@ import {
   htmlFromDoc,
   mergeSharedMetaIntoLocal,
   metaFromDoc,
+  Y_SYNC_TYPES,
 } from './codec.ts';
 import { type EchoGuard, hashBytes } from './echo-guard.ts';
 

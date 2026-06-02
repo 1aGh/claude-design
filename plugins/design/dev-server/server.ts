@@ -28,7 +28,7 @@ import { createHttp } from './http.ts';
 import { createInspect } from './inspect.ts';
 import { startHeapWatch } from './mem.ts';
 import { createSyncRuntime } from './sync/index.ts';
-import { type WsData, createWs, isLoopbackHost, parseCollabSlug } from './ws.ts';
+import { createWs, isLoopbackHost, parseCollabSlug, type WsData } from './ws.ts';
 
 // Phase 19 / DDR-044 — covers the marketplace-cache-install gap where
 // node_modules/ ships empty (git clone honors .gitignore). Auto-installs +

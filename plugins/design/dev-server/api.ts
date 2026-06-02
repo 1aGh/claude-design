@@ -3,7 +3,7 @@
 
 import crypto from 'node:crypto';
 import type { Dirent } from 'node:fs';
-import { readFile, readdir, stat as statp } from 'node:fs/promises';
+import { readdir, readFile, stat as statp } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { Context } from './context.ts';

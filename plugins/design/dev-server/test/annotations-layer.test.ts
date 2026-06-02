@@ -11,23 +11,23 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   type ArrowStroke,
+  arrowHeadPoints,
   type EllipseStroke,
   type PenStroke,
   type PolygonStroke,
-  type RectStroke,
-  STICKY_PALETTE,
-  type StickyStroke,
-  type Stroke,
-  type TextStroke,
-  arrowHeadPoints,
   penPathD,
   polygonPoints,
   polygonVertices,
+  type RectStroke,
   rid,
+  STICKY_PALETTE,
+  type StickyStroke,
+  type Stroke,
   strokeBBox,
   strokeHitTest,
   strokesShallowEqual,
   strokesToSvg,
+  type TextStroke,
 } from '../annotations-layer.tsx';
 
 describe('annotations-layer / penPathD', () => {

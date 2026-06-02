@@ -2,7 +2,7 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { HEARTBEAT_GRACE_MS, createAiActivity } from '../collab/ai-activity.ts';
+import { createAiActivity, HEARTBEAT_GRACE_MS } from '../collab/ai-activity.ts';
 import { type Context, createBus } from '../context.ts';
 
 function makeCtx(): { ctx: Context; events: { file: string; entry: unknown }[] } {

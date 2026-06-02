@@ -87,7 +87,8 @@ html > body[data-scroll-locked] {
 }
 
 body {
-  font-family: "Berkeley Mono", "TX-02", "JetBrains Mono", var(--font-mdcc-mono), "IBM Plex Mono",
+  font-family:
+    "Berkeley Mono", "TX-02", "JetBrains Mono", var(--font-mdcc-mono), "IBM Plex Mono",
     ui-monospace, SFMono-Regular, Menlo, monospace;
   font-feature-settings: "ss01", "ss20"; /* JetBrains Mono: zero with slash */
   background: var(--color-fd-background);
@@ -140,7 +141,9 @@ html.dark .mdcc-sku {
   font-size: var(--type-sm);
   letter-spacing: var(--tracking-normal);
   border-bottom: 1px solid transparent;
-  transition: color var(--dur-flip) var(--ease-out), border-color var(--dur-flip) var(--ease-out);
+  transition:
+    color var(--dur-flip) var(--ease-out),
+    border-color var(--dur-flip) var(--ease-out);
 }
 .mdcc-nav-link:hover {
   color: var(--fg-0);
@@ -303,7 +306,9 @@ html.dark .mdcc-sku {
   letter-spacing: var(--tracking-normal);
   text-decoration: none;
   border: 1px solid var(--accent);
-  transition: background var(--dur-flip) var(--ease-out), color var(--dur-flip) var(--ease-out);
+  transition:
+    background var(--dur-flip) var(--ease-out),
+    color var(--dur-flip) var(--ease-out);
 }
 .mdcc-cta-primary {
   background: var(--accent);
@@ -660,8 +665,9 @@ nav[data-fd-pager],
 .mdcc-code {
   border: 1px solid var(--mono-rule);
   background: var(--bg-1);
-  font-family: "Berkeley Mono", "TX-02", "JetBrains Mono", var(--font-mdcc-mono), ui-monospace,
-    SFMono-Regular, Menlo, monospace;
+  font-family:
+    "Berkeley Mono", "TX-02", "JetBrains Mono", var(--font-mdcc-mono), ui-monospace, SFMono-Regular,
+    Menlo, monospace;
   font-size: var(--type-sm);
   line-height: var(--lh-md);
   margin: var(--space-5) 0;
@@ -717,8 +723,9 @@ nav[data-fd-pager],
   padding: 1px 4px;
   border: 1px solid var(--mono-rule);
   border-radius: var(--radius-xs);
-  font-family: "Berkeley Mono", "TX-02", "JetBrains Mono", var(--font-mdcc-mono), ui-monospace,
-    SFMono-Regular, Menlo, monospace;
+  font-family:
+    "Berkeley Mono", "TX-02", "JetBrains Mono", var(--font-mdcc-mono), ui-monospace, SFMono-Regular,
+    Menlo, monospace;
   font-size: 0.92em;
 }
 
@@ -888,8 +895,8 @@ nav[data-fd-pager],
   border: 1px solid var(--border-default);
   background: var(--bg-1);
   padding: var(--space-4) var(--space-5);
-  font-family: "Berkeley Mono", "TX-02", "JetBrains Mono", var(--font-mdcc-mono), ui-monospace,
-    monospace;
+  font-family:
+    "Berkeley Mono", "TX-02", "JetBrains Mono", var(--font-mdcc-mono), ui-monospace, monospace;
   font-size: var(--type-xs);
   color: var(--fg-1);
   align-self: start;
@@ -937,8 +944,8 @@ nav[data-fd-pager],
 .mdcc-roadmap-group-count {
   color: var(--fg-2);
   font-size: var(--type-xs);
-  font-family: "Berkeley Mono", "TX-02", "JetBrains Mono", var(--font-mdcc-mono), ui-monospace,
-    monospace;
+  font-family:
+    "Berkeley Mono", "TX-02", "JetBrains Mono", var(--font-mdcc-mono), ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
 }
 
@@ -988,8 +995,8 @@ nav[data-fd-pager],
 }
 
 .mdcc-roadmap-glyph {
-  font-family: "Berkeley Mono", "TX-02", "JetBrains Mono", var(--font-mdcc-mono), ui-monospace,
-    monospace;
+  font-family:
+    "Berkeley Mono", "TX-02", "JetBrains Mono", var(--font-mdcc-mono), ui-monospace, monospace;
   color: var(--accent);
   font-size: var(--type-sm);
   letter-spacing: 0;
@@ -1005,8 +1012,8 @@ nav[data-fd-pager],
   color: var(--fg-0);
 }
 .mdcc-roadmap-meta {
-  font-family: "Berkeley Mono", "TX-02", "JetBrains Mono", var(--font-mdcc-mono), ui-monospace,
-    monospace;
+  font-family:
+    "Berkeley Mono", "TX-02", "JetBrains Mono", var(--font-mdcc-mono), ui-monospace, monospace;
   font-size: var(--type-xs);
   color: var(--fg-2);
   font-variant-numeric: tabular-nums;

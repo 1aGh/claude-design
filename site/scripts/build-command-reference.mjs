@@ -3,7 +3,7 @@
 // Output lives at content/docs/commands-{flow,design}/<name>.mdx + meta.json.
 // Run as a prebuild step — see site/package.json `prebuild` script.
 
-import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 

@@ -34,12 +34,12 @@ import type * as Y from 'yjs';
 
 import { Y_TYPES } from '../collab/persistence.ts';
 import {
-  Y_SYNC_TYPES,
   applyAnnotationsToDoc,
   applyCommentsToDoc,
   applyCssToDoc,
   applyHtmlToDoc,
   applyMetaToDoc,
+  Y_SYNC_TYPES,
 } from './codec.ts';
 import { ORIGINS } from './origins.ts';
 

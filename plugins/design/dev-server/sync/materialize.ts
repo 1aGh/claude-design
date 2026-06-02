@@ -21,7 +21,7 @@
 
 import type * as Y from 'yjs';
 import { Y_TYPES } from '../collab/persistence.ts';
-import { Y_SYNC_TYPES, annotationsFromDoc, commentsFromDoc } from './codec.ts';
+import { annotationsFromDoc, commentsFromDoc, Y_SYNC_TYPES } from './codec.ts';
 
 export interface CanonicalMaterialization {
   html: string;
@@ -59,4 +59,4 @@ export function materializeCanonical(doc: Y.Doc): string {
 }
 
 // Re-export so a shadow-compare caller has the type names in one import.
-export { Y_TYPES, Y_SYNC_TYPES };
+export { Y_SYNC_TYPES, Y_TYPES };

@@ -16,8 +16,8 @@
 
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import addFormats from 'ajv-formats';
 import Ajv2020 from 'ajv/dist/2020.js';
+import addFormats from 'ajv-formats';
 
 function levenshtein(a, b) {
   if (a === b) return 0;

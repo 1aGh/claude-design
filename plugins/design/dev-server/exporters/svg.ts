@@ -14,10 +14,10 @@ import JSZip from 'jszip';
 
 import { getBrowserBundle } from './_browser-bundles.ts';
 import {
+  canvasShellUrl,
   type ExportContext,
   type ExportOptions,
   type ExportResult,
-  canvasShellUrl,
 } from './index.ts';
 import type { Target } from './scope.ts';
 

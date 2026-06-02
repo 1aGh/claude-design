@@ -64,10 +64,12 @@
   --tracking-sku: 0.12em;
   --tracking-eyebrow: 0.18em;
   --tracking-tight: -0.01em;
-  --font-body: "Berkeley Mono", "TX-02", "JetBrains Mono", "IBM Plex Mono", ui-monospace,
-    SFMono-Regular, Menlo, monospace;
-  --font-mono: "Berkeley Mono", "TX-02", "JetBrains Mono", "IBM Plex Mono", ui-monospace,
-    SFMono-Regular, Menlo, monospace;
+  --font-body:
+    "Berkeley Mono", "TX-02", "JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular,
+    Menlo, monospace;
+  --font-mono:
+    "Berkeley Mono", "TX-02", "JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular,
+    Menlo, monospace;
   /* The project DS uses a mono face for display too — keep the terminal aesthetic. */
   --font-display: var(--font-mono);
   --radius-sm: 2px;
@@ -681,7 +683,9 @@ dialog::backdrop {
   cursor: pointer;
   border-radius: var(--radius-sm);
   text-decoration: none;
-  transition: background var(--dur-flip) var(--ease-out), color var(--dur-flip) var(--ease-out),
+  transition:
+    background var(--dur-flip) var(--ease-out),
+    color var(--dur-flip) var(--ease-out),
     border-color var(--dur-flip) var(--ease-out);
 }
 .btn:hover {

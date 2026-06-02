@@ -8,7 +8,7 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { RUNTIME_PACKAGES, getRuntimeBundle, packageForSlug, slugFor } from '../runtime-bundle.ts';
+import { getRuntimeBundle, packageForSlug, RUNTIME_PACKAGES, slugFor } from '../runtime-bundle.ts';
 
 describe('runtime-bundle', () => {
   test('builds all four sub-bundles successfully', async () => {

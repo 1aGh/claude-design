@@ -3,6 +3,7 @@
 // Targets the 8 quick-win fixes recorded in DDR-054 §2 against the findings
 // in `.ai/logs/security-reviews/phase-9-task-4-bidi-fs-sync-{defender,attacker}.md`.
 
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
   chmodSync,
   existsSync,
@@ -15,20 +16,18 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import * as Y from 'yjs';
 
 import { createCanvasSyncAgent } from '../sync/agent.ts';
 import { atomicWrite } from '../sync/atomic-write.ts';
 import {
-  MAX_ANNOTATIONS_BYTES,
-  MAX_COMMENTS_BYTES,
-  MAX_HTML_BYTES,
   applyAnnotationsToDoc,
   applyCommentsToDoc,
   applyHtmlToDoc,
   htmlFromDoc,
+  MAX_ANNOTATIONS_BYTES,
+  MAX_COMMENTS_BYTES,
+  MAX_HTML_BYTES,
 } from '../sync/codec.ts';
 import { createEchoGuard, hashBytes } from '../sync/echo-guard.ts';
 import { createFsReader } from '../sync/fs-mirror.ts';

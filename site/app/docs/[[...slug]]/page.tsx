@@ -1,9 +1,3 @@
-import { PageMetaFooter } from '@/components/mdcc/page-meta-footer';
-import { type Crumb, SkuBreadcrumb } from '@/components/mdcc/sku-breadcrumb';
-import { getMDXComponents } from '@/components/mdx';
-import { gitConfig } from '@/lib/shared';
-import { getPageImage, getPageMarkdownUrl, source } from '@/lib/source';
-import stats from '@/lib/stats.json';
 import {
   DocsBody,
   DocsDescription,
@@ -15,6 +9,12 @@ import {
 import { createRelativeLink } from 'fumadocs-ui/mdx';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import { PageMetaFooter } from '@/components/mdcc/page-meta-footer';
+import { type Crumb, SkuBreadcrumb } from '@/components/mdcc/sku-breadcrumb';
+import { getMDXComponents } from '@/components/mdx';
+import { gitConfig } from '@/lib/shared';
+import { getPageImage, getPageMarkdownUrl, source } from '@/lib/source';
+import stats from '@/lib/stats.json';
 
 const SECTION_SKU: Record<string, string> = {
   design: 'MDCC-DSN/01',

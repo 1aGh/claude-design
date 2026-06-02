@@ -64,7 +64,10 @@ describe('use-agent-presence / provider gating', () => {
   function Wrap({
     initialAgent,
     children,
-  }: { initialAgent: AgentPresence | null; children: ReactNode }) {
+  }: {
+    initialAgent: AgentPresence | null;
+    children: ReactNode;
+  }) {
     return <AgentPresenceProvider initialAgent={initialAgent}>{children}</AgentPresenceProvider>;
   }
 

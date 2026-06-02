@@ -12,7 +12,7 @@ import {
   encodeSyncUpdate,
   handleMessage,
 } from '../collab/protocol.ts';
-import { type RoomCallbacks, type RoomConn, createRoom } from '../collab/room.ts';
+import { createRoom, type RoomCallbacks, type RoomConn } from '../collab/room.ts';
 
 function makeConn(id: string): RoomConn & { recv: Uint8Array[] } {
   const recv: Uint8Array[] = [];

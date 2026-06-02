@@ -10,15 +10,14 @@
 // This lets us validate the whole bidi loop, echo prevention, and the
 // 100-event stress scenario from the plan without booting a real hub.
 
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import * as Y from 'yjs';
 
 import { type CanvasSyncAgent, createCanvasSyncAgent } from '../sync/agent.ts';
-import { Y_SYNC_TYPES, applyHtmlToDoc, htmlFromDoc } from '../sync/codec.ts';
+import { applyHtmlToDoc, htmlFromDoc, Y_SYNC_TYPES } from '../sync/codec.ts';
 import { createEchoGuard, hashBytes } from '../sync/echo-guard.ts';
 import { createFsReader } from '../sync/fs-mirror.ts';
 

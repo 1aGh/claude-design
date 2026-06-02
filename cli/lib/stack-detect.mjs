@@ -10,7 +10,7 @@
 //
 // Consumers: cli/commands/doctor.mjs and the drift-aware /flow:init re-run.
 
-import { readFile, readdir, stat } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
 async function fileExists(path) {
