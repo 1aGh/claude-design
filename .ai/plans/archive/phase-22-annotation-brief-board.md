@@ -3,6 +3,8 @@
 > **Sequenced after [Phase 21](phase-21-annotation-vocabulary-figjam.md) (FigJam vocabulary).** Phase 21 ships sticky notes + standalone text — the two primitives a user reaches for to *write a brief on the canvas*. This phase makes those annotations machine-readable and lets `/design:new` turn them into generated artboards **in the same canvas**.
 >
 > Sibling: [Phase 23](phase-23-canvas-images-link-unfurl.md) (canvas images + link chips) — independent, planned together, can land in either order after Phase 21. The two compose: drop reference screenshots (Phase 23) onto a brief-board, annotate them (Phase 21), and ingest both here.
+>
+> **Decision record:** [DDR-085](../decisions/DDR-085-canvas-kind-and-design-new-ingest-mode.md) — canvas `kind` field + overloading `/design:new` with the ingest mode (Task 8).
 
 ## Description
 
@@ -197,3 +199,15 @@ Web-desktop only required; native mobile/tablet skipped (justified).
 - [ ] DDR (canvas `kind` + ingest mode) written + cross-linked.
 - [ ] `help.md` + `CATEGORIES.md` document the new flags.
 - [ ] No regression in normal `/design:new` generation (the default, non-blank, non-ingest path is byte-unaffected).
+
+---
+
+## Retro
+
+- **The plan's "no security surface" line was wrong — twice.** The adversarial review found the ingest path is a real untrusted-content → LLM-prompt lane (annotation text writable from the segregated canvas origin / hub-pushable, fed verbatim to `ux-research-agent` which holds WebFetch + repo Read = the trifecta). Lesson for `/flow:plan`: **any "read user content into a generation/agent prompt" step is a model-input trust boundary** — name it in the threat model, never assert "no security surface" for a feature that ingests content. Mitigated here with data-framing (new.md §6b.2) + a tracked architectural residual in DDR-085.
+- **A mid-flight user request grew a second feature with its own security surface.** "Can't I create a canvas directly in the UI?" → a new `POST /_api/canvas` write endpoint. Handled as a proper extension (own helpers + 33 tests + defender+attacker pass + DDR section) rather than a quick bolt-on. The defender passed it 0-blockers; the attacker found F2 (group containment asserted against the group, not designRoot) — fixed. Lesson: a "just add a button" ask that crosses a write/trust boundary deserves the full gate, not the quick path.
+- **The committed-bundle footgun bit repeatedly.** `dist/client.bundle.js` + `styles.css` are committed **minified**, but `bun run build.ts` (dev mode) emits unminified, and server-booting tests/live-checks self-heal-rebuild + clobber `dist`. The durable rule: **rebuild the minified bundles as the very last step before staging**, and `git checkout` the runtime/comment-mount churn (never commit a dev-mode or test-boot bundle). Cost a few revert/rebuild cycles before internalizing.
+- **Single-source-via-text-import worked cleanly.** `import tpl from '../templates/brief-board.tsx.template' with { type: 'text' }` resolves at dev runtime AND embeds into the `bun --compile` binary — one template file feeds both `/design:new --blank` (sed) and the server endpoint, DDR-045-safe, no drift. Good pattern to reuse for any "ship a fixed text asset into the binary" need.
+- **Two slug implementations drifted.** The headless reader + `api.ts` use `/\s+/→_` (collapse runs); `slug.sh` uses `tr ' ' '_'` (per-space). They agree on single-space names, diverge on doubles — caught in code review, mitigated by collapsing internal spaces in `validateCanvasName`. Lesson: a "compute the same slug two ways" smell is worth a shared source; flag it earlier.
+- **Live agent-browser verification substituted well for the formal 5-platform scenario.** The brief-board render + the create-from-UI happy/error paths were proven with real screenshots in a scratch repo — right-sized for a dev-tool annotation flow that has no native mobile/tablet surface (consistent with prior plugin-change History rows marking the 5-platform scenario N/A).
+- **Deferred (intentional):** the `.ai/scenarios/canvas-brief-board/spec.md` formal scenario (live verification done instead); the F1 architectural close (outbound-allowlisted ingest research context) — tracked in DDR-085; and the **receiver-side share-consent / untrusted-inbox** idea the user raised (a peer accepts/rejects incoming shared canvases before they materialize) — scoped as a future **Phase 26** (touches DDR-054/060 trust model; needs its own plan + DDR).

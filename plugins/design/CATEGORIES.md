@@ -20,7 +20,7 @@ Default verbs. No prefix. Members:
 | Command | Description |
 |---|---|
 | `/design:edit` | Iterate on the active canvas with auto-critic loop |
-| `/design:new` | Scaffold a new multi-artboard canvas project |
+| `/design:new` | Scaffold a new multi-artboard canvas project (or, with `--blank`, an annotation-only **brief board**; ingests a board's notes when run on an annotated brief-board) |
 | `/design:draw` | Generate a verified SVG mark (logo / icon / illustration / diagram / spot) via the geometry engine + visual self-verify loop |
 | `/design:critic` | Spawn the critic panel (or single agent / all critics) |
 | `/design:browse` | Boot the local dev server |
@@ -30,6 +30,8 @@ Default verbs. No prefix. Members:
 | `/design:help` | Print this grouped index |
 
 The bare `/design` form was a one-version compat stub in v0.8 that redirected to `/design:edit`. **Removed in v0.9** — only `/design:edit` resolves now.
+
+**Brief boards (Phase 22).** `/design:new` has three modes (resolved internally, not separate verbs — see [DDR-085](../../.ai/decisions/DDR-085-canvas-kind-and-design-new-ingest-mode.md)): **normal** (generate a new canvas), **blank** (`--blank` → an annotation-only `kind:"brief-board"` canvas, zero model cost), and **ingest** (run on an annotated brief-board → read its sticky/text notes verbatim and insert generated artboards into the same canvas). Escape hatches: `--from-annotations` (force ingest anywhere) / `--fresh` (ignore a board's notes, scaffold a new file). We deliberately overloaded `/design:new` rather than adding a `/design:brief-board` verb — the user creates and fills a board through the same command.
 
 ### setup — One-shot bootstrapping operations
 

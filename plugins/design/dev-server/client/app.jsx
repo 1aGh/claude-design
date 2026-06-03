@@ -371,7 +371,7 @@ function DsFolderRow({ name, dsName, depth, defaultOpen, active, onOpenSystem, c
   );
 }
 
-function FileRow({ file, activePath, onOpen, openCount: oc, depth, kind, sidecar }) {
+function FileRow({ file, activePath, onOpen, onDelete, openCount: oc, depth, kind, sidecar }) {
   const isSel = file.path === activePath;
   const isCanvas = CANVAS_EXT_RE.test(file.name);
   // Non-canvas rows (PROJECT *.md, RUNTIME _active.json, ...) are display-only —
@@ -379,7 +379,10 @@ function FileRow({ file, activePath, onOpen, openCount: oc, depth, kind, sidecar
   // hint via `aria-disabled`.
   const inert = !isCanvas;
   const label = isCanvas ? displayName(file.name) : file.name;
-  return (
+  // Delete only real canvases in a deletable group (onDelete is undefined for the
+  // DS group + runtime files); the server enforces the rest.
+  const canDelete = isCanvas && typeof onDelete === 'function' && kind !== 'runtime';
+  const row = (
     <button
       type="button"
       role="treeitem"
@@ -405,6 +408,26 @@ function FileRow({ file, activePath, onOpen, openCount: oc, depth, kind, sidecar
       {oc > 0 && <span className="badge">{oc}</span>}
     </button>
   );
+  if (!canDelete) return row;
+  // A sibling delete button (can't nest a button in the row button). The wrapper
+  // is presentational so the treeitem stays the tree's child for a11y.
+  return (
+    <div className="tp-row-wrap" role="none">
+      {row}
+      <button
+        type="button"
+        className="tp-del"
+        title={`Delete ${label}`}
+        aria-label={`Delete canvas ${label}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete(file.path, label);
+        }}
+      >
+        <Icon d="M3 6h18 M8 6V4h8v2 M6 6l1 14h10l1-14 M10 11v6 M14 11v6" size={12} />
+      </button>
+    </div>
+  );
 }
 
 function CanvasRow({
@@ -414,6 +437,7 @@ function CanvasRow({
   kind,
   activePath,
   onOpen,
+  onDelete,
   openCount: oc,
   showHidden,
   forceOpen,
@@ -432,6 +456,7 @@ function CanvasRow({
         file={primary}
         activePath={activePath}
         onOpen={onOpen}
+        onDelete={onDelete}
         openCount={oc}
         depth={depth}
         kind={kind}
@@ -500,6 +525,7 @@ function Tree({
   dsFolders,
   activeDsName,
   onOpenSystem,
+  onDelete,
 }) {
   const dirs = Object.keys(node)
     .filter((k) => k !== '_files')
@@ -535,6 +561,7 @@ function Tree({
             sidecars={entry.sidecars}
             activePath={activePath}
             onOpen={onOpen}
+            onDelete={onDelete}
             openCount={openCount(commentsByFile[entry.primary.path])}
             depth={depth}
             kind={kind}
@@ -555,6 +582,7 @@ function Tree({
             kind={kind}
           />
         ))}
+      {/* orphans are sidecars/loose files — no canvas to delete, so no onDelete */}
       {dirs.map((d) => {
         const dsMatch = dsFolderByName?.get(d);
         const childTree = (
@@ -569,6 +597,7 @@ function Tree({
             search={search}
             activeDsName={activeDsName}
             onOpenSystem={onOpenSystem}
+            onDelete={onDelete}
           />
         );
         if (dsMatch && onOpenSystem) {
@@ -630,11 +659,36 @@ function Sidebar({
   showHidden,
   sectionsExpanded,
   onToggleSection,
+  onNewBoard,
+  onDeleteBoard,
 }) {
   const filteredGroups = useMemo(() => {
     if (!search) return groups;
     return groups.map((g) => ({ ...g, tree: filterTree(g.tree, search), filtered: !!search }));
   }, [groups, search]);
+
+  // Phase 22 — inline "new brief board" composer in the tree header. Click +,
+  // type a name, Enter to create (Esc cancels). The board opens active so it's
+  // ready to annotate; generation (ingest) still goes through /design:new.
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newErr, setNewErr] = useState('');
+  const [newBusy, setNewBusy] = useState(false);
+
+  const submitNewBoard = useCallback(async () => {
+    const name = newName.trim();
+    if (!name || newBusy) return;
+    setNewBusy(true);
+    setNewErr('');
+    const res = await onNewBoard(name);
+    setNewBusy(false);
+    if (res?.ok) {
+      setCreating(false);
+      setNewName('');
+    } else {
+      setNewErr(res?.error || 'could not create board');
+    }
+  }, [newName, newBusy, onNewBoard]);
 
   // Mock uses `42 / 42` — total openable canvases, not every listed file.
   // We count canvas files (TSX Phase 3.6+ default, HTML legacy) so the counter
@@ -654,12 +708,70 @@ function Sidebar({
   return (
     <nav className="sidebar">
       <div className="tree-panel-hd">
-        <span>FILES</span>
+        <span className="tp-hd-left">
+          FILES
+          <button
+            type="button"
+            className="tp-new-board"
+            title="New blank brief board"
+            aria-label="New blank brief board"
+            aria-expanded={creating}
+            onClick={() => {
+              setNewErr('');
+              setCreating((v) => !v);
+            }}
+          >
+            + board
+          </button>
+        </span>
         <span className="ct" title={wsConnected ? 'live · file index synced' : 'reconnecting…'}>
           <span className={'live-dot' + (wsConnected ? ' connected' : '')} aria-hidden="true" />
           {htmlShown} / {htmlCount}
         </span>
       </div>
+
+      {creating ? (
+        <div className="tp-new-board-row">
+          <input
+            type="text"
+            // biome-ignore lint/a11y/noAutofocus: deliberate — the composer opens on an explicit click.
+            autoFocus
+            className="tp-new-board-input"
+            placeholder="brief board name…"
+            value={newName}
+            maxLength={60}
+            disabled={newBusy}
+            aria-label="New brief board name"
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                submitNewBoard();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                setCreating(false);
+                setNewName('');
+                setNewErr('');
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="tp-new-board-go"
+            disabled={newBusy || !newName.trim()}
+            title="Create (Enter)"
+            aria-label="Create brief board"
+            onClick={submitNewBoard}
+          >
+            {newBusy ? '…' : '↵'}
+          </button>
+        </div>
+      ) : null}
+      {newErr ? (
+        <div className="tp-new-board-err" role="alert">
+          {newErr}
+        </div>
+      ) : null}
 
       <div className="tree-panel-search">
         <Icon d="M21 21l-4.35-4.35 M11 19a8 8 0 100-16 8 8 0 000 16z" size={12} />
@@ -741,6 +853,7 @@ function Sidebar({
                     dsFolders={g.dsFolders}
                     activeDsName={activeDsName}
                     onOpenSystem={isDs ? onOpenSystem : undefined}
+                    onDelete={isDs ? undefined : onDeleteBoard}
                   />
                 ) : (
                   <div className="tp-empty">{search ? 'No matches.' : 'Empty.'}</div>
@@ -2430,6 +2543,63 @@ function App() {
 
   const reloadTree = useCallback(() => loadTree(), [loadTree]);
 
+  // Phase 22 — create a blank brief board from the tree header. POSTs to the
+  // main-origin-only /_api/canvas (the untrusted canvas iframe can't reach it),
+  // then refreshes the tree and opens the new board so it's immediately the
+  // active canvas to annotate. Returns {ok} | {ok:false,error} so the Sidebar
+  // can surface a validation/duplicate message inline.
+  const createBoard = useCallback(
+    async (name) => {
+      try {
+        const r = await fetch('/_api/canvas', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, kind: 'brief-board' }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.ok) return { ok: false, error: j.error || `create failed (${r.status})` };
+        await loadTree();
+        openTab(j.file);
+        return { ok: true, file: j.file };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : 'network error' };
+      }
+    },
+    [loadTree, openTab]
+  );
+
+  // Phase 22 — soft-delete a canvas from the file tree. Confirms (destructive),
+  // DELETEs to the main-origin-only endpoint, refreshes the tree, and resets the
+  // active tab if the deleted canvas was open. The server moves the whole sidecar
+  // set to .design/_trash/ — recoverable locally.
+  const deleteBoard = useCallback(
+    async (filePath, label) => {
+      const ok = window.confirm(
+        `Move “${label}” to trash?\n\nIts annotations, history and comments move with it. ` +
+          `You can restore it from .design/_trash/.`
+      );
+      if (!ok) return;
+      try {
+        const r = await fetch(`/_api/canvas?file=${encodeURIComponent(filePath)}`, {
+          method: 'DELETE',
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.ok) {
+          window.alert(`Could not delete: ${j.error || `error ${r.status}`}`);
+          return;
+        }
+        await loadTree();
+        if (activePath === filePath) {
+          setTabs([]);
+          setActivePath(null);
+        }
+      } catch (e) {
+        window.alert(`Delete failed: ${e instanceof Error ? e.message : 'network error'}`);
+      }
+    },
+    [loadTree, activePath]
+  );
+
   const clearSelected = useCallback(() => {
     wsSend({ type: 'clear-select' });
     setSelected(null);
@@ -2920,6 +3090,8 @@ function App() {
         showHidden={showHidden}
         sectionsExpanded={sectionsExpanded}
         onToggleSection={toggleSection}
+        onNewBoard={createBoard}
+        onDeleteBoard={deleteBoard}
       />
       <div className="main">
         <Menubar

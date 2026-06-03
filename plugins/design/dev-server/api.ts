@@ -3,9 +3,10 @@
 
 import crypto from 'node:crypto';
 import type { Dirent } from 'node:fs';
-import { readdir, readFile, stat as statp } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, stat as statp } from 'node:fs/promises';
 import path from 'node:path';
 
+import { renderBriefBoard, validateCanvasName } from './canvas-create.ts';
 import type { Context } from './context.ts';
 
 const SKIP_DIRS = new Set([
@@ -129,6 +130,14 @@ export interface ExportHistoryEntry {
   at: string;
 }
 
+export type CreateCanvasResult =
+  | { ok: true; file: string; rel: string; slug: string }
+  | { ok: false; status: number; error: string };
+
+export type DeleteCanvasResult =
+  | { ok: true; rel: string; slug: string; trashed: string[]; trashDir: string }
+  | { ok: false; status: number; error: string };
+
 export interface Api {
   // File tree
   fileSlug(file: string): string;
@@ -168,6 +177,14 @@ export interface Api {
   // Annotations sidecar (Phase 5 — .design/<slug>.annotations.svg)
   loadAnnotations(file: string): Promise<string | null>;
   saveAnnotations(file: string, svg: string): Promise<boolean>;
+  // Create a blank brief board from the browser (Phase 22 — POST /_api/canvas)
+  createCanvas(input: {
+    name?: unknown;
+    kind?: unknown;
+    group?: unknown;
+  }): Promise<CreateCanvasResult>;
+  // Soft-delete a canvas from the browser (Phase 22 — DELETE /_api/canvas)
+  deleteCanvas(input: { file?: unknown }): Promise<DeleteCanvasResult>;
   // Aggregate data
   buildIndexData(): Promise<unknown>;
   buildSystemData(dsName?: string | null): Promise<unknown>;
@@ -712,6 +729,215 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     return true;
   }
 
+  // Phase 22 — create a blank brief board from the browser file tree. Wired ONLY
+  // on the main origin (server.ts startMainServer); the segregated canvas origin
+  // (DDR-054) never exposes this — an untrusted canvas iframe must not be able to
+  // write arbitrary `.tsx` files. The single user-controlled value (`name`) is
+  // gated by `validateCanvasName` (path + JSX + JSON injection boundary); `group`
+  // is allowlisted to the configured canvas groups; a `resolve()` containment
+  // assert is the defense-in-depth backstop.
+  async function createCanvas(input: {
+    name?: unknown;
+    kind?: unknown;
+    group?: unknown;
+  }): Promise<CreateCanvasResult> {
+    // v1 only stamps blank boards — generation stays with `/design:new` (Claude).
+    const kind = input.kind == null || input.kind === '' ? 'brief-board' : input.kind;
+    if (kind !== 'brief-board') {
+      return { ok: false, status: 400, error: 'only kind "brief-board" is supported' };
+    }
+    const v = validateCanvasName(input.name);
+    if (!v.ok || !v.name || !v.componentName) {
+      return { ok: false, status: 400, error: v.error ?? 'invalid name' };
+    }
+
+    // Group must be one of the configured canvas groups (+ the new-canvas dir).
+    const allowed = new Set<string>(cfg.canvasGroups.map((g) => g.path));
+    allowed.add(cfg.newCanvasDir || 'ui');
+    const group =
+      input.group == null || input.group === '' ? cfg.newCanvasDir || 'ui' : String(input.group);
+    if (!allowed.has(group)) {
+      return { ok: false, status: 400, error: `group must be one of: ${[...allowed].join(', ')}` };
+    }
+
+    const groupAbs = path.join(paths.designRoot, group);
+    const fileAbs = path.join(groupAbs, `${v.name}.tsx`);
+    // Containment backstop, two layers (Phase 22 security review F2). The name
+    // regex already forbids traversal, but `group` comes from config
+    // (canvasGroups[].path / newCanvasDir), which `normalizeConfig` does NOT
+    // validate for `..`. So assert (1) the GROUP resolves inside designRoot —
+    // a config-supplied `../../etc` must not relocate the write out of the
+    // project — and (2) the file resolves inside that group. Without (1) a
+    // poisoned config would be an arbitrary-directory `.tsx` write (latent today
+    // because config isn't sync-scoped; closed now so a future config-sync can't
+    // re-open it).
+    const resolvedDesignRoot = path.resolve(paths.designRoot);
+    const resolvedGroup = path.resolve(groupAbs);
+    if (
+      resolvedGroup !== resolvedDesignRoot &&
+      !resolvedGroup.startsWith(`${resolvedDesignRoot}${path.sep}`)
+    ) {
+      return { ok: false, status: 400, error: 'canvas group resolves outside the design root' };
+    }
+    if (
+      path.resolve(fileAbs) !== path.join(resolvedGroup, `${v.name}.tsx`) ||
+      !path.resolve(fileAbs).startsWith(`${resolvedGroup}${path.sep}`)
+    ) {
+      return { ok: false, status: 400, error: 'resolved path escapes the canvas group' };
+    }
+    if (await Bun.file(fileAbs).exists()) {
+      return {
+        ok: false,
+        status: 409,
+        error: `a canvas named "${v.name}" already exists in ${group}`,
+      };
+    }
+
+    const rel = path.posix.join(group, `${v.name}.tsx`);
+    const slug = fileSlug(rel);
+    const dsName = cfg.defaultDesignSystem || 'project';
+    const platform = 'desktop';
+    const tsx = renderBriefBoard({
+      name: v.name,
+      componentName: v.componentName,
+      dsName,
+      platform,
+      seedHint: 'Empty brief board — annotate me',
+      historyDir: path.posix.join(paths.designRel, '_history', slug),
+    });
+    const now = new Date().toISOString();
+    const meta = {
+      kind: 'brief-board',
+      title: v.name,
+      subtitle: 'brief board',
+      brief: v.name,
+      designSystem: dsName,
+      platform,
+      created: now,
+      last_modified: now,
+    };
+    await Bun.write(fileAbs, tsx);
+    await Bun.write(
+      path.join(groupAbs, `${v.name}.meta.json`),
+      `${JSON.stringify(meta, null, 2)}\n`
+    );
+    // designRel-prefixed path — matches the file-tree `file.path` shape so the
+    // client can open it directly after reloadTree().
+    return { ok: true, file: path.posix.join(paths.designRel, rel), rel, slug };
+  }
+
+  // Phase 22 — SOFT-delete a canvas (DELETE /_api/canvas). Same trust boundary as
+  // createCanvas: main-origin-only, never the untrusted canvas iframe origin
+  // (DDR-054). Destructive, so it MOVES the whole sidecar set to
+  // `<designRoot>/_trash/<stamp>__<slug>/` (recoverable locally) instead of a hard
+  // rm — pairs with the existing `_history/` + /design:rollback model. Hub
+  // propagation of the delete is deliberately out of scope (Phase 26 consent).
+  async function deleteCanvas(input: { file?: unknown }): Promise<DeleteCanvasResult> {
+    const raw = input?.file;
+    if (typeof raw !== 'string' || !raw.trim()) {
+      return { ok: false, status: 400, error: 'file is required' };
+    }
+    let rel = raw.trim();
+    try {
+      rel = decodeURIComponent(rel);
+    } catch {
+      /* leave as-is */
+    }
+    rel = rel.replace(/^\/+/, '');
+    const prefix = `${paths.designRel.replace(/^\/+|\/+$/g, '')}/`;
+    if (rel.startsWith(prefix)) rel = rel.slice(prefix.length);
+
+    // Only a real `.tsx` canvas, no traversal.
+    if (rel.includes('..')) return { ok: false, status: 400, error: 'invalid path' };
+    if (!/\.tsx$/i.test(rel)) {
+      return { ok: false, status: 400, error: 'only .tsx canvases can be deleted' };
+    }
+
+    const fileAbs = path.join(paths.designRoot, rel);
+    const resolvedDesignRoot = path.resolve(paths.designRoot);
+    const resolvedFile = path.resolve(fileAbs);
+    if (
+      resolvedFile !== resolvedDesignRoot &&
+      !resolvedFile.startsWith(`${resolvedDesignRoot}${path.sep}`)
+    ) {
+      return { ok: false, status: 400, error: 'path escapes the design root' };
+    }
+
+    // Must live under a NON-DS canvas group — never the design system (`system`),
+    // never a loose root file (config.json, README). Deleting DS sources is not a
+    // canvas operation.
+    const deletable = cfg.canvasGroups.filter(
+      (g) => g.label !== 'Design system' && !/^system(\/|$)/.test(g.path)
+    );
+    const inGroup = deletable.some((g) => {
+      const gAbs = path.resolve(path.join(paths.designRoot, g.path));
+      return resolvedFile.startsWith(`${gAbs}${path.sep}`);
+    });
+    if (!inGroup) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'only canvases under a managed canvas group can be deleted',
+      };
+    }
+
+    if (!(await Bun.file(fileAbs).exists())) {
+      return { ok: false, status: 404, error: 'canvas not found' };
+    }
+
+    const slug = fileSlug(rel);
+    const base = path.basename(rel).replace(/\.tsx$/i, '');
+    const groupDir = path.dirname(fileAbs);
+    // Filesystem-safe wall-clock stamp (no `:`) so repeated deletes of the same
+    // canvas don't collide in _trash.
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const trashDir = path.join(paths.designRoot, '_trash', `${stamp}__${slug}`);
+    await mkdir(trashDir, { recursive: true });
+
+    const trashed: string[] = [];
+    const moveIfExists = async (src: string, destName: string) => {
+      try {
+        await statp(src); // throws if absent (works for files AND dirs)
+      } catch {
+        return;
+      }
+      try {
+        await rename(src, path.join(trashDir, destName));
+        trashed.push(path.relative(paths.designRoot, src));
+      } catch {
+        /* best-effort — a sidecar that can't move shouldn't abort the delete */
+      }
+    };
+
+    // Primary + the full sidecar set (annotations, meta, history, canvas-state,
+    // comments). Flattened names so the trash dir is a self-contained bundle.
+    await moveIfExists(fileAbs, `${base}.tsx`);
+    await moveIfExists(path.join(groupDir, `${base}.meta.json`), `${base}.meta.json`);
+    await moveIfExists(
+      path.join(paths.designRoot, `${slug}.annotations.svg`),
+      `${slug}.annotations.svg`
+    );
+    await moveIfExists(path.join(paths.designRoot, '_history', slug), `_history__${slug}`);
+    await moveIfExists(
+      path.join(paths.canvasStateDir, `${slug}.json`),
+      `_canvas-state__${slug}.json`
+    );
+    await moveIfExists(path.join(paths.commentsDir, `${slug}.json`), `_comments__${slug}.json`);
+
+    await Bun.write(
+      path.join(trashDir, '_trash-manifest.json'),
+      `${JSON.stringify({ canvas: rel, slug, deletedAt: new Date().toISOString(), trashed }, null, 2)}\n`
+    );
+
+    return {
+      ok: true,
+      rel,
+      slug,
+      trashed,
+      trashDir: path.relative(paths.repoRoot, trashDir),
+    };
+  }
+
   async function saveCanvasState(file: string, state: Record<string, unknown>) {
     if (!state || typeof state !== 'object') return;
     const safe: Record<string, unknown> = {};
@@ -1078,6 +1304,8 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     patchCanvasMeta,
     loadAnnotations,
     saveAnnotations,
+    createCanvas,
+    deleteCanvas,
     buildIndexData,
     buildSystemData,
     loadExportHistory,
