@@ -46,6 +46,96 @@
 }
 .tree-panel-hd .live-dot.connected { background: var(--u-status-success); }
 
+/* Phase 22 — "+ board" composer in the tree header (create a blank brief board). */
+.tree-panel-hd .tp-hd-left {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.tp-new-board {
+  appearance: none;
+  border: 1px solid var(--u-border);
+  background: var(--u-bg-0);
+  color: var(--u-fg-1);
+  font-family: var(--u-font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: var(--tracking-sku);
+  text-transform: uppercase;
+  padding: 2px 6px;
+  cursor: pointer;
+  line-height: 1.4;
+  transition:
+    color var(--dur-flip) var(--ease-out),
+    border-color var(--dur-flip) var(--ease-out);
+}
+.tp-new-board:hover,
+.tp-new-board[aria-expanded='true'] {
+  color: var(--u-fg-0);
+  border-color: var(--u-border-strong);
+}
+.tp-new-board[aria-expanded='true'] { background: var(--u-bg-1); }
+.tp-new-board:focus-visible {
+  outline: none;
+  border-color: var(--u-border-strong);
+  box-shadow: var(--shadow-focus);
+}
+
+.tp-new-board-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px var(--u-s-3);
+  background: var(--u-bg-1);
+  border-bottom: 1px solid var(--u-border-subtle);
+  flex: none;
+}
+.tp-new-board-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--u-bg-0);
+  border: 1px solid var(--u-border);
+  color: var(--u-fg-0);
+  font-size: 11px;
+  font-family: var(--u-font-mono);
+  outline: none;
+  padding: 3px 8px;
+  transition: border-color var(--dur-flip) var(--ease-out);
+}
+.tp-new-board-input::placeholder { color: var(--u-fg-3); }
+.tp-new-board-input:focus-visible {
+  border-color: var(--u-border-strong);
+  box-shadow: var(--shadow-focus);
+}
+.tp-new-board-go {
+  appearance: none;
+  flex: none;
+  border: 1px solid var(--u-border);
+  background: var(--u-bg-0);
+  color: var(--u-fg-1);
+  font-family: var(--u-font-mono);
+  font-size: 12px;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition:
+    color var(--dur-flip) var(--ease-out),
+    border-color var(--dur-flip) var(--ease-out);
+}
+.tp-new-board-go:hover:not(:disabled) {
+  color: var(--u-fg-0);
+  border-color: var(--u-border-strong);
+}
+.tp-new-board-go:disabled { opacity: 0.45; cursor: default; }
+.tp-new-board-err {
+  padding: 4px var(--u-s-3) 6px;
+  font-size: 10px;
+  font-family: var(--u-font-mono);
+  color: var(--u-status-error, #e5484d);
+  background: var(--u-bg-1);
+  border-bottom: 1px solid var(--u-border-subtle);
+}
+
 .tree-panel-search {
   padding: 5px var(--u-s-3);
   display: flex;

@@ -40,6 +40,7 @@ const BIN_VERBS = new Set([
   'draw-build',
   'draw-proof',
   'svg-optimize',
+  'read-annotations',
 ]);
 
 // Bin verbs that boot the dev-server (directly, or by shelling into server-up.sh).
@@ -127,7 +128,7 @@ Lifecycle:
 Dev-tooling (dispatch to the dev-server bash helpers — DDR-062):
   screenshot · server-up · prep · slug · bootstrap-check · runtime-health
   smoke · canvas-edit · handoff · asset-sweep · visual-sanity
-  draw-build · draw-proof · svg-optimize
+  draw-build · draw-proof · svg-optimize · read-annotations
         Invoke the bundled helper of the same name. maude resolves it from its
         own package root and sets CLAUDE_PLUGIN_ROOT for the child; stdout,
         stderr, and exit code pass straight through (so command-substitution

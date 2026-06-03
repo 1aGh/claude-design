@@ -630,11 +630,35 @@ function Sidebar({
   showHidden,
   sectionsExpanded,
   onToggleSection,
+  onNewBoard,
 }) {
   const filteredGroups = useMemo(() => {
     if (!search) return groups;
     return groups.map((g) => ({ ...g, tree: filterTree(g.tree, search), filtered: !!search }));
   }, [groups, search]);
+
+  // Phase 22 — inline "new brief board" composer in the tree header. Click +,
+  // type a name, Enter to create (Esc cancels). The board opens active so it's
+  // ready to annotate; generation (ingest) still goes through /design:new.
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newErr, setNewErr] = useState('');
+  const [newBusy, setNewBusy] = useState(false);
+
+  const submitNewBoard = useCallback(async () => {
+    const name = newName.trim();
+    if (!name || newBusy) return;
+    setNewBusy(true);
+    setNewErr('');
+    const res = await onNewBoard(name);
+    setNewBusy(false);
+    if (res?.ok) {
+      setCreating(false);
+      setNewName('');
+    } else {
+      setNewErr(res?.error || 'could not create board');
+    }
+  }, [newName, newBusy, onNewBoard]);
 
   // Mock uses `42 / 42` — total openable canvases, not every listed file.
   // We count canvas files (TSX Phase 3.6+ default, HTML legacy) so the counter
@@ -654,12 +678,70 @@ function Sidebar({
   return (
     <nav className="sidebar">
       <div className="tree-panel-hd">
-        <span>FILES</span>
+        <span className="tp-hd-left">
+          FILES
+          <button
+            type="button"
+            className="tp-new-board"
+            title="New blank brief board"
+            aria-label="New blank brief board"
+            aria-expanded={creating}
+            onClick={() => {
+              setNewErr('');
+              setCreating((v) => !v);
+            }}
+          >
+            + board
+          </button>
+        </span>
         <span className="ct" title={wsConnected ? 'live · file index synced' : 'reconnecting…'}>
           <span className={'live-dot' + (wsConnected ? ' connected' : '')} aria-hidden="true" />
           {htmlShown} / {htmlCount}
         </span>
       </div>
+
+      {creating ? (
+        <div className="tp-new-board-row">
+          <input
+            type="text"
+            // biome-ignore lint/a11y/noAutofocus: deliberate — the composer opens on an explicit click.
+            autoFocus
+            className="tp-new-board-input"
+            placeholder="brief board name…"
+            value={newName}
+            maxLength={60}
+            disabled={newBusy}
+            aria-label="New brief board name"
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                submitNewBoard();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                setCreating(false);
+                setNewName('');
+                setNewErr('');
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="tp-new-board-go"
+            disabled={newBusy || !newName.trim()}
+            title="Create (Enter)"
+            aria-label="Create brief board"
+            onClick={submitNewBoard}
+          >
+            {newBusy ? '…' : '↵'}
+          </button>
+        </div>
+      ) : null}
+      {newErr ? (
+        <div className="tp-new-board-err" role="alert">
+          {newErr}
+        </div>
+      ) : null}
 
       <div className="tree-panel-search">
         <Icon d="M21 21l-4.35-4.35 M11 19a8 8 0 100-16 8 8 0 000 16z" size={12} />
@@ -2430,6 +2512,31 @@ function App() {
 
   const reloadTree = useCallback(() => loadTree(), [loadTree]);
 
+  // Phase 22 — create a blank brief board from the tree header. POSTs to the
+  // main-origin-only /_api/canvas (the untrusted canvas iframe can't reach it),
+  // then refreshes the tree and opens the new board so it's immediately the
+  // active canvas to annotate. Returns {ok} | {ok:false,error} so the Sidebar
+  // can surface a validation/duplicate message inline.
+  const createBoard = useCallback(
+    async (name) => {
+      try {
+        const r = await fetch('/_api/canvas', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, kind: 'brief-board' }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.ok) return { ok: false, error: j.error || `create failed (${r.status})` };
+        await loadTree();
+        openTab(j.file);
+        return { ok: true, file: j.file };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : 'network error' };
+      }
+    },
+    [loadTree, openTab]
+  );
+
   const clearSelected = useCallback(() => {
     wsSend({ type: 'clear-select' });
     setSelected(null);
@@ -2920,6 +3027,7 @@ function App() {
         showHidden={showHidden}
         sectionsExpanded={sectionsExpanded}
         onToggleSection={toggleSection}
+        onNewBoard={createBoard}
       />
       <div className="main">
         <Menubar

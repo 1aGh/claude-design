@@ -582,6 +582,32 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       return new Response('Method not allowed', { status: 405 });
     },
 
+    '/_api/canvas': async (req: Request) => {
+      // Phase 22 — create a blank brief board from the browser file tree.
+      // POST body { name, kind?: "brief-board", group? } → 201 { file, rel, slug }.
+      // MAIN ORIGIN ONLY: this route is intentionally absent from
+      // startCanvasServer's allowlist (DDR-054) — the untrusted canvas iframe
+      // origin must never reach a file-write endpoint. Validation lives in
+      // api.createCanvas (strict name allowlist + group allowlist + containment).
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      const body = await readJson<{ name?: unknown; kind?: unknown; group?: unknown }>(
+        req,
+        8 * 1024
+      );
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.createCanvas(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, file: result.file, rel: result.rel, slug: result.slug },
+        { status: 201, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
     '/_api/export-history': async (req: Request) => {
       // Phase 6.5 T10 — read-only recent-exports feed for the dialog's
       // Recent tab. Writes happen as a side-effect of `/_api/export`.

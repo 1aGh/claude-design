@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-03T08:01:49.406Z",
+  "generated": "2026-06-03T11:29:23.530Z",
   "currentPhase": null,
   "phases": [
     {
@@ -166,6 +166,17 @@
       "planPath": ".ai/plans/archive/phase-21-annotation-vocabulary-figjam.md",
       "archived": true,
       "phaseKey": "21"
+    },
+    {
+      "id": "phase-22-annotation-brief-board",
+      "title": "Phase 22 — Annotation brief-board → `/design:new` ingest",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Today a canvas is born from a text brief (/design:new \"<name>\" \"<brief>\"). There is no way to start from a blank surface, sketch intent with sticky notes / text / arrows, and then ask Claude to rea...",
+      "planPath": ".ai/plans/archive/phase-22-annotation-brief-board.md",
+      "archived": true,
+      "phaseKey": "22"
     },
     {
       "id": "phase-24-annotations-figjam-parity-v2",
@@ -696,17 +707,6 @@
       "phaseKey": "17"
     },
     {
-      "id": "phase-22-annotation-brief-board",
-      "title": "Phase 22 — Annotation brief-board → `/design:new` ingest",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Today a canvas is born from a text brief (/design:new \"<name>\" \"<brief>\"). There is no way to start from a blank surface, sketch intent with sticky notes / text / arrows, and then ask Claude to rea...",
-      "planPath": ".ai/plans/phase-22-annotation-brief-board.md",
-      "archived": false,
-      "phaseKey": "22"
-    },
-    {
       "id": "phase-23-canvas-images-link-unfurl",
       "title": "Phase 23 — Canvas media: drag-and-drop images + paste-link chips",
       "status": "planned",
@@ -716,6 +716,17 @@
       "planPath": ".ai/plans/phase-23-canvas-images-link-unfurl.md",
       "archived": false,
       "phaseKey": "23"
+    },
+    {
+      "id": "epic-native-collab-app",
+      "title": "Epic: Maude as a native collaborative app — Tauri shell + in-UI Git/GitHub + zero-setup hub + ACP",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Build a native desktop application layer over the whole of Maude so non-technical collaborators can run, connect, and co-edit design projects without ever touching a terminal or typing into Claude...",
+      "planPath": ".ai/plans/epic-native-collab-app.md",
+      "archived": false,
+      "phaseKey": null
     },
     {
       "id": "phase-7-acp-chat-sidebar",
