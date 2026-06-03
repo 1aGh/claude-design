@@ -36,7 +36,11 @@
         "kind": { "enum": ["feature", "improvement", "usage", "fix"] },
         "title": { "type": "string", "minLength": 1 },
         "summary": { "type": "string", "minLength": 1 },
-        "learnMore": { "type": "string", "description": "Optional URL to docs / release notes." },
+        "learnMore": {
+          "type": "string",
+          "description": "Optional URL to docs / release notes. Constrained to http(s) — the feed renders this as an <a href>, so a javascript:/data: scheme is rejected at the data-contract layer (defense-in-depth alongside React's URL sanitizer).",
+          "pattern": "^https?://"
+        },
         "surface": {
           "type": "string",
           "description": "Which UI surface this targets (e.g. design-ui). Future-proofing."

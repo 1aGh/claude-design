@@ -14,6 +14,13 @@ import { bestSeenVersion, computeUnseen } from './whats-new-seen.js';
 const WN_SEEN = 'mdcc-whatsnew-seen';
 const WN_TOAST = 'mdcc-whatsnew-toast-dismissed';
 
+// learnMore renders as <a href> in the privileged main origin. Only bind an
+// http(s) URL — belt-and-suspenders next to React's built-in URL sanitizer and
+// the schema's pattern (security review, defense-in-depth).
+function isSafeHref(url) {
+  return typeof url === 'string' && /^https?:\/\//i.test(url);
+}
+
 function readSeen(currentVersion) {
   try {
     const v = localStorage.getItem(WN_SEEN);
@@ -206,7 +213,7 @@ export function WhatsNewPanel({ wn, onStartTour }) {
                     <span className="mdcc-wn-item__ver">{e.version ? `v${e.version}` : 'next'}</span>
                   </div>
                   <p className="mdcc-wn-item__summary">{e.summary}</p>
-                  {e.learnMore && (
+                  {isSafeHref(e.learnMore) && (
                     <a
                       className="mdcc-wn-item__more"
                       href={e.learnMore}

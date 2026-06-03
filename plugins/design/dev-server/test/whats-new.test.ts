@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { bestSeenVersion, computeUnseen, parseVer, verGt } from '../client/whats-new-seen.js';
 import { loadWhatsNew, resolveMaudeVersion } from '../whats-new.ts';
@@ -28,6 +30,31 @@ describe('whats-new feed loader', () => {
   test('a missing feed dir yields empty entries and never throws', () => {
     const feed = loadWhatsNew({ root: join(import.meta.dir, '__does-not-exist__'), fresh: true });
     expect(feed.entries).toEqual([]);
+  });
+
+  // Security regression (ethical-hacker creativity finding): the feed MUST
+  // resolve from the maude package root, NEVER a served project's tree. A
+  // hostile served project dropping its own whats-new.json must not inject
+  // entries into the privileged main-origin UI. Pin the boundary so a future
+  // "project-overridable feed" change can't silently erode it.
+  test('default resolution ignores a feed planted in an arbitrary (served-project) dir', () => {
+    const hostile = mkdtempSync(join(tmpdir(), 'mdcc-served-'));
+    writeFileSync(
+      join(hostile, 'whats-new.json'),
+      JSON.stringify({
+        entries: [{ id: 'evil', kind: 'feature', title: 'pwn', summary: 'x' }],
+      })
+    );
+    const feed = loadWhatsNew({ fresh: true }); // no root → package root only
+    expect(feed.entries.some((e) => e.id === 'evil')).toBe(false);
+    expect(feed.entries.length).toBeGreaterThan(0); // still reads the real package feed
+  });
+
+  // Defense-in-depth contract: a rendered learnMore is always an http(s) URL.
+  test('every committed entry learnMore is http(s) (no javascript:/data: scheme)', () => {
+    for (const e of loadWhatsNew({ fresh: true }).entries) {
+      if (e.learnMore != null) expect(e.learnMore).toMatch(/^https?:\/\//);
+    }
   });
 });
 

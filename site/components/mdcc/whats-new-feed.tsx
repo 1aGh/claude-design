@@ -20,6 +20,12 @@ const KIND_LABEL: Record<WhatsNewKind, string> = {
   fix: 'Fix',
 };
 
+// Only render learnMore as a link when it's an http(s) URL (defense-in-depth
+// against a javascript:/data: scheme reaching the href — security review).
+function isSafeHref(url: string | undefined): url is string {
+  return typeof url === 'string' && /^https?:\/\//i.test(url);
+}
+
 function parseVer(v: string | null): [number, number, number] | null {
   if (typeof v !== 'string') return null;
   const m = v.match(/^(\d+)\.(\d+)\.(\d+)/);
@@ -135,7 +141,7 @@ export function WhatsNewFeed({
                   );
                   return (
                     <li key={e.id} className="mdcc-roadmap-item">
-                      {e.learnMore ? (
+                      {isSafeHref(e.learnMore) ? (
                         <a
                           className="mdcc-roadmap-row"
                           href={e.learnMore}

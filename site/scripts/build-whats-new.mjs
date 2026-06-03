@@ -22,14 +22,33 @@ const feedPath = resolve(repoRoot, 'plugins/design/dev-server/whats-new.json');
 const manifestPath = resolve(repoRoot, 'plugins/design/.claude-plugin/plugin.json');
 const out = resolve(__dirname, '../lib/whats-new.json');
 
+const KINDS = new Set(['feature', 'improvement', 'usage', 'fix']);
+
+// Lightweight, dependency-free validation (the dev-server's whats-new.schema.json
+// is the full contract; this is the build-time gate the plan's Task 7 calls for).
+// A malformed feed fails the build rather than shipping bad data — notably it
+// rejects a non-http(s) learnMore that would otherwise reach an <a href>.
+function validateEntries(list) {
+  list.forEach((e, idx) => {
+    const at = `entries[${idx}]${e?.id ? ` (${e.id})` : ''}`;
+    if (!e || typeof e !== 'object') throw new Error(`[whats-new] ${at}: not an object`);
+    if (typeof e.id !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(e.id))
+      throw new Error(`[whats-new] ${at}: invalid id`);
+    if (!KINDS.has(e.kind)) throw new Error(`[whats-new] ${at}: invalid kind "${e.kind}"`);
+    if (typeof e.title !== 'string' || !e.title)
+      throw new Error(`[whats-new] ${at}: missing title`);
+    if (typeof e.summary !== 'string' || !e.summary)
+      throw new Error(`[whats-new] ${at}: missing summary`);
+    if (e.learnMore != null && !/^https?:\/\//.test(e.learnMore))
+      throw new Error(`[whats-new] ${at}: learnMore must be an http(s) URL`);
+  });
+}
+
 let entries = [];
 if (existsSync(feedPath)) {
-  try {
-    const parsed = JSON.parse(readFileSync(feedPath, 'utf8'));
-    if (Array.isArray(parsed.entries)) entries = parsed.entries;
-  } catch (err) {
-    console.warn(`[whats-new] could not parse feed: ${err.message} — emitting empty`);
-  }
+  const parsed = JSON.parse(readFileSync(feedPath, 'utf8'));
+  if (Array.isArray(parsed.entries)) entries = parsed.entries;
+  validateEntries(entries);
 }
 
 let version = 'dev';
