@@ -114,10 +114,10 @@ Group B — dev-server boot/export fail-loud (CODE; coordinate w/ Phase-13.x WIP
 
 ## Acceptance Criteria
 
-- [ ] Group A: 0-byte file, un-bundleable specimen, `*/`-in-comment, bare `React.*`, and a wrong contrast claim each fail reconciliation/lint
-- [ ] Group B: missing-`yjs` boot and missing-Playwright export both **fail loud with a remediation hint** (never a silent degrade / empty body)
-- [ ] Group A landed independently of Group B (different risk, different branch)
-- [ ] Any decision (e.g. where the contrast computation lives, self-heal vs preflight for yjs) recorded as a DDR
+- [x] Group A: 0-byte file, un-bundleable specimen, `*/`-in-comment, bare `React.*`, and a wrong contrast claim each fail reconciliation/lint — **verified** via fixture test (all 4 fire; balanced/named-import/type-scale cases don't false-positive). A2 real-bundle = the dev-server render gate (visual-sanity/hero-preview), transpile-only explicitly forbidden.
+- [ ] Group B: missing-`yjs` boot and missing-Playwright export both **fail loud with a remediation hint** (never a silent degrade / empty body) — **B2 already done in `main` (`bf84825`); B1 on the separate dev-server branch**
+- [x] Group A landed independently of Group B (different risk, different branch `feat/setup-ds-round2-scaffold-integrity-gates`)
+- [x] Any decision (e.g. where the contrast computation lives, self-heal vs preflight for yjs) recorded as a DDR — **DDR-082** (Group A, incl. contrast-computation-location decision); **DDR-083** (Group B/B1) on the dev-server branch
 
 ## Out of scope / notes
 
