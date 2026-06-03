@@ -235,3 +235,15 @@ Note in the PR description why `scenario-runner`'s canvas focus is bypassed for 
 - [ ] DDR-A..E recorded (or consciously deferred)
 - [ ] Code follows project conventions, no regressions
 ```
+
+---
+
+## Retro
+
+Shipped all 3 phases on `feat/in-app-whats-new-tour` (commits `155df68`, `1006d78`, `46f207e`, hardening `a44acbe`). DDR-086 (feed architecture) + DDR-087 (zero-dep tour) recorded; DDR-A..E folded into those two. DDR-E (downstream `MAUDE_NO_WHATSNEW` opt-out) consciously **not** implemented (benign, dismissible news).
+
+- **Sequencing into a shippable floor worked.** Phase 1 (feed + banner + mechanism) verified + committed standalone before Phase 2/3 — each phase was independently live-verifiable, and the user could have stopped after any. Good model for multi-surface features.
+- **The user's "internal skill" steer resolved the project-agnostic tension cleanly.** Putting the authoring logic in `.claude/skills/whats-new-entry/` + a generic config-gated `/flow:done` prompt kept `plugins/flow/` Maude-free. Worth reusing whenever a generic-plugin step needs project-specific behavior.
+- **The security fan-out earned its keep.** 0 blockers, but the ethical-hacker's creativity finding (package-root feed resolution is the load-bearing boundary; a future "project-overridable feed" would silently open a main-origin injection lane) became a real regression test + an explicit DDR clause. The `learnMore` scheme + build-time validation were cheap closes.
+- **Footgun that cost the most time:** booting the source dev-server OR running `test:dev-server` self-heals the committed `dist/client.bundle.js` to a 3.6 MB unminified dev build — bit me ~4× (revert `dist/runtime/`+`comment-mount`, rebuild `--release`). Now documented in CLAUDE.md, but a pre-commit guard (assert `client.bundle.js` is minified / under a size floor, like `check-runtime-bundles.sh` does for runtime) would prevent it structurally. **Improvement for `/execute`:** after any dev-server server-boot/test, run `git status` on `dist/` and rebuild release before proceeding.
+- **Scenario shape mismatch:** the standard 5-platform `scenario-runner` targets canvases, not the dev-server's own chrome. Used a web-desktop agent-browser pass instead. `/flow:plan` + `/done` should keep treating "is this a canvas or app-chrome surface?" as a branch — the canvas scenario harness doesn't fit chrome features.
