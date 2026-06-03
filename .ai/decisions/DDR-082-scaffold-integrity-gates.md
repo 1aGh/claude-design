@@ -39,8 +39,8 @@ The failure mode is **fabricated** ratios, not missing ones. Computing WCAG/APCA
 ## Consequences
 
 - **Positive:** the four "user caught it, loop didn't" defects each fail a gate now — at bootstrap (reconcile) and durably (`--system-only`). Prevention in CODE HYGIENE means a clean run produces no gate hits. A2 codifies the existing render path as *the* bundle gate, closing the "transpile-only is enough" trap.
-- **Cost:** the A4 / V24 contrast grep is advisory and can flag a deliberately-computed claim (the operator dismisses it) — accepted, because a fabricated claim is worse than a re-confirmed real one. The CSS-comment grep is a heuristic (line-local `/* */` balance); a multi-line block comment with a mid-block `*/` on its own line could false-positive — also advisory.
-- **Scope:** markdown / sub-agent-prompt only — no dev-server code, no CLI bin calls (so no `plugin-cli-reachability` surface). Lands independently of the Group B dev-server boot/export hardening (separate branch, [DDR-083](DDR-083-yjs-boot-preflight.md)).
+- **Cost:** the A4 / V24 contrast grep is advisory and can flag a deliberately-computed claim (the operator dismisses it) — accepted, because a fabricated claim is worse than a re-confirmed real one. The CSS-comment check is a **per-file `/*` vs `*/` count-balance** (an early-closed comment leaves an extra `*/`, an unterminated one an extra `/*`); its only blind spot is a literal `/*` / `*/` inside a CSS string or `url()`, which is vanishingly rare in generated specimens.
+- **Scope:** markdown / sub-agent-prompt only — no dev-server code, no CLI bin calls (so no `plugin-cli-reachability` surface). Logically independent of the Group B dev-server boot/export hardening ([DDR-083](DDR-083-yjs-boot-preflight.md)); the plan mandated separate branches but per user direction both groups ship on one branch / PR (the two commits stay disjoint, so the separation is preserved in history without two PRs).
 
 ## Alternatives considered
 

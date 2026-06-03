@@ -39,7 +39,7 @@ The plan listed self-heal as "preferred." We chose the documented **fallback** (
 
 - **Positive:** a missing-`yjs` boot now fails in < 1 s with `(cd <dir> && bun install)`, never a 10 s timeout + log spelunking. The mandatory visual-sanity gate gets a distinct `server-deps-missing` signal and routes to the right remediation instead of silently degrading.
 - **Additive + low-risk:** the preflight only runs on the `bun` cold-start path (after the server-alive early-exit), so a warm server pays nothing; a correctly-installed repo passes silently. No behavior change for the happy path.
-- **Scope:** dev-server code only (`server-up.sh` + `visual-sanity.sh`) + one `_bootstrap.md` recovery row — landed on a **separate branch** from Group A (DDR-082) per the plan's risk separation.
+- **Scope:** dev-server code only (`server-up.sh` + `visual-sanity.sh`) + one `_bootstrap.md` recovery row. The plan mandated a separate branch from Group A (DDR-082); per user direction both groups ship on one branch / PR. The two commits stay disjoint (Group A is markdown-only, Group B touches dev-server `.sh` + a single distinct `_bootstrap.md` row), so the risk separation is preserved in history.
 - **Task B2 (Playwright-browser export preflight) was already done in `main`** (`bf84825`): `bin/_pw-launch.mjs` `launchChromium()` maps the missing-Chromium failure to exit `3` + `INSTALL_HINT`, every export shim uses it, `/_api/export` returns **500 + the remediation** (never 200 + empty body), with regression coverage in `test/exporters/pw-launch.test.ts`. The Round-2 plan's "Already done" section pre-dated that fix; B2 is **verify-only**, not re-implemented here.
 
 ## Alternatives considered

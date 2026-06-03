@@ -115,9 +115,9 @@ Group B — dev-server boot/export fail-loud (CODE; coordinate w/ Phase-13.x WIP
 ## Acceptance Criteria
 
 - [x] Group A: 0-byte file, un-bundleable specimen, `*/`-in-comment, bare `React.*`, and a wrong contrast claim each fail reconciliation/lint — **verified** via fixture test (all 4 fire; balanced/named-import/type-scale cases don't false-positive). A2 real-bundle = the dev-server render gate (visual-sanity/hero-preview), transpile-only explicitly forbidden.
-- [ ] Group B: missing-`yjs` boot and missing-Playwright export both **fail loud with a remediation hint** (never a silent degrade / empty body) — **B2 already done in `main` (`bf84825`); B1 on the separate dev-server branch**
-- [x] Group A landed independently of Group B (different risk, different branch `feat/setup-ds-round2-scaffold-integrity-gates`)
-- [x] Any decision (e.g. where the contrast computation lives, self-heal vs preflight for yjs) recorded as a DDR — **DDR-082** (Group A, incl. contrast-computation-location decision); **DDR-083** (Group B/B1) on the dev-server branch
+- [x] Group B: missing-`yjs` boot **fails loud with a remediation hint** (exit 3 + `bun install`, never a silent timeout — verified end-to-end); missing-Playwright export already fails loud (`bf84825`, 500 + hint, pw-launch test 5/5) — **B2 verify-only, B1 implemented**
+- [x] Group A + Group B are logically independent (different risk) — plan mandated different branches, but per user direction both ship on **one branch** `feat/setup-ds-round2-scaffold-integrity-gates` / one PR; commits `b265ddd` (A) + `ae41423` (B) stay disjoint
+- [x] Any decision (e.g. where the contrast computation lives, self-heal vs preflight for yjs) recorded as a DDR — **DDR-082** (Group A, incl. contrast-computation-location decision); **DDR-083** (Group B/B1, preflight-over-self-heal decision)
 
 ## Out of scope / notes
 
