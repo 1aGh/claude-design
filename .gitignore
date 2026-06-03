@@ -13,6 +13,7 @@ dev-server/.cache/
 .design/_sync.json
 .design/_locator.json
 .design/_history/
+.design/_trash/
 .design/_comments/
 .design/_canvas-state/
 .design/_export-history.json
