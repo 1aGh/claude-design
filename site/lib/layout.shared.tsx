@@ -20,6 +20,7 @@ export function baseOptions(): BaseLayoutProps {
       { text: 'Docs', url: '/docs' },
       { text: 'Plugins', url: '/#plugins' },
       { text: 'Roadmap', url: '/roadmap' },
+      { text: "What's new", url: '/whats-new' },
       { text: 'Source', url: githubUrl, external: true },
       {
         text: 'Buy me a coffee',
