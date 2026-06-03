@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-03T11:29:23.530Z",
+  "generated": "2026-06-03T16:02:17.087Z",
   "currentPhase": null,
   "phases": [
     {
@@ -725,6 +725,17 @@
       "date": null,
       "summary": "Build a native desktop application layer over the whole of Maude so non-technical collaborators can run, connect, and co-edit design projects without ever touching a terminal or typing into Claude...",
       "planPath": ".ai/plans/epic-native-collab-app.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "epic-native-collab-e0-decisions-spike",
+      "title": "Phase E0 — Native-collab epic: decisions + de-risk spike",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Build three throwaway spikes and write the founding DDRs. The spikes answer questions that, if answered wrong after E1 is built, would waste weeks: (A) can a Tauri v2 app spawn the existing compile...",
+      "planPath": ".ai/plans/epic-native-collab-e0-decisions-spike.md",
       "archived": false,
       "phaseKey": null
     },
