@@ -83,6 +83,9 @@ node -e "
   }
 "
 
+# Stamp any pending What's New entries (version:null) with the new version + date.
+node "$ROOT/scripts/stamp-whats-new.mjs" "$NEW"
+
 "$ROOT/scripts/check-version-parity.sh"
 echo ""
 echo "Review the diff, then:"

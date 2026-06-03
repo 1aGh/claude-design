@@ -1,0 +1,63 @@
+{
+  "$schema": "./whats-new.schema.json",
+  "entries": [
+    {
+      "id": "in-app-whats-new-tour",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "What's New, right in the canvas browser",
+      "summary": "The Maude UI now tells you what shipped — a dismissible notice plus a panel you can reopen from the menubar. Each closed-out feature adds an entry automatically.",
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": "[data-tour='whatsnew']",
+          "title": "Your What's New badge",
+          "body": "This ✦ badge lights up when a new maude version ships features. Click it any time to reopen this panel."
+        },
+        {
+          "target": "[data-tour='help']",
+          "title": "Tours live in Help too",
+          "body": "Open Help to replay the full \"how Maude works\" walkthrough whenever you want."
+        }
+      ]
+    },
+    {
+      "id": "canvas-create-delete-from-browser",
+      "version": "0.28.1",
+      "date": "2026-06-03",
+      "kind": "feature",
+      "title": "Create & delete canvases from the browser",
+      "summary": "Spin up a blank brief-board straight from the file tree (+ board) and remove canvases without leaving the UI — no /design:new round-trip needed.",
+      "learnMore": "https://github.com/1aGh/maude#readme",
+      "surface": "design-ui"
+    },
+    {
+      "id": "canvas-activity-overlay",
+      "version": "0.28.0",
+      "date": "2026-06-02",
+      "kind": "feature",
+      "title": "Live canvas activity overlay",
+      "summary": "See at a glance which artboard Claude (or a teammate) is editing — a soft rim + badge highlights the active canvas and fades when work settles.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "draw-as-code-svg-agent",
+      "version": "0.28.0",
+      "date": "2026-05-30",
+      "kind": "feature",
+      "title": "Draw production SVGs as code",
+      "summary": "/design:draw generates logos, icons, and diagrams through a deterministic geometry engine — no hand-guessed path data — and proofs them across the 16/24/48/256 verify ladder.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "self-hostable-hub-sync",
+      "version": "0.27.0",
+      "date": "2026-05-28",
+      "kind": "feature",
+      "title": "Self-hostable hub + live file sync",
+      "summary": "Run your own Maude hub and co-edit canvases with bidirectional file sync, offline-aware status, and conflict handling.",
+      "surface": "design-ui"
+    }
+  ]
+}

@@ -113,6 +113,22 @@ Before committing, surface any canvas the user marked **`ready-for-handoff`** so
 
 > The meta status flip (`status → handed-off`, `handoffCommit → <sha>`) happens **after** the feature commit exists — see step 5b. Doing it here would have no SHA to record yet.
 
+### 4d. Surface the shipped feature (What's New — soft, config-gated)
+
+> Reads `integrations.whatsNew` from `.ai/workflows.config.json`. Skip silently when absent or `enabled:false`. Project-agnostic + opt-in — the flow plugin never hardcodes a feed path.
+
+The docs-site bump isn't the only user-facing surface — when a project drives an in-product "What's New" feed, the UI should announce the feature too. When `integrations.whatsNew.enabled` is true, offer (for a **user-visible** change only — same judgment as 4b):
+
+```
+PROMPT: "Add a What's New entry for <feature> to <integrations.whatsNew.feed>? [Y/n]"
+```
+
+- **If `integrations.whatsNew.skill` is set** → invoke that project skill; it owns the entry shape, append, and any site-feed regen. (Maude delegates to the `whats-new-entry` skill.)
+- **Else** → append a minimal entry to the configured `feed` JSON yourself: `{ id: <plan-slug>, version: null, date: null, kind: "feature", title, summary }`. `version` stays **null/pending** — the project's release flow stamps it.
+- **If the user declines** → skip. Not every feature is user-visible.
+
+Stage the feed change so it rides in the feature commit (step 5).
+
 ### 5. Commit
 
 Conventional commit. Format:

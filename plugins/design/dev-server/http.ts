@@ -20,6 +20,7 @@ import type { Inspect } from './inspect.ts';
 import { canvasSlug, writeLocator } from './locator.ts';
 import { DEV_SERVER_ROOT } from './paths.ts';
 import { getRuntimeBundle, packageForSlug, RUNTIME_PACKAGES, slugFor } from './runtime-bundle.ts';
+import { loadWhatsNew } from './whats-new.ts';
 
 // Real disk install root — never the virtual `/$bunfs/root` of compiled bins.
 // See paths.ts for the resolution logic + Phase 19.1 / v0.18.1 rationale.
@@ -423,6 +424,12 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
     },
 
     '/_config': () => Response.json({ ...ctx.cfg, canvasOrigin: ctx.canvasOrigin }),
+
+    // What's New feed (DDR-A) — read-only product-update list surfaced in the
+    // Maude UI chrome. Main-origin only by omission from the canvas-origin
+    // allowlist below (the untrusted canvas iframe never needs it).
+    '/_api/whats-new': () =>
+      Response.json(loadWhatsNew(), { headers: { 'Cache-Control': 'no-store' } }),
 
     '/_index-data': async () =>
       Response.json(await api.buildIndexData(), { headers: { 'Cache-Control': 'no-store' } }),

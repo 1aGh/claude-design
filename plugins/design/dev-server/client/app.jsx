@@ -11,6 +11,11 @@ import { createRoot } from 'react-dom/client';
 // import that Bun erases), so this pulls only string constants into the client
 // bundle — no React, no input-router. See the tool-cursor handler below.
 import { resolveToolCursor } from '../canvas-cursors.ts';
+import { TourOverlay } from './tour/overlay.jsx';
+import { USAGE_TOUR } from './tour/usage-tour.js';
+import { useWhatsNew, WhatsNewBadge, WhatsNewPanel, WhatsNewToast } from './whats-new.jsx';
+
+const USAGE_TOUR_STORE = 'mdcc-usage-tour-seen';
 
 const SYSTEM_TAB = '__system__';
 const THEME_STORE = 'mdcc-theme';
@@ -868,7 +873,7 @@ function Sidebar({
 
 // Help modal — hosts the cheatsheet that used to live in the left sidebar.
 // Triggered from the menubar's Help item. Esc + backdrop click close it.
-function HelpModal({ open, onClose }) {
+function HelpModal({ open, onClose, onStartTour }) {
   useEffect(() => {
     if (!open) return;
     function onKey(e) {
@@ -897,6 +902,16 @@ function HelpModal({ open, onClose }) {
             Help · shortcuts &amp; commands
           </span>
           <span className="sku">MDCC-DEV-SRV / v{MDCC_VERSION}</span>
+          {onStartTour && (
+            <button
+              type="button"
+              className="mdcc-tour__back"
+              style={{ marginLeft: 'auto' }}
+              onClick={onStartTour}
+            >
+              ▶ Take the tour
+            </button>
+          )}
           <button
             type="button"
             className="help-modal-close"
@@ -1367,6 +1382,8 @@ function Menubar({
   annotationsVisible,
   onToggleAnnotations,
   postToActiveCanvas,
+  onOpenWhatsNew,
+  whatsNewCount,
 }) {
   const isSystem = activePath === SYSTEM_TAB;
   const stamp = isSystem ? 'SYSTEM' : activePath ? 'CANVAS' : 'IDLE';
@@ -1435,6 +1452,7 @@ function Menubar({
               type="button"
               className="mb-menu"
               role="menuitem"
+              data-tour={key === 'help' ? 'help' : undefined}
               aria-haspopup={hasDropdown ? 'menu' : undefined}
               aria-expanded={hasDropdown ? open : undefined}
               aria-disabled={interactive ? undefined : 'true'}
@@ -1476,6 +1494,7 @@ function Menubar({
       )}
       <div className="mb-spacer" />
       <div className="mb-status">
+        <WhatsNewBadge count={whatsNewCount} onOpen={onOpenWhatsNew} />
         <span className="cv-stamp">{stamp}</span>
         <span className="file" title={activePath || ''}>
           {fileLabel}
@@ -2267,6 +2286,18 @@ function App() {
   const [showHidden, setShowHidden] = useState(() => readBoolStore(SHOW_HIDDEN_STORE, false));
   const [sectionsExpanded, setSectionsExpanded] = useState(() => readJsonStore(SECTIONS_STORE, {}));
   const [helpOpen, setHelpOpen] = useState(false);
+  const whatsNew = useWhatsNew(MDCC_VERSION);
+  const [tourSteps, setTourSteps] = useState(null);
+  const [usageNudge, setUsageNudge] = useState(() => !readBoolStore(USAGE_TOUR_STORE, false));
+  const startTour = useCallback((steps) => {
+    setTourSteps(Array.isArray(steps) && steps.length ? steps : null);
+  }, []);
+  const markUsageSeen = useCallback(() => {
+    setUsageNudge(false);
+    try {
+      localStorage.setItem(USAGE_TOUR_STORE, '1');
+    } catch {}
+  }, []);
   const [annotationsVisible, setAnnotationsVisible] = useState(true);
   const wsRef = useRef(null);
   const iframesRef = useRef(new Map());
@@ -3018,6 +3049,7 @@ function App() {
       onContextMenu={onShellContextMenu}
     >
       <SyncBanner status={syncStatus} />
+      {!usageNudge && !tourSteps && <WhatsNewToast wn={whatsNew} />}
       {gitLifecycle && (
         <div
           role="status"
@@ -3111,6 +3143,8 @@ function App() {
           annotationsVisible={annotationsVisible}
           onToggleAnnotations={toggleAnnotations}
           postToActiveCanvas={postToActiveCanvas}
+          onOpenWhatsNew={whatsNew.openPanel}
+          whatsNewCount={whatsNew.unseen.length}
         />
         <Viewport
           tabs={tabs}
@@ -3149,7 +3183,46 @@ function App() {
           onDelete={deleteComment}
         />
       )}
-      <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <HelpModal
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        onStartTour={() => {
+          setHelpOpen(false);
+          startTour(USAGE_TOUR);
+        }}
+      />
+      <WhatsNewPanel wn={whatsNew} onStartTour={startTour} />
+      {usageNudge && !tourSteps && (
+        <div className="mdcc-tour-nudge" role="status" aria-live="polite">
+          <div className="mdcc-tour-nudge__body">
+            New here? Take a 60-second tour of the canvas browser.
+          </div>
+          <button
+            type="button"
+            className="mdcc-tour-nudge__cta"
+            onClick={() => {
+              markUsageSeen();
+              startTour(USAGE_TOUR);
+            }}
+          >
+            Start
+          </button>
+          <button
+            type="button"
+            className="mdcc-tour-nudge__skip"
+            aria-label="Dismiss"
+            onClick={markUsageSeen}
+          >
+            ×
+          </button>
+        </div>
+      )}
+      <TourOverlay
+        steps={tourSteps ?? []}
+        open={!!tourSteps}
+        onClose={() => setTourSteps(null)}
+        onComplete={markUsageSeen}
+      />
     </div>
   );
 }
