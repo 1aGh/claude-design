@@ -15,7 +15,8 @@
 #     no TSX canvas pipeline, no HMR). Sunset in DDR-020 Phase B.
 #
 # Output: prints the port on stdout. Diagnostic lines go to stderr.
-# Exit:   0 = server ready / 1 = start timeout or missing runtime / 2 = bad args.
+# Exit:   0 = server ready / 1 = start timeout or missing runtime / 2 = bad args /
+#         3 = dev-server runtime deps missing (yjs/y-protocols/lib0 — see preflight).
 
 REPO=""
 TIMEOUT=10
@@ -103,6 +104,44 @@ if [ -f "$STATE" ]; then
   else
     echo "→ stale _server.json — clearing and respawning" >&2
     rm -f "$STATE"
+  fi
+fi
+
+# Step 1.5 — dependency preflight (bun + server.ts path only; runs on cold start).
+# The dev-server's runtime deps live in a NESTED package.json
+# (plugins/design/dev-server/) that a global `@1agh/maude` npm install or a fresh
+# `git worktree` does NOT populate. A missing `yjs` (imported at boot by
+# sync/index.ts) crashes `bun server.ts` AFTER spawn → without this guard we poll
+# the full ${TIMEOUT}s and report a generic "start timeout", burying the cause in
+# _server.log and silently degrading the mandatory visual-sanity gate to a manual
+# workaround. Fail loud NOW with an actionable hint instead. We deliberately do
+# NOT auto-`bun install`: boot-self-heal.ts (DDR-044) dropped that for concrete
+# reasons, and the durable fix is the bun --compile packaging migration (DDR-009),
+# not a boot-time install. setup-ds Round-2 / DDR-083.
+if [ "$RUNTIME" = "bun" ]; then
+  DEV_SERVER_DIR="$(cd "$(dirname "$SERVER_TS")" && pwd)"
+  _resolve_dep() {
+    # Mirror node/bun bare-specifier resolution: walk node_modules up to /.
+    # Handles both the dev-server-local install and a workspace-hoisted one.
+    local dep="$1" d="$DEV_SERVER_DIR"
+    while [ -n "$d" ] && [ "$d" != "/" ]; do
+      [ -e "$d/node_modules/$dep/package.json" ] && return 0
+      d="$(dirname "$d")"
+    done
+    return 1
+  }
+  MISSING_DEPS=""
+  for dep in yjs y-protocols lib0; do
+    _resolve_dep "$dep" || MISSING_DEPS="$MISSING_DEPS $dep"
+  done
+  if [ -n "$MISSING_DEPS" ]; then
+    {
+      echo "✗ dev-server runtime deps not installed:$MISSING_DEPS"
+      echo "  (a global '@1agh/maude' install or a fresh git worktree does not populate"
+      echo "   the dev-server's nested node_modules — 'bun server.ts' would crash on the yjs import)"
+      echo "  → run: (cd \"$DEV_SERVER_DIR\" && bun install)"
+    } >&2
+    exit 3
   fi
 fi
 
