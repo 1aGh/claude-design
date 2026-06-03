@@ -1,5 +1,5 @@
 import { execSync, spawn, spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { chmodSync, existsSync, readFileSync } from 'node:fs';
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -41,6 +41,11 @@ const BIN_VERBS = new Set([
   'draw-proof',
   'svg-optimize',
 ]);
+
+// Bin verbs that boot the dev-server (directly, or by shelling into server-up.sh).
+// For these we resolve the compiled platform binary and hand its path to the
+// helper via MAUDE_DEV_SERVER_BIN — see runBinDispatch + DDR-084.
+const BOOT_VERBS = new Set(['server-up', 'visual-sanity', 'smoke']);
 
 export async function run({ args, pkgRoot }) {
   const { positional } = parseArgs(args);
@@ -90,9 +95,21 @@ function runBinDispatch(verb, { args, pkgRoot }) {
     process.exit(1);
   }
   const rest = args.slice(args.indexOf(verb) + 1); // everything after the verb token
+  const childEnv = { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot };
+  // For verbs that boot the dev-server, resolve the compiled platform binary the
+  // SAME way `maude design serve` does and hand the path down. The binary embeds
+  // yjs + every runtime dep; `bun server.ts` from source does NOT (the deps live
+  // in a nested package.json the npm tarball excludes), so on a production install
+  // server.ts crashes at boot on `yjs`. server-up.sh prefers MAUDE_DEV_SERVER_BIN
+  // when set; absent ⇒ dev tree ⇒ it falls back to `bun server.ts`. Helpers that
+  // shell into server-up.sh (visual-sanity, smoke) inherit it. DDR-084.
+  if (BOOT_VERBS.has(verb) && !process.env.MAUDE_DEV_SERVER_BIN) {
+    const bin = resolveServerBinary({ pkgRoot });
+    if (bin) childEnv.MAUDE_DEV_SERVER_BIN = bin;
+  }
   const child = spawnSync('bash', [script, ...rest], {
     stdio: 'inherit',
-    env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot },
+    env: childEnv,
   });
   if (child.error) {
     process.stderr.write(`maude design ${verb}: ${child.error.message}\n`);
@@ -293,6 +310,36 @@ function detectPlatformSlug() {
   }
   if (p === 'win32') return 'win32-x64';
   return null;
+}
+
+// Read-only resolution of the compiled platform binary the dev-server should
+// boot as in a production install (it embeds yjs + every runtime dep). Mirrors
+// runServe's order — side-channel cache (postinstall) → lazy resolve of the
+// @1agh/maude-<slug> sibling/nested package — but performs NO caching and NEVER
+// hard-fails: returns the path, or null when none is found. A null result means
+// "fall back to `bun server.ts` from source" (correct in the local dev tree).
+// Honors MAUDE_FORCE_SOURCE=1 so maintainers hacking on the dev-server source
+// still boot their working copy. Used by runBinDispatch to hand the path to
+// server-up.sh; runServe keeps its own inline copy (it also caches + hard-fails).
+export function resolveServerBinary({ pkgRoot }) {
+  if (process.env.MAUDE_FORCE_SOURCE === '1') return null;
+  // In the local source checkout, return null so server-up.sh boots
+  // `bun server.ts` from source — the maintainer is editing the dev-server and
+  // needs their working copy live, not a stale compiled binary that happens to
+  // be installed via pnpm. A production install has no `packages/` dir, so this
+  // never short-circuits there. (Preserves server-up's historic dev-tree
+  // behavior — it always ran source before DDR-084.)
+  if (isLocalDevTree(pkgRoot, { existsSync })) return null;
+  const sideChannel = resolve(pkgRoot, 'cli', '.platform-binary-path');
+  try {
+    if (existsSync(sideChannel)) {
+      const candidate = readFileSync(sideChannel, 'utf8').trim();
+      if (candidate && existsSync(candidate)) return candidate;
+    }
+  } catch {
+    /* fall through to lazy resolve */
+  }
+  return lazyResolveBinary({ pkgRoot, fs: { existsSync, chmodSync } }).binPath;
 }
 
 function lazyResolveBinary({ pkgRoot, fs }) {
