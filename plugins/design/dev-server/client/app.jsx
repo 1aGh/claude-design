@@ -371,7 +371,7 @@ function DsFolderRow({ name, dsName, depth, defaultOpen, active, onOpenSystem, c
   );
 }
 
-function FileRow({ file, activePath, onOpen, openCount: oc, depth, kind, sidecar }) {
+function FileRow({ file, activePath, onOpen, onDelete, openCount: oc, depth, kind, sidecar }) {
   const isSel = file.path === activePath;
   const isCanvas = CANVAS_EXT_RE.test(file.name);
   // Non-canvas rows (PROJECT *.md, RUNTIME _active.json, ...) are display-only —
@@ -379,7 +379,10 @@ function FileRow({ file, activePath, onOpen, openCount: oc, depth, kind, sidecar
   // hint via `aria-disabled`.
   const inert = !isCanvas;
   const label = isCanvas ? displayName(file.name) : file.name;
-  return (
+  // Delete only real canvases in a deletable group (onDelete is undefined for the
+  // DS group + runtime files); the server enforces the rest.
+  const canDelete = isCanvas && typeof onDelete === 'function' && kind !== 'runtime';
+  const row = (
     <button
       type="button"
       role="treeitem"
@@ -405,6 +408,26 @@ function FileRow({ file, activePath, onOpen, openCount: oc, depth, kind, sidecar
       {oc > 0 && <span className="badge">{oc}</span>}
     </button>
   );
+  if (!canDelete) return row;
+  // A sibling delete button (can't nest a button in the row button). The wrapper
+  // is presentational so the treeitem stays the tree's child for a11y.
+  return (
+    <div className="tp-row-wrap" role="none">
+      {row}
+      <button
+        type="button"
+        className="tp-del"
+        title={`Delete ${label}`}
+        aria-label={`Delete canvas ${label}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete(file.path, label);
+        }}
+      >
+        <Icon d="M3 6h18 M8 6V4h8v2 M6 6l1 14h10l1-14 M10 11v6 M14 11v6" size={12} />
+      </button>
+    </div>
+  );
 }
 
 function CanvasRow({
@@ -414,6 +437,7 @@ function CanvasRow({
   kind,
   activePath,
   onOpen,
+  onDelete,
   openCount: oc,
   showHidden,
   forceOpen,
@@ -432,6 +456,7 @@ function CanvasRow({
         file={primary}
         activePath={activePath}
         onOpen={onOpen}
+        onDelete={onDelete}
         openCount={oc}
         depth={depth}
         kind={kind}
@@ -500,6 +525,7 @@ function Tree({
   dsFolders,
   activeDsName,
   onOpenSystem,
+  onDelete,
 }) {
   const dirs = Object.keys(node)
     .filter((k) => k !== '_files')
@@ -535,6 +561,7 @@ function Tree({
             sidecars={entry.sidecars}
             activePath={activePath}
             onOpen={onOpen}
+            onDelete={onDelete}
             openCount={openCount(commentsByFile[entry.primary.path])}
             depth={depth}
             kind={kind}
@@ -555,6 +582,7 @@ function Tree({
             kind={kind}
           />
         ))}
+      {/* orphans are sidecars/loose files — no canvas to delete, so no onDelete */}
       {dirs.map((d) => {
         const dsMatch = dsFolderByName?.get(d);
         const childTree = (
@@ -569,6 +597,7 @@ function Tree({
             search={search}
             activeDsName={activeDsName}
             onOpenSystem={onOpenSystem}
+            onDelete={onDelete}
           />
         );
         if (dsMatch && onOpenSystem) {
@@ -631,6 +660,7 @@ function Sidebar({
   sectionsExpanded,
   onToggleSection,
   onNewBoard,
+  onDeleteBoard,
 }) {
   const filteredGroups = useMemo(() => {
     if (!search) return groups;
@@ -823,6 +853,7 @@ function Sidebar({
                     dsFolders={g.dsFolders}
                     activeDsName={activeDsName}
                     onOpenSystem={isDs ? onOpenSystem : undefined}
+                    onDelete={isDs ? undefined : onDeleteBoard}
                   />
                 ) : (
                   <div className="tp-empty">{search ? 'No matches.' : 'Empty.'}</div>
@@ -2537,6 +2568,38 @@ function App() {
     [loadTree, openTab]
   );
 
+  // Phase 22 — soft-delete a canvas from the file tree. Confirms (destructive),
+  // DELETEs to the main-origin-only endpoint, refreshes the tree, and resets the
+  // active tab if the deleted canvas was open. The server moves the whole sidecar
+  // set to .design/_trash/ — recoverable locally.
+  const deleteBoard = useCallback(
+    async (filePath, label) => {
+      const ok = window.confirm(
+        `Move “${label}” to trash?\n\nIts annotations, history and comments move with it. ` +
+          `You can restore it from .design/_trash/.`
+      );
+      if (!ok) return;
+      try {
+        const r = await fetch(`/_api/canvas?file=${encodeURIComponent(filePath)}`, {
+          method: 'DELETE',
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.ok) {
+          window.alert(`Could not delete: ${j.error || `error ${r.status}`}`);
+          return;
+        }
+        await loadTree();
+        if (activePath === filePath) {
+          setTabs([]);
+          setActivePath(null);
+        }
+      } catch (e) {
+        window.alert(`Delete failed: ${e instanceof Error ? e.message : 'network error'}`);
+      }
+    },
+    [loadTree, activePath]
+  );
+
   const clearSelected = useCallback(() => {
     wsSend({ type: 'clear-select' });
     setSelected(null);
@@ -3028,6 +3091,7 @@ function App() {
         sectionsExpanded={sectionsExpanded}
         onToggleSection={toggleSection}
         onNewBoard={createBoard}
+        onDeleteBoard={deleteBoard}
       />
       <div className="main">
         <Menubar

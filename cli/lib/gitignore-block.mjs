@@ -31,6 +31,7 @@ export function buildBlock(designRel = '.design') {
     `${root}/_active.json`,
     `${root}/_sync.json`, // linked-mode offline/sync status (Task 8)
     `${root}/_history/`,
+    `${root}/_trash/`, // soft-deleted canvases (recoverable locally — Phase 22 delete)
     `${root}/_draw/`, // draw-agent proof canvases (regenerable — Phase 25)
     `${root}/_canvas-state/`, // per-machine canvas undo/redo + scratch state
     `${root}/_chat/`, // ACP transcripts (per-machine)

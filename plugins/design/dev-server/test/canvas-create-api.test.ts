@@ -7,7 +7,7 @@
 //       covering happy path, the rejection matrix, group allowlist, duplicate.
 
 import { describe, expect, test } from 'bun:test';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { componentNameFrom, renderBriefBoard, validateCanvasName } from '../canvas-create.ts';
@@ -253,6 +253,107 @@ describe('/_api/canvas — POST round-trip', () => {
     try {
       const r = await fetch(`http://localhost:${port}/_api/canvas`, { method: 'GET' });
       expect(r.status).toBe(405);
+    } finally {
+      await killProc(proc);
+    }
+  });
+});
+
+describe('/_api/canvas — DELETE (soft-delete)', () => {
+  async function createBoard(port: number, name: string) {
+    const r = await fetch(`http://localhost:${port}/_api/canvas`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    return (await r.json()) as { file: string; slug: string };
+  }
+  const del = (port: number, file: string) =>
+    fetch(`http://localhost:${port}/_api/canvas?file=${encodeURIComponent(file)}`, {
+      method: 'DELETE',
+    });
+
+  test('soft-deletes a canvas: moves .tsx + sidecars to _trash, gone from ui/', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      const created = await createBoard(port, 'Trash Me');
+      // Seed an annotation sidecar to prove the whole set travels.
+      writeFileSync(
+        join(designRoot, `${created.slug}.annotations.svg`),
+        '<svg xmlns="http://www.w3.org/2000/svg" data-mdcc-annotations="1"></svg>'
+      );
+      const tsx = join(designRoot, 'ui', 'Trash Me.tsx');
+      expect(existsSync(tsx)).toBe(true);
+
+      const r = await del(port, created.file);
+      expect(r.status).toBe(200);
+      const j = (await r.json()) as { ok: boolean; trashed: string[] };
+      expect(j.ok).toBe(true);
+      expect(j.trashed.some((t) => t.endsWith('Trash Me.tsx'))).toBe(true);
+      expect(j.trashed.some((t) => t.endsWith('.annotations.svg'))).toBe(true);
+
+      // Gone from the group; present (recoverable) under _trash/ with a manifest.
+      expect(existsSync(tsx)).toBe(false);
+      expect(existsSync(join(designRoot, `${created.slug}.annotations.svg`))).toBe(false);
+      const trashDirs = readdirSync(join(designRoot, '_trash'));
+      expect(trashDirs.length).toBe(1);
+      const td = join(designRoot, '_trash', trashDirs[0] as string);
+      expect(existsSync(join(td, 'Trash Me.tsx'))).toBe(true);
+      expect(existsSync(join(td, '_trash-manifest.json'))).toBe(true);
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  test('refuses to delete a design-system file (400, untouched)', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      mkdirSync(join(designRoot, 'system', 'project'), { recursive: true });
+      const dsFile = join(designRoot, 'system', 'project', 'Spec.tsx');
+      writeFileSync(dsFile, 'export default function S(){return null}');
+      const r = await del(port, '.design/system/project/Spec.tsx');
+      expect(r.status).toBe(400);
+      expect(existsSync(dsFile)).toBe(true);
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  test('refuses a non-.tsx root file like config.json (400)', async () => {
+    const { root } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      const r = await del(port, '.design/config.json');
+      expect(r.status).toBe(400);
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  test('a missing canvas returns 404', async () => {
+    const { root } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      const r = await del(port, 'ui/Nope.tsx');
+      expect(r.status).toBe(404);
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  test('a traversal file is rejected (400)', async () => {
+    const { root } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      const r = await del(port, 'ui/../../escape.tsx');
+      expect(r.status).toBe(400);
     } finally {
       await killProc(proc);
     }

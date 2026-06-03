@@ -583,12 +583,33 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
     },
 
     '/_api/canvas': async (req: Request) => {
-      // Phase 22 — create a blank brief board from the browser file tree.
-      // POST body { name, kind?: "brief-board", group? } → 201 { file, rel, slug }.
+      // Phase 22 — create + soft-delete a canvas from the browser file tree.
+      // POST   body { name, kind?: "brief-board", group? } → 201 { file, rel, slug }
+      // DELETE ?file=<rel>                                 → 200 { rel, slug, trashed[] }
       // MAIN ORIGIN ONLY: this route is intentionally absent from
       // startCanvasServer's allowlist (DDR-054) — the untrusted canvas iframe
-      // origin must never reach a file-write endpoint. Validation lives in
-      // api.createCanvas (strict name allowlist + group allowlist + containment).
+      // origin must never reach a file-write/-delete endpoint. Validation lives in
+      // api.createCanvas / api.deleteCanvas (containment + group allowlist).
+      if (req.method === 'DELETE') {
+        const file = new URL(req.url).searchParams.get('file');
+        const result = await api.deleteCanvas({ file });
+        if (!result.ok) {
+          return Response.json(
+            { ok: false, error: result.error },
+            { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+          );
+        }
+        return Response.json(
+          {
+            ok: true,
+            rel: result.rel,
+            slug: result.slug,
+            trashed: result.trashed,
+            trashDir: result.trashDir,
+          },
+          { status: 200, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       const body = await readJson<{ name?: unknown; kind?: unknown; group?: unknown }>(
         req,

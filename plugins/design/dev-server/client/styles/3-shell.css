@@ -247,6 +247,45 @@
   z-index: 1;
   position: relative;
 }
+
+/* Phase 22 — per-row delete affordance. The wrapper is relative so the trash
+   button sits at the row's right edge; it reveals on hover / focus-within and
+   never shifts the row's layout (the row reserves right padding for it). */
+.tp-row-wrap { position: relative; }
+.tp-row-wrap > .tp-row { padding-right: 26px; }
+.tp-del {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--u-fg-3);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--dur-flip) var(--ease-out),
+    color var(--dur-flip) var(--ease-out),
+    background var(--dur-flip) var(--ease-out);
+}
+.tp-row-wrap:hover .tp-del,
+.tp-del:focus-visible { opacity: 1; }
+.tp-del:hover { color: var(--u-status-error, #e5484d); background: var(--u-bg-3); }
+.tp-del:focus-visible {
+  opacity: 1;
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tp-del { transition: none; }
+}
 .tp-row .glyph {
   width: 12px;
   display: inline-block;

@@ -3,7 +3,7 @@
 
 import crypto from 'node:crypto';
 import type { Dirent } from 'node:fs';
-import { readdir, readFile, stat as statp } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, stat as statp } from 'node:fs/promises';
 import path from 'node:path';
 
 import { renderBriefBoard, validateCanvasName } from './canvas-create.ts';
@@ -134,6 +134,10 @@ export type CreateCanvasResult =
   | { ok: true; file: string; rel: string; slug: string }
   | { ok: false; status: number; error: string };
 
+export type DeleteCanvasResult =
+  | { ok: true; rel: string; slug: string; trashed: string[]; trashDir: string }
+  | { ok: false; status: number; error: string };
+
 export interface Api {
   // File tree
   fileSlug(file: string): string;
@@ -179,6 +183,8 @@ export interface Api {
     kind?: unknown;
     group?: unknown;
   }): Promise<CreateCanvasResult>;
+  // Soft-delete a canvas from the browser (Phase 22 — DELETE /_api/canvas)
+  deleteCanvas(input: { file?: unknown }): Promise<DeleteCanvasResult>;
   // Aggregate data
   buildIndexData(): Promise<unknown>;
   buildSystemData(dsName?: string | null): Promise<unknown>;
@@ -820,6 +826,118 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     return { ok: true, file: path.posix.join(paths.designRel, rel), rel, slug };
   }
 
+  // Phase 22 — SOFT-delete a canvas (DELETE /_api/canvas). Same trust boundary as
+  // createCanvas: main-origin-only, never the untrusted canvas iframe origin
+  // (DDR-054). Destructive, so it MOVES the whole sidecar set to
+  // `<designRoot>/_trash/<stamp>__<slug>/` (recoverable locally) instead of a hard
+  // rm — pairs with the existing `_history/` + /design:rollback model. Hub
+  // propagation of the delete is deliberately out of scope (Phase 26 consent).
+  async function deleteCanvas(input: { file?: unknown }): Promise<DeleteCanvasResult> {
+    const raw = input?.file;
+    if (typeof raw !== 'string' || !raw.trim()) {
+      return { ok: false, status: 400, error: 'file is required' };
+    }
+    let rel = raw.trim();
+    try {
+      rel = decodeURIComponent(rel);
+    } catch {
+      /* leave as-is */
+    }
+    rel = rel.replace(/^\/+/, '');
+    const prefix = `${paths.designRel.replace(/^\/+|\/+$/g, '')}/`;
+    if (rel.startsWith(prefix)) rel = rel.slice(prefix.length);
+
+    // Only a real `.tsx` canvas, no traversal.
+    if (rel.includes('..')) return { ok: false, status: 400, error: 'invalid path' };
+    if (!/\.tsx$/i.test(rel)) {
+      return { ok: false, status: 400, error: 'only .tsx canvases can be deleted' };
+    }
+
+    const fileAbs = path.join(paths.designRoot, rel);
+    const resolvedDesignRoot = path.resolve(paths.designRoot);
+    const resolvedFile = path.resolve(fileAbs);
+    if (
+      resolvedFile !== resolvedDesignRoot &&
+      !resolvedFile.startsWith(`${resolvedDesignRoot}${path.sep}`)
+    ) {
+      return { ok: false, status: 400, error: 'path escapes the design root' };
+    }
+
+    // Must live under a NON-DS canvas group — never the design system (`system`),
+    // never a loose root file (config.json, README). Deleting DS sources is not a
+    // canvas operation.
+    const deletable = cfg.canvasGroups.filter(
+      (g) => g.label !== 'Design system' && !/^system(\/|$)/.test(g.path)
+    );
+    const inGroup = deletable.some((g) => {
+      const gAbs = path.resolve(path.join(paths.designRoot, g.path));
+      return resolvedFile.startsWith(`${gAbs}${path.sep}`);
+    });
+    if (!inGroup) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'only canvases under a managed canvas group can be deleted',
+      };
+    }
+
+    if (!(await Bun.file(fileAbs).exists())) {
+      return { ok: false, status: 404, error: 'canvas not found' };
+    }
+
+    const slug = fileSlug(rel);
+    const base = path.basename(rel).replace(/\.tsx$/i, '');
+    const groupDir = path.dirname(fileAbs);
+    // Filesystem-safe wall-clock stamp (no `:`) so repeated deletes of the same
+    // canvas don't collide in _trash.
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const trashDir = path.join(paths.designRoot, '_trash', `${stamp}__${slug}`);
+    await mkdir(trashDir, { recursive: true });
+
+    const trashed: string[] = [];
+    const moveIfExists = async (src: string, destName: string) => {
+      try {
+        await statp(src); // throws if absent (works for files AND dirs)
+      } catch {
+        return;
+      }
+      try {
+        await rename(src, path.join(trashDir, destName));
+        trashed.push(path.relative(paths.designRoot, src));
+      } catch {
+        /* best-effort — a sidecar that can't move shouldn't abort the delete */
+      }
+    };
+
+    // Primary + the full sidecar set (annotations, meta, history, canvas-state,
+    // comments). Flattened names so the trash dir is a self-contained bundle.
+    await moveIfExists(fileAbs, `${base}.tsx`);
+    await moveIfExists(path.join(groupDir, `${base}.meta.json`), `${base}.meta.json`);
+    await moveIfExists(
+      path.join(paths.designRoot, `${slug}.annotations.svg`),
+      `${slug}.annotations.svg`
+    );
+    await moveIfExists(path.join(paths.designRoot, '_history', slug), `_history__${slug}`);
+    await moveIfExists(
+      path.join(paths.canvasStateDir, `${slug}.json`),
+      `_canvas-state__${slug}.json`
+    );
+    await moveIfExists(path.join(paths.commentsDir, `${slug}.json`), `_comments__${slug}.json`);
+
+    await Bun.write(
+      path.join(trashDir, '_trash-manifest.json'),
+      `${JSON.stringify({ canvas: rel, slug, deletedAt: new Date().toISOString(), trashed }, null, 2)}\n`
+    );
+
+    return {
+      ok: true,
+      rel,
+      slug,
+      trashed,
+      trashDir: path.relative(paths.repoRoot, trashDir),
+    };
+  }
+
   async function saveCanvasState(file: string, state: Record<string, unknown>) {
     if (!state || typeof state !== 'object') return;
     const safe: Record<string, unknown> = {};
@@ -1187,6 +1305,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     loadAnnotations,
     saveAnnotations,
     createCanvas,
+    deleteCanvas,
     buildIndexData,
     buildSystemData,
     loadExportHistory,
