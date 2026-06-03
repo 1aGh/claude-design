@@ -1335,3 +1335,161 @@
     animation: none;
   }
 }
+
+/* ───────── Guided tour (overlay) — feature-in-app-whats-new-tour Phase 3 ───────── */
+.mdcc-tour {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+}
+.mdcc-tour__scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+}
+.mdcc-tour__spot {
+  position: fixed;
+  border-radius: 6px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
+  outline: 2px solid var(--u-accent);
+  outline-offset: 0;
+  pointer-events: none;
+  transition: top 0.2s ease, left 0.2s ease, width 0.2s ease, height 0.2s ease;
+}
+.mdcc-tour__card {
+  position: fixed;
+  z-index: 10051;
+  background: var(--u-bg-1);
+  color: var(--u-fg-0);
+  border: 1px solid var(--u-bg-3);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4);
+  padding: 16px;
+  font: 400 13px/1.5 var(--font-sans, system-ui, sans-serif);
+}
+.mdcc-tour__step {
+  font-size: 10px;
+  color: var(--u-fg-3);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.mdcc-tour__title {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+.mdcc-tour__body {
+  color: var(--u-fg-2);
+  margin-bottom: 14px;
+}
+.mdcc-tour__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.mdcc-tour__nav {
+  display: flex;
+  gap: 8px;
+}
+.mdcc-tour__skip {
+  background: transparent;
+  border: none;
+  color: var(--u-fg-3);
+  cursor: pointer;
+  font-size: 12px;
+}
+.mdcc-tour__skip:hover {
+  color: var(--u-fg-1);
+}
+.mdcc-tour__back {
+  background: transparent;
+  border: 1px solid var(--u-bg-3);
+  color: var(--u-fg-1);
+  border-radius: var(--radius-md);
+  padding: 5px 12px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.mdcc-tour__next {
+  background: var(--u-accent);
+  color: var(--u-accent-fg);
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 5px 14px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+/* First-run nudge (offers the usage tour) — reuses toast positioning. */
+.mdcc-tour-nudge {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 9001;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 360px;
+  padding: 12px 14px;
+  background: var(--u-bg-1);
+  color: var(--u-fg-0);
+  border: 1px solid var(--u-bg-3);
+  border-left: 3px solid var(--u-accent);
+  border-radius: var(--radius-md);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  font: 400 12px/1.4 var(--font-sans, system-ui, sans-serif);
+}
+.mdcc-tour-nudge__body {
+  flex: 1;
+  min-width: 0;
+}
+.mdcc-tour-nudge__cta {
+  flex: none;
+  padding: 4px 10px;
+  background: var(--u-accent);
+  color: var(--u-accent-fg);
+  border: none;
+  border-radius: var(--radius-md);
+  font: 600 11px/1 var(--font-sans, system-ui, sans-serif);
+  cursor: pointer;
+}
+.mdcc-tour-nudge__skip {
+  flex: none;
+  background: transparent;
+  border: none;
+  color: var(--u-fg-3);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.mdcc-tour-nudge__skip:hover {
+  color: var(--u-fg-0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mdcc-tour__spot {
+    transition: none;
+  }
+}
+
+/* "Take tour" affordance inside the What's New panel. */
+.mdcc-wn-item__tour {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 1px 8px;
+  background: var(--u-accent-bg);
+  color: var(--u-accent);
+  border: none;
+  border-radius: var(--radius-sm, 2px);
+  font: 600 10px/1.4 var(--font-sans, system-ui, sans-serif);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+}
+.mdcc-wn-item__tour:hover {
+  background: var(--u-accent);
+  color: var(--u-accent-fg);
+}

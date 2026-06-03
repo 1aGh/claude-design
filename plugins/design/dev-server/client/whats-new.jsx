@@ -104,6 +104,7 @@ export function WhatsNewBadge({ count = 0, onOpen }) {
     <button
       type="button"
       className="mdcc-wn-badge"
+      data-tour="whatsnew"
       onClick={onOpen}
       title="What's new"
       aria-label={count > 0 ? `What's new — ${count} new` : "What's new"}
@@ -149,7 +150,7 @@ export function WhatsNewToast({ wn }) {
   );
 }
 
-export function WhatsNewPanel({ wn }) {
+export function WhatsNewPanel({ wn, onStartTour }) {
   const { panelOpen, closePanel } = wn;
   useEffect(() => {
     if (!panelOpen) return;
@@ -214,6 +215,18 @@ export function WhatsNewPanel({ wn }) {
                     >
                       Learn more →
                     </a>
+                  )}
+                  {onStartTour && Array.isArray(e.tour) && e.tour.length > 0 && (
+                    <button
+                      type="button"
+                      className="mdcc-wn-item__tour"
+                      onClick={() => {
+                        closePanel();
+                        onStartTour(e.tour);
+                      }}
+                    >
+                      ▶ Take tour
+                    </button>
                   )}
                 </li>
               ))}

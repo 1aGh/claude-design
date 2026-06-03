@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-03T17:17:54.841Z",
+  "generated": "2026-06-03T17:28:27.685Z",
   "version": "0.28.1",
   "entries": [
     {
@@ -9,7 +9,19 @@
       "kind": "feature",
       "title": "What's New, right in the canvas browser",
       "summary": "The Maude UI now tells you what shipped — a dismissible notice plus a panel you can reopen from the menubar. Each closed-out feature adds an entry automatically.",
-      "surface": "design-ui"
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": "[data-tour='whatsnew']",
+          "title": "Your What's New badge",
+          "body": "This ✦ badge lights up when a new maude version ships features. Click it any time to reopen this panel."
+        },
+        {
+          "target": "[data-tour='help']",
+          "title": "Tours live in Help too",
+          "body": "Open Help to replay the full \"how Maude works\" walkthrough whenever you want."
+        }
+      ]
     },
     {
       "id": "canvas-create-delete-from-browser",
