@@ -11,6 +11,7 @@ import { createRoot } from 'react-dom/client';
 // import that Bun erases), so this pulls only string constants into the client
 // bundle — no React, no input-router. See the tool-cursor handler below.
 import { resolveToolCursor } from '../canvas-cursors.ts';
+import { useWhatsNew, WhatsNewBadge, WhatsNewPanel, WhatsNewToast } from './whats-new.jsx';
 
 const SYSTEM_TAB = '__system__';
 const THEME_STORE = 'mdcc-theme';
@@ -1367,6 +1368,8 @@ function Menubar({
   annotationsVisible,
   onToggleAnnotations,
   postToActiveCanvas,
+  onOpenWhatsNew,
+  whatsNewCount,
 }) {
   const isSystem = activePath === SYSTEM_TAB;
   const stamp = isSystem ? 'SYSTEM' : activePath ? 'CANVAS' : 'IDLE';
@@ -1476,6 +1479,7 @@ function Menubar({
       )}
       <div className="mb-spacer" />
       <div className="mb-status">
+        <WhatsNewBadge count={whatsNewCount} onOpen={onOpenWhatsNew} />
         <span className="cv-stamp">{stamp}</span>
         <span className="file" title={activePath || ''}>
           {fileLabel}
@@ -2267,6 +2271,7 @@ function App() {
   const [showHidden, setShowHidden] = useState(() => readBoolStore(SHOW_HIDDEN_STORE, false));
   const [sectionsExpanded, setSectionsExpanded] = useState(() => readJsonStore(SECTIONS_STORE, {}));
   const [helpOpen, setHelpOpen] = useState(false);
+  const whatsNew = useWhatsNew(MDCC_VERSION);
   const [annotationsVisible, setAnnotationsVisible] = useState(true);
   const wsRef = useRef(null);
   const iframesRef = useRef(new Map());
@@ -3018,6 +3023,7 @@ function App() {
       onContextMenu={onShellContextMenu}
     >
       <SyncBanner status={syncStatus} />
+      <WhatsNewToast wn={whatsNew} />
       {gitLifecycle && (
         <div
           role="status"
@@ -3111,6 +3117,8 @@ function App() {
           annotationsVisible={annotationsVisible}
           onToggleAnnotations={toggleAnnotations}
           postToActiveCanvas={postToActiveCanvas}
+          onOpenWhatsNew={whatsNew.openPanel}
+          whatsNewCount={whatsNew.unseen.length}
         />
         <Viewport
           tabs={tabs}
@@ -3150,6 +3158,7 @@ function App() {
         />
       )}
       <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <WhatsNewPanel wn={whatsNew} />
     </div>
   );
 }

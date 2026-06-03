@@ -162,6 +162,14 @@ pnpm --filter @maude/site gen:roadmap
 
 and include the resulting `site/lib/roadmap.json` diff in the same commit. This is the auto-update mechanism for `/flow:done` and any ad-hoc plan moves, no plugin-command hook needed — the rule lives here so it stays in context.
 
+## In-app What's New feed
+
+`plugins/design/dev-server/whats-new.json` is the **single source of truth** for the "What's New" notices the Maude UI surfaces — the menubar `✦ New` badge, the first-run toast, and the panel (`GET /_api/whats-new`). It ships with the dev-server (already in `package.json` `files`) and describes **Maude's own product** updates, resolved from the maude package root via `paths.ts` (NOT the served project) so every user of the canvas browser sees it. Schema: `plugins/design/dev-server/whats-new.schema.json`; plan + DDRs in `.ai/plans/feature-in-app-whats-new-tour.md`.
+
+**On `/flow:done`** (closing a user-visible feature), append an entry via the repo-internal **`whats-new-entry`** skill (`.claude/skills/whats-new-entry/`), wired through `integrations.whatsNew` in `.ai/workflows.config.json` — the same "rule in an always-loaded file" convention as the roadmap regen above. Entries are written **pending** (`version: null`); `scripts/bump-version.sh` stamps them with the release version + date at release time via `scripts/stamp-whats-new.mjs`. The client decides what's unseen by comparing the installed version against the `mdcc-whatsnew-seen` localStorage marker.
+
+After editing the client surfaces (`client/whats-new*.{jsx,js}`, `client/app.jsx`, `client/styles/4-components.css`), **rebuild the committed bundle release-minified** — `cd plugins/design/dev-server && MAUDE_SKIP_RUNTIME_BUILD=1 bun run build.ts --release` — and commit `dist/client.bundle.js` + `dist/styles.css`. Never boot the source dev-server from this tree without rebuilding `--release` afterward: its first-launch self-heal regenerates **unminified dev** bundles (3.6 MB vs the 250 KB release artifact), and whatever is committed is what ships.
+
 ## Working on plugin internals locally
 
 For testing edits to plugin commands/skills/agents, the README's "Local development" section is the canonical recipe: point the marketplace at the local working tree (`/plugin marketplace add /absolute/path/to/maude`), then `/plugin marketplace update maude` + `/reload-plugins` after each edit. **Test in a scratch project** (`cd /tmp/scratch && claude`) rather than from this repo's directory — otherwise this repo's own `.ai/` workspace tangles with the plugin you're testing.

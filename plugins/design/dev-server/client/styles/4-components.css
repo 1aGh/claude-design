@@ -1140,3 +1140,198 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ───────── What's New (badge · toast · panel) — feature-in-app-whats-new-tour ───────── */
+.mdcc-wn-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  margin-right: 8px;
+  background: transparent;
+  color: var(--u-fg-2);
+  border: 1px solid var(--u-bg-3);
+  border-radius: var(--radius-md);
+  font: 500 11px/1.2 var(--font-sans, system-ui, sans-serif);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+.mdcc-wn-badge:hover {
+  color: var(--u-fg-0);
+  background: var(--u-bg-2);
+}
+.mdcc-wn-badge__label {
+  text-transform: uppercase;
+}
+.mdcc-wn-badge__dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 4px;
+  background: var(--u-accent);
+  color: var(--u-accent-fg);
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.mdcc-wn-toast {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 9000;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 360px;
+  padding: 12px 14px;
+  background: var(--u-bg-1);
+  color: var(--u-fg-0);
+  border: 1px solid var(--u-bg-3);
+  border-left: 3px solid var(--u-accent);
+  border-radius: var(--radius-md);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  font: 400 12px/1.4 var(--font-sans, system-ui, sans-serif);
+  animation: mdcc-wn-rise 0.28s ease both;
+}
+@keyframes mdcc-wn-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.mdcc-wn-toast__mark {
+  color: var(--u-accent);
+  font-size: 14px;
+  line-height: 1.2;
+  flex: none;
+}
+.mdcc-wn-toast__body {
+  min-width: 0;
+  flex: 1;
+}
+.mdcc-wn-toast__title {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.mdcc-wn-toast__summary {
+  color: var(--u-fg-2);
+}
+.mdcc-wn-toast__cta {
+  flex: none;
+  align-self: center;
+  padding: 4px 10px;
+  background: var(--u-accent);
+  color: var(--u-accent-fg);
+  border: none;
+  border-radius: var(--radius-md);
+  font: 600 11px/1 var(--font-sans, system-ui, sans-serif);
+  cursor: pointer;
+}
+.mdcc-wn-toast__close {
+  flex: none;
+  background: transparent;
+  border: none;
+  color: var(--u-fg-3);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.mdcc-wn-toast__close:hover {
+  color: var(--u-fg-0);
+}
+
+.mdcc-wn-panel {
+  width: min(560px, 92vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--u-bg-1);
+  color: var(--u-fg-0);
+  border: 1px solid var(--u-bg-3);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+.mdcc-wn-panel__body {
+  overflow-y: auto;
+  padding: 8px 14px 16px;
+}
+.mdcc-wn-empty {
+  color: var(--u-fg-3);
+  padding: 16px 0;
+}
+.mdcc-wn-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.mdcc-wn-item {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--u-bg-3);
+}
+.mdcc-wn-item:last-child {
+  border-bottom: none;
+}
+.mdcc-wn-item__hd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.mdcc-wn-item__title {
+  font-weight: 600;
+  flex: 1;
+  min-width: 0;
+}
+.mdcc-wn-item__ver {
+  color: var(--u-fg-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.mdcc-wn-item__summary {
+  color: var(--u-fg-2);
+  margin: 0 0 4px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.mdcc-wn-item__more {
+  color: var(--u-accent);
+  font-size: 11px;
+  text-decoration: none;
+}
+.mdcc-wn-item__more:hover {
+  text-decoration: underline;
+}
+.mdcc-wn-item.is-unseen .mdcc-wn-item__title::after {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  background: var(--u-accent);
+  border-radius: 50%;
+  vertical-align: middle;
+}
+.mdcc-wn-kind {
+  text-transform: uppercase;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 5px;
+  border-radius: var(--radius-sm, 2px);
+  background: var(--u-accent-bg);
+  color: var(--u-accent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mdcc-wn-toast {
+    animation: none;
+  }
+}

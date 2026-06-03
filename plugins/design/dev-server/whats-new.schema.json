@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/1aGh/maude/main/plugins/design/dev-server/whats-new.schema.json",
+  "title": "Maude What's New feed",
+  "description": "User-facing product-update entries surfaced in the Maude UI (and mirrored to the docs site). Single source of truth — ships with the dev-server, appended on /flow:done, stamped at release. See .ai/plans/feature-in-app-whats-new-tour.md (DDR-A).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["entries"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "entries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "title", "summary"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable slug (usually the plan slug). Used for de-dup and as the React key.",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "version": {
+          "type": ["string", "null"],
+          "description": "Semver the feature shipped in, or null while pending (stamped at release).",
+          "pattern": "^\\d+\\.\\d+\\.\\d+"
+        },
+        "date": {
+          "type": ["string", "null"],
+          "description": "Release date YYYY-MM-DD, or null while pending."
+        },
+        "kind": { "enum": ["feature", "improvement", "usage", "fix"] },
+        "title": { "type": "string", "minLength": 1 },
+        "summary": { "type": "string", "minLength": 1 },
+        "learnMore": { "type": "string", "description": "Optional URL to docs / release notes." },
+        "surface": {
+          "type": "string",
+          "description": "Which UI surface this targets (e.g. design-ui). Future-proofing."
+        },
+        "tour": {
+          "type": "array",
+          "description": "Optional spotlight steps that highlight the new UI (consumed by the tour engine — Phase 3).",
+          "items": { "$ref": "#/$defs/tourStep" }
+        }
+      }
+    },
+    "tourStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target", "title", "body"],
+      "properties": {
+        "target": {
+          "type": "string",
+          "description": "CSS selector or [data-tour=\"<key>\"] anchor to spotlight."
+        },
+        "title": { "type": "string", "minLength": 1 },
+        "body": { "type": "string", "minLength": 1 },
+        "placement": { "enum": ["top", "bottom", "left", "right", "auto"] }
+      }
+    }
+  }
+}

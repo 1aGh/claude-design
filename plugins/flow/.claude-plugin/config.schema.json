@@ -408,6 +408,22 @@
             "mcp": { "type": "string" },
             "defaults": { "type": "object", "additionalProperties": true }
           }
+        },
+        "whatsNew": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "In-product \"What's New\" feed. When enabled, /flow:done offers to append a user-facing entry for the closed-out feature to `feed`, delegating to the named project skill if set. Generic + opt-in: absent or `enabled:false` → /flow:done skips it silently. Maude wires this to plugins/design/dev-server/whats-new.json, surfaced in the canvas browser.",
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "feed": {
+              "type": "string",
+              "description": "Repo-relative path to the What's New feed JSON the entry is appended to."
+            },
+            "skill": {
+              "type": "string",
+              "description": "Optional name of a project skill (in .claude/skills/) that authors the entry; /flow:done invokes it instead of inlining the append."
+            }
+          }
         }
       }
     }

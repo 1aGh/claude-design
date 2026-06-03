@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-03T16:02:17.087Z",
+  "generated": "2026-06-03T17:14:00.435Z",
   "currentPhase": null,
   "phases": [
     {
@@ -736,6 +736,17 @@
       "date": null,
       "summary": "Build three throwaway spikes and write the founding DDRs. The spikes answer questions that, if answered wrong after E1 is built, would waste weeks: (A) can a Tauri v2 app spawn the existing compile...",
       "planPath": ".ai/plans/epic-native-collab-e0-decisions-spike.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-in-app-whats-new-tour",
+      "title": "Feature: In-app \"What's New\" + guided tour for the Maude UI",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — mirror ai-banner.tsx, build-roadmap.mjs, and the HelpModal in client/app.jsx rather t...",
+      "planPath": ".ai/plans/feature-in-app-whats-new-tour.md",
       "archived": false,
       "phaseKey": null
     },
