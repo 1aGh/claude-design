@@ -321,6 +321,21 @@ function detectPlatformSlug() {
 // Honors MAUDE_FORCE_SOURCE=1 so maintainers hacking on the dev-server source
 // still boot their working copy. Used by runBinDispatch to hand the path to
 // server-up.sh; runServe keeps its own inline copy (it also caches + hard-fails).
+// Structural allowlist for a path we're about to spawn (DDR-084 hardening). The
+// compiled binary is ALWAYS named `maude` / `maude.exe` inside a `maude-<slug>/`
+// dir (the @1agh/maude-<slug> package, or the dev-tree `packages/maude-<slug>/`).
+// The side-channel file's content is the one attacker-influenceable input in a
+// shared-prefix / poisoned-clone layout — a path outside this shape is ignored
+// (caller falls back to source), so the file can only DENY the binary, never
+// redirect the spawn to an arbitrary executable. Paths `lazyResolveBinary`
+// constructs always conform, so this never rejects a legit resolve.
+export function isPlausiblePlatformBinary(p) {
+  if (!p) return false;
+  const b = basename(p);
+  if (b !== 'maude' && b !== 'maude.exe') return false;
+  return /^maude-[a-z0-9-]+$/.test(basename(dirname(p)));
+}
+
 export function resolveServerBinary({ pkgRoot }) {
   if (process.env.MAUDE_FORCE_SOURCE === '1') return null;
   // In the local source checkout, return null so server-up.sh boots
@@ -334,7 +349,11 @@ export function resolveServerBinary({ pkgRoot }) {
   try {
     if (existsSync(sideChannel)) {
       const candidate = readFileSync(sideChannel, 'utf8').trim();
-      if (candidate && existsSync(candidate)) return candidate;
+      // Existence AND the structural allowlist — a poisoned side-channel pointing
+      // at an arbitrary executable is ignored (falls through to lazy resolve).
+      if (candidate && existsSync(candidate) && isPlausiblePlatformBinary(candidate)) {
+        return candidate;
+      }
     }
   } catch {
     /* fall through to lazy resolve */

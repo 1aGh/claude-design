@@ -66,12 +66,30 @@ if [ ! -f "$SERVER_MJS" ]; then SERVER_MJS="$SCRIPT_DIR/../server.mjs"; fi
 # `bash server-up.sh` on a production install). MAUDE_FORCE_SOURCE=1 forces source.
 SERVER_BIN="${MAUDE_DEV_SERVER_BIN:-}"
 if [ -z "$SERVER_BIN" ] && [ "${MAUDE_FORCE_SOURCE:-0}" != "1" ]; then
-  SC="$PLUGIN_ROOT/../cli/.platform-binary-path"   # PLUGIN_ROOT=<pkgRoot>/plugins/design → ../../cli
-  [ -f "$SC" ] || SC="$PLUGIN_ROOT/../../cli/.platform-binary-path"
+  # PLUGIN_ROOT=<pkgRoot>/plugins/design, so the side-channel is ../../cli.
+  # `head -n1` (parity with the Node readers' `.trim()`) tolerates a trailing newline.
+  SC="$PLUGIN_ROOT/../../cli/.platform-binary-path"
   if [ -f "$SC" ]; then
-    CAND="$(cat "$SC" 2>/dev/null)"
+    CAND="$(head -n1 "$SC" 2>/dev/null)"
     [ -n "$CAND" ] && [ -x "$CAND" ] && SERVER_BIN="$CAND"
   fi
+fi
+# Structural allowlist (DDR-084 hardening): only spawn a path that LOOKS like the
+# compiled platform binary — basename `maude`/`maude.exe` inside a `maude-<slug>/`
+# dir. A poisoned side-channel file or an injected MAUDE_DEV_SERVER_BIN pointing
+# elsewhere is ignored (fall back to source), so the env/file can only DENY the
+# binary, never redirect the spawn to an arbitrary executable. Mirrors
+# isPlausiblePlatformBinary() in cli/commands/design.mjs.
+if [ -n "$SERVER_BIN" ]; then
+  _sbase="$(basename "$SERVER_BIN")"
+  _sparent="$(basename "$(dirname "$SERVER_BIN")")"
+  case "$_sbase:$_sparent" in
+    maude:maude-* | maude.exe:maude-*) : ;;
+    *)
+      echo "server-up.sh: ignoring dev-server binary outside the expected maude-<slug>/ layout ($SERVER_BIN) — falling back to source" >&2
+      SERVER_BIN=""
+      ;;
+  esac
 fi
 
 RUNTIME=""

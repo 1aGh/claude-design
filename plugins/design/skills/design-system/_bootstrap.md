@@ -760,12 +760,17 @@ The `ui_kits-*-index.tsx` is always last because it links every peer — written
 DS_PREVIEW="<designRoot>/system/<ds>/preview"
 FAIL=0
 
+# NOTE: every file loop reads `find … -print0` via `read -r -d ''` so a specimen
+# whose NAME contains a newline/space (a prompt-injected sub-agent picks its own
+# output filenames) can't split the stream and slip the real broken file past the
+# gate — fail-open-by-filename is the trap a plain `find | while read` falls into.
+
 # ── A1 — non-empty file gate. The roster's loc: is a CLAIM; verify against disk.
 #         Any written specimen / token / chrome file < 20 B is a regression.
-while IFS= read -r f; do
+while IFS= read -r -d '' f; do
   sz=$(wc -c < "$f" 2>/dev/null || echo 0)
   if [ "$sz" -lt 20 ]; then echo "A1 FAIL: $f is ${sz} B (empty/stub — same severity as a pending row)"; FAIL=1; fi
-done < <(find "$DS_PREVIEW" -type f \( -name '*.tsx' -o -name '*.css' \) 2>/dev/null)
+done < <(find "$DS_PREVIEW" -type f \( -name '*.tsx' -o -name '*.css' \) -print0 2>/dev/null)
 # colors_and_type.css + _layout.css (Batch A roots) get the same floor.
 for f in "<designRoot>/system/<ds>/colors_and_type.css" "$DS_PREVIEW/_layout.css"; do
   [ -f "$f" ] && [ "$(wc -c < "$f")" -lt 20 ] && { echo "A1 FAIL: $f is empty"; FAIL=1; }
@@ -777,20 +782,23 @@ done
 #          one leaves an extra `/*`. Count-balance per file catches both —
 #          robust where a line-local grep is fooled by a line that has one
 #          balanced pair AND a stray close.
-while IFS= read -r f; do
+while IFS= read -r -d '' f; do
   opens=$(grep -oE '/\*' "$f" 2>/dev/null | wc -l | tr -d ' ')
   closes=$(grep -oE '\*/' "$f" 2>/dev/null | wc -l | tr -d ' ')
   if [ "$opens" != "$closes" ]; then
     echo "A3 FAIL: $f unbalanced CSS comments (/*=$opens */=$closes — early-closed or unterminated)"; FAIL=1
   fi
-done < <(find "$DS_PREVIEW" -type f -name '*.css' 2>/dev/null)
-# ── A3b — React-import check: any `React.<x>` usage with no `import React`
-#          transpiles clean but throws ReferenceError at module-eval.
-while IFS= read -r f; do
-  if grep -qE '\bReact\.[A-Za-z]' "$f" && ! grep -qE "import +React|import +\* +as +React|from +['\"]react['\"]" "$f"; then
-    echo "A3 FAIL: $f uses React.* without importing React (runtime ReferenceError)"; FAIL=1
+done < <(find "$DS_PREVIEW" -type f -name '*.css' -print0 2>/dev/null)
+# ── A3b — React-import check: a `React.<x>` usage requires a binding import —
+#          `import React` (default) or `import * as React` (namespace). A NAMED or
+#          type-only `import { x } from 'react'` / `import type … from 'react'` does
+#          NOT bind `React`, so `React.foo` still throws ReferenceError at
+#          module-eval (transpiles clean). Iterate via find -print0 (filename-safe).
+while IFS= read -r -d '' f; do
+  if grep -qE '\bReact\.[A-Za-z]' "$f" && ! grep -qE "import +React[ ,]|import +\* +as +React\b" "$f"; then
+    echo "A3 FAIL: $f uses React.* without a default/namespace React import (runtime ReferenceError)"; FAIL=1
   fi
-done < <(grep -rlE '\bReact\.[A-Za-z]' "$DS_PREVIEW" --include='*.tsx' 2>/dev/null)
+done < <(find "$DS_PREVIEW" -type f -name '*.tsx' -print0 2>/dev/null)
 
 # ── A4 — contrast-claim discipline: a ratio claim (✓ 4.5:1 / AAA / passes AA)
 #          must have been computed, not fabricated. Flag every claim for a

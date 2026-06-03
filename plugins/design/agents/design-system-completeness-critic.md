@@ -77,10 +77,12 @@ esac
 
 ```bash
 # C9 — no empty/stub files. Floor 20 B; covers preview specimens + the Batch-A roots.
+# -print0 / read -d '' so a specimen with a newline/space in its name can't split
+# the stream and slip the real broken file past the gate (fail-open-by-filename).
 EMPTY=0
-while IFS= read -r f; do
+while IFS= read -r -d '' f; do
   [ "$(wc -c < "$f" 2>/dev/null || echo 0)" -lt 20 ] && { echo "C9 fail: $f is empty/stub (< 20 B)"; EMPTY=1; }
-done < <(find "$DS_ROOT/preview" -type f \( -name '*.tsx' -o -name '*.css' \) 2>/dev/null; echo "$TOKENS")
+done < <(find "$DS_ROOT/preview" -type f \( -name '*.tsx' -o -name '*.css' \) -print0 2>/dev/null; printf '%s\0' "$TOKENS")
 [ "$EMPTY" -eq 0 ] || echo "C9 fail: one or more written files are empty (roster loc: claim does not match disk)"
 ```
 
@@ -105,21 +107,24 @@ fi
 ```bash
 PREVIEW="$DS_ROOT/preview"
 
-# V23a — React.* with no React import (blocker — runtime ReferenceError at module-eval)
-while IFS= read -r f; do
-  if grep -qE '\bReact\.[A-Za-z]' "$f" && ! grep -qE "import +React|import +\* +as +React|from +['\"]react['\"]" "$f"; then
-    echo "V23 BLOCKER: $f uses React.* without importing React"
+# V23a — React.* needs a BINDING import: `import React` (default) or `import * as
+#        React` (namespace). A named/type-only `import { x } from 'react'` does NOT
+#        bind React, so `React.foo` still ReferenceErrors at module-eval (blocker).
+#        find -print0 / read -d '' is filename-safe (no fail-open-by-filename).
+while IFS= read -r -d '' f; do
+  if grep -qE '\bReact\.[A-Za-z]' "$f" && ! grep -qE "import +React[ ,]|import +\* +as +React\b" "$f"; then
+    echo "V23 BLOCKER: $f uses React.* without a default/namespace React import"
   fi
-done < <(grep -rlE '\bReact\.[A-Za-z]' "$PREVIEW" --include='*.tsx' 2>/dev/null)
+done < <(find "$PREVIEW" -type f -name '*.tsx' -print0 2>/dev/null)
 
 # V23b — unbalanced CSS comments (early-closed → extra */, unterminated → extra /*). CSS
 #        has no nested comments, so a healthy file has equal /* and */ counts. Count-balance
 #        per file is robust where a line-local grep is fooled by a balanced-pair-plus-stray line.
-while IFS= read -r f; do
+while IFS= read -r -d '' f; do
   opens=$(grep -oE '/\*' "$f" 2>/dev/null | wc -l | tr -d ' ')
   closes=$(grep -oE '\*/' "$f" 2>/dev/null | wc -l | tr -d ' ')
   [ "$opens" != "$closes" ] && echo "V23 warn: $f unbalanced CSS comments (/*=$opens */=$closes — early-closed or unterminated)"
-done < <(find "$PREVIEW" -type f -name '*.css' 2>/dev/null)
+done < <(find "$PREVIEW" -type f -name '*.css' -print0 2>/dev/null)
 
 # V24 — contrast-ratio claims that may be fabricated (warning per match). The
 #       [3-9] numerator floor isolates WCAG contrast ratios (3:1/4.5:1/7:1) from

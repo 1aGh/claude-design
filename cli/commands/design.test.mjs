@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { resolveServerBinary } from './design.mjs';
+import { isPlausiblePlatformBinary, resolveServerBinary } from './design.mjs';
 
 const BIN = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'maude.mjs');
 
@@ -84,12 +84,21 @@ test('resolveServerBinary → null in the local dev tree (packages/ present) —
   }
 });
 
+// Build an executable in a layout the allowlist accepts (`maude-<slug>/maude`)
+// or rejects (anything else), under a throwaway dir.
+function fakeBinary({ conforming = true } = {}) {
+  const home = mkdtempSync(join(tmpdir(), 'maude-bin-'));
+  const dir = join(home, conforming ? 'maude-darwin-arm64' : 'evil');
+  mkdirSync(dir, { recursive: true });
+  const bin = join(dir, 'maude');
+  writeFileSync(bin, '#!/bin/sh\n');
+  chmodSync(bin, 0o755);
+  return { home, bin };
+}
+
 test('resolveServerBinary → null when MAUDE_FORCE_SOURCE=1 (maintainer override)', () => {
-  const fakeBin = mkdtempSync(join(tmpdir(), 'maude-bin-'));
-  const binFile = join(fakeBin, 'maude');
-  writeFileSync(binFile, '#!/bin/sh\n');
-  chmodSync(binFile, 0o755);
-  const root = fakePkgRoot({ sideChannelBin: binFile }); // NOT a dev tree
+  const { home, bin } = fakeBinary();
+  const root = fakePkgRoot({ sideChannelBin: bin }); // NOT a dev tree
   const prev = process.env.MAUDE_FORCE_SOURCE;
   try {
     process.env.MAUDE_FORCE_SOURCE = '1';
@@ -98,23 +107,46 @@ test('resolveServerBinary → null when MAUDE_FORCE_SOURCE=1 (maintainer overrid
     if (prev === undefined) delete process.env.MAUDE_FORCE_SOURCE;
     else process.env.MAUDE_FORCE_SOURCE = prev;
     rmSync(root, { recursive: true, force: true });
-    rmSync(fakeBin, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
   }
 });
 
 test('resolveServerBinary → side-channel path on a production install (no packages/)', () => {
-  const fakeBin = mkdtempSync(join(tmpdir(), 'maude-bin-'));
-  const binFile = join(fakeBin, 'maude');
-  writeFileSync(binFile, '#!/bin/sh\n');
-  chmodSync(binFile, 0o755);
-  const root = fakePkgRoot({ sideChannelBin: binFile }); // production shape
+  const { home, bin } = fakeBinary(); // conforming maude-<slug>/maude layout
+  const root = fakePkgRoot({ sideChannelBin: bin }); // production shape
   const prev = process.env.MAUDE_FORCE_SOURCE;
   try {
     delete process.env.MAUDE_FORCE_SOURCE;
-    assert.equal(resolveServerBinary({ pkgRoot: root }), binFile);
+    assert.equal(resolveServerBinary({ pkgRoot: root }), bin);
   } finally {
     if (prev !== undefined) process.env.MAUDE_FORCE_SOURCE = prev;
     rmSync(root, { recursive: true, force: true });
-    rmSync(fakeBin, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
   }
+});
+
+test('resolveServerBinary → REJECTS a side-channel pointing outside the maude-<slug>/ layout (DDR-084 allowlist)', () => {
+  const { home, bin } = fakeBinary({ conforming: false }); // <tmp>/evil/maude
+  const root = fakePkgRoot({ sideChannelBin: bin }); // production shape, no real platform pkg
+  const prev = process.env.MAUDE_FORCE_SOURCE;
+  try {
+    delete process.env.MAUDE_FORCE_SOURCE;
+    // Poisoned side-channel is ignored → falls through to lazyResolve, which finds
+    // nothing in the fake root → null (server-up then boots source, not the planted bin).
+    assert.equal(resolveServerBinary({ pkgRoot: root }), null);
+  } finally {
+    if (prev !== undefined) process.env.MAUDE_FORCE_SOURCE = prev;
+    rmSync(root, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('isPlausiblePlatformBinary — accepts maude-<slug>/maude, rejects everything else', () => {
+  assert.equal(isPlausiblePlatformBinary('/x/node_modules/@1agh/maude-darwin-arm64/maude'), true);
+  assert.equal(isPlausiblePlatformBinary('/x/packages/maude-linux-x64-musl/maude'), true);
+  assert.equal(isPlausiblePlatformBinary('/x/maude-win32-x64/maude.exe'), true);
+  assert.equal(isPlausiblePlatformBinary('/tmp/evil/maude'), false); // parent not maude-<slug>
+  assert.equal(isPlausiblePlatformBinary('/x/maude-darwin-arm64/evil'), false); // basename not maude
+  assert.equal(isPlausiblePlatformBinary(''), false);
+  assert.equal(isPlausiblePlatformBinary(null), false);
 });
