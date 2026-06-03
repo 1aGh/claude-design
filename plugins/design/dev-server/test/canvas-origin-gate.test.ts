@@ -54,7 +54,13 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
       // /_api/canvas (Phase 22 file-write) is deliberately NOT in the canvas
       // origin's route allowlist — an untrusted canvas iframe must never create
       // arbitrary .tsx files. It is reachable ONLY from the main origin.
-      for (const p of ['/_config', '/_sync-status', '/_api/export', '/_api/canvas', '/package.json']) {
+      for (const p of [
+        '/_config',
+        '/_sync-status',
+        '/_api/export',
+        '/_api/canvas',
+        '/package.json',
+      ]) {
         expect(await code(p)).toBe(403);
       }
 
