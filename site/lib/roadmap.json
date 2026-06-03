@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-02T14:51:22.092Z",
+  "generated": "2026-06-03T07:25:22.383Z",
   "currentPhase": null,
   "phases": [
     {
@@ -377,6 +377,17 @@
       "phaseKey": null
     },
     {
+      "id": "setup-ds-round2-scaffold-integrity-and-devserver-fixes",
+      "title": "Feature: setup-ds Round-2 — scaffold-integrity gates + dev-server boot/export hardening",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "The moodboard direction gates catch a disliked direction before the scaffold. They do not catch a scaffold that ran but produced silently-broken output — empty files trusted as written, a transpile...",
+      "planPath": ".ai/plans/archive/setup-ds-round2-scaffold-integrity-and-devserver-fixes.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
       "id": "phase-1-contribute-infra-changesets",
       "title": "Phase 1: Contribute infrastructure + Changesets bootstrap",
       "status": "done",
@@ -716,17 +727,6 @@
       "planPath": ".ai/plans/phase-7-acp-chat-sidebar.md",
       "archived": false,
       "phaseKey": "7"
-    },
-    {
-      "id": "setup-ds-round2-scaffold-integrity-and-devserver-fixes",
-      "title": "Feature: setup-ds Round-2 — scaffold-integrity gates + dev-server boot/export hardening",
-      "status": "icebox",
-      "shipTarget": "ICEBOX",
-      "date": null,
-      "summary": "The moodboard direction gates catch a disliked direction before the scaffold. They do not catch a scaffold that ran but produced silently-broken output — empty files trusted as written, a transpile...",
-      "planPath": ".ai/plans/setup-ds-round2-scaffold-integrity-and-devserver-fixes.md",
-      "archived": false,
-      "phaseKey": null
     }
   ]
 }
