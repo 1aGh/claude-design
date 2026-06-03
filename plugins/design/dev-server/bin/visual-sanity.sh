@@ -41,6 +41,9 @@
 #   2  bad args
 #   3  one or more specimen screenshots failed
 #   4  no specimens existed on disk (DS not scaffolded? typo?)
+#   5  dev-server runtime deps missing (yjs/y-protocols/lib0) — recovery is
+#      `bun install`, NOT skip-or-retry; distinct from a generic boot failure
+#      so the caller routes to the right hint (server-up.sh exit 3). DDR-083.
 
 DS=""
 SPECIMENS=""
@@ -142,18 +145,31 @@ echo "→ booting dev-server (timeout ${BOOT_TIMEOUT}s)" >&2
 PORT=$(bash "$SCRIPT_DIR/server-up.sh" --root "$ROOT_ABS" --timeout "$BOOT_TIMEOUT")
 SERVER_RC=$?
 if [ $SERVER_RC -ne 0 ] || [ -z "$PORT" ]; then
-  echo "✗ dev-server boot failed (server-up.sh exit $SERVER_RC); see $DESIGN_ROOT/_server.log" >&2
+  # server-up.sh exit 3 = the dev-server's runtime deps aren't installed. That's
+  # a distinct failure from a generic boot crash/timeout: the fix is `bun install`,
+  # not "skip or retry". Surface a dedicated status + exit code (5) so the caller
+  # routes to the right remediation instead of the boot-failed AskUserQuestion.
+  # The actionable hint already went to stderr from server-up.sh. DDR-083.
+  if [ $SERVER_RC -eq 3 ]; then
+    echo "✗ dev-server runtime deps missing — run \`bun install\` in the dev-server dir (see hint above)" >&2
+    VS_STATUS="server-deps-missing"
+    VS_EXIT=5
+  else
+    echo "✗ dev-server boot failed (server-up.sh exit $SERVER_RC); see $DESIGN_ROOT/_server.log" >&2
+    VS_STATUS="server-boot-failed"
+    VS_EXIT=1
+  fi
   cat > "$OUT_DIR/_manifest.json" <<EOF
 {
   "ds": "$DS",
   "ts": "$TS",
-  "status": "server-boot-failed",
+  "status": "$VS_STATUS",
   "server_up_rc": $SERVER_RC,
   "specimens_requested": $(printf '%s\n' "${SPEC_ARR[@]}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed '/^$/d' | sed 's/.*/"&"/' | paste -sd, -),
   "specimens_captured": []
 }
 EOF
-  exit 1
+  exit $VS_EXIT
 fi
 echo "✓ dev-server on port $PORT" >&2
 

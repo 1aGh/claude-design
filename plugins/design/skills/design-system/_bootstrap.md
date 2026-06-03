@@ -752,6 +752,68 @@ Reconciliation rule (failure-proof — runs after EVERY batch attempt, including
 
 The `ui_kits-*-index.tsx` is always last because it links every peer — written after the rest by the main agent, not a sub-agent.
 
+#### Scaffold-integrity gates (post-reconcile, pre-visual-sanity — setup-ds Round-2 / DDR-082)
+
+> **Why these exist.** Reconciliation above proves every row is `written` and the Q3-derived showcase set is complete. It does NOT prove the *content* is real. Four defects pass a `status: written` row (and even a transpile-only parse check) yet ship silently-broken output — each was caught by a user mid-flow, never by the loop: a 0-byte specimen trusted as written, a specimen that parses but throws at module-eval (`X is not defined`), a `*/` that closed a CSS comment early ("Bundle failed"), and a fabricated `✓ 4.5:1` ratio on a pair that's actually 2.1:1. Run these four greps **after reconcile, before visual sanity**. The prevention side lives in `SUB-AGENT-PROMPTS.md` → CODE HYGIENE; this is the detection backstop. A failure here is the **same severity as a `pending` row** — fix in source (or re-spawn the slice) and re-run; route any deliberate deviation through the bypass-log.
+
+```bash
+DS_PREVIEW="<designRoot>/system/<ds>/preview"
+FAIL=0
+
+# NOTE: every file loop reads `find … -print0` via `read -r -d ''` so a specimen
+# whose NAME contains a newline/space (a prompt-injected sub-agent picks its own
+# output filenames) can't split the stream and slip the real broken file past the
+# gate — fail-open-by-filename is the trap a plain `find | while read` falls into.
+
+# ── A1 — non-empty file gate. The roster's loc: is a CLAIM; verify against disk.
+#         Any written specimen / token / chrome file < 20 B is a regression.
+while IFS= read -r -d '' f; do
+  sz=$(wc -c < "$f" 2>/dev/null || echo 0)
+  if [ "$sz" -lt 20 ]; then echo "A1 FAIL: $f is ${sz} B (empty/stub — same severity as a pending row)"; FAIL=1; fi
+done < <(find "$DS_PREVIEW" -type f \( -name '*.tsx' -o -name '*.css' \) -print0 2>/dev/null)
+# colors_and_type.css + _layout.css (Batch A roots) get the same floor.
+for f in "<designRoot>/system/<ds>/colors_and_type.css" "$DS_PREVIEW/_layout.css"; do
+  [ -f "$f" ] && [ "$(wc -c < "$f")" -lt 20 ] && { echo "A1 FAIL: $f is empty"; FAIL=1; }
+done
+
+# ── A3a — CSS comment hygiene. CSS has no nested comments, so a balanced file
+#          has exactly as many `/*` as `*/`. An early-closed comment (`/* …*/ …*/`)
+#          leaves an extra `*/` (stray close → "Bundle failed"); an unterminated
+#          one leaves an extra `/*`. Count-balance per file catches both —
+#          robust where a line-local grep is fooled by a line that has one
+#          balanced pair AND a stray close.
+while IFS= read -r -d '' f; do
+  opens=$(grep -oE '/\*' "$f" 2>/dev/null | wc -l | tr -d ' ')
+  closes=$(grep -oE '\*/' "$f" 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$opens" != "$closes" ]; then
+    echo "A3 FAIL: $f unbalanced CSS comments (/*=$opens */=$closes — early-closed or unterminated)"; FAIL=1
+  fi
+done < <(find "$DS_PREVIEW" -type f -name '*.css' -print0 2>/dev/null)
+# ── A3b — React-import check: a `React.<x>` usage requires a binding import —
+#          `import React` (default) or `import * as React` (namespace). A NAMED or
+#          type-only `import { x } from 'react'` / `import type … from 'react'` does
+#          NOT bind `React`, so `React.foo` still throws ReferenceError at
+#          module-eval (transpiles clean). Iterate via find -print0 (filename-safe).
+while IFS= read -r -d '' f; do
+  if grep -qE '\bReact\.[A-Za-z]' "$f" && ! grep -qE "import +React[ ,]|import +\* +as +React\b" "$f"; then
+    echo "A3 FAIL: $f uses React.* without a default/namespace React import (runtime ReferenceError)"; FAIL=1
+  fi
+done < <(find "$DS_PREVIEW" -type f -name '*.tsx' -print0 2>/dev/null)
+
+# ── A4 — contrast-claim discipline: a ratio claim (✓ 4.5:1 / AAA / passes AA)
+#          must have been computed, not fabricated. Flag every claim for a
+#          "was this computed from the real token pair?" check. The numerator
+#          [3-9] floor separates WCAG contrast ratios (3:1, 4.5:1, 7:1) from
+#          type-scale (1.2:1) and grid (2:1) ratios, which are NOT contrast.
+grep -rnEi '[3-9](\.[0-9]+)?\s*:\s*1|✓\s*(AA|AAA)|passes (AA|AAA)|\b(AA|AAA)\b ?(contrast|compliant)' \
+  "<designRoot>/system/<ds>/colors_and_type.css" "<designRoot>/system/<ds>/README.md" "$DS_PREVIEW" 2>/dev/null \
+  | while IFS= read -r hit; do echo "A4 review: contrast-ratio claim — verify it was COMPUTED, not asserted → $hit"; done
+
+[ "$FAIL" -eq 0 ] && echo "✓ scaffold-integrity hard gates clean (A1 non-empty · A3a CSS comments · A3b React import). A4 contrast claims are advisory — review any lines printed above." || echo "✗ scaffold-integrity FAIL — fix in source + re-run (see bypass-log discipline)"
+```
+
+**A2 — real-bundle gate (NOT transpile-only).** The A1 non-empty check is necessary but not sufficient: a file can be non-empty *and* parse-clean yet fail at **module-eval** (the `ReferenceError: AcceleratedAnimation is not defined` class — undefined symbol, missing import, dead dynamic import). **Never substitute a transpile-only check (`esbuild --bundle=false`, `tsc --noEmit`) for a real bundle** — transpile sees only syntax, not eval-time references. The authoritative bundle gate is the **dev-server render**: the **Hero-preview gate** (above) and the **Visual sanity check** (below) screenshot each specimen through `_canvas-shell.html?canvas=…`, which runs the real `canvas-build.ts` bundle AND browser module-eval — a blank iframe or a visible error overlay in those screenshots IS a failed bundle. This is the same "parse-clean, fails-at-module-eval" class `runtime-health.sh` (`bin/runtime-health.sh`) catches for the pre-built runtime bundles; specimens get the equivalent coverage through the render path. If you ever add an explicit pre-render specimen check, point it at the canvas-build bundle, not a transpile flag.
+
 ### Scaffold (3-batch fan-out)
 
 The inspiration library at `plugins/design/templates/design-system-inspiration/` has **11 category dirs** holding **~67 reference HTML specimens**. The skill walks the categories, picks files matching the project profile, and **GENERATES** project-flavored versions in `system/<ds>/preview/`. **Scaffold output is flat** — category prefixes live only in the library; the scaffolded files all land directly under `preview/`. See `_MAPPING.md` for the full inventory, gating rules, and the `dependency_closure` column that drives batching.
@@ -768,6 +830,7 @@ The dependency root. Main agent writes these **in order, alone** because every l
    - **Aesthetic-ambition-derived accent families (DDR-073).** Emit `--accent*` families to match the `accentStrategy` that was derived from `aesthetic_ambition`: `single` → `--accent` only; `paired` → `--accent` + `--accent-2`; `chromatic-N` → `--accent` … `--accent-N` taken from `palette_options[]` (hues ≥ 40° apart, each with its hover / active / fg derivations). The family count MUST equal the declared `config.aestheticAmbition` strategy so completeness-critic C7 passes. **Also write the inferred ambition into `config.json` `aestheticAmbition` (the `{{aesthetic_ambition}}` placeholder)** — that value sets the per-canvas default opt-out scope (`restrained`/`confident` → `palette`, `expressive` → `aesthetic`, `maximalist` → `full`; consumed by `/design:new` + `/design:edit`).
    - **Restraint-default type ladder (D-8).** Editorial / display DSes default to a **restrained ladder — type-scale ratio ≤ 1.2, optical-size ≤ 72, weight ≤ semibold for the display face, tracking ≥ -0.02em.** The user opts **UP** via `/design:edit` ("make the display bigger / heavier / more dramatic"), never down. This is a **default, not a hard-stop** — discovery may legitimately call for maximalism, and a high-confidence research recommendation that explicitly wants drama (opsz-144, ratio 1.25, a black display weight) wins. The rule exists so the scaffold *starts restrained and dials up on request* rather than shipping melodramatic type the user has to walk back (studyfi shipped a 1.25 / opsz-144 / black scale the user re-tuned by hand).
    - **Research type-fidelity (D-7).** When substituting the font tokens from the research payload's type recommendation: **mirror the research's PRIMARY display-face ROLE exactly.** A "grotesque" direction MUST yield a grotesque display face even when an open-source serif is more convenient to wire up — do **not** let font availability flip the role. Distinguish the **display-face role** from the **body-accent role**: a recommendation phrased like `display-grotesque-editorial-serif` means a grotesque sans is the DISPLAY face *with* an editorial serif reserved for BODY accents — the serif is NOT the display face. If the named face is unavailable, substitute within the **same role / classification** (grotesque → grotesque, never grotesque → serif) and **log the substitution to the bypass-log**. (Studyfi's research said `display-grotesque-editorial-serif`; the scaffold read "serif", picked Fraunces as the display face, and inverted the intended roles — D-7.)
+   - **Contrast-claim discipline (DDR-082).** When you write a CSS comment, a swatch label, or README copy near a token pair, **never assert a contrast ratio you didn't compute** — no `✓ 4.5:1`, `AAA`, `passes AA`, `7:1` unless you actually ran WCAG relative-luminance (or APCA) on the *real* `--fg`/`--bg` pair. A fabricated ratio is worse than none: it green-lights a failing pair. The accent OKLCH is screenshotted in context anyway (Hero-preview gate); if you want to document contrast without computing it, write the token names + OKLCH values, not a ratio. The scaffold-integrity A4 grep (above) flags every ratio-claim substring in `colors_and_type.css` + README for a "was this computed?" check — an unverified claim is a gate failure, same severity as a `pending` row.
 2. `<designRoot>/system/<ds>/preview/_layout.css` — chrome. **Bakes Q9 signature treatment into the body background + h1 treatment.** Examples:
    - Q9 = `gradient discipline` → soft accent halo at top-right, light vignette at bottom
    - Q9 = `CRT scanlines + phosphor glow` → repeating-linear-gradient scanlines + h1 text-shadow with accent glow + body::before SVG film-grain + body::after CRT roll animation (reduced-motion safe)
@@ -828,7 +891,7 @@ Group the remaining files into slices (per the `fanout:` block of the roster). F
 
 **Fan-out ceiling: 3–4 concurrent sub-agents per batch, prompts ≤ ~2 KB each.** **Fire all slices in a single message** (multiple Agent tool calls in parallel) — but bounded to ≤ 4 at a time. Rationale (retro D-1, verbatim): "8 simultaneous long-running (15–40 min) general-purpose agents exceed the API socket budget and fail as a cohort; recovery with 3 leaner agents succeeded first try." If a batch has **> 4 slices, dispatch them in sequential waves of ≤ 4**, reconciling (the reconciliation rule above) between waves so a failed wave is caught and re-spawned before the next wave fires. Keep the parallel-in-one-message mechanism — just bound the cohort size.
 
-**Sub-agent prompt template — loaded from `plugins/design/templates/design-system-inspiration/SUB-AGENT-PROMPTS.md`** (extracted in Phase 3.7 / DDR-049 so the template can carry the three MANDATORY safety blocks — ANIMATION SAFETY, RELATIVE-URL SAFETY, PLACEHOLDER POLICY — without bloating this file). Read `SUB-AGENT-PROMPTS.md` once at scaffold-time; the sections under "MANDATORY SAFETY BLOCKS" are appended verbatim to every slice prompt, and the section under "Sub-agent prompt template" is the body. Per-slice addenda (foundations / brand + voice / core components / etc.) are sourced from the "Per-slice prompt addenda" section of that file.
+**Sub-agent prompt template — loaded from `plugins/design/templates/design-system-inspiration/SUB-AGENT-PROMPTS.md`** (extracted in Phase 3.7 / DDR-049 so the template can carry the four MANDATORY safety blocks — ANIMATION SAFETY, RELATIVE-URL SAFETY, PLACEHOLDER POLICY, CODE HYGIENE — without bloating this file). Read `SUB-AGENT-PROMPTS.md` once at scaffold-time; the sections under "MANDATORY SAFETY BLOCKS" are appended verbatim to every slice prompt, and the section under "Sub-agent prompt template" is the body. Per-slice addenda (foundations / brand + voice / core components / etc.) are sourced from the "Per-slice prompt addenda" section of that file.
 
 > **Sync rule (CI-enforceable).** SKILL.md MUST literally contain the string `SUB-AGENT-PROMPTS.md` (this line is the marker). Renaming the sibling file without updating this reference is the drift risk Phase 3.7's risk register flagged.
 
@@ -1128,6 +1191,7 @@ Additional specimens (capture when scaffolded): `empty-state` (brand/voice momen
 | `1` | Dev-server boot failed | **`AskUserQuestion`** — "Dev-server boot failed: `<reason from _server.log>`. Skip visual sanity (aesthetic critics run source-only) or fix and retry?" Record selection to `<designRoot>/_history/_system/<ds>-bypass-log.md`. |
 | `3` | One or more screenshot(s) failed | Surface the failing specimen names; treat as a soft warning (continue with the captured PNGs), and add a `recommend /design:edit "<specimen> failed to render"` line to the next-step block. |
 | `4` | No requested specimens existed on disk | Indicates a scaffold gap. Re-check the roster reconciliation; the bypass-log records the gap. |
+| `5` | Dev-server runtime deps missing (`yjs`/`y-protocols`/`lib0`) — setup-ds Round-2 / DDR-083 | **NOT** a skip-or-retry boot failure — the dev-server's nested deps just aren't installed (typical on a global `@1agh/maude` install or a fresh `git worktree`). The actionable hint is already on stderr: **`(cd <dev-server-dir> && bun install)`**. Run it, then re-run visual sanity. Only if it genuinely can't be installed (read-only/offline) does this fall back to the exit-`1` AskUserQuestion. Record the deviation to the bypass-log. |
 
 **Read each captured PNG with the `Read` tool** so they're in your visual context. Direct visual scrutiny BEFORE you spawn the aesthetic critics — if the accent is obviously the wrong hue, the motion specimen is blank on first frame, or a logo shows the broken-image icon, fix it in source NOW rather than asking critics to confirm what you can already see.
 

@@ -48,6 +48,7 @@ In multi-DS projects (`config.designSystems.length > 1`), produce one section pe
 | C6 | Core vars present in tokens CSS: `--accent`, `--bg-0` through `--bg-4`, `--fg-0` through `--fg-3`, at least one `--dur-*` motion var | Minimum token contract |
 | C7 | Accent family count matches `config.accentStrategy`: `single` → exactly 1; `paired` → exactly 2; `chromatic-N` → N families (1 ≤ N ≤ 12). Default if unset: `single` (backwards-compatible). | Discovery-driven, no longer universal |
 | C8 | `<ds_root>/preview/` exists with ≥ N specimens (TSX files), where N depends on `completenessProfile`: minimal=3, standard=8, strict=12 | Adaptive minimum |
+| C9 | **No empty / stub specimens.** Every `preview/*.tsx` and `preview/*.css` (plus `colors_and_type.css` + `preview/_layout.css`) is ≥ 20 B on disk. A 0-byte / stub file trusted as `written` is the scaffold-integrity regression (setup-ds Round-2 / DDR-082) — same severity as a missing file | Verifies the roster's `loc:` claim against disk |
 
 **Run C6 + C7 via `grep`:**
 
@@ -72,6 +73,19 @@ esac
 [[ "$ACCENT_FAMILIES" -eq "$EXPECTED" ]] || echo "C7 fail: accent family count $ACCENT_FAMILIES does not match strategy $ACCENT_STRATEGY (expected $EXPECTED)"
 ```
 
+**Run C9 via `find` (non-empty file gate — DDR-082):**
+
+```bash
+# C9 — no empty/stub files. Floor 20 B; covers preview specimens + the Batch-A roots.
+# -print0 / read -d '' so a specimen with a newline/space in its name can't split
+# the stream and slip the real broken file past the gate (fail-open-by-filename).
+EMPTY=0
+while IFS= read -r -d '' f; do
+  [ "$(wc -c < "$f" 2>/dev/null || echo 0)" -lt 20 ] && { echo "C9 fail: $f is empty/stub (< 20 B)"; EMPTY=1; }
+done < <(find "$DS_ROOT/preview" -type f \( -name '*.tsx' -o -name '*.css' \) -print0 2>/dev/null; printf '%s\0' "$TOKENS")
+[ "$EMPTY" -eq 0 ] || echo "C9 fail: one or more written files are empty (roster loc: claim does not match disk)"
+```
+
 (The grep for C7 normalizes `--accent`, `--accent-hover`, `--accent-active`, `--accent-fg`, `--accent-glow`, `--accent-edge`, `--accent-muted` to one family. `--accent2` / `--accent-secondary` count as separate families. With the default `single` strategy this remains a one-accent enforcement; projects that chose `paired` or `chromatic-N` during discovery get the count they declared.)
 
 **Run V20 via `grep`:**
@@ -86,6 +100,38 @@ if [[ "$CLAIMS" -gt 0 ]]; then
     echo "V20 warn: copy claims a mascot/glyph/wordmark/illustration but assets/{glyphs,logos}/ is empty"
   fi
 fi
+```
+
+**Run V23 + V24 via `grep` (code-hygiene + contrast-claim — DDR-082):**
+
+```bash
+PREVIEW="$DS_ROOT/preview"
+
+# V23a — React.* needs a BINDING import: `import React` (default) or `import * as
+#        React` (namespace). A named/type-only `import { x } from 'react'` does NOT
+#        bind React, so `React.foo` still ReferenceErrors at module-eval (blocker).
+#        find -print0 / read -d '' is filename-safe (no fail-open-by-filename).
+while IFS= read -r -d '' f; do
+  if grep -qE '\bReact\.[A-Za-z]' "$f" && ! grep -qE "import +React[ ,]|import +\* +as +React\b" "$f"; then
+    echo "V23 BLOCKER: $f uses React.* without a default/namespace React import"
+  fi
+done < <(find "$PREVIEW" -type f -name '*.tsx' -print0 2>/dev/null)
+
+# V23b — unbalanced CSS comments (early-closed → extra */, unterminated → extra /*). CSS
+#        has no nested comments, so a healthy file has equal /* and */ counts. Count-balance
+#        per file is robust where a line-local grep is fooled by a balanced-pair-plus-stray line.
+while IFS= read -r -d '' f; do
+  opens=$(grep -oE '/\*' "$f" 2>/dev/null | wc -l | tr -d ' ')
+  closes=$(grep -oE '\*/' "$f" 2>/dev/null | wc -l | tr -d ' ')
+  [ "$opens" != "$closes" ] && echo "V23 warn: $f unbalanced CSS comments (/*=$opens */=$closes — early-closed or unterminated)"
+done < <(find "$PREVIEW" -type f -name '*.css' -print0 2>/dev/null)
+
+# V24 — contrast-ratio claims that may be fabricated (warning per match). The
+#       [3-9] numerator floor isolates WCAG contrast ratios (3:1/4.5:1/7:1) from
+#       type-scale (1.2:1) + grid (2:1) ratios that are not contrast claims.
+grep -rnEi '[3-9](\.[0-9]+)?\s*:\s*1|✓\s*(AA|AAA)|passes (AA|AAA)' \
+  "$TOKENS" "$DS_ROOT/README.md" "$PREVIEW" 2>/dev/null \
+  | while IFS= read -r hit; do echo "V24 warn: contrast-ratio claim — verify computed, not fabricated → $hit"; done
 ```
 
 ## Tier 2 — Conventional (warning, gated)
@@ -123,8 +169,10 @@ Profile gate: `minimal` skips all of Tier 2; `standard` runs everything except V
 | V20 | **Claim → asset receipt.** If `<ds_root>/README.md` or `<ds_root>/SKILL.md` contains the substrings `mascot`, `glyph`, `logotype`, `wordmark`, `illustration`, `hedgehog`, or `character`, then `<ds_root>/assets/glyphs/` OR `<ds_root>/assets/logos/` MUST contain at least one file (`*.svg`, `*.png`, `*.webp`). Empty assets dirs while README claims a mascot/illustration is the "self-injected puffery" anti-pattern. | standard+ | per match → 1 warning |
 | V21 | **Motion specimen renders without console errors (Phase 3.7 / DDR-049).** Shell out to `bin/visual-sanity.sh --ds <ds> --specimens motion`. Exit 0 = pass; exit 1 (dev-server boot fail) → N/A warning (don't block environments without Bun); exit 3 (specimen render fail) → **Core-tier blocker** when motion.tsx is a Core file (it is — V8 is `always`). | standard+ → Core when V8 fires | always (skips when V8 misses since the specimen doesn't exist to render) |
 | V22 | **Motion token coverage (Phase 3.7 / DDR-049).** Parse `<ds_root>/preview/motion.tsx` (or fall back to `motion.css` siblings if rendering helpers obscure direct token refs). Every duration token defined in `<ds_root>/colors_and_type.css` (greps for `^\s*--dur-[a-z-]+\s*:`) MUST be referenced ≥1× in the motion specimen surface. Orphan token (defined but not demonstrated) → 1 warning per token. Catches the "added a token but never showed it" drift. | standard+ | always (skips when V8 misses) |
+| V23 | **Code-hygiene lint (setup-ds Round-2 / DDR-082).** (a) No `preview/*.tsx` uses `React.<x>` without an `import React`/`from "react"` — a bare `React.*` transpiles clean but throws `ReferenceError` at module-eval (→ **blocker** when it fires; it's a hard runtime crash). (b) No `preview/*.css` has a stray `*/` outside a balanced `/* … */` (early-closed comment → bundle fail). Mirrors the reconcile-time CODE HYGIENE grep so a re-run / hand-edited specimen is caught. | standard+ | (a) blocker on hit · (b) warning |
+| V24 | **Contrast-claim discipline (setup-ds Round-2 / DDR-082).** `colors_and_type.css` / `README.md` / `preview/*.tsx` MUST NOT assert a contrast ratio (`✓ 4.5:1`, `AAA`, `passes AA`, `7:1`) that wasn't computed. Flag each ratio-claim substring for verification — per match → 1 warning ("verify computed, not fabricated"). The structural critic can't compute the ratio; it forces a human/agent confirm rather than trusting the assertion. | standard+ | per match → 1 warning |
 
-**Warning, not blocker.** The bootstrap flow can still succeed with up to ~10 Conventional warnings — they surface as "consider polishing X" in the post-flight, not as a hard-stop.
+**Warning, not blocker (with two escalation exceptions).** The bootstrap flow can still succeed with up to ~10 Conventional warnings — they surface as "consider polishing X" in the post-flight, not as a hard-stop. **Exceptions that escalate to a Core-tier blocker:** V21 (motion specimen renders with errors, when V8 fires) and V23a (a `React.*` with no `import` — a guaranteed runtime crash). Both are real render-time failures, not stylistic gaps, so they count toward the blocker total that gates `passed`.
 
 ## Tier 3 — Free-form (no check)
 

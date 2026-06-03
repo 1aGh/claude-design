@@ -114,13 +114,23 @@ Group B — dev-server boot/export fail-loud (CODE; coordinate w/ Phase-13.x WIP
 
 ## Acceptance Criteria
 
-- [ ] Group A: 0-byte file, un-bundleable specimen, `*/`-in-comment, bare `React.*`, and a wrong contrast claim each fail reconciliation/lint
-- [ ] Group B: missing-`yjs` boot and missing-Playwright export both **fail loud with a remediation hint** (never a silent degrade / empty body)
-- [ ] Group A landed independently of Group B (different risk, different branch)
-- [ ] Any decision (e.g. where the contrast computation lives, self-heal vs preflight for yjs) recorded as a DDR
+- [x] Group A: 0-byte file, un-bundleable specimen, `*/`-in-comment, bare `React.*`, and a wrong contrast claim each fail reconciliation/lint — **verified** via fixture test (all 4 fire; balanced/named-import/type-scale cases don't false-positive). A2 real-bundle = the dev-server render gate (visual-sanity/hero-preview), transpile-only explicitly forbidden.
+- [x] Group B: missing-`yjs` boot **fails loud with a remediation hint** (exit 3 + `bun install`, never a silent timeout — verified end-to-end); missing-Playwright export already fails loud (`bf84825`, 500 + hint, pw-launch test 5/5) — **B2 verify-only, B1 implemented**
+- [x] Group A + Group B are logically independent (different risk) — plan mandated different branches, but per user direction both ship on **one branch** `feat/setup-ds-round2-scaffold-integrity-gates` / one PR; commits `b265ddd` (A) + `ae41423` (B) stay disjoint
+- [x] Any decision (e.g. where the contrast computation lives, self-heal vs preflight for yjs) recorded as a DDR — **DDR-082** (Group A, incl. contrast-computation-location decision); **DDR-083** (Group B/B1, preflight-over-self-heal decision)
 
 ## Out of scope / notes
 
 - **DDR numbering (resolved):** `main` authoritatively holds **`DDR-079` = `tsx-sync-default-on`** (committed `620eff8` / `0d89fd0`). The moodboard work's `DDR-079` (PR #32) therefore **must renumber to `DDR-080`** (next free on `main`). Round-2's own new DDRs start at **`DDR-081`**.
 - **Group B is WIP-adjacent.** `sync/` + `exporters/` are under active Phase-13.x development on `main`; do Group B on a coordinated branch, not on top of the moodboard worktree.
 - The originating plan's two visual gates are **done** (`DDR-079`, archived plan); this plan is purely the deferred integrity/robustness layer beneath them.
+- **DDR numbering (actual):** `DDR-081` was taken by the dependency-freshness work, so Round-2 used **`DDR-082`** (Group A) + **`DDR-083`** (Group B / B1). A live global-install dogfood (2026-06-03) then surfaced the *durable* root cause behind B1 — `server-up.sh` ran `bun server.ts` instead of the compiled platform binary, and the npm tarball excludes `dev-server/package.json` — fixed as **`DDR-084`** (server-up boots the binary in production; `bun server.ts` is dev-only). B2's Playwright preflight was already in `main` (`bf84825`), so it was verify-only, not re-implemented.
+- **Branch (actual):** plan mandated separate branches; per user direction all of Round-2 (Groups A + B + DDR-084) ships on the single branch `feat/setup-ds-round2-scaffold-integrity-gates` / one PR.
+
+## Retro
+
+- **Re-verify "already done" claims against current `main`, don't trust the plan's snapshot.** Task B2 (Playwright export preflight) was fully shipped in `bf84825` before this plan ran, but the plan's "Already done" section didn't list it — only caught by reading `_pw-launch.mjs` + its test. An execute should diff the plan's premises against HEAD first; here it saved re-implementing a done task.
+- **A "fail-loud hardening" task must check whether the louder error actually *unblocks* the user — or just relabels a structural bug.** B1 (the planned scope) made the yjs crash fail-fast with a `bun install` hint. But a live global-install dogfood mid-session showed that hint was a **dead end** (the tarball excludes `dev-server/package.json`, so there's nothing to install from) and that the real fix is `server-up` booting the compiled binary like `serve` does (DDR-084). The durable fix wasn't in the plan — it came from testing on a *real production install*, not a scratch dir. Lesson: for packaging/boot bugs, reproduce on the actual install shape, not just a local scratch.
+- **`/flow:done`'s adversarial review earned its keep.** It found a fail-open-by-filename hole in the Group A gates (a newline in a generated specimen's name split the `find | while read` loop) and a missing allowlist on the spawned binary path — both in code already "verified" by unit tests + end-to-end boots. The gate that inspects untrusted model-generated files is itself an attack surface; review the *shape of the input channel*, not just the regex.
+- **Testing dev-server boots from source rebuilds the committed `dist/` bundles** — nearly committed ~15 release-authoritative artifacts as collateral. When a session boots `bun server.ts` in this repo, `git checkout -- plugins/design/dev-server/dist/` before committing, and re-run `check-runtime-bundles.sh`.
+- **Disjoint group-commits preserve a mandated branch separation even after consolidation.** The plan wanted two branches; the user wanted one PR. Keeping Group A (markdown) and Group B (dev-server) as separate, non-overlapping commits meant the single branch still reads as two clean, independently-revertable units.

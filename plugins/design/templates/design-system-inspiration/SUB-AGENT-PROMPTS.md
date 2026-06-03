@@ -1,12 +1,12 @@
 # Sub-agent prompt templates — `/design:setup-ds` Batch B + C
 
-> **Why this file exists.** Per Phase 3.7 Task 4 (and DDR-049), the sub-agent prompt templates that drive Batch B + C fan-out used to live inline in `plugins/design/skills/design-system/SKILL.md` (lines 662-797 pre-extraction). SKILL.md is 1000+ LOC; the prompts were buried. Extracting them here lets us audit + extend the prompts (and especially the three MANDATORY safety blocks below) without scrolling through unrelated bootstrap logic. The skill's "Batches B + C" step loads + interpolates from this file instead of inlining the template.
+> **Why this file exists.** Per Phase 3.7 Task 4 (and DDR-049), the sub-agent prompt templates that drive Batch B + C fan-out used to live inline in `plugins/design/skills/design-system/SKILL.md` (lines 662-797 pre-extraction). SKILL.md is 1000+ LOC; the prompts were buried. Extracting them here lets us audit + extend the prompts (and especially the four MANDATORY safety blocks below) without scrolling through unrelated bootstrap logic. The skill's "Batches B + C" step loads + interpolates from this file instead of inlining the template.
 >
 > **Sync rule** — when this file changes, the SKILL.md reference must still resolve. The Phase 3.7 risk register mandates a CI grep check: `SKILL.md` must literally contain the string `SUB-AGENT-PROMPTS.md`. Don't rename the file without updating the skill.
 
 The prompts are grouped by **slice** (matches the roster's `fanout:` block). Each section is a self-contained sub-agent brief — copy verbatim, substitute placeholders.
 
-The three MANDATORY safety blocks (ANIMATION SAFETY, RELATIVE-URL SAFETY, PLACEHOLDER POLICY) appear once at the top because they apply to every slice; sub-agent prompts reference them by name (`Apply ANIMATION SAFETY below`) instead of inlining.
+The four MANDATORY safety blocks (ANIMATION SAFETY, RELATIVE-URL SAFETY, PLACEHOLDER POLICY, CODE HYGIENE) appear once at the top because they apply to every slice; sub-agent prompts reference them by name (`Apply ANIMATION SAFETY below`) instead of inlining.
 
 ---
 
@@ -35,6 +35,15 @@ The three MANDATORY safety blocks (ANIMATION SAFETY, RELATIVE-URL SAFETY, PLACEH
 - If the sweep returned zero candidates for a noun, only THEN may a placeholder be authored. **The placeholder file's name MUST contain `-placeholder`** (e.g. `logo-placeholder.svg`, `mascot-placeholder.svg`) so it's visually obvious in `ls` + `grep` and downstream sub-agents know not to promote it.
 - **Never assume your own placeholder path is authoritative downstream.** When the roster row's `source:` is empty AND you wrote a placeholder, set `source: placeholder` in your roster update (not `source: written`). The brand-critic and the next bootstrap pass both look for `source: placeholder` rows as "consider revisiting later".
 - **Forbidden:** authoring an `S`-shaped wordmark for a product whose first letter isn't S, authoring a "hedgehog mascot" SVG because the README copy mentioned hedgehog energy. The studyfi imprint retro D-2 caught both patterns. If the production-asset sweep returned nothing AND the discovery brief didn't explicitly request a mascot, **rewrite the copy** instead of inventing the artifact.
+
+### CODE HYGIENE (mandatory — applies to EVERY TSX + CSS file in every slice)
+
+> **Why this block exists (setup-ds Round-2 / DDR-082).** These four defects all *pass a parse / transpile-only check but break at render or assert something false* — exactly the class the structural critic can't see. Each was caught by a user mid-flow, never by the loop. The reconcile-time scaffold-integrity gates in `_bootstrap.md` grep for all four; **prevent them here so the grep finds nothing.**
+
+- **No empty / stub files.** Every file you claim as `written` in the roster MUST carry real content — the JSDoc header, the `import "./<slug>.css"`, and a non-trivial default export. **Never** flip a roster row to `status: written` for a file you created empty or as a placeholder-to-fill-later. A 0-byte (or near-empty, < 20 B) specimen is a reconciliation **hard-fail**, the same severity as a `pending` row. The roster's `loc:` field is a claim that is verified against disk — report the *real* line count, never an aspirational one.
+- **CSS comment hygiene — never write `*/` inside a `/* … */` block.** A stray `*/` (e.g. inside an example selector string, a URL, or a nested-comment attempt) closes the comment early and the trailing text becomes invalid CSS → the dev-server bundle fails with "Bundle failed" and the specimen renders unstyled. CSS has **no nested comments.** If you must show a `*/` literally in demo copy, escape it in JSX text (`{'*/'}`) — never inside a `/* */` CSS comment.
+- **`React.*` requires a BINDING import.** Any use of `React.useState`, `React.useId`, `React.Fragment`, `React.useEffect`, `React.CSSProperties`, etc. MUST be backed by `import React from "react"` (default) or `import * as React from "react"` (namespace) — those are the only forms that bind the `React` identifier. A NAMED import (`import { useState } from "react"`) or a type-only import (`import type { CSSProperties } from "react"`) does **not** bind `React`, so `React.foo` still throws `ReferenceError: React is not defined` at module-eval in the browser even though it transpiles clean — a runtime crash the structural critic never sees. **Prefer named imports and call them unqualified** (`import { useId, useState } from "react"` → `useState(…)`, not `React.useState(…)`); reach for the `React.` namespace only with the default/namespace import in place. The reconcile gate flags any `React.*` whose file lacks a default/namespace React import.
+- **Contrast-claim discipline — never assert a ratio you didn't compute.** Do NOT write `✓ 4.5:1`, `✓ AAA`, `passes AA`, `7:1`, etc. in a specimen, a CSS comment, or copy **unless you actually computed it** from the real token pair (WCAG relative-luminance or APCA). A hardcoded-but-wrong ratio claim is worse than no claim — it tells the reader a failing pair is safe. If you want to *demonstrate* contrast without computing, label the swatch with the token names and the OKLCH values, not a fabricated ratio. The reconcile grep flags ratio-claim substrings for verification — an unverified claim is a gate failure.
 
 ---
 
@@ -128,6 +137,10 @@ YOUR SLICE — write these {{N}} files (absolute paths):
 … (etc.)
 
 SAFETY BLOCKS — apply to every file in your slice:
+- **CODE HYGIENE** (see SUB-AGENT-PROMPTS.md). ALWAYS — applies to every TSX +
+  CSS file. No empty / stub files (report real `loc:`), no `*/` inside a CSS
+  `/* */` block, every `React.*` needs an explicit `import`, never assert a
+  contrast ratio you didn't compute. The reconcile gate greps for all four.
 - **ANIMATION SAFETY** (see SUB-AGENT-PROMPTS.md). Mandatory if your slice
   includes the `motion` specimen OR any file that uses `@keyframes` /
   `transition` / `animate`. Bounded geometry + sparkle-≤56px + infinite-alternate
@@ -189,7 +202,9 @@ ANTI-PATTERNS (graphic-design-critic blockers — guaranteed rejection)
 WHEN DONE
 After writing all {{N}} files:
   1. Update each row in {{absolute path to _scaffold-roster.yaml}}: change
-     `status: pending` → `status: written, loc: <line-count>`.
+     `status: pending` → `status: written, loc: <line-count>`. The `loc:` is the
+     REAL on-disk line count — never aspirational. An empty / stub / 0-byte file
+     flipped to `written` is a reconciliation hard-fail (see CODE HYGIENE).
   2. **Do NOT add new rows.** If you discover a missing claim (e.g. wordmark
      referenced but no logo.tsx in roster), include "ROSTER GAP: <description>"
      in your completion message. The main agent reconciles new rows.
