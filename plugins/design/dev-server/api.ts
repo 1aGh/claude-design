@@ -1142,6 +1142,28 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
   async function buildIndexData() {
     const groups = [];
 
+    // DDR-093 — per-canvas design-system map (repo-relative canvas path → DS
+    // name) so the client's canvasUrl() injects each UI canvas's OWN tokens
+    // instead of unconditionally designSystems[0]. Populated from the canvas
+    // groups below; returned on the payload and folded into the client cfg.
+    const canvasDesignSystems: Record<string, string> = {};
+    const defaultDs = cfg.defaultDesignSystem || cfg.designSystems?.[0]?.name || 'project';
+    // A file under `system/<folder>/` belongs to the DS that owns that folder —
+    // path-authoritative, because specimens/ui_kits rarely carry a sidecar
+    // `designSystem`. Returns null for `ui/` canvases (resolved via sidecar).
+    const ownerDsName = (repoRelPath: string): string | null => {
+      let r = repoRelPath;
+      const prefix = `${paths.designRel}/`;
+      if (r.startsWith(prefix)) r = r.slice(prefix.length);
+      const m = r.match(/^system\/([^/]+)\//);
+      if (!m) return null;
+      const folder = m[1];
+      const owner = (cfg.designSystems ?? []).find(
+        (d) => d.path === `system/${folder}` || d.path.endsWith(`/${folder}`)
+      );
+      return owner?.name ?? null;
+    };
+
     // PROJECT — top-level .design/ files (README.md, INDEX.md, config.json, …).
     // These are non-HTML so they're listed but not openable in the iframe; the
     // sidebar can still display them as context (mirrors CV-08 mock).
@@ -1187,6 +1209,20 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       const filePaths = isDs
         ? await findFiles(groupAbs, groupRel, ['.tsx', '.html', '.md', '.css', '.json'])
         : await findFiles(groupAbs, groupRel, ['.tsx', '.html', '.css', '.json']);
+      // DDR-093 — record each `.tsx` canvas's design system. canvasUrl() only
+      // injects tokens for `.tsx`, so skip everything else. Path-owned DS wins
+      // (system/<ds>/…); otherwise the sidecar's `meta.designSystem`, defaulting
+      // to the project default when the canvas declares none.
+      for (const fp of filePaths) {
+        if (!fp.endsWith('.tsx')) continue;
+        let dsName = ownerDsName(fp);
+        if (!dsName) {
+          const meta = await loadCanvasMeta(fp);
+          const declared = meta?.designSystem;
+          dsName = typeof declared === 'string' && declared.trim() ? declared : defaultDs;
+        }
+        canvasDesignSystems[fp] = dsName;
+      }
       // Strip down to `g.path` so per-DS folders (`project`, `beta`, …) show
       // up as the top-level dirs inside the DS section. Single-DS configs get
       // a wrapper folder too — slightly more verbose, but consistent with
@@ -1247,6 +1283,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       projectLabel: ctx.projectLabel,
       designRoot: paths.designRel,
       groups,
+      canvasDesignSystems,
     };
   }
 

@@ -11,6 +11,7 @@ import { createRoot } from 'react-dom/client';
 // import that Bun erases), so this pulls only string constants into the client
 // bundle — no React, no input-router. See the tool-cursor handler below.
 import { resolveToolCursor } from '../canvas-cursors.ts';
+import { canvasUrl } from './canvas-url.js';
 import { TourOverlay } from './tour/overlay.jsx';
 import { USAGE_TOUR } from './tour/usage-tour.js';
 import { useWhatsNew, WhatsNewBadge, WhatsNewPanel, WhatsNewToast } from './whats-new.jsx';
@@ -68,73 +69,12 @@ function sectionDefaultOpen(g) {
 
 // ---------- Utility ----------
 
-function urlOf(p) {
-  return '/' + p.split('/').map(encodeURIComponent).join('/');
-}
-
 // Iframe src for a canvas path. TSX canvases go through _canvas-shell.html so
 // the bundled React 19 runtime + importmap can mount the default export. HTML
 // canvases keep the legacy "serve the file with inspector + Babel injected"
 // path. Phase 3.6 contract; the path argument is repo-root-relative
-// (e.g. ".design/ui/Foo.tsx").
-function canvasUrl(p, cfg, opts) {
-  if (!p.endsWith('.tsx')) return urlOf(p);
-  const designRel = (cfg?.designRel || '.design').replace(/^\/+|\/+$/g, '');
-  // Path under designRoot.
-  let rel = p;
-  if (rel.startsWith(designRel + '/')) rel = rel.slice(designRel.length + 1);
-  // Pass `rel` to URLSearchParams RAW — it does encoding once. Pre-encoding
-  // with encodeURIComponent then handing to URLSearchParams produced
-  // `Docs%2520Site.tsx` (the `%` of `%20` got re-encoded as `%25`) and broke
-  // every UI canvas with a space in its filename.
-  const params = new URLSearchParams();
-  params.set('canvas', rel);
-  params.set('designRel', designRel);
-  // Gallery thumbnails suppress the shell-owned comment layer (`?comments=0`)
-  // so previews stay non-interactive; opening the same canvas as a real tab
-  // omits the flag and gets comments. See canvas-comment-mount.tsx.
-  if (opts?.thumbnail) params.set('comments', '0');
-  const ds0 = cfg?.designSystems?.[0];
-  // Specimen detection: anything under `system/<ds>/preview/` belongs to that
-  // specific DS, so it must render with *that* DS's tokens — not always the
-  // first one. In a multi-DS project this is what keeps each design system's
-  // preview distinct (beta previews use beta tokens, not alpha's).
-  const specMatch = rel.match(/^system\/([^/]+)\/preview\//);
-  const specDsEntry = specMatch
-    ? cfg?.designSystems?.find(
-        (d) => d.path === `system/${specMatch[1]}` || d.path.endsWith(`/${specMatch[1]}`)
-      )
-    : null;
-  // Resolve tokens path. For a specimen, prefer the matching DS's tokensCssRel
-  // (fall back to the `system/<ds>/colors_and_type.css` convention). Otherwise
-  // prefer the first designSystem's tokensCssRel — the project's authoritative
-  // tokens file. The top-level cfg.tokensCssRel is the legacy default
-  // (`system/colors_and_type.css`) and usually doesn't exist post-bootstrap.
-  const tokens = specMatch
-    ? specDsEntry?.tokensCssRel || `system/${specMatch[1]}/colors_and_type.css`
-    : ds0?.tokensCssRel || cfg?.tokensCssRel;
-  if (tokens) params.set('tokens', tokens);
-  if (cfg?.componentsCssRel) params.set('components', cfg.componentsCssRel);
-  if (specMatch) {
-    const dsName = specMatch[1];
-    params.set('layout', `system/${dsName}/preview/_layout.css`);
-    if (!cfg?.componentsCssRel) {
-      params.set('components', `system/${dsName}/preview/_components.css`);
-    }
-  } else if (ds0?.path) {
-    // UI canvas — load the project DS's `_components.css` so the dc-canvas /
-    // dc-section / dc-artboard chrome (and any DS classes the canvas reuses)
-    // renders correctly.
-    if (!cfg?.componentsCssRel) {
-      params.set('components', `${ds0.path}/preview/_components.css`);
-    }
-  }
-  // T2 (9.1-A) — load the iframe from the segregated canvas origin when the
-  // server advertises one; fall back to a same-origin relative URL otherwise
-  // (older server, tests). The trailing path + query are identical either way.
-  const origin = cfg?.canvasOrigin || '';
-  return `${origin}/_canvas-shell.html?${params.toString()}`;
-}
+// (e.g. ".design/ui/Foo.tsx"). Pure resolver extracted to ./canvas-url.js so
+// the token-resolution branches are unit-testable without a DOM (DDR-093).
 
 function basename(p) {
   return p.split('/').pop();
@@ -2237,7 +2177,11 @@ function App() {
       .then((data) => {
         if (cancelled) return;
         const designRel = (data.designRoot || '.design').replace(/^\/+|\/+$/g, '');
-        setCfg({
+        // Functional merge — the `/_config` and `/_index-data` fetches race, and
+        // the latter contributes `canvasDesignSystems` (DDR-093). A full-replace
+        // here would clobber that map if it resolved second.
+        setCfg((prev) => ({
+          ...prev,
           designRel,
           tokensCssRel: data.tokensCssRel,
           // Pass through designSystems so canvasUrl can resolve the right
@@ -2250,7 +2194,7 @@ function App() {
           // from the main origin's /_api). Absent on older servers → relative
           // URL fallback keeps same-origin behavior.
           canvasOrigin: data.canvasOrigin,
-        });
+        }));
       })
       .catch(() => {});
     return () => {
@@ -2391,6 +2335,13 @@ function App() {
         tree: buildTree(g.paths, g.stripPrefix),
       }));
       setGroups(built);
+      // DDR-093 — fold the server-resolved per-canvas DS map into cfg so
+      // canvasUrl() injects each UI canvas's OWN design-system tokens instead of
+      // always designSystems[0]. Functional merge to coexist with the /_config
+      // fetch (either may land first). `?? {}` keeps older servers (no map) on
+      // the ds0 fallback. Re-runs on every tree reload, so adding/retargeting a
+      // canvas refreshes the map.
+      setCfg((prev) => ({ ...prev, canvasDesignSystems: data.canvasDesignSystems ?? {} }));
     } catch (e) {
       console.error('failed to load tree', e);
     }
