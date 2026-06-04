@@ -12,12 +12,13 @@ import {
 } from '../use-tool-mode.tsx';
 
 describe('use-tool-mode / static', () => {
-  test('DEFAULT_TOOLS exposes V/H/C + draw set B/R/N/A/T/E (Phase 24 single Shape tool)', () => {
+  test('DEFAULT_TOOLS exposes V/H/C + draw set B/I/R/N/A/T/E (single Shape tool + highlighter)', () => {
     expect(DEFAULT_TOOLS.map((t) => t.id)).toEqual([
       'move',
       'hand',
       'comment',
       'pen',
+      'highlighter',
       'shape',
       'sticky',
       'arrow',
@@ -29,6 +30,7 @@ describe('use-tool-mode / static', () => {
       'H',
       'C',
       'B',
+      'I',
       'R',
       'N',
       'A',
@@ -50,6 +52,7 @@ describe('use-tool-mode / static', () => {
       'hand',
       'comment',
       'pen',
+      'highlighter',
       'shape',
       'sticky',
       'arrow',

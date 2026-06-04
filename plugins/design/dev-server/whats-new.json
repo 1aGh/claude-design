@@ -2,6 +2,22 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "annotation-tooling-polish",
+      "version": null,
+      "date": null,
+      "kind": "improvement",
+      "title": "Richer annotations — highlighter, lists & text shortcuts",
+      "summary": "Annotations got a full polish pass: a new highlighter tool (translucent marker with multiply blend), dashed strokes on shapes, FigJam-style sticky corner, multi-line text with Enter, italic/underline/lists, and Cmd+B/I/U formatting shortcuts that work the same way in sticky notes, shapes, and the text tool.",
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": ".dc-tool-palette button[aria-label^='Highlighter']",
+          "title": "New: Highlighter",
+          "body": "A translucent marker pen (I) — overlapping strokes darken with multiply blend. Pick hue and nib width from the chrome below."
+        }
+      ]
+    },
+    {
       "id": "canvas-media-images-links",
       "version": null,
       "date": null,

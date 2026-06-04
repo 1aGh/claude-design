@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-04T06:34:07.897Z",
+  "generated": "2026-06-04T16:07:26.195Z",
   "currentPhase": null,
   "phases": [
     {
@@ -98,6 +98,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan touches the export pipeline that was just hardened (graceful Playwright-miss...",
       "planPath": ".ai/plans/archive/export-pipeline-fixes.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-annotation-tooling-polish",
+      "title": "Feature: Annotation tooling polish — text unification, theme-aware ink, dashed shapes, highlighter",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is a dev-server change to the FigJam-style annotation system — the standing rule...",
+      "planPath": ".ai/plans/archive/feature-annotation-tooling-polish.md",
       "archived": true,
       "phaseKey": null
     },
@@ -740,6 +751,28 @@
       "phaseKey": null
     },
     {
+      "id": "epic-native-collab-collaboration-mental-model",
+      "title": "Collaboration mental model for non-technical users (native-collab epic)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "---",
+      "planPath": ".ai/plans/epic-native-collab-collaboration-mental-model.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "epic-native-collab-collaboration-model-alignment",
+      "title": "Alignment: \"MOD morning-debate\" collaboration model ↔ the native-collab epic",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "---",
+      "planPath": ".ai/plans/epic-native-collab-collaboration-model-alignment.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
       "id": "epic-native-collab-e0-decisions-spike",
       "title": "Phase E0 — Native-collab epic: decisions + de-risk spike",
       "status": "planned",
@@ -747,17 +780,6 @@
       "date": null,
       "summary": "Build three throwaway spikes and write the founding DDRs. The spikes answer questions that, if answered wrong after E1 is built, would waste weeks: (A) can a Tauri v2 app spawn the existing compile...",
       "planPath": ".ai/plans/epic-native-collab-e0-decisions-spike.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-annotation-tooling-polish",
-      "title": "Feature: Annotation tooling polish — text unification, theme-aware ink, dashed shapes, highlighter",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is a dev-server change to the FigJam-style annotation system — the standing rule...",
-      "planPath": ".ai/plans/feature-annotation-tooling-polish.md",
       "archived": false,
       "phaseKey": null
     },

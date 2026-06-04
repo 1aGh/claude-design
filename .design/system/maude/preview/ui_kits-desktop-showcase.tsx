@@ -31,15 +31,15 @@ import "./ui_kits-desktop-showcase.css";
 /* 1px-stroke geometric glyphs — terminal/IDE heritage, never emoji. currentColor retints. */
 const Glyph = {
   mark: (
-    // The canonical maude mark — a selected canvas node: hollow currentColor
-    // frame + 4 indigo corner handles (NOT an invented letterform).
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="brand-mark-svg" fill="none">
-      <rect x="6" y="6" width="12" height="12" rx="2.5" stroke="currentColor" strokeWidth="1.5" />
-      <g fill="var(--accent)" stroke="none">
-        <rect x="3" y="3" width="4" height="4" rx="1" />
-        <rect x="17" y="3" width="4" height="4" rx="1" />
-        <rect x="3" y="17" width="4" height="4" rx="1" />
-        <rect x="17" y="17" width="4" height="4" rx="1" />
+    // The maude mark — a selected node: ink frame + 4 indigo corner grips
+    // (top-left grip = the agent spark). Two-colour, bolder.
+    <svg viewBox="0 0 32 32" aria-hidden="true" className="brand-mark-svg" fill="none">
+      <rect x="7" y="7" width="18" height="18" rx="5" stroke="currentColor" strokeWidth="2.8" />
+      <g fill="var(--accent)">
+        <rect x="20.7" y="2.7" width="8.6" height="8.6" rx="2.4" />
+        <rect x="2.7" y="20.7" width="8.6" height="8.6" rx="2.4" />
+        <rect x="20.7" y="20.7" width="8.6" height="8.6" rx="2.4" />
+        <path d="M8 -1 C8.6 5.36 10.64 7.4 17 8 C10.64 8.6 8.6 10.64 8 17 C7.4 10.64 5.36 8.6 -1 8 C5.36 7.4 7.4 5.36 8 -1 Z" />
       </g>
     </svg>
   ),

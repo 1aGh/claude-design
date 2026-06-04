@@ -416,11 +416,58 @@ export function IconAlignRight(props: IconProps) {
   );
 }
 
+// ── Annotation polish text-style icons (italic / underline / lists) ──────────
+export function IconItalic(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M10 5h8M6 19h8M14 5l-4 14" />
+    </Svg>
+  );
+}
+export function IconUnderline(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M7 4v7a5 5 0 0010 0V4M5 20h14" />
+    </Svg>
+  );
+}
+export function IconListBullet(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M9 6h11M9 12h11M9 18h11" />
+      <circle cx="4.5" cy="6" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="4.5" cy="12" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="4.5" cy="18" r="1.1" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+export function IconListOrdered(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M10 6h10M10 12h10M10 18h10" />
+      <path d="M3 5l1.4-.5V9M3 9h2.8" strokeWidth={1.4} />
+      <path d="M3.2 14.2a1 1 0 011.7.7c0 .9-1.7 1.4-1.7 2.6h2" strokeWidth={1.4} />
+    </Svg>
+  );
+}
+
+// ── Annotation polish — highlighter (chisel-tip marker) ──────────────────────
+export function IconHighlighter(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M14 4l6 6-8.5 8.5H6v-5.5z" />
+      <path d="M11 7l6 6" />
+      <path d="M4 21h7" strokeWidth={2.5} />
+    </Svg>
+  );
+}
+
 export const TOOL_ICONS: Record<string, (p: IconProps) => JSX.Element> = {
   move: IconMove,
   hand: IconHand,
   comment: IconComment,
   pen: IconPen,
+  highlighter: IconHighlighter,
   // Phase 24 — single Shape tool. rect/ellipse kept for any legacy lookups.
   shape: IconShape,
   rect: IconRect,

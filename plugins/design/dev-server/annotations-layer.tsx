@@ -24,6 +24,7 @@
 import {
   type CSSProperties,
   createContext,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useContext,
@@ -88,6 +89,13 @@ export interface PenStroke {
   color: string;
   width: number;
   points: WorldPoint[];
+  /**
+   * Highlighter (item 8). A `highlighter:true` pen reuses ALL pen draw / erase /
+   * hit-test / translate logic; it just renders wide + translucent with
+   * `mix-blend-mode:multiply` (overlaps darken) and carries a translucent
+   * marker colour. Absent / false = a normal solid pen (back-compat).
+   */
+  highlighter?: boolean;
 }
 export interface RectStroke {
   id: string;
@@ -101,6 +109,8 @@ export interface RectStroke {
   fill?: string | null;
   /** Phase 21 — corner radius (rx/ry). Absent / 0 = sharp 90° corners (back-compat). */
   cornerRadius?: number;
+  /** Dashed outline (stroke-dasharray). Absent / false = solid (back-compat). */
+  dashed?: boolean;
 }
 export interface EllipseStroke {
   id: string;
@@ -112,6 +122,8 @@ export interface EllipseStroke {
   rx: number;
   ry: number;
   fill?: string | null;
+  /** Dashed outline (stroke-dasharray). Absent / false = solid (back-compat). */
+  dashed?: boolean;
 }
 /**
  * Phase 24 — diamond / triangle / triangle-down primitives. Stored as a bbox
@@ -171,6 +183,12 @@ export interface TextStroke {
   bold?: boolean;
   /** Phase 24 — strikethrough. Absent / false = none (back-compat). */
   strike?: boolean;
+  /** Italic style (item 4b). Absent / false = upright (back-compat). */
+  italic?: boolean;
+  /** Underline (item 4b). Combined with strike into one text-decoration. */
+  underline?: boolean;
+  /** List style (item 4c). Markers are render-only — never stored in `text`. */
+  listType?: ListType;
   /**
    * Phase 24 — horizontal alignment. Absent default differs by kind: anchored
    * text = 'center' (legacy, byte-identical), standalone = 'left'.
@@ -194,6 +212,12 @@ export interface StickyStroke {
   bold?: boolean;
   /** Phase 24 — strikethrough body. Absent / false = none. */
   strike?: boolean;
+  /** Italic body (item 4b). Absent / false = upright. */
+  italic?: boolean;
+  /** Underline body (item 4b). Combined with strike into one text-decoration. */
+  underline?: boolean;
+  /** List style (item 4c). Markers are render-only — never stored in `text`. */
+  listType?: ListType;
   /** Phase 24 — body alignment. Absent = 'left' (FigJam sticky default). */
   align?: TextAlign;
 }
@@ -289,6 +313,45 @@ type PaletteColor = (typeof STROKE_PALETTE)[number];
 // other hues stay one click away. (Stickies keep their warm-paper default —
 // DEFAULT_STICKY_COLOR — they're paper, not ink.)
 const DEFAULT_COLOR: PaletteColor = STROKE_PALETTE[8];
+// Annotation polish — the LIVE default ink follows the canvas theme so a
+// freshly-armed pen/shape/arrow/text reads true on dark canvases (the
+// `#1f1f1f` ink is near-invisible on a dark mock). Light → the `#1f1f1f`
+// ink slot; dark → a light ink that reads on dark. This is the live draw
+// default ONLY — `DEFAULT_COLOR` stays the parse fallback (round-trip
+// determinism + back-compat), and stored strokes keep their literal hex
+// (FigJam parity — no retroactive recolour).
+const DEFAULT_INK_DARK = '#ededed';
+export function resolveDefaultInk(theme: string): string {
+  return theme === 'dark' ? DEFAULT_INK_DARK : DEFAULT_COLOR;
+}
+
+/**
+ * The canvas-shell CHROME theme — `data-maude-theme` on `<html>`, default
+ * 'dark'. This (NOT the DS `data-theme`, which is deliberately separate and
+ * themes only artboard palettes — canvas-shell.tsx) is what flips the canvas
+ * BACKGROUND the annotation ink sits on, so the theme-aware default ink follows
+ * it. Re-resolves on `data-maude-theme` mutation (the dark/light toggle posts it
+ * into the iframe after mount, so we re-read once on mount too).
+ */
+function readChromeTheme(): 'light' | 'dark' {
+  if (typeof document === 'undefined') return 'dark';
+  return document.documentElement.dataset.maudeTheme === 'light' ? 'light' : 'dark';
+}
+function useCanvasChromeTheme(): 'light' | 'dark' {
+  const [theme, setTheme] = useState<'light' | 'dark'>(readChromeTheme);
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const sync = () => setTheme(readChromeTheme());
+    sync(); // catch a value stamped between the initializer and this effect
+    const obs = new MutationObserver(sync);
+    obs.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-maude-theme'],
+    });
+    return () => obs.disconnect();
+  }, []);
+  return theme;
+}
 
 // Light tints, index-paired to STROKE_PALETTE — picking "blue fill" gives a
 // pale blue wash under a saturated stroke, exactly like FigJam shapes.
@@ -303,6 +366,24 @@ export const FILL_PALETTE = [
   '#ededed', // gray tint
   '#e7e7e7', // ink tint
 ] as const;
+
+// Neutral fill wash for the ink slot (no paired hue) — light vs dark canvas.
+const NEUTRAL_FILL_LIGHT = FILL_PALETTE[8]; // '#e7e7e7'
+const NEUTRAL_FILL_DARK = '#2a2a2a';
+/**
+ * Annotation polish (item 2) — the LIVE default fill for a freshly-armed Shape
+ * tool. A coloured ink maps to its index-paired light tint (FigJam: a saturated
+ * outline over a pale wash of the same hue); the ink slot / themed-dark ink /
+ * any unknown hex maps to a neutral wash. "No fill" stays one click away (the
+ * chrome's None swatch) and, once picked, sticks (fillTouchedRef). Stored
+ * shapes keep their literal fill — only NEW shapes pick up this default.
+ */
+export function defaultFillFor(color: string, theme: string): string {
+  const idx = STROKE_PALETTE.indexOf(color as PaletteColor);
+  // Coloured ink (slots 0–7) → its paired tint; ink slot (8) / unknown → neutral.
+  if (idx >= 0 && idx < FILL_PALETTE.length - 1) return FILL_PALETTE[idx];
+  return theme === 'dark' ? NEUTRAL_FILL_DARK : NEUTRAL_FILL_LIGHT;
+}
 
 const STROKE_WIDTH_THIN = 3;
 const STROKE_WIDTH_THICK = 6;
@@ -331,6 +412,22 @@ export const STICKY_PALETTE = [
 ] as const;
 const DEFAULT_STICKY_COLOR = STICKY_PALETTE[0];
 const STICKY_CORNER_RADIUS = 8;
+
+// Annotation polish (item 8) — highlighter marker hues. Translucent 8-digit hex
+// (RRGGBBAA, ~50% alpha) so overlaps darken under `mix-blend-mode:multiply`.
+// Yellow is the default; green / pink / blue follow. Wholly separate from the
+// ink PALETTE — the highlighter draws a soft wash, not a saturated line.
+export const HIGHLIGHTER_PALETTE = [
+  '#ffe24d80', // yellow (default)
+  '#7ce8a080', // green
+  '#ff9ed180', // pink
+  '#7ec5ff80', // blue
+] as const;
+const DEFAULT_HIGHLIGHTER_COLOR = HIGHLIGHTER_PALETTE[0];
+// Highlighter marker nib widths (item 8) — three sizes (thin / medium / thick),
+// all wider than the pen. Default medium.
+const HIGHLIGHTER_WIDTHS = [10, 18, 28] as const;
+const DEFAULT_HIGHLIGHTER_WIDTH = HIGHLIGHTER_WIDTHS[1];
 // Phase 24 — stickies are 1:1; the default tap size is a square.
 const STICKY_DEFAULT_W = 200;
 const STICKY_DEFAULT_H = 200;
@@ -408,6 +505,202 @@ export function penPathD(points: readonly WorldPoint[]): string {
   return d;
 }
 
+// ── Multi-line text (item 4a) ────────────────────────────────────────────────
+// SVG <text> ignores `\n`, so multi-line annotation text must render as one
+// <tspan> per line. The serialized + live forms share this geometry; single-
+// line text keeps the legacy single-run form (no tspan) so the canary holds.
+
+/** Line-height multiplier for multi-line annotation text. */
+const TEXT_LINE_HEIGHT = 1.25;
+
+/** Split a text body into its display lines. */
+export function splitTextLines(text: string): string[] {
+  return text.split('\n');
+}
+
+/** Annotation polish (item 4c) — list style for text + sticky bodies. */
+export type ListType = 'bullet' | 'number';
+
+/**
+ * Render-time list marker prefix for one line. Markers are PRESENTATION ONLY —
+ * never stored in `text` (DDR) — so the stored string stays clean and
+ * contentEditable editing is sane. Bullet → `• `; number → `${i + 1}. `.
+ */
+function listPrefixedLine(line: string, index: number, list?: ListType): string {
+  if (!list) return line;
+  return list === 'bullet' ? `• ${line}` : `${index + 1}. ${line}`;
+}
+
+/** Inverse of {@link listPrefixedLine} — strip a render-time marker on parse. */
+function stripListPrefix(line: string, index: number, list?: ListType): string {
+  if (!list) return line;
+  const marker = list === 'bullet' ? '• ' : `${index + 1}. `;
+  return line.startsWith(marker) ? line.slice(marker.length) : line;
+}
+
+/** Prefix every line of a body with its list marker (for the editor display). */
+export function listPrefixedBody(text: string, list?: ListType): string {
+  if (!list) return text;
+  return splitTextLines(text)
+    .map((line, i) => listPrefixedLine(line, i, list))
+    .join('\n');
+}
+
+/**
+ * Strip list markers off editor `innerText` on commit (item 4c). Generic — a
+ * `•` bullet OR any leading `N. ` number is removed once per line, regardless of
+ * the index the user actually typed, so re-numbering while editing round-trips
+ * cleanly (the stored text stays marker-free; the read view re-derives markers).
+ */
+export function stripEditorMarkers(text: string, list?: ListType): string {
+  if (!list) return text;
+  const re = list === 'bullet' ? /^• / : /^\d+\.\s/;
+  return splitTextLines(text)
+    .map((line) => line.replace(re, ''))
+    .join('\n');
+}
+
+/**
+ * Combined `text-decoration` SVG attribute for strike + underline (item 4b).
+ * Strike-only stays `text-decoration="line-through"` (byte-identical to the
+ * legacy Phase-24 form); both → `line-through underline`; neither → empty.
+ */
+function textDecoAttr(strike?: boolean, underline?: boolean): string {
+  const vals: string[] = [];
+  if (strike) vals.push('line-through');
+  if (underline) vals.push('underline');
+  return vals.length ? ` text-decoration="${vals.join(' ')}"` : '';
+}
+
+/** CSS `text-decoration` value for the live render (strike + underline). */
+function textDecoCss(strike?: boolean, underline?: boolean): string | undefined {
+  const vals: string[] = [];
+  if (strike) vals.push('line-through');
+  if (underline) vals.push('underline');
+  return vals.length ? vals.join(' ') : undefined;
+}
+
+/**
+ * Inline text formatting carried by an editor through commit (item 4b/4d
+ * unification) — so Cmd+B / Cmd+I / Cmd+U toggled WHILE editing land on the
+ * stroke. `strike` rides along unchanged (no shortcut; toolbar-only).
+ */
+export interface EditorFmt {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strike?: boolean;
+}
+/** Normalize an EditorFmt → only-true keys kept; false becomes undefined so the
+ *  serialize-only-when-set invariant + byte-identical canary hold. */
+function normFmt(fmt?: EditorFmt): EditorFmt {
+  return {
+    bold: fmt?.bold || undefined,
+    italic: fmt?.italic || undefined,
+    underline: fmt?.underline || undefined,
+    strike: fmt?.strike || undefined,
+  };
+}
+/** True when a stroke's existing formatting already matches `fmt` (so a pure
+ *  identity edit can short-circuit without a redundant undo record). */
+function fmtEqual(s: EditorFmt, fmt?: EditorFmt): boolean {
+  if (!fmt) return true;
+  return (
+    !!s.bold === !!fmt.bold &&
+    !!s.italic === !!fmt.italic &&
+    !!s.underline === !!fmt.underline &&
+    !!s.strike === !!fmt.strike
+  );
+}
+
+/**
+ * Shared inline-formatting state for the three text editors (sticky / anchored /
+ * standalone) — the unification surface (item 4d). Cmd/Ctrl + B / I / U toggle
+ * bold / italic / underline WHILE editing (preventing the browser's native
+ * execCommand, which would inject markup the model can't read), preview live via
+ * `style`, and commit on the stroke via `fmtRef`. `strike` rides along unchanged
+ * (toolbar-only — no universal shortcut). One hook = identical behaviour across
+ * all three editors.
+ */
+function useEditorFormat(initial: EditorFmt): {
+  fmtRef: { current: EditorFmt };
+  style: CSSProperties;
+  onFormatKey: (e: ReactKeyboardEvent) => boolean;
+} {
+  const [bold, setBold] = useState(!!initial.bold);
+  const [italic, setItalic] = useState(!!initial.italic);
+  const [underline, setUnderline] = useState(!!initial.underline);
+  const strike = !!initial.strike;
+  const fmtRef = useRef<EditorFmt>({ bold, italic, underline, strike });
+  fmtRef.current = { bold, italic, underline, strike };
+  const style: CSSProperties = {
+    fontWeight: bold ? 700 : undefined,
+    fontStyle: italic ? 'italic' : undefined,
+    textDecoration: textDecoCss(strike, underline),
+  };
+  const onFormatKey = useCallback((e: ReactKeyboardEvent): boolean => {
+    if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return false;
+    const k = e.key.toLowerCase();
+    if (k === 'b') {
+      e.preventDefault();
+      setBold((v) => !v);
+      return true;
+    }
+    if (k === 'i') {
+      e.preventDefault();
+      setItalic((v) => !v);
+      return true;
+    }
+    if (k === 'u') {
+      e.preventDefault();
+      setUnderline((v) => !v);
+      return true;
+    }
+    return false;
+  }, []);
+  return { fmtRef, style, onFormatKey };
+}
+
+/**
+ * Per-line baseline offset (`dy`). Line 0 sits at the anchor when top-anchored
+ * (hanging) or is lifted half the block height when vertically centred
+ * (anchored-in-host); every later line advances one line-height.
+ */
+function textLineDy(i: number, fontSize: number, lineCount: number, centered: boolean): number {
+  const lh = fontSize * TEXT_LINE_HEIGHT;
+  if (i > 0) return lh;
+  return centered ? (-(lineCount - 1) / 2) * lh : 0;
+}
+
+/**
+ * Inner content for a serialized `<text>` stroke: the legacy single esc'd run
+ * when there's no newline (byte-identical, canary-safe), else one `<tspan>` per
+ * line. `x` is set on each tspan for standalone text (resets the line origin);
+ * anchored text omits it (the persisted form carries no absolute position —
+ * geometry is resolved against the host at render time). A `list` prefix
+ * (bullet / number) is prepended per line at render time only (DDR — never
+ * stored in `text`).
+ */
+function textInnerSvg(
+  text: string,
+  fontSize: number,
+  centered: boolean,
+  x: number | undefined,
+  list?: ListType
+): string {
+  if (!list && !text.includes('\n')) return esc(listPrefixedLine(text, 0, list));
+  const lines = splitTextLines(text);
+  const xAttr = x != null ? ` x="${x}"` : '';
+  return lines
+    .map(
+      (line, i) =>
+        `<tspan${xAttr} dy="${textLineDy(i, fontSize, lines.length, centered)}">${esc(
+          listPrefixedLine(line, i, list)
+        )}</tspan>`
+    )
+    .join('');
+}
+
 // Phase 24 — moved to canvas-arrowheads.ts (single source for shaft + heads).
 // Re-exported so the existing test import (`from '../annotations-layer.tsx'`)
 // and the byte-identical canary keep working.
@@ -462,6 +755,28 @@ export function polygonPoints(
     .join(' ');
 }
 
+/**
+ * Annotation polish (item 1) — a rounded-rect `d` with TL/TR/BL rounded at `r`
+ * and the **bottom-right corner SHARP** (the FigJam sticky-note silhouette). The
+ * radius is clamped to half the smaller side so it never self-overlaps. Used by
+ * `StrokeNode`'s LIVE sticky render only; the persisted form (`strokeToSvgEl`)
+ * stays a plain `<rect>` (DDR — zero canary / sanitizer / parse impact).
+ */
+export function stickyCornerPath(x: number, y: number, w: number, h: number, r: number): string {
+  const rr = Math.max(0, Math.min(r, w / 2, h / 2));
+  return [
+    `M${x + rr} ${y}`,
+    `L${x + w - rr} ${y}`,
+    `Q${x + w} ${y} ${x + w} ${y + rr}`,
+    `L${x + w} ${y + h}`, // sharp bottom-right
+    `L${x + rr} ${y + h}`,
+    `Q${x} ${y + h} ${x} ${y + h - rr}`,
+    `L${x} ${y + rr}`,
+    `Q${x} ${y} ${x + rr} ${y}`,
+    'Z',
+  ].join(' ');
+}
+
 /** Even-odd ray-cast point-in-polygon test. */
 function pointInPolygon(px: number, py: number, pts: ReadonlyArray<[number, number]>): boolean {
   let inside = false;
@@ -501,10 +816,14 @@ function strokeToSvgEl(s: Stroke): string {
     // Phase 21 — anchored text keeps the byte-identical Phase 5.1 form;
     // standalone text (no anchorId) writes its own world x/y and omits
     // data-anchor-id (so the parser routes it back to the standalone branch).
-    // Phase 24 — bold/strike/align serialize ONLY for non-default values, so a
-    // legacy text node stays byte-identical (weight/deco/alignAttr are empty).
+    // bold/italic/strike/underline/align/list serialize ONLY for non-default
+    // values, so a legacy text node stays byte-identical (every added fragment
+    // is empty). Multi-line text emits one <tspan> per line (item 4a); a
+    // single-line unstyled run stays the legacy single esc'd text.
     const weight = s.bold ? ' font-weight="700"' : '';
-    const deco = s.strike ? ' text-decoration="line-through"' : '';
+    const italic = s.italic ? ' font-style="italic"' : '';
+    const deco = textDecoAttr(s.strike, s.underline);
+    const listAttr = s.listType ? ` data-list="${s.listType}"` : '';
     if (s.anchorId != null && s.anchorId !== '') {
       const align = s.align ?? 'center'; // anchored default = centre (legacy)
       const anchor = align === 'left' ? 'start' : align === 'right' ? 'end' : 'middle';
@@ -513,8 +832,12 @@ function strokeToSvgEl(s: Stroke): string {
         s.anchorId
       )}" data-font-size="${s.fontSize}" fill="${esc(
         s.color
-      )}"${weight}${deco} text-anchor="${anchor}" dominant-baseline="middle"${alignAttr}>${esc(
-        s.text
+      )}"${weight}${italic}${deco}${listAttr} text-anchor="${anchor}" dominant-baseline="middle"${alignAttr}>${textInnerSvg(
+        s.text,
+        s.fontSize,
+        true,
+        undefined,
+        s.listType
       )}</text>`;
     }
     const tx = s.x ?? 0;
@@ -526,8 +849,12 @@ function strokeToSvgEl(s: Stroke): string {
       s.fontSize
     }" fill="${esc(
       s.color
-    )}"${weight}${deco} text-anchor="${anchor}" dominant-baseline="hanging"${alignAttr}>${esc(
-      s.text
+    )}"${weight}${italic}${deco}${listAttr} text-anchor="${anchor}" dominant-baseline="hanging"${alignAttr}>${textInnerSvg(
+      s.text,
+      s.fontSize,
+      false,
+      tx,
+      s.listType
     )}</text>`;
   }
   if (s.tool === 'sticky') {
@@ -538,14 +865,18 @@ function strokeToSvgEl(s: Stroke): string {
     const r = s.cornerRadius ?? STICKY_CORNER_RADIUS;
     const w = Math.max(0, s.w);
     const h = Math.max(0, s.h);
-    // Phase 24 — bold/strike/align on the <g> data-attrs, emitted ONLY for
-    // non-default values (sticky default align = left) so Phase-21 stickies
-    // serialize byte-identically.
+    // bold/italic/strike/underline/align/list on the <g> data-attrs, emitted
+    // ONLY for non-default values (sticky default align = left) so Phase-21
+    // stickies serialize byte-identically. The body <text> stays raw text —
+    // list markers are render-only (item 4c), never persisted.
     const align = s.align ?? 'left';
     const styleAttrs =
       (s.bold ? ' data-bold="1"' : '') +
+      (s.italic ? ' data-italic="1"' : '') +
       (s.strike ? ' data-strike="1"' : '') +
-      (align !== 'left' ? ` data-align="${align}"` : '');
+      (s.underline ? ' data-underline="1"' : '') +
+      (align !== 'left' ? ` data-align="${align}"` : '') +
+      (s.listType ? ` data-list="${s.listType}"` : '');
     return `<g data-id="${esc(s.id)}" data-tool="sticky" data-r="${r}" data-fs="${
       s.fontSize
     }" fill="${esc(s.color)}"${styleAttrs}><rect x="${s.x}" y="${
@@ -598,7 +929,10 @@ function strokeToSvgEl(s: Stroke): string {
   }
   const common = `data-id="${esc(s.id)}" data-tool="${s.tool}" stroke="${esc(s.color)}" stroke-width="${s.width}" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"`;
   if (s.tool === 'pen') {
-    return `<path ${common} fill="none" d="${penPathD(s.points)}" pointer-events="stroke"/>`;
+    // Highlighter (item 8) — data-highlighter ONLY when true so a normal pen
+    // stays byte-identical (canary).
+    const hl = s.highlighter ? ' data-highlighter="1"' : '';
+    return `<path ${common} fill="none" d="${penPathD(s.points)}"${hl} pointer-events="stroke"/>`;
   }
   if (s.tool === 'rect') {
     const fill = s.fill ? esc(s.fill) : 'none';
@@ -606,17 +940,23 @@ function strokeToSvgEl(s: Stroke): string {
     // sharp-corner rects serialize byte-identically (Task 10 canary).
     const r = s.cornerRadius ?? 0;
     const round = r > 0 ? ` rx="${r}" ry="${r}" data-r="${r}"` : '';
+    // Dashed outline (item 7) — emitted ONLY when true (mirror polygon/arrow)
+    // so a legacy solid rect stays byte-identical.
+    const dash = s.dashed ? ' stroke-dasharray="6 4"' : '';
+    const dashAttr = s.dashed ? ' data-dash="1"' : '';
     return `<rect ${common} fill="${fill}" x="${s.x}" y="${s.y}" width="${Math.max(
       0,
       s.w
-    )}" height="${Math.max(0, s.h)}"${round}/>`;
+    )}" height="${Math.max(0, s.h)}"${round}${dash}${dashAttr}/>`;
   }
   if (s.tool === 'ellipse') {
     const fill = s.fill ? esc(s.fill) : 'none';
+    const dash = s.dashed ? ' stroke-dasharray="6 4"' : '';
+    const dashAttr = s.dashed ? ' data-dash="1"' : '';
     return `<ellipse ${common} fill="${fill}" cx="${s.cx}" cy="${s.cy}" rx="${Math.max(
       0,
       s.rx
-    )}" ry="${Math.max(0, s.ry)}"/>`;
+    )}" ry="${Math.max(0, s.ry)}"${dash}${dashAttr}/>`;
   }
   if (s.tool === 'polygon') {
     // Phase 24 — bbox-derived points + data-shape. Normalize the bbox so a
@@ -749,7 +1089,12 @@ export function svgToStrokes(svgText: string): Stroke[] {
       if (tool === 'pen') {
         const d = el.getAttribute('d') || '';
         const points = parsePathD(d);
-        if (points.length) out.push({ id, tool: 'pen', color, width, points });
+        if (points.length) {
+          const pen: PenStroke = { id, tool: 'pen', color, width, points };
+          // Highlighter flag; absent ⇒ undefined so a normal pen round-trips.
+          if (el.getAttribute('data-highlighter') === '1') pen.highlighter = true;
+          out.push(pen);
+        }
         continue;
       }
       if (tool === 'sticky') {
@@ -779,13 +1124,17 @@ export function svgToStrokes(svgText: string): Stroke[] {
           fontSize,
           cornerRadius,
         };
-        // Phase 24 — style attrs; absent ⇒ defaults (normal / left), left unset.
+        // Style attrs; absent ⇒ defaults (normal / left), left unset.
         if (el.getAttribute('data-bold') === '1') sticky.bold = true;
+        if (el.getAttribute('data-italic') === '1') sticky.italic = true;
         if (el.getAttribute('data-strike') === '1') sticky.strike = true;
+        if (el.getAttribute('data-underline') === '1') sticky.underline = true;
         const sticAlign = el.getAttribute('data-align');
         if (sticAlign === 'left' || sticAlign === 'center' || sticAlign === 'right') {
           sticky.align = sticAlign;
         }
+        const sticList = el.getAttribute('data-list');
+        if (sticList === 'bullet' || sticList === 'number') sticky.listType = sticList;
         out.push(sticky);
         continue;
       }
@@ -797,7 +1146,11 @@ export function svgToStrokes(svgText: string): Stroke[] {
         const fill = parseFill(el.getAttribute('fill'));
         // Phase 21 — corner radius; absent ⇒ 0 (sharp, back-compat).
         const cornerRadius = Number.parseFloat(el.getAttribute('data-r') || '0') || 0;
-        out.push({ id, tool: 'rect', color, width, x, y, w, h, fill, cornerRadius });
+        const rect: RectStroke = { id, tool: 'rect', color, width, x, y, w, h, fill, cornerRadius };
+        // Dashed (item 7); absent ⇒ undefined so a solid rect round-trips.
+        const rectDash = el.getAttribute('data-dash');
+        if (rectDash === '1' || rectDash === 'true') rect.dashed = true;
+        out.push(rect);
         continue;
       }
       if (tool === 'ellipse') {
@@ -806,7 +1159,10 @@ export function svgToStrokes(svgText: string): Stroke[] {
         const rx = Number.parseFloat(el.getAttribute('rx') || '0');
         const ry = Number.parseFloat(el.getAttribute('ry') || '0');
         const fill = parseFill(el.getAttribute('fill'));
-        out.push({ id, tool: 'ellipse', color, width, cx, cy, rx, ry, fill });
+        const ell: EllipseStroke = { id, tool: 'ellipse', color, width, cx, cy, rx, ry, fill };
+        const ellDash = el.getAttribute('data-dash');
+        if (ellDash === '1' || ellDash === 'true') ell.dashed = true;
+        out.push(ell);
         continue;
       }
       if (tool === 'polygon') {
@@ -907,12 +1263,30 @@ export function svgToStrokes(svgText: string): Stroke[] {
           Number.parseFloat(el.getAttribute('data-font-size') || String(DEFAULT_FONT_SIZE)) ||
           DEFAULT_FONT_SIZE;
         const inkColor = el.getAttribute('fill') || color;
-        const body = (el.textContent || '').trim();
-        // Phase 24 — bold / strike / align. `data-align` is the round-trip
-        // source of truth (text-anchor is derived from it). Absent ⇒ default
-        // (normal / per-kind align), left unset so legacy nodes round-trip.
+        // List style (item 4c) — read FIRST so per-line markers can be stripped
+        // off the parsed text (markers are render-only; never stored).
+        const listRaw = el.getAttribute('data-list');
+        const listType: ListType | undefined =
+          listRaw === 'bullet' || listRaw === 'number' ? listRaw : undefined;
+        // Multi-line text (item 4a) — one <tspan> per line. Recover `\n` by
+        // joining tspan text content (markers stripped); a legacy single-run
+        // <text> has no tspans → read its trimmed textContent.
+        const tspans = el.querySelectorAll('tspan');
+        const body =
+          tspans.length > 0
+            ? Array.from(tspans)
+                .map((t, i) => stripListPrefix(t.textContent ?? '', i, listType))
+                .join('\n')
+            : stripListPrefix((el.textContent || '').trim(), 0, listType);
+        // bold / italic / strike / underline / align. `data-align` is the
+        // round-trip source of truth (text-anchor is derived from it). Absent ⇒
+        // default (normal / per-kind align), left unset so legacy nodes
+        // round-trip.
         const isBold = el.getAttribute('font-weight') === '700';
-        const isStrike = (el.getAttribute('text-decoration') || '').includes('line-through');
+        const isItalic = el.getAttribute('font-style') === 'italic';
+        const decoAttr = el.getAttribute('text-decoration') || '';
+        const isStrike = decoAttr.includes('line-through');
+        const isUnderline = decoAttr.includes('underline');
         const da = el.getAttribute('data-align');
         const align: TextAlign | undefined =
           da === 'left' || da === 'center' || da === 'right' ? da : undefined;
@@ -929,7 +1303,10 @@ export function svgToStrokes(svgText: string): Stroke[] {
             y: Number.parseFloat(el.getAttribute('y') || '0'),
           };
           if (isBold) t.bold = true;
+          if (isItalic) t.italic = true;
           if (isStrike) t.strike = true;
+          if (isUnderline) t.underline = true;
+          if (listType) t.listType = listType;
           if (align) t.align = align;
           out.push(t);
           continue;
@@ -943,7 +1320,10 @@ export function svgToStrokes(svgText: string): Stroke[] {
           anchorId: rawAnchor,
         };
         if (isBold) t.bold = true;
+        if (isItalic) t.italic = true;
         if (isStrike) t.strike = true;
+        if (isUnderline) t.underline = true;
+        if (listType) t.listType = listType;
         if (align) t.align = align;
         out.push(t);
       }
@@ -1236,11 +1616,18 @@ export function strokeBBox(
   }
   const tx = s.x ?? 0;
   const ty = s.y ?? 0;
+  // Multi-line text (item 4a) — the bbox spans the longest line (width) and all
+  // lines (height) so the selection halo / hit-test / eraser cover the whole
+  // block, not just line one. List markers widen each line by 2–3 chars.
+  const lines = splitTextLines(s.text);
+  const markerPad = s.listType ? 3 : 0;
+  const longest = lines.reduce((m, l) => Math.max(m, l.length + markerPad), 0);
   return {
     x: tx,
     y: ty,
-    w: Math.max(8, s.text.length * s.fontSize * 0.55),
-    h: s.fontSize * 1.2,
+    w: Math.max(8, longest * s.fontSize * 0.55),
+    // Single-line keeps the legacy 1.2 height; multi-line grows by line count.
+    h: lines.length <= 1 ? s.fontSize * 1.2 : lines.length * s.fontSize * TEXT_LINE_HEIGHT,
   };
 }
 
@@ -1548,6 +1935,7 @@ export { useAnnotationsVisibility } from './use-annotations-visibility.tsx';
 export function AnnotationsLayer() {
   ensureAnnotStyles();
   const { tool, setTool, sticky, tools, shapeKind } = useToolMode();
+  const theme = useCanvasChromeTheme();
   const controller = useViewportControllerContext();
   const vp = controller?.viewport ?? null;
   const worldRef = useWorldRefContext();
@@ -1556,12 +1944,42 @@ export function AnnotationsLayer() {
 
   const [strokes, setStrokesState] = useState<Stroke[]>([]);
   const [drawing, setDrawing] = useState<Stroke | null>(null);
-  const [color, setColor] = useState<string>(DEFAULT_COLOR);
-  const [fill, setFill] = useState<string | null>(null);
+  // Theme-aware live default ink (items 3/5/6). Initialized from the current
+  // theme; tracked-untouched until the user picks a swatch, after which it
+  // sticks (colorTouchedRef). The themed-default effect lives below.
+  const [color, setColorState] = useState<string>(() => resolveDefaultInk(theme));
+  const colorTouchedRef = useRef(false);
+  const setColor = useCallback((c: string) => {
+    colorTouchedRef.current = true;
+    setColorState(c);
+  }, []);
+  // While the user hasn't picked an ink swatch yet, follow the theme — so a
+  // dark canvas arms a light-reading default and a light canvas a dark one.
+  useEffect(() => {
+    if (!colorTouchedRef.current) setColorState(resolveDefaultInk(theme));
+  }, [theme]);
+  // Shape default fill (item 2). A freshly-armed Shape tool gets a fill (not
+  // outline-only); the index-paired tint of the active ink. Untouched until the
+  // user picks a fill swatch (incl. "No fill"), after which it sticks.
+  const [fill, setFillState] = useState<string | null>(null);
+  const fillTouchedRef = useRef(false);
+  const setFill = useCallback((f: string | null) => {
+    fillTouchedRef.current = true;
+    setFillState(f);
+  }, []);
+  // While the Shape tool is armed and the fill is untouched, follow the ink
+  // (and theme) so a square/circle/diamond lands with a paired-tint wash. Once
+  // the user picks a fill swatch (or "No fill"), this stops.
+  useEffect(() => {
+    if (tool === 'shape' && !fillTouchedRef.current) setFillState(defaultFillFor(color, theme));
+  }, [tool, color, theme]);
   const [thickness, setThickness] = useState<Thickness>(STROKE_WIDTH_THIN);
   // Phase 21 — draw-time paper tint for the sticky tool (recolor-after via the
   // context toolbar). Separate from `color` (ink for pen/rect/text/arrow).
   const [stickyColor, setStickyColor] = useState<string>(DEFAULT_STICKY_COLOR);
+  // Annotation polish (item 8) — draw-time highlighter marker hue + nib width.
+  const [highlighterColor, setHighlighterColor] = useState<string>(DEFAULT_HIGHLIGHTER_COLOR);
+  const [highlighterWidth, setHighlighterWidth] = useState<number>(DEFAULT_HIGHLIGHTER_WIDTH);
   // Phase 21 — a standalone-text caret waiting for its first keystroke. No
   // stroke exists yet (mirrors anchored text: the stroke is born on commit,
   // so an abandoned empty caret leaves nothing behind / no undo record).
@@ -1603,7 +2021,12 @@ export function AnnotationsLayer() {
   strokesRef.current = strokes;
 
   const isDraw =
-    tool === 'pen' || tool === 'shape' || tool === 'arrow' || tool === 'sticky' || tool === 'text';
+    tool === 'pen' ||
+    tool === 'highlighter' ||
+    tool === 'shape' ||
+    tool === 'arrow' ||
+    tool === 'sticky' ||
+    tool === 'text';
   const isErase = tool === 'eraser';
   const isActive = isDraw || isErase;
   // T20 / Phase 24 — every shape primitive carries stroke weight (FigJam ships
@@ -1971,6 +2394,17 @@ export function AnnotationsLayer() {
       const activeFill = supportsFill ? fill : null;
       if (tool === 'pen') {
         setDrawing({ id, tool: 'pen', color, width, points: [[wx, wy]] });
+      } else if (tool === 'highlighter') {
+        // Highlighter (item 8) — a pen stroke with a wide width, a translucent
+        // marker hue, and the highlighter flag (renders multiply at draw time).
+        setDrawing({
+          id,
+          tool: 'pen',
+          color: highlighterColor,
+          width: highlighterWidth,
+          points: [[wx, wy]],
+          highlighter: true,
+        });
       } else if (tool === 'shape') {
         // Phase 24 — the single Shape tool maps its kind onto a stroke type:
         // circle → ellipse; square/rounded → rect (cornerRadius 0 / 8);
@@ -2059,6 +2493,8 @@ export function AnnotationsLayer() {
       fill,
       thickness,
       stickyColor,
+      highlighterColor,
+      highlighterWidth,
       supportsThickness,
       supportsFill,
       isActive,
@@ -2161,7 +2597,9 @@ export function AnnotationsLayer() {
     // mode is locked on this tool. Sticky lets the user draw many shapes in a
     // row (canonical pattern: tldraw double-click to lock). Eraser stays
     // armed by default — that tool is destructive, not constructive.
-    const toolJustUsed = cur.tool;
+    // Map a highlighter pen (a 'pen' stroke with the flag) back to the
+    // 'highlighter' tool id so its sticky-lock check matches the active tool.
+    const toolJustUsed = cur.tool === 'pen' && cur.highlighter ? 'highlighter' : cur.tool;
     if (toolJustUsed !== 'eraser') {
       const stickyOnThis = sticky.locked && sticky.tool === toolJustUsed;
       if (!stickyOnThis) setTool('move');
@@ -2486,7 +2924,7 @@ export function AnnotationsLayer() {
   }, [tool]);
 
   const commitText = useCallback(
-    (anchorId: string, text: string) => {
+    (anchorId: string, text: string, fmt?: EditorFmt) => {
       const trimmed = text.trim();
       const prev = strokesRef.current;
       const existing = prev.find((s) => s.tool === 'text' && s.anchorId === anchorId) as
@@ -2499,8 +2937,10 @@ export function AnnotationsLayer() {
         next = prev.filter((s) => s.id !== existing.id);
         label = 'delete text';
       } else if (existing) {
-        if (existing.text === trimmed) return; // identity edit
-        next = prev.map((s) => (s.id === existing.id ? { ...existing, text: trimmed } : s));
+        if (existing.text === trimmed && fmtEqual(existing, fmt)) return; // identity edit
+        next = prev.map((s) =>
+          s.id === existing.id ? { ...existing, text: trimmed, ...normFmt(fmt) } : s
+        );
       } else {
         next = [
           ...prev,
@@ -2511,6 +2951,7 @@ export function AnnotationsLayer() {
             fontSize: DEFAULT_FONT_SIZE,
             text: trimmed,
             anchorId,
+            ...normFmt(fmt),
           } as TextStroke,
         ];
         label = 'add text';
@@ -2523,13 +2964,13 @@ export function AnnotationsLayer() {
   // Phase 21 — sticky body edit. Sticky text is freeform (newlines preserved,
   // no trim) and the card persists even when blank, so this only updates text.
   const commitStickyText = useCallback(
-    (id: string, text: string) => {
+    (id: string, text: string, fmt?: EditorFmt) => {
       const prev = strokesRef.current;
       const existing = prev.find((s) => s.id === id && s.tool === 'sticky') as
         | StickyStroke
         | undefined;
-      if (!existing || existing.text === text) return;
-      const next = prev.map((s) => (s.id === id ? { ...existing, text } : s));
+      if (!existing || (existing.text === text && fmtEqual(existing, fmt))) return;
+      const next = prev.map((s) => (s.id === id ? { ...existing, text, ...normFmt(fmt) } : s));
       commitStrokes(prev, next, 'edit sticky');
     },
     [commitStrokes]
@@ -2538,7 +2979,7 @@ export function AnnotationsLayer() {
   // Phase 21 — re-edit an EXISTING standalone text node. Empty text deletes it
   // (same rule as anchored text).
   const commitStandaloneText = useCallback(
-    (id: string, text: string) => {
+    (id: string, text: string, fmt?: EditorFmt) => {
       const trimmed = text.trim();
       const prev = strokesRef.current;
       const existing = prev.find((s) => s.id === id && s.tool === 'text') as TextStroke | undefined;
@@ -2551,10 +2992,10 @@ export function AnnotationsLayer() {
         );
         return;
       }
-      if (existing.text === trimmed) return;
+      if (existing.text === trimmed && fmtEqual(existing, fmt)) return;
       commitStrokes(
         prev,
-        prev.map((s) => (s.id === id ? { ...existing, text: trimmed } : s)),
+        prev.map((s) => (s.id === id ? { ...existing, text: trimmed, ...normFmt(fmt) } : s)),
         'edit text'
       );
     },
@@ -2564,14 +3005,23 @@ export function AnnotationsLayer() {
   // Phase 21 — born-on-commit standalone text (from the text-tool caret). An
   // empty caret persists nothing — ONE undo record only when real text lands.
   const createStandaloneText = useCallback(
-    (x: number, y: number, text: string) => {
+    (x: number, y: number, text: string, fmt?: EditorFmt) => {
       const trimmed = text.trim();
       if (trimmed.length === 0) return;
       const prev = strokesRef.current;
       const id = rid();
       const next: Stroke[] = [
         ...prev,
-        { id, tool: 'text', color, fontSize: DEFAULT_FONT_SIZE, text: trimmed, x, y },
+        {
+          id,
+          tool: 'text',
+          color,
+          fontSize: DEFAULT_FONT_SIZE,
+          text: trimmed,
+          x,
+          y,
+          ...normFmt(fmt),
+        },
       ];
       commitStrokes(prev, next, 'add text');
       if (annotSel) annotSel.replace(id);
@@ -2599,15 +3049,15 @@ export function AnnotationsLayer() {
   editingTargetRef.current = editingTarget;
 
   const commitEditing = useCallback(
-    (text: string) => {
+    (text: string, fmt?: EditorFmt) => {
       const target = editingTargetRef.current;
       setEditingId(null);
       setPendingText(null);
       if (!target) return;
-      if (target.kind === 'anchored') commitText(target.anchorId, text);
-      else if (target.kind === 'sticky') commitStickyText(target.sticky.id, text);
-      else if (target.kind === 'standalone') commitStandaloneText(target.text.id, text);
-      else if (target.kind === 'pending') createStandaloneText(target.x, target.y, text);
+      if (target.kind === 'anchored') commitText(target.anchorId, text, fmt);
+      else if (target.kind === 'sticky') commitStickyText(target.sticky.id, text, fmt);
+      else if (target.kind === 'standalone') commitStandaloneText(target.text.id, text, fmt);
+      else if (target.kind === 'pending') createStandaloneText(target.x, target.y, text, fmt);
     },
     [commitText, commitStickyText, commitStandaloneText, createStandaloneText]
   );
@@ -2689,6 +3139,7 @@ export function AnnotationsLayer() {
             marquee={marquee}
             ghost={ghostPreview}
             editingTarget={editingTarget}
+            inkColor={color}
             onCommitEdit={commitEditing}
             onCancelEdit={cancelEditing}
           />
@@ -2698,10 +3149,15 @@ export function AnnotationsLayer() {
         {isActive ? (
           <AnnotationsChrome
             tool={tool}
+            theme={theme}
             color={color}
             setColor={setColor}
             stickyColor={stickyColor}
             setStickyColor={setStickyColor}
+            highlighterColor={highlighterColor}
+            setHighlighterColor={setHighlighterColor}
+            highlighterWidth={highlighterWidth}
+            setHighlighterWidth={setHighlighterWidth}
             supportsFill={supportsFill}
             fill={fill}
             setFill={setFill}
@@ -2806,6 +3262,7 @@ function AnnotationsSvg({
   marquee,
   ghost,
   editingTarget,
+  inkColor,
   onCommitEdit,
   onCancelEdit,
 }: {
@@ -2817,7 +3274,9 @@ function AnnotationsSvg({
   marquee: { ax: number; ay: number; bx: number; by: number } | null;
   ghost: GhostDescriptor | null;
   editingTarget: EditingTarget;
-  onCommitEdit: (text: string) => void;
+  /** Live default ink (theme-aware) for a not-yet-born pending text caret. */
+  inkColor: string;
+  onCommitEdit: (text: string, fmt?: EditorFmt) => void;
   onCancelEdit: () => void;
 }) {
   const [, force] = useState({});
@@ -2879,7 +3338,7 @@ function AnnotationsSvg({
           anchorId={editingTarget.anchorId}
           host={editingTarget.host}
           existing={anchoredExisting}
-          onCommit={(_anchorId, text) => onCommitEdit(text)}
+          onCommit={(_anchorId, text, fmt) => onCommitEdit(text, fmt)}
           onCancel={onCancelEdit}
         />
       ) : null}
@@ -2898,8 +3357,11 @@ function AnnotationsSvg({
           color={editingTarget.text.color}
           initialText={editingTarget.text.text}
           bold={editingTarget.text.bold}
+          italic={editingTarget.text.italic}
           strike={editingTarget.text.strike}
+          underline={editingTarget.text.underline}
           align={editingTarget.text.align ?? 'left'}
+          listType={editingTarget.text.listType}
           onCommit={onCommitEdit}
           onCancel={onCancelEdit}
         />
@@ -2909,7 +3371,7 @@ function AnnotationsSvg({
           x={editingTarget.x}
           y={editingTarget.y}
           fontSize={DEFAULT_FONT_SIZE}
-          color={DEFAULT_COLOR}
+          color={inkColor}
           initialText=""
           onCommit={onCommitEdit}
           onCancel={onCancelEdit}
@@ -2930,13 +3392,26 @@ function TextEditor({
   anchorId: string;
   host: RectStroke | EllipseStroke | null;
   existing: TextStroke | undefined;
-  onCommit: (anchorId: string, text: string) => void;
+  onCommit: (anchorId: string, text: string, fmt?: EditorFmt) => void;
   onCancel: () => void;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const initial = existing?.text ?? '';
+  // Show list markers WHILE editing so the read↔edit swap doesn't flicker
+  // (item 4c) — stripped back to raw text on commit.
+  const initial = listPrefixedBody(existing?.text ?? '', existing?.listType);
   const initialRef = useRef(initial);
   initialRef.current = initial;
+  // Cmd/Ctrl+B/I/U formatting while editing (item 4d).
+  const {
+    fmtRef,
+    style: fmtStyle,
+    onFormatKey,
+  } = useEditorFormat({
+    bold: existing?.bold,
+    italic: existing?.italic,
+    underline: existing?.underline,
+    strike: existing?.strike,
+  });
 
   useEffect(() => {
     const el = ref.current;
@@ -2963,11 +3438,15 @@ function TextEditor({
       const el = ref.current;
       if (!el) return;
       if (el.contains(e.target as Node)) return;
-      onCommit(anchorId, el.innerText || '');
+      onCommit(
+        anchorId,
+        stripEditorMarkers(el.innerText || '', existing?.listType),
+        fmtRef.current
+      );
     };
     document.addEventListener('pointerdown', onDown, true);
     return () => document.removeEventListener('pointerdown', onDown, true);
-  }, [anchorId, onCommit]);
+  }, [anchorId, onCommit, existing?.listType, fmtRef]);
 
   if (!host) return null;
   const bbox = strokeBBox(host);
@@ -2987,24 +3466,29 @@ function TextEditor({
         style={{
           width: '100%',
           height: '100%',
+          // Column flex (NOT row) so contentEditable line breaks stack
+          // vertically; justify-center keeps the block vertically centred in
+          // the host. The pre-Task-5 row-flex laid lines out side-by-side
+          // (item 4a — the mangled multi-line look).
           display: 'flex',
-          alignItems: 'center',
-          justifyContent:
-            align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center',
           padding: '0 8px',
           boxSizing: 'border-box',
           textAlign: align,
+          whiteSpace: 'pre-wrap',
           color: existing?.color ?? '#1a1a1a',
           fontSize: `${fontSize}px`,
           fontFamily: 'var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
-          fontWeight: existing?.bold ? 700 : undefined,
-          textDecoration: existing?.strike ? 'line-through' : undefined,
+          ...fmtStyle,
           lineHeight: 1.25,
           outline: 'none',
           background: 'transparent',
           cursor: 'text',
         }}
         onKeyDown={(e) => {
+          if (onFormatKey(e)) return; // Cmd/Ctrl+B/I/U
           if (e.key === 'Escape') {
             e.preventDefault();
             onCancel();
@@ -3013,7 +3497,11 @@ function TextEditor({
           if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
             const el = ref.current;
-            onCommit(anchorId, el?.innerText || '');
+            onCommit(
+              anchorId,
+              stripEditorMarkers(el?.innerText || '', existing?.listType),
+              fmtRef.current
+            );
           }
         }}
       >
@@ -3032,13 +3520,30 @@ function StickyEditor({
   onCancel,
 }: {
   sticky: StickyStroke;
-  onCommit: (text: string) => void;
+  onCommit: (text: string, fmt?: EditorFmt) => void;
   onCancel: () => void;
 }) {
   // A flex-centered contentEditable (NOT a textarea) so the edit view matches
   // the committed `.dc-sticky-body` exactly — text stays centered, no jump on
-  // commit. Multi-line: Enter inserts a line break; Esc cancels; blur commits.
+  // commit. Multi-line: Enter inserts a line break; Esc cancels; blur / Cmd+Enter
+  // commit; Cmd/Ctrl+B/I/U format (unified with the other editors — item 4d).
   const ref = useRef<HTMLDivElement | null>(null);
+  const doneRef = useRef(false);
+  const {
+    fmtRef,
+    style: fmtStyle,
+    onFormatKey,
+  } = useEditorFormat({
+    bold: sticky.bold,
+    italic: sticky.italic,
+    underline: sticky.underline,
+    strike: sticky.strike,
+  });
+  const commit = () => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    onCommit(stripEditorMarkers(ref.current?.innerText ?? '', sticky.listType), fmtRef.current);
+  };
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -3068,16 +3573,25 @@ function StickyEditor({
         contentEditable
         suppressContentEditableWarning
         aria-label="Edit sticky note text"
-        style={{ ...stickyBodyStyle(sticky), outline: 'none', cursor: 'text' }}
-        onBlur={() => onCommit(ref.current?.innerText ?? '')}
+        style={{ ...stickyBodyStyle(sticky), ...fmtStyle, outline: 'none', cursor: 'text' }}
+        onBlur={commit}
         onKeyDown={(e) => {
+          if (onFormatKey(e)) return; // Cmd/Ctrl+B/I/U
           if (e.key === 'Escape') {
             e.preventDefault();
+            doneRef.current = true; // suppress the unmount blur-commit
             onCancel();
+            return;
+          }
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            commit();
           }
         }}
       >
-        {sticky.text}
+        {/* Show the list markers while editing (item 4c) so the read↔edit swap
+            doesn't flicker; stripped back to raw text on commit. */}
+        {stickyBodyText(sticky)}
       </div>
     </foreignObject>
   );
@@ -3092,8 +3606,11 @@ function StandaloneTextEditor({
   color,
   initialText,
   bold,
+  italic,
   strike,
+  underline,
   align,
+  listType,
   onCommit,
   onCancel,
 }: {
@@ -3103,12 +3620,38 @@ function StandaloneTextEditor({
   color: string;
   initialText: string;
   bold?: boolean;
+  italic?: boolean;
   strike?: boolean;
+  underline?: boolean;
   align?: TextAlign;
-  onCommit: (text: string) => void;
+  listType?: ListType;
+  onCommit: (text: string, fmt?: EditorFmt) => void;
   onCancel: () => void;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
+  // Cmd/Ctrl+B/I/U formatting while editing (item 4d).
+  const {
+    fmtRef,
+    style: fmtStyle,
+    onFormatKey,
+  } = useEditorFormat({
+    bold,
+    italic,
+    underline,
+    strike,
+  });
+  // Single-fire commit guard — outside-click + blur can both fire in one tick;
+  // without this the text would commit twice (two undo records). Markers shown
+  // while editing (item 4c) are stripped back to raw text here on commit.
+  const doneRef = useRef(false);
+  const commitOnce = useCallback(
+    (text: string) => {
+      if (doneRef.current) return;
+      doneRef.current = true;
+      onCommit(stripEditorMarkers(text, listType), fmtRef.current);
+    },
+    [onCommit, listType, fmtRef]
+  );
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -3132,13 +3675,16 @@ function StandaloneTextEditor({
       const el = ref.current;
       if (!el) return;
       if (el.contains(e.target as Node)) return;
-      onCommit(el.innerText || '');
+      commitOnce(el.innerText || '');
     };
     document.addEventListener('pointerdown', onDown, true);
     return () => document.removeEventListener('pointerdown', onDown, true);
-  }, [onCommit]);
+  }, [commitOnce]);
   return (
-    <foreignObject x={x} y={y} width={600} height={Math.max(24, fontSize * 1.6)}>
+    // Generous box so multi-line text isn't clipped while typing (item 4a). The
+    // empty area is transparent + pointer-pass-through (the SVG root is
+    // pointer-events:none), so outside-click still commits.
+    <foreignObject x={x} y={y} width={640} height={480}>
       <div
         xmlns="http://www.w3.org/1999/xhtml"
         ref={ref}
@@ -3149,32 +3695,38 @@ function StandaloneTextEditor({
         style={{
           display: 'inline-block',
           minWidth: '8px',
-          whiteSpace: 'pre',
+          // pre-wrap so Enter inserts a real newline (multi-line text), not a
+          // commit; long lines also wrap within the box.
+          whiteSpace: 'pre-wrap',
           padding: '0 2px',
           color,
           fontSize: `${fontSize}px`,
           fontFamily: 'var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
-          fontWeight: bold ? 700 : undefined,
-          textDecoration: strike ? 'line-through' : undefined,
+          ...fmtStyle,
           textAlign: align ?? 'left',
-          lineHeight: 1.2,
+          lineHeight: TEXT_LINE_HEIGHT,
           outline: 'none',
           background: 'transparent',
           cursor: 'text',
         }}
+        onBlur={() => commitOnce(ref.current?.innerText || '')}
         onKeyDown={(e) => {
+          if (onFormatKey(e)) return; // Cmd/Ctrl+B/I/U
           if (e.key === 'Escape') {
             e.preventDefault();
+            // Mark done so the unmount blur that follows doesn't commit.
+            doneRef.current = true;
             onCancel();
             return;
           }
-          if (e.key === 'Enter' && !e.shiftKey) {
+          // Cmd/Ctrl+Enter commits; plain Enter inserts a newline (item 4a).
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
-            onCommit(ref.current?.innerText || '');
+            commitOnce(ref.current?.innerText || '');
           }
         }}
       >
-        {initialText}
+        {listPrefixedBody(initialText, listType)}
       </div>
     </foreignObject>
   );
@@ -3303,10 +3855,44 @@ function stickyBodyStyle(s: StickyStroke): CSSProperties {
   return {
     fontSize: `${s.fontSize}px`,
     fontWeight: s.bold ? 700 : undefined,
-    textDecoration: s.strike ? 'line-through' : undefined,
+    fontStyle: s.italic ? 'italic' : undefined,
+    textDecoration: textDecoCss(s.strike, s.underline),
     textAlign: align,
     justifyContent: align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center',
   };
+}
+
+/** Sticky body content: raw text for a plain card, else per-line with list
+ *  markers prepended (item 4c — markers are render-only). */
+function stickyBodyText(s: StickyStroke): string {
+  if (!s.listType) return s.text;
+  return splitTextLines(s.text)
+    .map((line, i) => listPrefixedLine(line, i, s.listType))
+    .join('\n');
+}
+
+/**
+ * Render the inner content of a `<text>` stroke: a single string for single-
+ * line unstyled text (item 4a parity with the legacy form), else one `<tspan>`
+ * per line with list markers prepended (item 4c). `tx` is the per-line origin;
+ * `centered` lifts the block half its height for vertically-centred anchored
+ * text. Mirrors `textInnerSvg` so the live + persisted geometry agree.
+ */
+function renderTextLines(
+  text: string,
+  fontSize: number,
+  tx: number,
+  centered: boolean,
+  list?: ListType
+) {
+  if (!list && !text.includes('\n')) return text;
+  const lines = splitTextLines(text);
+  return lines.map((line, i) => (
+    // biome-ignore lint/suspicious/noArrayIndexKey: lines are positional + immutable per render
+    <tspan key={i} x={tx} dy={textLineDy(i, fontSize, lines.length, centered)}>
+      {listPrefixedLine(line, i, list)}
+    </tspan>
+  ));
 }
 
 /**
@@ -3392,12 +3978,14 @@ function StrokeNode({
   const strokeHit = interactive ? 'stroke' : ('none' as const);
   if (stroke.tool === 'text') {
     // Anchored text renders centered in its host; standalone (Phase 21) renders
-    // top-left-anchored at its own world (x, y).
-    // Phase 24 — bold / strike / align applied to the rendered <text>.
+    // top-left-anchored at its own world (x, y). bold / italic / strike /
+    // underline applied to the rendered <text>; multi-line + list markers via
+    // renderTextLines (one <tspan> per line).
     const textStyle = {
       fontFamily: 'var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
       fontWeight: stroke.bold ? 700 : undefined,
-      textDecoration: stroke.strike ? 'line-through' : undefined,
+      fontStyle: stroke.italic ? 'italic' : undefined,
+      textDecoration: textDecoCss(stroke.strike, stroke.underline),
     } as const;
     if (stroke.anchorId != null && stroke.anchorId !== '') {
       const host = anchorsById.get(stroke.anchorId);
@@ -3427,18 +4015,19 @@ function StrokeNode({
           dominantBaseline="middle"
           style={textStyle}
         >
-          {stroke.text}
+          {renderTextLines(stroke.text, stroke.fontSize, tx, true, stroke.listType)}
         </text>
       );
     }
     const align = stroke.align ?? 'left';
     const anchor = align === 'left' ? 'start' : align === 'right' ? 'end' : 'middle';
+    const tx = stroke.x ?? 0;
     return (
       <text
         data-id={stroke.id}
         data-tool="text"
         data-font-size={stroke.fontSize}
-        x={stroke.x ?? 0}
+        x={tx}
         y={stroke.y ?? 0}
         fill={stroke.color}
         fontSize={stroke.fontSize}
@@ -3447,7 +4036,7 @@ function StrokeNode({
         pointerEvents={interactive ? 'visiblePainted' : 'none'}
         style={textStyle}
       >
-        {stroke.text}
+        {renderTextLines(stroke.text, stroke.fontSize, tx, false, stroke.listType)}
       </text>
     );
   }
@@ -3460,14 +4049,11 @@ function StrokeNode({
     return (
       <g data-id={stroke.id} data-tool="sticky" pointerEvents={hitMode}>
         {/* Paper card: soft drop shadow + hairline edge so it reads as a
-            lifted sticky, not a flat colored box (FigJam-style). */}
-        <rect
-          x={x}
-          y={y}
-          width={w}
-          height={h}
-          rx={r}
-          ry={r}
+            lifted sticky, not a flat colored box (FigJam-style). The body is a
+            path with a SHARP bottom-right corner (item 1) — TL/TR/BL rounded.
+            The persisted form stays a <rect> (DDR), so this is render-only. */}
+        <path
+          d={stickyCornerPath(x, y, w, h, r)}
           fill={stroke.color}
           stroke="rgba(0,0,0,0.05)"
           strokeWidth={1}
@@ -3481,7 +4067,7 @@ function StrokeNode({
               className="dc-sticky-body"
               style={stickyBodyStyle(stroke)}
             >
-              {stroke.text}
+              {stickyBodyText(stroke)}
             </div>
           </foreignObject>
         )}
@@ -3590,7 +4176,17 @@ function StrokeNode({
     vectorEffect: 'non-scaling-stroke' as const,
   };
   if (stroke.tool === 'pen') {
-    return <path {...common} fill="none" d={penPathD(stroke.points)} pointerEvents={strokeHit} />;
+    // Highlighter (item 8) — overlaps darken via multiply; the translucent hue
+    // lives in `stroke.color`, the wide nib in `stroke.width`.
+    return (
+      <path
+        {...common}
+        fill="none"
+        d={penPathD(stroke.points)}
+        style={stroke.highlighter ? { mixBlendMode: 'multiply' } : undefined}
+        pointerEvents={strokeHit}
+      />
+    );
   }
   if (stroke.tool === 'rect') {
     const x = Math.min(stroke.x, stroke.x + stroke.w);
@@ -3606,6 +4202,7 @@ function StrokeNode({
         height={Math.abs(stroke.h)}
         rx={r}
         ry={r}
+        strokeDasharray={stroke.dashed ? '6 4' : undefined}
         pointerEvents={hitMode}
       />
     );
@@ -3619,6 +4216,7 @@ function StrokeNode({
         cy={stroke.cy}
         rx={Math.max(0, stroke.rx)}
         ry={Math.max(0, stroke.ry)}
+        strokeDasharray={stroke.dashed ? '6 4' : undefined}
         pointerEvents={hitMode}
       />
     );
@@ -3677,10 +4275,15 @@ function renderArrowPrimitive(p: SvgPrimitive, key: number): JSX.Element {
 
 function AnnotationsChrome({
   tool,
+  theme,
   color,
   setColor,
   stickyColor,
   setStickyColor,
+  highlighterColor,
+  setHighlighterColor,
+  highlighterWidth,
+  setHighlighterWidth,
   supportsFill,
   fill,
   setFill,
@@ -3689,10 +4292,17 @@ function AnnotationsChrome({
   setThickness,
 }: {
   tool: Tool;
+  /** Canvas theme — the ink swatch (slot 8) renders the themed default so the
+   *  active default reads true on dark canvases. */
+  theme: string;
   color: string;
   setColor: (c: string) => void;
   stickyColor: string;
   setStickyColor: (c: string) => void;
+  highlighterColor: string;
+  setHighlighterColor: (c: string) => void;
+  highlighterWidth: number;
+  setHighlighterWidth: (w: number) => void;
   supportsFill: boolean;
   fill: string | null;
   setFill: (f: string | null) => void;
@@ -3722,21 +4332,79 @@ function AnnotationsChrome({
       </div>
     );
   }
+  // Highlighter picks a translucent marker hue (item 8) — its own palette,
+  // mirroring sticky. Each swatch previews on a dark chip via its alpha.
+  if (tool === 'highlighter') {
+    return (
+      <div className="dc-annot-chrome" role="toolbar" aria-label="Highlighter tools">
+        <div className="dc-annot-swatches" role="radiogroup" aria-label="Highlighter color">
+          {HIGHLIGHTER_PALETTE.map((c) => (
+            <button
+              key={c}
+              type="button"
+              className="dc-annot-sw"
+              aria-pressed={c === highlighterColor}
+              aria-label={`Highlighter color ${c}`}
+              title={`Highlighter color ${c}`}
+              style={{ background: c }}
+              onClick={() => setHighlighterColor(c)}
+            />
+          ))}
+        </div>
+        <div className="dc-annot-sep" />
+        {/* Nib width — three filled dots of increasing size (item 8). */}
+        <div className="dc-annot-swatches" role="radiogroup" aria-label="Highlighter width">
+          {HIGHLIGHTER_WIDTHS.map((w) => {
+            const dot = Math.round(6 + (w / 28) * 8); // 8–14 px preview dot
+            return (
+              <button
+                key={w}
+                type="button"
+                className="dc-annot-ibtn"
+                aria-pressed={w === highlighterWidth}
+                aria-label={`Highlighter width ${w}`}
+                title={`Width ${w}px`}
+                onClick={() => setHighlighterWidth(w)}
+              >
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: dot,
+                    height: dot,
+                    borderRadius: '50%',
+                    background: 'currentColor',
+                    display: 'inline-block',
+                  }}
+                />
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="dc-annot-chrome" role="toolbar" aria-label="Annotation tools">
       <div className="dc-annot-swatches" role="radiogroup" aria-label="Stroke color">
-        {STROKE_PALETTE.map((c) => (
-          <button
-            key={c}
-            type="button"
-            className="dc-annot-sw"
-            aria-pressed={c === color}
-            aria-label={`Color ${c}`}
-            title={`Color ${c}`}
-            style={{ background: c }}
-            onClick={() => setColor(c)}
-          />
-        ))}
+        {STROKE_PALETTE.map((base, i) => {
+          // The last slot is the default ink — render it themed so the active
+          // default reads true on dark canvases (white-ish ink) without
+          // touching the other hues. Key by the immutable base hex so a theme
+          // flip recolours the swatch in place rather than remounting.
+          const c = i === STROKE_PALETTE.length - 1 ? resolveDefaultInk(theme) : base;
+          return (
+            <button
+              key={base}
+              type="button"
+              className="dc-annot-sw"
+              aria-pressed={c === color}
+              aria-label={`Color ${c}`}
+              title={`Color ${c}`}
+              style={{ background: c }}
+              onClick={() => setColor(c)}
+            />
+          );
+        })}
       </div>
       {supportsFill ? (
         <>

@@ -8,7 +8,7 @@
     "designSystem": ".ai/maude-design-system.md",
     "codebaseMap": ".ai/context/codebase-map.md"
   },
-  "platforms": [],
+  "platforms": ["web-desktop"],
   "stack": {
     "language": "typescript",
     "framework": "next.js",

@@ -52,6 +52,8 @@ export const DEFAULT_TOOLS: readonly ToolDescriptor[] = Object.freeze([
   { id: 'hand', label: 'Hand', shortcut: 'H', cursor: TOOL_CURSORS.hand },
   { id: 'comment', label: 'Comment', shortcut: 'C', cursor: TOOL_CURSORS.comment },
   { id: 'pen', label: 'Pen', shortcut: 'B', cursor: TOOL_CURSORS.pen },
+  // Annotation polish (item 8) — highlighter sits next to the pen.
+  { id: 'highlighter', label: 'Highlighter', shortcut: 'I', cursor: TOOL_CURSORS.highlighter },
   // Phase 24 — one Shape tool replaces the separate Rect (R) + Ellipse (O)
   // buttons; the primitive is chosen from the palette popover.
   { id: 'shape', label: 'Shape', shortcut: 'R', cursor: TOOL_CURSORS.shape },
