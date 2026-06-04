@@ -22,6 +22,8 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   type ArrowStroke,
   type EllipseStroke,
+  type ImageStroke,
+  type LinkStroke,
   type PenStroke,
   type PolygonStroke,
   type RectStroke,
@@ -72,14 +74,24 @@ type Corner = 'nw' | 'ne' | 'sw' | 'se' | 'ep1' | 'ep2';
 /** Stroke types that expose resize handles. Text inherits its anchor bbox. */
 function isResizable(
   s: Stroke
-): s is RectStroke | EllipseStroke | PolygonStroke | ArrowStroke | PenStroke | StickyStroke {
+): s is
+  | RectStroke
+  | EllipseStroke
+  | PolygonStroke
+  | ArrowStroke
+  | PenStroke
+  | StickyStroke
+  | ImageStroke
+  | LinkStroke {
   return (
     s.tool === 'rect' ||
     s.tool === 'ellipse' ||
     s.tool === 'polygon' ||
     s.tool === 'arrow' ||
     s.tool === 'pen' ||
-    s.tool === 'sticky'
+    s.tool === 'sticky' ||
+    s.tool === 'image' ||
+    s.tool === 'link'
   );
 }
 
@@ -170,9 +182,15 @@ export function resizeStroke(
   wy: number,
   mods: ResizeMods = NO_MODS
 ): Partial<Stroke> | null {
-  if (start.tool === 'rect' || start.tool === 'sticky' || start.tool === 'polygon') {
-    // Rect / polygon / sticky all resize via their shared x / y / w / h bbox.
-    // Text re-wraps inside the foreignObject automatically. Sticky stays 1:1.
+  if (
+    start.tool === 'rect' ||
+    start.tool === 'sticky' ||
+    start.tool === 'polygon' ||
+    start.tool === 'link'
+  ) {
+    // Rect / polygon / sticky / link all resize via their shared x / y / w / h
+    // bbox. Text re-wraps inside the foreignObject automatically. Sticky stays
+    // 1:1; the link card free-resizes (Shift still locks its current ratio).
     const box = bboxResize(
       { x: start.x, y: start.y, w: start.w, h: start.h },
       corner,
@@ -181,7 +199,22 @@ export function resizeStroke(
       mods,
       start.tool === 'sticky'
     );
-    return box as Partial<RectStroke | StickyStroke | PolygonStroke>;
+    return box as Partial<RectStroke | StickyStroke | PolygonStroke | LinkStroke>;
+  }
+  if (start.tool === 'image') {
+    // Phase 23 — images aspect-LOCK by default and free-resize with Shift held
+    // (the inverse of the shape tools — Figma/FigJam image behaviour). Invert
+    // the Shift flag into bboxResize, which keeps the START ratio when shift is
+    // set; the start ratio IS the image's intrinsic aspect.
+    const box = bboxResize(
+      { x: start.x, y: start.y, w: start.w, h: start.h },
+      corner,
+      wx,
+      wy,
+      { shift: !mods.shift, alt: mods.alt },
+      false
+    );
+    return box as Partial<ImageStroke>;
   }
   if (start.tool === 'ellipse') {
     // Treat the four corners as the bbox of the ellipse, then derive cx/cy/rx/ry.

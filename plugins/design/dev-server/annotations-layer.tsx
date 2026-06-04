@@ -49,6 +49,14 @@ import { crossedDragThreshold, type Tool } from './input-router.tsx';
 import { AnnotationResizeOverlay } from './use-annotation-resize.tsx';
 import { useAnnotationSelectionOptional } from './use-annotation-selection.tsx';
 import { useAnnotationsVisibility } from './use-annotations-visibility.tsx';
+import {
+  isHttpUrl,
+  linkDomain,
+  prettifyUrl,
+  showCanvasToast,
+  uploadAsset,
+  useCanvasMediaDrop,
+} from './use-canvas-media-drop.tsx';
 import { useCollab } from './use-collab.tsx';
 import { useSelectionSetOptional } from './use-selection-set.tsx';
 import { type ShapeKind, useToolMode } from './use-tool-mode.tsx';
@@ -189,6 +197,50 @@ export interface StickyStroke {
   /** Phase 24 — body alignment. Absent = 'left' (FigJam sticky default). */
   align?: TextAlign;
 }
+/**
+ * Phase 23 — dropped / pasted raster image. Free-floating, rect-shaped, moves
+ * and resizes like any annotation. `href` is ALWAYS a relative
+ * `assets/<sha8>.<ext>` path (never a data: URL — keeps the persisted SVG under
+ * its 1 MB cap and matches the sanitizer's `<image>` href allowlist). The live
+ * canvas may briefly render an optimistic `blob:` href before the upload swaps
+ * it to the content-addressed path; only the `assets/…` form is ever persisted.
+ */
+export interface ImageStroke {
+  id: string;
+  tool: 'image';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  href: string;
+  /**
+   * Alt text. Persisted in `data-alt` and emitted as `aria-label` on the
+   * `<image>`, so it travels with the exported / saved SVG (where AT reads it).
+   * NOTE: in the LIVE canvas the whole annotation SVG root is `aria-hidden`
+   * (editor chrome — AT shouldn't be flooded by decorative strokes), so the live
+   * in-canvas `aria-label` is pruned; the alt's audience is the export. Absent ⇒ ''.
+   */
+  alt?: string;
+}
+/**
+ * Phase 23 — pasted / dropped URL rendered as a client-only preview chip. NO
+ * server fetch and NO external favicon (the dev-server stays zero-egress —
+ * DDR-054/060). `title` comes from the clipboard/DnD `text/html` anchor text
+ * when present, else the prettified URL; `domain` is `new URL(url).hostname`.
+ * Persists as an allowlisted `<g>` (rect + vector glyph + two `<text>` runs) —
+ * the click-to-open handler reads `data-url`, no `<a href>` is ever stored.
+ */
+export interface LinkStroke {
+  id: string;
+  tool: 'link';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  url: string;
+  title: string;
+  domain: string;
+}
 export type Stroke =
   | PenStroke
   | RectStroke
@@ -196,7 +248,9 @@ export type Stroke =
   | PolygonStroke
   | ArrowStroke
   | TextStroke
-  | StickyStroke;
+  | StickyStroke
+  | ImageStroke
+  | LinkStroke;
 
 /**
  * Phase 21 — what the inline editor is currently bound to. `anchored` edits
@@ -285,6 +339,42 @@ const STICKY_MIN_SIZE = 40;
 // tap point (FigJam parity: click commits, drag sizes). Square aspect.
 const SHAPE_DEFAULT_SIZE = 120;
 
+// Phase 23 — image + link media strokes.
+/** Below this side an image stroke is discarded as an accidental micro-drop. */
+const IMAGE_MIN_SIZE = 16;
+/** Longest side a freshly dropped/pasted image is scaled down to (world px). */
+export const IMAGE_MAX_DROP_SIDE = 480;
+const LINK_DEFAULT_W = 260;
+const LINK_DEFAULT_H = 76;
+const LINK_CARD_FILL = '#ffffff';
+const LINK_CARD_STROKE = '#d4d4d8';
+const LINK_DOMAIN_FILL = '#71717a';
+const LINK_TITLE_FILL = '#18181b';
+const LINK_GLYPH_STROKE = '#52525b';
+// Lucide "link" icon (24×24 viewBox) — two interlocked loops. ONE source for the
+// serialized nested-<svg> glyph AND the StrokeNode render so re-serialize stays
+// byte-stable. The parser ignores the glyph entirely (it reads data-* + the
+// <rect> geometry), so render/serialize only need to agree visually.
+const LINK_GLYPH_D1 = 'M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71';
+const LINK_GLYPH_D2 = 'M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71';
+
+/** Card text positions, derived purely from the bbox (idempotent round-trip). */
+function linkCardLayout(x: number, y: number, w: number, h: number) {
+  const textX = x + 48;
+  return {
+    glyph: { x: x + 16, y: y + h / 2 - 10, size: 20 },
+    textX,
+    domain: { y: y + h / 2 - 14, fontSize: 11 },
+    title: { y: y + h / 2, fontSize: 13 },
+    textMaxChars: Math.max(8, Math.floor((w - 60) / 7)),
+  };
+}
+
+/** Clamp a link title to the card's character budget (pure → byte-stable). */
+function clampLinkTitle(title: string, maxChars: number): string {
+  return title.length > maxChars ? `${title.slice(0, Math.max(1, maxChars - 1))}…` : title;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Pure helpers — exported for unit tests.
 
@@ -294,6 +384,19 @@ export function rid(): string {
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+/**
+ * Phase 23 — attribute-safe escape: `esc()` plus `>`. The legacy text/sticky
+ * paths only put user text in element CONTENT (where a bare `>` is harmless),
+ * so `esc()` never escaped it; but the media strokes carry user text (pasted
+ * link title/url, image alt) inside ATTRIBUTES (data-title / data-url / data-alt
+ * / href). A bare `>` there would prematurely close the tag and confuse the
+ * `[^>]*>` element scan in `sanitizeAnnotationSvg`. Use this for every media
+ * attribute value; element CONTENT keeps plain `esc()`.
+ */
+function escAttr(s: string): string {
+  return esc(s).replace(/>/g, '&gt;');
 }
 
 export function penPathD(points: readonly WorldPoint[]): string {
@@ -452,6 +555,46 @@ function strokeToSvgEl(s: Stroke): string {
     }" y="${s.y + 12}" font-size="${
       s.fontSize
     }" fill="#1a1a1a" dominant-baseline="hanging">${esc(s.text)}</text></g>`;
+  }
+  if (s.tool === 'image') {
+    // Phase 23 — `href` is ALWAYS a relative assets/<sha8>.<ext> path (asserted
+    // on create + re-validated by the sanitizer's <image> href allowlist). Alt
+    // text persists in `data-alt` + is emitted as `aria-label` for the exported
+    // SVG (the live annotation root is aria-hidden — see ImageStroke.alt).
+    const nx = Math.min(s.x, s.x + s.w);
+    const ny = Math.min(s.y, s.y + s.h);
+    const nw = Math.abs(s.w);
+    const nh = Math.abs(s.h);
+    const altAttr = s.alt ? ` data-alt="${escAttr(s.alt)}"` : '';
+    return `<image data-id="${esc(s.id)}" data-tool="image" x="${nx}" y="${ny}" width="${nw}" height="${nh}" href="${escAttr(
+      s.href
+    )}" preserveAspectRatio="xMidYMid meet"${altAttr}/>`;
+  }
+  if (s.tool === 'link') {
+    // Phase 23 — client-only preview chip. data-url/title/domain are the
+    // round-trip source of truth; the inner rect/glyph/text are the inert,
+    // sanitizer-safe visual (no <a href> persisted — click-to-open reads
+    // data-url client-side and validates http(s) before window.open).
+    const nx = Math.min(s.x, s.x + s.w);
+    const ny = Math.min(s.y, s.y + s.h);
+    const nw = Math.abs(s.w);
+    const nh = Math.abs(s.h);
+    const lay = linkCardLayout(nx, ny, nw, nh);
+    const shownTitle = clampLinkTitle(s.title, lay.textMaxChars);
+    return (
+      `<g data-id="${esc(s.id)}" data-tool="link" data-url="${escAttr(s.url)}" data-title="${escAttr(
+        s.title
+      )}" data-domain="${escAttr(s.domain)}">` +
+      `<rect x="${nx}" y="${ny}" width="${nw}" height="${nh}" rx="8" ry="8" fill="${LINK_CARD_FILL}" stroke="${LINK_CARD_STROKE}" stroke-width="1"/>` +
+      `<svg x="${lay.glyph.x}" y="${lay.glyph.y}" width="${lay.glyph.size}" height="${lay.glyph.size}" viewBox="0 0 24 24" fill="none" stroke="${LINK_GLYPH_STROKE}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${LINK_GLYPH_D1}"/><path d="${LINK_GLYPH_D2}"/></svg>` +
+      `<text x="${lay.textX}" y="${lay.domain.y}" font-size="${lay.domain.fontSize}" fill="${LINK_DOMAIN_FILL}" dominant-baseline="hanging">${esc(
+        s.domain
+      )}</text>` +
+      `<text x="${lay.textX}" y="${lay.title.y}" font-size="${lay.title.fontSize}" fill="${LINK_TITLE_FILL}" font-weight="600" dominant-baseline="hanging">${esc(
+        shownTitle
+      )}</text>` +
+      `</g>`
+    );
   }
   const common = `data-id="${esc(s.id)}" data-tool="${s.tool}" stroke="${esc(s.color)}" stroke-width="${s.width}" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"`;
   if (s.tool === 'pen') {
@@ -728,6 +871,36 @@ export function svgToStrokes(svgText: string): Stroke[] {
         }
         continue;
       }
+      if (tool === 'image') {
+        // Phase 23 — geometry off the element; href is whatever survived the
+        // sanitizer (a valid assets/<sha8>.<ext> path, or '' if it was stripped
+        // — an external/data:/`..` href is dropped server-side, so a poisoned
+        // SVG round-trips to an inert empty-href stroke that fetches nothing).
+        const x = Number.parseFloat(el.getAttribute('x') || '0');
+        const y = Number.parseFloat(el.getAttribute('y') || '0');
+        const w = Number.parseFloat(el.getAttribute('width') || '0');
+        const h = Number.parseFloat(el.getAttribute('height') || '0');
+        const href = el.getAttribute('href') || el.getAttribute('xlink:href') || '';
+        const img: ImageStroke = { id, tool: 'image', x, y, w, h, href };
+        const alt = el.getAttribute('data-alt');
+        if (alt) img.alt = alt;
+        out.push(img);
+        continue;
+      }
+      if (tool === 'link') {
+        // Phase 23 — data-* are the source of truth; geometry off the <rect>
+        // child (mirrors sticky). Defensive: missing title ⇒ domain.
+        const rectEl = el.querySelector('rect');
+        const x = Number.parseFloat(rectEl?.getAttribute('x') || '0');
+        const y = Number.parseFloat(rectEl?.getAttribute('y') || '0');
+        const w = Number.parseFloat(rectEl?.getAttribute('width') || String(LINK_DEFAULT_W));
+        const h = Number.parseFloat(rectEl?.getAttribute('height') || String(LINK_DEFAULT_H));
+        const url = el.getAttribute('data-url') || '';
+        const domain = el.getAttribute('data-domain') || '';
+        const title = el.getAttribute('data-title') || domain || url;
+        out.push({ id, tool: 'link', x, y, w, h, url, title, domain });
+        continue;
+      }
       if (tool === 'text') {
         const rawAnchor = el.getAttribute('data-anchor-id');
         const fontSize =
@@ -811,8 +984,8 @@ export function strokeHitTest(s: Stroke, wx: number, wy: number, tol: number): b
     );
   }
   const t = Math.max(tol, 'width' in s ? s.width : 2);
-  if (s.tool === 'sticky') {
-    // Sticky is a solid paper card — filled-rect hit anywhere inside.
+  if (s.tool === 'sticky' || s.tool === 'image' || s.tool === 'link') {
+    // Sticky / image / link are solid cards — filled-rect hit anywhere inside.
     const xMin = Math.min(s.x, s.x + s.w);
     const xMax = Math.max(s.x, s.x + s.w);
     const yMin = Math.min(s.y, s.y + s.h);
@@ -1002,6 +1175,9 @@ function isStrokeMeaningful(s: Stroke): boolean {
   // Sticky below a readable floor is discarded like a 2×2 rect.
   if (s.tool === 'sticky')
     return Math.abs(s.w) >= STICKY_MIN_SIZE && Math.abs(s.h) >= STICKY_MIN_SIZE;
+  // Phase 23 — an image needs real extent; a link needs a non-empty URL.
+  if (s.tool === 'image') return Math.abs(s.w) >= IMAGE_MIN_SIZE && Math.abs(s.h) >= IMAGE_MIN_SIZE;
+  if (s.tool === 'link') return s.url.trim().length > 0;
   return Math.hypot(s.x2 - s.x1, s.y2 - s.y1) >= 4;
 }
 
@@ -1042,7 +1218,8 @@ export function strokeBBox(
       h: Math.abs(s.y2 - s.y1),
     };
   }
-  if (s.tool === 'sticky') {
+  if (s.tool === 'sticky' || s.tool === 'image' || s.tool === 'link') {
+    // Phase 23 — image + link are rect-shaped media, same bbox as a sticky card.
     return {
       x: Math.min(s.x, s.x + s.w),
       y: Math.min(s.y, s.y + s.h),
@@ -1090,6 +1267,38 @@ function deriveFile(): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Phase 23 — the served designRoot prefix for the current canvas document. An
+ * image stroke persists its href as a RELATIVE `assets/<sha8>.<ext>` path (the
+ * shape the sanitizer allowlists), but a bare relative href resolves against
+ * `/_canvas-shell.html` → `/assets/…`, which the canvas-origin gate 403s. The
+ * real served path is `/<designRel>/assets/…`, so the render must prefix it.
+ */
+function canvasDesignRel(): string {
+  if (typeof window === 'undefined') return '.design';
+  try {
+    const p = window.location.pathname;
+    if (p === '/_canvas-shell.html' || p === '/_canvas-shell') {
+      const qs = new URLSearchParams(window.location.search);
+      return (qs.get('designRel') ?? '.design').replace(/^\/+|\/+$/g, '');
+    }
+    // Direct `/<designRel>/<group>/<canvas>.tsx` route → the first path segment.
+    const seg = decodeURIComponent(p).replace(/^\/+/, '').split('/')[0];
+    return seg || '.design';
+  } catch {
+    return '.design';
+  }
+}
+
+/**
+ * Resolve an image stroke href for the browser. The persisted `assets/<name>`
+ * form is rewritten to the served `/<designRel>/assets/<name>` path; an
+ * optimistic `blob:`/`data:` preview href (pre-upload) is used verbatim.
+ */
+function resolveAssetHref(href: string): string {
+  return /^assets\//.test(href) ? `/${canvasDesignRel()}/${href}` : href;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1303,7 +1512,8 @@ function translateOne(s: Stroke, dx: number, dy: number): Stroke {
   if (s.tool === 'ellipse') return { ...s, cx: s.cx + dx, cy: s.cy + dy };
   if (s.tool === 'arrow')
     return { ...s, x1: s.x1 + dx, y1: s.y1 + dy, x2: s.x2 + dx, y2: s.y2 + dy };
-  if (s.tool === 'sticky') return { ...s, x: s.x + dx, y: s.y + dy };
+  if (s.tool === 'sticky' || s.tool === 'image' || s.tool === 'link')
+    return { ...s, x: s.x + dx, y: s.y + dy };
   // text — anchored inherits its host's bbox (moves with the host); standalone
   // (Phase 21) carries its own world (x, y) and translates directly.
   if (s.anchorId != null && s.anchorId !== '') return s;
@@ -1621,6 +1831,95 @@ export function AnnotationsLayer() {
     },
     [vp]
   );
+
+  // ── Phase 23 — media intake (drag-drop / paste / file-picker / link input) ──
+  // Image: optimistic blob: preview stroke (LOCAL only — never persisted) →
+  // POST /_api/asset → swap href to assets/… and commit (one undo record) →
+  // revoke the blob URL. On failure the optimistic stroke is removed + a toast.
+  const createImageFromFile = useCallback(
+    (file: File, world: [number, number]) => {
+      if (typeof window === 'undefined' || !file.type.startsWith('image/')) return;
+      const blobUrl = URL.createObjectURL(file);
+      const probe = new Image();
+      probe.onload = () => {
+        const natW = probe.naturalWidth || IMAGE_MAX_DROP_SIDE;
+        const natH = probe.naturalHeight || Math.round(IMAGE_MAX_DROP_SIDE * 0.66);
+        const longest = Math.max(natW, natH) || 1;
+        const scale = longest > IMAGE_MAX_DROP_SIDE ? IMAGE_MAX_DROP_SIDE / longest : 1;
+        const w = Math.max(IMAGE_MIN_SIZE, Math.round(natW * scale));
+        const h = Math.max(IMAGE_MIN_SIZE, Math.round(natH * scale));
+        const id = rid();
+        const optimistic: ImageStroke = {
+          id,
+          tool: 'image',
+          x: world[0] - w / 2,
+          y: world[1] - h / 2,
+          w,
+          h,
+          href: blobUrl,
+        };
+        // Local-only insert — the blob: href must NOT reach the server (it's
+        // ephemeral + would be stripped by the sanitizer); we commit only the
+        // assets/… form once the upload lands.
+        setStrokesState([...strokesRef.current, optimistic]);
+        void uploadAsset(file).then((res) => {
+          const cur = strokesRef.current;
+          if ('path' in res) {
+            const after = cur.map((s) => (s.id === id ? ({ ...s, href: res.path } as Stroke) : s));
+            const beforeForUndo = cur.filter((s) => s.id !== id);
+            commitStrokes(beforeForUndo, after, 'add image');
+            annotSel?.replace([id]);
+          } else {
+            setStrokesState(cur.filter((s) => s.id !== id));
+            showCanvasToast(`Image upload failed — ${res.error}`);
+          }
+          URL.revokeObjectURL(blobUrl);
+        });
+      };
+      probe.onerror = () => {
+        URL.revokeObjectURL(blobUrl);
+        showCanvasToast('Could not read that image file');
+      };
+      probe.src = blobUrl;
+    },
+    [commitStrokes, annotSel]
+  );
+
+  // Link: client-only preview chip — no upload, no server fetch. Only http(s)
+  // URLs are accepted (the hook already gates, re-checked here defensively).
+  const createLink = useCallback(
+    (url: string, title: string, world: [number, number]) => {
+      if (!isHttpUrl(url)) return;
+      const w = LINK_DEFAULT_W;
+      const h = LINK_DEFAULT_H;
+      const id = rid();
+      const link: LinkStroke = {
+        id,
+        tool: 'link',
+        x: world[0] - w / 2,
+        y: world[1] - h / 2,
+        w,
+        h,
+        url,
+        title: (title || prettifyUrl(url)).slice(0, 300),
+        domain: linkDomain(url),
+      };
+      const before = strokesRef.current;
+      commitStrokes(before, [...before, link], 'add link');
+      annotSel?.replace([id]);
+    },
+    [commitStrokes, annotSel]
+  );
+
+  const mediaCallbacks = useMemo(
+    () => ({ onImage: createImageFromFile, onLink: createLink }),
+    [createImageFromFile, createLink]
+  );
+  // Media intake is paste/drop only (per product steer — no toolbar buttons):
+  // drop an image / URL or Cmd+V a clipboard image / link straight onto the
+  // canvas. The hook owns the dragover/drop/paste wiring; the create callbacks
+  // hold the commit/undo sink + screenToWorld.
+  useCanvasMediaDrop({ enabled: visible, screenToWorld, callbacks: mediaCallbacks });
 
   const eraseAt = useCallback(
     (wx: number, wy: number) => {
@@ -1993,7 +2292,9 @@ export function AnnotationsLayer() {
           t === 'polygon' ||
           t === 'arrow' ||
           t === 'text' ||
-          t === 'sticky')
+          t === 'sticky' ||
+          t === 'image' ||
+          t === 'link')
       ) {
         return id;
       }
@@ -3184,6 +3485,98 @@ function StrokeNode({
             </div>
           </foreignObject>
         )}
+      </g>
+    );
+  }
+  if (stroke.tool === 'image') {
+    const x = Math.min(stroke.x, stroke.x + stroke.w);
+    const y = Math.min(stroke.y, stroke.y + stroke.h);
+    const w = Math.abs(stroke.w);
+    const h = Math.abs(stroke.h);
+    return (
+      <image
+        data-id={stroke.id}
+        data-tool="image"
+        x={x}
+        y={y}
+        width={w}
+        height={h}
+        href={resolveAssetHref(stroke.href)}
+        preserveAspectRatio="xMidYMid meet"
+        aria-label={stroke.alt || undefined}
+        pointerEvents={hitMode}
+      />
+    );
+  }
+  if (stroke.tool === 'link') {
+    const x = Math.min(stroke.x, stroke.x + stroke.w);
+    const y = Math.min(stroke.y, stroke.y + stroke.h);
+    const w = Math.abs(stroke.w);
+    const h = Math.abs(stroke.h);
+    const lay = linkCardLayout(x, y, w, h);
+    const shownTitle = clampLinkTitle(stroke.title, lay.textMaxChars);
+    const textFont = {
+      fontFamily: 'var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
+    } as const;
+    return (
+      <g
+        data-id={stroke.id}
+        data-tool="link"
+        data-url={stroke.url}
+        data-title={stroke.title}
+        data-domain={stroke.domain}
+        pointerEvents={hitMode}
+      >
+        <rect
+          x={x}
+          y={y}
+          width={w}
+          height={h}
+          rx={8}
+          ry={8}
+          fill={LINK_CARD_FILL}
+          stroke={LINK_CARD_STROKE}
+          strokeWidth={1}
+          vectorEffect="non-scaling-stroke"
+          filter="url(#dc-sticky-shadow)"
+        />
+        <svg
+          x={lay.glyph.x}
+          y={lay.glyph.y}
+          width={lay.glyph.size}
+          height={lay.glyph.size}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke={LINK_GLYPH_STROKE}
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d={LINK_GLYPH_D1} />
+          <path d={LINK_GLYPH_D2} />
+        </svg>
+        <text
+          x={lay.textX}
+          y={lay.domain.y}
+          fontSize={lay.domain.fontSize}
+          fill={LINK_DOMAIN_FILL}
+          dominantBaseline="hanging"
+          style={textFont}
+        >
+          {stroke.domain}
+        </text>
+        <text
+          x={lay.textX}
+          y={lay.title.y}
+          fontSize={lay.title.fontSize}
+          fill={LINK_TITLE_FILL}
+          fontWeight={600}
+          dominantBaseline="hanging"
+          style={textFont}
+        >
+          {shownTitle}
+        </text>
       </g>
     );
   }

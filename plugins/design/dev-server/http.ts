@@ -636,6 +636,44 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       );
     },
 
+    '/_api/asset': async (req: Request) => {
+      // Phase 23 — binary image upload from the canvas (drag-drop / paste / the
+      // a11y file picker). POST raw image bytes → content-addressed write under
+      // <designRoot>/assets/<sha8>.<ext>, returns 201 { path }. This route is on
+      // the canvas-origin allowlist (CANVAS_SAFE_API below) — a bigger grant than
+      // the inert annotation-SVG write (binary, disk) — so the caps in
+      // api.saveAsset (magic-byte sniff, 10 MB ceiling, content-addressed name,
+      // traversal guard, no-SVG, dedupe) are the load-bearing trust mitigation,
+      // NOT optional. See DDR (Task 9).
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      // Early reject on a declared oversize body (the post-read length check in
+      // saveAsset is the authoritative gate — Content-Length can be omitted/lied).
+      const declared = Number(req.headers.get('content-length') || '0');
+      if (Number.isFinite(declared) && declared > 10 * 1024 * 1024) {
+        return Response.json(
+          { ok: false, error: 'asset exceeds the 10 MB cap' },
+          { status: 413, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      let bytes: Uint8Array;
+      try {
+        bytes = new Uint8Array(await req.arrayBuffer());
+      } catch {
+        return new Response('could not read request body', { status: 400 });
+      }
+      const result = await api.saveAsset(bytes);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status ?? 400, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { path: result.path },
+        { status: 201, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
     '/_api/export-history': async (req: Request) => {
       // Phase 6.5 T10 — read-only recent-exports feed for the dialog's
       // Recent tab. Writes happen as a side-effect of `/_api/export`.
@@ -845,6 +883,11 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
         headers: {
           'Content-Type': MIME[e] || 'application/octet-stream',
           'Cache-Control': 'no-store',
+          // DDR-088 follow-up — never let a browser MIME-sniff a served file
+          // (e.g. an uploaded GIF/WEBP polyglot) into a richer type. Assets are
+          // only referenced via <image href> + the canvas CSP blocks script, so
+          // this is defense-in-depth on the static lane.
+          'X-Content-Type-Options': 'nosniff',
         },
       });
     } catch (err) {
@@ -891,6 +934,7 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
     '/_api/git-user', // presence display name
     '/_api/canvas-meta', // layout/viewport sidecar (GET + PATCH)
     '/_api/annotations', // annotation SVG (GET + PUT) — drives the collab bridge
+    '/_api/asset', // Phase 23 — capped binary image upload (sniff+10MB+sha8 name+no-SVG)
     '/_api/git-committers', // @mention autocomplete
     '/_api/ai', // AI-activity banner
     '/_comments', // per-file comment list (renders pins)

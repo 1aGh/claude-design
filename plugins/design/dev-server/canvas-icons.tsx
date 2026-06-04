@@ -122,6 +122,18 @@ export function IconText(props: IconProps) {
   );
 }
 
+// Phase 23 — link (chain) glyph, used by the annotation context toolbar's
+// "Open link" button. (Media is paste/drop-only — no toolbar buttons — so the
+// picture-frame image icon was dropped.)
+export function IconLink(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+    </Svg>
+  );
+}
+
 export function IconPresentation(props: IconProps) {
   return (
     <Svg {...props}>

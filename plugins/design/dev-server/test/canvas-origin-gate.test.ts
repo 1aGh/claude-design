@@ -69,6 +69,13 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
       expect(await code('/_canvas-shell.html')).toBe(200);
       // A real .tsx canvas under designRoot transpiles + serves (200).
       expect(await code('/.design/ui/Gate.tsx')).toBe(200);
+      // Phase 23 — the capped image-upload route IS reachable from the canvas
+      // origin (it must be — drag-drop/paste/picker run inside the iframe). A GET
+      // returns 405 (method-not-allowed) which proves the route is REACHED via
+      // the canvas server's explicit `routes` allowlist — NOT 403 (gate-blocked)
+      // or 404 (fell through to file-serve). Guards the dual-allowlist invariant:
+      // CANVAS_SAFE_API + the startCanvasServer `routes` map must stay in sync.
+      expect(await code('/_api/asset')).toBe(405);
 
       // (4) The shell carries the hardened CSP (A6).
       const shell = await fetch(`${canvas}/_canvas-shell.html`);

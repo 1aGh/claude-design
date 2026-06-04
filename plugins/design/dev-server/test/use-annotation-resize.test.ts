@@ -10,6 +10,8 @@ import { describe, expect, test } from 'bun:test';
 import type {
   ArrowStroke,
   EllipseStroke,
+  ImageStroke,
+  LinkStroke,
   PenStroke,
   PolygonStroke,
   RectStroke,
@@ -120,6 +122,47 @@ describe('resizeStroke / sticky — always 1:1 square', () => {
       w: 200,
       h: 200,
     });
+  });
+});
+
+describe('resizeStroke / image — Phase 23 (aspect-lock by default, Shift frees)', () => {
+  const image: ImageStroke = {
+    id: 'im1',
+    tool: 'image',
+    x: 0,
+    y: 0,
+    w: 100,
+    h: 50, // 2:1 intrinsic aspect
+    href: 'assets/abcd1234.png',
+  };
+  test('no modifiers keeps the intrinsic aspect (the inverse of shapes)', () => {
+    // se → 120,80 would be 2.4:1 free, but the lock keeps 2:1 (dominant axis).
+    expect(resizeStroke(image, 'se', 120, 80)).toEqual({ x: 0, y: 0, w: 160, h: 80 });
+  });
+  test('Shift held inverts to a free (unconstrained) resize', () => {
+    expect(resizeStroke(image, 'se', 120, 80, { shift: true, alt: false })).toEqual({
+      x: 0,
+      y: 0,
+      w: 120,
+      h: 80,
+    });
+  });
+});
+
+describe('resizeStroke / link — Phase 23 (free-resizes like a rect)', () => {
+  const link: LinkStroke = {
+    id: 'lk1',
+    tool: 'link',
+    x: 0,
+    y: 0,
+    w: 200,
+    h: 80,
+    url: 'https://example.com',
+    title: 'Example',
+    domain: 'example.com',
+  };
+  test('no modifiers free-resizes (no forced aspect)', () => {
+    expect(resizeStroke(link, 'se', 300, 120)).toEqual({ x: 0, y: 0, w: 300, h: 120 });
   });
 });
 

@@ -53,10 +53,12 @@ import {
   IconLineStraight,
   IconLineThick,
   IconLineThin,
+  IconLink,
   IconStrike,
   IconTrash,
 } from './canvas-icons.tsx';
 import { useAnnotationSelectionOptional } from './use-annotation-selection.tsx';
+import { isHttpUrl, linkDomain } from './use-canvas-media-drop.tsx';
 
 // Phase 24 — arrowhead + line-type option metadata (icon + label per value),
 // driving the per-end head dropdowns + the line-type dropdown.
@@ -253,6 +255,28 @@ const TOOLBAR_CSS = `
   background: color-mix(in oklab, #ff5a4d 26%, transparent);
   color: #ffffff;
 }
+/* Phase 23 — media (image alt / link url) inline text field inside the dark
+   property bar. */
+.dc-annot-ctx-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px;
+}
+.dc-annot-ctx-field label { color: rgba(255,255,255,0.6); font-size: 11px; }
+.dc-annot-ctx-input {
+  width: 220px;
+  max-width: 44vw;
+  padding: 4px 7px;
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+}
+.dc-annot-ctx-input::placeholder { color: rgba(255,255,255,0.4); }
+.dc-annot-ctx-input:focus-visible { outline: 2px solid #ffffff; outline-offset: -1px; }
 /* Phase 24 — icon dropdown (arrowhead / line-type / text-align). The wrapper
    anchors the menu directly above the trigger. */
 .dc-annot-ctx-dd { position: relative; display: inline-flex; }
@@ -616,6 +640,145 @@ export function AnnotationContextToolbar() {
   }, [annotSel, store]);
 
   if (!annotSel || !store || selectedStrokes.length === 0) return null;
+
+  // ── Phase 23 — dedicated panel for a single image / link selection. ─────────
+  // Image / link carry no color / fill / thickness, so the generic swatch bar is
+  // meaningless for them; render a focused panel instead (image alt for a11y;
+  // link url/title + Open). Uncontrolled fields keyed by id commit ONCE on
+  // blur/Enter (no per-keystroke undo spam). Multi-select / mixed selections
+  // fall through to the generic bar below.
+  const soleMedia =
+    selectedStrokes.length === 1 &&
+    (selectedStrokes[0]?.tool === 'image' || selectedStrokes[0]?.tool === 'link')
+      ? selectedStrokes[0]
+      : null;
+  if (soleMedia?.tool === 'image') {
+    const img = soleMedia;
+    const commitAlt = (value: string) => {
+      const next = value.trim();
+      if ((img.alt ?? '') !== next) {
+        store.updateStroke(img.id, { alt: next || undefined } as Partial<Stroke>);
+      }
+    };
+    return (
+      <div
+        ref={ref}
+        className="dc-annot-ctx"
+        role="toolbar"
+        aria-label="Image properties"
+        style={{ display: 'flex', top: -9999, left: -9999 }}
+      >
+        <div className="dc-annot-ctx-field">
+          <label htmlFor="dc-img-alt">Alt</label>
+          <input
+            id="dc-img-alt"
+            key={img.id}
+            className="dc-annot-ctx-input"
+            type="text"
+            defaultValue={img.alt ?? ''}
+            placeholder="Describe this image (alt text)"
+            aria-label="Image alt text"
+            onBlur={(e) => commitAlt(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                e.currentTarget.blur();
+              }
+            }}
+          />
+        </div>
+        <div className="dc-annot-ctx-sep" />
+        <button
+          type="button"
+          className="dc-annot-ctx-ibtn dc-annot-ctx-ibtn--danger"
+          aria-label="Delete image"
+          title="Delete"
+          onClick={remove}
+        >
+          <IconTrash />
+        </button>
+      </div>
+    );
+  }
+  if (soleMedia?.tool === 'link') {
+    const link = soleMedia;
+    const commitUrl = (value: string) => {
+      const next = value.trim();
+      if (isHttpUrl(next) && next !== link.url) {
+        store.updateStroke(link.id, { url: next, domain: linkDomain(next) } as Partial<Stroke>);
+      }
+    };
+    const commitTitle = (value: string) => {
+      const next = value.trim();
+      if (next !== link.title) store.updateStroke(link.id, { title: next } as Partial<Stroke>);
+    };
+    const openLink = () => {
+      if (isHttpUrl(link.url)) window.open(link.url, '_blank', 'noopener,noreferrer');
+    };
+    return (
+      <div
+        ref={ref}
+        className="dc-annot-ctx"
+        role="toolbar"
+        aria-label="Link properties"
+        style={{ display: 'flex', top: -9999, left: -9999 }}
+      >
+        <button
+          type="button"
+          className="dc-annot-ctx-ibtn"
+          aria-label={`Open ${link.domain || 'link'} in a new tab`}
+          title="Open link"
+          onClick={openLink}
+        >
+          <IconLink />
+        </button>
+        <div className="dc-annot-ctx-sep" />
+        <div className="dc-annot-ctx-field">
+          <input
+            key={`${link.id}-url`}
+            className="dc-annot-ctx-input"
+            type="url"
+            inputMode="url"
+            defaultValue={link.url}
+            placeholder="https://…"
+            aria-label="Link URL"
+            onBlur={(e) => commitUrl(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                e.currentTarget.blur();
+              }
+            }}
+          />
+          <input
+            key={`${link.id}-title`}
+            className="dc-annot-ctx-input"
+            type="text"
+            defaultValue={link.title}
+            placeholder="Title"
+            aria-label="Link title"
+            onBlur={(e) => commitTitle(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                e.currentTarget.blur();
+              }
+            }}
+          />
+        </div>
+        <div className="dc-annot-ctx-sep" />
+        <button
+          type="button"
+          className="dc-annot-ctx-ibtn dc-annot-ctx-ibtn--danger"
+          aria-label="Delete link"
+          title="Delete"
+          onClick={remove}
+        >
+          <IconTrash />
+        </button>
+      </div>
+    );
+  }
 
   // Active values for swatch highlighting — when uniform across selection.
   const uniqColor = uniformValue(selectedStrokes.map((s) => s.color));

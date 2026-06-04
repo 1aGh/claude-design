@@ -14,6 +14,8 @@ import { GlobalRegistrator } from '@happy-dom/global-registrator';
 
 import {
   type ArrowStroke,
+  type ImageStroke,
+  type LinkStroke,
   type RectStroke,
   type StickyStroke,
   type Stroke,
@@ -215,6 +217,101 @@ describe('annotations round-trip / arrow heads + dash (4 dirs × 2 dash)', () =>
       });
     }
   }
+});
+
+describe('annotations round-trip / image (Phase 23)', () => {
+  const image: ImageStroke = {
+    id: 'im1',
+    tool: 'image',
+    x: 120,
+    y: 80,
+    w: 320,
+    h: 240,
+    href: 'assets/a1b2c3d4.png',
+  };
+
+  test('image survives serialize → parse with all fields intact', () => {
+    const [parsed] = svgToStrokes(strokesToSvg([image])) as ImageStroke[];
+    expect(parsed).toEqual(image);
+  });
+
+  test('image alt text round-trips via data-alt', () => {
+    const withAlt: ImageStroke = { ...image, alt: 'competitor pricing page' };
+    const svg = strokesToSvg([withAlt]);
+    expect(svg).toContain('data-alt="competitor pricing page"');
+    const [parsed] = svgToStrokes(svg) as ImageStroke[];
+    expect(parsed?.alt).toBe('competitor pricing page');
+  });
+
+  test('image with no alt omits data-alt (no phantom default)', () => {
+    const svg = strokesToSvg([image]);
+    expect(svg).not.toContain('data-alt');
+    const [parsed] = svgToStrokes(svg) as ImageStroke[];
+    expect(parsed?.alt).toBeUndefined();
+  });
+
+  test('image persists a relative assets href (never a data: URL)', () => {
+    const svg = strokesToSvg([image]);
+    expect(svg).toContain('href="assets/a1b2c3d4.png"');
+    expect(svg).not.toContain('data:');
+  });
+
+  test('image serialize → parse is idempotent', () => {
+    const once = strokesToSvg([{ ...image, alt: 'x' }]);
+    expect(reparse(once)).toBe(once);
+  });
+
+  test('image SVG survives sanitizeAnnotationSvg byte-intact (PUT-path)', () => {
+    // The assets href must SURVIVE the sanitizer (Task 4 relaxation), so the
+    // persisted form comes back unchanged on every PUT.
+    const svg = strokesToSvg([image]);
+    expect(sanitizeAnnotationSvg(svg)).toBe(svg);
+  });
+});
+
+describe('annotations round-trip / link chip (Phase 23)', () => {
+  const link: LinkStroke = {
+    id: 'lk1',
+    tool: 'link',
+    x: 60,
+    y: 40,
+    w: 260,
+    h: 76,
+    url: 'https://example.com/blog/post?ref=maude',
+    title: 'A reference post worth reacting to',
+    domain: 'example.com',
+  };
+
+  test('link survives serialize → parse with all fields intact', () => {
+    const [parsed] = svgToStrokes(strokesToSvg([link])) as LinkStroke[];
+    expect(parsed).toEqual(link);
+  });
+
+  test('link never persists an <a href> (click-to-open is client-only)', () => {
+    const svg = strokesToSvg([link]);
+    expect(svg).not.toContain('<a ');
+    expect(svg).toContain('data-url="https://example.com/blog/post?ref=maude"');
+  });
+
+  test('link serialize → parse is idempotent (even with a long title)', () => {
+    const once = strokesToSvg([{ ...link, title: 'x'.repeat(200) }]);
+    expect(reparse(once)).toBe(once);
+  });
+
+  test('link SVG survives sanitizeAnnotationSvg byte-intact (PUT-path)', () => {
+    // rect/svg/path/text/data-* are all allowlisted; no on*/style/href → unchanged.
+    const svg = strokesToSvg([link]);
+    expect(sanitizeAnnotationSvg(svg)).toBe(svg);
+  });
+
+  test('link missing data-title falls back to the domain', () => {
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" data-mdcc-annotations="1">' +
+      '<g data-id="lk2" data-tool="link" data-url="https://x.io" data-domain="x.io">' +
+      '<rect x="0" y="0" width="260" height="76" rx="8" ry="8"/></g></svg>';
+    const [parsed] = svgToStrokes(svg) as LinkStroke[];
+    expect(parsed?.title).toBe('x.io');
+  });
 });
 
 describe('annotations round-trip / standalone vs anchored text', () => {

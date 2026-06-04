@@ -205,15 +205,29 @@ Web-desktop only required; native mobile/tablet skipped (justified — OS drag/p
 
 ## Acceptance Criteria
 
-- [ ] All 10 tasks complete.
-- [ ] Drag-drop **and** clipboard-paste of images upload to `assets/<sha8>.<ext>` and render as movable/resizable strokes.
-- [ ] Keyboard-only path (Image tool file-picker + Link URL input) creates the same strokes — no drag required.
-- [ ] Paste/drop of a URL renders a client-only link chip (glyph + domain + title, click-to-open); **no server outbound fetch, no external href persisted**.
-- [ ] Image + link strokes persist in `<slug>.annotations.svg` and round-trip; legacy SVGs round-trip byte-identical (Task 10).
-- [ ] Sanitizer keeps a valid `assets/` image href and strips external/`data:`/`..`/non-image hrefs + all script/style (Task 4 matrix green).
-- [ ] `POST /_api/asset` enforces magic-byte sniff + 10 MB cap + content-addressed naming + traversal guard + no-SVG (Task 5 tests green).
-- [ ] `bun test --bail` green; `bun run tsc --noEmit` clean; `bun run build.ts` produces artifacts.
-- [ ] `/design:smoke` passes; scenario `canvas-media` 0 blockers web-desktop.
-- [ ] `a11y-auditor` 0 blockers (tool buttons + inputs + image alt).
-- [ ] DDR (media vocabulary + asset write surface + client-only-link rationale) written + cross-linked.
-- [ ] No regression in existing draw / select / sticky / undo flows.
+> **Executed 2026-06-03** — all 10 tasks landed. DDR-088 records the media vocabulary + asset write surface + client-only-link rationale. Verification below; a live agent-browser pass on the running solo dev-server confirmed: link create→render→persist→reload; image upload→render→persist→reload (incl. the context-toolbar alt field); the sanitizer keeping a valid assets href + stripping an external one on the live PUT path.
+
+- [x] All 10 tasks complete.
+- [x] Drag-drop **and** clipboard-paste of images upload to `assets/<sha8>.<ext>` and render as movable/resizable strokes. _(shared `use-canvas-media-drop` hook → `createImageFromFile`; live-verified via the file-picker path.)_
+- [~] Keyboard-only path — **revised per user steer (2026-06-03): the Image + Link toolbar buttons were REMOVED; media is paste/drop-only** ("staci paste primo do canvasu"). Cmd+V of a clipboard image / URL is the keyboard-reachable path; image-from-disk-without-clipboard now needs drag-drop (accepted a11y trade-off).
+- [x] Paste/drop of a URL renders a client-only link chip (glyph + domain + title, click-to-open via the context-toolbar Open button); **no server outbound fetch, no external href persisted** (verified: persisted `<g>` carries `data-url`, never `<a href>`). **You do NOT need to type `https://`** — a bare `example.com` is normalized to `https://example.com` (`normalizeUrl`); `javascript:`/`data:`/`file:` still rejected. Live-verified by dropping `example.com`.
+- [x] Image + link strokes persist in `<slug>.annotations.svg` and round-trip; legacy SVGs round-trip byte-identical (Phase-20 + Phase-21 canaries still green — Task 10).
+- [x] Sanitizer keeps a valid `assets/` image href and strips external/`data:`/`..`/non-image hrefs + all script/style (Task 4 matrix: 20 tests green + live PUT/GET).
+- [x] `POST /_api/asset` enforces magic-byte sniff + 10 MB cap + content-addressed naming + traversal guard + no-SVG (Task 5: 9 tests green + live curl).
+- [x] `bun test` green (1217 pass; the 1 fail is the pre-existing flaky `export-history` parallel-CWD test, passes in isolation — unrelated); `bun run tsc --noEmit` clean (only the DDR-026 baseline); biome clean on changed files.
+- [~] `/design:smoke` — superseded by a targeted live agent-browser render pass on the solo dev-server (palette buttons + link chip + image render + context toolbars all confirmed). Full `/design:smoke` deferred to `/flow:done`.
+- [~] `a11y-auditor` — deferred to `/flow:done`. Built-in: tool buttons carry aria-labels; the file input has a real `aria-label`; the URL input focus-manages on reveal + Esc-cancels; image `alt` round-trips to `aria-label` on the rendered `<image>`; the decorative link glyph is `aria-hidden`.
+- [x] DDR-088 (media vocabulary + asset write surface + client-only-link rationale) written + cross-linked.
+- [x] No regression in existing draw / select / sticky / undo flows (full suite + live link/image select+resize).
+
+**Live-verification learning (folded into DDR-088):** the asset route lives in TWO allowlists — `CANVAS_SAFE_API` (fetch fall-through) **and** the `startCanvasServer` `routes` map (Bun matches it first). Listing it only in the former 404'd the upload from the canvas iframe (optimistic image flashed then vanished). `canvas-origin-gate.test.ts` now guards the invariant (`GET /_api/asset → 405`, reached-but-method-gated). Also: a relative `assets/…` href 403s against `/_canvas-shell.html`; `resolveAssetHref` rewrites it to `/<designRel>/assets/…` at render time while persistence stays relative.
+
+---
+
+## Retro
+
+- **Live verification earned its keep — twice.** Static checks + 1200 unit tests were all green, yet agent-browser caught two real defects that would have shipped broken: `/_api/asset` 404'd from the canvas iframe (the route was in `CANVAS_SAFE_API` but not the `startCanvasServer.routes` map Bun matches first), and a relative `assets/…` href 403'd against `/_canvas-shell.html` (needed `resolveAssetHref`). Lesson for `/plan`: for any dev-server route reachable from the segregated canvas origin, the plan should call out **both** allowlists as a single task, and a render-path resolution check belongs in the acceptance criteria, not just "it persists".
+- **The discriminated `Stroke` union does NOT fail tsc on missing branches** — consumers use `if (s.tool === …)` fall-through chains, not exhaustive switches, so a new union member silently misroutes at runtime (the `findStrokeId` move-bug that the user caught post-merge is exactly this). The plan's Task-1 gotcha assumed tsc would enumerate consumers; it didn't. Next time: grep every `\.tool === '` site as the checklist, or add an exhaustiveness `assertNever` to the union's consumers.
+- **Security-sensitive surface → independent adversarial pass paid off.** The `/done` ethical-hacker found the unbounded-body / dedup-isn't-a-quota DoS that the defender + my own implementation rationalized away ("content-addressed → safe"). Dedup is a storage optimization, not a disk-fill defense — a one-byte mutation defeats it. The fix (`maxRequestBodySize` + session budget) was cheap once named.
+- **Product steer mid-flight was cheap because intake was already centralized.** Removing the toolbar buttons was a clean revert (net-zero diff on `tool-palette.tsx`) because all stroke creation lived in `AnnotationsLayer` and the buttons were just event sources. Designing the create path as "one owner, many input sources" made the UI surface disposable.
+- **`esc()` not escaping `>` was a latent foot-gun** the moment user text moved from element *content* (where `>` is harmless) into *attributes* (`data-title`/`data-url`/`data-alt`). Added `escAttr`. Worth auditing the other annotation serializers for the same content-vs-attribute distinction.

@@ -13,6 +13,8 @@ import {
   type ArrowStroke,
   arrowHeadPoints,
   type EllipseStroke,
+  type ImageStroke,
+  type LinkStroke,
   type PenStroke,
   type PolygonStroke,
   penPathD,
@@ -693,6 +695,67 @@ describe('annotations-layer / Phase 21 sticky + standalone-text geometry', () =>
       anchorId: 'host',
     };
     expect(strokeHitTest(anchored, 2, 2, 4)).toBe(false);
+  });
+});
+
+describe('annotations-layer / Phase 23 image + link geometry', () => {
+  const image: ImageStroke = {
+    id: 'im',
+    tool: 'image',
+    x: 30,
+    y: 40,
+    w: 200,
+    h: 150,
+    href: 'assets/deadbeef.png',
+  };
+  const link: LinkStroke = {
+    id: 'lk',
+    tool: 'link',
+    x: 30,
+    y: 40,
+    w: 260,
+    h: 76,
+    url: 'https://example.com',
+    title: 'Example',
+    domain: 'example.com',
+  };
+
+  test('image bbox is its rect extent (normalizes negative extent)', () => {
+    expect(strokeBBox(image)).toEqual({ x: 30, y: 40, w: 200, h: 150 });
+    expect(strokeBBox({ ...image, x: 230, y: 190, w: -200, h: -150 })).toEqual({
+      x: 30,
+      y: 40,
+      w: 200,
+      h: 150,
+    });
+  });
+
+  test('link bbox is its card extent', () => {
+    expect(strokeBBox(link)).toEqual({ x: 30, y: 40, w: 260, h: 76 });
+  });
+
+  test('image + link are filled-card hits anywhere inside', () => {
+    expect(strokeHitTest(image, 100, 100, 4)).toBe(true); // interior
+    expect(strokeHitTest(image, 30, 40, 4)).toBe(true); // corner
+    expect(strokeHitTest(image, 999, 999, 4)).toBe(false); // far outside
+    expect(strokeHitTest(link, 100, 60, 4)).toBe(true);
+    expect(strokeHitTest(link, 999, 999, 4)).toBe(false);
+  });
+
+  test('image serializes a same-origin <image> with preserveAspectRatio', () => {
+    const svg = strokesToSvg([image]);
+    expect(svg).toContain('<image');
+    expect(svg).toContain('data-tool="image"');
+    expect(svg).toContain('preserveAspectRatio="xMidYMid meet"');
+    expect(svg).toContain('href="assets/deadbeef.png"');
+  });
+
+  test('link serializes a card <g> carrying its data-* payload', () => {
+    const svg = strokesToSvg([link]);
+    expect(svg).toContain('data-tool="link"');
+    expect(svg).toContain('data-url="https://example.com"');
+    expect(svg).toContain('data-domain="example.com"');
+    expect(svg).toContain('<rect');
   });
 });
 

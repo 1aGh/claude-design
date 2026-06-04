@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-03T17:53:52.749Z",
+  "generated": "2026-06-04T06:34:07.897Z",
   "currentPhase": null,
   "phases": [
     {
@@ -188,6 +188,17 @@
       "planPath": ".ai/plans/archive/phase-22-annotation-brief-board.md",
       "archived": true,
       "phaseKey": "22"
+    },
+    {
+      "id": "phase-23-canvas-images-link-unfurl",
+      "title": "Phase 23 — Canvas media: drag-and-drop images + paste-link chips",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "The user wants to drop images onto the canvas (drag a .png from Finder, or paste from clipboard) and paste links that render as a preview chip (favicon + title) — the FigJam move where reference ma...",
+      "planPath": ".ai/plans/archive/phase-23-canvas-images-link-unfurl.md",
+      "archived": true,
+      "phaseKey": "23"
     },
     {
       "id": "phase-24-annotations-figjam-parity-v2",
@@ -718,17 +729,6 @@
       "phaseKey": "17"
     },
     {
-      "id": "phase-23-canvas-images-link-unfurl",
-      "title": "Phase 23 — Canvas media: drag-and-drop images + paste-link chips",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "The user wants to drop images onto the canvas (drag a .png from Finder, or paste from clipboard) and paste links that render as a preview chip (favicon + title) — the FigJam move where reference ma...",
-      "planPath": ".ai/plans/phase-23-canvas-images-link-unfurl.md",
-      "archived": false,
-      "phaseKey": "23"
-    },
-    {
       "id": "epic-native-collab-app",
       "title": "Epic: Maude as a native collaborative app — Tauri shell + in-UI Git/GitHub + zero-setup hub + ACP",
       "status": "planned",
@@ -747,6 +747,17 @@
       "date": null,
       "summary": "Build three throwaway spikes and write the founding DDRs. The spikes answer questions that, if answered wrong after E1 is built, would waste weeks: (A) can a Tauri v2 app spawn the existing compile...",
       "planPath": ".ai/plans/epic-native-collab-e0-decisions-spike.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-annotation-tooling-polish",
+      "title": "Feature: Annotation tooling polish — text unification, theme-aware ink, dashed shapes, highlighter",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is a dev-server change to the FigJam-style annotation system — the standing rule...",
+      "planPath": ".ai/plans/feature-annotation-tooling-polish.md",
       "archived": false,
       "phaseKey": null
     },
