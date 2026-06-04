@@ -1,0 +1,89 @@
+{
+  "title": "Studio",
+  "subtitle": "Maude app-shell redesign — the dotted canvas framed by one cohesive chrome material",
+  "brief": "Redesign of the Maude desktop app from today's reality + Canvas Viewport. Layout the user likes: left sidebar (file tree) · top menubar+tools+status · bottom context bar · right sidebar (comments / inspector / css knobs). Covers the implemented feature surface across 6 artboards, with light interactions on the hero so the chrome is visible in motion.",
+  "platform": "desktop",
+  "designSystem": "maude",
+  "opt_out_scope": "palette",
+  "brief_sha": "adfc0ff6",
+  "sections": [
+    {
+      "id": "app",
+      "title": "Maude — app shell",
+      "subtitle": "MAUDE/APP · 6 artboards · dark studio + light handoff"
+    }
+  ],
+  "artboards": [
+    {
+      "id": "hero",
+      "label": "A · studio · live",
+      "note": "Interactive: collapse sidebar · menubar dropdown · theme flip · tool switch · inspector tabs"
+    },
+    {
+      "id": "comments",
+      "label": "B · review & presence",
+      "note": "Comments panel · thread popover · presence avatars + AI agent activity overlay"
+    },
+    {
+      "id": "annotate",
+      "label": "C · annotate & draw",
+      "note": "Draw tools · ellipse fill · arrow · sticky · selected stroke + context toolbar · color popover"
+    },
+    {
+      "id": "palette",
+      "label": "D · command palette + what's new",
+      "note": "⌘K palette · What's New toast"
+    },
+    {
+      "id": "inspector",
+      "label": "E · inspect & css knobs",
+      "note": "Inspector / Layers / live CSS knobs (Phase 12)"
+    },
+    {
+      "id": "handoff",
+      "label": "F · light · handoff & export",
+      "note": "Light theme · export dialog (PNG/PDF/SVG/HTML/shadcn/ZIP) · hub sync synced"
+    }
+  ],
+  "layout": {
+    "artboards": [
+      {
+        "id": "hero",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "comments",
+        "x": 1560,
+        "y": 0
+      },
+      {
+        "id": "annotate",
+        "x": 3120,
+        "y": 0
+      },
+      {
+        "id": "palette",
+        "x": 0,
+        "y": 1020
+      },
+      {
+        "id": "inspector",
+        "x": 1560,
+        "y": 1020
+      },
+      {
+        "id": "handoff",
+        "x": 3120,
+        "y": 1020
+      }
+    ]
+  },
+  "viewport": {
+    "x": 279.4655156833851,
+    "y": -430.6201330518471,
+    "zoom": 0.6981540050180335
+  },
+  "last_modified": "2026-06-04T21:34:44.090Z",
+  "iteration_count": 1
+}
