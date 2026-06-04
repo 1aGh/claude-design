@@ -131,6 +131,8 @@ Stage the feed change so it rides in the feature commit (step 5).
 
 ### 5. Commit
 
+> **Branch handling — don't auto-branch; stay on the current branch.** Commit on whatever branch is checked out — do **not** silently branch off the default branch first (this overrides the generic "if on the default branch, branch first" reflex). Create a new branch only when the user explicitly asks, or — if `conventions.branchingModel` is a PR-based model (`github-flow` / `gitflow` / `release-branch`) **and** HEAD is the base/default branch — surface it and **ask first**, then branch. For `trunk-based`, or when already on a feature branch, commit in place. (The push/PR decision in step 6 still follows `branchingModel`.)
+
 Conventional commit. Format:
 
 ```

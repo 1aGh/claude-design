@@ -204,6 +204,8 @@ For each completed task, list:
 
 ## Post-Execution Flow
 
+> **Branch handling — don't auto-branch; stay on the current branch.** `/flow:execute` never creates a branch on its own. When the commit step runs, commit on whatever branch is checked out — do **not** silently branch off the default branch first (this overrides the generic "if on the default branch, branch first" reflex). Create a new branch only when the user explicitly asks, or — if `conventions.branchingModel` is a PR-based model (`github-flow` / `gitflow` / `release-branch`) **and** HEAD is the base/default branch — surface it and **ask first**, then branch. For `trunk-based`, or when already on a feature branch, commit in place.
+
 After all validations pass, ask:
 
 > **All validations passed. Ready to commit?** I'll create a conventional commit with a changelog entry if your project's `integrations.changelog.provider` calls for one (run `/flow:release-changelog` to author).
