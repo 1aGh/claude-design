@@ -1,12 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="152" height="32" viewBox="0 0 152 32" fill="none" role="img" aria-label="maude">
-  <!-- mark: a selected canvas node with corner handles (the maude selection motif) -->
-  <rect x="3.5" y="6.5" width="19" height="19" rx="3.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
-  <g fill="oklch(0.68 0.18 268)">
-    <rect x="1" y="4" width="5" height="5" rx="1.2"/>
-    <rect x="20" y="4" width="5" height="5" rx="1.2"/>
-    <rect x="1" y="23" width="5" height="5" rx="1.2"/>
-    <rect x="20" y="23" width="5" height="5" rx="1.2"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" width="116" height="32" viewBox="0 0 116 32" fill="none" role="img" aria-label="maude">
+  <!-- mark: selected node — ink frame, 4 indigo corner grips (top-left grip = the agent spark); compact -->
+  <svg x="0" y="2" width="28" height="28" viewBox="0 0 32 32">
+    <rect x="7" y="7" width="18" height="18" rx="5" fill="none" stroke="currentColor" stroke-width="2.8"/>
+    <g fill="var(--accent)">
+      <rect x="20.7" y="2.7" width="8.6" height="8.6" rx="2.4"/>
+      <rect x="2.7" y="20.7" width="8.6" height="8.6" rx="2.4"/>
+      <rect x="20.7" y="20.7" width="8.6" height="8.6" rx="2.4"/>
+      <path d="M8 -1 C8.6 5.36 10.64 7.4 17 8 C10.64 8.6 8.6 10.64 8 17 C7.4 10.64 5.36 8.6 -1 8 C5.36 7.4 7.4 5.36 8 -1 Z"/>
+    </g>
+  </svg>
   <!-- wordmark -->
   <text x="36" y="22" font-family="Inter Tight, Inter, system-ui, sans-serif" font-size="20" font-weight="600" letter-spacing="-0.6" fill="currentColor">maude</text>
 </svg>
