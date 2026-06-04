@@ -1,0 +1,96 @@
+/* focus.css — bespoke chrome for the maude focus specimen.
+ * The ring is one shape everywhere: a 2px accent OUTLINE plus a soft accent-tint
+ * box-shadow halo. Outline lives outside the layout box (never shifts adjacent
+ * chrome); the tint halo widens the hit so the ring reads on a dark surface.
+ * Applied via :focus-visible only — mouse clicks never paint a ring. Tokens only. */
+
+/* ─── The ring, named ───────────────────────────────────────────────────── */
+.fo-anatomy { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--space-4); margin: 0 0 var(--space-6); }
+.fo-spec {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-1);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  align-items: center;
+}
+.fo-spec__cap { font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-2); align-self: flex-start; }
+/* a static swatch that always wears the ring, so reviewers see it without tabbing */
+.fo-chip {
+  width: 96px; height: 40px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-3);
+  border: 1px solid var(--border-default);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px var(--accent-tint);
+}
+.fo-spec code { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--accent); text-align: center; }
+
+/* ─── Live reachability bench — tab through real chrome ──────────────────── */
+.fo-bench {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-1);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-5);
+  margin: 0 0 var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.fo-line { display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: center; }
+.fo-line__lbl { font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-2); width: 72px; flex: none; }
+
+/* .tree-row has no :focus-visible in the shared component layer (it's normally
+   driven by aria-selected). The studio's keyboard rule gives it the SAME ring
+   as every other control — demonstrate it here, scoped to the specimen. */
+.fo-tree { width: 100%; max-width: 320px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-1); padding: var(--space-2); }
+.fo-tree .tree-row { outline: none; }
+.fo-tree .tree-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;            /* inset on a tight row so it never clips */
+  box-shadow: inset 0 0 0 5px var(--accent-tint);
+}
+
+.fo-hint { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); display: flex; align-items: center; gap: var(--space-3); }
+
+/* ─── Why outline, not inset box-shadow ─────────────────────────────────── */
+.fo-vs { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin: 0 0 var(--space-6); }
+.fo-vs figure { margin: 0; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-1); overflow: hidden; }
+.fo-vs figcaption { padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-subtle); font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-wide); text-transform: uppercase; }
+.fo-vs .ok figcaption { color: var(--status-success); }
+.fo-vs .no figcaption { color: var(--status-error); }
+.fo-vs .demo { padding: var(--space-6); display: flex; align-items: center; justify-content: center; min-height: 104px; }
+/* the wrong way — inset shadow masks the border and the ring clips at overflow */
+.fo-clip {
+  width: 120px; height: 44px; border-radius: var(--radius-sm);
+  background: var(--bg-3); border: 1px solid var(--border-default);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+/* ─── Contrast block — token names + OKLCH only, no fabricated ratios ───── */
+.fo-contrast { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); margin: 0 0 var(--space-4); }
+.fo-pair {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+}
+.fo-pair__on {
+  height: 56px;
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+}
+/* the accent ring sample drawn directly on each surface level */
+.fo-pair__on::after {
+  content: "";
+  width: 40px; height: 22px; border-radius: var(--radius-xs);
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+.fo-pair__meta { padding: var(--space-2) var(--space-3); background: var(--bg-1); color: var(--fg-2); display: flex; flex-direction: column; gap: 1px; }
+.fo-pair__meta strong { color: var(--fg-0); }

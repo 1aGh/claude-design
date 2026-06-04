@@ -1,0 +1,242 @@
+/*
+ * maude — specimen chrome · MAUDE/CHROME · "Unified Pro Studio"
+ *
+ * Shared frame for every preview/<slug>.tsx specimen. The chrome IS the signature:
+ * a dotted infinite-canvas ambient backdrop, 1px crisp hairlines, mono-typed
+ * part-number eyebrows (MAUDE/<slug>), and a unified panel material. Dense but calm.
+ * Dark-first; every value is a token so the LIGHT theme retints for free.
+ *
+ *   ┌──────────────────────────────────────────────────────────────┐
+ *   │ .specimen-hd   — part-number · breadcrumb · theme toggle      │
+ *   ├──────────────────────────────────────────────────────────────┤
+ *   │ .specimen-title — h1 + lede                                   │
+ *   │ .specimen-meta  — published / family / status row             │
+ *   │ .specimen body  — h2 sections, demonstration content          │
+ *   │ .specimen-ft    — colophon / cross-refs                       │
+ *   └──────────────────────────────────────────────────────────────┘
+ */
+
+@import url("../colors_and_type.css");
+@import url("./_components.css"); /* .btn/.input/.panel/.seg/etc + motion roles — pulled here so every specimen importing _layout.css gets them. */
+
+* { box-sizing: border-box; }
+*::selection { background: var(--accent-tint); color: var(--fg-0); }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-body);
+  font-size: var(--type-base);
+  line-height: var(--lh-base);
+  color: var(--fg-0);
+  background-color: var(--bg-0);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* Signature ambient dot-grid — the infinite-canvas tell, kept faint so
+     specimen text stays the focus. The full-strength canvas lives in .canvas. */
+  background-image: radial-gradient(
+    color-mix(in oklab, var(--canvas-dot) 42%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: var(--canvas-grid) var(--canvas-grid);
+  background-position: -1px -1px;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ─── Specimen head — part-number frame ─────────────────────────────────── */
+.specimen-hd {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--border-default);
+  background: color-mix(in oklab, var(--bg-1) 86%, transparent);
+  backdrop-filter: blur(6px);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+.specimen-hd .sku {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.specimen-hd .crumbs {
+  display: flex;
+  gap: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+  justify-self: start;
+}
+.specimen-hd .crumbs span:not(:last-child)::after {
+  content: "/";
+  margin-left: var(--space-3);
+  color: var(--border-strong);
+}
+
+/* ─── Theme toggle — segmented, same material as .seg ───────────────────── */
+.theme-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-2);
+}
+.theme-toggle button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+  transition: color var(--dur-soft) var(--ease-out), background var(--dur-soft) var(--ease-out);
+}
+.theme-toggle button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.theme-toggle button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* ─── Body region ───────────────────────────────────────────────────────── */
+.specimen {
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: var(--space-7) var(--space-6) var(--space-8);
+  flex: 1;
+}
+
+.specimen-title h1 {
+  font-family: var(--font-display);
+  font-size: var(--type-2xl);
+  line-height: var(--lh-2xl);
+  letter-spacing: var(--tracking-tight);
+  font-weight: 600;
+  margin: 0 0 var(--space-3);
+}
+.specimen-title .lede {
+  color: var(--fg-1);
+  font-size: var(--type-md);
+  line-height: var(--lh-md);
+  max-width: 64ch;
+  margin: 0 0 var(--space-6);
+}
+
+.specimen-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+  margin: 0 0 var(--space-7);
+  padding: var(--space-4) 0;
+  border-block: 1px solid var(--border-subtle);
+}
+.specimen-meta div { display: flex; flex-direction: column; gap: 2px; }
+.specimen-meta dt {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.specimen-meta dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+  color: var(--fg-0);
+}
+
+.specimen h2 {
+  font-family: var(--font-display);
+  font-size: var(--type-lg);
+  line-height: var(--lh-lg);
+  font-weight: 600;
+  letter-spacing: -0.006em;
+  margin: var(--space-7) 0 var(--space-4);
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+.specimen h2[data-no]::before {
+  content: counter(spec) " ";
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  color: var(--accent);
+  letter-spacing: var(--tracking-wide);
+}
+.specimen h2 .h2-aside {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  font-weight: 400;
+  color: var(--fg-2);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+.specimen { counter-reset: spec; }
+.specimen h2[data-no] { counter-increment: spec; }
+
+.specimen p { margin: 0 0 var(--space-4); max-width: 70ch; color: var(--fg-1); }
+.specimen code, .mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.92em;
+}
+
+/* ─── Helpers reused across specimens ───────────────────────────────────── */
+.grid {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fill, minmax(184px, 1fr));
+  margin: 0 0 var(--space-6);
+}
+.swatch {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  background: var(--bg-1);
+}
+.swatch .chip { height: 72px; }
+.swatch .meta { padding: var(--space-3) var(--space-4); font-size: var(--type-xs); color: var(--fg-1); }
+.swatch .meta strong { display: block; color: var(--fg-0); font-size: var(--type-sm); margin-bottom: 2px; }
+.swatch .meta .oklch { font-family: var(--font-mono); color: var(--fg-2); }
+
+.row { display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: center; margin: 0 0 var(--space-6); }
+.divider { height: 1px; background: var(--border-subtle); margin: var(--space-6) 0; }
+
+/* ─── The signature canvas surface — full-strength dotted infinite canvas ── */
+.canvas {
+  position: relative;
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(var(--canvas-dot) 1.2px, transparent 1.2px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+/* ─── Specimen footer ───────────────────────────────────────────────────── */
+.specimen-ft {
+  border-top: 1px solid var(--border-subtle);
+  padding: var(--space-6);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}

@@ -1,0 +1,131 @@
+/* borders.css — bespoke styles for the hairline-mono separation specimen.
+ * Thesis: 1px hairlines carry separation on the cool-neutral ladder. The seam
+ * grid is the signature move — panels on a hairline backdrop, gutters show. */
+
+/* ─── The three-weight ladder ───────────────────────────────────────────── */
+.bd-ladder {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-4);
+  margin: 0 0 var(--space-6);
+}
+.bd-sample {
+  background: var(--bg-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-5) var(--space-5);
+  box-shadow: var(--shadow-sm);
+}
+.bd-sample-line { height: 2px; border-radius: var(--radius-pill); margin-bottom: var(--space-4); }
+.bd-sample-meta { display: flex; flex-direction: column; gap: var(--space-1); }
+.bd-sample-meta strong { font-size: var(--type-sm); color: var(--fg-0); font-weight: 500; }
+.bd-tok { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--accent); }
+.bd-oklch { font-size: var(--type-xs); color: var(--fg-2); }
+.bd-use { font-size: var(--type-xs); color: var(--fg-1); line-height: var(--lh-xs); margin-top: 2px; }
+
+/* ─── Seam grid — the signature: gutters ARE the borders ────────────────── */
+.bd-studio {
+  display: grid;
+  grid-template-columns: 168px 1fr 188px;
+  gap: 1px;                                   /* the seam */
+  background: var(--border-subtle);           /* shows through the gutters */
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  height: 248px;
+  margin: 0 0 var(--space-4);
+  box-shadow: var(--shadow-md);
+}
+.bd-region {
+  background: var(--bg-1);                     /* one material, no own border */
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.bd-region-tag {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.bd-region-tag--ghost { color: var(--fg-3); }
+.bd-region--canvas {
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(var(--canvas-dot) 1.2px, transparent 1.2px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+  position: relative;
+  align-items: center;
+  justify-content: center;
+}
+.bd-region--canvas .bd-region-tag--ghost { position: absolute; top: var(--space-4); left: var(--space-4); }
+.bd-stub { height: 18px; border-radius: var(--radius-xs); background: var(--bg-3); }
+.bd-stub--sel { background: var(--accent-tint); box-shadow: inset 2px 0 0 var(--accent); }
+.bd-node {
+  width: 116px;
+  height: 84px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+}
+.bd-field-row { display: flex; align-items: center; gap: var(--space-3); }
+.bd-field-row .mono { width: 12px; color: var(--fg-2); font-size: var(--type-xs); }
+.bd-field {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--type-xs);
+  color: var(--fg-0);
+  background: var(--bg-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  padding: var(--space-1) var(--space-3);
+  text-align: right;
+}
+.bd-aside { color: var(--fg-2); font-size: var(--type-sm); margin: 0 0 var(--space-6); }
+.bd-aside code { color: var(--accent); font-family: var(--font-mono); font-size: 0.92em; }
+
+/* ─── Colored role borders ──────────────────────────────────────────────── */
+.bd-states {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-4);
+  margin: 0 0 var(--space-6);
+}
+.bd-state {
+  background: var(--bg-1);
+  border: 1px solid var(--border-default);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.bd-state strong { font-size: var(--type-sm); font-weight: 600; }
+
+/* ─── Input border states ───────────────────────────────────────────────── */
+.bd-inputs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-4);
+  margin: 0 0 var(--space-6);
+}
+.bd-input-wrap { display: flex; flex-direction: column; gap: var(--space-2); }
+.bd-input-label {
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+.bd-input--hover { border-color: var(--border-strong); }
+.bd-input--focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+.bd-input--error { border-color: var(--status-error); color: var(--status-error); }

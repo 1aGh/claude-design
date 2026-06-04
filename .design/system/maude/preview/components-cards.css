@@ -1,0 +1,127 @@
+/* components-cards.css — bespoke layout for the cards specimen.
+ * The card body IS .panel from _components.css; this file only sizes the cards,
+ * paints the canvas-thumbnail demonstration, and wires the transform-only hover
+ * lift. Hierarchy comes from hairline + bg step, never shadow alone. */
+
+/* shared 1px-stroke glyph (matches the buttons specimen vocabulary) */
+.g { width: 14px; height: 14px; display: block; flex: none; }
+.g path, .g rect, .g circle, .g line {
+  fill: none; stroke: currentColor; stroke-width: 1.25;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* ─── Node-card rail ──────────────────────────────────────────────────────── */
+.card-rail {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  gap: var(--space-4);
+  margin: 0 0 var(--space-6);
+}
+.node-card {
+  display: flex;
+  flex-direction: column;
+  /* lift on hover is compositor-only: translateY + border, no layout shift */
+  transition: transform var(--dur-soft) var(--ease-out),
+              border-color var(--dur-soft) var(--ease-out),
+              box-shadow var(--dur-soft) var(--ease-out);
+  will-change: transform;
+}
+.node-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+}
+@media (prefers-reduced-motion: reduce) { .node-card:hover { transform: none; } }
+.node-card.is-selected {
+  border-color: var(--accent);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* miniature dotted canvas — the signature surface, in thumbnail */
+.node-thumb {
+  position: relative;
+  height: 132px;
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(var(--canvas-dot) 1.2px, transparent 1.2px);
+  background-size: 12px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.thumb-block {
+  position: absolute;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-default);
+  background: var(--bg-2);
+}
+.tb-a { left: 16px; top: 18px; width: 96px; height: 18px; }
+.tb-b { left: 16px; top: 44px; width: 140px; height: 40px; }
+.tb-c { left: 16px; top: 92px; width: 72px; height: 22px; border-color: var(--accent-muted); background: var(--accent-tint); }
+.node-thumb--hero { display: flex; flex-direction: column; gap: 8px; padding: 18px 16px; }
+.node-thumb--hero .thumb-bar { height: 14px; width: 60%; border-radius: var(--radius-xs); background: var(--bg-3); }
+.node-thumb--hero .thumb-wide { flex: 1; border-radius: var(--radius-sm); border: 1px solid var(--border-default); background: var(--bg-2); }
+
+.node-meta { display: flex; flex-direction: column; gap: 4px; }
+.node-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.node-name { font-size: var(--type-sm); font-weight: 500; color: var(--fg-0); }
+.node-sub {
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  font-size: var(--type-xs); color: var(--fg-2);
+}
+
+/* "new artboard" affordance — dashed, ghost-quiet, fills neutral on hover */
+.node-card--new { background: transparent; box-shadow: none; border-style: dashed; }
+.new-art {
+  appearance: none; width: 100%; height: 100%; min-height: 188px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--space-3);
+  background: transparent; border: 0; cursor: pointer;
+  color: var(--fg-2); font-family: var(--font-body); font-size: var(--type-sm);
+  transition: color var(--dur-soft) var(--ease-out), background var(--dur-soft) var(--ease-out);
+}
+.new-art .g { width: 18px; height: 18px; }
+.new-art:hover { color: var(--fg-0); background: var(--bg-2); }
+.new-art:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius-md); }
+
+/* ─── Specialised pair — properties + hand off ────────────────────────────── */
+.card-pair {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(260px, 1.2fr);
+  gap: var(--space-4);
+  margin: 0 0 var(--space-6);
+}
+.props-card .panel-hd .presence-dot { margin-left: auto; }
+.props-foot {
+  display: flex; justify-content: flex-end; gap: var(--space-2);
+  margin-top: var(--space-4); padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.handoff-card .panel-hd .hd-meta {
+  margin-left: auto; text-transform: none; letter-spacing: 0;
+  color: var(--fg-2); font-size: var(--type-xs);
+}
+.handoff-lede { margin: 0 0 var(--space-4); color: var(--fg-1); font-size: var(--type-sm); line-height: var(--lh-base); }
+.handoff-list { list-style: none; margin: 0 0 var(--space-4); padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.handoff-list li {
+  display: flex; align-items: center; gap: var(--space-3);
+  font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-1);
+}
+.handoff-list .g { color: var(--status-success); }
+.handoff-cta { width: 100%; justify-content: center; }
+
+/* ─── Elevation teaching pair ─────────────────────────────────────────────── */
+.elev-vs { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
+.elev-vs figure { margin: 0; }
+.elev-vs figcaption {
+  margin-top: var(--space-3);
+  font-family: var(--font-mono); font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide); text-transform: uppercase;
+}
+.elev-vs .ok figcaption { color: var(--status-success); }
+.elev-vs .no figcaption { color: var(--status-error); }
+.elev-flat { box-shadow: var(--shadow-sm); }
+.elev-float { box-shadow: var(--shadow-lg); }
+.elev-vs .panel-bd { color: var(--fg-1); font-size: var(--type-sm); }
+
+@media (max-width: 720px) {
+  .card-pair, .elev-vs { grid-template-columns: 1fr; }
+}

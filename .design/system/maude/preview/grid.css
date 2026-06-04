@@ -1,0 +1,138 @@
+/* grid.css — bespoke styles for the dotted-canvas + layout-grid specimen.
+ * The dot-grid is the signature surface; the column grid is structural chrome.
+ * Dot pitch is var(--canvas-grid); snap math rounds to that pitch. */
+
+/* ─── Controls row ──────────────────────────────────────────────────────── */
+.gr-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin: 0 0 var(--space-4);
+}
+.gr-hint { font-size: var(--type-xs); color: var(--fg-2); margin-left: auto; }
+
+/* ─── The dotted canvas surface ─────────────────────────────────────────── */
+.gr-canvas {
+  position: relative;
+  height: 300px;
+  margin: 0 0 var(--space-6);
+}
+.gr-canvas--plain { background-image: none; }
+
+.gr-readout {
+  position: absolute;
+  top: var(--space-4);
+  left: var(--space-4);
+  font-size: var(--type-xs);
+  color: var(--accent-fg);
+  background: var(--accent);
+  padding: 2px var(--space-3);
+  border-radius: var(--radius-xs);
+  z-index: 2;
+}
+
+/* node — origin (96,72) sits on the lattice; size 168×96 = 7×4 cells */
+.gr-node {
+  position: absolute;
+  left: 96px;
+  top: 72px;
+  width: 168px;
+  height: 96px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.gr-node.is-snapped { outline: 1.5px solid var(--accent); outline-offset: 2px; }
+.gr-node.is-free {
+  /* nudged half a cell off the lattice — outline goes neutral to read "free" */
+  left: 108px;
+  top: 84px;
+  outline: 1.5px dashed var(--border-strong);
+  outline-offset: 2px;
+}
+.gr-node-tag { font-size: var(--type-xs); color: var(--fg-2); }
+.gr-handle {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  background: var(--accent);
+  border: 1px solid var(--accent-fg);
+  border-radius: var(--radius-xs);
+}
+.gr-node.is-free .gr-handle { background: var(--border-strong); }
+.gr-handle.tl { left: -4px; top: -4px; }
+.gr-handle.tr { right: -4px; top: -4px; }
+.gr-handle.bl { left: -4px; bottom: -4px; }
+.gr-handle.br { right: -4px; bottom: -4px; }
+
+/* alignment guides extending from the snapped node */
+.gr-snaplines {
+  position: absolute;
+  left: 96px;
+  top: 0;
+  bottom: 0;
+  width: 168px;
+  border-left: 1px solid var(--accent-muted);
+  border-right: 1px solid var(--accent-muted);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* ─── Snap math readout ─────────────────────────────────────────────────── */
+.gr-math {
+  background: var(--bg-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin: 0 0 var(--space-6);
+  box-shadow: var(--shadow-sm);
+}
+.gr-math-row {
+  display: grid;
+  grid-template-columns: 132px 1fr;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.gr-math-row:last-child { border-bottom: 0; }
+.gr-math-k { font-size: var(--type-xs); color: var(--fg-2); letter-spacing: var(--tracking-wide); text-transform: uppercase; }
+.gr-math-v { font-size: var(--type-sm); color: var(--fg-0); }
+.gr-math-v { font-variant-numeric: tabular-nums; }
+
+/* ─── Layout column grid ────────────────────────────────────────────────── */
+.gr-layout {
+  display: grid;
+  grid-template-columns: 188px 1fr 224px;
+  gap: 1px;
+  background: var(--border-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin: 0 0 var(--space-4);
+  box-shadow: var(--shadow-md);
+}
+.gr-col {
+  background: var(--bg-1);
+  padding: var(--space-5) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 120px;
+}
+.gr-col--canvas {
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(var(--canvas-dot) 1.2px, transparent 1.2px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+}
+.gr-col-name { font-size: var(--type-xs); color: var(--accent); letter-spacing: var(--tracking-wide); text-transform: uppercase; }
+.gr-col-w { font-size: var(--type-md); color: var(--fg-0); font-variant-numeric: tabular-nums; }
+.gr-col-role { font-size: var(--type-xs); color: var(--fg-1); margin-top: auto; }
+.gr-col--canvas .gr-col-role { color: var(--fg-2); }
+
+.gr-aside { color: var(--fg-2); font-size: var(--type-sm); margin: 0 0 var(--space-6); }
+.gr-aside code { color: var(--accent); font-family: var(--font-mono); font-size: 0.92em; }

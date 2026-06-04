@@ -34,6 +34,20 @@
       ],
       "newCanvasDir": "ui",
       "newComponentDir": "system/project/preview"
+    },
+    {
+      "name": "maude",
+      "path": "system/maude",
+      "description": "Unified Pro Studio — the canonical Maude design system. Dark-first cool-neutral elevation ladder (hue 255) framing a dotted infinite canvas; ONE confident indigo accent (oklch 0.68 0.18 268), one job per surface. One shared chrome material across panels/toolbars/inspectors/layer-trees; mono (JetBrains/Geist) is first-class for part-numbers, coordinates and inspector fields. Between Zed and Webflow, more cohesive. Dense but calm; chrome frames the canvas, never competes. Two-theme equal (dark studio default / light reading-handoff).",
+      "tokensCssRel": "system/maude/colors_and_type.css",
+      "rootClass": "maude",
+      "themeDefault": "dark",
+      "themes": [
+        "dark",
+        "light"
+      ],
+      "newCanvasDir": "ui",
+      "newComponentDir": "system/maude/preview"
     }
   ],
   "defaultDesignSystem": "project",

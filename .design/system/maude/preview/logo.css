@@ -1,0 +1,235 @@
+/* logo.css — bespoke styles for the SIGNATURE logo specimen.
+ * The mark is a selected canvas node: a rounded-square frame + four indigo
+ * corner handles. These styles frame the lockup, the mark scale, the selection
+ * motif explainer, the clear-space + min-size rules, the placements, and the
+ * do/don't misuse grid — all on the one shared chrome material. */
+
+/* ─── The lockup hero ───────────────────────────────────────────────────── */
+.logo-hero {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-6);
+  align-items: center;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-1);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-7) var(--space-6);
+  color: var(--fg-0);
+  margin: 0 0 var(--space-6);
+}
+.logo-hero-stage { display: flex; align-items: center; }
+.logo-hero-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  text-align: right;
+}
+.logo-hero-meta .mono { font-size: var(--type-xs); color: var(--fg-2); }
+
+/* ─── The mark across sizes ─────────────────────────────────────────────── */
+.logo-mark-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-5);
+  margin: 0 0 var(--space-6);
+}
+.logo-mark-cell { margin: 0; display: flex; flex-direction: column; align-items: center; gap: var(--space-3); }
+.logo-mark-frame {
+  display: grid;
+  place-items: center;
+  color: var(--fg-0);
+  background: var(--bg-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+.logo-mark-cell figcaption { font-size: var(--type-xs); color: var(--fg-2); }
+
+/* ─── The selection motif explainer ─────────────────────────────────────── */
+.logo-motif {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: var(--space-6);
+  align-items: center;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(var(--canvas-dot) 1.2px, transparent 1.2px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+  background-position: -1px -1px;
+  padding: var(--space-7) var(--space-6);
+  box-shadow: var(--shadow-md);
+  margin: 0 0 var(--space-6);
+}
+.logo-motif-stage { position: relative; display: grid; place-items: center; min-height: 200px; }
+.logo-motif-node { position: relative; color: var(--fg-0); line-height: 0; }
+.logo-motif-tag {
+  position: absolute;
+  top: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+.logo-motif-call {
+  position: absolute;
+  font-size: 10px;
+  color: var(--fg-1);
+  background: color-mix(in oklab, var(--bg-1) 88%, transparent);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  padding: 2px var(--space-2);
+  white-space: nowrap;
+}
+.logo-motif-call--frame { bottom: 18px; left: 50%; transform: translateX(-50%); }
+.logo-motif-call--handle { top: 18px; right: 8px; color: var(--accent); border-color: var(--accent-muted); }
+
+.logo-motif-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-4); }
+.logo-motif-steps li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  color: var(--fg-1);
+  font-size: var(--type-sm);
+  line-height: var(--lh-sm);
+}
+.logo-motif-steps strong { color: var(--fg-0); }
+.logo-motif-n {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-pill);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-size: var(--type-xs);
+}
+
+/* ─── Clear space + minimum size ────────────────────────────────────────── */
+.logo-rules {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-6);
+}
+.logo-rule {
+  margin: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-1);
+  overflow: hidden;
+}
+.logo-rule figcaption {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+/* clear-space diagram — guides at one-handle inset */
+.logo-clearspace {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 160px;
+  color: var(--fg-0);
+  margin: var(--space-5);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+.logo-cs-pad { position: absolute; background: var(--accent-tint); }
+.logo-cs-pad--t { top: 0; left: 0; right: 0; height: 20px; }
+.logo-cs-pad--b { bottom: 0; left: 0; right: 0; height: 20px; }
+.logo-cs-pad--l { top: 0; bottom: 0; left: 0; width: 20px; }
+.logo-cs-pad--r { top: 0; bottom: 0; right: 0; width: 20px; }
+
+/* min-size diagram */
+.logo-minsize { padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-4); }
+.logo-minsize-row { display: flex; align-items: center; gap: var(--space-4); color: var(--fg-0); }
+.logo-minsize-lbl { font-size: var(--type-xs); color: var(--fg-2); }
+.logo-minsize-lbl--no { color: var(--status-error); }
+
+/* ─── Placements ────────────────────────────────────────────────────────── */
+.logo-placements {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-4);
+  margin: 0 0 var(--space-6);
+}
+.logo-place {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-5);
+  min-height: 132px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-6) var(--space-4) var(--space-4);
+}
+.logo-place figcaption { font-size: var(--type-xs); letter-spacing: var(--tracking-wide); text-transform: uppercase; }
+.logo-place--dark   { background: var(--bg-0);     color: var(--fg-0); }
+.logo-place--dark figcaption { color: var(--fg-2); }
+/* explicit light surface so the on-light placement is verifiable regardless of page theme */
+.logo-place--light  { background: oklch(1 0 0);    color: oklch(0.225 0.015 260); }
+.logo-place--light figcaption { color: oklch(0.51 0.012 260); }
+.logo-place--accent { background: var(--accent);   color: var(--accent-fg); border-color: var(--accent); }
+.logo-place--accent figcaption { color: var(--accent-fg); opacity: 0.85; }
+.logo-place--canvas {
+  color: var(--fg-0);
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(var(--canvas-dot) 1.2px, transparent 1.2px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+  background-position: -1px -1px;
+}
+.logo-place--canvas figcaption { color: var(--fg-2); }
+
+/* ─── Misuse — do / don't ───────────────────────────────────────────────── */
+.logo-misuse {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+}
+.logo-mis {
+  margin: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-1);
+}
+.logo-mis-stage {
+  display: grid;
+  place-items: center;
+  min-height: 88px;
+  padding: var(--space-5);
+  color: var(--fg-0);
+}
+.logo-mis-stage--noisy {
+  background-image:
+    repeating-linear-gradient(45deg, var(--bg-3) 0 6px, var(--bg-4) 6px 12px);
+}
+.logo-mis-squash { display: inline-block; transform: scaleX(1.5) scaleY(0.7); transform-origin: center; }
+.logo-mis figcaption {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+.logo-mis--ok figcaption { color: var(--status-success); }
+.logo-mis--no figcaption { color: var(--status-error); }
+
+@media (max-width: 720px) {
+  .logo-hero { grid-template-columns: 1fr; }
+  .logo-hero-meta { text-align: left; }
+  .logo-motif { grid-template-columns: 1fr; }
+  .logo-rules { grid-template-columns: 1fr; }
+}

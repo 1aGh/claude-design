@@ -1,0 +1,95 @@
+/* colors-surfaces.css — bespoke styles for the elevation-ladder specimen.
+ * Original move: the ladder is drawn as overlapping physical STEPS (a staircase)
+ * instead of detached chips, so the small ~3-4% per-rung deltas read as one
+ * continuous ramp rather than five unrelated squares. The cohesion section
+ * nests the real panel material on the dotted canvas so "deepest = canvas" is
+ * a thing you see, not a thing you're told. */
+
+/* ─── The staircase ladder ──────────────────────────────────────────────── */
+.surf-stairs {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin: 0 0 var(--space-6);
+  box-shadow: var(--shadow-sm);
+}
+.surf-step {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6);
+  /* each step indents slightly + sits above the previous → a ramp, not a list */
+  margin-left: calc(var(--i, 0) * 0);
+  border-top: 1px solid var(--border-subtle);
+  position: relative;
+}
+.surf-step:first-child { border-top: 0; }
+.surf-step-id { display: flex; flex-direction: column; gap: 2px; }
+.surf-step-id strong { font-size: var(--type-sm); color: var(--fg-0); }
+.surf-role { font-size: var(--type-sm); color: var(--fg-1); }
+.surf-step-meta { display: flex; flex-direction: column; gap: 2px; text-align: right; }
+.surf-step-meta .oklch { color: var(--fg-2); font-size: var(--type-xs); }
+.surf-note { color: var(--fg-2); font-size: var(--type-xs); }
+
+/* ─── Cohesion: nested panel material on the dotted canvas ──────────────── */
+.surf-cohesion {
+  position: relative;
+  min-height: 280px;
+  padding: var(--space-7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 0 var(--space-6);
+}
+.surf-float {
+  width: 320px;
+  box-shadow: var(--shadow-md);
+}
+.surf-float .panel-hd span:last-child { color: var(--fg-2); }
+.surf-nested {
+  background: var(--bg-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.surf-tag {
+  align-self: flex-start;
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.surf-field { font-family: var(--font-mono); font-size: var(--type-xs); }
+
+/* ─── Borders ───────────────────────────────────────────────────────────── */
+.surf-borders {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+  margin: 0 0 var(--space-6);
+}
+.surf-bcard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-5);
+  border: 1px solid var(--border-default);   /* overridden inline per weight */
+  border-radius: var(--radius-md);
+  background: var(--bg-1);
+}
+.surf-bcard strong { font-size: var(--type-sm); color: var(--fg-0); }
+.surf-buse { font-size: var(--type-xs); color: var(--fg-2); }
+
+/* ─── Guardrail note ────────────────────────────────────────────────────── */
+.surf-note-box { margin: 0 0 var(--space-5); }
+.surf-note-box .mono {
+  flex: none;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--status-warn);
+  font-size: var(--type-xs);
+}

@@ -1,0 +1,219 @@
+/* empty-state.css — bespoke styles for the SIGNATURE empty-state specimen.
+ * Every empty surface in the studio: the dotted canvas with an agent offer,
+ * no-frames-yet, no-search-results, the voice keep/kill panel, and the mini
+ * grid. One primary indigo action per surface — that restraint IS the rule. */
+
+/* ─── The empty canvas — the hero state ─────────────────────────────────── */
+.es-canvas-wrap {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  background: var(--bg-1);
+  margin: 0 0 var(--space-6);
+}
+.es-canvas-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-4);
+  height: 40px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.es-canvas-toolbar .es-tool-title {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.es-canvas-toolbar .es-spacer { flex: 1; }
+.es-canvas-toolbar .es-agent-state {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+}
+
+.es-canvas {
+  position: relative;
+  min-height: 340px;
+  display: grid;
+  place-items: center;
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(var(--canvas-dot) 1.2px, transparent 1.2px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+  background-position: -1px -1px;
+}
+
+/* the centered prompt — calm, the dot-grid does the work */
+.es-prompt {
+  text-align: center;
+  max-width: 340px;
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.es-prompt .es-mark { color: var(--accent); margin-bottom: var(--space-4); line-height: 0; }
+.es-prompt-title {
+  font-family: var(--font-display);
+  font-size: var(--type-lg);
+  line-height: var(--lh-lg);
+  font-weight: 600;
+  color: var(--fg-0);
+  margin: 0 0 var(--space-2);
+  letter-spacing: -0.006em;
+}
+.es-prompt-body {
+  color: var(--fg-1);
+  font-size: var(--type-sm);
+  line-height: var(--lh-sm);
+  max-width: 30ch;
+  margin: 0 0 var(--space-5);
+}
+.es-prompt-actions {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: var(--space-4);
+}
+.es-prompt-hint { color: var(--fg-3); font-size: var(--type-xs); margin: 0; }
+
+/* ─── No-frames + no-search side-by-side ────────────────────────────────── */
+.es-panel-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-6);
+}
+.es-state .es-count { color: var(--fg-1); text-transform: none; letter-spacing: 0; }
+.es-state-bd {
+  padding: var(--space-7) var(--space-5) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.es-illu { line-height: 0; margin-bottom: var(--space-4); }
+.es-state-title {
+  font-family: var(--font-display);
+  font-size: var(--type-md);
+  font-weight: 600;
+  color: var(--fg-0);
+  margin: 0 0 var(--space-2);
+}
+.es-state-body {
+  color: var(--fg-1);
+  font-size: var(--type-sm);
+  line-height: var(--lh-sm);
+  max-width: 32ch;
+  margin: 0 0 var(--space-5);
+}
+.es-state-actions { display: flex; gap: var(--space-3); flex-wrap: wrap; justify-content: center; }
+
+/* ─── Voice — keep vs kill ──────────────────────────────────────────────── */
+.es-voice {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-1);
+  box-shadow: var(--shadow-sm);
+  margin: 0 0 var(--space-6);
+}
+.es-voice-hd,
+.es-voice-row {
+  display: grid;
+  grid-template-columns: 1.1fr 1.1fr 0.8fr;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  align-items: center;
+}
+.es-voice-hd {
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border-default);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+.es-voice-keep-hd { color: var(--status-success); }
+.es-voice-kill-hd { color: var(--status-error); }
+.es-voice-note-hd { color: var(--fg-2); }
+.es-voice-row + .es-voice-row,
+.es-voice-row { border-top: 1px solid var(--border-subtle); }
+.es-voice-row:first-of-type { border-top: 0; }
+.es-voice-keep {
+  color: var(--fg-0);
+  font-size: var(--type-sm);
+  line-height: var(--lh-sm);
+  border-left: 2px solid var(--status-success);
+  padding-left: var(--space-3);
+}
+.es-voice-kill {
+  color: var(--fg-3);
+  font-size: var(--type-sm);
+  line-height: var(--lh-sm);
+}
+.es-voice-kill s { text-decoration-color: var(--status-error); text-decoration-thickness: 1px; }
+.es-voice-note { color: var(--fg-2); font-size: var(--type-xs); }
+
+/* ─── Mini grid — small empty surfaces ──────────────────────────────────── */
+.es-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-4);
+  margin: 0 0 var(--space-6);
+}
+.es-mini-bd {
+  padding: var(--space-6) var(--space-4) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.es-mini-glyph { color: var(--fg-2); line-height: 0; margin-bottom: var(--space-3); }
+.es-mini-title {
+  font-family: var(--font-display);
+  font-size: var(--type-base);
+  font-weight: 600;
+  color: var(--fg-0);
+  margin: 0 0 var(--space-1);
+}
+.es-mini-body {
+  color: var(--fg-2);
+  font-size: var(--type-xs);
+  line-height: var(--lh-xs);
+  margin: 0 0 var(--space-4);
+  max-width: 26ch;
+}
+
+/* ─── The recipe ────────────────────────────────────────────────────────── */
+.es-recipe {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-1);
+  overflow: hidden;
+}
+.es-recipe li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-5);
+  color: var(--fg-1);
+  font-size: var(--type-sm);
+  line-height: var(--lh-sm);
+}
+.es-recipe li + li { border-top: 1px solid var(--border-subtle); }
+.es-recipe li em { color: var(--fg-0); font-style: normal; }
+.es-recipe-n { color: var(--accent); font-size: var(--type-xs); flex: 0 0 auto; }
+
+@media (max-width: 720px) {
+  .es-panel-row { grid-template-columns: 1fr; }
+  .es-voice-hd,
+  .es-voice-row { grid-template-columns: 1fr; gap: var(--space-2); }
+  .es-voice-note-hd { display: none; }
+}

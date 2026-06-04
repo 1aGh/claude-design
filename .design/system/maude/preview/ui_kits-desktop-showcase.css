@@ -1,0 +1,241 @@
+/* ui_kits-desktop-showcase.css — bespoke styles for THE signature studio mock.
+ *
+ * The whole point: ONE material across every chrome surface. Toolbar, layers,
+ * inspector and status bar are all --bg-1 on the same --border-default hairline,
+ * the same radii, the same elevation. The dotted canvas is the deepest surface
+ * (--bg-0) and the chrome frames it without competing. The accent appears in
+ * exactly THREE places (Hand off primary · selected node · active layer row).
+ *
+ * Motion: the only animation is the agent label's soft opacity pulse — bounded
+ * (overflow:hidden on its host), compositor-only (opacity, never layout), and
+ * collapsed to 1ms by the --dur-* token under prefers-reduced-motion. No springs.
+ */
+
+/* let the shell go full-width inside the otherwise-narrow specimen column */
+.sc-specimen { max-width: 1180px; }
+
+/* 1px-stroke glyph — currentColor so it retints with its surface. */
+.g { width: 14px; height: 14px; display: block; flex: none; }
+.g path, .g rect, .g circle, .g line, .g polyline {
+  fill: none; stroke: currentColor; stroke-width: 1.25;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* ─── Cropmark framing — DELIBERATELY thicker than any internal panel border ─ */
+.sc-frame {
+  position: relative;
+  padding: var(--space-5);
+  border: 2px solid var(--border-strong);     /* thicker than the 1px internal hairlines */
+  border-radius: var(--radius-xl);
+  background:
+    radial-gradient(color-mix(in oklab, var(--canvas-dot) 30%, transparent) 1px, transparent 1px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+  background-position: -1px -1px;
+  margin: 0 0 var(--space-5);
+}
+/* corner cropmarks — staging-frame tell, thicker stroke than panels */
+.sc-frame::before, .sc-frame::after {
+  content: ""; position: absolute; width: 14px; height: 14px; pointer-events: none;
+  border: 2px solid var(--accent);
+}
+.sc-frame::before { top: 6px; left: 6px; border-right: 0; border-bottom: 0; border-top-left-radius: var(--radius-sm); }
+.sc-frame::after  { bottom: 6px; right: 6px; border-left: 0; border-top: 0; border-bottom-right-radius: var(--radius-sm); }
+
+/* ─── The shell grid — toolbar / layers · canvas · inspector / status ───────── */
+.sc-shell {
+  display: grid;
+  grid-template-columns: 224px 1fr 268px;
+  grid-template-rows: 44px 1fr 30px;
+  grid-template-areas:
+    "toolbar toolbar  toolbar"
+    "layers  canvas   insp"
+    "status  status   status";
+  gap: 1px;                                    /* 1px hairline seams between regions */
+  background: var(--border-default);           /* the seam colour shows through the gaps */
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  height: 540px;
+}
+.sc-shell > * { background: var(--bg-1); min-width: 0; }   /* ONE material */
+
+/* ─── Top toolbar — the same material, horizontal ──────────────────────────── */
+.sc-toolbar {
+  grid-area: toolbar; display: flex; align-items: center; gap: var(--space-3);
+  padding: 0 var(--space-3); overflow: hidden;
+}
+.sc-brand { display: inline-flex; align-items: center; gap: var(--space-2); text-decoration: none; }
+.sc-mark { width: 26px; height: 26px; display: grid; place-items: center; color: var(--fg-0); }   /* transparent — the mark is a hollow node, not a solid accent tile */
+.brand-mark-svg { width: 20px; height: 20px; }
+.sc-wordmark { font-family: var(--font-display); font-weight: 600; font-size: var(--type-md); letter-spacing: var(--tracking-tight); color: var(--fg-0); }
+.sc-file { color: var(--fg-2); font-size: var(--type-xs); letter-spacing: var(--tracking-wide); }
+
+.sc-tools button { display: grid; place-items: center; padding: var(--space-2) var(--space-3); }
+.sc-tools button[aria-pressed="true"] { background: var(--bg-4); color: var(--fg-0); }   /* active tool — the raised fill is the signal; accent stays reserved for the one primary */
+.sc-tools .g { width: 15px; height: 15px; }
+
+.sc-zoom { display: inline-flex; align-items: center; gap: var(--space-1); }
+.sc-zoom-val { appearance: none; border: 1px solid var(--border-default); background: var(--bg-2); color: var(--fg-1); font-size: var(--type-xs); font-variant-numeric: tabular-nums; padding: var(--space-2) var(--space-3); border-radius: var(--radius-xs); cursor: pointer; min-width: 52px; }
+.sc-zoom-val:hover { background: var(--bg-3); color: var(--fg-0); }
+
+.sc-spacer { flex: 1; }
+
+.sc-presence { display: inline-flex; align-items: center; gap: var(--space-2); padding-right: var(--space-2); margin-right: var(--space-1); border-right: 1px solid var(--border-subtle); }
+.sc-avatar { width: 24px; height: 24px; border-radius: var(--radius-pill); display: grid; place-items: center; font-family: var(--font-mono); font-size: 10px; font-weight: 600; background: var(--bg-3); border: 1px solid var(--border-default); color: var(--fg-1); }
+.sc-avatar--peer { background: color-mix(in oklab, var(--presence-online) 22%, var(--bg-3)); border-color: var(--presence-online); color: var(--fg-0); }
+.sc-toolbar .btn .g { width: 13px; height: 13px; }
+
+/* ─── Left — layers tree ───────────────────────────────────────────────────── */
+.sc-layers { grid-area: layers; display: flex; flex-direction: column; overflow: hidden; }
+.sc-panel-hd {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  font-family: var(--font-mono); font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-2);
+}
+.sc-panel-hd .g { color: var(--fg-2); }
+.sc-count { margin-left: auto; color: var(--fg-1); text-transform: none; letter-spacing: 0; }
+.sc-tree { padding: var(--space-2); display: flex; flex-direction: column; gap: 1px; overflow: auto; }
+.sc-row { gap: var(--space-2); white-space: nowrap; cursor: pointer; position: relative; }
+.sc-row .sc-row-glyph { display: inline-flex; color: var(--fg-2); }
+.sc-row[aria-selected="true"] .sc-row-glyph { color: var(--accent); }
+.sc-row-label { overflow: hidden; text-overflow: ellipsis; }
+.sc-chev { display: inline-flex; color: var(--fg-3); }
+.sc-chev .chev { width: 11px; height: 11px; }
+.sc-chev-spacer { width: 11px; flex: none; }
+.sc-row-agent { margin-left: auto; }
+
+/* ─── Center — the dotted canvas (deepest surface) ─────────────────────────── */
+.sc-canvas {
+  grid-area: canvas; position: relative; overflow: hidden;
+  background-color: var(--canvas-bg) !important;     /* override the shared --bg-1: canvas is --bg-0 */
+  background-image: radial-gradient(var(--canvas-dot) 1.2px, transparent 1.2px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+}
+
+/* artboards floating on the canvas */
+.sc-artboard {
+  position: absolute; background: var(--bg-1); border: 1px solid var(--border-default);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-md); padding: var(--space-4);
+  display: flex; flex-direction: column; gap: var(--space-3);
+}
+.sc-art-tab {
+  position: absolute; top: -18px; left: 0; font-size: 10px; color: var(--fg-2);
+  letter-spacing: var(--tracking-wide); text-transform: uppercase;
+}
+.sc-art-tab.is-selected { color: var(--accent-fg); background: var(--accent); padding: 1px var(--space-2); border-radius: var(--radius-xs); }
+
+.sc-art-hero { left: 24px; top: 40px; width: 198px; height: 132px; }
+.sc-art-pricing { left: 254px; top: 86px; width: 196px; height: 196px; }
+.sc-art-footer { left: 60px; top: 226px; width: 178px; height: 84px; }
+
+/* blocks inside artboards — neutral material, no accent (chrome stays calm) */
+.sc-block { background: var(--bg-3); border-radius: var(--radius-xs); }
+.sc-block--head { height: 28px; }
+.sc-block--line { height: 10px; }
+.sc-block--line.short { width: 60%; }
+.sc-block--plan { height: 14px; width: 50%; }
+.sc-block--price { height: 30px; width: 72%; }
+.sc-node-bd { display: flex; flex-direction: column; gap: var(--space-3); flex: 1; }
+
+/* the CTA inside the pricing card — the ONE accent fill on the canvas content */
+.sc-cta {
+  margin-top: auto; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+  background: var(--accent); color: var(--accent-fg); border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3); font-size: var(--type-xs); font-weight: 500;
+}
+.sc-cta .g { width: 12px; height: 12px; }
+
+/* SELECTED node — accent ring + 8 handles + coordinate readout */
+.sc-art-pricing.is-selected { outline: 1.5px solid var(--accent); outline-offset: 3px; z-index: 3; }
+.sc-readout {
+  position: absolute; top: -18px; right: 0; font-size: 10px; font-variant-numeric: tabular-nums;
+  background: var(--accent); color: var(--accent-fg); padding: 1px var(--space-2); border-radius: var(--radius-xs);
+  white-space: nowrap;
+}
+.sc-handle { position: absolute; width: 8px; height: 8px; background: var(--accent); border: 1.5px solid var(--accent-fg); border-radius: var(--radius-xs); z-index: 4; }
+.sc-handle.tl { left: -7px; top: -7px; } .sc-handle.tr { right: -7px; top: -7px; }
+.sc-handle.bl { left: -7px; bottom: -7px; } .sc-handle.br { right: -7px; bottom: -7px; }
+.sc-handle.tm { left: calc(50% - 4px); top: -7px; } .sc-handle.bm { left: calc(50% - 4px); bottom: -7px; }
+.sc-handle.ml { left: -7px; top: calc(50% - 4px); } .sc-handle.mr { right: -7px; top: calc(50% - 4px); }
+
+/* the AI agent presence cursor — anchored to the selected node's lower-right corner */
+.sc-agent { position: absolute; right: -10px; bottom: -26px; display: inline-flex; align-items: center; gap: var(--space-2); z-index: 5; }
+.sc-agent-cursor { display: inline-flex; color: var(--presence-agent); filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4)); }
+.sc-agent-cursor .g { width: 16px; height: 16px; }
+.sc-agent-cursor .g path { fill: var(--presence-agent); stroke: var(--accent-fg); stroke-width: 1; }
+.sc-agent-lbl {
+  font-size: var(--type-xs); background: var(--presence-agent); color: var(--accent-fg);
+  padding: 2px var(--space-2); border-radius: var(--radius-xs); white-space: nowrap;
+  box-shadow: var(--shadow-sm);
+  /* bounded, compositor-only opacity pulse — the agent is "live" without shouting */
+  animation: sc-agent-pulse var(--dur-route) var(--ease-in-out) infinite alternate;
+}
+@keyframes sc-agent-pulse { 0% { opacity: 0.74; } 100% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .sc-agent-lbl { animation: none; } }
+
+/* ─── Right — inspector ────────────────────────────────────────────────────── */
+.sc-insp { grid-area: insp; display: flex; flex-direction: column; overflow: hidden; }
+.sc-insp-tabs { padding: 0 var(--space-3); flex: none; }
+.sc-insp-tabs .tab { padding: var(--space-3) var(--space-3); font-size: var(--type-xs); }
+.sc-insp-bd { padding: var(--space-3) var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); overflow: auto; }
+.sc-insp-sec { display: flex; flex-direction: column; gap: var(--space-1); }
+.sc-insp-sec-hd { font-size: var(--type-xs); letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-2); margin-bottom: var(--space-1); }
+.sc-fill-row { display: flex; align-items: center; gap: var(--space-2); }
+.sc-swatch { width: 16px; height: 16px; border-radius: var(--radius-xs); border: 1px solid var(--border-default); background: var(--bg-2); flex: none; }
+.sc-swatch--border { background: var(--bg-1); border-color: var(--border-strong); }
+.sc-hex { width: auto; flex: 1; text-align: left; }
+.sc-mini-seg button { padding: var(--space-1) var(--space-3); font-family: var(--font-mono); }
+
+.sc-token-row { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) 0; font-size: var(--type-xs); }
+.sc-token-row .mono { color: var(--fg-0); }
+.sc-token-use { margin-left: auto; color: var(--fg-2); font-size: 10px; letter-spacing: var(--tracking-wide); text-transform: uppercase; }
+.sc-tk-bg { background: var(--bg-2); }
+.sc-tk-border { background: var(--bg-1); border-color: var(--border-strong); }
+.sc-tk-accent { background: var(--accent); border-color: var(--accent); }
+.sc-tk-radius { background: var(--bg-3); border-radius: var(--radius-md); }
+
+.sc-apply { margin-top: var(--space-2); justify-content: center; }
+.sc-apply .g { width: 13px; height: 13px; }
+
+/* ─── Bottom — status bar ──────────────────────────────────────────────────── */
+.sc-status {
+  grid-area: status; display: flex; align-items: center; gap: var(--space-5);
+  padding: 0 var(--space-4); font-size: var(--type-xs); color: var(--fg-2);
+  border-top: 1px solid var(--border-subtle);
+}
+.sc-status-grp { display: inline-flex; align-items: center; gap: var(--space-2); white-space: nowrap; }
+.sc-status-ready { color: var(--fg-1); }
+
+/* ─── Legend — reading the instrument ──────────────────────────────────────── */
+.sc-legend {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: var(--space-4); margin: 0 0 var(--space-6);
+}
+.sc-legend-item { display: flex; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-1); }
+.sc-legend-item strong { display: block; color: var(--fg-0); font-size: var(--type-sm); margin-bottom: var(--space-1); }
+.sc-legend-item p { margin: 0; font-size: var(--type-xs); line-height: var(--lh-sm); color: var(--fg-2); max-width: none; }
+.sc-legend-key { width: 4px; flex: none; border-radius: var(--radius-pill); align-self: stretch; }
+.sc-legend-key[data-k="material"] { background: var(--border-strong); }
+.sc-legend-key[data-k="accent"]   { background: var(--accent); }
+.sc-legend-key[data-k="canvas"]   { background: var(--canvas-dot); }
+.sc-legend-key[data-k="mono"]     { background: var(--fg-2); }
+
+/* ─── Accent hue picker — proves "single accent" survives a retint ─────────── */
+.sc-accent-pick { display: flex; flex-wrap: wrap; gap: var(--space-4); margin: 0 0 var(--space-6); }
+.sc-accent-swatch {
+  appearance: none; display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-2) var(--space-4) var(--space-2) var(--space-2);
+  background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-md);
+  cursor: pointer; transition: border-color var(--dur-soft) var(--ease-out);
+}
+.sc-accent-swatch:hover { border-color: var(--border-strong); }
+.sc-accent-swatch[aria-pressed="true"] { border-color: var(--sw); box-shadow: 0 0 0 3px color-mix(in oklab, var(--sw) 22%, transparent); }
+.sc-accent-swatch:focus-visible { outline: 2px solid var(--sw); outline-offset: 2px; }
+.sc-accent-chip { width: 32px; height: 32px; border-radius: var(--radius-sm); background: var(--sw); flex: none; }
+.sc-accent-meta { display: flex; flex-direction: column; gap: 1px; text-align: left; }
+.sc-accent-name { font-size: var(--type-sm); color: var(--fg-0); }
+.sc-accent-oklch { font-size: 10px; color: var(--fg-2); }
+@media (prefers-reduced-motion: reduce) { .sc-accent-swatch { transition: none; } }

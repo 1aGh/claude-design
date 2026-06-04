@@ -1,0 +1,112 @@
+/* components-tooltips.css — bespoke styles for the tooltips specimen.
+ * Every tooltip + the popover is positioned RELATIVE to a real control (a
+ * toolbar button, a layer row) — never floating over canvas void. The tooltip
+ * carries a .kbd shortcut; the popover holds interactive content. Reveal is
+ * .motion-soft (opacity only, from _components.css); reduced-motion collapses it. */
+
+/* ── Anchor: the host wraps the control; the tip is absolutely placed to it ── */
+.tt-host { position: relative; display: inline-flex; }
+.tt-host--inline { display: block; }
+
+/* ── Tooltip bubble — bg-2 material, hairline, one short line + optional kbd ── */
+.tt-tip {
+  position: absolute;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-2);
+  color: var(--fg-0);
+  font-size: var(--type-xs);
+  line-height: 1;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+}
+.tt-kbd { pointer-events: none; }
+
+/* placement — each pins to a side of the host with a 7px gap */
+.tt-tip--top    { bottom: calc(100% + 7px); left: 50%; transform: translateX(-50%); }
+.tt-tip--bottom { top: calc(100% + 7px);    left: 50%; transform: translateX(-50%); }
+.tt-tip--left   { right: calc(100% + 7px);  top: 50%;  transform: translateY(-50%); }
+.tt-tip--right  { left: calc(100% + 7px);   top: 50%;  transform: translateY(-50%); }
+
+/* the caret — a rotated hairline square poking from the bubble toward the anchor */
+.tt-arrow {
+  position: absolute;
+  width: 7px; height: 7px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-default);
+}
+.tt-tip--top .tt-arrow    { bottom: -4px; left: 50%; transform: translateX(-50%) rotate(45deg); border-top: 0; border-left: 0; }
+.tt-tip--bottom .tt-arrow { top: -4px;    left: 50%; transform: translateX(-50%) rotate(45deg); border-bottom: 0; border-right: 0; }
+.tt-tip--left .tt-arrow   { right: -4px;  top: 50%;  transform: translateY(-50%) rotate(45deg); border-bottom: 0; border-left: 0; }
+.tt-tip--right .tt-arrow  { left: -4px;   top: 50%;  transform: translateY(-50%) rotate(45deg); border-top: 0; border-right: 0; }
+
+/* ── The toolbar host — give the tooltips room to render at rest ────────── */
+.tt-toolbar-wrap {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-8) var(--space-6);
+  margin: 0 0 var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(var(--canvas-dot) 1.2px, transparent 1.2px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+  overflow: hidden;            /* bounds the .motion-soft reveal */
+}
+.tt-aside { color: var(--fg-2); font-size: var(--type-xs); margin: 0 0 var(--space-6); }
+
+/* ── Layer-row anchor demo ──────────────────────────────────────────────── */
+.tt-layers { max-width: 320px; margin: 0 0 var(--space-6); }
+.tt-layers .tt-host--inline { width: 100%; }
+
+/* ── Popover — the richer, interactive sibling, anchored to its button ──── */
+.tt-pop-wrap {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-7) var(--space-6) calc(var(--space-8) * 2);
+  margin: 0 0 var(--space-6);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(var(--canvas-dot) 1.2px, transparent 1.2px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+  overflow: hidden;
+}
+.tt-host--pop { display: inline-block; }
+.tt-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 5;
+  width: 248px;
+  box-shadow: var(--shadow-lg);
+}
+.tt-popover .panel-hd { text-transform: none; letter-spacing: 0; color: var(--fg-0); font-family: var(--font-display); font-size: var(--type-sm); }
+.tt-pop-body { color: var(--fg-1); font-size: var(--type-sm); line-height: var(--lh-base); margin: 0 0 var(--space-4); }
+.tt-pop-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+}
+.tt-pop-grid .btn { justify-content: center; }
+.tt-pop-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+}
+
+/* ── Legend ─────────────────────────────────────────────────────────────── */
+.tt-note { max-width: 70ch; margin-top: var(--space-5); }
+.tt-note .mono { color: var(--status-info); font-weight: 600; }

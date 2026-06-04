@@ -1,0 +1,112 @@
+/* colors-status.css — bespoke styles for the status-family specimen.
+ * Original move: each semantic is shown in THREE forms in one card (raw hue,
+ * calm tint+hairline, solid interrupt) so "how loud is this allowed to get" is
+ * a single readable axis. The in-context section is a hand-off pipeline strip
+ * where exactly one step (the failure) earns a solid badge — the rest stay
+ * calm — making the volume rule concrete instead of asserted. */
+
+/* ─── The family grid ───────────────────────────────────────────────────── */
+.st-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-4);
+  margin: 0 0 var(--space-6);
+}
+.st-card {
+  display: grid;
+  grid-template-columns: 8px 1fr;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-1);
+  overflow: hidden;
+}
+.st-hue { width: 8px; }                       /* raw hue as a left spine */
+.st-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4);
+}
+.st-body strong { font-size: var(--type-sm); color: var(--fg-0); }
+.st-body .oklch { color: var(--fg-2); font-size: var(--type-xs); }
+.st-use { color: var(--fg-2); font-size: var(--type-xs); margin-bottom: var(--space-2); }
+
+.st-forms { display: flex; gap: var(--space-3); align-items: center; }
+
+/* pills — calm (tint + hairline) is the default; solid is the interrupt form */
+.st-pill {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  padding: 2px var(--space-3);
+  border-radius: var(--radius-pill);
+}
+/* per-card hue, mixed into the pill backgrounds/borders */
+.st-success { --st: var(--status-success); }
+.st-warn    { --st: var(--status-warn); }
+.st-error   { --st: var(--status-error); }
+.st-info    { --st: var(--status-info); }
+
+.st-pill--calm {
+  color: var(--st);
+  border: 1px solid color-mix(in oklab, var(--st) 55%, transparent);
+  background: color-mix(in oklab, var(--st) 14%, transparent);
+}
+.st-pill--solid {
+  color: var(--bg-0);
+  background: var(--st);
+  border: 1px solid var(--st);
+  font-weight: 500;
+}
+
+/* ─── Pipeline strip ────────────────────────────────────────────────────── */
+.st-pipe { margin: 0 0 var(--space-6); }
+.st-pipe .panel-hd span:last-child { color: var(--fg-2); }
+.st-pipe-bd { display: flex; flex-direction: column; gap: var(--space-3); }
+.st-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+.st-step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  flex: none;
+}
+.st-step-label { flex: 1; color: var(--fg-0); font-size: var(--type-sm); }
+.st-step-meta {
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+.st-step-badge { --st: var(--status-error); }   /* the one solid badge in the strip */
+
+/* ─── Inline tags ───────────────────────────────────────────────────────── */
+.st-tags { display: flex; flex-wrap: wrap; gap: var(--space-3); margin: 0 0 var(--space-6); }
+.st-tag {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  padding: 2px var(--space-3);
+  border-radius: var(--radius-sm);
+  background: transparent;
+}
+.st-tag[data-st="success"] { color: var(--status-success); border: 1px solid var(--status-success); }
+.st-tag[data-st="warn"]    { color: var(--status-warn);    border: 1px solid var(--status-warn); }
+.st-tag[data-st="error"]   { color: var(--status-error);   border: 1px solid var(--status-error); }
+.st-tag[data-st="info"]    { color: var(--status-info);    border: 1px solid var(--status-info); }
+
+/* ─── Guardrail note ────────────────────────────────────────────────────── */
+.st-guard { margin: 0 0 var(--space-5); }
+.st-guard .mono {
+  flex: none;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--status-warn);
+  font-size: var(--type-xs);
+}

@@ -1,0 +1,142 @@
+/* colors-presence.css — bespoke styles for the presence family specimen.
+ * Collaborator cursors map to the DS --presence-* state tokens (online / away /
+ * offline); the AI agent rides --presence-agent, a hue no human state uses, so
+ * attribution on a shared canvas is unambiguous. Every cursor is ANCHORED to a
+ * node, row or toolbar — never floating over canvas void (anti-pattern guard).
+ * The only motion is the agent ring: ≤56px, compositor-only (transform+opacity),
+ * collapsed by reduced-motion. Tokens only; per-cursor tint via the --cur var. */
+
+/* ── family swatches — each chip shows its state dot over the hue ─────────── */
+.pres-fam .chip { height: 84px; }
+.pres-chip { display: flex; align-items: flex-end; justify-content: flex-end; padding: var(--space-3); }
+.pres-chip .presence-dot { width: 12px; height: 12px; box-shadow: 0 0 0 2px color-mix(in oklab, var(--bg-0) 60%, transparent); }
+
+/* the agent dot pulses — a 12px element, far under the 56px ceiling, transform-only */
+@keyframes pres-pulse-kf { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.35); opacity: 0.65; } }
+.presence-dot.pres-pulse { animation: pres-pulse-kf var(--dur-route) var(--ease-in-out) infinite alternate; }
+:root[data-reduced-motion="true"] .presence-dot.pres-pulse { animation: none !important; }
+
+/* ── the dotted canvas with nodes + anchored cursors ──────────────────────── */
+.pres-canvas {
+  position: relative;
+  height: 340px;
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(var(--canvas-dot) 1.2px, transparent 1.2px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  margin: 0 0 var(--space-6);
+}
+
+/* nodes — the anchors the cursors sit on */
+.pc-node {
+  position: absolute;
+  background: var(--bg-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+.pc-cap {
+  position: absolute; top: var(--space-2); left: var(--space-3);
+  font-size: var(--type-xs); color: var(--fg-2);
+}
+.n-hero   { left: 6%;  top: 14%; width: 200px; height: 96px; }
+.n-card   { left: 40%; top: 46%; width: 150px; height: 110px; }
+.n-footer { right: 5%; top: 18%; width: 176px; height: 80px; }
+.pc-node--agent { outline: 1.5px solid var(--presence-agent); outline-offset: 2px; }
+.pc-agentbadge {
+  position: absolute; bottom: var(--space-2); left: var(--space-3);
+  font-size: 10px; color: var(--accent-fg);
+  background: var(--presence-agent);
+  padding: 1px var(--space-2); border-radius: var(--radius-xs);
+}
+
+/* cursor — one arrow shape, tinted by the inline --cur var; pinned to a node */
+.cursor {
+  position: absolute;
+  display: flex; align-items: flex-start; gap: 2px;
+  pointer-events: none;
+  color: var(--cur);
+}
+.cur-arrow { color: var(--cur); filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.4)); }
+.cur-label {
+  margin-top: 13px; margin-left: 3px;
+  background: var(--cur); color: var(--accent-fg);
+  font-family: var(--font-mono); font-size: 10px; line-height: 1.4;
+  padding: 1px var(--space-2); border-radius: var(--radius-pill);
+}
+.cur-label--agent { font-weight: 600; }
+
+/* anchor positions — each cursor lands on its node's surface */
+.cur-online { left: 17%; top: 24%; }   /* on the Hero */
+.cur-away   { left: 47%; top: 64%; }   /* on the Pro card */
+.cur-agent  { right: 11%; top: 30%; }  /* on the Footer it's drafting */
+
+/* the agent ring — the only ambient motion. 44px box ≤ 56px ceiling,
+   transform+opacity only, settles by alternating. */
+.cur-ring {
+  position: absolute;
+  left: -15px; top: -15px;
+  width: 44px; height: 44px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--presence-agent);
+  opacity: 0.5;
+}
+@keyframes cur-ring-kf { 0% { transform: scale(0.7); opacity: 0.6; } 100% { transform: scale(1); opacity: 0; } }
+.cur-ring { animation: cur-ring-kf var(--dur-route) var(--ease-out) infinite alternate; transform-origin: 50% 50%; }
+:root[data-reduced-motion="true"] .cur-ring { animation: none !important; opacity: 0.45; }
+
+.pc-count {
+  position: absolute; bottom: var(--space-3); left: var(--space-4);
+  font-size: var(--type-xs); color: var(--fg-2);
+}
+
+/* ── shared avatar primitive (stack + roster reuse it) ────────────────────── */
+.av {
+  position: relative;
+  width: 28px; height: 28px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-pill);
+  background: var(--bg-3); border: 1px solid var(--border-default);
+  font-family: var(--font-mono); font-size: 10px; color: var(--fg-1);
+}
+.av .presence-dot {
+  position: absolute; right: -1px; bottom: -1px;
+  width: 9px; height: 9px;
+  box-shadow: 0 0 0 2px var(--bg-1);
+}
+.av--agent { border-color: var(--presence-agent); color: var(--presence-agent); }
+
+/* ── toolbar avatar stack ─────────────────────────────────────────────────── */
+.pres-toolbar { margin: 0 0 var(--space-5); }
+.pt-title { font-size: var(--type-xs); color: var(--fg-1); letter-spacing: var(--tracking-wide); text-transform: uppercase; }
+.avatar-stack { display: inline-flex; }
+.avatar-stack .av { margin-left: -8px; box-shadow: 0 0 0 2px var(--bg-1); }
+.avatar-stack .av:first-child { margin-left: 0; }
+.pt-here { font-size: var(--type-xs); color: var(--fg-2); }
+.pres-toolbar .btn { margin-left: auto; }
+
+/* ── who's here roster ────────────────────────────────────────────────────── */
+.whos-here {
+  list-style: none; margin: 0 0 var(--space-6); padding: var(--space-2);
+  border: 1px solid var(--border-default); border-radius: var(--radius-md);
+  background: var(--bg-1); max-width: 480px;
+}
+.wh-row {
+  display: grid;
+  grid-template-columns: 28px 1fr auto auto;
+  gap: var(--space-3);
+  align-items: center;
+  cursor: default;
+}
+.wh-row--agent { box-shadow: inset 2px 0 0 var(--presence-agent); }
+.wh-name { color: var(--fg-0); font-size: var(--type-sm); }
+.wh-where { color: var(--fg-2); font-size: var(--type-xs); }
+.wh-state { text-transform: capitalize; }
+.wh-row--agent .wh-state { color: var(--presence-agent); border-color: var(--presence-agent); background: color-mix(in oklab, var(--presence-agent) 14%, transparent); }
+
+/* ── closing note ─────────────────────────────────────────────────────────── */
+.pres-note { margin: 0 0 var(--space-6); }
+.pres-note .note-h { display: block; color: var(--fg-0); margin-bottom: 2px; }

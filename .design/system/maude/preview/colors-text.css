@@ -1,0 +1,133 @@
+/* colors-text.css — bespoke styles for the foreground-ladder specimen.
+ * The point of this file is to show every fg level as TYPE on two surfaces
+ * (the panel material and the deepest canvas), not as a flat color chip — you
+ * judge text color by reading it, not by staring at a square. */
+
+/* ─── The ladder: id · on-panel · on-canvas · meta, one row per level ────── */
+.txt-ladder {
+  display: grid;
+  grid-template-columns: 168px 1fr 1fr 1fr;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin: 0 0 var(--space-6);
+}
+.txt-rung {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: stretch;
+  border-top: 1px solid var(--border-subtle);
+}
+.txt-rung:first-child { border-top: 0; }
+
+.txt-rung-id {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: var(--space-4);
+  background: var(--bg-1);
+  border-right: 1px solid var(--border-subtle);
+}
+.txt-rung-id strong { font-size: var(--type-sm); color: var(--fg-0); }
+.txt-role {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+
+/* the two judgement surfaces — same string, same size, different bg */
+.txt-rung-sample {
+  display: flex;
+  align-items: center;
+  padding: var(--space-4) var(--space-5);
+  font-size: var(--type-md);
+  line-height: var(--lh-md);
+  font-weight: 500;
+}
+.txt-rung-sample.on-panel { background: var(--bg-1); border-right: 1px solid var(--border-subtle); }
+.txt-rung-sample.on-canvas {
+  background-color: var(--bg-0);
+  background-image: radial-gradient(var(--canvas-dot) 1.2px, transparent 1.2px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+  border-right: 1px solid var(--border-subtle);
+}
+
+.txt-rung-meta {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  background: var(--bg-1);
+}
+.txt-rung-meta .oklch { color: var(--fg-2); font-size: var(--type-xs); }
+.txt-use { color: var(--fg-2); font-size: var(--type-xs); }
+
+/* ─── Tertiary-on-canvas stage ──────────────────────────────────────────── */
+.txt-stage {
+  position: relative;
+  height: 220px;
+  margin: 0 0 var(--space-6);
+}
+.txt-node {
+  position: absolute;
+  left: 18%;
+  top: 30%;
+  width: 200px;
+  height: 110px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.txt-node-label {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+.txt-readout {
+  position: absolute;
+  left: 0;
+  top: -22px;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--type-xs);
+  color: var(--fg-2);                      /* the load-bearing tertiary read-out */
+  white-space: nowrap;
+}
+.txt-caption {
+  position: absolute;
+  right: var(--space-4);
+  bottom: var(--space-3);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+}
+
+/* ─── In-context panel exercising all four levels ───────────────────────── */
+.txt-panel { max-width: 460px; margin: 0 0 var(--space-6); }
+.txt-panel .panel-hd span:last-child { color: var(--fg-2); }
+.txt-panel p { margin: 0 0 var(--space-3); max-width: none; }
+.txt-panel p:last-child { margin-bottom: 0; }
+.txt-ctx-0 { color: var(--fg-0); }
+.txt-ctx-0 strong { color: var(--fg-0); }
+.txt-ctx-1 { color: var(--fg-1); font-size: var(--type-sm); }
+.txt-ctx-2 { color: var(--fg-2); font-size: var(--type-xs); }
+.txt-ctx-3 { color: var(--fg-3); font-size: var(--type-sm); }
+
+/* ─── Note callout ──────────────────────────────────────────────────────── */
+.txt-note { margin: 0 0 var(--space-5); }
+.txt-note .mono {
+  flex: none;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--status-info);
+  font-size: var(--type-xs);
+}
