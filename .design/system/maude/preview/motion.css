@@ -1,0 +1,170 @@
+/* motion.css — bespoke chrome for the maude motion specimen.
+ *
+ * Scoped to the motion specimen. Tile chrome, the role-name labels, the token
+ * playback bench and the easing-curve cards only — the ACTUAL animation
+ * (keyframes, duration, easing, reduced-motion short-circuit) is owned by
+ * canvas-lib's <MotionDemo> / <TokenPlayback>. This file MUST NOT redefine any
+ * motion-role behaviour; it only frames it. Tokens only — dark-first, light
+ * retints for free.
+ *
+ * Reduced-motion exception (DDR-049, ANIMATION SAFETY):
+ *   This specimen is the ONE documented exception to the universal reduced-
+ *   motion killswitch in _layout.css. The killswitch greps [class*="motion-"]
+ *   and kills it; canvas-lib's animated node is .motion-demo__target, so we
+ *   re-assert the kill here scoped to that node only. !important is justified
+ *   ONLY in this file (and only for the toggle path) per the safety block.
+ */
+
+/* ─── The role bench — bounded tiles, dense grid ────────────────────────── */
+.mo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(208px, 1fr));
+  gap: var(--space-3);
+  margin: 0 0 var(--space-6);
+}
+
+.mo-tile {
+  background: var(--bg-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.mo-tile__hd {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.mo-tile__name {
+  font-family: var(--font-display);
+  font-size: var(--type-base);
+  font-weight: 600;
+  color: var(--fg-0);
+  letter-spacing: -0.006em;
+}
+.mo-tile__tok {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  color: var(--accent);
+}
+.mo-tile[data-warn="spring"] .mo-tile__tok { color: var(--status-warn); }
+
+/* The bounded stage — every role's <MotionDemo> root already clips, this is a
+   second clip for the stage chrome itself (sparkle/scale safety). */
+.mo-stage {
+  position: relative;
+  height: 96px;
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+  background-position: -1px -1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;        /* bounded geometry — non-negotiable */
+}
+.mo-stage .motion-demo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* The animated payload reads as a node on the dotted canvas — one shared
+   chrome material, never louder than the canvas it sits on. */
+.mo-stage .motion-demo__chip {
+  width: 40px;
+  height: 28px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+}
+/* presence sparkle — the ONLY 0→1 scale, on a ≤56px chip (small={true}). */
+.mo-stage[data-role="presence"] .motion-demo__chip {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-pill);
+  background: var(--presence-agent);
+  border: 0;
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--presence-agent) 26%, transparent);
+}
+
+.mo-tile__note {
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--type-xs);
+  line-height: var(--lh-xs);
+  color: var(--fg-1);
+}
+.mo-tile__note .role-use {
+  display: block;
+  font-family: var(--font-mono);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  margin-bottom: 2px;
+}
+
+/* ─── Token playback bench ──────────────────────────────────────────────── */
+.mo-bench {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-1);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-5);
+  margin: 0 0 var(--space-6);
+}
+.mo-bench .token-playback {
+  border-color: var(--border-default) !important;   /* canvas-lib inlines --border-1 fallback; pin to our hairline */
+  color: var(--fg-1) !important;
+  background: var(--bg-2) !important;
+  border-radius: var(--radius-sm) !important;
+}
+.mo-bench .token-playback:hover { background: var(--bg-3) !important; }
+
+/* ─── Easing curve cards — derived from live token control points ───────── */
+.mo-curves { display: flex; gap: var(--space-4); flex-wrap: wrap; margin: 0 0 var(--space-6); }
+.mo-curve {
+  margin: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-1);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.mo-curve svg { border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); background: var(--bg-2); }
+.mo-curve figcaption {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+}
+.mo-curve figcaption code { color: var(--accent); }
+.mo-curve__vals { color: var(--fg-2); font-variant-numeric: tabular-nums; }
+
+/* ─── Reduced-motion contract panel ─────────────────────────────────────── */
+.mo-rm { border-left-color: var(--status-info); }
+.mo-rm code { color: var(--fg-0); }
+
+/* ─── Reduced-motion exception (scoped) ─────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .mo-stage .motion-demo__target,
+  .mo-bench .token-playback .motion-demo__target {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+/* Honor the chrome <ReducedMotionToggle> for in-browser inspection symmetry. */
+:root[data-reduced-motion="true"] .mo-stage .motion-demo__target {
+  animation: none !important;
+  transition: none !important;
+}

@@ -1,0 +1,108 @@
+/* elevation.css — bespoke chrome for the maude elevation specimen.
+ * On dark, shadow is a whisper — the 1px hairline carries almost all of the
+ * separation work, and a shadow only appears when a surface genuinely FLOATS
+ * (popover, menu, dialog). Stationary chrome separates by border + bg-step.
+ * Tokens only; light retints for free. */
+
+/* ─── The three levels + an explicit zero, on the dotted canvas ──────────── */
+.el-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: var(--space-5);
+  margin: 0 0 var(--space-6);
+  padding: var(--space-6) var(--space-5);
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+  background-position: -1px -1px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+}
+.el-card {
+  background: var(--bg-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  /* box-shadow set inline per level via the token */
+}
+.el-card strong { font-family: var(--font-mono); font-size: var(--type-sm); letter-spacing: var(--tracking-wide); color: var(--fg-0); }
+.el-card .el-use { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); }
+.el-card .el-px { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 10px; color: var(--fg-3); }
+.el-card[data-flat="true"] { border-style: dashed; border-color: var(--border-strong); }
+
+/* ─── Hairlines do the work — a flat panel separating by border + bg-step ── */
+.el-stack {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-4);
+  margin: 0 0 var(--space-6);
+}
+.el-proof {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-1);
+  overflow: hidden;
+}
+.el-proof__hd {
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.el-proof__hd .ok { color: var(--status-success); text-transform: none; }
+.el-proof__hd .no { color: var(--status-error); text-transform: none; }
+.el-proof__bd { padding: var(--space-4); }
+/* the bg-step ladder — three stacked rows separated by hairline + one surface step each */
+.el-row {
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--type-sm);
+  color: var(--fg-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+.el-row + .el-row { margin-top: var(--space-2); }
+.el-row.s1 { background: var(--bg-1); }
+.el-row.s2 { background: var(--bg-2); }
+.el-row.s3 { background: var(--bg-3); }
+
+/* ─── In context — a floating popover over canvas chrome ─────────────────── */
+.el-context {
+  position: relative;
+  height: 240px;
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+  background-position: -1px -1px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin: 0 0 var(--space-6);
+}
+/* a stationary node — NO shadow, just border + a brighter surface */
+.el-node {
+  position: absolute; left: var(--space-6); top: var(--space-6);
+  width: 156px; height: 96px;
+  background: var(--bg-2); border: 1px solid var(--border-default); border-radius: var(--radius-md);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2);
+}
+.el-node .el-tag { position: absolute; top: -9px; left: var(--space-3); font-size: 10px; color: var(--fg-3); background: var(--canvas-bg); padding: 0 var(--space-2); }
+/* a floating popover — shadow-md, because it genuinely floats above */
+.el-popover {
+  position: absolute; right: var(--space-6); top: var(--space-5);
+  width: 188px;
+  background: var(--bg-2); border: 1px solid var(--border-default); border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+.el-popover__hd { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-subtle); font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-2); }
+.el-popover .tree-row { margin: var(--space-1) var(--space-2); }

@@ -1,0 +1,134 @@
+/* skeletons.css — bespoke styles for the loading-placeholder specimen.
+ * The shimmer is a calm opacity pulse on --bg-3 (the input/row material), set in
+ * the unified panel. Compositor-only (opacity), bounded loop. Tempo is --dur-route,
+ * which the token layer collapses to 1ms under prefers-reduced-motion — at which
+ * point the @media block below also holds the skeleton at a static 0.7. */
+
+/* ─── The skeleton primitive ─────────────────────────────────────────────── */
+.skel {
+  display: block;
+  background: var(--bg-3);
+  border-radius: var(--radius-xs);
+  /* slowed to ~3× the route token so the pulse reads as breathing, not flicker;
+     opacity-only keeps it on the compositor. */
+  animation: sk-pulse calc(var(--dur-route) * 3) var(--ease-in-out) infinite alternate;
+}
+@keyframes sk-pulse {
+  from { opacity: 0.45; }
+  to { opacity: 0.95; }
+}
+/* When the token collapses durations to 1ms, a 3ms pulse is effectively static —
+   pin it anyway so the placeholder rests at a calm, legible 0.7. The killswitch
+   on the canvas root is honored too. */
+@media (prefers-reduced-motion: reduce) {
+  .skel { animation: none; opacity: 0.7; }
+}
+:root[data-reduced-motion="true"] .skel { animation: none; opacity: 0.7; }
+
+.sk-panel { margin: 0 0 var(--space-6); }
+.sk-panel .panel-hd { display: flex; align-items: baseline; justify-content: space-between; }
+.sk-dim { text-transform: none; letter-spacing: 0; color: var(--fg-3); }
+
+/* ─── Layer tree skeleton ────────────────────────────────────────────────── */
+.sk-tree { display: flex; flex-direction: column; gap: var(--space-1); max-width: 320px; }
+.sk-tree-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+}
+.sk-glyph { width: 14px; height: 14px; border-radius: var(--radius-xs); flex: none; }
+.sk-line { height: 10px; }
+
+/* ─── Inspector + thumbnail duo ──────────────────────────────────────────── */
+.sk-duo {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: var(--space-4);
+  align-items: start;
+  margin: 0 0 var(--space-6);
+}
+.sk-insp { display: flex; flex-direction: column; gap: var(--space-1); }
+.sk-field {
+  width: 64px;
+  height: 22px;
+  border-radius: var(--radius-xs);
+}
+.sk-thumb-card { margin: 0; }
+.sk-thumb {
+  width: 100%;
+  height: 132px;
+  border-radius: var(--radius-sm);
+  /* the thumbnail placeholder keeps the dotted-canvas tell so the silhouette
+     still reads as "an artboard is loading" */
+  background-color: var(--bg-3);
+  background-image: radial-gradient(
+    color-mix(in oklab, var(--canvas-dot) 60%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: var(--canvas-grid) var(--canvas-grid);
+}
+
+/* ─── Skeleton vs spinner ────────────────────────────────────────────────── */
+.sk-vs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-6);
+}
+.sk-vs-card {
+  margin: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-1);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.sk-vs-body {
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 132px;
+}
+.sk-vs-center { align-items: center; justify-content: center; }
+.sk-vs-card figcaption {
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  border-top: 1px solid var(--border-subtle);
+}
+.sk-vs-card.ok figcaption { color: var(--status-success); }
+.sk-vs-body .sk-line { height: 10px; }
+.sk-btn { height: 28px; width: 92px; border-radius: var(--radius-sm); margin-top: var(--space-2); }
+
+/* the spinner — for indeterminate work only */
+.sk-spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--bg-4);
+  border-top-color: var(--accent);
+  border-radius: var(--radius-pill);
+  /* transform-only rotation; --dur-route collapses to 1ms under reduced-motion */
+  animation: sk-spin var(--dur-route) linear infinite;
+}
+@keyframes sk-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .sk-spinner { animation: none; }
+}
+:root[data-reduced-motion="true"] .sk-spinner { animation: none; }
+.sk-spinner-lbl { font-size: var(--type-sm); color: var(--fg-1); }
+
+/* ─── a11y note ──────────────────────────────────────────────────────────── */
+.sk-note { align-items: flex-start; }
+.sk-note-tag {
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--status-info);
+  flex: none;
+  padding-top: 2px;
+}

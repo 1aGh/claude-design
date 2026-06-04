@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="152" height="32" viewBox="0 0 152 32" fill="none" role="img" aria-label="maude">
+  <!-- mark: a selected canvas node with corner handles (the maude selection motif) -->
+  <rect x="3.5" y="6.5" width="19" height="19" rx="3.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+  <g fill="oklch(0.68 0.18 268)">
+    <rect x="1" y="4" width="5" height="5" rx="1.2"/>
+    <rect x="20" y="4" width="5" height="5" rx="1.2"/>
+    <rect x="1" y="23" width="5" height="5" rx="1.2"/>
+    <rect x="20" y="23" width="5" height="5" rx="1.2"/>
+  </g>
+  <!-- wordmark -->
+  <text x="36" y="22" font-family="Inter Tight, Inter, system-ui, sans-serif" font-size="20" font-weight="600" letter-spacing="-0.6" fill="currentColor">maude</text>
+</svg>

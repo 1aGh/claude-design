@@ -1,0 +1,156 @@
+/* iconography.css — bespoke styles for the thin-stroke glyph specimen.
+ * The glyphs are inline JSX; this file only frames them. Every glyph inherits
+ * color from its tile via currentColor, so recoloring is a parent concern. */
+
+/* ─── Construction grid + anatomy notes ─────────────────────────────────── */
+.ico-anatomy {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: var(--space-6);
+  align-items: center;
+  margin: 0 0 var(--space-6);
+}
+.ico-grid {
+  background: var(--bg-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-sm);
+}
+.ico-grid-svg { width: 100%; height: auto; display: block; color: var(--fg-0); }
+.ico-grid-line { stroke: var(--border-subtle); stroke-width: 0.04; }
+.ico-grid-mark { /* the accent-traced sample path sits on the grid */ }
+.ico-anatomy-notes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.ico-anatomy-notes li {
+  color: var(--fg-1);
+  font-size: var(--type-sm);
+  line-height: var(--lh-sm);
+  padding-left: var(--space-4);
+  border-left: 1px solid var(--border-subtle);
+}
+.ico-anatomy-notes .mono { color: var(--accent); }
+
+/* ─── The set — twelve glyph tiles, one shared material ─────────────────── */
+.ico-set {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 1px;
+  background: var(--border-subtle);          /* hairline seams between tiles */
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin: 0 0 var(--space-6);
+}
+.ico-tile {
+  margin: 0;
+  background: var(--bg-1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-4);
+  transition: background var(--dur-soft) var(--ease-out);
+}
+.ico-tile:hover { background: var(--bg-2); }
+.ico-tile-glyph {
+  color: var(--fg-0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+}
+.ico-tile figcaption {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  text-align: center;
+}
+.ico-tile figcaption strong { font-size: var(--type-sm); color: var(--fg-0); font-weight: 500; }
+.ico-tile .ico-role {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+  letter-spacing: var(--tracking-wide);
+}
+
+/* ─── Size scale — one stroke at 24 / 20 / 16 ───────────────────────────── */
+.ico-scale {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-6);
+}
+.ico-scale-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--fg-0);
+}
+.ico-scale-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  width: 40px;
+}
+.ico-scale-px { color: var(--fg-2); font-size: 10px; }
+.ico-scale-name {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  color: var(--fg-1);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+/* ─── Toolbar habitat ───────────────────────────────────────────────────── */
+.ico-toolbar-wrap {
+  background: var(--canvas-bg);
+  background-image: radial-gradient(var(--canvas-dot) 1.2px, transparent 1.2px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: var(--space-7) var(--space-6);
+  margin: 0 0 var(--space-6);
+  display: flex;
+  justify-content: center;
+}
+.ico-toolbar-wrap .toolbar { box-shadow: var(--shadow-md); }
+.ico-toolbar-spacer { width: var(--space-6); }
+.ico-toolbtn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--fg-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  transition: color var(--dur-soft) var(--ease-out), background var(--dur-soft) var(--ease-out);
+}
+.ico-toolbtn:hover { color: var(--fg-0); background: var(--bg-3); }
+.ico-toolbtn[aria-pressed="true"] { color: var(--fg-0); background: var(--bg-4); }
+
+/* ─── Closing callout ───────────────────────────────────────────────────── */
+.ico-callout { align-items: flex-start; color: var(--fg-1); }
+.ico-callout svg { color: var(--status-info); flex: none; margin-top: 2px; }
+.ico-callout code {
+  color: var(--fg-0);
+  background: var(--bg-2);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-xs);
+}

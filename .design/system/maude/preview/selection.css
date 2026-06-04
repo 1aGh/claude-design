@@ -1,0 +1,134 @@
+/* selection.css — bespoke styles for the selection specimen.
+ * One signal — the --accent-tint wash — across text, layer rows, and canvas
+ * nodes. Tint = selected (highlighted); a solid accent fill = committed action.
+ * The global *::selection rule in _layout.css already sets text selection; this
+ * file scopes a slightly stronger wash for the demo paragraph + the surfaces. */
+
+/* ─── Text selection demo ───────────────────────────────────────────────── */
+.sel-text {
+  background: var(--bg-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  margin: 0 0 var(--space-6);
+}
+.sel-text p { margin: 0; color: var(--fg-0); max-width: 70ch; }
+.sel-text ::selection,
+.sel-text p::selection {
+  background: color-mix(in oklab, var(--accent) 28%, transparent);
+  color: var(--fg-0);
+}
+
+/* ─── Layer rows ────────────────────────────────────────────────────────── */
+.sel-layers {
+  background: var(--bg-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  max-width: 360px;
+  margin: 0 0 var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  box-shadow: var(--shadow-sm);
+}
+.sel-row { gap: var(--space-3); }
+.sel-disc {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--fg-3);
+  flex: none;
+}
+.sel-row[aria-selected="true"] .sel-disc { background: var(--accent); }
+.sel-aside { font-size: var(--type-xs); color: var(--fg-2); margin: 0 0 var(--space-6); }
+
+/* ─── Canvas marquee ────────────────────────────────────────────────────── */
+.sel-canvas { position: relative; height: 300px; margin: 0 0 var(--space-6); }
+
+.sel-node {
+  position: absolute;
+  background: var(--bg-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sel-node-tag { font-size: var(--type-xs); color: var(--fg-2); }
+.sel-node--a { left: 72px; top: 60px; width: 168px; height: 96px; }
+.sel-node--b { left: 168px; top: 132px; width: 144px; height: 72px; }
+.sel-node--out { left: 360px; top: 84px; width: 120px; height: 84px; opacity: 0.85; }
+
+/* selected nodes pick up the accent edge + tint + handles */
+.sel-node--a,
+.sel-node--b {
+  background: color-mix(in oklab, var(--accent-tint) 70%, var(--bg-2));
+  outline: 1px solid var(--accent);
+  outline-offset: 0;
+}
+.sel-handle {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  background: var(--accent);
+  border: 1px solid var(--accent-fg);
+  border-radius: var(--radius-xs);
+  z-index: 3;
+}
+.sel-handle.tl { left: -4px; top: -4px; }
+.sel-handle.tr { right: -4px; top: -4px; }
+.sel-handle.bl { left: -4px; bottom: -4px; }
+.sel-handle.br { right: -4px; bottom: -4px; }
+
+/* the marquee box that bounds the selection */
+.sel-marquee {
+  position: absolute;
+  left: 60px;
+  top: 48px;
+  width: 312px;
+  height: 188px;
+  background: var(--accent-tint);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-xs);
+  z-index: 1;
+}
+.sel-marquee-readout {
+  position: absolute;
+  top: -10px;
+  left: -1px;
+  transform: translateY(-100%);
+  font-size: var(--type-xs);
+  color: var(--accent-fg);
+  background: var(--accent);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-xs);
+  white-space: nowrap;
+}
+
+/* ─── Tint vs fill rule ─────────────────────────────────────────────────── */
+.sel-vs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-6);
+}
+.sel-vs-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  background: var(--bg-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+.sel-vs-swatch {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-default);
+}
+.sel-vs-card strong { display: block; font-size: var(--type-sm); color: var(--fg-0); }
+.sel-use { display: block; font-size: var(--type-xs); color: var(--fg-1); margin-top: 2px; }

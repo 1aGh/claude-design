@@ -1,0 +1,191 @@
+/* components-keyboard.css — bespoke styles for the MAUDE/keyboard specimen.
+ * The base .kbd keycap lives in _components.css (mono, --radius-xs, 2px bottom edge).
+ * Here: size modifiers (--sm / --lg), the anatomy callout, the singles/combos rows,
+ * and the mini keyboard map that lights Maude's bound keys in --accent-tint.
+ * Static specimen — no animation. Tokens only; map cell sizes are layout px. */
+
+/* ─── Size modifiers on the shared .kbd ─────────────────────────────────── */
+.kbd--sm {
+  font-size: 9px;
+  padding: 2px 4px;
+  min-width: 14px;
+}
+.kbd--lg {
+  font-size: var(--type-sm);
+  padding: var(--space-2) var(--space-3);
+  min-width: 24px;
+  border-bottom-width: 3px;
+}
+
+/* ─── Anatomy — one big cap + a numbered legend ─────────────────────────── */
+.kb-anatomy {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) auto;
+  gap: var(--space-6);
+  align-items: center;
+  padding: var(--space-6);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-1);
+  box-shadow: var(--shadow-sm);
+  margin: 0 0 var(--space-6);
+}
+.kb-anatomy-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 150px;
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(var(--canvas-dot) 1.2px, transparent 1.2px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+.kb-spot { transform: scale(2.4); }
+/* annotation marks anchored to the cap — never floating over void. */
+.kb-mark {
+  position: absolute;
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+.kb-mark::before {
+  content: "";
+  display: inline-block;
+  width: var(--space-4);
+  height: 1px;
+  background: var(--border-strong);
+  vertical-align: middle;
+  margin-right: var(--space-2);
+}
+.kb-mark--face  { top: 26%; left: 58%; }
+.kb-mark--edge  { bottom: 28%; left: 58%; }
+.kb-mark--glyph { top: 50%; right: 58%; text-align: right; }
+.kb-mark--glyph::before { display: none; }
+.kb-mark--glyph::after {
+  content: "";
+  display: inline-block;
+  width: var(--space-4);
+  height: 1px;
+  background: var(--border-strong);
+  vertical-align: middle;
+  margin-left: var(--space-2);
+}
+
+.kb-anatomy-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  font-size: var(--type-xs);
+  color: var(--fg-1);
+}
+.kb-anatomy-legend li { display: flex; align-items: center; gap: var(--space-3); }
+.kb-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-tint);
+  color: var(--accent);
+  border: 1px solid var(--accent-muted);
+  font-size: 10px;
+  flex: none;
+}
+
+/* ─── Sizes row ─────────────────────────────────────────────────────────── */
+.kb-sizes { align-items: flex-end; gap: var(--space-6); }
+.kb-size { display: inline-flex; flex-direction: column; align-items: center; gap: var(--space-3); }
+.kb-size-tag { font-size: var(--type-xs); color: var(--fg-2); }
+
+/* ─── Singles & combos ──────────────────────────────────────────────────── */
+.kb-singles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-1);
+  box-shadow: var(--shadow-sm);
+  margin: 0 0 var(--space-6);
+}
+.kb-single-row {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  align-items: center;
+  gap: var(--space-4);
+}
+.kb-single-row + .kb-single-row { padding-top: var(--space-4); border-top: 1px solid var(--border-subtle); }
+.kb-single-lbl { font-size: var(--type-xs); color: var(--fg-2); text-transform: uppercase; letter-spacing: var(--tracking-wide); }
+
+/* a combo: chained caps + a "+" sign that is NOT a keycap. */
+.kb-combo { display: inline-flex; align-items: center; }
+.kb-plus { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-3); padding: 0 var(--space-1); }
+
+/* ─── Mini keyboard map ─────────────────────────────────────────────────── */
+.kb-map {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-5);
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(var(--canvas-dot) 1.2px, transparent 1.2px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  margin: 0 0 var(--space-5);
+  overflow: hidden;
+}
+.kb-map-row { display: flex; gap: var(--space-2); justify-content: center; }
+/* second row offsets like a real keyboard stagger */
+.kb-map-row:nth-child(2) { margin-left: 12px; }
+.kb-map-row:nth-child(3) { margin-left: 26px; }
+.kb-cap {
+  width: 30px;
+  height: 30px;
+  justify-content: center;
+  font-size: var(--type-xs);
+}
+/* bound keys glow — accent-tint fill, accent edge + glyph. */
+.kb-cap.is-bound {
+  background: var(--accent-tint);
+  border-color: var(--accent-muted);
+  border-bottom-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ─── Primary bindings key ──────────────────────────────────────────────── */
+.kb-key {
+  list-style: none;
+  margin: 0 0 var(--space-6);
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-2) var(--space-5);
+}
+.kb-key-row {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-xs);
+}
+.kb-key-row:hover { background: var(--bg-2); }
+.kb-key-row .kb-combo { justify-self: start; }
+.kb-key-lbl { font-size: var(--type-sm); color: var(--fg-1); }
+
+/* ─── Inline-in-copy ────────────────────────────────────────────────────── */
+.kb-inline { line-height: 1.9; }
+.kb-inline .kbd, .kb-inline .kb-combo { vertical-align: baseline; }
+
+@media (max-width: 600px) {
+  .kb-anatomy { grid-template-columns: 1fr; }
+}

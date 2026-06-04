@@ -1,0 +1,184 @@
+/* type-mono.css — bespoke styles for the SIGNATURE mono specimen.
+ * Mono is structural here, not decorative: coordinate HUDs, inspector fields,
+ * tabular tables, a terminal line. Every numeric surface carries tabular-nums so
+ * digits align frame to frame — the inspector never twitches as values tick. */
+
+.mn-coord { letter-spacing: 0.01em; color: var(--fg-0); }
+
+/* ─── Canvas stage with a selected node + its readout ────────────────────── */
+.mn-stage {
+  position: relative;
+  display: flex;
+  gap: var(--space-5);
+  align-items: flex-start;
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(var(--canvas-dot) 1.2px, transparent 1.2px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-7) var(--space-6);
+  min-height: 184px;
+  margin: 0 0 var(--space-6);
+}
+.mn-node {
+  position: relative;
+  width: 168px;
+  height: 116px;
+  margin: var(--space-5) 0 0 var(--space-5);
+  background: var(--bg-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  outline: 1.5px solid var(--accent);
+  outline-offset: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+}
+.mn-readout {
+  position: absolute;
+  top: -22px;
+  left: -2px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--type-xs);
+  background: var(--accent);
+  color: var(--accent-fg);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-xs);
+  white-space: nowrap;
+}
+.mn-handle {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  background: var(--accent);
+  border: 1px solid var(--accent-fg);
+  border-radius: var(--radius-xs);
+}
+.mn-handle.tl { left: -6px; top: -6px; }
+.mn-handle.tr { right: -6px; top: -6px; }
+.mn-handle.bl { left: -6px; bottom: -6px; }
+.mn-handle.br { right: -6px; bottom: -6px; }
+
+.mn-insp {
+  width: 200px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+.mn-insp-hd {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  padding-bottom: var(--space-2);
+  margin-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* ─── Role grid ──────────────────────────────────────────────────────────── */
+.mn-roles {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-1);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  margin: 0 0 var(--space-6);
+}
+.mn-role {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-3) var(--space-5);
+}
+.mn-role + .mn-role { border-top: 1px solid var(--border-subtle); }
+.mn-role-label {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.mn-role-demo { font-size: var(--type-sm); color: var(--fg-0); }
+.mn-role-demo .mono { font-size: var(--type-sm); color: var(--fg-0); }
+
+/* ─── Tabular coordinate table ───────────────────────────────────────────── */
+.mn-table {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-1);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  max-width: 560px;
+  margin: 0 0 var(--space-6);
+}
+.mn-tr {
+  display: grid;
+  grid-template-columns: 1fr 64px 64px 72px 64px;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+}
+.mn-tr + .mn-tr { border-top: 1px solid var(--border-subtle); }
+.mn-th {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  background: var(--bg-2);
+}
+.mn-tr:not(.mn-th):hover { background: var(--bg-2); }
+.mn-name { font-size: var(--type-sm); color: var(--fg-1); }
+.mn-tr .num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--type-sm);
+  color: var(--fg-0);
+  text-align: right;
+}
+.mn-th .num { color: var(--fg-2); }
+
+/* ─── Terminal line ──────────────────────────────────────────────────────── */
+.mn-term {
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+  line-height: var(--lh-sm);
+  background: var(--bg-0);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: 560px;
+}
+.mn-term-line { color: var(--fg-0); display: flex; align-items: center; gap: var(--space-2); }
+.mn-prompt { color: var(--accent); }
+.mn-flag { color: var(--fg-2); }
+.mn-term-out { color: var(--status-success); }
+.mn-term-idle { color: var(--fg-3); }
+.mn-caret {
+  display: inline-block;
+  width: 7px;
+  height: 14px;
+  background: var(--accent);
+  /* compositor-only opacity blink; --dur-* collapses to 1ms under
+     prefers-reduced-motion (token-level a11y invariant), bounded steps. */
+  animation: mn-blink calc(var(--dur-route) * 3) steps(1, end) infinite;
+}
+@keyframes mn-blink {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}

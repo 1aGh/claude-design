@@ -1,0 +1,206 @@
+/* components-command-palette.css — bespoke styles for the MAUDE/command-palette specimen.
+ * The palette is the keyboard-first signature: shared panel material on a dim scrim
+ * over the dotted canvas, one mono input, three result groups, ONE selected row in
+ * accent-tint. Compositor-only reveal; reduced-motion handled by the --dur-* token
+ * collapse in colors_and_type.css (no local override needed). */
+
+/* ─── The stage — the dotted canvas the palette floats over ─────────────── */
+.cp-stage {
+  position: relative;
+  display: grid;
+  place-items: start center;
+  min-height: 420px;
+  padding: var(--space-8) var(--space-5) var(--space-7);
+  margin: 0 0 var(--space-6);
+}
+/* dim scrim — palette content reads against the work staying visible behind. */
+.cp-scrim {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in oklab, var(--bg-0) 58%, transparent);
+  backdrop-filter: blur(1.5px);
+}
+
+/* ─── The palette — shared panel material, lifted on shadow-lg ──────────── */
+.cp {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 540px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  /* bounded compositor-only entrance — fade + small lift, runs once on paint */
+  animation: cp-enter var(--dur-panel) var(--ease-out) both;
+}
+@keyframes cp-enter {
+  0%   { opacity: 0; transform: translateY(-6px) scale(0.99); }
+  100% { opacity: 1; transform: translateY(0)    scale(1); }
+}
+
+/* ─── Search input — mono, the studio's native unit ─────────────────────── */
+.cp-input {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.cp-input .cp-glyph { color: var(--fg-2); flex: none; }
+.cp-query {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: var(--type-md);
+  color: var(--fg-0);
+  display: inline-flex;
+  align-items: center;
+}
+.cp-caret {
+  display: inline-block;
+  width: 1px;
+  height: 1.05em;
+  margin-left: 1px;
+  background: var(--accent);
+  animation: cp-blink 1.1s steps(1, end) infinite;
+}
+@keyframes cp-blink { 0%, 55% { opacity: 1; } 56%, 100% { opacity: 0; } }
+/* Honor the reduced-motion contract — hold the caret solid. */
+@media (prefers-reduced-motion: reduce) { .cp-caret { animation: none; opacity: 1; } }
+:root[data-reduced-motion="true"] .cp-caret { animation: none; opacity: 1; }
+.cp-input-hint { flex: none; }
+
+/* ─── Results ───────────────────────────────────────────────────────────── */
+.cp-results {
+  padding: var(--space-2) 0;
+  max-height: 320px;
+  overflow: auto;
+}
+.cp-group { padding: var(--space-2) 0; }
+.cp-group + .cp-group { border-top: 1px solid var(--border-subtle); }
+.cp-group-head {
+  padding: var(--space-2) var(--space-5);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+
+/* a row is a 4-part grid: glyph · label · keys */
+.cp-row {
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  cursor: default;
+  position: relative;
+  transition: background var(--dur-soft) var(--ease-out);
+}
+.cp-row:hover { background: var(--bg-2); }
+.cp-row-glyph { display: inline-flex; color: var(--fg-1); }
+.cp-label { font-size: var(--type-base); color: var(--fg-0); }
+.cp-keys { display: inline-flex; gap: var(--space-2); }
+
+/* selection — accent-tint wash + inset accent bar (never a loud fill). */
+.cp-row.is-selected {
+  background: var(--accent-tint);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.cp-row.is-selected .cp-row-glyph { color: var(--accent); }
+
+/* matched substring — accent-tint highlight, the fuzzy-match tell. */
+.cp-match {
+  background: var(--accent-tint);
+  color: var(--accent);
+  border-radius: var(--radius-xs);
+  padding: 0 2px;
+}
+
+/* the agent row — carries the agent presence hue, not the indigo accent. */
+.cp-row--agent .cp-row-glyph { color: var(--presence-agent); }
+.cp-row--agent .cp-label { color: var(--fg-1); }
+.cp-row--agent.is-selected {
+  background: color-mix(in oklab, var(--presence-agent) 14%, transparent);
+  box-shadow: inset 2px 0 0 var(--presence-agent);
+}
+
+/* ─── Footer — running hints + count, on the elevated bg-2 ─────────────── */
+.cp-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-2);
+}
+.cp-foot-hints { display: inline-flex; align-items: center; gap: var(--space-2); }
+.cp-foot-sep {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+  margin-right: var(--space-3);
+}
+.cp-foot-hints .kbd + .kbd { margin-left: -2px; }
+.cp-count { font-size: var(--type-xs); color: var(--fg-2); }
+
+/* ─── Anatomy section — one row dissected against a numbered legend ──────── */
+.cp-anatomy {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) auto;
+  gap: var(--space-6);
+  align-items: center;
+  padding: var(--space-5);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-1);
+  box-shadow: var(--shadow-sm);
+  margin: 0 0 var(--space-6);
+}
+.cp-anatomy .cp-row {
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--accent-tint);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.cp-callouts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  font-size: var(--type-xs);
+  color: var(--fg-1);
+}
+.cp-callouts li { display: flex; align-items: center; gap: var(--space-3); }
+.cp-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-tint);
+  color: var(--accent);
+  border: 1px solid var(--accent-muted);
+  font-size: 10px;
+  flex: none;
+}
+
+/* ─── Agent row demo — standalone, on the canvas-adjacent panel ─────────── */
+.cp-agentrow {
+  padding: var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-1);
+  box-shadow: var(--shadow-sm);
+}
+.cp-agentrow .cp-row {
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--presence-agent) 12%, transparent);
+  box-shadow: inset 2px 0 0 var(--presence-agent);
+}

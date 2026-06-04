@@ -1,0 +1,161 @@
+/* colors-themes-side-by-side.css — bespoke styles for the dual-theme specimen.
+ * Original move: instead of a flat two-up card, each pane is a self-contained
+ * .maude[data-theme] SCOPE that re-grounds its own background + foreground,
+ * so the nested wrappers actually retint a real studio frame independent of the
+ * document-root toggle. A token-delta table closes the loop: it names exactly
+ * what changes (surfaces flip, accent deepens) so the contract is legible, not
+ * just visible. */
+
+/* ─── The two theme panes ───────────────────────────────────────────────── */
+.th-panes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-5);
+  margin: 0 0 var(--space-6);
+}
+
+/* each pane re-grounds bg/fg from ITS OWN theme scope (not the doc root) */
+.th-pane {
+  background: var(--bg-0);
+  color: var(--fg-0);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  /* the dotted-canvas ambient tell, retinted by the local theme scope */
+  background-image: radial-gradient(
+    color-mix(in oklab, var(--canvas-dot) 40%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: var(--canvas-grid) var(--canvas-grid);
+  background-position: -1px -1px;
+}
+.th-pane-hd {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0 0 var(--space-4);
+}
+.th-pane-name {
+  font-family: var(--font-display);
+  font-size: var(--type-md);
+  font-weight: 600;
+  color: var(--fg-0);
+}
+.th-pane-tag {
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+
+/* ─── The shared studio frame (one component, two scopes) ───────────────── */
+.th-studio {
+  display: grid;
+  grid-template-columns: 132px 1fr;
+  grid-template-rows: 36px 1fr;
+  gap: 1px;
+  background: var(--border-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  height: 220px;
+}
+.th-studio > * { background: var(--bg-1); }
+
+.th-toolbar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-3);
+}
+.th-title {
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.th-spacer { flex: 1; }
+
+.th-layers { padding: var(--space-3); display: flex; flex-direction: column; gap: 2px; }
+
+.th-canvas {
+  position: relative;
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(var(--canvas-dot) 1.2px, transparent 1.2px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+}
+.th-node {
+  position: absolute;
+  left: 24%;
+  top: 30%;
+  width: 120px;
+  height: 78px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+  outline: 1.5px solid var(--accent);
+  outline-offset: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+}
+.th-readout {
+  position: absolute;
+  left: 24%;
+  top: calc(30% - 20px);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--type-xs);
+  background: var(--accent);
+  color: var(--accent-fg);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-xs);
+}
+
+/* ─── Token-delta table ─────────────────────────────────────────────────── */
+.th-deltas {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin: 0 0 var(--space-6);
+}
+.th-delta-row {
+  display: grid;
+  grid-template-columns: 132px 1fr 1fr;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--type-xs);
+}
+.th-delta-row:first-child { border-top: 0; }
+.th-delta-hd {
+  background: var(--bg-1);
+  color: var(--fg-2);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+.th-tok { color: var(--fg-0); }
+.th-cell { display: flex; align-items: center; gap: var(--space-3); color: var(--fg-1); }
+.th-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-xs);
+  flex: none;
+}
+.th-dot--bord { border: 1px solid var(--border-default); }
+
+/* ─── Contract note ─────────────────────────────────────────────────────── */
+.th-note { margin: 0 0 var(--space-5); }
+.th-note .mono {
+  flex: none;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--status-info);
+  font-size: var(--type-xs);
+}

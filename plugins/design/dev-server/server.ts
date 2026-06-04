@@ -101,11 +101,20 @@ const { port: BASE_PORT, explicit: PORT_EXPLICIT } = resolvePort();
 
 type BunServer = ReturnType<typeof Bun.serve<WsData, never>>;
 
+// Phase 23 security review (DDR-088 follow-up) — hard ceiling on a buffered
+// request body. Without it Bun's 128 MB default applies, so `POST /_api/asset`
+// would buffer up to 128 MB into RAM BEFORE api.saveAsset's 10 MB check runs
+// (memory amplification from the untrusted canvas origin). 16 MB covers every
+// legit body (10 MB asset + 1 MB annotation SVG + small JSON) with headroom and
+// bounds the pre-handler buffer; the authoritative per-route caps still apply.
+const MAX_REQUEST_BODY = 16 * 1024 * 1024;
+
 function startServer(port: number): BunServer {
   return Bun.serve<WsData, never>({
     port,
     hostname: '127.0.0.1',
     development: process.env.NODE_ENV !== 'production',
+    maxRequestBodySize: MAX_REQUEST_BODY,
     routes: http.routes,
     async fetch(req, srv) {
       const pathname = new URL(req.url).pathname;
@@ -167,6 +176,9 @@ function startCanvasServer(port: number): BunServer {
     port,
     hostname: '127.0.0.1',
     development: process.env.NODE_ENV !== 'production',
+    // DDR-088 follow-up — bound the pre-handler request buffer on the UNTRUSTED
+    // canvas origin (the asset upload lives here). See MAX_REQUEST_BODY.
+    maxRequestBodySize: MAX_REQUEST_BODY,
     // Hard allowlist of route-table endpoints (Bun matches `routes` before
     // `fetch`). Only the collab/display-data endpoints the canvas runtime needs
     // — see http.isCanvasSafeRoute for the trust rationale. The dynamic
@@ -176,6 +188,12 @@ function startCanvasServer(port: number): BunServer {
       '/_api/git-user': http.routes['/_api/git-user'],
       '/_api/canvas-meta': http.routes['/_api/canvas-meta'],
       '/_api/annotations': http.routes['/_api/annotations'],
+      // Phase 23 — capped binary image upload (magic-byte sniff + 10 MB +
+      // content-addressed name + traversal guard + no-SVG, in api.saveAsset).
+      // Bun matches `routes` BEFORE `fetch`, so the route must be listed here
+      // explicitly — the CANVAS_SAFE_API entry alone only opens the fetch
+      // fall-through (which serves files, not route handlers). See DDR (Task 9).
+      '/_api/asset': http.routes['/_api/asset'],
       '/_api/git-committers': http.routes['/_api/git-committers'],
       '/_api/ai': http.routes['/_api/ai'],
       '/_comments': http.routes['/_comments'],

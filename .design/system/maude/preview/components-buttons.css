@@ -1,0 +1,123 @@
+/* components-buttons.css — bespoke layout for the buttons specimen.
+ * Anatomy (.btn, .btn--primary/--ghost/--danger/--icon/--sm, .kbd) is LIFTED
+ * from _components.css; this file only arranges them and forces the static
+ * state cells for the matrix. Accent does exactly one job per cluster. */
+
+/* ─── Toolbar variant — the "buttons in their habitat" hero ───────────────── */
+.btn-toolbar { gap: var(--space-2); padding: var(--space-2) var(--space-3); }
+.btn-toolbar .tb-title {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+.btn-toolbar .tb-spacer { flex: 1; }
+
+/* the icon glyph inside any .btn — 1px stroke, currentColor so it retints */
+.g { width: 14px; height: 14px; display: block; flex: none; }
+.g path, .g rect, .g circle, .g line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* a subtle compositor-only nudge on hover for labelled buttons with a glyph */
+.btn .g { transition: transform var(--dur-soft) var(--ease-out); }
+.btn--primary:hover .g { transform: translateX(2px); }
+@media (prefers-reduced-motion: reduce) { .btn--primary:hover .g { transform: none; } }
+
+/* ─── Role ladder — each role + a one-line note ───────────────────────────── */
+.btn-ladder {
+  display: grid;
+  gap: 1px;
+  background: var(--border-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin: 0 0 var(--space-6);
+}
+.btn-rung {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  background: var(--bg-1);
+}
+.btn-rung > .btn { justify-self: start; }
+.rung-note {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  color: var(--fg-2);
+}
+
+/* ─── Shelf — sizes / icon-only / kbd, three calm cells ───────────────────── */
+.btn-shelf {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+  margin: 0 0 var(--space-6);
+}
+.shelf-cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  background: var(--bg-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+.cell-cap {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+
+/* ─── State matrix — labelled rows × four columns ─────────────────────────── */
+.btn-states {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  background: var(--bg-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  margin: 0 0 var(--space-6);
+}
+.state-head, .state-row {
+  display: grid;
+  grid-template-columns: 88px repeat(4, 1fr);
+  align-items: center;
+  gap: var(--space-4);
+}
+.state-head span {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.state-head { padding-bottom: var(--space-2); border-bottom: 1px solid var(--border-subtle); }
+.state-label { font-size: var(--type-sm); color: var(--fg-1); }
+.state-row .btn { justify-self: start; }
+
+/* Static "frozen" state reproductions — mirror the _components.css :hover/:active
+ * rules so the matrix shows every state without real interaction. */
+.btn.is-hover  { background: var(--bg-3); border-color: var(--border-strong); }
+.btn.is-active { background: var(--bg-4); }
+.btn--primary.is-hover  { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn--primary.is-active { background: var(--accent-active); border-color: var(--accent-active); }
+.btn--ghost.is-hover  { background: var(--bg-2); color: var(--fg-0); }
+.btn--ghost.is-active { background: var(--bg-3); color: var(--fg-0); }
+.btn--danger.is-hover  { background: color-mix(in oklab, var(--status-error) 14%, transparent); border-color: var(--status-error); }
+.btn--danger.is-active { background: color-mix(in oklab, var(--status-error) 22%, transparent); border-color: var(--status-error); }
+
+@media (max-width: 720px) {
+  .btn-rung { grid-template-columns: 1fr; gap: var(--space-3); }
+  .state-head, .state-row { grid-template-columns: 72px repeat(4, 1fr); gap: var(--space-3); }
+}

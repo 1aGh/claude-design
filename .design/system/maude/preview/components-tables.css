@@ -1,0 +1,155 @@
+/*
+ * components-tables.css — MAUDE/components-tables
+ *
+ * Bespoke table styling on top of the panel material. The table inherits the
+ * panel's hairlines and radius; rows separate on --border-subtle alone (resting),
+ * lift to --bg-3 on hover, and wear --accent-tint + an inset accent bar when
+ * selected. Numbers are mono tabular-nums and right-aligned so columns scan as a
+ * ledger. The accent never fills a whole row — rows are data, not navigation.
+ */
+
+.tbl-wrap {
+  padding: 0;                 /* the table draws its own internal padding */
+  margin: 0 0 var(--space-6);
+}
+
+.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--type-sm);
+  line-height: var(--lh-sm);
+}
+
+/* ─── Header — sticky-capable, mono eyebrow row ───────────────────────────── */
+.tbl thead th {
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  font-weight: 400;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  background: var(--bg-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-default);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.tbl thead th[aria-sort]:not([aria-sort="none"]) { color: var(--fg-0); }
+.tbl thead th[aria-sort="ascending"]::after  { content: " ↑"; color: var(--accent); }
+.tbl thead th[aria-sort="descending"]::after { content: " ↓"; color: var(--accent); }
+.tbl thead th[aria-sort="none"] { cursor: pointer; }
+
+/* ─── Body cells ──────────────────────────────────────────────────────────── */
+.tbl tbody td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--fg-1);
+  vertical-align: middle;
+}
+.tbl tbody tr:last-child td { border-bottom: 0; }
+
+.tbl-name { color: var(--fg-0); font-weight: 500; }
+.tbl-meta { color: var(--fg-2); font-family: var(--font-mono); font-size: var(--type-xs); }
+
+/* Numeric columns — tabular mono, right-aligned ledger rhythm. */
+.tbl-num {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-0);
+}
+thead .tbl-num { color: var(--fg-2); }
+
+.tbl-check { width: 36px; text-align: center; }
+.tbl-check input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  background: var(--bg-3);
+  cursor: pointer;
+  display: inline-grid;
+  place-content: center;
+  transition: background var(--dur-soft) var(--ease-out),
+              border-color var(--dur-soft) var(--ease-out);
+}
+.tbl-check input::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  transform: scale(0);
+  border-radius: 1px;
+  background: var(--accent-fg);
+  transition: transform var(--dur-flip) var(--ease-out);
+}
+.tbl-check input:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.tbl-check input:checked::after { transform: scale(1); }
+.tbl-check input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ─── Row states — hover lifts, selected tints (never an accent fill) ─────── */
+.tbl tbody tr:hover td,
+.tbl tbody tr.tbl-force-hover td { background: var(--bg-3); }
+
+.tbl tbody tr[aria-selected="true"] td { background: var(--accent-tint); color: var(--fg-0); }
+.tbl tbody tr[aria-selected="true"] td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
+.tbl tbody tr[aria-selected="true"] .tbl-meta { color: var(--fg-1); }
+
+/* ─── Status cell — dot + label in the status hue, calm not loud ──────────── */
+.tbl-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  color: var(--fg-1);
+}
+.tbl-state-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+  flex: none;
+}
+.tbl-state--success { color: var(--status-success); }
+.tbl-state--warn    { color: var(--status-warn); }
+.tbl-state--error   { color: var(--status-error); }
+.tbl-state--info    { color: var(--status-info); }
+
+/* ─── Foot — aggregate totals in the same tabular rhythm ──────────────────── */
+.tbl tfoot td {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-default);
+  background: color-mix(in oklab, var(--bg-2) 60%, transparent);
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+}
+.tbl-foot-label { color: var(--fg-1); }
+
+/* The anatomy demo strips the head so the three row states read on their own. */
+.tbl-states-demo .tbl tbody td:first-child { width: 60%; }
+
+/* ─── Loading skeleton — shimmer-free; opacity pulse only (calm) ──────────── */
+.tbl-skel {
+  display: inline-block;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-4);
+  animation: tbl-skel-pulse 1100ms var(--ease-in-out) infinite alternate;
+}
+.tbl-skel-row td { vertical-align: middle; }
+@keyframes tbl-skel-pulse {
+  0%   { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tbl-skel { animation: none; opacity: 0.7; }
+}

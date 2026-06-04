@@ -48,15 +48,20 @@ describe('sanitizeAnnotationSvg — A3', () => {
     expect(out).toContain('width="9"');
   });
 
-  test('strips <image>/<use> and javascript: URLs', () => {
+  // Phase 23 — `<image>` is now an allowlisted element, but ONLY a relative
+  // assets/<sha8>.<ext> href may survive on it. A javascript:/external href is
+  // stripped (the inert href-less <image> may remain — it fetches nothing);
+  // <use> stays fully dropped.
+  test('strips javascript:/external href on <image>; drops <use>', () => {
     const dirty =
       '<svg xmlns="http://www.w3.org/2000/svg" data-mdcc-annotations="1">' +
       '<image href="javascript:alert(1)"/><use href="#x"/>' +
       '</svg>';
     const out = sanitizeAnnotationSvg(dirty);
-    expect(out.toLowerCase()).not.toContain('<image');
     expect(out.toLowerCase()).not.toContain('<use');
     expect(out.toLowerCase()).not.toContain('javascript:');
+    // The <image> may survive as an inert element, but with NO href at all.
+    expect(out.toLowerCase()).not.toMatch(/href\s*=/);
   });
 
   // Bypasses the F1 confirming pass found against the prior denylist — the
@@ -128,5 +133,106 @@ describe('sanitizeAnnotationSvg — A3', () => {
       '<g data-id="st" data-tool="sticky" data-r="8" data-fs="16" fill="#fce8a6" data-bold="1" data-align="center"><rect x="0" y="0" width="200" height="200" rx="8" ry="8"/><text data-sticky-body="1" x="12" y="12" font-size="16" fill="#1a1a1a" dominant-baseline="hanging">x</text></g>' +
       '</svg>';
     expect(sanitizeAnnotationSvg(phase24)).toBe(phase24);
+  });
+});
+
+// ── Phase 23 — <image> assets-href allow/deny matrix (Task 4, pairs with DDR) ──
+describe('sanitizeAnnotationSvg — Phase 23 <image> href allowlist', () => {
+  const wrap = (inner: string) =>
+    `<svg xmlns="http://www.w3.org/2000/svg" data-mdcc-annotations="1">${inner}</svg>`;
+
+  test('KEEPS a valid assets/<sha8>.<ext> href on <image> (all four exts)', () => {
+    for (const name of [
+      'a1b2c3d4.png',
+      'deadbeef.jpg',
+      'cafe1234.jpeg',
+      'f00dface.webp',
+      '0badf00d.gif',
+    ]) {
+      const svg = wrap(
+        `<image data-id="im" data-tool="image" x="0" y="0" width="40" height="40" href="assets/${name}" preserveAspectRatio="xMidYMid meet"/>`
+      );
+      expect(sanitizeAnnotationSvg(svg)).toBe(svg);
+    }
+  });
+
+  test('STRIPS an external https href (no off-origin fetch)', () => {
+    const out = sanitizeAnnotationSvg(
+      wrap(
+        '<image data-tool="image" x="0" y="0" width="9" height="9" href="https://evil.example/x.png"/>'
+      )
+    );
+    expect(out).not.toContain('https://evil.example');
+    expect(out.toLowerCase()).not.toMatch(/href\s*=/);
+  });
+
+  test('STRIPS a data: URL href (no base64 smuggle)', () => {
+    const out = sanitizeAnnotationSvg(
+      wrap('<image data-tool="image" href="data:image/svg+xml;base64,PHN2Zz4="/>')
+    );
+    expect(out.toLowerCase()).not.toContain('data:image');
+    expect(out.toLowerCase()).not.toMatch(/href\s*=/);
+  });
+
+  test('STRIPS a path-traversal href (single-segment guard)', () => {
+    for (const bad of [
+      'assets/../../etc/passwd',
+      'assets/../secret.png',
+      'assets/sub/dir/x.png',
+      'assets/x.svg',
+    ]) {
+      const out = sanitizeAnnotationSvg(wrap(`<image data-tool="image" href="${bad}"/>`));
+      expect(out).not.toContain(bad);
+      expect(out.toLowerCase()).not.toMatch(/href\s*=/);
+    }
+  });
+
+  test('STRIPS an href on a NON-image element (rect href is never legit)', () => {
+    const out = sanitizeAnnotationSvg(
+      wrap('<rect data-tool="rect" x="0" y="0" width="9" height="9" href="assets/x.png"/>')
+    );
+    expect(out.toLowerCase()).not.toMatch(/href\s*=/);
+    expect(out).toContain('<rect');
+  });
+
+  test('STRIPS xlink:href (entity-encoded / namespaced) external on <image>', () => {
+    const out = sanitizeAnnotationSvg(
+      wrap('<image data-tool="image" xlink:href="javascript:alert(1)"/>')
+    );
+    expect(out.toLowerCase()).not.toContain('javascript:');
+    expect(out.toLowerCase()).not.toMatch(/href\s*=/);
+  });
+
+  test('CANNOT be tricked by a forged data-mdcc-asset marker carrying a scheme', () => {
+    // A hub-pushed SVG that pre-seeds the internal marker with a scheme must NOT
+    // round-trip back to an executable href (the post-pass re-validates).
+    const out = sanitizeAnnotationSvg(
+      wrap('<image data-tool="image" data-mdcc-asset="javascript:alert(1)"/>')
+    );
+    expect(out.toLowerCase()).not.toContain('javascript:');
+    expect(out.toLowerCase()).not.toContain('data-mdcc-asset');
+    expect(out.toLowerCase()).not.toMatch(/href\s*=/);
+  });
+
+  test('an input-supplied data-mdcc-asset marker is neutralized (only a real href hoists)', () => {
+    // The marker is an INTERNAL hop minted by the pre-pass from a real href. Any
+    // input-supplied marker — even one carrying a valid assets value — is
+    // stripped up front, so it can never become a surviving href on its own.
+    const out = sanitizeAnnotationSvg(
+      wrap('<image data-tool="image" data-mdcc-asset="assets/abcd1234.png"/>')
+    );
+    expect(out.toLowerCase()).not.toContain('data-mdcc-asset');
+    expect(out.toLowerCase()).not.toMatch(/href\s*=/);
+  });
+
+  test('still drops <script>/<svg:script> alongside a valid image (allowlist holds)', () => {
+    const out = sanitizeAnnotationSvg(
+      wrap(
+        '<image data-tool="image" href="assets/ok123456.png"/><svg:script>alert(1)</svg:script><script>x()</script>'
+      )
+    );
+    expect(out).toContain('href="assets/ok123456.png"');
+    expect(out.toLowerCase()).not.toContain('script');
+    expect(out).not.toContain('alert(1)');
   });
 });

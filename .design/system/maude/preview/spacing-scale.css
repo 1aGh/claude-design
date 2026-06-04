@@ -1,0 +1,83 @@
+/* spacing-scale.css — bespoke styles for the 4px dense spacing ladder.
+ * The bars are drawn exactly their token wide (width: var(--space-N)) so the
+ * specimen is honest — what you measure is the resolved value. */
+
+/* ─── The ladder ─────────────────────────────────────────────────────────── */
+.sp-ladder {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-1);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  margin: 0 0 var(--space-6);
+}
+.sp-step {
+  display: grid;
+  grid-template-columns: 108px 96px 48px 1fr;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-5);
+}
+.sp-step + .sp-step { border-top: 1px solid var(--border-subtle); }
+.sp-step:hover { background: var(--bg-2); }
+
+.sp-tok {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--type-xs);
+  color: var(--accent);
+  letter-spacing: var(--tracking-wide);
+}
+/* the measured bar — a solid accent block exactly the token's width */
+.sp-bar-wrap { display: flex; align-items: center; }
+.sp-bar {
+  display: block;
+  height: 10px;
+  min-width: 1px;            /* --space-0 still shows a hairline tick */
+  background: var(--accent);
+  border-radius: var(--radius-xs);
+}
+.sp-px {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+  text-align: right;
+}
+.sp-role { font-size: var(--type-sm); color: var(--fg-1); }
+
+/* ─── Inline density comparison ──────────────────────────────────────────── */
+.sp-density {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-6);
+}
+.sp-density-row {
+  display: grid;
+  grid-template-columns: 124px 1fr;
+  align-items: center;
+  gap: var(--space-4);
+}
+.sp-density-tag {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+
+/* ─── Inspector built from the ladder ────────────────────────────────────── */
+.sp-insp { max-width: 280px; }
+.sp-insp .panel-hd {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.sp-insp-sku {
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--fg-3);
+}

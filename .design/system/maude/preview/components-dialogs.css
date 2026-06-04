@@ -1,0 +1,118 @@
+/* components-dialogs.css — bespoke styles for the dialogs specimen.
+ * Three dialogs (modal · confirm · side panel) staged over the dotted canvas so
+ * the scrim reads in context. All use the shared .panel material + .motion-route
+ * (bounded, overflow:hidden, compositor-only transform/opacity from _components.css).
+ * Scrim is oklch(0 0 0 / .6); reduced-motion collapses the reveal via the token. */
+
+/* ── The stage: a bounded dotted-canvas frame the dialog reveals inside ──── */
+.dlg-stage {
+  position: relative;
+  min-height: 248px;
+  margin: 0 0 var(--space-6);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(var(--canvas-dot) 1.2px, transparent 1.2px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+  overflow: hidden;          /* bounds the .motion-route scale, keeps the scrim inside */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dlg-stage--tall { min-height: 320px; align-items: center; }
+.dlg-stage--sheet { justify-content: flex-end; align-items: stretch; }
+
+/* ── Scrim — the studio behind the dialog. oklch(0 0 0 / .6). ───────────── */
+.dlg-scrim { position: absolute; inset: 0; background: oklch(0 0 0 / 0.6); }
+.dlg-scrim--soft { background: oklch(0 0 0 / 0.42); }
+
+/* ── The dialog body — shared .panel material, raised ───────────────────── */
+.dlg {
+  position: relative;
+  box-shadow: var(--shadow-lg);
+  z-index: 1;
+}
+.dlg .panel-bd { padding: var(--space-5); }
+.dlg-title {
+  font-family: var(--font-display);
+  font-size: var(--type-lg);
+  line-height: var(--lh-lg);
+  font-weight: 600;
+  letter-spacing: -0.006em;
+  margin: 0 0 var(--space-3);
+  color: var(--fg-0);
+}
+.dlg-body { color: var(--fg-1); font-size: var(--type-sm); line-height: var(--lh-base); margin: 0 0 var(--space-5); max-width: 46ch; }
+.dlg-field-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  color: var(--fg-2);
+  margin: 0 0 var(--space-2);
+}
+.dlg .input { margin-bottom: var(--space-5); }
+.dlg-actions { display: flex; justify-content: flex-end; gap: var(--space-3); }
+.dlg-actions--start { justify-content: space-between; margin-top: var(--space-5); }
+
+/* close glyph — same icon material everywhere */
+.dlg-x {
+  appearance: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; padding: 0;
+  border: 1px solid transparent; border-radius: var(--radius-xs);
+  background: transparent; color: var(--fg-2); cursor: pointer;
+  transition: color var(--dur-soft) var(--ease-out), background var(--dur-soft) var(--ease-out);
+}
+.dlg-x:hover { color: var(--fg-0); background: var(--bg-3); }
+
+/* ── Modal — centered card ──────────────────────────────────────────────── */
+.dlg--modal { width: 340px; }
+
+/* ── Confirm — narrower, with a leading warn glyph + trap diagram ───────── */
+.dlg--confirm { width: 360px; }
+.dlg-glyph {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; margin: 0 0 var(--space-3);
+  border-radius: var(--radius-sm); border: 1px solid var(--border-default);
+}
+.dlg-glyph--warn { color: var(--status-warn); border-color: color-mix(in oklab, var(--status-warn) 50%, var(--border-default)); }
+.dlg-trap {
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3) var(--space-4);
+  list-style: none;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-0);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.dlg-trap li { display: flex; align-items: center; gap: var(--space-2); }
+
+/* ── Side panel — fills the stage height on the right edge ──────────────── */
+.dlg--sheet {
+  width: 264px;
+  border-radius: 0;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+}
+.dlg-sheet-bd { display: flex; flex-direction: column; gap: var(--space-2); }
+.dlg-canvas-peek {
+  position: absolute;
+  left: var(--space-5);
+  top: 38%;
+  font-size: var(--type-xs);
+  color: var(--accent-fg);
+  background: var(--accent);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-xs);
+  z-index: 1;
+}
+
+/* ── Legend ─────────────────────────────────────────────────────────────── */
+.dlg-legend { max-width: 70ch; margin-top: var(--space-5); }
+.dlg-legend .mono { color: var(--status-warn); font-weight: 600; }

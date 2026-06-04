@@ -1,0 +1,107 @@
+/* components-inputs.css — bespoke layout for the inputs specimen.
+ * .input, .select, .textarea, .field anatomy (incl. the focus halo) is LIFTED
+ * from _components.css. This file only adds label wrappers, the inspector
+ * coordinate row, and the static .is-focus reproduction for documentation cells. */
+
+/* shared 1px-stroke glyph */
+.g { display: block; flex: none; }
+.g path, .g rect, .g circle, .g line {
+  fill: none; stroke: currentColor; stroke-width: 1.25;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* ─── Labelled field wrapper (label above, helper below) ──────────────────── */
+.fld { display: grid; gap: var(--space-2); }
+.fld-label { font-size: var(--type-sm); color: var(--fg-1); }
+.fld-help { font-size: var(--type-xs); color: var(--fg-2); }
+.fld.is-error .fld-help { color: var(--status-error); }
+.fld.is-error .input { border-color: var(--status-error); }
+.fld.is-error .input:focus { box-shadow: 0 0 0 3px color-mix(in oklab, var(--status-error) 18%, transparent); }
+.fld.is-disabled { opacity: 0.6; }
+.fld .input:disabled, .textarea:disabled { background: var(--bg-2); color: var(--fg-3); cursor: not-allowed; }
+
+/* Static "focused" reproduction — mirrors .input:focus / .field:focus from
+ * _components.css so the documentation cells show the ring without interaction. */
+.is-focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+
+.fld-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(232px, 1fr));
+  gap: var(--space-5);
+  margin: 0 0 var(--space-6);
+}
+
+/* ─── Multiline + choice row ──────────────────────────────────────────────── */
+.fld-row {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: var(--space-5);
+  margin: 0 0 var(--space-6);
+  align-items: start;
+}
+.fld--wide .textarea { min-height: 96px; }
+.fld-stack { display: flex; flex-direction: column; gap: var(--space-5); }
+
+/* select — strip native chrome, drop in a 1px caret glyph */
+.select-wrap, .search-wrap { position: relative; display: block; }
+.select { appearance: none; padding-right: var(--space-7); }
+.sel-caret {
+  position: absolute; top: 50%; right: var(--space-3);
+  width: 14px; height: 14px; transform: translateY(-50%);
+  color: var(--fg-2); pointer-events: none;
+}
+.search-input { padding-left: var(--space-7); }
+.search-ico { left: var(--space-3); right: auto; }
+
+/* ─── Inspector coordinate row ────────────────────────────────────────────── */
+.insp-card { margin: 0 0 var(--space-6); max-width: 420px; }
+.insp-card .panel-hd .hd-meta {
+  margin-left: auto; text-transform: none; letter-spacing: 0;
+  color: var(--fg-2); font-size: var(--type-xs);
+}
+/* a coordinate cell = a mono axis tag glued to the tabular .field input */
+.fld-mini {
+  display: inline-flex; align-items: stretch;
+  border: 1px solid var(--border-default); border-radius: var(--radius-xs);
+  overflow: hidden; background: var(--bg-3);
+}
+.fld-mini .mini-tag {
+  display: flex; align-items: center; justify-content: center;
+  width: 20px; font-family: var(--font-mono); font-size: var(--type-xs);
+  color: var(--fg-2); background: var(--bg-2);
+  border-right: 1px solid var(--border-default);
+}
+/* the .field inside a mini-cell drops its own border — the wrapper owns it */
+.fld-mini .field { border: 0; border-radius: 0; width: 52px; background: transparent; }
+.fld-mini .field.is-focus { box-shadow: none; }
+.fld-mini:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+/* keep the documented static-focus cell visibly ringed even without :focus-within */
+.fld-mini:has(.field.is-focus) { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+.insp-unit {
+  align-self: center; font-family: var(--font-mono); font-size: var(--type-xs);
+  color: var(--fg-2); letter-spacing: var(--tracking-wide);
+}
+
+/* ─── Focus anatomy teaching block ────────────────────────────────────────── */
+.focus-anat {
+  display: flex; align-items: center; gap: var(--space-6); flex-wrap: wrap;
+  padding: var(--space-6);
+  background: var(--bg-1); border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+.anat-chip { display: inline-flex; padding: var(--space-3); }
+.anat-input {
+  display: inline-flex; align-items: center; justify-content: flex-end;
+  width: 72px; padding: var(--space-3) var(--space-4);
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  font-size: var(--type-sm); color: var(--fg-0);
+}
+.anat-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.anat-legend li { display: flex; align-items: center; gap: var(--space-3); font-size: var(--type-sm); color: var(--fg-1); }
+.dot { width: 12px; height: 12px; border-radius: var(--radius-xs); flex: none; }
+.dot--border { background: var(--accent); }
+.dot--halo { background: var(--accent-tint); border: 1px solid var(--accent-muted); }
+
+@media (max-width: 720px) {
+  .fld-row { grid-template-columns: 1fr; }
+}

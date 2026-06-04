@@ -1,0 +1,72 @@
+/* radii.css — bespoke chrome for the maude radii specimen.
+ * A mild ladder: corners soften just enough to read as "made", never enough to
+ * go pill-happy. xs/sm carry the dense chrome; lg/xl are reserved for the few
+ * floating surfaces; pill is for dots and counts, not buttons. Tokens only. */
+
+/* ─── The ladder — a row of square-cornered tiles relaxing rung by rung ──── */
+.rad-ladder {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--space-3);
+  margin: 0 0 var(--space-6);
+}
+.rad-step {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-1);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+/* the demo corner — a panel-material square showing the actual radius */
+.rad-corner {
+  height: 84px;
+  margin: var(--space-4) var(--space-4) 0;
+  background: var(--bg-3);
+  border: 1px solid var(--border-strong);
+  /* radius set inline per-step via the token */
+}
+.rad-meta {
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rad-meta .rad-tok {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  color: var(--accent);
+}
+.rad-meta .rad-px { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--type-xs); color: var(--fg-2); }
+.rad-meta .rad-role { font-size: var(--type-xs); line-height: var(--lh-xs); color: var(--fg-1); margin-top: 2px; }
+
+/* ─── On the material — radius applied to the real chrome anatomy ───────── */
+.rad-anatomy { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--space-4); margin: 0 0 var(--space-6); }
+.rad-demo {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-1);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.rad-demo__cap {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.rad-demo__cap span:last-child { color: var(--accent); text-transform: none; }
+
+/* a nested-corner proof: outer radius must exceed inner by its padding to stay concentric */
+.rad-nest { padding: var(--space-3); background: var(--bg-2); border: 1px solid var(--border-default); border-radius: var(--radius-lg); }
+.rad-nest__inner { padding: var(--space-4); background: var(--bg-3); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-1); }
+
+/* ─── Pill discipline — where the only fully-round corner is allowed ────── */
+.rad-pill-row { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; margin: 0 0 var(--space-4); }
+.rad-square-note { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--status-error); }

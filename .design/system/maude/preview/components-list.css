@@ -1,0 +1,146 @@
+/* components-list.css — bespoke styles for the layers tree + canvases shelf.
+ * Builds on the shared .tree-row / .panel material in _components.css; only the
+ * list-specific anatomy lives here (twisties, indent guides, grip, meta cluster,
+ * the canvases columns). Selection language is the studio standard: --accent-tint
+ * wash + an inset accent bar. Tokens only. */
+
+/* ── layout: tree panel beside its annotation notes ───────────────────────── */
+.list-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+  margin: 0 0 var(--space-6);
+}
+@media (max-width: 760px) { .list-wrap { grid-template-columns: 1fr; } }
+
+.list-panel { overflow: visible; }
+.list-count {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.tree { padding: var(--space-2); display: flex; flex-direction: column; }
+
+/* ── the layer row — extends .tree-row with a fixed slot grid ─────────────── */
+.tree-row.lr {
+  position: relative;
+  gap: var(--space-2);
+  padding-top: 3px;
+  padding-bottom: 3px;
+  padding-right: var(--space-3);
+}
+/* indent guide — a faint spine the eye follows down a deep tree */
+.tree-row.lr::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--space-3) + 5px);
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border-subtle);
+  opacity: 0;
+}
+.tree-row.lr:hover::before { opacity: 0.7; }
+
+.lr-disc { width: 12px; display: inline-flex; align-items: center; justify-content: center; color: var(--fg-2); }
+.lr-leaf { width: 4px; height: 4px; }
+.twisty { transform: rotate(0deg); transition: transform var(--dur-flip) var(--ease-out); }
+.twisty.is-open { transform: rotate(90deg); }
+
+.row-glyph { color: var(--fg-2); flex-shrink: 0; }
+.tree-row[aria-selected="true"] .row-glyph { color: var(--accent); }
+
+.lr-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lr-agent { flex-shrink: 0; }
+.lr-meta { color: var(--fg-2); font-size: var(--type-xs); flex-shrink: 0; }
+
+/* drag handle — appears only on hover so the resting tree stays calm */
+.row-grip {
+  color: var(--fg-3);
+  flex-shrink: 0;
+  margin-left: -2px;
+  opacity: 0;
+  cursor: grab;
+  transition: opacity var(--dur-soft) var(--ease-out);
+}
+.tree-row.lr:hover .row-grip,
+.tree-row.lr[aria-selected="true"] .row-grip { opacity: 1; }
+
+/* visibility / lock cluster — sits at the row's trailing edge */
+.lr-tools { display: inline-flex; gap: var(--space-2); flex-shrink: 0; min-width: 14px; }
+.lr-tool { display: inline-flex; color: var(--fg-3); }
+.lr-tool.is-on { color: var(--fg-1); }
+.tree-row.lr.is-hidden .lr-name,
+.tree-row.lr.is-hidden .row-glyph { color: var(--fg-3); }
+
+/* ── annotation notes column ──────────────────────────────────────────────── */
+.list-notes { display: flex; flex-direction: column; gap: var(--space-4); }
+.list-notes .note-h { display: block; color: var(--fg-0); margin-bottom: 2px; }
+.note-states {
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+  background: var(--bg-1);
+  font-size: var(--type-sm); color: var(--fg-1);
+}
+.ns-row { display: flex; align-items: center; gap: var(--space-3); }
+.ns-chip { width: 18px; height: 14px; border-radius: var(--radius-xs); border: 1px solid var(--border-default); flex-shrink: 0; }
+.ns-idle { background: var(--bg-1); }
+.ns-hover { background: var(--bg-2); }
+.ns-sel { background: var(--accent-tint); box-shadow: inset 2px 0 0 var(--accent); border-color: var(--accent-muted); }
+.ns-agent { background: var(--bg-1); position: relative; }
+.ns-agent::after {
+  content: ""; position: absolute; right: 2px; top: 2px; width: 6px; height: 6px; border-radius: var(--radius-pill);
+  background: var(--presence-agent); box-shadow: 0 0 0 2px color-mix(in oklab, var(--presence-agent) 28%, transparent);
+}
+
+/* ── the canvases shelf — same row, flat column grid ──────────────────────── */
+.canv-panel { margin: 0 0 var(--space-6); }
+.canv-head,
+.canv-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px 88px 132px;
+  gap: var(--space-4);
+  align-items: center;
+}
+.canv-head {
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.canv-head .num { text-align: right; }
+
+.canv-row {
+  border-radius: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--type-sm);
+}
+.canv-row:last-child { border-bottom: 0; }
+.canv-row.cr-sel { background: var(--accent-tint); color: var(--fg-0); box-shadow: inset 2px 0 0 var(--accent); }
+
+.cr-name { display: inline-flex; align-items: center; gap: var(--space-3); min-width: 0; color: var(--fg-0); }
+.cr-name .row-glyph { color: var(--fg-2); }
+.canv-row.cr-sel .cr-name .row-glyph { color: var(--accent); }
+.cr-frames, .cr-edited { text-align: right; color: var(--fg-1); }
+.cr-live { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--type-xs); color: var(--fg-1); }
+.cr-quiet { color: var(--fg-2); }
+
+/* ── keyboard footer — hints belong here, not on the rows ─────────────────── */
+.kbd-footer {
+  display: flex; flex-wrap: wrap; gap: var(--space-5);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+  background: var(--bg-1);
+  font-size: var(--type-xs); color: var(--fg-2);
+  margin: 0 0 var(--space-6);
+}
+.kbd-footer span { display: inline-flex; align-items: center; gap: var(--space-2); }

@@ -1,0 +1,131 @@
+/* components-shortcuts-overlay.css — bespoke styles for the MAUDE/shortcuts-overlay specimen.
+ * The ? cheat-sheet: a dim scrim over the dotted canvas, shared panel material, four dense
+ * mono columns. The agent column wears the presence hue. Bounded compositor-only reveal;
+ * reduced-motion handled by the --dur-* token collapse in colors_and_type.css. */
+
+/* ─── The stage — the dotted canvas the overlay floats over ─────────────── */
+.so-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 460px;
+  padding: var(--space-7) var(--space-5);
+  margin: 0 0 var(--space-6);
+}
+.so-scrim {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in oklab, var(--bg-0) 58%, transparent);
+  backdrop-filter: blur(1.5px);
+}
+
+/* ─── The overlay — shared panel material, lifted ───────────────────────── */
+.so-overlay {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 720px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-6);
+  /* bounded compositor-only entrance — fade + small lift, runs once on paint */
+  animation: so-enter var(--dur-panel) var(--ease-out) both;
+}
+@keyframes so-enter {
+  0%   { opacity: 0; transform: translateY(-6px) scale(0.99); }
+  100% { opacity: 1; transform: translateY(0)    scale(1); }
+}
+
+.so-overlay-hd {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-5);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.so-title {
+  font-family: var(--font-display);
+  font-size: var(--type-lg);
+  line-height: var(--lh-lg);
+  font-weight: 600;
+  letter-spacing: -0.006em;
+  color: var(--fg-0);
+}
+.so-trigger { font-size: var(--type-xs); color: var(--fg-2); }
+
+/* ─── Four dense columns ────────────────────────────────────────────────── */
+.so-columns {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-6) var(--space-7);
+}
+.so-section-hd {
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+/* the agent column reads as the collaborator — presence hue on its header. */
+.so-section--agent .so-section-hd {
+  color: var(--presence-agent);
+  border-bottom-color: color-mix(in oklab, var(--presence-agent) 40%, var(--border-subtle));
+}
+
+.so-list { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; }
+.so-pair {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-1);
+  border-radius: var(--radius-xs);
+}
+.so-pair:hover { background: var(--bg-2); }
+.so-pair dt { font-size: var(--type-sm); color: var(--fg-1); }
+.so-pair dd { margin: 0; justify-self: end; }
+
+/* combos — chained .kbd; alternatives split by a thin "/" */
+.so-combos { display: inline-flex; align-items: center; gap: var(--space-2); }
+.so-combo { display: inline-flex; align-items: center; gap: var(--space-1); }
+.so-combo .kbd + .kbd { margin-left: 0; }
+.so-or { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-3); padding: 0 1px; }
+
+/* ─── Footer ────────────────────────────────────────────────────────────── */
+.so-overlay-ft {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+}
+.so-count { color: var(--fg-2); }
+
+/* ─── Legend — how to read a pair ───────────────────────────────────────── */
+.so-legend {
+  max-width: 380px;
+  padding: var(--space-5);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-1);
+  box-shadow: var(--shadow-sm);
+}
+.so-legend .so-pair { padding: var(--space-3) var(--space-2); }
+.so-legend .so-pair + .so-pair { border-top: 1px solid var(--border-subtle); }
+.so-legend .so-pair dt { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); text-transform: uppercase; letter-spacing: var(--tracking-wide); }
+
+/* narrow viewport — collapse to single column, density holds */
+@media (max-width: 640px) {
+  .so-columns { grid-template-columns: 1fr; }
+}

@@ -1,0 +1,138 @@
+/* components-resize-panels.css — bespoke styles for the resizable-panels specimen.
+ * The seam is a 1px hairline of the SAME material as every other border; the grip
+ * dots + accent flash + col-resize cursor only surface on hover/focus so a panel at
+ * rest stays calm. Drag mutates the grid column widths via --layers-w / --insp-w
+ * custom properties (set inline from useState) — no per-frame width animation. */
+
+/* 1px-stroke glyph — currentColor so it retints with the row. */
+.g { width: 14px; height: 14px; display: block; flex: none; }
+.g path, .g rect, .g circle, .g line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ─── The working shell — layers | grip | canvas | grip | inspector ───────── */
+.rp-shell {
+  display: grid;
+  grid-template-columns: var(--layers-w, 208px) 8px 1fr 8px var(--insp-w, 256px);
+  height: 380px;
+  background: var(--border-subtle);          /* hairline seams show through the 1px gaps */
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  margin: 0 0 var(--space-4);
+  user-select: none;
+}
+.rp-shell.is-dragging { cursor: col-resize; }
+.rp-shell.is-dragging * { cursor: col-resize; }
+
+/* every region shares ONE material — bg-1, the same hairline, the same radii */
+.rp-pane { background: var(--bg-1); display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+.rp-pane-hd {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  font-family: var(--font-mono); font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-2);
+}
+.rp-pane-hd .rp-w {
+  margin-left: auto; color: var(--fg-1); font-variant-numeric: tabular-nums;
+  text-transform: none; letter-spacing: 0;
+}
+
+/* left — layers tree */
+.rp-layers .rp-tree { padding: var(--space-3) var(--space-2); display: flex; flex-direction: column; gap: 2px; overflow: auto; }
+.rp-layers .tree-row { gap: var(--space-2); white-space: nowrap; }
+.rp-layers .tree-row .g { color: var(--fg-2); }
+
+/* center — the dotted canvas */
+.rp-canvas {
+  position: relative;
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(var(--canvas-dot) 1.2px, transparent 1.2px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+  min-width: 0;
+}
+.rp-node {
+  position: absolute; left: 50%; top: 48%; transform: translate(-50%, -50%);
+  width: 168px; height: 116px;
+  background: var(--bg-2); border: 1px solid var(--border-default);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-md);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2);
+  outline: 1.5px solid var(--accent); outline-offset: 2px;
+}
+.rp-handle { position: absolute; width: 7px; height: 7px; background: var(--accent); border: 1px solid var(--accent-fg); border-radius: var(--radius-xs); }
+.rp-handle.tl { left: -6px; top: -6px; } .rp-handle.tr { right: -6px; top: -6px; }
+.rp-handle.bl { left: -6px; bottom: -6px; } .rp-handle.br { right: -6px; bottom: -6px; }
+.rp-readout {
+  position: absolute; left: 50%; top: calc(48% - 64px); transform: translateX(-50%);
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--type-xs);
+  background: var(--accent); color: var(--accent-fg); padding: 1px var(--space-2);
+  border-radius: var(--radius-xs); white-space: nowrap;
+}
+.rp-hint {
+  position: absolute; left: 0; right: 0; bottom: var(--space-3); text-align: center;
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: var(--tracking-wide);
+  text-transform: uppercase; color: var(--fg-3);
+}
+
+/* right — inspector */
+.rp-insp-bd { padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-1); overflow: auto; }
+
+/* ─── The grip — 8px hit area centered on a 1px visible seam ──────────────── */
+.rp-grip {
+  position: relative; background: var(--bg-1); cursor: col-resize;
+  display: grid; place-items: center;
+}
+/* the visible 1px seam — same hairline as everything else, at rest */
+.rp-grip::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px;
+  transform: translateX(-50%); background: var(--border-subtle);
+  transition: background var(--dur-flip) var(--ease-out), width var(--dur-flip) var(--ease-out);
+}
+.rp-grip .grip-g { width: 6px; height: 18px; color: var(--fg-3); opacity: 0; transition: opacity var(--dur-flip) var(--ease-out); position: relative; }
+.rp-grip:hover::before, .rp-grip:focus-visible::before, .rp-grip.is-active::before { background: var(--accent); }
+.rp-grip:hover .grip-g, .rp-grip:focus-visible .grip-g, .rp-grip.is-active .grip-g { opacity: 1; color: var(--accent-fg); }
+.rp-grip:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+@media (prefers-reduced-motion: reduce) {
+  .rp-grip::before, .rp-grip .grip-g { transition: none; }
+}
+
+/* ─── Live meters — pointer position as a % of each range ─────────────────── */
+.rp-meters { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5); margin: 0 0 var(--space-6); }
+.rp-meter { display: flex; align-items: center; gap: var(--space-3); }
+.rp-meter-lbl { font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-2); width: 64px; }
+.rp-track { flex: 1; height: 4px; border-radius: var(--radius-pill); background: var(--bg-3); overflow: hidden; }
+.rp-fill { display: block; height: 100%; background: var(--accent); border-radius: var(--radius-pill); transition: width var(--dur-soft) var(--ease-out); }
+.rp-meter-val { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--type-xs); color: var(--fg-1); width: 40px; text-align: right; }
+@media (prefers-reduced-motion: reduce) { .rp-fill { transition: none; } }
+
+/* ─── Handle anatomy — rest vs hover ──────────────────────────────────────── */
+.rp-anatomy { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin: 0 0 var(--space-6); }
+.rp-anatomy figure { margin: 0; border: 1px solid var(--border-default); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-1); }
+.rp-anatomy figcaption { padding: var(--space-3) var(--space-4); font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-2); border-top: 1px solid var(--border-subtle); }
+.rp-anatomy-vis { position: relative; height: 120px; background: var(--bg-2); display: grid; place-items: center; }
+.rp-anatomy-vis.is-hover { cursor: col-resize; }
+.rp-anatomy-hit { position: absolute; top: 0; bottom: 0; left: 50%; width: 8px; transform: translateX(-50%); background: color-mix(in oklab, var(--accent) 10%, transparent); border-inline: 1px dashed var(--accent-muted); }
+.rp-anatomy-vis:not(.is-hover) .rp-anatomy-hit { background: transparent; border-inline-color: var(--border-subtle); }
+.rp-anatomy-seam { position: absolute; top: var(--space-5); bottom: var(--space-5); left: 50%; width: 1px; transform: translateX(-50%); background: var(--border-subtle); }
+.rp-anatomy-vis.is-hover .rp-anatomy-seam { background: var(--accent); }
+.rp-anatomy-dots { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+.rp-anatomy-dots .grip-g { width: 6px; height: 18px; color: var(--accent-fg); opacity: 1; }
+
+/* ─── Constraints table ───────────────────────────────────────────────────── */
+.rp-table { width: 100%; border-collapse: collapse; margin: 0 0 var(--space-5); border: 1px solid var(--border-default); border-radius: var(--radius-md); overflow: hidden; }
+.rp-table th, .rp-table td { text-align: left; padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-subtle); font-size: var(--type-sm); }
+.rp-table thead th { font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-2); background: var(--bg-1); }
+.rp-table tbody tr:last-child td { border-bottom: 0; }
+.rp-table td:first-child { color: var(--fg-0); font-weight: 500; }
+.rp-table td { color: var(--fg-1); }
+.rp-table td.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--fg-0); }
+
+.rp-callout { align-items: flex-start; }
+.rp-callout .g { color: var(--status-info); }

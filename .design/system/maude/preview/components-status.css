@@ -1,0 +1,163 @@
+/*
+ * components-status.css — MAUDE/components-status
+ *
+ * Status badges / pills / dots + the handoff pipeline strip. Everything draws from
+ * --status-* (and --presence-* for the agent), never the accent: status is for what
+ * IS, the accent is for what you can act on. Solid pills are loud and reserved for
+ * the one live state; outline pills carry the rest of a dense list quietly.
+ */
+
+/* ─── Pills — pill radius, mono label, dot prefix ─────────────────────────── */
+.st-pillrow { gap: var(--space-3); margin-bottom: var(--space-4); }
+
+.st-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  border: 1px solid currentColor;
+  background: transparent;
+  line-height: var(--lh-xs);
+}
+.st-pill::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+  flex: none;
+}
+
+/* Outline (quiet) — text + border in the status hue. */
+.st-success { color: var(--status-success); }
+.st-warn    { color: var(--status-warn); }
+.st-error   { color: var(--status-error); }
+.st-info    { color: var(--status-info); }
+
+/* Solid (loud) — filled status bg, fg flips to accent-fg; dot flips too. */
+.st-pill--solid { color: var(--bg-0); border-color: transparent; }
+.st-pill--solid::before { background: var(--accent-fg); }
+.st-pill--solid.st-success { background: var(--status-success); color: var(--accent-fg); }
+.st-pill--solid.st-warn    { background: var(--status-warn);    color: var(--accent-fg); }
+.st-pill--solid.st-error   { background: var(--status-error);   color: var(--accent-fg); }
+.st-pill--solid.st-info    { background: var(--status-info);    color: var(--accent-fg); }
+
+/* ─── Presence row ────────────────────────────────────────────────────────── */
+.st-presrow { gap: var(--space-6); }
+.st-pres { display: inline-flex; align-items: center; gap: var(--space-3); }
+.st-pres-lbl { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-1); }
+
+/* ─── Handoff pipeline strip ──────────────────────────────────────────────── */
+.st-pipes {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-6);
+}
+.st-pipe-panel .panel-hd { font-family: var(--font-mono); }
+
+.st-pipe {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-5) var(--space-5);
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-wrap: wrap;
+}
+.st-step {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.st-step-badge {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  display: inline-grid;
+  place-content: center;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-default);
+  background: var(--bg-2);
+  color: var(--fg-2);
+}
+.st-step-name {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+
+/* Connector hairline between steps. */
+.st-conn {
+  width: var(--space-6);
+  height: 1px;
+  background: var(--border-default);
+  margin: 0 var(--space-3);
+  flex: none;
+}
+
+/* Done — quiet green tick, name reads as resolved. */
+.st-step--done .st-step-badge {
+  color: var(--status-success);
+  border-color: color-mix(in oklab, var(--status-success) 50%, var(--border-default));
+}
+.st-step--done .st-step-name { color: var(--fg-1); }
+
+/* Active — the ONE solid step; agent-hue fill, name promotes to fg-0. */
+.st-step--active .st-step-badge {
+  background: var(--presence-agent);
+  border-color: var(--presence-agent);
+}
+.st-step--active .st-step-name { color: var(--fg-0); font-weight: 500; }
+
+/* Failed — the other solid earner; status-error fill, glyph in accent-fg. */
+.st-step--failed .st-step-badge {
+  background: var(--status-error);
+  border-color: var(--status-error);
+  color: var(--accent-fg);
+}
+.st-step--failed .st-step-name { color: var(--status-error); }
+.st-step--failed ~ .st-step .st-step-name { color: var(--fg-3); }   /* downstream steps dim */
+
+/* Todo — hollow dot, deferred. */
+.st-step--todo .st-step-name { color: var(--fg-3); }
+.st-todo-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+}
+
+/* The live step pulses softly in the agent hue (≤56px element — safe per ANIMATION SAFETY). */
+.st-pulse {
+  animation: st-pulse-kf 1400ms var(--ease-in-out) infinite alternate;
+}
+@keyframes st-pulse-kf {
+  0%   { box-shadow: 0 0 0 2px color-mix(in oklab, var(--presence-agent) 30%, transparent); }
+  100% { box-shadow: 0 0 0 5px color-mix(in oklab, var(--presence-agent) 0%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .st-pulse { animation: none; }
+}
+
+/* ─── Row indicators ──────────────────────────────────────────────────────── */
+.st-rows { display: flex; flex-direction: column; gap: var(--space-3); margin: 0 0 var(--space-6); }
+.st-row {
+  display: grid;
+  grid-template-columns: 3px 1fr auto;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+}
+.st-row-bar { align-self: stretch; border-radius: var(--radius-pill); }
+.st-bar--success { background: var(--status-success); }
+.st-bar--warn    { background: var(--status-warn); }
+.st-bar--error   { background: var(--status-error); }
+.st-row-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.st-row-body strong { color: var(--fg-0); font-size: var(--type-sm); font-weight: 500; }
+.st-row-sub { color: var(--fg-2); font-size: var(--type-xs); }

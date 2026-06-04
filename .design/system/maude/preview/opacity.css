@@ -1,0 +1,95 @@
+/* opacity.css — bespoke styles for the opacity-ladder specimen.
+ * Opacity is a value, not a token. The ladder builds three things: accent-tint
+ * selection, the disabled state (fg-3), and the dialog scrim over the canvas. */
+
+/* ─── The ramp, over a dotted canvas so dots read through ───────────────── */
+.op-ramp {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(176px, 1fr));
+  gap: var(--space-4);
+  margin: 0 0 var(--space-6);
+}
+.op-chip {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(var(--canvas-dot) 1.2px, transparent 1.2px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+  box-shadow: var(--shadow-sm);
+}
+.op-chip-fill { height: 72px; background: var(--accent); }
+.op-chip-meta {
+  background: var(--bg-1);
+  border-top: 1px solid var(--border-subtle);
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.op-chip-meta strong { font-size: var(--type-sm); color: var(--fg-0); font-variant-numeric: tabular-nums; }
+.op-role { font-size: var(--type-xs); color: var(--accent); letter-spacing: var(--tracking-wide); text-transform: uppercase; }
+.op-use { font-size: var(--type-xs); color: var(--fg-1); line-height: var(--lh-xs); }
+
+/* ─── Accent-tint selection demo ────────────────────────────────────────── */
+.op-tint-demo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-5);
+  align-items: start;
+  margin: 0 0 var(--space-6);
+}
+.op-layers .tree-row { font-size: var(--type-sm); }
+.op-tint-note {
+  display: flex;
+  gap: var(--space-4);
+  align-items: flex-start;
+  padding: var(--space-4);
+  background: var(--bg-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.op-tint-note strong { font-size: var(--type-sm); color: var(--fg-0); }
+.op-tint-note p { margin: 2px 0 0; font-size: var(--type-xs); }
+.op-tint-note p.mono { color: var(--fg-2); }
+.op-swatch {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-default);
+}
+.op-swatch--tint { background: var(--accent-tint); }
+
+/* ─── Disabled row helper ───────────────────────────────────────────────── */
+.op-divider { width: 1px; height: 24px; background: var(--border-subtle); }
+
+/* ─── Scrim stage ───────────────────────────────────────────────────────── */
+.op-scrim-stage {
+  position: relative;
+  height: 268px;
+  overflow: hidden;
+  margin: 0 0 var(--space-6);
+}
+.op-scrim-content { position: absolute; inset: 0; padding: var(--space-6); }
+.op-ghost-node {
+  position: absolute;
+  left: 56px;
+  top: 48px;
+  width: 168px;
+  height: 96px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+.op-ghost-node--b { left: 248px; top: 132px; width: 132px; height: 72px; }
+.op-scrim { position: absolute; inset: 0; background: oklch(0 0 0 / 0.6); }
+.op-dialog {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 320px;
+  max-width: calc(100% - var(--space-7));
+  box-shadow: var(--shadow-lg);
+}

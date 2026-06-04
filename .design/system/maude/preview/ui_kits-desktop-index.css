@@ -1,0 +1,59 @@
+/* ui_kits-desktop-index.css — the catalog grid. One card material, lifted from
+ * .panel; the signature entries get an accent inset bar (one job: "start here"). */
+
+.idx-grid {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  margin: 0 0 var(--space-6);
+}
+
+.idx-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--bg-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  color: var(--fg-0);
+  transition: background var(--dur-soft) var(--ease-out),
+              border-color var(--dur-soft) var(--ease-out),
+              transform var(--dur-flip) var(--ease-out);
+}
+.idx-card:hover { background: var(--bg-2); border-color: var(--border-strong); transform: translateY(-1px); }
+.idx-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.idx-card--sig { box-shadow: inset 2px 0 0 var(--accent); }
+
+.idx-card-title {
+  font-family: var(--font-display);
+  font-size: var(--type-md);
+  font-weight: 600;
+  letter-spacing: -0.006em;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.idx-sig {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  font-weight: 400;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.idx-card-note { color: var(--fg-1); font-size: var(--type-sm); line-height: var(--lh-sm); }
+.idx-card-slug {
+  margin-top: auto;
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+  letter-spacing: var(--tracking-wide);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .idx-card { transition: none; }
+  .idx-card:hover { transform: none; }
+}

@@ -1,0 +1,153 @@
+/* components-toast-menu.css — bespoke styles for the transient-chrome specimen.
+ * Toasts + context menu + dropdown all share the .panel material (1px hairlines,
+ * --radius-md, --shadow-md). Reveal is a single-shot, compositor-only soft fade
+ * (opacity + a 4px lift) that settles at the rested state — NOT an infinite loop,
+ * because these surfaces are read, not watched. Bounded to each surface's own box.
+ * Reduced-motion: the --dur-soft token collapses to 1ms (token-driven, a11y). */
+
+/* ── bounded soft reveal — opacity + small transform only (compositor-safe) ─ */
+@keyframes toast-reveal-kf {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+/* single-shot: settles at the rested state and stays. forwards holds the end
+   frame so nothing flashes back to invisible on the second look. */
+.motion-soft-once {
+  animation: toast-reveal-kf var(--dur-panel) var(--ease-out) both;
+}
+/* tiny stagger so the toast stack reveals top-down, still bounded + cheap */
+.toast-stack .toast:nth-child(2) { animation-delay: 40ms; }
+.toast-stack .toast:nth-child(3) { animation-delay: 80ms; }
+.toast-stack .toast:nth-child(4) { animation-delay: 120ms; }
+:root[data-reduced-motion="true"] .motion-soft-once { animation: none !important; }
+
+/* ── toasts ───────────────────────────────────────────────────────────────── */
+.toast-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 420px;
+  margin: 0 0 var(--space-6);
+}
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-1);
+  border: 1px solid var(--border-default);
+  border-left-width: 3px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+.toast-ic { display: inline-flex; padding-top: 1px; flex-shrink: 0; }
+.toast-bd { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.toast-bd strong { font-size: var(--type-sm); font-weight: 600; color: var(--fg-0); }
+.toast-sub { font-size: var(--type-xs); color: var(--fg-1); }
+.toast-act { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
+
+.toast--agent { border-left-color: var(--presence-agent); }
+.toast--agent .toast-ic { color: var(--presence-agent); }
+.toast--ok    { border-left-color: var(--status-success); }
+.toast--ok .toast-ic { color: var(--status-success); }
+.toast--sync  { border-left-color: var(--status-info); }
+.toast--sync .toast-ic { color: var(--status-info); }
+.toast--error { border-left-color: var(--status-error); }
+.toast--error .toast-ic { color: var(--status-error); }
+
+/* the sync glyph rotates — a 16px element, well under the 56px sparkle ceiling,
+   compositor-only (transform), bounded to its own box. */
+@keyframes toast-spin-kf { to { transform: rotate(360deg); } }
+.toast-ic--spin svg { animation: toast-spin-kf 1.1s linear infinite; transform-origin: 50% 50%; }
+:root[data-reduced-motion="true"] .toast-ic--spin svg { animation: none !important; }
+
+/* ── shared menu material ─────────────────────────────────────────────────── */
+.menu {
+  background: var(--bg-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-2);
+  width: 244px;
+}
+.menu-target {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  margin-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--fg-2);
+  font-size: var(--type-xs);
+}
+.menu-target .mt-name { color: var(--fg-0); font-size: var(--type-sm); }
+.menu-target .mt-meta { margin-left: auto; color: var(--fg-2); font-size: var(--type-xs); }
+
+.menu-item {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--type-sm);
+  color: var(--fg-1);
+  cursor: default;
+  transition: background var(--dur-soft) var(--ease-out), color var(--dur-soft) var(--ease-out);
+}
+.menu-item:hover { background: var(--bg-4); color: var(--fg-0); }
+.menu-item.is-destructive { color: var(--status-error); }
+.menu-item.is-destructive:hover {
+  background: color-mix(in oklab, var(--status-error) 16%, transparent);
+  color: var(--status-error);
+}
+.mi-label { display: inline-flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.mi-glyph { display: inline-flex; color: var(--fg-2); }
+.menu-item:hover .mi-glyph { color: var(--fg-1); }
+.mi-check { color: var(--accent); flex-shrink: 0; }
+.mi-keys { display: inline-flex; gap: 3px; flex-shrink: 0; }
+.menu-sep { height: 1px; background: var(--border-subtle); margin: var(--space-2) calc(-1 * var(--space-2)); }
+
+/* ── context-menu demo — menu anchored to a node on a dotted canvas ───────── */
+.menu-demo {
+  position: relative;
+  display: flex;
+  gap: var(--space-6);
+  align-items: flex-start;
+  padding: var(--space-6);
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(var(--canvas-dot) 1.2px, transparent 1.2px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  margin: 0 0 var(--space-6);
+}
+.menu-canvas { position: relative; width: 200px; height: 150px; flex-shrink: 0; }
+.md-node {
+  position: absolute; left: 8px; top: 18px; width: 160px; height: 108px;
+  background: var(--bg-2); border: 1px solid var(--border-default);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-sm);
+  display: flex; align-items: center; justify-content: center; gap: var(--space-2);
+  font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-1);
+}
+.md-node--sel { outline: 1.5px solid var(--accent); outline-offset: 2px; }
+.md-node .row-glyph,
+.md-node svg { color: var(--accent); }
+.md-handle { position: absolute; width: 7px; height: 7px; background: var(--accent); border: 1px solid var(--accent-fg); border-radius: var(--radius-xs); }
+.md-handle.tl { left: -5px; top: -5px; }
+.md-handle.br { right: -5px; bottom: -5px; }
+/* the right-click point — a small caret tying the menu to the node */
+.md-caret { position: absolute; right: -6px; bottom: 18px; width: 6px; height: 6px; border-radius: var(--radius-pill); background: var(--accent); }
+
+/* ── dropdown demo — same menu, anchored below a toolbar button ───────────── */
+.dropdown-demo {
+  display: inline-flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-6);
+}
+.dd-trigger {
+  align-self: flex-start;
+  gap: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+.dd-menu { width: 232px; }

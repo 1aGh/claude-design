@@ -1,0 +1,162 @@
+/* type-scale.css — bespoke styles for the Inter ladder specimen.
+ * The mono gutter (token + resolved px + family) frames each step; the sample
+ * itself is set straight from the --type-* / --lh-* tokens inline so the ladder
+ * is honest — what you read is what the token resolves to. */
+
+/* ─── The ladder ─────────────────────────────────────────────────────────── */
+.ts-ladder {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-1);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  margin: 0 0 var(--space-6);
+}
+.ts-step {
+  display: grid;
+  grid-template-columns: 132px 1fr;
+  grid-template-areas: "spec sample" "spec where";
+  align-items: baseline;
+  gap: var(--space-1) var(--space-5);
+  padding: var(--space-4) var(--space-5);
+}
+.ts-step + .ts-step { border-top: 1px solid var(--border-subtle); }
+
+/* left gutter — the mono spec block */
+.ts-spec {
+  grid-area: spec;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-self: center;
+}
+.ts-tok {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--type-xs);
+  color: var(--accent);
+  letter-spacing: var(--tracking-wide);
+}
+.ts-num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+}
+.ts-fam {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  width: fit-content;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-subtle);
+}
+.ts-fam--display { color: var(--accent); border-color: var(--accent-muted); background: var(--accent-tint); }
+.ts-fam--body { color: var(--fg-2); background: var(--bg-2); }
+
+/* the live sample — sized inline from tokens */
+.ts-sample {
+  grid-area: sample;
+  color: var(--fg-0);
+  min-width: 0;
+}
+.ts-where {
+  grid-area: where;
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+  letter-spacing: var(--tracking-wide);
+}
+
+/* ─── Display vs body pair ───────────────────────────────────────────────── */
+.ts-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-6);
+}
+.ts-card {
+  margin: 0;
+  padding: var(--space-5);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-1);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.ts-card-tag {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.ts-disp {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--type-xl);
+  line-height: var(--lh-xl);
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg-0);
+}
+.ts-body {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--type-base);
+  line-height: var(--lh-base);
+  color: var(--fg-1);
+}
+.ts-disp-meta {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  color: var(--fg-3);
+}
+
+/* ─── Tabular figures demo ───────────────────────────────────────────────── */
+.ts-fig {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  max-width: 520px;
+}
+.ts-fig-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-1);
+}
+.ts-fig-label {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: var(--space-2);
+}
+.ts-fig-x { color: var(--status-warn); }
+.ts-fig-ok { color: var(--status-success); }
+.ts-fig-val {
+  font-size: var(--type-md);
+  line-height: var(--lh-md);
+  color: var(--fg-0);
+  text-align: right;
+}
+/* proportional: Inter's default figures — digits vary in width, so columns drift */
+.ts-fig-prop {
+  font-family: var(--font-body);
+  font-variant-numeric: proportional-nums;
+}
