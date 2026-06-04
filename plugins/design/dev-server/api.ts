@@ -219,6 +219,11 @@ const ANNOTATION_SVG_ELEMENTS = new Set([
   'polygon',
   'circle',
   'text',
+  // Annotation polish (item 4a) — `tspan` carries one line of multi-line text
+  // inside a `<text>` (SVG `<text>` ignores `\n`). Inert presentational element
+  // with no script capability — same safety class as `text`. Only `x`/`dy`
+  // (geometry) survive; the attribute denylist strips any on*/style/href.
+  'tspan',
   // Phase 23 — `image` (dropped/pasted raster). The ONLY element allowed to keep
   // an href, and ONLY a relative assets/<sha8>.<ext> path (ASSET_IMAGE_HREF_RE) —
   // every external / data: / javascript: / `..` href is still stripped. <image>

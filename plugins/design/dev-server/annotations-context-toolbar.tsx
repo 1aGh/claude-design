@@ -26,6 +26,7 @@ import {
   type ArrowHead,
   type ArrowLineType,
   FILL_PALETTE,
+  type ListType,
   STICKY_PALETTE,
   STROKE_PALETTE,
   type Stroke,
@@ -48,14 +49,18 @@ import {
   IconCornerSoft,
   IconCornerSquare,
   IconDash,
+  IconItalic,
   IconLineCurved,
   IconLineElbow,
   IconLineStraight,
   IconLineThick,
   IconLineThin,
   IconLink,
+  IconListBullet,
+  IconListOrdered,
   IconStrike,
   IconTrash,
+  IconUnderline,
 } from './canvas-icons.tsx';
 import { useAnnotationSelectionOptional } from './use-annotation-selection.tsx';
 import { isHttpUrl, linkDomain } from './use-canvas-media-drop.tsx';
@@ -446,6 +451,11 @@ export function AnnotationContextToolbar() {
     // separately below.
     const allRect = selectedStrokes.every((s) => s.tool === 'rect');
     const allArrow = selectedStrokes.every((s) => s.tool === 'arrow');
+    // Dash now applies to arrows AND every outlined shape (rect / ellipse /
+    // polygon) — item 7. Heads + line-type (arrowDir) stay arrow-only.
+    const allDashable = selectedStrokes.every(
+      (s) => s.tool === 'arrow' || s.tool === 'rect' || s.tool === 'ellipse' || s.tool === 'polygon'
+    );
     return {
       color: true,
       fill: allFillable,
@@ -453,7 +463,7 @@ export function AnnotationContextToolbar() {
       fontSize: fontSizeApplicable,
       cornerRadius: allRect,
       arrowDir: allArrow,
-      dash: allArrow,
+      dash: allDashable,
     };
   }, [selectedStrokes]);
 
@@ -569,6 +579,40 @@ export function AnnotationContextToolbar() {
     },
     [store, selectedStrokes]
   );
+  // Italic / underline / list (items 4b + 4c) — same text + sticky fan-out.
+  const setItalic = useCallback(
+    (italic: boolean) => {
+      if (!store) return;
+      for (const s of selectedStrokes) {
+        if (s.tool === 'text' || s.tool === 'sticky') {
+          store.updateStroke(s.id, { italic } as Partial<Stroke>);
+        }
+      }
+    },
+    [store, selectedStrokes]
+  );
+  const setUnderline = useCallback(
+    (underline: boolean) => {
+      if (!store) return;
+      for (const s of selectedStrokes) {
+        if (s.tool === 'text' || s.tool === 'sticky') {
+          store.updateStroke(s.id, { underline } as Partial<Stroke>);
+        }
+      }
+    },
+    [store, selectedStrokes]
+  );
+  const setListType = useCallback(
+    (listType: ListType | undefined) => {
+      if (!store) return;
+      for (const s of selectedStrokes) {
+        if (s.tool === 'text' || s.tool === 'sticky') {
+          store.updateStroke(s.id, { listType } as Partial<Stroke>);
+        }
+      }
+    },
+    [store, selectedStrokes]
+  );
   const setAlign = useCallback(
     (align: TextAlign) => {
       if (!store) return;
@@ -621,12 +665,17 @@ export function AnnotationContextToolbar() {
     },
     [store, selectedStrokes]
   );
-  // Phase 21 — arrow dash toggle.
+  // Dash toggle — arrow + rect / ellipse / polygon (item 7).
   const setDashed = useCallback(
     (dashed: boolean) => {
       if (!store) return;
       for (const s of selectedStrokes) {
-        if (s.tool === 'arrow') {
+        if (
+          s.tool === 'arrow' ||
+          s.tool === 'rect' ||
+          s.tool === 'ellipse' ||
+          s.tool === 'polygon'
+        ) {
           store.updateStroke(s.id, { dashed } as Partial<Stroke>);
         }
       }
@@ -822,6 +871,29 @@ export function AnnotationContextToolbar() {
         )
       )
     : undefined;
+  const uniqItalic = caps.fontSize
+    ? uniformValue(
+        selectedStrokes.map((s) =>
+          s.tool === 'text' || s.tool === 'sticky' ? !!s.italic : undefined
+        )
+      )
+    : undefined;
+  const uniqUnderline = caps.fontSize
+    ? uniformValue(
+        selectedStrokes.map((s) =>
+          s.tool === 'text' || s.tool === 'sticky' ? !!s.underline : undefined
+        )
+      )
+    : undefined;
+  // List type — undefined when no list (the active-state for the two list
+  // toggles reads off this; both off ⇒ no list).
+  const uniqListType = caps.fontSize
+    ? uniformValue(
+        selectedStrokes.map((s) =>
+          s.tool === 'text' || s.tool === 'sticky' ? (s.listType ?? 'none') : undefined
+        )
+      )
+    : undefined;
   const uniqAlign = caps.fontSize
     ? uniformValue(
         selectedStrokes.map((s) => {
@@ -862,7 +934,11 @@ export function AnnotationContextToolbar() {
     : undefined;
   const uniqDashed = caps.dash
     ? uniformValue(
-        selectedStrokes.map((s) => (s.tool === 'arrow' ? (s.dashed ?? false) : undefined))
+        selectedStrokes.map((s) =>
+          s.tool === 'arrow' || s.tool === 'rect' || s.tool === 'ellipse' || s.tool === 'polygon'
+            ? (s.dashed ?? false)
+            : undefined
+        )
       )
     : undefined;
 
@@ -983,12 +1059,32 @@ export function AnnotationContextToolbar() {
           <button
             type="button"
             className="dc-annot-ctx-ibtn"
+            aria-label="Italic"
+            aria-pressed={uniqItalic === true}
+            title="Italic"
+            onClick={() => setItalic(!(uniqItalic === true))}
+          >
+            <IconItalic />
+          </button>
+          <button
+            type="button"
+            className="dc-annot-ctx-ibtn"
             aria-label="Strikethrough"
             aria-pressed={uniqStrike === true}
             title="Strikethrough"
             onClick={() => setStrike(!(uniqStrike === true))}
           >
             <IconStrike />
+          </button>
+          <button
+            type="button"
+            className="dc-annot-ctx-ibtn"
+            aria-label="Underline"
+            aria-pressed={uniqUnderline === true}
+            title="Underline"
+            onClick={() => setUnderline(!(uniqUnderline === true))}
+          >
+            <IconUnderline />
           </button>
           <IconDropdown
             ariaLabel="Text alignment"
@@ -1000,6 +1096,27 @@ export function AnnotationContextToolbar() {
             }}
             onPick={(v) => setAlign(v as TextAlign)}
           />
+          {/* List style — two mutually-exclusive toggles; click-again clears. */}
+          <button
+            type="button"
+            className="dc-annot-ctx-ibtn"
+            aria-label="Bulleted list"
+            aria-pressed={uniqListType === 'bullet'}
+            title="Bulleted list"
+            onClick={() => setListType(uniqListType === 'bullet' ? undefined : 'bullet')}
+          >
+            <IconListBullet />
+          </button>
+          <button
+            type="button"
+            className="dc-annot-ctx-ibtn"
+            aria-label="Numbered list"
+            aria-pressed={uniqListType === 'number'}
+            title="Numbered list"
+            onClick={() => setListType(uniqListType === 'number' ? undefined : 'number')}
+          >
+            <IconListOrdered />
+          </button>
         </>
       ) : null}
       {caps.cornerRadius ? (

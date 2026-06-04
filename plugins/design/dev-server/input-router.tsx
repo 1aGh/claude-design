@@ -68,6 +68,10 @@ export type Tool =
   | 'hand'
   | 'comment'
   | 'pen'
+  // Annotation polish (item 8) — FigJam-style highlighter. A `pen`-shaped tool
+  // that produces a translucent wide multiply stroke (a PenStroke with
+  // `highlighter:true`), not a new stroke type.
+  | 'highlighter'
   // Phase 24 — `shape` is the single active draw tool that produces rect /
   // ellipse / polygon strokes (the kind is chosen via the palette popover).
   // `rect` / `ellipse` stay in the union as the stroke discriminants they
@@ -82,6 +86,7 @@ export type Tool =
 
 const ANNOTATION_TOOLS = new Set<Tool>([
   'pen',
+  'highlighter',
   'shape',
   'rect',
   'ellipse',
@@ -167,6 +172,8 @@ export function classify(input: ClassifyInput): RouterAction {
     if (k === 'h') return { kind: 'tool', tool: 'hand' };
     if (k === 'c') return { kind: 'tool', tool: 'comment' };
     if (k === 'b') return { kind: 'tool', tool: 'pen' };
+    // I = hIghlighter (a free bare letter; 'H' is taken by Hand).
+    if (k === 'i') return { kind: 'tool', tool: 'highlighter' };
     // Phase 24 — R (and legacy O) both arm the single Shape tool; the specific
     // primitive is picked from the palette's shape-kind popover.
     if (k === 'r' || k === 'o') return { kind: 'tool', tool: 'shape' };

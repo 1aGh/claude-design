@@ -229,7 +229,7 @@ function ensurePaletteStyles(): void {
 const NAV_TOOLS = ['move', 'hand', 'comment'] as const;
 // Phase 24 — the two rect/ellipse buttons collapse into one Shape tool (with a
 // kind popover); sticky/arrow/text/eraser keep their order.
-const DRAW_TOOLS = ['pen', 'shape', 'sticky', 'arrow', 'text', 'eraser'] as const;
+const DRAW_TOOLS = ['pen', 'highlighter', 'shape', 'sticky', 'arrow', 'text', 'eraser'] as const;
 
 // Phase 24 — the Shape tool's primitive picker (popover order matches FigJam).
 const SHAPE_KINDS: ReadonlyArray<{ kind: ShapeKind; label: string }> = [
