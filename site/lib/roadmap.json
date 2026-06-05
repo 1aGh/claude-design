@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-05T09:27:45.342Z",
+  "generated": "2026-06-05T11:02:17.758Z",
   "currentPhase": null,
   "phases": [
     {
@@ -818,11 +818,11 @@
     },
     {
       "id": "feature-draw-animation-layer",
-      "title": "Feature — Draw animation layer: a serializable keyframe IR + native per-platform renderers + motion-aware verify loop",
+      "title": "Feature — Draw animation: keyframe IR (authoring) + Lottie-from-code (web+mobile delivery)",
       "status": "planned",
       "shipTarget": null,
       "date": null,
-      "summary": "Give the /design:draw stack a first-class animation capability so animated marks (mascots, animated logos/icons, motion spots) are generated and verified inside the draw loop, not hand-rolled in /d...",
+      "summary": "tracks on any node) is the cross-platform animation source; maude is its editor (/design:draw + motion utils). It extends the DDR-067 single-source invariant from static geometry to time. (alias /d...",
       "planPath": ".ai/plans/feature-draw-animation-layer.md",
       "archived": false,
       "phaseKey": null

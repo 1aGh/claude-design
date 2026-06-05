@@ -1,7 +1,79 @@
-# DDR-094: Draw animation as a serializable keyframe IR — native authoring + native per-platform renderers (web SMIL/motion, RN react-native-svg + Reanimated); Lottie a secondary export only
+# DDR-094: Draw animation as a serializable keyframe IR — native authoring in maude; **Lottie emitted from code is the validated 1:1 web+mobile delivery**; per-platform native renderers (rn-svg/Reanimated) a fallback for light cases
 
 - **Date:** 2026-06-05
-- **Status:** Accepted (decision recorded; implementation planned, not yet built — see [feature-draw-animation-layer plan](../plans/feature-draw-animation-layer.md))
+- **Status:** Accepted — **primary/fallback flipped after a working POC (2026-06-05); see the Update section below.** (Originally recorded native-renderer-primary; the POC found that doesn't hold for rich continuous animation.)
+
+> ## Update 2026-06-05 — POC built + self-verified; the primary path is Lottie-from-code
+>
+> A full POC ported the studyfi-v3 fire mascot to React Native. It surfaced two
+> **real** limits of the native `react-native-svg` + Reanimated renderer that the
+> original "native-primary" decision didn't anticipate:
+>
+> 1. **`feTurbulence` / `feDisplacementMap` have NO native implementation** in
+>    react-native-svg 15.x (JS-only stubs; no iOS `.mm` / Android `.java`). Procedural
+>    texture (the body "shine") simply cannot render natively → must be pre-baked.
+> 2. **Continuous multi-layer path-`d` morph froze the whole app** — rn-svg re-parses
+>    a Path's `d` on every change and re-renders the whole `<Svg>` when any child
+>    updates; with SVG `<Filter>`s in the same tree it ran an offscreen pass every
+>    frame. Even isolated, continuous `d`-morph is at rn-svg's performance ceiling.
+> 3. **Hand-matching two implementations drifts** — the rn-svg port kept missing
+>    nuances (pre-jump tremble, mouth grit→yell) because it was a second hand-built
+>    renderer chasing the web by eye. "Guaranteed 1:1" is impossible by construction
+>    when web and native are separate implementations.
+>
+> **Lottie-from-code solves all three** and was validated: a python-lottie generator
+> (`to-lottie.py`) emits ONE `.lottie` from the same keyframe data + the `_layout.css`
+> choreography, **self-verified by rendering frames through the real lottie-web
+> runtime** (not cairo — cairo can't render masks). The SAME file plays on
+> `lottie-web` (web) and `lottie-react-native` (mobile) → **1:1 guaranteed by
+> construction**, performant (native Lottie runtime), and theme handled via Lottie
+> color overrides. The only thing Lottie also can't compute is procedural turbulence —
+> same pre-bake answer, but consistent across platforms.
+>
+> **Decision flip:** **Lottie emitted from code is the PRIMARY production delivery for
+> rich/continuous animation, on web AND mobile** (one artifact, both platforms).
+> Native rn-svg/Reanimated is the **fallback** for light/occasional animation where a
+> Lottie dependency isn't warranted. Authoring stays native in maude; `/design:to-lottie`
+> (alias `/design:to-rn`) is the productionizing handoff (e.g. inside `/flow:execute`).
+> The IR + `morphVariants` + per-segment-easing design (below) is unchanged — it now
+> feeds a `toLottie()` serializer as the primary target.
+>
+> ### Correct CSS/SMIL → Lottie conversion rules (the load-bearing findings)
+>
+> These are what the `/design:to-lottie` skill MUST encode (the POC found each the hard way):
+>
+> 1. **Per-segment easing from the actual CSS tokens.** A CSS `cubic-bezier(x1,y1,x2,y2)`
+>    becomes Lottie keyframe handles by applying the same `Bezier((x1,y1),(x2,y2))` to
+>    **every** keyframe (sets each kf's `o=(x1,y1)` + `i=(x2,y2)` → every segment exact).
+>    **Preserve overshoot (`y>1`)** — `--ease-out: cubic-bezier(0.34,1.42,0.5,1)` is the
+>    "snap/odpich"; a generic smooth/Sigmoid easing kills it. Each animation uses its OWN
+>    token (body/lids/mouth/aura = ease-in-out; fire-shoot = ease-out overshoot; morph = keySplines).
+> 2. **Port EVERY animated property** — easy to miss one (the POC initially dropped the
+>    mouth `grit→yell`). Enumerate from the CSS, don't eyeball.
+> 3. **Arc path commands (`A`) → parse with python-lottie (`parse_svg_file`)**, never
+>    hand-approximate with a bezier (the first mouth shape was wrong because of this).
+> 4. **Lottie `layers[0]` renders on TOP** (and within a layer/group, first shape = top).
+>    Build back→front then **reverse** the layer list (parenting resolves by `ind`, not
+>    array position, so reversing is safe).
+> 5. **Masks for clipping** (eyes, mouth) work on lottie-web/lottie-react-native but NOT
+>    in python-lottie's cairo preview — **self-verify through lottie-web headless**, not cairo.
+> 6. **Incommensurate sub-loops** (the 1.05/0.85/0.70 s flame flicker vs the 3.6 s master)
+>    can't be independent loops in one Lottie comp — bake the flicker keyframes across the
+>    comp duration and **hide the loop seam in an invisible phase** (here the extinguish, opacity 0).
+> 7. **Coordinate offset + baked static transforms** — shift the viewBox origin into the
+>    comp (here `+44` for `0 -44 120 176`), bake static `translate/scale` into vertices, and
+>    leave only the ANIMATED transforms as Lottie keyframes (jump on a parent null, flame
+>    envelope as a layer scale about the base).
+> 8. **Gradient opacity stops** are appended after color stops in the flat colors array
+>    (`[off,r,g,b,...]` then `[off,alpha,...]`, `count` = color-stop count) — needed for
+>    the soft aura glow + flame tip fade.
+>
+> POC artifacts: generator `AI-StudyMate/.design/_draw/_to-lottie.py`; output
+> `StudyFiMobile/src/components/mascot/mascot-fire.json`; the rn-svg fallback port lives
+> beside it (`Mascot.tsx`). Self-verify recipe: emit JSON → embed in an HTML with
+> `lottie.min.js` → `agent-browser` screenshot per `?f=<frame>` → compare to web.
+
+- **Status (original):** Accepted (decision recorded; implementation planned, not yet built — see [feature-draw-animation-layer plan](../plans/feature-draw-animation-layer.md))
 - **Tags:** design, dev-server, draw, animation, motion, svg, smil, react-native, reanimated, lottie, keyframe-ir, single-source, deep-research, regression-prevention
 - **Related:** [DDR-070](./DDR-070-svg-generation-geometry-engine.md) (the static geometry engine this extends), [DDR-074](./DDR-074-draw-composition-layer-and-discriminating-critic-metrics.md) (composition layer + discriminating metrics), [DDR-067](./DDR-067-annotation-figjam-parity-v2-shape-tool-arrowheads-cursors.md) (the single-source `SvgPrimitive` → SVG+JSX invariant generalized here), [DDR-045](./DDR-045-real-disk-path-resolution-for-compiled-dev-server.md) (engine path resolution), [DDR-062](./DDR-062-plugins-reach-executable-logic-via-maude.md) (verbs via `maude design`), and the StudyFi DDR-011 (SMIL `<animate>` over CSS `d:path()`) that motivated this.
 
