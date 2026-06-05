@@ -229,3 +229,24 @@ Extract shared libs out of `apps/studio/` into `packages/*` so `apps/desktop` (T
 - [ ] CLAUDE.md repointed (always-loaded context must not lie about paths).
 - [ ] `.ai/` operative refs repointed (`workflows.config.json` feed → `apps/studio/whats-new.json`, `state/`, `context/`, `docs/`, active `plans/`); historical record (`plans/archive/`, closed DDRs, `logs/`) left intact; DDR-095 supersedes the live-invariant DDRs (045/062/009/084/001) for the path.
 - [ ] Roadmap regen committed in the same change.
+
+---
+
+## Retro (2026-06-05)
+
+**Outcome:** Landed clean. `apps/studio` + `apps/hub` exist, `plugins/design/` is surface-only, `maude studio` alias added, DDR-095 recorded, `/flow:validate` GREEN, adversarial security pass = no-new-exposure. Committed to `main` in 3 commits (`2dfc4ad` pure move → `05a0d9c` repoints → site-regen).
+
+**What worked**
+- **Pure-move-first commit discipline.** Committing the content-free `git mv` alone (339× R100) before any repoint gave clean `git log --follow` history — the acceptance criterion held exactly as designed. The split was worth the extra commit.
+- **Verification found what grep couldn't.** The literal-string inventory (Task 1) caught ~1300 refs but **missed every depth-sensitive `../` walk** — the 5 real breaks (templates `_shell.html` + brief-board import, plugin.json reads, oxc/REPO_ROOT walks) surfaced ONLY under live `maude design serve` + the bun test suite. Lesson: for a relocation, the string grep is necessary but a live boot + full suite is the real gate.
+- **Restoring `dist/` after every source boot.** The dev-server self-heal (DDR-044) regenerated env-sensitive runtime bundles each time I booted or ran `pnpm test:dev-server`; `git checkout -- apps/studio/dist/` after each was essential — committing those would have shipped the v0.22.0-class broken bundles.
+
+**What didn't / friction**
+- **Extension-filtered grep is a trap.** The Task-1 inventory used `--include='*.{md,json,…}'` and silently missed `.gitignore`, `biome.jsonc`, `.tpl`, `.mdx`, `Dockerfile`. `git status` (untracked build artifacts) and `biome` (7820 false errors) are what caught the gitignore + biome-scope misses. An extension-agnostic `git grep -Il` from the start would have surfaced these in Task 1.
+- **The depth change (3-deep → 2-deep) was the whole hidden risk.** Every `../../..` repo-root walk and every `../<sibling>` reach had to be re-counted. A plan section enumerating "relative walks that escape the moved tree" up front would have front-loaded the 5 fixes instead of discovering them in Task 8.
+- **Test-runner mismatch wasted a cycle.** Ran `bun test` on `apps/hub` (40 fails) before realizing the hub is Node-only (`better-sqlite3` ≠ Bun). The per-app `package.json` `test` script is the source of truth — read it before picking a runner.
+
+**For next time (`/plan` + `/execute`)**
+- For any **directory relocation**, add an explicit task: "grep the moved tree for `import …'../`, `join(ROOT/HERE, '..'…)`, and `\.\./\.\./` ancestor walks; re-derive each against the new depth" — these are invisible to a path-string sweep and are where relocations actually break.
+- Bank the **"boot regenerates dist → restore before commit"** rule as a standing checklist item whenever a task boots the source dev-server (it's in CLAUDE.md but bit me 3× this run).
+- The `packages/*` Phase 2 extraction (deferred in DDR-095) will hit the same depth + import-rewrite surface at larger scale — budget for live-boot verification, not just grep.

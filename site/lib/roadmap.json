@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-05T07:27:21.012Z",
+  "generated": "2026-06-05T09:27:45.342Z",
   "currentPhase": null,
   "phases": [
     {
@@ -142,6 +142,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — mirror ai-banner.tsx, build-roadmap.mjs, and the HelpModal in client/app.jsx rather t...",
       "planPath": ".ai/plans/archive/feature-in-app-whats-new-tour.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-runtime-restructure-apps-packages",
+      "title": "Feature: Maude runtime restructure — extract dev-server + hub out of `plugins/design/` into top-level `apps/`",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, the binary-resolution path (DDR-009/045/084), the maude design <verb> dispatcher (DDR-062), npm files ship...",
+      "planPath": ".ai/plans/archive/feature-runtime-restructure-apps-packages.md",
       "archived": true,
       "phaseKey": null
     },
@@ -813,17 +824,6 @@
       "date": null,
       "summary": "Give the /design:draw stack a first-class animation capability so animated marks (mascots, animated logos/icons, motion spots) are generated and verified inside the draw loop, not hand-rolled in /d...",
       "planPath": ".ai/plans/feature-draw-animation-layer.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "feature-runtime-restructure-apps-packages",
-      "title": "Feature: Maude runtime restructure — extract dev-server + hub out of `plugins/design/` into top-level `apps/`",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, the binary-resolution path (DDR-009/045/084), the maude design <verb> dispatcher (DDR-062), npm files ship...",
-      "planPath": ".ai/plans/feature-runtime-restructure-apps-packages.md",
       "archived": false,
       "phaseKey": null
     },
