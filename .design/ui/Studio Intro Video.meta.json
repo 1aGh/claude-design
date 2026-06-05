@@ -1,0 +1,51 @@
+{
+  "title": "Studio Intro Video",
+  "subtitle": "The v3 intro film for the Maude landing — player placement + storyboard / shot list / script",
+  "brief": "Intro video bude na hlavni strance; storyboard artboard ze Studio Docs presunut do noveho canvasu Studio Intro Video.",
+  "platform": "desktop",
+  "designSystem": "maude",
+  "opt_out_scope": "palette",
+  "brief_sha": "c792a331",
+  "sections": [
+    {
+      "id": "intro",
+      "title": "Studio Intro Video — v3",
+      "subtitle": "MAUDE/INTRO · 2 artboards · landing placement + storyboard"
+    }
+  ],
+  "artboards": [
+    {
+      "id": "landing",
+      "label": "A · main-page placement",
+      "note": "Intro video as it sits on the landing hero — eyebrow + headline + Play CTA + the 16:9 player (scrubber, chapters, captions)"
+    },
+    {
+      "id": "storyboard",
+      "label": "B · storyboard & script",
+      "note": "v3 cut: 4-keyframe storyboard (blank canvas → agent draws → critics score → hand off) + chapters/voiceover + specs"
+    }
+  ],
+  "layout": {
+    "artboards": [
+      {
+        "id": "landing",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "storyboard",
+        "x": 1400,
+        "y": 0
+      }
+    ]
+  },
+  "created": "2026-06-05",
+  "css_mode": "sibling",
+  "iteration_count": 0,
+  "viewport": {
+    "x": 921.6605676354229,
+    "y": 176.7287438029408,
+    "zoom": 1.1575291822094498
+  },
+  "last_modified": "2026-06-05T06:19:59.910Z"
+}

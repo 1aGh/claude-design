@@ -1,0 +1,102 @@
+{
+  "title": "Studio Docs",
+  "subtitle": "Maude documentation redesign — docs rendered AS the studio chrome (menubar · nav tree · dotted canvas) under the maude DS",
+  "brief": "udelej novy navrh maude dokumentace, vychazej z realneho site/ (Fumadocs) nebo z Docs Site designu, novy nazev Studio Docs. Projdi reálnou dokumentaci v site/ a rozkresli artboards, at je videt vse jak to bude fungovat a zobrazovat. Pridej i planovane infographics a nastrel intro videa v3.",
+  "platform": "desktop",
+  "designSystem": "maude",
+  "opt_out_scope": "palette",
+  "brief_sha": "847971e4",
+  "sections": [
+    {
+      "id": "docs",
+      "title": "Studio Docs — maude documentation",
+      "subtitle": "MAUDE/DOCS · 7 artboards · docs-as-studio-chrome · embedded infographic · changelog/roadmap"
+    }
+  ],
+  "artboards": [
+    {
+      "id": "landing",
+      "label": "A · landing",
+      "note": "Marketing landing: hero + watch-intro chip + install snippet + catalog SKU cards"
+    },
+    {
+      "id": "docs-home",
+      "label": "B · docs · home",
+      "note": "/docs index: real nav tree (Learn/Look up/Recipes + counts) · Pick-a-direction cards · right TOC"
+    },
+    {
+      "id": "article",
+      "label": "C · docs · article (+ light inset)",
+      "note": "Getting Started reader: nav · prose · code · callout · prev/next · light reading/handoff inset"
+    },
+    {
+      "id": "command-ref",
+      "label": "D · command reference",
+      "note": "/design:new page: property table · invocation · source-of-truth callout · commands-design nav expanded"
+    },
+    {
+      "id": "search",
+      "label": "E · ⌘K · search",
+      "note": "Global command palette overlay: Pages/Commands/Recipes + key hints over a dimmed reader"
+    },
+    {
+      "id": "flow-docs",
+      "label": "F · docs · flow (embedded infographic)",
+      "note": "/docs/flow article with the flow-loop infographic embedded INLINE as Figure 1 (the in-markdown infographic)"
+    },
+    {
+      "id": "changelog",
+      "label": "G · changelog & roadmap",
+      "note": "Combined What`s-New + Roadmap as one timeline (Now / Shipped / Next · spine + status dots + segmented filter)"
+    }
+  ],
+  "layout": {
+    "artboards": [
+      {
+        "id": "landing",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "docs-home",
+        "x": 1560,
+        "y": 0
+      },
+      {
+        "id": "article",
+        "x": 3120,
+        "y": 0
+      },
+      {
+        "id": "command-ref",
+        "x": 0,
+        "y": 1020
+      },
+      {
+        "id": "search",
+        "x": 1560,
+        "y": 1020
+      },
+      {
+        "id": "flow-docs",
+        "x": 3120,
+        "y": 1020
+      },
+      {
+        "id": "changelog",
+        "x": 0,
+        "y": 2040
+      }
+    ]
+  },
+  "created": "2026-06-05",
+  "envelope_path": ".design/_history/studio-docs/000-envelope.md",
+  "css_mode": "sibling",
+  "iteration_count": 2,
+  "viewport": {
+    "x": 347.1175570129617,
+    "y": 155.97625445953338,
+    "zoom": 0.9257188604219522
+  },
+  "last_modified": "2026-06-05T06:19:51.828Z"
+}
