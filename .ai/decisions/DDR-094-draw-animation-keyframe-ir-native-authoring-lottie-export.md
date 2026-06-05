@@ -68,10 +68,12 @@
 >    (`[off,r,g,b,...]` then `[off,alpha,...]`, `count` = color-stop count) — needed for
 >    the soft aura glow + flame tip fade.
 >
-> POC artifacts: generator `AI-StudyMate/.design/_draw/_to-lottie.py`; output
-> `StudyFiMobile/src/components/mascot/mascot-fire.json`; the rn-svg fallback port lives
-> beside it (`Mascot.tsx`). Self-verify recipe: emit JSON → embed in an HTML with
-> `lottie.min.js` → `agent-browser` screenshot per `?f=<frame>` → compare to web.
+> POC artifacts preserved as a reference bundle: `../plans/notes/to-lottie-poc/`
+> (generator `to-lottie.py` + input `mascotFireData.ts` + output `mascot-fire.json` +
+> `verify.html` self-verify harness + rn-svg fallback `Mascot.fallback.tsx`/`to-rn.mjs`).
+> Self-verify recipe: emit JSON → load through real lottie-web (`verify.html`) →
+> `agent-browser` screenshot per `?f=<frame>` → compare to web (cairo can't render masks).
+> The StudyFi working-tree copies are safe to delete.
 
 - **Status (original):** Accepted (decision recorded; implementation planned, not yet built — see [feature-draw-animation-layer plan](../plans/feature-draw-animation-layer.md))
 - **Tags:** design, dev-server, draw, animation, motion, svg, smil, react-native, reanimated, lottie, keyframe-ir, single-source, deep-research, regression-prevention

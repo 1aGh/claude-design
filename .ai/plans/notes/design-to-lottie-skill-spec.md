@@ -4,8 +4,8 @@
 > maude-authored animated mark and **emit ONE Lottie from code** that renders 1:1 on
 > web (`lottie-web` / `dotlottie-react`) AND mobile (`lottie-react-native`). See
 > DDR-094 (Update section) for why Lottie-from-code is the primary path and why the
-> native rn-svg renderer is the fallback. Reference implementation:
-> `AI-StudyMate/.design/_draw/_to-lottie.py` (python-lottie) → `mascot-fire.json`.
+> native rn-svg renderer is the fallback. Reference implementation + verified output:
+> [`to-lottie-poc/`](to-lottie-poc/) (`to-lottie.py` python-lottie → `mascot-fire.json`).
 
 ## One-liner
 

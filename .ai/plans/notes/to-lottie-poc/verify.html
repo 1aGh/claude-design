@@ -1,0 +1,21 @@
+<!doctype html>
+<!-- Self-verify harness: render mascot-fire.json through the REAL lottie-web runtime.
+     Serve this dir (file:// blocks fetch):  python3 -m http.server 8123
+     Seek a frame:  http://localhost:8123/verify.html?f=108   (omit ?f to autoplay) -->
+<html><head><meta charset=utf8>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js"></script>
+<style>html,body{margin:0;background:#0a0a14}#c{width:380px;height:557px;margin:20px auto}</style>
+</head><body><div id=c></div><script>
+const p = new URLSearchParams(location.search);
+const f = p.get('f');
+fetch('./mascot-fire.json').then(r => r.json()).then(data => {
+  const anim = lottie.loadAnimation({
+    container: document.getElementById('c'), renderer: 'svg',
+    loop: true, autoplay: f === null, animationData: data,
+  });
+  anim.addEventListener('DOMLoaded', () => {
+    if (f !== null) anim.goToAndStop(parseInt(f, 10), true);
+    document.title = 'ready' + (f !== null ? '-' + f : '');
+  });
+});
+</script></body></html>

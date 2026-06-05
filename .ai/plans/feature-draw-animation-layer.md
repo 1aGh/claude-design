@@ -203,15 +203,15 @@ the web/native serializers.
 
 ## POC (done 2026-06-05 — validates P1.1)
 
-Studyfi-v3 fire mascot, both paths:
-- **Lottie (primary):** generator `AI-StudyMate/.design/_draw/_to-lottie.py` (python-lottie,
-  reads `mascotFireData.ts` + hardcoded `_layout.css` choreography) → `StudyFiMobile/src/
-  components/mascot/mascot-fire.json`. Self-verified through headless lottie-web. Plays on
-  device via `<LottieView source={require('./mascot-fire.json')} autoPlay loop/>`.
-- **rn-svg (fallback):** `StudyFiMobile/src/components/mascot/Mascot.tsx` (+
-  `MascotFireRing.tsx`, `mascotFireData.ts`); the `to-rn` generator `.design/_draw/_to-rn.mjs`.
-- These StudyFi POC files live in that repo's working tree (Home.tsx carries a clearly-
-  marked POC block — remove after verify). They are not part of this maude commit.
+Studyfi-v3 fire mascot, both paths. The artifacts are preserved as a **reference bundle
+in this repo** — [`notes/to-lottie-poc/`](notes/to-lottie-poc/) (see its README):
+- **Lottie (primary):** generator `to-lottie.py` (python-lottie, reads `mascotFireData.ts`
+  + hardcoded `_layout.css` choreography) → `mascot-fire.json`; self-verified through
+  headless lottie-web via `verify.html`. Plays via `<LottieView source={require('./mascot-fire.json')} autoPlay loop/>`.
+- **rn-svg (fallback):** `Mascot.fallback.tsx`; the `to-rn` generator `to-rn.mjs`.
+- The StudyFi working-tree copies (`AI-StudyMate/.design/_draw/`, `StudyFiMobile/src/
+  components/mascot/`, the Home.tsx POC block) are **safe to delete** — everything needed
+  is in the bundle above.
 
 ## Metadata
 
