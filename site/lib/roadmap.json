@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-04T16:07:26.195Z",
+  "generated": "2026-06-05T06:30:02.137Z",
   "currentPhase": null,
   "phases": [
     {
@@ -740,46 +740,123 @@
       "phaseKey": "17"
     },
     {
-      "id": "epic-native-collab-app",
-      "title": "Epic: Maude as a native collaborative app — Tauri shell + in-UI Git/GitHub + zero-setup hub + ACP",
+      "id": "phase-26-native-collab-tauri-shell",
+      "title": "Phase 26 — Native Maude: Tauri shell + sidecar lifecycle",
       "status": "planned",
       "shipTarget": null,
       "date": null,
-      "summary": "Build a native desktop application layer over the whole of Maude so non-technical collaborators can run, connect, and co-edit design projects without ever touching a terminal or typing into Claude...",
-      "planPath": ".ai/plans/epic-native-collab-app.md",
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to the binary-resolution path (DDR-009/084), real-disk paths (DDR-045), canvas-origin split (DDR-063), and the canvas-origin g...",
+      "planPath": ".ai/plans/phase-26-native-collab-tauri-shell.md",
+      "archived": false,
+      "phaseKey": "26"
+    },
+    {
+      "id": "phase-27-native-collab-git-layer",
+      "title": "Phase 27 — Native Maude: In-UI git layer",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to canvas-create.ts security pattern, canvas-origin-gate.test.ts, DDR-045 disk paths, and the vocabulary map (Save version / P...",
+      "planPath": ".ai/plans/phase-27-native-collab-git-layer.md",
+      "archived": false,
+      "phaseKey": "27"
+    },
+    {
+      "id": "phase-28-native-collab-github-identity",
+      "title": "Phase 28 — Native Maude: GitHub identity & remote",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to the OAuth token never landing in _server.json or .design/, DDR-045 disk paths, and the canvas-create.ts security pattern fo...",
+      "planPath": ".ai/plans/phase-28-native-collab-github-identity.md",
+      "archived": false,
+      "phaseKey": "28"
+    },
+    {
+      "id": "phase-29-native-collab-onboarding",
+      "title": "Phase 29 — Native Maude: Onboarding wizard + repo/branch switcher",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Aspiration bar applies — this is the first-impression surface; /design:new with --perfect is mandatory before Task 2.",
+      "planPath": ".ai/plans/phase-29-native-collab-onboarding.md",
+      "archived": false,
+      "phaseKey": "29"
+    },
+    {
+      "id": "phase-30-native-collab-live-multiplayer",
+      "title": "Phase 30 — Native Maude: Live multiplayer + artboard locking + hub realignment",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Read DDR-054, DDR-064, DDR-063 and the 3-lane collab model in collab-model-design.md before touching any sync/collab code. The no-break exha...",
+      "planPath": ".ai/plans/phase-30-native-collab-live-multiplayer.md",
+      "archived": false,
+      "phaseKey": "30"
+    },
+    {
+      "id": "phase-32-native-collab-distribution",
+      "title": "Phase 32 — Native Maude: Distribution, auto-update & maintenance",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. MAUDE_SKIP_RUNTIME_BUILD=1 discipline is load-bearing throughout this phase — never let a CI step regenerate the committed runtime bundles.",
+      "planPath": ".ai/plans/phase-32-native-collab-distribution.md",
+      "archived": false,
+      "phaseKey": "32"
+    },
+    {
+      "id": "feature-draw-animation-layer",
+      "title": "Feature — Draw animation layer: a serializable keyframe IR + native per-platform renderers + motion-aware verify loop",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Give the /design:draw stack a first-class animation capability so animated marks (mascots, animated logos/icons, motion spots) are generated and verified inside the draw loop, not hand-rolled in /d...",
+      "planPath": ".ai/plans/feature-draw-animation-layer.md",
       "archived": false,
       "phaseKey": null
     },
     {
-      "id": "epic-native-collab-collaboration-mental-model",
-      "title": "Collaboration mental model for non-technical users (native-collab epic)",
+      "id": "feature-runtime-restructure-apps-packages",
+      "title": "Feature: Maude runtime restructure — extract dev-server + hub out of `plugins/design/` into top-level `apps/`",
       "status": "planned",
       "shipTarget": null,
       "date": null,
-      "summary": "---",
-      "planPath": ".ai/plans/epic-native-collab-collaboration-mental-model.md",
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, the binary-resolution path (DDR-009/045/084), the maude design <verb> dispatcher (DDR-062), npm files ship...",
+      "planPath": ".ai/plans/feature-runtime-restructure-apps-packages.md",
       "archived": false,
       "phaseKey": null
     },
     {
-      "id": "epic-native-collab-collaboration-model-alignment",
-      "title": "Alignment: \"MOD morning-debate\" collaboration model ↔ the native-collab epic",
+      "id": "feature-studio-maude-ds-redesign",
+      "title": "Feature: Studio UI redesign — rewrite the dev-server browser shell into the maude Design System (per `Studio.tsx`)",
       "status": "planned",
       "shipTarget": null,
       "date": null,
-      "summary": "---",
-      "planPath": ".ai/plans/epic-native-collab-collaboration-model-alignment.md",
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to the canvas-origin split (DDR-054 — the in-iframe overlays are untrusted, treat them differently from the shell), the CSS la...",
+      "planPath": ".ai/plans/feature-studio-maude-ds-redesign.md",
       "archived": false,
       "phaseKey": null
     },
     {
-      "id": "epic-native-collab-e0-decisions-spike",
-      "title": "Phase E0 — Native-collab epic: decisions + de-risk spike",
+      "id": "hub-redesign-studio-hub",
+      "title": "Feature: Hub admin redesign — maude-DS reskin + additive operator console (\"Studio Hub\")",
       "status": "planned",
       "shipTarget": null,
       "date": null,
-      "summary": "Build three throwaway spikes and write the founding DDRs. The spikes answer questions that, if answered wrong after E1 is built, would waste weeks: (A) can a Tauri v2 app spawn the existing compile...",
-      "planPath": ".ai/plans/epic-native-collab-e0-decisions-spike.md",
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan reskins + extends the EXISTING hub admin SPA — it does not build a new app....",
+      "planPath": ".ai/plans/hub-redesign-studio-hub.md",
+      "archived": false,
+      "phaseKey": null
+    },
+    {
+      "id": "redesign-docs-site-studio-docs",
+      "title": "Feature: Redesign the docs site → \"Studio Docs\" (maude DS)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This re-skins the live site/ Fumadocs app to match the approved maude-DS Studio Docs c...",
+      "planPath": ".ai/plans/redesign-docs-site-studio-docs.md",
       "archived": false,
       "phaseKey": null
     },
@@ -793,6 +870,17 @@
       "planPath": ".ai/plans/phase-7-acp-chat-sidebar.md",
       "archived": false,
       "phaseKey": "7"
+    },
+    {
+      "id": "phase-31-native-collab-acp-sidepanel",
+      "title": "Phase 31 — Native Maude: ACP sidepanel (de-icebox phase-7)",
+      "status": "icebox",
+      "shipTarget": "ICEBOX",
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Read the existing phase-7 plan (.ai/plans/phase-7-acp-chat-sidebar.md) in full — this phase executes it largely as-written with the native-s...",
+      "planPath": ".ai/plans/phase-31-native-collab-acp-sidepanel.md",
+      "archived": false,
+      "phaseKey": "31"
     }
   ]
 }
