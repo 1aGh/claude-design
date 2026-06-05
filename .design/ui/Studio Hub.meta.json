@@ -1,0 +1,102 @@
+{
+  "title": "Studio Hub",
+  "subtitle": "Operator console for self-hosted Maude sync, reimagined under the maude DS — landing · onboarding · dashboard · presence · tokens · invite · settings",
+  "brief": "Redesign of the maude hub (plugins/design/hub) — the self-hosted Yjs sync server + admin console — renamed Studio Hub and dressed in the maude 'Unified Pro Studio' DS. Functionality source of truth: plugins/design/hub/src/{server,admin-auth,bootstrap}.mjs + src/admin/. Content prior: Sync Hub Admin (project DS). Chrome prior: Studio (maude app-shell). Expanded beyond today's vanilla-JS admin with a public landing page, a first-run onboarding wizard, a spatial presence map, a canvases browser, and a settings surface.",
+  "platform": "desktop",
+  "designSystem": "maude",
+  "opt_out_scope": "palette",
+  "brief_sha": "6d45b42d",
+  "sections": [
+    {
+      "id": "hub",
+      "title": "Studio Hub · maude",
+      "subtitle": "Operator console for self-hosted Maude sync · 7 artboards · dark studio"
+    }
+  ],
+  "artboards": [
+    {
+      "id": "landing",
+      "label": "A · landing · what Studio Hub is",
+      "note": "Public splash — hero (real-time sync for design canvases), deploy CTA, console preview inset, value-prop trio, deploy targets (Docker/Fly/Tailscale/VPS)"
+    },
+    {
+      "id": "onboarding",
+      "label": "B · first-run onboarding wizard",
+      "note": "Step rail (Claim · Identity · Transport · First invite · Live) + active Claim step: fingerprint verify, EXPIRES 24H, single-use, next-step peek"
+    },
+    {
+      "id": "dashboard",
+      "label": "C · dashboard · operator console",
+      "note": "HERO app-shell: sidebar nav (Overview/Peers/Tokens/Canvases/Activity/Settings) · stat row · connected peers · hub status KV · activity feed · quick actions · dotted backdrop"
+    },
+    {
+      "id": "peers",
+      "label": "D · peers & presence · who's on what",
+      "note": "Signature: spatial presence map (canvas nodes + occupant avatars + violet AI-agent cursor) · rich peers table (latency, kick) · activity feed"
+    },
+    {
+      "id": "tokens",
+      "label": "E · access tokens · rotate kill-switch",
+      "note": "Token table (scope chips, sessions, rotate) · generate-invite form (hub-wide switch) · rotate-as-kill-switch confirm · scope explainer callout"
+    },
+    {
+      "id": "invite-modal",
+      "label": "F · invite issued · single-use credential",
+      "note": "Signature: one-time credential reveal over dimmed (inert) app-shell — copy command, raw token stub, SINGLE USE / NON-REISSUABLE / SCOPE badges"
+    },
+    {
+      "id": "states",
+      "label": "G · states · sign-in · errors · settings",
+      "note": "Returning-operator sign-in · settings (identity/transport/storage/danger zone) · auth-expired · 429 rate-limited · empty states (no peers / no tokens)"
+    }
+  ],
+  "layout": {
+    "artboards": [
+      {
+        "id": "landing",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "onboarding",
+        "x": 1440,
+        "y": 0
+      },
+      {
+        "id": "dashboard",
+        "x": 2680,
+        "y": 0
+      },
+      {
+        "id": "peers",
+        "x": 0,
+        "y": 1040
+      },
+      {
+        "id": "tokens",
+        "x": 1560,
+        "y": 1040
+      },
+      {
+        "id": "invite-modal",
+        "x": 3000,
+        "y": 1040
+      },
+      {
+        "id": "states",
+        "x": 0,
+        "y": 2100
+      }
+    ]
+  },
+  "created": "2026-06-05",
+  "css_mode": "inline",
+  "envelope_path": ".design/_history/studio-hub/000-envelope.md",
+  "iteration_count": 1,
+  "viewport": {
+    "x": 259.7936800620679,
+    "y": 91.00383971591236,
+    "zoom": 0.2440103466671405
+  },
+  "last_modified": "2026-06-05T05:45:57.729Z"
+}
