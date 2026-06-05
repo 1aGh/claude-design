@@ -1,6 +1,6 @@
 /**
  * @file       draw/composition.ts — Phase 25.1 compositional scaffolding layer
- * @scope      plugins/design/dev-server/draw/composition.ts
+ * @scope      apps/studio/draw/composition.ts
  * @purpose    The missing answer to "blob soup": deterministic COMPOSITION.
  *             Random placement is empirically catastrophic — only ~3–12% of
  *             randomly-placed multi-element layouts even avoid overlap (Shiripour

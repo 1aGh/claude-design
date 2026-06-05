@@ -1,7 +1,7 @@
 /**
  * @file       commands/annotation-strokes-command.ts — undo entry for annotation
  *             stroke add / erase / batch-translate.
- * @scope      plugins/design/dev-server/commands/annotation-strokes-command.ts
+ * @scope      apps/studio/commands/annotation-strokes-command.ts
  * @purpose    Records a `Stroke[]` pair (before/after) and routes both
  *             directions through a single `putFn`. The server endpoint is
  *             `PUT /_api/annotations` which replaces the entire SVG; we

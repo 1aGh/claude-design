@@ -1,6 +1,6 @@
 /**
  * @file       draw/index.ts — Phase 25 geometry-engine public surface
- * @scope      plugins/design/dev-server/draw/index.ts
+ * @scope      apps/studio/draw/index.ts
  * @purpose    Single import point for the draw engine. The draw-agent and the
  *             `draw-proof` / `svg-optimize` bin helpers import from here:
  *

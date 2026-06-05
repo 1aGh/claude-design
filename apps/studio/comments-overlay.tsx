@@ -1,6 +1,6 @@
 /**
  * @file       comments-overlay.tsx — FigJam-style in-place comments overlay
- * @scope      plugins/design/dev-server/comments-overlay.tsx
+ * @scope      apps/studio/comments-overlay.tsx
  * @purpose    Renders DS-styled comment pins (Phase 6 Task 2), the in-place
  *             composer bubble (Task 3), and the thread popover (Task 4)
  *             inside the canvas iframe. Sibling to `annotations-layer` —

@@ -50,6 +50,16 @@ async function main(argv) {
     return run({ args: [], pkgRoot: PKG_ROOT });
   }
 
+  // `maude studio [...]` — top-level alias for `maude design serve` (DDR-095:
+  // the verb now matches the apps/studio home). Checked BEFORE the COMMANDS map
+  // so it never falls through to the unknown-command branch; it is deliberately
+  // NOT a COMMANDS entry (that would dispatch design.run with positional[0]
+  // wrong). `maude design serve` keeps working unchanged.
+  if (cmd === 'studio') {
+    const { run } = await COMMANDS.design();
+    return run({ args: ['serve', ...args.slice(1)], pkgRoot: PKG_ROOT });
+  }
+
   const loader = COMMANDS[cmd];
   if (!loader) {
     process.stderr.write(

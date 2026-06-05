@@ -13,7 +13,7 @@
 
 ## Preconditions
 
-- Dev server running (`bun plugins/design/dev-server/server.ts --root . --port 4399`).
+- Dev server running (`bun apps/studio/server.ts --root . --port 4399`).
 - Default tool is `move` on every canvas open.
 
 ## Steps

@@ -1,6 +1,6 @@
 /**
  * @file       annotations-layer.tsx — FigJam-style annotation overlay
- * @scope      plugins/design/dev-server/annotations-layer.tsx
+ * @scope      apps/studio/annotations-layer.tsx
  * @purpose    Portal-rendered draw layer. Strokes live in world coords and
  *             render INSIDE `.dc-world` via `createPortal`, so CSS `zoom` +
  *             `translate` on the world move them in lockstep with artboards

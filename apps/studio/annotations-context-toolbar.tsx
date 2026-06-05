@@ -1,6 +1,6 @@
 /**
  * @file       annotations-context-toolbar.tsx — Phase 5.1 per-selection toolbar
- * @scope      plugins/design/dev-server/annotations-context-toolbar.tsx
+ * @scope      apps/studio/annotations-context-toolbar.tsx
  * @purpose    FigJam-style floating chrome anchored above the currently
  *             selected annotation strokes. Reads `useAnnotationSelection` +
  *             `useStrokesStore`; mutations dispatch through the store so the

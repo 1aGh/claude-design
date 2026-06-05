@@ -104,7 +104,7 @@ Caddy does the same with [`handle_path`](https://caddyserver.com/docs/caddyfile/
 
 The hub itself always sees root paths (`/admin`, `/admin/api/*`, `/health`) — the proxy strips the prefix — so nothing in the hub config changes. Open `https://example.com/hub/admin` and the bootstrap flow works exactly as on a root-mounted deploy.
 
-> Sub-path serving landed **after v0.24.0**. The published `ghcr.io/1agh/maude-hub:latest` only picks it up on the next release — if you need it before then, build the image from source: `docker build -t maude-hub plugins/design/hub`.
+> Sub-path serving landed **after v0.24.0**. The published `ghcr.io/1agh/maude-hub:latest` only picks it up on the next release — if you need it before then, build the image from source: `docker build -t maude-hub apps/hub`.
 
 ## Transport hardening
 
@@ -120,4 +120,4 @@ The hub itself always sees root paths (`/admin`, `/admin/api/*`, `/health`) — 
 4. "Generate invite" → copy the `maude design link …` command.
 5. Send it to each collaborator → they paste it in their repo. See [Linking peers](/docs/hub/linking).
 
-For local contributor testing without a cloud account, see [`plugins/design/hub/CONTRIBUTING.md`](https://github.com/1aGh/maude/blob/main/plugins/design/hub/CONTRIBUTING.md).
+For local contributor testing without a cloud account, see [`apps/hub/CONTRIBUTING.md`](https://github.com/1aGh/maude/blob/main/apps/hub/CONTRIBUTING.md).

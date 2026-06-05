@@ -1,6 +1,6 @@
 /**
  * @file       use-undo-stack.tsx — React Context + Provider for the undo stack
- * @scope      plugins/design/dev-server/use-undo-stack.tsx
+ * @scope      apps/studio/use-undo-stack.tsx
  * @purpose    Wraps the pure `undoReducer` (undo-stack.ts) in React state,
  *             owns the async runner that awaits side-effects before applying
  *             the next state transition, exposes the `lastLabel` HUD signal,

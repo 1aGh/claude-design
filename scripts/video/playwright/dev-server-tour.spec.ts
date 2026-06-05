@@ -5,7 +5,7 @@ import { test } from '@playwright/test';
  * Loads the landing page, lets the canvas browser render, idles 4s.
  * Output: ~5s WebM at 1920×1080 in scripts/video/.work/playwright/<hash>/video.webm.
  *
- * Pre-flight: `plugins/design/dev-server/bin/server-up.sh` must have booted
+ * Pre-flight: `apps/studio/bin/server-up.sh` must have booted
  * the dev-server already (run.sh handles this in the smoke pipeline).
  */
 test('dev-server tour', async ({ page }) => {

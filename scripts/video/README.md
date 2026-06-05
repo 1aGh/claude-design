@@ -68,7 +68,7 @@ pnpm run video:smoke:card       # Remotion only -> .work/smoke/card.mp4
 | Remotion render hangs at "Bundling" | Vite/esbuild cache corrupted | `rm -rf node_modules/.vite` |
 | Remotion card.mp4 has a silent AAC track | default behavior | pass `--mute` to `remotion render` (already wired in run.sh and `video:smoke:card`) |
 | `concat -c copy` fails with "Non-monotonous DTS" | fps drift between inputs | `assemble.sh` pre-normalizes each input to 30fps/h264/yuv420p/no-audio before concat — if you bypass it, re-encode the concat with `-c:v libx264 -preset veryfast` |
-| Browser smoke shows a black frame | dev server not up or wrong URL | check `.design/_server.json` is fresh, re-run `plugins/design/dev-server/bin/server-up.sh` |
+| Browser smoke shows a black frame | dev server not up or wrong URL | check `.design/_server.json` is fresh, re-run `apps/studio/bin/server-up.sh` |
 | Playwright video.webm not found by glob | test failed without producing a recording | run `video:smoke:browser` standalone and inspect the per-test directory under `.work/smoke/playwright/` |
 
 ## What's next

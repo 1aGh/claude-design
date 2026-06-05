@@ -4,7 +4,7 @@
  * @platform    desktop
  * @opt_out     palette
  * @artboards   landing | onboarding | dashboard | peers | tokens | invite-modal | states
- * @brief       Redesign of the maude hub (plugins/design/hub) — the self-hosted Yjs sync server + admin console — renamed Studio Hub and dressed in the maude "Unified Pro Studio" DS. Source of truth for functionality: plugins/design/hub/src/{server,admin-auth,bootstrap}.mjs + src/admin/. Content prior: Sync Hub Admin (project DS). Chrome prior: Studio (maude app-shell). Expanded beyond today's vanilla-JS admin with a public landing page, a first-run onboarding wizard, a spatial presence map, a canvases browser, and a settings surface.
+ * @brief       Redesign of the maude hub (apps/hub) — the self-hosted Yjs sync server + admin console — renamed Studio Hub and dressed in the maude "Unified Pro Studio" DS. Source of truth for functionality: apps/hub/src/{server,admin-auth,bootstrap}.mjs + src/admin/. Content prior: Sync Hub Admin (project DS). Chrome prior: Studio (maude app-shell). Expanded beyond today's vanilla-JS admin with a public landing page, a first-run onboarding wizard, a spatial presence map, a canvases browser, and a settings surface.
  * @stack       React 19 · TSX · Bun.build · css_mode=inline (sibling Studio Hub.css)
  * @history     .design/_history/studio-hub/
  *

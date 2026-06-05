@@ -1,6 +1,6 @@
 /**
  * @file       commands/move-artboards-command.ts — undo entry for artboard moves
- * @scope      plugins/design/dev-server/commands/move-artboards-command.ts
+ * @scope      apps/studio/commands/move-artboards-command.ts
  * @purpose    Reversible record of an artboard-layout PATCH. Pairs the full
  *             `before` and `after` layout snapshots with an injected
  *             `patchFn` (in production, `applyArtboardLayout`; in tests, a

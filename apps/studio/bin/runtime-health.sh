@@ -61,7 +61,7 @@ if [ -z "$REPO" ]; then
   REPO="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 PREBUILT_DIR="$PLUGIN_ROOT/dev-server/dist/runtime"
 if [ ! -d "$PREBUILT_DIR" ]; then
   PREBUILT_DIR="$SCRIPT_DIR/../dist/runtime"

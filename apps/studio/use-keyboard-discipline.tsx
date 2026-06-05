@@ -1,6 +1,6 @@
 /**
  * @file       use-keyboard-discipline.tsx — T29 (Wave 3)
- * @scope      plugins/design/dev-server/use-keyboard-discipline.tsx
+ * @scope      apps/studio/use-keyboard-discipline.tsx
  * @purpose    Keyboard nudge + Cmd+A select-all-in-artboard. Bail when focus
  *             is inside an input / textarea / contenteditable so typing
  *             into the dev-server's own inputs (file tree filter, etc.)

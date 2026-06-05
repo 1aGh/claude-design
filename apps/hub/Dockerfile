@@ -4,7 +4,7 @@
 # monorepo COPY), so `docker build` works from a published checkout OR the
 # multi-arch release pipeline:
 #
-#   docker build -t maude-hub plugins/design/hub
+#   docker build -t maude-hub apps/hub
 #
 # Published as ghcr.io/1agh/maude-hub:vX.Y.Z + :latest on every release tag
 # (amd64 + arm64 via buildx). Runtime is Node, NOT Bun: Hocuspocus' crossws

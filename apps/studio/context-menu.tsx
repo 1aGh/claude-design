@@ -1,6 +1,6 @@
 /**
  * @file       context-menu.tsx — Phase 4.1 right-click context menu
- * @scope      plugins/design/dev-server/context-menu.tsx
+ * @scope      apps/studio/context-menu.tsx
  * @purpose    Floating, context-aware right-click menu. The router calls
  *             `openContextMenu({ clientX, clientY, target })`; the menu
  *             resolves the section list via the ContextRegistry and renders

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/1aGh/maude/main/plugins/design/dev-server/whats-new.schema.json",
+  "$id": "https://raw.githubusercontent.com/1aGh/maude/main/apps/studio/whats-new.schema.json",
   "title": "Maude What's New feed",
   "description": "User-facing product-update entries surfaced in the Maude UI (and mirrored to the docs site). Single source of truth — ships with the dev-server, appended on /flow:done, stamped at release. See .ai/plans/feature-in-app-whats-new-tour.md (DDR-A).",
   "type": "object",

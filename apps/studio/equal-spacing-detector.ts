@@ -1,6 +1,6 @@
 /**
  * @file       equal-spacing-detector.ts — T27 (Wave 3)
- * @scope      plugins/design/dev-server/equal-spacing-detector.ts
+ * @scope      apps/studio/equal-spacing-detector.ts
  * @purpose    Pure detector for Figma "Smart Selection" pink-dot affordance
  *             (Rasmus Andersson 2018). Given 3+ rects on a single axis,
  *             returns the equal gap + the screen-coord midpoints between

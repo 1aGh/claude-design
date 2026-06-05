@@ -1,7 +1,7 @@
 {
   "title": "Sync Hub Admin",
   "subtitle": "in-hub operator console for maude sync (Phase 9) · MDCC-DSN/01",
-  "brief": "Návrh admin hub stránky pro maude sync — claim the hub, issue one-time invite tokens, watch connected peers, rotate the kill-switch. Source: .ai/plans/archive/phase-9-self-hosted-hub-file-sync.md Task 2.5 + plugins/design/hub/src/admin/index.html.",
+  "brief": "Návrh admin hub stránky pro maude sync — claim the hub, issue one-time invite tokens, watch connected peers, rotate the kill-switch. Source: .ai/plans/archive/phase-9-self-hosted-hub-file-sync.md Task 2.5 + apps/hub/src/admin/index.html.",
   "platform": "desktop",
   "designSystem": "project",
   "opt_out_scope": "palette",

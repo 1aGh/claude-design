@@ -66,7 +66,7 @@ Builds the actual production image from the local `Dockerfile`, binds port 1234
 straight to the host, no Caddy/TLS. Tests YOUR changes, not the published image.
 
 ```sh
-cd plugins/design/hub
+cd apps/hub
 docker compose -f docker-compose.dev.yml up --build
 #   → hub on http://localhost:1234
 #   → bootstrap link printed in the logs (docker compose logs)

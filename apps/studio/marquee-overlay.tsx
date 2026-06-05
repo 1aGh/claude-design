@@ -1,6 +1,6 @@
 /**
  * @file       marquee-overlay.tsx — T26 (Wave 3)
- * @scope      plugins/design/dev-server/marquee-overlay.tsx
+ * @scope      apps/studio/marquee-overlay.tsx
  * @purpose    Element-level marquee selection. Drag from empty padding inside
  *             an artboard body (NOT on top of a `[data-cd-id]` element) to
  *             lasso multiple stamped elements. Aseprite modifier vocabulary:

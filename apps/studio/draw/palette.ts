@@ -1,6 +1,6 @@
 /**
  * @file       draw/palette.ts — Phase 25 geometry-engine color layer
- * @scope      plugins/design/dev-server/draw/palette.ts
+ * @scope      apps/studio/draw/palette.ts
  * @purpose    Color correctness the draw-agent verifies from SOURCE, never from
  *             the vision model (VLMs misread color confidently):
  *               • WCAG 2.1 relative-luminance + contrast ratio (4.5 / 3 / 7);

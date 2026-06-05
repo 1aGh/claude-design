@@ -1,6 +1,6 @@
 /**
  * @file       use-canvas-media-drop.tsx — Phase 23 canvas media intake
- * @scope      plugins/design/dev-server/use-canvas-media-drop.tsx
+ * @scope      apps/studio/use-canvas-media-drop.tsx
  * @purpose    OS-level drag-and-drop + clipboard paste of images and URLs onto
  *             the canvas. Routes each gesture to a create callback owned by
  *             AnnotationsLayer (which holds the commit/undo sink + screenToWorld):

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Performance harness for Phase 3.4 budgets.
 //
-//   bun run plugins/design/dev-server/test/perf-harness.ts
+//   bun run apps/studio/test/perf-harness.ts
 //
 // Boots the dev-server against a synthetic .design/ fixture, measures the
 // budget table from `.ai/plans/phase-3.4-architecture-refactor.md`, and writes

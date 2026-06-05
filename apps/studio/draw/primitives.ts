@@ -1,6 +1,6 @@
 /**
  * @file       draw/primitives.ts — Phase 25 geometry-engine primitive layer
- * @scope      plugins/design/dev-server/draw/primitives.ts
+ * @scope      apps/studio/draw/primitives.ts
  * @purpose    The `DrawPrimitive` union + grid-snapped constructors + transform
  *             composition + viewBox presets. This is the "intent" layer the
  *             draw-agent emits: the LLM names shapes and where they go; the

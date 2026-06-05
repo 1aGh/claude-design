@@ -18,9 +18,13 @@
       "!**/.ai",
       "!**/.design",
       "!**/plugins/**/dist",
-      "!**/plugins/design/dev-server/client",
-      "!**/plugins/design/dev-server/runtime",
-      "!**/plugins/design/dev-server/server.mjs",
+      // apps/studio/dist + apps/hub/dist hold committed build artifacts (minified
+      // bundles, compiled binaries) — never linted (was covered by the
+      // plugins/**/dist glob before DDR-095 moved the runtime apps under apps/).
+      "!**/apps/**/dist",
+      "!**/apps/studio/client",
+      "!**/apps/studio/runtime",
+      "!**/apps/studio/server.mjs",
       "!**/site/.next",
       "!**/site/.source",
       "!**/site/.vercel",
@@ -106,10 +110,10 @@
       // the semantic-element a11y rules here. Biome v2 promoted noStaticElementInteractions to
       // recommended and tightened useAriaPropsSupportedByRole; both fall in the same exemption.
       "includes": [
-        "**/plugins/design/dev-server/comments-overlay.tsx",
-        "**/plugins/design/dev-server/annotations-layer.tsx",
-        "**/plugins/design/dev-server/participants-chrome.tsx",
-        "**/plugins/design/dev-server/context-menu.tsx"
+        "**/apps/studio/comments-overlay.tsx",
+        "**/apps/studio/annotations-layer.tsx",
+        "**/apps/studio/participants-chrome.tsx",
+        "**/apps/studio/context-menu.tsx"
       ],
       "linter": {
         "rules": {

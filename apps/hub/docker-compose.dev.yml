@@ -3,7 +3,7 @@
 # No Caddy, no TLS, port 1234 bound straight to the host. Builds the image from
 # the local Dockerfile instead of pulling from GHCR, so you test YOUR changes.
 #
-#   cd plugins/design/hub
+#   cd apps/hub
 #   docker compose -f docker-compose.dev.yml up --build
 #   # hub on http://localhost:1234 — bootstrap link printed in the logs
 #

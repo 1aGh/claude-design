@@ -53,15 +53,15 @@ dev-server/.cache/
 # marketplace cache installs (which honor .gitignore on git clone) work
 # out of the box. Per-platform `maude-*` binaries stay ignored (~70-120 MB
 # each — distributed via @1agh/maude-<platform> sub-packages).
-plugins/design/dev-server/dist/*
-!plugins/design/dev-server/dist/client.bundle.js
-!plugins/design/dev-server/dist/comment-mount.js
-!plugins/design/dev-server/dist/styles.css
+apps/studio/dist/*
+!apps/studio/dist/client.bundle.js
+!apps/studio/dist/comment-mount.js
+!apps/studio/dist/styles.css
 # v0.18.1 (Phase 19.1) — pre-built /_canvas-runtime/*.js bundles ship in git
 # so npm-installed users don't need node_modules/react on disk to render TSX.
-!plugins/design/dev-server/dist/runtime/
-!plugins/design/dev-server/dist/runtime/*.js
-plugins/design/dev-server/bun.lock
+!apps/studio/dist/runtime/
+!apps/studio/dist/runtime/*.js
+apps/studio/bun.lock
 
 # Stub .keep written by dev-server before the inspect.ts fix landed (Phase 3.4)
 .design/.keep
@@ -70,3 +70,6 @@ plugins/design/dev-server/bun.lock
 # review scratch (pen / rect / ellipse / arrow / text), not source.
 .design/*.annotations.svg
 .design/**/*.annotations.svg
+
+# Postinstall/serve side-channel cache (machine-specific compiled-binary path)
+cli/.platform-binary-path

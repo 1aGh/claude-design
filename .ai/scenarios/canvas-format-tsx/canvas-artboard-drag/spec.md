@@ -13,7 +13,7 @@
 
 ## Preconditions
 
-- Dev server running (`bun plugins/design/dev-server/server.ts --root . --port 4399`).
+- Dev server running (`bun apps/studio/server.ts --root . --port 4399`).
 - `Canvas Viewport.meta.json` has no `layout.artboards[]` entries OR matches Phase-4 defaults so the synthesized 3×3 grid is the starting layout.
 - Active tool resets to `move` on canvas open.
 

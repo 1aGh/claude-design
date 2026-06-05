@@ -824,7 +824,7 @@ async function defaultProviderFactory(args: {
     mod = await import('@hocuspocus/provider');
   } catch (err) {
     throw new Error(
-      `@hocuspocus/provider unavailable — install it under plugins/design/dev-server/. (${err instanceof Error ? err.message : String(err)})`
+      `@hocuspocus/provider unavailable — install it under apps/studio/. (${err instanceof Error ? err.message : String(err)})`
     );
   }
   // Hocuspocus accepts ws:// or wss://; the linked URL is http(s)://, so swap

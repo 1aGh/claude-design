@@ -1,6 +1,6 @@
 /**
  * @file       use-snap-guides.tsx — Phase 4.2 snap math + guide-line shapes
- * @scope      plugins/design/dev-server/use-snap-guides.tsx
+ * @scope      apps/studio/use-snap-guides.tsx
  * @purpose    Pure function `computeSnap` that returns a snapped (x, y) for a
  *             proposed artboard rect plus the guide lines that should render
  *             as visual feedback. No React state; the drag controller calls

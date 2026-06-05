@@ -1,5 +1,7 @@
 # DDR-084 — `server-up` boots the compiled platform binary in production; `bun server.ts` is dev-only
 
+> **Path update — [DDR-095](DDR-095-runtime-apps-extracted-to-top-level.md) (2026-06-05):** the dev-server now lives at `apps/studio/` (hub at `apps/hub/`), moved out of `plugins/design/`. This DDR's invariants still govern; only the path changed. Old `plugins/design/dev-server` references below are historical.
+
 **Status:** Accepted — 2026-06-03.
 **Supersedes:** none. **Refines:** [DDR-083](DDR-083-yjs-boot-preflight.md) (the yjs boot preflight — now correctly positioned as the *source-path* fail-loud guard; this DDR is the *production* fix DDR-083 deferred to "the bun --compile packaging migration").
 **Related:** [DDR-009](DDR-009-bun-runtime-authoritative-for-dev-server.md) (bun authoritative + per-platform `bun --compile` standalone binaries via npm `optionalDependencies` — this DDR wires the boot path to that binary), [DDR-020](DDR-020-single-dev-server-runtime-bun.md) (`server-up.sh` runtime selection), [DDR-044](DDR-044-marketplace-install-vs-npm-install-artifact-strategy.md) (`boot-self-heal.ts` — why we don't auto-install), [DDR-062](DDR-062-plugins-reach-executable-logic-via-maude.md) (`maude design <verb>` dispatch — the choke point that injects the resolved binary path). Instruments: `cli/commands/design.mjs` (`resolveServerBinary` + `runBinDispatch` env injection), `plugins/design/dev-server/bin/server-up.sh` (binary runtime branch), `cli/commands/design.test.mjs` (resolver unit tests).

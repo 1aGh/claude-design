@@ -1,6 +1,6 @@
 /**
  * @file       draw/layout.ts — Phase 25 geometry-engine layout / diagram layer
- * @scope      plugins/design/dev-server/draw/layout.ts
+ * @scope      apps/studio/draw/layout.ts
  * @purpose    Composition math:
  *               • a deterministic constraint-based label placer (pick the
  *                 candidate slot around each anchor that minimizes overlap —

@@ -3,7 +3,7 @@
 //
 // `/design:handoff` emits a self-contained shadcn registry-item.json. Canvases
 // import their envelope + helpers from `@maude/canvas-lib`, which the dev-server
-// resolves to its bundled `plugins/design/dev-server/canvas-lib.tsx`. The
+// resolves to its bundled `apps/studio/canvas-lib.tsx`. The
 // handoff drop must inline every used export so the consumer never sees the
 // `@maude/canvas-lib` specifier — it's a dev-time virtual module, not a real
 // npm dep.

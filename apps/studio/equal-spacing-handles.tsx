@@ -1,6 +1,6 @@
 /**
  * @file       equal-spacing-handles.tsx — T27 (Wave 3)
- * @scope      plugins/design/dev-server/equal-spacing-handles.tsx
+ * @scope      apps/studio/equal-spacing-handles.tsx
  * @purpose    Figma Smart Selection pink-dot affordance. When 3+ elements are
  *             selected AND their bounding rects are equally distributed on an
  *             axis, render small pink dots at the midpoints between adjacent

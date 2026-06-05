@@ -56,7 +56,7 @@ Per DDR-049: a canvas that imports `<MotionDemo>` or any sibling motion helper f
 
 ## Cross-links
 
-- Library source: `plugins/design/dev-server/canvas-lib.tsx` (`MotionDemo`, `MotionTrack`, `TokenPlayback`, `ReducedMotionToggle`, `useMotionTokens`, `easingFromToken`)
+- Library source: `apps/studio/canvas-lib.tsx` (`MotionDemo`, `MotionTrack`, `TokenPlayback`, `ReducedMotionToggle`, `useMotionTokens`, `easingFromToken`)
 - Library decision: `.ai/decisions/DDR-049-motion-one-as-canonical-motion-library.md`
 - Sub-agent safety block: `plugins/design/templates/design-system-inspiration/SUB-AGENT-PROMPTS.md` → ANIMATION SAFETY
 - Tokens: `colors_and_type.css.tpl` (lines around `--dur-*` + `--ease-*`)

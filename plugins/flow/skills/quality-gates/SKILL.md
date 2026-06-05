@@ -17,7 +17,7 @@ Reference for the `quality` block in `.ai/workflows.config.json`. This skill doc
 "quality": {
   "lint":      "pnpm lint",
   "format":    "pnpm biome format .",
-  "typecheck": "pnpm exec tsc --noEmit -p plugins/design/dev-server",
+  "typecheck": "pnpm exec tsc --noEmit -p apps/studio",
   "tests":     "pnpm test && pnpm test:dev-server",
   "build":     "pnpm --filter @maude/site build"
 }

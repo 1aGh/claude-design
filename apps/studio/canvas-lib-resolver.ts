@@ -2,7 +2,7 @@
 //
 // Canvases import the shared canvas library via the specifier `@maude/canvas-lib`.
 // At build time we redirect that to the dev-server-bundled source at
-// `plugins/design/dev-server/canvas-lib.tsx` so:
+// `apps/studio/canvas-lib.tsx` so:
 //
 //   - the lib ships with the dev-server install (single source of truth — see
 //     DDR-025; reverses DDR-022's "project-owned source under <designRoot>/_lib/"),

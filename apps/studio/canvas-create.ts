@@ -8,9 +8,12 @@
 // `/design:new --blank` substitutes. We text-import it so Bun.build inlines the
 // content into the `bun --compile` standalone binary (verified: works at dev
 // runtime AND embeds at build time), sidestepping DDR-045 — no runtime disk read
-// of a file that lives outside `dev-server/`.
+// of a file that lives outside `apps/studio/`. The template stayed under the
+// design plugin (plugins/design/templates) when the studio moved (DDR-095).
 
-import briefBoardTemplate from '../templates/brief-board.tsx.template' with { type: 'text' };
+import briefBoardTemplate from '../../plugins/design/templates/brief-board.tsx.template' with {
+  type: 'text',
+};
 
 export const BRIEF_BOARD_TEMPLATE: string = briefBoardTemplate;
 

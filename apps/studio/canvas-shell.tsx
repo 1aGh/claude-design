@@ -1,6 +1,6 @@
 /**
  * @file       canvas-shell.tsx — universal input-grammar wrapper for TSX canvases
- * @scope      plugins/design/dev-server/canvas-shell.tsx
+ * @scope      apps/studio/canvas-shell.tsx
  * @purpose    Mounted by `DesignCanvas` for every canvas. Stacks
  *             SelectionSetProvider + ContextMenuProvider, wires the input
  *             router to provider actions, and renders the floating chrome

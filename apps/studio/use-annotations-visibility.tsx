@@ -1,6 +1,6 @@
 /**
  * @file       use-annotations-visibility.tsx — Phase 5.1 visibility store
- * @scope      plugins/design/dev-server/use-annotations-visibility.tsx
+ * @scope      apps/studio/use-annotations-visibility.tsx
  * @purpose    Tiny boolean store shared by AnnotationsLayer (render gate),
  *             ToolPalette (presentation toggle button), and the menubar
  *             bridge (`view-annotations` postMessage handler in

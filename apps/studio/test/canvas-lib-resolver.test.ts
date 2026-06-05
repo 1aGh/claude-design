@@ -28,7 +28,7 @@ afterAll(async () => {
 describe('canvas-lib-resolver / canvasLibPath', () => {
   test('returns the dev-server-internal canvas-lib.tsx path', () => {
     const p = canvasLibPath();
-    expect(p.endsWith('plugins/design/dev-server/canvas-lib.tsx')).toBe(true);
+    expect(p.endsWith('apps/studio/canvas-lib.tsx')).toBe(true);
     expect(existsSync(p)).toBe(true);
   });
 

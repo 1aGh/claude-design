@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/1aGh/maude/main/plugins/design/dev-server/config.schema.json",
+  "$schema": "https://raw.githubusercontent.com/1aGh/maude/main/apps/studio/config.schema.json",
   "name": "{{project_name}}",
   "projectLabel": "{{project_label}}",
   "designRoot": ".design",

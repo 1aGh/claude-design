@@ -1,6 +1,6 @@
 /**
  * @file       canvas-comment-mount.tsx — shell-owned comment layer + mountCanvas
- * @scope      plugins/design/dev-server/canvas-comment-mount.tsx
+ * @scope      apps/studio/canvas-comment-mount.tsx
  * @purpose    The canvas mount harness (`_shell.html`) calls `mountCanvas`
  *             instead of rendering the canvas default-export raw. mountCanvas
  *             wraps ANY default export — a `DesignCanvas` UI canvas OR a bare

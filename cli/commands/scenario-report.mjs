@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 // `maude scenario-report <run-dir> [--out <path>]` — deterministic cross-platform
 // scenario report generator (Phase C / DDR-061). Thin wrapper that resolves the
 // bundled generator from maude's OWN package root (NOT $CLAUDE_PLUGIN_ROOT — the
-// flow plugin can't reach the design plugin's dev-server dir; only the on-PATH
+// flow plugin can't reach the studio app's bin dir; only the on-PATH
 // `maude` binary resolves it reliably across install shapes — see DDR-062), runs
 // it, and writes report.md. Output stdout = the written path (capture idiom).
 
@@ -22,14 +22,7 @@ export async function run({ args, pkgRoot }) {
     return;
   }
 
-  const generatorPath = resolve(
-    pkgRoot,
-    'plugins',
-    'design',
-    'dev-server',
-    'bin',
-    'scenario-report.mjs'
-  );
+  const generatorPath = resolve(pkgRoot, 'apps', 'studio', 'bin', 'scenario-report.mjs');
   const { generateReport } = await import(pathToFileURL(generatorPath).href);
 
   const absRunDir = resolve(process.cwd(), runDir);

@@ -1,6 +1,6 @@
 /**
  * @file       draw/brush.ts — Phase 25.2 brush layer
- * @scope      plugins/design/dev-server/draw/brush.ts
+ * @scope      apps/studio/draw/brush.ts
  * @purpose    "Brush" expression for a pure-vector engine, three levels:
  *               L1  roughenFilter()  — feTurbulence → feDisplacementMap edge
  *                   texture (dry-brush / ink / charcoal roughness) you apply to

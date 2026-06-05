@@ -82,7 +82,7 @@ Hard deps satisfied. <N> soft items to address.
 
 ```jsonc
 {
-  "$schema": "https://raw.githubusercontent.com/1aGh/maude/main/plugins/design/dev-server/config.schema.json",
+  "$schema": "https://raw.githubusercontent.com/1aGh/maude/main/apps/studio/config.schema.json",
   "name": "<repo-basename-as-fallback>",
   "designRoot": ".design",
   "canvasGroups": [

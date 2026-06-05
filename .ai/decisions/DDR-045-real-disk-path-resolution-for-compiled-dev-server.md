@@ -1,5 +1,7 @@
 # DDR-045: Real-disk path resolution for compiled dev-server binaries
 
+> **Path update — [DDR-095](DDR-095-runtime-apps-extracted-to-top-level.md) (2026-06-05):** the dev-server now lives at `apps/studio/` (hub at `apps/hub/`), moved out of `plugins/design/`. This DDR's invariants still govern; only the path changed. Old `plugins/design/dev-server` references below are historical.
+
 **Status:** Accepted — 2026-05-25.
 **Tags:** dev-server / bun-compile / paths / npm-install / marketplace-cache / phase-19.1 / phase-19.2
 **Related:** [DDR-009](DDR-009-bun-runtime-authoritative-for-dev-server.md) (Bun runtime authoritative), [DDR-015](DDR-015-per-platform-binary-distribution.md) (per-platform binaries via optionalDependencies), [DDR-044](DDR-044-marketplace-install-vs-npm-install-artifact-strategy.md) (commit dist artifacts), [DDR-042](DDR-042-oxc-parser-bun-compile-workaround.md) (companion bun --compile workaround).

@@ -22,7 +22,7 @@ PORT="${PORT:-4399}"
 
 if ! curl -sf "http://localhost:$PORT/_health" >/dev/null; then
   echo "[FATAL] dev-server not reachable on http://localhost:$PORT" >&2
-  echo "        boot it via: bun plugins/design/dev-server/server.ts --root . --port $PORT" >&2
+  echo "        boot it via: bun apps/studio/server.ts --root . --port $PORT" >&2
   exit 2
 fi
 

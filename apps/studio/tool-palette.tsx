@@ -1,6 +1,6 @@
 /**
  * @file       tool-palette.tsx — Phase 5.1 centered icon toolbar
- * @scope      plugins/design/dev-server/tool-palette.tsx
+ * @scope      apps/studio/tool-palette.tsx
  * @purpose    Bottom-center floating chrome — navigate (V/H/C), draw
  *             (B/R/O/A/E), and zoom in one shell. Adopts the dev-server
  *             menubar's visual language (8 px radius, soft shadow, hairline

@@ -1,6 +1,6 @@
 /**
  * @file       use-annotation-resize.tsx — Task 23 (Wave 2, G4)
- * @scope      plugins/design/dev-server/use-annotation-resize.tsx
+ * @scope      apps/studio/use-annotation-resize.tsx
  * @purpose    Screen-space corner / endpoint handles for the selected
  *             annotation. Per-tool resize math with FigJam resize modifiers:
  *             Shift = lock aspect ratio (45° angle snap for arrows), Alt =

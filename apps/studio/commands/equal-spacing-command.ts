@@ -1,7 +1,7 @@
 /**
  * @file       commands/equal-spacing-command.ts — undo label helpers for
  *             equal-spacing / align gestures.
- * @scope      plugins/design/dev-server/commands/equal-spacing-command.ts
+ * @scope      apps/studio/commands/equal-spacing-command.ts
  * @purpose    Distribute + align both call `dragBus.commitPositions(moved)`,
  *             which wraps the move in a generic MoveArtboardsCommand. Per
  *             DDR-050 the underlying command type is shared (the inverse

@@ -1,6 +1,6 @@
 /**
  * @file       use-collab.tsx — client-side Yjs collab provider for canvas iframes
- * @scope      plugins/design/dev-server/use-collab.tsx
+ * @scope      apps/studio/use-collab.tsx
  * @purpose    Mounts a single Y.Doc + Awareness per canvas iframe. Opens a
  *             WebSocket to `/_ws/collab/:slug`, speaks the y-websocket binary
  *             protocol, exposes hooks for the cursor overlay + Task 3 comments

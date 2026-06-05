@@ -23,7 +23,7 @@ Native iOS / Android intentionally **SKIPPED** — canvas is desktop-only per `.
 
 ## Preconditions
 
-- Dev server running (`bun plugins/design/dev-server/server.ts --root . --port 4555`).
+- Dev server running (`bun apps/studio/server.ts --root . --port 4555`).
 - `.design/ui/Canvas Viewport.tsx` accessible at the dev-server root (10 artboards present).
 - Browser viewport at 1440×900.
 

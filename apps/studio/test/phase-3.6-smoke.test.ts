@@ -19,7 +19,9 @@ import { buildCanvasModule } from '../canvas-build.ts';
 import { transpileCanvasSource } from '../canvas-pipeline.ts';
 import { emitRegistryItem } from '../handoff.ts';
 
-const REPO_ROOT = path.resolve(import.meta.dir, '../../../..');
+// apps/studio/test → ../../.. = repo root (DDR-095: was ../../../.. at the old
+// plugins/design/dev-server/test depth).
+const REPO_ROOT = path.resolve(import.meta.dir, '../../..');
 const DESIGN_ROOT = path.join(REPO_ROOT, '.design');
 const DOCS_SITE = path.join(DESIGN_ROOT, 'ui/Docs Site.tsx');
 const CANVAS_VIEWPORT = path.join(DESIGN_ROOT, 'ui/Canvas Viewport.tsx');

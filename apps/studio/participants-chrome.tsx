@@ -1,6 +1,6 @@
 /**
  * @file       participants-chrome.tsx — top-right avatar stack of live peers
- * @scope      plugins/design/dev-server/participants-chrome.tsx
+ * @scope      apps/studio/participants-chrome.tsx
  * @purpose    Phase 8 Task 6 — show who's currently on the canvas. Colored
  *             initials in a circle per peer, with a popover for full name +
  *             "Follow" button. Follow mode publishes `followTarget` on my

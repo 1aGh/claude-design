@@ -1,6 +1,6 @@
 /**
  * @file       dom-selection.ts — selection-from-DOM helpers (leaf module)
- * @scope      plugins/design/dev-server/dom-selection.ts
+ * @scope      apps/studio/dom-selection.ts
  * @purpose    Pure DOM → Selection builders shared by the canvas chrome
  *             (canvas-shell.tsx) and the shell-owned comment mount layer
  *             (canvas-comment-mount.tsx). Lives in its own leaf module — no

@@ -1,6 +1,6 @@
 /**
  * @file       canvas-cursors.ts — Phase 24 custom tool cursors (Kenney CC0)
- * @scope      plugins/design/dev-server/canvas-cursors.ts
+ * @scope      apps/studio/canvas-cursors.ts
  * @purpose    FigJam/Figma-style custom cursors for EVERY canvas tool. The
  *             native crosshair / text / arrow cursors are tiny + thin and
  *             vanish on busy canvases; these are 32×32 SVG cursors that read on

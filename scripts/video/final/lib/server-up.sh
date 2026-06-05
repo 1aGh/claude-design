@@ -57,7 +57,7 @@ if curl -sf "http://localhost:${PORT}/_health" >/dev/null 2>&1; then
 fi
 
 # Spawn bun + server.ts. Stdout/err captured for inspection.
-SERVER_TS="$REPO/plugins/design/dev-server/server.ts"
+SERVER_TS="$REPO/apps/studio/server.ts"
 if [ ! -f "$SERVER_TS" ]; then
   echo "server-up.sh: server.ts not found at $SERVER_TS" >&2
   exit 1

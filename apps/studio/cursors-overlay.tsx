@@ -1,6 +1,6 @@
 /**
  * @file       cursors-overlay.tsx — foreign peer cursors rendered on the canvas
- * @scope      plugins/design/dev-server/cursors-overlay.tsx
+ * @scope      apps/studio/cursors-overlay.tsx
  * @purpose    Renders one colored SVG arrow + name label per foreign peer at
  *             their published world coords, transformed through the local
  *             viewport so the cursor anchors to canvas content (not to my

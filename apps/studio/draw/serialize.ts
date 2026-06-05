@@ -1,6 +1,6 @@
 /**
  * @file       draw/serialize.ts — Phase 25 geometry-engine serializer
- * @scope      plugins/design/dev-server/draw/serialize.ts
+ * @scope      apps/studio/draw/serialize.ts
  * @purpose    The dual serializer: ONE `DrawPrimitive[]` produces BOTH an
  *             optimized SVG string (`toSvg`) for on-disk assets AND a JSX string
  *             (`toJsx`) for inline canvas embedding. Both render the SAME

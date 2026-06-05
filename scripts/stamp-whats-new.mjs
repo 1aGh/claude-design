@@ -20,9 +20,9 @@ if (!version || !/^\d+\.\d+\.\d+/.test(version)) {
 }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const feedPath = resolve(__dirname, '../plugins/design/dev-server/whats-new.json');
+const feedPath = resolve(__dirname, '../apps/studio/whats-new.json');
 if (!existsSync(feedPath)) {
-  console.log('[whats-new] no feed at plugins/design/dev-server/whats-new.json — skipping stamp');
+  console.log('[whats-new] no feed at apps/studio/whats-new.json — skipping stamp');
   process.exit(0);
 }
 

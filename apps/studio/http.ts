@@ -132,7 +132,10 @@ function safePathUnderRoot(reqUrl: string, repoRoot: string): string | null {
 // and inside the standalone binary's embedded FS in --compile mode.
 const DIST_DIR = join(HERE, 'dist');
 const CLIENT_DIR = join(HERE, 'client');
-const TEMPLATES_DIR = join(HERE, '..', 'templates');
+// Templates stayed under the design *plugin* (plugins/design/templates) when the
+// dev-server moved to apps/studio (DDR-095) — both ship in the npm tarball, so
+// from DEV_SERVER_ROOT (apps/studio) reach across with ../../plugins/design.
+const TEMPLATES_DIR = join(HERE, '..', '..', 'plugins', 'design', 'templates');
 
 // In-memory transpile cache. Key = absolute canvas path. Repeat GETs against an
 // unchanged source skip the parse + ID-injection + Bun.Transpiler + Bun.build

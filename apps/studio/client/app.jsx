@@ -1266,7 +1266,7 @@ function ToolsDropdown({ onAction, onClose }) {
       window.removeEventListener('mousedown', onDocClick);
     };
   }, [onClose]);
-  // Mirrors DEFAULT_TOOLS in plugins/design/dev-server/use-tool-mode.tsx —
+  // Mirrors DEFAULT_TOOLS in apps/studio/use-tool-mode.tsx —
   // kept in sync by hand because the menubar lives in the dev-server shell
   // (no shared bundle with the canvas iframes).
   const tools = [

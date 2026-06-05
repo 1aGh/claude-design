@@ -16,7 +16,7 @@
 // In-process (no hub process): a relay models Hocuspocus by re-broadcasting each
 // doc update to every other peer (Yjs updates are commutative/idempotent, so a
 // re-broadcast relay IS the hub's convergence contract). The real-hub N-peer
-// soak lives in plugins/design/hub/test/stress-integration.test.mjs + the live
+// soak lives in apps/hub/test/stress-integration.test.mjs + the live
 // cross-machine manual run; this suite is the deterministic property gate.
 
 import { describe, expect, test } from 'bun:test';

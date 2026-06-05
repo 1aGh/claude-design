@@ -1,6 +1,6 @@
 /**
  * @file       artboard-activity-overlay.tsx — Phase 13 / DDR-029 overlay.
- * @scope      plugins/design/dev-server/artboard-activity-overlay.tsx
+ * @scope      apps/studio/artboard-activity-overlay.tsx
  * @purpose    The "agent works here" chrome for a single artboard: an animated
  *             rim + a top-right `editing — <label>` badge. Rendered by
  *             `DCArtboard` as a world-coord sibling of the `<article>`, so it

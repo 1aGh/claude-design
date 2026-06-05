@@ -1,6 +1,6 @@
 /**
  * @file       draw/geometry.ts — Phase 25 geometry-engine math layer
- * @scope      plugins/design/dev-server/draw/geometry.ts
+ * @scope      apps/studio/draw/geometry.ts
  * @purpose    Pure, deterministic geometry the LLM must NOT free-hand:
  *               • PCHIP monotone-cubic interpolation (overshoot-free curves —
  *                 the whole point vs LLM-guessed Béziers, which wobble);

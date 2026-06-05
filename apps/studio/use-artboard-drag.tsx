@@ -1,6 +1,6 @@
 /**
  * @file       use-artboard-drag.tsx — Phase 4.2 artboard drag controller
- * @scope      plugins/design/dev-server/use-artboard-drag.tsx
+ * @scope      apps/studio/use-artboard-drag.tsx
  * @purpose    Owns the pointerdown → pointermove → pointerup state machine
  *             for dragging artboards on the infinite canvas. The pure
  *             `dragReducer` + `commitFromState` are unit-testable without a

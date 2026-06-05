@@ -150,3 +150,39 @@ test('isPlausiblePlatformBinary — accepts maude-<slug>/maude, rejects everythi
   assert.equal(isPlausiblePlatformBinary(''), false);
   assert.equal(isPlausiblePlatformBinary(null), false);
 });
+
+// DDR-095 — `maude studio` is a top-level alias for `maude design serve`. Both
+// must resolve the same server-entry path. We prove parity by booting each
+// against a temp dir with no .design/: the dev-server fails loud (exit 1) with
+// an identical first-line signature, which only happens if `studio` routed
+// through design-serve resolution (`apps/studio/server.{ts,mjs}` / the binary).
+test('`maude studio` aliases `maude design serve` (identical boot resolution)', () => {
+  const BIN_PATH = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'maude.mjs');
+  function bootAgainstEmpty(argv) {
+    const cwd = mkdtempSync(join(tmpdir(), 'maude-studio-'));
+    try {
+      const r = spawnSync(process.execPath, [BIN_PATH, ...argv, '--root', cwd], {
+        encoding: 'utf8',
+        timeout: 30000,
+      });
+      return { status: r.status, firstErr: (r.stderr || '').split('\n').find(Boolean) ?? '' };
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }
+  const viaDesign = bootAgainstEmpty(['design', 'serve']);
+  const viaStudio = bootAgainstEmpty(['studio']);
+  // Both fail loud (no .design/) — same exit code, same first-line diagnostic.
+  assert.notEqual(viaStudio.status, 0, `studio should not boot cleanly: ${viaStudio.firstErr}`);
+  assert.equal(viaStudio.status, viaDesign.status);
+  assert.equal(viaStudio.firstErr, viaDesign.firstErr);
+});
+
+test('`maude studio` is recognized (not an unknown command)', () => {
+  const BIN_PATH = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'maude.mjs');
+  const r = spawnSync(process.execPath, [BIN_PATH, 'studio', '--root', '/nonexistent-xyz'], {
+    encoding: 'utf8',
+    timeout: 30000,
+  });
+  assert.doesNotMatch(r.stderr || '', /unknown command/);
+});

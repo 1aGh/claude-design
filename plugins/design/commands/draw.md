@@ -7,7 +7,7 @@ argument-hint: "\"<brief>\" [--type icon|logo|illustration|diagram|spot] [--grid
 
 # /design:draw — nakresli verifikovaný SVG mark
 
-Generuje **produkční vektorovou grafiku** přes geometry engine (`plugins/design/dev-server/draw/`) a **vizuálně ji ověří** — renderuje, screenshotuje, pairwise-rankuje, kritizuje proti 30-check rubrice a iteruje do konvergence. Žádné free-hand `<path d>` souřadnice: LLM určuje *záměr*, engine počítá *souřadnice* (to eliminuje LLM-SVG failure módy — integer quantization, coordinate drift, occlusion, color degradation).
+Generuje **produkční vektorovou grafiku** přes geometry engine (`apps/studio/draw/`) a **vizuálně ji ověří** — renderuje, screenshotuje, pairwise-rankuje, kritizuje proti 30-check rubrice a iteruje do konvergence. Žádné free-hand `<path d>` souřadnice: LLM určuje *záměr*, engine počítá *souřadnice* (to eliminuje LLM-SVG failure módy — integer quantization, coordinate drift, occlusion, color degradation).
 
 Project-specific hodnoty (designRoot, rootClass, tokens, accent, colorSpace) přicházejí z `<repo>/.design/config.json`.
 

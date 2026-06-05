@@ -83,15 +83,17 @@ maude cache put <layer> <key> [file]  # write a value from a file or stdin
 
 Layers: `research/domain`, `research/project`, `codebase-intelligence`, `design-context`, `security`, `scenario`, `validate`. (DDR-061.)
 
-## `maude design serve`
+## `maude studio` / `maude design serve`
 
-Boot the design dev server in the current repo.
+Boot the canvas studio (the design dev server) in the current repo.
 
 ```bash
+maude studio [--port N] [--root <path>]
+# equivalent:
 maude design serve [--port N] [--root <path>]
 ```
 
-Equivalent to invoking `claude-design-server` directly (which is the second bin shipped by `@1agh/maude`). All remaining args are forwarded to the server.
+`maude studio` is a top-level alias for `maude design serve` — the verb matches the studio's home under `apps/studio/`. Both are equivalent, and both also match invoking `claude-design-server` directly (the second bin shipped by `@1agh/maude`). All remaining args are forwarded to the server.
 
 - `--port`. Listen on a specific port (default `4399`; falls back to a random free port if taken).
 - `--root`. Serve a different repo. By default uses `$CLAUDE_PROJECT_DIR`, then `process.cwd()`.

@@ -974,7 +974,7 @@ button { font: inherit; }
 }
 /* Phase 6 — the shell-side composer / focused-row / pin-strip surfaces are
  * gone; pins + composer + thread popover live inside the canvas iframe
- * (plugins/design/dev-server/comments-overlay.{tsx,css}). The remaining
+ * (apps/studio/comments-overlay.{tsx,css}). The remaining
  * `.comment-bar` and `.cb-row.strip` rules below render the residual
  * open-count summary the shell still surfaces in the BottomBar. */
 

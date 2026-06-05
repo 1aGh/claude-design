@@ -26,7 +26,7 @@ import { lintConfig } from './config-lint.mjs';
 const read = (p) => readFileSync(resolve(p), 'utf8');
 const readJson = (p) => JSON.parse(read(p));
 
-const META_SCHEMA = readJson('plugins/design/dev-server/canvas-meta.schema.json');
+const META_SCHEMA = readJson('apps/studio/canvas-meta.schema.json');
 const FLOW_SCHEMA = readJson('plugins/flow/.claude-plugin/config.schema.json');
 const SKELETON = readJson('plugins/flow/templates/ai-skeleton/workflows.config.json');
 

@@ -27,7 +27,7 @@
 # Exit: 0 if all hard deps pass; 1 otherwise.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 PKG_ROOT="$(cd "$PLUGIN_ROOT/../.." && pwd)"
 
 if [ -f "$PKG_ROOT/cli/lib/preflight.mjs" ]; then

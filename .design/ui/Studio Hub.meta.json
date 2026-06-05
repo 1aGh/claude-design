@@ -1,7 +1,7 @@
 {
   "title": "Studio Hub",
   "subtitle": "Operator console for self-hosted Maude sync, reimagined under the maude DS — landing · onboarding · dashboard · presence · tokens · invite · settings",
-  "brief": "Redesign of the maude hub (plugins/design/hub) — the self-hosted Yjs sync server + admin console — renamed Studio Hub and dressed in the maude 'Unified Pro Studio' DS. Functionality source of truth: plugins/design/hub/src/{server,admin-auth,bootstrap}.mjs + src/admin/. Content prior: Sync Hub Admin (project DS). Chrome prior: Studio (maude app-shell). Expanded beyond today's vanilla-JS admin with a public landing page, a first-run onboarding wizard, a spatial presence map, a canvases browser, and a settings surface.",
+  "brief": "Redesign of the maude hub (apps/hub) — the self-hosted Yjs sync server + admin console — renamed Studio Hub and dressed in the maude 'Unified Pro Studio' DS. Functionality source of truth: apps/hub/src/{server,admin-auth,bootstrap}.mjs + src/admin/. Content prior: Sync Hub Admin (project DS). Chrome prior: Studio (maude app-shell). Expanded beyond today's vanilla-JS admin with a public landing page, a first-run onboarding wizard, a spatial presence map, a canvases browser, and a settings surface.",
   "platform": "desktop",
   "designSystem": "maude",
   "opt_out_scope": "palette",

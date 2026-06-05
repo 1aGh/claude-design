@@ -1,6 +1,6 @@
 /**
  * @file       ai-banner.tsx — yellow "Claude is editing this canvas" banner
- * @scope      plugins/design/dev-server/ai-banner.tsx
+ * @scope      apps/studio/ai-banner.tsx
  * @purpose    Mounted by canvas-shell. Subscribes to the inspector WS
  *             `ai-activity` event for the canvas's own file path; shows a
  *             non-modal yellow banner while AI work is in progress and clears

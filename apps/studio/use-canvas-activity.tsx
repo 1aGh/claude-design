@@ -1,6 +1,6 @@
 /**
  * @file       use-canvas-activity.tsx — Phase 13 / DDR-029 activity context.
- * @scope      plugins/design/dev-server/use-canvas-activity.tsx
+ * @scope      apps/studio/use-canvas-activity.tsx
  * @purpose    Iframe-runtime React context fed by the server's `activity` WS
  *             messages. `DCArtboard` reads it to render the "agent works here"
  *             overlay on the artboards being edited right now.

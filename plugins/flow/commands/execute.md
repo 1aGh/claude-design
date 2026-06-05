@@ -142,7 +142,7 @@ After the last task, compute the phase diff (`git diff --name-only $(git merge-b
 
 | Trigger | Matches when |
 |---|---|
-| Dev-server change | Any path under `plugins/design/dev-server/**` modified |
+| Dev-server change | Any path under `apps/studio/**` modified |
 | Runtime library change | Any path under `<designRoot>/_lib/**` modified |
 | Canvas template change | Any path matching `plugins/design/templates/canvas*.tsx.template` modified |
 | Bulk canvas migration | ≥ 3 `*.tsx` files mutated under `<designRoot>/` AND no `/design:edit` was invoked this session (codemod / script shape) |

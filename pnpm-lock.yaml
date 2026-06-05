@@ -26,28 +26,47 @@ importers:
         version: 1.60.0
     optionalDependencies:
       '@1agh/maude-darwin-arm64':
-        specifier: 0.28.0
-        version: 0.28.0
+        specifier: 0.28.1
+        version: 0.28.1
       '@1agh/maude-darwin-x64':
-        specifier: 0.28.0
-        version: 0.28.0
+        specifier: 0.28.1
+        version: 0.28.1
       '@1agh/maude-linux-arm64':
-        specifier: 0.28.0
-        version: 0.28.0
+        specifier: 0.28.1
+        version: 0.28.1
       '@1agh/maude-linux-arm64-musl':
-        specifier: 0.28.0
-        version: 0.28.0
+        specifier: 0.28.1
+        version: 0.28.1
       '@1agh/maude-linux-x64':
-        specifier: 0.28.0
-        version: 0.28.0
+        specifier: 0.28.1
+        version: 0.28.1
       '@1agh/maude-linux-x64-musl':
-        specifier: 0.28.0
-        version: 0.28.0
+        specifier: 0.28.1
+        version: 0.28.1
       '@1agh/maude-win32-x64':
-        specifier: 0.28.0
-        version: 0.28.0
+        specifier: 0.28.1
+        version: 0.28.1
 
-  plugins/design/dev-server:
+  apps/hub:
+    dependencies:
+      '@hocuspocus/extension-sqlite':
+        specifier: ^4.0.0
+        version: 4.1.0(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)
+      '@hocuspocus/server':
+        specifier: ^4.0.0
+        version: 4.1.0(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)
+      better-sqlite3:
+        specifier: ^12.10.0
+        version: 12.10.0
+      yjs:
+        specifier: ^13.6.31
+        version: 13.6.31
+    devDependencies:
+      '@hocuspocus/provider':
+        specifier: ^4.0.0
+        version: 4.1.0(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)
+
+  apps/studio:
     dependencies:
       '@hocuspocus/provider':
         specifier: ^4.0.0
@@ -103,7 +122,7 @@ importers:
     devDependencies:
       '@happy-dom/global-registrator':
         specifier: ^20.9.0
-        version: 20.9.0
+        version: 20.10.1
       '@oxc-parser/binding-darwin-arm64':
         specifier: 0.134.0
         version: 0.134.0
@@ -139,32 +158,13 @@ importers:
         version: 1.3.14
       happy-dom:
         specifier: ^20.9.0
-        version: 20.9.0
+        version: 20.10.1
       playwright:
         specifier: ^1.60.0
         version: 1.60.0
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
-
-  plugins/design/hub:
-    dependencies:
-      '@hocuspocus/extension-sqlite':
-        specifier: ^4.0.0
-        version: 4.1.0(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)
-      '@hocuspocus/server':
-        specifier: ^4.0.0
-        version: 4.1.0(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)
-      better-sqlite3:
-        specifier: ^12.10.0
-        version: 12.10.0
-      yjs:
-        specifier: ^13.6.31
-        version: 13.6.31
-    devDependencies:
-      '@hocuspocus/provider':
-        specifier: ^4.0.0
-        version: 4.1.0(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)
 
   site:
     dependencies:
@@ -217,42 +217,42 @@ importers:
 
 packages:
 
-  '@1agh/maude-darwin-arm64@0.28.0':
-    resolution: {integrity: sha512-YXF+c5S5oNSq9/Jh0/wJYcsYuZawg+ALR3hhnMmjMTWwYVy5ZEcRhbUC01JsE15qa8ia1Y5ywJ6FlVPoLah2pg==}
+  '@1agh/maude-darwin-arm64@0.28.1':
+    resolution: {integrity: sha512-d3gWWUWhETqx9lcvYKAUiZswkoIfJZaMZIqg8AQ4ouvob0W6PDSTsoelLk3CxjbdrwS9KmLsnsXTPjZtpwQPNg==}
     cpu: [arm64]
     os: [darwin]
 
-  '@1agh/maude-darwin-x64@0.28.0':
-    resolution: {integrity: sha512-CKMCW6X8cVNddrmlxyRiLDdRnyKmlJ08m5p6SlTc/xEOe40ZVrOhEhsIz+HsuvgfMveacxiAwhZkrK595NqdvQ==}
+  '@1agh/maude-darwin-x64@0.28.1':
+    resolution: {integrity: sha512-3on8XeMeZ7GRlrhtLZ/C8wu1g0y/zBSMlRtIbddfI7/5kbk/CjxV8BwavGwFLqN5yymoMaWaoLLZC91XBL4EiA==}
     cpu: [x64]
     os: [darwin]
 
-  '@1agh/maude-linux-arm64-musl@0.28.0':
-    resolution: {integrity: sha512-Ks8fhD9kZ2dPxCVxiHBJPRAEHcDu0FRJUi2545bukVtXcOa6I95lXZWO0U1hfIDSPKIhQMpaBhwV+NbaqhWy/A==}
+  '@1agh/maude-linux-arm64-musl@0.28.1':
+    resolution: {integrity: sha512-OvhrIdItMxpbg4fMD5C/EyjvP3i5PBuvA8JZdvjvN2tSgz4AyIdwYLcOgSI13yqa7llKmcNWgWiiRJ6+pInFSw==}
     cpu: [arm64]
     os: [linux]
     libc: [musl]
 
-  '@1agh/maude-linux-arm64@0.28.0':
-    resolution: {integrity: sha512-qOZnGa9hb6btBXDlC9YLFToDGaK8OaxiwXTzlZCOMtpUYl0PgAm8tiwYXUUCpvffYu71VXvGYd5Ra0S3uZZhVA==}
+  '@1agh/maude-linux-arm64@0.28.1':
+    resolution: {integrity: sha512-cvHfRn6/iMpMImjy4dbDC9XFayQwPnE1ES4SNwHAdUbSHPleEV3ygnpS7UxYpNJTjA7WV9SswxfqKb9j9VEFbA==}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
 
-  '@1agh/maude-linux-x64-musl@0.28.0':
-    resolution: {integrity: sha512-OYeGAkcQcbPkWgOZP7QmvHH3IofIxh9rC7nsNXAJO7QEmSzajayjIqJ1Axi2NIjeYcHXp2xjvv6YqOBic/r4OQ==}
+  '@1agh/maude-linux-x64-musl@0.28.1':
+    resolution: {integrity: sha512-7UU9CWMzU8OK15Z3lAp/rFvUYwiWfh/CXiIjtPe0hABaZ3TQJHP5aynXbMkcnIp5PPzxkZUOQVYlhWUfpVVJGA==}
     cpu: [x64]
     os: [linux]
     libc: [musl]
 
-  '@1agh/maude-linux-x64@0.28.0':
-    resolution: {integrity: sha512-CV2zy2SgvHvvOrL5OetquvmtCPSdf61p7lyCYRsUheDLSv+9FhYygaY5KdRHEOQ6mr9kwIJO4FyTrBWRr7CEAg==}
+  '@1agh/maude-linux-x64@0.28.1':
+    resolution: {integrity: sha512-gtpvqjM7du7TkK1rD6S+s6IrBC3QHZRIxVvqWNm5UttObGelHGRLw1fWW5MjXZYPAkKAhivXSF7ywj8VwV3f2g==}
     cpu: [x64]
     os: [linux]
     libc: [glibc]
 
-  '@1agh/maude-win32-x64@0.28.0':
-    resolution: {integrity: sha512-HZxzG0WHSWXqjlGjUiQ8r8wXxagb0jye0nBVzk61qm4Sz5rYp1zuePDyMNdh/HvLlhEsIvGJo3OTazrF8pQ+2g==}
+  '@1agh/maude-win32-x64@0.28.1':
+    resolution: {integrity: sha512-If/U4z7kihouA7k0MkeN3eHq6arEp4ZtScNjv0al9o7Wrmqf3oA5OkqsSYqDN9tn8+Nw+J+u3AbxiDLZNbcqPw==}
     cpu: [x64]
     os: [win32]
 
@@ -567,8 +567,8 @@ packages:
       tailwindcss:
         optional: true
 
-  '@happy-dom/global-registrator@20.9.0':
-    resolution: {integrity: sha512-lBW6/m5BIFl3pMuWPNN0lIOYw9LMCmPfix53ExS3FBi4E+NELEljQ3xH6aAV9IYiQRfn9YIIgzzMrD0vIcD7tw==}
+  '@happy-dom/global-registrator@20.10.1':
+    resolution: {integrity: sha512-nIT1Jdsar1KnLuqX+q3oMKwUIDcSJ4GnGMBnCtXLLL+lIpqaBBACPIo9By3NeF15XDPLDLIou8aQd3/xqZoSkQ==}
     engines: {node: '>=20.0.0'}
 
   '@hocuspocus/common@4.1.0':
@@ -909,14 +909,12 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   '@oxc-parser/binding-linux-arm64-musl@0.134.0':
     resolution: {integrity: sha512-jUEsnxPXhrCYxswQLYvUOxZEE5UWFMkK5kBnrcPMj7TONz1pD0yKgPmOQCAx2LPoysJ/v2Sjg4RBUVoO2VXoZQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   '@oxc-parser/binding-linux-ppc64-gnu@0.134.0':
     resolution: {integrity: sha512-FU5xMUsXnMuWKVCGo43c6SJsnqHcsioqm32PHdDY39cIRJa/AZbo7RMYW0W5gYcNZqb8EMhELkMDwbJOFbUhtg==}
@@ -951,14 +949,12 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   '@oxc-parser/binding-linux-x64-musl@0.134.0':
     resolution: {integrity: sha512-OQnJAK4sFuNSLgsh2s/K+14a3kwbmqf2yh1JiADU9XSfDuRooZYbAxmmBVPiyQ97+jBIIA1x2oPZeYNto3Ioow==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   '@oxc-parser/binding-openharmony-arm64@0.134.0':
     resolution: {integrity: sha512-RYLooe6g31q/PqNFN0NjR80IK/ARGsfLasAXL42LXonL+5Cyy9Or76rjBKQLAjERikJwbRU/sYW9Q5Tnpt1A4Q==}
@@ -1539,9 +1535,6 @@ packages:
   '@types/node@22.19.19':
     resolution: {integrity: sha512-dyh/xO2Fh5bYrfWaaqGrRQQGkNdmYw6AmaAUvYeUMNTWQtvb796ikLdmTchRmOlOiIJ1TDXfWgVx1QkUlQ6Hew==}
 
-  '@types/node@25.7.0':
-    resolution: {integrity: sha512-z+pdZyxE+RTQE9AcboAZCb4otwcrvgHD+GlBpPgn0emDVt0ohrTMhAwlr2Wd9nZ+nihhYFxO2pThz3C5qSu2Eg==}
-
   '@types/node@25.9.1':
     resolution: {integrity: sha512-xfrlY7UD5rMJk3ZVJP8BNzS28J36YJg+xp+LPXV1TdWxr8uMH5A860QNxYDGQe/ylDSgjxE52Q9VnO7p75tJxg==}
 
@@ -1660,6 +1653,10 @@ packages:
   braces@3.0.3:
     resolution: {integrity: sha512-yQbXgO/OSZVD2IsiLlro+7Hf6Q18EJrKSEsdoMzKePKXct3gvD8oLcOQdIzGupr5Fj+EDe8gO/lxc1BzfMpxvA==}
     engines: {node: '>=8'}
+
+  buffer-image-size@0.6.4:
+    resolution: {integrity: sha512-nEh+kZOPY1w+gcCMobZ6ETUp9WfibndnosbpwB1iJk/8Gt5ZF2bhS6+B6bPYz424KtwsR6Rflc3tCz1/ghX2dQ==}
+    engines: {node: '>=4.0'}
 
   buffer@5.7.1:
     resolution: {integrity: sha512-EHcyIPBQ4BSGlvjB16k5KgAJ27CIsHY/2JBmCRReo48y9rQ3MaUzWX3KVlBa4U7MyX02HdVj0K7C3WaB3ju7FQ==}
@@ -2107,8 +2104,8 @@ packages:
     resolution: {integrity: sha512-6ABGa9CR7WR/0pAJicBy5SJkiikbFM6kf/JjykwX7x+t+s8ORWVnlbi6FkHeFFb36yWsjUpHqSYrygd7ofEUqA==}
     engines: {node: '>=0.10.0'}
 
-  happy-dom@20.9.0:
-    resolution: {integrity: sha512-GZZ9mKe8r646NUAf/zemnGbjYh4Bt8/MqASJY+pSm5ZDtc3YQox+4gsLI7yi1hba6o+eCsGxpHn5+iEVn31/FQ==}
+  happy-dom@20.10.1:
+    resolution: {integrity: sha512-awPoqPjx8CgjapJllyDlgzgVHjBExcitKK5ZJkxwhQJyQpHFkyS2bEcqCm7IeW20cQvuCI0cz2Ifq79CJKqtiw==}
     engines: {node: '>=20.0.0'}
 
   hast-util-from-parse5@8.0.3:
@@ -2718,10 +2715,6 @@ packages:
     resolution: {integrity: sha512-PS08Iboia9mts/2ygV3eLpY5ghnUcfLV/EXTOW1E2qYxJKGGBUtNjN76FYHnMs36RmARn41bC0AZmn+rR0OVpQ==}
     engines: {node: ^10 || ^12 || >=14}
 
-  postcss@8.5.14:
-    resolution: {integrity: sha512-SoSL4+OSEtR99LHFZQiJLkT59C5B1amGO1NzTwj7TT1qCUgUO6hxOvzkOYxD+vMrXBM3XJIKzokoERdqQq/Zmg==}
-    engines: {node: ^10 || ^12 || >=14}
-
   postcss@8.5.15:
     resolution: {integrity: sha512-FfR8sjd4em2T6fb3I2MwAJU7HWVMr9zba+enmQeeWFfCbm+UOC/0X4DS8XtpUTMwWMGbjKYP7xjfNekzyGmB3A==}
     engines: {node: ^10 || ^12 || >=14}
@@ -3071,9 +3064,6 @@ packages:
   undici-types@6.21.0:
     resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
 
-  undici-types@7.21.0:
-    resolution: {integrity: sha512-w9IMgQrz4O0YN1LtB7K5P63vhlIOvC7opSmouCJ+ZywlPAlO9gIkJ+otk6LvGpAs2wg4econaCz3TvQ9xPoyuQ==}
-
   undici-types@7.24.6:
     resolution: {integrity: sha512-WRNW+sJgj5OBN4/0JpHFqtqzhpbnV0GuB+OozA9gCL7a993SmU+1JBZCzLNxYsbMfIeDL+lTsphD5jN5N+n0zg==}
 
@@ -3185,25 +3175,25 @@ packages:
 
 snapshots:
 
-  '@1agh/maude-darwin-arm64@0.28.0':
+  '@1agh/maude-darwin-arm64@0.28.1':
     optional: true
 
-  '@1agh/maude-darwin-x64@0.28.0':
+  '@1agh/maude-darwin-x64@0.28.1':
     optional: true
 
-  '@1agh/maude-linux-arm64-musl@0.28.0':
+  '@1agh/maude-linux-arm64-musl@0.28.1':
     optional: true
 
-  '@1agh/maude-linux-arm64@0.28.0':
+  '@1agh/maude-linux-arm64@0.28.1':
     optional: true
 
-  '@1agh/maude-linux-x64-musl@0.28.0':
+  '@1agh/maude-linux-x64-musl@0.28.1':
     optional: true
 
-  '@1agh/maude-linux-x64@0.28.0':
+  '@1agh/maude-linux-x64@0.28.1':
     optional: true
 
-  '@1agh/maude-win32-x64@0.28.0':
+  '@1agh/maude-win32-x64@0.28.1':
     optional: true
 
   '@alloc/quick-lru@5.2.0': {}
@@ -3504,10 +3494,10 @@ snapshots:
       '@tailwindcss/oxide': 4.3.0
       tailwindcss: 4.3.0
 
-  '@happy-dom/global-registrator@20.9.0':
+  '@happy-dom/global-registrator@20.10.1':
     dependencies:
-      '@types/node': 25.7.0
-      happy-dom: 20.9.0
+      '@types/node': 25.9.1
+      happy-dom: 20.10.1
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -4359,10 +4349,6 @@ snapshots:
     dependencies:
       undici-types: 6.21.0
 
-  '@types/node@25.7.0':
-    dependencies:
-      undici-types: 7.21.0
-
   '@types/node@25.9.1':
     dependencies:
       undici-types: 7.24.6
@@ -4463,6 +4449,10 @@ snapshots:
     dependencies:
       fill-range: 7.1.1
 
+  buffer-image-size@0.6.4:
+    dependencies:
+      '@types/node': 25.9.1
+
   buffer@5.7.1:
     dependencies:
       base64-js: 1.5.1
@@ -4470,7 +4460,7 @@ snapshots:
 
   bun-types@1.3.14:
     dependencies:
-      '@types/node': 25.7.0
+      '@types/node': 25.9.1
 
   caniuse-lite@1.0.30001793: {}
 
@@ -4596,7 +4586,7 @@ snapshots:
   dom-to-svg@0.12.2:
     dependencies:
       gradient-parser: 1.2.0
-      postcss: 8.5.14
+      postcss: 8.5.15
       postcss-value-parser: 4.2.0
 
   domelementtype@2.3.0: {}
@@ -4910,11 +4900,12 @@ snapshots:
 
   gradient-parser@1.2.0: {}
 
-  happy-dom@20.9.0:
+  happy-dom@20.10.1:
     dependencies:
-      '@types/node': 25.7.0
+      '@types/node': 25.9.1
       '@types/whatwg-mimetype': 3.0.2
       '@types/ws': 8.18.1
+      buffer-image-size: 0.6.4
       entities: 7.0.1
       whatwg-mimetype: 3.0.0
       ws: 8.21.0
@@ -5699,7 +5690,7 @@ snapshots:
 
   node-abi@3.92.0:
     dependencies:
-      semver: 7.8.0
+      semver: 7.8.1
 
   nth-check@2.1.1:
     dependencies:
@@ -5834,12 +5825,6 @@ snapshots:
   postcss-value-parser@4.2.0: {}
 
   postcss@8.4.31:
-    dependencies:
-      nanoid: 3.3.12
-      picocolors: 1.1.1
-      source-map-js: 1.2.1
-
-  postcss@8.5.14:
     dependencies:
       nanoid: 3.3.12
       picocolors: 1.1.1
@@ -6092,8 +6077,7 @@ snapshots:
 
   semver@7.8.0: {}
 
-  semver@7.8.1:
-    optional: true
+  semver@7.8.1: {}
 
   setimmediate@1.0.5: {}
 
@@ -6272,8 +6256,6 @@ snapshots:
   undici-types@5.26.5: {}
 
   undici-types@6.21.0: {}
-
-  undici-types@7.21.0: {}
 
   undici-types@7.24.6: {}
 

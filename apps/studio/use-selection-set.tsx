@@ -1,6 +1,6 @@
 /**
  * @file       use-selection-set.tsx — Phase 4.1 multi-selection store
- * @scope      plugins/design/dev-server/use-selection-set.tsx
+ * @scope      apps/studio/use-selection-set.tsx
  * @purpose    Multi-element selection state for canvas-shell. The canvas
  *             input router calls `replace()` / `add()` / `clear()`;
  *             the provider debounces and posts up to the dev-server shell

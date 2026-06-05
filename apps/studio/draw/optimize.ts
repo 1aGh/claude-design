@@ -1,6 +1,6 @@
 /**
  * @file       draw/optimize.ts — Phase 25 geometry-engine SVGO wrapper
- * @scope      plugins/design/dev-server/draw/optimize.ts
+ * @scope      apps/studio/draw/optimize.ts
  * @purpose    The single external dependency (SVGO — DDR-071). Two jobs:
  *               1. Minify the final on-disk SVG asset (multipass, 2-decimal
  *                  precision) without stripping the a11y/scaling contract.

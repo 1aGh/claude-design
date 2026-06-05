@@ -698,7 +698,7 @@ async function runAsMain() {
   console.log(`[hub] admin UI: ${publicUrl}/admin`);
   if (!adminAssetsLoaded()) {
     console.warn(
-      '[hub] admin assets missing — /admin will serve empty page. Run `bun run build` in plugins/design/hub.'
+      '[hub] admin assets missing — /admin will serve empty page. Run `bun run build` in apps/hub.'
     );
   }
 

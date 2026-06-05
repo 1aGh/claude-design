@@ -15,7 +15,7 @@ Native iOS / Android intentionally **skipped** — annotation UX is pointer-and-
 
 ## Preconditions
 
-- Dev server running (`bun plugins/design/dev-server/server.ts --root . --port 4399`).
+- Dev server running (`bun apps/studio/server.ts --root . --port 4399`).
 - `<designRoot>/ui-canvas_viewport.annotations.svg` and `<designRoot>/ui-smoke_tsx.annotations.svg` cleared at scenario start (delete if present so we exercise the empty-load path).
 - Active tool resets to `move` on each canvas open (default).
 - `prefers-reduced-motion` not set (so the help-sheet `<dialog>` open/close fires normally; not strictly required, just documents the resting case).

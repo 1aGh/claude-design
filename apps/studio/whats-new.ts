@@ -44,12 +44,12 @@ let cache: WhatsNewFeed | null = null;
 
 /**
  * Read the installed maude version from the design plugin manifest.
- * `plugins/design/dev-server/` → `plugins/design/.claude-plugin/plugin.json`.
+ * `apps/studio/` → `plugins/design/.claude-plugin/plugin.json`.
  * That manifest ships in BOTH npm installs and marketplace-cache clones
  * (same rationale as build.ts `readPluginVersion`). Falls back to `dev`.
  */
 export function resolveMaudeVersion(root: string = DEV_SERVER_ROOT): string {
-  const manifest = join(root, '..', '.claude-plugin', 'plugin.json');
+  const manifest = join(root, '..', '..', 'plugins', 'design', '.claude-plugin', 'plugin.json');
   try {
     const parsed = JSON.parse(readFileSync(manifest, 'utf8')) as { version?: unknown };
     if (typeof parsed.version === 'string') return parsed.version;

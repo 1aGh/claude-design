@@ -8,10 +8,14 @@
 //                                  is the virtual `/$bunfs/root` (bun --compile
 //                                  embedded fs) — NOT a real disk path.
 //                                  Walk up from process.execPath until we find
-//                                  the real plugins/design/dev-server/ dir.
-//   3. Compiled binary, marketplace cache: similar to (2) but lives at
-//                                  ~/.claude/plugins/cache/maude/design/<v>/
-//                                  dev-server/. Same walk-up logic finds it.
+//                                  the real apps/studio/ dir.
+//   3. Compiled binary, marketplace cache: the marketplace clone ships only the
+//                                  plugin markdown (plugins/design/) — the
+//                                  dev-server ships via npm (package.json files),
+//                                  so the runtime is resolved from the npm
+//                                  package layout, never the marketplace cache.
+//                                  Same walk-up logic anchors on http.ts. See
+//                                  DDR-095 for the apps/studio relocation.
 //
 // Why this matters: Phase 19 v0.18.0 used `dirname(fileURLToPath(import.meta.url))`
 // universally. In the compiled binary that's `/$bunfs/root` — a virtual path —
@@ -28,7 +32,7 @@ import { fileURLToPath } from 'node:url';
 
 /**
  * Real disk path to the dev-server install dir
- * (`plugins/design/dev-server/` inside whatever package layout we're in).
+ * (`apps/studio/` inside whatever package layout we're in).
  *
  * Always a directory that contains `http.ts` + `dist/` + (optionally)
  * `node_modules/` and `client/`. Never a virtual `/$bunfs/*` path.
@@ -86,16 +90,16 @@ function resolveDevServerRoot(): string {
   }
 
   // (2 + 3) Compiled binary: walk up from process.execPath until we find a dir
-  // that *contains* `plugins/design/dev-server/<canonical files>`. Match both
-  // npm install layout (binary at @1agh/maude-<plat>/maude → walk up 4 levels
-  // to @1agh/maude/) AND marketplace cache layout (binary somewhere under
-  // ~/.claude/plugins/cache/maude/design/<v>/dev-server/dist/).
+  // that *contains* `apps/studio/<canonical files>`. Match the npm install
+  // layout (binary at @1agh/maude-<plat>/maude → walk up to @1agh/maude/, which
+  // ships apps/studio/ via package.json files). The dev-server is NOT shipped via
+  // the marketplace clone, so there is no marketplace-cache anchor (DDR-095).
   let cur = dirname(process.execPath);
   for (let i = 0; i < 10; i++) {
     // Check if cur itself is the dev-server root.
     if (isDevServerDir(cur)) return cur;
-    // Check if cur contains plugins/design/dev-server/.
-    const nested = join(cur, 'plugins', 'design', 'dev-server');
+    // Check if cur contains apps/studio/.
+    const nested = join(cur, 'apps', 'studio');
     if (isDevServerDir(nested)) return nested;
     const parent = dirname(cur);
     if (parent === cur) break;

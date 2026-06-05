@@ -1,6 +1,6 @@
 /**
  * @file       undo-stack.ts — per-canvas in-memory command stack
- * @scope      plugins/design/dev-server/undo-stack.ts
+ * @scope      apps/studio/undo-stack.ts
  * @purpose    Pure state + reducer for canvas Cmd+Z / Cmd+Shift+Z. No React,
  *             no DOM, no fetch — `EditCommand.do()` / `.undo()` are caller-
  *             supplied side-effects so this file stays trivially testable

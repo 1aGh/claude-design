@@ -309,7 +309,7 @@ agent-browser has no equivalent record/replay — author web variants as bash di
 ## TODO (not yet implemented)
 
 - **Auto-author from prompt** — `/scenario "review first 3 flashcards"` should generate runners. Today: manual.
-- ~~**Report generator**~~ — **SHIPPED (Phase C / DDR-061):** `maude scenario-report <run-dir>` walks `<run>/<platform>/result.txt + step-*.png + counters.json` and emits the TL;DR / counter-delta / pivot / path-listing sections of `report.md`; the LLM authors only the two prose sections. Source: `plugins/design/dev-server/bin/scenario-report.mjs`.
+- ~~**Report generator**~~ — **SHIPPED (Phase C / DDR-061):** `maude scenario-report <run-dir>` walks `<run>/<platform>/result.txt + step-*.png + counters.json` and emits the TL;DR / counter-delta / pivot / path-listing sections of `report.md`; the LLM authors only the two prose sections. Source: `apps/studio/bin/scenario-report.mjs`.
 - **iOS-tablet runner** — boot `iPad Air 11-inch (M3)` once, fork `ios-phone` runner with explicit `--udid`. Tab-bar Y likely ~1180 points (re-measure on first run; iPad Air 11" is 820×1180 points).
 - **Android-phone runner** — boot AVD (e.g. `Pixel_7_API_34`), use `agent-device --platform android --serial <serial>`. Per the agent-device skill, `find` auto-resolves to nearest hittable ancestor on Android, so coordinate fallbacks should rarely be needed.
 - **Per-step `result.txt` schema** — currently only "pass / fail: reason" at platform level. Per-step pass/fail with timing would let the report flag exactly which step diverged.

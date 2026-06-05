@@ -94,7 +94,7 @@
     },
     "whatsNew": {
       "enabled": true,
-      "feed": "plugins/design/dev-server/whats-new.json",
+      "feed": "apps/studio/whats-new.json",
       "skill": "whats-new-entry"
     }
   },

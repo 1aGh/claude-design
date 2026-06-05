@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Bundle src/server.mjs → dist/hub.bundle.mjs.
 //
-// Mirrors plugins/design/dev-server/build.ts conventions per DDR-009
+// Mirrors apps/studio/build.ts conventions per DDR-009
 // (Bun runtime authoritative). The Hocuspocus + Yjs + ws + sql-tagged-template
 // graph inlines; SQLite's native binding (better-sqlite3 / Bun's bun:sqlite)
 // stays external so it loads at runtime against the host platform.

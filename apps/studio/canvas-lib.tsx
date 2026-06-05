@@ -1,6 +1,6 @@
 /**
  * @file       canvas-lib.tsx — dev-server-bundled canvas library
- * @scope      plugins/design/dev-server/canvas-lib.tsx
+ * @scope      apps/studio/canvas-lib.tsx
  *             Ships with the dev-server install; resolved at canvas build time
  *             via the `@maude/canvas-lib` virtual specifier. Per DDR-025, this
  *             is the single source of truth — no project-side copy.

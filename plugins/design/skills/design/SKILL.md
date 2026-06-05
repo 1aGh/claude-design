@@ -287,7 +287,7 @@ Use the Edit tool with `old_string` matching a unique substring of the selected 
 
 ### `/design:new <name> "<brief>"` — scaffold new canvas project
 
-Creates a brand-new TSX canvas file in `<designRoot>/<newCanvasDir>/<Name>.tsx` (or `<newComponentDir>/<Name>.tsx` if the user explicitly says component). TSX is the only supported canvas format; envelope primitives import from `@maude/canvas-lib` (virtual specifier → the dev-server-bundled canvas-lib at `plugins/design/dev-server/canvas-lib.tsx`). Generated via the `frontend-design` Skill (preferred) or the orchestrator's direct authoring (documented fallback) — see "Generation invocation" in Cross-skill calls.
+Creates a brand-new TSX canvas file in `<designRoot>/<newCanvasDir>/<Name>.tsx` (or `<newComponentDir>/<Name>.tsx` if the user explicitly says component). TSX is the only supported canvas format; envelope primitives import from `@maude/canvas-lib` (virtual specifier → the dev-server-bundled canvas-lib at `apps/studio/canvas-lib.tsx`). Generated via the `frontend-design` Skill (preferred) or the orchestrator's direct authoring (documented fallback) — see "Generation invocation" in Cross-skill calls.
 
 **The new file MUST be a multi-artboard canvas project**, not a single-page wrapper. It uses the `DesignCanvas` + `DCSection` + `DCArtboard` pattern (see existing examples in `<designRoot>/ui/`) so multiple screens live in one panable canvas. A bare single-page wrapper is an anti-pattern unless the user explicitly says so.
 
@@ -780,7 +780,7 @@ Reference layouts (read at least one for the wrapper pattern):
 
 Output: a single self-contained TSX file at <target_path>. The file MUST:
 1. Default-exported React component (`export default function <Name>() { … }`).
-2. `import { DesignCanvas, DCSection, DCArtboard } from "@maude/canvas-lib"` — virtual specifier the dev-server resolves to its bundled canvas-lib at `plugins/design/dev-server/canvas-lib.tsx` (per DDR-025; no project-side copy). Optional helpers (`DCPostIt`, `SpecimenHeader`, `TokenChip`, `useTheme`, …) live in the same module.
+2. `import { DesignCanvas, DCSection, DCArtboard } from "@maude/canvas-lib"` — virtual specifier the dev-server resolves to its bundled canvas-lib at `apps/studio/canvas-lib.tsx` (per DDR-025; no project-side copy). Optional helpers (`DCPostIt`, `SpecimenHeader`, `TokenChip`, `useTheme`, …) live in the same module.
 3. Use a multi-artboard canvas wrapper (`<DesignCanvas><DCSection><DCArtboard …/></DCSection></DesignCanvas>`) — minimum 1 DCArtboard, but expect to grow. Each artboard has `id`, `label`, `width`, `height`.
 4. `data-theme="{CFG.themeDefault}"` on a `.mdcc` wrapper inside artboards. Tokens link auto-loads via the dev-server's canvas-shell harness; no `<link>` in the TSX.
 5. NO inline color/font/radius values — use CSS vars from the tokens file via `style={{ background: 'var(--accent)' }}` or DS classes.
@@ -828,13 +828,13 @@ Generative skills (frontend-design, design-system) produce best work when given 
 
 ### Canvas-lib — single source of truth (ships with dev-server)
 
-The frame primitives (`DesignCanvas`, `DCSection`, `DCArtboard`, `DCPostIt`) + specimen helpers (`SpecimenHeader`, `TokenChip`, `ColorSwatch`, `KbdHint`, `ThemeToggle`) + hooks (`useTokens`, `useTheme`, `useArtboardBounds`) all live in the dev-server-bundled canvas-lib at **`plugins/design/dev-server/canvas-lib.tsx`** — single source, ships with the dev-server install (per DDR-025; no project-side copy is scaffolded).
+The frame primitives (`DesignCanvas`, `DCSection`, `DCArtboard`, `DCPostIt`) + specimen helpers (`SpecimenHeader`, `TokenChip`, `ColorSwatch`, `KbdHint`, `ThemeToggle`) + hooks (`useTokens`, `useTheme`, `useArtboardBounds`) all live in the dev-server-bundled canvas-lib at **`apps/studio/canvas-lib.tsx`** — single source, ships with the dev-server install (per DDR-025; no project-side copy is scaffolded).
 
 Canvases import via the virtual specifier `@maude/canvas-lib`. The dev-server's `canvas-build.ts` plugin resolves that specifier to the bundled lib file before bundling. `/design:handoff` AST-inlines the used exports + their transitive deps into the emitted registry-item so the consumer drop is self-contained (zero `@maude/canvas-lib` references in the dropped TSX).
 
-**One edit to `plugins/design/dev-server/canvas-lib.tsx` reaches every open canvas** (HMR broadcast triggers a hard iframe reload). New canvases never need to copy frame primitives locally.
+**One edit to `apps/studio/canvas-lib.tsx` reaches every open canvas** (HMR broadcast triggers a hard iframe reload). New canvases never need to copy frame primitives locally.
 
-If you're authoring a new helper that should be shared across all canvases (e.g. a new `<DCPostIt>` variant or a token-introspection hook), add it to `plugins/design/dev-server/canvas-lib.tsx` and `export` it. Sub-agents reading the lib's exports surface during `/design:edit` step 1.5 pick it up automatically.
+If you're authoring a new helper that should be shared across all canvases (e.g. a new `<DCPostIt>` variant or a token-introspection hook), add it to `apps/studio/canvas-lib.tsx` and `export` it. Sub-agents reading the lib's exports surface during `/design:edit` step 1.5 pick it up automatically.
 
 ## Cross-skill calls
 

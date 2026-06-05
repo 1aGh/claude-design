@@ -26,7 +26,7 @@ Native iOS / Android + web-mobile intentionally **skipped** — Phase 5.1's inpu
 
 ## Preconditions
 
-- Dev server running on a high port (`bun plugins/design/dev-server/server.ts --root . --port 4399`).
+- Dev server running on a high port (`bun apps/studio/server.ts --root . --port 4399`).
 - `<designRoot>/ui-canvas_viewport.annotations.svg` cleared at scenario start.
 - Active tool resets to `move` on canvas open.
 

@@ -66,8 +66,8 @@ function ensureDist() {
 }
 
 async function readPluginVersion(): Promise<{ version: string }> {
-  // plugins/design/dev-server/ → plugins/design/.claude-plugin/plugin.json
-  const manifest = join(ROOT, '..', '.claude-plugin', 'plugin.json');
+  // apps/studio/ → ../../plugins/design/.claude-plugin/plugin.json (DDR-095)
+  const manifest = join(ROOT, '..', '..', 'plugins', 'design', '.claude-plugin', 'plugin.json');
   try {
     const parsed = JSON.parse(await Bun.file(manifest).text()) as { version?: unknown };
     if (typeof parsed.version === 'string') return { version: parsed.version };
@@ -257,7 +257,9 @@ async function ensureBindingForTarget(oxcSlug: string): Promise<void> {
   let oxcVersion = '0.131.0';
   const candidates = [
     join(ROOT, 'node_modules', 'oxc-parser', 'package.json'),
-    join(ROOT, '..', '..', '..', 'node_modules', 'oxc-parser', 'package.json'),
+    // apps/studio → ../../ = repo root → node_modules (DDR-095: was ../../../ at
+    // the old plugins/design/dev-server depth).
+    join(ROOT, '..', '..', 'node_modules', 'oxc-parser', 'package.json'),
   ];
   for (const c of candidates) {
     if (existsSync(c)) {

@@ -1,6 +1,6 @@
 /**
  * @file       contextual-toolbar.tsx — T30 (Wave 3)
- * @scope      plugins/design/dev-server/contextual-toolbar.tsx
+ * @scope      apps/studio/contextual-toolbar.tsx
  * @purpose    Selection-anchored floating chrome for ELEMENT selections
  *             (cd-id entries in the selection set). Mirrors the
  *             MultiArtboardToolbar pattern but scopes to user content inside

@@ -861,7 +861,7 @@ Pulling it all together for the implementer.
 
 ### 13.2 Where the local dev server fits
 
-The existing `plugins/design/dev-server/server.mjs` is unchanged in v1.1. It still:
+The existing `apps/studio/server.mjs` is unchanged in v1.1. It still:
 - Serves canvas HTML to the browser.
 - Injects the inspector overlay.
 - Writes `_active.json` on Cmd+Click.

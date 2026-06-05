@@ -87,11 +87,16 @@ function runBinDispatch(verb, { args, pkgRoot }) {
     process.stderr.write(`maude design: "${verb}" is not a dev-tooling verb.\n${usage()}`);
     process.exit(2);
   }
+  // CLAUDE_PLUGIN_ROOT stays the design *plugin* dir (plugins/design) — that's
+  // its true meaning, and it remains 2 levels under pkgRoot so the helpers'
+  // `$PLUGIN_ROOT/../../cli` side-channel + `$PLUGIN_ROOT/../..` pkg-root math
+  // still resolve. The bin scripts themselves now live under apps/studio/bin
+  // (DDR-095) and resolve the dev-server tree via $SCRIPT_DIR/.. regardless.
   const pluginRoot = join(pkgRoot, 'plugins', 'design');
-  const script = join(pluginRoot, 'dev-server', 'bin', `${verb}.sh`);
+  const script = join(pkgRoot, 'apps', 'studio', 'bin', `${verb}.sh`);
   if (!existsSync(script)) {
     process.stderr.write(
-      `maude design ${verb}: helper not found at ${script}. Reinstall maude (the dev-server bin ships in the npm package).\n`
+      `maude design ${verb}: helper not found at ${script}. Reinstall maude (the studio bin ships in the npm package).\n`
     );
     process.exit(1);
   }
@@ -141,7 +146,8 @@ Dev-tooling (dispatch to the dev-server bash helpers — DDR-062):
 
   serve [--port N] [--root PATH]
         Start the design plugin's dev server in the current repo. Equivalent
-        to invoking 'claude-design-server'. Forwards all remaining args.
+        to 'maude studio' (top-level alias) or invoking 'claude-design-server'.
+        Forwards all remaining args.
 
   init  [--name <slug>] [--ds <name>] [--force] [--dry-run]
         [--no-discovery | --discovery-payload <path>]
@@ -260,8 +266,8 @@ async function runServe({ args, pkgRoot }) {
     process.exit(1);
   }
 
-  const tsEntry = resolve(pkgRoot, 'plugins', 'design', 'dev-server', 'server.ts');
-  const mjsEntry = resolve(pkgRoot, 'plugins', 'design', 'dev-server', 'server.mjs');
+  const tsEntry = resolve(pkgRoot, 'apps', 'studio', 'server.ts');
+  const mjsEntry = resolve(pkgRoot, 'apps', 'studio', 'server.mjs');
 
   const hasBun = await new Promise((res) => {
     const probe = spawn('bun', ['--version'], { stdio: 'ignore' });
@@ -415,7 +421,7 @@ function checkDevDeps({ pkgRoot }) {
   // with a less actionable error.
   const required = ['magic-string', 'oxc-parser'];
   const missing = [];
-  const paths = [resolve(pkgRoot, 'plugins', 'design', 'dev-server'), resolve(pkgRoot)];
+  const paths = [resolve(pkgRoot, 'apps', 'studio'), resolve(pkgRoot)];
   for (const dep of required) {
     try {
       require.resolve(dep, { paths });

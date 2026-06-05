@@ -1,6 +1,6 @@
 /**
  * @file       use-agent-presence.tsx — Phase 13.2 / DDR-078 agent presence.
- * @scope      plugins/design/dev-server/use-agent-presence.tsx
+ * @scope      apps/studio/use-agent-presence.tsx
  * @purpose    Turn the Phase 8 `ai-activity` heartbeat into a *presence* peer:
  *             when an agent (`/design:edit` / `/design:new`) is editing THIS
  *             canvas, surface it like another connected human — an avatar in the

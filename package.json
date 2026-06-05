@@ -14,16 +14,16 @@
     "mdcc": "cli/bin/mdcc.mjs",
     "maude-safe": "cli/cli-wrapper.cjs",
     "mdcc-safe": "cli/cli-wrapper.cjs",
-    "claude-design-server": "plugins/design/dev-server/server.mjs"
+    "claude-design-server": "apps/studio/server.mjs"
   },
   "scripts": {
-    "start": "bun run plugins/design/dev-server/server.ts",
-    "dev": "bun run plugins/design/dev-server/server.ts --port 4555",
+    "start": "bun run apps/studio/server.ts",
+    "dev": "bun run apps/studio/server.ts --port 4555",
     "dev:site": "pnpm --filter @maude/site dev --port 4398",
     "build": "pnpm -r --if-present run build",
-    "build:binary": "bun run plugins/design/dev-server/build.ts --release",
+    "build:binary": "bun run apps/studio/build.ts --release",
     "test": "node --test --test-reporter=spec cli/**/*.test.mjs",
-    "test:dev-server": "cd plugins/design/dev-server && bun test",
+    "test:dev-server": "cd apps/studio && bun test",
     "lint": "biome check .",
     "format": "biome format --write .",
     "changeset": "changeset",
@@ -38,7 +38,7 @@
     "video:render": "cd scripts/video/final && pnpm run render",
     "video:studio": "cd scripts/video/final && pnpm run studio",
     "postinstall": "node cli/install.cjs",
-    "prepublishOnly": "bash scripts/check-version-parity.sh && bash plugins/design/dev-server/bin/check-runtime-bundles.sh"
+    "prepublishOnly": "bash scripts/check-version-parity.sh && bash apps/studio/bin/check-runtime-bundles.sh"
   },
   "optionalDependencies": {
     "@1agh/maude-darwin-arm64": "0.28.1",
@@ -51,7 +51,7 @@
   },
   "files": [
     "cli",
-    "plugins/design/dev-server",
+    "apps/studio",
     "plugins/design/dependencies.json",
     "plugins/design/dependencies.schema.json",
     "plugins/design/templates",

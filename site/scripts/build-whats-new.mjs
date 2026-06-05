@@ -2,11 +2,11 @@
 // Mirror the dev-server "What's New" feed into the site so the /whats-new page
 // can render it. Vercel uploads only site/, so site/lib/whats-new.json is
 // COMMITTED (same rationale as roadmap.json) — the feed itself lives with the
-// dev-server (plugins/design/dev-server/whats-new.json, the single source of
+// dev-server (apps/studio/whats-new.json, the single source of
 // truth, DDR-A) and may be absent at deploy time.
 //
 // Reads:
-//   plugins/design/dev-server/whats-new.json        (entries)
+//   apps/studio/whats-new.json        (entries)
 //   plugins/design/.claude-plugin/plugin.json       (current version)
 //
 // Output: site/lib/whats-new.json  { generated, version, entries }
@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../..');
-const feedPath = resolve(repoRoot, 'plugins/design/dev-server/whats-new.json');
+const feedPath = resolve(repoRoot, 'apps/studio/whats-new.json');
 const manifestPath = resolve(repoRoot, 'plugins/design/.claude-plugin/plugin.json');
 const out = resolve(__dirname, '../lib/whats-new.json');
 

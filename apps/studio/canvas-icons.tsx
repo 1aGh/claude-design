@@ -1,6 +1,6 @@
 /**
  * @file       canvas-icons.tsx — Phase 5.1 inline-SVG icon set
- * @scope      plugins/design/dev-server/canvas-icons.tsx
+ * @scope      apps/studio/canvas-icons.tsx
  * @purpose    Tiny dependency-free Lucide-style icon set for the canvas
  *             chrome (tool palette, context toolbar). Each icon is a single
  *             `<svg>` with `currentColor` stroke so it inherits the button

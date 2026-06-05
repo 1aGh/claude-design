@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # canvas-edit.sh — AST-aware single-attribute edit on a canvas .tsx file.
-# Wraps `plugins/design/dev-server/canvas-edit.ts` so /design:edit Step 3a can
+# Wraps `apps/studio/canvas-edit.ts` so /design:edit Step 3a can
 # shell out without booting a Bun module loader inline. Phase 3.6 Task 5.
 #
 # Usage:  canvas-edit.sh <canvas-abs-path> <data-cd-id> <attr> <value>

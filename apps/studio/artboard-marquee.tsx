@@ -1,6 +1,6 @@
 /**
  * @file       artboard-marquee.tsx — Task 24 sub-item (Wave 2 follow-up, G8)
- * @scope      plugins/design/dev-server/artboard-marquee.tsx
+ * @scope      apps/studio/artboard-marquee.tsx
  * @purpose    Drag-to-lasso multi-select for artboards. Bare-button pointerdown
  *             on empty world (NOT inside any artboard, NOT on floating chrome)
  *             starts a marquee. 4 px drag threshold suppresses click jitter.

@@ -111,7 +111,7 @@ jobs:
         # If committed bundles are defective we want to fail every matrix
         # cell up-front rather than ship broken binaries to npm.
         shell: bash
-        run: bash plugins/design/dev-server/bin/check-runtime-bundles.sh
+        run: bash apps/studio/bin/check-runtime-bundles.sh
 
       - name: Build binary for ${{ matrix.target }}
         shell: bash
@@ -124,7 +124,7 @@ jobs:
         env:
           MAUDE_SKIP_RUNTIME_BUILD: '1'
         run: |
-          cd plugins/design/dev-server
+          cd apps/studio
           # Drop --frozen-lockfile: bun.lock is gitignored and gets generated
           # on whatever host first ran it. Under --frozen, bun installs only
           # the bindings the original host saw matching its OS/CPU filter —
@@ -144,7 +144,7 @@ jobs:
       - name: Smoke-test binary
         shell: bash
         run: |
-          cd plugins/design/dev-server
+          cd apps/studio
           # The dev-server fails loud without a .design/ directory — that's
           # enough to prove the binary executes.
           ./${{ env.BIN }} --root /tmp/nonexistent || echo "expected fail-loud exit code"
@@ -153,7 +153,7 @@ jobs:
         shell: bash
         run: |
           DEST="packages/maude-${{ matrix.slug }}"
-          cp "plugins/design/dev-server/${{ env.BIN }}" "$DEST/maude${{ matrix.ext }}"
+          cp "apps/studio/${{ env.BIN }}" "$DEST/maude${{ matrix.ext }}"
           chmod +x "$DEST/maude${{ matrix.ext }}" || true
           ls -la "$DEST"
 
@@ -195,7 +195,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "$GITHUB_REF_NAME" "plugins/design/dev-server/${{ env.BIN }}" --clobber || true
+          gh release upload "$GITHUB_REF_NAME" "apps/studio/${{ env.BIN }}" --clobber || true
 
   publish-main:
     needs: build-binaries
@@ -217,7 +217,7 @@ jobs:
           cache: pnpm
 
       - name: Install Bun
-        # `pnpm build` recurses into plugins/design/dev-server, whose build
+        # `pnpm build` recurses into apps/studio, whose build
         # script invokes `bun run build.ts`. Without Bun on PATH the step
         # fails with `sh: 1: bun: not found`.
         uses: oven-sh/setup-bun@v2
@@ -259,9 +259,9 @@ jobs:
         # parsed cleanly but threw `ReferenceError: AcceleratedAnimation is not
         # defined` at module-eval time, breaking every canvas using motion.
         # This step asserts each bundle ≥ its declared floor in
-        # plugins/design/dev-server/dist/runtime/.min-sizes.json. Hard-fails
+        # apps/studio/dist/runtime/.min-sizes.json. Hard-fails
         # the publish before npm sees the bad tarball.
-        run: bash plugins/design/dev-server/bin/check-runtime-bundles.sh
+        run: bash apps/studio/bin/check-runtime-bundles.sh
 
       - name: Verify tarball shape
         run: bash scripts/check-tarball-shape.sh

@@ -478,7 +478,7 @@
 }
 /* Composer — stacked vertically so the textarea has real estate */
 /* Phase 6 — the shell-side composer / focused-row / pin-strip surfaces moved
- * into the canvas iframe (see plugins/design/dev-server/comments-overlay.tsx
+ * into the canvas iframe (see apps/studio/comments-overlay.tsx
  * + .css). Only the residual BottomBar open-count label survives. The legacy
  * `.composer*` / `.cb-pin-chip` / `.cb-row.focused` / `.cb-text` / `.cb-target`
  * / `.cb-pinno` / `.cb-more` rules were removed in the same change. */

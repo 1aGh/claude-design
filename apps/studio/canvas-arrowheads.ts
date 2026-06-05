@@ -1,6 +1,6 @@
 /**
  * @file       canvas-arrowheads.ts — Phase 24 arrow shaft + head geometry
- * @scope      plugins/design/dev-server/canvas-arrowheads.ts
+ * @scope      apps/studio/canvas-arrowheads.ts
  * @purpose    Single source of truth for arrow rendering. An ArrowStroke is
  *             reduced to an ordered list of `SvgPrimitive`s (the shaft, then
  *             the start head, then the end head). The serializer formats each

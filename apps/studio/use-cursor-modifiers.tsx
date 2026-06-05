@@ -1,6 +1,6 @@
 /**
  * @file       use-cursor-modifiers.tsx — T28 (Wave 3)
- * @scope      plugins/design/dev-server/use-cursor-modifiers.tsx
+ * @scope      apps/studio/use-cursor-modifiers.tsx
  * @purpose    Modifier-aware cursor state machine. Tracks Alt / Shift / Meta
  *             modifier state globally and reflects it as `data-mod-*`
  *             attributes on `.dc-canvas`. CSS rules consume those attrs to

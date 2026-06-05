@@ -67,7 +67,7 @@ Today Maude is powerful but **gated behind developer tooling**:
 
 - **Type:** New Capability (epic / product layer)
 - **Complexity:** High (new native-shell surface, new git/GitHub surface, security-critical multiplayer GA)
-- **App/Package:** new `apps/desktop/` (Tauri) + `plugins/design/dev-server/` (new endpoints) + `cli/` (reuse `design-link.mjs`, hub plumbing) + `site/` (download/landing)
+- **App/Package:** new `apps/desktop/` (Tauri) + `apps/studio/` (new endpoints) + `cli/` (reuse `design-link.mjs`, hub plumbing) + `site/` (download/landing)
 - **Affected Systems:** dev-server, hub, linked mode, CLI, release/CI (`build-binaries.yml`), site
 - **Dependencies (external, by phase):** Tauri v2 (Rust toolchain), `isomorphic-git` (TBD in E0), `@octokit/*` (TBD in E0), `@agentclientprotocol/*` or hand-rolled ACP (E6). Hub deps (`@hocuspocus/*`, `yjs`, `better-sqlite3`) already present.
 - **Crux tension:** "zero setup, non-technical" vs. "ACP needs a local agent" — resolved for this epic by the agent-runtime decision above; revisited as a later cloud-agent phase.
@@ -80,24 +80,24 @@ Today Maude is powerful but **gated behind developer tooling**:
 
 ### Must-Read Files / Assets (reuse inventory)
 
-- `plugins/design/dev-server/server.ts` + `server.mjs` — dev-server entry; the binary the Tauri sidecar spawns. Lifecycle, port resolution (`--root` → `$CLAUDE_PROJECT_DIR` → cwd).
-- `plugins/design/dev-server/boot-self-heal.ts` (DDR-044) — first-launch `bun install` + `build.ts`; the "maintenance" foundation. Shell wraps this with a native "updating…" affordance.
-- `plugins/design/dev-server/canvas-create.ts` + `api.ts` `createCanvas` + `test/canvas-create-api.test.ts` — **the security pattern to mirror for all new write endpoints**: main-origin-only (absent from `startCanvasServer` allowlist per DDR-054), strict name allowlist, designRoot containment, 409. New `/_api/git/*` + `/_api/github/*` endpoints follow this exactly.
-- `plugins/design/dev-server/http.ts` — route table; where new endpoints register.
-- `plugins/design/dev-server/client/app.jsx` + `client/styles/3-shell.css` — the React UI; where onboarding wizard + Projects/Git panel mount. Note the recent "+ board" composer in the tree header as the precedent for a new UI write-affordance.
+- `apps/studio/server.ts` + `server.mjs` — dev-server entry; the binary the Tauri sidecar spawns. Lifecycle, port resolution (`--root` → `$CLAUDE_PROJECT_DIR` → cwd).
+- `apps/studio/boot-self-heal.ts` (DDR-044) — first-launch `bun install` + `build.ts`; the "maintenance" foundation. Shell wraps this with a native "updating…" affordance.
+- `apps/studio/canvas-create.ts` + `api.ts` `createCanvas` + `test/canvas-create-api.test.ts` — **the security pattern to mirror for all new write endpoints**: main-origin-only (absent from `startCanvasServer` allowlist per DDR-054), strict name allowlist, designRoot containment, 409. New `/_api/git/*` + `/_api/github/*` endpoints follow this exactly.
+- `apps/studio/http.ts` — route table; where new endpoints register.
+- `apps/studio/client/app.jsx` + `client/styles/3-shell.css` — the React UI; where onboarding wizard + Projects/Git panel mount. Note the recent "+ board" composer in the tree header as the precedent for a new UI write-affordance.
 - `cli/lib/design-link.mjs` + `cli/commands/design.mjs` (`runLink`/`runAdopt`/`runUnlink`/`runStatus`) — **hub-connect plumbing already built.** Today CLI-only; E4 surfaces it as UI actions (server calls into this logic). Token stored at `~/.config/maude/hubs.json` (never committed); E3/E4 move secrets to the OS keychain via Tauri.
-- `plugins/design/hub/` (README + `src/server.mjs` + `src/tokens.mjs` + `src/admin/`) — **the collab backbone:** hocuspocus + SQLite, HMAC-SHA256 tokens, scope-bound tokens, rate limiting, admin UI, deploy templates (`maude hub deploy fly|docker`). Phase 9 complete. The "paste a token → connect to remote hub" pillar is largely a UI over this.
-- `plugins/design/dev-server/sync/agent.ts` + `sync/connection-state.ts` + `sync/status.ts` — bidirectional file-sync agent, offline state machine, `_sync.json`. Linked-mode plumbing.
+- `apps/hub/` (README + `src/server.mjs` + `src/tokens.mjs` + `src/admin/`) — **the collab backbone:** hocuspocus + SQLite, HMAC-SHA256 tokens, scope-bound tokens, rate limiting, admin UI, deploy templates (`maude hub deploy fly|docker`). Phase 9 complete. The "paste a token → connect to remote hub" pillar is largely a UI over this.
+- `apps/studio/sync/agent.ts` + `sync/connection-state.ts` + `sync/status.ts` — bidirectional file-sync agent, offline state machine, `_sync.json`. Linked-mode plumbing.
 - `.ai/plans/phase-7-acp-chat-sidebar.md` — **the ACP sidepanel plan, iceboxed.** E6 de-iceboxes it largely as-written (the chosen agent model matches its "solo-only / local-per-peer" scope). Note the `/design` → `/design:edit` rename TODO at its top.
 - `cli/commands/hub.mjs` + `hub.test.mjs` — hub CLI (token generate/rotate, deploy, serve).
 
 ### Files to Create (by phase — high level)
 
 - `apps/desktop/` — new Tauri v2 app (Rust `src-tauri/` + minimal JS glue). [E1]
-- `plugins/design/dev-server/git/` — git service module (clone/status/commit/push/pull/branch) over the chosen engine. [E2]
-- `plugins/design/dev-server/github/` — GitHub identity + repo create + collaborator/share over OAuth + REST. [E3]
-- `plugins/design/dev-server/client/panels/ProjectsPanel.tsx` + `OnboardingWizard.tsx` + `GitPanel.tsx`. [E2–E4]
-- `plugins/design/dev-server/client/panels/ChatPanel.tsx` + `client/acp/` + `acp-bridge.mjs` (per phase-7). [E6]
+- `apps/studio/git/` — git service module (clone/status/commit/push/pull/branch) over the chosen engine. [E2]
+- `apps/studio/github/` — GitHub identity + repo create + collaborator/share over OAuth + REST. [E3]
+- `apps/studio/client/panels/ProjectsPanel.tsx` + `OnboardingWizard.tsx` + `GitPanel.tsx`. [E2–E4]
+- `apps/studio/client/panels/ChatPanel.tsx` + `client/acp/` + `acp-bridge.mjs` (per phase-7). [E6]
 - `.ai/decisions/DDR-086..0NN-*` — the decisions front-loaded in E0 + per-phase.
 - `site/content/docs/desktop/*.mdx` + download page. [E7]
 

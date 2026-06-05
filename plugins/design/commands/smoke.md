@@ -15,7 +15,7 @@ Wraps the bundled `smoke.sh` helper, invoked via `maude design smoke` (the on-PA
 
 **Automatic via `/flow:execute` (DDR-021):** the executor runs this at phase-end when the diff matches any of:
 
-- `plugins/design/dev-server/**` modified
+- `apps/studio/**` modified
 - `<designRoot>/_lib/**` modified
 - `plugins/design/templates/canvas*.tsx.template` modified
 - ≥ 3 `*.tsx` files mutated under `<designRoot>/` outside a `/design:edit` invocation (bulk migration shape)

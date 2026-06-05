@@ -1,5 +1,7 @@
 # DDR-062 — Plugins reach ALL executable logic through the on-PATH `maude` CLI
 
+> **Path update — [DDR-095](DDR-095-runtime-apps-extracted-to-top-level.md) (2026-06-05):** the dev-server now lives at `apps/studio/` (hub at `apps/hub/`), moved out of `plugins/design/`. This DDR's invariants still govern; only the path changed. Old `plugins/design/dev-server` references below are historical.
+
 - **Date:** 2026-05-29
 - **Status:** Accepted
 - **Tags:** design, flow, dev-server, cli, marketplace, npm-distribution, reachability, dispatch, phase-c, lever-6

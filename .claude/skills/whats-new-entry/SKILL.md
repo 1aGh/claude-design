@@ -1,6 +1,6 @@
 ---
 name: whats-new-entry
-description: Append a user-facing "What's New" entry to the Maude UI feed (plugins/design/dev-server/whats-new.json) when closing out a feature. Use during /flow:done for any user-visible design / dev-server change, or when the user asks to "add a what's new entry", "announce this in the UI", or "update the changelog feed". Writes a pending entry (version null — stamped at release); can attach spotlight tour steps for a new UI affordance.
+description: Append a user-facing "What's New" entry to the Maude UI feed (apps/studio/whats-new.json) when closing out a feature. Use during /flow:done for any user-visible design / dev-server change, or when the user asks to "add a what's new entry", "announce this in the UI", or "update the changelog feed". Writes a pending entry (version null — stamped at release); can attach spotlight tour steps for a new UI affordance.
 ---
 
 # whats-new-entry — append to the Maude UI "What's New" feed
@@ -9,7 +9,7 @@ Repo-internal skill (Maude-specific; lives in `.claude/skills/`, not shipped via
 
 ## What the feed is
 
-`plugins/design/dev-server/whats-new.json` is the single source of truth (DDR-A) for the notices the Maude UI surfaces — the menubar `✦ New` badge, the first-run toast, and the panel (`GET /_api/whats-new`). It ships with the dev-server and describes **Maude's own product** updates. Schema: `plugins/design/dev-server/whats-new.schema.json`. Background: `.ai/plans/feature-in-app-whats-new-tour.md`.
+`apps/studio/whats-new.json` is the single source of truth (DDR-A) for the notices the Maude UI surfaces — the menubar `✦ New` badge, the first-run toast, and the panel (`GET /_api/whats-new`). It ships with the dev-server and describes **Maude's own product** updates. Schema: `apps/studio/whats-new.schema.json`. Background: `.ai/plans/feature-in-app-whats-new-tour.md`.
 
 ## When to run
 
@@ -34,11 +34,11 @@ Invoked during `/flow:done` (step 4d) for a **user-visible** change to the desig
 
 4. **Append** to the top of `entries` (newest first) and write the file back with 2-space indent + trailing newline.
 
-5. **Validate.** `cd plugins/design/dev-server && bun test test/whats-new.test.ts` (the loader + shape tests run against the committed feed) — must stay green. The feed must also satisfy `whats-new.schema.json`.
+5. **Validate.** `cd apps/studio && bun test test/whats-new.test.ts` (the loader + shape tests run against the committed feed) — must stay green. The feed must also satisfy `whats-new.schema.json`.
 
 6. **Mirror to the site** (only once Phase 2 of the plan has landed `gen:whatsnew`): `pnpm --filter @maude/site gen:whatsnew` and stage the resulting `site/lib/whats-new.json`. If the script doesn't exist yet, skip silently.
 
-7. **Stage** `plugins/design/dev-server/whats-new.json` (and the site feed if regenerated) so it rides in the feature commit.
+7. **Stage** `apps/studio/whats-new.json` (and the site feed if regenerated) so it rides in the feature commit.
 
 ## Notes
 

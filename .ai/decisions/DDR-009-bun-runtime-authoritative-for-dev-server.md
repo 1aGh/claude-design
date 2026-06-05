@@ -1,5 +1,7 @@
 # DDR-009: Bun runtime authoritative for `plugins/design/dev-server/` (no Node fallback)
 
+> **Path update — [DDR-095](DDR-095-runtime-apps-extracted-to-top-level.md) (2026-06-05):** the dev-server now lives at `apps/studio/` (hub at `apps/hub/`), moved out of `plugins/design/`. This DDR's invariants still govern; only the path changed. Old `plugins/design/dev-server` references below are historical.
+
 - **Date:** 2026-05-15
 - **Status:** Accepted
 - **Tags:** design, dev-server, runtime, bun, distribution, perf, lock-in, npm, ci, phase-3.4

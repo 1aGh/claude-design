@@ -29,9 +29,14 @@ COMMANDS
         contract — see DDR-061); 'list' shows layers + sizes; 'stats' shows
         hit-rate; 'inspect' pretty-prints entries; 'clear' wipes a layer or all.
 
+  studio [--port N] [--root PATH]
+        Alias for 'maude design serve' — boot the canvas studio (the design
+        dev server) in the current repo. Forwards all remaining args.
+
   design serve [--port N] [--root PATH]
         Start the design plugin's dev server in the current repo. Equivalent
-        to invoking 'claude-design-server'. Forwards all remaining args.
+        to 'maude studio' / invoking 'claude-design-server'. Forwards all
+        remaining args.
 
   design init [--name <slug>] [--ds <name>] [--force] [--dry-run]
               [--no-discovery | --discovery-payload <path>]
@@ -43,7 +48,7 @@ COMMANDS
 
   design <screenshot|server-up|prep|slug|bootstrap-check|runtime-health
           |smoke|canvas-edit|handoff|asset-sweep|visual-sanity> [args]
-        Dispatch to the dev-server's bundled bash helper of the same name.
+        Dispatch to the studio's bundled bash helper of the same name.
         maude resolves it from its own package root and sets CLAUDE_PLUGIN_ROOT
         for the child; stdout/stderr/exit-code pass straight through. This is
         the contract plugin markdown uses instead of a raw bin path (DDR-062).
@@ -88,6 +93,7 @@ EXAMPLES
   maude config get motion.complex
   maude cache list
   maude cache clear research/domain
+  maude studio --port 4399
   maude design serve --port 4399
   maude design init --no-discovery --name acme-app
   maude design slug "Some Canvas Name"

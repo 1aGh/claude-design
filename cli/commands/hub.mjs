@@ -82,7 +82,7 @@ function usage() {
         exact commands to run next. Does NOT execute fly/docker for you —
         review the emitted files first, then run the printed command.
 
-        fly     → fly.toml (+ reuses plugins/design/hub/Dockerfile).
+        fly     → fly.toml (+ reuses apps/hub/Dockerfile).
                   --name   app name (default maude-hub-<rand>)
                   --region Fly region code (default iad)
         docker  → docker-compose.yml + Caddyfile (universal — Lightsail, EC2,
@@ -91,7 +91,7 @@ function usage() {
 
 NOTES
   serve / token / deploy run inside a 'maude' source checkout (they read the
-  bundled hub workspace at plugins/design/hub). Production hubs run the
+  bundled hub workspace at apps/hub). Production hubs run the
   published Docker image (ghcr.io/1agh/maude-hub) — see 'maude hub deploy'.
   status works from anywhere (plain HTTP GET against /health).
 
@@ -433,7 +433,7 @@ function randHex(bytes) {
 // ---------------------------------------------------------------- helpers
 
 function findHubRoot(pkgRoot) {
-  const dev = resolve(pkgRoot, 'plugins', 'design', 'hub');
+  const dev = resolve(pkgRoot, 'apps', 'hub');
   if (existsSync(resolve(dev, 'package.json'))) {
     try {
       const pkg = JSON.parse(readFileSync(resolve(dev, 'package.json'), 'utf8'));

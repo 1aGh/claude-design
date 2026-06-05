@@ -25,7 +25,7 @@ Native + mobile-web: N/A (dev-server is web-only). See `../README.md`.
 ## Steps
 
 1. **Boot dev-server.**
-   - `bash plugins/design/dev-server/bin/server-up.sh --root "$REPO_ROOT"` — returns the listening port on stdout.
+   - `bash apps/studio/bin/server-up.sh --root "$REPO_ROOT"` — returns the listening port on stdout.
    - Capture: `_server.json` contents (PID + port + url).
    - Selector check: `curl -sf "http://localhost:$PORT/_health"` returns 200.
 
@@ -49,7 +49,7 @@ Native + mobile-web: N/A (dev-server is web-only). See `../README.md`.
    - Counter check (parity): `_active.json.selected.canvas === "ui/Docs Site"`.
 
 5. **AST-aware edit through `canvas-edit.ts`.**
-   - Run: `bash plugins/design/dev-server/bin/canvas-edit.sh ".design/ui/Docs Site.tsx" "<SELECTED_ID>" "className" "<NEW_CLASS_VALUE>"`.
+   - Run: `bash apps/studio/bin/canvas-edit.sh ".design/ui/Docs Site.tsx" "<SELECTED_ID>" "className" "<NEW_CLASS_VALUE>"`.
    - Read the CLI output JSON: `{canvas, id, delta}`.
    - Capture: post-edit screenshot of the canvas (HMR may not be wired yet — manual iframe reload is acceptable, document in report).
    - Selector check: only the targeted JSX element's `className` changed in the on-disk TSX (`git diff` shows ≤ 1 line modified inside the targeted opening tag).
@@ -76,7 +76,7 @@ Single-platform scenario — parity is trivially "ok" (no cross-platform check).
 
 - HMR is **not yet wired** (carried from runtime slice). The post-edit screenshot in step 5 requires a manual iframe reload. Document the reload step in the report rather than gating on it.
 - `Cmd+Click` driving through `agent-browser` may require modifier-key support; if not available, the runner falls back to a synthetic WS message that simulates the inspector payload (documented in `runners/web-desktop.sh`).
-- Performance budgets (`< 250 ms` cold canvas load, `< 100 ms` HMR, `< 30 %` token cost) are **separate** from this scenario — they belong in `plugins/design/dev-server/test/perf-harness.ts`. The scenario verifies correctness, not perf.
+- Performance budgets (`< 250 ms` cold canvas load, `< 100 ms` HMR, `< 30 %` token cost) are **separate** from this scenario — they belong in `apps/studio/test/perf-harness.ts`. The scenario verifies correctness, not perf.
 
 ## Pilot status
 

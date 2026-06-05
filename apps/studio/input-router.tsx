@@ -1,6 +1,6 @@
 /**
  * @file       input-router.tsx — canvas pointer/keyboard classifier + hook
- * @scope      plugins/design/dev-server/input-router.tsx
+ * @scope      apps/studio/input-router.tsx
  * @purpose    Owned by canvas-lib's DesignCanvas. Classifies the NON-WHEEL
  *             subset of pointer + key events into discrete router actions.
  *             `useViewportController` keeps owning wheel + middle-mouse +

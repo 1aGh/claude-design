@@ -3,8 +3,8 @@ packages:
   # Listed here so Changesets can resolve it as a workspace member.
   - "."
   - site
-  - plugins/design/dev-server
-  - plugins/design/hub
+  - apps/studio
+  - apps/hub
 # pnpm 9+ requires explicit opt-in for postinstall scripts.
 # Biome ships native binaries via @biomejs/cli-* optional deps; the postinstall
 # is the official install path. Enable.
@@ -18,5 +18,5 @@ allowBuilds:
   sharp: true
   # Phase 9 — @hocuspocus/extension-sqlite pulls in better-sqlite3, which
   # compiles native C++ bindings against the host platform during install.
-  # See plugins/design/hub/ and .ai/decisions/DDR-052-hocuspocus-over-partykit-for-hub.md.
+  # See apps/hub/ and .ai/decisions/DDR-052-hocuspocus-over-partykit-for-hub.md.
   better-sqlite3: true

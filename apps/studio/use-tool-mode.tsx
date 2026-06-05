@@ -1,6 +1,6 @@
 /**
  * @file       use-tool-mode.tsx — Phase 4.1 tool-mode store
- * @scope      plugins/design/dev-server/use-tool-mode.tsx
+ * @scope      apps/studio/use-tool-mode.tsx
  * @purpose    Context + hook for the active canvas tool. Wired into
  *             DesignCanvas. Phase 5 will
  *             register additional tools (pen, circle, arrow, eraser) via

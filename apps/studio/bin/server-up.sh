@@ -55,7 +55,12 @@ fi
 #     `bash server-up.sh` falls back to the postinstall side-channel.
 #   bun + server.ts → dev tree / fallback (DDR-020 made bun authoritative for source).
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+# PLUGIN_ROOT is a 2-levels-under-pkgRoot anchor: plugins/design when `maude
+# design <verb>` sets CLAUDE_PLUGIN_ROOT, else apps/studio ($SCRIPT_DIR/.. — the
+# studio root, also 2-deep) for a direct `bash server-up.sh`. Both keep
+# `$PLUGIN_ROOT/../../cli` = <pkgRoot>/cli. The dev-server tree itself is always
+# $SCRIPT_DIR/.. (apps/studio) — DDR-095 moved it out of plugins/design.
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 SERVER_TS="$PLUGIN_ROOT/dev-server/server.ts"
 SERVER_MJS="$PLUGIN_ROOT/dev-server/server.mjs"
 if [ ! -f "$SERVER_TS" ]; then SERVER_TS="$SCRIPT_DIR/../server.ts"; fi
@@ -66,7 +71,8 @@ if [ ! -f "$SERVER_MJS" ]; then SERVER_MJS="$SCRIPT_DIR/../server.mjs"; fi
 # `bash server-up.sh` on a production install). MAUDE_FORCE_SOURCE=1 forces source.
 SERVER_BIN="${MAUDE_DEV_SERVER_BIN:-}"
 if [ -z "$SERVER_BIN" ] && [ "${MAUDE_FORCE_SOURCE:-0}" != "1" ]; then
-  # PLUGIN_ROOT=<pkgRoot>/plugins/design, so the side-channel is ../../cli.
+  # PLUGIN_ROOT is 2-deep under pkgRoot (plugins/design or apps/studio), so the
+  # side-channel is ../../cli either way.
   # `head -n1` (parity with the Node readers' `.trim()`) tolerates a trailing newline.
   SC="$PLUGIN_ROOT/../../cli/.platform-binary-path"
   if [ -f "$SC" ]; then
@@ -154,7 +160,7 @@ fi
 # Step 1.5 — dependency preflight (source `bun server.ts` path ONLY; runs on cold
 # start). The compiled binary embeds its deps, so this is skipped when RUNTIME=binary
 # — it only guards the source fallback. The dev-server's runtime deps live in a
-# NESTED package.json (plugins/design/dev-server/) that a global `@1agh/maude` npm
+# NESTED package.json (apps/studio/) that a global `@1agh/maude` npm
 # install or a fresh `git worktree` does NOT populate; a missing `yjs` (imported at
 # boot by sync/index.ts) crashes `bun server.ts` AFTER spawn → without this guard we
 # poll the full ${TIMEOUT}s and report a generic "start timeout", burying the cause

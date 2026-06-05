@@ -1,4 +1,4 @@
-# Research — Runtime choice for `plugins/design/dev-server/`
+# Research — Runtime choice for `apps/studio/`
 
 > Status: research only, no decision committed. Author: research subagent. Date: 2026-05-12.
 > Scope: Should we rewrite the design dev-server from Node.js 20+ to Bun (or Deno)? Optimized for end-user experience (latency, distribution friction, runtime requirements) rather than raw throughput, since the server is 99% idle.
@@ -25,7 +25,7 @@ Deno is not recommended for this project. Section 4 details why.
 
 ## 1. Workload reality check
 
-The dev-server source is `/Volumes/D/git/claude-design/plugins/design/dev-server/server.mjs` (~1280 lines, zero npm deps). Hot paths:
+The dev-server source is `/Volumes/D/git/claude-design/apps/studio/server.mjs` (~1280 lines, zero npm deps). Hot paths:
 
 | Path | Frequency (typical session) | CPU cost |
 |------|------------------------------|----------|
@@ -187,14 +187,14 @@ The net is "+5s install for engineers, –$infinity friction for non-engineer us
 2. Ensure new Phase 4-8 code stays in the Node-compatible subset. Avoid:
    - `Bun.serve`, `Bun.file`, `Bun.write` (Bun-only).
    - `Deno.*` (won't appear).
-3. Add a `.ai/docs/runtime-targets.md` rule: "All code in `plugins/design/dev-server/` MUST run on Node 20+. Bun parity is desired; Deno parity is not required." This is the only doc change needed today.
+3. Add a `.ai/docs/runtime-targets.md` rule: "All code in `apps/studio/` MUST run on Node 20+. Bun parity is desired; Deno parity is not required." This is the only doc change needed today.
 
 **Phase B (when Phase 4 Pixi bundle is real and you want non-dev users):**
 
 1. Set up `bun build --compile --target=<t>` in CI for the 4-platform minimum.
 2. Publish per-platform tarballs as `@1agh/maude-<os>-<arch>` scoped packages.
 3. Add `optionalDependencies` to the parent `@1agh/maude`.
-4. Thin launcher in `cli/bin/maude.mjs` decides: if a platform binary is available, exec it; otherwise fall back to `node plugins/design/dev-server/server.mjs`. The fallback also preserves the current dev-loop experience for contributors.
+4. Thin launcher in `cli/bin/maude.mjs` decides: if a platform binary is available, exec it; otherwise fall back to `node apps/studio/server.mjs`. The fallback also preserves the current dev-loop experience for contributors.
 5. Codesign + notarize macOS binaries in CI.
 6. Document the dual install path in `README.md`: "fast path (binary)" vs "compatible path (Node)".
 
@@ -236,7 +236,7 @@ The cheap experiment to do before committing:
 3. **Measure WS broadcast latency** under realistic load: 5 simulated tabs subscribing to active-canvas state, server pushing 30 frames/sec for 60 seconds. Track p50/p95/p99 with `performance.now()` on the client. Expect <1ms on both; Bun's win is invisible to humans.
 4. **Measure single-file binary size** for the minimal 4-platform matrix:
    ```
-   bun build --compile --minify --bytecode --target=bun-darwin-arm64 plugins/design/dev-server/server.mjs --outfile bin/mdcc-darwin-arm64
+   bun build --compile --minify --bytecode --target=bun-darwin-arm64 apps/studio/server.mjs --outfile bin/mdcc-darwin-arm64
    ```
    Expected: 55-70 MB each. Record actual.
 5. **Measure cold install** for the optionalDeps wrapper: `npm i -g @1agh/maude` on each of 4 platforms with a fresh cache. Compare to current install time.

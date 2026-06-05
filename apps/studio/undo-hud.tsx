@@ -1,6 +1,6 @@
 /**
  * @file       undo-hud.tsx — top-right toast announcing the last undo edit
- * @scope      plugins/design/dev-server/undo-hud.tsx
+ * @scope      apps/studio/undo-hud.tsx
  * @purpose    Subscribes to `useUndoStack().lastLabel` + `.lastTick` and
  *             surfaces a 1.2 s aria-live toast so the user (and a screen
  *             reader) knows which edit just got pushed / undone / redone.

@@ -8,7 +8,7 @@
 # /validate against this branch.
 #
 # Contract this runner upholds when piloted:
-#   - Boots the dev-server via plugins/design/dev-server/bin/server-up.sh
+#   - Boots the dev-server via apps/studio/bin/server-up.sh
 #   - Drives agent-browser through the spec's 5 steps
 #   - Writes per-step screenshots + a tiny result JSON to $OUT_DIR
 #   - Exits 0 on PASS, non-zero on FAIL, 77 on SKIPPED (autotools convention)
@@ -47,7 +47,7 @@ fi
 
 # ── Boot dev-server ───────────────────────────────────────────────────────────
 
-PORT=$(bash "$REPO_ROOT/plugins/design/dev-server/bin/server-up.sh" --root "$REPO_ROOT")
+PORT=$(bash "$REPO_ROOT/apps/studio/bin/server-up.sh" --root "$REPO_ROOT")
 if [ -z "$PORT" ]; then
   echo "FAIL: server-up.sh did not return a port" | tee "$OUT_DIR/result.txt"
   exit 1

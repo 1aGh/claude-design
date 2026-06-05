@@ -5,7 +5,7 @@
 // Used by:
 //   - cli/commands/doctor.mjs (the unified diagnostic CLI)
 //   - plugins/flow/commands/init.md (the wired pre-flight Step 1)
-//   - plugins/design/dev-server/bin/preflight.sh (which re-shells to node
+//   - apps/studio/bin/preflight.sh (which re-shells to node
 //     for the actual checks — keeps detection logic in one place).
 //
 // Pure-ish: no process.exit; returns an envelope. printReport() is here

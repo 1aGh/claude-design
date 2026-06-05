@@ -20,7 +20,7 @@
  * The envelope primitives (`DesignCanvas`, `DCSection`, `DCArtboard`) and any
  * specimen helpers come from the dev-server-bundled canvas library via the
  * virtual specifier — the dev-server resolves it to
- * `plugins/design/dev-server/canvas-lib.tsx` (single source, ships with the
+ * `apps/studio/canvas-lib.tsx` (single source, ships with the
  * dev-server install per DDR-025), and `/design:handoff` AST-inlines the used
  * exports so the registry-item drop is self-contained. Read that file for the
  * full export surface (helpers + hooks) before reaching for new components.

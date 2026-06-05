@@ -29,7 +29,7 @@ echo "→ 2/4 VHS terminal"
 vhs scripts/video/smoke/terminal.tape >/dev/null
 
 echo "→ 3/4 Playwright browser"
-PORT=$(bash plugins/design/dev-server/bin/server-up.sh 2>/dev/null)
+PORT=$(bash apps/studio/bin/server-up.sh 2>/dev/null)
 DEV_SERVER_URL="http://localhost:${PORT}/_canvas-shell.html?canvas=ui%2FCanvas+Viewport.tsx&designRel=.design&tokens=system%2Fproject%2Fcolors_and_type.css&components=system%2Fproject%2Fpreview%2F_components.css" \
   pnpm exec playwright test \
   --config scripts/video/smoke/playwright.config.ts \

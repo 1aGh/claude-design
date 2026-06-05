@@ -5,7 +5,7 @@
 #   - no `node_modules/` or transitive deps end up in the tarball (the package
 #     has zero runtime deps — `pixi.js`, `pdf-lib`, etc. are devDeps inside
 #     workspaces and must never ship)
-#   - reserved-slot workspaces (`site`, `plugins/design/hub`) are excluded
+#   - reserved-slot workspaces (`site`, `apps/hub`) are excluded
 #     entirely
 #
 # Run before tagging and in CI on PRs that touch `files` or any workspace.
@@ -33,11 +33,11 @@ fail() {
 # Workspace package.json files must NOT ship — they declare private packages
 # (@maude/dev-server, @maude/hub, @maude/site) that would
 # accidentally be exposed at install time.
-echo "$listing" | grep -E "^(site|plugins/[^/]+/[^/]+)/package\.json$" >/dev/null \
+echo "$listing" | grep -E "^(site|plugins/[^/]+/[^/]+|apps/[^/]+)/package\.json$" >/dev/null \
   && fail "workspace package.json present in tarball" || true
 
 # Reserved-slot workspaces must be entirely absent.
-echo "$listing" | grep -E "^(site|plugins/design/hub)/" >/dev/null \
+echo "$listing" | grep -E "^(site|apps/hub)/" >/dev/null \
   && fail "reserved workspace dir leaked into tarball" || true
 
 # Transitive deps must never appear.

@@ -10,12 +10,13 @@
 // SAME file also offers a `command -v maude` fallback (the sibling-first /
 // maude-fallback pattern). This test fails loudly if a new straggler lands.
 //
-// DDR-062: plugin MARKDOWN must reach the dev-server bash helpers through
-// `maude design <verb>`, never `bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/<x>.sh"`.
-// The marketplace never copies the dev-server beside a plugin, and a flow
-// command's $CLAUDE_PLUGIN_ROOT points at plugins/flow (no dev-server/ at all).
-// Prose mentions of the path are fine; INVOCATIONS (bash/sh/exec/$( prefixed)
-// are banned.
+// DDR-062: plugin MARKDOWN must reach the studio bash helpers through
+// `maude design <verb>`, never `bash "$CLAUDE_PLUGIN_ROOT/dev-server/bin/<x>.sh"`
+// or `bash apps/studio/bin/<x>.sh`. The marketplace never copies the studio app
+// beside a plugin, and a flow command's $CLAUDE_PLUGIN_ROOT points at
+// plugins/flow (no bin/ at all). Per DDR-095 the helpers live under
+// apps/studio/bin (was plugins/design/dev-server/bin). Prose mentions of the
+// path are fine; INVOCATIONS (bash/sh/exec/$( prefixed) are banned.
 
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
@@ -43,7 +44,7 @@ test('no plugin markdown invokes a $CLAUDE_PLUGIN_ROOT/dev-server/bin/*.sh helpe
   // command substitution. Prose mentions of the path (backtick-wrapped, no verb)
   // are exempt — they don't run anything. Matches both the $CLAUDE_PLUGIN_ROOT
   // form and the repo-relative `plugins/<x>/dev-server/bin/` form.
-  const pattern = String.raw`(bash|sh|exec) +"?(\$\{?CLAUDE_PLUGIN_ROOT\}?|plugins/[a-z]+)/dev-server/bin/[A-Za-z0-9_-]+\.sh|\$\("?\$?\{?CLAUDE_PLUGIN_ROOT\}?/dev-server/bin/[A-Za-z0-9_-]+\.sh`;
+  const pattern = String.raw`(bash|sh|exec) +"?(\$\{?CLAUDE_PLUGIN_ROOT\}?|plugins/[a-z]+)/dev-server/bin/[A-Za-z0-9_-]+\.sh|\$\("?\$?\{?CLAUDE_PLUGIN_ROOT\}?/dev-server/bin/[A-Za-z0-9_-]+\.sh|(bash|sh|exec) +"?[^"\n]*apps/studio/bin/[A-Za-z0-9_-]+\.sh|\$\("?[^"\n]*apps/studio/bin/[A-Za-z0-9_-]+\.sh`;
   const out = execSync(`grep -rnE '${pattern}' plugins --include='*.md' || true`, {
     encoding: 'utf8',
   });

@@ -1,6 +1,6 @@
 /**
  * @file       export-dialog.tsx — Phase 6.5 T8 export dialog.
- * @scope      plugins/design/dev-server/export-dialog.tsx
+ * @scope      apps/studio/export-dialog.tsx
  * @purpose    Native `<dialog>`-based export modal. Three controls — format,
  *             scope, per-format options — plus a Recent tab populated by
  *             `/_api/export-history`. Submit fires `POST /_api/export`, the

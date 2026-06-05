@@ -4,7 +4,7 @@
  * @platform    desktop
  * @opt_out     palette
  * @artboards   sign-in | first-run | dashboard | invite-modal | states
- * @brief       Návrh admin hub stránky pro maude sync — source of truth: .ai/plans/archive/phase-9-self-hosted-hub-file-sync.md Task 2.5 + plugins/design/hub/src/admin/index.html. Design mockup of the hub operator console.
+ * @brief       Návrh admin hub stránky pro maude sync — source of truth: .ai/plans/archive/phase-9-self-hosted-hub-file-sync.md Task 2.5 + apps/hub/src/admin/index.html. Design mockup of the hub operator console.
  * @stack       React 19 · TSX · Bun.build · css_mode=inline
  * @history     .design/_history/sync-hub-admin/
  * @handoff     bunx shadcn add file://./Sync Hub Admin.registry.json

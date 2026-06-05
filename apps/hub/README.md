@@ -26,14 +26,14 @@ framework choice, and `.ai/docs/research-collab.md` for the design analysis.
 pnpm install --filter @maude/hub
 
 # Plain Node, no bundle (fastest iteration):
-node plugins/design/hub/src/server.mjs
+node apps/hub/src/server.mjs
 
 # Watch mode:
 pnpm --filter @maude/hub dev
 
 # Bundled (matches the published binary path):
 pnpm --filter @maude/hub build
-node plugins/design/hub/dist/hub.bundle.mjs
+node apps/hub/dist/hub.bundle.mjs
 ```
 
 The hub listens on `$PORT` (default `1234`), persists Y.Doc state to

@@ -94,13 +94,13 @@
 
 ## File 2 — `.design/config.json` (design plugin)
 
-**Authoritative schema:** [`plugins/design/dev-server/config.schema.json`](../../plugins/design/dev-server/config.schema.json).
+**Authoritative schema:** [`apps/studio/config.schema.json`](../../apps/studio/config.schema.json).
 
 **Full structure** (annotated post-v1.0):
 
 ```jsonc
 {
-  "$schema": "https://raw.githubusercontent.com/1aGh/maude/main/plugins/design/dev-server/config.schema.json",
+  "$schema": "https://raw.githubusercontent.com/1aGh/maude/main/apps/studio/config.schema.json",
   "name": "my-project",                 // pre-v1.0
   "projectLabel": null,                 // pre-v1.0; optional override of name in chrome
   "designRoot": ".design",              // pre-v1.0
@@ -158,7 +158,7 @@
 
 ## File 3 — per-canvas `<canvas>.meta.json`
 
-**Authoritative schema:** [`plugins/design/dev-server/canvas-meta.schema.json`](../../plugins/design/dev-server/canvas-meta.schema.json).
+**Authoritative schema:** [`apps/studio/canvas-meta.schema.json`](../../apps/studio/canvas-meta.schema.json).
 
 One file per canvas: `.design/<group>/<slug>.meta.json` colocated with `<slug>.html`. All fields optional but recommended.
 
@@ -230,8 +230,8 @@ User can switch `collab.commitStrategy: "hub-only"` to additionally ignore canva
 
 ```yaml
 - run: npx ajv-cli validate -s plugins/flow/.claude-plugin/config.schema.json -d .ai/workflows.config.json
-- run: npx ajv-cli validate -s plugins/design/dev-server/config.schema.json -d .design/config.json
-- run: find .design -name '*.meta.json' -exec npx ajv-cli validate -s plugins/design/dev-server/canvas-meta.schema.json -d {} \;
+- run: npx ajv-cli validate -s apps/studio/config.schema.json -d .design/config.json
+- run: find .design -name '*.meta.json' -exec npx ajv-cli validate -s apps/studio/canvas-meta.schema.json -d {} \;
 ```
 
 (Optional — depending on whether the host project commits a populated `.design/` to test against.)
