@@ -11,6 +11,8 @@
     "new",
     "rollback",
     "screenshot",
+    "to-lottie",
+    "to-rn",
     "---setup---",
     "init",
     "setup-docs",

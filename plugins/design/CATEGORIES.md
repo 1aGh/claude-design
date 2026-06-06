@@ -27,6 +27,8 @@ Default verbs. No prefix. Members:
 | `/design:rollback` | Undo the last edit (snapshot-based) |
 | `/design:screenshot` | Capture a screenshot of the active canvas (`--full`/`--screen <id>`/`--element <id>`/`--all-screens`/`--selector <css>`) |
 | `/design:handoff` | Migrate the active canvas to a production target |
+| `/design:to-lottie` | Productionize a maude animation → ONE `.lottie` from code (web + mobile, 1:1; emitter, not converter) |
+| `/design:to-rn` | FALLBACK — native react-native-svg + Reanimated component from the IR (light animation only) |
 | `/design:help` | Print this grouped index |
 
 The bare `/design` form was a one-version compat stub in v0.8 that redirected to `/design:edit`. **Removed in v0.9** — only `/design:edit` resolves now.

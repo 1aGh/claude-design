@@ -1,0 +1,68 @@
+<!doctype html>
+<!-- to-lottie-verify.html — self-verify harness for `maude design to-lottie --verify`.
+     Renders ANY Lottie JSON through the REAL lottie-web runtime (NOT cairo — cairo
+     can't render masks; lottie-web must — DDR-094 rule 5). Generalized from the POC
+     verify.html: the Lottie source + the seek frame are query params.
+
+     Serve this dir (file:// blocks fetch):  python3 -m http.server 8200
+     Usage:  to-lottie-verify.html?src=<file.json>&f=<frame>   (omit ?f to autoplay)
+             &bg=<css color>  — backdrop (default dark)  ·  &w=&h= — stage size px -->
+<html>
+  <head>
+    <meta charset="utf8" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+      }
+      #stage {
+        margin: 20px auto;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage"></div>
+    <script>
+      const p = new URLSearchParams(location.search);
+      const src = p.get('src');
+      const f = p.get('f');
+      const bg = p.get('bg') || '#0a0a14';
+      const w = p.get('w') || '400';
+      const h = p.get('h') || '400';
+      document.body.style.background = bg;
+      const stage = document.getElementById('stage');
+      stage.style.width = `${w}px`;
+      stage.style.height = `${h}px`;
+
+      if (!src) {
+        document.title = 'error-no-src';
+      } else {
+        fetch(`./${src}`)
+          .then((r) => {
+            if (!r.ok) throw new Error(`fetch ${src} → ${r.status}`);
+            return r.json();
+          })
+          .then((data) => {
+            const anim = lottie.loadAnimation({
+              container: stage,
+              renderer: 'svg',
+              loop: true,
+              autoplay: f === null,
+              animationData: data,
+            });
+            anim.addEventListener('DOMLoaded', () => {
+              if (f !== null) anim.goToAndStop(parseInt(f, 10), true);
+              document.title = `ready${f !== null ? `-${f}` : ''}`;
+            });
+            anim.addEventListener('error', () => {
+              document.title = 'error-render';
+            });
+          })
+          .catch((e) => {
+            document.title = `error-${String(e.message || e).slice(0, 40)}`;
+          });
+      }
+    </script>
+  </body>
+</html>

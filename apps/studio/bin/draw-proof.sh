@@ -13,13 +13,23 @@
 #   draw-proof.sh --asset <mark.svg> --slug <name>
 #                 [--root <repo>] [--out-dir <dir>] [--name <display label>]
 #                 [--engine auto|agent-browser|playwright] [--timeout <secs>]
+#                 [--motion] [--motion-selector <css>] [--motion-gap <ms>]
 #
 # Requires a running dev server (caller runs `maude design server-up` first);
 # reads the port from <designRoot>/_server.json.
 #
+# --motion: after the still ladder, run the LIVE-MOTION proof — sample the
+#   animated element at two wall-clock times and assert it changed. A still
+#   screenshot can't prove animation (DDR-094 M1); a freeze-frame pass + an
+#   over-time NO-CHANGE is a HARD FAIL (dead mechanism, e.g. CSS d:path()).
+#   --motion-selector targets a specific element (default: auto-detect the
+#   parent of the first <animate>/<animateTransform>). --motion-gap sets the
+#   sample interval in ms (default 600).
+#
 # Stdout (last line): the screenshot output directory (capturable in $(...)).
 # Stderr: progress / diagnostics.
-# Exit:   0 success / 1 missing input or server / 2 bad args / 3 capture failed.
+# Exit:   0 success / 1 missing input or server / 2 bad args / 3 capture failed
+#         / 4 motion HARD FAIL (still ladder OK but no over-time change).
 
 ASSET=""
 SLUG=""
@@ -28,6 +38,9 @@ OUT_DIR=""
 NAME=""
 ENGINE="auto"
 TIMEOUT=10
+MOTION=0
+MOTION_SELECTOR=""
+MOTION_GAP=600
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -38,8 +51,11 @@ while [ $# -gt 0 ]; do
     --name)    NAME="$2"; shift 2 ;;
     --engine)  ENGINE="$2"; shift 2 ;;
     --timeout) TIMEOUT="$2"; shift 2 ;;
+    --motion)  MOTION=1; shift ;;
+    --motion-selector) MOTION_SELECTOR="$2"; shift 2 ;;
+    --motion-gap)      MOTION_GAP="$2"; shift 2 ;;
     --help|-h)
-      sed -n '2,27p' "$0" | sed 's/^# \?//'
+      sed -n '2,37p' "$0" | sed 's/^# \?//'
       exit 0
       ;;
     *)
@@ -125,5 +141,24 @@ fi
 
 COUNT=$(find "$OUT_DIR" -maxdepth 1 -type f -name '*.png' 2>/dev/null | wc -l | tr -d ' ')
 echo "→ captured $COUNT proof image(s) in $OUT_DIR" >&2
+
+# ---------- live-motion proof (--motion) ----------
+# The still ladder above is the freeze-frame; it cannot prove the mark ANIMATES.
+# Sample the animated element at two wall-clock times and require a delta.
+if [ "$MOTION" -eq 1 ]; then
+  echo "→ live-motion proof (over-time delta) …" >&2
+  MOTION_ARGS=(--url "$URL" --gap "$MOTION_GAP" --timeout "$TIMEOUT")
+  [ -n "$MOTION_SELECTOR" ] && MOTION_ARGS+=(--selector "$MOTION_SELECTOR")
+  node "$SCRIPT_DIR/_motion-sample-playwright.mjs" "${MOTION_ARGS[@]}" >&2
+  MRC=$?
+  case "$MRC" in
+    0) echo "→ motion proven (over-time delta confirmed)" >&2 ;;
+    4) echo "draw-proof.sh: MOTION HARD FAIL — still ladder OK but the mark does NOT animate over time (dead mechanism). See DDR-094 M1/M2." >&2
+       exit 4 ;;
+    *) echo "draw-proof.sh: motion sampler error (rc=$MRC) — could not verify animation" >&2
+       exit 3 ;;
+  esac
+fi
+
 # Last stdout line = the output dir, for $(maude design draw-proof ...) capture.
 printf '%s\n' "$OUT_DIR"

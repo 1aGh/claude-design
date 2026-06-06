@@ -213,6 +213,55 @@ capture() {
   fi
 }
 
+# ---------- port-bounce recovery (P2.1 / DDR-094) ----------
+# The dev server can respawn on a DIFFERENT port (the prior port got taken, a
+# Tailscale/mDNS hiccup bounced it, a stale _server.json was cleared). A capture
+# launched against the OLD port then fails with ERR_CONNECTION_REFUSED. The
+# running server keeps _server.json current, so on any capture failure we re-read
+# the LIVE port and, if it changed, rewrite $URL and retry once.
+RELIVE_REPO="${ROOT:-${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}}"
+RELIVE_STATE="$RELIVE_REPO/.design/_server.json"
+RELIVED=0
+
+read_state_port() {
+  [ -f "$RELIVE_STATE" ] || return 1
+  if command -v jq >/dev/null 2>&1; then
+    jq -r .port "$RELIVE_STATE" 2>/dev/null
+  else
+    sed -nE 's/.*"port"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' "$RELIVE_STATE" 2>/dev/null | head -n1
+  fi
+}
+
+# Re-read the live port; if it differs from the one in $URL, rewrite $URL and
+# return 0 (a retry is warranted). Returns 1 when nothing changed (don't retry).
+# Only fires ONCE per run (RELIVED guard) so a genuinely-down server still fails.
+relive_url() {
+  [ "$RELIVED" -eq 0 ] || return 1
+  local cur new
+  cur=$(printf '%s' "$URL" | sed -nE 's#https?://[^:/]+:([0-9]+).*#\1#p')
+  new=$(read_state_port)
+  [ -n "$new" ] || return 1
+  if [ -n "$cur" ] && [ "$cur" != "$new" ]; then
+    URL=$(printf '%s' "$URL" | sed -E "s#(://[^:/]+:)[0-9]+#\1${new}#")
+    RELIVED=1
+    echo "→ dev-server bounced ports ($cur → $new); re-reading _server.json and retrying at $URL" >&2
+    return 0
+  fi
+  return 1
+}
+
+# capture(), but on failure re-read the live port and retry once if it bounced.
+capture_resilient() {
+  local css="$1"
+  local out="$2"
+  capture "$css" "$out" && return 0
+  if relive_url; then
+    navigate_once
+    capture "$css" "$out" && return 0
+  fi
+  return 1
+}
+
 # ---------- --all-screens loop ----------
 if [ $ALL_SCREENS -eq 1 ]; then
   mkdir -p "$OUT_DIR"
@@ -226,6 +275,17 @@ if [ $ALL_SCREENS -eq 1 ]; then
       2>/dev/null)
     # Strip surrounding quotes, then split on comma.
     IDS=$(printf '%s' "$raw" | sed 's/^"//; s/"$//' | tr ',' '\n')
+  fi
+  # No screens enumerated may mean the page never loaded (port bounce) — try a
+  # live-port re-read + one re-navigate before giving up.
+  if [ -z "$IDS" ] && relive_url; then
+    navigate_once
+    if [ "$ENGINE" = "agent-browser" ]; then
+      raw=$(agent-browser eval \
+        "Array.from(document.querySelectorAll('[data-dc-screen],[data-dc-slot]')).map(e => e.getAttribute('data-dc-screen') || e.getAttribute('data-dc-slot')).filter(Boolean).join(',')" \
+        2>/dev/null)
+      IDS=$(printf '%s' "$raw" | sed 's/^"//; s/"$//' | tr ',' '\n')
+    fi
   fi
   if [ -z "$IDS" ]; then
     echo "✗ no [data-dc-screen]/[data-dc-slot] elements found (or eval unavailable on this engine)" >&2
@@ -241,7 +301,7 @@ if [ $ALL_SCREENS -eq 1 ]; then
       agent-browser eval "document.querySelector('[data-dc-screen=\"$ID\"], [data-dc-slot=\"$ID\"]').scrollIntoView({block:'center'})" >/dev/null 2>&1
       sleep 0.6
     fi
-    if capture "[data-dc-screen=\"$ID\"], [data-dc-slot=\"$ID\"]" "$OUT_FILE"; then
+    if capture_resilient "[data-dc-screen=\"$ID\"], [data-dc-slot=\"$ID\"]" "$OUT_FILE"; then
       echo "$OUT_FILE"
     else
       echo "✗ failed: $ID" >&2
@@ -254,7 +314,7 @@ fi
 
 # ---------- single-shot ----------
 navigate_once
-if capture "$CSS_SEL" "$OUT"; then
+if capture_resilient "$CSS_SEL" "$OUT"; then
   echo "$OUT"
   exit 0
 fi

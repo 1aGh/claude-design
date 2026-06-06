@@ -2,7 +2,7 @@
 name: design:draw
 category: daily
 description: Nakresli production-grade SVG (logo / ikona / ilustrace / diagram / spot) přes deterministický geometry engine — žádné LLM-guessed path data. Naplánuj → vygeneruj N kandidátů → vyrenderuj přes draw-proof ladder (16/24/48/256 × light/dark/flatten) → pairwise-rank → keep-best → rubric critique → iteruj (cap 3–4). Output buď jako asset .svg, nebo inline do aktivního canvasu. Default: po draw-agentovi spustí draw-critic. Opt out přes --no-critic.
-argument-hint: "\"<brief>\" [--type icon|logo|illustration|diagram|spot] [--grid 0|1|4|8] [--asset [<path>] | --inline [--into <canvas>]] [--perfect [N]] [--no-critic]"
+argument-hint: "\"<brief>\" [--type icon|logo|illustration|diagram|spot] [--grid 0|1|4|8] [--asset [<path>] | --inline [--into <canvas>]] [--reference <url|path>] [--perfect [N]] [--no-critic]"
 ---
 
 # /design:draw — nakresli verifikovaný SVG mark
@@ -23,8 +23,11 @@ Project-specific hodnoty (designRoot, rootClass, tokens, accent, colorSpace) př
 | `--into <canvas>` | aktivní | (s `--inline`) cílový `.tsx` canvas; default = `_active.json`. |
 | `--perfect [N]` | 3 | Max iterací draw-agenta (`max_rounds`). Cap 4. |
 | `--no-critic` | — | Přeskoč závěrečný nezávislý `draw-critic` pass. |
+| `--reference <url\|path>` | — | Sankcionovaný „udělej to jako TOHLE" — adaptuj externí asset. **Spustí license HARD gate** (krok 1.5): napřed se zjistí licence, surface volby, default = jen inspirace. Bez flagu zůstává engine-first. |
 
 **Default output mode:** `--asset` (standalone soubor). `--inline` zvol, když mark patří přímo do otevřeného canvasu (logo do headeru, ikona do tlačítka).
+
+**Animace:** když brief žádá pohyb (morph / pulse / blink / „animovaný…"), draw-agent přečte i `_draw-motion-rules.md`, naplánuje keyframe `Timeline` přes IR (`morphVariants` / `timeline` / `sequence`+`parallel`+`stagger`), vyemituje přes `toAnimatedSvg`/`toAnimatedJsx` a **povinně ověří živě** přes `draw-proof --motion` (freeze-frame pohyb nedokáže — DDR-094). Produkční delivery pro web+mobile je Lottie přes `/design:to-lottie`.
 
 ## Flow
 
@@ -47,6 +50,23 @@ Když `bootstrap-check` vrátí 10/11 (žádný design system) → **stop**, vyp
 - Output mode: `--inline` → resolve cílový canvas (`--into` nebo `_active.json` z prep); jinak `--asset` (path z flagu nebo `<designRoot>/assets/<slug>.svg`).
 - Slug: `maude design slug "<brief-or-name>"`.
 
+### 1.5 Reference-adapt license gate (only with `--reference`)
+
+`draw-agent` has no network access (tools: Read/Write/Bash/Glob/Grep) — so **the
+license fetch is YOUR job here**, before any adaptation. This is the studyfi-v3 D5
+fix (a reference was traced without ever checking its terms). When `--reference`
+is set:
+
+1. **Fetch the license FIRST** — WebFetch the reference (or its source page / repo
+   `LICENSE`) and establish the terms. If you can't determine them, treat as
+   non-permissive.
+2. **Surface the choice** (AskUserQuestion): **adapt** (license permits derivative
+   use) · **inspiration only** (draw original engine-first; default when terms are
+   unclear/non-permissive) · **pick a different reference**.
+3. **Pass the cleared result** into the spawn below as `reference` +
+   `reference_license` + `reference_mode`. Never pass a `reference` you haven't
+   license-checked. Without `--reference`, set all three empty/null.
+
 ### 2. Spawn `draw-agent`
 
 ```
@@ -54,19 +74,22 @@ Agent(
   description: "draw <type>: <short brief>",
   subagent_type: "design:draw-agent",
   prompt: <<EOF
-brief:         "<verbatim user brief>"
-type:          "<resolved type>"
-grid:          <resolved grid>
-output_mode:   "asset" | "inline"
-output_path:   "<abs .svg path>"          # asset mode
-into_canvas:   "<abs .tsx path>"          # inline mode
-selected:      <selected element JSON or null>   # inline, from prep/_active.json
-slug:          "<slug>"
-config:        <contents of .design/config.json>
-designRoot:    "<abs designRoot>"
-opt_out_scope: "<palette|aesthetic|full or empty>"
-max_rounds:    <N from --perfect, default 3, cap 4>
-candidates_n:  2
+brief:            "<verbatim user brief>"
+type:             "<resolved type>"
+grid:             <resolved grid>
+output_mode:      "asset" | "inline"
+output_path:      "<abs .svg path>"          # asset mode
+into_canvas:      "<abs .tsx path>"          # inline mode
+selected:         <selected element JSON or null>   # inline, from prep/_active.json
+slug:             "<slug>"
+config:           <contents of .design/config.json>
+designRoot:       "<abs designRoot>"
+opt_out_scope:    "<palette|aesthetic|full or empty>"
+reference:        "<--reference value or null>"      # license-gated in step 1.5
+reference_license:"<established license/terms or null>"
+reference_mode:   "<adapt|inspiration>"              # from the step-1.5 gate
+max_rounds:       <N from --perfect, default 3, cap 4>
+candidates_n:     2
 EOF
 )
 ```

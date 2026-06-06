@@ -213,11 +213,75 @@ in this repo** — [`notes/to-lottie-poc/`](notes/to-lottie-poc/) (see its READM
   components/mascot/`, the Home.tsx POC block) are **safe to delete** — everything needed
   is in the bundle above.
 
+## Execution progress (2026-06-06)
+
+**P0 — animation IR + native authoring serializers + live verify — ✅ COMPLETE + tested.**
+
+- [x] **P0.1** `draw/animate.ts` — Keyframe/Track/Timeline IR, cubic-bezier easing
+  (Newton-Raphson, overshoot preserved), `sequence`/`parallel`/`stagger`/`resolveStagger`
+  combinators, `sampleTrack`/`lerpValue`/`lerpVertices`. `test/animate.test.ts` (21).
+- [x] **P0.2** `draw/morph.ts` — `morphVariants()` deterministic vertex-array morph producer
+  + `parseMorphPath`/`templateToPath` (absolute pair-coord commands only; fixed vertex
+  count). `test/morph.test.ts` (15).
+- [x] **P0.3** `draw/serialize-animate.ts` — IR `Timeline` → `toAnimatedSvg` (SMIL) +
+  `toAnimatedJsx` (same node tree, single-source parity) via shared `buildAnimPlan`;
+  `<animateTransform additive="sum">` position-vs-animation split; keySplines from IR
+  easing; RM `<style>` gate (SVG). Exported `renderNode`/`Dialect` from `serialize.ts`.
+  `test/serialize-animate.test.ts` (16). Indexed in `draw/index.ts`.
+- [x] **P0.4** `plugins/design/agents/_draw-motion-rules.md` — mechanism ladder, 8 Lottie
+  conversion rules, M1–M5 HARD floor, live-verify rule, RM-gate (+ SMIL-ignores-CSS gotcha),
+  `motion` verdict block.
+- [x] **P0.5** `bin/_motion-sample-playwright.mjs` (over-time bbox/transform/opacity delta,
+  entry-point-guarded) + `draw-proof.sh --motion`/`--motion-selector`/`--motion-gap` (exit 4
+  = dead-mechanism HARD fail). `test/motion-sample.test.ts` (7, pure `signatureChanged`).
+- [x] **P0.6** Wired `draw-agent.md` (motion branch + IR surface + `--motion` proof + motion
+  verdict block + failure row), `draw-critic.md` (motion floor + `--motion` re-prove + motion
+  verdict), `commands/draw.md` (animace note).
+
+**P1 — production delivery + external-asset path — ✅ COMPLETE.**
+
+- [x] **P1.1** `/design:to-lottie` (`plugins/design/commands/to-lottie.md`, category daily) +
+  `maude design to-lottie` verb (registered in `cli/commands/design.mjs` BIN_VERBS + usage) →
+  `apps/studio/bin/to-lottie.sh` (cached python-lottie venv bootstrap + agent-authored
+  generator runner + Lottie validity gate + `--verify` through headless lottie-web) +
+  `apps/studio/bin/to-lottie-verify.html` (generalized `?src=&f=` harness). Ships in npm tarball
+  (apps/studio in `files`). Generator is agent-authored per-mark (draw-build pattern); the POC
+  `to-lottie.py` stays the reference. The 8 conversion rules encoded in the command.
+- [x] **P1.1b** `/design:to-rn` (`plugins/design/commands/to-rn.md`, category daily) — native
+  rn-svg + Reanimated fallback for LIGHT animation only; when-to-use matrix; references the POC
+  `Mascot.fallback.tsx`. No new bin verb (agent emits the .tsx directly).
+- [x] **P1.2** Reference-adapt sub-mode + license-at-fetch HARD gate — `draw.md` (`--reference`
+  flag + step-1.5 license gate, orchestrator owns the WebFetch) + `draw-agent.md` (reference-adapt
+  sub-mode, inputs `reference`/`reference_license`/`reference_mode`). Fixes studyfi-v3 D5.
+
+**P2 — tooling robustness + durable lessons — ✅ COMPLETE.**
+
+- [x] **P2.1** `screenshot.sh` port-bounce resilience — `relive_url()` re-reads the live port from
+  `_server.json` on capture failure (ERR_CONNECTION_REFUSED) + retries once (single-shot,
+  all-screens enumeration, per-screen). `server-up.sh` already respawns on a bounced port.
+- [x] **P2.2** Durable lessons — Maude-side encoded in-repo (`_draw-motion-rules.md` + DDR-094 +
+  screenshot.sh). Cross-project auto-memory `reference_svg_animation_gotchas.md` (CSS d:path()
+  dead, freeze-frame lies, transform clobber, SMIL-ignores-CSS-RM, fixed vertex count,
+  Lottie-from-code, port-bounce).
+
+**Verify (executor):** full `apps/studio` suite **1321/1321** green; new draw/motion tests **59**
+(21+15+16+7); biome clean on all new files; tsc unchanged at the 3 DDR-026 baseline errors (0 new);
+reachability 2/2; `cli/commands/design.test.mjs` 11/11; `draw-proof.sh`/`to-lottie.sh`/`screenshot.sh`
+`bash -n` clean; `maude design to-lottie` verb dispatches; both new commands parse for `/design:help`;
+new bin files present in `npm pack --dry-run`. **NOT run (integration-shape, flag for /flow:done):**
+(a) live `draw-proof --motion` end-to-end (needs running dev server + a real animated proof canvas);
+(b) full `maude design to-lottie --verify` pipeline (needs network for pip + the lottie-web CDN + a
+real authored generator); (c) the RN fallback on a device; (d) `/design:smoke` (engine/bin changes
+don't touch the canvas render path; the 1321 studio tests cover canvas build/render). Pre-existing
+unrelated failure: hub `better-sqlite3` ABI mismatch (NODE_MODULE_VERSION 147 vs 137 — env, not my diff).
+
 ## Metadata
 
-- **Status:** decision locked (DDR-094); POC validated; engine implementation not started.
+- **Status:** P0 + P1 + P2 complete + tested (2026-06-06). DDR-094 locked; POC validated. Pending
+  `/flow:done` (branch + validate + the integration-shape live verifications above).
 - **Created:** 2026-06-05
-- **Next:** build the real `/design:to-lottie` skill in `plugins/design` (promote the
-  python-lottie generator + lottie-web self-verify harness); then P0 IR + native serializers.
+- **Next:** `/flow:done` — feature branch, full `/flow:validate`, the deferred live verifications
+  (draw-proof --motion, to-lottie --verify end-to-end), DDR sweep, commit, PR. A future TS
+  `toLottie()` engine serializer (from the IR directly) supersedes the python generator.
 - **Related:** [DDR-094](../decisions/DDR-094-draw-animation-keyframe-ir-native-authoring-lottie-export.md),
   [phase-25 archive](archive/phase-25-designer-draw-svg-agent.md) (the static engine this extends).

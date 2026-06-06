@@ -31,6 +31,13 @@ else Glob `**/agents/_draw-design-rules.md`). It is the single source for the
 30 checks, the HARD floor, and the source-level verification rules. Score
 against it — do not invent your own bar.
 
+**If the mark is animated** (the source contains `<animate>` / `<animateTransform>`
+/ a `motion.*` element, or `type`/brief says so), ALSO read
+**`_draw-motion-rules.md`** and judge the `motion` HARD floor (M1–M5): the
+mechanism ladder, the live-motion proof, the reduced-motion gate. A dead
+mechanism (renders but doesn't animate over time) is a HARD fail no matter how
+good the freeze-frame looks.
+
 ## Inputs (orchestrator passes you)
 
 ```
@@ -65,6 +72,17 @@ Put `"opt_out_applied": "<scope>"` in the verdict footer.
    ```
    then read the resulting PNGs. If proofs can't be captured, continue source-only and cap the score (note it).
 3. **Identify the type's dominant checks** (see the per-type table in the rubric).
+4. **Animated mark? Prove the motion is LIVE.** If the source carries SMIL/motion,
+   re-run the proof with `--motion` and read the exit code — a freeze-frame
+   cannot prove animation (the studyfi-v3 trap):
+   ```bash
+   maude design draw-proof --asset "<mark_path>" --slug "draw-critic-motion-<iter_n>" --motion --root "$REPO"
+   ```
+   Exit 0 = motion proven; exit 4 = HARD FAIL (dead mechanism). Also grep the
+   source for the M2 violation `d:` inside a `@keyframes`/`style` (CSS `d:path()`
+   doesn't animate live). If proofs can't be captured, score the mechanism from
+   source (M2/M3/M5 are source-checkable) and note that the over-time delta (M1)
+   is unverified.
 
 ## Scoring — measure, don't vibe (the Phase-25.1 metrics)
 
@@ -114,6 +132,7 @@ Then walk the type-relevant rubric checks below. For each, decide **pass / fail 
 passed = hard_pass
          AND (no anti-soup gate failed)
          AND (count of unjustified STRONG failures == 0)
+         AND (animated ⇒ NOT motion.deadMechanism AND motion.overTimeDeltaProven)
 ```
 
 Put the computed metric values (`value_range`, `harmony_distance`, `balance`, `dominance`, worst `apca_lc`) in the verdict JSON so the orchestrator's loop can act on them.
@@ -167,12 +186,24 @@ For each failed STRONG (with no reason) and notable SOFT:
   "strong_failed": [ { "check": N, "name": "...", "summary": "...", "fix": "..." } ],
   "soft_notes": [ "check N — note" ],
   "opt_out_applied": "{scope}",
-  "passed": {hard_pass AND no unjustified STRONG failure}
+  "motion": {
+    "_comment": "present ONLY for animated marks; omit for static ones",
+    "mechanismLadderRespected": true,
+    "deadMechanism": false,
+    "overTimeDeltaProven": true,
+    "morphVertexCountFixed": true,
+    "reducedMotionHonored": true,
+    "additiveTransforms": true,
+    "findings": []
+  },
+  "passed": {hard_pass AND no unjustified STRONG failure AND (animated ⇒ !deadMechanism AND overTimeDeltaProven)}
 }
 ```
 ```
 
 The **last fenced `json` block is the verdict** — the orchestrator parses it.
+For an animated mark, `motion.deadMechanism: true` or
+`motion.overTimeDeltaProven: false` forces `passed: false` (a HARD fail).
 Always emit it; always close it cleanly.
 
 ## Returning to the orchestrator

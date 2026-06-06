@@ -379,7 +379,7 @@ export function primitivesToNodes(primitives: DrawPrimitive[], opts: SerializeOp
 // Rendering
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Dialect = 'svg' | 'jsx';
+export type Dialect = 'svg' | 'jsx';
 
 function attrName(key: string, dialect: Dialect): string {
   const mapped = ATTR_DIALECT[key];
@@ -397,7 +397,13 @@ function escapeAttr(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 }
 
-function renderNode(node: SvgNode, dialect: Dialect, indent: string): string {
+/**
+ * Render one {@link SvgNode} tree to a dialect string. Exported so the animation
+ * serializer (`serialize-animate.ts`) can render the SAME node tree after it
+ * injects SMIL animation children — preserving the DDR-067 single-source
+ * invariant for animated marks.
+ */
+export function renderNode(node: SvgNode, dialect: Dialect, indent: string): string {
   const pad = indent;
   const attrParts: string[] = [];
 

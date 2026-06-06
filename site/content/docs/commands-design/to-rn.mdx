@@ -1,0 +1,31 @@
+---
+title: /design:to-rn
+description: "FALLBACK — vygeneruj native react-native-svg + Reanimated komponentu z IR pro LIGHT/occasional animaci. Pro rich/continuous morph použij `/design:to-lottie` (rn-svg má perf strop, `feTurbulence` nemá native impl)."
+---
+
+| Property | Value |
+| -------- | ----- |
+| **Command** | `/design:to-rn` |
+| **Category** | `daily` |
+| **Argument hint** | `\"<animated mark \| IR handle \| canvas>\" [--out <Component.tsx>]` |
+| **Source** | [`plugins/design/commands/to-rn.md`](https://github.com/1aGh/maude/blob/main/plugins/design/commands/to-rn.md) |
+
+## Description
+
+FALLBACK — vygeneruj native react-native-svg + Reanimated komponentu z IR pro LIGHT/occasional animaci. Pro rich/continuous morph použij `/design:to-lottie` (rn-svg má perf strop, `feTurbulence` nemá native impl).
+
+## Invocation
+
+```text
+/design:to-rn \"<animated mark | IR handle | canvas>\" [--out <Component.tsx>]
+```
+
+## Summary
+
+The **fallback** motion handoff for **light / occasional** animation where you want a native `react-native-svg` + Reanimated component instead of a Lottie runtime ([DDR-094](../../../.ai/decisions/DDR-094-draw-animation-keyframe-ir-native-authoring-lottie-export.md)).
+
+## Source of truth
+
+This page is auto-generated from the command's frontmatter. The exact prompt Claude runs — including directives, edge-case handling, and tool-routing logic — lives in the source file:
+
+[**`plugins/design/commands/to-rn.md`**](https://github.com/1aGh/maude/blob/main/plugins/design/commands/to-rn.md) → read it for the full behavior.
