@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-06T06:59:39.866Z",
+  "generated": "2026-06-07T18:34:31.630Z",
   "currentPhase": null,
   "phases": [
     {
@@ -131,6 +131,17 @@
       "date": null,
       "summary": "Validate canvas + fumadocs source before implementing. Token names, fumadocs --fd-* slots, and Berkeley/JetBrains fallback chain are authoritative — don't paraphrase them.",
       "planPath": ".ai/plans/archive/feature-docs-site-mdcc-skin.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-draw-animation-layer",
+      "title": "Feature — Draw animation: keyframe IR (authoring) + Lottie-from-code (web+mobile delivery)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "tracks on any node) is the cross-platform animation source; maude is its editor (/design:draw + motion utils). It extends the DDR-067 single-source invariant from static geometry to time. (alias /d...",
+      "planPath": ".ai/plans/archive/feature-draw-animation-layer.md",
       "archived": true,
       "phaseKey": null
     },
@@ -815,17 +826,6 @@
       "planPath": ".ai/plans/phase-32-native-collab-distribution.md",
       "archived": false,
       "phaseKey": "32"
-    },
-    {
-      "id": "feature-draw-animation-layer",
-      "title": "Feature — Draw animation: keyframe IR (authoring) + Lottie-from-code (web+mobile delivery)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "tracks on any node) is the cross-platform animation source; maude is its editor (/design:draw + motion utils). It extends the DDR-067 single-source invariant from static geometry to time. (alias /d...",
-      "planPath": ".ai/plans/feature-draw-animation-layer.md",
-      "archived": false,
-      "phaseKey": null
     },
     {
       "id": "feature-studio-maude-ds-redesign",

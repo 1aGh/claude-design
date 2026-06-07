@@ -2,6 +2,36 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "draw-animation-lottie",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Animate draw marks → ship one Lottie",
+      "summary": "/design:draw now handles motion briefs (morph, pulse, blink) and proves the animation is actually live. /design:to-lottie productionizes it into one Lottie that plays 1:1 on web and React Native.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "studio-maude-ds-redesign",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "The studio, redesigned in maude",
+      "summary": "The canvas browser chrome is now built in the maude design system itself — a dark-first studio shell with a branded menubar + real dropdowns, a collapsible file-tree sidebar with a rail, a cohesive bottom context bar, a maude-styled comments panel, and a clean light handoff. New: a ⌘K command palette for jumping to the design-system view, comments, theme, reload, and help. The in-canvas chrome (tools, minimap, selection halos) was re-skinned to the same indigo accent so the whole surface reads as one product.",
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": ".st-menubar .st-brand",
+          "title": "Built in maude",
+          "body": "The studio chrome now dogfoods the maude DS — one cohesive material across the menubar, sidebar, canvas and status bar."
+        },
+        {
+          "target": ".st-menubar .st-whatsnew",
+          "title": "Press ⌘K",
+          "body": "A new command palette jumps you to the design-system view, comments, theme toggle, reload, and help — no mouse needed."
+        }
+      ]
+    },
+    {
       "id": "annotation-tooling-polish",
       "version": null,
       "date": null,

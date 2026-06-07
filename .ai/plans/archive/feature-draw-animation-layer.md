@@ -277,11 +277,52 @@ unrelated failure: hub `better-sqlite3` ABI mismatch (NODE_MODULE_VERSION 147 vs
 
 ## Metadata
 
-- **Status:** P0 + P1 + P2 complete + tested (2026-06-06). DDR-094 locked; POC validated. Pending
-  `/flow:done` (branch + validate + the integration-shape live verifications above).
-- **Created:** 2026-06-05
-- **Next:** `/flow:done` — feature branch, full `/flow:validate`, the deferred live verifications
-  (draw-proof --motion, to-lottie --verify end-to-end), DDR sweep, commit, PR. A future TS
-  `toLottie()` engine serializer (from the IR directly) supersedes the python generator.
+- **Status:** ✅ DONE — all 10 tasks complete + tested; committed to `main` (`13facbb`); changeset +
+  What's New entry authored; retro recorded; archived 2026-06-07. DDR-094 locked; POC validated.
+- **Created:** 2026-06-05 · **Closed:** 2026-06-07
+- **Deferred (integration-shape):** end-to-end `draw-proof --motion`, full `to-lottie --verify`
+  pipeline, RN fallback on device — pure logic unit-tested; live drives need a server/network/device.
+- **Next:** a future TS `toLottie()` engine serializer (from the IR directly) supersedes the
+  python generator.
 - **Related:** [DDR-094](../decisions/DDR-094-draw-animation-keyframe-ir-native-authoring-lottie-export.md),
   [phase-25 archive](archive/phase-25-designer-draw-svg-agent.md) (the static engine this extends).
+
+## Retro (2026-06-07)
+
+**Shipped:** all 10 tasks (P0.1–P0.6, P1.1, P1.1b, P1.2, P2.1, P2.2), committed to `main` as
+`13facbb`. Changeset (`draw-animation-layer.md`, minor) + a What's New entry authored.
+
+**What went well**
+- The IR layered cleanly onto the existing engine conventions (React-free root, dialect-neutral
+  node tree, attribute-explicit constructors) — `serialize-animate.ts` reuses `primitivesToNodes`
+  + a newly-exported `renderNode`, so the SVG↔JSX single-source invariant (DDR-067) extended to
+  time for free, asserted by a structural parity test.
+- Pure, deterministic producers (`morphVariants`, the easing solver) were fully unit-testable
+  with zero browser/IO — 59 fast tests caught the two real bugs early (the `2e1` exponent
+  tokenizer treating `e` as a path command; the `AnimateOpts` default-`{}` viewBox requirement).
+- The live-motion proof (`signatureChanged` + `draw-proof --motion`) directly encodes the
+  studyfi-v3 lesson (a freeze-frame can't prove motion) as an executable HARD gate, and the pure
+  classifier is unit-tested without a browser.
+
+**Friction / lessons**
+- **Concurrent `main` tree.** A parallel "Studio UI redesign (Plan B)" session left the tree dirty
+  (client/dist/styles + `.design/ui` + a shared `whats-new.json`). Honored the standing
+  `feedback_scope_flow_commands_to_repo_state` rule: staged only my 30 files by explicit path,
+  excluded all Plan B + `dist/` artifacts. The What's New commit unavoidably carried Plan B's
+  pending entry too (shared append-only feed; both stamped at release — low harm).
+- **Stale global `maude` false-positive.** `/flow:validate` Step 0.5 reported a `whatsNew` config
+  schema error that was purely the globally-installed (older) `maude` reading an old published
+  schema; the repo's own schema + config are in sync. Lesson: run config-health via
+  `node cli/bin/maude.mjs` in-repo, not the global binary.
+- **`pnpm format` is `--write`** — skipped to avoid mutating the concurrent session's files; my
+  files were already biome-formatted per-file.
+- **`timeout` isn't on macOS** — minor; ran the site build without it.
+
+**Deferred (integration-shape — need a live dev server / network / device):** end-to-end
+`draw-proof --motion` against a real animated proof canvas; the full `maude design to-lottie
+--verify` pipeline (pip + lottie-web CDN + a real authored generator); the RN fallback on a
+device. The pure logic behind each is unit-tested; the browser/python/device drives are not.
+
+**Follow-ups:** a future TS `toLottie()` engine serializer (from the IR directly) supersedes the
+agent-authored python-lottie generator; collapse the two web authoring mechanisms (SMIL + motion)
+to one if they prove redundant.
