@@ -18,7 +18,16 @@
 
 @import url('./0-reset.css');
 @import url('./1-tokens.css');
+/* Plan B — maude DS token ladder, scoped under `.maude[data-theme]` (additive;
+   drives the rewritten `.st-*` chrome without disturbing the legacy amber tokens). */
+@import url('./1-tokens-maude.css');
 @import url('./2-layout.css');
 @import url('./3-shell.css');
+/* Plan B — maude DS studio chrome (.st-* ported from Studio.css), grown per slice. */
+@import url('./3-shell-maude.css');
 @import url('./4-components.css');
+/* Plan B — maude DS shared component classes (.btn/.kbd/.callout), scoped under `.maude`. */
+@import url('./4-components-maude.css');
+/* Plan B — maude redesign of remaining legacy shell surfaces (HelpModal, tour, what's-new, SystemView, CommentBar). */
+@import url('./5-maude-overrides.css');
 @import url('./5-utilities.css');

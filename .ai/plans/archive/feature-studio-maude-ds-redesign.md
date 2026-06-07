@@ -189,3 +189,13 @@ Execute in order. Each slice ends with an agent-browser parity pass.
 - [ ] `/design:smoke` + `runtime-health` green; a11y 0 blockers (dark + light).
 - [ ] DDR recorded; what's-new entry appended; roadmap regen committed.
 - [ ] No DDR-worthy decision (SystemView retention, inspector-writeback scope) left unrecorded.
+
+---
+
+## Retro
+
+- **What worked:** the Task-1 parity contract (`studio-shell-parity.md`) as a regression checklist + live agent-browser verification after each slice caught real issues early and kept "zero regressions" honest. Slice-by-slice (shell scaffold → sidebar → viewport → panels → overlays) let each land independently with a clean checkpoint in STATE.md.
+- **What didn't (the big lesson):** visual screenshots were NOT enough. Two distinct gaps hid behind "looks maude-ish at a glance" — (1) the `--u-*` alias bridge silently resolved to AMBER inside `.maude` (aliases compute `var()` at their `:root` declaring scope then inherit a fixed value; a descendant `--accent` override doesn't re-trigger them), and (2) every legacy surface (HelpModal, tour, what's-new, SystemView, comments popover) kept the project-DS *structure* (hard offset shadows, square edges, all-mono, far-right columns) even once maude-colored. Only computed-style probes + the user's eye caught these. **Change for next time:** for any token-scope override, verify with `getComputedStyle().getPropertyValue()` probes, not screenshots; and treat "redesign to a DS" as STRUCTURE (radii/shadow/type/layout) + COLOR, never color alone.
+- **Plan wording vs reality:** Task 5 literally said "render FloatingToolbar/ZoomHud/Minimap shell-side" — but those already live in the canvas iframe (DDR-054); shell-side would have duplicated them. The executor must reconcile plan wording against the real architecture, not follow literally.
+- **Scope discovered mid-flight:** the redesign was 3 rounds, not 1 — the planned 9 tasks, then a computed-style completeness audit (`--u-*` bridge + banners), then a full structural surface redesign (HelpModal/tour/what's-new/SystemView/comments popover/dots-grid). A "redesign the shell into the DS" plan should budget for the legacy-surface long tail explicitly.
+- **Deferred (flagged, additive non-regressions):** Inspector panel build-out; optional always-indigo chrome-family swap for the in-canvas comment overlay (currently adopts the canvas DS palette).

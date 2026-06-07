@@ -137,10 +137,9 @@ const ENGINE_CSS = `
   /* Canvas-shell chrome — the workspace plane + dotted grid follow the Maude
      chrome theme (--maude-chrome-*), NOT the DS palette. See canvas-shell.tsx
      HUD_TOKENS_CSS. Artboards (.dc-artboard) keep the DS theme. */
-  background-color: var(--maude-chrome-bg-1, #f4f1ea);
+  background-color: var(--maude-chrome-bg-0, #f4f1ea);
   background-image:
-    linear-gradient(var(--maude-chrome-border, rgba(0,0,0,0.08)) 1px, transparent 1px),
-    linear-gradient(90deg, var(--maude-chrome-border, rgba(0,0,0,0.08)) 1px, transparent 1px);
+    radial-gradient(var(--maude-chrome-dot, rgba(0,0,0,0.12)) 1.1px, transparent 1.2px);
   background-size: 24px 24px;
 }
 /* DDR-046 — Snap guides. Sibling kind = confident magenta + glow + distance

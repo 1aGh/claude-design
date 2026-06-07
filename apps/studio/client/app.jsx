@@ -14,7 +14,7 @@ import { resolveToolCursor } from '../canvas-cursors.ts';
 import { canvasUrl } from './canvas-url.js';
 import { TourOverlay } from './tour/overlay.jsx';
 import { USAGE_TOUR } from './tour/usage-tour.js';
-import { useWhatsNew, WhatsNewBadge, WhatsNewPanel, WhatsNewToast } from './whats-new.jsx';
+import { useWhatsNew, WhatsNewPanel, WhatsNewToast } from './whats-new.jsx';
 
 const USAGE_TOUR_STORE = 'mdcc-usage-tour-seen';
 
@@ -243,6 +243,233 @@ function Icon({ d, size = 14, color }) {
   );
 }
 
+// ───── maude DS icon set (Plan B) ─────
+// Thin-stroke (1.4) 16×16 geometric glyphs lifted from .design/ui/Studio.tsx —
+// the icon vocabulary the ported `.st-*` chrome composes with. Distinct from the
+// legacy 24×24 single-path `Icon` above (kept for not-yet-ported chrome). Grown
+// per slice; this slice (menubar/statusbar) needs sparkle/check/sun/moon plus a
+// few the sidebar + panels reuse later.
+const STICONS = {
+  'chevron-down': <polyline points="3.5 6 8 10.5 12.5 6" />,
+  'chevron-right': <polyline points="6 3.5 10.5 8 6 12.5" />,
+  file: (
+    <>
+      <path d="M4 2h5l3 3v9H4z" />
+      <polyline points="9 2 9 5 12 5" />
+    </>
+  ),
+  folder: <path d="M2 4.5h4l1.3 1.5H14V13H2z" />,
+  search: (
+    <>
+      <circle cx="7" cy="7" r="4" />
+      <line x1="10" y1="10" x2="13.5" y2="13.5" />
+    </>
+  ),
+  plus: (
+    <>
+      <line x1="8" y1="3" x2="8" y2="13" />
+      <line x1="3" y1="8" x2="13" y2="8" />
+    </>
+  ),
+  check: <polyline points="3 8.2 6.4 11.5 13 4.2" />,
+  x: (
+    <>
+      <line x1="4.3" y1="4.3" x2="11.7" y2="11.7" />
+      <line x1="11.7" y1="4.3" x2="4.3" y2="11.7" />
+    </>
+  ),
+  sun: (
+    <>
+      <circle cx="8" cy="8" r="2.6" />
+      <line x1="8" y1="1.5" x2="8" y2="3" />
+      <line x1="8" y1="13" x2="8" y2="14.5" />
+      <line x1="1.5" y1="8" x2="3" y2="8" />
+      <line x1="13" y1="8" x2="14.5" y2="8" />
+      <line x1="3.4" y1="3.4" x2="4.4" y2="4.4" />
+      <line x1="11.6" y1="11.6" x2="12.6" y2="12.6" />
+      <line x1="12.6" y1="3.4" x2="11.6" y2="4.4" />
+      <line x1="4.4" y1="11.6" x2="3.4" y2="12.6" />
+    </>
+  ),
+  moon: <path d="M12.5 9.6A5 5 0 1 1 7 3a4 4 0 0 0 5.5 6.6z" />,
+  sparkle: (
+    <path d="M8 1.8l1.4 4.8L14 8l-4.6 1.4L8 14.2l-1.4-4.8L2 8l4.6-1.4z" fill="currentColor" stroke="none" />
+  ),
+  'panel-left': (
+    <>
+      <rect x="2.5" y="3" width="11" height="10" rx="1.5" />
+      <line x1="6.4" y1="3" x2="6.4" y2="13" />
+    </>
+  ),
+  resolve: (
+    <>
+      <circle cx="8" cy="8" r="5.6" />
+      <polyline points="5.4 8 7.2 9.9 10.6 6" />
+    </>
+  ),
+  reopen: (
+    <>
+      <path d="M3.2 8a5 5 0 1 1 1.4 3.5" />
+      <polyline points="3.2 11.4 3.2 8 6.6 8" />
+    </>
+  ),
+  layers: (
+    <>
+      <polygon points="8 2.2 13.8 5.5 8 8.8 2.2 5.5" />
+      <polyline points="2.2 9 8 12.3 13.8 9" />
+    </>
+  ),
+  sliders: (
+    <>
+      <line x1="3" y1="5" x2="13" y2="5" />
+      <circle cx="6" cy="5" r="1.7" fill="currentColor" />
+      <line x1="3" y1="11" x2="13" y2="11" />
+      <circle cx="10" cy="11" r="1.7" fill="currentColor" />
+    </>
+  ),
+  code: (
+    <>
+      <polyline points="6 5 3 8 6 11" />
+      <polyline points="10 5 13 8 10 11" />
+    </>
+  ),
+  download: (
+    <>
+      <line x1="8" y1="2.5" x2="8" y2="10" />
+      <polyline points="4.5 7 8 10.5 11.5 7" />
+      <polyline points="3 12.8 3 13.6 13 13.6 13 12.8" />
+    </>
+  ),
+  reload: (
+    <>
+      <path d="M3.2 8a5 5 0 1 1 1.4 3.5" />
+      <polyline points="3.2 11.4 3.2 8 6.6 8" />
+    </>
+  ),
+  help: (
+    <>
+      <circle cx="8" cy="8" r="6" />
+      <path d="M6.3 6.2a1.8 1.8 0 1 1 2.3 1.9c-.5.2-.6.5-.6 1v.3" />
+      <line x1="8" y1="11.4" x2="8" y2="11.5" />
+    </>
+  ),
+};
+
+// ⌘K command palette — the mockup's signature surface, wired to real shell
+// actions (theme, system view, comments, reload, help, what's new, new board).
+// Scoped to shell-doable actions only — in-canvas export lives in the iframe.
+function CommandPalette({ open, onClose, actions }) {
+  const [q, setQ] = useState('');
+  const [active, setActive] = useState(0);
+  useEffect(() => {
+    if (open) {
+      setQ('');
+      setActive(0);
+    }
+  }, [open]);
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return actions;
+    return actions.filter((a) => a.label.toLowerCase().includes(needle));
+  }, [q, actions]);
+  useEffect(() => {
+    if (active >= filtered.length) setActive(0);
+  }, [filtered.length, active]);
+  if (!open) return null;
+  const run = (a) => {
+    onClose();
+    a.run();
+  };
+  return (
+    <div
+      className="st-scrim"
+      role="presentation"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="st-palette" role="dialog" aria-modal="true" aria-label="Command palette">
+        <div className="st-pal-search">
+          <StIcon name="search" size={18} />
+          <input
+            // biome-ignore lint/a11y/noAutofocus: command palette opens on an explicit ⌘K.
+            autoFocus
+            placeholder="Type a command or search…"
+            value={q}
+            aria-label="Command search"
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                onClose();
+              } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setActive((i) => Math.min(filtered.length - 1, i + 1));
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setActive((i) => Math.max(0, i - 1));
+              } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (filtered[active]) run(filtered[active]);
+              }
+            }}
+          />
+          <Kbd>⌘K</Kbd>
+        </div>
+        <div className="st-pal-list">
+          {filtered.length === 0 ? (
+            <div className="st-pal-empty">No matching command.</div>
+          ) : (
+            filtered.map((a, i) => (
+              <button
+                type="button"
+                key={a.id}
+                className={'st-pal-item' + (i === active ? ' is-active' : '')}
+                onMouseEnter={() => setActive(i)}
+                onClick={() => run(a)}
+              >
+                <span className="st-pal-icon">
+                  <StIcon name={a.icon} size={15} />
+                </span>
+                <span className="st-pal-label">{a.label}</span>
+                {a.kbd ? (
+                  <span className="st-pal-kbd">
+                    <Kbd>{a.kbd}</Kbd>
+                  </span>
+                ) : null}
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StIcon({ name, size = 16, className }) {
+  return (
+    <svg
+      className={className}
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={{ flex: 'none' }}
+    >
+      {STICONS[name]}
+    </svg>
+  );
+}
+
+function Kbd({ children }) {
+  return <span className="kbd">{children}</span>;
+}
+
 // ───── Tree (CV-08 spec) ─────
 // File rows use `.tp-row` with optional .dir / .sel / .star / .modified
 // modifiers + a leading `.glyph` (▾ open dir, ▸ closed dir / selected file,
@@ -262,14 +489,14 @@ function DirRow({ name, depth, defaultOpen, children }) {
         role="treeitem"
         aria-expanded={open}
         tabIndex={-1}
-        className="tp-row dir"
+        className="st-row"
         style={{ paddingLeft: TREE_INDENT_BASE + depth * TREE_INDENT_STEP + 'px' }}
         onClick={() => setOpen((v) => !v)}
       >
-        <span className="glyph" aria-hidden="true">
-          {open ? '▾' : '▸'}
+        <span className="st-row-glyph">
+          <StIcon name={open ? 'chevron-down' : 'chevron-right'} size={13} />
         </span>
-        <span className="name">{name}</span>
+        <span className="st-row-name">{name}</span>
       </button>
       {open && children}
     </Fragment>
@@ -285,30 +512,28 @@ function DsFolderRow({ name, dsName, depth, defaultOpen, active, onOpenSystem, c
   return (
     <Fragment>
       <div
-        className={'tp-row ds-folder' + (active ? ' sel' : '')}
+        className={'st-row st-ds-folder' + (active ? ' is-sel' : '')}
         style={{ paddingLeft: TREE_INDENT_BASE + depth * TREE_INDENT_STEP + 'px' }}
         role="treeitem"
         aria-expanded={open}
       >
         <button
           type="button"
-          className="ds-folder-chev"
+          className="st-ds-chev"
           onClick={() => setOpen((v) => !v)}
           aria-label={open ? 'Collapse design system' : 'Expand design system'}
           title={open ? 'Collapse' : 'Expand'}
         >
-          <span className="glyph" aria-hidden="true">
-            {open ? '▾' : '▸'}
-          </span>
+          <StIcon name={open ? 'chevron-down' : 'chevron-right'} size={13} />
         </button>
         <button
           type="button"
-          className="ds-folder-open"
+          className="st-ds-open"
           onClick={() => onOpenSystem(dsName)}
           aria-label={`Open ${dsName} design system view`}
           title="Open the design system view"
         >
-          <span className="name">{name}</span>
+          {name}
         </button>
       </div>
       {open && children}
@@ -335,10 +560,7 @@ function FileRow({ file, activePath, onOpen, onDelete, openCount: oc, depth, kin
       aria-disabled={inert ? 'true' : undefined}
       tabIndex={isSel ? 0 : -1}
       className={
-        'tp-row' +
-        (isSel ? ' sel' : '') +
-        (kind === 'runtime' ? ' muted' : '') +
-        (sidecar ? ' sidecar' : '')
+        'st-row' + (isSel ? ' is-sel' : '') + (kind === 'runtime' ? ' is-muted' : '')
       }
       style={{ paddingLeft: TREE_INDENT_BASE + depth * TREE_INDENT_STEP + 'px' }}
       title={file.path + (oc ? ` — ${oc} open` : inert ? ' (file index only)' : '')}
@@ -346,22 +568,22 @@ function FileRow({ file, activePath, onOpen, onDelete, openCount: oc, depth, kin
         if (!inert) onOpen(file.path);
       }}
     >
-      <span className="glyph" aria-hidden="true">
-        {isSel ? '▸' : '·'}
+      <span className="st-row-glyph">
+        <StIcon name="file" size={13} />
       </span>
-      <span className="name">{label}</span>
-      {oc > 0 && <span className="badge">{oc}</span>}
+      <span className="st-row-name">{label}</span>
+      {oc > 0 && <span className="st-row-badge">{oc}</span>}
     </button>
   );
   if (!canDelete) return row;
   // A sibling delete button (can't nest a button in the row button). The wrapper
   // is presentational so the treeitem stays the tree's child for a11y.
   return (
-    <div className="tp-row-wrap" role="none">
+    <div className="st-row-wrap" role="none">
       {row}
       <button
         type="button"
-        className="tp-del"
+        className="st-row-del"
         title={`Delete ${label}`}
         aria-label={`Delete canvas ${label}`}
         onClick={(e) => {
@@ -416,12 +638,12 @@ function CanvasRow({
         aria-selected={isSel}
         aria-expanded={open}
         tabIndex={isSel ? 0 : -1}
-        className={'tp-row canvas-row' + (isSel ? ' sel' : '')}
+        className={'st-row st-canvas-row' + (isSel ? ' is-sel' : '')}
         style={{ paddingLeft: TREE_INDENT_BASE + depth * TREE_INDENT_STEP + 'px' }}
         title={primary.path}
         onClick={(e) => {
           // Click the chevron region → toggle disclosure. Click anywhere else → open canvas.
-          if (e.target.closest('.canvas-chev')) {
+          if (e.target.closest('.st-canvas-chev')) {
             setOpenState((v) => !v);
             return;
           }
@@ -429,17 +651,16 @@ function CanvasRow({
         }}
       >
         <span
-          className="glyph canvas-chev"
-          aria-hidden="true"
+          className="st-row-glyph st-canvas-chev"
           onClick={(e) => {
             e.stopPropagation();
             setOpenState((v) => !v);
           }}
         >
-          {open ? '▾' : '▸'}
+          <StIcon name={open ? 'chevron-down' : 'chevron-right'} size={13} />
         </span>
-        <span className="name">{displayName(primary.name)}</span>
-        {oc > 0 && <span className="badge">{oc}</span>}
+        <span className="st-row-name">{displayName(primary.name)}</span>
+        {oc > 0 && <span className="st-row-badge">{oc}</span>}
       </button>
       {open &&
         sidecars.map((sc) => (
@@ -606,6 +827,8 @@ function Sidebar({
   onToggleSection,
   onNewBoard,
   onDeleteBoard,
+  collapsed,
+  onCollapse,
 }) {
   const filteredGroups = useMemo(() => {
     if (!search) return groups;
@@ -651,13 +874,13 @@ function Sidebar({
   }, [filteredGroups]);
 
   return (
-    <nav className="sidebar">
-      <div className="tree-panel-hd">
-        <span className="tp-hd-left">
-          FILES
+    <nav className={'st-sidebar' + (collapsed ? ' is-collapsed' : '')} aria-label="Files">
+      <div className="st-sb-hd">
+        <span className="st-sb-title">Files</span>
+        <div className="st-sb-hd-actions">
           <button
             type="button"
-            className="tp-new-board"
+            className="st-iconbtn"
             title="New blank brief board"
             aria-label="New blank brief board"
             aria-expanded={creating}
@@ -666,22 +889,32 @@ function Sidebar({
               setCreating((v) => !v);
             }}
           >
-            + board
+            <StIcon name="plus" size={15} />
           </button>
-        </span>
-        <span className="ct" title={wsConnected ? 'live · file index synced' : 'reconnecting…'}>
-          <span className={'live-dot' + (wsConnected ? ' connected' : '')} aria-hidden="true" />
-          {htmlShown} / {htmlCount}
-        </span>
+          <span className="st-live" title={wsConnected ? 'live · file index synced' : 'reconnecting…'}>
+            <span className={'st-live-dot' + (wsConnected ? ' is-connected' : '')} aria-hidden="true" />
+            {htmlShown} / {htmlCount}
+          </span>
+          {onCollapse && (
+            <button
+              type="button"
+              className="st-iconbtn"
+              aria-label="Collapse sidebar"
+              title="Collapse sidebar (T)"
+              onClick={onCollapse}
+            >
+              <StIcon name="panel-left" size={15} />
+            </button>
+          )}
+        </div>
       </div>
 
       {creating ? (
-        <div className="tp-new-board-row">
+        <div className="st-newboard">
           <input
             type="text"
             // biome-ignore lint/a11y/noAutofocus: deliberate — the composer opens on an explicit click.
             autoFocus
-            className="tp-new-board-input"
             placeholder="brief board name…"
             value={newName}
             maxLength={60}
@@ -702,7 +935,7 @@ function Sidebar({
           />
           <button
             type="button"
-            className="tp-new-board-go"
+            className="st-newboard-go"
             disabled={newBusy || !newName.trim()}
             title="Create (Enter)"
             aria-label="Create brief board"
@@ -713,37 +946,37 @@ function Sidebar({
         </div>
       ) : null}
       {newErr ? (
-        <div className="tp-new-board-err" role="alert">
+        <div className="st-newboard-err" role="alert">
           {newErr}
         </div>
       ) : null}
 
-      <div className="tree-panel-search">
-        <Icon d="M21 21l-4.35-4.35 M11 19a8 8 0 100-16 8 8 0 000 16z" size={12} />
-        <input
-          type="search"
-          placeholder="filter (⌘F)"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          aria-label="Filter files"
-        />
-        {search ? (
-          <button
-            className="search-clear"
-            onClick={() => setSearch('')}
-            title="Clear (Esc)"
-            aria-label="Clear search"
-          >
-            ×
-          </button>
-        ) : (
-          <span className="search-kbd" aria-hidden="true">
-            /
-          </span>
-        )}
+      <div className="st-search">
+        <div className="st-search-box">
+          <StIcon name="search" size={13} />
+          <input
+            type="search"
+            placeholder="Search canvases…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Filter files"
+          />
+          {search ? (
+            <button
+              className="st-search-clear"
+              onClick={() => setSearch('')}
+              title="Clear (Esc)"
+              aria-label="Clear search"
+            >
+              ×
+            </button>
+          ) : (
+            <Kbd>/</Kbd>
+          )}
+        </div>
       </div>
 
-      <div className="tree-panel-body" role="tree" aria-label="Project file tree">
+      <div className="st-tree" role="tree" aria-label="Project file tree">
         {filteredGroups.map((g) => {
           // Hide gitignored runtime / orphan-only project sections by default.
           // Active search overrides — if the user typed a query, they want hits
@@ -768,21 +1001,18 @@ function Sidebar({
           const explicit = sectionsExpanded[g.label];
           // Active search forces every section open so hits aren't hidden.
           const sectionOpen = !!search || (explicit === undefined ? defaultOpen : explicit);
-          const chev = sectionOpen ? '▾' : '▸';
           return (
-            <Fragment key={g.label}>
+            <div className="st-tree-section" key={g.label}>
               <button
                 type="button"
-                className="tp-section-hd clickable section-toggle"
+                className="st-tree-sec-hd"
                 onClick={() => onToggleSection(g.label, defaultOpen)}
                 aria-expanded={sectionOpen}
                 title={sectionOpen ? 'Collapse section' : 'Expand section'}
               >
-                <span className="chev" aria-hidden="true">
-                  {chev}
-                </span>
-                <span className="section-label">{meta.title}</span>
-                {pill && <span className="pill">{pill}</span>}
+                <StIcon name={sectionOpen ? 'chevron-down' : 'chevron-right'} size={13} />
+                <span className="st-sec-name">{meta.title}</span>
+                {pill && <span className="st-pill">{pill}</span>}
               </button>
               {sectionOpen &&
                 (hasItems ? (
@@ -801,13 +1031,33 @@ function Sidebar({
                     onDelete={isDs ? undefined : onDeleteBoard}
                   />
                 ) : (
-                  <div className="tp-empty">{search ? 'No matches.' : 'Empty.'}</div>
+                  <div className="st-tree-empty">{search ? 'No matches.' : 'Empty.'}</div>
                 ))}
-            </Fragment>
+            </div>
           );
         })}
       </div>
     </nav>
+  );
+}
+
+// Collapsed rail — a thin strip shown when the sidebar is collapsed, with a
+// re-open affordance + quick search/files shortcuts (mockup CollapsedRail).
+function CollapsedRail({ shown, onExpand, onSearch }) {
+  return (
+    <div className={'st-rail' + (shown ? ' is-shown' : '')}>
+      <div className="st-rail-inner">
+        <button type="button" className="st-iconbtn" aria-label="Expand sidebar" title="Expand sidebar (T)" onClick={onExpand}>
+          <StIcon name="panel-left" size={15} />
+        </button>
+        <button type="button" className="st-iconbtn" aria-label="Search" title="Search (/)" onClick={onSearch}>
+          <StIcon name="search" size={15} />
+        </button>
+        <button type="button" className="st-iconbtn" aria-label="Files" title="Files" onClick={onExpand}>
+          <StIcon name="folder" size={15} />
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -1135,13 +1385,14 @@ function HelpModal({ open, onClose, onStartTour }) {
 
 const MENU_NAMES = ['File', 'Edit', 'View', 'Selection', 'Tools', 'Help'];
 
-function ViewDropdown({ panels, onToggle, onClose }) {
+// Shared close-on-Esc / outside-click effect for the menubar dropdowns.
+function useDropdownClose(onClose) {
   useEffect(() => {
     function onKey(e) {
       if (e.key === 'Escape') onClose();
     }
     function onDocClick(e) {
-      if (!e.target.closest('.mb-dropdown, .mb-menu')) onClose();
+      if (!e.target.closest('.st-dropdown, .st-menu')) onClose();
     }
     window.addEventListener('keydown', onKey);
     window.addEventListener('mousedown', onDocClick);
@@ -1150,16 +1401,19 @@ function ViewDropdown({ panels, onToggle, onClose }) {
       window.removeEventListener('mousedown', onDocClick);
     };
   }, [onClose]);
+}
 
+function ViewDropdown({ panels, onToggle, onClose }) {
+  useDropdownClose(onClose);
   return (
-    <div className="mb-dropdown" role="menu" aria-label="View" style={{ left: '146px' }}>
-      <div className="mb-dd-hd">Panels</div>
+    <div className="st-dropdown" role="menu" aria-label="View" style={{ left: 152 }}>
+      <div className="st-dd-hd">Panels</div>
       {panels.map((p) => (
         <button
           key={p.id}
           type="button"
           role="menuitem"
-          className={'mb-dd-item' + (p.checked ? ' active' : '')}
+          className={'st-dd-item' + (p.checked ? ' is-on' : '')}
           aria-disabled={p.disabled ? 'true' : undefined}
           onClick={() => {
             if (!p.disabled) {
@@ -1168,37 +1422,27 @@ function ViewDropdown({ panels, onToggle, onClose }) {
             }
           }}
         >
-          <span className="lbl">
-            <span className="check">{p.checked ? '✓' : ''}</span>
+          <span className="st-dd-lead">
+            <span className="st-dd-check">{p.checked ? <StIcon name="check" size={13} /> : null}</span>
             <span>{p.label}</span>
           </span>
-          {p.phase ? (
-            <span className="phase-tag">{p.phase}</span>
-          ) : (
-            <span className="shortcut">{p.shortcut || ''}</span>
-          )}
+          {p.phase ? <span className="st-dd-phase">{p.phase}</span> : <Kbd>{p.shortcut || ''}</Kbd>}
         </button>
       ))}
-      <div className="mb-dd-sep" />
-      <div className="mb-dd-hd">Zoom</div>
+      <div className="st-dd-sep" />
+      <div className="st-dd-hd">Zoom</div>
       {[
         { label: 'Zoom In', shortcut: '⌘ +' },
         { label: 'Zoom Out', shortcut: '⌘ −' },
         { label: 'Fit to Screen', shortcut: '⌘ 0' },
         { label: 'Actual Size · 100 %', shortcut: '⌥ ⌘ 0' },
       ].map((z) => (
-        <button
-          key={z.label}
-          type="button"
-          role="menuitem"
-          className="mb-dd-item"
-          aria-disabled="true"
-        >
-          <span className="lbl">
-            <span className="check" />
+        <button key={z.label} type="button" role="menuitem" className="st-dd-item" aria-disabled="true">
+          <span className="st-dd-lead">
+            <span className="st-dd-check" />
             <span>{z.label}</span>
           </span>
-          <span className="phase-tag">Phase 4</span>
+          <span className="st-dd-phase">Phase 4</span>
         </button>
       ))}
     </div>
@@ -1209,42 +1453,29 @@ function ViewDropdown({ panels, onToggle, onClose }) {
 // Phase 5.1 — Selection + Tools dropdowns (mirror ViewDropdown shape).
 
 function SelectionDropdown({ onAction, onClose }) {
-  useEffect(() => {
-    function onKey(e) {
-      if (e.key === 'Escape') onClose();
-    }
-    function onDocClick(e) {
-      if (!e.target.closest('.mb-dropdown, .mb-menu')) onClose();
-    }
-    window.addEventListener('keydown', onKey);
-    window.addEventListener('mousedown', onDocClick);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('mousedown', onDocClick);
-    };
-  }, [onClose]);
+  useDropdownClose(onClose);
   const items = [
     { id: 'deselect-all', label: 'Deselect all', shortcut: 'Esc' },
     { id: 'select-all-annotations', label: 'Select all annotations', shortcut: '⌘ ⇧ A' },
   ];
   return (
-    <div className="mb-dropdown" role="menu" aria-label="Selection" style={{ left: '195px' }}>
+    <div className="st-dropdown" role="menu" aria-label="Selection" style={{ left: 214 }}>
       {items.map((it) => (
         <button
           key={it.id}
           type="button"
           role="menuitem"
-          className="mb-dd-item"
+          className="st-dd-item"
           onClick={() => {
             onAction(it.id);
             onClose();
           }}
         >
-          <span className="lbl">
-            <span className="check" />
+          <span className="st-dd-lead">
+            <span className="st-dd-check" />
             <span>{it.label}</span>
           </span>
-          <span className="shortcut">{it.shortcut}</span>
+          <Kbd>{it.shortcut}</Kbd>
         </button>
       ))}
     </div>
@@ -1252,20 +1483,7 @@ function SelectionDropdown({ onAction, onClose }) {
 }
 
 function ToolsDropdown({ onAction, onClose }) {
-  useEffect(() => {
-    function onKey(e) {
-      if (e.key === 'Escape') onClose();
-    }
-    function onDocClick(e) {
-      if (!e.target.closest('.mb-dropdown, .mb-menu')) onClose();
-    }
-    window.addEventListener('keydown', onKey);
-    window.addEventListener('mousedown', onDocClick);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('mousedown', onDocClick);
-    };
-  }, [onClose]);
+  useDropdownClose(onClose);
   // Mirrors DEFAULT_TOOLS in apps/studio/use-tool-mode.tsx —
   // kept in sync by hand because the menubar lives in the dev-server shell
   // (no shared bundle with the canvas iframes).
@@ -1282,23 +1500,24 @@ function ToolsDropdown({ onAction, onClose }) {
     { id: 'eraser', label: 'Eraser', shortcut: 'E' },
   ];
   return (
-    <div className="mb-dropdown" role="menu" aria-label="Tools" style={{ left: '253px' }}>
+    <div className="st-dropdown" role="menu" aria-label="Tools" style={{ left: 290 }}>
+      <div className="st-dd-hd">Tool palette</div>
       {tools.map((t) => (
         <button
           key={t.id}
           type="button"
           role="menuitem"
-          className="mb-dd-item"
+          className="st-dd-item"
           onClick={() => {
             onAction(t.id);
             onClose();
           }}
         >
-          <span className="lbl">
-            <span className="check" />
+          <span className="st-dd-lead">
+            <span className="st-dd-check" />
             <span>{t.label}</span>
           </span>
-          <span className="shortcut">{t.shortcut}</span>
+          <Kbd>{t.shortcut}</Kbd>
         </button>
       ))}
     </div>
@@ -1375,12 +1594,14 @@ function Menubar({
   }
 
   return (
-    <header className="mb" role="menubar" aria-label="Application menubar">
-      <span className="mb-brand">
-        <span className="dot" aria-hidden="true" />
-        <span>maude</span>
+    <header className="st-menubar" role="menubar" aria-label="Application menubar">
+      <span className="st-brand">
+        <span className="st-brand-mark">
+          <StIcon name="sparkle" size={11} />
+        </span>
+        <span className="st-brand-name">maude</span>
       </span>
-      <nav className="mb-menus" aria-label="Application menus">
+      <nav className="st-menus" aria-label="Application menus">
         {MENU_NAMES.map((name) => {
           const key = name.toLowerCase();
           const hasDropdown = key === 'view' || key === 'selection' || key === 'tools';
@@ -1390,7 +1611,7 @@ function Menubar({
             <button
               key={key}
               type="button"
-              className="mb-menu"
+              className="st-menu"
               role="menuitem"
               data-tour={key === 'help' ? 'help' : undefined}
               aria-haspopup={hasDropdown ? 'menu' : undefined}
@@ -1432,63 +1653,34 @@ function Menubar({
           onClose={() => setOpenMenu(null)}
         />
       )}
-      <div className="mb-spacer" />
-      <div className="mb-status">
-        <WhatsNewBadge count={whatsNewCount} onOpen={onOpenWhatsNew} />
-        <span className="cv-stamp">{stamp}</span>
-        <span className="file" title={activePath || ''}>
+      <div className="st-mb-right">
+        <button
+          type="button"
+          className="st-whatsnew"
+          data-unseen={whatsNewCount > 0 ? 'true' : 'false'}
+          aria-label={`What's new${whatsNewCount > 0 ? ` — ${whatsNewCount} unseen` : ''}`}
+          title="What's new"
+          onClick={onOpenWhatsNew}
+        >
+          <StIcon name="sparkle" size={15} />
+        </button>
+        <span className="st-stamp">{stamp}</span>
+        <span className="st-mb-file" title={activePath || ''}>
           {fileLabel}
         </span>
-        <span className="sep" />
-        <span>
-          <span className="accent-dot">●</span> <b>{tabsCount}</b> ARTBOARDS
+        <span className="st-mb-sep" />
+        <span className="st-mb-count" title="Open canvases">
+          <span className="st-dot" style={{ background: 'var(--accent)' }} />
+          {tabsCount} ARTBOARDS
         </span>
-        <span className="sep" />
-        <span title="Pan/zoom in Phase 4">
-          ZOOM <b>100%</b>
+        <span className="st-mb-sep" />
+        <span className="st-mb-count st-mono" title="Pan/zoom in Phase 4">
+          ZOOM 100%
         </span>
-        <span className="sep" />
-        <span className="ok">
-          <b>{project || 'MDCC'}</b>
-        </span>
+        <span className="st-mb-sep" />
+        <span className="st-mb-proj">{project || 'maude'}</span>
       </div>
     </header>
-  );
-}
-
-function ThemeToggle({ theme, onToggle }) {
-  // Show the icon of the theme you'll switch TO — clearer affordance than current state.
-  // Sun + Moon paths are condensed Lucide-style (single-path so the existing <Icon> works).
-  const sun =
-    'M12 7a5 5 0 100 10 5 5 0 000-10z M12 3v1 M12 20v1 M21 12h-1 M4 12H3 M16.95 7.05l-.71.71 M7.05 16.95l-.71.71 M16.95 16.95l-.71-.71 M7.05 7.05l-.71-.71';
-  const moon = 'M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z';
-  const next = theme === 'dark' ? 'light' : 'dark';
-  return (
-    <button
-      type="button"
-      className="theme-toggle"
-      onClick={onToggle}
-      title={`Switch to ${next} theme`}
-      aria-label={`Switch to ${next} theme`}
-    >
-      <Icon d={theme === 'dark' ? sun : moon} size={14} />
-      <span className="theme-toggle-label">{next}</span>
-    </button>
-  );
-}
-
-function Wordmark({ project, port, version }) {
-  return (
-    <div className="wm" aria-label="maude design server">
-      <span className="wm-glyph">maude-design-server</span>
-      <span className="wm-sub">
-        <span>CANVAS · {(project || 'MAUDE').toUpperCase()}</span>
-        <span className="wm-sep">/</span>
-        <b>v{version}</b>
-        <span className="wm-sep">/</span>
-        <span>localhost:{port || '4399'}</span>
-      </span>
-    </div>
   );
 }
 
@@ -1503,35 +1695,38 @@ function Viewport({
   cfg,
 }) {
   return (
-    <div className="viewport">
+    <div className="viewport st-stage">
       {tabs.length === 0 && (
-        <>
-          <Wordmark
-            project={project}
-            port={typeof window !== 'undefined' ? window.location.port : ''}
-            version={MDCC_VERSION}
-          />
-          <div className="empty-state">
-            <div className="big">No mock open</div>
-            <div className="small">
-              ← Click a <code>.tsx</code> (or legacy <code>.html</code>) file in the tree, or open
-              the <strong>Design system</strong> view above it.
-              <br />
-              <br />
-              Tabs work like in an editor — close with the × on each tab. <kbd>⌘R</kbd> reloads the
-              active iframe.
-              <br />
-              <br />
-              <strong>Element selection:</strong> hold <kbd>⌘</kbd> inside the canvas and hover for
-              a preview, click to select. <kbd>⌘⇧</kbd>+click adds to a multi-selection.{' '}
-              <kbd>V</kbd>/<kbd>H</kbd>/<kbd>C</kbd> swap tool; right-click opens the context menu.
-              <br />
-              <br />
-              Active file, selection, and comments are tracked in <code>_active.json</code> +{' '}
-              <code>_comments/</code> — Claude reads them when you run <code>/design</code>.
-            </div>
+        <div className="st-empty">
+          <div className="st-empty-brand">
+            <span className="st-brand-mark">
+              <StIcon name="sparkle" size={13} />
+            </span>
+            <span className="st-empty-wm">maude</span>
+            <span className="st-empty-sub st-mono">
+              CANVAS · {(project || 'MAUDE').toUpperCase()} / v{MDCC_VERSION} /
+              localhost:{typeof window !== 'undefined' ? window.location.port : '4399'}
+            </span>
           </div>
-        </>
+          <div className="st-empty-title">No canvas open</div>
+          <div className="st-empty-body">
+            ← Click a <code>.tsx</code> (or legacy <code>.html</code>) file in the tree, or open the{' '}
+            <strong>Design system</strong> view above it.
+            <br />
+            <br />
+            Tabs work like in an editor — close with the × on each tab. <Kbd>⌘R</Kbd> reloads the
+            active iframe.
+            <br />
+            <br />
+            <strong>Element selection:</strong> hold <Kbd>⌘</Kbd> inside the canvas and hover for a
+            preview, click to select. <Kbd>⌘⇧</Kbd>+click adds to a multi-selection. <Kbd>V</Kbd>
+            /<Kbd>H</Kbd>/<Kbd>C</Kbd> swap tool; right-click opens the context menu.
+            <br />
+            <br />
+            Active file, selection, and comments are tracked in <code>_active.json</code> +{' '}
+            <code>_comments/</code> — Claude reads them when you run <code>/design</code>.
+          </div>
+        </div>
       )}
       {tabs.map((t) => {
         if (t.path === SYSTEM_TAB) {
@@ -1840,14 +2035,6 @@ function CommentBar({ activePath, comments }) {
   );
 }
 
-function StatusBarSlot({ label, children, className = '' }) {
-  return (
-    <span className={'sb-slot ' + className} role="group" aria-label={label}>
-      {children}
-    </span>
-  );
-}
-
 function StatusBar({
   activePath,
   selected,
@@ -1869,66 +2056,73 @@ function StatusBar({
       : selected
         ? selected.selector
         : '';
+  const nextTheme = theme === 'dark' ? 'light' : 'dark';
   return (
-    <div className="statusbar" role="contentinfo">
-      <StatusBarSlot label="Active file" className="sb-active">
-        <span className="sb-key">active</span>
-        <span className="sb-file" title={activePath || ''}>
+    <footer className="st-statusbar" role="contentinfo">
+      <span className="st-sb-slot st-sb-active" role="group" aria-label="Active file">
+        <span className="lead" aria-hidden="true" />
+        <span className="lbl">active</span>
+        <span className="val" title={activePath || ''}>
           {isSystem ? '▦ design system' : activePath || '—'}
         </span>
-      </StatusBarSlot>
+      </span>
 
       {selected && selected.selector && !isSystem && (
-        <StatusBarSlot label="Selected element" className="sb-selected">
-          <span className="sb-dot" aria-hidden="true">
-            ●
-          </span>
-          <span className="sb-sel-text" title={title}>
+        <span className="st-sb-slot st-sb-sel" role="group" aria-label="Selected element">
+          <span className="lbl">selected</span>
+          <span className="val" title={title}>
             {text}
           </span>
           <button
             type="button"
-            className="sb-clear-sel"
+            className="st-sb-sel-clear"
             onClick={onClearSelected}
             title="Clear (Esc inside iframe)"
             aria-label="Clear selection"
           >
             ×
           </button>
-        </StatusBarSlot>
+        </span>
       )}
 
-      <StatusBarSlot label="Open comments" className="sb-unread">
-        <span className="sb-key">comments</span>
-        <span className="sb-count">{openCount}</span>
-      </StatusBarSlot>
+      <span className="st-sb-slot" role="group" aria-label="Open comments">
+        <span className="lbl">comments</span>
+        <span className="val">{openCount} open</span>
+      </span>
 
-      <StatusBarSlot label="Connection" className="sb-live">
-        <span className={'sb-live-dot' + (wsConnected ? ' connected' : '')} aria-hidden="true" />
-        <span className="sb-key">{wsConnected ? 'live' : 'reconnecting'}</span>
-      </StatusBarSlot>
+      <span className="st-sb-spacer" />
+
+      <span className="st-sb-slot" role="group" aria-label="Connection">
+        <span className={'st-live-dot' + (wsConnected ? ' is-connected' : '')} aria-hidden="true" />
+        <span className="lbl">{wsConnected ? 'live' : 'reconnecting'}</span>
+      </span>
 
       {/* DDR-060 / 9.1-D — linked-to-hub-but-nothing-syncs state lives here in the
           status bar (DS-styled, hover for detail) instead of a floating off-brand
           pill. Only shown when the project is linked + has 0 syncable canvases. */}
       {syncStatus?.notSyncable && (
-        <StatusBarSlot label="Hub sync" className="sb-sync">
-          <span className="sb-sync-dot" aria-hidden="true" />
+        <span className="st-sb-slot st-sb-sync" role="group" aria-label="Hub sync">
+          <span className="st-sb-sync-dot" aria-hidden="true" />
           <span
-            className="sb-key"
+            className="lbl"
             title={syncStatus.reason || 'Linked to a hub, but no canvases are syncable.'}
           >
             0 syncable{syncStatus.tsxCount > 0 ? ` · ${syncStatus.tsxCount} tsx` : ''}
           </span>
-        </StatusBarSlot>
+        </span>
       )}
 
-      <span className="sb-spacer" />
-
-      <StatusBarSlot label="Theme" className="sb-theme">
-        <ThemeToggle theme={theme} onToggle={onToggleTheme} />
-      </StatusBarSlot>
-    </div>
+      <button
+        type="button"
+        className="st-sb-theme"
+        onClick={onToggleTheme}
+        title={`Switch to ${nextTheme} theme`}
+        aria-label={`Switch to ${nextTheme} theme`}
+      >
+        <StIcon name={theme === 'dark' ? 'sun' : 'moon'} size={13} />
+        {nextTheme}
+      </button>
+    </footer>
   );
 }
 
@@ -1969,108 +2163,120 @@ function CommentsPanel({
   }
 
   return (
-    <aside className="rsidebar">
-      <div className="rsidebar-header">
-        <h2>
-          <span>Comments</span>
-          <span className="total">{counts.all}</span>
-        </h2>
-        <div className="rsidebar-filters" role="tablist">
+    <aside className="st-rpanel" aria-label="Comments">
+      <div className="st-rp-tabs st-rp-tabs--filters">
+        <div className="st-cm-filters" role="tablist">
           <button
-            className={'rsidebar-filter' + (filter === 'all' ? ' active' : '')}
+            type="button"
+            className={'st-cm-filter' + (filter === 'all' ? ' is-active' : '')}
             role="tab"
             aria-selected={filter === 'all'}
             onClick={() => setFilter('all')}
           >
-            All <span className="fc">{counts.all}</span>
+            All · {counts.all}
           </button>
           <button
-            className={'rsidebar-filter' + (filter === 'open' ? ' active' : '')}
+            type="button"
+            className={'st-cm-filter' + (filter === 'open' ? ' is-active' : '')}
             role="tab"
             aria-selected={filter === 'open'}
             onClick={() => setFilter('open')}
           >
-            Open <span className="fc">{counts.open}</span>
+            Open · {counts.open}
           </button>
           <button
-            className={'rsidebar-filter' + (filter === 'resolved' ? ' active' : '')}
+            type="button"
+            className={'st-cm-filter' + (filter === 'resolved' ? ' is-active' : '')}
             role="tab"
             aria-selected={filter === 'resolved'}
             onClick={() => setFilter('resolved')}
           >
-            Resolved <span className="fc">{counts.resolved}</span>
+            Resolved · {counts.resolved}
           </button>
         </div>
       </div>
-      <div className="rsidebar-body">
+      <div className="st-rp-body" style={{ gap: 'var(--space-4)' }}>
         {groups.length === 0 ? (
-          <div className="rsidebar-empty">
+          <div className="st-rp-empty">
             <p>No comments {filter !== 'all' ? `with status “${filter}”` : 'yet'}.</p>
-            <p style={{ marginTop: 12 }}>
-              Open a canvas, hold <kbd>⌘</kbd> and click an element, then press <kbd>C</kbd> — or
-              hold <kbd>⌘⇧</kbd> and click directly.
+            <p>
+              Open a canvas, hold <Kbd>⌘</Kbd> and click an element, then press <Kbd>C</Kbd> — or
+              hold <Kbd>⌘⇧</Kbd> and click directly.
             </p>
           </div>
         ) : (
           groups.map((g) => (
-            <div key={g.file} className="rs-group">
-              <button className="rs-group-h" onClick={() => onJump(g.file, null)} title={g.file}>
-                <span className="rs-group-name">{displayName(basename(g.file))}</span>
-                <span className="rs-group-count">{g.comments.length}</span>
+            <Fragment key={g.file}>
+              <button
+                type="button"
+                className="st-cm-group-hd"
+                onClick={() => onJump(g.file, null)}
+                title={g.file}
+              >
+                <span>{displayName(basename(g.file))}</span>
+                <span className="st-mono">{g.comments.length}</span>
               </button>
               {g.comments.map((c) => (
                 <div
                   key={c.id}
                   className={
-                    'rs-comment' +
-                    (c.status === 'resolved' ? ' resolved' : '') +
-                    (c.id === focusedId ? ' active-pin' : '')
+                    'st-comment' +
+                    (c.status === 'resolved' ? ' is-resolved' : '') +
+                    (c.id === focusedId ? ' is-active' : '')
                   }
                   onClick={() => onJump(g.file, c.id)}
                 >
-                  <div className="rs-comment-head">
-                    <span className="rs-num">{c.n || '·'}</span>
-                    <span className="rs-time">{timeAgo(c.created)}</span>
+                  <div className="st-comment-hd">
+                    <span className="st-pin st-pin--inline">{c.n || '·'}</span>
+                    <span className="st-comment-time">{timeAgo(c.created)}</span>
                   </div>
-                  <div className="rs-comment-text">{c.text}</div>
-                  <div className="rs-comment-foot">
-                    <code title={(c.dom_path || []).join(' > ')}>{c.selector || '—'}</code>
-                    <div className="rs-comment-actions">
+                  <div className="st-comment-txt">{c.text}</div>
+                  <div className="st-comment-foot">
+                    <span className="st-comment-sel" title={(c.dom_path || []).join(' > ')}>
+                      {c.selector || '—'}
+                    </span>
+                    <span className="st-mini-act">
                       {c.status === 'resolved' ? (
                         <button
-                          className="rs-act"
+                          type="button"
+                          className="st-iconbtn"
+                          aria-label="Reopen"
                           onClick={(e) => {
                             e.stopPropagation();
                             onReopen(c.id);
                           }}
                         >
-                          ↺
+                          <StIcon name="reopen" size={14} />
                         </button>
                       ) : (
                         <button
-                          className="rs-act"
+                          type="button"
+                          className="st-iconbtn"
+                          aria-label="Resolve"
                           onClick={(e) => {
                             e.stopPropagation();
                             onResolve(c.id);
                           }}
                         >
-                          ✓
+                          <StIcon name="resolve" size={14} />
                         </button>
                       )}
                       <button
-                        className="rs-act danger"
+                        type="button"
+                        className="st-iconbtn"
+                        aria-label="Delete"
                         onClick={(e) => {
                           e.stopPropagation();
                           onDelete(c.id);
                         }}
                       >
-                        ×
+                        <StIcon name="x" size={14} />
                       </button>
-                    </div>
+                    </span>
                   </div>
                 </div>
               ))}
-            </div>
+            </Fragment>
           ))
         )}
       </div>
@@ -2095,52 +2301,24 @@ function SyncBanner({ status }) {
   const offline = state === 'offline' || state === 'offline-long';
   if (!offline && !showFlash) return null;
 
-  let bg;
-  let fg;
-  let border;
+  let variant;
   let text;
   if (showFlash) {
-    bg = '#dcfce7';
-    fg = '#166534';
-    border = '#86efac';
+    variant = 'success';
     text = 'Synced with hub';
   } else if (state === 'offline-long') {
-    bg = '#fee2e2';
-    fg = '#991b1b';
-    border = '#fca5a5';
+    variant = 'error';
     text = `Long offline — ${queuedOps} edit(s) queued. Consider \`git commit && git push\` as backup.`;
   } else {
-    bg = '#fef9c3';
-    fg = '#854d0e';
-    border = '#fde047';
+    variant = 'warn';
     text = `Working offline · ${queuedOps} edit(s) queued · will sync when the hub reconnects.`;
   }
   const conflictNote =
     conflicts && conflicts.length > 0 ? ` (${conflicts.length} conflict notice(s))` : '';
 
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      style={{
-        position: 'fixed',
-        top: 12,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        zIndex: 10003,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        padding: '8px 14px',
-        background: bg,
-        color: fg,
-        border: `1px solid ${border}`,
-        borderRadius: 999,
-        boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
-        font: '500 13px/1.2 system-ui, -apple-system, sans-serif',
-        maxWidth: '80vw',
-      }}
-    >
+    <div role="status" aria-live="polite" className={`st-banner st-banner--${variant}`}>
+      <span className="st-banner-dot" aria-hidden="true" />
       <span>
         {text}
         {conflictNote}
@@ -2230,6 +2408,7 @@ function App() {
   const [showHidden, setShowHidden] = useState(() => readBoolStore(SHOW_HIDDEN_STORE, false));
   const [sectionsExpanded, setSectionsExpanded] = useState(() => readJsonStore(SECTIONS_STORE, {}));
   const [helpOpen, setHelpOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const whatsNew = useWhatsNew(MDCC_VERSION);
   const [tourSteps, setTourSteps] = useState(null);
   const [usageNudge, setUsageNudge] = useState(() => !readBoolStore(USAGE_TOUR_STORE, false));
@@ -2861,6 +3040,12 @@ function App() {
       // ⌘F) still fire regardless of focus, mirroring browser convention.
       const inCanvasIframe = document.activeElement?.tagName === 'IFRAME';
 
+      // Cmd+K / Ctrl+K — toggle the command palette (works even in inputs).
+      if (meta && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+        return;
+      }
       // Cmd+R — reload active iframe (override browser reload)
       if (meta && (e.key === 'r' || e.key === 'R')) {
         e.preventDefault();
@@ -2897,7 +3082,7 @@ function App() {
       // / — focus search (or ⌘F per CV-08 placeholder hint)
       if (e.key === '/') {
         e.preventDefault();
-        const inp = document.querySelector('.tree-panel-search input');
+        const inp = document.querySelector('.st-search input');
         if (inp) inp.focus();
         return;
       }
@@ -2905,7 +3090,7 @@ function App() {
         e.preventDefault();
         if (!sidebarOpen) setSidebarOpen(true);
         setTimeout(() => {
-          const inp = document.querySelector('.tree-panel-search input');
+          const inp = document.querySelector('.st-search input');
           if (inp) inp.focus();
         }, 0);
         return;
@@ -2992,91 +3177,78 @@ function App() {
     e.preventDefault();
   }, []);
 
+  // ⌘K palette actions — shell-doable only (in-canvas export lives in the iframe).
+  const paletteActions = useMemo(
+    () => [
+      {
+        id: 'system',
+        label: 'Open design system view',
+        icon: 'sliders',
+        kbd: 'S',
+        run: () => openSystem(),
+      },
+      {
+        id: 'comments',
+        label: 'Toggle comments panel',
+        icon: 'resolve',
+        kbd: '⌘⇧M',
+        run: () => setCommentsPanelOpen((v) => !v),
+      },
+      {
+        id: 'theme',
+        label: 'Toggle light / dark theme',
+        icon: 'sun',
+        run: () => toggleTheme(),
+      },
+      {
+        id: 'reload',
+        label: 'Reload active canvas',
+        icon: 'reload',
+        kbd: '⌘R',
+        run: () => reloadActive(),
+      },
+      {
+        id: 'whatsnew',
+        label: "What's new in maude",
+        icon: 'sparkle',
+        run: () => whatsNew.openPanel(),
+      },
+      {
+        id: 'help',
+        label: 'Help · shortcuts & commands',
+        icon: 'help',
+        kbd: '?',
+        run: () => setHelpOpen(true),
+      },
+    ],
+    [openSystem, toggleTheme, reloadActive, whatsNew]
+  );
+
   return (
-    <div
-      className={
-        'app' + (commentsPanelOpen ? ' with-rsidebar' : '') + (sidebarOpen ? '' : ' no-sidebar')
-      }
-      onContextMenu={onShellContextMenu}
-    >
+    <div className="maude" data-theme={theme} onContextMenu={onShellContextMenu}>
       <SyncBanner status={syncStatus} />
       {!usageNudge && !tourSteps && <WhatsNewToast wn={whatsNew} />}
       {gitLifecycle && (
-        <div
-          role="status"
-          aria-live="polite"
-          style={{
-            position: 'fixed',
-            top: 12,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 10002,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            padding: '8px 14px',
-            background: '#dbeafe',
-            color: '#1e40af',
-            border: '1px solid #93c5fd',
-            borderRadius: 999,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
-            font: '500 13px/1.2 system-ui, -apple-system, sans-serif',
-          }}
-        >
+        <div role="status" aria-live="polite" className="st-banner st-banner--info">
+          <span className="st-banner-dot" aria-hidden="true" />
           <span>Repo state changed — reload to sync?</span>
           <button
             type="button"
+            className="btn btn--primary btn--sm"
             onClick={() => {
               try {
                 window.location.reload();
               } catch {}
             }}
-            style={{
-              padding: '3px 10px',
-              background: '#2563eb',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 4,
-              font: '500 11px/1.2 system-ui',
-              cursor: 'pointer',
-            }}
           >
             Reload
           </button>
-          <button
-            type="button"
-            onClick={() => setGitLifecycle(null)}
-            style={{
-              padding: '3px 10px',
-              background: 'transparent',
-              color: '#1e40af',
-              border: '1px solid #93c5fd',
-              borderRadius: 4,
-              font: '500 11px/1.2 system-ui',
-              cursor: 'pointer',
-            }}
-          >
+          <button type="button" className="btn btn--ghost btn--sm" onClick={() => setGitLifecycle(null)}>
             Dismiss
           </button>
         </div>
       )}
-      <Sidebar
-        groups={groups}
-        activePath={activePath}
-        activeDsName={activePath === SYSTEM_TAB ? (systemData?.ds?.name ?? null) : null}
-        onOpen={openTab}
-        onOpenSystem={openSystem}
-        wsConnected={wsConnected}
-        search={search}
-        setSearch={setSearch}
-        commentsByFile={commentsByFile}
-        showHidden={showHidden}
-        sectionsExpanded={sectionsExpanded}
-        onToggleSection={toggleSection}
-        onNewBoard={createBoard}
-        onDeleteBoard={deleteBoard}
-      />
-      <div className="main">
+      <div className="st-shell">
         <Menubar
           activePath={activePath}
           project={project}
@@ -3097,19 +3269,62 @@ function App() {
           onOpenWhatsNew={whatsNew.openPanel}
           whatsNewCount={whatsNew.unseen.length}
         />
-        <Viewport
-          tabs={tabs}
-          activePath={activePath}
-          registerIframe={registerIframe}
-          systemData={systemData}
-          onOpenFromSystem={openTab}
-          onSelectDs={loadSystemData}
-          project={project}
-          cfg={cfg}
-        />
-        {activePath && activePath !== SYSTEM_TAB && (
-          <CommentBar activePath={activePath} comments={activeFileComments} />
-        )}
+        <div className="st-body">
+          <CollapsedRail
+            shown={!sidebarOpen}
+            onExpand={() => setSidebarOpen(true)}
+            onSearch={() => {
+              setSidebarOpen(true);
+              setTimeout(() => document.querySelector('.st-search input')?.focus(), 60);
+            }}
+          />
+          <Sidebar
+            groups={groups}
+            activePath={activePath}
+            activeDsName={activePath === SYSTEM_TAB ? (systemData?.ds?.name ?? null) : null}
+            onOpen={openTab}
+            onOpenSystem={openSystem}
+            wsConnected={wsConnected}
+            search={search}
+            setSearch={setSearch}
+            commentsByFile={commentsByFile}
+            showHidden={showHidden}
+            sectionsExpanded={sectionsExpanded}
+            onToggleSection={toggleSection}
+            onNewBoard={createBoard}
+            onDeleteBoard={deleteBoard}
+            collapsed={!sidebarOpen}
+            onCollapse={() => setSidebarOpen(false)}
+          />
+          <div className="main">
+            <Viewport
+              tabs={tabs}
+              activePath={activePath}
+              registerIframe={registerIframe}
+              systemData={systemData}
+              onOpenFromSystem={openTab}
+              onSelectDs={loadSystemData}
+              project={project}
+              cfg={cfg}
+            />
+            {activePath && activePath !== SYSTEM_TAB && (
+              <CommentBar activePath={activePath} comments={activeFileComments} />
+            )}
+          </div>
+          {commentsPanelOpen && (
+            <CommentsPanel
+              commentsByFile={commentsByFile}
+              filter={commentsFilter}
+              setFilter={setCommentsFilter}
+              activePath={activePath}
+              focusedId={focusedCommentId}
+              onJump={jumpToComment}
+              onResolve={resolveComment}
+              onReopen={reopenComment}
+              onDelete={deleteComment}
+            />
+          )}
+        </div>
         <StatusBar
           activePath={activePath}
           selected={selected}
@@ -3121,19 +3336,11 @@ function App() {
           syncStatus={syncStatus}
         />
       </div>
-      {commentsPanelOpen && (
-        <CommentsPanel
-          commentsByFile={commentsByFile}
-          filter={commentsFilter}
-          setFilter={setCommentsFilter}
-          activePath={activePath}
-          focusedId={focusedCommentId}
-          onJump={jumpToComment}
-          onResolve={resolveComment}
-          onReopen={reopenComment}
-          onDelete={deleteComment}
-        />
-      )}
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        actions={paletteActions}
+      />
       <HelpModal
         open={helpOpen}
         onClose={() => setHelpOpen(false)}

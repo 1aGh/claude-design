@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-07T18:34:31.630Z",
+  "generated": "2026-06-07T18:54:27.551Z",
   "currentPhase": null,
   "phases": [
     {
@@ -164,6 +164,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, the binary-resolution path (DDR-009/045/084), the maude design <verb> dispatcher (DDR-062), npm files ship...",
       "planPath": ".ai/plans/archive/feature-runtime-restructure-apps-packages.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-studio-maude-ds-redesign",
+      "title": "Feature: Studio UI redesign — rewrite the dev-server browser shell into the maude Design System (per `Studio.tsx`)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to the canvas-origin split (DDR-054 — the in-iframe overlays are untrusted, treat them differently from the shell), the CSS la...",
+      "planPath": ".ai/plans/archive/feature-studio-maude-ds-redesign.md",
       "archived": true,
       "phaseKey": null
     },
@@ -828,13 +839,13 @@
       "phaseKey": "32"
     },
     {
-      "id": "feature-studio-maude-ds-redesign",
-      "title": "Feature: Studio UI redesign — rewrite the dev-server browser shell into the maude Design System (per `Studio.tsx`)",
+      "id": "feature-studio-full-functionality-parity",
+      "title": "Feature: Studio — full functionality + design parity (Plan C, completes DDR-096)",
       "status": "planned",
       "shipTarget": null,
       "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to the canvas-origin split (DDR-054 — the in-iframe overlays are untrusted, treat them differently from the shell), the CSS la...",
-      "planPath": ".ai/plans/feature-studio-maude-ds-redesign.md",
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to the canvas-origin split (DDR-054 — in-iframe overlays are untrusted; structural changes there carry the runtime-health \"par...",
+      "planPath": ".ai/plans/feature-studio-full-functionality-parity.md",
       "archived": false,
       "phaseKey": null
     },
