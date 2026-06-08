@@ -488,9 +488,10 @@ function initialsOf(name) {
   if (!name || typeof name !== 'string') return '?';
   const parts = name.trim().split(/[\s._-]+/).filter(Boolean);
   if (!parts.length) return '?';
-  const a = parts[0][0] || '';
-  const b = parts.length > 1 ? parts[parts.length - 1][0] || '' : '';
-  return (a + b).toUpperCase() || '?';
+  // Single-token names (e.g. a git username "1aGh") → first two chars, so the
+  // avatar reads as initials rather than a lone count badge.
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return ((parts[0][0] || '') + (parts[parts.length - 1][0] || '')).toUpperCase() || '?';
 }
 function StAvatar({ initials, hue, title }) {
   return (
@@ -543,9 +544,11 @@ const PNG_SCALES = [
   { value: 3, label: '3× (max)' },
 ];
 
-function ExportDialog({ mode, activePath, onClose }) {
+function ExportDialog({ mode, initialScope, activePath, onClose }) {
   const [sel, setSel] = useState(mode === 'handoff' ? 'shadcn' : 'png');
-  const [scope, setScope] = useState('artboard');
+  const [scope, setScope] = useState(
+    initialScope && EXPORT_SCOPE_LABELS[initialScope] ? initialScope : 'artboard'
+  );
   const [scale, setScale] = useState(2);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(null); // { ok, msg }
@@ -582,13 +585,12 @@ function ExportDialog({ mode, activePath, onClose }) {
 
   async function doExport() {
     if (card.handoff) {
+      const p = activePath && activePath !== SYSTEM_TAB ? activePath : '<canvas>.tsx';
+      const cmd = `/design:handoff ${p}`;
       try {
-        await navigator.clipboard?.writeText('/design:handoff');
+        await navigator.clipboard?.writeText(cmd);
       } catch {}
-      setStatus({
-        ok: true,
-        msg: 'Copied /design:handoff — run it in Claude Code to emit the registry-item sidecar.',
-      });
+      setStatus({ ok: true, msg: `Copied: ${cmd} — run it in Claude Code.` });
       return;
     }
     setBusy(true);
@@ -707,9 +709,10 @@ function ExportDialog({ mode, activePath, onClose }) {
             </div>
           )}
           {card.handoff && (
-            <div className="callout callout--success" style={{ fontSize: 12 }}>
-              shadcn registry-item inlines canvas-lib + declares deps — drops straight into Next.js.
-              Emitted by <span className="st-mono">/design:handoff</span>.
+            <div className="callout callout--info" style={{ fontSize: 12 }}>
+              Hands the active canvas off to production. Copies{' '}
+              <span className="st-mono">/design:handoff &lt;path&gt;</span> — run it in Claude Code to
+              emit a ready-to-drop production component next to the canvas.
             </div>
           )}
           {status && (
@@ -2990,7 +2993,7 @@ function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   // T5/T6 (Plan C) — shell-level export/handoff dialog + inspector panel state.
   // The palette (T4) drives them; the dialog (T5) + panel (T6) consume them.
-  const [exportDialog, setExportDialog] = useState(null); // null | 'export' | 'handoff'
+  const [exportDialog, setExportDialog] = useState(null); // null | { mode: 'export'|'handoff', scope? }
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const whatsNew = useWhatsNew(MDCC_VERSION);
   const [tourSteps, setTourSteps] = useState(null);
@@ -3531,7 +3534,11 @@ function App() {
       } else if (m.dgn === 'open-export') {
         // Plan C — the in-canvas toolbar / context menu route here so they open
         // the SAME shell Export dialog as the menubar (one look, all settings).
-        setExportDialog('export');
+        // Carry the context-menu's scope hint (e.g. "Export selection").
+        setExportDialog({
+          mode: 'export',
+          scope: m.detail && typeof m.detail.scope === 'string' ? m.detail.scope : undefined,
+        });
       } else if (m.dgn === 'loaded' && m.file) {
         // iframe finished loading — push current comments + carry over focused pin if any
         const list = commentsByFile[m.file] || [];
@@ -3858,7 +3865,7 @@ function App() {
         label: 'Export…',
         icon: 'download',
         kbd: '⇧⌘E',
-        run: () => setExportDialog('export'),
+        run: () => setExportDialog({ mode: 'export' }),
       },
       {
         id: 'handoff',
@@ -3866,7 +3873,7 @@ function App() {
         label: 'Handoff to production',
         icon: 'share',
         kbd: '⇧⌘H',
-        run: () => setExportDialog('handoff'),
+        run: () => setExportDialog({ mode: 'handoff' }),
       },
       // ── View ────────────────────────────────────────────────────────────
       {
@@ -3996,7 +4003,7 @@ function App() {
               60
             );
           }}
-          onOpenExport={(mode) => setExportDialog(mode)}
+          onOpenExport={(mode) => setExportDialog({ mode })}
           onReload={reloadActive}
           presence={
             <>
@@ -4089,7 +4096,8 @@ function App() {
       />
       {exportDialog && (
         <ExportDialog
-          mode={exportDialog}
+          mode={exportDialog.mode}
+          initialScope={exportDialog.scope}
           activePath={activePath}
           onClose={() => setExportDialog(null)}
         />

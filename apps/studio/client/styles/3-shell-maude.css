@@ -253,6 +253,10 @@
 }
 /* Kept in the a11y tree (opacity, not display:none) so keyboard users reach it. */
 .st-row-wrap:hover .st-row-del, .st-row-del:focus-visible { opacity: 1; }
+/* Shift the open-comments badge left of the delete button on hover so they
+   don't overlap (the delete is absolute at the row's right edge). */
+.st-row-wrap:hover .st-row-badge,
+.st-row-wrap:focus-within .st-row-badge { margin-right: 24px; }
 .st-row-del:hover { color: var(--status-error); background: color-mix(in oklab, var(--status-error) 14%, transparent); }
 
 /* DS-folder row — chevron toggles disclosure, name opens the system view. */

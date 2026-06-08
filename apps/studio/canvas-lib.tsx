@@ -198,6 +198,17 @@ const ENGINE_CSS = `
      irrelevant under zoom (zoom anchors top-left of the box). will-change
      hints to the compositor that this layer changes often. */
   will-change: transform;
+  /* Marquee / multi-select drags over artboards must not trigger native text
+     selection (it highlighted the canvas content). Editable surfaces re-enable
+     it below. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+.dc-world input,
+.dc-world textarea,
+.dc-world [contenteditable="true"] {
+  user-select: text;
+  -webkit-user-select: text;
 }
 .dc-section-collapsed { display: contents; }
 
