@@ -14,6 +14,13 @@ import { MoodboardScene } from './scenes/v4/12-moodboard';
 import { DsRevealScene } from './scenes/v4/15-ds-reveal';
 import { DesignNewScene } from './scenes/v4/20-design-new';
 import { CriticsScene } from './scenes/v4/25-critics';
+import { CanvasPanScene } from './scenes/v4/30-canvas-pan';
+import { CmdClickScene } from './scenes/v4/35-cmd-click';
+import { DesignEditScene } from './scenes/v4/40-design-edit';
+import { CommentsScene } from './scenes/v4/45-comments';
+import { HandoffScene } from './scenes/v4/50-handoff';
+import { EndCardScene } from './scenes/v4/55-end-card';
+import { V4, V4_TOTAL_FRAMES } from './compositions/V4';
 
 /**
  * Composition registry. One <Composition> per scene + the master Demo cut.
@@ -119,6 +126,62 @@ export const Root = () => (
       id="v4-25-critics"
       component={CriticsScene}
       durationInFrames={210}
+      fps={30}
+      width={1920}
+      height={1080}
+    />
+    <Composition
+      id="v4-30-canvas-pan"
+      component={CanvasPanScene}
+      durationInFrames={180}
+      fps={30}
+      width={1920}
+      height={1080}
+    />
+    <Composition
+      id="v4-35-cmd-click"
+      component={CmdClickScene}
+      durationInFrames={180}
+      fps={30}
+      width={1920}
+      height={1080}
+    />
+    <Composition
+      id="v4-40-design-edit"
+      component={DesignEditScene}
+      durationInFrames={270}
+      fps={30}
+      width={1920}
+      height={1080}
+    />
+    <Composition
+      id="v4-45-comments"
+      component={CommentsScene}
+      durationInFrames={210}
+      fps={30}
+      width={1920}
+      height={1080}
+    />
+    <Composition
+      id="v4-50-handoff"
+      component={HandoffScene}
+      durationInFrames={180}
+      fps={30}
+      width={1920}
+      height={1080}
+    />
+    <Composition
+      id="v4-55-end-card"
+      component={EndCardScene}
+      durationInFrames={120}
+      fps={30}
+      width={1920}
+      height={1080}
+    />
+    <Composition
+      id="V4"
+      component={V4}
+      durationInFrames={V4_TOTAL_FRAMES}
       fps={30}
       width={1920}
       height={1080}

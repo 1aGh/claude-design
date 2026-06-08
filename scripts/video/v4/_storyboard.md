@@ -38,4 +38,13 @@ line + signature (1–5 each). Sign off at avg ≥ 4.0 with no line < 3 →
 - [x] 15 DS reveal — signed off (iter 0, avg 4.9) → `_signoff-15.md`
 - [x] 20 /design:new — signed off (iter 0, avg 5.0) → `_signoff-20.md`
 - [x] 25 Critics — signed off (iter 0, avg 5.0) → `_signoff-25.md`
-- [ ] 30 · 35 · 40 · 45 · 50 · 55 — pending
+- [x] 30 Canvas reveal — signed off (iter 0, avg 4.9) → `_signoff-30.md`
+- [x] 35 Cmd+Click — signed off (iter 0, avg 4.9) → `_signoff-35.md`
+- [x] 40 /design:edit — signed off (iter 0, avg 5.0) → `_signoff-40.md`
+- [x] 45 Comments + annotations — signed off (iter 0, avg 4.9) → `_signoff-45.md`
+- [x] 50 Handoff — signed off (iter 1, avg 5.0) → `_signoff-50.md`
+- [x] 55 End card — signed off (iter 0, avg 5.0) → `_signoff-55.md`
+
+**All 13 scenes signed off.** Phase C assembled → `compositions/V4.tsx` (2400f /
+80s / 5.5MB). Full-watch gut check logged in `_watch-log.md` (all axes PASS).
+`site/public/demo.mp4` NOT swapped — gated on user ship decision + audio bed.

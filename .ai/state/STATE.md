@@ -1290,5 +1290,6 @@ v4 maude-DS Remotion infra built: `final/src/lib/maude-tokens.ts` (maude DS, NOT
 
 - [x] **00 Cold open** — signed off iter1 (avg 4.9). `_signoff-00.md`. Structural fix: caret pulled out of wordmark wrapper → caret-on-void opening beat.
 - [x] **05 Install** — signed off iter0 (avg 4.8). `_signoff-05.md`. Typewriter terminal, npm (per comment), no red errors.
-- [ ] **10 · 12 · 15 · 20 · 25 · 30 · 35 · 40 · 45 · 50 · 55** — pending (11 scenes).
-- [ ] Phase C — assemble signed-off scenes into `compositions/V4.tsx`, full-watch gut check (`_watch-log.md`), loudnorm ≤16MB, swap `site/public/demo.mp4` (only after watch-log passes + commit approval).
+- [x] **All 13 scenes signed off** (00 05 10 12 15 20 25 30 35 40 45 50 55) — each `_signoff-<id>.md`. Two needed an iter1 (00 caret-on-void; 50 fan-spread); rest passed iter0. Several hit 5.0.
+- [x] **Phase C assembled** — `compositions/V4.tsx` (13 scenes, hard cuts via `Series`), registered as `V4`. Rendered `out/v4/V4.mp4` = 2400f / 80s / **5.5MB** (<16MB). Full-watch gut check `_watch-log.md`: all 5 axes PASS (frame-sampled).
+- [ ] **SHIP gate (Phase C.4/C.5)** — `site/public/demo.mp4` NOT swapped. Awaiting user: (a) real-MP4 watch + ship decision, (b) audio bed (CC0 music + loudnorm, or ship silent). Then ≤16MB check + swap + commit approval.
