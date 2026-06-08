@@ -172,9 +172,11 @@ ${invocation}
 ${summary ? `## Summary\n\n${summary}\n` : ''}
 ## Source of truth
 
-This page is auto-generated from the command's frontmatter. The exact prompt Claude runs — including directives, edge-case handling, and tool-routing logic — lives in the source file:
+<Callout type="note" title="Generated from frontmatter">
 
-[**\`${sourceRel}\`**](${repoUrl}/${sourceRel}) → read it for the full behavior.
+This page is auto-generated from the command's frontmatter. The exact prompt Claude runs — including directives, edge-case handling, and tool-routing logic — lives in the source file: [**\`${sourceRel}\`**](${repoUrl}/${sourceRel}).
+
+</Callout>
 `;
 
     await writeFile(join(targetDir, `${name}.mdx`), mdx);

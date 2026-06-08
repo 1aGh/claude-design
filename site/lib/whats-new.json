@@ -1,11 +1,32 @@
 {
-  "generated": "2026-06-07T18:32:47.659Z",
-  "version": "0.28.1",
+  "generated": "2026-06-08T13:57:04.977Z",
+  "version": "0.29.0",
   "entries": [
     {
+      "id": "studio-full-functionality",
+      "version": "0.29.0",
+      "date": "2026-06-08",
+      "kind": "feature",
+      "title": "The studio is fully wired now",
+      "summary": "Everything in the chrome is live: the top bar shows the real zoom + artboard count, the status bar always shows hub-sync, and your avatar (plus Claude when it's editing) appears in the menubar. The ⌘K palette grew real Canvas/Tools commands (New canvas, Export, Handoff, Draw), there's a proper Export & handoff dialog (PNG/PDF/SVG/HTML/shadcn/ZIP) right in the shell, and a new display-only Inspector panel (Inspect · Layers · CSS) reads any element you ⌘-click.",
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": ".st-mb-right",
+          "title": "Live status, finally",
+          "body": "Zoom, artboard count, presence and hub-sync now reflect the real state — no more static placeholders."
+        },
+        {
+          "target": ".st-rpanel",
+          "title": "Inspector",
+          "body": "⌘-click an element in the canvas, then press I — pos, size, ancestry and markup, read-only (live CSS knobs land in Phase 12)."
+        }
+      ]
+    },
+    {
       "id": "draw-animation-lottie",
-      "version": null,
-      "date": null,
+      "version": "0.29.0",
+      "date": "2026-06-08",
       "kind": "feature",
       "title": "Animate draw marks → ship one Lottie",
       "summary": "/design:draw now handles motion briefs (morph, pulse, blink) and proves the animation is actually live. /design:to-lottie productionizes it into one Lottie that plays 1:1 on web and React Native.",
@@ -13,8 +34,8 @@
     },
     {
       "id": "studio-maude-ds-redesign",
-      "version": null,
-      "date": null,
+      "version": "0.29.0",
+      "date": "2026-06-08",
       "kind": "feature",
       "title": "The studio, redesigned in maude",
       "summary": "The canvas browser chrome is now built in the maude design system itself — a dark-first studio shell with a branded menubar + real dropdowns, a collapsible file-tree sidebar with a rail, a cohesive bottom context bar, a maude-styled comments panel, and a clean light handoff. New: a ⌘K command palette for jumping to the design-system view, comments, theme, reload, and help. The in-canvas chrome (tools, minimap, selection halos) was re-skinned to the same indigo accent so the whole surface reads as one product.",
@@ -34,8 +55,8 @@
     },
     {
       "id": "annotation-tooling-polish",
-      "version": null,
-      "date": null,
+      "version": "0.29.0",
+      "date": "2026-06-08",
       "kind": "improvement",
       "title": "Richer annotations — highlighter, lists & text shortcuts",
       "summary": "Annotations got a full polish pass: a new highlighter tool (translucent marker with multiply blend), dashed strokes on shapes, FigJam-style sticky corner, multi-line text with Enter, italic/underline/lists, and Cmd+B/I/U formatting shortcuts that work the same way in sticky notes, shapes, and the text tool.",
@@ -50,8 +71,8 @@
     },
     {
       "id": "canvas-media-images-links",
-      "version": null,
-      "date": null,
+      "version": "0.29.0",
+      "date": "2026-06-08",
       "kind": "feature",
       "title": "Drop images & paste links onto the canvas",
       "summary": "Drag a screenshot from your desktop — or paste a clipboard image or a URL — straight onto the canvas. Images sit alongside your annotations; links render as a tidy preview chip you can open in one click.",
@@ -59,8 +80,8 @@
     },
     {
       "id": "in-app-whats-new-tour",
-      "version": null,
-      "date": null,
+      "version": "0.29.0",
+      "date": "2026-06-08",
       "kind": "feature",
       "title": "What's New, right in the canvas browser",
       "summary": "The Maude UI now tells you what shipped — a dismissible notice plus a panel you can reopen from the menubar. Each closed-out feature adds an entry automatically.",
