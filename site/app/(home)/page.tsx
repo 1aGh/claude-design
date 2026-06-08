@@ -61,9 +61,17 @@ const CATALOG = [
     install: 'npm i -g @1agh/maude',
     docs: '/docs/cli',
   },
+  {
+    sku: 'MDCC-HUB/04',
+    slug: 'hub',
+    title: 'Mirrors your canvases across the team. No SaaS tier.',
+    description:
+      'Optional self-hosted Yjs sync hub — mirror .design/ across collaborators in real time. Docker or Fly, on your infra, no cloud middleman.',
+    tags: ['yjs', 'self-host', 'docker / fly'],
+    install: 'maude hub serve',
+    docs: '/docs/hub',
+  },
 ];
-
-const CATALOG_SIZE = String(CATALOG.length).padStart(2, '0');
 
 export default function HomePage() {
   return (
@@ -80,7 +88,7 @@ export default function HomePage() {
             <span>PUBLISHED {stats.publishedDate}</span>
           </div>
           <h1 id="land-h1">
-            Design & Flows<span style={{ color: 'var(--accent)' }}>.</span>
+            Maude, how it <span style={{ color: 'var(--accent)' }}>works mostly</span>.
           </h1>
           <p className="mdcc-hero-punchline">
             Vibe-design & vibe-code workflows for Claude Code. Two plugins, one CLI, some vibes.
@@ -107,6 +115,14 @@ export default function HomePage() {
             >
               <span aria-hidden="true">▸</span> Buy me a coffee
             </a>
+            <a href="#intro" className="mdcc-watch">
+              <span className="mdcc-watch-play" aria-hidden="true">
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none" aria-hidden="true">
+                  <path d="M3 2.2v6.6l5.5-3.3z" fill="currentColor" />
+                </svg>
+              </span>
+              Watch the intro <span className="mdcc-watch-dur">0:38</span>
+            </a>
           </div>
         </div>
 
@@ -127,14 +143,16 @@ export default function HomePage() {
         </section>
       </section>
 
-      <DemoVideo />
+      <div id="intro">
+        <DemoVideo />
+      </div>
 
       <section aria-labelledby="cat-h">
         <div className="mdcc-section-head">
           <h2 id="cat-h">The catalog.</h2>
           <span className="mdcc-eyebrow">
-            {CATALOG_SIZE} shipping units · all · {stats.version} ·{' '}
-            <Link href="/roadmap">see the roadmap -&gt;</Link>
+            two plugins · one CLI · one hub · {stats.version} ·{' '}
+            <Link href="/changelog">what shipped -&gt;</Link>
           </span>
         </div>
         <div className="mdcc-cat-grid">

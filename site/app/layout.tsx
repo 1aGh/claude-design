@@ -1,12 +1,28 @@
 import { RootProvider } from 'fumadocs-ui/provider/next';
 import type { Metadata } from 'next';
-import { JetBrains_Mono } from 'next/font/google';
+import { Inter, Inter_Tight, JetBrains_Mono } from 'next/font/google';
 import './global.css';
 
+// maude type system — Inter (body/UI), Inter Tight (display headings),
+// JetBrains Mono (code + numerics). Wired to --font-body / --font-display /
+// --font-mono in global.css. See DDR-09X token retarget.
 const jetbrains = JetBrains_Mono({
   subsets: ['latin'],
   variable: '--font-mdcc-mono',
   weight: ['400', '500', '700'],
+  display: 'swap',
+});
+
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-inter',
+  display: 'swap',
+});
+
+const interTight = Inter_Tight({
+  subsets: ['latin'],
+  variable: '--font-inter-tight',
+  weight: ['500', '600', '700'],
   display: 'swap',
 });
 
@@ -36,7 +52,7 @@ export default function Layout({ children }: LayoutProps<'/'>) {
   return (
     <html
       lang="en"
-      className={`${jetbrains.variable} mdcc`}
+      className={`${jetbrains.variable} ${inter.variable} ${interTight.variable} mdcc`}
       data-theme="light"
       suppressHydrationWarning
     >

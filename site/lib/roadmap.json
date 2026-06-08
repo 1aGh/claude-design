@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-07T18:54:27.551Z",
+  "generated": "2026-06-08T13:34:39.150Z",
   "currentPhase": null,
   "phases": [
     {
@@ -384,6 +384,17 @@
       "date": null,
       "summary": "---",
       "planPath": ".ai/plans/archive/phase-c-sidecar-monitor-background.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "redesign-docs-site-studio-docs",
+      "title": "Feature: Redesign the docs site → \"Studio Docs\" (maude DS)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This re-skins the live site/ Fumadocs app to match the approved maude-DS Studio Docs c...",
+      "planPath": ".ai/plans/archive/redesign-docs-site-studio-docs.md",
       "archived": true,
       "phaseKey": null
     },
@@ -839,17 +850,6 @@
       "phaseKey": "32"
     },
     {
-      "id": "feature-studio-full-functionality-parity",
-      "title": "Feature: Studio — full functionality + design parity (Plan C, completes DDR-096)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to the canvas-origin split (DDR-054 — in-iframe overlays are untrusted; structural changes there carry the runtime-health \"par...",
-      "planPath": ".ai/plans/feature-studio-full-functionality-parity.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
       "id": "hub-redesign-studio-hub",
       "title": "Feature: Hub admin redesign — maude-DS reskin + additive operator console (\"Studio Hub\")",
       "status": "planned",
@@ -857,17 +857,6 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan reskins + extends the EXISTING hub admin SPA — it does not build a new app....",
       "planPath": ".ai/plans/hub-redesign-studio-hub.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "redesign-docs-site-studio-docs",
-      "title": "Feature: Redesign the docs site → \"Studio Docs\" (maude DS)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This re-skins the live site/ Fumadocs app to match the approved maude-DS Studio Docs c...",
-      "planPath": ".ai/plans/redesign-docs-site-studio-docs.md",
       "archived": false,
       "phaseKey": null
     },

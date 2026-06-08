@@ -1,4 +1,5 @@
 import type { BaseLayoutProps } from 'fumadocs-ui/layouts/shared';
+import { MaudeMark } from '@/components/mdcc/maude-mark';
 import { gitConfig } from './shared';
 
 // Mobile theme toggle — fumadocs renders it inside the burger menu (HomeLayout
@@ -11,6 +12,7 @@ export function baseOptions(): BaseLayoutProps {
     nav: {
       title: (
         <span className="inline-flex items-center gap-2">
+          <MaudeMark size={22} />
           <span className="mdcc-wm">maude</span>
           <span className="mdcc-sku">MDCC/00</span>
         </span>
@@ -19,8 +21,7 @@ export function baseOptions(): BaseLayoutProps {
     links: [
       { text: 'Docs', url: '/docs' },
       { text: 'Plugins', url: '/#plugins' },
-      { text: 'Roadmap', url: '/roadmap' },
-      { text: "What's new", url: '/whats-new' },
+      { text: 'Changelog', url: '/changelog' },
       { text: 'Source', url: githubUrl, external: true },
       {
         text: 'Buy me a coffee',
@@ -28,6 +29,8 @@ export function baseOptions(): BaseLayoutProps {
         external: true,
       },
     ],
-    githubUrl,
+    // NB: no `githubUrl` here — the fumadocs GitHub *icon* it renders ships an
+    // unlabeled `role="img"` <svg> (axe svg-img-alt, serious). The "Source"
+    // text link above already covers GitHub, so the icon is redundant. DDR-09X.
   };
 }

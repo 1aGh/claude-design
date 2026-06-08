@@ -1,7 +1,7 @@
 {
   "version": "v0.28.1",
   "nodeRange": ">=20",
-  "publishedDate": "2026-06-03",
+  "publishedDate": "2026-06-08",
   "contributors": 1,
   "plugins": {
     "design": {
@@ -22,7 +22,7 @@
     "cli.mdx": "2026-06-05",
     "commands-design/browse.mdx": "2026-05-23",
     "commands-design/critic.mdx": "2026-06-01",
-    "commands-design/draw.mdx": "2026-06-05",
+    "commands-design/draw.mdx": "2026-06-06",
     "commands-design/edit.mdx": "2026-05-23",
     "commands-design/export.mdx": "2026-05-23",
     "commands-design/handoff.mdx": "2026-05-23",
@@ -34,6 +34,8 @@
     "commands-design/setup-docs.mdx": "2026-05-23",
     "commands-design/setup-ds.mdx": "2026-05-23",
     "commands-design/smoke.mdx": "2026-06-01",
+    "commands-design/to-lottie.mdx": "2026-06-06",
+    "commands-design/to-rn.mdx": "2026-06-06",
     "commands-flow/bug-fix.mdx": "2026-05-28",
     "commands-flow/bug-rca.mdx": "2026-05-28",
     "commands-flow/done.mdx": "2026-05-23",
