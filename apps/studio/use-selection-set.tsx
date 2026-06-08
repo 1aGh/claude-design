@@ -46,6 +46,14 @@ export interface Selection {
   selector: string;
   /** Artboard host (`data-dc-screen`) — for scoping multi-edits in future. */
   artboardId?: string | null;
+  /**
+   * Occurrence index of this element among `querySelectorAll(selector)`.
+   * data-cd-id is stamped per SOURCE element, so a component rendered N times
+   * (a list row, or a reusable used twice) yields N DOM nodes with the SAME
+   * id+artboard selector. The index disambiguates which instance — resolvers
+   * use `querySelectorAll(selector)[index]`. Absent/0 → first match.
+   */
+  index?: number;
   /** Snapshot fields filled by the router from `resolveHoverTarget`. */
   tag?: string;
   classes?: string;

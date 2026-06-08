@@ -128,6 +128,25 @@ export function scopedCdSelector(cdId: string, artboardId?: string | null): stri
 }
 
 /**
+ * Occurrence index of `el` among `doc.querySelectorAll(selector)`. Even with an
+ * artboard-scoped data-cd-id selector, a component repeated WITHIN one artboard
+ * (a list row, or a reusable used twice) produces several matches — the index
+ * is the only thing that makes the anchor truly unique per DOM instance.
+ */
+export function selectorIndex(doc: Document, selector: string, el: Element | null): number {
+  if (!el) return 0;
+  try {
+    const all = doc.querySelectorAll(selector);
+    for (let i = 0; i < all.length; i++) {
+      if (all[i] === el) return i;
+    }
+  } catch {
+    /* malformed selector */
+  }
+  return 0;
+}
+
+/**
  * Resolve a stored Selection to its live element, artboard-scoped. Prefers the
  * id+artboardId scoped selector (the robust path), then the stored `selector`
  * (already scoped for recent selections; a legacy fallback for old comments).
@@ -136,23 +155,23 @@ export function scopedCdSelector(cdId: string, artboardId?: string | null): stri
  */
 export function resolveSelectionEl(
   doc: Document,
-  sel: { id?: string | null; selector?: string | null; artboardId?: string | null }
+  sel: { id?: string | null; selector?: string | null; artboardId?: string | null; index?: number }
 ): Element | null {
+  const at = (selector: string): Element | null => {
+    try {
+      const all = doc.querySelectorAll(selector);
+      if (!all.length) return null;
+      const i = sel.index && sel.index > 0 && sel.index < all.length ? sel.index : 0;
+      return all[i] ?? all[0];
+    } catch {
+      return null;
+    }
+  };
   if (sel.id) {
-    try {
-      const el = doc.querySelector(scopedCdSelector(sel.id, sel.artboardId));
-      if (el) return el;
-    } catch {
-      /* malformed selector — fall through */
-    }
+    const el = at(scopedCdSelector(sel.id, sel.artboardId));
+    if (el) return el;
   }
-  if (sel.selector) {
-    try {
-      return doc.querySelector(sel.selector);
-    } catch {
-      /* malformed selector */
-    }
-  }
+  if (sel.selector) return at(sel.selector);
   return null;
 }
 
@@ -181,11 +200,16 @@ export function hoverTargetToSelection(target: HoverTarget, file?: string): Sele
     : target.artboardId
       ? `[data-dc-screen="${target.artboardId}"]`
       : cssPath(el);
+  // Disambiguate repeated instances within the same artboard (list rows, a
+  // reusable used twice) — the index is which `querySelectorAll(selector)`
+  // match this element is. cssPath is already unique, so 0 there.
+  const index = cdId && typeof document !== 'undefined' ? selectorIndex(document, selector, el) : 0;
   return {
     file: file ?? deriveFile(),
     id: cdId ?? undefined,
     selector,
     artboardId: target.artboardId,
+    index,
     tag: el?.tagName.toLowerCase() ?? '',
     classes: realClasses(el),
     text: shortText(el, 240),

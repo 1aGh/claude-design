@@ -66,6 +66,7 @@ import {
   realClasses,
   resolveSelectionEl,
   scopedCdSelector,
+  selectorIndex,
   shortText,
 } from './dom-selection.ts';
 import { EqualSpacingHandles } from './equal-spacing-handles.tsx';
@@ -971,14 +972,16 @@ function buildRegistry(deps: {
 
   const postComposeForTarget = (target: ContextTarget): void => {
     if (typeof window === 'undefined') return;
+    const composeSelector = target.cdId
+      ? scopedCdSelector(target.cdId, target.artboardId)
+      : cssPath(target.el);
     const sel: Selection | null = target.el
       ? {
           file: deriveFile(),
           id: target.cdId ?? undefined,
-          selector: target.cdId
-            ? scopedCdSelector(target.cdId, target.artboardId)
-            : cssPath(target.el),
+          selector: composeSelector,
           artboardId: target.artboardId,
+          index: target.cdId ? selectorIndex(document, composeSelector, target.el) : 0,
           tag: target.el.tagName.toLowerCase(),
           classes: realClasses(target.el),
           text: shortText(target.el, 240),

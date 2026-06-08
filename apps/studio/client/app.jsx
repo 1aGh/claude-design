@@ -3546,6 +3546,7 @@ function App() {
             payload: {
               file: p.file,
               selector: p.selector,
+              index: p.index,
               dom_path: p.dom_path,
               tag: p.tag,
               classes: p.classes,

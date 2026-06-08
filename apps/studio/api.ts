@@ -96,6 +96,9 @@ export interface Comment {
   id: string;
   file: string;
   selector: string;
+  /** Occurrence index among `querySelectorAll(selector)` — disambiguates a
+   * component repeated within one artboard. Absent on legacy comments. */
+  index?: number;
   dom_path: string[];
   tag: string;
   classes: string;
@@ -611,6 +614,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       id: newCommentId(),
       file: payload.file,
       selector: String(payload.selector || ''),
+      index: typeof payload.index === 'number' ? payload.index : undefined,
       dom_path: Array.isArray(payload.dom_path) ? payload.dom_path.slice(0, 16) : [],
       tag: String(payload.tag || ''),
       classes: String(payload.classes || ''),
