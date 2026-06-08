@@ -1161,7 +1161,7 @@ export function useDragStateContext(): DragStateBus | null {
 interface DesignCanvasProps {
   children: ReactNode;
   /** Per-overlay opt-out. `false` hides it; omit or `true` shows it. */
-  controls?: { minimap?: boolean; toolbar?: boolean };
+  controls?: { minimap?: boolean; toolbar?: boolean; zoom?: boolean };
 }
 
 /**
@@ -1373,6 +1373,7 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
   );
 
   const showMiniMap = controls?.minimap !== false;
+  const showZoom = controls?.zoom !== false;
 
   // Drag-state bus (Phase 4.2). Single source of truth: only one artboard
   // drag is active at a time. DCArtboards write here when their local drag
@@ -1444,10 +1445,12 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
         {children}
       </div>
       {showMiniMap ? <DCMiniMap /> : null}
-      {/* DCZoomToolbar is intentionally not rendered here. The Phase 5.1
-          ToolPalette absorbs its 4 actions into the unified canvas chrome.
-          The component stays exported for back-compat with any consumer that
-          still imports it directly. */}
+      {/* Plan C F6 — separate bottom-left zoom pill (the design's ZoomHud).
+          Phase 5.1 had folded zoom into the ToolPalette; user feedback wants
+          the design's standalone pill, so DCZoomToolbar renders here again (the
+          ToolPalette's inline zoom is removed in tool-palette.tsx). It carries
+          MORE than the mock — fit + actual-size — so no capability is lost. */}
+      {showZoom ? <DCZoomToolbar /> : null}
     </div>
   );
 
@@ -1935,9 +1938,8 @@ const OVERLAY_CSS = `
 }
 .dc-zoom-tb {
   position: absolute;
-  left: 50%;
+  left: 16px;
   bottom: 16px;
-  transform: translateX(-50%);
   display: flex;
   align-items: stretch;
   background: var(--maude-chrome-bg-0, #ffffff);

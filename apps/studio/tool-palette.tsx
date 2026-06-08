@@ -20,7 +20,6 @@ import {
   SHAPE_KIND_ICONS,
   TOOL_ICONS,
 } from './canvas-icons.tsx';
-import { useViewportControllerContext } from './canvas-lib.tsx';
 import { useAnnotationsVisibility } from './use-annotations-visibility.tsx';
 import { type ShapeKind, useToolMode } from './use-tool-mode.tsx';
 
@@ -247,25 +246,21 @@ const SHAPE_KINDS: ReadonlyArray<{ kind: ShapeKind; label: string }> = [
 export function ToolPalette() {
   ensurePaletteStyles();
   const { tool, setTool, tools, sticky, toggleSticky, shapeKind, setShapeKind } = useToolMode();
-  const controller = useViewportControllerContext();
   const visibilityCtx = useAnnotationsVisibility();
   const [mounted, setMounted] = useState(false);
-  const [zoomOpen, setZoomOpen] = useState(false);
   const [shapeOpen, setShapeOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => setMounted(true), []);
   useEffect(() => {
-    if (!zoomOpen && !shapeOpen) return;
+    if (!shapeOpen) return;
     const onDown = (e: PointerEvent) => {
       if (!containerRef.current?.contains(e.target as Node)) {
-        setZoomOpen(false);
         setShapeOpen(false);
       }
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setZoomOpen(false);
         setShapeOpen(false);
       }
     };
@@ -275,7 +270,7 @@ export function ToolPalette() {
       document.removeEventListener('pointerdown', onDown, true);
       document.removeEventListener('keydown', onKey, true);
     };
-  }, [zoomOpen, shapeOpen]);
+  }, [shapeOpen]);
   // Close the shape popover whenever the tool changes away from Shape.
   useEffect(() => {
     if (tool !== 'shape') setShapeOpen(false);
@@ -286,7 +281,6 @@ export function ToolPalette() {
   const byId = new Map(tools.map((t) => [t.id, t]));
   const navList = NAV_TOOLS.map((id) => byId.get(id)).filter(Boolean);
   const drawList = DRAW_TOOLS.map((id) => byId.get(id)).filter(Boolean);
-  const pct = controller ? Math.round(controller.viewport.zoom * 100) : 100;
   const annotationsHidden = visibilityCtx ? !visibilityCtx.visible : false;
 
   const renderToolButton = (id: string, label: string, shortcut: string) => {
@@ -417,66 +411,7 @@ export function ToolPalette() {
         >
           <IconPresentation />
         </button>
-        <button
-          type="button"
-          className="dc-tp-zoom"
-          aria-label={`Zoom ${pct}%, open zoom menu`}
-          aria-expanded={zoomOpen}
-          title={`Zoom ${pct}%`}
-          onClick={() => setZoomOpen((o) => !o)}
-        >
-          <span>{pct}%</span>
-          <IconChevronDown size={12} />
-        </button>
       </div>
-      {zoomOpen && controller ? (
-        <div className="dc-tp-popover" role="menu" aria-label="Zoom">
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              controller.zoomIn();
-              setZoomOpen(false);
-            }}
-          >
-            <span>Zoom In</span>
-            <span className="dc-tp-kbd">⌘ +</span>
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              controller.zoomOut();
-              setZoomOpen(false);
-            }}
-          >
-            <span>Zoom Out</span>
-            <span className="dc-tp-kbd">⌘ −</span>
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              controller.fit();
-              setZoomOpen(false);
-            }}
-          >
-            <span>Fit to Screen</span>
-            <span className="dc-tp-kbd">⌘ 0</span>
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              controller.reset();
-              setZoomOpen(false);
-            }}
-          >
-            <span>Actual Size 100%</span>
-            <span className="dc-tp-kbd">⌘ 1</span>
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 }
