@@ -3569,6 +3569,11 @@ function App() {
         // meta.json-derived seed when the canvas knows better. Clamp.
         const n = Math.round(m.count);
         if (Number.isFinite(n) && n >= 0 && n <= 999) setActiveArtboards(n);
+      } else if (m.dgn === 'toggle-palette') {
+        // ⌘K pressed while focus was inside the canvas iframe — the injected
+        // inspector forwards the chord here since the iframe's keydown never
+        // reaches the shell's window listener. Mirror that handler's toggle.
+        setPaletteOpen((v) => !v);
       } else if (m.dgn === 'open-export') {
         // Plan C — the in-canvas toolbar / context menu route here so they open
         // the SAME shell Export dialog as the menubar (one look, all settings).

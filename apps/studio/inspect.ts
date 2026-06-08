@@ -356,6 +356,19 @@ const INSPECTOR_SCRIPT = `
     new MutationObserver(function(){ startTick(); }).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['style', 'class'], childList: true });
   }
 
+  // ⌘K / Ctrl+K command palette — keydown fired inside the canvas iframe never
+  // reaches the shell's window-scoped listener (iframe keyboard isolation), so
+  // the palette wouldn't open while focus is in the canvas. Forward the chord to
+  // the parent; the shell toggles the palette (mirrors its own handler, which
+  // fires "even in inputs"). Capture phase so canvas-lib's pan/zoom keydown
+  // handler can't swallow it first.
+  document.addEventListener('keydown', function(e) {
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+      e.preventDefault();
+      try { window.parent.postMessage({ dgn: 'toggle-palette' }, '*'); } catch (err) {}
+    }
+  }, true);
+
   window.addEventListener('message', function(e) {
     var m = e.data;
     if (!m || typeof m !== 'object' || !m.dgn) return;
