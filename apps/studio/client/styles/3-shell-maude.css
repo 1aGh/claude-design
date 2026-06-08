@@ -123,7 +123,7 @@
 
 /* ─── Presence avatars (menubar) ──────────────────────────────────────────── */
 .st-presence { display: flex; align-items: center; }
-.st-avatar { width: 18px; height: 18px; border-radius: var(--radius-pill); display: grid; place-items: center; font-family: var(--font-mono); font-size: 9px; color: #fff; font-weight: 600; }
+.st-avatar { width: 22px; height: 22px; border-radius: var(--radius-pill); display: grid; place-items: center; font-family: var(--font-mono); font-size: 10px; line-height: 1; letter-spacing: 0.02em; text-transform: uppercase; color: #fff; font-weight: 600; }
 .st-presence .st-avatar { margin-left: -6px; border: 1.5px solid var(--bg-1); }
 .st-presence .st-avatar:first-child { margin-left: 0; }
 

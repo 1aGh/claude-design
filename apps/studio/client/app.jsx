@@ -518,7 +518,7 @@ const EXPORT_CARDS = [
   { id: 'pptx', label: 'PPTX', sub: 'slides', icon: 'download', format: 'pptx' },
   { id: 'canva', label: 'Canva', sub: 'handoff bundle', icon: 'share', format: 'canva' },
   { id: 'zip', label: 'ZIP', sub: 'project bundle', icon: 'download', format: 'zip' },
-  { id: 'shadcn', label: 'shadcn', sub: 'registry-item', icon: 'share', handoff: true },
+  { id: 'shadcn', label: 'AI handoff', sub: 'production drop', icon: 'share', handoff: true },
 ];
 
 // Mirrors export-dialog.tsx (the in-canvas dialog) so both entry points offer

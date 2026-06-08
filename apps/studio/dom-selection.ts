@@ -125,13 +125,20 @@ export function hoverTargetToSelection(target: HoverTarget, file?: string): Sele
   // anchor exists.
   const cdId = target.cdId;
   // Selector resolution order:
-  //   1. data-cd-id anchor — stable pipeline-stamped id (preferred).
+  //   1. data-cd-id anchor — stable pipeline-stamped id (preferred). SCOPED by
+  //      the hit's artboard (`[data-dc-screen=…] [data-cd-id=…]`) — a component
+  //      shared across artboards carries the SAME data-cd-id in each, so an
+  //      unscoped `[data-cd-id]` selector resolves (via querySelector) to the
+  //      FIRST artboard's instance and the pin/select lands on the wrong board.
+  //      Prefixing the artboard makes the anchor per-instance.
   //   2. data-dc-screen — chrome click promoted to whole-artboard select
   //      (T24.5 G8 multi-artboard gesture).
   //   3. cssPath of the hit — last-resort path string.
   const selector = cdId
-    ? `[data-cd-id="${cdId}"]`
-    : !cdId && target.artboardId
+    ? target.artboardId
+      ? `[data-dc-screen="${target.artboardId}"] [data-cd-id="${cdId}"]`
+      : `[data-cd-id="${cdId}"]`
+    : target.artboardId
       ? `[data-dc-screen="${target.artboardId}"]`
       : cssPath(el);
   return {
