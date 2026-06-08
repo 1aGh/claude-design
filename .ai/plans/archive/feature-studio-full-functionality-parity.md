@@ -197,3 +197,22 @@ Execute in order. Each slice ends with an agent-browser parity pass + parity-doc
 - [ ] 100% parity, zero regressions (standing rule); smoke + runtime-health green; bundles release-rebuilt + committed.
 - [ ] DDR recorded (all scope calls); what's-new appended; roadmap regen committed.
 - [ ] Deferred tail (pan/zoom, CSS writeback, presentation, multiplayer) explicitly recorded, not silently dropped.
+
+---
+
+## Retro (closed 2026-06-08)
+
+**Outcome:** Plan C (T1–T9) shipped + 5 rounds of user-driven follow-ups. 13 commits on `main` (uncommitted; awaiting push). Dev-server tests 1321/1321, smoke 88/88, biome clean.
+
+**What worked:**
+- Per-slice agent-browser verification caught real wins live (live zoom, hub-sync, export round-trip, inspector, light-mode token probe). The computed-style probe (not screenshot) nailed the light-mode square-corners root cause ([[css-var-alias-scope-trap]]) immediately.
+- The audit's file:line grounding made each fix surgical.
+
+**What didn't / lessons:**
+- **The original audit was wrong twice** (claimed minimap/zoom/annotation-toolbar missing — they existed in-canvas; claimed #4 was a 1-site fix — it was 8). Lesson: for "X is missing" claims in a large codebase, grep the runtime before trusting the audit; for "fix the selector" claims, grep EVERY builder + resolver, not the first.
+- **Verifying by code-path ≠ verifying live.** I twice declared #4/#6 fixed when they weren't (incomplete fix; stale data). The cross-origin iframe + narrow automation viewport made the exact interactions (⌘+click a specific instance, multi-annotation drag) genuinely hard to drive — so several deep fixes shipped code-verified only. When live repro is infeasible, say so up front rather than claiming "fixed".
+- **Selection identity is layered:** unscoped id → artboard-scoped → +occurrence-index. Each layer was a separate user report. The model should have been "unique per DOM instance" from the start.
+- **Stale data bites:** the comment fix worked for new comments but old comments kept unscoped anchors → looked broken. Migrations matter for stored-anchor changes.
+- **Parallel user edits** (CSS, index.html, .design/*) meant careful per-file staging every commit (committed only my files; left theirs).
+
+**For next /plan:** when a feature changes a stored-anchor or selector format, plan a data migration + enumerate ALL builder/resolver sites up front. Budget for "can't automate this interaction" verification gaps explicitly.
