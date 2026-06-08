@@ -7,6 +7,8 @@ import { SmokeScene } from './scenes/_smoke';
 import { IntroScene } from './scenes/01-intro';
 import { ContentScene } from './scenes/02-content';
 import { OutroScene } from './scenes/03-outro';
+import { ColdOpenScene } from './scenes/v4/00-cold-open';
+import { InstallScene } from './scenes/v4/05-install';
 
 /**
  * Composition registry. One <Composition> per scene + the master Demo cut.
@@ -59,6 +61,24 @@ export const Root = () => (
       width={1920}
       height={1080}
     />
+    {/* ── v4 scenes (phase-16 rebuild — maude DS) ── */}
+    <Composition
+      id="v4-00-cold-open"
+      component={ColdOpenScene}
+      durationInFrames={90}
+      fps={30}
+      width={1920}
+      height={1080}
+    />
+    <Composition
+      id="v4-05-install"
+      component={InstallScene}
+      durationInFrames={150}
+      fps={30}
+      width={1920}
+      height={1080}
+    />
+
     <Composition
       id="Demo"
       component={Demo}

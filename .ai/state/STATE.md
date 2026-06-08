@@ -1282,4 +1282,13 @@ User redirected the v4 plan's start: instead of Phase A markdown (`_references.m
 - [x] **Creative direction captured** (AskUserQuestion, 4 axes): narrative = **full real loop (v2.1 spine, ~12 scenes)**; length = **rhythm decides** (≈75s draft); voice = **voice-aligned captions**; look = **maude dark-studio product chrome**. Read: keep the narrative, win on execution (per-scene distinct signature + uneven pacing), not on reinventing the story.
 - [x] **Full storyboard canvas authored** — `Studio Intro Video.tsx` rebuilt v3→v4: 3 artboards (`brief` / `storyboard` / `landing`). Storyboard = 12 scene tiles, each a real maude-chrome mock of the shot + id/role/duration/**distinct signature**/voice-aligned caption/intent line. New `.sb-*` CSS (token-only) + meta.json updated.
 - [x] **Visual verification** — screenshots in `.design/_history/_smoke/v4-storyboard/`. Storyboard scenes 00–25 + landing read in-context = render correctly in maude dark studio; brief renders (full world view). Scenes 30–55 reuse vetted primitives (capture tool's `--screen/--element` id-select is flaky on this canvas; user is live-viewing the canvas).
-- [ ] **Phase A.5 hard gate** — awaiting user sign-off on brief + storyboard before any Remotion authoring (Phase B). Pending markdown mirror under `scripts/video/v4/` if the user wants it.
+- [x] **Phase A.5 hard gate** — user signed off ("ok super"). Markdown mirror written: `scripts/video/v4/_brief.md` + `_storyboard.md` + `_references.md`.
+
+### Phase B — scene authoring with visual self-iteration (in-progress 2026-06-08)
+
+v4 maude-DS Remotion infra built: `final/src/lib/maude-tokens.ts` (maude DS, NOT the project-DS `tokens.ts`), `maude-fonts.ts` (Inter/InterTight/JetBrainsMono via @remotion/google-fonts), `maude-stage.tsx` (DottedCanvas / Caret / AgentCursor / Caption). Scenes under `final/src/scenes/v4/<id>/`, registered in Root.tsx as `v4-<id>-<slug>`. Render = `bunx remotion still/render`; per-scene loop = 3 stills (early/mid/late) → Read → score vs intent+signature → sign off at avg ≥4.0, no line <3.
+
+- [x] **00 Cold open** — signed off iter1 (avg 4.9). `_signoff-00.md`. Structural fix: caret pulled out of wordmark wrapper → caret-on-void opening beat.
+- [x] **05 Install** — signed off iter0 (avg 4.8). `_signoff-05.md`. Typewriter terminal, npm (per comment), no red errors.
+- [ ] **10 · 12 · 15 · 20 · 25 · 30 · 35 · 40 · 45 · 50 · 55** — pending (11 scenes).
+- [ ] Phase C — assemble signed-off scenes into `compositions/V4.tsx`, full-watch gut check (`_watch-log.md`), loudnorm ≤16MB, swap `site/public/demo.mp4` (only after watch-log passes + commit approval).
