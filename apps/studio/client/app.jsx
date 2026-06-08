@@ -520,12 +520,54 @@ const EXPORT_CARDS = [
   { id: 'shadcn', label: 'shadcn', sub: 'registry-item', icon: 'share', handoff: true },
 ];
 
+// Mirrors export-dialog.tsx (the in-canvas dialog) so both entry points offer
+// the same settings. Scope validity + PNG scale presets are ported verbatim.
+const EXPORT_SCOPE_LABELS = {
+  selection: 'Current selection',
+  artboard: 'Active artboard',
+  'canvas-as-separate': 'Canvas · artboards separate',
+  'project-raw': 'Whole project (raw)',
+};
+const EXPORT_VALID_SCOPES = {
+  png: ['selection', 'artboard', 'canvas-as-separate'],
+  pdf: ['selection', 'artboard', 'canvas-as-separate'],
+  svg: ['selection', 'artboard', 'canvas-as-separate'],
+  html: ['artboard', 'canvas-as-separate'],
+  pptx: ['canvas-as-separate'],
+  canva: ['canvas-as-separate'],
+  zip: ['project-raw'],
+};
+const PNG_SCALES = [
+  { value: 1, label: '1× (native)' },
+  { value: 2, label: '2× (retina)' },
+  { value: 3, label: '3× (max)' },
+];
+
 function ExportDialog({ mode, activePath, onClose }) {
   const [sel, setSel] = useState(mode === 'handoff' ? 'shadcn' : 'png');
   const [scope, setScope] = useState('artboard');
+  const [scale, setScale] = useState(2);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(null); // { ok, msg }
+  const [recent, setRecent] = useState([]);
   const card = EXPORT_CARDS.find((c) => c.id === sel) || EXPORT_CARDS[0];
+  const validScopes = card.handoff ? [] : EXPORT_VALID_SCOPES[card.format] || ['artboard'];
+
+  // Keep the scope valid for the chosen format (pptx/zip etc. only allow a
+  // subset) — mirrors VALID_SCOPES_PER_FORMAT in the in-canvas dialog.
+  useEffect(() => {
+    if (validScopes.length && !validScopes.includes(scope)) setScope(validScopes[0]);
+  }, [validScopes, scope]);
+
+  const loadRecent = useCallback(() => {
+    fetch('/_api/export-history')
+      .then((r) => r.json())
+      .then((d) => setRecent(Array.isArray(d?.history) ? d.history.slice(0, 6) : []))
+      .catch(() => {});
+  }, []);
+  useEffect(() => {
+    loadRecent();
+  }, [loadRecent]);
 
   useEffect(() => {
     function onKey(e) {
@@ -551,11 +593,12 @@ function ExportDialog({ mode, activePath, onClose }) {
     }
     setBusy(true);
     setStatus(null);
+    const options = card.format === 'png' ? { scale } : {};
     try {
       const r = await fetch('/_api/export', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ format: card.format, scope, options: card.options || {} }),
+        body: JSON.stringify({ format: card.format, scope, options }),
       });
       if (!r.ok) {
         setStatus({ ok: false, msg: (await r.text()) || `Export failed (${r.status})` });
@@ -575,6 +618,7 @@ function ExportDialog({ mode, activePath, onClose }) {
       a.remove();
       URL.revokeObjectURL(url);
       setStatus({ ok: true, msg: `Exported ${filename}` });
+      loadRecent();
     } catch (err) {
       setStatus({ ok: false, msg: err && err.message ? err.message : String(err) });
     }
@@ -630,11 +674,36 @@ function ExportDialog({ mode, activePath, onClose }) {
                 value={scope}
                 onChange={(e) => setScope(e.target.value)}
               >
-                <option value="artboard">Active artboard</option>
-                <option value="selection">Current selection</option>
-                <option value="canvas-as-separate">Canvas · artboards separate</option>
-                <option value="project-raw">Whole project (raw)</option>
+                {validScopes.map((s) => (
+                  <option key={s} value={s}>
+                    {EXPORT_SCOPE_LABELS[s]}
+                  </option>
+                ))}
               </select>
+            </div>
+          )}
+          {!card.handoff && card.format === 'png' && (
+            <div className="st-dialog-row">
+              <label className="st-dialog-lbl" htmlFor="st-export-size">
+                Size
+              </label>
+              <select
+                id="st-export-size"
+                className="st-select"
+                value={scale}
+                onChange={(e) => setScale(Number(e.target.value))}
+              >
+                {PNG_SCALES.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {!card.handoff && card.format === 'png' && (
+            <div className="st-mono" style={{ fontSize: 11, color: 'var(--fg-3)' }}>
+              Resolution multiplier — {scale}× ≈ {1440 * scale}×{900 * scale} for a 1440×900 artboard.
             </div>
           )}
           {card.handoff && (
@@ -649,6 +718,20 @@ function ExportDialog({ mode, activePath, onClose }) {
               style={{ fontSize: 12 }}
             >
               {status.msg}
+            </div>
+          )}
+          {recent.length > 0 && (
+            <div className="st-export-recent">
+              <div className="st-rp-hd">Recent</div>
+              {recent.map((h, i) => (
+                <div className="st-export-recent-row" key={i}>
+                  <span>
+                    {String(h.format || '').toUpperCase()} ·{' '}
+                    {EXPORT_SCOPE_LABELS[h.scope] || h.scope}
+                  </span>
+                  <span className="st-mono">{h.filename}</span>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -1822,7 +1905,6 @@ function Menubar({
   postToActiveCanvas,
   onOpenWhatsNew,
   whatsNewCount,
-  zoomPct = 100,
   artboardCount = 0,
   presence = null,
   inspectorOpen,
@@ -1988,10 +2070,6 @@ function Menubar({
         <span className="st-mb-count" title="Artboards in the open canvas">
           <span className="st-dot" style={{ background: 'var(--accent)' }} />
           {artboardCount} ARTBOARDS
-        </span>
-        <span className="st-mb-sep" />
-        <span className="st-mb-count st-mono" title="Canvas zoom">
-          ZOOM {zoomPct}%
         </span>
         <span className="st-mb-sep" />
         <span className="st-mb-proj">{project || 'maude'}</span>
@@ -2927,16 +3005,13 @@ function App() {
     } catch {}
   }, []);
   const [annotationsVisible, setAnnotationsVisible] = useState(true);
-  // P1/P2/P3 (Plan C) — top-bar live state.
-  //   canvasZoom    — relayed from the canvas iframe via `dgn:zoom` (the
-  //                   in-canvas zoom is authoritative; T7 wires the emitter).
-  //                   Seeds 100% until the first message.
+  // P2/P3 (Plan C) — top-bar live state. (Zoom lives in the canvas toolbar pill,
+  // so the top bar no longer mirrors it.)
   //   activeArtboards — real artboard count of the open canvas, read from its
   //                   `<canvas>.meta.json` sidecar (shell-side, no iframe dep).
   //   gitUser       — local user (name/initials) for the menubar presence avatar.
   //   agentActive   — transient flag set on `ai-activity`, cleared after idle, so
   //                   the menubar shows a live agent avatar while Claude edits.
-  const [canvasZoom, setCanvasZoom] = useState(100);
   const [activeArtboards, setActiveArtboards] = useState(0);
   const [gitUser, setGitUser] = useState(null);
   const [agentActive, setAgentActive] = useState(false);
@@ -2988,12 +3063,9 @@ function App() {
     };
   }, []);
 
-  // P2/P1 (Plan C) — when the active canvas changes, read its real artboard
-  // count from the `<canvas>.meta.json` sidecar (shell-side, no iframe dep) and
-  // reset the relayed zoom to the 100% seed (the new canvas reports its own via
-  // `dgn:zoom` once it loads).
+  // P2 (Plan C) — when the active canvas changes, read its real artboard count
+  // from the `<canvas>.meta.json` sidecar (shell-side, no iframe dep).
   useEffect(() => {
-    setCanvasZoom(100);
     if (!activePath || activePath === SYSTEM_TAB) {
       setActiveArtboards(0);
       return;
@@ -3451,16 +3523,15 @@ function App() {
         setFocusedCommentId((prev) => (prev === m.id ? null : prev));
       } else if (m.dgn === 'comment-click' && m.id) {
         setFocusedCommentId(m.id);
-      } else if (m.dgn === 'zoom' && typeof m.zoom === 'number') {
-        // P1 (Plan C) — the canvas iframe relays its current zoom. Advisory
-        // display only (untrusted origin, DDR-054); clamp before render.
-        const z = Math.round(m.zoom);
-        if (Number.isFinite(z) && z >= 1 && z <= 1000) setCanvasZoom(z);
       } else if (m.dgn === 'artboards' && typeof m.count === 'number') {
         // P2 (Plan C) — optional iframe-reported artboard count; overrides the
         // meta.json-derived seed when the canvas knows better. Clamp.
         const n = Math.round(m.count);
         if (Number.isFinite(n) && n >= 0 && n <= 999) setActiveArtboards(n);
+      } else if (m.dgn === 'open-export') {
+        // Plan C — the in-canvas toolbar / context menu route here so they open
+        // the SAME shell Export dialog as the menubar (one look, all settings).
+        setExportDialog('export');
       } else if (m.dgn === 'loaded' && m.file) {
         // iframe finished loading — push current comments + carry over focused pin if any
         const list = commentsByFile[m.file] || [];
@@ -3915,7 +3986,6 @@ function App() {
           postToActiveCanvas={postToActiveCanvas}
           onOpenWhatsNew={whatsNew.openPanel}
           whatsNewCount={whatsNew.unseen.length}
-          zoomPct={canvasZoom}
           artboardCount={activeArtboards}
           inspectorOpen={inspectorOpen}
           onToggleInspector={() => setInspectorOpen((v) => !v)}

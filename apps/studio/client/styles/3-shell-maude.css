@@ -430,6 +430,10 @@
 .st-dialog-lbl { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); text-transform: uppercase; letter-spacing: var(--tracking-wide); }
 .st-select { flex: 1; appearance: none; background: var(--bg-2); color: var(--fg-0); border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); font-family: var(--font-body); font-size: var(--type-sm); cursor: pointer; }
 .st-dialog-ft { display: flex; align-items: center; gap: var(--space-3); justify-content: flex-end; padding: var(--space-4) var(--space-5); border-top: 1px solid var(--border-subtle); }
+.st-export-recent { display: flex; flex-direction: column; gap: 2px; max-height: 132px; overflow-y: auto; }
+.st-export-recent-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); font-size: var(--type-xs); color: var(--fg-2); }
+.st-export-recent-row:hover { background: var(--bg-2); }
+.st-export-recent-row .st-mono { color: var(--fg-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 50%; }
 
 /* ─── Inspector panel fields / layers / css (Plan C P11–P13) ───────────────
  * Lifted from Studio.css; complements the already-present `.st-insp-row`,

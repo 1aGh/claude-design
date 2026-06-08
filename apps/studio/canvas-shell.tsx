@@ -466,15 +466,6 @@ function CanvasCore({
     return () => host.removeAttribute('data-cv-zoom-lod');
   }, [hostRef, publishedZoom]);
 
-  // Plan C P1 — relay the canvas zoom up to the shell menubar (the top-bar
-  // "ZOOM 100%" was static; app.jsx clamps + displays this). Settle-cadence, so
-  // it fires once per gesture, not per frame.
-  useEffect(() => {
-    try {
-      window.parent?.postMessage({ dgn: 'zoom', zoom: Math.round(publishedZoom * 100) }, '*');
-    } catch {}
-  }, [publishedZoom]);
-
   // Phase 8 — publish local cursor (world coords) + viewport to Awareness
   // so foreign peers can render our cursor on their CursorsOverlay. The
   // collab.publishAwareness call is already throttled to ~30 Hz internally
