@@ -62,8 +62,8 @@ Yjs presence + annotations already work loopback and over the hub, but:
 - `.ai/decisions/DDR-078-agent-presence-virtual-collaborators.md` — awareness sanitization; locking field must go through the same sanitizer.
 - `plugins/design/dev-server/use-collab.tsx` — client-side Yjs provider + awareness state; `sanitizeForeignState()` chokepoint (lines 76–257 from the inventory).
 - `plugins/design/dev-server/collab/room.ts` + `protocol.ts` + `registry.ts` — server-side Y.Doc room lifecycle.
-- `plugins/design/hub/src/admin/` — current hub admin UI (vanilla JS); realignment target.
-- `.design/ui/Sync Hub Admin.tsx` — existing hub admin mockup; starting point for realignment.
+- `apps/hub/src/admin/` — current hub admin UI (vanilla JS, **maude DS** after DDR-097); realignment target. (Moved from `plugins/design/hub/` by DDR-095.)
+- `.design/ui/Studio Hub.tsx` — the **current** maude-DS hub-admin reference (supersedes the older `Sync Hub Admin.tsx` MDCC mock). Artboards **C** (overview app-shell) + **D** (presence map + AI-agent cursor) are the realignment target's visual language. The flat canvases/peers list shipped in DDR-097 is the v1 seam this phase re-IAs to repo/branch context — a UI regroup over the same route shape, not a rewrite.
 
 ### Files to Modify (not create from scratch)
 
@@ -83,6 +83,8 @@ Yjs presence + annotations already work loopback and over the hub, but:
 | Canvas (to create) | Screens needed |
 | --- | --- |
 | `ArtboardLock.tsx` | Locked canvas overlay ("Anna is editing"), Take over button, stale-lock state ("Anna left 20 min ago · Take over?"), lock release confirmation |
+
+**Reference (lift, don't re-derive):** `.design/ui/Studio Hub.tsx` → artboard **D** (live **presence map** — canvas nodes + peer avatars + the floating **AI-agent cursor** signature beat, maude DS) is the built maude-DS reference for `ArtboardLock.tsx` / presence + agent-cursor treatment. Lift the presence-node + cursor-tag anatomy and the agent-cursor styling; the lock-lease states are net-new on top.
 
 ---
 

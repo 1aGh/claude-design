@@ -8,6 +8,9 @@ export interface SelectedElement {
   file: string;
   /** CSS-selector path (v1 anchor). Always present for backwards-compat + legacy HTML canvases. */
   selector: string;
+  /** Occurrence index among `querySelectorAll(selector)` — disambiguates a
+   * component repeated within one artboard. Absent → first match. */
+  index?: number;
   tag: string;
   classes: string;
   text: string;
@@ -140,6 +143,7 @@ export function createInspect(
     return {
       file,
       selector: String(sel.selector || ''),
+      index: typeof sel.index === 'number' ? sel.index : undefined,
       tag: String(sel.tag || ''),
       classes: String(sel.classes || ''),
       text: String(sel.text || '').slice(0, 240),
@@ -281,7 +285,7 @@ const INSPECTOR_SCRIPT = `
     var withSelector = commentsCache.filter(function(c) { return c && c.selector; });
     withSelector.forEach(function(c, i) {
       var target = null;
-      try { target = document.querySelector(c.selector); } catch (e) {}
+      try { var _all = document.querySelectorAll(c.selector); var _i = (typeof c.index === 'number' && c.index > 0 && c.index < _all.length) ? c.index : 0; target = _all[_i] || _all[0] || null; } catch (e) {}
       var pin = document.createElement('button');
       pin.className = 'dgn-pin' + (c.status === 'resolved' ? ' resolved' : '') + (c.id === focusedPinId ? ' focused' : '');
       pin.textContent = String(i + 1);
@@ -309,7 +313,7 @@ const INSPECTOR_SCRIPT = `
       var node = pinNodes[i];
       var x, y, hidden = false;
       if (!node.target || !node.target.isConnected) {
-        try { node.target = document.querySelector(node.comment.selector); } catch (e) {}
+        try { var _nc = node.comment; var _na = document.querySelectorAll(_nc.selector); var _ni = (typeof _nc.index === 'number' && _nc.index > 0 && _nc.index < _na.length) ? _nc.index : 0; node.target = _na[_ni] || _na[0] || null; } catch (e) {}
       }
       if (node.target) {
         var r = node.target.getBoundingClientRect();
@@ -352,6 +356,19 @@ const INSPECTOR_SCRIPT = `
     new MutationObserver(function(){ startTick(); }).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['style', 'class'], childList: true });
   }
 
+  // ⌘K / Ctrl+K command palette — keydown fired inside the canvas iframe never
+  // reaches the shell's window-scoped listener (iframe keyboard isolation), so
+  // the palette wouldn't open while focus is in the canvas. Forward the chord to
+  // the parent; the shell toggles the palette (mirrors its own handler, which
+  // fires "even in inputs"). Capture phase so canvas-lib's pan/zoom keydown
+  // handler can't swallow it first.
+  document.addEventListener('keydown', function(e) {
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+      e.preventDefault();
+      try { window.parent.postMessage({ dgn: 'toggle-palette' }, '*'); } catch (err) {}
+    }
+  }, true);
+
   window.addEventListener('message', function(e) {
     var m = e.data;
     if (!m || typeof m !== 'object' || !m.dgn) return;
@@ -368,7 +385,7 @@ const INSPECTOR_SCRIPT = `
       var c = commentsCache.find(function(x){ return x && x.id === m.id; });
       if (c && c.selector) {
         try {
-          var t = document.querySelector(c.selector);
+          var _ta = document.querySelectorAll(c.selector); var _ti = (typeof c.index === 'number' && c.index > 0 && c.index < _ta.length) ? c.index : 0; var t = _ta[_ti] || _ta[0] || null;
           if (t) t.scrollIntoView({ behavior: 'smooth', block: 'center' });
         } catch (e) {}
       }

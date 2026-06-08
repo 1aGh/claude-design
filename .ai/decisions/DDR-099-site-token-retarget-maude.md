@@ -1,4 +1,4 @@
-# DDR-097: Docs site retargeted from the `project` DS to the `maude` DS ("Studio Docs")
+# DDR-099: Docs site retargeted from the `project` DS to the `maude` DS ("Studio Docs")
 
 - **Date:** 2026-06-08
 - **Status:** Accepted (implemented — `redesign-docs-site-studio-docs.md`, Tasks 1–9 live-verified via axe + agent-browser in both themes)

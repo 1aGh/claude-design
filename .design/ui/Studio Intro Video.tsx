@@ -39,7 +39,7 @@ function Icon({ name, size = 16, className, style }: { name: string; size?: numb
 function BrandMark() {
   return (
     <span className="sd-brand-mark">
-      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M3 12V5l5 4 5-4v7" /></svg>
+      <svg viewBox="0 0 32 32" width="100%" height="100%" fill="currentColor" aria-hidden="true"><path d="M16 5l2.8 8.2L27 16l-8.2 2.8L16 27l-2.8-8.2L5 16l8.2-2.8z" /></svg>
     </span>
   );
 }

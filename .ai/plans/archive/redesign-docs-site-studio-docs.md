@@ -58,7 +58,7 @@ As a visitor to maude's docs I want the site to look and read like the Maude stu
 - `site/components/mdcc/intro-video.tsx` — the landing intro-video player (poster + play + scrubber chrome) from `Studio Intro Video.tsx` board A.
 - `site/components/mdcc/changelog-timeline.tsx` — combined Now/Shipped/Next timeline (merges roadmap.json + whats-new.json), if the combine decision is taken (see DDR below).
 - `site/app/(home)/changelog/page.tsx` — the combined page (only if combining; else restyle the existing `/roadmap` + `/whats-new`).
-- `.ai/decisions/DDR-09X-site-token-retarget-maude.md` — record the project→maude token retarget + selector-transform approach.
+- `.ai/decisions/DDR-099-site-token-retarget-maude.md` — record the project→maude token retarget + selector-transform approach.
 
 ### Design canvases
 
@@ -240,3 +240,21 @@ Execute in order. Each is atomic and testable.
 - [ ] Scenario report linked in PR
 - [ ] DDR recorded for the token retarget + the combine + the theme-default decisions
 - [ ] No hardcoded colors; no `project`-DS red anywhere; no regressions
+
+---
+
+## Retro (2026-06-08)
+
+**What worked**
+- Porting via the `.sd-*` canvas CSS as the literal spec made the reskin mechanical and high-fidelity — every new component (`FlowLoop`, `IntroVideo`, `ChangelogTimeline`, `MaudeMark`) lifted classes 1:1, no re-derivation.
+- The token-sync **selector transform** (one `SRC` swap + 3 selector rewrites + a reconciliation block) flipped the entire site palette/type/radius with the blast radius staying inside `mdcc-tokens.css` + a ~40-line `global.css` deletion, exactly as the plan predicted.
+- Verifying each surface with axe + agent-browser screenshots in BOTH themes caught real issues (2 serious a11y) before commit.
+
+**What didn't / friction**
+- **agent-browser viewport/device resize was unavailable** this session (stuck at 1280px) → could not visually verify the mobile reflow. Mitigated by authoring per-component breakpoints + a desktop no-overflow probe; full mobile parity deferred to a real scenario run.
+- **Turbopack served stale CSS** for a large `global.css` addition (the intro-video block computed as `position:static`) — a clean dev-server restart fixed it. Lesson (reinforces `[[css-var-alias-scope-trap]]`): verify new CSS with a `getComputedStyle` probe, not just a screenshot; restart the dev server after big `global.css` edits.
+- First cut of the brand mark used the canvas `BrandMark` **caret** glyph; the authoritative mark is the **spark-on-bubble** in `system/maude/preview/logo.tsx`. Lesson: when a DS ships a dedicated `logo`/signature specimen, that's the source of truth for the mark — check `system/<ds>/preview/` before lifting an incidental glyph from a UI canvas.
+
+**For next /plan or /execute**
+- A docs/web-only target should state up front that the 5-platform `scenario-runner` reduces to web-desktop + web-mobile (no native), so `/done` doesn't read as a gate miss.
+- Add a "brand assets" line to design-port plans pointing at `system/<ds>/preview/logo.*` so the mark/favicon aren't reverse-engineered from a UI board.

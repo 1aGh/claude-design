@@ -165,7 +165,11 @@ test('`maude studio` aliases `maude design serve` (identical boot resolution)', 
         encoding: 'utf8',
         timeout: 30000,
       });
-      return { status: r.status, firstErr: (r.stderr || '').split('\n').find(Boolean) ?? '' };
+      // Each invocation mkdtemp's its own root, and the diagnostic embeds that
+      // path — mask it so we compare the path-independent signature (the test's
+      // actual intent: same exit code + same error shape from both entrypoints).
+      const firstErr = ((r.stderr || '').split('\n').find(Boolean) ?? '').replaceAll(cwd, '<root>');
+      return { status: r.status, firstErr };
     } finally {
       rmSync(cwd, { recursive: true, force: true });
     }

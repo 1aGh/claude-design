@@ -29,6 +29,7 @@
 import { useEffect } from 'react';
 
 import { useArtboardsContext, useDragStateContext } from './canvas-lib.tsx';
+import { scopedCdSelector, selectorIndex } from './dom-selection.ts';
 import { isEditableTarget } from './input-router.tsx';
 import { type Selection, useSelectionSet } from './use-selection-set.tsx';
 
@@ -85,10 +86,12 @@ export function useKeyboardDiscipline(): void {
         for (const el of stamped) {
           const cdId = el.getAttribute('data-cd-id');
           if (!cdId) continue;
+          const kdSelector = scopedCdSelector(cdId, id);
           hits.push({
             id: cdId,
-            selector: `[data-cd-id="${cdId}"]`,
+            selector: kdSelector,
             artboardId: id,
+            index: selectorIndex(document, kdSelector, el),
             tag: el.tagName.toLowerCase(),
           });
         }

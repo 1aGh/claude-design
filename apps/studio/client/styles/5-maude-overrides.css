@@ -120,8 +120,4 @@
 .maude .sv-empty { color: var(--fg-3); }
 .maude .sv-empty code { font-family: var(--font-mono); background: var(--bg-3); color: var(--accent); border-radius: var(--radius-xs); padding: 1px 5px; }
 
-/* ─── CommentBar (bottom open-count strip) ─────────────────────────────────── */
-.maude .comment-bar { background: var(--bg-1); border-top: 1px solid var(--border-subtle); }
-.maude .cb-label { font-family: var(--font-mono); color: var(--fg-2); letter-spacing: var(--tracking-wide); }
-
 }

@@ -22,6 +22,7 @@
 
 import { useEffect, useRef } from 'react';
 
+import { scopedCdSelector, selectorIndex } from './dom-selection.ts';
 import { DRAG_THRESHOLD_PX } from './input-router.tsx';
 import { type Selection, useSelectionSet } from './use-selection-set.tsx';
 import { useToolMode } from './use-tool-mode.tsx';
@@ -103,10 +104,12 @@ function elementToSelection(el: Element, bodyAncestor: Element): Selection | nul
   const artboardEl = bodyAncestor.closest('[data-dc-screen]');
   const artboardId = artboardEl?.getAttribute('data-dc-screen') ?? null;
   const rect = (el as HTMLElement).getBoundingClientRect();
+  const marqueeSelector = scopedCdSelector(cdId, artboardId);
   return {
     id: cdId,
-    selector: `[data-cd-id="${cdId}"]`,
+    selector: marqueeSelector,
     artboardId,
+    index: selectorIndex(document, marqueeSelector, el),
     tag: el.tagName.toLowerCase(),
     classes: (el.getAttribute('class') ?? '')
       .trim()

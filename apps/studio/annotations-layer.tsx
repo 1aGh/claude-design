@@ -2751,21 +2751,18 @@ export function AnnotationsLayer() {
       const target = e.target as Element | null;
       if (target?.closest?.(CHROME_SELECTOR)) return; // chrome owns its clicks
       const strokeId = findStrokeId(target);
-      // When pointerdown lands inside an artboard but not on a stroke, the
-      // gesture belongs to artboard-drag / element-marquee — not the
-      // annotation marquee. Bailing here keeps the annotation marquee from
-      // racing the artboard drag (post-Wave-3 user grievance G5).
-      if (!strokeId && target?.closest?.('[data-dc-screen]')) return;
       const [wx, wy] = screenToWorld(e.clientX, e.clientY);
       const startClientX = e.clientX;
       const startClientY = e.clientY;
 
-      // Stroke hit — select + start drag-translate of the group ─────────
+      // Stroke hit OR multi-selection hull hit — start a group drag. Clicking a
+      // selected stroke, OR anywhere inside the current selection's bounding box
+      // (FigJam parity), moves the whole group. Without the hull case, grabbing
+      // the empty space BETWEEN selected strokes fell through to the marquee
+      // branch below and DESELECTED them.
+      let ids: string[] | null = null;
       if (strokeId) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
         elementSel?.clear();
-        let ids: string[];
         if (e.shiftKey) {
           annotSel.add(strokeId);
           ids = annotSel.contains(strokeId)
@@ -2777,6 +2774,28 @@ export function AnnotationsLayer() {
           annotSel.replace(strokeId);
           ids = [strokeId];
         }
+      } else if (!e.shiftKey && annotSel.selectedIds.length > 0) {
+        // Hull hit-test — union bbox of the currently-selected strokes.
+        let hx1 = Infinity;
+        let hy1 = Infinity;
+        let hx2 = -Infinity;
+        let hy2 = -Infinity;
+        for (const s of strokesStoreRef.current.strokes) {
+          if (!annotSel.contains(s.id)) continue;
+          const bb = strokeBBox(s);
+          if (!bb) continue;
+          hx1 = Math.min(hx1, bb.x);
+          hy1 = Math.min(hy1, bb.y);
+          hx2 = Math.max(hx2, bb.x + bb.w);
+          hy2 = Math.max(hy2, bb.y + bb.h);
+        }
+        if (hx2 >= hx1 && wx >= hx1 && wx <= hx2 && wy >= hy1 && wy <= hy2) {
+          ids = annotSel.selectedIds;
+        }
+      }
+      if (ids && ids.length) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
         // Capture a snapshot of all strokes at drag start. Every pointermove
         // re-translates FROM the snapshot using the cumulative cursor delta
         // (NOT a delta-from-last-frame mutation), so dragging back to origin
@@ -2828,6 +2847,13 @@ export function AnnotationsLayer() {
         document.addEventListener('pointercancel', onUp, true);
         return;
       }
+
+      // Not a stroke / hull-group drag. When pointerdown lands inside an
+      // artboard the gesture belongs to artboard-drag / element-marquee — not
+      // the annotation marquee (post-Wave-3 grievance G5). Checked AFTER the
+      // group-drag decision so a multi-selection hull-drag still wins even when
+      // the strokes sit over an artboard.
+      if (!strokeId && target?.closest?.('[data-dc-screen]')) return;
 
       // Empty world — start a drag-select gesture. A bare click without
       // moving clears annotation selection (post-Wave-3 feedback: click-to-

@@ -1,0 +1,35 @@
+# Studio Hub — turnkey local PLAYGROUND stack.
+#
+# Unlike docker-compose.dev.yml (which prints a one-time bootstrap link you have
+# to copy), this stack sets a FIXED HUB_SECRET so the whole flow is scriptable
+# and you have a known login. Builds the image from the local Dockerfile, so you
+# test YOUR changes — not the published GHCR image.
+#
+#   cd apps/hub/playground
+#   docker compose -f docker-compose.playground.yml up --build -d
+#   # hub → http://localhost:1234/admin   (sign in with the secret below)
+#   ./run-smoke.sh        # spins up 2 fake "repos" syncing 2 canvases
+#
+# HUB_INSECURE_HTTP=1 lets the hub serve plain http:// to a non-loopback host
+# (the container's own hostname), which the production WSS guard would refuse.
+# DEV ONLY — never set this on a public deploy.
+
+services:
+  hub:
+    build:
+      context: ..            # apps/hub — reuses apps/hub/Dockerfile
+      dockerfile: Dockerfile
+    container_name: studio-hub-playground
+    restart: unless-stopped
+    ports:
+      - "1234:1234"
+    environment:
+      HUB_SECRET: studio-hub-dev        # ← sign-in secret for /admin
+      HUB_PUBLIC_URL: http://localhost:1234
+      HUB_INSECURE_HTTP: "1"
+      HUB_ADMIN_RATE_LIMIT: "off"       # dev convenience — no 5/60s throttle
+    volumes:
+      - hub-playground-data:/data
+
+volumes:
+  hub-playground-data: {}

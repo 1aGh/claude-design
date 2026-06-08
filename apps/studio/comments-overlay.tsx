@@ -81,6 +81,9 @@ export interface OverlayComment {
   id: string;
   file: string;
   selector: string;
+  /** Occurrence index among `querySelectorAll(selector)` — disambiguates a
+   * component repeated within one artboard. Absent (old comments) → first. */
+  index?: number;
   bounds: OverlayBounds | null;
   text: string;
   status: 'open' | 'resolved';
@@ -138,7 +141,10 @@ function deriveFile(): string | null {
 // halo chrome at z-index 5) instead of being portaled into `.dc-world` where
 // it would lose the stacking battle.
 
-function screenRectFor(selector: string): {
+function screenRectFor(
+  selector: string,
+  index?: number
+): {
   x: number;
   y: number;
   w: number;
@@ -147,7 +153,11 @@ function screenRectFor(selector: string): {
   if (!selector) return null;
   let el: HTMLElement | null = null;
   try {
-    el = document.querySelector(selector) as HTMLElement | null;
+    // index disambiguates a component repeated within one artboard (querySelector
+    // alone would always grab the first match). Absent/0 → first.
+    const all = document.querySelectorAll(selector);
+    const i = index && index > 0 && index < all.length ? index : 0;
+    el = (all[i] ?? all[0] ?? null) as HTMLElement | null;
   } catch {
     return null;
   }
@@ -316,6 +326,7 @@ export function CommentsOverlay(): React.ReactNode {
       const payload = {
         file: sel.file,
         selector: sel.selector,
+        index: sel.index,
         dom_path: sel.dom_path,
         tag: sel.tag,
         classes: sel.classes,
@@ -453,6 +464,7 @@ export function CommentsOverlay(): React.ReactNode {
         return (
           <CommentThread
             comment={focused}
+            sequence={indexById.get(focused.id) ?? 0}
             onClose={() => {
               setFocusedId(null);
               // Drop the canvas halo when the thread closes — symmetric with
@@ -745,7 +757,7 @@ function CommentPin({
       // Live screen-coord lookup mirrors SelectionHalos in canvas-shell.tsx.
       // Falls back to stored bounds (a screen-coord capture at create time)
       // when the target element is gone — better than vanishing entirely.
-      let pos = screenRectFor(comment.selector);
+      let pos = screenRectFor(comment.selector, comment.index);
       if (!pos && comment.bounds) {
         pos = {
           x: comment.bounds.x,
@@ -925,12 +937,14 @@ function CommentComposer({
 
 function CommentThread({
   comment,
+  sequence,
   onClose,
   onPatch,
   onDelete,
   onReply,
 }: {
   comment: OverlayComment;
+  sequence: number;
   onClose: () => void;
   onPatch: (patch: Record<string, unknown>) => void;
   onDelete: () => void;
@@ -1027,6 +1041,11 @@ function CommentThread({
     >
       <div className="cm-thread__head" id={headId}>
         <div className="cm-thread__head-row">
+          {/* Plan C P18 — pin/sequence badge in the popover header (parity with
+              `.design/ui/Studio.tsx` thread popover). */}
+          <span className="cm-thread__seq" aria-hidden="true">
+            {sequence}
+          </span>
           <span className="cm-thread__author">{comment.author?.trim() || 'unknown'}</span>
           <span className="cm-thread__time">{formatRelativeTime(comment.created)}</span>
           <button
@@ -1159,7 +1178,7 @@ function computeThreadAnchor(comment: OverlayComment): { x: number; y: number } 
   // Resolve target's live screen rect; popover drops below the pin with small
   // breathing room. Stored bounds (capture-time screen coords) are the
   // last-resort fallback for orphaned pins.
-  const rect = comment.selector ? screenRectFor(comment.selector) : null;
+  const rect = comment.selector ? screenRectFor(comment.selector, comment.index) : null;
   if (rect) {
     // Pin sits at (rect.right - 12, rect.top - 12). Place popover at the same
     // x for visual continuity, 16px below the top so it clears the pin.
@@ -1184,7 +1203,7 @@ function computeAnchor(state: ComposerState): { x: number; y: number } {
     return { x: state.clientX, y: state.clientY + 8 };
   }
   if (state.selection.selector) {
-    const rect = screenRectFor(state.selection.selector);
+    const rect = screenRectFor(state.selection.selector, state.selection.index);
     if (rect) {
       return { x: rect.x, y: rect.y + rect.h + 8 };
     }

@@ -196,5 +196,42 @@
 | O5 | WS send tabs/active | tabs + active-file pushed over WS (drives `_active.json`) | T5 |
 | O6 | Context-menu suppress | native context menu suppressed in shell (kept in inputs) | T3 |
 | O7 | App layout classes | `app` + `with-rsidebar` + `no-sidebar` modifiers | T3 |
+
+---
+
+## P. Plan C — functionality parity (`feature-studio-full-functionality-parity.md`, 2026-06-07)
+
+> New rows closing the gap between `Studio.tsx` and the running studio. Plan-C task in the
+> `Slice` column. Same legend (☐ / ✅ / ⚠ / ❌). Plan A/B rows above stay green.
+
+| # | Capability | Trigger → Expected | Slice |
+|---|-----------|--------------------|-------|
+| P1 | Top-bar live zoom | iframe zoom change → `dgn:zoom` relay → menubar `ZOOM <n>%` updates (was static 100%) | T2 |
+| P2 | Real artboard count | open canvas → menubar `<n> ARTBOARDS` = canvas's real artboard count (was `tabs.length` 0/1) | T2 |
+| P3 | Menubar presence | local git-user avatar always; agent avatar appears on `ai-activity`; `.st-presence` slot fed | T2 |
+| P4 | DS-folder icon | DS-folder rows render a `folder` glyph in `.st-row-glyph` (parity with `TreeRow glyph="folder"`) | T2 |
+| P5 | Always-on hub-sync | status-bar hub-sync slot always visible with `N ↑ [synced]` from `/_sync-status` (was notSyncable-only) | T3 |
+| P6 | What's-new `.st-toast` | toast renders in `.st-toast*` maude styling (was legacy `mdcc-wn-toast`) | T3 |
+| P7 | Palette grouped set | ⌘K → grouped Canvas/Tools commands (New canvas, Export, Handoff, Draw, theme, inspector, …) | T4 |
+| P8 | Palette opens | ⌘K actually opens palette; search + ↑/↓/Enter nav work | T4 |
+| P9 | Shell export dialog | palette/⇧⌘E → `.st-dialog` 6-format grid (PNG/PDF/SVG/HTML/shadcn/ZIP) → `POST /_api/export` → download | T5 |
+| P10 | Shell handoff | palette/⇧⌘H → dialog handoff (shadcn registry-item) | T5 |
+| P11 | Inspector Inspect tab | select element → pos/size/radius/fill/text/font of selection (display-only) | T6 |
+| P12 | Inspector Layers tab | selection's ancestor/child tree | T6 |
+| P13 | Inspector CSS tab | computed styles, READ-ONLY w/ Phase-12 writeback callout | T6 |
+| P14 | Inspector open | View-dropdown "Inspector" enabled + `I` shortcut opens panel | T6 |
+| P15 | In-canvas minimap | canvas → minimap (world bounds + artboard rects + viewport outline + "World N/N") | T7 |
+| P16 | Floating ZoomHud | zoom controls as a floating ZoomHud (out/value/in/Fit), not nested in tool palette | T7 |
+| P17 | Annotation ctx toolbar | select stroke/shape → color swatches (`.is-on`) + thickness chip + delete | T7 |
+| P18 | Comment-pin badge | thread popover header shows pin/sequence number + Resolve in header row | T7 |
+| P19 | ParticipantsChrome reconcile | top-right avatar stack role-split vs menubar presence (kept or folded, documented) | T8 |
+
+**Verification (2026-06-07, agent-browser + `maude design smoke`):**
+✅ P1 (top bar ZOOM 91% live, was static 100%) · ✅ P2 (6 ARTBOARDS real) · ✅ P3 (presence avatar) ·
+✅ P4 (DS folder icon) · ✅ P5 (HUB SYNC 1 ↑) · ✅ P6 (`.st-toast`) · ✅ P7/P8 (grouped palette + filter) ·
+✅ P9 (real PNG export round-trip) · ✅ P10 (handoff card) · ✅ P11/P12/P13/P14 (inspector Inspect/Layers/CSS + `I`) ·
+✅ P15 (minimap already existed) · ⚠ P16 (zoom HUD functional; separate-float deprioritized) · ✅ P17 (annot ctx toolbar already existed) ·
+🔨 P18 (comment-pin badge in bundle + CSS; visual verify pending a commented canvas) · ✅ P19 (kept both, DDR-097).
+`maude design smoke` = **88/88 styled, import-graph clean**; release bundles rebuilt (client 271 KB / comment-mount 39 KB); `dist/runtime/*.js` untouched.
 </content>
 </invoke>

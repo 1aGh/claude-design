@@ -198,6 +198,17 @@ const ENGINE_CSS = `
      irrelevant under zoom (zoom anchors top-left of the box). will-change
      hints to the compositor that this layer changes often. */
   will-change: transform;
+  /* Marquee / multi-select drags over artboards must not trigger native text
+     selection (it highlighted the canvas content). Editable surfaces re-enable
+     it below. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+.dc-world input,
+.dc-world textarea,
+.dc-world [contenteditable="true"] {
+  user-select: text;
+  -webkit-user-select: text;
 }
 .dc-section-collapsed { display: contents; }
 
@@ -1161,7 +1172,7 @@ export function useDragStateContext(): DragStateBus | null {
 interface DesignCanvasProps {
   children: ReactNode;
   /** Per-overlay opt-out. `false` hides it; omit or `true` shows it. */
-  controls?: { minimap?: boolean; toolbar?: boolean };
+  controls?: { minimap?: boolean; toolbar?: boolean; zoom?: boolean };
 }
 
 /**
@@ -1373,6 +1384,7 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
   );
 
   const showMiniMap = controls?.minimap !== false;
+  const showZoom = controls?.zoom !== false;
 
   // Drag-state bus (Phase 4.2). Single source of truth: only one artboard
   // drag is active at a time. DCArtboards write here when their local drag
@@ -1444,10 +1456,12 @@ function DesignCanvasInner({ children, controls }: DesignCanvasProps) {
         {children}
       </div>
       {showMiniMap ? <DCMiniMap /> : null}
-      {/* DCZoomToolbar is intentionally not rendered here. The Phase 5.1
-          ToolPalette absorbs its 4 actions into the unified canvas chrome.
-          The component stays exported for back-compat with any consumer that
-          still imports it directly. */}
+      {/* Plan C F6 — separate bottom-left zoom pill (the design's ZoomHud).
+          Phase 5.1 had folded zoom into the ToolPalette; user feedback wants
+          the design's standalone pill, so DCZoomToolbar renders here again (the
+          ToolPalette's inline zoom is removed in tool-palette.tsx). It carries
+          MORE than the mock — fit + actual-size — so no capability is lost. */}
+      {showZoom ? <DCZoomToolbar /> : null}
     </div>
   );
 
@@ -1899,6 +1913,9 @@ const OVERLAY_CSS = `
   overflow: hidden;
 }
 .dc-mm-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 5px 8px 4px;
   border-bottom: 1px solid var(--maude-chrome-border, rgba(0,0,0,0.08));
   letter-spacing: 0.05em;
@@ -1906,6 +1923,7 @@ const OVERLAY_CSS = `
   font-size: 9px;
   background: var(--maude-chrome-bg-1, #f4f1ea);
 }
+.dc-mm-count { font-variant-numeric: tabular-nums; color: var(--maude-chrome-fg-2, rgba(40,30,20,0.55)); }
 .dc-mm-body {
   position: relative;
   width: 100%;
@@ -1931,9 +1949,8 @@ const OVERLAY_CSS = `
 }
 .dc-zoom-tb {
   position: absolute;
-  left: 50%;
+  left: 16px;
   bottom: 16px;
-  transform: translateX(-50%);
   display: flex;
   align-items: stretch;
   background: var(--maude-chrome-bg-0, #ffffff);
@@ -2104,7 +2121,10 @@ export function DCMiniMap() {
   return (
     <div className="dc-mm" aria-hidden="true">
       <div className="dc-mm-hd">
-        WORLD MAP · {world.artboards.length}/{world.artboards.length}
+        <span>World</span>
+        <span className="dc-mm-count">
+          {world.artboards.length} / {world.artboards.length}
+        </span>
       </div>
       <div
         className="dc-mm-body"

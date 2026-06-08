@@ -30,6 +30,7 @@
 
 import { useEffect, useRef } from 'react';
 
+import { resolveSelectionEl } from './dom-selection.ts';
 import { useSelectionSet } from './use-selection-set.tsx';
 
 const CTX_TOOLBAR_CSS = `
@@ -159,9 +160,7 @@ export function ContextualToolbar() {
       let yMax = Number.NEGATIVE_INFINITY;
       let any = false;
       for (const sel of elementSelections) {
-        const node = sel.id
-          ? document.querySelector(`[data-cd-id="${sel.id}"]`)
-          : document.querySelector(sel.selector);
+        const node = resolveSelectionEl(document, sel);
         if (!node) continue;
         const r = (node as HTMLElement).getBoundingClientRect();
         if (r.width === 0 && r.height === 0) continue;
@@ -228,9 +227,7 @@ export function ContextualToolbar() {
         title="Add comment on this element"
         onClick={() => {
           if (!primary) return;
-          const node = primary.id
-            ? document.querySelector(`[data-cd-id="${primary.id}"]`)
-            : document.querySelector(primary.selector);
+          const node = resolveSelectionEl(document, primary);
           openComposerForSelection(primary, node);
         }}
       >

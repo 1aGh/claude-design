@@ -114,6 +114,67 @@ export function cssEscape(s: string): string {
  * defaults to `deriveFile()`; the comment mount layer passes it explicitly
  * so all three consumers (router, overlay, mount) agree on the same key.
  */
+/**
+ * The artboard-scoped data-cd-id selector. A component shared across artboards
+ * carries the SAME data-cd-id in each, so a bare `[data-cd-id="…"]` resolves
+ * (via querySelector) to the FIRST artboard. Prefixing the hit's artboard makes
+ * the anchor per-instance. Shared by EVERY selector builder + resolver so they
+ * can't drift (the original fix only patched one of ~8 sites).
+ */
+export function scopedCdSelector(cdId: string, artboardId?: string | null): string {
+  return artboardId
+    ? `[data-dc-screen="${artboardId}"] [data-cd-id="${cdId}"]`
+    : `[data-cd-id="${cdId}"]`;
+}
+
+/**
+ * Occurrence index of `el` among `doc.querySelectorAll(selector)`. Even with an
+ * artboard-scoped data-cd-id selector, a component repeated WITHIN one artboard
+ * (a list row, or a reusable used twice) produces several matches — the index
+ * is the only thing that makes the anchor truly unique per DOM instance.
+ */
+export function selectorIndex(doc: Document, selector: string, el: Element | null): number {
+  if (!el) return 0;
+  try {
+    const all = doc.querySelectorAll(selector);
+    for (let i = 0; i < all.length; i++) {
+      if (all[i] === el) return i;
+    }
+  } catch {
+    /* malformed selector */
+  }
+  return 0;
+}
+
+/**
+ * Resolve a stored Selection to its live element, artboard-scoped. Prefers the
+ * id+artboardId scoped selector (the robust path), then the stored `selector`
+ * (already scoped for recent selections; a legacy fallback for old comments).
+ * Every halo / pin / toolbar / spacing-handle resolver routes through this so a
+ * shared component anchors to the instance the user actually clicked.
+ */
+export function resolveSelectionEl(
+  doc: Document,
+  sel: { id?: string | null; selector?: string | null; artboardId?: string | null; index?: number }
+): Element | null {
+  const at = (selector: string): Element | null => {
+    try {
+      const all = doc.querySelectorAll(selector);
+      if (!all.length) return null;
+      const i = sel.index && sel.index > 0 && sel.index < all.length ? sel.index : 0;
+      return all[i] ?? all[0];
+    } catch {
+      return null;
+    }
+  };
+  if (sel.id) {
+    const el = at(scopedCdSelector(sel.id, sel.artboardId));
+    if (el) return el;
+  }
+  if (sel.selector) return at(sel.selector);
+  return null;
+}
+
 export function hoverTargetToSelection(target: HoverTarget, file?: string): Selection {
   const el = target.el;
   const rect =
@@ -125,20 +186,30 @@ export function hoverTargetToSelection(target: HoverTarget, file?: string): Sele
   // anchor exists.
   const cdId = target.cdId;
   // Selector resolution order:
-  //   1. data-cd-id anchor — stable pipeline-stamped id (preferred).
+  //   1. data-cd-id anchor — stable pipeline-stamped id (preferred). SCOPED by
+  //      the hit's artboard (`[data-dc-screen=…] [data-cd-id=…]`) — a component
+  //      shared across artboards carries the SAME data-cd-id in each, so an
+  //      unscoped `[data-cd-id]` selector resolves (via querySelector) to the
+  //      FIRST artboard's instance and the pin/select lands on the wrong board.
+  //      Prefixing the artboard makes the anchor per-instance.
   //   2. data-dc-screen — chrome click promoted to whole-artboard select
   //      (T24.5 G8 multi-artboard gesture).
   //   3. cssPath of the hit — last-resort path string.
   const selector = cdId
-    ? `[data-cd-id="${cdId}"]`
-    : !cdId && target.artboardId
+    ? scopedCdSelector(cdId, target.artboardId)
+    : target.artboardId
       ? `[data-dc-screen="${target.artboardId}"]`
       : cssPath(el);
+  // Disambiguate repeated instances within the same artboard (list rows, a
+  // reusable used twice) — the index is which `querySelectorAll(selector)`
+  // match this element is. cssPath is already unique, so 0 there.
+  const index = cdId && typeof document !== 'undefined' ? selectorIndex(document, selector, el) : 0;
   return {
     file: file ?? deriveFile(),
     id: cdId ?? undefined,
     selector,
     artboardId: target.artboardId,
+    index,
     tag: el?.tagName.toLowerCase() ?? '',
     classes: realClasses(el),
     text: shortText(el, 240),

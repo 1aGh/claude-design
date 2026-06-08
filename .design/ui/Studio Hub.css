@@ -61,12 +61,14 @@
 /* The M mark — accent tile, glows like the Studio brand. */
 .sh-mark {
   display: grid; place-items: center;
-  width: 22px; height: 22px; border-radius: var(--radius-sm);
+  width: 22px; height: 22px;
+  /* message-bubble corner — bottom-right squared, the other three rounded */
+  border-radius: var(--radius-sm) var(--radius-sm) 0 var(--radius-sm);
   background: var(--accent); color: var(--accent-fg);
   font-family: var(--font-display); font-weight: 700; font-size: var(--type-sm);
   box-shadow: 0 0 0 3px var(--accent-tint);
 }
-.sh-mark--lg { width: 40px; height: 40px; border-radius: var(--radius-md); font-size: var(--type-lg); box-shadow: 0 0 0 5px var(--accent-tint); }
+.sh-mark--lg { width: 40px; height: 40px; border-radius: var(--radius-md) var(--radius-md) 0 var(--radius-md); font-size: var(--type-lg); box-shadow: 0 0 0 5px var(--accent-tint); }
 
 /* The signature dotted-canvas backdrop. */
 .sh-dotted {

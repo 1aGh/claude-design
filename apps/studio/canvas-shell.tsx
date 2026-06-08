@@ -59,12 +59,14 @@ import {
 import { ContextualToolbar } from './contextual-toolbar.tsx';
 import { CursorsOverlay } from './cursors-overlay.tsx';
 import {
-  cssEscape,
   cssPath,
   deriveFile,
   domPath,
   hoverTargetToSelection,
   realClasses,
+  resolveSelectionEl,
+  scopedCdSelector,
+  selectorIndex,
   shortText,
 } from './dom-selection.ts';
 import { EqualSpacingHandles } from './equal-spacing-handles.tsx';
@@ -970,12 +972,16 @@ function buildRegistry(deps: {
 
   const postComposeForTarget = (target: ContextTarget): void => {
     if (typeof window === 'undefined') return;
+    const composeSelector = target.cdId
+      ? scopedCdSelector(target.cdId, target.artboardId)
+      : cssPath(target.el);
     const sel: Selection | null = target.el
       ? {
           file: deriveFile(),
           id: target.cdId ?? undefined,
-          selector: target.cdId ? `[data-cd-id="${target.cdId}"]` : cssPath(target.el),
+          selector: composeSelector,
           artboardId: target.artboardId,
+          index: target.cdId ? selectorIndex(document, composeSelector, target.el) : 0,
           tag: target.el.tagName.toLowerCase(),
           classes: realClasses(target.el),
           text: shortText(target.el, 240),
@@ -1297,6 +1303,15 @@ function CanvasRouter({
         if (typeof t === 'string') setTool(t as never);
         return;
       }
+      // Plan C — Edit menu (shell) bridges to the in-canvas undo stack.
+      if (m.dgn === 'undo') {
+        void undoStack.undo();
+        return;
+      }
+      if (m.dgn === 'redo') {
+        void undoStack.redo();
+        return;
+      }
       // D9 — canvas-shell chrome follows the Maude chrome theme. The chrome's
       // `--maude-chrome-*` token family is keyed by `data-maude-theme` on the
       // iframe documentElement (see HUD_TOKENS_CSS). This attribute is
@@ -1313,7 +1328,7 @@ function CanvasRouter({
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [selSet, annotSel, setTool]);
+  }, [selSet, annotSel, setTool, undoStack]);
 
   // Cleanup any pending rAF on unmount.
   useEffect(
@@ -1836,11 +1851,7 @@ function SelectionHalos() {
       for (let i = 0; i < selected.length; i++) {
         const sel = selected[i];
         const child = c.children[i] as HTMLDivElement;
-        const el = sel?.id
-          ? document.querySelector(`[data-cd-id="${cssEscape(sel.id)}"]`)
-          : sel
-            ? safeQuery(sel.selector)
-            : null;
+        const el = sel ? resolveSelectionEl(document, sel) : null;
         if (!el) {
           child.style.display = 'none';
           continue;
@@ -1893,9 +1904,7 @@ function GroupBbox() {
       let yMax = Number.NEGATIVE_INFINITY;
       let anyHit = false;
       for (const sel of selected) {
-        const el = sel.id
-          ? document.querySelector(`[data-cd-id="${cssEscape(sel.id)}"]`)
-          : safeQuery(sel.selector);
+        const el = resolveSelectionEl(document, sel);
         if (!el) continue;
         // Post-Wave-2: direct artboard drag — the article updates its own
         // `left/top` during drag, so the group bbox just follows via
@@ -1949,12 +1958,4 @@ function classifyContextKind(target: HoverTarget | null): ContextTargetKind {
   if (target.cdId) return 'element';
   if (target.artboardId) return 'artboard-chrome';
   return 'world';
-}
-
-function safeQuery(selector: string): Element | null {
-  try {
-    return document.querySelector(selector);
-  } catch {
-    return null;
-  }
 }

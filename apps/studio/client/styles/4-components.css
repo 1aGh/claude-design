@@ -460,40 +460,10 @@
   max-width: 100%;
 }
 
-/* ----- Comment bar ----- */
-.comment-bar {
-  background: var(--u-bg-1);
-  border-top: 1px solid var(--u-border);
-  padding: 6px var(--u-s-3);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 12px;
-}
-.cb-row {
-  display: flex;
-  align-items: center;
-  gap: var(--u-s-2);
-  flex-wrap: wrap;
-}
-/* Composer — stacked vertically so the textarea has real estate */
-/* Phase 6 — the shell-side composer / focused-row / pin-strip surfaces moved
- * into the canvas iframe (see apps/studio/comments-overlay.tsx
- * + .css). Only the residual BottomBar open-count label survives. The legacy
- * `.composer*` / `.cb-pin-chip` / `.cb-row.focused` / `.cb-text` / `.cb-target`
- * / `.cb-pinno` / `.cb-more` rules were removed in the same change. */
-
-.cb-label {
-  color: var(--u-fg-3);
-  font-size: 11px;
-  flex: none;
-  align-self: center;
-}
-
-.cb-row.strip {
-  font-size: 11px;
-  color: var(--u-fg-3);
-}
+/* The shell-side comment bar was removed — the iframe overlay
+ * (apps/studio/comments-overlay.tsx) owns the composer + pin bubbles + thread
+ * popover, and the StatusBar's "comments N open" slot covers the open-count
+ * summary, so the standalone `.comment-bar` strip was redundant. */
 
 /* ----- Right sidebar — Comments panel (CV-10) ----- */
 .rsidebar {

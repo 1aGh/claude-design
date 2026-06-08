@@ -30,9 +30,58 @@ test('GET /admin returns the admin HTML shell', async () => {
   assert.equal(res.status, 200);
   assert.match(res.headers.get('content-type') ?? '', /^text\/html/);
   const body = await res.text();
-  assert.match(body, /<title>Maude Hub · Admin<\/title>/);
+  assert.match(body, /<title>Studio Hub · Admin<\/title>/);
   assert.match(body, /id="invite-form"/);
   assert.match(body, /id="bootstrap-form"/);
+});
+
+test('GET /admin shell carries the maude sidebar-nav app-shell + every JS-referenced ID', async () => {
+  const res = await fetch(`http://127.0.0.1:${PORT}/admin`);
+  const body = await res.text();
+  // Pre-auth + auth IDs the app.js state machine reads.
+  for (const id of [
+    'onboard-form',
+    'onboard-secret',
+    'bootstrap-form',
+    'bootstrap-identity',
+    'auth-state',
+    'forget',
+    'dash',
+    // status KV
+    's-uptime',
+    's-version',
+    's-port',
+    's-data',
+    's-tokens',
+    's-peers',
+    // existing tables + modal
+    'peers-rows',
+    'tokens-rows',
+    'token-modal',
+    'token-command',
+    'token-raw',
+    'token-copy',
+    'token-scope',
+    // NEW maude app-shell surfaces (Tasks 3–6)
+    'view-overview',
+    'view-peers',
+    'view-tokens',
+    'view-canvases',
+    'view-activity',
+    'view-settings',
+    'canvases-rows',
+    'activity-feed',
+    'settings-form',
+    'set-name',
+    'set-desc',
+    'rotate-admin',
+  ]) {
+    assert.match(body, new RegExp(`id="${id}"`), `missing #${id} in admin shell`);
+  }
+  // The sidebar nav must offer all six panes.
+  for (const view of ['overview', 'peers', 'tokens', 'canvases', 'activity', 'settings']) {
+    assert.match(body, new RegExp(`data-view="${view}"`), `missing nav item ${view}`);
+  }
 });
 
 test('GET /admin?key=... still returns the shell (key is consumed client-side)', async () => {

@@ -84,12 +84,14 @@ function Board({ theme = "dark", children }: { theme?: "dark" | "light"; childre
   );
 }
 
-/* The maude brand mark — a single confident glyph (no emoji, DS rule). */
+/* The maude brand mark — the filled 4-point sparkle from the app favicon
+ * (no emoji, DS rule). Scales to ~66% of its tile so it reads at every
+ * .sd-brand-mark size (nav 22px · info 30px · hero lockup 44px). */
 function BrandMark() {
   return (
     <span className="sd-brand-mark">
-      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
-        <path d="M3 12V5l5 4 5-4v7" />
+      <svg viewBox="0 0 32 32" width="100%" height="100%" fill="currentColor" aria-hidden="true">
+        <path d="M16 5l2.8 8.2L27 16l-8.2 2.8L16 27l-2.8-8.2L5 16l8.2-2.8z" />
       </svg>
     </span>
   );

@@ -31,16 +31,11 @@ import "./ui_kits-desktop-showcase.css";
 /* 1px-stroke geometric glyphs — terminal/IDE heritage, never emoji. currentColor retints. */
 const Glyph = {
   mark: (
-    // The maude mark — a selected node: ink frame + 4 indigo corner grips
-    // (top-left grip = the agent spark). Two-colour, bolder.
+    // The maude mark — the spark: a four-point star on the indigo message-bubble
+    // tile (bottom-right corner squared; the shipped app favicon). One confident accent.
     <svg viewBox="0 0 32 32" aria-hidden="true" className="brand-mark-svg" fill="none">
-      <rect x="7" y="7" width="18" height="18" rx="5" stroke="currentColor" strokeWidth="2.8" />
-      <g fill="var(--accent)">
-        <rect x="20.7" y="2.7" width="8.6" height="8.6" rx="2.4" />
-        <rect x="2.7" y="20.7" width="8.6" height="8.6" rx="2.4" />
-        <rect x="20.7" y="20.7" width="8.6" height="8.6" rx="2.4" />
-        <path d="M8 -1 C8.6 5.36 10.64 7.4 17 8 C10.64 8.6 8.6 10.64 8 17 C7.4 10.64 5.36 8.6 -1 8 C5.36 7.4 7.4 5.36 8 -1 Z" />
-      </g>
+      <path d="M7 0H25A7 7 0 0 1 32 7V32H7A7 7 0 0 1 0 25V7A7 7 0 0 1 7 0Z" fill="var(--accent)" />
+      <path d="M16 5l2.8 8.2L27 16l-8.2 2.8L16 27l-2.8-8.2L5 16l8.2-2.8z" fill="var(--accent-fg)" />
     </svg>
   ),
   move: (

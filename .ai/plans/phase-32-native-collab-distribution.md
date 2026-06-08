@@ -88,6 +88,7 @@ Today Maude has no native installer, no auto-update, and no download page. Upgra
   - "What's included" — canvas browser, git versioning, GitHub sign-in, live collaboration.
   - FAQ: "Does it require a terminal? No." / "Is it free? Yes, open source." / "What's the AI editing? Requires a paired Claude Code."
   - Links to hub self-hosting docs.
+- **Reference (lift, don't re-derive):** `.design/ui/Studio Hub.tsx` → artboard **A** (landing splash: hero + console-preview inset + value-prop trio + deploy-targets strip, maude DS) is a built maude-DS reference for the `/desktop` download-page IA + section rhythm. **NOT a 1:1** — artboard A markets the *self-hosted hub*; this page markets the *native desktop app*. Lift the hero/preview/value-prop layout skeleton; rewrite the copy + CTAs for the app download.
 - **Validate:** `pnpm --filter @maude/site build` passes; `/desktop` route renders; platform-detection shows correct button.
 
 ### Task 4: Opt-in crash reporting

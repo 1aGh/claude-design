@@ -339,6 +339,18 @@ export function ExportDialogProvider({ children }: { children: ReactNode }): Rea
   useEffect(() => {
     function onCustom(e: Event) {
       const detail = (e as CustomEvent<{ scope?: Scope; format?: Format }>).detail ?? {};
+      // Plan C — route to the UNIFIED shell Export dialog (parent / main origin)
+      // so the in-canvas toolbar + context menu open the SAME modal as the
+      // menubar. Only fall back to this local dialog for a standalone canvas
+      // (handoff / exported embed) with no shell parent.
+      if (window.parent && window.parent !== window) {
+        try {
+          window.parent.postMessage({ dgn: 'open-export', detail }, '*');
+          return;
+        } catch {
+          /* fall through to local */
+        }
+      }
       open(detail);
     }
     window.addEventListener('maude:open-export', onCustom as EventListener);

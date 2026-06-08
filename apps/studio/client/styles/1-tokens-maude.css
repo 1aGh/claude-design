@@ -178,6 +178,58 @@
  * selector: the `var(--accent)` etc. re-resolve per the element's current theme.
  * Remove once the legacy classes are themselves ported to `.st-*`. */
 .maude {
+  /* ─── Theme-AGNOSTIC structural tokens ────────────────────────────────────
+   * Radii / spacing / type / motion are identical in dark + light. They were
+   * originally declared ONLY in the `[data-theme="dark"]` block, so under
+   * `[data-theme="light"]` they fell through to the legacy amber `:root`
+   * (radius 2px, Berkeley Mono) — the "light mode = square corners + wrong
+   * font" bug. Declaring them here (`.maude`, which already wins over `:root`)
+   * gives BOTH themes the maude ladder; the dark block's copies are now
+   * redundant but harmless. (Plan C follow-up; [[css-var-alias-scope-trap]].) */
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 7px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-pill: 999px;
+
+  --space-0: 0;
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 8px;
+  --space-4: 12px;
+  --space-5: 16px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 48px;
+
+  --font-display: "Inter Tight", "Inter", system-ui, -apple-system, sans-serif;
+  --font-body:    "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:    "JetBrains Mono", "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --type-xs:   11px;   --lh-xs:   16px;
+  --type-sm:   12px;   --lh-sm:   18px;
+  --type-base: 14px;   --lh-base: 20px;
+  --type-md:   16px;   --lh-md:   24px;
+  --type-lg:   19px;   --lh-lg:   26px;
+  --type-xl:   23px;   --lh-xl:   30px;
+  --type-2xl:  28px;   --lh-2xl:  34px;
+  --type-3xl:  34px;   --lh-3xl:  40px;
+
+  --tracking-tight: -0.014em;
+  --tracking-wide:   0.04em;
+
+  --dur-flip:  140ms;
+  --dur-panel: 220ms;
+  --dur-route: 280ms;
+  --dur-soft:  120ms;
+  --ease-out:    cubic-bezier(0.2, 0, 0, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  --canvas-grid: 24px;
+  --layout-max-w:  none;
+  --layout-gutter: var(--space-5);
+
   --u-bg-0: var(--bg-0);
   --u-bg-1: var(--bg-1);
   --u-bg-2: var(--bg-2);

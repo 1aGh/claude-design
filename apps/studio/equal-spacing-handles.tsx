@@ -14,11 +14,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-import {
-  detectEqualSpacing,
-  type EqualSpacingResult,
-  type SpacingAxis,
-} from './equal-spacing-detector.ts';
+import { resolveSelectionEl } from './dom-selection.ts';
+import { detectEqualSpacing, type EqualSpacingResult } from './equal-spacing-detector.ts';
 import { useSelectionSet } from './use-selection-set.tsx';
 
 const HOVER_PADDING_PX = 40;
@@ -77,25 +74,6 @@ function ensureStyles(): void {
   document.head.appendChild(s);
 }
 
-function cssEscape(s: string): string {
-  // CSS.escape is available everywhere we care; manual fallback handles the
-  // jsdom test path where it may be missing.
-  // biome-ignore lint/suspicious/noExplicitAny: feature detect
-  const ce = (typeof CSS !== 'undefined' ? (CSS as any).escape : null) as
-    | ((v: string) => string)
-    | null;
-  if (ce) return ce(s);
-  return s.replace(/(["\\\]])/g, '\\$1');
-}
-
-function safeQuery(selector: string): Element | null {
-  try {
-    return document.querySelector(selector);
-  } catch {
-    return null;
-  }
-}
-
 interface ScreenRect {
   x: number;
   y: number;
@@ -103,12 +81,12 @@ interface ScreenRect {
   h: number;
 }
 
-function resolveSelectionRects(sels: Array<{ id?: string; selector: string }>): ScreenRect[] {
+function resolveSelectionRects(
+  sels: Array<{ id?: string; selector: string; artboardId?: string | null }>
+): ScreenRect[] {
   const rects: ScreenRect[] = [];
   for (const s of sels) {
-    const el = s.id
-      ? document.querySelector(`[data-cd-id="${cssEscape(s.id)}"]`)
-      : safeQuery(s.selector);
+    const el = resolveSelectionEl(document, s);
     if (!el) continue;
     const b = (el as HTMLElement).getBoundingClientRect();
     if (b.width === 0 && b.height === 0) continue;

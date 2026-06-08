@@ -192,9 +192,22 @@
 
 .cm-thread__head-row {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
+  justify-content: flex-start;
+  align-items: center;
   gap: var(--space-2, 4px);
+}
+
+/* Plan C P18 — pin/sequence badge in the thread popover header. */
+.cm-thread__seq {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--accent, #d63b1f);
+  color: var(--accent-fg, #fff);
+  font: 600 var(--type-xs, 11px) / 1 var(--font-mono, ui-monospace, monospace);
 }
 
 .cm-thread__close {
@@ -206,7 +219,7 @@
   font: 600 var(--type-xs, 11px) / 1.2 var(--font-mono, ui-monospace, monospace);
   cursor: pointer;
   align-self: flex-start;
-  margin-left: var(--space-2, 4px);
+  margin-left: auto;
   transition: background var(--dur-flip, 120ms) var(--ease-out, ease-out);
 }
 

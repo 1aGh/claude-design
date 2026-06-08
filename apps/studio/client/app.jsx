@@ -353,6 +353,43 @@ const STICONS = {
       <line x1="8" y1="11.4" x2="8" y2="11.5" />
     </>
   ),
+  // Export-format glyphs (Plan C) — one distinct mark per format card.
+  image: (
+    <>
+      <rect x="2.5" y="3" width="11" height="10" rx="1.5" />
+      <circle cx="6" cy="6.3" r="1.1" />
+      <path d="M3 12l3-2.8 2.2 1.8 2.4-3L13.5 12" />
+    </>
+  ),
+  vector: (
+    <>
+      <path d="M3.6 11.2C6 5 10 5 12.4 11.2" />
+      <rect x="1.7" y="9.8" width="2.6" height="2.6" rx="0.4" />
+      <rect x="11.7" y="9.8" width="2.6" height="2.6" rx="0.4" />
+      <rect x="6.7" y="2.6" width="2.6" height="2.6" rx="0.4" />
+    </>
+  ),
+  presentation: (
+    <>
+      <rect x="2.5" y="3" width="11" height="7.4" rx="1" />
+      <line x1="8" y1="10.4" x2="8" y2="13" />
+      <line x1="5.6" y1="13.4" x2="10.4" y2="13.4" />
+    </>
+  ),
+  archive: (
+    <>
+      <rect x="2.5" y="3" width="11" height="3" rx="0.8" />
+      <path d="M3.6 6v6.2a1 1 0 0 0 1 1h6.8a1 1 0 0 0 1-1V6" />
+      <line x1="6.6" y1="8.8" x2="9.4" y2="8.8" />
+    </>
+  ),
+  external: (
+    <>
+      <path d="M11 8.5V12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h3.5" />
+      <polyline points="9.5 3 13 3 13 6.5" />
+      <line x1="13" y1="3" x2="7.6" y2="8.4" />
+    </>
+  ),
 };
 
 // ⌘K command palette — the mockup's signature surface, wired to real shell
@@ -370,7 +407,11 @@ function CommandPalette({ open, onClose, actions }) {
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     if (!needle) return actions;
-    return actions.filter((a) => a.label.toLowerCase().includes(needle));
+    return actions.filter(
+      (a) =>
+        a.label.toLowerCase().includes(needle) ||
+        (a.group && a.group.toLowerCase().includes(needle))
+    );
   }, [q, actions]);
   useEffect(() => {
     if (active >= filtered.length) setActive(0);
@@ -420,25 +461,37 @@ function CommandPalette({ open, onClose, actions }) {
           {filtered.length === 0 ? (
             <div className="st-pal-empty">No matching command.</div>
           ) : (
-            filtered.map((a, i) => (
-              <button
-                type="button"
-                key={a.id}
-                className={'st-pal-item' + (i === active ? ' is-active' : '')}
-                onMouseEnter={() => setActive(i)}
-                onClick={() => run(a)}
-              >
-                <span className="st-pal-icon">
-                  <StIcon name={a.icon} size={15} />
-                </span>
-                <span className="st-pal-label">{a.label}</span>
-                {a.kbd ? (
-                  <span className="st-pal-kbd">
-                    <Kbd>{a.kbd}</Kbd>
-                  </span>
-                ) : null}
-              </button>
-            ))
+            filtered.map((a, i) => {
+              // Emit a group header when the group changes (flat list → grouped
+              // display; keyboard nav still indexes across the whole array).
+              const header =
+                a.group && (i === 0 || filtered[i - 1].group !== a.group) ? (
+                  <div className="st-pal-group" key={'g-' + a.group}>
+                    {a.group}
+                  </div>
+                ) : null;
+              return (
+                <Fragment key={a.id}>
+                  {header}
+                  <button
+                    type="button"
+                    className={'st-pal-item' + (i === active ? ' is-active' : '')}
+                    onMouseEnter={() => setActive(i)}
+                    onClick={() => run(a)}
+                  >
+                    <span className="st-pal-icon">
+                      <StIcon name={a.icon} size={15} />
+                    </span>
+                    <span className="st-pal-label">{a.label}</span>
+                    {a.kbd ? (
+                      <span className="st-pal-kbd">
+                        <Kbd>{a.kbd}</Kbd>
+                      </span>
+                    ) : null}
+                  </button>
+                </Fragment>
+              );
+            })
           )}
         </div>
       </div>
@@ -466,8 +519,278 @@ function StIcon({ name, size = 16, className }) {
   );
 }
 
+// P3 (Plan C) — menubar presence avatar (matches `.design/ui/Studio.tsx` Avatar).
+// Up to two uppercase glyphs from a name; falls back to "?" for empties.
+function initialsOf(name) {
+  if (!name || typeof name !== 'string') return '?';
+  const parts = name.trim().split(/[\s._-]+/).filter(Boolean);
+  if (!parts.length) return '?';
+  // Single-token names (e.g. a git username "1aGh") → first two chars, so the
+  // avatar reads as initials rather than a lone count badge.
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return ((parts[0][0] || '') + (parts[parts.length - 1][0] || '')).toUpperCase() || '?';
+}
+function StAvatar({ initials, hue, title }) {
+  return (
+    <span className="st-avatar" style={{ background: hue }} title={title} aria-label={title}>
+      {initials}
+    </span>
+  );
+}
+
 function Kbd({ children }) {
   return <span className="kbd">{children}</span>;
+}
+
+// T5 (Plan C) — shell-level Export & Handoff dialog (maude `.st-dialog`), per
+// `.design/ui/Studio.tsx` HandoffBoard. Wired to the privileged main-origin
+// `POST /_api/export` (7 real formats × scopes). The shadcn card is HANDOFF —
+// a privileged disk-write kept off HTTP routes (DDR-054), so it surfaces the
+// `/design:handoff` command instead. PPTX/Canva kept reachable (no silent cap).
+const EXPORT_CARDS = [
+  { id: 'png', label: 'PNG', sub: 'raster · 2×', icon: 'image', format: 'png', options: { scale: 2 } },
+  { id: 'pdf', label: 'PDF', sub: 'vector · print', icon: 'file', format: 'pdf' },
+  { id: 'svg', label: 'SVG', sub: 'per artboard', icon: 'vector', format: 'svg' },
+  { id: 'html', label: 'HTML', sub: 'self-contained', icon: 'code', format: 'html' },
+  { id: 'pptx', label: 'PPTX', sub: 'slides', icon: 'presentation', format: 'pptx' },
+  { id: 'canva', label: 'Canva', sub: 'handoff bundle', icon: 'external', format: 'canva' },
+  { id: 'zip', label: 'ZIP', sub: 'project bundle', icon: 'archive', format: 'zip' },
+  { id: 'shadcn', label: 'AI handoff', sub: 'production drop', icon: 'sparkle', handoff: true },
+];
+
+// Mirrors export-dialog.tsx (the in-canvas dialog) so both entry points offer
+// the same settings. Scope validity + PNG scale presets are ported verbatim.
+const EXPORT_SCOPE_LABELS = {
+  selection: 'Current selection',
+  artboard: 'Active artboard',
+  'canvas-as-separate': 'Canvas · artboards separate',
+  'project-raw': 'Whole project (raw)',
+};
+const EXPORT_VALID_SCOPES = {
+  png: ['selection', 'artboard', 'canvas-as-separate'],
+  pdf: ['selection', 'artboard', 'canvas-as-separate'],
+  svg: ['selection', 'artboard', 'canvas-as-separate'],
+  html: ['artboard', 'canvas-as-separate'],
+  pptx: ['canvas-as-separate'],
+  canva: ['canvas-as-separate'],
+  zip: ['project-raw'],
+};
+const PNG_SCALES = [
+  { value: 1, label: '1× (native)' },
+  { value: 2, label: '2× (retina)' },
+  { value: 3, label: '3× (max)' },
+];
+
+function ExportDialog({ mode, initialScope, activePath, onClose }) {
+  const [sel, setSel] = useState(mode === 'handoff' ? 'shadcn' : 'png');
+  const [scope, setScope] = useState(
+    initialScope && EXPORT_SCOPE_LABELS[initialScope] ? initialScope : 'artboard'
+  );
+  const [scale, setScale] = useState(2);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState(null); // { ok, msg }
+  const [recent, setRecent] = useState([]);
+  const card = EXPORT_CARDS.find((c) => c.id === sel) || EXPORT_CARDS[0];
+  const validScopes = card.handoff ? [] : EXPORT_VALID_SCOPES[card.format] || ['artboard'];
+
+  // Keep the scope valid for the chosen format (pptx/zip etc. only allow a
+  // subset) — mirrors VALID_SCOPES_PER_FORMAT in the in-canvas dialog.
+  useEffect(() => {
+    if (validScopes.length && !validScopes.includes(scope)) setScope(validScopes[0]);
+  }, [validScopes, scope]);
+
+  const loadRecent = useCallback(() => {
+    fetch('/_api/export-history')
+      .then((r) => r.json())
+      .then((d) => setRecent(Array.isArray(d?.history) ? d.history.slice(0, 6) : []))
+      .catch(() => {});
+  }, []);
+  useEffect(() => {
+    loadRecent();
+  }, [loadRecent]);
+
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  async function doExport() {
+    if (card.handoff) {
+      const p = activePath && activePath !== SYSTEM_TAB ? activePath : '<canvas>.tsx';
+      const cmd = `/design:handoff ${p}`;
+      try {
+        await navigator.clipboard?.writeText(cmd);
+      } catch {}
+      setStatus({ ok: true, msg: `Copied: ${cmd} — run it in Claude Code.` });
+      return;
+    }
+    setBusy(true);
+    setStatus(null);
+    const options = card.format === 'png' ? { scale } : {};
+    try {
+      const r = await fetch('/_api/export', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ format: card.format, scope, options }),
+      });
+      if (!r.ok) {
+        setStatus({ ok: false, msg: (await r.text()) || `Export failed (${r.status})` });
+        setBusy(false);
+        return;
+      }
+      const disp = r.headers.get('Content-Disposition') || '';
+      const fn = /filename="([^"]+)"/.exec(disp);
+      const filename = (fn && fn[1]) || `export.${card.format}`;
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setStatus({ ok: true, msg: `Exported ${filename}` });
+      loadRecent();
+    } catch (err) {
+      setStatus({ ok: false, msg: err && err.message ? err.message : String(err) });
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div
+      className="st-scrim"
+      role="presentation"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="st-dialog" role="dialog" aria-modal="true" aria-label="Export and handoff">
+        <div className="st-dialog-hd">
+          <span className="st-dialog-title">Export &amp; handoff</span>
+          <button type="button" className="st-iconbtn" aria-label="Close" onClick={onClose}>
+            <StIcon name="x" size={15} />
+          </button>
+        </div>
+        <div className="st-dialog-bd">
+          <div className="st-rp-hd">
+            {activePath && activePath !== SYSTEM_TAB
+              ? `Format · ${displayName(basename(activePath))}`
+              : 'Format'}
+          </div>
+          <div className="st-fmt-grid">
+            {EXPORT_CARDS.map((c) => (
+              <button
+                type="button"
+                key={c.id}
+                className={'st-fmt' + (c.id === sel ? ' is-on' : '')}
+                onClick={() => {
+                  setSel(c.id);
+                  setStatus(null);
+                }}
+              >
+                <StIcon name={c.icon} size={16} />
+                <span className="st-fmt-name">{c.label}</span>
+                <span className="st-fmt-sub">{c.sub}</span>
+              </button>
+            ))}
+          </div>
+          {!card.handoff && (
+            <div className="st-dialog-row">
+              <label className="st-dialog-lbl" htmlFor="st-export-scope">
+                Scope
+              </label>
+              <select
+                id="st-export-scope"
+                className="st-select"
+                value={scope}
+                onChange={(e) => setScope(e.target.value)}
+              >
+                {validScopes.map((s) => (
+                  <option key={s} value={s}>
+                    {EXPORT_SCOPE_LABELS[s]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {!card.handoff && card.format === 'png' && (
+            <div className="st-dialog-row">
+              <label className="st-dialog-lbl" htmlFor="st-export-size">
+                Size
+              </label>
+              <select
+                id="st-export-size"
+                className="st-select"
+                value={scale}
+                onChange={(e) => setScale(Number(e.target.value))}
+              >
+                {PNG_SCALES.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {!card.handoff && card.format === 'png' && (
+            <div className="st-mono" style={{ fontSize: 11, color: 'var(--fg-3)' }}>
+              Resolution multiplier — {scale}× ≈ {1440 * scale}×{900 * scale} for a 1440×900 artboard.
+            </div>
+          )}
+          {card.handoff && (
+            <div className="callout callout--info" style={{ fontSize: 12 }}>
+              Hands the active canvas off to production. Copies{' '}
+              <span className="st-mono">/design:handoff &lt;path&gt;</span> — run it in Claude Code to
+              emit a ready-to-drop production component next to the canvas.
+            </div>
+          )}
+          {status && (
+            <div
+              className={'callout ' + (status.ok ? 'callout--success' : 'callout--error')}
+              style={{ fontSize: 12 }}
+            >
+              {status.msg}
+            </div>
+          )}
+          {recent.length > 0 && (
+            <div className="st-export-recent">
+              <div className="st-rp-hd">Recent</div>
+              {recent.map((h, i) => (
+                <div className="st-export-recent-row" key={i}>
+                  <span>
+                    {String(h.format || '').toUpperCase()} ·{' '}
+                    {EXPORT_SCOPE_LABELS[h.scope] || h.scope}
+                  </span>
+                  <span className="st-mono">{h.filename}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="st-dialog-ft">
+          <button type="button" className="btn btn--ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" className="btn btn--primary" disabled={busy} onClick={doExport}>
+            <StIcon name="download" size={14} />
+            {card.handoff
+              ? 'Copy handoff command'
+              : busy
+                ? 'Exporting…'
+                : `Export ${card.label}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ───── Tree (CV-08 spec) ─────
@@ -533,7 +856,10 @@ function DsFolderRow({ name, dsName, depth, defaultOpen, active, onOpenSystem, c
           aria-label={`Open ${dsName} design system view`}
           title="Open the design system view"
         >
-          {name}
+          <span className="st-row-glyph">
+            <StIcon name="folder" size={13} />
+          </span>
+          <span className="st-row-name">{name}</span>
         </button>
       </div>
       {open && children}
@@ -1524,6 +1850,82 @@ function ToolsDropdown({ onAction, onClose }) {
   );
 }
 
+// Plan C follow-up — File + Edit menus, previously inert. Both dispatch to real
+// shell flows (File) or the in-canvas undo stack / selection bridges (Edit).
+function FileDropdown({ onAction, onClose }) {
+  useDropdownClose(onClose);
+  const items = [
+    { id: 'new', label: 'New canvas…', shortcut: '⌘N' },
+    { id: 'export', label: 'Export…', shortcut: '⇧⌘E' },
+    { id: 'handoff', label: 'Handoff to production', shortcut: '⇧⌘H' },
+    { sep: true },
+    { id: 'reload', label: 'Reload canvas', shortcut: '⌘R' },
+  ];
+  return (
+    <div className="st-dropdown" role="menu" aria-label="File" style={{ left: 40 }}>
+      {items.map((it, i) =>
+        it.sep ? (
+          <div key={'s' + i} className="st-dd-sep" />
+        ) : (
+          <button
+            key={it.id}
+            type="button"
+            role="menuitem"
+            className="st-dd-item"
+            onClick={() => {
+              onAction(it.id);
+              onClose();
+            }}
+          >
+            <span className="st-dd-lead">
+              <span className="st-dd-check" />
+              <span>{it.label}</span>
+            </span>
+            <Kbd>{it.shortcut}</Kbd>
+          </button>
+        )
+      )}
+    </div>
+  );
+}
+
+function EditDropdown({ onAction, onClose }) {
+  useDropdownClose(onClose);
+  const items = [
+    { id: 'undo', label: 'Undo', shortcut: '⌘Z' },
+    { id: 'redo', label: 'Redo', shortcut: '⇧⌘Z' },
+    { sep: true },
+    { id: 'deselect-all', label: 'Deselect all', shortcut: 'Esc' },
+    { id: 'select-all-annotations', label: 'Select all annotations', shortcut: '⇧⌘A' },
+  ];
+  return (
+    <div className="st-dropdown" role="menu" aria-label="Edit" style={{ left: 90 }}>
+      {items.map((it, i) =>
+        it.sep ? (
+          <div key={'s' + i} className="st-dd-sep" />
+        ) : (
+          <button
+            key={it.id}
+            type="button"
+            role="menuitem"
+            className="st-dd-item"
+            onClick={() => {
+              onAction(it.id);
+              onClose();
+            }}
+          >
+            <span className="st-dd-lead">
+              <span className="st-dd-check" />
+              <span>{it.label}</span>
+            </span>
+            <Kbd>{it.shortcut}</Kbd>
+          </button>
+        )
+      )}
+    </div>
+  );
+}
+
 function Menubar({
   activePath,
   project,
@@ -1543,6 +1945,13 @@ function Menubar({
   postToActiveCanvas,
   onOpenWhatsNew,
   whatsNewCount,
+  artboardCount = 0,
+  presence = null,
+  inspectorOpen,
+  onToggleInspector,
+  onNewCanvas,
+  onOpenExport,
+  onReload,
 }) {
   const isSystem = activePath === SYSTEM_TAB;
   const stamp = isSystem ? 'SYSTEM' : activePath ? 'CANVAS' : 'IDLE';
@@ -1573,7 +1982,7 @@ function Menubar({
       disabled: false,
     },
     { id: 'layers', label: 'Layers Panel', phase: 'Phase 12', disabled: true },
-    { id: 'inspector', label: 'Inspector', phase: 'Phase 12', disabled: true },
+    { id: 'inspector', label: 'Inspector', shortcut: 'I', checked: inspectorOpen, disabled: false },
     {
       id: 'annotate',
       label: 'Annotations',
@@ -1584,8 +1993,9 @@ function Menubar({
     { id: 'present', label: 'Presentation Mode', phase: 'Phase 6', disabled: true },
   ];
 
+  const DROPDOWN_MENUS = ['file', 'edit', 'view', 'selection', 'tools'];
   function onMenuClick(key) {
-    if (key === 'view' || key === 'selection' || key === 'tools') {
+    if (DROPDOWN_MENUS.includes(key)) {
       setOpenMenu(openMenu === key ? null : key);
     } else if (key === 'help') {
       setOpenMenu(null);
@@ -1597,14 +2007,14 @@ function Menubar({
     <header className="st-menubar" role="menubar" aria-label="Application menubar">
       <span className="st-brand">
         <span className="st-brand-mark">
-          <StIcon name="sparkle" size={11} />
+          <svg viewBox="0 0 32 32" width="100%" height="100%" fill="none" aria-hidden="true"><path d="M16 5l2.8 8.2L27 16l-8.2 2.8L16 27l-2.8-8.2L5 16l8.2-2.8z" fill="currentColor" /></svg>
         </span>
         <span className="st-brand-name">maude</span>
       </span>
       <nav className="st-menus" aria-label="Application menus">
         {MENU_NAMES.map((name) => {
           const key = name.toLowerCase();
-          const hasDropdown = key === 'view' || key === 'selection' || key === 'tools';
+          const hasDropdown = DROPDOWN_MENUS.includes(key);
           const interactive = hasDropdown || key === 'help';
           const open = openMenu === key;
           return (
@@ -1616,15 +2026,41 @@ function Menubar({
               data-tour={key === 'help' ? 'help' : undefined}
               aria-haspopup={hasDropdown ? 'menu' : undefined}
               aria-expanded={hasDropdown ? open : undefined}
-              aria-disabled={interactive ? undefined : 'true'}
-              title={interactive ? '' : 'Coming in a later phase'}
               onClick={() => onMenuClick(key)}
+              // F4 — once any menu is open, hovering another trigger switches to
+              // it (base-ui menubar behavior). Only among dropdown menus.
+              onMouseEnter={() => {
+                if (openMenu !== null && hasDropdown) setOpenMenu(key);
+              }}
             >
               {name}
             </button>
           );
         })}
       </nav>
+      {openMenu === 'file' && (
+        <FileDropdown
+          onAction={(id) => {
+            if (id === 'new') onNewCanvas?.();
+            else if (id === 'export') onOpenExport?.('export');
+            else if (id === 'handoff') onOpenExport?.('handoff');
+            else if (id === 'reload') onReload?.();
+          }}
+          onClose={() => setOpenMenu(null)}
+        />
+      )}
+      {openMenu === 'edit' && (
+        <EditDropdown
+          onAction={(id) => {
+            if (id === 'undo') postToActiveCanvas({ dgn: 'undo' });
+            else if (id === 'redo') postToActiveCanvas({ dgn: 'redo' });
+            else if (id === 'deselect-all') postToActiveCanvas({ dgn: 'selection-clear' });
+            else if (id === 'select-all-annotations')
+              postToActiveCanvas({ dgn: 'annotation-select-all' });
+          }}
+          onClose={() => setOpenMenu(null)}
+        />
+      )}
       {openMenu === 'view' && (
         <ViewDropdown
           panels={panels}
@@ -1633,6 +2069,7 @@ function Menubar({
             else if (id === 'comments') onToggleComments();
             else if (id === 'hidden') onToggleShowHidden();
             else if (id === 'annotate') onToggleAnnotations();
+            else if (id === 'inspector') onToggleInspector();
           }}
           onClose={() => setOpenMenu(null)}
         />
@@ -1654,6 +2091,7 @@ function Menubar({
         />
       )}
       <div className="st-mb-right">
+        {presence ? <div className="st-presence">{presence}</div> : null}
         <button
           type="button"
           className="st-whatsnew"
@@ -1669,13 +2107,9 @@ function Menubar({
           {fileLabel}
         </span>
         <span className="st-mb-sep" />
-        <span className="st-mb-count" title="Open canvases">
+        <span className="st-mb-count" title="Artboards in the open canvas">
           <span className="st-dot" style={{ background: 'var(--accent)' }} />
-          {tabsCount} ARTBOARDS
-        </span>
-        <span className="st-mb-sep" />
-        <span className="st-mb-count st-mono" title="Pan/zoom in Phase 4">
-          ZOOM 100%
+          {artboardCount} ARTBOARDS
         </span>
         <span className="st-mb-sep" />
         <span className="st-mb-proj">{project || 'maude'}</span>
@@ -1700,7 +2134,7 @@ function Viewport({
         <div className="st-empty">
           <div className="st-empty-brand">
             <span className="st-brand-mark">
-              <StIcon name="sparkle" size={13} />
+              <svg viewBox="0 0 32 32" width="100%" height="100%" fill="none" aria-hidden="true"><path d="M16 5l2.8 8.2L27 16l-8.2 2.8L16 27l-2.8-8.2L5 16l8.2-2.8z" fill="currentColor" /></svg>
             </span>
             <span className="st-empty-wm">maude</span>
             <span className="st-empty-sub st-mono">
@@ -2016,25 +2450,6 @@ function Gallery({ title, items, onOpen, kind, cfg }) {
 
 // ---------- Comment composer / viewer ----------
 
-function CommentBar({ activePath, comments }) {
-  // Phase 6 — the shell-side composer + chip strip + focused-row chrome were
-  // removed. The iframe overlay (comments-overlay.tsx) owns composer + pin
-  // bubbles + thread popover. BottomBar shrinks to a live open-count summary
-  // so the shell still surfaces total review activity at a glance.
-  if (!activePath) return null;
-  const openComments = (comments || []).filter((c) => c.status !== 'resolved');
-  if (openComments.length === 0) return null;
-  return (
-    <div className="comment-bar">
-      <div className="cb-row strip">
-        <span className="cb-label">
-          {openComments.length} open comment{openComments.length === 1 ? '' : 's'}
-        </span>
-      </div>
-    </div>
-  );
-}
-
 function StatusBar({
   activePath,
   selected,
@@ -2057,6 +2472,40 @@ function StatusBar({
         ? selected.selector
         : '';
   const nextTheme = theme === 'dark' ? 'light' : 'dark';
+
+  // P5 (Plan C) — always-on hub-sync slot. `/_sync-status` returns one of three
+  // shapes: solo `{linked:false}` (hide), DDR-060 `{notSyncable,tsxCount,reason}`
+  // (linked but 0 syncable), or the connection-state machine `{state,queuedOps,
+  // flash,…}` (the common linked case the old notSyncable-only guard never
+  // showed — the "hub sync se neukazuje" bug). Map each to a label + dot tone.
+  const syncSlot = (() => {
+    if (!syncStatus || syncStatus.linked === false) return null;
+    if (syncStatus.notSyncable) {
+      return {
+        online: false,
+        label: `0 syncable${syncStatus.tsxCount > 0 ? ` · ${syncStatus.tsxCount} tsx` : ''}`,
+        title: syncStatus.reason || 'Linked to a hub, but no canvases are syncable.',
+      };
+    }
+    const q = syncStatus.queuedOps ?? 0;
+    const synced = syncStatus.state === 'online' || syncStatus.flash === 'synced';
+    if (synced) {
+      return {
+        online: true,
+        label: q > 0 ? `${q} ↑` : 'synced',
+        title: q > 0 ? `${q} edit(s) queued to push` : 'All changes synced to the hub',
+      };
+    }
+    return {
+      online: false,
+      label: `${q} ↑`,
+      title:
+        syncStatus.state === 'connecting'
+          ? 'Connecting to the hub…'
+          : 'Offline — edits queued, will sync when the hub reconnects',
+    };
+  })();
+
   return (
     <footer className="st-statusbar" role="contentinfo">
       <span className="st-sb-slot st-sb-active" role="group" aria-label="Active file">
@@ -2097,17 +2546,18 @@ function StatusBar({
         <span className="lbl">{wsConnected ? 'live' : 'reconnecting'}</span>
       </span>
 
-      {/* DDR-060 / 9.1-D — linked-to-hub-but-nothing-syncs state lives here in the
-          status bar (DS-styled, hover for detail) instead of a floating off-brand
-          pill. Only shown when the project is linked + has 0 syncable canvases. */}
-      {syncStatus?.notSyncable && (
+      {/* P5 (Plan C) — always-on hub-sync slot (was notSyncable-only per DDR-060
+          / 9.1-D). Now also surfaces the connection-state machine's queued/synced
+          counter for the common linked case. Solo projects render nothing. */}
+      {syncSlot && (
         <span className="st-sb-slot st-sb-sync" role="group" aria-label="Hub sync">
-          <span className="st-sb-sync-dot" aria-hidden="true" />
           <span
-            className="lbl"
-            title={syncStatus.reason || 'Linked to a hub, but no canvases are syncable.'}
-          >
-            0 syncable{syncStatus.tsxCount > 0 ? ` · ${syncStatus.tsxCount} tsx` : ''}
+            className={'st-sb-sync-dot' + (syncSlot.online ? ' is-online' : '')}
+            aria-hidden="true"
+          />
+          <span className="lbl">hub sync</span>
+          <span className="val" title={syncSlot.title}>
+            {syncSlot.label}
           </span>
         </span>
       )}
@@ -2291,6 +2741,10 @@ function CommentsPanel({
 // for 3s right after a reconnect. Driven entirely by the 'sync:status' payload
 // the dev-server's linked-mode sync runtime broadcasts.
 function SyncBanner({ status }) {
+  // Plan C follow-up — the banner overlapped the menubar and wasn't dismissable.
+  // Dismissal is keyed on the connection state, so a transition (reconnect flash,
+  // escalation to offline-long) re-surfaces it; a stable state stays hidden.
+  const [dismissedKey, setDismissedKey] = useState(null);
   if (!status || status.linked === false) return null;
   // DDR-060 / 9.1-D — the "linked but 0 syncable" state is surfaced in the
   // status bar (sb-sync slot), NOT as a floating banner. This component owns
@@ -2300,6 +2754,8 @@ function SyncBanner({ status }) {
   const showFlash = flash === 'synced';
   const offline = state === 'offline' || state === 'offline-long';
   if (!offline && !showFlash) return null;
+  const dismissKey = `${state}:${showFlash ? 'flash' : 'offline'}`;
+  if (dismissedKey === dismissKey) return null;
 
   let variant;
   let text;
@@ -2323,7 +2779,151 @@ function SyncBanner({ status }) {
         {text}
         {conflictNote}
       </span>
+      <button
+        type="button"
+        className="st-banner-close"
+        aria-label="Dismiss"
+        title="Dismiss"
+        onClick={() => setDismissedKey(dismissKey)}
+      >
+        ×
+      </button>
     </div>
+  );
+}
+
+// ---------- Inspector panel (display-only) ----------
+//
+// T6 (Plan C) — right-dock Inspect / Layers / CSS tabs per `.design/ui/Studio.tsx`
+// InspectorPanel. DISPLAY-ONLY: reads the live `selected` payload from the
+// inspector bridge (`bounds`, `tag`, `classes`, `dom_path`, `html`). The
+// mockup's live-CSS-knob WRITEBACK is Phase 12 (needs a canvas-origin write
+// bridge, DDR-054) — the CSS tab shows markup read-only + keeps that callout, so
+// it never implies functionality it lacks (the exact reason DDR-096 deferred it).
+function InspectorPanel({ selected, onClose }) {
+  const [tab, setTab] = useState('inspect');
+  // `selected` may be a single element, an array (multi-select), or null.
+  const el = Array.isArray(selected) ? selected[0] : selected;
+  const tabBtn = (id, label, icon) => (
+    <button
+      type="button"
+      className={'st-rp-tab' + (tab === id ? ' is-active' : '')}
+      onClick={() => setTab(id)}
+    >
+      <StIcon name={icon} size={14} />
+      {label}
+    </button>
+  );
+  const b = el?.bounds || null;
+  return (
+    <aside className="st-rpanel" aria-label="Inspector">
+      <div className="st-rp-tabs">
+        {tabBtn('inspect', 'Inspect', 'sliders')}
+        {tabBtn('layers', 'Layers', 'layers')}
+        {tabBtn('css', 'CSS', 'code')}
+        <button
+          type="button"
+          className="st-iconbtn"
+          aria-label="Close inspector"
+          style={{ marginLeft: 'auto' }}
+          onClick={onClose}
+        >
+          <StIcon name="x" size={14} />
+        </button>
+      </div>
+      <div className="st-rp-body">
+        {!el ? (
+          <div className="st-rp-empty">
+            Hold <Kbd>⌘</Kbd> inside the canvas and click an element to inspect it.
+          </div>
+        ) : tab === 'inspect' ? (
+          <>
+            <div className="st-rp-hd">{el.selector || el.tag || 'element'}</div>
+            <div className="st-insp-row">
+              <span className="st-insp-label">Pos</span>
+              <div className="st-insp-fields">
+                <span className="st-field-lead">
+                  <span className="k">X</span>
+                  <input className="st-field" value={b ? Math.round(b.x) : '—'} readOnly />
+                </span>
+                <span className="st-field-lead">
+                  <span className="k">Y</span>
+                  <input className="st-field" value={b ? Math.round(b.y) : '—'} readOnly />
+                </span>
+              </div>
+            </div>
+            <div className="st-insp-row">
+              <span className="st-insp-label">Size</span>
+              <div className="st-insp-fields">
+                <span className="st-field-lead">
+                  <span className="k">W</span>
+                  <input className="st-field" value={b ? Math.round(b.w) : '—'} readOnly />
+                </span>
+                <span className="st-field-lead">
+                  <span className="k">H</span>
+                  <input className="st-field" value={b ? Math.round(b.h) : '—'} readOnly />
+                </span>
+              </div>
+            </div>
+            <div className="st-insp-row">
+              <span className="st-insp-label">Tag</span>
+              <div className="st-insp-fields">
+                <span className="st-mono" style={{ fontSize: 11, color: 'var(--fg-0)' }}>
+                  {el.tag || '—'}
+                </span>
+              </div>
+            </div>
+            {el.classes ? (
+              <div className="st-insp-row">
+                <span className="st-insp-label">Class</span>
+                <div className="st-insp-fields">
+                  <span className="st-mono" style={{ fontSize: 11, color: 'var(--fg-1)' }}>
+                    {el.classes}
+                  </span>
+                </div>
+              </div>
+            ) : null}
+            <div className="callout callout--info" style={{ fontSize: 12 }}>
+              Computed fill / radius / type readout lands with the live CSS bridge (Phase 12).
+            </div>
+          </>
+        ) : tab === 'layers' ? (
+          <>
+            <div className="st-rp-hd">Layers · ancestry</div>
+            {Array.isArray(el.dom_path) && el.dom_path.length ? (
+              el.dom_path.map((node, i) => (
+                <div
+                  key={i}
+                  className={'st-layer' + (i === el.dom_path.length - 1 ? ' is-sel' : '')}
+                  style={{ paddingLeft: 8 + i * 12 }}
+                >
+                  <StIcon name="square" size={13} />
+                  {node}
+                </div>
+              ))
+            ) : (
+              <div className="st-rp-empty">No ancestry path for this selection.</div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="st-rp-hd">Markup · {el.selector || el.tag}</div>
+            <div className="st-css">
+              <div>
+                <span className="comment">/* read-only — outerHTML snapshot */</span>
+              </div>
+              <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                {(el.html || '').slice(0, 600) || '(no markup captured)'}
+              </div>
+            </div>
+            <div className="callout callout--info" style={{ fontSize: 12 }}>
+              Phase 12 — knob edits will write back to the artboard live and stage a diff for
+              handoff. Today the inspector is read-only.
+            </div>
+          </>
+        )}
+      </div>
+    </aside>
   );
 }
 
@@ -2409,6 +3009,10 @@ function App() {
   const [sectionsExpanded, setSectionsExpanded] = useState(() => readJsonStore(SECTIONS_STORE, {}));
   const [helpOpen, setHelpOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // T5/T6 (Plan C) — shell-level export/handoff dialog + inspector panel state.
+  // The palette (T4) drives them; the dialog (T5) + panel (T6) consume them.
+  const [exportDialog, setExportDialog] = useState(null); // null | { mode: 'export'|'handoff', scope? }
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const whatsNew = useWhatsNew(MDCC_VERSION);
   const [tourSteps, setTourSteps] = useState(null);
   const [usageNudge, setUsageNudge] = useState(() => !readBoolStore(USAGE_TOUR_STORE, false));
@@ -2422,6 +3026,17 @@ function App() {
     } catch {}
   }, []);
   const [annotationsVisible, setAnnotationsVisible] = useState(true);
+  // P2/P3 (Plan C) — top-bar live state. (Zoom lives in the canvas toolbar pill,
+  // so the top bar no longer mirrors it.)
+  //   activeArtboards — real artboard count of the open canvas, read from its
+  //                   `<canvas>.meta.json` sidecar (shell-side, no iframe dep).
+  //   gitUser       — local user (name/initials) for the menubar presence avatar.
+  //   agentActive   — transient flag set on `ai-activity`, cleared after idle, so
+  //                   the menubar shows a live agent avatar while Claude edits.
+  const [activeArtboards, setActiveArtboards] = useState(0);
+  const [gitUser, setGitUser] = useState(null);
+  const [agentActive, setAgentActive] = useState(false);
+  const agentIdleRef = useRef(null);
   const wsRef = useRef(null);
   const iframesRef = useRef(new Map());
 
@@ -2451,6 +3066,45 @@ function App() {
       }
       return next;
     });
+  }, [activePath]);
+
+  // P3 (Plan C) — local git user for the menubar presence avatar. One-shot.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/_api/git-user')
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        const n = d && typeof d.name === 'string' ? d.name.trim() : '';
+        if (n) setGitUser(n);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // P2 (Plan C) — when the active canvas changes, read its real artboard count
+  // from the `<canvas>.meta.json` sidecar (shell-side, no iframe dep).
+  useEffect(() => {
+    if (!activePath || activePath === SYSTEM_TAB) {
+      setActiveArtboards(0);
+      return;
+    }
+    let cancelled = false;
+    fetch('/_api/canvas-meta?file=' + encodeURIComponent(activePath))
+      .then((r) => r.json())
+      .then((meta) => {
+        if (cancelled) return;
+        const n = Array.isArray(meta?.artboards) ? meta.artboards.length : 0;
+        setActiveArtboards(n);
+      })
+      .catch(() => {
+        if (!cancelled) setActiveArtboards(0);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [activePath]);
 
   // Sync theme to <html data-theme> + localStorage on every change.
@@ -2597,6 +3251,12 @@ function App() {
           } else if (m.type === 'comments' && typeof m.file === 'string') {
             setCommentsByFile((prev) => ({ ...prev, [m.file]: m.comments || [] }));
           } else if (m.type === 'ai-activity' && typeof m.file === 'string') {
+            // P3 (Plan C) — surface live agent activity as a menubar presence
+            // avatar. Set the flag and (re)arm an idle timer so the avatar
+            // fades once Claude stops editing.
+            setAgentActive(true);
+            if (agentIdleRef.current) clearTimeout(agentIdleRef.current);
+            agentIdleRef.current = setTimeout(() => setAgentActive(false), 8000);
             // Phase 8 Task 4 — relay to every open iframe; each canvas's
             // AiBanner filters by its own file path. Lightweight broadcast
             // (one envelope per change, not per iframe count).
@@ -2867,6 +3527,7 @@ function App() {
             payload: {
               file: p.file,
               selector: p.selector,
+              index: p.index,
               dom_path: p.dom_path,
               tag: p.tag,
               classes: p.classes,
@@ -2884,6 +3545,24 @@ function App() {
         setFocusedCommentId((prev) => (prev === m.id ? null : prev));
       } else if (m.dgn === 'comment-click' && m.id) {
         setFocusedCommentId(m.id);
+      } else if (m.dgn === 'artboards' && typeof m.count === 'number') {
+        // P2 (Plan C) — optional iframe-reported artboard count; overrides the
+        // meta.json-derived seed when the canvas knows better. Clamp.
+        const n = Math.round(m.count);
+        if (Number.isFinite(n) && n >= 0 && n <= 999) setActiveArtboards(n);
+      } else if (m.dgn === 'toggle-palette') {
+        // ⌘K pressed while focus was inside the canvas iframe — the injected
+        // inspector forwards the chord here since the iframe's keydown never
+        // reaches the shell's window listener. Mirror that handler's toggle.
+        setPaletteOpen((v) => !v);
+      } else if (m.dgn === 'open-export') {
+        // Plan C — the in-canvas toolbar / context menu route here so they open
+        // the SAME shell Export dialog as the menubar (one look, all settings).
+        // Carry the context-menu's scope hint (e.g. "Export selection").
+        setExportDialog({
+          mode: 'export',
+          scope: m.detail && typeof m.detail.scope === 'string' ? m.detail.scope : undefined,
+        });
       } else if (m.dgn === 'loaded' && m.file) {
         // iframe finished loading — push current comments + carry over focused pin if any
         const list = commentsByFile[m.file] || [];
@@ -3127,6 +3806,12 @@ function App() {
         }
         return;
       }
+      // I — toggle Inspector panel (T6, Plan C)
+      if ((e.key === 'i' || e.key === 'I') && !meta && !e.shiftKey) {
+        e.preventDefault();
+        setInspectorOpen((v) => !v);
+        return;
+      }
       // ? or F1 — open Help modal
       if (e.key === '?' || e.key === 'F1') {
         e.preventDefault();
@@ -3159,8 +3844,6 @@ function App() {
     if (el) iframesRef.current.set(path, el);
   }, []);
 
-  const activeFileComments =
-    activePath && activePath !== SYSTEM_TAB ? commentsByFile[activePath] || [] : [];
   const totalOpen = totalCounts(commentsByFile).open;
 
   // Suppress the native browser context menu across the shell — the canvas
@@ -3178,10 +3861,46 @@ function App() {
   }, []);
 
   // ⌘K palette actions — shell-doable only (in-canvas export lives in the iframe).
+  // T4 (Plan C) — grouped command set per `.design/ui/Studio.tsx` AB-D.
+  // `group` drives the section headers; the list stays a flat array so keyboard
+  // nav indexes straight across groups.
   const paletteActions = useMemo(
     () => [
+      // ── Canvas ──────────────────────────────────────────────────────────
+      {
+        id: 'new',
+        group: 'Canvas',
+        label: 'New canvas…',
+        icon: 'plus',
+        kbd: '⌘N',
+        run: () => {
+          setSidebarOpen(true);
+          setTimeout(
+            () => document.querySelector('[aria-label="New blank brief board"]')?.click(),
+            60
+          );
+        },
+      },
+      {
+        id: 'export',
+        group: 'Canvas',
+        label: 'Export…',
+        icon: 'download',
+        kbd: '⇧⌘E',
+        run: () => setExportDialog({ mode: 'export' }),
+      },
+      {
+        id: 'handoff',
+        group: 'Canvas',
+        label: 'Handoff to production',
+        icon: 'share',
+        kbd: '⇧⌘H',
+        run: () => setExportDialog({ mode: 'handoff' }),
+      },
+      // ── View ────────────────────────────────────────────────────────────
       {
         id: 'system',
+        group: 'View',
         label: 'Open design system view',
         icon: 'sliders',
         kbd: 'S',
@@ -3189,32 +3908,60 @@ function App() {
       },
       {
         id: 'comments',
+        group: 'View',
         label: 'Toggle comments panel',
         icon: 'resolve',
         kbd: '⌘⇧M',
         run: () => setCommentsPanelOpen((v) => !v),
       },
       {
-        id: 'theme',
-        label: 'Toggle light / dark theme',
-        icon: 'sun',
-        run: () => toggleTheme(),
+        id: 'inspector',
+        group: 'View',
+        label: 'Open inspector',
+        icon: 'sliders',
+        kbd: 'I',
+        run: () => setInspectorOpen(true),
       },
       {
         id: 'reload',
+        group: 'View',
         label: 'Reload active canvas',
         icon: 'reload',
         kbd: '⌘R',
         run: () => reloadActive(),
       },
+      // ── Tools ───────────────────────────────────────────────────────────
+      {
+        id: 'draw',
+        group: 'Tools',
+        label: 'Draw a mark with the SVG agent',
+        icon: 'pen',
+        run: () => {
+          // The shell can't invoke Claude — surface the command for the user to
+          // paste into Claude Code (clipboard is the honest, useful affordance).
+          try {
+            navigator.clipboard?.writeText('/design:draw ');
+          } catch {}
+        },
+      },
+      {
+        id: 'theme',
+        group: 'Tools',
+        label: 'Toggle light / dark theme',
+        icon: 'sun',
+        run: () => toggleTheme(),
+      },
+      // ── Help ────────────────────────────────────────────────────────────
       {
         id: 'whatsnew',
+        group: 'Help',
         label: "What's new in maude",
         icon: 'sparkle',
         run: () => whatsNew.openPanel(),
       },
       {
         id: 'help',
+        group: 'Help',
         label: 'Help · shortcuts & commands',
         icon: 'help',
         kbd: '?',
@@ -3268,6 +4015,30 @@ function App() {
           postToActiveCanvas={postToActiveCanvas}
           onOpenWhatsNew={whatsNew.openPanel}
           whatsNewCount={whatsNew.unseen.length}
+          artboardCount={activeArtboards}
+          inspectorOpen={inspectorOpen}
+          onToggleInspector={() => setInspectorOpen((v) => !v)}
+          onNewCanvas={() => {
+            setSidebarOpen(true);
+            setTimeout(
+              () => document.querySelector('[aria-label="New blank brief board"]')?.click(),
+              60
+            );
+          }}
+          onOpenExport={(mode) => setExportDialog({ mode })}
+          onReload={reloadActive}
+          presence={
+            <>
+              <StAvatar
+                initials={initialsOf(gitUser || 'you')}
+                hue="var(--accent)"
+                title={gitUser ? `${gitUser} (you)` : 'You'}
+              />
+              {agentActive && (
+                <StAvatar initials="C" hue="var(--presence-agent)" title="Claude · editing" />
+              )}
+            </>
+          }
         />
         <div className="st-body">
           <CollapsedRail
@@ -3307,11 +4078,12 @@ function App() {
               project={project}
               cfg={cfg}
             />
-            {activePath && activePath !== SYSTEM_TAB && (
-              <CommentBar activePath={activePath} comments={activeFileComments} />
-            )}
           </div>
-          {commentsPanelOpen && (
+          {/* Right dock — one panel at a time. Inspector takes precedence when
+              open (T6); else the comments panel. */}
+          {inspectorOpen ? (
+            <InspectorPanel selected={selected} onClose={() => setInspectorOpen(false)} />
+          ) : commentsPanelOpen ? (
             <CommentsPanel
               commentsByFile={commentsByFile}
               filter={commentsFilter}
@@ -3323,7 +4095,7 @@ function App() {
               onReopen={reopenComment}
               onDelete={deleteComment}
             />
-          )}
+          ) : null}
         </div>
         <StatusBar
           activePath={activePath}
@@ -3341,6 +4113,14 @@ function App() {
         onClose={() => setPaletteOpen(false)}
         actions={paletteActions}
       />
+      {exportDialog && (
+        <ExportDialog
+          mode={exportDialog.mode}
+          initialScope={exportDialog.scope}
+          activePath={activePath}
+          onClose={() => setExportDialog(null)}
+        />
+      )}
       <HelpModal
         open={helpOpen}
         onClose={() => setHelpOpen(false)}

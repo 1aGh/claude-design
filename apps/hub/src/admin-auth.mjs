@@ -67,6 +67,19 @@ export function generateAdminSecret() {
 }
 
 /**
+ * Danger-zone kill switch: rotate the persisted admin secret. Every device
+ * holding the OLD secret in localStorage 401s on its next request and is forced
+ * to re-authenticate (re-bootstrap or HUB_SECRET). Returns nothing — the new
+ * value is deliberately NOT surfaced to the caller (the operator re-claims via
+ * a fresh bootstrap link or the env secret; we never echo a live admin secret
+ * back through the API). HUB_SECRET (env) is independent and still works.
+ */
+export function rotateAdminSecret(dataDir) {
+  const next = generateAdminSecret();
+  writeAdminSecret(dataDir, next);
+}
+
+/**
  * Verify the incoming request against (a) the HUB_SECRET env override and
  * (b) the persisted admin.json secret. Either succeeds.
  *
