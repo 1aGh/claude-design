@@ -1,5 +1,50 @@
 # @1agh/maude
 
+## 0.29.0
+
+### Minor Changes
+
+- fdc340b: Draw animation layer — keyframe IR + Lottie-from-code handoff (DDR-094)
+
+  Extends the static draw engine (DDR-070) to **time**: a cross-platform keyframe IR is the animation source, authored natively in maude and shipped as one Lottie for web + mobile.
+
+  - **Animate a draw mark** — `/design:draw` now handles motion briefs (morph / pulse / blink). A keyframe `Timeline` of property tracks (`draw/animate.ts`) drives the mark; shape morphs come from a deterministic `morphVariants()` producer (fixed vertex count — the cross-renderer interpolability rule), never hand-typed `values=` or CSS `d:path()`. One IR emits both an animated SVG (SMIL) and an animated JSX preview from the same node tree (`toAnimatedSvg`/`toAnimatedJsx`) — the DDR-067 single-source invariant, generalized to time.
+  - **Live-motion proof** — `maude design draw-proof --motion` samples the animated element at two wall-clock times and requires an over-time delta. A freeze-frame can't prove animation (the dead-`d:path()` trap), so a still-pass + over-time-no-change is a HARD fail.
+  - **`/design:to-lottie`** (+ `maude design to-lottie`) — productionize an animation into **one `.lottie` from code** that renders 1:1 on web (`lottie-web`/`dotlottie-react`) AND mobile (`lottie-react-native`). It's an emitter from the keyframe data (there's no reliable rendered-SVG→Lottie converter), self-verified through headless lottie-web. Encodes the 8 conversion rules (per-segment easing with overshoot, arc parsing, layer ordering, masks, gradient opacity stops, …).
+  - **`/design:to-rn`** — native `react-native-svg` + Reanimated fallback for **light** animation only (continuous rich morph hits rn-svg's perf ceiling; `feTurbulence` has no native impl — use `/design:to-lottie` for those).
+  - **Reference-adapt license gate** — `/design:draw --reference <url>` adapts an external asset only after a license is fetched and the user picks adapt / inspiration-only; provenance is recorded.
+  - **Screenshot port-bounce resilience** — `screenshot.sh` re-reads the live port from `_server.json` and retries once on `ERR_CONNECTION_REFUSED` (dev-server respawned on a new port).
+
+  Reduced motion is host-gated for SMIL/Lottie (the format can't carry it); colors are baked into a Lottie with a runtime override. See DDR-094 + `_draw-motion-rules.md`.
+
+- a647e0a: In-app "What's New" + guided tour for the Maude UI
+
+  - **What's New, in the canvas browser** — a `✦ New` badge in the menubar, a first-run toast, and a reopenable panel surface user-facing updates the moment your installed maude version ships them. Backed by a single source-of-truth feed (`apps/studio/whats-new.json`, served at `GET /_api/whats-new`) that describes Maude's own product updates, resolved from the maude package root (not the served project) and main-origin only. The client compares the installed version against a `localStorage` marker to decide what's unseen. See DDR-086.
+  - **Guided tour** — a hand-rolled, zero-dependency overlay (spotlight cutout + accessible dialog with focus-trap, `Esc`/`←`/`→`, `prefers-reduced-motion`) powers both a per-feature spotlight launched from a What's New entry and an evergreen "how Maude works" walkthrough offered once on first run and replayable from Help. See DDR-087.
+  - **`/whats-new` on the docs site** — the same feed is mirrored to a committed `site/lib/whats-new.json` (Vercel-safe) and rendered as a release-notes page.
+  - **Mechanism** — closing a user-visible feature with `/flow:done` offers to append a feed entry via the repo-internal `whats-new-entry` skill (generic, opt-in `integrations.whatsNew` gate; no Maude paths in the flow plugin). Entries are written pending and stamped with the shipped version + date at release (`scripts/bump-version.sh`).
+  - `learnMore` URLs are constrained to `http(s)` at the schema + both render sites, and the feed is validated at site-build time (defense-in-depth).
+
+- e450c42: Annotation brief-boards + create-from-browser (Phase 22)
+
+  - **Brief boards** — `/design:new --blank "<name>"` creates an annotation-only canvas (`kind: "brief-board"`, zero model cost). Annotate it with sticky notes / text / arrows, then run `/design:new` again to have Claude read the notes **verbatim** and insert matching artboards into the same canvas (ingest mode). Escape hatches: `--from-annotations` / `--fresh`; identical-annotations re-ingest short-circuits.
+  - **Create + delete canvases from the browser** — a "+ board" control in the dev-server file-tree header (`POST /_api/canvas`, main-origin-only per DDR-054) stamps out a brief board without a slash command and opens it active; a hover trash button on each canvas row soft-deletes it (`DELETE /_api/canvas`) — the whole sidecar set moves to `.design/_trash/` (recoverable), with a confirm prompt and active-tab reset. Both endpoints are gated by path-containment + a non-DS canvas-group allowlist; the design system + config files can't be deleted.
+  - **`maude design read-annotations`** — a zero-dep headless reader that turns a canvas's `<slug>.annotations.svg` into structured JSON (the ingest brief source).
+  - Canvas `.meta.json` gains an additive `kind` field (default `"canvas"`). See DDR-085. Ingest treats annotation text as untrusted, data-framed content (indirect-prompt-injection mitigation).
+
+- e478743: Canvas media: drop images + paste link chips (Phase 23)
+
+  - **Drop or paste images onto the canvas** — drag a `.png`/`.jpg`/`.gif`/`.webp` from Finder, or `Cmd+V` a clipboard image, straight onto the canvas. It uploads to `<designRoot>/assets/<sha8>.<ext>` and renders as a movable / resizable annotation stroke that persists in the canvas's `.annotations.svg`.
+  - **Paste a link → a tidy preview chip** — drop or paste a URL and it renders as a client-only card (link glyph + domain + title), no server fetch and no external favicon (the dev-server stays zero-egress). Click-to-open from the selection toolbar. You don't need to type `https://` — a bare `example.com` is normalized; `javascript:`/`data:` are rejected.
+  - Media intake is **paste/drop-only** (no toolbar buttons). Image + link are new annotation strokes — they move, resize, and undo with the existing machinery.
+  - **Security (DDR-088):** a new `POST /_api/asset` binary write reachable from the canvas origin is gated by magic-byte sniffing (SVG rejected), a 10 MB per-file cap, content-addressed names, a traversal guard, a per-session write budget, and `maxRequestBodySize`. The annotation-SVG sanitizer now allows an `<image>` href but ONLY a relative `assets/<sha8>.<ext>` path — every external / `data:` / `javascript:` / `..` href is still stripped.
+
+### Patch Changes
+
+- 77ad2ca: Add `maude studio` — a top-level alias for `maude design serve`
+
+  `maude studio [--port N] [--root <path>]` now boots the canvas studio (the design dev server), matching the runtime's new home under `apps/studio/`. `maude design serve` keeps working unchanged. Internally, the dev-server and collab hub moved out of `plugins/design/` to top-level `apps/studio/` + `apps/hub/` (DDR-095) — a pure relocation with no behavior change; `maude design serve` and every `maude design <verb>` behave identically.
+
 ## 0.28.1
 
 ### Patch Changes
