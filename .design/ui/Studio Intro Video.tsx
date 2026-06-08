@@ -150,45 +150,43 @@ function FrameSetupDs() {
 }
 
 function FrameMoodboard() {
+  // Faithful to .design/_moodboard/* — a real "1am pinboard": scattered rotated
+  // cards (type specimen, swatch strip, mood thumbs, a paper note, an accent
+  // callout, a pin).
   return (
-    <div className="sb-fr sb-fr--mood">
-      <div className="sb-mood-grid">
-        <span className="sb-mood-tile" style={{ background: "var(--bg-3)" }} />
-        <span className="sb-mood-tile sb-mood-tile--accent" />
-        <span className="sb-mood-tile" style={{ background: "var(--bg-4)" }} />
-        <span className="sb-mood-tile" style={{ background: "var(--fg-2)" }} />
+    <div className="sb-fr sb-fr--pin">
+      <div className="sb-pin-card" style={{ left: "6%", top: "12%", width: "34%", transform: "rotate(-2deg)" }}>
+        <div className="sb-pin-aa">Aa Gg</div>
+        <div className="sb-pin-row"><span style={{ background: "oklch(0.68 0.18 268)" }} /><span style={{ background: "oklch(0.62 0.20 28)" }} /><span style={{ background: "oklch(0.72 0.15 160)" }} /><span style={{ background: "var(--fg-0)" }} /></div>
       </div>
-      <div className="sb-mood-side">
-        <div className="sb-spec-cap">REFERENCE POOL</div>
-        <div className="sb-mood-ramp">
-          <span style={{ background: "oklch(0.68 0.18 268)" }} /><span style={{ background: "oklch(0.62 0.20 28)" }} />
-          <span style={{ background: "oklch(0.72 0.15 160)" }} /><span style={{ background: "oklch(0.78 0.14 85)" }} />
-        </div>
-        <div className="sb-spec-chip">display / mono</div>
-        <div className="sb-spec-chip">dense · calm</div>
+      <div className="sb-pin-card sb-pin-card--img" style={{ left: "46%", top: "8%", width: "24%", height: "34%", transform: "rotate(2deg)", background: "var(--bg-3)" }} />
+      <div className="sb-pin-card" style={{ left: "72%", top: "14%", width: "22%", transform: "rotate(-3deg)", background: "var(--accent)", color: "var(--accent-fg)" }}>
+        <div className="sb-pin-note">one accent · hue 268</div>
       </div>
+      <div className="sb-pin-card sb-pin-card--img" style={{ left: "10%", top: "54%", width: "26%", height: "32%", transform: "rotate(1.5deg)", background: "var(--bg-4)" }} />
+      <div className="sb-pin-card" style={{ left: "42%", top: "52%", width: "30%", transform: "rotate(-1deg)" }}>
+        <div className="sb-pin-note" style={{ color: "var(--fg-1)" }}>“design → production, one canvas”</div>
+      </div>
+      <span className="sb-pin-dot" style={{ left: "70%", top: "56%" }} />
+      <span className="sb-pin-stamp">pro studio.</span>
     </div>
   );
 }
 
 function FrameDsReveal() {
+  // Faithful to the real DS specimen (colors-accent "Accent. One indigo.") —
+  // editorial: a headline + oklch line + accent family + a button-in-context.
   return (
-    <div className="sb-fr sb-fr--spec">
-      <div className="sb-spec-col">
-        <div className="sb-spec-cap">TYPE SCALE</div>
-        <div className="sb-spec-aa" style={{ fontSize: 26 }}>Aa</div>
-        <div className="sb-spec-aa" style={{ fontSize: 18 }}>Aa</div>
-        <div className="sb-spec-aa" style={{ fontSize: 13 }}>Aa</div>
+    <div className="sb-fr sb-fr--edi">
+      <div className="sb-edi-h">Accent. <span style={{ color: "var(--accent)" }}>One indigo.</span></div>
+      <div className="sb-edi-oklch">accent · oklch(0.68 0.18 268) · 6.4:1 on bg-0</div>
+      <div className="sb-edi-fam">
+        <span style={{ background: "var(--accent)" }} /><span style={{ background: "var(--accent-hover)" }} /><span style={{ background: "var(--accent-muted)" }} /><span style={{ background: "var(--accent-tint)" }} />
       </div>
-      <div className="sb-spec-col">
-        <div className="sb-spec-cap">PALETTE</div>
-        <div className="sb-spec-ramp">
-          <span style={{ background: "var(--bg-2)" }} /><span style={{ background: "var(--bg-4)" }} />
-          <span style={{ background: "var(--fg-2)" }} /><span style={{ background: "var(--fg-0)" }} />
-          <span style={{ background: "var(--accent)" }} />
-        </div>
-        <div className="sb-spec-chip">accent · oklch .68 .18 268</div>
-        <div className="sb-spec-chip">mono · part-numbers</div>
+      <div className="sb-edi-ctx">
+        <span className="sb-edi-btn">Primary</span>
+        <span className="sb-edi-ghost">Ghost</span>
+        <span className="sb-edi-cap">one job, never decoration</span>
       </div>
     </div>
   );
@@ -321,25 +319,30 @@ function FrameEndCard() {
 
 /* ───────────────────────────── scene table ───────────────────────────── */
 type Role = "hook" | "proof" | "payoff" | "closer";
-type Scene = { id: string; role: Role; dur: string; title: string; sig: string; cap: string; intent: string; Frame: () => React.ReactElement };
+type Src = "real" | "faithful" | "illustrate";
+type Scene = { id: string; role: Role; src: Src; dur: string; title: string; sig: string; cap: string; ref: string; Frame: () => React.ReactElement };
 
+// v4.1 — reality-grounded rebuild. `src`: real = composited real capture ·
+// faithful = hi-fi recreation matched to a real capture · illustrate = stylised.
+// `ref` = the real maude output each scene is grounded in.
 const SCENES: Scene[] = [
-  { id: "00", role: "hook", dur: "≈3s", title: "Cold open", sig: "One caret pulsing on an empty dotted void — zero chrome", cap: "“You start with nothing. A dotted canvas and an idea.”", intent: "Wordmark legible · single cursor · no UI at all", Frame: FrameColdOpen },
-  { id: "05", role: "hook", dur: "≈5s", title: "Install", sig: "Raw terminal, monospace typing, no window chrome", cap: "“Two plugins, one CLI.”", intent: "`bun add -g` + `maude init` · zero red error text", Frame: FrameInstall },
-  { id: "10", role: "proof", dur: "≈6s", title: "Onboarding", sig: "Claude TUI questionary — a prose question, not a form", cap: "“Onboarding is a slash command.”", intent: "TUI visible · `/design:setup-ds` typed · Stage-1 prose prompt", Frame: FrameSetupDs },
-  { id: "12", role: "proof", dur: "≈5s", title: "Moodboard", sig: "Reference pool — mood clusters + OKLCH options + type pairings drift in", cap: "“Research first — a moodboard, not a guess.”", intent: "Mood tiles + colour options + a type pairing visible", Frame: FrameMoodboard },
-  { id: "15", role: "proof", dur: "≈6s", title: "DS reveal", sig: "Spec-sheet grid — type ladder + colour ramp side by side", cap: "“A design system from a paragraph.”", intent: "At least one specimen clearly readable", Frame: FrameDsReveal },
-  { id: "20", role: "proof", dur: "≈10s", title: "/design:new", sig: "Split-screen — TUI streams left, canvas fills live right", cap: "“One slash. Real canvas, real code.”", intent: "Left TUI streaming · right canvas appearing live · presence cursor", Frame: FrameNewSplit },
-  { id: "25", role: "proof", dur: "≈7s", title: "Critics", sig: "Verdict score card resolving + auto-fix loop ticking", cap: "“Critics score it. Then it fixes itself.”", intent: "Score numbers + auto-fix tick visible", Frame: FrameCritics },
-  { id: "30", role: "proof", dur: "≈6s", title: "Canvas reveal", sig: "Wide pan across multi-artboard, edges bleeding off-frame", cap: "“Multi-artboard. Pan, zoom, ship.”", intent: "3+ artboards visible mid-pan · grab affordance", Frame: FrameCanvasPan },
-  { id: "35", role: "proof", dur: "≈6s", title: "Cmd+Click", sig: "Inspector halo + ⌘ cursor + the exact file-path chip", cap: "“Cmd+Click. The exact file Claude needs.”", intent: "Halo on a distinct element · path chip readable", Frame: FrameInspector },
-  { id: "40", role: "proof", dur: "≈9s", title: "/design:edit", sig: "Split-screen — edit diff left, same canvas reloads right", cap: "“Edit. Reload. Same canvas.”", intent: "Left edit diff · right edit applied in place", Frame: FrameEditSplit },
-  { id: "45", role: "proof", dur: "≈7s", title: "Comments + annotations", sig: "Numbered pin anchored to a pixel + a hand-drawn pen arrow & label", cap: "“Comment on pixels. Draw on them. No exports.”", intent: "A pin + a drawn annotation (arrow + label) visible on the canvas", Frame: FrameComments },
-  { id: "50", role: "payoff", dur: "≈6s", title: "Handoff", sig: "Export tiles fan out — shadcn / PNG / code → repo", cap: "“Then hand off — straight into the repo.”", intent: "shadcn + code tiles legible · arrow to repo", Frame: FrameHandoff },
-  { id: "55", role: "closer", dur: "≈4s", title: "End card", sig: "Brand lockup + install line, loop-safe back to the void", cap: "“Your repo. Yours forever.”", intent: "`npm i -g @1agh/maude` legible", Frame: FrameEndCard },
+  { id: "00", role: "hook", src: "faithful", dur: "≈3s", title: "Cold open", sig: "Caret pulses alone on the empty dotted void → wordmark types in", cap: "“you start with nothing — a dotted canvas and an idea.”", ref: "maude wordmark + dotted canvas", Frame: FrameColdOpen },
+  { id: "05", role: "hook", src: "real", dur: "≈6s", title: "Install", sig: "REAL terminal capture (asciinema) in a cinematic window + push-in", cap: "“two plugins, one CLI.”", ref: "real `maude --version` / `init --dry-run` / `design help`", Frame: FrameInstall },
+  { id: "10", role: "proof", src: "faithful", dur: "≈6s", title: "Onboarding", sig: "Claude TUI questionary — a prose question, not a form", cap: "“onboarding is a slash command.”", ref: "real `/design:setup-ds` Stage-1 flow", Frame: FrameSetupDs },
+  { id: "12", role: "proof", src: "faithful", dur: "≈6s", title: "Moodboard", sig: "A real 1am pinboard assembles — type specimen, swatches, mood + reference cards, annotations", cap: "“research first — a real moodboard.”", ref: ".design/_moodboard/maude-v2-variant-B", Frame: FrameMoodboard },
+  { id: "15", role: "proof", src: "faithful", dur: "≈6s", title: "DS reveal", sig: "The editorial specimen — “Accent. One indigo.” headline + oklch + family + in-context", cap: "“a design system from a paragraph.”", ref: "real specimen system/maude/preview/colors-accent", Frame: FrameDsReveal },
+  { id: "20", role: "proof", src: "faithful", dur: "≈10s", title: "/design:new", sig: "Real Studio chrome — FILES tree + dotted canvas fills live as the TUI streams", cap: "“one slash. real canvas, real code.”", ref: "real Studio.tsx + canvas fill", Frame: FrameNewSplit },
+  { id: "25", role: "proof", src: "illustrate", dur: "≈7s", title: "Critics", sig: "Verdict score card resolves + auto-fix loop ticks (illustrated)", cap: "“critics score it. then it fixes itself.”", ref: "illustrated — critic PANEL.md shape", Frame: FrameCritics },
+  { id: "30", role: "proof", src: "faithful", dur: "≈6s", title: "Canvas reveal", sig: "Camera pans the real infinite canvas — artboards bleed off-frame, WORLD minimap", cap: "“multi-artboard. pan, zoom, ship.”", ref: "real Canvas Viewport.tsx", Frame: FrameCanvasPan },
+  { id: "35", role: "proof", src: "faithful", dur: "≈6s", title: "Cmd+Click", sig: "Real inspector — halo on an element + ⌘ cursor + the exact file-path chip", cap: "“cmd+click. the exact file Claude needs.”", ref: "real Studio inspector panel", Frame: FrameInspector },
+  { id: "40", role: "proof", src: "faithful", dur: "≈9s", title: "/design:edit", sig: "Edit diff in the TUI, the same real canvas reloads in place", cap: "“edit. reload. same canvas.”", ref: "real Studio canvas + edit diff", Frame: FrameEditSplit },
+  { id: "45", role: "proof", src: "faithful", dur: "≈7s", title: "Comments + annotations", sig: "Real Studio comment pin + thread + a hand-drawn pen annotation", cap: "“comment on pixels. draw on them. no exports.”", ref: "real Studio comment pin/thread", Frame: FrameComments },
+  { id: "50", role: "payoff", src: "faithful", dur: "≈6s", title: "Handoff", sig: "Export tiles fan out — shadcn / PNG / code → into the repo", cap: "“then hand off — straight into the repo.”", ref: "real export dialog formats", Frame: FrameHandoff },
+  { id: "55", role: "closer", src: "faithful", dur: "≈4s", title: "End card", sig: "Real brand lockup + install line, loop-safe back to the void", cap: "“your repo. yours forever.”", ref: "real logo.tsx mark", Frame: FrameEndCard },
 ];
 
 const ROLE_LABEL: Record<Role, string> = { hook: "HOOK", proof: "PROOF", payoff: "PAYOFF", closer: "CLOSER" };
+const SRC_LABEL: Record<Src, string> = { real: "● REAL CAPTURE", faithful: "◆ FAITHFUL", illustrate: "○ ILLUSTRATED" };
 
 function SceneTile({ s }: { s: Scene }) {
   const { Frame } = s;
@@ -352,10 +355,13 @@ function SceneTile({ s }: { s: Scene }) {
         <span className="sb-tile-dur">{s.dur}</span>
       </div>
       <div className="sb-tile-meta">
-        <div className="sb-tile-title">{s.title}</div>
+        <div className="sb-tile-titlerow">
+          <span className="sb-tile-title">{s.title}</span>
+          <span className={"sb-tile-src sb-src--" + s.src}>{SRC_LABEL[s.src]}</span>
+        </div>
         <div className="sb-tile-sig"><span className="sb-tile-sig-key">◆ signature</span> {s.sig}</div>
         <div className="sb-tile-cap">{s.cap}</div>
-        <div className="sb-tile-intent"><span className="sb-tile-intent-key">intent</span> {s.intent}</div>
+        <div className="sb-tile-intent"><span className="sb-tile-intent-key">grounded in</span> {s.ref}</div>
       </div>
     </article>
   );
@@ -367,9 +373,9 @@ function BriefCard() {
   return (
     <div className="sd-shell">
       <div className="sd-stage sb-brief sd-canvas">
-        <div className="sb-brief-eyebrow"><BrandMark /> <span>MAUDE / INTRO FILM</span> <span className="sb-brief-ver">v4 · storyboard</span></div>
+        <div className="sb-brief-eyebrow"><BrandMark /> <span>MAUDE / INTRO FILM</span> <span className="sb-brief-ver">v4.1 · reality-grounded</span></div>
         <h1 className="sb-brief-h1">See Maude <span className="sd-accent">think</span> — the whole loop, in one take.</h1>
-        <p className="sb-brief-lede">A rebuild from zero. The narrative is the real loop end-to-end; the “wow” comes from execution — every scene earns its own signature moment, and the pacing is uneven on purpose. No documentation-walkthrough feel.</p>
+        <p className="sb-brief-lede">Reality-grounded rebuild. The first cut read corporate because the scenes were mocks. Now every scene is grounded in a REAL maude output — captured via terminal + agent-browser — then animated. Each scene's <span className="sb-mono">source</span> chip says how: real capture · faithful recreation · illustrated.</p>
 
         <div className="sb-brief-grid">
           <div className="sb-brief-card">
@@ -391,8 +397,8 @@ function BriefCard() {
         </div>
 
         <div className="sb-brief-rules">
-          <div className="sb-brief-rule sb-brief-rule--do"><span className="sb-brief-rule-k">EVERY SCENE</span> a different signature treatment — no repeating motif across the cut.</div>
-          <div className="sb-brief-rule sb-brief-rule--no"><span className="sb-brief-rule-k">HARD-NO</span> benefit-card grids · captions-with-captions feel · uniform pacing · school-project even cuts.</div>
+          <div className="sb-brief-rule sb-brief-rule--do"><span className="sb-brief-rule-k">GROUNDED IN REAL</span> every scene traces to a real maude output (terminal / Studio / specimen / moodboard / canvas) — captured, then animated. No fabricated mocks.</div>
+          <div className="sb-brief-rule sb-brief-rule--no"><span className="sb-brief-rule-k">HARD-NO</span> invented UI · corporate-deck pacing · uniform 5s blocks · documentation-walkthrough feel.</div>
         </div>
 
         <div className="sb-brief-strip">
@@ -411,9 +417,9 @@ function Storyboard() {
       <div className="sd-stage sd-canvas">
         <div className="sd-info-hd">
           <div className="sd-info-brand"><BrandMark /><span className="sd-wordmark">maude</span><span className="sd-brand-sku">intro</span></div>
-          <span className="sd-info-badge">v4 · 13 scenes</span>
-          <span className="sd-info-title">Full storyboard</span>
-          <span className="sd-info-sub">The whole real loop, scene by scene — each frame is the shot, the signature, the caption, and what the viewer must see.</span>
+          <span className="sd-info-badge">v4.1 · 13 scenes · reality-grounded</span>
+          <span className="sd-info-title">Storyboard — scene order</span>
+          <span className="sd-info-sub">Read left→right, top→bottom = the cut. Each tile: the shot + signature + caption + the real maude output it's grounded in + how (real / faithful / illustrated).</span>
         </div>
 
         <div className="sb-grid">
@@ -427,7 +433,7 @@ function Storyboard() {
           <span className="sb-foot-item">≤16MB post-loudnorm</span>
           <span className="sb-foot-item">loop-safe end card</span>
           <span className="sb-foot-spacer" />
-          <span className="sb-foot-note">Phase A artifact — per-scene Remotion authoring (Phase B) starts only after sign-off.</span>
+          <span className="sb-foot-note">v4.1 rebuild map · scene 05 already rebuilt with real footage · rest faithful-rebuild next.</span>
         </div>
       </div>
     </div>
