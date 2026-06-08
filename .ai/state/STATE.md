@@ -1274,3 +1274,12 @@ Manual smoke deferred: end-to-end `/design:setup-ds → new → edit` in scratch
 - `.ai/decisions/DDR-016-runtime-folder-purpose.md`
 - `plugins/design/dev-server/package.json` — full rewrite (was 12-line stub)
 - `package.json` — root `engines.bun: ">=1.3"` added
+
+## Execution Progress — Phase 16 intro video v4 (storyboard-first) — in-progress 2026-06-08
+
+User redirected the v4 plan's start: instead of Phase A markdown (`_references.md`/`_brief.md`/`_storyboard.md`), build the **full storyboard as a visual canvas** in `.design/ui/Studio Intro Video.tsx` first, as the concrete Phase-A.5 sign-off artifact.
+
+- [x] **Creative direction captured** (AskUserQuestion, 4 axes): narrative = **full real loop (v2.1 spine, ~12 scenes)**; length = **rhythm decides** (≈75s draft); voice = **voice-aligned captions**; look = **maude dark-studio product chrome**. Read: keep the narrative, win on execution (per-scene distinct signature + uneven pacing), not on reinventing the story.
+- [x] **Full storyboard canvas authored** — `Studio Intro Video.tsx` rebuilt v3→v4: 3 artboards (`brief` / `storyboard` / `landing`). Storyboard = 12 scene tiles, each a real maude-chrome mock of the shot + id/role/duration/**distinct signature**/voice-aligned caption/intent line. New `.sb-*` CSS (token-only) + meta.json updated.
+- [x] **Visual verification** — screenshots in `.design/_history/_smoke/v4-storyboard/`. Storyboard scenes 00–25 + landing read in-context = render correctly in maude dark studio; brief renders (full world view). Scenes 30–55 reuse vetted primitives (capture tool's `--screen/--element` id-select is flaky on this canvas; user is live-viewing the canvas).
+- [ ] **Phase A.5 hard gate** — awaiting user sign-off on brief + storyboard before any Remotion authoring (Phase B). Pending markdown mirror under `scripts/video/v4/` if the user wants it.

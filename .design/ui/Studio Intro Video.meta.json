@@ -1,7 +1,7 @@
 {
   "title": "Studio Intro Video",
-  "subtitle": "The v3 intro film for the Maude landing — player placement + storyboard / shot list / script",
-  "brief": "Intro video bude na hlavni strance; storyboard artboard ze Studio Docs presunut do noveho canvasu Studio Intro Video.",
+  "subtitle": "v4 full storyboard for the Maude landing film — brief + 12-scene storyboard + landing placement",
+  "brief": "v4 rebuild (phase-16). Full visual storyboard of the whole real loop (v2.1 spine), rendered in maude dark-studio product chrome. Each scene carries its own signature treatment + voice-aligned caption + intent line. Length flexible — rhythm decides. Phase A concrete artifact for sign-off before Remotion authoring.",
   "platform": "desktop",
   "designSystem": "maude",
   "opt_out_scope": "palette",
@@ -9,26 +9,31 @@
   "sections": [
     {
       "id": "intro",
-      "title": "Studio Intro Video — v3",
-      "subtitle": "MAUDE/INTRO · 2 artboards · landing placement + storyboard"
+      "title": "Studio Intro Video — v4",
+      "subtitle": "MAUDE/INTRO · 3 artboards · brief + full storyboard + landing placement"
     }
   ],
   "artboards": [
     {
-      "id": "landing",
-      "label": "A · main-page placement",
-      "note": "Intro video as it sits on the landing hero — eyebrow + headline + Play CTA + the 16:9 player (scrubber, chapters, captions)"
+      "id": "brief",
+      "label": "A · brief / visual direction",
+      "note": "v4 visual brief — narrative spine (full real loop), look (maude dark studio), voice (voice-aligned captions), rhythm (length decides), per-scene-signature rule + hard-NO list + 12-scene index strip"
     },
     {
       "id": "storyboard",
-      "label": "B · storyboard & script",
-      "note": "v3 cut: 4-keyframe storyboard (blank canvas → agent draws → critics score → hand off) + chapters/voiceover + specs"
+      "label": "B · full storyboard — 12 scenes",
+      "note": "12 scene tiles, each a real mock of the shot: cold open → install → onboarding → DS reveal → /design:new split → critics → canvas pan → cmd+click → /design:edit split → comments → handoff → end card. Each tile: id, role, duration, signature, voice-aligned caption, intent."
+    },
+    {
+      "id": "landing",
+      "label": "C · main-page placement",
+      "note": "Intro video as it sits on the landing hero — eyebrow + headline + Play CTA + the 16:9 player (scrubber, chapters, captions)"
     }
   ],
   "layout": {
     "artboards": [
       {
-        "id": "landing",
+        "id": "brief",
         "x": 0,
         "y": 0
       },
@@ -36,16 +41,21 @@
         "id": "storyboard",
         "x": 1400,
         "y": 0
+      },
+      {
+        "id": "landing",
+        "x": 2820,
+        "y": 0
       }
     ]
   },
   "created": "2026-06-05",
   "css_mode": "sibling",
-  "iteration_count": 0,
+  "iteration_count": 1,
   "viewport": {
-    "x": 921.6605676354229,
-    "y": 176.7287438029408,
-    "zoom": 1.1575291822094498
+    "x": -664.2983768027648,
+    "y": 35.70428122664248,
+    "zoom": 0.7441124053949344
   },
-  "last_modified": "2026-06-05T06:19:59.910Z"
+  "last_modified": "2026-06-08T14:37:44.314Z"
 }
