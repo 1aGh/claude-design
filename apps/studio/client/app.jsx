@@ -353,6 +353,43 @@ const STICONS = {
       <line x1="8" y1="11.4" x2="8" y2="11.5" />
     </>
   ),
+  // Export-format glyphs (Plan C) — one distinct mark per format card.
+  image: (
+    <>
+      <rect x="2.5" y="3" width="11" height="10" rx="1.5" />
+      <circle cx="6" cy="6.3" r="1.1" />
+      <path d="M3 12l3-2.8 2.2 1.8 2.4-3L13.5 12" />
+    </>
+  ),
+  vector: (
+    <>
+      <path d="M3.6 11.2C6 5 10 5 12.4 11.2" />
+      <rect x="1.7" y="9.8" width="2.6" height="2.6" rx="0.4" />
+      <rect x="11.7" y="9.8" width="2.6" height="2.6" rx="0.4" />
+      <rect x="6.7" y="2.6" width="2.6" height="2.6" rx="0.4" />
+    </>
+  ),
+  presentation: (
+    <>
+      <rect x="2.5" y="3" width="11" height="7.4" rx="1" />
+      <line x1="8" y1="10.4" x2="8" y2="13" />
+      <line x1="5.6" y1="13.4" x2="10.4" y2="13.4" />
+    </>
+  ),
+  archive: (
+    <>
+      <rect x="2.5" y="3" width="11" height="3" rx="0.8" />
+      <path d="M3.6 6v6.2a1 1 0 0 0 1 1h6.8a1 1 0 0 0 1-1V6" />
+      <line x1="6.6" y1="8.8" x2="9.4" y2="8.8" />
+    </>
+  ),
+  external: (
+    <>
+      <path d="M11 8.5V12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h3.5" />
+      <polyline points="9.5 3 13 3 13 6.5" />
+      <line x1="13" y1="3" x2="7.6" y2="8.4" />
+    </>
+  ),
 };
 
 // ⌘K command palette — the mockup's signature surface, wired to real shell
@@ -511,14 +548,14 @@ function Kbd({ children }) {
 // a privileged disk-write kept off HTTP routes (DDR-054), so it surfaces the
 // `/design:handoff` command instead. PPTX/Canva kept reachable (no silent cap).
 const EXPORT_CARDS = [
-  { id: 'png', label: 'PNG', sub: 'raster · 2×', icon: 'download', format: 'png', options: { scale: 2 } },
-  { id: 'pdf', label: 'PDF', sub: 'vector · print', icon: 'download', format: 'pdf' },
-  { id: 'svg', label: 'SVG', sub: 'per artboard', icon: 'download', format: 'svg' },
+  { id: 'png', label: 'PNG', sub: 'raster · 2×', icon: 'image', format: 'png', options: { scale: 2 } },
+  { id: 'pdf', label: 'PDF', sub: 'vector · print', icon: 'file', format: 'pdf' },
+  { id: 'svg', label: 'SVG', sub: 'per artboard', icon: 'vector', format: 'svg' },
   { id: 'html', label: 'HTML', sub: 'self-contained', icon: 'code', format: 'html' },
-  { id: 'pptx', label: 'PPTX', sub: 'slides', icon: 'download', format: 'pptx' },
-  { id: 'canva', label: 'Canva', sub: 'handoff bundle', icon: 'share', format: 'canva' },
-  { id: 'zip', label: 'ZIP', sub: 'project bundle', icon: 'download', format: 'zip' },
-  { id: 'shadcn', label: 'AI handoff', sub: 'production drop', icon: 'share', handoff: true },
+  { id: 'pptx', label: 'PPTX', sub: 'slides', icon: 'presentation', format: 'pptx' },
+  { id: 'canva', label: 'Canva', sub: 'handoff bundle', icon: 'external', format: 'canva' },
+  { id: 'zip', label: 'ZIP', sub: 'project bundle', icon: 'archive', format: 'zip' },
+  { id: 'shadcn', label: 'AI handoff', sub: 'production drop', icon: 'sparkle', handoff: true },
 ];
 
 // Mirrors export-dialog.tsx (the in-canvas dialog) so both entry points offer
