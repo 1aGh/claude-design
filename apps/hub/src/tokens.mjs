@@ -208,6 +208,27 @@ export function assertValidLabel(label) {
   }
 }
 
+// A scope is either the wildcard '*' or a documentName-prefix. It is matched
+// against peer-supplied documentNames AND surfaced in the admin DOM (scope
+// chips), so it must be validated at the SOURCE — same two-layer discipline as
+// labels — not left to client-side escaping alone. Charset mirrors
+// DOCUMENT_NAME_REGEX (server.mjs); capped at 128 to bound memory.
+const SCOPE_REGEX = /^[A-Za-z0-9._/-]{1,128}$/;
+
+/**
+ * Validate a token scope. Throws on an invalid scope. `undefined` / `'*'` are
+ * the wildcard and always valid.
+ * @param {unknown} scope
+ */
+export function assertValidScope(scope) {
+  if (scope === undefined || scope === '*' || scope === null) return;
+  if (typeof scope !== 'string' || !SCOPE_REGEX.test(scope)) {
+    throw new Error(
+      "scope must be '*' or match /^[A-Za-z0-9._/-]{1,128}$/ (a documentName prefix)"
+    );
+  }
+}
+
 /**
  * Test a `documentName` against a token's scope. Per DDR-053 §3.
  *
@@ -236,6 +257,7 @@ export function matchesScope(scope, documentName) {
  */
 export function addToken(dataDir, { label, dev = false, scope }) {
   assertValidLabel(label);
+  assertValidScope(scope);
   const handle = db(dataDir);
   const value = generateToken({ dev });
   // Default scope per DDR-053 §3: bind to label. Explicit `scope: '*'` /
@@ -281,6 +303,24 @@ export function rotateToken(dataDir, label) {
     dev: !!prior.dev,
     scope: prior.scope === null || prior.scope === undefined ? '*' : prior.scope,
   });
+}
+
+/**
+ * Permanently delete a token by label. Unlike rotate (which replaces the value
+ * but keeps the label as a live credential), this removes the credential
+ * entirely. Throws if the label doesn't exist. The caller is responsible for
+ * kicking any live sessions that authenticated with it (DDR-053 §4).
+ *
+ * @param {string} dataDir
+ * @param {string} label
+ */
+export function removeToken(dataDir, label) {
+  assertValidLabel(label);
+  const handle = db(dataDir);
+  const info = handle.prepare('DELETE FROM tokens WHERE label = ?').run(label);
+  if (info.changes === 0) {
+    throw new Error(`no token with label "${label}"`);
+  }
 }
 
 /**

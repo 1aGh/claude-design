@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-07T18:54:27.551Z",
+  "generated": "2026-06-08T10:21:38.775Z",
   "currentPhase": null,
   "phases": [
     {
@@ -197,6 +197,17 @@
       "date": null,
       "summary": "Validate design files and existing IDs before implementing. Every JS-referenced ID must be preserved verbatim.",
       "planPath": ".ai/plans/archive/hub-admin-redesign.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "hub-redesign-studio-hub",
+      "title": "Feature: Hub admin redesign — maude-DS reskin + additive operator console (\"Studio Hub\")",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan reskins + extends the EXISTING hub admin SPA — it does not build a new app....",
+      "planPath": ".ai/plans/archive/hub-redesign-studio-hub.md",
       "archived": true,
       "phaseKey": null
     },
@@ -837,28 +848,6 @@
       "planPath": ".ai/plans/phase-32-native-collab-distribution.md",
       "archived": false,
       "phaseKey": "32"
-    },
-    {
-      "id": "feature-studio-full-functionality-parity",
-      "title": "Feature: Studio — full functionality + design parity (Plan C, completes DDR-096)",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to the canvas-origin split (DDR-054 — in-iframe overlays are untrusted; structural changes there carry the runtime-health \"par...",
-      "planPath": ".ai/plans/feature-studio-full-functionality-parity.md",
-      "archived": false,
-      "phaseKey": null
-    },
-    {
-      "id": "hub-redesign-studio-hub",
-      "title": "Feature: Hub admin redesign — maude-DS reskin + additive operator console (\"Studio Hub\")",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This plan reskins + extends the EXISTING hub admin SPA — it does not build a new app....",
-      "planPath": ".ai/plans/hub-redesign-studio-hub.md",
-      "archived": false,
-      "phaseKey": null
     },
     {
       "id": "redesign-docs-site-studio-docs",
