@@ -114,6 +114,48 @@ export function cssEscape(s: string): string {
  * defaults to `deriveFile()`; the comment mount layer passes it explicitly
  * so all three consumers (router, overlay, mount) agree on the same key.
  */
+/**
+ * The artboard-scoped data-cd-id selector. A component shared across artboards
+ * carries the SAME data-cd-id in each, so a bare `[data-cd-id="…"]` resolves
+ * (via querySelector) to the FIRST artboard. Prefixing the hit's artboard makes
+ * the anchor per-instance. Shared by EVERY selector builder + resolver so they
+ * can't drift (the original fix only patched one of ~8 sites).
+ */
+export function scopedCdSelector(cdId: string, artboardId?: string | null): string {
+  return artboardId
+    ? `[data-dc-screen="${artboardId}"] [data-cd-id="${cdId}"]`
+    : `[data-cd-id="${cdId}"]`;
+}
+
+/**
+ * Resolve a stored Selection to its live element, artboard-scoped. Prefers the
+ * id+artboardId scoped selector (the robust path), then the stored `selector`
+ * (already scoped for recent selections; a legacy fallback for old comments).
+ * Every halo / pin / toolbar / spacing-handle resolver routes through this so a
+ * shared component anchors to the instance the user actually clicked.
+ */
+export function resolveSelectionEl(
+  doc: Document,
+  sel: { id?: string | null; selector?: string | null; artboardId?: string | null }
+): Element | null {
+  if (sel.id) {
+    try {
+      const el = doc.querySelector(scopedCdSelector(sel.id, sel.artboardId));
+      if (el) return el;
+    } catch {
+      /* malformed selector — fall through */
+    }
+  }
+  if (sel.selector) {
+    try {
+      return doc.querySelector(sel.selector);
+    } catch {
+      /* malformed selector */
+    }
+  }
+  return null;
+}
+
 export function hoverTargetToSelection(target: HoverTarget, file?: string): Selection {
   const el = target.el;
   const rect =
@@ -135,9 +177,7 @@ export function hoverTargetToSelection(target: HoverTarget, file?: string): Sele
   //      (T24.5 G8 multi-artboard gesture).
   //   3. cssPath of the hit — last-resort path string.
   const selector = cdId
-    ? target.artboardId
-      ? `[data-dc-screen="${target.artboardId}"] [data-cd-id="${cdId}"]`
-      : `[data-cd-id="${cdId}"]`
+    ? scopedCdSelector(cdId, target.artboardId)
     : target.artboardId
       ? `[data-dc-screen="${target.artboardId}"]`
       : cssPath(el);

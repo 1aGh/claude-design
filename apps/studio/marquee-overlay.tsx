@@ -22,6 +22,7 @@
 
 import { useEffect, useRef } from 'react';
 
+import { scopedCdSelector } from './dom-selection.ts';
 import { DRAG_THRESHOLD_PX } from './input-router.tsx';
 import { type Selection, useSelectionSet } from './use-selection-set.tsx';
 import { useToolMode } from './use-tool-mode.tsx';
@@ -105,7 +106,7 @@ function elementToSelection(el: Element, bodyAncestor: Element): Selection | nul
   const rect = (el as HTMLElement).getBoundingClientRect();
   return {
     id: cdId,
-    selector: `[data-cd-id="${cdId}"]`,
+    selector: scopedCdSelector(cdId, artboardId),
     artboardId,
     tag: el.tagName.toLowerCase(),
     classes: (el.getAttribute('class') ?? '')

@@ -29,6 +29,7 @@
 import { useEffect } from 'react';
 
 import { useArtboardsContext, useDragStateContext } from './canvas-lib.tsx';
+import { scopedCdSelector } from './dom-selection.ts';
 import { isEditableTarget } from './input-router.tsx';
 import { type Selection, useSelectionSet } from './use-selection-set.tsx';
 
@@ -87,7 +88,7 @@ export function useKeyboardDiscipline(): void {
           if (!cdId) continue;
           hits.push({
             id: cdId,
-            selector: `[data-cd-id="${cdId}"]`,
+            selector: scopedCdSelector(cdId, id),
             artboardId: id,
             tag: el.tagName.toLowerCase(),
           });

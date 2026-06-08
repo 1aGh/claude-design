@@ -50,7 +50,7 @@ User ran `pnpm dev` (self-heals dist → dev bundles) + gave feedback. Fixed + v
 - **#6 (DEEP) — FIXED:** multi-selected annotations couldn't be group-dragged — grabbing empty hull space fell to the marquee branch + deselected. Added a hull hit-test in `annotations-layer.tsx` onDown (union bbox of selected strokes → group drag, FigJam parity).
 
 ### Follow-up round 4 — done
-- **#4 (DEEP) — FIXED:** `dom-selection.ts hoverTargetToSelection` now scopes the `data-cd-id` selector by artboard (`[data-dc-screen="<id>"] [data-cd-id="<id>"]`) so a component shared across artboards anchors per-instance (was first-match via `querySelector`). Regex parsers (comments-overlay :201/:1161) still extract the id fine; old comments keep old behavior (graceful).
+- **#4 (DEEP) — REOPENED then FIXED PROPERLY:** the first fix patched only `dom-selection.ts hoverTargetToSelection` — but ~7 OTHER sites still built/resolved unscoped `[data-cd-id]` (canvas-shell select-halo + group-bbox + postCompose, contextual-toolbar ×2, equal-spacing, marquee, keyboard-select), and the RESOLVERS preferred `sel.id` over the scoped `sel.selector`. Added shared `scopedCdSelector()` + `resolveSelectionEl()` in dom-selection.ts and routed ALL 8 sites through them. Now every halo/pin/toolbar/spacing resolves to the artboard instance actually clicked.
 - **shadcn → "AI handoff"** export card (label + "production drop"); **presence avatar** bumped 18→22px + centered initials. Smoke 88/88; release rebuilt.
 
 **Caveat:** user's `pnpm dev` (bg id b1o5aiuyr, :4555) is running — restarting it self-heals dist→dev bundles; re-run `bun run build.ts --release` before committing if so.
