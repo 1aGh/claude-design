@@ -2450,25 +2450,6 @@ function Gallery({ title, items, onOpen, kind, cfg }) {
 
 // ---------- Comment composer / viewer ----------
 
-function CommentBar({ activePath, comments }) {
-  // Phase 6 — the shell-side composer + chip strip + focused-row chrome were
-  // removed. The iframe overlay (comments-overlay.tsx) owns composer + pin
-  // bubbles + thread popover. BottomBar shrinks to a live open-count summary
-  // so the shell still surfaces total review activity at a glance.
-  if (!activePath) return null;
-  const openComments = (comments || []).filter((c) => c.status !== 'resolved');
-  if (openComments.length === 0) return null;
-  return (
-    <div className="comment-bar">
-      <div className="cb-row strip">
-        <span className="cb-label">
-          {openComments.length} open comment{openComments.length === 1 ? '' : 's'}
-        </span>
-      </div>
-    </div>
-  );
-}
-
 function StatusBar({
   activePath,
   selected,
@@ -3863,8 +3844,6 @@ function App() {
     if (el) iframesRef.current.set(path, el);
   }, []);
 
-  const activeFileComments =
-    activePath && activePath !== SYSTEM_TAB ? commentsByFile[activePath] || [] : [];
   const totalOpen = totalCounts(commentsByFile).open;
 
   // Suppress the native browser context menu across the shell — the canvas
@@ -4099,9 +4078,6 @@ function App() {
               project={project}
               cfg={cfg}
             />
-            {activePath && activePath !== SYSTEM_TAB && (
-              <CommentBar activePath={activePath} comments={activeFileComments} />
-            )}
           </div>
           {/* Right dock — one panel at a time. Inspector takes precedence when
               open (T6); else the comments panel. */}
