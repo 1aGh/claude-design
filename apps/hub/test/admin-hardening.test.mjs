@@ -78,10 +78,61 @@ test('GET /admin/style.css + /admin/app.js carry the same admin-origin hardening
 // ----------------------------------------------------- ?secret= rejected
 
 test('?secret=... query string is REJECTED on every /admin/api/* route (DDR-053 §1)', async () => {
-  for (const path of ['/status', '/tokens', '/peers']) {
+  for (const path of ['/status', '/tokens', '/peers', '/canvases', '/activity', '/settings']) {
     const res = await api(`${path}?secret=${encodeURIComponent(SECRET)}`);
     assert.equal(res.status, 401, `${path}: query auth must not work`);
   }
+});
+
+// --------------------------------------- new operator surfaces (DDR-097)
+
+test('the new canvases / activity / settings routes are Bearer-gated', async () => {
+  for (const path of ['/canvases', '/activity', '/settings']) {
+    assert.equal((await api(path)).status, 401, `${path}: GET must require Bearer`);
+  }
+});
+
+test('POST /admin/api/settings requires auth + JSON Content-Type', async () => {
+  // No auth → 401.
+  assert.equal(
+    (
+      await api('/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'X' }),
+      })
+    ).status,
+    401
+  );
+  // Authed but text/plain → 400 (closes the CSRF gadget, DDR-053 §5).
+  assert.equal(
+    (
+      await api('/settings', {
+        method: 'POST',
+        headers: { ...auth(), 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ name: 'X' }),
+      })
+    ).status,
+    400
+  );
+});
+
+test('POST /admin/api/admin-secret/rotate requires auth', async () => {
+  const res = await api('/admin-secret/rotate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  assert.equal(res.status, 401);
+});
+
+test('POST /admin/api/admin-secret/rotate enforces JSON Content-Type (defense-in-depth)', async () => {
+  const res = await api('/admin-secret/rotate', {
+    method: 'POST',
+    headers: { ...auth(), 'Content-Type': 'text/plain' },
+    body: '{}',
+  });
+  assert.equal(res.status, 400);
 });
 
 // -------------------------------------------------- Content-Type strict + body
@@ -165,6 +216,24 @@ test('POST /token defaults scope = label and surfaces it in response', async () 
   const body = await res.json();
   assert.equal(body.label, 'alice');
   assert.equal(body.scope, 'alice');
+});
+
+test('POST /token rejects a scope with HTML metacharacters (stored-XSS defense at source)', async () => {
+  const res = await api('/token', {
+    method: 'POST',
+    headers: jsonHeaders(),
+    body: JSON.stringify({ label: 'evil', scope: '<img src=x onerror=alert(1)>' }),
+  });
+  assert.equal(res.status, 400);
+});
+
+test('POST /token rejects an over-long scope (memory bound)', async () => {
+  const res = await api('/token', {
+    method: 'POST',
+    headers: jsonHeaders(),
+    body: JSON.stringify({ label: 'big', scope: 'a'.repeat(200) }),
+  });
+  assert.equal(res.status, 400);
 });
 
 test('POST /token with explicit scope: "*" mints a wildcard token', async () => {

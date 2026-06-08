@@ -16,3 +16,6 @@ Caddyfile
 fly.toml
 .dockerignore
 Dockerfile
+playground/
+README.md
+CONTRIBUTING.md

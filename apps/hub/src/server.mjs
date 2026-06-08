@@ -46,10 +46,12 @@ import { ADMIN_CSS, ADMIN_HTML, ADMIN_JS, adminAssetsLoaded } from './admin-asse
 import {
   generateAdminSecret,
   readAdminSecret,
+  rotateAdminSecret,
   verifyAdminAuth,
   writeAdminSecret,
 } from './admin-auth.mjs';
 import { maybeIssueOnBoot, verifyAndConsume } from './bootstrap.mjs';
+import { readSettings, writeSettings } from './settings.mjs';
 import {
   addToken,
   assertValidLabel,
@@ -57,6 +59,7 @@ import {
   matchesScope,
   readTokens,
   recordTokenUse,
+  removeToken,
   rotateToken,
   verifyToken,
 } from './tokens.mjs';
@@ -70,6 +73,9 @@ const RATE_LIMIT_MAX = 5;
 // upgrade, so this caps reconnection storms / token-replay floods per token.
 export const CONN_RATE_LIMIT_MAX = 100;
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+// Activity feed (admin console): bounded in-memory ring buffer. Ephemeral —
+// lost on restart, NOT a persisted audit trail (DDR-097). Caps memory.
+export const ACTIVITY_CAP = 200;
 
 /**
  * @typedef {Object} HubConfig
@@ -132,6 +138,9 @@ export function createHub(config = {}) {
   /** Per-token rate limit buckets (WS auth): label → { count, windowStart } */
   const connBuckets = new Map();
 
+  /** Activity feed ring buffer (newest last). Bounded to ACTIVITY_CAP. */
+  const activity = [];
+
   const server = new Server({
     port,
 
@@ -160,7 +169,14 @@ export function createHub(config = {}) {
           throw new Error('rate limit exceeded for this token');
         }
         if (match.source === 'file') recordTokenUse(dataDir, match.label);
-        return { user: { name: match.label, source: match.source, dev: !!match.dev } };
+        return {
+          user: {
+            name: match.label,
+            source: match.source,
+            dev: !!match.dev,
+            scope: match.scope ?? '*',
+          },
+        };
       }
       // No tokens configured and no HUB_SECRET → permissive dev mode.
       const { tokens } = readTokens(dataDir);
@@ -200,6 +216,22 @@ export function createHub(config = {}) {
         );
         bailFromOnRequest();
       }
+      if (method === 'GET' && (url === '/' || url === '' || url.startsWith('/?'))) {
+        // Minimal landing — replaces Hocuspocus' default "Welcome to Hocuspocus!"
+        // with a sensible signpost into the admin console. Self-hosted operator
+        // surface, deliberately NOT a marketing page (DDR-097). Server-rendered
+        // with the hub name; links the admin stylesheet (no inline styles — the
+        // admin CSP `style-src 'self'` would drop them).
+        respondAsset(
+          response,
+          renderLanding(readSettings(dataDir).name),
+          'text/html; charset=utf-8',
+          {
+            hardenAdminOrigin: true,
+          }
+        );
+        bailFromOnRequest();
+      }
       if (url === '/admin' || url.startsWith('/admin?')) {
         respondAsset(response, ADMIN_HTML, 'text/html; charset=utf-8', { hardenAdminOrigin: true });
         bailFromOnRequest();
@@ -235,6 +267,9 @@ export function createHub(config = {}) {
           publicUrl,
           rateBuckets,
           rateLimit,
+          activity,
+          sqlitePath,
+          insecureHttp,
         });
         bailFromOnRequest();
       }
@@ -251,6 +286,7 @@ export function createHub(config = {}) {
         socketId,
         documentName,
         user,
+        scope: null,
         connectedAt: Date.now(),
         connection: null,
       });
@@ -260,6 +296,10 @@ export function createHub(config = {}) {
         );
       }
     },
+    // Note: the join activity event is emitted from the `connected` hook below,
+    // not here — onConnect fires BEFORE onAuthenticate, so context.user is still
+    // 'anon'. By `connected` the real label is known (same reason peers.user is
+    // patched there for kickSessionsForLabel — DDR-053 §4).
     async connected({ socketId, connection, context }) {
       // Per @hocuspocus/server 4.x types: `connection` is delivered on the
       // `connected` hook (post-auth, post-document-load), NOT onConnect.
@@ -271,10 +311,17 @@ export function createHub(config = {}) {
       entry.connection = connection;
       const realUser = context?.user?.name;
       if (realUser) entry.user = realUser;
+      if (context?.user?.scope) entry.scope = context.user.scope;
+      pushActivity(activity, {
+        type: 'join',
+        user: entry.user,
+        doc: entry.documentName,
+      });
     },
     async onDisconnect({ documentName, socketId, context }) {
       const user = context?.user?.name ?? 'anon';
       peers.delete(socketId);
+      pushActivity(activity, { type: 'leave', user, doc: documentName });
       if (verbose) {
         console.log(
           `[hub] disconnect documentName=${sanitizeForLog(documentName)} user=${sanitizeForLog(user)}`
@@ -296,6 +343,7 @@ export function createHub(config = {}) {
     startedAt,
     version: HUB_VERSION,
     peers,
+    activity,
   };
 }
 
@@ -303,6 +351,7 @@ export function createHub(config = {}) {
 
 async function handleAdminApi(ctx) {
   const { request, response, dataDir, secret, peers, publicUrl, rateBuckets, rateLimit } = ctx;
+  const { activity, sqlitePath } = ctx;
   const url = new URL(request.url, 'http://x');
   const path = url.pathname.slice('/admin/api'.length); // '/status', '/tokens', …
   const method = request.method ?? 'GET';
@@ -363,9 +412,93 @@ async function handleAdminApi(ctx) {
         socketId: p.socketId,
         documentName: p.documentName,
         user: p.user,
+        scope: p.scope ?? null,
         connectedAt: p.connectedAt,
       })),
     });
+    return;
+  }
+  // Kick a single live peer by socketId (per-connection disconnect). Distinct
+  // from rotate (which kicks every session for a token label). DDR-053 §4.
+  if (method === 'POST' && path === '/peers/kick') {
+    try {
+      const body = await readJsonBody(request);
+      const socketId = String(body?.socketId ?? '');
+      const peer = peers.get(socketId);
+      if (!peer) {
+        respondAdminJson(response, 404, { error: 'no such peer' });
+        return;
+      }
+      try {
+        peer.connection?.close?.();
+      } catch {
+        /* best-effort */
+      }
+      peers.delete(socketId);
+      pushActivity(activity, {
+        type: 'warn',
+        user: peer.user,
+        doc: `kicked from ${peer.documentName}`,
+      });
+      respondAdminJson(response, 200, { ok: true });
+    } catch (err) {
+      respondAdminJson(response, 400, { error: err.message });
+    }
+    return;
+  }
+  // Canvases browser — read the Hocuspocus SQLite `documents` table read-only.
+  // Flat list now; repo/branch grouping is phase-30's realignment (DDR-097).
+  if (method === 'GET' && path === '/canvases') {
+    respondAdminJson(response, 200, { canvases: listCanvases(sqlitePath, peers) });
+    return;
+  }
+  // Activity feed — newest-first slice of the in-memory ring buffer.
+  if (method === 'GET' && path === '/activity') {
+    respondAdminJson(response, 200, { activity: (activity ?? []).slice().reverse() });
+    return;
+  }
+  // Settings — GET reads identity + persisted name/description; POST persists
+  // the editable bits (name/description) atomically.
+  if (method === 'GET' && path === '/settings') {
+    const stored = readSettings(dataDir);
+    const { tokens } = readTokens(dataDir);
+    respondAdminJson(response, 200, {
+      name: stored.name,
+      description: stored.description,
+      publicUrl,
+      transport: ctx.insecureHttp ? 'plaintext HTTP (dev)' : 'TLS upstream',
+      dataDir,
+      authMode: tokens.length > 0 ? 'tokens' : secret ? 'env-secret' : 'dev',
+      version: HUB_VERSION,
+    });
+    return;
+  }
+  if (method === 'POST' && path === '/settings') {
+    try {
+      const body = await readJsonBody(request);
+      const saved = writeSettings(dataDir, { name: body?.name, description: body?.description });
+      respondAdminJson(response, 200, { ok: true, ...saved });
+    } catch (err) {
+      respondAdminJson(response, 400, { error: err.message });
+    }
+    return;
+  }
+  // Danger zone — rotate the admin secret (signs every device out). High blast
+  // radius: the new value is NOT returned (operator re-claims via bootstrap /
+  // HUB_SECRET). DDR-097.
+  if (method === 'POST' && path === '/admin-secret/rotate') {
+    try {
+      // Body is unused, but route it through readJsonBody for the same
+      // Content-Type + proto-pollution guard the other POST routes get
+      // (defense-in-depth consistency — DDR-053 §5).
+      await readJsonBody(request);
+    } catch (err) {
+      respondAdminJson(response, 400, { error: err.message });
+      return;
+    }
+    rotateAdminSecret(dataDir);
+    pushActivity(activity, { type: 'warn', user: 'admin', doc: 'admin secret rotated' });
+    respondAdminJson(response, 200, { ok: true, reauth: true });
     return;
   }
   if (method === 'POST' && path === '/token') {
@@ -376,6 +509,11 @@ async function handleAdminApi(ctx) {
       // scope optional; default = label (DDR-053 §3). '*' = wildcard opt-in.
       const scope = body?.scope === undefined ? undefined : String(body.scope).trim();
       const record = addToken(dataDir, { label, scope });
+      pushActivity(activity, {
+        type: 'token',
+        user: label,
+        doc: `invite issued · scope ${record.scope ?? '*'}`,
+      });
       respondAdminJson(response, 201, formatInviteResponse(record, publicUrl));
     } catch (err) {
       respondAdminJson(response, 400, { error: err.message });
@@ -392,7 +530,32 @@ async function handleAdminApi(ctx) {
       // time on a compromised token is bounded by rotate latency, not by the
       // attacker's choice to never disconnect.
       const disconnected = kickSessionsForLabel(peers, label);
+      pushActivity(activity, {
+        type: 'warn',
+        user: label,
+        doc: `token rotated — ${disconnected} session${disconnected === 1 ? '' : 's'} kicked`,
+      });
       respondAdminJson(response, 200, { ...formatInviteResponse(record, publicUrl), disconnected });
+    } catch (err) {
+      const status = err.message.startsWith('no token') ? 404 : 400;
+      respondAdminJson(response, status, { error: err.message });
+    }
+    return;
+  }
+  if (method === 'POST' && path === '/token/delete') {
+    try {
+      const body = await readJsonBody(request);
+      const label = String(body?.label ?? '').trim();
+      assertValidLabel(label);
+      removeToken(dataDir, label);
+      // Kick live sessions that authenticated with the deleted token (DDR-053 §4).
+      const disconnected = kickSessionsForLabel(peers, label);
+      pushActivity(activity, {
+        type: 'warn',
+        user: label,
+        doc: `token deleted — ${disconnected} session${disconnected === 1 ? '' : 's'} kicked`,
+      });
+      respondAdminJson(response, 200, { ok: true, disconnected });
     } catch (err) {
       const status = err.message.startsWith('no token') ? 404 : 400;
       respondAdminJson(response, status, { error: err.message });
@@ -424,6 +587,44 @@ async function handleBootstrap({ request, response, dataDir }) {
   } catch (err) {
     respondAdminJson(response, 400, { error: err.message });
   }
+}
+
+/** Escape HTML metacharacters for safe interpolation into server-rendered HTML. */
+function escapeHtmlAttr(value) {
+  return String(value ?? '').replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
+  );
+}
+
+/**
+ * Minimal landing page served at `/`. Links the admin stylesheet + reuses its
+ * classes (no inline styles — the CSP `style-src 'self'` drops those). The
+ * sparkle uses presentation attributes (fill=), which the CSP allows.
+ */
+function renderLanding(hubName) {
+  const name = escapeHtmlAttr(hubName || 'Studio Hub');
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${name}</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZD0iTTcgMEgyNUE3IDcgMCAwIDEgMzIgN1YzMkg3QTcgNyAwIDAgMSAwIDI1VjdBNyA3IDAgMCAxIDcgMFoiIGZpbGw9IiM2ZDVlZjUiLz48cGF0aCBkPSJNMTYgNWwyLjggOC4yTDI3IDE2bC04LjIgMi44TDE2IDI3bC0yLjgtOC4yTDUgMTZsOC4yLTIuOHoiIGZpbGw9IiNmZmYiLz48L3N2Zz4=">
+  <link rel="stylesheet" href="admin/style.css">
+</head>
+<body>
+<div class="maude landing dotted">
+  <div class="landing-card">
+    <span class="mark mark--lg" aria-hidden="true"><svg class="mark-ic" viewBox="0 0 32 32" fill="currentColor"><path d="M16 5l2.8 8.2L27 16l-8.2 2.8L16 27l-2.8-8.2L5 16l8.2-2.8z"/></svg></span>
+    <h1>${name}</h1>
+    <p class="landing-sub">self-hosted sync · Yjs + Hocuspocus</p>
+    <p class="landing-status"><span class="presence-dot presence-dot--online" aria-hidden="true"></span> online</p>
+    <a class="btn btn--primary btn--lg" href="admin">Open admin console →</a>
+  </div>
+</div>
+</body>
+</html>`;
 }
 
 function formatInviteResponse(record, publicUrl) {
@@ -478,6 +679,109 @@ function kickSessionsForLabel(peers, label) {
     count++;
   }
   return count;
+}
+
+// --------------------------------------------------------- activity feed
+
+/**
+ * Append an event to the bounded ring buffer (DDR-097). Fields are run through
+ * the log sanitizer + clamped so a hostile documentName / label can't inflate
+ * the buffer or smuggle control chars into the console feed. NEVER pass a token
+ * VALUE here — only labels / doc names / human-readable summaries.
+ */
+function pushActivity(activity, { type, user, doc }) {
+  if (!Array.isArray(activity)) return;
+  activity.push({
+    type: String(type),
+    user: sanitizeForLog(user).slice(0, 120),
+    doc: sanitizeForLog(doc).slice(0, 200),
+    at: Date.now(),
+  });
+  while (activity.length > ACTIVITY_CAP) activity.shift();
+}
+
+// --------------------------------------------------------- canvases browser
+
+const sqliteRequire = createRequire(import.meta.url);
+/** Lazily resolve better-sqlite3 (a runtime-external native binding). */
+let BetterSqlite3 = null;
+function loadSqlite() {
+  if (BetterSqlite3 === null) {
+    try {
+      BetterSqlite3 = sqliteRequire('better-sqlite3');
+    } catch {
+      BetterSqlite3 = false;
+    }
+  }
+  return BetterSqlite3 || null;
+}
+
+/** Build the peer-count-per-document map from the live peers Map. */
+function peerCountsByDoc(peers) {
+  const counts = new Map();
+  for (const p of peers.values()) {
+    counts.set(p.documentName, (counts.get(p.documentName) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function docsFromPeers(peerCounts) {
+  return Array.from(peerCounts.entries()).map(([name, count]) => ({
+    name,
+    bytes: 0,
+    peers: count,
+  }));
+}
+
+/**
+ * Read the Hocuspocus SQLite `documents` table READ-ONLY and join the live peer
+ * count per document. The extension schema is:
+ *   CREATE TABLE "documents" ("name" varchar, "data" blob, UNIQUE(name))
+ * There are NO timestamp columns — size is `length(data)`; activity is the
+ * joined live peer count (DDR-097). Defensive: never mutates, never 500s — a
+ * missing table (no syncs yet) / lock / schema drift falls back to the
+ * peer-derived view.
+ */
+function listCanvases(sqlitePath, peers) {
+  const peerCounts = peerCountsByDoc(peers);
+  if (!sqlitePath || !existsSync(sqlitePath)) return docsFromPeers(peerCounts);
+  const Database = loadSqlite();
+  if (!Database) return docsFromPeers(peerCounts);
+
+  let db;
+  try {
+    db = new Database(sqlitePath, { readonly: true, fileMustExist: true });
+    const rows = db.prepare('SELECT name, length(data) AS bytes FROM "documents"').all();
+    // Union persisted docs (with size) with currently-active peer docs that
+    // may not be persisted yet (size 0 until the extension stores them). This
+    // keeps a live-but-unsaved canvas visible. Keyed by name; sorted by name.
+    const byName = new Map();
+    for (const r of rows) {
+      const name = String(r.name);
+      // Enforce the documentName charset at the READ boundary too — onAuthenticate
+      // gates live WS auth, but rows could predate that guard (upgrade) or arrive
+      // via another write path. Don't surface a name that isn't regex-clean into
+      // the admin DOM (defense-in-depth alongside client escaping).
+      if (!DOCUMENT_NAME_REGEX.test(name)) continue;
+      byName.set(name, {
+        name,
+        bytes: typeof r.bytes === 'number' ? r.bytes : 0,
+        peers: peerCounts.get(name) ?? 0,
+      });
+    }
+    for (const [name, count] of peerCounts) {
+      if (!byName.has(name)) byName.set(name, { name, bytes: 0, peers: count });
+    }
+    return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
+  } catch {
+    return docsFromPeers(peerCounts);
+  } finally {
+    try {
+      db?.close();
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 // ----------------------------------------------------------- rate limiter

@@ -101,7 +101,7 @@ A focused, roadmap-aligned slice:
 ### Files to Create
 
 - (none net-new files in `src/`) — all changes UPDATE existing `src/admin/*` + `src/server.mjs`. New tests may be added under `plugins/design/hub/test/`.
-- DDR file(s) under `.ai/decisions/DDR-0XX-hub-admin-maude-reskin.md` (Task 1).
+- DDR file(s) under `.ai/decisions/DDR-0XX-hub-admin-maude-reskin.md` (Task 1). → **Recorded: [DDR-097](../decisions/DDR-097-hub-admin-maude-reskin-and-operator-surfaces.md)** (MDCC→maude DS migration · "Studio Hub" branding · bundle ceiling 15→28 KB gz).
 
 ### Design canvases
 
@@ -255,16 +255,16 @@ Run from `plugins/design/hub`:
 
 ## Acceptance Criteria
 
-- [ ] All 10 tasks completed.
-- [ ] `cd plugins/design/hub && bun test` green (incl. the extended admin suite).
-- [ ] Bundle gz under the agreed ceiling (Task 1 decision recorded if bumped).
-- [ ] maude reskin matches Studio Hub artboards C/E/G; sign-in + bootstrap reskinned; token modal = maude credential-reveal.
-- [ ] Canvases browser + Activity feed + Settings render and are Bearer-gated; no secret leaks in any new route.
-- [ ] Every JS-referenced ID preserved; all DDR-053/054/056 invariants intact (`security-auditor`: 0 blockers).
-- [ ] `dist/admin/` mirrored + `dist/hub.bundle.mjs` rebuilt.
-- [ ] Deferred surfaces cross-linked into phases 28/29/30/32 (design refs) — and NOT implemented here.
-- [ ] DDRs recorded (DS migration, branding, bundle ceiling).
-- [ ] STATE.md history row + `pnpm --filter @maude/site gen:roadmap` if a plan was archived.
+- [x] All 10 tasks completed.
+- [x] `cd apps/hub && node --test test/*.test.mjs` green — **112/112** (incl. the extended admin suite; the hub uses `node --test`, not `bun test`; path moved to `apps/hub` per DDR-095).
+- [x] Bundle gz under the agreed ceiling — **17.4 KB gz < 28 KB** (ceiling bumped 15→28, recorded in DDR-097 + `admin-size.test.mjs` comment).
+- [x] maude reskin matches Studio Hub artboards C/E/G; sign-in + bootstrap reskinned; token modal = maude credential-reveal (live agent-browser verified — sign-in, overview, tokens, token modal, canvases, activity, settings all maude).
+- [x] Canvases browser + Activity feed + Settings render and are Bearer-gated; no secret leaks in any new route (security-auditor confirmed).
+- [x] Every JS-referenced ID preserved; all DDR-053/054/056 invariants intact (`security-auditor`: **0 blockers, 0 warnings ≥ medium**).
+- [x] `dist/admin/` mirrored + `dist/hub.bundle.mjs` rebuilt (365 KB; `dist/` is gitignored — CI rebuilds on release).
+- [x] Deferred surfaces cross-linked into phases 28/29/30/32 (design refs) — and NOT implemented here.
+- [x] DDRs recorded — [DDR-097](../decisions/DDR-097-hub-admin-maude-reskin-and-operator-surfaces.md) (DS migration + branding + bundle ceiling).
+- [ ] STATE.md history row + `pnpm --filter @maude/site gen:roadmap` — deferred to `/flow:done` (no plan archived yet; the plan archives at close-out).
 
 ---
 
@@ -282,3 +282,15 @@ Run from `plugins/design/hub`:
 ## Confidence
 
 **7/10** for one-pass implementation. The reskin (Tasks 2–3) and the additive surfaces (Tasks 4–6) are well-grounded — the design reference exists (Studio Hub canvas), the prior MDCC redesign is a proven template, and the API patterns are established. The two soft spots: the **bundle-size budget** (may force a mid-task decision + trimming) and the **Hocuspocus SQLite column probing** for the canvases browser (needs a quick execution-time confirmation). The native-app surfaces being explicitly deferred removes the biggest scope risk.
+
+---
+
+## Retro
+
+- **What worked.** Lifting faithfully from `.design/ui/Studio Hub.tsx` (+ the real `/design:handoff` → `Studio Hub.registry.json`) made the reskin + operator surfaces match the design closely on the first pass. **Live agent-browser verification after each slice** (standing `feedback_no_break_exhaustive_verify`) earned its keep — it caught real bugs that "build green" hid: the empty-state collapse, the CSP-dropped inline styles, the uncolored avatars, the cramped mobile appbar.
+- **The CSP-vs-inline-style trap (biggest surprise).** The admin serves `style-src 'self'` (DDR-053), which **silently drops every inline `style="…"` attribute** — that was the root cause of the "rozhozený spacing" (quick-actions buttons wrapping, lost gaps) AND the uncolored avatars, not a layout mistake. Lesson for `/plan`: on any CSP-hardened surface, forbid inline styles from the start — all layout/colour goes through classes. Added utility classes (`.stack`, `.btn--block`, `.avatar--N`, …) as the fix.
+- **Class-name collisions.** `.empty` (empty-state card) collided with `<tr class="empty">` table rows → `display:flex` hijacked the row → `colspan` ignored → empty states crammed off-centre. Namespaced to `.empty-state*`. Lesson: don't reuse a component class as a row/state class.
+- **Scope was the one un-validated untrusted string.** The close-out ethical-hacker pass found token `scope` reached the admin DOM with only client-side escaping (single layer) while everything else used source-regex + escape (two layers). Fixed at source (`assertValidScope`) + `listCanvases` name filter — restoring the two-layer invariant on a DDR-054 component. Lesson: when a field flows to both `matchesScope` (auth) AND the DOM, validate it at the source like labels.
+- **Scope grew (consciously).** Beyond the original 10 tasks, the user requested operator surfaces the plan hadn't scoped — per-peer **kick**, token **delete**, **Sessions** column, the Overview peers+activity widgets, a `/` **landing** (replacing "Welcome to Hocuspocus!"), and the canonical spark-bubble **logo/favicon**. Presence map / onboarding wizard / full marketing landing stayed deferred (phases 28–32) per an explicit scope decision. A standalone **playground** (`apps/hub/playground/` + `~/git/playground`) was added for turnkey local Docker testing.
+- **Tooling friction.** agent-browser attaches to a shared browser instance — its commands raced with the user's running studio tab (port 4555), causing spurious logouts; fixed by an isolated `--session`. Worth knowing for future live-verify work.
+- **Follow-up (non-blocking, from the security pass).** The public `GET /` landing does a per-request `readFileSync` + render with no rate limit and `no-store` (defeats CDN). Low-severity DoS amplifier — memo-cache the rendered landing (invalidate on settings write) + allow CDN caching when convenient.
