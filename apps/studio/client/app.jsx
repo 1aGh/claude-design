@@ -2007,7 +2007,7 @@ function Menubar({
     <header className="st-menubar" role="menubar" aria-label="Application menubar">
       <span className="st-brand">
         <span className="st-brand-mark">
-          <StIcon name="sparkle" size={11} />
+          <svg viewBox="0 0 32 32" width="100%" height="100%" fill="none" aria-hidden="true"><path d="M16 5l2.8 8.2L27 16l-8.2 2.8L16 27l-2.8-8.2L5 16l8.2-2.8z" fill="currentColor" /></svg>
         </span>
         <span className="st-brand-name">maude</span>
       </span>
@@ -2134,7 +2134,7 @@ function Viewport({
         <div className="st-empty">
           <div className="st-empty-brand">
             <span className="st-brand-mark">
-              <StIcon name="sparkle" size={13} />
+              <svg viewBox="0 0 32 32" width="100%" height="100%" fill="none" aria-hidden="true"><path d="M16 5l2.8 8.2L27 16l-8.2 2.8L16 27l-2.8-8.2L5 16l8.2-2.8z" fill="currentColor" /></svg>
             </span>
             <span className="st-empty-wm">maude</span>
             <span className="st-empty-sub st-mono">

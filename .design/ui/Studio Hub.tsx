@@ -67,6 +67,17 @@ function Icon({ name, size = 16 }: { name: string; size?: number }) {
   );
 }
 
+// The maude brand mark — the filled 4-point spark from the app favicon. Fills
+// its tile (the `.sh-mark` box draws the indigo bubble + halo); same 32-grid
+// star path as the canonical logo specimen so the mark is identical everywhere.
+function Sparkle() {
+  return (
+    <svg viewBox="0 0 32 32" width="100%" height="100%" fill="currentColor" aria-hidden="true">
+      <path d="M16 5l2.8 8.2L27 16l-8.2 2.8L16 27l-2.8-8.2L5 16l8.2-2.8z" />
+    </svg>
+  );
+}
+
 /* ── Shared primitives ──────────────────────────────────────────────────────── */
 
 function AbHd({ sku, label, sub }: { sku: string; label: string; sub?: string }) {
@@ -101,7 +112,7 @@ function NavSidebar({ active }: { active: string }) {
   return (
     <nav className="sh-nav" aria-label="Hub navigation">
       <div className="sh-nav-brand">
-        <span className="sh-mark" aria-hidden="true">M</span>
+        <span className="sh-mark" aria-hidden="true"><Sparkle /></span>
         <span className="sh-nav-brand-tx">
           <span className="sh-nav-brand-name">Studio Hub</span>
           <span className="sh-nav-brand-url">{HUB}</span>
@@ -285,7 +296,7 @@ export default function StudioHub() {
             <AbHd sku="HUB/A" label="landing · public splash" sub="self-hosted" />
             <div className="sh-landing">
               <header className="sh-topnav">
-                <span className="sh-topnav-brand"><span className="sh-mark" aria-hidden="true">M</span> Studio Hub</span>
+                <span className="sh-topnav-brand"><span className="sh-mark" aria-hidden="true"><Sparkle /></span> Studio Hub</span>
                 <nav className="sh-topnav-links" aria-label="Marketing">
                   <a aria-current="page">Overview</a>
                   <a>Deploy</a>
@@ -390,7 +401,7 @@ export default function StudioHub() {
             <div className="sh-wizard">
               <aside className="sh-steps">
                 <div className="sh-steps-brand">
-                  <span className="sh-mark sh-mark--lg" aria-hidden="true">M</span>
+                  <span className="sh-mark sh-mark--lg" aria-hidden="true"><Sparkle /></span>
                   <span className="sh-steps-brand-tx">
                     <span className="sh-steps-brand-name">Studio Hub</span>
                     <span className="sh-steps-brand-sub">self-hosted sync</span>
@@ -719,7 +730,7 @@ export default function StudioHub() {
                 <div className="sh-card">
                   <div className="sh-card-bd">
                     <div className="sh-signin-hero">
-                      <span className="sh-mark sh-mark--lg" aria-hidden="true">M</span>
+                      <span className="sh-mark sh-mark--lg" aria-hidden="true"><Sparkle /></span>
                       <span className="sh-signin-hero-tx"><span className="sh-signin-hero-name">Studio Hub</span><span className="sh-signin-hero-sub">this hub is already claimed</span></span>
                     </div>
                     <div className="sh-field">

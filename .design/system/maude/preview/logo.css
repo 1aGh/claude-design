@@ -1,8 +1,34 @@
 /* logo.css — bespoke styles for the SIGNATURE logo specimen.
- * The mark is a selected canvas node: a rounded-square frame + four indigo
- * corner handles. These styles frame the lockup, the mark scale, the selection
+ * The mark is the maude spark: a four-point star on a rounded indigo tile (the
+ * shipped app favicon). These styles frame the lockup, the mark scale, the spark
  * motif explainer, the clear-space + min-size rules, the placements, and the
  * do/don't misuse grid — all on the one shared chrome material. */
+
+/* ─── The mark — a CSS spark tile ────────────────────────────────────────────
+ * Indigo tile + accent-fg star. The bottom-right corner is squared off (the
+ * other three stay rounded) so the tile reads as a message bubble — maude is a
+ * conversation with the agent. In-app the tile sits in a soft accent halo
+ * (`--halo`); the bare knockout (`--bare`) drops the tile for accent surfaces. */
+.lg-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-radius: 24% 24% 0 24%;   /* TL · TR · BR(square) · BL — the bubble */
+}
+.lg-mark svg { width: 100%; height: 100%; display: block; }   /* star sized to ~⅔ of the tile */
+.lg-mark--halo { box-shadow: 0 0 0 3px var(--accent-tint); }
+.lg-mark--bare { background: transparent; color: currentColor; box-shadow: none; border-radius: 0; }
+
+.lg-lockup { display: inline-flex; align-items: center; gap: 0.32em; }
+.lg-word {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: currentColor;
+}
 
 /* ─── The lockup hero ───────────────────────────────────────────────────── */
 .logo-hero {

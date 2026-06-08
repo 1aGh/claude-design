@@ -48,7 +48,9 @@
 }
 .st-brand { display: inline-flex; align-items: center; gap: var(--space-3); padding-right: var(--space-3); }
 .st-brand-mark {
-  width: 18px; height: 18px; border-radius: var(--radius-sm);
+  width: 18px; height: 18px;
+  /* message-bubble corner — bottom-right squared, the other three rounded */
+  border-radius: var(--radius-sm) var(--radius-sm) 0 var(--radius-sm);
   background: var(--accent); display: grid; place-items: center; color: var(--accent-fg);
   box-shadow: 0 0 0 3px var(--accent-tint);
 }

@@ -51,9 +51,12 @@
 }
 .sd-brand { display: inline-flex; align-items: center; gap: var(--space-3); padding-right: var(--space-3); }
 .sd-brand-mark {
-  width: 22px; height: 22px; border-radius: var(--radius-sm);
+  width: 22px; height: 22px;
+  /* message-bubble corner — bottom-right squared, the other three rounded */
+  border-radius: var(--radius-sm) var(--radius-sm) 0 var(--radius-sm);
   background: var(--accent); color: var(--accent-fg);
   display: inline-flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 0 3px var(--accent-tint);   /* the in-app accent halo */
 }
 .sd-brand-name { font-family: var(--font-display); font-weight: 600; font-size: var(--type-md); letter-spacing: var(--tracking-tight); }
 .sd-brand-sku { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); letter-spacing: var(--tracking-wide); text-transform: uppercase; }
@@ -216,7 +219,7 @@
 .sd-hero { display: grid; grid-template-columns: 1.2fr 1fr; gap: var(--space-8); align-items: center; margin-bottom: var(--space-8); }
 /* Human-scale brand lockup — the wordmark as a hero anchor, not just 22px chrome. */
 .sd-hero-lockup { display: inline-flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-5); }
-.sd-hero-lockup .sd-brand-mark { width: 44px; height: 44px; border-radius: var(--radius-md); }
+.sd-hero-lockup .sd-brand-mark { width: 44px; height: 44px; border-radius: var(--radius-md) var(--radius-md) 0 var(--radius-md); }
 .sd-hero-lockup .sd-wordmark { font-family: var(--font-display); font-weight: 650; font-size: var(--type-2xl); letter-spacing: var(--tracking-tight); }
 .sd-hero-lockup .sd-brand-sku { font-size: var(--type-sm); }
 .sd-hero-sku { display: inline-flex; align-items: center; gap: var(--space-3); font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-2); margin-bottom: var(--space-4); }
@@ -305,7 +308,7 @@
 /* Brand lockup for the full-bleed boards (flow-loop, intro-video) — these have no menubar,
    so the wordmark is how a viewer knows it's a maude artifact. */
 .sd-info-brand { display: inline-flex; align-items: center; gap: var(--space-3); padding-right: var(--space-3); border-right: 1px solid var(--border-subtle); }
-.sd-info-brand .sd-brand-mark { width: 30px; height: 30px; border-radius: var(--radius-md); }
+.sd-info-brand .sd-brand-mark { width: 30px; height: 30px; border-radius: var(--radius-md) var(--radius-md) 0 var(--radius-md); }
 .sd-info-brand .sd-wordmark { font-family: var(--font-display); font-weight: 650; font-size: var(--type-lg); letter-spacing: var(--tracking-tight); }
 .sd-info-brand .sd-brand-sku { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); letter-spacing: var(--tracking-wide); text-transform: uppercase; }
 .sd-info-badge { font-family: var(--font-mono); font-size: var(--type-xs); text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--accent); border: 1px solid var(--accent-muted); background: var(--accent-tint); border-radius: var(--radius-pill); padding: var(--space-1) var(--space-3); }
