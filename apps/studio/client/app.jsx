@@ -370,7 +370,11 @@ function CommandPalette({ open, onClose, actions }) {
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     if (!needle) return actions;
-    return actions.filter((a) => a.label.toLowerCase().includes(needle));
+    return actions.filter(
+      (a) =>
+        a.label.toLowerCase().includes(needle) ||
+        (a.group && a.group.toLowerCase().includes(needle))
+    );
   }, [q, actions]);
   useEffect(() => {
     if (active >= filtered.length) setActive(0);
@@ -420,25 +424,37 @@ function CommandPalette({ open, onClose, actions }) {
           {filtered.length === 0 ? (
             <div className="st-pal-empty">No matching command.</div>
           ) : (
-            filtered.map((a, i) => (
-              <button
-                type="button"
-                key={a.id}
-                className={'st-pal-item' + (i === active ? ' is-active' : '')}
-                onMouseEnter={() => setActive(i)}
-                onClick={() => run(a)}
-              >
-                <span className="st-pal-icon">
-                  <StIcon name={a.icon} size={15} />
-                </span>
-                <span className="st-pal-label">{a.label}</span>
-                {a.kbd ? (
-                  <span className="st-pal-kbd">
-                    <Kbd>{a.kbd}</Kbd>
-                  </span>
-                ) : null}
-              </button>
-            ))
+            filtered.map((a, i) => {
+              // Emit a group header when the group changes (flat list → grouped
+              // display; keyboard nav still indexes across the whole array).
+              const header =
+                a.group && (i === 0 || filtered[i - 1].group !== a.group) ? (
+                  <div className="st-pal-group" key={'g-' + a.group}>
+                    {a.group}
+                  </div>
+                ) : null;
+              return (
+                <Fragment key={a.id}>
+                  {header}
+                  <button
+                    type="button"
+                    className={'st-pal-item' + (i === active ? ' is-active' : '')}
+                    onMouseEnter={() => setActive(i)}
+                    onClick={() => run(a)}
+                  >
+                    <span className="st-pal-icon">
+                      <StIcon name={a.icon} size={15} />
+                    </span>
+                    <span className="st-pal-label">{a.label}</span>
+                    {a.kbd ? (
+                      <span className="st-pal-kbd">
+                        <Kbd>{a.kbd}</Kbd>
+                      </span>
+                    ) : null}
+                  </button>
+                </Fragment>
+              );
+            })
           )}
         </div>
       </div>
@@ -466,8 +482,192 @@ function StIcon({ name, size = 16, className }) {
   );
 }
 
+// P3 (Plan C) — menubar presence avatar (matches `.design/ui/Studio.tsx` Avatar).
+// Up to two uppercase glyphs from a name; falls back to "?" for empties.
+function initialsOf(name) {
+  if (!name || typeof name !== 'string') return '?';
+  const parts = name.trim().split(/[\s._-]+/).filter(Boolean);
+  if (!parts.length) return '?';
+  const a = parts[0][0] || '';
+  const b = parts.length > 1 ? parts[parts.length - 1][0] || '' : '';
+  return (a + b).toUpperCase() || '?';
+}
+function StAvatar({ initials, hue, title }) {
+  return (
+    <span className="st-avatar" style={{ background: hue }} title={title} aria-label={title}>
+      {initials}
+    </span>
+  );
+}
+
 function Kbd({ children }) {
   return <span className="kbd">{children}</span>;
+}
+
+// T5 (Plan C) — shell-level Export & Handoff dialog (maude `.st-dialog`), per
+// `.design/ui/Studio.tsx` HandoffBoard. Wired to the privileged main-origin
+// `POST /_api/export` (7 real formats × scopes). The shadcn card is HANDOFF —
+// a privileged disk-write kept off HTTP routes (DDR-054), so it surfaces the
+// `/design:handoff` command instead. PPTX/Canva kept reachable (no silent cap).
+const EXPORT_CARDS = [
+  { id: 'png', label: 'PNG', sub: 'raster · 2×', icon: 'download', format: 'png', options: { scale: 2 } },
+  { id: 'pdf', label: 'PDF', sub: 'vector · print', icon: 'download', format: 'pdf' },
+  { id: 'svg', label: 'SVG', sub: 'per artboard', icon: 'download', format: 'svg' },
+  { id: 'html', label: 'HTML', sub: 'self-contained', icon: 'code', format: 'html' },
+  { id: 'pptx', label: 'PPTX', sub: 'slides', icon: 'download', format: 'pptx' },
+  { id: 'canva', label: 'Canva', sub: 'handoff bundle', icon: 'share', format: 'canva' },
+  { id: 'zip', label: 'ZIP', sub: 'project bundle', icon: 'download', format: 'zip' },
+  { id: 'shadcn', label: 'shadcn', sub: 'registry-item', icon: 'share', handoff: true },
+];
+
+function ExportDialog({ mode, activePath, onClose }) {
+  const [sel, setSel] = useState(mode === 'handoff' ? 'shadcn' : 'png');
+  const [scope, setScope] = useState('artboard');
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState(null); // { ok, msg }
+  const card = EXPORT_CARDS.find((c) => c.id === sel) || EXPORT_CARDS[0];
+
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  async function doExport() {
+    if (card.handoff) {
+      try {
+        await navigator.clipboard?.writeText('/design:handoff');
+      } catch {}
+      setStatus({
+        ok: true,
+        msg: 'Copied /design:handoff — run it in Claude Code to emit the registry-item sidecar.',
+      });
+      return;
+    }
+    setBusy(true);
+    setStatus(null);
+    try {
+      const r = await fetch('/_api/export', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ format: card.format, scope, options: card.options || {} }),
+      });
+      if (!r.ok) {
+        setStatus({ ok: false, msg: (await r.text()) || `Export failed (${r.status})` });
+        setBusy(false);
+        return;
+      }
+      const disp = r.headers.get('Content-Disposition') || '';
+      const fn = /filename="([^"]+)"/.exec(disp);
+      const filename = (fn && fn[1]) || `export.${card.format}`;
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setStatus({ ok: true, msg: `Exported ${filename}` });
+    } catch (err) {
+      setStatus({ ok: false, msg: err && err.message ? err.message : String(err) });
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div
+      className="st-scrim"
+      role="presentation"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="st-dialog" role="dialog" aria-modal="true" aria-label="Export and handoff">
+        <div className="st-dialog-hd">
+          <span className="st-dialog-title">Export &amp; handoff</span>
+          <button type="button" className="st-iconbtn" aria-label="Close" onClick={onClose}>
+            <StIcon name="x" size={15} />
+          </button>
+        </div>
+        <div className="st-dialog-bd">
+          <div className="st-rp-hd">
+            {activePath && activePath !== SYSTEM_TAB
+              ? `Format · ${displayName(basename(activePath))}`
+              : 'Format'}
+          </div>
+          <div className="st-fmt-grid">
+            {EXPORT_CARDS.map((c) => (
+              <button
+                type="button"
+                key={c.id}
+                className={'st-fmt' + (c.id === sel ? ' is-on' : '')}
+                onClick={() => {
+                  setSel(c.id);
+                  setStatus(null);
+                }}
+              >
+                <StIcon name={c.icon} size={16} />
+                <span className="st-fmt-name">{c.label}</span>
+                <span className="st-fmt-sub">{c.sub}</span>
+              </button>
+            ))}
+          </div>
+          {!card.handoff && (
+            <div className="st-dialog-row">
+              <label className="st-dialog-lbl" htmlFor="st-export-scope">
+                Scope
+              </label>
+              <select
+                id="st-export-scope"
+                className="st-select"
+                value={scope}
+                onChange={(e) => setScope(e.target.value)}
+              >
+                <option value="artboard">Active artboard</option>
+                <option value="selection">Current selection</option>
+                <option value="canvas-as-separate">Canvas · artboards separate</option>
+                <option value="project-raw">Whole project (raw)</option>
+              </select>
+            </div>
+          )}
+          {card.handoff && (
+            <div className="callout callout--success" style={{ fontSize: 12 }}>
+              shadcn registry-item inlines canvas-lib + declares deps — drops straight into Next.js.
+              Emitted by <span className="st-mono">/design:handoff</span>.
+            </div>
+          )}
+          {status && (
+            <div
+              className={'callout ' + (status.ok ? 'callout--success' : 'callout--error')}
+              style={{ fontSize: 12 }}
+            >
+              {status.msg}
+            </div>
+          )}
+        </div>
+        <div className="st-dialog-ft">
+          <button type="button" className="btn btn--ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" className="btn btn--primary" disabled={busy} onClick={doExport}>
+            <StIcon name="download" size={14} />
+            {card.handoff
+              ? 'Copy handoff command'
+              : busy
+                ? 'Exporting…'
+                : `Export ${card.label}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ───── Tree (CV-08 spec) ─────
@@ -533,7 +733,10 @@ function DsFolderRow({ name, dsName, depth, defaultOpen, active, onOpenSystem, c
           aria-label={`Open ${dsName} design system view`}
           title="Open the design system view"
         >
-          {name}
+          <span className="st-row-glyph">
+            <StIcon name="folder" size={13} />
+          </span>
+          <span className="st-row-name">{name}</span>
         </button>
       </div>
       {open && children}
@@ -1524,6 +1727,82 @@ function ToolsDropdown({ onAction, onClose }) {
   );
 }
 
+// Plan C follow-up — File + Edit menus, previously inert. Both dispatch to real
+// shell flows (File) or the in-canvas undo stack / selection bridges (Edit).
+function FileDropdown({ onAction, onClose }) {
+  useDropdownClose(onClose);
+  const items = [
+    { id: 'new', label: 'New canvas…', shortcut: '⌘N' },
+    { id: 'export', label: 'Export…', shortcut: '⇧⌘E' },
+    { id: 'handoff', label: 'Handoff to production', shortcut: '⇧⌘H' },
+    { sep: true },
+    { id: 'reload', label: 'Reload canvas', shortcut: '⌘R' },
+  ];
+  return (
+    <div className="st-dropdown" role="menu" aria-label="File" style={{ left: 40 }}>
+      {items.map((it, i) =>
+        it.sep ? (
+          <div key={'s' + i} className="st-dd-sep" />
+        ) : (
+          <button
+            key={it.id}
+            type="button"
+            role="menuitem"
+            className="st-dd-item"
+            onClick={() => {
+              onAction(it.id);
+              onClose();
+            }}
+          >
+            <span className="st-dd-lead">
+              <span className="st-dd-check" />
+              <span>{it.label}</span>
+            </span>
+            <Kbd>{it.shortcut}</Kbd>
+          </button>
+        )
+      )}
+    </div>
+  );
+}
+
+function EditDropdown({ onAction, onClose }) {
+  useDropdownClose(onClose);
+  const items = [
+    { id: 'undo', label: 'Undo', shortcut: '⌘Z' },
+    { id: 'redo', label: 'Redo', shortcut: '⇧⌘Z' },
+    { sep: true },
+    { id: 'deselect-all', label: 'Deselect all', shortcut: 'Esc' },
+    { id: 'select-all-annotations', label: 'Select all annotations', shortcut: '⇧⌘A' },
+  ];
+  return (
+    <div className="st-dropdown" role="menu" aria-label="Edit" style={{ left: 90 }}>
+      {items.map((it, i) =>
+        it.sep ? (
+          <div key={'s' + i} className="st-dd-sep" />
+        ) : (
+          <button
+            key={it.id}
+            type="button"
+            role="menuitem"
+            className="st-dd-item"
+            onClick={() => {
+              onAction(it.id);
+              onClose();
+            }}
+          >
+            <span className="st-dd-lead">
+              <span className="st-dd-check" />
+              <span>{it.label}</span>
+            </span>
+            <Kbd>{it.shortcut}</Kbd>
+          </button>
+        )
+      )}
+    </div>
+  );
+}
+
 function Menubar({
   activePath,
   project,
@@ -1543,6 +1822,14 @@ function Menubar({
   postToActiveCanvas,
   onOpenWhatsNew,
   whatsNewCount,
+  zoomPct = 100,
+  artboardCount = 0,
+  presence = null,
+  inspectorOpen,
+  onToggleInspector,
+  onNewCanvas,
+  onOpenExport,
+  onReload,
 }) {
   const isSystem = activePath === SYSTEM_TAB;
   const stamp = isSystem ? 'SYSTEM' : activePath ? 'CANVAS' : 'IDLE';
@@ -1573,7 +1860,7 @@ function Menubar({
       disabled: false,
     },
     { id: 'layers', label: 'Layers Panel', phase: 'Phase 12', disabled: true },
-    { id: 'inspector', label: 'Inspector', phase: 'Phase 12', disabled: true },
+    { id: 'inspector', label: 'Inspector', shortcut: 'I', checked: inspectorOpen, disabled: false },
     {
       id: 'annotate',
       label: 'Annotations',
@@ -1584,8 +1871,9 @@ function Menubar({
     { id: 'present', label: 'Presentation Mode', phase: 'Phase 6', disabled: true },
   ];
 
+  const DROPDOWN_MENUS = ['file', 'edit', 'view', 'selection', 'tools'];
   function onMenuClick(key) {
-    if (key === 'view' || key === 'selection' || key === 'tools') {
+    if (DROPDOWN_MENUS.includes(key)) {
       setOpenMenu(openMenu === key ? null : key);
     } else if (key === 'help') {
       setOpenMenu(null);
@@ -1604,7 +1892,7 @@ function Menubar({
       <nav className="st-menus" aria-label="Application menus">
         {MENU_NAMES.map((name) => {
           const key = name.toLowerCase();
-          const hasDropdown = key === 'view' || key === 'selection' || key === 'tools';
+          const hasDropdown = DROPDOWN_MENUS.includes(key);
           const interactive = hasDropdown || key === 'help';
           const open = openMenu === key;
           return (
@@ -1616,15 +1904,41 @@ function Menubar({
               data-tour={key === 'help' ? 'help' : undefined}
               aria-haspopup={hasDropdown ? 'menu' : undefined}
               aria-expanded={hasDropdown ? open : undefined}
-              aria-disabled={interactive ? undefined : 'true'}
-              title={interactive ? '' : 'Coming in a later phase'}
               onClick={() => onMenuClick(key)}
+              // F4 — once any menu is open, hovering another trigger switches to
+              // it (base-ui menubar behavior). Only among dropdown menus.
+              onMouseEnter={() => {
+                if (openMenu !== null && hasDropdown) setOpenMenu(key);
+              }}
             >
               {name}
             </button>
           );
         })}
       </nav>
+      {openMenu === 'file' && (
+        <FileDropdown
+          onAction={(id) => {
+            if (id === 'new') onNewCanvas?.();
+            else if (id === 'export') onOpenExport?.('export');
+            else if (id === 'handoff') onOpenExport?.('handoff');
+            else if (id === 'reload') onReload?.();
+          }}
+          onClose={() => setOpenMenu(null)}
+        />
+      )}
+      {openMenu === 'edit' && (
+        <EditDropdown
+          onAction={(id) => {
+            if (id === 'undo') postToActiveCanvas({ dgn: 'undo' });
+            else if (id === 'redo') postToActiveCanvas({ dgn: 'redo' });
+            else if (id === 'deselect-all') postToActiveCanvas({ dgn: 'selection-clear' });
+            else if (id === 'select-all-annotations')
+              postToActiveCanvas({ dgn: 'annotation-select-all' });
+          }}
+          onClose={() => setOpenMenu(null)}
+        />
+      )}
       {openMenu === 'view' && (
         <ViewDropdown
           panels={panels}
@@ -1633,6 +1947,7 @@ function Menubar({
             else if (id === 'comments') onToggleComments();
             else if (id === 'hidden') onToggleShowHidden();
             else if (id === 'annotate') onToggleAnnotations();
+            else if (id === 'inspector') onToggleInspector();
           }}
           onClose={() => setOpenMenu(null)}
         />
@@ -1654,6 +1969,7 @@ function Menubar({
         />
       )}
       <div className="st-mb-right">
+        {presence ? <div className="st-presence">{presence}</div> : null}
         <button
           type="button"
           className="st-whatsnew"
@@ -1669,13 +1985,13 @@ function Menubar({
           {fileLabel}
         </span>
         <span className="st-mb-sep" />
-        <span className="st-mb-count" title="Open canvases">
+        <span className="st-mb-count" title="Artboards in the open canvas">
           <span className="st-dot" style={{ background: 'var(--accent)' }} />
-          {tabsCount} ARTBOARDS
+          {artboardCount} ARTBOARDS
         </span>
         <span className="st-mb-sep" />
-        <span className="st-mb-count st-mono" title="Pan/zoom in Phase 4">
-          ZOOM 100%
+        <span className="st-mb-count st-mono" title="Canvas zoom">
+          ZOOM {zoomPct}%
         </span>
         <span className="st-mb-sep" />
         <span className="st-mb-proj">{project || 'maude'}</span>
@@ -2057,6 +2373,40 @@ function StatusBar({
         ? selected.selector
         : '';
   const nextTheme = theme === 'dark' ? 'light' : 'dark';
+
+  // P5 (Plan C) — always-on hub-sync slot. `/_sync-status` returns one of three
+  // shapes: solo `{linked:false}` (hide), DDR-060 `{notSyncable,tsxCount,reason}`
+  // (linked but 0 syncable), or the connection-state machine `{state,queuedOps,
+  // flash,…}` (the common linked case the old notSyncable-only guard never
+  // showed — the "hub sync se neukazuje" bug). Map each to a label + dot tone.
+  const syncSlot = (() => {
+    if (!syncStatus || syncStatus.linked === false) return null;
+    if (syncStatus.notSyncable) {
+      return {
+        online: false,
+        label: `0 syncable${syncStatus.tsxCount > 0 ? ` · ${syncStatus.tsxCount} tsx` : ''}`,
+        title: syncStatus.reason || 'Linked to a hub, but no canvases are syncable.',
+      };
+    }
+    const q = syncStatus.queuedOps ?? 0;
+    const synced = syncStatus.state === 'online' || syncStatus.flash === 'synced';
+    if (synced) {
+      return {
+        online: true,
+        label: q > 0 ? `${q} ↑` : 'synced',
+        title: q > 0 ? `${q} edit(s) queued to push` : 'All changes synced to the hub',
+      };
+    }
+    return {
+      online: false,
+      label: `${q} ↑`,
+      title:
+        syncStatus.state === 'connecting'
+          ? 'Connecting to the hub…'
+          : 'Offline — edits queued, will sync when the hub reconnects',
+    };
+  })();
+
   return (
     <footer className="st-statusbar" role="contentinfo">
       <span className="st-sb-slot st-sb-active" role="group" aria-label="Active file">
@@ -2097,17 +2447,18 @@ function StatusBar({
         <span className="lbl">{wsConnected ? 'live' : 'reconnecting'}</span>
       </span>
 
-      {/* DDR-060 / 9.1-D — linked-to-hub-but-nothing-syncs state lives here in the
-          status bar (DS-styled, hover for detail) instead of a floating off-brand
-          pill. Only shown when the project is linked + has 0 syncable canvases. */}
-      {syncStatus?.notSyncable && (
+      {/* P5 (Plan C) — always-on hub-sync slot (was notSyncable-only per DDR-060
+          / 9.1-D). Now also surfaces the connection-state machine's queued/synced
+          counter for the common linked case. Solo projects render nothing. */}
+      {syncSlot && (
         <span className="st-sb-slot st-sb-sync" role="group" aria-label="Hub sync">
-          <span className="st-sb-sync-dot" aria-hidden="true" />
           <span
-            className="lbl"
-            title={syncStatus.reason || 'Linked to a hub, but no canvases are syncable.'}
-          >
-            0 syncable{syncStatus.tsxCount > 0 ? ` · ${syncStatus.tsxCount} tsx` : ''}
+            className={'st-sb-sync-dot' + (syncSlot.online ? ' is-online' : '')}
+            aria-hidden="true"
+          />
+          <span className="lbl">hub sync</span>
+          <span className="val" title={syncSlot.title}>
+            {syncSlot.label}
           </span>
         </span>
       )}
@@ -2291,6 +2642,10 @@ function CommentsPanel({
 // for 3s right after a reconnect. Driven entirely by the 'sync:status' payload
 // the dev-server's linked-mode sync runtime broadcasts.
 function SyncBanner({ status }) {
+  // Plan C follow-up — the banner overlapped the menubar and wasn't dismissable.
+  // Dismissal is keyed on the connection state, so a transition (reconnect flash,
+  // escalation to offline-long) re-surfaces it; a stable state stays hidden.
+  const [dismissedKey, setDismissedKey] = useState(null);
   if (!status || status.linked === false) return null;
   // DDR-060 / 9.1-D — the "linked but 0 syncable" state is surfaced in the
   // status bar (sb-sync slot), NOT as a floating banner. This component owns
@@ -2300,6 +2655,8 @@ function SyncBanner({ status }) {
   const showFlash = flash === 'synced';
   const offline = state === 'offline' || state === 'offline-long';
   if (!offline && !showFlash) return null;
+  const dismissKey = `${state}:${showFlash ? 'flash' : 'offline'}`;
+  if (dismissedKey === dismissKey) return null;
 
   let variant;
   let text;
@@ -2323,7 +2680,151 @@ function SyncBanner({ status }) {
         {text}
         {conflictNote}
       </span>
+      <button
+        type="button"
+        className="st-banner-close"
+        aria-label="Dismiss"
+        title="Dismiss"
+        onClick={() => setDismissedKey(dismissKey)}
+      >
+        ×
+      </button>
     </div>
+  );
+}
+
+// ---------- Inspector panel (display-only) ----------
+//
+// T6 (Plan C) — right-dock Inspect / Layers / CSS tabs per `.design/ui/Studio.tsx`
+// InspectorPanel. DISPLAY-ONLY: reads the live `selected` payload from the
+// inspector bridge (`bounds`, `tag`, `classes`, `dom_path`, `html`). The
+// mockup's live-CSS-knob WRITEBACK is Phase 12 (needs a canvas-origin write
+// bridge, DDR-054) — the CSS tab shows markup read-only + keeps that callout, so
+// it never implies functionality it lacks (the exact reason DDR-096 deferred it).
+function InspectorPanel({ selected, onClose }) {
+  const [tab, setTab] = useState('inspect');
+  // `selected` may be a single element, an array (multi-select), or null.
+  const el = Array.isArray(selected) ? selected[0] : selected;
+  const tabBtn = (id, label, icon) => (
+    <button
+      type="button"
+      className={'st-rp-tab' + (tab === id ? ' is-active' : '')}
+      onClick={() => setTab(id)}
+    >
+      <StIcon name={icon} size={14} />
+      {label}
+    </button>
+  );
+  const b = el?.bounds || null;
+  return (
+    <aside className="st-rpanel" aria-label="Inspector">
+      <div className="st-rp-tabs">
+        {tabBtn('inspect', 'Inspect', 'sliders')}
+        {tabBtn('layers', 'Layers', 'layers')}
+        {tabBtn('css', 'CSS', 'code')}
+        <button
+          type="button"
+          className="st-iconbtn"
+          aria-label="Close inspector"
+          style={{ marginLeft: 'auto' }}
+          onClick={onClose}
+        >
+          <StIcon name="x" size={14} />
+        </button>
+      </div>
+      <div className="st-rp-body">
+        {!el ? (
+          <div className="st-rp-empty">
+            Hold <Kbd>⌘</Kbd> inside the canvas and click an element to inspect it.
+          </div>
+        ) : tab === 'inspect' ? (
+          <>
+            <div className="st-rp-hd">{el.selector || el.tag || 'element'}</div>
+            <div className="st-insp-row">
+              <span className="st-insp-label">Pos</span>
+              <div className="st-insp-fields">
+                <span className="st-field-lead">
+                  <span className="k">X</span>
+                  <input className="st-field" value={b ? Math.round(b.x) : '—'} readOnly />
+                </span>
+                <span className="st-field-lead">
+                  <span className="k">Y</span>
+                  <input className="st-field" value={b ? Math.round(b.y) : '—'} readOnly />
+                </span>
+              </div>
+            </div>
+            <div className="st-insp-row">
+              <span className="st-insp-label">Size</span>
+              <div className="st-insp-fields">
+                <span className="st-field-lead">
+                  <span className="k">W</span>
+                  <input className="st-field" value={b ? Math.round(b.w) : '—'} readOnly />
+                </span>
+                <span className="st-field-lead">
+                  <span className="k">H</span>
+                  <input className="st-field" value={b ? Math.round(b.h) : '—'} readOnly />
+                </span>
+              </div>
+            </div>
+            <div className="st-insp-row">
+              <span className="st-insp-label">Tag</span>
+              <div className="st-insp-fields">
+                <span className="st-mono" style={{ fontSize: 11, color: 'var(--fg-0)' }}>
+                  {el.tag || '—'}
+                </span>
+              </div>
+            </div>
+            {el.classes ? (
+              <div className="st-insp-row">
+                <span className="st-insp-label">Class</span>
+                <div className="st-insp-fields">
+                  <span className="st-mono" style={{ fontSize: 11, color: 'var(--fg-1)' }}>
+                    {el.classes}
+                  </span>
+                </div>
+              </div>
+            ) : null}
+            <div className="callout callout--info" style={{ fontSize: 12 }}>
+              Computed fill / radius / type readout lands with the live CSS bridge (Phase 12).
+            </div>
+          </>
+        ) : tab === 'layers' ? (
+          <>
+            <div className="st-rp-hd">Layers · ancestry</div>
+            {Array.isArray(el.dom_path) && el.dom_path.length ? (
+              el.dom_path.map((node, i) => (
+                <div
+                  key={i}
+                  className={'st-layer' + (i === el.dom_path.length - 1 ? ' is-sel' : '')}
+                  style={{ paddingLeft: 8 + i * 12 }}
+                >
+                  <StIcon name="square" size={13} />
+                  {node}
+                </div>
+              ))
+            ) : (
+              <div className="st-rp-empty">No ancestry path for this selection.</div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="st-rp-hd">Markup · {el.selector || el.tag}</div>
+            <div className="st-css">
+              <div>
+                <span className="comment">/* read-only — outerHTML snapshot */</span>
+              </div>
+              <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                {(el.html || '').slice(0, 600) || '(no markup captured)'}
+              </div>
+            </div>
+            <div className="callout callout--info" style={{ fontSize: 12 }}>
+              Phase 12 — knob edits will write back to the artboard live and stage a diff for
+              handoff. Today the inspector is read-only.
+            </div>
+          </>
+        )}
+      </div>
+    </aside>
   );
 }
 
@@ -2409,6 +2910,10 @@ function App() {
   const [sectionsExpanded, setSectionsExpanded] = useState(() => readJsonStore(SECTIONS_STORE, {}));
   const [helpOpen, setHelpOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // T5/T6 (Plan C) — shell-level export/handoff dialog + inspector panel state.
+  // The palette (T4) drives them; the dialog (T5) + panel (T6) consume them.
+  const [exportDialog, setExportDialog] = useState(null); // null | 'export' | 'handoff'
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const whatsNew = useWhatsNew(MDCC_VERSION);
   const [tourSteps, setTourSteps] = useState(null);
   const [usageNudge, setUsageNudge] = useState(() => !readBoolStore(USAGE_TOUR_STORE, false));
@@ -2422,6 +2927,20 @@ function App() {
     } catch {}
   }, []);
   const [annotationsVisible, setAnnotationsVisible] = useState(true);
+  // P1/P2/P3 (Plan C) — top-bar live state.
+  //   canvasZoom    — relayed from the canvas iframe via `dgn:zoom` (the
+  //                   in-canvas zoom is authoritative; T7 wires the emitter).
+  //                   Seeds 100% until the first message.
+  //   activeArtboards — real artboard count of the open canvas, read from its
+  //                   `<canvas>.meta.json` sidecar (shell-side, no iframe dep).
+  //   gitUser       — local user (name/initials) for the menubar presence avatar.
+  //   agentActive   — transient flag set on `ai-activity`, cleared after idle, so
+  //                   the menubar shows a live agent avatar while Claude edits.
+  const [canvasZoom, setCanvasZoom] = useState(100);
+  const [activeArtboards, setActiveArtboards] = useState(0);
+  const [gitUser, setGitUser] = useState(null);
+  const [agentActive, setAgentActive] = useState(false);
+  const agentIdleRef = useRef(null);
   const wsRef = useRef(null);
   const iframesRef = useRef(new Map());
 
@@ -2451,6 +2970,48 @@ function App() {
       }
       return next;
     });
+  }, [activePath]);
+
+  // P3 (Plan C) — local git user for the menubar presence avatar. One-shot.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/_api/git-user')
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        const n = d && typeof d.name === 'string' ? d.name.trim() : '';
+        if (n) setGitUser(n);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // P2/P1 (Plan C) — when the active canvas changes, read its real artboard
+  // count from the `<canvas>.meta.json` sidecar (shell-side, no iframe dep) and
+  // reset the relayed zoom to the 100% seed (the new canvas reports its own via
+  // `dgn:zoom` once it loads).
+  useEffect(() => {
+    setCanvasZoom(100);
+    if (!activePath || activePath === SYSTEM_TAB) {
+      setActiveArtboards(0);
+      return;
+    }
+    let cancelled = false;
+    fetch('/_api/canvas-meta?file=' + encodeURIComponent(activePath))
+      .then((r) => r.json())
+      .then((meta) => {
+        if (cancelled) return;
+        const n = Array.isArray(meta?.artboards) ? meta.artboards.length : 0;
+        setActiveArtboards(n);
+      })
+      .catch(() => {
+        if (!cancelled) setActiveArtboards(0);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [activePath]);
 
   // Sync theme to <html data-theme> + localStorage on every change.
@@ -2597,6 +3158,12 @@ function App() {
           } else if (m.type === 'comments' && typeof m.file === 'string') {
             setCommentsByFile((prev) => ({ ...prev, [m.file]: m.comments || [] }));
           } else if (m.type === 'ai-activity' && typeof m.file === 'string') {
+            // P3 (Plan C) — surface live agent activity as a menubar presence
+            // avatar. Set the flag and (re)arm an idle timer so the avatar
+            // fades once Claude stops editing.
+            setAgentActive(true);
+            if (agentIdleRef.current) clearTimeout(agentIdleRef.current);
+            agentIdleRef.current = setTimeout(() => setAgentActive(false), 8000);
             // Phase 8 Task 4 — relay to every open iframe; each canvas's
             // AiBanner filters by its own file path. Lightweight broadcast
             // (one envelope per change, not per iframe count).
@@ -2884,6 +3451,16 @@ function App() {
         setFocusedCommentId((prev) => (prev === m.id ? null : prev));
       } else if (m.dgn === 'comment-click' && m.id) {
         setFocusedCommentId(m.id);
+      } else if (m.dgn === 'zoom' && typeof m.zoom === 'number') {
+        // P1 (Plan C) — the canvas iframe relays its current zoom. Advisory
+        // display only (untrusted origin, DDR-054); clamp before render.
+        const z = Math.round(m.zoom);
+        if (Number.isFinite(z) && z >= 1 && z <= 1000) setCanvasZoom(z);
+      } else if (m.dgn === 'artboards' && typeof m.count === 'number') {
+        // P2 (Plan C) — optional iframe-reported artboard count; overrides the
+        // meta.json-derived seed when the canvas knows better. Clamp.
+        const n = Math.round(m.count);
+        if (Number.isFinite(n) && n >= 0 && n <= 999) setActiveArtboards(n);
       } else if (m.dgn === 'loaded' && m.file) {
         // iframe finished loading — push current comments + carry over focused pin if any
         const list = commentsByFile[m.file] || [];
@@ -3127,6 +3704,12 @@ function App() {
         }
         return;
       }
+      // I — toggle Inspector panel (T6, Plan C)
+      if ((e.key === 'i' || e.key === 'I') && !meta && !e.shiftKey) {
+        e.preventDefault();
+        setInspectorOpen((v) => !v);
+        return;
+      }
       // ? or F1 — open Help modal
       if (e.key === '?' || e.key === 'F1') {
         e.preventDefault();
@@ -3178,10 +3761,46 @@ function App() {
   }, []);
 
   // ⌘K palette actions — shell-doable only (in-canvas export lives in the iframe).
+  // T4 (Plan C) — grouped command set per `.design/ui/Studio.tsx` AB-D.
+  // `group` drives the section headers; the list stays a flat array so keyboard
+  // nav indexes straight across groups.
   const paletteActions = useMemo(
     () => [
+      // ── Canvas ──────────────────────────────────────────────────────────
+      {
+        id: 'new',
+        group: 'Canvas',
+        label: 'New canvas…',
+        icon: 'plus',
+        kbd: '⌘N',
+        run: () => {
+          setSidebarOpen(true);
+          setTimeout(
+            () => document.querySelector('[aria-label="New blank brief board"]')?.click(),
+            60
+          );
+        },
+      },
+      {
+        id: 'export',
+        group: 'Canvas',
+        label: 'Export…',
+        icon: 'download',
+        kbd: '⇧⌘E',
+        run: () => setExportDialog('export'),
+      },
+      {
+        id: 'handoff',
+        group: 'Canvas',
+        label: 'Handoff to production',
+        icon: 'share',
+        kbd: '⇧⌘H',
+        run: () => setExportDialog('handoff'),
+      },
+      // ── View ────────────────────────────────────────────────────────────
       {
         id: 'system',
+        group: 'View',
         label: 'Open design system view',
         icon: 'sliders',
         kbd: 'S',
@@ -3189,32 +3808,60 @@ function App() {
       },
       {
         id: 'comments',
+        group: 'View',
         label: 'Toggle comments panel',
         icon: 'resolve',
         kbd: '⌘⇧M',
         run: () => setCommentsPanelOpen((v) => !v),
       },
       {
-        id: 'theme',
-        label: 'Toggle light / dark theme',
-        icon: 'sun',
-        run: () => toggleTheme(),
+        id: 'inspector',
+        group: 'View',
+        label: 'Open inspector',
+        icon: 'sliders',
+        kbd: 'I',
+        run: () => setInspectorOpen(true),
       },
       {
         id: 'reload',
+        group: 'View',
         label: 'Reload active canvas',
         icon: 'reload',
         kbd: '⌘R',
         run: () => reloadActive(),
       },
+      // ── Tools ───────────────────────────────────────────────────────────
+      {
+        id: 'draw',
+        group: 'Tools',
+        label: 'Draw a mark with the SVG agent',
+        icon: 'pen',
+        run: () => {
+          // The shell can't invoke Claude — surface the command for the user to
+          // paste into Claude Code (clipboard is the honest, useful affordance).
+          try {
+            navigator.clipboard?.writeText('/design:draw ');
+          } catch {}
+        },
+      },
+      {
+        id: 'theme',
+        group: 'Tools',
+        label: 'Toggle light / dark theme',
+        icon: 'sun',
+        run: () => toggleTheme(),
+      },
+      // ── Help ────────────────────────────────────────────────────────────
       {
         id: 'whatsnew',
+        group: 'Help',
         label: "What's new in maude",
         icon: 'sparkle',
         run: () => whatsNew.openPanel(),
       },
       {
         id: 'help',
+        group: 'Help',
         label: 'Help · shortcuts & commands',
         icon: 'help',
         kbd: '?',
@@ -3268,6 +3915,31 @@ function App() {
           postToActiveCanvas={postToActiveCanvas}
           onOpenWhatsNew={whatsNew.openPanel}
           whatsNewCount={whatsNew.unseen.length}
+          zoomPct={canvasZoom}
+          artboardCount={activeArtboards}
+          inspectorOpen={inspectorOpen}
+          onToggleInspector={() => setInspectorOpen((v) => !v)}
+          onNewCanvas={() => {
+            setSidebarOpen(true);
+            setTimeout(
+              () => document.querySelector('[aria-label="New blank brief board"]')?.click(),
+              60
+            );
+          }}
+          onOpenExport={(mode) => setExportDialog(mode)}
+          onReload={reloadActive}
+          presence={
+            <>
+              <StAvatar
+                initials={initialsOf(gitUser || 'you')}
+                hue="var(--accent)"
+                title={gitUser ? `${gitUser} (you)` : 'You'}
+              />
+              {agentActive && (
+                <StAvatar initials="C" hue="var(--presence-agent)" title="Claude · editing" />
+              )}
+            </>
+          }
         />
         <div className="st-body">
           <CollapsedRail
@@ -3311,7 +3983,11 @@ function App() {
               <CommentBar activePath={activePath} comments={activeFileComments} />
             )}
           </div>
-          {commentsPanelOpen && (
+          {/* Right dock — one panel at a time. Inspector takes precedence when
+              open (T6); else the comments panel. */}
+          {inspectorOpen ? (
+            <InspectorPanel selected={selected} onClose={() => setInspectorOpen(false)} />
+          ) : commentsPanelOpen ? (
             <CommentsPanel
               commentsByFile={commentsByFile}
               filter={commentsFilter}
@@ -3323,7 +3999,7 @@ function App() {
               onReopen={reopenComment}
               onDelete={deleteComment}
             />
-          )}
+          ) : null}
         </div>
         <StatusBar
           activePath={activePath}
@@ -3341,6 +4017,13 @@ function App() {
         onClose={() => setPaletteOpen(false)}
         actions={paletteActions}
       />
+      {exportDialog && (
+        <ExportDialog
+          mode={exportDialog}
+          activePath={activePath}
+          onClose={() => setExportDialog(null)}
+        />
+      )}
       <HelpModal
         open={helpOpen}
         onClose={() => setHelpOpen(false)}

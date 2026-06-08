@@ -131,28 +131,32 @@ export function WhatsNewToast({ wn }) {
   if (!wn.showToast || !wn.toastEntry) return null;
   const e = wn.toastEntry;
   const total = wn.unseen.length;
+  // Plan C P6 — restyled to the maude `.st-toast` family (was `mdcc-wn-toast`),
+  // matching `.design/ui/Studio.tsx` AB-D. Behavior unchanged.
   return (
-    <div className="mdcc-wn-toast" role="status" aria-live="polite">
-      <span className="mdcc-wn-toast__mark" aria-hidden="true">
-        ✦
-      </span>
-      <div className="mdcc-wn-toast__body">
-        <div className="mdcc-wn-toast__title">
-          New{e.version ? ` in v${e.version}` : ''} — {e.title}
-        </div>
-        <div className="mdcc-wn-toast__summary">{e.summary}</div>
-      </div>
-      <button type="button" className="mdcc-wn-toast__cta" onClick={wn.openPanel}>
-        {total > 1 ? `See all (${total})` : 'Details'}
-      </button>
+    <div className="st-toast" role="status" aria-live="polite">
       <button
         type="button"
-        className="mdcc-wn-toast__close"
+        className="st-toast-close"
         aria-label="Dismiss"
         onClick={wn.dismissToast}
       >
         ×
       </button>
+      <div className="st-toast-hd">
+        <span aria-hidden="true">✦</span>
+        What's new{e.version ? ` · v${e.version}` : ''}
+      </div>
+      <div className="st-toast-title">{e.title}</div>
+      <div className="st-toast-txt">{e.summary}</div>
+      <div className="st-toast-actions">
+        <button type="button" className="btn btn--primary btn--sm" onClick={wn.openPanel}>
+          {total > 1 ? `See all (${total})` : 'Details'}
+        </button>
+        <button type="button" className="btn btn--ghost btn--sm" onClick={wn.dismissToast}>
+          Dismiss
+        </button>
+      </div>
     </div>
   );
 }

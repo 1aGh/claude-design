@@ -1899,6 +1899,9 @@ const OVERLAY_CSS = `
   overflow: hidden;
 }
 .dc-mm-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 5px 8px 4px;
   border-bottom: 1px solid var(--maude-chrome-border, rgba(0,0,0,0.08));
   letter-spacing: 0.05em;
@@ -1906,6 +1909,7 @@ const OVERLAY_CSS = `
   font-size: 9px;
   background: var(--maude-chrome-bg-1, #f4f1ea);
 }
+.dc-mm-count { font-variant-numeric: tabular-nums; color: var(--maude-chrome-fg-2, rgba(40,30,20,0.55)); }
 .dc-mm-body {
   position: relative;
   width: 100%;
@@ -2104,7 +2108,10 @@ export function DCMiniMap() {
   return (
     <div className="dc-mm" aria-hidden="true">
       <div className="dc-mm-hd">
-        WORLD MAP · {world.artboards.length}/{world.artboards.length}
+        <span>World</span>
+        <span className="dc-mm-count">
+          {world.artboards.length} / {world.artboards.length}
+        </span>
       </div>
       <div
         className="dc-mm-body"

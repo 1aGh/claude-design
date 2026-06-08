@@ -2,6 +2,27 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "studio-full-functionality",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "The studio is fully wired now",
+      "summary": "Everything in the chrome is live: the top bar shows the real zoom + artboard count, the status bar always shows hub-sync, and your avatar (plus Claude when it's editing) appears in the menubar. The ⌘K palette grew real Canvas/Tools commands (New canvas, Export, Handoff, Draw), there's a proper Export & handoff dialog (PNG/PDF/SVG/HTML/shadcn/ZIP) right in the shell, and a new display-only Inspector panel (Inspect · Layers · CSS) reads any element you ⌘-click.",
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": ".st-mb-right",
+          "title": "Live status, finally",
+          "body": "Zoom, artboard count, presence and hub-sync now reflect the real state — no more static placeholders."
+        },
+        {
+          "target": ".st-rpanel",
+          "title": "Inspector",
+          "body": "⌘-click an element in the canvas, then press I — pos, size, ancestry and markup, read-only (live CSS knobs land in Phase 12)."
+        }
+      ]
+    },
+    {
       "id": "draw-animation-lottie",
       "version": null,
       "date": null,

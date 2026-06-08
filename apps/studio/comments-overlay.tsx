@@ -453,6 +453,7 @@ export function CommentsOverlay(): React.ReactNode {
         return (
           <CommentThread
             comment={focused}
+            sequence={indexById.get(focused.id) ?? 0}
             onClose={() => {
               setFocusedId(null);
               // Drop the canvas halo when the thread closes — symmetric with
@@ -925,12 +926,14 @@ function CommentComposer({
 
 function CommentThread({
   comment,
+  sequence,
   onClose,
   onPatch,
   onDelete,
   onReply,
 }: {
   comment: OverlayComment;
+  sequence: number;
   onClose: () => void;
   onPatch: (patch: Record<string, unknown>) => void;
   onDelete: () => void;
@@ -1027,6 +1030,11 @@ function CommentThread({
     >
       <div className="cm-thread__head" id={headId}>
         <div className="cm-thread__head-row">
+          {/* Plan C P18 — pin/sequence badge in the popover header (parity with
+              `.design/ui/Studio.tsx` thread popover). */}
+          <span className="cm-thread__seq" aria-hidden="true">
+            {sequence}
+          </span>
           <span className="cm-thread__author">{comment.author?.trim() || 'unknown'}</span>
           <span className="cm-thread__time">{formatRelativeTime(comment.created)}</span>
           <button

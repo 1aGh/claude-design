@@ -10,6 +10,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
 
+- [DDR-097: Studio full-functionality pass — scope calls (Plan C)](DDR-097-studio-full-functionality-scope-calls.md) — 2026-06-07, dev-server/studio/client/shell/canvas-origin/export/inspector/presence/command-palette/hub-sync/ddr-096/ddr-060-superseded
 - [DDR-080: Moodboard direction gate — cheap pre-scaffold visual approval before the expensive bootstrap](DDR-080-moodboard-direction-gate.md) — 2026-06-02, design/setup-ds/bootstrap/moodboard/direction-gate/hero-preview/aesthetic-ambition/ddr-033/ddr-057/ddr-073
 - [DDR-079: TSX sync defaults ON for a linked project (supersedes DDR-072's opt-in)](DDR-079-tsx-sync-default-on.md) — 2026-06-02, design/dev-server/sync/linked-mode/syncTsx/default-on/opt-out/ux/ddr-072-superseded
 - [DDR-076: An empty hub doc never clobbers a non-empty local canvas (cold-start seeds local UP)](DDR-076-empty-hub-doc-never-clobbers-local-canvas.md) — 2026-06-02, design/dev-server/sync/linked-mode/cold-start/hub-wins/data-loss/reconcile/agent

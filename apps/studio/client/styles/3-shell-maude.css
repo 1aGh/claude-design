@@ -152,6 +152,7 @@
 .st-live-dot { width: 7px; height: 7px; border-radius: var(--radius-pill); background: var(--presence-offline); flex: none; }
 .st-live-dot.is-connected { background: var(--presence-online); }
 .st-sb-sync-dot { width: 7px; height: 7px; border-radius: var(--radius-pill); background: var(--status-warn); flex: none; }
+.st-sb-sync-dot.is-online { background: var(--presence-online); }
 
 /* ═══ Task 4 — body row · sidebar · tree · rail ═══════════════════════════════ */
 
@@ -258,7 +259,7 @@
 .st-ds-folder { display: flex; align-items: center; gap: 0; padding: 0; }
 .st-ds-folder.is-sel { background: var(--accent-tint); border-radius: var(--radius-xs); box-shadow: inset 2px 0 0 var(--accent); }
 .st-ds-chev { appearance: none; border: 0; background: transparent; cursor: pointer; color: var(--fg-3); display: inline-flex; padding: var(--space-2) 0 var(--space-2) var(--space-2); }
-.st-ds-open { appearance: none; border: 0; background: transparent; cursor: pointer; color: var(--fg-1); flex: 1; text-align: left; padding: var(--space-2) var(--space-3); font-family: var(--font-body); font-size: var(--type-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-ds-open { appearance: none; border: 0; background: transparent; cursor: pointer; color: var(--fg-1); flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-2); text-align: left; padding: var(--space-2) var(--space-3) var(--space-2) 0; font-family: var(--font-body); font-size: var(--type-sm); }
 .st-ds-folder.is-sel .st-ds-open { color: var(--fg-0); }
 
 /* collapsed rail — thin strip with a re-open affordance */
@@ -369,6 +370,8 @@
 .st-banner--success .st-banner-dot { background: var(--status-success); }
 .st-banner--info .st-banner-dot { background: var(--status-info); }
 .st-banner .btn--sm { margin-left: var(--space-2); }
+.st-banner-close { appearance: none; border: 0; background: transparent; color: var(--fg-2); cursor: pointer; font-size: 16px; line-height: 1; padding: 0 2px; margin-left: var(--space-1); border-radius: var(--radius-xs); flex: none; }
+.st-banner-close:hover { background: color-mix(in oklab, var(--fg-0) 12%, transparent); color: var(--fg-0); }
 
 /* ─── Command palette (⌘K) ───────────────────────────────────────────────── */
 .st-scrim { position: fixed; inset: 0; background: color-mix(in oklab, var(--bg-0) 62%, transparent); z-index: 9000; display: grid; place-items: start center; padding-top: 12vh; }
@@ -390,5 +393,54 @@
 .st-pal-item .st-pal-kbd { margin-left: auto; flex: none; }
 .st-pal-icon { width: 26px; height: 26px; border-radius: var(--radius-sm); background: var(--bg-4); display: grid; place-items: center; color: var(--fg-1); flex: none; }
 .st-pal-item.is-active .st-pal-icon { background: var(--accent); color: var(--accent-fg); }
+
+/* ─── What's-new toast (Plan C P6) ─────────────────────────────────────────
+ * Lifted from Studio.css `.st-toast*`; repositioned fixed bottom-left for the
+ * real shell (the mockup floated it inside the stage). Mirrors ai-banner. */
+.st-toast {
+  position: fixed; left: 16px; bottom: 40px; width: 320px; z-index: 8000;
+  background: var(--bg-2); border: 1px solid var(--border-default); border-left: 3px solid var(--accent);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-lg); padding: var(--space-4);
+  display: flex; flex-direction: column; gap: var(--space-2);
+  animation: st-toast-in var(--dur-route) var(--ease-out);
+}
+@keyframes st-toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .st-toast { animation-duration: 1ms; } }
+.st-toast-hd { display: flex; align-items: center; gap: var(--space-2); color: var(--accent); font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-wide); text-transform: uppercase; }
+.st-toast-title { font-size: var(--type-md); font-weight: 600; color: var(--fg-0); }
+.st-toast-txt { font-size: var(--type-sm); color: var(--fg-1); line-height: 1.5; }
+.st-toast-actions { display: flex; gap: var(--space-2); margin-top: var(--space-1); }
+.st-toast-close { position: absolute; top: var(--space-2); right: var(--space-2); appearance: none; border: 0; background: transparent; color: var(--fg-3); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 6px; border-radius: var(--radius-xs); }
+.st-toast-close:hover { background: var(--bg-3); color: var(--fg-0); }
+
+/* ─── Export & handoff dialog (Plan C P9/P10) ──────────────────────────────
+ * Lifted from Studio.css `.st-dialog*` / `.st-fmt*`. Rendered inside `.st-scrim`. */
+.st-dialog { width: 540px; max-width: 92vw; background: var(--bg-1); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); overflow: hidden; animation: st-pop var(--dur-route) var(--ease-out); }
+.st-dialog-hd { display: flex; align-items: center; justify-content: space-between; padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--border-subtle); }
+.st-dialog-title { font-family: var(--font-display); font-size: var(--type-lg); font-weight: 600; color: var(--fg-0); }
+.st-dialog-bd { padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-4); }
+.st-fmt-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-3); }
+.st-fmt { display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start; padding: var(--space-3) var(--space-4); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-2); cursor: pointer; color: var(--fg-1); appearance: none; text-align: left; }
+.st-fmt:hover { border-color: var(--border-strong); }
+.st-fmt.is-on { border-color: var(--accent); background: var(--accent-tint); color: var(--fg-0); box-shadow: 0 0 0 2px var(--accent-tint); }
+.st-fmt-name { font-family: var(--font-mono); font-size: var(--type-sm); font-weight: 600; }
+.st-fmt-sub { font-size: var(--type-xs); color: var(--fg-2); }
+.st-dialog-row { display: flex; align-items: center; gap: var(--space-3); }
+.st-dialog-lbl { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); text-transform: uppercase; letter-spacing: var(--tracking-wide); }
+.st-select { flex: 1; appearance: none; background: var(--bg-2); color: var(--fg-0); border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); font-family: var(--font-body); font-size: var(--type-sm); cursor: pointer; }
+.st-dialog-ft { display: flex; align-items: center; gap: var(--space-3); justify-content: flex-end; padding: var(--space-4) var(--space-5); border-top: 1px solid var(--border-subtle); }
+
+/* ─── Inspector panel fields / layers / css (Plan C P11–P13) ───────────────
+ * Lifted from Studio.css; complements the already-present `.st-insp-row`,
+ * `.st-insp-label`, `.st-rp-*`. */
+.st-insp-fields { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
+.st-field { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--type-xs); color: var(--fg-0); background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-xs); padding: var(--space-1) var(--space-2); width: 58px; text-align: right; }
+.st-field-lead { display: inline-flex; align-items: center; gap: var(--space-1); }
+.st-field-lead .k { font-family: var(--font-mono); font-size: 9px; color: var(--fg-3); }
+.st-layer { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2); border-radius: var(--radius-xs); font-size: var(--type-sm); color: var(--fg-1); font-family: var(--font-mono); }
+.st-layer:hover { background: var(--bg-2); }
+.st-layer.is-sel { background: var(--accent-tint); color: var(--fg-0); }
+.st-css { font-family: var(--font-mono); font-size: var(--type-xs); background: var(--bg-0); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: var(--space-3); line-height: 1.7; color: var(--fg-1); }
+.st-css .comment { color: var(--fg-3); }
 
 }

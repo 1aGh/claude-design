@@ -466,6 +466,15 @@ function CanvasCore({
     return () => host.removeAttribute('data-cv-zoom-lod');
   }, [hostRef, publishedZoom]);
 
+  // Plan C P1 — relay the canvas zoom up to the shell menubar (the top-bar
+  // "ZOOM 100%" was static; app.jsx clamps + displays this). Settle-cadence, so
+  // it fires once per gesture, not per frame.
+  useEffect(() => {
+    try {
+      window.parent?.postMessage({ dgn: 'zoom', zoom: Math.round(publishedZoom * 100) }, '*');
+    } catch {}
+  }, [publishedZoom]);
+
   // Phase 8 — publish local cursor (world coords) + viewport to Awareness
   // so foreign peers can render our cursor on their CursorsOverlay. The
   // collab.publishAwareness call is already throttled to ~30 Hz internally
@@ -1297,6 +1306,15 @@ function CanvasRouter({
         if (typeof t === 'string') setTool(t as never);
         return;
       }
+      // Plan C — Edit menu (shell) bridges to the in-canvas undo stack.
+      if (m.dgn === 'undo') {
+        void undoStack.undo();
+        return;
+      }
+      if (m.dgn === 'redo') {
+        void undoStack.redo();
+        return;
+      }
       // D9 — canvas-shell chrome follows the Maude chrome theme. The chrome's
       // `--maude-chrome-*` token family is keyed by `data-maude-theme` on the
       // iframe documentElement (see HUD_TOKENS_CSS). This attribute is
@@ -1313,7 +1331,7 @@ function CanvasRouter({
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [selSet, annotSel, setTool]);
+  }, [selSet, annotSel, setTool, undoStack]);
 
   // Cleanup any pending rAF on unmount.
   useEffect(
