@@ -34,14 +34,24 @@ const DST = resolve(REPO_ROOT, 'site/app/mdcc-tokens.css');
 const check = process.argv.includes('--check');
 
 // ── Selector transform ──────────────────────────────────────────────────────
-// maude → site theme scoping. Dark is maude's `:root` default; on the site dark
-// rides the fumadocs `.dark` className, so it MUST drop `:root` (which on the
-// site is light) and become `html.dark.mdcc, html.dark .mdcc` — the exact
-// selector the old DDR-011 bridge in global.css used. Light becomes the site's
-// `:root`/`.mdcc` default.
+// maude → site theme scoping. In maude the dark/default block at `:root` carries
+// the FULL token set (colours + structure: fonts, spacing, radii, type scale,
+// motion); the light block only overrides COLOURS and inherits structure from
+// `:root`. On the site, light is the fumadocs default (no class) and dark rides
+// the `.dark` className (DDR-011 bridge). So the base block must STAY anchored at
+// `:root, .mdcc` (theme-independent structure + dark colours as the default) and
+// ALSO match the dark scopes; the light block then overrides only colours at
+// `:root, .mdcc` with later (equal-specificity) declarations, while dark wins via
+// the higher-specificity `html.dark` scopes. Dropping `:root` from the base block
+// — as the first cut did — severed every structural token to dark-only and
+// collapsed light mode (no fonts/spacing/radii). See DDR-099 follow-up.
 const SELECTOR_MAP = [
-  // Dark block opener.
-  [':root,\n.maude[data-theme="dark"] {', 'html.dark.mdcc,\nhtml.dark .mdcc {'],
+  // Base/default block opener — keep `:root, .mdcc` (structure + dark default)
+  // and add the dark scopes so dark colours win on the `.dark` toggle.
+  [
+    ':root,\n.maude[data-theme="dark"] {',
+    ':root,\n.mdcc,\nhtml.dark.mdcc,\nhtml.dark .mdcc {',
+  ],
   // Light block opener.
   ['.maude[data-theme="light"] {', ':root,\n.mdcc,\n.mdcc[data-theme="light"] {'],
   // Reduced-motion guard — collapse durations for every site scope.

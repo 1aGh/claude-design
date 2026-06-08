@@ -29,6 +29,8 @@
 /* ─────────────────────────────────────────────────────────────────────────
  * DARK — default theme. Applies at :root and under .maude[data-theme="dark"].
  * ───────────────────────────────────────────────────────────────────────── */
+:root,
+.mdcc,
 html.dark.mdcc,
 html.dark .mdcc {
   /* ─── Surfaces (deepest → highest) ─── cool-neutral ladder, hue 255 ─────── */

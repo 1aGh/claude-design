@@ -1594,6 +1594,7 @@ a.mdcc-tl-card:hover {
   margin-left: auto;
   font-family: var(--font-mono);
   font-size: var(--type-xs);
+  font-variant-numeric: tabular-nums;
   color: var(--fg-2);
 }
 .mdcc-tl-tag {
