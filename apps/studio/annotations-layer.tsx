@@ -2751,11 +2751,6 @@ export function AnnotationsLayer() {
       const target = e.target as Element | null;
       if (target?.closest?.(CHROME_SELECTOR)) return; // chrome owns its clicks
       const strokeId = findStrokeId(target);
-      // When pointerdown lands inside an artboard but not on a stroke, the
-      // gesture belongs to artboard-drag / element-marquee — not the
-      // annotation marquee. Bailing here keeps the annotation marquee from
-      // racing the artboard drag (post-Wave-3 user grievance G5).
-      if (!strokeId && target?.closest?.('[data-dc-screen]')) return;
       const [wx, wy] = screenToWorld(e.clientX, e.clientY);
       const startClientX = e.clientX;
       const startClientY = e.clientY;
@@ -2852,6 +2847,13 @@ export function AnnotationsLayer() {
         document.addEventListener('pointercancel', onUp, true);
         return;
       }
+
+      // Not a stroke / hull-group drag. When pointerdown lands inside an
+      // artboard the gesture belongs to artboard-drag / element-marquee — not
+      // the annotation marquee (post-Wave-3 grievance G5). Checked AFTER the
+      // group-drag decision so a multi-selection hull-drag still wins even when
+      // the strokes sit over an artboard.
+      if (!strokeId && target?.closest?.('[data-dc-screen]')) return;
 
       // Empty world — start a drag-select gesture. A bare click without
       // moving clears annotation selection (post-Wave-3 feedback: click-to-
