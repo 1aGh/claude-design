@@ -33,4 +33,9 @@ line + signature (1–5 each). Sign off at avg ≥ 4.0 with no line < 3 →
 
 - [x] 00 Cold open — signed off (iter 1, avg 4.9) → `_signoff-00.md`
 - [x] 05 Install — signed off (iter 0, avg 4.8) → `_signoff-05.md`
-- [ ] 10 · 12 · 15 · 20 · 25 · 30 · 35 · 40 · 45 · 50 · 55 — pending
+- [x] 10 Onboarding — signed off (iter 0, avg 4.9) → `_signoff-10.md`
+- [x] 12 Moodboard — signed off (iter 0, avg 4.9) → `_signoff-12.md`
+- [x] 15 DS reveal — signed off (iter 0, avg 4.9) → `_signoff-15.md`
+- [x] 20 /design:new — signed off (iter 0, avg 5.0) → `_signoff-20.md`
+- [x] 25 Critics — signed off (iter 0, avg 5.0) → `_signoff-25.md`
+- [ ] 30 · 35 · 40 · 45 · 50 · 55 — pending

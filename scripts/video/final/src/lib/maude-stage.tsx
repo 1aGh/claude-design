@@ -15,6 +15,17 @@ import { maude, type MaudeTheme } from './maude-tokens';
 
 const DOT_PITCH = 30; // px between dots (scaled up from the 24px UI grid for 1080p)
 
+/** Typewriter: how much of `text` is revealed at `frame` over [start, start+dur]. */
+export const typewriter = (frame: number, text: string, start: number, dur: number): string => {
+  const n = Math.round(
+    interpolate(frame, [start, start + dur], [0, text.length], {
+      extrapolateLeft: 'clamp',
+      extrapolateRight: 'clamp',
+    }),
+  );
+  return text.slice(0, n);
+};
+
 export const DottedCanvas: React.FC<{
   theme?: MaudeTheme;
   children?: React.ReactNode;

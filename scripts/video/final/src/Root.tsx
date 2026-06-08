@@ -9,6 +9,11 @@ import { ContentScene } from './scenes/02-content';
 import { OutroScene } from './scenes/03-outro';
 import { ColdOpenScene } from './scenes/v4/00-cold-open';
 import { InstallScene } from './scenes/v4/05-install';
+import { OnboardingScene } from './scenes/v4/10-onboarding';
+import { MoodboardScene } from './scenes/v4/12-moodboard';
+import { DsRevealScene } from './scenes/v4/15-ds-reveal';
+import { DesignNewScene } from './scenes/v4/20-design-new';
+import { CriticsScene } from './scenes/v4/25-critics';
 
 /**
  * Composition registry. One <Composition> per scene + the master Demo cut.
@@ -74,6 +79,46 @@ export const Root = () => (
       id="v4-05-install"
       component={InstallScene}
       durationInFrames={150}
+      fps={30}
+      width={1920}
+      height={1080}
+    />
+    <Composition
+      id="v4-10-onboarding"
+      component={OnboardingScene}
+      durationInFrames={180}
+      fps={30}
+      width={1920}
+      height={1080}
+    />
+    <Composition
+      id="v4-12-moodboard"
+      component={MoodboardScene}
+      durationInFrames={150}
+      fps={30}
+      width={1920}
+      height={1080}
+    />
+    <Composition
+      id="v4-15-ds-reveal"
+      component={DsRevealScene}
+      durationInFrames={180}
+      fps={30}
+      width={1920}
+      height={1080}
+    />
+    <Composition
+      id="v4-20-design-new"
+      component={DesignNewScene}
+      durationInFrames={300}
+      fps={30}
+      width={1920}
+      height={1080}
+    />
+    <Composition
+      id="v4-25-critics"
+      component={CriticsScene}
+      durationInFrames={210}
       fps={30}
       width={1920}
       height={1080}
