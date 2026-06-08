@@ -61,6 +61,8 @@ Today Maude requires `maude design serve` from a terminal, then a browser. There
 | `Onboarding.tsx` | Welcome screen (3 doors: GitHub / Local folder / Hub token), GitHub door (sign-in → repo picker / create), Local folder door (drag-drop zone), Hub advanced door (token field + URL + adopt), Loading / success state |
 | `RepoBranchSwitcher.tsx` | Sidebar header with repo name + branch/draft name, repo picker dropdown (list of recent repos + "Open another…"), branch/draft picker dropdown ("New draft", list of drafts), loading state during switch |
 
+**Reference (lift, don't re-derive) — CHROME/LAYOUT ONLY:** `.design/ui/Studio Hub.tsx` → artboard **B** (first-run onboarding wizard: left **step-rail** + fingerprint-verify card + "next step" peek, maude DS) is a built maude-DS reference for `Onboarding.tsx`'s wizard chrome + step-rail. **⚠ Door order must stay GitHub-first.** Studio Hub makes the bootstrap-key claim the headline; phase-29 **demotes** that to the advanced door (c) — GitHub is the headline door. Lift the wizard skeleton + step-rail motion; do NOT inherit Studio Hub's door ordering or copy. Not a drop-in (this surface still requires `/design:new --perfect` ≥ 4.5/5 from scratch).
+
 ### Documentation
 
 - [Tauri v2 — `app.path.appDataDir`](https://v2.tauri.app/reference/javascript/api/namespaceapp/) — where `last-project.json` lives. Why: first-run detection.

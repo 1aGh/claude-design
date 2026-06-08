@@ -62,6 +62,8 @@ Hub linking requires `maude design link <url> --token <hex>` from the CLI. Creat
 | `GitHubIdentity.tsx` | Sign-in flow (device code screen: "Go to github.com/login/device, enter XXXX-XXXX"), signed-in state (avatar + username), sign-out confirmation |
 | `CreateProject.tsx` | Create new repo (name, private/public toggle, description), "Open existing" (clone URL or picker), share sheet (invite by GitHub username, copy invite link) |
 
+**Reference (lift, don't re-derive):** `.design/ui/Studio Hub.tsx` → artboard **G** (returning-operator sign-in card + credential field, maude DS) is a built maude-DS reference for `GitHubIdentity.tsx`'s signed-in / credential chrome. Not a drop-in — Studio Hub authenticates with a `HUB_SECRET` paste; the native app uses GitHub device flow → keychain. Lift the card anatomy + states; swap the credential mechanism.
+
 ### Documentation
 
 - [GitHub OAuth device flow](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow) — `POST /login/device/code`, poll `POST /login/oauth/access_token`. Why: the sign-in mechanism.

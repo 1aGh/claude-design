@@ -3,7 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Maude Hub · Admin</title>
+  <title>Studio Hub · Admin</title>
+  <!-- maude brand favicon: the spark on its indigo bubble tile (bottom-right
+       corner squared = message bubble), white star for small-size legibility —
+       the canonical mark from system/maude/preview/logo.tsx. Inlined as a data
+       URI so it needs no extra route; the admin CSP allows `img-src data:`. -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHBhdGggZD0iTTcgMEgyNUE3IDcgMCAwIDEgMzIgN1YzMkg3QTcgNyAwIDAgMSAwIDI1VjdBNyA3IDAgMCAxIDcgMFoiIGZpbGw9IiM2ZDVlZjUiLz48cGF0aCBkPSJNMTYgNWwyLjggOC4yTDI3IDE2bC04LjIgMi44TDE2IDI3bC0yLjgtOC4yTDUgMTZsOC4yLTIuOHoiIGZpbGw9IiNmZmYiLz48L3N2Zz4=">
   <!-- Relative asset refs (no leading slash) so the admin UI works mounted at
        the root (/admin) AND behind a path-stripping reverse proxy (e.g. nginx
        `location /hub` rewriting to /admin). The page's canonical path has no
@@ -12,149 +17,354 @@
 </head>
 <body>
 <a class="skip-nav" href="#main-content">Skip to main content</a>
-<div class="mdcc hub-frame">
-  <header class="hub-hd">
-    <span class="hub-brand">
-      <span class="hub-mark" aria-hidden="true">M</span>
-      <span class="hub-title">Maude Hub<small>self-hosted sync</small></span>
-    </span>
-    <div class="hub-auth" id="auth-state" hidden>
-      <span class="dot dot--success" aria-hidden="true"></span> authenticated
-      <button id="forget" type="button" class="btn btn--quiet btn--sm">forget on this device</button>
-    </div>
-  </header>
 
-  <main id="main-content" class="hub-main">
+<!-- Icon sprite — thin-stroke (1.4) geometric glyphs, no emoji (maude DS rule).
+     One symbol per glyph keeps the path data deduped for the bundle gate. -->
+<svg width="0" height="0" class="svg-sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-sparkle" viewBox="0 0 32 32"><path d="M16 5l2.8 8.2L27 16l-8.2 2.8L16 27l-2.8-8.2L5 16l8.2-2.8z"/></symbol>
+  <symbol id="i-overview" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"/><rect x="9" y="9" width="4.5" height="4.5" rx="1"/></symbol>
+  <symbol id="i-peers" viewBox="0 0 16 16"><circle cx="6" cy="6" r="2.3"/><path d="M2.5 13c0-2 1.6-3.2 3.5-3.2S9.5 11 9.5 13"/><path d="M10.2 4.2a2.3 2.3 0 0 1 0 3.6M11 13c0-1.6-.9-2.7-2-3.1"/></symbol>
+  <symbol id="i-tokens" viewBox="0 0 16 16"><path d="M2.5 6V4.5h11V6a1.3 1.3 0 0 0 0 4v1.5h-11V10a1.3 1.3 0 0 0 0-4z"/><line x1="9" y1="5" x2="9" y2="11" stroke-dasharray="1.3 1.2"/></symbol>
+  <symbol id="i-canvases" viewBox="0 0 16 16"><polygon points="8 2.4 13.6 5.6 8 8.8 2.4 5.6"/><polyline points="2.4 9 8 12.2 13.6 9"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 16 16"><polyline points="2 8.5 5 8.5 6.5 4 9.5 12 11 8.5 14 8.5"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2"/><path d="M8 1.6v1.6M8 12.8v1.6M14.4 8h-1.6M3.2 8H1.6M12.5 3.5l-1.1 1.1M4.6 11.4l-1.1 1.1M12.5 12.5l-1.1-1.1M4.6 4.6 3.5 3.5"/></symbol>
+  <symbol id="i-key" viewBox="0 0 16 16"><circle cx="5" cy="5" r="2.5"/><path d="M6.8 6.8l5 5M10.3 10.3l1.3-1.3M11.8 11.8l1.2-1.2"/></symbol>
+  <symbol id="i-server" viewBox="0 0 16 16"><rect x="2.5" y="3" width="11" height="4" rx="1"/><rect x="2.5" y="9" width="11" height="4" rx="1"/><line x1="4.5" y1="5" x2="4.6" y2="5"/><line x1="4.5" y1="11" x2="4.6" y2="11"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 16 16"><path d="M8 2 13 4v4c0 3-2.2 5-5 6-2.8-1-5-3-5-6V4z"/><polyline points="5.8 8 7.4 9.6 10.4 6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4"/><line x1="10" y1="10" x2="13.5" y2="13.5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 16 16"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 16 16"><rect x="5.5" y="5.5" width="8" height="8" rx="1.4"/><path d="M3.5 10.5H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h6.5a1 1 0 0 1 1 1v.5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 16 16"><polyline points="3 8.2 6.4 11.5 13 4.2"/></symbol>
+  <symbol id="i-x" viewBox="0 0 16 16"><line x1="4.3" y1="4.3" x2="11.7" y2="11.7"/><line x1="11.7" y1="4.3" x2="4.3" y2="11.7"/></symbol>
+  <symbol id="i-rotate" viewBox="0 0 16 16"><path d="M12.5 6.5A5 5 0 1 0 13 9"/><polyline points="12.8 2.8 12.8 6.5 9.1 6.5"/></symbol>
+  <symbol id="i-link" viewBox="0 0 16 16"><path d="M6.5 9.5 9.5 6.5"/><path d="M7 4.5 8.5 3a2.6 2.6 0 0 1 3.7 3.7L10.7 8.2"/><path d="M9 11.5 7.5 13a2.6 2.6 0 0 1-3.7-3.7L5.3 7.8"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3.5" y="7" width="9" height="6.5" rx="1.2"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></symbol>
+  <symbol id="i-chevron-right" viewBox="0 0 16 16"><polyline points="6 3.5 10.5 8 6 12.5"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 16 16"><polyline points="3 4.5 13 4.5"/><path d="M5.5 4.5V3.2a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1.3"/><path d="M4.6 4.5l.55 8.3a1 1 0 0 0 1 .95h3.7a1 1 0 0 0 1-.95l.55-8.3"/><line x1="6.6" y1="6.8" x2="6.8" y2="11.4"/><line x1="9.4" y1="6.8" x2="9.2" y2="11.4"/></symbol>
+  <symbol id="i-forget" viewBox="0 0 16 16"><path d="M6 2.5h4a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H6"/><polyline points="3 8 8 8"/><polyline points="5.5 5.5 3 8 5.5 10.5"/></symbol>
+</svg>
 
-    <!-- SIGN IN -->
-    <section id="onboard" hidden>
-      <div class="hub-center">
-        <div class="hub-hero">
-          <span class="hub-hero-mark" aria-hidden="true">M</span>
-          <span class="hub-hero-wm">Maude Hub<small>self-hosted sync</small></span>
+<div class="maude hub-frame">
+  <main id="main-content">
+
+    <!-- ── SIGN IN (returning operator) ─────────────────────────────────── -->
+    <section id="onboard" class="pre-center" hidden>
+      <div class="signin">
+        <div class="signin-hero">
+          <span class="mark mark--lg" aria-hidden="true"><svg class="mark-ic" viewBox="0 0 32 32"><use href="#i-sparkle"/></svg></span>
+          <span class="signin-hero-tx">
+            <span class="signin-hero-name">Studio Hub</span>
+            <span class="signin-hero-sub">self-hosted sync</span>
+          </span>
         </div>
-        <p class="eyebrow hub-eyebrow">SESSION</p>
+        <p class="eyebrow">SESSION</p>
         <h2>Sign in</h2>
-        <p class="hub-lede">This hub is already claimed. Paste your <code>HUB_SECRET</code> to manage tokens and watch peers.</p>
-        <form id="onboard-form">
+        <p class="lede">This hub is already claimed. Paste your <code>HUB_SECRET</code> to manage tokens and watch peers.</p>
+        <form id="onboard-form" class="signin-card">
           <div class="field">
             <label class="field-label" for="onboard-secret">HUB_SECRET</label>
             <input id="onboard-secret" class="input input--mono input--pw" type="password" name="secret" autocomplete="off" required>
           </div>
-          <div class="hub-actions">
-            <button type="submit" class="btn btn--primary">Sign in<span class="kbd" aria-hidden="true">⏎</span></button>
-            <span class="sku sku--ghost">BEARER · /admin/api</span>
+          <div class="actions">
+            <button type="submit" class="btn btn--primary">Sign in <span class="kbd" aria-hidden="true">⏎</span></button>
+            <span class="sku">BEARER · /admin/api</span>
           </div>
+          <div id="onboard-error" class="callout callout--error" role="alert" hidden></div>
         </form>
-        <p class="hub-hint">Stored in this browser's <code>localStorage</code> only — clear it to sign out everywhere. No cookie, no server session.</p>
-        <div id="onboard-error" class="callout callout--error" role="alert" hidden></div>
+        <p class="hint">Stored in this browser's <code>localStorage</code> only — clear it to sign out everywhere. No cookie, no server session.</p>
       </div>
     </section>
 
-    <!-- FIRST-RUN CLAIM -->
-    <section id="bootstrap" hidden>
-      <div class="hub-center">
-        <div class="hub-hero">
-          <span class="hub-hero-mark" aria-hidden="true">M</span>
-          <span class="hub-hero-wm">Maude Hub<small>self-hosted sync</small></span>
+    <!-- ── FIRST-RUN CLAIM ──────────────────────────────────────────────── -->
+    <section id="bootstrap" class="pre-center" hidden>
+      <div class="signin">
+        <div class="signin-hero">
+          <span class="mark mark--lg" aria-hidden="true"><svg class="mark-ic" viewBox="0 0 32 32"><use href="#i-sparkle"/></svg></span>
+          <span class="signin-hero-tx">
+            <span class="signin-hero-name">Studio Hub</span>
+            <span class="signin-hero-sub">self-hosted sync</span>
+          </span>
         </div>
-        <p class="eyebrow hub-eyebrow">ONE-TIME BOOTSTRAP LINK</p>
-        <h2>Welcome</h2>
-        <p class="hub-lede">This hub has no admin yet. Confirm to claim it — the link is consumed and can't be reused. Verify the fingerprint matches your server logs before you trust it.</p>
+        <p class="eyebrow">ONE-TIME BOOTSTRAP LINK · EXPIRES 24H</p>
+        <h2>Claim this hub</h2>
+        <p class="lede">This hub has no admin yet. Confirm to claim it — the link is consumed and can't be reused. <b>Verify the fingerprint matches your server logs</b> before you trust it.</p>
         <div class="fp" aria-label="Hub identity">
           <p id="bootstrap-identity" class="fp-identity">Verifying hub identity…</p>
         </div>
         <form id="bootstrap-form">
-          <div class="hub-actions">
-            <button type="submit" class="btn btn--primary btn--lg">Claim hub</button>
-            <span class="badge badge--warn">EXPIRES 24H</span>
+          <div class="actions">
+            <button type="submit" class="btn btn--primary btn--lg"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg> Claim hub</button>
+            <span class="tag tag--warn">expires 24h</span>
           </div>
         </form>
-        <p class="hub-hint">Single-use. After you claim, <code>/admin</code> requires <code>HUB_SECRET</code> — there is no second bootstrap link.</p>
+        <p class="hint">Single-use. After you claim, <code>/admin</code> requires <code>HUB_SECRET</code> — there is no second bootstrap link.</p>
         <div id="bootstrap-error" class="callout callout--error" role="alert" hidden></div>
       </div>
     </section>
 
-    <!-- DASHBOARD -->
+    <!-- ── DASHBOARD (authed app-shell) ─────────────────────────────────── -->
     <section id="dash" hidden>
-      <div class="hub-grid">
+      <div class="app">
 
-        <article class="tile" id="card-invite">
-          <div class="tile-hd">
-            <span>Generate invite</span>
-            <span class="sku">HUB-ADM/03·INVITE</span>
+        <!-- Sidebar nav -->
+        <nav class="nav" aria-label="Hub navigation">
+          <div class="nav-brand">
+            <span class="mark" aria-hidden="true"><svg class="mark-ic" viewBox="0 0 32 32"><use href="#i-sparkle"/></svg></span>
+            <span class="nav-brand-tx">
+              <span class="nav-brand-name">Studio Hub</span>
+              <span class="nav-brand-url" id="nav-hub-url">self-hosted sync</span>
+            </span>
           </div>
-          <div class="tile-bd">
-            <h3 class="card-title">Issue a one-time link</h3>
-            <form id="invite-form">
-              <div class="field">
-                <label class="field-label" for="invite-label">Label this invite</label>
-                <input id="invite-label" class="input input--mono" type="text" placeholder="alice" required maxlength="64" pattern="[A-Za-z0-9 _\-.]+">
-              </div>
-              <label class="check" for="invite-wildcard">
-                <input id="invite-wildcard" type="checkbox" checked>
-                <span class="check-txt">Hub-wide — authorize <strong>all</strong> canvases
-                  <span class="check-note">Required for canvas sync (peers use a per-canvas slug as the document name). Uncheck to scope the token to the label only — a label-scoped token will NOT authorize synced canvases.</span>
-                </span>
-              </label>
-              <div class="hub-actions" style="margin-top:var(--space-4)">
-                <button type="submit" class="btn btn--primary">Generate token<span class="kbd" aria-hidden="true">⏎</span></button>
-              </div>
-            </form>
-            <p class="hub-hint">One-time token, shown once. The command below goes into the peer's terminal.</p>
-            <div id="invite-error" class="callout callout--error" role="alert" hidden></div>
+          <div class="nav-sect">Operate</div>
+          <div class="nav-list" id="nav-list">
+            <button type="button" class="nav-item" data-view="overview" aria-current="page"><span class="nav-ic"><svg class="ic" aria-hidden="true"><use href="#i-overview"/></svg></span><span class="nav-label">Overview</span></button>
+            <button type="button" class="nav-item" data-view="peers"><span class="nav-ic"><svg class="ic" aria-hidden="true"><use href="#i-peers"/></svg></span><span class="nav-label">Peers</span><span class="nav-count" id="nav-count-peers"></span></button>
+            <button type="button" class="nav-item" data-view="tokens"><span class="nav-ic"><svg class="ic" aria-hidden="true"><use href="#i-tokens"/></svg></span><span class="nav-label">Tokens</span><span class="nav-count" id="nav-count-tokens"></span></button>
+            <button type="button" class="nav-item" data-view="canvases"><span class="nav-ic"><svg class="ic" aria-hidden="true"><use href="#i-canvases"/></svg></span><span class="nav-label">Canvases</span><span class="nav-count" id="nav-count-canvases"></span></button>
+            <button type="button" class="nav-item" data-view="activity"><span class="nav-ic"><svg class="ic" aria-hidden="true"><use href="#i-activity"/></svg></span><span class="nav-label">Activity</span></button>
+            <button type="button" class="nav-item" data-view="settings"><span class="nav-ic"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg></span><span class="nav-label">Settings</span></button>
           </div>
-        </article>
-
-        <article class="tile" id="card-peers">
-          <div class="tile-hd">
-            <span class="live"><span class="dot dot--success" aria-hidden="true"></span> Connected peers</span>
-            <span class="sku">HUB-ADM/04·PEERS</span>
-          </div>
-          <div class="tile-bd">
-            <div class="tbl-scroll">
-              <table class="tbl" aria-labelledby="card-peers-cap">
-                <caption id="card-peers-cap" class="sr-only">Connected peers</caption>
-                <thead><tr><th scope="col">Document</th><th scope="col">User</th><th scope="col" class="num">Connected</th></tr></thead>
-                <tbody id="peers-rows"><tr class="empty"><td colspan="3">No peers connected.</td></tr></tbody>
-              </table>
+          <div class="nav-foot">
+            <div class="nav-auth" id="auth-state" hidden>
+              <span class="nav-auth-row"><span class="presence-dot presence-dot--online" aria-hidden="true"></span> authenticated</span>
+              <button id="forget" type="button" class="btn btn--ghost btn--sm" aria-label="Forget on this device"><svg class="ic" aria-hidden="true"><use href="#i-forget"/></svg> <span class="nav-foot-label">forget on this device</span></button>
             </div>
           </div>
-        </article>
+        </nav>
 
-        <article class="tile" id="card-status">
-          <div class="tile-hd">
-            <span>Hub status</span>
-            <span class="sku">HUB-ADM/05·STATUS</span>
-          </div>
-          <div class="tile-bd">
-            <dl class="kv" id="status-dl">
-              <dt>uptime</dt><dd id="s-uptime">—</dd>
-              <dt>version</dt><dd id="s-version">—</dd>
-              <dt>port</dt><dd id="s-port">—</dd>
-              <dt>data dir</dt><dd id="s-data">—</dd>
-              <dt>tokens</dt><dd id="s-tokens">—</dd>
-              <dt>peers</dt><dd id="s-peers">—</dd>
-            </dl>
-          </div>
-        </article>
-
-        <article class="tile" id="card-tokens">
-          <div class="tile-hd">
-            <span>Active tokens</span>
-            <span class="sku">HUB-ADM/06·TOKENS</span>
-          </div>
-          <div class="tile-bd">
-            <div class="tbl-scroll">
-              <table class="tbl" aria-labelledby="card-tokens-cap">
-                <caption id="card-tokens-cap" class="sr-only">Active tokens</caption>
-                <thead><tr><th scope="col">Label</th><th scope="col">Created</th><th scope="col">Last used</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
-                <tbody id="tokens-rows"><tr class="empty"><td colspan="4">No tokens yet.</td></tr></tbody>
-              </table>
+        <!-- Main column -->
+        <div class="main">
+          <div class="topbar">
+            <div class="crumbs">
+              <span class="crumb-root" id="crumb-root">studio-hub</span>
+              <span class="crumb-sep" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#i-chevron-right"/></svg></span>
+              <h1 id="view-title">Overview</h1>
             </div>
+            <div class="topbar-spacer"></div>
+            <span class="live"><span class="presence-dot presence-dot--online" aria-hidden="true"></span> live</span>
+            <label class="search">
+              <svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>
+              <input id="search" type="text" placeholder="Search peers, tokens…" aria-label="Search">
+              <span class="kbd" aria-hidden="true">/</span>
+            </label>
+            <button id="topbar-invite" type="button" class="btn btn--primary"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> Generate invite</button>
           </div>
-        </article>
 
+          <div class="content dotted">
+
+            <!-- OVERVIEW -->
+            <div class="view" id="view-overview">
+              <div class="stats">
+                <div class="stat">
+                  <div class="stat-top"><span class="stat-lbl">Connected peers</span><span class="stat-ic"><svg class="ic" aria-hidden="true"><use href="#i-peers"/></svg></span></div>
+                  <span class="stat-num" id="stat-peers">—</span>
+                  <span class="stat-delta">live · 5s poll</span>
+                </div>
+                <div class="stat">
+                  <div class="stat-top"><span class="stat-lbl">Active tokens</span><span class="stat-ic"><svg class="ic" aria-hidden="true"><use href="#i-key"/></svg></span></div>
+                  <span class="stat-num" id="stat-tokens">—</span>
+                  <span class="stat-delta"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg> rotate = kill switch</span>
+                </div>
+                <div class="stat">
+                  <div class="stat-top"><span class="stat-lbl">Synced canvases</span><span class="stat-ic"><svg class="ic" aria-hidden="true"><use href="#i-canvases"/></svg></span></div>
+                  <span class="stat-num" id="stat-canvases">—</span>
+                  <span class="stat-delta">documents on this hub</span>
+                </div>
+                <div class="stat">
+                  <div class="stat-top"><span class="stat-lbl">Uptime</span><span class="stat-ic"><svg class="ic" aria-hidden="true"><use href="#i-server"/></svg></span></div>
+                  <span class="stat-num" id="stat-uptime">—</span>
+                  <span class="stat-delta"><span class="presence-dot presence-dot--online" aria-hidden="true"></span> /health 200</span>
+                </div>
+              </div>
+
+              <div class="grid">
+                <div class="grid-col">
+                  <section class="panel">
+                    <div class="panel-hd">Connected peers <span class="live"><span class="presence-dot presence-dot--online" aria-hidden="true"></span> live · 5s</span></div>
+                    <div class="tbl-scroll">
+                      <table class="tbl" aria-labelledby="ov-peers-cap">
+                        <caption id="ov-peers-cap">Connected peers</caption>
+                        <thead><tr><th scope="col">Canvas</th><th scope="col">User</th><th scope="col">Connected</th></tr></thead>
+                        <tbody id="ov-peers-rows"><tr class="empty"><td colspan="3">No peers connected.</td></tr></tbody>
+                      </table>
+                    </div>
+                    <div class="panel-foot"><span class="sku">HUB · /admin/api/peers</span><a class="link" data-nav="peers">Open peers →</a></div>
+                  </section>
+                  <section class="panel">
+                    <div class="panel-hd">Activity</div>
+                    <div class="feed" id="ov-activity-feed">
+                      <div class="feed-row"><span class="feed-rail"><span class="feed-dot" aria-hidden="true"></span></span><span class="feed-body">No activity yet.</span><span class="feed-time"></span></div>
+                    </div>
+                    <div class="panel-foot"><span class="sku">in-memory · ephemeral</span><a class="link" data-nav="activity">Open activity →</a></div>
+                  </section>
+                </div>
+
+                <div class="grid-col">
+                <section class="panel">
+                  <div class="panel-hd">Hub status</div>
+                  <div class="panel-bd">
+                    <dl class="kv" id="status-dl">
+                      <dt>uptime</dt><dd id="s-uptime">—</dd>
+                      <dt>version</dt><dd id="s-version">—</dd>
+                      <dt>port</dt><dd id="s-port">—</dd>
+                      <dt>data dir</dt><dd id="s-data">—</dd>
+                      <dt>tokens</dt><dd id="s-tokens">—</dd>
+                      <dt>peers</dt><dd id="s-peers">—</dd>
+                    </dl>
+                  </div>
+                </section>
+
+                <section class="panel">
+                  <div class="panel-hd">Quick actions</div>
+                  <div class="panel-bd stack stack--3">
+                    <button id="qa-invite" type="button" class="btn btn--primary btn--block"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> Generate invite token</button>
+                    <button id="qa-canvases" type="button" class="btn btn--block"><svg class="ic" aria-hidden="true"><use href="#i-canvases"/></svg> Browse synced canvases</button>
+                    <button id="qa-activity" type="button" class="btn btn--block"><svg class="ic" aria-hidden="true"><use href="#i-activity"/></svg> View activity</button>
+                    <p class="field-help">One-time tokens, shown once. Rotation is the only revoke — it kicks live sessions within 5s.</p>
+                  </div>
+                </section>
+                </div>
+              </div>
+            </div>
+
+            <!-- PEERS -->
+            <div class="view" id="view-peers" hidden>
+              <section class="panel">
+                <div class="panel-hd">Connected peers <span class="live"><span class="presence-dot presence-dot--online" aria-hidden="true"></span> live · 5s</span></div>
+                <div class="tbl-scroll">
+                  <table class="tbl" aria-labelledby="peers-cap">
+                    <caption id="peers-cap">Connected peers</caption>
+                    <thead><tr><th scope="col">Canvas</th><th scope="col">User</th><th scope="col">Scope</th><th scope="col">Connected</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+                    <tbody id="peers-rows"><tr class="empty"><td colspan="5">No peers connected.</td></tr></tbody>
+                  </table>
+                </div>
+                <div class="panel-foot"><span class="sku">HUB · /admin/api/peers</span></div>
+              </section>
+            </div>
+
+            <!-- TOKENS -->
+            <div class="view" id="view-tokens" hidden>
+              <div class="grid grid--split">
+                <div class="grid-col">
+                  <section class="panel">
+                    <div class="panel-hd">Active tokens <span class="sku">hashed at rest · shown once</span></div>
+                    <div class="tbl-scroll">
+                      <table class="tbl" aria-labelledby="tokens-cap">
+                        <caption id="tokens-cap">Active tokens</caption>
+                        <thead><tr><th scope="col">Label</th><th scope="col">Scope</th><th scope="col">Created</th><th scope="col">Last used</th><th scope="col">Sessions</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+                        <tbody id="tokens-rows"><tr class="empty"><td colspan="6">No tokens yet.</td></tr></tbody>
+                      </table>
+                    </div>
+                  </section>
+                </div>
+
+                <div class="grid-col">
+                  <section class="panel" id="card-invite">
+                    <div class="panel-hd">Generate invite <span class="sku">HUB · /admin/api/token</span></div>
+                    <div class="panel-bd">
+                      <form id="invite-form" class="stack stack--4">
+                        <div class="field">
+                          <label class="field-label" for="invite-label">Label this invite</label>
+                          <input id="invite-label" class="input input--mono" type="text" placeholder="alice" required maxlength="64" pattern="[A-Za-z0-9 _\-.]+">
+                        </div>
+                        <label class="check" for="invite-wildcard">
+                          <input id="invite-wildcard" class="switch" type="checkbox" checked>
+                          <span class="check-tx">
+                            <b>Hub-wide — authorize all canvases</b>
+                            <span>Required for canvas sync (peers use a per-canvas slug as the document name). Uncheck to scope the token to its label only — a label-scoped token will NOT authorize synced canvases.</span>
+                          </span>
+                        </label>
+                        <div class="actions">
+                          <button type="submit" class="btn btn--primary"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> Generate token <span class="kbd" aria-hidden="true">⏎</span></button>
+                        </div>
+                        <p class="field-help">One-time token, shown once. The command below goes straight into the peer's terminal.</p>
+                        <div id="invite-error" class="callout callout--error" role="alert" hidden></div>
+                      </form>
+                    </div>
+                  </section>
+
+                  <div class="callout callout--info">
+                    <span class="glyph"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg></span>
+                    <span class="body"><b>Scope, briefly.</b> A <b>hub-wide</b> token reaches every synced canvas. A <b>label-scoped</b> token only authorizes documents under that prefix — handy for CI bots that shouldn't touch live design work.</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- CANVASES -->
+            <div class="view" id="view-canvases" hidden>
+              <section class="panel">
+                <div class="panel-hd">Synced canvases <span class="sku">documents · read-only</span></div>
+                <div class="tbl-scroll">
+                  <table class="tbl" aria-labelledby="canvases-cap">
+                    <caption id="canvases-cap">Synced canvases</caption>
+                    <thead><tr><th scope="col">Canvas</th><th scope="col" class="td-num">Size</th><th scope="col">Peers</th></tr></thead>
+                    <tbody id="canvases-rows"><tr class="empty"><td colspan="3">No canvases synced yet.</td></tr></tbody>
+                  </table>
+                </div>
+                <div class="panel-foot"><span class="sku">HUB · /admin/api/canvases</span></div>
+              </section>
+            </div>
+
+            <!-- ACTIVITY -->
+            <div class="view" id="view-activity" hidden>
+              <section class="panel">
+                <div class="panel-hd">Activity <span class="sku">in-memory · ephemeral</span></div>
+                <div class="feed" id="activity-feed">
+                  <div class="feed-row"><span class="feed-rail"><span class="feed-dot" aria-hidden="true"></span></span><span class="feed-body">No activity yet.</span><span class="feed-time"></span></div>
+                </div>
+              </section>
+            </div>
+
+            <!-- SETTINGS -->
+            <div class="view" id="view-settings" hidden>
+              <section class="panel">
+                <div class="panel-hd">Hub identity <span class="sku">name · public URL · transport · storage</span></div>
+                <form id="settings-form">
+                  <div class="set-grid">
+                    <div class="set-row">
+                      <span class="set-k"><b>Hub name</b><span>shown in the console + invites</span></span>
+                      <span class="set-edit"><input id="set-name" class="input" type="text" maxlength="64" pattern="[A-Za-z0-9 _\-.]+" aria-label="Hub name"></span>
+                    </div>
+                    <div class="set-row">
+                      <span class="set-k"><b>Description</b><span>optional one-liner</span></span>
+                      <span class="set-edit"><input id="set-desc" class="input" type="text" maxlength="120" aria-label="Hub description"></span>
+                    </div>
+                    <div class="set-row">
+                      <span class="set-k"><b>Public URL</b><span>HUB_PUBLIC_URL</span></span>
+                      <span class="set-v" id="set-url">—</span>
+                    </div>
+                    <div class="set-row">
+                      <span class="set-k"><b>Transport</b><span>TLS terminates upstream</span></span>
+                      <span class="set-v" id="set-transport">—</span>
+                    </div>
+                    <div class="set-row">
+                      <span class="set-k"><b>Storage</b><span>DATA_DIR</span></span>
+                      <span class="set-v" id="set-storage">—</span>
+                    </div>
+                  </div>
+                  <div class="set-row set-row--save">
+                    <span class="set-k"><span class="field-help" id="settings-status" aria-live="polite"></span></span>
+                    <span class="set-edit"><button type="submit" class="btn btn--primary btn--sm"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg> Save changes</button></span>
+                  </div>
+                  <div id="settings-error" class="callout callout--error callout--inset" role="alert" hidden></div>
+                </form>
+              </section>
+
+              <section class="panel danger">
+                <div class="panel-hd">Danger zone</div>
+                <div class="set-grid">
+                  <div class="set-row">
+                    <span class="set-k"><b>Rotate admin secret</b><span>signs every device out — re-bootstrap or HUB_SECRET required after</span></span>
+                    <span class="set-edit"><button id="rotate-admin" type="button" class="btn btn--danger btn--sm"><svg class="ic" aria-hidden="true"><use href="#i-rotate"/></svg> Rotate</button></span>
+                  </div>
+                </div>
+                <div id="danger-error" class="callout callout--error callout--inset" role="alert" hidden></div>
+              </section>
+            </div>
+
+          </div>
+        </div>
       </div>
     </section>
 
@@ -162,7 +372,7 @@
 </div>
 
 <!-- Token issued dialog -->
-<dialog id="token-modal" aria-labelledby="token-modal-title">
+<dialog id="token-modal" class="maude" aria-labelledby="token-modal-title">
   <div class="issued">
     <div class="issued-hd">
       <span class="sku sku--accent">INVITE ISSUED</span>
@@ -172,10 +382,10 @@
       <h2 id="token-modal-title">Invite ready</h2>
       <p>Copy the command into the peer's terminal. The token is shown <b>once</b> — close this and it's gone.</p>
       <pre id="token-command" class="cmd"></pre>
-      <div class="hub-actions" style="margin-top:0">
-        <button id="token-copy" type="button" class="btn btn--primary">Copy command</button>
+      <div class="issued-actions">
+        <button id="token-copy" type="button" class="btn btn--primary"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg> Copy command</button>
         <span class="sr-only" id="copy-status" aria-live="polite" aria-atomic="true"></span>
-        <span class="sku sku--ghost">⌘C · CLIPBOARD</span>
+        <span class="sku">⌘C · CLIPBOARD</span>
       </div>
       <hr class="tear">
       <div class="stub">
@@ -185,7 +395,7 @@
       <div class="issued-meta">
         <span>SINGLE USE</span>
         <span>NON-REISSUABLE</span>
-        <span id="token-scope">SCOPE</span>
+        <span id="token-scope" class="is-scope">SCOPE</span>
       </div>
     </div>
     <div class="issued-ft">

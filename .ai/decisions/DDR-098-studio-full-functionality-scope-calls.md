@@ -1,4 +1,4 @@
-# DDR-097: Studio full-functionality pass — scope calls (Plan C)
+# DDR-098: Studio full-functionality pass — scope calls (Plan C)
 
 - **Date:** 2026-06-07
 - **Status:** Accepted (implemented — Plan C Tasks 1–9 live-verified via agent-browser)
