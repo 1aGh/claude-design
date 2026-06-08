@@ -1,0 +1,86 @@
+### maude --help
+maude — Maude CLI (legacy alias: mdcc)
+
+USAGE
+  maude <command> [options]
+
+COMMANDS
+  init [--name <project>] [--force] [--dry-run]
+        Scaffold the .ai/ second-brain workspace into the current repo from
+        the flow plugin skeleton. Idempotent — never overwrites existing
+        files unless --force. --name sets the project name in
+        workflows.config.json (defaults to the current directory basename).
+        Does NOT write CLAUDE.md — use Claude Code's built-in /init for that.
+
+  config show
+  config get <dotted.key>
+  config set <dotted.key> <value>
+        Read or write keys in .ai/workflows.config.json. Validates known keys
+        against the flow plugin's config.schema.json. Values that parse as
+        JSON (numbers, booleans, arrays, objects) are stored typed.
+
+  cache get <layer> <key> [--ttl-ms N]
+  cache put <layer> <key> [file] [--meta JSON]
+  cache list | stats | inspect <layer> [key] | clear [layer]
+        Inspect and manage the sidecar cache (.ai/cache/, Phase C / DDR-061)
+        that reuses expensive cross-session work (domain research, codebase
+        scans, design-context parsing, security reviews). 'get'/'put' are the
+        programmatic surface plugin commands call (maude on PATH is the reachable
+        contract — see DDR-061); 'list' shows layers + sizes; 'stats' shows
+        hit-rate; 'inspect' pretty-prints entries; 'clear' wipes a layer or all.
+
+  studio [--port N] [--root PATH]
+        Alias for 'maude design serve' — boot the canvas studio (the design
+        dev server) in the current repo. Forwards all remaining args.
+
+  design serve [--port N] [--root PATH]
+        Start the design plugin's dev server in the current repo. Equivalent
+        to 'maude studio' / invoking 'claude-design-server'. Forwards all
+        remaining args.
+
+  design init [--name <slug>] [--ds <name>] [--force] [--dry-run]
+
+### maude design help
+maude design <verb> [options]
+
+Lifecycle:
+  serve · init · export · link · adopt · unlink · status
+
+Dev-tooling (dispatch to the dev-server bash helpers — DDR-062):
+  screenshot · server-up · prep · slug · bootstrap-check · runtime-health
+  smoke · canvas-edit · handoff · asset-sweep · visual-sanity
+  draw-build · draw-proof · svg-optimize · to-lottie · read-annotations
+        Invoke the bundled helper of the same name. maude resolves it from its
+        own package root and sets CLAUDE_PLUGIN_ROOT for the child; stdout,
+        stderr, and exit code pass straight through (so command-substitution
+        capture and non-zero gating work unchanged). Args after the verb are
+        forwarded verbatim, e.g.:
+          maude design slug "Some Canvas Name"
+          PORT=$(maude design server-up --root "$REPO")
+          eval "$(maude design prep --shell-export --shape edit --root "$REPO")"
+          maude design smoke --changed-only
+
+  serve [--port N] [--root PATH]
+        Start the design plugin's dev server in the current repo. Equivalent
+        to 'maude studio' (top-level alias) or invoking 'claude-design-server'.
+        Forwards all remaining args.
+
+  init  [--name <slug>] [--ds <name>] [--force] [--dry-run]
+        [--no-discovery | --discovery-payload <path>]
+        Non-interactive scaffold helper. Writes Core files from the
+        design-system-inspiration library into .design/ in the current repo.
+        Refuses to run without --no-discovery or --discovery-payload (interactive
+        bootstrap requires Claude Code: use /design:setup-ds <name> there).
+
+        --no-discovery scaffolds Core only (~10 files) with default tokens.
+        --discovery-payload <path> reads a JSON file with answers + tokens and
+        scaffolds Core + the derived specimens deterministically (this is the
+        path skill 'design-system' uses when shelling out from Claude Code).
+
+  export <format> [--scope selection|artboard|canvas-as-separate|project-raw]
+         [--port N] [--out <path>] [--option key=value ...]
+        Drive the same POST /_api/export endpoint the UI uses. Auto-detects
+        port from .design/_server.json; requires a running dev server. The
+
+### maude --version
+maude 0.29.0 (@1agh/maude)

@@ -1292,4 +1292,20 @@ v4 maude-DS Remotion infra built: `final/src/lib/maude-tokens.ts` (maude DS, NOT
 - [x] **05 Install** — signed off iter0 (avg 4.8). `_signoff-05.md`. Typewriter terminal, npm (per comment), no red errors.
 - [x] **All 13 scenes signed off** (00 05 10 12 15 20 25 30 35 40 45 50 55) — each `_signoff-<id>.md`. Two needed an iter1 (00 caret-on-void; 50 fan-spread); rest passed iter0. Several hit 5.0.
 - [x] **Phase C assembled** — `compositions/V4.tsx` (13 scenes, hard cuts via `Series`), registered as `V4`. Rendered `out/v4/V4.mp4` = 2400f / 80s / **5.5MB** (<16MB). Full-watch gut check `_watch-log.md`: all 5 axes PASS (frame-sampled).
-- [ ] **SHIP gate (Phase C.4/C.5)** — `site/public/demo.mp4` NOT swapped. Awaiting user: (a) real-MP4 watch + ship decision, (b) audio bed (CC0 music + loudnorm, or ship silent). Then ≤16MB check + swap + commit approval.
+- [ ] **SHIP gate (Phase C.4/C.5)** — `site/public/demo.mp4` NOT swapped.
+
+### Phase B2 — REALITY-GROUNDED REBUILD (user rejected first cut 2026-06-08)
+
+User watched the first V4: "nudné, bez šťávy, utahané jak korporátní prezentace." Root cause: scenes were hand-authored MOCKS, not grounded in how maude actually looks. User asked: open terminal + agent-browser, do thorough research + screenshots of REAL outputs, then animate those.
+
+**Research done** → `scripts/video/v4/_research/` (`FINDINGS.md` + real captures):
+- `real-studio.png` — real maude Studio UI (menus, FILES tree, canvas, inspector, minimap, tool palette)
+- `real-canvas-viewport.png`, `real-colors-accent.png` ("Accent. One indigo." editorial specimen), `real-colors-themes`, `real-type-scale`, `real-cards`, `real-command-palette`, `real-logo`, `real-elevation`, `real-cli-output.txt`
+- Captured via agent-browser against a FRESH dev-server (old :4321 lacked `_canvas-shell.html`; spawned fresh :4401).
+- **Real terminal capture**: vhs failed (ttyd/chrome ERR_CONNECTION_REFUSED) → asciinema `rec` (real `maude --version`/`init --dry-run`/`design help`) → `agg --theme github-dark` → ffmpeg → `final/public/v4/cli.mp4` (10.4s real output).
+
+**User decisions (AskUserQuestion):** UI scenes = **faithful re-build** (hi-fi recreations matching real captures, native anim — NOT composite); terminal = **vhs/tmux capture** (got it via asciinema fallback).
+
+- [x] **Scene 05 install REBUILT** — composites the REAL `cli.mp4` in a cinematic window + push-in. Real `maude 0.29.0` / dry-run scaffold output. `out/v4/s05-iter1-mid.png`. Template for the new fidelity.
+- [ ] **Faithful rebuild remaining UI scenes** to match real captures: 15 DS reveal (→ "Accent. One indigo." editorial specimen), 20 design:new (→ real Studio chrome + FILES tree + canvas fill), 30 canvas-pan (→ real Canvas Viewport), 35 cmd-click (→ real Studio inspector), 45 comments (→ real Studio comment pin/thread). Reconsider 10 (Claude TUI — recreate faithfully), 12 (moodboard — no real artifact; use research payload + specimens), 25 (critics — real PANEL.md report).
+- [ ] Re-assemble V4, re-watch, then SHIP gate.

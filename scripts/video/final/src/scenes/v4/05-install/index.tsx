@@ -1,77 +1,60 @@
-import { AbsoluteFill, interpolate, useCurrentFrame } from 'remotion';
+import { AbsoluteFill, interpolate, OffthreadVideo, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
 import { maude } from '../../../lib/maude-tokens';
 import { DottedCanvas, Caption } from '../../../lib/maude-stage';
 
 /**
- * Scene 05 · Install — hook.
+ * Scene 05 · Install — hook. REBUILD (v4.1): real footage, not a mock.
  *
- * ~5 s (150f @ 30fps). Signature: a raw terminal, monospace, no window chrome —
- * commands type themselves in. Intent: `npm i -g @1agh/maude` + `maude init`
- * visible, zero red error text.
+ * ~7 s (210f @ 30fps). Signature: a REAL terminal capture (asciinema → agg →
+ * mp4) of actual `maude --version` / `maude init --dry-run` / `maude design help`
+ * output, framed in a cinematic window with a slow push-in. Intent: real maude
+ * CLI output, zero red error text.
+ *
+ * Footage: public/v4/cli.mp4 (10.4s real capture, played ~1.5× to fit).
  */
-
-const MONO = maude.font.mono;
-
-// Typewriter: reveal `text` over [start, start+dur] frames.
-const typed = (frame: number, text: string, start: number, dur: number) => {
-  const n = Math.round(
-    interpolate(frame, [start, start + dur], [0, text.length], {
-      extrapolateLeft: 'clamp',
-      extrapolateRight: 'clamp',
-    }),
-  );
-  return text.slice(0, n);
-};
-
-const Line: React.FC<{ children: React.ReactNode; visible: boolean; color?: string }> = ({
-  children,
-  visible,
-  color,
-}) => (
-  <div style={{ fontFamily: MONO, fontSize: 42, lineHeight: 1.7, color, opacity: visible ? 1 : 0 }}>
-    {children}
-  </div>
-);
-
 export const InstallScene = () => {
   const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
   const t = maude.dark;
 
-  const cmd1 = typed(frame, 'npm i -g @1agh/maude', 8, 30);
-  const cmd2 = typed(frame, 'maude init', 60, 16);
-  const blink = Math.floor(frame / 15) % 2 === 0;
-
-  // Which line "owns" the caret right now.
-  const caretOn1 = frame < 44;
-  const caretOn2 = frame >= 56 && frame < 86;
-
-  const CharCaret = () => (
-    <span style={{ color: t.accent, opacity: blink ? 1 : 0 }}>▋</span>
-  );
+  const win = spring({ frame: frame - 4, fps, config: { damping: 200 }, durationInFrames: 18 });
+  const push = interpolate(frame, [0, 210], [1.0, 1.05]); // slow cinematic push-in
+  const rise = interpolate(win, [0, 1], [30, 0]);
 
   return (
     <AbsoluteFill>
-      <DottedCanvas theme="dark" style={{ justifyContent: 'center' }}>
-        <div style={{ paddingLeft: 180, paddingRight: 120 }}>
-          <Line visible color={t.fg0}>
-            <span style={{ color: t.accent, marginRight: 18 }}>$</span>
-            {cmd1}
-            {caretOn1 ? <CharCaret /> : null}
-          </Line>
-          <Line visible={frame >= 46} color={t.success}>
-            added @1agh/maude 0.29.0
-          </Line>
-          <Line visible={frame >= 56} color={t.fg0}>
-            <span style={{ color: t.accent, marginRight: 18 }}>$</span>
-            {cmd2}
-            {caretOn2 ? <CharCaret /> : null}
-          </Line>
-          <Line visible={frame >= 90} color={t.success}>
-            ✓ .ai/ scaffolded
-          </Line>
+      <DottedCanvas theme="dark" style={{ alignItems: 'center', justifyContent: 'center' }}>
+        <div
+          style={{
+            width: 1360,
+            opacity: win,
+            transform: `translateY(${rise}px) scale(${push})`,
+            background: t.bg0,
+            border: `1px solid ${t.border}`,
+            borderRadius: 16,
+            boxShadow: '0 30px 90px rgba(0,0,0,0.55)',
+            overflow: 'hidden',
+          }}
+        >
+          {/* window chrome */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '16px 22px', borderBottom: `1px solid ${t.borderSubtle}`, background: t.bg1 }}>
+            <span style={{ width: 12, height: 12, borderRadius: 99, background: '#e06b5e' }} />
+            <span style={{ width: 12, height: 12, borderRadius: 99, background: '#d8b46a' }} />
+            <span style={{ width: 12, height: 12, borderRadius: 99, background: '#5fd3a3' }} />
+            <span style={{ marginLeft: 14, fontFamily: maude.font.mono, fontSize: 17, color: t.fg3 }}>zsh — recipe-recap</span>
+          </div>
+          {/* real terminal footage */}
+          <div style={{ background: '#14161c', aspectRatio: '1600 / 900' }}>
+            <OffthreadVideo
+              src={staticFile('v4/cli.mp4')}
+              playbackRate={1.5}
+              muted
+              style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top left' }}
+            />
+          </div>
         </div>
 
-        <Caption theme="dark" frame={frame} from={112} text="two plugins, one CLI." />
+        <Caption theme="dark" frame={frame} from={150} text="two plugins, one CLI." />
       </DottedCanvas>
     </AbsoluteFill>
   );
