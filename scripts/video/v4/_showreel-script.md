@@ -34,9 +34,9 @@ remembers (a second brain, in three layers).**
 | 70 | Draw as code | the geometry engine (the moat) | a logo/icon assembles from geometry (splines/grid), crisp at 16px + single-color flatten | real `/design:draw` engine | 6s |
 | 80 | Animate once | to-lottie, web + native 1:1 | a mark animates → emits `one .lottie` → same motion on a web frame + a phone frame | real `/design:to-lottie` | 6s |
 | 90 | Ship it | handoff to ANY production code | a component drops into a real codebase — Next.js / Vite / Bun / raw TSX (shadcn registry is one path); `+ components/…tsx` lands wired to your tokens | real handoff / export (registry + raw code) | 5s |
-| 92 | Second brain · memory | plans + decisions, written down | a PRD-grounded plan checklist forms → a DDR decision record card ("what · why · revisit") | real `/flow:plan` + `.ai/decisions/*` (DDR) | 6s |
-| 94 | Second brain · continuity | pause today, resume tomorrow | a HANDOFF card + STATE timeline — session closes, reopens, the agent picks up the exact thread | real `/flow:pause` + `/flow:resume` + `.ai/state` | 5s |
-| 96 | Second brain · it ships | validate everywhere → PR | a 5-platform scenario grid (web-desktop/mobile · iOS phone/tablet · Android) goes green → a PR opens | real `/flow:validate` + scenario-runner | 6s |
+| 92 | Second brain · it remembers | plans + decisions + continuity, in your repo | a PRD-grounded plan checklist forms → a DDR decision card ("what · why · revisit") → a HANDOFF/STATE timeline (pause today, resume tomorrow) | real `/flow:plan` + `.ai/decisions` + `/flow:pause`+`resume` | 6s |
+| 94 | The daily loop | the everyday rhythm: plan → execute → done | three command cards pulse in sequence — `/flow:plan` · `/flow:execute` · `/flow:done` — day after day | real flow daily verbs | 5s |
+| 96 | Nothing slips through | every ship runs the full gate | a checklist ticks green in a cascade: security review (defender + attacker) · code review · validation (lint · type · tests · build) · smoke tests · 5-platform scenarios → the PR opens | real `/flow:done` gate + `/flow:validate` + scenario-runner + security-auditor/ethical-hacker | 7s |
 | 99 | End card | the close | brand lockup + `npm i -g @1agh/maude` + trust line, loop-safe to the void | real `logo.tsx` mark | 4s |
 
 **What carries the film:** DS-from-a-conversation (10–20), the
@@ -73,9 +73,9 @@ separate clip so timing locks to the cut.
 - **70 · Draw as code** — *"Logos, icons, diagrams — drawn by a geometry engine. Never guessed."*
 - **80 · Animate once** — *"Animate once. Ship one file — web and native, pixel for pixel."*
 - **90 · Handoff** — *"Then hand it off — into any production codebase. Next, Vite, Bun, or raw code — wired to your tokens."*
-- **92 · Second brain · memory** — *"And it remembers. It plans before it builds — and writes down every decision. What, and why."*
-- **94 · Second brain · continuity** — *"Stop mid-feature. Come back tomorrow. It picks up exactly where you left off."*
-- **96 · Second brain · it ships** — *"It validates across five platforms — then opens the pull request. A second brain that ships."*
+- **92 · Second brain · it remembers** — *"And it remembers. Plans grounded in your spec. Every decision written down. Stop today, pick it up tomorrow — right where you left off."*
+- **94 · The daily loop** — *"Then it's just the rhythm. Plan. Execute. Done. Day after day."*
+- **96 · Nothing slips through** — *"And nothing slips. Security review, code review, validation, smoke tests, five-platform scenarios — every time. Then the pull request opens."*
 - **99 · End card** — *"maude. No telemetry. No signup. The repo is the source of truth."*
 
 ### Clean VO block (paste into ElevenLabs, one line per clip)
@@ -92,13 +92,13 @@ And you're not alone on it. Live cursors, real-time — shared peer to peer, thr
 Logos, icons, diagrams — drawn by a geometry engine. Never guessed.
 Animate once. Ship one file — web and native, pixel for pixel.
 Then hand it off — into any production codebase. Next, Vite, Bun, or raw code — wired to your tokens.
-And it remembers. It plans before it builds — and writes down every decision. What, and why.
-Stop mid-feature. Come back tomorrow. It picks up exactly where you left off.
-It validates across five platforms — then opens the pull request. A second brain that ships.
+And it remembers. Plans grounded in your spec. Every decision written down. Stop today, pick it up tomorrow — right where you left off.
+Then it's just the rhythm. Plan. Execute. Done. Day after day.
+And nothing slips. Security review, code review, validation, smoke tests, five-platform scenarios — every time. Then the pull request opens.
 maude. No telemetry. No signup. The repo is the source of truth.
 ```
 
-Word count ≈ 185 → ≈ 75–80 s of speech over a ≈90 s cut.
+Word count ≈ 195 → ≈ 78–82 s of speech over a ≈90 s cut.
 
 ### Czech variant
 
@@ -114,9 +114,9 @@ A nejsi na to sám. Živé kurzory, v reálném čase — sdílené peer to peer
 Loga, ikony, diagramy — kreslí geometrický engine. Nikdy ne odhadem.
 Naanimuj jednou. Pošli jeden soubor — web i nativ, pixel po pixelu.
 Pak to předej — do jakékoliv produkční codebase. Next, Vite, Bun, nebo čistý kód — napojené na tvoje tokeny.
-A ono si to pamatuje. Plánuje, než staví — a zapíše každé rozhodnutí. Co, a proč.
-Přeruš uprostřed featury. Vrať se zítra. Naváže přesně tam, kde jsi skončil.
-Otestuje to na pěti platformách — a otevře pull request. Druhý mozek, který nasazuje.
+A ono si to pamatuje. Plány postavené na tvém zadání. Každé rozhodnutí zapsané. Dnes přestaň, zítra naváž — přesně tam, kde jsi skončil.
+Pak už je to jen rytmus. Plan. Execute. Done. Den za dnem.
+A nic neproklouzne. Security review, code review, validace, smoke testy, scénáře na pěti platformách — pokaždé. Pak se otevře pull request.
 maude. Žádná telemetrie. Žádná registrace. Repo je zdroj pravdy.
 ```
 
@@ -144,10 +144,17 @@ maude. Žádná telemetrie. Žádná registrace. Repo je zdroj pravdy.
 - **Handoff to any production code (90)** — export engine emits a component into a
   real codebase: a shadcn `registry-item.json` (Next/Vite/Bun `shadcn add`) is ONE
   path; raw TSX + tokens + CSS is another. Framework-agnostic, wired to your tokens.
-- **Second brain (95)** — the `.ai/` workspace: PRD-grounded plans, DDR decision
-  records (institutional memory), pause/resume across sessions, `/flow:validate`
-  with a 5-platform scenario runner, ships via PR. Why it matters: context +
-  decisions survive, so you (and the AI) never re-litigate or re-discover.
+- **Second brain (92–96)** — the `.ai/` workspace as the everyday driver:
+  - *92 it remembers* — PRD-grounded plans + DDR decision records (institutional
+    memory) + pause/resume across sessions. Context + decisions survive, so you
+    (and the AI) never re-litigate or re-discover.
+  - *94 the daily loop* — `plan → execute → done`, the flow "daily verbs" you live
+    in feature after feature.
+  - *96 nothing slips* — every `done` runs the full gate: security review
+    (`security-auditor` defender + `ethical-hacker` attacker, in parallel), code
+    review, validation (lint · type · tests · build), smoke tests, and a
+    5-platform scenario runner (web-desktop/mobile · iOS phone/tablet · Android)
+    — then the PR. The "everything is covered" beat.
 
 ## Notes for the rebuild
 
