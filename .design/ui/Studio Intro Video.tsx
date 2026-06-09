@@ -56,7 +56,7 @@ function WinBar({ title }: { title: string }) {
 
 /* RealShot — embeds a REAL captured screenshot (served from .design/_assets/showreel/)
    so the storyboard is a faithful representation, not a mock. Overlays layer on top. */
-const ASSET = "/.design/_assets/showreel/";
+const ASSET = "/.design/assets/showreel/";
 function RealShot({ src, alt, children }: { src: string; alt: string; children?: React.ReactNode }) {
   return (
     <div className="sb-fr sb-fr--shot">
