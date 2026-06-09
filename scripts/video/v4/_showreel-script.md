@@ -77,40 +77,44 @@ separate clip so timing locks to the cut.
 
 ### Per-beat (line + delivery)
 
-- **00 · Cold open** — *"Every design tool wants you to leave your code."* — beat — *"this one doesn't."* _(cold, deadpan; the turn lands on "doesn't")_
-- **10 · Questionary + moodboard** — *"It starts the way the best designers do — with the right questions. It researches. Then it shows you a moodboard: here's the direction."*
-- **20 · Robust DS** — *"Then it builds the whole system. Color, type, space, motion, components. Tokenized, consistent — yours."*
-- **30 · The canvas** — *"On an infinite canvas. Your whole product, every screen — inside Claude Code."*
-- **40 · It draws** — *"Describe a screen. Watch it build itself. Real components, real tokens, real code."*
-- **50 · Critics** — *"Then critics score it — accessibility, type, restraint — and it fixes what it finds."*
-- **60 · ✦ Talk through the canvas** — *"And here's what changes everything. You don't write prompts."* — beat — *"You point at the design. Drop a note on a pixel. Draw on it. And it just… gets it."* _(the heart — warm, unhurried)_
-- **65 · Multiplayer** — *"And you're not alone on it. Live cursors, real-time — shared peer to peer, through a hub you host. No SaaS. No signup."*
-- **70 · Draw as code** — *"Logos, icons, diagrams — drawn by a geometry engine. Never guessed."*
-- **80 · Animate once** — *"Animate once. Ship one file — web and native, pixel for pixel."*
-- **90 · Handoff** — *"Then hand it off — into any production codebase. Next, Vite, Bun, or raw code — wired to your tokens."*
-- **92 · Second brain · it remembers** — *"And it remembers. Plans grounded in your spec. Every decision written down. Stop today, pick it up tomorrow — right where you left off."*
-- **94 · The daily loop** — *"Then it's just the rhythm. Plan. Execute. Done. Day after day."*
-- **96 · Nothing slips through** — *"And nothing slips. Security review, code review, validation, smoke tests, five-platform scenarios — every time. Then the pull request opens."*
-- **99 · End card** — *"maude. No telemetry. No signup. The repo is the source of truth."*
+> **v5.3 copy pass (2026-06-09):** tightened every line — cut filler ("And…",
+> "Then…", "It starts the way…"), sharper verbs, harder stops. Weak middles
+> rewritten. The lines below are the current authoritative set.
+
+- **00 · Cold open** — *"Every design tool pulls you out of your code."* — beat — *"Not this one."* _(cold, deadpan; lands on "Not this one")_
+- **10 · Questionary + moodboard** — *"It opens like a real designer would — sharp questions, real research, and a moodboard that commits to a direction."*
+- **20 · Robust DS** — *"Then a whole design system, built for you. Colour, type, space, motion, components — every token, in place."*
+- **30 · The canvas** — *"One infinite canvas. Every screen of your product — inside Claude Code."*
+- **40 · It draws** — *"Describe a screen. Watch it appear. Real components, real tokens, real code."*
+- **50 · Critics** — *"A panel of critics grades it — accessibility, type, restraint — then fixes what it flags."*
+- **60 · ✦ Talk through the canvas** — *"Here's the part that lands: you don't prompt it."* — beat — *"You point. You comment on a pixel. You draw on it. And it understands."* _(the heart — warm, unhurried)_
+- **65 · Multiplayer** — *"And you're not the only cursor. Live, peer to peer, through a hub you run — no SaaS, no sign-up."*
+- **70 · Draw as code** — *"Logos, icons, diagrams — drawn by a geometry engine. Computed, never guessed."*
+- **80 · Animate once** — *"Animate it once. Ship a single file — web and native, frame for frame."*
+- **90 · Handoff** — *"Then hand it off — into any codebase. Next, Vite, Bun, or raw — wired to your tokens."*
+- **92 · Second brain · it remembers** — *"And it remembers everything. Every plan, every decision, the reason behind it. Close the laptop — tomorrow it picks up mid-thought."*
+- **94 · The daily loop** — *"After that, it's a rhythm. Plan. Execute. Done."*
+- **96 · Nothing slips through** — *"And nothing ships unchecked — security, code review, tests, five platforms — every time. Then it opens the PR."*
+- **99 · End card** — *"maude. No telemetry. No sign-up. Your repo is the source of truth."*
 
 ### Clean VO block (paste into ElevenLabs, one line per clip)
 
 ```
-Every design tool wants you to leave your code… this one doesn't.
-It starts the way the best designers do — with the right questions. It researches. Then it shows you a moodboard: here's the direction.
-Then it builds the whole system. Color, type, space, motion, components. Tokenized, consistent — yours.
-On an infinite canvas. Your whole product, every screen, inside Claude Code.
-Describe a screen. Watch it build itself. Real components, real tokens, real code.
-Then critics score it — accessibility, type, restraint — and it fixes what it finds.
-And here's what changes everything. You don't write prompts. You point at the design. Drop a note on a pixel. Draw on it. And it just… gets it.
-And you're not alone on it. Live cursors, real-time — shared peer to peer, through a hub you host. No SaaS. No signup.
-Logos, icons, diagrams — drawn by a geometry engine. Never guessed.
-Animate once. Ship one file — web and native, pixel for pixel.
-Then hand it off — into any production codebase. Next, Vite, Bun, or raw code — wired to your tokens.
-And it remembers. Plans grounded in your spec. Every decision written down. Stop today, pick it up tomorrow — right where you left off.
-Then it's just the rhythm. Plan. Execute. Done. Day after day.
-And nothing slips. Security review, code review, validation, smoke tests, five-platform scenarios — every time. Then the pull request opens.
-maude. No telemetry. No signup. The repo is the source of truth.
+Every design tool pulls you out of your code… not this one.
+It opens like a real designer would — sharp questions, real research, and a moodboard that commits to a direction.
+Then a whole design system, built for you. Colour, type, space, motion, components — every token, in place.
+One infinite canvas. Every screen of your product — inside Claude Code.
+Describe a screen. Watch it appear. Real components, real tokens, real code.
+A panel of critics grades it — accessibility, type, restraint — then fixes what it flags.
+Here's the part that lands: you don't prompt it. You point. You comment on a pixel. You draw on it. And it understands.
+And you're not the only cursor. Live, peer to peer, through a hub you run — no SaaS, no sign-up.
+Logos, icons, diagrams — drawn by a geometry engine. Computed, never guessed.
+Animate it once. Ship a single file — web and native, frame for frame.
+Then hand it off — into any codebase. Next, Vite, Bun, or raw — wired to your tokens.
+And it remembers everything. Every plan, every decision, the reason behind it. Close the laptop — tomorrow it picks up mid-thought.
+After that, it's a rhythm. Plan. Execute. Done.
+And nothing ships unchecked — security, code review, tests, five platforms — every time. Then it opens the PR.
+maude. No telemetry. No sign-up. Your repo is the source of truth.
 ```
 
 Word count ≈ 195 → ≈ 78–82 s of speech over a ≈90 s cut.
@@ -118,21 +122,21 @@ Word count ≈ 195 → ≈ 78–82 s of speech over a ≈90 s cut.
 ### Czech variant
 
 ```
-Každý designový nástroj tě chce dostat pryč z kódu… tenhle ne.
-Začíná to jako u nejlepších designérů — správnými otázkami. Udělá rešerši. Pak ti ukáže moodboard: tudy vede cesta.
-A potom postaví celý systém. Barvy, písmo, prostor, pohyb, komponenty. Otokenované, konzistentní — tvoje.
-Na nekonečném plátně. Celý tvůj produkt, každá obrazovka — přímo v Claude Code.
-Popiš obrazovku. Sleduj, jak se postaví sama. Reálné komponenty, reálné tokeny, reálný kód.
-Pak ji ohodnotí kritici — přístupnost, typografie, zdrženlivost — a co najdou, opraví.
-A teď to hlavní, co všechno mění. Nepíšeš prompty. Ukážeš na design. Hodíš poznámku na pixel. Nakreslíš to. A ono to prostě… pochopí.
-A nejsi na to sám. Živé kurzory, v reálném čase — sdílené peer to peer, přes hub, který si hostuješ. Žádný SaaS. Žádná registrace.
-Loga, ikony, diagramy — kreslí geometrický engine. Nikdy ne odhadem.
-Naanimuj jednou. Pošli jeden soubor — web i nativ, pixel po pixelu.
-Pak to předej — do jakékoliv produkční codebase. Next, Vite, Bun, nebo čistý kód — napojené na tvoje tokeny.
-A ono si to pamatuje. Plány postavené na tvém zadání. Každé rozhodnutí zapsané. Dnes přestaň, zítra naváž — přesně tam, kde jsi skončil.
-Pak už je to jen rytmus. Plan. Execute. Done. Den za dnem.
-A nic neproklouzne. Security review, code review, validace, smoke testy, scénáře na pěti platformách — pokaždé. Pak se otevře pull request.
-maude. Žádná telemetrie. Žádná registrace. Repo je zdroj pravdy.
+Každý designový nástroj tě tahá pryč z kódu… tenhle ne.
+Otevře to jako skutečný designér — ostré otázky, opravdová rešerše a moodboard, který se rozhodne pro směr.
+Pak celý design systém, postavený pro tebe. Barvy, písmo, prostor, pohyb, komponenty — každý token na svém místě.
+Jedno nekonečné plátno. Každá obrazovka tvého produktu — přímo v Claude Code.
+Popiš obrazovku. Sleduj, jak vznikne. Reálné komponenty, reálné tokeny, reálný kód.
+Panel kritiků ji oznámkuje — přístupnost, typografie, zdrženlivost — a co najde, opraví.
+A teď to, co sedne: nepíšeš prompty. Ukážeš. Okomentuješ pixel. Nakreslíš to. A ono to pochopí.
+A nejsi jediný kurzor. Živě, peer to peer, přes hub, který si hostuješ — žádný SaaS, žádná registrace.
+Loga, ikony, diagramy — kreslí geometrický engine. Spočítané, nikdy odhadem.
+Naanimuj to jednou. Pošli jediný soubor — web i nativ, frame po framu.
+Pak to předej — do jakékoliv codebase. Next, Vite, Bun, nebo čistý kód — napojené na tvoje tokeny.
+A pamatuje si všechno. Každý plán, každé rozhodnutí, důvod za ním. Zavři notebook — zítra naváže uprostřed myšlenky.
+Pak už je to rytmus. Plan. Execute. Done.
+A nic se nenasadí nezkontrolované — security, code review, testy, pět platforem — pokaždé. Pak otevře PR.
+maude. Žádná telemetrie. Žádná registrace. Tvé repo je zdroj pravdy.
 ```
 
 ---
@@ -170,6 +174,45 @@ maude. Žádná telemetrie. Žádná registrace. Repo je zdroj pravdy.
     review, validation (lint · type · tests · build), smoke tests, and a
     5-platform scenario runner (web-desktop/mobile · iOS phone/tablet · Android)
     — then the PR. The "everything is covered" beat.
+
+## Per-beat animation direction (from canvas review · 2026-06-09)
+
+> These are the user's notes left as comments on the storyboard artboards. They
+> are EXECUTE-phase direction (transitions, motion, what to demonstrate) — the
+> storyboard tiles can't show them statically. Honor them when animating.
+
+- **00 cold open** — add MORE cursors/arrows; label some "Claude Code" / "AI agent"
+  so it's instantly clear this is a **human × AI collaboration** tool, not solo.
+- **10 questionary + moodboard** — show **2–3 REAL questions + answers as chat
+  bubbles** (messenger style); as each answer lands, **assets appear on the
+  moodboard** in sync (answer → board grows). Real Q text from `_DISCOVERY-v1.md`.
+- **20 robust DS** — scatter real specimen components, **float-animate** them
+  dynamically; transition = they swirl into a **vortex and vanish**.
+- **30 the canvas** → **MERGE with beat 60** (talk-through-canvas). One canvas beat.
+- **40 it draws itself** — no real capture needed; animate the **wave-pulsing
+  "AI is editing" overlay** (the real Studio effect) over placeholder/random
+  screens appearing. Reuse elements from `Studio.tsx`.
+- **50 critics** — **map ALL critics, miss none.** Real roster: `design-critic`,
+  `a11y-critic`, `frontend-critic`, `graphic-design-critic`, `typography-critic`,
+  `motion-critic`, `brand-critic`, `copy-critic`, `info-architecture-critic`,
+  `signature-moment-critic`, `draw-critic` (+ `design-system-completeness-critic`,
+  `design-system-keeper`). Show the panel resolving across these, not just 4.
+- **60 talk through canvas** (absorbs 30) — needn't be a real capture, but must
+  clearly demo a **real canvas**: draw · annotate · comment · move. Placeholders
+  OK but **genuinely wow**.
+- **65 multiplayer** — **continuous from 60**: keep the scene, just add more mice
+  over the canvas + a dramatic **"It's multiplayer"** title.
+- **70 draw as code** — the SVG shown must be **genuinely top-tier** (clearly
+  proves SVG mastery). Sets up the transition into 80 where the **same SVG
+  animates**.
+- **80 animate once** — **transition: the static SVG from 70 comes alive**, then
+  places into desktop + mobile devices. The animation must have **grády** — pull
+  real motion inspiration (research online).
+- **90 handoff** — current is poor. Make it a **swipe-left of the placeholder
+  screens from 40**, right side reveals **real code (split-screen)** with an
+  animation of it **flowing left→right from canvas into code**.
+- **92 second brain** — make it an **infographic / diagram / illustration** so
+  what's happening is instantly understandable (not a flat card).
 
 ## Notes for the rebuild
 
