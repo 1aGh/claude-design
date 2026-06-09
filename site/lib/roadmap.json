@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-08T13:56:25.963Z",
+  "generated": "2026-06-09T11:13:21.367Z",
   "currentPhase": null,
   "phases": [
     {
@@ -221,6 +221,17 @@
       "planPath": ".ai/plans/archive/hub-redesign-studio-hub.md",
       "archived": true,
       "phaseKey": null
+    },
+    {
+      "id": "phase-16-intro-video-v3-wow",
+      "title": "Feature: Intro video v4 — total rebuild, scene-by-scene visual iteration",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "---",
+      "planPath": ".ai/plans/archive/phase-16-intro-video-v3-wow.md",
+      "archived": true,
+      "phaseKey": "16"
     },
     {
       "id": "phase-20-canvas-undo-redo",
@@ -782,17 +793,6 @@
       "planPath": ".ai/plans/phase-12-in-canvas-css-and-layers.md",
       "archived": false,
       "phaseKey": "12"
-    },
-    {
-      "id": "phase-16-intro-video-v3-wow",
-      "title": "Feature: Intro video v4 — total rebuild, scene-by-scene visual iteration",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "---",
-      "planPath": ".ai/plans/phase-16-intro-video-v3-wow.md",
-      "archived": false,
-      "phaseKey": "16"
     },
     {
       "id": "phase-17-docs-site-infographics",

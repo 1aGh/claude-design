@@ -360,3 +360,37 @@ commit specifically because the visual quality bar was not met, and
 explicitly told you to rewrite this plan to require independent
 authoring with iterative visual verification. That is what v4 is.
 Honor the contract.
+
+---
+
+## Retro (v5 — shipped 2026-06-09)
+
+The v4 tutorial cut was scrapped; the delivered film is the **v5 feature
+showreel** (14 beats, `scripts/video/final/src/scenes/v5/` + `compositions/V5.tsx`),
+shipped to `site/public/demo.mp4` with ElevenLabs voiceover, a 9-clip SFX palette,
+and a royalty-free music bed (mixed via `build-audio.sh`). Commit `a23ab8f`.
+
+What worked:
+- **Per-scene still → Read → score → fix** loop (the plan's Phase-B discipline)
+  caught real bugs a contact sheet would've missed: critic panel "0.0/5", the
+  Hero.tsx chip/title collision, cut-off animation tails, unreadable captions.
+- **Grounding in real assets** (real moodboard + DS specimen) + an **original
+  geometry-engine mascot** (Sparky, K-VRC-style LED face) gave the "draw/animate"
+  beats genuine credibility and charm — the single biggest "wow" lift.
+- **design-critic subagent on rendered stills** turned vague "make it better" into
+  codeable fixes (focal node size, balanced branches, active-card dominance).
+
+What didn't / what to change next time:
+- **Audio length drift:** the VO took ~92 s vs the ~89 s video; per-beat lengths
+  didn't match the spoken takes. Fix that surfaced: **time the beats to the actual
+  VO** (don't guess durations up front). Bake VO-duration awareness into the
+  storyboard step.
+- **Iteration count:** ~6 visual passes + 4 audio passes. A storyboard that fixed
+  the mascot direction (LD+R reference) and the "captions appear early enough"
+  rule up front would've saved 2-3 rounds.
+- **Music:** ElevenLabs Music can't be downloaded from the UI — plan for a
+  royalty-free source (Pixabay) from the start when scoping audio.
+
+Deferred / open: music is a user-sourced royalty-free track (confirm license for
+public repo); film is ~105 s (can tighten via ~8% VO atempo if a shorter cut is
+wanted later).
