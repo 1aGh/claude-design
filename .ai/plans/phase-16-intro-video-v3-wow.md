@@ -1,5 +1,29 @@
 # Feature: Intro video v4 — total rebuild, scene-by-scene visual iteration
 
+> ## ⚠ v5.2 SUPERSEDES THE BODY BELOW — read this first (2026-06-09)
+> The concept pivoted from a tutorial to a **feature SHOWREEL**. The authoritative
+> spec is now **`scripts/video/v4/_showreel-script.md`** (15 beats + ElevenLabs VO,
+> EN+CZ). The visual storyboard is `.design/ui/Studio Intro Video.tsx` (one
+> artboard per beat, built from REAL assets).
+>
+> **EXECUTOR DIRECTIVE (load-bearing):** the storyboard is **inspiration, not a
+> spec**. Do NOT copy its frames 1:1 — **ELEVATE** every beat (more cinematic,
+> more real, more polished). Ground each scene in the **real assets**, not the
+> mocks: `.design/_assets/showreel/` + `scripts/video/v4/_research/` (real Studio
+> / canvas / DS specimen / moodboard captures), `scripts/video/final/public/v4/cli.mp4`
+> (real terminal), `.design/_draw/*.svg` (real geometry marks), `.ai/` artifacts
+> (DDR-070, plans, scenarios), `.design/ui/*.registry.json` (real handoff).
+> The storyboard fixes order + beat + VO + what-to-prove; the composition is
+> yours to make better. Bar: "would a designer screenshot it?" — if a beat only
+> matches the mock, it failed.
+>
+> Install beat dropped. Critics may be illustrated (don't run `/design:critic`
+> just for footage). Everything else must be a faithful representation of how
+> maude really looks + behaves.
+>
+> _The v4 body below is retained for the per-scene visual-iteration loop
+> mechanics (render → frame-grab → score → sign off), which still apply._
+
 > **v4 (2026-05-23, after scrapping v3 layering attempt).** v3 tried to
 > "fix" v2.1 by layering 6 new wow scenes on top of the existing
 > composition. User watched the result and called it "fakt slusnej

@@ -14,46 +14,162 @@
     }
   ],
   "artboards": [
-    { "id": "brief", "label": "Cover · brief" },
-    { "id": "s00", "label": "00 · Cold open" },
-    { "id": "s10", "label": "10 · Questionary + moodboard" },
-    { "id": "s20", "label": "20 · Robust design system" },
-    { "id": "s30", "label": "30 · The canvas" },
-    { "id": "s40", "label": "40 · It draws itself" },
-    { "id": "s50", "label": "50 · It critiques itself" },
-    { "id": "s60", "label": "60 · Talk through the canvas" },
-    { "id": "s65", "label": "65 · Multiplayer" },
-    { "id": "s70", "label": "70 · Draw as code" },
-    { "id": "s80", "label": "80 · Animate once" },
-    { "id": "s90", "label": "90 · Handoff to any code" },
-    { "id": "s92", "label": "92 · Second brain · remembers" },
-    { "id": "s94", "label": "94 · The daily loop" },
-    { "id": "s96", "label": "96 · Nothing slips through" },
-    { "id": "s99", "label": "99 · End card" }
+    {
+      "id": "brief",
+      "label": "Cover · brief"
+    },
+    {
+      "id": "s00",
+      "label": "00 · Cold open"
+    },
+    {
+      "id": "s10",
+      "label": "10 · Questionary + moodboard"
+    },
+    {
+      "id": "s20",
+      "label": "20 · Robust design system"
+    },
+    {
+      "id": "s30",
+      "label": "30 · The canvas"
+    },
+    {
+      "id": "s40",
+      "label": "40 · It draws itself"
+    },
+    {
+      "id": "s50",
+      "label": "50 · It critiques itself"
+    },
+    {
+      "id": "s60",
+      "label": "60 · Talk through the canvas"
+    },
+    {
+      "id": "s65",
+      "label": "65 · Multiplayer"
+    },
+    {
+      "id": "s70",
+      "label": "70 · Draw as code"
+    },
+    {
+      "id": "s80",
+      "label": "80 · Animate once"
+    },
+    {
+      "id": "s90",
+      "label": "90 · Handoff to any code"
+    },
+    {
+      "id": "s92",
+      "label": "92 · Second brain · remembers"
+    },
+    {
+      "id": "s94",
+      "label": "94 · The daily loop"
+    },
+    {
+      "id": "s96",
+      "label": "96 · Nothing slips through"
+    },
+    {
+      "id": "s99",
+      "label": "99 · End card"
+    }
   ],
   "layout": {
     "artboards": [
-      { "id": "brief", "x": 0, "y": 0 },
-      { "id": "s00", "x": 1440, "y": 0 },
-      { "id": "s10", "x": 2880, "y": 0 },
-      { "id": "s20", "x": 4320, "y": 0 },
-      { "id": "s30", "x": 5760, "y": 0 },
-      { "id": "s40", "x": 7200, "y": 0 },
-      { "id": "s50", "x": 8640, "y": 0 },
-      { "id": "s60", "x": 10080, "y": 0 },
-      { "id": "s65", "x": 11520, "y": 0 },
-      { "id": "s70", "x": 12960, "y": 0 },
-      { "id": "s80", "x": 14400, "y": 0 },
-      { "id": "s90", "x": 15840, "y": 0 },
-      { "id": "s92", "x": 17280, "y": 0 },
-      { "id": "s94", "x": 18720, "y": 0 },
-      { "id": "s96", "x": 20160, "y": 0 },
-      { "id": "s99", "x": 21600, "y": 0 }
+      {
+        "id": "brief",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "s00",
+        "x": 1440,
+        "y": 0
+      },
+      {
+        "id": "s10",
+        "x": 2880,
+        "y": 0
+      },
+      {
+        "id": "s20",
+        "x": 4320,
+        "y": 0
+      },
+      {
+        "id": "s30",
+        "x": 5760,
+        "y": 0
+      },
+      {
+        "id": "s40",
+        "x": 7200,
+        "y": 0
+      },
+      {
+        "id": "s50",
+        "x": 8640,
+        "y": 0
+      },
+      {
+        "id": "s60",
+        "x": 10080,
+        "y": 0
+      },
+      {
+        "id": "s65",
+        "x": 11520,
+        "y": 0
+      },
+      {
+        "id": "s70",
+        "x": 12960,
+        "y": 0
+      },
+      {
+        "id": "s80",
+        "x": 14400,
+        "y": 0
+      },
+      {
+        "id": "s90",
+        "x": 15840,
+        "y": 0
+      },
+      {
+        "id": "s92",
+        "x": 17280,
+        "y": 0
+      },
+      {
+        "id": "s94",
+        "x": 18720,
+        "y": 0
+      },
+      {
+        "id": "s96",
+        "x": 20160,
+        "y": 0
+      },
+      {
+        "id": "s99",
+        "x": 21600,
+        "y": 0
+      }
     ]
   },
   "created": "2026-06-05",
   "css_mode": "sibling",
   "iteration_count": 2,
-  "viewport": { "x": 0, "y": 0, "zoom": 0.18 },
-  "last_modified": "2026-06-09T00:00:00.000Z"
+  "viewport": {
+    "x": -1122.7427489882489,
+    "y": 187.7054269569402,
+    "zoom": 0.6845449255364933
+  },
+  "last_modified": "2026-06-09T05:44:30.324Z"
 }

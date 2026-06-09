@@ -54,6 +54,19 @@ function WinBar({ title }: { title: string }) {
   );
 }
 
+/* RealShot — embeds a REAL captured screenshot (served from .design/_assets/showreel/)
+   so the storyboard is a faithful representation, not a mock. Overlays layer on top. */
+const ASSET = "/.design/_assets/showreel/";
+function RealShot({ src, alt, children }: { src: string; alt: string; children?: React.ReactNode }) {
+  return (
+    <div className="sb-fr sb-fr--shot">
+      <img className="sb-shot-img" src={ASSET + src} alt={alt} loading="eager" />
+      <span className="sb-shot-tag">● REAL CAPTURE</span>
+      {children}
+    </div>
+  );
+}
+
 /* ───────────────────────── per-beat frame renders (bigger, reality-grounded) ───────────────────────── */
 
 function FrameColdOpen() {
@@ -65,83 +78,48 @@ function FrameColdOpen() {
   );
 }
 
-/* 10 — questionary built on best designers + moodboard direction */
+/* 10 — questionary (REAL 12-Q discovery) + REAL moodboard capture */
+const REAL_QS = ["Q1 product one-liner", "Q5 mood references", "Q6 brand colour · OKLCH", "Q9 signature treatment", "Q10 hard-NO list", "Q12 density"];
 function FrameQuestionMood() {
   return (
-    <div className="sb-fr sb-fr--qm">
-      <div className="sb-qm-tui">
-        <WinBar title="claude · scratch" />
-        <div className="sb-qm-cmd"><span className="sb-tui-pr">&gt;</span> /design:setup-ds <span className="sb-tui-arg">project "…"</span></div>
-        <div className="sb-qm-stage">STAGE 1 · 1 / 4</div>
-        <div className="sb-qm-q">What feeling should the very first screen give someone?</div>
-        <div className="sb-qm-sub">discovery built on how the best designers work</div>
+    <RealShot src="moodboard.png" alt="moodboard">
+      <div className="sb-ov-card sb-ov-card--tl">
+        <div className="sb-ov-h">/design:setup-ds · 12 Qs · 3 rounds</div>
+        <ul className="sb-ov-qs">{REAL_QS.map((q) => <li key={q}>{q}</li>)}</ul>
+        <div className="sb-ov-sub">options sourced from live domain research</div>
       </div>
-      <div className="sb-qm-arrow"><Icon name="arrow-right" size={20} /></div>
-      <div className="sb-qm-board">
-        <span className="sb-qm-label">MOODBOARD · direction</span>
-        <div className="sb-pin-card" style={{ left: "4%", top: "20%", width: "46%", transform: "rotate(-3deg)" }}><div className="sb-pin-aa">Aa Gg</div><div className="sb-pin-row"><span style={{ background: "var(--accent)" }} /><span style={{ background: "oklch(0.62 0.20 28)" }} /><span style={{ background: "var(--fg-0)" }} /></div></div>
-        <div className="sb-pin-card sb-pin-card--img" style={{ left: "54%", top: "14%", width: "38%", height: "40%", transform: "rotate(3deg)", background: "var(--bg-3)" }} />
-        <div className="sb-pin-card sb-pin-card--img" style={{ left: "10%", top: "58%", width: "40%", height: "32%", transform: "rotate(2deg)", background: "var(--bg-4)" }} />
-        <div className="sb-pin-card" style={{ left: "56%", top: "60%", width: "36%", transform: "rotate(-2deg)", background: "var(--accent)", color: "var(--accent-fg)" }}><div className="sb-pin-note">dense · calm · one accent</div></div>
-      </div>
-    </div>
+      <span className="sb-ov-pill sb-ov-pill--br">↑ real .design/_moodboard output</span>
+    </RealShot>
   );
 }
 
-/* 20 — robust design system (editorial specimen + family) */
+/* 20 — robust design system (REAL specimen capture: colors-accent) */
 function FrameRobustDS() {
   return (
-    <div className="sb-fr sb-fr--edi">
-      <div className="sb-edi-h">Accent. <span style={{ color: "var(--accent)" }}>One indigo.</span></div>
-      <div className="sb-edi-oklch">accent · oklch(0.68 0.18 268) · 6.4:1 on bg-0</div>
-      <div className="sb-edi-fam">
-        <span style={{ background: "var(--accent)" }} /><span style={{ background: "var(--accent-hover)" }} /><span style={{ background: "var(--accent-muted)" }} /><span style={{ background: "var(--accent-tint)" }} />
-      </div>
-      <div className="sb-edi-grid">
-        <span className="sb-edi-spec">type scale</span><span className="sb-edi-spec">spacing</span><span className="sb-edi-spec">elevation</span>
-        <span className="sb-edi-spec">motion</span><span className="sb-edi-spec">components</span><span className="sb-edi-spec">status</span>
-      </div>
-      <div className="sb-edi-ctx"><span className="sb-edi-btn">Primary</span><span className="sb-edi-ghost">Ghost</span><span className="sb-edi-cap">a system — not a palette</span></div>
-    </div>
+    <RealShot src="ds-accent.png" alt="ds specimen">
+      <span className="sb-ov-pill sb-ov-pill--tr">real specimen · system/maude/preview/colors-accent</span>
+    </RealShot>
   );
 }
 
-/* 30 — infinite multi-artboard canvas */
+/* 30 — infinite multi-artboard canvas (REAL Canvas Viewport capture) */
 function FrameCanvasPan() {
-  const ab = (op: number, accent: boolean, w: string) => (
-    <div className="sb-ab sb-ab--xs" style={{ opacity: op }}>
-      <div className="sb-ab-bar"><i /><i /></div>
-      <div className={"sb-sk" + (accent ? " sb-sk--accent" : "")} style={{ width: w }} />
-      <div className="sb-sk" style={{ width: "70%" }} />
-    </div>
-  );
   return (
-    <div className="sb-fr sb-fr--dots sb-fr--pan">
-      <div className="sb-pan-row">{ab(0.5, false, "60%")}{ab(1, true, "44%")}{ab(1, false, "80%")}{ab(0.5, false, "55%")}</div>
-      <span className="sb-zoom-pill">46%</span>
-      <span className="sb-mm">WORLD · 6/6</span>
-    </div>
+    <RealShot src="canvas.png" alt="infinite canvas">
+      <span className="sb-ov-pill sb-ov-pill--tr">real Canvas Viewport · pan / zoom / WORLD minimap</span>
+    </RealShot>
   );
 }
 
-/* 40 — it draws itself (split: TUI stream / canvas fills) */
+/* 40 — it draws itself (REAL Studio capture; live fill happens in the video) */
 function FrameDraws() {
   return (
-    <div className="sb-fr sb-fr--split">
-      <div className="sb-split-l">
-        <div className="sb-tui-mini"><span className="sb-tui-pr">&gt;</span> /design:new "Recipe Recap"</div>
-        <div className="sb-stream"><span style={{ width: "82%" }} /><span style={{ width: "64%" }} /><span style={{ width: "73%" }} /><span className="sb-stream-live" style={{ width: "40%" }} /></div>
+    <RealShot src="studio.png" alt="studio">
+      <div className="sb-ov-card sb-ov-card--tl sb-ov-card--mono">
+        <span className="sb-tui-pr">&gt;</span> /design:new "Recipe Recap"<Caret />
       </div>
-      <div className="sb-split-r sb-dots">
-        <div className="sb-ab">
-          <div className="sb-ab-bar"><i /><i /><i /></div>
-          <div className="sb-sk" style={{ width: "60%", height: 12 }} />
-          <div className="sb-sk sb-sk--accent" style={{ width: "32%" }} />
-          <div className="sb-sk" style={{ width: "78%" }} />
-          <span className="sb-cur-agent"><Icon name="cursor" size={16} /></span>
-        </div>
-      </div>
-    </div>
+      <span className="sb-ov-pill sb-ov-pill--br">real Studio — canvas fills live in the cut</span>
+    </RealShot>
   );
 }
 
@@ -161,60 +139,52 @@ function FrameCritics() {
   );
 }
 
-/* 60 — THE AHA: talk to the AI through the canvas (point + comment + draw) */
+/* 60 — THE AHA: talk to the AI through the canvas (REAL Studio + overlay) */
 function FrameTalkCanvas() {
   return (
-    <div className="sb-fr sb-fr--dots sb-center">
-      <div className="sb-ab sb-ab--talk">
-        <div className="sb-ab-bar"><i /><i /><i /><span className="sb-ab-file">Hero.tsx</span></div>
-        <div className="sb-sk" style={{ width: "64%", height: 14 }} />
-        <div className="sb-halo"><div className="sb-sk sb-sk--accent" style={{ width: "100%" }} /></div>
-        <svg className="sb-penmark" viewBox="0 0 60 40" aria-hidden><path d="M6 30 C 20 8, 38 8, 52 18" /><polyline points="46 14 53 18 49 25" /></svg>
-        <span className="sb-annot-label"><Icon name="pen" size={11} /> make this bigger</span>
-        <span className="sb-path">button.btn--primary · Hero.tsx : 42</span>
-        <span className="sb-pin">1</span>
-        <span className="sb-thread"><Icon name="message" size={12} /> tighten this</span>
-        <span className="sb-cur-cmd"><Icon name="cursor" size={16} /><b>⌘</b></span>
-      </div>
-    </div>
+    <RealShot src="studio.png" alt="studio">
+      <svg className="sb-ov-pen" viewBox="0 0 120 80" aria-hidden><path d="M10 60 C 40 14, 78 14, 108 34" /><polyline points="96 26 110 34 102 48" /></svg>
+      <span className="sb-ov-label" style={{ left: "30%", top: "16%" }}><Icon name="pen" size={12} /> make this bigger</span>
+      <span className="sb-ov-path" style={{ left: "42%", top: "54%" }}>button.btn--primary · Hero.tsx : 42</span>
+      <span className="sb-ov-pin" style={{ left: "56%", top: "62%" }}>1</span>
+      <span className="sb-ov-cur" style={{ left: "48%", top: "58%" }}><Icon name="cursor" size={18} /><b>⌘ click</b></span>
+      <span className="sb-ov-pill sb-ov-pill--br">point · comment · draw → it acts</span>
+    </RealShot>
   );
 }
 
-/* 65 — multiplayer, peer-to-peer via your hub */
+/* 65 — multiplayer, peer-to-peer via your hub (REAL Studio + presence overlay) */
 function FrameMultiplayer() {
   return (
-    <div className="sb-fr sb-fr--dots sb-center">
-      <div className="sb-ab sb-ab--talk">
-        <div className="sb-ab-bar"><i /><i /><i />
-          <span className="sb-avatars"><span style={{ background: "var(--presence-agent)" }} /><span style={{ background: "var(--status-info)" }} /><span style={{ background: "var(--status-success)" }} /></span>
-        </div>
-        <div className="sb-sk" style={{ width: "58%" }} />
-        <div className="sb-sk sb-sk--accent" style={{ width: "38%" }} />
-        <div className="sb-sk" style={{ width: "72%" }} />
-        <span className="sb-mp-cur" style={{ left: "20%", top: "46%", color: "var(--presence-agent)" }}><Icon name="cursor" size={16} /><b style={{ background: "var(--presence-agent)" }}>maya</b></span>
-        <span className="sb-mp-cur" style={{ left: "62%", top: "60%", color: "var(--status-info)" }}><Icon name="cursor" size={16} /><b style={{ background: "var(--status-info)" }}>you</b></span>
-        <span className="sb-hub-chip"><Icon name="git" size={12} /> 3 peers · your hub · no SaaS</span>
-      </div>
-    </div>
+    <RealShot src="studio.png" alt="studio">
+      <span className="sb-ov-cur" style={{ left: "26%", top: "42%", color: "var(--presence-agent)" }}><Icon name="cursor" size={18} /><b style={{ background: "var(--presence-agent)" }}>maya</b></span>
+      <span className="sb-ov-cur" style={{ left: "58%", top: "58%", color: "var(--status-info)" }}><Icon name="cursor" size={18} /><b style={{ background: "var(--status-info)" }}>you</b></span>
+      <span className="sb-ov-cur" style={{ left: "40%", top: "70%", color: "var(--status-success)" }}><Icon name="cursor" size={18} /><b style={{ background: "var(--status-success)" }}>sam</b></span>
+      <span className="sb-ov-pill sb-ov-pill--br"><Icon name="git" size={12} /> 3 peers · your hub · no SaaS</span>
+    </RealShot>
   );
 }
 
-/* 70 — draw as code (geometry engine) */
+/* 70 — draw as code (the REAL geometry-engine output: .design/_draw/maude-mark-c1.svg) */
 function FrameDrawCode() {
   return (
     <div className="sb-fr sb-fr--draw sb-center">
       <div className="sb-draw-stage">
-        <span className="sb-draw-mark"><BrandMark size={92} /></span>
-        {/* geometry overlay */}
-        <span className="sb-draw-node" style={{ left: "50%", top: "8%" }} />
-        <span className="sb-draw-node" style={{ left: "86%", top: "50%" }} />
-        <span className="sb-draw-node" style={{ left: "50%", top: "92%" }} />
-        <span className="sb-draw-node" style={{ left: "14%", top: "50%" }} />
+        {/* verbatim from the real generated mark */}
+        <svg className="sb-draw-mark" width={132} height={132} viewBox="0 0 32 32" style={{ color: "var(--accent)" }} aria-hidden>
+          <rect width="16" height="16" x="8" y="8" fill="none" stroke="currentColor" strokeWidth="2.6" rx="4" />
+          <g fill="currentColor"><rect width="6.4" height="6.4" x="22.8" y="2.8" rx="1.8" /><rect width="6.4" height="6.4" x="2.8" y="22.8" rx="1.8" /><rect width="6.4" height="6.4" x="22.8" y="22.8" rx="1.8" /></g>
+          <path fill="currentColor" d="m6 .6 2.48 2.92L11.4 6 8.48 8.48 6 11.4 3.52 8.48.6 6l2.92-2.48z" />
+        </svg>
+        <span className="sb-draw-node" style={{ left: "25%", top: "25%" }} />
+        <span className="sb-draw-node" style={{ left: "75%", top: "25%" }} />
+        <span className="sb-draw-node" style={{ left: "75%", top: "75%" }} />
+        <span className="sb-draw-node" style={{ left: "25%", top: "75%" }} />
       </div>
       <div className="sb-draw-meta">
         <span className="sb-draw-chip">geometry → .svg</span>
         <span className="sb-draw-chip">→ .jsx</span>
-        <span className="sb-draw-chip sb-draw-chip--ok">never guessed</span>
+        <span className="sb-draw-chip sb-draw-chip--ok">● real /design:draw output</span>
       </div>
     </div>
   );
@@ -250,9 +220,10 @@ function FrameHandoff() {
         </div>
         <span className="sb-ho-arrow"><Icon name="arrow-right" size={18} /></span>
         <div className="sb-ho-repo">
-          <span className="sb-ho-repo-h">ANY CODEBASE · Next · Vite · Bun</span>
-          <span className="sb-ho-add">+ components/recipe-recap.tsx</span>
-          <span className="sb-ho-add">+ wired to your tokens</span>
+          <span className="sb-ho-repo-h">Studio.registry.json · real handoff</span>
+          <span className="sb-ho-add">+ components/studio.tsx</span>
+          <span className="sb-ho-add">+ styles/studio.tokens.css</span>
+          <span className="sb-ho-repo-h" style={{ marginTop: 6 }}>→ Next · Vite · Bun · raw</span>
         </div>
       </div>
     </div>
@@ -264,14 +235,14 @@ function FrameMemory() {
   return (
     <div className="sb-fr sb-fr--brain">
       <div className="sb-brain-card">
-        <div className="sb-brain-h">PLAN · grounded in PRD</div>
-        <div className="sb-brain-li"><Icon name="check" size={11} /> tasks · scope · risks</div>
-        <div className="sb-brain-li"><Icon name="check" size={11} /> acceptance criteria</div>
+        <div className="sb-brain-h">phase-12 · plan</div>
+        <div className="sb-brain-li"><Icon name="check" size={11} /> In-canvas CSS editor + Layers</div>
+        <div className="sb-brain-li"><Icon name="check" size={11} /> tasks · scope · acceptance</div>
       </div>
       <div className="sb-brain-card sb-brain-card--ddr">
         <div className="sb-brain-h">DDR-070 · decision</div>
-        <div className="sb-brain-sub">what · why · revisit-when</div>
-        <div className="sb-brain-tag">institutional memory</div>
+        <div className="sb-brain-sub">SVG via deterministic geometry engine + rank-not-score verify</div>
+        <div className="sb-brain-tag">real .ai/decisions · memory</div>
       </div>
       <div className="sb-brain-cont">pause today · resume tomorrow →</div>
     </div>

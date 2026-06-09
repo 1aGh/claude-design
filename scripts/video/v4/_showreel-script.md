@@ -1,5 +1,20 @@
 # maude — feature showreel + voiceover script (v5.2)
 
+> ## ⚠ EXECUTOR DIRECTIVE — read before animating
+> **The storyboard (`.design/ui/Studio Intro Video.tsx`) is INSPIRATION, not a
+> spec.** Do NOT reproduce its frames 1:1. Your job is to ELEVATE — make each
+> beat more cinematic, more real, more polished than the storyboard tile.
+> - **Ground in the REAL assets**, not the storyboard mocks: the captured
+>   screenshots in `.design/_assets/showreel/` + `scripts/video/v4/_research/`
+>   (real Studio, canvas, DS specimen, moodboard), the real terminal capture
+>   `scripts/video/final/public/v4/cli.mp4`, the real geometry SVGs in
+>   `.design/_draw/`, real `.ai/` artifacts (DDR-070, plans, scenario reports),
+>   real `.design/ui/*.registry.json`. Re-capture fresh/higher-res where needed.
+> - The storyboard fixes the **order, the beat, the VO line, and what each beat
+>   must prove** — not the exact composition. Improve the composition.
+> - Bar: would a designer screenshot it? If a beat only matches the mock, it has
+>   failed. Push past it.
+
 > **Pivot (2026-06-09).** Not a tutorial — a **showreel**: top features as a
 > cinematic sequence that blows people away. Install dropped. Voiceover via
 > ElevenLabs. Every beat grounded in a REAL maude capability (verified against

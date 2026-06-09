@@ -431,3 +431,25 @@
 .sb-gate-li { display: flex; align-items: center; gap: var(--space-3); font-size: var(--type-md); color: var(--fg-0); }
 .sb-gate-tick { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: var(--radius-pill); background: color-mix(in oklab, var(--status-success) 18%, transparent); color: var(--status-success); }
 .sb-gate-pr { margin-top: var(--space-3); display: inline-flex; align-items: center; gap: var(--space-2); font-family: var(--font-mono); font-size: var(--type-sm); color: var(--accent); background: var(--accent-tint); border: 1px solid var(--accent-muted); border-radius: var(--radius-pill); padding: 6px 16px; width: fit-content; }
+
+/* ═══════════ REAL-asset frames (embedded captures + overlays) ═══════════ */
+.sb-fr--shot { padding: 0; background: var(--bg-0); }
+.sb-shot-img { width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block; }
+.sb-shot-tag { position: absolute; left: var(--space-3); top: var(--space-3); z-index: 3; font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-wide); color: var(--status-success); background: color-mix(in oklab, var(--bg-0) 78%, transparent); border: 1px solid color-mix(in oklab, var(--status-success) 45%, transparent); border-radius: var(--radius-pill); padding: 2px 10px; }
+.sb-ov-card { position: absolute; z-index: 4; background: color-mix(in oklab, var(--bg-1) 92%, transparent); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); box-shadow: var(--shadow-md); }
+.sb-ov-card--tl { left: var(--space-5); top: 46px; max-width: 62%; }
+.sb-ov-card--mono { font-family: var(--font-mono); font-size: var(--type-md); color: var(--fg-0); }
+.sb-ov-card--mono .sb-tui-pr { color: var(--accent); margin-right: var(--space-2); }
+.sb-ov-h { font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-wide); color: var(--accent); margin-bottom: var(--space-2); }
+.sb-ov-qs { margin: 0; padding-left: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px; }
+.sb-ov-qs li { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-1); }
+.sb-ov-sub { margin-top: var(--space-2); font-family: var(--font-mono); font-size: 10px; color: var(--fg-3); }
+.sb-ov-pill { position: absolute; z-index: 4; display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-0); background: color-mix(in oklab, var(--bg-0) 82%, transparent); border: 1px solid var(--border-default); border-radius: var(--radius-pill); padding: 4px 12px; }
+.sb-ov-pill--br { right: var(--space-4); bottom: var(--space-4); }
+.sb-ov-pill--tr { right: var(--space-4); top: var(--space-3); }
+.sb-ov-pen { position: absolute; z-index: 4; width: 26%; height: auto; color: var(--presence-agent); fill: none; stroke: var(--presence-agent); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; left: 26%; top: 18%; }
+.sb-ov-label { position: absolute; z-index: 5; display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-mono); font-size: var(--type-xs); color: #fff; background: var(--presence-agent); border-radius: var(--radius-xs); padding: 2px 8px; transform: rotate(-3deg); }
+.sb-ov-path { position: absolute; z-index: 5; font-family: var(--font-mono); font-size: var(--type-xs); color: var(--accent); background: var(--accent-tint); border: 1px solid var(--accent-muted); border-radius: var(--radius-xs); padding: 2px 8px; }
+.sb-ov-pin { position: absolute; z-index: 5; width: 26px; height: 26px; border-radius: var(--radius-pill) var(--radius-pill) var(--radius-pill) 2px; background: var(--accent); color: var(--accent-fg); font-family: var(--font-mono); font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-sm); }
+.sb-ov-cur { position: absolute; z-index: 5; display: inline-flex; align-items: center; gap: 3px; }
+.sb-ov-cur b { font-family: var(--font-mono); font-size: 11px; color: #fff; border-radius: var(--radius-xs); padding: 1px 6px; }
