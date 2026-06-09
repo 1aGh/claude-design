@@ -1,61 +1,59 @@
 {
   "title": "Studio Intro Video",
-  "subtitle": "v4 full storyboard for the Maude landing film — brief + 12-scene storyboard + landing placement",
-  "brief": "v4 rebuild (phase-16). Full visual storyboard of the whole real loop (v2.1 spine), rendered in maude dark-studio product chrome. Each scene carries its own signature treatment + voice-aligned caption + intent line. Length flexible — rhythm decides. Phase A concrete artifact for sign-off before Remotion authoring.",
+  "subtitle": "v5.2 showreel storyboard — one beat per artboard (filmstrip) + inline voiceover",
+  "brief": "Feature showreel (not a tutorial). 15 beats, one artboard each, laid out as a filmstrip — pan left→right = the cut. Each artboard: shot mock + ElevenLabs VO line + id/role/duration/source/signature/grounding. Reality-grounded. Full spec: scripts/video/v4/_showreel-script.md.",
   "platform": "desktop",
   "designSystem": "maude",
   "opt_out_scope": "palette",
   "brief_sha": "c792a331",
   "sections": [
     {
-      "id": "intro",
-      "title": "Studio Intro Video — v4",
-      "subtitle": "MAUDE/INTRO · 3 artboards · brief + full storyboard + landing placement"
+      "id": "showreel",
+      "title": "Studio Intro Video — v5.2 showreel",
+      "subtitle": "MAUDE/INTRO · cover + 15 beats · one artboard per beat · voiceover inline"
     }
   ],
   "artboards": [
-    {
-      "id": "brief",
-      "label": "A · brief / visual direction",
-      "note": "v4 visual brief — narrative spine (full real loop), look (maude dark studio), voice (voice-aligned captions), rhythm (length decides), per-scene-signature rule + hard-NO list + 12-scene index strip"
-    },
-    {
-      "id": "storyboard",
-      "label": "B · full storyboard — 12 scenes",
-      "note": "12 scene tiles, each a real mock of the shot: cold open → install → onboarding → DS reveal → /design:new split → critics → canvas pan → cmd+click → /design:edit split → comments → handoff → end card. Each tile: id, role, duration, signature, voice-aligned caption, intent."
-    },
-    {
-      "id": "landing",
-      "label": "C · main-page placement",
-      "note": "Intro video as it sits on the landing hero — eyebrow + headline + Play CTA + the 16:9 player (scrubber, chapters, captions)"
-    }
+    { "id": "brief", "label": "Cover · brief" },
+    { "id": "s00", "label": "00 · Cold open" },
+    { "id": "s10", "label": "10 · Questionary + moodboard" },
+    { "id": "s20", "label": "20 · Robust design system" },
+    { "id": "s30", "label": "30 · The canvas" },
+    { "id": "s40", "label": "40 · It draws itself" },
+    { "id": "s50", "label": "50 · It critiques itself" },
+    { "id": "s60", "label": "60 · Talk through the canvas" },
+    { "id": "s65", "label": "65 · Multiplayer" },
+    { "id": "s70", "label": "70 · Draw as code" },
+    { "id": "s80", "label": "80 · Animate once" },
+    { "id": "s90", "label": "90 · Handoff to any code" },
+    { "id": "s92", "label": "92 · Second brain · remembers" },
+    { "id": "s94", "label": "94 · The daily loop" },
+    { "id": "s96", "label": "96 · Nothing slips through" },
+    { "id": "s99", "label": "99 · End card" }
   ],
   "layout": {
     "artboards": [
-      {
-        "id": "brief",
-        "x": 0,
-        "y": 0
-      },
-      {
-        "id": "storyboard",
-        "x": 1400,
-        "y": 0
-      },
-      {
-        "id": "landing",
-        "x": 2820,
-        "y": 0
-      }
+      { "id": "brief", "x": 0, "y": 0 },
+      { "id": "s00", "x": 1440, "y": 0 },
+      { "id": "s10", "x": 2880, "y": 0 },
+      { "id": "s20", "x": 4320, "y": 0 },
+      { "id": "s30", "x": 5760, "y": 0 },
+      { "id": "s40", "x": 7200, "y": 0 },
+      { "id": "s50", "x": 8640, "y": 0 },
+      { "id": "s60", "x": 10080, "y": 0 },
+      { "id": "s65", "x": 11520, "y": 0 },
+      { "id": "s70", "x": 12960, "y": 0 },
+      { "id": "s80", "x": 14400, "y": 0 },
+      { "id": "s90", "x": 15840, "y": 0 },
+      { "id": "s92", "x": 17280, "y": 0 },
+      { "id": "s94", "x": 18720, "y": 0 },
+      { "id": "s96", "x": 20160, "y": 0 },
+      { "id": "s99", "x": 21600, "y": 0 }
     ]
   },
   "created": "2026-06-05",
   "css_mode": "sibling",
-  "iteration_count": 1,
-  "viewport": {
-    "x": -664.2983768027648,
-    "y": 35.70428122664248,
-    "zoom": 0.7441124053949344
-  },
-  "last_modified": "2026-06-08T14:37:44.314Z"
+  "iteration_count": 2,
+  "viewport": { "x": 0, "y": 0, "zoom": 0.18 },
+  "last_modified": "2026-06-09T00:00:00.000Z"
 }
