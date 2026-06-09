@@ -1,19 +1,18 @@
 /**
- * DemoVideo — autoplay-muted loop of the marketing demo at site/public/demo.mp4.
+ * DemoVideo — the marketing showreel at site/public/demo.mp4.
  *
- * Sized via mdcc-demo-video CSS class (global.css) — catalog-graded chrome
- * (1 px hairline frame, SKU stamp top-left, hold-and-loop semantics, paper
- * background to match catalog cards). Reduced motion users get a poster
- * frame, no autoplay.
+ * Autoplays muted + looping (browsers require muted to autoplay), but exposes
+ * native `controls` so visitors can unmute the voiceover and go fullscreen.
+ * Sized via the mdcc-demo-video CSS class (global.css).
  */
 export function DemoVideo() {
   return (
     <section className="mdcc-demo-video" aria-label="Live demo">
       <div className="mdcc-demo-video-head">
         <span>
-          <strong>demo.mp4</strong> · ~90 s · catalog cut
+          <strong>demo.mp4</strong> · ~1:45 · showreel
         </span>
-        <span>MDCC-MKT/00 · v0.16.0</span>
+        <span>MAUDE/INTRO</span>
       </div>
       <video
         className="mdcc-demo-video-player"
@@ -23,6 +22,8 @@ export function DemoVideo() {
         muted
         loop
         playsInline
+        controls
+        controlsList="nodownload"
         preload="metadata"
       >
         <track kind="captions" />
