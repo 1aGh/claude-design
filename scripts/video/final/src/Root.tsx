@@ -21,6 +21,7 @@ import { CommentsScene } from './scenes/v4/45-comments';
 import { HandoffScene } from './scenes/v4/50-handoff';
 import { EndCardScene } from './scenes/v4/55-end-card';
 import { V4, V4_TOTAL_FRAMES } from './compositions/V4';
+import { V5, V5_SCENES, V5_TOTAL_FRAMES } from './compositions/V5';
 
 /**
  * Composition registry. One <Composition> per scene + the master Demo cut.
@@ -182,6 +183,27 @@ export const Root = () => (
       id="V4"
       component={V4}
       durationInFrames={V4_TOTAL_FRAMES}
+      fps={30}
+      width={1920}
+      height={1080}
+    />
+
+    {/* ── v5 showreel (phase-16 — supersedes V4) ── */}
+    {V5_SCENES.map((s) => (
+      <Composition
+        key={s.id}
+        id={`v5-${s.id}`}
+        component={s.component}
+        durationInFrames={s.frames}
+        fps={30}
+        width={1920}
+        height={1080}
+      />
+    ))}
+    <Composition
+      id="V5"
+      component={V5}
+      durationInFrames={V5_TOTAL_FRAMES}
       fps={30}
       width={1920}
       height={1080}
