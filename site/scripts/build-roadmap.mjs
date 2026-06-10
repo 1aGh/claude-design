@@ -117,6 +117,9 @@ async function loadPlans(dir, { archived }) {
     const filePath = resolve(dir, entry.name);
     const raw = await readFile(filePath, 'utf8');
     const { fm, body } = parseFrontmatter(raw);
+    // Superseded / rejected archived plans never shipped — excluding them keeps
+    // the public roadmap honest (archive=done would falsely list them as shipped).
+    if (archived && (fm.status === 'superseded' || fm.status === 'rejected')) continue;
     const id = planIdFromFile(entry.name);
     const title = extractTitle(body) || fm.name || id;
     const summary = extractSummary(body);

@@ -1,4 +1,32 @@
+---
+name: phase-10-structured-crdt-html-coediting
+status: superseded
+created: 2026-05-12
+superseded: 2026-06-11
+superseded_by:
+  - DDR-064 (one shared Y.Doc per canvas; body = opaque Y.Text + prefix/suffix codec — REJECTS this plan's Y.XmlFragment structured-CRDT premise)
+  - phase-30-native-collab-live-multiplayer (artboard locking / soft single-writer — the chosen conflict mechanism instead of structured body co-edit)
+  - phase-13-stable-element-ids-and-canonical-screenshots (stable element identity shipped as TSX `data-cd-id`, not HTML injection)
+reason: >-
+  Triple-stale. Written against `.design/*.html` (dead format since Phase 3.6),
+  premised on Y.XmlFragment structured CRDT (explicitly rejected by DDR-064 in
+  favour of opaque Y.Text), and superseded in direction by phase-30's artboard
+  locking. Its three substantive pieces either shipped elsewhere in TSX form or
+  were deliberately decided against — see the mapping banner below.
+---
+
 # Phase 10 (v1.2 work): Structured CRDT HTML co-editing
+
+> **🗄 SUPERSEDED — archived 2026-06-11.** This plan was never re-scoped off `.html` and its core premise is dead. Where each piece actually landed:
+>
+> | Plan piece | Outcome | Where |
+> | --- | --- | --- |
+> | **A. Stable element identity** (`data-cd-id` injected into HTML) | ✅ Shipped, but as **TSX `data-cd-id`** (+ artboard-scoping + occurrence-index) | `phase-13-stable-element-ids-and-canonical-screenshots`; `feature-studio-full-functionality-parity`; `apps/studio/dom-selection.ts`, `inspect.ts` |
+> | **B. Y.XmlFragment as live representation** (structured CRDT over the DOM tree) | ❌ **Deliberately rejected** — body is opaque `Y.Text` + longest-common-prefix/suffix minimal-diff | **DDR-064** (rejected alternative C); `apps/studio/sync/codec.ts:10` (*"HTML body is treated as opaque Y.Text rather than structured Y.XmlFragment"*) |
+> | **C. AI Write→Y-ops diff** (tree-edit-distance) | ✅ Shipped via a different mechanism — whole-file write → projection ingests as a tagged `FILE_IMPORT` minimal diff, never wholesale | **DDR-064**; `apps/studio/sync/projection.ts`. TSX body sync is ON by default (**DDR-079**) |
+> | **Concurrent same-region body merge** (the residual) | Direction pivoted to **artboard locking (soft single-writer)** | `phase-30-native-collab-live-multiplayer` |
+>
+> Phase 12 (in-canvas CSS editor + layers) does **not** depend on this plan — its Phase-10 references were all `if shipped` optionals whose fallback (soft-lock single-writer) is exactly what phase-30 ships. The original (stale) text is preserved below for history.
 
 > **⚠ STALE FORMAT ASSUMPTION — [DDR-060](../decisions/DDR-060-tsx-only-format-breaks-html-centric-sync.md) (2026-05-28):** this plan is written against `.design/*.html` (`data-cd-id` injection into HTML, HTML↔Y.XmlFragment bridge). Phase 3.6 (2026-05-18) made `.tsx` the **only** canvas format — there are no `.html` canvases in real projects. The whole collab branch (Phase 8 → 9 → 10) inherited the `.html` assumption from before the migration. Before this phase is scheduled, its representation layer must be re-scoped onto `.tsx` (or whatever the structured-edit surface is post-migration), and it depends on `phase-9.1-tsx-sync-unblock.md` landing the CSP/sandbox + `.tsx`-sync gate first. Do not start Task 0's fidelity spike against `.html` — it would measure a corpus that no longer exists.
 

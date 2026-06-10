@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-09T11:13:21.367Z",
+  "generated": "2026-06-10T22:05:44.749Z",
   "currentPhase": null,
   "phases": [
     {
@@ -771,17 +771,6 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
-    },
-    {
-      "id": "phase-10-structured-crdt-html-coediting",
-      "title": "Phase 10 (v1.2 work): Structured CRDT HTML co-editing",
-      "status": "planned",
-      "shipTarget": "v1.2 conditional",
-      "date": null,
-      "summary": "Build on Phase 8's \"ambient multiplayer\" (Yjs awareness + comments) to add true real-time HTML co-editing for designated edit surfaces. Two peers can change a button's padding simultaneously throug...",
-      "planPath": ".ai/plans/phase-10-structured-crdt-html-coediting.md",
-      "archived": false,
-      "phaseKey": "10"
     },
     {
       "id": "phase-12-in-canvas-css-and-layers",

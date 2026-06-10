@@ -21,7 +21,7 @@ As a developer reviewing a canvas, I want to Cmd+click a button, change its `bor
 1. **Value uncertain.** The current `/design "<feedback>"` workflow may already be good enough for most users. We don't yet know if direct manipulation is the friction point or a luxury.
 2. **Complexity high.** A proper inspector + layers panel is ~2 weeks of UI work + a source-rewrite strategy DDR that has long tail (inline style → ugly diffs; new class → complex CSS parsing; "smart" detect-and-modify → most user-friendly but most engineering work).
 3. **Scope creep risk.** Once you have an inspector, users immediately want: animations editor, pseudo-class previews, computed-style inspection, breakpoint variant editor. Deferring lets that creep manifest as separate v2.x decisions, not v1.0 scope inflation.
-4. **Phase 8 collab maturity matters.** Inspector edits during multi-peer sessions hit the same conflict surface as Phase 10 structured CRDT — if Phase 10 isn't shipped (which is conditional itself), inspector edits across peers garble each other. Better to wait until the conflict story is settled.
+4. **Collab conflict story is now settled (DDR-064 + phase-30).** Inspector edits during multi-peer sessions hit the same conflict surface as any body edit. That story shipped: per-canvas edits flow through the single shared `Y.Doc` (DDR-064 — body is opaque `Y.Text`, merged by minimal prefix/suffix diff, disk is a loop-free projection), and `phase-30` adds **artboard locking** (soft single-writer — "Anna is editing · Take over") so two peers can't garble the same TSX body. Inspector writeback rides that same projection; no structured-CRDT prerequisite (the old Phase 10 dependency was retired — see its superseded banner).
 
 ## Solution
 
@@ -42,8 +42,7 @@ Three sub-deliverables sharing the Phase 4 canvas v2 substrate:
 
 - **Type:** New Feature
 - **Complexity:** High
-- **Depends on:** Phase 4 (canvas v2), Phase 5 (multi-DS for class/token scoping)
-- **Ideally also depends on:** Phase 10 (structured CRDT) if multi-peer co-editing of inspector ops matters — otherwise edits are single-writer-per-canvas via soft lock from Phase 8.
+- **Depends on:** Phase 4 (canvas v2), Phase 5 (multi-DS for class/token scoping); DDR-064 shared-doc projection (for writeback merge) + `phase-30` artboard locking (for the multi-peer single-writer guard) — both shipped/planned, neither is a structured-CRDT prerequisite.
 - **Parallel with:** —
 - **Ship target:** v1.3+ (conditional on user feedback)
 - **Affected files:**
@@ -78,10 +77,10 @@ Three sub-deliverables sharing the Phase 4 canvas v2 substrate:
 - **Do:** Decide between inline / new class / smart detect. Lean toward **smart detect with inline fallback** for v1.3; document upgrade path. If "smart" is too complex, fall back to inline. The DDR captures cost vs. UX trade-off.
 - **Validate:** DDR exists; rewrite strategy implemented matches DDR; sample edits produce expected source diffs.
 
-### Task 4: Phase 10 integration (if shipped)
+### Task 4: Multi-peer conflict model (DDR-064 projection + phase-30 lock)
 
-- **Do:** If Phase 10 structured CRDT is live, inspector edits become Y.XmlElement attribute ops instead of REST POST. Multi-peer co-editing works naturally. If Phase 10 is not shipped (still Phase 8 soft-lock model), inspector edits are single-writer per canvas — Phase 8 AI banner extends to "Peer X is editing inspector".
-- **Validate:** Two peers editing same element padding simultaneously: with Phase 10, both apply; without Phase 10, soft lock prevents collision.
+- **Do:** Inspector commits write the change to the canvas source; the DDR-064 projection ingests that whole-file write as a minimal `FILE_IMPORT` diff into the shared `Y.Doc` (no wholesale clobber, concurrent comments/annotations untouched). For the same-element race, lean on `phase-30`'s artboard lock: while a peer holds the soft single-writer lock on a canvas, the inspector shows "Peer X is editing · Take over" instead of letting both edit the same body simultaneously. (The retired Phase 10 path would have made these Y.XmlElement attribute ops; we don't need structured CRDT — the projection + lock cover it.)
+- **Validate:** Two peers select the same element: the non-holder's inspector is lock-gated (take-over flow), and an accepted edit lands via projection without reverting the other peer's unrelated in-doc state.
 
 ### Task 5: Keyboard shortcuts
 
@@ -101,7 +100,7 @@ Three sub-deliverables sharing the Phase 4 canvas v2 substrate:
 2. **Functional:** Manual scenario through all 3 sub-deliverables.
 3. **Cross-platform scenario:** `scenario-runner` for `canvas-inspector-edit` + `canvas-layers-reorder` (web-desktop only — touch out of scope).
 4. **A11y:** `a11y-auditor` against layers + inspector panels (keyboard-only nav must work).
-5. **Multi-peer (if Phase 10 shipped):** scenario `inspector-coedit-padding` from Phase 10.
+5. **Multi-peer:** scenario `inspector-lock-takeover` — two peers contend on one element; the lock-gate + take-over flow (phase-30) holds and the accepted edit projects cleanly (DDR-064).
 6. **No regression:** Phase 4-8 still works without panels open.
 
 ## Scenario coverage
@@ -120,7 +119,7 @@ Three sub-deliverables sharing the Phase 4 canvas v2 substrate:
 - [ ] Layers panel toggles via `L`; element clicks sync with `_active.json`.
 - [ ] Inspector edits top-10 CSS properties write back to source HTML.
 - [ ] Source-rewrite strategy decided + documented in DDR.
-- [ ] Multi-peer behavior consistent with active Phase 8 (soft lock) or Phase 10 (CRDT) model.
+- [ ] Multi-peer behavior consistent with the shipped model: DDR-064 shared-doc projection for writeback + phase-30 artboard lock for the single-writer guard.
 - [ ] All keyboard shortcuts work and documented in docs site.
 - [ ] No regression in canvas v2 perf benchmark.
 - [ ] Performance budgets met (layers ≤ 100ms, inspector edit ≤ 50ms).
