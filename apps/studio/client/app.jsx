@@ -2930,7 +2930,12 @@ function CssKnobs({ el, cfg }) {
   const editable = !!el.id;
   const authored = el.authored || {};
   const computed = el.computed || {};
-  const tokens = useDsTokens(cssTokensRelFor(el.file, cfg));
+  // Token CSS is served from the MAIN origin at the repo-relative path, i.e.
+  // WITH the designRoot prefix (`/.design/system/<ds>/colors_and_type.css`) —
+  // `tokensCssRel` from config is DS-root-relative (no `.design/`), so prepend it.
+  const _designRel = (cfg?.designRel || cfg?.designRoot || '.design').replace(/^\/+|\/+$/g, '');
+  const _tokRel = cssTokensRelFor(el.file, cfg);
+  const tokens = useDsTokens(_tokRel ? `${_designRel}/${_tokRel}` : '');
   const [status, setStatus] = useState({});
   const [open, setOpen] = useState({
     Layout: true,
