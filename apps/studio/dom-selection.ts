@@ -175,6 +175,43 @@ export function resolveSelectionEl(
   return null;
 }
 
+/**
+ * Phase 12 — resolved values for the CSS-knob properties the inspector exposes,
+ * so the knobs pre-fill from what the element actually renders. getComputedStyle
+ * returns resolved strings (`8px`, `rgb(…)`); empty for a detached node / SSR.
+ */
+const KNOB_PROPS = [
+  'display',
+  'gap',
+  'padding',
+  'margin',
+  'width',
+  'height',
+  'font-size',
+  'font-weight',
+  'line-height',
+  'color',
+  'text-align',
+  'background-color',
+  'border-radius',
+  'opacity',
+] as const;
+
+function computedStyleFor(el: Element | null): Record<string, string> {
+  if (!el || typeof window === 'undefined' || !window.getComputedStyle) return {};
+  try {
+    const cs = window.getComputedStyle(el as HTMLElement);
+    const out: Record<string, string> = {};
+    for (const p of KNOB_PROPS) {
+      const v = cs.getPropertyValue(p);
+      if (v) out[p] = v.trim();
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 export function hoverTargetToSelection(target: HoverTarget, file?: string): Selection {
   const el = target.el;
   const rect =
@@ -223,5 +260,6 @@ export function hoverTargetToSelection(target: HoverTarget, file?: string): Sele
         }
       : null,
     html: el ? (el.outerHTML ?? '').slice(0, 4000) : '',
+    computed: computedStyleFor(el),
   };
 }

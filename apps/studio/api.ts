@@ -1153,7 +1153,12 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     if (typeof slugRaw !== 'string' || !slugRaw.trim()) {
       return { ok: false, status: 400, error: 'canvas (slug) required' };
     }
-    const slug = slugRaw.replace(/^\/+|\/+$/g, '').replace(/\.(tsx|html)$/i, '');
+    let slug = slugRaw.replace(/^\/+|\/+$/g, '').replace(/\.(tsx|html)$/i, '');
+    // Accept either the bare slug (`ui/Foo`) or the designRel-prefixed file path
+    // the client `selected.file` carries (`.design/ui/Foo.tsx`) — strip a leading
+    // designRel so both shapes resolve to the same canvas (mirrors deriveCanvasSlug).
+    const dr = paths.designRel.replace(/^\.\//, '').replace(/^\/+|\/+$/g, '');
+    if (dr && slug.startsWith(`${dr}/`)) slug = slug.slice(dr.length + 1);
     if (
       !slug ||
       path.isAbsolute(slug) ||

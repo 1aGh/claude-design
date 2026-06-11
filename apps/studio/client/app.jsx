@@ -2792,6 +2792,157 @@ function SyncBanner({ status }) {
   );
 }
 
+// ---------- CSS knobs (Phase 12, DDR-101) ----------
+//
+// Webflow-style grouped editor for the selected element. Each knob pre-fills
+// from the live `computed` style in the selection payload; on commit (blur /
+// Enter) it POSTs to the main-origin-only `/_api/edit-css`, which writes one
+// key into the element's inline `style={{}}` object in the source `.tsx` (via
+// editAttribute). The file-watcher HMR then reloads the canvas with the new
+// value. Token-valued input (e.g. `var(--accent)`) keeps edits on-system.
+const CSS_KNOB_GROUPS = [
+  { label: 'Layout', props: [['display', 'display'], ['gap', 'gap']] },
+  { label: 'Spacing', props: [['padding', 'padding'], ['margin', 'margin']] },
+  { label: 'Size', props: [['width', 'width'], ['height', 'height']] },
+  {
+    label: 'Typography',
+    props: [
+      ['font-size', 'size'],
+      ['font-weight', 'weight'],
+      ['line-height', 'leading'],
+      ['color', 'color'],
+      ['text-align', 'align'],
+    ],
+  },
+  {
+    label: 'Appearance',
+    props: [
+      ['background-color', 'bg'],
+      ['border-radius', 'radius'],
+      ['opacity', 'opacity'],
+    ],
+  },
+];
+
+const ST_GROUP_HD = {
+  fontSize: 10,
+  textTransform: 'uppercase',
+  letterSpacing: '0.06em',
+  color: 'var(--fg-2, #8a8a8a)',
+  margin: '10px 0 4px',
+  fontWeight: 600,
+};
+
+function RawKnob({ commit }) {
+  const [prop, setProp] = useState('');
+  const [val, setVal] = useState('');
+  return (
+    <div className="st-insp-row">
+      <input
+        className="st-field"
+        aria-label="custom property"
+        placeholder="property"
+        value={prop}
+        style={{ maxWidth: 110 }}
+        onChange={(e) => setProp(e.target.value)}
+      />
+      <input
+        className="st-field"
+        aria-label="custom value"
+        placeholder="value"
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && prop.trim() && val.trim()) {
+            commit(prop.trim(), val);
+            setProp('');
+            setVal('');
+          }
+        }}
+      />
+    </div>
+  );
+}
+
+function CssKnobs({ el }) {
+  const editable = !!el.id;
+  const [status, setStatus] = useState(null);
+
+  async function commit(property, value) {
+    const v = (value || '').trim();
+    if (!editable || !v) return;
+    if (v === (el.computed?.[property] ?? '').trim()) return; // no-op
+    setStatus({ property, kind: 'saving' });
+    try {
+      const res = await fetch('/_api/edit-css', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ canvas: el.file, id: el.id, property, value: v }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j.ok) {
+        setStatus({ property, kind: 'error', msg: (j && j.error) || `HTTP ${res.status}` });
+      } else {
+        setStatus({ property, kind: 'saved' });
+      }
+    } catch (err) {
+      setStatus({ property, kind: 'error', msg: err && err.message ? err.message : String(err) });
+    }
+  }
+
+  if (!editable) {
+    return (
+      <>
+        <div className="st-rp-hd">CSS</div>
+        <div className="callout callout--info" style={{ fontSize: 12 }}>
+          This selection has no stable element id (legacy canvas, or a non-element target). Edit it
+          with <code>/design:edit</code>.
+        </div>
+      </>
+    );
+  }
+
+  const knobRow = (cssProp, label) => (
+    <div className="st-insp-row" key={cssProp}>
+      <span className="st-insp-label">{label}</span>
+      <div className="st-insp-fields">
+        <input
+          className="st-field"
+          aria-label={cssProp}
+          defaultValue={el.computed?.[cssProp] ?? ''}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur();
+          }}
+          onBlur={(e) => commit(cssProp, e.currentTarget.value)}
+        />
+      </div>
+    </div>
+  );
+
+  return (
+    <div key={el.id}>
+      <div className="st-rp-hd">CSS · {el.selector || el.tag}</div>
+      {CSS_KNOB_GROUPS.map((g) => (
+        <div key={g.label}>
+          <div style={ST_GROUP_HD}>{g.label}</div>
+          {g.props.map(([cssProp, label]) => knobRow(cssProp, label))}
+        </div>
+      ))}
+      <div style={ST_GROUP_HD}>Custom</div>
+      <RawKnob commit={commit} />
+      {status?.kind === 'error' ? (
+        <div style={{ fontSize: 12, color: 'var(--danger, #e5484d)', marginTop: 6 }}>
+          {status.property}: {status.msg}
+        </div>
+      ) : null}
+      <div className="callout callout--info" style={{ fontSize: 12, marginTop: 8 }}>
+        Commits inline <code>style</code> to the source <code>.tsx</code> (blur / Enter). Use a DS
+        token value like <code>var(--accent)</code> to stay on-system.
+      </div>
+    </div>
+  );
+}
+
 // ---------- Inspector panel (display-only) ----------
 //
 // T6 (Plan C) — right-dock Inspect / Layers / CSS tabs per `.design/ui/Studio.tsx`
@@ -2906,21 +3057,7 @@ function InspectorPanel({ selected, onClose }) {
             )}
           </>
         ) : (
-          <>
-            <div className="st-rp-hd">Markup · {el.selector || el.tag}</div>
-            <div className="st-css">
-              <div>
-                <span className="comment">/* read-only — outerHTML snapshot */</span>
-              </div>
-              <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                {(el.html || '').slice(0, 600) || '(no markup captured)'}
-              </div>
-            </div>
-            <div className="callout callout--info" style={{ fontSize: 12 }}>
-              Phase 12 — knob edits will write back to the artboard live and stage a diff for
-              handoff. Today the inspector is read-only.
-            </div>
-          </>
+          <CssKnobs el={el} />
         )}
       </div>
     </aside>

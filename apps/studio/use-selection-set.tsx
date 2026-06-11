@@ -61,6 +61,8 @@ export interface Selection {
   dom_path?: string[];
   bounds?: { x: number; y: number; w: number; h: number } | null;
   html?: string;
+  /** Phase 12 — resolved CSS values for the inspector's editable knobs (pre-fill). */
+  computed?: Record<string, string>;
 }
 
 interface SelectionSetValue {
