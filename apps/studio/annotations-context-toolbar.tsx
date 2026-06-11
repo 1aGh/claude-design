@@ -21,15 +21,18 @@
  */
 
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-
+import type { AlignEdge } from './annotations-align.ts';
 import {
   type ArrowHead,
   type ArrowLineType,
+  type ConvertibleShapeKind,
+  convertShapeKind,
   FILL_PALETTE,
   type ListType,
   STICKY_PALETTE,
   STROKE_PALETTE,
   type Stroke,
+  shapeKindOf,
   type TextAlign,
   useStrokesStore,
 } from './annotations-layer.tsx';
@@ -45,10 +48,10 @@ import {
   IconArrowNone,
   IconBold,
   IconChevronDown,
-  IconCornerPill,
-  IconCornerSoft,
-  IconCornerSquare,
   IconDash,
+  IconDistributeH,
+  IconDistributeV,
+  IconGroup,
   IconItalic,
   IconLineCurved,
   IconLineElbow,
@@ -58,9 +61,17 @@ import {
   IconLink,
   IconListBullet,
   IconListOrdered,
+  IconObjAlignBottom,
+  IconObjAlignHCenter,
+  IconObjAlignLeft,
+  IconObjAlignRight,
+  IconObjAlignTop,
+  IconObjAlignVCenter,
   IconStrike,
   IconTrash,
   IconUnderline,
+  IconUngroup,
+  SHAPE_KIND_ICONS,
 } from './canvas-icons.tsx';
 import { useAnnotationSelectionOptional } from './use-annotation-selection.tsx';
 import { isHttpUrl, linkDomain } from './use-canvas-media-drop.tsx';
@@ -104,6 +115,28 @@ const ALIGN_OPTIONS: ReadonlyArray<{ value: TextAlign; label: string }> = [
   { value: 'center', label: 'Align center' },
   { value: 'right', label: 'Align right' },
 ];
+// FigJam v3 — object align + distribute actions for the multi-select cluster.
+type AlignAction = AlignEdge | 'dist-h' | 'dist-v';
+const ALIGN_ACTION_OPTIONS: ReadonlyArray<{ value: AlignAction; label: string }> = [
+  { value: 'left', label: 'Align left' },
+  { value: 'h-center', label: 'Align horizontal centers' },
+  { value: 'right', label: 'Align right' },
+  { value: 'top', label: 'Align top' },
+  { value: 'v-center', label: 'Align vertical centers' },
+  { value: 'bottom', label: 'Align bottom' },
+  { value: 'dist-h', label: 'Distribute horizontal spacing' },
+  { value: 'dist-v', label: 'Distribute vertical spacing' },
+];
+const ALIGN_ACTION_ICON: Record<string, (p: { size?: number }) => ReactNode> = {
+  left: IconObjAlignLeft,
+  'h-center': IconObjAlignHCenter,
+  right: IconObjAlignRight,
+  top: IconObjAlignTop,
+  'v-center': IconObjAlignVCenter,
+  bottom: IconObjAlignBottom,
+  'dist-h': IconDistributeH,
+  'dist-v': IconDistributeV,
+};
 const FONT_SIZE_PRESETS: ReadonlyArray<{ px: number; label: string }> = [
   { px: 12, label: 'Small' },
   { px: 16, label: 'Medium' },
@@ -400,13 +433,43 @@ function unionRect(rects: DOMRect[]): { x: number; y: number; w: number; h: numb
 
 type SwatchMode = 'stroke' | 'fill';
 
-export function AnnotationContextToolbar() {
+export function AnnotationContextToolbar({
+  editingId = null,
+}: {
+  /**
+   * FigJam v3 — while an inline text editor is open, the toolbar flips into
+   * TEXT mode: size / B / I / S / U / align controls that drive the EDITOR
+   * through `maude:editor-format` events (mutating the stroke mid-edit would
+   * re-render the contentEditable and clobber typed text). The editor echoes
+   * its live state back via `maude:editor-format-state`.
+   */
+  editingId?: string | null;
+} = {}) {
   ensureToolbarStyles();
   const annotSel = useAnnotationSelectionOptional();
   const store = useStrokesStore();
   const ref = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
   const [, force] = useState({});
+  // Edit-mode mirror of the editor's live formatting state.
+  const [editorFmt, setEditorFmt] = useState<{
+    bold?: boolean;
+    italic?: boolean;
+    underline?: boolean;
+    strike?: boolean;
+    fontSize?: number;
+    align?: string;
+  }>({});
+  useEffect(() => {
+    if (!editingId || typeof document === 'undefined') return;
+    const onState = (e: Event) => {
+      setEditorFmt((e as CustomEvent<Record<string, unknown>>).detail ?? {});
+    };
+    document.addEventListener('maude:editor-format-state', onState);
+    // Ask the already-mounted editor for its current state (mount-order race).
+    document.dispatchEvent(new CustomEvent('maude:editor-format-request'));
+    return () => document.removeEventListener('maude:editor-format-state', onState);
+  }, [editingId]);
   // T30 / G_S1 — collapsed Stroke|Fill toggle state. Defaults to 'stroke';
   // auto-reverts to 'stroke' whenever caps.fill is false so the toggle
   // can't get stranded on a hidden mode after the selection changes type.
@@ -431,25 +494,34 @@ export function AnnotationContextToolbar() {
         fill: false,
         thickness: false,
         fontSize: false,
-        cornerRadius: false,
         arrowDir: false,
         dash: false,
+        shapeKind: false,
       };
     }
-    const allFillable = selectedStrokes.every((s) => s.tool === 'rect' || s.tool === 'ellipse');
+    // Wave H — polygons (diamond / triangle) are full shapes: fill + stroke
+    // weight, identical toolbar to rect/ellipse. The same "every selected
+    // stroke is a closed shape" test gates fill AND the shape-kind switcher.
+    const allClosedShapes = selectedStrokes.every(
+      (s) => s.tool === 'rect' || s.tool === 'ellipse' || s.tool === 'polygon'
+    );
     // T20 — rect + ellipse now carry stroke weight too.
     const allThickness = selectedStrokes.every(
-      (s) => s.tool === 'pen' || s.tool === 'arrow' || s.tool === 'rect' || s.tool === 'ellipse'
+      (s) =>
+        s.tool === 'pen' ||
+        s.tool === 'arrow' ||
+        s.tool === 'rect' ||
+        s.tool === 'ellipse' ||
+        s.tool === 'polygon'
     );
-    // Phase 21 — fontSize applies to text + sticky; cornerRadius to rect +
-    // sticky; arrow direction + dash to arrows.
+    // Phase 21 — fontSize applies to text + sticky; arrow direction + dash to
+    // arrows. (The Phase-21 rect corner-radius cluster was RETIRED in Wave H —
+    // the shape-kind switcher's square/rounded covers it and showing both read
+    // as "shapes twice". Pill rects keep rendering; `cornerRadius` stays in
+    // the model + serialization, there's just no dedicated toolbar control.)
     const fontSizeApplicable = selectedStrokes.some(
       (s) => s.tool === 'text' || s.tool === 'sticky'
     );
-    // Phase 24 — the corner-radius control is rect-only now. Stickies have a
-    // fixed soft radius (no switch); the sticky-color swatch row is handled
-    // separately below.
-    const allRect = selectedStrokes.every((s) => s.tool === 'rect');
     const allArrow = selectedStrokes.every((s) => s.tool === 'arrow');
     // Dash now applies to arrows AND every outlined shape (rect / ellipse /
     // polygon) — item 7. Heads + line-type (arrowDir) stay arrow-only.
@@ -458,25 +530,30 @@ export function AnnotationContextToolbar() {
     );
     return {
       color: true,
-      fill: allFillable,
+      fill: allClosedShapes,
       thickness: allThickness,
       fontSize: fontSizeApplicable,
-      cornerRadius: allRect,
       arrowDir: allArrow,
       dash: allDashable,
+      // Wave H — the shape-kind switcher (square/rounded/circle/diamond/
+      // triangle conversion) shows when EVERY selected stroke is a closed
+      // shape. Conversions keep ids, so anchored text + binds follow.
+      shapeKind: allClosedShapes,
     };
   }, [selectedStrokes]);
 
   // Position tracker — uses rAF to follow pan/zoom while the toolbar is up.
+  // Edit mode anchors over the EDITED stroke (the selection may be elsewhere).
   useEffect(() => {
-    if (selectedStrokes.length === 0) return;
+    if (selectedStrokes.length === 0 && !editingId) return;
+    const targetIds = editingId ? [editingId] : selectedStrokes.map((s) => s.id);
     const tick = () => {
       rafRef.current = null;
       const el = ref.current;
       if (!el) return;
       const rects: DOMRect[] = [];
-      for (const s of selectedStrokes) {
-        const node = document.querySelector(`[data-id="${cssEscape(s.id)}"]`);
+      for (const id of targetIds) {
+        const node = document.querySelector(`[data-id="${cssEscape(id)}"]`);
         if (node) rects.push(node.getBoundingClientRect());
       }
       const u = unionRect(rects);
@@ -489,7 +566,10 @@ export function AnnotationContextToolbar() {
       // Lay out off-screen first so the size is real, then position.
       const tbW = el.offsetWidth || 280;
       const tbH = el.offsetHeight || 36;
-      const margin = 8;
+      // Wave G — clear the selection chrome that floats around the stroke
+      // (halo pad + connection dots at ~16 px + the corner rotate zones)
+      // instead of sitting glued to the bbox and covering the top dot.
+      const margin = 28;
       let top = u.y - tbH - margin;
       if (top < 8) top = u.y + u.h + margin;
       let left = u.x + (u.w - tbW) / 2;
@@ -504,7 +584,7 @@ export function AnnotationContextToolbar() {
     return () => {
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     };
-  }, [selectedStrokes]);
+  }, [selectedStrokes, editingId]);
 
   // Force a re-render when the strokes themselves mutate (the position rAF
   // already follows the bbox; this ensures the active-state of the swatches
@@ -514,179 +594,228 @@ export function AnnotationContextToolbar() {
     force({});
   }, [selectedStrokes]);
 
+  // FigJam v3 — every bulk style mutation routes through `applyToStrokes` so
+  // an N-stroke selection edit is ONE undo record (the pre-v3 per-stroke
+  // `updateStroke` loop pushed N records — ⌘Z had to be pressed N times).
+  const selectedIds = useMemo(() => selectedStrokes.map((s) => s.id), [selectedStrokes]);
   const setColor = useCallback(
     (c: string) => {
-      if (!store) return;
-      for (const s of selectedStrokes) store.updateStroke(s.id, { color: c });
+      store?.applyToStrokes(selectedIds, () => ({ color: c }), 'set color');
     },
-    [store, selectedStrokes]
+    [store, selectedIds]
   );
   const setFill = useCallback(
     (f: string | null) => {
-      if (!store) return;
-      for (const s of selectedStrokes) {
-        if (s.tool === 'rect' || s.tool === 'ellipse') {
-          store.updateStroke(s.id, { fill: f } as Partial<Stroke>);
-        }
-      }
+      store?.applyToStrokes(
+        selectedIds,
+        (s) =>
+          s.tool === 'rect' || s.tool === 'ellipse' || s.tool === 'polygon'
+            ? ({ fill: f } as Partial<Stroke>)
+            : null,
+        'set fill'
+      );
     },
-    [store, selectedStrokes]
+    [store, selectedIds]
   );
   const setThickness = useCallback(
     (w: number) => {
-      if (!store) return;
-      for (const s of selectedStrokes) {
-        // T20 — rect + ellipse now carry stroke weight.
-        if (s.tool === 'pen' || s.tool === 'arrow' || s.tool === 'rect' || s.tool === 'ellipse') {
-          store.updateStroke(s.id, { width: w } as Partial<Stroke>);
-        }
-      }
-    },
-    [store, selectedStrokes]
-  );
-  const setFontSize = useCallback(
-    (sz: number) => {
-      if (!store) return;
-      for (const s of selectedStrokes) {
-        // Phase 21 — sticky carries fontSize too.
-        if (s.tool === 'text' || s.tool === 'sticky') {
-          store.updateStroke(s.id, { fontSize: sz } as Partial<Stroke>);
-        }
-      }
-    },
-    [store, selectedStrokes]
-  );
-  // Phase 24 — bold / strike / align on text + sticky bodies.
-  const setBold = useCallback(
-    (bold: boolean) => {
-      if (!store) return;
-      for (const s of selectedStrokes) {
-        if (s.tool === 'text' || s.tool === 'sticky') {
-          store.updateStroke(s.id, { bold } as Partial<Stroke>);
-        }
-      }
-    },
-    [store, selectedStrokes]
-  );
-  const setStrike = useCallback(
-    (strike: boolean) => {
-      if (!store) return;
-      for (const s of selectedStrokes) {
-        if (s.tool === 'text' || s.tool === 'sticky') {
-          store.updateStroke(s.id, { strike } as Partial<Stroke>);
-        }
-      }
-    },
-    [store, selectedStrokes]
-  );
-  // Italic / underline / list (items 4b + 4c) — same text + sticky fan-out.
-  const setItalic = useCallback(
-    (italic: boolean) => {
-      if (!store) return;
-      for (const s of selectedStrokes) {
-        if (s.tool === 'text' || s.tool === 'sticky') {
-          store.updateStroke(s.id, { italic } as Partial<Stroke>);
-        }
-      }
-    },
-    [store, selectedStrokes]
-  );
-  const setUnderline = useCallback(
-    (underline: boolean) => {
-      if (!store) return;
-      for (const s of selectedStrokes) {
-        if (s.tool === 'text' || s.tool === 'sticky') {
-          store.updateStroke(s.id, { underline } as Partial<Stroke>);
-        }
-      }
-    },
-    [store, selectedStrokes]
-  );
-  const setListType = useCallback(
-    (listType: ListType | undefined) => {
-      if (!store) return;
-      for (const s of selectedStrokes) {
-        if (s.tool === 'text' || s.tool === 'sticky') {
-          store.updateStroke(s.id, { listType } as Partial<Stroke>);
-        }
-      }
-    },
-    [store, selectedStrokes]
-  );
-  const setAlign = useCallback(
-    (align: TextAlign) => {
-      if (!store) return;
-      for (const s of selectedStrokes) {
-        if (s.tool === 'text' || s.tool === 'sticky') {
-          store.updateStroke(s.id, { align } as Partial<Stroke>);
-        }
-      }
-    },
-    [store, selectedStrokes]
-  );
-  // Phase 21 — corner radius (rect + sticky).
-  const setCornerRadius = useCallback(
-    (r: number) => {
-      if (!store) return;
-      for (const s of selectedStrokes) {
-        if (s.tool === 'rect' || s.tool === 'sticky') {
-          store.updateStroke(s.id, { cornerRadius: r } as Partial<Stroke>);
-        }
-      }
-    },
-    [store, selectedStrokes]
-  );
-  // Phase 24 — per-end arrowhead + line-type (replaces the 4 fixed direction
-  // presets with two head dropdowns + a routing dropdown).
-  const setStartHead = useCallback(
-    (startHead: ArrowHead) => {
-      if (!store) return;
-      for (const s of selectedStrokes) {
-        if (s.tool === 'arrow') store.updateStroke(s.id, { startHead } as Partial<Stroke>);
-      }
-    },
-    [store, selectedStrokes]
-  );
-  const setEndHead = useCallback(
-    (endHead: ArrowHead) => {
-      if (!store) return;
-      for (const s of selectedStrokes) {
-        if (s.tool === 'arrow') store.updateStroke(s.id, { endHead } as Partial<Stroke>);
-      }
-    },
-    [store, selectedStrokes]
-  );
-  const setLineType = useCallback(
-    (lineType: ArrowLineType) => {
-      if (!store) return;
-      for (const s of selectedStrokes) {
-        if (s.tool === 'arrow') store.updateStroke(s.id, { lineType } as Partial<Stroke>);
-      }
-    },
-    [store, selectedStrokes]
-  );
-  // Dash toggle — arrow + rect / ellipse / polygon (item 7).
-  const setDashed = useCallback(
-    (dashed: boolean) => {
-      if (!store) return;
-      for (const s of selectedStrokes) {
-        if (
+      // T20 — rect + ellipse carry stroke weight too; Wave H adds polygon.
+      store?.applyToStrokes(
+        selectedIds,
+        (s) =>
+          s.tool === 'pen' ||
           s.tool === 'arrow' ||
           s.tool === 'rect' ||
           s.tool === 'ellipse' ||
           s.tool === 'polygon'
-        ) {
-          store.updateStroke(s.id, { dashed } as Partial<Stroke>);
-        }
+            ? ({ width: w } as Partial<Stroke>)
+            : null,
+        'set thickness'
+      );
+    },
+    [store, selectedIds]
+  );
+  const setFontSize = useCallback(
+    (sz: number) => {
+      // Phase 21 — sticky carries fontSize too.
+      store?.applyToStrokes(
+        selectedIds,
+        (s) =>
+          s.tool === 'text' || s.tool === 'sticky' ? ({ fontSize: sz } as Partial<Stroke>) : null,
+        'set font size'
+      );
+    },
+    [store, selectedIds]
+  );
+  // Phase 24 — bold / strike / italic / underline / list / align on text +
+  // sticky bodies, all single-record.
+  const applyTextPatch = useCallback(
+    (patch: Partial<Stroke>, label: string) => {
+      store?.applyToStrokes(
+        selectedIds,
+        (s) => (s.tool === 'text' || s.tool === 'sticky' ? patch : null),
+        label
+      );
+    },
+    [store, selectedIds]
+  );
+  const setBold = useCallback(
+    (bold: boolean) => applyTextPatch({ bold } as Partial<Stroke>, 'set bold'),
+    [applyTextPatch]
+  );
+  const setStrike = useCallback(
+    (strike: boolean) => applyTextPatch({ strike } as Partial<Stroke>, 'set strikethrough'),
+    [applyTextPatch]
+  );
+  const setItalic = useCallback(
+    (italic: boolean) => applyTextPatch({ italic } as Partial<Stroke>, 'set italic'),
+    [applyTextPatch]
+  );
+  const setUnderline = useCallback(
+    (underline: boolean) => applyTextPatch({ underline } as Partial<Stroke>, 'set underline'),
+    [applyTextPatch]
+  );
+  const setListType = useCallback(
+    (listType: ListType | undefined) =>
+      applyTextPatch({ listType } as Partial<Stroke>, 'set list style'),
+    [applyTextPatch]
+  );
+  const setAlign = useCallback(
+    (align: TextAlign) => applyTextPatch({ align } as Partial<Stroke>, 'set alignment'),
+    [applyTextPatch]
+  );
+  // Wave H — convert the selection to another shape kind (one undo record).
+  const setSelectionShapeKind = useCallback(
+    (kind: ConvertibleShapeKind) => {
+      store?.applyToStrokes(selectedIds, (s) => convertShapeKind(s, kind), 'change shape');
+    },
+    [store, selectedIds]
+  );
+  // Phase 24 — per-end arrowhead + line-type.
+  const setStartHead = useCallback(
+    (startHead: ArrowHead) => {
+      store?.applyToStrokes(
+        selectedIds,
+        (s) => (s.tool === 'arrow' ? ({ startHead } as Partial<Stroke>) : null),
+        'set arrowhead'
+      );
+    },
+    [store, selectedIds]
+  );
+  const setEndHead = useCallback(
+    (endHead: ArrowHead) => {
+      store?.applyToStrokes(
+        selectedIds,
+        (s) => (s.tool === 'arrow' ? ({ endHead } as Partial<Stroke>) : null),
+        'set arrowhead'
+      );
+    },
+    [store, selectedIds]
+  );
+  const setLineType = useCallback(
+    (lineType: ArrowLineType) => {
+      store?.applyToStrokes(
+        selectedIds,
+        (s) => (s.tool === 'arrow' ? ({ lineType } as Partial<Stroke>) : null),
+        'set line type'
+      );
+    },
+    [store, selectedIds]
+  );
+  // Dash toggle — arrow + rect / ellipse / polygon (item 7).
+  const setDashed = useCallback(
+    (dashed: boolean) => {
+      store?.applyToStrokes(
+        selectedIds,
+        (s) =>
+          s.tool === 'arrow' || s.tool === 'rect' || s.tool === 'ellipse' || s.tool === 'polygon'
+            ? ({ dashed } as Partial<Stroke>)
+            : null,
+        'set dash'
+      );
+    },
+    [store, selectedIds]
+  );
+  // FigJam v3 — group / ungroup / align / distribute on the selection.
+  const groupSel = useCallback(() => {
+    if (!annotSel || !store) return;
+    const members = store.groupSelection(annotSel.selectedIds);
+    if (members) annotSel.replace(members);
+  }, [annotSel, store]);
+  const ungroupSel = useCallback(() => {
+    if (!annotSel || !store) return;
+    store.ungroupSelection(annotSel.selectedIds);
+  }, [annotSel, store]);
+  const alignSel = useCallback(
+    (op: AlignAction) => {
+      if (!annotSel || !store) return;
+      if (op === 'dist-h' || op === 'dist-v') {
+        store.distributeSelection(annotSel.selectedIds, op === 'dist-h' ? 'h' : 'v');
+      } else {
+        store.alignSelection(annotSel.selectedIds, op);
       }
     },
-    [store, selectedStrokes]
+    [annotSel, store]
   );
   const remove = useCallback(() => {
     if (!annotSel || !store) return;
     store.deleteStrokes(annotSel.selectedIds);
     annotSel.clear();
   }, [annotSel, store]);
+
+  // FigJam v3 — TEXT mode while an inline editor is open: a focused strip of
+  // text controls dispatching to the editor (Image-6 FigJam parity).
+  if (editingId) {
+    const dispatchFmt = (key: string, value?: unknown) => {
+      document.dispatchEvent(new CustomEvent('maude:editor-format', { detail: { key, value } }));
+    };
+    const fmtBtn = (
+      key: 'bold' | 'italic' | 'strike' | 'underline',
+      label: string,
+      icon: ReactNode
+    ) => (
+      <button
+        type="button"
+        className="dc-annot-ctx-ibtn"
+        aria-label={label}
+        aria-pressed={!!editorFmt[key]}
+        title={label}
+        // The editor commits on blur/outside-pointerdown — suppress the
+        // mousedown so clicking the toolbar doesn't end the edit session.
+        onMouseDown={(e) => e.preventDefault()}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={() => dispatchFmt(key)}
+      >
+        {icon}
+      </button>
+    );
+    return (
+      <div
+        ref={ref}
+        className="dc-annot-ctx"
+        role="toolbar"
+        aria-label="Text formatting"
+        style={{ display: 'flex', top: -9999, left: -9999 }}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <FontSizeDropdown value={editorFmt.fontSize} onPick={(n) => dispatchFmt('fontSize', n)} />
+        {fmtBtn('bold', 'Bold', <IconBold />)}
+        {fmtBtn('italic', 'Italic', <IconItalic />)}
+        {fmtBtn('strike', 'Strikethrough', <IconStrike />)}
+        {fmtBtn('underline', 'Underline', <IconUnderline />)}
+        <IconDropdown
+          ariaLabel="Text alignment"
+          value={editorFmt.align ?? 'left'}
+          options={ALIGN_OPTIONS}
+          renderIcon={(v) => {
+            const I = ALIGN_ICON[v as TextAlign];
+            return I ? <I size={16} /> : null;
+          }}
+          onPick={(v) => dispatchFmt('align', v)}
+        />
+      </div>
+    );
+  }
 
   if (!annotSel || !store || selectedStrokes.length === 0) return null;
 
@@ -829,19 +958,31 @@ export function AnnotationContextToolbar() {
     );
   }
 
+  // FigJam v3 — group / align availability. Selection expansion guarantees a
+  // group is always selected whole, so "any member grouped" ⇒ ungroupable.
+  const canGroup = selectedStrokes.length >= 2;
+  const canUngroup = selectedStrokes.some((s) => (s.groupIds?.length ?? 0) > 0);
+  const canAlign = selectedStrokes.length >= 2;
+
   // Active values for swatch highlighting — when uniform across selection.
   const uniqColor = uniformValue(selectedStrokes.map((s) => s.color));
   const uniqFill = caps.fill
     ? uniformValue(
         selectedStrokes.map((s) =>
-          s.tool === 'rect' || s.tool === 'ellipse' ? (s.fill ?? null) : undefined
+          s.tool === 'rect' || s.tool === 'ellipse' || s.tool === 'polygon'
+            ? (s.fill ?? null)
+            : undefined
         )
       )
     : undefined;
   const uniqThickness = caps.thickness
     ? uniformValue(
         selectedStrokes.map((s) =>
-          s.tool === 'pen' || s.tool === 'arrow' || s.tool === 'rect' || s.tool === 'ellipse'
+          s.tool === 'pen' ||
+          s.tool === 'arrow' ||
+          s.tool === 'rect' ||
+          s.tool === 'ellipse' ||
+          s.tool === 'polygon'
             ? s.width
             : undefined
         )
@@ -903,18 +1044,9 @@ export function AnnotationContextToolbar() {
         })
       )
     : undefined;
-  // Phase 21 — uniform corner radius across rect/sticky (default per type: rect
-  // sharp = 0, sticky soft = 8).
-  const uniqRadius = caps.cornerRadius
-    ? uniformValue(
-        selectedStrokes.map((s) =>
-          s.tool === 'rect'
-            ? (s.cornerRadius ?? 0)
-            : s.tool === 'sticky'
-              ? (s.cornerRadius ?? 8)
-              : undefined
-        )
-      )
+  // Wave H — uniform shape kind across the selection (undefined = mixed).
+  const uniqShapeKind = caps.shapeKind
+    ? uniformValue(selectedStrokes.map((s) => shapeKindOf(s) ?? undefined))
     : undefined;
   // Phase 21 — uniform arrow head pair (default start none / end triangle).
   const uniqStartHead = caps.arrowDir
@@ -1119,39 +1251,34 @@ export function AnnotationContextToolbar() {
           </button>
         </>
       ) : null}
-      {caps.cornerRadius ? (
+      {caps.shapeKind ? (
         <>
           <div className="dc-annot-ctx-sep" />
-          <button
-            type="button"
-            className="dc-annot-ctx-ibtn"
-            aria-label="Square corners"
-            aria-pressed={uniqRadius === 0}
-            title="Square corners"
-            onClick={() => setCornerRadius(0)}
-          >
-            <IconCornerSquare />
-          </button>
-          <button
-            type="button"
-            className="dc-annot-ctx-ibtn"
-            aria-label="Soft corners"
-            aria-pressed={uniqRadius === 8}
-            title="Soft corners"
-            onClick={() => setCornerRadius(8)}
-          >
-            <IconCornerSoft />
-          </button>
-          <button
-            type="button"
-            className="dc-annot-ctx-ibtn"
-            aria-label="Pill corners"
-            aria-pressed={uniqRadius === 999}
-            title="Pill corners"
-            onClick={() => setCornerRadius(999)}
-          >
-            <IconCornerPill />
-          </button>
+          {(
+            [
+              ['square', 'Square'],
+              ['rounded', 'Rounded square'],
+              ['circle', 'Circle'],
+              ['diamond', 'Diamond'],
+              ['triangle', 'Triangle'],
+              ['triangle-down', 'Triangle down'],
+            ] as Array<[ConvertibleShapeKind, string]>
+          ).map(([kind, label]) => {
+            const KindIcon = SHAPE_KIND_ICONS[kind];
+            return (
+              <button
+                key={kind}
+                type="button"
+                className="dc-annot-ctx-ibtn"
+                aria-label={label}
+                aria-pressed={uniqShapeKind === kind}
+                title={label}
+                onClick={() => setSelectionShapeKind(kind)}
+              >
+                {KindIcon ? <KindIcon size={16} /> : null}
+              </button>
+            );
+          })}
         </>
       ) : null}
       {caps.arrowDir ? (
@@ -1202,6 +1329,46 @@ export function AnnotationContextToolbar() {
           >
             <IconDash />
           </button>
+        </>
+      ) : null}
+      {canGroup || canUngroup || canAlign ? (
+        <>
+          <div className="dc-annot-ctx-sep" />
+          {canGroup ? (
+            <button
+              type="button"
+              className="dc-annot-ctx-ibtn"
+              aria-label="Group selection"
+              title="Group (⌘G)"
+              onClick={groupSel}
+            >
+              <IconGroup />
+            </button>
+          ) : null}
+          {canUngroup ? (
+            <button
+              type="button"
+              className="dc-annot-ctx-ibtn"
+              aria-label="Ungroup selection"
+              title="Ungroup (⌘⇧G)"
+              onClick={ungroupSel}
+            >
+              <IconUngroup />
+            </button>
+          ) : null}
+          {canAlign ? (
+            <ActionDropdown
+              ariaLabel="Align and distribute"
+              triggerIcon={<IconObjAlignLeft size={16} />}
+              options={ALIGN_ACTION_OPTIONS}
+              renderIcon={(v) => {
+                const I = ALIGN_ACTION_ICON[v];
+                return I ? <I size={16} /> : null;
+              }}
+              isDisabled={(v) => (v === 'dist-h' || v === 'dist-v') && selectedStrokes.length < 3}
+              onPick={(v) => alignSel(v as AlignAction)}
+            />
+          ) : null}
         </>
       ) : null}
       <div className="dc-annot-ctx-sep" />
@@ -1291,6 +1458,89 @@ function IconDropdown({
               {renderIcon(o.value)}
             </button>
           ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * FigJam v3 — an ACTION dropdown (vs IconDropdown's radio semantics): each
+ * item fires an operation instead of reflecting a current value. Used by the
+ * align/distribute cluster; distribute items disable below three strokes.
+ */
+function ActionDropdown({
+  ariaLabel,
+  triggerIcon,
+  options,
+  renderIcon,
+  isDisabled,
+  onPick,
+}: {
+  ariaLabel: string;
+  triggerIcon: ReactNode;
+  options: ReadonlyArray<{ value: string; label: string }>;
+  renderIcon: (v: string) => ReactNode;
+  isDisabled?: (v: string) => boolean;
+  onPick: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('keydown', onKey, true);
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('keydown', onKey, true);
+    };
+  }, [open]);
+  return (
+    <div ref={ref} className="dc-annot-ctx-dd">
+      <button
+        type="button"
+        className="dc-annot-ctx-ibtn dc-annot-ctx-dd-trigger"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={ariaLabel}
+        title={ariaLabel}
+        onClick={() => setOpen((o) => !o)}
+      >
+        {triggerIcon}
+        <span className="dc-annot-ctx-dd-caret" aria-hidden="true">
+          <IconChevronDown size={8} />
+        </span>
+      </button>
+      {open ? (
+        <div className="dc-annot-ctx-menu" role="menu" aria-label={ariaLabel}>
+          {options.map((o) => {
+            const disabled = isDisabled?.(o.value) ?? false;
+            return (
+              <button
+                key={o.value}
+                type="button"
+                role="menuitem"
+                aria-label={o.label}
+                title={o.label}
+                className="dc-annot-ctx-ibtn"
+                disabled={disabled}
+                style={disabled ? { opacity: 0.35, cursor: 'default' } : undefined}
+                onClick={() => {
+                  if (disabled) return;
+                  onPick(o.value);
+                  setOpen(false);
+                }}
+              >
+                {renderIcon(o.value)}
+              </button>
+            );
+          })}
         </div>
       ) : null}
     </div>

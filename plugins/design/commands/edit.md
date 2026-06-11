@@ -187,6 +187,10 @@ SEL_VALID=$([[ -n "$SELECTED" && "$SEL_FILE" == "$ACTIVE" ]] && echo 1 || echo 0
 # Open comments — annotations the user dropped on elements via Cmd+Shift+click
 # or ⌘C in the dev server UI. `_active.json` mirrors the active file's comments
 # inline (server keeps it in sync), so this is a single read.
+# (Separate surface: the FigJam draw layer is readable via `maude design
+# read-annotations [--graph]` and WRITABLE via `maude design annotate` — see
+# skill `design` § "Strokes annotation layer". Reach for it when the feedback
+# references the user's sketches/stickies, or to answer ON the board.)
 OPEN_COMMENTS=$(jq -c '[(.active_comments // [])[] | select(.status != "resolved")]' "$DESIGN_ROOT/_active.json" 2>/dev/null || echo '[]')
 
 # Slug + COMMENTS_FILE for the resolve path. prep.sh (step 1) already computed

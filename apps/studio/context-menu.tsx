@@ -237,7 +237,9 @@ const MENU_CSS = `
 .dc-context-menu .dc-menu-flyout.is-flip { left: auto; right: calc(100% + 3px); }
 `.trim();
 
-function ensureMenuStyles(): void {
+// Exported (FigJam v3) — the annotation layer's right-click menu reuses the
+// same .dc-context-menu visual language without duplicating the stylesheet.
+export function ensureMenuStyles(): void {
   if (typeof document === 'undefined') return;
   if (document.getElementById('dc-context-menu-css')) return;
   const s = document.createElement('style');

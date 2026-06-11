@@ -58,6 +58,8 @@ export const DEFAULT_TOOLS: readonly ToolDescriptor[] = Object.freeze([
   // buttons; the primitive is chosen from the palette popover.
   { id: 'shape', label: 'Shape', shortcut: 'R', cursor: TOOL_CURSORS.shape },
   { id: 'sticky', label: 'Sticky', shortcut: 'N', cursor: TOOL_CURSORS.sticky },
+  // FigJam v3 — labelled organizing container.
+  { id: 'section', label: 'Section', shortcut: '⇧S', cursor: TOOL_CURSORS.shape },
   { id: 'arrow', label: 'Arrow', shortcut: 'A', cursor: TOOL_CURSORS.arrow },
   { id: 'text', label: 'Text', shortcut: 'T', cursor: TOOL_CURSORS.text },
   { id: 'eraser', label: 'Eraser', shortcut: 'E', cursor: TOOL_CURSORS.eraser },
@@ -114,7 +116,9 @@ export function ToolProvider({
   const clearSticky = useCallback(() => {
     setSticky({ tool: null, locked: false });
   }, []);
-  const [shapeKind, setShapeKind] = useState<ShapeKind>('square');
+  // FigJam v3 — soft default: a fresh Shape tool draws ROUNDED squares (the
+  // FigJam look); sharp squares stay one popover click away.
+  const [shapeKind, setShapeKind] = useState<ShapeKind>('rounded');
 
   // Cursor sync — applied inside the canvas (this hook runs in the canvas
   // context). The active tool's cursor is set on <body> AND forced across the

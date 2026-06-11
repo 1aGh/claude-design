@@ -31,18 +31,21 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Argv
 
 function parseArgv(argv) {
-  const out = { positional: [], root: null, canvasState: null, help: false };
+  const out = { positional: [], root: null, canvasState: null, help: false, graph: false };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') {
       out.help = true;
     } else if (a === '--json') {
       /* default — accepted for symmetry with other verbs */
+    } else if (a === '--graph') {
+      out.graph = true;
     } else if (a === '--root') {
       i += 1;
       out.root = argv[i];
@@ -69,10 +72,20 @@ Args:
   <rel-path>          Canvas path relative to the design root (e.g. "ui/Foo.tsx").
   --root <repo>       Repo root. Default: $CLAUDE_PROJECT_DIR, then cwd.
   --canvas-state <p>  JSON of artboard rects ([{id,x,y,w,h}] or {artboards:[…]});
-                      each annotation is tagged with the artboard it overlaps.
+                      each annotation is tagged with the artboard it overlaps,
+                      plus artboard-relative coords (rel) and a W3C-style
+                      target block { source, selector, geometry }.
+  --graph             Emit { annotations, graph } instead of the bare array:
+                      graph.edges = bound arrows (from/to host ids), graph.nodes
+                      = the strokes those arrows connect (with labels) — a
+                      bound flow diagram reads back as a graph.
   --json              No-op (JSON is the only output form).
 
-Emits a JSON array to stdout. A missing annotation file emits [] (exit 0).`;
+FigJam v3 additive fields per annotation: z (render order), groupIds (deepest →
+shallowest), author ("ai" for annotate-verb strokes), and from/to host ids on
+bound arrows.
+
+Emits JSON to stdout. A missing annotation file emits [] (exit 0).`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Path + slug resolution — mirror the dev-server (api.ts fileSlug, context.ts
@@ -172,6 +185,22 @@ function readText(attrs, inner) {
   return o;
 }
 
+// FigJam v3 — section container: geometry off the inner <rect>, label off
+// data-label (the inner <text> is presentational chrome).
+function readSection(attrs, inner) {
+  const rectAttrs = inner.match(/<rect\b([^>]*?)\/?>/)?.[1] ?? '';
+  return {
+    tool: 'section',
+    id: attr(attrs, 'data-id') || '',
+    x: num(attr(rectAttrs, 'x')),
+    y: num(attr(rectAttrs, 'y')),
+    w: num(attr(rectAttrs, 'width')),
+    h: num(attr(rectAttrs, 'height')),
+    text: decodeEntities(attr(attrs, 'data-label') || ''),
+    color: attr(attrs, 'fill') || null,
+  };
+}
+
 function readSticky(attrs, inner) {
   // Geometry off the inner <rect>; paper tint off the group fill; body off the
   // inner <text>. (annotations-layer.tsx strokeToSvgEl 'sticky' branch.)
@@ -187,6 +216,20 @@ function readSticky(attrs, inner) {
     text: decodeEntities(body).trim(),
     color: attr(attrs, 'fill') || null,
   };
+}
+
+// FigJam v3 — a bound endpoint persists as `data-(start|end)-bind="<hostId>
+// <nx> <ny>"`. Malformed / out-of-range values are rejected (mirror of the
+// canonical parser's clamp).
+function parseBind(raw) {
+  if (!raw) return null;
+  const parts = String(raw).trim().split(/\s+/);
+  if (parts.length !== 3) return null;
+  const nx = Number.parseFloat(parts[1]);
+  const ny = Number.parseFloat(parts[2]);
+  if (!parts[0] || !Number.isFinite(nx) || !Number.isFinite(ny)) return null;
+  if (nx < 0 || nx > 1 || ny < 0 || ny > 1) return null;
+  return { hostId: parts[0], nx, ny };
 }
 
 function readArrow(attrs, inner) {
@@ -325,32 +368,90 @@ function readUnknown(tool, attrs, inner) {
 // and NO container nests inside the same container — so a non-greedy backref
 // match recovers each top-level element in document order. (Task-2 drift guard
 // keeps this invariant honest against the canonical serializer.)
+// FigJam v3 — shared root attrs every tool can carry: group membership,
+// provenance, render order (z = document position). Applied uniformly after
+// the per-tool extraction; arrows additionally surface bound endpoints as
+// `from`/`to` host ids so a bound diagram reads back as a GRAPH.
+function withShared(o, attrs, z) {
+  o.z = z;
+  const g = attr(attrs, 'data-group-ids');
+  if (g) {
+    const ids = g.split(/\s+/).filter(Boolean);
+    if (ids.length) o.groupIds = ids;
+  }
+  if (attr(attrs, 'data-author') === 'ai') o.author = 'ai';
+  if (o.tool === 'arrow') {
+    const sb = parseBind(attr(attrs, 'data-start-bind'));
+    if (sb) o.from = sb.hostId;
+    const eb = parseBind(attr(attrs, 'data-end-bind'));
+    if (eb) o.to = eb.hostId;
+  }
+  return o;
+}
+
 function parseAnnotations(svg) {
   const out = [];
   if (!svg || !/<svg[\s>]/i.test(svg)) return out;
-  const re = /<(g|text)\b([^>]*)>([\s\S]*?)<\/\1>|<(path|rect|ellipse|polygon)\b([^>]*?)\/?>/g;
+  const re =
+    /<(g|text)\b([^>]*)>([\s\S]*?)<\/\1>|<(path|rect|ellipse|polygon|image)\b([^>]*?)\/?>/g;
   let m = re.exec(svg);
   while (m !== null) {
     if (m[1]) {
       const attrs = m[2];
       const inner = m[3];
       const tool = attr(attrs, 'data-tool');
-      if (tool === 'sticky') out.push(readSticky(attrs, inner));
-      else if (tool === 'arrow') out.push(readArrow(attrs, inner));
-      else if (tool === 'text') out.push(readText(attrs, inner));
-      else if (tool) out.push(readUnknown(tool, attrs, inner));
+      if (tool === 'sticky') out.push(withShared(readSticky(attrs, inner), attrs, out.length));
+      else if (tool === 'section')
+        out.push(withShared(readSection(attrs, inner), attrs, out.length));
+      else if (tool === 'arrow') out.push(withShared(readArrow(attrs, inner), attrs, out.length));
+      else if (tool === 'text') out.push(withShared(readText(attrs, inner), attrs, out.length));
+      else if (tool) out.push(withShared(readUnknown(tool, attrs, inner), attrs, out.length));
     } else {
       const attrs = m[5];
       const tool = attr(attrs, 'data-tool');
-      if (tool === 'pen') out.push(readPen(attrs));
-      else if (tool === 'rect') out.push(readRect(attrs));
-      else if (tool === 'ellipse') out.push(readEllipse(attrs));
-      else if (tool === 'polygon') out.push(readPolygon(attrs));
-      else if (tool) out.push(readUnknown(tool, attrs, ''));
+      if (tool === 'pen') out.push(withShared(readPen(attrs), attrs, out.length));
+      else if (tool === 'rect') out.push(withShared(readRect(attrs), attrs, out.length));
+      else if (tool === 'ellipse') out.push(withShared(readEllipse(attrs), attrs, out.length));
+      else if (tool === 'polygon') out.push(withShared(readPolygon(attrs), attrs, out.length));
+      else if (tool) out.push(withShared(readUnknown(tool, attrs, ''), attrs, out.length));
     }
     m = re.exec(svg);
   }
   return out;
+}
+
+// FigJam v3 — derive the node/edge view of a bound diagram. Edges are arrows
+// with at least one bound end; nodes are the strokes those arrows reference,
+// labelled by their own text or by anchored text targeting them.
+function buildGraph(annotations) {
+  const edges = [];
+  for (const a of annotations) {
+    if (a.tool === 'arrow' && (a.from || a.to)) {
+      edges.push({ id: a.id, from: a.from ?? null, to: a.to ?? null });
+    }
+  }
+  const refIds = new Set();
+  for (const e of edges) {
+    if (e.from) refIds.add(e.from);
+    if (e.to) refIds.add(e.to);
+  }
+  const labelByAnchor = new Map();
+  for (const a of annotations) {
+    if (a.tool === 'text' && a.anchorId && a.text) labelByAnchor.set(a.anchorId, a.text);
+  }
+  const nodes = annotations
+    .filter((a) => refIds.has(a.id))
+    .map((a) => ({
+      id: a.id,
+      tool: a.tool,
+      label: a.text || labelByAnchor.get(a.id) || null,
+      x: a.x,
+      y: a.y,
+      w: a.w,
+      h: a.h,
+      artboard: a.artboard ?? null,
+    }));
+  return { nodes, edges };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -374,16 +475,41 @@ function loadArtboards(p) {
   }
 }
 
-function tagArtboard(ann, artboards) {
+function findArtboard(ann, artboards) {
   if (ann.x == null || ann.y == null) return null;
   const ax2 = ann.x + (ann.w || 0);
   const ay2 = ann.y + (ann.h || 0);
   for (const r of artboards) {
     const rx2 = r.x + r.w;
     const ry2 = r.y + r.h;
-    if (ann.x <= rx2 && ax2 >= r.x && ann.y <= ry2 && ay2 >= r.y) return r.id;
+    if (ann.x <= rx2 && ax2 >= r.x && ann.y <= ry2 && ay2 >= r.y) return r;
   }
   return null;
+}
+
+function tagArtboard(ann, artboards) {
+  return findArtboard(ann, artboards)?.id ?? null;
+}
+
+/**
+ * FigJam v3 — anchor an annotation to its artboard for AI consumers: the
+ * overlapping artboard id, artboard-RELATIVE coords (what survives an artboard
+ * move), and a W3C Web-Annotation-style target (anchor by stable id first,
+ * geometry as the refinement/fallback).
+ */
+function anchorToArtboard(ann, artboards) {
+  const r = findArtboard(ann, artboards);
+  if (!r) return { ...ann, artboard: null };
+  return {
+    ...ann,
+    artboard: r.id,
+    rel: ann.x != null ? { x: ann.x - r.x, y: ann.y - r.y } : null,
+    target: {
+      source: r.id,
+      selector: { type: 'AnnotationIdSelector', value: ann.id },
+      geometry: ann.x != null ? { x: ann.x, y: ann.y, w: ann.w ?? 0, h: ann.h ?? 0 } : null,
+    },
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -428,11 +554,20 @@ function main() {
       : resolve(process.cwd(), args.canvasState);
     const artboards = loadArtboards(csPath);
     if (artboards.length) {
-      annotations = annotations.map((a) => ({ ...a, artboard: tagArtboard(a, artboards) }));
+      annotations = annotations.map((a) => anchorToArtboard(a, artboards));
     }
   }
 
+  if (args.graph) {
+    process.stdout.write(`${JSON.stringify({ annotations, graph: buildGraph(annotations) })}\n`);
+    return;
+  }
   process.stdout.write(`${JSON.stringify(annotations)}\n`);
 }
 
-main();
+// FigJam v3 — the parsing core is importable (the `annotate` write verb reuses
+// it for host-geometry lookups); main() runs only when invoked as a script.
+export { buildGraph, fileSlug, loadArtboards, parseAnnotations, resolveDesignRoot, tagArtboard };
+
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) main();

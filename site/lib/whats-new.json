@@ -1,7 +1,23 @@
 {
-  "generated": "2026-06-08T13:57:04.977Z",
+  "generated": "2026-06-11T10:59:15.880Z",
   "version": "0.29.0",
   "entries": [
+    {
+      "id": "canvas-annotations-figjam-v3",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Annotations grew up: diagram on the canvas",
+      "summary": "Marquee-select strokes and just drag them, group with ⌘G, copy/paste, align and reorder. Shapes rotate (hover near a corner), resize from edges with size-matching guides, hold text (double-click any shape), and switch kind — square, circle, diamond, triangle — right from the toolbar. Arrows snap to shapes and re-route as you move things, and the new Section tool (⇧S) frames a region that moves with its content. AI tools can read the board and draw on it too.",
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": ".dc-tool-palette",
+          "title": "New tools in the palette",
+          "body": "Section (⇧S) frames a region; the Shape tool's primitives can all hold text now — select a shape and press Enter to type."
+        }
+      ]
+    },
     {
       "id": "studio-full-functionality",
       "version": "0.29.0",

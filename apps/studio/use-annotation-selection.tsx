@@ -10,7 +10,15 @@
  * selection resets (the strokes themselves persist via `.annotations.svg`).
  */
 
-import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from 'react';
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 
 export interface AnnotationSelectionValue {
   selectedIds: string[];
@@ -57,10 +65,14 @@ export function AnnotationSelectionProvider({ children }: { children: ReactNode 
 
   // Read live from state at call time so multi-step flows in the same tick
   // (e.g. a router callback that adds then asks `contains`) see the staged
-  // result instead of a stale closure capture.
-  const containsRef = { current: selectedIds };
+  // result instead of a stale closure capture. MUST be a real useRef — the
+  // pre-FigJam-v3 code created a fresh `{ current }` object literal every
+  // render, so the stable useCallback closure kept reading the FIRST render's
+  // (empty) selection forever: `contains()` always returned false, which
+  // silently broke hull/multi-drag and click-keeps-selection (user-gate
+  // finding, 2026-06-11).
+  const containsRef = useRef<string[]>(selectedIds);
   containsRef.current = selectedIds;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: ref read intentionally
   const contains = useCallback((id: string) => containsRef.current.includes(id), []);
 
   const value = useMemo<AnnotationSelectionValue>(

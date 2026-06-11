@@ -34,18 +34,116 @@ import {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
-
+import {
+  type AlignEdge,
+  alignStrokes,
+  type DistributeAxis,
+  distributeStrokes,
+} from './annotations-align.ts';
+import {
+  anchorPoint,
+  BIND_THRESHOLD_PX,
+  bindCandidate,
+  isBindable,
+  recomputeBoundArrows,
+} from './annotations-bindings.ts';
 import { AnnotationContextToolbar } from './annotations-context-toolbar.tsx';
 import {
-  ARROW_HEADS,
-  type ArrowHead,
-  type ArrowLineType,
-  arrowPrimitives,
-  type SvgPrimitive,
-} from './canvas-arrowheads.ts';
+  duplicateStrokes,
+  expandIdsToGroups,
+  groupStrokes,
+  normalizeGroups,
+  outermostGroupOf,
+  reorderStrokes,
+  ungroupStrokes,
+  type ZOrderOp,
+} from './annotations-groups.ts';
+import {
+  type AnchorHost,
+  type ArrowStroke,
+  applyDrawModifiers,
+  clampLinkTitle,
+  DEFAULT_FONT_SIZE,
+  DEFAULT_HIGHLIGHTER_COLOR,
+  DEFAULT_HIGHLIGHTER_WIDTH,
+  DEFAULT_SECTION_COLOR,
+  DEFAULT_STICKY_COLOR,
+  type DrawMods,
+  defaultFillFor,
+  type EditorFmt,
+  FILL_PALETTE,
+  fmtEqual,
+  HALO_PAD_PX,
+  HIGHLIGHTER_PALETTE,
+  HIGHLIGHTER_WIDTHS,
+  IMAGE_MAX_DROP_SIDE,
+  IMAGE_MIN_SIZE,
+  type ImageStroke,
+  isStrokeMeaningful,
+  LINK_CARD_FILL,
+  LINK_CARD_STROKE,
+  LINK_DEFAULT_H,
+  LINK_DEFAULT_W,
+  LINK_DOMAIN_FILL,
+  LINK_GLYPH_D1,
+  LINK_GLYPH_D2,
+  LINK_GLYPH_STROKE,
+  LINK_TITLE_FILL,
+  type ListType,
+  linkCardLayout,
+  listPrefixedBody,
+  listPrefixedLine,
+  normalizeBox,
+  normalizeRect,
+  normalizeSticky,
+  normFmt,
+  penPathD,
+  polygonPoints,
+  resolveDefaultInk,
+  rid,
+  SECTION_CORNER_RADIUS,
+  SECTION_DEFAULT_H,
+  SECTION_DEFAULT_W,
+  SECTION_LABEL_FONT,
+  SECTION_LABEL_H,
+  SECTION_MIN_SIZE,
+  type SectionStroke,
+  SHAPE_DEFAULT_SIZE,
+  STICKY_CORNER_RADIUS,
+  STICKY_DEFAULT_H,
+  STICKY_DEFAULT_W,
+  STICKY_MIN_SIZE,
+  STICKY_PALETTE,
+  STROKE_PALETTE,
+  STROKE_WIDTH_THICK,
+  STROKE_WIDTH_THIN,
+  type StickyStroke,
+  type Stroke,
+  splitTextLines,
+  stickyCornerPath,
+  stripEditorMarkers,
+  strokeBBox,
+  strokeCenter,
+  strokeHitTest,
+  strokeRotation,
+  strokesShallowEqual,
+  strokesToSvg,
+  svgToStrokes,
+  TEXT_LINE_HEIGHT,
+  type TextAlign,
+  type TextStroke,
+  type Thickness,
+  textDecoCss,
+  textLineDy,
+  translateOne,
+  type WorldPoint,
+} from './annotations-model.ts';
+import { computeSnap, SNAP_THRESHOLD_PX, type SnapGuide } from './annotations-snap.ts';
+import { arrowPrimitives, type SvgPrimitive } from './canvas-arrowheads.ts';
 import { IconLineThick, IconLineThin } from './canvas-icons.tsx';
 import { useViewportControllerContext, useWorldRefContext } from './canvas-lib.tsx';
 import { buildAnnotationStrokesRecord } from './commands/annotation-strokes-command.ts';
+import { ensureMenuStyles as ensureCtxMenuStyles } from './context-menu.tsx';
 import { crossedDragThreshold, type Tool } from './input-router.tsx';
 import { AnnotationResizeOverlay } from './use-annotation-resize.tsx';
 import { useAnnotationSelectionOptional } from './use-annotation-selection.tsx';
@@ -63,218 +161,26 @@ import { useSelectionSetOptional } from './use-selection-set.tsx';
 import { type ShapeKind, useToolMode } from './use-tool-mode.tsx';
 import { useUndoSinks, useUndoStackOptional } from './use-undo-stack.tsx';
 
+// FigJam v3 — the pure data model (Stroke types, palettes, serialize/parse,
+// geometry) lives in annotations-model.ts: React-free, importable headlessly
+// by bun tests and the `maude design annotate` write verb. The layer
+// re-exports the whole model so every existing
+// `from './annotations-layer.tsx'` import keeps working unchanged.
+export * from './annotations-model.ts';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
-
-type WorldPoint = readonly [number, number];
 
 // Phase 24 — arrow style enums are OWNED by canvas-arrowheads.ts (so that
 // module imports nothing back from here — no cycle, see DDR-067) and re-exported
 // here for back-compat (context-toolbar etc. import them from this module).
 export type { ArrowHead, ArrowLineType } from './canvas-arrowheads.ts';
-/** Phase 24 — polygon shape primitives (diamond + the two triangle pointings). */
-export type PolygonShape = 'diamond' | 'triangle' | 'triangle-down';
-/** Phase 24 — horizontal alignment for text + sticky bodies. */
-export type TextAlign = 'left' | 'center' | 'right';
 
 /** Phase 24 — cursor-following ghost placeholder descriptor (pure chrome). */
 type GhostDescriptor =
   | { kind: 'text'; x: number; y: number; color: string }
   | { kind: 'sticky'; x: number; y: number; color: string }
   | { kind: 'shape'; x: number; y: number; shapeKind: ShapeKind; color: string };
-
-export interface PenStroke {
-  id: string;
-  tool: 'pen';
-  color: string;
-  width: number;
-  points: WorldPoint[];
-  /**
-   * Highlighter (item 8). A `highlighter:true` pen reuses ALL pen draw / erase /
-   * hit-test / translate logic; it just renders wide + translucent with
-   * `mix-blend-mode:multiply` (overlaps darken) and carries a translucent
-   * marker colour. Absent / false = a normal solid pen (back-compat).
-   */
-  highlighter?: boolean;
-}
-export interface RectStroke {
-  id: string;
-  tool: 'rect';
-  color: string;
-  width: number;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  fill?: string | null;
-  /** Phase 21 — corner radius (rx/ry). Absent / 0 = sharp 90° corners (back-compat). */
-  cornerRadius?: number;
-  /** Dashed outline (stroke-dasharray). Absent / false = solid (back-compat). */
-  dashed?: boolean;
-}
-export interface EllipseStroke {
-  id: string;
-  tool: 'ellipse';
-  color: string;
-  width: number;
-  cx: number;
-  cy: number;
-  rx: number;
-  ry: number;
-  fill?: string | null;
-  /** Dashed outline (stroke-dasharray). Absent / false = solid (back-compat). */
-  dashed?: boolean;
-}
-/**
- * Phase 24 — diamond / triangle / triangle-down primitives. Stored as a bbox
- * (x/y/w/h, exactly like a rect) + a `shape` discriminant; the actual SVG
- * points are derived from the bbox at serialize + render time. Brand-new on
- * disk (`<polygon data-tool="polygon" data-shape="…">`), so no back-compat
- * constraint — only idempotent round-trip.
- */
-export interface PolygonStroke {
-  id: string;
-  tool: 'polygon';
-  shape: PolygonShape;
-  color: string;
-  width: number;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  fill?: string | null;
-  /** Dashed outline (stroke-dasharray). Absent / false = solid. */
-  dashed?: boolean;
-}
-export interface ArrowStroke {
-  id: string;
-  tool: 'arrow';
-  color: string;
-  width: number;
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-  /** Head on the (x1,y1) start. Absent = 'none' (back-compat). Phase 24 widened the enum. */
-  startHead?: ArrowHead;
-  /** Head on the (x2,y2) end. Absent = 'triangle' (back-compat). Phase 24 widened the enum. */
-  endHead?: ArrowHead;
-  /** Phase 21 — dashed shaft (stroke-dasharray). Absent / false = solid. */
-  dashed?: boolean;
-  /** Phase 24 — shaft routing. Absent = 'straight' (back-compat). */
-  lineType?: ArrowLineType;
-}
-export interface TextStroke {
-  id: string;
-  tool: 'text';
-  color: string;
-  fontSize: number;
-  text: string;
-  /**
-   * Host shape id for anchored text (double-click a rect/ellipse). Phase 21
-   * relaxed this to optional: standalone text (the `text` tool) carries no
-   * anchor and renders at its own world `(x, y)` instead.
-   */
-  anchorId?: string;
-  /** Phase 21 — world coords for standalone (unanchored) text. */
-  x?: number;
-  y?: number;
-  /** Phase 24 — bold weight. Absent / false = normal (back-compat). */
-  bold?: boolean;
-  /** Phase 24 — strikethrough. Absent / false = none (back-compat). */
-  strike?: boolean;
-  /** Italic style (item 4b). Absent / false = upright (back-compat). */
-  italic?: boolean;
-  /** Underline (item 4b). Combined with strike into one text-decoration. */
-  underline?: boolean;
-  /** List style (item 4c). Markers are render-only — never stored in `text`. */
-  listType?: ListType;
-  /**
-   * Phase 24 — horizontal alignment. Absent default differs by kind: anchored
-   * text = 'center' (legacy, byte-identical), standalone = 'left'.
-   */
-  align?: TextAlign;
-}
-/** Phase 21 — sticky note: a paper-tone card with its own word-wrapped text. */
-export interface StickyStroke {
-  id: string;
-  tool: 'sticky';
-  color: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  text: string;
-  fontSize: number;
-  /** Corner radius; defaults to STICKY_CORNER_RADIUS (8 = soft). */
-  cornerRadius?: number;
-  /** Phase 24 — bold body weight. Absent / false = normal. */
-  bold?: boolean;
-  /** Phase 24 — strikethrough body. Absent / false = none. */
-  strike?: boolean;
-  /** Italic body (item 4b). Absent / false = upright. */
-  italic?: boolean;
-  /** Underline body (item 4b). Combined with strike into one text-decoration. */
-  underline?: boolean;
-  /** List style (item 4c). Markers are render-only — never stored in `text`. */
-  listType?: ListType;
-  /** Phase 24 — body alignment. Absent = 'left' (FigJam sticky default). */
-  align?: TextAlign;
-}
-/**
- * Phase 23 — dropped / pasted raster image. Free-floating, rect-shaped, moves
- * and resizes like any annotation. `href` is ALWAYS a relative
- * `assets/<sha8>.<ext>` path (never a data: URL — keeps the persisted SVG under
- * its 1 MB cap and matches the sanitizer's `<image>` href allowlist). The live
- * canvas may briefly render an optimistic `blob:` href before the upload swaps
- * it to the content-addressed path; only the `assets/…` form is ever persisted.
- */
-export interface ImageStroke {
-  id: string;
-  tool: 'image';
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  href: string;
-  /**
-   * Alt text. Persisted in `data-alt` and emitted as `aria-label` on the
-   * `<image>`, so it travels with the exported / saved SVG (where AT reads it).
-   * NOTE: in the LIVE canvas the whole annotation SVG root is `aria-hidden`
-   * (editor chrome — AT shouldn't be flooded by decorative strokes), so the live
-   * in-canvas `aria-label` is pruned; the alt's audience is the export. Absent ⇒ ''.
-   */
-  alt?: string;
-}
-/**
- * Phase 23 — pasted / dropped URL rendered as a client-only preview chip. NO
- * server fetch and NO external favicon (the dev-server stays zero-egress —
- * DDR-054/060). `title` comes from the clipboard/DnD `text/html` anchor text
- * when present, else the prettified URL; `domain` is `new URL(url).hostname`.
- * Persists as an allowlisted `<g>` (rect + vector glyph + two `<text>` runs) —
- * the click-to-open handler reads `data-url`, no `<a href>` is ever stored.
- */
-export interface LinkStroke {
-  id: string;
-  tool: 'link';
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  url: string;
-  title: string;
-  domain: string;
-}
-export type Stroke =
-  | PenStroke
-  | RectStroke
-  | EllipseStroke
-  | PolygonStroke
-  | ArrowStroke
-  | TextStroke
-  | StickyStroke
-  | ImageStroke
-  | LinkStroke;
 
 /**
  * Phase 21 — what the inline editor is currently bound to. `anchored` edits
@@ -283,47 +189,13 @@ export type Stroke =
  * exists until real text is committed).
  */
 type EditingTarget =
-  | { kind: 'anchored'; anchorId: string; host: RectStroke | EllipseStroke }
+  | { kind: 'anchored'; anchorId: string; host: AnchorHost }
   | { kind: 'sticky'; sticky: StickyStroke }
   | { kind: 'standalone'; text: TextStroke }
+  /** FigJam v3 — renaming a section's label chip. */
+  | { kind: 'section'; section: SectionStroke }
   | { kind: 'pending'; x: number; y: number }
   | null;
-
-// Phase 21 colour system — a single coherent hue family used everywhere.
-// FigJam model: stroke (saturated ink) is INDEPENDENT of fill, and fills are
-// light TINTS of the same hue (index-paired with STROKE_PALETTE). Stickies use
-// their own lightened paper set (STICKY_PALETTE). Exported so the draw-time
-// chrome AND the per-selection context toolbar share ONE palette instead of
-// drifting apart.
-export const STROKE_PALETTE = [
-  '#e5484d', // red (default — markup ink)
-  '#f2762a', // orange
-  '#e0a500', // amber
-  '#30a46c', // green
-  '#3b82f6', // blue
-  '#8b5cf6', // purple
-  '#e93d82', // pink
-  '#7c7c7c', // gray
-  '#1f1f1f', // ink
-] as const;
-type PaletteColor = (typeof STROKE_PALETTE)[number];
-// Phase 24 — default markup ink is BLACK (the `#1f1f1f` ink swatch, slot 8) for
-// EVERY ink tool (pen / shape / arrow / text). It's a palette member so the
-// draw chrome + per-selection toolbar highlight it as the active swatch; the
-// other hues stay one click away. (Stickies keep their warm-paper default —
-// DEFAULT_STICKY_COLOR — they're paper, not ink.)
-const DEFAULT_COLOR: PaletteColor = STROKE_PALETTE[8];
-// Annotation polish — the LIVE default ink follows the canvas theme so a
-// freshly-armed pen/shape/arrow/text reads true on dark canvases (the
-// `#1f1f1f` ink is near-invisible on a dark mock). Light → the `#1f1f1f`
-// ink slot; dark → a light ink that reads on dark. This is the live draw
-// default ONLY — `DEFAULT_COLOR` stays the parse fallback (round-trip
-// determinism + back-compat), and stored strokes keep their literal hex
-// (FigJam parity — no retroactive recolour).
-const DEFAULT_INK_DARK = '#ededed';
-export function resolveDefaultInk(theme: string): string {
-  return theme === 'dark' ? DEFAULT_INK_DARK : DEFAULT_COLOR;
-}
 
 /**
  * The canvas-shell CHROME theme — `data-maude-theme` on `<html>`, default
@@ -353,266 +225,6 @@ function useCanvasChromeTheme(): 'light' | 'dark' {
   return theme;
 }
 
-// Light tints, index-paired to STROKE_PALETTE — picking "blue fill" gives a
-// pale blue wash under a saturated stroke, exactly like FigJam shapes.
-export const FILL_PALETTE = [
-  '#fbe0e1', // red tint
-  '#fce6d6', // orange tint
-  '#fbeec2', // amber tint
-  '#d9f1e2', // green tint
-  '#e0ebfd', // blue tint
-  '#ebe3fc', // purple tint
-  '#fbdfeb', // pink tint
-  '#ededed', // gray tint
-  '#e7e7e7', // ink tint
-] as const;
-
-// Neutral fill wash for the ink slot (no paired hue) — light vs dark canvas.
-const NEUTRAL_FILL_LIGHT = FILL_PALETTE[8]; // '#e7e7e7'
-const NEUTRAL_FILL_DARK = '#2a2a2a';
-/**
- * Annotation polish (item 2) — the LIVE default fill for a freshly-armed Shape
- * tool. A coloured ink maps to its index-paired light tint (FigJam: a saturated
- * outline over a pale wash of the same hue); the ink slot / themed-dark ink /
- * any unknown hex maps to a neutral wash. "No fill" stays one click away (the
- * chrome's None swatch) and, once picked, sticks (fillTouchedRef). Stored
- * shapes keep their literal fill — only NEW shapes pick up this default.
- */
-export function defaultFillFor(color: string, theme: string): string {
-  const idx = STROKE_PALETTE.indexOf(color as PaletteColor);
-  // Coloured ink (slots 0–7) → its paired tint; ink slot (8) / unknown → neutral.
-  if (idx >= 0 && idx < FILL_PALETTE.length - 1) return FILL_PALETTE[idx];
-  return theme === 'dark' ? NEUTRAL_FILL_DARK : NEUTRAL_FILL_LIGHT;
-}
-
-const STROKE_WIDTH_THIN = 3;
-const STROKE_WIDTH_THICK = 6;
-type Thickness = typeof STROKE_WIDTH_THIN | typeof STROKE_WIDTH_THICK;
-
-const FONT_SIZE_MEDIUM = 14;
-const DEFAULT_FONT_SIZE = FONT_SIZE_MEDIUM;
-
-// Phase 24 — sticky-note paper tints. A muted/desaturated FigJam-style set
-// (Image #2): a warm paper yellow default, then white/grey + soft pastels.
-// Wholly separate from the stroke ink PALETTE and the translucent FILL_PALETTE
-// so stickies read as "paper", not "ink". Slot 0 (yellow) is the default.
-// Existing stickies keep their stored hex; only NEW stickies pick up the new
-// default tint.
-export const STICKY_PALETTE = [
-  '#fce8a6', // muted yellow (default — warm paper)
-  '#ffffff', // white
-  '#e6e4e0', // light grey
-  '#f7c5c0', // salmon
-  '#f8d2a6', // peach
-  '#bfe3c0', // mint
-  '#a9dbdb', // aqua
-  '#bcd2f0', // light blue
-  '#cfc4ec', // lavender
-  '#f3c4dd', // light pink
-] as const;
-const DEFAULT_STICKY_COLOR = STICKY_PALETTE[0];
-const STICKY_CORNER_RADIUS = 8;
-
-// Annotation polish (item 8) — highlighter marker hues. Translucent 8-digit hex
-// (RRGGBBAA, ~50% alpha) so overlaps darken under `mix-blend-mode:multiply`.
-// Yellow is the default; green / pink / blue follow. Wholly separate from the
-// ink PALETTE — the highlighter draws a soft wash, not a saturated line.
-export const HIGHLIGHTER_PALETTE = [
-  '#ffe24d80', // yellow (default)
-  '#7ce8a080', // green
-  '#ff9ed180', // pink
-  '#7ec5ff80', // blue
-] as const;
-const DEFAULT_HIGHLIGHTER_COLOR = HIGHLIGHTER_PALETTE[0];
-// Highlighter marker nib widths (item 8) — three sizes (thin / medium / thick),
-// all wider than the pen. Default medium.
-const HIGHLIGHTER_WIDTHS = [10, 18, 28] as const;
-const DEFAULT_HIGHLIGHTER_WIDTH = HIGHLIGHTER_WIDTHS[1];
-// Phase 24 — stickies are 1:1; the default tap size is a square.
-const STICKY_DEFAULT_W = 200;
-const STICKY_DEFAULT_H = 200;
-const STICKY_MIN_SIZE = 40;
-// Phase 24 — a bare tap with the Shape tool drops a default-sized shape at the
-// tap point (FigJam parity: click commits, drag sizes). Square aspect.
-const SHAPE_DEFAULT_SIZE = 120;
-
-// Phase 23 — image + link media strokes.
-/** Below this side an image stroke is discarded as an accidental micro-drop. */
-const IMAGE_MIN_SIZE = 16;
-/** Longest side a freshly dropped/pasted image is scaled down to (world px). */
-export const IMAGE_MAX_DROP_SIDE = 480;
-const LINK_DEFAULT_W = 260;
-const LINK_DEFAULT_H = 76;
-const LINK_CARD_FILL = '#ffffff';
-const LINK_CARD_STROKE = '#d4d4d8';
-const LINK_DOMAIN_FILL = '#71717a';
-const LINK_TITLE_FILL = '#18181b';
-const LINK_GLYPH_STROKE = '#52525b';
-// Lucide "link" icon (24×24 viewBox) — two interlocked loops. ONE source for the
-// serialized nested-<svg> glyph AND the StrokeNode render so re-serialize stays
-// byte-stable. The parser ignores the glyph entirely (it reads data-* + the
-// <rect> geometry), so render/serialize only need to agree visually.
-const LINK_GLYPH_D1 = 'M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71';
-const LINK_GLYPH_D2 = 'M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71';
-
-/** Card text positions, derived purely from the bbox (idempotent round-trip). */
-function linkCardLayout(x: number, y: number, w: number, h: number) {
-  const textX = x + 48;
-  return {
-    glyph: { x: x + 16, y: y + h / 2 - 10, size: 20 },
-    textX,
-    domain: { y: y + h / 2 - 14, fontSize: 11 },
-    title: { y: y + h / 2, fontSize: 13 },
-    textMaxChars: Math.max(8, Math.floor((w - 60) / 7)),
-  };
-}
-
-/** Clamp a link title to the card's character budget (pure → byte-stable). */
-function clampLinkTitle(title: string, maxChars: number): string {
-  return title.length > maxChars ? `${title.slice(0, Math.max(1, maxChars - 1))}…` : title;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Pure helpers — exported for unit tests.
-
-export function rid(): string {
-  return `s_${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function esc(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-}
-
-/**
- * Phase 23 — attribute-safe escape: `esc()` plus `>`. The legacy text/sticky
- * paths only put user text in element CONTENT (where a bare `>` is harmless),
- * so `esc()` never escaped it; but the media strokes carry user text (pasted
- * link title/url, image alt) inside ATTRIBUTES (data-title / data-url / data-alt
- * / href). A bare `>` there would prematurely close the tag and confuse the
- * `[^>]*>` element scan in `sanitizeAnnotationSvg`. Use this for every media
- * attribute value; element CONTENT keeps plain `esc()`.
- */
-function escAttr(s: string): string {
-  return esc(s).replace(/>/g, '&gt;');
-}
-
-export function penPathD(points: readonly WorldPoint[]): string {
-  if (points.length === 0) return '';
-  const [first, ...rest] = points as readonly WorldPoint[];
-  if (!first) return '';
-  let d = `M${first[0]} ${first[1]}`;
-  for (const p of rest) d += ` L${p[0]} ${p[1]}`;
-  return d;
-}
-
-// ── Multi-line text (item 4a) ────────────────────────────────────────────────
-// SVG <text> ignores `\n`, so multi-line annotation text must render as one
-// <tspan> per line. The serialized + live forms share this geometry; single-
-// line text keeps the legacy single-run form (no tspan) so the canary holds.
-
-/** Line-height multiplier for multi-line annotation text. */
-const TEXT_LINE_HEIGHT = 1.25;
-
-/** Split a text body into its display lines. */
-export function splitTextLines(text: string): string[] {
-  return text.split('\n');
-}
-
-/** Annotation polish (item 4c) — list style for text + sticky bodies. */
-export type ListType = 'bullet' | 'number';
-
-/**
- * Render-time list marker prefix for one line. Markers are PRESENTATION ONLY —
- * never stored in `text` (DDR) — so the stored string stays clean and
- * contentEditable editing is sane. Bullet → `• `; number → `${i + 1}. `.
- */
-function listPrefixedLine(line: string, index: number, list?: ListType): string {
-  if (!list) return line;
-  return list === 'bullet' ? `• ${line}` : `${index + 1}. ${line}`;
-}
-
-/** Inverse of {@link listPrefixedLine} — strip a render-time marker on parse. */
-function stripListPrefix(line: string, index: number, list?: ListType): string {
-  if (!list) return line;
-  const marker = list === 'bullet' ? '• ' : `${index + 1}. `;
-  return line.startsWith(marker) ? line.slice(marker.length) : line;
-}
-
-/** Prefix every line of a body with its list marker (for the editor display). */
-export function listPrefixedBody(text: string, list?: ListType): string {
-  if (!list) return text;
-  return splitTextLines(text)
-    .map((line, i) => listPrefixedLine(line, i, list))
-    .join('\n');
-}
-
-/**
- * Strip list markers off editor `innerText` on commit (item 4c). Generic — a
- * `•` bullet OR any leading `N. ` number is removed once per line, regardless of
- * the index the user actually typed, so re-numbering while editing round-trips
- * cleanly (the stored text stays marker-free; the read view re-derives markers).
- */
-export function stripEditorMarkers(text: string, list?: ListType): string {
-  if (!list) return text;
-  const re = list === 'bullet' ? /^• / : /^\d+\.\s/;
-  return splitTextLines(text)
-    .map((line) => line.replace(re, ''))
-    .join('\n');
-}
-
-/**
- * Combined `text-decoration` SVG attribute for strike + underline (item 4b).
- * Strike-only stays `text-decoration="line-through"` (byte-identical to the
- * legacy Phase-24 form); both → `line-through underline`; neither → empty.
- */
-function textDecoAttr(strike?: boolean, underline?: boolean): string {
-  const vals: string[] = [];
-  if (strike) vals.push('line-through');
-  if (underline) vals.push('underline');
-  return vals.length ? ` text-decoration="${vals.join(' ')}"` : '';
-}
-
-/** CSS `text-decoration` value for the live render (strike + underline). */
-function textDecoCss(strike?: boolean, underline?: boolean): string | undefined {
-  const vals: string[] = [];
-  if (strike) vals.push('line-through');
-  if (underline) vals.push('underline');
-  return vals.length ? vals.join(' ') : undefined;
-}
-
-/**
- * Inline text formatting carried by an editor through commit (item 4b/4d
- * unification) — so Cmd+B / Cmd+I / Cmd+U toggled WHILE editing land on the
- * stroke. `strike` rides along unchanged (no shortcut; toolbar-only).
- */
-export interface EditorFmt {
-  bold?: boolean;
-  italic?: boolean;
-  underline?: boolean;
-  strike?: boolean;
-}
-/** Normalize an EditorFmt → only-true keys kept; false becomes undefined so the
- *  serialize-only-when-set invariant + byte-identical canary hold. */
-function normFmt(fmt?: EditorFmt): EditorFmt {
-  return {
-    bold: fmt?.bold || undefined,
-    italic: fmt?.italic || undefined,
-    underline: fmt?.underline || undefined,
-    strike: fmt?.strike || undefined,
-  };
-}
-/** True when a stroke's existing formatting already matches `fmt` (so a pure
- *  identity edit can short-circuit without a redundant undo record). */
-function fmtEqual(s: EditorFmt, fmt?: EditorFmt): boolean {
-  if (!fmt) return true;
-  return (
-    !!s.bold === !!fmt.bold &&
-    !!s.italic === !!fmt.italic &&
-    !!s.underline === !!fmt.underline &&
-    !!s.strike === !!fmt.strike
-  );
-}
-
 /**
  * Shared inline-formatting state for the three text editors (sticky / anchored /
  * standalone) — the unification surface (item 4d). Cmd/Ctrl + B / I / U toggle
@@ -630,14 +242,53 @@ function useEditorFormat(initial: EditorFmt): {
   const [bold, setBold] = useState(!!initial.bold);
   const [italic, setItalic] = useState(!!initial.italic);
   const [underline, setUnderline] = useState(!!initial.underline);
-  const strike = !!initial.strike;
-  const fmtRef = useRef<EditorFmt>({ bold, italic, underline, strike });
-  fmtRef.current = { bold, italic, underline, strike };
+  const [strike, setStrike] = useState(!!initial.strike);
+  // FigJam v3 — edit-mode toolbar extensions: size + alignment preview live in
+  // the editor and commit with the text (normFmt carries them through).
+  const [fontSize, setFontSize] = useState<number | undefined>(initial.fontSize);
+  const [align, setAlign] = useState<TextAlign | undefined>(initial.align);
+  const fmtRef = useRef<EditorFmt>({ bold, italic, underline, strike, fontSize, align });
+  fmtRef.current = { bold, italic, underline, strike, fontSize, align };
   const style: CSSProperties = {
     fontWeight: bold ? 700 : undefined,
     fontStyle: italic ? 'italic' : undefined,
     textDecoration: textDecoCss(strike, underline),
+    ...(fontSize != null && fontSize !== initial.fontSize ? { fontSize: `${fontSize}px` } : {}),
+    ...(align && align !== initial.align ? { textAlign: align } : {}),
   };
+  // FigJam v3 — the edit-mode context toolbar drives the editor through this
+  // event (mutating the STROKE mid-edit would re-render the contentEditable
+  // and clobber typed text). The editor echoes its state back so the toolbar's
+  // pressed-states track live.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onFmt = (e: Event) => {
+      const d = (e as CustomEvent<{ key?: string; value?: unknown }>).detail;
+      if (!d?.key) return;
+      if (d.key === 'bold') setBold((v) => !v);
+      else if (d.key === 'italic') setItalic((v) => !v);
+      else if (d.key === 'underline') setUnderline((v) => !v);
+      else if (d.key === 'strike') setStrike((v) => !v);
+      else if (d.key === 'fontSize' && typeof d.value === 'number') setFontSize(d.value);
+      else if (d.key === 'align' && typeof d.value === 'string') setAlign(d.value as TextAlign);
+    };
+    document.addEventListener('maude:editor-format', onFmt);
+    return () => document.removeEventListener('maude:editor-format', onFmt);
+  }, []);
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const broadcast = () => {
+      document.dispatchEvent(
+        new CustomEvent('maude:editor-format-state', {
+          detail: { bold, italic, underline, strike, fontSize, align },
+        })
+      );
+    };
+    broadcast();
+    // The toolbar may mount AFTER the editor's first broadcast — it asks.
+    document.addEventListener('maude:editor-format-request', broadcast);
+    return () => document.removeEventListener('maude:editor-format-request', broadcast);
+  }, [bold, italic, underline, strike, fontSize, align]);
   const onFormatKey = useCallback((e: ReactKeyboardEvent): boolean => {
     if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return false;
     const k = e.key.toLowerCase();
@@ -661,975 +312,10 @@ function useEditorFormat(initial: EditorFmt): {
   return { fmtRef, style, onFormatKey };
 }
 
-/**
- * Per-line baseline offset (`dy`). Line 0 sits at the anchor when top-anchored
- * (hanging) or is lifted half the block height when vertically centred
- * (anchored-in-host); every later line advances one line-height.
- */
-function textLineDy(i: number, fontSize: number, lineCount: number, centered: boolean): number {
-  const lh = fontSize * TEXT_LINE_HEIGHT;
-  if (i > 0) return lh;
-  return centered ? (-(lineCount - 1) / 2) * lh : 0;
-}
-
-/**
- * Inner content for a serialized `<text>` stroke: the legacy single esc'd run
- * when there's no newline (byte-identical, canary-safe), else one `<tspan>` per
- * line. `x` is set on each tspan for standalone text (resets the line origin);
- * anchored text omits it (the persisted form carries no absolute position —
- * geometry is resolved against the host at render time). A `list` prefix
- * (bullet / number) is prepended per line at render time only (DDR — never
- * stored in `text`).
- */
-function textInnerSvg(
-  text: string,
-  fontSize: number,
-  centered: boolean,
-  x: number | undefined,
-  list?: ListType
-): string {
-  if (!list && !text.includes('\n')) return esc(listPrefixedLine(text, 0, list));
-  const lines = splitTextLines(text);
-  const xAttr = x != null ? ` x="${x}"` : '';
-  return lines
-    .map(
-      (line, i) =>
-        `<tspan${xAttr} dy="${textLineDy(i, fontSize, lines.length, centered)}">${esc(
-          listPrefixedLine(line, i, list)
-        )}</tspan>`
-    )
-    .join('');
-}
-
 // Phase 24 — moved to canvas-arrowheads.ts (single source for shaft + heads).
 // Re-exported so the existing test import (`from '../annotations-layer.tsx'`)
 // and the byte-identical canary keep working.
 export { arrowHeadPoints } from './canvas-arrowheads.ts';
-
-/**
- * Phase 24 — polygon vertices derived from the bbox. `diamond` = the four
- * edge-midpoints; `triangle` = apex-up; `triangle-down` = apex-down. Every
- * shape's vertices span the FULL bbox, so a parse-back via the points' min/max
- * recovers x/y/w/h exactly (idempotent round-trip).
- */
-export function polygonVertices(
-  shape: PolygonShape,
-  x: number,
-  y: number,
-  w: number,
-  h: number
-): Array<[number, number]> {
-  if (shape === 'diamond') {
-    return [
-      [x + w / 2, y],
-      [x + w, y + h / 2],
-      [x + w / 2, y + h],
-      [x, y + h / 2],
-    ];
-  }
-  if (shape === 'triangle') {
-    return [
-      [x + w / 2, y],
-      [x + w, y + h],
-      [x, y + h],
-    ];
-  }
-  // triangle-down — apex at the bottom.
-  return [
-    [x, y],
-    [x + w, y],
-    [x + w / 2, y + h],
-  ];
-}
-
-/** Vertices as an SVG `points` string. */
-export function polygonPoints(
-  shape: PolygonShape,
-  x: number,
-  y: number,
-  w: number,
-  h: number
-): string {
-  return polygonVertices(shape, x, y, w, h)
-    .map(([px, py]) => `${px},${py}`)
-    .join(' ');
-}
-
-/**
- * Annotation polish (item 1) — a rounded-rect `d` with TL/TR/BL rounded at `r`
- * and the **bottom-right corner SHARP** (the FigJam sticky-note silhouette). The
- * radius is clamped to half the smaller side so it never self-overlaps. Used by
- * `StrokeNode`'s LIVE sticky render only; the persisted form (`strokeToSvgEl`)
- * stays a plain `<rect>` (DDR — zero canary / sanitizer / parse impact).
- */
-export function stickyCornerPath(x: number, y: number, w: number, h: number, r: number): string {
-  const rr = Math.max(0, Math.min(r, w / 2, h / 2));
-  return [
-    `M${x + rr} ${y}`,
-    `L${x + w - rr} ${y}`,
-    `Q${x + w} ${y} ${x + w} ${y + rr}`,
-    `L${x + w} ${y + h}`, // sharp bottom-right
-    `L${x + rr} ${y + h}`,
-    `Q${x} ${y + h} ${x} ${y + h - rr}`,
-    `L${x} ${y + rr}`,
-    `Q${x} ${y} ${x + rr} ${y}`,
-    'Z',
-  ].join(' ');
-}
-
-/** Even-odd ray-cast point-in-polygon test. */
-function pointInPolygon(px: number, py: number, pts: ReadonlyArray<[number, number]>): boolean {
-  let inside = false;
-  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-    const a = pts[i];
-    const b = pts[j];
-    if (!a || !b) continue;
-    const [xi, yi] = a;
-    const [xj, yj] = b;
-    if (yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) {
-      inside = !inside;
-    }
-  }
-  return inside;
-}
-
-/** Parse a polygon `points` string back into its bounding box. */
-function polygonBBox(points: string): { x: number; y: number; w: number; h: number } | null {
-  let xMin = Number.POSITIVE_INFINITY;
-  let yMin = Number.POSITIVE_INFINITY;
-  let xMax = Number.NEGATIVE_INFINITY;
-  let yMax = Number.NEGATIVE_INFINITY;
-  for (const pair of points.trim().split(/\s+/)) {
-    const [px, py] = pair.split(',').map((n) => Number.parseFloat(n));
-    if (px == null || py == null || Number.isNaN(px) || Number.isNaN(py)) continue;
-    if (px < xMin) xMin = px;
-    if (px > xMax) xMax = px;
-    if (py < yMin) yMin = py;
-    if (py > yMax) yMax = py;
-  }
-  if (!Number.isFinite(xMin)) return null;
-  return { x: xMin, y: yMin, w: xMax - xMin, h: yMax - yMin };
-}
-
-function strokeToSvgEl(s: Stroke): string {
-  if (s.tool === 'text') {
-    // Phase 21 — anchored text keeps the byte-identical Phase 5.1 form;
-    // standalone text (no anchorId) writes its own world x/y and omits
-    // data-anchor-id (so the parser routes it back to the standalone branch).
-    // bold/italic/strike/underline/align/list serialize ONLY for non-default
-    // values, so a legacy text node stays byte-identical (every added fragment
-    // is empty). Multi-line text emits one <tspan> per line (item 4a); a
-    // single-line unstyled run stays the legacy single esc'd text.
-    const weight = s.bold ? ' font-weight="700"' : '';
-    const italic = s.italic ? ' font-style="italic"' : '';
-    const deco = textDecoAttr(s.strike, s.underline);
-    const listAttr = s.listType ? ` data-list="${s.listType}"` : '';
-    if (s.anchorId != null && s.anchorId !== '') {
-      const align = s.align ?? 'center'; // anchored default = centre (legacy)
-      const anchor = align === 'left' ? 'start' : align === 'right' ? 'end' : 'middle';
-      const alignAttr = align !== 'center' ? ` data-align="${align}"` : '';
-      return `<text data-id="${esc(s.id)}" data-tool="text" data-anchor-id="${esc(
-        s.anchorId
-      )}" data-font-size="${s.fontSize}" fill="${esc(
-        s.color
-      )}"${weight}${italic}${deco}${listAttr} text-anchor="${anchor}" dominant-baseline="middle"${alignAttr}>${textInnerSvg(
-        s.text,
-        s.fontSize,
-        true,
-        undefined,
-        s.listType
-      )}</text>`;
-    }
-    const tx = s.x ?? 0;
-    const ty = s.y ?? 0;
-    const align = s.align ?? 'left'; // standalone default = left
-    const anchor = align === 'left' ? 'start' : align === 'right' ? 'end' : 'middle';
-    const alignAttr = align !== 'left' ? ` data-align="${align}"` : '';
-    return `<text data-id="${esc(s.id)}" data-tool="text" x="${tx}" y="${ty}" data-font-size="${
-      s.fontSize
-    }" fill="${esc(
-      s.color
-    )}"${weight}${italic}${deco}${listAttr} text-anchor="${anchor}" dominant-baseline="hanging"${alignAttr}>${textInnerSvg(
-      s.text,
-      s.fontSize,
-      false,
-      tx,
-      s.listType
-    )}</text>`;
-  }
-  if (s.tool === 'sticky') {
-    // Phase 21 — sticky body lives in an allowlisted <text> child so it
-    // survives sanitizeAnnotationSvg (which strips <foreignObject>, DDR-060
-    // F1). The live canvas re-renders this stroke with a foreignObject so the
-    // text word-wraps; the persisted <text> is the inert, sanitizer-safe form.
-    const r = s.cornerRadius ?? STICKY_CORNER_RADIUS;
-    const w = Math.max(0, s.w);
-    const h = Math.max(0, s.h);
-    // bold/italic/strike/underline/align/list on the <g> data-attrs, emitted
-    // ONLY for non-default values (sticky default align = left) so Phase-21
-    // stickies serialize byte-identically. The body <text> stays raw text —
-    // list markers are render-only (item 4c), never persisted.
-    const align = s.align ?? 'left';
-    const styleAttrs =
-      (s.bold ? ' data-bold="1"' : '') +
-      (s.italic ? ' data-italic="1"' : '') +
-      (s.strike ? ' data-strike="1"' : '') +
-      (s.underline ? ' data-underline="1"' : '') +
-      (align !== 'left' ? ` data-align="${align}"` : '') +
-      (s.listType ? ` data-list="${s.listType}"` : '');
-    return `<g data-id="${esc(s.id)}" data-tool="sticky" data-r="${r}" data-fs="${
-      s.fontSize
-    }" fill="${esc(s.color)}"${styleAttrs}><rect x="${s.x}" y="${
-      s.y
-    }" width="${w}" height="${h}" rx="${r}" ry="${r}"/><text data-sticky-body="1" x="${
-      s.x + 12
-    }" y="${s.y + 12}" font-size="${
-      s.fontSize
-    }" fill="#1a1a1a" dominant-baseline="hanging">${esc(s.text)}</text></g>`;
-  }
-  if (s.tool === 'image') {
-    // Phase 23 — `href` is ALWAYS a relative assets/<sha8>.<ext> path (asserted
-    // on create + re-validated by the sanitizer's <image> href allowlist). Alt
-    // text persists in `data-alt` + is emitted as `aria-label` for the exported
-    // SVG (the live annotation root is aria-hidden — see ImageStroke.alt).
-    const nx = Math.min(s.x, s.x + s.w);
-    const ny = Math.min(s.y, s.y + s.h);
-    const nw = Math.abs(s.w);
-    const nh = Math.abs(s.h);
-    const altAttr = s.alt ? ` data-alt="${escAttr(s.alt)}"` : '';
-    return `<image data-id="${esc(s.id)}" data-tool="image" x="${nx}" y="${ny}" width="${nw}" height="${nh}" href="${escAttr(
-      s.href
-    )}" preserveAspectRatio="xMidYMid meet"${altAttr}/>`;
-  }
-  if (s.tool === 'link') {
-    // Phase 23 — client-only preview chip. data-url/title/domain are the
-    // round-trip source of truth; the inner rect/glyph/text are the inert,
-    // sanitizer-safe visual (no <a href> persisted — click-to-open reads
-    // data-url client-side and validates http(s) before window.open).
-    const nx = Math.min(s.x, s.x + s.w);
-    const ny = Math.min(s.y, s.y + s.h);
-    const nw = Math.abs(s.w);
-    const nh = Math.abs(s.h);
-    const lay = linkCardLayout(nx, ny, nw, nh);
-    const shownTitle = clampLinkTitle(s.title, lay.textMaxChars);
-    return (
-      `<g data-id="${esc(s.id)}" data-tool="link" data-url="${escAttr(s.url)}" data-title="${escAttr(
-        s.title
-      )}" data-domain="${escAttr(s.domain)}">` +
-      `<rect x="${nx}" y="${ny}" width="${nw}" height="${nh}" rx="8" ry="8" fill="${LINK_CARD_FILL}" stroke="${LINK_CARD_STROKE}" stroke-width="1"/>` +
-      `<svg x="${lay.glyph.x}" y="${lay.glyph.y}" width="${lay.glyph.size}" height="${lay.glyph.size}" viewBox="0 0 24 24" fill="none" stroke="${LINK_GLYPH_STROKE}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${LINK_GLYPH_D1}"/><path d="${LINK_GLYPH_D2}"/></svg>` +
-      `<text x="${lay.textX}" y="${lay.domain.y}" font-size="${lay.domain.fontSize}" fill="${LINK_DOMAIN_FILL}" dominant-baseline="hanging">${esc(
-        s.domain
-      )}</text>` +
-      `<text x="${lay.textX}" y="${lay.title.y}" font-size="${lay.title.fontSize}" fill="${LINK_TITLE_FILL}" font-weight="600" dominant-baseline="hanging">${esc(
-        shownTitle
-      )}</text>` +
-      `</g>`
-    );
-  }
-  const common = `data-id="${esc(s.id)}" data-tool="${s.tool}" stroke="${esc(s.color)}" stroke-width="${s.width}" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"`;
-  if (s.tool === 'pen') {
-    // Highlighter (item 8) — data-highlighter ONLY when true so a normal pen
-    // stays byte-identical (canary).
-    const hl = s.highlighter ? ' data-highlighter="1"' : '';
-    return `<path ${common} fill="none" d="${penPathD(s.points)}"${hl} pointer-events="stroke"/>`;
-  }
-  if (s.tool === 'rect') {
-    const fill = s.fill ? esc(s.fill) : 'none';
-    // Phase 21 — corner radius: append rx/ry/data-r ONLY when > 0 so legacy
-    // sharp-corner rects serialize byte-identically (Task 10 canary).
-    const r = s.cornerRadius ?? 0;
-    const round = r > 0 ? ` rx="${r}" ry="${r}" data-r="${r}"` : '';
-    // Dashed outline (item 7) — emitted ONLY when true (mirror polygon/arrow)
-    // so a legacy solid rect stays byte-identical.
-    const dash = s.dashed ? ' stroke-dasharray="6 4"' : '';
-    const dashAttr = s.dashed ? ' data-dash="1"' : '';
-    return `<rect ${common} fill="${fill}" x="${s.x}" y="${s.y}" width="${Math.max(
-      0,
-      s.w
-    )}" height="${Math.max(0, s.h)}"${round}${dash}${dashAttr}/>`;
-  }
-  if (s.tool === 'ellipse') {
-    const fill = s.fill ? esc(s.fill) : 'none';
-    const dash = s.dashed ? ' stroke-dasharray="6 4"' : '';
-    const dashAttr = s.dashed ? ' data-dash="1"' : '';
-    return `<ellipse ${common} fill="${fill}" cx="${s.cx}" cy="${s.cy}" rx="${Math.max(
-      0,
-      s.rx
-    )}" ry="${Math.max(0, s.ry)}"${dash}${dashAttr}/>`;
-  }
-  if (s.tool === 'polygon') {
-    // Phase 24 — bbox-derived points + data-shape. Normalize the bbox so a
-    // negative-extent (mid-flip) stroke serializes idempotently.
-    const nx = Math.min(s.x, s.x + s.w);
-    const ny = Math.min(s.y, s.y + s.h);
-    const nw = Math.abs(s.w);
-    const nh = Math.abs(s.h);
-    const fill = s.fill ? esc(s.fill) : 'none';
-    const dash = s.dashed ? ' stroke-dasharray="6 4"' : '';
-    const dashAttr = s.dashed ? ' data-dash="1"' : '';
-    return `<polygon ${common} fill="${fill}" data-shape="${s.shape}" points="${polygonPoints(
-      s.shape,
-      nx,
-      ny,
-      nw,
-      nh
-    )}"${dash}${dashAttr}/>`;
-  }
-  // arrow — Phase 24 reduces to ordered SVG primitives (canvas-arrowheads), the
-  // same primitives StrokeNode renders. Defaults (startHead 'none', endHead
-  // 'triangle', lineType 'straight', solid) reduce to exactly
-  // [<line>, <polyline fill=color>] → the byte-identical Phase 5.1 form. data-*
-  // attrs appear only for non-default values.
-  const startHead = s.startHead ?? 'none';
-  const endHead = s.endHead ?? 'triangle';
-  const lineType = s.lineType ?? 'straight';
-  const dashed = s.dashed ?? false;
-  // esc() every interpolated value (defence-in-depth, Phase 24 security review
-  // DDR-067) — heads are clamped on parse, but a value reaching serialize must
-  // never be able to break out of the attribute.
-  const dataAttrs =
-    (startHead !== 'none' ? ` data-start-head="${esc(startHead)}"` : '') +
-    (endHead !== 'triangle' ? ` data-end-head="${esc(endHead)}"` : '') +
-    (lineType !== 'straight' ? ` data-line-type="${esc(lineType)}"` : '') +
-    (dashed ? ' data-dash="1"' : '');
-  const body = arrowPrimitives(s).map(svgPrimitiveToString).join('');
-  return `<g ${common} fill="none"${dataAttrs}>${body}</g>`;
-}
-
-/** Format one arrow SVG primitive for the persisted string (byte-identical to
- *  the Phase-5.1 `<line>`/`<polyline>` forms for the legacy default arrow). */
-function svgPrimitiveToString(p: SvgPrimitive): string {
-  const dash = 'dash' in p && p.dash ? ' stroke-dasharray="6 4"' : '';
-  switch (p.el) {
-    case 'line':
-      return `<line x1="${p.x1}" y1="${p.y1}" x2="${p.x2}" y2="${p.y2}"${dash}/>`;
-    case 'path':
-      return `<path d="${p.d}"${dash}/>`;
-    case 'polyline':
-      return `<polyline points="${p.points}" fill="${esc(p.fill)}"/>`;
-    case 'polygon':
-      return `<polygon points="${p.points}" fill="${esc(p.fill)}"/>`;
-    case 'circle':
-      return `<circle cx="${p.cx}" cy="${p.cy}" r="${p.r}" fill="${esc(p.fill)}"/>`;
-  }
-}
-
-export function strokesToSvg(strokes: readonly Stroke[]): string {
-  const header = '<svg xmlns="http://www.w3.org/2000/svg" data-mdcc-annotations="1">';
-  if (strokes.length === 0) return `${header}</svg>`;
-  const body = strokes.map(strokeToSvgEl).join('');
-  return `${header}${body}</svg>`;
-}
-
-function parsePathD(d: string): WorldPoint[] {
-  const out: WorldPoint[] = [];
-  const re = /[ML]\s*(-?\d+(?:\.\d+)?)\s*[\s,]\s*(-?\d+(?:\.\d+)?)/g;
-  let m: RegExpExecArray | null;
-  // biome-ignore lint/suspicious/noAssignInExpressions: idiomatic regex loop
-  while ((m = re.exec(d)) !== null) {
-    const [, x = '0', y = '0'] = m;
-    out.push([Number.parseFloat(x), Number.parseFloat(y)]);
-  }
-  return out;
-}
-
-function parseFill(raw: string | null): string | null {
-  if (!raw) return null;
-  const v = raw.trim().toLowerCase();
-  if (!v || v === 'none' || v === 'transparent') return null;
-  return raw;
-}
-
-/**
- * Phase 24 — recover an arrow's two endpoints from its shaft. A straight arrow
- * persists a `<line>`; a curved/elbow arrow persists a `<path>` whose first and
- * last coordinate pairs are the endpoints (the bow control / elbow corner sit
- * between them, so first-pair = start, last-pair = end recovers the ends
- * exactly → idempotent re-serialize).
- */
-function arrowEndpoints(el: Element): { x1: number; y1: number; x2: number; y2: number } | null {
-  const line = el.querySelector('line');
-  if (line) {
-    return {
-      x1: Number.parseFloat(line.getAttribute('x1') || '0'),
-      y1: Number.parseFloat(line.getAttribute('y1') || '0'),
-      x2: Number.parseFloat(line.getAttribute('x2') || '0'),
-      y2: Number.parseFloat(line.getAttribute('y2') || '0'),
-    };
-  }
-  const path = el.querySelector('path');
-  if (path) {
-    const nums = (path.getAttribute('d') || '').match(/-?\d+(?:\.\d+)?/g);
-    if (nums && nums.length >= 4) {
-      return {
-        x1: Number.parseFloat(nums[0] as string),
-        y1: Number.parseFloat(nums[1] as string),
-        x2: Number.parseFloat(nums[nums.length - 2] as string),
-        y2: Number.parseFloat(nums[nums.length - 1] as string),
-      };
-    }
-  }
-  return null;
-}
-
-export function svgToStrokes(svgText: string): Stroke[] {
-  const text = (svgText ?? '').trim();
-  if (!text) return [];
-  if (typeof DOMParser === 'undefined') return [];
-  try {
-    const doc = new DOMParser().parseFromString(text, 'image/svg+xml');
-    if (doc.querySelector('parsererror')) return [];
-    const out: Stroke[] = [];
-    for (const el of Array.from(doc.querySelectorAll('[data-tool]'))) {
-      const tool = el.getAttribute('data-tool');
-      const id = el.getAttribute('data-id') || rid();
-      const color = el.getAttribute('stroke') || el.getAttribute('fill') || DEFAULT_COLOR;
-      const width = Number.parseFloat(el.getAttribute('stroke-width') || '2') || 2;
-      if (tool === 'pen') {
-        const d = el.getAttribute('d') || '';
-        const points = parsePathD(d);
-        if (points.length) {
-          const pen: PenStroke = { id, tool: 'pen', color, width, points };
-          // Highlighter flag; absent ⇒ undefined so a normal pen round-trips.
-          if (el.getAttribute('data-highlighter') === '1') pen.highlighter = true;
-          out.push(pen);
-        }
-        continue;
-      }
-      if (tool === 'sticky') {
-        // Phase 21 — sticky reads geometry off its <rect> child, paper tint
-        // off the group fill, body text off the inner <text>.
-        const rectEl = el.querySelector('rect');
-        const x = Number.parseFloat(rectEl?.getAttribute('x') || '0');
-        const y = Number.parseFloat(rectEl?.getAttribute('y') || '0');
-        const w = Number.parseFloat(rectEl?.getAttribute('width') || '0');
-        const h = Number.parseFloat(rectEl?.getAttribute('height') || '0');
-        const cornerRadius =
-          Number.parseFloat(el.getAttribute('data-r') || String(STICKY_CORNER_RADIUS)) || 0;
-        const fontSize =
-          Number.parseFloat(el.getAttribute('data-fs') || String(DEFAULT_FONT_SIZE)) ||
-          DEFAULT_FONT_SIZE;
-        const stickyColor = el.getAttribute('fill') || DEFAULT_STICKY_COLOR;
-        const body = el.querySelector('text');
-        const sticky: StickyStroke = {
-          id,
-          tool: 'sticky',
-          color: stickyColor,
-          x,
-          y,
-          w,
-          h,
-          text: body?.textContent ?? '',
-          fontSize,
-          cornerRadius,
-        };
-        // Style attrs; absent ⇒ defaults (normal / left), left unset.
-        if (el.getAttribute('data-bold') === '1') sticky.bold = true;
-        if (el.getAttribute('data-italic') === '1') sticky.italic = true;
-        if (el.getAttribute('data-strike') === '1') sticky.strike = true;
-        if (el.getAttribute('data-underline') === '1') sticky.underline = true;
-        const sticAlign = el.getAttribute('data-align');
-        if (sticAlign === 'left' || sticAlign === 'center' || sticAlign === 'right') {
-          sticky.align = sticAlign;
-        }
-        const sticList = el.getAttribute('data-list');
-        if (sticList === 'bullet' || sticList === 'number') sticky.listType = sticList;
-        out.push(sticky);
-        continue;
-      }
-      if (tool === 'rect') {
-        const x = Number.parseFloat(el.getAttribute('x') || '0');
-        const y = Number.parseFloat(el.getAttribute('y') || '0');
-        const w = Number.parseFloat(el.getAttribute('width') || '0');
-        const h = Number.parseFloat(el.getAttribute('height') || '0');
-        const fill = parseFill(el.getAttribute('fill'));
-        // Phase 21 — corner radius; absent ⇒ 0 (sharp, back-compat).
-        const cornerRadius = Number.parseFloat(el.getAttribute('data-r') || '0') || 0;
-        const rect: RectStroke = { id, tool: 'rect', color, width, x, y, w, h, fill, cornerRadius };
-        // Dashed (item 7); absent ⇒ undefined so a solid rect round-trips.
-        const rectDash = el.getAttribute('data-dash');
-        if (rectDash === '1' || rectDash === 'true') rect.dashed = true;
-        out.push(rect);
-        continue;
-      }
-      if (tool === 'ellipse') {
-        const cx = Number.parseFloat(el.getAttribute('cx') || '0');
-        const cy = Number.parseFloat(el.getAttribute('cy') || '0');
-        const rx = Number.parseFloat(el.getAttribute('rx') || '0');
-        const ry = Number.parseFloat(el.getAttribute('ry') || '0');
-        const fill = parseFill(el.getAttribute('fill'));
-        const ell: EllipseStroke = { id, tool: 'ellipse', color, width, cx, cy, rx, ry, fill };
-        const ellDash = el.getAttribute('data-dash');
-        if (ellDash === '1' || ellDash === 'true') ell.dashed = true;
-        out.push(ell);
-        continue;
-      }
-      if (tool === 'polygon') {
-        // Phase 24 — recover the bbox from the points; shape from data-shape.
-        const shapeRaw = el.getAttribute('data-shape');
-        const shape: PolygonShape =
-          shapeRaw === 'triangle' || shapeRaw === 'triangle-down' ? shapeRaw : 'diamond';
-        const bb = polygonBBox(el.getAttribute('points') || '');
-        if (bb) {
-          const fill = parseFill(el.getAttribute('fill'));
-          const poly: PolygonStroke = {
-            id,
-            tool: 'polygon',
-            shape,
-            color,
-            width,
-            x: bb.x,
-            y: bb.y,
-            w: bb.w,
-            h: bb.h,
-            fill,
-          };
-          const dashRaw = el.getAttribute('data-dash');
-          if (dashRaw === '1' || dashRaw === 'true') poly.dashed = true;
-          out.push(poly);
-        }
-        continue;
-      }
-      if (tool === 'arrow') {
-        // Phase 24 — shaft is a <line> (straight) OR a <path> (curved/elbow).
-        // Recover the two endpoints from whichever is present.
-        const ends = arrowEndpoints(el);
-        if (ends) {
-          const arrow: ArrowStroke = {
-            id,
-            tool: 'arrow',
-            color,
-            width,
-            x1: ends.x1,
-            y1: ends.y1,
-            x2: ends.x2,
-            y2: ends.y2,
-          };
-          // Heads + dash + line-type. The serializer writes a data-* attribute
-          // only for a NON-default value, so a legacy arrow carries none of
-          // these and stays { startHead/endHead/dashed/lineType: undefined } →
-          // defaults on re-serialize (byte-identical, canary). Phase 24 widened
-          // the head enum, so read the literal value rather than match a single
-          // string.
-          // Clamp to the known head vocabulary — an out-of-vocab / poisoned
-          // value (hub-pushed SVG) is rejected, never cast through unchecked
-          // (Phase 24 security review, DDR-067).
-          const sh = el.getAttribute('data-start-head');
-          if (sh && ARROW_HEADS.has(sh)) arrow.startHead = sh as ArrowHead;
-          const eh = el.getAttribute('data-end-head');
-          if (eh && ARROW_HEADS.has(eh)) arrow.endHead = eh as ArrowHead;
-          const lt = el.getAttribute('data-line-type');
-          if (lt === 'curved' || lt === 'elbow' || lt === 'straight') arrow.lineType = lt;
-          const dashRaw = el.getAttribute('data-dash');
-          if (dashRaw === '1' || dashRaw === 'true') arrow.dashed = true;
-          out.push(arrow);
-        }
-        continue;
-      }
-      if (tool === 'image') {
-        // Phase 23 — geometry off the element; href is whatever survived the
-        // sanitizer (a valid assets/<sha8>.<ext> path, or '' if it was stripped
-        // — an external/data:/`..` href is dropped server-side, so a poisoned
-        // SVG round-trips to an inert empty-href stroke that fetches nothing).
-        const x = Number.parseFloat(el.getAttribute('x') || '0');
-        const y = Number.parseFloat(el.getAttribute('y') || '0');
-        const w = Number.parseFloat(el.getAttribute('width') || '0');
-        const h = Number.parseFloat(el.getAttribute('height') || '0');
-        const href = el.getAttribute('href') || el.getAttribute('xlink:href') || '';
-        const img: ImageStroke = { id, tool: 'image', x, y, w, h, href };
-        const alt = el.getAttribute('data-alt');
-        if (alt) img.alt = alt;
-        out.push(img);
-        continue;
-      }
-      if (tool === 'link') {
-        // Phase 23 — data-* are the source of truth; geometry off the <rect>
-        // child (mirrors sticky). Defensive: missing title ⇒ domain.
-        const rectEl = el.querySelector('rect');
-        const x = Number.parseFloat(rectEl?.getAttribute('x') || '0');
-        const y = Number.parseFloat(rectEl?.getAttribute('y') || '0');
-        const w = Number.parseFloat(rectEl?.getAttribute('width') || String(LINK_DEFAULT_W));
-        const h = Number.parseFloat(rectEl?.getAttribute('height') || String(LINK_DEFAULT_H));
-        const url = el.getAttribute('data-url') || '';
-        const domain = el.getAttribute('data-domain') || '';
-        const title = el.getAttribute('data-title') || domain || url;
-        out.push({ id, tool: 'link', x, y, w, h, url, title, domain });
-        continue;
-      }
-      if (tool === 'text') {
-        const rawAnchor = el.getAttribute('data-anchor-id');
-        const fontSize =
-          Number.parseFloat(el.getAttribute('data-font-size') || String(DEFAULT_FONT_SIZE)) ||
-          DEFAULT_FONT_SIZE;
-        const inkColor = el.getAttribute('fill') || color;
-        // List style (item 4c) — read FIRST so per-line markers can be stripped
-        // off the parsed text (markers are render-only; never stored).
-        const listRaw = el.getAttribute('data-list');
-        const listType: ListType | undefined =
-          listRaw === 'bullet' || listRaw === 'number' ? listRaw : undefined;
-        // Multi-line text (item 4a) — one <tspan> per line. Recover `\n` by
-        // joining tspan text content (markers stripped); a legacy single-run
-        // <text> has no tspans → read its trimmed textContent.
-        const tspans = el.querySelectorAll('tspan');
-        const body =
-          tspans.length > 0
-            ? Array.from(tspans)
-                .map((t, i) => stripListPrefix(t.textContent ?? '', i, listType))
-                .join('\n')
-            : stripListPrefix((el.textContent || '').trim(), 0, listType);
-        // bold / italic / strike / underline / align. `data-align` is the
-        // round-trip source of truth (text-anchor is derived from it). Absent ⇒
-        // default (normal / per-kind align), left unset so legacy nodes
-        // round-trip.
-        const isBold = el.getAttribute('font-weight') === '700';
-        const isItalic = el.getAttribute('font-style') === 'italic';
-        const decoAttr = el.getAttribute('text-decoration') || '';
-        const isStrike = decoAttr.includes('line-through');
-        const isUnderline = decoAttr.includes('underline');
-        const da = el.getAttribute('data-align');
-        const align: TextAlign | undefined =
-          da === 'left' || da === 'center' || da === 'right' ? da : undefined;
-        // Phase 21 — standalone text (no data-anchor-id) carries world x/y
-        // instead of a host id.
-        if (!rawAnchor) {
-          const t: TextStroke = {
-            id,
-            tool: 'text',
-            color: inkColor,
-            fontSize,
-            text: body,
-            x: Number.parseFloat(el.getAttribute('x') || '0'),
-            y: Number.parseFloat(el.getAttribute('y') || '0'),
-          };
-          if (isBold) t.bold = true;
-          if (isItalic) t.italic = true;
-          if (isStrike) t.strike = true;
-          if (isUnderline) t.underline = true;
-          if (listType) t.listType = listType;
-          if (align) t.align = align;
-          out.push(t);
-          continue;
-        }
-        const t: TextStroke = {
-          id,
-          tool: 'text',
-          color: inkColor,
-          fontSize,
-          text: body,
-          anchorId: rawAnchor,
-        };
-        if (isBold) t.bold = true;
-        if (isItalic) t.italic = true;
-        if (isStrike) t.strike = true;
-        if (isUnderline) t.underline = true;
-        if (listType) t.listType = listType;
-        if (align) t.align = align;
-        out.push(t);
-      }
-    }
-    return out;
-  } catch {
-    return [];
-  }
-}
-
-function pointSegmentDist(
-  px: number,
-  py: number,
-  ax: number,
-  ay: number,
-  bx: number,
-  by: number
-): number {
-  const dx = bx - ax;
-  const dy = by - ay;
-  const len2 = dx * dx + dy * dy;
-  if (len2 === 0) return Math.hypot(px - ax, py - ay);
-  let t = ((px - ax) * dx + (py - ay) * dy) / len2;
-  t = Math.max(0, Math.min(1, t));
-  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
-}
-
-export function strokeHitTest(s: Stroke, wx: number, wy: number, tol: number): boolean {
-  if (s.tool === 'text') {
-    // Anchored text isn't independently hit-testable (it inherits its host).
-    // Standalone text (Phase 21) uses its synthetic bbox so the eraser can
-    // reach it.
-    if (s.anchorId != null && s.anchorId !== '') return false;
-    const bb = strokeBBox(s);
-    if (!bb) return false;
-    return (
-      wx >= bb.x - tol && wx <= bb.x + bb.w + tol && wy >= bb.y - tol && wy <= bb.y + bb.h + tol
-    );
-  }
-  const t = Math.max(tol, 'width' in s ? s.width : 2);
-  if (s.tool === 'sticky' || s.tool === 'image' || s.tool === 'link') {
-    // Sticky / image / link are solid cards — filled-rect hit anywhere inside.
-    const xMin = Math.min(s.x, s.x + s.w);
-    const xMax = Math.max(s.x, s.x + s.w);
-    const yMin = Math.min(s.y, s.y + s.h);
-    const yMax = Math.max(s.y, s.y + s.h);
-    return wx >= xMin - t && wx <= xMax + t && wy >= yMin - t && wy <= yMax + t;
-  }
-  if (s.tool === 'pen') {
-    if (s.points.length === 1) {
-      const p = s.points[0] as WorldPoint;
-      return Math.hypot(wx - p[0], wy - p[1]) <= t;
-    }
-    for (let i = 1; i < s.points.length; i++) {
-      const a = s.points[i - 1] as WorldPoint;
-      const b = s.points[i] as WorldPoint;
-      if (pointSegmentDist(wx, wy, a[0], a[1], b[0], b[1]) <= t) return true;
-    }
-    return false;
-  }
-  if (s.tool === 'arrow') {
-    return pointSegmentDist(wx, wy, s.x1, s.y1, s.x2, s.y2) <= t;
-  }
-  if (s.tool === 'ellipse') {
-    // Inside-ellipse hit when filled; on the perimeter otherwise.
-    if (s.rx <= 0 || s.ry <= 0) return false;
-    const nx = (wx - s.cx) / s.rx;
-    const ny = (wy - s.cy) / s.ry;
-    const d = nx * nx + ny * ny;
-    if (s.fill) return d <= 1.0 + t / Math.max(s.rx, s.ry);
-    // Stroke-only: hit if normalized distance is within a band around 1.
-    const band = t / Math.max(s.rx, s.ry);
-    const dist = Math.abs(Math.sqrt(d) - 1);
-    return dist <= band;
-  }
-  if (s.tool === 'polygon') {
-    const nx = Math.min(s.x, s.x + s.w);
-    const ny = Math.min(s.y, s.y + s.h);
-    const pts = polygonVertices(s.shape, nx, ny, Math.abs(s.w), Math.abs(s.h));
-    // Filled → inside-hit; always allow an edge-proximity hit (covers the
-    // stroke-only outline + a tolerance band on a filled shape).
-    if (s.fill && pointInPolygon(wx, wy, pts)) return true;
-    for (let i = 0; i < pts.length; i++) {
-      const a = pts[i] as [number, number];
-      const b = pts[(i + 1) % pts.length] as [number, number];
-      if (pointSegmentDist(wx, wy, a[0], a[1], b[0], b[1]) <= t) return true;
-    }
-    return false;
-  }
-  // rect — inside when filled, edge-only otherwise.
-  const x = s.x;
-  const y = s.y;
-  const x2 = x + s.w;
-  const y2 = y + s.h;
-  const xMin = Math.min(x, x2);
-  const xMax = Math.max(x, x2);
-  const yMin = Math.min(y, y2);
-  const yMax = Math.max(y, y2);
-  if (s.fill) {
-    return wx >= xMin - t && wx <= xMax + t && wy >= yMin - t && wy <= yMax + t;
-  }
-  if (wx < xMin - t || wx > xMax + t) return false;
-  if (wy < yMin - t || wy > yMax + t) return false;
-  const onLeft = Math.abs(wx - x) <= t;
-  const onRight = Math.abs(wx - x2) <= t;
-  const onTop = Math.abs(wy - y) <= t;
-  const onBottom = Math.abs(wy - y2) <= t;
-  return onLeft || onRight || onTop || onBottom;
-}
-
-/** Flip a negative-extent box so x/y is the top-left and w/h are positive. */
-function normalizeBox<T extends { x: number; y: number; w: number; h: number }>(r: T): T {
-  if (r.w >= 0 && r.h >= 0) return r;
-  return {
-    ...r,
-    x: Math.min(r.x, r.x + r.w),
-    y: Math.min(r.y, r.y + r.h),
-    w: Math.abs(r.w),
-    h: Math.abs(r.h),
-  };
-}
-
-/**
- * Phase 24 — draw-time resize modifiers (FigJam parity, mirror of the
- * `use-annotation-resize.tsx` set so create + resize feel identical):
- *   • `shift` — lock to 1:1 (square / circle); the larger drag axis sets the
- *               side, each axis keeps its own sign so the drag direction holds.
- *   • `alt`   — grow from the pointer-down point as CENTER (symmetric).
- * With neither held the box is `{ x: down, w: cursor − down }` — byte-identical
- * to the previous corner-drag math.
- */
-export interface DrawMods {
-  shift: boolean;
-  alt: boolean;
-}
-
-/** Constrain a draw drag (`ax,ay` = pointer-down anchor; `wx,wy` = cursor). */
-export function constrainDrawBox(
-  ax: number,
-  ay: number,
-  wx: number,
-  wy: number,
-  mods: DrawMods
-): { x: number; y: number; w: number; h: number } {
-  let dx = wx - ax;
-  let dy = wy - ay;
-  if (mods.shift) {
-    const side = Math.max(Math.abs(dx), Math.abs(dy));
-    dx = (dx < 0 ? -1 : 1) * side;
-    dy = (dy < 0 ? -1 : 1) * side;
-  }
-  if (mods.alt) {
-    // Anchor is the center → span ±|d| on each axis around it.
-    return { x: ax - dx, y: ay - dy, w: 2 * dx, h: 2 * dy };
-  }
-  return { x: ax, y: ay, w: dx, h: dy };
-}
-
-/**
- * Apply the draw-time modifiers to the in-progress stroke. Shared by the
- * pointer-move handler and the live keydown/keyup re-apply, so holding Shift /
- * Alt updates the draft even without moving the cursor. `anchor` is the
- * pointer-down point; pen / text carry no box so they pass through unchanged.
- */
-export function applyDrawModifiers(
-  cur: Stroke,
-  anchor: { x: number; y: number },
-  wx: number,
-  wy: number,
-  mods: DrawMods
-): Stroke {
-  if (cur.tool === 'rect' || cur.tool === 'polygon') {
-    const b = constrainDrawBox(anchor.x, anchor.y, wx, wy, mods);
-    return { ...cur, x: b.x, y: b.y, w: b.w, h: b.h };
-  }
-  if (cur.tool === 'ellipse') {
-    const b = constrainDrawBox(anchor.x, anchor.y, wx, wy, mods);
-    return {
-      ...cur,
-      cx: b.x + b.w / 2,
-      cy: b.y + b.h / 2,
-      rx: Math.abs(b.w) / 2,
-      ry: Math.abs(b.h) / 2,
-    };
-  }
-  if (cur.tool === 'sticky') {
-    // Stickies are always 1:1 — force the square constraint; Alt still centers.
-    const b = constrainDrawBox(anchor.x, anchor.y, wx, wy, { shift: true, alt: mods.alt });
-    return { ...cur, x: b.x, y: b.y, w: b.w, h: b.h };
-  }
-  if (cur.tool === 'arrow') {
-    let x2 = wx;
-    let y2 = wy;
-    if (mods.shift) {
-      // Snap the shaft to the nearest 45° around the anchor (its midpoint
-      // under Alt), keeping the cursor's distance.
-      const dx = wx - anchor.x;
-      const dy = wy - anchor.y;
-      const dist = Math.hypot(dx, dy);
-      const step = Math.PI / 4;
-      const ang = Math.round(Math.atan2(dy, dx) / step) * step;
-      x2 = anchor.x + Math.cos(ang) * dist;
-      y2 = anchor.y + Math.sin(ang) * dist;
-    }
-    if (mods.alt) {
-      // Anchor is the midpoint → the start end mirrors the dragged end.
-      return { ...cur, x1: 2 * anchor.x - x2, y1: 2 * anchor.y - y2, x2, y2 };
-    }
-    return { ...cur, x1: anchor.x, y1: anchor.y, x2, y2 };
-  }
-  return cur;
-}
-
-function normalizeRect(r: RectStroke): RectStroke {
-  return normalizeBox(r);
-}
-
-// Phase 21 — sticky shares rect's drag-to-create flip (x = min, w = abs(w)).
-function normalizeSticky(s: StickyStroke): StickyStroke {
-  return normalizeBox(s);
-}
-
-function isStrokeMeaningful(s: Stroke): boolean {
-  if (s.tool === 'pen') return s.points.length >= 2;
-  if (s.tool === 'rect') return Math.abs(s.w) >= 4 && Math.abs(s.h) >= 4;
-  if (s.tool === 'polygon') return Math.abs(s.w) >= 4 && Math.abs(s.h) >= 4;
-  if (s.tool === 'ellipse') return s.rx >= 2 && s.ry >= 2;
-  if (s.tool === 'text') return s.text.trim().length > 0;
-  // Sticky below a readable floor is discarded like a 2×2 rect.
-  if (s.tool === 'sticky')
-    return Math.abs(s.w) >= STICKY_MIN_SIZE && Math.abs(s.h) >= STICKY_MIN_SIZE;
-  // Phase 23 — an image needs real extent; a link needs a non-empty URL.
-  if (s.tool === 'image') return Math.abs(s.w) >= IMAGE_MIN_SIZE && Math.abs(s.h) >= IMAGE_MIN_SIZE;
-  if (s.tool === 'link') return s.url.trim().length > 0;
-  return Math.hypot(s.x2 - s.x1, s.y2 - s.y1) >= 4;
-}
-
-export function strokeBBox(
-  s: Stroke,
-  anchors?: Map<string, RectStroke | EllipseStroke>
-): { x: number; y: number; w: number; h: number } | null {
-  if (s.tool === 'pen') {
-    if (!s.points.length) return null;
-    let xMin = Number.POSITIVE_INFINITY;
-    let xMax = Number.NEGATIVE_INFINITY;
-    let yMin = Number.POSITIVE_INFINITY;
-    let yMax = Number.NEGATIVE_INFINITY;
-    for (const [px, py] of s.points) {
-      if (px < xMin) xMin = px;
-      if (px > xMax) xMax = px;
-      if (py < yMin) yMin = py;
-      if (py > yMax) yMax = py;
-    }
-    return { x: xMin, y: yMin, w: xMax - xMin, h: yMax - yMin };
-  }
-  if (s.tool === 'rect' || s.tool === 'polygon') {
-    return {
-      x: Math.min(s.x, s.x + s.w),
-      y: Math.min(s.y, s.y + s.h),
-      w: Math.abs(s.w),
-      h: Math.abs(s.h),
-    };
-  }
-  if (s.tool === 'ellipse') {
-    return { x: s.cx - s.rx, y: s.cy - s.ry, w: s.rx * 2, h: s.ry * 2 };
-  }
-  if (s.tool === 'arrow') {
-    return {
-      x: Math.min(s.x1, s.x2),
-      y: Math.min(s.y1, s.y2),
-      w: Math.abs(s.x2 - s.x1),
-      h: Math.abs(s.y2 - s.y1),
-    };
-  }
-  if (s.tool === 'sticky' || s.tool === 'image' || s.tool === 'link') {
-    // Phase 23 — image + link are rect-shaped media, same bbox as a sticky card.
-    return {
-      x: Math.min(s.x, s.x + s.w),
-      y: Math.min(s.y, s.y + s.h),
-      w: Math.abs(s.w),
-      h: Math.abs(s.h),
-    };
-  }
-  // text — anchored inherits its host's bbox; standalone (Phase 21) gets a
-  // synthetic bbox from its world (x, y) so it's selectable and the context
-  // toolbar can position against it.
-  if (s.anchorId != null && s.anchorId !== '') {
-    const host = anchors?.get(s.anchorId);
-    return host ? strokeBBox(host) : null;
-  }
-  const tx = s.x ?? 0;
-  const ty = s.y ?? 0;
-  // Multi-line text (item 4a) — the bbox spans the longest line (width) and all
-  // lines (height) so the selection halo / hit-test / eraser cover the whole
-  // block, not just line one. List markers widen each line by 2–3 chars.
-  const lines = splitTextLines(s.text);
-  const markerPad = s.listType ? 3 : 0;
-  const longest = lines.reduce((m, l) => Math.max(m, l.length + markerPad), 0);
-  return {
-    x: tx,
-    y: ty,
-    w: Math.max(8, longest * s.fontSize * 0.55),
-    // Single-line keeps the legacy 1.2 height; multi-line grows by line count.
-    h: lines.length <= 1 ? s.fontSize * 1.2 : lines.length * s.fontSize * TEXT_LINE_HEIGHT,
-  };
-}
 
 function isEditable(t: EventTarget | null): boolean {
   if (!t || !(t as HTMLElement).tagName) return false;
@@ -1862,6 +548,10 @@ const ANNOT_CSS = `
    See DDR-067. (No backticks in this comment: the whole block is a JS template
    literal, so a backtick here would terminate the string.) */
 .dc-annot-editor, .dc-annot-editor * { cursor: text !important; }
+/* FigJam v3 — connection dots on a selected bindable shape. The important flag
+   beats use-tool-mode's blanket star-cursor rule (same fight as the editor +
+   resize handles — DDR-067). */
+.dc-annot-conn-dot { cursor: crosshair !important; }
 `.trim();
 
 function ensureAnnotStyles(): void {
@@ -1883,6 +573,36 @@ export interface StrokesStoreValue {
   updateStroke: (id: string, patch: Partial<Stroke>) => void;
   deleteStrokes: (ids: string[]) => void;
   translateStrokes: (ids: string[], dx: number, dy: number) => void;
+  /**
+   * FigJam v3 — bulk mutation in ONE undo record (the per-stroke
+   * `updateStroke` loop the context toolbar used pre-v3 pushed N records for
+   * an N-stroke selection). `fn` returns the patch for a stroke or null to
+   * leave it untouched.
+   */
+  applyToStrokes: (
+    ids: readonly string[],
+    fn: (s: Stroke) => Partial<Stroke> | null,
+    label?: string
+  ) => void;
+  /** Group the (expanded) selection; returns the member ids to select, or null. */
+  groupSelection: (ids: readonly string[]) => string[] | null;
+  /** Dissolve the outermost group of every selected stroke. */
+  ungroupSelection: (ids: readonly string[]) => void;
+  /** Cmd+D / paste — clone with fresh ids; returns the clone ids to select. */
+  duplicateSelection: (ids: readonly string[], dx: number, dy: number) => string[];
+  /** Z-order — `]` `[` `Cmd+]` `Cmd+[`; group units move contiguously. */
+  reorderSelection: (ids: readonly string[], op: ZOrderOp) => void;
+  alignSelection: (ids: readonly string[], edge: AlignEdge) => void;
+  distributeSelection: (ids: readonly string[], axis: DistributeAxis) => void;
+  /**
+   * Wave H — transient gesture preview: applies the patch to local React
+   * state ONLY (no undo record, no persistence), exactly like the move-drag's
+   * per-tick path. Close the gesture with `commitGesture` on pointerup so the
+   * whole drag lands as ONE undo record (undo used to walk every resize px).
+   */
+  previewStroke: (id: string, patch: Partial<Stroke>) => void;
+  /** Wave H — single undo record from a preview gesture's start snapshot. */
+  commitGesture: (before: readonly Stroke[], label?: string) => void;
 }
 
 const StrokesStoreContext = createContext<StrokesStoreValue | null>(null);
@@ -1891,37 +611,33 @@ export function useStrokesStore(): StrokesStoreValue | null {
   return useContext(StrokesStoreContext);
 }
 
-function translateOne(s: Stroke, dx: number, dy: number): Stroke {
-  if (s.tool === 'pen') {
-    return { ...s, points: s.points.map(([x, y]) => [x + dx, y + dy] as WorldPoint) };
-  }
-  if (s.tool === 'rect' || s.tool === 'polygon') return { ...s, x: s.x + dx, y: s.y + dy };
-  if (s.tool === 'ellipse') return { ...s, cx: s.cx + dx, cy: s.cy + dy };
-  if (s.tool === 'arrow')
-    return { ...s, x1: s.x1 + dx, y1: s.y1 + dy, x2: s.x2 + dx, y2: s.y2 + dy };
-  if (s.tool === 'sticky' || s.tool === 'image' || s.tool === 'link')
-    return { ...s, x: s.x + dx, y: s.y + dy };
-  // text — anchored inherits its host's bbox (moves with the host); standalone
-  // (Phase 21) carries its own world (x, y) and translates directly.
-  if (s.anchorId != null && s.anchorId !== '') return s;
-  return { ...s, x: (s.x ?? 0) + dx, y: (s.y ?? 0) + dy };
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// FigJam v3 — one-time contextual hints (first-use discoverability). Behaviour-
+// triggered micro-toasts, never a modal tour: each key fires at most once per
+// browser profile (localStorage bitmap), reusing the existing canvas toast.
 
-/**
- * Reference-equal stroke comparison — true when the two arrays carry the same
- * stroke object references in the same order. Used by the annotation drag
- * onPointerUp to skip pushing an undo record when the gesture didn't actually
- * move anything (zero movement OR snapshot mapped through a no-op translate
- * back to the original references — `translateOne` short-circuits when dx=dy=0
- * because new objects are still created, so we compare references defensively).
- */
-export function strokesShallowEqual(a: readonly Stroke[], b: readonly Stroke[]): boolean {
-  if (a === b) return true;
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false;
+// Chrome elements never deselect. Includes the per-shape context toolbar,
+// the main tool palette, the in-canvas draw chrome, the minimap, and the
+// right-click menu. Clicks on these route to their own handlers.
+const CHROME_SELECTOR =
+  '.dc-annot-conn-dot, .dc-annot-ctx, .dc-tool-palette, .dc-annot-chrome, .dc-mm, .dc-context-menu, .dc-tp-popover, .dc-multi-artboard-tb, .dc-elem-ctx-tb, .dc-cv-eq-spacing-layer, .cm-composer, .cm-thread, .cm-mention-popup, .cm-pin, .dc-annot-resize-handle, .dc-annot-rotate-zone, .dc-annot-editor';
+
+const HINTS_KEY = 'maude-annot-hints-v1';
+
+function showOnceHint(key: string, msg: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const seen = JSON.parse(window.localStorage.getItem(HINTS_KEY) || '{}') as Record<
+      string,
+      number
+    >;
+    if (seen[key]) return;
+    seen[key] = 1;
+    window.localStorage.setItem(HINTS_KEY, JSON.stringify(seen));
+  } catch {
+    return; // storage blocked — skip rather than re-toast forever
   }
-  return true;
+  showCanvasToast(msg);
 }
 
 // Annotations visibility now lives in use-annotations-visibility.tsx so the
@@ -1988,6 +704,16 @@ export function AnnotationsLayer() {
   // shape/sticky/text tool is armed and nothing is being drawn yet. Pure chrome
   // (low-opacity, pointer-events:none) — never selectable, hit-tested, or saved.
   const [ghost, setGhost] = useState<{ x: number; y: number } | null>(null);
+  // FigJam v3 — smart-guide lines painted while a drag is snapping, and the
+  // id of the host a dragged arrow endpoint would bind to (accent halo).
+  const [snapGuides, setSnapGuides] = useState<SnapGuide[] | null>(null);
+  const [bindHintId, setBindHintId] = useState<string | null>(null);
+  // Cmd/Ctrl held — suppresses binding at arrow draw-end (FigJam: ⌘ keeps the
+  // endpoint free). Tracked here because endStroke (pointerup) carries no
+  // modifier state of its own.
+  const cmdHeldRef = useRef(false);
+  const vpRef = useRef(vp);
+  vpRef.current = vp;
   const visibilityCtx = useAnnotationsVisibility();
   const visible = visibilityCtx?.visible ?? true;
   const setVisible = useCallback(
@@ -2026,6 +752,7 @@ export function AnnotationsLayer() {
     tool === 'shape' ||
     tool === 'arrow' ||
     tool === 'sticky' ||
+    tool === 'section' ||
     tool === 'text';
   const isErase = tool === 'eraser';
   const isActive = isDraw || isErase;
@@ -2182,23 +909,110 @@ export function AnnotationsLayer() {
   const strokesStore = useMemo<StrokesStoreValue>(() => {
     const updateStroke = (id: string, patch: Partial<Stroke>): void => {
       const prev = strokesRef.current;
-      const next = prev.map((s) => (s.id === id ? ({ ...s, ...patch } as Stroke) : s));
+      // FigJam v3 — bound arrow endpoints re-derive from their host after ANY
+      // geometry patch (resize ticks included), so connectors track live.
+      const next = recomputeBoundArrows(
+        prev.map((s) => (s.id === id ? ({ ...s, ...patch } as Stroke) : s))
+      );
       commitStrokes(prev, next);
     };
     const deleteStrokes = (ids: string[]): void => {
       const set = new Set(ids);
       const prev = strokesRef.current;
-      const next = prev.filter(
+      const filtered = prev.filter(
         (s) => !set.has(s.id) && !(s.tool === 'text' && s.anchorId != null && set.has(s.anchorId))
       );
-      if (next.length === prev.length) return;
-      commitStrokes(prev, next);
+      if (filtered.length === prev.length) return;
+      // FigJam v3 — deleting a bind host strips the bind (endpoint frozen,
+      // arrow survives); singleton/empty groups dissolve (tldraw lifecycle).
+      commitStrokes(prev, recomputeBoundArrows(normalizeGroups(filtered)));
     };
     const translateStrokes = (ids: string[], dx: number, dy: number): void => {
       const set = new Set(ids);
       const prev = strokesRef.current;
-      const next = prev.map((s) => (set.has(s.id) ? translateOne(s, dx, dy) : s));
+      const next = recomputeBoundArrows(
+        prev.map((s) => (set.has(s.id) ? translateOne(s, dx, dy) : s))
+      );
       commitStrokes(prev, next, `move ${ids.length} stroke${ids.length === 1 ? '' : 's'}`);
+    };
+    const applyToStrokes = (
+      ids: readonly string[],
+      fn: (s: Stroke) => Partial<Stroke> | null,
+      label?: string
+    ): void => {
+      const set = new Set(ids);
+      const prev = strokesRef.current;
+      let touched = 0;
+      const next = recomputeBoundArrows(
+        prev.map((s) => {
+          if (!set.has(s.id)) return s;
+          const patch = fn(s);
+          if (!patch) return s;
+          touched++;
+          return { ...s, ...patch } as Stroke;
+        })
+      );
+      if (touched === 0) return;
+      commitStrokes(prev, next, label ?? `edit ${touched} stroke${touched === 1 ? '' : 's'}`);
+    };
+    const groupSelection = (ids: readonly string[]): string[] | null => {
+      const prev = strokesRef.current;
+      const res = groupStrokes(prev, ids);
+      if (!res) return null;
+      commitStrokes(prev, res.strokes, `group ${res.memberIds.length} strokes`);
+      return res.memberIds;
+    };
+    const ungroupSelection = (ids: readonly string[]): void => {
+      const prev = strokesRef.current;
+      const next = ungroupStrokes(prev, ids);
+      if (strokesShallowEqual(prev, next)) return;
+      commitStrokes(prev, next, 'ungroup');
+    };
+    const duplicateSelection = (ids: readonly string[], dx: number, dy: number): string[] => {
+      const prev = strokesRef.current;
+      const res = duplicateStrokes(prev, ids, dx, dy);
+      if (res.strokes.length === prev.length) return [];
+      const added = res.strokes.length - prev.length;
+      commitStrokes(prev, res.strokes, `duplicate ${added} stroke${added === 1 ? '' : 's'}`);
+      return res.newIds;
+    };
+    const reorderSelection = (ids: readonly string[], op: ZOrderOp): void => {
+      const prev = strokesRef.current;
+      const next = reorderStrokes(prev, ids, op);
+      if (strokesShallowEqual(prev, next)) return;
+      commitStrokes(
+        prev,
+        next,
+        op === 'front' || op === 'forward' ? 'bring forward' : 'send backward'
+      );
+    };
+    const alignSelection = (ids: readonly string[], edge: AlignEdge): void => {
+      const prev = strokesRef.current;
+      const next = recomputeBoundArrows(alignStrokes(prev, ids, edge));
+      if (strokesShallowEqual(prev, next)) return;
+      commitStrokes(prev, next, `align ${edge}`);
+    };
+    const distributeSelection = (ids: readonly string[], axis: DistributeAxis): void => {
+      const prev = strokesRef.current;
+      const next = recomputeBoundArrows(distributeStrokes(prev, ids, axis));
+      if (strokesShallowEqual(prev, next)) return;
+      commitStrokes(prev, next, 'distribute');
+    };
+    // Wave H — transient per-tick path for handle drags (resize / rotate /
+    // endpoint re-anchor). Local React state only — no undo push, no PUT —
+    // mirroring the move-drag's onMove. `commitGesture` closes it as ONE
+    // record (no-op when the gesture ended where it started).
+    const previewStroke = (id: string, patch: Partial<Stroke>): void => {
+      setStrokesState(
+        recomputeBoundArrows(
+          strokesRef.current.map((s) => (s.id === id ? ({ ...s, ...patch } as Stroke) : s))
+        )
+      );
+    };
+    const commitGesture = (before: readonly Stroke[], label?: string): void => {
+      const cur = strokesRef.current;
+      if (strokesShallowEqual(before, cur)) return;
+      commitStrokes(before, cur, label);
     };
     return {
       strokes,
@@ -2206,6 +1020,15 @@ export function AnnotationsLayer() {
       updateStroke,
       deleteStrokes,
       translateStrokes,
+      applyToStrokes,
+      groupSelection,
+      ungroupSelection,
+      duplicateSelection,
+      reorderSelection,
+      alignSelection,
+      distributeSelection,
+      previewStroke,
+      commitGesture,
     };
   }, [strokes, setStrokes, commitStrokes]);
 
@@ -2474,6 +1297,19 @@ export function AnnotationsLayer() {
           fontSize: DEFAULT_FONT_SIZE,
           cornerRadius: STICKY_CORNER_RADIUS,
         });
+      } else if (tool === 'section') {
+        // FigJam v3 — drag-create a labelled container; a bare tap drops the
+        // default-sized region (endStroke applies the default).
+        setDrawing({
+          id,
+          tool: 'section',
+          x: wx,
+          y: wy,
+          w: 0,
+          h: 0,
+          label: 'Section',
+          color: DEFAULT_SECTION_COLOR,
+        });
       } else if (tool === 'text') {
         // Phase 21 — single click drops an editable caret at the click point.
         // No stroke is created until the user commits real text (mirrors the
@@ -2512,6 +1348,7 @@ export function AnnotationsLayer() {
     (e: ReactPointerEvent<HTMLDivElement>) => {
       if (!isActive || !visible) return;
       const [wx, wy] = screenToWorld(e.clientX, e.clientY);
+      cmdHeldRef.current = e.metaKey || e.ctrlKey;
       if (isErase) {
         if ((e.buttons & 1) === 0) return;
         eraseAt(wx, wy);
@@ -2527,6 +1364,15 @@ export function AnnotationsLayer() {
       lastDrawPointRef.current = { x: wx, y: wy };
       const anchor = drawAnchorRef.current;
       const mods: DrawMods = { shift: e.shiftKey, alt: e.altKey };
+      // FigJam v3 — while dragging an arrow, halo the host the dragged end
+      // would magnetically attach to (⌘ suppresses binding entirely).
+      if (drawingRef.current.tool === 'arrow') {
+        const zoom = vpRef.current?.zoom || 1;
+        const cand = cmdHeldRef.current
+          ? null
+          : bindCandidate(wx, wy, strokesRef.current, BIND_THRESHOLD_PX / zoom);
+        setBindHintId(cand?.hostId ?? null);
+      }
       setDrawing((cur) => {
         if (!cur) return cur;
         if (cur.tool === 'pen') {
@@ -2578,12 +1424,51 @@ export function AnnotationsLayer() {
         Math.abs(norm.w) < STICKY_MIN_SIZE || Math.abs(norm.h) < STICKY_MIN_SIZE
           ? { ...norm, w: STICKY_DEFAULT_W, h: STICKY_DEFAULT_H }
           : norm;
+    } else if (cur.tool === 'section') {
+      const norm = normalizeBox(cur);
+      final =
+        Math.abs(norm.w) < SECTION_MIN_SIZE || Math.abs(norm.h) < SECTION_MIN_SIZE
+          ? { ...norm, w: SECTION_DEFAULT_W, h: SECTION_DEFAULT_H }
+          : norm;
     }
     if (final && !isStrokeMeaningful(final)) final = null;
+    // FigJam v3 — magnetic connector binding at draw-end. Each arrow endpoint
+    // within the zoom-scaled threshold of a bindable host attaches to its
+    // nearest side/center magnet and snaps onto it; the bind persists and the
+    // endpoint re-derives from the host from then on. ⌘ held = stay free.
+    if (final && final.tool === 'arrow' && !cmdHeldRef.current) {
+      const zoom = vpRef.current?.zoom || 1;
+      const threshold = BIND_THRESHOLD_PX / zoom;
+      const others = strokesRef.current;
+      const sb = bindCandidate(final.x1, final.y1, others, threshold);
+      const eb = bindCandidate(final.x2, final.y2, others, threshold);
+      if (sb) {
+        const host = others.find((s) => s.id === sb.hostId);
+        const pt = host ? anchorPoint(host, sb.nx, sb.ny) : null;
+        if (pt) final = { ...final, startBind: sb, x1: pt[0], y1: pt[1] };
+      }
+      // A zero-length self-loop (both ends on the same magnet) is useless —
+      // keep the end free when it would collapse onto the start bind.
+      const sameMagnet = sb && eb && sb.hostId === eb.hostId && sb.nx === eb.nx && sb.ny === eb.ny;
+      if (eb && !sameMagnet) {
+        const host = others.find((s) => s.id === eb.hostId);
+        const pt = host ? anchorPoint(host, eb.nx, eb.ny) : null;
+        if (pt) final = { ...final, endBind: eb, x2: pt[0], y2: pt[1] };
+      }
+      if ((final as ArrowStroke).startBind || (final as ArrowStroke).endBind) {
+        showOnceHint(
+          'bind',
+          'Arrow attached — it follows the shape now. Drag an endpoint to re-anchor, hold ⌘ to keep it free.'
+        );
+      }
+    }
+    setBindHintId(null);
     if (final) {
       const committed = final;
       const prev = strokesRef.current;
-      const next = [...prev, committed];
+      // FigJam — sections are CONTAINERS: they slot in at the BACK of the
+      // z-order so content placed on them keeps rendering above.
+      const next = committed.tool === 'section' ? [committed, ...prev] : [...prev, committed];
       commitStrokes(prev, next, `draw ${committed.tool}`);
       // T18 — auto-select the freshly drawn shape so the user can immediately
       // see + adjust it. annotSel is optional (some test harnesses mount
@@ -2591,7 +1476,10 @@ export function AnnotationsLayer() {
       if (annotSel) annotSel.replace(committed.id);
       // Phase 21 — a fresh sticky opens in edit mode (FigJam parity: drop a
       // note, type immediately). Only meaningful deviation from rect/ellipse.
-      if (committed.tool === 'sticky') setEditingId(committed.id);
+      if (committed.tool === 'sticky') {
+        setEditingId(committed.id);
+        showOnceHint('chain', '⌘Enter commits and creates the next sticky beside it.');
+      }
     }
     // T18 / T19 — flip the tool back to Move after every commit UNLESS sticky
     // mode is locked on this tool. Sticky lets the user draw many shapes in a
@@ -2666,9 +1554,9 @@ export function AnnotationsLayer() {
   }, [ghost, ghostCapable, drawing, tool, shapeKind, color, stickyColor]);
 
   const anchorsById = useMemo(() => {
-    const map = new Map<string, RectStroke | EllipseStroke>();
+    const map = new Map<string, AnchorHost>();
     for (const s of strokes) {
-      if (s.tool === 'rect' || s.tool === 'ellipse') map.set(s.id, s);
+      if (s.tool === 'rect' || s.tool === 'ellipse' || s.tool === 'polygon') map.set(s.id, s);
     }
     return map;
   }, [strokes]);
@@ -2700,6 +1588,11 @@ export function AnnotationsLayer() {
     startWY: number;
     movedIds: string[];
     snapshot: Stroke[];
+    /** FigJam v3 — pre-Alt-duplicate baseline. Differs from `snapshot` only
+     *  during an Alt+drag duplicate; the undo record spans undoBase → final
+     *  so clone + move land as ONE step. */
+    undoBase: Stroke[];
+    altDup: boolean;
   } | null>(null);
 
   // Drag-select marquee state. World-coord rectangle (anchor + cursor); the
@@ -2732,18 +1625,13 @@ export function AnnotationsLayer() {
           t === 'text' ||
           t === 'sticky' ||
           t === 'image' ||
-          t === 'link')
+          t === 'link' ||
+          t === 'section')
       ) {
         return id;
       }
       return null;
     };
-
-    // Chrome elements never deselect. Includes the per-shape context toolbar,
-    // the main tool palette, the in-canvas draw chrome, the minimap, and the
-    // right-click menu. Clicks on these route to their own handlers.
-    const CHROME_SELECTOR =
-      '.dc-annot-ctx, .dc-tool-palette, .dc-annot-chrome, .dc-mm, .dc-context-menu, .dc-tp-popover, .dc-multi-artboard-tb, .dc-elem-ctx-tb, .dc-cv-eq-spacing-layer, .cm-composer, .cm-thread, .cm-mention-popup, .cm-pin, .dc-annot-resize-handle, .dc-annot-editor';
 
     const onDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
@@ -2763,16 +1651,20 @@ export function AnnotationsLayer() {
       let ids: string[] | null = null;
       if (strokeId) {
         elementSel?.clear();
+        // FigJam v3 — clicking a group member acts on the WHOLE outermost
+        // group. Double-click deep-selects the member (see the dblclick
+        // handler); an already-selected stroke keeps the current selection, so
+        // a deep-selected member drags alone without re-expanding.
+        const members = expandIdsToGroups([strokeId], strokesStoreRef.current.strokes);
         if (e.shiftKey) {
-          annotSel.add(strokeId);
-          ids = annotSel.contains(strokeId)
-            ? annotSel.selectedIds
-            : [...annotSel.selectedIds, strokeId];
+          annotSel.add(members);
+          const merged = new Set([...annotSel.selectedIds, ...members]);
+          ids = [...merged];
         } else if (annotSel.contains(strokeId)) {
           ids = annotSel.selectedIds;
         } else {
-          annotSel.replace(strokeId);
-          ids = [strokeId];
+          annotSel.replace(members);
+          ids = members;
         }
       } else if (!e.shiftKey && annotSel.selectedIds.length > 0) {
         // Hull hit-test — union bbox of the currently-selected strokes.
@@ -2793,7 +1685,7 @@ export function AnnotationsLayer() {
           ids = annotSel.selectedIds;
         }
       }
-      if (ids && ids.length) {
+      if (ids?.length) {
         e.preventDefault();
         e.stopImmediatePropagation();
         // Capture a snapshot of all strokes at drag start. Every pointermove
@@ -2801,27 +1693,115 @@ export function AnnotationsLayer() {
         // (NOT a delta-from-last-frame mutation), so dragging back to origin
         // restores positions exactly. Optimistic state-only updates during
         // the move; ONE undo record + ONE server PUT fires on pointerup.
-        const dragSnapshot = strokesRef.current.slice();
+        const undoBase = strokesRef.current.slice();
+        const preAltIds = ids;
+        let dragSnapshot = undoBase;
+        let altDup = false;
+        // FigJam v3 — Alt+drag duplicates: clone the (expanded) selection up
+        // front and drag the CLONES; a zero-movement release reverts so a bare
+        // Alt+click can't silently mint copies. undoBase stays pre-clone, so
+        // clone + move commit as one record.
+        if (e.altKey) {
+          const res = duplicateStrokes(undoBase, ids, 0, 0);
+          if (res.newIds.length) {
+            altDup = true;
+            dragSnapshot = res.strokes;
+            setStrokesState(res.strokes);
+            annotSel.replace(res.newIds);
+            ids = res.newIds;
+          }
+        }
         dragStateRef.current = {
           pointerId: e.pointerId,
           startWX: wx,
           startWY: wy,
           movedIds: ids,
           snapshot: dragSnapshot,
+          undoBase,
+          altDup,
         };
         const movedSet = new Set(ids);
+        // FigJam v3 — dragging a SECTION carries everything sitting on it
+        // (bbox-center containment, captured at gesture start).
+        for (const s of dragSnapshot) {
+          if (s.tool !== 'section' || !movedSet.has(s.id)) continue;
+          const sx = Math.min(s.x, s.x + s.w);
+          const sy = Math.min(s.y, s.y + s.h);
+          const sx2 = sx + Math.abs(s.w);
+          const sy2 = sy + Math.abs(s.h);
+          for (const t of dragSnapshot) {
+            if (movedSet.has(t.id) || t.tool === 'section') continue;
+            const bb = strokeBBox(t);
+            if (!bb) continue;
+            const ccx = bb.x + bb.w / 2;
+            const ccy = bb.y + bb.h / 2;
+            if (ccx >= sx && ccx <= sx2 && ccy >= sy && ccy <= sy2) movedSet.add(t.id);
+          }
+        }
+        // FigJam v3 — snap setup, computed ONCE per gesture: candidates are
+        // the bboxes of every non-moved stroke plus the artboard rects (in
+        // world coords); the moving hull is the union bbox of the dragged
+        // strokes at drag start.
+        const candidates: Array<{ x: number; y: number; w: number; h: number }> = [];
+        for (const s of dragSnapshot) {
+          if (movedSet.has(s.id)) continue;
+          const bb = strokeBBox(s);
+          if (bb && bb.w > 0 && bb.h > 0) candidates.push(bb);
+        }
+        for (const screenEl of Array.from(document.querySelectorAll('[data-dc-screen]'))) {
+          const r = screenEl.getBoundingClientRect();
+          if (r.width <= 0 || r.height <= 0) continue;
+          const [ax, ay] = screenToWorld(r.left, r.top);
+          const [bx, by] = screenToWorld(r.right, r.bottom);
+          candidates.push({ x: ax, y: ay, w: bx - ax, h: by - ay });
+        }
+        let hull: { x: number; y: number; w: number; h: number } | null = null;
+        for (const s of dragSnapshot) {
+          if (!movedSet.has(s.id)) continue;
+          const bb = strokeBBox(s);
+          if (!bb) continue;
+          if (!hull) {
+            hull = { ...bb };
+          } else {
+            const hx = Math.min(hull.x, bb.x);
+            const hy = Math.min(hull.y, bb.y);
+            hull = {
+              x: hx,
+              y: hy,
+              w: Math.max(hull.x + hull.w, bb.x + bb.w) - hx,
+              h: Math.max(hull.y + hull.h, bb.y + bb.h) - hy,
+            };
+          }
+        }
+        const zoom = vpRef.current?.zoom || 1;
         const onMove = (mv: PointerEvent) => {
           const st = dragStateRef.current;
           if (!st || mv.pointerId !== st.pointerId) return;
           const [cwx, cwy] = screenToWorld(mv.clientX, mv.clientY);
-          const dx = cwx - st.startWX;
-          const dy = cwy - st.startWY;
+          let dx = cwx - st.startWX;
+          let dy = cwy - st.startWY;
+          // FigJam v3 — edge/center snapping; ⌘ suppresses (Figma convention).
+          if (hull && !(mv.metaKey || mv.ctrlKey)) {
+            const snap = computeSnap(
+              { x: hull.x + dx, y: hull.y + dy, w: hull.w, h: hull.h },
+              candidates,
+              SNAP_THRESHOLD_PX / zoom
+            );
+            dx += snap.dx;
+            dy += snap.dy;
+            setSnapGuides(snap.guides.length ? snap.guides : null);
+          } else {
+            setSnapGuides(null);
+          }
           // Drag-back-to-origin: restore exact references so the pointerup
-          // shallow-equality check skips committing a no-op record.
+          // shallow-equality check skips committing a no-op record. Bound
+          // arrows re-derive from their hosts so connectors track live.
           const next =
             dx === 0 && dy === 0
               ? st.snapshot
-              : st.snapshot.map((s) => (movedSet.has(s.id) ? translateOne(s, dx, dy) : s));
+              : recomputeBoundArrows(
+                  st.snapshot.map((s) => (movedSet.has(s.id) ? translateOne(s, dx, dy) : s))
+                );
           // Local React state only. No commitStrokes — no PUT, no undo push.
           setStrokesState(next);
         };
@@ -2829,17 +1809,27 @@ export function AnnotationsLayer() {
           const st = dragStateRef.current;
           if (!st || up.pointerId !== st.pointerId) return;
           dragStateRef.current = null;
+          setSnapGuides(null);
           document.removeEventListener('pointermove', onMove, true);
           document.removeEventListener('pointerup', onUp, true);
           document.removeEventListener('pointercancel', onUp, true);
           // Commit the gesture as ONE record. Skip on zero-movement
           // (click without drag past threshold or drag back to origin).
           const final = strokesRef.current;
-          if (strokesShallowEqual(st.snapshot, final)) return;
+          if (strokesShallowEqual(st.snapshot, final)) {
+            if (st.altDup) {
+              // Alt+click without a drag — revert the eager clones.
+              setStrokesState(st.undoBase);
+              annotSel.replace(preAltIds);
+            }
+            return;
+          }
           commitStrokes(
-            st.snapshot,
+            st.undoBase,
             final,
-            `move ${st.movedIds.length} stroke${st.movedIds.length === 1 ? '' : 's'}`
+            `${st.altDup ? 'duplicate' : 'move'} ${st.movedIds.length} stroke${
+              st.movedIds.length === 1 ? '' : 's'
+            }`
           );
         };
         document.addEventListener('pointermove', onMove, true);
@@ -2852,8 +1842,10 @@ export function AnnotationsLayer() {
       // artboard the gesture belongs to artboard-drag / element-marquee — not
       // the annotation marquee (post-Wave-3 grievance G5). Checked AFTER the
       // group-drag decision so a multi-selection hull-drag still wins even when
-      // the strokes sit over an artboard.
-      if (!strokeId && target?.closest?.('[data-dc-screen]')) return;
+      // the strokes sit over an artboard. FigJam v3 exception: SHIFT+drag is
+      // the additive annotation marquee, so it rubber-bands annotations
+      // sitting ON an artboard instead of falling through to artboard-drag.
+      if (!strokeId && !e.shiftKey && target?.closest?.('[data-dc-screen]')) return;
 
       // Empty world — start a drag-select gesture. A bare click without
       // moving clears annotation selection (post-Wave-3 feedback: click-to-
@@ -2900,8 +1892,11 @@ export function AnnotationsLayer() {
         }
         // Marquee that captured no strokes — preserve existing selection.
         if (hits.length === 0) return;
-        if (addToSelection) annotSel.add(hits);
-        else annotSel.replace(hits);
+        // FigJam v3 — a marquee touching any group member selects the whole
+        // group (tldraw: the brush resolves to the outermost ancestor).
+        const expanded = expandIdsToGroups(hits, strokesStoreRef.current.strokes);
+        if (addToSelection) annotSel.add(expanded);
+        else annotSel.replace(expanded);
       };
       document.addEventListener('pointermove', onMove, true);
       document.addEventListener('pointerup', onUp, true);
@@ -2935,7 +1930,16 @@ export function AnnotationsLayer() {
       const id = node.getAttribute('data-id');
       const t = node.getAttribute('data-tool');
       if (!id) return;
-      if (t === 'rect' || t === 'ellipse' || t === 'sticky') {
+      // FigJam v3 — double-click DEEP-SELECTS a group member (a single click
+      // selects the whole outermost group; Esc clears back out). The editor
+      // still opens below for text-bearing types — FigJam's enter-group-then-
+      // edit flow in one gesture.
+      const stroke = strokesRef.current.find((s) => s.id === id);
+      if (stroke && outermostGroupOf(stroke) && annotSel) {
+        e.preventDefault();
+        annotSel.replace(id);
+      }
+      if (t === 'rect' || t === 'ellipse' || t === 'polygon' || t === 'sticky' || t === 'section') {
         e.preventDefault();
         setEditingId(id);
         return;
@@ -2947,7 +1951,7 @@ export function AnnotationsLayer() {
     };
     document.addEventListener('dblclick', onDbl, true);
     return () => document.removeEventListener('dblclick', onDbl, true);
-  }, [tool]);
+  }, [tool, annotSel]);
 
   const commitText = useCallback(
     (anchorId: string, text: string, fmt?: EditorFmt) => {
@@ -3066,6 +2070,7 @@ export function AnnotationsLayer() {
     if (host) return { kind: 'anchored', anchorId: editingId, host };
     const s = strokesById.get(editingId);
     if (s?.tool === 'sticky') return { kind: 'sticky', sticky: s };
+    if (s?.tool === 'section') return { kind: 'section', section: s };
     if (s?.tool === 'text' && (s.anchorId == null || s.anchorId === ''))
       return { kind: 'standalone', text: s };
     return null;
@@ -3083,7 +2088,14 @@ export function AnnotationsLayer() {
       if (target.kind === 'anchored') commitText(target.anchorId, text, fmt);
       else if (target.kind === 'sticky') commitStickyText(target.sticky.id, text, fmt);
       else if (target.kind === 'standalone') commitStandaloneText(target.text.id, text, fmt);
-      else if (target.kind === 'pending') createStandaloneText(target.x, target.y, text, fmt);
+      else if (target.kind === 'section') {
+        const label = text.trim().replace(/\s*\n+\s*/g, ' ') || 'Section';
+        if (label !== target.section.label) {
+          strokesStoreRef.current.updateStroke(target.section.id, {
+            label,
+          } as Partial<Stroke>);
+        }
+      } else if (target.kind === 'pending') createStandaloneText(target.x, target.y, text, fmt);
     },
     [commitText, commitStickyText, commitStandaloneText, createStandaloneText]
   );
@@ -3092,6 +2104,475 @@ export function AnnotationsLayer() {
     setEditingId(null);
     setPendingText(null);
   }, []);
+
+  /**
+   * FigJam v3 — copy/cut the (expanded) selection to the OS clipboard as a
+   * `{"maudeStrokes":1}` JSON text payload. Shared by ⌘C/⌘X and the
+   * right-click menu. Returns true when something was copied.
+   */
+  const copySelection = useCallback(
+    (cut: boolean): boolean => {
+      if (!annotSel) return false;
+      const sel = annotSel.selectedIds;
+      if (sel.length === 0) return false;
+      const store = strokesStoreRef.current;
+      const expanded = new Set(expandIdsToGroups(sel, store.strokes));
+      const payload = store.strokes.filter(
+        (s) =>
+          expanded.has(s.id) ||
+          (s.tool === 'text' && s.anchorId != null && expanded.has(s.anchorId))
+      );
+      if (payload.length === 0) return false;
+      try {
+        void navigator.clipboard
+          ?.writeText(JSON.stringify({ maudeStrokes: 1, strokes: payload }))
+          .catch(() => {
+            /* clipboard permission denied — copy is best-effort */
+          });
+      } catch {
+        /* clipboard API absent — non-fatal */
+      }
+      if (cut) {
+        store.deleteStrokes([...expanded]);
+        annotSel.clear();
+      }
+      return true;
+    },
+    [annotSel]
+  );
+
+  /**
+   * FigJam v3 — paste a strokes JSON payload (⌘V or the right-click menu).
+   * Round-trips through the serializer + parser so a malformed foreign payload
+   * coerces to valid strokes or drops; clones get fresh ids + a +16/+16 offset.
+   */
+  const pasteStrokesText = useCallback(
+    (txt: string): boolean => {
+      if (!annotSel) return false;
+      if (!txt.startsWith('{"maudeStrokes"')) return false;
+      let parsed: { maudeStrokes?: number; strokes?: unknown } | null = null;
+      try {
+        parsed = JSON.parse(txt) as { maudeStrokes?: number; strokes?: unknown };
+      } catch {
+        return false;
+      }
+      if (parsed?.maudeStrokes !== 1 || !Array.isArray(parsed.strokes)) return false;
+      let safe: Stroke[] = [];
+      try {
+        safe = svgToStrokes(strokesToSvg(parsed.strokes as Stroke[]));
+      } catch {
+        return false;
+      }
+      if (safe.length === 0) return false;
+      const res = duplicateStrokes(
+        safe,
+        safe.map((s) => s.id),
+        16,
+        16
+      );
+      const clones = res.strokes.slice(safe.length);
+      if (clones.length === 0) return false;
+      const prev = strokesRef.current;
+      // recompute keeps binds to hosts present in THIS canvas and strips the
+      // cross-canvas danglers (endpoint frozen).
+      const next = recomputeBoundArrows([...prev, ...clones]);
+      commitStrokes(prev, next, `paste ${clones.length} stroke${clones.length === 1 ? '' : 's'}`);
+      annotSel.replace(res.newIds);
+      return true;
+    },
+    [annotSel, commitStrokes]
+  );
+
+  /**
+   * FigJam v3 — quick-create chain (⌘Enter): with a sticky or shape selected,
+   * spawn a sibling of the same type/size/style to the right with its editor
+   * active. Shapes ALSO get a bound connector source → sibling (FigJam quick-
+   * create: shapes connect, stickies don't). Returns true when spawned.
+   */
+  const chainCreate = useCallback(
+    (sourceId: string): boolean => {
+      const prev = strokesRef.current;
+      const src = prev.find((s) => s.id === sourceId);
+      if (!src) return false;
+      if (
+        src.tool !== 'sticky' &&
+        src.tool !== 'rect' &&
+        src.tool !== 'ellipse' &&
+        src.tool !== 'polygon'
+      ) {
+        return false;
+      }
+      const bb = strokeBBox(src);
+      if (!bb) return false;
+      const gap = src.tool === 'sticky' ? 40 : 64;
+      const nid = rid();
+      // The sibling copies style + size but starts loose (no group membership,
+      // human provenance) and empty-bodied. Undefined-assignment (not rest-
+      // destructuring) keeps the discriminated-union narrowing intact for the
+      // branches below; the serializer treats undefined as absent.
+      const bare = structuredClone(src);
+      bare.groupIds = undefined;
+      bare.author = undefined;
+      let sibling: Stroke;
+      if (bare.tool === 'ellipse') {
+        sibling = { ...bare, id: nid, cx: bare.cx + bb.w + gap };
+      } else if (bare.tool === 'sticky') {
+        sibling = { ...bare, id: nid, x: bb.x + bb.w + gap, y: bb.y, text: '' };
+      } else {
+        sibling = { ...bare, id: nid, x: bb.x + bb.w + gap, y: bb.y };
+      }
+      let next: Stroke[] = [...prev, sibling];
+      if (src.tool !== 'sticky') {
+        const p1 = anchorPoint(src, 1, 0.5);
+        const p2 = anchorPoint(sibling, 0, 0.5);
+        if (p1 && p2) {
+          next = [
+            ...next,
+            {
+              id: rid(),
+              tool: 'arrow',
+              color: resolveDefaultInk(theme),
+              width: STROKE_WIDTH_THIN,
+              x1: p1[0],
+              y1: p1[1],
+              x2: p2[0],
+              y2: p2[1],
+              startBind: { hostId: src.id, nx: 1, ny: 0.5 },
+              endBind: { hostId: nid, nx: 0, ny: 0.5 },
+            },
+          ];
+        }
+      }
+      commitStrokes(prev, next, `quick-create ${sibling.tool}`);
+      annotSel?.replace(nid);
+      // Sticky → body editor; rect/ellipse/polygon → anchored-text editor
+      // (Wave G widened anchorsById to every closed shape).
+      if (
+        sibling.tool === 'sticky' ||
+        sibling.tool === 'rect' ||
+        sibling.tool === 'ellipse' ||
+        sibling.tool === 'polygon'
+      ) {
+        setEditingId(nid);
+      }
+      return true;
+    },
+    [commitStrokes, annotSel, theme]
+  );
+
+  // FigJam v3 — ⌘Enter pressed INSIDE a sticky/anchored editor commits there
+  // and asks the layer (via this event) to chain the next sibling. Deferred a
+  // tick so the editor's commit lands in strokesRef first.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onChain = (e: Event) => {
+      const id = (e as CustomEvent<{ id?: string }>).detail?.id;
+      if (!id) return;
+      window.setTimeout(() => {
+        chainCreate(id);
+      }, 0);
+    };
+    document.addEventListener('maude:chain-create', onChain);
+    return () => document.removeEventListener('maude:chain-create', onChain);
+  }, [chainCreate]);
+
+  // FigJam v3 — the resize overlay (a sibling component that owns the arrow
+  // endpoint handles) broadcasts the bind candidate while an endpoint drags;
+  // the halo renders here because the SVG layer owns the world overlay.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onHint = (e: Event) => {
+      setBindHintId((e as CustomEvent<{ hostId?: string | null }>).detail?.hostId ?? null);
+    };
+    document.addEventListener('maude:bind-hint', onHint);
+    return () => document.removeEventListener('maude:bind-hint', onHint);
+  }, []);
+
+  // FigJam v3 — live size label + dimension-match halos while resizing (the
+  // overlay broadcasts; the SVG layer paints).
+  const [resizeInfo, setResizeInfo] = useState<{
+    box: { x: number; y: number; w: number; h: number } | null;
+    matchIds: string[];
+  } | null>(null);
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onInfo = (e: Event) => {
+      const detail = (
+        e as CustomEvent<{
+          box?: { x: number; y: number; w: number; h: number } | null;
+          matchIds?: string[];
+        }>
+      ).detail;
+      setResizeInfo(detail?.box ? { box: detail.box, matchIds: detail.matchIds ?? [] } : null);
+    };
+    document.addEventListener('maude:resize-info', onInfo);
+    return () => document.removeEventListener('maude:resize-info', onInfo);
+  }, []);
+
+  // FigJam v3 — manipulation shortcuts: ⌘G group / ⌘⇧G ungroup, ⌘D duplicate,
+  // ] [ ⌘] ⌘[ z-order, ⌘C/⌘X copy/cut (selection → OS clipboard as a JSON
+  // text payload), ⌘Enter quick-create chain. Document capture, mirroring the
+  // nudge handler below; the input-router never claims these combos.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (!annotSel) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (isEditable(e.target)) return;
+      const store = strokesStoreRef.current;
+      const sel = annotSel.selectedIds;
+      const cmd = e.metaKey || e.ctrlKey;
+      const k = e.key.toLowerCase();
+      if (cmd && !e.altKey && k === 'g') {
+        // ⌘G claims the browser's find-next ONLY when a selection exists.
+        if (sel.length === 0) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (e.shiftKey) {
+          store.ungroupSelection(sel);
+        } else {
+          const members = store.groupSelection(sel);
+          if (members) annotSel.replace(members);
+        }
+        return;
+      }
+      if (cmd && !e.shiftKey && !e.altKey && k === 'd') {
+        if (sel.length === 0) return; // browser bookmark stays available
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        const ids = store.duplicateSelection(sel, 16, 16);
+        if (ids.length) annotSel.replace(ids);
+        return;
+      }
+      if ((e.key === ']' || e.key === '[') && !e.altKey && !e.shiftKey) {
+        if (sel.length === 0) return;
+        e.preventDefault();
+        const op: ZOrderOp =
+          e.key === ']' ? (cmd ? 'forward' : 'front') : cmd ? 'backward' : 'back';
+        store.reorderSelection(sel, op);
+        return;
+      }
+      if (cmd && !e.shiftKey && !e.altKey && (k === 'c' || k === 'x')) {
+        if (sel.length === 0) return; // let the native copy run
+        if (copySelection(k === 'x')) e.preventDefault();
+        return;
+      }
+      if (cmd && e.key === 'Enter' && !e.shiftKey && !e.altKey) {
+        if (sel.length !== 1) return;
+        const only = sel[0];
+        if (only && chainCreate(only)) e.preventDefault();
+        return;
+      }
+      // FigJam v3 — plain Enter on a single text-capable stroke opens its
+      // editor (FigJam: select a shape, press Enter, start typing).
+      if (e.key === 'Enter' && !cmd && !e.shiftKey && !e.altKey) {
+        if (sel.length !== 1) return;
+        const only = strokesRef.current.find((x) => x.id === sel[0]);
+        if (!only) return;
+        if (
+          only.tool === 'rect' ||
+          only.tool === 'ellipse' ||
+          only.tool === 'polygon' ||
+          only.tool === 'sticky' ||
+          (only.tool === 'text' && (only.anchorId == null || only.anchorId === ''))
+        ) {
+          e.preventDefault();
+          setEditingId(only.id);
+        }
+      }
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [annotSel, chainCreate, copySelection]);
+
+  // FigJam v3 — paste strokes. ⌘C serialized the selection as a JSON text
+  // payload; this CAPTURE-phase listener claims it before the media-intake
+  // hook (bubble phase) so a strokes payload never falls through to the URL/
+  // link branch.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (!annotSel) return;
+    const onPaste = (e: ClipboardEvent) => {
+      if (isEditable(e.target)) return;
+      const txt = e.clipboardData?.getData('text/plain') ?? '';
+      if (!txt.startsWith('{"maudeStrokes"')) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      pasteStrokesText(txt);
+    };
+    document.addEventListener('paste', onPaste, true);
+    return () => document.removeEventListener('paste', onPaste, true);
+  }, [annotSel, pasteStrokesText]);
+
+  // FigJam v3 — hover "Add text" affordance: an empty rect/ellipse hovered in
+  // move mode shows a ghost label; double-click (existing) or Enter edits.
+  const [addTextHintId, setAddTextHintId] = useState<string | null>(null);
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (tool !== 'move') {
+      setAddTextHintId(null);
+      return;
+    }
+    const onMove = (e: PointerEvent) => {
+      const node = (e.target as Element | null)?.closest?.('[data-id][data-tool]');
+      const t = node?.getAttribute('data-tool');
+      const id = node?.getAttribute('data-id') ?? null;
+      if (!id || (t !== 'rect' && t !== 'ellipse' && t !== 'polygon')) {
+        setAddTextHintId(null);
+        return;
+      }
+      const hasText = strokesRef.current.some(
+        (x) => x.tool === 'text' && x.anchorId === id && x.text.length > 0
+      );
+      setAddTextHintId(hasText ? null : id);
+    };
+    document.addEventListener('pointermove', onMove, { passive: true });
+    return () => document.removeEventListener('pointermove', onMove);
+  }, [tool]);
+
+  // FigJam v3 — connector draft: dragging from a connection dot (the side
+  // magnets shown on a selected bindable shape) draws a BOUND curved
+  // connector; releasing over another bindable shape binds the far end too
+  // (⌘ keeps it free). The draft renders through the same arrow primitives.
+  const [connDraft, setConnDraft] = useState<{
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    startBind: { hostId: string; nx: number; ny: number };
+    endBind?: { hostId: string; nx: number; ny: number };
+  } | null>(null);
+  const connDraftRef = useRef(connDraft);
+  connDraftRef.current = connDraft;
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (tool !== 'move') return;
+    const onDown = (e: PointerEvent) => {
+      if (e.button !== 0) return;
+      const dot = (e.target as Element | null)?.closest?.('.dc-annot-conn-dot');
+      if (!dot) return;
+      const hostId = dot.getAttribute('data-host') ?? '';
+      const nx = Number.parseFloat(dot.getAttribute('data-nx') ?? '');
+      const ny = Number.parseFloat(dot.getAttribute('data-ny') ?? '');
+      const host = strokesRef.current.find((s) => s.id === hostId);
+      if (!host || !Number.isFinite(nx) || !Number.isFinite(ny)) return;
+      const pt = anchorPoint(host, nx, ny);
+      if (!pt) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const pointerId = e.pointerId;
+      const startBind = { hostId, nx, ny };
+      setConnDraft({ x1: pt[0], y1: pt[1], x2: pt[0], y2: pt[1], startBind });
+      const onMove = (mv: PointerEvent) => {
+        if (mv.pointerId !== pointerId) return;
+        const [wx, wy] = screenToWorld(mv.clientX, mv.clientY);
+        const zoom = vpRef.current?.zoom || 1;
+        const cand =
+          mv.metaKey || mv.ctrlKey
+            ? null
+            : bindCandidate(
+                wx,
+                wy,
+                strokesRef.current,
+                BIND_THRESHOLD_PX / zoom,
+                new Set([hostId])
+              );
+        setBindHintId(cand?.hostId ?? null);
+        if (cand) {
+          const target = strokesRef.current.find((s) => s.id === cand.hostId);
+          const tp = target ? anchorPoint(target, cand.nx, cand.ny) : null;
+          if (tp) {
+            setConnDraft({ x1: pt[0], y1: pt[1], x2: tp[0], y2: tp[1], startBind, endBind: cand });
+            return;
+          }
+        }
+        setConnDraft({ x1: pt[0], y1: pt[1], x2: wx, y2: wy, startBind });
+      };
+      const onUp = (up: PointerEvent) => {
+        if (up.pointerId !== pointerId) return;
+        document.removeEventListener('pointermove', onMove, true);
+        document.removeEventListener('pointerup', onUp, true);
+        document.removeEventListener('pointercancel', onUp, true);
+        const draft = connDraftRef.current;
+        setConnDraft(null);
+        setBindHintId(null);
+        if (!draft) return;
+        // A bare tap on the dot creates nothing.
+        if (Math.hypot(draft.x2 - draft.x1, draft.y2 - draft.y1) < 8) return;
+        const arrow: ArrowStroke = {
+          id: rid(),
+          tool: 'arrow',
+          color: resolveDefaultInk(theme),
+          width: STROKE_WIDTH_THIN,
+          x1: draft.x1,
+          y1: draft.y1,
+          x2: draft.x2,
+          y2: draft.y2,
+          lineType: 'curved',
+          startBind: draft.startBind,
+          ...(draft.endBind ? { endBind: draft.endBind } : {}),
+        };
+        const prev = strokesRef.current;
+        commitStrokes(prev, [...prev, arrow], 'draw connector');
+        annotSel?.replace(arrow.id);
+        if (arrow.endBind) {
+          showOnceHint(
+            'bind',
+            'Arrow attached — it follows the shape now. Drag an endpoint to re-anchor, hold ⌘ to keep it free.'
+          );
+        }
+      };
+      document.addEventListener('pointermove', onMove, true);
+      document.addEventListener('pointerup', onUp, true);
+      document.addEventListener('pointercancel', onUp, true);
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    return () => document.removeEventListener('pointerdown', onDown, true);
+  }, [tool, screenToWorld, commitStrokes, annotSel, theme]);
+
+  // FigJam v3 — right-click on a stroke SELECTS it (keeping a multi-selection
+  // the press lands inside) and opens the annotation context menu (z-order,
+  // group, copy/paste, delete). Capture phase on document so it claims the
+  // event before the input-router's host-level contextmenu handler.
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (tool !== 'move') return;
+    if (!annotSel) return;
+    const strokeAt = (target: Element | null): string | null => {
+      if (target?.closest?.(CHROME_SELECTOR)) return null;
+      const node = target?.closest?.('[data-id][data-tool]');
+      const id = node?.getAttribute('data-id');
+      if (!id || !strokesRef.current.some((s) => s.id === id)) return null;
+      return id;
+    };
+    const onCtx = (e: MouseEvent) => {
+      const id = strokeAt(e.target as Element | null);
+      if (!id) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (!annotSel.contains(id)) {
+        annotSel.replace(expandIdsToGroups([id], strokesRef.current));
+      }
+      setCtxMenu({ x: e.clientX, y: e.clientY });
+    };
+    // Wave G — the input-router ALSO opens the shell canvas menu from a
+    // right-button POINTERDOWN (classify maps button 2 → 'context-menu'), so
+    // claiming only the contextmenu event left BOTH menus open. This document-
+    // capture listener fires before the router's host-capture one and stops
+    // propagation WITHOUT preventDefault, so the native contextmenu event
+    // (which opens OUR menu above) still follows.
+    const onDown = (e: PointerEvent) => {
+      if (e.button !== 2) return;
+      if (!strokeAt(e.target as Element | null)) return;
+      e.stopImmediatePropagation();
+    };
+    document.addEventListener('contextmenu', onCtx, true);
+    document.addEventListener('pointerdown', onDown, true);
+    return () => {
+      document.removeEventListener('contextmenu', onCtx, true);
+      document.removeEventListener('pointerdown', onDown, true);
+    };
+  }, [tool, annotSel]);
 
   // Keyboard: arrow nudge + Backspace/Delete remove selected strokes.
   useEffect(() => {
@@ -3132,6 +2613,62 @@ export function AnnotationsLayer() {
     return () => document.removeEventListener('keydown', onKey, true);
   }, [annotSel, strokesStore]);
 
+  /** FigJam v3 — context-menu action dispatcher (shares the shortcut paths). */
+  const onMenuAction = useCallback(
+    (action: string) => {
+      const store = strokesStoreRef.current;
+      if (!annotSel) return;
+      const sel = annotSel.selectedIds;
+      if (action === 'copy') copySelection(false);
+      else if (action === 'cut') copySelection(true);
+      else if (action === 'paste') {
+        try {
+          void navigator.clipboard
+            ?.readText()
+            .then((t) => {
+              pasteStrokesText(t);
+            })
+            .catch(() => {
+              /* clipboard read blocked — paste is best-effort from the menu */
+            });
+        } catch {
+          /* clipboard API absent */
+        }
+      } else if (action === 'duplicate') {
+        const ids = store.duplicateSelection(sel, 16, 16);
+        if (ids.length) annotSel.replace(ids);
+      } else if (action === 'delete') {
+        store.deleteStrokes(sel);
+        annotSel.clear();
+      } else if (
+        action === 'front' ||
+        action === 'forward' ||
+        action === 'backward' ||
+        action === 'back'
+      ) {
+        store.reorderSelection(sel, action);
+      } else if (action === 'group') {
+        const members = store.groupSelection(sel);
+        if (members) annotSel.replace(members);
+      } else if (action === 'ungroup') {
+        store.ungroupSelection(sel);
+      }
+    },
+    [annotSel, copySelection, pasteStrokesText]
+  );
+
+  // FigJam v3 — first time a multi-selection lands, surface the group /
+  // duplicate affordances once (behaviour-triggered, never a tour).
+  const selCount = annotSel?.selectedIds.length ?? 0;
+  useEffect(() => {
+    if (selCount >= 2) {
+      showOnceHint(
+        'multi',
+        '⌘G groups the selection · drag inside the box moves everything · ⌘D duplicates.'
+      );
+    }
+  }, [selCount]);
+
   // Selected stroke halos — bboxes in world coords, vector-effect non-scaling-stroke.
   const selectedStrokes = useMemo(() => {
     if (!annotSel || annotSel.selectedIds.length === 0) return [] as Stroke[];
@@ -3145,54 +2682,76 @@ export function AnnotationsLayer() {
 
   return (
     <StrokesStoreContext.Provider value={strokesStore}>
-      <>
-        <AnnotationsInput
-          isActive={isActive}
-          visible={visible}
-          cursor={tools.find((t) => t.id === tool)?.cursor ?? 'crosshair'}
-          beginStroke={beginStroke}
-          moveStroke={moveStroke}
-          endStroke={endStroke}
-          onLeave={() => setGhost(null)}
+      <AnnotationsInput
+        isActive={isActive}
+        visible={visible}
+        cursor={tools.find((t) => t.id === tool)?.cursor ?? 'crosshair'}
+        beginStroke={beginStroke}
+        moveStroke={moveStroke}
+        endStroke={endStroke}
+        onLeave={() => setGhost(null)}
+      />
+      {visible ? (
+        <AnnotationsSvg
+          worldRef={worldRef}
+          strokes={renderStrokes}
+          anchorsById={anchorsById}
+          selectMode={tool === 'move'}
+          selectedStrokes={selectedStrokes}
+          marquee={marquee}
+          snapGuides={snapGuides}
+          bindHintId={bindHintId}
+          resizeInfo={resizeInfo}
+          connDraft={connDraft}
+          addTextHintId={editingTarget ? null : addTextHintId}
+          ghost={ghostPreview}
+          editingTarget={editingTarget}
+          inkColor={color}
+          onCommitEdit={commitEditing}
+          onCancelEdit={cancelEditing}
         />
-        {visible ? (
-          <AnnotationsSvg
-            worldRef={worldRef}
-            strokes={renderStrokes}
-            anchorsById={anchorsById}
-            selectMode={tool === 'move'}
-            selectedStrokes={selectedStrokes}
-            marquee={marquee}
-            ghost={ghostPreview}
-            editingTarget={editingTarget}
-            inkColor={color}
-            onCommitEdit={commitEditing}
-            onCancelEdit={cancelEditing}
-          />
-        ) : null}
-        <AnnotationContextToolbar />
-        {visible && tool === 'move' ? <AnnotationResizeOverlay store={strokesStore} /> : null}
-        {isActive ? (
-          <AnnotationsChrome
-            tool={tool}
-            theme={theme}
-            color={color}
-            setColor={setColor}
-            stickyColor={stickyColor}
-            setStickyColor={setStickyColor}
-            highlighterColor={highlighterColor}
-            setHighlighterColor={setHighlighterColor}
-            highlighterWidth={highlighterWidth}
-            setHighlighterWidth={setHighlighterWidth}
-            supportsFill={supportsFill}
-            fill={fill}
-            setFill={setFill}
-            supportsThickness={supportsThickness}
-            thickness={thickness}
-            setThickness={setThickness}
-          />
-        ) : null}
-      </>
+      ) : null}
+      <AnnotationContextToolbar
+        editingId={
+          editingTarget?.kind === 'anchored'
+            ? editingTarget.anchorId
+            : editingTarget?.kind === 'sticky'
+              ? editingTarget.sticky.id
+              : editingTarget?.kind === 'standalone'
+                ? editingTarget.text.id
+                : null
+        }
+      />
+      {ctxMenu && annotSel ? (
+        <AnnotationContextMenu
+          pos={ctxMenu}
+          selCount={annotSel.selectedIds.length}
+          canUngroup={selectedStrokes.some((s) => (s.groupIds?.length ?? 0) > 0)}
+          onAction={onMenuAction}
+          onClose={() => setCtxMenu(null)}
+        />
+      ) : null}
+      {visible && tool === 'move' ? <AnnotationResizeOverlay store={strokesStore} /> : null}
+      {isActive ? (
+        <AnnotationsChrome
+          tool={tool}
+          theme={theme}
+          color={color}
+          setColor={setColor}
+          stickyColor={stickyColor}
+          setStickyColor={setStickyColor}
+          highlighterColor={highlighterColor}
+          setHighlighterColor={setHighlighterColor}
+          highlighterWidth={highlighterWidth}
+          setHighlighterWidth={setHighlighterWidth}
+          supportsFill={supportsFill}
+          fill={fill}
+          setFill={setFill}
+          supportsThickness={supportsThickness}
+          thickness={thickness}
+          setThickness={setThickness}
+        />
+      ) : null}
     </StrokesStoreContext.Provider>
   );
 }
@@ -3286,6 +2845,11 @@ function AnnotationsSvg({
   selectMode,
   selectedStrokes,
   marquee,
+  snapGuides,
+  bindHintId,
+  resizeInfo,
+  connDraft,
+  addTextHintId,
   ghost,
   editingTarget,
   inkColor,
@@ -3294,10 +2858,30 @@ function AnnotationsSvg({
 }: {
   worldRef: ReturnType<typeof useWorldRefContext>;
   strokes: readonly Stroke[];
-  anchorsById: Map<string, RectStroke | EllipseStroke>;
+  anchorsById: Map<string, AnchorHost>;
   selectMode: boolean;
   selectedStrokes: readonly Stroke[];
   marquee: { ax: number; ay: number; bx: number; by: number } | null;
+  /** FigJam v3 — smart-guide lines painted while a drag is snapping. */
+  snapGuides: SnapGuide[] | null;
+  /** FigJam v3 — host a dragged arrow endpoint would bind to (accent halo). */
+  bindHintId: string | null;
+  /** FigJam v3 — live size label + dimension-match halos while resizing. */
+  resizeInfo: {
+    box: { x: number; y: number; w: number; h: number } | null;
+    matchIds: string[];
+  } | null;
+  /** FigJam v3 — in-flight connector drawn from a connection dot. */
+  connDraft: {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    startBind: { hostId: string; nx: number; ny: number };
+    endBind?: { hostId: string; nx: number; ny: number };
+  } | null;
+  /** FigJam v3 — hovered empty shape that shows the "Add text" ghost label. */
+  addTextHintId: string | null;
   ghost: GhostDescriptor | null;
   editingTarget: EditingTarget;
   /** Live default ink (theme-aware) for a not-yet-born pending text caret. */
@@ -3358,6 +2942,94 @@ function AnnotationsSvg({
           vectorEffect="non-scaling-stroke"
         />
       ) : null}
+      {/* FigJam v3 — smart guides: solid 1px accent lines at the snapped edge/
+          center, painted only while a drag is actively snapping. */}
+      {snapGuides?.map((g, i) => (
+        <line
+          // biome-ignore lint/suspicious/noArrayIndexKey: guides are positional + rebuilt per move tick
+          key={`guide-${i}`}
+          x1={g.axis === 'x' ? g.at : g.from}
+          y1={g.axis === 'x' ? g.from : g.at}
+          x2={g.axis === 'x' ? g.at : g.to}
+          y2={g.axis === 'x' ? g.to : g.at}
+          stroke="var(--maude-hud-accent, #d63b1f)"
+          strokeWidth={1}
+          vectorEffect="non-scaling-stroke"
+          pointerEvents="none"
+        />
+      ))}
+      {/* FigJam v3 — bind hint: halo the host a dragged arrow endpoint would
+          magnetically attach to. */}
+      <BindHintHalo strokes={strokes} bindHintId={bindHintId} />
+      {/* FigJam v3 — connection dots on a single selected bindable shape;
+          dragging one draws a bound connector (rendered below as a draft). */}
+      {selectMode && !connDraft && selectedStrokes.length === 1 && selectedStrokes[0] ? (
+        <ConnectorDots stroke={selectedStrokes[0]} />
+      ) : null}
+      {connDraft ? (
+        <g
+          stroke={inkColor}
+          strokeWidth={2.5}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+          fill="none"
+          pointerEvents="none"
+        >
+          {arrowPrimitives({
+            x1: connDraft.x1,
+            y1: connDraft.y1,
+            x2: connDraft.x2,
+            y2: connDraft.y2,
+            width: 2.5,
+            color: inkColor,
+            lineType: 'curved',
+            startBind: connDraft.startBind,
+            ...(connDraft.endBind ? { endBind: connDraft.endBind } : {}),
+          }).map((prim, i) => renderArrowPrimitive(prim, i))}
+        </g>
+      ) : null}
+      {/* FigJam v3 — hover affordance: an empty shape invites text. */}
+      <AddTextHint strokes={strokes} hintId={addTextHintId} />
+      {/* FigJam v3 — resize chrome: live W × H label at the box corner plus a
+          dashed halo on any neighbour whose dimension the resize just matched
+          (the "same size as that one" quota). */}
+      {resizeInfo?.box ? (
+        <g pointerEvents="none">
+          {resizeInfo.matchIds.map((id) => {
+            const m = strokes.find((s) => s.id === id);
+            const bb = m ? strokeBBox(m) : null;
+            if (!bb) return null;
+            return (
+              <rect
+                key={`dim-${id}`}
+                x={bb.x - 2}
+                y={bb.y - 2}
+                width={bb.w + 4}
+                height={bb.h + 4}
+                fill="none"
+                stroke="var(--maude-hud-accent, #d63b1f)"
+                strokeWidth={1.5}
+                strokeDasharray="5 3"
+                vectorEffect="non-scaling-stroke"
+                rx={2}
+              />
+            );
+          })}
+          <text
+            x={resizeInfo.box.x + resizeInfo.box.w / 2}
+            y={resizeInfo.box.y + resizeInfo.box.h + 18}
+            textAnchor="middle"
+            fontSize={11}
+            fill="var(--maude-hud-accent, #d63b1f)"
+            style={{
+              fontFamily: 'var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
+            }}
+          >
+            {`${Math.round(resizeInfo.box.w)} × ${Math.round(resizeInfo.box.h)}`}
+          </text>
+        </g>
+      ) : null}
       {ghost ? <GhostPreview ghost={ghost} /> : null}
       {editingTarget?.kind === 'anchored' ? (
         <TextEditor
@@ -3403,6 +3075,23 @@ function AnnotationsSvg({
           onCancel={onCancelEdit}
         />
       ) : null}
+      {editingTarget?.kind === 'section' ? (
+        <StandaloneTextEditor
+          x={
+            Math.min(editingTarget.section.x, editingTarget.section.x + editingTarget.section.w) + 2
+          }
+          y={
+            Math.min(editingTarget.section.y, editingTarget.section.y + editingTarget.section.h) -
+            SECTION_LABEL_H -
+            2
+          }
+          fontSize={SECTION_LABEL_FONT}
+          color={editingTarget.section.color}
+          initialText={editingTarget.section.label}
+          onCommit={onCommitEdit}
+          onCancel={onCancelEdit}
+        />
+      ) : null}
     </svg>,
     target
   );
@@ -3416,7 +3105,7 @@ function TextEditor({
   onCancel,
 }: {
   anchorId: string;
-  host: RectStroke | EllipseStroke | null;
+  host: AnchorHost | null;
   existing: TextStroke | undefined;
   onCommit: (anchorId: string, text: string, fmt?: EditorFmt) => void;
   onCancel: () => void;
@@ -3437,6 +3126,8 @@ function TextEditor({
     italic: existing?.italic,
     underline: existing?.underline,
     strike: existing?.strike,
+    fontSize: existing?.fontSize ?? DEFAULT_FONT_SIZE,
+    align: existing?.align ?? 'center',
   });
 
   useEffect(() => {
@@ -3464,6 +3155,9 @@ function TextEditor({
       const el = ref.current;
       if (!el) return;
       if (el.contains(e.target as Node)) return;
+      // FigJam v3 — the edit-mode text toolbar drives THIS editor; clicking
+      // it must not commit-and-close the session.
+      if ((e.target as Element | null)?.closest?.('.dc-annot-ctx')) return;
       onCommit(
         anchorId,
         stripEditorMarkers(el.innerText || '', existing?.listType),
@@ -3528,6 +3222,11 @@ function TextEditor({
               stripEditorMarkers(el?.innerText || '', existing?.listType),
               fmtRef.current
             );
+            // FigJam v3 — ⌘Enter chains: commit, then spawn a CONNECTED
+            // sibling shape (quick-create) from the host.
+            document.dispatchEvent(
+              new CustomEvent('maude:chain-create', { detail: { id: anchorId } })
+            );
           }
         }}
       >
@@ -3564,11 +3263,21 @@ function StickyEditor({
     italic: sticky.italic,
     underline: sticky.underline,
     strike: sticky.strike,
+    fontSize: sticky.fontSize,
+    align: sticky.align ?? 'left',
   });
   const commit = () => {
     if (doneRef.current) return;
     doneRef.current = true;
     onCommit(stripEditorMarkers(ref.current?.innerText ?? '', sticky.listType), fmtRef.current);
+  };
+  // FigJam v3 — a toolbar click steals focus for a tick; don't treat it as
+  // "done editing" (the button's onMouseDown preventDefault usually stops the
+  // blur, this guards the browsers where it doesn't).
+  const onBlur = (e: { relatedTarget?: EventTarget | null }) => {
+    const to = e.relatedTarget as Element | null;
+    if (to?.closest?.('.dc-annot-ctx')) return;
+    commit();
   };
   useEffect(() => {
     const el = ref.current;
@@ -3600,7 +3309,7 @@ function StickyEditor({
         suppressContentEditableWarning
         aria-label="Edit sticky note text"
         style={{ ...stickyBodyStyle(sticky), ...fmtStyle, outline: 'none', cursor: 'text' }}
-        onBlur={commit}
+        onBlur={onBlur}
         onKeyDown={(e) => {
           if (onFormatKey(e)) return; // Cmd/Ctrl+B/I/U
           if (e.key === 'Escape') {
@@ -3612,6 +3321,11 @@ function StickyEditor({
           if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
             commit();
+            // FigJam v3 — ⌘Enter chains: commit this body, then ask the layer
+            // to spawn + edit the next sticky beside it.
+            document.dispatchEvent(
+              new CustomEvent('maude:chain-create', { detail: { id: sticky.id } })
+            );
           }
         }}
       >
@@ -3665,6 +3379,8 @@ function StandaloneTextEditor({
     italic,
     underline,
     strike,
+    fontSize,
+    align: align ?? 'left',
   });
   // Single-fire commit guard — outside-click + blur can both fire in one tick;
   // without this the text would commit twice (two undo records). Markers shown
@@ -3701,6 +3417,8 @@ function StandaloneTextEditor({
       const el = ref.current;
       if (!el) return;
       if (el.contains(e.target as Node)) return;
+      // FigJam v3 — clicks into the edit-mode text toolbar keep the session.
+      if ((e.target as Element | null)?.closest?.('.dc-annot-ctx')) return;
       commitOnce(el.innerText || '');
     };
     document.addEventListener('pointerdown', onDown, true);
@@ -3758,15 +3476,233 @@ function StandaloneTextEditor({
   );
 }
 
+/**
+ * FigJam v3 — centered ghost "Add text" label on a hovered EMPTY rect/ellipse
+ * (FigJam shows the same invitation). Pure chrome; double-click / Enter edits.
+ */
+function AddTextHint({ strokes, hintId }: { strokes: readonly Stroke[]; hintId: string | null }) {
+  if (!hintId) return null;
+  const host = strokes.find((s) => s.id === hintId);
+  if (!host || (host.tool !== 'rect' && host.tool !== 'ellipse' && host.tool !== 'polygon'))
+    return null;
+  const bb = strokeBBox(host);
+  if (!bb || bb.w < 48 || bb.h < 28) return null;
+  const rot = strokeRotation(host);
+  const label = (
+    <text
+      x={bb.x + bb.w / 2}
+      y={bb.y + bb.h / 2}
+      textAnchor="middle"
+      dominantBaseline="middle"
+      fontSize={13}
+      fill={host.color}
+      opacity={0.45}
+      pointerEvents="none"
+      style={{ fontFamily: 'var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)' }}
+    >
+      Add text
+    </text>
+  );
+  if (rot === 0) return label;
+  return (
+    <g transform={`rotate(${rot} ${bb.x + bb.w / 2} ${bb.y + bb.h / 2})`} pointerEvents="none">
+      {label}
+    </g>
+  );
+}
+
+/**
+ * FigJam v3 — connection dots: the four side magnets of a selected bindable
+ * shape, screen-constant size, accent-ringed. Dragging one starts a bound
+ * connector (the layer owns the gesture; dots are in CHROME_SELECTOR so the
+ * marquee/drag handler yields).
+ */
+function ConnectorDots({ stroke }: { stroke: Stroke }) {
+  const controller = useViewportControllerContext();
+  const zoom = controller?.viewport?.zoom || 1;
+  if (!isBindable(stroke)) return null;
+  const center = strokeCenter(stroke);
+  if (!center) return null;
+  const magnets: Array<[number, number]> = [
+    [0.5, 0],
+    [1, 0.5],
+    [0.5, 1],
+    [0, 0.5],
+  ];
+  // FigJam parity — the dots float a step OUTSIDE the edge (along the outward
+  // normal), which also keeps them clear of the mid-edge RESIZE handles that
+  // sit exactly on the edge midpoints (DOM, higher layer — they'd swallow the
+  // drag otherwise). Deriving the normal from center→anchor keeps rotated
+  // shapes correct for free.
+  const offset = 16 / zoom;
+  return (
+    <g>
+      {magnets.map(([nx, ny]) => {
+        const pt = anchorPoint(stroke, nx, ny);
+        if (!pt) return null;
+        const dx = pt[0] - center[0];
+        const dy = pt[1] - center[1];
+        const len = Math.hypot(dx, dy) || 1;
+        return (
+          <circle
+            key={`${nx}-${ny}`}
+            className="dc-annot-conn-dot"
+            data-host={stroke.id}
+            data-nx={nx}
+            data-ny={ny}
+            cx={pt[0] + (dx / len) * offset}
+            cy={pt[1] + (dy / len) * offset}
+            r={5 / zoom}
+            fill="var(--maude-hud-accent, #d63b1f)"
+            stroke="var(--maude-chrome-bg-0, #ffffff)"
+            strokeWidth={1.5 / zoom}
+            pointerEvents="all"
+          />
+        );
+      })}
+    </g>
+  );
+}
+
+/**
+ * FigJam v3 — right-click context menu for annotation strokes. Reuses the
+ * `.dc-context-menu` visual language (stylesheet injected by context-menu.tsx)
+ * so the annotation menu and the canvas menu read as one product surface.
+ */
+function AnnotationContextMenu({
+  pos,
+  selCount,
+  canUngroup,
+  onAction,
+  onClose,
+}: {
+  pos: { x: number; y: number };
+  selCount: number;
+  canUngroup: boolean;
+  onAction: (action: string) => void;
+  onClose: () => void;
+}) {
+  ensureCtxMenuStyles();
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [at, setAt] = useState<{ x: number; y: number }>(pos);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof window === 'undefined') return;
+    const r = el.getBoundingClientRect();
+    let nx = pos.x;
+    let ny = pos.y;
+    if (nx + r.width > window.innerWidth - 8) nx = Math.max(8, window.innerWidth - r.width - 8);
+    if (ny + r.height > window.innerHeight - 8) ny = Math.max(8, window.innerHeight - r.height - 8);
+    if (nx !== at.x || ny !== at.y) setAt({ x: nx, y: ny });
+    el.querySelector<HTMLButtonElement>('button.dc-menu-item:not([disabled])')?.focus();
+    const onDown = (e: PointerEvent) => {
+      if (!el.contains(e.target as Node)) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('keydown', onKey, true);
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('keydown', onKey, true);
+    };
+  }, [pos, onClose, at.x, at.y]);
+  const item = (
+    id: string,
+    label: string,
+    shortcut?: string,
+    opts?: { destructive?: boolean; disabled?: boolean }
+  ) => (
+    <button
+      type="button"
+      role="menuitem"
+      disabled={opts?.disabled}
+      className={`dc-menu-item${opts?.destructive ? ' is-destructive' : ''}`}
+      onClick={() => {
+        if (opts?.disabled) return;
+        onAction(id);
+        onClose();
+      }}
+    >
+      <span>{label}</span>
+      {shortcut ? <span className="dc-menu-shortcut">{shortcut}</span> : null}
+    </button>
+  );
+  return (
+    <div
+      ref={ref}
+      className="dc-context-menu"
+      role="menu"
+      aria-label="Annotation actions"
+      style={{ left: at.x, top: at.y }}
+    >
+      {item('copy', 'Copy', '⌘C')}
+      {item('cut', 'Cut', '⌘X')}
+      {item('paste', 'Paste', '⌘V')}
+      {item('duplicate', 'Duplicate', '⌘D')}
+      <div className="dc-menu-sep" aria-hidden="true" />
+      {item('front', 'Bring to front', ']')}
+      {item('forward', 'Bring forward', '⌘]')}
+      {item('backward', 'Send backward', '⌘[')}
+      {item('back', 'Send to back', '[')}
+      <div className="dc-menu-sep" aria-hidden="true" />
+      {item('group', 'Group selection', '⌘G', { disabled: selCount < 2 })}
+      {canUngroup ? item('ungroup', 'Ungroup', '⌘⇧G') : null}
+      <div className="dc-menu-sep" aria-hidden="true" />
+      {item('delete', 'Delete', '⌫', { destructive: true })}
+    </div>
+  );
+}
+
+/**
+ * FigJam v3 — accent halo on the host a dragged arrow endpoint would bind to.
+ * Pure chrome (pointer-events:none); renders nothing when no candidate.
+ */
+function BindHintHalo({
+  strokes,
+  bindHintId,
+}: {
+  strokes: readonly Stroke[];
+  bindHintId: string | null;
+}) {
+  if (!bindHintId) return null;
+  const host = strokes.find((s) => s.id === bindHintId);
+  if (!host) return null;
+  const bbox = strokeBBox(host);
+  if (!bbox) return null;
+  const pad = 3;
+  return (
+    <rect
+      x={bbox.x - pad}
+      y={bbox.y - pad}
+      width={bbox.w + pad * 2}
+      height={bbox.h + pad * 2}
+      fill="none"
+      stroke="var(--maude-hud-accent, #d63b1f)"
+      strokeWidth={2}
+      strokeOpacity={0.8}
+      vectorEffect="non-scaling-stroke"
+      pointerEvents="none"
+      rx={3}
+    />
+  );
+}
+
 function SelectionHalo({
   stroke,
   anchorsById,
   multi,
 }: {
   stroke: Stroke;
-  anchorsById: Map<string, RectStroke | EllipseStroke>;
+  anchorsById: Map<string, AnchorHost>;
   multi: boolean;
 }) {
+  const controller = useViewportControllerContext();
+  const zoom = controller?.viewport?.zoom || 1;
   const bbox = strokeBBox(stroke, anchorsById);
   if (!bbox) return null;
   // T17 + post-Wave-2 fix — annotation halo idioms:
@@ -3781,8 +3717,10 @@ function SelectionHalo({
   //     bbox above carries the container affordance).
   // Marquee STAYS dashed (drawn elsewhere) — dashed is reserved for the
   // ambient group-container + active-gesture idioms per DDR-046 rev 2.
-  const pad = 4;
-  return (
+  // Wave H — screen-constant breathing room (matches the resize handles,
+  // which sit on the same padded frame — HALO_PAD_PX single source).
+  const pad = HALO_PAD_PX / zoom;
+  const halo = (
     <rect
       x={bbox.x - pad}
       y={bbox.y - pad}
@@ -3796,6 +3734,10 @@ function SelectionHalo({
       rx={2}
     />
   );
+  // FigJam v3 — the halo turns with a rotated stroke.
+  const rot = strokeRotation(stroke);
+  if (rot === 0) return halo;
+  return <g transform={`rotate(${rot} ${bbox.x + bbox.w / 2} ${bbox.y + bbox.h / 2})`}>{halo}</g>;
 }
 
 // T17 — group bbox dashed rect for multi-stroke annotation selection. Mirrors
@@ -3805,8 +3747,10 @@ function AnnotGroupBbox({
   anchorsById,
 }: {
   selectedStrokes: readonly Stroke[];
-  anchorsById: Map<string, RectStroke | EllipseStroke>;
+  anchorsById: Map<string, AnchorHost>;
 }) {
+  const controller = useViewportControllerContext();
+  const zoom = controller?.viewport?.zoom || 1;
   if (selectedStrokes.length < 2) return null;
   let xMin = Number.POSITIVE_INFINITY;
   let yMin = Number.POSITIVE_INFINITY;
@@ -3823,7 +3767,8 @@ function AnnotGroupBbox({
     if (b.y + b.h > yMax) yMax = b.y + b.h;
   }
   if (!any) return null;
-  const pad = 6;
+  // Wave H — screen-constant pad, one step wider than the single halo.
+  const pad = (HALO_PAD_PX + 2) / zoom;
   const x = xMin - pad;
   const y = yMin - pad;
   const w = xMax - xMin + pad * 2;
@@ -3985,14 +3930,40 @@ function GhostPreview({ ghost }: { ghost: GhostDescriptor }) {
   return <polygon points={polygonPoints(ghost.shapeKind, x, y, sz, sz)} {...common} />;
 }
 
-function StrokeNode({
+/**
+ * FigJam v3 — rotation wrapper. The base node renders axis-aligned geometry;
+ * a rotated stroke wraps it in a `rotate()` group around its bbox center
+ * (anchored text inherits its HOST's rotation so labels turn with the shape).
+ * Pointer events pass through the group, so hit-testing + the ctx-toolbar's
+ * getBoundingClientRect positioning keep working on the rotated form.
+ */
+function StrokeNode(props: {
+  stroke: Stroke;
+  anchorsById: Map<string, AnchorHost>;
+  interactive: boolean;
+  editing?: boolean;
+}) {
+  const { stroke, anchorsById } = props;
+  let rot = strokeRotation(stroke);
+  let pivot = rot !== 0 ? strokeCenter(stroke) : null;
+  if (stroke.tool === 'text' && stroke.anchorId != null && stroke.anchorId !== '') {
+    const host = anchorsById.get(stroke.anchorId);
+    rot = host ? strokeRotation(host) : 0;
+    pivot = rot !== 0 && host ? strokeCenter(host) : null;
+  }
+  const node = <StrokeNodeBase {...props} />;
+  if (rot === 0 || !pivot) return node;
+  return <g transform={`rotate(${rot} ${pivot[0]} ${pivot[1]})`}>{node}</g>;
+}
+
+function StrokeNodeBase({
   stroke,
   anchorsById,
   interactive,
   editing = false,
 }: {
   stroke: Stroke;
-  anchorsById: Map<string, RectStroke | EllipseStroke>;
+  anchorsById: Map<string, AnchorHost>;
   interactive: boolean;
   /** Phase 21 — sticky-only: hide the read-only body while its editor is up. */
   editing?: boolean;
@@ -4189,6 +4160,75 @@ function StrokeNode({
         >
           {shownTitle}
         </text>
+      </g>
+    );
+  }
+  if (stroke.tool === 'section') {
+    const x = Math.min(stroke.x, stroke.x + stroke.w);
+    const y = Math.min(stroke.y, stroke.y + stroke.h);
+    const w = Math.abs(stroke.w);
+    const h = Math.abs(stroke.h);
+    const chipW = Math.max(56, stroke.label.length * SECTION_LABEL_FONT * 0.62 + 18);
+    return (
+      <g data-id={stroke.id} data-tool="section">
+        {/* Region body — pure backdrop, CLICK-THROUGH (FigJam: content on a
+            section selects normally; the section is grabbed by border/chip). */}
+        <rect
+          x={x}
+          y={y}
+          width={w}
+          height={h}
+          rx={SECTION_CORNER_RADIUS}
+          ry={SECTION_CORNER_RADIUS}
+          fill={stroke.color}
+          fillOpacity={0.07}
+          stroke={stroke.color}
+          strokeOpacity={0.45}
+          strokeWidth={1.5}
+          vectorEffect="non-scaling-stroke"
+          pointerEvents="none"
+        />
+        {/* Invisible border hit ring — the grabbable edge. */}
+        {interactive ? (
+          <rect
+            x={x}
+            y={y}
+            width={w}
+            height={h}
+            rx={SECTION_CORNER_RADIUS}
+            ry={SECTION_CORNER_RADIUS}
+            fill="none"
+            stroke="transparent"
+            strokeWidth={12}
+            vectorEffect="non-scaling-stroke"
+            pointerEvents="stroke"
+          />
+        ) : null}
+        {/* Label chip above the top-left corner — also a grab handle. */}
+        <g pointerEvents={hitMode}>
+          <rect
+            x={x}
+            y={y - SECTION_LABEL_H - 4}
+            width={chipW}
+            height={SECTION_LABEL_H}
+            rx={5}
+            ry={5}
+            fill={stroke.color}
+            fillOpacity={0.16}
+          />
+          <text
+            x={x + 9}
+            y={y - SECTION_LABEL_H / 2 - 4}
+            dominantBaseline="middle"
+            fontSize={SECTION_LABEL_FONT}
+            fill={stroke.color}
+            style={{
+              fontFamily: 'var(--u-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
+            }}
+          >
+            {stroke.label}
+          </text>
+        </g>
       </g>
     );
   }
