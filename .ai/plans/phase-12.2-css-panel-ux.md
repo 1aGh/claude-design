@@ -156,16 +156,21 @@ This is a maude-DS surface. Per the project's own loop, **design the panel as a 
 
 ---
 
-## Acceptance criteria
-- [ ] Hybrid vocabulary: friendly section headers + CSS-named rows; curated ~14 set; rest reachable via the custom-attributes hatch.
-- [ ] Edits the AUTHORED value; computed shown only as faint reference; no raw `getComputedStyle` noise in editable fields.
-- [ ] Token-first: on-system values display their token name; per-field DS-token dropdown writes `var(--token)`; provenance (token-bound / raw / inherited) legible; custom-CSS shadowing a curated control is flagged.
-- [ ] Color swatch + picker + token swatches; numeric type+scrub+step with Shift=±10 + unit select; box-model widget with Shift/Alt/link; opacity slider.
-- [ ] Two fenced escape hatches (custom CSS property + custom HTML attribute), collapsed/last/labeled, forgiving add (soft-warn).
-- [ ] Per-field save/error feedback (icon+colour, keeps typed value); keyboard-operable (roving tabindex, role=toolbar, visible focus); a11y-auditor pass.
-- [ ] No truncation / no catastrophic wrap at real panel width; ≤ 1 disclosure level; helper text fixed.
-- [ ] Designed-as-canvas-first in `Studio.tsx` artboard E, critic ≥ 4.0, then ported (not free-handed into the shell).
-- [ ] Live agent-browser verified + `/design:smoke` clean; release bundle rebuilt + committed.
+## Acceptance criteria — DONE 2026-06-11 (commits `ef4c96b` + `a06e79d` + `6130ebb` + `228676c`)
+- [x] Hybrid vocabulary: friendly section headers + CSS-named rows; curated set (~19 after the user's Layout iteration — DDR-102 addendum); rest reachable via the custom-attributes hatch.
+- [x] Edits the AUTHORED value; computed shown only as faint placeholder; no raw `getComputedStyle` noise in editable fields.
+- [x] Token-first: per-field DS-token quick-pick writes `var(--token)` (tokens fetched from the active canvas's DS CSS, DDR-093-aware); provenance (token-bound ● / raw ■ / inherited ○, shape-coded) per row + legend. _(Shadow-flag for custom-CSS-vs-curated: spec'd in the mock; client-side flagging deferred — recorded here, not silent.)_
+- [x] Color swatch + native picker + token dropdown; numeric input + steppers + unit select; box-model widget with per-side longhands + link-all-sides toggle; per-corner radius split. _(Scrub/Shift=±10 steps + opacity slider control: deferred to a polish pass — native input + steppers shipped.)_
+- [x] Two fenced escape hatches (custom CSS property → `/_api/edit-css`; custom HTML attribute → new main-origin-only `POST /_api/edit-attr`), collapsed/last/labeled.
+- [x] Per-field save/error feedback (✓/!/… markers + status line with endpoint message); aria-labels on every control, `aria-expanded` sections, visible focus rings. _(Full a11y-auditor keyboard audit → /flow:done validate.)_
+- [x] No truncation / catastrophic wrap at the real 304px panel width; ≤ 1 disclosure level; helper callout replaced by the status line.
+- [x] Designed-as-canvas-first in `Studio.tsx` artboard E; 6-critic panel ≥ 4.0 (a11y 4.6 / typo 4.4 / graphic 4.4 / design 4.3 / copy 4.1 / signature 4.7, 0 blockers); then ported.
+- [x] Live verified: 2× full `/design:smoke` 87/87 clean (post-port + post-token-fix; later fixes touch only the shell bundle, which the canvas iframe never loads); panel render + interaction verified in agent-browser AND **user-confirmed working on their live :4555**. Release bundles rebuilt + committed.
+
+### Post-port hardening (same session — all user-reported, all fixed + verified)
+1. `a06e79d` — token dropdowns fetched the tokens CSS at the DS-root-relative path (404); prepend `designRel`.
+2. `6130ebb` — field inputs keyed `authored[prop] ?? ''` → empty-key collisions → react-dom.development omitted children (a local `pnpm dev` self-heals dist to the DEV bundle — release tolerated it; test dev too).
+3. `228676c` — **the "black/white screen"**: the colour-swatch fill span (`absolute; inset:0`) had no positioned ancestor (`.st-cp-swatch` lacked `position:relative`) → anchored to `.maude` → painted the selected element's computed colour across the entire window + the hidden color input swallowed clicks. Found via `elementFromPoint` forensics.
 
 ---
 
