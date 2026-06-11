@@ -18,19 +18,19 @@
 > Plan refreshed 2026-06-11 (original pre-Phase-3.4 plan superseded). Scope: CSS writeback (inline `style={{}}` via existing `editAttribute`), inline text editing (new `editText`, double-click contenteditable), browsable Layers tree (Webflow Navigator, click-to-select), + generation-envelope reinforcement (Task 8). Reorder deferred → `phase-12.1`. DDR-101.
 > _NOTE: this worktree is at base `340b2ed`; `main` (`f9a68b7`) is ahead with the uncommitted annotations-v3 work. The phase-12 work was mistakenly authored in `main` first, then relocated here cleanly; `main` was restored to annotations-only._
 
-**Server-side foundation DONE + verified (2026-06-11). Client UI (Tasks 2 / 3-UI / 4 / 5 / 7) + Task 8 remain — the larger, fragile half (app.jsx + canvas-shell.tsx + release rebuild + smoke + agent-browser per the no-break-exhaustive-verify rule).**
+**Committed: `03053f5` (server foundation) + `eb8705f` (CSS knobs UI). Remaining: Tasks 3-UI / 4 / 5 / 7 + Task 8 + LIVE agent-browser verification of all client UI (the no-break gate not yet run).**
 
-- [x] **Task 0** — DDR-101 written + indexed (waive survey gate; CSS=inline-style merge + text=escaped JSXText; drop Phase-10; spin off reorder → phase-12.1).
-- [x] **Task 1** — `POST /_api/edit-css` (`http.ts`) + `api.editCss` (`api.ts`) + `resolveCanvasAbs` containment. Main-origin only. **Verified:** origin-gate 403.
-- [ ] **Task 2** — CSS knobs (Webflow grouped sections + token presets + raw escape). _client — app.jsx InspectorPanel._
-- [x] **Task 3 (engine + endpoint)** — `editText()`/`applyTextEdit()` + `escapeJsxText` (`canvas-edit.ts`) + `POST /_api/edit-text` + `api.editText`. **Verified:** 7 engine tests. ⏳ **Task 3 (UI)** — inline double-click contenteditable + `dgn:edit-text` bus — pending (canvas-shell.tsx).
+- [x] **Task 0** — DDR-101 written + indexed. _(03053f5)_
+- [x] **Task 1** — `POST /_api/edit-css` + `api.editCss` + `resolveCanvasAbs` (also accepts designRel-prefixed file path). Main-origin only. **Verified:** origin-gate 403. _(03053f5 + eb8705f)_
+- [x] **Task 2** — CSS knobs in the Inspector CSS tab (app.jsx `CssKnobs`): Webflow groups Layout/Spacing/Size/Typography/Appearance + raw escape; pre-fills from `computed` (dom-selection.ts) on the selection payload; commit → `/_api/edit-css`; token-value support; honest no-id state. **Build-verified** (release client.bundle.js 279 KB, tsc 0 new, biome clean). ⏳ **live agent-browser pending.** _(eb8705f)_
+- [x] **Task 3 (engine + endpoint)** — `editText()`/`applyTextEdit()` + `escapeJsxText` + `POST /_api/edit-text` + `api.editText`. **Verified:** 7 engine tests. ⏳ **Task 3 (UI)** — inline double-click contenteditable + `dgn:edit-text` bus — pending (canvas-shell.tsx). _(03053f5)_
 - [ ] **Task 4** — Browsable Layers tree (label resolution + type icons; canvas-shell DOM walk + `dgn:select-by-id`/`dgn:highlight` bus). _client._
-- [ ] **Task 5** — Optimistic CSS preview bus (`dgn:preview-style`). _client (canvas-shell.tsx)._
-- [x] **Task 6 (server portion)** — `applyTextEdit` engine tests (canvas-edit 21/21) + origin-gate guard (both routes 403). ⏳ tree-serialization + endpoint-integration tests pending with the client work.
+- [ ] **Task 5** — Optimistic CSS preview bus (`dgn:preview-style`). _client (canvas-shell.tsx)._ Task 2 works without it (HMR reload shows the edit); this just makes it ≤50 ms optimistic.
+- [x] **Task 6 (server portion)** — engine tests (canvas-edit 21/21) + origin-gate (both routes 403). ⏳ tree-serialization + endpoint-integration tests pending with the client work. _(03053f5)_
 - [ ] **Task 7** — a11y + shortcuts + perf. _client._
 - [ ] **Task 8** — Generation envelope: always-stamp `data-dc-element` (design plugin surface — plugins/design/*).
 
-**Verification (server foundation, in this worktree):** `bun test` canvas-edit 21/21 + canvas-origin-gate 1/1 (22/22); biome 0 errors on changed files; tsc 0 new errors (3 = DDR-026 baseline). Files: `apps/studio/{canvas-edit.ts,api.ts,http.ts,test/canvas-edit.test.ts,test/canvas-origin-gate.test.ts}` + `.ai/decisions/DDR-101-*.md` + README index + the refreshed plan. NOT committed. Smoke gate deferred to the client-UI slice (server-only diff touches no client bundle / canvas-lib / template / canvas .tsx → no render delta yet).
+**LIVE VERIFICATION GATE (not yet run):** boot a WORKTREE-rooted dev-server (`maude design server-up --root <worktree>` on a free port — the running PID 6115 is rooted at `main`, not here) → agent-browser: Cmd+click an element → CSS tab → change a knob → confirm the source `.tsx` got an inline-`style` merge + the canvas HMR-reloaded. Then `/design:smoke` (read every PNG). Required before Task 2 (and the rest) can be called DONE per the no-break rule.
 
 ## Execution Progress — Studio full functionality + parity (Plan C) — in-progress 2026-06-07
 
