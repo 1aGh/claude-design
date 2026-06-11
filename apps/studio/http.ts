@@ -693,6 +693,34 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       );
     },
 
+    '/_api/edit-attr': async (req: Request) => {
+      // Phase 12.2 (DDR-102) — the CSS panel's "custom HTML attribute" escape
+      // hatch. POST body { canvas, id, attr, value } → writes a plain JSX
+      // attribute (data-*, aria-*, role, …) via api.editAttr → editAttribute's
+      // non-`style.` path. Same MAIN-ORIGIN-ONLY trust boundary as
+      // /_api/edit-css + /_api/edit-text (absent from CANVAS_SAFE_API +
+      // startCanvasServer's route map; the untrusted iframe can never reach it).
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      const body = await readJson<{
+        canvas?: unknown;
+        id?: unknown;
+        attr?: unknown;
+        value?: unknown;
+      }>(req, 8 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.editAttr(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, delta: result.delta },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
     '/_api/asset': async (req: Request) => {
       // Phase 23 — binary image upload from the canvas (drag-drop / paste / the
       // a11y file picker). POST raw image bytes → content-addressed write under

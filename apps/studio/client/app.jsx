@@ -2792,41 +2792,43 @@ function SyncBanner({ status }) {
   );
 }
 
-// ---------- CSS knobs (Phase 12.2, DDR-101) ----------
+// ---------- CSS knobs (Phase 12.2, DDR-102) — interactive panel ----------
 //
-// Webflow-style grouped editor for the selected element's INLINE style. Each
-// knob pre-fills from the AUTHORED inline value (`el.authored` — what the source
-// `style={{}}` sets; blank when unset), with the resolved `computed` value shown
-// only as a faint placeholder hint (NOT the editable value — that was the v1 UX
-// bug). Commit (blur / Enter) POSTs to the main-origin-only `/_api/edit-css`,
-// which merges one key into the inline `style={{}}` in the source `.tsx` (via
-// editAttribute); the file-watcher HMR then reloads the canvas. Token values
-// (e.g. `var(--accent)`) keep edits on-system.
-const CSS_KNOB_GROUPS = [
-  { label: 'Layout', props: [['display', 'Display'], ['gap', 'Gap']] },
-  { label: 'Spacing', props: [['padding', 'Padding'], ['margin', 'Margin']] },
-  { label: 'Size', props: [['width', 'Width'], ['height', 'Height'], ['max-width', 'Max W']] },
-  {
-    label: 'Typography',
-    props: [
-      ['font-size', 'Size'],
-      ['font-weight', 'Weight'],
-      ['line-height', 'Leading'],
-      ['letter-spacing', 'Tracking'],
-      ['text-align', 'Align'],
-      ['color', 'Color'],
-    ],
-  },
-  {
-    label: 'Appearance',
-    props: [
-      ['background-color', 'Fill'],
-      ['border-radius', 'Radius'],
-      ['opacity', 'Opacity'],
-    ],
-  },
+// Hybrid vocabulary (friendly collapsible section headers + CSS-named rows),
+// per-field DS-token quick-pick, nested box-model widget, per-corner radius,
+// per-row provenance (token-bound / raw-override / inherited), per-field save
+// state, and two escape hatches: custom CSS property (via /_api/edit-css) +
+// custom HTML attribute (via /_api/edit-attr). Each knob pre-fills from the
+// AUTHORED inline value (`el.authored`); the resolved `computed` value is a
+// faint placeholder only (NOT editable — the v1 UX bug). Ported from the
+// critic-approved + user-iterated `.design/ui/Studio.tsx` spec.
+
+const CSS_DISPLAYS = ['block', 'inline-block', 'flex', 'inline-flex', 'grid', 'inline', 'none'];
+const CSS_FLEX_DIR = ['row', 'row-reverse', 'column', 'column-reverse'];
+const CSS_ALIGN = ['stretch', 'flex-start', 'center', 'flex-end', 'baseline'];
+const CSS_JUSTIFY = [
+  'flex-start',
+  'center',
+  'flex-end',
+  'space-between',
+  'space-around',
+  'space-evenly',
 ];
-const CSS_COLOR_PROPS = new Set(['color', 'background-color']);
+const CSS_WEIGHTS = ['300', '400', '500', '600', '700', '800'];
+const CSS_FONTS = [
+  'inherit',
+  'system-ui',
+  'sans-serif',
+  'serif',
+  'monospace',
+  'Inter',
+  'Inter Tight',
+  'JetBrains Mono',
+];
+const CSS_BORDER_STYLES = ['none', 'solid', 'dashed', 'dotted', 'double'];
+const CSS_UNITS = ['px', 'rem', 'em', '%', 'vw', 'vh', 'auto'];
+const CSS_COLOR_PROPS = new Set(['color', 'background-color', 'border-color']);
+const CSS_ALIGN_OPTS = ['left', 'center', 'right', 'justify'];
 
 let _cssColorCtx = null;
 // Normalize any CSS color string to #rrggbb for the native color input via a
@@ -2860,6 +2862,16 @@ function cssHint(v) {
   return m ? `${Math.round(Number.parseFloat(m[1]))}px` : v;
 }
 
+// Split "16px" → { n:"16", unit:"px" }; "auto"→{n:"",unit:"auto"}; var()/raw → {n:raw,unit:""}.
+function cssSplitUnit(v) {
+  if (!v) return { n: '', unit: 'px' };
+  const t = v.trim();
+  const m = /^(-?\d*\.?\d+)\s*(px|rem|em|%|vw|vh)?$/.exec(t);
+  if (m) return { n: m[1], unit: m[2] || 'px' };
+  if (t === 'auto') return { n: '', unit: 'auto' };
+  return { n: t, unit: '' };
+}
+
 // Phase 12.2 — the WS `selected` echo is the server's projection (SelectedElement)
 // and LACKS the client-only DOM fields the CSS knobs pre-fill from (`authored` /
 // `computed` inline style — captured in the iframe, never round-tripped through
@@ -2875,38 +2887,103 @@ function mergeSelClientFields(incoming, prev) {
   };
 }
 
-function CssKnobs({ el }) {
+// Resolve the active canvas's DS tokens CSS path (mirrors canvas-url.js / DDR-093):
+// the canvas's declared DS wins, else designSystems[0], else the legacy default.
+function cssTokensRelFor(file, cfg) {
+  const ds0 = cfg?.designSystems?.[0];
+  const name = file ? cfg?.canvasDesignSystems?.[file] : null;
+  const ds = (name && cfg?.designSystems?.find((d) => d.name === name)) || ds0;
+  return ds?.tokensCssRel || cfg?.tokensCssRel || ds0?.tokensCssRel || '';
+}
+
+// Fetch + parse the DS token names from the served tokens CSS (main origin),
+// grouped by family. Empty groups when the file is missing/unreachable.
+function useDsTokens(tokensRel) {
+  const [t, setT] = useState({ color: [], space: [], radius: [], type: [], shadow: [], lh: [] });
+  useEffect(() => {
+    if (!tokensRel) return undefined;
+    let cancelled = false;
+    fetch('/' + tokensRel)
+      .then((r) => (r.ok ? r.text() : ''))
+      .then((css) => {
+        if (cancelled) return;
+        const names = [...new Set([...css.matchAll(/(--[a-z0-9-]+)\s*:/gi)].map((m) => m[1]))];
+        const g = (re) => names.filter((n) => re.test(n));
+        setT({
+          color: g(/^--(accent|fg|bg|border|status|presence)/),
+          space: g(/^--space-/),
+          radius: g(/^--radius-/),
+          type: g(/^--type-/),
+          shadow: g(/^--shadow-/),
+          lh: g(/^--lh-/),
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [tokensRel]);
+  return t;
+}
+
+function CssKnobs({ el, cfg }) {
   const editable = !!el.id;
-  const [status, setStatus] = useState(null);
   const authored = el.authored || {};
   const computed = el.computed || {};
+  const tokens = useDsTokens(cssTokensRelFor(el.file, cfg));
+  const [status, setStatus] = useState({});
+  const [open, setOpen] = useState({
+    Layout: true,
+    Typography: true,
+    Spacing: true,
+    Size: true,
+    Appearance: true,
+    Advanced: false,
+  });
+  const [split, setSplit] = useState(false);
+  const [link, setLink] = useState(true);
 
-  async function commit(property, rawValue) {
-    const value = (rawValue || '').trim();
-    if (!editable || !value) return;
-    if (value === (authored[property] ?? '').trim()) return; // no-op
-    setStatus({ property, kind: 'saving' });
+  async function post(url, payload, key) {
+    setStatus((s) => ({ ...s, [key]: 'saving' }));
     try {
-      const res = await fetch('/_api/edit-css', {
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ canvas: el.file, id: el.id, property, value }),
+        body: JSON.stringify(payload),
       });
       const j = await res.json().catch(() => ({}));
-      setStatus(
-        !res.ok || !j.ok
-          ? { property, kind: 'error', msg: (j && j.error) || `HTTP ${res.status}` }
-          : { property, kind: 'saved' }
-      );
+      setStatus((s) => ({
+        ...s,
+        [key]: !res.ok || !j.ok ? `err:${(j && j.error) || `HTTP ${res.status}`}` : 'saved',
+      }));
     } catch (err) {
-      setStatus({ property, kind: 'error', msg: err && err.message ? err.message : String(err) });
+      setStatus((s) => ({ ...s, [key]: `err:${err && err.message ? err.message : String(err)}` }));
     }
   }
+  const commit = (property, raw) => {
+    const value = (raw || '').trim();
+    if (!editable || !value) return;
+    if (value === (authored[property] ?? '').trim()) return; // no-op
+    post('/_api/edit-css', { canvas: el.file, id: el.id, property, value }, property);
+  };
+  const commitAttr = (attr, raw) => {
+    const a = (attr || '').trim();
+    const value = (raw || '').trim();
+    if (!editable || !a || !value) return;
+    post('/_api/edit-attr', { canvas: el.file, id: el.id, attr: a, value }, `@${a}`);
+  };
+  const provOf = (prop) => {
+    const v = authored[prop];
+    if (!v) return 'inherit';
+    return /var\(\s*--/.test(v) ? 'bound' : 'raw';
+  };
 
   if (!editable) {
     return (
-      <div className="st-css-panel">
-        <div className="st-rp-hd">CSS</div>
+      <div className="st-cp">
+        <div className="st-cp-id">
+          <span className="st-cp-idtag">{el.tag || 'element'}</span>
+        </div>
         <div className="st-css-disabled">
           This selection has no stable element id (a legacy canvas, or a non-element target). Edit
           it with <code>/design:edit</code>.
@@ -2915,91 +2992,477 @@ function CssKnobs({ el }) {
     );
   }
 
-  const textRow = (cssProp, label) => (
-    <div className="st-css-row" key={cssProp}>
-      <label className="st-css-label" htmlFor={`css-${cssProp}`}>
-        {label}
+  const PROVLABEL = { bound: 'token-bound', raw: 'raw override', inherit: 'inherited' };
+  const prov = (p) => (
+    <span className={`st-cp-prov st-cp-prov--${p}`} role="img" aria-label={PROVLABEL[p]} />
+  );
+  const fs = (key) => {
+    const s = status[key];
+    if (!s) return null;
+    if (s === 'saving') return <span className="st-cp-fs is-saving" aria-label="saving">…</span>;
+    if (s === 'saved') return <span className="st-cp-fs is-saved" aria-label="saved">✓</span>;
+    if (typeof s === 'string' && s.startsWith('err:'))
+      return (
+        <span className="st-cp-fs is-err" title={s.slice(4)} aria-label={`error: ${s.slice(4)}`}>
+          !
+        </span>
+      );
+    return null;
+  };
+
+  const row = (prop, control, provKind) => (
+    <div className="st-cp-row" key={prop}>
+      {prov(provKind ?? provOf(prop))}
+      <label className="st-cp-label" title={prop}>
+        {prop}
       </label>
-      <div className="st-css-control">
-        <input
-          id={`css-${cssProp}`}
-          className="st-css-input"
-          aria-label={cssProp}
-          defaultValue={authored[cssProp] ?? ''}
-          placeholder={cssHint(computed[cssProp]) || '—'}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') e.currentTarget.blur();
-          }}
-          onBlur={(e) => commit(cssProp, e.currentTarget.value)}
-        />
+      <div className="st-cp-ctl">
+        {control}
+        {fs(prop)}
       </div>
     </div>
   );
 
-  const colorRow = (cssProp, label) => {
-    const shown = authored[cssProp] || computed[cssProp] || '';
+  const sec = (name, body) => (
+    <section className="st-cp-sec" key={name}>
+      <button
+        type="button"
+        className="st-cp-sechd"
+        aria-expanded={!!open[name]}
+        onClick={() => setOpen((o) => ({ ...o, [name]: !o[name] }))}
+      >
+        <span className="st-cp-caret" aria-hidden="true">
+          {open[name] ? '▾' : '▸'}
+        </span>
+        {name}
+      </button>
+      {open[name] ? body : null}
+    </section>
+  );
+
+  // native <select> committing a CSS value directly
+  const csel = (prop, list) => (
+    <select
+      className="st-cp-nsel"
+      aria-label={prop}
+      value={list.includes(authored[prop]) ? authored[prop] : ''}
+      onChange={(e) => commit(prop, e.target.value)}
+    >
+      <option value="" disabled>
+        {cssHint(computed[prop]) || '—'}
+      </option>
+      {list.map((v) => (
+        <option key={v} value={v}>
+          {v}
+        </option>
+      ))}
+    </select>
+  );
+
+  // token quick-pick — writes var(--token); resets to placeholder after pick
+  const tok = (prop, list) =>
+    list && list.length ? (
+      <select
+        className="st-cp-nsel st-cp-nsel--tok"
+        aria-label={`${prop} design token`}
+        value=""
+        onChange={(e) => {
+          if (e.target.value) commit(prop, `var(${e.target.value})`);
+        }}
+      >
+        <option value="">token…</option>
+        {list.map((tk) => (
+          <option key={tk} value={tk}>
+            {tk}
+          </option>
+        ))}
+      </select>
+    ) : null;
+
+  // free text input — raw value or var(--token), commits on blur/Enter
+  const text = (prop) => (
+    <input
+      className="st-cp-fin"
+      key={authored[prop] ?? ''}
+      aria-label={prop}
+      defaultValue={authored[prop] ?? ''}
+      placeholder={cssHint(computed[prop]) || '—'}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+      }}
+      onBlur={(e) => commit(prop, e.currentTarget.value)}
+    />
+  );
+
+  // number + steppers + unit-select (+ optional token quick-pick after)
+  const num = (prop, tokenList) => {
+    const cur = cssSplitUnit(authored[prop] ?? '');
+    const unit = cur.unit && cur.unit !== 'auto' ? cur.unit : 'px';
+    const bump = (d) => {
+      const base = Number.parseFloat(cur.n || cssHint(computed[prop]) || '0') || 0;
+      commit(prop, `${Math.round((base + d) * 100) / 100}${unit}`);
+    };
     return (
-      <div className="st-css-row" key={cssProp}>
-        <label className="st-css-label" htmlFor={`css-${cssProp}`}>
-          {label}
-        </label>
-        <div className="st-css-control">
-          <span className="st-css-swatch" title={shown || 'no color set'}>
-            <span style={{ background: shown || 'transparent' }} />
-            <input
-              type="color"
-              aria-label={`${cssProp} swatch`}
-              defaultValue={cssColorToHex(shown) || '#000000'}
-              onBlur={(e) => commit(cssProp, e.currentTarget.value)}
-            />
-          </span>
+      <>
+        <div className="st-cp-num">
           <input
-            id={`css-${cssProp}`}
-            className="st-css-input"
-            aria-label={cssProp}
-            defaultValue={authored[cssProp] ?? ''}
-            placeholder={cssHint(computed[cssProp]) || '—'}
+            className="st-cp-numin"
+            key={authored[prop] ?? ''}
+            aria-label={prop}
+            defaultValue={cur.unit && cur.unit !== '' ? cur.n : (authored[prop] ?? '')}
+            placeholder={cssHint(computed[prop]) || '—'}
             onKeyDown={(e) => {
               if (e.key === 'Enter') e.currentTarget.blur();
             }}
-            onBlur={(e) => commit(cssProp, e.currentTarget.value)}
+            onBlur={(e) => {
+              const raw = e.currentTarget.value.trim();
+              if (!raw) return;
+              commit(prop, /[a-z%(]/i.test(raw) ? raw : `${raw}${unit}`);
+            }}
           />
+          <span className="st-cp-step">
+            <button
+              type="button"
+              className="st-cp-stepb"
+              tabIndex={-1}
+              aria-label={`increase ${prop}`}
+              onClick={() => bump(1)}
+            >
+              ▲
+            </button>
+            <button
+              type="button"
+              className="st-cp-stepb"
+              tabIndex={-1}
+              aria-label={`decrease ${prop}`}
+              onClick={() => bump(-1)}
+            >
+              ▼
+            </button>
+          </span>
+          <select
+            className="st-cp-unitsel"
+            aria-label={`${prop} unit`}
+            value={cur.unit || 'px'}
+            onChange={(e) =>
+              commit(prop, e.target.value === 'auto' ? 'auto' : `${cur.n || '0'}${e.target.value}`)
+            }
+          >
+            {CSS_UNITS.map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+          </select>
         </div>
-      </div>
+        {tok(prop, tokenList)}
+      </>
     );
   };
 
+  // color swatch (native picker → hex) + raw text + token quick-pick
+  const color = (prop) => {
+    const shown = authored[prop] || computed[prop] || '';
+    return (
+      <>
+        <span className="st-cp-swatch st-cp-swatch--mini" title={shown || 'no color set'}>
+          <span style={{ position: 'absolute', inset: 0, background: shown || 'transparent' }} />
+          <input
+            type="color"
+            aria-label={`${prop} picker`}
+            defaultValue={cssColorToHex(shown) || '#000000'}
+            onBlur={(e) => commit(prop, e.currentTarget.value)}
+            style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', border: 0 }}
+          />
+        </span>
+        {text(prop)}
+        {tok(prop, tokens.color)}
+      </>
+    );
+  };
+
+  // a box-model side input (margin/padding longhand). Honors the link toggle.
+  const side = (prop, group) => {
+    const isZero = !authored[prop] || authored[prop] === '0' || authored[prop] === 'auto';
+    return (
+      <input
+        className={`st-cp-boxv st-cp-boxv--${group[0]}${prop.split('-').pop()[0]}${
+          isZero ? ' is-zero' : ''
+        }`}
+        key={authored[prop] ?? ''}
+        aria-label={prop}
+        defaultValue={authored[prop] ?? cssHint(computed[prop]) ?? ''}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur();
+        }}
+        onBlur={(e) => {
+          const raw = e.currentTarget.value.trim();
+          if (!raw) return;
+          const val = /[a-z%]/i.test(raw) ? raw : `${raw}px`;
+          if (link) {
+            ['top', 'right', 'bottom', 'left'].forEach((sideName) =>
+              commit(`${group}-${sideName}`, val)
+            );
+          } else {
+            commit(prop, val);
+          }
+        }}
+      />
+    );
+  };
+
+  const corner = (label, prop) => (
+    <label className="st-cp-cornerf">
+      <span>{label}</span>
+      <input
+        key={authored[prop] ?? ''}
+        aria-label={prop}
+        defaultValue={cssSplitUnit(authored[prop] ?? '').n || ''}
+        placeholder={cssHint(computed[prop]) || '0'}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur();
+        }}
+        onBlur={(e) => {
+          const raw = e.currentTarget.value.trim();
+          if (raw) commit(prop, /[a-z%]/i.test(raw) ? raw : `${raw}px`);
+        }}
+      />
+    </label>
+  );
+
   return (
-    <div className="st-css-panel" key={el.id}>
-      <div className="st-css-title">
-        {el.tag || 'element'}
-        {el.classes ? `.${el.classes.split(/\s+/)[0]}` : ''}
+    <div className="st-cp" key={el.id}>
+      <div className="st-cp-id">
+        <span className="st-cp-idtag">
+          {el.tag || 'element'}
+          {el.classes ? <span className="st-cp-idcls">.{el.classes.split(/\s+/)[0]}</span> : null}
+        </span>
+        <span className="st-cp-idmeta">inline style</span>
       </div>
-      {CSS_KNOB_GROUPS.map((g) => (
-        <div key={g.label}>
-          <div className="st-css-group">{g.label}</div>
-          {g.props.map(([cssProp, label]) =>
-            CSS_COLOR_PROPS.has(cssProp) ? colorRow(cssProp, label) : textRow(cssProp, label)
+
+      {sec(
+        'Layout',
+        <>
+          {row('display', csel('display', CSS_DISPLAYS))}
+          {row('flex-direction', csel('flex-direction', CSS_FLEX_DIR))}
+          {row('align-items', csel('align-items', CSS_ALIGN))}
+          {row('justify-content', csel('justify-content', CSS_JUSTIFY))}
+          {row('gap', num('gap', tokens.space))}
+        </>
+      )}
+
+      {sec(
+        'Typography',
+        <>
+          {row('font-family', csel('font-family', CSS_FONTS))}
+          {row('color', color('color'))}
+          {row('font-size', num('font-size', tokens.type))}
+          {row('font-weight', csel('font-weight', CSS_WEIGHTS))}
+          {row('line-height', num('line-height', tokens.lh))}
+          {row('letter-spacing', num('letter-spacing'))}
+          {row(
+            'text-align',
+            <div className="st-cp-seg" role="group" aria-label="text-align">
+              {CSS_ALIGN_OPTS.map((a) => (
+                <button
+                  key={a}
+                  type="button"
+                  className={`st-cp-segbtn${(authored['text-align'] || computed['text-align']) === a ? ' is-active' : ''}`}
+                  aria-label={`align ${a}`}
+                  aria-pressed={(authored['text-align'] || computed['text-align']) === a}
+                  onClick={() => commit('text-align', a)}
+                >
+                  <span className={`st-cp-bars st-cp-bars--${a === 'justify' ? 'just' : a}`} aria-hidden="true">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                </button>
+              ))}
+            </div>
           )}
-        </div>
-      ))}
-      <div className="st-css-group">Custom</div>
-      <RawKnob commit={commit} />
-      <div className={`st-css-status${status ? ` is-${status.kind}` : ''}`}>
-        {status?.kind === 'error'
-          ? `${status.property}: ${status.msg}`
-          : status?.kind === 'saved'
-            ? '✓ written to source'
-            : ''}
+        </>
+      )}
+
+      {sec(
+        'Spacing',
+        <>
+          <div className="st-cp-box" aria-label="margin and padding">
+            <span className="st-cp-boxtag st-cp-boxtag--m">
+              {prov(provOf('margin-top'))}margin
+            </span>
+            {side('margin-top', 'margin')}
+            {side('margin-right', 'margin')}
+            {side('margin-bottom', 'margin')}
+            {side('margin-left', 'margin')}
+            <div className="st-cp-boxpad">
+              <span className="st-cp-boxtag st-cp-boxtag--p">
+                {prov(provOf('padding-top'))}padding
+              </span>
+              {side('padding-top', 'padding')}
+              {side('padding-right', 'padding')}
+              {side('padding-bottom', 'padding')}
+              {side('padding-left', 'padding')}
+              <div className="st-cp-boxcore">
+                {Math.round(el.bounds?.w || 0)} × {Math.round(el.bounds?.h || 0)}
+              </div>
+            </div>
+          </div>
+          <div className="st-cp-boxlink">
+            <button
+              type="button"
+              className={`st-cp-linkbtn${link ? ' is-on' : ''}`}
+              aria-pressed={link}
+              onClick={() => setLink((v) => !v)}
+            >
+              <span className="st-cp-linkglyph" aria-hidden="true" />
+              link all sides
+            </button>
+            <span className="st-cp-linkhint">
+              {link ? 'edit one side, update all four' : 'editing each side independently'}
+            </span>
+          </div>
+        </>
+      )}
+
+      {sec(
+        'Size',
+        <>
+          {row('width', num('width'))}
+          {row('height', num('height'))}
+          {row('max-width', num('max-width'))}
+        </>
+      )}
+
+      {sec(
+        'Appearance',
+        <>
+          {row('background-color', color('background-color'))}
+          <div className="st-cp-row">
+            {prov(provOf('border-radius'))}
+            <label className="st-cp-label" title="border-radius">
+              border-radius
+            </label>
+            <div className="st-cp-ctl">
+              {num('border-radius', tokens.radius)}
+              <button
+                type="button"
+                className={`st-cp-split${split ? ' is-on' : ''}`}
+                aria-pressed={split}
+                aria-label="set each corner separately"
+                title="set each corner separately"
+                onClick={() => setSplit((v) => !v)}
+              />
+            </div>
+          </div>
+          {split ? (
+            <div className="st-cp-corners" aria-label="per-corner radius">
+              {corner('TL', 'border-top-left-radius')}
+              {corner('TR', 'border-top-right-radius')}
+              {corner('BL', 'border-bottom-left-radius')}
+              {corner('BR', 'border-bottom-right-radius')}
+            </div>
+          ) : null}
+          {row(
+            'border',
+            <div className="st-cp-border">
+              {text('border-width')}
+              <select
+                className="st-cp-nsel st-cp-nsel--mini"
+                aria-label="border-style"
+                value={CSS_BORDER_STYLES.includes(authored['border-style']) ? authored['border-style'] : ''}
+                onChange={(e) => commit('border-style', e.target.value)}
+              >
+                <option value="" disabled>
+                  style
+                </option>
+                {CSS_BORDER_STYLES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+              <span className="st-cp-swatch st-cp-swatch--mini" title={authored['border-color'] || ''}>
+                <span
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    background: authored['border-color'] || computed['border-color'] || 'transparent',
+                  }}
+                />
+                <input
+                  type="color"
+                  aria-label="border-color picker"
+                  defaultValue={cssColorToHex(authored['border-color'] || computed['border-color']) || '#000000'}
+                  onBlur={(e) => commit('border-color', e.currentTarget.value)}
+                  style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', border: 0 }}
+                />
+              </span>
+            </div>,
+            provOf('border-width')
+          )}
+          {row('box-shadow', tok('box-shadow', tokens.shadow) || text('box-shadow'))}
+          {row(
+            'opacity',
+            <div className="st-cp-num">
+              <input
+                className="st-cp-numin"
+                key={authored.opacity ?? ''}
+                aria-label="opacity"
+                defaultValue={authored.opacity ?? ''}
+                placeholder={cssHint(computed.opacity) || '1'}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.currentTarget.blur();
+                }}
+                onBlur={(e) => commit('opacity', e.currentTarget.value)}
+              />
+            </div>
+          )}
+        </>
+      )}
+
+      <div className={`st-cp-save${status.__last === 'saved' ? ' is-saved' : ''}`} role="status">
+        {Object.values(status).some((s) => s === 'saving')
+          ? 'saving…'
+          : Object.values(status).some((s) => typeof s === 'string' && s.startsWith('err:'))
+            ? Object.entries(status)
+                .filter(([, s]) => typeof s === 'string' && s.startsWith('err:'))
+                .map(([k, s]) => `${k}: ${s.slice(4)}`)[0]
+            : Object.values(status).some((s) => s === 'saved')
+              ? '✓ written to source'
+              : 'edits write to the source .tsx on commit'}
       </div>
-      <div className="st-css-help">
-        Edits the element's inline <code>style</code> in the source <code>.tsx</code> on blur or
-        Enter. Use a token like <code>var(--accent)</code> to stay on-system.
+
+      {sec(
+        'Advanced',
+        <div className="st-cp-advbody">
+          <div className="st-cp-advgrp">Custom CSS property</div>
+          <RawKnob commit={commit} />
+          <div className="st-cp-note">applied as-is — not token-bound</div>
+          <div className="st-cp-advgrp">Custom HTML attribute</div>
+          <AttrKnob commit={commitAttr} />
+        </div>
+      )}
+
+      <div className="st-cp-legend">
+        <span>
+          <i className="st-cp-prov st-cp-prov--bound" aria-hidden="true" />
+          token
+        </span>
+        <span>
+          <i className="st-cp-prov st-cp-prov--raw" aria-hidden="true" />
+          override
+        </span>
+        <span>
+          <i className="st-cp-prov st-cp-prov--inherit" aria-hidden="true" />
+          inherited
+        </span>
       </div>
     </div>
   );
 }
 
+// Custom CSS property hatch — writes an arbitrary `property: value` to inline style.
 function RawKnob({ commit }) {
   const [prop, setProp] = useState('');
   const [val, setVal] = useState('');
@@ -3011,23 +3474,59 @@ function RawKnob({ commit }) {
     }
   };
   return (
-    <div className="st-css-row">
+    <div className="st-cp-kv">
       <input
-        className="st-css-input"
-        aria-label="custom property"
+        className="st-cp-fin"
+        aria-label="custom property name"
         placeholder="property"
         value={prop}
         onChange={(e) => setProp(e.target.value)}
       />
       <input
-        className="st-css-input"
-        aria-label="custom value"
+        className="st-cp-fin"
+        aria-label="custom property value"
         placeholder="value"
         value={val}
         onChange={(e) => setVal(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter') submit();
         }}
+        onBlur={submit}
+      />
+    </div>
+  );
+}
+
+// Custom HTML attribute hatch — writes a plain JSX attribute (data-*, aria-*, …).
+function AttrKnob({ commit }) {
+  const [attr, setAttr] = useState('');
+  const [val, setVal] = useState('');
+  const submit = () => {
+    if (attr.trim() && val.trim()) {
+      commit(attr.trim(), val);
+      setAttr('');
+      setVal('');
+    }
+  };
+  return (
+    <div className="st-cp-kv">
+      <input
+        className="st-cp-fin"
+        aria-label="custom attribute name"
+        placeholder="data-…"
+        value={attr}
+        onChange={(e) => setAttr(e.target.value)}
+      />
+      <input
+        className="st-cp-fin"
+        aria-label="custom attribute value"
+        placeholder="value"
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') submit();
+        }}
+        onBlur={submit}
       />
     </div>
   );
@@ -3104,7 +3603,7 @@ function LayerRow({ node, depth, selectedId, collapsed, onToggle, onSelect, onHo
   );
 }
 
-function InspectorPanel({ selected, onClose, layersTree, onSelectLayer, onHoverLayer }) {
+function InspectorPanel({ selected, onClose, layersTree, onSelectLayer, onHoverLayer, cfg }) {
   const [tab, setTab] = useState('inspect');
   const [collapsed, setCollapsed] = useState(() => new Set());
   const toggleCollapse = (key) =>
@@ -3235,7 +3734,7 @@ function InspectorPanel({ selected, onClose, layersTree, onSelectLayer, onHoverL
             )}
           </>
         ) : (
-          <CssKnobs el={el} />
+          <CssKnobs el={el} cfg={cfg} />
         )}
       </div>
     </aside>
@@ -4422,6 +4921,7 @@ function App() {
           {inspectorOpen ? (
             <InspectorPanel
               selected={selected}
+              cfg={cfg}
               onClose={() => setInspectorOpen(false)}
               layersTree={layersTree}
               onSelectLayer={(n) =>

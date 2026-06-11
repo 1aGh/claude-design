@@ -66,6 +66,7 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         '/_api/canvas',
         '/_api/edit-css',
         '/_api/edit-text',
+        '/_api/edit-attr',
         '/package.json',
       ]) {
         expect(await code(p)).toBe(403);

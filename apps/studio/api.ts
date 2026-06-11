@@ -206,6 +206,15 @@ export interface Api {
   }): Promise<EditOpResult>;
   // Phase 12 (DDR-101) — inline text-content edit (POST /_api/edit-text). Main-origin only.
   editText(input: { canvas?: unknown; id?: unknown; text?: unknown }): Promise<EditOpResult>;
+  // Phase 12.2 (DDR-102) — custom HTML attribute edit (POST /_api/edit-attr). Main-origin
+  // only. The CSS panel's "custom HTML attribute" escape hatch (data-*, aria-*, role, …);
+  // writes a plain JSX attribute via editAttribute's non-`style.` path.
+  editAttr(input: {
+    canvas?: unknown;
+    id?: unknown;
+    attr?: unknown;
+    value?: unknown;
+  }): Promise<EditOpResult>;
   // Aggregate data
   buildIndexData(): Promise<unknown>;
   buildSystemData(dsName?: string | null): Promise<unknown>;
@@ -1238,6 +1247,46 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
   }
 
+  async function editAttr(input: {
+    canvas?: unknown;
+    id?: unknown;
+    attr?: unknown;
+    value?: unknown;
+  }): Promise<EditOpResult> {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    const id = typeof input.id === 'string' ? input.id.trim() : '';
+    if (!CD_ID_RE.test(id)) return { ok: false, status: 400, error: 'invalid data-cd-id' };
+    const attr = typeof input.attr === 'string' ? input.attr.trim() : '';
+    // Plain HTML attributes only — data-*, aria-*, role, title, id, lang, dir…
+    // Reject `style*` (that's /_api/edit-css), `data-cd-id` (pipeline-owned, also
+    // refused downstream by editAttribute), and anything that isn't a bare html
+    // attribute name. Digits allowed mid-name (e.g. data-2x).
+    if (
+      !attr ||
+      !/^[a-z][a-z0-9-]*$/.test(attr) ||
+      attr === 'data-cd-id' ||
+      attr.startsWith('style')
+    ) {
+      return { ok: false, status: 400, error: 'invalid attribute' };
+    }
+    const value = typeof input.value === 'string' ? input.value : '';
+    if (!value.trim()) return { ok: false, status: 400, error: 'value required' };
+    if (value.length > 256) return { ok: false, status: 413, error: 'value too long' };
+    try {
+      // Non-`style.` attr name → editAttribute writes a plain quoted JSX attribute
+      // (editStringAttr). JSON.stringify keeps the value a safe string literal.
+      const res = await editAttribute(r.abs, id, attr, JSON.stringify(value));
+      return { ok: true, delta: res.delta };
+    } catch (err) {
+      return {
+        ok: false,
+        status: 422,
+        error: err instanceof CanvasEditError ? err.message : 'edit failed',
+      };
+    }
+  }
+
   async function saveCanvasState(file: string, state: Record<string, unknown>) {
     if (!state || typeof state !== 'object') return;
     const safe: Record<string, unknown> = {};
@@ -1646,6 +1695,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     deleteCanvas,
     editCss,
     editText,
+    editAttr,
     buildIndexData,
     buildSystemData,
     loadExportHistory,
