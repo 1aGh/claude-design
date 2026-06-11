@@ -3041,8 +3041,79 @@ function RawKnob({ commit }) {
 // mockup's live-CSS-knob WRITEBACK is Phase 12 (needs a canvas-origin write
 // bridge, DDR-054) — the CSS tab shows markup read-only + keeps that callout, so
 // it never implies functionality it lacks (the exact reason DDR-096 deferred it).
-function InspectorPanel({ selected, onClose }) {
+// ---------- Layers tree row (Phase 12 Task 4) ----------
+function LayerRow({ node, depth, selectedId, collapsed, onToggle, onSelect, onHover }) {
+  const key = `${node.id}:${node.index}`;
+  const hasKids = node.children && node.children.length > 0;
+  const isCollapsed = collapsed.has(key);
+  const isSel = node.id === selectedId;
+  return (
+    <>
+      <div
+        className={'st-layer st-layer--row' + (isSel ? ' is-sel' : '')}
+        style={{ paddingLeft: 6 + depth * 14 }}
+        role="treeitem"
+        aria-selected={isSel}
+        aria-expanded={hasKids ? !isCollapsed : undefined}
+        tabIndex={0}
+        title={`${node.tag} · ${node.type}`}
+        onClick={() => onSelect(node)}
+        onMouseEnter={() => onHover(node)}
+        onMouseLeave={() => onHover(null)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onSelect(node);
+          }
+        }}
+      >
+        {hasKids ? (
+          <button
+            type="button"
+            className="st-layer-caret"
+            aria-label={isCollapsed ? 'Expand' : 'Collapse'}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggle(key);
+            }}
+          >
+            {isCollapsed ? '▸' : '▾'}
+          </button>
+        ) : (
+          <span className="st-layer-caret" aria-hidden="true" />
+        )}
+        <StIcon name="square" size={12} />
+        <span className="st-layer-label">{node.label}</span>
+        <span className="st-layer-type">{node.type}</span>
+      </div>
+      {hasKids && !isCollapsed
+        ? node.children.map((c) => (
+            <LayerRow
+              key={`${c.id}:${c.index}`}
+              node={c}
+              depth={depth + 1}
+              selectedId={selectedId}
+              collapsed={collapsed}
+              onToggle={onToggle}
+              onSelect={onSelect}
+              onHover={onHover}
+            />
+          ))
+        : null}
+    </>
+  );
+}
+
+function InspectorPanel({ selected, onClose, layersTree, onSelectLayer, onHoverLayer }) {
   const [tab, setTab] = useState('inspect');
+  const [collapsed, setCollapsed] = useState(() => new Set());
+  const toggleCollapse = (key) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   // `selected` may be a single element, an array (multi-select), or null.
   const el = Array.isArray(selected) ? selected[0] : selected;
   const tabBtn = (id, label, icon) => (
@@ -3130,8 +3201,23 @@ function InspectorPanel({ selected, onClose }) {
           </>
         ) : tab === 'layers' ? (
           <>
-            <div className="st-rp-hd">Layers · ancestry</div>
-            {Array.isArray(el.dom_path) && el.dom_path.length ? (
+            <div className="st-rp-hd">Layers{layersTree?.nodes?.length ? '' : ' · ancestry'}</div>
+            {layersTree?.nodes?.length ? (
+              <div role="tree" aria-label="Artboard layers">
+                {layersTree.nodes.map((n) => (
+                  <LayerRow
+                    key={`${n.id}:${n.index}`}
+                    node={n}
+                    depth={0}
+                    selectedId={el.id}
+                    collapsed={collapsed}
+                    onToggle={toggleCollapse}
+                    onSelect={(node) => onSelectLayer?.(node)}
+                    onHover={(node) => onHoverLayer?.(node)}
+                  />
+                ))}
+              </div>
+            ) : Array.isArray(el.dom_path) && el.dom_path.length ? (
               el.dom_path.map((node, i) => (
                 <div
                   key={i}
@@ -3143,7 +3229,9 @@ function InspectorPanel({ selected, onClose }) {
                 </div>
               ))
             ) : (
-              <div className="st-rp-empty">No ancestry path for this selection.</div>
+              <div className="st-rp-empty">
+                Select an element (⌘-click in the canvas) to see its layer tree.
+              </div>
             )}
           </>
         ) : (
@@ -3162,6 +3250,8 @@ function App() {
   const [tabs, setTabs] = useState([]);
   const [activePath, setActivePath] = useState(null);
   const [selected, setSelected] = useState(null);
+  // Phase 12 Task 4 — Layers tree for the active artboard (posted by canvas-shell).
+  const [layersTree, setLayersTree] = useState(null);
   const [wsConnected, setWsConnected] = useState(false);
   // Phase 8 Task 7 — git lifecycle reload prompt. Server has already flushed
   // every dirty Y.Doc to disk by the time this state populates, so accepting
@@ -3749,6 +3839,9 @@ function App() {
             if (!j.ok) console.warn('[edit-text]', j.error || 'failed');
           })
           .catch(() => {});
+      } else if (m.dgn === 'layers-tree') {
+        // Phase 12 Task 4 — browsable layers tree for the active artboard.
+        setLayersTree({ artboardId: m.artboardId, nodes: Array.isArray(m.tree) ? m.tree : [] });
       } else if (m.dgn === 'comment-compose' && m.selection) {
         // Phase 6 — the iframe overlay owns the composer surface now. The
         // shell just mirrors `selected` so the StatusBar / sidebar still
@@ -4324,7 +4417,27 @@ function App() {
           {/* Right dock — one panel at a time. Inspector takes precedence when
               open (T6); else the comments panel. */}
           {inspectorOpen ? (
-            <InspectorPanel selected={selected} onClose={() => setInspectorOpen(false)} />
+            <InspectorPanel
+              selected={selected}
+              onClose={() => setInspectorOpen(false)}
+              layersTree={layersTree}
+              onSelectLayer={(n) =>
+                postToActiveCanvas({
+                  dgn: 'select-by-id',
+                  id: n.id,
+                  artboardId: layersTree?.artboardId,
+                  index: n.index,
+                })
+              }
+              onHoverLayer={(n) =>
+                postToActiveCanvas({
+                  dgn: 'highlight',
+                  id: n ? n.id : null,
+                  artboardId: layersTree?.artboardId,
+                  index: n ? n.index : 0,
+                })
+              }
+            />
           ) : commentsPanelOpen ? (
             <CommentsPanel
               commentsByFile={commentsByFile}

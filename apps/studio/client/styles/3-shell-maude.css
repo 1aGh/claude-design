@@ -453,6 +453,12 @@
 .st-layer { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2); border-radius: var(--radius-xs); font-size: var(--type-sm); color: var(--fg-1); font-family: var(--font-mono); }
 .st-layer:hover { background: var(--bg-2); }
 .st-layer.is-sel { background: var(--accent-tint); color: var(--fg-0); }
+/* Phase 12 Task 4 — browsable layers tree rows */
+.st-layer--row { cursor: pointer; padding: 3px var(--space-2); gap: 4px; white-space: nowrap; }
+.st-layer--row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.st-layer-caret { flex: none; width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 0; color: var(--fg-3); font-size: 9px; line-height: 1; cursor: pointer; padding: 0; }
+.st-layer-label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.st-layer-type { flex: none; font-size: 9px; color: var(--fg-3); text-transform: uppercase; letter-spacing: var(--tracking-wide); }
 .st-css { font-family: var(--font-mono); font-size: var(--type-xs); background: var(--bg-0); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: var(--space-3); line-height: 1.7; color: var(--fg-1); }
 .st-css .comment { color: var(--fg-3); }
 

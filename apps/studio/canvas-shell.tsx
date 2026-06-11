@@ -331,6 +331,104 @@ function ensureHaloStyles(): void {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Layers tree (Phase 12 Task 4, DDR-101). The shell's Layers tab is a browsable
+// tree of the active artboard's stamped (`data-cd-id`) elements. We walk the
+// artboard subtree in the iframe, serialize a nested tree, and post it to the
+// shell; the shell renders it + posts back `select-by-id` / `highlight`.
+
+interface LayerNode {
+  id: string;
+  tag: string;
+  label: string;
+  type: string;
+  /** Occurrence index of this id within the artboard — matches the resolver's
+   *  `querySelectorAll([data-dc-screen=…] [data-cd-id=…])[index]`. */
+  index: number;
+  children: LayerNode[];
+}
+
+function kebabToTitle(s: string): string {
+  return s
+    .split('-')
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+// Human label: data-dc-element (Title Case) → aria-label → role → tag(.class).
+function layerLabel(el: Element): string {
+  const dc = el.getAttribute('data-dc-element');
+  if (dc) return kebabToTitle(dc);
+  const aria = el.getAttribute('aria-label');
+  if (aria) return aria.slice(0, 40);
+  const role = el.getAttribute('role');
+  if (role) return role;
+  const tag = el.tagName.toLowerCase();
+  const cls = realClasses(el).split(/\s+/).filter(Boolean)[0];
+  return cls ? `${tag}.${cls}` : tag;
+}
+
+function layerType(el: Element): string {
+  const tag = el.tagName.toLowerCase();
+  const role = el.getAttribute('role') ?? '';
+  const dc = el.getAttribute('data-dc-element') ?? '';
+  if (tag === 'button' || role === 'button' || /(^|-)(btn|cta|button)(-|$)/.test(dc))
+    return 'button';
+  if (/^h[1-6]$/.test(tag) || role === 'heading') return 'heading';
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return 'input';
+  if (tag === 'img' || tag === 'svg' || tag === 'picture' || tag === 'video') return 'image';
+  if (tag === 'a') return 'link';
+  if (tag === 'ul' || tag === 'ol' || tag === 'li') return 'list';
+  if (tag === 'nav') return 'nav';
+  if (tag === 'form') return 'form';
+  if (tag === 'p' || tag === 'span' || tag === 'label') return 'text';
+  return 'box';
+}
+
+function serializeArtboardTree(root: Element): LayerNode[] {
+  const seen = new Map<string, number>();
+  function walk(el: Element): LayerNode[] {
+    const out: LayerNode[] = [];
+    for (const child of Array.from(el.children)) {
+      // Skip dev-server overlay chrome (pins, halos) that lives inside the artboard.
+      if (child.closest('.dgn-pin, .dc-cv-halo, .dc-cv-group-bbox')) continue;
+      const cd = child.getAttribute('data-cd-id');
+      if (cd) {
+        const idx = seen.get(cd) ?? 0;
+        seen.set(cd, idx + 1);
+        out.push({
+          id: cd,
+          tag: child.tagName.toLowerCase(),
+          label: layerLabel(child),
+          type: layerType(child),
+          index: idx,
+          children: walk(child),
+        });
+      } else {
+        // Unstamped wrapper — descend so its stamped descendants still surface.
+        out.push(...walk(child));
+      }
+    }
+    return out;
+  }
+  return walk(root);
+}
+
+function postLayersTree(artboardId: string | null | undefined): void {
+  if (typeof document === 'undefined' || !artboardId) return;
+  const root = document.querySelector(`[data-dc-screen="${CSS.escape(artboardId)}"]`);
+  if (!root) return;
+  try {
+    window.parent.postMessage(
+      { dgn: 'layers-tree', artboardId, tree: serializeArtboardTree(root) },
+      '*'
+    );
+  } catch {
+    /* detached / cross-origin */
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Shell
 
 export function CanvasShell({
@@ -1320,6 +1418,48 @@ function CanvasRouter({
         void undoStack.redo();
         return;
       }
+      // Phase 12 Task 4 (DDR-101) — Layers-tree round-trip. select-by-id resolves
+      // the node + replaces the selection (which posts select-set back, updating
+      // the Inspect/CSS tabs + halos); highlight shows the transient hover halo;
+      // request-layers re-walks + posts the tree for an artboard.
+      if (m.dgn === 'select-by-id') {
+        const mm = m as { id?: string; artboardId?: string | null; index?: number };
+        if (mm.id) {
+          const target = resolveSelectionEl(document, {
+            id: mm.id,
+            artboardId: mm.artboardId,
+            index: mm.index,
+          });
+          if (target) {
+            selSet.replace(
+              hoverTargetToSelection({
+                el: target,
+                cdId: mm.id,
+                artboardId: mm.artboardId ?? null,
+              } as HoverTarget)
+            );
+            (target as HTMLElement).scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+          }
+        }
+        return;
+      }
+      if (m.dgn === 'highlight') {
+        const mm = m as { id?: string; artboardId?: string | null; index?: number };
+        setHoverEl(
+          mm.id
+            ? resolveSelectionEl(document, {
+                id: mm.id,
+                artboardId: mm.artboardId,
+                index: mm.index,
+              })
+            : null
+        );
+        return;
+      }
+      if (m.dgn === 'request-layers') {
+        postLayersTree((m as { artboardId?: string }).artboardId ?? null);
+        return;
+      }
       // D9 — canvas-shell chrome follows the Maude chrome theme. The chrome's
       // `--maude-chrome-*` token family is keyed by `data-maude-theme` on the
       // iframe documentElement (see HUD_TOKENS_CSS). This attribute is
@@ -1452,6 +1592,8 @@ function CanvasRouter({
         const sel = hoverTargetToSelection(target);
         if (mode === 'replace') selSet.replace(sel);
         else selSet.add(sel);
+        // Phase 12 Task 4 — refresh the Layers tree for the selected artboard.
+        postLayersTree(target.artboardId);
       },
       onContextMenu: ({ clientX, clientY }) => {
         const target = resolveHoverTarget(document, clientX, clientY, { deep: true });
