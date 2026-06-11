@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-11T11:16:40.875Z",
+  "generated": "2026-06-11T12:37:00.542Z",
   "currentPhase": null,
   "phases": [
     {
@@ -243,6 +243,17 @@
       "planPath": ".ai/plans/archive/phase-16-intro-video-v3-wow.md",
       "archived": true,
       "phaseKey": "16"
+    },
+    {
+      "id": "phase-17-docs-site-infographics",
+      "title": "Feature: Docs site infographics + diagrams",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Add a small library of diagram primitives to the docs site and insert them into the highest-traffic pages. Today the docs are text-heavy markdown tables — accurate but visually flat. Adding SKU-sta...",
+      "planPath": ".ai/plans/archive/phase-17-docs-site-infographics.md",
+      "archived": true,
+      "phaseKey": "17"
     },
     {
       "id": "phase-20-canvas-undo-redo",
@@ -804,17 +815,6 @@
       "planPath": ".ai/plans/phase-12-in-canvas-css-and-layers.md",
       "archived": false,
       "phaseKey": "12"
-    },
-    {
-      "id": "phase-17-docs-site-infographics",
-      "title": "Feature: Docs site infographics + diagrams",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Add a small library of diagram primitives to the docs site and insert them into the highest-traffic pages. Today the docs are text-heavy markdown tables — accurate but visually flat. Adding SKU-sta...",
-      "planPath": ".ai/plans/phase-17-docs-site-infographics.md",
-      "archived": false,
-      "phaseKey": "17"
     },
     {
       "id": "phase-26-native-collab-tauri-shell",

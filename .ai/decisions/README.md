@@ -10,6 +10,9 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
 
+- [DDR-101: Command catalog is a shared `.mjs` single-source with build-time parity assertion](DDR-101-command-catalog-shared-mjs-single-source.md) — 2026-06-11, docs-site/command-reference/source-of-truth/build-script/diagrams/drift-guard
+- [DDR-100: Annotations FigJam v3 — group tag-array, embedded arrow binds, CLI write verb](DDR-100-annotations-figjam-v3-data-model.md) — 2026-06-11, annotations/figjam/groups/connectors/bindings/ai-surface/schema/dev-server
+- [DDR-099: Docs site retargeted from the `project` DS to the `maude` DS ("Studio Docs")](DDR-099-site-token-retarget-maude.md) — 2026-06-08, site/fumadocs/design-system/tokens/theme-bridge/changelog/roadmap/a11y/dogfooding
 - [DDR-098: Studio full-functionality pass — scope calls (Plan C)](DDR-098-studio-full-functionality-scope-calls.md) — 2026-06-07, dev-server/studio/client/shell/canvas-origin/export/inspector/presence/command-palette/hub-sync/ddr-096/ddr-060-superseded
 - [DDR-097: Hub admin redesign — "Studio Hub" maude reskin + operator surfaces](DDR-097-hub-admin-maude-reskin-and-operator-surfaces.md) — 2026-06-08, hub/admin/maude/csp/operator-surfaces/canvases/activity/settings/scope/tokens/security
 - [DDR-080: Moodboard direction gate — cheap pre-scaffold visual approval before the expensive bootstrap](DDR-080-moodboard-direction-gate.md) — 2026-06-02, design/setup-ds/bootstrap/moodboard/direction-gate/hero-preview/aesthetic-ambition/ddr-033/ddr-057/ddr-073

@@ -7,6 +7,8 @@ The canvas is the working surface. A `.tsx` file (React 19, transpiled by Bun), 
 
 A Bun dev server mounts every canvas in a shared shell. **Cmd+Click any element** (Move tool) to scope the next `/design:edit "<feedback>"` to that selection. The server tracks the active tab and your selection over WebSocket and writes `<designRoot>/_active.json` for the slash commands to read.
 
+<InspectorDiagram caption="Cmd+Click an element → it persists to _active.json → the next /design:edit reads it" />
+
 ## Thirteen commands
 
 Three setup verbs run once per project. Nine daily verbs drive the canvas loop. One validator (`smoke`) catches regressions. The bare `/design` form was a v0.8 one-version compat stub redirecting to `/design:edit`. **Removed in v0.9**.
@@ -18,6 +20,8 @@ Three setup verbs run once per project. Nine daily verbs drive the canvas loop. 
 | `/design:init` | One-time project init: dependency pre-flight, install hints, skeleton `.design/config.json`. Mirrors `/flow:init`. Auto-invoked when other commands hit a missing config. |
 | `/design:setup-ds <name> "[brief]"` | Create a design system (first one, additional, or re-bootstrap with `--force`). Thin wrapper around skill `design-system` in bootstrap mode. |
 | `/design:setup-docs [--full]` | Refresh `<designRoot>/README.md` + `INDEX.md`. "READ THIS FIRST" docs that live in the design root and stay current. Auto-runs after `/design:edit` and `/design:new`. |
+
+<LoopDiagram variant="design" caption="The canvas loop — setup once, then new → edit → critic → handoff, repeat" />
 
 **Daily. The canvas loop.**
 
@@ -43,11 +47,7 @@ Three setup verbs run once per project. Nine daily verbs drive the canvas loop. 
 
 The server writes three runtime files into `<designRoot>/` that orchestrator commands rely on:
 
-| File | Role |
-| ---- | ---- |
-| `_server.json` | `{ pid, port, url, started }`. So the orchestrator detects a live instance instead of spawning a duplicate. |
-| `_active.json` | `{ active, open_tabs, selected, last_change }`. The canvas-shell selection layer pushes the user's currently-selected element here over WebSocket so `/design:edit "<feedback>"` knows what to scope to. |
-| `_history/<slug>/` | Auto-snapshot stack per canvas, consumed by `/design:rollback`. |
+<DevServerSchema caption="Three files, one contract — the dev-server writes them, slash commands read them" />
 
 These are user-facing runtime state. Schemas are kept backwards-compatible across releases.
 
@@ -74,3 +74,5 @@ These are pointed at by the `design-system` and `ui-kit` skills, also auto-loade
 ## Configure
 
 Per-repo behavior lives at `.design/config.json` (handoff targets, opt-out scopes per canvas, the design-system list, theme, tokens path). It's written by `/design:init` and `/design:setup-ds`. See [Bootstrap](/docs/design/bootstrap) for the full shape and [Multi-DS](/docs/design/multi-ds) for the `designSystems[]` layout.
+
+<CommandTree plugin="design" caption="The /design: catalog — every command by group, each a link to its reference" />

@@ -655,21 +655,27 @@ create**:
 
 ## Acceptance Criteria
 
-- [ ] All 17 tasks completed
-- [ ] `/flow:utils-verify` passes after each component-creation
-      task
-- [ ] `/validate` passes overall:
-  - [ ] Static (types, lint)
-  - [ ] Build succeeds with all 8 components registered
+- [x] All 17 tasks completed (Task 0 canvas + Tasks 1–17 site)
+- [x] Static gates pass after the build batch (`types:check` clean,
+      `biome check` clean — equivalent of `/flow:utils-verify`)
+- [ ] `/validate` passes overall (deferred to `/done`):
+  - [x] Static (types, lint)
+  - [x] Build succeeds with all 8 components registered (`pnpm build`
+        → 204 pages; every diagram statically rendered)
   - [ ] `scenario-runner` for `docs-diagrams`: 0 blockers,
-        parity OK across web-desktop + web-mobile
-  - [ ] `design-system-guard`: 0 blockers (token compliance)
-  - [ ] `a11y-auditor`: 0 blockers (every SVG has role + label)
-- [ ] All `CommandTree` leaf links resolve to existing pages
-- [ ] DDR recorded if any diagram needed a token-set extension
-      (expectation: none, but document if it happened)
-- [ ] Retro captures the answer to: "Does the docs site still
-      feel like a markdown dump?"
+        parity OK across web-desktop + web-mobile (scenario not yet
+        authored — deferred to `/done`)
+  - [ ] `design-system-guard`: 0 blockers (token compliance) —
+        self-audited (0 hardcoded colors, all `var(--*)`); subagent
+        pass deferred to `/done`
+  - [x] `a11y-auditor` equivalents: decorative SVGs `aria-hidden`,
+        figures labelled by `<figcaption>`, DevServerSchema carries
+        an sr-only `<table>`, WCAG AA contrast verified by computation
+- [x] All `CommandTree` leaf links resolve (catalog↔.md parity asserted
+      in `build-command-reference.mjs` — drift fails the build)
+- [x] No token-set extension needed (every value an existing `var(--*)`)
+- [ ] Retro: "still a markdown dump?" — no; index/getting-started/
+      design/flow/cli all carry diagrams now (capture in `/done` retro)
 
 ---
 
@@ -847,3 +853,33 @@ USER
 - Leaf commands bez explicitních spawnů: `validate-a11y`,
   `validate-visual`, `maintain-clean`, `status`.
 
+
+---
+
+## Retro (2026-06-11)
+
+- **The Task-0 canvas was the implementation.** Because the docs site's `mdcc-tokens.css`
+  is generated from `system/maude`, the 8 site components were near-1:1 ports of the
+  approved canvas (same token names, same `.di-*`→`.mdcc-dgm-*` structure). Dogfounding
+  the design plugin on our own docs paid off concretely — the visual spec wasn't a
+  reference, it was the source.
+- **Task 6 (Risk #1) was the real complexity, and the constraint was non-obvious.** The
+  prebuild runs `node` with no TS loader, so the single-source catalog *can't* live in
+  `diagram-data.ts`. Resolved by splitting it into `command-catalog.mjs` (DDR-101) with a
+  **build-time parity assertion** — drift now fails the build loud (positive-tested). This
+  is stronger than the plan's "one consolidated file" because it's enforced, not hoped-for.
+- **The plan's insertion points were stale** (line numbers + page content written before the
+  2026-06-08 maude-DS migration). Adapting to the *actual* current pages mattered:
+  `flow.mdx` already shipped `<FlowLoop/>`, so the planned redundant `LoopDiagram` was
+  dropped (Risk #6 — catalog-vibe overdrive avoided). Lesson for `/plan`: a plan that names
+  line numbers / specific prose is a snapshot; the executor must re-read current state, and
+  a plan authored for one DS must not be run verbatim after a DS migration.
+- **MDX stayed import-free via `variant` props** (`<CommandFlow variant="install"/>` instead
+  of `steps={INSTALL_STEPS}`) — sidestepped fragile `@/lib` imports inside `.mdx`.
+- **Mobile reflow (Risk #2) needed playwright, not agent-browser.** agent-browser's
+  `--viewport` still doesn't resize (the 2026-06-08 limitation persists — byte-identical
+  screenshots gave it away). Playwright with an explicit `viewport` is the working fallback
+  for true-mobile renders; worth wiring into the smoke/scenario path.
+- **"Still a markdown dump?" — no.** index / getting-started / design / flow / cli now each
+  carry ≥1 diagram in the maude instrument-panel language. The docs read as a designed
+  surface, not a table dump.

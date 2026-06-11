@@ -1,0 +1,65 @@
+{
+  "title": "Docs Infographics",
+  "subtitle": "maude diagram primitives — 8 documentation diagrams (the visual spec for site/components/mdcc/diagrams/*, phase-17)",
+  "brief": "Infographic/diagram primitives canvas for the maude docs site (dogfooding the design plugin on our own docs). 8 artboards, one per diagram component, real maude data, mono part-number stamps, strict 1px hairline structure, one indigo accent per board. Visual spec for the phase-17 docs-site diagram components.",
+  "platform": "desktop",
+  "designSystem": "maude",
+  "opt_out_scope": "palette",
+  "kind": "canvas",
+  "brief_sha": "8305d60c",
+  "sections": [
+    {
+      "id": "diagrams",
+      "title": "Docs Infographics — maude diagram primitives",
+      "subtitle": "MDCC·DGM · 8 components · dark studio default"
+    }
+  ],
+  "artboards": [
+    {
+      "id": "architecture-map",
+      "label": "A · MDCC-DGM/MAP · ArchitectureMap",
+      "note": "System map: Claude Code shell + /plugin design + /plugin flow + maude CLI badge; .ai/ (flow) and .design/ (design) folder cards; crossing accent arrows design→.design/, flow→.ai/"
+    },
+    {
+      "id": "command-flow",
+      "label": "B · MDCC-DGM/FLW · CommandFlow",
+      "note": "Horizontal numbered step strip — install · maude init · /flow:init · ready; arrow glyphs between cells, last cell accent"
+    },
+    {
+      "id": "loop-diagram",
+      "label": "C · MDCC-DGM/LP · LoopDiagram",
+      "note": "7-node circular cycle: init -> setup-ds -> new -> edit(active) -> critic -> handoff -> repeat; arrowed arcs + dashed accent closing arc + canvas-loop hub"
+    },
+    {
+      "id": "command-tree",
+      "label": "D · MDCC-DGM/TR · CommandTree",
+      "note": "ASCII command tree grouped Setup / Daily / Validate with hairline guides + mono glyph leaves"
+    },
+    {
+      "id": "file-tree",
+      "label": "E · MDCC-DGM/FT · FileTree",
+      "note": ".ai/ skeleton ASCII tree; workflows.config.json row highlighted (accent-tint + accent-muted left border) with right-aligned hint"
+    },
+    {
+      "id": "stat-panel",
+      "label": "F · MDCC-DGM/STT · StatPanel",
+      "note": "5-cell stat strip with hairline dividers: 42 commands · 11 critics · 2 plugins · 1 CLI · 0 telemetry (by design)"
+    },
+    {
+      "id": "inspector-diagram",
+      "label": "G · MDCC-DGM/INS · InspectorDiagram",
+      "note": "Stylized canvas iframe (localhost:4711 chrome + dotted stage + 3 artboard rects) with accent two-stroke halo on the target element; 3 leader-line annotations (Cmd+Click · _active.json · /design:edit)"
+    },
+    {
+      "id": "dev-server-schema",
+      "label": "H · MDCC-DGM/SRV · DevServerSchema",
+      "note": "Three-pane schema _server.json · _active.json · _history/<slug>/ with real keys + types; producer->consumer flow row (server writes -> inspector pushes -> rollback reads)"
+    }
+  ],
+  "viewport": {
+    "x": -3230.9084925901557,
+    "y": -70.78972180711366,
+    "zoom": 1.4750255085482997
+  },
+  "last_modified": "2026-06-11T12:02:25.225Z"
+}
