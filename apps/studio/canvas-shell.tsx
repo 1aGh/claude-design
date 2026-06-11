@@ -302,6 +302,14 @@ const HALO_CSS = `
   -webkit-font-smoothing: subpixel-antialiased;
   font-smooth: always;
 }
+/* Phase 12 (DDR-101) — inline text editing: the element being edited carries an
+   accent ring + caret. plaintext-only contenteditable; commit writes to source. */
+[contenteditable].dc-text-editing {
+  outline: 2px solid var(--maude-hud-accent, #0d99ff);
+  outline-offset: 1px;
+  border-radius: 1px;
+  cursor: text;
+}
 `.trim();
 
 function ensureHaloStyles(): void {
@@ -1329,6 +1337,87 @@ function CanvasRouter({
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, [selSet, annotSel, setTool, undoStack]);
+
+  // Phase 12 (DDR-101) — double-click a LEAF-TEXT element (children all text
+  // nodes) to edit its copy in place. Commit (blur / Enter) posts `dgn:edit-text`
+  // to the shell, which calls the main-origin /_api/edit-text → editText writes
+  // the escaped JSXText to source; the file-watcher HMR reload re-renders from
+  // the persisted source. Esc restores the original. Mixed/expression elements
+  // are skipped (the engine would refuse them anyway — honest no-op).
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const host = hostRef.current;
+    if (!host) return;
+    let editing: HTMLElement | null = null;
+    let original = '';
+    const onBlur = (): void => commitEdit(true);
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        commitEdit(false);
+      } else if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        (e.currentTarget as HTMLElement | null)?.blur?.();
+      }
+    };
+    function teardown(elx: HTMLElement): void {
+      elx.removeAttribute('contenteditable');
+      elx.classList.remove('dc-text-editing');
+      elx.removeEventListener('blur', onBlur, true);
+      elx.removeEventListener('keydown', onKey, true);
+    }
+    function commitEdit(commit: boolean): void {
+      const elx = editing;
+      if (!elx) return;
+      editing = null;
+      const text = (elx.textContent ?? '').trim();
+      teardown(elx);
+      if (!commit) {
+        elx.textContent = original;
+        return;
+      }
+      if (text === original.trim()) return;
+      const cdId = elx.getAttribute('data-cd-id');
+      if (!cdId) return;
+      try {
+        window.parent.postMessage({ dgn: 'edit-text', id: cdId, file: deriveFile(), text }, '*');
+      } catch {
+        /* detached / cross-origin */
+      }
+    }
+    const onDbl = (e: MouseEvent): void => {
+      if (editing) return;
+      const t = e.target as HTMLElement | null;
+      const stamped = (t?.closest?.('[data-cd-id]') as HTMLElement | null) ?? null;
+      if (!stamped) return;
+      const kids = Array.from(stamped.childNodes);
+      if (kids.length === 0 || !kids.every((n) => n.nodeType === 3)) return; // leaf-text only
+      e.preventDefault();
+      e.stopPropagation();
+      editing = stamped;
+      original = stamped.textContent ?? '';
+      stamped.setAttribute('contenteditable', 'plaintext-only');
+      stamped.classList.add('dc-text-editing');
+      stamped.addEventListener('blur', onBlur, true);
+      stamped.addEventListener('keydown', onKey, true);
+      stamped.focus();
+      try {
+        const range = document.createRange();
+        range.selectNodeContents(stamped);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      } catch {
+        /* selection API unavailable */
+      }
+    };
+    // Capture phase so we beat the fit-to-view dblclick handler.
+    host.addEventListener('dblclick', onDbl, true);
+    return () => {
+      host.removeEventListener('dblclick', onDbl, true);
+      if (editing) teardown(editing);
+    };
+  }, [hostRef]);
 
   // Cleanup any pending rAF on unmount.
   useEffect(

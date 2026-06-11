@@ -3644,6 +3644,21 @@ function App() {
       } else if (m.dgn === 'clear-select') {
         wsSend({ type: 'clear-select' });
         setSelected(null);
+      } else if (m.dgn === 'edit-text' && m.id) {
+        // Phase 12 (DDR-101) — inline text edit committed in the canvas. POST to
+        // the main-origin-only /_api/edit-text → editText writes the escaped
+        // JSXText to source; the file-watcher HMR reload then shows the new text.
+        // A refusal (mixed/expression content) is logged, not fatal.
+        fetch('/_api/edit-text', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ canvas: m.file, id: m.id, text: m.text ?? '' }),
+        })
+          .then((r) => r.json().catch(() => ({})))
+          .then((j) => {
+            if (!j.ok) console.warn('[edit-text]', j.error || 'failed');
+          })
+          .catch(() => {});
       } else if (m.dgn === 'comment-compose' && m.selection) {
         // Phase 6 — the iframe overlay owns the composer surface now. The
         // shell just mirrors `selected` so the StatusBar / sidebar still
