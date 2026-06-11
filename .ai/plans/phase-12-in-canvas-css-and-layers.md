@@ -197,3 +197,23 @@ Seven small deliverables on the existing substrate.
 - [ ] No regression in Inspect tab, `/design:edit` Step 3a, or annotation-layer text editing.
 - [ ] Release bundle rebuilt + committed.
 - [ ] Drag-to-reorder explicitly deferred to `phase-12.1` (recorded, not silently dropped).
+
+---
+
+## Retro (2026-06-11)
+
+**Shipped (13 commits `03053f5`…`29b2518` on `worktree-buzzing-snuggling-manatee`):** Tasks 0,1,2,3(engine+UI),4,6,8 — CSS writeback + inline text edit + browsable Layers tree + the always-stamp envelope. Both write endpoints **live-verified** on a real server; CSS panel + Layers tree UI **screenshot-verified**. Full dev-server suite **1331/1331**, tsc baseline-only, biome clean, build clean.
+
+**What worked**
+- Reframing the stale plan against the shipped substrate (DDR-019 `editAttribute`, `data-cd-id`, Plan-C panels) collapsed a "2-week High" feature into a wiring slice — the biggest risk (source-rewrite) was already solved + governed.
+- Live verification caught **3 real bugs** static checks missed: the WS `selected`-echo clobbering CSS pre-fill (`mergeSelClientFields`), reused `.st-field` (58px) truncating values, and raw `getComputedStyle` noise — the reason the v1 CSS panel was "unusable". Looking at actual pixels (not just green builds) was decisive.
+- `el.style` (authored inline) vs `getComputedStyle` (resolved) simplified the value-source away from a planned endpoint.
+
+**What didn't / friction**
+- **Authored the whole feature in the wrong tree first** (`main` checkout, not the worktree), tangling with uncommitted annotations-v3; untangling cost real time. Lesson saved to memory.
+- v1 CSS panel shipped functional-but-unusable by reusing inspect-tab classes — "build-green ≠ user-usable". CSS-panel polish carved into **phase-12.2** (user-parked).
+- Dev-server boots repeatedly dev-bloat `dist/` + churn `site/lib` + `.design/ui/*.meta.json`; constant revert/explicit-stage.
+
+**Deferred (honest):** Task 5 (optimistic preview) → phase-12.2. Task 7 → a11y primitives in code, full auditor at validation. **canvas-render `/design:smoke` + click→source round-trips in a real canvas are NOT yet live-verified** — they need a server **restart** (canvas-shell rebundles per boot; the running server cached the old bundle) + the user on a restarted server (cross-origin Cmd+click = documented automation gap).
+
+**For next /plan:** re-ground a pre-refactor plan against current code BEFORE estimating; for dev-server UI budget a real render-verify loop (screenshot the populated state), not just tsc/build.
