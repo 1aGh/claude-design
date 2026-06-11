@@ -1053,7 +1053,7 @@ function applyArtboardFollowers(): void {
 function buildRegistry(deps: {
   controller: ViewportControllerHandle | null;
   clearSelection: () => void;
-  selSet: { selected: Selection[] };
+  selSet: { selected: Selection[]; replace: (s: Selection | Selection[]) => void };
   distributeArtboards: (axis: 'x' | 'y') => void;
   alignArtboards: (mode: 'left' | 'right' | 'center-x' | 'top' | 'bottom' | 'center-y') => void;
   focusArtboard: (artboardId: string) => void;
@@ -1215,9 +1215,24 @@ function buildRegistry(deps: {
           id: 'inspect',
           label: 'Inspect',
           shortcut: '⌥I',
-          disabled: true,
-          onSelect: () => {
-            console.warn('[context-menu] TODO: tweaks panel for TSX canvases');
+          onSelect: (target) => {
+            // Phase 12 — select the right-clicked element + open the shell's
+            // right Inspector panel (Inspect / Layers / CSS). Was a disabled TODO
+            // before the inspector shipped.
+            if (target.el) {
+              selSet.replace(
+                hoverTargetToSelection({
+                  el: target.el,
+                  cdId: target.cdId ?? null,
+                  artboardId: target.artboardId ?? null,
+                } as HoverTarget)
+              );
+            }
+            try {
+              window.parent.postMessage({ dgn: 'open-inspector' }, '*');
+            } catch {
+              /* detached / cross-origin */
+            }
           },
         },
       ],

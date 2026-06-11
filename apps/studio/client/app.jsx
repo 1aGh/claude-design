@@ -3842,6 +3842,9 @@ function App() {
       } else if (m.dgn === 'layers-tree') {
         // Phase 12 Task 4 — browsable layers tree for the active artboard.
         setLayersTree({ artboardId: m.artboardId, nodes: Array.isArray(m.tree) ? m.tree : [] });
+      } else if (m.dgn === 'open-inspector') {
+        // Phase 12 — context-menu "Inspect" / tool-palette Inspect opens the right panel.
+        setInspectorOpen(true);
       } else if (m.dgn === 'comment-compose' && m.selection) {
         // Phase 6 — the iframe overlay owns the composer surface now. The
         // shell just mirrors `selected` so the StatusBar / sidebar still

@@ -384,6 +384,26 @@ export function ToolPalette() {
       <div className="dc-tp-group">
         <button
           type="button"
+          aria-label="Inspect — open the right panel (⌥I)"
+          title="Inspect — open the right panel"
+          onClick={() => {
+            // Phase 12 — open the shell's Inspector panel (Inspect / Layers / CSS).
+            try {
+              window.parent.postMessage({ dgn: 'open-inspector' }, '*');
+            } catch {
+              /* detached / non-window */
+            }
+          }}
+        >
+          <span aria-hidden="true" style={{ display: 'inline-flex' }}>
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
+              <rect x="1" y="2.5" width="13" height="10" rx="1.5" stroke="currentColor" />
+              <line x1="9.5" y1="2.5" x2="9.5" y2="12.5" stroke="currentColor" />
+            </svg>
+          </span>
+        </button>
+        <button
+          type="button"
           aria-label="Export (⌘E)"
           title="Export (⌘E)"
           onClick={() => {
