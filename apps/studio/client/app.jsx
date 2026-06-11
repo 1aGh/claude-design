@@ -2792,99 +2792,97 @@ function SyncBanner({ status }) {
   );
 }
 
-// ---------- CSS knobs (Phase 12, DDR-101) ----------
+// ---------- CSS knobs (Phase 12.2, DDR-101) ----------
 //
-// Webflow-style grouped editor for the selected element. Each knob pre-fills
-// from the live `computed` style in the selection payload; on commit (blur /
-// Enter) it POSTs to the main-origin-only `/_api/edit-css`, which writes one
-// key into the element's inline `style={{}}` object in the source `.tsx` (via
-// editAttribute). The file-watcher HMR then reloads the canvas with the new
-// value. Token-valued input (e.g. `var(--accent)`) keeps edits on-system.
+// Webflow-style grouped editor for the selected element's INLINE style. Each
+// knob pre-fills from the AUTHORED inline value (`el.authored` — what the source
+// `style={{}}` sets; blank when unset), with the resolved `computed` value shown
+// only as a faint placeholder hint (NOT the editable value — that was the v1 UX
+// bug). Commit (blur / Enter) POSTs to the main-origin-only `/_api/edit-css`,
+// which merges one key into the inline `style={{}}` in the source `.tsx` (via
+// editAttribute); the file-watcher HMR then reloads the canvas. Token values
+// (e.g. `var(--accent)`) keep edits on-system.
 const CSS_KNOB_GROUPS = [
-  { label: 'Layout', props: [['display', 'display'], ['gap', 'gap']] },
-  { label: 'Spacing', props: [['padding', 'padding'], ['margin', 'margin']] },
-  { label: 'Size', props: [['width', 'width'], ['height', 'height']] },
+  { label: 'Layout', props: [['display', 'Display'], ['gap', 'Gap']] },
+  { label: 'Spacing', props: [['padding', 'Padding'], ['margin', 'Margin']] },
+  { label: 'Size', props: [['width', 'Width'], ['height', 'Height'], ['max-width', 'Max W']] },
   {
     label: 'Typography',
     props: [
-      ['font-size', 'size'],
-      ['font-weight', 'weight'],
-      ['line-height', 'leading'],
-      ['color', 'color'],
-      ['text-align', 'align'],
+      ['font-size', 'Size'],
+      ['font-weight', 'Weight'],
+      ['line-height', 'Leading'],
+      ['letter-spacing', 'Tracking'],
+      ['text-align', 'Align'],
+      ['color', 'Color'],
     ],
   },
   {
     label: 'Appearance',
     props: [
-      ['background-color', 'bg'],
-      ['border-radius', 'radius'],
-      ['opacity', 'opacity'],
+      ['background-color', 'Fill'],
+      ['border-radius', 'Radius'],
+      ['opacity', 'Opacity'],
     ],
   },
 ];
+const CSS_COLOR_PROPS = new Set(['color', 'background-color']);
 
-const ST_GROUP_HD = {
-  fontSize: 10,
-  textTransform: 'uppercase',
-  letterSpacing: '0.06em',
-  color: 'var(--fg-2, #8a8a8a)',
-  margin: '10px 0 4px',
-  fontWeight: 600,
-};
+let _cssColorCtx = null;
+// Normalize any CSS color string to #rrggbb for the native color input via a
+// throwaway canvas fillStyle round-trip (parses rgb/hsl/named). Unparseable
+// values (some oklch) fall back to '' → picker defaults to #000000; the swatch
+// still shows the true color string regardless.
+function cssColorToHex(c) {
+  if (!c) return '';
+  if (/^#[0-9a-f]{6}$/i.test(c)) return c.toLowerCase();
+  try {
+    if (!_cssColorCtx) _cssColorCtx = document.createElement('canvas').getContext('2d');
+    if (!_cssColorCtx) return '';
+    _cssColorCtx.fillStyle = '#000000';
+    _cssColorCtx.fillStyle = c;
+    const v = _cssColorCtx.fillStyle;
+    if (/^#[0-9a-f]{6}$/i.test(v)) return v.toLowerCase();
+    const m = v.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (m) {
+      return `#${[m[1], m[2], m[3]].map((n) => Number(n).toString(16).padStart(2, '0')).join('')}`;
+    }
+  } catch {
+    /* canvas unavailable */
+  }
+  return '';
+}
 
-function RawKnob({ commit }) {
-  const [prop, setProp] = useState('');
-  const [val, setVal] = useState('');
-  return (
-    <div className="st-insp-row">
-      <input
-        className="st-field"
-        aria-label="custom property"
-        placeholder="property"
-        value={prop}
-        style={{ maxWidth: 110 }}
-        onChange={(e) => setProp(e.target.value)}
-      />
-      <input
-        className="st-field"
-        aria-label="custom value"
-        placeholder="value"
-        value={val}
-        onChange={(e) => setVal(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && prop.trim() && val.trim()) {
-            commit(prop.trim(), val);
-            setProp('');
-            setVal('');
-          }
-        }}
-      />
-    </div>
-  );
+// Round bare px to whole numbers for the placeholder hint; pass other values through.
+function cssHint(v) {
+  if (!v) return '';
+  const m = /^(-?\d*\.?\d+)px$/.exec(v);
+  return m ? `${Math.round(Number.parseFloat(m[1]))}px` : v;
 }
 
 function CssKnobs({ el }) {
   const editable = !!el.id;
   const [status, setStatus] = useState(null);
+  const authored = el.authored || {};
+  const computed = el.computed || {};
 
-  async function commit(property, value) {
-    const v = (value || '').trim();
-    if (!editable || !v) return;
-    if (v === (el.computed?.[property] ?? '').trim()) return; // no-op
+  async function commit(property, rawValue) {
+    const value = (rawValue || '').trim();
+    if (!editable || !value) return;
+    if (value === (authored[property] ?? '').trim()) return; // no-op
     setStatus({ property, kind: 'saving' });
     try {
       const res = await fetch('/_api/edit-css', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ canvas: el.file, id: el.id, property, value: v }),
+        body: JSON.stringify({ canvas: el.file, id: el.id, property, value }),
       });
       const j = await res.json().catch(() => ({}));
-      if (!res.ok || !j.ok) {
-        setStatus({ property, kind: 'error', msg: (j && j.error) || `HTTP ${res.status}` });
-      } else {
-        setStatus({ property, kind: 'saved' });
-      }
+      setStatus(
+        !res.ok || !j.ok
+          ? { property, kind: 'error', msg: (j && j.error) || `HTTP ${res.status}` }
+          : { property, kind: 'saved' }
+      );
     } catch (err) {
       setStatus({ property, kind: 'error', msg: err && err.message ? err.message : String(err) });
     }
@@ -2892,24 +2890,28 @@ function CssKnobs({ el }) {
 
   if (!editable) {
     return (
-      <>
+      <div className="st-css-panel">
         <div className="st-rp-hd">CSS</div>
-        <div className="callout callout--info" style={{ fontSize: 12 }}>
-          This selection has no stable element id (legacy canvas, or a non-element target). Edit it
-          with <code>/design:edit</code>.
+        <div className="st-css-disabled">
+          This selection has no stable element id (a legacy canvas, or a non-element target). Edit
+          it with <code>/design:edit</code>.
         </div>
-      </>
+      </div>
     );
   }
 
-  const knobRow = (cssProp, label) => (
-    <div className="st-insp-row" key={cssProp}>
-      <span className="st-insp-label">{label}</span>
-      <div className="st-insp-fields">
+  const textRow = (cssProp, label) => (
+    <div className="st-css-row" key={cssProp}>
+      <label className="st-css-label" htmlFor={`css-${cssProp}`}>
+        {label}
+      </label>
+      <div className="st-css-control">
         <input
-          className="st-field"
+          id={`css-${cssProp}`}
+          className="st-css-input"
           aria-label={cssProp}
-          defaultValue={el.computed?.[cssProp] ?? ''}
+          defaultValue={authored[cssProp] ?? ''}
+          placeholder={cssHint(computed[cssProp]) || '—'}
           onKeyDown={(e) => {
             if (e.key === 'Enter') e.currentTarget.blur();
           }}
@@ -2919,26 +2921,99 @@ function CssKnobs({ el }) {
     </div>
   );
 
+  const colorRow = (cssProp, label) => {
+    const shown = authored[cssProp] || computed[cssProp] || '';
+    return (
+      <div className="st-css-row" key={cssProp}>
+        <label className="st-css-label" htmlFor={`css-${cssProp}`}>
+          {label}
+        </label>
+        <div className="st-css-control">
+          <span className="st-css-swatch" title={shown || 'no color set'}>
+            <span style={{ background: shown || 'transparent' }} />
+            <input
+              type="color"
+              aria-label={`${cssProp} swatch`}
+              defaultValue={cssColorToHex(shown) || '#000000'}
+              onBlur={(e) => commit(cssProp, e.currentTarget.value)}
+            />
+          </span>
+          <input
+            id={`css-${cssProp}`}
+            className="st-css-input"
+            aria-label={cssProp}
+            defaultValue={authored[cssProp] ?? ''}
+            placeholder={cssHint(computed[cssProp]) || '—'}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+            }}
+            onBlur={(e) => commit(cssProp, e.currentTarget.value)}
+          />
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div key={el.id}>
-      <div className="st-rp-hd">CSS · {el.selector || el.tag}</div>
+    <div className="st-css-panel" key={el.id}>
+      <div className="st-css-title">
+        {el.tag || 'element'}
+        {el.classes ? `.${el.classes.split(/\s+/)[0]}` : ''}
+      </div>
       {CSS_KNOB_GROUPS.map((g) => (
         <div key={g.label}>
-          <div style={ST_GROUP_HD}>{g.label}</div>
-          {g.props.map(([cssProp, label]) => knobRow(cssProp, label))}
+          <div className="st-css-group">{g.label}</div>
+          {g.props.map(([cssProp, label]) =>
+            CSS_COLOR_PROPS.has(cssProp) ? colorRow(cssProp, label) : textRow(cssProp, label)
+          )}
         </div>
       ))}
-      <div style={ST_GROUP_HD}>Custom</div>
+      <div className="st-css-group">Custom</div>
       <RawKnob commit={commit} />
-      {status?.kind === 'error' ? (
-        <div style={{ fontSize: 12, color: 'var(--danger, #e5484d)', marginTop: 6 }}>
-          {status.property}: {status.msg}
-        </div>
-      ) : null}
-      <div className="callout callout--info" style={{ fontSize: 12, marginTop: 8 }}>
-        Commits inline <code>style</code> to the source <code>.tsx</code> (blur / Enter). Use a DS
-        token value like <code>var(--accent)</code> to stay on-system.
+      <div className={`st-css-status${status ? ` is-${status.kind}` : ''}`}>
+        {status?.kind === 'error'
+          ? `${status.property}: ${status.msg}`
+          : status?.kind === 'saved'
+            ? '✓ written to source'
+            : ''}
       </div>
+      <div className="st-css-help">
+        Edits the element's inline <code>style</code> in the source <code>.tsx</code> on blur or
+        Enter. Use a token like <code>var(--accent)</code> to stay on-system.
+      </div>
+    </div>
+  );
+}
+
+function RawKnob({ commit }) {
+  const [prop, setProp] = useState('');
+  const [val, setVal] = useState('');
+  const submit = () => {
+    if (prop.trim() && val.trim()) {
+      commit(prop.trim(), val);
+      setProp('');
+      setVal('');
+    }
+  };
+  return (
+    <div className="st-css-row">
+      <input
+        className="st-css-input"
+        aria-label="custom property"
+        placeholder="property"
+        value={prop}
+        onChange={(e) => setProp(e.target.value)}
+      />
+      <input
+        className="st-css-input"
+        aria-label="custom value"
+        placeholder="value"
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') submit();
+        }}
+      />
     </div>
   );
 }

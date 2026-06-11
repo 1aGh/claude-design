@@ -456,4 +456,26 @@
 .st-css { font-family: var(--font-mono); font-size: var(--type-xs); background: var(--bg-0); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: var(--space-3); line-height: 1.7; color: var(--fg-1); }
 .st-css .comment { color: var(--fg-3); }
 
+/* Phase 12.2 — in-canvas CSS editor knobs. Full-width value fields (NOT the 58px
+   read-only inspect fields), grouped sections, color swatch, per-field feedback. */
+.st-css-panel { display: flex; flex-direction: column; gap: var(--space-2); }
+.st-css-title { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-1); word-break: break-word; }
+.st-css-group { font-family: var(--font-mono); font-size: 10px; letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-3); margin-top: var(--space-3); }
+.st-css-row { display: grid; grid-template-columns: 72px 1fr; align-items: center; gap: var(--space-2); }
+.st-css-label { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); }
+.st-css-control { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.st-css-input { flex: 1 1 auto; min-width: 0; width: 100%; box-sizing: border-box; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--type-xs); color: var(--fg-0); background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-xs); padding: var(--space-1) var(--space-2); text-align: left; }
+.st-css-input::placeholder { color: var(--fg-3); }
+.st-css-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-tint); }
+.st-css-swatch { position: relative; flex: none; width: 22px; height: 22px; border-radius: var(--radius-xs); border: 1px solid var(--border-default); padding: 0; cursor: pointer; overflow: hidden; background-image: linear-gradient(45deg, var(--bg-2) 25%, transparent 25%), linear-gradient(-45deg, var(--bg-2) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, var(--bg-2) 75%), linear-gradient(-45deg, transparent 75%, var(--bg-2) 75%); background-size: 8px 8px; background-position: 0 0, 0 4px, 4px -4px, -4px 0; }
+.st-css-swatch > span { position: absolute; inset: 0; }
+.st-css-swatch input[type="color"] { position: absolute; inset: -4px; width: calc(100% + 8px); height: calc(100% + 8px); opacity: 0; cursor: pointer; border: 0; padding: 0; }
+.st-css-status { font-family: var(--font-mono); font-size: 10px; min-height: 12px; }
+.st-css-status.is-error { color: oklch(0.62 0.2 25); }
+.st-css-status.is-saved { color: var(--fg-3); }
+.st-css-help { font-size: var(--type-xs); color: var(--fg-3); line-height: 1.5; margin-top: var(--space-2); }
+.st-css-help code { font-family: var(--font-mono); color: var(--fg-2); background: var(--bg-3); padding: 0 3px; border-radius: 3px; }
+.st-css-disabled { color: var(--fg-2); font-size: var(--type-sm); line-height: 1.6; }
+.st-css-disabled code { font-family: var(--font-mono); color: var(--accent); background: var(--bg-2); padding: 1px 5px; border-radius: var(--radius-xs); }
+
 }

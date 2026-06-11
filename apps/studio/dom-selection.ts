@@ -176,9 +176,12 @@ export function resolveSelectionEl(
 }
 
 /**
- * Phase 12 — resolved values for the CSS-knob properties the inspector exposes,
- * so the knobs pre-fill from what the element actually renders. getComputedStyle
- * returns resolved strings (`8px`, `rgb(…)`); empty for a detached node / SSR.
+ * Phase 12.2 — style maps for the CSS-knob properties. `authored` is what the
+ * element sets INLINE (React renders `style={{padding:8}}` → `style="padding:8px"`),
+ * so the knob pre-fills the EDITABLE source value and is blank when unset — not
+ * the noisy resolved default (`656.003px`, `rgb(0,0,0)`). `computed` is the
+ * resolved value, shown only as a faint placeholder hint. Empty for a detached
+ * node / SSR.
  */
 const KNOB_PROPS = [
   'display',
@@ -197,18 +200,27 @@ const KNOB_PROPS = [
   'opacity',
 ] as const;
 
-function computedStyleFor(el: Element | null): Record<string, string> {
-  if (!el || typeof window === 'undefined' || !window.getComputedStyle) return {};
+function styleMapsFor(el: Element | null): {
+  authored: Record<string, string>;
+  computed: Record<string, string>;
+} {
+  if (!el || typeof window === 'undefined' || !window.getComputedStyle) {
+    return { authored: {}, computed: {} };
+  }
   try {
+    const inline = (el as HTMLElement).style;
     const cs = window.getComputedStyle(el as HTMLElement);
-    const out: Record<string, string> = {};
+    const authored: Record<string, string> = {};
+    const computed: Record<string, string> = {};
     for (const p of KNOB_PROPS) {
-      const v = cs.getPropertyValue(p);
-      if (v) out[p] = v.trim();
+      const a = inline.getPropertyValue(p);
+      if (a) authored[p] = a.trim();
+      const c = cs.getPropertyValue(p);
+      if (c) computed[p] = c.trim();
     }
-    return out;
+    return { authored, computed };
   } catch {
-    return {};
+    return { authored: {}, computed: {} };
   }
 }
 
@@ -260,6 +272,6 @@ export function hoverTargetToSelection(target: HoverTarget, file?: string): Sele
         }
       : null,
     html: el ? (el.outerHTML ?? '').slice(0, 4000) : '',
-    computed: computedStyleFor(el),
+    ...styleMapsFor(el),
   };
 }
