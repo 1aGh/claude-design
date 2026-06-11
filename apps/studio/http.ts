@@ -639,6 +639,60 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       );
     },
 
+    '/_api/edit-css': async (req: Request) => {
+      // Phase 12 (DDR-101) — single-property inline CSS edit. POST body
+      // { canvas, id, property, value } → writes one key into the element's
+      // inline `style={{}}` object via api.editCss → editAttribute. MAIN ORIGIN
+      // ONLY: intentionally absent from CANVAS_SAFE_API + startCanvasServer's
+      // route allowlist (DDR-054) — the untrusted canvas iframe origin must never
+      // reach a source-write endpoint. The CSS-knob UI lives in the shell (main
+      // origin) and calls it directly.
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      const body = await readJson<{
+        canvas?: unknown;
+        id?: unknown;
+        property?: unknown;
+        value?: unknown;
+      }>(req, 8 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.editCss(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, delta: result.delta },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
+    '/_api/edit-text': async (req: Request) => {
+      // Phase 12 (DDR-101) — inline element text-content edit. POST body
+      // { canvas, id, text } → overwrites the element's single JSXText child
+      // (JSX-escaped) via api.editText → editText. Same MAIN-ORIGIN-ONLY trust
+      // boundary as /_api/edit-css + /_api/canvas. The inline contenteditable
+      // editor reaches it via the dgn:* bus → shell relay (never the iframe).
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      const body = await readJson<{ canvas?: unknown; id?: unknown; text?: unknown }>(
+        req,
+        16 * 1024
+      );
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.editText(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, delta: result.delta },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
     '/_api/asset': async (req: Request) => {
       // Phase 23 — binary image upload from the canvas (drag-drop / paste / the
       // a11y file picker). POST raw image bytes → content-addressed write under

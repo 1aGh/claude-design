@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { applyEdit, CanvasEditError, editAttribute } from '../canvas-edit.ts';
+import { applyEdit, applyTextEdit, CanvasEditError, editAttribute } from '../canvas-edit.ts';
 import { transpileCanvasSource } from '../canvas-pipeline.ts';
 
 const CANVAS = '/abs/Canvas.tsx';
@@ -135,5 +135,87 @@ describe('canvas-edit / editAttribute (fs)', () => {
     // Second pass with the same value — no-op (the source already has it).
     const r2 = await editAttribute(tmp, id, 'className', 'longer-value');
     expect(r2.delta).toBe(0);
+  });
+});
+
+// Phase 12 (DDR-101) — inline text-content edit. Leaf-text only; JSX-escaped.
+describe('canvas-edit / applyTextEdit', () => {
+  test('overwrites a leaf text node', () => {
+    const src = `function Demo() { return <button>Save</button>; }`;
+    const id = idsOf(src).button as string;
+    const out = applyTextEdit(CANVAS, src, id, 'Uložit');
+    expect(out.source).toBe(`function Demo() { return <button>Uložit</button>; }`);
+  });
+
+  test('preserves surrounding whitespace / indentation', () => {
+    const src = [
+      'function Demo() {',
+      '  return (',
+      '    <button>',
+      '      Save',
+      '    </button>',
+      '  );',
+      '}',
+    ].join('\n');
+    const id = idsOf(src).button as string;
+    const out = applyTextEdit(CANVAS, src, id, 'Go');
+    expect(out.source).toContain('    <button>\n      Go\n    </button>');
+  });
+
+  test('JSX-escapes <, >, {, }, & so text can never become markup or an expression', () => {
+    const src = `function Demo() { return <code>x</code>; }`;
+    const id = idsOf(src).code as string;
+    const out = applyTextEdit(CANVAS, src, id, 'a < b && c > {d}');
+    expect(out.source).toContain('a &lt; b &amp;&amp; c &gt; &#123;d&#125;');
+    expect(out.source).not.toContain('{d}');
+  });
+
+  test('refuses an element with mixed (element) children', () => {
+    const src = `function Demo() { return <div>hi <b>there</b></div>; }`;
+    const id = idsOf(src).div as string;
+    expect(() => applyTextEdit(CANVAS, src, id, 'x')).toThrow(CanvasEditError);
+  });
+
+  test('refuses an element whose only child is a JSX expression', () => {
+    const src = 'function Demo() { const t = "x"; return <h1>{t}</h1>; }';
+    const id = idsOf(src).h1 as string;
+    expect(() => applyTextEdit(CANVAS, src, id, 'x')).toThrow(CanvasEditError);
+  });
+
+  test('refuses a self-closing / empty element (no text to edit)', () => {
+    const src = `function Demo() { return <div className="x" />; }`;
+    const id = idsOf(src).div as string;
+    expect(() => applyTextEdit(CANVAS, src, id, 'x')).toThrow(CanvasEditError);
+  });
+
+  test('throws on a missing id', () => {
+    const src = `function Demo() { return <button>Save</button>; }`;
+    expect(() => applyTextEdit(CANVAS, src, 'deadbeef', 'x')).toThrow(CanvasEditError);
+  });
+});
+
+// Phase 12 (DDR-101) — the `style.<prop>` write path the CSS knobs ride
+// (api.editCss maps property → camelCase + always quotes the value).
+describe('canvas-edit / applyEdit style.<prop> (CSS-knob path)', () => {
+  test('inserts an inline style object when none exists', () => {
+    const src = `function Demo() { return <div>x</div>; }`;
+    const id = idsOf(src).div as string;
+    const out = applyEdit(CANVAS, src, id, 'style.borderRadius', '"8px"');
+    expect(out.source).toContain('style={{ borderRadius: "8px" }}');
+  });
+
+  test('overwrites an existing style key, leaving siblings intact', () => {
+    const src = `function Demo() { return <div style={{ padding: 4, color: "red" }}>x</div>; }`;
+    const id = idsOf(src).div as string;
+    const out = applyEdit(CANVAS, src, id, 'style.color', '"blue"');
+    expect(out.source).toContain('color: "blue"');
+    expect(out.source).toContain('padding: 4');
+  });
+
+  test('accepts a token-valued (var(--…)) string for on-system edits', () => {
+    const src = `function Demo() { return <div>x</div>; }`;
+    const id = idsOf(src).div as string;
+    const out = applyEdit(CANVAS, src, id, 'style.padding', '"var(--space-3)"');
+    expect(out.source).toContain('style={{ padding: "var(--space-3)" }}');
   });
 });

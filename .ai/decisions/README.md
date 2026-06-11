@@ -10,6 +10,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
 
+- [DDR-101: Phase 12 — in-canvas direct edit (CSS knobs + inline text) write model + deferrals](DDR-101-phase-12-in-canvas-direct-edit.md) — 2026-06-11, dev-server/inspector/css-writeback/text-editing/source-rewrite/layers-tree/canvas-origin/trust-boundary/ddr-019/ddr-054
 - [DDR-098: Studio full-functionality pass — scope calls (Plan C)](DDR-098-studio-full-functionality-scope-calls.md) — 2026-06-07, dev-server/studio/client/shell/canvas-origin/export/inspector/presence/command-palette/hub-sync/ddr-096/ddr-060-superseded
 - [DDR-097: Hub admin redesign — "Studio Hub" maude reskin + operator surfaces](DDR-097-hub-admin-maude-reskin-and-operator-surfaces.md) — 2026-06-08, hub/admin/maude/csp/operator-surfaces/canvases/activity/settings/scope/tokens/security
 - [DDR-080: Moodboard direction gate — cheap pre-scaffold visual approval before the expensive bootstrap](DDR-080-moodboard-direction-gate.md) — 2026-06-02, design/setup-ds/bootstrap/moodboard/direction-gate/hero-preview/aesthetic-ambition/ddr-033/ddr-057/ddr-073

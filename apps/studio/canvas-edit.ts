@@ -68,6 +68,8 @@ function computeId(componentName: string, idx: number): string {
 
 interface OpeningHit {
   opening: AnyNode;
+  /** The full JSXElement node — `editText` needs `.children` (JSXText), not just the opening tag. */
+  element: AnyNode;
 }
 
 /**
@@ -108,7 +110,7 @@ function findOpening(program: AnyNode, targetId: string): OpeningHit | null {
       frame.jsxIndex += 1;
       const id = computeId(frame.componentName, idx);
       if (id === targetId) {
-        hit = { opening: node.openingElement };
+        hit = { opening: node.openingElement, element: node };
       }
       if (!hit) {
         if (node.openingElement) visit(node.openingElement.attributes);
@@ -201,6 +203,39 @@ export async function editAttribute(
 }
 
 /**
+ * Apply an inline TEXT-content edit to the JSX element with the given
+ * `data-cd-id`. Leaf-text only: the element's children must be exactly one
+ * `JSXText` node (whitespace-only siblings are ignored). Mixed/expression
+ * children (`<b>x</b>`, `{count}`) throw `CanvasEditError` — the caller should
+ * surface a "use /design:edit" refusal rather than guess. The text is
+ * JSX-escaped before it touches source. Same atomic write + per-file lock as
+ * `editAttribute`. See DDR-101.
+ */
+export async function editText(
+  canvasAbsPath: string,
+  id: string,
+  text: string
+): Promise<EditResult> {
+  return withLock(canvasAbsPath, async () => {
+    const file = Bun.file(canvasAbsPath);
+    if (!(await file.exists())) {
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id,
+      });
+    }
+    const source = await file.text();
+    const next = applyTextEdit(canvasAbsPath, source, id, text);
+    if (next.source === source) return { source, delta: 0 };
+    const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
+    await Bun.write(tmp, next.source);
+    const { rename } = await import('node:fs/promises');
+    await rename(tmp, canvasAbsPath);
+    return next;
+  });
+}
+
+/**
  * Pure variant — exposed for tests + in-memory pipelines. Caller owns
  * persistence. Throws CanvasEditError if the ID isn't found or the edit shape
  * isn't representable.
@@ -241,6 +276,68 @@ export function applyEdit(
     editStringAttr(s, hit.opening, attr, value);
   }
 
+  const out = s.toString();
+  return { source: out, delta: out.length - source.length };
+}
+
+/**
+ * Pure variant of `editText` — parse, locate the JSXText child, overwrite its
+ * source span (preserving the original leading/trailing whitespace so JSX
+ * indentation survives), escaping the new text. Throws `CanvasEditError` for a
+ * missing id, no text content, or mixed/expression children.
+ */
+export function applyTextEdit(
+  canvasAbsPath: string,
+  source: string,
+  id: string,
+  text: string
+): EditResult {
+  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) {
+    const first = parsed.errors[0];
+    throw new CanvasEditError(
+      `oxc-parser failed on ${canvasAbsPath}: ${first?.message ?? 'unknown'}`,
+      { canvas: canvasAbsPath, id }
+    );
+  }
+
+  const hit = findOpening(parsed.program, id);
+  if (!hit) {
+    throw new CanvasEditError(`data-cd-id "${id}" not found in ${canvasAbsPath}`, {
+      canvas: canvasAbsPath,
+      id,
+    });
+  }
+
+  const children: AnyNode[] = Array.isArray(hit.element?.children) ? hit.element.children : [];
+  // Ignore whitespace-only JSXText siblings (`<button>\n  Save\n</button>` parses
+  // as one JSXText; `<a>\n  <b/>\n</a>` parses as ws + element + ws — the ws is
+  // noise). What's left is the "real" content.
+  const meaningful = children.filter(
+    (c) => !(c?.type === 'JSXText' && typeof c.value === 'string' && c.value.trim() === '')
+  );
+  if (meaningful.length === 0) {
+    throw new CanvasEditError(`element "${id}" has no editable text content`, {
+      canvas: canvasAbsPath,
+      id,
+    });
+  }
+  const only = meaningful[0];
+  if (meaningful.length > 1 || only?.type !== 'JSXText') {
+    throw new CanvasEditError(
+      `element "${id}" has mixed or expression content — edit it via /design:edit`,
+      { canvas: canvasAbsPath, id }
+    );
+  }
+
+  const start = only.start as number;
+  const end = only.end as number;
+  const raw = source.slice(start, end);
+  // Preserve the original indentation/newline framing; swap only the visible text.
+  const lead = /^\s*/.exec(raw)?.[0] ?? '';
+  const trail = /\s*$/.exec(raw)?.[0] ?? '';
+  const s = new MagicString(source);
+  s.overwrite(start, end, `${lead}${escapeJsxText(text)}${trail}`);
   const out = s.toString();
   return { source: out, delta: out.length - source.length };
 }
@@ -287,6 +384,24 @@ function editStringAttr(s: MagicString, opening: AnyNode, name: string, value: s
 
 function escapeAttr(value: string): string {
   return value.replace(/"/g, '&quot;').replace(/[<>]/g, (c) => (c === '<' ? '&lt;' : '&gt;'));
+}
+
+/**
+ * Escape JSX-significant characters so user-typed text lands in source `.tsx`
+ * as inert TEXT, never as markup or an expression. The text is written between
+ * an element's tags (`<button>HERE</button>`), where `<`/`>` would start a tag
+ * and `{`/`}` would open a JSX expression — so all four (plus a bare `&`, which
+ * begins an entity) are encoded. This is the load-bearing guard that keeps the
+ * inline text editor (Phase 12) from being a source-injection vector. See
+ * DDR-101.
+ */
+function escapeJsxText(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\{/g, '&#123;')
+    .replace(/\}/g, '&#125;');
 }
 
 function editStyleProp(

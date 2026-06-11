@@ -7,6 +7,7 @@ import { mkdir, readdir, readFile, rename, stat as statp } from 'node:fs/promise
 import path from 'node:path';
 
 import { renderBriefBoard, validateCanvasName } from './canvas-create.ts';
+import { CanvasEditError, editAttribute, editText as runEditText } from './canvas-edit.ts';
 import type { Context } from './context.ts';
 
 const SKIP_DIRS = new Set([
@@ -141,6 +142,11 @@ export type DeleteCanvasResult =
   | { ok: true; rel: string; slug: string; trashed: string[]; trashDir: string }
   | { ok: false; status: number; error: string };
 
+/** Phase 12 — result of an in-canvas direct edit (`editCss` / `editText`). */
+export type EditOpResult =
+  | { ok: true; delta: number }
+  | { ok: false; status: number; error: string };
+
 export interface Api {
   // File tree
   fileSlug(file: string): string;
@@ -190,6 +196,16 @@ export interface Api {
   }): Promise<CreateCanvasResult>;
   // Soft-delete a canvas from the browser (Phase 22 — DELETE /_api/canvas)
   deleteCanvas(input: { file?: unknown }): Promise<DeleteCanvasResult>;
+  // Phase 12 (DDR-101) — single-property inline CSS edit (POST /_api/edit-css).
+  // Main-origin only: writes one key into the element's inline `style={{}}` object.
+  editCss(input: {
+    canvas?: unknown;
+    id?: unknown;
+    property?: unknown;
+    value?: unknown;
+  }): Promise<EditOpResult>;
+  // Phase 12 (DDR-101) — inline text-content edit (POST /_api/edit-text). Main-origin only.
+  editText(input: { canvas?: unknown; id?: unknown; text?: unknown }): Promise<EditOpResult>;
   // Aggregate data
   buildIndexData(): Promise<unknown>;
   buildSystemData(dsName?: string | null): Promise<unknown>;
@@ -1126,6 +1142,97 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     };
   }
 
+  // Phase 12 (DDR-101) — resolve a v2 canvas slug (`selected.canvas`: POSIX,
+  // extension-less, designRoot-relative — matches `_locator.json` keys + the
+  // `canvasSlug()` shape) to its absolute `.tsx` path, with a containment
+  // backstop. Same main-origin-only trust boundary as createCanvas: the
+  // untrusted canvas iframe origin never reaches a source-write endpoint.
+  function resolveCanvasAbs(
+    slugRaw: unknown
+  ): { ok: true; abs: string } | { ok: false; status: number; error: string } {
+    if (typeof slugRaw !== 'string' || !slugRaw.trim()) {
+      return { ok: false, status: 400, error: 'canvas (slug) required' };
+    }
+    const slug = slugRaw.replace(/^\/+|\/+$/g, '').replace(/\.(tsx|html)$/i, '');
+    if (
+      !slug ||
+      path.isAbsolute(slug) ||
+      slug.split('/').some((seg) => seg === '..' || seg === '.' || seg === '')
+    ) {
+      return { ok: false, status: 400, error: 'invalid canvas slug' };
+    }
+    const abs = `${path.join(paths.designRoot, ...slug.split('/'))}.tsx`;
+    const resolvedRoot = path.resolve(paths.designRoot);
+    const resolved = path.resolve(abs);
+    if (!resolved.startsWith(`${resolvedRoot}${path.sep}`)) {
+      return { ok: false, status: 400, error: 'canvas resolves outside the design root' };
+    }
+    return { ok: true, abs };
+  }
+
+  // 8-hex lowercase, the shape `computeId` (canvas-edit.ts) stamps on data-cd-id.
+  const CD_ID_RE = /^[0-9a-f]{8}$/;
+
+  async function editCss(input: {
+    canvas?: unknown;
+    id?: unknown;
+    property?: unknown;
+    value?: unknown;
+  }): Promise<EditOpResult> {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    const id = typeof input.id === 'string' ? input.id.trim() : '';
+    if (!CD_ID_RE.test(id)) return { ok: false, status: 400, error: 'invalid data-cd-id' };
+    const property = typeof input.property === 'string' ? input.property.trim() : '';
+    // CSS property names are ASCII letters + hyphens only (optionally a leading
+    // `-` for vendor prefixes) — reject anything that could smuggle a second key
+    // or an expression into the inline style object.
+    if (!property || !/^-?[a-z][a-z-]*$/.test(property)) {
+      return { ok: false, status: 400, error: 'invalid css property' };
+    }
+    const value = typeof input.value === 'string' ? input.value : '';
+    if (!value.trim()) return { ok: false, status: 400, error: 'value required' };
+    if (value.length > 256) return { ok: false, status: 413, error: 'value too long' };
+    // kebab → camelCase JSX style key. The value is always written as a JS STRING
+    // literal: JSON.stringify escapes quotes/backslashes/newlines so it can never
+    // break out of the string, and React accepts string values for every style
+    // prop — so `var(--accent)`, `#fff`, `8px`, `700`, `1.5` all ride verbatim.
+    const camel = property.replace(/-([a-z])/g, (_m, c: string) => c.toUpperCase());
+    try {
+      const res = await editAttribute(r.abs, id, `style.${camel}`, JSON.stringify(value));
+      return { ok: true, delta: res.delta };
+    } catch (err) {
+      return {
+        ok: false,
+        status: 422,
+        error: err instanceof CanvasEditError ? err.message : 'edit failed',
+      };
+    }
+  }
+
+  async function editText(input: {
+    canvas?: unknown;
+    id?: unknown;
+    text?: unknown;
+  }): Promise<EditOpResult> {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    const id = typeof input.id === 'string' ? input.id.trim() : '';
+    if (!CD_ID_RE.test(id)) return { ok: false, status: 400, error: 'invalid data-cd-id' };
+    if (typeof input.text !== 'string') return { ok: false, status: 400, error: 'text required' };
+    if (input.text.length > 5000) return { ok: false, status: 413, error: 'text too long' };
+    try {
+      const res = await runEditText(r.abs, id, input.text);
+      return { ok: true, delta: res.delta };
+    } catch (err) {
+      return {
+        ok: false,
+        status: 422,
+        error: err instanceof CanvasEditError ? err.message : 'edit failed',
+      };
+    }
+  }
+
   async function saveCanvasState(file: string, state: Record<string, unknown>) {
     if (!state || typeof state !== 'object') return;
     const safe: Record<string, unknown> = {};
@@ -1532,6 +1639,8 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     saveAsset,
     createCanvas,
     deleteCanvas,
+    editCss,
+    editText,
     buildIndexData,
     buildSystemData,
     loadExportHistory,
