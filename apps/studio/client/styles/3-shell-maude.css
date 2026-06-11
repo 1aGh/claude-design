@@ -653,6 +653,13 @@
 
 /* Phase 12.2 PORT-only controls — the live panel uses native <select>/<input>
    for real interactivity + a11y where the Studio.tsx spec used styled buttons. */
+/* The port mounts an absolute `inset:0` fill span + a hidden color <input>
+   INSIDE the swatch (the spec's swatch was decorative-only, so the ported rule
+   has no `position`). Without `relative` the fill anchored to `.maude` and
+   painted the element's computed colour across the ENTIRE window (dark element
+   → black screen, light → white), and the invisible input swallowed every
+   click. The old `.st-css-swatch` had `position:relative` for exactly this. */
+.st-cp-swatch { position: relative; overflow: hidden; }
 .st-cp-caret { flex: none; color: var(--fg-2); font-size: 9px; width: 9px; text-align: center; }
 .st-cp-fin { flex: 1 1 auto; min-width: 0; width: 100%; box-sizing: border-box; appearance: none; background: var(--bg-3); border: 1px solid var(--border-strong); border-radius: var(--radius-xs); color: var(--fg-0); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--type-xs); padding: 4px var(--space-2); min-height: 26px; }
 .st-cp-fin::placeholder { color: var(--fg-2); }
