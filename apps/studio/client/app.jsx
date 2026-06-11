@@ -2860,6 +2860,21 @@ function cssHint(v) {
   return m ? `${Math.round(Number.parseFloat(m[1]))}px` : v;
 }
 
+// Phase 12.2 — the WS `selected` echo is the server's projection (SelectedElement)
+// and LACKS the client-only DOM fields the CSS knobs pre-fill from (`authored` /
+// `computed` inline style — captured in the iframe, never round-tripped through
+// the server). When the echo is for the SAME element we already hold locally,
+// preserve those fields instead of clobbering them to empty.
+function mergeSelClientFields(incoming, prev) {
+  if (!incoming || Array.isArray(incoming) || Array.isArray(prev) || !prev) return incoming;
+  if (!incoming.id || incoming.id !== prev.id) return incoming;
+  return {
+    ...incoming,
+    authored: incoming.authored ?? prev.authored,
+    computed: incoming.computed ?? prev.computed,
+  };
+}
+
 function CssKnobs({ el }) {
   const editable = !!el.id;
   const [status, setStatus] = useState(null);
@@ -3457,9 +3472,9 @@ function App() {
         try {
           const m = JSON.parse(e.data);
           if (m.type === 'snapshot' && m.state) {
-            setSelected(m.state.selected);
+            setSelected((prev) => mergeSelClientFields(m.state.selected, prev));
           } else if (m.type === 'selected') {
-            setSelected(m.selected);
+            setSelected((prev) => mergeSelClientFields(m.selected, prev));
           } else if (m.type === 'comments' && typeof m.file === 'string') {
             setCommentsByFile((prev) => ({ ...prev, [m.file]: m.comments || [] }));
           } else if (m.type === 'ai-activity' && typeof m.file === 'string') {
