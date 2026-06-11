@@ -3088,7 +3088,7 @@ function CssKnobs({ el, cfg }) {
   const text = (prop) => (
     <input
       className="st-cp-fin"
-      key={authored[prop] ?? ''}
+      key={`${prop}:${authored[prop] ?? ''}`}
       aria-label={prop}
       defaultValue={authored[prop] ?? ''}
       placeholder={cssHint(computed[prop]) || '—'}
@@ -3112,7 +3112,7 @@ function CssKnobs({ el, cfg }) {
         <div className="st-cp-num">
           <input
             className="st-cp-numin"
-            key={authored[prop] ?? ''}
+            key={`${prop}:${authored[prop] ?? ''}`}
             aria-label={prop}
             defaultValue={cur.unit && cur.unit !== '' ? cur.n : (authored[prop] ?? '')}
             placeholder={cssHint(computed[prop]) || '—'}
@@ -3194,7 +3194,7 @@ function CssKnobs({ el, cfg }) {
         className={`st-cp-boxv st-cp-boxv--${group[0]}${prop.split('-').pop()[0]}${
           isZero ? ' is-zero' : ''
         }`}
-        key={authored[prop] ?? ''}
+        key={`${prop}:${authored[prop] ?? ''}`}
         aria-label={prop}
         defaultValue={authored[prop] ?? cssHint(computed[prop]) ?? ''}
         onKeyDown={(e) => {
@@ -3220,7 +3220,7 @@ function CssKnobs({ el, cfg }) {
     <label className="st-cp-cornerf">
       <span>{label}</span>
       <input
-        key={authored[prop] ?? ''}
+        key={`${prop}:${authored[prop] ?? ''}`}
         aria-label={prop}
         defaultValue={cssSplitUnit(authored[prop] ?? '').n || ''}
         placeholder={cssHint(computed[prop]) || '0'}
@@ -3412,7 +3412,7 @@ function CssKnobs({ el, cfg }) {
             <div className="st-cp-num">
               <input
                 className="st-cp-numin"
-                key={authored.opacity ?? ''}
+                key={`opacity:${authored.opacity ?? ''}`}
                 aria-label="opacity"
                 defaultValue={authored.opacity ?? ''}
                 placeholder={cssHint(computed.opacity) || '1'}
