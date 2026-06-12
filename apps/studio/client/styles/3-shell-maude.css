@@ -508,8 +508,8 @@
  * rail; 24px+ targets (bind / seg / box-model inputs); legible box-model. */
 .st-cp { display: flex; flex-direction: column; gap: var(--space-4); }
 
-/* element identity */
-.st-cp-id { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+/* element identity — Phase 12.3 (W2.3) hairline under the header for structure (Figma-ish) */
+.st-cp-id { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); padding-bottom: var(--space-3); border-bottom: 1px solid var(--border-subtle); }
 .st-cp-idtag { font-family: var(--font-mono); font-size: var(--type-sm); color: var(--fg-0); }
 .st-cp-idcls { color: var(--accent); }
 .st-cp-idmeta { font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); text-transform: uppercase; letter-spacing: var(--tracking-wide); }

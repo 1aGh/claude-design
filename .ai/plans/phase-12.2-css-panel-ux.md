@@ -189,10 +189,10 @@ User tested the ported panel on their live `pnpm dev` (:4555) and gave a 12-item
 **Wave 2 — Figma/Webflow interaction primitives:**
 - [x] **W2.1 (#3) Token picker as a popover, not a `<select>` dropdown.** Color → Figma-style popover (swatch grid grouped by family + hex field, screenshots #8/#9); number → variable popover grouped by family (#10/#15). Replace the `tok()` native-select.
 - [x] **W2.2 (#8/#9) Scrub-to-change on number inputs.** Mouse-down on the prefix icon / field and drag left-right to dec/inc (Figma/Webflow). Webflow modifiers on spacing: `alt+drag` symmetric block/inline pair, `alt+shift+drag` all four.
-- [ ] **W2.3 (#7) Panel visual polish** toward the Figma right-panel density/grouping (screenshot #12).
+- [x] **W2.3 (#7) Panel visual polish** toward the Figma right-panel density/grouping (screenshot #12).
 
 **Wave 3 — Layers:**
-- [ ] **W3.1 (#6) Finish the Layers panel** per the `Studio.tsx` `[data-dc-screen="annotate"]` design (tree rows, eye toggles, type tags, indent).
+- [x] **W3.1 (#6) Finish the Layers panel** per the `Studio.tsx` `[data-dc-screen="annotate"]` design (tree rows, eye toggles, type tags, indent).
 
 > Server reality for testing: `pnpm dev` = `bun run apps/studio/server.ts --port 4555`; it does NOT watch `client/app.jsx`. After each wave, rebuild `dist/client.bundle.js` release-minified (`MAUDE_SKIP_RUNTIME_BUILD=1 bun run build.ts --release`) and the user hard-reloads :4555. Whatever's committed ships, so the committed bundle must always be the release artifact.
 
