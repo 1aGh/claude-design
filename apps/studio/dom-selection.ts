@@ -263,11 +263,17 @@ function styleMapsFor(el: Element | null): {
       if (c) computed[p] = c.trim();
     }
     // Every OTHER authored inline property → customStyles, so the panel can show
-    // a custom CSS property the user added that no curated row covers.
+    // a custom CSS property the user added that no curated row covers. EXCLUDE
+    // the panel-managed FAMILIES wholesale: setting `border`/`border-radius` (or
+    // their 3-way shorthands) makes the CSSOM expand them to the per-side
+    // longhands — `border-top-width`, `border-left-color`, … — which the panel
+    // controls but can't enumerate in the knob set. Without the family guard they
+    // leak into "custom CSS properties" (the same class of bug fixed for spacing).
+    const MANAGED_FAMILY = /^(margin|padding|border)(-|$)/;
     const customStyles: Record<string, string> = {};
     for (let i = 0; i < inline.length; i++) {
       const p = inline.item(i);
-      if (!p || knob.has(p)) continue;
+      if (!p || knob.has(p) || MANAGED_FAMILY.test(p)) continue;
       const v = inline.getPropertyValue(p);
       if (v) customStyles[p] = v.trim();
     }

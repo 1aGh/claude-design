@@ -3095,7 +3095,15 @@ function TokenPopover({ kind, groups, current, onPick, label }) {
         ? createPortal(
             <div
               ref={popRef}
-              className="st-cp-pop"
+              // Portalled to <body> (outside the App's `.maude` div), so it must
+              // re-establish the maude token scope itself — otherwise var(--bg-*)
+              // resolves to the legacy :root project palette (the cream popover bug).
+              className="maude st-cp-pop"
+              data-theme={
+                (typeof document !== 'undefined' &&
+                  document.documentElement.getAttribute('data-theme')) ||
+                'dark'
+              }
               role="dialog"
               aria-label={label || 'design tokens'}
               style={{
