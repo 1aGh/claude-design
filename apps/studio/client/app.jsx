@@ -3105,8 +3105,32 @@ function TokenPopover({ kind, groups, current, onPick, label }) {
 
 function CssKnobs({ el, cfg, onOptimistic }) {
   const editable = !!el.id;
-  const authored = el.authored || {};
   const computed = el.computed || {};
+  // Phase 12.3 — optimistic local overlay over the selection's authored / custom
+  // / attr maps. With the redundant-reload suppression (the flicker fix), an edit
+  // no longer triggers a reselect that would re-post fresh `authored` values — so
+  // the panel must reflect its own commits immediately or it shows the stale
+  // pre-edit value until the user re-selects. Each commit/reset writes here;
+  // `null` marks a removed key. Cleared when a different element is selected.
+  const [overlay, setOverlay] = useState({ a: {}, c: {}, t: {} });
+  // biome-ignore lint/correctness/useExhaustiveDependencies: clear only on element change.
+  useEffect(() => {
+    setOverlay({ a: {}, c: {}, t: {} });
+  }, [el.id]);
+  const mergeOverlay = (base, ov) => {
+    const out = { ...(base || {}) };
+    for (const [k, v] of Object.entries(ov)) {
+      if (v === null) delete out[k];
+      else out[k] = v;
+    }
+    return out;
+  };
+  const authored = mergeOverlay(el.authored, overlay.a);
+  const customStyles = mergeOverlay(el.customStyles, overlay.c);
+  const attrs = mergeOverlay(el.attrs, overlay.t);
+  const setA = (prop, v) => setOverlay((o) => ({ ...o, a: { ...o.a, [prop]: v } }));
+  const setC = (prop, v) => setOverlay((o) => ({ ...o, c: { ...o.c, [prop]: v } }));
+  const setT = (attr, v) => setOverlay((o) => ({ ...o, t: { ...o.t, [attr]: v } }));
   // Token CSS is served from the MAIN origin at the repo-relative path, i.e.
   // WITH the designRoot prefix (`/.design/system/<ds>/colors_and_type.css`) —
   // `tokensCssRel` from config is DS-root-relative (no `.design/`), so prepend it.
@@ -3136,8 +3160,7 @@ function CssKnobs({ el, cfg, onOptimistic }) {
   // visible without hunting for the disclosure. Keyed on el.id so it re-runs per
   // selection (CssKnobs persists across selections — the el prop changes).
   const hasCustom =
-    (el.customStyles && Object.keys(el.customStyles).length > 0) ||
-    (el.attrs && Object.keys(el.attrs).length > 0);
+    Object.keys(customStyles).length > 0 || Object.keys(attrs).length > 0;
   useEffect(() => {
     if (hasCustom) setOpen((o) => (o.Advanced ? o : { ...o, Advanced: true }));
   }, [el.id, hasCustom]);
@@ -3177,22 +3200,41 @@ function CssKnobs({ el, cfg, onOptimistic }) {
     if (!editable || !value) return;
     if (value === (authored[property] ?? '').trim()) return; // no-op
     optimistic(property, value);
+    setA(property, value); // reflect in the panel immediately (no reload → no reselect)
     post('/_api/edit-css', { canvas: el.file, id: el.id, property, value }, property);
+  };
+  // A custom CSS property (Advanced) — same write, but the panel surfaces it from
+  // the customStyles map, so overlay THERE.
+  const commitCustom = (property, raw) => {
+    const value = (raw || '').trim();
+    if (!editable || !property.trim() || !value) return;
+    optimistic(property.trim(), value);
+    setC(property.trim(), value);
+    post('/_api/edit-css', { canvas: el.file, id: el.id, property: property.trim(), value }, property.trim());
   };
   const commitAttr = (attr, raw) => {
     const a = (attr || '').trim();
     const value = (raw || '').trim();
     if (!editable || !a || !value) return;
+    setT(a, value);
     post('/_api/edit-attr', { canvas: el.file, id: el.id, attr: a, value }, `@${a}`);
   };
   // Phase 12.3 — reset (remove the inline prop / attr → back to class/inherited).
   const reset = (property) => {
     if (!editable) return;
     optimistic(property, null);
+    setA(property, null);
+    post('/_api/edit-css', { canvas: el.file, id: el.id, property, reset: true }, property);
+  };
+  const resetCustom = (property) => {
+    if (!editable) return;
+    optimistic(property, null);
+    setC(property, null);
     post('/_api/edit-css', { canvas: el.file, id: el.id, property, reset: true }, property);
   };
   const resetAttr = (attr) => {
     if (!editable) return;
+    setT(attr, null);
     post('/_api/edit-attr', { canvas: el.file, id: el.id, attr, reset: true }, `@${attr}`);
   };
   // Phase 12.3 (W2.2) — Figma/Webflow scrub: drag a number field horizontally to
@@ -3619,8 +3661,8 @@ function CssKnobs({ el, cfg, onOptimistic }) {
 
   // Phase 12.3 — authored inline props with no curated row + custom HTML attrs,
   // surfaced in Advanced so the user can see/edit/remove what they added.
-  const customStyleRows = Object.entries(el.customStyles || {});
-  const attrRows = Object.entries(el.attrs || {});
+  const customStyleRows = Object.entries(customStyles);
+  const attrRows = Object.entries(attrs);
 
   return (
     <div className="st-cp" key={el.id}>
@@ -3833,7 +3875,7 @@ function CssKnobs({ el, cfg, onOptimistic }) {
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') e.currentTarget.blur();
                     }}
-                    onBlur={(e) => commit(p, e.currentTarget.value)}
+                    onBlur={(e) => commitCustom(p, e.currentTarget.value)}
                   />
                   {fs(p)}
                   <button
@@ -3842,7 +3884,7 @@ function CssKnobs({ el, cfg, onOptimistic }) {
                     tabIndex={-1}
                     aria-label={`remove ${p}`}
                     title="remove"
-                    onClick={() => reset(p)}
+                    onClick={() => resetCustom(p)}
                   >
                     ⟲
                   </button>
@@ -3851,7 +3893,7 @@ function CssKnobs({ el, cfg, onOptimistic }) {
             </>
           ) : null}
           <div className="st-cp-advgrp">Add CSS property</div>
-          <RawKnob commit={commit} />
+          <RawKnob commit={commitCustom} />
           <div className="st-cp-note">applied as-is — not token-bound</div>
           {attrRows.length ? (
             <>
