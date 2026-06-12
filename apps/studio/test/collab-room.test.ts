@@ -1,17 +1,12 @@
 // Unit: Room behavior — two in-memory peers see each other, debounced flush
 // fires, flush is idempotent, room teardown is clean.
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
-import {
-  encodeAwarenessFrame,
-  encodeHandshake,
-  encodeSyncUpdate,
-  handleMessage,
-} from '../collab/protocol.ts';
+import { encodeAwarenessFrame, handleMessage } from '../collab/protocol.ts';
 import { createRoom, type RoomCallbacks, type RoomConn } from '../collab/room.ts';
 
 function makeConn(id: string): RoomConn & { recv: Uint8Array[] } {

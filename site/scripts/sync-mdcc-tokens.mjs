@@ -48,10 +48,7 @@ const check = process.argv.includes('--check');
 const SELECTOR_MAP = [
   // Base/default block opener — keep `:root, .mdcc` (structure + dark default)
   // and add the dark scopes so dark colours win on the `.dark` toggle.
-  [
-    ':root,\n.maude[data-theme="dark"] {',
-    ':root,\n.mdcc,\nhtml.dark.mdcc,\nhtml.dark .mdcc {',
-  ],
+  [':root,\n.maude[data-theme="dark"] {', ':root,\n.mdcc,\nhtml.dark.mdcc,\nhtml.dark .mdcc {'],
   // Light block opener.
   ['.maude[data-theme="light"] {', ':root,\n.mdcc,\n.mdcc[data-theme="light"] {'],
   // Reduced-motion guard — collapse durations for every site scope.

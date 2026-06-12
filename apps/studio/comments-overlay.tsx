@@ -161,7 +161,7 @@ function screenRectFor(
   } catch {
     return null;
   }
-  if (!el || !el.isConnected) return null;
+  if (!el?.isConnected) return null;
   const r = el.getBoundingClientRect();
   if (r.width === 0 && r.height === 0) return null;
   return { x: r.left, y: r.top, w: r.width, h: r.height };
@@ -204,7 +204,7 @@ export function CommentsOverlay(): React.ReactNode {
   const mirrorSelection = useCallback(
     (comment: OverlayComment | undefined) => {
       if (!selSet) return;
-      if (!comment || !comment.selector) {
+      if (!comment?.selector) {
         selSet.clear();
         return;
       }
@@ -298,7 +298,7 @@ export function CommentsOverlay(): React.ReactNode {
       const detail = (
         e as CustomEvent<{ selection?: ComposeSelection; clientX?: number; clientY?: number }>
       ).detail;
-      if (!detail || !detail.selection) return;
+      if (!detail?.selection) return;
       setComposer({
         selection: detail.selection,
         clientX: typeof detail.clientX === 'number' ? detail.clientX : 0,
@@ -383,7 +383,9 @@ export function CommentsOverlay(): React.ReactNode {
   const indexById = useMemo(() => {
     const m = new Map<string, number>();
     const all = comments.slice().sort((a, b) => a.created.localeCompare(b.created));
-    all.forEach((c, i) => m.set(c.id, i + 1));
+    all.forEach((c, i) => {
+      m.set(c.id, i + 1);
+    });
     return m;
   }, [comments]);
 
@@ -784,7 +786,7 @@ function CommentPin({
     return () => {
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     };
-  }, [comment.selector, comment.bounds]);
+  }, [comment.selector, comment.bounds, comment.index]);
 
   const author = comment.author?.trim() || 'unknown';
   const label = `Comment ${sequence} by ${author}`;

@@ -2,6 +2,8 @@ import { Composition } from 'remotion';
 import { Demo } from './compositions/Demo';
 import { DemoCaptioned } from './compositions/DemoCaptioned';
 import { Final } from './compositions/Final';
+import { V4, V4_TOTAL_FRAMES } from './compositions/V4';
+import { V5, V5_SCENES, V5_TOTAL_FRAMES } from './compositions/V5';
 import { PlaceholderScene } from './scenes/_placeholder';
 import { SmokeScene } from './scenes/_smoke';
 import { IntroScene } from './scenes/01-intro';
@@ -20,8 +22,6 @@ import { DesignEditScene } from './scenes/v4/40-design-edit';
 import { CommentsScene } from './scenes/v4/45-comments';
 import { HandoffScene } from './scenes/v4/50-handoff';
 import { EndCardScene } from './scenes/v4/55-end-card';
-import { V4, V4_TOTAL_FRAMES } from './compositions/V4';
-import { V5, V5_SCENES, V5_TOTAL_FRAMES } from './compositions/V5';
 
 /**
  * Composition registry. One <Composition> per scene + the master Demo cut.

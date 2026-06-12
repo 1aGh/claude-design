@@ -423,14 +423,14 @@ function editStyleProp(
     return;
   }
   const v = attr.value;
-  if (!v || v.type !== 'JSXExpressionContainer') {
+  if (v?.type !== 'JSXExpressionContainer') {
     throw new CanvasEditError(
       `style attribute on ${id} is not a {{...}} expression — refusing to edit`,
       { canvas: canvasAbsPath, id }
     );
   }
   const obj = v.expression;
-  if (!obj || obj.type !== 'ObjectExpression') {
+  if (obj?.type !== 'ObjectExpression') {
     throw new CanvasEditError(
       `style={...} on ${id} is not an inline ObjectExpression — refusing to edit`,
       { canvas: canvasAbsPath, id }

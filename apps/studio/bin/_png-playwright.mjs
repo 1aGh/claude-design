@@ -5,7 +5,7 @@
 // producing clipped captures. With our own playwright we control the
 // viewport exactly and crop to the target element's bounding box.
 
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { launchChromium } from './_pw-launch.mjs';
 

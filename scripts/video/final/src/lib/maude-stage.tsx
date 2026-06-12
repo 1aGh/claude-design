@@ -11,7 +11,7 @@
  */
 
 import { AbsoluteFill, interpolate } from 'remotion';
-import { maude, type MaudeTheme } from './maude-tokens';
+import { type MaudeTheme, maude } from './maude-tokens';
 
 const DOT_PITCH = 30; // px between dots (scaled up from the 24px UI grid for 1080p)
 
@@ -21,7 +21,7 @@ export const typewriter = (frame: number, text: string, start: number, dur: numb
     interpolate(frame, [start, start + dur], [0, text.length], {
       extrapolateLeft: 'clamp',
       extrapolateRight: 'clamp',
-    }),
+    })
   );
   return text.slice(0, n);
 };
@@ -84,7 +84,14 @@ export const AgentCursor: React.FC<{
   const t = maude[theme];
   return (
     <div style={{ position: 'absolute', left: x, top: y, opacity, pointerEvents: 'none' }}>
-      <svg width={size} height={size} viewBox="0 0 16 16" fill={t.presence} stroke="none" aria-hidden>
+      <svg
+        aria-hidden="true"
+        width={size}
+        height={size}
+        viewBox="0 0 16 16"
+        fill={t.presence}
+        stroke="none"
+      >
         <path d="M3 2l9 4.4-4 1.1-1.1 4z" />
       </svg>
       {label ? (

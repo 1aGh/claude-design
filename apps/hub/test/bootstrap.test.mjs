@@ -8,7 +8,6 @@ import { test } from 'node:test';
 
 import {
   bootstrapFilePath,
-  bootstrapUsedFilePath,
   issueBootstrap,
   maybeIssueOnBoot,
   readBootstrap,

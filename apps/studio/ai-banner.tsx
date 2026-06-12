@@ -183,7 +183,6 @@ export function AiBanner(): JSX.Element | null {
 
   if (!entry) return null;
   return (
-    // biome-ignore lint/a11y/useSemanticElements: <output> is a form-result element; role="status" on a div is the canonical live-region banner pattern (APG).
     <div className="dc-ai-banner" role="status" aria-live="polite">
       <span className="dc-ai-banner__dot" aria-hidden="true" />
       <span>{entry.author} is editing this canvas — your changes may conflict</span>

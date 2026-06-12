@@ -132,7 +132,7 @@ function readActivitySeed(): ActivityMap {
   const out: ActivityMap = {};
   for (const file of Object.keys(seed)) {
     const e = seed[file];
-    if (!e || e.status !== 'active') continue; // only resurrect active overlays
+    if (e?.status !== 'active') continue; // only resurrect active overlays
     out[file] = {
       status: 'active',
       artboardIds: Array.isArray(e.artboardIds) ? e.artboardIds : null,
@@ -199,7 +199,7 @@ export function CanvasActivityProvider({
           setMap((prev) => {
             const entry = prev[detail.file];
             // Only remove if it's still the same idle entry (not re-activated).
-            if (!entry || entry.status !== 'idle' || entry.ts !== ts) return prev;
+            if (entry?.status !== 'idle' || entry.ts !== ts) return prev;
             const { [detail.file]: _drop, ...rest } = prev;
             return rest;
           });

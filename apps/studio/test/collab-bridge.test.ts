@@ -4,8 +4,6 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import * as Y from 'yjs';
-
 import { Y_TYPES } from '../collab/persistence.ts';
 import { createRegistry } from '../collab/registry.ts';
 import type { RoomCallbacks } from '../collab/room.ts';

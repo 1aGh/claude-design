@@ -540,7 +540,7 @@ function CanvasCore({
     if (!host) return;
     const onDbl = (e: MouseEvent) => {
       const t = e.target as Element | null;
-      if (!t || !t.closest) return;
+      if (!t?.closest) return;
       // Floating chrome / overlays / drawn user content / any artboard
       // surface → leave alone. Only dblclick that lands on the canvas
       // background outside every artboard triggers `fit()`.
@@ -623,7 +623,7 @@ function CanvasCore({
   useEffect(() => {
     if (!collab) return;
     const first = selSet.selected[0];
-    if (!first || !first.selector) {
+    if (!first?.selector) {
       collab.publishAwareness({ selection: null });
       return;
     }
@@ -2000,7 +2000,7 @@ function HoverHalo({ el }: { el: Element | null }) {
       rafRef.current = null;
       const div = ref.current;
       const t = targetRef.current;
-      if (!div || !t || !t.isConnected) {
+      if (!div || !t?.isConnected) {
         if (div) div.style.display = 'none';
         return;
       }

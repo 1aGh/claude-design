@@ -16,7 +16,7 @@
 // Per DDR-009 (Bun runtime authoritative) + DDR-012 (React 19 unified) + DDR-014 (Lightning CSS).
 
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { browserslistToTargets, bundle as lcssBundle } from 'lightningcss';

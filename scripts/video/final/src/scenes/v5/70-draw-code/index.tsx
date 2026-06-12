@@ -1,6 +1,6 @@
 import { AbsoluteFill, useCurrentFrame } from 'remotion';
-import { Void, Phrase, maude, font, lerp, easeOut, CARD_SHADOW } from '../../../lib/v5-stage';
 import { Sparky } from '../../../lib/sparky';
+import { CARD_SHADOW, easeOut, font, lerp, maude, Phrase, Void } from '../../../lib/v5-stage';
 
 /**
  * Beat 70 · Draw as code (180f / 6s).
@@ -14,17 +14,71 @@ import { Sparky } from '../../../lib/sparky';
 const t = maude.dark;
 
 const Guides: React.FC<{ size: number; opacity: number }> = ({ size, opacity }) => (
-  <svg width={size} height={size} viewBox="0 0 80 80" style={{ position: 'absolute', inset: 0, overflow: 'visible' }}>
+  <svg
+    aria-hidden="true"
+    width={size}
+    height={size}
+    viewBox="0 0 80 80"
+    style={{ position: 'absolute', inset: 0, overflow: 'visible' }}
+  >
     <g stroke={t.fg3} strokeWidth={0.3} opacity={opacity} fill="none" strokeDasharray="1.4 1.4">
       {/* grid */}
-      {[16, 24, 32, 40, 48, 56, 64].map((n) => <line key={`v${n}`} x1={n} y1={4} x2={n} y2={70} />)}
-      {[12, 20, 28, 36, 44, 52, 60].map((n) => <line key={`h${n}`} x1={2} y1={n} x2={78} y2={n} />)}
+      {[16, 24, 32, 40, 48, 56, 64].map((n) => (
+        <line key={`v${n}`} x1={n} y1={4} x2={n} y2={70} />
+      ))}
+      {[12, 20, 28, 36, 44, 52, 60].map((n) => (
+        <line key={`h${n}`} x1={2} y1={n} x2={78} y2={n} />
+      ))}
       {/* bounding guides — helmet, visor, ear pods, axis */}
-      <rect x={14} y={12} width={52} height={48} rx={18} strokeDasharray="2 2" stroke={t.accentMuted} strokeWidth={0.5} />
-      <rect x={20.5} y={29} width={39} height={23} rx={9} strokeDasharray="2 2" stroke={t.accentMuted} strokeWidth={0.5} />
-      <rect x={3} y={33} width={11} height={17} rx={5.5} strokeDasharray="2 2" stroke={t.accentMuted} strokeWidth={0.5} />
-      <rect x={66} y={33} width={11} height={17} rx={5.5} strokeDasharray="2 2" stroke={t.accentMuted} strokeWidth={0.5} />
-      <line x1={40} y1={2} x2={40} y2={70} stroke={t.accentMuted} strokeWidth={0.4} strokeDasharray="2 2" />
+      <rect
+        x={14}
+        y={12}
+        width={52}
+        height={48}
+        rx={18}
+        strokeDasharray="2 2"
+        stroke={t.accentMuted}
+        strokeWidth={0.5}
+      />
+      <rect
+        x={20.5}
+        y={29}
+        width={39}
+        height={23}
+        rx={9}
+        strokeDasharray="2 2"
+        stroke={t.accentMuted}
+        strokeWidth={0.5}
+      />
+      <rect
+        x={3}
+        y={33}
+        width={11}
+        height={17}
+        rx={5.5}
+        strokeDasharray="2 2"
+        stroke={t.accentMuted}
+        strokeWidth={0.5}
+      />
+      <rect
+        x={66}
+        y={33}
+        width={11}
+        height={17}
+        rx={5.5}
+        strokeDasharray="2 2"
+        stroke={t.accentMuted}
+        strokeWidth={0.5}
+      />
+      <line
+        x1={40}
+        y1={2}
+        x2={40}
+        y2={70}
+        stroke={t.accentMuted}
+        strokeWidth={0.4}
+        strokeDasharray="2 2"
+      />
     </g>
   </svg>
 );
@@ -45,15 +99,49 @@ export const V5DrawCode = () => {
         </div>
 
         {/* engine credit */}
-        <div style={{ position: 'absolute', top: 90, fontFamily: font.mono, fontSize: 16, color: t.fg2, opacity: lerp(frame, [10, 26], [0, 1]) }}>
+        <div
+          style={{
+            position: 'absolute',
+            top: 90,
+            fontFamily: font.mono,
+            fontSize: 16,
+            color: t.fg2,
+            opacity: lerp(frame, [10, 26], [0, 1]),
+          }}
+        >
           maude design draw-build · geometry engine
         </div>
 
         {/* proof ladder */}
-        <div style={{ position: 'absolute', bottom: 120, display: 'flex', alignItems: 'flex-end', gap: 28, opacity: ladder, transform: `translateY(${(1 - ladder) * 16}px)` }}>
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 120,
+            display: 'flex',
+            alignItems: 'flex-end',
+            gap: 28,
+            opacity: ladder,
+            transform: `translateY(${(1 - ladder) * 16}px)`,
+          }}
+        >
           {[24, 40, 64].map((px) => (
-            <div key={px} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-              <div style={{ width: 96, height: 96, display: 'flex', alignItems: 'center', justifyContent: 'center', background: t.bg1, border: `1px solid ${t.border}`, borderRadius: 12, boxShadow: CARD_SHADOW }}>
+            <div
+              key={px}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}
+            >
+              <div
+                style={{
+                  width: 96,
+                  height: 96,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: t.bg1,
+                  border: `1px solid ${t.border}`,
+                  borderRadius: 12,
+                  boxShadow: CARD_SHADOW,
+                }}
+              >
                 <Sparky size={px * 1.25} tiny={px <= 24} />
               </div>
               <span style={{ fontFamily: font.mono, fontSize: 14, color: t.fg2 }}>{px}px</span>
@@ -61,7 +149,14 @@ export const V5DrawCode = () => {
           ))}
         </div>
 
-        <Phrase frame={frame} from={110} text="computed, never guessed" align="center" size={32} bottom={56} />
+        <Phrase
+          frame={frame}
+          from={110}
+          text="computed, never guessed"
+          align="center"
+          size={32}
+          bottom={56}
+        />
       </Void>
     </AbsoluteFill>
   );

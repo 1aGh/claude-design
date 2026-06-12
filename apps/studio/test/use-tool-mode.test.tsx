@@ -1,6 +1,6 @@
 // use-tool-mode — Phase 4.1 Task 2. Provider transitions + cursor sync.
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 
 import { renderToStaticMarkup } from 'react-dom/server';
 

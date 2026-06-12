@@ -32,7 +32,7 @@ import {
   createConnectionMonitor,
   type ProviderStatus,
 } from './connection-state.ts';
-import { createEchoGuard, type EchoGuard } from './echo-guard.ts';
+import { createEchoGuard } from './echo-guard.ts';
 import { createFsReader, type FsReader } from './fs-mirror.ts';
 import { getHubToken } from './hubs-config.ts';
 import { migrateSeed } from './migrate-seed.ts';

@@ -2793,7 +2793,7 @@ export function AnnotationsLayer() {
           ids = annotSel.selectedIds;
         }
       }
-      if (ids && ids.length) {
+      if (ids?.length) {
         e.preventDefault();
         e.stopImmediatePropagation();
         // Capture a snapshot of all strokes at drag start. Every pointermove
@@ -3145,54 +3145,52 @@ export function AnnotationsLayer() {
 
   return (
     <StrokesStoreContext.Provider value={strokesStore}>
-      <>
-        <AnnotationsInput
-          isActive={isActive}
-          visible={visible}
-          cursor={tools.find((t) => t.id === tool)?.cursor ?? 'crosshair'}
-          beginStroke={beginStroke}
-          moveStroke={moveStroke}
-          endStroke={endStroke}
-          onLeave={() => setGhost(null)}
+      <AnnotationsInput
+        isActive={isActive}
+        visible={visible}
+        cursor={tools.find((t) => t.id === tool)?.cursor ?? 'crosshair'}
+        beginStroke={beginStroke}
+        moveStroke={moveStroke}
+        endStroke={endStroke}
+        onLeave={() => setGhost(null)}
+      />
+      {visible ? (
+        <AnnotationsSvg
+          worldRef={worldRef}
+          strokes={renderStrokes}
+          anchorsById={anchorsById}
+          selectMode={tool === 'move'}
+          selectedStrokes={selectedStrokes}
+          marquee={marquee}
+          ghost={ghostPreview}
+          editingTarget={editingTarget}
+          inkColor={color}
+          onCommitEdit={commitEditing}
+          onCancelEdit={cancelEditing}
         />
-        {visible ? (
-          <AnnotationsSvg
-            worldRef={worldRef}
-            strokes={renderStrokes}
-            anchorsById={anchorsById}
-            selectMode={tool === 'move'}
-            selectedStrokes={selectedStrokes}
-            marquee={marquee}
-            ghost={ghostPreview}
-            editingTarget={editingTarget}
-            inkColor={color}
-            onCommitEdit={commitEditing}
-            onCancelEdit={cancelEditing}
-          />
-        ) : null}
-        <AnnotationContextToolbar />
-        {visible && tool === 'move' ? <AnnotationResizeOverlay store={strokesStore} /> : null}
-        {isActive ? (
-          <AnnotationsChrome
-            tool={tool}
-            theme={theme}
-            color={color}
-            setColor={setColor}
-            stickyColor={stickyColor}
-            setStickyColor={setStickyColor}
-            highlighterColor={highlighterColor}
-            setHighlighterColor={setHighlighterColor}
-            highlighterWidth={highlighterWidth}
-            setHighlighterWidth={setHighlighterWidth}
-            supportsFill={supportsFill}
-            fill={fill}
-            setFill={setFill}
-            supportsThickness={supportsThickness}
-            thickness={thickness}
-            setThickness={setThickness}
-          />
-        ) : null}
-      </>
+      ) : null}
+      <AnnotationContextToolbar />
+      {visible && tool === 'move' ? <AnnotationResizeOverlay store={strokesStore} /> : null}
+      {isActive ? (
+        <AnnotationsChrome
+          tool={tool}
+          theme={theme}
+          color={color}
+          setColor={setColor}
+          stickyColor={stickyColor}
+          setStickyColor={setStickyColor}
+          highlighterColor={highlighterColor}
+          setHighlighterColor={setHighlighterColor}
+          highlighterWidth={highlighterWidth}
+          setHighlighterWidth={setHighlighterWidth}
+          supportsFill={supportsFill}
+          fill={fill}
+          setFill={setFill}
+          supportsThickness={supportsThickness}
+          thickness={thickness}
+          setThickness={setThickness}
+        />
+      ) : null}
     </StrokesStoreContext.Provider>
   );
 }

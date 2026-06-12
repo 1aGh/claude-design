@@ -1,5 +1,5 @@
 import { AbsoluteFill, useCurrentFrame } from 'remotion';
-import { Void, Phrase, maude, font, lerp, pop } from '../../../lib/v5-stage';
+import { font, maude, Phrase, pop, Void } from '../../../lib/v5-stage';
 
 /**
  * Beat 94 · The daily loop (150f / 5s).
@@ -29,12 +29,21 @@ export const V5DailyLoop = () => {
   return (
     <AbsoluteFill>
       <Void theme="dark" style={{ alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 56, opacity: Math.min(1, intro), transform: `translateY(${30 + (1 - Math.min(1, intro)) * 20}px)` }}>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 56,
+            opacity: Math.min(1, intro),
+            transform: `translateY(${30 + (1 - Math.min(1, intro)) * 20}px)`,
+          }}
+        >
           {/* card row */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 40 }}>
             {STEPS.map((s, i) => {
               const on = active === i;
-              const pulse = on ? 1 + Math.sin((cyc % 26) / 26 * Math.PI) * 0.05 : 1;
+              const pulse = on ? 1 + Math.sin(((cyc % 26) / 26) * Math.PI) * 0.05 : 1;
               return (
                 <div key={s.cmd} style={{ display: 'flex', alignItems: 'center', gap: 40 }}>
                   <div
@@ -44,7 +53,9 @@ export const V5DailyLoop = () => {
                       background: on ? t.bg2 : t.bg1,
                       border: `2px solid ${on ? t.accent : t.border}`,
                       borderRadius: 20,
-                      boxShadow: on ? `0 0 0 6px ${t.accentTint}, 0 24px 70px rgba(0,0,0,0.4)` : '0 24px 70px rgba(0,0,0,0.4)',
+                      boxShadow: on
+                        ? `0 0 0 6px ${t.accentTint}, 0 24px 70px rgba(0,0,0,0.4)`
+                        : '0 24px 70px rgba(0,0,0,0.4)',
                       padding: 32,
                       display: 'flex',
                       flexDirection: 'column',
@@ -54,26 +65,64 @@ export const V5DailyLoop = () => {
                     }}
                   >
                     <span style={{ fontSize: 44, color: on ? t.accent : t.fg2 }}>{s.icon}</span>
-                    <span style={{ fontFamily: font.mono, fontSize: 30, color: on ? t.accent : t.fg0, fontWeight: 500 }}>{s.cmd}</span>
-                    <span style={{ fontFamily: font.body, fontSize: 22, color: t.fg2 }}>{s.sub}</span>
+                    <span
+                      style={{
+                        fontFamily: font.mono,
+                        fontSize: 30,
+                        color: on ? t.accent : t.fg0,
+                        fontWeight: 500,
+                      }}
+                    >
+                      {s.cmd}
+                    </span>
+                    <span style={{ fontFamily: font.body, fontSize: 22, color: t.fg2 }}>
+                      {s.sub}
+                    </span>
                   </div>
                   {/* inter-card connectors — muted neutral (accent reserved for active + loop) */}
-                  {i < STEPS.length - 1 ? <span style={{ fontSize: 40, color: t.fg3 }}>→</span> : null}
+                  {i < STEPS.length - 1 ? (
+                    <span style={{ fontSize: 40, color: t.fg3 }}>→</span>
+                  ) : null}
                 </div>
               );
             })}
           </div>
 
           {/* live loop-back arrow — full accent, marching ants toward /flow:plan */}
-          <svg width={1300} height={170} style={{ marginTop: -10 }}>
-            <path d="M 1090 12 C 1180 116, 120 116, 180 16" fill="none" stroke={t.accent} strokeWidth={3} strokeDasharray="8 10" strokeDashoffset={dashFlow} strokeLinecap="round" opacity={0.9} />
+          <svg aria-hidden="true" width={1300} height={170} style={{ marginTop: -10 }}>
+            <path
+              d="M 1090 12 C 1180 116, 120 116, 180 16"
+              fill="none"
+              stroke={t.accent}
+              strokeWidth={3}
+              strokeDasharray="8 10"
+              strokeDashoffset={dashFlow}
+              strokeLinecap="round"
+              opacity={0.9}
+            />
             {/* arrowhead — triangle at the left tip, oriented along the curve's end tangent (up-right, into /flow:plan) */}
             <polygon points="180,16 181,30 169,25" fill={t.accent} />
-            <text x={650} y={150} textAnchor="middle" fill={t.fg2} fontFamily={font.mono} fontSize={18}>day after day</text>
+            <text
+              x={650}
+              y={150}
+              textAnchor="middle"
+              fill={t.fg2}
+              fontFamily={font.mono}
+              fontSize={18}
+            >
+              day after day
+            </text>
           </svg>
         </div>
 
-        <Phrase frame={frame} from={20} text="it's a rhythm" align="center" size={34} bottom={110} />
+        <Phrase
+          frame={frame}
+          from={20}
+          text="it's a rhythm"
+          align="center"
+          size={34}
+          bottom={110}
+        />
       </Void>
     </AbsoluteFill>
   );

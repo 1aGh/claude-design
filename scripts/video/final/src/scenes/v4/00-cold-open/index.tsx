@@ -1,6 +1,6 @@
 import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
+import { AgentCursor, Caption, Caret, DottedCanvas } from '../../../lib/maude-stage';
 import { maude } from '../../../lib/maude-tokens';
-import { DottedCanvas, Caret, AgentCursor, Caption } from '../../../lib/maude-stage';
 
 /**
  * Scene 00 · Cold open — hook.
@@ -33,7 +33,10 @@ export const ColdOpenScene = () => {
   const drift = spring({ frame: frame - 6, fps, config: { damping: 60 }, durationInFrames: 40 });
   const curX = interpolate(drift, [0, 1], [cx + 540, cx + 270]);
   const curY = interpolate(drift, [0, 1], [cy - 360, cy + 18]);
-  const curOpacity = interpolate(frame, [6, 20], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
+  const curOpacity = interpolate(frame, [6, 20], [0, 1], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  });
 
   return (
     <AbsoluteFill>
@@ -63,7 +66,12 @@ export const ColdOpenScene = () => {
 
         <AgentCursor theme="dark" x={curX} y={curY} opacity={curOpacity} />
 
-        <Caption theme="dark" frame={frame} from={54} text="you start with nothing — a dotted canvas and an idea." />
+        <Caption
+          theme="dark"
+          frame={frame}
+          from={54}
+          text="you start with nothing — a dotted canvas and an idea."
+        />
       </DottedCanvas>
     </AbsoluteFill>
   );

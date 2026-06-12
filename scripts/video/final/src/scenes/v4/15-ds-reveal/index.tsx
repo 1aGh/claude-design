@@ -1,6 +1,6 @@
 import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
+import { Caption, DottedCanvas } from '../../../lib/maude-stage';
 import { maude } from '../../../lib/maude-tokens';
-import { DottedCanvas, Caption } from '../../../lib/maude-stage';
 
 /**
  * Scene 15 · DS reveal — proof.
@@ -57,9 +57,30 @@ export const DsRevealScene = () => {
           <div style={{ ...sheet, flex: 1.2, ...drift(6) }}>
             <div style={cap}>TYPE SCALE</div>
             {typeRows.map((r, i) => (
-              <div key={r.label} style={{ display: 'flex', alignItems: 'baseline', gap: 24, marginBottom: 20, ...drift(12 + i * 6) }}>
-                <span style={{ width: 130, fontFamily: maude.font.mono, fontSize: 16, color: t.fg2 }}>{r.label}</span>
-                <span style={{ fontFamily: maude.font.display, fontWeight: 600, fontSize: r.size, color: t.fg0, lineHeight: 1.1 }}>
+              <div
+                key={r.label}
+                style={{
+                  display: 'flex',
+                  alignItems: 'baseline',
+                  gap: 24,
+                  marginBottom: 20,
+                  ...drift(12 + i * 6),
+                }}
+              >
+                <span
+                  style={{ width: 130, fontFamily: maude.font.mono, fontSize: 16, color: t.fg2 }}
+                >
+                  {r.label}
+                </span>
+                <span
+                  style={{
+                    fontFamily: maude.font.display,
+                    fontWeight: 600,
+                    fontSize: r.size,
+                    color: t.fg0,
+                    lineHeight: 1.1,
+                  }}
+                >
                   The quick brown fox
                 </span>
               </div>
@@ -70,9 +91,28 @@ export const DsRevealScene = () => {
           <div style={{ ...sheet, flex: 1, ...drift(10) }}>
             <div style={cap}>PALETTE</div>
             {ramp.map((s, i) => (
-              <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 16, ...drift(16 + i * 5) }}>
-                <span style={{ width: 56, height: 40, borderRadius: 8, background: s.c, border: `1px solid ${t.borderSubtle}` }} />
-                <span style={{ fontFamily: maude.font.mono, fontSize: 22, color: t.fg0 }}>{s.name}</span>
+              <div
+                key={s.name}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 18,
+                  marginBottom: 16,
+                  ...drift(16 + i * 5),
+                }}
+              >
+                <span
+                  style={{
+                    width: 56,
+                    height: 40,
+                    borderRadius: 8,
+                    background: s.c,
+                    border: `1px solid ${t.borderSubtle}`,
+                  }}
+                />
+                <span style={{ fontFamily: maude.font.mono, fontSize: 22, color: t.fg0 }}>
+                  {s.name}
+                </span>
               </div>
             ))}
           </div>

@@ -1,6 +1,6 @@
 import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
+import { Caption, DottedCanvas } from '../../../lib/maude-stage';
 import { maude } from '../../../lib/maude-tokens';
-import { DottedCanvas, Caption } from '../../../lib/maude-stage';
 
 /**
  * Scene 25 · Critics — proof (the wow beat).
@@ -24,7 +24,10 @@ export const CriticsScene = () => {
     { name: 'copy', score: 4.2, at: 78 },
   ];
 
-  const agg = interpolate(frame, [96, 130], [0, 4.6], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
+  const agg = interpolate(frame, [96, 130], [0, 4.6], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  });
   const fixIn = spring({ frame: frame - 150, fps, config: { damping: 200 }, durationInFrames: 16 });
 
   return (
@@ -44,20 +47,57 @@ export const CriticsScene = () => {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', marginBottom: 28 }}>
-            <span style={{ fontSize: 20, letterSpacing: '0.05em', color: t.fg2 }}>CRITIC PANEL · 5 reviewers</span>
+            <span style={{ fontSize: 20, letterSpacing: '0.05em', color: t.fg2 }}>
+              CRITIC PANEL · 5 reviewers
+            </span>
             <span style={{ marginLeft: 'auto', fontSize: 18, color: t.accent }}>auto-fix loop</span>
           </div>
 
           {rows.map((r) => {
-            const p = interpolate(frame, [r.at, r.at + 22], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
+            const p = interpolate(frame, [r.at, r.at + 22], [0, 1], {
+              extrapolateLeft: 'clamp',
+              extrapolateRight: 'clamp',
+            });
             const val = (r.score * p).toFixed(1);
             return (
-              <div key={r.name} style={{ display: 'flex', alignItems: 'center', gap: 22, marginBottom: 18, opacity: interpolate(p, [0, 0.2], [0, 1]) }}>
+              <div
+                key={r.name}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 22,
+                  marginBottom: 18,
+                  opacity: interpolate(p, [0, 0.2], [0, 1]),
+                }}
+              >
                 <span style={{ width: 170, fontSize: 26, color: t.fg1 }}>{r.name}</span>
-                <span style={{ flex: 1, height: 10, borderRadius: 99, background: t.bg3, overflow: 'hidden' }}>
-                  <span style={{ display: 'block', height: '100%', width: `${(r.score / 5) * p * 100}%`, background: r.pass ? t.success : t.accent, borderRadius: 99 }} />
+                <span
+                  style={{
+                    flex: 1,
+                    height: 10,
+                    borderRadius: 99,
+                    background: t.bg3,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <span
+                    style={{
+                      display: 'block',
+                      height: '100%',
+                      width: `${(r.score / 5) * p * 100}%`,
+                      background: r.pass ? t.success : t.accent,
+                      borderRadius: 99,
+                    }}
+                  />
                 </span>
-                <span style={{ width: 80, textAlign: 'right', fontSize: 26, color: r.pass ? t.success : t.fg0 }}>
+                <span
+                  style={{
+                    width: 80,
+                    textAlign: 'right',
+                    fontSize: 26,
+                    color: r.pass ? t.success : t.fg0,
+                  }}
+                >
                   {r.pass ? 'pass' : val}
                 </span>
               </div>
@@ -65,10 +105,39 @@ export const CriticsScene = () => {
           })}
 
           {/* aggregate verdict */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginTop: 28, paddingTop: 26, borderTop: `1px solid ${t.borderSubtle}` }}>
-            <span style={{ fontFamily: maude.font.display, fontWeight: 700, fontSize: 72, color: t.fg0, lineHeight: 1 }}>{agg.toFixed(1)}</span>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 20,
+              marginTop: 28,
+              paddingTop: 26,
+              borderTop: `1px solid ${t.borderSubtle}`,
+            }}
+          >
+            <span
+              style={{
+                fontFamily: maude.font.display,
+                fontWeight: 700,
+                fontSize: 72,
+                color: t.fg0,
+                lineHeight: 1,
+              }}
+            >
+              {agg.toFixed(1)}
+            </span>
             <span style={{ fontSize: 24, color: t.fg2 }}>/ 5</span>
-            <span style={{ marginLeft: 16, fontSize: 26, color: t.success, opacity: interpolate(frame, [126, 140], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }) }}>
+            <span
+              style={{
+                marginLeft: 16,
+                fontSize: 26,
+                color: t.success,
+                opacity: interpolate(frame, [126, 140], [0, 1], {
+                  extrapolateLeft: 'clamp',
+                  extrapolateRight: 'clamp',
+                }),
+              }}
+            >
               verdict · SOLID
             </span>
             <span
@@ -92,7 +161,12 @@ export const CriticsScene = () => {
           </div>
         </div>
 
-        <Caption theme="dark" frame={frame} from={172} text="critics score it. then it fixes itself." />
+        <Caption
+          theme="dark"
+          frame={frame}
+          from={172}
+          text="critics score it. then it fixes itself."
+        />
       </DottedCanvas>
     </AbsoluteFill>
   );

@@ -54,25 +54,19 @@ describe('DDR-054 §2a — CI environment gate', () => {
     savedCi = process.env.CI;
     savedGha = process.env.GITHUB_ACTIONS;
     savedOverride = process.env.MAUDE_SYNC_IN_CI;
-    // biome-ignore lint/performance/noDelete: process.env semantics
     delete process.env.CI;
-    // biome-ignore lint/performance/noDelete: process.env semantics
     delete process.env.GITHUB_ACTIONS;
-    // biome-ignore lint/performance/noDelete: process.env semantics
     delete process.env.MAUDE_SYNC_IN_CI;
   });
 
   afterEach(() => {
     if (savedCi === undefined) {
-      // biome-ignore lint/performance/noDelete: process.env semantics
       delete process.env.CI;
     } else process.env.CI = savedCi;
     if (savedGha === undefined) {
-      // biome-ignore lint/performance/noDelete: process.env semantics
       delete process.env.GITHUB_ACTIONS;
     } else process.env.GITHUB_ACTIONS = savedGha;
     if (savedOverride === undefined) {
-      // biome-ignore lint/performance/noDelete: process.env semantics
       delete process.env.MAUDE_SYNC_IN_CI;
     } else process.env.MAUDE_SYNC_IN_CI = savedOverride;
   });
@@ -443,7 +437,6 @@ describe('DDR-054 §2i — auto-clear adopt after first success', () => {
     const savedHubsEnv = process.env.HUBS_CONFIG_PATH;
     process.env.HUBS_CONFIG_PATH = hubsPath;
     const savedCi = process.env.CI;
-    // biome-ignore lint/performance/noDelete: process.env semantics
     delete process.env.CI;
 
     try {
@@ -504,7 +497,6 @@ describe('DDR-054 §2i — auto-clear adopt after first success', () => {
       expect(typeof after.linkedHub.lastAdoptedAt).toBe('number');
     } finally {
       if (savedHubsEnv === undefined) {
-        // biome-ignore lint/performance/noDelete: process.env semantics
         delete process.env.HUBS_CONFIG_PATH;
       } else process.env.HUBS_CONFIG_PATH = savedHubsEnv;
       if (savedCi !== undefined) process.env.CI = savedCi;

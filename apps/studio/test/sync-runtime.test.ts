@@ -50,7 +50,6 @@ beforeEach(() => {
 afterEach(() => {
   // Node's process.env stringifies on assignment; assigning undefined yields
   // the literal string "undefined". delete is the correct restoration.
-  // biome-ignore lint/performance/noDelete: process.env semantics.
   if (cfgPathEnv === undefined) delete process.env.HUBS_CONFIG_PATH;
   else process.env.HUBS_CONFIG_PATH = cfgPathEnv;
   rmSync(dir, { recursive: true, force: true });

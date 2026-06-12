@@ -1,6 +1,6 @@
 import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
-import { maude } from '../../../lib/maude-tokens';
 import { Caption, typewriter } from '../../../lib/maude-stage';
+import { maude } from '../../../lib/maude-tokens';
 
 /**
  * Scene 40 · /design:edit — proof.
@@ -23,8 +23,16 @@ export const DesignEditScene = () => {
   const blink = Math.floor(frame / 15) % 2 === 0;
 
   // reload flash on the right ~frame 150
-  const flash = interpolate(frame, [148, 158, 170], [0, 0.5, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' });
-  const reloaded = spring({ frame: frame - 172, fps, config: { damping: 200 }, durationInFrames: 12 });
+  const flash = interpolate(frame, [148, 158, 170], [0, 0.5, 0], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  });
+  const reloaded = spring({
+    frame: frame - 172,
+    fps,
+    config: { damping: 200 },
+    durationInFrames: 12,
+  });
 
   const diff: { sign: '-' | '+'; text: string; at: number }[] = [
     { sign: '-', text: 'padding: 96px 0', at: 80 },
@@ -36,14 +44,53 @@ export const DesignEditScene = () => {
   return (
     <AbsoluteFill style={{ background: t.bg0 }}>
       {/* LEFT — TUI + diff */}
-      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '50%', background: t.bg0, padding: '70px 64px', borderRight: `2px solid ${t.accentMuted}` }}>
-        <div style={{ fontFamily: maude.font.mono, fontSize: 18, color: t.fg3, marginBottom: 28, letterSpacing: '0.05em' }}>claude · scratch</div>
-        <div style={{ fontFamily: maude.font.mono, fontSize: 27, color: t.fg0, marginBottom: 34, lineHeight: 1.4 }}>
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: '50%',
+          background: t.bg0,
+          padding: '70px 64px',
+          borderRight: `2px solid ${t.accentMuted}`,
+        }}
+      >
+        <div
+          style={{
+            fontFamily: maude.font.mono,
+            fontSize: 18,
+            color: t.fg3,
+            marginBottom: 28,
+            letterSpacing: '0.05em',
+          }}
+        >
+          claude · scratch
+        </div>
+        <div
+          style={{
+            fontFamily: maude.font.mono,
+            fontSize: 27,
+            color: t.fg0,
+            marginBottom: 34,
+            lineHeight: 1.4,
+          }}
+        >
           <span style={{ color: t.accent, marginRight: 12 }}>&gt;</span>
           {cmd}
           {frame < 74 ? <span style={{ color: t.accent, opacity: blink ? 1 : 0 }}>▋</span> : null}
         </div>
-        <div style={{ fontFamily: maude.font.mono, fontSize: 17, color: t.fg3, marginBottom: 14, letterSpacing: '0.05em' }}>Hero.tsx</div>
+        <div
+          style={{
+            fontFamily: maude.font.mono,
+            fontSize: 17,
+            color: t.fg3,
+            marginBottom: 14,
+            letterSpacing: '0.05em',
+          }}
+        >
+          Hero.tsx
+        </div>
         {diff.map((d) => (
           <div
             key={d.text}
@@ -54,7 +101,8 @@ export const DesignEditScene = () => {
               padding: '2px 14px',
               borderRadius: 6,
               color: d.sign === '-' ? t.error : t.success,
-              background: d.sign === '-' ? 'oklch(0.66 0.19 25 / 0.12)' : 'oklch(0.76 0.15 162 / 0.14)',
+              background:
+                d.sign === '-' ? 'oklch(0.66 0.19 25 / 0.12)' : 'oklch(0.76 0.15 162 / 0.14)',
               marginBottom: 6,
               width: 'fit-content',
               ...appear(d.at, 8),
@@ -81,23 +129,104 @@ export const DesignEditScene = () => {
           justifyContent: 'center',
         }}
       >
-        <div style={{ position: 'relative', width: 720, background: t.bg1, border: `1px solid ${t.border}`, borderRadius: 16, boxShadow: '0 24px 70px rgba(0,0,0,0.45)', overflow: 'hidden' }}>
+        <div
+          style={{
+            position: 'relative',
+            width: 720,
+            background: t.bg1,
+            border: `1px solid ${t.border}`,
+            borderRadius: 16,
+            boxShadow: '0 24px 70px rgba(0,0,0,0.45)',
+            overflow: 'hidden',
+          }}
+        >
           {/* reload flash overlay */}
-          <div style={{ position: 'absolute', inset: 0, background: t.accent, opacity: flash, pointerEvents: 'none', zIndex: 2 }} />
-          <div style={{ display: 'flex', gap: 7, alignItems: 'center', padding: '16px 22px', borderBottom: `1px solid ${t.borderSubtle}` }}>
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background: t.accent,
+              opacity: flash,
+              pointerEvents: 'none',
+              zIndex: 2,
+            }}
+          />
+          <div
+            style={{
+              display: 'flex',
+              gap: 7,
+              alignItems: 'center',
+              padding: '16px 22px',
+              borderBottom: `1px solid ${t.borderSubtle}`,
+            }}
+          >
             <span style={{ width: 9, height: 9, borderRadius: 99, background: t.border }} />
             <span style={{ width: 9, height: 9, borderRadius: 99, background: t.border }} />
-            <span style={{ marginLeft: 'auto', fontFamily: maude.font.mono, fontSize: 15, color: t.fg3 }}>Recipe Recap.tsx</span>
+            <span
+              style={{
+                marginLeft: 'auto',
+                fontFamily: maude.font.mono,
+                fontSize: 15,
+                color: t.fg3,
+              }}
+            >
+              Recipe Recap.tsx
+            </span>
           </div>
           {/* tightened hero (less padding), one fewer meta row */}
           <div style={{ padding: '34px 40px', display: 'flex', flexDirection: 'column', gap: 18 }}>
-            <div style={{ fontFamily: maude.font.display, fontWeight: 700, fontSize: 52, color: t.fg0 }}>Recipe Recap</div>
+            <div
+              style={{
+                fontFamily: maude.font.display,
+                fontWeight: 700,
+                fontSize: 52,
+                color: t.fg0,
+              }}
+            >
+              Recipe Recap
+            </div>
             <div style={{ height: 16, width: '70%', borderRadius: 6, background: t.bg3 }} />
             <div style={{ display: 'flex', gap: 12 }}>
-              <span style={{ fontFamily: maude.font.mono, fontSize: 18, color: t.fg2, background: t.bg2, borderRadius: 8, padding: '6px 14px' }}>serves 4</span>
-              <span style={{ fontFamily: maude.font.mono, fontSize: 18, color: t.fg2, background: t.bg2, borderRadius: 8, padding: '6px 14px' }}>35 min</span>
+              <span
+                style={{
+                  fontFamily: maude.font.mono,
+                  fontSize: 18,
+                  color: t.fg2,
+                  background: t.bg2,
+                  borderRadius: 8,
+                  padding: '6px 14px',
+                }}
+              >
+                serves 4
+              </span>
+              <span
+                style={{
+                  fontFamily: maude.font.mono,
+                  fontSize: 18,
+                  color: t.fg2,
+                  background: t.bg2,
+                  borderRadius: 8,
+                  padding: '6px 14px',
+                }}
+              >
+                35 min
+              </span>
             </div>
-            <span style={{ alignSelf: 'flex-start', background: t.accent, color: t.accentFg, fontFamily: maude.font.body, fontWeight: 600, fontSize: 22, padding: '12px 26px', borderRadius: 10, marginTop: 6 }}>Scale portions</span>
+            <span
+              style={{
+                alignSelf: 'flex-start',
+                background: t.accent,
+                color: t.accentFg,
+                fontFamily: maude.font.body,
+                fontWeight: 600,
+                fontSize: 22,
+                padding: '12px 26px',
+                borderRadius: 10,
+                marginTop: 6,
+              }}
+            >
+              Scale portions
+            </span>
           </div>
           {/* reloaded badge */}
           <span

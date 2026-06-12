@@ -17,7 +17,7 @@
  * stale layout.
  */
 
-import type { CommandRecord, CommandSinks, EditCommand } from '../undo-stack.ts';
+import type { CommandRecord, EditCommand } from '../undo-stack.ts';
 import { registerCommand } from '../undo-stack.ts';
 
 export interface ArtboardLayoutEntry {

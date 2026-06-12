@@ -1,5 +1,5 @@
 import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
-import { Void, Pointer, Phrase, maude, font, lerp, easeOut } from '../../../lib/v5-stage';
+import { easeOut, font, lerp, maude, Phrase, Pointer, Void } from '../../../lib/v5-stage';
 
 /**
  * Beat 00 · Cold open — the hook (120f / 4s).
@@ -22,9 +22,33 @@ export const V5ColdOpen = () => {
 
   // three labelled cursors drift in and settle around the wordmark
   const peers = [
-    { color: t.presence, label: 'you', fromX: cx + 620, fromY: cy - 420, toX: cx + 300, toY: cy + 30, delay: 8 },
-    { color: t.info, label: 'Claude Code', fromX: cx - 720, fromY: cy + 360, toX: cx - 470, toY: cy + 70, delay: 20 },
-    { color: t.success, label: 'AI agent', fromX: cx + 480, fromY: cy + 440, toX: cx + 210, toY: cy - 150, delay: 32 },
+    {
+      color: t.presence,
+      label: 'you',
+      fromX: cx + 620,
+      fromY: cy - 420,
+      toX: cx + 300,
+      toY: cy + 30,
+      delay: 8,
+    },
+    {
+      color: t.info,
+      label: 'Claude Code',
+      fromX: cx - 720,
+      fromY: cy + 360,
+      toX: cx - 470,
+      toY: cy + 70,
+      delay: 20,
+    },
+    {
+      color: t.success,
+      label: 'AI agent',
+      fromX: cx + 480,
+      fromY: cy + 440,
+      toX: cx + 210,
+      toY: cy - 150,
+      delay: 32,
+    },
   ];
 
   return (
@@ -62,7 +86,12 @@ export const V5ColdOpen = () => {
         </AbsoluteFill>
 
         {peers.map((p) => {
-          const s = spring({ frame: frame - p.delay, fps, config: { damping: 12, mass: 0.7 }, durationInFrames: 46 });
+          const s = spring({
+            frame: frame - p.delay,
+            fps,
+            config: { damping: 12, mass: 0.7 },
+            durationInFrames: 46,
+          });
           const op = lerp(frame, [p.delay, p.delay + 12], [0, 1]);
           return (
             <Pointer
@@ -76,7 +105,14 @@ export const V5ColdOpen = () => {
           );
         })}
 
-        <Phrase frame={frame} from={48} text="design — inside your code." align="center" size={32} bottom={150} />
+        <Phrase
+          frame={frame}
+          from={48}
+          text="design — inside your code."
+          align="center"
+          size={32}
+          bottom={150}
+        />
       </Void>
     </AbsoluteFill>
   );

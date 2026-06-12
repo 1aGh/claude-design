@@ -37,17 +37,47 @@ const RX = 47;
 const Dot = ({ cx, open }: { cx: number; open: number }) => (
   <rect x={cx - 2.4} y={EYE_Y - 3 * open} width={4.8} height={6 * open} rx={1.8} fill={FACE} />
 );
-const Line = ({ cx }: { cx: number }) => <rect x={cx - 3} y={EYE_Y - 0.9} width={6} height={1.8} rx={0.9} fill={FACE} />;
-const Arc = ({ cx }: { cx: number }) => (
-  <path d={`M${cx - 3} ${EYE_Y + 1}Q${cx} ${EYE_Y - 3.4} ${cx + 3} ${EYE_Y + 1}`} stroke={FACE} strokeWidth={2} fill="none" strokeLinecap="round" />
+const Line = ({ cx }: { cx: number }) => (
+  <rect x={cx - 3} y={EYE_Y - 0.9} width={6} height={1.8} rx={0.9} fill={FACE} />
 );
-const Ring = ({ cx }: { cx: number }) => <circle cx={cx} cy={EYE_Y} r={2.8} fill="none" stroke={FACE} strokeWidth={1.8} />;
+const Arc = ({ cx }: { cx: number }) => (
+  <path
+    d={`M${cx - 3} ${EYE_Y + 1}Q${cx} ${EYE_Y - 3.4} ${cx + 3} ${EYE_Y + 1}`}
+    stroke={FACE}
+    strokeWidth={2}
+    fill="none"
+    strokeLinecap="round"
+  />
+);
+const Ring = ({ cx }: { cx: number }) => (
+  <circle cx={cx} cy={EYE_Y} r={2.8} fill="none" stroke={FACE} strokeWidth={1.8} />
+);
 const Heart = ({ cx }: { cx: number }) => <path d={heart(cx, EYE_Y, 3)} fill={FACE} />;
 
-const Smile = () => <path d={`M34 ${MOUTH_Y - 2}Q40 ${MOUTH_Y + 3} 46 ${MOUTH_Y - 2}`} stroke={FACE} strokeWidth={2.4} fill="none" strokeLinecap="round" />;
-const SmallSmile = () => <path d={`M36 ${MOUTH_Y - 1}Q40 ${MOUTH_Y + 2.5} 44 ${MOUTH_Y - 1}`} stroke={FACE} strokeWidth={2.2} fill="none" strokeLinecap="round" />;
-const Grin = () => <path d={`M33 ${MOUTH_Y - 3}Q40 ${MOUTH_Y + 5} 47 ${MOUTH_Y - 3}Z`} fill={FACE} />;
-const OMouth = () => <circle cx={40} cy={MOUTH_Y} r={2.6} fill="none" stroke={FACE} strokeWidth={1.8} />;
+const Smile = () => (
+  <path
+    d={`M34 ${MOUTH_Y - 2}Q40 ${MOUTH_Y + 3} 46 ${MOUTH_Y - 2}`}
+    stroke={FACE}
+    strokeWidth={2.4}
+    fill="none"
+    strokeLinecap="round"
+  />
+);
+const SmallSmile = () => (
+  <path
+    d={`M36 ${MOUTH_Y - 1}Q40 ${MOUTH_Y + 2.5} 44 ${MOUTH_Y - 1}`}
+    stroke={FACE}
+    strokeWidth={2.2}
+    fill="none"
+    strokeLinecap="round"
+  />
+);
+const Grin = () => (
+  <path d={`M33 ${MOUTH_Y - 3}Q40 ${MOUTH_Y + 5} 47 ${MOUTH_Y - 3}Z`} fill={FACE} />
+);
+const OMouth = () => (
+  <circle cx={40} cy={MOUTH_Y} r={2.6} fill="none" stroke={FACE} strokeWidth={1.8} />
+);
 
 const FaceLED = ({ expr, open }: { expr: Expr; open: number }) => {
   // a blink (open < 1) collapses dot/arc/ring eyes to lines for expressive frames too
@@ -84,7 +114,16 @@ const FaceLED = ({ expr, open }: { expr: Expr; open: number }) => {
         <Heart cx={RX} />
       </>
     );
-  const mouth = expr === 'grin' ? <Grin /> : expr === 'surprise' ? <OMouth /> : expr === 'love' ? <SmallSmile /> : <Smile />;
+  const mouth =
+    expr === 'grin' ? (
+      <Grin />
+    ) : expr === 'surprise' ? (
+      <OMouth />
+    ) : expr === 'love' ? (
+      <SmallSmile />
+    ) : (
+      <Smile />
+    );
   return (
     <g style={{ filter: `drop-shadow(0 0 2.5px ${FACE})` }}>
       {eyes}
@@ -118,18 +157,34 @@ export const Sparky: React.FC<{
   const exprIdx = Math.floor((f % (ORDER.length * 38)) / 38);
   const curExpr: Expr = expr ?? (live ? ORDER[exprIdx] : 'happy');
   const blinkPhase = f % 66;
-  const open = live && blinkPhase < 6 ? Math.max(0.12, 1 - Math.sin((blinkPhase / 6) * Math.PI)) : 1;
+  const open =
+    live && blinkPhase < 6 ? Math.max(0.12, 1 - Math.sin((blinkPhase / 6) * Math.PI)) : 1;
   const tilt = live ? Math.sin(f / 40) * 2.6 : 0;
   const sway = live ? Math.sin(f / 14) * 5 : 0;
 
-  const ln = (w = 2.6) => ({ fill: 'none' as const, stroke: A, strokeWidth: w, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, strokeDasharray: 320, strokeDashoffset: 320 * (1 - od), opacity: outlineOp });
+  const ln = (w = 2.6) => ({
+    fill: 'none' as const,
+    stroke: A,
+    strokeWidth: w,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    strokeDasharray: 320,
+    strokeDashoffset: 320 * (1 - od),
+    opacity: outlineOp,
+  });
   const spark = (cx: number, cy: number, R = 2.4) => {
     const r = 0.42 * R;
     return `M${cx} ${cy - R}L${cx + r} ${cy - r}L${cx + R} ${cy}L${cx + r} ${cy + r}L${cx} ${cy + R}L${cx - r} ${cy + r}L${cx - R} ${cy}L${cx - r} ${cy - r}Z`;
   };
 
   return (
-    <svg width={size} height={size} viewBox="0 0 80 80" style={{ overflow: 'visible' }}>
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 80 80"
+      style={{ overflow: 'visible' }}
+      aria-hidden="true"
+    >
       <g style={{ transform: `rotate(${tilt}deg)`, transformOrigin: '40px 44px' }}>
         {/* antennae (sway) */}
         <g style={{ transform: `rotate(${sway}deg)`, transformOrigin: '40px 40px' }}>
@@ -157,8 +212,26 @@ export const Sparky: React.FC<{
         <rect x={16.5} y={24} width={47} height={4.6} rx={2.3} fill={AH} opacity={fillP} />
 
         {/* visor screen */}
-        <rect x={20.5} y={29} width={39} height={23} rx={9} fill={VISOR} opacity={Math.max(fillP, faceP)} />
-        <rect x={20.5} y={29} width={39} height={23} rx={9} fill="none" stroke={AM} strokeWidth={1} opacity={fillP * 0.8} />
+        <rect
+          x={20.5}
+          y={29}
+          width={39}
+          height={23}
+          rx={9}
+          fill={VISOR}
+          opacity={Math.max(fillP, faceP)}
+        />
+        <rect
+          x={20.5}
+          y={29}
+          width={39}
+          height={23}
+          rx={9}
+          fill="none"
+          stroke={AM}
+          strokeWidth={1}
+          opacity={fillP * 0.8}
+        />
 
         {/* CRT scanlines */}
         {!tiny ? (

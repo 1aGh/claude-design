@@ -321,6 +321,7 @@ export function ExportDialogProvider({ children }: { children: ReactNode }): Rea
   }, [openState, loadHistory]);
 
   // ⌘E / Ctrl+E to open; ⌘⇧E / Ctrl+Shift+E to re-run last.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-bind on `open` only — rerunLast is stable per render; re-running on it would tear down the global hotkey listener needlessly.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const mod = e.metaKey || e.ctrlKey;
@@ -331,7 +332,6 @@ export function ExportDialogProvider({ children }: { children: ReactNode }): Rea
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // Phase 6.5 T9 — context-menu entries dispatch `maude:open-export` so they
@@ -559,8 +559,8 @@ const DialogShell = (() => {
           <div className="dc-ed-recent">
             <h3>Recent</h3>
             <ul>
-              {history.slice(0, 5).map((h, i) => (
-                <li key={`${h.at}-${i}`}>
+              {history.slice(0, 5).map((h) => (
+                <li key={`${h.at}-${h.filename}`}>
                   <button
                     type="button"
                     onClick={() => {

@@ -19,7 +19,7 @@ import type { ActiveJsonShape } from './exporters/scope.ts';
 import type { Inspect } from './inspect.ts';
 import { canvasSlug, writeLocator } from './locator.ts';
 import { DEV_SERVER_ROOT } from './paths.ts';
-import { getRuntimeBundle, packageForSlug, RUNTIME_PACKAGES, slugFor } from './runtime-bundle.ts';
+import { getRuntimeBundle, packageForSlug } from './runtime-bundle.ts';
 import { loadWhatsNew } from './whats-new.ts';
 
 // Real disk install root — never the virtual `/$bunfs/root` of compiled bins.
