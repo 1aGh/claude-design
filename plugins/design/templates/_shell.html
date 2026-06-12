@@ -320,6 +320,17 @@
             } else if (msg.mode === 'module' || msg.mode === 'hard') {
               // Only reload when the change touches *this* canvas (or `_lib`).
               if (msg.mode === 'hard' || !msg.file || (canvasRel && msg.file === canvasRel)) {
+                // Phase 12.3 — CSS-panel echo guard. The panel applies each
+                // edit optimistically to the live DOM (dgn:'apply-style'), so a
+                // `module` reload for THIS canvas's own edit is redundant churn:
+                // it remounts the canvas, drops the selection halo, and flickers
+                // the iframe. Skip it within a short window of a self-applied
+                // optimistic style. `hard` (_lib rebuild) is global — never
+                // skipped. Mirrors the meta echo-guard below.
+                if (msg.mode === 'module') {
+                  const lastOpt = window.__maude_last_css_optimistic_at || 0;
+                  if (Date.now() - lastOpt < 1500) return;
+                }
                 // Phase 13.1 / DDR-077 — when an agent is live-editing, soft-
                 // reload (hold last good on a broken intermediate). Manual edits
                 // (or no runtime yet) keep the plain, immediate hard reload.

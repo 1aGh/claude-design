@@ -1495,6 +1495,15 @@ function CanvasRouter({
             try {
               if (mm.value == null || mm.value === '') style.removeProperty(mm.prop);
               else style.setProperty(mm.prop, mm.value);
+              // Phase 12.3 — the live DOM now reflects this edit, so the
+              // follow-up edit-css → file-watcher `module` reload is redundant
+              // churn (it drops the selection halo + flickers the iframe). Stamp
+              // a self-edit marker; the _shell.html HMR client skips a `module`
+              // reload for this canvas within a short window. Mirrors the meta
+              // echo-guard (`__maude_last_meta_self_write_at`).
+              (
+                window as unknown as { __maude_last_css_optimistic_at?: number }
+              ).__maude_last_css_optimistic_at = Date.now();
             } catch {
               /* invalid prop/value — ignore; the reload is the source of truth */
             }

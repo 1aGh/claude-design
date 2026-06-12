@@ -183,20 +183,54 @@ export function resolveSelectionEl(
  * resolved value, shown only as a faint placeholder hint. Empty for a detached
  * node / SSR.
  */
+// Phase 12.3 (W2.2 fix) — EVERY property the CSS panel has a control for, so each
+// reads back into `authored` (pre-fills the right control) and is excluded from
+// `customStyles`. The earlier short list omitted the box-model LONGHANDS
+// (`padding-top`, `margin-left`, …) + the Layout/border longhands, so a value the
+// panel wrote (e.g. an alt-scrub `padding-top`) fell through to customStyles and
+// the box-model widget showed it as a "custom CSS property" instead of in the box.
 const KNOB_PROPS = [
+  // Layout
   'display',
+  'flex-direction',
+  'align-items',
+  'justify-content',
   'gap',
-  'padding',
-  'margin',
-  'width',
-  'height',
+  // Typography
+  'font-family',
+  'color',
   'font-size',
   'font-weight',
   'line-height',
-  'color',
+  'letter-spacing',
   'text-align',
+  // Spacing — shorthand (for customStyles exclusion + whole-side authoring) AND
+  // the 8 longhands the box-model widget actually reads/writes.
+  'margin',
+  'margin-top',
+  'margin-right',
+  'margin-bottom',
+  'margin-left',
+  'padding',
+  'padding-top',
+  'padding-right',
+  'padding-bottom',
+  'padding-left',
+  // Size
+  'width',
+  'height',
+  'max-width',
+  // Appearance
   'background-color',
   'border-radius',
+  'border-top-left-radius',
+  'border-top-right-radius',
+  'border-bottom-left-radius',
+  'border-bottom-right-radius',
+  'border-width',
+  'border-style',
+  'border-color',
+  'box-shadow',
   'opacity',
 ] as const;
 

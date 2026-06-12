@@ -2903,56 +2903,74 @@ function cssTokensRelFor(file, cfg) {
   return ds?.tokensCssRel || cfg?.tokensCssRel || ds0?.tokensCssRel || '';
 }
 
-// Fetch + parse the DS token names from the served tokens CSS (main origin),
-// grouped by family. Empty groups when the file is missing/unreachable.
-function useDsTokens(tokensRel) {
-  const [t, setT] = useState({
-    color: [],
-    space: [],
-    radius: [],
-    type: [],
-    shadow: [],
-    lh: [],
-    vals: {},
-  });
+// The active canvas's DS NAME (mirrors cssTokensRelFor's resolution order).
+function activeDsNameFor(file, cfg) {
+  const byCanvas = file ? cfg?.canvasDesignSystems?.[file] : null;
+  return byCanvas || cfg?.defaultDesignSystem || cfg?.designSystems?.[0]?.name || null;
+}
+
+// Parse a DS tokens CSS body → token names grouped by family + a name→value map
+// (resolving one level of var() aliasing so the popover renders real swatches +
+// values). Phase 12.3 (W2.1/W3 multi-DS).
+function parseTokensCss(css) {
+  const raw = {};
+  for (const m of css.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;}]+)/gi)) {
+    if (!(m[1] in raw)) raw[m[1]] = m[2].trim();
+  }
+  const vals = {};
+  for (const name of Object.keys(raw)) {
+    const v = raw[name];
+    const ref = /^var\(\s*(--[a-z0-9-]+)\s*\)$/i.exec(v);
+    vals[name] = ref && raw[ref[1]] ? raw[ref[1]] : v;
+  }
+  const names = Object.keys(raw);
+  const g = (re) => names.filter((n) => re.test(n));
+  return {
+    color: g(/^--(accent|fg|bg|border|status|presence)/),
+    space: g(/^--space-/),
+    radius: g(/^--radius-/),
+    type: g(/^--type-/),
+    shadow: g(/^--shadow-/),
+    lh: g(/^--lh-/),
+    vals,
+  };
+}
+
+// Fetch + parse the tokens CSS of EVERY design system in the config (main
+// origin), so the token popover can offer tokens grouped per DS (W3 multi-DS
+// feedback). The active canvas's DS is ordered first. Returns
+// `[{ name, color, space, radius, type, shadow, lh, vals }]`.
+function useAllDsTokens(cfg, designRel, activeName) {
+  const list = cfg?.designSystems || [];
+  // A stable key so the effect only re-fetches when the DS set / paths change.
+  const sig = list.map((d) => `${d.name}:${d.tokensCssRel}`).join('|');
+  const [byDs, setByDs] = useState([]);
   useEffect(() => {
-    if (!tokensRel) return undefined;
+    if (!list.length) return undefined;
     let cancelled = false;
-    fetch('/' + tokensRel)
-      .then((r) => (r.ok ? r.text() : ''))
-      .then((css) => {
-        if (cancelled) return;
-        // Phase 12.3 (W2.1) — parse name→value too, so the token POPOVER can
-        // render real swatches (color) + resolved values (number). Resolve a
-        // single level of `var(--x)` aliasing (the common DS shape).
-        const raw = {};
-        for (const m of css.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;}]+)/gi)) {
-          if (!(m[1] in raw)) raw[m[1]] = m[2].trim();
+    Promise.all(
+      list.map(async (ds) => {
+        if (!ds.tokensCssRel) return null;
+        try {
+          const r = await fetch(`/${designRel}/${ds.tokensCssRel}`);
+          const css = r.ok ? await r.text() : '';
+          return { name: ds.name, ...parseTokensCss(css) };
+        } catch {
+          return null;
         }
-        const vals = {};
-        for (const name of Object.keys(raw)) {
-          const v = raw[name];
-          const ref = /^var\(\s*(--[a-z0-9-]+)\s*\)$/i.exec(v);
-          vals[name] = ref && raw[ref[1]] ? raw[ref[1]] : v;
-        }
-        const names = Object.keys(raw);
-        const g = (re) => names.filter((n) => re.test(n));
-        setT({
-          color: g(/^--(accent|fg|bg|border|status|presence)/),
-          space: g(/^--space-/),
-          radius: g(/^--radius-/),
-          type: g(/^--type-/),
-          shadow: g(/^--shadow-/),
-          lh: g(/^--lh-/),
-          vals,
-        });
       })
-      .catch(() => {});
+    ).then((res) => {
+      if (cancelled) return;
+      const got = res.filter(Boolean);
+      // Active DS first, rest in config order.
+      got.sort((a, b) => (a.name === activeName ? -1 : b.name === activeName ? 1 : 0));
+      setByDs(got);
+    });
     return () => {
       cancelled = true;
     };
-  }, [tokensRel]);
-  return t;
+  }, [sig, designRel, activeName]);
+  return byDs;
 }
 
 // Phase 12.3 (W2.1) — token picker as a Figma-style popover instead of a native
@@ -2960,7 +2978,7 @@ function useDsTokens(tokensRel) {
 // `kind='value'` a variable list (pretty name + resolved value, à la Figma's
 // variable picker). Picking commits `var(--token)`. Portals to <body> +
 // fixed-positions from the trigger rect so the panel's overflow never clips it.
-function TokenPopover({ kind, names, vals, current, onPick, label }) {
+function TokenPopover({ kind, groups, current, onPick, label }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
   const btnRef = useRef(null);
@@ -2968,6 +2986,9 @@ function TokenPopover({ kind, names, vals, current, onPick, label }) {
   const bound = typeof current === 'string' && /var\(\s*--/.test(current);
   const isOn = (n) => current === `var(${n})`;
   const pretty = (n) => n.replace(/^--/, '').replace(/-/g, ' ');
+  const gs = groups || [];
+  const total = gs.reduce((s, g) => s + (g.names?.length || 0), 0);
+  const showDsHeaders = gs.length > 1; // group by DS only when there's >1
 
   useEffect(() => {
     if (!open) return undefined;
@@ -3036,36 +3057,43 @@ function TokenPopover({ kind, names, vals, current, onPick, label }) {
                 maxHeight: pos.maxHeight,
               }}
             >
-              {!names.length ? (
+              {!total ? (
                 <div className="st-cp-pop-empty">No tokens for this property</div>
-              ) : kind === 'color' ? (
-                <div className="st-cp-pop-grid">
-                  {names.map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      className={`st-cp-pop-sw${isOn(n) ? ' is-on' : ''}`}
-                      style={{ background: vals?.[n] || 'transparent' }}
-                      title={`${n}  ${vals?.[n] || ''}`}
-                      aria-label={n}
-                      onClick={() => pick(n)}
-                    />
-                  ))}
-                </div>
               ) : (
-                <div className="st-cp-pop-list">
-                  {names.map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      className={`st-cp-pop-row${isOn(n) ? ' is-on' : ''}`}
-                      onClick={() => pick(n)}
-                    >
-                      <span className="st-cp-pop-name">{pretty(n)}</span>
-                      <span className="st-cp-pop-val">{vals?.[n] || ''}</span>
-                    </button>
-                  ))}
-                </div>
+                gs.map((g) => (
+                  <div className="st-cp-pop-group" key={g.ds}>
+                    {showDsHeaders ? <div className="st-cp-pop-ds">{g.ds}</div> : null}
+                    {kind === 'color' ? (
+                      <div className="st-cp-pop-grid">
+                        {g.names.map((n) => (
+                          <button
+                            key={`${g.ds}:${n}`}
+                            type="button"
+                            className={`st-cp-pop-sw${isOn(n) ? ' is-on' : ''}`}
+                            style={{ background: g.vals?.[n] || 'transparent' }}
+                            title={`${n}  ${g.vals?.[n] || ''}`}
+                            aria-label={n}
+                            onClick={() => pick(n)}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="st-cp-pop-list">
+                        {g.names.map((n) => (
+                          <button
+                            key={`${g.ds}:${n}`}
+                            type="button"
+                            className={`st-cp-pop-row${isOn(n) ? ' is-on' : ''}`}
+                            onClick={() => pick(n)}
+                          >
+                            <span className="st-cp-pop-name">{pretty(n)}</span>
+                            <span className="st-cp-pop-val">{g.vals?.[n] || ''}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))
               )}
             </div>,
             document.body
@@ -3083,8 +3111,15 @@ function CssKnobs({ el, cfg, onOptimistic }) {
   // WITH the designRoot prefix (`/.design/system/<ds>/colors_and_type.css`) —
   // `tokensCssRel` from config is DS-root-relative (no `.design/`), so prepend it.
   const _designRel = (cfg?.designRel || cfg?.designRoot || '.design').replace(/^\/+|\/+$/g, '');
-  const _tokRel = cssTokensRelFor(el.file, cfg);
-  const tokens = useDsTokens(_tokRel ? `${_designRel}/${_tokRel}` : '');
+  const _activeDs = activeDsNameFor(el.file, cfg);
+  // W3 — tokens from EVERY configured DS, active one first, so the popover can
+  // offer them grouped per design system.
+  const allDs = useAllDsTokens(cfg, _designRel, _activeDs);
+  // Build per-DS popover groups for one token family (color/space/radius/…).
+  const tokenGroups = (familyKey) =>
+    allDs
+      .map((d) => ({ ds: d.name, names: d[familyKey] || [], vals: d.vals }))
+      .filter((g) => g.names.length);
   const [status, setStatus] = useState({});
   const [open, setOpen] = useState({
     Layout: true,
@@ -3198,8 +3233,20 @@ function CssKnobs({ el, cfg, onOptimistic }) {
       const granular = opts.sides ? 1 : ev.shiftKey ? 10 : ev.altKey ? 0.1 : 1;
       last = Math.round((baseN + dx * granular) * 100) / 100;
       if (last < min) last = min;
+      const sides = sidesFor(ev);
+      // Live-update the dragged field AND, for a box-model multi-side scrub, the
+      // sibling box inputs so the whole pair / four-up move shows in the panel —
+      // not just the one being dragged (W2.2 feedback).
       if (input) input.value = String(last);
-      for (const p of sidesFor(ev)) optimistic(p, fmt(last));
+      if (opts.sides && sides.length > 1) {
+        const box = input?.closest('.st-cp-box');
+        for (const p of sides) {
+          if (p === prop) continue;
+          const sib = box?.querySelector(`.st-cp-boxv[aria-label="${p}"]`);
+          if (sib) sib.value = String(last);
+        }
+      }
+      for (const p of sides) optimistic(p, fmt(last));
     };
     const up = (ev) => {
       document.removeEventListener('pointermove', move);
@@ -3375,18 +3422,20 @@ function CssKnobs({ el, cfg, onOptimistic }) {
   );
 
   // token quick-pick — Figma-style POPOVER (W2.1) listing the DS variables for
-  // this property (name + resolved value); picking writes var(--token).
-  const tok = (prop, list) =>
-    list && list.length ? (
+  // this property (name + resolved value), grouped per design system (W3);
+  // picking writes var(--token). `familyKey` selects the token family.
+  const tok = (prop, familyKey) => {
+    const groups = tokenGroups(familyKey);
+    return groups.length ? (
       <TokenPopover
         kind="value"
-        names={list}
-        vals={tokens.vals}
+        groups={groups}
         current={authored[prop]}
         onPick={(v) => commit(prop, v)}
         label={`${prop} design token`}
       />
     ) : null;
+  };
 
   // free text input — raw value or var(--token), commits on blur/Enter
   const text = (prop) => (
@@ -3491,16 +3540,18 @@ function CssKnobs({ el, cfg, onOptimistic }) {
           />
         </span>
         {text(prop)}
-        {tokens.color && tokens.color.length ? (
-          <TokenPopover
-            kind="color"
-            names={tokens.color}
-            vals={tokens.vals}
-            current={authored[prop]}
-            onPick={(v) => commit(prop, v)}
-            label={`${prop} color token`}
-          />
-        ) : null}
+        {(() => {
+          const groups = tokenGroups('color');
+          return groups.length ? (
+            <TokenPopover
+              kind="color"
+              groups={groups}
+              current={authored[prop]}
+              onPick={(v) => commit(prop, v)}
+              label={`${prop} color token`}
+            />
+          ) : null;
+        })()}
       </>
     );
   };
@@ -3588,7 +3639,7 @@ function CssKnobs({ el, cfg, onOptimistic }) {
           {row('flex-direction', csel('flex-direction', CSS_FLEX_DIR))}
           {row('align-items', csel('align-items', CSS_ALIGN))}
           {row('justify-content', csel('justify-content', CSS_JUSTIFY))}
-          {row('gap', num('gap', tokens.space))}
+          {row('gap', num('gap', 'space'))}
         </>
       )}
 
@@ -3597,9 +3648,9 @@ function CssKnobs({ el, cfg, onOptimistic }) {
         <>
           {row('font-family', csel('font-family', CSS_FONTS))}
           {row('color', color('color'))}
-          {row('font-size', num('font-size', tokens.type))}
+          {row('font-size', num('font-size', 'type'))}
           {row('font-weight', csel('font-weight', CSS_WEIGHTS))}
-          {row('line-height', num('line-height', tokens.lh))}
+          {row('line-height', num('line-height', 'lh'))}
           {row('letter-spacing', num('letter-spacing', null, { min: -Infinity }))}
           {row(
             'text-align',
@@ -3671,7 +3722,7 @@ function CssKnobs({ el, cfg, onOptimistic }) {
               border-radius
             </label>
             <div className="st-cp-ctl">
-              {num('border-radius', tokens.radius)}
+              {num('border-radius', 'radius')}
               <button
                 type="button"
                 className={`st-cp-split${split ? ' is-on' : ''}`}
@@ -3728,7 +3779,7 @@ function CssKnobs({ el, cfg, onOptimistic }) {
             </div>,
             provOf('border-width')
           )}
-          {row('box-shadow', tok('box-shadow', tokens.shadow) || text('box-shadow'))}
+          {row('box-shadow', tok('box-shadow', 'shadow') || text('box-shadow'))}
           {row(
             'opacity',
             <div className="st-cp-num">
