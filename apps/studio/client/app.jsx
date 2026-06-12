@@ -604,8 +604,11 @@ function usePanelSize(storeKey, { min, max, def }) {
   return { w, setW, min, max, def };
 }
 
-function PanelGrip({ label, size, onPointerDown, active }) {
+function PanelGrip({ label, size, onPointerDown, active, dir = 'ltr' }) {
   const { w, setW, min, max, def } = size;
+  // `dir` is grip-relative: 'ltr' (left panel) → ArrowRight widens; 'rtl'
+  // (right dock) → ArrowRight narrows, since the seam moves toward the panel.
+  const grow = dir === 'rtl' ? -1 : 1;
   return (
     <div
       className={'st-grip' + (active ? ' is-active' : '')}
@@ -620,15 +623,12 @@ function PanelGrip({ label, size, onPointerDown, active }) {
       onDoubleClick={() => setW(def)}
       onKeyDown={(e) => {
         const step = e.shiftKey ? 24 : 8;
-        // "grow" is grip-relative: ArrowRight widens a left panel and narrows a
-        // right one — the caller encodes that by inverting step via data-dir.
-        const dir = e.currentTarget.dataset.dir === 'rtl' ? -1 : 1;
         if (e.key === 'ArrowRight') {
           e.preventDefault();
-          setW((v) => v + step * dir);
+          setW((v) => v + step * grow);
         } else if (e.key === 'ArrowLeft') {
           e.preventDefault();
-          setW((v) => v - step * dir);
+          setW((v) => v - step * grow);
         } else if (e.key === 'Home') {
           e.preventDefault();
           setW(min);
@@ -637,7 +637,6 @@ function PanelGrip({ label, size, onPointerDown, active }) {
           setW(max);
         }
       }}
-      data-dir={label.includes('side panel') ? 'rtl' : 'ltr'}
     >
       <svg className="st-grip-dots" viewBox="0 0 6 18" aria-hidden="true">
         <circle cx="3" cy="3" r="1.1" fill="currentColor" />
@@ -2059,133 +2058,16 @@ function ViewDropdown({ panels, onToggle, onClose, onZoom, hasCanvas }) {
 }
 
 // Help dropdown — cheat sheet · deep help · tour · what's new.
-function HelpDropdown({ onAction, onClose }) {
+// Shared menubar dropdown — File / Edit / Selection / Tools / Help all render
+// the identical {id,label,shortcut,sep?,disabled?} list over the same button
+// skeleton, differing only in aria-label, left offset, and an optional header.
+// (ViewDropdown stays separate — its checkbox/phase/zoom-op rows genuinely
+// diverge.) Per the /flow:done simplifier pass — collapsed 5 near-dupes.
+function DropdownMenu({ label, left, header, items, onAction, onClose }) {
   useDropdownClose(onClose);
-  const items = [
-    { id: 'shortcuts', label: 'Keyboard shortcuts', shortcut: '?' },
-    { id: 'help', label: 'Help · commands & flows', shortcut: 'F1' },
-    { sep: true },
-    { id: 'tour', label: 'Take the tour', shortcut: '' },
-    { id: 'whatsnew', label: "What's new", shortcut: '' },
-  ];
   return (
-    <div className="st-dropdown" role="menu" aria-label="Help" style={{ left: 320 }}>
-      {items.map((it, i) =>
-        it.sep ? (
-          <div key={'s' + i} className="st-dd-sep" />
-        ) : (
-          <button
-            key={it.id}
-            type="button"
-            role="menuitem"
-            className="st-dd-item"
-            onClick={() => {
-              onAction(it.id);
-              onClose();
-            }}
-          >
-            <span className="st-dd-lead">
-              <span className="st-dd-check" />
-              <span>{it.label}</span>
-            </span>
-            {it.shortcut ? <Kbd>{it.shortcut}</Kbd> : null}
-          </button>
-        )
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Phase 5.1 — Selection + Tools dropdowns (mirror ViewDropdown shape).
-
-function SelectionDropdown({ onAction, onClose }) {
-  useDropdownClose(onClose);
-  const items = [
-    { id: 'deselect-all', label: 'Deselect all', shortcut: 'Esc' },
-    { id: 'select-all-annotations', label: 'Select all annotations', shortcut: '⌘ ⇧ A' },
-  ];
-  return (
-    <div className="st-dropdown" role="menu" aria-label="Selection" style={{ left: 214 }}>
-      {items.map((it) => (
-        <button
-          key={it.id}
-          type="button"
-          role="menuitem"
-          className="st-dd-item"
-          onClick={() => {
-            onAction(it.id);
-            onClose();
-          }}
-        >
-          <span className="st-dd-lead">
-            <span className="st-dd-check" />
-            <span>{it.label}</span>
-          </span>
-          <Kbd>{it.shortcut}</Kbd>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function ToolsDropdown({ onAction, onClose }) {
-  useDropdownClose(onClose);
-  // Mirrors DEFAULT_TOOLS in apps/studio/use-tool-mode.tsx —
-  // kept in sync by hand because the menubar lives in the dev-server shell
-  // (no shared bundle with the canvas iframes).
-  const tools = [
-    { id: 'move', label: 'Move', shortcut: 'V' },
-    { id: 'hand', label: 'Hand', shortcut: 'H' },
-    { id: 'comment', label: 'Comment', shortcut: 'C' },
-    { id: 'pen', label: 'Pen', shortcut: 'B' },
-    { id: 'rect', label: 'Rect', shortcut: 'R' },
-    { id: 'ellipse', label: 'Ellipse', shortcut: 'O' },
-    { id: 'sticky', label: 'Sticky', shortcut: 'N' },
-    { id: 'arrow', label: 'Arrow', shortcut: 'A' },
-    { id: 'text', label: 'Text', shortcut: 'T' },
-    { id: 'eraser', label: 'Eraser', shortcut: 'E' },
-  ];
-  return (
-    <div className="st-dropdown" role="menu" aria-label="Tools" style={{ left: 290 }}>
-      <div className="st-dd-hd">Tool palette</div>
-      {tools.map((t) => (
-        <button
-          key={t.id}
-          type="button"
-          role="menuitem"
-          className="st-dd-item"
-          onClick={() => {
-            onAction(t.id);
-            onClose();
-          }}
-        >
-          <span className="st-dd-lead">
-            <span className="st-dd-check" />
-            <span>{t.label}</span>
-          </span>
-          <Kbd>{t.shortcut}</Kbd>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// Plan C follow-up — File + Edit menus, previously inert. Both dispatch to real
-// shell flows (File) or the in-canvas undo stack / selection bridges (Edit).
-function FileDropdown({ onAction, onClose, hasCanvas }) {
-  useDropdownClose(onClose);
-  const items = [
-    // Bare N — the browser reserves ⌘N (New Window) and never delivers it.
-    { id: 'new', label: 'New canvas…', shortcut: 'N' },
-    { id: 'export', label: 'Export…', shortcut: '⇧⌘E' },
-    { id: 'handoff', label: 'Handoff to production', shortcut: '⇧⌘H' },
-    { sep: true },
-    { id: 'reload', label: 'Reload canvas', shortcut: '⌘R', disabled: !hasCanvas },
-    { id: 'close', label: 'Close canvas', shortcut: '', disabled: !hasCanvas },
-  ];
-  return (
-    <div className="st-dropdown" role="menu" aria-label="File" style={{ left: 40 }}>
+    <div className="st-dropdown" role="menu" aria-label={label} style={{ left }}>
+      {header ? <div className="st-dd-hd">{header}</div> : null}
       {items.map((it, i) =>
         it.sep ? (
           <div key={'s' + i} className="st-dd-sep" />
@@ -2214,40 +2096,103 @@ function FileDropdown({ onAction, onClose, hasCanvas }) {
   );
 }
 
-function EditDropdown({ onAction, onClose }) {
-  useDropdownClose(onClose);
-  const items = [
-    { id: 'undo', label: 'Undo', shortcut: '⌘Z' },
-    { id: 'redo', label: 'Redo', shortcut: '⇧⌘Z' },
-    { sep: true },
-    { id: 'deselect-all', label: 'Deselect all', shortcut: 'Esc' },
-    { id: 'select-all-annotations', label: 'Select all annotations', shortcut: '⇧⌘A' },
-  ];
+function HelpDropdown({ onAction, onClose }) {
   return (
-    <div className="st-dropdown" role="menu" aria-label="Edit" style={{ left: 90 }}>
-      {items.map((it, i) =>
-        it.sep ? (
-          <div key={'s' + i} className="st-dd-sep" />
-        ) : (
-          <button
-            key={it.id}
-            type="button"
-            role="menuitem"
-            className="st-dd-item"
-            onClick={() => {
-              onAction(it.id);
-              onClose();
-            }}
-          >
-            <span className="st-dd-lead">
-              <span className="st-dd-check" />
-              <span>{it.label}</span>
-            </span>
-            {it.shortcut ? <Kbd>{it.shortcut}</Kbd> : null}
-          </button>
-        )
-      )}
-    </div>
+    <DropdownMenu
+      label="Help"
+      left={320}
+      onAction={onAction}
+      onClose={onClose}
+      items={[
+        { id: 'shortcuts', label: 'Keyboard shortcuts', shortcut: '?' },
+        { id: 'help', label: 'Help · commands & flows', shortcut: 'F1' },
+        { sep: true },
+        { id: 'tour', label: 'Take the tour' },
+        { id: 'whatsnew', label: "What's new" },
+      ]}
+    />
+  );
+}
+
+function SelectionDropdown({ onAction, onClose }) {
+  return (
+    <DropdownMenu
+      label="Selection"
+      left={214}
+      onAction={onAction}
+      onClose={onClose}
+      items={[
+        { id: 'deselect-all', label: 'Deselect all', shortcut: 'Esc' },
+        { id: 'select-all-annotations', label: 'Select all annotations', shortcut: '⌘ ⇧ A' },
+      ]}
+    />
+  );
+}
+
+function ToolsDropdown({ onAction, onClose }) {
+  // Mirrors DEFAULT_TOOLS in apps/studio/use-tool-mode.tsx — kept in sync by
+  // hand because the menubar lives in the dev-server shell (no shared bundle
+  // with the canvas iframes).
+  return (
+    <DropdownMenu
+      label="Tools"
+      left={290}
+      header="Tool palette"
+      onAction={onAction}
+      onClose={onClose}
+      items={[
+        { id: 'move', label: 'Move', shortcut: 'V' },
+        { id: 'hand', label: 'Hand', shortcut: 'H' },
+        { id: 'comment', label: 'Comment', shortcut: 'C' },
+        { id: 'pen', label: 'Pen', shortcut: 'B' },
+        { id: 'rect', label: 'Rect', shortcut: 'R' },
+        { id: 'ellipse', label: 'Ellipse', shortcut: 'O' },
+        { id: 'sticky', label: 'Sticky', shortcut: 'N' },
+        { id: 'arrow', label: 'Arrow', shortcut: 'A' },
+        { id: 'text', label: 'Text', shortcut: 'T' },
+        { id: 'eraser', label: 'Eraser', shortcut: 'E' },
+      ]}
+    />
+  );
+}
+
+// Plan C follow-up — File + Edit menus, previously inert. Both dispatch to real
+// shell flows (File) or the in-canvas undo stack / selection bridges (Edit).
+function FileDropdown({ onAction, onClose, hasCanvas }) {
+  return (
+    <DropdownMenu
+      label="File"
+      left={40}
+      onAction={onAction}
+      onClose={onClose}
+      items={[
+        // Bare N — the browser reserves ⌘N (New Window) and never delivers it.
+        { id: 'new', label: 'New canvas…', shortcut: 'N' },
+        { id: 'export', label: 'Export…', shortcut: '⇧⌘E' },
+        { id: 'handoff', label: 'Handoff to production', shortcut: '⇧⌘H' },
+        { sep: true },
+        { id: 'reload', label: 'Reload canvas', shortcut: '⌘R', disabled: !hasCanvas },
+        { id: 'close', label: 'Close canvas', disabled: !hasCanvas },
+      ]}
+    />
+  );
+}
+
+function EditDropdown({ onAction, onClose }) {
+  return (
+    <DropdownMenu
+      label="Edit"
+      left={90}
+      onAction={onAction}
+      onClose={onClose}
+      items={[
+        { id: 'undo', label: 'Undo', shortcut: '⌘Z' },
+        { id: 'redo', label: 'Redo', shortcut: '⇧⌘Z' },
+        { sep: true },
+        { id: 'deselect-all', label: 'Deselect all', shortcut: 'Esc' },
+        { id: 'select-all-annotations', label: 'Select all annotations', shortcut: '⇧⌘A' },
+      ]}
+    />
   );
 }
 
@@ -4680,6 +4625,7 @@ function App() {
           {(inspectorOpen || commentsPanelOpen) && (
             <PanelGrip
               label="Resize side panel"
+              dir="rtl"
               size={rpSize}
               active={dragSide === 'rp'}
               onPointerDown={(e) => {
