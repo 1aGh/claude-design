@@ -2,23 +2,66 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "in-canvas-token-editor",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "A real token editor, right in the canvas",
+      "summary": "The Inspector's CSS tab grew into a Figma-style design-token editor. Numeric fields carry a property glyph and scrub left/right to change; spacing fields take Webflow-style modifiers. Any value can bind to a design-system Variable through a searchable popover that shows where the token is defined — and it resolves the right system in multi-DS projects. One unified colour picker now drives every colour field, fill and border alike, with Custom and Variables tabs. Values you've set stand out while untouched rows recede, so the diff is scannable at a glance.",
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": ".st-rp-tabs",
+          "title": "Inspect · Layers · CSS",
+          "body": "⌘-click an element, open the right panel (press I), and switch to CSS. The panel reads and writes the maude design system itself — not a generic :root.",
+          "placement": "left"
+        },
+        {
+          "target": ".st-cp-row",
+          "title": "Figma-style property rows",
+          "body": "Each row leads with a property glyph. Drag a numeric field left or right to scrub the value, or just type it; spacing fields accept Webflow-style modifiers. Edits commit on blur and write back to the source.",
+          "placement": "left"
+        },
+        {
+          "target": ".st-cp-tokbtn-glyph",
+          "title": "Bind to a design token",
+          "body": "Click a field's token chip to open the Variables popover — Custom for a literal value, Variables for the design system's tokens. Search to filter the list; each Variable shows its provenance, so you know exactly where it's defined.",
+          "placement": "left"
+        },
+        {
+          "target": ".st-css-panel",
+          "title": "One colour picker, everywhere",
+          "body": "Every colour field — fill and border — opens the same unified picker, with a Custom SV/hue surface and a Variables tab. No more two competing popovers.",
+          "placement": "left"
+        },
+        {
+          "target": ".st-cp-sechd-row",
+          "title": "Scannable, resettable",
+          "body": "Values you've set stand out; untouched rows recede so the difference from the default reads at a glance. The leading dot on each row carries both its status and its reset.",
+          "placement": "left"
+        }
+      ]
+    },
+    {
       "id": "in-canvas-direct-edit",
       "version": null,
       "date": null,
       "kind": "feature",
-      "title": "Edit the canvas directly — CSS, text, layers",
-      "summary": "⌘-click an element and tweak its CSS right in the Inspector — grouped knobs for spacing, type and color (with swatches) — and the change writes straight back to the source. Double-click any text to retype it in place. The Layers tab is now a browsable tree: click a layer to select it, hover to highlight. Small tweaks no longer need an AI round-trip.",
+      "title": "Edit the canvas directly — text & layers",
+      "summary": "Double-click any text to retype it in place — the new copy is written straight back to the source, no AI round-trip. The Layers tab is a browsable tree with type icons: click a layer to select it in the canvas, hover to highlight, and toggle any layer's visibility from its row. Together with the CSS token editor, small tweaks no longer need a command.",
       "surface": "design-ui",
       "tour": [
         {
-          "target": ".st-css-panel",
-          "title": "Editable CSS",
-          "body": "Open the CSS tab, change a value (try border-radius or a colour swatch), and it's written to the source on blur — no AI round-trip."
+          "target": ".st-layer-label",
+          "title": "Browsable layers",
+          "body": "The Layers tab lists the artboard's elements with type icons — click one to select it in the canvas, hover to highlight.",
+          "placement": "left"
         },
         {
-          "target": ".st-layer--row",
-          "title": "Browsable layers",
-          "body": "The Layers tab lists the artboard's elements — click one to select it in the canvas, hover to highlight."
+          "target": ".st-layer-eye",
+          "title": "Toggle visibility",
+          "body": "The eye on each layer row hides or shows that element while you work — handy for seeing what sits underneath.",
+          "placement": "left"
         }
       ]
     },
