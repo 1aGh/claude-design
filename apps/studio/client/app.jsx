@@ -4,6 +4,7 @@
 // Universal — no project tokens needed; styling lives in client/styles/.
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 
 // Trusted tool→cursor resolver (shares the single TOOL_CURSORS source with the
@@ -2905,7 +2906,15 @@ function cssTokensRelFor(file, cfg) {
 // Fetch + parse the DS token names from the served tokens CSS (main origin),
 // grouped by family. Empty groups when the file is missing/unreachable.
 function useDsTokens(tokensRel) {
-  const [t, setT] = useState({ color: [], space: [], radius: [], type: [], shadow: [], lh: [] });
+  const [t, setT] = useState({
+    color: [],
+    space: [],
+    radius: [],
+    type: [],
+    shadow: [],
+    lh: [],
+    vals: {},
+  });
   useEffect(() => {
     if (!tokensRel) return undefined;
     let cancelled = false;
@@ -2913,7 +2922,20 @@ function useDsTokens(tokensRel) {
       .then((r) => (r.ok ? r.text() : ''))
       .then((css) => {
         if (cancelled) return;
-        const names = [...new Set([...css.matchAll(/(--[a-z0-9-]+)\s*:/gi)].map((m) => m[1]))];
+        // Phase 12.3 (W2.1) — parse name→value too, so the token POPOVER can
+        // render real swatches (color) + resolved values (number). Resolve a
+        // single level of `var(--x)` aliasing (the common DS shape).
+        const raw = {};
+        for (const m of css.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;}]+)/gi)) {
+          if (!(m[1] in raw)) raw[m[1]] = m[2].trim();
+        }
+        const vals = {};
+        for (const name of Object.keys(raw)) {
+          const v = raw[name];
+          const ref = /^var\(\s*(--[a-z0-9-]+)\s*\)$/i.exec(v);
+          vals[name] = ref && raw[ref[1]] ? raw[ref[1]] : v;
+        }
+        const names = Object.keys(raw);
         const g = (re) => names.filter((n) => re.test(n));
         setT({
           color: g(/^--(accent|fg|bg|border|status|presence)/),
@@ -2922,6 +2944,7 @@ function useDsTokens(tokensRel) {
           type: g(/^--type-/),
           shadow: g(/^--shadow-/),
           lh: g(/^--lh-/),
+          vals,
         });
       })
       .catch(() => {});
@@ -2930,6 +2953,126 @@ function useDsTokens(tokensRel) {
     };
   }, [tokensRel]);
   return t;
+}
+
+// Phase 12.3 (W2.1) — token picker as a Figma-style popover instead of a native
+// <select>. `kind='color'` renders a swatch grid (resolved DS color values);
+// `kind='value'` a variable list (pretty name + resolved value, à la Figma's
+// variable picker). Picking commits `var(--token)`. Portals to <body> +
+// fixed-positions from the trigger rect so the panel's overflow never clips it.
+function TokenPopover({ kind, names, vals, current, onPick, label }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState(null);
+  const btnRef = useRef(null);
+  const popRef = useRef(null);
+  const bound = typeof current === 'string' && /var\(\s*--/.test(current);
+  const isOn = (n) => current === `var(${n})`;
+  const pretty = (n) => n.replace(/^--/, '').replace(/-/g, ' ');
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const place = () => {
+      const r = btnRef.current?.getBoundingClientRect();
+      if (!r) return;
+      const W = 224;
+      const MAXH = 300;
+      let left = Math.min(r.right - W, window.innerWidth - W - 8);
+      if (left < 8) left = 8;
+      const below = window.innerHeight - r.bottom;
+      const top = below > MAXH + 8 ? r.bottom + 4 : Math.max(8, r.top - MAXH - 4);
+      setPos({ left, top, width: W, maxHeight: MAXH });
+    };
+    place();
+    const onDoc = (e) => {
+      if (popRef.current?.contains(e.target) || btnRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    const dismiss = () => setOpen(false);
+    document.addEventListener('pointerdown', onDoc, true);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', dismiss);
+    document.addEventListener('scroll', dismiss, true);
+    return () => {
+      document.removeEventListener('pointerdown', onDoc, true);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', dismiss);
+      document.removeEventListener('scroll', dismiss, true);
+    };
+  }, [open]);
+
+  const pick = (n) => {
+    onPick(`var(${n})`);
+    setOpen(false);
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        ref={btnRef}
+        className={`st-cp-tokbtn${bound ? ' is-bound' : ''}`}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label={label || 'pick a design token'}
+        title="design tokens"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="st-cp-tokbtn-glyph" aria-hidden="true" />
+      </button>
+      {open && pos
+        ? createPortal(
+            <div
+              ref={popRef}
+              className="st-cp-pop"
+              role="dialog"
+              aria-label={label || 'design tokens'}
+              style={{
+                left: pos.left,
+                top: pos.top,
+                width: pos.width,
+                maxHeight: pos.maxHeight,
+              }}
+            >
+              {!names.length ? (
+                <div className="st-cp-pop-empty">No tokens for this property</div>
+              ) : kind === 'color' ? (
+                <div className="st-cp-pop-grid">
+                  {names.map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      className={`st-cp-pop-sw${isOn(n) ? ' is-on' : ''}`}
+                      style={{ background: vals?.[n] || 'transparent' }}
+                      title={`${n}  ${vals?.[n] || ''}`}
+                      aria-label={n}
+                      onClick={() => pick(n)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="st-cp-pop-list">
+                  {names.map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      className={`st-cp-pop-row${isOn(n) ? ' is-on' : ''}`}
+                      onClick={() => pick(n)}
+                    >
+                      <span className="st-cp-pop-name">{pretty(n)}</span>
+                      <span className="st-cp-pop-val">{vals?.[n] || ''}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>,
+            document.body
+          )
+        : null}
+    </>
+  );
 }
 
 function CssKnobs({ el, cfg, onOptimistic }) {
@@ -3180,24 +3323,18 @@ function CssKnobs({ el, cfg, onOptimistic }) {
     </select>
   );
 
-  // token quick-pick — writes var(--token); resets to placeholder after pick
+  // token quick-pick — Figma-style POPOVER (W2.1) listing the DS variables for
+  // this property (name + resolved value); picking writes var(--token).
   const tok = (prop, list) =>
     list && list.length ? (
-      <select
-        className="st-cp-nsel st-cp-nsel--tok"
-        aria-label={`${prop} design token`}
-        value=""
-        onChange={(e) => {
-          if (e.target.value) commit(prop, `var(${e.target.value})`);
-        }}
-      >
-        <option value="">token…</option>
-        {list.map((tk) => (
-          <option key={tk} value={tk}>
-            {tk}
-          </option>
-        ))}
-      </select>
+      <TokenPopover
+        kind="value"
+        names={list}
+        vals={tokens.vals}
+        current={authored[prop]}
+        onPick={(v) => commit(prop, v)}
+        label={`${prop} design token`}
+      />
     ) : null;
 
   // free text input — raw value or var(--token), commits on blur/Enter
@@ -3302,7 +3439,16 @@ function CssKnobs({ el, cfg, onOptimistic }) {
           />
         </span>
         {text(prop)}
-        {tok(prop, tokens.color)}
+        {tokens.color && tokens.color.length ? (
+          <TokenPopover
+            kind="color"
+            names={tokens.color}
+            vals={tokens.vals}
+            current={authored[prop]}
+            onPick={(v) => commit(prop, v)}
+            label={`${prop} color token`}
+          />
+        ) : null}
       </>
     );
   };
