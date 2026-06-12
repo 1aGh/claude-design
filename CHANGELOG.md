@@ -1,5 +1,44 @@
 # @1agh/maude
 
+## 0.30.0
+
+### Minor Changes
+
+- c4d2d31: Canvas annotations — FigJam-parity v3 + bidirectional AI loop (DDR-100)
+
+  The strokes layer grows from "draw and move" to a full diagramming surface, and becomes machine-readable/writable for AI tooling.
+
+  - **Multi-select that works** — marquee/hull drag moves the whole selection (root-cause fix: a stale ref broke every `contains()` path since Phase 5.1), ⌘G/⌘⇧G groups (Excalidraw tag-array model), ⌘D + Alt-drag duplicate, OS-clipboard copy/paste, z-order `[` `]`, align/distribute cluster, edge/center snapping with smart guides.
+  - **Shapes, properly** — rotation via corner hover zones (relative to grab, magnetic cardinals, Shift 15°), n/e/s/w edge resize, dimension-match quotas against neighbours with a live W×H label, anchored text in every closed shape (rect/ellipse/diamond/triangle), a toolbar shape-kind switcher that converts in place (id-preserving — text + binds follow), screen-constant selection chrome offset, one undo record per gesture, and anchor-fixed resize on rotated objects.
+  - **Connectors** — connection dots on selected shapes draw bound arrows; non-pinned ends auto re-route to face the target; bound curves exit perpendicular to the host side (cubic exit-normals) with sleeker heads. Legacy unbound arrows stay byte-identical.
+  - **Section tool** (⇧S) — named region frames that carry their content when dragged.
+  - **AI loop** — `maude design annotate` writes sticky/text/shape/arrow/section ops or whole auto-laid-out flow diagrams (`--flow`) through the live server; `read-annotations` v2 returns z/groups/author/binds + `--graph` nodes/edges with W3C-style artboard anchoring. AI-authored strokes carry `data-author="ai"`.
+  - Right-click selects + opens an annotation context menu (single menu — the shell canvas menu yields); section/sticky/shape editors share the edit-mode text toolbar.
+
+- af300e8: Hub sync — cold-start data safety + honest status (DDR-102)
+
+  Booting two checkouts/machines linked to the same hub in any order can no longer lose local canvas work, and linked-mode status stops lying about what's actually syncing. Driven by a production incident where one peer's day of mascot work was silently overwritten by another's stale version, and ~65 of 83 canvases never synced behind a permission-denied storm.
+
+  - **Never lose bytes on cold start** — a per-machine content-hash journal tells a clean catch-up apart from genuine divergence. A clean catch-up fast-forwards silently; real divergence snapshots **both** versions to `_history/<slug>/` first, then keeps the newer one (`/design:rollback <canvas>` restores the other). The pre-overwrite snapshot is **fail-closed**: if `_history/` can't be written, the overwrite is refused and local is kept. Comments union-merge by id — never lost in either direction.
+  - **One WebSocket per peer** — every canvas's provider is multiplexed over a single shared socket instead of one per canvas, so booting a large project no longer floods the hub with a connection burst.
+  - **Honest status** — `maude design status` and the studio banner now report per-canvas state (synced / pending / auth-rejected) with the rejection reason, conflict winners + snapshot timestamps, and a recovery hint; `lastSyncAt` reflects real sync activity, and the boot summary prints settled counts (`81/83 synced · 2 auth-rejected`), not a premature "all syncing".
+  - **Smarter auth handling** — the hub sends distinct rejection reasons over the wire (scope / invalid token / rate limit) and splits its rate limit so a legitimate multi-peer boot can't be throttled as if it were brute force (valid tokens 600/min per label via `HUB_CONN_RATE_LIMIT`; invalid attempts 100/min per IP). The peer classifies rejections, aggregates them into one console warning with a reason-correct hint, and stops retrying permanent failures.
+  - Re-linking a hub on a machine now warns that it replaces the stored token for every project linked to that hub.
+
+  Note: the hub image (`ghcr.io/1agh/maude-hub`) must be redeployed to pick up the rate-limit + rejection-reason changes; peer-side data safety applies regardless.
+
+- 48e7431: Studio chrome polish — DS-parity + behavioral pass across the canvas browser
+
+  A specimen-by-specimen audit of the studio shell against the maude design system, fixing both look and behavior, each change verified live via agent-browser + the full design smoke (89/89 styled) and the studio test suite (1471 pass).
+
+  - **Resizable panels** — drag the file tree and the right dock to resize (8px grip, accent seam on hover/focus/drag), or nudge with the arrow keys (Home/End to min/max, double-click resets); widths persist per panel. Keyboard-operable + `role="separator"` with `aria-value*`.
+  - **Loading skeleton** — a calm `.skel` pulse card shows on the stage while a canvas compiles, cleared by the iframe's `loaded` message (180ms appearance delay so warm canvases never flash it).
+  - **Keyboard shortcuts** — a new `?` cheat-sheet (the DS shortcuts-overlay: four dense mono-headed columns, 24 real bindings); `F1` keeps the deep Help modal; Help is now a dropdown. Collisions fixed: Inspector moved to `⌘⇧I` (bare `I` stays the canvas highlighter), New canvas is bare `N` (the browser reserves `⌘N`), and `⌘⇧E`/`⌘⇧H` are now bound. `⌘R`/`⌘⇧I/M/E/H` forwarded from the canvas iframe so they work wherever focus is — `⌘R` with canvas focus no longer browser-reloads the whole shell.
+  - **Presence** — collaborator + agent cursors match the design system: the plain triangle pointer glyph, hue pill label (mono, dark text), and the agent rides `--presence-agent` exclusively (human peer hues now exclude the agent + accent bands so attribution is unambiguous).
+  - **Annotations snap to the dot grid** — drags fall back to the 24px lattice per-axis when no smart-guide candidate wins; `⌘` still suppresses.
+  - **Menubar truth pass** — View ▸ Layers and View ▸ Zoom (In/Out/Fit/Actual) are wired to the live viewport (were disabled as "Phase 4/12" after they shipped); File ▸ Close canvas added; empty shortcut pills hidden; dropdowns layer above the sync banner.
+  - **Consistency** — unified focus rings (the DS focus recipe), styled `[data-tip]` tooltips replacing native `title=`, thin scrollbars, the DS selection-handle recipe, Inter/Inter Tight loaded, and a `127.0.0.1` `frame-ancestors` fix so opening the shell via the IP no longer blanks every canvas iframe.
+
 ## 0.29.0
 
 ### Minor Changes

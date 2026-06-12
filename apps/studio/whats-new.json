@@ -3,8 +3,8 @@
   "entries": [
     {
       "id": "in-canvas-token-editor",
-      "version": null,
-      "date": null,
+      "version": "0.30.0",
+      "date": "2026-06-12",
       "kind": "feature",
       "title": "A real token editor, right in the canvas",
       "summary": "The Inspector's CSS tab grew into a Figma-style design-token editor. Numeric fields carry a property glyph and scrub left/right to change; spacing fields take Webflow-style modifiers. Any value can bind to a design-system Variable through a searchable popover that shows where the token is defined — and it resolves the right system in multi-DS projects. One unified colour picker now drives every colour field, fill and border alike, with Custom and Variables tabs. Values you've set stand out while untouched rows recede, so the diff is scannable at a glance.",
@@ -58,8 +58,8 @@
     },
     {
       "id": "in-canvas-direct-edit",
-      "version": null,
-      "date": null,
+      "version": "0.30.0",
+      "date": "2026-06-12",
       "kind": "feature",
       "title": "Edit the canvas directly — text & layers",
       "summary": "Double-click any text to retype it in place — the new copy is written straight back to the source, no AI round-trip. The Layers tab is a browsable tree with type icons: click a layer to select it in the canvas, hover to highlight, and toggle any layer's visibility from its row. Together with the CSS token editor, small tweaks no longer need a command.",
@@ -87,8 +87,8 @@
     },
     {
       "id": "studio-chrome-polished-end-to-end",
-      "version": null,
-      "date": null,
+      "version": "0.30.0",
+      "date": "2026-06-12",
       "kind": "feature",
       "title": "Studio chrome, polished end to end",
       "summary": "The whole browser feels hand-finished now. Drag the file and inspector panels to resize them (or nudge with the arrow keys — your widths are remembered), watch a calm skeleton while a canvas compiles, and press ? for a full keyboard-shortcuts cheat sheet. Collaborator cursors and Claude's own cursor now match the design system, annotations snap to the dot grid as you drag, and focus rings, tooltips and scrollbars are consistent throughout. The View menu's Layers and Zoom are wired up, and a shortcut clash is gone — the inspector is ⌘⇧I, so I stays free for the canvas highlighter.",
@@ -96,8 +96,8 @@
     },
     {
       "id": "hub-sync-cold-start-safety",
-      "version": null,
-      "date": null,
+      "version": "0.30.0",
+      "date": "2026-06-12",
       "kind": "feature",
       "title": "Hub sync that can't eat your work",
       "summary": "Boot two machines or checkouts linked to the same hub in any order — your local canvas work is safe. When both sides changed the same canvas, Maude keeps a copy of each, takes the newer one, and tells you exactly how to bring back the other; a clean catch-up just updates quietly. The sync status is honest now too: you can see which canvases are synced, pending, or rejected, and why.",
@@ -105,8 +105,8 @@
     },
     {
       "id": "canvas-annotations-figjam-v3",
-      "version": null,
-      "date": null,
+      "version": "0.30.0",
+      "date": "2026-06-12",
       "kind": "feature",
       "title": "Annotations grew up: diagram on the canvas",
       "summary": "Marquee-select strokes and just drag them, group with ⌘G, copy/paste, align and reorder. Shapes rotate (hover near a corner), resize from edges with size-matching guides, hold text (double-click any shape), and switch kind — square, circle, diamond, triangle — right from the toolbar. Arrows snap to shapes and re-route as you move things, and the new Section tool (⇧S) frames a region that moves with its content. AI tools can read the board and draw on it too.",
