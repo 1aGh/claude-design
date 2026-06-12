@@ -728,6 +728,15 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 /* the floating popover (portalled to body, fixed-positioned) */
 .st-cp-pop { position: fixed; z-index: 1000; overflow-y: auto; background: var(--bg-2); border: 1px solid var(--border-default); border-radius: var(--radius-md); box-shadow: var(--shadow-md); padding: var(--space-2); }
 .st-cp-pop-empty { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); padding: var(--space-2); }
+/* #4 — colour popover tabs (Custom picker · Variables list) */
+.st-cp-poptabs { display: flex; border-bottom: 1px solid var(--border-subtle); margin: calc(-1 * var(--space-2)) calc(-1 * var(--space-2)) var(--space-2); }
+.st-cp-poptab { flex: 1; appearance: none; border: 0; background: transparent; cursor: pointer; font-family: var(--font-body); font-size: var(--type-xs); color: var(--fg-2); padding: var(--space-3); border-bottom: 2px solid transparent; }
+.st-cp-poptab.is-active { color: var(--fg-0); border-bottom-color: var(--accent); }
+.st-cp-poptab:hover:not(.is-active) { color: var(--fg-1); }
+.st-cp-custcol { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-1); }
+.st-cp-custcol-pick { position: relative; display: block; height: 76px; border-radius: var(--radius-sm); border: 1px solid var(--border-default); overflow: hidden; cursor: pointer; }
+.st-cp-custcol-sw { position: absolute; inset: 0; }
+.st-cp-custcol-pick input[type="color"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }
 /* W3 — per-design-system grouping. The DS name labels each group when >1 DS. */
 .st-cp-pop-group + .st-cp-pop-group { margin-top: var(--space-2); }
 .st-cp-pop-ds { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--fg-2); padding: 2px var(--space-1) 4px; position: sticky; top: 0; background: var(--bg-1); }

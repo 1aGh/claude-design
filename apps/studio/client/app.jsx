@@ -3021,6 +3021,48 @@ function useAllDsTokens(cfg, designRel, activeName) {
   return byDs;
 }
 
+// Phase 12.3 (#4) — the "Custom" tab of the colour popover: a normal colour
+// input (native OS picker via a large swatch) + a hex/value text field. Applies
+// LIVE as you adjust (onApply), so the canvas previews while the picker is open.
+function CustomColor({ current, onApply }) {
+  const isToken = typeof current === 'string' && /var\(\s*--/.test(current);
+  const seed = isToken ? '' : current || '';
+  const [val, setVal] = useState(seed);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reseed only when the selection's colour changes.
+  useEffect(() => {
+    setVal(seed);
+  }, [current]);
+  const hex = cssColorToHex(val) || cssColorToHex(current) || '#000000';
+  return (
+    <div className="st-cp-custcol">
+      <label className="st-cp-custcol-pick" title="pick a colour">
+        <span className="st-cp-custcol-sw" style={{ background: cssColorToHex(val) || hex }} />
+        <input
+          type="color"
+          defaultValue={hex}
+          aria-label="colour picker"
+          onChange={(e) => {
+            setVal(e.target.value);
+            onApply(e.target.value);
+          }}
+        />
+      </label>
+      <input
+        className="st-cp-fin"
+        type="text"
+        value={val}
+        placeholder="#hex · rgb() · oklch()"
+        aria-label="colour value"
+        onChange={(e) => setVal(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') onApply(e.currentTarget.value);
+        }}
+        onBlur={(e) => onApply(e.currentTarget.value)}
+      />
+    </div>
+  );
+}
+
 // Phase 12.3 (W2.1) — token picker as a Figma-style popover instead of a native
 // <select>. `kind='color'` renders a swatch grid (resolved DS color values);
 // `kind='value'` a variable list (pretty name + resolved value, à la Figma's
@@ -3029,6 +3071,10 @@ function useAllDsTokens(cfg, designRel, activeName) {
 function TokenPopover({ kind, groups, current, onPick, label }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
+  // Phase 12.3 (#4) — colour popover gets two tabs: a normal colour input
+  // (Custom) + the DS variables swatch list (Variables). Token-able non-colour
+  // popovers stay single-mode.
+  const [mode, setMode] = useState('custom');
   const btnRef = useRef(null);
   const popRef = useRef(null);
   const bound = typeof current === 'string' && /var\(\s*--/.test(current);
@@ -3076,6 +3122,32 @@ function TokenPopover({ kind, groups, current, onPick, label }) {
     onPick(`var(${n})`);
     setOpen(false);
   };
+  // Custom colour / hex applies LIVE without closing, so the user can keep
+  // tweaking; the popover dismisses on outside-click / Esc like everything else.
+  const applyRaw = (v) => {
+    const val = (v || '').trim();
+    if (val) onPick(val);
+  };
+  // The colour swatch grid (one or many DS groups), reused by the Variables tab.
+  const swatchGrid = () =>
+    gs.map((g) => (
+      <div className="st-cp-pop-group" key={g.ds}>
+        {showDsHeaders ? <div className="st-cp-pop-ds">{g.ds}</div> : null}
+        <div className="st-cp-pop-grid">
+          {g.names.map((n) => (
+            <button
+              key={`${g.ds}:${n}`}
+              type="button"
+              className={`st-cp-pop-sw${isOn(n) ? ' is-on' : ''}`}
+              style={{ background: g.vals?.[n] || 'transparent' }}
+              title={`${n}  ${g.vals?.[n] || ''}`}
+              aria-label={n}
+              onClick={() => pick(n)}
+            />
+          ))}
+        </div>
+      </div>
+    ));
 
   return (
     <>
@@ -3113,41 +3185,55 @@ function TokenPopover({ kind, groups, current, onPick, label }) {
                 maxHeight: pos.maxHeight,
               }}
             >
-              {!total ? (
+              {kind === 'color' ? (
+                <>
+                  <div className="st-cp-poptabs" role="tablist">
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={mode === 'custom'}
+                      className={`st-cp-poptab${mode === 'custom' ? ' is-active' : ''}`}
+                      onClick={() => setMode('custom')}
+                    >
+                      Custom
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={mode === 'vars'}
+                      className={`st-cp-poptab${mode === 'vars' ? ' is-active' : ''}`}
+                      onClick={() => setMode('vars')}
+                    >
+                      Variables
+                    </button>
+                  </div>
+                  {mode === 'custom' ? (
+                    <CustomColor current={current} onApply={applyRaw} />
+                  ) : total ? (
+                    swatchGrid()
+                  ) : (
+                    <div className="st-cp-pop-empty">No color tokens</div>
+                  )}
+                </>
+              ) : !total ? (
                 <div className="st-cp-pop-empty">No tokens for this property</div>
               ) : (
                 gs.map((g) => (
                   <div className="st-cp-pop-group" key={g.ds}>
                     {showDsHeaders ? <div className="st-cp-pop-ds">{g.ds}</div> : null}
-                    {kind === 'color' ? (
-                      <div className="st-cp-pop-grid">
-                        {g.names.map((n) => (
-                          <button
-                            key={`${g.ds}:${n}`}
-                            type="button"
-                            className={`st-cp-pop-sw${isOn(n) ? ' is-on' : ''}`}
-                            style={{ background: g.vals?.[n] || 'transparent' }}
-                            title={`${n}  ${g.vals?.[n] || ''}`}
-                            aria-label={n}
-                            onClick={() => pick(n)}
-                          />
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="st-cp-pop-list">
-                        {g.names.map((n) => (
-                          <button
-                            key={`${g.ds}:${n}`}
-                            type="button"
-                            className={`st-cp-pop-row${isOn(n) ? ' is-on' : ''}`}
-                            onClick={() => pick(n)}
-                          >
-                            <span className="st-cp-pop-name">{pretty(n)}</span>
-                            <span className="st-cp-pop-val">{g.vals?.[n] || ''}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                    <div className="st-cp-pop-list">
+                      {g.names.map((n) => (
+                        <button
+                          key={`${g.ds}:${n}`}
+                          type="button"
+                          className={`st-cp-pop-row${isOn(n) ? ' is-on' : ''}`}
+                          onClick={() => pick(n)}
+                        >
+                          <span className="st-cp-pop-name">{pretty(n)}</span>
+                          <span className="st-cp-pop-val">{g.vals?.[n] || ''}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 ))
               )}
