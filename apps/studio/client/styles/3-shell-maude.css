@@ -459,7 +459,12 @@
 .st-fmini input:focus { outline: none; }
 .st-fmini:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
 .st-insp-unit { align-self: center; font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); letter-spacing: var(--tracking-wide); }
-.st-insp-swatch { width: 18px; height: 18px; border-radius: var(--radius-xs); border: 1px solid var(--border-default); flex: none; }
+/* design-critic 1.2 — the Inspect FILL/TEXT chip was collapsing to a thin sliver
+ * (read as a text caret) because its container `.st-swatch-row` had no flex rule,
+ * so the inline swatch span ignored its width/height. Define the row + make the
+ * chip a block so the resolved colour reads as a real swatch. */
+.st-swatch-row { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.st-insp-swatch { display: block; width: 18px; height: 18px; border-radius: var(--radius-xs); border: 1px solid var(--border-default); flex: none; }
 .st-layer { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2); border-radius: var(--radius-xs); font-size: var(--type-sm); color: var(--fg-1); font-family: var(--font-mono); }
 .st-layer:hover { background: var(--bg-2); }
 /* maude signature — selection is an accent-tint wash + an inset 2px accent bar,
@@ -549,17 +554,23 @@
 .st-cp-fin--ro:focus { outline: none; border-color: var(--border-strong); box-shadow: none; }
 
 /* a labelled row: [provenance] [css property] [control] */
-.st-cp-row { display: grid; grid-template-columns: 10px 84px 1fr; align-items: center; gap: var(--space-2); min-height: 28px; }
-.st-cp-label { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-1); line-height: 1.15; word-break: break-word; }
+.st-cp-row { display: grid; grid-template-columns: 10px 92px 1fr; align-items: center; gap: var(--space-2); min-height: 28px; }
+/* one-line labels keep the row rhythm uniform; the full property name is in the
+ * row's title tooltip (design-critic 4.1 — uneven wrap was the top craft nit). */
+.st-cp-label { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-1); line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .st-cp-ctl { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 
 /* provenance — SHAPE-coded so token/override/inherited survive small size +
  * colour-blindness: token = filled accent circle · override = filled neutral
  * square · inherited = hollow ring. Each carries role=img + aria-label. */
 .st-cp-prov { width: 8px; height: 8px; display: inline-block; flex: none; }
-.st-cp-prov--bound { background: var(--accent); border-radius: 50%; }
-.st-cp-prov--raw { background: var(--fg-1); border-radius: 1px; }
-.st-cp-prov--inherit { background: transparent; border: 1.5px solid var(--fg-2); border-radius: 50%; }
+/* Phase 12.3 — provenance is SHAPE-coded (token=circle · override=square ·
+ * inherited=ring) on NEUTRAL fills. Indigo is reserved for its one job on this
+ * surface (the bound-token ◇ button + the focus ring), so the token dot must NOT
+ * reuse the accent (design-critic 1.4/1.5). */
+.st-cp-prov--bound { background: var(--fg-0); border-radius: 50%; }
+.st-cp-prov--raw { background: var(--fg-2); border-radius: 1px; }
+.st-cp-prov--inherit { background: transparent; border: 1.5px solid var(--fg-3); border-radius: 50%; }
 
 /* colour swatch — standalone (border cluster) + inline (inside the token field) */
 .st-cp-swatch { flex: none; width: 22px; height: 22px; border-radius: var(--radius-xs); border: 1px solid var(--border-default); }
@@ -652,7 +663,12 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 
 /* border cluster — fills to the right control rail */
 .st-cp-border { flex: 1 1 auto; display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
-.st-cp-border .st-cp-swatch--mini { margin-left: auto; }
+.st-cp-border .st-cp-swatch--mini { margin-left: 0; }
+/* design-critic 1.1 — the border row was cramming width+style+swatch; the
+ * width field was eating the flex and clipping the style select to "styl▾".
+ * Fix the width field, let the style select take the rest. */
+.st-cp-border .st-cp-num { flex: 0 0 58px; }
+.st-cp-border .st-cp-nsel { flex: 1 1 auto; max-width: none; }
 
 /* per-field save state */
 .st-cp-save { display: inline-flex; align-items: center; gap: var(--space-2); align-self: flex-start; font-size: var(--type-xs); font-family: var(--font-mono); padding: 4px var(--space-2); border-radius: var(--radius-xs); background: var(--bg-2); border: 1px solid var(--status-success); }
