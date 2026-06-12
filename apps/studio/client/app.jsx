@@ -3278,6 +3278,7 @@ function TokenPopover({ kind, groups, current, onPick, label, swatchBg, seedHex,
   // (Custom) + the DS variables swatch list (Variables). Token-able non-colour
   // popovers stay single-mode.
   const [mode, setMode] = useState('custom');
+  const [query, setQuery] = useState('');
   const btnRef = useRef(null);
   const popRef = useRef(null);
   const bound = typeof current === 'string' && /var\(\s*--/.test(current);
@@ -3286,9 +3287,27 @@ function TokenPopover({ kind, groups, current, onPick, label, swatchBg, seedHex,
   const gs = groups || [];
   const total = gs.reduce((s, g) => s + (g.names?.length || 0), 0);
   const showDsHeaders = gs.length > 1; // group by DS only when there's >1
+  // Search filter over the token name + resolved value, per group.
+  const q = query.trim().toLowerCase();
+  const filteredGs = !q
+    ? gs
+    : gs
+        .map((g) => ({
+          ...g,
+          names: (g.names || []).filter(
+            (n) =>
+              pretty(n).toLowerCase().includes(q) ||
+              n.toLowerCase().includes(q) ||
+              (g.vals?.[n] || '').toLowerCase().includes(q)
+          ),
+        }))
+        .filter((g) => g.names.length);
 
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open) {
+      setQuery('');
+      return undefined;
+    }
     const place = () => {
       const r = btnRef.current?.getBoundingClientRect();
       if (!r) return;
@@ -3344,9 +3363,24 @@ function TokenPopover({ kind, groups, current, onPick, label, swatchBg, seedHex,
     const val = (v || '').trim();
     if (val) onPick(val);
   };
+  // A search field over the token list (name + value). Auto-focuses so the user
+  // can type straight away.
+  const searchBar = (
+    <div className="st-cp-pop-search">
+      <StIcon name="search" size={12} />
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search variables"
+        aria-label="search variables"
+        // biome-ignore lint/a11y/noAutofocus: focusing the search on open is the intent.
+        autoFocus
+      />
+    </div>
+  );
   // #2 — colour Variables as a scannable LIST (swatch · name · value), per DS.
-  const swatchList = () =>
-    gs.map((g) => (
+  const swatchList = (grps) =>
+    grps.map((g) => (
       <div className="st-cp-pop-group" key={g.ds}>
         {showDsHeaders ? <div className="st-cp-pop-ds">{g.ds}</div> : null}
         <div className="st-cp-pop-list">
@@ -3369,6 +3403,27 @@ function TokenPopover({ kind, groups, current, onPick, label, swatchBg, seedHex,
         </div>
       </div>
     ));
+  // The value-token list (non-colour), per DS.
+  const valueList = (grps) =>
+    grps.map((g) => (
+      <div className="st-cp-pop-group" key={g.ds}>
+        {showDsHeaders ? <div className="st-cp-pop-ds">{g.ds}</div> : null}
+        <div className="st-cp-pop-list">
+          {g.names.map((n) => (
+            <button
+              key={`${g.ds}:${n}`}
+              type="button"
+              className={`st-cp-pop-row${isOn(n) ? ' is-on' : ''}`}
+              onClick={() => pickFrom(g.ds, n, g.vals?.[n])}
+            >
+              <span className="st-cp-pop-name">{pretty(n)}</span>
+              <span className="st-cp-pop-val">{g.vals?.[n] || ''}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    ));
+  const noMatch = <div className="st-cp-pop-empty">No match</div>;
 
   return (
     <>
@@ -3448,33 +3503,22 @@ function TokenPopover({ kind, groups, current, onPick, label, swatchBg, seedHex,
                   </div>
                   {mode === 'custom' ? (
                     <ColorPicker seed={seedHex || cssColorToHex(current) || '#000000'} onApply={applyRaw} />
-                  ) : total ? (
-                    swatchList()
-                  ) : (
+                  ) : !total ? (
                     <div className="st-cp-pop-empty">No color tokens</div>
+                  ) : (
+                    <>
+                      {searchBar}
+                      {filteredGs.length ? swatchList(filteredGs) : noMatch}
+                    </>
                   )}
                 </>
               ) : !total ? (
                 <div className="st-cp-pop-empty">No tokens for this property</div>
               ) : (
-                gs.map((g) => (
-                  <div className="st-cp-pop-group" key={g.ds}>
-                    {showDsHeaders ? <div className="st-cp-pop-ds">{g.ds}</div> : null}
-                    <div className="st-cp-pop-list">
-                      {g.names.map((n) => (
-                        <button
-                          key={`${g.ds}:${n}`}
-                          type="button"
-                          className={`st-cp-pop-row${isOn(n) ? ' is-on' : ''}`}
-                          onClick={() => pickFrom(g.ds, n, g.vals?.[n])}
-                        >
-                          <span className="st-cp-pop-name">{pretty(n)}</span>
-                          <span className="st-cp-pop-val">{g.vals?.[n] || ''}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))
+                <>
+                  {searchBar}
+                  {filteredGs.length ? valueList(filteredGs) : noMatch}
+                </>
               )}
             </div>,
             document.body

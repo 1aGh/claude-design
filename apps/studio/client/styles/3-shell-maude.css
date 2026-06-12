@@ -769,6 +769,12 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 /* the floating popover (portalled to body, fixed-positioned) */
 .st-cp-pop { position: fixed; z-index: 1000; overflow-y: auto; background: var(--bg-2); border: 1px solid var(--border-default); border-radius: var(--radius-md); box-shadow: var(--shadow-md); padding: var(--space-2); }
 .st-cp-pop-empty { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); padding: var(--space-2); }
+/* sticky search over the token list */
+.st-cp-pop-search { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: var(--space-2); padding: 0 0 var(--space-2); margin: calc(-1 * var(--space-2)) 0 0; background: var(--bg-2); color: var(--fg-2); }
+.st-cp-pop-search svg { flex: none; margin-left: var(--space-1); }
+.st-cp-pop-search input { flex: 1 1 auto; min-width: 0; appearance: none; background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-xs); color: var(--fg-0); font-family: var(--font-body); font-size: var(--type-xs); padding: 4px var(--space-2); }
+.st-cp-pop-search input::placeholder { color: var(--fg-3); }
+.st-cp-pop-search input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-tint); }
 /* #4 — colour popover tabs (Custom picker · Variables list) */
 .st-cp-poptabs { display: flex; border-bottom: 1px solid var(--border-subtle); margin: calc(-1 * var(--space-2)) calc(-1 * var(--space-2)) var(--space-2); }
 .st-cp-poptab { flex: 1; appearance: none; border: 0; background: transparent; cursor: pointer; font-family: var(--font-body); font-size: var(--type-xs); color: var(--fg-2); padding: var(--space-3); border-bottom: 2px solid transparent; }
@@ -791,7 +797,7 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .st-cp-cpick-huethumb { position: absolute; top: 50%; width: 12px; height: 12px; border-radius: 50%; background: #fff; border: 1px solid rgba(0,0,0,0.4); box-shadow: 0 1px 3px rgba(0,0,0,0.4); transform: translate(-50%, -50%); pointer-events: none; }
 /* W3 — per-design-system grouping. The DS name labels each group when >1 DS. */
 .st-cp-pop-group + .st-cp-pop-group { margin-top: var(--space-2); }
-.st-cp-pop-ds { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--fg-2); padding: 2px var(--space-1) 4px; position: sticky; top: 0; background: var(--bg-1); }
+.st-cp-pop-ds { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--fg-2); padding: 2px var(--space-1) 4px; position: sticky; top: 30px; background: var(--bg-2); z-index: 1; }
 /* color: swatch grid */
 .st-cp-pop-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
 .st-cp-pop-sw { aspect-ratio: 1; min-height: 26px; cursor: pointer; appearance: none; border: 1px solid var(--border-subtle); border-radius: var(--radius-xs); padding: 0; }
