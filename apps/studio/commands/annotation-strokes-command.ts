@@ -20,7 +20,7 @@
  */
 
 import type { Stroke } from '../annotations-layer.tsx';
-import type { CommandRecord, CommandSinks, EditCommand } from '../undo-stack.ts';
+import type { CommandRecord, EditCommand } from '../undo-stack.ts';
 import { registerCommand } from '../undo-stack.ts';
 
 /**

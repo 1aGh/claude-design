@@ -14,7 +14,7 @@
  * own avatar to release. tldraw-style.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useViewportControllerContext } from './canvas-lib.tsx';
 import { type AgentPresence, useAgentPresence } from './use-agent-presence.tsx';
@@ -192,7 +192,6 @@ function Avatar({ peer, isFollowing, onToggleFollow }: AvatarProps): JSX.Element
           setOpen((v) => !v);
         }
       }}
-      // biome-ignore lint/a11y/useSemanticElements: 28px round chip needs raw <div> + inline bg + custom focus ring; <button> reset is more code than the rule saves.
       role="button"
       tabIndex={0}
       title={peer.name}
@@ -201,8 +200,6 @@ function Avatar({ peer, isFollowing, onToggleFollow }: AvatarProps): JSX.Element
     >
       {initialsFor(peer.name)}
       {open && (
-        // biome-ignore lint/a11y/useKeyWithClickEvents: stop-propagation wrapper; keyboard focus stays in the button child.
-        // biome-ignore lint/a11y/useSemanticElements: popover wrapper carries no semantic role; the inner <button> is the actionable element.
         <div className="dc-participant-popover" onClick={(e) => e.stopPropagation()}>
           <div className="dc-participant-popover__name">{peer.name}</div>
           <button
@@ -250,7 +247,6 @@ function AgentAvatar({ agent }: { agent: AgentPresence }): JSX.Element {
           setOpen((v) => !v);
         }
       }}
-      // biome-ignore lint/a11y/useSemanticElements: matches the peer Avatar chip pattern.
       role="button"
       tabIndex={0}
       title={`${agent.name} (AI agent)`}
@@ -262,8 +258,6 @@ function AgentAvatar({ agent }: { agent: AgentPresence }): JSX.Element {
         ✦
       </span>
       {open && (
-        // biome-ignore lint/a11y/useKeyWithClickEvents: stop-propagation wrapper; no actionable child.
-        // biome-ignore lint/a11y/useSemanticElements: popover wrapper carries no semantic role.
         <div className="dc-participant-popover" onClick={(e) => e.stopPropagation()}>
           <div className="dc-participant-popover__name">{agent.name}</div>
           <div className="dc-participant-popover__sub">AI agent · {agent.author}</div>

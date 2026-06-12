@@ -19,7 +19,7 @@ import type { ActiveJsonShape } from './exporters/scope.ts';
 import type { Inspect } from './inspect.ts';
 import { canvasSlug, writeLocator } from './locator.ts';
 import { DEV_SERVER_ROOT } from './paths.ts';
-import { getRuntimeBundle, packageForSlug, RUNTIME_PACKAGES, slugFor } from './runtime-bundle.ts';
+import { getRuntimeBundle, packageForSlug } from './runtime-bundle.ts';
 import { loadWhatsNew } from './whats-new.ts';
 
 // Real disk install root — never the virtual `/$bunfs/root` of compiled bins.
@@ -114,6 +114,34 @@ export function cspForCanvasShell(html: string, mainOrigin?: string): string {
   ];
   if (mainOrigin) directives.push(`frame-ancestors 'self' ${mainOrigin}`);
   return directives.join('; ');
+}
+
+/**
+ * CSRF guard for the main-origin source-write routes (edit-css / edit-text /
+ * edit-attr). Those routes are reachable only from the shell, which is
+ * same-origin — but `readJson` enforces no `Content-Type`, so a cross-site page
+ * could otherwise forge a `text/plain` CORS *simple-request* POST to
+ * `http://localhost:<port>/_api/edit-*` (no preflight) and drive a write into
+ * the user's source `.tsx`. The browser stamps every cross-origin POST with an
+ * unspoofable `Origin` header, so we reject any request whose Origin is PRESENT
+ * and ≠ the server's own origin. A request with NO Origin (bun:test, curl,
+ * non-browser programmatic clients — none of which are the CSRF threat, which
+ * requires a browser executing attacker markup that always sends Origin on a
+ * cross-origin POST) is allowed through. This is layered on top of the DDR-054
+ * origin-split (which blocks the untrusted canvas *iframe*); it closes the
+ * *other* untrusted origin — a malicious top-level page in another tab.
+ * Deliberately NOT applied to `/_api/asset` (that route is canvas-origin
+ * reachable by design — drag-drop/paste upload runs inside the iframe). See
+ * DDR-105. Exported for unit testing (the decision is a pure function of `req`).
+ */
+export function sameOriginWrite(req: Request): boolean {
+  const origin = req.headers.get('origin');
+  if (!origin) return true; // non-browser / same-origin omitting Origin → allow
+  try {
+    return origin === new URL(req.url).origin;
+  } catch {
+    return false;
+  }
 }
 
 function safePathUnderRoot(reqUrl: string, repoRoot: string): string | null {
@@ -637,6 +665,96 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       return Response.json(
         { ok: true, file: result.file, rel: result.rel, slug: result.slug },
         { status: 201, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
+    '/_api/edit-css': async (req: Request) => {
+      // Phase 12 (DDR-103) — single-property inline CSS edit. POST body
+      // { canvas, id, property, value } → writes one key into the element's
+      // inline `style={{}}` object via api.editCss → editAttribute. MAIN ORIGIN
+      // ONLY: intentionally absent from CANVAS_SAFE_API + startCanvasServer's
+      // route allowlist (DDR-054) — the untrusted canvas iframe origin must never
+      // reach a source-write endpoint. The CSS-knob UI lives in the shell (main
+      // origin) and calls it directly.
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      const body = await readJson<{
+        canvas?: unknown;
+        id?: unknown;
+        property?: unknown;
+        value?: unknown;
+        reset?: unknown;
+      }>(req, 8 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.editCss(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, delta: result.delta },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
+    '/_api/edit-text': async (req: Request) => {
+      // Phase 12 (DDR-103) — inline element text-content edit. POST body
+      // { canvas, id, text } → overwrites the element's single JSXText child
+      // (JSX-escaped) via api.editText → editText. Same MAIN-ORIGIN-ONLY trust
+      // boundary as /_api/edit-css + /_api/canvas. The inline contenteditable
+      // editor reaches it via the dgn:* bus → shell relay (never the iframe).
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      const body = await readJson<{ canvas?: unknown; id?: unknown; text?: unknown }>(
+        req,
+        16 * 1024
+      );
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.editText(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, delta: result.delta },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      );
+    },
+
+    '/_api/edit-attr': async (req: Request) => {
+      // Phase 12.2 (DDR-104) — the CSS panel's "custom HTML attribute" escape
+      // hatch. POST body { canvas, id, attr, value } → writes a plain JSX
+      // attribute (data-*, aria-*, role, …) via api.editAttr → editAttribute's
+      // non-`style.` path. Same MAIN-ORIGIN-ONLY trust boundary as
+      // /_api/edit-css + /_api/edit-text (absent from CANVAS_SAFE_API +
+      // startCanvasServer's route map; the untrusted iframe can never reach it).
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      const body = await readJson<{
+        canvas?: unknown;
+        id?: unknown;
+        attr?: unknown;
+        value?: unknown;
+        reset?: unknown;
+      }>(req, 8 * 1024);
+      if (!body) return new Response('body required', { status: 400 });
+      const result = await api.editAttr(body);
+      if (!result.ok) {
+        return Response.json(
+          { ok: false, error: result.error },
+          { status: result.status, headers: { 'Cache-Control': 'no-store' } }
+        );
+      }
+      return Response.json(
+        { ok: true, delta: result.delta },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
       );
     },
 

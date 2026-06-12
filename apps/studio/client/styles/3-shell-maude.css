@@ -396,7 +396,7 @@
 /* ─── Command palette (⌘K) ───────────────────────────────────────────────── */
 .st-scrim { position: fixed; inset: 0; background: color-mix(in oklab, var(--bg-0) 62%, transparent); z-index: 9000; display: grid; place-items: start center; padding-top: 12vh; }
 .st-palette {
-  width: 560px; max-width: 92vw; background: var(--bg-2); border: 1px solid var(--border-strong);
+  width: 560px; max-width: 92vw; background: var(--bg-2); border: 1px solid var(--border-default);
   border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); overflow: hidden;
   animation: st-pop var(--dur-route) var(--ease-out);
 }
@@ -436,7 +436,7 @@
 
 /* ─── Export & handoff dialog (Plan C P9/P10) ──────────────────────────────
  * Lifted from Studio.css `.st-dialog*` / `.st-fmt*`. Rendered inside `.st-scrim`. */
-.st-dialog { width: 540px; max-width: 92vw; background: var(--bg-1); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); overflow: hidden; animation: st-pop var(--dur-route) var(--ease-out); }
+.st-dialog { width: 540px; max-width: 92vw; background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); overflow: hidden; animation: st-pop var(--dur-route) var(--ease-out); }
 .st-dialog-hd { display: flex; align-items: center; justify-content: space-between; padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--border-subtle); }
 .st-dialog-title { font-family: var(--font-display); font-size: var(--type-lg); font-weight: 600; color: var(--fg-0); }
 .st-dialog-bd { padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-4); }
@@ -462,12 +462,380 @@
 .st-field { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--type-xs); color: var(--fg-0); background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-xs); padding: var(--space-1) var(--space-2); width: 58px; text-align: right; }
 .st-field-lead { display: inline-flex; align-items: center; gap: var(--space-1); }
 .st-field-lead .k { font-family: var(--font-mono); font-size: 9px; color: var(--fg-3); }
+/* Phase 12.3 — maude DS coordinate cell (components-inputs `.fld-mini`): a mono
+ * axis tag glued to the tabular field, the tag a left segment of one bordered
+ * group. focus-within rings the whole cell (border-accent + 3px tint halo). */
+.st-fmini { display: inline-flex; align-items: stretch; min-width: 0; flex: 1 1 0; border: 1px solid var(--border-default); border-radius: var(--radius-xs); overflow: hidden; background: var(--bg-3); transition: border-color var(--dur-soft) var(--ease-out), box-shadow var(--dur-soft) var(--ease-out); }
+.st-fmini .st-mtag { flex: none; display: flex; align-items: center; justify-content: center; width: 20px; font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); background: var(--bg-2); border-right: 1px solid var(--border-default); }
+.st-fmini input, .st-fmini .st-fminival { flex: 1 1 auto; min-width: 0; width: 100%; box-sizing: border-box; appearance: none; border: 0; border-radius: 0; background: transparent; color: var(--fg-0); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--type-xs); text-align: right; padding: 3px var(--space-2); }
+.st-fmini input:focus { outline: none; }
+.st-fmini:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+.st-insp-unit { align-self: center; font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); letter-spacing: var(--tracking-wide); }
+/* design-critic 1.2 — the Inspect FILL/TEXT chip was collapsing to a thin sliver
+ * (read as a text caret) because its container `.st-swatch-row` had no flex rule,
+ * so the inline swatch span ignored its width/height. Define the row + make the
+ * chip a block so the resolved colour reads as a real swatch. */
+.st-swatch-row { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.st-insp-swatch { display: block; width: 18px; height: 18px; border-radius: var(--radius-xs); border: 1px solid var(--border-default); flex: none; }
 .st-layer { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2); border-radius: var(--radius-xs); font-size: var(--type-sm); color: var(--fg-1); font-family: var(--font-mono); }
 .st-layer:hover { background: var(--bg-2); }
-.st-layer.is-sel { background: var(--accent-tint); color: var(--fg-0); }
+/* maude signature — selection is an accent-tint wash + an inset 2px accent bar,
+ * never a solid fill (DS hard rule). */
+.st-layer.is-sel { background: var(--accent-tint); color: var(--fg-0); box-shadow: inset 2px 0 0 var(--accent); }
+/* Phase 12 Task 4 — browsable layers tree rows */
+.st-layer--row { cursor: pointer; padding: 3px var(--space-2); gap: 4px; white-space: nowrap; }
+.st-layer--row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.st-layer-caret { flex: none; width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 0; color: var(--fg-3); font-size: 9px; line-height: 1; cursor: pointer; padding: 0; }
+.st-layer-label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.st-layer-type { flex: none; font-size: 9px; color: var(--fg-3); text-transform: uppercase; letter-spacing: var(--tracking-wide); }
+/* Phase 12.3 (W3.1) — type icon tint + per-row visibility (eye) toggle. */
+.st-layer-ticon { flex: none; color: var(--fg-3); }
+.st-layer.is-sel .st-layer-ticon { color: var(--accent); }
+.st-layer-eye { flex: none; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 0; color: var(--fg-3); cursor: pointer; padding: 0; border-radius: var(--radius-xs); opacity: 0; }
+.st-layer--row:hover .st-layer-eye, .st-layer--row:focus-within .st-layer-eye { opacity: 1; }
+.st-layer-eye:hover { color: var(--fg-0); background: var(--bg-3); }
+.st-layer-eye:focus-visible { outline: none; color: var(--accent); box-shadow: 0 0 0 2px var(--accent-tint); }
+/* a hidden layer stays dim + keeps its eye visible (so it can be re-shown) */
+.st-layer.is-hidden { opacity: 0.45; }
+.st-layer.is-hidden .st-layer-eye { opacity: 1; color: var(--fg-2); }
 .st-css { font-family: var(--font-mono); font-size: var(--type-xs); background: var(--bg-0); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: var(--space-3); line-height: 1.7; color: var(--fg-1); }
 .st-css .comment { color: var(--fg-3); }
 
+/* Phase 12.2 — in-canvas CSS editor knobs. Full-width value fields (NOT the 58px
+   read-only inspect fields), grouped sections, color swatch, per-field feedback. */
+.st-css-panel { display: flex; flex-direction: column; gap: var(--space-2); }
+.st-css-title { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-1); word-break: break-word; }
+.st-css-group { font-family: var(--font-mono); font-size: 10px; letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-3); margin-top: var(--space-3); }
+.st-css-row { display: grid; grid-template-columns: 72px 1fr; align-items: center; gap: var(--space-2); }
+.st-css-label { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); }
+.st-css-control { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.st-css-input { flex: 1 1 auto; min-width: 0; width: 100%; box-sizing: border-box; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--type-xs); color: var(--fg-0); background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-xs); padding: var(--space-1) var(--space-2); text-align: left; }
+.st-css-input::placeholder { color: var(--fg-3); }
+.st-css-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-tint); }
+.st-css-swatch { position: relative; flex: none; width: 22px; height: 22px; border-radius: var(--radius-xs); border: 1px solid var(--border-default); padding: 0; cursor: pointer; overflow: hidden; background-image: linear-gradient(45deg, var(--bg-2) 25%, transparent 25%), linear-gradient(-45deg, var(--bg-2) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, var(--bg-2) 75%), linear-gradient(-45deg, transparent 75%, var(--bg-2) 75%); background-size: 8px 8px; background-position: 0 0, 0 4px, 4px -4px, -4px 0; }
+.st-css-swatch > span { position: absolute; inset: 0; }
+.st-css-swatch input[type="color"] { position: absolute; inset: -4px; width: calc(100% + 8px); height: calc(100% + 8px); opacity: 0; cursor: pointer; border: 0; padding: 0; }
+.st-css-status { font-family: var(--font-mono); font-size: 10px; min-height: 12px; }
+.st-css-status.is-error { color: oklch(0.62 0.2 25); }
+.st-css-status.is-saved { color: var(--fg-3); }
+.st-css-help { font-size: var(--type-xs); color: var(--fg-3); line-height: 1.5; margin-top: var(--space-2); }
+.st-css-help code { font-family: var(--font-mono); color: var(--fg-2); background: var(--bg-3); padding: 0 3px; border-radius: 3px; }
+.st-css-disabled { color: var(--fg-2); font-size: var(--type-sm); line-height: 1.6; }
+.st-css-disabled code { font-family: var(--font-mono); color: var(--accent); background: var(--bg-2); padding: 1px 5px; border-radius: var(--radius-xs); }
+
+
+/* Phase 12.2 port — interactive CSS panel knobs (DDR-104). Ported from the
+   critic-approved + user-iterated Studio.css spec. Tokens resolve from the
+   shell .maude[data-theme] root (1-tokens-maude.css). */
+/* ─── CSS panel · Phase 12.2 spec (DDR-104) ──────────────────────────────────
+ * Hybrid vocabulary (friendly section headers + CSS-named rows), per-field
+ * token dropdowns, nested box-model widget, per-row provenance, two-hatch
+ * Advanced section. Scoped `.st-cp-*` (never reuses the cramped `.st-field`).
+ * Critic iter-1 fixes: live text off the disabled --fg-3 token → --fg-2 (WCAG
+ * AA ≥4.5:1); SHAPE-coded provenance (circle/square/ring, not colour alone);
+ * colour swatch lives INSIDE the token field so every control shares one left
+ * rail; 24px+ targets (bind / seg / box-model inputs); legible box-model. */
+.st-cp { display: flex; flex-direction: column; gap: var(--space-4); }
+
+/* element identity — Phase 12.3 (W2.3) hairline under the header for structure (Figma-ish) */
+.st-cp-id { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); padding-bottom: var(--space-3); border-bottom: 1px solid var(--border-subtle); }
+.st-cp-idtag { font-family: var(--font-mono); font-size: var(--type-sm); color: var(--fg-0); }
+.st-cp-idcls { color: var(--accent); }
+.st-cp-idmeta { font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); text-transform: uppercase; letter-spacing: var(--tracking-wide); }
+
+/* sections */
+.st-cp-sec { display: flex; flex-direction: column; gap: var(--space-2); }
+/* section header — collapsible disclosure button */
+.st-cp-sechd { width: 100%; appearance: none; cursor: pointer; display: flex; align-items: center; gap: var(--space-2); background: transparent; border: 0; border-bottom: 1px solid var(--border-subtle); text-align: left; font-family: var(--font-mono); font-size: var(--type-xs); text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--fg-2); padding: 0 0 var(--space-1); }
+.st-cp-sechd svg { color: var(--fg-2); }
+.st-cp-sechd:hover, .st-cp-sechd:hover svg { color: var(--fg-0); }
+/* Phase 12.3 — section header row carries the shared underline so the toggle
+ * button + the per-section reset sit on one baseline. */
+.st-cp-sechd-row { display: flex; align-items: stretch; gap: var(--space-1); border-bottom: 1px solid var(--border-subtle); }
+.st-cp-sechd-row .st-cp-sechd { border-bottom: 0; flex: 1 1 auto; }
+/* reset affordances — a subtle revert glyph (⟲). Muted by default, brightens on
+ * hover/focus. The per-row variant lives in .st-cp-ctl / .st-cp-kv; the
+ * per-section variant sits at the end of the header row. */
+.st-cp-reset, .st-cp-secreset { flex: none; appearance: none; cursor: pointer; background: transparent; border: 0; color: var(--fg-3); font-size: 12px; line-height: 1; padding: 2px; border-radius: var(--radius-xs); }
+.st-cp-reset { width: 16px; height: 16px; }
+.st-cp-reset:hover, .st-cp-secreset:hover { color: var(--accent); background: var(--accent-tint); }
+.st-cp-reset:focus-visible, .st-cp-secreset:focus-visible { outline: none; color: var(--accent); box-shadow: 0 0 0 2px var(--accent-tint); }
+.st-cp-secreset { align-self: center; }
+/* read-only name field for an existing custom CSS prop / HTML attr row */
+.st-cp-fin--ro { flex: 0 0 38%; background: var(--bg-2); color: var(--fg-2); cursor: default; }
+.st-cp-fin--ro:focus { outline: none; border-color: var(--border-strong); box-shadow: none; }
+
+/* a labelled row: [provenance] [css property] [control] */
+.st-cp-row { display: grid; grid-template-columns: 10px 92px 1fr; align-items: center; gap: var(--space-2); min-height: 28px; }
+/* #1 bigger-bet — unset rows recede so the overridden ones pop; full opacity on
+ * hover/focus so they're still editable. The panel reads as a diff of overrides. */
+.st-cp-row.is-unset { opacity: 0.5; transition: opacity var(--dur-soft) var(--ease-out); }
+.st-cp-row.is-unset:hover, .st-cp-row.is-unset:focus-within { opacity: 1; }
+/* one-line labels keep the row rhythm uniform; the full property name is in the
+ * row's title tooltip (design-critic 4.1 — uneven wrap was the top craft nit). */
+.st-cp-label { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-1); line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-cp-ctl { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+
+/* provenance — SHAPE-coded so token/override/inherited survive small size +
+ * colour-blindness: token = filled accent circle · override = filled neutral
+ * square · inherited = hollow ring. Each carries role=img + aria-label. */
+.st-cp-prov { width: 8px; height: 8px; display: inline-block; flex: none; padding: 0; }
+/* Phase 12.3 (#4) — the row's leading dot is a button: provenance + save status
+ * (glow) + double-click reset. No appearance chrome; the variant fills it. */
+/* reset native button chrome; the variants own the FILL (a transparent bg here
+ * would out-specify them and hollow the dot — that was the bug). */
+button.st-cp-prov { appearance: none; border: 0; cursor: default; }
+.st-cp-prov.is-resettable { cursor: pointer; }
+.st-cp-prov.is-resettable:hover { box-shadow: 0 0 0 3px var(--bg-4); }
+.st-cp-prov:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--accent-tint); }
+/* save-status glows (replaces the trailing ✓/! markers) */
+.st-cp-prov.is-saved { box-shadow: 0 0 0 3px color-mix(in oklab, var(--status-success) 45%, transparent); }
+.st-cp-prov.is-saving { box-shadow: 0 0 0 3px color-mix(in oklab, var(--fg-2) 35%, transparent); }
+.st-cp-prov.is-err { background: var(--status-error); border-color: var(--status-error); box-shadow: 0 0 0 3px color-mix(in oklab, var(--status-error) 40%, transparent); }
+/* Phase 12.3 — provenance is SHAPE-coded (token=circle · override=square ·
+ * inherited=ring) on NEUTRAL fills. Indigo is reserved for its one job on this
+ * surface (the bound-token ◇ button + the focus ring), so the token dot must NOT
+ * reuse the accent (design-critic 1.4/1.5). */
+.st-cp-prov--bound { background: var(--fg-0); border-radius: 50%; }
+.st-cp-prov--raw { background: var(--fg-2); border-radius: 1px; }
+.st-cp-prov--inherit { background: transparent; box-shadow: inset 0 0 0 1.5px var(--fg-3); border-radius: 50%; }
+
+/* colour swatch — standalone (border cluster) + inline (inside the token field) */
+.st-cp-swatch { flex: none; width: 22px; height: 22px; border-radius: var(--radius-xs); border: 1px solid var(--border-default); }
+.st-cp-swatch--mini { width: 18px; height: 18px; }
+.st-cp-tokswatch { flex: none; width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--border-default); }
+
+/* token field (per-field DS-token dropdown) */
+.st-cp-token { flex: 1 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: var(--space-2); appearance: none; cursor: pointer; font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-0); background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-xs); padding: 4px var(--space-2); }
+.st-cp-token:hover { border-color: var(--accent); }
+.st-cp-tokdot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.st-cp-tokname { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-cp-token svg { flex: none; color: var(--fg-2); }
+
+/* number field: input + steppers + unit-select + bind-to-token */
+.st-cp-num { flex: 1 1 auto; min-width: 0; display: inline-flex; align-items: stretch; background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-xs); overflow: hidden; min-height: 26px; }
+/* #2 — Figma-style property prefix segment inside the numeric field. */
+.st-cp-numlead { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 20px; color: var(--fg-2); font-family: var(--font-mono); font-size: var(--type-xs); border-right: 1px solid var(--border-subtle); background: var(--bg-2); }
+.st-cp-num:focus-within .st-cp-numlead { color: var(--fg-1); }
+.st-cp-num:hover { border-color: var(--border-strong); }
+.st-cp-num:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+.st-cp-numin { flex: 1 1 auto; min-width: 0; width: 100%; appearance: none; border: 0; background: transparent; color: var(--fg-0); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--type-xs); padding: 3px var(--space-2); }
+.st-cp-numin::placeholder { color: var(--fg-2); }
+.st-cp-numin:focus { outline: none; }
+/* Phase 12.3 (W2.2) — scrub affordance: a number field signals it's draggable
+ * (ew-resize), reverts to a text caret when focused for typing. While a scrub is
+ * active the whole document holds the resize cursor + suppresses selection. */
+.st-cp-scrub { cursor: ew-resize; }
+.st-cp-scrub:focus { cursor: text; }
+body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-select: none !important; }
+.st-cp-step { flex: none; display: flex; flex-direction: column; border-left: 1px solid var(--border-subtle); }
+.st-cp-stepb { flex: 1; appearance: none; cursor: pointer; border: 0; background: var(--bg-2); color: var(--fg-2); font-size: 7px; line-height: 1; padding: 0 5px; }
+.st-cp-stepb:first-child { border-bottom: 1px solid var(--border-subtle); }
+.st-cp-stepb:hover { color: var(--accent); }
+.st-cp-unit { flex: none; appearance: none; cursor: pointer; display: inline-flex; align-items: center; gap: 2px; border: 0; border-left: 1px solid var(--border-subtle); background: var(--bg-2); color: var(--fg-2); font-family: var(--font-mono); font-size: 10px; padding: 0 var(--space-2); }
+.st-cp-unit svg { color: var(--fg-2); }
+.st-cp-bind { flex: none; width: 24px; appearance: none; cursor: pointer; border: 0; border-left: 1px solid var(--border-subtle); background: var(--bg-2); position: relative; }
+.st-cp-bind::before { content: ""; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--fg-2); }
+.st-cp-bind:hover::before { border-color: var(--accent); }
+.st-cp-numin--mini { flex: none; width: 38px; background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-xs); }
+
+/* select (font-weight, border-style) */
+.st-cp-select { flex: 1 1 auto; min-width: 0; display: inline-flex; align-items: center; justify-content: space-between; gap: var(--space-2); appearance: none; cursor: pointer; font-family: var(--font-body); font-size: var(--type-xs); color: var(--fg-0); background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-xs); padding: 4px var(--space-2); min-height: 26px; }
+.st-cp-select span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-cp-select svg { flex: none; color: var(--fg-2); }
+.st-cp-select--mini { flex: 0 1 auto; }
+
+/* segmented control (text-align) with drawn align glyphs — 26px tall targets */
+.st-cp-seg { display: inline-flex; background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-xs); overflow: hidden; }
+.st-cp-segbtn { appearance: none; cursor: pointer; border: 0; background: transparent; min-width: 26px; min-height: 26px; padding: 0 7px; display: inline-flex; align-items: center; justify-content: center; border-right: 1px solid var(--border-subtle); }
+.st-cp-segbtn:last-child { border-right: 0; }
+.st-cp-segbtn.is-active { background: var(--accent-tint); }
+.st-cp-segbtn:hover:not(.is-active) { background: var(--bg-4); }
+.st-cp-bars { display: flex; flex-direction: column; gap: 2px; width: 13px; color: var(--fg-1); }
+.st-cp-segbtn.is-active .st-cp-bars { color: var(--accent); }
+.st-cp-bars i { height: 2px; border-radius: 1px; background: currentColor; }
+.st-cp-bars--left i:nth-child(1) { width: 100%; }
+.st-cp-bars--left i:nth-child(2) { width: 60%; }
+.st-cp-bars--left i:nth-child(3) { width: 80%; }
+.st-cp-bars--center i { margin: 0 auto; }
+.st-cp-bars--center i:nth-child(1) { width: 100%; }
+.st-cp-bars--center i:nth-child(2) { width: 55%; }
+.st-cp-bars--center i:nth-child(3) { width: 75%; }
+.st-cp-bars--right i { margin-left: auto; }
+.st-cp-bars--right i:nth-child(1) { width: 100%; }
+.st-cp-bars--right i:nth-child(2) { width: 60%; }
+.st-cp-bars--right i:nth-child(3) { width: 80%; }
+.st-cp-bars--just i { width: 100%; }
+
+/* nested box-model widget (Webflow-style): margin outer · padding inner */
+.st-cp-box { position: relative; margin-top: var(--space-1); padding: 26px; border: 1px dashed var(--border-default); border-radius: var(--radius-sm); background: var(--bg-2); display: grid; place-items: center; }
+.st-cp-boxpad { position: relative; width: 100%; padding: 26px; border: 1px solid var(--border-default); border-radius: var(--radius-xs); background: var(--bg-3); display: grid; place-items: center; }
+.st-cp-boxcore { min-width: 72px; padding: 7px 12px; border-radius: var(--radius-xs); background: var(--bg-4); border: 1px solid var(--accent); color: var(--fg-0); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 11px; text-align: center; }
+.st-cp-boxtag { position: absolute; top: 4px; left: 6px; display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-mono); font-size: 10px; letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-2); pointer-events: none; }
+.st-cp-boxtag .st-cp-prov { width: 6px; height: 6px; }
+.st-cp-boxv { position: absolute; width: 36px; height: 24px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--fg-0); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 11px; text-align: center; padding: 0; }
+.st-cp-boxv.is-zero { color: var(--fg-2); }
+.st-cp-boxv:hover, .st-cp-boxv:focus { border-color: var(--border-strong); background: var(--bg-1); outline: none; color: var(--fg-0); }
+.st-cp-boxv--mt, .st-cp-boxv--pt { top: 1px; left: 50%; transform: translateX(-50%); }
+.st-cp-boxv--mb, .st-cp-boxv--pb { bottom: 1px; left: 50%; transform: translateX(-50%); }
+.st-cp-boxv--ml, .st-cp-boxv--pl { left: 0; top: 50%; transform: translateY(-50%); }
+.st-cp-boxv--mr, .st-cp-boxv--pr { right: 0; top: 50%; transform: translateY(-50%); }
+.st-cp-boxhint { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.st-cp-boxhint + .st-cp-row { margin-top: var(--space-1); }
+.st-cp-chip { font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); background: var(--bg-2); border: 1px solid var(--border-default); border-radius: var(--radius-xs); padding: 1px 6px; }
+
+/* opacity slider — role=slider, focusable */
+.st-cp-slider { flex: 1 1 auto; display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.st-cp-track { position: relative; flex: 1 1 auto; height: 6px; border-radius: 3px; background: var(--bg-4); border: 1px solid var(--border-default); cursor: pointer; }
+.st-cp-track:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.st-cp-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--accent); }
+.st-cp-thumb { position: absolute; top: 50%; width: 12px; height: 12px; border-radius: 50%; background: var(--fg-0); border: 2px solid var(--accent); transform: translate(-50%, -50%); }
+.st-cp-slval { flex: none; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--type-xs); color: var(--fg-1); width: 34px; text-align: right; }
+
+/* border cluster — fills to the right control rail */
+.st-cp-border { flex: 1 1 auto; display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.st-cp-border .st-cp-swatch--mini { margin-left: 0; }
+/* design-critic 1.1 — the border row was cramming width+style+swatch; the
+ * width field was eating the flex and clipping the style select to "styl▾".
+ * Fix the width field, let the style select take the rest. */
+.st-cp-border .st-cp-num { flex: 0 0 58px; }
+.st-cp-border .st-cp-nsel { flex: 1 1 auto; max-width: none; }
+
+/* per-field save state */
+/* #5 — error-only now (idle/saved status moved into each row's leading dot). */
+.st-cp-save { display: inline-flex; align-items: center; gap: var(--space-2); align-self: flex-start; font-size: var(--type-xs); font-family: var(--font-mono); padding: 4px var(--space-2); border-radius: var(--radius-xs); background: color-mix(in oklab, var(--status-error) 14%, var(--bg-2)); border: 1px solid var(--status-error); color: var(--status-error); }
+.st-cp-save.is-saved { color: var(--status-success); }
+.st-cp-save.is-saved svg { color: var(--status-success); }
+
+/* Advanced — the two-hatch escape (custom CSS property + custom HTML attribute) */
+.st-cp-adv { border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--bg-0); overflow: hidden; }
+.st-cp-advhd { width: 100%; appearance: none; cursor: pointer; display: flex; align-items: center; gap: var(--space-2); border: 0; background: transparent; color: var(--fg-2); font-family: var(--font-mono); font-size: var(--type-xs); text-transform: uppercase; letter-spacing: var(--tracking-wide); padding: var(--space-2) var(--space-3); }
+.st-cp-advhd svg { color: var(--fg-2); }
+.st-cp-advbody { display: flex; flex-direction: column; gap: var(--space-2); padding: 0 var(--space-3) var(--space-3); }
+.st-cp-advgrp { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--fg-2); margin-top: var(--space-1); }
+/* #3 — custom prop/attr rows are ONE line: [name] [value] [×]. The reset glyph
+ * used to wrap to a second line; a trailing × close button keeps it on one row. */
+.st-cp-kv { display: grid; grid-template-columns: 1fr 1fr auto; gap: var(--space-2); align-items: center; }
+.st-cp-kvx { flex: none; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; appearance: none; cursor: pointer; background: transparent; border: 0; color: var(--fg-3); padding: 0; border-radius: var(--radius-xs); }
+.st-cp-kvx:hover { color: var(--status-error); background: var(--bg-3); }
+.st-cp-kvx:focus-visible { outline: none; color: var(--status-error); box-shadow: 0 0 0 2px var(--accent-tint); }
+.st-cp-kv .st-cp-numin { background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-xs); }
+.st-cp-kv.has-warn .st-cp-numin { border-color: var(--status-warn); }
+.st-cp-warn { font-size: 10px; color: var(--status-warn); font-family: var(--font-mono); }
+.st-cp-add { align-self: flex-start; appearance: none; cursor: pointer; border: 1px dashed var(--border-default); background: transparent; color: var(--fg-1); font-family: var(--font-mono); font-size: var(--type-xs); border-radius: var(--radius-xs); padding: 4px var(--space-2); }
+.st-cp-add:hover { border-color: var(--accent); color: var(--fg-0); }
+.st-cp-note { font-size: 10px; color: var(--fg-2); font-style: italic; }
+
+/* provenance legend */
+.st-cp-legend { display: flex; flex-wrap: wrap; gap: var(--space-3); padding-top: var(--space-1); border-top: 1px solid var(--border-subtle); }
+.st-cp-legend span { display: inline-flex; align-items: center; gap: var(--space-1); font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); }
+
+/* box-model link-all-sides toggle (replaces the cryptic modifier-key chips) */
+.st-cp-boxlink { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.st-cp-linkbtn { appearance: none; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; min-height: 24px; border: 1px solid var(--border-default); border-radius: var(--radius-xs); background: var(--bg-3); color: var(--fg-1); font-family: var(--font-mono); font-size: 10px; padding: 0 8px; }
+.st-cp-linkbtn.is-on { border-color: var(--accent); color: var(--fg-0); background: var(--accent-tint); }
+.st-cp-linkglyph { width: 13px; height: 9px; border: 1.5px solid currentColor; border-radius: 4px; }
+.st-cp-linkhint { font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); }
+
+/* per-corner border-radius: split toggle + 4-corner inputs (TL/TR/BL/BR) */
+.st-cp-split { flex: none; width: 24px; height: 24px; appearance: none; cursor: pointer; border: 1px solid var(--border-default); border-radius: var(--radius-xs); background: var(--bg-3); position: relative; }
+.st-cp-split.is-on { border-color: var(--accent); background: var(--accent-tint); }
+.st-cp-split::before { content: ""; position: absolute; inset: 6px; border: 1.5px solid var(--fg-1); border-radius: 3px; }
+.st-cp-split.is-on::before { border-color: var(--accent); border-style: dashed; }
+.st-cp-corners { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-1); margin: 0 0 var(--space-1) 18px; }
+.st-cp-cornerf { display: flex; align-items: center; gap: 6px; min-height: 24px; background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-xs); padding: 0 8px; }
+.st-cp-cornerf span { font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); }
+.st-cp-cornerf input { flex: 1; min-width: 0; width: 100%; appearance: none; border: 0; background: transparent; color: var(--fg-0); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 11px; padding: 0; }
+.st-cp-cornerf input:focus { outline: none; }
+
+/* Phase 12.2 PORT-only controls — the live panel uses native <select>/<input>
+   for real interactivity + a11y where the Studio.tsx spec used styled buttons. */
+/* The port mounts an absolute `inset:0` fill span + a hidden color <input>
+   INSIDE the swatch (the spec's swatch was decorative-only, so the ported rule
+   has no `position`). Without `relative` the fill anchored to `.maude` and
+   painted the element's computed colour across the ENTIRE window (dark element
+   → black screen, light → white), and the invisible input swallowed every
+   click. The old `.st-css-swatch` had `position:relative` for exactly this. */
+.st-cp-swatch { position: relative; overflow: hidden; }
+.st-cp-caret { flex: none; color: var(--fg-2); font-size: 9px; width: 9px; text-align: center; }
+.st-cp-fin { flex: 1 1 auto; min-width: 0; width: 100%; box-sizing: border-box; appearance: none; background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-xs); color: var(--fg-0); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--type-xs); padding: 4px var(--space-2); min-height: 26px; transition: border-color var(--dur-soft) var(--ease-out), box-shadow var(--dur-soft) var(--ease-out); }
+.st-cp-fin::placeholder { color: var(--fg-2); }
+.st-cp-fin:hover { border-color: var(--border-strong); }
+/* maude signature focus — border goes accent + a 3px tint halo (DS focus spec). */
+.st-cp-fin:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+.st-cp-nsel { flex: 1 1 auto; min-width: 0; box-sizing: border-box; cursor: pointer; background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-xs); color: var(--fg-0); font-family: var(--font-body); font-size: var(--type-xs); padding: 3px var(--space-2); min-height: 26px; transition: border-color var(--dur-soft) var(--ease-out), box-shadow var(--dur-soft) var(--ease-out); }
+.st-cp-nsel:hover { border-color: var(--border-strong); }
+.st-cp-nsel:focus, .st-cp-nsel:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+.st-cp-nsel--tok { flex: 0 1 auto; max-width: 108px; font-family: var(--font-mono); color: var(--fg-2); background: var(--bg-2); }
+.st-cp-nsel--mini { flex: 0 1 auto; max-width: 92px; }
+.st-cp-unitsel { flex: none; cursor: pointer; appearance: none; border: 0; border-left: 1px solid var(--border-subtle); background: var(--bg-2); color: var(--fg-2); font-family: var(--font-mono); font-size: 10px; padding: 0 4px; }
+/* Phase 12.3 (W2.1) — token picker as a popover. The trigger is a compact
+ * variables button (◇ glyph); bound state tints it accent. */
+.st-cp-tokbtn { flex: none; width: 24px; height: 26px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; appearance: none; background: var(--bg-2); border: 1px solid var(--border-default); border-radius: var(--radius-xs); color: var(--fg-2); padding: 0; }
+.st-cp-tokbtn:hover { color: var(--fg-0); border-color: var(--border-strong); }
+.st-cp-tokbtn:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-tint); }
+.st-cp-tokbtn.is-bound { color: var(--accent); border-color: var(--accent-muted); background: var(--accent-tint); }
+/* the glyph — a small rotated square (variable diamond, Figma-ish) */
+.st-cp-tokbtn-glyph { width: 8px; height: 8px; border: 1.5px solid currentColor; border-radius: 1px; transform: rotate(45deg); }
+.st-cp-tokbtn.is-bound .st-cp-tokbtn-glyph { background: currentColor; }
+/* the floating popover (portalled to body, fixed-positioned) */
+.st-cp-pop { position: fixed; z-index: 1000; overflow-y: auto; background: var(--bg-2); border: 1px solid var(--border-default); border-radius: var(--radius-md); box-shadow: var(--shadow-md); padding: var(--space-2); }
+.st-cp-pop-empty { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); padding: var(--space-2); }
+/* sticky search over the token list */
+.st-cp-pop-search { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: var(--space-2); padding: 0 0 var(--space-2); margin: calc(-1 * var(--space-2)) 0 0; background: var(--bg-2); color: var(--fg-2); }
+.st-cp-pop-search svg { flex: none; margin-left: var(--space-1); }
+.st-cp-pop-search input { flex: 1 1 auto; min-width: 0; appearance: none; background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-xs); color: var(--fg-0); font-family: var(--font-body); font-size: var(--type-xs); padding: 4px var(--space-2); }
+.st-cp-pop-search input::placeholder { color: var(--fg-3); }
+.st-cp-pop-search input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-tint); }
+/* #4 — colour popover tabs (Custom picker · Variables list) */
+.st-cp-poptabs { display: flex; border-bottom: 1px solid var(--border-subtle); margin: calc(-1 * var(--space-2)) calc(-1 * var(--space-2)) var(--space-2); }
+.st-cp-poptab { flex: 1; appearance: none; border: 0; background: transparent; cursor: pointer; font-family: var(--font-body); font-size: var(--type-xs); color: var(--fg-2); padding: var(--space-3); border-bottom: 2px solid transparent; }
+.st-cp-poptab.is-active { color: var(--fg-0); border-bottom-color: var(--accent); }
+.st-cp-poptab:hover:not(.is-active) { color: var(--fg-1); }
+/* #6 — the unified HSV colour picker (Custom tab): saturation/value square +
+ * hue slider + eyedropper + hex field. The swatch on the colour row is the only
+ * trigger (no separate native picker). */
+.st-cp-cpick { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-1); }
+.st-cp-swatch--trigger { position: relative; overflow: hidden; cursor: pointer; appearance: none; padding: 0; }
+.st-cp-swatch--trigger.is-bound { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-tint); }
+.st-cp-cpick-sv { position: relative; display: block; width: 100%; height: 120px; border-radius: var(--radius-sm); border: 1px solid var(--border-default); overflow: hidden; cursor: crosshair; padding: 0; touch-action: none; }
+.st-cp-cpick-svwhite { position: absolute; inset: 0; background: linear-gradient(to right, #fff, transparent); }
+.st-cp-cpick-svblack { position: absolute; inset: 0; background: linear-gradient(to top, #000, transparent); }
+.st-cp-cpick-knob { position: absolute; width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.5); transform: translate(-50%, -50%); pointer-events: none; }
+.st-cp-cpick-controls { display: flex; align-items: center; gap: var(--space-2); }
+.st-cp-cpick-eye { flex: none; width: 26px; height: 16px; display: inline-flex; align-items: center; justify-content: center; appearance: none; cursor: pointer; background: transparent; border: 0; color: var(--fg-2); padding: 0; border-radius: var(--radius-xs); }
+.st-cp-cpick-eye:hover { color: var(--fg-0); }
+.st-cp-cpick-hue { position: relative; flex: 1 1 auto; height: 12px; border-radius: var(--radius-pill); border: 1px solid var(--border-default); cursor: pointer; padding: 0; touch-action: none; background: linear-gradient(to right, #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%); }
+.st-cp-cpick-huethumb { position: absolute; top: 50%; width: 12px; height: 12px; border-radius: 50%; background: #fff; border: 1px solid rgba(0,0,0,0.4); box-shadow: 0 1px 3px rgba(0,0,0,0.4); transform: translate(-50%, -50%); pointer-events: none; }
+/* W3 — per-design-system grouping. The DS name labels each group when >1 DS. */
+.st-cp-pop-group + .st-cp-pop-group { margin-top: var(--space-2); }
+.st-cp-pop-ds { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--fg-2); padding: 2px var(--space-1) 4px; position: sticky; top: 30px; background: var(--bg-2); z-index: 1; }
+/* color: swatch grid */
+.st-cp-pop-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.st-cp-pop-sw { aspect-ratio: 1; min-height: 26px; cursor: pointer; appearance: none; border: 1px solid var(--border-subtle); border-radius: var(--radius-xs); padding: 0; }
+.st-cp-pop-sw:hover { border-color: var(--fg-2); transform: scale(1.06); }
+.st-cp-pop-sw.is-on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-tint); }
+.st-cp-pop-sw:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-tint); }
+/* value: variable list (name + resolved value) */
+.st-cp-pop-list { display: flex; flex-direction: column; gap: 1px; }
+.st-cp-pop-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); cursor: pointer; appearance: none; background: transparent; border: 0; border-radius: var(--radius-xs); padding: 5px var(--space-2); text-align: left; }
+.st-cp-pop-row:hover { background: var(--bg-3); }
+.st-cp-pop-row.is-on { background: var(--accent-tint); }
+.st-cp-pop-row:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--accent-tint); }
+.st-cp-pop-name { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-0); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* #2 — colour Variables as a list row: [swatch] [name] [value] */
+.st-cp-pop-crow { justify-content: flex-start; }
+.st-cp-pop-crow .st-cp-pop-name { flex: 1 1 auto; min-width: 0; }
+.st-cp-pop-cswatch { flex: none; width: 16px; height: 16px; border-radius: var(--radius-xs); border: 1px solid var(--border-default); }
+.st-cp-pop-val { flex: none; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 10px; color: var(--fg-2); }
+.st-cp-pop-row.is-on .st-cp-pop-name { color: var(--accent); }
+.st-cp-fs { flex: none; width: 14px; text-align: center; font-family: var(--font-mono); font-size: 11px; }
+.st-cp-fs.is-saving { color: var(--fg-3); }
+.st-cp-fs.is-saved { color: var(--status-success); }
+.st-cp-fs.is-err { color: var(--status-warn); cursor: help; }
+
+/* shared focus ring for the panel's interactive controls (incl. native selects) */
+.st-cp button:focus-visible, .st-cp input:focus-visible, .st-cp select:focus-visible, .st-cp-token:focus-visible, .st-cp-track:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* ═══ DS-parity polish (specimen sweep) ═══════════════════════════════════════
  * Gaps found auditing the shell against `.design/system/maude/preview/*`:
  * focus-visible coverage, the DS input focus ring, select chevron, unified

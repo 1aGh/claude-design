@@ -2,13 +2,7 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import {
-  ACTIVITY_IDLE_MS,
-  type ActivityChange,
-  createActivity,
-  diffArtboardIds,
-  isCanvasFile,
-} from '../activity.ts';
+import { type ActivityChange, createActivity, diffArtboardIds, isCanvasFile } from '../activity.ts';
 import { type Context, createBus } from '../context.ts';
 
 function mkCtx(): Context {

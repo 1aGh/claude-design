@@ -10,6 +10,9 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
 
+- [DDR-105: Phase 12.2 — source-write surface hardening (JSX-attribute escaper consistency + CSRF Origin guard on the edit-* routes)](DDR-105-css-panel-write-surface-hardening.md) — 2026-06-12, dev-server/security/csrf/escaping/source-write/edit-attr/edit-css/edit-text/trust-boundary/ddr-054-followup
+- [DDR-104: Phase 12.2 — CSS-panel UX model (hybrid vocabulary, curated tier + custom-attributes escape hatch, token-first, DOM-authored value source)](DDR-104-css-panel-ux-model.md) — 2026-06-11, dev-server/inspector/css-panel/ux/design-tokens/vocabulary/escape-hatch/value-source/provenance/canvas-first/ddr-103/ddr-093
+- [DDR-103: Phase 12 — in-canvas direct edit (CSS knobs + inline text) write model + deferrals](DDR-103-phase-12-in-canvas-direct-edit.md) — 2026-06-11, dev-server/inspector/css-writeback/text-editing/source-rewrite/layers-tree/canvas-origin/trust-boundary/ddr-019/ddr-054
 - [DDR-102: Hub-sync cold-start divergence resolution — journal-gated fast-forward, dual snapshot, newest-wins](DDR-102-cold-start-divergence-resolution.md) — 2026-06-11, sync/hub/data-safety/conflict-resolution/rate-limit/multiplexing/incident
 - [DDR-101: Command catalog is a shared `.mjs` single-source with build-time parity assertion](DDR-101-command-catalog-shared-mjs-single-source.md) — 2026-06-11, docs-site/command-reference/source-of-truth/build-script/diagrams/drift-guard
 - [DDR-100: Annotations FigJam v3 — group tag-array, embedded arrow binds, CLI write verb](DDR-100-annotations-figjam-v3-data-model.md) — 2026-06-11, annotations/figjam/groups/connectors/bindings/ai-surface/schema/dev-server

@@ -1,6 +1,14 @@
-import { AbsoluteFill, interpolate, OffthreadVideo, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
+import {
+  AbsoluteFill,
+  interpolate,
+  OffthreadVideo,
+  spring,
+  staticFile,
+  useCurrentFrame,
+  useVideoConfig,
+} from 'remotion';
+import { Caption, DottedCanvas } from '../../../lib/maude-stage';
 import { maude } from '../../../lib/maude-tokens';
-import { DottedCanvas, Caption } from '../../../lib/maude-stage';
 
 /**
  * Scene 05 · Install — hook. REBUILD (v4.1): real footage, not a mock.
@@ -37,11 +45,24 @@ export const InstallScene = () => {
           }}
         >
           {/* window chrome */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '16px 22px', borderBottom: `1px solid ${t.borderSubtle}`, background: t.bg1 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 9,
+              padding: '16px 22px',
+              borderBottom: `1px solid ${t.borderSubtle}`,
+              background: t.bg1,
+            }}
+          >
             <span style={{ width: 12, height: 12, borderRadius: 99, background: '#e06b5e' }} />
             <span style={{ width: 12, height: 12, borderRadius: 99, background: '#d8b46a' }} />
             <span style={{ width: 12, height: 12, borderRadius: 99, background: '#5fd3a3' }} />
-            <span style={{ marginLeft: 14, fontFamily: maude.font.mono, fontSize: 17, color: t.fg3 }}>zsh — recipe-recap</span>
+            <span
+              style={{ marginLeft: 14, fontFamily: maude.font.mono, fontSize: 17, color: t.fg3 }}
+            >
+              zsh — recipe-recap
+            </span>
           </div>
           {/* real terminal footage */}
           <div style={{ background: '#14161c', aspectRatio: '1600 / 900' }}>
@@ -49,7 +70,12 @@ export const InstallScene = () => {
               src={staticFile('v4/cli.mp4')}
               playbackRate={1.5}
               muted
-              style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top left' }}
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                objectPosition: 'top left',
+              }}
             />
           </div>
         </div>

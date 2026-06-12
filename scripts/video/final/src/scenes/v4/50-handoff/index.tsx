@@ -1,6 +1,6 @@
 import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
+import { Caption, DottedCanvas } from '../../../lib/maude-stage';
 import { maude } from '../../../lib/maude-tokens';
-import { DottedCanvas, Caption } from '../../../lib/maude-stage';
 
 /**
  * Scene 50 · Handoff — payoff.
@@ -20,8 +20,18 @@ export const HandoffScene = () => {
     { label: 'PDF', sub: 'print-ready', rot: 8 },
   ];
 
-  const arrowIn = spring({ frame: frame - 96, fps, config: { damping: 200 }, durationInFrames: 14 });
-  const repoIn = spring({ frame: frame - 112, fps, config: { damping: 200 }, durationInFrames: 16 });
+  const arrowIn = spring({
+    frame: frame - 96,
+    fps,
+    config: { damping: 200 },
+    durationInFrames: 14,
+  });
+  const repoIn = spring({
+    frame: frame - 112,
+    fps,
+    config: { damping: 200 },
+    durationInFrames: 16,
+  });
 
   return (
     <AbsoluteFill>
@@ -30,7 +40,12 @@ export const HandoffScene = () => {
           {/* fanned export tiles */}
           <div style={{ position: 'relative', width: 820, height: 320 }}>
             {tiles.map((tile, i) => {
-              const s = spring({ frame: frame - (10 + i * 8), fps, config: { damping: 14, mass: 0.8 }, durationInFrames: 24 });
+              const s = spring({
+                frame: frame - (10 + i * 8),
+                fps,
+                config: { damping: 14, mass: 0.8 },
+                durationInFrames: 24,
+              });
               const spread = interpolate(s, [0, 1], [0, (i - 1.5) * 196]);
               const rot = interpolate(s, [0, 1], [0, tile.rot]);
               const isAccent = tile.label === 'shadcn';
@@ -58,15 +73,29 @@ export const HandoffScene = () => {
                     opacity: s,
                   }}
                 >
-                  <span style={{ fontFamily: maude.font.display, fontWeight: 700, fontSize: 34 }}>{tile.label}</span>
-                  <span style={{ fontFamily: maude.font.mono, fontSize: 15, color: isAccent ? t.accentFg : t.fg2 }}>{tile.sub}</span>
+                  <span style={{ fontFamily: maude.font.display, fontWeight: 700, fontSize: 34 }}>
+                    {tile.label}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: maude.font.mono,
+                      fontSize: 15,
+                      color: isAccent ? t.accentFg : t.fg2,
+                    }}
+                  >
+                    {tile.sub}
+                  </span>
                 </div>
               );
             })}
           </div>
 
           {/* arrow */}
-          <div style={{ opacity: arrowIn, fontFamily: maude.font.mono, fontSize: 40, color: t.accent }}>→</div>
+          <div
+            style={{ opacity: arrowIn, fontFamily: maude.font.mono, fontSize: 40, color: t.accent }}
+          >
+            →
+          </div>
 
           {/* repo card */}
           <div
@@ -82,14 +111,27 @@ export const HandoffScene = () => {
               fontFamily: maude.font.mono,
             }}
           >
-            <div style={{ fontSize: 18, color: t.fg2, letterSpacing: '0.05em', marginBottom: 16 }}>YOUR REPO</div>
-            {['+ components/recipe-recap.tsx', '+ registry/recipe-recap.json', '+ public/recipe-recap.png'].map((l) => (
-              <div key={l} style={{ fontSize: 19, color: t.success, lineHeight: 1.9 }}>{l}</div>
+            <div style={{ fontSize: 18, color: t.fg2, letterSpacing: '0.05em', marginBottom: 16 }}>
+              YOUR REPO
+            </div>
+            {[
+              '+ components/recipe-recap.tsx',
+              '+ registry/recipe-recap.json',
+              '+ public/recipe-recap.png',
+            ].map((l) => (
+              <div key={l} style={{ fontSize: 19, color: t.success, lineHeight: 1.9 }}>
+                {l}
+              </div>
             ))}
           </div>
         </div>
 
-        <Caption theme="dark" frame={frame} from={138} text="then hand off — straight into the repo." />
+        <Caption
+          theme="dark"
+          frame={frame}
+          from={138}
+          text="then hand off — straight into the repo."
+        />
       </DottedCanvas>
     </AbsoluteFill>
   );

@@ -4,6 +4,7 @@
 // Universal — no project tokens needed; styling lives in client/styles/.
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 
 // Trusted tool→cursor resolver (shares the single TOOL_CURSORS source with the
@@ -317,6 +318,96 @@ const STICONS = {
     <>
       <polygon points="8 2.2 13.8 5.5 8 8.8 2.2 5.5" />
       <polyline points="2.2 9 8 12.3 13.8 9" />
+    </>
+  ),
+  // Layer-type glyphs (Phase 12.3 W3.1) — one mark per LayerNode `type`.
+  box: <rect x="3" y="3" width="10" height="10" rx="1.2" />,
+  type: (
+    <>
+      <polyline points="4 4 12 4" />
+      <line x1="8" y1="4" x2="8" y2="12" />
+    </>
+  ),
+  button: (
+    <>
+      <rect x="2.5" y="5" width="11" height="6" rx="3" />
+      <line x1="6" y1="8" x2="10" y2="8" />
+    </>
+  ),
+  input: (
+    <>
+      <rect x="2.5" y="5" width="11" height="6" rx="1.2" />
+      <line x1="5" y1="8" x2="5" y2="8" />
+    </>
+  ),
+  link: (
+    <>
+      <path d="M6.5 9.5a2.5 2.5 0 0 1 0-3.5l1.5-1.5a2.5 2.5 0 0 1 3.5 3.5l-1 1" />
+      <path d="M9.5 6.5a2.5 2.5 0 0 1 0 3.5l-1.5 1.5a2.5 2.5 0 0 1-3.5-3.5l1-1" />
+    </>
+  ),
+  list: (
+    <>
+      <line x1="6" y1="4.5" x2="13" y2="4.5" />
+      <line x1="6" y1="8" x2="13" y2="8" />
+      <line x1="6" y1="11.5" x2="13" y2="11.5" />
+      <circle cx="3.2" cy="4.5" r="0.8" fill="currentColor" />
+      <circle cx="3.2" cy="8" r="0.8" fill="currentColor" />
+      <circle cx="3.2" cy="11.5" r="0.8" fill="currentColor" />
+    </>
+  ),
+  eye: (
+    <>
+      <path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" />
+      <circle cx="8" cy="8" r="2" />
+    </>
+  ),
+  eyedropper: (
+    <>
+      <path d="M11 2.6a1.7 1.7 0 0 1 2.4 2.4l-1.2 1.2-2.4-2.4z" />
+      <path d="M9.5 4.6 4 10.1V12h1.9l5.5-5.5" />
+    </>
+  ),
+  // Figma-style property prefix glyphs (#2) — small marks INSIDE numeric fields.
+  'p-corner': <path d="M3.5 12.5V7a3.5 3.5 0 0 1 3.5-3.5h5.5" />,
+  'p-opacity': (
+    <>
+      <rect x="3" y="3" width="10" height="10" rx="1.5" />
+      <path d="M3 8h10M8 3v10" strokeWidth="0.9" opacity="0.55" />
+    </>
+  ),
+  'p-lineheight': (
+    <>
+      <line x1="6.5" y1="4" x2="13" y2="4" />
+      <line x1="6.5" y1="8" x2="13" y2="8" />
+      <line x1="6.5" y1="12" x2="13" y2="12" />
+      <path d="M3.2 4.6 3.2 11.4M2 6 3.2 4.5 4.4 6M2 10 3.2 11.5 4.4 10" />
+    </>
+  ),
+  'p-letterspacing': (
+    <>
+      <path d="M3 4v8M13 4v8" />
+      <path d="M6 11.5 8 5l2 6.5M6.7 9.3h2.6" strokeWidth="1.1" />
+    </>
+  ),
+  'p-gap': (
+    <>
+      <rect x="2" y="4.5" width="3.6" height="7" rx="0.6" />
+      <rect x="10.4" y="4.5" width="3.6" height="7" rx="0.6" />
+      <path d="M6.8 8h2.4M7.4 6.9 6.4 8l1 1.1M8.6 6.9 9.6 8l-1 1.1" strokeWidth="1" />
+    </>
+  ),
+  'p-border': <rect x="3" y="3" width="10" height="10" rx="1" />,
+  'p-size': (
+    <>
+      <path d="M3 13 6.6 3l3.6 10" />
+      <path d="M4.3 9.6h4.6" />
+    </>
+  ),
+  'eye-off': (
+    <>
+      <path d="M6.3 4A6.7 6.7 0 0 1 8 3.5C12 3.5 14.5 8 14.5 8a12 12 0 0 1-2 2.4M4.4 5.3A12 12 0 0 0 1.5 8S4 12.5 8 12.5a6.5 6.5 0 0 0 2.1-.35" />
+      <line x1="2.5" y1="2.5" x2="13.5" y2="13.5" />
     </>
   ),
   sliders: (
@@ -1311,6 +1402,7 @@ function Sidebar({
       className={'st-sidebar' + (collapsed ? ' is-collapsed' : '') + (resizing ? ' is-resizing' : '')}
       style={collapsed || !width ? undefined : { width, flexBasis: width }}
       aria-label="Files"
+      data-tour="sidebar"
     >
       <div className="st-sb-hd">
         <span className="st-sb-title">Files</span>
@@ -2334,13 +2426,13 @@ function Menubar({
 
   return (
     <header className="st-menubar" role="menubar" aria-label="Application menubar">
-      <span className="st-brand">
+      <span className="st-brand" data-tour="brand">
         <span className="st-brand-mark">
           <svg viewBox="0 0 32 32" width="100%" height="100%" fill="none" aria-hidden="true"><path d="M16 5l2.8 8.2L27 16l-8.2 2.8L16 27l-2.8-8.2L5 16l8.2-2.8z" fill="currentColor" /></svg>
         </span>
         <span className="st-brand-name">maude</span>
       </span>
-      <nav className="st-menus" aria-label="Application menus">
+      <nav className="st-menus" aria-label="Application menus" data-tour="menus">
         {MENU_NAMES.map((name) => {
           const key = name.toLowerCase();
           const hasDropdown = DROPDOWN_MENUS.includes(key);
@@ -2435,11 +2527,12 @@ function Menubar({
           onClose={() => setOpenMenu(null)}
         />
       )}
-      <div className="st-mb-right">
+      <div className="st-mb-right" data-tour="status">
         {presence ? <div className="st-presence">{presence}</div> : null}
         <button
           type="button"
           className="st-whatsnew"
+          data-tour="whatsnew"
           data-unseen={whatsNewCount > 0 ? 'true' : 'false'}
           aria-label={`What's new${whatsNewCount > 0 ? ` — ${whatsNewCount} unseen` : ''}`}
           data-tip="What's new"
@@ -2476,7 +2569,7 @@ function Viewport({
   onIframeLoad,
 }) {
   return (
-    <div className="viewport st-stage">
+    <div className="viewport st-stage" data-tour="viewport">
       {tabs.length === 0 && (
         <div className="st-empty">
           <div className="st-empty-brand">
@@ -3192,6 +3285,1587 @@ function SyncBanner({ status }) {
   );
 }
 
+// ---------- CSS knobs (Phase 12.2, DDR-104) — interactive panel ----------
+//
+// Hybrid vocabulary (friendly collapsible section headers + CSS-named rows),
+// per-field DS-token quick-pick, nested box-model widget, per-corner radius,
+// per-row provenance (token-bound / raw-override / inherited), per-field save
+// state, and two escape hatches: custom CSS property (via /_api/edit-css) +
+// custom HTML attribute (via /_api/edit-attr). Each knob pre-fills from the
+// AUTHORED inline value (`el.authored`); the resolved `computed` value is a
+// faint placeholder only (NOT editable — the v1 UX bug). Ported from the
+// critic-approved + user-iterated `.design/ui/Studio.tsx` spec.
+
+const CSS_DISPLAYS = ['block', 'inline-block', 'flex', 'inline-flex', 'grid', 'inline', 'none'];
+const CSS_FLEX_DIR = ['row', 'row-reverse', 'column', 'column-reverse'];
+const CSS_ALIGN = ['stretch', 'flex-start', 'center', 'flex-end', 'baseline'];
+const CSS_JUSTIFY = [
+  'flex-start',
+  'center',
+  'flex-end',
+  'space-between',
+  'space-around',
+  'space-evenly',
+];
+const CSS_WEIGHTS = ['300', '400', '500', '600', '700', '800'];
+const CSS_FONTS = [
+  'inherit',
+  'system-ui',
+  'sans-serif',
+  'serif',
+  'monospace',
+  'Inter',
+  'Inter Tight',
+  'JetBrains Mono',
+];
+const CSS_BORDER_STYLES = ['none', 'solid', 'dashed', 'dotted', 'double'];
+const CSS_UNITS = ['px', 'rem', 'em', '%', 'vw', 'vh', 'auto'];
+// Properties whose bare-number value is unitless — never append a unit suffix.
+const CSS_UNITLESS = new Set(['line-height', 'opacity', 'font-weight', 'z-index', 'flex-grow', 'flex-shrink', 'order']);
+// #2 — Figma-style property prefix inside numeric fields: a small glyph (icon) or
+// a mono letter (t). Only where it reads cleanly; selects/colours keep their own.
+const PROP_LEAD = {
+  'font-size': { icon: 'p-size' },
+  'line-height': { icon: 'p-lineheight' },
+  'letter-spacing': { icon: 'p-letterspacing' },
+  gap: { icon: 'p-gap' },
+  width: { t: 'W' },
+  height: { t: 'H' },
+  'max-width': { t: 'W' },
+  'border-radius': { icon: 'p-corner' },
+  'border-width': { icon: 'p-border' },
+  opacity: { icon: 'p-opacity' },
+};
+const CSS_ALIGN_OPTS = ['left', 'center', 'right', 'justify'];
+
+let _cssColorCtx = null;
+// Normalize any CSS color string to #rrggbb for the native color input via a
+// throwaway canvas fillStyle round-trip (parses rgb/hsl/named). Unparseable
+// values (some oklch) fall back to '' → picker defaults to #000000; the swatch
+// still shows the true color string regardless.
+function cssColorToHex(c) {
+  if (!c) return '';
+  if (/^#[0-9a-f]{6}$/i.test(c)) return c.toLowerCase();
+  try {
+    if (!_cssColorCtx) _cssColorCtx = document.createElement('canvas').getContext('2d');
+    if (!_cssColorCtx) return '';
+    _cssColorCtx.fillStyle = '#000000';
+    _cssColorCtx.fillStyle = c;
+    const v = _cssColorCtx.fillStyle;
+    if (/^#[0-9a-f]{6}$/i.test(v)) return v.toLowerCase();
+    const m = v.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (m) {
+      return `#${[m[1], m[2], m[3]].map((n) => Number(n).toString(16).padStart(2, '0')).join('')}`;
+    }
+  } catch {
+    /* canvas unavailable */
+  }
+  return '';
+}
+
+// ---- Colour math for the HSV picker (#6 — Figma-style colour control) ----
+const clamp01 = (n) => Math.min(1, Math.max(0, n));
+function hexToRgb(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return { r: 0, g: 0, b: 0 };
+  const n = Number.parseInt(m[1], 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+function rgbToHex({ r, g, b }) {
+  return `#${[r, g, b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
+}
+function rgbToHsv({ r, g, b }) {
+  r /= 255;
+  g /= 255;
+  b /= 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  let h = 0;
+  if (d) {
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  return { h, s: max ? d / max : 0, v: max };
+}
+function hsvToRgb({ h, s, v }) {
+  const c = v * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = v - c;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  if (h < 60) [r, g, b] = [c, x, 0];
+  else if (h < 120) [r, g, b] = [x, c, 0];
+  else if (h < 180) [r, g, b] = [0, c, x];
+  else if (h < 240) [r, g, b] = [0, x, c];
+  else if (h < 300) [r, g, b] = [x, 0, c];
+  else [r, g, b] = [c, 0, x];
+  return { r: (r + m) * 255, g: (g + m) * 255, b: (b + m) * 255 };
+}
+
+// Round bare px to whole numbers for the placeholder hint; pass other values through.
+function cssHint(v) {
+  if (!v) return '';
+  const m = /^(-?\d*\.?\d+)px$/.exec(v);
+  return m ? `${Math.round(Number.parseFloat(m[1]))}px` : v;
+}
+
+// Split "16px" → { n:"16", unit:"px" }; "auto"→{n:"",unit:"auto"}; var()/raw → {n:raw,unit:""}.
+function cssSplitUnit(v) {
+  if (!v) return { n: '', unit: 'px' };
+  const t = v.trim();
+  const m = /^(-?\d*\.?\d+)\s*(px|rem|em|%|vw|vh)?$/.exec(t);
+  if (m) return { n: m[1], unit: m[2] || 'px' };
+  if (t === 'auto') return { n: '', unit: 'auto' };
+  return { n: t, unit: '' };
+}
+
+// Phase 12.2/12.3 — the WS `selected` echo is the server's projection
+// (SelectedElement) and LACKS the client-only DOM fields the CSS knobs pre-fill
+// from (`authored` / `computed` inline style + `customStyles` / `attrs` — all
+// captured in the iframe, never round-tripped through the server). When the echo
+// is for the SAME element we already hold locally, preserve those fields instead
+// of clobbering them to empty (else the server round-trip wipes the custom-CSS /
+// custom-attr rows + computed readout right after selection).
+function mergeSelClientFields(incoming, prev) {
+  if (!incoming || Array.isArray(incoming) || Array.isArray(prev) || !prev) return incoming;
+  if (!incoming.id || incoming.id !== prev.id) return incoming;
+  return {
+    ...incoming,
+    authored: incoming.authored ?? prev.authored,
+    computed: incoming.computed ?? prev.computed,
+    customStyles: incoming.customStyles ?? prev.customStyles,
+    attrs: incoming.attrs ?? prev.attrs,
+  };
+}
+
+// Resolve the active canvas's DS tokens CSS path (mirrors canvas-url.js / DDR-093):
+// the canvas's declared DS wins, else designSystems[0], else the legacy default.
+function cssTokensRelFor(file, cfg) {
+  const ds0 = cfg?.designSystems?.[0];
+  const name = file ? cfg?.canvasDesignSystems?.[file] : null;
+  const ds = (name && cfg?.designSystems?.find((d) => d.name === name)) || ds0;
+  return ds?.tokensCssRel || cfg?.tokensCssRel || ds0?.tokensCssRel || '';
+}
+
+// The active canvas's DS NAME (mirrors cssTokensRelFor's resolution order).
+function activeDsNameFor(file, cfg) {
+  const byCanvas = file ? cfg?.canvasDesignSystems?.[file] : null;
+  return byCanvas || cfg?.defaultDesignSystem || cfg?.designSystems?.[0]?.name || null;
+}
+
+// Parse a DS tokens CSS body → token names grouped by family + a name→value map
+// (resolving one level of var() aliasing so the popover renders real swatches +
+// values). Phase 12.3 (W2.1/W3 multi-DS).
+function parseTokensCss(css) {
+  const raw = {};
+  for (const m of css.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;}]+)/gi)) {
+    if (!(m[1] in raw)) raw[m[1]] = m[2].trim();
+  }
+  const vals = {};
+  for (const name of Object.keys(raw)) {
+    const v = raw[name];
+    const ref = /^var\(\s*(--[a-z0-9-]+)\s*\)$/i.exec(v);
+    vals[name] = ref && raw[ref[1]] ? raw[ref[1]] : v;
+  }
+  const names = Object.keys(raw);
+  const g = (re) => names.filter((n) => re.test(n));
+  // Colours detected by VALUE, not name — so EVERY colour token a DS defines is
+  // offered (the name-prefix list dropped many). A token is a colour if its
+  // resolved value reads as one. (#3 — "see all tokens the DS has".)
+  const isColor = (v) =>
+    /^(#[0-9a-f]{3,8}|rgba?\(|hsla?\(|oklch\(|oklab\(|lab\(|lch\(|hwb\(|color\()/i.test(v) ||
+    /^(transparent|currentcolor|white|black|red|green|blue|gray|grey|orange|yellow|purple|pink|cyan|magenta|teal|navy|maroon|olive|lime|aqua|silver|gold)$/i.test(
+      v
+    );
+  return {
+    color: names.filter((n) => isColor(vals[n])),
+    space: g(/^--space-/),
+    radius: g(/^--radius-/),
+    type: g(/^--type-/),
+    shadow: g(/^--shadow-/),
+    lh: g(/^--lh-/),
+    vals,
+  };
+}
+
+// Fetch + parse the tokens CSS of EVERY design system in the config (main
+// origin), so the token popover can offer tokens grouped per DS (W3 multi-DS
+// feedback). The active canvas's DS is ordered first. Returns
+// `[{ name, color, space, radius, type, shadow, lh, vals }]`.
+function useAllDsTokens(cfg, designRel, activeName) {
+  const list = cfg?.designSystems || [];
+  // A stable key so the effect only re-fetches when the DS set / paths change.
+  const sig = list.map((d) => `${d.name}:${d.tokensCssRel}`).join('|');
+  const [byDs, setByDs] = useState([]);
+  useEffect(() => {
+    if (!list.length) return undefined;
+    let cancelled = false;
+    Promise.all(
+      list.map(async (ds) => {
+        if (!ds.tokensCssRel) return null;
+        try {
+          const r = await fetch(`/${designRel}/${ds.tokensCssRel}`);
+          const css = r.ok ? await r.text() : '';
+          return { name: ds.name, ...parseTokensCss(css) };
+        } catch {
+          return null;
+        }
+      })
+    ).then((res) => {
+      if (cancelled) return;
+      const got = res.filter(Boolean);
+      // Active DS first, rest in config order.
+      got.sort((a, b) => (a.name === activeName ? -1 : b.name === activeName ? 1 : 0));
+      setByDs(got);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [sig, designRel, activeName]);
+  return byDs;
+}
+
+// Phase 12.3 (#4) — the "Custom" tab of the colour popover: a normal colour
+// input (native OS picker via a large swatch) + a hex/value text field. Applies
+// LIVE as you adjust (onApply), so the canvas previews while the picker is open.
+// #6 — the unified colour picker (Custom tab). A real HSV control: a
+// saturation/value square + a hue slider + a hex field + an eyedropper — the
+// Figma model. Replaces BOTH the old native <input type="color"> on the swatch
+// AND the simple hex field, so colours have ONE popover (Custom · Variables).
+// `seed` is the resolved current colour (hex). Drag updates the picker UI live;
+// commits on pointer-up (one source write per drag); the hex field commits on
+// blur/Enter.
+function ColorPicker({ seed, onApply }) {
+  const [hsv, setHsv] = useState(() => rgbToHsv(hexToRgb(seed || '#000000')));
+  const hsvRef = useRef(hsv);
+  hsvRef.current = hsv;
+  const svRef = useRef(null);
+  const hueRef = useRef(null);
+  // Reseed when the selection's colour changes (but not while the user drags).
+  const seedRef = useRef(seed);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reseed on seed change only.
+  useEffect(() => {
+    if (seed && seed !== seedRef.current) {
+      seedRef.current = seed;
+      setHsv(rgbToHsv(hexToRgb(seed)));
+    }
+  }, [seed]);
+  const hex = rgbToHex(hsvToRgb(hsv));
+
+  const dragSV = (e) => {
+    e.preventDefault();
+    const r = svRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const h = hsvRef.current.h;
+    const move = (ev) => {
+      setHsv({
+        h,
+        s: clamp01((ev.clientX - r.left) / r.width),
+        v: clamp01(1 - (ev.clientY - r.top) / r.height),
+      });
+    };
+    move(e);
+    const up = () => {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+      onApply(rgbToHex(hsvToRgb(hsvRef.current)));
+    };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+  };
+  const dragHue = (e) => {
+    e.preventDefault();
+    const r = hueRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const { s, v } = hsvRef.current;
+    const move = (ev) => {
+      setHsv({ h: clamp01((ev.clientX - r.left) / r.width) * 360, s, v });
+    };
+    move(e);
+    const up = () => {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+      onApply(rgbToHex(hsvToRgb(hsvRef.current)));
+    };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+  };
+  const eyedrop = async () => {
+    try {
+      // EyeDropper is Chromium-only; guarded.
+      const ED = window.EyeDropper;
+      if (!ED) return;
+      const res = await new ED().open();
+      if (res?.sRGBHex) {
+        setHsv(rgbToHsv(hexToRgb(res.sRGBHex)));
+        onApply(res.sRGBHex);
+      }
+    } catch {
+      /* user cancelled */
+    }
+  };
+
+  return (
+    <div className="st-cp-cpick">
+      <button
+        type="button"
+        ref={svRef}
+        className="st-cp-cpick-sv"
+        aria-label="saturation and value"
+        style={{ background: `hsl(${hsv.h} 100% 50%)` }}
+        onPointerDown={dragSV}
+      >
+        <span className="st-cp-cpick-svwhite" />
+        <span className="st-cp-cpick-svblack" />
+        <span
+          className="st-cp-cpick-knob"
+          style={{ left: `${hsv.s * 100}%`, top: `${(1 - hsv.v) * 100}%`, background: hex }}
+        />
+      </button>
+      <div className="st-cp-cpick-controls">
+        {window.EyeDropper ? (
+          <button
+            type="button"
+            className="st-cp-cpick-eye"
+            aria-label="pick from screen"
+            title="eyedropper"
+            onClick={eyedrop}
+          >
+            <StIcon name="eyedropper" size={14} />
+          </button>
+        ) : null}
+        <button
+          type="button"
+          ref={hueRef}
+          className="st-cp-cpick-hue"
+          aria-label="hue"
+          onPointerDown={dragHue}
+        >
+          <span className="st-cp-cpick-huethumb" style={{ left: `${(hsv.h / 360) * 100}%` }} />
+        </button>
+      </div>
+      <input
+        className="st-cp-fin"
+        type="text"
+        value={hex}
+        aria-label="hex value"
+        onChange={(e) => {
+          const v = e.target.value;
+          if (/^#?[0-9a-f]{6}$/i.test(v)) setHsv(rgbToHsv(hexToRgb(v)));
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') onApply(e.currentTarget.value);
+        }}
+        onBlur={(e) => onApply(e.currentTarget.value)}
+      />
+    </div>
+  );
+}
+
+// Phase 12.3 (W2.1) — token picker as a Figma-style popover instead of a native
+// <select>. `kind='color'` renders a swatch grid (resolved DS color values);
+// `kind='value'` a variable list (pretty name + resolved value, à la Figma's
+// variable picker). Picking commits `var(--token)`. Portals to <body> +
+// fixed-positions from the trigger rect so the panel's overflow never clips it.
+function TokenPopover({ kind, groups, current, onPick, label, swatchBg, seedHex, activeDs }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState(null);
+  // Phase 12.3 (#4) — colour popover gets two tabs: a normal colour input
+  // (Custom) + the DS variables swatch list (Variables). Token-able non-colour
+  // popovers stay single-mode.
+  const [mode, setMode] = useState('custom');
+  const [query, setQuery] = useState('');
+  const btnRef = useRef(null);
+  const popRef = useRef(null);
+  const bound = typeof current === 'string' && /var\(\s*--/.test(current);
+  const isOn = (n) => current === `var(${n})`;
+  const pretty = (n) => n.replace(/^--/, '').replace(/-/g, ' ');
+  const gs = groups || [];
+  const total = gs.reduce((s, g) => s + (g.names?.length || 0), 0);
+  const showDsHeaders = gs.length > 1; // group by DS only when there's >1
+  // Search filter over the token name + resolved value, per group.
+  const q = query.trim().toLowerCase();
+  const filteredGs = !q
+    ? gs
+    : gs
+        .map((g) => ({
+          ...g,
+          names: (g.names || []).filter(
+            (n) =>
+              pretty(n).toLowerCase().includes(q) ||
+              n.toLowerCase().includes(q) ||
+              (g.vals?.[n] || '').toLowerCase().includes(q)
+          ),
+        }))
+        .filter((g) => g.names.length);
+
+  useEffect(() => {
+    if (!open) {
+      setQuery('');
+      return undefined;
+    }
+    const place = () => {
+      const r = btnRef.current?.getBoundingClientRect();
+      if (!r) return;
+      const W = 224;
+      const MAXH = 300;
+      let left = Math.min(r.right - W, window.innerWidth - W - 8);
+      if (left < 8) left = 8;
+      const below = window.innerHeight - r.bottom;
+      const top = below > MAXH + 8 ? r.bottom + 4 : Math.max(8, r.top - MAXH - 4);
+      setPos({ left, top, width: W, maxHeight: MAXH });
+    };
+    place();
+    const onDoc = (e) => {
+      if (popRef.current?.contains(e.target) || btnRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    const dismiss = () => setOpen(false);
+    // The popover is fixed-positioned from the trigger rect, so a scroll of the
+    // PANEL detaches it → dismiss. But scrolling INSIDE the popover (its own
+    // overflow list) must NOT close it (the user couldn't scroll the variables).
+    const onScroll = (e) => {
+      if (popRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    document.addEventListener('pointerdown', onDoc, true);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', dismiss);
+    document.addEventListener('scroll', onScroll, true);
+    return () => {
+      document.removeEventListener('pointerdown', onDoc, true);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', dismiss);
+      document.removeEventListener('scroll', onScroll, true);
+    };
+  }, [open]);
+
+  // Pick a token. #3 — apply CORRECTLY across design systems: a token from the
+  // canvas's OWN active DS commits `var(--token)` (round-trips + resolves right);
+  // a token from ANOTHER DS commits its RESOLVED value (literal), because
+  // `var(--token)` would resolve against the canvas's DS scope and paint the WRONG
+  // colour. So what you click is always what's applied ("natvrdo").
+  // SECURITY (ethical-hacker A3) — a cross-DS token value is committed as a
+  // LITERAL, and its source is a (possibly hub-pushed, untrusted) tokens CSS.
+  // A colour-shaped value can still smuggle a fetch primitive (e.g.
+  // `rgb(1 2 3) url(//x)` passes the colour sniff). Refuse to write a literal
+  // carrying url()/image-set()/expression()/@import — fall back to var(), which
+  // resolves against the CANVAS's own DS (never the attacker's value).
+  const UNSAFE_TOKEN_VALUE = /url\(|image-set\(|cross-fade\(|element\(|expression\(|@import|javascript:/i;
+  const pickFrom = (ds, n, resolved) => {
+    if (activeDs && ds && ds !== activeDs && resolved && !UNSAFE_TOKEN_VALUE.test(resolved)) {
+      onPick(resolved);
+    } else {
+      onPick(`var(${n})`);
+    }
+    setOpen(false);
+  };
+  // Custom colour / hex applies LIVE without closing, so the user can keep
+  // tweaking; the popover dismisses on outside-click / Esc like everything else.
+  const applyRaw = (v) => {
+    const val = (v || '').trim();
+    if (val) onPick(val);
+  };
+  // A search field over the token list (name + value). Auto-focuses so the user
+  // can type straight away.
+  const searchBar = (
+    <div className="st-cp-pop-search">
+      <StIcon name="search" size={12} />
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search variables"
+        aria-label="search variables"
+        // biome-ignore lint/a11y/noAutofocus: focusing the search on open is the intent.
+        autoFocus
+      />
+    </div>
+  );
+  // #2 — colour Variables as a scannable LIST (swatch · name · value), per DS.
+  const swatchList = (grps) =>
+    grps.map((g) => (
+      <div className="st-cp-pop-group" key={g.ds}>
+        {showDsHeaders ? <div className="st-cp-pop-ds">{g.ds}</div> : null}
+        <div className="st-cp-pop-list">
+          {g.names.map((n) => (
+            <button
+              key={`${g.ds}:${n}`}
+              type="button"
+              className={`st-cp-pop-row st-cp-pop-crow${isOn(n) ? ' is-on' : ''}`}
+              onClick={() => pickFrom(g.ds, n, g.vals?.[n])}
+            >
+              <span
+                className="st-cp-pop-cswatch"
+                style={{ background: g.vals?.[n] || 'transparent' }}
+                aria-hidden="true"
+              />
+              <span className="st-cp-pop-name">{pretty(n)}</span>
+              <span className="st-cp-pop-val">{g.vals?.[n] || ''}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    ));
+  // The value-token list (non-colour), per DS.
+  const valueList = (grps) =>
+    grps.map((g) => (
+      <div className="st-cp-pop-group" key={g.ds}>
+        {showDsHeaders ? <div className="st-cp-pop-ds">{g.ds}</div> : null}
+        <div className="st-cp-pop-list">
+          {g.names.map((n) => (
+            <button
+              key={`${g.ds}:${n}`}
+              type="button"
+              className={`st-cp-pop-row${isOn(n) ? ' is-on' : ''}`}
+              onClick={() => pickFrom(g.ds, n, g.vals?.[n])}
+            >
+              <span className="st-cp-pop-name">{pretty(n)}</span>
+              <span className="st-cp-pop-val">{g.vals?.[n] || ''}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    ));
+  const noMatch = <div className="st-cp-pop-empty">No match</div>;
+
+  return (
+    <>
+      {swatchBg !== undefined ? (
+        // Colour rows: the swatch IS the trigger — one popover, no separate native
+        // OS picker + ◇ (the "two popovers" the user flagged). Shows the current
+        // colour; bound-to-token gets the accent ring.
+        <button
+          type="button"
+          ref={btnRef}
+          className={`st-cp-swatch st-cp-swatch--mini st-cp-swatch--trigger${bound ? ' is-bound' : ''}`}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          aria-label={label || 'pick a colour'}
+          title={current || 'pick a colour'}
+          onClick={() => setOpen((v) => !v)}
+        >
+          <span style={{ position: 'absolute', inset: 0, background: swatchBg || 'transparent' }} />
+        </button>
+      ) : (
+        <button
+          type="button"
+          ref={btnRef}
+          className={`st-cp-tokbtn${bound ? ' is-bound' : ''}`}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          aria-label={label || 'pick a design token'}
+          title="design tokens"
+          onClick={() => setOpen((v) => !v)}
+        >
+          <span className="st-cp-tokbtn-glyph" aria-hidden="true" />
+        </button>
+      )}
+      {open && pos
+        ? createPortal(
+            <div
+              ref={popRef}
+              // Portalled to <body> (outside the App's `.maude` div), so it must
+              // re-establish the maude token scope itself — otherwise var(--bg-*)
+              // resolves to the legacy :root project palette (the cream popover bug).
+              className="maude st-cp-pop"
+              data-theme={
+                (typeof document !== 'undefined' &&
+                  document.documentElement.getAttribute('data-theme')) ||
+                'dark'
+              }
+              role="dialog"
+              aria-label={label || 'design tokens'}
+              style={{
+                left: pos.left,
+                top: pos.top,
+                width: pos.width,
+                maxHeight: pos.maxHeight,
+              }}
+            >
+              {kind === 'color' ? (
+                <>
+                  <div className="st-cp-poptabs" role="tablist">
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={mode === 'custom'}
+                      className={`st-cp-poptab${mode === 'custom' ? ' is-active' : ''}`}
+                      onClick={() => setMode('custom')}
+                    >
+                      Custom
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={mode === 'vars'}
+                      className={`st-cp-poptab${mode === 'vars' ? ' is-active' : ''}`}
+                      onClick={() => setMode('vars')}
+                    >
+                      Variables
+                    </button>
+                  </div>
+                  {mode === 'custom' ? (
+                    <ColorPicker seed={seedHex || cssColorToHex(current) || '#000000'} onApply={applyRaw} />
+                  ) : !total ? (
+                    <div className="st-cp-pop-empty">No color tokens</div>
+                  ) : (
+                    <>
+                      {searchBar}
+                      {filteredGs.length ? swatchList(filteredGs) : noMatch}
+                    </>
+                  )}
+                </>
+              ) : !total ? (
+                <div className="st-cp-pop-empty">No tokens for this property</div>
+              ) : (
+                <>
+                  {searchBar}
+                  {filteredGs.length ? valueList(filteredGs) : noMatch}
+                </>
+              )}
+            </div>,
+            document.body
+          )
+        : null}
+    </>
+  );
+}
+
+function CssKnobs({ el, cfg, onOptimistic }) {
+  const editable = !!el.id;
+  const computed = el.computed || {};
+  // Phase 12.3 — optimistic local overlay over the selection's authored / custom
+  // / attr maps. With the redundant-reload suppression (the flicker fix), an edit
+  // no longer triggers a reselect that would re-post fresh `authored` values — so
+  // the panel must reflect its own commits immediately or it shows the stale
+  // pre-edit value until the user re-selects. Each commit/reset writes here;
+  // `null` marks a removed key. Cleared when a different element is selected.
+  const [overlay, setOverlay] = useState({ a: {}, c: {}, t: {} });
+  // biome-ignore lint/correctness/useExhaustiveDependencies: clear only on element change.
+  useEffect(() => {
+    setOverlay({ a: {}, c: {}, t: {} });
+  }, [el.id]);
+  const mergeOverlay = (base, ov) => {
+    const out = { ...(base || {}) };
+    for (const [k, v] of Object.entries(ov)) {
+      if (v === null) delete out[k];
+      else out[k] = v;
+    }
+    return out;
+  };
+  const authored = mergeOverlay(el.authored, overlay.a);
+  const customStyles = mergeOverlay(el.customStyles, overlay.c);
+  const attrs = mergeOverlay(el.attrs, overlay.t);
+  const setA = (prop, v) => setOverlay((o) => ({ ...o, a: { ...o.a, [prop]: v } }));
+  const setC = (prop, v) => setOverlay((o) => ({ ...o, c: { ...o.c, [prop]: v } }));
+  const setT = (attr, v) => setOverlay((o) => ({ ...o, t: { ...o.t, [attr]: v } }));
+  // Token CSS is served from the MAIN origin at the repo-relative path, i.e.
+  // WITH the designRoot prefix (`/.design/system/<ds>/colors_and_type.css`) —
+  // `tokensCssRel` from config is DS-root-relative (no `.design/`), so prepend it.
+  const _designRel = (cfg?.designRel || cfg?.designRoot || '.design').replace(/^\/+|\/+$/g, '');
+  const _activeDs = activeDsNameFor(el.file, cfg);
+  // W3 — tokens from EVERY configured DS, active one first, so the popover can
+  // offer them grouped per design system.
+  const allDs = useAllDsTokens(cfg, _designRel, _activeDs);
+  // Build per-DS popover groups for one token family (color/space/radius/…).
+  const tokenGroups = (familyKey) =>
+    allDs
+      .map((d) => ({ ds: d.name, names: d[familyKey] || [], vals: d.vals }))
+      .filter((g) => g.names.length);
+  const [status, setStatus] = useState({});
+  const [open, setOpen] = useState({
+    Layout: true,
+    Typography: true,
+    Spacing: true,
+    Size: true,
+    Appearance: true,
+    Advanced: false,
+  });
+  const [split, setSplit] = useState(false);
+
+  // Phase 12.3 — auto-expand Advanced when the selected element carries custom
+  // CSS props / HTML attrs, so a just-added (or pre-existing) custom value is
+  // visible without hunting for the disclosure. Keyed on el.id so it re-runs per
+  // selection (CssKnobs persists across selections — the el prop changes).
+  const hasCustom =
+    Object.keys(customStyles).length > 0 || Object.keys(attrs).length > 0;
+  useEffect(() => {
+    if (hasCustom) setOpen((o) => (o.Advanced ? o : { ...o, Advanced: true }));
+  }, [el.id, hasCustom]);
+
+  async function post(url, payload, key) {
+    setStatus((s) => ({ ...s, [key]: 'saving' }));
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const j = await res.json().catch(() => ({}));
+      setStatus((s) => ({
+        ...s,
+        [key]: !res.ok || !j.ok ? `err:${(j && j.error) || `HTTP ${res.status}`}` : 'saved',
+      }));
+    } catch (err) {
+      setStatus((s) => ({ ...s, [key]: `err:${err && err.message ? err.message : String(err)}` }));
+    }
+  }
+  // Optimistic preview: nudge the live element so the change shows before the
+  // edit → HMR reload lands. `value` null = remove (reset path). No-op when the
+  // selection has no stable id (can't be resolved in the canvas).
+  const optimistic = (prop, value) => {
+    if (!onOptimistic || !el.id) return;
+    onOptimistic({
+      id: el.id,
+      artboardId: el.artboardId ?? null,
+      index: el.index ?? 0,
+      prop,
+      value,
+    });
+  };
+  const commit = (property, raw) => {
+    const value = (raw || '').trim();
+    if (!editable || !value) return;
+    if (value === (authored[property] ?? '').trim()) return; // no-op
+    optimistic(property, value);
+    setA(property, value); // reflect in the panel immediately (no reload → no reselect)
+    post('/_api/edit-css', { canvas: el.file, id: el.id, property, value }, property);
+  };
+  // A custom CSS property (Advanced) — same write, but the panel surfaces it from
+  // the customStyles map, so overlay THERE.
+  const commitCustom = (property, raw) => {
+    const value = (raw || '').trim();
+    if (!editable || !property.trim() || !value) return;
+    optimistic(property.trim(), value);
+    setC(property.trim(), value);
+    post('/_api/edit-css', { canvas: el.file, id: el.id, property: property.trim(), value }, property.trim());
+  };
+  const commitAttr = (attr, raw) => {
+    const a = (attr || '').trim();
+    const value = (raw || '').trim();
+    if (!editable || !a || !value) return;
+    setT(a, value);
+    post('/_api/edit-attr', { canvas: el.file, id: el.id, attr: a, value }, `@${a}`);
+  };
+  // Phase 12.3 — reset (remove the inline prop / attr → back to class/inherited).
+  const reset = (property) => {
+    if (!editable) return;
+    optimistic(property, null);
+    setA(property, null);
+    post('/_api/edit-css', { canvas: el.file, id: el.id, property, reset: true }, property);
+  };
+  const resetCustom = (property) => {
+    if (!editable) return;
+    optimistic(property, null);
+    setC(property, null);
+    post('/_api/edit-css', { canvas: el.file, id: el.id, property, reset: true }, property);
+  };
+  const resetAttr = (attr) => {
+    if (!editable) return;
+    setT(attr, null);
+    post('/_api/edit-attr', { canvas: el.file, id: el.id, attr, reset: true }, `@${attr}`);
+  };
+  // Phase 12.3 (W2.2) — Figma/Webflow scrub: drag a number field horizontally to
+  // change its value. Live preview via optimistic apply on every move (no source
+  // write); commits ONCE on release. A pointer that doesn't pass a 3px threshold
+  // is a normal click (focus to type). `opts.step` modifiers: shift = ×10, alt =
+  // ×0.1. `opts.sides` enables Webflow box-model modifiers: alt = symmetric pair,
+  // alt+shift = all four (else just this side). `opts.min` clamps (default 0).
+  const makeScrub = (prop, opts = {}) => (e) => {
+    if (e.button !== 0) return;
+    const input = e.currentTarget;
+    const startX = e.clientX;
+    const baseN =
+      Number.parseFloat(
+        cssSplitUnit(authored[prop] ?? cssHint(computed[prop]) ?? '0').n || '0'
+      ) || 0;
+    const unit = opts.unitless
+      ? ''
+      : opts.unit || cssSplitUnit(authored[prop] ?? '').unit || 'px';
+    const min = opts.min ?? 0;
+    const fmt = (n) => (opts.unitless ? `${n}` : `${n}${unit}`);
+    const sidesFor = (ev) => {
+      if (!opts.sides) return [prop];
+      if (ev.altKey && ev.shiftKey) return opts.sides.all;
+      if (ev.altKey) return opts.sides.pair;
+      return [prop];
+    };
+    let scrubbing = false;
+    let last = baseN;
+    const move = (ev) => {
+      const dx = ev.clientX - startX;
+      if (!scrubbing && Math.abs(dx) < 3) return;
+      if (!scrubbing) {
+        scrubbing = true;
+        document.body.classList.add('st-scrubbing');
+      }
+      ev.preventDefault();
+      const granular = opts.sides ? 1 : ev.shiftKey ? 10 : ev.altKey ? 0.1 : 1;
+      last = Math.round((baseN + dx * granular) * 100) / 100;
+      if (last < min) last = min;
+      const sides = sidesFor(ev);
+      // Live-update the dragged field AND, for a box-model multi-side scrub, the
+      // sibling box inputs so the whole pair / four-up move shows in the panel —
+      // not just the one being dragged (W2.2 feedback).
+      if (input) input.value = String(last);
+      if (opts.sides && sides.length > 1) {
+        const box = input?.closest('.st-cp-box');
+        for (const p of sides) {
+          if (p === prop) continue;
+          const sib = box?.querySelector(`.st-cp-boxv[aria-label="${p}"]`);
+          if (sib) sib.value = String(last);
+        }
+      }
+      for (const p of sides) optimistic(p, fmt(last));
+    };
+    const up = (ev) => {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+      if (!scrubbing) return;
+      document.body.classList.remove('st-scrubbing');
+      for (const p of sidesFor(ev)) commit(p, fmt(last));
+    };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+  };
+  const provOf = (prop) => {
+    const v = authored[prop];
+    if (!v) return 'inherit';
+    return /var\(\s*--/.test(v) ? 'bound' : 'raw';
+  };
+
+  if (!editable) {
+    return (
+      <div className="st-cp">
+        <div className="st-cp-id">
+          <span className="st-cp-idtag">{el.tag || 'element'}</span>
+        </div>
+        <div className="st-css-disabled">
+          This selection has no stable element id (a legacy canvas, or a non-element target). Edit
+          it with <code>/design:edit</code>.
+        </div>
+      </div>
+    );
+  }
+
+  const PROVLABEL = { bound: 'token-bound', raw: 'raw override', inherit: 'inherited' };
+  const prov = (p) => (
+    <span className={`st-cp-prov st-cp-prov--${p}`} role="img" aria-label={PROVLABEL[p]} />
+  );
+
+  // Phase 12.3 (#4) — the LEADING dot carries it all: provenance (shape) + save
+  // status (a success/error/saving glow) + reset (double-click an authored row).
+  // No trailing ✓/⟲ that shift the input rightward (the user's gripe). A tooltip
+  // hints the double-click-to-reset.
+  const provDot = (prop, provKind) => {
+    const k = provKind ?? provOf(prop);
+    const s = status[prop];
+    const errMsg = typeof s === 'string' && s.startsWith('err:') ? s.slice(4) : '';
+    const stCls = errMsg ? ' is-err' : s === 'saved' ? ' is-saved' : s === 'saving' ? ' is-saving' : '';
+    const canReset = !!authored[prop];
+    const tip = errMsg
+      ? `error: ${errMsg}`
+      : canReset
+        ? `${PROVLABEL[k]} · double-click to reset`
+        : PROVLABEL[k];
+    return (
+      <button
+        type="button"
+        className={`st-cp-prov st-cp-prov--${k}${stCls}${canReset ? ' is-resettable' : ''}`}
+        aria-label={tip}
+        title={tip}
+        tabIndex={canReset ? 0 : -1}
+        onDoubleClick={canReset ? () => reset(prop) : undefined}
+        onKeyDown={
+          canReset
+            ? (e) => {
+                if (e.key === 'Backspace' || e.key === 'Delete') {
+                  e.preventDefault();
+                  reset(prop);
+                }
+              }
+            : undefined
+        }
+      />
+    );
+  };
+
+  const row = (prop, control, provKind) => {
+    // #1 bigger-bet — scannable diff: a fully-unset single-prop row is dimmed so
+    // the handful of overridden rows pop (Webflow/Framer model). Composite rows
+    // (border — they pass an explicit provKind) are never dimmed.
+    const unset = provKind === undefined && !authored[prop];
+    return (
+      <div className={`st-cp-row${unset ? ' is-unset' : ''}`} key={prop}>
+        {provDot(prop, provKind)}
+        <label className="st-cp-label" title={prop}>
+          {prop}
+        </label>
+        <div className="st-cp-ctl">{control}</div>
+      </div>
+    );
+  };
+
+  // Props each section owns — drives the per-section "reset section" affordance.
+  const SECTION_PROPS = {
+    Layout: ['display', 'flex-direction', 'align-items', 'justify-content', 'gap'],
+    Typography: [
+      'font-family',
+      'color',
+      'font-size',
+      'font-weight',
+      'line-height',
+      'letter-spacing',
+      'text-align',
+    ],
+    Spacing: [
+      'margin-top',
+      'margin-right',
+      'margin-bottom',
+      'margin-left',
+      'padding-top',
+      'padding-right',
+      'padding-bottom',
+      'padding-left',
+    ],
+    Size: ['width', 'height', 'max-width'],
+    Appearance: [
+      'background-color',
+      'border-radius',
+      'border-top-left-radius',
+      'border-top-right-radius',
+      'border-bottom-left-radius',
+      'border-bottom-right-radius',
+      'border-width',
+      'border-style',
+      'border-color',
+      'box-shadow',
+      'opacity',
+    ],
+  };
+  const resetSection = (name) => {
+    (SECTION_PROPS[name] || []).forEach((p) => {
+      if (authored[p]) reset(p);
+    });
+  };
+
+  const sec = (name, body) => {
+    const dirty = (SECTION_PROPS[name] || []).some((p) => authored[p]);
+    return (
+      <section className="st-cp-sec" key={name}>
+        <div className="st-cp-sechd-row">
+          <button
+            type="button"
+            className="st-cp-sechd"
+            aria-expanded={!!open[name]}
+            onClick={() => setOpen((o) => ({ ...o, [name]: !o[name] }))}
+          >
+            <span className="st-cp-caret" aria-hidden="true">
+              {open[name] ? '▾' : '▸'}
+            </span>
+            {name}
+          </button>
+          {dirty ? (
+            <button
+              type="button"
+              className="st-cp-secreset"
+              aria-label={`reset ${name} section to original`}
+              title={`reset ${name}`}
+              onClick={() => resetSection(name)}
+            >
+              ⟲
+            </button>
+          ) : null}
+        </div>
+        {open[name] ? body : null}
+      </section>
+    );
+  };
+
+  // native <select> committing a CSS value directly
+  const csel = (prop, list) => (
+    <select
+      className="st-cp-nsel"
+      aria-label={prop}
+      value={list.includes(authored[prop]) ? authored[prop] : ''}
+      onChange={(e) => commit(prop, e.target.value)}
+    >
+      <option value="" disabled>
+        {cssHint(computed[prop]) || '—'}
+      </option>
+      {list.map((v) => (
+        <option key={v} value={v}>
+          {v}
+        </option>
+      ))}
+    </select>
+  );
+
+  // token quick-pick — Figma-style POPOVER (W2.1) listing the DS variables for
+  // this property (name + resolved value), grouped per design system (W3);
+  // picking writes var(--token). `familyKey` selects the token family.
+  const tok = (prop, familyKey) => {
+    const groups = tokenGroups(familyKey);
+    return groups.length ? (
+      <TokenPopover
+        kind="value"
+        groups={groups}
+        current={authored[prop]}
+        activeDs={_activeDs}
+        onPick={(v) => commit(prop, v)}
+        label={`${prop} design token`}
+      />
+    ) : null;
+  };
+
+  // free text input — raw value or var(--token), commits on blur/Enter
+  const text = (prop) => (
+    <input
+      className="st-cp-fin"
+      key={`${prop}:${authored[prop] ?? ''}`}
+      aria-label={prop}
+      defaultValue={authored[prop] ?? ''}
+      placeholder={cssHint(computed[prop]) || '—'}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+      }}
+      onBlur={(e) => commit(prop, e.currentTarget.value)}
+    />
+  );
+
+  // number + steppers + unit-select (+ optional token quick-pick after)
+  const num = (prop, tokenList, opts = {}) => {
+    const cur = cssSplitUnit(authored[prop] ?? '');
+    // Unitless CSS properties — a bare number must commit WITHOUT a unit suffix
+    // (line-height: 1.5px ≠ 1.5 — knob-smoke finding, 2026-06-12).
+    const unitless = CSS_UNITLESS.has(prop);
+    const unit = unitless ? '' : cur.unit && cur.unit !== 'auto' ? cur.unit : 'px';
+    const bump = (d) => {
+      const base = Number.parseFloat(cur.n || cssHint(computed[prop]) || '0') || 0;
+      commit(prop, `${Math.round((base + d) * 100) / 100}${unit}`);
+    };
+    const lead = PROP_LEAD[prop];
+    return (
+      <>
+        <div className="st-cp-num">
+          {lead ? (
+            <span className="st-cp-numlead" aria-hidden="true">
+              {lead.t ? lead.t : <StIcon name={lead.icon} size={12} />}
+            </span>
+          ) : null}
+          <input
+            className="st-cp-numin st-cp-scrub"
+            key={`${prop}:${authored[prop] ?? ''}`}
+            aria-label={prop}
+            defaultValue={cur.unit && cur.unit !== '' ? cur.n : (authored[prop] ?? '')}
+            placeholder={cssHint(computed[prop]) || '—'}
+            onPointerDown={makeScrub(prop, { unitless, unit, min: opts.min })}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+            }}
+            onBlur={(e) => {
+              const raw = e.currentTarget.value.trim();
+              if (!raw) return;
+              commit(prop, /[a-z%(]/i.test(raw) ? raw : `${raw}${unit}`);
+            }}
+          />
+          <span className="st-cp-step">
+            <button
+              type="button"
+              className="st-cp-stepb"
+              tabIndex={-1}
+              aria-label={`increase ${prop}`}
+              onClick={() => bump(1)}
+            >
+              ▲
+            </button>
+            <button
+              type="button"
+              className="st-cp-stepb"
+              tabIndex={-1}
+              aria-label={`decrease ${prop}`}
+              onClick={() => bump(-1)}
+            >
+              ▼
+            </button>
+          </span>
+          {unitless ? null : (
+          <select
+            className="st-cp-unitsel"
+            aria-label={`${prop} unit`}
+            value={cur.unit || 'px'}
+            onChange={(e) =>
+              commit(prop, e.target.value === 'auto' ? 'auto' : `${cur.n || '0'}${e.target.value}`)
+            }
+          >
+            {CSS_UNITS.map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+          </select>
+          )}
+        </div>
+        {tok(prop, tokenList)}
+      </>
+    );
+  };
+
+  // color swatch (native picker → hex) + raw text + token quick-pick
+  const color = (prop) => {
+    // ONE colour control: the swatch is the trigger for a single popover with a
+    // full HSV picker (Custom) + the DS swatches (Variables). No separate native
+    // OS picker (#6 — was two popovers doing the same thing).
+    const resolved = computed[prop] || authored[prop] || '';
+    return (
+      <>
+        <TokenPopover
+          kind="color"
+          groups={tokenGroups('color')}
+          current={authored[prop]}
+          activeDs={_activeDs}
+          swatchBg={resolved}
+          seedHex={cssColorToHex(computed[prop] || authored[prop]) || '#000000'}
+          onPick={(v) => commit(prop, v)}
+          label={`${prop} colour`}
+        />
+        {text(prop)}
+      </>
+    );
+  };
+
+  // a box-model side input (margin/padding longhand). Phase 12.3 — Webflow-style:
+  // always shows the RESOLVED value (0 instead of blank) and a faint `is-zero`
+  // styling for an unset/zero side. Edits the single side (the old "link all
+  // sides" toggle was removed — DDR-104 Phase 12.3 W1.5).
+  const side = (prop, group) => {
+    const a = authored[prop];
+    const shown =
+      a != null && a !== ''
+        ? cssSplitUnit(a).n || a
+        : cssSplitUnit(cssHint(computed[prop]) ?? '').n || '0';
+    const isZero = !a || a === '0' || a === '0px' || a === 'auto';
+    // Webflow scrub modifiers — alt = symmetric pair (block for top/bottom,
+    // inline for left/right), alt+shift = all four.
+    const edge = prop.split('-').pop();
+    const pair =
+      edge === 'top' || edge === 'bottom'
+        ? [`${group}-top`, `${group}-bottom`]
+        : [`${group}-left`, `${group}-right`];
+    const all = [`${group}-top`, `${group}-right`, `${group}-bottom`, `${group}-left`];
+    return (
+      <input
+        className={`st-cp-boxv st-cp-scrub st-cp-boxv--${group[0]}${prop.split('-').pop()[0]}${
+          isZero ? ' is-zero' : ''
+        }`}
+        key={`${prop}:${a ?? ''}`}
+        aria-label={prop}
+        defaultValue={shown}
+        title="drag to scrub · alt = symmetric · alt+shift = all sides"
+        onPointerDown={makeScrub(prop, { sides: { pair, all } })}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur();
+        }}
+        onBlur={(e) => {
+          const raw = e.currentTarget.value.trim();
+          if (!raw) return;
+          const val = /[a-z%]/i.test(raw) ? raw : `${raw}px`;
+          commit(prop, val);
+        }}
+      />
+    );
+  };
+
+  const corner = (label, prop) => (
+    <label className="st-cp-cornerf">
+      <span>{label}</span>
+      <input
+        key={`${prop}:${authored[prop] ?? ''}`}
+        aria-label={prop}
+        defaultValue={cssSplitUnit(authored[prop] ?? '').n || ''}
+        placeholder={cssHint(computed[prop]) || '0'}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur();
+        }}
+        onBlur={(e) => {
+          const raw = e.currentTarget.value.trim();
+          if (raw) commit(prop, /[a-z%]/i.test(raw) ? raw : `${raw}px`);
+        }}
+      />
+    </label>
+  );
+
+  // Phase 12.3 — authored inline props with no curated row + custom HTML attrs,
+  // surfaced in Advanced so the user can see/edit/remove what they added.
+  const customStyleRows = Object.entries(customStyles);
+  const attrRows = Object.entries(attrs);
+
+  return (
+    <div className="st-cp" key={el.id} data-tour="css-panel">
+      <div className="st-cp-id">
+        <span className="st-cp-idtag">
+          {el.tag || 'element'}
+          {el.classes ? <span className="st-cp-idcls">.{el.classes.split(/\s+/)[0]}</span> : null}
+        </span>
+        <span className="st-cp-idmeta">inline style</span>
+      </div>
+
+      {sec(
+        'Layout',
+        <>
+          {row('display', csel('display', CSS_DISPLAYS))}
+          {row('flex-direction', csel('flex-direction', CSS_FLEX_DIR))}
+          {row('align-items', csel('align-items', CSS_ALIGN))}
+          {row('justify-content', csel('justify-content', CSS_JUSTIFY))}
+          {row('gap', num('gap', 'space'))}
+        </>
+      )}
+
+      {sec(
+        'Typography',
+        <>
+          {row('font-family', csel('font-family', CSS_FONTS))}
+          {row('color', color('color'))}
+          {row('font-size', num('font-size', 'type'))}
+          {row('font-weight', csel('font-weight', CSS_WEIGHTS))}
+          {row('line-height', num('line-height', 'lh'))}
+          {row('letter-spacing', num('letter-spacing', null, { min: -Infinity }))}
+          {row(
+            'text-align',
+            <div className="st-cp-seg" role="group" aria-label="text-align">
+              {CSS_ALIGN_OPTS.map((a) => (
+                <button
+                  key={a}
+                  type="button"
+                  className={`st-cp-segbtn${(authored['text-align'] || computed['text-align']) === a ? ' is-active' : ''}`}
+                  aria-label={`align ${a}`}
+                  aria-pressed={(authored['text-align'] || computed['text-align']) === a}
+                  onClick={() => commit('text-align', a)}
+                >
+                  <span className={`st-cp-bars st-cp-bars--${a === 'justify' ? 'just' : a}`} aria-hidden="true">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {sec(
+        'Spacing',
+        <>
+          <div className="st-cp-box" aria-label="margin and padding">
+            <span className="st-cp-boxtag st-cp-boxtag--m">
+              {prov(provOf('margin-top'))}margin
+            </span>
+            {side('margin-top', 'margin')}
+            {side('margin-right', 'margin')}
+            {side('margin-bottom', 'margin')}
+            {side('margin-left', 'margin')}
+            <div className="st-cp-boxpad">
+              <span className="st-cp-boxtag st-cp-boxtag--p">
+                {prov(provOf('padding-top'))}padding
+              </span>
+              {side('padding-top', 'padding')}
+              {side('padding-right', 'padding')}
+              {side('padding-bottom', 'padding')}
+              {side('padding-left', 'padding')}
+              <div className="st-cp-boxcore">
+                {Math.round(el.bounds?.w || 0)} × {Math.round(el.bounds?.h || 0)}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {sec(
+        'Size',
+        <>
+          {row('width', num('width'))}
+          {row('height', num('height'))}
+          {row('max-width', num('max-width'))}
+        </>
+      )}
+
+      {sec(
+        'Appearance',
+        <>
+          {row('background-color', color('background-color'))}
+          <div className="st-cp-row">
+            {prov(provOf('border-radius'))}
+            <label className="st-cp-label" title="border-radius">
+              border-radius
+            </label>
+            <div className="st-cp-ctl">
+              {num('border-radius', 'radius')}
+              <button
+                type="button"
+                className={`st-cp-split${split ? ' is-on' : ''}`}
+                aria-pressed={split}
+                aria-label="set each corner separately"
+                title="set each corner separately"
+                onClick={() => setSplit((v) => !v)}
+              />
+            </div>
+          </div>
+          {split ? (
+            <div className="st-cp-corners" aria-label="per-corner radius">
+              {corner('TL', 'border-top-left-radius')}
+              {corner('TR', 'border-top-right-radius')}
+              {corner('BL', 'border-bottom-left-radius')}
+              {corner('BR', 'border-bottom-right-radius')}
+            </div>
+          ) : null}
+          {row(
+            'border',
+            <div className="st-cp-border">
+              {num('border-width')}
+              <select
+                className="st-cp-nsel st-cp-nsel--mini"
+                aria-label="border-style"
+                value={CSS_BORDER_STYLES.includes(authored['border-style']) ? authored['border-style'] : ''}
+                onChange={(e) => commit('border-style', e.target.value)}
+              >
+                <option value="" disabled>
+                  style
+                </option>
+                {CSS_BORDER_STYLES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+              <TokenPopover
+                kind="color"
+                groups={tokenGroups('color')}
+                current={authored['border-color']}
+                activeDs={_activeDs}
+                swatchBg={computed['border-color'] || authored['border-color'] || ''}
+                seedHex={
+                  cssColorToHex(computed['border-color'] || authored['border-color']) || '#000000'
+                }
+                onPick={(v) => commit('border-color', v)}
+                label="border colour"
+              />
+            </div>,
+            provOf('border-width')
+          )}
+          {row('box-shadow', tok('box-shadow', 'shadow') || text('box-shadow'))}
+          {row(
+            'opacity',
+            <div className="st-cp-num">
+              <span className="st-cp-numlead" aria-hidden="true">
+                <StIcon name="p-opacity" size={12} />
+              </span>
+              <input
+                className="st-cp-numin"
+                key={`opacity:${authored.opacity ?? ''}`}
+                aria-label="opacity"
+                defaultValue={authored.opacity ?? ''}
+                placeholder={cssHint(computed.opacity) || '1'}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.currentTarget.blur();
+                }}
+                onBlur={(e) => commit('opacity', e.currentTarget.value)}
+              />
+            </div>
+          )}
+        </>
+      )}
+
+      {/* #5 — the idle/saved status now lives in each row's leading dot (a glow),
+          so the panel no longer carries a confusing standing 'written to source'
+          line. Only a hard ERROR surfaces here, with the failing property. */}
+      {(() => {
+        const err = Object.entries(status).find(
+          ([, s]) => typeof s === 'string' && s.startsWith('err:')
+        );
+        return err ? (
+          <div className="st-cp-save is-err" role="status">
+            <StIcon name="x" size={12} />
+            {err[0]}: {err[1].slice(4)}
+          </div>
+        ) : null;
+      })()}
+
+      {sec(
+        'Advanced',
+        <div className="st-cp-advbody">
+          {customStyleRows.length ? (
+            <>
+              <div className="st-cp-advgrp">Custom CSS properties</div>
+              {customStyleRows.map(([p, v]) => (
+                <div className="st-cp-kv" key={`cs:${p}`}>
+                  <input
+                    className="st-cp-fin st-cp-fin--ro"
+                    readOnly
+                    value={p}
+                    aria-label={`custom property ${p} name`}
+                  />
+                  <input
+                    className="st-cp-fin"
+                    key={`cs:${p}:${v}`}
+                    defaultValue={v}
+                    aria-label={`${p} value`}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.currentTarget.blur();
+                    }}
+                    onBlur={(e) => commitCustom(p, e.currentTarget.value)}
+                  />
+                  <button
+                    type="button"
+                    className="st-cp-kvx"
+                    aria-label={`remove ${p}`}
+                    title="remove"
+                    onClick={() => resetCustom(p)}
+                  >
+                    <StIcon name="x" size={11} />
+                  </button>
+                </div>
+              ))}
+            </>
+          ) : null}
+          <div className="st-cp-advgrp">Add CSS property</div>
+          <RawKnob commit={commitCustom} />
+          <div className="st-cp-note">applied as-is — not token-bound</div>
+          {attrRows.length ? (
+            <>
+              <div className="st-cp-advgrp">Custom HTML attributes</div>
+              {attrRows.map(([a, v]) => (
+                <div className="st-cp-kv" key={`at:${a}`}>
+                  <input
+                    className="st-cp-fin st-cp-fin--ro"
+                    readOnly
+                    value={a}
+                    aria-label={`attribute ${a} name`}
+                  />
+                  <input
+                    className="st-cp-fin"
+                    key={`at:${a}:${v}`}
+                    defaultValue={v}
+                    aria-label={`${a} value`}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.currentTarget.blur();
+                    }}
+                    onBlur={(e) => commitAttr(a, e.currentTarget.value)}
+                  />
+                  <button
+                    type="button"
+                    className="st-cp-kvx"
+                    aria-label={`remove ${a}`}
+                    title="remove"
+                    onClick={() => resetAttr(a)}
+                  >
+                    <StIcon name="x" size={11} />
+                  </button>
+                </div>
+              ))}
+            </>
+          ) : null}
+          <div className="st-cp-advgrp">Add HTML attribute</div>
+          <AttrKnob commit={commitAttr} />
+        </div>
+      )}
+
+      <div className="st-cp-legend">
+        <span>
+          <i className="st-cp-prov st-cp-prov--bound" aria-hidden="true" />
+          token
+        </span>
+        <span>
+          <i className="st-cp-prov st-cp-prov--raw" aria-hidden="true" />
+          override
+        </span>
+        <span>
+          <i className="st-cp-prov st-cp-prov--inherit" aria-hidden="true" />
+          inherited
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// Custom CSS property hatch — writes an arbitrary `property: value` to inline style.
+function RawKnob({ commit }) {
+  const [prop, setProp] = useState('');
+  const [val, setVal] = useState('');
+  const submit = () => {
+    if (prop.trim() && val.trim()) {
+      commit(prop.trim(), val);
+      setProp('');
+      setVal('');
+    }
+  };
+  return (
+    <div className="st-cp-kv">
+      <input
+        className="st-cp-fin"
+        aria-label="custom property name"
+        placeholder="property"
+        value={prop}
+        onChange={(e) => setProp(e.target.value)}
+      />
+      <input
+        className="st-cp-fin"
+        aria-label="custom property value"
+        placeholder="value"
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') submit();
+        }}
+        onBlur={submit}
+      />
+    </div>
+  );
+}
+
+// Custom HTML attribute hatch — writes a plain JSX attribute (data-*, aria-*, …).
+function AttrKnob({ commit }) {
+  const [attr, setAttr] = useState('');
+  const [val, setVal] = useState('');
+  const submit = () => {
+    if (attr.trim() && val.trim()) {
+      commit(attr.trim(), val);
+      setAttr('');
+      setVal('');
+    }
+  };
+  return (
+    <div className="st-cp-kv">
+      <input
+        className="st-cp-fin"
+        aria-label="custom attribute name"
+        placeholder="data-…"
+        value={attr}
+        onChange={(e) => setAttr(e.target.value)}
+      />
+      <input
+        className="st-cp-fin"
+        aria-label="custom attribute value"
+        placeholder="value"
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') submit();
+        }}
+        onBlur={submit}
+      />
+    </div>
+  );
+}
+
 // ---------- Inspector panel (display-only) ----------
 //
 // T6 (Plan C) — right-dock Inspect / Layers / CSS tabs per `.design/ui/Studio.tsx`
@@ -3200,8 +4874,230 @@ function SyncBanner({ status }) {
 // mockup's live-CSS-knob WRITEBACK is Phase 12 (needs a canvas-origin write
 // bridge, DDR-054) — the CSS tab shows markup read-only + keeps that callout, so
 // it never implies functionality it lacks (the exact reason DDR-096 deferred it).
-function InspectorPanel({ selected, onClose, width, resizing, tab, setTab }) {
-  // Tab state lives in App so View ▸ Layers can open the panel on a chosen tab.
+// ---------- Layers tree row (Phase 12 Task 4) ----------
+// Phase 12.3 (W3.1) — map a LayerNode `type` (classified in canvas-shell) to a
+// type-distinct icon, matching the Studio.tsx layers design.
+const LAYER_TYPE_ICON = {
+  button: 'button',
+  heading: 'type',
+  text: 'type',
+  input: 'input',
+  form: 'input',
+  image: 'image',
+  link: 'link',
+  list: 'list',
+  nav: 'layers',
+  box: 'box',
+};
+
+function LayerRow({
+  node,
+  depth,
+  selectedId,
+  collapsed,
+  hidden,
+  onToggle,
+  onSelect,
+  onHover,
+  onToggleVisibility,
+}) {
+  const key = `${node.id}:${node.index}`;
+  const hasKids = node.children && node.children.length > 0;
+  const isCollapsed = collapsed.has(key);
+  const isSel = node.id === selectedId;
+  const isHidden = hidden?.has(key);
+  return (
+    <>
+      <div
+        className={
+          'st-layer st-layer--row' + (isSel ? ' is-sel' : '') + (isHidden ? ' is-hidden' : '')
+        }
+        style={{ paddingLeft: 6 + depth * 14 }}
+        role="treeitem"
+        aria-selected={isSel}
+        aria-expanded={hasKids ? !isCollapsed : undefined}
+        tabIndex={0}
+        title={`${node.tag} · ${node.type}`}
+        onClick={() => onSelect(node)}
+        onMouseEnter={() => onHover(node)}
+        onMouseLeave={() => onHover(null)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onSelect(node);
+          }
+        }}
+      >
+        {hasKids ? (
+          <button
+            type="button"
+            className="st-layer-caret"
+            aria-label={isCollapsed ? 'Expand' : 'Collapse'}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggle(key);
+            }}
+          >
+            {isCollapsed ? '▸' : '▾'}
+          </button>
+        ) : (
+          <span className="st-layer-caret" aria-hidden="true" />
+        )}
+        <StIcon name={LAYER_TYPE_ICON[node.type] || 'box'} size={12} className="st-layer-ticon" />
+        <span className="st-layer-label">{node.label}</span>
+        <span className="st-layer-type">{node.type}</span>
+        {onToggleVisibility ? (
+          <button
+            type="button"
+            className="st-layer-eye"
+            aria-label={isHidden ? `Show ${node.label}` : `Hide ${node.label}`}
+            aria-pressed={isHidden}
+            title={isHidden ? 'Show' : 'Hide'}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleVisibility(node);
+            }}
+          >
+            <StIcon name={isHidden ? 'eye-off' : 'eye'} size={13} />
+          </button>
+        ) : null}
+      </div>
+      {hasKids && !isCollapsed
+        ? node.children.map((c) => (
+            <LayerRow
+              key={`${c.id}:${c.index}`}
+              node={c}
+              depth={depth + 1}
+              selectedId={selectedId}
+              collapsed={collapsed}
+              hidden={hidden}
+              onToggle={onToggle}
+              onSelect={onSelect}
+              onHover={onHover}
+              onToggleVisibility={onToggleVisibility}
+            />
+          ))
+        : null}
+    </>
+  );
+}
+
+// Phase 12.3 — live computed readout for the Inspect tab (replaces the stale
+// "lands with the live CSS bridge (Phase 12)" callout — that bridge shipped).
+// Reads the resolved values the selection already carries (dom-selection
+// styleMapsFor → el.computed). Read-only; the CSS tab is where you edit.
+function InspectComputed({ el }) {
+  const c = el?.computed || {};
+  const a = el?.authored || {};
+  // Prefer the authored token name (var(--accent) → "--accent") as the label;
+  // fall back to the resolved value. The swatch always shows the RESOLVED color.
+  const valueLabel = (prop) => {
+    const av = a[prop];
+    if (av && /var\(\s*--/.test(av)) return av.replace(/^var\(\s*|\s*\)$/g, '');
+    return c[prop] || av || '';
+  };
+  const colorRow = (lbl, prop) => {
+    const resolved = c[prop] || a[prop];
+    if (!resolved) return null;
+    return (
+      <div className="st-insp-row" key={lbl}>
+        <span className="st-insp-label">{lbl}</span>
+        <div className="st-swatch-row">
+          <span className="st-insp-swatch" style={{ background: resolved }} aria-hidden="true" />
+          <span className="st-mono" style={{ fontSize: 11, color: 'var(--fg-1)' }}>
+            {valueLabel(prop)}
+          </span>
+        </div>
+      </div>
+    );
+  };
+  const hasRadius = c['border-radius'] && c['border-radius'] !== '0px';
+  const radiusN = hasRadius ? cssSplitUnit(c['border-radius']).n || c['border-radius'] : null;
+  const font =
+    c['font-size'] || c['font-weight']
+      ? [c['font-size'], c['font-weight']].filter(Boolean).join(' / ')
+      : null;
+  const anyType = c['background-color'] || c.color || hasRadius || font;
+  if (!anyType) return null;
+  return (
+    <>
+      {hasRadius ? (
+        <div className="st-insp-row">
+          <span className="st-insp-label">Radius</span>
+          <div className="st-insp-fields">
+            <span className="st-fmini" style={{ flex: '0 0 auto', maxWidth: 84 }}>
+              <span className="st-mtag">r</span>
+              <input value={radiusN} readOnly aria-label="border radius" />
+            </span>
+            <span className="st-insp-unit">px</span>
+          </div>
+        </div>
+      ) : null}
+      {colorRow('Fill', 'background-color')}
+      {colorRow('Text', 'color')}
+      {font ? (
+        <div className="st-insp-row">
+          <span className="st-insp-label">Font</span>
+          <div className="st-insp-fields">
+            <span className="st-mono" style={{ fontSize: 11, color: 'var(--fg-0)' }}>{font}</span>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function InspectorPanel({
+  selected,
+  onClose,
+  layersTree,
+  onSelectLayer,
+  onHoverLayer,
+  cfg,
+  onOptimistic,
+  tab: tabProp,
+  onTabChange,
+  width,
+  resizing,
+}) {
+  // Tab is controllable from the parent (the guided tour drives it to 'css' /
+  // 'layers' so a spotlight step lands on a real row) but falls back to local
+  // state for normal use. A user click both updates local state and notifies the
+  // parent, so the two stay in lockstep whichever owns it.
+  const [tabState, setTabState] = useState('inspect');
+  const tab = tabProp ?? tabState;
+  const setTab = (t) => {
+    setTabState(t);
+    onTabChange?.(t);
+  };
+  const [collapsed, setCollapsed] = useState(() => new Set());
+  // Phase 12.3 (W3.1) — per-layer visibility toggle. Live-only (display:none via
+  // the optimistic apply bus); not persisted to source. Keyed by `${id}:${index}`.
+  const [hiddenLayers, setHiddenLayers] = useState(() => new Set());
+  const toggleCollapse = (key) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  const toggleVisibility = (node) => {
+    const key = `${node.id}:${node.index}`;
+    const willHide = !hiddenLayers.has(key);
+    onOptimistic?.({
+      id: node.id,
+      artboardId: layersTree?.artboardId ?? null,
+      index: node.index,
+      prop: 'display',
+      value: willHide ? 'none' : null,
+    });
+    setHiddenLayers((prev) => {
+      const next = new Set(prev);
+      if (willHide) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  };
   // `selected` may be a single element, an array (multi-select), or null.
   const el = Array.isArray(selected) ? selected[0] : selected;
   const tabBtn = (id, label, icon) => (
@@ -3220,8 +5116,9 @@ function InspectorPanel({ selected, onClose, width, resizing, tab, setTab }) {
       className={'st-rpanel' + (resizing ? ' is-resizing' : '')}
       style={width ? { width, flexBasis: width } : undefined}
       aria-label="Inspector"
+      data-tour="inspector"
     >
-      <div className="st-rp-tabs">
+      <div className="st-rp-tabs" data-tour="inspector-tabs">
         {tabBtn('inspect', 'Inspect', 'sliders')}
         {tabBtn('layers', 'Layers', 'layers')}
         {tabBtn('css', 'CSS', 'code')}
@@ -3250,26 +5147,26 @@ function InspectorPanel({ selected, onClose, width, resizing, tab, setTab }) {
             <div className="st-insp-row">
               <span className="st-insp-label">Pos</span>
               <div className="st-insp-fields">
-                <span className="st-field-lead">
-                  <span className="k">X</span>
-                  <input className="st-field" value={b ? Math.round(b.x) : '—'} readOnly />
+                <span className="st-fmini">
+                  <span className="st-mtag">X</span>
+                  <input value={b ? Math.round(b.x) : '—'} readOnly aria-label="x position" />
                 </span>
-                <span className="st-field-lead">
-                  <span className="k">Y</span>
-                  <input className="st-field" value={b ? Math.round(b.y) : '—'} readOnly />
+                <span className="st-fmini">
+                  <span className="st-mtag">Y</span>
+                  <input value={b ? Math.round(b.y) : '—'} readOnly aria-label="y position" />
                 </span>
               </div>
             </div>
             <div className="st-insp-row">
               <span className="st-insp-label">Size</span>
               <div className="st-insp-fields">
-                <span className="st-field-lead">
-                  <span className="k">W</span>
-                  <input className="st-field" value={b ? Math.round(b.w) : '—'} readOnly />
+                <span className="st-fmini">
+                  <span className="st-mtag">W</span>
+                  <input value={b ? Math.round(b.w) : '—'} readOnly aria-label="width" />
                 </span>
-                <span className="st-field-lead">
-                  <span className="k">H</span>
-                  <input className="st-field" value={b ? Math.round(b.h) : '—'} readOnly />
+                <span className="st-fmini">
+                  <span className="st-mtag">H</span>
+                  <input value={b ? Math.round(b.h) : '—'} readOnly aria-label="height" />
                 </span>
               </div>
             </div>
@@ -3291,14 +5188,29 @@ function InspectorPanel({ selected, onClose, width, resizing, tab, setTab }) {
                 </div>
               </div>
             ) : null}
-            <div className="callout callout--info" style={{ fontSize: 12 }}>
-              Computed fill / radius / type readout lands with the live CSS bridge (Phase 12).
-            </div>
+            <InspectComputed el={el} />
           </>
         ) : tab === 'layers' ? (
           <>
-            <div className="st-rp-hd">Layers · ancestry</div>
-            {Array.isArray(el.dom_path) && el.dom_path.length ? (
+            <div className="st-rp-hd">Layers{layersTree?.nodes?.length ? '' : ' · ancestry'}</div>
+            {layersTree?.nodes?.length ? (
+              <div role="tree" aria-label="Artboard layers">
+                {layersTree.nodes.map((n) => (
+                  <LayerRow
+                    key={`${n.id}:${n.index}`}
+                    node={n}
+                    depth={0}
+                    selectedId={el.id}
+                    collapsed={collapsed}
+                    hidden={hiddenLayers}
+                    onToggle={toggleCollapse}
+                    onSelect={(node) => onSelectLayer?.(node)}
+                    onHover={(node) => onHoverLayer?.(node)}
+                    onToggleVisibility={toggleVisibility}
+                  />
+                ))}
+              </div>
+            ) : Array.isArray(el.dom_path) && el.dom_path.length ? (
               el.dom_path.map((node, i) => (
                 <div
                   key={i}
@@ -3310,25 +5222,13 @@ function InspectorPanel({ selected, onClose, width, resizing, tab, setTab }) {
                 </div>
               ))
             ) : (
-              <div className="st-rp-empty">No ancestry path for this selection.</div>
+              <div className="st-rp-empty">
+                Select an element (⌘-click in the canvas) to see its layer tree.
+              </div>
             )}
           </>
         ) : (
-          <>
-            <div className="st-rp-hd">Markup · {el.selector || el.tag}</div>
-            <div className="st-css">
-              <div>
-                <span className="comment">/* read-only — outerHTML snapshot */</span>
-              </div>
-              <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                {(el.html || '').slice(0, 600) || '(no markup captured)'}
-              </div>
-            </div>
-            <div className="callout callout--info" style={{ fontSize: 12 }}>
-              Phase 12 — knob edits will write back to the artboard live and stage a diff for
-              handoff. Today the inspector is read-only.
-            </div>
-          </>
+          <CssKnobs el={el} cfg={cfg} onOptimistic={onOptimistic} />
         )}
       </div>
     </aside>
@@ -3343,6 +5243,15 @@ function App() {
   const [tabs, setTabs] = useState([]);
   const [activePath, setActivePath] = useState(null);
   const [selected, setSelected] = useState(null);
+  // Phase 12.3 — latest selection, readable from the (stale-closure) onMessage
+  // handler so an HMR reload (triggered by a CSS/attr edit) can re-select the
+  // same element and restore the in-canvas halo the remount dropped.
+  const selectedRef = useRef(null);
+  useEffect(() => {
+    selectedRef.current = selected;
+  }, [selected]);
+  // Phase 12 Task 4 — Layers tree for the active artboard (posted by canvas-shell).
+  const [layersTree, setLayersTree] = useState(null);
   const [wsConnected, setWsConnected] = useState(false);
   // Phase 8 Task 7 — git lifecycle reload prompt. Server has already flushed
   // every dirty Y.Doc to disk by the time this state populates, so accepting
@@ -3476,6 +5385,26 @@ function App() {
   const startTour = useCallback((steps) => {
     setTourSteps(Array.isArray(steps) && steps.length ? steps : null);
   }, []);
+  // Guided-tour bus — the overlay calls setup() before each step to put the shell
+  // into the state the step spotlights: open a canvas, open the Inspector, switch
+  // its tab. The canvas iframe is cross-origin (DDR-054) so the tour can't select
+  // an element for the user; requireSelection steps instead wait for a real
+  // ⌘-click. Plain object (the overlay refs it), so per-render churn is harmless.
+  const tourBus = {
+    setup: (step) => {
+      if (!step) return;
+      if ((step.canvas || step.requireSelection) && tabs.length === 0) {
+        setSidebarOpen(true);
+        setTimeout(() => {
+          try {
+            document.querySelector('.st-sidebar [role="treeitem"]')?.click();
+          } catch {}
+        }, 80);
+      }
+      if (step.inspector || step.tab || step.requireSelection) setInspectorOpen(true);
+      if (step.tab) setInspectorTab(step.tab);
+    },
+  };
   const markUsageSeen = useCallback(() => {
     setUsageNudge(false);
     try {
@@ -3702,9 +5631,9 @@ function App() {
         try {
           const m = JSON.parse(e.data);
           if (m.type === 'snapshot' && m.state) {
-            setSelected(m.state.selected);
+            setSelected((prev) => mergeSelClientFields(m.state.selected, prev));
           } else if (m.type === 'selected') {
-            setSelected(m.selected);
+            setSelected((prev) => mergeSelClientFields(m.selected, prev));
           } else if (m.type === 'comments' && typeof m.file === 'string') {
             setCommentsByFile((prev) => ({ ...prev, [m.file]: m.comments || [] }));
           } else if (m.type === 'ai-activity' && typeof m.file === 'string') {
@@ -3968,6 +5897,27 @@ function App() {
       } else if (m.dgn === 'clear-select') {
         wsSend({ type: 'clear-select' });
         setSelected(null);
+      } else if (m.dgn === 'edit-text' && m.id) {
+        // Phase 12 (DDR-103) — inline text edit committed in the canvas. POST to
+        // the main-origin-only /_api/edit-text → editText writes the escaped
+        // JSXText to source; the file-watcher HMR reload then shows the new text.
+        // A refusal (mixed/expression content) is logged, not fatal.
+        fetch('/_api/edit-text', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ canvas: m.file, id: m.id, text: m.text ?? '' }),
+        })
+          .then((r) => r.json().catch(() => ({})))
+          .then((j) => {
+            if (!j.ok) console.warn('[edit-text]', j.error || 'failed');
+          })
+          .catch(() => {});
+      } else if (m.dgn === 'layers-tree') {
+        // Phase 12 Task 4 — browsable layers tree for the active artboard.
+        setLayersTree({ artboardId: m.artboardId, nodes: Array.isArray(m.tree) ? m.tree : [] });
+      } else if (m.dgn === 'open-inspector') {
+        // Phase 12 — context-menu "Inspect" / tool-palette Inspect opens the right panel.
+        setInspectorOpen(true);
       } else if (m.dgn === 'comment-compose' && m.selection) {
         // Phase 6 — the iframe overlay owns the composer surface now. The
         // shell just mirrors `selected` so the StatusBar / sidebar still
@@ -4051,6 +6001,26 @@ function App() {
           if (focusedCommentId && list.some((c) => c.id === focusedCommentId)) {
             try {
               el.contentWindow.postMessage({ dgn: 'comment-focus', id: focusedCommentId }, '*');
+            } catch {}
+          }
+          // Phase 12.3 (W1.1) — an edit-css/edit-attr commit triggers the file
+          // watcher's HMR reload, which remounts the canvas and drops the
+          // in-canvas selection halo. Re-select the same element by its stable
+          // data-cd-id so the user keeps focus on what they're editing. The
+          // canvas-shell `select-by-id` handler re-emits select-set, which keeps
+          // the Inspector panel + halo in sync. Guarded to the active file.
+          const sel = selectedRef.current;
+          if (sel && sel.id && sel.file === m.file) {
+            try {
+              el.contentWindow.postMessage(
+                {
+                  dgn: 'select-by-id',
+                  id: sel.id,
+                  artboardId: sel.artboardId ?? null,
+                  index: sel.index ?? 0,
+                },
+                '*'
+              );
             } catch {}
           }
         }
@@ -4137,6 +6107,22 @@ function App() {
       } catch {}
     }
   }, [activePath]);
+
+  // Phase 12.3 (W1.1) — optimistic inline-style preview. The CSS panel calls this
+  // on commit so the selected element updates instantly in the canvas before the
+  // edit-css → HMR reload lands. `value` null = the reset path (remove the prop).
+  const applyOptimisticStyle = useCallback(
+    (payload) => {
+      if (!activePath || activePath === SYSTEM_TAB) return;
+      const el = iframesRef.current.get(activePath);
+      if (el && el.contentWindow) {
+        try {
+          el.contentWindow.postMessage({ dgn: 'apply-style', ...payload }, '*');
+        } catch {}
+      }
+    },
+    [activePath]
+  );
 
   const resolveComment = useCallback((id) => {
     wsSend({ type: 'comments-patch', id, patch: { status: 'resolved' } });
@@ -4640,11 +6626,30 @@ function App() {
           {inspectorOpen ? (
             <InspectorPanel
               selected={selected}
+              cfg={cfg}
+              tab={inspectorTab}
+              onTabChange={setInspectorTab}
               onClose={() => setInspectorOpen(false)}
+              onOptimistic={applyOptimisticStyle}
+              layersTree={layersTree}
+              onSelectLayer={(n) =>
+                postToActiveCanvas({
+                  dgn: 'select-by-id',
+                  id: n.id,
+                  artboardId: layersTree?.artboardId,
+                  index: n.index,
+                })
+              }
+              onHoverLayer={(n) =>
+                postToActiveCanvas({
+                  dgn: 'highlight',
+                  id: n ? n.id : null,
+                  artboardId: layersTree?.artboardId,
+                  index: n ? n.index : 0,
+                })
+              }
               width={rpSize.w}
               resizing={dragSide === 'rp'}
-              tab={inspectorTab}
-              setTab={setInspectorTab}
             />
           ) : commentsPanelOpen ? (
             <CommentsPanel
@@ -4726,6 +6731,9 @@ function App() {
         open={!!tourSteps}
         onClose={() => setTourSteps(null)}
         onComplete={markUsageSeen}
+        bus={tourBus}
+        hasSelection={!!selected}
+        hasCanvas={tabs.length > 0}
       />
     </div>
   );

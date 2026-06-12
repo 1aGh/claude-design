@@ -14,7 +14,7 @@ export function SkuBreadcrumb({ crumbs, sku }: { crumbs: Crumb[]; sku?: string }
   return (
     <nav className="mdcc-sku-breadcrumb" aria-label="Breadcrumb">
       {crumbs.map((c, i) => (
-        <Fragment key={`${c.label}-${i}`}>
+        <Fragment key={c.href ?? c.label}>
           {i > 0 ? (
             <span className="sep" aria-hidden="true">
               /

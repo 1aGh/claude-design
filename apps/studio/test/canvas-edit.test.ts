@@ -5,7 +5,13 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { applyEdit, CanvasEditError, editAttribute } from '../canvas-edit.ts';
+import {
+  applyEdit,
+  applyRemove,
+  applyTextEdit,
+  CanvasEditError,
+  editAttribute,
+} from '../canvas-edit.ts';
 import { transpileCanvasSource } from '../canvas-pipeline.ts';
 
 const CANVAS = '/abs/Canvas.tsx';
@@ -50,6 +56,42 @@ describe('canvas-edit / applyEdit', () => {
     const id = ids.button as string;
     const out = applyEdit(CANVAS, src, id, 'aria-label', 'new');
     expect(out.source).toBe(`function Demo() { return <button aria-label="new">x</button>; }`);
+  });
+
+  test('JSX-attribute-escapes a " in a replaced literal value (no JSON \\" corruption)', () => {
+    // Regression: the replace branch used to emit JSON.stringify(value) → `\"`,
+    // which is invalid JS-escaping inside a JSX attribute and corrupts the source.
+    // It must land as the HTML entity &quot; instead. See DDR-105.
+    const src = `function Demo() { return <button aria-label="old">x</button>; }`;
+    const ids = idsOf(src);
+    const id = ids.button as string;
+    const out = applyEdit(CANVAS, src, id, 'aria-label', 'say "hi" <b>');
+    expect(out.source).toBe(
+      `function Demo() { return <button aria-label="say &quot;hi&quot; &lt;b&gt;">x</button>; }`
+    );
+    // Never the JS-escaped form that broke things.
+    expect(out.source).not.toContain('\\"');
+  });
+
+  test('JSX-attribute-escapes a " in a newly inserted attribute value', () => {
+    const src = 'function Demo() { return <div>x</div>; }';
+    const ids = idsOf(src);
+    const id = ids.div as string;
+    const out = applyEdit(CANVAS, src, id, 'title', 'a "quoted" title');
+    expect(out.source).toBe(
+      `function Demo() { return <div title="a &quot;quoted&quot; title">x</div>; }`
+    );
+  });
+
+  test('replaces an expression-container attr value with a JSX-escaped literal', () => {
+    // <Tag name={expr} /> → <Tag name="value" />, entity-escaped (not JSON-escaped).
+    const src = `function Demo() { return <button aria-label={lbl}>x</button>; }`;
+    const ids = idsOf(src);
+    const id = ids.button as string;
+    const out = applyEdit(CANVAS, src, id, 'aria-label', 'with "quote"');
+    expect(out.source).toBe(
+      `function Demo() { return <button aria-label="with &quot;quote&quot;">x</button>; }`
+    );
   });
 
   test('swaps a single style.<prop> value inside style={{...}}', () => {
@@ -119,6 +161,62 @@ describe('canvas-edit / applyEdit', () => {
   });
 });
 
+describe('canvas-edit / applyRemove (reset)', () => {
+  test('removes one style key, leaving the siblings + object intact', () => {
+    const src = 'function Demo() { return <div style={{ padding: 8, margin: 4 }}>x</div>; }';
+    const ids = idsOf(src);
+    const out = applyRemove(CANVAS, src, ids.div as string, 'style.margin');
+    expect(out.source).toBe('function Demo() { return <div style={{ padding: 8 }}>x</div>; }');
+  });
+
+  test('removes the leading style key (consumes the trailing comma)', () => {
+    const src = 'function Demo() { return <div style={{ padding: 8, margin: 4 }}>x</div>; }';
+    const ids = idsOf(src);
+    const out = applyRemove(CANVAS, src, ids.div as string, 'style.padding');
+    expect(out.source).toBe('function Demo() { return <div style={{ margin: 4 }}>x</div>; }');
+  });
+
+  test('removing the only style key drops the whole style attribute', () => {
+    const src = 'function Demo() { return <div style={{ padding: 8 }}>x</div>; }';
+    const ids = idsOf(src);
+    const out = applyRemove(CANVAS, src, ids.div as string, 'style.padding');
+    expect(out.source).toBe('function Demo() { return <div>x</div>; }');
+  });
+
+  test('accepts a kebab style prop name (border-radius → borderRadius)', () => {
+    const src = 'function Demo() { return <div style={{ borderRadius: 8, padding: 4 }}>x</div>; }';
+    const ids = idsOf(src);
+    const out = applyRemove(CANVAS, src, ids.div as string, 'style.border-radius');
+    expect(out.source).toBe('function Demo() { return <div style={{ padding: 4 }}>x</div>; }');
+  });
+
+  test('removes a plain attribute (custom data-*)', () => {
+    const src = 'function Demo() { return <button data-state="active">x</button>; }';
+    const ids = idsOf(src);
+    const out = applyRemove(CANVAS, src, ids.button as string, 'data-state');
+    expect(out.source).toBe('function Demo() { return <button>x</button>; }');
+  });
+
+  test('is a no-op (delta 0) when the key / attribute is absent', () => {
+    const src = 'function Demo() { return <div style={{ padding: 8 }}>x</div>; }';
+    const ids = idsOf(src);
+    const a = applyRemove(CANVAS, src, ids.div as string, 'style.margin');
+    expect(a.source).toBe(src);
+    expect(a.delta).toBe(0);
+    const b = applyRemove(CANVAS, src, ids.div as string, 'data-nope');
+    expect(b.source).toBe(src);
+    expect(b.delta).toBe(0);
+  });
+
+  test('refuses to remove data-cd-id (pipeline-owned)', () => {
+    const src = 'function Demo() { return <div>x</div>; }';
+    const ids = idsOf(src);
+    expect(() => applyRemove(CANVAS, src, ids.div as string, 'data-cd-id')).toThrow(
+      CanvasEditError
+    );
+  });
+});
+
 describe('canvas-edit / editAttribute (fs)', () => {
   test('writes the edit atomically + is a no-op when source unchanged', async () => {
     const tmp = `/tmp/canvas-edit-${Math.random().toString(36).slice(2)}.tsx`;
@@ -135,5 +233,87 @@ describe('canvas-edit / editAttribute (fs)', () => {
     // Second pass with the same value — no-op (the source already has it).
     const r2 = await editAttribute(tmp, id, 'className', 'longer-value');
     expect(r2.delta).toBe(0);
+  });
+});
+
+// Phase 12 (DDR-103) — inline text-content edit. Leaf-text only; JSX-escaped.
+describe('canvas-edit / applyTextEdit', () => {
+  test('overwrites a leaf text node', () => {
+    const src = `function Demo() { return <button>Save</button>; }`;
+    const id = idsOf(src).button as string;
+    const out = applyTextEdit(CANVAS, src, id, 'Uložit');
+    expect(out.source).toBe(`function Demo() { return <button>Uložit</button>; }`);
+  });
+
+  test('preserves surrounding whitespace / indentation', () => {
+    const src = [
+      'function Demo() {',
+      '  return (',
+      '    <button>',
+      '      Save',
+      '    </button>',
+      '  );',
+      '}',
+    ].join('\n');
+    const id = idsOf(src).button as string;
+    const out = applyTextEdit(CANVAS, src, id, 'Go');
+    expect(out.source).toContain('    <button>\n      Go\n    </button>');
+  });
+
+  test('JSX-escapes <, >, {, }, & so text can never become markup or an expression', () => {
+    const src = `function Demo() { return <code>x</code>; }`;
+    const id = idsOf(src).code as string;
+    const out = applyTextEdit(CANVAS, src, id, 'a < b && c > {d}');
+    expect(out.source).toContain('a &lt; b &amp;&amp; c &gt; &#123;d&#125;');
+    expect(out.source).not.toContain('{d}');
+  });
+
+  test('refuses an element with mixed (element) children', () => {
+    const src = `function Demo() { return <div>hi <b>there</b></div>; }`;
+    const id = idsOf(src).div as string;
+    expect(() => applyTextEdit(CANVAS, src, id, 'x')).toThrow(CanvasEditError);
+  });
+
+  test('refuses an element whose only child is a JSX expression', () => {
+    const src = 'function Demo() { const t = "x"; return <h1>{t}</h1>; }';
+    const id = idsOf(src).h1 as string;
+    expect(() => applyTextEdit(CANVAS, src, id, 'x')).toThrow(CanvasEditError);
+  });
+
+  test('refuses a self-closing / empty element (no text to edit)', () => {
+    const src = `function Demo() { return <div className="x" />; }`;
+    const id = idsOf(src).div as string;
+    expect(() => applyTextEdit(CANVAS, src, id, 'x')).toThrow(CanvasEditError);
+  });
+
+  test('throws on a missing id', () => {
+    const src = `function Demo() { return <button>Save</button>; }`;
+    expect(() => applyTextEdit(CANVAS, src, 'deadbeef', 'x')).toThrow(CanvasEditError);
+  });
+});
+
+// Phase 12 (DDR-103) — the `style.<prop>` write path the CSS knobs ride
+// (api.editCss maps property → camelCase + always quotes the value).
+describe('canvas-edit / applyEdit style.<prop> (CSS-knob path)', () => {
+  test('inserts an inline style object when none exists', () => {
+    const src = `function Demo() { return <div>x</div>; }`;
+    const id = idsOf(src).div as string;
+    const out = applyEdit(CANVAS, src, id, 'style.borderRadius', '"8px"');
+    expect(out.source).toContain('style={{ borderRadius: "8px" }}');
+  });
+
+  test('overwrites an existing style key, leaving siblings intact', () => {
+    const src = `function Demo() { return <div style={{ padding: 4, color: "red" }}>x</div>; }`;
+    const id = idsOf(src).div as string;
+    const out = applyEdit(CANVAS, src, id, 'style.color', '"blue"');
+    expect(out.source).toContain('color: "blue"');
+    expect(out.source).toContain('padding: 4');
+  });
+
+  test('accepts a token-valued (var(--…)) string for on-system edits', () => {
+    const src = `function Demo() { return <div>x</div>; }`;
+    const id = idsOf(src).div as string;
+    const out = applyEdit(CANVAS, src, id, 'style.padding', '"var(--space-3)"');
+    expect(out.source).toContain('style={{ padding: "var(--space-3)" }}');
   });
 });

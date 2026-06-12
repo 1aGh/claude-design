@@ -209,6 +209,20 @@ export function ContextualToolbar() {
       <span className="dc-elem-ctx-count">{count === 1 ? '1 element' : `${count} elements`}</span>
       <button
         type="button"
+        title="Inspect — open the right panel (Inspect / Layers / CSS)"
+        onClick={() => {
+          // Phase 12 — open the shell's Inspector on the current selection.
+          try {
+            window.parent.postMessage({ dgn: 'open-inspector' }, '*');
+          } catch {
+            /* detached / cross-origin */
+          }
+        }}
+      >
+        Inspect
+      </button>
+      <button
+        type="button"
         title="Copy CSS selector"
         onClick={() => primary && copyText(primary.selector)}
       >

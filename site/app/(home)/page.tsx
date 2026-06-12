@@ -143,6 +143,40 @@ export default function HomePage() {
         </section>
       </section>
 
+      {/* ── Feature spotlight: the latest big shipped feature. Curated, not
+          generated — update this block each release. ── */}
+      <section className="mdcc-spotlight" aria-labelledby="spot-h">
+        <div className="mdcc-spotlight-tag">
+          <SkuLabel>MDCC-NEW/05</SkuLabel>
+          <span aria-hidden="true">·</span>
+          <span>LATEST DROP</span>
+          <span aria-hidden="true">·</span>
+          <span>{stats.version}</span>
+        </div>
+        <h2 id="spot-h" className="mdcc-spotlight-title">
+          The canvas <span style={{ color: 'var(--accent)' }}>talks back</span> now.
+        </h2>
+        <p className="mdcc-spotlight-lede">
+          Cmd+Click an element and edit its CSS against your real design tokens — Figma-style scrub
+          fields, a searchable Variables popover that shows where each token is defined, and one
+          colour picker for fill and border alike. It writes straight back to the source{' '}
+          <code>.tsx</code>. The AI sits this one out.
+        </p>
+        <div className="mdcc-spotlight-tags">
+          <span>Figma-style token editor</span>
+          <span>searchable Variables · provenance</span>
+          <span>writes back to source</span>
+        </div>
+        <div className="mdcc-spotlight-ctas">
+          <Link href="/changelog" className="mdcc-cta-primary">
+            See what shipped
+          </Link>
+          <Link href="/docs/design" className="mdcc-cta-ghost">
+            Read the design docs
+          </Link>
+        </div>
+      </section>
+
       <div id="intro">
         <DemoVideo />
       </div>

@@ -389,6 +389,73 @@ html.dark .mdcc-sku {
   color: var(--fg-2);
 }
 
+/* Feature spotlight — the latest big shipped feature, curated per release.
+   Sits between the hero and the intro video. Update the block in
+   (home)/page.tsx each release. */
+.mdcc-spotlight {
+  margin: var(--space-6) 0;
+  padding: var(--space-6);
+  background: var(--bg-1);
+  border: 1px solid var(--border-default);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+.mdcc-spotlight-tag {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.mdcc-spotlight-title {
+  font-family: var(--font-display);
+  font-size: var(--type-2xl);
+  line-height: var(--lh-2xl);
+  letter-spacing: var(--tracking-tight);
+  font-weight: 620;
+  color: var(--fg-0);
+  margin: var(--space-3) 0;
+}
+.mdcc-spotlight-lede {
+  font-family: var(--font-body);
+  font-size: var(--type-lg);
+  line-height: var(--lh-lg);
+  color: var(--fg-1);
+  max-width: 64ch;
+  margin: 0;
+}
+.mdcc-spotlight-lede code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: var(--accent);
+}
+.mdcc-spotlight-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+}
+.mdcc-spotlight-tags span {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-3);
+}
+.mdcc-spotlight-ctas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
 .mdcc-section-head {
   display: flex;
   justify-content: space-between;

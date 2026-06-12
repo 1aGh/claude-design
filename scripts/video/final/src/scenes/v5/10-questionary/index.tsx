@@ -1,5 +1,22 @@
-import { AbsoluteFill, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
-import { Void, ChatBubble, Phrase, maude, font, lerp, easeOut, CARD_SHADOW } from '../../../lib/v5-stage';
+import {
+  AbsoluteFill,
+  Img,
+  interpolate,
+  spring,
+  staticFile,
+  useCurrentFrame,
+  useVideoConfig,
+} from 'remotion';
+import {
+  CARD_SHADOW,
+  ChatBubble,
+  easeOut,
+  font,
+  lerp,
+  maude,
+  Phrase,
+  Void,
+} from '../../../lib/v5-stage';
 
 /**
  * Beat 10 · The questionary + moodboard (240f / 8s).
@@ -12,8 +29,16 @@ import { Void, ChatBubble, Phrase, maude, font, lerp, easeOut, CARD_SHADOW } fro
  * and a moodboard that commits to a direction."
  */
 const QA = [
-  { q: 'What makes this special — the one thing only you would build?', a: 'Design and code in one place — directed by pointing, not prompting.', at: 8 },
-  { q: 'Who is it for, and what should they feel?', a: 'Builders. Calm, fast, a little bit magic.', at: 64 },
+  {
+    q: 'What makes this special — the one thing only you would build?',
+    a: 'Design and code in one place — directed by pointing, not prompting.',
+    at: 8,
+  },
+  {
+    q: 'Who is it for, and what should they feel?',
+    a: 'Builders. Calm, fast, a little bit magic.',
+    at: 64,
+  },
   { q: 'One word for the personality?', a: 'Precise.', at: 116 },
 ];
 const FINAL_AT = 162;
@@ -29,7 +54,7 @@ export const V5Questionary = () => {
     frame,
     [QA[0].at + 14, QA[1].at + 14, QA[2].at + 14, FINAL_AT + 6, FINAL_AT + 36],
     [3, 30, 58, 80, 100],
-    { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
+    { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }
   );
 
   // gentle auto-scroll so the latest message stays in view
@@ -41,19 +66,43 @@ export const V5Questionary = () => {
         <div style={{ position: 'absolute', inset: '60px 72px', display: 'flex', gap: 56 }}>
           {/* ── chat thread ── */}
           <div style={{ width: 760, position: 'relative', overflow: 'hidden' }}>
-            <div style={{ fontFamily: font.mono, fontSize: 16, letterSpacing: '0.1em', color: t.fg2, marginBottom: 18 }}>
+            <div
+              style={{
+                fontFamily: font.mono,
+                fontSize: 16,
+                letterSpacing: '0.1em',
+                color: t.fg2,
+                marginBottom: 18,
+              }}
+            >
               DISCOVERY · built on how the best designers work
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, transform: `translateY(${scroll}px)` }}>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 16,
+                transform: `translateY(${scroll}px)`,
+              }}
+            >
               {QA.map((row) => {
                 const qOp = lerp(frame, [row.at, row.at + 12], [0, 1]);
-                const aSpring = spring({ frame: frame - (row.at + 14), fps, config: { damping: 13, mass: 0.7 }, durationInFrames: 16 });
+                const aSpring = spring({
+                  frame: frame - (row.at + 14),
+                  fps,
+                  config: { damping: 13, mass: 0.7 },
+                  durationInFrames: 16,
+                });
                 return (
                   <div key={row.q} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    <ChatBubble role="ai" opacity={qOp} rise={interpolate(qOp, [0, 1], [14, 0])} width={600}>
+                    <ChatBubble opacity={qOp} rise={interpolate(qOp, [0, 1], [14, 0])} width={600}>
                       {row.q}
                     </ChatBubble>
-                    <ChatBubble role="you" opacity={aSpring} rise={interpolate(aSpring, [0, 1], [14, 0])} width={560}>
+                    <ChatBubble
+                      opacity={aSpring}
+                      rise={interpolate(aSpring, [0, 1], [14, 0])}
+                      width={560}
+                    >
                       {row.a}
                     </ChatBubble>
                   </div>
@@ -61,9 +110,14 @@ export const V5Questionary = () => {
               })}
               {/* final AI message — the payoff */}
               {(() => {
-                const s = spring({ frame: frame - FINAL_AT, fps, config: { damping: 12, mass: 0.7 }, durationInFrames: 16 });
+                const s = spring({
+                  frame: frame - FINAL_AT,
+                  fps,
+                  config: { damping: 12, mass: 0.7 },
+                  durationInFrames: 16,
+                });
                 return (
-                  <ChatBubble role="ai" opacity={s} rise={interpolate(s, [0, 1], [14, 0])} width={420}>
+                  <ChatBubble opacity={s} rise={interpolate(s, [0, 1], [14, 0])} width={420}>
                     <span style={{ fontWeight: 700, color: t.accent }}>Here's your moodboard.</span>
                   </ChatBubble>
                 );
@@ -73,7 +127,15 @@ export const V5Questionary = () => {
 
           {/* ── moodboard that grows ── */}
           <div style={{ flex: 1, position: 'relative' }}>
-            <div style={{ fontFamily: font.mono, fontSize: 16, letterSpacing: '0.1em', color: t.fg2, marginBottom: 14 }}>
+            <div
+              style={{
+                fontFamily: font.mono,
+                fontSize: 16,
+                letterSpacing: '0.1em',
+                color: t.fg2,
+                marginBottom: 14,
+              }}
+            >
               MOODBOARD · the direction
             </div>
             <div
@@ -118,7 +180,13 @@ export const V5Questionary = () => {
           </div>
         </div>
 
-        <Phrase frame={frame} from={168} text="a moodboard that commits to a direction" size={30} bottom={32} />
+        <Phrase
+          frame={frame}
+          from={168}
+          text="a moodboard that commits to a direction"
+          size={30}
+          bottom={32}
+        />
       </Void>
     </AbsoluteFill>
   );

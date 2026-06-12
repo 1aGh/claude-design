@@ -15,7 +15,6 @@ import {
   DEFAULT_SNAP_TOLERANCE,
   DRAG_THRESHOLD_PX,
   type DragEvent,
-  type DragState,
   dragReducer,
   selectionsToArtboardIds,
 } from '../use-artboard-drag.tsx';

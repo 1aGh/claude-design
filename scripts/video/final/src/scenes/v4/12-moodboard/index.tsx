@@ -1,6 +1,6 @@
 import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
+import { Caption, DottedCanvas } from '../../../lib/maude-stage';
 import { maude } from '../../../lib/maude-tokens';
-import { DottedCanvas, Caption } from '../../../lib/maude-stage';
 
 /**
  * Scene 12 · Moodboard — proof.
@@ -27,7 +27,13 @@ export const MoodboardScene = () => {
     boxShadow: '0 16px 50px rgba(0,0,0,0.4)',
   };
 
-  const oklch = ['oklch(0.68 0.18 268)', 'oklch(0.62 0.20 28)', 'oklch(0.74 0.15 162)', 'oklch(0.78 0.14 85)', 'oklch(0.70 0.19 322)'];
+  const oklch = [
+    'oklch(0.68 0.18 268)',
+    'oklch(0.62 0.20 28)',
+    'oklch(0.74 0.15 162)',
+    'oklch(0.78 0.14 85)',
+    'oklch(0.70 0.19 322)',
+  ];
 
   return (
     <AbsoluteFill>
@@ -50,9 +56,29 @@ export const MoodboardScene = () => {
           </div>
 
           {/* mood tile — accent gradient */}
-          <div style={{ ...card, left: 200, top: 270, width: 420, height: 300, background: `linear-gradient(150deg, ${t.accent}, ${t.bg2})`, ...drift(8) }} />
+          <div
+            style={{
+              ...card,
+              left: 200,
+              top: 270,
+              width: 420,
+              height: 300,
+              background: `linear-gradient(150deg, ${t.accent}, ${t.bg2})`,
+              ...drift(8),
+            }}
+          />
           {/* mood tile — neutral "photo" */}
-          <div style={{ ...card, left: 650, top: 270, width: 300, height: 300, background: t.fg2, ...drift(16) }} />
+          <div
+            style={{
+              ...card,
+              left: 650,
+              top: 270,
+              width: 300,
+              height: 300,
+              background: t.fg2,
+              ...drift(16),
+            }}
+          />
           {/* mood tile — dark dotted panel */}
           <div
             style={{
@@ -81,26 +107,71 @@ export const MoodboardScene = () => {
               ...drift(20),
             }}
           >
-            <div style={{ fontFamily: maude.font.mono, fontSize: 18, color: t.fg2, letterSpacing: '0.05em' }}>TYPE PAIRING</div>
-            <div style={{ fontFamily: maude.font.display, fontWeight: 700, fontSize: 96, color: t.fg0, lineHeight: 1.1 }}>Aa</div>
-            <div style={{ fontFamily: maude.font.display, fontSize: 26, color: t.fg1 }}>Inter Tight · Inter</div>
-            <div style={{ fontFamily: maude.font.mono, fontSize: 22, color: t.fg2, marginTop: 6 }}>JetBrains Mono</div>
+            <div
+              style={{
+                fontFamily: maude.font.mono,
+                fontSize: 18,
+                color: t.fg2,
+                letterSpacing: '0.05em',
+              }}
+            >
+              TYPE PAIRING
+            </div>
+            <div
+              style={{
+                fontFamily: maude.font.display,
+                fontWeight: 700,
+                fontSize: 96,
+                color: t.fg0,
+                lineHeight: 1.1,
+              }}
+            >
+              Aa
+            </div>
+            <div style={{ fontFamily: maude.font.display, fontSize: 26, color: t.fg1 }}>
+              Inter Tight · Inter
+            </div>
+            <div style={{ fontFamily: maude.font.mono, fontSize: 22, color: t.fg2, marginTop: 6 }}>
+              JetBrains Mono
+            </div>
           </div>
 
           {/* OKLCH options row */}
           <div style={{ position: 'absolute', left: 1010, top: 600, width: 510, ...drift(30) }}>
-            <div style={{ fontFamily: maude.font.mono, fontSize: 18, color: t.fg2, letterSpacing: '0.05em', marginBottom: 14 }}>
+            <div
+              style={{
+                fontFamily: maude.font.mono,
+                fontSize: 18,
+                color: t.fg2,
+                letterSpacing: '0.05em',
+                marginBottom: 14,
+              }}
+            >
               COLOUR OPTIONS · OKLCH
             </div>
             <div style={{ display: 'flex', gap: 12 }}>
               {oklch.map((c) => (
-                <span key={c} style={{ flex: 1, height: 84, borderRadius: 12, background: c, border: `1px solid ${t.borderSubtle}` }} />
+                <span
+                  key={c}
+                  style={{
+                    flex: 1,
+                    height: 84,
+                    borderRadius: 12,
+                    background: c,
+                    border: `1px solid ${t.borderSubtle}`,
+                  }}
+                />
               ))}
             </div>
           </div>
         </div>
 
-        <Caption theme="dark" frame={frame} from={104} text="research first — a moodboard, not a guess." />
+        <Caption
+          theme="dark"
+          frame={frame}
+          from={104}
+          text="research first — a moodboard, not a guess."
+        />
       </DottedCanvas>
     </AbsoluteFill>
   );

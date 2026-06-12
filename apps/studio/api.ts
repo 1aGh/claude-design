@@ -7,6 +7,12 @@ import { mkdir, readdir, readFile, rename, stat as statp } from 'node:fs/promise
 import path from 'node:path';
 
 import { renderBriefBoard, validateCanvasName } from './canvas-create.ts';
+import {
+  CanvasEditError,
+  editAttribute,
+  removeAttribute,
+  editText as runEditText,
+} from './canvas-edit.ts';
 import type { Context } from './context.ts';
 
 const SKIP_DIRS = new Set([
@@ -141,6 +147,11 @@ export type DeleteCanvasResult =
   | { ok: true; rel: string; slug: string; trashed: string[]; trashDir: string }
   | { ok: false; status: number; error: string };
 
+/** Phase 12 — result of an in-canvas direct edit (`editCss` / `editText`). */
+export type EditOpResult =
+  | { ok: true; delta: number }
+  | { ok: false; status: number; error: string };
+
 export interface Api {
   // File tree
   fileSlug(file: string): string;
@@ -190,6 +201,25 @@ export interface Api {
   }): Promise<CreateCanvasResult>;
   // Soft-delete a canvas from the browser (Phase 22 — DELETE /_api/canvas)
   deleteCanvas(input: { file?: unknown }): Promise<DeleteCanvasResult>;
+  // Phase 12 (DDR-103) — single-property inline CSS edit (POST /_api/edit-css).
+  // Main-origin only: writes one key into the element's inline `style={{}}` object.
+  editCss(input: {
+    canvas?: unknown;
+    id?: unknown;
+    property?: unknown;
+    value?: unknown;
+  }): Promise<EditOpResult>;
+  // Phase 12 (DDR-103) — inline text-content edit (POST /_api/edit-text). Main-origin only.
+  editText(input: { canvas?: unknown; id?: unknown; text?: unknown }): Promise<EditOpResult>;
+  // Phase 12.2 (DDR-104) — custom HTML attribute edit (POST /_api/edit-attr). Main-origin
+  // only. The CSS panel's "custom HTML attribute" escape hatch (data-*, aria-*, role, …);
+  // writes a plain JSX attribute via editAttribute's non-`style.` path.
+  editAttr(input: {
+    canvas?: unknown;
+    id?: unknown;
+    attr?: unknown;
+    value?: unknown;
+  }): Promise<EditOpResult>;
   // Aggregate data
   buildIndexData(): Promise<unknown>;
   buildSystemData(dsName?: string | null): Promise<unknown>;
@@ -1017,6 +1047,174 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     };
   }
 
+  // Phase 12 (DDR-103) — resolve a v2 canvas slug (`selected.canvas`: POSIX,
+  // extension-less, designRoot-relative — matches `_locator.json` keys + the
+  // `canvasSlug()` shape) to its absolute `.tsx` path, with a containment
+  // backstop. Same main-origin-only trust boundary as createCanvas: the
+  // untrusted canvas iframe origin never reaches a source-write endpoint.
+  function resolveCanvasAbs(
+    slugRaw: unknown
+  ): { ok: true; abs: string } | { ok: false; status: number; error: string } {
+    if (typeof slugRaw !== 'string' || !slugRaw.trim()) {
+      return { ok: false, status: 400, error: 'canvas (slug) required' };
+    }
+    let slug = slugRaw.replace(/^\/+|\/+$/g, '').replace(/\.(tsx|html)$/i, '');
+    // Accept either the bare slug (`ui/Foo`) or the designRel-prefixed file path
+    // the client `selected.file` carries (`.design/ui/Foo.tsx`) — strip a leading
+    // designRel so both shapes resolve to the same canvas (mirrors deriveCanvasSlug).
+    const dr = paths.designRel.replace(/^\.\//, '').replace(/^\/+|\/+$/g, '');
+    if (dr && slug.startsWith(`${dr}/`)) slug = slug.slice(dr.length + 1);
+    if (
+      !slug ||
+      path.isAbsolute(slug) ||
+      slug.split('/').some((seg) => seg === '..' || seg === '.' || seg === '')
+    ) {
+      return { ok: false, status: 400, error: 'invalid canvas slug' };
+    }
+    const abs = `${path.join(paths.designRoot, ...slug.split('/'))}.tsx`;
+    const resolvedRoot = path.resolve(paths.designRoot);
+    const resolved = path.resolve(abs);
+    if (!resolved.startsWith(`${resolvedRoot}${path.sep}`)) {
+      return { ok: false, status: 400, error: 'canvas resolves outside the design root' };
+    }
+    return { ok: true, abs };
+  }
+
+  // 8-hex lowercase, the shape `computeId` (canvas-edit.ts) stamps on data-cd-id.
+  const CD_ID_RE = /^[0-9a-f]{8}$/;
+
+  async function editCss(input: {
+    canvas?: unknown;
+    id?: unknown;
+    property?: unknown;
+    value?: unknown;
+    reset?: unknown;
+  }): Promise<EditOpResult> {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    const id = typeof input.id === 'string' ? input.id.trim() : '';
+    if (!CD_ID_RE.test(id)) return { ok: false, status: 400, error: 'invalid data-cd-id' };
+    const property = typeof input.property === 'string' ? input.property.trim() : '';
+    // CSS property names are ASCII letters + hyphens only (optionally a leading
+    // `-` for vendor prefixes) — reject anything that could smuggle a second key
+    // or an expression into the inline style object.
+    if (!property || !/^-?[a-z][a-z-]*$/.test(property)) {
+      return { ok: false, status: 400, error: 'invalid css property' };
+    }
+    // kebab → camelCase JSX style key.
+    const camel = property.replace(/-([a-z])/g, (_m, c: string) => c.toUpperCase());
+    // Phase 12.3 — `reset: true` REMOVES the inline property (back to class /
+    // inherited). No value needed; a missing key is a no-op (delta 0).
+    if (input.reset === true) {
+      try {
+        const res = await removeAttribute(r.abs, id, `style.${camel}`);
+        return { ok: true, delta: res.delta };
+      } catch (err) {
+        return {
+          ok: false,
+          status: 422,
+          error: err instanceof CanvasEditError ? err.message : 'reset failed',
+        };
+      }
+    }
+    const value = typeof input.value === 'string' ? input.value : '';
+    if (!value.trim()) return { ok: false, status: 400, error: 'value required' };
+    if (value.length > 256) return { ok: false, status: 413, error: 'value too long' };
+    // The value is always written as a JS STRING literal: JSON.stringify escapes
+    // quotes/backslashes/newlines so it can never break out of the string, and
+    // React accepts string values for every style prop — so `var(--accent)`,
+    // `#fff`, `8px`, `700`, `1.5` all ride verbatim.
+    try {
+      const res = await editAttribute(r.abs, id, `style.${camel}`, JSON.stringify(value));
+      return { ok: true, delta: res.delta };
+    } catch (err) {
+      return {
+        ok: false,
+        status: 422,
+        error: err instanceof CanvasEditError ? err.message : 'edit failed',
+      };
+    }
+  }
+
+  async function editText(input: {
+    canvas?: unknown;
+    id?: unknown;
+    text?: unknown;
+  }): Promise<EditOpResult> {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    const id = typeof input.id === 'string' ? input.id.trim() : '';
+    if (!CD_ID_RE.test(id)) return { ok: false, status: 400, error: 'invalid data-cd-id' };
+    if (typeof input.text !== 'string') return { ok: false, status: 400, error: 'text required' };
+    if (input.text.length > 5000) return { ok: false, status: 413, error: 'text too long' };
+    try {
+      const res = await runEditText(r.abs, id, input.text);
+      return { ok: true, delta: res.delta };
+    } catch (err) {
+      return {
+        ok: false,
+        status: 422,
+        error: err instanceof CanvasEditError ? err.message : 'edit failed',
+      };
+    }
+  }
+
+  async function editAttr(input: {
+    canvas?: unknown;
+    id?: unknown;
+    attr?: unknown;
+    value?: unknown;
+    reset?: unknown;
+  }): Promise<EditOpResult> {
+    const r = resolveCanvasAbs(input.canvas);
+    if (!r.ok) return r;
+    const id = typeof input.id === 'string' ? input.id.trim() : '';
+    if (!CD_ID_RE.test(id)) return { ok: false, status: 400, error: 'invalid data-cd-id' };
+    const attr = typeof input.attr === 'string' ? input.attr.trim() : '';
+    // Plain HTML attributes only — data-*, aria-*, role, title, id, lang, dir…
+    // Reject `style*` (that's /_api/edit-css), `data-cd-id` (pipeline-owned, also
+    // refused downstream by editAttribute), and anything that isn't a bare html
+    // attribute name. Digits allowed mid-name (e.g. data-2x).
+    if (
+      !attr ||
+      !/^[a-z][a-z0-9-]*$/.test(attr) ||
+      attr === 'data-cd-id' ||
+      attr.startsWith('style')
+    ) {
+      return { ok: false, status: 400, error: 'invalid attribute' };
+    }
+    // Phase 12.3 — `reset: true` REMOVES the custom attribute. No-op if absent.
+    if (input.reset === true) {
+      try {
+        const res = await removeAttribute(r.abs, id, attr);
+        return { ok: true, delta: res.delta };
+      } catch (err) {
+        return {
+          ok: false,
+          status: 422,
+          error: err instanceof CanvasEditError ? err.message : 'reset failed',
+        };
+      }
+    }
+    const value = typeof input.value === 'string' ? input.value : '';
+    if (!value.trim()) return { ok: false, status: 400, error: 'value required' };
+    if (value.length > 256) return { ok: false, status: 413, error: 'value too long' };
+    try {
+      // Non-`style.` attr name → editAttribute writes a plain quoted JSX attribute.
+      // Pass the value RAW: editStringAttr quotes/escapes it itself (JSON.stringify
+      // on replace, escapeAttr on insert) — pre-stringifying here double-encoded
+      // the value (`data-x="\"ok\""`; knob-smoke finding, 2026-06-12).
+      const res = await editAttribute(r.abs, id, attr, value);
+      return { ok: true, delta: res.delta };
+    } catch (err) {
+      return {
+        ok: false,
+        status: 422,
+        error: err instanceof CanvasEditError ? err.message : 'edit failed',
+      };
+    }
+  }
+
   async function saveCanvasState(file: string, state: Record<string, unknown>) {
     if (!state || typeof state !== 'object') return;
     const safe: Record<string, unknown> = {};
@@ -1423,6 +1621,9 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     saveAsset,
     createCanvas,
     deleteCanvas,
+    editCss,
+    editText,
+    editAttr,
     buildIndexData,
     buildSystemData,
     loadExportHistory,

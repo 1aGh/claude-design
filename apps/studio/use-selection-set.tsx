@@ -61,6 +61,15 @@ export interface Selection {
   dom_path?: string[];
   bounds?: { x: number; y: number; w: number; h: number } | null;
   html?: string;
+  /** Phase 12.2 — authored inline-style values (knob pre-fill) + resolved computed (placeholder hint). */
+  authored?: Record<string, string>;
+  computed?: Record<string, string>;
+  /** Phase 12.3 — authored inline-style props OUTSIDE the curated knob set, so the
+   *  panel can surface a custom CSS property the user added (e.g. `letter-spacing`). */
+  customStyles?: Record<string, string>;
+  /** Phase 12.3 — custom HTML attributes on the element (data-, aria-, role, title…),
+   *  so the panel reflects a custom attribute the user added via the escape hatch. */
+  attrs?: Record<string, string>;
 }
 
 interface SelectionSetValue {

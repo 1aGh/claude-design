@@ -12,11 +12,11 @@
  */
 
 import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
-import { maude, type MaudeTheme } from './maude-tokens';
+import { type MaudeTheme, maude } from './maude-tokens';
 import './maude-fonts'; // side-effect: register + delayRender the DS fonts
 
-export { maude };
 export type { MaudeTheme };
+export { maude };
 export const font = maude.font;
 
 export const PANEL_SHADOW = '0 40px 120px rgba(0,0,0,0.55)';
@@ -43,7 +43,12 @@ export const pop = (frame: number, delay: number, dur = 18) =>
 export const useEnter = (delay: number, dur = 18, damping = 13) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  return spring({ frame: frame - delay, fps, config: { damping, mass: 0.7 }, durationInFrames: dur });
+  return spring({
+    frame: frame - delay,
+    fps,
+    config: { damping, mass: 0.7 },
+    durationInFrames: dur,
+  });
 };
 
 /* ────────────────────────────────────────────────────────────────────────── */
@@ -100,8 +105,16 @@ export const Pointer: React.FC<{
   opacity?: number;
   size?: number;
 }> = ({ x, y, color = maude.dark.presence, label, opacity = 1, size = 36 }) => (
-  <div style={{ position: 'absolute', left: x, top: y, opacity, pointerEvents: 'none', zIndex: 50 }}>
-    <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden style={{ filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.45))' }}>
+  <div
+    style={{ position: 'absolute', left: x, top: y, opacity, pointerEvents: 'none', zIndex: 50 }}
+  >
+    <svg
+      aria-hidden="true"
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      style={{ filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.45))' }}
+    >
       <path d="M3 2l9 4.4-4 1.1-1.1 4z" fill={color} stroke="#fff" strokeWidth={0.5} />
     </svg>
     {label ? (
@@ -141,7 +154,17 @@ export const Phrase: React.FC<{
   align?: 'left' | 'center';
   accent?: boolean;
   bottom?: number;
-}> = ({ text, frame, from = 0, until, theme = 'dark', size = 34, align = 'left', accent = false, bottom = 88 }) => {
+}> = ({
+  text,
+  frame,
+  from = 0,
+  until,
+  theme = 'dark',
+  size = 34,
+  align = 'left',
+  accent = false,
+  bottom = 88,
+}) => {
   const t = maude[theme];
   const enter = lerp(frame, [from, from + 12], [0, 1]);
   const exit = until ? lerp(frame, [until - 10, until], [1, 0]) : 1;
@@ -162,7 +185,9 @@ export const Phrase: React.FC<{
         transform: `translateY(${rise}px)`,
       }}
     >
-      {align === 'left' ? <span style={{ width: 30, height: 3, background: t.accent, borderRadius: 2 }} /> : null}
+      {align === 'left' ? (
+        <span style={{ width: 30, height: 3, background: t.accent, borderRadius: 2 }} />
+      ) : null}
       <span
         style={{
           fontFamily: maude.font.display,
@@ -212,7 +237,15 @@ export const ChatBubble: React.FC<{
       }}
     >
       {ai ? (
-        <div style={{ fontFamily: maude.font.mono, fontSize: 14, letterSpacing: '0.08em', color: t.accent, marginBottom: 6 }}>
+        <div
+          style={{
+            fontFamily: maude.font.mono,
+            fontSize: 14,
+            letterSpacing: '0.08em',
+            color: t.accent,
+            marginBottom: 6,
+          }}
+        >
           /design:setup-ds
         </div>
       ) : null}
@@ -225,12 +258,12 @@ export const ChatBubble: React.FC<{
 /* Brand mark — the spark-on-bubble lockup (matches system/maude/preview/logo)  */
 /* ────────────────────────────────────────────────────────────────────────── */
 
-export const MaudeMark: React.FC<{ size?: number; halo?: boolean; color?: string; fg?: string }> = ({
-  size = 92,
-  halo = true,
-  color = maude.dark.accent,
-  fg = maude.dark.accentFg,
-}) => (
+export const MaudeMark: React.FC<{
+  size?: number;
+  halo?: boolean;
+  color?: string;
+  fg?: string;
+}> = ({ size = 92, halo = true, color = maude.dark.accent, fg = maude.dark.accentFg }) => (
   <span
     style={{
       width: size,
@@ -244,7 +277,7 @@ export const MaudeMark: React.FC<{ size?: number; halo?: boolean; color?: string
       flexShrink: 0,
     }}
   >
-    <svg width={size * 0.56} height={size * 0.56} viewBox="0 0 32 32" fill={fg} aria-hidden>
+    <svg width={size * 0.56} height={size * 0.56} viewBox="0 0 32 32" fill={fg} aria-hidden="true">
       <path d="M16 5l2.8 8.2L27 16l-8.2 2.8L16 27l-2.8-8.2L5 16l8.2-2.8z" />
     </svg>
   </span>

@@ -344,7 +344,7 @@ function ContextMenuView({
           el.querySelectorAll<HTMLButtonElement>('button.dc-menu-item:not([disabled])')
         );
         if (items.length === 0) return;
-        const idx = items.findIndex((b) => b === document.activeElement);
+        const idx = items.indexOf(document.activeElement);
         const nextIdx =
           e.key === 'ArrowDown'
             ? (idx + 1) % items.length
@@ -370,7 +370,6 @@ function ContextMenuView({
       {sections.map((section, si) => {
         const sectionKey = section.map((i) => i.id).join('|') || `s${si}`;
         return (
-          // biome-ignore lint/a11y/useSemanticElements: ARIA group within role="menu"; no native equivalent.
           <div key={sectionKey} role="group">
             {si > 0 ? <div className="dc-menu-sep" aria-hidden="true" /> : null}
             {section.map((item) => (

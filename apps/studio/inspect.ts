@@ -1,7 +1,6 @@
 // Active-canvas state, selected-element tracking, and HTML injection
 // (inspector overlay + canvas runtime). See plan Task 7 + DDR-007.
 
-import path from 'node:path';
 import type { Context } from './context.ts';
 
 export interface SelectedElement {

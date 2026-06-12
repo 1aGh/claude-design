@@ -1,5 +1,5 @@
 import { AbsoluteFill, interpolate, useCurrentFrame } from 'remotion';
-import { Void, Phrase, maude, font, lerp, useEnter, PANEL_SHADOW } from '../../../lib/v5-stage';
+import { font, lerp, maude, PANEL_SHADOW, Phrase, useEnter, Void } from '../../../lib/v5-stage';
 
 /**
  * Beat 50 · It critiques itself (180f / 6s).
@@ -53,8 +53,20 @@ export const V5Critics = () => {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'baseline', marginBottom: 26 }}>
-            <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 32, color: t.fg0, letterSpacing: '-0.01em' }}>Critic panel</span>
-            <span style={{ marginLeft: 14, fontSize: 18, color: t.fg2 }}>· {CRITICS.length} reviewers</span>
+            <span
+              style={{
+                fontFamily: font.display,
+                fontWeight: 700,
+                fontSize: 32,
+                color: t.fg0,
+                letterSpacing: '-0.01em',
+              }}
+            >
+              Critic panel
+            </span>
+            <span style={{ marginLeft: 14, fontSize: 18, color: t.fg2 }}>
+              · {CRITICS.length} reviewers
+            </span>
             <span style={{ marginLeft: 'auto', fontSize: 18, color: t.accent }}>auto-fix loop</span>
           </div>
 
@@ -78,18 +90,67 @@ export const V5Critics = () => {
                     opacity: interpolate(p, [0, 0.2], [0.35, 1]),
                   }}
                 >
-                  <span style={{ flex: 1, fontSize: 18, color: t.fg1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</span>
-                  <span style={{ fontSize: 19, color: c.pass ? t.success : t.fg0 }}>{p > 0.6 ? (c.pass ? 'pass' : val) : ''}</span>
-                  <span style={{ fontSize: 18, color: c.pass ? t.success : t.accent, opacity: p > 0.7 ? 1 : 0 }}>✓</span>
+                  <span
+                    style={{
+                      flex: 1,
+                      fontSize: 18,
+                      color: t.fg1,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {c.name}
+                  </span>
+                  <span style={{ fontSize: 19, color: c.pass ? t.success : t.fg0 }}>
+                    {p > 0.6 ? (c.pass ? 'pass' : val) : ''}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 18,
+                      color: c.pass ? t.success : t.accent,
+                      opacity: p > 0.7 ? 1 : 0,
+                    }}
+                  >
+                    ✓
+                  </span>
                 </div>
               );
             })}
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginTop: 30, paddingTop: 26, borderTop: `1px solid ${t.borderSubtle}` }}>
-            <span style={{ fontFamily: font.display, fontWeight: 700, fontSize: 64, color: t.fg0, lineHeight: 1 }}>{agg.toFixed(1)}</span>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 18,
+              marginTop: 30,
+              paddingTop: 26,
+              borderTop: `1px solid ${t.borderSubtle}`,
+            }}
+          >
+            <span
+              style={{
+                fontFamily: font.display,
+                fontWeight: 700,
+                fontSize: 64,
+                color: t.fg0,
+                lineHeight: 1,
+              }}
+            >
+              {agg.toFixed(1)}
+            </span>
             <span style={{ fontSize: 22, color: t.fg2 }}>/ 5</span>
-            <span style={{ marginLeft: 14, fontSize: 24, color: t.success, opacity: lerp(frame, [146, 158], [0, 1]) }}>verdict · SOLID</span>
+            <span
+              style={{
+                marginLeft: 14,
+                fontSize: 24,
+                color: t.success,
+                opacity: lerp(frame, [146, 158], [0, 1]),
+              }}
+            >
+              verdict · SOLID
+            </span>
             <span
               style={{
                 marginLeft: 'auto',
@@ -111,7 +172,14 @@ export const V5Critics = () => {
           </div>
         </div>
 
-        <Phrase frame={frame} from={108} text="then it fixes what it flags" align="center" size={30} bottom={70} />
+        <Phrase
+          frame={frame}
+          from={108}
+          text="then it fixes what it flags"
+          align="center"
+          size={30}
+          bottom={70}
+        />
       </Void>
     </AbsoluteFill>
   );

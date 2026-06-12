@@ -17,7 +17,7 @@ import { join } from 'node:path';
 import * as Y from 'yjs';
 
 import { type CanvasSyncAgent, createCanvasSyncAgent } from '../sync/agent.ts';
-import { applyHtmlToDoc, htmlFromDoc, Y_SYNC_TYPES } from '../sync/codec.ts';
+import { applyHtmlToDoc, htmlFromDoc } from '../sync/codec.ts';
 import { createEchoGuard, hashBytes } from '../sync/echo-guard.ts';
 import { createFsReader } from '../sync/fs-mirror.ts';
 

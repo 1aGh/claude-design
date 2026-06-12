@@ -364,23 +364,196 @@ function InspectorPanel({ tab = "inspect", onTab }) {
             <div className="st-layer" style={{ paddingLeft: 34 }}><Icon name="file" size={13} />img.src</div>
           </>
         )}
-        {tab === "css" && (
-          <>
-            <div className="st-rp-hd">Computed · button.cta</div>
-            <div className="st-css">
-              <div><span className="comment">/* edit any value — live */</span></div>
-              <div>.cta {"{"}</div>
-              <div style={{ paddingLeft: 14 }}><span className="prop">background</span>: <span className="val">var(--accent)</span>;</div>
-              <div style={{ paddingLeft: 14 }}><span className="prop">padding</span>: <span className="editable">12px 24px</span>;</div>
-              <div style={{ paddingLeft: 14 }}><span className="prop">border-radius</span>: <span className="val">5px</span>;</div>
-              <div style={{ paddingLeft: 14 }}><span className="prop">font</span>: <span className="val">500 14px Inter</span>;</div>
-              <div>{"}"}</div>
-            </div>
-            <div className="callout callout--info" style={{ fontSize: 12 }}>Phase 12 — knob edits write back to the artboard live and stage a diff for handoff.</div>
-          </>
-        )}
+        {tab === "css" && <CssPanelMock />}
       </div>
     </aside>
+  );
+}
+
+/* CSS panel — Phase 12.2 canvas-first spec (DDR-104). Hybrid vocabulary
+ * (friendly section headers + CSS-named rows), per-field DS-token dropdowns,
+ * a nested box-model widget, color control, per-row provenance, save-state, and
+ * a demoted two-hatch Advanced section (custom CSS prop + custom HTML attr).
+ * This is the static design spec for the critic gate; it ports to app.jsx
+ * `CssKnobs` once it scores ≥ 4.0. Every value is a stand-in (token-bound /
+ * raw-override / inherited) so the critic can read all three provenance states. */
+function CssPanelMock() {
+  const Chev = () => <Icon name="chevron-down" size={11} />;
+  const PROV = { bound: "token-bound", raw: "raw override", inherit: "inherited" };
+  const prov = (p: string) => (
+    <span className={`st-cp-prov st-cp-prov--${p}`} role="img" aria-label={PROV[p]} />
+  );
+  const tokenField = (name: string, aria: string) => (
+    <button type="button" className="st-cp-token" aria-label={`${aria} — token ${name}`}>
+      <span className="st-cp-tokdot" aria-hidden="true" />
+      <span className="st-cp-tokname">{name}</span>
+      <Chev />
+    </button>
+  );
+  const colorField = (name: string, aria: string, swatchVar: string) => (
+    <button type="button" className="st-cp-token" aria-label={`${aria} — token ${name}`}>
+      <span className="st-cp-tokswatch" style={{ background: `var(${swatchVar})` }} aria-hidden="true" />
+      <span className="st-cp-tokname">{name}</span>
+      <Chev />
+    </button>
+  );
+  const numField = (value: string, unit: string, aria: string, placeholder?: string) => (
+    <div className="st-cp-num">
+      <input className="st-cp-numin" defaultValue={value} placeholder={placeholder} readOnly aria-label={aria} />
+      <span className="st-cp-step">
+        <button type="button" className="st-cp-stepb" tabIndex={-1} aria-label={`increase ${aria}`}>▲</button>
+        <button type="button" className="st-cp-stepb" tabIndex={-1} aria-label={`decrease ${aria}`}>▼</button>
+      </span>
+      <button type="button" className="st-cp-unit" aria-label={`${aria} unit`}>{unit}<Chev /></button>
+      <button type="button" className="st-cp-bind" aria-label={`bind ${aria} to a token`} title="bind to a token" />
+    </div>
+  );
+  const row = (label: string, p: string, children) => (
+    <div className="st-cp-row" key={label}>
+      {prov(p)}
+      <label className="st-cp-label" title={label}>{label}</label>
+      <div className="st-cp-ctl">{children}</div>
+    </div>
+  );
+  const bars = (dir: string) => (
+    <span className={`st-cp-bars st-cp-bars--${dir}`} aria-hidden="true"><i /><i /><i /></span>
+  );
+  const selectField = (value: string, aria: string) => (
+    <button type="button" className="st-cp-select" aria-label={aria}><span>{value}</span><Chev /></button>
+  );
+  const sechd = (title: string, open: boolean) => (
+    <button type="button" className="st-cp-sechd" aria-expanded={open}>
+      <Icon name={open ? "chevron-down" : "chevron-right"} size={11} />{title}
+    </button>
+  );
+  return (
+    <div className="st-cp" aria-label="CSS">
+      <div className="st-cp-id">
+        <span className="st-cp-idtag">button<span className="st-cp-idcls">.cta</span></span>
+        <span className="st-cp-idmeta">direct style</span>
+      </div>
+
+      <section className="st-cp-sec">
+        {sechd("Layout", true)}
+        {row("display", "raw", selectField("inline-flex", "display"))}
+        {row("flex-direction", "raw", selectField("row", "flex-direction"))}
+        {row("align-items", "raw", selectField("center", "align-items"))}
+        {row("justify-content", "raw", selectField("center", "justify-content"))}
+        {row("gap", "bound", tokenField("--space-2", "gap"))}
+      </section>
+
+      <section className="st-cp-sec">
+        {sechd("Typography", true)}
+        {row("font-family", "raw", selectField("Inter", "font-family"))}
+        {row("color", "bound", colorField("--accent-fg", "color", "--accent-fg"))}
+        {row("font-size", "raw", numField("14", "px", "font-size"))}
+        {row("font-weight", "raw", selectField("500 · Medium", "font-weight"))}
+        {row("line-height", "inherit",
+          <div className="st-cp-num">
+            <input className="st-cp-numin" defaultValue="" placeholder="1.5" readOnly aria-label="line-height" />
+            <button type="button" className="st-cp-bind" aria-label="bind line-height to a token" title="bind to a token" />
+          </div>)}
+        {row("letter-spacing", "raw", numField("0", "em", "letter-spacing"))}
+        {row("text-align", "raw",
+          <div className="st-cp-seg" role="group" aria-label="text-align">
+            <button type="button" className="st-cp-segbtn" aria-label="align left" aria-pressed="false">{bars("left")}</button>
+            <button type="button" className="st-cp-segbtn is-active" aria-label="align center" aria-pressed="true">{bars("center")}</button>
+            <button type="button" className="st-cp-segbtn" aria-label="align right" aria-pressed="false">{bars("right")}</button>
+            <button type="button" className="st-cp-segbtn" aria-label="justify" aria-pressed="false">{bars("just")}</button>
+          </div>)}
+      </section>
+
+      <section className="st-cp-sec">
+        {sechd("Spacing", true)}
+        <div className="st-cp-box" aria-label="margin and padding">
+          <span className="st-cp-boxtag st-cp-boxtag--m"><i className="st-cp-prov st-cp-prov--inherit" role="img" aria-label="margin inherited" />margin</span>
+          <input className="st-cp-boxv st-cp-boxv--mt is-zero" defaultValue="0" readOnly aria-label="margin-top" />
+          <input className="st-cp-boxv st-cp-boxv--mr is-zero" defaultValue="auto" readOnly aria-label="margin-right" />
+          <input className="st-cp-boxv st-cp-boxv--mb" defaultValue="16" readOnly aria-label="margin-bottom" />
+          <input className="st-cp-boxv st-cp-boxv--ml is-zero" defaultValue="auto" readOnly aria-label="margin-left" />
+          <div className="st-cp-boxpad">
+            <span className="st-cp-boxtag st-cp-boxtag--p"><i className="st-cp-prov st-cp-prov--raw" role="img" aria-label="padding raw override" />padding</span>
+            <input className="st-cp-boxv st-cp-boxv--pt" defaultValue="12" readOnly aria-label="padding-top" />
+            <input className="st-cp-boxv st-cp-boxv--pr" defaultValue="24" readOnly aria-label="padding-right" />
+            <input className="st-cp-boxv st-cp-boxv--pb" defaultValue="12" readOnly aria-label="padding-bottom" />
+            <input className="st-cp-boxv st-cp-boxv--pl" defaultValue="24" readOnly aria-label="padding-left" />
+            <div className="st-cp-boxcore">184 × 44</div>
+          </div>
+        </div>
+        <div className="st-cp-boxlink">
+          <button type="button" className="st-cp-linkbtn is-on" aria-pressed="true">
+            <span className="st-cp-linkglyph" aria-hidden="true" />link all sides
+          </button>
+          <span className="st-cp-linkhint">edit one side, update all four</span>
+        </div>
+      </section>
+
+      <section className="st-cp-sec">
+        {sechd("Size", false)}
+      </section>
+
+      <section className="st-cp-sec">
+        {sechd("Appearance", true)}
+        {row("background-color", "bound", colorField("--accent", "background-color", "--accent"))}
+        <div className="st-cp-row">
+          {prov("bound")}
+          <label className="st-cp-label" title="border-radius">border-radius</label>
+          <div className="st-cp-ctl">
+            {tokenField("--radius-sm", "border-radius")}
+            <button type="button" className="st-cp-split is-on" aria-pressed="true" aria-label="set each corner separately" title="set each corner separately" />
+          </div>
+        </div>
+        <div className="st-cp-corners" aria-label="per-corner radius">
+          <label className="st-cp-cornerf"><span>TL</span><input defaultValue="8" readOnly aria-label="top-left radius" /></label>
+          <label className="st-cp-cornerf"><span>TR</span><input defaultValue="8" readOnly aria-label="top-right radius" /></label>
+          <label className="st-cp-cornerf"><span>BL</span><input defaultValue="8" readOnly aria-label="bottom-left radius" /></label>
+          <label className="st-cp-cornerf"><span>BR</span><input defaultValue="4" readOnly aria-label="bottom-right radius" /></label>
+        </div>
+        {row("border", "raw",
+          <div className="st-cp-border">
+            <input className="st-cp-numin st-cp-numin--mini" defaultValue="1" readOnly aria-label="border-width" />
+            <button type="button" className="st-cp-select st-cp-select--mini" aria-label="border-style"><span>solid</span><Chev /></button>
+            <span className="st-cp-swatch st-cp-swatch--mini" style={{ background: "var(--border-default)" }} aria-hidden="true" />
+          </div>)}
+        {row("box-shadow", "bound", tokenField("--shadow-sm", "box-shadow"))}
+        {row("opacity", "raw",
+          <div className="st-cp-slider">
+            <span className="st-cp-track" role="slider" tabIndex={0} aria-label="opacity" aria-valuemin={0} aria-valuemax={100} aria-valuenow={100} aria-valuetext="100%"><span className="st-cp-fill" style={{ width: "100%" }} /><span className="st-cp-thumb" style={{ left: "100%" }} /></span>
+            <span className="st-cp-slval">100%</span>
+          </div>)}
+      </section>
+
+      <div className="st-cp-save is-saved" role="status"><Icon name="resolve" size={12} />written to source</div>
+
+      <section className="st-cp-adv is-open">
+        <button type="button" className="st-cp-advhd" aria-expanded="true">
+          <Icon name="chevron-down" size={12} />
+          Advanced
+        </button>
+        <div className="st-cp-advbody">
+          <div className="st-cp-advgrp">Custom CSS property</div>
+          <div className="st-cp-kv has-warn">
+            <input className="st-cp-numin" defaultValue="padding" readOnly aria-label="custom property name" aria-describedby="cp-warn-shadow" />
+            <input className="st-cp-numin" defaultValue="0" readOnly aria-label="custom property value" aria-describedby="cp-warn-shadow" />
+          </div>
+          <div className="st-cp-warn" id="cp-warn-shadow">overrides the padding set in Spacing above</div>
+          <button type="button" className="st-cp-add">+ Add CSS property</button>
+          <div className="st-cp-note">used as-is — not linked to a token</div>
+          <div className="st-cp-advgrp">Custom HTML attribute</div>
+          <div className="st-cp-kv">
+            <input className="st-cp-numin" defaultValue="data-state" readOnly aria-label="custom attribute name" />
+            <input className="st-cp-numin" defaultValue="active" readOnly aria-label="custom attribute value" />
+          </div>
+          <button type="button" className="st-cp-add">+ Add HTML attribute</button>
+        </div>
+      </section>
+
+      <div className="st-cp-legend">
+        <span><i className="st-cp-prov st-cp-prov--bound" aria-hidden="true" />token</span>
+        <span><i className="st-cp-prov st-cp-prov--raw" aria-hidden="true" />override</span>
+        <span><i className="st-cp-prov st-cp-prov--inherit" aria-hidden="true" />inherited</span>
+      </div>
+    </div>
   );
 }
 

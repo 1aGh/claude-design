@@ -1,7 +1,100 @@
 {
-  "generated": "2026-06-12T05:20:46.515Z",
+  "generated": "2026-06-12T16:07:00.517Z",
   "version": "0.29.0",
   "entries": [
+    {
+      "id": "in-canvas-token-editor",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "A real token editor, right in the canvas",
+      "summary": "The Inspector's CSS tab grew into a Figma-style design-token editor. Numeric fields carry a property glyph and scrub left/right to change; spacing fields take Webflow-style modifiers. Any value can bind to a design-system Variable through a searchable popover that shows where the token is defined — and it resolves the right system in multi-DS projects. One unified colour picker now drives every colour field, fill and border alike, with Custom and Variables tabs. Values you've set stand out while untouched rows recede, so the diff is scannable at a glance.",
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": "[data-tour='inspector-tabs']",
+          "inspector": true,
+          "tab": "css",
+          "title": "Inspect · Layers · CSS",
+          "body": "Here's the Inspector — opened to its CSS tab. It reads and writes your maude design system itself, not a generic :root. Three tabs: Inspect, Layers, CSS.",
+          "placement": "left"
+        },
+        {
+          "target": "[data-tour='css-panel']",
+          "inspector": true,
+          "tab": "css",
+          "requireSelection": true,
+          "title": "Your real element, live",
+          "body": "Hold ⌘ and click any element in the canvas. The CSS panel fills with its real, editable properties — and every change writes back to the source on blur, no AI round-trip.",
+          "placement": "left"
+        },
+        {
+          "target": ".st-cp-row",
+          "inspector": true,
+          "tab": "css",
+          "requireSelection": true,
+          "title": "Figma-style property rows",
+          "body": "Each row leads with a property glyph. Drag a numeric field left or right to scrub the value, or just type it; spacing fields accept Webflow-style modifiers.",
+          "placement": "left"
+        },
+        {
+          "target": ".st-cp-tokbtn",
+          "inspector": true,
+          "tab": "css",
+          "requireSelection": true,
+          "title": "Bind to a design token",
+          "body": "Click a field's token chip for the Variables popover — Custom for a literal, Variables for the design system's tokens. Search the list; each Variable shows its provenance. One unified colour picker drives every colour field, fill and border alike.",
+          "placement": "left"
+        },
+        {
+          "target": ".st-cp-sechd-row",
+          "inspector": true,
+          "tab": "css",
+          "requireSelection": true,
+          "title": "Scannable, resettable",
+          "body": "Values you've set stand out; untouched rows recede so the difference from the default reads at a glance. The leading dot on each row carries both its status and its reset.",
+          "placement": "left"
+        }
+      ]
+    },
+    {
+      "id": "in-canvas-direct-edit",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Edit the canvas directly — text & layers",
+      "summary": "Double-click any text to retype it in place — the new copy is written straight back to the source, no AI round-trip. The Layers tab is a browsable tree with type icons: click a layer to select it in the canvas, hover to highlight, and toggle any layer's visibility from its row. Together with the CSS token editor, small tweaks no longer need a command.",
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": "[data-tour='inspector-tabs']",
+          "inspector": true,
+          "tab": "layers",
+          "requireSelection": true,
+          "title": "Browsable layers",
+          "body": "⌘-click an element, then this Layers tab shows the artboard's elements as a tree with type icons — click a row to select it in the canvas, hover to highlight.",
+          "placement": "left"
+        },
+        {
+          "target": ".st-layer-eye",
+          "inspector": true,
+          "tab": "layers",
+          "requireSelection": true,
+          "title": "Toggle visibility",
+          "body": "The eye on each layer row hides or shows that element while you work — handy for seeing what sits underneath. Double-click any text in the canvas to retype it in place too.",
+          "placement": "left"
+        }
+      ]
+    },
+    {
+      "id": "studio-chrome-polished-end-to-end",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Studio chrome, polished end to end",
+      "summary": "The whole browser feels hand-finished now. Drag the file and inspector panels to resize them (or nudge with the arrow keys — your widths are remembered), watch a calm skeleton while a canvas compiles, and press ? for a full keyboard-shortcuts cheat sheet. Collaborator cursors and Claude's own cursor now match the design system, annotations snap to the dot grid as you drag, and focus rings, tooltips and scrollbars are consistent throughout. The View menu's Layers and Zoom are wired up, and a shortcut clash is gone — the inspector is ⌘⇧I, so I stays free for the canvas highlighter.",
+      "surface": "design-ui"
+    },
     {
       "id": "hub-sync-cold-start-safety",
       "version": null,
@@ -37,14 +130,17 @@
       "surface": "design-ui",
       "tour": [
         {
-          "target": ".st-mb-right",
+          "target": "[data-tour='status']",
           "title": "Live status, finally",
-          "body": "Zoom, artboard count, presence and hub-sync now reflect the real state — no more static placeholders."
+          "body": "Zoom, artboard count, presence and hub-sync now reflect the real state — no more static placeholders.",
+          "placement": "bottom"
         },
         {
-          "target": ".st-rpanel",
+          "target": "[data-tour='inspector']",
+          "inspector": true,
           "title": "Inspector",
-          "body": "⌘-click an element in the canvas, then press I — pos, size, ancestry and markup, read-only (live CSS knobs land in Phase 12)."
+          "body": "Opened from View → Inspector (I). ⌘-click an element to read its position, size, ancestry and markup — and now edit its CSS against your tokens, live.",
+          "placement": "left"
         }
       ]
     },
@@ -67,14 +163,16 @@
       "surface": "design-ui",
       "tour": [
         {
-          "target": ".st-menubar .st-brand",
+          "target": "[data-tour='brand']",
           "title": "Built in maude",
-          "body": "The studio chrome now dogfoods the maude DS — one cohesive material across the menubar, sidebar, canvas and status bar."
+          "body": "The studio chrome now dogfoods the maude DS — one cohesive material across the menubar, sidebar, canvas and status bar.",
+          "placement": "bottom"
         },
         {
-          "target": ".st-menubar .st-whatsnew",
+          "target": "[data-tour='menus']",
           "title": "Press ⌘K",
-          "body": "A new command palette jumps you to the design-system view, comments, theme toggle, reload, and help — no mouse needed."
+          "body": "A command palette jumps you to the design-system view, comments, theme toggle, reload, and help — no mouse needed.",
+          "placement": "bottom"
         }
       ]
     },
@@ -88,9 +186,11 @@
       "surface": "design-ui",
       "tour": [
         {
-          "target": ".dc-tool-palette button[aria-label^='Highlighter']",
+          "target": "[data-tour='viewport']",
+          "canvas": true,
           "title": "New: Highlighter",
-          "body": "A translucent marker pen (I) — overlapping strokes darken with multiply blend. Pick hue and nib width from the chrome below."
+          "body": "Open a canvas and press P to enter annotate mode, then pick the Highlighter from the toolbar — a translucent marker whose overlapping strokes darken with multiply blend. Sticky notes, shapes and text all take Cmd+B/I/U too.",
+          "placement": "auto"
         }
       ]
     },

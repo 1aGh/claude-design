@@ -175,6 +175,120 @@ export function resolveSelectionEl(
   return null;
 }
 
+/**
+ * Phase 12.2 — style maps for the CSS-knob properties. `authored` is what the
+ * element sets INLINE (React renders `style={{padding:8}}` → `style="padding:8px"`),
+ * so the knob pre-fills the EDITABLE source value and is blank when unset — not
+ * the noisy resolved default (`656.003px`, `rgb(0,0,0)`). `computed` is the
+ * resolved value, shown only as a faint placeholder hint. Empty for a detached
+ * node / SSR.
+ */
+// Phase 12.3 (W2.2 fix) — EVERY property the CSS panel has a control for, so each
+// reads back into `authored` (pre-fills the right control) and is excluded from
+// `customStyles`. The earlier short list omitted the box-model LONGHANDS
+// (`padding-top`, `margin-left`, …) + the Layout/border longhands, so a value the
+// panel wrote (e.g. an alt-scrub `padding-top`) fell through to customStyles and
+// the box-model widget showed it as a "custom CSS property" instead of in the box.
+const KNOB_PROPS = [
+  // Layout
+  'display',
+  'flex-direction',
+  'align-items',
+  'justify-content',
+  'gap',
+  // Typography
+  'font-family',
+  'color',
+  'font-size',
+  'font-weight',
+  'line-height',
+  'letter-spacing',
+  'text-align',
+  // Spacing — shorthand (for customStyles exclusion + whole-side authoring) AND
+  // the 8 longhands the box-model widget actually reads/writes.
+  'margin',
+  'margin-top',
+  'margin-right',
+  'margin-bottom',
+  'margin-left',
+  'padding',
+  'padding-top',
+  'padding-right',
+  'padding-bottom',
+  'padding-left',
+  // Size
+  'width',
+  'height',
+  'max-width',
+  // Appearance
+  'background-color',
+  'border-radius',
+  'border-top-left-radius',
+  'border-top-right-radius',
+  'border-bottom-left-radius',
+  'border-bottom-right-radius',
+  'border-width',
+  'border-style',
+  'border-color',
+  'box-shadow',
+  'opacity',
+] as const;
+
+// Phase 12.3 — HTML attributes the custom-attribute hatch may have written, so a
+// just-added `data-*`/`aria-*`/`role`/`title` round-trips back into a panel row.
+// Excludes the structural ones the panel manages elsewhere (style, class,
+// data-cd-id pipeline anchor, the data-dc-* canvas chrome markers).
+const ATTR_SKIP = /^(style|class|data-cd-id|data-dc-|data-dcid$)/;
+
+function styleMapsFor(el: Element | null): {
+  authored: Record<string, string>;
+  computed: Record<string, string>;
+  customStyles: Record<string, string>;
+  attrs: Record<string, string>;
+} {
+  if (!el || typeof window === 'undefined' || !window.getComputedStyle) {
+    return { authored: {}, computed: {}, customStyles: {}, attrs: {} };
+  }
+  try {
+    const inline = (el as HTMLElement).style;
+    const cs = window.getComputedStyle(el as HTMLElement);
+    const authored: Record<string, string> = {};
+    const computed: Record<string, string> = {};
+    const knob = new Set<string>(KNOB_PROPS as readonly string[]);
+    // Curated knob props: authored value (knob pre-fill) + computed (placeholder).
+    for (const p of KNOB_PROPS) {
+      const a = inline.getPropertyValue(p);
+      if (a) authored[p] = a.trim();
+      const c = cs.getPropertyValue(p);
+      if (c) computed[p] = c.trim();
+    }
+    // Every OTHER authored inline property → customStyles, so the panel can show
+    // a custom CSS property the user added that no curated row covers. EXCLUDE
+    // the panel-managed FAMILIES wholesale: setting `border`/`border-radius` (or
+    // their 3-way shorthands) makes the CSSOM expand them to the per-side
+    // longhands — `border-top-width`, `border-left-color`, … — which the panel
+    // controls but can't enumerate in the knob set. Without the family guard they
+    // leak into "custom CSS properties" (the same class of bug fixed for spacing).
+    const MANAGED_FAMILY = /^(margin|padding|border)(-|$)/;
+    const customStyles: Record<string, string> = {};
+    for (let i = 0; i < inline.length; i++) {
+      const p = inline.item(i);
+      if (!p || knob.has(p) || MANAGED_FAMILY.test(p)) continue;
+      const v = inline.getPropertyValue(p);
+      if (v) customStyles[p] = v.trim();
+    }
+    // Custom HTML attributes (the escape-hatch surface).
+    const attrs: Record<string, string> = {};
+    for (const a of Array.from((el as HTMLElement).attributes)) {
+      if (ATTR_SKIP.test(a.name)) continue;
+      attrs[a.name] = a.value;
+    }
+    return { authored, computed, customStyles, attrs };
+  } catch {
+    return { authored: {}, computed: {}, customStyles: {}, attrs: {} };
+  }
+}
+
 export function hoverTargetToSelection(target: HoverTarget, file?: string): Selection {
   const el = target.el;
   const rect =
@@ -223,5 +337,6 @@ export function hoverTargetToSelection(target: HoverTarget, file?: string): Sele
         }
       : null,
     html: el ? (el.outerHTML ?? '').slice(0, 4000) : '',
+    ...styleMapsFor(el),
   };
 }

@@ -302,6 +302,14 @@ const HALO_CSS = `
   -webkit-font-smoothing: subpixel-antialiased;
   font-smooth: always;
 }
+/* Phase 12 (DDR-103) — inline text editing: the element being edited carries an
+   accent ring + caret. plaintext-only contenteditable; commit writes to source. */
+[contenteditable].dc-text-editing {
+  outline: 2px solid var(--maude-hud-accent, #0d99ff);
+  outline-offset: 1px;
+  border-radius: 1px;
+  cursor: text;
+}
 `.trim();
 
 function ensureHaloStyles(): void {
@@ -320,6 +328,104 @@ function ensureHaloStyles(): void {
   s.id = 'dc-cv-halo-css';
   s.textContent = HALO_CSS;
   document.head.appendChild(s);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Layers tree (Phase 12 Task 4, DDR-103). The shell's Layers tab is a browsable
+// tree of the active artboard's stamped (`data-cd-id`) elements. We walk the
+// artboard subtree in the iframe, serialize a nested tree, and post it to the
+// shell; the shell renders it + posts back `select-by-id` / `highlight`.
+
+interface LayerNode {
+  id: string;
+  tag: string;
+  label: string;
+  type: string;
+  /** Occurrence index of this id within the artboard — matches the resolver's
+   *  `querySelectorAll([data-dc-screen=…] [data-cd-id=…])[index]`. */
+  index: number;
+  children: LayerNode[];
+}
+
+function kebabToTitle(s: string): string {
+  return s
+    .split('-')
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+// Human label: data-dc-element (Title Case) → aria-label → role → tag(.class).
+function layerLabel(el: Element): string {
+  const dc = el.getAttribute('data-dc-element');
+  if (dc) return kebabToTitle(dc);
+  const aria = el.getAttribute('aria-label');
+  if (aria) return aria.slice(0, 40);
+  const role = el.getAttribute('role');
+  if (role) return role;
+  const tag = el.tagName.toLowerCase();
+  const cls = realClasses(el).split(/\s+/).filter(Boolean)[0];
+  return cls ? `${tag}.${cls}` : tag;
+}
+
+function layerType(el: Element): string {
+  const tag = el.tagName.toLowerCase();
+  const role = el.getAttribute('role') ?? '';
+  const dc = el.getAttribute('data-dc-element') ?? '';
+  if (tag === 'button' || role === 'button' || /(^|-)(btn|cta|button)(-|$)/.test(dc))
+    return 'button';
+  if (/^h[1-6]$/.test(tag) || role === 'heading') return 'heading';
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return 'input';
+  if (tag === 'img' || tag === 'svg' || tag === 'picture' || tag === 'video') return 'image';
+  if (tag === 'a') return 'link';
+  if (tag === 'ul' || tag === 'ol' || tag === 'li') return 'list';
+  if (tag === 'nav') return 'nav';
+  if (tag === 'form') return 'form';
+  if (tag === 'p' || tag === 'span' || tag === 'label') return 'text';
+  return 'box';
+}
+
+function serializeArtboardTree(root: Element): LayerNode[] {
+  const seen = new Map<string, number>();
+  function walk(el: Element): LayerNode[] {
+    const out: LayerNode[] = [];
+    for (const child of Array.from(el.children)) {
+      // Skip dev-server overlay chrome (pins, halos) that lives inside the artboard.
+      if (child.closest('.dgn-pin, .dc-cv-halo, .dc-cv-group-bbox')) continue;
+      const cd = child.getAttribute('data-cd-id');
+      if (cd) {
+        const idx = seen.get(cd) ?? 0;
+        seen.set(cd, idx + 1);
+        out.push({
+          id: cd,
+          tag: child.tagName.toLowerCase(),
+          label: layerLabel(child),
+          type: layerType(child),
+          index: idx,
+          children: walk(child),
+        });
+      } else {
+        // Unstamped wrapper — descend so its stamped descendants still surface.
+        out.push(...walk(child));
+      }
+    }
+    return out;
+  }
+  return walk(root);
+}
+
+function postLayersTree(artboardId: string | null | undefined): void {
+  if (typeof document === 'undefined' || !artboardId) return;
+  const root = document.querySelector(`[data-dc-screen="${CSS.escape(artboardId)}"]`);
+  if (!root) return;
+  try {
+    window.parent.postMessage(
+      { dgn: 'layers-tree', artboardId, tree: serializeArtboardTree(root) },
+      '*'
+    );
+  } catch {
+    /* detached / cross-origin */
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -434,7 +540,7 @@ function CanvasCore({
     if (!host) return;
     const onDbl = (e: MouseEvent) => {
       const t = e.target as Element | null;
-      if (!t || !t.closest) return;
+      if (!t?.closest) return;
       // Floating chrome / overlays / drawn user content / any artboard
       // surface → leave alone. Only dblclick that lands on the canvas
       // background outside every artboard triggers `fit()`.
@@ -517,7 +623,7 @@ function CanvasCore({
   useEffect(() => {
     if (!collab) return;
     const first = selSet.selected[0];
-    if (!first || !first.selector) {
+    if (!first?.selector) {
       collab.publishAwareness({ selection: null });
       return;
     }
@@ -947,7 +1053,7 @@ function applyArtboardFollowers(): void {
 function buildRegistry(deps: {
   controller: ViewportControllerHandle | null;
   clearSelection: () => void;
-  selSet: { selected: Selection[] };
+  selSet: { selected: Selection[]; replace: (s: Selection | Selection[]) => void };
   distributeArtboards: (axis: 'x' | 'y') => void;
   alignArtboards: (mode: 'left' | 'right' | 'center-x' | 'top' | 'bottom' | 'center-y') => void;
   focusArtboard: (artboardId: string) => void;
@@ -1109,9 +1215,24 @@ function buildRegistry(deps: {
           id: 'inspect',
           label: 'Inspect',
           shortcut: '⌥I',
-          disabled: true,
-          onSelect: () => {
-            console.warn('[context-menu] TODO: tweaks panel for TSX canvases');
+          onSelect: (target) => {
+            // Phase 12 — select the right-clicked element + open the shell's
+            // right Inspector panel (Inspect / Layers / CSS). Was a disabled TODO
+            // before the inspector shipped.
+            if (target.el) {
+              selSet.replace(
+                hoverTargetToSelection({
+                  el: target.el,
+                  cdId: target.cdId ?? null,
+                  artboardId: target.artboardId ?? null,
+                } as HoverTarget)
+              );
+            }
+            try {
+              window.parent.postMessage({ dgn: 'open-inspector' }, '*');
+            } catch {
+              /* detached / cross-origin */
+            }
           },
         },
       ],
@@ -1314,6 +1435,87 @@ function CanvasRouter({
         void undoStack.redo();
         return;
       }
+      // Phase 12 Task 4 (DDR-103) — Layers-tree round-trip. select-by-id resolves
+      // the node + replaces the selection (which posts select-set back, updating
+      // the Inspect/CSS tabs + halos); highlight shows the transient hover halo;
+      // request-layers re-walks + posts the tree for an artboard.
+      if (m.dgn === 'select-by-id') {
+        const mm = m as { id?: string; artboardId?: string | null; index?: number };
+        if (mm.id) {
+          const target = resolveSelectionEl(document, {
+            id: mm.id,
+            artboardId: mm.artboardId,
+            index: mm.index,
+          });
+          if (target) {
+            selSet.replace(
+              hoverTargetToSelection({
+                el: target,
+                cdId: mm.id,
+                artboardId: mm.artboardId ?? null,
+              } as HoverTarget)
+            );
+            (target as HTMLElement).scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+          }
+        }
+        return;
+      }
+      if (m.dgn === 'highlight') {
+        const mm = m as { id?: string; artboardId?: string | null; index?: number };
+        setHoverEl(
+          mm.id
+            ? resolveSelectionEl(document, {
+                id: mm.id,
+                artboardId: mm.artboardId,
+                index: mm.index,
+              })
+            : null
+        );
+        return;
+      }
+      // Phase 12.3 (W1.1) — optimistic inline-style apply. The CSS panel posts
+      // this on commit so the selected element updates INSTANTLY, before the
+      // edit-css → file-watcher HMR reload re-renders from source. `value` null/
+      // empty removes the property (the reset path). Purely a live-DOM preview;
+      // the authoritative value is whatever the reload renders from source.
+      // SECURITY (ethical-hacker A1/A2) — accept apply-style ONLY from the parent
+      // shell, never from a canvas self-post. The canvas iframe is untrusted
+      // (DDR-054); without this gate hostile canvas JS could repaint elements AND
+      // (paired with the reload echo-guard) suppress reloads to desync view/source.
+      // The reload-suppression timestamp now lives in _shell.html's closure (NOT a
+      // canvas-writable window global) — set there from the same parent-gated msg.
+      if (m.dgn === 'apply-style') {
+        if (e.source !== window.parent) return;
+        const mm = m as {
+          id?: string;
+          artboardId?: string | null;
+          index?: number;
+          prop?: string;
+          value?: string | null;
+        };
+        if (mm.id && mm.prop) {
+          const target = resolveSelectionEl(document, {
+            id: mm.id,
+            artboardId: mm.artboardId,
+            index: mm.index,
+          });
+          if (target) {
+            const style = (target as HTMLElement).style;
+            try {
+              // Live-DOM preview only; the reload renders the authoritative value.
+              if (mm.value == null || mm.value === '') style.removeProperty(mm.prop);
+              else style.setProperty(mm.prop, mm.value);
+            } catch {
+              /* invalid prop/value — ignore; the reload is the source of truth */
+            }
+          }
+        }
+        return;
+      }
+      if (m.dgn === 'request-layers') {
+        postLayersTree((m as { artboardId?: string }).artboardId ?? null);
+        return;
+      }
       // D9 — canvas-shell chrome follows the Maude chrome theme. The chrome's
       // `--maude-chrome-*` token family is keyed by `data-maude-theme` on the
       // iframe documentElement (see HUD_TOKENS_CSS). This attribute is
@@ -1341,6 +1543,87 @@ function CanvasRouter({
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, [selSet, annotSel, setTool, undoStack, zoomController]);
+
+  // Phase 12 (DDR-103) — double-click a LEAF-TEXT element (children all text
+  // nodes) to edit its copy in place. Commit (blur / Enter) posts `dgn:edit-text`
+  // to the shell, which calls the main-origin /_api/edit-text → editText writes
+  // the escaped JSXText to source; the file-watcher HMR reload re-renders from
+  // the persisted source. Esc restores the original. Mixed/expression elements
+  // are skipped (the engine would refuse them anyway — honest no-op).
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const host = hostRef.current;
+    if (!host) return;
+    let editing: HTMLElement | null = null;
+    let original = '';
+    const onBlur = (): void => commitEdit(true);
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        commitEdit(false);
+      } else if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        (e.currentTarget as HTMLElement | null)?.blur?.();
+      }
+    };
+    function teardown(elx: HTMLElement): void {
+      elx.removeAttribute('contenteditable');
+      elx.classList.remove('dc-text-editing');
+      elx.removeEventListener('blur', onBlur, true);
+      elx.removeEventListener('keydown', onKey, true);
+    }
+    function commitEdit(commit: boolean): void {
+      const elx = editing;
+      if (!elx) return;
+      editing = null;
+      const text = (elx.textContent ?? '').trim();
+      teardown(elx);
+      if (!commit) {
+        elx.textContent = original;
+        return;
+      }
+      if (text === original.trim()) return;
+      const cdId = elx.getAttribute('data-cd-id');
+      if (!cdId) return;
+      try {
+        window.parent.postMessage({ dgn: 'edit-text', id: cdId, file: deriveFile(), text }, '*');
+      } catch {
+        /* detached / cross-origin */
+      }
+    }
+    const onDbl = (e: MouseEvent): void => {
+      if (editing) return;
+      const t = e.target as HTMLElement | null;
+      const stamped = (t?.closest?.('[data-cd-id]') as HTMLElement | null) ?? null;
+      if (!stamped) return;
+      const kids = Array.from(stamped.childNodes);
+      if (kids.length === 0 || !kids.every((n) => n.nodeType === 3)) return; // leaf-text only
+      e.preventDefault();
+      e.stopPropagation();
+      editing = stamped;
+      original = stamped.textContent ?? '';
+      stamped.setAttribute('contenteditable', 'plaintext-only');
+      stamped.classList.add('dc-text-editing');
+      stamped.addEventListener('blur', onBlur, true);
+      stamped.addEventListener('keydown', onKey, true);
+      stamped.focus();
+      try {
+        const range = document.createRange();
+        range.selectNodeContents(stamped);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      } catch {
+        /* selection API unavailable */
+      }
+    };
+    // Capture phase so we beat the fit-to-view dblclick handler.
+    host.addEventListener('dblclick', onDbl, true);
+    return () => {
+      host.removeEventListener('dblclick', onDbl, true);
+      if (editing) teardown(editing);
+    };
+  }, [hostRef]);
 
   // Cleanup any pending rAF on unmount.
   useEffect(
@@ -1375,6 +1658,8 @@ function CanvasRouter({
         const sel = hoverTargetToSelection(target);
         if (mode === 'replace') selSet.replace(sel);
         else selSet.add(sel);
+        // Phase 12 Task 4 — refresh the Layers tree for the selected artboard.
+        postLayersTree(target.artboardId);
       },
       onContextMenu: ({ clientX, clientY }) => {
         const target = resolveHoverTarget(document, clientX, clientY, { deep: true });
@@ -1766,7 +2051,7 @@ function HoverHalo({ el }: { el: Element | null }) {
       rafRef.current = null;
       const div = ref.current;
       const t = targetRef.current;
-      if (!div || !t || !t.isConnected) {
+      if (!div || !t?.isConnected) {
         if (div) div.style.display = 'none';
         return;
       }

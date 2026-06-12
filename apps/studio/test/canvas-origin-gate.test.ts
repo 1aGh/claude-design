@@ -54,11 +54,19 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
       // /_api/canvas (Phase 22 file-write) is deliberately NOT in the canvas
       // origin's route allowlist — an untrusted canvas iframe must never create
       // arbitrary .tsx files. It is reachable ONLY from the main origin.
+      // Phase 12 (DDR-103) — the in-canvas direct-edit write routes are
+      // MAIN-ORIGIN ONLY: absent from CANVAS_SAFE_API + startCanvasServer's
+      // route map, so the untrusted canvas iframe origin must never reach a
+      // source-write endpoint. A GET here 403s at the gate (not 405 from the
+      // handler), proving the route is unreachable on this origin.
       for (const p of [
         '/_config',
         '/_sync-status',
         '/_api/export',
         '/_api/canvas',
+        '/_api/edit-css',
+        '/_api/edit-text',
+        '/_api/edit-attr',
         '/package.json',
       ]) {
         expect(await code(p)).toBe(403);

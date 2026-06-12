@@ -1,6 +1,6 @@
 import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
+import { Caption, DottedCanvas, typewriter } from '../../../lib/maude-stage';
 import { maude } from '../../../lib/maude-tokens';
-import { DottedCanvas, Caption, typewriter } from '../../../lib/maude-stage';
 
 /**
  * Scene 10 · Onboarding — proof.
@@ -69,8 +69,16 @@ export const OnboardingScene = () => {
           </div>
 
           {/* prose question */}
-          <div style={{ padding: '14px 28px 34px', opacity: qOpacity, transform: `translateY(${qRise}px)` }}>
-            <div style={{ fontSize: 19, letterSpacing: '0.04em', color: t.accent, marginBottom: 14 }}>
+          <div
+            style={{
+              padding: '14px 28px 34px',
+              opacity: qOpacity,
+              transform: `translateY(${qRise}px)`,
+            }}
+          >
+            <div
+              style={{ fontSize: 19, letterSpacing: '0.04em', color: t.accent, marginBottom: 14 }}
+            >
               STAGE 1 · 1 / 4
             </div>
             <div
