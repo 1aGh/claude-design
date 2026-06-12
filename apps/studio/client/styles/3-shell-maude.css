@@ -749,10 +749,21 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .st-cp-poptab { flex: 1; appearance: none; border: 0; background: transparent; cursor: pointer; font-family: var(--font-body); font-size: var(--type-xs); color: var(--fg-2); padding: var(--space-3); border-bottom: 2px solid transparent; }
 .st-cp-poptab.is-active { color: var(--fg-0); border-bottom-color: var(--accent); }
 .st-cp-poptab:hover:not(.is-active) { color: var(--fg-1); }
-.st-cp-custcol { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-1); }
-.st-cp-custcol-pick { position: relative; display: block; height: 76px; border-radius: var(--radius-sm); border: 1px solid var(--border-default); overflow: hidden; cursor: pointer; }
-.st-cp-custcol-sw { position: absolute; inset: 0; }
-.st-cp-custcol-pick input[type="color"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }
+/* #6 — the unified HSV colour picker (Custom tab): saturation/value square +
+ * hue slider + eyedropper + hex field. The swatch on the colour row is the only
+ * trigger (no separate native picker). */
+.st-cp-cpick { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-1); }
+.st-cp-swatch--trigger { position: relative; overflow: hidden; cursor: pointer; appearance: none; padding: 0; }
+.st-cp-swatch--trigger.is-bound { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-tint); }
+.st-cp-cpick-sv { position: relative; display: block; width: 100%; height: 120px; border-radius: var(--radius-sm); border: 1px solid var(--border-default); overflow: hidden; cursor: crosshair; padding: 0; touch-action: none; }
+.st-cp-cpick-svwhite { position: absolute; inset: 0; background: linear-gradient(to right, #fff, transparent); }
+.st-cp-cpick-svblack { position: absolute; inset: 0; background: linear-gradient(to top, #000, transparent); }
+.st-cp-cpick-knob { position: absolute; width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.5); transform: translate(-50%, -50%); pointer-events: none; }
+.st-cp-cpick-controls { display: flex; align-items: center; gap: var(--space-2); }
+.st-cp-cpick-eye { flex: none; width: 26px; height: 16px; display: inline-flex; align-items: center; justify-content: center; appearance: none; cursor: pointer; background: transparent; border: 0; color: var(--fg-2); padding: 0; border-radius: var(--radius-xs); }
+.st-cp-cpick-eye:hover { color: var(--fg-0); }
+.st-cp-cpick-hue { position: relative; flex: 1 1 auto; height: 12px; border-radius: var(--radius-pill); border: 1px solid var(--border-default); cursor: pointer; padding: 0; touch-action: none; background: linear-gradient(to right, #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%); }
+.st-cp-cpick-huethumb { position: absolute; top: 50%; width: 12px; height: 12px; border-radius: 50%; background: #fff; border: 1px solid rgba(0,0,0,0.4); box-shadow: 0 1px 3px rgba(0,0,0,0.4); transform: translate(-50%, -50%); pointer-events: none; }
 /* W3 — per-design-system grouping. The DS name labels each group when >1 DS. */
 .st-cp-pop-group + .st-cp-pop-group { margin-top: var(--space-2); }
 .st-cp-pop-ds { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--fg-2); padding: 2px var(--space-1) 4px; position: sticky; top: 0; background: var(--bg-1); }

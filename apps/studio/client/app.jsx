@@ -362,6 +362,12 @@ const STICONS = {
       <circle cx="8" cy="8" r="2" />
     </>
   ),
+  eyedropper: (
+    <>
+      <path d="M11 2.6a1.7 1.7 0 0 1 2.4 2.4l-1.2 1.2-2.4-2.4z" />
+      <path d="M9.5 4.6 4 10.1V12h1.9l5.5-5.5" />
+    </>
+  ),
   'eye-off': (
     <>
       <path d="M6.3 4A6.7 6.7 0 0 1 8 3.5C12 3.5 14.5 8 14.5 8a12 12 0 0 1-2 2.4M4.4 5.3A12 12 0 0 0 1.5 8S4 12.5 8 12.5a6.5 6.5 0 0 0 2.1-.35" />
@@ -2906,6 +2912,50 @@ function cssColorToHex(c) {
   return '';
 }
 
+// ---- Colour math for the HSV picker (#6 — Figma-style colour control) ----
+const clamp01 = (n) => Math.min(1, Math.max(0, n));
+function hexToRgb(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return { r: 0, g: 0, b: 0 };
+  const n = Number.parseInt(m[1], 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+function rgbToHex({ r, g, b }) {
+  return `#${[r, g, b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
+}
+function rgbToHsv({ r, g, b }) {
+  r /= 255;
+  g /= 255;
+  b /= 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  let h = 0;
+  if (d) {
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  return { h, s: max ? d / max : 0, v: max };
+}
+function hsvToRgb({ h, s, v }) {
+  const c = v * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = v - c;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  if (h < 60) [r, g, b] = [c, x, 0];
+  else if (h < 120) [r, g, b] = [x, c, 0];
+  else if (h < 180) [r, g, b] = [0, c, x];
+  else if (h < 240) [r, g, b] = [0, x, c];
+  else if (h < 300) [r, g, b] = [x, 0, c];
+  else [r, g, b] = [c, 0, x];
+  return { r: (r + m) * 255, g: (g + m) * 255, b: (b + m) * 255 };
+}
+
 // Round bare px to whole numbers for the placeholder hint; pass other values through.
 function cssHint(v) {
   if (!v) return '';
@@ -3024,36 +3074,131 @@ function useAllDsTokens(cfg, designRel, activeName) {
 // Phase 12.3 (#4) — the "Custom" tab of the colour popover: a normal colour
 // input (native OS picker via a large swatch) + a hex/value text field. Applies
 // LIVE as you adjust (onApply), so the canvas previews while the picker is open.
-function CustomColor({ current, onApply }) {
-  const isToken = typeof current === 'string' && /var\(\s*--/.test(current);
-  const seed = isToken ? '' : current || '';
-  const [val, setVal] = useState(seed);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reseed only when the selection's colour changes.
+// #6 — the unified colour picker (Custom tab). A real HSV control: a
+// saturation/value square + a hue slider + a hex field + an eyedropper — the
+// Figma model. Replaces BOTH the old native <input type="color"> on the swatch
+// AND the simple hex field, so colours have ONE popover (Custom · Variables).
+// `seed` is the resolved current colour (hex). Drag updates the picker UI live;
+// commits on pointer-up (one source write per drag); the hex field commits on
+// blur/Enter.
+function ColorPicker({ seed, onApply }) {
+  const [hsv, setHsv] = useState(() => rgbToHsv(hexToRgb(seed || '#000000')));
+  const hsvRef = useRef(hsv);
+  hsvRef.current = hsv;
+  const svRef = useRef(null);
+  const hueRef = useRef(null);
+  // Reseed when the selection's colour changes (but not while the user drags).
+  const seedRef = useRef(seed);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reseed on seed change only.
   useEffect(() => {
-    setVal(seed);
-  }, [current]);
-  const hex = cssColorToHex(val) || cssColorToHex(current) || '#000000';
+    if (seed && seed !== seedRef.current) {
+      seedRef.current = seed;
+      setHsv(rgbToHsv(hexToRgb(seed)));
+    }
+  }, [seed]);
+  const hex = rgbToHex(hsvToRgb(hsv));
+
+  const dragSV = (e) => {
+    e.preventDefault();
+    const r = svRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const h = hsvRef.current.h;
+    const move = (ev) => {
+      setHsv({
+        h,
+        s: clamp01((ev.clientX - r.left) / r.width),
+        v: clamp01(1 - (ev.clientY - r.top) / r.height),
+      });
+    };
+    move(e);
+    const up = () => {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+      onApply(rgbToHex(hsvToRgb(hsvRef.current)));
+    };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+  };
+  const dragHue = (e) => {
+    e.preventDefault();
+    const r = hueRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const { s, v } = hsvRef.current;
+    const move = (ev) => {
+      setHsv({ h: clamp01((ev.clientX - r.left) / r.width) * 360, s, v });
+    };
+    move(e);
+    const up = () => {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+      onApply(rgbToHex(hsvToRgb(hsvRef.current)));
+    };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+  };
+  const eyedrop = async () => {
+    try {
+      // EyeDropper is Chromium-only; guarded.
+      const ED = window.EyeDropper;
+      if (!ED) return;
+      const res = await new ED().open();
+      if (res?.sRGBHex) {
+        setHsv(rgbToHsv(hexToRgb(res.sRGBHex)));
+        onApply(res.sRGBHex);
+      }
+    } catch {
+      /* user cancelled */
+    }
+  };
+
   return (
-    <div className="st-cp-custcol">
-      <label className="st-cp-custcol-pick" title="pick a colour">
-        <span className="st-cp-custcol-sw" style={{ background: cssColorToHex(val) || hex }} />
-        <input
-          type="color"
-          defaultValue={hex}
-          aria-label="colour picker"
-          onChange={(e) => {
-            setVal(e.target.value);
-            onApply(e.target.value);
-          }}
+    <div className="st-cp-cpick">
+      <button
+        type="button"
+        ref={svRef}
+        className="st-cp-cpick-sv"
+        aria-label="saturation and value"
+        style={{ background: `hsl(${hsv.h} 100% 50%)` }}
+        onPointerDown={dragSV}
+      >
+        <span className="st-cp-cpick-svwhite" />
+        <span className="st-cp-cpick-svblack" />
+        <span
+          className="st-cp-cpick-knob"
+          style={{ left: `${hsv.s * 100}%`, top: `${(1 - hsv.v) * 100}%`, background: hex }}
         />
-      </label>
+      </button>
+      <div className="st-cp-cpick-controls">
+        {window.EyeDropper ? (
+          <button
+            type="button"
+            className="st-cp-cpick-eye"
+            aria-label="pick from screen"
+            title="eyedropper"
+            onClick={eyedrop}
+          >
+            <StIcon name="eyedropper" size={14} />
+          </button>
+        ) : null}
+        <button
+          type="button"
+          ref={hueRef}
+          className="st-cp-cpick-hue"
+          aria-label="hue"
+          onPointerDown={dragHue}
+        >
+          <span className="st-cp-cpick-huethumb" style={{ left: `${(hsv.h / 360) * 100}%` }} />
+        </button>
+      </div>
       <input
         className="st-cp-fin"
         type="text"
-        value={val}
-        placeholder="#hex · rgb() · oklch()"
-        aria-label="colour value"
-        onChange={(e) => setVal(e.target.value)}
+        value={hex}
+        aria-label="hex value"
+        onChange={(e) => {
+          const v = e.target.value;
+          if (/^#?[0-9a-f]{6}$/i.test(v)) setHsv(rgbToHsv(hexToRgb(v)));
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') onApply(e.currentTarget.value);
         }}
@@ -3068,7 +3213,7 @@ function CustomColor({ current, onApply }) {
 // `kind='value'` a variable list (pretty name + resolved value, à la Figma's
 // variable picker). Picking commits `var(--token)`. Portals to <body> +
 // fixed-positions from the trigger rect so the panel's overflow never clips it.
-function TokenPopover({ kind, groups, current, onPick, label }) {
+function TokenPopover({ kind, groups, current, onPick, label, swatchBg, seedHex }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
   // Phase 12.3 (#4) — colour popover gets two tabs: a normal colour input
@@ -3151,18 +3296,36 @@ function TokenPopover({ kind, groups, current, onPick, label }) {
 
   return (
     <>
-      <button
-        type="button"
-        ref={btnRef}
-        className={`st-cp-tokbtn${bound ? ' is-bound' : ''}`}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-label={label || 'pick a design token'}
-        title="design tokens"
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span className="st-cp-tokbtn-glyph" aria-hidden="true" />
-      </button>
+      {swatchBg !== undefined ? (
+        // Colour rows: the swatch IS the trigger — one popover, no separate native
+        // OS picker + ◇ (the "two popovers" the user flagged). Shows the current
+        // colour; bound-to-token gets the accent ring.
+        <button
+          type="button"
+          ref={btnRef}
+          className={`st-cp-swatch st-cp-swatch--mini st-cp-swatch--trigger${bound ? ' is-bound' : ''}`}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          aria-label={label || 'pick a colour'}
+          title={current || 'pick a colour'}
+          onClick={() => setOpen((v) => !v)}
+        >
+          <span style={{ position: 'absolute', inset: 0, background: swatchBg || 'transparent' }} />
+        </button>
+      ) : (
+        <button
+          type="button"
+          ref={btnRef}
+          className={`st-cp-tokbtn${bound ? ' is-bound' : ''}`}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          aria-label={label || 'pick a design token'}
+          title="design tokens"
+          onClick={() => setOpen((v) => !v)}
+        >
+          <span className="st-cp-tokbtn-glyph" aria-hidden="true" />
+        </button>
+      )}
       {open && pos
         ? createPortal(
             <div
@@ -3208,7 +3371,7 @@ function TokenPopover({ kind, groups, current, onPick, label }) {
                     </button>
                   </div>
                   {mode === 'custom' ? (
-                    <CustomColor current={current} onApply={applyRaw} />
+                    <ColorPicker seed={seedHex || cssColorToHex(current) || '#000000'} onApply={applyRaw} />
                   ) : total ? (
                     swatchGrid()
                   ) : (
@@ -3710,32 +3873,22 @@ function CssKnobs({ el, cfg, onOptimistic }) {
 
   // color swatch (native picker → hex) + raw text + token quick-pick
   const color = (prop) => {
-    const shown = authored[prop] || computed[prop] || '';
+    // ONE colour control: the swatch is the trigger for a single popover with a
+    // full HSV picker (Custom) + the DS swatches (Variables). No separate native
+    // OS picker (#6 — was two popovers doing the same thing).
+    const resolved = computed[prop] || authored[prop] || '';
     return (
       <>
-        <span className="st-cp-swatch st-cp-swatch--mini" title={shown || 'no color set'}>
-          <span style={{ position: 'absolute', inset: 0, background: shown || 'transparent' }} />
-          <input
-            type="color"
-            aria-label={`${prop} picker`}
-            defaultValue={cssColorToHex(shown) || '#000000'}
-            onBlur={(e) => commit(prop, e.currentTarget.value)}
-            style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', border: 0 }}
-          />
-        </span>
+        <TokenPopover
+          kind="color"
+          groups={tokenGroups('color')}
+          current={authored[prop]}
+          swatchBg={resolved}
+          seedHex={cssColorToHex(computed[prop] || authored[prop]) || '#000000'}
+          onPick={(v) => commit(prop, v)}
+          label={`${prop} colour`}
+        />
         {text(prop)}
-        {(() => {
-          const groups = tokenGroups('color');
-          return groups.length ? (
-            <TokenPopover
-              kind="color"
-              groups={groups}
-              current={authored[prop]}
-              onPick={(v) => commit(prop, v)}
-              label={`${prop} color token`}
-            />
-          ) : null;
-        })()}
       </>
     );
   };
