@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "studio-chrome-polished-end-to-end",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Studio chrome, polished end to end",
+      "summary": "The whole browser feels hand-finished now. Drag the file and inspector panels to resize them (or nudge with the arrow keys — your widths are remembered), watch a calm skeleton while a canvas compiles, and press ? for a full keyboard-shortcuts cheat sheet. Collaborator cursors and Claude's own cursor now match the design system, annotations snap to the dot grid as you drag, and focus rings, tooltips and scrollbars are consistent throughout. The View menu's Layers and Zoom are wired up, and a shortcut clash is gone — the inspector is ⌘⇧I, so I stays free for the canvas highlighter.",
+      "surface": "design-ui"
+    },
+    {
       "id": "hub-sync-cold-start-safety",
       "version": null,
       "date": null,
