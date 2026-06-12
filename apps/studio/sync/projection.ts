@@ -42,8 +42,10 @@ import {
   MAX_META_BYTES,
   mergeSharedMetaIntoLocal,
   metaFromDoc,
+  stampBodyEdit,
 } from './codec.ts';
 import { type EchoGuard, hashBytes } from './echo-guard.ts';
+import type { SyncJournal } from './journal.ts';
 import { ORIGINS } from './origins.ts';
 
 export const PROJECT_FLUSH_MS = 800;
@@ -78,6 +80,9 @@ export interface DocProjectionOptions {
   flushMs?: number;
   /** Circuit-breaker threshold (consecutive parse failures per path). */
   maxStrikes?: number;
+  /** DDR-102 — per-machine sync journal; every successful disk↔doc body/css
+   *  traversal checkpoints here (same discipline as the agent). Optional. */
+  journal?: SyncJournal;
 }
 
 export interface DocProjection {
@@ -177,6 +182,7 @@ export function createDocProjection(opts: DocProjectionOptions): DocProjection {
     recordEcho(paths.html, next);
     writer(paths.html, next);
     lastHtml = next;
+    opts.journal?.record(slug, { bodyHash: hashBytes(next) }); // DDR-102 checkpoint
   }
 
   function writeCssIfChanged(): void {
@@ -188,6 +194,7 @@ export function createDocProjection(opts: DocProjectionOptions): DocProjection {
     if (!withinCap(paths.css, next, MAX_CSS_BYTES)) return;
     recordEcho(paths.css, next);
     writer(paths.css, next);
+    opts.journal?.record(slug, { cssHash: hashBytes(next) }); // DDR-102 checkpoint
   }
 
   function writeMetaIfChanged(): void {
@@ -257,14 +264,26 @@ export function createDocProjection(opts: DocProjectionOptions): DocProjection {
 
     if (evt.path === paths.html) {
       clearStrike(evt.path);
-      const changed = applyHtmlToDoc(doc, str, importOrigin);
-      if (changed) lastHtml = htmlFromDoc(doc);
+      // Body import + syncMeta stamp in ONE transaction (same FILE_IMPORT
+      // origin) — peers get a single update carrying the newest-wins stamp.
+      let changed = false;
+      doc.transact(() => {
+        changed = applyHtmlToDoc(doc, str, importOrigin);
+        if (changed) stampBodyEdit(doc, importOrigin);
+      }, importOrigin);
+      if (changed) {
+        lastHtml = htmlFromDoc(doc);
+        opts.journal?.record(slug, { bodyHash: evt.hash }); // DDR-102 checkpoint
+      }
       return changed;
     }
     if (paths.css && evt.path === paths.css) {
       clearStrike(evt.path);
       const changed = applyCssToDoc(doc, str, importOrigin);
-      if (changed) lastCss = str;
+      if (changed) {
+        lastCss = str;
+        opts.journal?.record(slug, { cssHash: evt.hash }); // DDR-102 checkpoint
+      }
       return changed;
     }
     if (paths.meta && evt.path === paths.meta) {

@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "hub-sync-cold-start-safety",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Hub sync that can't eat your work",
+      "summary": "Boot two machines or checkouts linked to the same hub in any order — your local canvas work is safe. When both sides changed the same canvas, Maude keeps a copy of each, takes the newer one, and tells you exactly how to bring back the other; a clean catch-up just updates quietly. The sync status is honest now too: you can see which canvases are synced, pending, or rejected, and why.",
+      "surface": "design-ui"
+    },
+    {
       "id": "canvas-annotations-figjam-v3",
       "version": null,
       "date": null,

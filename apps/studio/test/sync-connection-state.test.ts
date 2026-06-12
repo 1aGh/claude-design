@@ -144,3 +144,71 @@ describe('connection monitor', () => {
     expect(changes.length).toBe(before); // no offline transition fired
   });
 });
+
+// DDR-102 — per-doc states + real lastSyncAt.
+describe('connection monitor — per-doc states (DDR-102)', () => {
+  test('noteDocState rolls up into docs counts + rejectedSlugs', () => {
+    const { monitor } = makeMonitor();
+    monitor.noteDocState('ui-a', 'pending');
+    monitor.noteDocState('ui-b', 'connected');
+    monitor.noteDocState('ui-c', 'auth-rejected');
+    monitor.noteDocState('ui-d', 'auth-rejected');
+
+    const snap = monitor.snapshot();
+    expect(snap.docs).toEqual({ synced: 1, pending: 1, rejected: 2 });
+    expect(snap.rejectedSlugs?.sort()).toEqual(['ui-c', 'ui-d']);
+  });
+
+  test('doc state transitions update the rollup (rejected → connected after re-link)', () => {
+    const { monitor, changes } = makeMonitor();
+    monitor.noteDocState('ui-a', 'auth-rejected');
+    expect(monitor.snapshot().docs?.rejected).toBe(1);
+    monitor.noteDocState('ui-a', 'connected');
+    const snap = monitor.snapshot();
+    expect(snap.docs).toEqual({ synced: 1, pending: 0, rejected: 0 });
+    expect(snap.rejectedSlugs).toEqual([]);
+    // Each transition emitted (no-op repeats don't).
+    const emitted = changes.length;
+    monitor.noteDocState('ui-a', 'connected');
+    expect(changes.length).toBe(emitted);
+  });
+
+  test('rejectedSlugs caps at 20 while docs.rejected carries the true count', () => {
+    const { monitor } = makeMonitor();
+    for (let i = 0; i < 25; i++) monitor.noteDocState(`ui-${i}`, 'auth-rejected');
+    const snap = monitor.snapshot();
+    expect(snap.docs?.rejected).toBe(25);
+    expect(snap.rejectedSlugs).toHaveLength(20);
+  });
+
+  test('noteSyncActivity sets lastSyncAt to now and promotes a pending doc', () => {
+    const { clock, monitor } = makeMonitor();
+    monitor.noteDocState('ui-a', 'pending');
+    expect(monitor.snapshot().lastSyncAt).toBeNull();
+
+    clock.advance(5_000);
+    monitor.noteSyncActivity('ui-a');
+    const snap = monitor.snapshot();
+    expect(snap.lastSyncAt).toBe(clock.now());
+    expect(snap.docs?.synced).toBe(1);
+    expect(snap.docs?.pending).toBe(0);
+  });
+
+  test('noteSyncActivity does NOT resurrect an auth-rejected doc', () => {
+    const { monitor } = makeMonitor();
+    monitor.noteDocState('ui-a', 'auth-rejected');
+    monitor.noteSyncActivity('ui-a');
+    expect(monitor.snapshot().docs?.rejected).toBe(1);
+    expect(monitor.snapshot().lastSyncAt).not.toBeNull();
+  });
+
+  test('lastSyncAt advances on repeated activity (real activity, not just transitions)', () => {
+    const { clock, monitor } = makeMonitor();
+    monitor.noteDocState('ui-a', 'connected');
+    monitor.noteSyncActivity('ui-a');
+    const first = monitor.snapshot().lastSyncAt;
+    clock.advance(10_000);
+    monitor.noteSyncActivity('ui-a');
+    expect(monitor.snapshot().lastSyncAt).toBe((first as number) + 10_000);
+  });
+});

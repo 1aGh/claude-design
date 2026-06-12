@@ -282,6 +282,90 @@ test('status reports zero-syncable when _sync.json is notSyncable (DDR-060 / 9.1
   cleanup();
 });
 
+// --------------------------------------------------- DDR-102 status surfaces
+
+test('DDR-102: status renders docs counts, rejected slugs, and the conflict recovery hint', async () => {
+  await runCli(['design', 'link', URL, '--token', 'mau_test']);
+  writeFileSync(
+    join(workspace, '.design/_sync.json'),
+    JSON.stringify({
+      state: 'online',
+      queuedOps: 0,
+      lastSyncAt: 1760000000000,
+      offlineSince: null,
+      flash: null,
+      updatedAt: Date.now(),
+      url: URL,
+      canvases: 83,
+      docs: { synced: 81, pending: 0, rejected: 2 },
+      rejectedSlugs: ['system-tokens', 'system-type'],
+      conflicts: [
+        {
+          slug: 'ui-maskot',
+          kind: 'cold-start-diverged',
+          winner: 'local',
+          snapshots: {
+            local: '2026-06-11T10:00:00.000Z',
+            hub: '2026-06-11T10:00:00.001Z',
+          },
+          at: 1760000001000,
+        },
+      ],
+    }),
+    'utf8'
+  );
+
+  const human = await runCli(['design', 'status']);
+  assert.equal(human.status, 0, human.stderr);
+  assert.match(human.stdout, /docs: 81 synced · 0 pending · 2 rejected/);
+  assert.match(human.stdout, /not syncing:\s+system-tokens, system-type/);
+  assert.match(human.stdout, /ui-maskot — diverged, kept local \(newest-wins\)/);
+  assert.match(human.stdout, /local@2026-06-11T10:00:00\.000Z/);
+  assert.match(human.stdout, /hub@2026-06-11T10:00:00\.001Z/);
+  assert.match(human.stdout, /\/design:rollback ui-maskot/);
+
+  // --json passes the new fields through verbatim.
+  const json = await runCli(['design', 'status', '--json']);
+  const payload = JSON.parse(json.stdout);
+  assert.equal(payload.sync.docs.rejected, 2);
+  assert.equal(payload.sync.conflicts[0].winner, 'local');
+  cleanup();
+});
+
+test('DDR-102: status renders an OLD-shape _sync.json (no docs/rejectedSlugs) unchanged', async () => {
+  await runCli(['design', 'link', URL, '--token', 'mau_test']);
+  writeFileSync(
+    join(workspace, '.design/_sync.json'),
+    JSON.stringify({
+      state: 'online',
+      queuedOps: 0,
+      lastSyncAt: null,
+      offlineSince: null,
+      flash: null,
+      updatedAt: Date.now(),
+      url: URL,
+      canvases: 5,
+      conflicts: [],
+    }),
+    'utf8'
+  );
+  const human = await runCli(['design', 'status']);
+  assert.equal(human.status, 0, human.stderr);
+  assert.match(human.stdout, /sync agent:\s+online/);
+  assert.doesNotMatch(human.stdout, /docs:/);
+  assert.doesNotMatch(human.stdout, /not syncing:/);
+  cleanup();
+});
+
+test('DDR-102: re-linking the same hub prints the token-replacement notice', async () => {
+  await runCli(['design', 'link', URL, '--token', 'mau_first']);
+  const second = await runCli(['design', 'link', URL, '--token', 'mau_second']);
+  assert.equal(second.status, 0, second.stderr);
+  assert.match(second.stdout, /replacing the stored token for/);
+  assert.match(second.stdout, /EVERY project linked to this hub on this machine/);
+  cleanup();
+});
+
 // --------------------------------------------------- DDR-054 F2/F4 trust gate
 
 const REMOTE_URL = 'http://hub.invalid:9999'; // .invalid never resolves (RFC 6761)

@@ -10,6 +10,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
 
+- [DDR-102: Hub-sync cold-start divergence resolution — journal-gated fast-forward, dual snapshot, newest-wins](DDR-102-cold-start-divergence-resolution.md) — 2026-06-11, sync/hub/data-safety/conflict-resolution/rate-limit/multiplexing/incident
 - [DDR-101: Command catalog is a shared `.mjs` single-source with build-time parity assertion](DDR-101-command-catalog-shared-mjs-single-source.md) — 2026-06-11, docs-site/command-reference/source-of-truth/build-script/diagrams/drift-guard
 - [DDR-100: Annotations FigJam v3 — group tag-array, embedded arrow binds, CLI write verb](DDR-100-annotations-figjam-v3-data-model.md) — 2026-06-11, annotations/figjam/groups/connectors/bindings/ai-surface/schema/dev-server
 - [DDR-099: Docs site retargeted from the `project` DS to the `maude` DS ("Studio Docs")](DDR-099-site-token-retarget-maude.md) — 2026-06-08, site/fumadocs/design-system/tokens/theme-bridge/changelog/roadmap/a11y/dogfooding

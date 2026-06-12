@@ -108,6 +108,16 @@ export async function runLink({ args, cwd = process.cwd(), forceAdopt = false })
     process.exit(1);
   }
 
+  // DDR-102 incident learning (same-machine token overwrite): hubs.json is
+  // keyed per hub URL only, so a second `link --token` silently replaced the
+  // first machine-wide — both dev servers then authenticated as the same
+  // label and shared one hub rate bucket. Make the overwrite explicit.
+  if (getHub(normUrl)) {
+    process.stdout.write(
+      `[design link] note: replacing the stored token for ${normUrl} (the token is per-machine — this applies to EVERY project linked to this hub on this machine).\n`
+    );
+  }
+
   // Write hub side: token (+ adopt attestation) in ~/.config/maude/hubs.json.
   const hubRecord = addHub(normUrl, token, adopt ? { adoptedAt: Date.now() } : {});
 
@@ -262,16 +272,56 @@ export async function runStatus({ args, cwd = process.cwd() }) {
   }
 
   const uptimeS = Math.round((probe.uptimeMs ?? 0) / 1000);
+  // DDR-102 — per-doc rollup (old payloads without `docs` render unchanged).
+  const docsLine = sync?.docs
+    ? `, docs: ${sync.docs.synced} synced · ${sync.docs.pending} pending · ${sync.docs.rejected} rejected`
+    : '';
   const syncLine = sync?.notSyncable
     ? `linked but 0 syncable canvases — ${sync.reason}`
     : sync
       ? `${sync.state}${sync.sharedDoc ? ' [shared-doc]' : ''}${sync.queuedOps ? ` — ${sync.queuedOps} edit(s) queued` : ''}${
           sync.lastSyncAt ? `, last sync ${new Date(sync.lastSyncAt).toISOString()}` : ''
-        }${sync.conflicts?.length ? `, ${sync.conflicts.length} conflict notice(s)` : ''}`
+        }${docsLine}${sync.conflicts?.length ? `, ${sync.conflicts.length} conflict notice(s)` : ''}`
       : 'idle (start `maude design serve` in linked mode)';
   process.stdout.write(
     `Maude design — linked mode\n  hub URL:      ${url}\n  linked at:    ${new Date(cfg.linkedHub.linkedAt).toISOString()}\n  adopt mode:   ${cfg.linkedHub.adopt ? 'yes (push-on-first-sync)' : 'no (hub-wins)'}\n  TSX sync:     ${cfg.linkedHub.syncTsx === false ? 'off (opted out — linkedHub.syncTsx: false)' : 'on (default — DDR-079)'}\n  token stored: ${hubRecord ? 'yes (~/.config/maude/hubs.json)' : "NO — re-run 'maude design link'"}\n  hub status:   ${probe.ok ? `up — v${probe.version}, ${uptimeS}s uptime, ${probe.tokenCount} token(s), ${probe.authMode}` : `UNREACHABLE — ${probe.error}`}\n  sync agent:   ${syncLine}\n`
   );
+  // DDR-102 — auth-rejected canvases (per-slug honesty).
+  if (Array.isArray(sync?.rejectedSlugs) && sync.rejectedSlugs.length > 0) {
+    const total = sync.docs?.rejected ?? sync.rejectedSlugs.length;
+    const more =
+      total > sync.rejectedSlugs.length ? ` (+${total - sync.rejectedSlugs.length} more)` : '';
+    process.stdout.write(
+      `  not syncing:  ${sync.rejectedSlugs.join(', ')}${more} — hub rejected auth; the serve log names the reason (scope / invalid token / rate limit).\n`
+    );
+  }
+  // DDR-102 — conflict log with winner + snapshot refs + the recovery story.
+  if (Array.isArray(sync?.conflicts) && sync.conflicts.length > 0) {
+    process.stdout.write('  conflicts:\n');
+    for (const c of sync.conflicts.slice(-10)) {
+      const at = c.at ? new Date(c.at).toISOString() : '?';
+      if (c.kind === 'cold-start-diverged') {
+        const snaps = c.snapshots
+          ? ` snapshots: ${[
+              c.snapshots.local ? `local@${c.snapshots.local}` : null,
+              c.snapshots.hub ? `hub@${c.snapshots.hub}` : null,
+            ]
+              .filter(Boolean)
+              .join(' ')}`
+          : '';
+        process.stdout.write(
+          `    ${at}  ${c.slug} — diverged, kept ${c.winner ?? 'hub'} (newest-wins);${snaps}\n      recover the other version: /design:rollback ${c.slug}\n`
+        );
+        if (c.snapshotFailed) {
+          process.stdout.write(
+            `      ⚠ the _history snapshot FAILED — local was KEPT instead of overwritten (DDR-102 fail-closed); check disk space / _history write perms.\n`
+          );
+        }
+      } else {
+        process.stdout.write(`    ${at}  ${c.slug} — ${c.kind}\n`);
+      }
+    }
+  }
   // DDR-079 migration advisory: a config with no explicit `syncTsx` rides the
   // default, which FLIPPED from off→on in maude 0.27. Surface it so an upgrader
   // who relied on the old "TSX never syncs" behavior isn't surprised that every

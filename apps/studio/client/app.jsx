@@ -2748,37 +2748,66 @@ function SyncBanner({ status }) {
   if (!status || status.linked === false) return null;
   // DDR-060 / 9.1-D — the "linked but 0 syncable" state is surfaced in the
   // status bar (sb-sync slot), NOT as a floating banner. This component owns
-  // only the transient offline / reconnect-flash banner (Task 8).
+  // the transient offline / reconnect-flash banner (Task 8) plus the DDR-102
+  // rejected-docs chip and divergence-resolution toast.
   if (status.notSyncable) return null;
   const { state, queuedOps, flash, conflicts } = status;
   const showFlash = flash === 'synced';
   const offline = state === 'offline' || state === 'offline-long';
-  if (!offline && !showFlash) return null;
-  const dismissKey = `${state}:${showFlash ? 'flash' : 'offline'}`;
-  if (dismissedKey === dismissKey) return null;
+  // DDR-102 — per-doc rollup + the latest divergence notice (additive fields;
+  // an old payload without them renders exactly the pre-DDR-102 banner).
+  const rejected = status.docs?.rejected ?? 0;
+  const lastDiverged = Array.isArray(conflicts)
+    ? [...conflicts].reverse().find((c) => c.kind === 'cold-start-diverged')
+    : null;
+  if (!offline && !showFlash && !lastDiverged && rejected === 0) return null;
 
+  // One banner at a time — priority: reconnect flash > offline > divergence
+  // toast > rejected chip. Dismissal is keyed per state so a new event
+  // (another conflict, a changed rejected count) re-surfaces it.
   let variant;
   let text;
+  let dismissKey;
   if (showFlash) {
     variant = 'success';
     text = 'Synced with hub';
-  } else if (state === 'offline-long') {
-    variant = 'error';
-    text = `Long offline — ${queuedOps} edit(s) queued. Consider \`git commit && git push\` as backup.`;
+    dismissKey = `${state}:flash`;
+  } else if (offline) {
+    const conflictNote =
+      conflicts && conflicts.length > 0 ? ` (${conflicts.length} conflict notice(s))` : '';
+    if (state === 'offline-long') {
+      variant = 'error';
+      text = `Long offline — ${queuedOps} edit(s) queued. Consider \`git commit && git push\` as backup.${conflictNote}`;
+    } else {
+      variant = 'warn';
+      text = `Working offline · ${queuedOps} edit(s) queued · will sync when the hub reconnects.${conflictNote}`;
+    }
+    dismissKey = `${state}:offline`;
+  } else if (lastDiverged) {
+    // DDR-102 fail-closed: a snapshotFailed conflict means the hub-wins overwrite
+    // was REFUSED (local kept) because _history couldn't be written — surface it
+    // as an error, not a routine "kept newest" notice.
+    if (lastDiverged.snapshotFailed) {
+      variant = 'error';
+      text = `Diverged on ${lastDiverged.slug}: kept local — the history snapshot FAILED, so the overwrite was refused. Check disk space / .design/_history write access.`;
+    } else {
+      variant = 'warn';
+      text = `Diverged on ${lastDiverged.slug}: kept the ${
+        lastDiverged.winner === 'local' ? 'local (newer)' : 'hub'
+      } version — the other is snapshotted in history → /design:rollback ${lastDiverged.slug}`;
+    }
+    dismissKey = `diverged:${lastDiverged.slug}:${lastDiverged.at}`;
   } else {
     variant = 'warn';
-    text = `Working offline · ${queuedOps} edit(s) queued · will sync when the hub reconnects.`;
+    text = `${rejected} canvas(es) not syncing — the hub rejected auth. Details: maude design status`;
+    dismissKey = `rejected:${rejected}`;
   }
-  const conflictNote =
-    conflicts && conflicts.length > 0 ? ` (${conflicts.length} conflict notice(s))` : '';
+  if (dismissedKey === dismissKey) return null;
 
   return (
     <div role="status" aria-live="polite" className={`st-banner st-banner--${variant}`}>
       <span className="st-banner-dot" aria-hidden="true" />
-      <span>
-        {text}
-        {conflictNote}
-      </span>
+      <span>{text}</span>
       <button
         type="button"
         className="st-banner-close"

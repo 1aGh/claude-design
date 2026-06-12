@@ -11,7 +11,7 @@
 // 100-event stress scenario from the plan without booting a real hub.
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as Y from 'yjs';
@@ -301,5 +301,275 @@ describe('CanvasSyncAgent — stress: 100 rapid disk writes converge with no ech
     expect(docUpdates).toBeLessThan(200);
     // Also: it should be > 0 — we DID see real syncs.
     expect(docUpdates).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DDR-102 — cold-start conflict protocol (journal-gated fast-forward, dual
+// snapshot, newest-wins, comments id-union).
+describe('CanvasSyncAgent — DDR-102 cold-start conflict protocol', () => {
+  interface SnapCall {
+    content: string;
+    reason: string;
+  }
+
+  function makeJournal(initial: Record<string, { bodyHash: string }> = {}) {
+    const entries = new Map(Object.entries(initial));
+    const records: Array<{ slug: string; hashes: Record<string, string | undefined> }> = [];
+    return {
+      journal: {
+        get: (slug: string) => entries.get(slug) ?? null,
+        record: (slug: string, hashes: { bodyHash?: string; cssHash?: string }) => {
+          records.push({ slug, hashes });
+          const prev = entries.get(slug);
+          entries.set(slug, { bodyHash: hashes.bodyHash ?? prev?.bodyHash ?? '' });
+        },
+        invalidateIfHubChanged: () => {},
+        flush: () => {},
+        stop: () => {},
+        size: () => entries.size,
+      },
+      records,
+    };
+  }
+
+  function protocolAgent(extra: {
+    journal?: ReturnType<typeof makeJournal>['journal'];
+    snapshots?: SnapCall[];
+    conflicts?: unknown[];
+  }) {
+    const a = createCanvasSyncAgent({
+      slug: 'screen',
+      doc: docB,
+      paths: paths(),
+      echoGuard: createEchoGuard(),
+      flushMs: 0,
+      journal: extra.journal,
+      snapshot: extra.snapshots
+        ? async (content, reason) => {
+            extra.snapshots?.push({ content, reason });
+            return `ts-${extra.snapshots?.length}`;
+          }
+        : undefined,
+      onConflict: (info) => {
+        extra.conflicts?.push(info);
+      },
+    });
+    a.start();
+    return a;
+  }
+
+  test('journal match → silent fast-forward: hub overwrites disk, NO snapshot, NO conflict', async () => {
+    const { setHtml } = await import('node:fs').then(() => ({ setHtml: writeFileSync }));
+    setHtml(paths().html, '<button>synced-v1</button>');
+    applyHtmlToDoc(docA, '<button>hub-v2</button>');
+
+    const { journal } = makeJournal({
+      screen: { bodyHash: hashBytes('<button>synced-v1</button>') },
+    });
+    const snapshots: SnapCall[] = [];
+    const conflicts: unknown[] = [];
+    agent = protocolAgent({ journal, snapshots, conflicts });
+    await agent.reconcile();
+
+    expect(readFileSync(paths().html, 'utf8')).toBe('<button>hub-v2</button>');
+    expect(snapshots).toHaveLength(0);
+    expect(conflicts).toHaveLength(0);
+  });
+
+  test('diverged + local newer → local wins, BOTH sides snapshotted, conflict recorded', async () => {
+    writeFileSync(paths().html, '<button>local-newer</button>');
+    // Hub doc carries different body with an OLDER bodyEditAt stamp.
+    docA.transact(() => {
+      applyHtmlToDoc(docA, '<button>hub-older</button>');
+      docA.getMap('syncMeta').set('bodyEditAt', Date.now() - 60_000);
+    });
+
+    const { journal } = makeJournal(); // no entry → divergence
+    const snapshots: SnapCall[] = [];
+    const conflicts: Array<{ kind: string; winner?: string; snapshots?: object }> = [];
+    agent = protocolAgent({ journal, snapshots, conflicts });
+    await agent.reconcile();
+
+    // Local body survives on disk AND is pushed up to the hub.
+    expect(readFileSync(paths().html, 'utf8')).toBe('<button>local-newer</button>');
+    expect(htmlFromDoc(docA)).toBe('<button>local-newer</button>');
+    // Dual snapshot: local first, hub second.
+    expect(snapshots.map((s) => s.reason)).toEqual(['pre-sync-local', 'pre-sync-hub']);
+    expect(snapshots[0].content).toBe('<button>local-newer</button>');
+    expect(snapshots[1].content).toBe('<button>hub-older</button>');
+    // Conflict entry carries winner + snapshot refs.
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0].kind).toBe('cold-start-diverged');
+    expect(conflicts[0].winner).toBe('local');
+    expect(conflicts[0].snapshots).toBeDefined();
+  });
+
+  test('diverged + hub newer → hub wins, both sides snapshotted', async () => {
+    writeFileSync(paths().html, '<button>local-older</button>');
+    docA.transact(() => {
+      applyHtmlToDoc(docA, '<button>hub-newer</button>');
+      docA.getMap('syncMeta').set('bodyEditAt', Date.now() + 60_000);
+    });
+
+    const { journal } = makeJournal();
+    const snapshots: SnapCall[] = [];
+    const conflicts: Array<{ winner?: string }> = [];
+    agent = protocolAgent({ journal, snapshots, conflicts });
+    await agent.reconcile();
+
+    expect(readFileSync(paths().html, 'utf8')).toBe('<button>hub-newer</button>');
+    expect(snapshots.map((s) => s.reason)).toEqual(['pre-sync-local', 'pre-sync-hub']);
+    expect(conflicts[0].winner).toBe('hub');
+  });
+
+  test('DDR-064 empty-hub guard is bit-identical: seed-local-up, no snapshot, no conflict', async () => {
+    writeFileSync(paths().html, '<button>real-canvas</button>');
+    // docA/docB empty — fresh hub.
+    const { journal } = makeJournal();
+    const snapshots: SnapCall[] = [];
+    const conflicts: unknown[] = [];
+    agent = protocolAgent({ journal, snapshots, conflicts });
+    await agent.reconcile();
+
+    expect(readFileSync(paths().html, 'utf8')).toBe('<button>real-canvas</button>');
+    expect(htmlFromDoc(docA)).toBe('<button>real-canvas</button>');
+    expect(snapshots).toHaveLength(0);
+    expect(conflicts).toHaveLength(0);
+  });
+
+  test('journal checkpoints: doc→disk flush and disk→doc apply both record', async () => {
+    const { journal, records } = makeJournal();
+    agent = createCanvasSyncAgent({
+      slug: 'screen',
+      doc: docB,
+      paths: paths(),
+      echoGuard: createEchoGuard(),
+      flushMs: 0,
+      journal,
+    });
+    agent.start();
+
+    // Hub edit → disk write → checkpoint.
+    applyHtmlToDoc(docA, '<button>from-hub</button>');
+    await agent.flush();
+    expect(records.some((r) => r.hashes.bodyHash === hashBytes('<button>from-hub</button>'))).toBe(
+      true
+    );
+
+    // Local edit → doc apply → checkpoint.
+    const bytes = new TextEncoder().encode('<button>from-disk</button>');
+    agent.applyFromFs({ path: paths().html, bytes, hash: hashBytes(bytes) });
+    expect(records.some((r) => r.hashes.bodyHash === hashBytes(bytes))).toBe(true);
+  });
+
+  test('comments id-union: doc order first, local-only appended, both sides converge', async () => {
+    // Local file has c1 + c3; hub doc has c1 + c2.
+    const localComments = [
+      { id: 'c1', body: 'shared' },
+      { id: 'c3', body: 'local-only' },
+    ];
+    mkdirSync(join(dir, '_comments'), { recursive: true });
+    writeFileSync(paths().comments, `${JSON.stringify(localComments, null, 2)}\n`);
+    docA.transact(() => {
+      docA.getArray('comments').push([
+        { id: 'c1', body: 'shared' },
+        { id: 'c2', body: 'hub-only' },
+      ]);
+    });
+
+    agent = protocolAgent({});
+    await agent.reconcile();
+
+    const expectUnion = [
+      { id: 'c1', body: 'shared' },
+      { id: 'c2', body: 'hub-only' },
+      { id: 'c3', body: 'local-only' },
+    ];
+    // Doc (and the peer) hold the union…
+    expect(docA.getArray('comments').toArray()).toEqual(expectUnion);
+    // …and the disk file was rewritten to the union too.
+    expect(JSON.parse(readFileSync(paths().comments, 'utf8'))).toEqual(expectUnion);
+  });
+
+  test('comments union with empty hub doc keeps + pushes local comments', async () => {
+    const localComments = [{ id: 'c9', body: 'only-local' }];
+    mkdirSync(join(dir, '_comments'), { recursive: true });
+    writeFileSync(paths().comments, `${JSON.stringify(localComments, null, 2)}\n`);
+
+    agent = protocolAgent({});
+    await agent.reconcile();
+
+    expect(docA.getArray('comments').toArray()).toEqual(localComments);
+    expect(JSON.parse(readFileSync(paths().comments, 'utf8'))).toEqual(localComments);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DDR-102 fail-closed (security review F1): a hub-wins resolution must NEVER
+// overwrite local when the local snapshot didn't land — keep local + push up.
+describe('CanvasSyncAgent — fail-closed on snapshot failure (DDR-102 F1)', () => {
+  function failClosedAgent(
+    snapshotImpl: (content: string, reason: string) => Promise<string | null>,
+    conflicts: unknown[]
+  ) {
+    const a = createCanvasSyncAgent({
+      slug: 'screen',
+      doc: docB,
+      paths: paths(),
+      echoGuard: createEchoGuard(),
+      flushMs: 0,
+      // No journal → every diff is divergence (conflict path).
+      snapshot: snapshotImpl,
+      onConflict: (info) => {
+        conflicts.push(info);
+      },
+    });
+    a.start();
+    return a;
+  }
+
+  test('hub newer BUT local snapshot returns null → REFUSE overwrite, keep local, push up', async () => {
+    writeFileSync(paths().html, '<button>local-work</button>');
+    // Hub doc carries a NEWER stamp so newest-wins would pick hub.
+    docA.transact(() => {
+      applyHtmlToDoc(docA, '<button>hub-stale</button>');
+      docA.getMap('syncMeta').set('bodyEditAt', Date.now() + 60_000);
+    });
+
+    const conflicts: Array<{ winner?: string; snapshotFailed?: boolean }> = [];
+    // Snapshot writer that FAILS (disk full / read-only _history): returns null.
+    agent = failClosedAgent(async () => null, conflicts);
+    await agent.reconcile();
+
+    // Local work survives on disk (NOT overwritten by hub-stale) …
+    expect(readFileSync(paths().html, 'utf8')).toBe('<button>local-work</button>');
+    // … and is pushed UP to the hub (nothing lost on either side).
+    expect(htmlFromDoc(docA)).toBe('<button>local-work</button>');
+    // The conflict is recorded with the degraded-snapshot flag + flipped winner.
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0].winner).toBe('local');
+    expect(conflicts[0].snapshotFailed).toBe(true);
+  });
+
+  test('hub newer + local snapshot SUCCEEDS → normal hub-wins (control)', async () => {
+    writeFileSync(paths().html, '<button>local-work</button>');
+    docA.transact(() => {
+      applyHtmlToDoc(docA, '<button>hub-newer</button>');
+      docA.getMap('syncMeta').set('bodyEditAt', Date.now() + 60_000);
+    });
+
+    const conflicts: Array<{ winner?: string; snapshotFailed?: boolean }> = [];
+    // Only the local snapshot succeeds; hub snapshot can fail without changing
+    // the outcome (local is the loser when hub wins).
+    agent = failClosedAgent(
+      async (_c, reason) => (reason === 'pre-sync-local' ? 'ts-local' : null),
+      conflicts
+    );
+    await agent.reconcile();
+
+    expect(readFileSync(paths().html, 'utf8')).toBe('<button>hub-newer</button>');
+    expect(conflicts[0].winner).toBe('hub');
+    expect(conflicts[0].snapshotFailed).toBeUndefined();
   });
 });

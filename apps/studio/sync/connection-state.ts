@@ -23,11 +23,18 @@
 export type ProviderStatus = 'connected' | 'connecting' | 'disconnected';
 export type SyncState = 'online' | 'connecting' | 'offline' | 'offline-long';
 
+/** DDR-102 — per-document sync state. `pending` until the first handshake
+ *  settles; `connected` once synced/active; `auth-rejected` when the hub
+ *  refused auth for this documentName (scope / invalid token / rate limit). */
+export type DocSyncState = 'pending' | 'connected' | 'auth-rejected';
+
 export interface SyncStatusSnapshot {
   state: SyncState;
   /** Local edits made since the hub went unreachable (replayed on reconnect). */
   queuedOps: number;
-  /** ms epoch of the last successful hub sync, or null if never synced. */
+  /** ms epoch of the last successful hub sync, or null if never synced.
+   *  DDR-102: updated on REAL sync activity (noteSyncActivity), not just on
+   *  offline→online transitions. */
   lastSyncAt: number | null;
   /** ms epoch the current offline streak began, or null when online. */
   offlineSince: number | null;
@@ -35,6 +42,11 @@ export interface SyncStatusSnapshot {
   flash: 'synced' | null;
   /** ms epoch this snapshot was produced. */
   updatedAt: number;
+  /** DDR-102 — per-doc rollup (additive; absent in pre-DDR-102 payloads). */
+  docs?: { synced: number; pending: number; rejected: number };
+  /** DDR-102 — slugs currently auth-rejected, capped at 20 (see docs.rejected
+   *  for the true count). Treat as text, never HTML. */
+  rejectedSlugs?: string[];
 }
 
 type TimerHandle = ReturnType<typeof setTimeout>;
@@ -58,6 +70,11 @@ export interface ConnectionMonitor {
   noteProviderStatus(providerId: string, status: ProviderStatus): void;
   /** A local edit happened — counts toward queuedOps while not online. */
   noteLocalEdit(): void;
+  /** DDR-102 — record a document's sync state (pending/connected/auth-rejected). */
+  noteDocState(slug: string, state: DocSyncState): void;
+  /** DDR-102 — real sync activity for a slug (reconcile done, hub-pushed flush
+   *  applied): bumps `lastSyncAt` to now. */
+  noteSyncActivity(slug: string): void;
   /** Current snapshot (defensive copy). */
   snapshot(): SyncStatusSnapshot;
   /** Tear down timers. */
@@ -67,6 +84,8 @@ export interface ConnectionMonitor {
 const DEFAULT_GRACE_MS = 30_000;
 const DEFAULT_ESCALATE_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_FLASH_MS = 3_000;
+/** Cap on rejectedSlugs in the snapshot (the rollup carries the true count). */
+export const MAX_REJECTED_SLUGS = 20;
 
 export function createConnectionMonitor(opts: ConnectionMonitorOptions = {}): ConnectionMonitor {
   const graceMs = opts.graceMs ?? DEFAULT_GRACE_MS;
@@ -78,6 +97,8 @@ export function createConnectionMonitor(opts: ConnectionMonitorOptions = {}): Co
   const onChange = opts.onChange;
 
   const providerStatuses = new Map<string, ProviderStatus>();
+  // DDR-102 — per-doc states (pending/connected/auth-rejected).
+  const docStates = new Map<string, DocSyncState>();
 
   let state: SyncState = 'online';
   let queuedOps = 0;
@@ -91,7 +112,25 @@ export function createConnectionMonitor(opts: ConnectionMonitorOptions = {}): Co
   let stopped = false;
 
   function snapshot(): SyncStatusSnapshot {
-    return { state, queuedOps, lastSyncAt, offlineSince, flash, updatedAt: now() };
+    const docs = { synced: 0, pending: 0, rejected: 0 };
+    const rejectedSlugs: string[] = [];
+    for (const [slug, st] of docStates) {
+      if (st === 'connected') docs.synced++;
+      else if (st === 'auth-rejected') {
+        docs.rejected++;
+        if (rejectedSlugs.length < MAX_REJECTED_SLUGS) rejectedSlugs.push(slug);
+      } else docs.pending++;
+    }
+    return {
+      state,
+      queuedOps,
+      lastSyncAt,
+      offlineSince,
+      flash,
+      updatedAt: now(),
+      docs,
+      rejectedSlugs,
+    };
   }
 
   function emit(): void {
@@ -186,6 +225,23 @@ export function createConnectionMonitor(opts: ConnectionMonitorOptions = {}): Co
       // ones queued for replay. Edits while online flush immediately.
       if (state === 'online') return;
       queuedOps += 1;
+      emit();
+    },
+
+    noteDocState(slug, docState) {
+      if (stopped) return;
+      if (docStates.get(slug) === docState) return;
+      docStates.set(slug, docState);
+      emit();
+    },
+
+    noteSyncActivity(slug) {
+      if (stopped) return;
+      lastSyncAt = now();
+      // Real sync traffic for a pending doc proves its handshake settled.
+      // An auth-rejected doc stays rejected (activity for it can't happen,
+      // but be defensive against ordering races).
+      if (docStates.get(slug) === 'pending') docStates.set(slug, 'connected');
       emit();
     },
 

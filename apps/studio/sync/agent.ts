@@ -26,8 +26,15 @@
 //      → echoGuard.consume returns true → event dropped (no infinite loop)
 //
 // 800ms quiescence matches the existing Phase 8 collab room flush (DDR-051).
+//
+// Cold-start resolution (DDR-102, supersedes the v1.1 "always hub-wins"):
+// reconcile() feeds the journal-aware decision table in cold-start.ts. A
+// hub-wins overwrite of local disk happens ONLY on a clean fast-forward
+// (local hash == journal hash); genuine divergence snapshots BOTH versions
+// to `_history/<slug>/` and resolves newest-wins (doc syncMeta.bodyEditAt vs
+// local file mtime; unknown/tie → hub). Comments union-merge by id.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 
 import type * as Y from 'yjs';
 
@@ -39,14 +46,18 @@ import {
   applyCssToDoc,
   applyHtmlToDoc,
   applyMetaToDoc,
+  bodyEditAtFromDoc,
   commentsFromDoc,
   cssFromDoc,
   htmlFromDoc,
   mergeSharedMetaIntoLocal,
   metaFromDoc,
+  stampBodyEdit,
   Y_SYNC_TYPES,
 } from './codec.ts';
+import { decideColdStart, unionCommentsById } from './cold-start.ts';
 import { type EchoGuard, hashBytes } from './echo-guard.ts';
+import type { SyncJournal } from './journal.ts';
 
 export const DOC_FLUSH_MS = 800;
 
@@ -80,13 +91,37 @@ export interface CanvasSyncAgentOptions {
   /** Injected for tests — defaults to atomicWrite. */
   writer?: (path: string, bytes: string | Uint8Array) => void;
   /**
-   * Called when a non-adopt reconcile (cold-start / post-git-pull) overwrites
-   * differing, non-empty local content with hub state — i.e. the local peer
-   * had divergent work that hub-wins discarded. Lets the runtime surface a
-   * "hub overwrote your local changes" notification (Phase 9 Task 8). v1.1
-   * resolution is always hub-wins; the interactive 3-way prompt is deferred.
+   * Per-machine sync journal (DDR-102) — the divergence detector. Every
+   * successful disk↔doc traversal checkpoints the content hash here; the
+   * cold-start decision allows a hub-wins overwrite ONLY when local matches
+   * the journal (clean fast-forward). Optional — older test constructions
+   * without it simply degrade to the conservative conflict path.
    */
-  onConflict?: (info: { slug: string; kind: 'cold-start-hub-wins' }) => void;
+  journal?: SyncJournal;
+  /**
+   * Snapshot writer (DDR-102 conflict protocol) — persists a body version to
+   * `_history/<slug>/` and resolves with the snapshot's ISO ts (null on
+   * failure). The runtime wires this to history.ts `writeSnapshot`. Optional —
+   * without it the conflict path still resolves newest-wins, just without the
+   * recovery snapshots (test-only constructions).
+   */
+  snapshot?: (content: string, reason: 'pre-sync-local' | 'pre-sync-hub') => Promise<string | null>;
+  /**
+   * Called when a non-adopt reconcile (cold-start / post-git-pull) found
+   * divergent non-empty content on both sides (DDR-102). `winner` is the side
+   * newest-wins kept; `snapshots` carries the `_history/` ISO timestamps of
+   * the pre-resolution versions (when the snapshot writer is wired). The
+   * legacy `cold-start-hub-wins` kind stays in the union for old readers.
+   */
+  onConflict?: (info: {
+    slug: string;
+    kind: 'cold-start-hub-wins' | 'cold-start-diverged';
+    winner?: 'local' | 'hub';
+    snapshots?: { local?: string; hub?: string };
+    /** DDR-102 fail-closed (F1): the local snapshot didn't land, so the
+     *  hub-wins overwrite was refused and local kept instead. */
+    snapshotFailed?: boolean;
+  }) => void;
 }
 
 export interface CanvasSyncAgent {
@@ -179,6 +214,9 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
     echoGuard.record(paths.html, hash);
     writer(paths.html, next);
     lastHtml = next;
+    // DDR-102 — a successful doc→disk body flush is a journal checkpoint:
+    // disk now holds exactly what the hub holds.
+    opts.journal?.record(slug, { bodyHash: hash });
   }
 
   function writeCommentsIfChanged(): void {
@@ -234,6 +272,7 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
     const hash = hashBytes(next);
     echoGuard.record(paths.css, hash);
     writer(paths.css, next);
+    opts.journal?.record(slug, { cssHash: hash }); // DDR-102 checkpoint
   }
 
   function applyFromFs(evt: { path: string; bytes: Uint8Array; hash: string }): boolean {
@@ -243,8 +282,18 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
 
     const str = bytesToString(evt.bytes);
     if (evt.path === paths.html) {
-      const changed = applyHtmlToDoc(doc, str, origin);
-      if (changed) lastHtml = htmlFromDoc(doc);
+      // Body apply + syncMeta stamp in ONE transaction (same origin) so peers
+      // receive a single update and the newest-wins stamp rides the body edit.
+      let changed = false;
+      doc.transact(() => {
+        changed = applyHtmlToDoc(doc, str, origin);
+        if (changed) stampBodyEdit(doc, origin);
+      }, origin);
+      if (changed) {
+        lastHtml = htmlFromDoc(doc);
+        // DDR-102 — a successful disk→doc body apply is a journal checkpoint.
+        opts.journal?.record(slug, { bodyHash: evt.hash });
+      }
       return changed;
     }
     if (evt.path === paths.comments) {
@@ -268,7 +317,10 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
     }
     if (paths.css && evt.path === paths.css) {
       const changed = applyCssToDoc(doc, str, origin);
-      if (changed) lastCss = str;
+      if (changed) {
+        lastCss = str;
+        opts.journal?.record(slug, { cssHash: evt.hash }); // DDR-102 checkpoint
+      }
       return changed;
     }
     return false;
@@ -293,7 +345,11 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
     if (adopt) {
       // Push local up: doc takes its values from disk. Hub becomes our
       // canonical view of this canvas. One-shot.
-      if (localHtml !== null) applyHtmlToDoc(doc, localHtml, origin);
+      if (localHtml !== null) {
+        doc.transact(() => {
+          if (applyHtmlToDoc(doc, localHtml, origin)) stampBodyEdit(doc, origin);
+        }, origin);
+      }
       if (localComments !== null) {
         const parsed = tryParseJsonArray(localComments);
         if (parsed !== null) applyCommentsToDoc(doc, parsed, origin);
@@ -307,55 +363,170 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
       lastMeta = metaFromDoc(doc);
       lastCss = cssFromDoc(doc);
       adopt = false;
+      // DDR-102 — adopt is a disk→doc traversal: checkpoint it so the next
+      // boot fast-forwards instead of re-entering the conflict path.
+      if (localHtml !== null) {
+        opts.journal?.record(slug, {
+          bodyHash: hashBytes(localHtml),
+          ...(localCss !== null ? { cssHash: hashBytes(localCss) } : {}),
+        });
+      }
       return;
     }
 
-    // Hub-wins (default): overwrite disk from doc when they differ.
-    lastHtml = docHtml;
-    lastComments = docCommentsStr;
-    lastAnnotations = docAnnotations;
-    lastMeta = docMeta;
-    lastCss = docCss;
-    if (localHtml !== docHtml) {
-      // DATA-LOSS GUARD: an EMPTY hub doc at cold-start means the hub holds no
-      // body for this slug yet (fresh / never-seeded hub) — NOT an authoritative
-      // "this canvas is blank". Overwriting a non-empty local body with it would
-      // silently destroy the canvas (observed in the wild: a fresh hub emptied
-      // every local .tsx on first connect). The comments/annotations/meta/css
-      // branches below already skip empty-doc writes, and the shared-doc
-      // projection path documents the same "never clobber non-empty local with
-      // an empty doc value" rule — the HTML body was the one branch missing it.
-      // Resolution: seed the doc FROM local instead, so the body survives AND
-      // the hub gets our content (local→doc, exactly like a first-sync seed).
-      if (docHtml === '' && localHtml !== null && localHtml.trim() !== '') {
-        applyHtmlToDoc(doc, localHtml, origin);
-        lastHtml = localHtml;
-      } else {
-        // Local had divergent, non-empty content that hub-wins is discarding —
-        // notify so the user knows their local edits were overwritten (Task 8).
-        // An absent/empty local file is a clean first-sync, not a conflict.
-        if (localHtml !== null && localHtml.trim() !== '') {
-          opts.onConflict?.({ slug, kind: 'cold-start-hub-wins' });
+    // ---- body: cold-start decision table (DDR-102; replaces v1.1 hub-wins) --
+    const decision = decideColdStart({
+      localBody: localHtml,
+      docBody: docHtml,
+      journalHash: opts.journal?.get(slug)?.bodyHash ?? null,
+      localMtimeMs: localMtimeMs(paths.html),
+      docBodyEditAtMs: bodyEditAtFromDoc(doc),
+    });
+
+    // Which side owns the visually-coupled lanes (annotations/css) below.
+    let bodyWinner: 'local' | 'hub' = 'hub';
+
+    const writeBodyFromDoc = (): void => {
+      const hash = hashBytes(docHtml);
+      echoGuard.record(paths.html, hash);
+      writer(paths.html, docHtml);
+      lastHtml = docHtml;
+      opts.journal?.record(slug, { bodyHash: hash });
+    };
+    const seedBodyUp = (body: string): void => {
+      doc.transact(() => {
+        if (applyHtmlToDoc(doc, body, origin)) stampBodyEdit(doc, origin);
+      }, origin);
+      lastHtml = body;
+      opts.journal?.record(slug, { bodyHash: hashBytes(body) });
+    };
+
+    switch (decision.action) {
+      case 'noop':
+        lastHtml = docHtml;
+        // Identical non-empty sides: checkpoint so the next boot fast-forwards.
+        if (localHtml !== null && localHtml === docHtml && docHtml !== '') {
+          opts.journal?.record(slug, { bodyHash: hashBytes(docHtml) });
         }
-        const hash = hashBytes(docHtml);
-        echoGuard.record(paths.html, hash);
-        writer(paths.html, docHtml);
+        break;
+      case 'materialize-hub':
+      case 'fast-forward-hub':
+        writeBodyFromDoc();
+        break;
+      case 'seed-local-up':
+        // The DDR-064 empty-hub guard as a named decision row: an empty hub doc
+        // means the hub holds no body for this slug yet — NOT an authoritative
+        // "this canvas is blank". Seed the doc FROM local so the body survives
+        // AND the hub gets our content.
+        seedBodyUp(localHtml as string);
+        bodyWinner = 'local';
+        break;
+      case 'conflict': {
+        // Divergence: snapshot BOTH versions to `_history/<slug>/` BEFORE any
+        // write, then apply the newest-wins winner. Even a wrong pick costs
+        // one /design:rollback (the incident's class of loss is closed).
+        const snapshots: { local?: string; hub?: string } = {};
+        let snapshotAttempted = false;
+        if (opts.snapshot) {
+          snapshotAttempted = true;
+          try {
+            const localTs = await opts.snapshot(localHtml as string, 'pre-sync-local');
+            if (localTs) snapshots.local = localTs;
+            const hubTs = await opts.snapshot(docHtml, 'pre-sync-hub');
+            if (hubTs) snapshots.hub = hubTs;
+          } catch {
+            /* swallowed below — the missing snapshot ref drives the fail-closed guard */
+          }
+        }
+        // DDR-102 fail-closed (security F1): the whole guarantee is "the loser is
+        // recoverable from _history". A hub-wins resolution OVERWRITES local — so
+        // if we asked for a snapshot but the local one did NOT land (full disk,
+        // read-only `_history/`, a Bun.write error), refuse the destructive
+        // overwrite. Keep local on disk and seed it UP instead, so nothing is
+        // lost on either side (local survives; the hub still gets our content).
+        // `snapshotAttempted` gates this to production wiring — a test/standalone
+        // agent with no snapshot fn keeps the plain newest-wins behavior.
+        const localSnapshotMissing = snapshotAttempted && !snapshots.local;
+        let winner = decision.winner;
+        if (winner === 'hub' && localSnapshotMissing) {
+          winner = 'local';
+          console.error(
+            `[sync/${slug}] cold-start divergence: hub won newest-wins but the local snapshot FAILED — REFUSING to overwrite local (DDR-102 fail-closed). Keeping local + pushing it up; resolve the _history/ write failure (disk full / read-only?) to restore newest-wins.`
+          );
+        }
+        if (winner === 'local') {
+          seedBodyUp(localHtml as string);
+          bodyWinner = 'local';
+        } else {
+          writeBodyFromDoc();
+        }
+        console.warn(`[sync/${slug}] cold-start divergence — ${decision.reason}`);
+        opts.onConflict?.({
+          slug,
+          kind: 'cold-start-diverged',
+          winner,
+          ...(snapshots.local || snapshots.hub ? { snapshots } : {}),
+          ...(localSnapshotMissing ? { snapshotFailed: true } : {}),
+        });
+        break;
       }
     }
-    if (docCommentsStr !== '' && localComments !== docCommentsStr) {
-      const hash = hashBytes(docCommentsStr);
-      echoGuard.record(paths.comments, hash);
-      writer(paths.comments, docCommentsStr);
+
+    // ---- comments: id-union merge (DDR-102 — union loses nothing) ----------
+    const localParsedComments = localComments !== null ? tryParseJsonArray(localComments) : null;
+    if (localParsedComments !== null && localParsedComments.length > 0) {
+      const merged = unionCommentsById(docComments, localParsedComments);
+      const mergedStr = merged.length > 0 ? `${JSON.stringify(merged, null, 2)}\n` : '';
+      applyCommentsToDoc(doc, merged, origin); // no-ops when equal
+      if (mergedStr !== '' && mergedStr !== localComments) {
+        const hash = hashBytes(mergedStr);
+        echoGuard.record(paths.comments, hash);
+        writer(paths.comments, mergedStr);
+      }
+      lastComments = mergedStr;
+    } else {
+      // No (parseable) local comments — hub state materializes as before.
+      lastComments = docCommentsStr;
+      if (docCommentsStr !== '' && localComments !== docCommentsStr) {
+        const hash = hashBytes(docCommentsStr);
+        echoGuard.record(paths.comments, hash);
+        writer(paths.comments, docCommentsStr);
+      }
     }
-    if (docAnnotations !== '' && localAnnotations !== docAnnotations) {
-      const hash = hashBytes(docAnnotations);
-      echoGuard.record(paths.annotations, hash);
-      writer(paths.annotations, docAnnotations);
+
+    // ---- annotations + css: follow the body winner (visually coupled) ------
+    if (bodyWinner === 'local') {
+      if (localAnnotations !== null && localAnnotations !== docAnnotations) {
+        applyAnnotationsToDoc(doc, localAnnotations, origin);
+        lastAnnotations = localAnnotations;
+      } else {
+        lastAnnotations = docAnnotations;
+      }
+      if (paths.css && localCss !== null && localCss !== docCss) {
+        applyCssToDoc(doc, localCss, origin);
+        lastCss = localCss;
+        opts.journal?.record(slug, { cssHash: hashBytes(localCss) });
+      } else {
+        lastCss = docCss;
+      }
+    } else {
+      lastAnnotations = docAnnotations;
+      if (docAnnotations !== '' && localAnnotations !== docAnnotations) {
+        const hash = hashBytes(docAnnotations);
+        echoGuard.record(paths.annotations, hash);
+        writer(paths.annotations, docAnnotations);
+      }
+      lastCss = docCss;
+      if (paths.css && docCss !== null && localCss !== docCss) {
+        const hash = hashBytes(docCss);
+        echoGuard.record(paths.css, hash);
+        writer(paths.css, docCss);
+        opts.journal?.record(slug, { cssHash: hash });
+      }
     }
-    // Meta: merge the doc's shared subset (layout/artboards) into local,
-    // preserving this machine's viewport + syncable. Only writes when the merge
-    // actually changes the file (a fresh peer with no local viewport, or an
-    // artboard layout the hub carries that local lacks).
+
+    // ---- meta: shared-subset merge, unchanged in all cases -----------------
+    lastMeta = docMeta;
     if (paths.meta && docMeta !== null) {
       const merged = mergeSharedMetaIntoLocal(localMeta, docMeta);
       if (merged !== null && merged !== localMeta) {
@@ -363,11 +534,6 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
         echoGuard.record(paths.meta, hash);
         writer(paths.meta, merged);
       }
-    }
-    if (paths.css && docCss !== null && localCss !== docCss) {
-      const hash = hashBytes(docCss);
-      echoGuard.record(paths.css, hash);
-      writer(paths.css, docCss);
     }
   }
 
@@ -394,6 +560,14 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
 }
 
 /* ---------------------------------------------------------------- helpers */
+
+function localMtimeMs(p: string): number | null {
+  try {
+    return statSync(p).mtimeMs;
+  } catch {
+    return null;
+  }
+}
 
 function readLocal(p: string): string | null {
   if (!existsSync(p)) return null;

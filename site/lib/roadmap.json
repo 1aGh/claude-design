@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-11T12:37:00.542Z",
+  "generated": "2026-06-12T05:21:37.482Z",
   "currentPhase": null,
   "phases": [
     {
@@ -153,6 +153,17 @@
       "date": null,
       "summary": "tracks on any node) is the cross-platform animation source; maude is its editor (/design:draw + motion utils). It extends the DDR-067 single-source invariant from static geometry to time. (alias /d...",
       "planPath": ".ai/plans/archive/feature-draw-animation-layer.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-hub-sync-cold-start-safety",
+      "title": "Feature: Hub sync cold-start safety + honest status — \"link & it just works\"",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. *This touches the sync hot path (apps/studio/sync/) — the standing rule applies: inven...",
+      "planPath": ".ai/plans/archive/feature-hub-sync-cold-start-safety.md",
       "archived": true,
       "phaseKey": null
     },

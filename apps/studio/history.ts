@@ -5,6 +5,7 @@
 // from the WS layer and from a future server-driven auto-snapshot hook.
 
 import type { Dirent } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -37,10 +38,14 @@ function fileSlug(file: string, designRel: string): string {
   }
   const prefix = `${designRel.replace(/^\/+|\/+$/g, '')}/`;
   if (p.startsWith(prefix)) p = p.slice(prefix.length);
+  // Extension strip mirrors bin/slug.sh (the canonical `_history/<slug>/`
+  // recipe) — previously only `.html` was stripped, so `.tsx` canvases got a
+  // `ui-foo.tsx` history dir that /design:rollback (slug.sh: `ui-foo`) could
+  // never find. DDR-102 conflict snapshots rely on the dirs matching.
   return p
     .replace(/\//g, '-')
     .replace(/\s+/g, '_')
-    .replace(/\.html$/i, '')
+    .replace(/\.(tsx|jsx|html?|css|json|md)$/i, '')
     .replace(/^\.+/, '')
     .toLowerCase();
 }
@@ -60,8 +65,20 @@ export function createHistory(ctx: Context): History {
 
   async function writeSnapshot(file: string, contentBytes: Uint8Array | string, reason: string) {
     const slug = fileSlug(file, ctx.paths.designRel);
-    const ts = new Date().toISOString();
-    const contentPath = snapshotPath(slug, ts);
+    // Snapshot blob keeps the source file's extension (a `.tsx` body snapshot
+    // is a `.tsx` blob); unknown/absent extension falls back to `.html`.
+    const extMatch = /\.(tsx|jsx|html?|css|json|svg|md)$/i.exec(file);
+    const ext = extMatch ? extMatch[0].toLowerCase() : '.html';
+    // Two snapshots can land within the same millisecond (the DDR-102 dual
+    // pre-sync pair does) — toISOString() would collide and the second blob
+    // would overwrite the first. Bump by 1 ms until the slot is free.
+    let tsMs = Date.now();
+    let ts = new Date(tsMs).toISOString();
+    while (existsSync(snapshotPath(slug, ts, ext)) || existsSync(metaPath(slug, ts))) {
+      tsMs += 1;
+      ts = new Date(tsMs).toISOString();
+    }
+    const contentPath = snapshotPath(slug, ts, ext);
     const meta: Snapshot = {
       slug,
       ts,
