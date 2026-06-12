@@ -3073,8 +3073,16 @@ function parseTokensCss(css) {
   }
   const names = Object.keys(raw);
   const g = (re) => names.filter((n) => re.test(n));
+  // Colours detected by VALUE, not name — so EVERY colour token a DS defines is
+  // offered (the name-prefix list dropped many). A token is a colour if its
+  // resolved value reads as one. (#3 — "see all tokens the DS has".)
+  const isColor = (v) =>
+    /^(#[0-9a-f]{3,8}|rgba?\(|hsla?\(|oklch\(|oklab\(|lab\(|lch\(|hwb\(|color\()/i.test(v) ||
+    /^(transparent|currentcolor|white|black|red|green|blue|gray|grey|orange|yellow|purple|pink|cyan|magenta|teal|navy|maroon|olive|lime|aqua|silver|gold)$/i.test(
+      v
+    );
   return {
-    color: g(/^--(accent|fg|bg|border|status|presence)/),
+    color: names.filter((n) => isColor(vals[n])),
     space: g(/^--space-/),
     radius: g(/^--radius-/),
     type: g(/^--type-/),
@@ -3263,7 +3271,7 @@ function ColorPicker({ seed, onApply }) {
 // `kind='value'` a variable list (pretty name + resolved value, à la Figma's
 // variable picker). Picking commits `var(--token)`. Portals to <body> +
 // fixed-positions from the trigger rect so the panel's overflow never clips it.
-function TokenPopover({ kind, groups, current, onPick, label, swatchBg, seedHex }) {
+function TokenPopover({ kind, groups, current, onPick, label, swatchBg, seedHex, activeDs }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
   // Phase 12.3 (#4) — colour popover gets two tabs: a normal colour input
@@ -3313,8 +3321,14 @@ function TokenPopover({ kind, groups, current, onPick, label, swatchBg, seedHex 
     };
   }, [open]);
 
-  const pick = (n) => {
-    onPick(`var(${n})`);
+  // Pick a token. #3 — apply CORRECTLY across design systems: a token from the
+  // canvas's OWN active DS commits `var(--token)` (round-trips + resolves right);
+  // a token from ANOTHER DS commits its RESOLVED value (literal), because
+  // `var(--token)` would resolve against the canvas's DS scope and paint the WRONG
+  // colour. So what you click is always what's applied ("natvrdo").
+  const pickFrom = (ds, n, resolved) => {
+    if (activeDs && ds && ds !== activeDs && resolved) onPick(resolved);
+    else onPick(`var(${n})`);
     setOpen(false);
   };
   // Custom colour / hex applies LIVE without closing, so the user can keep
@@ -3323,22 +3337,27 @@ function TokenPopover({ kind, groups, current, onPick, label, swatchBg, seedHex 
     const val = (v || '').trim();
     if (val) onPick(val);
   };
-  // The colour swatch grid (one or many DS groups), reused by the Variables tab.
-  const swatchGrid = () =>
+  // #2 — colour Variables as a scannable LIST (swatch · name · value), per DS.
+  const swatchList = () =>
     gs.map((g) => (
       <div className="st-cp-pop-group" key={g.ds}>
         {showDsHeaders ? <div className="st-cp-pop-ds">{g.ds}</div> : null}
-        <div className="st-cp-pop-grid">
+        <div className="st-cp-pop-list">
           {g.names.map((n) => (
             <button
               key={`${g.ds}:${n}`}
               type="button"
-              className={`st-cp-pop-sw${isOn(n) ? ' is-on' : ''}`}
-              style={{ background: g.vals?.[n] || 'transparent' }}
-              title={`${n}  ${g.vals?.[n] || ''}`}
-              aria-label={n}
-              onClick={() => pick(n)}
-            />
+              className={`st-cp-pop-row st-cp-pop-crow${isOn(n) ? ' is-on' : ''}`}
+              onClick={() => pickFrom(g.ds, n, g.vals?.[n])}
+            >
+              <span
+                className="st-cp-pop-cswatch"
+                style={{ background: g.vals?.[n] || 'transparent' }}
+                aria-hidden="true"
+              />
+              <span className="st-cp-pop-name">{pretty(n)}</span>
+              <span className="st-cp-pop-val">{g.vals?.[n] || ''}</span>
+            </button>
           ))}
         </div>
       </div>
@@ -3423,7 +3442,7 @@ function TokenPopover({ kind, groups, current, onPick, label, swatchBg, seedHex 
                   {mode === 'custom' ? (
                     <ColorPicker seed={seedHex || cssColorToHex(current) || '#000000'} onApply={applyRaw} />
                   ) : total ? (
-                    swatchGrid()
+                    swatchList()
                   ) : (
                     <div className="st-cp-pop-empty">No color tokens</div>
                   )}
@@ -3440,7 +3459,7 @@ function TokenPopover({ kind, groups, current, onPick, label, swatchBg, seedHex 
                           key={`${g.ds}:${n}`}
                           type="button"
                           className={`st-cp-pop-row${isOn(n) ? ' is-on' : ''}`}
-                          onClick={() => pick(n)}
+                          onClick={() => pickFrom(g.ds, n, g.vals?.[n])}
                         >
                           <span className="st-cp-pop-name">{pretty(n)}</span>
                           <span className="st-cp-pop-val">{g.vals?.[n] || ''}</span>
@@ -3838,6 +3857,7 @@ function CssKnobs({ el, cfg, onOptimistic }) {
         kind="value"
         groups={groups}
         current={authored[prop]}
+        activeDs={_activeDs}
         onPick={(v) => commit(prop, v)}
         label={`${prop} design token`}
       />
@@ -3949,6 +3969,7 @@ function CssKnobs({ el, cfg, onOptimistic }) {
           kind="color"
           groups={tokenGroups('color')}
           current={authored[prop]}
+          activeDs={_activeDs}
           swatchBg={resolved}
           seedHex={cssColorToHex(computed[prop] || authored[prop]) || '#000000'}
           onPick={(v) => commit(prop, v)}
@@ -4167,6 +4188,7 @@ function CssKnobs({ el, cfg, onOptimistic }) {
                 kind="color"
                 groups={tokenGroups('color')}
                 current={authored['border-color']}
+                activeDs={_activeDs}
                 swatchBg={computed['border-color'] || authored['border-color'] || ''}
                 seedHex={
                   cssColorToHex(computed['border-color'] || authored['border-color']) || '#000000'

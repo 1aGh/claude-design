@@ -570,7 +570,9 @@
 .st-cp-prov { width: 8px; height: 8px; display: inline-block; flex: none; padding: 0; }
 /* Phase 12.3 (#4) — the row's leading dot is a button: provenance + save status
  * (glow) + double-click reset. No appearance chrome; the variant fills it. */
-button.st-cp-prov { appearance: none; border: 0; background: transparent; cursor: default; }
+/* reset native button chrome; the variants own the FILL (a transparent bg here
+ * would out-specify them and hollow the dot — that was the bug). */
+button.st-cp-prov { appearance: none; border: 0; cursor: default; }
 .st-cp-prov.is-resettable { cursor: pointer; }
 .st-cp-prov.is-resettable:hover { box-shadow: 0 0 0 3px var(--bg-4); }
 .st-cp-prov:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--accent-tint); }
@@ -584,7 +586,7 @@ button.st-cp-prov { appearance: none; border: 0; background: transparent; cursor
  * reuse the accent (design-critic 1.4/1.5). */
 .st-cp-prov--bound { background: var(--fg-0); border-radius: 50%; }
 .st-cp-prov--raw { background: var(--fg-2); border-radius: 1px; }
-.st-cp-prov--inherit { background: transparent; border: 1.5px solid var(--fg-3); border-radius: 50%; }
+.st-cp-prov--inherit { background: transparent; box-shadow: inset 0 0 0 1.5px var(--fg-3); border-radius: 50%; }
 
 /* colour swatch — standalone (border cluster) + inline (inside the token field) */
 .st-cp-swatch { flex: none; width: 22px; height: 22px; border-radius: var(--radius-xs); border: 1px solid var(--border-default); }
@@ -803,6 +805,10 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .st-cp-pop-row.is-on { background: var(--accent-tint); }
 .st-cp-pop-row:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--accent-tint); }
 .st-cp-pop-name { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-0); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* #2 — colour Variables as a list row: [swatch] [name] [value] */
+.st-cp-pop-crow { justify-content: flex-start; }
+.st-cp-pop-crow .st-cp-pop-name { flex: 1 1 auto; min-width: 0; }
+.st-cp-pop-cswatch { flex: none; width: 16px; height: 16px; border-radius: var(--radius-xs); border: 1px solid var(--border-default); }
 .st-cp-pop-val { flex: none; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 10px; color: var(--fg-2); }
 .st-cp-pop-row.is-on .st-cp-pop-name { color: var(--accent); }
 .st-cp-fs { flex: none; width: 14px; text-align: center; font-family: var(--font-mono); font-size: 11px; }
