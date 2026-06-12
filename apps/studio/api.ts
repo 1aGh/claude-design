@@ -1274,9 +1274,11 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     if (!value.trim()) return { ok: false, status: 400, error: 'value required' };
     if (value.length > 256) return { ok: false, status: 413, error: 'value too long' };
     try {
-      // Non-`style.` attr name → editAttribute writes a plain quoted JSX attribute
-      // (editStringAttr). JSON.stringify keeps the value a safe string literal.
-      const res = await editAttribute(r.abs, id, attr, JSON.stringify(value));
+      // Non-`style.` attr name → editAttribute writes a plain quoted JSX attribute.
+      // Pass the value RAW: editStringAttr quotes/escapes it itself (JSON.stringify
+      // on replace, escapeAttr on insert) — pre-stringifying here double-encoded
+      // the value (`data-x="\"ok\""`; knob-smoke finding, 2026-06-12).
+      const res = await editAttribute(r.abs, id, attr, value);
       return { ok: true, delta: res.delta };
     } catch (err) {
       return {

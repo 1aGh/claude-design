@@ -2827,6 +2827,8 @@ const CSS_FONTS = [
 ];
 const CSS_BORDER_STYLES = ['none', 'solid', 'dashed', 'dotted', 'double'];
 const CSS_UNITS = ['px', 'rem', 'em', '%', 'vw', 'vh', 'auto'];
+// Properties whose bare-number value is unitless — never append a unit suffix.
+const CSS_UNITLESS = new Set(['line-height', 'opacity', 'font-weight', 'z-index', 'flex-grow', 'flex-shrink', 'order']);
 const CSS_COLOR_PROPS = new Set(['color', 'background-color', 'border-color']);
 const CSS_ALIGN_OPTS = ['left', 'center', 'right', 'justify'];
 
@@ -3102,7 +3104,10 @@ function CssKnobs({ el, cfg }) {
   // number + steppers + unit-select (+ optional token quick-pick after)
   const num = (prop, tokenList) => {
     const cur = cssSplitUnit(authored[prop] ?? '');
-    const unit = cur.unit && cur.unit !== 'auto' ? cur.unit : 'px';
+    // Unitless CSS properties — a bare number must commit WITHOUT a unit suffix
+    // (line-height: 1.5px ≠ 1.5 — knob-smoke finding, 2026-06-12).
+    const unitless = CSS_UNITLESS.has(prop);
+    const unit = unitless ? '' : cur.unit && cur.unit !== 'auto' ? cur.unit : 'px';
     const bump = (d) => {
       const base = Number.parseFloat(cur.n || cssHint(computed[prop]) || '0') || 0;
       commit(prop, `${Math.round((base + d) * 100) / 100}${unit}`);
@@ -3145,6 +3150,7 @@ function CssKnobs({ el, cfg }) {
               ▼
             </button>
           </span>
+          {unitless ? null : (
           <select
             className="st-cp-unitsel"
             aria-label={`${prop} unit`}
@@ -3159,6 +3165,7 @@ function CssKnobs({ el, cfg }) {
               </option>
             ))}
           </select>
+          )}
         </div>
         {tok(prop, tokenList)}
       </>
@@ -3371,7 +3378,7 @@ function CssKnobs({ el, cfg }) {
           {row(
             'border',
             <div className="st-cp-border">
-              {text('border-width')}
+              {num('border-width')}
               <select
                 className="st-cp-nsel st-cp-nsel--mini"
                 aria-label="border-style"
