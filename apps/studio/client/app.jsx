@@ -3309,15 +3309,22 @@ function TokenPopover({ kind, groups, current, onPick, label, swatchBg, seedHex,
       if (e.key === 'Escape') setOpen(false);
     };
     const dismiss = () => setOpen(false);
+    // The popover is fixed-positioned from the trigger rect, so a scroll of the
+    // PANEL detaches it → dismiss. But scrolling INSIDE the popover (its own
+    // overflow list) must NOT close it (the user couldn't scroll the variables).
+    const onScroll = (e) => {
+      if (popRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
     document.addEventListener('pointerdown', onDoc, true);
     document.addEventListener('keydown', onKey);
     window.addEventListener('resize', dismiss);
-    document.addEventListener('scroll', dismiss, true);
+    document.addEventListener('scroll', onScroll, true);
     return () => {
       document.removeEventListener('pointerdown', onDoc, true);
       document.removeEventListener('keydown', onKey);
       window.removeEventListener('resize', dismiss);
-      document.removeEventListener('scroll', dismiss, true);
+      document.removeEventListener('scroll', onScroll, true);
     };
   }, [open]);
 
