@@ -61,7 +61,7 @@ describe('canvas-edit / applyEdit', () => {
   test('JSX-attribute-escapes a " in a replaced literal value (no JSON \\" corruption)', () => {
     // Regression: the replace branch used to emit JSON.stringify(value) → `\"`,
     // which is invalid JS-escaping inside a JSX attribute and corrupts the source.
-    // It must land as the HTML entity &quot; instead. See DDR-103.
+    // It must land as the HTML entity &quot; instead. See DDR-105.
     const src = `function Demo() { return <button aria-label="old">x</button>; }`;
     const ids = idsOf(src);
     const id = ids.button as string;
@@ -236,7 +236,7 @@ describe('canvas-edit / editAttribute (fs)', () => {
   });
 });
 
-// Phase 12 (DDR-101) — inline text-content edit. Leaf-text only; JSX-escaped.
+// Phase 12 (DDR-103) — inline text-content edit. Leaf-text only; JSX-escaped.
 describe('canvas-edit / applyTextEdit', () => {
   test('overwrites a leaf text node', () => {
     const src = `function Demo() { return <button>Save</button>; }`;
@@ -292,7 +292,7 @@ describe('canvas-edit / applyTextEdit', () => {
   });
 });
 
-// Phase 12 (DDR-101) — the `style.<prop>` write path the CSS knobs ride
+// Phase 12 (DDR-103) — the `style.<prop>` write path the CSS knobs ride
 // (api.editCss maps property → camelCase + always quotes the value).
 describe('canvas-edit / applyEdit style.<prop> (CSS-knob path)', () => {
   test('inserts an inline style object when none exists', () => {

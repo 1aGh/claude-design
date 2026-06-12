@@ -1,4 +1,4 @@
-# DDR-101: Phase 12 — in-canvas direct edit (CSS knobs + inline text) write model, and what's deferred
+# DDR-103: Phase 12 — in-canvas direct edit (CSS knobs + inline text) write model, and what's deferred
 
 - **Date:** 2026-06-11
 - **Status:** Accepted (implementing — `phase-12-in-canvas-css-and-layers.md`)

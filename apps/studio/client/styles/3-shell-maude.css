@@ -512,10 +512,10 @@
 .st-css-disabled code { font-family: var(--font-mono); color: var(--accent); background: var(--bg-2); padding: 1px 5px; border-radius: var(--radius-xs); }
 
 
-/* Phase 12.2 port — interactive CSS panel knobs (DDR-102). Ported from the
+/* Phase 12.2 port — interactive CSS panel knobs (DDR-104). Ported from the
    critic-approved + user-iterated Studio.css spec. Tokens resolve from the
    shell .maude[data-theme] root (1-tokens-maude.css). */
-/* ─── CSS panel · Phase 12.2 spec (DDR-102) ──────────────────────────────────
+/* ─── CSS panel · Phase 12.2 spec (DDR-104) ──────────────────────────────────
  * Hybrid vocabulary (friendly section headers + CSS-named rows), per-field
  * token dropdowns, nested box-model widget, per-row provenance, two-hatch
  * Advanced section. Scoped `.st-cp-*` (never reuses the cramped `.st-field`).

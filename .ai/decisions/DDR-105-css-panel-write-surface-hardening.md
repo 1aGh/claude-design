@@ -1,15 +1,15 @@
-# DDR-103: Phase 12.2 — source-write surface hardening (JSX-attribute escaper consistency + CSRF Origin guard on the edit-* routes)
+# DDR-105: Phase 12.2 — source-write surface hardening (JSX-attribute escaper consistency + CSRF Origin guard on the edit-* routes)
 
 - **Date:** 2026-06-12
 - **Status:** Accepted (implemented — `phase-12.2-css-panel-ux.md`)
 - **Tags:** dev-server, security, csrf, escaping, source-write, edit-attr, edit-css, edit-text, trust-boundary, ddr-054-followup
-- **Related:** [DDR-102](./DDR-102-css-panel-ux-model.md) (the CSS-panel UX model + the `/_api/edit-attr` escape hatch this hardens), [DDR-101](./DDR-101-phase-12-in-canvas-direct-edit.md) (the inline-`style={{}}` write model + `editText` JSX-text escaper this mirrors), [DDR-054](./DDR-054-linked-mode-trust-model-and-task-4-hardening.md) (the origin-split trust boundary this layers on top of), [DDR-019](./DDR-019-two-pass-transform-stable-source-dom-identity.md) (the `editAttribute` rewrite the escaper lives in). Plan: [`phase-12.2-css-panel-ux.md`](../plans/phase-12.2-css-panel-ux.md). Review: [`.ai/logs/security-reviews/worktree-buzzing-snuggling-manatee-2026-06-12.md`](../logs/security-reviews/worktree-buzzing-snuggling-manatee-2026-06-12.md).
+- **Related:** [DDR-104](./DDR-104-css-panel-ux-model.md) (the CSS-panel UX model + the `/_api/edit-attr` escape hatch this hardens), [DDR-103](./DDR-103-phase-12-in-canvas-direct-edit.md) (the inline-`style={{}}` write model + `editText` JSX-text escaper this mirrors), [DDR-054](./DDR-054-linked-mode-trust-model-and-task-4-hardening.md) (the origin-split trust boundary this layers on top of), [DDR-019](./DDR-019-two-pass-transform-stable-source-dom-identity.md) (the `editAttribute` rewrite the escaper lives in). Plan: [`phase-12.2-css-panel-ux.md`](../plans/phase-12.2-css-panel-ux.md). Review: [`.ai/logs/security-reviews/worktree-buzzing-snuggling-manatee-2026-06-12.md`](../logs/security-reviews/worktree-buzzing-snuggling-manatee-2026-06-12.md).
 
 ## Context
 
 The Phase-12.2 `/flow:validate` security fan-out (defender `security-auditor` scoped to the diff + adversarial `ethical-hacker`) returned four findings against the in-canvas source-write surface. Two are genuine and addressed here; two are pre-existing, cross-cutting properties of the dev-server architecture scoped as follow-ups so a pre-existing concern doesn't block a feature that didn't introduce it.
 
-The write surface in question is the three main-origin-only routes `POST /_api/edit-css`, `/_api/edit-text` (both Phase 12 / DDR-101) and `/_api/edit-attr` (new in Phase 12.2 / DDR-102). All three rewrite a single JSX attribute (or text node) in the user's source `.tsx` via `canvas-edit.ts`. They are absent from `CANVAS_SAFE_API` + `startCanvasServer`'s route map (DDR-054), so the untrusted canvas *iframe* cannot reach them.
+The write surface in question is the three main-origin-only routes `POST /_api/edit-css`, `/_api/edit-text` (both Phase 12 / DDR-103) and `/_api/edit-attr` (new in Phase 12.2 / DDR-104). All three rewrite a single JSX attribute (or text node) in the user's source `.tsx` via `canvas-edit.ts`. They are absent from `CANVAS_SAFE_API` + `startCanvasServer`'s route map (DDR-054), so the untrusted canvas *iframe* cannot reach them.
 
 ## Findings
 

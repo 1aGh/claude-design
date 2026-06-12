@@ -1,9 +1,9 @@
-# DDR-102: Phase 12.2 — CSS-panel UX model (hybrid vocabulary, curated tier + custom-attributes escape hatch, token-first, DOM-authored value source)
+# DDR-104: Phase 12.2 — CSS-panel UX model (hybrid vocabulary, curated tier + custom-attributes escape hatch, token-first, DOM-authored value source)
 
 - **Date:** 2026-06-11
 - **Status:** Accepted (implementing — `phase-12.2-css-panel-ux.md`)
 - **Tags:** dev-server, inspector, css-panel, ux, design-tokens, vocabulary, escape-hatch, value-source, provenance, canvas-first
-- **Related:** [DDR-101](./DDR-101-phase-12-in-canvas-direct-edit.md) (the inline-`style={{}}` write model this panel drives), [DDR-019](./DDR-019-two-pass-transform-stable-source-dom-identity.md) (the `editAttribute` rewrite both the curated rows and the custom-attribute hatch ride), [DDR-054](./DDR-054-linked-mode-trust-model-and-task-4-hardening.md) (`POST /_api/edit-css` is main-origin-only), [DDR-093](./DDR-093-canvas-ds-token-injection.md) (the per-canvas `canvasDesignSystems` map the token dropdown reads through), [DDR-097](./DDR-097-studio-shell-scope-and-inspector-display-only.md) (inspector shipped display-only with the Phase-12 callout). Plan: [`phase-12.2-css-panel-ux.md`](../plans/phase-12.2-css-panel-ux.md).
+- **Related:** [DDR-103](./DDR-103-phase-12-in-canvas-direct-edit.md) (the inline-`style={{}}` write model this panel drives), [DDR-019](./DDR-019-two-pass-transform-stable-source-dom-identity.md) (the `editAttribute` rewrite both the curated rows and the custom-attribute hatch ride), [DDR-054](./DDR-054-linked-mode-trust-model-and-task-4-hardening.md) (`POST /_api/edit-css` is main-origin-only), [DDR-093](./DDR-093-canvas-ds-token-injection.md) (the per-canvas `canvasDesignSystems` map the token dropdown reads through), [DDR-097](./DDR-097-studio-shell-scope-and-inspector-display-only.md) (inspector shipped display-only with the Phase-12 callout). Plan: [`phase-12.2-css-panel-ux.md`](../plans/phase-12.2-css-panel-ux.md).
 
 ## Context
 
@@ -15,7 +15,7 @@ The two user-facing decisions (vocabulary, curated-tier width) were taken via `A
 
 ## Decision
 
-1. **Value source = DOM-authored inline; computed is reference-only. The AST read endpoint is deferred-optional.** The panel edits the element's **authored** inline value (`el.authored[prop]`, captured in the iframe via `element.style.getPropertyValue` — i.e. only values literally set in the source `style={{}}`), shows the resolved `getComputedStyle` value only as a faint placeholder, and is correctly **blank** when a value comes from a class/token. Pre-filling editable fields with resolved computed output was the root v1 UX error (DDR-101's inline-write model means only authored values are editable anyway). The plan's option (a) — a `GET /_api/canvas-style` endpoint that parses authored inline style from source via `canvas-edit.ts findOpening` — is **demoted to optional**, built only if live round-trip shows DOM-inline ≠ source-literal drift (e.g. post-HMR staleness). Default v2 keeps DOM-authored: simpler, already live, no new HTTP surface.
+1. **Value source = DOM-authored inline; computed is reference-only. The AST read endpoint is deferred-optional.** The panel edits the element's **authored** inline value (`el.authored[prop]`, captured in the iframe via `element.style.getPropertyValue` — i.e. only values literally set in the source `style={{}}`), shows the resolved `getComputedStyle` value only as a faint placeholder, and is correctly **blank** when a value comes from a class/token. Pre-filling editable fields with resolved computed output was the root v1 UX error (DDR-103's inline-write model means only authored values are editable anyway). The plan's option (a) — a `GET /_api/canvas-style` endpoint that parses authored inline style from source via `canvas-edit.ts findOpening` — is **demoted to optional**, built only if live round-trip shows DOM-inline ≠ source-literal drift (e.g. post-HMR staleness). Default v2 keeps DOM-authored: simpler, already live, no new HTTP surface.
 
 2. **Vocabulary = Hybrid.** Friendly **section headers** (`TYPOGRAPHY` / `SPACING` / `SIZE` / `APPEARANCE`) with **CSS-named rows** inside (`color`, `font-size`, `padding`, `border-radius`). We do **not** rename properties to human labels (Fill/Corner/Size) — the section header carries the approachability, the row keeps the honest property name. Rationale: this is a designer tool whose users iterate on real TSX, so the row must name the actual property; the friendly grouping + named-token values are what make it legible to a non-technical user. (Rejected: full human-label translation — too lossy for a code-backed tool; raw-CSS-only — the v1 failure.)
 
@@ -37,7 +37,7 @@ The two user-facing decisions (vocabulary, curated-tier width) were taken via `A
 ## Consequences
 
 - **No new write endpoint.** Every curated row, the custom-CSS hatch, and the custom-HTML-attribute hatch all ride the existing main-origin-only `POST /_api/edit-css` → `editAttribute` (`style.<prop>` for CSS, bare `attr` for HTML attributes). The DDR-054 trust boundary and `canvas-origin-gate.test.ts` are unchanged. The only *possible* new surface (the optional `GET /_api/canvas-style` AST read) is read-only and gated behind a proven need.
-- **Inline-style writes still win over class/token styling by specificity** (unchanged from DDR-101) — the new provenance markers make that legible instead of surprising.
+- **Inline-style writes still win over class/token styling by specificity** (unchanged from DDR-103) — the new provenance markers make that legible instead of surprising.
 - **`display` and the long tail are reachable but not curated** — a non-technical user gets a clean ~14-control surface; a power user drops into Advanced. If telemetry/feedback shows `display` is a common edit, promote it to a friendly Layout select (revisit, don't silently expand).
 - **The port is bounded by the approved spec**, not invented in the shell — the critic gate is the contract between the canvas mock and `app.jsx`.
 
@@ -52,4 +52,4 @@ After the spec passed the critic gate, the user reviewed it in-canvas and drove 
 - **The box-model's modifier-key hint chips (`⇧ all sides / ⌥ opposite / link sides`) were replaced** by one self-explanatory `link all sides` toggle + a plain-language hint — they read as jargon to the target user ("tomuhle moc nerozumím").
 - **`is-zero` box-model values lifted `--fg-3`→`--fg-2`** so margin left/right (`auto`) are legibly present (the a11y/typography "empty-state dimming" lift, now also a usability fix).
 
-The write-model invariants (DDR-101 inline `style={{}}`, main-origin endpoint, longhand writes for box-model/corners) are unchanged — this only widens the curated control set.
+The write-model invariants (DDR-103 inline `style={{}}`, main-origin endpoint, longhand writes for box-model/corners) are unchanged — this only widens the curated control set.

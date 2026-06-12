@@ -385,7 +385,7 @@
 .st-css .editable { background: var(--bg-3); border-bottom: 1px solid var(--accent); padding: 0 3px; border-radius: 2px; color: var(--accent); }
 .st-css .comment { color: var(--fg-3); }
 
-/* ─── CSS panel · Phase 12.2 spec (DDR-102) ──────────────────────────────────
+/* ─── CSS panel · Phase 12.2 spec (DDR-104) ──────────────────────────────────
  * Hybrid vocabulary (friendly section headers + CSS-named rows), per-field
  * token dropdowns, nested box-model widget, per-row provenance, two-hatch
  * Advanced section. Scoped `.st-cp-*` (never reuses the cramped `.st-field`).

@@ -131,7 +131,7 @@ export function cspForCanvasShell(html: string, mainOrigin?: string): string {
  * *other* untrusted origin — a malicious top-level page in another tab.
  * Deliberately NOT applied to `/_api/asset` (that route is canvas-origin
  * reachable by design — drag-drop/paste upload runs inside the iframe). See
- * DDR-103. Exported for unit testing (the decision is a pure function of `req`).
+ * DDR-105. Exported for unit testing (the decision is a pure function of `req`).
  */
 export function sameOriginWrite(req: Request): boolean {
   const origin = req.headers.get('origin');
@@ -668,7 +668,7 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
     },
 
     '/_api/edit-css': async (req: Request) => {
-      // Phase 12 (DDR-101) — single-property inline CSS edit. POST body
+      // Phase 12 (DDR-103) — single-property inline CSS edit. POST body
       // { canvas, id, property, value } → writes one key into the element's
       // inline `style={{}}` object via api.editCss → editAttribute. MAIN ORIGIN
       // ONLY: intentionally absent from CANVAS_SAFE_API + startCanvasServer's
@@ -700,7 +700,7 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
     },
 
     '/_api/edit-text': async (req: Request) => {
-      // Phase 12 (DDR-101) — inline element text-content edit. POST body
+      // Phase 12 (DDR-103) — inline element text-content edit. POST body
       // { canvas, id, text } → overwrites the element's single JSXText child
       // (JSX-escaped) via api.editText → editText. Same MAIN-ORIGIN-ONLY trust
       // boundary as /_api/edit-css + /_api/canvas. The inline contenteditable
@@ -727,7 +727,7 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
     },
 
     '/_api/edit-attr': async (req: Request) => {
-      // Phase 12.2 (DDR-102) — the CSS panel's "custom HTML attribute" escape
+      // Phase 12.2 (DDR-104) — the CSS panel's "custom HTML attribute" escape
       // hatch. POST body { canvas, id, attr, value } → writes a plain JSX
       // attribute (data-*, aria-*, role, …) via api.editAttr → editAttribute's
       // non-`style.` path. Same MAIN-ORIGIN-ONLY trust boundary as

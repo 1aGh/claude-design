@@ -201,7 +201,7 @@ export interface Api {
   }): Promise<CreateCanvasResult>;
   // Soft-delete a canvas from the browser (Phase 22 — DELETE /_api/canvas)
   deleteCanvas(input: { file?: unknown }): Promise<DeleteCanvasResult>;
-  // Phase 12 (DDR-101) — single-property inline CSS edit (POST /_api/edit-css).
+  // Phase 12 (DDR-103) — single-property inline CSS edit (POST /_api/edit-css).
   // Main-origin only: writes one key into the element's inline `style={{}}` object.
   editCss(input: {
     canvas?: unknown;
@@ -209,9 +209,9 @@ export interface Api {
     property?: unknown;
     value?: unknown;
   }): Promise<EditOpResult>;
-  // Phase 12 (DDR-101) — inline text-content edit (POST /_api/edit-text). Main-origin only.
+  // Phase 12 (DDR-103) — inline text-content edit (POST /_api/edit-text). Main-origin only.
   editText(input: { canvas?: unknown; id?: unknown; text?: unknown }): Promise<EditOpResult>;
-  // Phase 12.2 (DDR-102) — custom HTML attribute edit (POST /_api/edit-attr). Main-origin
+  // Phase 12.2 (DDR-104) — custom HTML attribute edit (POST /_api/edit-attr). Main-origin
   // only. The CSS panel's "custom HTML attribute" escape hatch (data-*, aria-*, role, …);
   // writes a plain JSX attribute via editAttribute's non-`style.` path.
   editAttr(input: {
@@ -1156,7 +1156,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     };
   }
 
-  // Phase 12 (DDR-101) — resolve a v2 canvas slug (`selected.canvas`: POSIX,
+  // Phase 12 (DDR-103) — resolve a v2 canvas slug (`selected.canvas`: POSIX,
   // extension-less, designRoot-relative — matches `_locator.json` keys + the
   // `canvasSlug()` shape) to its absolute `.tsx` path, with a containment
   // backstop. Same main-origin-only trust boundary as createCanvas: the

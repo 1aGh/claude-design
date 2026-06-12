@@ -370,7 +370,7 @@ function InspectorPanel({ tab = "inspect", onTab }) {
   );
 }
 
-/* CSS panel — Phase 12.2 canvas-first spec (DDR-102). Hybrid vocabulary
+/* CSS panel — Phase 12.2 canvas-first spec (DDR-104). Hybrid vocabulary
  * (friendly section headers + CSS-named rows), per-field DS-token dropdowns,
  * a nested box-model widget, color control, per-row provenance, save-state, and
  * a demoted two-hatch Advanced section (custom CSS prop + custom HTML attr).

@@ -1,6 +1,6 @@
 # Phase 12.2: In-canvas CSS panel — proper UX
 
-> **Created 2026-06-11; reinforced 2026-06-11 with real competitive + heuristic UX research** (Webflow / Framer / Webstudio / Plasmic / Builder.io + Gutenberg / Elementor / Wix / Squarespace / Shopify / Notion / Canva / Carrd + NN/g · Smashing · W3C-APG · MDN — sources at the foot). Carved out of Phase 12 after the Task-2 CSS knobs shipped functional-but-unusable (commit `eb8705f`). The write path (engine `editAttribute` inline-style merge + `POST /_api/edit-css`) is **done and live-verified** — this plan is **only the panel UX**, done thoroughly. Sibling of `phase-12.1-layers-reorder.md`. DDR-101 governs the write model; a new DDR records the value-source + token-source + vocabulary decisions (Task 0).
+> **Created 2026-06-11; reinforced 2026-06-11 with real competitive + heuristic UX research** (Webflow / Framer / Webstudio / Plasmic / Builder.io + Gutenberg / Elementor / Wix / Squarespace / Shopify / Notion / Canva / Carrd + NN/g · Smashing · W3C-APG · MDN — sources at the foot). Carved out of Phase 12 after the Task-2 CSS knobs shipped functional-but-unusable (commit `eb8705f`). The write path (engine `editAttribute` inline-style merge + `POST /_api/edit-css`) is **done and live-verified** — this plan is **only the panel UX**, done thoroughly. Sibling of `phase-12.1-layers-reorder.md`. DDR-103 governs the write model; a new DDR records the value-source + token-source + vocabulary decisions (Task 0).
 
 ---
 
@@ -20,7 +20,7 @@ Re-mapped against `apps/studio/client/app.jsx` (not the eb8705f snapshot the ori
 **Net:** the remaining gap is **vocabulary/section framing, token-first controls, the box-model widget, the two-hatch escape, per-field feedback, and a11y** — NOT the value-source rewrite. The "design-it-as-canvas-first" methodology still stands because the *composition* (token dropdowns, box-model, provenance, section rhythm) has never been laid out as a spec.
 
 ### One open edge case (authored origin)
-`el.authored` reads the rendered element's **inline** style via the DOM, which equals the source `style={{}}` literal for the cases DDR-101 supports (literal inline object). It is correctly **blank** when a value comes from a class/token (→ field shows placeholder, not a fake default — the desired behaviour). The original Task-0 option (a) — a `GET /_api/canvas-style` AST endpoint reusing `canvas-edit.ts findOpening` — is therefore **demoted to optional**: only build it if live round-trip shows DOM-inline ≠ source-literal mismatches (e.g. post-HMR staleness). Default v2 = keep DOM-authored. Record this in the Task-0 DDR.
+`el.authored` reads the rendered element's **inline** style via the DOM, which equals the source `style={{}}` literal for the cases DDR-103 supports (literal inline object). It is correctly **blank** when a value comes from a class/token (→ field shows placeholder, not a fake default — the desired behaviour). The original Task-0 option (a) — a `GET /_api/canvas-style` AST endpoint reusing `canvas-edit.ts findOpening` — is therefore **demoted to optional**: only build it if live round-trip shows DOM-inline ≠ source-literal mismatches (e.g. post-HMR staleness). Default v2 = keep DOM-authored. Record this in the Task-0 DDR.
 
 ---
 
@@ -157,7 +157,7 @@ This is a maude-DS surface. Per the project's own loop, **design the panel as a 
 ---
 
 ## Acceptance criteria — DONE 2026-06-11 (commits `ef4c96b` + `a06e79d` + `6130ebb` + `228676c`)
-- [x] Hybrid vocabulary: friendly section headers + CSS-named rows; curated set (~19 after the user's Layout iteration — DDR-102 addendum); rest reachable via the custom-attributes hatch.
+- [x] Hybrid vocabulary: friendly section headers + CSS-named rows; curated set (~19 after the user's Layout iteration — DDR-104 addendum); rest reachable via the custom-attributes hatch.
 - [x] Edits the AUTHORED value; computed shown only as faint placeholder; no raw `getComputedStyle` noise in editable fields.
 - [x] Token-first: per-field DS-token quick-pick writes `var(--token)` (tokens fetched from the active canvas's DS CSS, DDR-093-aware); provenance (token-bound ● / raw ■ / inherited ○, shape-coded) per row + legend. _(Shadow-flag for custom-CSS-vs-curated: spec'd in the mock; client-side flagging deferred — recorded here, not silent.)_
 - [x] Color swatch + native picker + token dropdown; numeric input + steppers + unit select; box-model widget with per-side longhands + link-all-sides toggle; per-corner radius split. _(Scrub/Shift=±10 steps + opacity slider control: deferred to a polish pass — native input + steppers shipped.)_
@@ -198,7 +198,7 @@ User tested the ported panel on their live `pnpm dev` (:4555) and gave a 12-item
 
 ## Notes
 - The current `CssKnobs` (`app.jsx:2878`) stays as the functional fallback until this lands; a quick stopgap (full-width inputs + fix callout) is already largely in place per the reconciliation table.
-- Write path is DONE: `editAttribute` `style.<prop>` merge + `POST /_api/edit-css` (live-verified, DDR-101). `editAttribute`'s non-`style.` path already supports the custom-HTML-attribute hatch. This plan touches only the client panel (+ the optional, deferred `GET /_api/canvas-style` AST read if DOM-authored proves stale).
+- Write path is DONE: `editAttribute` `style.<prop>` merge + `POST /_api/edit-css` (live-verified, DDR-103). `editAttribute`'s non-`style.` path already supports the custom-HTML-attribute hatch. This plan touches only the client panel (+ the optional, deferred `GET /_api/canvas-style` AST read if DOM-authored proves stale).
 - Token source is per-DS: read `system/<ds>/colors_and_type.css`, group `var(--…)` names by prefix; honor the active canvas's declared DS (the same `canvasDesignSystems` map that DDR-093 added).
 
 ---
@@ -223,7 +223,7 @@ After the Wave-1/2/3 batch the user kept live-testing on `:4555` and drove three
 - **Variables as a scrollable, searchable list** that shows **all DSs' tokens** and applies cross-DS picks "natvrdo" (resolved literal, A3-screened); fixed the scroll-closes-popover bug and added a sticky search field (`4cdbd46`, `9e07f26`, `1d168ee`).
 - **Scannable empty-vs-set** — unset rows recede (opacity .5) so authored values pop (bigger-bet #1, `4deb23c`).
 - **What's New + docs** entry for the in-canvas token editor (`82097ab`).
-- **Security hardening (A1/A2/A3)** of the W1.1 optimistic-apply echo-guard — see DDR-103 §Addendum + the security-review "Second pass" (`773db42`).
+- **Security hardening (A1/A2/A3)** of the W1.1 optimistic-apply echo-guard — see DDR-105 §Addendum + the security-review "Second pass" (`773db42`).
 
 ## Retro
 

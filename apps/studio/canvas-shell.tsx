@@ -302,7 +302,7 @@ const HALO_CSS = `
   -webkit-font-smoothing: subpixel-antialiased;
   font-smooth: always;
 }
-/* Phase 12 (DDR-101) — inline text editing: the element being edited carries an
+/* Phase 12 (DDR-103) — inline text editing: the element being edited carries an
    accent ring + caret. plaintext-only contenteditable; commit writes to source. */
 [contenteditable].dc-text-editing {
   outline: 2px solid var(--maude-hud-accent, #0d99ff);
@@ -331,7 +331,7 @@ function ensureHaloStyles(): void {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Layers tree (Phase 12 Task 4, DDR-101). The shell's Layers tab is a browsable
+// Layers tree (Phase 12 Task 4, DDR-103). The shell's Layers tab is a browsable
 // tree of the active artboard's stamped (`data-cd-id`) elements. We walk the
 // artboard subtree in the iframe, serialize a nested tree, and post it to the
 // shell; the shell renders it + posts back `select-by-id` / `highlight`.
@@ -1433,7 +1433,7 @@ function CanvasRouter({
         void undoStack.redo();
         return;
       }
-      // Phase 12 Task 4 (DDR-101) — Layers-tree round-trip. select-by-id resolves
+      // Phase 12 Task 4 (DDR-103) — Layers-tree round-trip. select-by-id resolves
       // the node + replaces the selection (which posts select-set back, updating
       // the Inspect/CSS tabs + halos); highlight shows the transient hover halo;
       // request-layers re-walks + posts the tree for an artboard.
@@ -1532,7 +1532,7 @@ function CanvasRouter({
     return () => window.removeEventListener('message', onMessage);
   }, [selSet, annotSel, setTool, undoStack]);
 
-  // Phase 12 (DDR-101) — double-click a LEAF-TEXT element (children all text
+  // Phase 12 (DDR-103) — double-click a LEAF-TEXT element (children all text
   // nodes) to edit its copy in place. Commit (blur / Enter) posts `dgn:edit-text`
   // to the shell, which calls the main-origin /_api/edit-text → editText writes
   // the escaped JSXText to source; the file-watcher HMR reload re-renders from

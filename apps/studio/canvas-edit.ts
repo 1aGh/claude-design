@@ -281,7 +281,7 @@ export function applyRemove(
  * children (`<b>x</b>`, `{count}`) throw `CanvasEditError` — the caller should
  * surface a "use /design:edit" refusal rather than guess. The text is
  * JSX-escaped before it touches source. Same atomic write + per-file lock as
- * `editAttribute`. See DDR-101.
+ * `editAttribute`. See DDR-103.
  */
 export async function editText(
   canvasAbsPath: string,
@@ -437,7 +437,7 @@ function editStringAttr(s: MagicString, opening: AnyNode, name: string, value: s
       // `<`/`>` their entities — NOT JS backslash escaping. `JSON.stringify` would
       // emit `\"`, which is invalid in a JSX attribute and corrupts the source on
       // any value containing a double quote. Use the same `escapeAttr` as the two
-      // insert branches so all four paths agree. See DDR-101 / DDR-103.
+      // insert branches so all four paths agree. See DDR-103 / DDR-105.
       s.overwrite(v.start, v.end, `"${escapeAttr(value)}"`);
       return;
     }
@@ -471,7 +471,7 @@ function escapeAttr(value: string): string {
  * and `{`/`}` would open a JSX expression — so all four (plus a bare `&`, which
  * begins an entity) are encoded. This is the load-bearing guard that keeps the
  * inline text editor (Phase 12) from being a source-injection vector. See
- * DDR-101.
+ * DDR-103.
  */
 function escapeJsxText(value: string): string {
   return value
@@ -543,7 +543,7 @@ function editStyleProp(
 }
 
 /**
- * Remove a single inline-style property (the "reset to original" path — DDR-102
+ * Remove a single inline-style property (the "reset to original" path — DDR-104
  * Phase 12.3). No-op when the style attribute or the key is absent. When the key
  * was the object's ONLY property, the whole `style={{…}}` attribute is removed so
  * we don't leave an empty `style={{}}` behind.

@@ -2884,7 +2884,7 @@ function SyncBanner({ status }) {
   );
 }
 
-// ---------- CSS knobs (Phase 12.2, DDR-102) — interactive panel ----------
+// ---------- CSS knobs (Phase 12.2, DDR-104) — interactive panel ----------
 //
 // Hybrid vocabulary (friendly collapsible section headers + CSS-named rows),
 // per-field DS-token quick-pick, nested box-model widget, per-corner radius,
@@ -4044,7 +4044,7 @@ function CssKnobs({ el, cfg, onOptimistic }) {
   // a box-model side input (margin/padding longhand). Phase 12.3 — Webflow-style:
   // always shows the RESOLVED value (0 instead of blank) and a faint `is-zero`
   // styling for an unset/zero side. Edits the single side (the old "link all
-  // sides" toggle was removed — DDR-102 Phase 12.3 W1.5).
+  // sides" toggle was removed — DDR-104 Phase 12.3 W1.5).
   const side = (prop, group) => {
     const a = authored[prop];
     const shown =
@@ -5437,7 +5437,7 @@ function App() {
         wsSend({ type: 'clear-select' });
         setSelected(null);
       } else if (m.dgn === 'edit-text' && m.id) {
-        // Phase 12 (DDR-101) — inline text edit committed in the canvas. POST to
+        // Phase 12 (DDR-103) — inline text edit committed in the canvas. POST to
         // the main-origin-only /_api/edit-text → editText writes the escaped
         // JSXText to source; the file-watcher HMR reload then shows the new text.
         // A refusal (mixed/expression content) is logged, not fatal.

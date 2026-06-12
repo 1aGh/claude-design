@@ -1,5 +1,5 @@
 // CSRF Origin guard for the main-origin source-write routes (edit-css /
-// edit-text / edit-attr). DDR-103. The DDR-054 origin-split already blocks the
+// edit-text / edit-attr). DDR-105. The DDR-054 origin-split already blocks the
 // untrusted canvas *iframe* (canvas-origin-gate.test.ts proves that). This guard
 // covers the OTHER untrusted origin: a malicious top-level page in another tab
 // forging a `text/plain` CORS simple-request POST to localhost. The browser
@@ -26,7 +26,7 @@ const post = (origin?: string): Request =>
     body: '{}',
   });
 
-describe('CSRF Origin guard — sameOriginWrite (DDR-103)', () => {
+describe('CSRF Origin guard — sameOriginWrite (DDR-105)', () => {
   test('rejects a forged cross-origin Origin', () => {
     expect(sameOriginWrite(post('http://evil.example'))).toBe(false);
     // A look-alike host (substring / suffix tricks) must not slip through.
