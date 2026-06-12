@@ -563,7 +563,17 @@
 /* provenance — SHAPE-coded so token/override/inherited survive small size +
  * colour-blindness: token = filled accent circle · override = filled neutral
  * square · inherited = hollow ring. Each carries role=img + aria-label. */
-.st-cp-prov { width: 8px; height: 8px; display: inline-block; flex: none; }
+.st-cp-prov { width: 8px; height: 8px; display: inline-block; flex: none; padding: 0; }
+/* Phase 12.3 (#4) — the row's leading dot is a button: provenance + save status
+ * (glow) + double-click reset. No appearance chrome; the variant fills it. */
+button.st-cp-prov { appearance: none; border: 0; background: transparent; cursor: default; }
+.st-cp-prov.is-resettable { cursor: pointer; }
+.st-cp-prov.is-resettable:hover { box-shadow: 0 0 0 3px var(--bg-4); }
+.st-cp-prov:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--accent-tint); }
+/* save-status glows (replaces the trailing ✓/! markers) */
+.st-cp-prov.is-saved { box-shadow: 0 0 0 3px color-mix(in oklab, var(--status-success) 45%, transparent); }
+.st-cp-prov.is-saving { box-shadow: 0 0 0 3px color-mix(in oklab, var(--fg-2) 35%, transparent); }
+.st-cp-prov.is-err { background: var(--status-error); border-color: var(--status-error); box-shadow: 0 0 0 3px color-mix(in oklab, var(--status-error) 40%, transparent); }
 /* Phase 12.3 — provenance is SHAPE-coded (token=circle · override=square ·
  * inherited=ring) on NEUTRAL fills. Indigo is reserved for its one job on this
  * surface (the bound-token ◇ button + the focus ring), so the token dot must NOT
@@ -671,7 +681,8 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .st-cp-border .st-cp-nsel { flex: 1 1 auto; max-width: none; }
 
 /* per-field save state */
-.st-cp-save { display: inline-flex; align-items: center; gap: var(--space-2); align-self: flex-start; font-size: var(--type-xs); font-family: var(--font-mono); padding: 4px var(--space-2); border-radius: var(--radius-xs); background: var(--bg-2); border: 1px solid var(--status-success); }
+/* #5 — error-only now (idle/saved status moved into each row's leading dot). */
+.st-cp-save { display: inline-flex; align-items: center; gap: var(--space-2); align-self: flex-start; font-size: var(--type-xs); font-family: var(--font-mono); padding: 4px var(--space-2); border-radius: var(--radius-xs); background: color-mix(in oklab, var(--status-error) 14%, var(--bg-2)); border: 1px solid var(--status-error); color: var(--status-error); }
 .st-cp-save.is-saved { color: var(--status-success); }
 .st-cp-save.is-saved svg { color: var(--status-success); }
 
@@ -681,7 +692,12 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .st-cp-advhd svg { color: var(--fg-2); }
 .st-cp-advbody { display: flex; flex-direction: column; gap: var(--space-2); padding: 0 var(--space-3) var(--space-3); }
 .st-cp-advgrp { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--fg-2); margin-top: var(--space-1); }
-.st-cp-kv { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+/* #3 — custom prop/attr rows are ONE line: [name] [value] [×]. The reset glyph
+ * used to wrap to a second line; a trailing × close button keeps it on one row. */
+.st-cp-kv { display: grid; grid-template-columns: 1fr 1fr auto; gap: var(--space-2); align-items: center; }
+.st-cp-kvx { flex: none; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; appearance: none; cursor: pointer; background: transparent; border: 0; color: var(--fg-3); padding: 0; border-radius: var(--radius-xs); }
+.st-cp-kvx:hover { color: var(--status-error); background: var(--bg-3); }
+.st-cp-kvx:focus-visible { outline: none; color: var(--status-error); box-shadow: 0 0 0 2px var(--accent-tint); }
 .st-cp-kv .st-cp-numin { background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-xs); }
 .st-cp-kv.has-warn .st-cp-numin { border-color: var(--status-warn); }
 .st-cp-warn { font-size: 10px; color: var(--status-warn); font-family: var(--font-mono); }
@@ -786,8 +802,6 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .st-cp-fs.is-saving { color: var(--fg-3); }
 .st-cp-fs.is-saved { color: var(--status-success); }
 .st-cp-fs.is-err { color: var(--status-warn); cursor: help; }
-/* the port's save line is a general status line, not always "saved" */
-.st-cp .st-cp-save { border-color: var(--border-subtle); color: var(--fg-2); }
 
 /* shared focus ring for the panel's interactive controls (incl. native selects) */
 .st-cp button:focus-visible, .st-cp input:focus-visible, .st-cp select:focus-visible, .st-cp-token:focus-visible, .st-cp-track:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

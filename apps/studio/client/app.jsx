@@ -3629,47 +3629,51 @@ function CssKnobs({ el, cfg, onOptimistic }) {
   const prov = (p) => (
     <span className={`st-cp-prov st-cp-prov--${p}`} role="img" aria-label={PROVLABEL[p]} />
   );
-  const fs = (key) => {
-    const s = status[key];
-    if (!s) return null;
-    if (s === 'saving') return <span className="st-cp-fs is-saving" aria-label="saving">…</span>;
-    if (s === 'saved') return <span className="st-cp-fs is-saved" aria-label="saved">✓</span>;
-    if (typeof s === 'string' && s.startsWith('err:'))
-      return (
-        <span className="st-cp-fs is-err" title={s.slice(4)} aria-label={`error: ${s.slice(4)}`}>
-          !
-        </span>
-      );
-    return null;
-  };
 
-  // A small revert affordance — shown only when the prop is authored inline
-  // (i.e. there's something TO reset). Clicking removes the inline value.
-  const resetBtn = (prop) =>
-    authored[prop] ? (
+  // Phase 12.3 (#4) — the LEADING dot carries it all: provenance (shape) + save
+  // status (a success/error/saving glow) + reset (double-click an authored row).
+  // No trailing ✓/⟲ that shift the input rightward (the user's gripe). A tooltip
+  // hints the double-click-to-reset.
+  const provDot = (prop, provKind) => {
+    const k = provKind ?? provOf(prop);
+    const s = status[prop];
+    const errMsg = typeof s === 'string' && s.startsWith('err:') ? s.slice(4) : '';
+    const stCls = errMsg ? ' is-err' : s === 'saved' ? ' is-saved' : s === 'saving' ? ' is-saving' : '';
+    const canReset = !!authored[prop];
+    const tip = errMsg
+      ? `error: ${errMsg}`
+      : canReset
+        ? `${PROVLABEL[k]} · double-click to reset`
+        : PROVLABEL[k];
+    return (
       <button
         type="button"
-        className="st-cp-reset"
-        tabIndex={-1}
-        aria-label={`reset ${prop} to original`}
-        title="reset to original"
-        onClick={() => reset(prop)}
-      >
-        ⟲
-      </button>
-    ) : null;
+        className={`st-cp-prov st-cp-prov--${k}${stCls}${canReset ? ' is-resettable' : ''}`}
+        aria-label={tip}
+        title={tip}
+        tabIndex={canReset ? 0 : -1}
+        onDoubleClick={canReset ? () => reset(prop) : undefined}
+        onKeyDown={
+          canReset
+            ? (e) => {
+                if (e.key === 'Backspace' || e.key === 'Delete') {
+                  e.preventDefault();
+                  reset(prop);
+                }
+              }
+            : undefined
+        }
+      />
+    );
+  };
 
   const row = (prop, control, provKind) => (
     <div className="st-cp-row" key={prop}>
-      {prov(provKind ?? provOf(prop))}
+      {provDot(prop, provKind)}
       <label className="st-cp-label" title={prop}>
         {prop}
       </label>
-      <div className="st-cp-ctl">
-        {control}
-        {fs(prop)}
-        {resetBtn(prop)}
-      </div>
+      <div className="st-cp-ctl">{control}</div>
     </div>
   );
 
@@ -4136,17 +4140,20 @@ function CssKnobs({ el, cfg, onOptimistic }) {
         </>
       )}
 
-      <div className={`st-cp-save${status.__last === 'saved' ? ' is-saved' : ''}`} role="status">
-        {Object.values(status).some((s) => s === 'saving')
-          ? 'saving…'
-          : Object.values(status).some((s) => typeof s === 'string' && s.startsWith('err:'))
-            ? Object.entries(status)
-                .filter(([, s]) => typeof s === 'string' && s.startsWith('err:'))
-                .map(([k, s]) => `${k}: ${s.slice(4)}`)[0]
-            : Object.values(status).some((s) => s === 'saved')
-              ? '✓ written to source'
-              : 'edits write to the source .tsx on commit'}
-      </div>
+      {/* #5 — the idle/saved status now lives in each row's leading dot (a glow),
+          so the panel no longer carries a confusing standing 'written to source'
+          line. Only a hard ERROR surfaces here, with the failing property. */}
+      {(() => {
+        const err = Object.entries(status).find(
+          ([, s]) => typeof s === 'string' && s.startsWith('err:')
+        );
+        return err ? (
+          <div className="st-cp-save is-err" role="status">
+            <StIcon name="x" size={12} />
+            {err[0]}: {err[1].slice(4)}
+          </div>
+        ) : null;
+      })()}
 
       {sec(
         'Advanced',
@@ -4172,16 +4179,14 @@ function CssKnobs({ el, cfg, onOptimistic }) {
                     }}
                     onBlur={(e) => commitCustom(p, e.currentTarget.value)}
                   />
-                  {fs(p)}
                   <button
                     type="button"
-                    className="st-cp-reset"
-                    tabIndex={-1}
+                    className="st-cp-kvx"
                     aria-label={`remove ${p}`}
                     title="remove"
                     onClick={() => resetCustom(p)}
                   >
-                    ⟲
+                    <StIcon name="x" size={11} />
                   </button>
                 </div>
               ))}
@@ -4211,16 +4216,14 @@ function CssKnobs({ el, cfg, onOptimistic }) {
                     }}
                     onBlur={(e) => commitAttr(a, e.currentTarget.value)}
                   />
-                  {fs(`@${a}`)}
                   <button
                     type="button"
-                    className="st-cp-reset"
-                    tabIndex={-1}
+                    className="st-cp-kvx"
                     aria-label={`remove ${a}`}
                     title="remove"
                     onClick={() => resetAttr(a)}
                   >
-                    ⟲
+                    <StIcon name="x" size={11} />
                   </button>
                 </div>
               ))}
