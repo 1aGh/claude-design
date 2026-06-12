@@ -43,24 +43,27 @@ const CURSOR_CSS = `
 }
 .dc-cursor-arrow {
   display: block;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.4));
 }
+/* DS colors-presence .cur-label recipe — hue pill, mono 10px, dark
+ * accent-fg text (never white-on-hue, which washed out on light hues).
+ * NOTE: keep this comment backtick-free — it lives inside the CURSOR_CSS
+ * template literal and a stray backtick closes it. */
 .dc-cursor-label {
   position: absolute;
-  top: 18px;
-  left: 14px;
-  padding: 2px 6px;
-  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
+  top: 16px;
+  left: 12px;
+  padding: 1px 8px;
+  font-family: var(--font-mono, ui-monospace, monospace);
   font-weight: 500;
-  font-size: 11px;
-  line-height: 1.2;
-  color: var(--maude-hud-accent-fg, #fff);
-  border-radius: var(--radius-sm, 2px);
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--maude-hud-accent-fg, oklch(0.180 0.030 268));
+  border-radius: 999px;
   white-space: nowrap;
   max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 .dc-peer-selection {
   position: absolute;
@@ -127,8 +130,6 @@ const Cursor = memo(function Cursor({ peer, viewport }: CursorProps): JSX.Elemen
         <path
           d="M 2 2 L 2 18 L 6 14 L 9 21 L 12 20 L 9 13 L 14 13 Z"
           fill={peer.color}
-          stroke="#fff"
-          strokeWidth="1.2"
           strokeLinejoin="round"
         />
       </svg>

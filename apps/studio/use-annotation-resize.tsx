@@ -43,14 +43,17 @@ import { useViewportControllerContext } from './canvas-lib.tsx';
 import { useAnnotationSelection } from './use-annotation-selection.tsx';
 
 const RESIZE_CSS = `
+/* DS selection specimen .sel-handle recipe — accent square, 1px accent-fg
+ * border, --radius-xs corners. (8px box kept: the JS centers handles on the
+ * half-size offset; the specimen's 7px differs by a hairline only.) Comment
+ * must stay backtick-free — it lives inside the RESIZE_CSS template literal. */
 .dc-annot-resize-handle {
   position: fixed;
   width: 8px;
   height: 8px;
-  background: var(--maude-hud-accent, #d63b1f);
-  border: 1px solid var(--bg-0, #ffffff);
-  border-radius: 1px;
-  box-shadow: 0 0 0 0.5px color-mix(in oklab, var(--fg-0, #1c1917) 30%, transparent);
+  background: var(--maude-hud-accent, oklch(0.680 0.180 268));
+  border: 1px solid var(--maude-hud-accent-fg, oklch(0.180 0.030 268));
+  border-radius: 3px;
   z-index: 6;
   pointer-events: auto;
   touch-action: none;

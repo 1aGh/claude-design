@@ -356,16 +356,31 @@ const INSPECTOR_SCRIPT = `
     new MutationObserver(function(){ startTick(); }).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['style', 'class'], childList: true });
   }
 
-  // ⌘K / Ctrl+K command palette — keydown fired inside the canvas iframe never
-  // reaches the shell's window-scoped listener (iframe keyboard isolation), so
-  // the palette wouldn't open while focus is in the canvas. Forward the chord to
-  // the parent; the shell toggles the palette (mirrors its own handler, which
-  // fires "even in inputs"). Capture phase so canvas-lib's pan/zoom keydown
-  // handler can't swallow it first.
+  // Shell chords — keydown fired inside the canvas iframe never reaches the
+  // shell's window-scoped listener (iframe keyboard isolation), so each shell
+  // chord must be forwarded to the parent. preventDefault is load-bearing for
+  // ⌘R: without it the BROWSER reloads the whole shell while focus is in the
+  // canvas (the advertised behavior is "reload the active canvas"). Capture
+  // phase so canvas-lib's pan/zoom keydown handler can't swallow them first.
   document.addEventListener('keydown', function(e) {
-    if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+    if (!(e.metaKey || e.ctrlKey)) return;
+    var k = (e.key || '').toLowerCase();
+    if (k === 'k' && !e.shiftKey) {
       e.preventDefault();
       try { window.parent.postMessage({ dgn: 'toggle-palette' }, '*'); } catch (err) {}
+      return;
+    }
+    if (k === 'r' && !e.shiftKey) {
+      e.preventDefault();
+      try { window.parent.postMessage({ dgn: 'shell-shortcut', id: 'reload' }, '*'); } catch (err) {}
+      return;
+    }
+    if (e.shiftKey) {
+      var id = k === 'i' ? 'inspector' : k === 'm' ? 'comments' : k === 'e' ? 'export' : k === 'h' ? 'handoff' : null;
+      if (id) {
+        e.preventDefault();
+        try { window.parent.postMessage({ dgn: 'shell-shortcut', id: id }, '*'); } catch (err) {}
+      }
     }
   }, true);
 

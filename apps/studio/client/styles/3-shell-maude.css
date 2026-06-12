@@ -91,7 +91,9 @@
   position: absolute; top: 38px; min-width: 230px;
   background: var(--bg-2); border: 1px solid var(--border-default);
   border-radius: var(--radius-md); box-shadow: var(--shadow-lg);
-  padding: var(--space-2); z-index: 60;
+  /* above the floating st-banner (9100) — an open menu must never sit under
+     a transient notice */
+  padding: var(--space-2); z-index: 9150;
   animation: st-pop var(--dur-panel) var(--ease-out);
   transform-origin: top left;
 }
@@ -686,6 +688,90 @@
 /* right dock slides in as a panel (DS motion role: panel) */
 .st-rpanel { animation: st-panel-in var(--dur-panel) var(--ease-out); }
 @keyframes st-panel-in { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: none; } }
+
+/* ─── Keyboard-shortcuts overlay — DS components-shortcuts-overlay recipe ──── */
+.so-overlay {
+  position: relative;
+  width: 100%;
+  max-width: 720px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-6);
+  margin-top: -4vh;
+  animation: so-enter var(--dur-panel) var(--ease-out) both;
+}
+@keyframes so-enter {
+  0% { opacity: 0; transform: translateY(-6px) scale(0.99); }
+  100% { opacity: 1; transform: none; }
+}
+.so-overlay-hd {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-5);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.so-title {
+  font-family: var(--font-display);
+  font-size: var(--type-lg);
+  line-height: var(--lh-lg);
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg-0);
+}
+.so-trigger { font-size: var(--type-xs); color: var(--fg-2); }
+.so-columns {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-6) var(--space-7);
+}
+.so-section-hd {
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  font-weight: 500;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+/* the canvas-tools column reads as the in-canvas scope — accent-muted header */
+.so-section--tools .so-section-hd {
+  color: var(--accent);
+  border-bottom-color: color-mix(in oklab, var(--accent) 40%, var(--border-subtle));
+}
+.so-list { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; }
+.so-pair {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-1) var(--space-1);
+  border-radius: var(--radius-xs);
+}
+.so-pair:hover { background: var(--bg-2); }
+.so-pair dt { font-size: var(--type-sm); color: var(--fg-1); }
+.so-pair dd { margin: 0; justify-self: end; }
+.so-combos { display: inline-flex; align-items: center; gap: var(--space-2); }
+.so-combo { display: inline-flex; align-items: center; gap: var(--space-1); }
+.so-or { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-3); padding: 0 1px; }
+.so-overlay-ft {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+}
+@media (max-width: 640px) { .so-columns { grid-template-columns: 1fr; } }
 
 /* ─── Agent presence pulse — DS motion-presence role (scale+opacity ring) ──── */
 .st-avatar.is-pulsing::after {

@@ -1629,22 +1629,28 @@ function HelpModal({ open, onClose, onStartTour }) {
             </ul>
           </details>
           <details>
-            <summary>Tabs &amp; canvas</summary>
+            <summary>Canvas &amp; panels</summary>
             <ul>
               <li>
-                click in tree <span>open tab</span>
+                click in tree <span>open canvas (replaces the active one)</span>
               </li>
               <li>
-                <kbd>×</kbd> on tab <span>close tab</span>
+                File ▸ Close canvas <span>clear the stage</span>
               </li>
               <li>
-                <kbd>⌘R</kbd> <span>reload iframe</span>
+                <kbd>⌘R</kbd> <span>reload canvas</span>
               </li>
               <li>
                 <kbd>/</kbd> <span>focus search</span>
               </li>
               <li>
-                <kbd>⌘⇧M</kbd> <span>toggle comments panel</span>
+                <kbd>⌘⇧M</kbd> <span>comments panel</span>
+              </li>
+              <li>
+                <kbd>⌘⇧I</kbd> <span>inspector</span>
+              </li>
+              <li>
+                <kbd>?</kbd> <span>keyboard-shortcuts cheat sheet</span>
               </li>
             </ul>
           </details>
@@ -1784,7 +1790,7 @@ function HelpModal({ open, onClose, onStartTour }) {
           <details>
             <summary>Pin-to-element flow</summary>
             <ol>
-              <li>Open canvas tab</li>
+              <li>Open a canvas</li>
               <li>
                 <kbd>⌘</kbd>+click element
               </li>
@@ -1824,13 +1830,152 @@ function HelpModal({ open, onClose, onStartTour }) {
   );
 }
 
+// ───────── Keyboard-shortcuts overlay (DS components-shortcuts-overlay) ─────
+//
+// The ? cheat-sheet: dim scrim, shared panel material, four dense mono-headed
+// columns, Esc chip in the footer. REAL bindings only — every row here is
+// wired in the shell handler, the canvas input-router, or canvas-lib's
+// viewport controller. Scope chips mark the rows that need canvas focus.
+
+const SHORTCUT_GROUPS = [
+  {
+    id: 'canvas',
+    label: 'Canvas',
+    items: [
+      { label: 'Command palette', kbd: '⌘ K' },
+      { label: 'New brief board', kbd: 'N' },
+      { label: 'Export…', kbd: '⇧ ⌘ E' },
+      { label: 'Handoff to production', kbd: '⇧ ⌘ H' },
+      { label: 'Reload canvas', kbd: '⌘ R' },
+      { label: 'Search files', kbd: '/', alt: '⌘ F' },
+    ],
+  },
+  {
+    id: 'tools',
+    label: 'Tools · canvas focus',
+    items: [
+      { label: 'Move · Hand · Comment', kbd: 'V', alt: 'H / C' },
+      { label: 'Pen · Highlighter · Eraser', kbd: 'B', alt: 'I / E' },
+      { label: 'Shape · Arrow', kbd: 'R', alt: 'A' },
+      { label: 'Sticky · Text · Section', kbd: 'N', alt: 'T / ⇧S' },
+      { label: 'Undo / redo', kbd: '⌘ Z', alt: '⇧ ⌘ Z' },
+    ],
+  },
+  {
+    id: 'selection',
+    label: 'Selection & zoom',
+    items: [
+      { label: 'Select element', kbd: '⌘ click' },
+      { label: 'Add to selection', kbd: '⌘ ⇧ click' },
+      { label: 'Preview deepest', kbd: '⌘ hover' },
+      { label: 'Deselect · close menu', kbd: 'Esc' },
+      { label: 'Zoom in / out', kbd: '⌘ +', alt: '⌘ −' },
+      { label: 'Fit · actual size', kbd: '⌘ 0', alt: '⌘ 1' },
+    ],
+  },
+  {
+    id: 'view',
+    label: 'View',
+    items: [
+      { label: 'Project tree', kbd: 'T' },
+      { label: 'Design system view', kbd: 'S' },
+      { label: 'Inspector', kbd: '⌘ ⇧ I' },
+      { label: 'Comments sidebar', kbd: '⌘ ⇧ M' },
+      { label: 'Annotations', kbd: '⇧ P' },
+      { label: 'Hidden files', kbd: 'H' },
+      { label: 'This cheat sheet · help', kbd: '?', alt: 'F1' },
+    ],
+  },
+];
+
+function ShortcutCombo({ kbd, alt }) {
+  const combo = (s, key) => (
+    <span className="so-combo" key={key}>
+      {s.split(' ').map((k, i) => (
+        <Kbd key={`${k}-${i}`}>{k}</Kbd>
+      ))}
+    </span>
+  );
+  return (
+    <span className="so-combos">
+      {combo(kbd, 'main')}
+      {alt
+        ? alt.split(' / ').map((a) => (
+            <Fragment key={a}>
+              <span className="so-or">/</span>
+              {combo(a, a)}
+            </Fragment>
+          ))
+        : null}
+    </span>
+  );
+}
+
+function ShortcutsOverlay({ open, onClose }) {
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+  if (!open) return null;
+  const bindings = SHORTCUT_GROUPS.reduce((n, g) => n + g.items.length, 0);
+  return (
+    <div
+      className="st-scrim"
+      role="presentation"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="so-overlay" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+        <div className="so-overlay-hd">
+          <span className="so-title">Keyboard shortcuts</span>
+          <span className="so-trigger">
+            press <Kbd>?</Kbd> to open
+          </span>
+        </div>
+        <div className="so-columns">
+          {SHORTCUT_GROUPS.map((g) => (
+            <section key={g.id} className={'so-section so-section--' + g.id}>
+              <h3 className="so-section-hd">{g.label}</h3>
+              <dl className="so-list">
+                {g.items.map((it) => (
+                  <div key={it.label} className="so-pair">
+                    <dt>{it.label}</dt>
+                    <dd>
+                      <ShortcutCombo kbd={it.kbd} alt={it.alt} />
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          ))}
+        </div>
+        <div className="so-overlay-ft">
+          <span>
+            close with <Kbd>Esc</Kbd>
+          </span>
+          <span className="so-count">
+            {bindings} bindings · {SHORTCUT_GROUPS.length} groups
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ───────── Menubar (CV-01/CV-08 top chrome) ─────────
 //
 // Replaces the legacy `.header` action-button toolbar. Mirrors the shared
 // Menubar component from .design/ui/Canvas Viewport.html — brand · menus ·
-// status. View dropdown is wired to the only toggleable panel today (the
-// Comments sidebar); the rest is inert with a phase-tag explaining when it
-// lands.
+// status. View dropdown is wired to the panels + zoom that exist today;
+// Presentation Mode stays phase-tagged until it ships.
 
 const MENU_NAMES = ['File', 'Edit', 'View', 'Selection', 'Tools', 'Help'];
 
@@ -1852,7 +1997,7 @@ function useDropdownClose(onClose) {
   }, [onClose]);
 }
 
-function ViewDropdown({ panels, onToggle, onClose }) {
+function ViewDropdown({ panels, onToggle, onClose, onZoom, hasCanvas }) {
   useDropdownClose(onClose);
   return (
     <div className="st-dropdown" role="menu" aria-label="View" style={{ left: 152 }}>
@@ -1875,25 +2020,78 @@ function ViewDropdown({ panels, onToggle, onClose }) {
             <span className="st-dd-check">{p.checked ? <StIcon name="check" size={13} /> : null}</span>
             <span>{p.label}</span>
           </span>
-          {p.phase ? <span className="st-dd-phase">{p.phase}</span> : <Kbd>{p.shortcut || ''}</Kbd>}
+          {p.phase ? (
+            <span className="st-dd-phase">{p.phase}</span>
+          ) : p.shortcut ? (
+            <Kbd>{p.shortcut}</Kbd>
+          ) : null}
         </button>
       ))}
       <div className="st-dd-sep" />
       <div className="st-dd-hd">Zoom</div>
       {[
-        { label: 'Zoom In', shortcut: '⌘ +' },
-        { label: 'Zoom Out', shortcut: '⌘ −' },
-        { label: 'Fit to Screen', shortcut: '⌘ 0' },
-        { label: 'Actual Size · 100 %', shortcut: '⌥ ⌘ 0' },
+        { op: 'in', label: 'Zoom In', shortcut: '⌘ +' },
+        { op: 'out', label: 'Zoom Out', shortcut: '⌘ −' },
+        { op: 'fit', label: 'Fit to Screen', shortcut: '⌘ 0' },
+        { op: 'actual', label: 'Actual Size · 100 %', shortcut: '⌘ 1' },
       ].map((z) => (
-        <button key={z.label} type="button" role="menuitem" className="st-dd-item" aria-disabled="true">
+        <button
+          key={z.label}
+          type="button"
+          role="menuitem"
+          className="st-dd-item"
+          aria-disabled={hasCanvas ? undefined : 'true'}
+          onClick={() => {
+            if (!hasCanvas) return;
+            onZoom?.(z.op);
+            onClose();
+          }}
+        >
           <span className="st-dd-lead">
             <span className="st-dd-check" />
             <span>{z.label}</span>
           </span>
-          <span className="st-dd-phase">Phase 4</span>
+          <Kbd>{z.shortcut}</Kbd>
         </button>
       ))}
+    </div>
+  );
+}
+
+// Help dropdown — cheat sheet · deep help · tour · what's new.
+function HelpDropdown({ onAction, onClose }) {
+  useDropdownClose(onClose);
+  const items = [
+    { id: 'shortcuts', label: 'Keyboard shortcuts', shortcut: '?' },
+    { id: 'help', label: 'Help · commands & flows', shortcut: 'F1' },
+    { sep: true },
+    { id: 'tour', label: 'Take the tour', shortcut: '' },
+    { id: 'whatsnew', label: "What's new", shortcut: '' },
+  ];
+  return (
+    <div className="st-dropdown" role="menu" aria-label="Help" style={{ left: 320 }}>
+      {items.map((it, i) =>
+        it.sep ? (
+          <div key={'s' + i} className="st-dd-sep" />
+        ) : (
+          <button
+            key={it.id}
+            type="button"
+            role="menuitem"
+            className="st-dd-item"
+            onClick={() => {
+              onAction(it.id);
+              onClose();
+            }}
+          >
+            <span className="st-dd-lead">
+              <span className="st-dd-check" />
+              <span>{it.label}</span>
+            </span>
+            {it.shortcut ? <Kbd>{it.shortcut}</Kbd> : null}
+          </button>
+        )
+      )}
     </div>
   );
 }
@@ -1978,7 +2176,8 @@ function ToolsDropdown({ onAction, onClose }) {
 function FileDropdown({ onAction, onClose, hasCanvas }) {
   useDropdownClose(onClose);
   const items = [
-    { id: 'new', label: 'New canvas…', shortcut: '⌘N' },
+    // Bare N — the browser reserves ⌘N (New Window) and never delivers it.
+    { id: 'new', label: 'New canvas…', shortcut: 'N' },
     { id: 'export', label: 'Export…', shortcut: '⇧⌘E' },
     { id: 'handoff', label: 'Handoff to production', shortcut: '⇧⌘H' },
     { sep: true },
@@ -2007,7 +2206,7 @@ function FileDropdown({ onAction, onClose, hasCanvas }) {
               <span className="st-dd-check" />
               <span>{it.label}</span>
             </span>
-            <Kbd>{it.shortcut}</Kbd>
+            {it.shortcut ? <Kbd>{it.shortcut}</Kbd> : null}
           </button>
         )
       )}
@@ -2044,7 +2243,7 @@ function EditDropdown({ onAction, onClose }) {
               <span className="st-dd-check" />
               <span>{it.label}</span>
             </span>
-            <Kbd>{it.shortcut}</Kbd>
+            {it.shortcut ? <Kbd>{it.shortcut}</Kbd> : null}
           </button>
         )
       )}
@@ -2066,6 +2265,8 @@ function Menubar({
   showHidden,
   onToggleShowHidden,
   onOpenHelp,
+  onOpenShortcuts,
+  onStartTour,
   annotationsVisible,
   onToggleAnnotations,
   postToActiveCanvas,
@@ -2074,7 +2275,9 @@ function Menubar({
   artboardCount = 0,
   presence = null,
   inspectorOpen,
+  inspectorTab,
   onToggleInspector,
+  onOpenLayers,
   onNewCanvas,
   onOpenExport,
   onReload,
@@ -2108,8 +2311,20 @@ function Menubar({
       checked: showHidden,
       disabled: false,
     },
-    { id: 'layers', label: 'Layers Panel', phase: 'Phase 12', disabled: true },
-    { id: 'inspector', label: 'Inspector', shortcut: 'I', checked: inspectorOpen, disabled: false },
+    {
+      id: 'layers',
+      label: 'Layers',
+      shortcut: '',
+      checked: inspectorOpen && inspectorTab === 'layers',
+      disabled: false,
+    },
+    {
+      id: 'inspector',
+      label: 'Inspector',
+      shortcut: '⌘ ⇧ I',
+      checked: inspectorOpen,
+      disabled: false,
+    },
     {
       id: 'annotate',
       label: 'Annotations',
@@ -2120,13 +2335,10 @@ function Menubar({
     { id: 'present', label: 'Presentation Mode', phase: 'Phase 6', disabled: true },
   ];
 
-  const DROPDOWN_MENUS = ['file', 'edit', 'view', 'selection', 'tools'];
+  const DROPDOWN_MENUS = ['file', 'edit', 'view', 'selection', 'tools', 'help'];
   function onMenuClick(key) {
     if (DROPDOWN_MENUS.includes(key)) {
       setOpenMenu(openMenu === key ? null : key);
-    } else if (key === 'help') {
-      setOpenMenu(null);
-      onOpenHelp();
     }
   }
 
@@ -2244,7 +2456,10 @@ function Menubar({
             else if (id === 'hidden') onToggleShowHidden();
             else if (id === 'annotate') onToggleAnnotations();
             else if (id === 'inspector') onToggleInspector();
+            else if (id === 'layers') onOpenLayers?.();
           }}
+          onZoom={(op) => postToActiveCanvas({ dgn: 'zoom', op })}
+          hasCanvas={!!activePath && !isSystem}
           onClose={() => setOpenMenu(null)}
         />
       )}
@@ -2261,6 +2476,17 @@ function Menubar({
       {openMenu === 'tools' && (
         <ToolsDropdown
           onAction={(tool) => postToActiveCanvas({ dgn: 'tool-set', tool })}
+          onClose={() => setOpenMenu(null)}
+        />
+      )}
+      {openMenu === 'help' && (
+        <HelpDropdown
+          onAction={(id) => {
+            if (id === 'shortcuts') onOpenShortcuts?.();
+            else if (id === 'help') onOpenHelp?.();
+            else if (id === 'tour') onStartTour?.();
+            else if (id === 'whatsnew') onOpenWhatsNew?.();
+          }}
           onClose={() => setOpenMenu(null)}
         />
       )}
@@ -3029,8 +3255,8 @@ function SyncBanner({ status }) {
 // mockup's live-CSS-knob WRITEBACK is Phase 12 (needs a canvas-origin write
 // bridge, DDR-054) — the CSS tab shows markup read-only + keeps that callout, so
 // it never implies functionality it lacks (the exact reason DDR-096 deferred it).
-function InspectorPanel({ selected, onClose, width, resizing }) {
-  const [tab, setTab] = useState('inspect');
+function InspectorPanel({ selected, onClose, width, resizing, tab, setTab }) {
+  // Tab state lives in App so View ▸ Layers can open the panel on a chosen tab.
   // `selected` may be a single element, an array (multi-select), or null.
   const el = Array.isArray(selected) ? selected[0] : selected;
   const tabBtn = (id, label, icon) => (
@@ -3288,11 +3514,17 @@ function App() {
   const [showHidden, setShowHidden] = useState(() => readBoolStore(SHOW_HIDDEN_STORE, false));
   const [sectionsExpanded, setSectionsExpanded] = useState(() => readJsonStore(SECTIONS_STORE, {}));
   const [helpOpen, setHelpOpen] = useState(false);
+  // ? cheat-sheet (DS components-shortcuts-overlay) — separate from the deep
+  // Help modal (F1), which keeps commands & flows.
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   // T5/T6 (Plan C) — shell-level export/handoff dialog + inspector panel state.
   // The palette (T4) drives them; the dialog (T5) + panel (T6) consume them.
   const [exportDialog, setExportDialog] = useState(null); // null | { mode: 'export'|'handoff', scope? }
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  // Inspector tab is lifted so View ▸ Layers can open the panel ON the Layers
+  // tab (the menu item sat disabled as "Phase 12" long after the tab shipped).
+  const [inspectorTab, setInspectorTab] = useState('inspect');
   const whatsNew = useWhatsNew(MDCC_VERSION);
   const [tourSteps, setTourSteps] = useState(null);
   const [usageNudge, setUsageNudge] = useState(() => !readBoolStore(USAGE_TOUR_STORE, false));
@@ -3839,6 +4071,14 @@ function App() {
         // inspector forwards the chord here since the iframe's keydown never
         // reaches the shell's window listener. Mirror that handler's toggle.
         setPaletteOpen((v) => !v);
+      } else if (m.dgn === 'shell-shortcut') {
+        // Same forwarding lane for the other shell chords (inspect.ts) — so
+        // ⌘R / ⌘⇧I / ⌘⇧M / ⌘⇧E / ⌘⇧H behave identically wherever focus is.
+        if (m.id === 'reload') reloadActive();
+        else if (m.id === 'inspector') setInspectorOpen((v) => !v);
+        else if (m.id === 'comments') setCommentsPanelOpen((v) => !v);
+        else if (m.id === 'export') setExportDialog({ mode: 'export' });
+        else if (m.id === 'handoff') setExportDialog({ mode: 'handoff' });
       } else if (m.dgn === 'open-export') {
         // Plan C — the in-canvas toolbar / context menu route here so they open
         // the SAME shell Export dialog as the menubar (one look, all settings).
@@ -3937,7 +4177,7 @@ function App() {
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [commentsByFile, focusedCommentId, cfg, theme]);
+  }, [commentsByFile, focusedCommentId, cfg, theme, reloadActive]);
 
   // Tell the active canvas iframe to drop any persistent selection (canvas
   // SelectionSet) — used when the comment composer closes via submit /
@@ -4023,6 +4263,25 @@ function App() {
         setCommentsPanelOpen((v) => !v);
         return;
       }
+      // Cmd+Shift+I — toggle Inspector. Was bare "I", which collided with the
+      // canvas highlighter tool (same letter, different action by focus).
+      if (meta && e.shiftKey && (e.key === 'i' || e.key === 'I')) {
+        e.preventDefault();
+        setInspectorOpen((v) => !v);
+        return;
+      }
+      // Cmd+Shift+E / Cmd+Shift+H — the File-menu chords, previously
+      // advertised but never bound.
+      if (meta && e.shiftKey && (e.key === 'e' || e.key === 'E')) {
+        e.preventDefault();
+        setExportDialog({ mode: 'export' });
+        return;
+      }
+      if (meta && e.shiftKey && (e.key === 'h' || e.key === 'H')) {
+        e.preventDefault();
+        setExportDialog({ mode: 'handoff' });
+        return;
+      }
       // Cmd+C / Ctrl+C — Phase 4.1 removed the shell-side comment-drop chord.
       // Canvas comment-drop is the `C` tool letter (press C in the canvas,
       // then click the element) or right-click "Add comment". Cmd+C now
@@ -4092,14 +4351,25 @@ function App() {
         }
         return;
       }
-      // I — toggle Inspector panel (T6, Plan C)
-      if ((e.key === 'i' || e.key === 'I') && !meta && !e.shiftKey) {
+      // N — open the new-brief-board composer (replaces the advertised ⌘N,
+      // which the browser reserves for New Window and never delivers).
+      if ((e.key === 'n' || e.key === 'N') && !meta && !e.shiftKey) {
         e.preventDefault();
-        setInspectorOpen((v) => !v);
+        setSidebarOpen(true);
+        setTimeout(
+          () => document.querySelector('[aria-label="New blank brief board"]')?.click(),
+          60
+        );
         return;
       }
-      // ? or F1 — open Help modal
-      if (e.key === '?' || e.key === 'F1') {
+      // ? — keyboard-shortcuts cheat sheet (DS shortcuts overlay)
+      if (e.key === '?') {
+        e.preventDefault();
+        setShortcutsOpen((v) => !v);
+        return;
+      }
+      // F1 — the full Help modal (commands & flows)
+      if (e.key === 'F1') {
         e.preventDefault();
         setHelpOpen(true);
         return;
@@ -4158,7 +4428,7 @@ function App() {
         group: 'Canvas',
         label: 'New canvas…',
         icon: 'plus',
-        kbd: '⌘N',
+        kbd: 'N',
         run: () => {
           setSidebarOpen(true);
           setTimeout(
@@ -4205,7 +4475,7 @@ function App() {
         group: 'View',
         label: 'Open inspector',
         icon: 'sliders',
-        kbd: 'I',
+        kbd: '⌘⇧I',
         run: () => setInspectorOpen(true),
       },
       {
@@ -4246,11 +4516,19 @@ function App() {
         run: () => whatsNew.openPanel(),
       },
       {
-        id: 'help',
+        id: 'shortcuts',
         group: 'Help',
-        label: 'Help · shortcuts & commands',
+        label: 'Keyboard shortcuts',
         icon: 'help',
         kbd: '?',
+        run: () => setShortcutsOpen(true),
+      },
+      {
+        id: 'help',
+        group: 'Help',
+        label: 'Help · commands & flows',
+        icon: 'help',
+        kbd: 'F1',
         run: () => setHelpOpen(true),
       },
     ],
@@ -4296,6 +4574,8 @@ function App() {
           showHidden={showHidden}
           onToggleShowHidden={() => setShowHidden((v) => !v)}
           onOpenHelp={() => setHelpOpen(true)}
+          onOpenShortcuts={() => setShortcutsOpen(true)}
+          onStartTour={() => startTour(USAGE_TOUR)}
           annotationsVisible={annotationsVisible}
           onToggleAnnotations={toggleAnnotations}
           postToActiveCanvas={postToActiveCanvas}
@@ -4303,7 +4583,17 @@ function App() {
           whatsNewCount={whatsNew.unseen.length}
           artboardCount={activeArtboards}
           inspectorOpen={inspectorOpen}
+          inspectorTab={inspectorTab}
           onToggleInspector={() => setInspectorOpen((v) => !v)}
+          onOpenLayers={() => {
+            // Toggle: already open on Layers → close; otherwise open on Layers.
+            if (inspectorOpen && inspectorTab === 'layers') {
+              setInspectorOpen(false);
+            } else {
+              setInspectorTab('layers');
+              setInspectorOpen(true);
+            }
+          }}
           onNewCanvas={() => {
             setSidebarOpen(true);
             setTimeout(
@@ -4407,6 +4697,8 @@ function App() {
               onClose={() => setInspectorOpen(false)}
               width={rpSize.w}
               resizing={dragSide === 'rp'}
+              tab={inspectorTab}
+              setTab={setInspectorTab}
             />
           ) : commentsPanelOpen ? (
             <CommentsPanel
@@ -4448,6 +4740,7 @@ function App() {
           onClose={() => setExportDialog(null)}
         />
       )}
+      <ShortcutsOverlay open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <HelpModal
         open={helpOpen}
         onClose={() => setHelpOpen(false)}

@@ -138,7 +138,12 @@ import {
   translateOne,
   type WorldPoint,
 } from './annotations-model.ts';
-import { computeSnap, SNAP_THRESHOLD_PX, type SnapGuide } from './annotations-snap.ts';
+import {
+  computeSnap,
+  GRID_PITCH_PX,
+  SNAP_THRESHOLD_PX,
+  type SnapGuide,
+} from './annotations-snap.ts';
 import { arrowPrimitives, type SvgPrimitive } from './canvas-arrowheads.ts';
 import { IconLineThick, IconLineThin } from './canvas-icons.tsx';
 import { useViewportControllerContext, useWorldRefContext } from './canvas-lib.tsx';
@@ -1781,11 +1786,14 @@ export function AnnotationsLayer() {
           let dx = cwx - st.startWX;
           let dy = cwy - st.startWY;
           // FigJam v3 — edge/center snapping; ⌘ suppresses (Figma convention).
+          // Axes with no smart-guide match fall back to the 24px dot grid
+          // (GRID_PITCH_PX = the DS --canvas-grid pitch).
           if (hull && !(mv.metaKey || mv.ctrlKey)) {
             const snap = computeSnap(
               { x: hull.x + dx, y: hull.y + dy, w: hull.w, h: hull.h },
               candidates,
-              SNAP_THRESHOLD_PX / zoom
+              SNAP_THRESHOLD_PX / zoom,
+              { grid: GRID_PITCH_PX }
             );
             dx += snap.dx;
             dy += snap.dy;

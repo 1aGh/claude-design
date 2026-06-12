@@ -33,6 +33,9 @@ export interface SnapResult {
 /** Snap threshold in world px at zoom 1 (callers scale by 1/zoom). */
 export const SNAP_THRESHOLD_PX = 6;
 
+/** Dot-grid pitch in world px — mirrors the DS `--canvas-grid` token (24px). */
+export const GRID_PITCH_PX = 24;
+
 const NO_SNAP: SnapResult = { dx: 0, dy: 0, guides: [] };
 
 function lines(b: SnapBox, axis: 'x' | 'y'): [number, number, number] {
@@ -40,16 +43,33 @@ function lines(b: SnapBox, axis: 'x' | 'y'): [number, number, number] {
 }
 
 /**
+ * Nearest grid-line correction for one axis position. The dot grid is a
+ * world-space lattice at `pitch`; the stroke's leading edge snaps to it.
+ */
+function gridDelta(pos: number, pitch: number, threshold: number): number | null {
+  const nearest = Math.round(pos / pitch) * pitch;
+  const d = nearest - pos;
+  return Math.abs(d) <= threshold ? d : null;
+}
+
+/**
  * Best snap correction for the moving bbox against the candidates. The two
  * axes resolve independently (FigJam: a drag can snap horizontally to one
  * neighbour and vertically to another). Edges AND centers participate.
+ *
+ * Grid snapping (`opts.grid`): when an axis finds NO stroke/artboard snap, its
+ * leading edge falls back to the canvas dot grid — weaker than smart guides
+ * (geometry alignment wins over the lattice) and silent (no guide line, the
+ * dots themselves are the visual). ⌘ suppresses both via the caller.
  */
 export function computeSnap(
   moving: SnapBox,
   candidates: readonly SnapBox[],
-  threshold: number
+  threshold: number,
+  opts?: { grid?: number }
 ): SnapResult {
-  if (threshold <= 0 || candidates.length === 0) return NO_SNAP;
+  const grid = opts?.grid ?? 0;
+  if (threshold <= 0 || (candidates.length === 0 && grid <= 0)) return NO_SNAP;
   let bestX: { d: number; at: number; cand: SnapBox } | null = null;
   let bestY: { d: number; at: number; cand: SnapBox } | null = null;
   const mx = lines(moving, 'x');
@@ -74,9 +94,16 @@ export function computeSnap(
       }
     }
   }
-  if (!bestX && !bestY) return NO_SNAP;
-  const dx = bestX?.d ?? 0;
-  const dy = bestY?.d ?? 0;
+  // Grid fallback per axis — only where no smart-guide candidate won.
+  let gridDx: number | null = null;
+  let gridDy: number | null = null;
+  if (grid > 0) {
+    if (!bestX) gridDx = gridDelta(moving.x, grid, threshold);
+    if (!bestY) gridDy = gridDelta(moving.y, grid, threshold);
+  }
+  if (!bestX && !bestY && gridDx == null && gridDy == null) return NO_SNAP;
+  const dx = bestX?.d ?? gridDx ?? 0;
+  const dy = bestY?.d ?? gridDy ?? 0;
   const guides: SnapGuide[] = [];
   if (bestX) {
     guides.push({
