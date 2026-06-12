@@ -390,6 +390,22 @@ const STICONS = {
       <line x1="13" y1="3" x2="7.6" y2="8.4" />
     </>
   ),
+  share: (
+    <>
+      <circle cx="4" cy="8" r="1.9" />
+      <circle cx="11.6" cy="3.6" r="1.9" />
+      <circle cx="11.6" cy="12.4" r="1.9" />
+      <line x1="5.7" y1="7" x2="9.9" y2="4.6" />
+      <line x1="5.7" y1="9" x2="9.9" y2="11.4" />
+    </>
+  ),
+  pen: (
+    <>
+      <path d="M3 13l.8-3L10.6 3.2a1.1 1.1 0 0 1 1.6 0l.6.6a1.1 1.1 0 0 1 0 1.6L6 12.2z" />
+      <line x1="9.6" y1="4.2" x2="11.8" y2="6.4" />
+    </>
+  ),
+  square: <rect x="3.5" y="3.5" width="9" height="9" rx="1" />,
 };
 
 // ⌘K command palette — the mockup's signature surface, wired to real shell
@@ -531,8 +547,11 @@ function initialsOf(name) {
   return ((parts[0][0] || '') + (parts[parts.length - 1][0] || '')).toUpperCase() || '?';
 }
 function StAvatar({ initials, hue, title }) {
+  // Hue rides a custom property so CSS can mix it into the surface (DS avatar
+  // recipe: tinted bg + hue border + fg-0 text — solid fill + white text broke
+  // the accent-fg contrast rule and washed out in light theme).
   return (
-    <span className="st-avatar" style={{ background: hue }} title={title} aria-label={title}>
+    <span className="st-avatar" style={{ '--av-hue': hue }} data-tip={title} aria-label={title}>
       {initials}
     </span>
   );
@@ -1207,7 +1226,7 @@ function Sidebar({
           <button
             type="button"
             className="st-iconbtn"
-            title="New blank brief board"
+            data-tip="New blank brief board"
             aria-label="New blank brief board"
             aria-expanded={creating}
             onClick={() => {
@@ -1217,7 +1236,10 @@ function Sidebar({
           >
             <StIcon name="plus" size={15} />
           </button>
-          <span className="st-live" title={wsConnected ? 'live · file index synced' : 'reconnecting…'}>
+          <span
+            className="st-live"
+            data-tip={wsConnected ? 'live · file index synced' : 'reconnecting…'}
+          >
             <span className={'st-live-dot' + (wsConnected ? ' is-connected' : '')} aria-hidden="true" />
             {htmlShown} / {htmlCount}
           </span>
@@ -1226,7 +1248,7 @@ function Sidebar({
               type="button"
               className="st-iconbtn"
               aria-label="Collapse sidebar"
-              title="Collapse sidebar (T)"
+              data-tip="Collapse sidebar · T"
               onClick={onCollapse}
             >
               <StIcon name="panel-left" size={15} />
@@ -1263,7 +1285,7 @@ function Sidebar({
             type="button"
             className="st-newboard-go"
             disabled={newBusy || !newName.trim()}
-            title="Create (Enter)"
+            data-tip="Create · Enter"
             aria-label="Create brief board"
             onClick={submitNewBoard}
           >
@@ -1291,7 +1313,7 @@ function Sidebar({
             <button
               className="st-search-clear"
               onClick={() => setSearch('')}
-              title="Clear (Esc)"
+              data-tip="Clear · Esc"
               aria-label="Clear search"
             >
               ×
@@ -1417,7 +1439,7 @@ function HelpModal({ open, onClose, onStartTour }) {
           <span className="title" id="help-modal-title">
             Help · shortcuts &amp; commands
           </span>
-          <span className="sku">MDCC-DEV-SRV / v{MDCC_VERSION}</span>
+          <span className="sku">MAUDE-DEV-SRV / v{MDCC_VERSION}</span>
           {onStartTour && (
             <button
               type="button"
@@ -2097,7 +2119,7 @@ function Menubar({
           className="st-whatsnew"
           data-unseen={whatsNewCount > 0 ? 'true' : 'false'}
           aria-label={`What's new${whatsNewCount > 0 ? ` — ${whatsNewCount} unseen` : ''}`}
-          title="What's new"
+          data-tip="What's new"
           onClick={onOpenWhatsNew}
         >
           <StIcon name="sparkle" size={15} />
@@ -2107,7 +2129,7 @@ function Menubar({
           {fileLabel}
         </span>
         <span className="st-mb-sep" />
-        <span className="st-mb-count" title="Artboards in the open canvas">
+        <span className="st-mb-count" data-tip="Artboards in the open canvas">
           <span className="st-dot" style={{ background: 'var(--accent)' }} />
           {artboardCount} ARTBOARDS
         </span>
@@ -2372,7 +2394,7 @@ function SystemView({ data, onOpen, cfg, onSelectDs }) {
   return (
     <div className="sv">
       <header className="sv-header">
-        <span className="sv-sku">MDCC-DSN/01</span>
+        <span className="sv-sku">MAUDE-DSN/01</span>
         <span className="sv-title">design system view</span>
         {hasPicker ? (
           <label className="sv-ds-picker">
@@ -2516,7 +2538,9 @@ function StatusBar({
         </span>
       </span>
 
-      {selected && selected.selector && !isSystem && (
+      {/* Selection is meaningless without an open canvas — a stale _active.json
+          selection used to leave a ghost SELECTED chip on the empty shell. */}
+      {activePath && selected && selected.selector && !isSystem && (
         <span className="st-sb-slot st-sb-sel" role="group" aria-label="Selected element">
           <span className="lbl">selected</span>
           <span className="val" title={title}>
@@ -2526,7 +2550,8 @@ function StatusBar({
             type="button"
             className="st-sb-sel-clear"
             onClick={onClearSelected}
-            title="Clear (Esc inside iframe)"
+            data-tip="Clear · Esc inside iframe"
+            data-tip-pos="top"
             aria-label="Clear selection"
           >
             ×
@@ -2566,7 +2591,8 @@ function StatusBar({
         type="button"
         className="st-sb-theme"
         onClick={onToggleTheme}
-        title={`Switch to ${nextTheme} theme`}
+        data-tip={`Switch to ${nextTheme} theme`}
+        data-tip-pos="top"
         aria-label={`Switch to ${nextTheme} theme`}
       >
         <StIcon name={theme === 'dark' ? 'sun' : 'moon'} size={13} />
@@ -2863,7 +2889,11 @@ function InspectorPanel({ selected, onClose }) {
       <div className="st-rp-body">
         {!el ? (
           <div className="st-rp-empty">
-            Hold <Kbd>⌘</Kbd> inside the canvas and click an element to inspect it.
+            {/* <p> wrapper — st-rp-empty is a flex column, bare text nodes +
+                kbd would stack as stretched flex items. */}
+            <p>
+              Hold <Kbd>⌘</Kbd> inside the canvas and click an element to inspect it.
+            </p>
           </div>
         ) : tab === 'inspect' ? (
           <>
