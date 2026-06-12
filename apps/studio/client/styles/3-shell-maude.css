@@ -555,6 +555,10 @@
 
 /* a labelled row: [provenance] [css property] [control] */
 .st-cp-row { display: grid; grid-template-columns: 10px 92px 1fr; align-items: center; gap: var(--space-2); min-height: 28px; }
+/* #1 bigger-bet — unset rows recede so the overridden ones pop; full opacity on
+ * hover/focus so they're still editable. The panel reads as a diff of overrides. */
+.st-cp-row.is-unset { opacity: 0.5; transition: opacity var(--dur-soft) var(--ease-out); }
+.st-cp-row.is-unset:hover, .st-cp-row.is-unset:focus-within { opacity: 1; }
 /* one-line labels keep the row rhythm uniform; the full property name is in the
  * row's title tooltip (design-critic 4.1 — uneven wrap was the top craft nit). */
 .st-cp-label { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-1); line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

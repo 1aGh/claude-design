@@ -3717,15 +3717,21 @@ function CssKnobs({ el, cfg, onOptimistic }) {
     );
   };
 
-  const row = (prop, control, provKind) => (
-    <div className="st-cp-row" key={prop}>
-      {provDot(prop, provKind)}
-      <label className="st-cp-label" title={prop}>
-        {prop}
-      </label>
-      <div className="st-cp-ctl">{control}</div>
-    </div>
-  );
+  const row = (prop, control, provKind) => {
+    // #1 bigger-bet — scannable diff: a fully-unset single-prop row is dimmed so
+    // the handful of overridden rows pop (Webflow/Framer model). Composite rows
+    // (border — they pass an explicit provKind) are never dimmed.
+    const unset = provKind === undefined && !authored[prop];
+    return (
+      <div className={`st-cp-row${unset ? ' is-unset' : ''}`} key={prop}>
+        {provDot(prop, provKind)}
+        <label className="st-cp-label" title={prop}>
+          {prop}
+        </label>
+        <div className="st-cp-ctl">{control}</div>
+      </div>
+    );
+  };
 
   // Props each section owns — drives the per-section "reset section" affordance.
   const SECTION_PROPS = {
