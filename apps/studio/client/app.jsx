@@ -4101,22 +4101,17 @@ function CssKnobs({ el, cfg, onOptimistic }) {
                   </option>
                 ))}
               </select>
-              <span className="st-cp-swatch st-cp-swatch--mini" title={authored['border-color'] || ''}>
-                <span
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    background: authored['border-color'] || computed['border-color'] || 'transparent',
-                  }}
-                />
-                <input
-                  type="color"
-                  aria-label="border-color picker"
-                  defaultValue={cssColorToHex(authored['border-color'] || computed['border-color']) || '#000000'}
-                  onBlur={(e) => commit('border-color', e.currentTarget.value)}
-                  style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', border: 0 }}
-                />
-              </span>
+              <TokenPopover
+                kind="color"
+                groups={tokenGroups('color')}
+                current={authored['border-color']}
+                swatchBg={computed['border-color'] || authored['border-color'] || ''}
+                seedHex={
+                  cssColorToHex(computed['border-color'] || authored['border-color']) || '#000000'
+                }
+                onPick={(v) => commit('border-color', v)}
+                label="border colour"
+              />
             </div>,
             provOf('border-width')
           )}
