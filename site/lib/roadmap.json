@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-10T22:05:44.749Z",
+  "generated": "2026-06-12T05:23:40.894Z",
   "currentPhase": null,
   "phases": [
     {
@@ -221,6 +221,17 @@
       "planPath": ".ai/plans/archive/hub-redesign-studio-hub.md",
       "archived": true,
       "phaseKey": null
+    },
+    {
+      "id": "phase-12-in-canvas-css-and-layers",
+      "title": "Phase 12: In-canvas direct edit — CSS + text + Layers panel",
+      "status": "done",
+      "shipTarget": "v1.3+ conditional",
+      "date": null,
+      "summary": "Three direct-manipulation capabilities on the already-shipped Inspector substrate, so small tweaks don't need a /design:edit \"<feedback>\" AI round-trip:",
+      "planPath": ".ai/plans/archive/phase-12-in-canvas-css-and-layers.md",
+      "archived": true,
+      "phaseKey": "12"
     },
     {
       "id": "phase-16-intro-video-v3-wow",
@@ -773,15 +784,15 @@
       "phaseKey": "19"
     },
     {
-      "id": "phase-12-in-canvas-css-and-layers",
-      "title": "Phase 12: In-canvas CSS editor + Layers panel",
+      "id": "phase-12.2-css-panel-ux",
+      "title": "Phase 12.2: In-canvas CSS panel — proper UX",
       "status": "planned",
-      "shipTarget": "v1.3+ conditional",
+      "shipTarget": null,
       "date": null,
-      "summary": "Add Figma / Webflow-grade direct manipulation: a layers panel (DOM tree of active artboard — collapsible, selectable, drag-to-reorder) and an in-canvas CSS editor (right sidebar that surfaces top-e...",
-      "planPath": ".ai/plans/phase-12-in-canvas-css-and-layers.md",
+      "summary": "---",
+      "planPath": ".ai/plans/phase-12.2-css-panel-ux.md",
       "archived": false,
-      "phaseKey": "12"
+      "phaseKey": "12.2"
     },
     {
       "id": "phase-17-docs-site-infographics",

@@ -1,7 +1,28 @@
 {
-  "generated": "2026-06-08T13:57:04.977Z",
+  "generated": "2026-06-12T05:09:04.124Z",
   "version": "0.29.0",
   "entries": [
+    {
+      "id": "in-canvas-direct-edit",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Edit the canvas directly — CSS, text, layers",
+      "summary": "⌘-click an element and tweak its CSS right in the Inspector — grouped knobs for spacing, type and color (with swatches) — and the change writes straight back to the source. Double-click any text to retype it in place. The Layers tab is now a browsable tree: click a layer to select it, hover to highlight. Small tweaks no longer need an AI round-trip.",
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": ".st-css-panel",
+          "title": "Editable CSS",
+          "body": "Open the CSS tab, change a value (try border-radius or a colour swatch), and it's written to the source on blur — no AI round-trip."
+        },
+        {
+          "target": ".st-layer--row",
+          "title": "Browsable layers",
+          "body": "The Layers tab lists the artboard's elements — click one to select it in the canvas, hover to highlight."
+        }
+      ]
+    },
     {
       "id": "studio-full-functionality",
       "version": "0.29.0",
