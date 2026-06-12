@@ -51,8 +51,9 @@ const CURSOR_CSS = `
  * template literal and a stray backtick closes it. */
 .dc-cursor-label {
   position: absolute;
-  top: 16px;
-  left: 12px;
+  /* specimen geometry: the pill hangs below-right of the 15px triangle */
+  top: 14px;
+  left: 10px;
   padding: 1px 8px;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-weight: 500;
@@ -120,18 +121,16 @@ const Cursor = memo(function Cursor({ peer, viewport }: CursorProps): JSX.Elemen
   const screenY = peer.cursor.y * viewport.zoom + viewport.y;
   return (
     <div className="dc-cursor" style={{ transform: `translate(${screenX}px, ${screenY}px)` }}>
+      {/* DS colors-presence Pointer — one plain triangle glyph, tinted by its
+          owner (the specimen's exact 24-grid path, no tail/notch). */}
       <svg
         className="dc-cursor-arrow"
-        width="20"
-        height="22"
-        viewBox="0 0 20 22"
+        width="15"
+        height="15"
+        viewBox="0 0 24 24"
         aria-hidden="true"
       >
-        <path
-          d="M 2 2 L 2 18 L 6 14 L 9 21 L 12 20 L 9 13 L 14 13 Z"
-          fill={peer.color}
-          strokeLinejoin="round"
-        />
+        <path d="M4 3 L20 11.5 L12.5 13 L10 21 Z" fill={peer.color} />
       </svg>
       <div className="dc-cursor-label" style={{ background: peer.color }}>
         {peer.name}
