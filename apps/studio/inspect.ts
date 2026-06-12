@@ -404,6 +404,21 @@ const INSPECTOR_SCRIPT = `
           if (t) t.scrollIntoView({ behavior: 'smooth', block: 'center' });
         } catch (e) {}
       }
+    } else if (m.dgn === 'theme') {
+      // Catch the chrome-theme seed the shell posts in reply to our 'loaded'
+      // ping (sent below). THIS listener registers during page-load — before
+      // the React canvas-shell mounts and adds its OWN 'dgn:theme' listener —
+      // so without this branch the shell's reply lands in the gap between
+      // page-load and React-mount and is dropped, leaving the canvas stuck on
+      // its hardcoded dark default until a manual theme toggle re-broadcasts
+      // it (the recurring "open a canvas under a light shell → canvas chrome is
+      // dark; toggle twice to fix; next canvas reverts" bug). We set the same
+      // attribute the canvas-shell chrome reads (data-maude-theme on <html>);
+      // canvas-shell's default-dark guard then sees the value already present
+      // and won't override it, and its own listener takes over live toggles.
+      if (m.theme === 'light' || m.theme === 'dark') {
+        try { document.documentElement.setAttribute('data-maude-theme', m.theme); } catch (e) {}
+      }
     }
     /* force-clear is now consumed by canvas-shell.tsx — the inspector
        overlay has no per-element selection state to clear anymore. */
