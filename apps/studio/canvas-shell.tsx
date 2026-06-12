@@ -1476,7 +1476,14 @@ function CanvasRouter({
       // edit-css → file-watcher HMR reload re-renders from source. `value` null/
       // empty removes the property (the reset path). Purely a live-DOM preview;
       // the authoritative value is whatever the reload renders from source.
+      // SECURITY (ethical-hacker A1/A2) — accept apply-style ONLY from the parent
+      // shell, never from a canvas self-post. The canvas iframe is untrusted
+      // (DDR-054); without this gate hostile canvas JS could repaint elements AND
+      // (paired with the reload echo-guard) suppress reloads to desync view/source.
+      // The reload-suppression timestamp now lives in _shell.html's closure (NOT a
+      // canvas-writable window global) — set there from the same parent-gated msg.
       if (m.dgn === 'apply-style') {
+        if (e.source !== window.parent) return;
         const mm = m as {
           id?: string;
           artboardId?: string | null;
@@ -1493,17 +1500,9 @@ function CanvasRouter({
           if (target) {
             const style = (target as HTMLElement).style;
             try {
+              // Live-DOM preview only; the reload renders the authoritative value.
               if (mm.value == null || mm.value === '') style.removeProperty(mm.prop);
               else style.setProperty(mm.prop, mm.value);
-              // Phase 12.3 — the live DOM now reflects this edit, so the
-              // follow-up edit-css → file-watcher `module` reload is redundant
-              // churn (it drops the selection halo + flickers the iframe). Stamp
-              // a self-edit marker; the _shell.html HMR client skips a `module`
-              // reload for this canvas within a short window. Mirrors the meta
-              // echo-guard (`__maude_last_meta_self_write_at`).
-              (
-                window as unknown as { __maude_last_css_optimistic_at?: number }
-              ).__maude_last_css_optimistic_at = Date.now();
             } catch {
               /* invalid prop/value — ignore; the reload is the source of truth */
             }

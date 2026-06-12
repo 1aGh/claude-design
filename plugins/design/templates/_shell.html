@@ -177,14 +177,27 @@
       // ai-activity via postMessage when embedded; the own-WS path (standalone /
       // same-origin inspector socket) is handled in connectHmr below.
       let agentEditing = false;
+      // SECURITY (ethical-hacker A1) — the CSS-panel optimistic-reload-skip
+      // timestamp lives HERE, in the shell-script closure, NOT a window global:
+      // the canvas module shares this realm, so a window global would let
+      // untrusted canvas JS pin it and suppress reloads to desync view/source.
+      // It's set ONLY from the parent-gated message below (a canvas self-post
+      // can't reach it), and the HMR echo-guard reads this local, not window.*.
+      let lastCssOptimisticAt = 0;
       window.addEventListener('message', (e) => {
         // DDR-078 security follow-up: only the trusted embedding parent relays
-        // ai-activity. Reject canvas self-posts (which could flip the HMR gate)
-        // and any non-parent source. Standalone gets it via its own WS below.
+        // ai-activity / apply-style. Reject canvas self-posts (which could flip
+        // the HMR gate) and any non-parent source. Standalone gets it via its WS.
         if (e.source !== window.parent || window.parent === window) return;
         const m = e && e.data;
-        if (!m || typeof m !== 'object' || m.dgn !== 'ai-activity') return;
-        if (myFileKey && m.file === myFileKey) agentEditing = !!m.entry;
+        if (!m || typeof m !== 'object') return;
+        if (m.dgn === 'ai-activity') {
+          if (myFileKey && m.file === myFileKey) agentEditing = !!m.entry;
+        } else if (m.dgn === 'apply-style') {
+          // The panel just optimistically applied an edit → skip the redundant
+          // follow-up module reload (set here, parent-verified).
+          lastCssOptimisticAt = Date.now();
+        }
       });
 
       // Soft reload — re-import the canvas module (cache-busted) and swap it in
@@ -328,8 +341,8 @@
                 // optimistic style. `hard` (_lib rebuild) is global — never
                 // skipped. Mirrors the meta echo-guard below.
                 if (msg.mode === 'module') {
-                  const lastOpt = window.__maude_last_css_optimistic_at || 0;
-                  if (Date.now() - lastOpt < 1500) return;
+                  // read the parent-verified local (NOT a canvas-writable global)
+                  if (Date.now() - lastCssOptimisticAt < 1500) return;
                 }
                 // Phase 13.1 / DDR-077 — when an agent is live-editing, soft-
                 // reload (hold last good on a broken intermediate). Manual edits

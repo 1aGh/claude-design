@@ -2934,7 +2934,6 @@ const PROP_LEAD = {
   'border-width': { icon: 'p-border' },
   opacity: { icon: 'p-opacity' },
 };
-const CSS_COLOR_PROPS = new Set(['color', 'background-color', 'border-color']);
 const CSS_ALIGN_OPTS = ['left', 'center', 'right', 'justify'];
 
 let _cssColorCtx = null;
@@ -3352,9 +3351,19 @@ function TokenPopover({ kind, groups, current, onPick, label, swatchBg, seedHex,
   // a token from ANOTHER DS commits its RESOLVED value (literal), because
   // `var(--token)` would resolve against the canvas's DS scope and paint the WRONG
   // colour. So what you click is always what's applied ("natvrdo").
+  // SECURITY (ethical-hacker A3) — a cross-DS token value is committed as a
+  // LITERAL, and its source is a (possibly hub-pushed, untrusted) tokens CSS.
+  // A colour-shaped value can still smuggle a fetch primitive (e.g.
+  // `rgb(1 2 3) url(//x)` passes the colour sniff). Refuse to write a literal
+  // carrying url()/image-set()/expression()/@import — fall back to var(), which
+  // resolves against the CANVAS's own DS (never the attacker's value).
+  const UNSAFE_TOKEN_VALUE = /url\(|image-set\(|cross-fade\(|element\(|expression\(|@import|javascript:/i;
   const pickFrom = (ds, n, resolved) => {
-    if (activeDs && ds && ds !== activeDs && resolved) onPick(resolved);
-    else onPick(`var(${n})`);
+    if (activeDs && ds && ds !== activeDs && resolved && !UNSAFE_TOKEN_VALUE.test(resolved)) {
+      onPick(resolved);
+    } else {
+      onPick(`var(${n})`);
+    }
     setOpen(false);
   };
   // Custom colour / hex applies LIVE without closing, so the user can keep
