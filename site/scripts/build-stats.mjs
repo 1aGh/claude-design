@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Compute project stats consumed by the landing page + docs page-meta footer.
 // Reads version from package.json, asset counts from plugins/<p>/{commands,skills,agents},
-// last-release date from `git for-each-ref refs/tags/v*`, contributor count from
-// `git shortlog -sne`, and per-page last-updated dates from `git log -1`.
+// publishedDate from the matching `v*` tag's date (or today when package.json is
+// ahead of the latest tag — see the publishedDate note below), contributor count
+// from `git shortlog -sne`, and per-page last-updated dates from `git log -1`.
 //
 // Output: site/lib/stats.json (gitignored — regenerated every build).
 // Run as prebuild step — see site/package.json `prebuild`.
@@ -78,15 +79,30 @@ async function buildPageUpdatedMap() {
 
 const pkg = JSON.parse(await readFile(resolve(repoRoot, 'package.json'), 'utf8'));
 
-const lastTagDate =
-  sh(
-    "git for-each-ref --sort=-creatordate --count=1 --format='%(creatordate:short)' refs/tags/v*"
-  ) ||
-  sh('git log -1 --format=%cs -- package.json') ||
-  (() => {
-    console.warn('[stats] WARN no git tag and no package.json log entry -- falling back to today');
-    return new Date().toISOString().slice(0, 10);
-  })();
+// publishedDate must satisfy two constraints at once:
+//   1. STABLE across feature PRs — it may only change when a release is cut, else
+//      every PR that regenerates stats.json drifts the value and reds the gate.
+//   2. IDENTICAL whether stats.json is generated before or after the release tag
+//      exists. The release commit bakes stats.json during pre-push smoke (BEFORE
+//      the tag is created); CI then regenerates it with the new tag present.
+//
+// Deriving purely from the latest tag's date breaks (2): pre-push captures the
+// PREVIOUS tag's date while CI captures the new one — a guaranteed drift on every
+// release commit (the recurring `stats.json publishedDate` red).
+//
+// Resolution: when package.json is already tagged (version === latest v* tag), use
+// that tag's date — stable, and what every feature PR sees. When package.json is
+// AHEAD of the latest tag (an as-yet-untagged release commit), use today — exactly
+// what CI computes once the same-day tag lands. Feature PRs never move package.json
+// ahead of the tag, so they stay pinned to the release tag's date.
+const latestTagLine = sh(
+  "git for-each-ref --sort=-creatordate --count=1 --format='%(refname:short) %(creatordate:short)' refs/tags/v*"
+);
+const [latestTag = '', latestTagDate = ''] = latestTagLine.split(/\s+/);
+const publishedDate =
+  latestTag && latestTag.replace(/^v/, '') === pkg.version
+    ? latestTagDate
+    : new Date().toISOString().slice(0, 10);
 
 // `git shortlog -sne` honors .mailmap (collapses identities). We then drop bot
 // accounts (dependabot, renovate, etc.) so the count reflects humans.
@@ -103,7 +119,7 @@ const stats = {
   // Regenerated every build — do NOT edit by hand. See site/scripts/build-stats.mjs.
   version: `v${pkg.version}`,
   nodeRange: pkg.engines?.node ?? '>=20',
-  publishedDate: lastTagDate,
+  publishedDate,
   contributors,
   plugins: {
     design: {
