@@ -596,6 +596,9 @@ button.st-cp-prov { appearance: none; border: 0; background: transparent; cursor
 
 /* number field: input + steppers + unit-select + bind-to-token */
 .st-cp-num { flex: 1 1 auto; min-width: 0; display: inline-flex; align-items: stretch; background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-xs); overflow: hidden; min-height: 26px; }
+/* #2 — Figma-style property prefix segment inside the numeric field. */
+.st-cp-numlead { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 20px; color: var(--fg-2); font-family: var(--font-mono); font-size: var(--type-xs); border-right: 1px solid var(--border-subtle); background: var(--bg-2); }
+.st-cp-num:focus-within .st-cp-numlead { color: var(--fg-1); }
 .st-cp-num:hover { border-color: var(--border-strong); }
 .st-cp-num:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
 .st-cp-numin { flex: 1 1 auto; min-width: 0; width: 100%; appearance: none; border: 0; background: transparent; color: var(--fg-0); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--type-xs); padding: 3px var(--space-2); }

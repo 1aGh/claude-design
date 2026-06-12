@@ -368,6 +368,42 @@ const STICONS = {
       <path d="M9.5 4.6 4 10.1V12h1.9l5.5-5.5" />
     </>
   ),
+  // Figma-style property prefix glyphs (#2) — small marks INSIDE numeric fields.
+  'p-corner': <path d="M3.5 12.5V7a3.5 3.5 0 0 1 3.5-3.5h5.5" />,
+  'p-opacity': (
+    <>
+      <rect x="3" y="3" width="10" height="10" rx="1.5" />
+      <path d="M3 8h10M8 3v10" strokeWidth="0.9" opacity="0.55" />
+    </>
+  ),
+  'p-lineheight': (
+    <>
+      <line x1="6.5" y1="4" x2="13" y2="4" />
+      <line x1="6.5" y1="8" x2="13" y2="8" />
+      <line x1="6.5" y1="12" x2="13" y2="12" />
+      <path d="M3.2 4.6 3.2 11.4M2 6 3.2 4.5 4.4 6M2 10 3.2 11.5 4.4 10" />
+    </>
+  ),
+  'p-letterspacing': (
+    <>
+      <path d="M3 4v8M13 4v8" />
+      <path d="M6 11.5 8 5l2 6.5M6.7 9.3h2.6" strokeWidth="1.1" />
+    </>
+  ),
+  'p-gap': (
+    <>
+      <rect x="2" y="4.5" width="3.6" height="7" rx="0.6" />
+      <rect x="10.4" y="4.5" width="3.6" height="7" rx="0.6" />
+      <path d="M6.8 8h2.4M7.4 6.9 6.4 8l1 1.1M8.6 6.9 9.6 8l-1 1.1" strokeWidth="1" />
+    </>
+  ),
+  'p-border': <rect x="3" y="3" width="10" height="10" rx="1" />,
+  'p-size': (
+    <>
+      <path d="M3 13 6.6 3l3.6 10" />
+      <path d="M4.3 9.6h4.6" />
+    </>
+  ),
   'eye-off': (
     <>
       <path d="M6.3 4A6.7 6.7 0 0 1 8 3.5C12 3.5 14.5 8 14.5 8a12 12 0 0 1-2 2.4M4.4 5.3A12 12 0 0 0 1.5 8S4 12.5 8 12.5a6.5 6.5 0 0 0 2.1-.35" />
@@ -2884,6 +2920,20 @@ const CSS_BORDER_STYLES = ['none', 'solid', 'dashed', 'dotted', 'double'];
 const CSS_UNITS = ['px', 'rem', 'em', '%', 'vw', 'vh', 'auto'];
 // Properties whose bare-number value is unitless — never append a unit suffix.
 const CSS_UNITLESS = new Set(['line-height', 'opacity', 'font-weight', 'z-index', 'flex-grow', 'flex-shrink', 'order']);
+// #2 — Figma-style property prefix inside numeric fields: a small glyph (icon) or
+// a mono letter (t). Only where it reads cleanly; selects/colours keep their own.
+const PROP_LEAD = {
+  'font-size': { icon: 'p-size' },
+  'line-height': { icon: 'p-lineheight' },
+  'letter-spacing': { icon: 'p-letterspacing' },
+  gap: { icon: 'p-gap' },
+  width: { t: 'W' },
+  height: { t: 'H' },
+  'max-width': { t: 'W' },
+  'border-radius': { icon: 'p-corner' },
+  'border-width': { icon: 'p-border' },
+  opacity: { icon: 'p-opacity' },
+};
 const CSS_COLOR_PROPS = new Set(['color', 'background-color', 'border-color']);
 const CSS_ALIGN_OPTS = ['left', 'center', 'right', 'justify'];
 
@@ -3814,9 +3864,15 @@ function CssKnobs({ el, cfg, onOptimistic }) {
       const base = Number.parseFloat(cur.n || cssHint(computed[prop]) || '0') || 0;
       commit(prop, `${Math.round((base + d) * 100) / 100}${unit}`);
     };
+    const lead = PROP_LEAD[prop];
     return (
       <>
         <div className="st-cp-num">
+          {lead ? (
+            <span className="st-cp-numlead" aria-hidden="true">
+              {lead.t ? lead.t : <StIcon name={lead.icon} size={12} />}
+            </span>
+          ) : null}
           <input
             className="st-cp-numin st-cp-scrub"
             key={`${prop}:${authored[prop] ?? ''}`}
@@ -4119,6 +4175,9 @@ function CssKnobs({ el, cfg, onOptimistic }) {
           {row(
             'opacity',
             <div className="st-cp-num">
+              <span className="st-cp-numlead" aria-hidden="true">
+                <StIcon name="p-opacity" size={12} />
+              </span>
               <input
                 className="st-cp-numin"
                 key={`opacity:${authored.opacity ?? ''}`}
