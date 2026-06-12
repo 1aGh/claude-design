@@ -583,4 +583,125 @@
 .maude [data-tip][data-tip-pos="top"]::after { top: auto; bottom: calc(100% + 7px); }
 .maude [data-tip][data-tip-pos="left"]::after { top: 50%; left: auto; right: calc(100% + 7px); transform: translateY(-50%); }
 
+/* ═══ Behavioral polish (specimen sweep, round 2) ═════════════════════════════ */
+
+/* ─── Panel grip — DS components-resize-panels recipe ──────────────────────
+ * 8px hit area; the panel's own border is the at-rest hairline, the grip seam
+ * surfaces accent + grip dots on hover/focus/drag. col-resize everywhere
+ * while dragging; iframes drop pointer events so they can't eat the stream. */
+.st-grip {
+  flex: 0 0 8px;
+  width: 8px;
+  position: relative;
+  cursor: col-resize;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  /* sit over the adjacent panel borders so the accent seam reads centered */
+  margin: 0 -4px;
+  z-index: 25;
+}
+.st-grip::before {
+  content: "";
+  position: absolute;
+  top: 0; bottom: 0; left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: transparent;
+  transition: background var(--dur-flip) var(--ease-out), width var(--dur-flip) var(--ease-out);
+}
+.st-grip:hover::before,
+.st-grip:focus-visible::before,
+.st-grip.is-active::before { background: var(--accent); width: 2px; }
+.st-grip-dots {
+  width: 6px; height: 18px;
+  color: var(--accent);
+  opacity: 0;
+  position: relative;
+  transition: opacity var(--dur-flip) var(--ease-out);
+}
+.st-grip:hover .st-grip-dots,
+.st-grip:focus-visible .st-grip-dots,
+.st-grip.is-active .st-grip-dots { opacity: 1; }
+/* specimen recipe — inset ring on the narrow hit area (the seam + dots already
+ * surface accent, this keeps a proper outline for WCAG focus visibility) */
+.st-grip:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.st-body.is-resizing { cursor: col-resize; user-select: none; }
+.st-body.is-resizing iframe { pointer-events: none; }
+.st-sidebar.is-resizing, .st-rpanel.is-resizing { transition: none; }
+
+/* ─── Canvas-compile skeleton — DS skeletons recipe (.skel pulse) ──────────── */
+.st-canvas-loading {
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  pointer-events: none;
+  z-index: 5;
+  /* 180ms appearance delay — warm canvases mount in <150ms and never flash it */
+  opacity: 0;
+  animation: st-loading-in var(--dur-soft) var(--ease-out) 180ms forwards;
+}
+@keyframes st-loading-in { to { opacity: 1; } }
+.st-skel-card {
+  width: 300px;
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-5);
+  background: var(--bg-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  animation: st-pop var(--dur-panel) var(--ease-out);
+}
+.st-skel-cap {
+  font-size: var(--type-xs); letter-spacing: var(--tracking-wide);
+  text-transform: uppercase; color: var(--fg-3);
+}
+.skel {
+  display: block;
+  background: var(--bg-3);
+  border-radius: var(--radius-xs);
+  animation: sk-pulse calc(var(--dur-route) * 3) var(--ease-in-out) infinite alternate;
+}
+@keyframes sk-pulse { from { opacity: 0.45; } to { opacity: 0.95; } }
+@media (prefers-reduced-motion: reduce) { .skel { animation: none; opacity: 0.7; } }
+.st-skel-thumb { height: 96px; border-radius: var(--radius-sm); }
+.st-skel-line { height: 10px; }
+
+/* ─── Micro-motion — hover/disclosure transitions on the dense surfaces ───── */
+.st-row,
+.st-comment,
+.st-fmt,
+.st-cm-filter,
+.st-rp-tab,
+.st-dd-item,
+.st-pal-item,
+.st-layer,
+.st-export-recent-row {
+  transition: background var(--dur-soft) var(--ease-out),
+              border-color var(--dur-soft) var(--ease-out),
+              color var(--dur-soft) var(--ease-out);
+}
+/* tree disclosure chevron — one glyph, rotated (animatable) */
+.st-chev { transition: transform var(--dur-flip) var(--ease-out); }
+.st-chev.is-open { transform: rotate(90deg); }
+/* right dock slides in as a panel (DS motion role: panel) */
+.st-rpanel { animation: st-panel-in var(--dur-panel) var(--ease-out); }
+@keyframes st-panel-in { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: none; } }
+
+/* ─── Agent presence pulse — DS motion-presence role (scale+opacity ring) ──── */
+.st-avatar.is-pulsing::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--av-hue);
+  animation: st-presence-ring 1600ms var(--ease-out) infinite;
+  pointer-events: none;
+}
+.st-avatar { position: relative; }
+@keyframes st-presence-ring {
+  0% { opacity: 0.9; transform: scale(1); }
+  70%, 100% { opacity: 0; transform: scale(1.45); }
+}
+@media (prefers-reduced-motion: reduce) { .st-avatar.is-pulsing::after { animation: none; opacity: 0; } }
+
 }
