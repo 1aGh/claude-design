@@ -320,6 +320,54 @@ const STICONS = {
       <polyline points="2.2 9 8 12.3 13.8 9" />
     </>
   ),
+  // Layer-type glyphs (Phase 12.3 W3.1) — one mark per LayerNode `type`.
+  box: <rect x="3" y="3" width="10" height="10" rx="1.2" />,
+  type: (
+    <>
+      <polyline points="4 4 12 4" />
+      <line x1="8" y1="4" x2="8" y2="12" />
+    </>
+  ),
+  button: (
+    <>
+      <rect x="2.5" y="5" width="11" height="6" rx="3" />
+      <line x1="6" y1="8" x2="10" y2="8" />
+    </>
+  ),
+  input: (
+    <>
+      <rect x="2.5" y="5" width="11" height="6" rx="1.2" />
+      <line x1="5" y1="8" x2="5" y2="8" />
+    </>
+  ),
+  link: (
+    <>
+      <path d="M6.5 9.5a2.5 2.5 0 0 1 0-3.5l1.5-1.5a2.5 2.5 0 0 1 3.5 3.5l-1 1" />
+      <path d="M9.5 6.5a2.5 2.5 0 0 1 0 3.5l-1.5 1.5a2.5 2.5 0 0 1-3.5-3.5l1-1" />
+    </>
+  ),
+  list: (
+    <>
+      <line x1="6" y1="4.5" x2="13" y2="4.5" />
+      <line x1="6" y1="8" x2="13" y2="8" />
+      <line x1="6" y1="11.5" x2="13" y2="11.5" />
+      <circle cx="3.2" cy="4.5" r="0.8" fill="currentColor" />
+      <circle cx="3.2" cy="8" r="0.8" fill="currentColor" />
+      <circle cx="3.2" cy="11.5" r="0.8" fill="currentColor" />
+    </>
+  ),
+  eye: (
+    <>
+      <path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" />
+      <circle cx="8" cy="8" r="2" />
+    </>
+  ),
+  'eye-off': (
+    <>
+      <path d="M6.3 4A6.7 6.7 0 0 1 8 3.5C12 3.5 14.5 8 14.5 8a12 12 0 0 1-2 2.4M4.4 5.3A12 12 0 0 0 1.5 8S4 12.5 8 12.5a6.5 6.5 0 0 0 2.1-.35" />
+      <line x1="2.5" y1="2.5" x2="13.5" y2="13.5" />
+    </>
+  ),
   sliders: (
     <>
       <line x1="3" y1="5" x2="13" y2="5" />
@@ -4033,15 +4081,43 @@ function AttrKnob({ commit }) {
 // bridge, DDR-054) — the CSS tab shows markup read-only + keeps that callout, so
 // it never implies functionality it lacks (the exact reason DDR-096 deferred it).
 // ---------- Layers tree row (Phase 12 Task 4) ----------
-function LayerRow({ node, depth, selectedId, collapsed, onToggle, onSelect, onHover }) {
+// Phase 12.3 (W3.1) — map a LayerNode `type` (classified in canvas-shell) to a
+// type-distinct icon, matching the Studio.tsx layers design.
+const LAYER_TYPE_ICON = {
+  button: 'button',
+  heading: 'type',
+  text: 'type',
+  input: 'input',
+  form: 'input',
+  image: 'image',
+  link: 'link',
+  list: 'list',
+  nav: 'layers',
+  box: 'box',
+};
+
+function LayerRow({
+  node,
+  depth,
+  selectedId,
+  collapsed,
+  hidden,
+  onToggle,
+  onSelect,
+  onHover,
+  onToggleVisibility,
+}) {
   const key = `${node.id}:${node.index}`;
   const hasKids = node.children && node.children.length > 0;
   const isCollapsed = collapsed.has(key);
   const isSel = node.id === selectedId;
+  const isHidden = hidden?.has(key);
   return (
     <>
       <div
-        className={'st-layer st-layer--row' + (isSel ? ' is-sel' : '')}
+        className={
+          'st-layer st-layer--row' + (isSel ? ' is-sel' : '') + (isHidden ? ' is-hidden' : '')
+        }
         style={{ paddingLeft: 6 + depth * 14 }}
         role="treeitem"
         aria-selected={isSel}
@@ -4073,9 +4149,24 @@ function LayerRow({ node, depth, selectedId, collapsed, onToggle, onSelect, onHo
         ) : (
           <span className="st-layer-caret" aria-hidden="true" />
         )}
-        <StIcon name="square" size={12} />
+        <StIcon name={LAYER_TYPE_ICON[node.type] || 'box'} size={12} className="st-layer-ticon" />
         <span className="st-layer-label">{node.label}</span>
         <span className="st-layer-type">{node.type}</span>
+        {onToggleVisibility ? (
+          <button
+            type="button"
+            className="st-layer-eye"
+            aria-label={isHidden ? `Show ${node.label}` : `Hide ${node.label}`}
+            aria-pressed={isHidden}
+            title={isHidden ? 'Show' : 'Hide'}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleVisibility(node);
+            }}
+          >
+            <StIcon name={isHidden ? 'eye-off' : 'eye'} size={13} />
+          </button>
+        ) : null}
       </div>
       {hasKids && !isCollapsed
         ? node.children.map((c) => (
@@ -4085,9 +4176,11 @@ function LayerRow({ node, depth, selectedId, collapsed, onToggle, onSelect, onHo
               depth={depth + 1}
               selectedId={selectedId}
               collapsed={collapsed}
+              hidden={hidden}
               onToggle={onToggle}
               onSelect={onSelect}
               onHover={onHover}
+              onToggleVisibility={onToggleVisibility}
             />
           ))
         : null}
@@ -4162,6 +4255,9 @@ function InspectorPanel({
 }) {
   const [tab, setTab] = useState('inspect');
   const [collapsed, setCollapsed] = useState(() => new Set());
+  // Phase 12.3 (W3.1) — per-layer visibility toggle. Live-only (display:none via
+  // the optimistic apply bus); not persisted to source. Keyed by `${id}:${index}`.
+  const [hiddenLayers, setHiddenLayers] = useState(() => new Set());
   const toggleCollapse = (key) =>
     setCollapsed((prev) => {
       const next = new Set(prev);
@@ -4169,6 +4265,23 @@ function InspectorPanel({
       else next.add(key);
       return next;
     });
+  const toggleVisibility = (node) => {
+    const key = `${node.id}:${node.index}`;
+    const willHide = !hiddenLayers.has(key);
+    onOptimistic?.({
+      id: node.id,
+      artboardId: layersTree?.artboardId ?? null,
+      index: node.index,
+      prop: 'display',
+      value: willHide ? 'none' : null,
+    });
+    setHiddenLayers((prev) => {
+      const next = new Set(prev);
+      if (willHide) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  };
   // `selected` may be a single element, an array (multi-select), or null.
   const el = Array.isArray(selected) ? selected[0] : selected;
   const tabBtn = (id, label, icon) => (
@@ -4264,9 +4377,11 @@ function InspectorPanel({
                     depth={0}
                     selectedId={el.id}
                     collapsed={collapsed}
+                    hidden={hiddenLayers}
                     onToggle={toggleCollapse}
                     onSelect={(node) => onSelectLayer?.(node)}
                     onHover={(node) => onHoverLayer?.(node)}
+                    onToggleVisibility={toggleVisibility}
                   />
                 ))}
               </div>

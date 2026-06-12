@@ -459,6 +459,16 @@
 .st-layer-caret { flex: none; width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 0; color: var(--fg-3); font-size: 9px; line-height: 1; cursor: pointer; padding: 0; }
 .st-layer-label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
 .st-layer-type { flex: none; font-size: 9px; color: var(--fg-3); text-transform: uppercase; letter-spacing: var(--tracking-wide); }
+/* Phase 12.3 (W3.1) — type icon tint + per-row visibility (eye) toggle. */
+.st-layer-ticon { flex: none; color: var(--fg-3); }
+.st-layer.is-sel .st-layer-ticon { color: var(--accent); }
+.st-layer-eye { flex: none; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 0; color: var(--fg-3); cursor: pointer; padding: 0; border-radius: var(--radius-xs); opacity: 0; }
+.st-layer--row:hover .st-layer-eye, .st-layer--row:focus-within .st-layer-eye { opacity: 1; }
+.st-layer-eye:hover { color: var(--fg-0); background: var(--bg-3); }
+.st-layer-eye:focus-visible { outline: none; color: var(--accent); box-shadow: 0 0 0 2px var(--accent-tint); }
+/* a hidden layer stays dim + keeps its eye visible (so it can be re-shown) */
+.st-layer.is-hidden { opacity: 0.45; }
+.st-layer.is-hidden .st-layer-eye { opacity: 1; color: var(--fg-2); }
 .st-css { font-family: var(--font-mono); font-size: var(--type-xs); background: var(--bg-0); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: var(--space-3); line-height: 1.7; color: var(--fg-1); }
 .st-css .comment { color: var(--fg-3); }
 
