@@ -5,7 +5,13 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { applyEdit, applyTextEdit, CanvasEditError, editAttribute } from '../canvas-edit.ts';
+import {
+  applyEdit,
+  applyRemove,
+  applyTextEdit,
+  CanvasEditError,
+  editAttribute,
+} from '../canvas-edit.ts';
 import { transpileCanvasSource } from '../canvas-pipeline.ts';
 
 const CANVAS = '/abs/Canvas.tsx';
@@ -152,6 +158,62 @@ describe('canvas-edit / applyEdit', () => {
     const out = applyEdit(CANVAS, src, idA, 'className', 'A-edited');
     expect(out.source).toContain('className="A-edited"');
     expect(out.source).toContain('className="b"');
+  });
+});
+
+describe('canvas-edit / applyRemove (reset)', () => {
+  test('removes one style key, leaving the siblings + object intact', () => {
+    const src = 'function Demo() { return <div style={{ padding: 8, margin: 4 }}>x</div>; }';
+    const ids = idsOf(src);
+    const out = applyRemove(CANVAS, src, ids.div as string, 'style.margin');
+    expect(out.source).toBe('function Demo() { return <div style={{ padding: 8 }}>x</div>; }');
+  });
+
+  test('removes the leading style key (consumes the trailing comma)', () => {
+    const src = 'function Demo() { return <div style={{ padding: 8, margin: 4 }}>x</div>; }';
+    const ids = idsOf(src);
+    const out = applyRemove(CANVAS, src, ids.div as string, 'style.padding');
+    expect(out.source).toBe('function Demo() { return <div style={{ margin: 4 }}>x</div>; }');
+  });
+
+  test('removing the only style key drops the whole style attribute', () => {
+    const src = 'function Demo() { return <div style={{ padding: 8 }}>x</div>; }';
+    const ids = idsOf(src);
+    const out = applyRemove(CANVAS, src, ids.div as string, 'style.padding');
+    expect(out.source).toBe('function Demo() { return <div>x</div>; }');
+  });
+
+  test('accepts a kebab style prop name (border-radius → borderRadius)', () => {
+    const src = 'function Demo() { return <div style={{ borderRadius: 8, padding: 4 }}>x</div>; }';
+    const ids = idsOf(src);
+    const out = applyRemove(CANVAS, src, ids.div as string, 'style.border-radius');
+    expect(out.source).toBe('function Demo() { return <div style={{ padding: 4 }}>x</div>; }');
+  });
+
+  test('removes a plain attribute (custom data-*)', () => {
+    const src = 'function Demo() { return <button data-state="active">x</button>; }';
+    const ids = idsOf(src);
+    const out = applyRemove(CANVAS, src, ids.button as string, 'data-state');
+    expect(out.source).toBe('function Demo() { return <button>x</button>; }');
+  });
+
+  test('is a no-op (delta 0) when the key / attribute is absent', () => {
+    const src = 'function Demo() { return <div style={{ padding: 8 }}>x</div>; }';
+    const ids = idsOf(src);
+    const a = applyRemove(CANVAS, src, ids.div as string, 'style.margin');
+    expect(a.source).toBe(src);
+    expect(a.delta).toBe(0);
+    const b = applyRemove(CANVAS, src, ids.div as string, 'data-nope');
+    expect(b.source).toBe(src);
+    expect(b.delta).toBe(0);
+  });
+
+  test('refuses to remove data-cd-id (pipeline-owned)', () => {
+    const src = 'function Demo() { return <div>x</div>; }';
+    const ids = idsOf(src);
+    expect(() => applyRemove(CANVAS, src, ids.div as string, 'data-cd-id')).toThrow(
+      CanvasEditError
+    );
   });
 });
 

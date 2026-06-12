@@ -510,6 +510,21 @@
 .st-cp-sechd { width: 100%; appearance: none; cursor: pointer; display: flex; align-items: center; gap: var(--space-2); background: transparent; border: 0; border-bottom: 1px solid var(--border-subtle); text-align: left; font-family: var(--font-mono); font-size: var(--type-xs); text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--fg-2); padding: 0 0 var(--space-1); }
 .st-cp-sechd svg { color: var(--fg-2); }
 .st-cp-sechd:hover, .st-cp-sechd:hover svg { color: var(--fg-0); }
+/* Phase 12.3 — section header row carries the shared underline so the toggle
+ * button + the per-section reset sit on one baseline. */
+.st-cp-sechd-row { display: flex; align-items: stretch; gap: var(--space-1); border-bottom: 1px solid var(--border-subtle); }
+.st-cp-sechd-row .st-cp-sechd { border-bottom: 0; flex: 1 1 auto; }
+/* reset affordances — a subtle revert glyph (⟲). Muted by default, brightens on
+ * hover/focus. The per-row variant lives in .st-cp-ctl / .st-cp-kv; the
+ * per-section variant sits at the end of the header row. */
+.st-cp-reset, .st-cp-secreset { flex: none; appearance: none; cursor: pointer; background: transparent; border: 0; color: var(--fg-3); font-size: 12px; line-height: 1; padding: 2px; border-radius: var(--radius-xs); }
+.st-cp-reset { width: 16px; height: 16px; }
+.st-cp-reset:hover, .st-cp-secreset:hover { color: var(--accent); background: var(--accent-tint); }
+.st-cp-reset:focus-visible, .st-cp-secreset:focus-visible { outline: none; color: var(--accent); box-shadow: 0 0 0 2px var(--accent-tint); }
+.st-cp-secreset { align-self: center; }
+/* read-only name field for an existing custom CSS prop / HTML attr row */
+.st-cp-fin--ro { flex: 0 0 38%; background: var(--bg-2); color: var(--fg-2); cursor: default; }
+.st-cp-fin--ro:focus { outline: none; border-color: var(--border-strong); box-shadow: none; }
 
 /* a labelled row: [provenance] [css property] [control] */
 .st-cp-row { display: grid; grid-template-columns: 10px 84px 1fr; align-items: center; gap: var(--space-2); min-height: 28px; }

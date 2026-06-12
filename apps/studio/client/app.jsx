@@ -2874,11 +2874,13 @@ function cssSplitUnit(v) {
   return { n: t, unit: '' };
 }
 
-// Phase 12.2 — the WS `selected` echo is the server's projection (SelectedElement)
-// and LACKS the client-only DOM fields the CSS knobs pre-fill from (`authored` /
-// `computed` inline style — captured in the iframe, never round-tripped through
-// the server). When the echo is for the SAME element we already hold locally,
-// preserve those fields instead of clobbering them to empty.
+// Phase 12.2/12.3 — the WS `selected` echo is the server's projection
+// (SelectedElement) and LACKS the client-only DOM fields the CSS knobs pre-fill
+// from (`authored` / `computed` inline style + `customStyles` / `attrs` — all
+// captured in the iframe, never round-tripped through the server). When the echo
+// is for the SAME element we already hold locally, preserve those fields instead
+// of clobbering them to empty (else the server round-trip wipes the custom-CSS /
+// custom-attr rows + computed readout right after selection).
 function mergeSelClientFields(incoming, prev) {
   if (!incoming || Array.isArray(incoming) || Array.isArray(prev) || !prev) return incoming;
   if (!incoming.id || incoming.id !== prev.id) return incoming;
@@ -2886,6 +2888,8 @@ function mergeSelClientFields(incoming, prev) {
     ...incoming,
     authored: incoming.authored ?? prev.authored,
     computed: incoming.computed ?? prev.computed,
+    customStyles: incoming.customStyles ?? prev.customStyles,
+    attrs: incoming.attrs ?? prev.attrs,
   };
 }
 
@@ -2928,7 +2932,7 @@ function useDsTokens(tokensRel) {
   return t;
 }
 
-function CssKnobs({ el, cfg }) {
+function CssKnobs({ el, cfg, onOptimistic }) {
   const editable = !!el.id;
   const authored = el.authored || {};
   const computed = el.computed || {};
@@ -2948,7 +2952,17 @@ function CssKnobs({ el, cfg }) {
     Advanced: false,
   });
   const [split, setSplit] = useState(false);
-  const [link, setLink] = useState(true);
+
+  // Phase 12.3 — auto-expand Advanced when the selected element carries custom
+  // CSS props / HTML attrs, so a just-added (or pre-existing) custom value is
+  // visible without hunting for the disclosure. Keyed on el.id so it re-runs per
+  // selection (CssKnobs persists across selections — the el prop changes).
+  const hasCustom =
+    (el.customStyles && Object.keys(el.customStyles).length > 0) ||
+    (el.attrs && Object.keys(el.attrs).length > 0);
+  useEffect(() => {
+    if (hasCustom) setOpen((o) => (o.Advanced ? o : { ...o, Advanced: true }));
+  }, [el.id, hasCustom]);
 
   async function post(url, payload, key) {
     setStatus((s) => ({ ...s, [key]: 'saving' }));
@@ -2967,10 +2981,24 @@ function CssKnobs({ el, cfg }) {
       setStatus((s) => ({ ...s, [key]: `err:${err && err.message ? err.message : String(err)}` }));
     }
   }
+  // Optimistic preview: nudge the live element so the change shows before the
+  // edit → HMR reload lands. `value` null = remove (reset path). No-op when the
+  // selection has no stable id (can't be resolved in the canvas).
+  const optimistic = (prop, value) => {
+    if (!onOptimistic || !el.id) return;
+    onOptimistic({
+      id: el.id,
+      artboardId: el.artboardId ?? null,
+      index: el.index ?? 0,
+      prop,
+      value,
+    });
+  };
   const commit = (property, raw) => {
     const value = (raw || '').trim();
     if (!editable || !value) return;
     if (value === (authored[property] ?? '').trim()) return; // no-op
+    optimistic(property, value);
     post('/_api/edit-css', { canvas: el.file, id: el.id, property, value }, property);
   };
   const commitAttr = (attr, raw) => {
@@ -2978,6 +3006,16 @@ function CssKnobs({ el, cfg }) {
     const value = (raw || '').trim();
     if (!editable || !a || !value) return;
     post('/_api/edit-attr', { canvas: el.file, id: el.id, attr: a, value }, `@${a}`);
+  };
+  // Phase 12.3 — reset (remove the inline prop / attr → back to class/inherited).
+  const reset = (property) => {
+    if (!editable) return;
+    optimistic(property, null);
+    post('/_api/edit-css', { canvas: el.file, id: el.id, property, reset: true }, property);
+  };
+  const resetAttr = (attr) => {
+    if (!editable) return;
+    post('/_api/edit-attr', { canvas: el.file, id: el.id, attr, reset: true }, `@${attr}`);
   };
   const provOf = (prop) => {
     const v = authored[prop];
@@ -3017,6 +3055,22 @@ function CssKnobs({ el, cfg }) {
     return null;
   };
 
+  // A small revert affordance — shown only when the prop is authored inline
+  // (i.e. there's something TO reset). Clicking removes the inline value.
+  const resetBtn = (prop) =>
+    authored[prop] ? (
+      <button
+        type="button"
+        className="st-cp-reset"
+        tabIndex={-1}
+        aria-label={`reset ${prop} to original`}
+        title="reset to original"
+        onClick={() => reset(prop)}
+      >
+        ⟲
+      </button>
+    ) : null;
+
   const row = (prop, control, provKind) => (
     <div className="st-cp-row" key={prop}>
       {prov(provKind ?? provOf(prop))}
@@ -3026,26 +3080,86 @@ function CssKnobs({ el, cfg }) {
       <div className="st-cp-ctl">
         {control}
         {fs(prop)}
+        {resetBtn(prop)}
       </div>
     </div>
   );
 
-  const sec = (name, body) => (
-    <section className="st-cp-sec" key={name}>
-      <button
-        type="button"
-        className="st-cp-sechd"
-        aria-expanded={!!open[name]}
-        onClick={() => setOpen((o) => ({ ...o, [name]: !o[name] }))}
-      >
-        <span className="st-cp-caret" aria-hidden="true">
-          {open[name] ? '▾' : '▸'}
-        </span>
-        {name}
-      </button>
-      {open[name] ? body : null}
-    </section>
-  );
+  // Props each section owns — drives the per-section "reset section" affordance.
+  const SECTION_PROPS = {
+    Layout: ['display', 'flex-direction', 'align-items', 'justify-content', 'gap'],
+    Typography: [
+      'font-family',
+      'color',
+      'font-size',
+      'font-weight',
+      'line-height',
+      'letter-spacing',
+      'text-align',
+    ],
+    Spacing: [
+      'margin-top',
+      'margin-right',
+      'margin-bottom',
+      'margin-left',
+      'padding-top',
+      'padding-right',
+      'padding-bottom',
+      'padding-left',
+    ],
+    Size: ['width', 'height', 'max-width'],
+    Appearance: [
+      'background-color',
+      'border-radius',
+      'border-top-left-radius',
+      'border-top-right-radius',
+      'border-bottom-left-radius',
+      'border-bottom-right-radius',
+      'border-width',
+      'border-style',
+      'border-color',
+      'box-shadow',
+      'opacity',
+    ],
+  };
+  const resetSection = (name) => {
+    (SECTION_PROPS[name] || []).forEach((p) => {
+      if (authored[p]) reset(p);
+    });
+  };
+
+  const sec = (name, body) => {
+    const dirty = (SECTION_PROPS[name] || []).some((p) => authored[p]);
+    return (
+      <section className="st-cp-sec" key={name}>
+        <div className="st-cp-sechd-row">
+          <button
+            type="button"
+            className="st-cp-sechd"
+            aria-expanded={!!open[name]}
+            onClick={() => setOpen((o) => ({ ...o, [name]: !o[name] }))}
+          >
+            <span className="st-cp-caret" aria-hidden="true">
+              {open[name] ? '▾' : '▸'}
+            </span>
+            {name}
+          </button>
+          {dirty ? (
+            <button
+              type="button"
+              className="st-cp-secreset"
+              aria-label={`reset ${name} section to original`}
+              title={`reset ${name}`}
+              onClick={() => resetSection(name)}
+            >
+              ⟲
+            </button>
+          ) : null}
+        </div>
+        {open[name] ? body : null}
+      </section>
+    );
+  };
 
   // native <select> committing a CSS value directly
   const csel = (prop, list) => (
@@ -3193,17 +3307,25 @@ function CssKnobs({ el, cfg }) {
     );
   };
 
-  // a box-model side input (margin/padding longhand). Honors the link toggle.
+  // a box-model side input (margin/padding longhand). Phase 12.3 — Webflow-style:
+  // always shows the RESOLVED value (0 instead of blank) and a faint `is-zero`
+  // styling for an unset/zero side. Edits the single side (the old "link all
+  // sides" toggle was removed — DDR-102 Phase 12.3 W1.5).
   const side = (prop, group) => {
-    const isZero = !authored[prop] || authored[prop] === '0' || authored[prop] === 'auto';
+    const a = authored[prop];
+    const shown =
+      a != null && a !== ''
+        ? cssSplitUnit(a).n || a
+        : cssSplitUnit(cssHint(computed[prop]) ?? '').n || '0';
+    const isZero = !a || a === '0' || a === '0px' || a === 'auto';
     return (
       <input
         className={`st-cp-boxv st-cp-boxv--${group[0]}${prop.split('-').pop()[0]}${
           isZero ? ' is-zero' : ''
         }`}
-        key={`${prop}:${authored[prop] ?? ''}`}
+        key={`${prop}:${a ?? ''}`}
         aria-label={prop}
-        defaultValue={authored[prop] ?? cssHint(computed[prop]) ?? ''}
+        defaultValue={shown}
         onKeyDown={(e) => {
           if (e.key === 'Enter') e.currentTarget.blur();
         }}
@@ -3211,13 +3333,7 @@ function CssKnobs({ el, cfg }) {
           const raw = e.currentTarget.value.trim();
           if (!raw) return;
           const val = /[a-z%]/i.test(raw) ? raw : `${raw}px`;
-          if (link) {
-            ['top', 'right', 'bottom', 'left'].forEach((sideName) =>
-              commit(`${group}-${sideName}`, val)
-            );
-          } else {
-            commit(prop, val);
-          }
+          commit(prop, val);
         }}
       />
     );
@@ -3241,6 +3357,11 @@ function CssKnobs({ el, cfg }) {
       />
     </label>
   );
+
+  // Phase 12.3 — authored inline props with no curated row + custom HTML attrs,
+  // surfaced in Advanced so the user can see/edit/remove what they added.
+  const customStyleRows = Object.entries(el.customStyles || {});
+  const attrRows = Object.entries(el.attrs || {});
 
   return (
     <div className="st-cp" key={el.id}>
@@ -3319,20 +3440,6 @@ function CssKnobs({ el, cfg }) {
                 {Math.round(el.bounds?.w || 0)} × {Math.round(el.bounds?.h || 0)}
               </div>
             </div>
-          </div>
-          <div className="st-cp-boxlink">
-            <button
-              type="button"
-              className={`st-cp-linkbtn${link ? ' is-on' : ''}`}
-              aria-pressed={link}
-              onClick={() => setLink((v) => !v)}
-            >
-              <span className="st-cp-linkglyph" aria-hidden="true" />
-              link all sides
-            </button>
-            <span className="st-cp-linkhint">
-              {link ? 'edit one side, update all four' : 'editing each side independently'}
-            </span>
           </div>
         </>
       )}
@@ -3448,10 +3555,82 @@ function CssKnobs({ el, cfg }) {
       {sec(
         'Advanced',
         <div className="st-cp-advbody">
-          <div className="st-cp-advgrp">Custom CSS property</div>
+          {customStyleRows.length ? (
+            <>
+              <div className="st-cp-advgrp">Custom CSS properties</div>
+              {customStyleRows.map(([p, v]) => (
+                <div className="st-cp-kv" key={`cs:${p}`}>
+                  <input
+                    className="st-cp-fin st-cp-fin--ro"
+                    readOnly
+                    value={p}
+                    aria-label={`custom property ${p} name`}
+                  />
+                  <input
+                    className="st-cp-fin"
+                    key={`cs:${p}:${v}`}
+                    defaultValue={v}
+                    aria-label={`${p} value`}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.currentTarget.blur();
+                    }}
+                    onBlur={(e) => commit(p, e.currentTarget.value)}
+                  />
+                  {fs(p)}
+                  <button
+                    type="button"
+                    className="st-cp-reset"
+                    tabIndex={-1}
+                    aria-label={`remove ${p}`}
+                    title="remove"
+                    onClick={() => reset(p)}
+                  >
+                    ⟲
+                  </button>
+                </div>
+              ))}
+            </>
+          ) : null}
+          <div className="st-cp-advgrp">Add CSS property</div>
           <RawKnob commit={commit} />
           <div className="st-cp-note">applied as-is — not token-bound</div>
-          <div className="st-cp-advgrp">Custom HTML attribute</div>
+          {attrRows.length ? (
+            <>
+              <div className="st-cp-advgrp">Custom HTML attributes</div>
+              {attrRows.map(([a, v]) => (
+                <div className="st-cp-kv" key={`at:${a}`}>
+                  <input
+                    className="st-cp-fin st-cp-fin--ro"
+                    readOnly
+                    value={a}
+                    aria-label={`attribute ${a} name`}
+                  />
+                  <input
+                    className="st-cp-fin"
+                    key={`at:${a}:${v}`}
+                    defaultValue={v}
+                    aria-label={`${a} value`}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.currentTarget.blur();
+                    }}
+                    onBlur={(e) => commitAttr(a, e.currentTarget.value)}
+                  />
+                  {fs(`@${a}`)}
+                  <button
+                    type="button"
+                    className="st-cp-reset"
+                    tabIndex={-1}
+                    aria-label={`remove ${a}`}
+                    title="remove"
+                    onClick={() => resetAttr(a)}
+                  >
+                    ⟲
+                  </button>
+                </div>
+              ))}
+            </>
+          ) : null}
+          <div className="st-cp-advgrp">Add HTML attribute</div>
           <AttrKnob commit={commitAttr} />
         </div>
       )}
@@ -3615,7 +3794,71 @@ function LayerRow({ node, depth, selectedId, collapsed, onToggle, onSelect, onHo
   );
 }
 
-function InspectorPanel({ selected, onClose, layersTree, onSelectLayer, onHoverLayer, cfg }) {
+// Phase 12.3 — live computed readout for the Inspect tab (replaces the stale
+// "lands with the live CSS bridge (Phase 12)" callout — that bridge shipped).
+// Reads the resolved values the selection already carries (dom-selection
+// styleMapsFor → el.computed). Read-only; the CSS tab is where you edit.
+function InspectComputed({ el }) {
+  const c = el?.computed || {};
+  const swatch = (val) => (
+    <span
+      className="st-token-swatch"
+      style={{ background: val || 'transparent' }}
+      aria-hidden="true"
+    />
+  );
+  const colorRow = (label, val) =>
+    val ? (
+      <div className="st-insp-row" key={label}>
+        <span className="st-insp-label">{label}</span>
+        <div className="st-swatch-row">
+          {swatch(val)}
+          <span className="st-mono" style={{ fontSize: 11, color: 'var(--fg-1)' }}>
+            {val}
+          </span>
+        </div>
+      </div>
+    ) : null;
+  const textRow = (label, val) =>
+    val ? (
+      <div className="st-insp-row" key={label}>
+        <span className="st-insp-label">{label}</span>
+        <div className="st-insp-fields">
+          <span className="st-mono" style={{ fontSize: 11, color: 'var(--fg-0)' }}>
+            {val}
+          </span>
+        </div>
+      </div>
+    ) : null;
+  const hasRadius = c['border-radius'] && c['border-radius'] !== '0px';
+  const font =
+    c['font-size'] || c['font-weight']
+      ? [c['font-size'], c['font-weight']].filter(Boolean).join(' / ')
+      : null;
+  const anyType = c['background-color'] || c.color || hasRadius || font;
+  if (!anyType) return null;
+  return (
+    <>
+      <div className="st-rp-hd" style={{ marginTop: 4 }}>
+        Computed
+      </div>
+      {colorRow('Fill', c['background-color'])}
+      {colorRow('Text', c.color)}
+      {hasRadius ? textRow('Radius', c['border-radius']) : null}
+      {textRow('Font', font)}
+    </>
+  );
+}
+
+function InspectorPanel({
+  selected,
+  onClose,
+  layersTree,
+  onSelectLayer,
+  onHoverLayer,
+  cfg,
+  onOptimistic,
+}) {
   const [tab, setTab] = useState('inspect');
   const [collapsed, setCollapsed] = useState(() => new Set());
   const toggleCollapse = (key) =>
@@ -3706,9 +3949,7 @@ function InspectorPanel({ selected, onClose, layersTree, onSelectLayer, onHoverL
                 </div>
               </div>
             ) : null}
-            <div className="callout callout--info" style={{ fontSize: 12 }}>
-              Computed fill / radius / type readout lands with the live CSS bridge (Phase 12).
-            </div>
+            <InspectComputed el={el} />
           </>
         ) : tab === 'layers' ? (
           <>
@@ -3746,7 +3987,7 @@ function InspectorPanel({ selected, onClose, layersTree, onSelectLayer, onHoverL
             )}
           </>
         ) : (
-          <CssKnobs el={el} cfg={cfg} />
+          <CssKnobs el={el} cfg={cfg} onOptimistic={onOptimistic} />
         )}
       </div>
     </aside>
@@ -3761,6 +4002,13 @@ function App() {
   const [tabs, setTabs] = useState([]);
   const [activePath, setActivePath] = useState(null);
   const [selected, setSelected] = useState(null);
+  // Phase 12.3 — latest selection, readable from the (stale-closure) onMessage
+  // handler so an HMR reload (triggered by a CSS/attr edit) can re-select the
+  // same element and restore the in-canvas halo the remount dropped.
+  const selectedRef = useRef(null);
+  useEffect(() => {
+    selectedRef.current = selected;
+  }, [selected]);
   // Phase 12 Task 4 — Layers tree for the active artboard (posted by canvas-shell).
   const [layersTree, setLayersTree] = useState(null);
   const [wsConnected, setWsConnected] = useState(false);
@@ -4431,6 +4679,26 @@ function App() {
               el.contentWindow.postMessage({ dgn: 'comment-focus', id: focusedCommentId }, '*');
             } catch {}
           }
+          // Phase 12.3 (W1.1) — an edit-css/edit-attr commit triggers the file
+          // watcher's HMR reload, which remounts the canvas and drops the
+          // in-canvas selection halo. Re-select the same element by its stable
+          // data-cd-id so the user keeps focus on what they're editing. The
+          // canvas-shell `select-by-id` handler re-emits select-set, which keeps
+          // the Inspector panel + halo in sync. Guarded to the active file.
+          const sel = selectedRef.current;
+          if (sel && sel.id && sel.file === m.file) {
+            try {
+              el.contentWindow.postMessage(
+                {
+                  dgn: 'select-by-id',
+                  id: sel.id,
+                  artboardId: sel.artboardId ?? null,
+                  index: sel.index ?? 0,
+                },
+                '*'
+              );
+            } catch {}
+          }
         }
       } else if (m.dgn === 'export-request' && m.id && m.payload) {
         // The export dialog renders inside the canvas iframe (canvas origin),
@@ -4515,6 +4783,22 @@ function App() {
       } catch {}
     }
   }, [activePath]);
+
+  // Phase 12.3 (W1.1) — optimistic inline-style preview. The CSS panel calls this
+  // on commit so the selected element updates instantly in the canvas before the
+  // edit-css → HMR reload lands. `value` null = the reset path (remove the prop).
+  const applyOptimisticStyle = useCallback(
+    (payload) => {
+      if (!activePath || activePath === SYSTEM_TAB) return;
+      const el = iframesRef.current.get(activePath);
+      if (el && el.contentWindow) {
+        try {
+          el.contentWindow.postMessage({ dgn: 'apply-style', ...payload }, '*');
+        } catch {}
+      }
+    },
+    [activePath]
+  );
 
   const resolveComment = useCallback((id) => {
     wsSend({ type: 'comments-patch', id, patch: { status: 'resolved' } });
@@ -4935,6 +5219,7 @@ function App() {
               selected={selected}
               cfg={cfg}
               onClose={() => setInspectorOpen(false)}
+              onOptimistic={applyOptimisticStyle}
               layersTree={layersTree}
               onSelectLayer={(n) =>
                 postToActiveCanvas({

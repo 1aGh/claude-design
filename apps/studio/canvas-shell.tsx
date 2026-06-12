@@ -1471,6 +1471,37 @@ function CanvasRouter({
         );
         return;
       }
+      // Phase 12.3 (W1.1) — optimistic inline-style apply. The CSS panel posts
+      // this on commit so the selected element updates INSTANTLY, before the
+      // edit-css → file-watcher HMR reload re-renders from source. `value` null/
+      // empty removes the property (the reset path). Purely a live-DOM preview;
+      // the authoritative value is whatever the reload renders from source.
+      if (m.dgn === 'apply-style') {
+        const mm = m as {
+          id?: string;
+          artboardId?: string | null;
+          index?: number;
+          prop?: string;
+          value?: string | null;
+        };
+        if (mm.id && mm.prop) {
+          const target = resolveSelectionEl(document, {
+            id: mm.id,
+            artboardId: mm.artboardId,
+            index: mm.index,
+          });
+          if (target) {
+            const style = (target as HTMLElement).style;
+            try {
+              if (mm.value == null || mm.value === '') style.removeProperty(mm.prop);
+              else style.setProperty(mm.prop, mm.value);
+            } catch {
+              /* invalid prop/value — ignore; the reload is the source of truth */
+            }
+          }
+        }
+        return;
+      }
       if (m.dgn === 'request-layers') {
         postLayersTree((m as { artboardId?: string }).artboardId ?? null);
         return;

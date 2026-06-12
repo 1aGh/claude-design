@@ -200,27 +200,52 @@ const KNOB_PROPS = [
   'opacity',
 ] as const;
 
+// Phase 12.3 — HTML attributes the custom-attribute hatch may have written, so a
+// just-added `data-*`/`aria-*`/`role`/`title` round-trips back into a panel row.
+// Excludes the structural ones the panel manages elsewhere (style, class,
+// data-cd-id pipeline anchor, the data-dc-* canvas chrome markers).
+const ATTR_SKIP = /^(style|class|data-cd-id|data-dc-|data-dcid$)/;
+
 function styleMapsFor(el: Element | null): {
   authored: Record<string, string>;
   computed: Record<string, string>;
+  customStyles: Record<string, string>;
+  attrs: Record<string, string>;
 } {
   if (!el || typeof window === 'undefined' || !window.getComputedStyle) {
-    return { authored: {}, computed: {} };
+    return { authored: {}, computed: {}, customStyles: {}, attrs: {} };
   }
   try {
     const inline = (el as HTMLElement).style;
     const cs = window.getComputedStyle(el as HTMLElement);
     const authored: Record<string, string> = {};
     const computed: Record<string, string> = {};
+    const knob = new Set<string>(KNOB_PROPS as readonly string[]);
+    // Curated knob props: authored value (knob pre-fill) + computed (placeholder).
     for (const p of KNOB_PROPS) {
       const a = inline.getPropertyValue(p);
       if (a) authored[p] = a.trim();
       const c = cs.getPropertyValue(p);
       if (c) computed[p] = c.trim();
     }
-    return { authored, computed };
+    // Every OTHER authored inline property → customStyles, so the panel can show
+    // a custom CSS property the user added that no curated row covers.
+    const customStyles: Record<string, string> = {};
+    for (let i = 0; i < inline.length; i++) {
+      const p = inline.item(i);
+      if (!p || knob.has(p)) continue;
+      const v = inline.getPropertyValue(p);
+      if (v) customStyles[p] = v.trim();
+    }
+    // Custom HTML attributes (the escape-hatch surface).
+    const attrs: Record<string, string> = {};
+    for (const a of Array.from((el as HTMLElement).attributes)) {
+      if (ATTR_SKIP.test(a.name)) continue;
+      attrs[a.name] = a.value;
+    }
+    return { authored, computed, customStyles, attrs };
   } catch {
-    return { authored: {}, computed: {} };
+    return { authored: {}, computed: {}, customStyles: {}, attrs: {} };
   }
 }
 

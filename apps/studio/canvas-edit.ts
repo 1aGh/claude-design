@@ -203,6 +203,78 @@ export async function editAttribute(
 }
 
 /**
+ * Remove an attribute (or one inline-style property) from the element with the
+ * given `data-cd-id` — the "reset to original" path (Phase 12.3). `attr` follows
+ * the same shape as `editAttribute`: `style.<camelOrKebab>` removes one inline
+ * style key (dropping the whole `style={{}}` when it was the last key); any other
+ * name removes that plain JSX attribute. A missing key/attribute is a no-op
+ * (delta 0), never an error. Same atomic write + per-file lock as `editAttribute`.
+ */
+export async function removeAttribute(
+  canvasAbsPath: string,
+  id: string,
+  attr: string
+): Promise<EditResult> {
+  return withLock(canvasAbsPath, async () => {
+    const file = Bun.file(canvasAbsPath);
+    if (!(await file.exists())) {
+      throw new CanvasEditError(`Canvas not found: ${canvasAbsPath}`, {
+        canvas: canvasAbsPath,
+        id,
+      });
+    }
+    const source = await file.text();
+    const next = applyRemove(canvasAbsPath, source, id, attr);
+    if (next.source === source) return { source, delta: 0 };
+    const tmp = `${canvasAbsPath}.tmp.${Math.random().toString(36).slice(2, 10)}`;
+    await Bun.write(tmp, next.source);
+    const { rename } = await import('node:fs/promises');
+    await rename(tmp, canvasAbsPath);
+    return next;
+  });
+}
+
+/** Pure variant of `removeAttribute` — exposed for tests. */
+export function applyRemove(
+  canvasAbsPath: string,
+  source: string,
+  id: string,
+  attr: string
+): EditResult {
+  const parsed = parseSync(canvasAbsPath, source, { sourceType: 'module' });
+  if (parsed.errors && parsed.errors.length > 0) {
+    const first = parsed.errors[0];
+    throw new CanvasEditError(
+      `oxc-parser failed on ${canvasAbsPath}: ${first?.message ?? 'unknown'}`,
+      {
+        canvas: canvasAbsPath,
+        id,
+      }
+    );
+  }
+  const hit = findOpening(parsed.program, id);
+  if (!hit) {
+    throw new CanvasEditError(`data-cd-id "${id}" not found in ${canvasAbsPath}`, {
+      canvas: canvasAbsPath,
+      id,
+    });
+  }
+  const s = new MagicString(source);
+  if (attr.startsWith('style.')) {
+    removeStyleProp(s, hit.opening, attr.slice('style.'.length), source);
+  } else if (attr === 'data-cd-id') {
+    throw new CanvasEditError('data-cd-id is owned by the pipeline; cannot be removed', {
+      canvas: canvasAbsPath,
+      id,
+    });
+  } else {
+    removeStringAttr(s, hit.opening, attr, source);
+  }
+  const out = s.toString();
+  return { source: out, delta: out.length - source.length };
+}
+
+/**
  * Apply an inline TEXT-content edit to the JSX element with the given
  * `data-cd-id`. Leaf-text only: the element's children must be exactly one
  * `JSXText` node (whitespace-only siblings are ignored). Mixed/expression
@@ -468,6 +540,63 @@ function editStyleProp(
   s.appendLeft(obj.end - 1, `${sep}${jsKey(prop)}: ${value} `);
   // Suppress unused-var lint without bypassing TS:
   void tail;
+}
+
+/**
+ * Remove a single inline-style property (the "reset to original" path — DDR-102
+ * Phase 12.3). No-op when the style attribute or the key is absent. When the key
+ * was the object's ONLY property, the whole `style={{…}}` attribute is removed so
+ * we don't leave an empty `style={{}}` behind.
+ */
+function removeStyleProp(s: MagicString, opening: AnyNode, prop: string, source: string): boolean {
+  const attr = findAttribute(opening, 'style');
+  if (!attr) return false;
+  const v = attr.value;
+  if (v?.type !== 'JSXExpressionContainer') return false;
+  const obj = v.expression;
+  if (obj?.type !== 'ObjectExpression') return false;
+  const props = (obj.properties as AnyNode[]).filter(
+    (p) => p?.type === 'Property' || p?.type === 'ObjectProperty'
+  );
+  const propCamel = prop.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+  const idx = props.findIndex((p) => {
+    const k = p.key;
+    const kname =
+      k?.type === 'Identifier' ? k.name : k?.type === 'Literal' ? String(k.value) : null;
+    return kname === prop || kname === propCamel;
+  });
+  if (idx === -1) return false;
+
+  // Only property → drop the whole `style={{…}}` attribute (plus the leading space).
+  if (props.length === 1) {
+    const start = source[attr.start - 1] === ' ' ? attr.start - 1 : attr.start;
+    s.remove(start, attr.end);
+    return true;
+  }
+  // Otherwise remove the one property + one adjacent comma/whitespace run so the
+  // remaining object stays well-formed: consume forward to the next prop's start
+  // (eats the trailing `, `), or — for the last prop — backward from the previous
+  // prop's end (eats the leading `, `).
+  const target = props[idx];
+  if (idx < props.length - 1) {
+    s.remove(target.start as number, props[idx + 1].start as number);
+  } else {
+    s.remove(props[idx - 1].end as number, target.end as number);
+  }
+  return true;
+}
+
+/**
+ * Remove a plain JSX attribute (the custom-attribute "reset" path). No-op when
+ * absent. Refuses `data-cd-id` / `style` (pipeline-owned / wrong endpoint).
+ */
+function removeStringAttr(s: MagicString, opening: AnyNode, name: string, source: string): boolean {
+  if (name === 'data-cd-id' || name === 'style') return false;
+  const attr = findAttribute(opening, name);
+  if (!attr) return false;
+  const start = source[attr.start - 1] === ' ' ? attr.start - 1 : attr.start;
+  s.remove(start, attr.end);
+  return true;
 }
 
 /**

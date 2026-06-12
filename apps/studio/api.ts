@@ -7,7 +7,12 @@ import { mkdir, readdir, readFile, rename, stat as statp } from 'node:fs/promise
 import path from 'node:path';
 
 import { renderBriefBoard, validateCanvasName } from './canvas-create.ts';
-import { CanvasEditError, editAttribute, editText as runEditText } from './canvas-edit.ts';
+import {
+  CanvasEditError,
+  editAttribute,
+  removeAttribute,
+  editText as runEditText,
+} from './canvas-edit.ts';
 import type { Context } from './context.ts';
 
 const SKIP_DIRS = new Set([
@@ -1192,6 +1197,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     id?: unknown;
     property?: unknown;
     value?: unknown;
+    reset?: unknown;
   }): Promise<EditOpResult> {
     const r = resolveCanvasAbs(input.canvas);
     if (!r.ok) return r;
@@ -1204,14 +1210,29 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     if (!property || !/^-?[a-z][a-z-]*$/.test(property)) {
       return { ok: false, status: 400, error: 'invalid css property' };
     }
+    // kebab → camelCase JSX style key.
+    const camel = property.replace(/-([a-z])/g, (_m, c: string) => c.toUpperCase());
+    // Phase 12.3 — `reset: true` REMOVES the inline property (back to class /
+    // inherited). No value needed; a missing key is a no-op (delta 0).
+    if (input.reset === true) {
+      try {
+        const res = await removeAttribute(r.abs, id, `style.${camel}`);
+        return { ok: true, delta: res.delta };
+      } catch (err) {
+        return {
+          ok: false,
+          status: 422,
+          error: err instanceof CanvasEditError ? err.message : 'reset failed',
+        };
+      }
+    }
     const value = typeof input.value === 'string' ? input.value : '';
     if (!value.trim()) return { ok: false, status: 400, error: 'value required' };
     if (value.length > 256) return { ok: false, status: 413, error: 'value too long' };
-    // kebab → camelCase JSX style key. The value is always written as a JS STRING
-    // literal: JSON.stringify escapes quotes/backslashes/newlines so it can never
-    // break out of the string, and React accepts string values for every style
-    // prop — so `var(--accent)`, `#fff`, `8px`, `700`, `1.5` all ride verbatim.
-    const camel = property.replace(/-([a-z])/g, (_m, c: string) => c.toUpperCase());
+    // The value is always written as a JS STRING literal: JSON.stringify escapes
+    // quotes/backslashes/newlines so it can never break out of the string, and
+    // React accepts string values for every style prop — so `var(--accent)`,
+    // `#fff`, `8px`, `700`, `1.5` all ride verbatim.
     try {
       const res = await editAttribute(r.abs, id, `style.${camel}`, JSON.stringify(value));
       return { ok: true, delta: res.delta };
@@ -1252,6 +1273,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     id?: unknown;
     attr?: unknown;
     value?: unknown;
+    reset?: unknown;
   }): Promise<EditOpResult> {
     const r = resolveCanvasAbs(input.canvas);
     if (!r.ok) return r;
@@ -1269,6 +1291,19 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       attr.startsWith('style')
     ) {
       return { ok: false, status: 400, error: 'invalid attribute' };
+    }
+    // Phase 12.3 — `reset: true` REMOVES the custom attribute. No-op if absent.
+    if (input.reset === true) {
+      try {
+        const res = await removeAttribute(r.abs, id, attr);
+        return { ok: true, delta: res.delta };
+      } catch (err) {
+        return {
+          ok: false,
+          status: 422,
+          error: err instanceof CanvasEditError ? err.message : 'reset failed',
+        };
+      }
     }
     const value = typeof input.value === 'string' ? input.value : '';
     if (!value.trim()) return { ok: false, status: 400, error: 'value required' };

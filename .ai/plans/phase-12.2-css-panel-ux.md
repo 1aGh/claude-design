@@ -174,6 +174,28 @@ This is a maude-DS surface. Per the project's own loop, **design the panel as a 
 
 ---
 
+## Phase 12.3 — live-testing feedback round 2 (2026-06-12)
+
+User tested the ported panel on their live `pnpm dev` (:4555) and gave a 12-item batch. Captured here so nothing is lost; executed in waves (visible-win + correctness first, big interaction primitives later). Each item maps to a checkbox.
+
+**Wave 1 — correctness + quick wins (in progress):**
+- [ ] **W1.1 (#1) Selection survives an edit.** Committing a CSS/attr value triggers the file-watcher HMR reload, which remounts the canvas and drops the in-canvas selection halo (panel stays connected, element no longer selected). Add: (a) **optimistic inline apply** — on commit, post the new prop to the iframe so the element updates instantly; (b) **reselect-after-reload** — on the iframe's `dgn:'loaded'`, re-post `select-by-id` with the live `selected.{id,artboardId,index}` to restore the halo.
+- [ ] **W1.2 (#11) Custom CSS props + HTML attrs are written but invisible in the panel.** `styleMapsFor` only reads the 14 `KNOB_PROPS` → an authored prop outside that set (or a custom HTML attr) never round-trips into a row. Read ALL inline style props + collect non-style attributes (`data-*`/`aria-*`/`role`/`title`/…) into the selection; render authored-but-uncurated props + custom attrs as their own rows.
+- [ ] **W1.3 (#4) Stale Inspect disclaimer.** `InspectorPanel` Inspect tab still shows "Computed fill / radius / type readout lands with the live CSS bridge (Phase 12)" — Phase 12 shipped. Replace the callout with the real computed fill / radius / type readout (mirror `Studio.tsx` `[data-dc-screen="handoff"]` Inspect mock).
+- [ ] **W1.4 (#2) Reset to original.** Per-row reset (× / revert) that DELETES the inline prop (back to class/inherited) + per-section reset (e.g. Layout). Needs a new delete path in `editStyleProp` (remove the property node) + `editStringAttr` (remove the attribute) wired through `/_api/edit-css` + `/_api/edit-attr` with a `reset` flag. Add canvas-edit tests.
+- [ ] **W1.5 (#10) Remove the "link all sides" button** + the `link` state (Webflow replaces it with alt-drag, W2). Default to per-side editing.
+- [ ] **W1.6 (#9a) Spacing shows 0 / resolved values** (Webflow-style filled box, screenshot #13) instead of blank when a side is unset.
+
+**Wave 2 — Figma/Webflow interaction primitives:**
+- [ ] **W2.1 (#3) Token picker as a popover, not a `<select>` dropdown.** Color → Figma-style popover (swatch grid grouped by family + hex field, screenshots #8/#9); number → variable popover grouped by family (#10/#15). Replace the `tok()` native-select.
+- [ ] **W2.2 (#8/#9) Scrub-to-change on number inputs.** Mouse-down on the prefix icon / field and drag left-right to dec/inc (Figma/Webflow). Webflow modifiers on spacing: `alt+drag` symmetric block/inline pair, `alt+shift+drag` all four.
+- [ ] **W2.3 (#7) Panel visual polish** toward the Figma right-panel density/grouping (screenshot #12).
+
+**Wave 3 — Layers:**
+- [ ] **W3.1 (#6) Finish the Layers panel** per the `Studio.tsx` `[data-dc-screen="annotate"]` design (tree rows, eye toggles, type tags, indent).
+
+> Server reality for testing: `pnpm dev` = `bun run apps/studio/server.ts --port 4555`; it does NOT watch `client/app.jsx`. After each wave, rebuild `dist/client.bundle.js` release-minified (`MAUDE_SKIP_RUNTIME_BUILD=1 bun run build.ts --release`) and the user hard-reloads :4555. Whatever's committed ships, so the committed bundle must always be the release artifact.
+
 ## Notes
 - The current `CssKnobs` (`app.jsx:2878`) stays as the functional fallback until this lands; a quick stopgap (full-width inputs + fix callout) is already largely in place per the reconciliation table.
 - Write path is DONE: `editAttribute` `style.<prop>` merge + `POST /_api/edit-css` (live-verified, DDR-101). `editAttribute`'s non-`style.` path already supports the custom-HTML-attribute hatch. This plan touches only the client panel (+ the optional, deferred `GET /_api/canvas-style` AST read if DOM-authored proves stale).

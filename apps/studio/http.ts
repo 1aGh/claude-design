@@ -683,6 +683,7 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
         id?: unknown;
         property?: unknown;
         value?: unknown;
+        reset?: unknown;
       }>(req, 8 * 1024);
       if (!body) return new Response('body required', { status: 400 });
       const result = await api.editCss(body);
@@ -740,6 +741,7 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
         id?: unknown;
         attr?: unknown;
         value?: unknown;
+        reset?: unknown;
       }>(req, 8 * 1024);
       if (!body) return new Response('body required', { status: 400 });
       const result = await api.editAttr(body);
