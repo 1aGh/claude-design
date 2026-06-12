@@ -11,31 +11,45 @@
       "surface": "design-ui",
       "tour": [
         {
-          "target": ".st-rp-tabs",
+          "target": "[data-tour='inspector-tabs']",
+          "inspector": true,
+          "tab": "css",
           "title": "Inspect · Layers · CSS",
-          "body": "⌘-click an element, open the right panel (press I), and switch to CSS. The panel reads and writes the maude design system itself — not a generic :root.",
+          "body": "Here's the Inspector — opened to its CSS tab. It reads and writes your maude design system itself, not a generic :root. Three tabs: Inspect, Layers, CSS.",
+          "placement": "left"
+        },
+        {
+          "target": "[data-tour='css-panel']",
+          "inspector": true,
+          "tab": "css",
+          "requireSelection": true,
+          "title": "Your real element, live",
+          "body": "Hold ⌘ and click any element in the canvas. The CSS panel fills with its real, editable properties — and every change writes back to the source on blur, no AI round-trip.",
           "placement": "left"
         },
         {
           "target": ".st-cp-row",
+          "inspector": true,
+          "tab": "css",
+          "requireSelection": true,
           "title": "Figma-style property rows",
-          "body": "Each row leads with a property glyph. Drag a numeric field left or right to scrub the value, or just type it; spacing fields accept Webflow-style modifiers. Edits commit on blur and write back to the source.",
+          "body": "Each row leads with a property glyph. Drag a numeric field left or right to scrub the value, or just type it; spacing fields accept Webflow-style modifiers.",
           "placement": "left"
         },
         {
-          "target": ".st-cp-tokbtn-glyph",
+          "target": ".st-cp-tokbtn",
+          "inspector": true,
+          "tab": "css",
+          "requireSelection": true,
           "title": "Bind to a design token",
-          "body": "Click a field's token chip to open the Variables popover — Custom for a literal value, Variables for the design system's tokens. Search to filter the list; each Variable shows its provenance, so you know exactly where it's defined.",
-          "placement": "left"
-        },
-        {
-          "target": ".st-css-panel",
-          "title": "One colour picker, everywhere",
-          "body": "Every colour field — fill and border — opens the same unified picker, with a Custom SV/hue surface and a Variables tab. No more two competing popovers.",
+          "body": "Click a field's token chip for the Variables popover — Custom for a literal, Variables for the design system's tokens. Search the list; each Variable shows its provenance. One unified colour picker drives every colour field, fill and border alike.",
           "placement": "left"
         },
         {
           "target": ".st-cp-sechd-row",
+          "inspector": true,
+          "tab": "css",
+          "requireSelection": true,
           "title": "Scannable, resettable",
           "body": "Values you've set stand out; untouched rows recede so the difference from the default reads at a glance. The leading dot on each row carries both its status and its reset.",
           "placement": "left"
@@ -52,15 +66,21 @@
       "surface": "design-ui",
       "tour": [
         {
-          "target": ".st-layer-label",
+          "target": "[data-tour='inspector-tabs']",
+          "inspector": true,
+          "tab": "layers",
+          "requireSelection": true,
           "title": "Browsable layers",
-          "body": "The Layers tab lists the artboard's elements with type icons — click one to select it in the canvas, hover to highlight.",
+          "body": "⌘-click an element, then this Layers tab shows the artboard's elements as a tree with type icons — click a row to select it in the canvas, hover to highlight.",
           "placement": "left"
         },
         {
           "target": ".st-layer-eye",
+          "inspector": true,
+          "tab": "layers",
+          "requireSelection": true,
           "title": "Toggle visibility",
-          "body": "The eye on each layer row hides or shows that element while you work — handy for seeing what sits underneath.",
+          "body": "The eye on each layer row hides or shows that element while you work — handy for seeing what sits underneath. Double-click any text in the canvas to retype it in place too.",
           "placement": "left"
         }
       ]
@@ -75,14 +95,17 @@
       "surface": "design-ui",
       "tour": [
         {
-          "target": ".st-mb-right",
+          "target": "[data-tour='status']",
           "title": "Live status, finally",
-          "body": "Zoom, artboard count, presence and hub-sync now reflect the real state — no more static placeholders."
+          "body": "Zoom, artboard count, presence and hub-sync now reflect the real state — no more static placeholders.",
+          "placement": "bottom"
         },
         {
-          "target": ".st-rpanel",
+          "target": "[data-tour='inspector']",
+          "inspector": true,
           "title": "Inspector",
-          "body": "⌘-click an element in the canvas, then press I — pos, size, ancestry and markup, read-only (live CSS knobs land in Phase 12)."
+          "body": "Opened from View → Inspector (I). ⌘-click an element to read its position, size, ancestry and markup — and now edit its CSS against your tokens, live.",
+          "placement": "left"
         }
       ]
     },
@@ -105,14 +128,16 @@
       "surface": "design-ui",
       "tour": [
         {
-          "target": ".st-menubar .st-brand",
+          "target": "[data-tour='brand']",
           "title": "Built in maude",
-          "body": "The studio chrome now dogfoods the maude DS — one cohesive material across the menubar, sidebar, canvas and status bar."
+          "body": "The studio chrome now dogfoods the maude DS — one cohesive material across the menubar, sidebar, canvas and status bar.",
+          "placement": "bottom"
         },
         {
-          "target": ".st-menubar .st-whatsnew",
+          "target": "[data-tour='menus']",
           "title": "Press ⌘K",
-          "body": "A new command palette jumps you to the design-system view, comments, theme toggle, reload, and help — no mouse needed."
+          "body": "A command palette jumps you to the design-system view, comments, theme toggle, reload, and help — no mouse needed.",
+          "placement": "bottom"
         }
       ]
     },
@@ -126,9 +151,11 @@
       "surface": "design-ui",
       "tour": [
         {
-          "target": ".dc-tool-palette button[aria-label^='Highlighter']",
+          "target": "[data-tour='viewport']",
+          "canvas": true,
           "title": "New: Highlighter",
-          "body": "A translucent marker pen (I) — overlapping strokes darken with multiply blend. Pick hue and nib width from the chrome below."
+          "body": "Open a canvas and press P to enter annotate mode, then pick the Highlighter from the toolbar — a translucent marker whose overlapping strokes darken with multiply blend. Sticky notes, shapes and text all take Cmd+B/I/U too.",
+          "placement": "auto"
         }
       ]
     },

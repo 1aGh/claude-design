@@ -1353,6 +1353,45 @@
   color: var(--u-fg-2);
   margin-bottom: 14px;
 }
+/* "Do this one thing" hint — shown when a step needs a canvas open or an element
+   ⌘-clicked (the cross-origin canvas means the tour can't do it for you). */
+.mdcc-tour__hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -4px 0 14px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: color-mix(in oklab, var(--u-accent) 12%, transparent);
+  border: 1px solid color-mix(in oklab, var(--u-accent) 35%, transparent);
+  color: var(--u-fg-1);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.mdcc-tour__hint-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--u-accent);
+  animation: mdcc-tour-pulse 1.4s ease-in-out infinite;
+}
+@keyframes mdcc-tour-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mdcc-tour__hint-dot {
+    animation: none;
+  }
+}
 .mdcc-tour__actions {
   display: flex;
   align-items: center;

@@ -1291,7 +1291,7 @@ function Sidebar({
   }, [filteredGroups]);
 
   return (
-    <nav className={'st-sidebar' + (collapsed ? ' is-collapsed' : '')} aria-label="Files">
+    <nav className={'st-sidebar' + (collapsed ? ' is-collapsed' : '')} aria-label="Files" data-tour="sidebar">
       <div className="st-sb-hd">
         <span className="st-sb-title">Files</span>
         <div className="st-sb-hd-actions">
@@ -2096,13 +2096,13 @@ function Menubar({
 
   return (
     <header className="st-menubar" role="menubar" aria-label="Application menubar">
-      <span className="st-brand">
+      <span className="st-brand" data-tour="brand">
         <span className="st-brand-mark">
           <svg viewBox="0 0 32 32" width="100%" height="100%" fill="none" aria-hidden="true"><path d="M16 5l2.8 8.2L27 16l-8.2 2.8L16 27l-2.8-8.2L5 16l8.2-2.8z" fill="currentColor" /></svg>
         </span>
         <span className="st-brand-name">maude</span>
       </span>
-      <nav className="st-menus" aria-label="Application menus">
+      <nav className="st-menus" aria-label="Application menus" data-tour="menus">
         {MENU_NAMES.map((name) => {
           const key = name.toLowerCase();
           const hasDropdown = DROPDOWN_MENUS.includes(key);
@@ -2181,11 +2181,12 @@ function Menubar({
           onClose={() => setOpenMenu(null)}
         />
       )}
-      <div className="st-mb-right">
+      <div className="st-mb-right" data-tour="status">
         {presence ? <div className="st-presence">{presence}</div> : null}
         <button
           type="button"
           className="st-whatsnew"
+          data-tour="whatsnew"
           data-unseen={whatsNewCount > 0 ? 'true' : 'false'}
           aria-label={`What's new${whatsNewCount > 0 ? ` — ${whatsNewCount} unseen` : ''}`}
           title="What's new"
@@ -2220,7 +2221,7 @@ function Viewport({
   cfg,
 }) {
   return (
-    <div className="viewport st-stage">
+    <div className="viewport st-stage" data-tour="viewport">
       {tabs.length === 0 && (
         <div className="st-empty">
           <div className="st-empty-brand">
@@ -4107,7 +4108,7 @@ function CssKnobs({ el, cfg, onOptimistic }) {
   const attrRows = Object.entries(attrs);
 
   return (
-    <div className="st-cp" key={el.id}>
+    <div className="st-cp" key={el.id} data-tour="css-panel">
       <div className="st-cp-id">
         <span className="st-cp-idtag">
           {el.tag || 'element'}
@@ -4653,8 +4654,19 @@ function InspectorPanel({
   onHoverLayer,
   cfg,
   onOptimistic,
+  tab: tabProp,
+  onTabChange,
 }) {
-  const [tab, setTab] = useState('inspect');
+  // Tab is controllable from the parent (the guided tour drives it to 'css' /
+  // 'layers' so a spotlight step lands on a real row) but falls back to local
+  // state for normal use. A user click both updates local state and notifies the
+  // parent, so the two stay in lockstep whichever owns it.
+  const [tabState, setTabState] = useState('inspect');
+  const tab = tabProp ?? tabState;
+  const setTab = (t) => {
+    setTabState(t);
+    onTabChange?.(t);
+  };
   const [collapsed, setCollapsed] = useState(() => new Set());
   // Phase 12.3 (W3.1) — per-layer visibility toggle. Live-only (display:none via
   // the optimistic apply bus); not persisted to source. Keyed by `${id}:${index}`.
@@ -4697,8 +4709,8 @@ function InspectorPanel({
   );
   const b = el?.bounds || null;
   return (
-    <aside className="st-rpanel" aria-label="Inspector">
-      <div className="st-rp-tabs">
+    <aside className="st-rpanel" aria-label="Inspector" data-tour="inspector">
+      <div className="st-rp-tabs" data-tour="inspector-tabs">
         {tabBtn('inspect', 'Inspect', 'sliders')}
         {tabBtn('layers', 'Layers', 'layers')}
         {tabBtn('css', 'CSS', 'code')}
@@ -4912,6 +4924,30 @@ function App() {
   const startTour = useCallback((steps) => {
     setTourSteps(Array.isArray(steps) && steps.length ? steps : null);
   }, []);
+  // Inspector tab is lifted so the guided tour can drive it (a 'css'/'layers'
+  // step needs the right tab open for its target to render). InspectorPanel still
+  // owns its own state when uncontrolled; here we control it.
+  const [inspectorTab, setInspectorTab] = useState('inspect');
+  // Guided-tour bus — the overlay calls setup() before each step to put the shell
+  // into the state the step spotlights: open a canvas, open the Inspector, switch
+  // its tab. The canvas iframe is cross-origin (DDR-054) so the tour can't select
+  // an element for the user; requireSelection steps instead wait for a real
+  // ⌘-click. Plain object (the overlay refs it), so per-render churn is harmless.
+  const tourBus = {
+    setup: (step) => {
+      if (!step) return;
+      if ((step.canvas || step.requireSelection) && tabs.length === 0) {
+        setSidebarOpen(true);
+        setTimeout(() => {
+          try {
+            document.querySelector('.st-sidebar [role="treeitem"]')?.click();
+          } catch {}
+        }, 80);
+      }
+      if (step.inspector || step.tab || step.requireSelection) setInspectorOpen(true);
+      if (step.tab) setInspectorTab(step.tab);
+    },
+  };
   const markUsageSeen = useCallback(() => {
     setUsageNudge(false);
     try {
@@ -6035,6 +6071,8 @@ function App() {
             <InspectorPanel
               selected={selected}
               cfg={cfg}
+              tab={inspectorTab}
+              onTabChange={setInspectorTab}
               onClose={() => setInspectorOpen(false)}
               onOptimistic={applyOptimisticStyle}
               layersTree={layersTree}
@@ -6132,6 +6170,9 @@ function App() {
         open={!!tourSteps}
         onClose={() => setTourSteps(null)}
         onComplete={markUsageSeen}
+        bus={tourBus}
+        hasSelection={!!selected}
+        hasCanvas={tabs.length > 0}
       />
     </div>
   );

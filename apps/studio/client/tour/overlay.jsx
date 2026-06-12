@@ -1,10 +1,23 @@
 // overlay.jsx — hand-rolled guided-tour engine (zero runtime dep, DDR-B).
 //
-// One <TourOverlay steps={[…]} open onClose onComplete/> drives both the
-// per-feature spotlight tours (a What's New entry's `tour[]`) and the evergreen
-// usage tour. A step = { target (CSS selector / [data-tour] anchor), title,
-// body, placement? }. A step whose target can't be resolved still shows, just
-// centered with no spotlight — the tour never dead-ends on a missing element.
+// One <TourOverlay steps={[…]} open onClose onComplete bus hasSelection hasCanvas/>
+// drives both the per-feature spotlight tours (a What's New entry's `tour[]`) and
+// the evergreen usage tour.
+//
+// A step is { target, title, body, placement?, ...setup }. The engine does more
+// than spotlight: before each step it puts the shell into the state the target
+// needs, then waits for the element to actually render before measuring — so the
+// tour *walks the user through the live feature* instead of floating a modal over
+// a missing element. Setup directives (all optional):
+//   canvas: true            → ensure a canvas is open (bus.setup opens the first)
+//   inspector: true         → open the right-hand Inspector
+//   tab: 'inspect'|'layers'|'css'  → switch the Inspector tab
+//   requireSelection: true  → the target only exists once an element is ⌘-clicked
+//                             in the canvas; the card shows a "⌘-click to continue"
+//                             hint and the spotlight snaps onto the real row the
+//                             moment a selection lands.
+// A step whose target still can't be resolved shows centered (no spotlight) — the
+// tour never dead-ends on a missing element.
 //
 // A11y: role="dialog" + aria-modal, focus moves to the primary button on each
 // step and is trapped within the card, focus is restored on close, Esc skips,
@@ -26,7 +39,7 @@ function getRect(target) {
 }
 
 const CARD_W = 320;
-const CARD_H_EST = 168;
+const CARD_H_EST = 184;
 
 function computeCardStyle(rect) {
   if (typeof window === 'undefined' || !rect) {
@@ -34,6 +47,13 @@ function computeCardStyle(rect) {
   }
   const vw = window.innerWidth;
   const vh = window.innerHeight;
+  const placeLeft = rect.left > CARD_W + 36 && vw - rect.right < CARD_W + 36;
+  if (placeLeft) {
+    // Panel-on-the-right targets (the Inspector): park the card to its left so it
+    // never covers the very thing it's pointing at.
+    const top = Math.min(Math.max(12, rect.top), vh - CARD_H_EST - 12);
+    return { top, left: Math.max(12, rect.left - CARD_W - 16), width: CARD_W };
+  }
   const roomBelow = vh - rect.bottom;
   const top =
     roomBelow > CARD_H_EST + 24 ? rect.bottom + 12 : Math.max(12, rect.top - CARD_H_EST - 12);
@@ -41,29 +61,84 @@ function computeCardStyle(rect) {
   return { top, left, width: CARD_W };
 }
 
-export function TourOverlay({ steps, open, onClose, onComplete }) {
+export function TourOverlay({ steps, open, onClose, onComplete, bus, hasSelection, hasCanvas }) {
   const [i, setI] = useState(0);
   const [rect, setRect] = useState(null);
   const cardRef = useRef(null);
   const prevFocus = useRef(null);
+  const pollRef = useRef(null);
+  // The bus is rebuilt by the parent on every render; ref it so its identity
+  // churn never re-triggers the per-step setup effect (which would thrash).
+  const busRef = useRef(bus);
+  busRef.current = bus;
+
+  const step = steps[i] || null;
 
   const measure = useCallback(() => {
-    const step = steps[i];
-    setRect(step ? getRect(step.target) : null);
-  }, [steps, i]);
+    if (!step) {
+      setRect(null);
+      return null;
+    }
+    const r = getRect(step.target);
+    setRect(r);
+    return r;
+  }, [step]);
 
   // Reset to the first step whenever a tour (re)opens.
   useEffect(() => {
     if (open) setI(0);
   }, [open]);
 
+  // Per-step: run the step's setup (open canvas / inspector / switch tab), then
+  // poll for the target to render before settling on a measurement. React state
+  // updates + the canvas-shell round-trip are async, so a single synchronous
+  // querySelector almost always misses on the first frame.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-run only on step/selection change; bus + measure reached via ref/stable closures on purpose.
   useLayoutEffect(() => {
-    if (open) measure();
-  }, [open, measure]);
+    if (!open || !step) return undefined;
+    let cancelled = false;
+    setRect(null);
+
+    // Establish the UI state this step wants to highlight.
+    try {
+      busRef.current?.setup?.(step);
+    } catch {}
+
+    let tries = 0;
+    const MAX = 24; // ~3s at 130ms
+    const tick = () => {
+      if (cancelled) return;
+      const r = measure();
+      const settled = r || tries >= MAX;
+      if (settled) {
+        if (r) {
+          try {
+            document.querySelector(step.target)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+          } catch {}
+          // Re-measure after the scroll so the spotlight is glued post-layout.
+          requestAnimationFrame(() => {
+            if (!cancelled) measure();
+          });
+        }
+        return;
+      }
+      tries += 1;
+      pollRef.current = setTimeout(tick, 130);
+    };
+    tick();
+
+    return () => {
+      cancelled = true;
+      if (pollRef.current) clearTimeout(pollRef.current);
+    };
+    // Re-run when the step changes OR a selection arrives (a requireSelection
+    // target pops into existence the moment the user ⌘-clicks). `bus`/`measure`
+    // are reached through refs/stable closures to avoid identity-churn re-runs.
+  }, [open, i, hasSelection]);
 
   // Keep the spotlight glued to its target through scroll/resize; restore focus.
   useEffect(() => {
-    if (!open) return;
+    if (!open) return undefined;
     prevFocus.current = document.activeElement;
     const onMove = () => measure();
     window.addEventListener('resize', onMove);
@@ -90,7 +165,7 @@ export function TourOverlay({ steps, open, onClose, onComplete }) {
 
   // Keyboard: Esc skips, ←/→ navigate, Tab is trapped within the card buttons.
   useEffect(() => {
-    if (!open) return;
+    if (!open) return undefined;
     function onKey(e) {
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -123,7 +198,7 @@ export function TourOverlay({ steps, open, onClose, onComplete }) {
 
   // Move focus to the primary action on each step (accessible dialog behavior).
   useEffect(() => {
-    if (!open) return;
+    if (!open) return undefined;
     const t = setTimeout(() => {
       const primary = cardRef.current?.querySelector('[data-tour-primary]');
       try {
@@ -133,8 +208,7 @@ export function TourOverlay({ steps, open, onClose, onComplete }) {
     return () => clearTimeout(t);
   }, [open, i]);
 
-  if (!open || !steps.length) return null;
-  const step = steps[i];
+  if (!open || !steps.length || !step) return null;
   const pad = 6;
   const spot = rect
     ? {
@@ -144,6 +218,12 @@ export function TourOverlay({ steps, open, onClose, onComplete }) {
         height: rect.height + pad * 2,
       }
     : null;
+
+  // A requireSelection step whose target hasn't materialized yet: tell the user
+  // the one action only they can take (the canvas iframe is cross-origin, so the
+  // tour can't ⌘-click for them — DDR-054).
+  const needSelHint = !!step.requireSelection && !hasSelection;
+  const needCanvasHint = (!!step.canvas || !!step.requireSelection) && hasCanvas === false;
 
   return (
     <div className="mdcc-tour" role="presentation">
@@ -170,6 +250,14 @@ export function TourOverlay({ steps, open, onClose, onComplete }) {
         <div className="mdcc-tour__body" id="mdcc-tour-body">
           {step.body}
         </div>
+        {(needCanvasHint || needSelHint) && (
+          <div className="mdcc-tour__hint" role="status" aria-live="polite">
+            <span className="mdcc-tour__hint-dot" aria-hidden="true" />
+            {needCanvasHint
+              ? 'Open any canvas from the sidebar to follow along.'
+              : 'Hold ⌘ and click an element in the canvas — the panel fills in live.'}
+          </div>
+        )}
         <div className="mdcc-tour__actions">
           <button type="button" className="mdcc-tour__skip" onClick={onClose}>
             Skip

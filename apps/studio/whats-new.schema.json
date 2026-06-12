@@ -59,11 +59,27 @@
       "properties": {
         "target": {
           "type": "string",
-          "description": "CSS selector or [data-tour=\"<key>\"] anchor to spotlight."
+          "description": "CSS selector or [data-tour=\"<key>\"] anchor to spotlight. Prefer the stable [data-tour] anchors over styling classes (which churn on redesigns)."
         },
         "title": { "type": "string", "minLength": 1 },
         "body": { "type": "string", "minLength": 1 },
-        "placement": { "enum": ["top", "bottom", "left", "right", "auto"] }
+        "placement": { "enum": ["top", "bottom", "left", "right", "auto"] },
+        "canvas": {
+          "type": "boolean",
+          "description": "Setup: ensure a canvas is open before the step (the tour opens the first one if none)."
+        },
+        "inspector": {
+          "type": "boolean",
+          "description": "Setup: open the right-hand Inspector panel before the step."
+        },
+        "tab": {
+          "enum": ["inspect", "layers", "css"],
+          "description": "Setup: switch the Inspector to this tab before the step."
+        },
+        "requireSelection": {
+          "type": "boolean",
+          "description": "The target only exists once an element is ⌘-clicked in the (cross-origin) canvas. The card shows a '⌘-click to continue' hint and the spotlight snaps onto the real row when a selection lands."
+        }
       }
     }
   }
