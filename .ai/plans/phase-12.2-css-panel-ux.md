@@ -188,7 +188,7 @@ User tested the ported panel on their live `pnpm dev` (:4555) and gave a 12-item
 
 **Wave 2 — Figma/Webflow interaction primitives:**
 - [x] **W2.1 (#3) Token picker as a popover, not a `<select>` dropdown.** Color → Figma-style popover (swatch grid grouped by family + hex field, screenshots #8/#9); number → variable popover grouped by family (#10/#15). Replace the `tok()` native-select.
-- [ ] **W2.2 (#8/#9) Scrub-to-change on number inputs.** Mouse-down on the prefix icon / field and drag left-right to dec/inc (Figma/Webflow). Webflow modifiers on spacing: `alt+drag` symmetric block/inline pair, `alt+shift+drag` all four.
+- [x] **W2.2 (#8/#9) Scrub-to-change on number inputs.** Mouse-down on the prefix icon / field and drag left-right to dec/inc (Figma/Webflow). Webflow modifiers on spacing: `alt+drag` symmetric block/inline pair, `alt+shift+drag` all four.
 - [ ] **W2.3 (#7) Panel visual polish** toward the Figma right-panel density/grouping (screenshot #12).
 
 **Wave 3 — Layers:**

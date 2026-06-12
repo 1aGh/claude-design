@@ -3160,6 +3160,57 @@ function CssKnobs({ el, cfg, onOptimistic }) {
     if (!editable) return;
     post('/_api/edit-attr', { canvas: el.file, id: el.id, attr, reset: true }, `@${attr}`);
   };
+  // Phase 12.3 (W2.2) — Figma/Webflow scrub: drag a number field horizontally to
+  // change its value. Live preview via optimistic apply on every move (no source
+  // write); commits ONCE on release. A pointer that doesn't pass a 3px threshold
+  // is a normal click (focus to type). `opts.step` modifiers: shift = ×10, alt =
+  // ×0.1. `opts.sides` enables Webflow box-model modifiers: alt = symmetric pair,
+  // alt+shift = all four (else just this side). `opts.min` clamps (default 0).
+  const makeScrub = (prop, opts = {}) => (e) => {
+    if (e.button !== 0) return;
+    const input = e.currentTarget;
+    const startX = e.clientX;
+    const baseN =
+      Number.parseFloat(
+        cssSplitUnit(authored[prop] ?? cssHint(computed[prop]) ?? '0').n || '0'
+      ) || 0;
+    const unit = opts.unitless
+      ? ''
+      : opts.unit || cssSplitUnit(authored[prop] ?? '').unit || 'px';
+    const min = opts.min ?? 0;
+    const fmt = (n) => (opts.unitless ? `${n}` : `${n}${unit}`);
+    const sidesFor = (ev) => {
+      if (!opts.sides) return [prop];
+      if (ev.altKey && ev.shiftKey) return opts.sides.all;
+      if (ev.altKey) return opts.sides.pair;
+      return [prop];
+    };
+    let scrubbing = false;
+    let last = baseN;
+    const move = (ev) => {
+      const dx = ev.clientX - startX;
+      if (!scrubbing && Math.abs(dx) < 3) return;
+      if (!scrubbing) {
+        scrubbing = true;
+        document.body.classList.add('st-scrubbing');
+      }
+      ev.preventDefault();
+      const granular = opts.sides ? 1 : ev.shiftKey ? 10 : ev.altKey ? 0.1 : 1;
+      last = Math.round((baseN + dx * granular) * 100) / 100;
+      if (last < min) last = min;
+      if (input) input.value = String(last);
+      for (const p of sidesFor(ev)) optimistic(p, fmt(last));
+    };
+    const up = (ev) => {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+      if (!scrubbing) return;
+      document.body.classList.remove('st-scrubbing');
+      for (const p of sidesFor(ev)) commit(p, fmt(last));
+    };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+  };
   const provOf = (prop) => {
     const v = authored[prop];
     if (!v) return 'inherit';
@@ -3353,7 +3404,7 @@ function CssKnobs({ el, cfg, onOptimistic }) {
   );
 
   // number + steppers + unit-select (+ optional token quick-pick after)
-  const num = (prop, tokenList) => {
+  const num = (prop, tokenList, opts = {}) => {
     const cur = cssSplitUnit(authored[prop] ?? '');
     // Unitless CSS properties — a bare number must commit WITHOUT a unit suffix
     // (line-height: 1.5px ≠ 1.5 — knob-smoke finding, 2026-06-12).
@@ -3367,11 +3418,12 @@ function CssKnobs({ el, cfg, onOptimistic }) {
       <>
         <div className="st-cp-num">
           <input
-            className="st-cp-numin"
+            className="st-cp-numin st-cp-scrub"
             key={`${prop}:${authored[prop] ?? ''}`}
             aria-label={prop}
             defaultValue={cur.unit && cur.unit !== '' ? cur.n : (authored[prop] ?? '')}
             placeholder={cssHint(computed[prop]) || '—'}
+            onPointerDown={makeScrub(prop, { unitless, unit, min: opts.min })}
             onKeyDown={(e) => {
               if (e.key === 'Enter') e.currentTarget.blur();
             }}
@@ -3464,14 +3516,24 @@ function CssKnobs({ el, cfg, onOptimistic }) {
         ? cssSplitUnit(a).n || a
         : cssSplitUnit(cssHint(computed[prop]) ?? '').n || '0';
     const isZero = !a || a === '0' || a === '0px' || a === 'auto';
+    // Webflow scrub modifiers — alt = symmetric pair (block for top/bottom,
+    // inline for left/right), alt+shift = all four.
+    const edge = prop.split('-').pop();
+    const pair =
+      edge === 'top' || edge === 'bottom'
+        ? [`${group}-top`, `${group}-bottom`]
+        : [`${group}-left`, `${group}-right`];
+    const all = [`${group}-top`, `${group}-right`, `${group}-bottom`, `${group}-left`];
     return (
       <input
-        className={`st-cp-boxv st-cp-boxv--${group[0]}${prop.split('-').pop()[0]}${
+        className={`st-cp-boxv st-cp-scrub st-cp-boxv--${group[0]}${prop.split('-').pop()[0]}${
           isZero ? ' is-zero' : ''
         }`}
         key={`${prop}:${a ?? ''}`}
         aria-label={prop}
         defaultValue={shown}
+        title="drag to scrub · alt = symmetric · alt+shift = all sides"
+        onPointerDown={makeScrub(prop, { sides: { pair, all } })}
         onKeyDown={(e) => {
           if (e.key === 'Enter') e.currentTarget.blur();
         }}
@@ -3538,7 +3600,7 @@ function CssKnobs({ el, cfg, onOptimistic }) {
           {row('font-size', num('font-size', tokens.type))}
           {row('font-weight', csel('font-weight', CSS_WEIGHTS))}
           {row('line-height', num('line-height', tokens.lh))}
-          {row('letter-spacing', num('letter-spacing'))}
+          {row('letter-spacing', num('letter-spacing', null, { min: -Infinity }))}
           {row(
             'text-align',
             <div className="st-cp-seg" role="group" aria-label="text-align">

@@ -557,6 +557,12 @@
 .st-cp-numin { flex: 1 1 auto; min-width: 0; width: 100%; appearance: none; border: 0; background: transparent; color: var(--fg-0); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--type-xs); padding: 3px var(--space-2); }
 .st-cp-numin::placeholder { color: var(--fg-2); }
 .st-cp-numin:focus { outline: none; }
+/* Phase 12.3 (W2.2) — scrub affordance: a number field signals it's draggable
+ * (ew-resize), reverts to a text caret when focused for typing. While a scrub is
+ * active the whole document holds the resize cursor + suppresses selection. */
+.st-cp-scrub { cursor: ew-resize; }
+.st-cp-scrub:focus { cursor: text; }
+body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-select: none !important; }
 .st-cp-step { flex: none; display: flex; flex-direction: column; border-left: 1px solid var(--border-subtle); }
 .st-cp-stepb { flex: 1; appearance: none; cursor: pointer; border: 0; background: var(--bg-2); color: var(--fg-2); font-size: 7px; line-height: 1; padding: 0 5px; }
 .st-cp-stepb:first-child { border-bottom: 1px solid var(--border-subtle); }
