@@ -52,6 +52,42 @@ describe('canvas-edit / applyEdit', () => {
     expect(out.source).toBe(`function Demo() { return <button aria-label="new">x</button>; }`);
   });
 
+  test('JSX-attribute-escapes a " in a replaced literal value (no JSON \\" corruption)', () => {
+    // Regression: the replace branch used to emit JSON.stringify(value) → `\"`,
+    // which is invalid JS-escaping inside a JSX attribute and corrupts the source.
+    // It must land as the HTML entity &quot; instead. See DDR-103.
+    const src = `function Demo() { return <button aria-label="old">x</button>; }`;
+    const ids = idsOf(src);
+    const id = ids.button as string;
+    const out = applyEdit(CANVAS, src, id, 'aria-label', 'say "hi" <b>');
+    expect(out.source).toBe(
+      `function Demo() { return <button aria-label="say &quot;hi&quot; &lt;b&gt;">x</button>; }`
+    );
+    // Never the JS-escaped form that broke things.
+    expect(out.source).not.toContain('\\"');
+  });
+
+  test('JSX-attribute-escapes a " in a newly inserted attribute value', () => {
+    const src = 'function Demo() { return <div>x</div>; }';
+    const ids = idsOf(src);
+    const id = ids.div as string;
+    const out = applyEdit(CANVAS, src, id, 'title', 'a "quoted" title');
+    expect(out.source).toBe(
+      `function Demo() { return <div title="a &quot;quoted&quot; title">x</div>; }`
+    );
+  });
+
+  test('replaces an expression-container attr value with a JSX-escaped literal', () => {
+    // <Tag name={expr} /> → <Tag name="value" />, entity-escaped (not JSON-escaped).
+    const src = `function Demo() { return <button aria-label={lbl}>x</button>; }`;
+    const ids = idsOf(src);
+    const id = ids.button as string;
+    const out = applyEdit(CANVAS, src, id, 'aria-label', 'with "quote"');
+    expect(out.source).toBe(
+      `function Demo() { return <button aria-label="with &quot;quote&quot;">x</button>; }`
+    );
+  });
+
   test('swaps a single style.<prop> value inside style={{...}}', () => {
     const src = 'function Demo() { return <div style={{ padding: 8, margin: 4 }}>x</div>; }';
     const ids = idsOf(src);

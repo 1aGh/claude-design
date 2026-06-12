@@ -360,14 +360,20 @@ function editStringAttr(s: MagicString, opening: AnyNode, name: string, value: s
       return;
     }
     if (v.type === 'Literal' || v.type === 'StringLiteral') {
-      // Replace just the value text, keeping surrounding quotes.
-      s.overwrite(v.start, v.end, JSON.stringify(value));
+      // Replace the whole `"value"` (quotes included) so we control the escaping.
+      // The value lands in a JSX *attribute*, where `"` must become `&quot;` and
+      // `<`/`>` their entities — NOT JS backslash escaping. `JSON.stringify` would
+      // emit `\"`, which is invalid in a JSX attribute and corrupts the source on
+      // any value containing a double quote. Use the same `escapeAttr` as the two
+      // insert branches so all four paths agree. See DDR-101 / DDR-103.
+      s.overwrite(v.start, v.end, `"${escapeAttr(value)}"`);
       return;
     }
     if (v.type === 'JSXExpressionContainer') {
       // Replace the whole `{...}` with a plain quoted literal — keeps the
-      // resulting JSX readable, no escaping gymnastics.
-      s.overwrite(v.start, v.end, JSON.stringify(value));
+      // resulting JSX readable. Same JSX-attribute escaping as above (NOT
+      // `JSON.stringify`, which would JS-escape a `"` and corrupt the source).
+      s.overwrite(v.start, v.end, `"${escapeAttr(value)}"`);
       return;
     }
     // Unknown shape — refuse rather than corrupt.
