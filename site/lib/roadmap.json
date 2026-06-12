@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-12T05:23:40.894Z",
+  "generated": "2026-06-12T14:45:51.794Z",
   "currentPhase": null,
   "phases": [
     {
@@ -232,6 +232,17 @@
       "planPath": ".ai/plans/archive/phase-12-in-canvas-css-and-layers.md",
       "archived": true,
       "phaseKey": "12"
+    },
+    {
+      "id": "phase-12.2-css-panel-ux",
+      "title": "Phase 12.2: In-canvas CSS panel — proper UX",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "---",
+      "planPath": ".ai/plans/archive/phase-12.2-css-panel-ux.md",
+      "archived": true,
+      "phaseKey": "12.2"
     },
     {
       "id": "phase-16-intro-video-v3-wow",
@@ -782,17 +793,6 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
-    },
-    {
-      "id": "phase-12.2-css-panel-ux",
-      "title": "Phase 12.2: In-canvas CSS panel — proper UX",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "---",
-      "planPath": ".ai/plans/phase-12.2-css-panel-ux.md",
-      "archived": false,
-      "phaseKey": "12.2"
     },
     {
       "id": "phase-17-docs-site-infographics",
