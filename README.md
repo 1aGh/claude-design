@@ -106,7 +106,7 @@ Plugin slash-commands reach all executable logic through the on-PATH `maude` bin
 Two clean paths, no middle ground ([DDR-047](.ai/decisions/DDR-047-collab-scope-cut-no-lan-mode-hub-admin-ui.md)):
 
 - **v1.0 — git handoff OR loopback multi-tab.** Push / pull is the cross-machine story. On a single machine, two browser tabs (or two Claude Code instances editing the same repo) sync cursors, comments, and annotations live over loopback WebSocket. The dev server refuses any non-loopback `host` header on the collab WS endpoint.
-- **v1.1 — deploy a hub** (Phase 9, in-flight). Cross-machine live collab needs a hub binary you deploy yourself. No tunnel mode; no shared cloud.
+- **v1.1 — deploy a hub** (Phase 9, in-flight). Cross-machine live collab needs a hub binary you deploy yourself. No tunnel mode; no shared cloud. **Boot order can't eat your work** ([DDR-102](.ai/decisions/DDR-102-cold-start-divergence-resolution.md)): a per-machine journal tells clean catch-ups apart from genuine divergence; diverged canvases snapshot **both** versions to `_history/` before the newer one wins, so the loser is one `/design:rollback` away — and `maude design status` reports per-canvas sync state honestly (synced / pending / auth-rejected).
 
 ## Security
 

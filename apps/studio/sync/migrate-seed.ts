@@ -1,5 +1,5 @@
 // One-time authoritative seed for the shared-doc cutover — Phase 9.2 (DDR-064
-// Task 9). The fix for Risk 1 (the duplication-on-merge trap).
+// Task 9), cold-start resolution upgraded by DDR-102.
 //
 // The trap (dmonad-confirmed, discuss.yjs.dev/t/.../2538): if a shared doc is
 // populated from TWO independent sources — the local file-seed (room.seed
@@ -12,22 +12,24 @@
 // This module is that decision, run ONCE per canvas at cutover, AFTER the
 // provider's first sync (so the doc already holds hub state if the hub had any):
 //
-//   - hub HAD state (doc non-empty)  → HUB WINS. Leave the doc; the projection
-//     materializes hub state to disk. Local divergent files are snapshotted to
-//     `_history/` first (rollback) then overwritten by the room persist.
-//   - hub was EMPTY (doc empty)      → ADOPT. Clear+rebuild the doc from the
-//     local files inside `transact(fn, MIGRATION)` (the apply* codecs already
-//     delete-then-insert, so this is a true rebuild, not an append). The
-//     provider then pushes it up as the canonical first version.
+//   - hub EMPTY (doc empty)            → ADOPT. Clear+rebuild the doc from the
+//     local files inside `transact(fn, MIGRATION)`.
+//   - hub HAD state, body resolution   → the DDR-102 decision table
+//     (cold-start.ts): identical → keep; journal-matched local → fast-forward
+//     (hub keeps); empty local → materialize; divergence → dual snapshot +
+//     NEWEST-WINS — winner `local` rebuilds the body from disk inside ONE
+//     MIGRATION transaction (one source per type, never a CRDT merge of two
+//     histories); winner `hub` keeps the doc.
+//   - comments under a non-empty doc   → id-union (plain array rebuild from
+//     merged JSON via the delete-then-insert codec — NOT a CRDT merge, so the
+//     duplication trap stays closed; same-id entries keep the doc's version).
 //
-// Idempotent: re-running with hub state present is a no-op (doc already holds
-// it); re-running an adopt rebuilds from the same files → byte-identical, no
-// duplicate items. The companion guard is the room's seed being disabled for
-// pinned (provider-attached) slugs under sharedDoc (see collab/index.ts
-// `shouldSeed`), so the file-seed can never re-introduce duplicate items after
-// this runs.
+// Idempotent: re-running with hub state present and no divergence is a no-op;
+// re-running an adopt rebuilds from the same files → byte-identical.
+// The companion guard is the room's seed being disabled for pinned
+// (provider-attached) slugs under sharedDoc (see collab/index.ts `shouldSeed`).
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 import type * as Y from 'yjs';
@@ -39,8 +41,13 @@ import {
   applyCssToDoc,
   applyHtmlToDoc,
   applyMetaToDoc,
+  bodyEditAtFromDoc,
+  stampBodyEdit,
   Y_SYNC_TYPES,
 } from './codec.ts';
+import { decideColdStart, unionCommentsById } from './cold-start.ts';
+import { hashBytes } from './echo-guard.ts';
+import type { SyncJournal } from './journal.ts';
 import { ORIGINS } from './origins.ts';
 
 export interface MigrateSeedPaths {
@@ -56,11 +63,33 @@ export interface MigrateSeedOptions {
   doc: Y.Doc;
   paths: MigrateSeedPaths;
   /** `_history/<slug>/` (or any dir) — when set, local files are snapshotted
-   *  here before a hub-wins overwrite, for rollback. Best-effort. */
+   *  here (the legacy `pre-shared-doc-migration/` whole-set copy) before any
+   *  doc-keeps-state path can overwrite them via the projection. Best-effort. */
   historyDir?: string;
+  /** DDR-102 — per-machine journal; gates fast-forward vs conflict. */
+  journal?: SyncJournal;
+  /** DDR-102 — body snapshot writer (history.ts), same contract as the agent's. */
+  snapshot?: (content: string, reason: 'pre-sync-local' | 'pre-sync-hub') => Promise<string | null>;
+  /** DDR-102 — divergence notification, same contract as the agent's. */
+  onConflict?: (info: {
+    slug: string;
+    kind: 'cold-start-diverged';
+    winner?: 'local' | 'hub';
+    snapshots?: { local?: string; hub?: string };
+    /** DDR-102 fail-closed (F1) — local snapshot didn't land; hub-wins refused. */
+    snapshotFailed?: boolean;
+  }) => void;
 }
 
-export type MigrateSeedResult = 'hub-wins' | 'local-adopt' | 'empty';
+export type MigrateSeedResult =
+  | 'hub-wins'
+  | 'local-adopt'
+  | 'empty'
+  /** DDR-102 — doc held state but no body; local body seeded up in-place. */
+  | 'body-seed-up'
+  /** DDR-102 — divergence resolved newest-wins. */
+  | 'conflict-local-wins'
+  | 'conflict-hub-wins';
 
 /** True when the shared doc holds no synced content for any of the five types. */
 export function docIsEmpty(doc: Y.Doc): boolean {
@@ -77,42 +106,163 @@ export function docIsEmpty(doc: Y.Doc): boolean {
  * Run the one-time authoritative seed. Returns which source won so the caller
  * can log / surface a conflict. Safe to call on every boot (idempotent).
  */
-export function migrateSeed(opts: MigrateSeedOptions): MigrateSeedResult {
-  const { doc, paths } = opts;
+export async function migrateSeed(opts: MigrateSeedOptions): Promise<MigrateSeedResult> {
+  const { slug, doc, paths } = opts;
 
-  // Hub had canonical state → it wins. The doc already holds it; the projection
-  // will materialize it to disk. Snapshot any divergent local files first so the
-  // overwrite is recoverable.
-  if (!docIsEmpty(doc)) {
-    snapshotLocal(opts);
-    return 'hub-wins';
-  }
-
-  // Hub was empty → adopt local. Build the doc from the local files ONCE, inside
-  // a single MIGRATION transaction. The apply* codecs delete-then-insert, so
-  // this is a clear+rebuild (re-running is a no-op once content matches).
   const localHtml = readLocal(paths.html);
   const localComments = readLocal(paths.comments);
   const localAnnotations = readLocal(paths.annotations);
   const localMeta = paths.meta ? readLocal(paths.meta) : null;
   const localCss = paths.css ? readLocal(paths.css) : null;
 
-  const hasLocal =
-    !!localHtml || !!localComments || !!localAnnotations || !!localMeta || !!localCss;
-  if (!hasLocal) return 'empty';
+  // Hub was empty → adopt local. Build the doc from the local files ONCE, inside
+  // a single MIGRATION transaction. The apply* codecs delete-then-insert, so
+  // this is a clear+rebuild (re-running is a no-op once content matches).
+  if (docIsEmpty(doc)) {
+    const hasLocal =
+      !!localHtml || !!localComments || !!localAnnotations || !!localMeta || !!localCss;
+    if (!hasLocal) return 'empty';
 
-  doc.transact(() => {
-    if (localHtml) applyHtmlToDoc(doc, localHtml, ORIGINS.MIGRATION);
-    if (localComments) {
-      const parsed = tryParseJsonArray(localComments);
-      if (parsed) applyCommentsToDoc(doc, parsed, ORIGINS.MIGRATION);
+    doc.transact(() => {
+      if (localHtml) {
+        if (applyHtmlToDoc(doc, localHtml, ORIGINS.MIGRATION)) {
+          stampBodyEdit(doc, ORIGINS.MIGRATION);
+        }
+      }
+      if (localComments) {
+        const parsed = tryParseJsonArray(localComments);
+        if (parsed) applyCommentsToDoc(doc, parsed, ORIGINS.MIGRATION);
+      }
+      if (localAnnotations) applyAnnotationsToDoc(doc, localAnnotations, ORIGINS.MIGRATION);
+      if (paths.meta && localMeta) applyMetaToDoc(doc, localMeta, ORIGINS.MIGRATION);
+      if (paths.css && localCss) applyCssToDoc(doc, localCss, ORIGINS.MIGRATION);
+    }, ORIGINS.MIGRATION);
+
+    // DDR-102 — the adopt is a disk→doc traversal: checkpoint it.
+    if (localHtml) {
+      opts.journal?.record(slug, {
+        bodyHash: hashBytes(localHtml),
+        ...(localCss ? { cssHash: hashBytes(localCss) } : {}),
+      });
     }
-    if (localAnnotations) applyAnnotationsToDoc(doc, localAnnotations, ORIGINS.MIGRATION);
-    if (paths.meta && localMeta) applyMetaToDoc(doc, localMeta, ORIGINS.MIGRATION);
-    if (paths.css && localCss) applyCssToDoc(doc, localCss, ORIGINS.MIGRATION);
-  }, ORIGINS.MIGRATION);
+    return 'local-adopt';
+  }
 
-  return 'local-adopt';
+  // Hub had state. Legacy whole-set safety copy (fixed dir, overwritten per
+  // boot — not spam) so non-body files keep their pre-cutover backup too.
+  snapshotLocal(opts);
+
+  // Body resolution via the DDR-102 decision table.
+  const docHtml = doc.getText(Y_SYNC_TYPES.html).toString();
+  const decision = decideColdStart({
+    localBody: localHtml,
+    docBody: docHtml,
+    journalHash: opts.journal?.get(slug)?.bodyHash ?? null,
+    localMtimeMs: localMtimeMs(paths.html),
+    docBodyEditAtMs: bodyEditAtFromDoc(doc),
+  });
+
+  let result: MigrateSeedResult = 'hub-wins';
+
+  /** Rebuild body (+ visually-coupled css/annotations) from local, in ONE
+   *  MIGRATION transaction — one source per type, never a two-history merge. */
+  const rebuildBodyFromLocal = (): void => {
+    doc.transact(() => {
+      if (applyHtmlToDoc(doc, localHtml as string, ORIGINS.MIGRATION)) {
+        stampBodyEdit(doc, ORIGINS.MIGRATION);
+      }
+      if (paths.css && localCss !== null) applyCssToDoc(doc, localCss, ORIGINS.MIGRATION);
+      if (localAnnotations !== null) {
+        applyAnnotationsToDoc(doc, localAnnotations, ORIGINS.MIGRATION);
+      }
+    }, ORIGINS.MIGRATION);
+    opts.journal?.record(slug, {
+      bodyHash: hashBytes(localHtml as string),
+      ...(localCss !== null ? { cssHash: hashBytes(localCss) } : {}),
+    });
+  };
+
+  switch (decision.action) {
+    case 'noop':
+      // Identical (or both empty) — checkpoint identity so the next boot
+      // fast-forwards even if the hub then moves ahead.
+      if (localHtml !== null && localHtml === docHtml && docHtml !== '') {
+        opts.journal?.record(slug, { bodyHash: hashBytes(docHtml) });
+      }
+      break;
+    case 'materialize-hub':
+    case 'fast-forward-hub':
+      // Keep the doc; the projection materializes it to disk (and records the
+      // journal checkpoint on its write).
+      break;
+    case 'seed-local-up':
+      // Doc holds state for OTHER types but no body — seed the local body up.
+      rebuildBodyFromLocal();
+      result = 'body-seed-up';
+      break;
+    case 'conflict': {
+      const snapshots: { local?: string; hub?: string } = {};
+      let snapshotAttempted = false;
+      if (opts.snapshot) {
+        snapshotAttempted = true;
+        try {
+          const localTs = await opts.snapshot(localHtml as string, 'pre-sync-local');
+          if (localTs) snapshots.local = localTs;
+          const hubTs = await opts.snapshot(docHtml, 'pre-sync-hub');
+          if (hubTs) snapshots.hub = hubTs;
+        } catch {
+          /* swallowed below — the missing snapshot ref drives the fail-closed guard */
+        }
+      }
+      // DDR-102 fail-closed (security F1): a hub-wins resolution keeps the doc
+      // (hub) state, which projection.reconcile() then materializes to disk —
+      // OVERWRITING local. If the local snapshot didn't land, rebuild the body
+      // from local instead so the projection writes local back (a no-op on
+      // disk) and nothing is lost. Gated on `snapshotAttempted` so a
+      // snapshot-less standalone call keeps plain newest-wins.
+      const localSnapshotMissing = snapshotAttempted && !snapshots.local;
+      let winner = decision.winner;
+      if (winner === 'hub' && localSnapshotMissing) {
+        winner = 'local';
+        console.error(
+          `[sync/${slug}] shared-doc cold-start divergence: hub won newest-wins but the local snapshot FAILED — REFUSING to overwrite local (DDR-102 fail-closed). Rebuilding the doc from local; resolve the _history/ write failure to restore newest-wins.`
+        );
+      }
+      if (winner === 'local') {
+        rebuildBodyFromLocal();
+        result = 'conflict-local-wins';
+      } else {
+        result = 'conflict-hub-wins';
+      }
+      console.warn(`[sync/${slug}] shared-doc cold-start divergence — ${decision.reason}`);
+      opts.onConflict?.({
+        slug,
+        kind: 'cold-start-diverged',
+        winner,
+        ...(snapshots.local || snapshots.hub ? { snapshots } : {}),
+        ...(localSnapshotMissing ? { snapshotFailed: true } : {}),
+      });
+      break;
+    }
+  }
+
+  // Comments id-union (DDR-102): rebuild from merged JSON via the
+  // delete-then-insert codec — same-id entries keep the doc's version, so the
+  // duplication trap stays closed; local-only comments survive.
+  if (localComments) {
+    const parsed = tryParseJsonArray(localComments);
+    if (parsed && parsed.length > 0) {
+      const docList = doc.getArray(Y_TYPES.comments).toArray();
+      const merged = unionCommentsById(docList, parsed);
+      if (merged.length !== docList.length) {
+        doc.transact(() => {
+          applyCommentsToDoc(doc, merged, ORIGINS.MIGRATION);
+        }, ORIGINS.MIGRATION);
+      }
+    }
+  }
+
+  return result;
 }
 
 /* ---------------------------------------------------------------- helpers */
@@ -142,6 +292,14 @@ function readLocal(p: string): string | null {
   if (!existsSync(p)) return null;
   try {
     return readFileSync(p, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+function localMtimeMs(p: string): number | null {
+  try {
+    return statSync(p).mtimeMs;
   } catch {
     return null;
   }

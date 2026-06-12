@@ -69,9 +69,18 @@ const DOCUMENT_NAME_REGEX = /^[A-Za-z0-9._/-]{1,256}$/;
 const PUBLIC_URL_REGEX = /^https?:\/\/[^\s;'"<>`]+$/;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 5;
-// Task 6: per-token connection rate limit. onAuthenticate fires once per WS
-// upgrade, so this caps reconnection storms / token-replay floods per token.
-export const CONN_RATE_LIMIT_MAX = 100;
+// DDR-102 rate-limit redesign. The original single 100/min-per-label bucket
+// was an anti-brute-force control, but it throttled VALID tokens: under WS
+// multiplexing the hub still authenticates once per DOCUMENT, so two peers
+// booting an 83-canvas project burst ~166 valid auths and pinned the bucket
+// forever (the 2026-06-11 permission-denied storm). Brute force is about
+// INVALID attempts — so the buckets split:
+//   - valid-token auths: per label, generous (default 600/min, env
+//     HUB_CONN_RATE_LIMIT) — legitimate peers can't starve sync.
+//   - invalid-token attempts: per IP, tight (100/min) — the brute-force
+//     control the old bucket was meant to be.
+export const CONN_RATE_LIMIT_MAX = 600;
+export const INVALID_CONN_RATE_LIMIT_MAX = 100;
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 // Activity feed (admin console): bounded in-memory ring buffer. Ephemeral —
 // lost on restart, NOT a persisted audit trail (DDR-097). Caps memory.
@@ -86,7 +95,25 @@ export const ACTIVITY_CAP = 200;
  * @property {boolean} [insecureHttp]  allow plaintext HTTP to a public host (testing only)
  * @property {boolean} [verbose]
  * @property {boolean} [rateLimit]  default true; set false in tests/dev
+ * @property {number} [connRateLimit]  valid-token auths per label per minute (default CONN_RATE_LIMIT_MAX; env HUB_CONN_RATE_LIMIT)
  */
+
+/**
+ * DDR-102 — build an auth-rejection error whose REASON crosses the wire.
+ * Hocuspocus' connection handler propagates `error.reason ?? 'permission-denied'`
+ * to the peer's onAuthenticationFailed — a plain `new Error(message)` carries
+ * no `.reason`, so peers used to see only the generic fallback (the incident's
+ * RC4: the client hint pointed at scopes while the real cause was the rate
+ * limit). Old peers ignore the richer reason — interop-safe.
+ *
+ * @param {string} reason
+ * @returns {Error & { reason: string }}
+ */
+function authError(reason) {
+  const err = /** @type {Error & { reason: string }} */ (new Error(reason));
+  err.reason = reason;
+  return err;
+}
 
 /**
  * Build (but don't yet start) a Hocuspocus instance against the given config.
@@ -102,6 +129,8 @@ export function createHub(config = {}) {
   const verbose = config.verbose ?? true;
   const rateLimit = config.rateLimit ?? true;
   const insecureHttp = config.insecureHttp ?? false;
+  // DDR-102 — valid-token auth ceiling (per label per minute).
+  const connRateLimitMax = config.connRateLimit ?? CONN_RATE_LIMIT_MAX;
   const startedAt = Date.now();
 
   // DDR-053 §5: refuse to boot if publicUrl can be weaponized into shell
@@ -135,8 +164,11 @@ export function createHub(config = {}) {
   /** Per-IP rate limit buckets (admin API): ip → { count, windowStart } */
   const rateBuckets = new Map();
 
-  /** Per-token rate limit buckets (WS auth): label → { count, windowStart } */
+  /** Per-token rate limit buckets (valid WS auth): label → { count, windowStart } */
   const connBuckets = new Map();
+
+  /** DDR-102 — invalid-token attempt buckets (brute-force): ip → { count, windowStart } */
+  const invalidConnBuckets = new Map();
 
   /** Activity feed ring buffer (newest last). Bounded to ACTIVITY_CAP. */
   const activity = [];
@@ -146,27 +178,35 @@ export function createHub(config = {}) {
 
     extensions: [new SQLite({ database: sqlitePath })],
 
-    async onAuthenticate({ token, documentName }) {
+    async onAuthenticate({ token, documentName, request }) {
       // DDR-053 §5: defend against log forging + future XSS regression by
       // rejecting documentNames with HTML / log metacharacters at source.
+      // DDR-102: every rejection goes through authError() so the SPECIFIC
+      // reason reaches the peer's onAuthenticationFailed (Hocuspocus sends
+      // `error.reason ?? 'permission-denied'` — a bare Error message is lost).
       if (!DOCUMENT_NAME_REGEX.test(documentName ?? '')) {
-        throw new Error('invalid documentName');
+        throw authError('invalid documentName');
       }
       const match = verifyToken(dataDir, token, secret);
       if (match) {
         // DDR-053 §3: scope binding gates Chain B (token leak → full hub).
         if (!matchesScope(match.scope, documentName)) {
-          throw new Error('token not authorized for this documentName');
+          throw authError('token not authorized for this documentName');
         }
-        // Task 6: per-token rate limit. A leaked/abused token can't be used to
-        // mount a reconnection / replay flood beyond 100 auths/min.
-        if (rateLimit && !checkConnRateLimit(connBuckets, match.label)) {
+        // DDR-102 — valid-token ceiling: generous (default 600/min per label),
+        // sized so multi-peer boot bursts of large projects (auth fires once
+        // per DOCUMENT even on a multiplexed socket) never starve sync. The
+        // anti-brute-force control moved to the invalid-attempt bucket below.
+        if (rateLimit && !checkConnRateLimit(connBuckets, match.label, connRateLimitMax)) {
           if (verbose) {
+            const bucket = connBuckets.get(match.label);
             console.warn(
-              `[hub] rate limit exceeded for token label=${sanitizeForLog(match.label)}`
+              `[hub] rate limit exceeded for token label=${sanitizeForLog(match.label)} ` +
+                `(valid bucket: ${bucket?.count ?? '?'}/${connRateLimitMax} per 60s; ` +
+                `invalid-attempt buckets tracked per IP: ${invalidConnBuckets.size})`
             );
           }
-          throw new Error('rate limit exceeded for this token');
+          throw authError('rate limit exceeded for this token — retry in up to 60s');
         }
         if (match.source === 'file') recordTokenUse(dataDir, match.label);
         return {
@@ -188,7 +228,21 @@ export function createHub(config = {}) {
         }
         return { user: { name: 'anon', anon: true } };
       }
-      throw new Error('invalid token');
+      // DDR-102 — invalid-token attempts are the brute-force surface: tight
+      // per-IP bucket (100/min). The old design never rate-limited these at
+      // all (the label bucket only ever counted VALID tokens).
+      const ip = request?.socket?.remoteAddress ?? '0.0.0.0';
+      if (rateLimit && !checkConnRateLimit(invalidConnBuckets, ip, INVALID_CONN_RATE_LIMIT_MAX)) {
+        if (verbose) {
+          const bucket = invalidConnBuckets.get(ip);
+          console.warn(
+            `[hub] invalid-token attempt rate limit exceeded for ip=${sanitizeForLog(ip)} ` +
+              `(invalid bucket: ${bucket?.count ?? '?'}/${INVALID_CONN_RATE_LIMIT_MAX} per 60s)`
+          );
+        }
+        throw authError('rate limit exceeded — retry in up to 60s');
+      }
+      throw authError('invalid token');
     },
 
     async onRequest({ request, response }) {
@@ -813,20 +867,21 @@ function checkRateLimit(buckets, request) {
 }
 
 /**
- * Per-token connection rate limit (Task 6). Returns true when the token is
- * within budget (CONN_RATE_LIMIT_MAX auths per 60s window). Keyed by token
- * label so a single compromised token is throttled regardless of source IP.
+ * Connection-auth rate limit (Task 6, redesigned in DDR-102). Returns true
+ * when the key is within budget (`max` auths per 60s window). Keyed by token
+ * LABEL for valid auths (default ceiling CONN_RATE_LIMIT_MAX, generous) and
+ * by IP for invalid attempts (INVALID_CONN_RATE_LIMIT_MAX, tight).
  * Exported for unit testing — the production caller is onAuthenticate.
  */
-export function checkConnRateLimit(buckets, label) {
+export function checkConnRateLimit(buckets, key, max = CONN_RATE_LIMIT_MAX) {
   const now = Date.now();
-  const bucket = buckets.get(label);
+  const bucket = buckets.get(key);
   if (!bucket || now - bucket.windowStart >= RATE_LIMIT_WINDOW_MS) {
-    buckets.set(label, { count: 1, windowStart: now });
+    buckets.set(key, { count: 1, windowStart: now });
     return true;
   }
   bucket.count += 1;
-  return bucket.count <= CONN_RATE_LIMIT_MAX;
+  return bucket.count <= max;
 }
 
 function respondRateLimited(response) {
@@ -978,10 +1033,13 @@ async function runAsMain() {
   const publicUrl =
     process.env.HUB_PUBLIC_URL ?? `http${insecureHttp ? '' : 's'}://localhost:${port}`;
   const rateLimit = process.env.HUB_ADMIN_RATE_LIMIT !== 'off';
+  // DDR-102 — valid-token auth ceiling override (per label per minute).
+  const connRateLimitEnv = Number.parseInt(process.env.HUB_CONN_RATE_LIMIT ?? '', 10);
+  const connRateLimit = Number.isFinite(connRateLimitEnv) ? connRateLimitEnv : undefined;
 
   let built;
   try {
-    built = createHub({ port, dataDir, secret, publicUrl, rateLimit, insecureHttp });
+    built = createHub({ port, dataDir, secret, publicUrl, rateLimit, insecureHttp, connRateLimit });
   } catch (err) {
     console.error('[hub] config error:', err.message);
     process.exit(1);

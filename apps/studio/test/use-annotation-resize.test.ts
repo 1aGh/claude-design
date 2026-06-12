@@ -241,3 +241,162 @@ describe('resizeStroke / pen — point scaling', () => {
     expect(out.points[2]).toEqual([150, 150]);
   });
 });
+
+describe('resizeStroke / rotation — Wave G corner rotate zones', () => {
+  // rect center = (50, 25). Angles below are measured around it.
+  test('relative rotation: grab angle is the zero reference (no jump)', () => {
+    // Grab at angle 0° (due east of center), drag to 45° → rotation 45.
+    const rotRef = { angle0: 0, rot0: 0 };
+    const out = resizeStroke(
+      rect,
+      'rot-se',
+      50 + 70,
+      25 + 70,
+      { shift: false, alt: false },
+      rotRef
+    );
+    expect(out).toEqual({ rotation: 45 });
+  });
+
+  test('starting rotation accumulates with the drag delta', () => {
+    const rotated: RectStroke = { ...rect, rotation: 30 };
+    const rotRef = { angle0: 0, rot0: 30 };
+    const out = resizeStroke(
+      rotated,
+      'rot-ne',
+      50 + 70,
+      25 + 70,
+      { shift: false, alt: false },
+      rotRef
+    );
+    expect(out).toEqual({ rotation: 75 });
+  });
+
+  test('magnetic cardinals: within 2° of 0 lock on and serialize as undefined', () => {
+    const rotated: RectStroke = { ...rect, rotation: 44 };
+    // Drag back by 42.5° → raw −1.5° + rot0 44 = ... use angle0 50, current 7.5 → deg = 44 − 42.5 = 1.5 → locks to 0.
+    const cur = (Math.PI / 180) * 7.5;
+    const out = resizeStroke(
+      rotated,
+      'rot-nw',
+      50 + 70 * Math.cos(cur),
+      25 + 70 * Math.sin(cur),
+      { shift: false, alt: false },
+      { angle0: 50, rot0: 44 }
+    );
+    expect(out).toEqual({ rotation: undefined });
+  });
+
+  test('Shift snaps to 15° steps', () => {
+    // delta = 40° → snaps to 45.
+    const cur = (Math.PI / 180) * 40;
+    const out = resizeStroke(
+      rect,
+      'rot-sw',
+      50 + 70 * Math.cos(cur),
+      25 + 70 * Math.sin(cur),
+      { shift: true, alt: false },
+      { angle0: 0, rot0: 0 }
+    );
+    expect(out).toEqual({ rotation: 45 });
+  });
+
+  test('non-rotatable strokes refuse the rotate corners', () => {
+    const arrow: ArrowStroke = {
+      id: 'a1',
+      tool: 'arrow',
+      color: '#000',
+      width: 2,
+      x1: 0,
+      y1: 0,
+      x2: 100,
+      y2: 0,
+    };
+    expect(
+      resizeStroke(arrow, 'rot-se', 50, 50, { shift: false, alt: false }, { angle0: 0, rot0: 0 })
+    ).toBeNull();
+  });
+
+  test('polygon rotates (diamond/triangle are rotatable hosts)', () => {
+    const poly: PolygonStroke = {
+      id: 'p1',
+      tool: 'polygon',
+      shape: 'diamond',
+      color: '#000',
+      width: 2,
+      x: 0,
+      y: 0,
+      w: 100,
+      h: 50,
+    };
+    const out = resizeStroke(
+      poly,
+      'rot-se',
+      50 + 70,
+      25 + 70,
+      { shift: false, alt: false },
+      { angle0: 0, rot0: 0 }
+    );
+    expect(out).toEqual({ rotation: 45 });
+  });
+});
+
+describe('resizeStroke / rotated strokes — Wave H anchor compensation', () => {
+  // rect 100×50 at origin, rotated 90° around its center (50, 25).
+  const rotated: RectStroke = { ...rect, rotation: 90 };
+  const rotP = (px: number, py: number, cx: number, cy: number, deg: number): [number, number] => {
+    const r = (deg * Math.PI) / 180;
+    const dx = px - cx;
+    const dy = py - cy;
+    return [cx + dx * Math.cos(r) - dy * Math.sin(r), cy + dx * Math.sin(r) + dy * Math.cos(r)];
+  };
+
+  test('se-corner drag keeps the nw corner fixed in WORLD space', () => {
+    // Cursor in the LOCAL frame (applyResize inverse-rotates before calling).
+    const out = resizeStroke(rotated, 'se', 140, 90) as RectStroke;
+    expect(out.w).toBeCloseTo(140, 6);
+    expect(out.h).toBeCloseTo(90, 6);
+    const before = rotP(0, 0, 50, 25, 90);
+    const after = rotP(out.x, out.y, out.x + out.w / 2, out.y + out.h / 2, 90);
+    expect(after[0]).toBeCloseTo(before[0], 6);
+    expect(after[1]).toBeCloseTo(before[1], 6);
+  });
+
+  test('e-edge drag keeps the west edge midpoint fixed in WORLD space', () => {
+    const out = resizeStroke(rotated, 'e', 130, 25) as RectStroke;
+    expect(out.w).toBeCloseTo(130, 6);
+    const before = rotP(0, 25, 50, 25, 90);
+    const after = rotP(out.x, out.y + out.h / 2, out.x + out.w / 2, out.y + out.h / 2, 90);
+    expect(after[0]).toBeCloseTo(before[0], 6);
+    expect(after[1]).toBeCloseTo(before[1], 6);
+  });
+
+  test('Alt resize keeps the center (no compensation path)', () => {
+    const out = resizeStroke(rotated, 'se', 130, 80, { shift: false, alt: true }) as RectStroke;
+    expect(out.x + out.w / 2).toBeCloseTo(50, 6);
+    expect(out.y + out.h / 2).toBeCloseTo(25, 6);
+  });
+
+  test('unrotated strokes are byte-stable (no shift applied)', () => {
+    expect(resizeStroke(rect, 'se', 120, 80)).toEqual({ x: 0, y: 0, w: 120, h: 80 });
+  });
+
+  test('rotated ellipse: se drag keeps the nw bbox corner fixed in WORLD space', () => {
+    const ell: EllipseStroke = {
+      id: 'e1',
+      tool: 'ellipse',
+      color: '#000',
+      width: 2,
+      cx: 50,
+      cy: 25,
+      rx: 50,
+      ry: 25,
+      rotation: 45,
+    };
+    const out = resizeStroke(ell, 'se', 140, 90) as EllipseStroke;
+    const before = rotP(0, 0, 50, 25, 45);
+    const after = rotP(out.cx - out.rx, out.cy - out.ry, out.cx, out.cy, 45);
+    expect(after[0]).toBeCloseTo(before[0], 6);
+    expect(after[1]).toBeCloseTo(before[1], 6);
+  });
+});

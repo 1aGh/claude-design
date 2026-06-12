@@ -13,6 +13,8 @@ maude design link https://maude-hub-acme.fly.dev --token mau_a3f9c8b2...
 
 The token comes from the hub admin UI's "Generate invite" button (or `maude hub token generate`). It's stored per-machine in `~/.config/maude/hubs.json` (mode 0600, **never committed**). The `linkedHub: { url }` pointer lands in `.design/config.json`, which **is** committed — so a teammate who `git pull`s gets the hub URL and only needs their own token.
 
+**One token per machine per hub.** `hubs.json` is keyed by hub URL, so re-running `link` with a different token **replaces** the stored one for *every* project linked to that hub on this machine (the CLI prints a notice when that happens). Two checkouts on one machine share the token; two *machines* should each get their own token — per-label rate limiting and the admin UI's peer list both work better when labels map to real machines.
+
 ### The trust gate
 
 Linking to a **non-loopback** hub grants that hub the same write access to your `.design/` as you have (hub-pushed content lands on disk verbatim, like `git pull` from a stranger). So the first link to a remote hub asks for confirmation:
@@ -57,9 +59,23 @@ maude design adopt https://maude-hub-acme.fly.dev --token mau_...
 # alias for: maude design link <url> --token ... --adopt
 ```
 
-`--adopt` pushes your local canvases, annotation SVGs, and comment JSON up to the hub unconditionally. Use it for first-time bootstrap from a populated repo, or hub-was-wiped recovery. The default (no `--adopt`) is **hub-wins**: if the hub already has state, hub state replaces your local disk — the right choice when joining an already-active project.
+`--adopt` pushes your local canvases, annotation SVGs, and comment JSON up to the hub unconditionally. Use it for first-time bootstrap from a populated repo, or hub-was-wiped recovery. Without `--adopt`, joining an already-active project simply materializes hub state — and when both sides genuinely have work, the conflict protocol below takes over (you never need `--adopt` "just to be safe").
 
-> v1.1 ships exactly two conflict modes: **hub-wins** (default) and **adopt** (push). There is no `--peer-wins`; it's a confusion vector deferred to v1.2.
+## What happens when both sides have work
+
+Boot order doesn't matter and never loses bytes ([DDR-102](https://github.com/1aGh/maude/blob/main/.ai/decisions/DDR-102-cold-start-divergence-resolution.md)). On every connect, each canvas resolves through a decision table:
+
+- **Clean first sync** — you have no local body, or the hub has none: the non-empty side wins, silently.
+- **Clean catch-up (fast-forward)** — your local file matches the last state *this machine* synced (tracked as a content hash in the per-machine journal, `.design/_state/sync-journal.json`): the hub is simply ahead, your disk fast-forwards. Silent, no snapshots, no noise. This is the everyday case.
+- **Genuine divergence** — both sides changed since this machine last synced: **both versions are snapshotted** to `.design/_history/<slug>/` first, then the **newer side wins** (the hub's last-edit stamp vs your file's mtime; if either is unknown, the hub wins). The losing version is one command away:
+
+```bash
+/design:rollback <canvas>     # restore the snapshotted version
+```
+
+Every divergence is surfaced loudly: a console warning at boot, a `cold-start-diverged` entry (with winner + snapshot timestamps) in `maude design status`, and a banner in the studio chrome. Comments never conflict at all — they union-merge by id, so nothing is lost in either direction.
+
+The same applies after a `git pull` changes canvases while you're linked: pulled changes that diverge from hub state take the snapshot + newest-wins path, not a silent overwrite.
 
 ## Status
 
@@ -68,7 +84,7 @@ maude design status            # human-readable
 maude design status --json     # parseable for tooling
 ```
 
-Shows the hub URL, link time, adopt mode, whether your token is stored, hub reachability, and the sync agent's state (last sync, queued ops, conflict/offline state).
+Shows the hub URL, link time, adopt mode, whether your token is stored, hub reachability, and the sync agent's state — including the per-canvas rollup (`docs: 81 synced · 0 pending · 2 rejected`), the list of canvases the hub rejected (with the reason class in the serve log: scope / invalid token / rate limit), and the conflict log with winner, snapshot timestamps, and the `/design:rollback` recovery hint. `lastSyncAt` reflects real sync activity, and the serve boot prints its summary only **after** handshakes settle (`81/83 synced · 2 auth-rejected (…)`), so the status never claims more than what's actually syncing.
 
 ## Unlink
 
@@ -108,14 +124,6 @@ The sync agent tolerates the hub disappearing — your laptop on a plane, a Fly 
 - On reconnect, the agent runs Yjs sync v2, the banner flashes green *"Synced"* for 3s, then disappears. Queued edits land within ~2s.
 - If you stay offline for **> 24h**, the banner escalates to red: *"Long offline — your changes may conflict. Consider `git commit && git push` as backup."*
 
-## When `git pull` brings new disk state while linked
+## Rate limits
 
-If a `git pull` changes a canvas the hub also knows about, the agent detects the hash divergence and prompts:
-
-```text
-Local changes from git pull on Dashboard.tsx.
-  [P] Push to hub   [D] Discard local, accept hub   [A] Abort
-(defaults to Push in 30s)
-```
-
-Comments and annotations are additive CRDT operations — they merge without loss. Only canvas-body conflicts (rare) resolve last-write-wins, with a notification to the disadvantaged peer.
+The hub authenticates each canvas document separately, so a big project produces a burst of valid auths at boot (one per canvas — even though all of them ride **one** multiplexed WebSocket per peer). The hub's limiter is sized for that: valid tokens get 600 auths/min per label (override with `HUB_CONN_RATE_LIMIT` on the hub), while *invalid* token attempts — the actual brute-force surface — are capped tightly at 100/min per IP. If a peer ever does hit the limit, the rejection says so explicitly (with a retry hint) instead of a generic `permission-denied`, and sync settles by itself as providers back off.

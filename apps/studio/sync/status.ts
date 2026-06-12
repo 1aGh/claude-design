@@ -14,12 +14,23 @@
 
 import type { SyncStatusSnapshot } from './connection-state.ts';
 
-export type ConflictKind = 'cold-start-hub-wins' | 'git-pull';
+// `cold-start-hub-wins` stays in the union for OLD payload readers (additive
+// evolution — the NoSyncablePayload discriminator pattern); new conflicts are
+// recorded as `cold-start-diverged` with the DDR-102 winner + snapshot refs.
+export type ConflictKind = 'cold-start-hub-wins' | 'cold-start-diverged' | 'git-pull';
 
 export interface SyncConflict {
   slug: string;
   kind: ConflictKind;
   at: number;
+  /** DDR-102 — which side the newest-wins resolution kept. */
+  winner?: 'local' | 'hub';
+  /** DDR-102 — ISO timestamps of the `_history/<slug>/` snapshots taken before
+   *  resolution (`/design:rollback` recovery). */
+  snapshots?: { local?: string; hub?: string };
+  /** DDR-102 fail-closed (F1) — the local snapshot didn't land, so a hub-wins
+   *  overwrite was refused (local kept). Surfaces the degraded `_history/` write. */
+  snapshotFailed?: boolean;
 }
 
 export interface SyncStatusPayload extends SyncStatusSnapshot {
@@ -55,7 +66,7 @@ export interface SyncStatusStore {
   /** Merge a fresh ConnectionMonitor snapshot + persist + broadcast. */
   update(snapshot: SyncStatusSnapshot): void;
   /** Record a conflict notification + persist + broadcast. */
-  addConflict(conflict: { slug: string; kind: ConflictKind }): void;
+  addConflict(conflict: Omit<SyncConflict, 'at'>): void;
   /** Current payload (defensive copy). */
   get(): SyncStatusPayload;
 }
@@ -105,8 +116,8 @@ export function createSyncStatusStore(opts: SyncStatusStoreOptions): SyncStatusS
       snapshot = next;
       flush();
     },
-    addConflict({ slug, kind }) {
-      conflicts.push({ slug, kind, at: now() });
+    addConflict(conflict) {
+      conflicts.push({ ...conflict, at: now() });
       if (conflicts.length > maxConflicts) conflicts.splice(0, conflicts.length - maxConflicts);
       flush();
     },

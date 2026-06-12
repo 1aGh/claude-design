@@ -355,16 +355,31 @@ const INSPECTOR_SCRIPT = `
     new MutationObserver(function(){ startTick(); }).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['style', 'class'], childList: true });
   }
 
-  // ⌘K / Ctrl+K command palette — keydown fired inside the canvas iframe never
-  // reaches the shell's window-scoped listener (iframe keyboard isolation), so
-  // the palette wouldn't open while focus is in the canvas. Forward the chord to
-  // the parent; the shell toggles the palette (mirrors its own handler, which
-  // fires "even in inputs"). Capture phase so canvas-lib's pan/zoom keydown
-  // handler can't swallow it first.
+  // Shell chords — keydown fired inside the canvas iframe never reaches the
+  // shell's window-scoped listener (iframe keyboard isolation), so each shell
+  // chord must be forwarded to the parent. preventDefault is load-bearing for
+  // ⌘R: without it the BROWSER reloads the whole shell while focus is in the
+  // canvas (the advertised behavior is "reload the active canvas"). Capture
+  // phase so canvas-lib's pan/zoom keydown handler can't swallow them first.
   document.addEventListener('keydown', function(e) {
-    if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+    if (!(e.metaKey || e.ctrlKey)) return;
+    var k = (e.key || '').toLowerCase();
+    if (k === 'k' && !e.shiftKey) {
       e.preventDefault();
       try { window.parent.postMessage({ dgn: 'toggle-palette' }, '*'); } catch (err) {}
+      return;
+    }
+    if (k === 'r' && !e.shiftKey) {
+      e.preventDefault();
+      try { window.parent.postMessage({ dgn: 'shell-shortcut', id: 'reload' }, '*'); } catch (err) {}
+      return;
+    }
+    if (e.shiftKey) {
+      var id = k === 'i' ? 'inspector' : k === 'm' ? 'comments' : k === 'e' ? 'export' : k === 'h' ? 'handoff' : null;
+      if (id) {
+        e.preventDefault();
+        try { window.parent.postMessage({ dgn: 'shell-shortcut', id: id }, '*'); } catch (err) {}
+      }
     }
   }, true);
 
@@ -387,6 +402,21 @@ const INSPECTOR_SCRIPT = `
           var _ta = document.querySelectorAll(c.selector); var _ti = (typeof c.index === 'number' && c.index > 0 && c.index < _ta.length) ? c.index : 0; var t = _ta[_ti] || _ta[0] || null;
           if (t) t.scrollIntoView({ behavior: 'smooth', block: 'center' });
         } catch (e) {}
+      }
+    } else if (m.dgn === 'theme') {
+      // Catch the chrome-theme seed the shell posts in reply to our 'loaded'
+      // ping (sent below). THIS listener registers during page-load — before
+      // the React canvas-shell mounts and adds its OWN 'dgn:theme' listener —
+      // so without this branch the shell's reply lands in the gap between
+      // page-load and React-mount and is dropped, leaving the canvas stuck on
+      // its hardcoded dark default until a manual theme toggle re-broadcasts
+      // it (the recurring "open a canvas under a light shell → canvas chrome is
+      // dark; toggle twice to fix; next canvas reverts" bug). We set the same
+      // attribute the canvas-shell chrome reads (data-maude-theme on <html>);
+      // canvas-shell's default-dark guard then sees the value already present
+      // and won't override it, and its own listener takes over live toggles.
+      if (m.theme === 'light' || m.theme === 'dark') {
+        try { document.documentElement.setAttribute('data-maude-theme', m.theme); } catch (e) {}
       }
     }
     /* force-clear is now consumed by canvas-shell.tsx — the inspector

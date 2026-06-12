@@ -294,8 +294,11 @@ let server: BunServer;
 
 // T2 (9.1-A) — advertise the main origin so the canvas origin's CSP can
 // allowlist it in `frame-ancestors` (the legit embedder). Must be set before
-// the canvas listener serves its first shell.
-ctx.mainOrigin = `http://localhost:${server.port}`;
+// the canvas listener serves its first shell. Both loopback host spellings are
+// listed: the server binds 127.0.0.1, so a user who opens the printed URL as
+// `127.0.0.1:<port>` is the same legit embedder — with only `localhost` allowed
+// the canvas iframe was silently refused (blank sad-page, no error anywhere).
+ctx.mainOrigin = `http://localhost:${server.port} http://127.0.0.1:${server.port}`;
 
 // T2 (9.1-A) — segregated canvas-content origin. ON BY DEFAULT (opt-OUT) since
 // phase-9.1: a second listener binds an OS-assigned free port, advertised as

@@ -11,6 +11,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -423,14 +424,15 @@ describe('createSyncRuntime', () => {
     await runtime?.stop();
   });
 
-  test('Task 8: hub-wins reconcile over divergent local content records a conflict', async () => {
+  test('DDR-102: reconcile over divergent local content records a diverged conflict + snapshots both sides', async () => {
     const url = 'https://hub.example.com';
     writeHubsConfig(url, 'mau_test');
     const ctx = makeCtx({ url, linkedAt: 1 });
-    // Local disk has divergent, non-empty content.
+    // Local disk has divergent, non-empty content (and no journal — divergence).
     writeFileSync(join(ctx.paths.designRoot, 'ui', 'screen.html'), '<button>LOCAL EDIT</button>');
 
-    // Provider whose doc already carries different hub state.
+    // Provider whose doc already carries different hub state. No syncMeta
+    // stamp (older peer) → newest-wins falls back to hub.
     const factory = () => {
       const document = new Y.Doc();
       document.getText('html').insert(0, '<button>HUB STATE</button>');
@@ -450,7 +452,25 @@ describe('createSyncRuntime', () => {
 
     const status = runtime?.status();
     expect(status?.conflicts.length).toBeGreaterThanOrEqual(1);
-    expect(status?.conflicts[0].kind).toBe('cold-start-hub-wins');
+    const conflict = status?.conflicts[0];
+    expect(conflict?.kind).toBe('cold-start-diverged');
+    expect(conflict?.winner).toBe('hub');
+    // Both pre-resolution versions were snapshotted to _history/<slug>/.
+    expect(conflict?.snapshots?.local).toBeDefined();
+    expect(conflict?.snapshots?.hub).toBeDefined();
+    const historyDir = join(ctx.paths.historyDir, 'ui-screen');
+    const blobs = readdirSync(historyDir).filter((f) => f.endsWith('.html'));
+    expect(blobs.length).toBe(2);
+    // The loser (local) is recoverable byte-identical from its snapshot.
+    const metas = readdirSync(historyDir).filter((f) => f.endsWith('.json'));
+    const snapshotContents = blobs.map((f) => readFileSync(join(historyDir, f), 'utf8'));
+    expect(snapshotContents).toContain('<button>LOCAL EDIT</button>');
+    expect(snapshotContents).toContain('<button>HUB STATE</button>');
+    expect(metas.length).toBe(2);
+    // Hub won → disk now carries hub state.
+    expect(readFileSync(join(ctx.paths.designRoot, 'ui', 'screen.html'), 'utf8')).toBe(
+      '<button>HUB STATE</button>'
+    );
     await runtime?.stop();
   });
 });
@@ -882,5 +902,341 @@ describe('toWsUrl', () => {
   });
   test('passthrough for ws://', () => {
     expect(toWsUrl('ws://localhost:1234')).toBe('ws://localhost:1234');
+  });
+});
+
+// DDR-102 — WS multiplexing: the default factory shares ONE
+// HocuspocusProviderWebsocket per hub URL across all providers.
+describe('createDefaultProviderFactory — shared socket multiplexing', () => {
+  class FakeEmitter {
+    handlers = new Map<string, Set<(arg?: unknown) => void>>();
+    on(evt: string, cb: (arg?: unknown) => void) {
+      if (!this.handlers.has(evt)) this.handlers.set(evt, new Set());
+      this.handlers.get(evt)?.add(cb);
+    }
+    off(evt: string, cb: (arg?: unknown) => void) {
+      this.handlers.get(evt)?.delete(cb);
+    }
+    emit(evt: string, arg?: unknown) {
+      for (const cb of this.handlers.get(evt) ?? []) cb(arg);
+    }
+  }
+
+  function makeFakeModule() {
+    const sockets: Array<{ url: string; destroyed: boolean }> = [];
+    const providers: Array<{
+      name: string;
+      attached: boolean;
+      destroyed: boolean;
+      socket: unknown;
+    }> = [];
+
+    class HocuspocusProviderWebsocket extends FakeEmitter {
+      url: string;
+      status = 'connecting';
+      destroyed = false;
+      constructor(cfg: { url: string }) {
+        super();
+        this.url = cfg.url;
+        sockets.push(this);
+      }
+      destroy() {
+        this.destroyed = true;
+      }
+    }
+
+    class HocuspocusProvider extends FakeEmitter {
+      configuration: { name: string; websocketProvider: unknown; document: unknown };
+      awareness = undefined;
+      synced = false;
+      attached = false;
+      destroyed = false;
+      name: string;
+      socket: unknown;
+      constructor(cfg: { name: string; websocketProvider: unknown; document: unknown }) {
+        super();
+        this.configuration = cfg;
+        this.name = cfg.name;
+        this.socket = cfg.websocketProvider;
+        providers.push(this);
+      }
+      attach() {
+        this.attached = true;
+      }
+      destroy() {
+        this.destroyed = true;
+      }
+    }
+
+    return { mod: { HocuspocusProviderWebsocket, HocuspocusProvider }, sockets, providers };
+  }
+
+  test('N providers for one hub URL share ONE socket, each explicitly attached', async () => {
+    const { mod, sockets, providers } = makeFakeModule();
+    const { createDefaultProviderFactory } = await import('../sync/index.ts');
+    const factory = createDefaultProviderFactory(async () => mod);
+
+    await factory({ url: 'https://hub.example.com', token: 't', documentName: 'ui-a' });
+    await factory({ url: 'https://hub.example.com', token: 't', documentName: 'ui-b' });
+    await factory({ url: 'https://hub.example.com', token: 't', documentName: 'ui-c' });
+
+    expect(sockets).toHaveLength(1);
+    expect(sockets[0].url).toBe('wss://hub.example.com');
+    expect(providers).toHaveLength(3);
+    for (const p of providers) {
+      expect(p.attached).toBe(true);
+      expect(p.socket).toBe(sockets[0]);
+    }
+  });
+
+  test('provider destroy() detaches only; dispose() destroys the shared socket', async () => {
+    const { mod, sockets, providers } = makeFakeModule();
+    const { createDefaultProviderFactory } = await import('../sync/index.ts');
+    const factory = createDefaultProviderFactory(async () => mod);
+
+    const p1 = await factory({ url: 'https://h.example.com', token: 't', documentName: 'ui-a' });
+    p1.destroy();
+    expect(providers[0].destroyed).toBe(true);
+    expect(sockets[0].destroyed).toBe(false); // socket survives provider death
+
+    factory.dispose();
+    expect(sockets[0].destroyed).toBe(true);
+  });
+
+  test('onStatus seeds from the SOCKET status and forwards provider status events', async () => {
+    const { mod, sockets, providers } = makeFakeModule();
+    const { createDefaultProviderFactory } = await import('../sync/index.ts');
+    const factory = createDefaultProviderFactory(async () => mod);
+
+    const wrapped = await factory({
+      url: 'https://h.example.com',
+      token: 't',
+      documentName: 'ui-a',
+    });
+    const seen: string[] = [];
+    const unsub = wrapped.onStatus?.((s) => seen.push(s));
+    // Seeded from socket.status ('connecting') immediately.
+    expect(seen).toEqual(['connecting']);
+    // Provider-level forwarded events keep flowing.
+    (providers[0] as unknown as FakeEmitter).emit('status', { status: 'connected' });
+    expect(seen).toEqual(['connecting', 'connected']);
+    unsub?.();
+    (providers[0] as unknown as FakeEmitter).emit('status', { status: 'disconnected' });
+    expect(seen).toEqual(['connecting', 'connected']); // unsubscribed
+    expect(sockets).toHaveLength(1);
+  });
+});
+
+// DDR-102 — auth-failure intelligence (classification, aggregation,
+// destroy-on-permanent + re-probe) and the honest settled boot summary.
+describe('DDR-102 — auth-failure intelligence + boot summary', () => {
+  function fakeTimerQueue() {
+    let nextId = 1;
+    const timers = new Map<number, { cb: () => void; ms: number }>();
+    return {
+      setTimer: (cb: () => void, ms: number) => {
+        const id = nextId++;
+        timers.set(id, { cb, ms });
+        return id as unknown as ReturnType<typeof setTimeout>;
+      },
+      clearTimer: (h: ReturnType<typeof setTimeout>) => {
+        timers.delete(h as unknown as number);
+      },
+      /** Fire every pending timer with ms <= maxMs (one sweep). */
+      fire(maxMs: number) {
+        for (const [id, t] of [...timers.entries()]) {
+          if (t.ms <= maxMs) {
+            timers.delete(id);
+            t.cb();
+          }
+        }
+      },
+      pending: () => timers.size,
+    };
+  }
+
+  /** Stub factory whose providers expose onAuthFailed + track destroys. */
+  function authStubFactory() {
+    const made: Array<{
+      documentName: string;
+      destroyed: boolean;
+      emitAuthFailure: (reason: string) => void;
+      document: Y.Doc;
+    }> = [];
+    const factory = (args: { documentName: string; document?: Y.Doc }) => {
+      const document = args.document ?? new Y.Doc();
+      const cbs = new Set<(info: { reason: string }) => void>();
+      const entry = {
+        documentName: args.documentName,
+        destroyed: false,
+        emitAuthFailure: (reason: string) => {
+          for (const cb of cbs) cb({ reason });
+        },
+        document,
+      };
+      made.push(entry);
+      return {
+        document,
+        onAuthFailed(cb: (info: { reason: string }) => void) {
+          cbs.add(cb);
+          return () => cbs.delete(cb);
+        },
+        onceSynced() {
+          return new Promise<void>(() => {}); // never settles (rejected docs)
+        },
+        destroy() {
+          entry.destroyed = true;
+        },
+      };
+    };
+    return { factory, made };
+  }
+
+  test('classification + ONE aggregated warn + destroy-on-permanent + re-probe', async () => {
+    const url = 'https://hub.example.com';
+    writeHubsConfig(url, 'mau_test');
+    const ctx = makeCtx({ url, linkedAt: 1 });
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'a.html'), '<a/>');
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'b.html'), '<b/>');
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'c.html'), '<c/>');
+
+    const timers = fakeTimerQueue();
+    const { factory, made } = authStubFactory();
+    const warns: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warns.push(args.map(String).join(' '));
+    };
+
+    try {
+      const runtime = createSyncRuntime(ctx, {
+        providerFactory: factory,
+        auth: {
+          warnDebounceMs: 2_000,
+          reprobeMs: 300_000,
+          settleTimeoutMs: 15_000,
+          setTimer: timers.setTimer,
+          clearTimer: timers.clearTimer,
+        },
+      });
+      await runtime?.start();
+      expect(made).toHaveLength(3);
+      // readdir order is not deterministic — address providers by slug.
+      const bySlug = (slug: string) => {
+        const m = made.find((p) => p.documentName === slug);
+        if (!m) throw new Error(`no provider for ${slug}`);
+        return m;
+      };
+
+      // Hub rejects: a + b permanently (scope), c transiently (rate limit).
+      bySlug('ui-a').emitAuthFailure('token not authorized for this documentName');
+      bySlug('ui-b').emitAuthFailure('token not authorized for this documentName');
+      bySlug('ui-c').emitAuthFailure('rate limit exceeded for this token');
+
+      // Per-slug statuses are honest immediately.
+      const status = runtime?.status();
+      expect(status?.docs?.rejected).toBe(3);
+      expect(status?.rejectedSlugs?.sort()).toEqual(['ui-a', 'ui-b', 'ui-c']);
+
+      // Permanent classes destroyed (retry storm stopped); transient keeps its
+      // provider (built-in backoff).
+      expect(bySlug('ui-a').destroyed).toBe(true);
+      expect(bySlug('ui-b').destroyed).toBe(true);
+      expect(bySlug('ui-c').destroyed).toBe(false);
+
+      // No warn yet (debounced); ONE aggregated warn after the window.
+      const authWarnsBefore = warns.filter((w) => w.includes('auth rejections')).length;
+      expect(authWarnsBefore).toBe(0);
+      timers.fire(2_000);
+      const authWarns = warns.filter((w) => w.includes('auth rejections'));
+      expect(authWarns).toHaveLength(1);
+      // Reason-specific hints, both classes in the one warn.
+      expect(authWarns[0]).toContain('not-authorized');
+      expect(authWarns[0]).toContain('rate-limit');
+      expect(authWarns[0]).toContain('mint a hub-wide token');
+      expect(authWarns[0]).toContain('HUB_CONN_RATE_LIMIT');
+
+      // Re-probe (5 min): the two permanently-rejected docs reconnect with the
+      // SAME doc instance (agent wiring survives the provider swap).
+      const docA = bySlug('ui-a').document;
+      timers.fire(300_000);
+      await new Promise((res) => setTimeout(res, 10));
+      const reprobed = made.slice(3);
+      expect(reprobed.map((m) => m.documentName).sort()).toEqual(['ui-a', 'ui-b']);
+      expect(reprobed.find((m) => m.documentName === 'ui-a')?.document).toBe(docA);
+
+      await runtime?.stop();
+    } finally {
+      console.warn = origWarn;
+    }
+  });
+
+  test('boot summary prints AFTER settle with honest counts (not the premature N/N)', async () => {
+    const url = 'https://hub.example.com';
+    writeHubsConfig(url, 'mau_test');
+    const ctx = makeCtx({ url, linkedAt: 1 });
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'good.html'), '<g/>');
+    writeFileSync(join(ctx.paths.designRoot, 'ui', 'bad.html'), '<b/>');
+
+    const timers = fakeTimerQueue();
+    const logs: string[] = [];
+    const origLog = console.log;
+    const origWarn = console.warn;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(' '));
+    };
+    console.warn = () => {};
+
+    // 'good' syncs immediately; 'bad' is auth-rejected and never settles.
+    const { factory, made } = authStubFactory();
+    const mixedFactory = (args: { documentName: string; document?: Y.Doc }) => {
+      if (args.documentName === 'ui-good') {
+        const document = args.document ?? new Y.Doc();
+        return {
+          document,
+          async onceSynced() {},
+          destroy() {},
+        };
+      }
+      return factory(args);
+    };
+
+    try {
+      const runtime = createSyncRuntime(ctx, {
+        providerFactory: mixedFactory,
+        auth: {
+          settleTimeoutMs: 15_000,
+          warnDebounceMs: 2_000,
+          setTimer: timers.setTimer,
+          clearTimer: timers.clearTimer,
+        },
+      });
+      await runtime?.start();
+      made.find((m) => m.documentName === 'ui-bad')?.emitAuthFailure('invalid token');
+      // Boot prints the linking line immediately, NOT a premature N/N.
+      expect(logs.some((l) => l.includes('linking to'))).toBe(true);
+      expect(logs.some((l) => l.includes('synced'))).toBe(false);
+
+      // Let the good handshake's microtask chain run, then hit the ceiling.
+      await new Promise((res) => setTimeout(res, 10));
+      timers.fire(15_000);
+      await new Promise((res) => setTimeout(res, 10));
+
+      const summary = logs.find((l) => l.includes('synced'));
+      expect(summary).toBeDefined();
+      expect(summary).toContain('1/2 synced');
+      expect(summary).toContain('1 auth-rejected');
+      expect(summary).toContain('ui-bad');
+      expect(summary).toContain('invalid-token');
+
+      // lastSyncAt reflects the real reconcile activity of the good canvas.
+      expect(runtime?.status()?.lastSyncAt).not.toBeNull();
+      expect(runtime?.status()?.docs?.synced).toBe(1);
+
+      await runtime?.stop();
+    } finally {
+      console.log = origLog;
+      console.warn = origWarn;
+    }
   });
 });

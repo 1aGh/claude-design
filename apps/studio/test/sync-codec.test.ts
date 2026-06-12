@@ -12,8 +12,10 @@ import {
   applyAnnotationsToDoc,
   applyCommentsToDoc,
   applyHtmlToDoc,
+  bodyEditAtFromDoc,
   commentsFromDoc,
   htmlFromDoc,
+  stampBodyEdit,
   Y_SYNC_TYPES,
 } from '../sync/codec.ts';
 
@@ -161,5 +163,68 @@ describe('Annotations codec', () => {
     const doc = new Y.Doc();
     applyAnnotationsToDoc(doc, '<svg>x</svg>');
     expect(doc.getMap<string>(Y_TYPES.annotations).get('svg')).toBe('<svg>x</svg>');
+  });
+});
+
+// syncMeta lane — DDR-102. The doc-side body-edit stamp the cold-start
+// newest-wins decision reads. Dedicated Y.Map lane because meta's
+// `last_modified` is in META_LOCAL_KEYS (per-machine, never syncs).
+describe('syncMeta codec (DDR-102)', () => {
+  test('bodyEditAtFromDoc returns null on a fresh doc (older-peer interop)', () => {
+    const doc = new Y.Doc();
+    expect(bodyEditAtFromDoc(doc)).toBeNull();
+  });
+
+  test('stampBodyEdit → bodyEditAtFromDoc round-trip with explicit nowMs', () => {
+    const doc = new Y.Doc();
+    stampBodyEdit(doc, undefined, 1_700_000_000_000);
+    expect(bodyEditAtFromDoc(doc)).toBe(1_700_000_000_000);
+    const by = doc.getMap<unknown>(Y_SYNC_TYPES.syncMeta).get('by');
+    expect(typeof by).toBe('string');
+    expect((by as string).length).toBeGreaterThan(0);
+    expect((by as string).length).toBeLessThanOrEqual(32);
+  });
+
+  test('stampBodyEdit defaults to Date.now()', () => {
+    const doc = new Y.Doc();
+    const before = Date.now();
+    stampBodyEdit(doc);
+    const after = Date.now();
+    const at = bodyEditAtFromDoc(doc);
+    expect(at).not.toBeNull();
+    expect(at as number).toBeGreaterThanOrEqual(before);
+    expect(at as number).toBeLessThanOrEqual(after);
+  });
+
+  test('a hostile/garbage bodyEditAt value reads as null', () => {
+    const doc = new Y.Doc();
+    doc.getMap<unknown>(Y_SYNC_TYPES.syncMeta).set('bodyEditAt', 'not-a-number');
+    expect(bodyEditAtFromDoc(doc)).toBeNull();
+    doc.getMap<unknown>(Y_SYNC_TYPES.syncMeta).set('bodyEditAt', Number.POSITIVE_INFINITY);
+    expect(bodyEditAtFromDoc(doc)).toBeNull();
+  });
+
+  test('body apply + stamp wrapped in one transaction emits ONE update', () => {
+    const doc = new Y.Doc();
+    let updates = 0;
+    doc.on('update', () => {
+      updates++;
+    });
+    const origin = { agent: 'test' };
+    doc.transact(() => {
+      applyHtmlToDoc(doc, '<div>v1</div>', origin);
+      stampBodyEdit(doc, origin, 123);
+    }, origin);
+    expect(updates).toBe(1);
+    expect(htmlFromDoc(doc)).toBe('<div>v1</div>');
+    expect(bodyEditAtFromDoc(doc)).toBe(123);
+  });
+
+  test('the stamp syncs to a peer doc via update exchange', () => {
+    const a = new Y.Doc();
+    const b = new Y.Doc();
+    a.on('update', (u: Uint8Array) => Y.applyUpdate(b, u));
+    stampBodyEdit(a, undefined, 456);
+    expect(bodyEditAtFromDoc(b)).toBe(456);
   });
 });

@@ -2,7 +2,18 @@ import defaultMdxComponents from 'fumadocs-ui/mdx';
 import type { MDXComponents } from 'mdx/types';
 import { Callout } from '@/components/mdcc/callout';
 import { CodeBlock } from '@/components/mdcc/code-block';
+import {
+  ArchitectureMap,
+  CommandFlow,
+  CommandTree,
+  DevServerSchema,
+  FileTree,
+  InspectorDiagram,
+  LoopDiagram,
+  StatPanel,
+} from '@/components/mdcc/diagrams';
 import { FlowLoop } from '@/components/mdcc/flow-loop';
+import './mdcc/diagrams/_diagrams.css';
 
 export function getMDXComponents(components?: MDXComponents) {
   return {
@@ -10,6 +21,15 @@ export function getMDXComponents(components?: MDXComponents) {
     pre: CodeBlock,
     Callout,
     FlowLoop,
+    // phase-17 docs diagram primitives — auto-available in every .mdx
+    ArchitectureMap,
+    CommandFlow,
+    LoopDiagram,
+    CommandTree,
+    FileTree,
+    StatPanel,
+    InspectorDiagram,
+    DevServerSchema,
     ...components,
   } satisfies MDXComponents;
 }

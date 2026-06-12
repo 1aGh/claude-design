@@ -39,25 +39,30 @@ const MESSAGE_AWARENESS = 1;
 // Color hash — stable per peer identity.
 
 /**
- * djb2 string hash → 0xRRGGBB color in a curated palette. Determinism per
+ * djb2 string hash → OKLCH color in a curated palette. Determinism per
  * input name is the load-bearing property: every peer hashing "Alice" must
- * land on the SAME color. 12 hues spread evenly around the wheel; saturation
- * + lightness fixed so all colors stay readable on light + dark surfaces.
+ * land on the SAME color.
+ *
+ * DS contract (colors-presence specimen): the AI agent rides
+ * `--presence-agent` (violet-magenta, hue 322) — "a hue no human state uses,
+ * so attribution on a shared canvas is unambiguous". Human hues therefore
+ * EXCLUDE the agent band (~292–352) AND the accent indigo band (~245–290,
+ * reserved for selection/active). L/C match the DS presence tokens
+ * (oklch ≈0.74 0.16) so every cursor reads at the same weight on both themes.
  */
 const COLOR_PALETTE = [
-  '#e91e63', // pink
-  '#f44336', // red
-  '#ff9800', // orange
-  '#ffc107', // amber
-  '#cddc39', // lime
-  '#4caf50', // green
-  '#009688', // teal
-  '#00bcd4', // cyan
-  '#03a9f4', // light blue
-  '#3f51b5', // indigo
-  '#673ab7', // deep purple
-  '#9c27b0', // purple
+  'oklch(0.70 0.17 12)', // rose
+  'oklch(0.72 0.16 40)', // coral
+  'oklch(0.78 0.15 78)', // amber  (presence-away hue)
+  'oklch(0.76 0.16 108)', // lime
+  'oklch(0.74 0.16 145)', // green  (presence-online hue)
+  'oklch(0.75 0.14 172)', // teal
+  'oklch(0.73 0.13 200)', // cyan
+  'oklch(0.72 0.13 238)', // blue   (status-info hue)
 ] as const;
+
+/** The AI agent's exclusive cursor/avatar hue — `--presence-agent`. */
+export const AGENT_COLOR = 'oklch(0.700 0.190 322)';
 
 export function colorForName(name: string): string {
   // COLOR_PALETTE is a non-empty const tuple; the explicit `?? '#000'`

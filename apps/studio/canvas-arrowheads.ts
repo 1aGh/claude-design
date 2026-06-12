@@ -59,6 +59,28 @@ export interface ArrowGeom {
   endHead?: ArrowHead;
   dashed?: boolean;
   lineType?: ArrowLineType;
+  /**
+   * FigJam v3 — magnetic binding anchors (normalized over the host bbox;
+   * `ArrowBind` is structurally assignable). A BOUND curved arrow exits its
+   * host perpendicular to the bound side (cubic with exit normals — the
+   * FigJam connector look) and takes the sleeker connector head; unbound
+   * arrows keep the legacy byte-identical geometry.
+   */
+  startBind?: { nx: number; ny: number };
+  endBind?: { nx: number; ny: number };
+}
+
+/**
+ * Exit direction OUT of a bound side — the normalized vector from the host's
+ * center toward the anchor magnet. A center anchor (0.5, 0.5) has no exit
+ * direction (null → the curve falls back to chord-based control points).
+ */
+function bindNormal(b: { nx: number; ny: number }): [number, number] | null {
+  const dx = b.nx - 0.5;
+  const dy = b.ny - 0.5;
+  const len = Math.hypot(dx, dy);
+  if (len < 0.05) return null;
+  return [dx / len, dy / len];
 }
 
 /**
@@ -73,10 +95,13 @@ export function arrowHeadPoints(
   y1: number,
   x2: number,
   y2: number,
-  width: number
+  width: number,
+  // FigJam v3 — optional head length override (sleeker connector heads on
+  // BOUND arrows). Default = the legacy byte-frozen formula.
+  lenOverride?: number
 ): string {
   const angle = Math.atan2(y2 - y1, x2 - x1);
-  const len = 12 + width * 2;
+  const len = lenOverride ?? 12 + width * 2;
   const wing = Math.PI / 7;
   const ax = x2 - Math.cos(angle - wing) * len;
   const ay = y2 - Math.sin(angle - wing) * len;
@@ -154,25 +179,39 @@ function headPrimitives(
   fromX: number,
   fromY: number,
   width: number,
-  color: string
+  color: string,
+  lenOverride?: number
 ): SvgPrimitive[] {
   switch (head) {
     case 'none':
       return [];
     case 'triangle':
-      // Legacy filled head — byte-identical to Phase 5.1.
+      // Legacy filled head — byte-identical to Phase 5.1 (unless a bound
+      // arrow passes the sleeker connector length).
       return [
-        { el: 'polyline', points: arrowHeadPoints(fromX, fromY, tipX, tipY, width), fill: color },
+        {
+          el: 'polyline',
+          points: arrowHeadPoints(fromX, fromY, tipX, tipY, width, lenOverride),
+          fill: color,
+        },
       ];
     case 'line':
       // Open chevron — same 3 points, unfilled (no implicit close).
       return [
-        { el: 'polyline', points: arrowHeadPoints(fromX, fromY, tipX, tipY, width), fill: 'none' },
+        {
+          el: 'polyline',
+          points: arrowHeadPoints(fromX, fromY, tipX, tipY, width, lenOverride),
+          fill: 'none',
+        },
       ];
     case 'triangle-outline':
       // Closed triangle outline — polygon auto-closes the third edge.
       return [
-        { el: 'polygon', points: arrowHeadPoints(fromX, fromY, tipX, tipY, width), fill: 'none' },
+        {
+          el: 'polygon',
+          points: arrowHeadPoints(fromX, fromY, tipX, tipY, width, lenOverride),
+          fill: 'none',
+        },
       ];
     case 'diamond':
       return [
@@ -199,6 +238,7 @@ export function arrowPrimitives(s: ArrowGeom): SvgPrimitive[] {
   const endHead = s.endHead ?? 'triangle';
   const dashed = s.dashed ?? false;
   const lineType = s.lineType ?? 'straight';
+  const bound = Boolean(s.startBind || s.endBind);
   const out: SvgPrimitive[] = [];
 
   // Default tangent sources (straight): each head points away from the far end.
@@ -207,6 +247,28 @@ export function arrowPrimitives(s: ArrowGeom): SvgPrimitive[] {
 
   if (lineType === 'straight') {
     out.push({ el: 'line', x1: s.x1, y1: s.y1, x2: s.x2, y2: s.y2, dash: dashed });
+  } else if (lineType === 'curved' && bound) {
+    // FigJam v3 — connector curve: a cubic whose control points extend along
+    // each bound side's EXIT NORMAL (perpendicular out of the side, then
+    // toward the target) — the smooth "leaves the box sideways" look. A free
+    // / center-anchored end falls back to a chord-aligned control point.
+    const dx = s.x2 - s.x1;
+    const dy = s.y2 - s.y1;
+    const chord = Math.hypot(dx, dy) || 1;
+    const reach = Math.min(160, Math.max(24, chord * 0.4));
+    const n1 = s.startBind ? bindNormal(s.startBind) : null;
+    const n2 = s.endBind ? bindNormal(s.endBind) : null;
+    const c1x = s.x1 + (n1 ? n1[0] : dx / chord) * reach;
+    const c1y = s.y1 + (n1 ? n1[1] : dy / chord) * reach;
+    const c2x = s.x2 + (n2 ? n2[0] : -dx / chord) * reach;
+    const c2y = s.y2 + (n2 ? n2[1] : -dy / chord) * reach;
+    out.push({
+      el: 'path',
+      d: `M${s.x1} ${s.y1} C${c1x} ${c1y} ${c2x} ${c2y} ${s.x2} ${s.y2}`,
+      dash: dashed,
+    });
+    startFrom = [c1x, c1y];
+    endFrom = [c2x, c2y];
   } else {
     const shaft = shaftPath(s.x1, s.y1, s.x2, s.y2, lineType);
     out.push({ el: 'path', d: shaft.d, dash: dashed });
@@ -214,7 +276,14 @@ export function arrowPrimitives(s: ArrowGeom): SvgPrimitive[] {
     endFrom = shaft.endFrom;
   }
 
-  out.push(...headPrimitives(startHead, s.x1, s.y1, startFrom[0], startFrom[1], s.width, s.color));
-  out.push(...headPrimitives(endHead, s.x2, s.y2, endFrom[0], endFrom[1], s.width, s.color));
+  // Bound arrows take the sleeker connector head; unbound keep the legacy
+  // byte-frozen proportions.
+  const headLen = bound ? 9 + s.width * 1.4 : undefined;
+  out.push(
+    ...headPrimitives(startHead, s.x1, s.y1, startFrom[0], startFrom[1], s.width, s.color, headLen)
+  );
+  out.push(
+    ...headPrimitives(endHead, s.x2, s.y2, endFrom[0], endFrom[1], s.width, s.color, headLen)
+  );
   return out;
 }

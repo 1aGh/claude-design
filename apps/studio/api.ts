@@ -234,45 +234,14 @@ export interface ApiHooks {
   onAnnotationsChanged?: (file: string, svg: string) => void;
 }
 
-/**
- * Elements the annotation tool legitimately emits (`strokesToSvg` in
- * annotations-layer.tsx). This is the WHOLE vocabulary — purely presentational.
- */
-const ANNOTATION_SVG_ELEMENTS = new Set([
-  'svg',
-  'g',
-  'path',
-  'rect',
-  'ellipse',
-  'line',
-  'polyline',
-  // Phase 24 — `polygon` (diamond / triangle shape primitives + closed arrowhead
-  // outlines + diamond heads) and `circle` (circle arrowhead). Inert shape
-  // elements with no script capability — same safety class as the rest.
-  'polygon',
-  'circle',
-  'text',
-  // Annotation polish (item 4a) — `tspan` carries one line of multi-line text
-  // inside a `<text>` (SVG `<text>` ignores `\n`). Inert presentational element
-  // with no script capability — same safety class as `text`. Only `x`/`dy`
-  // (geometry) survive; the attribute denylist strips any on*/style/href.
-  'tspan',
-  // Phase 23 — `image` (dropped/pasted raster). The ONLY element allowed to keep
-  // an href, and ONLY a relative assets/<sha8>.<ext> path (ASSET_IMAGE_HREF_RE) —
-  // every external / data: / javascript: / `..` href is still stripped. <image>
-  // is a passive include with no script capability. See DDR (Task 9).
-  'image',
-]);
+// FigJam v3 — the annotation sanitizer moved to annotations-model.ts (the
+// schema owner; the allowlist guards exactly that vocabulary, and the
+// headless `maude design annotate` write verb needs it without pulling the
+// server modules). Re-exported here so every existing `from './api.ts'`
+// import keeps working unchanged.
+export { ASSET_IMAGE_HREF_RE, sanitizeAnnotationSvg } from './annotations-model.ts';
 
-/**
- * Phase 23 — the ONLY href shape allowed to survive on an `<image>`: a relative,
- * single-segment `assets/<name>.<ext>` path. Anchored (`^…$`), no scheme, no `/`
- * beyond the one `assets/` segment (blocks `assets/../../etc/passwd`), no query,
- * ext ∈ the four raster types the upload route accepts. Everything else —
- * external, `data:`, `javascript:`, `..`, or any href on a non-image element —
- * is stripped by Rule 3. Pairs with the asset-write caps (DDR Task 9).
- */
-export const ASSET_IMAGE_HREF_RE = /^assets\/[A-Za-z0-9._-]+\.(?:png|jpe?g|webp|gif)$/;
+import { sanitizeAnnotationSvg } from './annotations-model.ts';
 
 /** Phase 23 — hard ceiling on a single uploaded asset (10 MB). */
 export const ASSET_MAX_BYTES = 10 * 1024 * 1024;
@@ -351,84 +320,6 @@ export interface SaveAssetResult {
   error?: string;
   /** Relative `assets/<sha8>.<ext>` path on success. */
   path?: string;
-}
-
-/**
- * A3 (DDR-060 F1 re-audit) — sanitize an annotation SVG before it is persisted /
- * synced / mirrored into the collab Y.Map. ALLOWLIST, not denylist (the F1
- * confirming pass showed a denylist loses the race: `<svg:script>` via namespace,
- * `javascript&#58;` via HTML entity, `<style>@import url()>`, CSS `url(javascript:)`
- * all slipped a tag-name denylist). Two rules, both keyed to the fixed legit
- * vocabulary so they're zero-regression on real annotations:
- *
- *   1. Element allowlist — drop the markup of any tag whose LOCAL name (namespace
- *      stripped, so `svg:script` → `script`) isn't in ANNOTATION_SVG_ELEMENTS.
- *      Dropped-tag text content survives as inert text (not in a script/style
- *      context), which is harmless.
- *   2. Attribute denylist on survivors — the legit vocabulary uses none of
- *      `on*=`, `style=`, or any `href`, so stripping them closes inline handlers,
- *      CSS `url(javascript:)`, and entity-encoded `xlink:href` in one pass.
- *
- * The current consumer (`svgToStrokes` → DOMParser image/svg+xml → structured
- * strokes → React) never raw-renders this string, so the live XSS risk is already
- * nil; this keeps "inert" TRUE for any future raw-render consumer and for the
- * synced file a peer / Claude-context ingests (defense-in-depth, DDR-054 §3).
- */
-export function sanitizeAnnotationSvg(svg: string): string {
-  // Phase 23 — <image> href handling. Rule 3 below strips EVERY href (that's the
-  // zero-bypass invariant). To let a legit assets/ href survive WITHOUT
-  // re-opening the denylist race, we (a) neutralize any input-supplied marker so
-  // only this pre-pass can mint one, (b) on `<image>` ONLY, hoist a regex-valid
-  // assets href into a sanitizer-inert `data-mdcc-asset` marker (an external /
-  // data: / `..` / non-image href is left as a plain href → stripped by Rule 3),
-  // then (c) after the three rules, restore the marker back to `href` — but ONLY
-  // after RE-validating the value, so a forged marker can never smuggle a
-  // scheme/traversal back in. The restored value is, by construction, a safe
-  // same-origin path. See ASSET_IMAGE_HREF_RE + DDR (Task 9).
-  const hoisted = svg
-    .replace(/\sdata-mdcc-asset\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-    .replace(/<\s*(?:[\w-]+:)?image\b[^>]*>/gi, (tag) => {
-      const m = tag.match(/(?:xlink:)?href\s*=\s*"([^"]*)"|(?:xlink:)?href\s*=\s*'([^']*)'/i);
-      const val = m ? (m[1] ?? m[2] ?? '') : '';
-      if (!val || !ASSET_IMAGE_HREF_RE.test(val)) return tag;
-      return tag.replace(/(?:xlink:)?href\s*=\s*("[^"]*"|'[^']*')/i, `data-mdcc-asset="${val}"`);
-    });
-  const cleaned = hoisted
-    // 1. Remove the CONTENT of executable / instruction-bearing elements (not
-    //    just their tags) so an injected script body / `@import` / prompt-
-    //    injection string can't survive as inert text a future raw-renderer or
-    //    Claude-context read might act on. Namespace-tolerant (`svg:script`),
-    //    non-greedy to the first matching dangerous close tag.
-    .replace(
-      /<\s*(?:[\w-]+:)?(?:script|style|foreignObject|title|desc)\b[\s\S]*?<\s*\/\s*(?:[\w-]+:)?(?:script|style|foreignObject|title|desc)\s*>/gi,
-      ''
-    )
-    // 2. Element allowlist — drop the markup of any tag whose LOCAL name isn't
-    //    in the fixed annotation vocabulary. `[^>]*` stops at the first `>`;
-    //    annotation attrs never contain a literal `>`.
-    .replace(/<\/?\s*([a-zA-Z][\w:-]*)\b[^>]*>/g, (match, rawName: string) => {
-      const local = String(rawName).split(':').pop()?.toLowerCase() ?? '';
-      return ANNOTATION_SVG_ELEMENTS.has(local) ? match : '';
-    })
-    // 3. Attribute denylist on the surviving allowlisted elements — the legit
-    //    vocabulary uses no on*= / style= / *href=, so stripping them closes
-    //    inline handlers, CSS url(javascript:), and entity-encoded hrefs.
-    //    The leading boundary is a LOOKBEHIND on whitespace / quote / slash
-    //    (not a consumed `\s`) so a handler glued to the previous attribute's
-    //    closing quote — `<circle r="2"onload="…"/>`, which HTML/SVG parsers
-    //    accept as a distinct attribute — is also stripped (Phase 24 security
-    //    review, DDR-067). The non-consuming lookbehind leaves the preceding
-    //    quote intact so the legit attribute it belonged to survives.
-    .replace(
-      /(?<=[\s"'/])(?:on[a-z]+|style|(?:[\w-]+:)?href)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi,
-      ''
-    );
-  // Post-pass — restore the validated assets href on <image>. Re-validate the
-  // marker value (defense-in-depth: a forged data-mdcc-asset can only resolve to
-  // a safe same-origin assets path; anything with a scheme/traversal is dropped).
-  return cleaned.replace(/\sdata-mdcc-asset\s*=\s*"([^"]*)"/gi, (_whole, val: string) =>
-    ASSET_IMAGE_HREF_RE.test(val) ? ` href="${val}"` : ''
-  );
 }
 
 export function createApi(ctx: Context, hooks: ApiHooks): Api {

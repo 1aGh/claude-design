@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-12T14:45:51.794Z",
+  "generated": "2026-06-12T16:07:00.299Z",
   "currentPhase": null,
   "phases": [
     {
@@ -113,6 +113,17 @@
       "phaseKey": null
     },
     {
+      "id": "feature-annotations-figjam-v3-ai-loop",
+      "title": "Feature: Annotations FigJam-parity v3 + bidirectional AI loop",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This phase again touches the most load-bearing dev-server file (apps/studio/annotation...",
+      "planPath": ".ai/plans/archive/feature-annotations-figjam-v3-ai-loop.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
       "id": "feature-docs-site-followups",
       "title": "Feature: docs-site MDCC-DSN/01 follow-ups",
       "status": "done",
@@ -142,6 +153,17 @@
       "date": null,
       "summary": "tracks on any node) is the cross-platform animation source; maude is its editor (/design:draw + motion utils). It extends the DDR-067 single-source invariant from static geometry to time. (alias /d...",
       "planPath": ".ai/plans/archive/feature-draw-animation-layer.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-hub-sync-cold-start-safety",
+      "title": "Feature: Hub sync cold-start safety + honest status — \"link & it just works\"",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. *This touches the sync hot path (apps/studio/sync/) — the standing rule applies: inven...",
+      "planPath": ".ai/plans/archive/feature-hub-sync-cold-start-safety.md",
       "archived": true,
       "phaseKey": null
     },
@@ -254,6 +276,17 @@
       "planPath": ".ai/plans/archive/phase-16-intro-video-v3-wow.md",
       "archived": true,
       "phaseKey": "16"
+    },
+    {
+      "id": "phase-17-docs-site-infographics",
+      "title": "Feature: Docs site infographics + diagrams",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Add a small library of diagram primitives to the docs site and insert them into the highest-traffic pages. Today the docs are text-heavy markdown tables — accurate but visually flat. Adding SKU-sta...",
+      "planPath": ".ai/plans/archive/phase-17-docs-site-infographics.md",
+      "archived": true,
+      "phaseKey": "17"
     },
     {
       "id": "phase-20-canvas-undo-redo",
@@ -793,17 +826,6 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
-    },
-    {
-      "id": "phase-17-docs-site-infographics",
-      "title": "Feature: Docs site infographics + diagrams",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Add a small library of diagram primitives to the docs site and insert them into the highest-traffic pages. Today the docs are text-heavy markdown tables — accurate but visually flat. Adding SKU-sta...",
-      "planPath": ".ai/plans/phase-17-docs-site-infographics.md",
-      "archived": false,
-      "phaseKey": "17"
     },
     {
       "id": "phase-26-native-collab-tauri-shell",

@@ -481,6 +481,22 @@ const STICONS = {
       <line x1="13" y1="3" x2="7.6" y2="8.4" />
     </>
   ),
+  share: (
+    <>
+      <circle cx="4" cy="8" r="1.9" />
+      <circle cx="11.6" cy="3.6" r="1.9" />
+      <circle cx="11.6" cy="12.4" r="1.9" />
+      <line x1="5.7" y1="7" x2="9.9" y2="4.6" />
+      <line x1="5.7" y1="9" x2="9.9" y2="11.4" />
+    </>
+  ),
+  pen: (
+    <>
+      <path d="M3 13l.8-3L10.6 3.2a1.1 1.1 0 0 1 1.6 0l.6.6a1.1 1.1 0 0 1 0 1.6L6 12.2z" />
+      <line x1="9.6" y1="4.2" x2="11.8" y2="6.4" />
+    </>
+  ),
+  square: <rect x="3.5" y="3.5" width="9" height="9" rx="1" />,
 };
 
 // ⌘K command palette — the mockup's signature surface, wired to real shell
@@ -489,12 +505,19 @@ const STICONS = {
 function CommandPalette({ open, onClose, actions }) {
   const [q, setQ] = useState('');
   const [active, setActive] = useState(0);
+  const listRef = useRef(null);
   useEffect(() => {
     if (open) {
       setQ('');
       setActive(0);
     }
   }, [open]);
+  // Keep the keyboard-active row visible while arrowing through a scrolled list.
+  useEffect(() => {
+    listRef.current
+      ?.querySelector('.st-pal-item.is-active')
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [active]);
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     if (!needle) return actions;
@@ -548,7 +571,7 @@ function CommandPalette({ open, onClose, actions }) {
           />
           <Kbd>⌘K</Kbd>
         </div>
-        <div className="st-pal-list">
+        <div className="st-pal-list" ref={listRef}>
           {filtered.length === 0 ? (
             <div className="st-pal-empty">No matching command.</div>
           ) : (
@@ -621,9 +644,19 @@ function initialsOf(name) {
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return ((parts[0][0] || '') + (parts[parts.length - 1][0] || '')).toUpperCase() || '?';
 }
-function StAvatar({ initials, hue, title }) {
+function StAvatar({ initials, hue, title, pulse }) {
+  // Hue rides a custom property so CSS can mix it into the surface (DS avatar
+  // recipe: tinted bg + hue border + fg-0 text — solid fill + white text broke
+  // the accent-fg contrast rule and washed out in light theme). `pulse` plays
+  // the DS motion-presence role (scale+opacity ring) — the AI agent's "live"
+  // tell while it's editing.
   return (
-    <span className="st-avatar" style={{ background: hue }} title={title} aria-label={title}>
+    <span
+      className={'st-avatar' + (pulse ? ' is-pulsing' : '')}
+      style={{ '--av-hue': hue }}
+      data-tip={title}
+      aria-label={title}
+    >
       {initials}
     </span>
   );
@@ -631,6 +664,78 @@ function StAvatar({ initials, hue, title }) {
 
 function Kbd({ children }) {
   return <span className="kbd">{children}</span>;
+}
+
+// ───────── Resizable panel grip (DS components-resize-panels contract) ─────────
+//
+// 8px hit area on a 1px seam; grip dots + accent surface on hover/focus/drag;
+// pointer drag (with capture, so moves keep arriving over the iframe), arrow-key
+// nudge (8px, ⇧=24px), Home/End to min/max, double-click resets to default.
+// Width persists per panel in localStorage.
+
+function usePanelSize(storeKey, { min, max, def }) {
+  const clamp = useCallback((v) => Math.min(max, Math.max(min, v)), [min, max]);
+  const [w, setWRaw] = useState(() => {
+    try {
+      const v = parseInt(localStorage.getItem(storeKey) || '', 10);
+      return Number.isFinite(v) ? clamp(v) : def;
+    } catch {
+      return def;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(storeKey, String(w));
+    } catch {}
+  }, [storeKey, w]);
+  const setW = useCallback(
+    (next) => setWRaw((prev) => clamp(typeof next === 'function' ? next(prev) : next)),
+    [clamp]
+  );
+  return { w, setW, min, max, def };
+}
+
+function PanelGrip({ label, size, onPointerDown, active, dir = 'ltr' }) {
+  const { w, setW, min, max, def } = size;
+  // `dir` is grip-relative: 'ltr' (left panel) → ArrowRight widens; 'rtl'
+  // (right dock) → ArrowRight narrows, since the seam moves toward the panel.
+  const grow = dir === 'rtl' ? -1 : 1;
+  return (
+    <div
+      className={'st-grip' + (active ? ' is-active' : '')}
+      role="separator"
+      tabIndex={0}
+      aria-orientation="vertical"
+      aria-label={label}
+      aria-valuemin={min}
+      aria-valuemax={max}
+      aria-valuenow={Math.round(w)}
+      onPointerDown={onPointerDown}
+      onDoubleClick={() => setW(def)}
+      onKeyDown={(e) => {
+        const step = e.shiftKey ? 24 : 8;
+        if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          setW((v) => v + step * grow);
+        } else if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          setW((v) => v - step * grow);
+        } else if (e.key === 'Home') {
+          e.preventDefault();
+          setW(min);
+        } else if (e.key === 'End') {
+          e.preventDefault();
+          setW(max);
+        }
+      }}
+    >
+      <svg className="st-grip-dots" viewBox="0 0 6 18" aria-hidden="true">
+        <circle cx="3" cy="3" r="1.1" fill="currentColor" />
+        <circle cx="3" cy="9" r="1.1" fill="currentColor" />
+        <circle cx="3" cy="15" r="1.1" fill="currentColor" />
+      </svg>
+    </div>
+  );
 }
 
 // T5 (Plan C) — shell-level Export & Handoff dialog (maude `.st-dialog`), per
@@ -908,7 +1013,7 @@ function DirRow({ name, depth, defaultOpen, children }) {
         onClick={() => setOpen((v) => !v)}
       >
         <span className="st-row-glyph">
-          <StIcon name={open ? 'chevron-down' : 'chevron-right'} size={13} />
+          <StIcon name="chevron-right" className={'st-chev' + (open ? ' is-open' : '')} size={13} />
         </span>
         <span className="st-row-name">{name}</span>
       </button>
@@ -938,7 +1043,7 @@ function DsFolderRow({ name, dsName, depth, defaultOpen, active, onOpenSystem, c
           aria-label={open ? 'Collapse design system' : 'Expand design system'}
           title={open ? 'Collapse' : 'Expand'}
         >
-          <StIcon name={open ? 'chevron-down' : 'chevron-right'} size={13} />
+          <StIcon name="chevron-right" className={'st-chev' + (open ? ' is-open' : '')} size={13} />
         </button>
         <button
           type="button"
@@ -1074,7 +1179,7 @@ function CanvasRow({
             setOpenState((v) => !v);
           }}
         >
-          <StIcon name={open ? 'chevron-down' : 'chevron-right'} size={13} />
+          <StIcon name="chevron-right" className={'st-chev' + (open ? ' is-open' : '')} size={13} />
         </span>
         <span className="st-row-name">{displayName(primary.name)}</span>
         {oc > 0 && <span className="st-row-badge">{oc}</span>}
@@ -1246,6 +1351,8 @@ function Sidebar({
   onDeleteBoard,
   collapsed,
   onCollapse,
+  width,
+  resizing,
 }) {
   const filteredGroups = useMemo(() => {
     if (!search) return groups;
@@ -1291,14 +1398,19 @@ function Sidebar({
   }, [filteredGroups]);
 
   return (
-    <nav className={'st-sidebar' + (collapsed ? ' is-collapsed' : '')} aria-label="Files" data-tour="sidebar">
+    <nav
+      className={'st-sidebar' + (collapsed ? ' is-collapsed' : '') + (resizing ? ' is-resizing' : '')}
+      style={collapsed || !width ? undefined : { width, flexBasis: width }}
+      aria-label="Files"
+      data-tour="sidebar"
+    >
       <div className="st-sb-hd">
         <span className="st-sb-title">Files</span>
         <div className="st-sb-hd-actions">
           <button
             type="button"
             className="st-iconbtn"
-            title="New blank brief board"
+            data-tip="New blank brief board"
             aria-label="New blank brief board"
             aria-expanded={creating}
             onClick={() => {
@@ -1308,7 +1420,10 @@ function Sidebar({
           >
             <StIcon name="plus" size={15} />
           </button>
-          <span className="st-live" title={wsConnected ? 'live · file index synced' : 'reconnecting…'}>
+          <span
+            className="st-live"
+            data-tip={wsConnected ? 'live · file index synced' : 'reconnecting…'}
+          >
             <span className={'st-live-dot' + (wsConnected ? ' is-connected' : '')} aria-hidden="true" />
             {htmlShown} / {htmlCount}
           </span>
@@ -1317,7 +1432,7 @@ function Sidebar({
               type="button"
               className="st-iconbtn"
               aria-label="Collapse sidebar"
-              title="Collapse sidebar (T)"
+              data-tip="Collapse sidebar · T"
               onClick={onCollapse}
             >
               <StIcon name="panel-left" size={15} />
@@ -1354,7 +1469,7 @@ function Sidebar({
             type="button"
             className="st-newboard-go"
             disabled={newBusy || !newName.trim()}
-            title="Create (Enter)"
+            data-tip="Create · Enter"
             aria-label="Create brief board"
             onClick={submitNewBoard}
           >
@@ -1376,13 +1491,21 @@ function Sidebar({
             placeholder="Search canvases…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => {
+              // Esc — clear the filter first; a second Esc leaves the field.
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                if (search) setSearch('');
+                else e.currentTarget.blur();
+              }
+            }}
             aria-label="Filter files"
           />
           {search ? (
             <button
               className="st-search-clear"
               onClick={() => setSearch('')}
-              title="Clear (Esc)"
+              data-tip="Clear · Esc"
               aria-label="Clear search"
             >
               ×
@@ -1427,7 +1550,7 @@ function Sidebar({
                 aria-expanded={sectionOpen}
                 title={sectionOpen ? 'Collapse section' : 'Expand section'}
               >
-                <StIcon name={sectionOpen ? 'chevron-down' : 'chevron-right'} size={13} />
+                <StIcon name="chevron-right" className={'st-chev' + (sectionOpen ? ' is-open' : '')} size={13} />
                 <span className="st-sec-name">{meta.title}</span>
                 {pill && <span className="st-pill">{pill}</span>}
               </button>
@@ -1508,7 +1631,7 @@ function HelpModal({ open, onClose, onStartTour }) {
           <span className="title" id="help-modal-title">
             Help · shortcuts &amp; commands
           </span>
-          <span className="sku">MDCC-DEV-SRV / v{MDCC_VERSION}</span>
+          <span className="sku">MAUDE-DEV-SRV / v{MDCC_VERSION}</span>
           {onStartTour && (
             <button
               type="button"
@@ -1597,22 +1720,28 @@ function HelpModal({ open, onClose, onStartTour }) {
             </ul>
           </details>
           <details>
-            <summary>Tabs &amp; canvas</summary>
+            <summary>Canvas &amp; panels</summary>
             <ul>
               <li>
-                click in tree <span>open tab</span>
+                click in tree <span>open canvas (replaces the active one)</span>
               </li>
               <li>
-                <kbd>×</kbd> on tab <span>close tab</span>
+                File ▸ Close canvas <span>clear the stage</span>
               </li>
               <li>
-                <kbd>⌘R</kbd> <span>reload iframe</span>
+                <kbd>⌘R</kbd> <span>reload canvas</span>
               </li>
               <li>
                 <kbd>/</kbd> <span>focus search</span>
               </li>
               <li>
-                <kbd>⌘⇧M</kbd> <span>toggle comments panel</span>
+                <kbd>⌘⇧M</kbd> <span>comments panel</span>
+              </li>
+              <li>
+                <kbd>⌘⇧I</kbd> <span>inspector</span>
+              </li>
+              <li>
+                <kbd>?</kbd> <span>keyboard-shortcuts cheat sheet</span>
               </li>
             </ul>
           </details>
@@ -1752,7 +1881,7 @@ function HelpModal({ open, onClose, onStartTour }) {
           <details>
             <summary>Pin-to-element flow</summary>
             <ol>
-              <li>Open canvas tab</li>
+              <li>Open a canvas</li>
               <li>
                 <kbd>⌘</kbd>+click element
               </li>
@@ -1792,13 +1921,152 @@ function HelpModal({ open, onClose, onStartTour }) {
   );
 }
 
+// ───────── Keyboard-shortcuts overlay (DS components-shortcuts-overlay) ─────
+//
+// The ? cheat-sheet: dim scrim, shared panel material, four dense mono-headed
+// columns, Esc chip in the footer. REAL bindings only — every row here is
+// wired in the shell handler, the canvas input-router, or canvas-lib's
+// viewport controller. Scope chips mark the rows that need canvas focus.
+
+const SHORTCUT_GROUPS = [
+  {
+    id: 'canvas',
+    label: 'Canvas',
+    items: [
+      { label: 'Command palette', kbd: '⌘ K' },
+      { label: 'New brief board', kbd: 'N' },
+      { label: 'Export…', kbd: '⇧ ⌘ E' },
+      { label: 'Handoff to production', kbd: '⇧ ⌘ H' },
+      { label: 'Reload canvas', kbd: '⌘ R' },
+      { label: 'Search files', kbd: '/', alt: '⌘ F' },
+    ],
+  },
+  {
+    id: 'tools',
+    label: 'Tools · canvas focus',
+    items: [
+      { label: 'Move · Hand · Comment', kbd: 'V', alt: 'H / C' },
+      { label: 'Pen · Highlighter · Eraser', kbd: 'B', alt: 'I / E' },
+      { label: 'Shape · Arrow', kbd: 'R', alt: 'A' },
+      { label: 'Sticky · Text · Section', kbd: 'N', alt: 'T / ⇧S' },
+      { label: 'Undo / redo', kbd: '⌘ Z', alt: '⇧ ⌘ Z' },
+    ],
+  },
+  {
+    id: 'selection',
+    label: 'Selection & zoom',
+    items: [
+      { label: 'Select element', kbd: '⌘ click' },
+      { label: 'Add to selection', kbd: '⌘ ⇧ click' },
+      { label: 'Preview deepest', kbd: '⌘ hover' },
+      { label: 'Deselect · close menu', kbd: 'Esc' },
+      { label: 'Zoom in / out', kbd: '⌘ +', alt: '⌘ −' },
+      { label: 'Fit · actual size', kbd: '⌘ 0', alt: '⌘ 1' },
+    ],
+  },
+  {
+    id: 'view',
+    label: 'View',
+    items: [
+      { label: 'Project tree', kbd: 'T' },
+      { label: 'Design system view', kbd: 'S' },
+      { label: 'Inspector', kbd: '⌘ ⇧ I' },
+      { label: 'Comments sidebar', kbd: '⌘ ⇧ M' },
+      { label: 'Annotations', kbd: '⇧ P' },
+      { label: 'Hidden files', kbd: 'H' },
+      { label: 'This cheat sheet · help', kbd: '?', alt: 'F1' },
+    ],
+  },
+];
+
+function ShortcutCombo({ kbd, alt }) {
+  const combo = (s, key) => (
+    <span className="so-combo" key={key}>
+      {s.split(' ').map((k, i) => (
+        <Kbd key={`${k}-${i}`}>{k}</Kbd>
+      ))}
+    </span>
+  );
+  return (
+    <span className="so-combos">
+      {combo(kbd, 'main')}
+      {alt
+        ? alt.split(' / ').map((a) => (
+            <Fragment key={a}>
+              <span className="so-or">/</span>
+              {combo(a, a)}
+            </Fragment>
+          ))
+        : null}
+    </span>
+  );
+}
+
+function ShortcutsOverlay({ open, onClose }) {
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+  if (!open) return null;
+  const bindings = SHORTCUT_GROUPS.reduce((n, g) => n + g.items.length, 0);
+  return (
+    <div
+      className="st-scrim"
+      role="presentation"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="so-overlay" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+        <div className="so-overlay-hd">
+          <span className="so-title">Keyboard shortcuts</span>
+          <span className="so-trigger">
+            press <Kbd>?</Kbd> to open
+          </span>
+        </div>
+        <div className="so-columns">
+          {SHORTCUT_GROUPS.map((g) => (
+            <section key={g.id} className={'so-section so-section--' + g.id}>
+              <h3 className="so-section-hd">{g.label}</h3>
+              <dl className="so-list">
+                {g.items.map((it) => (
+                  <div key={it.label} className="so-pair">
+                    <dt>{it.label}</dt>
+                    <dd>
+                      <ShortcutCombo kbd={it.kbd} alt={it.alt} />
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          ))}
+        </div>
+        <div className="so-overlay-ft">
+          <span>
+            close with <Kbd>Esc</Kbd>
+          </span>
+          <span className="so-count">
+            {bindings} bindings · {SHORTCUT_GROUPS.length} groups
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ───────── Menubar (CV-01/CV-08 top chrome) ─────────
 //
 // Replaces the legacy `.header` action-button toolbar. Mirrors the shared
 // Menubar component from .design/ui/Canvas Viewport.html — brand · menus ·
-// status. View dropdown is wired to the only toggleable panel today (the
-// Comments sidebar); the rest is inert with a phase-tag explaining when it
-// lands.
+// status. View dropdown is wired to the panels + zoom that exist today;
+// Presentation Mode stays phase-tagged until it ships.
 
 const MENU_NAMES = ['File', 'Edit', 'View', 'Selection', 'Tools', 'Help'];
 
@@ -1820,7 +2088,7 @@ function useDropdownClose(onClose) {
   }, [onClose]);
 }
 
-function ViewDropdown({ panels, onToggle, onClose }) {
+function ViewDropdown({ panels, onToggle, onClose, onZoom, hasCanvas }) {
   useDropdownClose(onClose);
   return (
     <div className="st-dropdown" role="menu" aria-label="View" style={{ left: 152 }}>
@@ -1843,177 +2111,180 @@ function ViewDropdown({ panels, onToggle, onClose }) {
             <span className="st-dd-check">{p.checked ? <StIcon name="check" size={13} /> : null}</span>
             <span>{p.label}</span>
           </span>
-          {p.phase ? <span className="st-dd-phase">{p.phase}</span> : <Kbd>{p.shortcut || ''}</Kbd>}
+          {p.phase ? (
+            <span className="st-dd-phase">{p.phase}</span>
+          ) : p.shortcut ? (
+            <Kbd>{p.shortcut}</Kbd>
+          ) : null}
         </button>
       ))}
       <div className="st-dd-sep" />
       <div className="st-dd-hd">Zoom</div>
       {[
-        { label: 'Zoom In', shortcut: '⌘ +' },
-        { label: 'Zoom Out', shortcut: '⌘ −' },
-        { label: 'Fit to Screen', shortcut: '⌘ 0' },
-        { label: 'Actual Size · 100 %', shortcut: '⌥ ⌘ 0' },
+        { op: 'in', label: 'Zoom In', shortcut: '⌘ +' },
+        { op: 'out', label: 'Zoom Out', shortcut: '⌘ −' },
+        { op: 'fit', label: 'Fit to Screen', shortcut: '⌘ 0' },
+        { op: 'actual', label: 'Actual Size · 100 %', shortcut: '⌘ 1' },
       ].map((z) => (
-        <button key={z.label} type="button" role="menuitem" className="st-dd-item" aria-disabled="true">
+        <button
+          key={z.label}
+          type="button"
+          role="menuitem"
+          className="st-dd-item"
+          aria-disabled={hasCanvas ? undefined : 'true'}
+          onClick={() => {
+            if (!hasCanvas) return;
+            onZoom?.(z.op);
+            onClose();
+          }}
+        >
           <span className="st-dd-lead">
             <span className="st-dd-check" />
             <span>{z.label}</span>
           </span>
-          <span className="st-dd-phase">Phase 4</span>
+          <Kbd>{z.shortcut}</Kbd>
         </button>
       ))}
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Phase 5.1 — Selection + Tools dropdowns (mirror ViewDropdown shape).
+// Help dropdown — cheat sheet · deep help · tour · what's new.
+// Shared menubar dropdown — File / Edit / Selection / Tools / Help all render
+// the identical {id,label,shortcut,sep?,disabled?} list over the same button
+// skeleton, differing only in aria-label, left offset, and an optional header.
+// (ViewDropdown stays separate — its checkbox/phase/zoom-op rows genuinely
+// diverge.) Per the /flow:done simplifier pass — collapsed 5 near-dupes.
+function DropdownMenu({ label, left, header, items, onAction, onClose }) {
+  useDropdownClose(onClose);
+  return (
+    <div className="st-dropdown" role="menu" aria-label={label} style={{ left }}>
+      {header ? <div className="st-dd-hd">{header}</div> : null}
+      {items.map((it, i) =>
+        it.sep ? (
+          <div key={'s' + i} className="st-dd-sep" />
+        ) : (
+          <button
+            key={it.id}
+            type="button"
+            role="menuitem"
+            className="st-dd-item"
+            aria-disabled={it.disabled ? 'true' : undefined}
+            onClick={() => {
+              if (it.disabled) return;
+              onAction(it.id);
+              onClose();
+            }}
+          >
+            <span className="st-dd-lead">
+              <span className="st-dd-check" />
+              <span>{it.label}</span>
+            </span>
+            {it.shortcut ? <Kbd>{it.shortcut}</Kbd> : null}
+          </button>
+        )
+      )}
+    </div>
+  );
+}
+
+function HelpDropdown({ onAction, onClose }) {
+  return (
+    <DropdownMenu
+      label="Help"
+      left={320}
+      onAction={onAction}
+      onClose={onClose}
+      items={[
+        { id: 'shortcuts', label: 'Keyboard shortcuts', shortcut: '?' },
+        { id: 'help', label: 'Help · commands & flows', shortcut: 'F1' },
+        { sep: true },
+        { id: 'tour', label: 'Take the tour' },
+        { id: 'whatsnew', label: "What's new" },
+      ]}
+    />
+  );
+}
 
 function SelectionDropdown({ onAction, onClose }) {
-  useDropdownClose(onClose);
-  const items = [
-    { id: 'deselect-all', label: 'Deselect all', shortcut: 'Esc' },
-    { id: 'select-all-annotations', label: 'Select all annotations', shortcut: '⌘ ⇧ A' },
-  ];
   return (
-    <div className="st-dropdown" role="menu" aria-label="Selection" style={{ left: 214 }}>
-      {items.map((it) => (
-        <button
-          key={it.id}
-          type="button"
-          role="menuitem"
-          className="st-dd-item"
-          onClick={() => {
-            onAction(it.id);
-            onClose();
-          }}
-        >
-          <span className="st-dd-lead">
-            <span className="st-dd-check" />
-            <span>{it.label}</span>
-          </span>
-          <Kbd>{it.shortcut}</Kbd>
-        </button>
-      ))}
-    </div>
+    <DropdownMenu
+      label="Selection"
+      left={214}
+      onAction={onAction}
+      onClose={onClose}
+      items={[
+        { id: 'deselect-all', label: 'Deselect all', shortcut: 'Esc' },
+        { id: 'select-all-annotations', label: 'Select all annotations', shortcut: '⌘ ⇧ A' },
+      ]}
+    />
   );
 }
 
 function ToolsDropdown({ onAction, onClose }) {
-  useDropdownClose(onClose);
-  // Mirrors DEFAULT_TOOLS in apps/studio/use-tool-mode.tsx —
-  // kept in sync by hand because the menubar lives in the dev-server shell
-  // (no shared bundle with the canvas iframes).
-  const tools = [
-    { id: 'move', label: 'Move', shortcut: 'V' },
-    { id: 'hand', label: 'Hand', shortcut: 'H' },
-    { id: 'comment', label: 'Comment', shortcut: 'C' },
-    { id: 'pen', label: 'Pen', shortcut: 'B' },
-    { id: 'rect', label: 'Rect', shortcut: 'R' },
-    { id: 'ellipse', label: 'Ellipse', shortcut: 'O' },
-    { id: 'sticky', label: 'Sticky', shortcut: 'N' },
-    { id: 'arrow', label: 'Arrow', shortcut: 'A' },
-    { id: 'text', label: 'Text', shortcut: 'T' },
-    { id: 'eraser', label: 'Eraser', shortcut: 'E' },
-  ];
+  // Mirrors DEFAULT_TOOLS in apps/studio/use-tool-mode.tsx — kept in sync by
+  // hand because the menubar lives in the dev-server shell (no shared bundle
+  // with the canvas iframes).
   return (
-    <div className="st-dropdown" role="menu" aria-label="Tools" style={{ left: 290 }}>
-      <div className="st-dd-hd">Tool palette</div>
-      {tools.map((t) => (
-        <button
-          key={t.id}
-          type="button"
-          role="menuitem"
-          className="st-dd-item"
-          onClick={() => {
-            onAction(t.id);
-            onClose();
-          }}
-        >
-          <span className="st-dd-lead">
-            <span className="st-dd-check" />
-            <span>{t.label}</span>
-          </span>
-          <Kbd>{t.shortcut}</Kbd>
-        </button>
-      ))}
-    </div>
+    <DropdownMenu
+      label="Tools"
+      left={290}
+      header="Tool palette"
+      onAction={onAction}
+      onClose={onClose}
+      items={[
+        { id: 'move', label: 'Move', shortcut: 'V' },
+        { id: 'hand', label: 'Hand', shortcut: 'H' },
+        { id: 'comment', label: 'Comment', shortcut: 'C' },
+        { id: 'pen', label: 'Pen', shortcut: 'B' },
+        { id: 'rect', label: 'Rect', shortcut: 'R' },
+        { id: 'ellipse', label: 'Ellipse', shortcut: 'O' },
+        { id: 'sticky', label: 'Sticky', shortcut: 'N' },
+        { id: 'arrow', label: 'Arrow', shortcut: 'A' },
+        { id: 'text', label: 'Text', shortcut: 'T' },
+        { id: 'eraser', label: 'Eraser', shortcut: 'E' },
+      ]}
+    />
   );
 }
 
 // Plan C follow-up — File + Edit menus, previously inert. Both dispatch to real
 // shell flows (File) or the in-canvas undo stack / selection bridges (Edit).
-function FileDropdown({ onAction, onClose }) {
-  useDropdownClose(onClose);
-  const items = [
-    { id: 'new', label: 'New canvas…', shortcut: '⌘N' },
-    { id: 'export', label: 'Export…', shortcut: '⇧⌘E' },
-    { id: 'handoff', label: 'Handoff to production', shortcut: '⇧⌘H' },
-    { sep: true },
-    { id: 'reload', label: 'Reload canvas', shortcut: '⌘R' },
-  ];
+function FileDropdown({ onAction, onClose, hasCanvas }) {
   return (
-    <div className="st-dropdown" role="menu" aria-label="File" style={{ left: 40 }}>
-      {items.map((it, i) =>
-        it.sep ? (
-          <div key={'s' + i} className="st-dd-sep" />
-        ) : (
-          <button
-            key={it.id}
-            type="button"
-            role="menuitem"
-            className="st-dd-item"
-            onClick={() => {
-              onAction(it.id);
-              onClose();
-            }}
-          >
-            <span className="st-dd-lead">
-              <span className="st-dd-check" />
-              <span>{it.label}</span>
-            </span>
-            <Kbd>{it.shortcut}</Kbd>
-          </button>
-        )
-      )}
-    </div>
+    <DropdownMenu
+      label="File"
+      left={40}
+      onAction={onAction}
+      onClose={onClose}
+      items={[
+        // Bare N — the browser reserves ⌘N (New Window) and never delivers it.
+        { id: 'new', label: 'New canvas…', shortcut: 'N' },
+        { id: 'export', label: 'Export…', shortcut: '⇧⌘E' },
+        { id: 'handoff', label: 'Handoff to production', shortcut: '⇧⌘H' },
+        { sep: true },
+        { id: 'reload', label: 'Reload canvas', shortcut: '⌘R', disabled: !hasCanvas },
+        { id: 'close', label: 'Close canvas', disabled: !hasCanvas },
+      ]}
+    />
   );
 }
 
 function EditDropdown({ onAction, onClose }) {
-  useDropdownClose(onClose);
-  const items = [
-    { id: 'undo', label: 'Undo', shortcut: '⌘Z' },
-    { id: 'redo', label: 'Redo', shortcut: '⇧⌘Z' },
-    { sep: true },
-    { id: 'deselect-all', label: 'Deselect all', shortcut: 'Esc' },
-    { id: 'select-all-annotations', label: 'Select all annotations', shortcut: '⇧⌘A' },
-  ];
   return (
-    <div className="st-dropdown" role="menu" aria-label="Edit" style={{ left: 90 }}>
-      {items.map((it, i) =>
-        it.sep ? (
-          <div key={'s' + i} className="st-dd-sep" />
-        ) : (
-          <button
-            key={it.id}
-            type="button"
-            role="menuitem"
-            className="st-dd-item"
-            onClick={() => {
-              onAction(it.id);
-              onClose();
-            }}
-          >
-            <span className="st-dd-lead">
-              <span className="st-dd-check" />
-              <span>{it.label}</span>
-            </span>
-            <Kbd>{it.shortcut}</Kbd>
-          </button>
-        )
-      )}
-    </div>
+    <DropdownMenu
+      label="Edit"
+      left={90}
+      onAction={onAction}
+      onClose={onClose}
+      items={[
+        { id: 'undo', label: 'Undo', shortcut: '⌘Z' },
+        { id: 'redo', label: 'Redo', shortcut: '⇧⌘Z' },
+        { sep: true },
+        { id: 'deselect-all', label: 'Deselect all', shortcut: 'Esc' },
+        { id: 'select-all-annotations', label: 'Select all annotations', shortcut: '⇧⌘A' },
+      ]}
+    />
   );
 }
 
@@ -2031,6 +2302,8 @@ function Menubar({
   showHidden,
   onToggleShowHidden,
   onOpenHelp,
+  onOpenShortcuts,
+  onStartTour,
   annotationsVisible,
   onToggleAnnotations,
   postToActiveCanvas,
@@ -2039,10 +2312,13 @@ function Menubar({
   artboardCount = 0,
   presence = null,
   inspectorOpen,
+  inspectorTab,
   onToggleInspector,
+  onOpenLayers,
   onNewCanvas,
   onOpenExport,
   onReload,
+  onCloseCanvas,
 }) {
   const isSystem = activePath === SYSTEM_TAB;
   const stamp = isSystem ? 'SYSTEM' : activePath ? 'CANVAS' : 'IDLE';
@@ -2072,8 +2348,20 @@ function Menubar({
       checked: showHidden,
       disabled: false,
     },
-    { id: 'layers', label: 'Layers Panel', phase: 'Phase 12', disabled: true },
-    { id: 'inspector', label: 'Inspector', shortcut: 'I', checked: inspectorOpen, disabled: false },
+    {
+      id: 'layers',
+      label: 'Layers',
+      shortcut: '',
+      checked: inspectorOpen && inspectorTab === 'layers',
+      disabled: false,
+    },
+    {
+      id: 'inspector',
+      label: 'Inspector',
+      shortcut: '⌘ ⇧ I',
+      checked: inspectorOpen,
+      disabled: false,
+    },
     {
       id: 'annotate',
       label: 'Annotations',
@@ -2084,15 +2372,57 @@ function Menubar({
     { id: 'present', label: 'Presentation Mode', phase: 'Phase 6', disabled: true },
   ];
 
-  const DROPDOWN_MENUS = ['file', 'edit', 'view', 'selection', 'tools'];
+  const DROPDOWN_MENUS = ['file', 'edit', 'view', 'selection', 'tools', 'help'];
   function onMenuClick(key) {
     if (DROPDOWN_MENUS.includes(key)) {
       setOpenMenu(openMenu === key ? null : key);
-    } else if (key === 'help') {
-      setOpenMenu(null);
-      onOpenHelp();
     }
   }
+
+  // Keyboard menubar (native-menu parity): while a dropdown is open, ↑/↓ rove
+  // its items, ←/→ switch to the adjacent menu, Home/End jump, Esc returns
+  // focus to the trigger (useDropdownClose handles the close itself).
+  useEffect(() => {
+    if (!openMenu || !DROPDOWN_MENUS.includes(openMenu)) return;
+    // Move focus into the menu so ↑/↓ work immediately after a click.
+    const t = setTimeout(() => {
+      document
+        .querySelector('.st-dropdown [role="menuitem"]:not([aria-disabled="true"])')
+        ?.focus();
+    }, 0);
+    function onKey(e) {
+      const items = [
+        ...document.querySelectorAll('.st-dropdown [role="menuitem"]:not([aria-disabled="true"])'),
+      ];
+      if (!items.length) return;
+      const idx = items.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        items[(idx + 1) % items.length].focus();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        items[(idx - 1 + items.length) % items.length].focus();
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        items[0].focus();
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        items[items.length - 1].focus();
+      } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        const dir = e.key === 'ArrowRight' ? 1 : -1;
+        const cur = DROPDOWN_MENUS.indexOf(openMenu);
+        setOpenMenu(DROPDOWN_MENUS[(cur + dir + DROPDOWN_MENUS.length) % DROPDOWN_MENUS.length]);
+      } else if (e.key === 'Escape') {
+        document.querySelector('.st-menu[aria-expanded="true"]')?.focus();
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [openMenu, setOpenMenu]);
 
   return (
     <header className="st-menubar" role="menubar" aria-label="Application menubar">
@@ -2131,11 +2461,13 @@ function Menubar({
       </nav>
       {openMenu === 'file' && (
         <FileDropdown
+          hasCanvas={!!activePath}
           onAction={(id) => {
             if (id === 'new') onNewCanvas?.();
             else if (id === 'export') onOpenExport?.('export');
             else if (id === 'handoff') onOpenExport?.('handoff');
             else if (id === 'reload') onReload?.();
+            else if (id === 'close') onCloseCanvas?.();
           }}
           onClose={() => setOpenMenu(null)}
         />
@@ -2161,7 +2493,10 @@ function Menubar({
             else if (id === 'hidden') onToggleShowHidden();
             else if (id === 'annotate') onToggleAnnotations();
             else if (id === 'inspector') onToggleInspector();
+            else if (id === 'layers') onOpenLayers?.();
           }}
+          onZoom={(op) => postToActiveCanvas({ dgn: 'zoom', op })}
+          hasCanvas={!!activePath && !isSystem}
           onClose={() => setOpenMenu(null)}
         />
       )}
@@ -2181,6 +2516,17 @@ function Menubar({
           onClose={() => setOpenMenu(null)}
         />
       )}
+      {openMenu === 'help' && (
+        <HelpDropdown
+          onAction={(id) => {
+            if (id === 'shortcuts') onOpenShortcuts?.();
+            else if (id === 'help') onOpenHelp?.();
+            else if (id === 'tour') onStartTour?.();
+            else if (id === 'whatsnew') onOpenWhatsNew?.();
+          }}
+          onClose={() => setOpenMenu(null)}
+        />
+      )}
       <div className="st-mb-right" data-tour="status">
         {presence ? <div className="st-presence">{presence}</div> : null}
         <button
@@ -2189,7 +2535,7 @@ function Menubar({
           data-tour="whatsnew"
           data-unseen={whatsNewCount > 0 ? 'true' : 'false'}
           aria-label={`What's new${whatsNewCount > 0 ? ` — ${whatsNewCount} unseen` : ''}`}
-          title="What's new"
+          data-tip="What's new"
           onClick={onOpenWhatsNew}
         >
           <StIcon name="sparkle" size={15} />
@@ -2199,7 +2545,7 @@ function Menubar({
           {fileLabel}
         </span>
         <span className="st-mb-sep" />
-        <span className="st-mb-count" title="Artboards in the open canvas">
+        <span className="st-mb-count" data-tip="Artboards in the open canvas">
           <span className="st-dot" style={{ background: 'var(--accent)' }} />
           {artboardCount} ARTBOARDS
         </span>
@@ -2219,6 +2565,8 @@ function Viewport({
   onSelectDs,
   project,
   cfg,
+  loadingPath,
+  onIframeLoad,
 }) {
   return (
     <div className="viewport st-stage" data-tour="viewport">
@@ -2240,8 +2588,8 @@ function Viewport({
             <strong>Design system</strong> view above it.
             <br />
             <br />
-            Tabs work like in an editor — close with the × on each tab. <Kbd>⌘R</Kbd> reloads the
-            active iframe.
+            Opening a file replaces the active canvas. <Kbd>⌘R</Kbd> reloads it; File ▸ Close
+            canvas clears the stage.
             <br />
             <br />
             <strong>Element selection:</strong> hold <Kbd>⌘</Kbd> inside the canvas and hover for a
@@ -2274,6 +2622,7 @@ function Viewport({
             src={canvasUrl(t.path, cfg)}
             className={t.path === activePath ? 'active' : ''}
             data-path={t.path}
+            onLoad={() => onIframeLoad?.(t.path)}
             // T2 (9.1-A) — only sandbox + delegate clipboard when the canvas is
             // served cross-origin (canvasOrigin present = the split is on). In
             // the default same-origin mode these attrs are omitted so behavior
@@ -2285,6 +2634,19 @@ function Viewport({
           />
         );
       })}
+      {loadingPath && loadingPath === activePath && (
+        // DS skeletons recipe — calm .skel pulse while the canvas-shell compiles
+        // the TSX. Cleared by the iframe's dgn:'loaded' message (or the onLoad
+        // fallback timer for legacy .html canvases that never post it).
+        <div className="st-canvas-loading" aria-hidden="true">
+          <div className="st-skel-card">
+            <div className="st-skel-cap st-mono">compiling canvas…</div>
+            <span className="skel st-skel-thumb" />
+            <span className="skel st-skel-line" style={{ width: '72%' }} />
+            <span className="skel st-skel-line" style={{ width: '46%' }} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2464,7 +2826,7 @@ function SystemView({ data, onOpen, cfg, onSelectDs }) {
   return (
     <div className="sv">
       <header className="sv-header">
-        <span className="sv-sku">MDCC-DSN/01</span>
+        <span className="sv-sku">MAUDE-DSN/01</span>
         <span className="sv-title">design system view</span>
         {hasPicker ? (
           <label className="sv-ds-picker">
@@ -2608,7 +2970,9 @@ function StatusBar({
         </span>
       </span>
 
-      {selected && selected.selector && !isSystem && (
+      {/* Selection is meaningless without an open canvas — a stale _active.json
+          selection used to leave a ghost SELECTED chip on the empty shell. */}
+      {activePath && selected && selected.selector && !isSystem && (
         <span className="st-sb-slot st-sb-sel" role="group" aria-label="Selected element">
           <span className="lbl">selected</span>
           <span className="val" title={title}>
@@ -2618,7 +2982,8 @@ function StatusBar({
             type="button"
             className="st-sb-sel-clear"
             onClick={onClearSelected}
-            title="Clear (Esc inside iframe)"
+            data-tip="Clear · Esc inside iframe"
+            data-tip-pos="top"
             aria-label="Clear selection"
           >
             ×
@@ -2658,7 +3023,8 @@ function StatusBar({
         type="button"
         className="st-sb-theme"
         onClick={onToggleTheme}
-        title={`Switch to ${nextTheme} theme`}
+        data-tip={`Switch to ${nextTheme} theme`}
+        data-tip-pos="top"
         aria-label={`Switch to ${nextTheme} theme`}
       >
         <StIcon name={theme === 'dark' ? 'sun' : 'moon'} size={13} />
@@ -2680,6 +3046,8 @@ function CommentsPanel({
   onResolve,
   onReopen,
   onDelete,
+  width,
+  resizing,
 }) {
   const counts = totalCounts(commentsByFile);
   // Build groups: [{ file, comments: filtered }]
@@ -2705,7 +3073,11 @@ function CommentsPanel({
   }
 
   return (
-    <aside className="st-rpanel" aria-label="Comments">
+    <aside
+      className={'st-rpanel' + (resizing ? ' is-resizing' : '')}
+      style={width ? { width, flexBasis: width } : undefined}
+      aria-label="Comments"
+    >
       <div className="st-rp-tabs st-rp-tabs--filters">
         <div className="st-cm-filters" role="tablist">
           <button
@@ -2840,37 +3212,66 @@ function SyncBanner({ status }) {
   if (!status || status.linked === false) return null;
   // DDR-060 / 9.1-D — the "linked but 0 syncable" state is surfaced in the
   // status bar (sb-sync slot), NOT as a floating banner. This component owns
-  // only the transient offline / reconnect-flash banner (Task 8).
+  // the transient offline / reconnect-flash banner (Task 8) plus the DDR-102
+  // rejected-docs chip and divergence-resolution toast.
   if (status.notSyncable) return null;
   const { state, queuedOps, flash, conflicts } = status;
   const showFlash = flash === 'synced';
   const offline = state === 'offline' || state === 'offline-long';
-  if (!offline && !showFlash) return null;
-  const dismissKey = `${state}:${showFlash ? 'flash' : 'offline'}`;
-  if (dismissedKey === dismissKey) return null;
+  // DDR-102 — per-doc rollup + the latest divergence notice (additive fields;
+  // an old payload without them renders exactly the pre-DDR-102 banner).
+  const rejected = status.docs?.rejected ?? 0;
+  const lastDiverged = Array.isArray(conflicts)
+    ? [...conflicts].reverse().find((c) => c.kind === 'cold-start-diverged')
+    : null;
+  if (!offline && !showFlash && !lastDiverged && rejected === 0) return null;
 
+  // One banner at a time — priority: reconnect flash > offline > divergence
+  // toast > rejected chip. Dismissal is keyed per state so a new event
+  // (another conflict, a changed rejected count) re-surfaces it.
   let variant;
   let text;
+  let dismissKey;
   if (showFlash) {
     variant = 'success';
     text = 'Synced with hub';
-  } else if (state === 'offline-long') {
-    variant = 'error';
-    text = `Long offline — ${queuedOps} edit(s) queued. Consider \`git commit && git push\` as backup.`;
+    dismissKey = `${state}:flash`;
+  } else if (offline) {
+    const conflictNote =
+      conflicts && conflicts.length > 0 ? ` (${conflicts.length} conflict notice(s))` : '';
+    if (state === 'offline-long') {
+      variant = 'error';
+      text = `Long offline — ${queuedOps} edit(s) queued. Consider \`git commit && git push\` as backup.${conflictNote}`;
+    } else {
+      variant = 'warn';
+      text = `Working offline · ${queuedOps} edit(s) queued · will sync when the hub reconnects.${conflictNote}`;
+    }
+    dismissKey = `${state}:offline`;
+  } else if (lastDiverged) {
+    // DDR-102 fail-closed: a snapshotFailed conflict means the hub-wins overwrite
+    // was REFUSED (local kept) because _history couldn't be written — surface it
+    // as an error, not a routine "kept newest" notice.
+    if (lastDiverged.snapshotFailed) {
+      variant = 'error';
+      text = `Diverged on ${lastDiverged.slug}: kept local — the history snapshot FAILED, so the overwrite was refused. Check disk space / .design/_history write access.`;
+    } else {
+      variant = 'warn';
+      text = `Diverged on ${lastDiverged.slug}: kept the ${
+        lastDiverged.winner === 'local' ? 'local (newer)' : 'hub'
+      } version — the other is snapshotted in history → /design:rollback ${lastDiverged.slug}`;
+    }
+    dismissKey = `diverged:${lastDiverged.slug}:${lastDiverged.at}`;
   } else {
     variant = 'warn';
-    text = `Working offline · ${queuedOps} edit(s) queued · will sync when the hub reconnects.`;
+    text = `${rejected} canvas(es) not syncing — the hub rejected auth. Details: maude design status`;
+    dismissKey = `rejected:${rejected}`;
   }
-  const conflictNote =
-    conflicts && conflicts.length > 0 ? ` (${conflicts.length} conflict notice(s))` : '';
+  if (dismissedKey === dismissKey) return null;
 
   return (
     <div role="status" aria-live="polite" className={`st-banner st-banner--${variant}`}>
       <span className="st-banner-dot" aria-hidden="true" />
-      <span>
-        {text}
-        {conflictNote}
-      </span>
+      <span>{text}</span>
       <button
         type="button"
         className="st-banner-close"
@@ -4656,6 +5057,8 @@ function InspectorPanel({
   onOptimistic,
   tab: tabProp,
   onTabChange,
+  width,
+  resizing,
 }) {
   // Tab is controllable from the parent (the guided tour drives it to 'css' /
   // 'layers' so a spotlight step lands on a real row) but falls back to local
@@ -4709,7 +5112,12 @@ function InspectorPanel({
   );
   const b = el?.bounds || null;
   return (
-    <aside className="st-rpanel" aria-label="Inspector" data-tour="inspector">
+    <aside
+      className={'st-rpanel' + (resizing ? ' is-resizing' : '')}
+      style={width ? { width, flexBasis: width } : undefined}
+      aria-label="Inspector"
+      data-tour="inspector"
+    >
       <div className="st-rp-tabs" data-tour="inspector-tabs">
         {tabBtn('inspect', 'Inspect', 'sliders')}
         {tabBtn('layers', 'Layers', 'layers')}
@@ -4727,7 +5135,11 @@ function InspectorPanel({
       <div className="st-rp-body">
         {!el ? (
           <div className="st-rp-empty">
-            Hold <Kbd>⌘</Kbd> inside the canvas and click an element to inspect it.
+            {/* <p> wrapper — st-rp-empty is a flex column, bare text nodes +
+                kbd would stack as stretched flex items. */}
+            <p>
+              Hold <Kbd>⌘</Kbd> inside the canvas and click an element to inspect it.
+            </p>
           </div>
         ) : tab === 'inspect' ? (
           <>
@@ -4850,6 +5262,49 @@ function App() {
   const [syncStatus, setSyncStatus] = useState(null);
   const [search, setSearch] = useState('');
   const [systemData, setSystemData] = useState(null);
+  // Canvas-compile skeleton (single-canvas model → one path at a time).
+  const [loadingPath, setLoadingPath] = useState(null);
+  const loadFallbackTimer = useRef(null);
+  // Resizable side panels (DS components-resize-panels) + the active drag side.
+  const sbSize = usePanelSize('maude-sb-w', { min: 200, max: 420, def: 252 });
+  const rpSize = usePanelSize('maude-rp-w', { min: 260, max: 480, def: 304 });
+  const [dragSide, setDragSide] = useState(null); // 'sb' | 'rp' | null
+  const bodyRef = useRef(null);
+
+  // Pointer drag for the panel grips — window listeners while dragging (the
+  // grip also pointer-captures, and `.st-body.is-resizing iframe` drops pointer
+  // events so the canvas iframe can't swallow the move stream mid-drag).
+  useEffect(() => {
+    if (!dragSide) return;
+    const onMove = (e) => {
+      const rect = bodyRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      if (dragSide === 'sb') sbSize.setW(e.clientX - rect.left);
+      else rpSize.setW(rect.right - e.clientX);
+    };
+    const onUp = () => setDragSide(null);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [dragSide, sbSize.setW, rpSize.setW]);
+
+  // Loading-skeleton lifecycle: dgn:'loaded' clears it instantly (TSX canvases);
+  // the iframe load event arms a short fallback for legacy .html canvases that
+  // never post it; a hard cap guards against a canvas that dies mid-compile.
+  const onIframeLoad = useCallback((path) => {
+    clearTimeout(loadFallbackTimer.current);
+    loadFallbackTimer.current = setTimeout(() => {
+      setLoadingPath((p) => (p === path ? null : p));
+    }, 2500);
+  }, []);
+  useEffect(() => {
+    if (!loadingPath) return;
+    const cap = setTimeout(() => setLoadingPath(null), 15000);
+    return () => clearTimeout(cap);
+  }, [loadingPath]);
   // Loaded once at boot from /_config — informs canvasUrl() so TSX iframes
   // can pass the right ?designRel + ?tokens query to the canvas mount shell.
   const [cfg, setCfg] = useState({ designRel: '.design' });
@@ -4913,21 +5368,23 @@ function App() {
   const [showHidden, setShowHidden] = useState(() => readBoolStore(SHOW_HIDDEN_STORE, false));
   const [sectionsExpanded, setSectionsExpanded] = useState(() => readJsonStore(SECTIONS_STORE, {}));
   const [helpOpen, setHelpOpen] = useState(false);
+  // ? cheat-sheet (DS components-shortcuts-overlay) — separate from the deep
+  // Help modal (F1), which keeps commands & flows.
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   // T5/T6 (Plan C) — shell-level export/handoff dialog + inspector panel state.
   // The palette (T4) drives them; the dialog (T5) + panel (T6) consume them.
   const [exportDialog, setExportDialog] = useState(null); // null | { mode: 'export'|'handoff', scope? }
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  // Inspector tab is lifted so View ▸ Layers can open the panel ON the Layers
+  // tab (the menu item sat disabled as "Phase 12" long after the tab shipped).
+  const [inspectorTab, setInspectorTab] = useState('inspect');
   const whatsNew = useWhatsNew(MDCC_VERSION);
   const [tourSteps, setTourSteps] = useState(null);
   const [usageNudge, setUsageNudge] = useState(() => !readBoolStore(USAGE_TOUR_STORE, false));
   const startTour = useCallback((steps) => {
     setTourSteps(Array.isArray(steps) && steps.length ? steps : null);
   }, []);
-  // Inspector tab is lifted so the guided tour can drive it (a 'css'/'layers'
-  // step needs the right tab open for its target to render). InspectorPanel still
-  // owns its own state when uncontrolled; here we control it.
-  const [inspectorTab, setInspectorTab] = useState('inspect');
   // Guided-tour bus — the overlay calls setup() before each step to put the shell
   // into the state the step spotlights: open a canvas, open the Inspector, switch
   // its tab. The canvas iframe is cross-origin (DDR-054) so the tour can't select
@@ -5240,6 +5697,9 @@ function App() {
     });
     setActivePath(path);
     setFocusedCommentId(null);
+    // Canvas-compile skeleton — cleared by the iframe's dgn:'loaded' message,
+    // the onLoad fallback timer (legacy .html), or a hard 15s cap.
+    if (path !== SYSTEM_TAB) setLoadingPath(path);
   }, []);
 
   const openSystem = useCallback(
@@ -5278,6 +5738,7 @@ function App() {
         return next;
       });
       iframesRef.current.delete(path);
+      setLoadingPath((p) => (p === path ? null : p));
     },
     [activePath]
   );
@@ -5505,6 +5966,14 @@ function App() {
         // inspector forwards the chord here since the iframe's keydown never
         // reaches the shell's window listener. Mirror that handler's toggle.
         setPaletteOpen((v) => !v);
+      } else if (m.dgn === 'shell-shortcut') {
+        // Same forwarding lane for the other shell chords (inspect.ts) — so
+        // ⌘R / ⌘⇧I / ⌘⇧M / ⌘⇧E / ⌘⇧H behave identically wherever focus is.
+        if (m.id === 'reload') reloadActive();
+        else if (m.id === 'inspector') setInspectorOpen((v) => !v);
+        else if (m.id === 'comments') setCommentsPanelOpen((v) => !v);
+        else if (m.id === 'export') setExportDialog({ mode: 'export' });
+        else if (m.id === 'handoff') setExportDialog({ mode: 'handoff' });
       } else if (m.dgn === 'open-export') {
         // Plan C — the in-canvas toolbar / context menu route here so they open
         // the SAME shell Export dialog as the menubar (one look, all settings).
@@ -5514,7 +5983,9 @@ function App() {
           scope: m.detail && typeof m.detail.scope === 'string' ? m.detail.scope : undefined,
         });
       } else if (m.dgn === 'loaded' && m.file) {
-        // iframe finished loading — push current comments + carry over focused pin if any
+        // iframe finished loading — drop the compile skeleton, push current
+        // comments + carry over focused pin if any
+        setLoadingPath((p) => (p === m.file ? null : p));
         const list = commentsByFile[m.file] || [];
         const el = [...iframesRef.current.entries()].find(([k]) => k === m.file)?.[1];
         if (el && el.contentWindow) {
@@ -5621,7 +6092,7 @@ function App() {
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [commentsByFile, focusedCommentId, cfg, theme]);
+  }, [commentsByFile, focusedCommentId, cfg, theme, reloadActive]);
 
   // Tell the active canvas iframe to drop any persistent selection (canvas
   // SelectionSet) — used when the comment composer closes via submit /
@@ -5723,6 +6194,25 @@ function App() {
         setCommentsPanelOpen((v) => !v);
         return;
       }
+      // Cmd+Shift+I — toggle Inspector. Was bare "I", which collided with the
+      // canvas highlighter tool (same letter, different action by focus).
+      if (meta && e.shiftKey && (e.key === 'i' || e.key === 'I')) {
+        e.preventDefault();
+        setInspectorOpen((v) => !v);
+        return;
+      }
+      // Cmd+Shift+E / Cmd+Shift+H — the File-menu chords, previously
+      // advertised but never bound.
+      if (meta && e.shiftKey && (e.key === 'e' || e.key === 'E')) {
+        e.preventDefault();
+        setExportDialog({ mode: 'export' });
+        return;
+      }
+      if (meta && e.shiftKey && (e.key === 'h' || e.key === 'H')) {
+        e.preventDefault();
+        setExportDialog({ mode: 'handoff' });
+        return;
+      }
       // Cmd+C / Ctrl+C — Phase 4.1 removed the shell-side comment-drop chord.
       // Canvas comment-drop is the `C` tool letter (press C in the canvas,
       // then click the element) or right-click "Add comment". Cmd+C now
@@ -5792,14 +6282,25 @@ function App() {
         }
         return;
       }
-      // I — toggle Inspector panel (T6, Plan C)
-      if ((e.key === 'i' || e.key === 'I') && !meta && !e.shiftKey) {
+      // N — open the new-brief-board composer (replaces the advertised ⌘N,
+      // which the browser reserves for New Window and never delivers).
+      if ((e.key === 'n' || e.key === 'N') && !meta && !e.shiftKey) {
         e.preventDefault();
-        setInspectorOpen((v) => !v);
+        setSidebarOpen(true);
+        setTimeout(
+          () => document.querySelector('[aria-label="New blank brief board"]')?.click(),
+          60
+        );
         return;
       }
-      // ? or F1 — open Help modal
-      if (e.key === '?' || e.key === 'F1') {
+      // ? — keyboard-shortcuts cheat sheet (DS shortcuts overlay)
+      if (e.key === '?') {
+        e.preventDefault();
+        setShortcutsOpen((v) => !v);
+        return;
+      }
+      // F1 — the full Help modal (commands & flows)
+      if (e.key === 'F1') {
         e.preventDefault();
         setHelpOpen(true);
         return;
@@ -5858,7 +6359,7 @@ function App() {
         group: 'Canvas',
         label: 'New canvas…',
         icon: 'plus',
-        kbd: '⌘N',
+        kbd: 'N',
         run: () => {
           setSidebarOpen(true);
           setTimeout(
@@ -5905,7 +6406,7 @@ function App() {
         group: 'View',
         label: 'Open inspector',
         icon: 'sliders',
-        kbd: 'I',
+        kbd: '⌘⇧I',
         run: () => setInspectorOpen(true),
       },
       {
@@ -5946,11 +6447,19 @@ function App() {
         run: () => whatsNew.openPanel(),
       },
       {
-        id: 'help',
+        id: 'shortcuts',
         group: 'Help',
-        label: 'Help · shortcuts & commands',
+        label: 'Keyboard shortcuts',
         icon: 'help',
         kbd: '?',
+        run: () => setShortcutsOpen(true),
+      },
+      {
+        id: 'help',
+        group: 'Help',
+        label: 'Help · commands & flows',
+        icon: 'help',
+        kbd: 'F1',
         run: () => setHelpOpen(true),
       },
     ],
@@ -5996,6 +6505,8 @@ function App() {
           showHidden={showHidden}
           onToggleShowHidden={() => setShowHidden((v) => !v)}
           onOpenHelp={() => setHelpOpen(true)}
+          onOpenShortcuts={() => setShortcutsOpen(true)}
+          onStartTour={() => startTour(USAGE_TOUR)}
           annotationsVisible={annotationsVisible}
           onToggleAnnotations={toggleAnnotations}
           postToActiveCanvas={postToActiveCanvas}
@@ -6003,7 +6514,17 @@ function App() {
           whatsNewCount={whatsNew.unseen.length}
           artboardCount={activeArtboards}
           inspectorOpen={inspectorOpen}
+          inspectorTab={inspectorTab}
           onToggleInspector={() => setInspectorOpen((v) => !v)}
+          onOpenLayers={() => {
+            // Toggle: already open on Layers → close; otherwise open on Layers.
+            if (inspectorOpen && inspectorTab === 'layers') {
+              setInspectorOpen(false);
+            } else {
+              setInspectorTab('layers');
+              setInspectorOpen(true);
+            }
+          }}
           onNewCanvas={() => {
             setSidebarOpen(true);
             setTimeout(
@@ -6013,6 +6534,7 @@ function App() {
           }}
           onOpenExport={(mode) => setExportDialog({ mode })}
           onReload={reloadActive}
+          onCloseCanvas={() => activePath && closeTab(activePath)}
           presence={
             <>
               <StAvatar
@@ -6021,12 +6543,17 @@ function App() {
                 title={gitUser ? `${gitUser} (you)` : 'You'}
               />
               {agentActive && (
-                <StAvatar initials="C" hue="var(--presence-agent)" title="Claude · editing" />
+                <StAvatar
+                  initials="C"
+                  hue="var(--presence-agent)"
+                  title="Claude · editing"
+                  pulse
+                />
               )}
             </>
           }
         />
-        <div className="st-body">
+        <div className={'st-body' + (dragSide ? ' is-resizing' : '')} ref={bodyRef}>
           <CollapsedRail
             shown={!sidebarOpen}
             onExpand={() => setSidebarOpen(true)}
@@ -6052,7 +6579,21 @@ function App() {
             onDeleteBoard={deleteBoard}
             collapsed={!sidebarOpen}
             onCollapse={() => setSidebarOpen(false)}
+            width={sbSize.w}
+            resizing={dragSide === 'sb'}
           />
+          {sidebarOpen && (
+            <PanelGrip
+              label="Resize files panel"
+              size={sbSize}
+              active={dragSide === 'sb'}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.currentTarget.setPointerCapture?.(e.pointerId);
+                setDragSide('sb');
+              }}
+            />
+          )}
           <div className="main">
             <Viewport
               tabs={tabs}
@@ -6063,8 +6604,23 @@ function App() {
               onSelectDs={loadSystemData}
               project={project}
               cfg={cfg}
+              loadingPath={loadingPath}
+              onIframeLoad={onIframeLoad}
             />
           </div>
+          {(inspectorOpen || commentsPanelOpen) && (
+            <PanelGrip
+              label="Resize side panel"
+              dir="rtl"
+              size={rpSize}
+              active={dragSide === 'rp'}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.currentTarget.setPointerCapture?.(e.pointerId);
+                setDragSide('rp');
+              }}
+            />
+          )}
           {/* Right dock — one panel at a time. Inspector takes precedence when
               open (T6); else the comments panel. */}
           {inspectorOpen ? (
@@ -6092,6 +6648,8 @@ function App() {
                   index: n ? n.index : 0,
                 })
               }
+              width={rpSize.w}
+              resizing={dragSide === 'rp'}
             />
           ) : commentsPanelOpen ? (
             <CommentsPanel
@@ -6104,6 +6662,8 @@ function App() {
               onResolve={resolveComment}
               onReopen={reopenComment}
               onDelete={deleteComment}
+              width={rpSize.w}
+              resizing={dragSide === 'rp'}
             />
           ) : null}
         </div>
@@ -6131,6 +6691,7 @@ function App() {
           onClose={() => setExportDialog(null)}
         />
       )}
+      <ShortcutsOverlay open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <HelpModal
         open={helpOpen}
         onClose={() => setHelpOpen(false)}

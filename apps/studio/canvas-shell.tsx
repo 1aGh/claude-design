@@ -1369,6 +1369,8 @@ function CanvasRouter({
   const annotSel = useAnnotationSelection();
   const ctxMenu = useContextMenu();
   const undoStack = useUndoStack();
+  // Shell View-menu zoom bridge (dgn:'zoom') — same controller the zoom pill uses.
+  const zoomController = useViewportControllerContext();
 
   // Hover state drives the floating .dc-cv-halo--hover overlay. The overlay
   // itself reads getBoundingClientRect on every rAF tick to follow pan/zoom.
@@ -1527,10 +1529,20 @@ function CanvasRouter({
         }
         return;
       }
+      // Shell View-menu zoom items — route to the live viewport controller
+      // (the same methods the in-canvas zoom pill calls).
+      if (m.dgn === 'zoom' && zoomController) {
+        const op = (m as { op?: string }).op;
+        if (op === 'in') zoomController.zoomIn();
+        else if (op === 'out') zoomController.zoomOut();
+        else if (op === 'fit') zoomController.fit();
+        else if (op === 'actual') zoomController.reset();
+        return;
+      }
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [selSet, annotSel, setTool, undoStack]);
+  }, [selSet, annotSel, setTool, undoStack, zoomController]);
 
   // Phase 12 (DDR-103) — double-click a LEAF-TEXT element (children all text
   // nodes) to edit its copy in place. Commit (blur / Enter) posts `dgn:edit-text`

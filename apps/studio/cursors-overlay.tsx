@@ -43,24 +43,28 @@ const CURSOR_CSS = `
 }
 .dc-cursor-arrow {
   display: block;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.4));
 }
+/* DS colors-presence .cur-label recipe — hue pill, mono 10px, dark
+ * accent-fg text (never white-on-hue, which washed out on light hues).
+ * NOTE: keep this comment backtick-free — it lives inside the CURSOR_CSS
+ * template literal and a stray backtick closes it. */
 .dc-cursor-label {
   position: absolute;
-  top: 18px;
-  left: 14px;
-  padding: 2px 6px;
-  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
+  /* specimen geometry: the pill hangs below-right of the 15px triangle */
+  top: 14px;
+  left: 10px;
+  padding: 1px 8px;
+  font-family: var(--font-mono, ui-monospace, monospace);
   font-weight: 500;
-  font-size: 11px;
-  line-height: 1.2;
-  color: var(--maude-hud-accent-fg, #fff);
-  border-radius: var(--radius-sm, 2px);
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--maude-hud-accent-fg, oklch(0.180 0.030 268));
+  border-radius: 999px;
   white-space: nowrap;
   max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 .dc-peer-selection {
   position: absolute;
@@ -117,20 +121,16 @@ const Cursor = memo(function Cursor({ peer, viewport }: CursorProps): JSX.Elemen
   const screenY = peer.cursor.y * viewport.zoom + viewport.y;
   return (
     <div className="dc-cursor" style={{ transform: `translate(${screenX}px, ${screenY}px)` }}>
+      {/* DS colors-presence Pointer — one plain triangle glyph, tinted by its
+          owner (the specimen's exact 24-grid path, no tail/notch). */}
       <svg
         className="dc-cursor-arrow"
-        width="20"
-        height="22"
-        viewBox="0 0 20 22"
+        width="15"
+        height="15"
+        viewBox="0 0 24 24"
         aria-hidden="true"
       >
-        <path
-          d="M 2 2 L 2 18 L 6 14 L 9 21 L 12 20 L 9 13 L 14 13 Z"
-          fill={peer.color}
-          stroke="#fff"
-          strokeWidth="1.2"
-          strokeLinejoin="round"
-        />
+        <path d="M4 3 L20 11.5 L12.5 13 L10 21 Z" fill={peer.color} />
       </svg>
       <div className="dc-cursor-label" style={{ background: peer.color }}>
         {peer.name}

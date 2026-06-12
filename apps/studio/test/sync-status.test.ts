@@ -78,3 +78,69 @@ describe('sync status store', () => {
     expect(() => store.update(snap({ state: 'offline' }))).not.toThrow();
   });
 });
+
+// DDR-102 — the payload carries the per-doc rollup + rich conflicts additively.
+describe('sync status store — DDR-102 additive fields', () => {
+  test('docs + rejectedSlugs flow through update() into the payload', () => {
+    const writes: SyncStatusPayload[] = [];
+    const store = createSyncStatusStore({
+      url: 'https://h.example.com',
+      canvases: 3,
+      write: (p) => writes.push(p),
+    });
+    store.update({
+      state: 'online',
+      queuedOps: 0,
+      lastSyncAt: 123,
+      offlineSince: null,
+      flash: null,
+      updatedAt: 456,
+      docs: { synced: 1, pending: 0, rejected: 2 },
+      rejectedSlugs: ['ui-x', 'ui-y'],
+    });
+    const p = store.get();
+    expect(p.docs).toEqual({ synced: 1, pending: 0, rejected: 2 });
+    expect(p.rejectedSlugs).toEqual(['ui-x', 'ui-y']);
+    expect(p.lastSyncAt).toBe(123);
+  });
+
+  test('addConflict carries winner + snapshots (cold-start-diverged)', () => {
+    const store = createSyncStatusStore({
+      url: 'https://h.example.com',
+      canvases: 1,
+      write: () => {},
+      now: () => 999,
+    });
+    store.addConflict({
+      slug: 'ui-maskot',
+      kind: 'cold-start-diverged',
+      winner: 'local',
+      snapshots: { local: '2026-06-11T10:00:00.000Z', hub: '2026-06-11T10:00:00.001Z' },
+    });
+    const c = store.get().conflicts[0];
+    expect(c.kind).toBe('cold-start-diverged');
+    expect(c.winner).toBe('local');
+    expect(c.snapshots?.local).toBe('2026-06-11T10:00:00.000Z');
+    expect(c.at).toBe(999);
+  });
+
+  test('old-shape payload readers: a snapshot WITHOUT docs/rejectedSlugs still works', () => {
+    const store = createSyncStatusStore({
+      url: 'https://h.example.com',
+      canvases: 1,
+      write: () => {},
+    });
+    store.update({
+      state: 'online',
+      queuedOps: 0,
+      lastSyncAt: null,
+      offlineSince: null,
+      flash: null,
+      updatedAt: 1,
+    });
+    const p = store.get();
+    expect(p.docs).toBeUndefined();
+    expect(p.rejectedSlugs).toBeUndefined();
+    expect(p.state).toBe('online');
+  });
+});

@@ -23,7 +23,7 @@
 
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from 'react';
 
-import { colorForName } from './use-collab.tsx';
+import { AGENT_COLOR } from './use-collab.tsx';
 
 /** Wire shape of an `ai-activity` entry (matches collab/ai-activity.ts). */
 export interface AiEntry {
@@ -134,7 +134,9 @@ export function deriveAgent(entry: AiEntry): AgentPresence {
   const author = sanitizeAuthor(entry.author);
   const id = `${author}:${entry.startedAt}`;
   const name = agentFunnyName(id);
-  return { id, name, color: colorForName(name), author, startedAt: entry.startedAt };
+  // DS colors-presence contract: the agent rides --presence-agent, a hue no
+  // human peer can hash to — attribution stays unambiguous on a shared canvas.
+  return { id, name, color: AGENT_COLOR, author, startedAt: entry.startedAt };
 }
 
 // ---------------------------------------------------------------------------

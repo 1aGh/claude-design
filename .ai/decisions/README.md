@@ -10,8 +10,13 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
 
+- [DDR-105: Phase 12.2 — source-write surface hardening (JSX-attribute escaper consistency + CSRF Origin guard on the edit-* routes)](DDR-105-css-panel-write-surface-hardening.md) — 2026-06-12, dev-server/security/csrf/escaping/source-write/edit-attr/edit-css/edit-text/trust-boundary/ddr-054-followup
 - [DDR-104: Phase 12.2 — CSS-panel UX model (hybrid vocabulary, curated tier + custom-attributes escape hatch, token-first, DOM-authored value source)](DDR-104-css-panel-ux-model.md) — 2026-06-11, dev-server/inspector/css-panel/ux/design-tokens/vocabulary/escape-hatch/value-source/provenance/canvas-first/ddr-103/ddr-093
 - [DDR-103: Phase 12 — in-canvas direct edit (CSS knobs + inline text) write model + deferrals](DDR-103-phase-12-in-canvas-direct-edit.md) — 2026-06-11, dev-server/inspector/css-writeback/text-editing/source-rewrite/layers-tree/canvas-origin/trust-boundary/ddr-019/ddr-054
+- [DDR-102: Hub-sync cold-start divergence resolution — journal-gated fast-forward, dual snapshot, newest-wins](DDR-102-cold-start-divergence-resolution.md) — 2026-06-11, sync/hub/data-safety/conflict-resolution/rate-limit/multiplexing/incident
+- [DDR-101: Command catalog is a shared `.mjs` single-source with build-time parity assertion](DDR-101-command-catalog-shared-mjs-single-source.md) — 2026-06-11, docs-site/command-reference/source-of-truth/build-script/diagrams/drift-guard
+- [DDR-100: Annotations FigJam v3 — group tag-array, embedded arrow binds, CLI write verb](DDR-100-annotations-figjam-v3-data-model.md) — 2026-06-11, annotations/figjam/groups/connectors/bindings/ai-surface/schema/dev-server
+- [DDR-099: Docs site retargeted from the `project` DS to the `maude` DS ("Studio Docs")](DDR-099-site-token-retarget-maude.md) — 2026-06-08, site/fumadocs/design-system/tokens/theme-bridge/changelog/roadmap/a11y/dogfooding
 - [DDR-098: Studio full-functionality pass — scope calls (Plan C)](DDR-098-studio-full-functionality-scope-calls.md) — 2026-06-07, dev-server/studio/client/shell/canvas-origin/export/inspector/presence/command-palette/hub-sync/ddr-096/ddr-060-superseded
 - [DDR-097: Hub admin redesign — "Studio Hub" maude reskin + operator surfaces](DDR-097-hub-admin-maude-reskin-and-operator-surfaces.md) — 2026-06-08, hub/admin/maude/csp/operator-surfaces/canvases/activity/settings/scope/tokens/security
 - [DDR-080: Moodboard direction gate — cheap pre-scaffold visual approval before the expensive bootstrap](DDR-080-moodboard-direction-gate.md) — 2026-06-02, design/setup-ds/bootstrap/moodboard/direction-gate/hero-preview/aesthetic-ambition/ddr-033/ddr-057/ddr-073

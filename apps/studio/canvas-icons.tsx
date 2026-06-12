@@ -473,6 +473,8 @@ export const TOOL_ICONS: Record<string, (p: IconProps) => JSX.Element> = {
   rect: IconRect,
   ellipse: IconEllipse,
   sticky: IconSticky,
+  // FigJam v3 — labelled organizing container.
+  section: IconSection,
   arrow: IconArrow,
   text: IconText,
   eraser: IconEraser,
@@ -487,3 +489,106 @@ export const SHAPE_KIND_ICONS: Record<string, (p: IconProps) => JSX.Element> = {
   triangle: IconTriangle,
   'triangle-down': IconTriangleDown,
 };
+
+// ── FigJam v3 — multi-select manipulation icons ──────────────────────────────
+// Object align (an edge line + two boxes), distribute (rails + a box), and
+// group/ungroup. Same 24×24 stroke language as the rest of the set.
+
+export function IconObjAlignLeft(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 3v18" />
+      <rect x="7" y="6" width="11" height="4" rx="1" />
+      <rect x="7" y="14" width="6" height="4" rx="1" />
+    </Svg>
+  );
+}
+export function IconObjAlignHCenter(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M12 3v2M12 19v2" />
+      <rect x="6" y="6" width="12" height="4" rx="1" />
+      <rect x="8" y="14" width="8" height="4" rx="1" />
+    </Svg>
+  );
+}
+export function IconObjAlignRight(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M20 3v18" />
+      <rect x="6" y="6" width="11" height="4" rx="1" />
+      <rect x="11" y="14" width="6" height="4" rx="1" />
+    </Svg>
+  );
+}
+export function IconObjAlignTop(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M3 4h18" />
+      <rect x="6" y="7" width="4" height="11" rx="1" />
+      <rect x="14" y="7" width="4" height="6" rx="1" />
+    </Svg>
+  );
+}
+export function IconObjAlignVCenter(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M3 12h2M19 12h2" />
+      <rect x="6" y="6" width="4" height="12" rx="1" />
+      <rect x="14" y="8" width="4" height="8" rx="1" />
+    </Svg>
+  );
+}
+export function IconObjAlignBottom(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M3 20h18" />
+      <rect x="6" y="6" width="4" height="11" rx="1" />
+      <rect x="14" y="11" width="4" height="6" rx="1" />
+    </Svg>
+  );
+}
+export function IconDistributeH(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 3v18M20 3v18" />
+      <rect x="9" y="8" width="6" height="8" rx="1" />
+    </Svg>
+  );
+}
+export function IconDistributeV(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M3 4h18M3 20h18" />
+      <rect x="8" y="9" width="8" height="6" rx="1" />
+    </Svg>
+  );
+}
+export function IconGroup(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M3 7V4a1 1 0 011-1h3M17 3h3a1 1 0 011 1v3M21 17v3a1 1 0 01-1 1h-3M7 21H4a1 1 0 01-1-1v-3" />
+      <rect x="7" y="7" width="6" height="6" rx="1" />
+      <rect x="11" y="11" width="6" height="6" rx="1" />
+    </Svg>
+  );
+}
+export function IconUngroup(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="4" y="4" width="7" height="7" rx="1" />
+      <rect x="13" y="13" width="7" height="7" rx="1" />
+      <path d="M15 6l3 3M6 15l3 3" />
+    </Svg>
+  );
+}
+
+/** FigJam v3 — section tool: a region with its name chip docked top-left. */
+export function IconSection(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="4" y="8" width="16" height="12" rx="2" />
+      <path d="M4 4h7" />
+    </Svg>
+  );
+}

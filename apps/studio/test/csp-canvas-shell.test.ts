@@ -39,6 +39,11 @@ describe('cspForCanvasShell — A6 hardening', () => {
     expect(csp).toContain("frame-ancestors 'self' http://localhost:4399");
   });
 
+  test('frame-ancestors carries every advertised loopback spelling (localhost + 127.0.0.1)', () => {
+    const csp = cspForCanvasShell(SHELL, 'http://localhost:4399 http://127.0.0.1:4399');
+    expect(csp).toContain("frame-ancestors 'self' http://localhost:4399 http://127.0.0.1:4399");
+  });
+
   test('frame-ancestors is OMITTED when the main origin is unknown (would block the legit embed)', () => {
     const csp = cspForCanvasShell(SHELL);
     expect(csp).not.toContain('frame-ancestors');

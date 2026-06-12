@@ -81,10 +81,11 @@ function ext(p: string): string {
  *
  * `frame-ancestors` (A6) — restricts who may embed the canvas document. The
  * legit embedder is the main dev-server origin, so we allowlist exactly that
- * (`mainOrigin`) plus `'self'`; an arbitrary external page can no longer reframe
- * the canvas. When `mainOrigin` is unknown (tests / pre-boot) the directive is
- * OMITTED rather than set to `'self'` — `'self'` alone would forbid the legit
- * cross-origin embed and blank the canvas.
+ * (`mainOrigin` — a space-separated source list; server.ts advertises both
+ * loopback spellings, `localhost` + `127.0.0.1`) plus `'self'`; an arbitrary
+ * external page can no longer reframe the canvas. When `mainOrigin` is unknown
+ * (tests / pre-boot) the directive is OMITTED rather than set to `'self'` —
+ * `'self'` alone would forbid the legit cross-origin embed and blank the canvas.
  */
 export function cspForCanvasShell(html: string, mainOrigin?: string): string {
   const hashes: string[] = [];

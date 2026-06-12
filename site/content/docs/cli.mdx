@@ -9,6 +9,8 @@ npm i -g @1agh/maude    # installs `maude` (legacy alias: `mdcc`; also installs 
 npx @1agh/maude <cmd>
 ```
 
+<FileTree variant="cli-subcommands" caption="The maude CLI surface — six subcommands plus version / help" />
+
 **`maude` is intentionally small.** Mechanical scaffolding and config. That's it. The interesting setup happens inside Claude Code via `/flow:init`, which calls `maude init` as step one.
 
 Subcommands: `init`, `config`, `doctor`, `cache`, `design` (`serve` · `init` · `export` · `link`/`adopt`/`unlink`/`status`), `hub` (`serve` · `token` · `status` · `deploy`), `version` / `help`. Pure ESM, Node 20+. Thin dependency surface — Ajv for config-linting, plus the per-platform dev-server binary pulled in via `optionalDependencies`.
@@ -24,6 +26,8 @@ maude init [--name <project>] [--force] [--dry-run]
 - `--name <project>`. Project slug for the `<project>` placeholder used by flow templates (e.g. `.ai/<project>-prd.md`). Defaults to the current directory basename.
 - `--force`. Overwrite existing files. Off by default; `init` is idempotent.
 - `--dry-run`. Print what would be written without touching the filesystem.
+
+<CommandFlow variant="init" caption="From install to your first plan" />
 
 The skeleton lives at `plugins/flow/templates/ai-skeleton/`. `maude init` does string templating during the copy:
 

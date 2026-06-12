@@ -6,7 +6,7 @@ description: "Vrať poslední snapshot aktivního canvasu (undo poslední /desig
 | Property | Value |
 | -------- | ----- |
 | **Command** | `/design:rollback` |
-| **Category** | `daily` |
+| **Category** | `daily` (daily) |
 | **Argument hint** | `[--steps N] [--list]` |
 | **Source** | [`plugins/design/commands/rollback.md`](https://github.com/1aGh/maude/blob/main/plugins/design/commands/rollback.md) |
 
@@ -23,7 +23,6 @@ Vrať poslední snapshot aktivního canvasu (undo poslední /design:edit). --ste
 ## Summary
 
 Restoruje předchozí stav active canvasu z `.design/_history/&lt;slug>/`. Každý `/design:edit "&lt;feedback>"` udělal snapshot **před** editem; rollback ten snapshot vrátí.
-
 ## Source of truth
 
 <Callout type="note" title="Generated from frontmatter">

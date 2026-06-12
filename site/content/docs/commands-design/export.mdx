@@ -6,7 +6,7 @@ description: "Export aktivního canvasu — PNG / PDF / SVG / HTML / PPTX / Canv
 | Property | Value |
 | -------- | ----- |
 | **Command** | `/design:export` |
-| **Category** | `daily` |
+| **Category** | `daily` (daily) |
 | **Argument hint** | `<png\|pdf\|svg\|html\|pptx\|canva\|zip> [--scope selection\|artboard\|canvas-as-separate\|project-raw] [--out <path>] [--option key=value]` |
 | **Source** | [`plugins/design/commands/export.md`](https://github.com/1aGh/maude/blob/main/plugins/design/commands/export.md) |
 
@@ -23,7 +23,6 @@ Export aktivního canvasu — PNG / PDF / SVG / HTML / PPTX / Canva handoff bund
 ## Summary
 
 Pošle požadavek na běžící dev-server (`POST /_api/export`) se stejným payloadem, jaký posílá ⌘E dialog uvnitř canvasu. Server zapíše soubor a tenhle slash command ho dotáhne na disk (default cwd, nebo `--out &lt;path>`).
-
 ## Source of truth
 
 <Callout type="note" title="Generated from frontmatter">

@@ -21,6 +21,8 @@
 // insert-all`, and crucially preserves cursor positions other peers may have
 // in the unchanged regions.
 
+import { hostname } from 'node:os';
+
 import type * as Y from 'yjs';
 
 import { Y_TYPES } from '../collab/persistence.ts';
@@ -43,6 +45,13 @@ export const Y_SYNC_TYPES = {
    *  security opt-in (syncable) are stripped before sync — see META_LOCAL_KEYS
    *  + sharedMetaCanonical. Phase 9.1 Gap 2. */
   meta: 'meta',
+  /** Doc-side sync bookkeeping (Y.Map, DDR-102): `bodyEditAt` ms-epoch stamp
+   *  written by every peer that applies a LOCAL body into the doc, + `by` (a
+   *  short peer label). The cold-start newest-wins decision compares it to the
+   *  local file mtime. Deliberately a dedicated lane: `.meta.json`'s
+   *  `last_modified` is in META_LOCAL_KEYS (per-machine, never syncs), so the
+   *  meta codec CANNOT carry this. Never materialized to disk. */
+  syncMeta: 'syncMeta',
 } as const;
 
 /**
@@ -291,6 +300,42 @@ export function mergeSharedMetaIntoLocal(
     if (k in local) merged[k] = local[k];
   }
   return `${JSON.stringify(merged, null, 2)}\n`;
+}
+
+/* ---------------------------------------------------------------- syncMeta */
+
+/** Short peer label for `syncMeta.by` — os.hostname() truncated. Informational
+ *  only (status surfaces); never trusted for decisions. */
+const PEER_LABEL_MAX = 32;
+function peerLabel(): string {
+  try {
+    return hostname().slice(0, PEER_LABEL_MAX);
+  } catch {
+    return 'unknown';
+  }
+}
+
+/**
+ * Stamp `syncMeta.bodyEditAt` (+ `by`) on the doc. Call this in the SAME
+ * transaction + origin as every local→doc body apply (agent applyFromFs html
+ * branch, reconcile seed-up, migrate-seed adopt, projection file→doc body
+ * import) so peers receive ONE update and origin-filtering stays intact.
+ * yjs nests transactions — wrapping `applyHtmlToDoc` + `stampBodyEdit` in an
+ * outer `doc.transact(fn, origin)` produces a single update.
+ */
+export function stampBodyEdit(doc: Y.Doc, origin?: unknown, nowMs?: number): void {
+  const map = doc.getMap<unknown>(Y_SYNC_TYPES.syncMeta);
+  doc.transact(() => {
+    map.set('bodyEditAt', nowMs ?? Date.now());
+    map.set('by', peerLabel());
+  }, origin);
+}
+
+/** The doc-side body-edit stamp, or null when no peer ever stamped (older
+ *  peers don't write syncMeta → callers fall back to hub-wins, interop-safe). */
+export function bodyEditAtFromDoc(doc: Y.Doc): number | null {
+  const v = doc.getMap<unknown>(Y_SYNC_TYPES.syncMeta).get('bodyEditAt');
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
 /* ---------------------------------------------------------------- css */

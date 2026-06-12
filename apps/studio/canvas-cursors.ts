@@ -171,6 +171,8 @@ export const TOOL_CURSORS: Record<Tool, string> = Object.freeze({
   hand: HAND,
   comment: COMMENT,
   pen: PEN,
+  // FigJam v3 — the section container draws like a shape (crosshair glyph).
+  section: CROSSHAIR,
   // Highlighter = Kenney `drawing_pencil` rot180; pen = `drawing_pen` rot180 —
   // distinct glyphs, both from the Kenney pack (user steer 2026-06-04).
   highlighter: HIGHLIGHTER,

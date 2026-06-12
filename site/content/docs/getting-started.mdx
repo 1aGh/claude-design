@@ -47,16 +47,7 @@ Inside Claude Code, in your project root:
 
 `/flow:init` scaffolds the `.ai/` second-brain:
 
-```
-.ai/
-├── workflows.config.json   # the only file you usually edit
-├── decisions/              # DDRs (Design Decision Records)
-├── plans/                  # phase plans + archive
-├── state/                  # STATE.md, HANDOFF.md
-├── docs/                   # PRD, codebase map
-├── retros/                 # post-feature retros
-└── scenarios/              # cross-platform UI scenarios
-```
+<FileTree variant=".ai/" caption="The .ai/ skeleton — workflows.config.json is the one file you usually touch" />
 
 It auto-detects your stack, writes `workflows.config.json`, and asks the right questions (branching model, changelog provider, platforms).
 
@@ -86,6 +77,8 @@ Design first, then ship.
 | `/flow:done` | Validate, commit, open a PR, archive the plan. |
 
 `/flow:status` works anywhere and tells you where you are.
+
+<CommandFlow variant="install" caption="Four steps and you're in — install, marketplace, plugins, init" />
 
 ## Open the design browser
 

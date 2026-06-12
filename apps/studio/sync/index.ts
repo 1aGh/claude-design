@@ -26,6 +26,7 @@ import * as Y from 'yjs';
 
 import { Y_TYPES } from '../collab/persistence.ts';
 import type { Context } from '../context.ts';
+import { createHistory } from '../history.ts';
 import { type CanvasSyncAgent, createCanvasSyncAgent } from './agent.ts';
 import {
   type ConnectionMonitor,
@@ -35,6 +36,7 @@ import {
 import { createEchoGuard } from './echo-guard.ts';
 import { createFsReader, type FsReader } from './fs-mirror.ts';
 import { getHubToken } from './hubs-config.ts';
+import { loadJournal, type SyncJournal } from './journal.ts';
 import { migrateSeed } from './migrate-seed.ts';
 import { createDocProjection, type DocProjection } from './projection.ts';
 import { createSyncStatusStore, type SyncStatusStore } from './status.ts';
@@ -58,8 +60,47 @@ export interface SyncProvider {
    * without status events just isn't monitored (treated as always-online).
    */
   onStatus?(cb: (status: ProviderStatus) => void): () => void;
+  /**
+   * DDR-102 — subscribe to hub auth rejections for this document. Returns an
+   * unsubscribe fn. Optional — a stub without it just isn't classified.
+   */
+  onAuthFailed?(cb: (info: { reason: string }) => void): () => void;
   destroy(): void;
 }
+
+/* ------------------------------------------------- auth-failure classification */
+
+/** DDR-102 — rejection classes the runtime distinguishes. `rate-limit` and
+ *  `generic` are transient (provider backoff keeps retrying); `not-authorized`
+ *  and `invalid-token` are permanent (retrying spams the hub bucket — destroy
+ *  the provider and re-probe on a slow timer instead). */
+export type AuthFailureClass = 'rate-limit' | 'not-authorized' | 'invalid-token' | 'generic';
+
+/** Map a raw hub rejection reason to a class. New hubs send distinct reasons
+ *  (DDR-102 hub fix); old hubs send the Hocuspocus default `permission-denied`
+ *  → `generic` (interop-safe degradation). */
+export function classifyAuthFailure(raw: string): AuthFailureClass {
+  const s = raw.toLowerCase();
+  if (s.includes('rate limit')) return 'rate-limit';
+  if (s.includes('not authorized')) return 'not-authorized';
+  if (s.includes('invalid token')) return 'invalid-token';
+  return 'generic';
+}
+
+export const AUTH_WARN_DEBOUNCE_MS = 2_000;
+export const AUTH_REPROBE_MS = 5 * 60 * 1000;
+export const BOOT_SETTLE_TIMEOUT_MS = 15_000;
+
+const AUTH_CLASS_HINT: Record<AuthFailureClass, string> = {
+  'rate-limit':
+    'boot burst hit the hub rate limit — sync settles as providers back off; if persistent, raise HUB_CONN_RATE_LIMIT on the hub (DDR-102 hubs default to 600/min for valid tokens).',
+  'not-authorized':
+    "the token's scope does not cover these canvases — mint a hub-wide token (`maude hub token generate --scope '*'` or an admin-UI invite) and re-link. Retries stopped; re-probing in 5 min.",
+  'invalid-token':
+    'the stored token was rejected — re-run `maude design link <url> --token …` on this machine. Retries stopped; re-probing in 5 min.',
+  generic:
+    'the hub refused auth without a specific reason (older hub?) — check `maude design status` and the hub logs.',
+};
 
 /**
  * Structural surface of the collab registry the runtime needs for Task 5.
@@ -133,6 +174,20 @@ export interface CreateSyncRuntimeOptions {
   connectionMonitor?: ConnectionMonitor;
   /** Override the status store (Task 8 test injection). */
   statusStore?: SyncStatusStore;
+  /**
+   * DDR-102 — auth-failure + boot-settle knobs (test injection, mirrors the
+   * connection-state injectable-timer pattern).
+   */
+  auth?: {
+    /** Debounce for the ONE aggregated rejection warn. Default 2 s. */
+    warnDebounceMs?: number;
+    /** Re-probe interval for permanently-rejected docs. Default 5 min. */
+    reprobeMs?: number;
+    /** Boot summary settle ceiling. Default 15 s. */
+    settleTimeoutMs?: number;
+    setTimer?: (cb: () => void, ms: number) => ReturnType<typeof setTimeout>;
+    clearTimer?: (h: ReturnType<typeof setTimeout>) => void;
+  };
 }
 
 /**
@@ -195,7 +250,11 @@ export function createSyncRuntime(
   }
   const token: string = resolvedToken;
 
-  const providerFactory = opts.providerFactory ?? defaultProviderFactory;
+  // DDR-102 — the default factory multiplexes every provider over ONE shared
+  // WebSocket per hub URL; the runtime owns its disposal (stop(), after the
+  // providers detach). An injected test factory has no shared socket.
+  const ownedFactory = opts.providerFactory ? null : createDefaultProviderFactory();
+  const providerFactory = opts.providerFactory ?? (ownedFactory as ProviderFactory);
   const echoGuard = createEchoGuard();
   const agents = new Map<string, CanvasSyncAgent>();
   // Phase 9.2 (DDR-064) — under sharedDoc the disk handler is a loop-free
@@ -224,6 +283,28 @@ export function createSyncRuntime(
   // online/offline/escalated and feeds every change to the store.
   let statusStore: SyncStatusStore | null = null;
   let monitor: ConnectionMonitor | null = null;
+  // DDR-102 — the per-machine sync journal (divergence detector). Created in
+  // start() (after the hub URL is known), flushed + stopped in stop().
+  let journal: SyncJournal | null = null;
+
+  // DDR-102 — auth-failure intelligence state (timers cleared in stop()).
+  type TimerHandle = ReturnType<typeof setTimeout>;
+  const authSetTimer = opts.auth?.setTimer ?? ((cb: () => void, ms: number) => setTimeout(cb, ms));
+  const authClearTimer = opts.auth?.clearTimer ?? ((h: TimerHandle) => clearTimeout(h));
+  const warnDebounceMs = opts.auth?.warnDebounceMs ?? AUTH_WARN_DEBOUNCE_MS;
+  const reprobeMs = opts.auth?.reprobeMs ?? AUTH_REPROBE_MS;
+  const settleTimeoutMs = opts.auth?.settleTimeoutMs ?? BOOT_SETTLE_TIMEOUT_MS;
+  const pendingAuthWarn = new Map<AuthFailureClass, Set<string>>();
+  /** Latest rejection class per slug — feeds the boot summary detail. */
+  const rejectedReasons = new Map<string, AuthFailureClass>();
+  /** Permanently-rejected docs awaiting a slow re-probe (provider destroyed). */
+  const rejectedPermanent = new Map<
+    string,
+    { canvas: CanvasDescriptor; canvasPaths: import('./agent.ts').CanvasSyncPaths; doc: Y.Doc }
+  >();
+  let authWarnTimer: TimerHandle | null = null;
+  let reprobeTimer: TimerHandle | null = null;
+  const settleTimers = new Set<TimerHandle>();
 
   async function start(): Promise<void> {
     if (started || stopped) return;
@@ -312,6 +393,216 @@ export function createSyncRuntime(
     let adoptReconciled = 0;
     const adoptTarget = canvases.length;
 
+    // DDR-102 — journal + snapshot wiring for the conflict protocol. The
+    // journal is per-hub (relink to a different hub wipes it); snapshots land
+    // in `_history/<slug>/` via history.ts so /design:rollback recovers them.
+    journal = loadJournal(ctx.paths.designRoot);
+    journal.invalidateIfHubChanged(linkedHub.url);
+    const history = createHistory(ctx);
+
+    // ---- DDR-102 helpers: auth aggregation, re-probe, settle bookkeeping ----
+
+    const flushAuthWarn = (): void => {
+      authWarnTimer = null;
+      if (stopped || pendingAuthWarn.size === 0) return;
+      const lines: string[] = [];
+      for (const [cls, slugs] of pendingAuthWarn) {
+        const list = [...slugs];
+        const shown = list.slice(0, 10).join(', ');
+        const more = list.length > 10 ? ` (+${list.length - 10} more)` : '';
+        lines.push(
+          `  ${list.length} canvas(es) [${cls}]: ${shown}${more}\n    → ${AUTH_CLASS_HINT[cls]}`
+        );
+      }
+      pendingAuthWarn.clear();
+      console.warn(`[sync] hub auth rejections (${linkedHub.url}):\n${lines.join('\n')}`);
+    };
+
+    const scheduleReprobe = (): void => {
+      if (reprobeTimer !== null || stopped) return;
+      reprobeTimer = authSetTimer(() => {
+        reprobeTimer = null;
+        if (stopped) return;
+        const entries = [...rejectedPermanent.values()];
+        rejectedPermanent.clear();
+        for (const entry of entries) {
+          mon.noteDocState(entry.canvas.slug, 'pending');
+          void connectCanvas(entry.canvas, entry.canvasPaths, entry.doc).catch((err) => {
+            console.error(`[sync/${entry.canvas.slug}] re-probe failed:`, err);
+          });
+        }
+      }, reprobeMs);
+    };
+
+    const handleAuthFailure = (
+      canvas: CanvasDescriptor,
+      canvasPaths: import('./agent.ts').CanvasSyncPaths,
+      provider: SyncProvider,
+      rawReason: string
+    ): void => {
+      if (stopped) return;
+      const reasonClass = classifyAuthFailure(rawReason);
+      mon.noteDocState(canvas.slug, 'auth-rejected');
+      rejectedReasons.set(canvas.slug, reasonClass);
+      // Aggregate console output: ONE debounced warn for the whole burst.
+      if (!pendingAuthWarn.has(reasonClass)) pendingAuthWarn.set(reasonClass, new Set());
+      pendingAuthWarn.get(reasonClass)?.add(canvas.slug);
+      if (authWarnTimer === null) authWarnTimer = authSetTimer(flushAuthWarn, warnDebounceMs);
+      // Permanent classes: retrying only spams the hub (and its rate bucket) —
+      // destroy the provider and re-probe on a slow timer. Transient classes
+      // (rate-limit / generic) keep the provider's built-in backoff.
+      if (reasonClass === 'not-authorized' || reasonClass === 'invalid-token') {
+        if (!rejectedPermanent.has(canvas.slug)) {
+          rejectedPermanent.set(canvas.slug, { canvas, canvasPaths, doc: provider.document });
+          providers.delete(canvas.slug);
+          try {
+            provider.destroy();
+          } catch {
+            /* best-effort */
+          }
+          scheduleReprobe();
+        }
+      }
+    };
+
+    /** Post-handshake reconcile — shared by first connect and re-probe. */
+    const handleSynced = async (
+      canvas: CanvasDescriptor,
+      canvasPaths: import('./agent.ts').CanvasSyncPaths,
+      provider: SyncProvider
+    ): Promise<void> => {
+      if (stopped) return;
+      const projection = projections.get(canvas.slug);
+      const agent = agents.get(canvas.slug);
+      if (projection) {
+        // Phase E (DDR-064 Task 9) — one-time authoritative seed BEFORE
+        // materializing: escapes the duplication trap by picking ONE source
+        // inside a MIGRATION transaction. DDR-102: body divergence now takes
+        // the journal-gated conflict path (dual snapshot + newest-wins)
+        // instead of blind hub-wins. The room file-seed is disabled for this
+        // pinned slug (createCollab shouldSeed).
+        const relBody = path.relative(ctx.paths.repoRoot, canvas.html);
+        const result = await migrateSeed({
+          slug: canvas.slug,
+          doc: provider.document,
+          paths: canvasPaths,
+          historyDir: path.join(ctx.paths.historyDir, canvas.slug),
+          journal: journal ?? undefined,
+          snapshot: async (content, reason) => {
+            try {
+              const snap = await history.writeSnapshot(relBody, content, reason);
+              return snap.ts;
+            } catch {
+              return null;
+            }
+          },
+          onConflict: (info) => store.addConflict(info),
+        });
+        if (result === 'local-adopt') {
+          console.log(`[sync/${canvas.slug}] shared-doc: adopted local state (hub was empty).`);
+        } else if (result === 'conflict-local-wins' || result === 'conflict-hub-wins') {
+          console.warn(
+            `[sync/${canvas.slug}] shared-doc: diverged — kept the ${
+              result === 'conflict-local-wins' ? 'local' : 'hub'
+            } version (newest-wins); the other is in _history/${canvas.slug}/ — recover via /design:rollback.`
+          );
+        }
+        // Then materialize the converged doc to disk (safe — never clobbers
+        // non-empty local with an empty doc value).
+        projection.reconcile();
+      } else if (agent) {
+        await agent.reconcile();
+        if (adoptOnce) {
+          adoptReconciled++;
+          if (adoptReconciled === adoptTarget) {
+            // All canvases adopted — clear the flag from .design/config.json
+            // so re-running serve doesn't re-trigger. DDR-054 §2i.
+            clearAdoptFlag(ctx);
+          }
+        }
+      }
+      // DDR-102 — honest status: the handshake + reconcile completed.
+      mon.noteDocState(canvas.slug, 'connected');
+      mon.noteSyncActivity(canvas.slug);
+      rejectedReasons.delete(canvas.slug);
+    };
+
+    /** onceSynced() with the boot-settle ceiling — never hangs the summary on
+     *  an auth-rejected provider (whose handshake never completes). */
+    const settleWait = (p: Promise<void>): Promise<void> =>
+      new Promise<void>((resolve) => {
+        const h = authSetTimer(() => {
+          settleTimers.delete(h);
+          resolve();
+        }, settleTimeoutMs);
+        settleTimers.add(h);
+        p.then(
+          () => {
+            settleTimers.delete(h);
+            authClearTimer(h);
+            resolve();
+          },
+          () => {
+            settleTimers.delete(h);
+            authClearTimer(h);
+            resolve();
+          }
+        );
+      });
+    const bootWaits: Promise<void>[] = [];
+
+    /**
+     * Create + wire a provider for a canvas. Used by the boot loop and by the
+     * permanent-rejection re-probe (which passes the EXISTING doc so the
+     * agent/projection wiring — doc-scoped — survives the provider swap).
+     */
+    const connectCanvas = async (
+      canvas: CanvasDescriptor,
+      canvasPaths: import('./agent.ts').CanvasSyncPaths,
+      document?: Y.Doc,
+      setup?: (provider: SyncProvider) => void
+    ): Promise<SyncProvider> => {
+      const provider = await providerFactory({
+        url: linkedHub.url,
+        token,
+        documentName: canvas.slug,
+        document,
+      });
+      providers.set(canvas.slug, provider);
+      // First-connect setup (agent/projection creation + doc-scoped wiring)
+      // MUST run before the onceSynced chain below — handleSynced resolves the
+      // agent/projection from the maps, and a test stub's onceSynced can
+      // settle on the very next microtask.
+      setup?.(provider);
+
+      // Task 8 — feed this provider's WS status into the offline monitor.
+      if (provider.onStatus) {
+        statusDetaches.push(provider.onStatus((s) => mon.noteProviderStatus(canvas.slug, s)));
+      } else {
+        // No status events (test stub) — treat as connected so the monitor
+        // doesn't sit in the boot 'connecting' state forever.
+        mon.noteProviderStatus(canvas.slug, 'connected');
+      }
+      // DDR-102 — classify + aggregate hub auth rejections.
+      if (provider.onAuthFailed) {
+        statusDetaches.push(
+          provider.onAuthFailed(({ reason }) =>
+            handleAuthFailure(canvas, canvasPaths, provider, reason)
+          )
+        );
+      }
+      // Task 5 — bridge the provider's hub-synced Awareness to the Room so
+      // browser cursors relay cross-machine. No-op when the provider exposes
+      // no awareness or no registry was passed (file-sync-only tests).
+      if (opts.registry && provider.awareness) {
+        awarenessDetaches.push(opts.registry.attachHubAwareness(canvas.slug, provider.awareness));
+      }
+      // Cold-start reconcile fires once the provider has hub state.
+      const synced = provider.onceSynced().then(() => handleSynced(canvas, canvasPaths, provider));
+      bootWaits.push(settleWait(synced));
+      return provider;
+    };
+
     for (const canvas of canvases) {
       try {
         // Phase 9.2 (DDR-064) — when sharedDoc is on, the provider attaches to
@@ -327,13 +618,6 @@ export function createSyncRuntime(
           opts.registry?.pin?.(canvas.slug);
           pinnedSlugs.add(canvas.slug);
         }
-        const provider = await providerFactory({
-          url: linkedHub.url,
-          token,
-          documentName: canvas.slug,
-          document: sharedYDoc,
-        });
-        providers.set(canvas.slug, provider);
         const canvasPaths = {
           html: canvas.html,
           comments: canvas.comments,
@@ -341,139 +625,104 @@ export function createSyncRuntime(
           meta: canvas.meta,
           css: canvas.css,
         };
-        // Phase 9.2 (DDR-064) — the disk handler. Under sharedDoc it's a
-        // loop-free projection (html/css/meta doc→file + all-types file→doc;
-        // the collab room keeps comments/annotations doc→file, so no
-        // double-write). Flag-OFF keeps the proven two-doc agent.
-        let agent: CanvasSyncAgent | undefined;
-        let projection: DocProjection | undefined;
-        if (useSharedDoc && sharedYDoc) {
-          projection = createDocProjection({
-            slug: canvas.slug,
-            doc: provider.document,
-            paths: canvasPaths,
-            echoGuard,
-          });
-          projection.start();
-          projections.set(canvas.slug, projection);
-        } else {
-          agent = createCanvasSyncAgent({
-            slug: canvas.slug,
-            doc: provider.document,
-            paths: canvasPaths,
-            echoGuard,
-            adopt: adoptOnce,
-            onConflict: (info) => store.addConflict(info),
-          });
-          agent.start();
-          agents.set(canvas.slug, agent);
-        }
-
-        // Task 8 — feed this provider's WS status into the offline monitor.
-        if (provider.onStatus) {
-          statusDetaches.push(provider.onStatus((s) => mon.noteProviderStatus(canvas.slug, s)));
-        } else {
-          // No status events (test stub) — treat as connected so the monitor
-          // doesn't sit in the boot 'connecting' state forever.
-          mon.noteProviderStatus(canvas.slug, 'connected');
-        }
-        // Count local edits (agent-origin doc updates) toward queuedOps while
-        // the hub is unreachable — the banner's "N edits queued" figure. Under
-        // sharedDoc there is no agent origin to key off (browser edits carry a
-        // RoomConn origin); queued-edit counting in that mode is a known gap
-        // (offline-banner accuracy only, not data) deferred past Phase C.
-        if (agent) {
-          const agentOrigin = agent.origin;
-          const onLocalUpdate = (_u: Uint8Array, origin: unknown) => {
-            if (origin === agentOrigin) mon.noteLocalEdit();
-          };
-          provider.document.on('update', onLocalUpdate);
-          statusDetaches.push(() => provider.document.off('update', onLocalUpdate));
-        }
-
-        // Task 5 — bridge the provider's hub-synced Awareness to the Room so
-        // browser cursors relay cross-machine. No-op when the provider exposes
-        // no awareness or no registry was passed (file-sync-only tests).
-        if (opts.registry && provider.awareness) {
-          awarenessDetaches.push(opts.registry.attachHubAwareness(canvas.slug, provider.awareness));
-        }
-
-        // Relay hub-pushed comment/annotation changes straight into the live
-        // room — IN-PROCESS + synchronous, so the room's in-memory doc is
-        // updated BEFORE its 800ms persist timer can flush stale pre-sync state
-        // back over the file (the disk-mediated re-seed in createCollab loses
-        // that race under an actively-edited peer; this is the tight path that
-        // actually closes the "comment reverts" clobber). Wholesale-replace via
-        // syncRoomFrom* → no duplication. Skip agent-origin updates (our own
-        // disk→doc apply — the file is authoritative there; a local design:edit
-        // reaches the room via createCollab's fs hook instead).
-        //
-        // CRITICAL: observe the comment + annotation Y-types SEPARATELY, not the
-        // whole-doc update. A whole-doc relay re-applies BOTH types on every
-        // change, so a comment sync would re-push the (stale) annotation and
-        // clobber an annotation the peer just drew but hasn't synced yet — and
-        // vice versa. Per-type observers keep the two lanes independent.
-        //
-        // Phase 9.2 (DDR-064): under sharedDoc the provider IS attached to the
-        // room's doc, so there is no second doc to relay into — the room already
-        // has every change. Skipping the relay is what RETIRES the
-        // wholesale-replace clobber path (the Phase 9.1 ceiling): with one doc,
-        // CRDT merge handles concurrency, no last-writer-wins blob copy.
-        const reg = opts.registry;
-        if (!useSharedDoc && agent && reg?.syncRoomFromComments) {
-          const agentOrigin = agent.origin;
-          const slug = canvas.slug;
-          const provComments = provider.document.getArray(Y_TYPES.comments);
-          const provAnn = provider.document.getMap(Y_TYPES.annotations);
-          const onComments = (_e: unknown, tx: { origin: unknown }) => {
-            if (tx.origin === agentOrigin) return;
-            reg.syncRoomFromComments?.(slug, provComments.toArray());
-          };
-          const onAnn = (_e: unknown, tx: { origin: unknown }) => {
-            if (tx.origin === agentOrigin) return;
-            const svg = provAnn.get('svg');
-            if (typeof svg === 'string') reg.syncRoomFromAnnotations?.(slug, svg);
-          };
-          provComments.observe(onComments);
-          provAnn.observe(onAnn);
-          statusDetaches.push(() => {
-            provComments.unobserve(onComments);
-            provAnn.unobserve(onAnn);
-          });
-        }
-
-        // Cold-start reconcile fires once the provider has hub state.
-        void provider.onceSynced().then(async () => {
-          if (projection) {
-            // Phase E (DDR-064 Task 9) — one-time authoritative seed BEFORE
-            // materializing: escapes the duplication trap by picking ONE source
-            // (hub-wins if the synced doc holds state; adopt local files only
-            // when the hub was empty), inside a MIGRATION transaction. The room
-            // file-seed is disabled for this pinned slug (createCollab
-            // shouldSeed), so no duplicate items can be introduced afterward.
-            const result = migrateSeed({
+        mon.noteDocState(canvas.slug, 'pending');
+        await connectCanvas(canvas, canvasPaths, sharedYDoc, (provider) => {
+          // Phase 9.2 (DDR-064) — the disk handler. Under sharedDoc it's a
+          // loop-free projection (html/css/meta doc→file + all-types file→doc;
+          // the collab room keeps comments/annotations doc→file, so no
+          // double-write). Flag-OFF keeps the proven two-doc agent. Created
+          // ONCE here (first connect) — a DDR-102 re-probe swaps only the
+          // provider; everything below is doc-scoped and survives.
+          let agent: CanvasSyncAgent | undefined;
+          if (useSharedDoc && sharedYDoc) {
+            const projection = createDocProjection({
               slug: canvas.slug,
               doc: provider.document,
               paths: canvasPaths,
-              historyDir: path.join(ctx.paths.historyDir, canvas.slug),
+              echoGuard,
+              journal: journal ?? undefined,
             });
-            if (result === 'local-adopt') {
-              console.log(`[sync/${canvas.slug}] shared-doc: adopted local state (hub was empty).`);
-            }
-            // Then materialize the converged doc to disk (safe — never clobbers
-            // non-empty local with an empty doc value).
-            projection.reconcile();
-            return;
+            projection.start();
+            projections.set(canvas.slug, projection);
+          } else {
+            const relBody = path.relative(ctx.paths.repoRoot, canvas.html);
+            agent = createCanvasSyncAgent({
+              slug: canvas.slug,
+              doc: provider.document,
+              paths: canvasPaths,
+              echoGuard,
+              adopt: adoptOnce,
+              journal: journal ?? undefined,
+              snapshot: async (content, reason) => {
+                try {
+                  const snap = await history.writeSnapshot(relBody, content, reason);
+                  return snap.ts;
+                } catch {
+                  return null; // best-effort — resolution proceeds without refs
+                }
+              },
+              onConflict: (info) => store.addConflict(info),
+            });
+            agent.start();
+            agents.set(canvas.slug, agent);
           }
-          if (!agent) return;
-          await agent.reconcile();
-          if (adoptOnce) {
-            adoptReconciled++;
-            if (adoptReconciled === adoptTarget) {
-              // All canvases adopted — clear the flag from .design/config.json
-              // so re-running serve doesn't re-trigger. DDR-054 §2i.
-              clearAdoptFlag(ctx);
-            }
+
+          // Count local edits (agent-origin doc updates) toward queuedOps while
+          // the hub is unreachable — the banner's "N edits queued" figure. Under
+          // sharedDoc there is no agent origin to key off (browser edits carry a
+          // RoomConn origin); queued-edit counting in that mode is a known gap
+          // (offline-banner accuracy only, not data) deferred past Phase C.
+          if (agent) {
+            const agentOrigin = agent.origin;
+            const onLocalUpdate = (_u: Uint8Array, origin: unknown) => {
+              if (origin === agentOrigin) mon.noteLocalEdit();
+            };
+            provider.document.on('update', onLocalUpdate);
+            statusDetaches.push(() => provider.document.off('update', onLocalUpdate));
+          }
+
+          // Relay hub-pushed comment/annotation changes straight into the live
+          // room — IN-PROCESS + synchronous, so the room's in-memory doc is
+          // updated BEFORE its 800ms persist timer can flush stale pre-sync state
+          // back over the file (the disk-mediated re-seed in createCollab loses
+          // that race under an actively-edited peer; this is the tight path that
+          // actually closes the "comment reverts" clobber). Wholesale-replace via
+          // syncRoomFrom* → no duplication. Skip agent-origin updates (our own
+          // disk→doc apply — the file is authoritative there; a local design:edit
+          // reaches the room via createCollab's fs hook instead).
+          //
+          // CRITICAL: observe the comment + annotation Y-types SEPARATELY, not the
+          // whole-doc update. A whole-doc relay re-applies BOTH types on every
+          // change, so a comment sync would re-push the (stale) annotation and
+          // clobber an annotation the peer just drew but hasn't synced yet — and
+          // vice versa. Per-type observers keep the two lanes independent.
+          //
+          // Phase 9.2 (DDR-064): under sharedDoc the provider IS attached to the
+          // room's doc, so there is no second doc to relay into — the room already
+          // has every change. Skipping the relay is what RETIRES the
+          // wholesale-replace clobber path (the Phase 9.1 ceiling): with one doc,
+          // CRDT merge handles concurrency, no last-writer-wins blob copy.
+          const reg = opts.registry;
+          if (!useSharedDoc && agent && reg?.syncRoomFromComments) {
+            const agentOrigin = agent.origin;
+            const slug = canvas.slug;
+            const provComments = provider.document.getArray(Y_TYPES.comments);
+            const provAnn = provider.document.getMap(Y_TYPES.annotations);
+            const onComments = (_e: unknown, tx: { origin: unknown }) => {
+              if (tx.origin === agentOrigin) return;
+              reg.syncRoomFromComments?.(slug, provComments.toArray());
+            };
+            const onAnn = (_e: unknown, tx: { origin: unknown }) => {
+              if (tx.origin === agentOrigin) return;
+              const svg = provAnn.get('svg');
+              if (typeof svg === 'string') reg.syncRoomFromAnnotations?.(slug, svg);
+            };
+            provComments.observe(onComments);
+            provAnn.observe(onAnn);
+            statusDetaches.push(() => {
+              provComments.unobserve(onComments);
+              provAnn.unobserve(onAnn);
+            });
           }
         });
       } catch (err) {
@@ -490,9 +739,32 @@ export function createSyncRuntime(
     // running" while sync is in fact healthy. This was the observed bug.
     store.update(mon.snapshot());
 
+    // DDR-102 — honest boot output. The old single line printed
+    // "83/83 canvas(es) syncing" BEFORE any handshake completed; per-canvas
+    // auth rejections were invisible. Print a short linking line now and the
+    // real summary once the handshakes settle (or the 15 s ceiling passes —
+    // auth-rejected providers never resolve onceSynced, so the ceiling keeps
+    // boot from hanging). Late canvases just update `_sync.json`.
     console.log(
-      `[sync] linked to ${linkedHub.url} — ${agents.size + projections.size}/${canvases.length} canvas(es) syncing${useSharedDoc ? ' (shared-doc)' : ''}${adoptOnce ? ' (adopt mode — pushing local up)' : ''}.`
+      `[sync] linking to ${linkedHub.url} (${canvases.length} canvases)…${useSharedDoc ? ' (shared-doc)' : ''}${adoptOnce ? ' (adopt mode — pushing local up)' : ''}`
     );
+    void Promise.allSettled(bootWaits).then(() => {
+      if (stopped) return;
+      const snap = mon.snapshot();
+      const docs = snap.docs ?? { synced: 0, pending: 0, rejected: 0 };
+      const parts = [`${docs.synced}/${canvases.length} synced`];
+      if (docs.rejected > 0) {
+        const sample = (snap.rejectedSlugs ?? []).slice(0, 3).join(', ');
+        const classes = [...new Set(rejectedReasons.values())].join('/') || 'unknown';
+        parts.push(
+          `${docs.rejected} auth-rejected (${sample}${docs.rejected > 3 ? ', …' : ''} — ${classes})`
+        );
+      }
+      if (docs.pending > 0) parts.push(`${docs.pending} pending`);
+      console.log(
+        `[sync] ${linkedHub.url}: ${parts.join(' · ')} · shared-doc:${useSharedDoc ? 'on' : 'off'}`
+      );
+    });
   }
 
   async function stop(): Promise<void> {
@@ -525,6 +797,20 @@ export function createSyncRuntime(
     }
     statusDetaches.length = 0;
     monitor?.stop();
+    journal?.stop(); // flushes the pending debounce
+    journal = null;
+    // DDR-102 — auth/settle timers.
+    if (authWarnTimer !== null) {
+      authClearTimer(authWarnTimer);
+      authWarnTimer = null;
+    }
+    if (reprobeTimer !== null) {
+      authClearTimer(reprobeTimer);
+      reprobeTimer = null;
+    }
+    for (const h of settleTimers) authClearTimer(h);
+    settleTimers.clear();
+    rejectedPermanent.clear();
     busUnsub?.();
     busUnsub = null;
     fsReader?.stop();
@@ -559,6 +845,8 @@ export function createSyncRuntime(
       }
     }
     providers.clear();
+    // DDR-102 — destroy the shared WebSocket(s) AFTER the providers detached.
+    ownedFactory?.dispose();
   }
 
   return {
@@ -809,93 +1097,147 @@ function slugFor(absPath: string, designRoot: string, designRel: string): string
 /* ---------------------------------------------------------------- default provider */
 
 /**
- * The production provider factory — instantiates a real HocuspocusProvider.
- * Imported dynamically so tests / unlinked projects don't pay the load cost.
+ * A ProviderFactory whose shared resources (the per-hub WebSocket) the runtime
+ * can dispose on stop(). The call signature stays the plain ProviderFactory
+ * shape so injected test stubs are unaffected.
  */
-async function defaultProviderFactory(args: {
-  url: string;
-  token: string;
-  documentName: string;
-  document?: Y.Doc;
-}): Promise<SyncProvider> {
+export interface DisposableProviderFactory extends ProviderFactory {
+  /** Destroy the shared HocuspocusProviderWebsocket(s). Call AFTER provider
+   *  destroys — a provider detach sends a Close message over the socket. */
+  dispose(): void;
+}
+
+/**
+ * The production provider factory — DDR-102: ONE shared
+ * `HocuspocusProviderWebsocket` per hub URL, with every canvas's
+ * `HocuspocusProvider` attached to it, instead of one socket per canvas.
+ * An 83-canvas project used to open 83 WebSockets at boot — the auth burst
+ * tripped the hub's per-token rate limit (100/min) the moment two peers
+ * booted together, and the per-socket retry storm then pinned the bucket
+ * forever (the 2026-06-11 incident). NB: the hub still authenticates once per
+ * DOCUMENT (each provider sends its own Auth message on socket open), so the
+ * hub-side valid-token bucket resize is the companion fix — the multiplexing
+ * kills the SOCKET burst and collapses the retry storm to one reconnect loop.
+ *
+ * Module + socket creation are lazy so tests / unlinked projects don't pay
+ * the load cost. `loadModule` is injectable for unit tests.
+ */
+export function createDefaultProviderFactory(
   // biome-ignore lint/suspicious/noExplicitAny: dynamic import of optional dep.
-  let mod: any;
-  try {
-    mod = await import('@hocuspocus/provider');
-  } catch (err) {
-    throw new Error(
-      `@hocuspocus/provider unavailable — install it under apps/studio/. (${err instanceof Error ? err.message : String(err)})`
-    );
-  }
-  // Hocuspocus accepts ws:// or wss://; the linked URL is http(s)://, so swap
-  // the scheme. The provider also accepts http(s):// and upgrades internally
-  // in newer versions, but ws:// is explicit + portable.
-  const wsUrl = toWsUrl(args.url);
-  // Phase 9.2 (DDR-064) — attach to the shared room doc when the runtime
-  // injected one; otherwise own a fresh doc (the legacy two-doc path).
-  const document = args.document ?? new Y.Doc();
-  // biome-ignore lint/suspicious/noExplicitAny: provider runtime is typed at the call site.
-  const provider: any = new mod.HocuspocusProvider({
-    url: wsUrl,
-    name: args.documentName,
-    token: args.token,
-    document,
-    connect: true,
-    // Make a rejected handshake LOUD instead of an invisible reconnect loop.
-    // The most common cause is a scope-bound token (DDR-053 default scope =
-    // label) that can't authorize this canvas's flat-slug documentName — that
-    // failure mode previously looked identical to "hub unreachable / offline".
-    onAuthenticationFailed: (data: { reason?: string }) => {
-      const reason = (data?.reason ?? 'unknown reason').replace(/[\r\n]/g, ' ').slice(0, 200);
-      console.warn(
-        `[sync] hub REJECTED auth for documentName="${args.documentName}": ${reason}.
-       If this is "token not authorized for this documentName", the token's scope
-       does not cover this canvas — mint a hub-wide token (\`maude hub token generate
-       --scope '*'\` or an admin-UI invite) and re-link. The peer keeps retrying until then.`
-      );
+  loadModule?: () => Promise<any>
+): DisposableProviderFactory {
+  // biome-ignore lint/suspicious/noExplicitAny: provider runtime typed at call site.
+  let mod: any = null;
+  // wsUrl → shared HocuspocusProviderWebsocket (one per hub URL; in practice a
+  // runtime only ever talks to one hub, but the map keeps the contract exact).
+  // biome-ignore lint/suspicious/noExplicitAny: provider runtime typed at call site.
+  const sockets = new Map<string, any>();
+
+  const factory = async (args: {
+    url: string;
+    token: string;
+    documentName: string;
+    document?: Y.Doc;
+  }): Promise<SyncProvider> => {
+    if (!mod) {
+      try {
+        mod = await (loadModule ? loadModule() : import('@hocuspocus/provider'));
+      } catch (err) {
+        throw new Error(
+          `@hocuspocus/provider unavailable — install it under apps/studio/. (${err instanceof Error ? err.message : String(err)})`
+        );
+      }
+    }
+    // Hocuspocus accepts ws:// or wss://; the linked URL is http(s)://, so swap
+    // the scheme. The provider also accepts http(s):// and upgrades internally
+    // in newer versions, but ws:// is explicit + portable.
+    const wsUrl = toWsUrl(args.url);
+    let socket = sockets.get(wsUrl);
+    if (!socket) {
+      socket = new mod.HocuspocusProviderWebsocket({ url: wsUrl });
+      sockets.set(wsUrl, socket);
+    }
+    // Phase 9.2 (DDR-064) — attach to the shared room doc when the runtime
+    // injected one; otherwise own a fresh doc (the legacy two-doc path).
+    const document = args.document ?? new Y.Doc();
+    // DDR-102 — rejections fan out to the runtime's aggregator (ONE debounced
+    // warn with a reason-correct hint) instead of one 5-line warn per document
+    // per retry. The reason is sanitized here, classified by the runtime.
+    const authFailedCbs = new Set<(info: { reason: string }) => void>();
+    // biome-ignore lint/suspicious/noExplicitAny: provider runtime is typed at the call site.
+    const provider: any = new mod.HocuspocusProvider({
+      websocketProvider: socket,
+      name: args.documentName,
+      token: args.token,
+      document,
+      onAuthenticationFailed: (data: { reason?: string }) => {
+        const reason = (data?.reason ?? 'permission-denied').replace(/[\r\n]/g, ' ').slice(0, 200);
+        for (const cb of authFailedCbs) cb({ reason });
+      },
+    });
+    // With an injected websocketProvider the provider does NOT auto-attach
+    // (manageSocket=false in @hocuspocus/provider 4.x) — attach explicitly.
+    provider.attach();
+    return {
+      document,
+      // HocuspocusProvider creates a hub-synced Awareness by default; expose it
+      // so the runtime can bridge it to the collab Room (Task 5).
+      awareness: provider.awareness as Awareness | undefined,
+      onStatus(cb: (status: ProviderStatus) => void): () => void {
+        // The shared socket emits 'status' on every WS transition and every
+        // ATTACHED provider re-emits it (forwardStatus), so per-provider
+        // subscription keeps working under multiplexing.
+        const handler = (evt: { status?: string }) => {
+          const s = evt?.status;
+          if (s === 'connected' || s === 'connecting' || s === 'disconnected') cb(s);
+        };
+        provider.on('status', handler);
+        // Seed the subscriber with the CURRENT status immediately. On
+        // localhost the WS can reach 'connected'/synced before this listener
+        // attaches — waiting for the *next* transition would leave the
+        // connection monitor un-seeded and `_sync.json` never written. The
+        // socket (not the provider) owns the live status under multiplexing.
+        const cur = socket.status;
+        if (cur === 'connected' || cur === 'connecting' || cur === 'disconnected') cb(cur);
+        return () => provider.off('status', handler);
+      },
+      onAuthFailed(cb: (info: { reason: string }) => void): () => void {
+        authFailedCbs.add(cb);
+        return () => authFailedCbs.delete(cb);
+      },
+      onceSynced(): Promise<void> {
+        return new Promise<void>((resolve) => {
+          if (provider.synced) {
+            resolve();
+            return;
+          }
+          const handler = () => {
+            provider.off('synced', handler);
+            resolve();
+          };
+          provider.on('synced', handler);
+        });
+      },
+      destroy() {
+        // Detaches from the shared socket (sends a per-document Close); the
+        // socket itself is destroyed by dispose() after all providers.
+        provider.destroy();
+      },
+    };
+  };
+
+  return Object.assign(factory, {
+    dispose(): void {
+      for (const socket of sockets.values()) {
+        try {
+          socket.destroy();
+        } catch {
+          /* best-effort */
+        }
+      }
+      sockets.clear();
     },
   });
-  return {
-    document,
-    // HocuspocusProvider creates a hub-synced Awareness by default; expose it
-    // so the runtime can bridge it to the collab Room (Task 5).
-    awareness: provider.awareness as Awareness | undefined,
-    onStatus(cb: (status: ProviderStatus) => void): () => void {
-      // HocuspocusProvider emits 'status' with { status: 'connected' |
-      // 'connecting' | 'disconnected' } on every WS transition (Task 8).
-      const handler = (evt: { status?: string }) => {
-        const s = evt?.status;
-        if (s === 'connected' || s === 'connecting' || s === 'disconnected') cb(s);
-      };
-      provider.on('status', handler);
-      // Seed the subscriber with the provider's CURRENT status immediately. On
-      // localhost the WS can reach 'connected'/synced inside the constructor —
-      // before this listener attaches — so waiting for the *next* transition
-      // would leave the connection monitor un-seeded and `_sync.json` never
-      // written (status reads "idle / sync agent not running" while sync is in
-      // fact healthy). Reading provider.status closes that race; it always
-      // reflects the true current state, so a missed event can't strand us.
-      const cur = provider.status;
-      if (cur === 'connected' || cur === 'connecting' || cur === 'disconnected') cb(cur);
-      return () => provider.off('status', handler);
-    },
-    onceSynced(): Promise<void> {
-      return new Promise<void>((resolve) => {
-        if (provider.synced) {
-          resolve();
-          return;
-        }
-        const handler = () => {
-          provider.off('synced', handler);
-          resolve();
-        };
-        provider.on('synced', handler);
-      });
-    },
-    destroy() {
-      provider.destroy();
-    },
-  };
 }
 
 /** Convert an http(s):// URL to ws(s):// for the HocuspocusProvider. */

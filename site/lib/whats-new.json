@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-12T15:25:47.756Z",
+  "generated": "2026-06-12T16:07:00.517Z",
   "version": "0.29.0",
   "entries": [
     {
@@ -83,6 +83,40 @@
           "title": "Toggle visibility",
           "body": "The eye on each layer row hides or shows that element while you work — handy for seeing what sits underneath. Double-click any text in the canvas to retype it in place too.",
           "placement": "left"
+        }
+      ]
+    },
+    {
+      "id": "studio-chrome-polished-end-to-end",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Studio chrome, polished end to end",
+      "summary": "The whole browser feels hand-finished now. Drag the file and inspector panels to resize them (or nudge with the arrow keys — your widths are remembered), watch a calm skeleton while a canvas compiles, and press ? for a full keyboard-shortcuts cheat sheet. Collaborator cursors and Claude's own cursor now match the design system, annotations snap to the dot grid as you drag, and focus rings, tooltips and scrollbars are consistent throughout. The View menu's Layers and Zoom are wired up, and a shortcut clash is gone — the inspector is ⌘⇧I, so I stays free for the canvas highlighter.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "hub-sync-cold-start-safety",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Hub sync that can't eat your work",
+      "summary": "Boot two machines or checkouts linked to the same hub in any order — your local canvas work is safe. When both sides changed the same canvas, Maude keeps a copy of each, takes the newer one, and tells you exactly how to bring back the other; a clean catch-up just updates quietly. The sync status is honest now too: you can see which canvases are synced, pending, or rejected, and why.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "canvas-annotations-figjam-v3",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Annotations grew up: diagram on the canvas",
+      "summary": "Marquee-select strokes and just drag them, group with ⌘G, copy/paste, align and reorder. Shapes rotate (hover near a corner), resize from edges with size-matching guides, hold text (double-click any shape), and switch kind — square, circle, diamond, triangle — right from the toolbar. Arrows snap to shapes and re-route as you move things, and the new Section tool (⇧S) frames a region that moves with its content. AI tools can read the board and draw on it too.",
+      "surface": "design-ui",
+      "tour": [
+        {
+          "target": ".dc-tool-palette",
+          "title": "New tools in the palette",
+          "body": "Section (⇧S) frames a region; the Shape tool's primitives can all hold text now — select a shape and press Enter to type."
         }
       ]
     },

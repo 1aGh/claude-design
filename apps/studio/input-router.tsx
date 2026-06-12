@@ -82,6 +82,8 @@ export type Tool =
   | 'arrow'
   | 'sticky'
   | 'text'
+  // FigJam v3 — labelled organizing container (Shift+S).
+  | 'section'
   | 'eraser';
 
 const ANNOTATION_TOOLS = new Set<Tool>([
@@ -93,6 +95,7 @@ const ANNOTATION_TOOLS = new Set<Tool>([
   'arrow',
   'sticky',
   'text',
+  'section',
   'eraser',
 ]);
 
@@ -183,6 +186,10 @@ export function classify(input: ClassifyInput): RouterAction {
     // yields when focus is inside the canvas iframe (app.jsx onKey bail).
     if (k === 'n') return { kind: 'tool', tool: 'sticky' };
     if (k === 't') return { kind: 'tool', tool: 'text' };
+    // FigJam v3 — Shift+S arms the Section tool (FigJam's own binding; bare S
+    // stays with the shell's Design-system view). Checked here because the
+    // modifier guard above only filters Cmd/Ctrl/Alt.
+    if (k === 's' && input.shiftKey) return { kind: 'tool', tool: 'section' };
     if (k === 'e') return { kind: 'tool', tool: 'eraser' };
     if (input.key === 'Escape') return { kind: 'escape' };
     return { kind: 'no-op' };

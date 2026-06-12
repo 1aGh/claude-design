@@ -60,7 +60,7 @@
 .st-menu:hover { background: var(--bg-3); color: var(--fg-0); }
 .st-menu[aria-expanded="true"] { background: var(--bg-3); color: var(--fg-0); }
 .st-menu[aria-disabled="true"] { color: var(--fg-3); cursor: default; }
-.st-menu:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* keyboard ring: the shared `.maude :is(button…):focus-visible` recipe */
 
 .st-mb-right { margin-left: auto; display: flex; align-items: center; gap: var(--space-3); }
 .st-stamp {
@@ -91,7 +91,9 @@
   position: absolute; top: 38px; min-width: 230px;
   background: var(--bg-2); border: 1px solid var(--border-default);
   border-radius: var(--radius-md); box-shadow: var(--shadow-lg);
-  padding: var(--space-2); z-index: 60;
+  /* above the floating st-banner (9100) — an open menu must never sit under
+     a transient notice */
+  padding: var(--space-2); z-index: 9150;
   animation: st-pop var(--dur-panel) var(--ease-out);
   transform-origin: top left;
 }
@@ -123,12 +125,23 @@
   transition: background var(--dur-soft) var(--ease-out), color var(--dur-soft) var(--ease-out);
 }
 .st-iconbtn:hover { background: var(--bg-3); color: var(--fg-0); }
-.st-iconbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* ─── Presence avatars (menubar) ──────────────────────────────────────────── */
 .st-presence { display: flex; align-items: center; }
-.st-avatar { width: 22px; height: 22px; border-radius: var(--radius-pill); display: grid; place-items: center; font-family: var(--font-mono); font-size: 10px; line-height: 1; letter-spacing: 0.02em; text-transform: uppercase; color: #fff; font-weight: 600; }
-.st-presence .st-avatar { margin-left: -6px; border: 1.5px solid var(--bg-1); }
+/* DS avatar recipe (ui_kits showcase `.sc-avatar`): hue-TINTED surface + hue
+ * border + fg-0 text. A solid hue fill with white text broke the accent-fg
+ * contrast rule on dark and washed out entirely in light theme. */
+.st-avatar {
+  --av-hue: var(--accent);
+  width: 22px; height: 22px; border-radius: var(--radius-pill);
+  display: grid; place-items: center;
+  font-family: var(--font-mono); font-size: 10px; line-height: 1;
+  letter-spacing: 0.02em; text-transform: uppercase; font-weight: 600;
+  background: color-mix(in oklab, var(--av-hue) 22%, var(--bg-3));
+  border: 1px solid var(--av-hue);
+  color: var(--fg-0);
+}
+.st-presence .st-avatar { margin-left: -6px; box-shadow: 0 0 0 1.5px var(--bg-1); }
 .st-presence .st-avatar:first-child { margin-left: 0; }
 
 /* ─── Status bar (bottom — context) ───────────────────────────────────────── */
@@ -151,7 +164,6 @@
 .st-sb-spacer { flex: 1; }
 .st-sb-theme { display: inline-flex; align-items: center; gap: var(--space-2); cursor: pointer; appearance: none; color: var(--fg-0); font-family: var(--font-mono); font-size: var(--type-xs); padding: 3px var(--space-3); border-radius: var(--radius-sm); border: 1px solid var(--border-default); background: var(--bg-3); }
 .st-sb-theme:hover { background: var(--bg-4); border-color: var(--border-strong); }
-.st-sb-theme:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .st-dot { width: 7px; height: 7px; border-radius: var(--radius-pill); display: inline-block; flex: none; }
 .st-live-dot { width: 7px; height: 7px; border-radius: var(--radius-pill); background: var(--presence-offline); flex: none; }
 .st-live-dot.is-connected { background: var(--presence-online); }
@@ -205,7 +217,6 @@
   border-radius: var(--radius-sm); color: var(--fg-0); font-family: var(--font-body); font-size: var(--type-sm);
   padding: var(--space-2) var(--space-3);
 }
-.st-newboard input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .st-newboard-go {
   appearance: none; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-fg);
   border-radius: var(--radius-sm); cursor: pointer; padding: 0 var(--space-3); font-family: var(--font-mono); font-size: var(--type-sm);
@@ -359,7 +370,8 @@
 
 /* ─── Floating status banners (sync / git-lifecycle) ──────────────────────── */
 .st-banner {
-  position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 9100;
+  /* below the 40px menubar — at top:12px the banner covered the menus + file slot */
+  position: fixed; top: 48px; left: 50%; transform: translateX(-50%); z-index: 9100;
   display: flex; align-items: center; gap: var(--space-3);
   padding: var(--space-2) var(--space-4); border-radius: var(--radius-pill);
   border: 1px solid var(--border-default); background: var(--bg-2); color: var(--fg-0);
@@ -824,5 +836,326 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 
 /* shared focus ring for the panel's interactive controls (incl. native selects) */
 .st-cp button:focus-visible, .st-cp input:focus-visible, .st-cp select:focus-visible, .st-cp-token:focus-visible, .st-cp-track:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* ═══ DS-parity polish (specimen sweep) ═══════════════════════════════════════
+ * Gaps found auditing the shell against `.design/system/maude/preview/*`:
+ * focus-visible coverage, the DS input focus ring, select chevron, unified
+ * thin scrollbars, tooltip bubbles. */
+
+/* Catch-all keyboard focus — the DS focus specimen's ONE ring: 2px accent
+ * outline at 2px offset wrapped in a 5px --accent-tint halo (`focus.css`
+ * .fo-chip). :focus-visible only — mouse clicks never paint it. Inputs are
+ * NOT here — they take the DS input recipe (accent border + 3px tint ring). */
+.maude :is(button, [role="tab"], select, summary, a):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px var(--accent-tint);
+}
+/* tight rows inside scrollers — the inset variant so the ring never clips
+ * (focus.css .fo-tree .tree-row recipe). */
+.maude :is(.st-row, .st-dd-item, .st-pal-item, .st-layer, .st-tree-sec-hd, .st-cm-group-hd):focus-visible {
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 5px var(--accent-tint);
+}
+
+/* DS input recipe (`_components.css` .input:focus) — accent hairline + 3px tint
+ * ring, never the default UA outline. */
+.st-search-box:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+  color: var(--fg-2);
+}
+.st-search-box input:focus { outline: none; }
+.st-newboard input:focus,
+.st-newboard input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+.st-field:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+.st-select:hover { border-color: var(--border-strong); background-color: var(--bg-3); }
+.st-select:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+/* palette search — the container is the field; the inner input stays naked */
+.st-pal-search input:focus { outline: none; }
+.st-pal-search:focus-within { border-bottom-color: var(--accent-muted); }
+
+/* select chevron — `appearance:none` dropped the UA arrow and left the control
+ * affordance-less. Data-URIs can't read tokens, so the stroke is the resolved
+ * --fg-1 per theme (dark ≈ #c0c4cf, light ≈ #4f5563). */
+.st-select {
+  padding-right: 30px;
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23c0c4cf' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='3.5 6 8 10.5 12.5 6'/%3E%3C/svg%3E");
+}
+.maude[data-theme="light"] .st-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%234f5563' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='3.5 6 8 10.5 12.5 6'/%3E%3C/svg%3E");
+}
+
+/* unified thin scrollbars — one material everywhere (tree, panels, palette,
+ * system view, modals). Hairline thumb, transparent track. */
+.maude * {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-default) transparent;
+}
+.maude ::-webkit-scrollbar { width: 8px; height: 8px; }
+.maude ::-webkit-scrollbar-track { background: transparent; }
+.maude ::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: var(--radius-pill);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.maude ::-webkit-scrollbar-thumb:hover { background-color: var(--border-strong); }
+
+/* tooltip bubble — DS `components-tooltips` recipe (bg-2 hairline bubble), CSS
+ * attr-driven so chrome controls opt in via `data-tip` without a JS layer.
+ * 500ms reveal delay ≈ native tooltip timing; reduced-motion shows instantly. */
+.maude [data-tip] { position: relative; }
+.maude [data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 7px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9200;
+  white-space: nowrap;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-2);
+  color: var(--fg-0);
+  font-family: var(--font-body);
+  font-size: var(--type-xs);
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+  line-height: 1;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-soft) var(--ease-out);
+}
+.maude [data-tip]:hover::after,
+.maude [data-tip]:focus-visible::after {
+  opacity: 1;
+  transition-delay: 500ms;
+}
+/* bottom-bar + right-edge hosts flip/clamp so the bubble stays on screen */
+.maude [data-tip][data-tip-pos="top"]::after { top: auto; bottom: calc(100% + 7px); }
+.maude [data-tip][data-tip-pos="left"]::after { top: 50%; left: auto; right: calc(100% + 7px); transform: translateY(-50%); }
+
+/* ═══ Behavioral polish (specimen sweep, round 2) ═════════════════════════════ */
+
+/* ─── Panel grip — DS components-resize-panels recipe ──────────────────────
+ * 8px hit area; the panel's own border is the at-rest hairline, the grip seam
+ * surfaces accent + grip dots on hover/focus/drag. col-resize everywhere
+ * while dragging; iframes drop pointer events so they can't eat the stream. */
+.st-grip {
+  flex: 0 0 8px;
+  width: 8px;
+  position: relative;
+  cursor: col-resize;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  /* sit over the adjacent panel borders so the accent seam reads centered */
+  margin: 0 -4px;
+  z-index: 25;
+}
+.st-grip::before {
+  content: "";
+  position: absolute;
+  top: 0; bottom: 0; left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: transparent;
+  transition: background var(--dur-flip) var(--ease-out), width var(--dur-flip) var(--ease-out);
+}
+.st-grip:hover::before,
+.st-grip:focus-visible::before,
+.st-grip.is-active::before { background: var(--accent); width: 2px; }
+.st-grip-dots {
+  width: 6px; height: 18px;
+  color: var(--accent);
+  opacity: 0;
+  position: relative;
+  transition: opacity var(--dur-flip) var(--ease-out);
+}
+.st-grip:hover .st-grip-dots,
+.st-grip:focus-visible .st-grip-dots,
+.st-grip.is-active .st-grip-dots { opacity: 1; }
+/* specimen recipe — inset ring on the narrow hit area (the seam + dots already
+ * surface accent, this keeps a proper outline for WCAG focus visibility) */
+.st-grip:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.st-body.is-resizing { cursor: col-resize; user-select: none; }
+.st-body.is-resizing iframe { pointer-events: none; }
+.st-sidebar.is-resizing, .st-rpanel.is-resizing { transition: none; }
+
+/* ─── Canvas-compile skeleton — DS skeletons recipe (.skel pulse) ──────────── */
+.st-canvas-loading {
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  pointer-events: none;
+  z-index: 5;
+  /* 180ms appearance delay — warm canvases mount in <150ms and never flash it */
+  opacity: 0;
+  animation: st-loading-in var(--dur-soft) var(--ease-out) 180ms forwards;
+}
+@keyframes st-loading-in { to { opacity: 1; } }
+.st-skel-card {
+  width: 300px;
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-5);
+  background: var(--bg-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  animation: st-pop var(--dur-panel) var(--ease-out);
+}
+.st-skel-cap {
+  font-size: var(--type-xs); letter-spacing: var(--tracking-wide);
+  text-transform: uppercase; color: var(--fg-3);
+}
+.skel {
+  display: block;
+  background: var(--bg-3);
+  border-radius: var(--radius-xs);
+  animation: sk-pulse calc(var(--dur-route) * 3) var(--ease-in-out) infinite alternate;
+}
+@keyframes sk-pulse { from { opacity: 0.45; } to { opacity: 0.95; } }
+@media (prefers-reduced-motion: reduce) { .skel { animation: none; opacity: 0.7; } }
+.st-skel-thumb { height: 96px; border-radius: var(--radius-sm); }
+.st-skel-line { height: 10px; }
+
+/* ─── Micro-motion — hover/disclosure transitions on the dense surfaces ───── */
+.st-row,
+.st-comment,
+.st-fmt,
+.st-cm-filter,
+.st-rp-tab,
+.st-dd-item,
+.st-pal-item,
+.st-layer,
+.st-export-recent-row {
+  transition: background var(--dur-soft) var(--ease-out),
+              border-color var(--dur-soft) var(--ease-out),
+              color var(--dur-soft) var(--ease-out);
+}
+/* tree disclosure chevron — one glyph, rotated (animatable) */
+.st-chev { transition: transform var(--dur-flip) var(--ease-out); }
+.st-chev.is-open { transform: rotate(90deg); }
+/* right dock slides in as a panel (DS motion role: panel) */
+.st-rpanel { animation: st-panel-in var(--dur-panel) var(--ease-out); }
+@keyframes st-panel-in { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: none; } }
+
+/* ─── Keyboard-shortcuts overlay — DS components-shortcuts-overlay recipe ──── */
+.so-overlay {
+  position: relative;
+  width: 100%;
+  max-width: 720px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-6);
+  margin-top: -4vh;
+  animation: so-enter var(--dur-panel) var(--ease-out) both;
+}
+@keyframes so-enter {
+  0% { opacity: 0; transform: translateY(-6px) scale(0.99); }
+  100% { opacity: 1; transform: none; }
+}
+.so-overlay-hd {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-5);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.so-title {
+  font-family: var(--font-display);
+  font-size: var(--type-lg);
+  line-height: var(--lh-lg);
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg-0);
+}
+.so-trigger { font-size: var(--type-xs); color: var(--fg-2); }
+.so-columns {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-6) var(--space-7);
+}
+.so-section-hd {
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  font-weight: 500;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+/* the canvas-tools column reads as the in-canvas scope — accent-muted header */
+.so-section--tools .so-section-hd {
+  color: var(--accent);
+  border-bottom-color: color-mix(in oklab, var(--accent) 40%, var(--border-subtle));
+}
+.so-list { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; }
+.so-pair {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-1) var(--space-1);
+  border-radius: var(--radius-xs);
+}
+.so-pair:hover { background: var(--bg-2); }
+.so-pair dt { font-size: var(--type-sm); color: var(--fg-1); }
+.so-pair dd { margin: 0; justify-self: end; }
+.so-combos { display: inline-flex; align-items: center; gap: var(--space-2); }
+.so-combo { display: inline-flex; align-items: center; gap: var(--space-1); }
+.so-or { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-3); padding: 0 1px; }
+.so-overlay-ft {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--type-xs);
+  color: var(--fg-2);
+}
+@media (max-width: 640px) { .so-columns { grid-template-columns: 1fr; } }
+
+/* ─── Agent presence pulse — DS motion-presence role (scale+opacity ring) ──── */
+.st-avatar.is-pulsing::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--av-hue);
+  animation: st-presence-ring 1600ms var(--ease-out) infinite;
+  pointer-events: none;
+}
+.st-avatar { position: relative; }
+@keyframes st-presence-ring {
+  0% { opacity: 0.9; transform: scale(1); }
+  70%, 100% { opacity: 0; transform: scale(1.45); }
+}
+@media (prefers-reduced-motion: reduce) { .st-avatar.is-pulsing::after { animation: none; opacity: 0; } }
 
 }

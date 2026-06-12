@@ -25,6 +25,9 @@
 .maude .help-modal-hd {
   border-bottom: 1px solid var(--border-subtle);
   background: var(--bg-1);
+  /* title + SKU sat glued together (flex space-between, no gap) */
+  justify-content: flex-start;
+  gap: var(--space-4);
 }
 .maude .help-modal-hd .title { font-family: var(--font-display); font-weight: 600; letter-spacing: var(--tracking-tight); text-transform: none; color: var(--fg-0); }
 .maude .help-modal-hd .sku { font-family: var(--font-mono); color: var(--fg-3); }
@@ -65,6 +68,8 @@
 .maude .mdcc-tour-nudge {
   background: var(--bg-2); border: 1px solid var(--border-default); border-left: 3px solid var(--accent);
   border-radius: var(--radius-md); box-shadow: var(--shadow-lg); font-family: var(--font-body); color: var(--fg-1);
+  /* raised above the in-canvas zoom pill (bottom-left), same as .st-toast */
+  bottom: 84px;
 }
 .maude .mdcc-tour-nudge__cta { background: var(--accent); color: var(--accent-fg); border: 0; border-radius: var(--radius-sm); font-family: var(--font-body); font-weight: 500; }
 .maude .mdcc-tour-nudge__cta:hover { background: var(--accent-hover); }
@@ -108,8 +113,17 @@
 .maude .sv-h-num, .maude .sv-count { font-family: var(--font-mono); color: var(--fg-3); }
 .maude .sv-tok-cell { border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-1); overflow: hidden; }
 .maude .sv-tok-swatch { border-radius: 0; }
-.maude .sv-tok-name { font-family: var(--font-mono); color: var(--fg-0); }
-.maude .sv-tok-value { font-family: var(--font-mono); color: var(--fg-2); }
+/* token meta — the legacy side-by-side row wrapped long names across 3 lines
+ * ("--presence-" / "offline"); stack name over value, each on one nowrap line. */
+.maude .sv-tok-meta {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 1px;
+  padding: var(--space-2) var(--space-3);
+}
+.maude .sv-tok-name { font-family: var(--font-mono); color: var(--fg-0); white-space: nowrap; max-width: 100%; }
+.maude .sv-tok-value { font-family: var(--font-mono); color: var(--fg-2); max-width: 100%; }
 .maude .sv-type-row { border-bottom: 1px solid var(--border-subtle); }
 .maude .sv-type-tok { font-family: var(--font-mono); color: var(--fg-2); }
 .maude .sv-preview-card { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-1); overflow: hidden; box-shadow: var(--shadow-sm); }
