@@ -450,6 +450,16 @@
 .st-field { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--type-xs); color: var(--fg-0); background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-xs); padding: var(--space-1) var(--space-2); width: 58px; text-align: right; }
 .st-field-lead { display: inline-flex; align-items: center; gap: var(--space-1); }
 .st-field-lead .k { font-family: var(--font-mono); font-size: 9px; color: var(--fg-3); }
+/* Phase 12.3 — maude DS coordinate cell (components-inputs `.fld-mini`): a mono
+ * axis tag glued to the tabular field, the tag a left segment of one bordered
+ * group. focus-within rings the whole cell (border-accent + 3px tint halo). */
+.st-fmini { display: inline-flex; align-items: stretch; min-width: 0; flex: 1 1 0; border: 1px solid var(--border-default); border-radius: var(--radius-xs); overflow: hidden; background: var(--bg-3); transition: border-color var(--dur-soft) var(--ease-out), box-shadow var(--dur-soft) var(--ease-out); }
+.st-fmini .st-mtag { flex: none; display: flex; align-items: center; justify-content: center; width: 20px; font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); background: var(--bg-2); border-right: 1px solid var(--border-default); }
+.st-fmini input, .st-fmini .st-fminival { flex: 1 1 auto; min-width: 0; width: 100%; box-sizing: border-box; appearance: none; border: 0; border-radius: 0; background: transparent; color: var(--fg-0); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--type-xs); text-align: right; padding: 3px var(--space-2); }
+.st-fmini input:focus { outline: none; }
+.st-fmini:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+.st-insp-unit { align-self: center; font-family: var(--font-mono); font-size: 10px; color: var(--fg-2); letter-spacing: var(--tracking-wide); }
+.st-insp-swatch { width: 18px; height: 18px; border-radius: var(--radius-xs); border: 1px solid var(--border-default); flex: none; }
 .st-layer { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2); border-radius: var(--radius-xs); font-size: var(--type-sm); color: var(--fg-1); font-family: var(--font-mono); }
 .st-layer:hover { background: var(--bg-2); }
 /* maude signature — selection is an accent-tint wash + an inset 2px accent bar,

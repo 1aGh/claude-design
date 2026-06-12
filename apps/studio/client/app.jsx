@@ -4202,37 +4202,31 @@ function LayerRow({
 // styleMapsFor → el.computed). Read-only; the CSS tab is where you edit.
 function InspectComputed({ el }) {
   const c = el?.computed || {};
-  const swatch = (val) => (
-    <span
-      className="st-token-swatch"
-      style={{ background: val || 'transparent' }}
-      aria-hidden="true"
-    />
-  );
-  const colorRow = (label, val) =>
-    val ? (
-      <div className="st-insp-row" key={label}>
-        <span className="st-insp-label">{label}</span>
+  const a = el?.authored || {};
+  // Prefer the authored token name (var(--accent) → "--accent") as the label;
+  // fall back to the resolved value. The swatch always shows the RESOLVED color.
+  const valueLabel = (prop) => {
+    const av = a[prop];
+    if (av && /var\(\s*--/.test(av)) return av.replace(/^var\(\s*|\s*\)$/g, '');
+    return c[prop] || av || '';
+  };
+  const colorRow = (lbl, prop) => {
+    const resolved = c[prop] || a[prop];
+    if (!resolved) return null;
+    return (
+      <div className="st-insp-row" key={lbl}>
+        <span className="st-insp-label">{lbl}</span>
         <div className="st-swatch-row">
-          {swatch(val)}
+          <span className="st-insp-swatch" style={{ background: resolved }} aria-hidden="true" />
           <span className="st-mono" style={{ fontSize: 11, color: 'var(--fg-1)' }}>
-            {val}
+            {valueLabel(prop)}
           </span>
         </div>
       </div>
-    ) : null;
-  const textRow = (label, val) =>
-    val ? (
-      <div className="st-insp-row" key={label}>
-        <span className="st-insp-label">{label}</span>
-        <div className="st-insp-fields">
-          <span className="st-mono" style={{ fontSize: 11, color: 'var(--fg-0)' }}>
-            {val}
-          </span>
-        </div>
-      </div>
-    ) : null;
+    );
+  };
   const hasRadius = c['border-radius'] && c['border-radius'] !== '0px';
+  const radiusN = hasRadius ? cssSplitUnit(c['border-radius']).n || c['border-radius'] : null;
   const font =
     c['font-size'] || c['font-weight']
       ? [c['font-size'], c['font-weight']].filter(Boolean).join(' / ')
@@ -4241,13 +4235,28 @@ function InspectComputed({ el }) {
   if (!anyType) return null;
   return (
     <>
-      <div className="st-rp-hd" style={{ marginTop: 4 }}>
-        Computed
-      </div>
-      {colorRow('Fill', c['background-color'])}
-      {colorRow('Text', c.color)}
-      {hasRadius ? textRow('Radius', c['border-radius']) : null}
-      {textRow('Font', font)}
+      {hasRadius ? (
+        <div className="st-insp-row">
+          <span className="st-insp-label">Radius</span>
+          <div className="st-insp-fields">
+            <span className="st-fmini" style={{ flex: '0 0 auto', maxWidth: 84 }}>
+              <span className="st-mtag">r</span>
+              <input value={radiusN} readOnly aria-label="border radius" />
+            </span>
+            <span className="st-insp-unit">px</span>
+          </div>
+        </div>
+      ) : null}
+      {colorRow('Fill', 'background-color')}
+      {colorRow('Text', 'color')}
+      {font ? (
+        <div className="st-insp-row">
+          <span className="st-insp-label">Font</span>
+          <div className="st-insp-fields">
+            <span className="st-mono" style={{ fontSize: 11, color: 'var(--fg-0)' }}>{font}</span>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }
@@ -4330,26 +4339,26 @@ function InspectorPanel({
             <div className="st-insp-row">
               <span className="st-insp-label">Pos</span>
               <div className="st-insp-fields">
-                <span className="st-field-lead">
-                  <span className="k">X</span>
-                  <input className="st-field" value={b ? Math.round(b.x) : '—'} readOnly />
+                <span className="st-fmini">
+                  <span className="st-mtag">X</span>
+                  <input value={b ? Math.round(b.x) : '—'} readOnly aria-label="x position" />
                 </span>
-                <span className="st-field-lead">
-                  <span className="k">Y</span>
-                  <input className="st-field" value={b ? Math.round(b.y) : '—'} readOnly />
+                <span className="st-fmini">
+                  <span className="st-mtag">Y</span>
+                  <input value={b ? Math.round(b.y) : '—'} readOnly aria-label="y position" />
                 </span>
               </div>
             </div>
             <div className="st-insp-row">
               <span className="st-insp-label">Size</span>
               <div className="st-insp-fields">
-                <span className="st-field-lead">
-                  <span className="k">W</span>
-                  <input className="st-field" value={b ? Math.round(b.w) : '—'} readOnly />
+                <span className="st-fmini">
+                  <span className="st-mtag">W</span>
+                  <input value={b ? Math.round(b.w) : '—'} readOnly aria-label="width" />
                 </span>
-                <span className="st-field-lead">
-                  <span className="k">H</span>
-                  <input className="st-field" value={b ? Math.round(b.h) : '—'} readOnly />
+                <span className="st-fmini">
+                  <span className="st-mtag">H</span>
+                  <input value={b ? Math.round(b.h) : '—'} readOnly aria-label="height" />
                 </span>
               </div>
             </div>
