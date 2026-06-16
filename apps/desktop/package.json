@@ -1,0 +1,15 @@
+{
+  "name": "@maude/desktop",
+  "private": true,
+  "version": "0.30.0",
+  "description": "Maude native desktop shell (Tauri v2) — wraps the dev-server binary as a sidecar. See DDR-106.",
+  "type": "module",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

@@ -1,0 +1,99 @@
+name: Build desktop app (macOS .dmg)
+
+# Phase 26 / DDR-106 — build the Maude native shell (Tauri v2) into a macOS .dmg.
+# The shell bundles the compiled dev-server binary as a Tauri sidecar.
+#
+# Build order is load-bearing: the dev-server binary must exist at
+# apps/studio/dist/maude-<slug> BEFORE `tauri build` runs, because the desktop
+# app's `beforeBuildCommand` (scripts/sync-sidecar.mjs) copies it into
+# src-tauri/binaries/maude-server-<target-triple> for Tauri's `externalBin`.
+#
+# Signing + notarization are driven by the APPLE_* secrets. When they are absent
+# the build still succeeds and produces an UNSIGNED .dmg (dev distribution) — per
+# DDR-106 / the phase plan, signing is the last thing to wire. Windows/Linux
+# desktop builds are deferred to phase-32.
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    runs-on: macos-14 # arm64; matches build-binaries.yml's darwin-arm64 host
+    permissions:
+      contents: write # attach the .dmg to the GitHub Release on tag builds
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.x'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Install Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      - name: Install workspace deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build dev-server sidecar binary
+        # MAUDE_SKIP_RUNTIME_BUILD=1 is mandatory (per CLAUDE.md): embed the
+        # git-committed dist/runtime/*.js verbatim instead of regenerating them.
+        env:
+          MAUDE_SKIP_RUNTIME_BUILD: '1'
+        run: |
+          cd apps/studio
+          bun install
+          bun run build.ts --release --target=bun-darwin-arm64
+          test -f dist/maude-darwin-arm64 || { echo "::error::dev-server binary not produced"; exit 1; }
+
+      - name: Build Tauri app (.dmg)
+        # `tauri build` runs beforeBuildCommand (sync-sidecar.mjs) to stage the
+        # sidecar, then bundles the .dmg. Signing/notarization activate only when
+        # the APPLE_* secrets are present; otherwise an unsigned .dmg is produced.
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: pnpm --filter @maude/desktop tauri build
+
+      - name: Locate .dmg
+        id: dmg
+        run: |
+          DMG="$(ls apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg 2>/dev/null | head -1)"
+          test -n "$DMG" || { echo "::error::no .dmg produced"; exit 1; }
+          echo "path=$DMG" >> "$GITHUB_OUTPUT"
+          echo "built: $DMG ($(du -h "$DMG" | cut -f1))"
+
+      - name: Upload .dmg artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: maude-desktop-macos-arm64
+          path: ${{ steps.dmg.outputs.path }}
+          if-no-files-found: error
+
+      - name: Attach .dmg to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.dmg.outputs.path }}

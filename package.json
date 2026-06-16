@@ -20,6 +20,8 @@
     "start": "bun run apps/studio/server.ts",
     "dev": "bun run apps/studio/server.ts --port 4555",
     "dev:site": "pnpm --filter @maude/site dev --port 4398",
+    "dev:desktop": "PATH=\"$HOME/.cargo/bin:$PATH\" pnpm --filter @maude/desktop tauri dev",
+    "build:desktop": "PATH=\"$HOME/.cargo/bin:$PATH\" pnpm --filter @maude/desktop tauri build",
     "build": "pnpm -r --if-present run build",
     "build:binary": "bun run apps/studio/build.ts --release",
     "test": "node --test --test-reporter=spec cli/**/*.test.mjs",

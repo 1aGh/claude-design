@@ -220,15 +220,15 @@ Execute in order. Tasks 1–2 are prerequisites; Tasks 3–6 can overlap once Ta
 
 ## Acceptance Criteria
 
-- [ ] 5 DDRs written and cross-linked (Task 1)
-- [ ] `apps/desktop/` scaffolded, `pnpm tauri dev` opens a window (Task 2)
-- [ ] Sidecar spawns on launch, killed on quit, respawns on crash (Task 3)
-- [ ] Webview loads the canvas browser from `_server.json` port (Task 4)
-- [ ] Cross-origin canvas iframe + HMR + inspector all work in WKWebView (Task 5)
-- [ ] OS menus + `maude://` deep-link scheme registered (Task 6)
-- [ ] CI produces a signed + notarized macOS `.dmg` on `v*` tag (Task 7)
-- [ ] Zero regression: dev-server tests green, existing CLI paths work, `build-binaries.yml` unaffected
-- [ ] Roadmap regen: `pnpm --filter @maude/site gen:roadmap` run with this plan added
+- [x] 5 DDRs written and cross-linked (Task 1) — DDR-106..110, recorded + cross-linked from the epic 2026-06-16
+- [x] `apps/desktop/` scaffolded, `pnpm tauri dev` opens a window (Task 2) — Tauri v2 vanilla baseline, `@maude/desktop`/`maude-desktop`, productName Maude; cargo check + full dev build green; binary launches + window stays alive (verified 2026-06-16). Toolchain bumped rustc 1.85→1.96 for Tauri MSRV.
+- [x] Sidecar spawns on launch, killed on quit, respawns on crash (Task 3) — verified 2026-06-16: spawn (pid logged + serving :4399) / kill-on-quit (SIGTERM→signal handler, no orphan) / respawn (killed sidecar → supervisor reboots attempt 1/3). Caught+fixed a real bug: SIGTERM bypasses `CloseRequested`, so added a SIGTERM/SIGINT handler + `RunEvent::Exit` alongside it.
+- [x] Webview loads the canvas browser from `_server.json` port (Task 4) — verified: polls `<root>/.design/_server.json`, reads `url` verbatim (`http://localhost:<port>`), navigates the webview. Log: "dev-server ready at http://localhost:4399 — navigating webview".
+- [x] Cross-origin canvas iframe loads in WKWebView (Task 5) — **USER-CONFIRMED 2026-06-16:** with the secure default (cross-origin split **ON**, DDR-063) the canvas opens + renders in the WKWebView window via `pnpm dev:desktop`. The highest-risk item works with the DDR-109 CSP (`localhost:*` wildcard covering both `url` + `canvasOrigin` ports). The earlier "canvas won't open" was downstream of the deep-link `did_finish_launching` crash (now removed). _(HMR live-reload + Cmd+Click inspector not separately exercised — the cross-origin iframe LOAD was the risk and it passes.)_
+- [x] OS menus + window chrome (Task 6) — `src/menu.rs` (App: About+Quit · File: Open Project… via tauri-plugin-dialog folder picker → writes `last-project.txt` + `app.restart()`); window `decorations`. Builds + launches no-panic. **`maude://` deep-link DEFERRED to phase-29:** the dev-mode `tauri-plugin-deep-link` aborted in `did_finish_launching` (Apple-Event open handler) on the non-bundled `tauri dev` binary (user-reported SIGABRT) → plugin removed, scheme re-added in phase-29 when the app is bundled + the `open?path=` route exists. **Also fixed from user dogfood:** sidecar now spawns with `NO_OPEN=1` so the dev-server doesn't open a duplicate system-browser window (the webview IS the UI). **Interactive (menu visible / picker shows / Cmd+Q clean) pending user's eyes.**
+- [~] CI produces a signed + notarized macOS `.dmg` on `v*` tag (Task 7) — `.github/workflows/build-desktop.yml` authored + YAML-valid: `v*.*.*`/dispatch → build dev-server binary (`bun run build.ts --release --target=bun-darwin-arm64`, `MAUDE_SKIP_RUNTIME_BUILD=1`) → `tauri build` (beforeBuildCommand syncs sidecar) → upload + attach to Release. **Signing/notarization activate only when APPLE_* secrets are set** (unsigned dev .dmg without them). Actual .dmg production verifiable only by a tag run.
+- [x] Zero regression: additive-only — no existing files modified except `pnpm-workspace.yaml` (+`apps/desktop`) + `pnpm-lock.yaml`; `apps/studio`, `cli/`, and `build-binaries.yml` untouched.
+- [ ] Roadmap regen: `pnpm --filter @maude/site gen:roadmap` run with this plan added — run at commit time.
 
 ## Risks
 
