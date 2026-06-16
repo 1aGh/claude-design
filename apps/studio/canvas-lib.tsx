@@ -118,6 +118,17 @@ const WHEEL_ZOOM_K = 0.0015; // larger = more sensitive wheel
 const SETTLE_MS = 500;
 const PUBLISH_MS = 50;
 
+// WebKit (Safari + the Tauri WKWebView native shell, DDR-106) vs Blink (Chrome).
+// The two engines render the CSS `zoom` property incompatibly (see writeTransform),
+// so the scale dimension takes a different path on each. Detected via Apple's
+// `navigator.vendor` and the WebKit-only `GestureEvent` global — both absent in
+// Chrome/Edge/Firefox, present in Safari and WKWebView. Evaluated once at module
+// load; the canvas always runs in a browser/webview context.
+const IS_WEBKIT =
+  typeof navigator !== 'undefined' &&
+  (/apple/i.test(navigator.vendor || '') ||
+    (typeof window !== 'undefined' && 'GestureEvent' in window));
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Engine CSS (Phase 4) — injected once per iframe inside DesignCanvas's mount.
 // The visual chrome of `.dc-artboard` (borders, label strip, SKU type) still
@@ -130,6 +141,10 @@ const ENGINE_CSS = `
   inset: 0;
   overflow: hidden;
   outline: none;
+  /* WebKit text inflation must not re-grow artboard text that the world scales
+     down on zoom-out. Inherited, so this covers every descendant. No-op on Blink. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   /* DDR-046 — snap-layer magenta is distinct from --accent so the snap chrome
      never visually melts into the selection halo during a drag-snap gesture.
      OKLCH default approximates FigJam magenta in the project's color space. */
@@ -653,27 +668,47 @@ export function useViewportController(opts: ViewportControllerOptions): Viewport
   jumpTargetsRef.current = jumpTargets;
 
   // worldRef is stable across renders — read inside callbacks lazily, no dep.
-  // Use CSS `zoom` (not `transform: scale`) for the scale dimension. `zoom`
-  // re-flows layout at the new size so the browser re-rasterizes text at the
-  // target resolution — text stays crisp at any zoom level. `transform: scale`
-  // upscales a cached layer, which produces the pixelation users see at
-  // zoom > ~1.5. CSS `zoom` is supported in Chrome / Safari / Edge (always)
-  // and Firefox 126+; for a dev-server design tool that's full coverage.
   //
-  // ! Subtle: CSS `zoom: N` makes `transform: translate(Xpx, Ypx)` translate by
-  // ! N×X / N×Y screen pixels (translate is in the *pre-zoom* coord space, then
-  // ! the whole layer is zoomed). Our controller's `vpRef` holds the translate
-  // ! in *screen* pixels (the same convention as `transform: scale(N)
-  // ! translate(...)` had), so we divide by zoom at write time to convert into
-  // ! the CSS-zoom world. The data model stays simple and pan/zoom math (in
-  // ! particular zoom-around-cursor) keeps using screen-px throughout.
+  // The scale dimension takes an engine-specific path because the CSS `zoom`
+  // property is NOT interoperable between Blink and WebKit:
+  //
+  // • Blink (Chrome): CSS `zoom`. `zoom` re-flows layout at the new size so the
+  //   browser re-rasterizes text at the target resolution — text stays crisp at
+  //   any zoom level (whereas `transform: scale` upscales a cached layer →
+  //   pixelation at zoom > ~1.5). Blink composites `zoom` changes on a fast path,
+  //   so pinch stays smooth. Unchanged from the original implementation.
+  //   ! Subtle: under `zoom: N`, a co-located `transform: translate(Xpx, Ypx)`
+  //   ! translates by N×X / N×Y screen px (translate is in pre-zoom coords, then
+  //   ! the layer is zoomed). `vpRef` holds the translate in *screen* px, so we
+  //   ! divide by zoom at write time. pan/zoom math stays screen-px throughout.
+  //
+  // • WebKit (Safari + the Tauri WKWebView shell): `transform: translate() scale()`.
+  //   On WebKit, `zoom` co-located with a `transform` does NOT cascade scale into
+  //   descendant text (fonts stay fixed size — the reported bug) and forces a
+  //   main-thread relayout on every pinch tick (janky trackpad zoom). A composited
+  //   `transform: scale` scales all descendants uniformly incl. text and never
+  //   relayouts. transform-origin is pinned top-left so the affine matches the
+  //   `screen = translate + scale·world` model the rest of the math assumes — so
+  //   here the translate is plain screen px (no /z). Crispness at high zoom is
+  //   recovered by releasing the compositor layer on settle (`crisp` → will-change
+  //   auto), which prompts WebKit to re-rasterize text at the target scale.
   // biome-ignore lint/correctness/useExhaustiveDependencies: refs only — stable identity by design.
-  const writeTransform = useCallback((v: ViewportState) => {
+  const writeTransform = useCallback((v: ViewportState, opts?: { crisp?: boolean }) => {
     const el = worldRef.current;
     if (!el) return;
     const z = v.zoom || 1;
-    el.style.transform = `translate(${v.x / z}px, ${v.y / z}px)`;
-    el.style.zoom = String(z);
+    if (IS_WEBKIT) {
+      el.style.zoom = '';
+      el.style.transformOrigin = '0 0';
+      el.style.transform = `translate(${v.x}px, ${v.y}px) scale(${z})`;
+      // Mid-gesture keep the layer promoted (smooth); when settled release it so
+      // WebKit re-paints text crisp at the new scale instead of upscaling the
+      // cached bitmap.
+      el.style.willChange = opts?.crisp ? 'auto' : 'transform';
+    } else {
+      el.style.transform = `translate(${v.x / z}px, ${v.y / z}px)`;
+      el.style.zoom = String(z);
+    }
     el.style.visibility = 'visible';
   }, []);
 
@@ -710,8 +745,12 @@ export function useViewportController(opts: ViewportControllerOptions): Viewport
       isInteractingStateRef.current = false;
       setIsInteracting(false);
       interactEndTimerRef.current = null;
+      // Motion has stopped — re-write the world transform in crisp mode so the
+      // WebKit path drops its compositor layer and re-rasterizes text sharply at
+      // the settled scale. No-op on the Blink path (CSS `zoom` is already crisp).
+      writeTransform(vpRef.current, { crisp: true });
     }, 220);
-  }, []);
+  }, [writeTransform]);
 
   const applyViewport = useCallback(
     (next: ViewportState) => {
@@ -866,7 +905,7 @@ export function useViewportController(opts: ViewportControllerOptions): Viewport
     const initial = getInitial();
     if (initial) {
       vpRef.current = { ...initial };
-      writeTransform(vpRef.current);
+      writeTransform(vpRef.current, { crisp: true });
       setViewportPublished({ ...vpRef.current });
     }
     // If host has no size yet, refit when ResizeObserver delivers one.
@@ -879,7 +918,7 @@ export function useViewportController(opts: ViewportControllerOptions): Viewport
         hadSize = true;
         const refit = computeFitRef.current();
         vpRef.current = { ...refit };
-        writeTransform(vpRef.current);
+        writeTransform(vpRef.current, { crisp: true });
         setViewportPublished({ ...vpRef.current });
       }
     });
@@ -917,6 +956,11 @@ export function useViewportController(opts: ViewportControllerOptions): Viewport
       lastY: number;
     } = { active: false, pointerId: -1, lastX: 0, lastY: 0 };
 
+    // Safari/WKWebView trackpad pinch — see gesture* handlers below. While a
+    // native gesture is in flight, the ctrlKey-wheel branch defers to it so a
+    // pinch doesn't double-apply (WebKit may emit both event streams).
+    const gesture = { active: false, lastScale: 1 };
+
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const rect = host.getBoundingClientRect();
@@ -926,6 +970,7 @@ export function useViewportController(opts: ViewportControllerOptions): Viewport
       // without a physical Ctrl press — so the same branch covers both
       // Ctrl+wheel (mouse) and pinch-zoom (trackpad).
       if (e.ctrlKey || e.metaKey) {
+        if (gesture.active) return; // WebKit GestureEvent owns this pinch
         // T32 — clamp deltaY into [-50, 50] before the exp() to bring
         // trackpad-pinch (small per-frame delta) and mouse-wheel (one
         // notch = ±100) onto the same perceived-speed curve. Mouse-wheel
@@ -949,6 +994,38 @@ export function useViewportController(opts: ViewportControllerOptions): Viewport
       // "content follows your fingers" mapping (Mac natural scroll). Mouse
       // wheels with only deltaY pan vertically.
       panBy(-e.deltaX, -e.deltaY);
+    };
+
+    // Safari/WKWebView-only trackpad pinch. WebKit exposes the native pinch via
+    // `gesture*` events (absent in Blink — these listeners simply never fire
+    // there). Two reasons to handle them: (1) preventDefault suppresses Safari's
+    // built-in page-zoom that would otherwise fight the canvas; (2) `e.scale`
+    // (cumulative since gesturestart) gives a smoother, 1:1 pinch than reverse-
+    // engineering it from synthesized ctrlKey-wheel deltas. The onWheel ctrlKey
+    // branch defers while `gesture.active` so a pinch is never applied twice.
+    type SafariGestureEvent = Event & { scale: number; clientX: number; clientY: number };
+    const onGestureStart = (ev: Event) => {
+      ev.preventDefault();
+      const e = ev as SafariGestureEvent;
+      gesture.active = true;
+      gesture.lastScale = e.scale || 1;
+    };
+    const onGestureChange = (ev: Event) => {
+      ev.preventDefault();
+      if (!gesture.active) return;
+      const e = ev as SafariGestureEvent;
+      const rect = host.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+      const s = e.scale || 1;
+      const factor = gesture.lastScale > 0 ? s / gesture.lastScale : 1;
+      gesture.lastScale = s;
+      zoomAt(factor, cx, cy);
+    };
+    const onGestureEnd = (ev: Event) => {
+      ev.preventDefault();
+      gesture.active = false;
+      gesture.lastScale = 1;
     };
 
     const onPointerDown = (e: PointerEvent) => {
@@ -1072,6 +1149,11 @@ export function useViewportController(opts: ViewportControllerOptions): Viewport
     host.addEventListener('pointermove', onPointerMove);
     host.addEventListener('pointerup', endPan);
     host.addEventListener('pointercancel', endPan);
+    // WebKit-only; no-ops elsewhere. passive:false so preventDefault can cancel
+    // Safari's native page-zoom.
+    host.addEventListener('gesturestart', onGestureStart, { passive: false });
+    host.addEventListener('gesturechange', onGestureChange, { passive: false });
+    host.addEventListener('gestureend', onGestureEnd, { passive: false });
 
     return () => {
       doc.removeEventListener('wheel', captureWheel, { capture: true } as EventListenerOptions);
@@ -1082,6 +1164,9 @@ export function useViewportController(opts: ViewportControllerOptions): Viewport
       host.removeEventListener('pointermove', onPointerMove);
       host.removeEventListener('pointerup', endPan);
       host.removeEventListener('pointercancel', endPan);
+      host.removeEventListener('gesturestart', onGestureStart);
+      host.removeEventListener('gesturechange', onGestureChange);
+      host.removeEventListener('gestureend', onGestureEnd);
     };
   }, [hostRef]);
 

@@ -11,6 +11,10 @@ html, body {
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* WebKit (Safari + WKWebView) text inflation can re-grow text that the canvas
+     scales down during zoom-out, undoing the shrink. Pin it off. No-op on Blink. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 button { font: inherit; }
