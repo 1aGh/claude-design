@@ -100,10 +100,11 @@ Draft         = branch (never say "branch")
 
 ## Tasks
 
-### Task 1: `/design:new` — Git panel mockups
+### Task 1: `/design:new` — Git panel mockups ✅ completed 2026-06-17
 
 - **Do:** Run `/design:new` for `GitPanel` + `DiffView` canvases (see Design canvases above). Include all states: list, empty, conflict, loading. Get critic panel sign-off before Task 2.
 - **Validate:** Canvases in `.design/ui/GitPanel.tsx` + `DiffView.tsx` with `status: ready-for-handoff`.
+- **Done:** `GitPanel.tsx` (5 artboards) + `DiffView.tsx` (3 artboards) in the `maude` DS, both `status: ready-for-handoff`. 3 critic iterations each → SOLID (signature-moment 4.4 / 4.2 PASSED; 0 a11y/design/frontend blockers; ds-keeper pass). DS-consistency pass lifted every shared-class reinvention onto the real DS (`.tabbar`/`.tab`/`.textarea`/`.tree-row`/`.panel`/`.check`; `.seg`/`.panel`). Enforced vocabulary throughout. Screenshots + critic reports under `.design/_history/{gitpanel,diffview}/`.
 
 ### Task 2: Add `isomorphic-git` to dev-server
 
@@ -177,7 +178,7 @@ Draft         = branch (never say "branch")
 
 ## Acceptance Criteria
 
-- [ ] GitPanel + DiffView mockups approved (Task 1)
+- [x] GitPanel + DiffView mockups approved (Task 1)
 - [ ] `isomorphic-git` added, bundle size documented (Task 2)
 - [ ] `git/service.ts` with real push/pull against GitHub (Task 3)
 - [ ] All `/_api/git/*` endpoints registered main-origin-only, canvas-origin-gate asserted (Task 4)
