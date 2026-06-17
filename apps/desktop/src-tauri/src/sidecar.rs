@@ -50,6 +50,25 @@ pub fn spawn_server(app: &AppHandle) -> Result<(), String> {
         command = command.env("MAUDE_CANVAS_ORIGIN_SPLIT", split);
     }
 
+    // In a packaged .app the sidecar binary sits alone in Contents/MacOS/ with no
+    // apps/studio/ up-tree, so paths.ts walk-up can't find the runtime. Point it at
+    // the runtime we ship as a bundle resource (Resources/apps/studio). In dev this
+    // dir doesn't exist → left unset → walk-up resolves the source tree (DDR-106).
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        // Tauri's resource-path mapping varies by version/config; probe the likely
+        // landing spots for the staged `apps/studio` runtime (anchor: it has `dist/`).
+        let candidates = [
+            resource_dir.join("apps").join("studio"),
+            resource_dir.join("resources").join("apps").join("studio"),
+            resource_dir.join("_up_").join("apps").join("studio"),
+            resource_dir.join("studio"),
+        ];
+        if let Some(studio) = candidates.into_iter().find(|p| p.join("dist").exists()) {
+            command = command.env("MAUDE_DEV_SERVER_ROOT", studio.to_string_lossy().to_string());
+            eprintln!("[maude] bundled runtime: {}", studio.display());
+        }
+    }
+
     let (mut rx, child) = command
         .spawn()
         .map_err(|e| format!("sidecar spawn failed: {e}"))?;

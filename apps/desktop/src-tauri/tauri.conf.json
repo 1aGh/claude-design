@@ -5,7 +5,7 @@
   "identifier": "com.maude.app",
   "build": {
     "frontendDist": "../src",
-    "beforeBuildCommand": "node scripts/sync-sidecar.mjs"
+    "beforeBuildCommand": "node scripts/sync-sidecar.mjs && node scripts/stage-resources.mjs"
   },
   "app": {
     "withGlobalTauri": true,
@@ -27,6 +27,10 @@
     "active": true,
     "targets": "all",
     "externalBin": ["binaries/maude-server"],
+    "resources": {
+      "resources/apps/studio": "apps/studio",
+      "resources/plugins/design/templates": "plugins/design/templates"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

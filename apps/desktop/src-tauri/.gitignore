@@ -9,3 +9,11 @@
 # Sidecar binaries — synced per-platform from apps/studio/dist by
 # scripts/sync-sidecar.mjs (DDR-106). Large build artifacts, never committed.
 /binaries/
+
+# Dev-server runtime staged for the .app bundle by scripts/stage-resources.mjs.
+# Copied from apps/studio + plugins/design/templates at build time; never committed.
+/resources/
+
+# Mobile icon sets `tauri icon` emits — desktop-only app, not used.
+/icons/android/
+/icons/ios/

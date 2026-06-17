@@ -82,6 +82,16 @@ function isDevServerDir(dir: string): boolean {
 }
 
 function resolveDevServerRoot(): string {
+  // (0) Explicit override. Used when the runtime can't be found by walk-up — e.g.
+  // the Tauri desktop bundle (DDR-106) ships apps/studio/ as an app resource and
+  // sets MAUDE_DEV_SERVER_ROOT to it, because the sidecar binary sits alone in
+  // Maude.app/Contents/MacOS/ with no apps/studio/ up-tree. Trusted: we only
+  // require a `dist/` dir (the committed artifacts), not the `http.ts` source.
+  const override = process.env.MAUDE_DEV_SERVER_ROOT;
+  if (override && !isVirtualBunfsPath(override) && existsSync(join(override, 'dist'))) {
+    return override;
+  }
+
   // (1) Dev mode: import.meta.url is a real file:// path AND lands in the
   // dev-server dir. Common case for `bun run server.ts`, tests, etc.
   const importDir = getImportMetaDir();
