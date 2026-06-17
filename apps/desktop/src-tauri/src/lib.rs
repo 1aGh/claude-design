@@ -111,8 +111,9 @@ pub fn run() {
                                 }
                                 let _ = std::fs::write(&marker, path.to_string_lossy().as_bytes());
                             }
-                            sidecar::kill_server(&app);
-                            app.restart();
+                            // Switch in-process — NOT app.restart() (relaunch aborts
+                            // tao's did_finish_launching on the non-bundled dev binary).
+                            sidecar::switch_project(&app, path.to_path_buf());
                         }
                     }
                 });
@@ -127,8 +128,15 @@ pub fn run() {
                 child: Mutex::new(None),
                 shutting_down: AtomicBool::new(false),
                 restarts: AtomicU32::new(0),
-                project_root: project_root.to_string_lossy().to_string(),
+                project_root: Mutex::new(project_root.to_string_lossy().to_string()),
             });
+
+            // Clear any stale `_server.json` from a previous session BEFORE spawning,
+            // so `wait_for_server` blocks on THIS run's fresh (post-bind) write. Without
+            // this the webview navigates to the old port before the new server binds →
+            // connection refused → intermittent white screen.
+            let design_root = project_root.join(".design");
+            let _ = std::fs::remove_file(design_root.join("_server.json"));
 
             // 1. Spawn the dev-server sidecar.
             if let Err(e) = sidecar::spawn_server(&handle) {
@@ -136,7 +144,6 @@ pub fn run() {
             }
 
             // 2. Poll `_server.json`, then navigate the webview to the server URL.
-            let design_root = project_root.join(".design");
             let nav_handle = handle.clone();
             tauri::async_runtime::spawn(async move {
                 match server_json::wait_for_server(design_root, SERVER_WAIT_MS).await {

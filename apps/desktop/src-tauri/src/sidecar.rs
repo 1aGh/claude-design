@@ -4,6 +4,7 @@
 // Tauri `externalBin` as `binaries/maude-server-<target-triple>` and spawned with
 // `--root <project>`. Loopback-only (DDR-109): the dev-server binds localhost.
 
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -19,8 +20,9 @@ pub struct SidecarState {
     pub shutting_down: AtomicBool,
     /// Respawn attempts so far (capped at MAX_RESTARTS).
     pub restarts: AtomicU32,
-    /// Project root passed to the dev-server as `--root`.
-    pub project_root: String,
+    /// Project root passed to the dev-server as `--root`. Mutable so the user can
+    /// switch projects in-process (File ▸ Open Project…) without restarting the app.
+    pub project_root: Mutex<String>,
 }
 
 const MAX_RESTARTS: u32 = 3;
@@ -30,7 +32,7 @@ const MAX_RESTARTS: u32 = 3;
 /// linear backoff up to `MAX_RESTARTS`. Re-entrant: the respawn path calls back in.
 pub fn spawn_server(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<SidecarState>();
-    let project_root = state.project_root.clone();
+    let project_root = state.project_root.lock().expect("sidecar mutex poisoned").clone();
 
     let mut command = app
         .shell()
@@ -96,6 +98,53 @@ pub fn spawn_server(app: &AppHandle) -> Result<(), String> {
     });
 
     Ok(())
+}
+
+/// Switch the open project IN-PROCESS (File ▸ Open Project…): point the dev-server
+/// at a new root and reload the webview — WITHOUT `app.restart()`.
+///
+/// Why not restart: `app.restart()` relaunches the binary, and on a non-bundled
+/// `tauri dev` binary macOS delivers an "open" Apple Event that aborts `tao` in
+/// `did_finish_launching` (SIGABRT). Switching in-process avoids that entirely and
+/// is better UX (no window flash). The supervisor's respawn (Terminated → spawn)
+/// reads the updated `project_root`, so killing the child re-spawns it with the new
+/// root; we then re-navigate once the new `_server.json` lands.
+pub fn switch_project(app: &AppHandle, new_root: PathBuf) {
+    let state = app.state::<SidecarState>();
+    *state.project_root.lock().expect("sidecar mutex poisoned") = new_root.to_string_lossy().to_string();
+    state.restarts.store(0, Ordering::SeqCst); // a deliberate switch is not a crash
+    eprintln!("[maude] switching project → {}", new_root.display());
+
+    // Force `wait_for_server` to block on a FRESH write rather than a stale file
+    // from a previous session of the target project.
+    let design_root = new_root.join(".design");
+    let _ = std::fs::remove_file(design_root.join("_server.json"));
+
+    // Kill the current child; the Terminated supervisor respawns it with the new root.
+    if let Some(child) = state.child.lock().expect("sidecar mutex poisoned").take() {
+        let _ = child.kill();
+    }
+
+    // Re-navigate once the new project's dev-server is up.
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        match crate::server_json::wait_for_server(design_root, 120_000).await {
+            Ok(url) => {
+                eprintln!("[maude] project switched — navigating to {url}");
+                if let Some(window) = app.get_webview_window("main") {
+                    match url.parse::<tauri::Url>() {
+                        Ok(parsed) => {
+                            if let Err(e) = window.navigate(parsed) {
+                                eprintln!("[maude] navigate failed: {e}");
+                            }
+                        }
+                        Err(e) => eprintln!("[maude] invalid server url {url}: {e}"),
+                    }
+                }
+            }
+            Err(e) => eprintln!("[maude] switch: dev-server did not come up: {e}"),
+        }
+    });
 }
 
 /// Kill the sidecar (called on app quit). Flags shutdown first so the supervisor
