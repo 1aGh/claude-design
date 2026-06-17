@@ -10,7 +10,7 @@
 // Wired as `beforeBuildCommand` in tauri.conf.json; run manually for `tauri dev`
 // after a fresh checkout. CI (Task 7) runs it per-platform before `tauri build`.
 
-import { existsSync, mkdirSync, copyFileSync, chmodSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 

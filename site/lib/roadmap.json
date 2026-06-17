@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-16T07:53:55.752Z",
+  "generated": "2026-06-17T13:18:53.302Z",
   "currentPhase": null,
   "phases": [
     {
@@ -353,6 +353,17 @@
       "planPath": ".ai/plans/archive/phase-25-designer-draw-svg-agent.md",
       "archived": true,
       "phaseKey": "25"
+    },
+    {
+      "id": "phase-26-native-collab-tauri-shell",
+      "title": "Phase 26 — Native Maude: Tauri shell + sidecar lifecycle",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to the binary-resolution path (DDR-009/084), real-disk paths (DDR-045), canvas-origin split (DDR-063), and the canvas-origin g...",
+      "planPath": ".ai/plans/archive/phase-26-native-collab-tauri-shell.md",
+      "archived": true,
+      "phaseKey": "26"
     },
     {
       "id": "phase-3.6-canvas-tsx-format",
@@ -826,17 +837,6 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
-    },
-    {
-      "id": "phase-26-native-collab-tauri-shell",
-      "title": "Phase 26 — Native Maude: Tauri shell + sidecar lifecycle",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to the binary-resolution path (DDR-009/084), real-disk paths (DDR-045), canvas-origin split (DDR-063), and the canvas-origin g...",
-      "planPath": ".ai/plans/phase-26-native-collab-tauri-shell.md",
-      "archived": false,
-      "phaseKey": "26"
     },
     {
       "id": "phase-27-native-collab-git-layer",
