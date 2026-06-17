@@ -85,10 +85,12 @@ function resolveDevServerRoot(): string {
   // (0) Explicit override. Used when the runtime can't be found by walk-up — e.g.
   // the Tauri desktop bundle (DDR-106) ships apps/studio/ as an app resource and
   // sets MAUDE_DEV_SERVER_ROOT to it, because the sidecar binary sits alone in
-  // Maude.app/Contents/MacOS/ with no apps/studio/ up-tree. Trusted: we only
-  // require a `dist/` dir (the committed artifacts), not the `http.ts` source.
+  // Maude.app/Contents/MacOS/ with no apps/studio/ up-tree (the bundle ships the
+  // full source, so `http.ts` is present at the resource root).
   const override = process.env.MAUDE_DEV_SERVER_ROOT;
-  if (override && !isVirtualBunfsPath(override) && existsSync(join(override, 'dist'))) {
+  // Require the same `http.ts` anchor walk-up uses (not merely a `dist/` dir) so a
+  // planted dist-only directory can't hijack the runtime root (security review F4).
+  if (override && !isVirtualBunfsPath(override) && isDevServerDir(override)) {
     return override;
   }
 

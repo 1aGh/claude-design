@@ -152,10 +152,13 @@ pub fn switch_project(app: &AppHandle, new_root: PathBuf) {
                 eprintln!("[maude] project switched — navigating to {url}");
                 if let Some(window) = app.get_webview_window("main") {
                     match url.parse::<tauri::Url>() {
-                        Ok(parsed) => {
+                        Ok(parsed) if crate::server_json::is_loopback_url(&parsed) => {
                             if let Err(e) = window.navigate(parsed) {
                                 eprintln!("[maude] navigate failed: {e}");
                             }
+                        }
+                        Ok(parsed) => {
+                            eprintln!("[maude] refusing non-loopback navigate (DDR-109): {parsed}")
                         }
                         Err(e) => eprintln!("[maude] invalid server url {url}: {e}"),
                     }

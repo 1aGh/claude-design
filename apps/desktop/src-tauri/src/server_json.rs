@@ -44,3 +44,12 @@ pub async fn wait_for_server(design_root: PathBuf, timeout_ms: u64) -> Result<St
         info_file.display()
     ))
 }
+
+/// Enforce the DDR-109 §1 loopback-only invariant IN CODE at the navigate sites:
+/// only ever navigate the webview to `http://localhost:*` / `http://127.0.0.1:*`.
+/// Defense-in-depth — `_server.json` is cleared before spawn, but its `url` still
+/// originates from a file under the (potentially untrusted) project root, so the
+/// navigate target is validated rather than trusted (security review F3).
+pub fn is_loopback_url(url: &tauri::Url) -> bool {
+    url.scheme() == "http" && matches!(url.host_str(), Some("localhost") | Some("127.0.0.1"))
+}

@@ -53,3 +53,12 @@ GitHub OAuth tokens (DDR-108), git HTTPS credentials (DDR-107), and hub tokens m
 - **Bind the sidecar to `0.0.0.0` for "LAN collaboration"** — rejected: real-time collaboration is the hub's job (DDR-052/064), not an exposed local server. Loopback-only removes a whole class of local-network attack.
 - **Relax CSP to make the cross-origin iframe "just work"** — rejected: CSP can't grant iframe permissions anyway; the correct lever is the `sandbox` attribute under the DDR-054 trust model.
 - **Store tokens in a config file (like today's `~/.config/maude/hubs.json`)** — rejected for the shell: GitHub `repo` tokens are too high-value for a flat file; the keychain is the right store and Tauri makes it cheap.
+
+## Addendum (2026-06-17 — phase-26 close security review)
+
+A defender + adversarial pass at phase-26 close (`.ai/logs/security-reviews/native-app-phase26.md`) confirmed the invariants hold and produced two hardenings + one tracked follow-up:
+
+- **§1 loopback-only is now CODE-ENFORCED** (was prose): `server_json::is_loopback_url()` gates both `window.navigate` sites to `http://localhost|127.0.0.1` only, so a poisoned `_server.json` `url` (from an untrusted cloned project) can't redirect the webview (review F3).
+- **`MAUDE_DEV_SERVER_ROOT` override** requires the `http.ts` anchor (not just a `dist/` dir) so a planted directory can't hijack the dev-server runtime root (review F4).
+- **Follow-up (F2, tracked):** the dev-server's MAIN origin ships no CSP header (only the canvas origin does — `http.ts` env-gated POC). Not phase-26-introduced; the main UI's controls are Origin-gated writes + the DDR-054/063 canvas split. Emit a real main-origin CSP in a dedicated dev-server hardening pass before public distribution.
+- The Bun build-time macro RCE hypothesis (F1) was **empirically disproven** — the pass-1 oxc transpile rejects macro import attributes before `Bun.build`, so untrusted canvas TSX cannot execute at build time.
