@@ -26,26 +26,26 @@ importers:
         version: 1.60.0
     optionalDependencies:
       '@1agh/maude-darwin-arm64':
-        specifier: 0.28.1
-        version: 0.28.1
+        specifier: 0.30.0
+        version: 0.30.0
       '@1agh/maude-darwin-x64':
-        specifier: 0.28.1
-        version: 0.28.1
+        specifier: 0.30.0
+        version: 0.30.0
       '@1agh/maude-linux-arm64':
-        specifier: 0.28.1
-        version: 0.28.1
+        specifier: 0.30.0
+        version: 0.30.0
       '@1agh/maude-linux-arm64-musl':
-        specifier: 0.28.1
-        version: 0.28.1
+        specifier: 0.30.0
+        version: 0.30.0
       '@1agh/maude-linux-x64':
-        specifier: 0.28.1
-        version: 0.28.1
+        specifier: 0.30.0
+        version: 0.30.0
       '@1agh/maude-linux-x64-musl':
-        specifier: 0.28.1
-        version: 0.28.1
+        specifier: 0.30.0
+        version: 0.30.0
       '@1agh/maude-win32-x64':
-        specifier: 0.28.1
-        version: 0.28.1
+        specifier: 0.30.0
+        version: 0.30.0
 
   apps/hub:
     dependencies:
@@ -168,6 +168,9 @@ importers:
 
   site:
     dependencies:
+      '@vercel/analytics':
+        specifier: ^2.0.1
+        version: 2.0.1(next@16.2.7(@playwright/test@1.60.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react@19.2.7)
       fumadocs-core:
         specifier: 16.9.3
         version: 16.9.3(@mdx-js/mdx@3.1.1)(@types/estree-jsx@1.0.5)(@types/hast@3.0.4)(@types/mdast@4.0.4)(@types/react@19.2.16)(lucide-react@1.17.0(react@19.2.7))(next@16.2.7(@playwright/test@1.60.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(zod@4.4.3)
@@ -217,42 +220,42 @@ importers:
 
 packages:
 
-  '@1agh/maude-darwin-arm64@0.28.1':
-    resolution: {integrity: sha512-d3gWWUWhETqx9lcvYKAUiZswkoIfJZaMZIqg8AQ4ouvob0W6PDSTsoelLk3CxjbdrwS9KmLsnsXTPjZtpwQPNg==}
+  '@1agh/maude-darwin-arm64@0.30.0':
+    resolution: {integrity: sha512-bkqmWlUsPzbbYNGgeBrrC1IiIOklWCd/A24Los+6RZDKeoqtj1j2tzHzg9BsLd8mTnP1upvkIPgoyiCGLsCiRA==}
     cpu: [arm64]
     os: [darwin]
 
-  '@1agh/maude-darwin-x64@0.28.1':
-    resolution: {integrity: sha512-3on8XeMeZ7GRlrhtLZ/C8wu1g0y/zBSMlRtIbddfI7/5kbk/CjxV8BwavGwFLqN5yymoMaWaoLLZC91XBL4EiA==}
+  '@1agh/maude-darwin-x64@0.30.0':
+    resolution: {integrity: sha512-cIDJmQh2VKzimnuIDZLhrLlwqlnAuZMX8FXx3esUFOYCJQUuZwc5T3BELUK34zeRJ3DndopJwlOlmPUY7bmeuQ==}
     cpu: [x64]
     os: [darwin]
 
-  '@1agh/maude-linux-arm64-musl@0.28.1':
-    resolution: {integrity: sha512-OvhrIdItMxpbg4fMD5C/EyjvP3i5PBuvA8JZdvjvN2tSgz4AyIdwYLcOgSI13yqa7llKmcNWgWiiRJ6+pInFSw==}
+  '@1agh/maude-linux-arm64-musl@0.30.0':
+    resolution: {integrity: sha512-stRjgW38wbOLZc5F5tkn1IohIA6M8uEyanwms6Ykc4wMYclO7BNoRZJo2gPLqiS+9AnnlqSOYL5RsbZU3MtBkg==}
     cpu: [arm64]
     os: [linux]
     libc: [musl]
 
-  '@1agh/maude-linux-arm64@0.28.1':
-    resolution: {integrity: sha512-cvHfRn6/iMpMImjy4dbDC9XFayQwPnE1ES4SNwHAdUbSHPleEV3ygnpS7UxYpNJTjA7WV9SswxfqKb9j9VEFbA==}
+  '@1agh/maude-linux-arm64@0.30.0':
+    resolution: {integrity: sha512-NjriH1ciycTzhJKYTlngzYAYgwt7O4Ipm/MdOCKv2x3TPATFLkh/qSwsZIIIedyUT+O0RjIhjURi3hB+u5qS1Q==}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
 
-  '@1agh/maude-linux-x64-musl@0.28.1':
-    resolution: {integrity: sha512-7UU9CWMzU8OK15Z3lAp/rFvUYwiWfh/CXiIjtPe0hABaZ3TQJHP5aynXbMkcnIp5PPzxkZUOQVYlhWUfpVVJGA==}
+  '@1agh/maude-linux-x64-musl@0.30.0':
+    resolution: {integrity: sha512-aNFZqgD5y0MNKkiu2x9qaCYwPmDc2bS3QYEOxBwXtGB/HLTVM5tJ4bwp3F/503ZlZnYSFmPNGfeL9US6Kbhy1A==}
     cpu: [x64]
     os: [linux]
     libc: [musl]
 
-  '@1agh/maude-linux-x64@0.28.1':
-    resolution: {integrity: sha512-gtpvqjM7du7TkK1rD6S+s6IrBC3QHZRIxVvqWNm5UttObGelHGRLw1fWW5MjXZYPAkKAhivXSF7ywj8VwV3f2g==}
+  '@1agh/maude-linux-x64@0.30.0':
+    resolution: {integrity: sha512-jJORn7m7mZrQ1XsK8agtnYYfQsLNmy/uiXfhmK2BMZuuKmHrZ6ToM7fjCf9jxrLw/nMhlKrT5dg6oWOGVRXWSg==}
     cpu: [x64]
     os: [linux]
     libc: [glibc]
 
-  '@1agh/maude-win32-x64@0.28.1':
-    resolution: {integrity: sha512-If/U4z7kihouA7k0MkeN3eHq6arEp4ZtScNjv0al9o7Wrmqf3oA5OkqsSYqDN9tn8+Nw+J+u3AbxiDLZNbcqPw==}
+  '@1agh/maude-win32-x64@0.30.0':
+    resolution: {integrity: sha512-Se/XhBJXdTwWR9rKM18GT0TesmteIGWb+KxfDH9fGtFtjevn28iB+QeV3X7bPm5uwNstUoDxw9YZjVs+cCRt6A==}
     cpu: [x64]
     os: [win32]
 
@@ -909,12 +912,14 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   '@oxc-parser/binding-linux-arm64-musl@0.134.0':
     resolution: {integrity: sha512-jUEsnxPXhrCYxswQLYvUOxZEE5UWFMkK5kBnrcPMj7TONz1pD0yKgPmOQCAx2LPoysJ/v2Sjg4RBUVoO2VXoZQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   '@oxc-parser/binding-linux-ppc64-gnu@0.134.0':
     resolution: {integrity: sha512-FU5xMUsXnMuWKVCGo43c6SJsnqHcsioqm32PHdDY39cIRJa/AZbo7RMYW0W5gYcNZqb8EMhELkMDwbJOFbUhtg==}
@@ -949,12 +954,14 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   '@oxc-parser/binding-linux-x64-musl@0.134.0':
     resolution: {integrity: sha512-OQnJAK4sFuNSLgsh2s/K+14a3kwbmqf2yh1JiADU9XSfDuRooZYbAxmmBVPiyQ97+jBIIA1x2oPZeYNto3Ioow==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   '@oxc-parser/binding-openharmony-arm64@0.134.0':
     resolution: {integrity: sha512-RYLooe6g31q/PqNFN0NjR80IK/ARGsfLasAXL42LXonL+5Cyy9Or76rjBKQLAjERikJwbRU/sYW9Q5Tnpt1A4Q==}
@@ -1560,6 +1567,35 @@ packages:
 
   '@ungap/structured-clone@1.3.1':
     resolution: {integrity: sha512-mUFwbeTqrVgDQxFveS+df2yfap6iuP20NAKAsBt5jDEoOTDew+zwLAOilHCeQJOVSvmgCX4ogqIrA0mnyr08yQ==}
+
+  '@vercel/analytics@2.0.1':
+    resolution: {integrity: sha512-MTQG6V9qQrt1tsDeF+2Uoo5aPjqbVPys1xvnIftXSJYG2SrwXRHnqEvVoYID7BTruDz4lCd2Z7rM1BdkUehk2g==}
+    peerDependencies:
+      '@remix-run/react': ^2
+      '@sveltejs/kit': ^1 || ^2
+      next: '>= 13'
+      nuxt: '>= 3'
+      react: ^18 || ^19 || ^19.0.0-rc
+      svelte: '>= 4'
+      vue: ^3
+      vue-router: ^4
+    peerDependenciesMeta:
+      '@remix-run/react':
+        optional: true
+      '@sveltejs/kit':
+        optional: true
+      next:
+        optional: true
+      nuxt:
+        optional: true
+      react:
+        optional: true
+      svelte:
+        optional: true
+      vue:
+        optional: true
+      vue-router:
+        optional: true
 
   '@webgpu/types@0.1.70':
     resolution: {integrity: sha512-LFiNHHKMvmAEvwVew3JLJmTdShhbdwRFSImUshGhE2mGE8ybQzIo63l5uRp+YKnNx+8Qno8Kf6gN+DKMreIJCA==}
@@ -3175,25 +3211,25 @@ packages:
 
 snapshots:
 
-  '@1agh/maude-darwin-arm64@0.28.1':
+  '@1agh/maude-darwin-arm64@0.30.0':
     optional: true
 
-  '@1agh/maude-darwin-x64@0.28.1':
+  '@1agh/maude-darwin-x64@0.30.0':
     optional: true
 
-  '@1agh/maude-linux-arm64-musl@0.28.1':
+  '@1agh/maude-linux-arm64-musl@0.30.0':
     optional: true
 
-  '@1agh/maude-linux-arm64@0.28.1':
+  '@1agh/maude-linux-arm64@0.30.0':
     optional: true
 
-  '@1agh/maude-linux-x64-musl@0.28.1':
+  '@1agh/maude-linux-x64-musl@0.30.0':
     optional: true
 
-  '@1agh/maude-linux-x64@0.28.1':
+  '@1agh/maude-linux-x64@0.30.0':
     optional: true
 
-  '@1agh/maude-win32-x64@0.28.1':
+  '@1agh/maude-win32-x64@0.30.0':
     optional: true
 
   '@alloc/quick-lru@5.2.0': {}
@@ -4372,6 +4408,11 @@ snapshots:
       '@types/node': 25.9.1
 
   '@ungap/structured-clone@1.3.1': {}
+
+  '@vercel/analytics@2.0.1(next@16.2.7(@playwright/test@1.60.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react@19.2.7)':
+    optionalDependencies:
+      next: 16.2.7(@playwright/test@1.60.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      react: 19.2.7
 
   '@webgpu/types@0.1.70': {}
 
