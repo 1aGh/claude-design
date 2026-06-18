@@ -13,6 +13,8 @@ import { createRoot } from 'react-dom/client';
 // bundle — no React, no input-router. See the tool-cursor handler below.
 import { resolveToolCursor } from '../canvas-cursors.ts';
 import { canvasUrl } from './canvas-url.js';
+import DiffView from './panels/DiffView.jsx';
+import GitPanel from './panels/GitPanel.jsx';
 import { TourOverlay } from './tour/overlay.jsx';
 import { USAGE_TOUR } from './tour/usage-tour.js';
 import { useWhatsNew, WhatsNewPanel, WhatsNewToast } from './whats-new.jsx';
@@ -1063,7 +1065,7 @@ function DsFolderRow({ name, dsName, depth, defaultOpen, active, onOpenSystem, c
   );
 }
 
-function FileRow({ file, activePath, onOpen, onDelete, openCount: oc, depth, kind, sidecar }) {
+function FileRow({ file, activePath, onOpen, onDelete, openCount: oc, depth, kind, sidecar, dirty }) {
   const isSel = file.path === activePath;
   const isCanvas = CANVAS_EXT_RE.test(file.name);
   // Non-canvas rows (PROJECT *.md, RUNTIME _active.json, ...) are display-only —
@@ -1094,6 +1096,11 @@ function FileRow({ file, activePath, onOpen, onDelete, openCount: oc, depth, kin
         <StIcon name="file" size={13} />
       </span>
       <span className="st-row-name">{label}</span>
+      {dirty && (
+        <span className="st-git-badge" data-kind={dirty} title={`Unsaved (${dirty})`} aria-label={`Unsaved, ${dirty}`}>
+          {dirty}
+        </span>
+      )}
       {oc > 0 && <span className="st-row-badge">{oc}</span>}
     </button>
   );
@@ -1130,7 +1137,9 @@ function CanvasRow({
   openCount: oc,
   showHidden,
   forceOpen,
+  dirtyByPath,
 }) {
+  const dirty = dirtyByPath?.get(primary.path);
   const hasSidecars = sidecars.length > 0;
   const [openState, setOpenState] = useState(false);
   // Sidecars are only revealed when the user opts in via `showHidden` — the
@@ -1149,6 +1158,7 @@ function CanvasRow({
         openCount={oc}
         depth={depth}
         kind={kind}
+        dirty={dirty}
       />
     );
   }
@@ -1182,6 +1192,11 @@ function CanvasRow({
           <StIcon name="chevron-right" className={'st-chev' + (open ? ' is-open' : '')} size={13} />
         </span>
         <span className="st-row-name">{displayName(primary.name)}</span>
+        {dirty && (
+          <span className="st-git-badge" data-kind={dirty} title={`Unsaved (${dirty})`} aria-label={`Unsaved, ${dirty}`}>
+            {dirty}
+          </span>
+        )}
         {oc > 0 && <span className="st-row-badge">{oc}</span>}
       </button>
       {open &&
@@ -1214,6 +1229,7 @@ function Tree({
   activeDsName,
   onOpenSystem,
   onDelete,
+  dirtyByPath,
 }) {
   const dirs = Object.keys(node)
     .filter((k) => k !== '_files')
@@ -1255,6 +1271,7 @@ function Tree({
             kind={kind}
             showHidden={showHidden}
             forceOpen={forceOpen}
+            dirtyByPath={dirtyByPath}
           />
         );
       })}
@@ -1286,6 +1303,7 @@ function Tree({
             activeDsName={activeDsName}
             onOpenSystem={onOpenSystem}
             onDelete={onDelete}
+            dirtyByPath={dirtyByPath}
           />
         );
         if (dsMatch && onOpenSystem) {
@@ -1353,6 +1371,7 @@ function Sidebar({
   onCollapse,
   width,
   resizing,
+  dirtyByPath,
 }) {
   const filteredGroups = useMemo(() => {
     if (!search) return groups;
@@ -1569,6 +1588,7 @@ function Sidebar({
                     activeDsName={activeDsName}
                     onOpenSystem={isDs ? onOpenSystem : undefined}
                     onDelete={isDs ? undefined : onDeleteBoard}
+                    dirtyByPath={dirtyByPath}
                   />
                 ) : (
                   <div className="st-tree-empty">{search ? 'No matches.' : 'Empty.'}</div>
@@ -2296,6 +2316,9 @@ function Menubar({
   setOpenMenu,
   commentsPanelOpen,
   onToggleComments,
+  changesOpen,
+  changesCount,
+  onToggleChanges,
   onOpenSystem,
   sidebarOpen,
   onToggleSidebar,
@@ -2334,6 +2357,13 @@ function Menubar({
 
   const panels = [
     { id: 'tree', label: 'Project Tree', shortcut: 'T', checked: sidebarOpen, disabled: false },
+    {
+      id: 'changes',
+      label: changesCount > 0 ? `Changes · ${changesCount} unsaved` : 'Changes',
+      shortcut: '⌘ ⇧ G',
+      checked: changesOpen,
+      disabled: false,
+    },
     {
       id: 'comments',
       label: 'Comments Sidebar',
@@ -2489,6 +2519,7 @@ function Menubar({
           panels={panels}
           onToggle={(id) => {
             if (id === 'tree') onToggleSidebar();
+            else if (id === 'changes') onToggleChanges();
             else if (id === 'comments') onToggleComments();
             else if (id === 'hidden') onToggleShowHidden();
             else if (id === 'annotate') onToggleAnnotations();
@@ -5260,6 +5291,12 @@ function App() {
   // Phase 9 Task 8 — hub-down offline mode banner. Driven by the 'sync:status'
   // WS message the linked-mode sync runtime emits. null in solo mode.
   const [syncStatus, setSyncStatus] = useState(null);
+  // Phase 27 (E2) — in-UI git layer. `gitStatus` is the live dirty-state the
+  // server broadcasts on `git-status`; `changesOpen` toggles the Changes panel;
+  // `diffTarget` opens the before/after DiffView ({ file, conflict }).
+  const [gitStatus, setGitStatus] = useState(null);
+  const [changesOpen, setChangesOpen] = useState(false);
+  const [diffTarget, setDiffTarget] = useState(null);
   const [search, setSearch] = useState('');
   const [systemData, setSystemData] = useState(null);
   // Canvas-compile skeleton (single-canvas model → one path at a time).
@@ -5356,6 +5393,20 @@ function App() {
       cancelled = true;
     };
   }, []);
+  // Phase 27 (E2) — seed the git dirty-state on mount; live updates arrive over
+  // the `git-status` WS broadcast (Task 5). Solo/non-git projects → repo:false.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/_api/git/status')
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled && data) setGitStatus(data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [commentsByFile, setCommentsByFile] = useState({}); // { file: [Comment] }
   // Phase 6 — the in-iframe composer owns drafting; the shell no longer holds
   // a `draft` state. Mutations route through postMessage → WS instead.
@@ -5379,6 +5430,47 @@ function App() {
   // Inspector tab is lifted so View ▸ Layers can open the panel ON the Layers
   // tab (the menu item sat disabled as "Phase 12" long after the tab shipped).
   const [inspectorTab, setInspectorTab] = useState('inspect');
+  // The right dock holds exactly ONE panel (Changes / Inspector / Comments) at
+  // a time — opening any panel REPLACES whatever was there. These two helpers
+  // are the single source of that invariant; every open/toggle path routes
+  // through them. (Before, the three booleans were flipped independently across
+  // ~13 call sites and only some closed their siblings, so a panel opened via a
+  // path that left a sibling `true` rendered *behind* it under the fixed
+  // precedence — looking like the new panel "overlapped" the old one.)
+  const openRightPanel = useCallback((which) => {
+    setChangesOpen(which === 'changes');
+    setInspectorOpen(which === 'inspector');
+    setCommentsPanelOpen(which === 'comments');
+  }, []);
+  // Functional updates so this is stale-closure-safe inside the keydown /
+  // postMessage listeners; opening always clears the two siblings.
+  const toggleRightPanel = useCallback((which) => {
+    if (which === 'inspector') {
+      setInspectorOpen((v) => {
+        if (!v) {
+          setChangesOpen(false);
+          setCommentsPanelOpen(false);
+        }
+        return !v;
+      });
+    } else if (which === 'comments') {
+      setCommentsPanelOpen((v) => {
+        if (!v) {
+          setChangesOpen(false);
+          setInspectorOpen(false);
+        }
+        return !v;
+      });
+    } else if (which === 'changes') {
+      setChangesOpen((v) => {
+        if (!v) {
+          setInspectorOpen(false);
+          setCommentsPanelOpen(false);
+        }
+        return !v;
+      });
+    }
+  }, []);
   const whatsNew = useWhatsNew(MDCC_VERSION);
   const [tourSteps, setTourSteps] = useState(null);
   const [usageNudge, setUsageNudge] = useState(() => !readBoolStore(USAGE_TOUR_STORE, false));
@@ -5401,7 +5493,7 @@ function App() {
           } catch {}
         }, 80);
       }
-      if (step.inspector || step.tab || step.requireSelection) setInspectorOpen(true);
+      if (step.inspector || step.tab || step.requireSelection) openRightPanel('inspector');
       if (step.tab) setInspectorTab(step.tab);
     },
   };
@@ -5657,6 +5749,10 @@ function App() {
           } else if (m.type === 'sync:status' && m.payload) {
             // Phase 9 Task 8 — hub connection state for the offline banner.
             setSyncStatus(m.payload);
+          } else if (m.type === 'git-status' && m.payload) {
+            // Phase 27 (E2) Task 5 — live dirty-state. Updates the Changes-panel
+            // count + tree M/A/D badges reactively, no polling.
+            setGitStatus(m.payload);
           } else if (m.type === 'git-lifecycle' && m.payload) {
             // Phase 8 Task 7 — branch switch / pull mid-session. Server has
             // already flushed every dirty Y.Doc to JSON; just prompt the user.
@@ -5683,6 +5779,83 @@ function App() {
       if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
     } catch {}
   }
+
+  // ----- Phase 27 (E2) — git actions -----
+  // All write actions POST same-origin (the dev-server's sameOriginWrite + the
+  // dual-allowlist gate them main-origin only). After a mutation we refresh
+  // status optimistically; the `git-status` WS broadcast also lands shortly.
+  const refreshGitStatus = useCallback(async () => {
+    try {
+      const r = await fetch('/_api/git/status');
+      if (r.ok) setGitStatus(await r.json());
+    } catch {}
+  }, []);
+
+  const gitPostJson = useCallback(async (path, body) => {
+    try {
+      const r = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}),
+      });
+      const data = await r.json().catch(() => ({}));
+      return { ok: r.ok, ...data };
+    } catch (e) {
+      return { ok: false, error: 'Network error — is the project still open?' };
+    }
+  }, []);
+
+  const gitCommit = useCallback(
+    async (message, files) => {
+      const res = await gitPostJson('/_api/git/commit', { message, files });
+      if (res.ok) await refreshGitStatus();
+      return res;
+    },
+    [gitPostJson, refreshGitStatus]
+  );
+
+  const gitDiscard = useCallback(
+    async (files) => {
+      const res = await gitPostJson('/_api/git/discard', { files });
+      if (res.ok) await refreshGitStatus();
+      return res;
+    },
+    [gitPostJson, refreshGitStatus]
+  );
+
+  const gitPublish = useCallback(() => gitPostJson('/_api/git/push', {}), [gitPostJson]);
+
+  const gitGetLatest = useCallback(async () => {
+    const res = await gitPostJson('/_api/git/pull', {});
+    if (res.ok) await refreshGitStatus();
+    // A true content conflict → open the visual resolver on the first file.
+    if (res.conflict && Array.isArray(res.files) && res.files.length) {
+      setDiffTarget({ file: res.files[0], conflict: true });
+    }
+    return res;
+  }, [gitPostJson, refreshGitStatus]);
+
+  const gitLoadLog = useCallback(async () => {
+    try {
+      const r = await fetch('/_api/git/log?limit=40');
+      if (!r.ok) return [];
+      const data = await r.json();
+      return data.entries || [];
+    } catch {
+      return [];
+    }
+  }, []);
+
+  // Repo-relative path → M/A/D/U badge for the tree (paths match: both the tree
+  // and gitStatus use `.design/ui/Foo.tsx`). Keyed off gitStatus so it updates
+  // live with the WS broadcast.
+  const dirtyByPath = useMemo(() => {
+    const KIND = { modified: 'M', added: 'A', deleted: 'D', untracked: 'U' };
+    const m = new Map();
+    for (const f of gitStatus?.files || []) m.set(f.path, KIND[f.status]);
+    return m;
+  }, [gitStatus]);
+  const unsavedCount = gitStatus?.files?.length || 0;
 
   // ----- Tab management (single-canvas) -----
   // Single-canvas model: opening a file REPLACES the active one (no tab strip).
@@ -5917,7 +6090,7 @@ function App() {
         setLayersTree({ artboardId: m.artboardId, nodes: Array.isArray(m.tree) ? m.tree : [] });
       } else if (m.dgn === 'open-inspector') {
         // Phase 12 — context-menu "Inspect" / tool-palette Inspect opens the right panel.
-        setInspectorOpen(true);
+        openRightPanel('inspector');
       } else if (m.dgn === 'comment-compose' && m.selection) {
         // Phase 6 — the iframe overlay owns the composer surface now. The
         // shell just mirrors `selected` so the StatusBar / sidebar still
@@ -5970,8 +6143,8 @@ function App() {
         // Same forwarding lane for the other shell chords (inspect.ts) — so
         // ⌘R / ⌘⇧I / ⌘⇧M / ⌘⇧E / ⌘⇧H behave identically wherever focus is.
         if (m.id === 'reload') reloadActive();
-        else if (m.id === 'inspector') setInspectorOpen((v) => !v);
-        else if (m.id === 'comments') setCommentsPanelOpen((v) => !v);
+        else if (m.id === 'inspector') toggleRightPanel('inspector');
+        else if (m.id === 'comments') toggleRightPanel('comments');
         else if (m.id === 'export') setExportDialog({ mode: 'export' });
         else if (m.id === 'handoff') setExportDialog({ mode: 'handoff' });
       } else if (m.dgn === 'open-export') {
@@ -6191,14 +6364,21 @@ function App() {
       // Cmd+Shift+M / Ctrl+Shift+M — toggle right "Comments" panel
       if (meta && e.shiftKey && (e.key === 'm' || e.key === 'M')) {
         e.preventDefault();
-        setCommentsPanelOpen((v) => !v);
+        toggleRightPanel('comments');
+        return;
+      }
+      // Cmd+Shift+G — toggle the Changes (git) panel. Opening it closes the
+      // other right-dock panels (one panel at a time).
+      if (meta && e.shiftKey && (e.key === 'g' || e.key === 'G')) {
+        e.preventDefault();
+        toggleRightPanel('changes');
         return;
       }
       // Cmd+Shift+I — toggle Inspector. Was bare "I", which collided with the
       // canvas highlighter tool (same letter, different action by focus).
       if (meta && e.shiftKey && (e.key === 'i' || e.key === 'I')) {
         e.preventDefault();
-        setInspectorOpen((v) => !v);
+        toggleRightPanel('inspector');
         return;
       }
       // Cmd+Shift+E / Cmd+Shift+H — the File-menu chords, previously
@@ -6399,7 +6579,7 @@ function App() {
         label: 'Toggle comments panel',
         icon: 'resolve',
         kbd: '⌘⇧M',
-        run: () => setCommentsPanelOpen((v) => !v),
+        run: () => toggleRightPanel('comments'),
       },
       {
         id: 'inspector',
@@ -6407,7 +6587,7 @@ function App() {
         label: 'Open inspector',
         icon: 'sliders',
         kbd: '⌘⇧I',
-        run: () => setInspectorOpen(true),
+        run: () => openRightPanel('inspector'),
       },
       {
         id: 'reload',
@@ -6498,7 +6678,10 @@ function App() {
           openMenu={openMenu}
           setOpenMenu={setOpenMenu}
           commentsPanelOpen={commentsPanelOpen}
-          onToggleComments={() => setCommentsPanelOpen((v) => !v)}
+          onToggleComments={() => toggleRightPanel('comments')}
+          changesOpen={changesOpen}
+          changesCount={unsavedCount}
+          onToggleChanges={() => toggleRightPanel('changes')}
           onOpenSystem={openSystem}
           sidebarOpen={sidebarOpen}
           onToggleSidebar={() => setSidebarOpen((v) => !v)}
@@ -6515,14 +6698,15 @@ function App() {
           artboardCount={activeArtboards}
           inspectorOpen={inspectorOpen}
           inspectorTab={inspectorTab}
-          onToggleInspector={() => setInspectorOpen((v) => !v)}
+          onToggleInspector={() => toggleRightPanel('inspector')}
           onOpenLayers={() => {
-            // Toggle: already open on Layers → close; otherwise open on Layers.
+            // Toggle: already open on Layers → close; otherwise open on Layers
+            // (clearing the sibling panels — one dock slot).
             if (inspectorOpen && inspectorTab === 'layers') {
               setInspectorOpen(false);
             } else {
               setInspectorTab('layers');
-              setInspectorOpen(true);
+              openRightPanel('inspector');
             }
           }}
           onNewCanvas={() => {
@@ -6581,6 +6765,7 @@ function App() {
             onCollapse={() => setSidebarOpen(false)}
             width={sbSize.w}
             resizing={dragSide === 'sb'}
+            dirtyByPath={dirtyByPath}
           />
           {sidebarOpen && (
             <PanelGrip
@@ -6608,7 +6793,7 @@ function App() {
               onIframeLoad={onIframeLoad}
             />
           </div>
-          {(inspectorOpen || commentsPanelOpen) && (
+          {(inspectorOpen || commentsPanelOpen || changesOpen) && (
             <PanelGrip
               label="Resize side panel"
               dir="rtl"
@@ -6621,9 +6806,24 @@ function App() {
               }}
             />
           )}
-          {/* Right dock — one panel at a time. Inspector takes precedence when
-              open (T6); else the comments panel. */}
-          {inspectorOpen ? (
+          {/* Right dock — one panel at a time. Changes (E2) takes precedence,
+              then Inspector (T6), then the comments panel. */}
+          {changesOpen ? (
+            <GitPanel
+              status={gitStatus}
+              project={project}
+              width={rpSize.w}
+              resizing={dragSide === 'rp'}
+              onClose={() => setChangesOpen(false)}
+              onCommit={gitCommit}
+              onDiscard={gitDiscard}
+              onPublish={gitPublish}
+              onGetLatest={gitGetLatest}
+              loadLog={gitLoadLog}
+              onOpenCanvas={(p) => openTab(p)}
+              onOpenDiff={(file) => setDiffTarget({ file, beforeSha: 'HEAD', conflict: false })}
+            />
+          ) : inspectorOpen ? (
             <InspectorPanel
               selected={selected}
               cfg={cfg}
@@ -6689,6 +6889,25 @@ function App() {
           initialScope={exportDialog.scope}
           activePath={activePath}
           onClose={() => setExportDialog(null)}
+        />
+      )}
+      {diffTarget && (
+        <DiffView
+          target={diffTarget}
+          cfg={cfg}
+          onClose={() => setDiffTarget(null)}
+          onRestore={async (file) => {
+            await gitDiscard([file]);
+            setDiffTarget(null);
+          }}
+          onResolve={async () => {
+            // phase-27: the actual conflict-resolution file write (Keep both =
+            // copy-with-suffix) needs a resolve endpoint that lands in a later
+            // slice. The picker + zero-loss default ship now; here we close and
+            // re-read status so the user sees the current state.
+            setDiffTarget(null);
+            await refreshGitStatus();
+          }}
         />
       )}
       <ShortcutsOverlay open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />

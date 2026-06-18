@@ -5,7 +5,8 @@
   "identifier": "com.maude.app",
   "build": {
     "frontendDist": "../src",
-    "beforeBuildCommand": "node scripts/sync-sidecar.mjs && node scripts/stage-resources.mjs"
+    "beforeBuildCommand": "node scripts/sync-sidecar.mjs && node scripts/stage-resources.mjs",
+    "beforeDevCommand": "node scripts/sync-sidecar.mjs && node scripts/stage-resources.mjs"
   },
   "app": {
     "withGlobalTauri": true,

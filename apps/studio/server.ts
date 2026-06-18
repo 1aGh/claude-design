@@ -24,6 +24,7 @@ import { createGitLifecycle } from './collab/git-lifecycle.ts';
 import { createCollab } from './collab/index.ts';
 import { createContext } from './context.ts';
 import { createFsWatch } from './fs-watch.ts';
+import { createGitWatch } from './git/watch.ts';
 import { createHttp } from './http.ts';
 import { createInspect } from './inspect.ts';
 import { startHeapWatch } from './mem.ts';
@@ -339,6 +340,11 @@ await Bun.write(
 fsWatch.start();
 startHeapWatch();
 
+// Phase 27 Task 5 (E2) — live dirty-state. Subscribes to `fs:any` (after
+// fsWatch.start so it sees every event) and broadcasts `git-status` to the shell
+// on each versionable change. No-op for a non-git project (gitStatus → repo:false).
+const gitWatch = createGitWatch(ctx);
+
 // Phase 9 Task 4 — bidirectional sync agent. No-op when the project isn't
 // linked to a hub (`.design/config.json` has no `linkedHub` field). Kicked
 // off after fsWatch so the agent's bus subscription receives every fs event.
@@ -371,6 +377,11 @@ if (!process.env.NO_OPEN) {
 async function shutdown() {
   console.log('\n  Stopping…');
   fsWatch.stop();
+  try {
+    gitWatch.stop();
+  } catch {
+    /* timer cleanup is best-effort */
+  }
   try {
     activity.stop();
   } catch {

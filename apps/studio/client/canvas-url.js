@@ -30,6 +30,11 @@ export function canvasUrl(p, cfg, opts) {
   // so previews stay non-interactive; opening the same canvas as a real tab
   // omits the flag and gets comments. See canvas-comment-mount.tsx.
   if (opts?.thumbnail) params.set('comments', '0');
+  // Phase 27 (E2) — DiffView "before" pane renders the canvas at a past version.
+  if (opts?.sha) params.set('sha', opts.sha);
+  // Phase 27 (E2) — DiffView renders a CLEAN canvas (no editor chrome: toolbar,
+  // world minimap, devtools) so the before/after is just the design.
+  if (opts?.hideChrome) params.set('hide-chrome', '1');
   const ds0 = cfg?.designSystems?.[0];
   // Specimen detection: anything under `system/<ds>/preview/` belongs to that
   // specific DS, so it must render with *that* DS's tokens — not always the

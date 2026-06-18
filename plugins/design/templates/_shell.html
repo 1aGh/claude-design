@@ -170,7 +170,13 @@
       // Phase 13.1 / DDR-077 — error-resilient HMR while an agent edits. Hoisted
       // here so the HMR client (below) can soft-reload the canvas module instead
       // of location.reload()-ing into a half-saved (broken) build.
-      const canvasUrl = canvasRel ? ('/' + designRel + '/' + canvasRel) : null;
+      // Phase 27 (E2) — DiffView "before" pane. `?sha=<ref>` renders the canvas
+      // AT a past version (the dev-server's serveHistoricalCanvas builds from
+      // `git show <sha>:<path>`). Baked into the module URL so both the initial
+      // import and the HMR soft-reload carry it.
+      const shaParam = params.get('sha');
+      const canvasQuery = shaParam ? ('?sha=' + encodeURIComponent(shaParam)) : '';
+      const canvasUrl = canvasRel ? ('/' + designRel + '/' + canvasRel + canvasQuery) : null;
       const myFileKey = canvasRel ? (designRel + '/' + canvasRel) : null;
       // True while an `ai-activity` entry is live for THIS canvas (an agent is
       // running /design:edit|new on it). Mirrors ai-banner's gate: parent relays
@@ -208,7 +214,7 @@
         if (!canvasUrl) { location.reload(); return; }
         const rt = window.__maudeCanvasRuntime;
         if (!rt || !rt.remount) { location.reload(); return; }
-        import(canvasUrl + '?v=' + (version || Date.now()))
+        import(canvasUrl + (canvasUrl.includes('?') ? '&' : '?') + 'v=' + (version || Date.now()))
           .then((mod) => {
             if (mod && typeof mod.default === 'function') {
               rt.remount(mod.default);

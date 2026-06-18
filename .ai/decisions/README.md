@@ -10,6 +10,14 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
 
+- [DDR-113: Visual diff renders the "before" by building the canvas at a git ref (`?sha=`)](DDR-113-visual-diff-historical-render.md) — 2026-06-18, native-app/git/visual-diff/canvas-render/security/dos/phase-27/e2
+- [DDR-112: Staging model — simplified "select files to save", no git index](DDR-112-simplified-staging-model.md) — 2026-06-17, native-app/git/staging/commit/vocabulary/phase-27/e2
+- [DDR-111: Managed projects directory — `~/Documents/Maude Projects/`](DDR-111-managed-projects-directory.md) — 2026-06-17, native-app/git/projects-dir/gitignore/phase-27/phase-28/e2/e3
+- [DDR-110: Three-lane collaboration model (git lifecycle + hub co-edit + ephemeral) + non-technical mental model + repo/branch IA](DDR-110-three-lane-collaboration-model.md) — 2026-06-16, native-app/collaboration/git/yjs/hub/vocabulary/phase-27
+- [DDR-109: Native-shell security model (loopback sidecar, strict CSP, deep-link allowlist, keychain secrets)](DDR-109-native-shell-security-model.md) — 2026-06-16, native-app/security/tauri/csp/sidecar/keychain/deep-link/phase-26
+- [DDR-108: GitHub auth — OAuth "Sign in with GitHub" (device/PKCE) → OS keychain](DDR-108-github-auth-oauth-device-flow.md) — 2026-06-16, native-app/auth/github/oauth/keychain/phase-28/e3
+- [DDR-107: Git engine — isomorphic-git (pure-JS), detect-and-prefer system git](DDR-107-git-engine-isomorphic-git.md) — 2026-06-16, native-app/git/isomorphic-git/zero-setup/phase-27/dependencies
+- [DDR-106: Tauri v2 native-shell architecture (apps/studio relocation, sidecar lifecycle, binary→triple naming, CSP)](DDR-106-tauri-v2-native-shell-architecture.md) — 2026-06-16, native-app/tauri/shell/sidecar/csp/phase-26
 - [DDR-105: Phase 12.2 — source-write surface hardening (JSX-attribute escaper consistency + CSRF Origin guard on the edit-* routes)](DDR-105-css-panel-write-surface-hardening.md) — 2026-06-12, dev-server/security/csrf/escaping/source-write/edit-attr/edit-css/edit-text/trust-boundary/ddr-054-followup
 - [DDR-104: Phase 12.2 — CSS-panel UX model (hybrid vocabulary, curated tier + custom-attributes escape hatch, token-first, DOM-authored value source)](DDR-104-css-panel-ux-model.md) — 2026-06-11, dev-server/inspector/css-panel/ux/design-tokens/vocabulary/escape-hatch/value-source/provenance/canvas-first/ddr-103/ddr-093
 - [DDR-103: Phase 12 — in-canvas direct edit (CSS knobs + inline text) write model + deferrals](DDR-103-phase-12-in-canvas-direct-edit.md) — 2026-06-11, dev-server/inspector/css-writeback/text-editing/source-rewrite/layers-tree/canvas-origin/trust-boundary/ddr-019/ddr-054

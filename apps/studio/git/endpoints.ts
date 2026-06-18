@@ -1,0 +1,218 @@
+// Phase 27 (epic E2) — `/_api/git/*` orchestration.
+//
+// Pure-ish handlers behind the git routes: validate inputs, expand the DDR-112
+// staging set (a selected canvas auto-stages its same-stem sidecars), call the
+// service, and shape a `{ status, json }` result. NO HTTP/Request dependency —
+// http.ts owns the HTTP gating (method · main-origin · CSRF · loopback) and
+// passes already-parsed inputs in. That split keeps the security boundary in one
+// place (http.ts, mirroring canvas-create.ts) and this module unit-testable +
+// free of an http.ts import cycle.
+//
+// SECURITY: every route is main-origin-only by omission from CANVAS_SAFE_API +
+// startCanvasServer's `routes` map (the dual-allowlist rule). The token on
+// push/pull is used once for the service's `onAuth`/header and never logged,
+// echoed, or persisted (it is stripped from the JSON we return on error).
+
+import type { Context } from '../context.ts';
+import {
+  type GitFileStatus,
+  gitCommit,
+  gitDiff,
+  gitDiscard,
+  gitLog,
+  gitPull,
+  gitPush,
+  gitStatus,
+  isContainedRepoPath,
+} from './service.ts';
+
+export interface GitEndpointResult {
+  status: number;
+  json: unknown;
+}
+
+const MAX_MESSAGE = 1000;
+const MAX_FILES = 5000;
+
+// A git remote name / ref that is SAFE to pass as a bare argv positional to the
+// system-git engine. The leading-`-` reject is load-bearing: `git push <remote>`
+// / `git fetch <ref>` parse a dash-led positional as an OPTION, so an unvalidated
+// `--upload-pack=…` / `--exec=…` is argument-injection → command execution
+// (CWE-88, the CVE-2017-1000117 family; security review A1/A2). isomorphic-git is
+// immune (values are data, not argv) but we validate at the boundary so BOTH
+// engines are safe regardless of MAUDE_USE_SYSTEM_GIT.
+const GIT_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$/;
+// A remote NAME is `origin`/`upstream` — never a path, so it excludes `/`
+// (a path-shaped name could otherwise reach git as a local-filesystem
+// transport on the system engine; security re-review hardening note).
+const GIT_REMOTE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+function safeGitArg(v: unknown): string | undefined {
+  return typeof v === 'string' && GIT_REF_RE.test(v) ? v : undefined;
+}
+function safeRemoteArg(v: unknown): string | undefined {
+  return typeof v === 'string' && GIT_REMOTE_RE.test(v) ? v : undefined;
+}
+
+export interface GitEndpoints {
+  status(opts?: { checkRemote?: boolean; token?: string }): Promise<GitEndpointResult>;
+  commit(body: unknown): Promise<GitEndpointResult>;
+  discard(body: unknown): Promise<GitEndpointResult>;
+  push(body: unknown): Promise<GitEndpointResult>;
+  pull(body: unknown): Promise<GitEndpointResult>;
+  log(limitRaw: string | null): Promise<GitEndpointResult>;
+  diff(sha: string | null): Promise<GitEndpointResult>;
+}
+
+export function createGitEndpoints(ctx: Context): GitEndpoints {
+  const dir = ctx.paths.repoRoot;
+  const designPrefix = ctx.paths.designRel;
+
+  function bad(error: string): GitEndpointResult {
+    return { status: 400, json: { ok: false, error } };
+  }
+
+  async function status(
+    opts: { checkRemote?: boolean; token?: string } = {}
+  ): Promise<GitEndpointResult> {
+    const result = await gitStatus(dir, {
+      designPrefix,
+      checkRemote: opts.checkRemote,
+      token: opts.token,
+    });
+    return { status: 200, json: result };
+  }
+
+  async function commit(body: unknown): Promise<GitEndpointResult> {
+    const b = (body ?? {}) as { message?: unknown; files?: unknown };
+    if (typeof b.message !== 'string') return bad('A version needs a short message.');
+    const message = b.message.trim();
+    if (!message) return bad('A version needs a short message.');
+    if (message.length > MAX_MESSAGE) return bad('That message is too long.');
+
+    let files: string[] | undefined;
+    if (b.files != null) {
+      if (!Array.isArray(b.files)) return bad('files must be a list.');
+      if (b.files.length > MAX_FILES) return bad('Too many files selected.');
+      const reqFiles: string[] = [];
+      for (const f of b.files) {
+        if (typeof f !== 'string' || !isContainedRepoPath(dir, f)) {
+          return bad('A selected file is outside this project.');
+        }
+        reqFiles.push(f.replace(/\\/g, '/'));
+      }
+      // DDR-112 — auto-stage each selected canvas's same-stem sidecars (the
+      // `.meta.json` layout/viewport state travels with its canvas). Only dirty
+      // sidecars are added, so a clean meta isn't needlessly committed.
+      const dirty = (await gitStatus(dir, { designPrefix })).files.map((f) => f.path);
+      files = expandSidecars(reqFiles, dirty);
+    }
+
+    const res = await gitCommit(dir, message, files, { designPrefix });
+    if (!res.ok) return { status: 400, json: { ok: false, error: res.error } };
+    return { status: 200, json: { ok: true, sha: res.sha } };
+  }
+
+  async function discard(body: unknown): Promise<GitEndpointResult> {
+    const b = (body ?? {}) as { files?: unknown };
+    if (!Array.isArray(b.files) || b.files.length === 0) return bad('Select files to discard.');
+    if (b.files.length > MAX_FILES) return bad('Too many files selected.');
+    const files: string[] = [];
+    for (const f of b.files) {
+      if (typeof f !== 'string' || !isContainedRepoPath(dir, f)) {
+        return bad('A selected file is outside this project.');
+      }
+      files.push(f.replace(/\\/g, '/'));
+    }
+    const res = await gitDiscard(dir, files, { designPrefix });
+    if (!res.ok) return { status: 400, json: { ok: false, error: res.error } };
+    return { status: 200, json: { ok: true, discarded: res.discarded } };
+  }
+
+  async function push(body: unknown): Promise<GitEndpointResult> {
+    // Token is OPTIONAL in phase-27 (no auth UI yet): the system-git engine uses
+    // the user's credential helper. iso-git without a token → authRequired → 401.
+    const token = readToken(body) ?? undefined;
+    const b = (body ?? {}) as { remote?: unknown; ref?: unknown };
+    // Reject a dash-led / malformed remote|ref BEFORE it can reach git argv (A1).
+    if (b.remote != null && safeRemoteArg(b.remote) === undefined) return bad('Invalid remote.');
+    if (b.ref != null && safeGitArg(b.ref) === undefined) return bad('Invalid draft name.');
+    const res = await gitPush(dir, token, {
+      remote: safeRemoteArg(b.remote),
+      ref: safeGitArg(b.ref),
+    });
+    if (res.ok) return { status: 200, json: { ok: true } };
+    if (res.authRequired) {
+      return { status: 401, json: { ok: false, authRequired: true, error: res.error } };
+    }
+    if (res.conflict) {
+      return {
+        status: 409,
+        json: { ok: false, conflict: true, error: 'Publish rejected — Get latest first.' },
+      };
+    }
+    return { status: 502, json: { ok: false, error: res.error ?? 'Publish failed.' } };
+  }
+
+  async function pull(body: unknown): Promise<GitEndpointResult> {
+    const token = readToken(body) ?? undefined;
+    const b = (body ?? {}) as { remote?: unknown; ref?: unknown };
+    if (b.remote != null && safeRemoteArg(b.remote) === undefined) return bad('Invalid remote.');
+    if (b.ref != null && safeGitArg(b.ref) === undefined) return bad('Invalid draft name.');
+    const res = await gitPull(dir, token, {
+      remote: safeRemoteArg(b.remote),
+      ref: safeGitArg(b.ref),
+    });
+    if (res.ok) return { status: 200, json: { ok: true } };
+    if (res.authRequired) {
+      return { status: 401, json: { ok: false, authRequired: true, error: res.error } };
+    }
+    if (res.conflict) {
+      return { status: 409, json: { ok: false, conflict: true, files: res.files ?? [] } };
+    }
+    return { status: 502, json: { ok: false, error: res.error ?? 'Get latest failed.' } };
+  }
+
+  async function log(limitRaw: string | null): Promise<GitEndpointResult> {
+    let limit = 30;
+    if (limitRaw != null) {
+      const n = Number(limitRaw);
+      if (Number.isFinite(n) && n > 0) limit = Math.min(Math.floor(n), 200);
+    }
+    return { status: 200, json: { entries: await gitLog(dir, limit) } };
+  }
+
+  async function diff(sha: string | null): Promise<GitEndpointResult> {
+    // `sha` comes from a query param; allow only a git-ref-ish token whose FIRST
+    // char is alphanumeric — a leading `-` would be parsed by system-git's
+    // `git diff <sha> --` as an option, not a rev (argument injection, A2).
+    const ref = sha && /^[A-Za-z0-9][A-Za-z0-9_./~^@{}-]{0,199}$/.test(sha) ? sha : 'HEAD';
+    return { status: 200, json: { entries: await gitDiff(dir, ref, { designPrefix }) } };
+  }
+
+  return { status, commit, discard, push, pull, log, diff };
+}
+
+/** Read a non-empty string token from a request body without retaining it. */
+function readToken(body: unknown): string | null {
+  const t = (body as { token?: unknown })?.token;
+  return typeof t === 'string' && t.length > 0 ? t : null;
+}
+
+/** DDR-112 — expand each selected path to include any DIRTY same-directory,
+ *  same-stem sidecar (`<stem>.meta.json`, `<stem>.annotations.svg`, …). The `.`
+ *  delimiter prevents `ui/Pricing` from grabbing `ui/Pricing v3.*`. */
+export function expandSidecars(selected: string[], dirty: string[]): string[] {
+  const out = new Set(selected);
+  for (const sel of selected) {
+    const dot = sel.lastIndexOf('.');
+    if (dot === -1) continue;
+    const stem = `${sel.slice(0, dot)}.`;
+    for (const d of dirty) {
+      if (d !== sel && d.startsWith(stem)) out.add(d);
+    }
+  }
+  return [...out];
+}
+
+export const __testing = { expandSidecars, safeGitArg, safeRemoteArg };
+export type { GitFileStatus };

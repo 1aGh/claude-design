@@ -39,3 +39,13 @@ Design repos are small (TSX + JSON + a few assets) — no LFS, no giant historie
 - **System git only** — rejected: breaks zero-setup for users without git (the core persona).
 - **Tauri/Rust libgit2 plugin** — rejected: a per-platform native binding to build/sign/debug across the whole CI matrix, in Rust, for marginal benefit over pure-JS on small repos. Reconsider only if large-repo performance becomes a real complaint.
 - **Wrap `git hash-object` shell-outs (extend `cli/lib/cache.mjs`'s pattern)** — rejected: that's incidental plumbing, not a git porcelain; building clone/push/pull on raw plumbing shell-outs is strictly worse than a real library.
+
+## Addendum (phase-27 implementation, 2026-06-17)
+
+The phase-27 git layer (`apps/studio/git/service.ts`) ships **isomorphic-git as the default and `MAUDE_USE_SYSTEM_GIT=1` as an explicit opt-in**, NOT the "detect system git at runtime and prefer it when present" auto-routing this DDR describes as the end-state. Reasons for the first cut:
+
+- **Deterministic, fully-tested behavior** — one default engine means the test matrix (status/commit/log/diff round-trip + the real push→pull→non-ff-conflict round-trip) exercises exactly what users run. Auto-detect would silently route to whichever engine the host happens to have, splitting behavior across two untested-in-combination paths.
+- **The zero-setup promise rides on the iso-git default** — making the pure-JS path the default (not the fallback) is the safest way to guarantee a no-git machine works.
+- **Engine note** — there is **no `@isomorphic-git/http` npm package** (the plan's dependency line was wrong); the HTTP client ships *inside* `isomorphic-git` as `isomorphic-git/http/node`. Push auth is `onAuth: () => ({ username: token, password: '' })` (token-as-username basic-auth, never a Bearer header). Bundle size: `index.js` 517 KB raw / **116 KB gz** — a server-side dep (not in the client bundle), within the "acceptable for a design-repo-sized use case" bar.
+
+**Auto-detect-and-prefer-system-git is deferred** (a `git --version` probe + per-operation routing) to a later slice; the opt-in env flag is the bridge until then. See [DDR-112](./DDR-112-simplified-staging-model.md) § Consequences.

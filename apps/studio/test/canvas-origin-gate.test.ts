@@ -67,6 +67,18 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         '/_api/edit-css',
         '/_api/edit-text',
         '/_api/edit-attr',
+        // Phase 27 (E2) — every /_api/git/* route is MAIN-ORIGIN ONLY: absent from
+        // CANVAS_SAFE_API + startCanvasServer's `routes` map. A GET from the
+        // canvas origin must 403 at the gate (not 405 from a reached handler),
+        // proving the route is unreachable on this origin. Guards the dual-
+        // allowlist invariant for the token-bearing publish/get-latest endpoints.
+        '/_api/git/status',
+        '/_api/git/log',
+        '/_api/git/diff',
+        '/_api/git/commit',
+        '/_api/git/discard',
+        '/_api/git/push',
+        '/_api/git/pull',
         '/package.json',
       ]) {
         expect(await code(p)).toBe(403);

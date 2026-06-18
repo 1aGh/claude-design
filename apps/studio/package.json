@@ -33,6 +33,7 @@
     "@hocuspocus/provider": "^4.0.0",
     "dom-to-pptx": "^1.1.10",
     "dom-to-svg": "^0.12.2",
+    "isomorphic-git": "^1.38.5",
     "jszip": "^3.10.1",
     "lib0": "^0.2.117",
     "lightningcss": "^1.27.0",

@@ -143,6 +143,13 @@ export function createWs(
   // emits, so this is a no-op for unlinked projects.
   ctx.bus.on('sync:status', (payload: unknown) => broadcast({ type: 'sync:status', payload }));
 
+  // Phase 27 Task 5 (E2) — live dirty-state. git/watch.ts recomputes gitStatus on
+  // a versionable file change (trailing-debounced) and emits 'git-status'. Only
+  // the same-origin inspector clients (the shell) get it — it carries the changed-
+  // file list, so it stays off the untrusted canvas-origin feed like the other
+  // privileged broadcasts. Drives the Changes-panel count + tree M/A/D badges.
+  ctx.bus.on('git-status', (payload: unknown) => broadcast({ type: 'git-status', payload }));
+
   // HMR broadcaster — turns fs:any change events into `canvas-hmr` messages.
   // The iframe-side client (in _shell.html) decides reload strategy from `mode`.
   // Uses broadcastHmr so the segregated canvas origin's HMR-only sockets get it.

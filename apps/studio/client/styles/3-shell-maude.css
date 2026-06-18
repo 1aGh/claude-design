@@ -268,10 +268,13 @@
 }
 /* Kept in the a11y tree (opacity, not display:none) so keyboard users reach it. */
 .st-row-wrap:hover .st-row-del, .st-row-del:focus-visible { opacity: 1; }
-/* Shift the open-comments badge left of the delete button on hover so they
-   don't overlap (the delete is absolute at the row's right edge). */
+/* Shift the open-comments badge AND the M/A/D/U git badge left of the delete
+   button on hover/focus so they don't overlap (the delete is absolute at the
+   row's right edge). */
 .st-row-wrap:hover .st-row-badge,
-.st-row-wrap:focus-within .st-row-badge { margin-right: 24px; }
+.st-row-wrap:focus-within .st-row-badge,
+.st-row-wrap:hover .st-git-badge,
+.st-row-wrap:focus-within .st-git-badge { margin-right: 24px; }
 .st-row-del:hover { color: var(--status-error); background: color-mix(in oklab, var(--status-error) 14%, transparent); }
 
 /* DS-folder row — chevron toggles disclosure, name opens the system view. */
@@ -1157,5 +1160,180 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
   70%, 100% { opacity: 0; transform: scale(1.45); }
 }
 @media (prefers-reduced-motion: reduce) { .st-avatar.is-pulsing::after { animation: none; opacity: 0; } }
+
+/* ── Phase 27 (E2) — GitPanel (Changes / History), mockup-faithful ────────────
+ * Ported 1:1 from `.design/ui/GitPanel.css`. The DS treatments the mock LIFTS
+ * (.panel/.tabbar/.tab/.textarea/.callout/.check) are folded into the gp-* names
+ * so they don't collide with the existing shell classes. Every value a token. */
+.gp-panel { display: flex; flex-direction: column; min-height: 0; background: var(--bg-1); }
+
+/* header: title + "N unsaved" pill + close, then the Changes/History tabbar */
+.gp-head { flex: none; }
+.gp-panel-hd { display: flex; align-items: center; gap: var(--space-2); height: 40px; padding: 0 var(--space-2) 0 var(--space-4); border-bottom: 1px solid var(--border-default); }
+.gp-panel-title { font-family: var(--font-display); font-weight: 600; font-size: var(--type-md); color: var(--fg-0); flex: none; }
+.gp-count { font-family: var(--font-mono); font-size: var(--type-xs); font-weight: 600; padding: 1px var(--space-2); border-radius: var(--radius-pill); background: var(--accent-tint); color: var(--accent); border: 1px solid var(--accent-muted); white-space: nowrap; flex: none; }
+.gp-spacer { flex: 1; min-width: var(--space-2); }
+.gp-draft { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); display: inline-flex; align-items: center; gap: var(--space-1); padding: 1px var(--space-2); border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--bg-2); white-space: nowrap; min-width: 0; flex: 0 1 auto; }
+.gp-draft b { color: var(--fg-0); font-weight: 600; overflow: hidden; text-overflow: ellipsis; max-width: 90px; }
+.gp-draft .gp-sep { color: var(--fg-3); }
+.gp-x { appearance: none; border: none; background: transparent; color: var(--fg-2); font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 5px; border-radius: var(--radius-xs); }
+.gp-x:hover { color: var(--fg-1); background: var(--bg-3); }
+/* tabbar/tab — DS treatment folded in */
+.gp-tabs { display: flex; gap: var(--space-1); padding: var(--space-2) var(--space-3) 0; border-bottom: 1px solid var(--border-subtle); }
+.gp-tab { appearance: none; border: 0; background: transparent; font-size: var(--type-sm); color: var(--fg-2); font-family: var(--font-body); padding: var(--space-3) var(--space-4); cursor: pointer; border-bottom: 2px solid transparent; }
+.gp-tab:hover { color: var(--fg-1); }
+.gp-tab.is-active { color: var(--fg-0); border-bottom-color: var(--accent); }
+
+/* the changed-file list */
+.gp-list { flex: 1; overflow-y: auto; padding: var(--space-2) 0; min-height: 0; }
+.gp-group-hd { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4) var(--space-2); font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-2); }
+.gp-group-count { color: var(--fg-2); }
+.gp-file { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4); border-radius: var(--radius-sm); margin: 0 var(--space-2); }
+.gp-file:hover { background: var(--bg-2); }
+.gp-file.is-checked { background: color-mix(in oklab, var(--accent-tint) 60%, transparent); }
+.gp-check { flex: 0 0 auto; width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+.gp-file-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; cursor: pointer; appearance: none; background: none; border: none; padding: 0; text-align: left; }
+.gp-file-name { color: var(--fg-0); font-size: var(--type-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gp-file-path { color: var(--fg-2); font-family: var(--font-mono); font-size: var(--type-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gp-file.is-checked .gp-file-path { color: var(--fg-1); }
+.gp-file-text:hover .gp-file-name { color: var(--accent); }
+.gp-discard { flex: 0 0 auto; opacity: 0; color: var(--fg-2); background: none; border: none; padding: var(--space-1); border-radius: var(--radius-xs); cursor: pointer; transition: opacity var(--dur-soft) var(--ease-out), color var(--dur-soft) var(--ease-out); }
+.gp-file:hover .gp-discard, .gp-file:focus-within .gp-discard { opacity: 1; }
+.gp-discard:hover { color: var(--status-error); background: var(--bg-3); }
+.gp-discard:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-xs); opacity: 1; }
+
+/* M / A / D / U dirty badge — solid for M/A/D, dashed outline for U (untracked) */
+.gp-badge { flex: 0 0 auto; width: 16px; height: 16px; border-radius: var(--radius-xs); display: grid; place-items: center; font-family: var(--font-mono); font-size: 10px; font-weight: 600; line-height: 1; color: oklch(0.11 0.012 260); }
+.gp-badge[data-kind="M"] { background: var(--status-warn); }
+.gp-badge[data-kind="A"] { background: var(--status-success); }
+.gp-badge[data-kind="D"] { background: var(--status-error); }
+.gp-badge[data-kind="U"] { background: transparent; border: 1px dashed var(--border-strong); color: var(--fg-2); }
+
+/* composer footer: select-all · message · Save version / Save all · hint */
+.gp-compose { flex: none; border-top: 1px solid var(--border-default); padding: var(--space-3) var(--space-4) var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); background: var(--bg-1); }
+.gp-selectall { display: inline-flex; align-items: center; gap: var(--space-2); align-self: flex-start; appearance: none; background: none; border: none; padding: 0; font-family: var(--font-body); font-size: var(--type-sm); color: var(--fg-1); cursor: pointer; }
+.gp-msg { font-family: var(--font-body); font-size: var(--type-sm); color: var(--fg-0); background: var(--bg-3); border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: var(--space-3) var(--space-4); width: 100%; resize: none; min-height: 64px; transition: border-color var(--dur-soft) var(--ease-out), box-shadow var(--dur-soft) var(--ease-out); }
+.gp-msg::placeholder { color: var(--fg-2); }
+.gp-msg:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+.gp-compose-actions { display: flex; align-items: center; gap: var(--space-3); }
+.gp-save { flex: 1; justify-content: center; }
+.gp-save:disabled, .gp-save[aria-disabled="true"], .gp-publish:disabled, .gp-publish[aria-disabled="true"] { background: var(--bg-3); color: var(--fg-3); border-color: var(--border-default); cursor: not-allowed; }
+.gp-hint { font-size: var(--type-xs); color: var(--fg-2); }
+
+/* publish / get-latest bar */
+.gp-publishbar { flex: none; border-top: 1px solid var(--border-default); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); background: var(--bg-1); }
+.gp-publish { width: 100%; justify-content: center; }
+.gp-nudge { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border-radius: var(--radius-sm); }
+.gp-nudge-text { flex: 1; font-size: var(--type-sm); }
+.gp-nudge-text b { color: var(--fg-0); font-weight: 600; }
+.gp-nudge-text span { color: var(--fg-1); }
+.gp-dot-pulse { width: 7px; height: 7px; border-radius: var(--radius-pill); background: var(--status-info); flex: 0 0 auto; box-shadow: 0 0 0 0 color-mix(in oklab, var(--status-info) 60%, transparent); animation: gp-pulse 2.4s var(--ease-out) infinite; }
+@keyframes gp-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--status-info) 55%, transparent); } 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+@media (prefers-reduced-motion: reduce) { .gp-dot-pulse { animation: none; } }
+
+/* callout (banner / conflict) — uses the client .callout, gp- adds layout */
+.gp-callout-col { display: flex; flex-direction: column; gap: var(--space-2); flex: 1; }
+.gp-callout-actions { display: flex; gap: var(--space-3); margin-top: var(--space-2); }
+.gp-pad { padding: var(--space-4) var(--space-4) 0; }
+.gp-sect-label { font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-2); padding: var(--space-4) var(--space-4) var(--space-2); }
+
+/* History timeline with rail */
+.gp-history { padding: var(--space-2) var(--space-3); display: flex; flex-direction: column; gap: 0; overflow-y: auto; min-height: 0; }
+.gp-version { display: grid; grid-template-columns: 18px 1fr auto; gap: var(--space-3); padding: var(--space-3) var(--space-2); align-items: start; position: relative; }
+.gp-version-rail { display: grid; place-items: center; position: relative; }
+.gp-version-node { width: 8px; height: 8px; border-radius: var(--radius-pill); background: var(--accent); margin-top: 4px; z-index: 1; }
+.gp-version:not(:last-child) .gp-version-rail::after { content: ""; position: absolute; top: 12px; bottom: -12px; width: 1px; background: var(--border-default); }
+.gp-version-body { display: flex; flex-direction: column; min-width: 0; }
+.gp-version-msg { color: var(--fg-0); font-size: var(--type-sm); overflow: hidden; text-overflow: ellipsis; }
+.gp-version-meta { color: var(--fg-2); font-family: var(--font-mono); font-size: var(--type-xs); margin-top: 2px; }
+.gp-version-when { color: var(--fg-2); font-family: var(--font-mono); font-size: var(--type-xs); white-space: nowrap; }
+
+/* empty state — "Nothing to save" */
+.gp-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-4); padding: var(--space-8) var(--space-6); text-align: center; }
+.gp-empty-glyph { width: 52px; height: 52px; border-radius: var(--radius-pill); display: grid; place-items: center; background: color-mix(in oklab, var(--status-success) 16%, transparent); color: var(--status-success); }
+.gp-empty-glyph--publish { background: var(--accent-tint); color: var(--accent); }
+.gp-empty h3 { font-family: var(--font-display); font-size: var(--type-lg); color: var(--fg-0); margin: 0; font-weight: 600; }
+.gp-empty p { color: var(--fg-1); font-size: var(--type-sm); max-width: 30ch; margin: 0; }
+
+/* tree dirty badge — mirrors the activity-overlay badge style (DDR-075) */
+.st-git-badge { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: auto; border-radius: var(--radius-xs); font-family: var(--font-mono); font-size: 9px; font-weight: 700; line-height: 1; color: oklch(0.11 0.012 260); flex: none; }
+.st-git-badge[data-kind="M"] { background: var(--status-warn); }
+.st-git-badge[data-kind="A"] { background: var(--status-success); }
+.st-git-badge[data-kind="D"] { background: var(--status-error); }
+.st-git-badge[data-kind="U"] { background: transparent; border: 1px dashed var(--border-strong); color: var(--fg-2); }
+
+/* ── Phase 27 (E2) — DiffView: clean rendered before/after, SYNCED zoom/pan ────
+ * Ported from `.design/ui/DiffView.css`. Each pane renders a CLEAN canvas
+ * (hide-chrome: no toolbar/minimap/devtools) inside a zoom/pan viewport. Both
+ * panes share ONE view transform (locked): scroll to zoom, drag to pan, both
+ * track the same region. Header reuses the app brand (.st-brand). */
+.dv-sheet { width: min(1280px, 96vw); height: min(900px, 92vh); display: flex; flex-direction: column; background: var(--bg-1); border: 1px solid var(--border-default); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); overflow: hidden; }
+.dv-hd { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--border-default); flex: none; }
+.dv-hd .st-brand { padding-right: var(--space-3); border-right: 1px solid var(--border-default); }
+.dv-title { font-family: var(--font-display); font-weight: 600; font-size: var(--type-lg); color: var(--fg-0); }
+.dv-file { display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-3); border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--bg-2); font-family: var(--font-mono); font-size: var(--type-sm); color: var(--fg-1); }
+.dv-spacer { flex: 1; }
+.dv-close { appearance: none; border: none; background: transparent; color: var(--fg-2); cursor: pointer; padding: var(--space-2); border-radius: var(--radius-xs); display: grid; place-items: center; }
+.dv-close:hover { color: var(--fg-0); background: var(--bg-3); }
+/* segmented mode toggle (DS .seg) */
+.dv-seg { display: inline-flex; border: 1px solid var(--border-default); border-radius: var(--radius-sm); overflow: hidden; background: var(--bg-2); }
+.dv-seg-btn { appearance: none; border: 0; background: transparent; color: var(--fg-2); font-size: var(--type-xs); font-family: var(--font-mono); padding: var(--space-2) var(--space-4); cursor: pointer; }
+.dv-seg-btn[aria-pressed="true"] { background: var(--bg-4); color: var(--fg-0); }
+.dv-seg-btn + .dv-seg-btn { border-left: 1px solid var(--border-subtle); }
+
+.dv-stage { padding: var(--space-4) var(--space-5) var(--space-5); display: flex; flex-direction: column; gap: var(--space-3); flex: 1; min-height: 0; }
+.dv-pair { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); align-items: stretch; flex: 1; min-height: 0; }
+.dv-col { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; min-height: 0; }
+.dv-col-hd { display: flex; align-items: center; gap: var(--space-2); flex: none; }
+.dv-col-tag { font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-2); display: inline-flex; align-items: center; gap: var(--space-1); }
+.dv-col-tag.is-after { color: var(--accent); }
+.dv-col-who { color: var(--fg-2); font-size: var(--type-xs); margin-left: auto; }
+
+/* the rendered-canvas thumbnail = a zoom/pan viewport over a clean iframe */
+.dv-thumb { position: relative; flex: 1; min-height: 0; background: var(--bg-0); border: 1px solid var(--border-default); border-radius: var(--radius-md); overflow: hidden; }
+.dv-thumb.is-after { border-color: var(--accent-muted); }
+.dv-thumb.ring-mine { box-shadow: 0 0 0 2px var(--accent); border-color: var(--accent); }
+.dv-thumb.ring-theirs { box-shadow: 0 0 0 2px var(--status-info); border-color: var(--status-info); }
+.dv-viewport { position: absolute; inset: 0; overflow: hidden; cursor: grab; touch-action: none; }
+.dv-viewport.is-panning { cursor: grabbing; }
+.dv-frame-wrap { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform-origin: 0 0; will-change: transform; }
+.dv-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--bg-0); display: block; pointer-events: none; }
+.dv-thumb-note { position: absolute; inset: 0; display: grid; place-items: center; padding: var(--space-4); text-align: center; font-size: var(--type-xs); color: var(--fg-3); background: repeating-linear-gradient(45deg, var(--bg-1), var(--bg-1) 8px, var(--bg-2) 8px, var(--bg-2) 16px); }
+
+/* shared zoom toolbar — drives the locked view for both panes */
+.dv-zoombar { display: inline-flex; align-items: center; gap: var(--space-1); align-self: center; background: var(--bg-2); border: 1px solid var(--border-default); border-radius: var(--radius-pill); padding: 2px; flex: none; }
+.dv-zoom-btn { appearance: none; border: none; background: transparent; color: var(--fg-1); cursor: pointer; width: 26px; height: 22px; border-radius: var(--radius-pill); font-size: var(--type-sm); line-height: 1; display: grid; place-items: center; }
+.dv-zoom-btn:hover { background: var(--bg-3); color: var(--fg-0); }
+.dv-zoom-val { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); min-width: 44px; text-align: center; cursor: pointer; appearance: none; border: none; background: transparent; }
+.dv-zoom-val:hover { color: var(--fg-0); }
+.dv-zoom-sync { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-3); padding-left: var(--space-2); border-left: 1px solid var(--border-subtle); margin-left: var(--space-1); }
+
+/* overlay / slider compare (shares the locked view; frozen layers for the wipe) */
+.dv-overlay { --dv-split: 52%; position: relative; flex: 1; min-height: 0; margin: 0 auto; width: 100%; max-width: 900px; background: var(--bg-0); border: 1px solid var(--border-default); border-radius: var(--radius-md); overflow: hidden; }
+.dv-overlay-layer { position: absolute; inset: 0; }
+.dv-overlay-after { position: absolute; inset: 0; clip-path: inset(0 0 0 var(--dv-split)); }
+.dv-split { position: absolute; top: 0; bottom: 0; left: var(--dv-split); width: 2px; background: var(--accent); z-index: 3; }
+.dv-split-handle { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 26px; height: 26px; border-radius: var(--radius-pill); background: var(--accent); color: var(--accent-fg); display: grid; place-items: center; box-shadow: var(--shadow-md); cursor: ew-resize; }
+.dv-split-handle:focus-visible { outline: 2px solid var(--fg-0); outline-offset: 2px; }
+.dv-overlay-tag { position: absolute; bottom: var(--space-3); font-family: var(--font-mono); font-size: var(--type-xs); padding: 2px var(--space-3); border-radius: var(--radius-sm); background: color-mix(in oklab, var(--bg-0) 70%, transparent); color: var(--fg-1); z-index: 4; }
+.dv-overlay-tag.l { left: var(--space-3); }
+.dv-overlay-tag.r { right: var(--space-3); color: var(--accent); }
+
+/* conflict picker */
+.dv-pick-intro { padding: var(--space-4) var(--space-6) 0; flex: none; }
+.dv-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4); padding: var(--space-4) var(--space-6) var(--space-2); flex: none; }
+.dv-pick { text-align: left; appearance: none; cursor: pointer; background: var(--bg-2); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); color: var(--fg-1); }
+.dv-pick:hover { border-color: var(--border-strong); background: var(--bg-3); }
+.dv-pick.is-rec { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: var(--accent-tint); }
+.dv-pick:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dv-pick.is-rec .dv-pick-desc { color: var(--fg-1); }
+.dv-pick-hd { display: flex; align-items: center; gap: var(--space-2); }
+.dv-pick-title { font-weight: 600; color: var(--fg-0); font-size: var(--type-sm); }
+.dv-pick-rec { margin-left: auto; font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--accent-fg); background: var(--accent); border-radius: var(--radius-pill); padding: 1px var(--space-2); }
+.dv-pick-desc { font-size: var(--type-xs); color: var(--fg-2); line-height: var(--lh-xs); }
+
+/* footer */
+.dv-ft { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-4) var(--space-6); border-top: 1px solid var(--border-default); flex: none; }
+.dv-note { color: var(--fg-2); font-size: var(--type-xs); flex: 1; }
 
 }

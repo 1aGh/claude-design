@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-17T13:18:53.302Z",
+  "generated": "2026-06-18T12:16:27.574Z",
   "currentPhase": null,
   "phases": [
     {
@@ -364,6 +364,17 @@
       "planPath": ".ai/plans/archive/phase-26-native-collab-tauri-shell.md",
       "archived": true,
       "phaseKey": "26"
+    },
+    {
+      "id": "phase-27-native-collab-git-layer",
+      "title": "Phase 27 — Native Maude: In-UI git layer",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to canvas-create.ts security pattern, canvas-origin-gate.test.ts, DDR-045 disk paths, and the vocabulary map (Save version / P...",
+      "planPath": ".ai/plans/archive/phase-27-native-collab-git-layer.md",
+      "archived": true,
+      "phaseKey": "27"
     },
     {
       "id": "phase-3.6-canvas-tsx-format",
@@ -837,17 +848,6 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
-    },
-    {
-      "id": "phase-27-native-collab-git-layer",
-      "title": "Phase 27 — Native Maude: In-UI git layer",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to canvas-create.ts security pattern, canvas-origin-gate.test.ts, DDR-045 disk paths, and the vocabulary map (Save version / P...",
-      "planPath": ".ai/plans/phase-27-native-collab-git-layer.md",
-      "archived": false,
-      "phaseKey": "27"
     },
     {
       "id": "phase-28-native-collab-github-identity",
