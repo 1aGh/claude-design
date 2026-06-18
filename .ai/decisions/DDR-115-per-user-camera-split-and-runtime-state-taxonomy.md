@@ -65,6 +65,14 @@ The `isMaudeRuntimeState` doc-comment used to claim both comments and annotation
 - **Negative / accepted:** un-ignoring annotations surfaced the existing on-disk `*.annotations.svg` as newly-committable (verified secret-free). The legacy `_canvas-state/<slug>.json` FigJam-v3 store is left untouched — flagged for a separate dead-code check, not part of this split.
 - **Sync untouched:** `META_LOCAL_KEYS` stays (belt-and-suspenders); the on-disk meta simply becomes clean for the existing hub-sync path. No route added, so the DDR-054 dual-allowlist invariant is unaffected.
 
+### Security review (defender PASS + attacker, `/flow:done`)
+
+Report: [`.ai/logs/security-reviews/per-user-camera-split.md`](../logs/security-reviews/per-user-camera-split.md). Defender PASS (0 findings — the new view-write lane is contained by the unchanged `canvasMetaPath` guard; `isMaudeRuntimeState` can't be tricked into hiding a real versioned file; no traversal regression). Attacker: 1 HIGH, 1 MEDIUM, 2 LOW, no CRITICAL.
+
+- **Fixed in this change (F-A2, MEDIUM — DoS):** the `PATCH /_api/canvas-meta` write lanes are reachable from the untrusted canvas origin (DDR-054). `patchCanvasMeta` now gates **both** the viewport (view-file) and layout (`.meta.json`) writes on `canvasSourceAbs(file)` *existing* — a fabricated `file` for a non-existent canvas is refused (404, nothing minted), so the origin can't spray arbitrary-slug files/inodes. Closes the same pre-existing gap in the layout lane. Regression test added.
+- **Accepted — annotations → versioned widens the prompt-injection transport (F-A1, HIGH).** This is the explicit user product decision (§4). It joins the existing git-collaboration trust model: the versioned `.tsx` beside the annotation is **executable code** — a strictly larger vector already accepted; the genuinely untrusted hub/peer path is separate (gitignored `_untrusted/`, DDR-054, never git). Annotation ingestion already runs through `sanitizeAnnotationSvg` + DDR-085 delimiter-fencing. **Backlog (multi-user hardening):** when real multi-user git-pull ships, re-confirm annotation text is delimiter-fenced as untrusted in the `/design:edit` brief and consider a pulled-vs-local provenance marker.
+- **Accepted (LOW):** F-A3 slug-collision clobbers only a gitignored camera (pre-existing slug class); F-A4 hiding runtime/hub content from the *git* Changes panel is the intended behavior (it's not git-versioned content).
+
 ## Alternatives considered
 
 - **Reuse the legacy `_canvas-state/<slug>.json` `viewport` key** — rejected: `{x,y,scale}` (clamp 0.05–8) vs `{x,y,zoom}` (clamp 0.1–4); two writers would clobber.

@@ -654,11 +654,11 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
   // (layout) change — never on a viewport-only patch.
 
   /**
-   * Resolve `file` (a path relative to repoRoot like `.design/ui/Foo.tsx`)
-   * into the absolute path of its sibling `.meta.json` sidecar. Refuses
-   * paths that escape repoRoot.
+   * Resolve `file` (a path relative to repoRoot like `.design/ui/Foo.tsx`) into
+   * the absolute path of the canvas SOURCE file. Refuses traversal, paths that
+   * escape repoRoot, and non-canvas extensions. Returns null on rejection.
    */
-  function canvasMetaPath(file: string): string | null {
+  function canvasSourceAbs(file: string): string | null {
     let p = String(file).replace(/^\/+/, '');
     try {
       p = decodeURIComponent(p);
@@ -670,7 +670,17 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     if (!abs.startsWith(`${paths.repoRoot}/`)) return null;
     const ext = path.extname(abs).toLowerCase();
     if (ext !== '.tsx' && ext !== '.html') return null;
-    return abs.replace(/\.(tsx|html)$/i, '.meta.json');
+    return abs;
+  }
+
+  /**
+   * Resolve `file` into the absolute path of its sibling `.meta.json` sidecar.
+   * Same containment guard as `canvasSourceAbs` (refuses paths that escape
+   * repoRoot / non-canvas extensions).
+   */
+  function canvasMetaPath(file: string): string | null {
+    const abs = canvasSourceAbs(file);
+    return abs ? abs.replace(/\.(tsx|html)$/i, '.meta.json') : null;
   }
 
   // ---------- Per-machine canvas view / camera (DDR-115) ----------
@@ -795,6 +805,15 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     const metaAbs = canvasMetaPath(file);
     if (!metaAbs) return null;
     if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return null;
+
+    // DDR-115 security (F-A2) — the PATCH lanes are reachable from the untrusted
+    // canvas origin (DDR-054). Refuse to mint per-canvas state (view file or
+    // `.meta.json`) for a canvas that doesn't exist, so a malicious origin can't
+    // spray arbitrary-slug files/inodes via fabricated `file` paths. A valid
+    // patch only ever targets a canvas the user actually has; `.meta.json` may
+    // still be absent (first layout/viewport write), but the source must exist.
+    const srcAbs = canvasSourceAbs(file);
+    if (!srcAbs || !(await Bun.file(srcAbs).exists())) return null;
 
     // --- Per-user camera lane: viewport → view file, never the versioned meta.
     if (patch.viewport !== undefined) {

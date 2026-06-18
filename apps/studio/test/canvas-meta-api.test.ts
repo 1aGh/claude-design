@@ -317,6 +317,27 @@ describe('/_api/canvas-meta — GET/PATCH (DDR-115 camera split)', () => {
     }
   });
 
+  test('PATCH viewport on a non-existent canvas is refused (404) and mints no file (DDR-115 F-A2)', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      mkdirSync(join(designRoot, 'ui'), { recursive: true });
+      // No .tsx written — the canvas does not exist.
+      const file = '.design/ui/Ghost.tsx';
+      const r = await fetch(`http://localhost:${port}/_api/canvas-meta`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ file, patch: { viewport: { x: 1, y: 2, zoom: 1 } } }),
+      });
+      expect(r.status).toBe(404);
+      // The untrusted-origin write was refused — no per-machine file minted.
+      expect(existsSync(viewPath(designRoot, 'ui-ghost'))).toBe(false);
+    } finally {
+      await killProc(proc);
+    }
+  });
+
   test('PATCH rejects paths that escape repoRoot', async () => {
     const { root } = makeSandbox();
     const port = nextPort();
