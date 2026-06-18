@@ -1,7 +1,18 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
+  "description": "Capability for the main window. The webview loads the dev-server UI from a loopback http://localhost:<port> origin, which Tauri treats as REMOTE content — so app commands (github_sign_in / github_is_signed_in / github_sign_out / github_open_verification) must opt that origin in via `remote.urls` (Phase 28 / DDR-108/109). The port is dynamic (4399→4401 on collision), hence the loopback wildcard. SECURITY: the untrusted cross-origin canvas iframe (a different localhost port) does NOT receive the Tauri IPC global — init scripts inject into the top frame only — so it cannot invoke despite the wildcard match; and none of these commands return the token (the token bridge is loopback HTTP + key, not a Tauri command). Verified in the DDR-109 security pass.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "remote": {
+    "urls": ["http://localhost:*", "http://127.0.0.1:*"]
+  },
+  "permissions": [
+    "core:default",
+    "allow-github-sign-in",
+    "allow-github-open-verification",
+    "allow-github-is-signed-in",
+    "allow-github-sign-out",
+    "allow-pick-directory",
+    "allow-open-local-project"
+  ]
 }

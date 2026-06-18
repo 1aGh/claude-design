@@ -131,6 +131,8 @@ export default function GitPanel({
   loadLog,
   onOpenCanvas,
   onOpenDiff,
+  activeCanvas, // repo-relative path of the open canvas/specimen, or null
+  onPreviewVersion, // (sha) => open the active canvas at that saved version
 }) {
   const [tab, setTab] = useState('changes');
   const [message, setMessage] = useState('');
@@ -139,7 +141,18 @@ export default function GitPanel({
   const [banner, setBanner] = useState(null); // { variant, title?, text }
   const [log, setLog] = useState(null);
   const [logLoading, setLogLoading] = useState(false);
+  // The path the loaded `log` covers: a canvas path → per-file history (its
+  // versions are click-to-preview), '' → repo-wide read-only list. `undefined`
+  // = nothing loaded yet. (phase-27.1)
+  const [logScope, setLogScope] = useState(undefined);
   const selectAllRef = useRef(null);
+
+  // History is scoped to the open canvas/specimen so each row previews THAT
+  // file at that saved version (the resolved "what does a commit row show?"
+  // ambiguity). With nothing open, fall back to the repo-wide read-only list.
+  const previewable = !!(activeCanvas && onPreviewVersion);
+  const historyScope = activeCanvas || '';
+  const activeName = activeCanvas ? baseName(activeCanvas) : '';
 
   const files = status?.files ?? [];
   const fileKey = files.map((f) => `${f.path}:${f.status}`).join('|');
@@ -200,16 +213,29 @@ export default function GitPanel({
     }
   }
 
-  async function openHistory() {
+  function openHistory() {
     setTab('history');
-    if (log || logLoading) return;
-    setLogLoading(true);
-    try {
-      setLog((await loadLog()) || []);
-    } finally {
-      setLogLoading(false);
-    }
   }
+
+  // Load (or reload) History whenever it's the active tab and the scope changes
+  // — e.g. the user opens a different canvas while History is showing, so the
+  // listed versions always match the file the rows will preview.
+  useEffect(() => {
+    if (tab !== 'history') return;
+    if (logScope === historyScope) return; // already current for this scope
+    let cancelled = false;
+    setLogLoading(true);
+    (async () => {
+      const entries = (await loadLog(historyScope || undefined)) || [];
+      if (cancelled) return;
+      setLog(entries);
+      setLogScope(historyScope);
+      setLogLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, historyScope, logScope, loadLog]);
 
   function toggleAll() {
     setUnchecked((prev) => (prev.size === 0 ? new Set(files.map((f) => f.path)) : new Set()));
@@ -549,7 +575,16 @@ export default function GitPanel({
           </>
         )
       ) : (
-        <div className="gp-history" role="list" aria-label="Version history">
+        <div
+          className="gp-history"
+          role="list"
+          aria-label={previewable ? `Saved versions of ${activeName}` : 'Version history'}
+        >
+          {previewable && (
+            <p className="gp-history-scope">
+              Saved versions of <b>{activeName}</b> — pick one to preview.
+            </p>
+          )}
           {logLoading ? (
             <div className="gp-empty">
               <p>Loading history…</p>
@@ -560,23 +595,50 @@ export default function GitPanel({
                 <Icon name="history" size={24} />
               </span>
               <h3>No saved versions yet</h3>
-              <p>Save a version and it'll show up here.</p>
+              <p>
+                {previewable
+                  ? `Save a version of ${activeName} and it'll show up here.`
+                  : "Save a version and it'll show up here."}
+              </p>
             </div>
           ) : (
-            log.map((c) => (
-              <div className="gp-version" role="listitem" key={c.sha}>
-                <span className="gp-version-rail">
-                  <span className="gp-version-node" />
-                </span>
-                <span className="gp-version-body">
-                  <span className="gp-version-msg">{c.message || '(no message)'}</span>
-                  <span className="gp-version-meta">
-                    {c.author} · {c.sha.slice(0, 7)}
+            log.map((c) => {
+              const body = (
+                <>
+                  <span className="gp-version-rail">
+                    <span className="gp-version-node" />
                   </span>
-                </span>
-                <span className="gp-version-when">{timeAgo(c.date)}</span>
-              </div>
-            ))
+                  <span className="gp-version-body">
+                    <span className="gp-version-msg">{c.message || '(no message)'}</span>
+                    <span className="gp-version-meta">
+                      {c.author} · {c.sha.slice(0, 7)}
+                    </span>
+                  </span>
+                  <span className="gp-version-when">{timeAgo(c.date)}</span>
+                </>
+              );
+              return previewable ? (
+                <button
+                  type="button"
+                  className="gp-version gp-version--clickable"
+                  key={c.sha}
+                  onClick={() => onPreviewVersion(c.sha)}
+                  title={`Preview ${activeName} at this saved version`}
+                >
+                  {body}
+                  <span className="gp-version-cue" aria-hidden="true">
+                    <Icon name="diff" size={13} /> Preview
+                  </span>
+                </button>
+              ) : (
+                <div className="gp-version" role="listitem" key={c.sha}>
+                  {body}
+                </div>
+              );
+            })
+          )}
+          {!previewable && log && log.length > 0 && (
+            <p className="gp-history-hint">Open a canvas to preview a saved version.</p>
           )}
         </div>
       )}

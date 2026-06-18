@@ -85,6 +85,46 @@ fn install_signal_handler(handle: tauri::AppHandle) {
     }
 }
 
+/// Native folder picker for "pull a local copy" — returns the chosen parent dir,
+/// or `None` if the user cancelled. The clone lands in `<dir>/<repo-name>`.
+#[tauri::command]
+async fn pick_directory(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog().file().pick_folder(move |folder| {
+        let path = folder
+            .and_then(|f| f.into_path().ok())
+            .map(|p| p.to_string_lossy().to_string());
+        let _ = tx.send(path);
+    });
+    rx.await.map_err(|_| "Folder picker closed unexpectedly.".to_string())
+}
+
+/// Switch the app to a local project folder (the freshly cloned copy) — same
+/// in-process switch as File ▸ Open Project (NOT app.restart()).
+#[tauri::command]
+fn open_local_project(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    let p = PathBuf::from(&path);
+    if !p.is_dir() {
+        return Err("That project folder doesn’t exist.".to_string());
+    }
+    // The dev-server fails loud on a project with no `.design/` (load-bearing,
+    // CLAUDE.md). Refuse the switch HERE so a non-Maude folder shows a clear message
+    // instead of crash-looping the sidecar (3 respawns → blank). The client also
+    // pre-checks via the clone's `hasDesign`, but this guards every open path.
+    if !p.join(".design").is_dir() {
+        return Err("That folder isn’t a Maude project yet (no design system). Open it and run “Set up a design system” first.".to_string());
+    }
+    // Remember it as the last project (so a relaunch reopens it) + switch in-process.
+    if let Some(marker) = last_project_marker(&app) {
+        if let Some(dir) = marker.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(&marker, p.to_string_lossy().as_bytes());
+    }
+    sidecar::switch_project(&app, p);
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
@@ -103,6 +143,8 @@ pub fn run() {
             oauth::github_open_verification,
             keychain::github_is_signed_in,
             keychain::github_sign_out,
+            pick_directory,
+            open_local_project,
         ])
         .menu(menu::build_menu)
         .on_menu_event(|app, event| {

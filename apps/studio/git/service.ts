@@ -594,14 +594,21 @@ function mergeConflictFiles(e: unknown): string[] | null {
 
 // ── log (History) ─────────────────────────────────────────────────────────
 
-export async function gitLog(dir: string, limit = 30): Promise<GitLogEntry[]> {
+/** `filepath` (repo-relative, forward slashes) scopes History to a single
+ *  canvas — the per-file version list that drives the History click-to-preview
+ *  and the DiffView "Saved version" picker (phase-27.1). Omit for the repo-wide
+ *  log (byte-identical to the pre-27.1 behaviour). The caller is responsible for
+ *  containment-validating `filepath` (it reaches system-git positionally after
+ *  `--`, so no option injection, but it must not address a file outside the
+ *  design tree). */
+export async function gitLog(dir: string, limit = 30, filepath?: string): Promise<GitLogEntry[]> {
   if (!isRepo(dir)) return [];
-  return USE_SYSTEM_GIT ? logSystem(dir, limit) : logIso(dir, limit);
+  return USE_SYSTEM_GIT ? logSystem(dir, limit, filepath) : logIso(dir, limit, filepath);
 }
 
-async function logIso(dir: string, limit: number): Promise<GitLogEntry[]> {
+async function logIso(dir: string, limit: number, filepath?: string): Promise<GitLogEntry[]> {
   try {
-    const commits = await git.log({ fs, dir, depth: limit });
+    const commits = await git.log({ fs, dir, depth: limit, ...(filepath ? { filepath } : {}) });
     return commits.map((c) => {
       const a = c.commit.author;
       return {
@@ -617,11 +624,21 @@ async function logIso(dir: string, limit: number): Promise<GitLogEntry[]> {
   }
 }
 
-async function logSystem(dir: string, limit: number): Promise<GitLogEntry[]> {
+async function logSystem(dir: string, limit: number, filepath?: string): Promise<GitLogEntry[]> {
   // Unit-separator field delimiter, record-separator line delimiter — survives
   // any message punctuation.
   const fmt = '%H%x1f%s%x1f%an%x1f%ae%x1f%aI%x1e';
-  const r = await runGit(dir, ['log', `-n${limit}`, `--pretty=format:${fmt}`]);
+  const args = ['log', `-n${limit}`, `--pretty=format:${fmt}`];
+  // `--` makes `filepath` strictly positional — git can't read it as an option
+  // (no argument injection even if it began with a dash, which containment
+  // validation already rejects upstream).
+  if (filepath) args.push('--', filepath);
+  // GIT_LITERAL_PATHSPECS — match `filepath` VERBATIM, never as pathspec magic
+  // (`:(top)`, `:(exclude)`, globs). The endpoint already restricts it to the
+  // design tree; this makes the system-git engine treat it as a plain path
+  // regardless, closing the pathspec-magic surface the `--` terminator alone
+  // doesn't (security re-review, phase-27.1).
+  const r = await runGit(dir, args, filepath ? { GIT_LITERAL_PATHSPECS: '1' } : undefined);
   if (r.code !== 0) return [];
   return r.stdout
     .split('\x1e')
@@ -847,6 +864,41 @@ export function isContainedRepoPath(dir: string, repoRelative: string): boolean 
   const resolved = join(dir, repoRelative);
   const rel = relative(dir, resolved);
   return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel) && !rel.startsWith(`..${sep}`);
+}
+
+export interface GitCloneResult {
+  ok: boolean;
+  dir?: string;
+  authRequired?: boolean;
+  error?: string;
+}
+
+/** Clone a repo into `dir` (a fresh, non-existent path). Full clone of the default
+ *  branch (no shallow) so the working copy can commit + Publish. The optional token
+ *  authenticates private repos via iso-git's `onAuth` (token-as-username, never
+ *  logged) — phase-28's "pull a local copy". */
+export async function gitClone(url: string, dir: string, token?: string): Promise<GitCloneResult> {
+  try {
+    await git.clone({
+      fs,
+      http,
+      dir,
+      url,
+      singleBranch: true,
+      ...(token ? { onAuth: () => ({ username: token, password: '' }) } : {}),
+    });
+    return { ok: true, dir };
+  } catch (e) {
+    const msg = errMsg(e);
+    if (/401|403|auth|credential|unauthor/i.test(msg)) {
+      return {
+        ok: false,
+        authRequired: true,
+        error: 'GitHub sign-in is needed to download this project.',
+      };
+    }
+    return { ok: false, error: 'Could not download the project. Check the link and try again.' };
+  }
 }
 
 export const __testing = {

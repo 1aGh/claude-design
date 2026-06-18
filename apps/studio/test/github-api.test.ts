@@ -11,7 +11,7 @@
 //       with a scratch token.
 
 import { afterEach, describe, expect, test } from 'bun:test';
-import fs, { mkdtempSync, rmSync } from 'node:fs';
+import fs, { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import git from 'isomorphic-git';
@@ -339,6 +339,37 @@ describe('endpoint handlers', () => {
     expect((await ep.invite({ username: '-bad-' })).status).toBe(400);
     // valid username but no origin remote → 409
     expect((await ep.invite({ username: 'anna' })).status).toBe(409);
+  });
+
+  test('clone: 400 on non-github url, traversal name, or missing parentDir', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'maude-gh-ep-'));
+    const ep = createGitHubEndpoints(ctxFor(dir));
+    expect(
+      (await ep.clone({ cloneUrl: 'https://gitlab.com/x/y.git', parentDir: dir, name: 'y' })).status
+    ).toBe(400);
+    expect(
+      (await ep.clone({ cloneUrl: 'https://github.com/o/r.git', parentDir: dir, name: '../evil' }))
+        .status
+    ).toBe(400);
+    expect(
+      (
+        await ep.clone({
+          cloneUrl: 'https://github.com/o/r.git',
+          parentDir: '/no/such/dir/xyz123',
+          name: 'r',
+        })
+      ).status
+    ).toBe(400);
+  });
+
+  test('clone: 409 when the target folder already exists', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'maude-gh-ep-'));
+    mkdirSync(join(dir, 'taken'));
+    const ep = createGitHubEndpoints(ctxFor(dir));
+    expect(
+      (await ep.clone({ cloneUrl: 'https://github.com/o/r.git', parentDir: dir, name: 'taken' }))
+        .status
+    ).toBe(409);
   });
 
   test('invite: 200 with origin set (mocked GH 201 = invited)', async () => {

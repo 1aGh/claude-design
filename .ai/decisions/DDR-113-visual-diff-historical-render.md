@@ -30,3 +30,12 @@ The route is on the **canvas-serve path**, hence reachable from the UNTRUSTED ca
 - **Screenshot the historical version** — rejected: needs checkout-and-render or a render farm; CLI-time, not a runtime iframe; loses interactivity.
 - **Checkout-and-render worktree** — rejected for phase-27: a whole subsystem (temp worktree per sha, isolation, cleanup) for marginal fidelity gain over building from source.
 - **Text diff** — rejected: the non-technical persona can't read a code diff; the rendered diff is the E2 differentiator (DDR-110).
+
+## Addendum (phase-27.1, 2026-06-18) — History click-to-preview wiring
+
+Phase-27 shipped the `?sha=` render machinery + DiffView's `beforeSha` param but left the History tab a read-only list (the rows had no `onClick`) — an E2-spec gap (`epic-native-collab-app.md:191`). Phase-27.1 wires the two missing interactions over the existing machinery (no new render subsystem, no new write route):
+
+- **History row → preview is scoped to the CURRENTLY-OPEN canvas/specimen** (`activePath`), resolving the "a commit touches N files — what does a row preview?" ambiguity. With nothing open, History falls back to the repo-wide read-only list. The DiffView gains a "Saved version" picker (per-file log) that re-points `beforeSha` in place.
+- **Shared building block:** an optional `?path=` filter on the existing `GET /_api/git/log` (per-file history). Same route, still **main-origin-only** (NOT in `CANVAS_SAFE_API`), so the DDR-054 / DoS envelope above is untouched.
+- **Security envelope for `?path=`** (defender + attacker re-review, `.ai/logs/security-reviews/phase-27.1-history-view.md`): path is normalized then gated by `isContainedRepoPath` **and** restricted to the `designPrefix` tree (hard 400, never a silent widen); system-git runs with `--` + `GIT_LITERAL_PATHSPECS=1` (no argument injection, no pathspec magic). The hypothesized iso-git "whole-DAG walk" DoS was **empirically disproven** — `depth` (= `limit ≤ 200`) bounds the walk (full 466-commit walk = 47 ms; nonexistent path errors in ~1 ms), so cost matches the pre-existing repo-wide log.
+- **Still deferred** (unchanged): byte-faithful historical render; conflict-resolution file writes.

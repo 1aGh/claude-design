@@ -59,7 +59,7 @@ export interface GitEndpoints {
   discard(body: unknown): Promise<GitEndpointResult>;
   push(body: unknown): Promise<GitEndpointResult>;
   pull(body: unknown): Promise<GitEndpointResult>;
-  log(limitRaw: string | null): Promise<GitEndpointResult>;
+  log(limitRaw: string | null, pathRaw?: string | null): Promise<GitEndpointResult>;
   diff(sha: string | null): Promise<GitEndpointResult>;
 }
 
@@ -172,13 +172,33 @@ export function createGitEndpoints(ctx: Context): GitEndpoints {
     return { status: 502, json: { ok: false, error: res.error ?? 'Get latest failed.' } };
   }
 
-  async function log(limitRaw: string | null): Promise<GitEndpointResult> {
+  async function log(limitRaw: string | null, pathRaw?: string | null): Promise<GitEndpointResult> {
     let limit = 30;
     if (limitRaw != null) {
       const n = Number(limitRaw);
       if (Number.isFinite(n) && n > 0) limit = Math.min(Math.floor(n), 200);
     }
-    return { status: 200, json: { entries: await gitLog(dir, limit) } };
+    // Optional per-file scope (phase-27.1 — History click-to-preview + DiffView
+    // version picker). A malformed / out-of-tree path is a hard 400, NOT a
+    // silent fall-back to the repo-wide log: a bug must never widen the history
+    // beyond the file the UI asked for.
+    let filepath: string | undefined;
+    if (pathRaw != null && pathRaw !== '') {
+      // Normalize separators BEFORE the guards so the validated string is byte-
+      // for-byte what reaches git (no post-guard mutation re-opening a bypass).
+      const p = pathRaw.replace(/\\/g, '/');
+      if (!isContainedRepoPath(dir, p)) return bad('That file is outside this project.');
+      // History is scoped to the DESIGN TREE (matching status/diff) — not the
+      // whole repo. This also rejects pathspec-magic prefixes (`:/`, `:(top)…`,
+      // `:(exclude)…`): none start with the designPrefix, so they can never reach
+      // system-git as live pathspec magic (defence-in-depth atop the `--`
+      // terminator + GIT_LITERAL_PATHSPECS in logSystem).
+      if (designPrefix && p !== designPrefix && !p.startsWith(`${designPrefix}/`)) {
+        return bad('That file is outside this project.');
+      }
+      filepath = p;
+    }
+    return { status: 200, json: { entries: await gitLog(dir, limit, filepath) } };
   }
 
   async function diff(sha: string | null): Promise<GitEndpointResult> {

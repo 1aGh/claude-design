@@ -12,11 +12,12 @@
 // logged, echoed, or returned to the client. Inputs (repo name, username) are
 // validated at this boundary before they reach the GitHub API.
 
-import fs from 'node:fs';
+import fs, { existsSync, statSync } from 'node:fs';
+import { isAbsolute, join } from 'node:path';
 
 import git from 'isomorphic-git';
-
 import type { Context } from '../context.ts';
+import { gitClone } from '../git/service.ts';
 import {
   createRepo,
   GitHubApiError,
@@ -26,6 +27,10 @@ import {
   setRemote,
 } from './service.ts';
 import { getGithubToken } from './token.ts';
+
+// A repo/folder NAME safe to join onto a user-chosen parent dir — alphanumeric
+// start, then [A-Za-z0-9._-], no separators or leading dot ⇒ no traversal.
+const SAFE_DIR_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 
 export interface GitHubEndpointResult {
   status: number;
@@ -66,6 +71,7 @@ export interface GitHubEndpoints {
   repos(): Promise<GitHubEndpointResult>;
   createRepo(body: unknown): Promise<GitHubEndpointResult>;
   invite(body: unknown): Promise<GitHubEndpointResult>;
+  clone(body: unknown): Promise<GitHubEndpointResult>;
 }
 
 export function createGitHubEndpoints(ctx: Context): GitHubEndpoints {
@@ -166,7 +172,52 @@ export function createGitHubEndpoints(ctx: Context): GitHubEndpoints {
     });
   }
 
-  return { identity, repos, createRepo: createRepoHandler, invite };
+  // "Pull a local copy": clone a GitHub project into a user-chosen folder. The
+  // parentDir comes from the NATIVE folder picker (a Tauri command), and every
+  // input is validated before it reaches the filesystem / iso-git.
+  async function clone(body: unknown): Promise<GitHubEndpointResult> {
+    const b = (body ?? {}) as { cloneUrl?: unknown; parentDir?: unknown; name?: unknown };
+    if (typeof b.cloneUrl !== 'string' || !parseGitHubRemote(b.cloneUrl)) {
+      return bad('That isn’t a GitHub project link.');
+    }
+    if (typeof b.name !== 'string' || !SAFE_DIR_NAME.test(b.name))
+      return bad('Invalid project name.');
+    if (
+      typeof b.parentDir !== 'string' ||
+      !isAbsolute(b.parentDir) ||
+      !existsSync(b.parentDir) ||
+      !statSync(b.parentDir).isDirectory()
+    ) {
+      return bad('Pick a folder on your computer to save the project in.');
+    }
+    const target = join(b.parentDir, b.name);
+    if (existsSync(target)) {
+      return {
+        status: 409,
+        json: { ok: false, error: `A folder named “${b.name}” already exists there.` },
+      };
+    }
+    // Token OPTIONAL — public repos clone tokenless; private repos surface
+    // authRequired from the service if no token is available.
+    const token = (await getGithubToken()) ?? undefined;
+    const res = await gitClone(b.cloneUrl, target, token);
+    if (res.ok) {
+      // Tell the client whether the pulled repo is actually a Maude project. If not,
+      // the client must NOT switch to it (the dev-server can't serve a project with
+      // no .design/ — it fails loud) — it shows a "set it up" message instead.
+      const hasDesign = existsSync(join(target, '.design', 'config.json'));
+      return { status: 200, json: { ok: true, path: target, hasDesign } };
+    }
+    if (res.authRequired) {
+      return { status: 401, json: { ok: false, authRequired: true, error: res.error } };
+    }
+    return {
+      status: 502,
+      json: { ok: false, error: res.error ?? 'Could not download the project.' },
+    };
+  }
+
+  return { identity, repos, createRepo: createRepoHandler, invite, clone };
 }
 
 export const __testing = { slugifyRepoName, parseGitHubRemote, USERNAME_RE };

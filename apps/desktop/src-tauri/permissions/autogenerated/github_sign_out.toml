@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-github-sign-out"
+description = "Enables the github_sign_out command without any pre-configured scope."
+commands.allow = ["github_sign_out"]
+
+[[permission]]
+identifier = "deny-github-sign-out"
+description = "Denies the github_sign_out command without any pre-configured scope."
+commands.deny = ["github_sign_out"]

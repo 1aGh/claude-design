@@ -1,14 +1,11 @@
-// Phase 28 (epic E3) Task 6 — the GitHub identity bar (sidebar header).
+// Phase 28 (epic E3) Task 6 — the GitHub identity rail (sidebar FOOTER).
 //
-// Built from the approved `.design/ui/GitHubIdentity.tsx` mock. Signed-out → the
-// "Sign in with GitHub" button (device flow); during sign-in → the device-code
-// modal (code + "open github.com" + waiting pulse); signed-in → avatar + login +
-// an account menu that opens the CreateProject modal (New / Open / Share) and
-// signs out. In a plain browser (no Tauri shell) it shows the "open the desktop
-// app" note instead of sign-in. Vocabulary stays plain — never "OAuth"/"token".
-//
-// Self-contained on purpose: it owns the device-code modal AND the CreateProject
-// overlay, so app.jsx mounts a single <IdentityBar /> with no prop threading.
+// Compact: just an avatar (signed in) or a small "Sign in with GitHub" button
+// (signed out), docked at the bottom of the sidebar. Clicking the avatar opens an
+// account menu UPWARD (New project / Pull a copy / Share / Sign out). Sign-in runs
+// GitHub's device flow (code modal). All chrome is the shell maude DS — solid
+// surfaces, the .st-dialog scrim+card treatment, no canvas-side `.panel`. In a
+// plain browser (no Tauri shell) the rail renders nothing.
 
 import { useEffect, useRef, useState } from 'react';
 
@@ -25,7 +22,7 @@ import {
 
 function Icon({ name, size = 16 }) {
   const p = {
-    'chevron-down': <polyline points="3.5 6 8 10.5 12.5 6" />,
+    'chevron-up': <polyline points="3.5 10 8 5.5 12.5 10" />,
     external: (
       <>
         <path d="M6 3.5H3.2A.7.7 0 0 0 2.5 4.2v8.6a.7.7 0 0 0 .7.7h8.6a.7.7 0 0 0 .7-.7V10" />
@@ -45,7 +42,13 @@ function Icon({ name, size = 16 }) {
         <line x1="3" y1="8" x2="13" y2="8" />
       </>
     ),
-    folder: <path d="M2 4.5h4l1.3 1.5H14V13H2z" />,
+    download: (
+      <>
+        <line x1="8" y1="2.5" x2="8" y2="10" />
+        <polyline points="4.5 7 8 10.5 11.5 7" />
+        <polyline points="3 12.8 3 13.6 13 13.6 13 12.8" />
+      </>
+    ),
     invite: (
       <>
         <circle cx="6" cy="5.5" r="2.5" />
@@ -63,17 +66,7 @@ function Icon({ name, size = 16 }) {
     ),
   }[name];
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {p}
     </svg>
   );
@@ -94,7 +87,7 @@ function initialsOf(identity) {
   return ini.toUpperCase();
 }
 
-function Avatar({ identity, size = 22 }) {
+function Avatar({ identity, size = 26 }) {
   return (
     <span className="gi-avatar" style={{ width: size, height: size }}>
       {initialsOf(identity)}
@@ -104,22 +97,20 @@ function Avatar({ identity, size = 22 }) {
 
 export default function IdentityBar() {
   const native = isNativeApp();
-  const [state, setState] = useState('loading'); // loading | out | in | browser
+  const [state, setState] = useState('loading'); // loading | out | in
   const [identity, setIdentity] = useState(null);
-  const [device, setDevice] = useState(null); // {user_code, verification_uri, expires_in}
+  const [device, setDevice] = useState(null);
   const [signing, setSigning] = useState(false);
   const [error, setError] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
-  const [view, setView] = useState(null); // null | 'new' | 'open' | 'share'
+  const [view, setView] = useState(null); // null | 'new' | 'get' | 'share'
   const [copied, setCopied] = useState(false);
   const unlistenRef = useRef(null);
+  const railRef = useRef(null);
 
   useEffect(() => {
     let alive = true;
-    if (!native) {
-      setState('browser');
-      return;
-    }
+    if (!native) return;
     (async () => {
       try {
         const signed = await isSignedIn();
@@ -130,12 +121,8 @@ export default function IdentityBar() {
           if (r.ok && r.json?.ok) {
             setIdentity({ login: r.json.login, name: r.json.name, avatar_url: r.json.avatar_url });
             setState('in');
-          } else {
-            setState('out');
-          }
-        } else {
-          setState('out');
-        }
+          } else setState('out');
+        } else setState('out');
       } catch {
         if (alive) setState('out');
       }
@@ -146,14 +133,22 @@ export default function IdentityBar() {
     };
   }, [native]);
 
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDoc = (e) => {
+      if (railRef.current && !railRef.current.contains(e.target)) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [menuOpen]);
+
   async function handleSignIn() {
     setError('');
     setSigning(true);
     setDevice(null);
     try {
       unlistenRef.current = onDeviceCode((payload) => setDevice(payload));
-      const login = await signIn(); // resolves when authorized
-      // Pull the full profile for the avatar/name.
+      const login = await signIn();
       const r = await fetchIdentity();
       setIdentity(
         r.ok && r.json?.ok
@@ -176,7 +171,7 @@ export default function IdentityBar() {
     try {
       await signOut();
     } catch {
-      /* keychain delete is idempotent; ignore */
+      /* idempotent */
     }
     setIdentity(null);
     setState('out');
@@ -193,81 +188,68 @@ export default function IdentityBar() {
     );
   }
 
-  // ── render ───────────────────────────────────────────────────────────────
-  let body;
-  if (state === 'loading') {
-    body = <div className="gi-idbar-hint">Checking your GitHub sign-in…</div>;
-  } else if (state === 'browser') {
-    body = (
-      <div className="gi-idbar-note">
-        <GitHubMark size={14} /> Open the Maude desktop app to sign in with GitHub.
-      </div>
-    );
-  } else if (state === 'out') {
-    body = (
-      <>
-        <button type="button" className="btn btn--primary gi-signin-btn" onClick={handleSignIn} disabled={signing}>
-          <GitHubMark size={16} /> {signing ? 'Starting…' : 'Sign in with GitHub'}
-        </button>
-        <p className="gi-idbar-hint">Connect your account to publish changes and create projects.</p>
-        {error && <p className="gi-idbar-err">{error}</p>}
-      </>
-    );
-  } else {
-    body = (
-      <>
-        <button
-          type="button"
-          className={'gi-account' + (menuOpen ? ' is-open' : '')}
-          aria-expanded={menuOpen}
-          aria-haspopup="menu"
-          onClick={() => setMenuOpen((v) => !v)}
-        >
-          <Avatar identity={identity} />
-          <span className="gi-account-tx">
-            <span className="gi-account-name">{identity?.name || identity?.login}</span>
-            <span className="gi-account-login">@{identity?.login}</span>
-          </span>
-          <span className="gi-account-caret">
-            <Icon name="chevron-down" size={14} />
-          </span>
-        </button>
-        {menuOpen && (
-          <div className="gi-menu panel" role="menu" aria-label="GitHub account">
-            <div className="gi-menu-hd">
-              <Avatar identity={identity} size={34} />
-              <span className="gi-menu-id">
-                <span className="gi-account-name">{identity?.name || identity?.login}</span>
-                <span className="gi-account-login">@{identity?.login} · connected</span>
-              </span>
-            </div>
-            <button type="button" className="gi-menu-item" role="menuitem" onClick={() => { setMenuOpen(false); setView('new'); }}>
-              <Icon name="plus" size={15} /> New project
-            </button>
-            <button type="button" className="gi-menu-item" role="menuitem" onClick={() => { setMenuOpen(false); setView('open'); }}>
-              <Icon name="folder" size={15} /> Open a project
-            </button>
-            <button type="button" className="gi-menu-item" role="menuitem" onClick={() => { setMenuOpen(false); setView('share'); }}>
-              <Icon name="invite" size={15} /> Share this project
-            </button>
-            <div className="gi-menu-sep" />
-            <button type="button" className="gi-menu-item gi-menu-item--danger" role="menuitem" onClick={handleSignOut}>
-              <Icon name="signout" size={15} /> Sign out
-            </button>
-          </div>
-        )}
-      </>
-    );
-  }
+  if (!native) return null;
 
   return (
-    <div className="gi-idbar">
-      {body}
+    <div className="gi-rail" ref={railRef}>
+      {state === 'loading' && <span className="gi-rail-hint">Checking GitHub…</span>}
+
+      {state === 'out' && (
+        <>
+          <button type="button" className="btn btn--primary btn--sm gi-rail-signin" onClick={handleSignIn} disabled={signing}>
+            <GitHubMark size={15} /> {signing ? 'Starting…' : 'Sign in with GitHub'}
+          </button>
+          {error && <span className="gi-rail-err" title={error}>{error}</span>}
+        </>
+      )}
+
+      {state === 'in' && (
+        <>
+          <button
+            type="button"
+            className={'gi-rail-account' + (menuOpen ? ' is-open' : '')}
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            onClick={() => setMenuOpen((v) => !v)}
+            title={`Signed in as @${identity?.login}`}
+          >
+            <Avatar identity={identity} />
+            <span className="gi-rail-login">@{identity?.login}</span>
+            <span className="gi-rail-caret">
+              <Icon name="chevron-up" size={13} />
+            </span>
+          </button>
+          {menuOpen && (
+            <div className="gi-menu" role="menu" aria-label="GitHub account">
+              <div className="gi-menu-hd">
+                <Avatar identity={identity} size={32} />
+                <span className="gi-menu-id">
+                  <span className="gi-menu-name">{identity?.name || identity?.login}</span>
+                  <span className="gi-menu-login">@{identity?.login} · connected</span>
+                </span>
+              </div>
+              <button type="button" className="gi-menu-item" role="menuitem" onClick={() => { setMenuOpen(false); setView('new'); }}>
+                <Icon name="plus" size={15} /> New project
+              </button>
+              <button type="button" className="gi-menu-item" role="menuitem" onClick={() => { setMenuOpen(false); setView('get'); }}>
+                <Icon name="download" size={15} /> Pull a local copy
+              </button>
+              <button type="button" className="gi-menu-item" role="menuitem" onClick={() => { setMenuOpen(false); setView('share'); }}>
+                <Icon name="invite" size={15} /> Share this project
+              </button>
+              <div className="gi-menu-sep" />
+              <button type="button" className="gi-menu-item gi-menu-item--danger" role="menuitem" onClick={handleSignOut}>
+                <Icon name="signout" size={15} /> Sign out
+              </button>
+            </div>
+          )}
+        </>
+      )}
 
       {device && (
         <div className="gi-modal" role="dialog" aria-modal="true" aria-label="Sign in with GitHub" onKeyDown={(e) => { if (e.key === 'Escape') setDevice(null); }}>
           <div className="gi-scrim" aria-hidden="true" onClick={() => setDevice(null)} />
-          <div className="gi-modal-card panel">
+          <div className="gi-dialog gi-dialog--code">
             <div className="gi-dc-head">
               <span className="gi-dc-marks"><GitHubMark size={26} /></span>
               <h2>Sign in with GitHub</h2>
@@ -298,10 +280,8 @@ export default function IdentityBar() {
               <span className="gi-pulse" aria-hidden="true" />
               <span>Waiting for you to authorize in your browser…</span>
             </div>
-            <div className="gi-modal-foot">
-              <button type="button" className="btn btn--ghost" onClick={() => setDevice(null)}>
-                Cancel
-              </button>
+            <div className="gi-dc-foot">
+              <button type="button" className="btn btn--ghost" onClick={() => setDevice(null)}>Cancel</button>
               <span className="gi-dc-foot-note">Nothing is stored until you authorize.</span>
             </div>
           </div>

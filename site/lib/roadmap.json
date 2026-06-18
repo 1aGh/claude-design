@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-18T12:16:27.574Z",
+  "generated": "2026-06-18T15:45:43.622Z",
   "currentPhase": null,
   "phases": [
     {
@@ -375,6 +375,17 @@
       "planPath": ".ai/plans/archive/phase-27-native-collab-git-layer.md",
       "archived": true,
       "phaseKey": "27"
+    },
+    {
+      "id": "phase-27.1-native-collab-history-view-wiring",
+      "title": "Phase 27.1 — Native Maude E2 follow-up: History-view \"click-to-preview\" + DiffView version picker",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — this is a wiring slice over machinery that already ships.",
+      "planPath": ".ai/plans/archive/phase-27.1-native-collab-history-view-wiring.md",
+      "archived": true,
+      "phaseKey": "27.1"
     },
     {
       "id": "phase-3.6-canvas-tsx-format",
@@ -892,6 +903,17 @@
       "planPath": ".ai/plans/phase-32-native-collab-distribution.md",
       "archived": false,
       "phaseKey": "32"
+    },
+    {
+      "id": "feature-per-user-camera-split-and-runtime-state-cleanup",
+      "title": "Feature: Split per-user camera out of versioned canvas meta + reconcile the runtime-state taxonomy",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — most of the machinery already exists; this is a surgical split + a three-file reconci...",
+      "planPath": ".ai/plans/feature-per-user-camera-split-and-runtime-state-cleanup.md",
+      "archived": false,
+      "phaseKey": null
     },
     {
       "id": "phase-7-acp-chat-sidebar",

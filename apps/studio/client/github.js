@@ -61,3 +61,10 @@ export const fetchIdentity = () => api('/_api/github/identity');
 export const listRepos = () => api('/_api/github/repos');
 export const createRepo = (body) => api('/_api/github/create-repo', { method: 'POST', body: JSON.stringify(body) });
 export const invite = (username) => api('/_api/github/invite', { method: 'POST', body: JSON.stringify({ username }) });
+export const cloneRepo = (body) => api('/_api/github/clone', { method: 'POST', body: JSON.stringify(body) });
+
+// ── Tauri shell commands for "pull a local copy" ────────────────────────────────
+/** Native folder picker → chosen parent dir, or null if cancelled. */
+export const pickDirectory = () => invoke('pick_directory');
+/** Switch the app to a local project folder (the freshly cloned copy). */
+export const openLocalProject = (path) => invoke('open_local_project', { path });

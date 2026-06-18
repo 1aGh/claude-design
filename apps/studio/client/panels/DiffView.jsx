@@ -93,6 +93,22 @@ function baseName(p) {
 function isRenderableCanvas(p) {
   return /\.(tsx|html)$/i.test(p || '');
 }
+function timeAgo(iso) {
+  try {
+    const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+    if (s < 60) return 'just now';
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ago`;
+    const d = Math.floor(h / 24);
+    if (d === 1) return 'yesterday';
+    if (d < 7) return `${d} days ago`;
+    return new Date(iso).toLocaleDateString();
+  } catch {
+    return '';
+  }
+}
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 
 /** A clean canvas iframe inside a zoom/pan viewport. `view` is the SHARED locked
@@ -206,7 +222,7 @@ const CHOICES = [
   },
 ];
 
-export default function DiffView({ target, cfg, onResolve, onRestore, onClose }) {
+export default function DiffView({ target, cfg, loadLog, onResolve, onRestore, onClose }) {
   const [mode, setMode] = useState('side'); // 'side' | 'overlay'
   const [choice, setChoice] = useState('both');
   const [view, setView] = useState({ scale: 1, x: 0, y: 0 });
@@ -214,6 +230,35 @@ export default function DiffView({ target, cfg, onResolve, onRestore, onClose })
   const [busy, setBusy] = useState(false);
   const sheetRef = useRef(null);
   const overlayRef = useRef(null);
+
+  // phase-27.1 — which saved version the "before" pane renders. Seeded from the
+  // opener (History click passes a specific version; a plain compare passes
+  // HEAD), then re-pointable in-place via the "Saved version" picker.
+  const tgtFile = target?.file;
+  const tgtBeforeSha = target?.beforeSha;
+  const [beforeSha, setBeforeSha] = useState(tgtBeforeSha || 'HEAD');
+  const [versions, setVersions] = useState(null); // per-file saved versions, or null while loading
+
+  // Re-seed when the opener hands us a different file/version.
+  useEffect(() => {
+    setBeforeSha(tgtBeforeSha || 'HEAD');
+  }, [tgtFile, tgtBeforeSha]);
+
+  // Load the open file's saved versions for the picker (per-file History).
+  useEffect(() => {
+    if (!tgtFile || !loadLog) {
+      setVersions(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const entries = (await loadLog(tgtFile)) || [];
+      if (!cancelled) setVersions(entries);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tgtFile, loadLog]);
 
   useEffect(() => {
     if (!target) return;
@@ -233,11 +278,17 @@ export default function DiffView({ target, cfg, onResolve, onRestore, onClose })
   }, [target, onClose]);
 
   if (!target) return null;
-  const { file, beforeSha = 'HEAD', conflict } = target;
+  const { file, conflict } = target;
   const renderable = isRenderableCanvas(file);
   const opts = { thumbnail: true, hideChrome: true };
   const afterSrc = renderable ? canvasUrl(file, cfg, opts) : null;
   const beforeSrc = renderable ? canvasUrl(file, cfg, { ...opts, sha: beforeSha }) : null;
+  // The picker offers "Last saved" (HEAD) + each per-file saved version. Shown
+  // only in the compare view (not the conflict resolver) once history loads.
+  const showPicker = !conflict && renderable && !!loadLog && !!(versions && versions.length);
+  const selectedVersion =
+    beforeSha !== 'HEAD' && versions ? versions.find((v) => v.sha === beforeSha) : null;
+  const beforeWhen = selectedVersion ? timeAgo(selectedVersion.date) : 'last saved';
 
   function splitDrag(e) {
     const box = overlayRef.current?.getBoundingClientRect();
@@ -257,7 +308,7 @@ export default function DiffView({ target, cfg, onResolve, onRestore, onClose })
 
   return (
     <div
-      className="st-scrim"
+      className="st-scrim dv-scrim"
       role="presentation"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -280,6 +331,24 @@ export default function DiffView({ target, cfg, onResolve, onRestore, onClose })
             <Icon name="file" size={13} /> {baseName(file)}
           </span>
           <span className="dv-spacer" />
+          {showPicker && (
+            <label className="dv-verpick">
+              <span className="dv-verpick-lbl">Compare against</span>
+              <select
+                className="dv-verpick-sel"
+                value={beforeSha}
+                onChange={(e) => setBeforeSha(e.target.value)}
+                aria-label={`Saved version of ${baseName(file)} to compare against`}
+              >
+                <option value="HEAD">Last saved</option>
+                {versions.map((v) => (
+                  <option key={v.sha} value={v.sha}>
+                    {`${v.message || 'Saved version'} · ${timeAgo(v.date)}`}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           {!conflict && renderable && (
             <div className="dv-seg" role="group" aria-label="Comparison mode">
               <button
@@ -423,7 +492,7 @@ export default function DiffView({ target, cfg, onResolve, onRestore, onClose })
                   <div className="dv-col">
                     <div className="dv-col-hd">
                       <span className="dv-col-tag is-before">Saved version</span>
-                      <span className="dv-col-who">last saved</span>
+                      <span className="dv-col-who">{beforeWhen}</span>
                     </div>
                     <div className="dv-thumb">
                       <CanvasView

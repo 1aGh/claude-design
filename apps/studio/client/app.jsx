@@ -1424,10 +1424,6 @@ function Sidebar({
       aria-label="Files"
       data-tour="sidebar"
     >
-      {/* Phase 28 (E3) — GitHub identity lives in the sidebar header: sign in,
-          connected account + New/Open/Share, sign out. Self-contained (owns its
-          device-code + CreateProject modals). */}
-      <IdentityBar />
       <div className="st-sb-hd">
         <span className="st-sb-title">Files</span>
         <div className="st-sb-hd-actions">
@@ -1602,6 +1598,10 @@ function Sidebar({
           );
         })}
       </div>
+      {/* Phase 28 (E3) — GitHub identity as a compact avatar docked at the BOTTOM:
+          sign in, connected account + New/Pull/Share, sign out. Self-contained
+          (owns its device-code + CreateProject dialogs). Renders nothing in browser. */}
+      <IdentityBar />
     </nav>
   );
 }
@@ -5840,9 +5840,13 @@ function App() {
     return res;
   }, [gitPostJson, refreshGitStatus]);
 
-  const gitLoadLog = useCallback(async () => {
+  // `path` (optional) scopes History to one canvas — the per-file version list
+  // behind the History click-to-preview + DiffView "Saved version" picker
+  // (phase-27.1). Omit for the repo-wide log.
+  const gitLoadLog = useCallback(async (path) => {
     try {
-      const r = await fetch('/_api/git/log?limit=40');
+      const qs = '/_api/git/log?limit=40' + (path ? `&path=${encodeURIComponent(path)}` : '');
+      const r = await fetch(qs);
       if (!r.ok) return [];
       const data = await r.json();
       return data.entries || [];
@@ -6827,6 +6831,14 @@ function App() {
               loadLog={gitLoadLog}
               onOpenCanvas={(p) => openTab(p)}
               onOpenDiff={(file) => setDiffTarget({ file, beforeSha: 'HEAD', conflict: false })}
+              activeCanvas={
+                activePath && activePath !== SYSTEM_TAB && /\.(tsx|html)$/i.test(activePath)
+                  ? activePath
+                  : null
+              }
+              onPreviewVersion={(sha) =>
+                setDiffTarget({ file: activePath, beforeSha: sha, conflict: false })
+              }
             />
           ) : inspectorOpen ? (
             <InspectorPanel
@@ -6900,6 +6912,7 @@ function App() {
         <DiffView
           target={diffTarget}
           cfg={cfg}
+          loadLog={gitLoadLog}
           onClose={() => setDiffTarget(null)}
           onRestore={async (file) => {
             await gitDiscard([file]);

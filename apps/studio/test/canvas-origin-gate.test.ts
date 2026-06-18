@@ -89,6 +89,7 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         '/_api/github/repos',
         '/_api/github/create-repo',
         '/_api/github/invite',
+        '/_api/github/clone',
         '/package.json',
       ]) {
         expect(await code(p)).toBe(403);

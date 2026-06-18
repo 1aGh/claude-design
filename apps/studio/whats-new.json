@@ -7,7 +7,7 @@
       "date": null,
       "kind": "feature",
       "title": "See, save & publish — no terminal",
-      "summary": "A new Changes panel (View ▸ Changes, or ⌘⇧G) shows exactly what you've changed, with live colour-coded badges right in the file tree. Save a version with a message, Publish it to share with your team, or Get the latest they published — all in plain language, never a command line. And when a canvas changed, compare a real rendered before & after: both sides live with locked zoom & pan, an overlay wipe, and a simple Keep mine / theirs / both picker so nothing is ever lost.",
+      "summary": "A new Changes panel (View ▸ Changes, or ⌘⇧G) shows exactly what you've changed, with live colour-coded badges right in the file tree. Save a version with a message, Publish it to share with your team, or Get the latest they published — all in plain language, never a command line. And when a canvas changed, compare a real rendered before & after: both sides live with locked zoom & pan, an overlay wipe, and a simple Keep mine / theirs / both picker so nothing is ever lost. Open History to browse every saved version of a canvas and preview any one of them — and pick which past version to compare against, right in the diff.",
       "surface": "design-ui"
     },
     {
