@@ -7,7 +7,7 @@
   "opt_out_scope": "palette",
   "kind": "canvas",
   "brief_sha": "phase27dv",
-  "status": "ready-for-handoff",
+  "status": "handed-off",
   "sections": [
     {
       "id": "diff",
@@ -56,5 +56,6 @@
     "y": 190.68779919802404,
     "zoom": 0.4745599413406584
   },
-  "last_modified": "2026-06-17T16:32:29.249Z"
+  "last_modified": "2026-06-17T16:32:29.249Z",
+  "handoffCommit": "97859dce114ceee81f7e94c9d047a40c535fd337"
 }
