@@ -27,7 +27,7 @@ use tokio::time::sleep;
 
 /// The Maude GitHub OAuth App client id. NOT a secret. Replace the placeholder
 /// once the `1aGh` OAuth App exists (or set `MAUDE_GITHUB_CLIENT_ID` at runtime).
-const GITHUB_CLIENT_ID: &str = "REPLACE_WITH_MAUDE_OAUTH_APP_CLIENT_ID";
+const GITHUB_CLIENT_ID: &str = "Ov23liQZXn0jbRdYbKkk";
 const CLIENT_ID_PLACEHOLDER: &str = "REPLACE_WITH_MAUDE_OAUTH_APP_CLIENT_ID";
 
 /// Scopes: `repo` (create private/public repos + manage collaborators) and
