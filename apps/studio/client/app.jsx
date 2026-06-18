@@ -15,6 +15,7 @@ import { resolveToolCursor } from '../canvas-cursors.ts';
 import { canvasUrl } from './canvas-url.js';
 import DiffView from './panels/DiffView.jsx';
 import GitPanel from './panels/GitPanel.jsx';
+import IdentityBar from './panels/IdentityBar.jsx';
 import { TourOverlay } from './tour/overlay.jsx';
 import { USAGE_TOUR } from './tour/usage-tour.js';
 import { useWhatsNew, WhatsNewPanel, WhatsNewToast } from './whats-new.jsx';
@@ -1423,6 +1424,10 @@ function Sidebar({
       aria-label="Files"
       data-tour="sidebar"
     >
+      {/* Phase 28 (E3) — GitHub identity lives in the sidebar header: sign in,
+          connected account + New/Open/Share, sign out. Self-contained (owns its
+          device-code + CreateProject modals). */}
+      <IdentityBar />
       <div className="st-sb-hd">
         <span className="st-sb-title">Files</span>
         <div className="st-sb-hd-actions">

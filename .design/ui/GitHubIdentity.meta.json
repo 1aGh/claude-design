@@ -1,0 +1,34 @@
+{
+  "title": "GitHubIdentity",
+  "subtitle": "Sign in with GitHub — OAuth device flow → OS keychain · IdentityBar (signed-out / connected / sign-out) · plain words, no token paste",
+  "brief": "Phase 28 (native collab app, epic E3). The IdentityBar lives in the sidebar header: 'Sign in with GitHub' when signed out, avatar + name when signed in. Sign-in is GitHub's OAuth device flow — Maude shows a short code, you enter it on github.com/login/device, the token lands in the OS keychain (never on disk). Vocabulary stays plain: 'Sign in', 'Connected', 'Sign out' — never 'OAuth', 'token', 'PAT'. Lifts the Studio Hub artboard-G returning-operator sign-in card anatomy + the GitPanel shell/menubar docking; swaps the HUB_SECRET paste for the device-flow code.",
+  "platform": "desktop",
+  "designSystem": "maude",
+  "opt_out_scope": "palette",
+  "kind": "canvas",
+  "brief_sha": "phase28gi",
+  "sections": [
+    {
+      "id": "identity",
+      "title": "GitHubIdentity — sign in, connected, sign out",
+      "subtitle": "MAUDE/GH · 5 artboards · OAuth device flow → OS keychain · plain words, no token paste"
+    }
+  ],
+  "artboards": [
+    { "id": "signed-out", "label": "A · Not signed in — Sign in with GitHub", "note": "IdentityBar docked in the sidebar header: GitHub sign-in button + one-line why. Menubar still carries the repo/branch context." },
+    { "id": "device-code", "label": "B · Device code — enter this code on github.com", "note": "Device-flow modal over a dimmed shell: GitHub mark, two steps (open github.com/login/device → enter code), the big mono code WDJB-MJHT with Copy, a pulse 'waiting to authorize' status, Cancel + expiry note." },
+    { "id": "signed-in", "label": "C · Connected — account menu open", "note": "IdentityBar signed-in (avatar + name + @login) with the account dropdown open: View profile on GitHub · Sign out." },
+    { "id": "sign-out", "label": "D · Sign out confirmation", "note": "Small confirm modal: 'Sign out of GitHub?' — projects stay local; you'll need to sign in to publish/create. Stay signed in / Sign out (danger)." },
+    { "id": "states", "label": "E · Edge states — expired · cancelled · connected · browser-only", "note": "Callout column: code expired (warn + start again) · sign-in cancelled (error + try again) · connected/token-in-keychain (success) · browser-not-app degradation (info)." }
+  ],
+  "layout": {
+    "artboards": [
+      { "id": "signed-out", "x": 0, "y": 0 },
+      { "id": "device-code", "x": 1480, "y": 0 },
+      { "id": "signed-in", "x": 2960, "y": 0 },
+      { "id": "sign-out", "x": 4440, "y": 0 },
+      { "id": "states", "x": 5920, "y": 0 }
+    ]
+  },
+  "status": "ready-for-handoff"
+}

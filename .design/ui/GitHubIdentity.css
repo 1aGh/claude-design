@@ -1,0 +1,288 @@
+/*
+ * GitHubIdentity.css — chrome for the "Sign in with GitHub" identity surface (Phase 28).
+ * Every value is a var(--*) token from system/maude/colors_and_type.css.
+ * Local classes are prefixed `gi-`; everything that already exists in the maude DS
+ * (.panel / .btn / .callout / .input / .field / .kbd / .tree-row / .chip) is LIFTED,
+ * not re-declared. The shell scaffold (menubar / canvas-peek / file tree / skeleton)
+ * mirrors GitPanel.css so the two phase-27/28 surfaces read as one app.
+ */
+
+/* ── artboard frame: the studio shell backdrop ──────────────────────────────── */
+.gi-shell {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font-family: var(--font-body);
+  font-size: var(--type-base);
+  line-height: var(--lh-base);
+  overflow: hidden;
+}
+.gi-canvas-bleed {
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+}
+
+/* ── menubar ─────────────────────────────────────────────────────────────────── */
+.gi-menubar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  height: 44px;
+  flex: 0 0 44px;
+  padding: 0 var(--space-4);
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border-default);
+}
+.gi-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg-0);
+}
+.gi-mark-spark { color: var(--accent); }
+.gi-context {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+  color: var(--fg-1);
+}
+.gi-context b { color: var(--fg-0); font-weight: 600; }
+.gi-context .gi-sep { color: var(--fg-3); }
+.gi-spacer { flex: 1; }
+.gi-avatars { display: inline-flex; }
+
+/* ── the hue-tinted account avatar (mock stand-in for avatar_url) ───────────── */
+.gi-avatar {
+  margin-left: -6px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--bg-1);
+  display: grid;
+  place-items: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent-fg);
+  flex: 0 0 auto;
+}
+.gi-avatars .gi-avatar:first-child { margin-left: 0; }
+
+.gi-main { flex: 1; display: flex; min-height: 0; position: relative; }
+
+/* ── left sidebar: IdentityBar header + file tree ───────────────────────────── */
+.gi-side {
+  width: 264px;
+  flex: 0 0 264px;
+  background: var(--bg-1);
+  border-right: 1px solid var(--border-default);
+  display: flex;
+  flex-direction: column;
+}
+.gi-side-label {
+  height: 30px;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-4);
+  margin-top: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+  border-top: 1px solid var(--border-subtle);
+}
+.gi-tree-body { padding: var(--space-1) var(--space-2); overflow: hidden; }
+.gi-row[data-depth="1"] { padding-left: var(--space-5); }
+.gi-row-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gi-row-icon { color: var(--fg-2); flex: 0 0 auto; }
+
+/* ── the IdentityBar — sits at the top of the sidebar ───────────────────────── */
+.gi-idbar {
+  padding: var(--space-4) var(--space-3) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  position: relative;
+}
+.gi-signin-btn { width: 100%; justify-content: center; }
+.gi-idbar-hint {
+  margin: 0;
+  font-size: var(--type-sm);
+  line-height: var(--lh-sm);
+  color: var(--fg-2);
+}
+
+/* signed-in account button (avatar + name + caret) — lifts .tree-row hover feel */
+.gi-account {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-2);
+  color: var(--fg-0);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color var(--dur-soft) var(--ease-out), background var(--dur-soft) var(--ease-out);
+}
+.gi-account:hover { border-color: var(--border-strong); background: var(--bg-3); }
+.gi-account.is-open { border-color: var(--accent); background: var(--bg-3); }
+.gi-account:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.gi-account-tx { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.gi-account-name { font-weight: 600; color: var(--fg-0); font-size: var(--type-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gi-account-login { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); }
+.gi-account-caret { color: var(--fg-2); flex: 0 0 auto; }
+
+/* the account dropdown — lifts .panel material */
+.gi-menu {
+  position: absolute;
+  top: calc(100% - var(--space-1));
+  left: var(--space-3);
+  right: var(--space-3);
+  z-index: 5;
+  padding: var(--space-2);
+  box-shadow: var(--shadow-lg);
+}
+.gi-menu-hd {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: var(--space-1);
+}
+.gi-menu-hd .gi-avatar { margin-left: 0; }
+.gi-menu-id { display: flex; flex-direction: column; min-width: 0; }
+.gi-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-1);
+  font-size: var(--type-sm);
+  cursor: pointer;
+  text-align: left;
+}
+.gi-menu-item svg { color: var(--fg-2); }
+.gi-menu-item:hover { background: var(--bg-2); color: var(--fg-0); }
+.gi-menu-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.gi-menu-item--danger { color: var(--status-error); }
+.gi-menu-item--danger svg { color: var(--status-error); }
+.gi-menu-item--danger:hover { background: color-mix(in oklab, var(--status-error) 14%, transparent); color: var(--status-error); }
+.gi-menu-sep { height: 1px; background: var(--border-subtle); margin: var(--space-1) 0; }
+
+/* ── canvas peek ─────────────────────────────────────────────────────────────── */
+.gi-stage { flex: 1; min-width: 0; position: relative; display: grid; place-items: center; padding: var(--space-7); }
+.gi-mini { width: 320px; box-shadow: var(--shadow-md); }
+.gi-mini-bar { display: flex; gap: 5px; align-items: center; height: 24px; padding: 0 var(--space-3); border-bottom: 1px solid var(--border-subtle); background: var(--bg-2); }
+.gi-mini-dot { width: 7px; height: 7px; border-radius: var(--radius-pill); background: var(--border-strong); }
+.gi-mini-body { padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-4); }
+.gi-sk { background: var(--bg-3); border-radius: var(--radius-xs); height: 10px; }
+.gi-sk.is-accent { background: var(--accent-muted); height: 26px; width: 46%; border-radius: var(--radius-sm); }
+
+/* ── scrim + modals ──────────────────────────────────────────────────────────── */
+.gi-scrim { position: absolute; inset: 0; background: color-mix(in oklch, var(--bg-0) 64%, transparent); backdrop-filter: blur(1.5px); z-index: 8; }
+.gi-modal { position: absolute; inset: 0; display: grid; place-items: center; z-index: 9; padding: var(--space-6); }
+.gi-modal-card {
+  width: min(460px, 92%);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.gi-modal-card--sm { width: min(420px, 92%); gap: var(--space-4); }
+.gi-modal-card h2 { margin: 0; font-family: var(--font-display); font-size: var(--type-lg); font-weight: 600; color: var(--fg-0); }
+.gi-modal-foot { display: flex; align-items: center; gap: var(--space-3); }
+.gi-modal-foot--end { justify-content: flex-end; }
+
+/* ── device-code modal ───────────────────────────────────────────────────────── */
+.gi-dc-head { display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--space-3); }
+.gi-dc-marks { display: grid; place-items: center; width: 52px; height: 52px; border-radius: var(--radius-lg); background: var(--bg-2); border: 1px solid var(--border-default); }
+.gi-gh-glyph { color: var(--fg-0); }
+.gi-dc-head p { margin: 0; color: var(--fg-2); font-size: var(--type-sm); line-height: var(--lh-base); max-width: 36ch; }
+
+.gi-dc-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.gi-dc-steps li { display: flex; align-items: flex-start; gap: var(--space-3); }
+.gi-dc-step-n {
+  flex: 0 0 auto;
+  width: 22px; height: 22px;
+  display: grid; place-items: center;
+  border-radius: var(--radius-pill);
+  background: var(--accent-tint);
+  border: 1px solid var(--accent-muted);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  font-weight: 600;
+}
+.gi-dc-step-tx { font-size: var(--type-sm); color: var(--fg-1); line-height: var(--lh-base); display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.gi-dc-url { font-family: var(--font-mono); color: var(--fg-0); background: var(--bg-2); border: 1px solid var(--border-subtle); border-radius: var(--radius-xs); padding: 1px var(--space-2); }
+.gi-dc-open { margin-left: var(--space-1); }
+
+/* the verification code — the visual hero of this screen */
+.gi-code {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-2);
+}
+.gi-code-val {
+  font-family: var(--font-mono);
+  font-size: var(--type-2xl, 30px);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  color: var(--fg-0);
+}
+.gi-code-copy { flex: 0 0 auto; }
+
+.gi-dc-status { display: flex; align-items: center; gap: var(--space-3); font-size: var(--type-sm); color: var(--fg-2); }
+.gi-pulse {
+  width: 9px; height: 9px; flex: 0 0 auto;
+  border-radius: var(--radius-pill);
+  background: var(--status-info);
+  box-shadow: 0 0 0 0 var(--status-info);
+  animation: gi-pulse 1.8s var(--ease-out) infinite;
+}
+@keyframes gi-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--status-info) 55%, transparent); }
+  70% { box-shadow: 0 0 0 7px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.gi-dc-foot-note { font-size: var(--type-xs); color: var(--fg-2); line-height: var(--lh-sm); }
+.gi-so-body { margin: 0; color: var(--fg-1); font-size: var(--type-sm); line-height: var(--lh-base); }
+.gi-so-body strong { color: var(--fg-0); }
+
+/* ── states column (artboard E) ─────────────────────────────────────────────── */
+.gi-states-frame { position: absolute; inset: 0; background: var(--bg-0); color: var(--fg-0); font-family: var(--font-body); overflow: auto; }
+.gi-states { padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-5); }
+.gi-state-blk { display: flex; flex-direction: column; gap: var(--space-2); }
+.gi-state-blk h3 { margin: 0; font-size: var(--type-sm); font-weight: 600; color: var(--fg-1); }
+.gi-state-glyph { flex: 0 0 auto; display: inline-flex; }
+.gi-state-act { display: block; margin-top: var(--space-3); }
+
+@media (prefers-reduced-motion: reduce) {
+  .gi-pulse { animation: none; }
+}

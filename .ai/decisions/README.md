@@ -10,6 +10,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
 
+- [DDR-114: GitHub identity implementation — OAuth App (device flow) boundary, hand-rolled REST, loopback token bridge](DDR-114-github-oauth-app-implementation-boundary.md) — 2026-06-18, native-app/github/oauth/device-flow/octokit/keychain/security/phase-28/e3
 - [DDR-113: Visual diff renders the "before" by building the canvas at a git ref (`?sha=`)](DDR-113-visual-diff-historical-render.md) — 2026-06-18, native-app/git/visual-diff/canvas-render/security/dos/phase-27/e2
 - [DDR-112: Staging model — simplified "select files to save", no git index](DDR-112-simplified-staging-model.md) — 2026-06-17, native-app/git/staging/commit/vocabulary/phase-27/e2
 - [DDR-111: Managed projects directory — `~/Documents/Maude Projects/`](DDR-111-managed-projects-directory.md) — 2026-06-17, native-app/git/projects-dir/gitignore/phase-27/phase-28/e2/e3

@@ -1,0 +1,70 @@
+{
+  "title": "CreateProject",
+  "subtitle": "Start, open, and share a project from inside Maude — create a private GitHub repo, clone+open it, invite by username (no terminal, no GitHub.com)",
+  "brief": "Phase 28 (native collab app, epic E3). The 'New project' wizard creates a GitHub repo (private by default for non-technical safety — DDR), then clones + opens it as a working Maude project. 'Open existing' lists your repos (listUserRepos) or takes a pasted link. The share sheet invites collaborators by GitHub username and copies an invite link. Vocabulary stays plain — 'project' (repo), 'private/public', 'Invite', 'people with access' — never 'repository', 'clone', 'remote', 'collaborator API'. Lifts the GitPanel shell + Studio Hub card/field anatomy.",
+  "platform": "desktop",
+  "designSystem": "maude",
+  "opt_out_scope": "palette",
+  "kind": "canvas",
+  "brief_sha": "phase28cp",
+  "sections": [
+    {
+      "id": "project",
+      "title": "CreateProject — start, open, share",
+      "subtitle": "MAUDE/GH · 4 artboards · create repo (private default) → clone → open · invite by username"
+    }
+  ],
+  "artboards": [
+    {
+      "id": "new-project",
+      "label": "A · Create a new project",
+      "note": "Wizard modal over the shell: project name, who-can-see-it segmented (Private default / Public) + helper, optional description, footer shows the github.com/owner/slug it will create, Cancel / Create project."
+    },
+    {
+      "id": "open-existing",
+      "label": "B · Open an existing project",
+      "note": "Modal with tabs (Your projects / Paste a link): search + a scrollable list of your repos (visibility lock/globe + owner + edited-when + go arrow), footer Open project."
+    },
+    {
+      "id": "creating",
+      "label": "C · Setting up your project",
+      "note": "Progress modal: Maude mark + 'Setting up Acme Rebrand' + a 3-step stepper (created on GitHub ✓ → setting up your copy (spinner) → opening in Maude)."
+    },
+    {
+      "id": "share",
+      "label": "D · Share — invite by GitHub username",
+      "note": "Share sheet: @username invite field + Invite, an 'Invited @anovak' success callout, People-with-access list (Owner / Can edit / Pending chips), Copy invite link + Done."
+    }
+  ],
+  "layout": {
+    "artboards": [
+      {
+        "id": "new-project",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "open-existing",
+        "x": 1480,
+        "y": 0
+      },
+      {
+        "id": "creating",
+        "x": 2960,
+        "y": 0
+      },
+      {
+        "id": "share",
+        "x": 4440,
+        "y": 0
+      }
+    ]
+  },
+  "status": "ready-for-handoff",
+  "viewport": {
+    "x": -1540.8698199617306,
+    "y": 168.97055073973513,
+    "zoom": 0.36038548423718475
+  },
+  "last_modified": "2026-06-18T12:46:38.573Z"
+}

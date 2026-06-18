@@ -11,7 +11,9 @@
 // (SIGKILL is uncatchable and will orphan — unavoidable for any process; a relaunch
 // detects the stale `_server.json` server.)
 
+mod keychain;
 mod menu;
+mod oauth;
 mod server_json;
 mod sidecar;
 
@@ -96,6 +98,12 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![
+            oauth::github_sign_in,
+            oauth::github_open_verification,
+            keychain::github_is_signed_in,
+            keychain::github_sign_out,
+        ])
         .menu(menu::build_menu)
         .on_menu_event(|app, event| {
             if event.id().as_ref() == menu::MENU_OPEN_PROJECT {
@@ -137,6 +145,12 @@ pub fn run() {
             // connection refused → intermittent white screen.
             let design_root = project_root.join(".design");
             let _ = std::fs::remove_file(design_root.join("_server.json"));
+
+            // 0. Start the loopback GitHub-token bridge BEFORE spawning the sidecar,
+            // so its endpoint+key are available to pass to the child (DDR-108).
+            if let Err(e) = keychain::start_token_bridge() {
+                eprintln!("[maude] WARN: token bridge did not start (GitHub features disabled): {e}");
+            }
 
             // 1. Spawn the dev-server sidecar.
             if let Err(e) = sidecar::spawn_server(&handle) {

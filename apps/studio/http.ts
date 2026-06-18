@@ -18,6 +18,7 @@ import { isFormat, isScope, runExport } from './exporters/index.ts';
 import type { ActiveJsonShape } from './exporters/scope.ts';
 import { createGitEndpoints } from './git/endpoints.ts';
 import { gitShowFile } from './git/service.ts';
+import { createGitHubEndpoints } from './github/endpoints.ts';
 import type { Inspect } from './inspect.ts';
 import { canvasSlug, writeLocator } from './locator.ts';
 import { DEV_SERVER_ROOT } from './paths.ts';
@@ -540,6 +541,10 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
   // can never reach status/commit/publish/get-latest. http.ts owns the gating;
   // git/endpoints.ts owns the orchestration.
   const gitApi = createGitEndpoints(ctx);
+  // Phase 28 (E3) — `/_api/github/*`. Same dual-allowlist rule: main-origin only,
+  // and every route is token-bearing (server-held keychain token via the loopback
+  // bridge), so all four also carry a loopback-Host check.
+  const githubApi = createGitHubEndpoints(ctx);
   const gitJson = (r: { status: number; json: unknown }) =>
     Response.json(r.json, { status: r.status, headers: { 'Cache-Control': 'no-store' } });
 
@@ -846,6 +851,47 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
         return new Response('get latest requires a local request', { status: 403 });
       const body = await readJson<unknown>(req, 8 * 1024);
       return gitJson(await gitApi.pull(body));
+    },
+
+    // ── Phase 28 (E3) — GitHub identity & remote. Sign-in/out + keychain live in
+    // the Tauri shell (oauth.rs/keychain.rs commands); these endpoints use the
+    // server-held token (loopback bridge → token.ts) for the REST calls. MAIN-ORIGIN
+    // ONLY (absent from CANVAS_SAFE_API + startCanvasServer) and loopback-Host gated
+    // since every one is token-bearing. (Sign-out is the `github_sign_out` Tauri
+    // command — the dev-server can't touch the OS keychain — so there is no
+    // DELETE /_api/github/identity here; see DDR-114.)
+    '/_api/github/identity': async (req: Request) => {
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      return gitJson(await githubApi.identity());
+    },
+
+    '/_api/github/repos': async (req: Request) => {
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      return gitJson(await githubApi.repos());
+    },
+
+    '/_api/github/create-repo': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      const body = await readJson<unknown>(req, 8 * 1024);
+      return gitJson(await githubApi.createRepo(body));
+    },
+
+    '/_api/github/invite': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      const body = await readJson<unknown>(req, 8 * 1024);
+      return gitJson(await githubApi.invite(body));
     },
 
     '/_api/edit-css': async (req: Request) => {

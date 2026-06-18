@@ -1,0 +1,145 @@
+/*
+ * CreateProject.css — chrome for the start/open/share project surface (Phase 28).
+ * Every value is a var(--*) token from system/maude/colors_and_type.css.
+ * Local classes are prefixed `cp-`; DS classes (.panel / .btn / .callout / .input /
+ * .field / .textarea / .seg / .kbd / .chip / .tab / .tree-row) are LIFTED.
+ * The shell scaffold mirrors GitPanel.css / GitHubIdentity.css.
+ */
+
+.cp-shell {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  background: var(--bg-0); color: var(--fg-0);
+  font-family: var(--font-body); font-size: var(--type-base); line-height: var(--lh-base);
+  overflow: hidden;
+}
+.cp-canvas-bleed {
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+}
+
+/* ── menubar ─────────────────────────────────────────────────────────────────── */
+.cp-menubar { display: flex; align-items: center; gap: var(--space-4); height: 44px; flex: 0 0 44px; padding: 0 var(--space-4); background: var(--bg-1); border-bottom: 1px solid var(--border-default); }
+.cp-mark { display: inline-flex; align-items: center; gap: var(--space-2); font-family: var(--font-display); font-weight: 600; letter-spacing: var(--tracking-tight); color: var(--fg-0); }
+.cp-mark-spark { color: var(--accent); }
+.cp-context { display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-3); border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--bg-2); font-family: var(--font-mono); font-size: var(--type-sm); color: var(--fg-1); }
+.cp-context b { color: var(--fg-0); font-weight: 600; }
+.cp-context .cp-sep { color: var(--fg-2); }
+.cp-spacer { flex: 1; }
+.cp-avatars { display: inline-flex; }
+.cp-avatar { margin-left: -6px; border-radius: var(--radius-pill); border: 1.5px solid var(--bg-1); display: grid; place-items: center; font-family: var(--font-mono); font-size: 10px; font-weight: 600; color: var(--accent-fg); flex: 0 0 auto; }
+.cp-avatars .cp-avatar:first-child { margin-left: 0; }
+
+.cp-main { flex: 1; display: flex; min-height: 0; position: relative; }
+
+/* ── left sidebar: New project + your projects ──────────────────────────────── */
+.cp-side { width: 264px; flex: 0 0 264px; background: var(--bg-1); border-right: 1px solid var(--border-default); display: flex; flex-direction: column; padding: var(--space-3); gap: var(--space-2); }
+.cp-newbtn { width: 100%; justify-content: center; }
+.cp-side-label { margin-top: var(--space-2); padding: 0 var(--space-1); font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-2); }
+.cp-side-list { display: flex; flex-direction: column; gap: 1px; }
+.cp-side-proj { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-2); border-radius: var(--radius-sm); color: var(--fg-1); cursor: pointer; }
+.cp-side-proj:hover { background: var(--bg-2); color: var(--fg-0); }
+.cp-side-proj.is-active { background: var(--accent-tint); color: var(--fg-0); }
+.cp-side-vis { color: var(--fg-2); flex: 0 0 auto; }
+.cp-side-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--type-sm); }
+
+/* ── canvas peek ─────────────────────────────────────────────────────────────── */
+.cp-stage { flex: 1; min-width: 0; position: relative; display: grid; place-items: center; padding: var(--space-7); }
+.cp-mini { width: 320px; box-shadow: var(--shadow-md); }
+.cp-mini-bar { display: flex; gap: 5px; align-items: center; height: 24px; padding: 0 var(--space-3); border-bottom: 1px solid var(--border-subtle); background: var(--bg-2); }
+.cp-mini-dot { width: 7px; height: 7px; border-radius: var(--radius-pill); background: var(--border-strong); }
+.cp-mini-body { padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-4); }
+.cp-sk { background: var(--bg-3); border-radius: var(--radius-xs); height: 10px; }
+.cp-sk.is-accent { background: var(--accent-muted); height: 26px; width: 46%; border-radius: var(--radius-sm); }
+
+/* ── scrim + modal shell ─────────────────────────────────────────────────────── */
+.cp-scrim { position: absolute; inset: 0; background: color-mix(in oklch, var(--bg-0) 64%, transparent); backdrop-filter: blur(1.5px); z-index: 8; }
+.cp-modal { position: absolute; inset: 0; display: grid; place-items: center; z-index: 9; padding: var(--space-6); }
+.cp-modal-card { width: min(540px, 94%); max-height: 88%; display: flex; flex-direction: column; box-shadow: var(--shadow-lg); overflow: hidden; }
+.cp-seg button:focus-visible, .cp-tabs .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cp-modal-card--wide { width: min(620px, 94%); }
+.cp-modal-card--sm { width: min(440px, 94%); padding: var(--space-6); gap: var(--space-5); }
+
+.cp-modal-hd { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-5) var(--space-5) var(--space-4); border-bottom: 1px solid var(--border-subtle); }
+.cp-modal-titles { flex: 1; min-width: 0; }
+.cp-modal-hd h2 { margin: 0; font-family: var(--font-display); font-size: var(--type-lg); font-weight: 600; color: var(--fg-0); }
+.cp-modal-hd p { margin: var(--space-1) 0 0; font-size: var(--type-sm); color: var(--fg-2); line-height: var(--lh-base); }
+
+.cp-body { padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-5); overflow: auto; }
+.cp-body--list { gap: var(--space-3); }
+
+/* ── fields ──────────────────────────────────────────────────────────────────── */
+.cp-field { display: flex; flex-direction: column; gap: var(--space-2); }
+.cp-field-label { font-size: var(--type-sm); font-weight: 600; color: var(--fg-0); display: flex; align-items: center; gap: var(--space-2); }
+.cp-optional { font-weight: 400; font-size: var(--type-xs); color: var(--fg-2); text-transform: lowercase; }
+.cp-field-help { font-size: var(--type-xs); color: var(--fg-2); line-height: var(--lh-sm); }
+.cp-input, .cp-textarea, .cp-search { width: 100%; }
+.cp-textarea { resize: none; }
+
+/* visibility segmented control — lifts .seg; private is the pressed default */
+.cp-seg { width: 100%; }
+.cp-seg button { flex: 1; justify-content: center; gap: var(--space-2); }
+
+/* ── open-existing: tabs + repo list ────────────────────────────────────────── */
+.cp-tabs { padding: 0 var(--space-5); margin-top: var(--space-4); }
+.cp-search { margin-bottom: var(--space-1); }
+.cp-repolist { display: flex; flex-direction: column; gap: 2px; max-height: 280px; overflow: auto; }
+.cp-repo { display: flex; align-items: center; gap: var(--space-3); width: 100%; padding: var(--space-3); border: 1px solid transparent; border-radius: var(--radius-md); background: var(--bg-2); color: var(--fg-0); cursor: pointer; text-align: left; }
+.cp-repo:hover { border-color: var(--border-strong); background: var(--bg-3); }
+.cp-repo.is-active { border-color: var(--accent); background: var(--bg-3); }
+.cp-repo:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cp-repo-vis { color: var(--fg-2); flex: 0 0 auto; }
+.cp-repo-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.cp-repo-name { font-weight: 600; font-size: var(--type-sm); color: var(--fg-0); }
+.cp-repo-meta { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); }
+.cp-repo-go { color: var(--fg-2); flex: 0 0 auto; }
+.cp-repo:hover .cp-repo-go, .cp-repo.is-active .cp-repo-go { color: var(--accent); }
+
+/* ── footer ──────────────────────────────────────────────────────────────────── */
+.cp-foot { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-4) var(--space-5); border-top: 1px solid var(--border-subtle); background: var(--bg-1); }
+.cp-foot--share { flex-wrap: wrap; }
+.cp-foot-note { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--type-xs); color: var(--fg-2); }
+.cp-foot-note b { color: var(--fg-1); font-family: var(--font-mono); font-weight: 500; }
+
+/* ── creating (progress stepper) ────────────────────────────────────────────── */
+.cp-creating-hero { display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--space-2); }
+.cp-creating-hero h2 { margin: var(--space-2) 0 0; font-family: var(--font-display); font-size: var(--type-lg); font-weight: 600; color: var(--fg-0); }
+.cp-creating-hero p { margin: 0; font-size: var(--type-sm); color: var(--fg-2); }
+.cp-steps { display: flex; flex-direction: column; gap: var(--space-1); }
+.cp-step { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-3); border-radius: var(--radius-md); }
+.cp-step.is-active { background: var(--bg-2); }
+.cp-step-mark { flex: 0 0 auto; width: 24px; height: 24px; display: grid; place-items: center; border-radius: var(--radius-pill); border: 1px solid var(--border-default); background: var(--bg-2); color: var(--fg-2); }
+.cp-step.is-done .cp-step-mark { background: var(--status-success); border-color: var(--status-success); color: var(--bg-0); }
+.cp-step.is-active .cp-step-mark { border-color: var(--accent); color: var(--accent); background: var(--accent-tint); }
+.cp-step-dot { width: 6px; height: 6px; border-radius: var(--radius-pill); background: var(--fg-2); }
+.cp-step-tx { display: flex; flex-direction: column; padding-top: 1px; }
+.cp-step-label { font-size: var(--type-sm); font-weight: 600; color: var(--fg-1); }
+.cp-step.is-done .cp-step-label, .cp-step.is-active .cp-step-label { color: var(--fg-0); }
+.cp-step-sub { font-size: var(--type-xs); color: var(--fg-2); }
+.cp-spin { animation: cp-spin 0.9s linear infinite; transform-origin: center; }
+@keyframes cp-spin { to { transform: rotate(360deg); } }
+
+/* ── share sheet ─────────────────────────────────────────────────────────────── */
+.cp-invite { display: flex; align-items: center; gap: var(--space-2); position: relative; }
+.cp-invite-at { position: absolute; left: var(--space-3); font-family: var(--font-mono); color: var(--fg-2); pointer-events: none; }
+.cp-invite-input { flex: 1; padding-left: calc(var(--space-3) + 0.9em); font-family: var(--font-mono); }
+.cp-invite-btn { flex: 0 0 auto; }
+.cp-invited { margin-top: calc(var(--space-2) * -1); }
+.cp-sect-label { font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-2); margin-top: var(--space-1); }
+.cp-people { display: flex; flex-direction: column; gap: var(--space-1); }
+.cp-person { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2); border-radius: var(--radius-sm); }
+.cp-person:hover { background: var(--bg-2); }
+.cp-person .cp-avatar { margin-left: 0; }
+.cp-person-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.cp-person-name { font-size: var(--type-sm); font-weight: 600; color: var(--fg-0); }
+.cp-person-login { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); }
+.cp-person.is-pending { opacity: 0.85; }
+.cp-role { flex: 0 0 auto; }
+.cp-role--pending { color: var(--status-info); border-color: color-mix(in oklch, var(--status-info) 40%, transparent); }
+.cp-invite-link { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; color: var(--fg-2); }
+.cp-invite-link-url { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cp-spin { animation: none; }
+}

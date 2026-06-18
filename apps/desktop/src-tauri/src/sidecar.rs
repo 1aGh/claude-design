@@ -50,6 +50,16 @@ pub fn spawn_server(app: &AppHandle) -> Result<(), String> {
         command = command.env("MAUDE_CANVAS_ORIGIN_SPLIT", split);
     }
 
+    // Loopback GitHub-token bridge (DDR-108): the dev-server's /_api/github/*
+    // endpoints fetch the keychain token from this endpoint at request time, with
+    // the per-launch key. Absent in non-Tauri `maude design serve` → those
+    // endpoints degrade to "sign in via the desktop app".
+    if let Some((endpoint, key)) = crate::keychain::bridge_env() {
+        command = command
+            .env("MAUDE_TOKEN_ENDPOINT", endpoint)
+            .env("MAUDE_TOKEN_KEY", key);
+    }
+
     // In a packaged .app the sidecar binary sits alone in Contents/MacOS/ with no
     // apps/studio/ up-tree, so paths.ts walk-up can't find the runtime. Point it at
     // the runtime we ship as a bundle resource (Resources/apps/studio). In dev this
