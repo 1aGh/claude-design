@@ -448,7 +448,19 @@ async function pushIso(
       onAuth: () => ({ username: token, password: '' }),
     });
     // PushResult.ok is true on success; a rejected ref carries an error string.
-    if (res.ok) return { ok: true };
+    if (res.ok) {
+      // iso-git's push does NOT advance the local remote-tracking ref, so the
+      // "ready to publish" count (localUnpushed, which compares HEAD against
+      // refs/remotes/<remote>/<branch>) would keep counting the commits we just
+      // pushed. Point the tracking ref at what we pushed so it clears to 0.
+      const oid = await git.resolveRef({ fs, dir, ref: branch }).catch(() => null);
+      if (oid) {
+        await git
+          .writeRef({ fs, dir, ref: `refs/remotes/${remote}/${branch}`, value: oid, force: true })
+          .catch(() => {});
+      }
+      return { ok: true };
+    }
     const errors = Object.values(res.refs ?? {})
       .map((r) => (r as { error?: string }).error)
       .filter(Boolean) as string[];

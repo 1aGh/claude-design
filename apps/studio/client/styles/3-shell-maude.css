@@ -170,6 +170,15 @@
 .st-sb-sync-dot { width: 7px; height: 7px; border-radius: var(--radius-pill); background: var(--status-warn); flex: none; }
 .st-sb-sync-dot.is-online { background: var(--presence-online); }
 
+/* Phase 28 — clickable "changes" slot (opens the Changes panel). Button reset; the
+   .st-sb-slot + .st-sb-slot rule still supplies the divider + left padding. */
+.st-sb-changes { appearance: none; border: 0; padding: 0; border-radius: 0; background: transparent; font: inherit; cursor: pointer; }
+.st-sb-changes:hover .val, .st-sb-changes.is-open .val { color: var(--accent); }
+.st-sb-changes:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.st-sb-changes-dot { width: 7px; height: 7px; border-radius: var(--radius-pill); background: var(--border-strong); flex: none; }
+.st-sb-changes.has-changes .st-sb-changes-dot { background: var(--status-warn); }
+.st-sb-changes.has-unpushed .st-sb-changes-dot { background: var(--accent); }
+
 /* ═══ Task 4 — body row · sidebar · tree · rail ═══════════════════════════════ */
 
 /* The body flex row replaces the legacy `.app` grid: rail | sidebar | main | rpanel. */

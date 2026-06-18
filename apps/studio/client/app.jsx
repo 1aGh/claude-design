@@ -2949,6 +2949,10 @@ function StatusBar({
   onToggleTheme,
   onClearSelected,
   syncStatus,
+  changesCount = 0,
+  unpushed = 0,
+  changesOpen = false,
+  onOpenChanges,
 }) {
   const isSystem = activePath === SYSTEM_TAB;
   const text =
@@ -3031,6 +3035,33 @@ function StatusBar({
         <span className="lbl">comments</span>
         <span className="val">{openCount} open</span>
       </span>
+
+      {/* Phase 28 — changes count, click to open the Changes panel (⌘⇧G). */}
+      {onOpenChanges && (
+        <button
+          type="button"
+          className={
+            'st-sb-slot st-sb-changes' +
+            (changesOpen ? ' is-open' : '') +
+            (changesCount > 0 ? ' has-changes' : unpushed > 0 ? ' has-unpushed' : '')
+          }
+          onClick={onOpenChanges}
+          data-tip="Open Changes · ⌘⇧G"
+          data-tip-pos="top"
+          aria-label="Open Changes panel"
+          aria-pressed={changesOpen}
+        >
+          <span className="st-sb-changes-dot" aria-hidden="true" />
+          <span className="lbl">changes</span>
+          <span className="val">
+            {changesCount > 0
+              ? `${changesCount} unsaved`
+              : unpushed > 0
+                ? `${unpushed} to publish`
+                : 'all saved'}
+          </span>
+        </button>
+      )}
 
       <span className="st-sb-spacer" />
 
@@ -5828,7 +5859,13 @@ function App() {
     [gitPostJson, refreshGitStatus]
   );
 
-  const gitPublish = useCallback(() => gitPostJson('/_api/git/push', {}), [gitPostJson]);
+  const gitPublish = useCallback(async () => {
+    const res = await gitPostJson('/_api/git/push', {});
+    // Refresh so the "N versions ready to publish" count clears to 0 after a
+    // successful push (the server advanced the local remote-tracking ref).
+    if (res.ok) await refreshGitStatus();
+    return res;
+  }, [gitPostJson, refreshGitStatus]);
 
   const gitGetLatest = useCallback(async () => {
     const res = await gitPostJson('/_api/git/pull', {});
@@ -6893,6 +6930,10 @@ function App() {
           onToggleTheme={toggleTheme}
           onClearSelected={clearSelected}
           syncStatus={syncStatus}
+          changesCount={unsavedCount}
+          unpushed={gitStatus?.unpushed || 0}
+          changesOpen={changesOpen}
+          onOpenChanges={gitStatus?.repo ? () => setChangesOpen(true) : undefined}
         />
       </div>
       <CommandPalette

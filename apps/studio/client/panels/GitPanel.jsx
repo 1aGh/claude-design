@@ -192,6 +192,10 @@ export default function GitPanel({
       const res = (await fn()) || {};
       if (res.ok) {
         if (ok) setBanner(ok);
+        // Save version / Publish / Get latest change the commit log — invalidate the
+        // scope-cached History so it re-fetches (the scope itself didn't change, so
+        // the load-on-scope-change effect wouldn't otherwise pick up the new commit).
+        setLogScope(undefined);
         return res;
       }
       if (res.authRequired)
