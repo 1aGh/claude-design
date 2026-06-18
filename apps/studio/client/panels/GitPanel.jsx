@@ -337,12 +337,24 @@ export default function GitPanel({
           text: res.error || 'Sign in with GitHub to publish — coming soon.',
         });
       else if (res.conflict)
-        setBanner({
-          variant: 'warn',
-          title: "Publish didn't go through",
-          text: 'The shared project moved on while you were working. Get the latest, then publish yours on top.',
-          getLatest: true,
-        });
+        // A push conflict (non-fast-forward) prompts a Get-latest; a Get-latest
+        // CONTENT conflict instead opens the DiffView resolver (onGetLatest sets
+        // it), so the banner just points there — never the publish copy, and no
+        // Get-latest button (that would loop).
+        setBanner(
+          kind === 'getLatest'
+            ? {
+                variant: 'info',
+                title: 'You both changed this',
+                text: 'Pick what to keep in the window that just opened.',
+              }
+            : {
+                variant: 'warn',
+                title: "Publish didn't go through",
+                text: 'The shared project moved on while you were working. Get the latest, then publish yours on top.',
+                getLatest: true,
+              }
+        );
       else setBanner({ variant: 'error', text: res.error || 'Something went wrong.' });
       return res;
     } finally {

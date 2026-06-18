@@ -17,12 +17,14 @@ import type { Context } from '../context.ts';
 import { getGithubToken } from '../github/token.ts';
 import {
   type GitFileStatus,
+  type ResolveChoice,
   gitCommit,
   gitDiff,
   gitDiscard,
   gitLog,
   gitPull,
   gitPush,
+  gitResolve,
   gitStatus,
   isContainedRepoPath,
 } from './service.ts';
@@ -60,6 +62,7 @@ export interface GitEndpoints {
   discard(body: unknown): Promise<GitEndpointResult>;
   push(body: unknown): Promise<GitEndpointResult>;
   pull(body: unknown): Promise<GitEndpointResult>;
+  resolve(body: unknown): Promise<GitEndpointResult>;
   log(limitRaw: string | null, pathRaw?: string | null): Promise<GitEndpointResult>;
   diff(sha: string | null): Promise<GitEndpointResult>;
 }
@@ -183,6 +186,26 @@ export function createGitEndpoints(ctx: Context): GitEndpoints {
     return { status: 502, json: { ok: false, error: res.error ?? 'Get latest failed.' } };
   }
 
+  async function resolve(body: unknown): Promise<GitEndpointResult> {
+    const token = readToken(body) ?? (await getGithubToken()) ?? undefined;
+    const b = (body ?? {}) as { choice?: unknown; remote?: unknown; ref?: unknown };
+    const choice = b.choice;
+    if (choice !== 'mine' && choice !== 'theirs' && choice !== 'both')
+      return bad('Pick how to resolve: keep mine, theirs, or both.');
+    if (b.remote != null && safeRemoteArg(b.remote) === undefined) return bad('Invalid remote.');
+    if (b.ref != null && safeGitArg(b.ref) === undefined) return bad('Invalid draft name.');
+    const res = await gitResolve(dir, choice as ResolveChoice, token, {
+      remote: safeRemoteArg(b.remote),
+      ref: safeGitArg(b.ref),
+    });
+    if (res.ok) return { status: 200, json: { ok: true, copies: res.copies ?? [] } };
+    if (res.authRequired)
+      return { status: 401, json: { ok: false, authRequired: true, error: res.error } };
+    if (res.unresolved?.length)
+      return { status: 409, json: { ok: false, unresolved: res.unresolved, error: res.error } };
+    return { status: 502, json: { ok: false, error: res.error ?? 'Could not finish the merge.' } };
+  }
+
   async function log(limitRaw: string | null, pathRaw?: string | null): Promise<GitEndpointResult> {
     let limit = 30;
     if (limitRaw != null) {
@@ -220,7 +243,7 @@ export function createGitEndpoints(ctx: Context): GitEndpoints {
     return { status: 200, json: { entries: await gitDiff(dir, ref, { designPrefix }) } };
   }
 
-  return { status, commit, discard, push, pull, log, diff };
+  return { status, commit, discard, push, pull, resolve, log, diff };
 }
 
 /** Read a non-empty string token from a request body without retaining it. */

@@ -5908,6 +5908,21 @@ function App() {
     return res;
   }, [gitPostJson, refreshGitStatus, refreshRemoteSync]);
 
+  // Phase 28 (E3) — finish a Get-latest conflict from the DiffView resolver.
+  // `choice` is 'mine' | 'theirs' | 'both'; the server completes the two-parent
+  // merge commit (and, for 'both', writes our version as a "(mine)" copy).
+  const gitResolveConflict = useCallback(
+    async (choice) => {
+      const res = await gitPostJson('/_api/git/resolve', { choice });
+      if (res.ok) {
+        await refreshGitStatus();
+        refreshRemoteSync();
+      }
+      return res;
+    },
+    [gitPostJson, refreshGitStatus, refreshRemoteSync]
+  );
+
   // `path` (optional) scopes History to one canvas — the per-file version list
   // behind the History click-to-preview + DiffView "Saved version" picker
   // (phase-27.1). Omit for the repo-wide log.
@@ -7006,13 +7021,17 @@ function App() {
             await gitDiscard([file]);
             setDiffTarget(null);
           }}
-          onResolve={async () => {
-            // phase-27: the actual conflict-resolution file write (Keep both =
-            // copy-with-suffix) needs a resolve endpoint that lands in a later
-            // slice. The picker + zero-loss default ship now; here we close and
-            // re-read status so the user sees the current state.
-            setDiffTarget(null);
-            await refreshGitStatus();
+          onResolve={async (choice) => {
+            // phase-28 (E3): apply the chosen side via /_api/git/resolve, which
+            // completes the two-parent merge commit (and for "both" saves our
+            // version as a "(mine)" copy — zero loss). Close on success; keep the
+            // resolver open with the error otherwise.
+            const res = await gitResolveConflict(choice);
+            if (res.ok) {
+              setDiffTarget(null);
+            } else {
+              window.alert(res.error || 'Could not finish the merge. Get the latest again, then retry.');
+            }
           }}
         />
       )}

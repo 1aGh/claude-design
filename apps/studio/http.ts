@@ -857,6 +857,20 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       return gitJson(await gitApi.pull(body));
     },
 
+    // Finish a Get-latest merge that hit a conflict (DiffView "Keep mine/theirs/
+    // both"). Token-bearing (server-held; resolve completes the two-parent merge
+    // commit) → same main-origin + loopback gate as pull. MAIN-ORIGIN ONLY:
+    // absent from CANVAS_SAFE_API + startCanvasServer routes (dual-allowlist).
+    '/_api/git/resolve': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('resolve requires a local request', { status: 403 });
+      const body = await readJson<unknown>(req, 8 * 1024);
+      return gitJson(await gitApi.resolve(body));
+    },
+
     // ── Phase 28 (E3) — GitHub identity & remote. Sign-in/out + keychain live in
     // the Tauri shell (oauth.rs/keychain.rs commands); these endpoints use the
     // server-held token (loopback bridge → token.ts) for the REST calls. MAIN-ORIGIN

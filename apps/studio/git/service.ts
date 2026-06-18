@@ -95,6 +95,19 @@ export interface GitPullResult {
   error?: string;
 }
 
+export interface GitResolveResult {
+  ok: boolean;
+  /** Conflicted paths that still couldn't be auto-resolved (empty on success). */
+  unresolved?: string[];
+  /** "Keep both" copies written alongside (zero data loss). */
+  copies?: string[];
+  /** See GitPushResult.authRequired. */
+  authRequired?: boolean;
+  error?: string;
+}
+
+export type ResolveChoice = 'mine' | 'theirs' | 'both';
+
 export interface GitLogEntry {
   sha: string;
   message: string;
@@ -598,6 +611,140 @@ async function pullSystem(
   return { ok: false, error: r.stderr.trim() || 'Get latest failed.' };
 }
 
+// ── resolve (finish a Get-latest merge that hit a conflict) ─────────────────
+
+/** Finish the merge `gitPull` left unresolved, applying one CHOICE to every
+ *  conflicted file:
+ *   • `mine`   — keep our version (their edits set aside)
+ *   • `theirs` — take the incoming version
+ *   • `both`   — take theirs AND save ours as a "<name> (mine)<ext>" copy (the
+ *                DiffView zero-data-loss default).
+ *  Produces the two-parent merge commit so a subsequent Publish fast-forwards. */
+export async function gitResolve(
+  dir: string,
+  choice: ResolveChoice,
+  token: string | undefined,
+  opts: { remote?: string; ref?: string } = {}
+): Promise<GitResolveResult> {
+  if (!isRepo(dir)) return { ok: false, error: 'This project is not versioned yet.' };
+  if (choice !== 'mine' && choice !== 'theirs' && choice !== 'both')
+    return { ok: false, error: 'Pick how to resolve: keep mine, theirs, or both.' };
+  return USE_SYSTEM_GIT
+    ? resolveSystem(dir, choice, opts.remote || 'origin', opts.ref)
+    : resolveIso(dir, choice, token, opts.remote || 'origin', opts.ref);
+}
+
+async function resolveIso(
+  dir: string,
+  choice: ResolveChoice,
+  _token: string | undefined,
+  remote: string,
+  ref?: string
+): Promise<GitResolveResult> {
+  try {
+    const branch = ref || (await git.currentBranch({ fs, dir, fullname: false })) || 'main';
+    if (!isSafeGitPositional(remote) || !isSafeGitPositional(branch))
+      return { ok: false, error: 'Invalid remote or draft name.' };
+    const author = await resolveAuthor(dir);
+    const theirsRef = `${remote}/${branch}`;
+
+    // `gitPull` already fetched `theirsRef`; resolve OIDs from local refs (no net).
+    const ourOid = await git.resolveRef({ fs, dir, ref: branch });
+    try {
+      await git.resolveRef({ fs, dir, ref: theirsRef });
+    } catch {
+      return { ok: false, error: 'Get the latest again — the shared copy moved.' };
+    }
+
+    // Authoritative conflicted set (dry-run merge with the default marker driver
+    // throws MergeConflictError listing them) — drives the "both" copies.
+    let conflicted: string[] = [];
+    try {
+      await git.merge({ fs, dir, ours: branch, theirs: theirsRef, author, dryRun: true });
+    } catch (e) {
+      conflicted = mergeConflictFiles(e) || [];
+    }
+
+    // A mergeDriver that returns ONE whole side per blob is always a clean merge,
+    // so git.merge resolves every conflict and writes the two-parent merge commit;
+    // non-conflicting changes from both sides still merge normally.
+    const wantOurs = choice === 'mine';
+    const mergeDriver = ({ contents }: { contents: string[] }) => ({
+      mergedText: wantOurs ? contents[1] : contents[2], // [base, ours, theirs]
+      cleanMerge: true,
+    });
+    await git.merge({
+      fs,
+      dir,
+      ours: branch,
+      theirs: theirsRef,
+      author,
+      message: `Get latest — kept ${choice}`,
+      mergeDriver,
+    });
+    await git.checkout({ fs, dir, ref: branch, force: true });
+
+    // "Keep both": theirs won the merged file; write OUR version as a sibling copy
+    // and commit it so nothing is lost.
+    const copies: string[] = [];
+    if (choice === 'both') {
+      for (const fp of conflicted) {
+        try {
+          const { blob } = await git.readBlob({ fs, dir, oid: ourOid, filepath: fp });
+          const copyRel = mineCopyPath(fp);
+          fs.writeFileSync(join(dir, copyRel), Buffer.from(blob));
+          await git.add({ fs, dir, filepath: copyRel });
+          copies.push(copyRel);
+        } catch {
+          /* add/delete conflict — no our-side blob to copy; skip */
+        }
+      }
+      if (copies.length) await git.commit({ fs, dir, author, message: 'Saved my version as a copy' });
+    }
+    return { ok: true, copies: copies.length ? copies : undefined };
+  } catch (e) {
+    const cf = mergeConflictFiles(e);
+    if (cf) return { ok: false, unresolved: cf, error: 'Could not finish the merge automatically.' };
+    return { ok: false, error: errMsg(e) };
+  }
+}
+
+async function resolveSystem(
+  dir: string,
+  choice: ResolveChoice,
+  _remote: string,
+  _ref?: string
+): Promise<GitResolveResult> {
+  // After `git pull --no-rebase` hit a conflict the repo is mid-merge (MERGE_HEAD
+  // + unmerged index). Resolve each unmerged path with the chosen side, commit.
+  const u = await runGit(dir, ['diff', '--name-only', '--diff-filter=U']);
+  const files = u.stdout.split('\n').map((s) => s.trim()).filter(Boolean);
+  if (!files.length) return { ok: false, error: 'Nothing to resolve — get the latest first.' };
+  const copies: string[] = [];
+  // Paths come from git's own unmerged list and are passed after `--`, so a
+  // dash-led name can't be parsed as an option.
+  for (const fp of files) {
+    let ourContent: Buffer | null = null;
+    if (choice === 'both') {
+      const show = await runGit(dir, ['show', `:2:${fp}`]); // stage 2 = ours
+      if (show.code === 0) ourContent = Buffer.from(show.stdout);
+    }
+    const side = choice === 'mine' ? '--ours' : '--theirs';
+    const co = await runGit(dir, ['checkout', side, '--', fp]);
+    if (co.code !== 0) return { ok: false, error: co.stderr.trim() || `Could not resolve ${fp}.` };
+    await runGit(dir, ['add', '--', fp]);
+    if (choice === 'both' && ourContent) {
+      const copyRel = mineCopyPath(fp);
+      fs.writeFileSync(join(dir, copyRel), ourContent);
+      await runGit(dir, ['add', '--', copyRel]);
+      copies.push(copyRel);
+    }
+  }
+  const c = await runGit(dir, ['commit', '--no-edit']);
+  if (c.code !== 0) return { ok: false, error: c.stderr.trim() || 'Could not finish the merge.' };
+  return { ok: true, copies: copies.length ? copies : undefined };
+}
+
 function mergeConflictFiles(e: unknown): string[] | null {
   if (!e || typeof e !== 'object') return null;
   const err = e as { code?: string; caller?: string; data?: unknown };
@@ -606,8 +753,35 @@ function mergeConflictFiles(e: unknown): string[] | null {
     err.code === 'MergeNotSupportedError' ||
     err.code === 'CheckoutConflictError';
   if (!isConflict) return null;
+  // isomorphic-git ≥1.x throws MergeConflictError with `data` shaped as an OBJECT
+  // ({ filepaths, bothModified, deleteByUs, deleteByTheirs }) — NOT a bare array.
+  // The original `Array.isArray(err.data)` check therefore always fell through to
+  // `[]`, so a real conflict surfaced with NO files and the DiffView resolver
+  // never opened (the project wedged). Handle both shapes; an empty list still
+  // means "conflict, but no parseable paths".
   if (Array.isArray(err.data)) return err.data.map(String);
+  const d = err.data as { filepaths?: unknown; bothModified?: unknown } | null | undefined;
+  if (d && typeof d === 'object') {
+    const list = Array.isArray(d.filepaths)
+      ? d.filepaths
+      : Array.isArray(d.bothModified)
+        ? d.bothModified
+        : null;
+    if (list) return list.map(String);
+  }
   return [];
+}
+
+/** Repo-relative sibling path for the zero-loss "keep both" copy:
+ *  `.design/ui/Foo.tsx` → `.design/ui/Foo (mine).tsx`. */
+function mineCopyPath(rel: string): string {
+  const slash = rel.lastIndexOf('/');
+  const dir = slash >= 0 ? rel.slice(0, slash + 1) : '';
+  const base = slash >= 0 ? rel.slice(slash + 1) : rel;
+  const dot = base.lastIndexOf('.');
+  const stem = dot > 0 ? base.slice(0, dot) : base;
+  const ext = dot > 0 ? base.slice(dot) : '';
+  return `${dir}${stem} (mine)${ext}`;
 }
 
 // ── log (History) ─────────────────────────────────────────────────────────

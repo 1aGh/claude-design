@@ -79,6 +79,7 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         '/_api/git/discard',
         '/_api/git/push',
         '/_api/git/pull',
+        '/_api/git/resolve',
         // Phase 28 (E3) — every /_api/github/* route is MAIN-ORIGIN ONLY (absent
         // from CANVAS_SAFE_API + startCanvasServer's `routes` map) and token-bearing.
         // The untrusted canvas iframe origin must never reach identity/create-repo/
