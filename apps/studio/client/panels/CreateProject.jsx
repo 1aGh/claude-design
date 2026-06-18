@@ -12,7 +12,7 @@
 
 import { useEffect, useState } from 'react';
 
-import { cloneRepo, createRepo, invite, listRepos, openLocalProject, pickDirectory } from '../github.js';
+import { cloneRepo, createProject, initDesign, invite, listRepos, openLocalProject, pickDirectory } from '../github.js';
 
 function Icon({ name, size = 16 }) {
   const p = {
@@ -99,39 +99,37 @@ function NewView({ identity, onClose }) {
   const [isPrivate, setIsPrivate] = useState(true);
   const [desc, setDesc] = useState('');
   const [busy, setBusy] = useState(false);
+  const [step, setStep] = useState('');
   const [err, setErr] = useState('');
-  const [done, setDone] = useState(null);
 
   const slug = name.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
   const owner = identity?.login || 'you';
 
+  // New project = create the GitHub repo AND a ready-to-design local project, then
+  // open it. You pick where to save it (like a real "new project"), then design
+  // and Publish when ready.
   async function submit() {
     setErr('');
     setBusy(true);
-    const r = await createRepo({ name, private: isPrivate, description: desc });
-    setBusy(false);
-    if (r.ok && r.json?.ok) setDone(r.json.repo);
-    else setErr(r.json?.error || 'Couldn’t create the project. Try again.');
-  }
-
-  if (done) {
-    return (
-      <>
-        <div className="cp-body">
-          <div className="callout callout--success">
-            <span className="cp-cl-glyph" style={{ color: 'var(--status-success)' }}><Icon name="check" /></span>
-            <span>
-              <b style={{ color: 'var(--fg-0)' }}>Created “{done.full_name}”.</b> Your project is on GitHub and this
-              workspace now points at it — <b>Publish</b> your work (Changes panel) to share it.
-            </span>
-          </div>
-        </div>
-        <div className="cp-ft">
-          <span className="cp-spacer" />
-          <button type="button" className="btn btn--primary" onClick={onClose}>Done</button>
-        </div>
-      </>
-    );
+    try {
+      setStep('Choose where to save it…');
+      const parentDir = await pickDirectory();
+      if (!parentDir) { setBusy(false); setStep(''); return; } // cancelled
+      setStep('Creating your project on GitHub…');
+      const r = await createProject({ name, private: isPrivate, description: desc, parentDir });
+      if (!(r.ok && r.json?.ok)) {
+        setErr(r.json?.error || 'Couldn’t create the project. Try again.');
+        setBusy(false);
+        setStep('');
+        return;
+      }
+      setStep('Opening it in Maude…');
+      await openLocalProject(r.json.path); // switches the app to the new project
+    } catch (e) {
+      setErr(String(e?.message || e || 'Something went wrong creating the project.'));
+      setBusy(false);
+      setStep('');
+    }
   }
 
   return (
@@ -160,7 +158,7 @@ function NewView({ identity, onClose }) {
         <span className="cp-spacer" />
         <button type="button" className="btn btn--ghost" onClick={onClose}>Cancel</button>
         <button type="button" className="btn btn--primary" onClick={submit} disabled={busy || !slug}>
-          <Icon name="plus" size={15} /> {busy ? 'Creating…' : 'Create project'}
+          <Icon name="plus" size={15} /> {busy ? step || 'Creating…' : 'Create project'}
         </button>
       </div>
     </>
@@ -174,6 +172,27 @@ function GetView() {
   const [pulling, setPulling] = useState(null); // full_name being pulled
   const [step, setStep] = useState(''); // human progress line
   const [needsSetup, setNeedsSetup] = useState(null); // { name, path } when the pulled repo has no .design
+  const [settingUp, setSettingUp] = useState(false);
+
+  // The pulled repo has no Maude design system yet — scaffold a bootable one into
+  // the clone, then open it (the user can create a real DS with /design:setup-ds).
+  async function setupHere() {
+    if (!needsSetup) return;
+    setErr('');
+    setSettingUp(true);
+    try {
+      const r = await initDesign(needsSetup.path);
+      if (!(r.ok && r.json?.ok)) {
+        setErr(r.json?.error || 'Couldn’t set it up. Try again.');
+        setSettingUp(false);
+        return;
+      }
+      await openLocalProject(needsSetup.path); // switches the app to the new project
+    } catch (e) {
+      setErr(String(e?.message || e || 'Couldn’t set it up.'));
+      setSettingUp(false);
+    }
+  }
 
   useEffect(() => {
     (async () => {
@@ -223,15 +242,18 @@ function GetView() {
           <div className="callout callout--info">
             <span className="cp-cl-glyph" style={{ color: 'var(--status-info)' }}><Icon name="download" /></span>
             <span>
-              <b style={{ color: 'var(--fg-0)' }}>Got “{needsSetup.name}” — but it’s not a Maude project yet.</b> It was
-              saved to <b>{needsSetup.path}</b>. Open that folder (File ▸ Open Project) and run
-              <b> Set up a design system</b> to start designing in it.
+              <b style={{ color: 'var(--fg-0)' }}>Got “{needsSetup.name}” — it’s not a Maude project yet.</b> Saved to{' '}
+              <b>{needsSetup.path}</b>. Set up Maude in it to start designing (you can build a design system after).
             </span>
           </div>
+          {err && <div className="callout callout--error"><span className="cp-cl-glyph" style={{ color: 'var(--status-error)' }}><Icon name="x" /></span><span>{err}</span></div>}
         </div>
         <div className="cp-ft">
           <span className="cp-spacer" />
-          <button type="button" className="btn btn--primary" onClick={() => setNeedsSetup(null)}>OK</button>
+          <button type="button" className="btn btn--ghost" onClick={() => setNeedsSetup(null)} disabled={settingUp}>Not now</button>
+          <button type="button" className="btn btn--primary" onClick={setupHere} disabled={settingUp}>
+            <Icon name="download" size={15} /> {settingUp ? 'Setting up…' : 'Set up Maude here'}
+          </button>
         </div>
       </>
     );

@@ -887,6 +887,19 @@ export async function gitClone(url: string, dir: string, token?: string): Promis
       singleBranch: true,
       ...(token ? { onAuth: () => ({ username: token, password: '' }) } : {}),
     });
+    // An EMPTY remote (a freshly-created repo) clones to a repo with NO commits and
+    // an odd/unborn HEAD — the first Save version then fails to land on a resolvable
+    // `main`, so Publish errors with "Could not find main" and unpushed can't be
+    // computed. Normalize HEAD to an unborn `main` so the first commit creates it and
+    // Publish (first push) works. Only touch the empty case; a populated clone is left
+    // exactly as cloned.
+    const hasCommits = await git
+      .log({ fs, dir, depth: 1 })
+      .then((l) => l.length > 0)
+      .catch(() => false);
+    if (!hasCommits) {
+      fs.writeFileSync(join(dir, '.git', 'HEAD'), 'ref: refs/heads/main\n');
+    }
     return { ok: true, dir };
   } catch (e) {
     const msg = errMsg(e);

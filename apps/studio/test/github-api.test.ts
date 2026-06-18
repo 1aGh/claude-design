@@ -26,6 +26,7 @@ import {
   setRemote,
 } from '../github/service.ts';
 import { getGithubToken, tokenBridgeAvailable } from '../github/token.ts';
+import { hasDesign } from '../scaffold-design.ts';
 
 // ── fetch stub harness ───────────────────────────────────────────────────────
 const realFetch = globalThis.fetch;
@@ -370,6 +371,30 @@ describe('endpoint handlers', () => {
       (await ep.clone({ cloneUrl: 'https://github.com/o/r.git', parentDir: dir, name: 'taken' }))
         .status
     ).toBe(409);
+  });
+
+  test('createProject: 400 on empty name or missing parentDir', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'maude-gh-ep-'));
+    const ep = createGitHubEndpoints(ctxFor(dir));
+    expect((await ep.createProject({ name: '  ', parentDir: dir })).status).toBe(400);
+    expect((await ep.createProject({ name: 'Acme', parentDir: '/no/such/xyz' })).status).toBe(400);
+  });
+
+  test('initDesign: scaffolds a bootable .design into a fresh folder; idempotent', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'maude-gh-ep-'));
+    const ep = createGitHubEndpoints(ctxFor(dir));
+    const r = await ep.initDesign({ dir });
+    expect(r.status).toBe(200);
+    expect(hasDesign(dir)).toBe(true);
+    // already a project → ok + alreadyDesign
+    const r2 = await ep.initDesign({ dir });
+    expect(r2.status).toBe(200);
+    expect((r2.json as { alreadyDesign?: boolean }).alreadyDesign).toBe(true);
+  });
+
+  test('initDesign: 400 on a non-existent dir', async () => {
+    const ep = createGitHubEndpoints(ctxFor(mkdtempSync(join(tmpdir(), 'maude-gh-ep-'))));
+    expect((await ep.initDesign({ dir: '/no/such/xyz123' })).status).toBe(400);
   });
 
   test('invite: 200 with origin set (mocked GH 201 = invited)', async () => {

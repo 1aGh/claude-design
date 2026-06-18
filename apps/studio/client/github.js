@@ -62,6 +62,8 @@ export const listRepos = () => api('/_api/github/repos');
 export const createRepo = (body) => api('/_api/github/create-repo', { method: 'POST', body: JSON.stringify(body) });
 export const invite = (username) => api('/_api/github/invite', { method: 'POST', body: JSON.stringify({ username }) });
 export const cloneRepo = (body) => api('/_api/github/clone', { method: 'POST', body: JSON.stringify(body) });
+export const createProject = (body) => api('/_api/github/create-project', { method: 'POST', body: JSON.stringify(body) });
+export const initDesign = (dir) => api('/_api/design/init', { method: 'POST', body: JSON.stringify({ dir }) });
 
 // ── Tauri shell commands for "pull a local copy" ────────────────────────────────
 /** Native folder picker → chosen parent dir, or null if cancelled. */

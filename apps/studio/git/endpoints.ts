@@ -14,6 +14,7 @@
 // echoed, or persisted (it is stripped from the JSON we return on error).
 
 import type { Context } from '../context.ts';
+import { getGithubToken } from '../github/token.ts';
 import {
   type GitFileStatus,
   gitCommit,
@@ -74,10 +75,17 @@ export function createGitEndpoints(ctx: Context): GitEndpoints {
   async function status(
     opts: { checkRemote?: boolean; token?: string } = {}
   ): Promise<GitEndpointResult> {
+    // The "Get latest" remote ahead/behind probe needs a token for private repos.
+    // It is NOT client-supplied (A3 — no token in a GET query); we fetch it
+    // server-side from the keychain bridge (phase-28). No bridge / not signed in
+    // → undefined → local-only status (no remote nudge), never an error.
+    const token = opts.checkRemote
+      ? (opts.token ?? (await getGithubToken()) ?? undefined)
+      : opts.token;
     const result = await gitStatus(dir, {
       designPrefix,
       checkRemote: opts.checkRemote,
-      token: opts.token,
+      token,
     });
     return { status: 200, json: result };
   }
@@ -129,9 +137,12 @@ export function createGitEndpoints(ctx: Context): GitEndpoints {
   }
 
   async function push(body: unknown): Promise<GitEndpointResult> {
-    // Token is OPTIONAL in phase-27 (no auth UI yet): the system-git engine uses
-    // the user's credential helper. iso-git without a token → authRequired → 401.
-    const token = readToken(body) ?? undefined;
+    // Token resolution (phase-28): an explicit body token → the keychain bridge
+    // (signed in via GitHub) → undefined. The bridge token is fetched server-side
+    // (never client-supplied), so "Publish" works once you've signed in. With no
+    // token the system-git engine still uses the credential helper; iso-git without
+    // a token → authRequired → "Sign in to publish".
+    const token = readToken(body) ?? (await getGithubToken()) ?? undefined;
     const b = (body ?? {}) as { remote?: unknown; ref?: unknown };
     // Reject a dash-led / malformed remote|ref BEFORE it can reach git argv (A1).
     if (b.remote != null && safeRemoteArg(b.remote) === undefined) return bad('Invalid remote.');
@@ -154,7 +165,7 @@ export function createGitEndpoints(ctx: Context): GitEndpoints {
   }
 
   async function pull(body: unknown): Promise<GitEndpointResult> {
-    const token = readToken(body) ?? undefined;
+    const token = readToken(body) ?? (await getGithubToken()) ?? undefined;
     const b = (body ?? {}) as { remote?: unknown; ref?: unknown };
     if (b.remote != null && safeRemoteArg(b.remote) === undefined) return bad('Invalid remote.');
     if (b.ref != null && safeGitArg(b.ref) === undefined) return bad('Invalid draft name.');

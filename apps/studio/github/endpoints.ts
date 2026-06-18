@@ -12,12 +12,13 @@
 // logged, echoed, or returned to the client. Inputs (repo name, username) are
 // validated at this boundary before they reach the GitHub API.
 
-import fs, { existsSync, statSync } from 'node:fs';
+import fs, { existsSync, mkdirSync, statSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 
 import git from 'isomorphic-git';
 import type { Context } from '../context.ts';
 import { gitClone } from '../git/service.ts';
+import { hasDesign, scaffoldDesign } from '../scaffold-design.ts';
 import {
   createRepo,
   GitHubApiError,
@@ -70,8 +71,15 @@ export interface GitHubEndpoints {
   identity(): Promise<GitHubEndpointResult>;
   repos(): Promise<GitHubEndpointResult>;
   createRepo(body: unknown): Promise<GitHubEndpointResult>;
+  createProject(body: unknown): Promise<GitHubEndpointResult>;
   invite(body: unknown): Promise<GitHubEndpointResult>;
   clone(body: unknown): Promise<GitHubEndpointResult>;
+  initDesign(body: unknown): Promise<GitHubEndpointResult>;
+}
+
+/** Validate a user-chosen parent dir (from the native folder picker). */
+function validParentDir(v: unknown): v is string {
+  return typeof v === 'string' && isAbsolute(v) && existsSync(v) && statSync(v).isDirectory();
 }
 
 export function createGitHubEndpoints(ctx: Context): GitHubEndpoints {
@@ -205,8 +213,7 @@ export function createGitHubEndpoints(ctx: Context): GitHubEndpoints {
       // Tell the client whether the pulled repo is actually a Maude project. If not,
       // the client must NOT switch to it (the dev-server can't serve a project with
       // no .design/ — it fails loud) — it shows a "set it up" message instead.
-      const hasDesign = existsSync(join(target, '.design', 'config.json'));
-      return { status: 200, json: { ok: true, path: target, hasDesign } };
+      return { status: 200, json: { ok: true, path: target, hasDesign: hasDesign(target) } };
     }
     if (res.authRequired) {
       return { status: 401, json: { ok: false, authRequired: true, error: res.error } };
@@ -217,7 +224,91 @@ export function createGitHubEndpoints(ctx: Context): GitHubEndpoints {
     };
   }
 
-  return { identity, repos, createRepo: createRepoHandler, invite, clone };
+  // "New project" — create a GitHub repo AND a ready-to-design local project:
+  // create repo → make <parentDir>/<slug> → git init → scaffold a bootable .design/
+  // → point origin at the repo. No push here — the user Publishes (pushes) when
+  // ready, exactly like every other change. Returns the path to open.
+  async function createProject(body: unknown): Promise<GitHubEndpointResult> {
+    const b = (body ?? {}) as {
+      name?: unknown;
+      private?: unknown;
+      description?: unknown;
+      parentDir?: unknown;
+    };
+    const slug = slugifyRepoName(b.name);
+    if (!slug) return bad('Enter a project name (letters, numbers, hyphens).');
+    if (b.private != null && typeof b.private !== 'boolean') return bad('Invalid visibility.');
+    if (!validParentDir(b.parentDir))
+      return bad('Pick a folder on your computer to save the project in.');
+    let description: string | undefined;
+    if (b.description != null) {
+      if (typeof b.description !== 'string' || b.description.length > 350)
+        return bad('Description is too long.');
+      description = b.description;
+    }
+    const target = join(b.parentDir, slug);
+    if (existsSync(target)) {
+      return {
+        status: 409,
+        json: { ok: false, error: `A folder named “${slug}” already exists there.` },
+      };
+    }
+    const humanName = typeof b.name === 'string' ? b.name.trim() : slug;
+    return withToken(async (token) => {
+      const repo = await createRepo(token, {
+        name: slug,
+        private: b.private !== false,
+        description,
+      });
+      try {
+        mkdirSync(target, { recursive: true });
+        await git.init({ fs, dir: target, defaultBranch: 'main' });
+        const s = scaffoldDesign(target, humanName);
+        if (!s.ok)
+          return {
+            status: 500,
+            json: { ok: false, error: s.error ?? 'Could not set up the project.' },
+          };
+        await setRemote(target, repo.clone_url);
+      } catch (e) {
+        return {
+          status: 500,
+          json: {
+            ok: false,
+            error: e instanceof Error ? e.message : 'Could not set up the project.',
+          },
+        };
+      }
+      return { status: 200, json: { ok: true, path: target, repo } };
+    });
+  }
+
+  // Fallback for "open a folder/repo that isn't a Maude project yet" — scaffold a
+  // bootable .design/ into an existing folder so it can open (no GitHub, no token).
+  async function initDesign(body: unknown): Promise<GitHubEndpointResult> {
+    const b = (body ?? {}) as { dir?: unknown };
+    if (!validParentDir(b.dir)) return bad('That folder doesn’t exist.');
+    if (hasDesign(b.dir as string)) {
+      return { status: 200, json: { ok: true, alreadyDesign: true } };
+    }
+    const s = scaffoldDesign(b.dir as string);
+    if (!s.ok)
+      return {
+        status: 500,
+        json: { ok: false, error: s.error ?? 'Could not set up the project.' },
+      };
+    return { status: 200, json: { ok: true } };
+  }
+
+  return {
+    identity,
+    repos,
+    createRepo: createRepoHandler,
+    createProject,
+    invite,
+    clone,
+    initDesign,
+  };
 }
 
 export const __testing = { slugifyRepoName, parseGitHubRemote, USERNAME_RE };

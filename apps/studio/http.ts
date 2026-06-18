@@ -908,6 +908,29 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       return gitJson(await githubApi.clone(body));
     },
 
+    '/_api/github/create-project': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      const body = await readJson<unknown>(req, 8 * 1024);
+      return gitJson(await githubApi.createProject(body));
+    },
+
+    // Scaffold a bootable .design/ into an existing folder (the "open a non-Maude
+    // repo → set it up?" fallback). No token / no GitHub — local FS only, but still
+    // main-origin + loopback gated (it writes to disk).
+    '/_api/design/init': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      const body = await readJson<unknown>(req, 8 * 1024);
+      return gitJson(await githubApi.initDesign(body));
+    },
+
     '/_api/edit-css': async (req: Request) => {
       // Phase 12 (DDR-103) — single-property inline CSS edit. POST body
       // { canvas, id, property, value } → writes one key into the element's

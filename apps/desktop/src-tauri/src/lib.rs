@@ -125,6 +125,41 @@ fn open_local_project(app: tauri::AppHandle, path: String) -> Result<(), String>
     Ok(())
 }
 
+/// Remember `path` as the last project (so a relaunch reopens it) + switch in-process.
+fn remember_and_switch(app: &tauri::AppHandle, path: PathBuf) {
+    if let Some(marker) = last_project_marker(app) {
+        if let Some(dir) = marker.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(&marker, path.to_string_lossy().as_bytes());
+    }
+    sidecar::switch_project(app, path);
+}
+
+/// Write a minimal bootable `.design/` into `dir` (mirrors apps/studio/scaffold-design.ts)
+/// so a non-Maude folder opened via File ▸ Open Project can boot instead of crash-
+/// looping. A real design system is created later via /design:setup-ds.
+fn write_minimal_design(dir: &std::path::Path) -> std::io::Result<()> {
+    let design = dir.join(".design");
+    if design.join("config.json").exists() {
+        return Ok(());
+    }
+    std::fs::create_dir_all(design.join("ui"))?;
+    std::fs::create_dir_all(design.join("system"))?;
+    let name = dir
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Untitled".to_string());
+    // `{name:?}` debug-formats the string with JSON-safe quoting/escaping.
+    let config = format!(
+        "{{\n  \"$schema\": \"https://raw.githubusercontent.com/1aGh/maude/main/apps/studio/config.schema.json\",\n  \"name\": {name:?},\n  \"designRoot\": \".design\",\n  \"canvasGroups\": [\n    {{ \"label\": \"Design system\", \"path\": \"system\" }},\n    {{ \"label\": \"UI kit\", \"path\": \"ui\" }}\n  ],\n  \"designSystems\": [],\n  \"completenessProfile\": \"standard\"\n}}\n"
+    );
+    std::fs::write(design.join("config.json"), config)?;
+    std::fs::write(design.join("ui").join(".gitkeep"), "")?;
+    std::fs::write(design.join("system").join(".gitkeep"), "")?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
@@ -153,19 +188,35 @@ pub fn run() {
                 // Pick a project folder, remember it, and relaunch pointed at it.
                 // (The richer in-window project switcher is phase-29.)
                 app.dialog().file().pick_folder(move |folder| {
-                    if let Some(folder) = folder {
-                        if let Some(path) = folder.as_path() {
-                            if let Some(marker) = last_project_marker(&app) {
-                                if let Some(dir) = marker.parent() {
-                                    let _ = std::fs::create_dir_all(dir);
-                                }
-                                let _ = std::fs::write(&marker, path.to_string_lossy().as_bytes());
-                            }
-                            // Switch in-process — NOT app.restart() (relaunch aborts
-                            // tao's did_finish_launching on the non-bundled dev binary).
-                            sidecar::switch_project(&app, path.to_path_buf());
-                        }
+                    let Some(folder) = folder else { return };
+                    let Some(path) = folder.as_path().map(|p| p.to_path_buf()) else { return };
+                    // Switch in-process — NOT app.restart() (relaunch aborts tao's
+                    // did_finish_launching on the non-bundled dev binary).
+                    if path.join(".design").is_dir() {
+                        remember_and_switch(&app, path);
+                        return;
                     }
+                    // Not a Maude project yet — ASK before setting one up (the user's
+                    // requested fallback), instead of crash-looping on a no-.design root.
+                    let app2 = app.clone();
+                    let name = path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    app.dialog()
+                        .message(format!(
+                            "“{name}” isn’t a Maude project yet. Set up a Maude project here so you can start designing?"
+                        ))
+                        .title("Set up Maude")
+                        .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(
+                            "Set it up".to_string(),
+                            "Cancel".to_string(),
+                        ))
+                        .show(move |ok| {
+                            if ok && write_minimal_design(&path).is_ok() {
+                                remember_and_switch(&app2, path);
+                            }
+                        });
                 });
             }
         })
