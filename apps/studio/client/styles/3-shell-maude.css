@@ -1211,6 +1211,19 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .gp-discard:hover { color: var(--status-error); background: var(--bg-3); }
 .gp-discard:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-xs); opacity: 1; }
 
+/* DDR-115 follow-up — canvas-grouped changes: a canvas + its collapsed
+   supporting files (Layout & settings, Annotations) as one logical unit. */
+.gp-unit { display: flex; flex-direction: column; }
+.gp-unit-hd .gp-file-name { font-weight: 500; }
+.gp-disclose { flex: 0 0 auto; display: grid; place-items: center; color: var(--fg-2); background: none; border: none; padding: var(--space-1); border-radius: var(--radius-xs); cursor: pointer; transition: transform var(--dur-soft) var(--ease-out), color var(--dur-soft) var(--ease-out); }
+.gp-disclose.is-open { transform: rotate(90deg); }
+.gp-disclose:hover { color: var(--fg-0); }
+.gp-disclose:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.gp-support { margin: 0 var(--space-2) var(--space-1) var(--space-6); border-left: 1px solid var(--border-default); padding-left: var(--space-2); }
+.gp-support-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-1) var(--space-2); min-width: 0; }
+.gp-support-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.gp-support-row .gp-file-name { color: var(--fg-1); font-size: var(--type-sm); }
+
 /* M / A / D / U dirty badge — solid for M/A/D, dashed outline for U (untracked) */
 .gp-badge { flex: 0 0 auto; width: 16px; height: 16px; border-radius: var(--radius-xs); display: grid; place-items: center; font-family: var(--font-mono); font-size: 10px; font-weight: 600; line-height: 1; color: oklch(0.11 0.012 260); }
 .gp-badge[data-kind="M"] { background: var(--status-warn); }

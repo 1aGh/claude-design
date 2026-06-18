@@ -6876,6 +6876,7 @@ function App() {
               onPreviewVersion={(sha) =>
                 setDiffTarget({ file: activePath, beforeSha: sha, conflict: false })
               }
+              designRel={(cfg?.designRel || cfg?.designRoot || '.design').replace(/^\/+|\/+$/g, '')}
             />
           ) : inspectorOpen ? (
             <InspectorPanel

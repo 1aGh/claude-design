@@ -9,9 +9,10 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { baseName, buildUnits, supportLabel } from './git-grouping.js';
+
 const KIND_OF = { modified: 'M', added: 'A', deleted: 'D', untracked: 'U' };
 const KIND_TITLE = { M: 'Modified', A: 'Added', D: 'Deleted', U: 'Untracked' };
-const GROUP_ORDER = ['M', 'A', 'D', 'U'];
 
 function Icon({ name, size = 16, className }) {
   const p = {
@@ -63,6 +64,7 @@ function Icon({ name, size = 16, className }) {
     ),
     folder: <path d="M2 4.5h4l1.3 1.5H14V13H2z" />,
     check: <polyline points="3 8.2 6.4 11.5 13 4.2" />,
+    chevron: <polyline points="6 4 10 8 6 12" />,
   }[name];
   return (
     <svg
@@ -95,9 +97,23 @@ function Badge({ kind }) {
   );
 }
 
-function baseName(p) {
-  const s = p.split('/').pop() || p;
-  return s.replace(/\.(tsx|html|meta\.json|css|svg|json)$/i, '');
+/** A checkbox that can show the indeterminate ("some") state — React has no
+ *  prop for it, so it's set on the DOM node via a ref. */
+function TriCheck({ state, onChange, ariaLabel }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = state === 'some';
+  }, [state]);
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      className="gp-check"
+      checked={state === 'all'}
+      onChange={onChange}
+      aria-label={ariaLabel}
+    />
+  );
 }
 
 function timeAgo(iso) {
@@ -133,10 +149,12 @@ export default function GitPanel({
   onOpenDiff,
   activeCanvas, // repo-relative path of the open canvas/specimen, or null
   onPreviewVersion, // (sha) => open the active canvas at that saved version
+  designRel = '.design', // for canvas → annotation-slug matching (grouping)
 }) {
   const [tab, setTab] = useState('changes');
   const [message, setMessage] = useState('');
   const [unchecked, setUnchecked] = useState(() => new Set()); // default = all checked
+  const [expanded, setExpanded] = useState(() => new Set()); // unit keys with supporting files shown
   const [busy, setBusy] = useState(null);
   const [banner, setBanner] = useState(null); // { variant, title?, text }
   const [log, setLog] = useState(null);
@@ -172,11 +190,126 @@ export default function GitPanel({
     [files, unchecked]
   );
 
-  const groups = useMemo(() => {
-    const by = { M: [], A: [], D: [], U: [] };
-    for (const f of files) by[KIND_OF[f.status]]?.push(f);
-    return GROUP_ORDER.map((k) => ({ kind: k, items: by[k] })).filter((g) => g.items.length);
-  }, [files]);
+  const { canvasUnits, otherUnits } = useMemo(
+    () => buildUnits(files, designRel),
+    [files, designRel]
+  );
+  // Both section headers only when both kinds are present (a lone "Canvases"
+  // header over an all-canvas list is noise).
+  const showSectionHeads = canvasUnits.length > 0 && otherUnits.length > 0;
+
+  // A unit's aggregate check state across all its members (canvas + sidecars).
+  const unitState = (u) => {
+    const members = [u.primary, ...u.supporting];
+    const on = members.filter((m) => !unchecked.has(m.path)).length;
+    return on === 0 ? 'none' : on === members.length ? 'all' : 'some';
+  };
+  const toggleUnit = (u) => {
+    const members = [u.primary, ...u.supporting].map((m) => m.path);
+    const allOn = unitState(u) === 'all';
+    setUnchecked((prev) => {
+      const next = new Set(prev);
+      for (const p of members) {
+        if (allOn) next.add(p);
+        else next.delete(p);
+      }
+      return next;
+    });
+  };
+  const toggleExpand = (key) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
+  // One canvas (or loose file) + its collapsed supporting files. The unit
+  // checkbox is the single control — a canvas and its sidecars Save as one unit
+  // (DDR-112); supporting files render read-only when expanded, for transparency.
+  const renderUnit = (u) => {
+    const f = u.primary;
+    const st = unitState(u);
+    const hasKids = u.supporting.length > 0;
+    const isOpen = expanded.has(u.key);
+    const name = baseName(f.path);
+    const memberPaths = [f, ...u.supporting].map((m) => m.path);
+    return (
+      <div className="gp-unit" key={u.key}>
+        <div className={'gp-file gp-unit-hd' + (st !== 'none' ? ' is-checked' : '')}>
+          <TriCheck
+            state={st}
+            ariaLabel={`Include ${name}${hasKids ? ' and its supporting files' : ''} in this version`}
+            onChange={() => toggleUnit(u)}
+          />
+          <Badge kind={KIND_OF[f.status]} />
+          <button
+            type="button"
+            className="gp-file-text"
+            title={f.path}
+            onClick={() => onOpenCanvas?.(f.path)}
+          >
+            <span className="gp-file-name">{name}</span>
+            <span className="gp-file-path">
+              {hasKids ? `${f.path} · +${u.supporting.length} supporting` : f.path}
+            </span>
+          </button>
+          {hasKids && (
+            <button
+              type="button"
+              className={'gp-disclose' + (isOpen ? ' is-open' : '')}
+              aria-expanded={isOpen}
+              aria-label={
+                isOpen ? `Hide supporting files for ${name}` : `Show supporting files for ${name}`
+              }
+              onClick={() => toggleExpand(u.key)}
+            >
+              <Icon name="chevron" size={14} />
+            </button>
+          )}
+          {u.kind === 'canvas' && (
+            <button
+              type="button"
+              className="gp-discard"
+              title="Compare before / after"
+              aria-label={`Compare ${name}`}
+              onClick={() => onOpenDiff?.(f.path)}
+            >
+              <Icon name="diff" size={14} />
+            </button>
+          )}
+          <button
+            type="button"
+            className="gp-discard"
+            title={hasKids ? 'Discard this canvas and its supporting files' : 'Discard this change'}
+            aria-label={`Discard changes to ${name}`}
+            onClick={async () => {
+              const msg = hasKids
+                ? `Discard your changes to “${name}” and its supporting files? This can't be undone.`
+                : `Discard your changes to “${name}”? This can't be undone.`;
+              if (!window.confirm(msg)) return;
+              await run('discard', () => onDiscard(memberPaths));
+            }}
+          >
+            <Icon name="undo" size={14} />
+          </button>
+        </div>
+        {hasKids && isOpen && (
+          <div className="gp-support" role="group" aria-label={`Supporting files for ${name}`}>
+            {u.supporting.map((s) => (
+              <div className="gp-support-row" key={s.path} title={s.path}>
+                <Badge kind={KIND_OF[s.status]} />
+                <span className="gp-support-text">
+                  <span className="gp-file-name">{supportLabel(s.path)}</span>
+                  <span className="gp-file-path">{s.path}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // Select-all checkbox: indeterminate when partial (set via ref — no React prop).
   useEffect(() => {
@@ -448,72 +581,24 @@ export default function GitPanel({
             )}
 
             <div className="gp-list" role="group" aria-label="Unsaved changes">
-              {groups.map((g) => (
-                <div key={g.kind}>
-                  <div className="gp-group-hd">
-                    <Badge kind={g.kind} />
-                    {KIND_TITLE[g.kind]}
-                    <span className="gp-group-count">· {g.items.length}</span>
-                  </div>
-                  {g.items.map((f) => {
-                    const checked = !unchecked.has(f.path);
-                    return (
-                      <div className={'gp-file' + (checked ? ' is-checked' : '')} key={f.path}>
-                        <input
-                          type="checkbox"
-                          className="gp-check"
-                          checked={checked}
-                          aria-label={`Include ${baseName(f.path)} in this version`}
-                          onChange={() =>
-                            setUnchecked((prev) => {
-                              const next = new Set(prev);
-                              if (checked) next.add(f.path);
-                              else next.delete(f.path);
-                              return next;
-                            })
-                          }
-                        />
-                        <Badge kind={KIND_OF[f.status]} />
-                        <button
-                          type="button"
-                          className="gp-file-text"
-                          title={f.path}
-                          onClick={() => onOpenCanvas?.(f.path)}
-                        >
-                          <span className="gp-file-name">{baseName(f.path)}</span>
-                          <span className="gp-file-path">{f.path}</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="gp-discard"
-                          title="Compare before / after"
-                          aria-label={`Compare ${baseName(f.path)}`}
-                          onClick={() => onOpenDiff?.(f.path)}
-                        >
-                          <Icon name="diff" size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          className="gp-discard"
-                          title="Discard this change"
-                          aria-label={`Discard changes to ${baseName(f.path)}`}
-                          onClick={async () => {
-                            if (
-                              !window.confirm(
-                                `Discard your changes to “${baseName(f.path)}”? This can't be undone.`
-                              )
-                            )
-                              return;
-                            await run('discard', () => onDiscard([f.path]));
-                          }}
-                        >
-                          <Icon name="undo" size={14} />
-                        </button>
-                      </div>
-                    );
-                  })}
+              {showSectionHeads && canvasUnits.length > 0 && (
+                <div className="gp-group-hd">
+                  Canvases
+                  <span className="gp-group-count">· {canvasUnits.length}</span>
                 </div>
-              ))}
+              )}
+              {canvasUnits.map(renderUnit)}
+              {otherUnits.length > 0 && (
+                <>
+                  {showSectionHeads && (
+                    <div className="gp-group-hd">
+                      Other files
+                      <span className="gp-group-count">· {otherUnits.length}</span>
+                    </div>
+                  )}
+                  {otherUnits.map(renderUnit)}
+                </>
+              )}
             </div>
 
             <div className="gp-compose">
