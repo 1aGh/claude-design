@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-18T18:32:11.203Z",
+  "generated": "2026-06-18T19:27:52.635Z",
   "currentPhase": null,
   "phases": [
     {
@@ -175,6 +175,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — mirror ai-banner.tsx, build-roadmap.mjs, and the HelpModal in client/app.jsx rather t...",
       "planPath": ".ai/plans/archive/feature-in-app-whats-new-tour.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-per-user-camera-split-and-runtime-state-cleanup",
+      "title": "Feature: Split per-user camera out of versioned canvas meta + reconcile the runtime-state taxonomy",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — most of the machinery already exists; this is a surgical split + a three-file reconci...",
+      "planPath": ".ai/plans/archive/feature-per-user-camera-split-and-runtime-state-cleanup.md",
       "archived": true,
       "phaseKey": null
     },
@@ -903,17 +914,6 @@
       "planPath": ".ai/plans/phase-32-native-collab-distribution.md",
       "archived": false,
       "phaseKey": "32"
-    },
-    {
-      "id": "feature-per-user-camera-split-and-runtime-state-cleanup",
-      "title": "Feature: Split per-user camera out of versioned canvas meta + reconcile the runtime-state taxonomy",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports — most of the machinery already exists; this is a surgical split + a three-file reconci...",
-      "planPath": ".ai/plans/feature-per-user-camera-split-and-runtime-state-cleanup.md",
-      "archived": false,
-      "phaseKey": null
     },
     {
       "id": "phase-7-acp-chat-sidebar",
