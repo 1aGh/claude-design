@@ -60,11 +60,5 @@
       }
     ]
   },
-  "status": "ready-for-handoff",
-  "viewport": {
-    "x": -1540.8698199617306,
-    "y": 168.97055073973513,
-    "zoom": 0.36038548423718475
-  },
-  "last_modified": "2026-06-18T12:46:38.573Z"
+  "status": "ready-for-handoff"
 }
