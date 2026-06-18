@@ -5331,6 +5331,14 @@ function App() {
   // server broadcasts on `git-status`; `changesOpen` toggles the Changes panel;
   // `diffTarget` opens the before/after DiffView ({ file, conflict }).
   const [gitStatus, setGitStatus] = useState(null);
+  // Phase 28 (E3) — remote ahead/behind ("Get latest" nudge). Kept in its OWN
+  // slice, NOT folded into `gitStatus`, because the `git-status` WS broadcast
+  // (line ~5791) replaces `gitStatus` on every dirty-state change and carries
+  // only LOCAL status — merging remote-ahead into it would be clobbered on the
+  // next keystroke. The probe is a real network `git fetch` (server-side, token
+  // from the keychain bridge), so it runs on a slow cadence — mount, a periodic
+  // tick, and after each git action — never on the per-edit WS path.
+  const [remoteSync, setRemoteSync] = useState(null); // { remoteAhead, behind } | null
   const [changesOpen, setChangesOpen] = useState(false);
   const [diffTarget, setDiffTarget] = useState(null);
   const [search, setSearch] = useState('');
@@ -5827,6 +5835,21 @@ function App() {
     } catch {}
   }, []);
 
+  // Phase 28 (E3) — probe the tracking remote so the Changes panel can surface
+  // the "Get latest" nudge (GitPanel reads `status.remoteAhead` / `status.behind`).
+  // `?remote=1` is what makes the server do the `git fetch` + ahead/behind count;
+  // without it the status is local-only and the nudge never fires. Network call —
+  // call sparingly (mount / interval / post-action), never on the WS hot path.
+  const refreshRemoteSync = useCallback(async () => {
+    try {
+      const r = await fetch('/_api/git/status?remote=1');
+      if (!r.ok) return;
+      const data = await r.json();
+      if (data && data.repo !== false)
+        setRemoteSync({ remoteAhead: !!data.remoteAhead, behind: data.behind || 0 });
+    } catch {}
+  }, []);
+
   const gitPostJson = useCallback(async (path, body) => {
     try {
       const r = await fetch(path, {
@@ -5862,20 +5885,28 @@ function App() {
   const gitPublish = useCallback(async () => {
     const res = await gitPostJson('/_api/git/push', {});
     // Refresh so the "N versions ready to publish" count clears to 0 after a
-    // successful push (the server advanced the local remote-tracking ref).
-    if (res.ok) await refreshGitStatus();
+    // successful push (the server advanced the local remote-tracking ref), and
+    // re-probe the remote so a stale "Get latest" nudge clears.
+    if (res.ok) {
+      await refreshGitStatus();
+      refreshRemoteSync();
+    }
     return res;
-  }, [gitPostJson, refreshGitStatus]);
+  }, [gitPostJson, refreshGitStatus, refreshRemoteSync]);
 
   const gitGetLatest = useCallback(async () => {
     const res = await gitPostJson('/_api/git/pull', {});
-    if (res.ok) await refreshGitStatus();
+    // On success the remote is merged in — clear the nudge by re-probing.
+    if (res.ok) {
+      await refreshGitStatus();
+      refreshRemoteSync();
+    }
     // A true content conflict → open the visual resolver on the first file.
     if (res.conflict && Array.isArray(res.files) && res.files.length) {
       setDiffTarget({ file: res.files[0], conflict: true });
     }
     return res;
-  }, [gitPostJson, refreshGitStatus]);
+  }, [gitPostJson, refreshGitStatus, refreshRemoteSync]);
 
   // `path` (optional) scopes History to one canvas — the per-file version list
   // behind the History click-to-preview + DiffView "Saved version" picker
@@ -5902,6 +5933,19 @@ function App() {
     return m;
   }, [gitStatus]);
   const unsavedCount = gitStatus?.files?.length || 0;
+
+  // Phase 28 (E3) — keep remote ahead/behind fresh so the "Get latest" nudge
+  // surfaces on its own: probe once a repo is known, again whenever the Changes
+  // panel opens, and on a slow 60 s tick WHILE the panel is open (a teammate's
+  // publish then shows up without the user first attempting their own publish).
+  // Declared after `refreshRemoteSync` to avoid a temporal-dead-zone on the dep.
+  useEffect(() => {
+    if (gitStatus?.repo === false) return; // solo / non-git project — no remote
+    refreshRemoteSync();
+    if (!changesOpen) return; // only keep polling while the panel is visible
+    const id = setInterval(refreshRemoteSync, 60000);
+    return () => clearInterval(id);
+  }, [gitStatus?.repo, changesOpen, refreshRemoteSync]);
 
   // ----- Tab management (single-canvas) -----
   // Single-canvas model: opening a file REPLACES the active one (no tab strip).
@@ -6856,7 +6900,9 @@ function App() {
               then Inspector (T6), then the comments panel. */}
           {changesOpen ? (
             <GitPanel
-              status={gitStatus}
+              status={
+                gitStatus && remoteSync ? { ...gitStatus, ...remoteSync } : gitStatus
+              }
               project={project}
               width={rpSize.w}
               resizing={dragSide === 'rp'}
