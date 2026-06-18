@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "changes-panel-canvas-grouping",
+      "version": null,
+      "date": null,
+      "kind": "improvement",
+      "title": "A cleaner Changes panel, grouped by canvas",
+      "summary": "Panning or zooming a canvas no longer counts as a change to save — the Changes panel now reflects your actual work, not your mouse. And changes are grouped by canvas: each one lists its supporting files (Layout & settings, Annotations) tucked underneath, so a single checkbox saves a canvas and everything that travels with it as one unit.",
+      "surface": "design-ui"
+    },
+    {
       "id": "in-ui-git-layer",
       "version": null,
       "date": null,
