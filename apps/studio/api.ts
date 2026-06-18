@@ -3,7 +3,7 @@
 
 import crypto from 'node:crypto';
 import type { Dirent } from 'node:fs';
-import { mkdir, readdir, readFile, rename, stat as statp } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, stat as statp } from 'node:fs/promises';
 import path from 'node:path';
 
 import { renderBriefBoard, validateCanvasName } from './canvas-create.ts';
@@ -637,14 +637,21 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     }
   }
 
-  // ---------- Canvas meta sidecar (Phase 4 T5) ----------
+  // ---------- Canvas meta sidecar (Phase 4 T5; split DDR-115) ----------
   //
   // Each canvas under `<designRoot>/ui/<name>.tsx` has a sibling
-  // `<name>.meta.json`. Phase 4 stores `layout` (per-artboard world-coord
-  // rects) and `viewport` (last pan/zoom) inside that file so the canvas
-  // runtime can restore state on reload. The PATCH path is intentionally
-  // merge-shallow on top-level keys — never clobber `title`, `sections`,
-  // `ai_context`, or any other authoring metadata.
+  // `<name>.meta.json` — the SHARED, versioned document (title, sections,
+  // `layout` per-artboard world-coord rects, css_mode, …). The PATCH path is
+  // intentionally merge-shallow on top-level keys — never clobber `title`,
+  // `sections`, `ai_context`, or any other authoring metadata.
+  //
+  // DDR-115 — the PER-USER camera (`viewport` pan/zoom) NO LONGER lives in
+  // `.meta.json`. It churns on every mouse pan/zoom, so persisting it inline
+  // dirtied a tracked file. It now lives in a gitignored per-machine view file
+  // (`canvasViewPath` below). PATCH splits the lanes (viewport → view file,
+  // layout → meta); GET merges them back so the client (`window.__canvas_meta__`)
+  // is unchanged. `last_modified` is stamped into meta ONLY on a real shared
+  // (layout) change — never on a viewport-only patch.
 
   /**
    * Resolve `file` (a path relative to repoRoot like `.design/ui/Foo.tsx`)
@@ -666,26 +673,120 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     return abs.replace(/\.(tsx|html)$/i, '.meta.json');
   }
 
-  async function loadCanvasMeta(file: string): Promise<Record<string, unknown> | null> {
-    const metaAbs = canvasMetaPath(file);
-    if (!metaAbs) return null;
+  // ---------- Per-machine canvas view / camera (DDR-115) ----------
+  //
+  // The canvas pan/zoom ("camera") is PER-USER runtime state, separate from the
+  // shared `.meta.json` document. It lives in `_canvas-state/<slug>.view.json`
+  // ({ viewport }) — gitignored, swept on delete, export-excluded. DISTINCT from
+  // the legacy `_canvas-state/<slug>.json` ({ sections, viewport:{x,y,scale} })
+  // store: that uses `scale` clamped 0.05–8, this uses `zoom` clamped 0.1–4, so
+  // overloading one file would let the two writers clobber each other's shape.
+
+  /** Validate a candidate viewport — finite x/y, zoom clamped [0.1, 4] (the
+   *  Phase 4 rule). Returns the normalized viewport, or null when invalid. */
+  function normalizeViewport(v: unknown): { x: number; y: number; zoom: number } | null {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+    const vv = v as { x?: unknown; y?: unknown; zoom?: unknown };
+    if (
+      Number.isFinite(vv.x as number) &&
+      Number.isFinite(vv.y as number) &&
+      Number.isFinite(vv.zoom as number)
+    ) {
+      const zoom = Math.min(4, Math.max(0.1, vv.zoom as number));
+      return { x: vv.x as number, y: vv.y as number, zoom };
+    }
+    return null;
+  }
+
+  /** Per-machine view file for a canvas: `_canvas-state/<slug>.view.json`. Gated
+   *  by the same containment guard as the meta sidecar (traversal / repoRoot /
+   *  canvas-ext). Returns null when `file` is not a valid canvas path. */
+  function canvasViewPath(file: string): string | null {
+    if (!canvasMetaPath(file)) return null; // reuse the containment + ext gate
+    return path.join(paths.canvasStateDir, `${fileSlug(file)}.view.json`);
+  }
+
+  async function loadCanvasView(
+    file: string
+  ): Promise<{ viewport?: { x: number; y: number; zoom: number } } | null> {
+    const viewAbs = canvasViewPath(file);
+    if (!viewAbs) return null;
     try {
-      const raw = await Bun.file(metaAbs).text();
-      const obj = JSON.parse(raw);
-      return obj && typeof obj === 'object' && !Array.isArray(obj)
-        ? (obj as Record<string, unknown>)
-        : null;
+      const obj = JSON.parse(await Bun.file(viewAbs).text());
+      if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+        const vp = normalizeViewport((obj as { viewport?: unknown }).viewport);
+        return vp ? { viewport: vp } : {};
+      }
+      return null;
     } catch {
       return null;
     }
   }
 
+  /** Persist the per-user camera. Validates + clamps; best-effort (mkdir the
+   *  bucket if absent). Returns the normalized viewport on write, null when the
+   *  path is rejected or the viewport is invalid (no write). */
+  async function saveCanvasView(
+    file: string,
+    viewport: unknown
+  ): Promise<{ x: number; y: number; zoom: number } | null> {
+    const viewAbs = canvasViewPath(file);
+    if (!viewAbs) return null;
+    const vp = normalizeViewport(viewport);
+    if (!vp) return null;
+    try {
+      await mkdir(paths.canvasStateDir, { recursive: true });
+      await Bun.write(viewAbs, `${JSON.stringify({ viewport: vp }, null, 2)}\n`);
+      return vp;
+    } catch {
+      return null;
+    }
+  }
+
+  async function loadCanvasMeta(file: string): Promise<Record<string, unknown> | null> {
+    const metaAbs = canvasMetaPath(file);
+    if (!metaAbs) return null;
+    let obj: Record<string, unknown> = {};
+    let hadMeta = false;
+    try {
+      const parsed = JSON.parse(await Bun.file(metaAbs).text());
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        obj = parsed as Record<string, unknown>;
+        hadMeta = true;
+      }
+    } catch {
+      // No meta on disk — fall through to a possible view-only result.
+    }
+    // DDR-115 — never surface the per-user camera or the local write-timestamp
+    // from the on-disk meta: `viewport` is stale (the live camera lives in the
+    // view file), `last_modified` is local bookkeeping. Strip both, then overlay
+    // the current camera so the shell's `window.__canvas_meta__.viewport` still
+    // restores on reload — the client stays unchanged. (`= undefined` over
+    // `delete` — JSON.stringify/Response.json drop undefined keys, matching the
+    // codebase convention + biome's noDelete.)
+    obj.viewport = undefined;
+    obj.last_modified = undefined;
+    const view = await loadCanvasView(file);
+    if (view?.viewport) obj.viewport = view.viewport;
+    // Preserve the historic contract: no meta AND no camera → null (GET → {},
+    // PATCH-on-rejected-path → 404). A view-only canvas still returns its camera.
+    if (!hadMeta && !view?.viewport) return null;
+    return obj;
+  }
+
   /**
-   * Shallow-merge `patch` onto the existing meta sidecar and write back. Only
-   * the Phase 4 keys `layout` + `viewport` are accepted from untrusted clients;
-   * the rest of meta (title, sections, brief, ai_context, …) is preserved.
-   * Returns the merged meta on success, null when the canvas has no meta or
-   * the patch is rejected.
+   * Apply a `patch` from the (untrusted) client, splitting the two lanes
+   * (DDR-115):
+   *   - `viewport` → the per-machine view file (`saveCanvasView`); NEVER the
+   *     versioned meta. A viewport-only patch leaves `.meta.json` byte-unchanged
+   *     (no `last_modified` bump) — this is the mouse-move churn killer.
+   *   - `layout`   → the shared `.meta.json`, shallow-merged so `title`,
+   *     `sections`, `ai_context`, … are preserved; `last_modified` is stamped
+   *     ONLY here (a real shared change the user wants committable).
+   * Returns the same coherent object a GET would produce (shared meta + camera),
+   * or null only when the path itself is rejected (traversal / bad ext) so the
+   * route maps it to 404. A viewport-only patch on a canvas that has no meta yet
+   * still succeeds (writes only the view file) and returns `{ viewport }`.
    */
   async function patchCanvasMeta(
     file: string,
@@ -694,43 +795,54 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     const metaAbs = canvasMetaPath(file);
     if (!metaAbs) return null;
     if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return null;
-    let current: Record<string, unknown> = {};
-    try {
-      const raw = await Bun.file(metaAbs).text();
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        current = parsed as Record<string, unknown>;
+
+    // --- Per-user camera lane: viewport → view file, never the versioned meta.
+    if (patch.viewport !== undefined) {
+      if (patch.viewport === null) {
+        // Explicit clear — best-effort remove the view file.
+        const viewAbs = canvasViewPath(file);
+        if (viewAbs) {
+          try {
+            await rm(viewAbs);
+          } catch {
+            /* absent / unreadable — nothing to clear */
+          }
+        }
+      } else {
+        // saveCanvasView validates + clamps; an invalid viewport is a silent no-op.
+        await saveCanvasView(file, patch.viewport);
       }
-    } catch {
-      // No existing meta — create one with just the Phase 4 keys.
     }
-    const next = { ...current };
-    // Whitelist of patchable top-level keys.
+
+    // --- Shared document lane: layout → versioned meta, stamps last_modified. ---
     if (patch.layout !== undefined) {
+      let current: Record<string, unknown> = {};
+      try {
+        const parsed = JSON.parse(await Bun.file(metaAbs).text());
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          current = parsed as Record<string, unknown>;
+        }
+      } catch {
+        // No existing meta — create one with just the layout key.
+      }
+      const next = { ...current };
       if (patch.layout === null) {
         next.layout = undefined;
       } else if (typeof patch.layout === 'object' && !Array.isArray(patch.layout)) {
         next.layout = patch.layout;
       }
+      // Defensive: a stale inline viewport must never persist in the versioned
+      // file (the camera lane owns it now). JSON.stringify drops undefined keys.
+      next.viewport = undefined;
+      next.last_modified = new Date().toISOString();
+      // Trailing newline — consistent with canvas-create.ts + sync/codec.ts
+      // (mergeSharedMetaIntoLocal), so a layout edit doesn't churn the newline.
+      await Bun.write(metaAbs, `${JSON.stringify(next, null, 2)}\n`);
     }
-    if (patch.viewport !== undefined) {
-      if (patch.viewport === null) {
-        next.viewport = undefined;
-      } else if (typeof patch.viewport === 'object' && !Array.isArray(patch.viewport)) {
-        const v = patch.viewport as { x?: unknown; y?: unknown; zoom?: unknown };
-        if (
-          Number.isFinite(v.x as number) &&
-          Number.isFinite(v.y as number) &&
-          Number.isFinite(v.zoom as number)
-        ) {
-          const zoom = Math.min(4, Math.max(0.1, v.zoom as number));
-          next.viewport = { x: v.x as number, y: v.y as number, zoom };
-        }
-      }
-    }
-    next.last_modified = new Date().toISOString();
-    await Bun.write(metaAbs, JSON.stringify(next, null, 2));
-    return next;
+
+    // Return the merged view (shared meta + camera) — identical to GET, so the
+    // client gets a coherent object regardless of which lane(s) the patch hit.
+    return await loadCanvasMeta(file);
   }
 
   // ---------- Annotations sidecar (Phase 5) ----------
@@ -1030,6 +1142,11 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
     await moveIfExists(
       path.join(paths.canvasStateDir, `${slug}.json`),
       `_canvas-state__${slug}.json`
+    );
+    // DDR-115 — the per-machine camera view file.
+    await moveIfExists(
+      path.join(paths.canvasStateDir, `${slug}.view.json`),
+      `_canvas-state__${slug}.view.json`
     );
     await moveIfExists(path.join(paths.commentsDir, `${slug}.json`), `_comments__${slug}.json`);
 

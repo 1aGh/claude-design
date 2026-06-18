@@ -5,18 +5,26 @@ node_modules/
 # dev-server runtime artifacts (anything the server writes outside the plugin)
 dev-server/.cache/
 
-# .design/ runtime — server pid/port, active-tab state, snapshot history
-# (source-of-truth files like config.json / README.md / INDEX.md / system/ ARE committed)
+# .design/ runtime — per-machine / per-user state. Canonical IGNORED set is the
+# DDR-115 runtime-state taxonomy (kept in lockstep with cli/lib/gitignore-block.mjs
+# + apps/studio/git/service.ts isMaudeRuntimeState). VERSIONED content
+# (config.json / README.md / INDEX.md / system/ / *.meta.json / *.annotations.svg)
+# is NOT ignored. Comments stay ignored (hub-sync-only, DDR-102/DDR-115).
 .design/_server.json
 .design/_server.log
+.design/_server.lock
 .design/_active.json
 .design/_sync.json
+.design/_preflight.json
 .design/_locator.json
+.design/_export-history.json
 .design/_history/
 .design/_trash/
+.design/_draw/
+.design/_smoke/
 .design/_comments/
 .design/_canvas-state/
-.design/_export-history.json
+.design/_chat/
 .design/_untrusted/
 # Auto-managed by the linked-mode sync runtime (lists hub-synced UNTRUSTED files).
 # Machine-local state, regenerated on sync — never committed.
@@ -66,10 +74,9 @@ apps/studio/bun.lock
 # Stub .keep written by dev-server before the inspect.ts fix landed (Phase 3.4)
 .design/.keep
 
-# Phase 5 / 5.1 — per-canvas annotation persistence. These are user-local
-# review scratch (pen / rect / ellipse / arrow / text), not source.
-.design/*.annotations.svg
-.design/**/*.annotations.svg
+# DDR-115 — `*.annotations.svg` is VERSIONED (durable visual markup, no other
+# transport). It is deliberately NOT ignored; it travels via git + shows in the
+# Changes panel. (Was ignored pre-DDR-115; flipped to versioned per user decision.)
 
 # Postinstall/serve side-channel cache (machine-specific compiled-binary path)
 cli/.platform-binary-path

@@ -131,18 +131,24 @@ function underPrefix(filepath: string, prefix: string): boolean {
   return filepath === prefix || filepath.startsWith(`${prefix}/`);
 }
 
-/** Maude's own runtime/state files under the design root — NEVER user design
- *  content. They must never surface in the Changes panel nor be swept up by a
- *  "Save all" commit. Mirrors fs-watch.ts's exclusions + the isCanvasSafeRoute
- *  `_`-segment convention (server.json/active.json/sync.json + _history/_trash/…).
- *  A real managed project also gitignores these (DDR-056); this is the backstop
- *  for a project that lacks the gitignore block. `_comments`/`_annotations` are
- *  deliberately NOT excluded — they're versionable collab content. */
+/** Maude's own per-machine / per-user runtime state under the design root —
+ *  NEVER versioned design content. It must never surface in the Changes panel
+ *  nor be swept up by a "Save all" commit. The canonical IGNORED set is the
+ *  DDR-115 taxonomy (also mirrored by `cli/lib/gitignore-block.mjs` + the repo
+ *  `.gitignore`). A real managed project gitignores these; this is the backstop
+ *  for a project that lacks the gitignore block.
+ *
+ *  DDR-115 divergence — the rule used to claim BOTH comments and annotations
+ *  were versionable. It now splits:
+ *    - `*.annotations.svg` → VERSIONED (durable visual markup, no other
+ *      transport) → NOT hidden here.
+ *    - `_comments/`        → hub-sync-only (DDR-102 CRDT) → HIDDEN, so it never
+ *      double-transports through git. */
 function isMaudeRuntimeState(p: string): boolean {
   return (
-    /(^|\/)_(?:server|active|sync|preflight)\.json$/.test(p) ||
-    /(^|\/)_server\.lock$/.test(p) ||
-    /(^|\/)_(?:history|trash|draw|smoke)(?:\/|$)/.test(p)
+    /(^|\/)_(?:server|active|sync|preflight|locator|export-history)\.json$/.test(p) ||
+    /(^|\/)_server\.(?:lock|log)$/.test(p) ||
+    /(^|\/)_(?:history|trash|draw|smoke|canvas-state|state|chat|comments|untrusted)(?:\/|$)/.test(p)
   );
 }
 
