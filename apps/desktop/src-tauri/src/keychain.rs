@@ -64,20 +64,29 @@ struct Bridge {
 }
 static BRIDGE: OnceLock<Bridge> = OnceLock::new();
 
-fn random_hex(bytes: usize) -> String {
+fn random_hex(bytes: usize) -> Result<String, String> {
     let mut buf = vec![0u8; bytes];
-    // getrandom is infallible on every platform Maude targets; fall back to a
-    // time-seeded value rather than panicking if the OS RNG were ever unavailable.
-    if getrandom::getrandom(&mut buf).is_err() {
-        let seed = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        for (i, b) in buf.iter_mut().enumerate() {
-            *b = ((seed >> (i % 16 * 8)) as u8) ^ (i as u8).wrapping_mul(31);
-        }
+    // SECURITY (phase-28 audit, fail-closed): the bridge key's only job is to be
+    // unguessable. If the OS RNG is unavailable we REFUSE to start the bridge —
+    // never degrade to a time-seeded (guessable) key. getrandom is infallible on
+    // every platform Maude targets, so this is a hard invariant, not a hot path.
+    getrandom::getrandom(&mut buf).map_err(|e| format!("secure RNG unavailable: {e}"))?;
+    Ok(buf.iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// Constant-time equality for the bridge key — avoids a timing side-channel on the
+/// `X-Maude-Token-Key` check. Lengths are fixed (64-hex), so the length compare
+/// leaks nothing.
+fn ct_eq(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
     }
-    buf.iter().map(|b| format!("{b:02x}")).collect()
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
 }
 
 /// Start the loopback token bridge on an ephemeral 127.0.0.1 port (idempotent).
@@ -93,7 +102,7 @@ pub fn start_token_bridge() -> Result<(), String> {
         .to_ip()
         .map(|a| a.port())
         .ok_or_else(|| "token bridge has no port".to_string())?;
-    let key = random_hex(32);
+    let key = random_hex(32)?;
     let key_for_thread = key.clone();
 
     std::thread::Builder::new()
@@ -127,7 +136,7 @@ fn handle_request(req: tiny_http::Request, key: &str) {
     let key_ok = req
         .headers()
         .iter()
-        .any(|h| h.field.equiv(KEY_HEADER) && h.value.as_str() == key);
+        .any(|h| h.field.equiv(KEY_HEADER) && ct_eq(h.value.as_str(), key));
 
     // Wrong route → 404; wrong method on the route → 405; bad/missing key → 403.
     let status: u16 = if !path_ok {
