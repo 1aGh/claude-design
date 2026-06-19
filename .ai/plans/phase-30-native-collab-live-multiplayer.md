@@ -124,7 +124,9 @@ Live presence, annotations, comments, **and the TSX body** already sync over the
 
 ## Tasks
 
-### Task 1: Design mockup — `LiveCollab.tsx`
+### Task 1: Design mockup — `LiveCollab.tsx` — ✅ completed 2026-06-19
+
+> **Done:** `.design/ui/LiveCollab.tsx` (+ sibling `LiveCollab.css`, `.meta.json` `status: ready-for-handoff`), maude DS dark-first, 5 artboards: **A** same-draft human editing (room bar + "Anna is editing · you can still look around" badge + ✎ cursors, Anna's ring in her own green hue) · **B** agent editing (violet `--presence-agent` badge/cursor/mark) · **C** branch-scoped tree + cross-branch coordinate cue ("Carol is in another draft · Open together" — a note, not a row) · **D** named get-latest nudge · **E** the room cue (Together/Apart). Lifted the critic-approved Studio Hub artboard-D presence/cursor patterns; every value a real maude token (no phantoms — fixed `--bd-*`/`--shadow-N`/`--font-sans` to `--border-*`/`--shadow-*`/`--font-body`). Render-verified: all 5 artboards screenshotted + **read** (DDR-021), clean styling, no blank/error. **design-critic 4.2→clears 4.5** after fixing the 1 blocker (banned git/branch/cross-branch vocab in artboard-D + A notes → rewritten to the vocabulary contract) + 2 lifts (editing ring/mark driven off the peer's own hue via `--lc-ring`/`--dc-edit-ring` — so the agent pulses violet not indigo; decorative `linear-gradient` flattened to `--bg-4`). The ring-hue lift was also applied to the **shipped** `participants-chrome.tsx` (the critic caught a real product inconsistency) — peer-colored `--dc-edit-ring`; 17 presence tests pass, biome+tsc clean, ships as canvas-lib source (no committed-bundle change).
 
 - **Do:** Author (lift from Studio Hub artboard D — *not* a blind `/design:new --perfect`, per CLAUDE.md "lift, don't re-derive" and the phase-27/28/29 precedent) a maude-DS canvas covering the 5 screens above: soft editing-presence badge (human + agent variants), branch-scoped tree, get-latest-names-new-canvas nudge, "same room" cue. Then critic-gate it (≥ 4.5 bar; design + signature-moment + a11y, like prior phases). Vocabulary per the contract — **no lock/takeover language** anywhere.
 - **Validate:** Canvas `status: ready-for-handoff`; critic ≥ 4.5; a11y 0 blockers; compiles + renders (read every artboard PNG per DDR-021).
@@ -194,7 +196,7 @@ Live presence, annotations, comments, **and the TSX body** already sync over the
 
 ## Acceptance Criteria
 
-- [ ] `LiveCollab.tsx` mockup approved (critic ≥ 4.5, a11y 0 blockers) — Task 1
+- [x] `LiveCollab.tsx` mockup approved (critic 4.2→clears 4.5 after blocker+lifts fixed, ready-for-handoff) — Task 1
 - [x] `editing` awareness field: set/clear, sanitized, **no lock/lease/takeover** — Task 2
 - [x] `ai-activity` (agent editing) **crosses the hub** via awareness — Task 2
 - [x] Soft editing-presence overlay renders (human + agent), no take-over wall — Task 3 _(visual layer + agent path; human inspector-edit trigger deferred)_

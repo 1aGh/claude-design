@@ -140,12 +140,13 @@ const CHROME_CSS = `
   max-width: 200px;
 }
 /* Phase 30 / DDR-120 — soft editing-presence. A peer (or a bridged agent)
-   actively editing this canvas gets a gently-pulsing accent ring + a ✎ marker.
-   A heads-up, never a lock. */
+   actively editing this canvas gets a gently-pulsing ring + a ✎ marker in the
+   peer's OWN identity hue (--dc-edit-ring, set inline from peer.color) so the
+   agent pulses violet, not the indigo accent. A heads-up, never a lock. */
 .dc-participant--editing { animation: dc-participant-edit-pulse 1.8s ease-in-out infinite; }
 @keyframes dc-participant-edit-pulse {
-  0%, 100% { box-shadow: 0 1px 2px rgba(0,0,0,0.08), 0 0 0 2px var(--maude-hud-accent, oklch(56% 0.170 50)); }
-  50% { box-shadow: 0 1px 2px rgba(0,0,0,0.08), 0 0 0 4px color-mix(in oklab, var(--maude-hud-accent, oklch(56% 0.170 50)) 45%, transparent); }
+  0%, 100% { box-shadow: 0 1px 2px rgba(0,0,0,0.08), 0 0 0 2px var(--dc-edit-ring, var(--maude-hud-accent, oklch(56% 0.170 50))); }
+  50% { box-shadow: 0 1px 2px rgba(0,0,0,0.08), 0 0 0 4px color-mix(in oklab, var(--dc-edit-ring, var(--maude-hud-accent, oklch(56% 0.170 50))) 45%, transparent); }
 }
 .dc-participant-edit-marker {
   position: absolute;
@@ -155,7 +156,7 @@ const CHROME_CSS = `
   height: 13px;
   border-radius: 50%;
   background: var(--maude-chrome-bg-0, #fff);
-  color: var(--maude-hud-accent, oklch(56% 0.170 50));
+  color: var(--dc-edit-ring, var(--maude-hud-accent, oklch(56% 0.170 50)));
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -165,7 +166,7 @@ const CHROME_CSS = `
   pointer-events: none;
 }
 @media (prefers-reduced-motion: reduce) {
-  .dc-participant--editing { animation: none; box-shadow: 0 1px 2px rgba(0,0,0,0.08), 0 0 0 2px var(--maude-hud-accent, oklch(56% 0.170 50)); }
+  .dc-participant--editing { animation: none; box-shadow: 0 1px 2px rgba(0,0,0,0.08), 0 0 0 2px var(--dc-edit-ring, var(--maude-hud-accent, oklch(56% 0.170 50))); }
 }
 `.trim();
 
@@ -221,11 +222,15 @@ function Avatar({ peer, isFollowing, onToggleFollow }: AvatarProps): JSX.Element
   }, [open]);
 
   const cls = `dc-participant${isFollowing ? ' dc-participant--following' : ''}${editing ? ' dc-participant--editing' : ''}`;
+  // `--dc-edit-ring` drives the editing pulse/marker off the peer's own hue.
+  const style = (
+    editing ? { background: peer.color, '--dc-edit-ring': peer.color } : { background: peer.color }
+  ) as React.CSSProperties;
   return (
     <div
       ref={rootRef}
       className={cls}
-      style={{ background: peer.color }}
+      style={style}
       onClick={() => setOpen((v) => !v)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {

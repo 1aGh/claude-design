@@ -1,0 +1,43 @@
+{
+  "title": "LiveCollab",
+  "subtitle": "Branch-scoped live multiplayer + soft editing-presence (maude DS) — same-draft cursors · agent editing · branch-scoped tree · get-latest · the room cue",
+  "brief": "The UX of phase-30. Two collaborators on the SAME branch see each other's cursors plus a SOFT 'is editing' heads-up (never a lock); an AI agent editing shows the same way in the --presence-agent violet hue; the canvas tree is branch-scoped (a teammate on another draft is a coordinate cue, not a tree row); a new canvas arrives via 'Get latest'. Documents the shipped surface (cursors-overlay.tsx + participants-chrome.tsx editing treatment) per DDR-120 (branch-scoped multiplayer + soft editing-presence, no locking) and DDR-121 (canvas propagation via Get latest). Reference lifted: Studio Hub artboard D (presence map + agent cursor). Microcopy follows the collab-model-design.md vocabulary contract — draft / Shared version / Get latest, never branch/merge/commit/pull.",
+  "platform": "desktop",
+  "designSystem": "maude",
+  "opt_out_scope": "palette",
+  "status": "ready-for-handoff",
+  "sections": [
+    {
+      "id": "livecollab",
+      "title": "LiveCollab · maude",
+      "subtitle": "Branch-scoped live multiplayer + soft editing-presence · 5 artboards (phase-30)"
+    }
+  ],
+  "artboards": [
+    {
+      "id": "same-branch-human",
+      "label": "A · same draft · Anna is editing",
+      "note": "Room bar (both in Redesign, live) + participants (Anna editing ring) + stage: Login frame with soft 'Anna is editing · you can still look around' badge + Anna's pulsing cursor + your cursor. Heads-up, never a lock."
+    },
+    {
+      "id": "agent-editing",
+      "label": "B · the AI agent is editing",
+      "note": "Same treatment in the --presence-agent violet hue: 'Anna's agent is editing · changes arrive live' badge + violet agent cursor. The cross-machine agent signal phase-30 added."
+    },
+    {
+      "id": "branch-scoped-tree",
+      "label": "C · you see only your draft",
+      "note": "Branch-scoped tree (Redesign's canvases, Bob 'here' dot) + the cross-branch coordinate cue: 'Carol is working in another draft (Marketing site) · Open together' — a presence note, NOT a tree row."
+    },
+    {
+      "id": "get-latest",
+      "label": "D · a new canvas → Get latest",
+      "note": "Named nudge 'Anna added Login and 2 more to Redesign · Get latest' + the branch-scoped tree it joins after the pull. Files travel via git; same-machine tabs refresh instantly."
+    },
+    {
+      "id": "room-cue",
+      "label": "E · the room cue",
+      "note": "The single mental model — are we in the same draft now or not? Together = live (cursors/annotations/comments/edits); Apart = find each other's finished work waiting (live call vs voicemail)."
+    }
+  ]
+}
