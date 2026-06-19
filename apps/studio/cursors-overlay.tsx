@@ -89,8 +89,15 @@ const CURSOR_CSS = `
   border-radius: var(--radius-sm, 2px) var(--radius-sm, 2px) 0 0;
   white-space: nowrap;
 }
+/* Phase 30 / DDR-120 — soft editing-presence. When a peer (human or a bridged
+ * agent) is actively editing this canvas, their cursor pulses gently and the
+ * label carries a ✎ mark. A heads-up, never a lock. */
+.dc-cursor--editing .dc-cursor-arrow { animation: dc-cursor-edit-pulse 1.6s ease-in-out infinite; }
+.dc-cursor-edit-mark { margin-left: 3px; opacity: 0.85; }
+@keyframes dc-cursor-edit-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 @media (prefers-reduced-motion: reduce) {
   .dc-cursor { transition: none !important; }
+  .dc-cursor--editing .dc-cursor-arrow { animation: none; }
 }
 `.trim();
 
@@ -119,8 +126,12 @@ const Cursor = memo(function Cursor({ peer, viewport }: CursorProps): JSX.Elemen
   // world → screen: screen = world * zoom + viewport.{x,y}
   const screenX = peer.cursor.x * viewport.zoom + viewport.x;
   const screenY = peer.cursor.y * viewport.zoom + viewport.y;
+  const editing = !!peer.editing;
   return (
-    <div className="dc-cursor" style={{ transform: `translate(${screenX}px, ${screenY}px)` }}>
+    <div
+      className={`dc-cursor${editing ? ' dc-cursor--editing' : ''}`}
+      style={{ transform: `translate(${screenX}px, ${screenY}px)` }}
+    >
       {/* DS colors-presence Pointer — one plain triangle glyph, tinted by its
           owner (the specimen's exact 24-grid path, no tail/notch). */}
       <svg
@@ -134,6 +145,11 @@ const Cursor = memo(function Cursor({ peer, viewport }: CursorProps): JSX.Elemen
       </svg>
       <div className="dc-cursor-label" style={{ background: peer.color }}>
         {peer.name}
+        {editing && (
+          <span className="dc-cursor-edit-mark" aria-hidden="true">
+            ✎
+          </span>
+        )}
       </div>
     </div>
   );

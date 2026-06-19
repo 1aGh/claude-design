@@ -147,7 +147,9 @@ Live presence, annotations, comments, **and the TSX body** already sync over the
   - **Explicitly NOT building:** lock acquisition/release, 30 s lease, attributed takeover, stale-lock detection. (Reversal of original Task 2.)
 - **Validate:** `editing-presence.test.ts` — sanitize accept/reject matrix; set→clear; agent `ai-activity`→awareness bridge; awareness state dropped on disconnect (reuse the `room.ts` disconnect-evicts-awareness behaviour).
 
-### Task 3: Soft editing-presence overlay (client)
+### Task 3: Soft editing-presence overlay (client) — ✅ visual layer + agent path completed 2026-06-19
+
+> **Done:** the soft editing treatment lives in the **in-canvas presence layer** (`cursors-overlay.tsx` + `participants-chrome.tsx`), driven by `peer.editing` — NOT the plan's shell-side `EditingPresence.jsx` (that location was a locking-design holdover; presence renders in the canvas iframe where the awareness lives, avoiding a cross-origin bridge). A peer/agent editing gets a gently-pulsing accent ring + a ✎ marker + "Editing this canvas" popover line; the cursor pulses + carries ✎. **No take-over button, no read-only wall** — a heads-up. `isOwnEditingEcho()` (pure, exported, tested) drops the authoring machine's own server-side projection echo so the editor doesn't see a ghost of themselves. `prefers-reduced-motion` respected. **Agent path works end-to-end** (Task-2 server projection → hub → this badge — the user's primary ask). `participants-chrome.test.ts` +4 tests (26 presence tests pass); biome + tsc clean; client bundle rebuilt (release; `client.bundle.js` 410 KB, runtime bundles + binary untouched). **Deferred:** (a) the **human CSS-inspector edit trigger** (shell→iframe `setEditing` bridge, like `ai-activity`'s relay) — the hook `useEditingPresence` exists but isn't wired to inspector edits yet; (b) the full **two-peer agent-browser demo** (needs a live trigger + is the native-app dogfood ceiling).
 
 - **Do:** Per the approved mockup. When another peer's (or the agent's) awareness carries `editing` for the current canvas, show a soft badge — avatar/funny-name + "is editing this canvas" — reusing the `use-agent-presence.tsx` tinted-overlay idiom and the `--presence-agent` hue for the agent. **No** "Take over" button; **no** read-only wall (the user can still edit — it's a heads-up). When self is editing, optionally a subtle "you're editing" chip. The live TSX changes already arrive via the hub sync + iframe reload — the badge just attributes them.
 - **Validate:** Two tabs (loopback), same canvas: Tab A edits → Tab B shows the soft "A is editing" badge AND sees the TSX change render (~1 s) → badge clears on idle. Agent path: run `/design:edit` on a canvas with a second tab open → the second tab shows "agent is editing".
@@ -195,7 +197,7 @@ Live presence, annotations, comments, **and the TSX body** already sync over the
 - [ ] `LiveCollab.tsx` mockup approved (critic ≥ 4.5, a11y 0 blockers) — Task 1
 - [x] `editing` awareness field: set/clear, sanitized, **no lock/lease/takeover** — Task 2
 - [x] `ai-activity` (agent editing) **crosses the hub** via awareness — Task 2
-- [ ] Soft editing-presence overlay renders (human + agent), no take-over wall — Task 3
+- [x] Soft editing-presence overlay renders (human + agent), no take-over wall — Task 3 _(visual layer + agent path; human inspector-edit trigger deferred)_
 - [ ] Live TSX cross-machine round-trip **verified** (cursors + annotations + comments + TSX, two tabs) — Validation 3
 - [x] Branch-scoped visibility (structural — `loadTree` re-reads disk); `canvas-list-update` loopback refresh — Task 4 _(cross-machine get-latest nudge enrichment deferred — polish)_
 - [ ] Hub admin realigned to repo/branch context, ≤ 28 KB gz — Task 5

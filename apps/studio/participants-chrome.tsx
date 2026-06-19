@@ -139,6 +139,34 @@ const CHROME_CSS = `
   white-space: normal;
   max-width: 200px;
 }
+/* Phase 30 / DDR-120 — soft editing-presence. A peer (or a bridged agent)
+   actively editing this canvas gets a gently-pulsing accent ring + a ✎ marker.
+   A heads-up, never a lock. */
+.dc-participant--editing { animation: dc-participant-edit-pulse 1.8s ease-in-out infinite; }
+@keyframes dc-participant-edit-pulse {
+  0%, 100% { box-shadow: 0 1px 2px rgba(0,0,0,0.08), 0 0 0 2px var(--maude-hud-accent, oklch(56% 0.170 50)); }
+  50% { box-shadow: 0 1px 2px rgba(0,0,0,0.08), 0 0 0 4px color-mix(in oklab, var(--maude-hud-accent, oklch(56% 0.170 50)) 45%, transparent); }
+}
+.dc-participant-edit-marker {
+  position: absolute;
+  right: -3px;
+  top: -3px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--maude-chrome-bg-0, #fff);
+  color: var(--maude-hud-accent, oklch(56% 0.170 50));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  line-height: 1;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.14);
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dc-participant--editing { animation: none; box-shadow: 0 1px 2px rgba(0,0,0,0.08), 0 0 0 2px var(--maude-hud-accent, oklch(56% 0.170 50)); }
+}
 `.trim();
 
 function ensureChromeStyles(): void {
@@ -148,6 +176,17 @@ function ensureChromeStyles(): void {
   s.id = 'dc-participants-css';
   s.textContent = CHROME_CSS;
   document.head.appendChild(s);
+}
+
+/**
+ * Phase 30 / DDR-120 — true when a foreign peer is THIS machine's own
+ * server-side editing echo: a peer carrying my own name with editing set but
+ * no cursor/selection. That's the room's projection of my own agent/inspector
+ * edit (which I already see via the local ai-activity avatar), so I skip it. A
+ * remote peer never matches (different name), so they still get the heads-up.
+ */
+function isOwnEditingEcho(peer: ForeignAwareness, myName: string | undefined): boolean {
+  return peer.name === myName && !!peer.editing && !peer.cursor && !peer.selection;
 }
 
 function initialsFor(name: string): string {
@@ -169,6 +208,7 @@ interface AvatarProps {
 function Avatar({ peer, isFollowing, onToggleFollow }: AvatarProps): JSX.Element {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const editing = !!peer.editing;
 
   useEffect(() => {
     if (!open) return;
@@ -180,10 +220,11 @@ function Avatar({ peer, isFollowing, onToggleFollow }: AvatarProps): JSX.Element
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [open]);
 
+  const cls = `dc-participant${isFollowing ? ' dc-participant--following' : ''}${editing ? ' dc-participant--editing' : ''}`;
   return (
     <div
       ref={rootRef}
-      className={`dc-participant${isFollowing ? ' dc-participant--following' : ''}`}
+      className={cls}
       style={{ background: peer.color }}
       onClick={() => setOpen((v) => !v)}
       onKeyDown={(e) => {
@@ -194,14 +235,20 @@ function Avatar({ peer, isFollowing, onToggleFollow }: AvatarProps): JSX.Element
       }}
       role="button"
       tabIndex={0}
-      title={peer.name}
-      aria-label={peer.name}
+      title={editing ? `${peer.name} — editing this canvas` : peer.name}
+      aria-label={editing ? `${peer.name}, editing this canvas` : peer.name}
       aria-expanded={open}
     >
       {initialsFor(peer.name)}
+      {editing && (
+        <span className="dc-participant-edit-marker" aria-hidden="true">
+          ✎
+        </span>
+      )}
       {open && (
         <div className="dc-participant-popover" onClick={(e) => e.stopPropagation()}>
           <div className="dc-participant-popover__name">{peer.name}</div>
+          {editing && <div className="dc-participant-popover__sub">Editing this canvas</div>}
           <button
             type="button"
             className={`dc-participant-popover__btn${isFollowing ? ' dc-participant-popover__btn--stop' : ''}`}
@@ -318,13 +365,21 @@ export function ParticipantsChrome(): JSX.Element | null {
     controller.setViewport(v);
   }, [controller, followTarget, peers]);
 
-  // Render whenever there's a human peer OR an active agent (so an agent shows
-  // even with no human collaborators connected).
-  if (peers.length === 0 && !agent) return null;
+  // Phase 30 / DDR-120 — drop the authoring machine's own server-side editing
+  // echo: a foreign peer carrying MY name with editing set but no cursor/
+  // selection is the room's projection of my own agent/inspector edit, which I
+  // already see via the local ai-activity avatar. A remote peer never matches
+  // (different name), so they still get the "X is editing" heads-up.
+  const myName = collab?.myName;
+  const visiblePeers = peers.filter((p) => !isOwnEditingEcho(p, myName));
+
+  // Render whenever there's a visible human peer OR an active agent (so an agent
+  // shows even with no human collaborators connected).
+  if (visiblePeers.length === 0 && !agent) return null;
 
   return (
     <div className="dc-participants" aria-label="Active collaborators">
-      {peers.map((p) => (
+      {visiblePeers.map((p) => (
         <Avatar
           key={p.clientID}
           peer={p}
@@ -337,4 +392,4 @@ export function ParticipantsChrome(): JSX.Element | null {
   );
 }
 
-export { initialsFor };
+export { initialsFor, isOwnEditingEcho };
