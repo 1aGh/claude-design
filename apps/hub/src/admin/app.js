@@ -301,6 +301,16 @@ function renderPeersOverview(p) {
 function renderCanvases(c) {
   const tbody = $('canvases-rows');
   const rows = c.canvases || [];
+  // Frame the list as ONE project's canvases (the hub's real identity) — the
+  // hub has no repo/branch concept, so a single-context line is the honest
+  // realignment, not a fabricated repo/branch grouping. The hub name is set on
+  // .nav-brand-name by loadSettings; textContent round-trips it safely (no XSS).
+  const ctx = $('canvases-context');
+  if (ctx) {
+    const hub = (document.querySelector('.nav-brand-name')?.textContent || '').trim();
+    const n = rows.length;
+    ctx.textContent = `${hub ? `${hub} · ` : ''}${n} synced canvas${n === 1 ? '' : 'es'} — every connected peer shares this one project.`;
+  }
   if (!rows.length) {
     tbody.innerHTML = '<tr class="empty"><td colspan="3">No canvases synced yet.</td></tr>';
     return;

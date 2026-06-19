@@ -166,7 +166,9 @@ Live presence, annotations, comments, **and the TSX body** already sync over the
   - **New canvas (cross-machine):** enrich the phase-28 get-latest nudge to name what's new ("✦ Anna added *Login* · Get latest"); after the user Gets latest, the tree refreshes (existing path). **No new hub transport** — the file travels via git, the nudge is the signal.
 - **Validate:** Two tabs same dev-server: create canvas in A → B's tree updates < 1 s, no reload. Branch-scoped: switch to a branch lacking a canvas → it's absent (not greyed). Cross-machine new canvas → peer sees the enriched get-latest nudge; after Get latest, tree shows it.
 
-### Task 5: Hub admin UI realignment
+### Task 5: Hub admin UI realignment — ✅ completed 2026-06-19 (scoped to the data model)
+
+> **Done — honestly scoped.** Discovery confirmed the hub has **no repo/branch concept**: sync uses **bare-slug** doc names (`ui-foo`), not `projects/repo/branch/*`, and the only project identity the hub holds is the operator-set hub `name` (settings). The plan's "show the active repo/branch prefix / group by `projects/repo/branch`" therefore can't be built on real data without fabricating it, and DDR-097 already did the **Documents → Canvases** rename. The honest realignment, using real data: (1) a read-only **"connected project" context line** on the canvases view — `<hub name> · N synced canvases — every connected peer shares this one project` (hub name read from `.nav-brand-name`, `textContent` round-trip = no XSS); (2) dropped the lingering **"documents · read-only"** residual → "this hub · read-only". `apps/hub/src/admin/{index.html,app.js,style.css}`. **66 admin tests pass** incl. the **≤28 KB gz** guard (`admin-size.test.mjs` — the real budget; the plan's "15 KB" was stale); `dist/admin/` is gitignored (rebuilt at release). **Deferred (own follow-up, needs a real feature):** true repo/branch grouping requires clients to pass repo/branch context on connect (option B) — the hub's flat per-project namespace doesn't carry it today.
 
 - **Do:** Rework `apps/hub/src/admin/` to one repo/branch context:
   - Top-level "Connected repo" read-only display (repo URL + active branch from the hub config / first connected client's doc-namespace prefix).
@@ -202,7 +204,7 @@ Live presence, annotations, comments, **and the TSX body** already sync over the
 - [x] Soft editing-presence overlay renders (human + agent), no take-over wall — Task 3 _(visual layer + agent path; human inspector-edit trigger deferred)_
 - [ ] Live TSX cross-machine round-trip **verified** (cursors + annotations + comments + TSX, two tabs) — Validation 3
 - [x] Branch-scoped visibility (structural — `loadTree` re-reads disk); `canvas-list-update` loopback refresh — Task 4 _(cross-machine get-latest nudge enrichment deferred — polish)_
-- [ ] Hub admin realigned to repo/branch context, ≤ 28 KB gz — Task 5
+- [x] Hub admin realigned to one-project context (data-model honest), ≤ 28 KB gz — Task 5 _(true repo/branch grouping deferred — hub has no repo/branch data)_
 - [x] 2 DDRs written (DDR-120 model+editing-presence reversing A2; DDR-121 canvas propagation) — Task 6
 - [ ] Security pass: `editing` field + `ai-activity` bridge + `canvas-list-update` sanitized; **F1 re-audited** — Validation 2
 - [ ] No-break exhaustive verify: all existing collab features still work — Validation 3

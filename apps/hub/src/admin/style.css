@@ -620,6 +620,15 @@ button {
   color: var(--fg-2);
 }
 
+/* phase-30 — the canvases view's single-project context line (the hub has no
+   repo/branch concept, so this frames the list as one project, not a doc dump) */
+.canvases-context {
+  margin: 0;
+  padding: var(--space-3) var(--space-4) 0;
+  font-size: var(--type-sm);
+  color: var(--fg-2);
+}
+
 /* ─── Tables ─── */
 .tbl {
   width: 100%;
