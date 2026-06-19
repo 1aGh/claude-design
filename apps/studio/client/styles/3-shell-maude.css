@@ -1510,8 +1510,11 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
    pins) via the dgn:'view-chrome' bridge. Escape hatch: Esc or the pill. */
 .maude.is-present .st-shell > :not(.st-body) { display: none !important; }
 .maude.is-present .st-body > :not(.main) { display: none !important; }
-/* keep transient top-level banners out of the clean view */
-.maude.is-present > .st-banner { display: none !important; }
+/* Top-level banners (.st-banner — SyncBanner + the "repo state changed" notice)
+   are DELIBERATELY left visible in present mode: they're the DDR-102 fail-closed
+   sync/divergence warnings, and an untrusted canvas (DDR-054) must not be able to
+   silence a security-relevant notice by entering Presentation Mode (phase-28
+   audit F-1). They're transient + rare, so they don't clutter a clean view. */
 
 /* Floating escape-hatch pill — the only chrome visible while presenting.
    Deliberately understated (55% opacity) so it doesn't intrude on a clean

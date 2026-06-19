@@ -6277,7 +6277,14 @@ function App() {
         // dgn:'view-chrome' back to every iframe. Enter-only (the palette is
         // hidden while presenting); exit is Esc or the floating pill. The
         // inbound origin gate above (DDR-054) already authenticates the canvas.
-        if (!presentMode) {
+        // Hardening (phase-28 audit F-2): honor it ONLY from the ACTIVE canvas
+        // (a background tab's untrusted canvas must not flip the foreground),
+        // and NEVER while a modal dialog is open — present mode hides Sidebar-
+        // descendant modals (OAuth device-code / Share-invite), so an untrusted
+        // canvas could otherwise blank an in-flight confirmation.
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        const modalOpen = !!document.querySelector('[role="dialog"][aria-modal="true"]');
+        if (e.source === activeWin && !modalOpen && !presentMode) {
           setPresentMode(true);
           broadcastChrome({ present: true });
         }
@@ -6476,6 +6483,7 @@ function App() {
     minimapVisible,
     zoomCtlVisible,
     broadcastChrome,
+    activePath,
   ]);
 
   // Tell the active canvas iframe to drop any persistent selection (canvas
