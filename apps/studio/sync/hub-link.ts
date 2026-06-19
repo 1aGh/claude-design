@@ -12,12 +12,15 @@
 // a CLI / post-onboarding operation.
 //
 // SECURITY: the http layer gates this main-origin + loopback only (mirrors
-// /_api/github/*). The health probe is a best-effort GET to the user-entered hub URL;
-// only `{ ok, version }` is reflected back — no response-body passthrough, so it can't
-// become an SSRF data-exfil channel. The hub address is whatever the user typed (a LAN
-// / Tailscale / fly.dev URL is legitimate — phase-9's hub model expects private hosts),
-// so we do NOT block private IPs; the safety is the loopback caller gate + no reflection.
-// Flagged for the /flow:done security fan-out.
+// /_api/github/*). The health probe is a best-effort, TOKENLESS GET to the user-entered
+// hub URL; only `{ ok, version }` is reflected back — no response-body passthrough, so it
+// can't become an SSRF data-exfil channel. The probe deliberately does NOT carry the hub
+// token: a user who pastes a lookalike URL must not have their credential delivered to the
+// attacker's host (phase-29 /flow:done attacker finding A2). The token is only persisted
+// locally (mode 0600) and presented later on the authenticated sync WS upgrade. The hub
+// address is whatever the user typed (a LAN / Tailscale / fly.dev URL is legitimate —
+// phase-9's hub model expects private hosts), so we do NOT block private IPs; the safety
+// is the loopback caller gate + no reflection + no token on the probe.
 
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -60,9 +63,10 @@ export async function linkHub(body: unknown): Promise<HubLinkResult> {
 
   const token = b.token.trim();
 
-  // Best-effort reachability probe — does NOT gate the save (a firewalled hub the
-  // user trusts still links; the real auth happens on the sync WS upgrade).
-  const probe = await probeHealth(norm, token);
+  // Best-effort reachability probe — TOKENLESS (never deliver the credential to a
+  // possibly-lookalike host) and does NOT gate the save (a firewalled hub the user
+  // trusts still links; the real auth happens on the sync WS upgrade).
+  const probe = await probeHealth(norm);
 
   try {
     saveHubCredential(norm, token);
@@ -80,14 +84,14 @@ function bad(error: string): HubLinkResult {
   return { status: 400, json: { ok: false, error } };
 }
 
-async function probeHealth(url: string, token: string): Promise<{ ok: boolean; version?: string }> {
+async function probeHealth(url: string): Promise<{ ok: boolean; version?: string }> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), HUB_PROBE_TIMEOUT_MS);
   try {
-    const res = await fetch(`${url}/health`, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: ctrl.signal,
-    });
+    // Tokenless on purpose (attacker finding A2): /health is a liveness check; the
+    // credential is never sent to the user-typed host, only to the trusted hub on the
+    // authenticated sync WS upgrade later.
+    const res = await fetch(`${url}/health`, { signal: ctrl.signal });
     if (!res.ok) return { ok: false };
     let version: string | undefined;
     try {
