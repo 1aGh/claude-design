@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "present-mode-and-chrome-toggles",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Presentation Mode — just your artboards",
+      "summary": "View ▸ Presentation Mode now clears everything but your work: the menubar, sidebar, and panels disappear along with the mini-map, zoom controls, tool palette, annotations, and comment pins — leaving a clean canvas perfect for a screenshot or a demo. Press Esc or the floating Exit button to bring it all back. The presentation button in the canvas toolbar enters it too. Prefer to hide just the floating extras? Two new View toggles — Minimap and Zoom controls — switch those off on their own. Nothing is lost: leaving Presentation Mode restores exactly what you had.",
+      "surface": "design-ui"
+    },
+    {
       "id": "sign-in-with-github",
       "version": null,
       "date": null,
