@@ -57,14 +57,48 @@ export function slugifyRepoName(raw: unknown): string | null {
   return slug.length > 0 ? slug : null;
 }
 
-/** Parse `owner/repo` out of a GitHub remote URL (https or ssh form). */
+/** Parse `owner/repo` out of a GitHub remote URL (https or ssh form).
+ *
+ *  SECURITY (phase-28 audit D-1/F-2, HIGH): the host MUST be anchored to exactly
+ *  `github.com`. The original `url.match(/github\.com[:/]+…/)` matched the substring
+ *  ANYWHERE, so `https://evil.com/github.com/o/r.git` parsed as owner=`o` repo=`r`
+ *  and the raw URL then flowed to `git.clone`'s host-agnostic `onAuth` → the keychain
+ *  PAT was offered as Basic auth to the attacker host (token exfiltration). We parse
+ *  the https form with the WHATWG URL parser and assert `hostname === 'github.com'`;
+ *  callers MUST clone from the canonical URL rebuilt from the returned owner/repo,
+ *  never the raw input. */
 export function parseGitHubRemote(url: string): { owner: string; repo: string } | null {
-  const m = url.match(/github\.com[:/]+([^/]+)\/([^/]+?)(?:\.git)?\/?$/i);
-  if (!m) return null;
-  const owner = m[1];
-  const repo = m[2];
+  const trimmed = String(url).trim();
+  let owner: string | undefined;
+  let repo: string | undefined;
+  // ssh form: git@github.com:owner/repo(.git) — host is literal here.
+  const ssh = trimmed.match(/^git@github\.com:([^/]+)\/(.+?)(?:\.git)?\/?$/i);
+  if (ssh) {
+    owner = ssh[1];
+    repo = ssh[2];
+  } else {
+    let u: URL;
+    try {
+      u = new URL(trimmed);
+    } catch {
+      return null;
+    }
+    if (u.protocol !== 'https:') return null; // no http downgrade, no ssh:// smuggling
+    if (u.hostname.toLowerCase() !== 'github.com') return null; // ANCHORED host
+    const parts = u.pathname.replace(/^\/+/, '').split('/');
+    if (parts.length < 2) return null;
+    owner = parts[0];
+    repo = parts[1].replace(/\.git$/i, '');
+  }
+  if (!owner || !repo) return null;
   if (!USERNAME_RE.test(owner) || !/^[A-Za-z0-9._-]+$/.test(repo)) return null;
   return { owner, repo };
+}
+
+/** Canonical HTTPS clone URL for a validated owner/repo — the ONLY URL a caller
+ *  should hand to git.clone (never raw user input; see parseGitHubRemote security). */
+export function canonicalGitHubCloneUrl(owner: string, repo: string): string {
+  return `https://github.com/${owner}/${repo}.git`;
 }
 
 export interface GitHubEndpoints {
@@ -185,9 +219,14 @@ export function createGitHubEndpoints(ctx: Context): GitHubEndpoints {
   // input is validated before it reaches the filesystem / iso-git.
   async function clone(body: unknown): Promise<GitHubEndpointResult> {
     const b = (body ?? {}) as { cloneUrl?: unknown; parentDir?: unknown; name?: unknown };
-    if (typeof b.cloneUrl !== 'string' || !parseGitHubRemote(b.cloneUrl)) {
+    const parsed = typeof b.cloneUrl === 'string' ? parseGitHubRemote(b.cloneUrl) : null;
+    if (!parsed) {
       return bad('That isn’t a GitHub project link.');
     }
+    // SECURITY (audit D-1/F-2): clone from the CANONICAL github.com URL rebuilt from
+    // the validated owner/repo — NEVER the raw user string. Even if a crafted link
+    // slipped past the parser, the token can only ever be offered to github.com.
+    const cloneUrl = canonicalGitHubCloneUrl(parsed.owner, parsed.repo);
     if (typeof b.name !== 'string' || !SAFE_DIR_NAME.test(b.name))
       return bad('Invalid project name.');
     if (
@@ -208,7 +247,7 @@ export function createGitHubEndpoints(ctx: Context): GitHubEndpoints {
     // Token OPTIONAL — public repos clone tokenless; private repos surface
     // authRequired from the service if no token is available.
     const token = (await getGithubToken()) ?? undefined;
-    const res = await gitClone(b.cloneUrl, target, token);
+    const res = await gitClone(cloneUrl, target, token);
     if (res.ok) {
       // Tell the client whether the pulled repo is actually a Maude project. If not,
       // the client must NOT switch to it (the dev-server can't serve a project with
@@ -311,4 +350,9 @@ export function createGitHubEndpoints(ctx: Context): GitHubEndpoints {
   };
 }
 
-export const __testing = { slugifyRepoName, parseGitHubRemote, USERNAME_RE };
+export const __testing = {
+  slugifyRepoName,
+  parseGitHubRemote,
+  canonicalGitHubCloneUrl,
+  USERNAME_RE,
+};

@@ -260,6 +260,26 @@ describe('endpoint validators', () => {
     expect(epTesting.parseGitHubRemote('not a url')).toBeNull();
   });
 
+  test('parseGitHubRemote anchors the host — rejects SSRF/credential-leak URLs (audit D-1/F-2)', () => {
+    // The original unanchored regex matched `github.com` as a PATH segment, so a
+    // crafted link cloned from (and leaked the PAT to) an attacker host. All null now.
+    for (const evil of [
+      'https://evil.com/github.com/o/r.git',
+      'https://evil.com/github.com/o/r',
+      'https://github.com.evil.com/o/r.git',
+      'https://evil.com#github.com/o/r.git',
+      'https://evil.com/?x=github.com/o/r',
+      'http://github.com/o/r.git', // http downgrade rejected
+      'ssh://git@evil.com/github.com/o/r.git',
+    ]) {
+      expect(epTesting.parseGitHubRemote(evil)).toBeNull();
+    }
+    // Canonical URL is rebuilt only from the validated owner/repo.
+    expect(epTesting.canonicalGitHubCloneUrl('octocat', 'acme')).toBe(
+      'https://github.com/octocat/acme.git'
+    );
+  });
+
   test('USERNAME_RE rejects leading/trailing/double hyphens + overlong', () => {
     expect(epTesting.USERNAME_RE.test('octocat')).toBe(true);
     expect(epTesting.USERNAME_RE.test('a-b-c')).toBe(true);

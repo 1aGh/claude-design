@@ -690,8 +690,12 @@ async function resolveIso(
     if (choice === 'both') {
       for (const fp of conflicted) {
         try {
-          const { blob } = await git.readBlob({ fs, dir, oid: ourOid, filepath: fp });
           const copyRel = mineCopyPath(fp);
+          // Containment guard (audit F-1/D-2): every other write in this module
+          // goes through isContainedRepoPath; the copy path is git-tree-derived
+          // (can't hold `..` today) but the invariant must hold unconditionally.
+          if (!isContainedRepoPath(dir, copyRel)) continue;
+          const { blob } = await git.readBlob({ fs, dir, oid: ourOid, filepath: fp });
           fs.writeFileSync(join(dir, copyRel), Buffer.from(blob));
           await git.add({ fs, dir, filepath: copyRel });
           copies.push(copyRel);
@@ -735,9 +739,12 @@ async function resolveSystem(
     await runGit(dir, ['add', '--', fp]);
     if (choice === 'both' && ourContent) {
       const copyRel = mineCopyPath(fp);
-      fs.writeFileSync(join(dir, copyRel), ourContent);
-      await runGit(dir, ['add', '--', copyRel]);
-      copies.push(copyRel);
+      // Containment guard (audit F-1/D-2) — same invariant as resolveIso.
+      if (isContainedRepoPath(dir, copyRel)) {
+        fs.writeFileSync(join(dir, copyRel), ourContent);
+        await runGit(dir, ['add', '--', copyRel]);
+        copies.push(copyRel);
+      }
     }
   }
   const c = await runGit(dir, ['commit', '--no-edit']);
@@ -1070,6 +1077,18 @@ export interface GitCloneResult {
  *  authenticates private repos via iso-git's `onAuth` (token-as-username, never
  *  logged) — phase-28's "pull a local copy". */
 export async function gitClone(url: string, dir: string, token?: string): Promise<GitCloneResult> {
+  // SECURITY (phase-28 audit D-1/F-2, defense-in-depth): only ever offer the
+  // keychain token to a github.com host. Callers already rebuild a canonical
+  // URL, but this guarantees a crafted/redirected URL can never receive the PAT
+  // as Basic auth — the bug class the whole keychain/bridge design exists to
+  // prevent. A non-github host clones tokenless (public) or fails auth (private).
+  let tokenHost = false;
+  try {
+    tokenHost = new URL(url).hostname.toLowerCase() === 'github.com';
+  } catch {
+    tokenHost = false;
+  }
+  const auth = token && tokenHost ? { onAuth: () => ({ username: token, password: '' }) } : {};
   try {
     await git.clone({
       fs,
@@ -1077,7 +1096,7 @@ export async function gitClone(url: string, dir: string, token?: string): Promis
       dir,
       url,
       singleBranch: true,
-      ...(token ? { onAuth: () => ({ username: token, password: '' }) } : {}),
+      ...auth,
     });
     // An EMPTY remote (a freshly-created repo) clones to a repo with NO commits and
     // an odd/unborn HEAD — the first Save version then fails to land on a resolvable
