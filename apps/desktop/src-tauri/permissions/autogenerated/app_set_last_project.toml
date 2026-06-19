@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-app-set-last-project"
+description = "Enables the app_set_last_project command without any pre-configured scope."
+commands.allow = ["app_set_last_project"]
+
+[[permission]]
+identifier = "deny-app-set-last-project"
+description = "Denies the app_set_last_project command without any pre-configured scope."
+commands.deny = ["app_set_last_project"]

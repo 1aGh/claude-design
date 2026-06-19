@@ -402,6 +402,7 @@ export default function GitPanel({
       <button
         type="button"
         className="btn btn--primary gp-publish"
+        data-tour="publish"
         disabled={!!busy}
         onClick={() =>
           run('publish', onPublish, {
@@ -549,6 +550,7 @@ export default function GitPanel({
                 <button
                   type="button"
                   className="btn btn--ghost btn--sm"
+                  data-tour="pull"
                   disabled={!!busy}
                   onClick={() =>
                     run('getLatest', onGetLatest, {
@@ -637,6 +639,7 @@ export default function GitPanel({
                 <button
                   type="button"
                   className="btn btn--primary gp-save"
+                  data-tour="save-local"
                   disabled={!canSave}
                   aria-disabled={!canSave}
                   onClick={async () => {

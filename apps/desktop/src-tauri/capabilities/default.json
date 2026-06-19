@@ -13,6 +13,10 @@
     "allow-github-is-signed-in",
     "allow-github-sign-out",
     "allow-pick-directory",
-    "allow-open-local-project"
+    "allow-open-local-project",
+    "allow-app-is-first-run",
+    "allow-app-get-last-project",
+    "allow-app-set-last-project",
+    "allow-app-recent-projects"
   ]
 }

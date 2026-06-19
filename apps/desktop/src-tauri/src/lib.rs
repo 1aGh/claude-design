@@ -11,6 +11,7 @@
 // (SIGKILL is uncatchable and will orphan — unavoidable for any process; a relaunch
 // detects the stale `_server.json` server.)
 
+mod app_state;
 mod keychain;
 mod menu;
 mod oauth;
@@ -30,37 +31,20 @@ use sidecar::SidecarState;
 /// to ~90 s; give it headroom. Warm launches resolve in well under 2 s.
 const SERVER_WAIT_MS: u64 = 120_000;
 
-/// Resolve the project root to open. Phase-26: `MAUDE_PROJECT_ROOT` env override →
-/// last-used project (app config dir) → current dir. The full project picker is
-/// phase-29.
+/// Resolve the project root to open. `MAUDE_PROJECT_ROOT` env override → last-used
+/// project (if it still exists) → the minimal welcome project (first run). Phase-29
+/// (E4): on first run we boot the welcome project so the webview can render the
+/// OnboardingWizard over it (the client checks `app_is_first_run`).
 fn resolve_project_root(app: &tauri::AppHandle) -> PathBuf {
     if let Ok(p) = std::env::var("MAUDE_PROJECT_ROOT") {
         if !p.is_empty() {
             return PathBuf::from(p);
         }
     }
-    if let Some(p) = last_project_path(app) {
-        if p.exists() {
-            return p;
-        }
+    if let Some(p) = app_state::last_project(app) {
+        return p;
     }
-    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-}
-
-/// Path to the `last-project.txt` marker in the app config dir.
-fn last_project_marker(app: &tauri::AppHandle) -> Option<PathBuf> {
-    app.path().app_config_dir().ok().map(|d| d.join("last-project.txt"))
-}
-
-fn last_project_path(app: &tauri::AppHandle) -> Option<PathBuf> {
-    let marker = last_project_marker(app)?;
-    let raw = std::fs::read_to_string(marker).ok()?;
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(PathBuf::from(trimmed))
-    }
+    app_state::welcome_project(app)
 }
 
 /// Catch SIGTERM/SIGINT so an abrupt `kill`/Ctrl+C still tears the sidecar down.
@@ -115,31 +99,21 @@ fn open_local_project(app: tauri::AppHandle, path: String) -> Result<(), String>
         return Err("That folder isn’t a Maude project yet (no design system). Open it and run “Set up a design system” first.".to_string());
     }
     // Remember it as the last project (so a relaunch reopens it) + switch in-process.
-    if let Some(marker) = last_project_marker(&app) {
-        if let Some(dir) = marker.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        let _ = std::fs::write(&marker, p.to_string_lossy().as_bytes());
-    }
+    app_state::set_last_project(&app, &p);
     sidecar::switch_project(&app, p);
     Ok(())
 }
 
 /// Remember `path` as the last project (so a relaunch reopens it) + switch in-process.
 fn remember_and_switch(app: &tauri::AppHandle, path: PathBuf) {
-    if let Some(marker) = last_project_marker(app) {
-        if let Some(dir) = marker.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        let _ = std::fs::write(&marker, path.to_string_lossy().as_bytes());
-    }
+    app_state::set_last_project(app, &path);
     sidecar::switch_project(app, path);
 }
 
 /// Write a minimal bootable `.design/` into `dir` (mirrors apps/studio/scaffold-design.ts)
 /// so a non-Maude folder opened via File ▸ Open Project can boot instead of crash-
 /// looping. A real design system is created later via /design:setup-ds.
-fn write_minimal_design(dir: &std::path::Path) -> std::io::Result<()> {
+pub(crate) fn write_minimal_design(dir: &std::path::Path) -> std::io::Result<()> {
     let design = dir.join(".design");
     if design.join("config.json").exists() {
         return Ok(());
@@ -180,6 +154,10 @@ pub fn run() {
             keychain::github_sign_out,
             pick_directory,
             open_local_project,
+            app_state::app_is_first_run,
+            app_state::app_get_last_project,
+            app_state::app_set_last_project,
+            app_state::app_recent_projects,
         ])
         .menu(menu::build_menu)
         .on_menu_event(|app, event| {

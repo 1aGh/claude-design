@@ -428,6 +428,200 @@ export async function gitDiscard(
   }
 }
 
+// ── branches (DRAFTS — phase 29 / E4) ────────────────────────────────────────
+// The UI never says "branch": a side branch is a "draft", and `main`/`master` is
+// the "Shared version". Switching a draft moves HEAD, which the git-lifecycle.ts
+// `.git/HEAD` watcher already turns into a Yjs flush + reload prompt (DDR-051) —
+// this module does NOT duplicate that.
+
+export interface GitBranch {
+  name: string;
+  current: boolean;
+}
+
+/** List local branches (drafts). Returns [] when `dir` isn't a repo. */
+export async function gitListBranches(dir: string): Promise<GitBranch[]> {
+  if (!isRepo(dir)) return [];
+  try {
+    if (USE_SYSTEM_GIT) {
+      const cur = (await runGit(dir, ['rev-parse', '--abbrev-ref', 'HEAD'])).stdout.trim();
+      const r = await runGit(dir, ['for-each-ref', '--format=%(refname:short)', 'refs/heads']);
+      if (r.code !== 0) return [];
+      return r.stdout
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((name) => ({ name, current: name === cur }));
+    }
+    const cur = (await git.currentBranch({ fs, dir, fullname: false })) ?? null;
+    const names = await git.listBranches({ fs, dir });
+    return names.map((name) => ({ name, current: name === cur }));
+  } catch {
+    return [];
+  }
+}
+
+export interface GitBranchResult {
+  ok: boolean;
+  branch?: string;
+  error?: string;
+}
+
+/** Create a new draft off HEAD and switch to it. The name is validated against the
+ *  same dash-led / charset guard as every other positional (defense-in-depth). */
+export async function gitCreateBranch(dir: string, name: string): Promise<GitBranchResult> {
+  if (!isRepo(dir)) return { ok: false, error: 'This project is not versioned yet.' };
+  if (!isSafeGitPositional(name))
+    return { ok: false, error: "That draft name has characters we can't use." };
+  try {
+    const existing = await gitListBranches(dir);
+    if (existing.some((b) => b.name === name))
+      return { ok: false, error: 'A draft with that name already exists.' };
+    if (USE_SYSTEM_GIT) {
+      const r = await runGit(dir, ['checkout', '-b', name]);
+      if (r.code !== 0)
+        return { ok: false, error: r.stderr.trim() || 'Could not create the draft.' };
+    } else {
+      await git.branch({ fs, dir, ref: name, checkout: true });
+    }
+    return { ok: true, branch: name };
+  } catch (e) {
+    return { ok: false, error: errMsg(e) };
+  }
+}
+
+/** Switch to an existing draft (or back to the Shared version). A dirty tree that
+ *  would be clobbered surfaces a plain "Save your changes first" rather than a
+ *  raw git error. */
+export async function gitCheckout(dir: string, name: string): Promise<GitBranchResult> {
+  if (!isRepo(dir)) return { ok: false, error: 'This project is not versioned yet.' };
+  if (!isSafeGitPositional(name)) return { ok: false, error: 'Invalid draft name.' };
+  try {
+    if (USE_SYSTEM_GIT) {
+      const r = await runGit(dir, ['checkout', name]);
+      if (r.code !== 0) {
+        const blob = `${r.stderr} ${r.stdout}`.toLowerCase();
+        if (blob.includes('would be overwritten') || blob.includes('local changes'))
+          return { ok: false, error: 'Save your changes before switching drafts.' };
+        return { ok: false, error: r.stderr.trim() || 'Could not switch drafts.' };
+      }
+    } else {
+      await git.checkout({ fs, dir, ref: name });
+    }
+    return { ok: true, branch: name };
+  } catch (e) {
+    const msg = errMsg(e);
+    if (/overwrit|local change|conflict/i.test(msg))
+      return { ok: false, error: 'Save your changes before switching drafts.' };
+    return { ok: false, error: msg };
+  }
+}
+
+/** The "Shared version" is whichever of these exists (main preferred). */
+const SHARED_BRANCHES = new Set(['main', 'master']);
+
+export interface GitFoldResult {
+  ok: boolean;
+  /** A non-FF / rejected publish reuses the plain "Get latest first" path, never a merge UI. */
+  conflict?: boolean;
+  authRequired?: boolean;
+  error?: string;
+  /** The Shared-version branch the draft was added to. */
+  shared?: string;
+}
+
+/** "Add this draft to the Shared version" (phase-29 / E4, Task 7): merge the draft
+ *  into the Shared version (main/master, FF when possible), publish it, then remove
+ *  the draft. A content conflict or a rejected publish surfaces the plain "Get latest
+ *  first" path (no 3-way merge UI). The local draft is removed ONLY after a clean
+ *  publish, so a rejected publish leaves a recoverable state. */
+export async function gitFoldDraft(
+  dir: string,
+  draftName: string,
+  token: string | undefined,
+  opts: { remote?: string } = {}
+): Promise<GitFoldResult> {
+  if (!isRepo(dir)) return { ok: false, error: 'This project is not versioned yet.' };
+  if (!isSafeGitPositional(draftName)) return { ok: false, error: 'Invalid draft name.' };
+  const remote = opts.remote || 'origin';
+  const branches = await gitListBranches(dir);
+  const shared = branches.find((b) => SHARED_BRANCHES.has(b.name))?.name;
+  if (!shared) return { ok: false, error: 'This project has no Shared version yet.' };
+  if (draftName === shared) return { ok: false, error: "That's already the Shared version." };
+  if (!branches.some((b) => b.name === draftName))
+    return { ok: false, error: "That draft doesn't exist." };
+
+  // Merge the draft into the Shared version (FF when possible, else a merge commit).
+  try {
+    if (USE_SYSTEM_GIT) {
+      const co = await runGit(dir, ['checkout', shared]);
+      if (co.code !== 0) return { ok: false, error: 'Save your changes before adding the draft.' };
+      const mg = await runGit(dir, ['merge', draftName]);
+      if (mg.code !== 0) {
+        await runGit(dir, ['merge', '--abort']).catch(() => {});
+        await runGit(dir, ['checkout', draftName]).catch(() => {});
+        return {
+          ok: false,
+          conflict: true,
+          error: 'Get the latest Shared version first, then add your draft.',
+        };
+      }
+    } else {
+      await git.checkout({ fs, dir, ref: shared });
+      const author = await resolveAuthor(dir);
+      await git.merge({
+        fs,
+        dir,
+        ours: shared,
+        theirs: draftName,
+        author,
+        fastForward: true,
+        message: `Add draft "${draftName}" to the Shared version`,
+      });
+      await git.checkout({ fs, dir, ref: shared, force: true });
+    }
+  } catch (e) {
+    if (!USE_SYSTEM_GIT) {
+      try {
+        await git.checkout({ fs, dir, ref: draftName, force: true });
+      } catch {
+        /* best effort — leave the user on whatever checked out */
+      }
+    }
+    const msg = errMsg(e);
+    if (/overwrit|local change|save/i.test(msg))
+      return { ok: false, error: 'Save your changes before adding the draft.' };
+    return {
+      ok: false,
+      conflict: true,
+      error: 'Get the latest Shared version first, then add your draft.',
+    };
+  }
+
+  // Publish the Shared version.
+  const push = await gitPush(dir, token, { remote, ref: shared });
+  if (!push.ok) {
+    if (push.authRequired) return { ok: false, authRequired: true, error: push.error };
+    if (push.conflict)
+      return {
+        ok: false,
+        conflict: true,
+        error: 'Someone else published — Get latest first, then add your draft.',
+      };
+    return { ok: false, error: push.error ?? 'Could not publish the Shared version.' };
+  }
+
+  // The draft's work is now in the Shared version — remove the draft (local only).
+  try {
+    if (USE_SYSTEM_GIT) await runGit(dir, ['branch', '-D', draftName]);
+    else await git.deleteBranch({ fs, dir, ref: draftName });
+  } catch {
+    /* non-fatal: the fold + publish succeeded; a leftover draft ref is harmless */
+  }
+
+  return { ok: true, shared };
+}
+
 // ── push (Publish) ─────────────────────────────────────────────────────────
 
 /** Publish. `token` is optional in phase-27: the system-git engine falls back to
@@ -703,12 +897,14 @@ async function resolveIso(
           /* add/delete conflict — no our-side blob to copy; skip */
         }
       }
-      if (copies.length) await git.commit({ fs, dir, author, message: 'Saved my version as a copy' });
+      if (copies.length)
+        await git.commit({ fs, dir, author, message: 'Saved my version as a copy' });
     }
     return { ok: true, copies: copies.length ? copies : undefined };
   } catch (e) {
     const cf = mergeConflictFiles(e);
-    if (cf) return { ok: false, unresolved: cf, error: 'Could not finish the merge automatically.' };
+    if (cf)
+      return { ok: false, unresolved: cf, error: 'Could not finish the merge automatically.' };
     return { ok: false, error: errMsg(e) };
   }
 }
@@ -722,7 +918,10 @@ async function resolveSystem(
   // After `git pull --no-rebase` hit a conflict the repo is mid-merge (MERGE_HEAD
   // + unmerged index). Resolve each unmerged path with the chosen side, commit.
   const u = await runGit(dir, ['diff', '--name-only', '--diff-filter=U']);
-  const files = u.stdout.split('\n').map((s) => s.trim()).filter(Boolean);
+  const files = u.stdout
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
   if (!files.length) return { ok: false, error: 'Nothing to resolve — get the latest first.' };
   const copies: string[] = [];
   // Paths come from git's own unmerged list and are passed after `--`, so a

@@ -1,0 +1,135 @@
+/*
+ * OnboardingTour.css — the collab "rychlý kurz" (Phase 29, epic E4).
+ * Every value is a var(--*) token from system/maude/colors_and_type.css.
+ * .btn is LIFTED from the maude DS. Readable copy uses --fg-2 (the AA floor),
+ * --fg-3 only on decorative glyphs (the Task-1 contrast lesson).
+ */
+
+.ot-frame {
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+  color: var(--fg-0);
+  font-family: var(--font-body); font-size: var(--type-base); line-height: var(--lh-base);
+  overflow: hidden;
+}
+/* maude mark tile — lifted from system/maude/preview/logo.css `.lg-mark`: spark in
+ * --accent-fg on the indigo, bottom-right corner squared (bubble), accent-tint halo. */
+.ot-mark { display: grid; place-items: center; flex: 0 0 auto; background: var(--accent); color: var(--accent-fg); border-radius: 24% 24% 0 24%; box-shadow: 0 0 0 3px var(--accent-tint); }
+.ot-mark svg { width: 100%; height: 100%; display: block; }
+
+/* ── the centered card (infographic + hard-thing) ────────────────────────────── */
+.ot-hero-card {
+  width: min(620px, 88%); display: flex; flex-direction: column; gap: var(--space-5);
+  padding: var(--space-6);
+  background: var(--bg-2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+.ot-hero-card--narrow { width: min(520px, 86%); }
+/* The infographic IS the hero — it should command artboard A, not read as a tidy
+ * dialog. Oversize it + let the LIVE layer float visibly ABOVE the cycle (shadow +
+ * a slight overlap), so "above/below" is spatial, not just stacked (signature lift). */
+.ot-hero-card--big { width: min(880px, 94%); gap: var(--space-6); padding: var(--space-7); }
+.ot-hero-card--big .ot-info { gap: var(--space-3); }
+.ot-hero-card--big .ot-live { box-shadow: var(--shadow-lg); position: relative; z-index: 2; padding: var(--space-5) var(--space-6); }
+.ot-hero-card--big .ot-bridge { margin: calc(var(--space-1) * -1) 0; }
+.ot-hero-card--big .ot-cycle { padding-top: var(--space-2); }
+.ot-hero-card--big .ot-step { max-width: 234px; padding: var(--space-5) var(--space-4); }
+.ot-hero-card--big .ot-step-icon { width: 48px; height: 48px; }
+.ot-hero-card--big .ot-step-label { font-size: var(--type-md); }
+.ot-hero-card--big .ot-step-sub { font-size: var(--type-sm); }
+.ot-hero-card--big .ot-cycle::before { top: 52px; }
+.ot-hero-card--big .ot-hero-tx h2 { font-size: var(--type-3xl); line-height: var(--lh-2xl); }
+.ot-hero-card--big .ot-live-item { font-size: var(--type-sm); padding: 4px var(--space-3); }
+.ot-card-step { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); }
+.ot-hero-top { display: flex; align-items: center; justify-content: space-between; }
+.ot-hero-brand { display: inline-flex; align-items: center; gap: var(--space-2); font-family: var(--font-display); font-size: var(--type-lg); color: var(--fg-0); }
+.ot-hero-brand b { font-weight: 600; letter-spacing: var(--tracking-tight); }
+.ot-hero-tx { display: flex; flex-direction: column; gap: var(--space-2); }
+.ot-hero-tx h2 { margin: 0; font-family: var(--font-display); font-size: var(--type-2xl); font-weight: 600; letter-spacing: var(--tracking-tight); color: var(--fg-0); }
+.ot-hero-tx p { margin: 0; color: var(--fg-2); font-size: var(--type-md); line-height: var(--lh-lg); }
+.ot-hero-tx b { color: var(--fg-0); }
+
+/* ── the two-layer infographic (the hero / signature moment) ─────────────────── */
+.ot-info { display: flex; flex-direction: column; gap: var(--space-4); }
+.ot-live {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid color-mix(in oklab, var(--presence-online) 34%, var(--border-default));
+  border-radius: var(--radius-md);
+  background: color-mix(in oklab, var(--presence-online) 9%, var(--bg-1));
+}
+.ot-live-hd { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--type-sm); color: var(--fg-1); }
+.ot-live-hd b { color: var(--fg-0); }
+.ot-live-dot { width: 9px; height: 9px; border-radius: var(--radius-pill); background: var(--presence-online); box-shadow: 0 0 0 5px color-mix(in oklab, var(--presence-online) 22%, transparent); flex: 0 0 auto; }
+.ot-live-items { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.ot-live-item { display: inline-flex; align-items: center; gap: 6px; padding: 3px var(--space-3); border-radius: var(--radius-pill); background: var(--bg-2); border: 1px solid var(--border-subtle); color: var(--fg-2); font-size: var(--type-xs); }
+.ot-live-item svg { color: var(--presence-online); }
+.ot-live-note { color: var(--fg-1); font-size: var(--type-xs); }
+.ot-bridge { display: flex; align-items: center; gap: var(--space-3); }
+.ot-bridge-line { flex: 1; height: 1px; background: var(--border-default); }
+.ot-bridge-label { font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-2); }
+.ot-cycle { position: relative; display: flex; align-items: flex-start; justify-content: center; gap: var(--space-3); }
+.ot-cycle::before { content: ""; position: absolute; top: 34px; left: 13%; right: 13%; height: 2px; background: linear-gradient(90deg, transparent, var(--accent-muted) 18%, var(--accent-muted) 82%, transparent); border-radius: var(--radius-pill); }
+.ot-step { position: relative; flex: 1 1 0; max-width: 180px; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); padding: var(--space-4) var(--space-3); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-1); text-align: center; }
+.ot-step-icon { width: 40px; height: 40px; display: grid; place-items: center; border-radius: var(--radius-md); background: var(--accent-tint); color: var(--accent); }
+.ot-step-label { font-weight: 600; color: var(--fg-0); font-size: var(--type-sm); }
+.ot-step-sub { color: var(--fg-2); font-size: var(--type-xs); line-height: var(--lh-sm); }
+.ot-cyc-arrow { color: var(--accent); align-self: center; padding-top: 16px; }
+
+/* ── card actions ─────────────────────────────────────────────────────────────── */
+.ot-card-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.ot-card-skip { color: var(--fg-2); font-size: var(--type-sm); }
+.ot-card-nav { display: inline-flex; align-items: center; gap: var(--space-3); }
+.ot-card-back { color: var(--fg-2); font-size: var(--type-sm); }
+.ot-card-next { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ── coach-mark over the dimmed mini-shell ───────────────────────────────────── */
+.ot-coach { position: relative; width: min(900px, 92%); height: min(560px, 80%); }
+.ot-mini { position: absolute; inset: 0; border: 1px solid var(--border-default); border-radius: var(--radius-lg); overflow: hidden; background: var(--bg-0); display: flex; flex-direction: column; }
+.ot-mini-bar { display: flex; align-items: center; gap: var(--space-3); height: 40px; flex: 0 0 40px; padding: 0 var(--space-4); background: var(--bg-1); border-bottom: 1px solid var(--border-default); }
+.ot-mini-ctx { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); }
+.ot-grow { flex: 1; }
+.ot-mini-presence { display: inline-flex; gap: -6px; border-radius: var(--radius-pill); }
+.ot-mini-presence.is-lit { box-shadow: 0 0 0 3px var(--accent), 0 0 0 7px color-mix(in oklab, var(--accent) 35%, transparent); position: relative; z-index: 3; }
+.ot-pdot { width: 22px; height: 22px; margin-left: -6px; border-radius: var(--radius-pill); border: 1.5px solid var(--bg-1); display: grid; place-items: center; font-family: var(--font-mono); font-size: 9px; font-weight: 600; color: var(--accent-fg); }
+.ot-mini-presence .ot-pdot:first-child { margin-left: 0; }
+.ot-mini-body { flex: 1; display: flex; min-height: 0; }
+.ot-mini-side { width: 240px; flex: 0 0 240px; background: var(--bg-1); border-right: 1px solid var(--border-default); padding: var(--space-4); }
+.ot-mini-changes { display: flex; flex-direction: column; gap: var(--space-2); }
+.ot-mini-changes-hd { font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--fg-2); margin-bottom: var(--space-1); }
+.ot-mini-btn { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); border: 1px solid var(--border-default); background: var(--bg-2); color: var(--fg-1); font-size: var(--type-sm); }
+.ot-mini-btn--save { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.ot-mini-btn.is-lit { box-shadow: 0 0 0 2px var(--accent), 0 0 0 6px color-mix(in oklab, var(--accent) 35%, transparent); position: relative; z-index: 3; }
+.ot-mini-stage { flex: 1; padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-3); background-color: var(--canvas-bg); background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px); background-size: var(--canvas-grid) var(--canvas-grid); }
+.ot-mini-sk { height: 10px; border-radius: var(--radius-pill); background: var(--bg-3); }
+.ot-mini-sk.is-accent { width: 40%; height: 26px; border-radius: var(--radius-sm); background: var(--accent-muted); }
+.ot-scrim { position: absolute; inset: 0; background: color-mix(in oklab, var(--bg-0) 52%, transparent); z-index: 2; }
+
+.ot-card {
+  position: absolute; right: -12px; top: 50%; transform: translate(100%, -50%);
+  width: 320px; display: flex; flex-direction: column; gap: var(--space-2);
+  padding: var(--space-5); z-index: 4;
+  background: var(--bg-2); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
+}
+/* On the smaller artboards the card parks inside the frame, anchored right. */
+.ot-coach .ot-card { right: var(--space-5); transform: translateY(-50%); }
+.ot-card-title { font-family: var(--font-display); font-size: var(--type-lg); font-weight: 600; color: var(--fg-0); }
+.ot-card-body { color: var(--fg-2); font-size: var(--type-sm); line-height: var(--lh-lg); }
+
+/* ── the "one hard thing" — apart, you pick (never a merge) ───────────────────── */
+.ot-hard { display: flex; flex-direction: column; align-items: center; gap: var(--space-4); padding: var(--space-4) 0; }
+.ot-hard-icon { width: 56px; height: 56px; display: grid; place-items: center; border-radius: var(--radius-md); background: var(--bg-3); color: var(--accent); }
+.ot-hard-pick { display: flex; gap: var(--space-3); }
+/* Text is --fg-0 (high contrast on the tints); the accent/info/success colour-code
+ * lives on the border + tint, so the cue survives while text clears AA. */
+.ot-pick { padding: var(--space-2) var(--space-4); border-radius: var(--radius-md); font-size: var(--type-sm); font-weight: 600; color: var(--fg-0); border: 1px solid; display: inline-flex; align-items: center; gap: var(--space-2); }
+.ot-pick::before { content: ""; width: 8px; height: 8px; border-radius: var(--radius-pill); background: currentColor; }
+.ot-pick--mine { border-color: color-mix(in oklab, var(--accent) 50%, transparent); background: var(--accent-tint); color: var(--fg-0); }
+.ot-pick--mine::before { background: var(--accent); }
+.ot-pick--theirs { border-color: color-mix(in oklab, var(--status-info) 50%, transparent); background: color-mix(in oklab, var(--status-info) 12%, transparent); }
+.ot-pick--theirs::before { background: var(--status-info); }
+.ot-pick--both { border-color: color-mix(in oklab, var(--status-success) 50%, transparent); background: color-mix(in oklab, var(--status-success) 12%, transparent); }
+.ot-pick--both::before { background: var(--status-success); }

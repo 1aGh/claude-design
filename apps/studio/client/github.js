@@ -64,6 +64,17 @@ export const invite = (username) => api('/_api/github/invite', { method: 'POST',
 export const cloneRepo = (body) => api('/_api/github/clone', { method: 'POST', body: JSON.stringify(body) });
 export const createProject = (body) => api('/_api/github/create-project', { method: 'POST', body: JSON.stringify(body) });
 export const initDesign = (dir) => api('/_api/design/init', { method: 'POST', body: JSON.stringify({ dir }) });
+/** Phase 29 (E4) Door C — connect to a team hub (saves the global hub credential). */
+export const hubLink = (body) => api('/_api/hub/link', { method: 'POST', body: JSON.stringify(body) });
+
+// ── Tauri shell: app-state (first-run / last-project / recent) — Phase 29 (E4) ──
+// In a plain browser these throw via tauri(); the wizard only mounts in the native
+// app (isNativeApp()), so call sites guard accordingly.
+/** True on a fresh install with no usable last project → show the onboarding wizard. */
+export const appIsFirstRun = () => invoke('app_is_first_run');
+export const appGetLastProject = () => invoke('app_get_last_project');
+export const appSetLastProject = (path) => invoke('app_set_last_project', { path });
+export const appRecentProjects = () => invoke('app_recent_projects');
 
 // ── Tauri shell commands for "pull a local copy" ────────────────────────────────
 /** Native folder picker → chosen parent dir, or null if cancelled. */

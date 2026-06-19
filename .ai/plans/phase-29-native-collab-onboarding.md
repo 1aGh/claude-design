@@ -205,3 +205,49 @@ Today Maude requires `maude design serve` from a terminal, then a browser. There
 - [x] Onboarding tour v1 ships on the existing engine; offered first-run, replayable from Help; `tour-overlay.test.tsx` green (Task 6) — live-verified via agent-browser (infographic + spotlight)
 - [x] Vocabulary contract upheld on the new surfaces: **no raw git terms**; the cycle uses **Save changes locally / Publish for everyone / Pull changes**; "Draft" not branch, "Shared version" not main; the live layer is automatic _(follow-up: align phase-27 GitPanel "Save version"/"Get latest" to the exact canonical verbs — already jargon-free)_
 - [x] Teaching-model reversal recorded as a DDR — **DDR-118** (Task 7)
+
+---
+
+## Follow-up tasks (post-phase, tracked)
+
+### FU-1 — Split the toolset between the native app and the web studio (DDR-worthy)
+
+**Problem.** Phase-29 surfaces (onboarding, identity, the `RepoBranchSwitcher`) currently render in BOTH the native Tauri app AND the browser-launched web studio (gated only on `status.repo`, not on `isNativeApp()`). But the two surfaces have fundamentally different owners and personas, so the same toolset doesn't fit both.
+
+**The deciding axis — who owns the workspace:**
+
+| | **Native app (`Maude.app`)** | **Web studio (`maude studio` / `maude design serve`)** |
+| --- | --- | --- |
+| Workspace owner | the **app** (onboarding · sign-in · clone · switch repo) | the **IDE/terminal** — you launched it inside a repo (cwd-bound) |
+| Persona | non-technical (designer, PM, stakeholder) | developer, already in their editor |
+| Mental model | **Figma** — a standalone design environment | **Storybook / local preview** — a companion to the editor |
+| Vocabulary | plain words ("draft", "Shared version", "Publish for everyone") | **real git** ("branch", "main", "push") — the dev knows it; the plain-words translation is friction |
+
+**Principle:** *Native = a self-contained workspace. Web = a repo-bound mirror of the current repo that defers ACTIONS to the terminal.*
+
+**Per-tool mapping:**
+
+| Tool | Native | Web | Why |
+| --- | --- | --- | --- |
+| Onboarding wizard | ✅ | ✗ | web dev is already authed (git creds) + already in a repo |
+| GitHub sign-in / IdentityBar | ✅ | ✗ | web takes identity from git/SSH (already `isNativeApp()`-gated) |
+| Repo/project switcher | ✅ | ✗ | web is cwd-bound — switching repos = relaunching the CLI elsewhere |
+| Branch/draft switcher | ✅ full (drafts · fold · plain-words) | ⚠️ **read-only badge**, git vocab | see below |
+| Save / Publish / Pull cycle | ✅ plain-words | ✗ (or git-vocab, delegated to terminal) | the dev commits/pushes in their terminal |
+| Changes / Diff / History | ✅ | ✅ | useful in both — awareness |
+| Inspector / CSS knobs / ⌘-click | ✅ | ✅✅ **killer feature** | dev loop: inspect → copy CSS → edit in IDE |
+| "Open in editor" / "Reveal in Finder" | ✗ | ✅ | companion to the IDE; native has no editor to open into |
+| Presence / comments / annotations | ✅ | ✅ | collab works on both |
+| Collab tour (the teaching) | ✅ | ✗ | a dev doesn't need "what is Publish" |
+| Export / handoff | ✅ | ✅ | both |
+
+**The branch nuance (resolved):** in the web studio, branches get **awareness, not actions** — and that vazba is already free: `collab/git-lifecycle.ts` watches `.git/HEAD`, so when the dev runs `git checkout` in their terminal the UI updates itself. So web studio shows a **read-only `branch: main` badge** (git vocab), auto-updated from the terminal; **no** New-draft / fold / Publish (those would rewrite the dev's working tree under their hands and collide with the IDE). Native owns full draft management in plain words.
+
+**Implementation sketch (when picked up):**
+1. Record the split as a **DDR** ("native app owns the workspace, Figma-like + plain-words; web studio = repo-bound companion, git-vocab + read-only branch awareness, actions → terminal") — codifies the axis + the per-tool table so the next surface doesn't re-litigate it.
+2. Gate `RepoBranchSwitcher` on `isNativeApp()` (the `IdentityBar` pattern): native → the full bottom-dock switcher; web → a compact **read-only "📁 repo · branch: main"** badge (git vocab, auto-updates from the HEAD-watcher, no actions) + an "Open in editor" affordance.
+3. (Open question for the user) whether `maude studio` is also a rename of `maude design serve`, and whether the web badge should escalate to a "quick git-vocab switch" (with an explicit "this runs `git checkout` in your repo") rather than pure read-only.
+
+### FU-2 — Align the phase-27 GitPanel labels to the exact canonical verbs
+
+The GitPanel uses jargon-free near-synonyms ("Save version" / "Publish changes" / "Get latest"); the canonical set (DDR-118) is "Save changes locally / Publish for everyone / Pull changes". The collab tour bridges the gap, but aligning the GitPanel + IdentityBar + SyncBanner copy to the exact verbs is a deferred vocab migration (already contract-compliant, so non-blocking).

@@ -17,16 +17,20 @@ import type { Context } from '../context.ts';
 import { getGithubToken } from '../github/token.ts';
 import {
   type GitFileStatus,
-  type ResolveChoice,
+  gitCheckout,
   gitCommit,
+  gitCreateBranch,
   gitDiff,
   gitDiscard,
+  gitFoldDraft,
+  gitListBranches,
   gitLog,
   gitPull,
   gitPush,
   gitResolve,
   gitStatus,
   isContainedRepoPath,
+  type ResolveChoice,
 } from './service.ts';
 
 export interface GitEndpointResult {
@@ -65,6 +69,13 @@ export interface GitEndpoints {
   resolve(body: unknown): Promise<GitEndpointResult>;
   log(limitRaw: string | null, pathRaw?: string | null): Promise<GitEndpointResult>;
   diff(sha: string | null): Promise<GitEndpointResult>;
+  // Phase 29 (E4) — drafts (branches). The UI vocabulary: draft=branch, "Shared
+  // version"=main. The current branch is already on the status payload (`branch`).
+  branches(): Promise<GitEndpointResult>;
+  createBranch(body: unknown): Promise<GitEndpointResult>;
+  checkout(body: unknown): Promise<GitEndpointResult>;
+  // "Add this draft to the Shared version" — token-bearing (it publishes).
+  fold(body: unknown): Promise<GitEndpointResult>;
 }
 
 export function createGitEndpoints(ctx: Context): GitEndpoints {
@@ -243,7 +254,62 @@ export function createGitEndpoints(ctx: Context): GitEndpoints {
     return { status: 200, json: { entries: await gitDiff(dir, ref, { designPrefix }) } };
   }
 
-  return { status, commit, discard, push, pull, resolve, log, diff };
+  // ── drafts (branches) — phase 29 / E4 ──────────────────────────────────────
+  async function branches(): Promise<GitEndpointResult> {
+    return { status: 200, json: { branches: await gitListBranches(dir) } };
+  }
+
+  async function createBranch(body: unknown): Promise<GitEndpointResult> {
+    const b = (body ?? {}) as { name?: unknown };
+    // Reject a dash-led / malformed draft name BEFORE it can reach git argv (A1).
+    const name = safeGitArg(b.name);
+    if (name === undefined) return bad("That draft name has characters we can't use.");
+    const res = await gitCreateBranch(dir, name);
+    if (!res.ok) return { status: 400, json: { ok: false, error: res.error } };
+    return { status: 200, json: { ok: true, branch: res.branch } };
+  }
+
+  async function checkout(body: unknown): Promise<GitEndpointResult> {
+    const b = (body ?? {}) as { name?: unknown };
+    const name = safeGitArg(b.name);
+    if (name === undefined) return bad('Invalid draft name.');
+    const res = await gitCheckout(dir, name);
+    // A dirty tree that blocks the switch is a precondition failure (409) so the
+    // UI can say "Save your changes first" distinctly from a 400 validation error.
+    if (!res.ok) return { status: 409, json: { ok: false, error: res.error } };
+    return { status: 200, json: { ok: true, branch: res.branch } };
+  }
+
+  async function fold(body: unknown): Promise<GitEndpointResult> {
+    // Token resolution mirrors push (it publishes the Shared version): body token →
+    // keychain bridge → undefined → authRequired.
+    const token = readToken(body) ?? (await getGithubToken()) ?? undefined;
+    const b = (body ?? {}) as { name?: unknown; remote?: unknown };
+    const name = safeGitArg(b.name);
+    if (name === undefined) return bad('Invalid draft name.');
+    if (b.remote != null && safeRemoteArg(b.remote) === undefined) return bad('Invalid remote.');
+    const res = await gitFoldDraft(dir, name, token, { remote: safeRemoteArg(b.remote) });
+    if (res.ok) return { status: 200, json: { ok: true, shared: res.shared } };
+    if (res.authRequired)
+      return { status: 401, json: { ok: false, authRequired: true, error: res.error } };
+    if (res.conflict) return { status: 409, json: { ok: false, conflict: true, error: res.error } };
+    return { status: 502, json: { ok: false, error: res.error ?? 'Could not add the draft.' } };
+  }
+
+  return {
+    status,
+    commit,
+    discard,
+    push,
+    pull,
+    resolve,
+    log,
+    diff,
+    branches,
+    createBranch,
+    checkout,
+    fold,
+  };
 }
 
 /** Read a non-empty string token from a request body without retaining it. */

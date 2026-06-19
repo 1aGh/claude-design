@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-app-recent-projects"
+description = "Enables the app_recent_projects command without any pre-configured scope."
+commands.allow = ["app_recent_projects"]
+
+[[permission]]
+identifier = "deny-app-recent-projects"
+description = "Denies the app_recent_projects command without any pre-configured scope."
+commands.deny = ["app_recent_projects"]

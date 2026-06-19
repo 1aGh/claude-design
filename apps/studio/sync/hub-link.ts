@@ -1,0 +1,133 @@
+// sync/hub-link.ts — Phase 29 (E4) Door C: connect to a team hub from the wizard.
+//
+// The CLI (`maude design link`) owns the FULL link flow (interactive trust gate +
+// per-project `.design/config.json` linkedHub write + `--adopt` push). This is the
+// lean in-app counterpart used by the onboarding wizard's advanced door: it saves the
+// hub CREDENTIAL to the global `~/.config/maude/hubs.json` (mode 0600) and records the
+// hub as trusted on THIS machine — the in-UI "Connect" IS the explicit trust grant the
+// CLI's interactive confirmation provides (DDR-054 F2). Hub tokens are GLOBAL /
+// per-machine (keyed by normalized URL), so a project later opened whose
+// `.design/config.json` names this hub syncs using the saved token. We deliberately do
+// NOT write a per-project `linkedHub` here (onboarding has no project yet) — that stays
+// a CLI / post-onboarding operation.
+//
+// SECURITY: the http layer gates this main-origin + loopback only (mirrors
+// /_api/github/*). The health probe is a best-effort GET to the user-entered hub URL;
+// only `{ ok, version }` is reflected back — no response-body passthrough, so it can't
+// become an SSRF data-exfil channel. The hub address is whatever the user typed (a LAN
+// / Tailscale / fly.dev URL is legitimate — phase-9's hub model expects private hosts),
+// so we do NOT block private IPs; the safety is the loopback caller gate + no reflection.
+// Flagged for the /flow:done security fan-out.
+
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
+
+import { hubsConfigPath, normalizeUrl } from './hubs-config.ts';
+
+export interface HubLinkResult {
+  status: number;
+  json: unknown;
+}
+
+const HUB_PROBE_TIMEOUT_MS = 4000;
+
+interface HubsFile {
+  hubs: Record<string, { token: string; linkedAt: number }>;
+  trusted?: string[];
+}
+
+/** Validate + probe + persist a hub credential. Returns an http-shaped result. */
+export async function linkHub(body: unknown): Promise<HubLinkResult> {
+  const b = (body ?? {}) as { url?: unknown; token?: unknown };
+  if (typeof b.url !== 'string' || !b.url.trim()) return bad('Enter the hub address.');
+  if (typeof b.token !== 'string' || !b.token.trim())
+    return bad('Paste the invite link or token your team gave you.');
+
+  let norm: string;
+  try {
+    norm = normalizeUrl(b.url.trim());
+  } catch {
+    return bad("That doesn't look like a valid hub address.");
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(norm);
+  } catch {
+    return bad('Invalid hub address.');
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')
+    return bad('The hub address must start with http:// or https://.');
+
+  const token = b.token.trim();
+
+  // Best-effort reachability probe — does NOT gate the save (a firewalled hub the
+  // user trusts still links; the real auth happens on the sync WS upgrade).
+  const probe = await probeHealth(norm, token);
+
+  try {
+    saveHubCredential(norm, token);
+  } catch {
+    return { status: 500, json: { ok: false, error: "Couldn't save the hub connection." } };
+  }
+
+  return {
+    status: 200,
+    json: { ok: true, url: norm, healthy: probe.ok, version: probe.version ?? null },
+  };
+}
+
+function bad(error: string): HubLinkResult {
+  return { status: 400, json: { ok: false, error } };
+}
+
+async function probeHealth(url: string, token: string): Promise<{ ok: boolean; version?: string }> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), HUB_PROBE_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${url}/health`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: ctrl.signal,
+    });
+    if (!res.ok) return { ok: false };
+    let version: string | undefined;
+    try {
+      const j = (await res.json()) as { version?: unknown };
+      if (j && typeof j.version === 'string') version = j.version;
+    } catch {
+      /* health may not be JSON — reachability alone is enough */
+    }
+    return { ok: true, version };
+  } catch {
+    return { ok: false };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Upsert the token under `normUrl` + record per-machine trust; mode 0600. */
+export function saveHubCredential(normUrl: string, token: string): void {
+  const path = hubsConfigPath();
+  const dir = dirname(path);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
+  let cfg: HubsFile = { hubs: {} };
+  if (existsSync(path)) {
+    try {
+      const parsed = JSON.parse(readFileSync(path, 'utf8'));
+      if (parsed && typeof parsed.hubs === 'object' && parsed.hubs !== null)
+        cfg = parsed as HubsFile;
+    } catch {
+      /* malformed → start fresh rather than throw */
+    }
+  }
+  cfg.hubs[normUrl] = { token, linkedAt: Date.now() };
+  if (!Array.isArray(cfg.trusted)) cfg.trusted = [];
+  if (!cfg.trusted.includes(normUrl)) cfg.trusted.push(normUrl);
+  writeFileSync(path, `${JSON.stringify(cfg, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+  try {
+    chmodSync(path, 0o600);
+  } catch {
+    /* windows / read-only fs — best effort */
+  }
+}
+
+export const __testing = { probeHealth };

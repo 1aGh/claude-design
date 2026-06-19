@@ -13,6 +13,10 @@ fn main() {
                 "github_sign_out",
                 "pick_directory",
                 "open_local_project",
+                "app_is_first_run",
+                "app_get_last_project",
+                "app_set_last_project",
+                "app_recent_projects",
             ]),
         ),
     )

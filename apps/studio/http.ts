@@ -23,6 +23,7 @@ import type { Inspect } from './inspect.ts';
 import { canvasSlug, writeLocator } from './locator.ts';
 import { DEV_SERVER_ROOT } from './paths.ts';
 import { getRuntimeBundle, packageForSlug } from './runtime-bundle.ts';
+import { linkHub } from './sync/hub-link.ts';
 import { loadWhatsNew } from './whats-new.ts';
 import { isLoopbackHost } from './ws.ts';
 
@@ -819,6 +820,43 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       return gitJson(await gitApi.diff(new URL(req.url).searchParams.get('sha')));
     },
 
+    // ── Phase 29 (E4) — drafts (branches). MAIN-ORIGIN ONLY (absent from
+    // CANVAS_SAFE_API + startCanvasServer routes); branch + checkout are POST/CSRF-
+    // gated source mutations. Switching a draft moves HEAD, which the git-lifecycle
+    // watcher turns into a Yjs flush + reload (DDR-051) — no logic duplicated here.
+    '/_api/git/branches': async (req: Request) => {
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      return gitJson(await gitApi.branches());
+    },
+
+    '/_api/git/branch': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      const body = await readJson<unknown>(req, 8 * 1024);
+      return gitJson(await gitApi.createBranch(body));
+    },
+
+    '/_api/git/checkout': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      const body = await readJson<unknown>(req, 8 * 1024);
+      return gitJson(await gitApi.checkout(body));
+    },
+
+    // "Add this draft to the Shared version" — merges + PUBLISHES, so it is token-
+    // bearing: same main-origin + loopback gate as /_api/git/push.
+    '/_api/git/fold': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('adding a draft requires a local request', { status: 403 });
+      const body = await readJson<unknown>(req, 8 * 1024);
+      return gitJson(await gitApi.fold(body));
+    },
+
     '/_api/git/commit': async (req: Request) => {
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       if (!sameOriginWrite(req))
@@ -943,6 +981,21 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
         return new Response('local request required', { status: 403 });
       const body = await readJson<unknown>(req, 8 * 1024);
       return gitJson(await githubApi.initDesign(body));
+    },
+
+    // Phase 29 (E4) Door C — connect to a team hub: validate + probe + save the hub
+    // credential to the global ~/.config/maude/hubs.json (sync/hub-link.ts). MAIN
+    // ORIGIN ONLY (omitted from CANVAS_SAFE_API + startCanvasServer routes) + loopback
+    // + POST CSRF, mirroring /_api/github/*. The lean in-app counterpart to the CLI
+    // `maude design link`; the in-UI Connect is the explicit trust grant (DDR-054 F2).
+    '/_api/hub/link': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      const body = await readJson<unknown>(req, 8 * 1024);
+      return gitJson(await linkHub(body));
     },
 
     '/_api/edit-css': async (req: Request) => {

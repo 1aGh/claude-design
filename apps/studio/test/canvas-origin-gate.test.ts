@@ -80,6 +80,11 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         '/_api/git/push',
         '/_api/git/pull',
         '/_api/git/resolve',
+        // Phase 29 (E4) — drafts: list + create + switch + fold are MAIN-ORIGIN ONLY.
+        '/_api/git/branches',
+        '/_api/git/branch',
+        '/_api/git/checkout',
+        '/_api/git/fold',
         // Phase 28 (E3) — every /_api/github/* route is MAIN-ORIGIN ONLY (absent
         // from CANVAS_SAFE_API + startCanvasServer's `routes` map) and token-bearing.
         // The untrusted canvas iframe origin must never reach identity/create-repo/
@@ -93,6 +98,10 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         '/_api/github/clone',
         '/_api/github/create-project',
         '/_api/design/init',
+        // Phase 29 (E4) Door C — the hub-link credential write is MAIN-ORIGIN ONLY;
+        // the untrusted canvas origin must never reach it (it writes the global
+        // ~/.config/maude/hubs.json token store).
+        '/_api/hub/link',
         '/package.json',
       ]) {
         expect(await code(p)).toBe(403);

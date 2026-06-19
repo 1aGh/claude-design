@@ -16,11 +16,17 @@ import { canvasUrl } from './canvas-url.js';
 import DiffView from './panels/DiffView.jsx';
 import GitPanel from './panels/GitPanel.jsx';
 import IdentityBar from './panels/IdentityBar.jsx';
+import OnboardingWizard from './panels/OnboardingWizard.jsx';
+import RepoBranchSwitcher from './panels/RepoBranchSwitcher.jsx';
+import { appIsFirstRun, isNativeApp } from './github.js';
+import { COLLAB_TOUR } from './tour/collab-tour.js';
 import { TourOverlay } from './tour/overlay.jsx';
 import { USAGE_TOUR } from './tour/usage-tour.js';
 import { useWhatsNew, WhatsNewPanel, WhatsNewToast } from './whats-new.jsx';
 
 const USAGE_TOUR_STORE = 'mdcc-usage-tour-seen';
+// Phase 29 (E4) — the collab "rychlý kurz" is offered once after onboarding.
+const COLLAB_TOUR_STORE = 'mdcc-collab-tour-seen';
 
 const SYSTEM_TAB = '__system__';
 const THEME_STORE = 'mdcc-theme';
@@ -1373,6 +1379,7 @@ function Sidebar({
   width,
   resizing,
   dirtyByPath,
+  project,
 }) {
   const filteredGroups = useMemo(() => {
     if (!search) return groups;
@@ -1598,6 +1605,10 @@ function Sidebar({
           );
         })}
       </div>
+      {/* Phase 29 (E4) — the project + draft switcher: a compact one-line dock that
+          opens UPWARD, sitting directly above the GitHub identity avatar so the two
+          form one bottom dock. Renders nothing until the project is a git repo. */}
+      <RepoBranchSwitcher project={project} />
       {/* Phase 28 (E3) — GitHub identity as a compact avatar docked at the BOTTOM:
           sign in, connected account + New/Pull/Share, sign out. Self-contained
           (owns its device-code + CreateProject dialogs). Renders nothing in browser. */}
@@ -2225,6 +2236,7 @@ function HelpDropdown({ onAction, onClose }) {
         { id: 'help', label: 'Help · commands & flows', shortcut: 'F1' },
         { sep: true },
         { id: 'tour', label: 'Take the tour' },
+        { id: 'collab-tour', label: 'How sharing works' },
         { id: 'whatsnew', label: "What's new" },
       ]}
     />
@@ -2332,6 +2344,7 @@ function Menubar({
   onOpenHelp,
   onOpenShortcuts,
   onStartTour,
+  onStartCollabTour,
   annotationsVisible,
   onToggleAnnotations,
   minimapVisible,
@@ -2587,6 +2600,7 @@ function Menubar({
             if (id === 'shortcuts') onOpenShortcuts?.();
             else if (id === 'help') onOpenHelp?.();
             else if (id === 'tour') onStartTour?.();
+            else if (id === 'collab-tour') onStartCollabTour?.();
             else if (id === 'whatsnew') onOpenWhatsNew?.();
           }}
           onClose={() => setOpenMenu(null)}
@@ -5545,6 +5559,34 @@ function App() {
     }
   }, []);
   const whatsNew = useWhatsNew(MDCC_VERSION);
+  // Phase 29 (E4) — first-run onboarding wizard. The native shell boots a minimal
+  // "welcome" project on first launch; we ask it whether this is a first run and, if
+  // so, show the wizard OVER the (empty) canvas browser. Completing any door switches
+  // the sidecar to a real project (the webview reloads → first-run is then false).
+  const [firstRun, setFirstRun] = useState(false);
+  // Offer the collab "rychlý kurz" once, AFTER onboarding (native app, not first run,
+  // not yet seen). A returning user who already took it isn't re-nudged.
+  const [collabNudge, setCollabNudge] = useState(false);
+  useEffect(() => {
+    if (!isNativeApp()) return undefined;
+    let alive = true;
+    appIsFirstRun()
+      .then((v) => {
+        if (!alive) return;
+        setFirstRun(!!v);
+        if (!v && !readBoolStore(COLLAB_TOUR_STORE, false)) setCollabNudge(true);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const markCollabSeen = useCallback(() => {
+    setCollabNudge(false);
+    try {
+      localStorage.setItem(COLLAB_TOUR_STORE, '1');
+    } catch {}
+  }, []);
   const [tourSteps, setTourSteps] = useState(null);
   const [usageNudge, setUsageNudge] = useState(() => !readBoolStore(USAGE_TOUR_STORE, false));
   const startTour = useCallback((steps) => {
@@ -5568,6 +5610,9 @@ function App() {
       }
       if (step.inspector || step.tab || step.requireSelection) openRightPanel('inspector');
       if (step.tab) setInspectorTab(step.tab);
+      // Phase 29 (E4) collab tour — open the Changes panel so the Save / Publish /
+      // Get-latest controls the action steps spotlight actually exist to anchor on.
+      if (step.changes) openRightPanel('changes');
     },
   };
   const markUsageSeen = useCallback(() => {
@@ -6883,6 +6928,7 @@ function App() {
       data-theme={theme}
       onContextMenu={onShellContextMenu}
     >
+      {firstRun && <OnboardingWizard />}
       <SyncBanner status={syncStatus} />
       {!usageNudge && !tourSteps && <WhatsNewToast wn={whatsNew} />}
       {gitLifecycle && (
@@ -6925,6 +6971,7 @@ function App() {
           onOpenHelp={() => setHelpOpen(true)}
           onOpenShortcuts={() => setShortcutsOpen(true)}
           onStartTour={() => startTour(USAGE_TOUR)}
+          onStartCollabTour={() => startTour(COLLAB_TOUR)}
           annotationsVisible={annotationsVisible}
           onToggleAnnotations={toggleAnnotations}
           minimapVisible={minimapVisible}
@@ -7007,6 +7054,7 @@ function App() {
             width={sbSize.w}
             resizing={dragSide === 'sb'}
             dirtyByPath={dirtyByPath}
+            project={project}
           />
           {sidebarOpen && (
             <PanelGrip
@@ -7201,7 +7249,7 @@ function App() {
         }}
       />
       <WhatsNewPanel wn={whatsNew} onStartTour={startTour} />
-      {usageNudge && !tourSteps && (
+      {usageNudge && !tourSteps && !collabNudge && (
         <div className="mdcc-tour-nudge" role="status" aria-live="polite">
           <div className="mdcc-tour-nudge__body">
             New here? Take a 60-second tour of the canvas browser.
@@ -7221,6 +7269,32 @@ function App() {
             className="mdcc-tour-nudge__skip"
             aria-label="Dismiss"
             onClick={markUsageSeen}
+          >
+            ×
+          </button>
+        </div>
+      )}
+      {/* Phase 29 (E4) — the collab "rychlý kurz", offered once after onboarding. */}
+      {collabNudge && !tourSteps && (
+        <div className="mdcc-tour-nudge" role="status" aria-live="polite">
+          <div className="mdcc-tour-nudge__body">
+            New to working with a team? See how saving &amp; sharing works — 60 seconds.
+          </div>
+          <button
+            type="button"
+            className="mdcc-tour-nudge__cta"
+            onClick={() => {
+              markCollabSeen();
+              startTour(COLLAB_TOUR);
+            }}
+          >
+            Start
+          </button>
+          <button
+            type="button"
+            className="mdcc-tour-nudge__skip"
+            aria-label="Dismiss"
+            onClick={markCollabSeen}
           >
             ×
           </button>
