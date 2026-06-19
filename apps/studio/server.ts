@@ -19,7 +19,7 @@ import { spawn } from 'node:child_process';
 import { createActivity } from './activity.ts';
 import { createApi } from './api.ts';
 import { bootSelfHeal } from './boot-self-heal.ts';
-import { createAiActivity } from './collab/ai-activity.ts';
+import { type AiActivityEntry, createAiActivity } from './collab/ai-activity.ts';
 import { createGitLifecycle } from './collab/git-lifecycle.ts';
 import { createCollab } from './collab/index.ts';
 import { createContext } from './context.ts';
@@ -78,6 +78,20 @@ await inspect.load();
 
 collab = createCollab(ctx, api);
 const aiActivity = createAiActivity(ctx);
+
+// Phase 30 — bridge agent `ai-activity` onto the per-canvas room awareness so a
+// remote peer sees "X is editing" cross-machine. The `ai-activity` bus event is
+// loopback-only (inspector WS); awareness is the one channel that crosses the
+// hub. Soft heads-up — projected onto the room's own awareness slot, cleared
+// when the activity ends/expires. No-op when no room is live for the slug.
+ctx.bus.on('ai-activity', (payload: { file: string; entry: AiActivityEntry | null }) => {
+  if (!collab) return;
+  const slug = api.fileSlug(payload.file);
+  collab.registry.setAgentEditing(
+    slug,
+    payload.entry ? { name: payload.entry.author, since: payload.entry.startedAt } : null
+  );
+});
 const gitLifecycle = createGitLifecycle(ctx, collab.registry);
 // Phase 13 / DDR-029 — fs-watch-driven canvas activity overlay. Subscribes to
 // `fs:any` and emits `activity:change`; ws.ts forwards it to canvas iframes.

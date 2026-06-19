@@ -122,6 +122,71 @@ describe('/_api/canvas — POST round-trip', () => {
     }
   });
 
+  test('create + delete emit canvas-list-update over the inspector WS (Phase 30)', async () => {
+    const { root } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    let socket: WebSocket | null = null;
+    try {
+      const messages: Array<{ type: string; payload?: { action?: string; slug?: string } }> = [];
+      const sock = new WebSocket(`ws://localhost:${port}/_ws`);
+      socket = sock;
+      await new Promise<void>((res, rej) => {
+        sock.addEventListener('open', () => res());
+        sock.addEventListener('error', () => rej(new Error('ws error')));
+        setTimeout(() => rej(new Error('ws open timeout')), 2000);
+      });
+      sock.addEventListener('message', (ev) => {
+        try {
+          messages.push(JSON.parse(String(ev.data)));
+        } catch {
+          /* ignore non-JSON */
+        }
+      });
+
+      const waitFor = async (pred: (m: (typeof messages)[number]) => boolean) => {
+        const deadline = Date.now() + 2000;
+        while (Date.now() < deadline) {
+          const hit = messages.find(pred);
+          if (hit) return hit;
+          await Bun.sleep(25);
+        }
+        return undefined;
+      };
+
+      const created = await fetch(`http://localhost:${port}/_api/canvas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Live Add', kind: 'brief-board' }),
+      });
+      expect(created.status).toBe(201);
+      const cj = (await created.json()) as { rel: string };
+
+      const added = await waitFor(
+        (m) => m.type === 'canvas-list-update' && m.payload?.action === 'added'
+      );
+      expect(added?.payload?.slug).toBe('ui-live_add');
+
+      const del = await fetch(
+        `http://localhost:${port}/_api/canvas?file=${encodeURIComponent(cj.rel)}`,
+        { method: 'DELETE' }
+      );
+      expect(del.status).toBe(200);
+
+      const removed = await waitFor(
+        (m) => m.type === 'canvas-list-update' && m.payload?.action === 'removed'
+      );
+      expect(removed?.payload?.slug).toBe('ui-live_add');
+    } finally {
+      try {
+        socket?.close();
+      } catch {
+        /* ignore */
+      }
+      await killProc(proc);
+    }
+  }, 10_000);
+
   test('defaults kind to brief-board when omitted', async () => {
     const { root } = makeSandbox();
     const port = nextPort();

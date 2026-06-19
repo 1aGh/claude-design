@@ -5914,6 +5914,11 @@ function App() {
           } else if (m.type === 'sync:status' && m.payload) {
             // Phase 9 Task 8 — hub connection state for the offline banner.
             setSyncStatus(m.payload);
+          } else if (m.type === 'canvas-list-update') {
+            // Phase 30 — a canvas was created/deleted on THIS dev-server; re-read
+            // the branch-scoped tree so other open tabs reflect it without a
+            // reload. Cross-machine peers get a new canvas via git "Get latest".
+            loadTree();
           } else if (m.type === 'git-status' && m.payload) {
             // Phase 27 (E2) Task 5 — live dirty-state. Updates the Changes-panel
             // count + tree M/A/D badges reactively, no polling.
@@ -5936,7 +5941,9 @@ function App() {
     }
     connect();
     return () => wsRef.current && wsRef.current.close();
-  }, []);
+    // loadTree is a stable useCallback([]); listed so the canvas-list-update
+    // handler always calls the live reference.
+  }, [loadTree]);
 
   function wsSend(obj) {
     const ws = wsRef.current;

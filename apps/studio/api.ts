@@ -1061,6 +1061,12 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       path.join(groupAbs, `${v.name}.meta.json`),
       `${JSON.stringify(meta, null, 2)}\n`
     );
+    // Phase 30 — same-machine live tree refresh. Other tabs on THIS dev-server
+    // re-read the (branch-scoped, on-disk) canvas list so a freshly-created
+    // canvas appears without a reload. Cross-machine peers get the new canvas
+    // via git "Get latest" — the file travels through git, this event is only a
+    // "refresh your list" nudge for online local tabs (loopback inspector WS).
+    ctx.bus.emit('canvas-list-update', { action: 'added', rel, slug });
     // designRel-prefixed path — matches the file-tree `file.path` shape so the
     // client can open it directly after reloadTree().
     return { ok: true, file: path.posix.join(paths.designRel, rel), rel, slug };
@@ -1174,6 +1180,8 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
       `${JSON.stringify({ canvas: rel, slug, deletedAt: new Date().toISOString(), trashed }, null, 2)}\n`
     );
 
+    // Phase 30 — live tree refresh for other local tabs (see createCanvas).
+    ctx.bus.emit('canvas-list-update', { action: 'removed', rel, slug });
     return {
       ok: true,
       rel,

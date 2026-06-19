@@ -104,6 +104,17 @@ export interface CollabAwarenessState {
   annotationSelection: string[];
   viewport: { x: number; y: number; zoom: number };
   /**
+   * Soft editing-presence (Phase 30). Set while THIS peer (a human editing via
+   * the CSS-inspector / a `/design:edit`-driven write, or a bridged agent) is
+   * actively editing the canvas body; `since` is the epoch-ms the edit session
+   * began. Null/absent = not editing. This is a SOFT, attributed heads-up that
+   * rides the same hub-bridged awareness channel as cursors — it is NOT a lock
+   * (no lease, no takeover, never blocks another peer). Cleared on idle + on
+   * disconnect (awareness GC). The visual conflict picker (DDR-116) remains the
+   * safety net for divergent saves.
+   */
+  editing?: { since: number } | null;
+  /**
    * Server-side `disconnect` matches awareness states to outgoing peers by
    * this token (must equal the ws.data.id the server assigns at upgrade).
    * Until the server pushes the assigned id back to the client, we use a
@@ -238,6 +249,18 @@ function sanitizeAnnotationSelection(raw: unknown): string[] {
   return out;
 }
 
+// Soft editing-presence (Phase 30). `since` must be a finite POSITIVE epoch-ms
+// that is not in the future (allow ±5 s clock skew). A future / NaN / Infinity /
+// non-positive value is rejected → `null` (treated as not-editing), so a hostile
+// hub peer can't pin a permanent "editing" badge with a far-future timestamp or
+// poison a `Date.now() - since` age computation with a NaN.
+function sanitizeEditingState(raw: unknown): { since: number } | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const e = raw as { since?: unknown };
+  if (!isFiniteNum(e.since) || e.since <= 0 || e.since > Date.now() + 5000) return null;
+  return { since: e.since };
+}
+
 /**
  * Validate + normalize one foreign awareness state at the trust boundary.
  * Returns null for states that can't be a peer (no usable name). `color` is
@@ -258,6 +281,7 @@ export function sanitizeForeignState(clientID: number, state: unknown): ForeignA
     selection: sanitizeSelection(s.selection),
     annotationSelection: sanitizeAnnotationSelection(s.annotationSelection),
     viewport: sanitizeViewport(s.viewport),
+    editing: sanitizeEditingState(s.editing),
   };
 }
 
@@ -331,6 +355,57 @@ export function useForeignAwareness(): ForeignAwareness[] {
   }, [collab]);
 
   return peers;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hook: soft editing-presence (Phase 30).
+//
+// A SOFT, attributed "I'm editing this canvas" heads-up — NOT a lock. It rides
+// the same per-canvas awareness channel as cursors (so it crosses the hub for
+// free via the awareness bridge) and is surfaced by the peer overlay so two
+// people (or a person + an agent) don't unknowingly edit the same canvas at the
+// same moment. It never blocks anyone; the visual conflict picker (DDR-116)
+// remains the safety net for divergent saves.
+
+const EDITING_IDLE_MS = 5000;
+
+/**
+ * Returns `setEditing()` / `clearEditing()`. Call `setEditing()` on each edit
+ * the local user makes (CSS-inspector tweak, `/design:edit`-driven write); it
+ * publishes `editing: { since }` once and auto-extends, then auto-clears after
+ * `EDITING_IDLE_MS` of no calls (and on unmount). A no-op outside a
+ * `CollabProvider` (returns callbacks that do nothing).
+ */
+export function useEditingPresence(): { setEditing: () => void; clearEditing: () => void } {
+  const collab = useCollab();
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sinceRef = useRef<number | null>(null);
+
+  const clearEditing = useCallback(() => {
+    if (idleTimerRef.current) {
+      clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = null;
+    }
+    if (sinceRef.current !== null) {
+      sinceRef.current = null;
+      collab?.publishAwareness({ editing: null });
+    }
+  }, [collab]);
+
+  const setEditing = useCallback(() => {
+    if (!collab) return;
+    if (sinceRef.current === null) {
+      sinceRef.current = Date.now();
+      collab.publishAwareness({ editing: { since: sinceRef.current } });
+    }
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    idleTimerRef.current = setTimeout(clearEditing, EDITING_IDLE_MS);
+  }, [collab, clearEditing]);
+
+  // Clear local editing-presence on unmount.
+  useEffect(() => () => clearEditing(), [clearEditing]);
+
+  return { setEditing, clearEditing };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -419,6 +494,7 @@ export function CollabProvider({ slug, children }: CollabProviderProps): JSX.Ele
       selection: null,
       annotationSelection: [],
       viewport: { x: 0, y: 0, zoom: 1 },
+      editing: null,
       __connId: myConnId,
     } satisfies CollabAwarenessState);
   }, [awareness, myName, myColor, myConnId]);
@@ -593,6 +669,7 @@ export function CollabProvider({ slug, children }: CollabProviderProps): JSX.Ele
           selection: current.selection ?? null,
           annotationSelection: current.annotationSelection ?? [],
           viewport: current.viewport ?? { x: 0, y: 0, zoom: 1 },
+          editing: current.editing ?? null,
           __connId: myConnId,
           ...next,
         } satisfies CollabAwarenessState);

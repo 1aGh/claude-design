@@ -57,6 +57,15 @@ export interface Room {
   connect(conn: RoomConn): Promise<void>;
   disconnect(conn: RoomConn): void;
   receive(conn: RoomConn, payload: Uint8Array): void;
+  /**
+   * Phase 30 — project an agent's "editing" activity onto this room's awareness
+   * using the room's own (otherwise-unused) local awareness slot, so the soft
+   * editing-presence crosses the hub to remote peers (the loopback `ai-activity`
+   * bus event does not). `null` clears it. Idempotent — a re-set of the same
+   * `{name, since}` is a no-op (ai-activity heartbeats re-emit every 10 s).
+   * NOT a lock; never blocks a peer.
+   */
+  setAgentEditing(state: { name: string; since: number } | null): void;
   /** Force the debounced flush to fire now. DDR-051 §3 (branch-switch). */
   flush(): Promise<void>;
   /** Tear down — clears timers + removes awareness. */
@@ -192,6 +201,32 @@ export function createRoom(slug: string, callbacks: RoomCallbacks): Room {
     if (reply) conn.send(reply);
   }
 
+  // Phase 30 — agent editing-presence projected onto the room's own awareness
+  // slot. The key short-circuits redundant re-sets (ai-activity heartbeats
+  // re-emit the same entry every 10 s). The awareness `update` handler above
+  // broadcasts the change to local conns AND relays it to the hub via
+  // bridgeAwareness, so a remote peer's overlay attributes the edit.
+  let agentEditingKey: string | null = null;
+  function setAgentEditing(state: { name: string; since: number } | null): void {
+    if (destroyed) return;
+    const key = state ? `${state.name} ${state.since}` : null;
+    if (key === agentEditingKey) return;
+    agentEditingKey = key;
+    if (state === null) {
+      awareness.setLocalState(null);
+      return;
+    }
+    awareness.setLocalState({
+      name: state.name,
+      color: '', // re-derived client-side from name; wire value is discarded
+      cursor: null,
+      selection: null,
+      annotationSelection: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      editing: { since: state.since },
+    });
+  }
+
   async function destroy(): Promise<void> {
     destroyed = true;
     if (flushTimer) {
@@ -211,6 +246,7 @@ export function createRoom(slug: string, callbacks: RoomCallbacks): Room {
     connect,
     disconnect,
     receive,
+    setAgentEditing,
     flush,
     destroy,
     size: () => conns.size,

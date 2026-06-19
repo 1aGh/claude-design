@@ -9,6 +9,8 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-121: Live-session canvas propagation via Get latest (no project-level hub doc; ephemeral loopback canvas-list-update for same-machine tabs)](DDR-121-live-session-canvas-propagation-via-get-latest.md) — 2026-06-19, native-app/collab/canvas-list/branch-scoped/get-latest/inspector-bus/no-hub-transport/phase-30
+- [DDR-120: Branch-scoped live multiplayer + soft editing-presence, no locking (reverses collab-model-design.md A2)](DDR-120-branch-scoped-multiplayer-soft-editing-presence.md) — 2026-06-19, native-app/collab/multiplayer/branch-scoped/editing-presence/awareness/no-lock/ai-activity-bridge/tsx-live-sync/ddr-078-reversal/phase-30
 - [DDR-119: Native app owns the workspace; the web studio is a repo-bound companion (read-only branch badge, git vocab, actions → terminal)](DDR-119-native-owns-the-workspace-web-is-a-repo-bound-companion.md) — 2026-06-19, native-app/web-studio/isNativeApp/toolset-split/repo-branch-switcher/gitpanel/collab-tour/read-only/phase-29/e4/fu-1
 - [DDR-118: Teach a visible three-verb action-cycle; don't hide the live/async duality (reverses collab-model-design.md Part 2)](DDR-118-teach-the-action-cycle-not-hide-the-duality.md) — 2026-06-19, native-app/onboarding/collab-tour/vocabulary/teaching-model/save-publish-pull/draft/shared-version/phase-29/e4
 - [DDR-117: Presentation Mode + the shell↔canvas chrome-visibility bridge (non-destructive overlay, dgn:view-chrome)](DDR-117-present-mode-chrome-visibility-bridge.md) — 2026-06-19, dev-server/studio/present-mode/postmessage/chrome-visibility/minimap/zoom/ddr-054/view-only

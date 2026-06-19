@@ -59,6 +59,14 @@ export interface Registry {
    */
   syncRoomFromAnnotations(slug: string, svg: string): void;
   /**
+   * Phase 30 — project agent editing-presence onto a slug's room awareness so
+   * it crosses the hub (the loopback `ai-activity` bus event does not). `null`
+   * clears it. No-op when no room is live for the slug — a peer that joins
+   * later will see the agent on the next ai-activity heartbeat. Soft heads-up;
+   * never a lock.
+   */
+  setAgentEditing(slug: string, state: { name: string; since: number } | null): void;
+  /**
    * Phase 9 Task 5 — attach the hub-side Awareness (from a sync provider) for
    * a slug so the Room's Awareness (browser peers) is bridged bidirectionally
    * to the hub. While attached, cursors / selections / viewport relay
@@ -192,6 +200,10 @@ export function createRegistry(callbacks: RoomCallbacks): Registry {
     }, 'inspector-write');
   }
 
+  function setAgentEditing(slug: string, state: { name: string; since: number } | null): void {
+    rooms.get(slug)?.setAgentEditing(state);
+  }
+
   async function flushAll(): Promise<void> {
     await Promise.all(Array.from(rooms.values(), (r) => r.flush()));
   }
@@ -227,6 +239,7 @@ export function createRegistry(callbacks: RoomCallbacks): Registry {
     getDoc,
     syncRoomFromComments,
     syncRoomFromAnnotations,
+    setAgentEditing,
     attachHubAwareness,
     pin,
     unpin,

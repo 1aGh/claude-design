@@ -150,6 +150,14 @@ export function createWs(
   // privileged broadcasts. Drives the Changes-panel count + tree M/A/D badges.
   ctx.bus.on('git-status', (payload: unknown) => broadcast({ type: 'git-status', payload }));
 
+  // Phase 30 — live canvas-list refresh. api.createCanvas / deleteCanvas emit
+  // this; inspector clients (the shell) re-read the branch-scoped tree via
+  // /_index-data. Loopback-only (same dev-server) — cross-machine peers get a
+  // new canvas through git "Get latest", not this event.
+  ctx.bus.on('canvas-list-update', (payload: unknown) =>
+    broadcast({ type: 'canvas-list-update', payload })
+  );
+
   // HMR broadcaster — turns fs:any change events into `canvas-hmr` messages.
   // The iframe-side client (in _shell.html) decides reload strategy from `mode`.
   // Uses broadcastHmr so the segregated canvas origin's HMR-only sockets get it.

@@ -1,52 +1,82 @@
-# Phase 30 — Native Maude: Live multiplayer + artboard locking + hub realignment
+# Phase 30 — Native Maude: Branch-scoped live multiplayer + editing presence + hub realignment
 
-Validate docs and codebase patterns before implementing. Read DDR-054, DDR-064, DDR-063 and the 3-lane collab model in `collab-model-design.md` before touching any sync/collab code. The no-break exhaustive verify posture applies — this is security-critical.
+> **RE-PLANNED 2026-06-19** (during `/flow:execute`, in dialogue with the user). The original plan was built around **artboard locking** (per-canvas single-writer lock with a 30 s lease, attributed takeover, stale-lock UX). That mechanism is **superseded** — the user explicitly does **not** want a lock model (*"žádný komplikovaný lock edit nechci"*). Three findings during discovery collapsed the scope:
+>
+> 1. **Live TSX co-visibility is already shipped** — the canvas `.tsx` body already syncs cross-machine over the hub, **default-on for linked projects** (DDR-079 / Phase 9.1). So *"when one edits, the other sees it"* is largely **done**; this phase **verifies + surfaces** it, it does not build it.
+> 2. **The only real gap is a cross-machine "editing now" signal.** `ai-activity` (agent-is-editing, DDR-078) exists but is **loopback-only** — it never crosses the hub. Humans have **no** "I'm editing" state at all. The net-new work is a lightweight **soft editing-presence** field that rides the existing hub-crossing awareness channel.
+> 3. **New-canvas propagation collapses to branch-scoping + get-latest** — no new project-level hub transport is needed (the original Task 4's hardest piece).
+>
+> Discovery also confirmed every path in the original plan was **stale**: `plugins/design/dev-server/` → **`apps/studio/`** and `plugins/design/hub/src/admin/` → **`apps/hub/src/admin/`** (DDR-095). The hub-admin gz budget is **28 KB** (`apps/hub/test/admin-size.test.mjs`), not the originally-stated 15 KB.
 
-## Co je shipped vs. co je net-new
+Read DDR-054, DDR-063, DDR-064, DDR-072, DDR-078, DDR-079 and `.ai/docs/collab-model-design.md` before touching any sync/collab code. The **no-break exhaustive verify** posture applies (per `feedback-no-break-exhaustive-verify` memory) — this is security-critical (peer-code execution + a new awareness field over a semi-trusted hub).
 
-| Oblast | Stav | Co phase-30 dělá |
+---
+
+## Model (what a non-technical user must understand)
+
+> **Two rules. Everything else is the app's job.**
+
+**Rule 1 — You see only your branch.** The canvas tree shows the canvases (and specimens) that exist **on your current branch, on your disk**. Git already enforces this — we just must **not** override it. No cross-branch tree items (not even disabled/greyed). A teammate working on a different draft is simply not in your tree; you coordinate verbally ("podívej se na draft Redesign") and switch with the existing RepoBranchSwitcher (phase-29).
+
+**Rule 2 — Multiplayer = same branch.** To see each other's **cursors**, and to live-collaborate **annotations + comments + the TSX body**, both users must be on the **same branch**. Same branch ⇒ you're in the room together; different branch ⇒ you don't see each other at all.
+
+**Consequence — editing.** On the **same HEAD**, both may edit. Conflict is structurally impossible while you're live together (the Yjs layer keeps both working trees converged for annotations/comments; the TSX body streams over the hub within ~1 s of each edit). Humans don't hand-type raw TSX — edits flow through the **CSS-layer inspector** or **`/design:edit`** (the agent), so there's no two-cursors-into-one-code-line garbage-merge risk. The soft editing-presence signal (below) discourages two people from kicking off conflicting edits at the same moment; it is **a heads-up, not a wall**.
+
+**Consequence — commit/push is social.** Both peers see the live TSX change and both see the file as "changed" in their Changes panel. They **agree among themselves** who Saves/Publishes — *"stejně jako developeři"*. That's the accepted tradeoff for running on git.
+
+**Consequence — new canvas.** A new canvas created by Anna reaches Bob via **"Get latest"** (creating/saving moves HEAD forward → the phase-28 get-latest nudge fires). No live cross-machine list push, no new hub channel. Same-machine multi-tab refreshes instantly via the loopback inspector bus.
+
+---
+
+## What's already shipped vs. net-new
+
+| Area | State (verified 2026-06-19) | What phase-30 does |
 | --- | --- | --- |
-| Yjs presence, cursors, viewport | ✅ Shipped (Phase 8) | Reuse — netýká se |
-| Comments + annotations live sync | ✅ Shipped (Phase 8/9) | Reuse — netýká se |
-| Hub + linked mode | ✅ Shipped (Phase 9) | Reuse — netýká se |
-| **Artboard locking** | ❌ Neexistuje | Net-new: `lock` field na awareness |
-| **`canvas-list-update` event** | ❌ Neexistuje | Net-new: live propagace nových canvasů v session |
-| **Hub admin realignment** | ⚠️ Existuje, ale flat | Refactor: přepsat na repo/branch kontext |
+| Yjs presence, cursors, viewport | ✅ Shipped (Phase 8), **crosses hub** via `awareness-bridge.ts` | Reuse — add ONE field |
+| Annotations + comments live sync | ✅ Shipped (Phase 8/9), crosses hub | Reuse — netýká se |
+| **Live TSX body sync cross-machine** | ✅ **Shipped, default-on for linked** (DDR-079 / Phase 9.1). `.tsx` → fs.watch → Y.Text → Hocuspocus → peer disk → iframe reload (~800 ms / ~1 s after each edit). Gated by canvas-origin split (`MAUDE_CANVAS_ORIGIN_SPLIT`, default ON) + per-canvas/project `syncTsx` (default ON). F1 peer-code-exec CRITICAL→MEDIUM (DDR-063). | **Verify** the round-trip + **re-audit F1**; do NOT rebuild |
+| Hub + linked mode | ✅ Shipped (Phase 9) | Reuse |
+| Agent-is-editing signal (`ai-activity`, DDR-078) | ⚠️ Exists but **loopback-only** — never crosses the hub (`ctx.bus.emit('ai-activity')` → inspector WS only) | **Net-new:** surface it cross-machine via awareness |
+| **Human "editing now" signal** | ❌ Does not exist | **Net-new:** soft `editing` awareness field |
+| Cross-branch tree behaviour | ⚠️ Git hides other branches' files by default | **Confirm we don't override it** (branch-scoped visibility) |
+| Hub admin UI | ⚠️ Exists, flat global doc list (`apps/hub/src/admin/`, vanilla JS + maude DS) | **Refactor** to repo/branch context |
+
+---
 
 ## Description
 
-Tato fáze **nestaví live collab od nuly** — Yjs, presence, annotations, comments a hub jsou shipped. Přidává tři věci, které v kódu chybí:
+This phase ships the **branch-scoped live-multiplayer model** above. Concretely, it adds the one missing primitive — a **soft, cross-machine "editing now" presence** (humans + agents) on the existing per-canvas Yjs awareness channel — surfaces the **already-shipped** live TSX sync, hardens the **branch-scoped visibility** rule, simplifies new-canvas propagation to **get-latest**, and realigns the **hub admin** to a single repo/branch context.
 
-1. **Artboard locking (net-new):** `lock` field na existujícím Yjs awareness kanálu — soft single-writer na TSX body; "Anna is editing · Take over" se stale-lock lease + attributed takeover.
-2. **Live canvas-list propagation (net-new):** nový canvas vytvořený během live session se okamžitě objeví v tree ostatních přítomných peerů (ephemeral `canvas-list-update` awareness event — canvas soubor samotný stále cestuje přes git push→pull).
-3. **Hub admin UI realignment (refactor):** přepsat existující flat doc-list admin na repo/branch kontext (jedno repo/branch najednou, ne global seznam všech Y.Doc).
-
-**Phase milestone:** Two users on the same hub session see each other's cursors, annotations, and comments live. When one edits a canvas, the other sees "Anna is editing · Take over" and cannot accidentally overwrite. New canvases created during a live session appear for both instantly.
+**Phase milestone:** Two users on the same hub session, **on the same branch**, see each other's cursors, annotations, comments — and now each other's **TSX edits** — live. When one is editing a canvas (via the CSS inspector or `/design:edit`/agent), the other sees a soft **"Anna is editing · agent is editing"** badge and is gently steered away from a colliding edit (no lock, no takeover). On a different branch they simply don't see each other; they switch branches to collaborate. A new canvas arrives via **Get latest**.
 
 ## User Story
 
-As a non-technical collaborator, I want to see my teammate's cursor and their live annotations, and know when they're editing a canvas so we don't step on each other — exactly like Figma.
+> As a non-technical collaborator, I want to be **in the same draft** as my teammate and see their cursor, their live annotations, and their canvas changes as they happen — and a gentle "someone's editing this" cue so we don't step on each other — exactly like Figma, but honest about the fact it's backed by git (we agree who saves).
 
 ## Problem
 
-Yjs presence + annotations already work loopback and over the hub, but:
-1. Artboard locking doesn't exist — two people can edit the same TSX body simultaneously and overwrite each other.
-2. New canvases created during a live session don't propagate to the other peer's canvas list until they do a "Get latest" (git pull) — visible duality the UX model wanted to eliminate.
-3. The hub admin UI shows a flat list of all documents across all repos — conflicts with the "one repo/branch context" IA model.
+Live presence, annotations, comments, **and the TSX body** already sync over the hub. But:
+
+1. There's **no signal that a canvas is being actively edited by a peer or agent** that reaches the *other machine* — `ai-activity` is loopback-only; humans have no editing state. So two people (or a person + an agent) can unknowingly edit the same canvas at the same moment and race their saves into a git conflict.
+2. The collaboration model was never made **branch-scoped** in the product's mental model — the original plan risked force-showing cross-branch canvases (which would create conflicts and confusion).
+3. New canvases created during a session don't surface to the peer until they Get latest (acceptable per the model — but the nudge should name *what's new*).
+4. The hub admin shows a **flat global** list of all documents across all repos — conflicts with the one-repo/branch-context IA.
 
 ## Solution
 
-1. **Artboard lock field** on the existing Yjs awareness channel: `{lockedBy, displayName, since}` per canvas slug. Broadcast on edit-start, release on commit/quiescence/lease-expiry.
-2. **Live session new-canvas propagation:** within a trusted invited session (both peers on same branch + connected to same hub), new canvases appear live via a lightweight `canvas-list-update` awareness event — no git required for the list (only git gets the files). The canvas body itself still travels via git push→pull; the *list entry* is ephemeral session state.
-3. **Hub admin realignment:** hub scopes its document namespace to one repo/branch context; admin UI shows the active repo/branch + its canvases, not a global flat list.
+1. **Soft editing-presence (net-new, replaces locking):** a lightweight `editing` field on the existing per-canvas Yjs awareness channel — `{ since }` — set while a human (CSS-inspector / `/design:edit`-triggered) or an **agent** (bridge `ai-activity` → awareness) is editing that canvas; cleared on quiescence/disconnect (Yjs awareness GC). It rides the **already-bridged** awareness relay, so it crosses the hub for free. The peer UI shows a soft **"is editing this"** badge. **No lease, no takeover, no stale-lock machinery.**
+2. **Branch-scoped visibility (confirm + harden):** tree shows only the current branch's on-disk canvases/specimens; cross-branch items are **not** shown. Coordination is social + the existing RepoBranchSwitcher.
+3. **Live TSX co-visibility (verify + surface):** confirm the default-on TSX hub sync round-trips two machines; surface a subtle "synced / live" affordance so users trust it; **re-audit** the F1 peer-code-execution containment.
+4. **New-canvas via get-latest (simplify):** enrich the phase-28 get-latest nudge to name new canvases; loopback inspector-bus refresh for same-machine multi-tab. No new hub transport.
+5. **Hub admin realignment (refactor):** scope the admin to one repo/branch context.
 
 ## Metadata
 
-- **Type:** Enhancement + New Capability (locking is new; lane 2 is enhancement; hub realignment is refactor)
-- **Complexity:** High (security-critical; touches collab/room.ts, awareness, hub admin)
-- **App/Package:** `plugins/design/dev-server/collab/` + `plugins/design/hub/src/admin/`
-- **Depends on:** phase-26 (shell), phase-27 (git), phase-29 (onboarding — defines "trusted live session")
-- **Security:** TSX live-edit (full peer-code sync) stays gated behind DDR-054 F1 iframe sandbox — NOT in this phase. This phase ships locking as the mechanism that makes TSX-safe-without-F1 possible.
+- **Type:** Enhancement + small New Capability (editing-presence is new; TSX live + branch-scoping are surface/harden of shipped infra; hub realignment is refactor)
+- **Complexity:** Medium–High (security-critical: a new awareness field over a semi-trusted hub + re-audit of peer-code execution; touches `use-collab.tsx`, `collab/`, `ai-activity.ts`, hub admin)
+- **App/Package:** `apps/studio/` (collab + client) + `apps/hub/src/admin/`
+- **Depends on:** Phase 8/9 (Yjs presence + hub + live TSX sync), phase-26 (shell), phase-27 (git layer + Changes/get-latest), phase-28 (get-latest nudge), phase-29 (RepoBranchSwitcher — "draft"/"Shared version" vocabulary)
+- **Security:** peer-authored TSX **already** executes in the canvas-origin iframe (contained CRITICAL→MEDIUM by the canvas-origin split + strict CSP, DDR-054/063). This phase adds a new untrusted-input surface (the `editing` awareness field) — it MUST go through the existing `sanitizeForeignState()` chokepoint — and re-audits F1 because we are now actively *relying on* the live-TSX path being on.
 
 ---
 
@@ -56,107 +86,125 @@ Yjs presence + annotations already work loopback and over the hub, but:
 
 > Read in parallel.
 
-- `.ai/docs/collab-model-design.md` — **entire doc.** 3-lane model, UX mental model, microcopy contract, edge-case stress test.
-- `.ai/decisions/DDR-064-single-shared-collab-doc.md` — one Y.Doc per canvas; locking must not break the doc lifecycle.
-- `.ai/decisions/DDR-054-linked-mode-trust-model-and-task-4-hardening.md` — the F1 iframe sandbox. TSX live-edit is still gated here; locking is orthogonal.
-- `.ai/decisions/DDR-078-agent-presence-virtual-collaborators.md` — awareness sanitization; locking field must go through the same sanitizer.
-- `plugins/design/dev-server/use-collab.tsx` — client-side Yjs provider + awareness state; `sanitizeForeignState()` chokepoint (lines 76–257 from the inventory).
-- `plugins/design/dev-server/collab/room.ts` + `protocol.ts` + `registry.ts` — server-side Y.Doc room lifecycle.
-- `apps/hub/src/admin/` — current hub admin UI (vanilla JS, **maude DS** after DDR-097); realignment target. (Moved from `plugins/design/hub/` by DDR-095.)
-- `.design/ui/Studio Hub.tsx` — the **current** maude-DS hub-admin reference (supersedes the older `Sync Hub Admin.tsx` MDCC mock). Artboards **C** (overview app-shell) + **D** (presence map + AI-agent cursor) are the realignment target's visual language. The flat canvases/peers list shipped in DDR-097 is the v1 seam this phase re-IAs to repo/branch context — a UI regroup over the same route shape, not a rewrite.
+- `.ai/docs/collab-model-design.md` — **entire doc.** 3-lane model, UX mental model, microcopy contract. **NOTE:** this phase **reverses** its action A2 (*"TSX code lane = pessimistic locking"*) — DDR (Task 6) records the reversal.
+- `.ai/decisions/DDR-064-single-shared-collab-doc.md` — one Y.Doc per canvas; awareness is per-canvas.
+- `.ai/decisions/DDR-054-linked-mode-trust-model-and-task-4-hardening.md` — the F1 iframe sandbox + trust model. We rely on the canvas-origin split being on.
+- `.ai/decisions/DDR-063-*.md` + `DDR-072-*.md` + `DDR-079-*.md` — `.tsx` sync gating (the two-locks rule; project-level default-on for linked).
+- `.ai/decisions/DDR-078-agent-presence-virtual-collaborators.md` — `ai-activity`; the editing field must follow the same "synthetic peer is read-only display" discipline + the awareness sanitizer.
+- `apps/studio/use-collab.tsx` — client Yjs provider; `CollabAwarenessState` (lines 83–114) + the `sanitizeForeignState()` chokepoint (lines 248–262). **This is where the `editing` field is added.**
+- `apps/studio/collab/{room.ts,protocol.ts,registry.ts,awareness-bridge.ts,ai-activity.ts}` — server-side room lifecycle + the awareness↔hub bridge + the agent-activity source.
+- `apps/studio/sync/index.ts` + `sync/agent.ts` — the live TSX projection (file ↔ Y.Text ↔ hub, ~800 ms debounce); `scanCanvases()` syncability gating.
+- `apps/studio/ws.ts` (inspector bus → WS broadcast) + `apps/studio/client/app.jsx` (shell tree `loadTree()` @ ~5804; WS message handler @ ~5887; `ai-activity` relay to iframe).
+- `apps/studio/use-agent-presence.tsx` — how agent presence is rendered (avatar + tinted overlay); the editing-presence overlay reuses this idiom.
+- `apps/hub/src/admin/{index.html,app.js,style.css}` — current flat hub admin (vanilla JS, maude DS after DDR-097); realignment target. `apps/hub/test/admin-size.test.mjs` (28 KB gz guard).
+- `.design/ui/Studio Hub.tsx` — artboard **D** (live presence map + AI-agent cursor, maude DS) is the lift reference for the editing-presence/agent-cursor treatment and the hub-admin realignment.
 
 ### Files to Modify (not create from scratch)
 
-- `plugins/design/dev-server/use-collab.tsx` — add `lock` field to `CollabAwarenessState`; add `useLockArtboard()` hook; add `sanitizeLockState()` to the chokepoint.
-- `plugins/design/dev-server/collab/protocol.ts` — add lock lease timeout constant (default 30 s).
-- `plugins/design/dev-server/client/app.jsx` — mount `LockOverlay` on locked canvases.
-- `plugins/design/hub/src/admin/index.html` + `admin.js` — realign to repo/branch context.
-- `plugins/design/dev-server/server.ts` — `canvas-list-update` awareness event handling.
+- `apps/studio/use-collab.tsx` — add `editing?: { since: number }` to `CollabAwarenessState`; add `sanitizeEditingState()` inside `sanitizeForeignState()`; add a `useEditingPresence(slug)` hook (set/clear the field).
+- `apps/studio/collab/ai-activity.ts` (+ wiring in `server.ts`/`registry.ts`) — bridge agent `ai-activity` start/stop onto the room's awareness as a synthetic-peer `editing` state so it crosses the hub (per DDR-078 read-only-display discipline).
+- `apps/studio/client/app.jsx` — mount the soft editing-presence overlay/badge on the canvas; add an `'editing'`/`'canvas-list-update'` WS message handler that calls `loadTree()`; enrich the get-latest nudge.
+- `apps/studio/ws.ts` + `apps/studio/canvas-create.ts`/`api.ts` — emit a `canvas-list-update` bus event on create/delete → broadcast over the inspector WS (loopback refresh).
+- `apps/hub/src/admin/{index.html,app.js,style.css}` — realign to repo/branch context.
 
 ### Files to Create
 
-- `plugins/design/dev-server/client/panels/LockOverlay.jsx` — "Anna is editing · Take over" UI
-- `plugins/design/dev-server/test/artboard-lock.test.ts` — lock acquire/release/timeout/takeover matrix
+- `apps/studio/client/panels/EditingPresence.jsx` (or fold into an existing overlay) — the soft "Anna / agent is editing this" badge. **No** take-over button.
+- `apps/studio/test/editing-presence.test.ts` — sanitize matrix (valid/invalid `editing` field), agent→awareness bridge, set/clear, awareness-GC clear on disconnect.
 
-### Design canvases
+### Design canvas
 
 | Canvas (to create) | Screens needed |
 | --- | --- |
-| `ArtboardLock.tsx` | Locked canvas overlay ("Anna is editing"), Take over button, stale-lock state ("Anna left 20 min ago · Take over?"), lock release confirmation |
+| `LiveCollab.tsx` (replaces the original `ArtboardLock.tsx`) | (1) two peers same branch — cursors + "Anna is editing" soft badge on a canvas; (2) **agent** editing — the `--presence-agent` cursor + "agent is editing" badge; (3) branch-scoped tree (only your branch; teammate on another draft → coordinate cue, **no** cross-branch items); (4) get-latest nudge naming a new canvas ("✦ Anna added *Login* · Get latest"); (5) the "you're both in *Redesign*" room cue. |
 
-**Reference (lift, don't re-derive):** `.design/ui/Studio Hub.tsx` → artboard **D** (live **presence map** — canvas nodes + peer avatars + the floating **AI-agent cursor** signature beat, maude DS) is the built maude-DS reference for `ArtboardLock.tsx` / presence + agent-cursor treatment. Lift the presence-node + cursor-tag anatomy and the agent-cursor styling; the lock-lease states are net-new on top.
+**Reference (lift, don't re-derive):** `.design/ui/Studio Hub.tsx` artboard **D** (presence map + peer avatars + floating AI-agent cursor, maude DS). Lift the presence-node + cursor-tag anatomy + agent-cursor styling. Microcopy follows the `collab-model-design.md` vocabulary contract (no `branch`/`merge`/`commit`/`pull` in user-facing copy; use draft / Shared version / Save version / Get latest).
 
 ---
 
 ## Tasks
 
-### Task 1: `/design:new` — Artboard lock overlay
+### Task 1: Design mockup — `LiveCollab.tsx`
 
-- **Do:** Run `/design:new` for `ArtboardLock`. Include: locked state, stale-lock state (timeout expired, owner offline), takeover confirmation, release animation.
-- **Validate:** Canvas `status: ready-for-handoff`.
+- **Do:** Author (lift from Studio Hub artboard D — *not* a blind `/design:new --perfect`, per CLAUDE.md "lift, don't re-derive" and the phase-27/28/29 precedent) a maude-DS canvas covering the 5 screens above: soft editing-presence badge (human + agent variants), branch-scoped tree, get-latest-names-new-canvas nudge, "same room" cue. Then critic-gate it (≥ 4.5 bar; design + signature-moment + a11y, like prior phases). Vocabulary per the contract — **no lock/takeover language** anywhere.
+- **Validate:** Canvas `status: ready-for-handoff`; critic ≥ 4.5; a11y 0 blockers; compiles + renders (read every artboard PNG per DDR-021).
 
-### Task 2: Artboard lock field on awareness channel
+### Task 2: Soft editing-presence field on awareness (net-new core) — ✅ completed 2026-06-19
+
+> **Done:** `CollabAwarenessState.editing {since}` + `sanitizeEditingState()` (rejects future/NaN/non-positive `since`) at the `sanitizeForeignState()` chokepoint + `useEditingPresence()` hook (set/auto-extend/idle-clear, no-op outside a provider) in `use-collab.tsx`. Agent bridge: `room.setAgentEditing()` projects agent activity onto the room's own awareness slot (idempotent — heartbeat-safe), `registry.setAgentEditing()` delegate, `server.ts` subscribes `ai-activity` bus → registry so agent-edit crosses the hub. **No lease/takeover/stale-lock built** (locking reversal). `test/editing-presence.test.ts` (9 tests: sanitize accept/reject matrix + room projection round-trip + heartbeat no-op). 91 collab/ai/awareness tests pass; biome + tsc clean.
 
 - **Do:** Extend `CollabAwarenessState` in `use-collab.tsx`:
   ```ts
-  lock?: { slug: string; since: number } // slug = which canvas, since = epoch ms
+  /** Set while THIS peer is actively editing the canvas body (CSS-inspector /
+   *  /design:edit / agent). Cleared on quiescence + on disconnect (awareness GC).
+   *  Soft heads-up only — NOT a lock; never blocks another peer. */
+  editing?: { since: number } | null;  // since = epoch ms the edit session began
   ```
-  - `useLockArtboard(slug)`: sets `awareness.setLocalStateField('lock', {slug, since: Date.now()})`. Returns `unlock()` which clears it.
-  - Auto-release: if the editor's tab closes or goes inactive for > 30 s, the lock field is cleared (use Yjs's existing awareness timeout — peers whose connection drops have their awareness cleared automatically after the provider's `awarenessTimeout`).
-  - **Takeover:** anyone can broadcast `lock: {slug, since: Date.now()}` on the same slug to forcibly acquire it. The previous holder's UI shows a toast "Your lock on *Login* was taken over by Anna."
-  - Add `sanitizeLockState()` to `sanitizeForeignState()`: `slug` must match `[a-z0-9-_]+` (the existing slug charset), `since` must be a finite positive number ≤ `Date.now() + 5000` (reject future timestamps ± 5 s). Peer count cap already exists — no new cap needed.
-- **Validate:** `artboard-lock.test.ts` — acquire, release, takeover, timeout (30 s lease), stale-lock detection.
+  - `useEditingPresence(slug)`: `setEditing()` → `publishAwareness({ editing: { since: Date.now() } })`; `clearEditing()` → `publishAwareness({ editing: null })`. Auto-clear after a short idle window (no edit activity for ~5 s) and on unmount. Awareness is per-canvas, so the field needs no slug (it's implicit in the room) — keep the shape minimal.
+  - **Human trigger:** call `setEditing()` when a CSS-inspector mutation (`/_api/edit-css` · `/_api/edit-attr`) or a `/design:edit`-shaped write touches this canvas; debounce-extend while edits continue; `clearEditing()` on idle.
+  - **Agent trigger (bridge `ai-activity` → awareness):** when `ai-activity` marks a canvas as agent-edited, reflect it onto that room's awareness as a synthetic editing state so it **crosses the hub** (today `ai-activity` is loopback-only). Honour DDR-078: synthetic, read-only-display, must pass the sanitizer.
+  - **Sanitize:** add `sanitizeEditingState()` to `sanitizeForeignState()` — `since` must be a finite positive number ≤ `Date.now() + 5000` (reject future timestamps ±5 s); anything else → `null`. No new peer cap needed (existing `MAX_FOREIGN_PEERS`).
+  - **Explicitly NOT building:** lock acquisition/release, 30 s lease, attributed takeover, stale-lock detection. (Reversal of original Task 2.)
+- **Validate:** `editing-presence.test.ts` — sanitize accept/reject matrix; set→clear; agent `ai-activity`→awareness bridge; awareness state dropped on disconnect (reuse the `room.ts` disconnect-evicts-awareness behaviour).
 
-### Task 3: `LockOverlay` client component
+### Task 3: Soft editing-presence overlay (client)
 
-- **Do:** Per approved mockup. Mounts as an overlay on the canvas iframe when another peer's awareness `lock.slug` matches the current canvas slug.
-  - Shows avatar + name + "is editing this canvas".
-  - "Take over" button → calls `useLockArtboard(slug)` (broadcasts the lock for this client).
-  - Stale-lock: if `Date.now() - lock.since > 30_000` AND the locking peer's awareness is absent → show "Anna left — Take over?" one-click affordance.
-  - When locked by self: shows a small "You're editing · Release" chip (for when the user wants to explicitly unlock without committing).
-- **Validate:** Two tabs: Tab A acquires lock → Tab B shows overlay → Tab B clicks Take over → Tab A shows "taken over" toast → Tab B can now edit.
+- **Do:** Per the approved mockup. When another peer's (or the agent's) awareness carries `editing` for the current canvas, show a soft badge — avatar/funny-name + "is editing this canvas" — reusing the `use-agent-presence.tsx` tinted-overlay idiom and the `--presence-agent` hue for the agent. **No** "Take over" button; **no** read-only wall (the user can still edit — it's a heads-up). When self is editing, optionally a subtle "you're editing" chip. The live TSX changes already arrive via the hub sync + iframe reload — the badge just attributes them.
+- **Validate:** Two tabs (loopback), same canvas: Tab A edits → Tab B shows the soft "A is editing" badge AND sees the TSX change render (~1 s) → badge clears on idle. Agent path: run `/design:edit` on a canvas with a second tab open → the second tab shows "agent is editing".
 
-### Task 4: Live-session new-canvas propagation
+### Task 4: Branch-scoped visibility + new-canvas via get-latest — ✅ core completed 2026-06-19
 
-- **Do:** When a canvas is created via `POST /_api/canvas/create` (existing endpoint) AND there are connected hub peers on the same slug-namespace, broadcast a `canvas-list-update` event over the Yjs awareness channel: `{type: 'canvas-added', slug, title}`. Client: on receiving `canvas-list-update`, refresh the canvas tree (re-fetch `GET /_api/canvases`) without a full page reload.
-  - **Scope guard:** this event is ephemeral (awareness, not Y.Doc) — it disappears when peers disconnect. A peer who was offline gets the canvas via git pull ("Get latest"), not via this event. This event is only a "hey, refresh your list" nudge for online peers.
-  - Similarly, `canvas-deleted` → `{type: 'canvas-removed', slug}`.
-- **Gotcha:** The canvas FILE still travels via git. This event is only about the list display — it calls the existing `GET /_api/canvases` to re-read from disk. No new files are created by the event receiver.
-- **Validate:** Two tabs, same hub session: Tab A creates "Login" canvas → Tab B's tree updates within 1 s without reload. Tab B offline during create → does NOT see the canvas until "Get latest".
+> **Done:** `api.createCanvas`/`deleteCanvas` emit a `canvas-list-update` bus event (`{action:'added'|'removed', rel, slug}`); `ws.ts` broadcasts it to inspector (shell) clients; `app.jsx` WS handler calls `loadTree()` on receipt → other tabs on the same dev-server refresh the (branch-scoped, on-disk) tree without a reload. **Branch-scoped visibility is structural** — `loadTree()` re-reads `/_index-data` (disk = current branch); no code injects cross-branch items, so the property holds by construction (documented; covered by the DDR). Test: `canvas-create-api.test.ts` boots a real server + inspector WS, asserts `added` on create + `removed` on delete (39 pass). biome clean; tsc clean (only the pre-existing `api.ts fname` DDR-026 baseline). **Deferred sub-item (polish):** enriching the phase-28 cross-machine get-latest nudge to *name* the new canvases — the nudge already fires; naming-what's-new is a client nicety on top, tracked as a follow-up.
+
+- **Do:**
+  - **Visibility:** confirm + assert the tree only ever lists the current branch's on-disk canvases/specimens (`/_index-data` reads disk → already branch-scoped). Add a guard/test that we never inject cross-branch items. Coordination stays social + RepoBranchSwitcher (phase-29).
+  - **New canvas (same-machine):** emit a `canvas-list-update` bus event on `POST /_api/canvas` create + delete → broadcast over the inspector WS → client `loadTree()` (no reload). Makes two tabs on one dev-server refresh instantly.
+  - **New canvas (cross-machine):** enrich the phase-28 get-latest nudge to name what's new ("✦ Anna added *Login* · Get latest"); after the user Gets latest, the tree refreshes (existing path). **No new hub transport** — the file travels via git, the nudge is the signal.
+- **Validate:** Two tabs same dev-server: create canvas in A → B's tree updates < 1 s, no reload. Branch-scoped: switch to a branch lacking a canvas → it's absent (not greyed). Cross-machine new canvas → peer sees the enriched get-latest nudge; after Get latest, tree shows it.
 
 ### Task 5: Hub admin UI realignment
 
-- **Do:** Rework `plugins/design/hub/src/admin/` to present one repo/branch context:
-  - New top-level: "Connected repo" display (repo URL + active branch from the hub's config / first connected client's context). This is read-only in the admin — the hub attaches to whatever the first client passes as the doc namespace prefix.
-  - Rename "Documents" list to "Canvases" — show only slugs that match the active repo/branch prefix (e.g. `projects/repo-slug/branch-slug/*`), not all raw doc names.
-  - Remove the flat global document list view.
-  - Keep: token management, status, generate-invite button.
-  - Size guard: hub admin stays ≤ 15 KB gz (existing CI guard).
-- **Validate:** Hub admin loads; canvas list shows only the active repo/branch context; token generation still works.
+- **Do:** Rework `apps/hub/src/admin/` to one repo/branch context:
+  - Top-level "Connected repo" read-only display (repo URL + active branch from the hub config / first connected client's doc-namespace prefix).
+  - Rename "Documents" → "Canvases"; show only slugs matching the active repo/branch prefix, not all raw doc names.
+  - Remove the flat global document list.
+  - Keep: token management, status, generate-invite.
+  - **Size guard: ≤ 28 KB gz** (`apps/hub/test/admin-size.test.mjs` — the real budget; the original plan's "15 KB" was stale).
+- **Validate:** Admin loads; canvas list shows only the active repo/branch context; token generation still works; gz ≤ 28 KB.
 
-### Task 6: DDRs
+### Task 6: DDRs — ✅ completed 2026-06-19
+
+> **Done:** **DDR-120** (branch-scoped multiplayer + soft editing-presence, no locking — explicitly reverses `collab-model-design.md` A2 + the original phase-30 locking plan; scoped DDR-078 reversal for the agent→awareness bridge; records the F1 re-audit obligation) + **DDR-121** (live-session canvas propagation via Get latest / loopback `canvas-list-update`; no project-level hub doc). Both indexed in `.ai/decisions/README.md`. _(F1 re-audit itself runs in /done's security fan-out.)_
 
 - **Do:** Write 2 DDRs:
-  1. **Artboard locking model** — per-canvas soft single-writer via awareness field; 30 s lease; attributed takeover; stale-lock UX. Cite collab-model-design.md H2 (locking holds for un-mergeable artifacts); cite Perforce stale-lock failure mode as motivation for lease + takeover.
-  2. **Live-session canvas propagation** — `canvas-list-update` awareness event for online peers; git pull remains the delivery mechanism for offline peers; event is ephemeral, not persisted.
+  1. **Branch-scoped live multiplayer + soft editing-presence** — the two-rule model; multiplayer requires same branch; live TSX already-on (DDR-079) is the co-edit medium; **soft editing-presence replaces locking** (explicitly **reverses** `collab-model-design.md` A2 and the original phase-30 locking design — cite *why*: users edit via agent/CSS-layer not raw co-typing, so garbage-merge risk is absent and a lock's complexity/orphaned-lease failure mode isn't worth it; the visual conflict picker (DDR-116) remains the safety net for divergent saves). Record the F1 re-audit outcome.
+  2. **Live-session canvas propagation via get-latest** — new canvases reach offline/cross-machine peers through git "Get latest" (enriched nudge), same-machine peers through the loopback `canvas-list-update` bus event; no project-level hub document; event is ephemeral, not persisted.
 
 ---
 
 ## Validation
 
-1. **Tests:** `bun test` — `artboard-lock.test.ts` + existing collab/room tests green.
-2. **Security:** `flow:validate-security` — lock field sanitized at `sanitizeForeignState()` chokepoint; `canvas-list-update` event payload sanitized (slug charset assertion).
-3. **No-break exhaustive verify (per `feedback-no-break-exhaustive-verify` memory):** All existing collab features (presence, cursors, annotations, comments) verified via agent-browser after changes to `use-collab.tsx`. Test: two tabs, hub session; verify cursors, comments, annotations all still live-sync.
-4. **Scenario:** Two users, live session: create canvas (Tab B sees it instantly), Tab A edits (Tab B sees lock overlay + Take over), Tab B takes over (Tab A sees toast), both save.
-5. **Hub admin:** loads, shows only active-context canvases, 15 KB gz limit met.
+1. **Tests:** `bun test` — `editing-presence.test.ts` + existing `collab-*`/`room` tests green.
+2. **Security (`flow:validate-security` + the F1 re-audit):** the `editing` field is sanitized at the `sanitizeForeignState()` chokepoint; the `ai-activity`→awareness bridge follows DDR-078 read-only-display discipline; `canvas-list-update` payload sanitized (slug charset). **Re-audit F1** (peer-TSX execution) since we now actively rely on the live-TSX path being on — confirm the canvas-origin split + CSP still contain it; record residuals.
+3. **No-break exhaustive verify (per `feedback-no-break-exhaustive-verify`):** all existing collab features verified via agent-browser after `use-collab.tsx` changes. **Two tabs, same canvas, loopback:** cursors, comments, annotations, **and live TSX edits** all still live-sync; the editing badge appears + clears.
+4. **Scenario (within the native-app verification ceiling):** two peers, same branch, same hub session — A edits (B sees the TSX change + "A is editing" badge), B annotates (A sees it live), one creates a canvas (the other gets the get-latest nudge), they agree who Saves/Publishes. Cross-machine bits are the user's dogfood ceiling; agent-browser substitutes for the verifiable parts.
+5. **Hub admin:** loads, shows only active-context canvases, ≤ 28 KB gz.
 
 ## Acceptance Criteria
 
-- [ ] Lock overlay mockup approved (Task 1)
-- [ ] Lock field on awareness: acquire, release, 30 s timeout, takeover (Task 2)
-- [ ] `LockOverlay` renders all states per mockup (Task 3)
-- [ ] `canvas-list-update` — online peer sees new canvas within 1 s (Task 4)
-- [ ] Hub admin realigned to repo/branch context, 15 KB gz limit (Task 5)
-- [ ] 2 DDRs written (Task 6)
-- [ ] No-break exhaustive verify: all existing collab features still work
-- [ ] Security pass: lock field + canvas-list-update sanitized
+- [ ] `LiveCollab.tsx` mockup approved (critic ≥ 4.5, a11y 0 blockers) — Task 1
+- [x] `editing` awareness field: set/clear, sanitized, **no lock/lease/takeover** — Task 2
+- [x] `ai-activity` (agent editing) **crosses the hub** via awareness — Task 2
+- [ ] Soft editing-presence overlay renders (human + agent), no take-over wall — Task 3
+- [ ] Live TSX cross-machine round-trip **verified** (cursors + annotations + comments + TSX, two tabs) — Validation 3
+- [x] Branch-scoped visibility (structural — `loadTree` re-reads disk); `canvas-list-update` loopback refresh — Task 4 _(cross-machine get-latest nudge enrichment deferred — polish)_
+- [ ] Hub admin realigned to repo/branch context, ≤ 28 KB gz — Task 5
+- [x] 2 DDRs written (DDR-120 model+editing-presence reversing A2; DDR-121 canvas propagation) — Task 6
+- [ ] Security pass: `editing` field + `ai-activity` bridge + `canvas-list-update` sanitized; **F1 re-audited** — Validation 2
+- [ ] No-break exhaustive verify: all existing collab features still work — Validation 3
+
+---
+
+## Superseded (original locking plan — kept for provenance)
+
+The original phase-30 shipped **artboard locking** as the mechanism for the un-mergeable TSX code-body lane (per `collab-model-design.md` A2 / H2): a `lock {slug, since}` awareness field, 30 s lease, attributed takeover, stale-lock UX, and a `LockOverlay` with a "Take over" button. **Dropped 2026-06-19** in favour of the soft editing-presence model above, because (a) the user does not want a lock, (b) edits flow through the agent / CSS-layer (not raw human co-typing) so the garbage-merge risk locking guarded against is largely absent, and (c) live TSX co-visibility was already shipped, so the remaining need was *attribution + a soft heads-up*, not arbitration. The DDR (Task 6 #1) records this reversal.
