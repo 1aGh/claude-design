@@ -1693,6 +1693,16 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 .rb-trigger-ver.is-draft { color: var(--status-warn); }
 .rb-trigger-ver-name { color: var(--fg-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rb-trigger-caret { color: var(--fg-2); flex: 0 0 auto; }
+/* Web studio: the switcher degrades to a read-only awareness badge (DDR-119).
+   Git vocab ("branch: X"), no hover affordance, no actions — the dev switches
+   from their terminal. Neutral colour distinguishes it from the native dock's
+   green "Shared version" / amber draft. */
+.rb-trigger--ro { cursor: default; }
+.rb-trigger--ro:hover { border-color: var(--border-default); background: var(--bg-2); }
+.rb-trigger-ver--ro { color: var(--fg-2); flex: 0 1 auto; }
+.rb-trigger-ver--ro .rb-trigger-ver-name { color: var(--fg-1); font-family: var(--font-mono); font-size: var(--type-xs); }
+/* GitPanel read-only footer hint (web studio — actions live in the terminal). */
+.gp-ro-hint { padding: var(--space-3) var(--space-4); color: var(--fg-2); }
 /* The popup — opens UPWARD from the dock (gi-menu anatomy). SOLID opaque menu
  * surface + border here (NOT the canvas `.panel`, which isn't in the client bundle
  * — phase-28 lesson; the tree must never bleed through). */

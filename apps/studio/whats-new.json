@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "native-onboarding-switcher-collab-tour",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Get started & switch projects — no terminal",
+      "summary": "Open Maude for the first time and a friendly setup walks you in: sign in with GitHub to open or create a shared project, pick a local folder, or connect to a team hub — no terminal, ever. A new switcher at the bottom of the sidebar lets you jump between projects and between the Shared version and your own drafts, all in plain words. Happy with a draft? \"Add this draft to the Shared version\" folds it in, publishes, and tidies up in one click. And a re-openable \"How sharing works\" tour teaches the simple Save changes locally → Publish for everyone → Pull changes cycle — with a picture showing that being in a canvas together just happens, automatically.",
+      "surface": "design-ui"
+    },
+    {
       "id": "present-mode-and-chrome-toggles",
       "version": null,
       "date": null,

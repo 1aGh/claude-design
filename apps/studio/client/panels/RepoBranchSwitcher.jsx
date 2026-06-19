@@ -30,6 +30,8 @@ function Icon({ name, size = 16, className }) {
     'folder-open': (<><path d="M2 4.5h4l1.3 1.5H14" /><path d="M2 6h12.5l-1.4 7H3.4z" /></>),
     share: (<><circle cx="4" cy="8" r="1.6" /><circle cx="12" cy="4" r="1.6" /><circle cx="12" cy="12" r="1.6" /><line x1="5.4" y1="7.2" x2="10.6" y2="4.6" /><line x1="5.4" y1="8.8" x2="10.6" y2="11.4" /></>),
     draft: (<><path d="M3 11.5 11 3.5l1.5 1.5L4.5 13l-2 .5z" /><line x1="9.5" y1="5" x2="11" y2="6.5" /></>),
+    // git-branch glyph — only the web read-only badge uses it (git vocab there).
+    branch: (<><circle cx="4.5" cy="4" r="1.4" /><circle cx="4.5" cy="12" r="1.4" /><circle cx="11.5" cy="6.5" r="1.4" /><line x1="4.5" y1="5.4" x2="4.5" y2="10.6" /><path d="M4.5 8.6h2.6a3 3 0 0 0 3-1.6" /></>),
     plus: (<><line x1="8" y1="3" x2="8" y2="13" /><line x1="3" y1="8" x2="13" y2="8" /></>),
     // "lift this draft up into the Shared version" — the fold-back action.
     'arrow-up-to-line': (<><line x1="3.5" y1="3" x2="12.5" y2="3" /><line x1="8" y1="13" x2="8" y2="6" /><polyline points="5 8.5 8 5.5 11 8.5" /></>),
@@ -59,7 +61,7 @@ async function postJson(url, body) {
   return { ok: r.ok, status: r.status, json };
 }
 
-export default function RepoBranchSwitcher({ project }) {
+export default function RepoBranchSwitcher({ project, liveBranch }) {
   const native = isNativeApp();
   const [status, setStatus] = useState(null); // { repo, branch }
   const [branches, setBranches] = useState([]);
@@ -81,7 +83,9 @@ export default function RepoBranchSwitcher({ project }) {
         const s = await getJson('/_api/git/status');
         if (!alive) return;
         setStatus(s);
-        if (s.repo) {
+        // Branches drive the native dock's draft picker only — the web badge is
+        // read-only, so skip the extra request there.
+        if (s.repo && native) {
           const b = await getJson('/_api/git/branches');
           if (alive) setBranches(b.branches || []);
         }
@@ -101,12 +105,43 @@ export default function RepoBranchSwitcher({ project }) {
   // Only meaningful for a versioned project (drafts need git).
   if (!status?.repo) return null;
 
-  const branch = status.branch || 'main';
+  // Prefer the live branch from the git-status broadcast (kept current as the
+  // dev runs `git checkout` in their terminal) over the one-shot mount fetch.
+  const branch = liveBranch || status.branch || 'main';
   const onShared = SHARED.has(branch);
   const sharedName = branches.find((b) => SHARED.has(b.name))?.name || 'main';
   const drafts = branches.filter((b) => !SHARED.has(b.name));
   const otherDrafts = drafts.filter((b) => b.name !== branch);
   const projectName = project || basename(recents[0] || 'Project');
+
+  // Web studio (browser, CLI-launched inside a repo): the switcher is awareness
+  // only. The developer owns the workspace from their terminal — switching repos
+  // and branches happens there — so render a compact, read-only "📁 project ·
+  // branch: X" badge in git vocab (not "draft"/"Shared version"), kept live by
+  // the same git-status broadcast that drives the Changes panel. No actions: a
+  // UI checkout would rewrite the dev's working tree under their hands and
+  // collide with their editor (DDR-119 — native owns the workspace; web is a
+  // repo-bound companion).
+  if (!native) {
+    return (
+      <div className="rb-dock-wrap">
+        <div className="rb-dock rb-dock--ro">
+          <span
+            className="rb-trigger rb-trigger--ro"
+            title={`${projectName} · branch: ${branch} — switch branches in your terminal`}
+          >
+            <span className="rb-trigger-icon"><Icon name="folder" size={14} /></span>
+            <span className="rb-trigger-proj">{projectName}</span>
+            <span className="rb-trigger-sep" aria-hidden="true">·</span>
+            <span className="rb-trigger-ver rb-trigger-ver--ro">
+              <Icon name="branch" size={12} />
+              <span className="rb-trigger-ver-name">branch: {branch}</span>
+            </span>
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   async function switchDraft(name) {
     setOpen(false);

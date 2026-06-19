@@ -1380,6 +1380,7 @@ function Sidebar({
   resizing,
   dirtyByPath,
   project,
+  gitBranch,
 }) {
   const filteredGroups = useMemo(() => {
     if (!search) return groups;
@@ -1608,7 +1609,7 @@ function Sidebar({
       {/* Phase 29 (E4) — the project + draft switcher: a compact one-line dock that
           opens UPWARD, sitting directly above the GitHub identity avatar so the two
           form one bottom dock. Renders nothing until the project is a git repo. */}
-      <RepoBranchSwitcher project={project} />
+      <RepoBranchSwitcher project={project} liveBranch={gitBranch} />
       {/* Phase 28 (E3) — GitHub identity as a compact avatar docked at the BOTTOM:
           sign in, connected account + New/Pull/Share, sign out. Self-contained
           (owns its device-code + CreateProject dialogs). Renders nothing in browser. */}
@@ -2236,7 +2237,10 @@ function HelpDropdown({ onAction, onClose }) {
         { id: 'help', label: 'Help · commands & flows', shortcut: 'F1' },
         { sep: true },
         { id: 'tour', label: 'Take the tour' },
-        { id: 'collab-tour', label: 'How sharing works' },
+        // The collab "how sharing works" course teaches the plain-words Save →
+        // Publish → Pull cycle — a non-technical, native-app concern. A web-studio
+        // dev already knows git, so it's hidden there (DDR-119).
+        ...(isNativeApp() ? [{ id: 'collab-tour', label: 'How sharing works' }] : []),
         { id: 'whatsnew', label: "What's new" },
       ]}
     />
@@ -7055,6 +7059,7 @@ function App() {
             resizing={dragSide === 'sb'}
             dirtyByPath={dirtyByPath}
             project={project}
+            gitBranch={gitStatus?.branch}
           />
           {sidebarOpen && (
             <PanelGrip
@@ -7103,6 +7108,7 @@ function App() {
                 gitStatus && remoteSync ? { ...gitStatus, ...remoteSync } : gitStatus
               }
               project={project}
+              readOnly={!isNativeApp()}
               width={rpSize.w}
               resizing={dragSide === 'rp'}
               onClose={() => setChangesOpen(false)}

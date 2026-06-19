@@ -1,7 +1,34 @@
 {
-  "generated": "2026-06-18T19:26:06.927Z",
+  "generated": "2026-06-19T15:17:56.087Z",
   "version": "0.30.0",
   "entries": [
+    {
+      "id": "native-onboarding-switcher-collab-tour",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Get started & switch projects — no terminal",
+      "summary": "Open Maude for the first time and a friendly setup walks you in: sign in with GitHub to open or create a shared project, pick a local folder, or connect to a team hub — no terminal, ever. A new switcher at the bottom of the sidebar lets you jump between projects and between the Shared version and your own drafts, all in plain words. Happy with a draft? \"Add this draft to the Shared version\" folds it in, publishes, and tidies up in one click. And a re-openable \"How sharing works\" tour teaches the simple Save changes locally → Publish for everyone → Pull changes cycle — with a picture showing that being in a canvas together just happens, automatically.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "present-mode-and-chrome-toggles",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Presentation Mode — just your artboards",
+      "summary": "View ▸ Presentation Mode now clears everything but your work: the menubar, sidebar, and panels disappear along with the mini-map, zoom controls, tool palette, annotations, and comment pins — leaving a clean canvas perfect for a screenshot or a demo. Press Esc or the floating Exit button to bring it all back. The presentation button in the canvas toolbar enters it too. Prefer to hide just the floating extras? Two new View toggles — Minimap and Zoom controls — switch those off on their own. Nothing is lost: leaving Presentation Mode restores exactly what you had.",
+      "surface": "design-ui"
+    },
+    {
+      "id": "sign-in-with-github",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Sign in with GitHub — projects without the terminal",
+      "summary": "Sign in with GitHub right from the account bar (just enter a short code — your access stays in your computer's keychain). Start a New project and Maude creates a private GitHub project and opens it; Pull a local copy brings down one of your projects to a folder you choose; Share invites a teammate by username. Publish and Get latest now use your sign-in directly, and you'll get a nudge when a teammate has shared new work. If you both changed the same canvas, Get latest opens a visual resolver — Keep mine, theirs, or both (both saves your version as a copy, so nothing is ever lost) — and finishes the merge for you.",
+      "surface": "design-ui"
+    },
     {
       "id": "changes-panel-canvas-grouping",
       "version": null,

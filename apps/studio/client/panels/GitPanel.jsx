@@ -150,6 +150,11 @@ export default function GitPanel({
   activeCanvas, // repo-relative path of the open canvas/specimen, or null
   onPreviewVersion, // (sha) => open the active canvas at that saved version
   designRel = '.design', // for canvas → annotation-slug matching (grouping)
+  // Web studio: awareness only. Keep the changed-files list, Diff and History,
+  // but drop every working-tree action (Save / Publish / Get latest / discard /
+  // checkboxes) — the developer commits and pushes from their terminal
+  // (DDR-119). Native app keeps the full plain-words cycle.
+  readOnly = false,
 }) {
   const [tab, setTab] = useState('changes');
   const [message, setMessage] = useState('');
@@ -236,12 +241,14 @@ export default function GitPanel({
     const memberPaths = [f, ...u.supporting].map((m) => m.path);
     return (
       <div className="gp-unit" key={u.key}>
-        <div className={'gp-file gp-unit-hd' + (st !== 'none' ? ' is-checked' : '')}>
-          <TriCheck
-            state={st}
-            ariaLabel={`Include ${name}${hasKids ? ' and its supporting files' : ''} in this version`}
-            onChange={() => toggleUnit(u)}
-          />
+        <div className={'gp-file gp-unit-hd' + (!readOnly && st !== 'none' ? ' is-checked' : '')}>
+          {!readOnly && (
+            <TriCheck
+              state={st}
+              ariaLabel={`Include ${name}${hasKids ? ' and its supporting files' : ''} in this version`}
+              onChange={() => toggleUnit(u)}
+            />
+          )}
           <Badge kind={KIND_OF[f.status]} />
           <button
             type="button"
@@ -278,21 +285,23 @@ export default function GitPanel({
               <Icon name="diff" size={14} />
             </button>
           )}
-          <button
-            type="button"
-            className="gp-discard"
-            title={hasKids ? 'Discard this canvas and its supporting files' : 'Discard this change'}
-            aria-label={`Discard changes to ${name}`}
-            onClick={async () => {
-              const msg = hasKids
-                ? `Discard your changes to “${name}” and its supporting files? This can't be undone.`
-                : `Discard your changes to “${name}”? This can't be undone.`;
-              if (!window.confirm(msg)) return;
-              await run('discard', () => onDiscard(memberPaths));
-            }}
-          >
-            <Icon name="undo" size={14} />
-          </button>
+          {!readOnly && (
+            <button
+              type="button"
+              className="gp-discard"
+              title={hasKids ? 'Discard this canvas and its supporting files' : 'Discard this change'}
+              aria-label={`Discard changes to ${name}`}
+              onClick={async () => {
+                const msg = hasKids
+                  ? `Discard your changes to “${name}” and its supporting files? This can't be undone.`
+                  : `Discard your changes to “${name}”? This can't be undone.`;
+                if (!window.confirm(msg)) return;
+                await run('discard', () => onDiscard(memberPaths));
+              }}
+            >
+              <Icon name="undo" size={14} />
+            </button>
+          )}
         </div>
         {hasKids && isOpen && (
           <div className="gp-support" role="group" aria-label={`Supporting files for ${name}`}>
@@ -537,7 +546,7 @@ export default function GitPanel({
                   <Icon name="history" size={14} /> View History
                 </button>
               </div>
-              {publishBar}
+              {!readOnly && publishBar}
             </>
           ) : (
             <div className="gp-empty">
@@ -546,7 +555,7 @@ export default function GitPanel({
               </span>
               <h3>Nothing to save</h3>
               <p>Every change is saved. When you edit a canvas, it shows up here.</p>
-              {status?.remoteAhead ? (
+              {!readOnly && status?.remoteAhead ? (
                 <button
                   type="button"
                   className="btn btn--ghost btn--sm"
@@ -570,7 +579,7 @@ export default function GitPanel({
           )
         ) : (
           <>
-            {status?.remoteAhead && (
+            {!readOnly && status?.remoteAhead && (
               <div className="gp-pad">
                 <div className="callout callout--info gp-nudge" role="status">
                   <span className="gp-dot-pulse" aria-hidden="true" />
@@ -615,6 +624,7 @@ export default function GitPanel({
               )}
             </div>
 
+            {!readOnly && (
             <div className="gp-compose">
               <label className="gp-selectall">
                 <input
@@ -674,8 +684,14 @@ export default function GitPanel({
                 </span>
               )}
             </div>
+            )}
 
-            {publishBar}
+            {!readOnly && publishBar}
+            {readOnly && (
+              <p className="gp-hint gp-ro-hint">
+                Save and publish your work from your terminal — this view is read-only.
+              </p>
+            )}
           </>
         )
       ) : (
