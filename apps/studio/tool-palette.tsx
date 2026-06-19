@@ -20,7 +20,6 @@ import {
   SHAPE_KIND_ICONS,
   TOOL_ICONS,
 } from './canvas-icons.tsx';
-import { useAnnotationsVisibility } from './use-annotations-visibility.tsx';
 import { useChromeVisibility } from './use-chrome-visibility.tsx';
 import { type ShapeKind, useToolMode } from './use-tool-mode.tsx';
 
@@ -257,7 +256,6 @@ const SHAPE_KINDS: ReadonlyArray<{ kind: ShapeKind; label: string }> = [
 export function ToolPalette() {
   ensurePaletteStyles();
   const { tool, setTool, tools, sticky, toggleSticky, shapeKind, setShapeKind } = useToolMode();
-  const visibilityCtx = useAnnotationsVisibility();
   const chrome = useChromeVisibility();
   const [mounted, setMounted] = useState(false);
   const [shapeOpen, setShapeOpen] = useState(false);
@@ -295,7 +293,6 @@ export function ToolPalette() {
   const byId = new Map(tools.map((t) => [t.id, t]));
   const navList = NAV_TOOLS.map((id) => byId.get(id)).filter(Boolean);
   const drawList = DRAW_TOOLS.map((id) => byId.get(id)).filter(Boolean);
-  const annotationsHidden = visibilityCtx ? !visibilityCtx.visible : false;
 
   const renderToolButton = (id: string, label: string, shortcut: string) => {
     const Icon = TOOL_ICONS[id];
@@ -416,12 +413,20 @@ export function ToolPalette() {
         </button>
         <button
           type="button"
-          aria-label={
-            annotationsHidden ? 'Show annotations (Shift+P)' : 'Hide annotations (Shift+P)'
-          }
-          aria-pressed={annotationsHidden}
-          title="Presentation (Shift+P)"
-          onClick={() => visibilityCtx?.setVisible(!visibilityCtx.visible)}
+          aria-label="Presentation mode — hide all chrome"
+          title="Presentation mode — hide all chrome (Esc to exit)"
+          onClick={() => {
+            // Present Mode is a SHELL-level state (it hides the menubar /
+            // sidebar / panels too), so the canvas iframe requests it from the
+            // parent shell, which flips on `.is-present` + broadcasts
+            // dgn:'view-chrome' back down. Enter-only — the palette is hidden
+            // while presenting; exit is Esc or the floating pill.
+            try {
+              window.parent.postMessage({ dgn: 'present-enter' }, '*');
+            } catch {
+              /* detached / cross-origin */
+            }
+          }}
         >
           <IconPresentation />
         </button>

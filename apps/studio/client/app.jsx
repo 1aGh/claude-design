@@ -6270,6 +6270,17 @@ function App() {
       } else if (m.dgn === 'open-inspector') {
         // Phase 12 — context-menu "Inspect" / tool-palette Inspect opens the right panel.
         openRightPanel('inspector');
+      } else if (m.dgn === 'present-enter') {
+        // Canvas tool-palette "Presentation mode" button — Present Mode is a
+        // shell-level state (hides the menubar / sidebar / panels), so the
+        // canvas requests it here and the shell flips it on + broadcasts
+        // dgn:'view-chrome' back to every iframe. Enter-only (the palette is
+        // hidden while presenting); exit is Esc or the floating pill. The
+        // inbound origin gate above (DDR-054) already authenticates the canvas.
+        if (!presentMode) {
+          setPresentMode(true);
+          broadcastChrome({ present: true });
+        }
       } else if (m.dgn === 'comment-compose' && m.selection) {
         // Phase 6 — the iframe overlay owns the composer surface now. The
         // shell just mirrors `selected` so the StatusBar / sidebar still
@@ -6464,6 +6475,7 @@ function App() {
     presentMode,
     minimapVisible,
     zoomCtlVisible,
+    broadcastChrome,
   ]);
 
   // Tell the active canvas iframe to drop any persistent selection (canvas
