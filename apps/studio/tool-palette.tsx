@@ -21,6 +21,7 @@ import {
   TOOL_ICONS,
 } from './canvas-icons.tsx';
 import { useAnnotationsVisibility } from './use-annotations-visibility.tsx';
+import { useChromeVisibility } from './use-chrome-visibility.tsx';
 import { type ShapeKind, useToolMode } from './use-tool-mode.tsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -257,6 +258,7 @@ export function ToolPalette() {
   ensurePaletteStyles();
   const { tool, setTool, tools, sticky, toggleSticky, shapeKind, setShapeKind } = useToolMode();
   const visibilityCtx = useAnnotationsVisibility();
+  const chrome = useChromeVisibility();
   const [mounted, setMounted] = useState(false);
   const [shapeOpen, setShapeOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -287,6 +289,8 @@ export function ToolPalette() {
   }, [tool]);
 
   if (!mounted) return null;
+  // Presentation Mode hides the whole tool palette (clean artboards-only view).
+  if (chrome?.present) return null;
 
   const byId = new Map(tools.map((t) => [t.id, t]));
   const navList = NAV_TOOLS.map((id) => byId.get(id)).filter(Boolean);

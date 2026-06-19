@@ -1499,4 +1499,46 @@ body.st-scrubbing, body.st-scrubbing * { cursor: ew-resize !important; user-sele
 
 @media (prefers-reduced-motion: reduce) { .gi-pulse, .cp-spin { animation: none; } .gi-dialog, .cp-dialog { animation: none; } }
 
+/* ─── Presentation Mode ────────────────────────────────────────────────────
+   View ▸ Presentation Mode — a non-destructive "artboards only" overlay. Hides
+   every piece of shell chrome while leaving the canvas viewport (.main) mounted
+   so its pan/zoom + open tabs survive an exit. The two structural rules below
+   hide (a) the menubar + status bar — the .st-shell children that aren't the
+   body — and (b) the sidebar / collapsed rail / resize grips / side panels —
+   the .st-body children that aren't the viewport. The canvas iframe hides its
+   OWN floating chrome (minimap, zoom pill, tool palette, annotations, comment
+   pins) via the dgn:'view-chrome' bridge. Escape hatch: Esc or the pill. */
+.maude.is-present .st-shell > :not(.st-body) { display: none !important; }
+.maude.is-present .st-body > :not(.main) { display: none !important; }
+/* keep transient top-level banners out of the clean view */
+.maude.is-present > .st-banner { display: none !important; }
+
+/* Floating escape-hatch pill — the only chrome visible while presenting.
+   Deliberately understated (55% opacity) so it doesn't intrude on a clean
+   screenshot, brightening to full on hover/focus. */
+.st-present-exit {
+  position: fixed; top: var(--space-4); right: var(--space-4); z-index: 200;
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  appearance: none; cursor: pointer;
+  font-family: var(--font-body); font-size: var(--type-sm); color: var(--fg-1);
+  background: var(--bg-1); border: 1px solid var(--border-default);
+  border-radius: var(--radius-pill);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.18);
+  opacity: 0.72;
+  transition: opacity var(--dur-soft) var(--ease-out),
+    background var(--dur-soft) var(--ease-out), color var(--dur-soft) var(--ease-out);
+}
+.st-present-exit:hover,
+.st-present-exit:focus-visible { opacity: 1; background: var(--bg-3); color: var(--fg-0); }
+.st-present-exit > svg { color: var(--fg-2); flex: 0 0 auto; }
+.st-present-exit:hover > svg,
+.st-present-exit:focus-visible > svg { color: var(--accent); }
+.st-present-exit-kbd {
+  font-family: var(--font-mono); font-size: var(--type-xs);
+  color: var(--fg-3); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs); padding: 1px 5px; line-height: 1.4;
+}
+@media (prefers-reduced-motion: reduce) { .st-present-exit { transition: none; } }
+
 }

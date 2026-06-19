@@ -82,6 +82,7 @@ import {
   useAnnotationSelectionOptional,
 } from './use-annotation-selection.tsx';
 import { AnnotationsVisibilityProvider } from './use-annotations-visibility.tsx';
+import { ChromeVisibilityProvider, useChromeVisibility } from './use-chrome-visibility.tsx';
 import { useCollab } from './use-collab.tsx';
 import { useCursorModifiers } from './use-cursor-modifiers.tsx';
 import { useKeyboardDiscipline } from './use-keyboard-discipline.tsx';
@@ -481,7 +482,9 @@ export function CanvasShell({
     <MaybeSelectionSetProvider>
       <AnnotationSelectionProvider>
         <AnnotationsVisibilityProvider>
-          <CanvasCore hostRef={hostRef}>{children}</CanvasCore>
+          <ChromeVisibilityProvider>
+            <CanvasCore hostRef={hostRef}>{children}</CanvasCore>
+          </ChromeVisibilityProvider>
         </AnnotationsVisibilityProvider>
       </AnnotationSelectionProvider>
     </MaybeSelectionSetProvider>
@@ -1371,6 +1374,11 @@ function CanvasRouter({
   const undoStack = useUndoStack();
   // Shell View-menu zoom bridge (dgn:'zoom') — same controller the zoom pill uses.
   const zoomController = useViewportControllerContext();
+  // Shell View-menu chrome-visibility bridge (dgn:'view-chrome') — minimap /
+  // zoom-controls toggles + Presentation Mode. Drives the shared chrome store
+  // the floating chrome (DCMiniMap, DCZoomToolbar, ToolPalette, AnnotationsLayer)
+  // consumes.
+  const chromeCtx = useChromeVisibility();
 
   // Hover state drives the floating .dc-cv-halo--hover overlay. The overlay
   // itself reads getBoundingClientRect on every rAF tick to follow pan/zoom.
@@ -1539,10 +1547,22 @@ function CanvasRouter({
         else if (op === 'actual') zoomController.reset();
         return;
       }
+      // Shell View-menu chrome toggles + Presentation Mode. Only the fields the
+      // shell sends are merged, so a `{ present: true }` enter keeps the user's
+      // individual minimap/zoom toggles for the eventual exit.
+      if (m.dgn === 'view-chrome' && chromeCtx) {
+        const mm = m as { minimap?: boolean; zoom?: boolean; present?: boolean };
+        const patch: { minimap?: boolean; zoom?: boolean; present?: boolean } = {};
+        if (typeof mm.minimap === 'boolean') patch.minimap = mm.minimap;
+        if (typeof mm.zoom === 'boolean') patch.zoom = mm.zoom;
+        if (typeof mm.present === 'boolean') patch.present = mm.present;
+        chromeCtx.setChrome(patch);
+        return;
+      }
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [selSet, annotSel, setTool, undoStack, zoomController]);
+  }, [selSet, annotSel, setTool, undoStack, zoomController, chromeCtx]);
 
   // Phase 12 (DDR-103) — double-click a LEAF-TEXT element (children all text
   // nodes) to edit its copy in place. Commit (blur / Enter) posts `dgn:edit-text`

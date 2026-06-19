@@ -102,6 +102,7 @@ import {
   matchesArtboard,
   useCanvasActivity,
 } from './use-canvas-activity.tsx';
+import { useChromeVisibility } from './use-chrome-visibility.tsx';
 import { CollabProvider, canvasSlugFromPath } from './use-collab.tsx';
 import { useSelectionSetOptional } from './use-selection-set.tsx';
 import { MaybeToolProvider, useToolModeOptional } from './use-tool-mode.tsx';
@@ -2120,6 +2121,7 @@ export function DCMiniMap() {
   ensureOverlayStyles();
   const world = useWorldContext();
   const controller = useViewportControllerContext();
+  const chrome = useChromeVisibility();
   const bodyRef = useRef<HTMLDivElement | null>(null);
   // 132 - 22 (header) = 110 body height; width matches the chrome.
   const MAP_W = 196;
@@ -2130,6 +2132,9 @@ export function DCMiniMap() {
   });
 
   if (!world || !controller) return null;
+  // Menubar "View ▸ Minimap" toggle + Presentation Mode (which hides ALL
+  // chrome). `chrome` is null in a bare DS specimen — then default-visible.
+  if (chrome && (!chrome.minimap || chrome.present)) return null;
 
   const geometry = computeMiniMapGeometry(world.artboards, MAP_W, MAP_BODY_H);
   const host = world.hostRef.current;
@@ -2250,7 +2255,10 @@ DCMiniMap.displayName = 'DCMiniMap';
 export function DCZoomToolbar() {
   ensureOverlayStyles();
   const controller = useViewportControllerContext();
+  const chrome = useChromeVisibility();
   if (!controller) return null;
+  // Menubar "View ▸ Zoom controls" toggle + Presentation Mode.
+  if (chrome && (!chrome.zoom || chrome.present)) return null;
   const pct = Math.round(controller.viewport.zoom * 100);
   return (
     <div className="dc-zoom-tb" role="toolbar" aria-label="Zoom">

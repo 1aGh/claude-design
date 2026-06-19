@@ -161,6 +161,7 @@ import {
   uploadAsset,
   useCanvasMediaDrop,
 } from './use-canvas-media-drop.tsx';
+import { useChromeVisibility } from './use-chrome-visibility.tsx';
 import { useCollab } from './use-collab.tsx';
 import { useSelectionSetOptional } from './use-selection-set.tsx';
 import { type ShapeKind, useToolMode } from './use-tool-mode.tsx';
@@ -720,7 +721,11 @@ export function AnnotationsLayer() {
   const vpRef = useRef(vp);
   vpRef.current = vp;
   const visibilityCtx = useAnnotationsVisibility();
-  const visible = visibilityCtx?.visible ?? true;
+  const chrome = useChromeVisibility();
+  // Presentation Mode hides annotations without mutating the user's own
+  // visibility toggle — render/input gate folds `present` in, the stored value
+  // (visibilityCtx.visible) is left untouched so exiting restores it.
+  const visible = (visibilityCtx?.visible ?? true) && !(chrome?.present ?? false);
   const setVisible = useCallback(
     (next: boolean | ((cur: boolean) => boolean)) => {
       if (!visibilityCtx) return;

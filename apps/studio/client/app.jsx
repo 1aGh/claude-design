@@ -2334,6 +2334,12 @@ function Menubar({
   onStartTour,
   annotationsVisible,
   onToggleAnnotations,
+  minimapVisible,
+  onToggleMinimap,
+  zoomCtlVisible,
+  onToggleZoomCtl,
+  presentMode,
+  onTogglePresent,
   postToActiveCanvas,
   onOpenWhatsNew,
   whatsNewCount,
@@ -2404,7 +2410,27 @@ function Menubar({
       checked: annotationsVisible,
       disabled: false,
     },
-    { id: 'present', label: 'Presentation Mode', phase: 'Phase 6', disabled: true },
+    {
+      id: 'minimap',
+      label: 'Minimap',
+      shortcut: '',
+      checked: minimapVisible,
+      disabled: !activePath || isSystem,
+    },
+    {
+      id: 'zoomctl',
+      label: 'Zoom controls',
+      shortcut: '',
+      checked: zoomCtlVisible,
+      disabled: !activePath || isSystem,
+    },
+    {
+      id: 'present',
+      label: 'Presentation Mode',
+      shortcut: '',
+      checked: presentMode,
+      disabled: !activePath || isSystem,
+    },
   ];
 
   const DROPDOWN_MENUS = ['file', 'edit', 'view', 'selection', 'tools', 'help'];
@@ -2530,6 +2556,9 @@ function Menubar({
             else if (id === 'annotate') onToggleAnnotations();
             else if (id === 'inspector') onToggleInspector();
             else if (id === 'layers') onOpenLayers?.();
+            else if (id === 'minimap') onToggleMinimap?.();
+            else if (id === 'zoomctl') onToggleZoomCtl?.();
+            else if (id === 'present') onTogglePresent?.();
           }}
           onZoom={(op) => postToActiveCanvas({ dgn: 'zoom', op })}
           hasCanvas={!!activePath && !isSystem}
@@ -5548,6 +5577,13 @@ function App() {
     } catch {}
   }, []);
   const [annotationsVisible, setAnnotationsVisible] = useState(true);
+  // Canvas-chrome visibility (View menu). minimap + zoom-controls are
+  // persistent prefs broadcast to every open canvas iframe; presentMode is a
+  // non-destructive "hide ALL chrome + shell, artboards only" overlay with an
+  // Esc / floating-pill escape hatch back to the chrome.
+  const [minimapVisible, setMinimapVisible] = useState(true);
+  const [zoomCtlVisible, setZoomCtlVisible] = useState(true);
+  const [presentMode, setPresentMode] = useState(false);
   // P2/P3 (Plan C) — top-bar live state. (Zoom lives in the canvas toolbar pill,
   // so the top bar no longer mirrors it.)
   //   activeArtboards — real artboard count of the open canvas, read from its
@@ -5589,6 +5625,42 @@ function App() {
       return next;
     });
   }, [activePath]);
+
+  // Chrome visibility (minimap / zoom-controls / Presentation Mode) applies to
+  // EVERY open canvas iframe, not just the active one — broadcast to all. A
+  // freshly-loaded iframe is seeded from the dgn:'loaded' handler below.
+  const broadcastChrome = useCallback((patch) => {
+    for (const el of iframesRef.current.values()) {
+      try {
+        el.contentWindow.postMessage({ dgn: 'view-chrome', ...patch }, '*');
+      } catch {}
+    }
+  }, []);
+  const toggleMinimap = useCallback(() => {
+    setMinimapVisible((v) => {
+      const next = !v;
+      broadcastChrome({ minimap: next });
+      return next;
+    });
+  }, [broadcastChrome]);
+  const toggleZoomCtl = useCallback(() => {
+    setZoomCtlVisible((v) => {
+      const next = !v;
+      broadcastChrome({ zoom: next });
+      return next;
+    });
+  }, [broadcastChrome]);
+  const togglePresent = useCallback(() => {
+    setPresentMode((v) => {
+      const next = !v;
+      broadcastChrome({ present: next });
+      return next;
+    });
+  }, [broadcastChrome]);
+  const exitPresent = useCallback(() => {
+    setPresentMode(false);
+    broadcastChrome({ present: false });
+  }, [broadcastChrome]);
 
   // P3 (Plan C) — local git user for the menubar presence avatar. One-shot.
   useEffect(() => {
@@ -6103,15 +6175,17 @@ function App() {
   }, [activePath]);
 
   // ----- Push comments to iframe whenever they change for active file -----
+  // Presentation Mode hides comment pins: post an empty list while present
+  // (re-posting the real list on exit, since this effect re-runs on the flag).
   useEffect(() => {
     if (!activePath || activePath === SYSTEM_TAB) return;
     const el = iframesRef.current.get(activePath);
     if (!el || !el.contentWindow) return;
-    const list = commentsByFile[activePath] || [];
+    const list = presentMode ? [] : commentsByFile[activePath] || [];
     try {
       el.contentWindow.postMessage({ dgn: 'comments-set', comments: list }, '*');
     } catch {}
-  }, [activePath, commentsByFile]);
+  }, [activePath, commentsByFile, presentMode]);
 
   // ----- Inbound messages from iframes -----
   useEffect(() => {
@@ -6264,7 +6338,9 @@ function App() {
         // iframe finished loading — drop the compile skeleton, push current
         // comments + carry over focused pin if any
         setLoadingPath((p) => (p === m.file ? null : p));
-        const list = commentsByFile[m.file] || [];
+        // Presentation Mode suppresses comment pins (same gate as the push
+        // effect above), so a canvas opened while presenting starts pin-free.
+        const list = presentMode ? [] : commentsByFile[m.file] || [];
         const el = [...iframesRef.current.entries()].find(([k]) => k === m.file)?.[1];
         if (el && el.contentWindow) {
           try {
@@ -6275,6 +6351,15 @@ function App() {
           // correct (no flash from the dark default).
           try {
             el.contentWindow.postMessage({ dgn: 'theme', theme }, '*');
+          } catch {}
+          // Seed the just-loaded canvas with the current chrome-visibility
+          // state (minimap / zoom-controls toggles + Presentation Mode) so a
+          // canvas opened after a toggle starts in the right state.
+          try {
+            el.contentWindow.postMessage(
+              { dgn: 'view-chrome', minimap: minimapVisible, zoom: zoomCtlVisible, present: presentMode },
+              '*'
+            );
           } catch {}
           if (focusedCommentId && list.some((c) => c.id === focusedCommentId)) {
             try {
@@ -6370,7 +6455,16 @@ function App() {
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [commentsByFile, focusedCommentId, cfg, theme, reloadActive]);
+  }, [
+    commentsByFile,
+    focusedCommentId,
+    cfg,
+    theme,
+    reloadActive,
+    presentMode,
+    minimapVisible,
+    zoomCtlVisible,
+  ]);
 
   // Tell the active canvas iframe to drop any persistent selection (canvas
   // SelectionSet) — used when the comment composer closes via submit /
@@ -6453,6 +6547,16 @@ function App() {
       // letters as tool-mode keys (V/H/C). Cmd-modified shortcuts (⌘R, ⌘⇧M,
       // ⌘F) still fire regardless of focus, mirroring browser convention.
       const inCanvasIframe = document.activeElement?.tagName === 'IFRAME';
+
+      // Esc exits Presentation Mode first — it's the primary way back to the
+      // chrome (the menubar is hidden while presenting). Highest priority so it
+      // wins over the focused-pin / deselect Esc handlers below, and fires even
+      // when focus is inside the canvas iframe.
+      if (presentMode && e.key === 'Escape') {
+        e.preventDefault();
+        exitPresent();
+        return;
+      }
 
       // Cmd+K / Ctrl+K — toggle the command palette (works even in inputs).
       if (meta && (e.key === 'k' || e.key === 'K')) {
@@ -6610,6 +6714,8 @@ function App() {
     openSystem,
     closeTab,
     clearActiveCanvasSelection,
+    presentMode,
+    exitPresent,
   ]);
 
   const registerIframe = useCallback((path, el) => {
@@ -6752,7 +6858,11 @@ function App() {
   );
 
   return (
-    <div className="maude" data-theme={theme} onContextMenu={onShellContextMenu}>
+    <div
+      className={'maude' + (presentMode ? ' is-present' : '')}
+      data-theme={theme}
+      onContextMenu={onShellContextMenu}
+    >
       <SyncBanner status={syncStatus} />
       {!usageNudge && !tourSteps && <WhatsNewToast wn={whatsNew} />}
       {gitLifecycle && (
@@ -6797,6 +6907,12 @@ function App() {
           onStartTour={() => startTour(USAGE_TOUR)}
           annotationsVisible={annotationsVisible}
           onToggleAnnotations={toggleAnnotations}
+          minimapVisible={minimapVisible}
+          onToggleMinimap={toggleMinimap}
+          zoomCtlVisible={zoomCtlVisible}
+          onToggleZoomCtl={toggleZoomCtl}
+          presentMode={presentMode}
+          onTogglePresent={togglePresent}
           postToActiveCanvas={postToActiveCanvas}
           onOpenWhatsNew={whatsNew.openPanel}
           whatsNewCount={whatsNew.unseen.length}
@@ -6998,6 +7114,26 @@ function App() {
           onOpenChanges={gitStatus?.repo ? () => setChangesOpen(true) : undefined}
         />
       </div>
+      {presentMode && (
+        <button
+          type="button"
+          className="st-present-exit"
+          onClick={exitPresent}
+          aria-label="Exit presentation mode"
+          title="Exit presentation mode (Esc)"
+        >
+          <svg viewBox="0 0 16 16" width="13" height="13" fill="none" aria-hidden="true">
+            <path
+              d="M4 4l8 8M12 4l-8 8"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+            />
+          </svg>
+          <span>Exit presentation</span>
+          <kbd className="st-present-exit-kbd">Esc</kbd>
+        </button>
+      )}
       <CommandPalette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
