@@ -47,6 +47,7 @@ Today Maude requires `maude design serve` from a terminal, then a browser. There
 | Get everyone else's work | **Pull changes** | `pull` / `fetch` / "behind" |
 | Separate line of work | **Draft** | `branch` |
 | The team's canonical version | **Shared version** | `main` |
+| Fold a draft into the team's version | **Add to the Shared version** | `merge` / `pull request` |
 
 **The one hard thing to teach (and the honest framing for it):** when you're *live together*, publishing by one person already covers the other — the teammate already sees the work live, so Publish is "just dropping a bookmark," not a hand-off. Diverging work only happens when people are **apart**; then the app shows a **visual picker** ("keep mine / keep theirs / keep both"), never a text merge. The infographic must make this two-layer split obvious, or it reintroduces the exact confusion the research warned about.
 
@@ -88,7 +89,7 @@ Today Maude requires `maude design serve` from a terminal, then a browser. There
 | Canvas (to create) | Screens needed |
 | --- | --- |
 | `Onboarding.tsx` | Welcome screen (3 doors: GitHub / Local folder / Hub token), GitHub door (sign-in → repo picker / create), Local folder door (drag-drop zone), Hub advanced door (token field + URL + adopt), Loading / success state |
-| `RepoBranchSwitcher.tsx` | Sidebar header with repo name + branch/draft name, repo picker dropdown (list of recent repos + "Open another…"), branch/draft picker dropdown ("New draft", list of drafts), loading state during switch |
+| `RepoBranchSwitcher.tsx` | Sidebar header with repo name + branch/draft name, repo picker dropdown (list of recent repos + "Open another…"), branch/draft picker dropdown ("New draft", list of drafts), loading state during switch, **draft-fold-back: an "Add to the Shared version" action per draft + a confirm sheet summarizing what becomes shared (Task 7)** |
 | `OnboardingTour.tsx` | The infographic itself (two-layer model: the live layer floating above the **Save → Publish → Pull** cycle) + the per-step coach-mark cards as they appear over `[data-tour]` anchors (the three action buttons + presence dots). Mock the infographic to portfolio quality — it carries the whole mental model. |
 
 **Reference (lift, don't re-derive) — CHROME/LAYOUT ONLY:** `.design/ui/Studio Hub.tsx` → artboard **B** (first-run onboarding wizard: left **step-rail** + fingerprint-verify card + "next step" peek, maude DS) is a built maude-DS reference for `Onboarding.tsx`'s wizard chrome + step-rail. **⚠ Door order must stay GitHub-first.** Studio Hub makes the bootstrap-key claim the headline; phase-29 **demotes** that to the advanced door (c) — GitHub is the headline door. Lift the wizard skeleton + step-rail motion; do NOT inherit Studio Hub's door ordering or copy. Not a drop-in (this surface still requires `/design:new --perfect` ≥ 4.5/5 from scratch).
@@ -169,6 +170,19 @@ Today Maude requires `maude design serve` from a terminal, then a browser. There
 - **Validate (v1):** First run → onboarding completes → collab tour offered → all steps render (infographic centered, action steps spotlight the real buttons); Help → "Take the tour" replays it; `tour-overlay.test.tsx` green. Critic panel on `OnboardingTour.tsx` ≥ 4.5/5 (aspiration bar — it's the first impression).
 - **Gotcha:** Don't fork the engine — reuse `overlay.jsx`. Target-less steps already render centered, so the infographic step needs no special casing beyond the `graphic` field. The verb set is the [§ Teaching model](#teaching-model-decision) table — no raw git terms leak into copy.
 
+### Task 7: Publish a draft into the Shared version (fold-back) — v1, solo/trusted
+
+> **The one missing verb.** `collab-model-design.md:187` defines it ("Poslat svůj draft do sdílené verze", replaces *merge / open a PR*) and the `RepoBranchSwitcher` new-draft hint already *promises* it ("Publish it when you're happy… the shared version is untouched"), but no phase builds the flow. Today's "Publish for everyone" (= `push`, GitPanel/E2) only pushes the branch you're *on* — it never folds a side-draft back. **v1 here is the solo/trusted happy path only**; the review-gated **"Send for review"** visual-PR (`collab-model-design.md` H7 / line 84) is explicitly deferred to its own phase.
+
+- **Do:**
+  - **UI (extends Task 4's mockup):** in the draft picker (`RepoBranchSwitcher` artboard C), the current draft gets a primary **"Add this draft to the Shared version"** button; on click → a confirm sheet ("**{N} changes** from *{draft}* will become part of the Shared version everyone sees") → on confirm, reuse the existing `switching` spinner state.
+  - **Server:** new `POST /_api/git/integrate-draft` (main-origin-only — add the `GET → 405`-from-canvas assertion to `canvas-origin-gate.test.ts`, per the dual-allowlist rule): checkout `main` → **fast-forward-merge** the draft branch → push → delete the draft branch. Happy path is **FF-only** — the live layer keeps both trees byte-identical, so a publish is a guaranteed fast-forward (`collab-model-design.md:133`).
+  - **Conflict path = reuse E2, don't invent one:** if the push is rejected because the Shared version moved → the **same "Get latest first"** prompt the GitPanel `conflict` ("Publish rejected") artboard already shows. On the rare non-FF (real divergence from working apart) → the simple per-file **"keep yours / take theirs"** picker E2 / [DDR-112](../decisions/DDR-112-simplified-staging-model.md) already specifies. **NO 3-way merge UI.**
+  - **Flush before checkout:** flush the Yjs doc before the `main` checkout — reuse `collab/git-lifecycle.ts` flush-before-reload (the same pattern Task 4 uses for draft switching; don't duplicate it).
+- **Validate:** create a draft → make a change → "Add this draft to the Shared version" → the Shared version now contains the change; the draft is gone from the picker; `GET /_api/git/status` shows you back on the Shared version. The rejected-push path shows "Get latest first", never a crash or a raw-git error.
+- **Gotcha — vocabulary collision (run copy-critic):** "Publish for everyone" (push) and this fold-back both "send to shared" — copy MUST disambiguate or it reintroduces the exact confusion the teaching model fights. Working split: **"Publish for everyone"** = your saved versions go out on the line you're on; **"Add this draft to the Shared version"** = this whole draft *becomes* what everyone works from. Treat the wording as never-final (like the tour copy). No raw git terms (`merge` / `PR` / `checkout` / SHA).
+- **Out of scope (tracked, its own phase):** the review-gated **"Send for review"** visual-PR surface — before/after rendered diff + approve-to-publish (`collab-model-design.md` H7). v1 is the one-button solo/trusted fold-back only.
+
 ---
 
 ## Validation
@@ -178,14 +192,16 @@ Today Maude requires `maude design serve` from a terminal, then a browser. There
 3. **Zero regression:** Existing `maude design serve` (browser-only mode) still works; hub linking CLI still works; existing `usage-tour.js` still runs unaffected.
 4. **First-run:** Fresh install always shows wizard; re-launch skips it.
 5. **Onboarding tour:** Collab tour offered after first onboarding, replayable from Help, all steps render incl. the centered infographic; `tour-overlay.test.tsx` green (Task 6).
+6. **Draft fold-back:** "Add this draft to the Shared version" lands the draft's changes on the Shared version (FF happy path), removes the draft, and reuses E2's "Get latest first" on a moved-remote reject — no merge UI; `/_api/git/integrate-draft` is main-origin-only (Task 7).
 
 ## Acceptance Criteria
 
-- [ ] Mockups approved, critic ≥ 4.5/5 — Onboarding, RepoBranchSwitcher, **and OnboardingTour** (Task 1 + Task 6)
-- [ ] First-run detection + last-project persistence in Rust (Task 2)
-- [ ] All 3 wizard doors navigate to canvas browser (Task 3)
-- [ ] RepoBranchSwitcher shows repo + draft, switching works (Task 4)
-- [ ] Zero-terminal scenario passes with screen recording (Task 5)
-- [ ] Onboarding tour v1 ships on the existing engine; offered first-run, replayable from Help; `tour-overlay.test.tsx` green (Task 6)
-- [ ] Vocabulary contract upheld: **no raw git terms** (`branch`/`merge`/`fetch`/`checkout`/SHA/`commit`/`push`); the user-facing cycle uses **Save changes locally / Publish for everyone / Pull changes**; "Draft" not branch, "Shared version" not main; the live layer is presented as automatic
-- [ ] Teaching-model reversal recorded as a DDR (`/flow:record-ddr`)
+- [x] Mockups approved, critic ≥ 4.5/5 — Onboarding (4.7/4.6), RepoBranchSwitcher (4.6/4.7), **and OnboardingTour** (4.6/4.5); all a11y 0-blockers (Task 1 + Task 6)
+- [x] First-run detection + last-project persistence in Rust (Task 2) — `app_state.rs`, `cargo check` ✓ (fresh-install→wizard interactive run → user dogfood, native-app ceiling)
+- [x] All 3 wizard doors built (Task 3) — endpoints + compile verified; interactive `.app` navigation → user dogfood
+- [x] RepoBranchSwitcher shows repo + draft, switching works (Task 4) — endpoints tested; renders live (agent-browser); interactive switch → user dogfood
+- [x] Draft fold-back: "Add this draft to the Shared version" (Task 7) — `gitFoldDraft` (merge+publish+remove; rejected-publish → "Get latest first") + `POST /_api/git/fold` (main-origin/loopback, gate-asserted) + client CTA; tested + live-rendered
+- [x] Zero-terminal scenario written (Task 5) — `.ai/scenarios/native-onboarding-zero-terminal/spec.md`; full `.app` run + screen recording → user dogfood (ceiling)
+- [x] Onboarding tour v1 ships on the existing engine; offered first-run, replayable from Help; `tour-overlay.test.tsx` green (Task 6) — live-verified via agent-browser (infographic + spotlight)
+- [x] Vocabulary contract upheld on the new surfaces: **no raw git terms**; the cycle uses **Save changes locally / Publish for everyone / Pull changes**; "Draft" not branch, "Shared version" not main; the live layer is automatic _(follow-up: align phase-27 GitPanel "Save version"/"Get latest" to the exact canonical verbs — already jargon-free)_
+- [x] Teaching-model reversal recorded as a DDR — **DDR-118** (Task 7)

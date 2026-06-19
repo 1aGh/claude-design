@@ -1,0 +1,36 @@
+{
+  "title": "RepoBranchSwitcher",
+  "subtitle": "Project + version switching as a compact BOTTOM dock + upward popup (not a top header) · one trigger opens a single menu: Project (recent + open another) + Version (shared version / drafts / new draft / fold-back) · plain words, no git jargon",
+  "brief": "Phase 29 (native collab app, epic E4). REDESIGNED to match the real shell (apps/studio/client/app.jsx): the file tree fills the sidebar; the BOTTOM dock holds the project/version switcher ABOVE the GitHub identity avatar (gi-rail). Switching repos/versions is infrequent, so the switcher collapses to ONE compact line — 'Northwind Rebrand · Shared version' — that opens a single popup menu UPWARD (mirrors IdentityBar's gi-menu) with a Project section + a Version section. Vocabulary contract: a git branch is a 'draft', the main branch is the 'Shared version' — no branch / checkout / main / merge / PR jargon. When you're ON a draft, the Version section surfaces the one strong fold-back action — 'Add this draft to the Shared version' (Task 7) — a filled accent CTA; confirming shows a plain-words sheet then reuses the switching spinner. Lifts the gi-rail bottom-dock + gi-menu upward-popup anatomy.",
+  "platform": "desktop",
+  "designSystem": "maude",
+  "opt_out_scope": "palette",
+  "kind": "canvas",
+  "brief_sha": "phase29rb",
+  "sections": [
+    {
+      "id": "switcher",
+      "title": "RepoBranchSwitcher — project + version dock",
+      "subtitle": "MAUDE/E4 · 6 artboards · compact bottom dock + upward popup · plain words (draft / shared version)"
+    }
+  ],
+  "artboards": [
+    { "id": "resting", "label": "A · Resting — one compact line at the bottom, above the identity", "note": "The dock at rest: file tree fills the sidebar; at the bottom a single compact trigger 'folder · Northwind Rebrand · share · Shared version · chevron-up' sits above the identity avatar row (OC · @octocat · chevron-up). Switching isn't frequent, so it earns one line, not a permanent header block." },
+    { "id": "switch-popup", "label": "B · Popup — Project + Version in one menu, opens upward", "note": "Trigger clicked: ONE popup opens UPWARD (gi-menu anatomy) with two sections. Project: recent projects (Northwind Rebrand current ✓, Mobile Checkout, Marketing Site) + 'Open another folder…'. Version: 'Shared version · what everyone sees' (current ✓), a Drafts group (Nav redesign · you 2h; Pricing experiment · octocat yesterday), and 'New draft'." },
+    { "id": "on-draft", "label": "C · On a draft — the 'Add to the Shared version' fold-back (Task 7)", "note": "Same popup, but you're currently on the 'Nav redesign' draft (trigger version chip + this popup go amber). Version section puts the current draft at top ('you · 12 changes' ✓), then THE one strong action — a filled accent CTA 'Add this draft to the Shared version · make it the version everyone works from' — then Shared version + other drafts + New draft. The CTA is deliberately not a ghost row." },
+    { "id": "fold-confirm", "label": "D · Confirm — what becomes shared (no merge UI)", "note": "Modal confirm sheet: arrow-up-to-line icon, 'Add this draft to the Shared version', '12 changes from “Nav redesign” will become part of the Shared version everyone sees', reassurance ('Everyone else picks them up the next time they Get latest. Your draft stays around until you remove it.'), Cancel + primary 'Add to the Shared version'. No raw git terms; no 3-way merge UI." },
+    { "id": "new-draft", "label": "E · New draft — name a separate line of work", "note": "New-draft form anchored upward above the dock: 'Name your draft' input (Nav redesign) + 'Creates a draft called nav-redesign', Cancel / Create draft, and a plain-words hint: a draft is your own copy; add it to the Shared version when happy or throw it away — the shared version is untouched." },
+    { "id": "switching", "label": "F · Switching — reuses the spinner idiom (here: folding a draft)", "note": "Post-confirm (and project/version switch): the compact trigger is replaced in place by a spinner row, copy overridden to 'Adding Nav redesign to the Shared version…', file tree replaced by skeleton — the honest loading state while the fold (FF-merge + push) or switch runs." }
+  ],
+  "layout": {
+    "artboards": [
+      { "id": "resting", "x": 0, "y": 0 },
+      { "id": "switch-popup", "x": 1400, "y": 0 },
+      { "id": "on-draft", "x": 2800, "y": 0 },
+      { "id": "fold-confirm", "x": 4200, "y": 0 },
+      { "id": "new-draft", "x": 5600, "y": 0 },
+      { "id": "switching", "x": 7000, "y": 0 }
+    ]
+  },
+  "status": "ready-for-handoff"
+}
