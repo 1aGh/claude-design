@@ -15,20 +15,61 @@
     }
   ],
   "artboards": [
-    { "id": "infographic", "label": "A · The infographic — the two-layer model (hero)", "note": "The centered tour step: a green-ringed LIVE layer (Together · automatic — cursors / who's here / comments) floating over the bridge ('the work itself') over the accent-tracked Save changes locally -> Publish for everyone -> Pull changes cycle. The signature moment — the whole mental model in one picture." },
-    { "id": "save", "label": "B · Coach-mark — Save changes locally", "note": "Coach card docked right over a dimmed mini studio-shell; the 'Save changes locally' button in the mini Changes panel carries the accent spotlight ring (how overlay.jsx renders at runtime)." },
-    { "id": "publish", "label": "C · Coach-mark — Publish for everyone", "note": "Same mini-shell, the 'Publish for everyone' control spotlit; card explains 'put it on the shared shelf'." },
-    { "id": "pull", "label": "D · Coach-mark — the live layer is automatic", "note": "The presence avatars (YO/AN) in the mini menubar carry the spotlight; card: cursors / who's here / comments need no buttons — the top layer, always on." },
-    { "id": "hard-thing", "label": "F · The one honest hard thing — apart, you pick (never a merge)", "note": "Centered card: branch glyph + Keep mine / Keep theirs / Keep both pills (accent / info / success); copy teaches that publishing covers a live teammate, and only when apart do versions drift — then you pick, never a merge." }
+    {
+      "id": "infographic",
+      "label": "A · The infographic — the two-layer model (hero)",
+      "note": "The centered tour step: a green-ringed LIVE layer (Together · automatic — cursors / who's here / comments) floating over the bridge ('the work itself') over the accent-tracked Save changes locally -> Publish for everyone -> Pull changes cycle. The signature moment — the whole mental model in one picture."
+    },
+    {
+      "id": "save",
+      "label": "B · Coach-mark — Save changes locally",
+      "note": "Coach card docked right over a dimmed mini studio-shell; the 'Save changes locally' button in the mini Changes panel carries the accent spotlight ring (how overlay.jsx renders at runtime)."
+    },
+    {
+      "id": "publish",
+      "label": "C · Coach-mark — Publish for everyone",
+      "note": "Same mini-shell, the 'Publish for everyone' control spotlit; card explains 'put it on the shared shelf'."
+    },
+    {
+      "id": "pull",
+      "label": "D · Coach-mark — the live layer is automatic",
+      "note": "The presence avatars (YO/AN) in the mini menubar carry the spotlight; card: cursors / who's here / comments need no buttons — the top layer, always on."
+    },
+    {
+      "id": "hard-thing",
+      "label": "F · The one honest hard thing — apart, you pick (never a merge)",
+      "note": "Centered card: branch glyph + Keep mine / Keep theirs / Keep both pills (accent / info / success); copy teaches that publishing covers a live teammate, and only when apart do versions drift — then you pick, never a merge."
+    }
   ],
   "layout": {
     "artboards": [
-      { "id": "infographic", "x": 0, "y": 0 },
-      { "id": "save", "x": 1300, "y": 0 },
-      { "id": "publish", "x": 2600, "y": 0 },
-      { "id": "pull", "x": 3900, "y": 0 },
-      { "id": "hard-thing", "x": 5200, "y": 0 }
+      {
+        "id": "infographic",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "save",
+        "x": 1300,
+        "y": 0
+      },
+      {
+        "id": "publish",
+        "x": 2600,
+        "y": 0
+      },
+      {
+        "id": "pull",
+        "x": 3900,
+        "y": 0
+      },
+      {
+        "id": "hard-thing",
+        "x": 5200,
+        "y": 0
+      }
     ]
   },
-  "status": "ready-for-handoff"
+  "status": "handed-off",
+  "handoffCommit": "8e9758e"
 }

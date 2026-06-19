@@ -80,11 +80,12 @@
       }
     ]
   },
-  "status": "ready-for-handoff",
+  "status": "handed-off",
   "viewport": {
     "x": 44.07914005591945,
     "y": -207.7694659932339,
     "zoom": 0.7827273460191922
   },
-  "last_modified": "2026-06-19T12:26:25.476Z"
+  "last_modified": "2026-06-19T12:26:25.476Z",
+  "handoffCommit": "8e9758e"
 }

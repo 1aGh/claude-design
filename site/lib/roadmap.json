@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-19T07:25:25.612Z",
+  "generated": "2026-06-19T15:22:44.174Z",
   "currentPhase": null,
   "phases": [
     {
@@ -408,6 +408,17 @@
       "planPath": ".ai/plans/archive/phase-28-native-collab-github-identity.md",
       "archived": true,
       "phaseKey": "28"
+    },
+    {
+      "id": "phase-29-native-collab-onboarding",
+      "title": "Phase 29 — Native Maude: Onboarding wizard + repo/branch switcher",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Aspiration bar applies — this is the first-impression surface; /design:new with --perfect is mandatory before Task 2.",
+      "planPath": ".ai/plans/archive/phase-29-native-collab-onboarding.md",
+      "archived": true,
+      "phaseKey": "29"
     },
     {
       "id": "phase-3.6-canvas-tsx-format",
@@ -881,17 +892,6 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
-    },
-    {
-      "id": "phase-29-native-collab-onboarding",
-      "title": "Phase 29 — Native Maude: Onboarding wizard + repo/branch switcher",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Aspiration bar applies — this is the first-impression surface; /design:new with --perfect is mandatory before Task 2.",
-      "planPath": ".ai/plans/phase-29-native-collab-onboarding.md",
-      "archived": false,
-      "phaseKey": "29"
     },
     {
       "id": "phase-30-native-collab-live-multiplayer",

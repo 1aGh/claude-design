@@ -212,6 +212,8 @@ Today Maude requires `maude design serve` from a terminal, then a browser. There
 
 ### FU-1 — Split the toolset between the native app and the web studio (DDR-worthy)
 
+> **✅ DONE 2026-06-19 (via /flow:execute).** Recorded as **[DDR-119](../decisions/DDR-119-native-owns-the-workspace-web-is-a-repo-bound-companion.md)**. Implemented: `RepoBranchSwitcher` gates the full bottom-dock to `isNativeApp()` and renders a compact **read-only `📁 repo · branch: X` badge** on web (git vocab, live from the `git-status` broadcast, no actions — chosen pure-read-only over a UI checkout); `GitPanel` keeps Changes/Diff/History on web behind a `readOnly` prop but drops Save/Publish/Get-latest/discard/checkboxes (footer hint → "save & publish from your terminal"); the collab tour's Help ▸ "How sharing works" entry is hidden on web (the nudge was already gated). Onboarding wizard + IdentityBar were already `isNativeApp()`-gated (DDR-114). **Web path live-verified via agent-browser** (read-only badge, read-only Changes panel, Help has no "How sharing works"); native path unchanged behind the verification ceiling. **Deferred (own follow-up, per user):** the web-only "Open in editor"/"Reveal in Finder" affordance (needs a path-validated server endpoint); the `maude studio` rename remains an open product question.
+
 **Problem.** Phase-29 surfaces (onboarding, identity, the `RepoBranchSwitcher`) currently render in BOTH the native Tauri app AND the browser-launched web studio (gated only on `status.repo`, not on `isNativeApp()`). But the two surfaces have fundamentally different owners and personas, so the same toolset doesn't fit both.
 
 **The deciding axis — who owns the workspace:**
@@ -251,3 +253,13 @@ Today Maude requires `maude design serve` from a terminal, then a browser. There
 ### FU-2 — Align the phase-27 GitPanel labels to the exact canonical verbs
 
 The GitPanel uses jargon-free near-synonyms ("Save version" / "Publish changes" / "Get latest"); the canonical set (DDR-118) is "Save changes locally / Publish for everyone / Pull changes". The collab tour bridges the gap, but aligning the GitPanel + IdentityBar + SyncBanner copy to the exact verbs is a deferred vocab migration (already contract-compliant, so non-blocking).
+
+---
+
+## Retro
+
+- **A re-invoked `/flow:execute` on an already-complete plan is a signal, not a no-op.** All 7 tasks were committed in a prior session; the right move was to detect that, surface the plan's own tracked FU-1 follow-up as the actual remaining work, and confirm with the user rather than blindly re-running tasks (which would have churned the committed `dist/`). Worth keeping: when `/execute` finds every task done, check the plan's follow-up section before declaring nothing-to-do.
+- **`isNativeApp()` was the clean split axis — and most surfaces were already gated.** FU-1 looked big (per-tool table) but reduced to three real changes (RepoBranchSwitcher badge, GitPanel `readOnly`, collab-tour Help item); onboarding + IdentityBar were already gated (DDR-114). Reading the current gating state first stopped an over-scoped change.
+- **The native-app verification ceiling moved.** Computer-use's own screenshot can't capture the WKWebView (separate WebKit process excluded by native screenshot-filtering), but the system `screencapture` CLI can — combined with computer-use key/click + `osascript` window-positioning, the agent drove + saw the real `Maude.app` live (full dock + IdentityBar + full GitPanel). Recorded in the `feedback_native_app_verification_ceiling` memory. Caveat: the display can lock mid-session — capture proof shots early.
+- **Deferring the security fan-out to `/done` worked, but lint debt should not defer.** The deferred phase-29 review found a real medium (A2: the hub probe delivered the token to a user-pasted host) with a clean tokenless fix; the defender/attacker split was resolved by reading the code (A1 data-loss was not real). But `pnpm lint` had accumulated auto-fixable debt across phases 27→29 (test format / import order) that only surfaced at the `/done` gate — running `format`+`lint` per-phase (the `/flow:utils-verify` gate) would catch it earlier.
+- **Scenario gate stays N/A for the desktop shell.** Like phases 27/28, phase-29 has no cross-platform parity dimension; agent-browser (web) + screencapture (native) is the substitute. The 5-platform `scenario-runner` would add no signal for a single-surface native feature.
