@@ -9,6 +9,8 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-116: In-UI merge-conflict resolution via a side-picking mergeDriver (two-parent merge commit, "keep both" = copy)](DDR-116-in-ui-merge-conflict-resolution.md) — 2026-06-19, native-app/git/merge-conflict/isomorphic-git/mergedriver/diffview/zero-loss/phase-28/e3
+
 - [DDR-115: Per-user camera split out of versioned canvas meta + one canonical runtime-state taxonomy](DDR-115-per-user-camera-split-and-runtime-state-taxonomy.md) — 2026-06-18, dev-server/canvas-meta/viewport/camera/runtime-state/gitignore/taxonomy/changes-panel/git-hygiene
 
 - [DDR-114: GitHub identity implementation — OAuth App (device flow) boundary, hand-rolled REST, loopback token bridge](DDR-114-github-oauth-app-implementation-boundary.md) — 2026-06-18, native-app/github/oauth/device-flow/octokit/keychain/security/phase-28/e3

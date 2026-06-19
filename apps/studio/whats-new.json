@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "sign-in-with-github",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Sign in with GitHub — projects without the terminal",
+      "summary": "Sign in with GitHub right from the account bar (just enter a short code — your access stays in your computer's keychain). Start a New project and Maude creates a private GitHub project and opens it; Pull a local copy brings down one of your projects to a folder you choose; Share invites a teammate by username. Publish and Get latest now use your sign-in directly, and you'll get a nudge when a teammate has shared new work. If you both changed the same canvas, Get latest opens a visual resolver — Keep mine, theirs, or both (both saves your version as a copy, so nothing is ever lost) — and finishes the merge for you.",
+      "surface": "design-ui"
+    },
+    {
       "id": "changes-panel-canvas-grouping",
       "version": null,
       "date": null,

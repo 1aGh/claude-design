@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-18T19:27:52.635Z",
+  "generated": "2026-06-19T07:25:25.612Z",
   "currentPhase": null,
   "phases": [
     {
@@ -397,6 +397,17 @@
       "planPath": ".ai/plans/archive/phase-27.1-native-collab-history-view-wiring.md",
       "archived": true,
       "phaseKey": "27.1"
+    },
+    {
+      "id": "phase-28-native-collab-github-identity",
+      "title": "Phase 28 — Native Maude: GitHub identity & remote",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to the OAuth token never landing in _server.json or .design/, DDR-045 disk paths, and the canvas-create.ts security pattern fo...",
+      "planPath": ".ai/plans/archive/phase-28-native-collab-github-identity.md",
+      "archived": true,
+      "phaseKey": "28"
     },
     {
       "id": "phase-3.6-canvas-tsx-format",
@@ -870,17 +881,6 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
-    },
-    {
-      "id": "phase-28-native-collab-github-identity",
-      "title": "Phase 28 — Native Maude: GitHub identity & remote",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Pay attention to the OAuth token never landing in _server.json or .design/, DDR-045 disk paths, and the canvas-create.ts security pattern fo...",
-      "planPath": ".ai/plans/phase-28-native-collab-github-identity.md",
-      "archived": false,
-      "phaseKey": "28"
     },
     {
       "id": "phase-29-native-collab-onboarding",
