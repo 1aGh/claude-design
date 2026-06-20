@@ -25,6 +25,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
 } from 'react';
@@ -437,7 +438,338 @@ export function canvasSlugFromPath(canvasRel: string | null | undefined): string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Provider — opens WS, owns Y.Doc + Awareness lifecycle.
+// Module-level, refcounted collab session (F4 — presence survives a hot-swap).
+//
+// A cross-peer synced edit (or an agent edit) hot-swaps the canvas module in
+// place, which REMOUNTS the whole canvas subtree — including <CollabProvider>.
+// If the Y.Doc + Awareness + WebSocket were owned by the component (useMemo /
+// useEffect), that remount would CLOSE the awareness socket and re-handshake, so
+// every peer's cursor + avatar blinks out and back on every synced change (the
+// F4 bug). Instead the live session lives HERE, keyed by slug + refcounted: a
+// same-slug remount re-acquires the SAME doc/awareness/socket within a short
+// grace window, so the awareness connection never drops and presence is stable.
+//
+// One canvas iframe is one realm and only ever holds one slug (switching
+// canvases navigates the iframe → fresh realm → fresh module state), so the map
+// holds at most one live entry plus, briefly, one draining one.
+
+const AWARENESS_THROTTLE_MS = 33; // ~30 Hz
+
+interface CollabSession {
+  slug: string;
+  doc: Y.Doc;
+  awareness: Awareness;
+  connId: string;
+  name: string;
+  color: string;
+  connected: boolean;
+  refCount: number;
+  destroyTimer: ReturnType<typeof setTimeout> | null;
+  /** React consumers subscribe so name/color/connected changes re-render. */
+  listeners: Set<() => void>;
+  /** Tear down the socket + listeners + destroy doc/awareness. */
+  stop: () => void;
+}
+
+// The session registry MUST live on `window`, not in module scope, and be
+// resolved LAZILY (per access, not once at module load). A hot-swap (F4)
+// re-imports the canvas bundle with a cache-busting `?v=` query, and use-collab
+// is INLINED into that per-canvas bundle — so each hot-swap re-evaluates a FRESH
+// module with a fresh module-level binding. A plain `const SESSIONS = new Map()`
+// would therefore be empty on every hot-swap and we'd spin a new Y.Doc +
+// Awareness + socket (new clientID) each time, leaving the prior clientID's
+// awareness to linger on the hub → phantom "self" avatars pile up until the
+// awareness timeout. Anchoring the map on the iframe's `window` (which survives
+// module re-evaluation) is what makes the session — and thus presence — survive
+// the swap. Lazy resolution also tolerates a `window` that becomes available
+// after this module first evaluates (test harness: imports are hoisted above
+// happy-dom registration).
+//
+// SECURITY (DDR-054): the canvas iframe is untrusted and shares this realm, so
+// the registry holds live network handles in reach of canvas script. We key it
+// by a NON-ENUMERABLE global Symbol (not an enumerable string property) so it
+// can't be harvested by an opportunistic `for…in` / `Object.keys(window)` sweep
+// — defense in depth, NOT a trust boundary: same-realm canvas code can already
+// reach collab state through `useCollab()`, and `Symbol.for` is recoverable by a
+// determined attacker. Closing the underlying "untrusted canvas can mutate the
+// shared doc" surface is a separate, pre-existing concern (tracked as a
+// follow-up); this keeps the hot-swap fix from WIDENING discovery. A global
+// Symbol (shared registry) is required so the re-imported module resolves the
+// SAME key — a per-module `Symbol()` would defeat the cross-re-import survival.
+const SESSIONS_KEY = Symbol.for('maude.collab.sessions.v1');
+let moduleFallbackSessions: Map<string, CollabSession> | null = null;
+function getSessions(): Map<string, CollabSession> {
+  if (typeof window === 'undefined') {
+    if (!moduleFallbackSessions) moduleFallbackSessions = new Map<string, CollabSession>();
+    return moduleFallbackSessions;
+  }
+  const w = window as unknown as Record<symbol, Map<string, CollabSession> | undefined>;
+  let map = w[SESSIONS_KEY];
+  if (!map) {
+    map = new Map<string, CollabSession>();
+    Object.defineProperty(w, SESSIONS_KEY, {
+      value: map,
+      enumerable: false,
+      writable: false,
+      configurable: false,
+    });
+  }
+  return map;
+}
+
+// Keep a refcount-0 session alive briefly so a hot-swap remount (which unmounts
+// then immediately remounts the provider in the same commit) reuses the live
+// socket instead of reconnecting. A genuine close (no re-acquire within the
+// window) tears down so the peer leaves the room cleanly.
+const SESSION_GRACE_MS = 4000;
+
+function notifySession(s: CollabSession): void {
+  for (const l of s.listeners) l();
+}
+
+function createSession(slug: string): CollabSession {
+  const doc = new Y.Doc();
+  const awareness = new Awareness(doc);
+  const connId = crypto.randomUUID();
+
+  const session: CollabSession = {
+    slug,
+    doc,
+    awareness,
+    connId,
+    name: 'anonymous',
+    color: colorForName('anonymous'),
+    connected: false,
+    refCount: 0,
+    destroyTimer: null,
+    listeners: new Set(),
+    stop: () => {},
+  };
+
+  // Seed local awareness immediately so foreign peers see our name even before
+  // the first cursor move; preserves any cursor/selection already published.
+  const seedLocalAwareness = (name: string, color: string) => {
+    const cur = (awareness.getLocalState() ?? {}) as Partial<CollabAwarenessState>;
+    awareness.setLocalState({
+      name,
+      color,
+      cursor: cur.cursor ?? null,
+      selection: cur.selection ?? null,
+      annotationSelection: cur.annotationSelection ?? [],
+      viewport: cur.viewport ?? { x: 0, y: 0, zoom: 1 },
+      editing: cur.editing ?? null,
+      __connId: connId,
+    } satisfies CollabAwarenessState);
+  };
+  seedLocalAwareness(session.name, session.color);
+
+  // Resolve identity from git user.name once per SESSION (not per mount) so a
+  // hot-swap remount doesn't re-fetch + re-publish (which would churn awareness).
+  let identityCancelled = false;
+  fetch('/_api/git-user')
+    .then((r) => r.json())
+    .then((j) => {
+      if (identityCancelled) return;
+      const n = typeof j?.name === 'string' && j.name.trim() ? j.name.trim() : null;
+      const finalName = n ?? `anonymous-${connId.slice(0, 6)}`;
+      session.name = finalName;
+      session.color = colorForName(finalName);
+      seedLocalAwareness(finalName, session.color);
+      notifySession(session);
+    })
+    .catch(() => {
+      if (identityCancelled) return;
+      const fallback = `anonymous-${connId.slice(0, 6)}`;
+      session.name = fallback;
+      session.color = colorForName(fallback);
+      seedLocalAwareness(fallback, session.color);
+      notifySession(session);
+    });
+
+  // ── WebSocket lifecycle ──────────────────────────────────────────────────
+  let cancelled = false;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let wsRef: WebSocket | null = null;
+
+  function sendFrame(ws: WebSocket, payload: Uint8Array) {
+    try {
+      ws.send(payload);
+    } catch {
+      /* dead socket — close handler will reconnect */
+    }
+  }
+
+  function broadcastAwareness(ws: WebSocket, changed: number[]) {
+    if (changed.length === 0) return;
+    const encoder = encoding.createEncoder();
+    encoding.writeVarUint(encoder, MESSAGE_AWARENESS);
+    encoding.writeVarUint8Array(encoder, encodeAwarenessUpdate(awareness, changed));
+    sendFrame(ws, encoding.toUint8Array(encoder));
+  }
+
+  function broadcastSyncUpdate(ws: WebSocket, update: Uint8Array) {
+    const encoder = encoding.createEncoder();
+    encoding.writeVarUint(encoder, MESSAGE_SYNC);
+    writeUpdate(encoder, update);
+    sendFrame(ws, encoding.toUint8Array(encoder));
+  }
+
+  function connect() {
+    if (cancelled) return;
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${proto}//${location.host}/_ws/collab/${slug}`);
+    ws.binaryType = 'arraybuffer';
+    wsRef = ws;
+
+    ws.addEventListener('open', () => {
+      session.connected = true;
+      notifySession(session);
+      // Sync step 1 — announce our state vector so the server can send the
+      // missing pieces (matches the encodeHandshake server path).
+      const encoder = encoding.createEncoder();
+      encoding.writeVarUint(encoder, MESSAGE_SYNC);
+      writeSyncStep1(encoder, doc);
+      sendFrame(ws, encoding.toUint8Array(encoder));
+      // Awareness initial state — fire our local state to the room.
+      broadcastAwareness(ws, [awareness.clientID]);
+    });
+
+    ws.addEventListener('close', () => {
+      session.connected = false;
+      notifySession(session);
+      wsRef = null;
+      if (cancelled) return;
+      reconnectTimer = setTimeout(connect, 1000);
+    });
+
+    ws.addEventListener('error', () => {
+      // Let close handler do the reconnect; error events without a close
+      // would just retry-spam.
+    });
+
+    ws.addEventListener('message', (evt) => {
+      const payload =
+        evt.data instanceof ArrayBuffer
+          ? new Uint8Array(evt.data)
+          : evt.data instanceof Uint8Array
+            ? evt.data
+            : null;
+      if (!payload) return;
+      const decoder = decoding.createDecoder(payload);
+      const messageType = decoding.readVarUint(decoder);
+      switch (messageType) {
+        case MESSAGE_SYNC: {
+          const encoder = encoding.createEncoder();
+          encoding.writeVarUint(encoder, MESSAGE_SYNC);
+          readSyncMessage(decoder, encoder, doc, ws);
+          if (encoding.length(encoder) > 1) sendFrame(ws, encoding.toUint8Array(encoder));
+          break;
+        }
+        case MESSAGE_AWARENESS: {
+          applyAwarenessUpdate(awareness, decoding.readVarUint8Array(decoder), ws);
+          break;
+        }
+        default:
+          break;
+      }
+    });
+  }
+
+  // Wire doc updates → broadcast to server. Origin tagged with the ws so
+  // server-side updates we receive don't echo back.
+  const onDocUpdate = (update: Uint8Array, origin: unknown) => {
+    const ws = wsRef;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (origin === ws) return; // came from server, don't echo
+    broadcastSyncUpdate(ws, update);
+  };
+  doc.on('update', onDocUpdate);
+
+  // Wire awareness changes → broadcast. Same origin guard.
+  const onAwarenessUpdate = (
+    { added, updated, removed }: { added: number[]; updated: number[]; removed: number[] },
+    origin: unknown
+  ) => {
+    const ws = wsRef;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (origin === ws) return;
+    const changed = added.concat(updated, removed);
+    broadcastAwareness(ws, changed);
+  };
+  awareness.on('update', onAwarenessUpdate);
+
+  session.stop = () => {
+    identityCancelled = true;
+    cancelled = true;
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    doc.off('update', onDocUpdate);
+    awareness.off('update', onAwarenessUpdate);
+    const ws = wsRef;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.close();
+      } catch {
+        /* ignore */
+      }
+    }
+    try {
+      awareness.destroy();
+    } catch {
+      /* ignore */
+    }
+    try {
+      doc.destroy();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  connect();
+  return session;
+}
+
+function scheduleSessionDestroy(s: CollabSession): void {
+  if (s.destroyTimer) return;
+  s.destroyTimer = setTimeout(() => {
+    getSessions().delete(s.slug);
+    s.stop();
+  }, SESSION_GRACE_MS);
+}
+
+/** Idempotent get-or-create (called in render so children get a live doc on
+ *  first render). A freshly created session self-destructs after the grace
+ *  window unless a mount effect retains it — so a thrown-away render can't leak
+ *  a socket. */
+function peekOrCreateSession(slug: string): CollabSession {
+  const sessions = getSessions();
+  let s = sessions.get(slug);
+  if (!s) {
+    s = createSession(slug);
+    sessions.set(slug, s);
+    scheduleSessionDestroy(s);
+  }
+  return s;
+}
+
+function retainSession(slug: string): CollabSession {
+  const s = peekOrCreateSession(slug);
+  if (s.destroyTimer) {
+    clearTimeout(s.destroyTimer);
+    s.destroyTimer = null;
+  }
+  s.refCount++;
+  return s;
+}
+
+function releaseSession(slug: string): void {
+  const s = getSessions().get(slug);
+  if (!s) return;
+  s.refCount = Math.max(0, s.refCount - 1);
+  if (s.refCount === 0) scheduleSessionDestroy(s);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Provider — thin consumer of the shared session (lifetime owned above).
 
 interface CollabProviderProps {
   /** Canvas slug — must match server-side `parseCollabSlug`. */
@@ -445,208 +777,26 @@ interface CollabProviderProps {
   children: ReactNode;
 }
 
-const AWARENESS_THROTTLE_MS = 33; // ~30 Hz
-
 export function CollabProvider({ slug, children }: CollabProviderProps): JSX.Element {
-  // Y.Doc + Awareness are recreated whenever the slug changes (switching
-  // canvases tears down the prior session cleanly). The useMemo factory
-  // bodies don't read `slug` — slug IS the cache key, intentionally.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: slug is the cache key
-  const doc = useMemo(() => new Y.Doc(), [slug]);
-  const awareness = useMemo(() => new Awareness(doc), [doc]);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: slug is the cache key
-  const myConnId = useMemo(() => crypto.randomUUID(), [slug]);
+  // Acquire (get-or-create) for render so children see a live doc immediately;
+  // the refcount + teardown lifetime is managed in the effect below so a
+  // hot-swap remount reuses the SAME socket (no presence blink — F4).
+  const session = peekOrCreateSession(slug);
+  const [, forceRender] = useReducer((c: number) => c + 1, 0);
 
-  const [myName, setMyName] = useState('anonymous');
-  const [myColor, setMyColor] = useState(colorForName('anonymous'));
-  const [connected, setConnected] = useState(false);
-
-  // Fetch git user.name once per slug; falls back to anonymous-<short id>.
   useEffect(() => {
-    let cancelled = false;
-    fetch('/_api/git-user')
-      .then((r) => r.json())
-      .then((j) => {
-        if (cancelled) return;
-        const n = typeof j?.name === 'string' && j.name.trim() ? j.name.trim() : null;
-        const finalName = n ?? `anonymous-${myConnId.slice(0, 6)}`;
-        setMyName(finalName);
-        setMyColor(colorForName(finalName));
-      })
-      .catch(() => {
-        if (cancelled) return;
-        const fallback = `anonymous-${myConnId.slice(0, 6)}`;
-        setMyName(fallback);
-        setMyColor(colorForName(fallback));
-      });
+    const s = retainSession(slug);
+    const listener = () => forceRender();
+    s.listeners.add(listener);
+    // Identity / connection may have resolved between render and this effect.
+    forceRender();
     return () => {
-      cancelled = true;
+      s.listeners.delete(listener);
+      releaseSession(slug);
     };
-  }, [myConnId]);
+  }, [slug]);
 
-  // Seed local awareness state immediately so foreign peers see our name even
-  // before the cursor moves. Update when myName/myColor settles from the fetch.
-  useEffect(() => {
-    awareness.setLocalState({
-      name: myName,
-      color: myColor,
-      cursor: null,
-      selection: null,
-      annotationSelection: [],
-      viewport: { x: 0, y: 0, zoom: 1 },
-      editing: null,
-      __connId: myConnId,
-    } satisfies CollabAwarenessState);
-  }, [awareness, myName, myColor, myConnId]);
-
-  // ── WebSocket lifecycle ──────────────────────────────────────────────────
-  const wsRef = useRef<WebSocket | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-
-    function sendFrame(ws: WebSocket, payload: Uint8Array) {
-      try {
-        ws.send(payload);
-      } catch {
-        /* dead socket — close handler will reconnect */
-      }
-    }
-
-    function broadcastAwareness(ws: WebSocket, changed: number[]) {
-      if (changed.length === 0) return;
-      const encoder = encoding.createEncoder();
-      encoding.writeVarUint(encoder, MESSAGE_AWARENESS);
-      encoding.writeVarUint8Array(encoder, encodeAwarenessUpdate(awareness, changed));
-      sendFrame(ws, encoding.toUint8Array(encoder));
-    }
-
-    function broadcastSyncUpdate(ws: WebSocket, update: Uint8Array) {
-      const encoder = encoding.createEncoder();
-      encoding.writeVarUint(encoder, MESSAGE_SYNC);
-      writeUpdate(encoder, update);
-      sendFrame(ws, encoding.toUint8Array(encoder));
-    }
-
-    function connect() {
-      if (cancelled) return;
-      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const ws = new WebSocket(`${proto}//${location.host}/_ws/collab/${slug}`);
-      ws.binaryType = 'arraybuffer';
-      wsRef.current = ws;
-
-      ws.addEventListener('open', () => {
-        setConnected(true);
-        // Sync step 1 — announce our state vector so the server can send the
-        // missing pieces (matches the encodeHandshake server path).
-        const encoder = encoding.createEncoder();
-        encoding.writeVarUint(encoder, MESSAGE_SYNC);
-        writeSyncStep1(encoder, doc);
-        sendFrame(ws, encoding.toUint8Array(encoder));
-        // Awareness initial state — fire our local state to the room.
-        broadcastAwareness(ws, [awareness.clientID]);
-      });
-
-      ws.addEventListener('close', () => {
-        setConnected(false);
-        wsRef.current = null;
-        if (cancelled) return;
-        reconnectTimer = setTimeout(connect, 1000);
-      });
-
-      ws.addEventListener('error', () => {
-        // Let close handler do the reconnect; error events without a close
-        // would just retry-spam.
-      });
-
-      ws.addEventListener('message', (evt) => {
-        const payload =
-          evt.data instanceof ArrayBuffer
-            ? new Uint8Array(evt.data)
-            : evt.data instanceof Uint8Array
-              ? evt.data
-              : null;
-        if (!payload) return;
-        const decoder = decoding.createDecoder(payload);
-        const messageType = decoding.readVarUint(decoder);
-        switch (messageType) {
-          case MESSAGE_SYNC: {
-            const encoder = encoding.createEncoder();
-            encoding.writeVarUint(encoder, MESSAGE_SYNC);
-            readSyncMessage(decoder, encoder, doc, ws);
-            if (encoding.length(encoder) > 1) sendFrame(ws, encoding.toUint8Array(encoder));
-            break;
-          }
-          case MESSAGE_AWARENESS: {
-            applyAwarenessUpdate(awareness, decoding.readVarUint8Array(decoder), ws);
-            break;
-          }
-          default:
-            break;
-        }
-      });
-    }
-
-    // Wire doc updates → broadcast to server. Origin tagged with the ws ref so
-    // server-side updates we receive don't echo back.
-    const onDocUpdate = (update: Uint8Array, origin: unknown) => {
-      const ws = wsRef.current;
-      if (!ws || ws.readyState !== WebSocket.OPEN) return;
-      if (origin === ws) return; // came from server, don't echo
-      broadcastSyncUpdate(ws, update);
-    };
-    doc.on('update', onDocUpdate);
-
-    // Wire awareness changes → broadcast. Same origin guard.
-    const onAwarenessUpdate = (
-      { added, updated, removed }: { added: number[]; updated: number[]; removed: number[] },
-      origin: unknown
-    ) => {
-      const ws = wsRef.current;
-      if (!ws || ws.readyState !== WebSocket.OPEN) return;
-      if (origin === ws) return;
-      const changed = added.concat(updated, removed);
-      broadcastAwareness(ws, changed);
-    };
-    awareness.on('update', onAwarenessUpdate);
-
-    connect();
-
-    return () => {
-      cancelled = true;
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      doc.off('update', onDocUpdate);
-      awareness.off('update', onAwarenessUpdate);
-      const ws = wsRef.current;
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        try {
-          ws.close();
-        } catch {
-          /* ignore */
-        }
-      }
-      // Don't destroy doc/awareness here — the useMemo-tied lifetime handles
-      // that when the slug changes.
-    };
-  }, [slug, doc, awareness]);
-
-  // Per-slug cleanup of doc/awareness when slug changes (or provider unmounts).
-  useEffect(
-    () => () => {
-      try {
-        awareness.destroy();
-      } catch {
-        /* ignore */
-      }
-      try {
-        doc.destroy();
-      } catch {
-        /* ignore */
-      }
-    },
-    [doc, awareness]
-  );
+  const { doc, awareness, connId: myConnId, name: myName, color: myColor, connected } = session;
 
   // ── Throttled awareness publish ─────────────────────────────────────────
   const pendingRef = useRef<Partial<Omit<CollabAwarenessState, '__connId'>> | null>(null);
@@ -663,8 +813,8 @@ export function CollabProvider({ slug, children }: CollabProviderProps): JSX.Ele
         if (!next) return;
         const current = (awareness.getLocalState() ?? {}) as Partial<CollabAwarenessState>;
         awareness.setLocalState({
-          name: current.name ?? myName,
-          color: current.color ?? myColor,
+          name: current.name ?? session.name,
+          color: current.color ?? session.color,
           cursor: current.cursor ?? null,
           selection: current.selection ?? null,
           annotationSelection: current.annotationSelection ?? [],
@@ -675,7 +825,7 @@ export function CollabProvider({ slug, children }: CollabProviderProps): JSX.Ele
         } satisfies CollabAwarenessState);
       }, AWARENESS_THROTTLE_MS);
     },
-    [awareness, myName, myColor, myConnId]
+    [awareness, session, myConnId]
   );
 
   // ── Cleanup throttle timer on unmount ───────────────────────────────────

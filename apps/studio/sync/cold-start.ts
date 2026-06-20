@@ -26,6 +26,7 @@ export type ColdStartAction =
   | 'materialize-hub'
   | 'seed-local-up'
   | 'fast-forward-hub'
+  | 'recover-seed-dup'
   | 'conflict';
 
 export interface ColdStartInput {
@@ -54,6 +55,24 @@ export interface ColdStartDecision {
  *  `localHtml.trim() !== ''` guard). */
 function isEmptyBody(body: string | null): boolean {
   return body === null || body.trim() === '';
+}
+
+/**
+ * True when `docBody` is exactly `localBody` repeated N≥2 times — the signature
+ * of a concurrent cold-seed collision (F1): two peers each `seed-local-up`-ed
+ * the SAME body into an empty hub before either's write propagated, so the CRDT
+ * preserved both insertions and the Y.Text became `BODY` × N. We detect the
+ * exact-repeat shape (not a fuzzy "contains") so a legitimate later edit — which
+ * is never a clean integer-multiple repeat of the prior body — can't be
+ * mis-read as a duplication and clobbered back. Exact equality (N==1) is the
+ * caller's `noop`, handled before this is consulted.
+ */
+export function isExactRepeat(docBody: string, localBody: string): boolean {
+  if (localBody.length === 0) return false;
+  if (docBody.length <= localBody.length) return false;
+  if (docBody.length % localBody.length !== 0) return false;
+  const n = docBody.length / localBody.length;
+  return docBody === localBody.repeat(n);
 }
 
 function commentId(c: unknown): string | null {
@@ -115,6 +134,27 @@ export function decideColdStart(input: ColdStartInput): ColdStartDecision {
   if (input.localBody === input.docBody) {
     // Caller records the journal so the NEXT boot sees a clean checkpoint.
     return { action: 'noop', reason: 'local and hub identical' };
+  }
+
+  // Concurrent cold-seed collision (F1): the hub body is our local body repeated
+  // N≥2 times — two peers seeded the same canvas into an empty hub at the same
+  // moment and the CRDT concatenated both insertions (un-buildable: two `export
+  // default`). This is NOT divergence (it carries no new bytes — just a doubled
+  // copy of ours), so it must NOT take the conflict/fast-forward path. Collapse
+  // it back to one copy by re-applying local (the caller's `applyHtmlToDoc` diff
+  // deletes the trailing duplicate). Idempotent across peers — the delete targets
+  // the same CRDT items, so concurrent recoveries converge instead of fighting.
+  if (
+    input.localBody !== null &&
+    !localEmpty &&
+    !docEmpty &&
+    isExactRepeat(input.docBody, input.localBody)
+  ) {
+    return {
+      action: 'recover-seed-dup',
+      reason:
+        'hub body is local repeated — concurrent cold-seed duplication; collapsing to one copy',
+    };
   }
 
   // Hash via hashBytes ONLY — the journal recorded its hashes through the same

@@ -50,16 +50,26 @@ import {
   commentsFromDoc,
   cssFromDoc,
   htmlFromDoc,
+  markSeeded,
   mergeSharedMetaIntoLocal,
   metaFromDoc,
+  seededByFromDoc,
   stampBodyEdit,
   Y_SYNC_TYPES,
 } from './codec.ts';
-import { decideColdStart, unionCommentsById } from './cold-start.ts';
+import { decideColdStart, isExactRepeat, unionCommentsById } from './cold-start.ts';
 import { type EchoGuard, hashBytes } from './echo-guard.ts';
 import type { SyncJournal } from './journal.ts';
 
 export const DOC_FLUSH_MS = 800;
+
+/**
+ * Window after a `seed-local-up` during which this agent will repair a
+ * concurrent-seed duplication (F1). Bounded so the repair only ever fires for
+ * the cold-start race — a genuine peer edit that arrives minutes later is NEVER
+ * collapsed back to our original seed. Generous relative to the hub sync RTT.
+ */
+export const SEED_REPAIR_WINDOW_MS = 10_000;
 
 export interface CanvasSyncPaths {
   /** Absolute path to <designRoot>/<canvas>.html. */
@@ -164,10 +174,21 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
   let lastMeta: string | null = null;
   let lastCss: string | null = null;
 
+  // F1 — the body this agent pushed on `seed-local-up`, plus the deadline past
+  // which the de-dup repair stops firing. Set on seed; nulled only when the
+  // window lapses (after convergence the repair is a cheap no-op — the
+  // `body === seedInfo.body` guard short-circuits, so we don't bother clearing).
+  // Null = this agent never seeded (so it never repairs).
+  let seedInfo: { body: string; until: number } | null = null;
+
   function onDocUpdate(_update: Uint8Array, updateOrigin: unknown): void {
     if (stopped) return;
     // Self-applied (we just synced from disk) — disk is already current.
     if (updateOrigin === origin) return;
+    // F1 — a remote update during the seed window may have concatenated a
+    // concurrent peer's identical seed onto ours. Collapse it (single elected
+    // writer) BEFORE the flush below can mirror a doubled body to disk.
+    maybeRepairSeedDuplication();
     scheduleFlush();
   }
 
@@ -186,6 +207,45 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
       flushTimer = null;
       void flush();
     }, flushMs);
+  }
+
+  /**
+   * F1 — collapse a concurrent cold-seed duplication. When two peers
+   * `seed-local-up` the SAME body into an empty hub at the same instant, the
+   * merged Y.Text holds both insertions (`BODY` × N — un-buildable). This runs
+   * on every remote update inside the seed window and, on the single peer the
+   * `seededBy` Y.Map LWW elected, re-applies the canonical body so
+   * `applyHtmlToDoc`'s diff deletes the trailing duplicate(s). Only the elected
+   * owner repairs → the collapse op is emitted once and converges across peers
+   * (a non-owner just receives the delete). Restricted to an EXACT repeat of our
+   * seed: a divergent edit carries genuine bytes, so we DON'T touch it here —
+   * silently collapsing it would discard content. NOTE: that leaves the rare
+   * "two DIFFERENT bodies seeded into one empty hub at the same instant" case
+   * un-buildable until the NEXT boot, when `decideColdStart` routes it through
+   * the conflict path (dual snapshot + newest-wins). This live repair only
+   * covers the identical-seed race (the F1 RCA's scenario); the divergent
+   * variant is an accepted follow-up, not handled in-flight.
+   */
+  function maybeRepairSeedDuplication(): void {
+    if (!seedInfo) return;
+    if (Date.now() > seedInfo.until) {
+      seedInfo = null;
+      return;
+    }
+    const owner = seededByFromDoc(doc);
+    if (owner === null || owner !== doc.clientID) return; // not the elected writer
+    const body = htmlFromDoc(doc);
+    if (body === seedInfo.body) return; // already a single copy
+    if (!isExactRepeat(body, seedInfo.body)) return; // divergent edit → conflict path owns it
+    const canonical = seedInfo.body;
+    doc.transact(() => {
+      if (applyHtmlToDoc(doc, canonical, origin)) stampBodyEdit(doc, origin);
+    }, origin);
+    lastHtml = canonical;
+    opts.journal?.record(slug, { bodyHash: hashBytes(canonical) });
+    console.warn(
+      `[sync/${slug}] concurrent cold-seed duplication detected — collapsed to one copy (F1).`
+    );
   }
 
   async function flush(): Promise<void> {
@@ -348,7 +408,12 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
       if (localHtml !== null) {
         doc.transact(() => {
           if (applyHtmlToDoc(doc, localHtml, origin)) stampBodyEdit(doc, origin);
+          // F1 — adopt is also a "seed local up" (first link / fresh hub); claim
+          // it + arm the repair window so two peers adopting the same draft into
+          // one hub at once self-heal the same way the decision-table seed does.
+          markSeeded(doc, origin);
         }, origin);
+        seedInfo = { body: localHtml, until: Date.now() + SEED_REPAIR_WINDOW_MS };
       }
       if (localComments !== null) {
         const parsed = tryParseJsonArray(localComments);
@@ -396,8 +461,15 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
     const seedBodyUp = (body: string): void => {
       doc.transact(() => {
         if (applyHtmlToDoc(doc, body, origin)) stampBodyEdit(doc, origin);
+        // F1 — claim the seed (clientID marker) in the SAME update so a
+        // concurrent second seeder's merge resolves a single elected writer.
+        markSeeded(doc, origin);
       }, origin);
       lastHtml = body;
+      // Arm the de-dup repair window: if another peer seeded the same body at the
+      // same instant, the merged Y.Text will double — maybeRepairSeedDuplication
+      // (on the elected owner) collapses it back during this window.
+      seedInfo = { body, until: Date.now() + SEED_REPAIR_WINDOW_MS };
       opts.journal?.record(slug, { bodyHash: hashBytes(body) });
     };
 
@@ -418,6 +490,14 @@ export function createCanvasSyncAgent(opts: CanvasSyncAgentOptions): CanvasSyncA
         // means the hub holds no body for this slug yet — NOT an authoritative
         // "this canvas is blank". Seed the doc FROM local so the body survives
         // AND the hub gets our content.
+        seedBodyUp(localHtml as string);
+        bodyWinner = 'local';
+        break;
+      case 'recover-seed-dup':
+        // F1 — booting against a hub whose body is our local body repeated (a
+        // concurrent cold-seed that already duplicated). Re-apply local so the
+        // diff deletes the extra copy/copies; the content equals local, so the
+        // visually-coupled lanes follow local too. Idempotent across peers.
         seedBodyUp(localHtml as string);
         bodyWinner = 'local';
         break;
