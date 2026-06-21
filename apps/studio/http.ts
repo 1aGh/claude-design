@@ -672,6 +672,12 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       // Claude work) POSTs here when work begins. body = { file, author }.
       // Replaces any prior entry for the file.
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      // CSRF guard: phase-30 bridges ai-activity onto room awareness, which
+      // crosses the hub — a forged cross-origin POST would inject a fake
+      // "<x> is editing <file>" presence to every connected peer. The loopback
+      // slash-command driver omits Origin (→ allowed); a browser drive-by can't.
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
       const body = await readJson<{ file?: string; author?: string }>(req);
       if (!body || typeof body.file !== 'string' || !body.file.trim()) {
         return new Response('body.file required', { status: 400 });
@@ -688,6 +694,8 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       // Refresh the lastHeartbeat. Returns 404 if no entry — slash command
       // can treat that as "the server bounced; re-issue /start".
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
       const body = await readJson<{ file?: string }>(req);
       if (!body || typeof body.file !== 'string' || !body.file.trim()) {
         return new Response('body.file required', { status: 400 });
@@ -700,6 +708,8 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
     '/_api/ai/end': async (req: Request) => {
       // Explicit completion (normal or error). Banner clears immediately.
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
       const body = await readJson<{ file?: string }>(req);
       if (!body || typeof body.file !== 'string' || !body.file.trim()) {
         return new Response('body.file required', { status: 400 });

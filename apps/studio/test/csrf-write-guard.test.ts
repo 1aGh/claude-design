@@ -15,6 +15,8 @@
 // race unrelated to this guard. See the Phase 12.2 validate notes.)
 
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 import { sameOriginWrite } from '../http.ts';
 
@@ -49,4 +51,28 @@ describe('CSRF Origin guard — sameOriginWrite (DDR-105)', () => {
   test('rejects an unparseable Origin rather than letting it through', () => {
     expect(sameOriginWrite(post('not a url'))).toBe(false);
   });
+});
+
+// phase-30 / DDR-120: the ai-activity bridge now projects `/_api/ai/*` POSTs
+// onto room awareness, which crosses the hub to every connected peer. So a
+// forged cross-origin POST to /start /heartbeat /end is no longer a harmless
+// loopback banner — it injects a fake "<x> is editing <slug>" presence to all
+// peers (the channel that drives the social save/publish decision). These three
+// routes MUST carry the same `sameOriginWrite` guard as the other write routes.
+// Source-level assertion (same "don't boot a server" rationale as above): pin
+// the guard into each route block so an accidental removal fails CI.
+describe('CSRF Origin guard — /_api/ai/* presence-bridge routes (phase-30)', () => {
+  const src = readFileSync(fileURLToPath(new URL('../http.ts', import.meta.url)), 'utf8');
+
+  for (const route of ['/_api/ai/start', '/_api/ai/heartbeat', '/_api/ai/end']) {
+    test(`${route} is wired with the sameOriginWrite CSRF guard`, () => {
+      // Slice from this route's key to the next route key, then assert the guard
+      // appears inside that block.
+      const start = src.indexOf(`'${route}':`);
+      expect(start).toBeGreaterThan(-1);
+      const after = src.indexOf("'/_api/", start + 1);
+      const block = src.slice(start, after === -1 ? undefined : after);
+      expect(block).toContain('sameOriginWrite(req)');
+    });
+  }
 });
