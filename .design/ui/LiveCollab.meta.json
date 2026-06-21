@@ -5,7 +5,7 @@
   "platform": "desktop",
   "designSystem": "maude",
   "opt_out_scope": "palette",
-  "status": "ready-for-handoff",
+  "status": "handed-off",
   "sections": [
     {
       "id": "livecollab",
@@ -39,5 +39,6 @@
       "label": "E · the room cue",
       "note": "The single mental model — are we in the same draft now or not? Together = live (cursors/annotations/comments/edits); Apart = find each other's finished work waiting (live call vs voicemail)."
     }
-  ]
+  ],
+  "handoffCommit": "278d11a08dbb4f69314b432a838cf0cd3e163911"
 }

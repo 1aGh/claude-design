@@ -60,5 +60,6 @@
       }
     ]
   },
-  "status": "ready-for-handoff"
+  "status": "handed-off",
+  "handoffCommit": "278d11a08dbb4f69314b432a838cf0cd3e163911"
 }
