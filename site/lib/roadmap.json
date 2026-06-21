@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-19T15:22:44.174Z",
+  "generated": "2026-06-21T08:50:39.704Z",
   "currentPhase": null,
   "phases": [
     {
@@ -454,6 +454,17 @@
       "phaseKey": "3.7.1"
     },
     {
+      "id": "phase-30-native-collab-live-multiplayer",
+      "title": "Phase 30 — Native Maude: Branch-scoped live multiplayer + editing presence + hub realignment",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Read DDR-054, DDR-063, DDR-064, DDR-072, DDR-078, DDR-079 and .ai/docs/collab-model-design.md before touching any sync/collab code. The no-break exhaustive verify posture applies (per feedback-no-b...",
+      "planPath": ".ai/plans/archive/phase-30-native-collab-live-multiplayer.md",
+      "archived": true,
+      "phaseKey": "30"
+    },
+    {
       "id": "phase-6.5-export",
       "title": "Phase 6.5: Canvas export (UI-first, multi-format, scope-aware)",
       "status": "done",
@@ -892,17 +903,6 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
-    },
-    {
-      "id": "phase-30-native-collab-live-multiplayer",
-      "title": "Phase 30 — Native Maude: Live multiplayer + artboard locking + hub realignment",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Read DDR-054, DDR-064, DDR-063 and the 3-lane collab model in collab-model-design.md before touching any sync/collab code. The no-break exha...",
-      "planPath": ".ai/plans/phase-30-native-collab-live-multiplayer.md",
-      "archived": false,
-      "phaseKey": "30"
     },
     {
       "id": "phase-32-native-collab-distribution",

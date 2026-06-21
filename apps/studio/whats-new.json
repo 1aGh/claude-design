@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "branch-scoped-live-multiplayer",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Work together, live, in the same version",
+      "summary": "When you and a teammate are in the same shared version, you now collaborate live — you see each other's cursors, annotations, comments, and each other's canvas changes as they happen, like Figma. Your canvas list shows only the version you're in, so there's no clutter; switch to a teammate's draft to join them. When someone — or the AI agent — is editing a canvas, a soft badge in their colour gives you a heads-up so you don't step on each other (it's never a lock, and you can always keep working). The AI's \"is editing\" cue now reaches everyone on the team, new canvases show up instantly in a second tab and via Get latest for teammates, and live updates now slot in seamlessly without the presence avatars blinking.",
+      "surface": "design-ui"
+    },
+    {
       "id": "native-onboarding-switcher-collab-tour",
       "version": null,
       "date": null,

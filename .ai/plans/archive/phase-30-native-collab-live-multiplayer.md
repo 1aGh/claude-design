@@ -202,15 +202,26 @@ Live presence, annotations, comments, **and the TSX body** already sync over the
 - [x] `editing` awareness field: set/clear, sanitized, **no lock/lease/takeover** — Task 2
 - [x] `ai-activity` (agent editing) **crosses the hub** via awareness — Task 2
 - [x] Soft editing-presence overlay renders (human + agent), no take-over wall — Task 3 _(visual layer + agent path; human inspector-edit trigger deferred)_
-- [ ] Live TSX cross-machine round-trip **verified** (cursors + annotations + comments + TSX, two tabs) — Validation 3
+- [x] Live TSX cross-machine round-trip **verified** (cursors + annotations + comments + TSX, two tabs) — Validation 3 _(two-repo Docker-hub smoke, `.ai/scenarios/live-multiplayer-hub-sync/report-2026-06-20.md`: TSX sync bidirectional ~1 s, mutual presence, editing-presence cross-hub, canvas-list-update)_
 - [x] Branch-scoped visibility (structural — `loadTree` re-reads disk); `canvas-list-update` loopback refresh — Task 4 _(cross-machine get-latest nudge enrichment deferred — polish)_
 - [x] Hub admin realigned to one-project context (data-model honest), ≤ 28 KB gz — Task 5 _(true repo/branch grouping deferred — hub has no repo/branch data)_
 - [x] 2 DDRs written (DDR-120 model+editing-presence reversing A2; DDR-121 canvas propagation) — Task 6
-- [ ] Security pass: `editing` field + `ai-activity` bridge + `canvas-list-update` sanitized; **F1 re-audited** — Validation 2
-- [ ] No-break exhaustive verify: all existing collab features still work — Validation 3
+- [x] Security pass: `editing` field + `ai-activity` bridge + `canvas-list-update` sanitized; **F1 re-audited** — Validation 2 _(panel: defender PASS; attacker found 1 MEDIUM — CSRF on `/_api/ai/*` now bridges as cross-hub forged presence — **FIXED** (`sameOriginWrite` guard ×3 + regression test); F1 peer-TSX containment **holds** under hot-swap. `.ai/logs/security-reviews/phase-30-live-multiplayer.md`)_
+- [x] No-break exhaustive verify: all existing collab features still work — Validation 3 _(smoke report: core multiplayer + cross-hub sync no regression after the `use-collab` session refactor; F5 avatar-accumulation regression found + fixed in the same pass)_
 
 ---
 
 ## Superseded (original locking plan — kept for provenance)
 
 The original phase-30 shipped **artboard locking** as the mechanism for the un-mergeable TSX code-body lane (per `collab-model-design.md` A2 / H2): a `lock {slug, since}` awareness field, 30 s lease, attributed takeover, stale-lock UX, and a `LockOverlay` with a "Take over" button. **Dropped 2026-06-19** in favour of the soft editing-presence model above, because (a) the user does not want a lock, (b) edits flow through the agent / CSS-layer (not raw human co-typing) so the garbage-merge risk locking guarded against is largely absent, and (c) live TSX co-visibility was already shipped, so the remaining need was *attribution + a soft heads-up*, not arbitration. The DDR (Task 6 #1) records this reversal.
+
+---
+
+## Retro (closed 2026-06-21 via `/flow:done`)
+
+- **Discovery-before-build paid off twice.** Re-planning during `/flow:execute` (locking → soft editing-presence) and confirming "live TSX sync is already shipped" collapsed the scope from a multi-week locking subsystem to *one awareness field + verify*. The lesson for `/plan`: when a phase sits on top of mature infra (Yjs/hub here), spend a discovery pass asserting what's *already on* before writing tasks — the original plan's hardest pieces (locking, a new project-level hub transport) were both unnecessary.
+- **The real bugs only surfaced under a true cross-machine run.** Unit tests (210 dev-server + 66 hub) were all green, yet the two-repo Docker-hub `/flow:scenario` exposed F1 (cold-seed duplication → build-500) and F4 (reload-not-hotswap presence blink) — and the F4 *fix* then introduced F5 (avatar accumulation), caught only by a second two-peer stress pass. Takeaway: for collab/CRDT work, a live multi-peer scenario is not optional polish — it's the gate that finds the class of bug single-process tests structurally can't.
+- **A fix can carry its own regression.** The window-anchored session registry (F5) was a regression *in* the F4 hot-swap fix — re-importing the canvas bundle wiped a module-level map. Hot-swap/HMR changes need a "what module-level state am I assuming survives a re-import?" check.
+- **The security fan-out earned its keep at `/done`, not before.** The MEDIUM (CSRF on `/_api/ai/*`) was a *latent* gap promoted to real by phase-30's new ai-activity→awareness→hub bridge — exactly the kind of "old endpoint, new blast radius" finding a per-change attacker pass catches and a static checklist misses. Fix was 3 one-line guards + a regression test; the DDR-120 F1 re-audit obligation was the right forcing function.
+- **`/done` ran against already-committed work** (resumed after `/flow:bug-fix` had landed F1/F4). The flow handled it cleanly — validate + security + changeset/What's New + handoff + a closeout commit — but it's a reminder that `/done`'s "commit the feature" step is really "ensure everything is committed", and the value at that point is the gates, not the commit.
+- **Environment drift bit the gate, not the code.** The CLI suite failed only because `better-sqlite3` was compiled for an older Node ABI (137 vs 147) after a Node upgrade — a `pnpm rebuild`-class issue, zero phase-30 relation. Worth a `maude doctor` check or a CI note so it's diagnosed in seconds, not mistaken for a regression.
