@@ -474,9 +474,45 @@ for p in $PRIOR_PREVIEW; do
   [ -z "$ROLE" ] && ROLE=$(basename "$p" .tsx | sed 's/components-//; s/-/ /g')
   PREVIEW_LIST+="- $(basename "$p") — $ROLE"$'\n'
 done
+
+# ── Tier-0 prior: the platform SHOWCASE layout (the canonical "DS in use" shell) ──
+# `ui_kits-<platform>-showcase.tsx` is the single highest-leverage specimen the DS
+# scaffold produces — the established arrangement of chrome (nav / sidebar / toolbar /
+# main / status) for a full product surface. Feeding it as a prior is what lets a NEW
+# feature canvas reuse "kde to bude" instead of re-deriving a shell. (Gap fix — pre-this,
+# step 5a globbed only components-*.tsx and the showcase never entered the envelope.)
+# Resolve the canvas platform (mirror step 4's detection; tablet rides the mobile family
+# per _MAPPING.md). Default desktop.
+PLATFORM="desktop"
+grep -qiE -- '--mobile|mobile|ios|android' <<< "$ARGS $NAME" && PLATFORM="mobile"
+grep -qiE -- '--tablet|tablet|ipad'        <<< "$ARGS $NAME" && PLATFORM="mobile"   # tablet → mobile showcase family
+
+# Primary = exact platform; fallback chain = any showcase present (shell reference only);
+# else none. NEVER fatal — a DS may ship desktop-only (no ui_kits-mobile-showcase).
+SHOWCASE_PATH=$(ls "$DS_ROOT/preview/ui_kits-${PLATFORM}-showcase.tsx" 2>/dev/null | head -1)
+SHOWCASE_RESOLUTION="matched ${PLATFORM}"
+if [[ -z "$SHOWCASE_PATH" ]]; then
+  SHOWCASE_PATH=$(ls "$DS_ROOT/preview/ui_kits-"*-showcase.tsx 2>/dev/null | head -1)
+  [[ -n "$SHOWCASE_PATH" ]] \
+    && SHOWCASE_RESOLUTION="fell back to $(basename "$SHOWCASE_PATH") as shell reference (DS ships no ${PLATFORM} showcase)" \
+    || SHOWCASE_RESOLUTION="none — DS ships no showcase"
+fi
+SHOWCASE_INDEX=$(ls "$DS_ROOT/preview/ui_kits-${PLATFORM}-index.tsx" 2>/dev/null | head -1)
+
+SHOWCASE_BLOCK=""
+if [[ -n "$SHOWCASE_PATH" ]]; then
+  # Showcases carry NO .meta.json sidecar — pull the role from the file's
+  # `/** SPECIMEN: … */` header comment (DEMONSTRATES / COMPOSITION lines).
+  SHOWCASE_ROLE=$(grep -m1 -E '^\s*\*\s*(SPECIMEN|DEMONSTRATES|COMPOSITION):' "$SHOWCASE_PATH" 2>/dev/null | sed -E 's/^\s*\*\s*//')
+  [ -z "$SHOWCASE_ROLE" ] && SHOWCASE_ROLE="platform product shell (DS-in-use composition)"
+  SHOWCASE_BLOCK="- $SHOWCASE_PATH — $SHOWCASE_ROLE"$'\n'
+  [ -n "$SHOWCASE_INDEX" ] && SHOWCASE_BLOCK+="- $SHOWCASE_INDEX — surface catalog/launcher (secondary prior)"$'\n'
+else
+  SHOWCASE_BLOCK="(none — DS ships no showcase; compose the shell from the DS readme + component priors)"$'\n'
+fi
 ```
 
-The `PRIORS_LIST` and `PREVIEW_LIST` strings are interpolated verbatim into the envelope's `## Pattern priors` section (step 5b heredoc). If both are empty, write a one-line note ("First canvas in this DS — no priors to lift from.") and continue.
+The `PRIORS_LIST`, `PREVIEW_LIST`, and `SHOWCASE_BLOCK` strings are interpolated verbatim into the envelope's `## Pattern priors` section (step 5b heredoc) — `SHOWCASE_BLOCK` is the **Tier-0** subsection (above canvases + components). `$SHOWCASE_RESOLUTION` is carried to the envelope footer + step-12 print so the user sees whether shell-grounding applied or fell back. If `PRIORS_LIST` + `PREVIEW_LIST` are both empty AND `SHOWCASE_BLOCK` is the "(none…)" marker, write the one-line note ("First canvas in this DS — no priors to lift from.") and continue.
 
 #### 5b. Persist envelope as audit artifact
 
@@ -506,6 +542,11 @@ For any compositional element (card, panel, snippet, toolbar, sidebar, modal, bu
 
 The `design-system-keeper` agent (step 9.5) audits compliance with this directive after generation. Surfaced reinventions feed into the critic panel as additional context.
 
+### Platform showcase layout — the canonical shell (adopt this skeleton)
+<SHOWCASE_BLOCK from step 5a — resolved `ui_kits-<platform>-showcase.tsx` path + role from its header comment, plus the `-index` catalog as a secondary line. If empty, the literal "(none — …)" marker.>
+
+This specimen is the DS's authoritative <platform> product shell — the established arrangement of chrome (nav / sidebar / toolbar / main / status). For any **full-screen surface** in this canvas, ADOPT its spatial skeleton and chrome material: same region placement, same shell framing, same hairline/elevation/radius treatment. Do NOT re-derive a new product shell. Reinventing the shell is the exception, not the default — leave a one-line JSX comment explaining what this surface needs that the showcase shell couldn't give. (If the line above reads "(none …)", this DS ships no showcase for this platform — compose the shell freely from the DS readme + the component priors below.) This is **reference, not a wireframe** — adopt the skeleton, but you still own element-level decisions and the signature moment; do not transcribe the showcase region-by-region.
+
 ### Existing canvases (same DS, with class roots)
 <for each .tsx in <DESIGN_ROOT>/<NEW_CANVAS_DIR>/ matching this DS, NOT the new canvas — see step 5 collection recipe>
 - <path> (<.meta.json.subtitle>) — class roots: <comma-separated list extracted via the recipe>
@@ -529,6 +570,7 @@ The `design-system-keeper` agent (step 9.5) audits compliance with this directiv
 - rootClass: <ROOT_CLASS>
 - tokens: <TOKENS_REL>
 - platform: <mobile | desktop>
+- platform_showcase: <abs path to ui_kits-<platform>-showcase.tsx, or "none">   ← from step 5a; the shell skeleton frontend-design adopts for full-screen surfaces ($SHOWCASE_RESOLUTION names whether it matched or fell back)
 - opt_out_scope: <palette | aesthetic | full>   ← from step 4, propagated into the generation prompt so the generator knows how much DS latitude it has
 - ux_research_payload: <abs path or empty>      ← from step 4.5, passed to frontend-design as a reference bundle
 
@@ -767,6 +809,7 @@ canvas_path:             "<abs path to TARGET_PATH>"
 ds_root:                 "<abs path to DS_ROOT>"
 existing_canvases:       <EXISTING_JSON>
 preview_components_root: "<abs path to DS_ROOT/preview>"
+platform_showcase_path:  "<abs path to SHOWCASE_PATH from step 5a, or empty if none>"
 token_guide_path:        "<abs path to DS_ROOT/README.md>"
 output_path:             "<abs path to KEEPER_OUT>"
 iter_n:                  1
@@ -895,6 +938,7 @@ For a new canvas:
   Mode: {--perfect (default) | --perfect-iter N | --quick | --no-critic}
   Artboard density: {N (per brief) | N (chosen via AskUserQuestion) | N (Auto Mode default — brief did not name a count)} {if N ≥ 8: "— pan/zoom may stutter on trackpad; /design:edit \"reduce to M\" if heavy"}
   Opt-out scope: {palette (default) | aesthetic | full} {if inferred from brief: "(inferred from brief — user confirmed via AskUserQuestion)"}
+  Shell grounding: {$SHOWCASE_RESOLUTION — e.g. "matched desktop (ui_kits-desktop-showcase.tsx)" | "fell back to ui_kits-desktop-showcase.tsx as shell reference (DS ships no mobile showcase)" | "none — DS ships no showcase"}
   UX research: {cache hit — reusing <date> | fresh — <N>s wall-clock | fallback (LLM-knowledge) — review IA | unavailable — generation on DS + brief only}
   Critic panel ({default = signature-moment + design + frontend + a11y; --quick = signature-moment only;
                 --perfect --all = full set; --no-critic = (none)}; scope-downgraded blockers tagged as warnings):

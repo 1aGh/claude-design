@@ -808,8 +808,12 @@ Read the project's design system before generating:
 
 DO NOT pick fonts, colors, radii, or shadows. Use the CSS variables defined in the tokens file. Use only fonts the tokens CSS already imports.
 
-Reference layouts (read at least one for the wrapper pattern):
+Reference — WRAPPER pattern (read at least one — the canvas-lib frame: `DesignCanvas` / `DCSection` / `DCArtboard`):
 {matched existing canvas paths, picked by similarity}
+
+Reference — PRODUCT SHELL (the established chrome layout — where nav / sidebar / toolbar / main / status go):
+{designRoot}/system/{ds}/preview/ui_kits-{platform}-showcase.tsx
+For any full-screen surface, ADOPT this showcase's spatial skeleton + chrome material instead of inventing a new shell — it is the DS's canonical "DS in use" composition. Reinvent the shell only with a one-line JSX comment justifying it. (If no `ui_kits-{platform}-showcase` exists for this platform, fall back to any showcase the DS ships as a chrome reference, or compose the shell from the DS readme. This is reference, not a wireframe — adopt the skeleton, keep ownership of element-level decisions and the signature moment.)
 
 Output: a single self-contained TSX file at <target_path>. The file MUST:
 1. Default-exported React component (`export default function <Name>() { … }`).
@@ -844,6 +848,7 @@ Generative skills (frontend-design, design-system) produce best work when given 
 ✅ **DO:**
 - Set the vibe ("studio-grade onboarding, light theme, breathable, editorial")
 - Reference 1–2 existing canvases ("look at `<Mobile.tsx>` for the bezel pattern, `<Studio.tsx>` for grid")
+- Point a full-screen surface at the platform showcase as its shell skeleton ("adopt the `ui_kits-desktop-showcase` chrome arrangement") — a single pointer, NOT a region-by-region transcription
 - List 2–3 hard requirements (tokens link, body class, artboard count target)
 - State the **aspiration directives 9–14 verbatim** — those are non-negotiable quality drivers
 - Identify ONE signature moment intent per screen if the brief implies it ("welcome must have a memorable compositional anchor")
