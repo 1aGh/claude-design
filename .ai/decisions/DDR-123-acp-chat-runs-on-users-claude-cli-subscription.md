@@ -56,6 +56,17 @@ Research this session (primary sources, not blogs) found phase-7's premise wrong
 - **Declare `claude` as a soft/optional dependency** in `plugins/design/dependencies.json` (type `cli`, hardness `soft`, used-by the chat panel) so `maude doctor` reports it without hard-failing non-chat use.
 - **Transcript at `.design/_chat/<slug>.jsonl`** stays gitignored — add to `cli/lib/gitignore-block.mjs`, the repo `.gitignore`, and `isMaudeRuntimeState` (the DDR-115 three-list rule).
 
+## Addendum (2026-06-22, Task 2 implementation) — package names
+
+Both Zed npm packages this DDR named were **deprecated and renamed to the `@agentclientprotocol/*` org** between this DDR (2026-06-21) and the Task-2 build (2026-06-22). Use the maintained names:
+
+| This DDR named (now deprecated) | Use instead |
+| --- | --- |
+| `@zed-industries/agent-client-protocol` (ACP client) | **`@agentclientprotocol/sdk`** — `ClientSideConnection` + `ndJsonStream` + `PROTOCOL_VERSION` live here. Pin to the adapter's version (`0.28.1`) for protocol parity. |
+| `@zed-industries/claude-code-acp` (adapter) | **`@agentclientprotocol/claude-agent-acp`** (`^0.49.0`, bin `claude-agent-acp`) |
+
+The adapter pulls `@anthropic-ai/claude-agent-sdk` **transitively** — this is the adapter's own internal driver for the user's `claude` CLI, NOT a Maude embed of the SDK, so it does not trip the restricted-path concern above: the compliance guarantee still lives entirely in `scrubAgentEnv` (guardrail #1), which operates on the spawned child's env regardless of how many layers sit between the bridge and `claude -p`. Implemented in `apps/studio/acp/` (`env.ts` scrub · `probe.ts` detection · `bridge.ts` `ClientSideConnection` over a `Bun.spawn` adapter · `index.ts` per-`/_ws/acp`-socket manager).
+
 ## The lesson (for future agents)
 
 For "use my Claude subscription, not API billing" in a third-party app: **embedding the Agent SDK with an OAuth token is a ToS trap** (Anthropic steers the SDK to API keys and forbids third-party products offering claude.ai login). The compliant lane is the **inverse of holding the credential** — spawn the user's *own* installed, already-logged-in `claude` CLI (directly, or via an ACP adapter that does), scrub `ANTHROPIC_API_KEY` so precedence falls through to the subscription, and never present your own sign-in. The credential stays owned by the user's Claude Code install; your app is just the ACP client. This is the Zed-sanctioned pattern, and it is materially different from the SDK-embed path that the first research pass wrongly conflated it with.

@@ -3,6 +3,7 @@
 
 import type { ServerWebSocket, WebSocketHandler } from 'bun';
 
+import type { Acp } from './acp/index.ts';
 import type { Activity } from './activity.ts';
 import type { Api } from './api.ts';
 import type { Collab, RoomConn } from './collab/index.ts';
@@ -36,6 +37,15 @@ export type WsData =
       id: string;
       remote: string;
       kind: 'canvas-hmr';
+    }
+  | {
+      // Phase 31 (DDR-123) — ACP chat bridge socket. Main origin ONLY,
+      // loopback-guarded at upgrade (server.ts); NEVER opened from the canvas
+      // origin. Carries the JSON chat protocol (prompt / cancel ↔ update /
+      // turn-end), bridged to the user's own `claude` via createAcp.
+      id: string;
+      remote: string;
+      kind: 'acp';
     };
 
 /**
@@ -82,7 +92,8 @@ export function createWs(
   api: Api,
   inspect: Inspect,
   collab: Collab,
-  activity: Activity
+  activity: Activity,
+  acp: Acp
 ): Ws {
   const clients = new Set<ServerWebSocket<WsData>>();
 
@@ -204,6 +215,10 @@ export function createWs(
         clients.add(ws);
         return;
       }
+      if (ws.data.kind === 'acp') {
+        acp.onOpen(ws);
+        return;
+      }
       clients.add(ws);
       // Snapshot carries the inspector state AND the activity map so a client
       // opening mid-edit seeds its overlay state (Phase 13). Inspector-origin
@@ -212,6 +227,10 @@ export function createWs(
       send(ws, { type: 'snapshot', state: inspect.state, activity: activity.state });
     },
     async close(ws) {
+      if (ws.data.kind === 'acp') {
+        acp.onClose(ws);
+        return;
+      }
       if (ws.data.kind === 'collab') {
         const binding = collabConns.get(ws.data.id);
         if (binding) {
@@ -232,6 +251,10 @@ export function createWs(
       // HMR-only canvas-origin socket: never accepts inbound messages (the
       // canvas iframe only listens for canvas-hmr; it never sends).
       if (ws.data.kind === 'canvas-hmr') return;
+      if (ws.data.kind === 'acp') {
+        acp.onMessage(ws, raw);
+        return;
+      }
       if (ws.data.kind === 'collab') {
         const binding = collabConns.get(ws.data.id);
         if (!binding) return;

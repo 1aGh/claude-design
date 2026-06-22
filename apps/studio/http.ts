@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, watch } from 'node:fs';
 import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 
+import { probeAcpAvailability } from './acp/probe.ts';
 import type { Api } from './api.ts';
 import { buildCanvasModule } from './canvas-build.ts';
 import { canvasLibPath } from './canvas-lib-resolver.ts';
@@ -559,6 +560,14 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       }),
 
     '/_active': () => Response.json(inspect.state),
+
+    // Phase 31 (DDR-123) — ACP chat readiness. Cheap, side-effect-free probe
+    // (is the adapter present + is `claude` on PATH); no subprocess spawned.
+    // MAIN-ORIGIN ONLY — absent from CANVAS_SAFE_API + startCanvasServer routes,
+    // so the untrusted canvas iframe is 403'd. The native shell reads this to
+    // decide between the enabled panel and the not-connected explainer.
+    '/_api/acp/status': () =>
+      Response.json(probeAcpAvailability(), { headers: { 'Cache-Control': 'no-store' } }),
 
     // Phase 9 Task 8 — offline-mode banner poll fallback. The linked-mode sync
     // runtime writes `_sync.json`; browser tabs also get live pushes over the

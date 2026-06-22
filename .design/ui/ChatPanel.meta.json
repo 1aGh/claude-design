@@ -6,6 +6,8 @@
   "designSystem": "maude",
   "opt_out_scope": "palette",
   "kind": "canvas",
+  "status": "handed-off",
+  "handoff": null,
   "brief_sha": "6eebca47",
   "sections": [
     {

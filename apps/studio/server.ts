@@ -16,6 +16,7 @@
 
 import { spawn } from 'node:child_process';
 
+import { createAcp } from './acp/index.ts';
 import { createActivity } from './activity.ts';
 import { createApi } from './api.ts';
 import { bootSelfHeal } from './boot-self-heal.ts';
@@ -96,7 +97,10 @@ const gitLifecycle = createGitLifecycle(ctx, collab.registry);
 // Phase 13 / DDR-029 — fs-watch-driven canvas activity overlay. Subscribes to
 // `fs:any` and emits `activity:change`; ws.ts forwards it to canvas iframes.
 const activity = createActivity(ctx);
-const ws = createWs(ctx, api, inspect, collab, activity);
+// Phase 31 (DDR-123) — ACP chat bridge manager. Owns one claude-agent-acp
+// subprocess per /_ws/acp socket; main-origin + loopback only (wired below).
+const acp = createAcp(ctx, api, inspect);
+const ws = createWs(ctx, api, inspect, collab, activity, acp);
 const http = createHttp(ctx, api, inspect, aiActivity);
 const fsWatch = createFsWatch(ctx);
 
@@ -150,6 +154,26 @@ function startServer(port: number): BunServer {
             remote: req.headers.get('x-forwarded-for') ?? '127.0.0.1',
             kind: 'collab',
             slug: collabSlug,
+          },
+        });
+        if (ok) return undefined as unknown as Response;
+        return new Response('Upgrade failed', { status: 400 });
+      }
+
+      // Phase 31 (DDR-123) — ACP chat bridge WS. Main origin ONLY (this server,
+      // never startCanvasServer) and loopback-guarded like collab: the bridge
+      // spawns the user's `claude` and can drive file edits, so the untrusted
+      // canvas origin and remote hosts must never reach it. Checked BEFORE the
+      // generic `/_ws` inspector branch since `/_ws/acp`.startsWith('/_ws').
+      if (pathname === '/_ws/acp') {
+        if (!isLoopbackHost(req.headers.get('host'))) {
+          return new Response('ACP chat is loopback-only', { status: 403 });
+        }
+        const ok = srv.upgrade(req, {
+          data: {
+            id: crypto.randomUUID(),
+            remote: req.headers.get('x-forwarded-for') ?? '127.0.0.1',
+            kind: 'acp',
           },
         });
         if (ok) return undefined as unknown as Response;
