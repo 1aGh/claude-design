@@ -13,7 +13,7 @@ jobs:
     name: Quality (lint+test+links)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0    # build-stats.mjs reads git tags + shortlog + per-file log
 
