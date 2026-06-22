@@ -27,7 +27,10 @@ acp
         sessionUpdate: 'agent_message_chunk',
         content: {
           type: 'text',
-          text: `apiKey=${process.env.ANTHROPIC_API_KEY ?? '<unset>'}`,
+          text:
+            `apiKey=${process.env.ANTHROPIC_API_KEY ?? '<unset>'} ` +
+            `model=${process.env.ANTHROPIC_MODEL ?? '<unset>'} ` +
+            `thinking=${process.env.MAX_THINKING_TOKENS ?? '<unset>'}`,
         },
       },
     });

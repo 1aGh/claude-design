@@ -70,6 +70,35 @@ const SUGGESTIONS = [
   '/design:new Pricing "a 3-tier pricing page"',
 ];
 
+// Model — '' = the user's own `claude` default; the rest are CLI aliases passed
+// as ANTHROPIC_MODEL. Effort → extended-thinking budget (server maps the label).
+const MODELS = [
+  { value: '', label: 'Default model' },
+  { value: 'opus', label: 'Opus' },
+  { value: 'sonnet', label: 'Sonnet' },
+  { value: 'haiku', label: 'Haiku' },
+];
+const EFFORTS = [
+  { value: 'fast', label: 'Fast' },
+  { value: 'balanced', label: 'Balanced' },
+  { value: 'thorough', label: 'Thorough' },
+];
+
+function safeStorageGet(key, fallback) {
+  try {
+    return localStorage.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+function safeStorageSet(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* private mode / unavailable — non-fatal */
+  }
+}
+
 function prettyCanvas(path) {
   if (!path) return null;
   const file = path.split('/').pop() || path;
@@ -186,15 +215,41 @@ function QuickActions() {
   );
 }
 
-function Composer({ activeCanvas }) {
+function Composer({ activeCanvas, model, setModel, effort, setEffort }) {
   const canvasName = prettyCanvas(activeCanvas);
   return (
     <div className="chat-composer">
-      {canvasName ? (
-        <div className="chat-ctx">
-          Editing: <b>{canvasName}</b>
-        </div>
-      ) : null}
+      <div className="chat-controls">
+        {canvasName ? (
+          <div className="chat-ctx">
+            Editing: <b>{canvasName}</b>
+          </div>
+        ) : (
+          <span className="chat-ctx-spacer" />
+        )}
+        <label className="chat-select-wrap" aria-label="Model">
+          <select className="chat-select" value={model} onChange={(e) => setModel(e.target.value)}>
+            {MODELS.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="chat-select-wrap" aria-label="Effort">
+          <select
+            className="chat-select"
+            value={effort}
+            onChange={(e) => setEffort(e.target.value)}
+          >
+            {EFFORTS.map((x) => (
+              <option key={x.value} value={x.value}>
+                {x.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       <ThreadPrimitive.If running={false}>
         <ComposerPrimitive.Root className="chat-input-wrap">
           <ComposerPrimitive.Input
@@ -271,7 +326,31 @@ export default function ChatPanel({ activeCanvas, width, resizing, onClose, hidd
     canvasRef.current = activeCanvas;
   }, [activeCanvas]);
 
-  const adapter = useMemo(() => makeAcpAdapter(conn, () => canvasRef.current), [conn]);
+  // Model + effort — persisted across sessions; read live by the adapter (refs,
+  // like the active canvas) so changing them mid-session re-spawns on next send.
+  const [model, setModel] = useState(() => safeStorageGet('maude-acp-model', ''));
+  const [effort, setEffort] = useState(() => safeStorageGet('maude-acp-effort', 'balanced'));
+  const modelRef = useRef(model);
+  const effortRef = useRef(effort);
+  useEffect(() => {
+    modelRef.current = model;
+    safeStorageSet('maude-acp-model', model);
+  }, [model]);
+  useEffect(() => {
+    effortRef.current = effort;
+    safeStorageSet('maude-acp-effort', effort);
+  }, [effort]);
+
+  const adapter = useMemo(
+    () =>
+      makeAcpAdapter(
+        conn,
+        () => canvasRef.current,
+        () => modelRef.current || null,
+        () => effortRef.current
+      ),
+    [conn]
+  );
   const runtime = useLocalRuntime(adapter);
 
   const [status, setStatus] = useState({ available: null, reason: undefined, claudeMissing: false });
@@ -352,7 +431,13 @@ export default function ChatPanel({ activeCanvas, width, resizing, onClose, hidd
                   <ThreadPrimitive.Messages components={{ UserMessage, AssistantMessage }} />
                 </ThreadPrimitive.Viewport>
                 <QuickActions />
-                <Composer activeCanvas={activeCanvas} />
+                <Composer
+                  activeCanvas={activeCanvas}
+                  model={model}
+                  setModel={setModel}
+                  effort={effort}
+                  setEffort={setEffort}
+                />
               </ThreadPrimitive.Root>
             </div>
           </AssistantRuntimeProvider>

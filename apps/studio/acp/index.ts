@@ -12,8 +12,10 @@ import type { Api } from '../api.ts';
 import type { Context } from '../context.ts';
 import type { Inspect } from '../inspect.ts';
 import type { WsData } from '../ws.ts';
-import { AcpBridge } from './bridge.ts';
+import { type AcpEffort, AcpBridge } from './bridge.ts';
 import { probeAcpAvailability } from './probe.ts';
+
+const VALID_EFFORT = new Set(['fast', 'balanced', 'thorough']);
 
 /**
  * Browser → server frames: `{ t: 'prompt', text, canvas? }`, `{ t: 'cancel' }`.
@@ -48,7 +50,9 @@ export function createAcp(ctx: Context, api: Api, inspect: Inspect): Acp {
   async function handlePrompt(
     ws: ServerWebSocket<WsData>,
     text: string,
-    canvas: string | null
+    canvas: string | null,
+    model: string | null,
+    effort: AcpEffort
   ): Promise<void> {
     let bridge = bridges.get(ws.data.id);
     if (!bridge) {
@@ -60,6 +64,7 @@ export function createAcp(ctx: Context, api: Api, inspect: Inspect): Acp {
       bridges.set(ws.data.id, bridge);
     }
     bridge.setTranscriptPath(transcriptPathFor(canvas));
+    bridge.setConfig(model, effort);
     try {
       await bridge.ensureStarted();
       send(ws, { t: 'connected', sessionId: bridge.sessionId });
@@ -84,12 +89,23 @@ export function createAcp(ctx: Context, api: Api, inspect: Inspect): Acp {
         return;
       }
       if (!msg || typeof msg !== 'object') return;
-      const frame = msg as { t?: unknown; text?: unknown; canvas?: unknown };
+      const frame = msg as {
+        t?: unknown;
+        text?: unknown;
+        canvas?: unknown;
+        model?: unknown;
+        effort?: unknown;
+      };
 
       if (frame.t === 'prompt' && typeof frame.text === 'string') {
         const canvas =
           typeof frame.canvas === 'string' && frame.canvas ? frame.canvas : inspect.state.active;
-        void handlePrompt(ws, frame.text, canvas);
+        const model = typeof frame.model === 'string' && frame.model ? frame.model : null;
+        const effort: AcpEffort =
+          typeof frame.effort === 'string' && VALID_EFFORT.has(frame.effort)
+            ? (frame.effort as AcpEffort)
+            : 'balanced';
+        void handlePrompt(ws, frame.text, canvas, model, effort);
       } else if (frame.t === 'cancel') {
         void bridges.get(ws.data.id)?.cancel();
       }

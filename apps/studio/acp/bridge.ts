@@ -37,6 +37,19 @@ export interface AcpBridgeOptions {
 
 type Spawned = ReturnType<typeof Bun.spawn>;
 
+/**
+ * Effort → extended-thinking budget, fed to the adapter as `MAX_THINKING_TOKENS`
+ * (it maps 0 → thinking disabled, a positive int → an enabled budget). `balanced`
+ * leaves it unset so the agent uses Claude Code's own default.
+ */
+const EFFORT_THINKING_TOKENS: Record<string, number | null> = {
+  fast: 0,
+  balanced: null,
+  thorough: 31999,
+};
+
+export type AcpEffort = keyof typeof EFFORT_THINKING_TOKENS;
+
 /** Pick the most-permissive allow option, or null if the agent offered none. */
 function pickAllowOption(params: RequestPermissionRequest) {
   const options = params.options ?? [];
@@ -55,6 +68,13 @@ export class AcpBridge {
   private starting: Promise<void> | null = null;
   /** Per-canvas transcript file; mutable because the active canvas can change. */
   private transcriptPath: string | null = null;
+  // Model + effort are env-at-spawn (ANTHROPIC_MODEL / MAX_THINKING_TOKENS), so a
+  // change re-spawns the adapter. `desired*` is what the UI asked for; `active*`
+  // is what the running session was spawned with.
+  private desiredModel: string | null = null;
+  private desiredEffort: AcpEffort = 'balanced';
+  private activeModel: string | null = null;
+  private activeEffort: AcpEffort = 'balanced';
 
   constructor(private readonly opts: AcpBridgeOptions) {}
 
@@ -69,6 +89,17 @@ export class AcpBridge {
 
   setTranscriptPath(path: string | null): void {
     this.transcriptPath = path;
+  }
+
+  /** Desired model (alias/id, or null for the user's default) + effort. Applied
+   *  on the next prompt — re-spawning the adapter only if it actually changed. */
+  setConfig(model: string | null, effort: AcpEffort): void {
+    this.desiredModel = model;
+    this.desiredEffort = effort in EFFORT_THINKING_TOKENS ? effort : 'balanced';
+  }
+
+  private configChanged(): boolean {
+    return this.desiredModel !== this.activeModel || this.desiredEffort !== this.activeEffort;
   }
 
   /** Spawn + handshake exactly once; concurrent callers share the same promise. */
@@ -91,11 +122,19 @@ export class AcpBridge {
       throw new Error("Claude Code isn't connected — run `claude` in a terminal and `/login`.");
     }
 
+    // DDR-123 guardrail #1 — strip ANTHROPIC_API_KEY so the child stays on the
+    // user's subscription. This is the whole compliance story; do not weaken it.
+    const env = scrubAgentEnv(process.env);
+    // Model + effort selection — config, NOT credentials, so they're added back.
+    this.activeModel = this.desiredModel;
+    this.activeEffort = this.desiredEffort;
+    if (this.activeModel) env.ANTHROPIC_MODEL = this.activeModel;
+    const thinking = EFFORT_THINKING_TOKENS[this.activeEffort];
+    if (thinking !== null && thinking !== undefined) env.MAX_THINKING_TOKENS = String(thinking);
+
     const proc = Bun.spawn([resolveAgentRuntime(), adapterEntry], {
       cwd: this.opts.repoRoot,
-      // DDR-123 guardrail #1 — strip ANTHROPIC_API_KEY so the child stays on the
-      // user's subscription. This is the whole compliance story; do not weaken it.
-      env: scrubAgentEnv(process.env),
+      env,
       stdin: 'pipe',
       stdout: 'pipe',
       stderr: 'pipe',
@@ -160,6 +199,11 @@ export class AcpBridge {
 
   /** Send a user turn and resolve when it completes. Spawns the agent on first call. */
   async prompt(text: string): Promise<{ stopReason: PromptResponse['stopReason'] }> {
+    // Model/effort are env-at-spawn — if the user changed them since the live
+    // session started, tear it down so ensureStarted re-spawns with the new env.
+    if (this.session && this.configChanged()) {
+      await this.stop();
+    }
     await this.ensureStarted();
     const conn = this.conn;
     const sessionId = this.session;

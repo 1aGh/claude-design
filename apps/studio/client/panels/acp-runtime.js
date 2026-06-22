@@ -67,7 +67,7 @@ export function createAcpConnection() {
      * Drive one prompt turn. Async-generates the bridge's `update` frames until
      * `turn-end`; throws on `error`; sends `cancel` when `abortSignal` aborts.
      */
-    async *prompt(text, canvas, abortSignal) {
+    async *prompt(text, canvas, abortSignal, model, effort) {
       await ensureOpen();
       const queue = [];
       let wake = null;
@@ -92,7 +92,15 @@ export function createAcpConnection() {
       };
       abortSignal?.addEventListener('abort', cancel, { once: true });
       try {
-        ws.send(JSON.stringify({ t: 'prompt', text, canvas: canvas || undefined }));
+        ws.send(
+          JSON.stringify({
+            t: 'prompt',
+            text,
+            canvas: canvas || undefined,
+            model: model || undefined,
+            effort: effort || undefined,
+          })
+        );
         for (;;) {
           while (queue.length) yield queue.shift();
           if (failure) throw new Error(failure);
@@ -144,7 +152,7 @@ function safeJson(value) {
  * parts, preserving the order in which the agent emits them. `available_commands_update`
  * and `usage_update` are intentionally dropped (chrome noise, not chat content).
  */
-export function makeAcpAdapter(conn, getCanvas) {
+export function makeAcpAdapter(conn, getCanvas, getModel, getEffort) {
   return {
     async *run({ messages, abortSignal }) {
       const text = lastUserText(messages);
@@ -153,7 +161,13 @@ export function makeAcpAdapter(conn, getCanvas) {
       const parts = [];
       const toolIndex = new Map();
 
-      for await (const frame of conn.prompt(text, getCanvas(), abortSignal)) {
+      for await (const frame of conn.prompt(
+        text,
+        getCanvas(),
+        abortSignal,
+        getModel?.(),
+        getEffort?.()
+      )) {
         if (frame.t !== 'update') continue;
         const u = frame.update;
         switch (u.sessionUpdate) {

@@ -46,6 +46,32 @@ describe('AcpBridge — round-trip + subscription guardrail', () => {
     }
   }, 15000);
 
+  test('setConfig passes model + effort to the child env (ANTHROPIC_MODEL / MAX_THINKING_TOKENS)', async () => {
+    process.env.MAUDE_ACP_ADAPTER_ENTRY = FIXTURE;
+    process.env.MAUDE_ACP_RUNTIME = process.execPath;
+    process.env.MAUDE_CLAUDE_BIN = process.execPath;
+
+    const updates: unknown[] = [];
+    const bridge = new AcpBridge({ repoRoot: process.cwd(), onUpdate: (u) => updates.push(u) });
+    try {
+      bridge.setConfig('opus', 'thorough');
+      await bridge.prompt('hi');
+      const first = JSON.stringify(updates);
+      expect(first).toContain('model=opus');
+      expect(first).toContain('thinking=31999');
+
+      // Changing the config re-spawns with the new env on the next prompt.
+      updates.length = 0;
+      bridge.setConfig(null, 'fast');
+      await bridge.prompt('again');
+      const second = JSON.stringify(updates);
+      expect(second).toContain('model=<unset>'); // null model → ANTHROPIC_MODEL not set
+      expect(second).toContain('thinking=0'); // fast → thinking disabled
+    } finally {
+      await bridge.stop();
+    }
+  }, 15000);
+
   test('a second prompt reuses the same live session', async () => {
     process.env.MAUDE_ACP_ADAPTER_ENTRY = FIXTURE;
     process.env.MAUDE_ACP_RUNTIME = process.execPath;
