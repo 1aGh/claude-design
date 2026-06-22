@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-12T16:41:37.271Z",
+  "generated": "2026-06-22T11:39:40.348Z",
   "currentPhase": null,
   "phases": [
     {
@@ -186,6 +186,17 @@
       "date": null,
       "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, the binary-resolution path (DDR-009/045/084), the maude design <verb> dispatcher (DDR-062), npm files ship...",
       "planPath": ".ai/plans/archive/feature-runtime-restructure-apps-packages.md",
+      "archived": true,
+      "phaseKey": null
+    },
+    {
+      "id": "feature-showcase-grounded-canvas-generation",
+      "title": "Feature: Showcase-grounded canvas generation (`/design:new` + `/design:edit` reuse platform showcase layouts)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is a design-plugin spec (markdown) change — no runtime code, no tests, no build s...",
+      "planPath": ".ai/plans/archive/feature-showcase-grounded-canvas-generation.md",
       "archived": true,
       "phaseKey": null
     },
