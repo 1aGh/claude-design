@@ -169,6 +169,11 @@ export function createWs(
     broadcast({ type: 'canvas-list-update', payload })
   );
 
+  // Phase 31 (DDR-123) — `/design:chat` → `maude design chat-open` → POST
+  // /_api/acp/focus emits this; the shell (app.jsx, native-only) opens the
+  // Assistant panel. Inspector clients only — same-origin shell, like the rest.
+  ctx.bus.on('acp-focus', () => broadcast({ type: 'acp-focus' }));
+
   // HMR broadcaster — turns fs:any change events into `canvas-hmr` messages.
   // The iframe-side client (in _shell.html) decides reload strategy from `mode`.
   // Uses broadcastHmr so the segregated canvas origin's HMR-only sockets get it.

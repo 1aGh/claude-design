@@ -13,6 +13,7 @@ import { createRoot } from 'react-dom/client';
 // bundle — no React, no input-router. See the tool-cursor handler below.
 import { resolveToolCursor } from '../canvas-cursors.ts';
 import { canvasUrl } from './canvas-url.js';
+import ChatPanel from './panels/ChatPanel.jsx';
 import DiffView from './panels/DiffView.jsx';
 import GitPanel from './panels/GitPanel.jsx';
 import IdentityBar from './panels/IdentityBar.jsx';
@@ -2366,6 +2367,8 @@ function Menubar({
   inspectorTab,
   onToggleInspector,
   onOpenLayers,
+  assistantOpen,
+  onToggleAssistant,
   onNewCanvas,
   onOpenExport,
   onReload,
@@ -2420,6 +2423,18 @@ function Menubar({
       checked: inspectorOpen,
       disabled: false,
     },
+    // Phase 31 (DDR-123) — native-only ACP chat sidepanel.
+    ...(isNativeApp()
+      ? [
+          {
+            id: 'assistant',
+            label: 'Assistant',
+            shortcut: '⌘ ⇧ A',
+            checked: assistantOpen,
+            disabled: false,
+          },
+        ]
+      : []),
     {
       id: 'annotate',
       label: 'Annotations',
@@ -2572,6 +2587,7 @@ function Menubar({
             else if (id === 'hidden') onToggleShowHidden();
             else if (id === 'annotate') onToggleAnnotations();
             else if (id === 'inspector') onToggleInspector();
+            else if (id === 'assistant') onToggleAssistant?.();
             else if (id === 'layers') onOpenLayers?.();
             else if (id === 'minimap') onToggleMinimap?.();
             else if (id === 'zoomctl') onToggleZoomCtl?.();
@@ -5518,6 +5534,8 @@ function App() {
   // The palette (T4) drives them; the dialog (T5) + panel (T6) consume them.
   const [exportDialog, setExportDialog] = useState(null); // null | { mode: 'export'|'handoff', scope? }
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  // Phase 31 (DDR-123) — the native ACP chat sidepanel (right dock, native-only).
+  const [assistantOpen, setAssistantOpen] = useState(false);
   // Inspector tab is lifted so View ▸ Layers can open the panel ON the Layers
   // tab (the menu item sat disabled as "Phase 12" long after the tab shipped).
   const [inspectorTab, setInspectorTab] = useState('inspect');
@@ -5532,15 +5550,17 @@ function App() {
     setChangesOpen(which === 'changes');
     setInspectorOpen(which === 'inspector');
     setCommentsPanelOpen(which === 'comments');
+    setAssistantOpen(which === 'assistant');
   }, []);
   // Functional updates so this is stale-closure-safe inside the keydown /
-  // postMessage listeners; opening always clears the two siblings.
+  // postMessage listeners; opening always clears the sibling panels.
   const toggleRightPanel = useCallback((which) => {
     if (which === 'inspector') {
       setInspectorOpen((v) => {
         if (!v) {
           setChangesOpen(false);
           setCommentsPanelOpen(false);
+          setAssistantOpen(false);
         }
         return !v;
       });
@@ -5549,12 +5569,23 @@ function App() {
         if (!v) {
           setChangesOpen(false);
           setInspectorOpen(false);
+          setAssistantOpen(false);
         }
         return !v;
       });
     } else if (which === 'changes') {
       setChangesOpen((v) => {
         if (!v) {
+          setInspectorOpen(false);
+          setCommentsPanelOpen(false);
+          setAssistantOpen(false);
+        }
+        return !v;
+      });
+    } else if (which === 'assistant') {
+      setAssistantOpen((v) => {
+        if (!v) {
+          setChangesOpen(false);
           setInspectorOpen(false);
           setCommentsPanelOpen(false);
         }
@@ -5919,6 +5950,11 @@ function App() {
             // the branch-scoped tree so other open tabs reflect it without a
             // reload. Cross-machine peers get a new canvas via git "Get latest".
             loadTree();
+          } else if (m.type === 'acp-focus') {
+            // Phase 31 (DDR-123) — `/design:chat` from the terminal asked us to
+            // surface the native ACP chat sidepanel. Native-only (the panel
+            // doesn't exist on the web surface).
+            if (isNativeApp()) openRightPanel('assistant');
           } else if (m.type === 'git-status' && m.payload) {
             // Phase 27 (E2) Task 5 — live dirty-state. Updates the Changes-panel
             // count + tree M/A/D badges reactively, no polling.
@@ -6397,6 +6433,7 @@ function App() {
         // ⌘R / ⌘⇧I / ⌘⇧M / ⌘⇧E / ⌘⇧H behave identically wherever focus is.
         if (m.id === 'reload') reloadActive();
         else if (m.id === 'inspector') toggleRightPanel('inspector');
+        else if (m.id === 'assistant' && isNativeApp()) toggleRightPanel('assistant');
         else if (m.id === 'comments') toggleRightPanel('comments');
         else if (m.id === 'export') setExportDialog({ mode: 'export' });
         else if (m.id === 'handoff') setExportDialog({ mode: 'handoff' });
@@ -6664,6 +6701,12 @@ function App() {
       if (meta && e.shiftKey && (e.key === 'i' || e.key === 'I')) {
         e.preventDefault();
         toggleRightPanel('inspector');
+        return;
+      }
+      // Phase 31 (DDR-123) — Cmd+Shift+A opens the native ACP chat sidepanel.
+      if (meta && e.shiftKey && (e.key === 'a' || e.key === 'A') && isNativeApp()) {
+        e.preventDefault();
+        toggleRightPanel('assistant');
         return;
       }
       // Cmd+Shift+E / Cmd+Shift+H — the File-menu chords, previously
@@ -6998,6 +7041,8 @@ function App() {
           inspectorOpen={inspectorOpen}
           inspectorTab={inspectorTab}
           onToggleInspector={() => toggleRightPanel('inspector')}
+          assistantOpen={assistantOpen}
+          onToggleAssistant={() => toggleRightPanel('assistant')}
           onOpenLayers={() => {
             // Toggle: already open on Layers → close; otherwise open on Layers
             // (clearing the sibling panels — one dock slot).
@@ -7177,6 +7222,17 @@ function App() {
               onDelete={deleteComment}
               width={rpSize.w}
               resizing={dragSide === 'rp'}
+            />
+          ) : assistantOpen && isNativeApp() ? (
+            <ChatPanel
+              activeCanvas={
+                activePath && activePath !== SYSTEM_TAB && /\.(tsx|html)$/i.test(activePath)
+                  ? activePath
+                  : null
+              }
+              width={rpSize.w}
+              resizing={dragSide === 'rp'}
+              onClose={() => setAssistantOpen(false)}
             />
           ) : null}
         </div>

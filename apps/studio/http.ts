@@ -569,6 +569,15 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
     '/_api/acp/status': () =>
       Response.json(probeAcpAvailability(), { headers: { 'Cache-Control': 'no-store' } }),
 
+    // Phase 31 (DDR-123) — `/design:chat` focus hook. `maude design chat-open`
+    // POSTs here; we emit a bus event the shell turns into "open the Assistant
+    // panel" (app.jsx, native-only). MAIN-ORIGIN ONLY (off the canvas allowlist).
+    '/_api/acp/focus': (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      ctx.bus.emit('acp-focus', {});
+      return Response.json({ ok: true }, { headers: { 'Cache-Control': 'no-store' } });
+    },
+
     // Phase 9 Task 8 — offline-mode banner poll fallback. The linked-mode sync
     // runtime writes `_sync.json`; browser tabs also get live pushes over the
     // WS ('sync:status'). Returns `{ linked: false }` in solo mode.

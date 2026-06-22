@@ -50,6 +50,17 @@ describe('ACP bridge origin gate', () => {
       // headers) passes the loopback guard then fails the WS upgrade → 400,
       // which proves the route branch exists (a 404 would mean it's unwired).
       expect(await status(main, '/_ws/acp')).toBe(400);
+
+      // (4) /_api/acp/focus (the /design:chat hook) — POST-only on the main
+      // origin, 403 on the canvas origin.
+      const focusPost = await fetch(`${main}/_api/acp/focus`, {
+        method: 'POST',
+        signal: AbortSignal.timeout(2000),
+      });
+      expect(focusPost.status).toBe(200);
+      expect((await focusPost.json()).ok).toBe(true);
+      expect(await status(main, '/_api/acp/focus')).toBe(405); // GET not allowed
+      expect(await status(canvas, '/_api/acp/focus')).toBe(403); // off the canvas origin
     } finally {
       await killProc(proc);
     }

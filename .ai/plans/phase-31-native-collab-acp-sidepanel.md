@@ -110,11 +110,11 @@ De-icebox phase-7 largely as-written:
 
 ## Acceptance Criteria
 
-- [ ] ChatPanel mockup approved
-- [ ] ACP bridge loopback-only, protocol subset implemented (Tasks from phase-7)
-- [ ] Streaming + cancel + quick actions work
-- [ ] Transcript stored at `.design/_chat/<slug>.jsonl`
-- [ ] Native shell: Claude Code detection + launch works (Task 2)
-- [ ] Non-technical peer sees disabled explainer, not an error
-- [ ] `/design:chat` slash command opens the panel (Task 3)
-- [ ] Security: loopback-only asserted in test; transcripts gitignored
+- [x] ChatPanel mockup approved (critic PASS, handed off — registry sidecar)
+- [x] ACP bridge loopback-only, protocol subset implemented — `ClientSideConnection` over a `Bun.spawn`'d `claude-agent-acp` adapter (the DDR-123 reuse-the-lib model supersedes phase-7's hand-rolled premise)
+- [x] Streaming + cancel + quick actions work — assistant-ui headless thread; live-verified streaming vs real claude; cancel via `ThreadPrimitive.If running` → `cancel` frame; 4 persistent quick-actions prefill the composer
+- [x] Transcript stored at `.design/_chat/<slug>.jsonl` (append-only; live-verified)
+- [x] Native shell: Claude Code detection — `GET /_api/acp/status` (claude-on-PATH + adapter); **launch rescoped away** (the bridge spawns the adapter headlessly — no separate launch; DDR-123)
+- [x] Non-technical peer sees disabled explainer, not an error — `ChatPanel` not-connected state with the subscription trust box + reason/install hint
+- [x] `/design:chat` slash command opens the panel — `maude design chat-open` → `/_api/acp/focus` → broadcast → native-only panel open (live-verified)
+- [x] Security: loopback-only asserted in test; transcripts gitignored — `acp-origin-gate.test.ts` + `_chat/` in the DDR-115 three-list. _Heavier security fan-out (defender + ethical-hacker on the new spawn-subprocess + WS + auto-approve surface) → `/flow:done`._
