@@ -28,6 +28,12 @@ De-icebox phase-7 largely as-written:
 - In the native shell: detect / offer to launch a local Claude Code if not running.
 - Apply the `/design` → `/design:edit` rename TODO noted in phase-7.
 
+## Scope notes (2026-06-21, owner)
+
+- **Native-app only.** The ACP panel ships only in the native Maude shell — NOT the browser surface. Rationale: ACP is local-per-peer (the agent must run on the peer's own machine — the same constraint that iceboxed phase-7), so only the Tauri shell can reliably detect + background-launch the user's already-installed Claude Code. A hub-served browser tab can't (the dev-server isn't on the user's machine); a local-dev-server browser user already has a terminal, so the value is marginal. Browser stays power-user / terminal-driven.
+- **No new login.** The bridge connects over loopback to an already-running, already-authenticated Claude Code — there is no Claude-Code login flow inside Maude. Task 2's job is purely detect → background-launch the installed binary → connect. The disabled explainer (`ChatPanel` disabled state) becomes the fallback for "not installed / launch failed," not a parallel browser path. This simplifies Task 2's state machine — drop the browser branch, keep launch + can't-launch fallback.
+- **Quick-action buttons = native Maude slash commands.** Persistent (always-on) buttons for the high-frequency verbs: `/design:edit` and `/design:new` (most repeated), plus `/design:critic` and `/design:screenshot`. `/design:setup-ds` is a one-time bootstrap → surface it contextually in the empty / no-DS state, not as an always-on button. Every button prefills the input with the command + auto-attached active-canvas/selection context (phase-7 Task 4 behavior), never fires blind.
+
 ## Metadata
 
 - **Type:** New Capability (de-icebox)
