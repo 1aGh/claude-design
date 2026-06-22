@@ -22,6 +22,7 @@ import {
 } from '@assistant-ui/react';
 
 import { createAcpConnection, makeAcpAdapter } from './acp-runtime.js';
+import { Markdown } from './chat-markdown.jsx';
 
 // ── inline icons (separate panel files carry their own, like GitPanel) ──
 const Spark = ({ size = 16 }) => (
@@ -77,7 +78,11 @@ function prettyCanvas(path) {
 
 // ── message-part renderers ──
 function ChatText({ text }) {
-  return <div className="chat-bubble">{text}</div>;
+  return (
+    <div className="chat-bubble">
+      <Markdown text={text} />
+    </div>
+  );
 }
 
 function ChatToolCard({ toolName, args, result, isError }) {
@@ -259,7 +264,7 @@ function NotConnected({ reason, claudeMissing }) {
 }
 
 // ── panel root ──
-export default function ChatPanel({ activeCanvas, width, resizing, onClose }) {
+export default function ChatPanel({ activeCanvas, width, resizing, onClose, hidden = false }) {
   const conn = useMemo(() => createAcpConnection(), []);
   const canvasRef = useRef(activeCanvas);
   useEffect(() => {
@@ -308,8 +313,15 @@ export default function ChatPanel({ activeCanvas, width, resizing, onClose }) {
   return (
     <aside
       className={`st-rpanel${resizing ? ' is-resizing' : ''}`}
-      style={width ? { width, flexBasis: width } : undefined}
+      // Stays MOUNTED while another right-dock panel is showing (display:none) so
+      // the chat keeps streaming in the background and its history survives a
+      // panel switch — fixed the "reopen loses the running chat" bug.
+      style={{
+        ...(width ? { width, flexBasis: width } : {}),
+        ...(hidden ? { display: 'none' } : {}),
+      }}
       aria-label="Assistant"
+      aria-hidden={hidden || undefined}
     >
       <div className="st-rp-tabs">
         <span className="st-rp-tab is-active">

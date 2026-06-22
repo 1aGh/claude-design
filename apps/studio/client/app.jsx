@@ -7139,7 +7139,7 @@ function App() {
               onIframeLoad={onIframeLoad}
             />
           </div>
-          {(inspectorOpen || commentsPanelOpen || changesOpen) && (
+          {(inspectorOpen || commentsPanelOpen || changesOpen || assistantOpen) && (
             <PanelGrip
               label="Resize side panel"
               dir="rtl"
@@ -7223,8 +7223,13 @@ function App() {
               width={rpSize.w}
               resizing={dragSide === 'rp'}
             />
-          ) : assistantOpen && isNativeApp() ? (
+          ) : null}
+          {/* Phase 31 (DDR-123) — the ACP chat panel stays MOUNTED (display:none
+              when inactive) so the chat keeps streaming + its history survives a
+              switch to Changes/Inspector/Comments. Native-only. */}
+          {isNativeApp() && (
             <ChatPanel
+              hidden={!assistantOpen}
               activeCanvas={
                 activePath && activePath !== SYSTEM_TAB && /\.(tsx|html)$/i.test(activePath)
                   ? activePath
@@ -7234,7 +7239,7 @@ function App() {
               resizing={dragSide === 'rp'}
               onClose={() => setAssistantOpen(false)}
             />
-          ) : null}
+          )}
         </div>
         <StatusBar
           activePath={activePath}
