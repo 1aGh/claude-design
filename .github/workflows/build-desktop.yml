@@ -112,7 +112,18 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: pnpm --filter @maude/desktop tauri build
+        shell: bash
+        run: |
+          # Graceful-degradation: with no Apple cert secret configured the env
+          # vars above arrive as EMPTY STRINGS (not unset), which still makes
+          # tauri's macOS bundler attempt `security import` on an empty cert and
+          # fail ("failed to import keychain certificate"). Unset them so tauri
+          # ad-hoc-signs an UNSIGNED .dmg (dev distribution) instead. Updater
+          # signing (TAURI_SIGNING_PRIVATE_KEY) is unaffected.
+          if [ -z "$APPLE_CERTIFICATE" ]; then
+            unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
+          fi
+          pnpm --filter @maude/desktop tauri build
 
       # ── Windows: build + Authenticode sign (when WINDOWS_CERTIFICATE present) ────
       - name: Build Tauri app (.msi)
