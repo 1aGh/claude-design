@@ -1,4 +1,6 @@
-# DDR-106: Showcase-grounded canvas generation — the platform `ui_kits-<platform>-showcase` is a Tier-0 layout prior for `/design:new` + `/design:edit`
+# DDR-127: Showcase-grounded canvas generation — the platform `ui_kits-<platform>-showcase` is a Tier-0 layout prior for `/design:new` + `/design:edit`
+
+> **Renumbered 2026-06-23:** authored as DDR-106 on a parallel branch while phase-26 also used DDR-106 (Tauri v2 native shell). On merge to `main` the collision was resolved by renumbering this (showcase) record to **DDR-127**; the Tauri shell keeps DDR-106.
 
 - **Date:** 2026-06-22
 - **Status:** Accepted (implemented — `.ai/plans/feature-showcase-grounded-canvas-generation.md`)

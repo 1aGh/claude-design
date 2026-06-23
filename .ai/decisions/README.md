@@ -9,6 +9,7 @@ Permanent log of architectural and product decisions for md-claude. Each DDR is 
 <!-- DDRs go here, format:
 - [DDR-NNN: Title](DDR-NNN-title.md) — YYYY-MM-DD, tags
 -->
+- [DDR-127: Showcase-grounded canvas generation — platform `ui_kits-<platform>-showcase` as a Tier-0 layout prior (renumbered from a colliding DDR-106)](DDR-127-showcase-grounded-canvas-generation.md) — 2026-06-22, design/design-system/pattern-priors/showcase/ui-kit/envelope/layout-reuse/renumbered-from-106
 - [DDR-126: Native distribution: auto-update model, signing-key custody, local crash reporting + the phase-32 security posture](DDR-126-native-distribution-auto-update-and-security-posture.md) — 2026-06-23, native-app/distribution/tauri-updater/ed25519-signing/vercel-feed/windows-msi/crash-reporting/version-parity/csp-followup/phase-32
 - [DDR-125: ACP chat: repo-level parallel multi-chat + the security posture (auto-approve accepted risk, provider-env hardening)](DDR-125-acp-multichat-parallel-and-security-posture.md) — 2026-06-23, native-app/acp/multi-chat/parallel/security/auto-approve/env-scrub/phase-31
 - [DDR-124: Every canvas create/remove path must emit `canvas-list-update`; the file tree refreshes on nothing else](DDR-124-canvas-list-update-emitted-by-every-creation-path.md) — 2026-06-23, native-app/canvas-list/file-tree/bus/invariant/phase-31

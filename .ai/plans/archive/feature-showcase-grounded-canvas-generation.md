@@ -59,7 +59,7 @@ Canvas platform is resolved per-canvas as today (`new.md` step 4: `--mobile` fla
 
 ### Files to Create
 
-- `.ai/decisions/DDR-106-showcase-grounded-canvas-generation.md` — records the decision (showcase as first-class prior + platform-resolution rule + reference-not-prescription stance). Next free number after DDR-105.
+- `.ai/decisions/DDR-127-showcase-grounded-canvas-generation.md` — records the decision (showcase as first-class prior + platform-resolution rule + reference-not-prescription stance). Next free number after DDR-105.
 
 ### Design canvases
 
@@ -180,9 +180,9 @@ Execute in order. Tasks 1–4 are the core ask; Task 5 is a stretch; Tasks 6–7
 - **Gotcha**: Don't duplicate the full spec into CLAUDE.md — it's a context-loaded summary; the plugin markdown is authoritative.
 - **Validate**: Re-read line 136; confirm it now covers shell/placement, not only compositional elements.
 
-### Task 7: RECORD DDR-106
+### Task 7: RECORD DDR-127
 
-- **Do**: Write `.ai/decisions/DDR-106-showcase-grounded-canvas-generation.md` capturing: the gap (showcases produced but never consumed), the decision (showcase as Tier-0 prior + platform-resolution rule + reference-not-prescription stance + warning-not-blocker keeper), alternatives considered (hard-blocking shell reuse — rejected as over-prescriptive; a `platforms` config field — rejected, platform stays per-canvas), and the link to DDR-010 (design-system-keeper) + DDR-043 (bias-free templates, unaffected since this is consumer-side).
+- **Do**: Write `.ai/decisions/DDR-127-showcase-grounded-canvas-generation.md` capturing: the gap (showcases produced but never consumed), the decision (showcase as Tier-0 prior + platform-resolution rule + reference-not-prescription stance + warning-not-blocker keeper), alternatives considered (hard-blocking shell reuse — rejected as over-prescriptive; a `platforms` config field — rejected, platform stays per-canvas), and the link to DDR-010 (design-system-keeper) + DDR-043 (bias-free templates, unaffected since this is consumer-side).
 - **Pattern**: An existing recent DDR (e.g. DDR-105) for structure.
 - **Validate**: DDR number is unique (DDR-105 is current max); cross-links resolve.
 
@@ -216,7 +216,7 @@ Execute in order. Tasks 1–4 are the core ask; Task 5 is a stretch; Tasks 6–7
 - [ ] Platform→showcase resolution + graceful fallback (desktop-only DS, no-showcase DS) verified live (Validation 4-6). _← deferred to a user dogfood run; static path-resolution logic verified via `bash -n` only._
 - [x] `design/SKILL.md` "Generation envelope" + "Envelope discipline" name the showcase as the shell prior, reference-framed.
 - [x] CLAUDE.md "Pattern priors come first" covers shell/placement, not only components.
-- [x] DDR-106 recorded; cross-links to DDR-010 / DDR-043 / DDR-061 resolve.
+- [x] DDR-127 recorded; cross-links to DDR-010 / DDR-043 / DDR-061 resolve.
 - [x] `node cli/lib/plugin-cli-reachability.test.mjs` passes; no `name:` frontmatter changed; heredoc fences balanced.
 - [x] Every new directive stays within envelope discipline (no wireframe-spec regression).
 - [x] No edits to `plugins/design/templates/**` (consumer-side change only; templates stay bias-free per DDR-043).

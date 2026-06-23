@@ -104,7 +104,7 @@ Execute in order. Each task is atomic and testable.
 ### Task 1: CREATE DDR — additive gated orchestration layer
 
 - **Do**: Run `/flow:record-ddr` (or author directly) `.ai/decisions/DDR-<next>-additive-gated-orchestration-layer.md`. Capture: the diverge→adjudicate→1-decision→converge→gate pattern; the capability ladder (single → subagents → workflows → teams); **why additive/opt-in/capability-gated** (teams experimental, high-frequency commands stay subagent-default for cost); workflows-first / teams-deferred rationale; the post-workflow-a/b/c invariant; the follow-up rollout list. Cross-link the showcase-grounded plan as the "markdown plugin-spec, no code gates" validation precedent.
-- **Pattern**: Existing DDRs in `.ai/decisions/` (e.g. DDR-061 orchestration-speed, DDR-106 showcase-grounded).
+- **Pattern**: Existing DDRs in `.ai/decisions/` (e.g. DDR-061 orchestration-speed, DDR-127 showcase-grounded).
 - **Gotcha**: DDR number = `ls .ai/decisions/ | grep -oE 'DDR-[0-9]+' | sort -V | tail -1` + 1. Don't hardcode 107 without checking.
 - **Validate**: File exists; cross-links resolve (`grep -o 'DDR-[0-9]*' the new file` → each referenced file exists).
 

@@ -142,7 +142,7 @@ Match heuristic:
 
 The motion specimen itself (`<ds_root>/preview/motion.tsx`) is **exempt** — that file's job is to be the playground that exercises the vocabulary; it doesn't need to lift from itself. Skip Pass A.5 when `CANVAS_PATH` ends with `/preview/motion.tsx`.
 
-## Pass A.6 — Product-shell reuse (DDR-106)
+## Pass A.6 — Product-shell reuse (DDR-127)
 
 **Goal:** when the candidate canvas builds a full **product shell** (the chrome arrangement of nav / sidebar / toolbar / main / status) AND the DS ships a platform showcase, surface whether the candidate **reused the showcase's shell** or re-derived a parallel one. This is the layout-level analog of Pass A's per-class scan — Pass A catches a reinvented `.card`, Pass A.6 catches a reinvented *whole shell*.
 

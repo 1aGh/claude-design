@@ -486,7 +486,7 @@ fi
 
 When `RUN_KEEPER=1`, spawn ds-keeper in parallel with the critic panel (step 8), same envelope shape as `/design:new` step 9.5. Output → `$HIST/$N_KEEPER-ds-keeper.md`. Findings merge into the iter-1 panel summary; self-promoted blockers (mass drift) get priority in the auto-fix loop. Same failure handling as `/design:new` step 9.5 — agent failure does not block the panel.
 
-**Pass `platform_showcase_path` to the keeper** so its Pass A.6 (product-shell reuse, DDR-106) can check whether a substantial edit reinvented the shell. Resolve it cheaply here even when the step-1.5 add-surface pre-load didn't run (a non-add-surface edit can still cross the diff threshold):
+**Pass `platform_showcase_path` to the keeper** so its Pass A.6 (product-shell reuse, DDR-127) can check whether a substantial edit reinvented the shell. Resolve it cheaply here even when the step-1.5 add-surface pre-load didn't run (a non-add-surface edit can still cross the diff threshold):
 
 ```bash
 SC_DS=$(jq -r '.designSystem // "project"' "$META_PATH" 2>/dev/null || echo "project")
