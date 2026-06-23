@@ -111,17 +111,14 @@
     }
   }
 
-  /* Live background-activity strip — what the agent is running right now. */
+  /* "Still working" indicator — inline under the latest message in the feed. */
   .chat-activity {
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    padding: var(--space-2) var(--space-4);
-    border-bottom: 1px solid var(--border-subtle);
-    background: color-mix(in srgb, var(--presence-agent) 9%, var(--bg-2));
     font-family: var(--font-mono);
     font-size: var(--type-xs);
-    color: var(--fg-1);
+    color: var(--presence-agent);
   }
   .chat-activity-spin {
     width: 10px;
@@ -140,14 +137,6 @@
   .chat-activity-text {
     font-weight: 600;
     color: var(--presence-agent);
-  }
-  .chat-activity-names {
-    margin-left: auto;
-    color: var(--fg-2);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 55%;
   }
 
   /* Feed (scrolls live) */

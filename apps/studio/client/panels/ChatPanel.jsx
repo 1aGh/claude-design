@@ -206,19 +206,18 @@ function StatusRow() {
   );
 }
 
-// Live "what's running now" strip — shows in-flight tool calls (edits, reads,
-// shell, sub-agents) so background work is visible, not only in the text.
+// Live "still working" indicator — sits at the BOTTOM of the feed (under the
+// latest Claude message) so it's clear the turn is still going. Shows the
+// in-flight tool (edit/read/shell/sub-agent) when there is one, else "Working…".
 function ActivityBar({ tools }) {
-  if (!tools.length) return null;
+  const running = useThread((t) => t.isRunning);
+  if (!running) return null;
+  const label =
+    tools.length === 1 ? tools[0].title : tools.length > 1 ? `${tools.length} tasks running` : 'Working…';
   return (
     <div className="chat-activity" role="status" aria-live="polite">
       <span className="chat-activity-spin" aria-hidden="true" />
-      <span className="chat-activity-text">
-        {tools.length === 1 ? tools[0].title : `${tools.length} tasks running`}
-      </span>
-      {tools.length > 1 ? (
-        <span className="chat-activity-names">{tools.map((t) => t.title).join(' · ')}</span>
-      ) : null}
+      <span className="chat-activity-text">{label}</span>
     </div>
   );
 }
@@ -487,13 +486,14 @@ export default function ChatPanel({
           <AssistantRuntimeProvider runtime={runtime}>
             <div className="chat-panel">
               <StatusRow />
-              <ActivityBar tools={activeTools} />
               <ThreadPrimitive.Root className="chat-thread">
                 <ThreadPrimitive.Viewport className="chat-feed" autoScroll>
                   <ThreadPrimitive.Empty>
                     <ChatEmpty />
                   </ThreadPrimitive.Empty>
                   <ThreadPrimitive.Messages components={{ UserMessage, AssistantMessage }} />
+                  {/* "still working" indicator under the latest message */}
+                  <ActivityBar tools={activeTools} />
                 </ThreadPrimitive.Viewport>
                 <QuickActions />
                 <Composer
