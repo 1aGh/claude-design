@@ -41,7 +41,7 @@ Plus 7 per-platform sub-packages (`@1agh/maude-darwin-arm64` …), CI workflows 
 | c | `ghcr.io/1agh/md-claude-hub` Docker image | phase-9 | **Rezervovat `ghcr.io/1agh/maude-hub`** — image ještě nepublishe'd, žádná migrace nutná. |
 | d | `mdcc-hub.service.template` systemd unit | phase-9 | **Rename na `maude-hub.service.template`** |
 | e | `--mdcc-activity` CSS var | phase-13-canvas-activity-overlay | **Keep** per decision #2 (interní `mdcc-*` namespace) |
-| f | `maude.iagh.cz` domain | phase-15.5-marketing-demo-video-30s | **Použít `maude.iagh.cz`** (subdomain pod uživatelovou `iagh.cz`, žádná nová registrace nutná). Redirect z `maude.iagh.cz` pokud user vlastní. Viz Phase 8.6. |
+| f | `maude.sh` domain | phase-15.5-marketing-demo-video-30s | **Použít `maude.sh`** (subdomain pod uživatelovou `iagh.cz`, žádná nová registrace nutná). Redirect z `maude.sh` pokud user vlastní. Viz Phase 8.6. |
 
 ## Metadata
 
@@ -519,7 +519,7 @@ git ls-files | xargs grep -l 'md-claude\|mdcc\|claude-design' \
   - `.ai/plans/phase-9-self-hosted-hub-file-sync.md` — **největší blob (~30 refs)**: 2× `@maude/hub` (workspace, recipe-5), 2× `ghcr.io/1agh/md-claude-hub` (Docker image; per **decision-c** rename na `ghcr.io/1agh/maude-hub`), 4× `mch_<hex>` token prefix (per **decision-a** rename na `mau_`), 2× `~/.config/mdcc/hubs.json` (per **decision-b** KEEP), 1× `mdcc-hub.service.template` (per **decision-d** rename na `maude-hub.service.template`), 1× `md-claude-hub-foo.fly.dev` example URL (rename na `maude-hub-foo.fly.dev`), všechny `mdcc <cmd>` CLI examples (recipe-4)
   - `.ai/plans/phase-13-canvas-activity-overlay.md` — 2× `--mdcc-activity` CSS var (per **decision-e** + decision #2 KEEP, ale doplnit jednořádkový comment vysvětlující že namespace je intentional)
   - `.ai/plans/phase-15-video-pipeline-toolchain.md` — ~10× `mdcc` v CLI examples + tape scripts (recipe-4); 1× root branding "md-claude maintainer" (recipe-1 ekvivalent v textu)
-  - `.ai/plans/phase-15.5-marketing-demo-video-30s.md` — ~15× brand stringů včetně **`maude.iagh.cz` domain** (per **decision-f** + Task 8.6: rename na `maude.iagh.cz` + 301 redirect), wordmark text v IntroCard.tsx, copy "Docs at maude.iagh.cz", scene captions, README install line, GitHub URL
+  - `.ai/plans/phase-15.5-marketing-demo-video-30s.md` — ~15× brand stringů včetně **`maude.sh` domain** (per **decision-f** + Task 8.6: rename na `maude.sh` + 301 redirect), wordmark text v IntroCard.tsx, copy "Docs at maude.sh", scene captions, README install line, GitHub URL
   - `.ai/plans/phase-7-acp-chat-sidebar.md`, `.ai/plans/phase-8-live-collaboration-yjs-lan.md`, `.ai/plans/phase-6.5-export.md` — `mdcc <cmd>` CLI examples (recipe-4 stačí)
 - **Gotcha**: jako u `.design/_history/`, history-typed files (DDRs, archived plans) **nemusí** být upgrade'd. To je historic context. Drobná inkonzistence acceptable.
 
@@ -571,25 +571,25 @@ git ls-files | xargs grep -l 'md-claude\|mdcc\|claude-design' \
 
 - **Do**: V GitHub UI → Releases → v0.15.0 → write release notes pointing k `docs/MIGRATING-MD-CLAUDE-TO-MAUDE.md`
 
-#### Task 8.6: Domain setup `maude.iagh.cz` (per decision-f)
+#### Task 8.6: Domain setup `maude.sh` (per decision-f)
 
 - **Do**:
   1. **DNS**: u registrátora domény `iagh.cz` přidat `CNAME maude → cname.vercel-dns.com` (nebo A record pokud apex; Vercel docs).
-  2. **Vercel**: project → Domains → Add `maude.iagh.cz` (primary). Vercel auto-vystaví Let's Encrypt cert do ~minuty.
-  3. **Legacy redirect (pokud `maude.iagh.cz` existuje a má traffic)**: Vercel project → Domains → ponechat `maude.iagh.cz` connected, ale nastavit `vercel.json` redirect:
+  2. **Vercel**: project → Domains → Add `maude.sh` (primary). Vercel auto-vystaví Let's Encrypt cert do ~minuty.
+  3. **Legacy redirect (pokud `maude.sh` existuje a má traffic)**: Vercel project → Domains → ponechat `maude.sh` connected, ale nastavit `vercel.json` redirect:
      ```json
-     { "redirects": [{ "source": "/(.*)", "destination": "https://maude.iagh.cz/$1", "permanent": true, "has": [{ "type": "host", "value": "maude.iagh.cz" }] }] }
+     { "redirects": [{ "source": "/(.*)", "destination": "https://maude.sh/$1", "permanent": true, "has": [{ "type": "host", "value": "maude.sh" }] }] }
      ```
-     Pokud `maude.iagh.cz` user nevlastní/neexistuje → skip celý step 3.
+     Pokud `maude.sh` user nevlastní/neexistuje → skip celý step 3.
   4. **Site config**:
-     - `site/app/sitemap.ts` + `site/app/robots.txt/route.ts` — canonical host `maude.iagh.cz`
-     - `site/lib/shared.ts` / `site/lib/layout.shared.tsx` — `siteUrl` / `metadataBase` na `https://maude.iagh.cz`
+     - `site/app/sitemap.ts` + `site/app/robots.txt/route.ts` — canonical host `maude.sh`
+     - `site/lib/shared.ts` / `site/lib/layout.shared.tsx` — `siteUrl` / `metadataBase` na `https://maude.sh`
      - `next.config` / `site/next.config.ts` — pokud má `metadataBase` env
-  5. **Update content references** napříč repo: `maude.iagh.cz` → `maude.iagh.cz` (3× v `phase-15.5-marketing-demo-video-30s.md` + případně v `README.md`, `site/content/docs/index.mdx`, `package.json` `homepage`)
+  5. **Update content references** napříč repo: `maude.sh` → `maude.sh` (3× v `phase-15.5-marketing-demo-video-30s.md` + případně v `README.md`, `site/content/docs/index.mdx`, `package.json` `homepage`)
 - **Gotcha**: 
-  - **Subdomain pod `iagh.cz` znamená SEO reset** — Google si bude muset reindexovat, link equity z `maude.iagh.cz` se přenáší jen přes 301. Acceptable pro indie/early projekt.
+  - **Subdomain pod `iagh.cz` znamená SEO reset** — Google si bude muset reindexovat, link equity z `maude.sh` se přenáší jen přes 301. Acceptable pro indie/early projekt.
   - Doménový rename **musí proběhnout PŘED Phase 15.5 implementací** (jinak video by se točilo se starým hostem).
-  - `iagh.cz` je personal domain — public docs site pod ní signalizuje "indie/maintainer-owned", což může nebo nemusí být brand-aligned. Pokud user chce v budoucnu posunout na dedicated `maude.dev` / `maude.io`, dnešní `maude.iagh.cz` zůstane jako redirect.
+  - `iagh.cz` je personal domain — public docs site pod ní signalizuje "indie/maintainer-owned", což může nebo nemusí být brand-aligned. Pokud user chce v budoucnu posunout na dedicated `maude.dev` / `maude.io`, dnešní `maude.sh` zůstane jako redirect.
 - **Output**: zaznamenat status (DNS propagated, cert active, redirect OK) do DDR (či přímo do migration docs).
 
 ---
@@ -644,7 +644,7 @@ Tento rename **NEMÁ UI work** — žádný visual change, žádný uživatelsk�
 - [ ] Grep ověření per-pattern: 
   - `grep -rE "mch_" .ai/plans/` vrací 0 (decision-a aplikován)
   - `grep -rE "md-claude-hub|maude-hub" .ai/plans/phase-9*` jen `maude-hub` (decision-c + d)
-  - `grep -rE "md-claude\.dev" .ai/plans/ site/ README.md` vrací 0 mimo migration explanation (decision-f); všechny canonical URLs ukazují na `maude.iagh.cz`
+  - `grep -rE "md-claude\.dev" .ai/plans/ site/ README.md` vrací 0 mimo migration explanation (decision-f); všechny canonical URLs ukazují na `maude.sh`
 - [ ] Post-merge (Phase 8) tasks proběhly: GitHub repo renamed, npm published `@1agh/maude@0.15.0` + 7 sub-packages, old packages unpublished/deprecated
 - [ ] Žádné regression v `version-parity.yml` CI check
 - [ ] DDR napsaný: `.ai/decisions/DDR-NNN-rename-md-claude-to-maude.md` zachycující rozhodnutí (1) `maude` primary + `mdcc` alias, (2) keep `mdcc-*` CSS namespace, (3) unpublish vs deprecate decision (per actual eligibility), (4) single atomic PR rollout

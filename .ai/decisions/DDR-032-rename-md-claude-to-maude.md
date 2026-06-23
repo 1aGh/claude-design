@@ -25,7 +25,7 @@ Future plans (Phase 9 hub, Phase 13 overlay, Phase 15.5 video) carried `md-claud
 | c | `ghcr.io/1agh/md-claude-hub` Docker image (phase-9) | **Reserve `ghcr.io/1agh/maude-hub`** — image never published, no migration. |
 | d | `mdcc-hub.service.template` systemd unit (phase-9) | **Rename to `maude-hub.service.template`**. |
 | e | `--mdcc-activity` CSS var (phase-13) | **Keep** per sub-decision 2. Inline comment in the plan documents the intentional namespace. |
-| f | `md-claude.dev` public docs domain (phase-15.5) | **Use `maude.iagh.cz`** subdomain under existing personal domain. 301 redirect from `md-claude.dev` only if owned. |
+| f | `md-claude.dev` public docs domain (phase-15.5) | **Use `maude.sh`** subdomain under existing personal domain. 301 redirect from `md-claude.dev` only if owned. |
 
 ## Pre-flight verification (2026-05-20 ~07:55Z)
 

@@ -793,7 +793,7 @@
   - **Marketplace install syntax**: `flow@md-claude` → `flow@maude`, `design@md-claude` → `design@maude`.
   - **Canvas-lib virtual specifier**: `@mdcc/canvas-lib` → `@maude/canvas-lib`. TSX canvases must update their import statements; the dev-server resolver no longer matches the old name.
   - **Workspace scopes** (internal pnpm): `@md-claude/site`, `@md-claude/dev-server`, `@md-claude/hub` → `@maude/*`.
-  - **Docs site canonical host**: `maude.iagh.cz` (DNS + Vercel wiring is a post-merge maintainer task).
+  - **Docs site canonical host**: `maude.sh` (DNS + Vercel wiring is a post-merge maintainer task).
 
   Intentionally preserved as internal namespaces (DDR-032 sub-decision 2): CSS class identifiers `.mdcc-*`, CSS custom properties `--mdcc-*`, the `site/components/mdcc/` path, the `~/.config/mdcc/` XDG config directory, and `site/app/mdcc-tokens.css`.
 
@@ -831,7 +831,7 @@
 - **CLI**: primary bin is now `maude` (`maude init`, `maude config`, `maude design serve`). The legacy `mdcc` bin still works as a deprecation-warning alias and will be dropped in v0.17.x. `MD_CLAUDE_SKIP_POSTINSTALL` env var renamed to `MAUDE_SKIP_POSTINSTALL` (old name accepted for one cycle).
 - **Marketplace**: `/plugin marketplace add 1aGh/md-claude` → `/plugin marketplace add 1aGh/maude`. Plugin install syntax changed: `flow@md-claude` → `flow@maude`, `design@md-claude` → `design@maude`.
 - **Workspace scopes**: internal pnpm workspaces `@md-claude/site`, `@md-claude/dev-server`, `@md-claude/hub` renamed to `@maude/*`.
-- **Domain**: docs site canonical host moved to `maude.iagh.cz` (DNS + Vercel wiring done in post-merge step).
+- **Domain**: docs site canonical host moved to `maude.sh` (DNS + Vercel wiring done in post-merge step).
 - **Canvas-lib virtual specifier renamed**: `@mdcc/canvas-lib` → `@maude/canvas-lib`. Any TSX canvas under a downstream `.design/` directory must update its `from "@mdcc/canvas-lib"` imports to `from "@maude/canvas-lib"` — the dev-server resolver no longer matches the old name.
 - **Intentionally preserved as internal namespaces** (per DDR-032 sub-decision 2): CSS class identifiers `.mdcc-*`, CSS custom properties `--mdcc-*`, `site/components/mdcc/` paths, and the `~/.config/mdcc/` XDG config path.
 

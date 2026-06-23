@@ -3,10 +3,10 @@
 A personal marketplace of Claude Code plugins. Two plugins today, plus a `maude` CLI for scaffolding and running the bundled dev tooling.
 
 <!-- Demo video lives at https://github.com/1aGh/maude/releases/download/v0.16.0/demo.mp4 once uploaded.
-     Until then the inline tag below stays a soft 404; landing page at https://maude.iagh.cz autoplays the same file. -->
-<video src="https://github.com/1aGh/maude/releases/download/v0.16.0/demo.mp4" controls muted playsinline poster="https://maude.iagh.cz/demo-poster.jpg" width="800"></video>
+     Until then the inline tag below stays a soft 404; landing page at https://maude.sh autoplays the same file. -->
+<video src="https://github.com/1aGh/maude/releases/download/v0.16.0/demo.mp4" controls muted playsinline poster="https://maude.sh/demo-poster.jpg" width="800"></video>
 
-> **📚 Full docs: https://maude.iagh.cz** (or browse the source under [`site/content/docs/`](./site/content/docs/) until the public URL lands).
+> **📚 Full docs: https://maude.sh** (or browse the source under [`site/content/docs/`](./site/content/docs/) until the public URL lands).
 > Contributing? See [CONTRIBUTING.md](./CONTRIBUTING.md). Security? See [SECURITY.md](./SECURITY.md).
 
 | Plugin | What it does |
@@ -110,13 +110,13 @@ Two clean paths, no middle ground ([DDR-047](.ai/decisions/DDR-047-collab-scope-
 
 ## Security
 
-Solo mode (the default) is fully local — no accounts, no telemetry, no network trust surface, and the canvas sandbox is on by default. Linked (hub) mode is opt-in and carries a documented trust model with disclosed, bounded residuals (hub-pushed content is treated as untrusted input). The full account — what runs where, what the canvas sandbox does and doesn't close, `.tsx` sync's double opt-in, untrusted-context handling — is at [`/docs/security`](https://maude.iagh.cz/docs/security) (source: [`site/content/docs/security.mdx`](./site/content/docs/security.mdx)). To **report** a vulnerability, see [SECURITY.md](./SECURITY.md).
+Solo mode (the default) is fully local — no accounts, no telemetry, no network trust surface, and the canvas sandbox is on by default. Linked (hub) mode is opt-in and carries a documented trust model with disclosed, bounded residuals (hub-pushed content is treated as untrusted input). The full account — what runs where, what the canvas sandbox does and doesn't close, `.tsx` sync's double opt-in, untrusted-context handling — is at [`/docs/security`](https://maude.sh/docs/security) (source: [`site/content/docs/security.mdx`](./site/content/docs/security.mdx)). To **report** a vulnerability, see [SECURITY.md](./SECURITY.md).
 
 ## What's where
 
 User-facing docs live in two places — the README points you the right way:
 
-- **Reference** (every command, every config key, recipes for Next.js / Expo / monorepo) → [`site/content/docs/`](./site/content/docs/) (served at https://maude.iagh.cz once Vercel is wired — see [DDR-005](.ai/decisions/DDR-005-docs-site-stack-and-hosting.md)).
+- **Reference** (every command, every config key, recipes for Next.js / Expo / monorepo) → [`site/content/docs/`](./site/content/docs/) (served at https://maude.sh once Vercel is wired — see [DDR-005](.ai/decisions/DDR-005-docs-site-stack-and-hosting.md)).
 - **Quickstart** + **contributor info** → this README.
 
 The docs site auto-generates per-command pages from `plugins/{flow,design}/commands/*.md` frontmatter and a typed schema reference from `plugins/flow/.claude-plugin/config.schema.json`. Adding a new command → docs update on next build.

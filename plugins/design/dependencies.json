@@ -170,6 +170,23 @@
       "fallbackBehavior": "Discovery + critic-panel rounds fall back to numbered-prose chat. Slower, fewer options per round, no preview side-pane.",
       "usedBy": ["skills/design-system/SKILL.md", "commands/setup-ds.md", "commands/new.md"],
       "docsUrl": "https://docs.claude.com/en/docs/claude-code"
+    },
+    {
+      "id": "claude",
+      "type": "cli",
+      "hardness": "soft",
+      "check": {
+        "command": "claude --version",
+        "expectExit": 0
+      },
+      "install": {
+        "preferred": "npm i -g @anthropic-ai/claude-code",
+        "darwin": "brew install --cask claude-code"
+      },
+      "autoInstall": false,
+      "fallbackBehavior": "Phase 31 (DDR-123) — the native ACP chat sidepanel drives the user's OWN installed `claude` CLI on their Pro/Max subscription (never API billing). Without it the panel shows the not-connected explainer ('run `claude` in a terminal and `/login`'); every other design surface is unaffected.",
+      "usedBy": ["dev-server/acp/probe.ts", "dev-server/acp/bridge.ts"],
+      "docsUrl": "https://docs.claude.com/en/docs/claude-code"
     }
   ]
 }

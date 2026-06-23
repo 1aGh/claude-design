@@ -43,6 +43,24 @@ describe('TourOverlay', () => {
     expect(html).not.toContain('mdcc-tour__back'); // i === 0
   });
 
+  test('a step with a render graphic widens the card and draws the graphic (Phase 29 / E4)', () => {
+    function Graphic() {
+      return <div className="cm-info">TWO-LAYER-DIAGRAM</div>;
+    }
+    const html = renderToStaticMarkup(
+      <TourOverlay
+        open
+        steps={[{ render: Graphic, title: 'Working together', body: 'Two layers.' }]}
+        onClose={() => {}}
+        onComplete={() => {}}
+      />
+    );
+    expect(html).toContain('mdcc-tour__card--graphic');
+    expect(html).toContain('mdcc-tour__graphic');
+    expect(html).toContain('TWO-LAYER-DIAGRAM');
+    expect(html).toContain('Working together');
+  });
+
   test('closed or empty renders nothing', () => {
     expect(
       renderToStaticMarkup(

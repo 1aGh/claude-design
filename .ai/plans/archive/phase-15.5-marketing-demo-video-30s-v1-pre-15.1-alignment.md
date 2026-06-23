@@ -226,7 +226,7 @@ typed slash command.**
 | 5 | Canvas hero — pan/zoom + Cmd+Click inspector | 8.0 s | Playwright on scratch dev-server | `Cmd+Click any element. Live inspector.` |
 | 6 | Edit moment — file diff + HMR reload | 9.0 s | Playwright on scratch dev-server (no terminal half — viewer sees the result, not the command) | `Edit a file. Canvas reloads in place.` |
 | 7 | Comments overlay — pin, composer, @mention, reply, resolve | 12.0 s | Playwright on scratch dev-server | `In-place comments. Anchored to elements.` |
-| 8 | Docs teaser | 3.5 s | Playwright on real `site/` localhost or canvas-shell mock | `Docs at maude.iagh.cz.` |
+| 8 | Docs teaser | 3.5 s | Playwright on real `site/` localhost or canvas-shell mock | `Docs at maude.sh.` |
 | 9 | Outro card | 3.0 s | Remotion OutroCard | `npm i -g @1agh/maude . github.com/1aGh/maude` |
 
 Wall-clock: 55.0 s of scenes − 8 cross-fades × 9 frames overlap (0.3 s each)
@@ -248,7 +248,7 @@ canonical "install → see canvas → iterate → docs" arc under GitHub's
 | 3 | 4 | Canvas reveal | 4.0 s | `Multi-artboard canvas. Real code.` |
 | 4 | 5 | Canvas hero + Cmd+Click | 6.5 s | `Cmd+Click any element.` |
 | 5 | 6 | Edit moment + HMR | 7.0 s | `Edit a file. Canvas reloads in place.` |
-| 6 | 8 | Docs teaser | 2.5 s | `Docs at maude.iagh.cz.` |
+| 6 | 8 | Docs teaser | 2.5 s | `Docs at maude.sh.` |
 | 7 | 9 | Outro | 3.0 s | `npm i -g @1agh/maude` |
 
 Wall-clock: 29.5 s − 6 cross-fades × 9-frame overlap = ~27.7 s. Held tail
@@ -341,7 +341,7 @@ and ship.**
      published 2026-05-20`).
   3. `cards/OutroCard.tsx` — 1920×1080, 90 frames, install command in
      mono with hard-edge border, accent underline wipe L→R, secondary
-     line (`github.com/1aGh/maude . docs at maude.iagh.cz`).
+     line (`github.com/1aGh/maude . docs at maude.sh`).
   4. `cards/LowerThird.tsx` — utility component (NOT registered).
      Bottom-centered pill with 88% accent plate, fontsize 44, 6-frame
      fade-in + 6-frame fade-out scoped to its parent `<Sequence>` via a

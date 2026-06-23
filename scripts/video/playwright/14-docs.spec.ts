@@ -12,7 +12,7 @@ import { test } from '@playwright/test';
 test.setTimeout(20_000);
 
 test('docs', async ({ page }) => {
-  await page.goto('https://maude.iagh.cz', { waitUntil: 'networkidle' });
+  await page.goto('https://maude.sh', { waitUntil: 'networkidle' });
   // ≥ 2.5 s paint wait (memory rule).
   await page.waitForTimeout(3_000);
 

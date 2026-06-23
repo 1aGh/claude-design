@@ -2,6 +2,7 @@
   "title": "Design commands",
   "pages": [
     "browse",
+    "chat",
     "critic",
     "draw",
     "edit",

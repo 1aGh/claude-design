@@ -170,7 +170,13 @@
       // Phase 13.1 / DDR-077 — error-resilient HMR while an agent edits. Hoisted
       // here so the HMR client (below) can soft-reload the canvas module instead
       // of location.reload()-ing into a half-saved (broken) build.
-      const canvasUrl = canvasRel ? ('/' + designRel + '/' + canvasRel) : null;
+      // Phase 27 (E2) — DiffView "before" pane. `?sha=<ref>` renders the canvas
+      // AT a past version (the dev-server's serveHistoricalCanvas builds from
+      // `git show <sha>:<path>`). Baked into the module URL so both the initial
+      // import and the HMR soft-reload carry it.
+      const shaParam = params.get('sha');
+      const canvasQuery = shaParam ? ('?sha=' + encodeURIComponent(shaParam)) : '';
+      const canvasUrl = canvasRel ? ('/' + designRel + '/' + canvasRel + canvasQuery) : null;
       const myFileKey = canvasRel ? (designRel + '/' + canvasRel) : null;
       // True while an `ai-activity` entry is live for THIS canvas (an agent is
       // running /design:edit|new on it). Mirrors ai-banner's gate: parent relays
@@ -202,13 +208,15 @@
 
       // Soft reload — re-import the canvas module (cache-busted) and swap it in
       // via the runtime, holding the last good render on a build/import error
-      // (no white flash). Only used when an agent is editing; manual edits keep
-      // the plain location.reload() below.
+      // (no white flash). Phase 30 (F4): used for EVERY canvas-body change while
+      // the runtime is mounted — agent edits, manual edits, AND cross-peer synced
+      // writes — so presence + in-canvas state survive. Falls back to the plain
+      // location.reload() below only when no runtime is present.
       function softReload(version) {
         if (!canvasUrl) { location.reload(); return; }
         const rt = window.__maudeCanvasRuntime;
         if (!rt || !rt.remount) { location.reload(); return; }
-        import(canvasUrl + '?v=' + (version || Date.now()))
+        import(canvasUrl + (canvasUrl.includes('?') ? '&' : '?') + 'v=' + (version || Date.now()))
           .then((mod) => {
             if (mod && typeof mod.default === 'function') {
               rt.remount(mod.default);
@@ -344,10 +352,24 @@
                   // read the parent-verified local (NOT a canvas-writable global)
                   if (Date.now() - lastCssOptimisticAt < 1500) return;
                 }
-                // Phase 13.1 / DDR-077 — when an agent is live-editing, soft-
-                // reload (hold last good on a broken intermediate). Manual edits
-                // (or no runtime yet) keep the plain, immediate hard reload.
-                if (agentEditing && window.__maudeCanvasRuntime && window.__maudeCanvasRuntime.remount) {
+                // Phase 30 (F4) — prefer an in-place hot-swap for ANY canvas-body
+                // (`module`) change whenever the canvas runtime is mounted: the
+                // soft-reload re-imports the module and remounts only the canvas
+                // content, KEEPING the iframe — and thus the live CollabProvider
+                // + presence cursors/avatars — mounted (the collab session is a
+                // module-level singleton that survives the remount, use-collab.tsx).
+                // This covers cross-peer SYNCED writes, which arrive as a `module`
+                // change with NO `ai-activity` entry: a teammate's edit must update
+                // seamlessly, never blink everyone's presence (and scroll / tool
+                // mode / undo survive too). It also keeps the Phase 13.1 / DDR-077
+                // hold-last-good behaviour for agent edits. (`agentEditing` is still
+                // tracked from ai-activity above but no longer gates the swap — any
+                // module change to the live canvas hot-swaps.) `hard` (_lib rebuild)
+                // is global and ALWAYS full-reloads. With no runtime (gallery
+                // thumbnails / ?comments=0) we full-reload; softReload itself also
+                // falls back to location.reload() when the re-import yields no usable
+                // default export.
+                if (msg.mode === 'module' && window.__maudeCanvasRuntime && window.__maudeCanvasRuntime.remount) {
                   softReload(msg.version);
                 } else {
                   location.reload();

@@ -92,11 +92,5 @@
   "created": "2026-06-05",
   "envelope_path": ".design/_history/studio-docs/000-envelope.md",
   "css_mode": "sibling",
-  "iteration_count": 2,
-  "viewport": {
-    "x": 347.1175570129617,
-    "y": 155.97625445953338,
-    "zoom": 0.9257188604219522
-  },
-  "last_modified": "2026-06-05T06:19:51.828Z"
+  "iteration_count": 2
 }

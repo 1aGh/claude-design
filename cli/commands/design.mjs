@@ -43,6 +43,7 @@ const BIN_VERBS = new Set([
   'to-lottie',
   'read-annotations',
   'annotate',
+  'chat-open',
 ]);
 
 // Bin verbs that boot the dev-server (directly, or by shelling into server-up.sh).

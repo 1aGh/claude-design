@@ -99,6 +99,7 @@ export const COMMAND_CATALOG = [
     commands: [
       { name: 'new', category: 'daily' },
       { name: 'edit', category: 'daily' },
+      { name: 'chat', category: 'daily' },
       { name: 'critic', category: 'daily' },
       { name: 'browse', category: 'daily' },
       { name: 'screenshot', category: 'daily' },

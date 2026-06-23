@@ -5,7 +5,7 @@
   "contributors": 1,
   "plugins": {
     "design": {
-      "commands": 16,
+      "commands": 17,
       "skills": 3,
       "agents": 17
     },
@@ -21,6 +21,7 @@
   "pageUpdated": {
     "cli.mdx": "2026-06-11",
     "commands-design/browse.mdx": "2026-06-11",
+    "commands-design/chat.mdx": "2026-06-23",
     "commands-design/critic.mdx": "2026-06-11",
     "commands-design/draw.mdx": "2026-06-11",
     "commands-design/edit.mdx": "2026-06-11",
@@ -72,11 +73,12 @@
     "design/categories.mdx": "2026-05-29",
     "design/index.mdx": "2026-06-12",
     "design/multi-ds.mdx": "2026-05-29",
+    "desktop/index.mdx": "2026-06-23",
     "flow.mdx": "2026-06-11",
     "getting-started.mdx": "2026-06-11",
     "hub/deploy.mdx": "2026-06-05",
     "hub/index.mdx": "2026-05-30",
-    "hub/linking.mdx": "2026-06-12",
+    "hub/linking.mdx": "2026-06-23",
     "hub/pricing.mdx": "2026-05-28",
     "index.mdx": "2026-06-11",
     "recipes/expo.mdx": "2026-05-30",

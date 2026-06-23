@@ -55,11 +55,5 @@
       "label": "H · MDCC-DGM/SRV · DevServerSchema",
       "note": "Three-pane schema _server.json · _active.json · _history/<slug>/ with real keys + types; producer->consumer flow row (server writes -> inspector pushes -> rollback reads)"
     }
-  ],
-  "viewport": {
-    "x": -3230.9084925901557,
-    "y": -70.78972180711366,
-    "zoom": 1.4750255085482997
-  },
-  "last_modified": "2026-06-11T12:02:25.225Z"
+  ]
 }

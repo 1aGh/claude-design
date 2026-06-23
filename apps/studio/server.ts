@@ -16,14 +16,17 @@
 
 import { spawn } from 'node:child_process';
 
+import { createAcp } from './acp/index.ts';
 import { createActivity } from './activity.ts';
 import { createApi } from './api.ts';
 import { bootSelfHeal } from './boot-self-heal.ts';
-import { createAiActivity } from './collab/ai-activity.ts';
+import { createCanvasListWatch } from './canvas-list-watch.ts';
+import { type AiActivityEntry, createAiActivity } from './collab/ai-activity.ts';
 import { createGitLifecycle } from './collab/git-lifecycle.ts';
 import { createCollab } from './collab/index.ts';
 import { createContext } from './context.ts';
 import { createFsWatch } from './fs-watch.ts';
+import { createGitWatch } from './git/watch.ts';
 import { createHttp } from './http.ts';
 import { createInspect } from './inspect.ts';
 import { startHeapWatch } from './mem.ts';
@@ -77,11 +80,28 @@ await inspect.load();
 
 collab = createCollab(ctx, api);
 const aiActivity = createAiActivity(ctx);
+
+// Phase 30 — bridge agent `ai-activity` onto the per-canvas room awareness so a
+// remote peer sees "X is editing" cross-machine. The `ai-activity` bus event is
+// loopback-only (inspector WS); awareness is the one channel that crosses the
+// hub. Soft heads-up — projected onto the room's own awareness slot, cleared
+// when the activity ends/expires. No-op when no room is live for the slug.
+ctx.bus.on('ai-activity', (payload: { file: string; entry: AiActivityEntry | null }) => {
+  if (!collab) return;
+  const slug = api.fileSlug(payload.file);
+  collab.registry.setAgentEditing(
+    slug,
+    payload.entry ? { name: payload.entry.author, since: payload.entry.startedAt } : null
+  );
+});
 const gitLifecycle = createGitLifecycle(ctx, collab.registry);
 // Phase 13 / DDR-029 — fs-watch-driven canvas activity overlay. Subscribes to
 // `fs:any` and emits `activity:change`; ws.ts forwards it to canvas iframes.
 const activity = createActivity(ctx);
-const ws = createWs(ctx, api, inspect, collab, activity);
+// Phase 31 (DDR-123) — ACP chat bridge manager. Owns one claude-agent-acp
+// subprocess per /_ws/acp socket; main-origin + loopback only (wired below).
+const acp = createAcp(ctx);
+const ws = createWs(ctx, api, inspect, collab, activity, acp);
 const http = createHttp(ctx, api, inspect, aiActivity);
 const fsWatch = createFsWatch(ctx);
 
@@ -135,6 +155,26 @@ function startServer(port: number): BunServer {
             remote: req.headers.get('x-forwarded-for') ?? '127.0.0.1',
             kind: 'collab',
             slug: collabSlug,
+          },
+        });
+        if (ok) return undefined as unknown as Response;
+        return new Response('Upgrade failed', { status: 400 });
+      }
+
+      // Phase 31 (DDR-123) — ACP chat bridge WS. Main origin ONLY (this server,
+      // never startCanvasServer) and loopback-guarded like collab: the bridge
+      // spawns the user's `claude` and can drive file edits, so the untrusted
+      // canvas origin and remote hosts must never reach it. Checked BEFORE the
+      // generic `/_ws` inspector branch since `/_ws/acp`.startsWith('/_ws').
+      if (pathname === '/_ws/acp') {
+        if (!isLoopbackHost(req.headers.get('host'))) {
+          return new Response('ACP chat is loopback-only', { status: 403 });
+        }
+        const ok = srv.upgrade(req, {
+          data: {
+            id: crypto.randomUUID(),
+            remote: req.headers.get('x-forwarded-for') ?? '127.0.0.1',
+            kind: 'acp',
           },
         });
         if (ok) return undefined as unknown as Response;
@@ -339,6 +379,19 @@ await Bun.write(
 fsWatch.start();
 startHeapWatch();
 
+// Phase 27 Task 5 (E2) — live dirty-state. Subscribes to `fs:any` (after
+// fsWatch.start so it sees every event) and broadcasts `git-status` to the shell
+// on each versionable change. No-op for a non-git project (gitStatus → repo:false).
+const gitWatch = createGitWatch(ctx);
+
+// Phase 31 follow-up — external-canvas list watcher. Subscribes to `fs:any` and
+// emits `canvas-list-update` when a canvas file appears/disappears on disk from
+// OUTSIDE the dev-server (ACP agent `/design:new`, agent Write, git checkout),
+// so the browser file tree refreshes without a reload — the symmetric
+// counterpart to api.ts's create/delete emit. RCA:
+// `.ai/logs/rca/issue-acp-new-canvas-not-in-filetree.md`.
+const canvasListWatch = createCanvasListWatch(ctx);
+
 // Phase 9 Task 4 — bidirectional sync agent. No-op when the project isn't
 // linked to a hub (`.design/config.json` has no `linkedHub` field). Kicked
 // off after fsWatch so the agent's bus subscription receives every fs event.
@@ -371,6 +424,16 @@ if (!process.env.NO_OPEN) {
 async function shutdown() {
   console.log('\n  Stopping…');
   fsWatch.stop();
+  try {
+    gitWatch.stop();
+  } catch {
+    /* timer cleanup is best-effort */
+  }
+  try {
+    canvasListWatch.stop();
+  } catch {
+    /* timer cleanup is best-effort */
+  }
   try {
     activity.stop();
   } catch {

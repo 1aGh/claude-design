@@ -1,0 +1,212 @@
+/*
+ * DiffView.css — chrome for the visual before/after diff + conflict picker (Phase 27).
+ * Every value is a var(--*) token from system/maude/colors_and_type.css.
+ * Local classes are prefixed `dv-`; DS classes (.btn/.callout/.seg/.kbd/.chip)
+ * are LIFTED, not re-declared. The "visual diff" (rendered before/after, not a
+ * text diff) is the Maude differentiator — DDR-110 / epic E2.
+ */
+
+.dv-shell {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+  color: var(--fg-0);
+  font-family: var(--font-body);
+  font-size: var(--type-base);
+  line-height: var(--lh-base);
+  overflow: hidden;
+}
+
+/* the diff opens as a focused sheet floating over the dotted canvas — lifts the
+   DS .panel material; only widens it + lifts radius/elevation for a modal sheet. */
+.dv-sheet {
+  margin: auto;
+  width: calc(100% - var(--space-8));
+  max-width: 920px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+}
+
+.dv-hd {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border-default);
+}
+.dv-title { font-family: var(--font-display); font-weight: 600; font-size: var(--type-lg); color: var(--fg-0); }
+/* brand eyebrow in the sheet header — divider rule separates it from the title */
+.dv-hd .dv-mark { padding-right: var(--space-3); margin-right: var(--space-1); border-right: 1px solid var(--border-default); }
+.dv-file {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+  color: var(--fg-1);
+}
+.dv-spacer { flex: 1; }
+.dv-close { color: var(--fg-2); }
+
+/* the before/after change summary chip */
+.dv-changes {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--type-sm);
+  color: var(--fg-1);
+}
+.dv-changes b { color: var(--status-warn); font-family: var(--font-mono); }
+
+/* the before|after|overlay switch lifts the DS .seg verbatim (className="seg",
+   active via [aria-pressed]) — no local segmented-control styles needed. */
+
+/* ── the before/after stage ─────────────────────────────────────────────────── */
+.dv-stage { padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); }
+.dv-pair { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5); align-items: start; }
+.dv-pair.is-conflict { grid-template-columns: 1fr 1fr; }
+
+.dv-col { display: flex; flex-direction: column; gap: var(--space-3); }
+.dv-col-hd { display: flex; align-items: center; gap: var(--space-2); }
+.dv-col-tag {
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.dv-col-tag.is-before { color: var(--fg-2); }
+.dv-col-tag.is-after { color: var(--accent); }
+.dv-col-who { color: var(--fg-2); font-size: var(--type-xs); margin-left: auto; }
+
+/* the rendered canvas thumbnail (the "visual diff" itself) */
+.dv-thumb {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  background: var(--bg-0);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.dv-thumb.is-after { border-color: var(--accent-muted); }
+.dv-thumb.ring-mine { box-shadow: 0 0 0 2px var(--accent); border-color: var(--accent); }
+.dv-thumb.ring-theirs { box-shadow: 0 0 0 2px var(--status-info); border-color: var(--status-info); }
+
+/* mock rendered page inside a thumbnail */
+.dv-mock { position: absolute; inset: 0; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
+.dv-mock-bar { display: flex; align-items: center; gap: var(--space-2); }
+.dv-mock-logo { width: 16px; height: 16px; border-radius: var(--radius-xs); background: var(--accent); }
+.dv-mock-nav { flex: 1; height: 6px; border-radius: var(--radius-pill); background: var(--bg-3); }
+.dv-mock-h { height: 12px; width: 52%; border-radius: var(--radius-xs); background: var(--bg-4); }
+.dv-mock-cards { display: flex; gap: var(--space-3); flex: 1; }
+.dv-card {
+  flex: 1;
+  background: var(--bg-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.dv-card .l { height: 6px; border-radius: var(--radius-pill); background: var(--bg-3); }
+.dv-card .l.w70 { width: 70%; }
+.dv-card .l.w50 { width: 50%; }
+.dv-card .pill { margin-top: auto; height: 14px; border-radius: var(--radius-xs); background: var(--bg-4); }
+.dv-card.is-accent .pill { background: var(--accent); }
+
+/* highlight a changed/added region inside the after-thumbnail */
+.dv-card.changed { box-shadow: 0 0 0 1.5px var(--status-warn); border-color: var(--status-warn); }
+.dv-card.added { box-shadow: 0 0 0 1.5px var(--status-success); border-color: var(--status-success); }
+.dv-tag-float {
+  position: absolute;
+  top: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--type-xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-wide);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-xs);
+  color: var(--bg-0);
+}
+.dv-tag-float.t-changed { right: var(--space-2); background: var(--status-warn); }
+.dv-tag-float.t-added { right: var(--space-2); background: var(--status-success); }
+
+/* ── overlay / slider compare mode ──────────────────────────────────────────── */
+/* explicit height — an aspect-ratio-only block collapses as a stretch flex child (iter-1).
+   --dv-split is the single source for the wipe position (clip + handle stay in lockstep). */
+.dv-overlay { --dv-split: 52%; position: relative; width: 100%; max-width: 640px; height: 360px; margin: 0 auto; background: var(--bg-0); border: 1px solid var(--border-default); border-radius: var(--radius-md); overflow: hidden; }
+.dv-overlay .dv-mock { position: absolute; inset: 0; }
+.dv-overlay-after { position: absolute; inset: 0; clip-path: inset(0 0 0 var(--dv-split)); }
+.dv-overlay-after .dv-mock { background: var(--bg-0); }
+.dv-split { position: absolute; top: 0; bottom: 0; left: var(--dv-split); width: 2px; background: var(--accent); }
+.dv-split-handle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-fg);
+  display: grid;
+  place-items: center;
+  box-shadow: var(--shadow-md);
+}
+.dv-overlay-tag { position: absolute; bottom: var(--space-3); font-family: var(--font-mono); font-size: var(--type-xs); padding: 2px var(--space-3); border-radius: var(--radius-sm); background: color-mix(in oklab, var(--bg-0) 70%, transparent); color: var(--fg-1); }
+.dv-overlay-tag.l { left: var(--space-3); }
+.dv-overlay-tag.r { right: var(--space-3); color: var(--accent); }
+
+/* ── conflict resolution picker (Keep mine / theirs / both) ─────────────────── */
+.dv-pick-intro { padding: 0 var(--space-6); }
+.dv-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4); padding: var(--space-4) var(--space-6) var(--space-2); }
+.dv-pick {
+  text-align: left;
+  appearance: none;
+  cursor: pointer;
+  background: var(--bg-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  color: var(--fg-1);
+}
+.dv-pick:hover { border-color: var(--border-strong); background: var(--bg-3); }
+.dv-pick.is-rec { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: var(--accent-tint); }
+.dv-pick:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* the accent-tint of the recommended card drops --fg-2 desc text to 3.12:1 —
+   lift to --fg-1 (~6.7:1) on the tinted card only (a11y iter-1). */
+.dv-pick.is-rec .dv-pick-desc { color: var(--fg-1); }
+.dv-pick-hd { display: flex; align-items: center; gap: var(--space-2); }
+.dv-pick-title { font-weight: 600; color: var(--fg-0); font-size: var(--type-sm); }
+/* solid accent pill — accent-fg on accent = 6.26:1 (the --accent text on the
+   accent-tint card was only 3.32:1 once bumped to 11px; a11y iter-2). */
+.dv-pick-rec { margin-left: auto; font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--accent-fg); background: var(--accent); border-radius: var(--radius-pill); padding: 1px var(--space-2); }
+.dv-pick-desc { font-size: var(--type-xs); color: var(--fg-2); line-height: var(--lh-xs); }
+
+/* ── footer actions ─────────────────────────────────────────────────────────── */
+.dv-ft {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid var(--border-default);
+}
+.dv-ft .dv-note { color: var(--fg-2); font-size: var(--type-xs); flex: 1; }
+
+/* brand mark (lifted shape from system/maude/preview/logo) */
+.dv-mark { display: inline-flex; align-items: center; gap: var(--space-2); font-family: var(--font-display); font-weight: 600; color: var(--fg-0); }
+.dv-mark-spark { color: var(--accent); }

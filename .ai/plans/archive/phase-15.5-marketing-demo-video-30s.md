@@ -486,7 +486,7 @@ the canonical scene-by-scene spec; consult it for exact slot / caption
 
 ### Task 15 — RECORD Playwright Scene "docs" (smooth scroll)
 
-- **Do:** `goto https://maude.iagh.cz` → wait 3 s for paint → use
+- **Do:** `goto https://maude.sh` → wait 3 s for paint → use
   `page.evaluate(() => window.scrollTo({ top: 600, behavior:
   'smooth' }))` with 1.2 s gap, then a second scrollTo to top: 1200.
 - **Intent check:** Frame at 0.5 s must NOT be pure white — must show

@@ -90,7 +90,7 @@ once every scene has individually passed its rubric.
 
 ## User Story (unchanged from v3)
 
-As a first-time visitor to maude.iagh.cz, I want a ~60–120 s video that
+As a first-time visitor to maude.sh, I want a ~60–120 s video that
 pulls me in inside 3 s, shows the product doing something I'd actually
 want to do (not a tutorial), and lands a closing frame I want to
 screenshot. It must NOT feel like a documentation walkthrough or a

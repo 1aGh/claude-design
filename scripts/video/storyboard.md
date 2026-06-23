@@ -98,7 +98,7 @@ Target: ~90 s, 13 scenes with 12 xfades.
 | 11 | `comments` | Playwright `09-comments.spec.ts` (zoom-1.0 reset + composer + reply) | 7.0 | 210 | `Comments anchored to pixels. No exports.` | At least one visible pin OR composer affordance on the canvas |
 | 12 | `annotations` | Playwright `10-annotations.spec.ts` (pen + arrow + label) | 5.5 | 165 | `Draw on the canvas. Hand it off.` | At least one drawn mark + one label visible |
 | 13 | `card-C` | Remotion `<BenefitCard kind="human-ai" />` | 2.5 | 75 | own type | "Human reads. AI iterates." legible |
-| 14 | `docs` | Playwright `11-docs.spec.ts` (`scrollTo({behavior:'smooth'})`) | 4.0 | 120 | `Docs at maude.iagh.cz.` | "Plugins & Vibes." landing visible (no blank-white pre-paint) |
+| 14 | `docs` | Playwright `11-docs.spec.ts` (`scrollTo({behavior:'smooth'})`) | 4.0 | 120 | `Docs at maude.sh.` | "Plugins & Vibes." landing visible (no blank-white pre-paint) |
 | 15 | `card-D` | Remotion `<BenefitCard kind="your-repo" />` | 2.5 | 75 | own type | "Your repo. Yours forever." legible |
 | 16 | `outro` | `OutroScene` (15.1) | 3.0 | 90 | — | `npm i -g @1agh/maude` legible |
 
@@ -155,7 +155,7 @@ Direct echoes from site copy (`site/app/(home)/page.tsx` +
 | tui-edit | `Edit. Reload. Same canvas.` |
 | comments | `Comments anchored to pixels. No exports.` |
 | annotations | `Draw on the canvas. Hand it off.` |
-| docs | `Docs at maude.iagh.cz.` |
+| docs | `Docs at maude.sh.` |
 
 ### Benefit cards (4 × 2.5 s, voice-aligned)
 

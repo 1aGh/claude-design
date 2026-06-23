@@ -1,0 +1,75 @@
+{
+  "title": "Onboarding",
+  "subtitle": "First-run wizard — three doors, GitHub first · sign in, open or create a shared project, land in the canvas browser · zero terminal, under two minutes",
+  "brief": "Phase 29 (native collab app, epic E4). On first launch (no last project remembered) Maude shows this instead of the canvas browser. Three doors, GitHub first: (A) Continue with GitHub — the headline door; (B) Open a folder on this computer; (C) Connect to a team hub (advanced, collapsed). The bar: a complete first-timer is guided into a working project in under two minutes. Lifts the Studio Hub artboard-B wizard skeleton (left rail + main card + next-step peek) but DEMOTES the hub bootstrap-key claim to the advanced door — GitHub is the headline. Vocabulary stays plain throughout. Success state previews the Save -> Publish -> Pull cycle the collab tour teaches.",
+  "platform": "desktop",
+  "designSystem": "maude",
+  "opt_out_scope": "palette",
+  "kind": "canvas",
+  "brief_sha": "phase29ob",
+  "sections": [
+    {
+      "id": "onboarding",
+      "title": "Onboarding — first-run wizard",
+      "subtitle": "MAUDE/E4 · 5 artboards · GitHub-first · zero terminal"
+    }
+  ],
+  "artboards": [
+    {
+      "id": "welcome",
+      "label": "A · Welcome — three doors, GitHub first",
+      "note": "Full-window wizard: calm left rail (brand + value prop + three reassurances) + main column with the door picker. GitHub is the headline door (accent ring + Sign in with GitHub CTA); Open a folder is the quiet secondary; Connect to a team hub is one advanced, dashed line. No terminal mentioned anywhere."
+    },
+    {
+      "id": "github",
+      "label": "B · GitHub door — open a shared project or start new",
+      "note": "After sign-in (rail shows 'Signed in as @octocat'): a Start-a-new-project card on top, then a 'Shared with you' list of projects to open. Private/public lock-globe icon, owner + updated meta, Open affordance per row."
+    },
+    {
+      "id": "local",
+      "label": "C · Local folder — drag-drop or choose",
+      "note": "Big dashed drag-drop zone (folder glyph + 'Drag a project folder here' + 'Choose a folder…') and an info callout: not a Maude project yet -> we'll offer to set one up, nothing changes until you say so."
+    },
+    {
+      "id": "hub",
+      "label": "D · Team hub (advanced) — address + invite link",
+      "note": "Advanced door: Hub address + Invite link fields (mono inputs with leading glyphs) + Connect, then a success callout (connected, syncing). Reassures that most people use GitHub."
+    },
+    {
+      "id": "success",
+      "label": "E · You're in — the Save -> Publish -> Pull cycle",
+      "note": "Success state: green check badge, 'You're in.', project name, and the cycle preview panel — a 'Together · automatic, no buttons' live-layer pill floating over the Save changes locally -> Publish for everyone -> Pull changes row. CTA: Take the 60-second tour / Skip. This previews the collab infographic the tour renders."
+    }
+  ],
+  "layout": {
+    "artboards": [
+      {
+        "id": "welcome",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "github",
+        "x": 1360,
+        "y": 0
+      },
+      {
+        "id": "local",
+        "x": 2720,
+        "y": 0
+      },
+      {
+        "id": "hub",
+        "x": 4080,
+        "y": 0
+      },
+      {
+        "id": "success",
+        "x": 5440,
+        "y": 0
+      }
+    ]
+  },
+  "status": "handed-off",
+  "handoffCommit": "8e9758e"
+}

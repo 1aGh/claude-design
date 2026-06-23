@@ -338,6 +338,30 @@ export function bodyEditAtFromDoc(doc: Y.Doc): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
+/**
+ * Record THIS doc's clientID as the seeder in `syncMeta.seededBy` (F1). Call it
+ * in the SAME transaction + origin as a `seed-local-up` body apply. The value is
+ * a Yjs clientID, so when two peers seed the same empty hub simultaneously and
+ * their maps merge, Y.Map's deterministic last-writer-wins resolution converges
+ * `seededBy` to ONE clientID on EVERY peer — that elected peer is the
+ * single-writer that performs the de-duplication repair, so the collapse op is
+ * never emitted twice. Informational/bookkeeping only; never materialized to
+ * disk (syncMeta is a sync-internal lane).
+ */
+export function markSeeded(doc: Y.Doc, origin?: unknown): void {
+  const map = doc.getMap<unknown>(Y_SYNC_TYPES.syncMeta);
+  doc.transact(() => {
+    map.set('seededBy', doc.clientID);
+  }, origin);
+}
+
+/** The elected seeder's clientID (`syncMeta.seededBy`), or null when no peer
+ *  ever seeded through the marker path (older peers / non-seed canvases). */
+export function seededByFromDoc(doc: Y.Doc): number | null {
+  const v = doc.getMap<unknown>(Y_SYNC_TYPES.syncMeta).get('seededBy');
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
 /* ---------------------------------------------------------------- css */
 
 /** The synced canvas CSS string held in the doc, or null when unset/empty. */

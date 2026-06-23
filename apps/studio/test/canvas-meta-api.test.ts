@@ -1,15 +1,21 @@
 // Phase 4 T5 — `/_api/canvas-meta` GET/PATCH endpoint round-trip.
+// DDR-115 — per-user camera split: `viewport` lives in a gitignored per-machine
+// view file (`_canvas-state/<slug>.view.json`), NEVER inline in the versioned
+// `.meta.json`. PATCH splits the lanes; GET merges them back.
 //
 // Verifies:
-//   - PATCH merges `viewport` into an existing `<canvas>.meta.json`
-//   - PATCH preserves other top-level keys (title, sections, ai_context …)
-//   - PATCH clamps zoom to [0.1, 4.0]
-//   - PATCH rejects non-finite viewport coords (no write, returns prior)
-//   - GET returns the merged meta
-//   - Paths that escape repoRoot are 400
+//   - PATCH `viewport` leaves `.meta.json` BYTE-UNCHANGED + writes the view file
+//     (the mouse-move churn killer) — and a viewport-only patch on a meta-less
+//     canvas still succeeds
+//   - PATCH clamps zoom to [0.1, 4.0] / rejects non-finite coords (view file)
+//   - GET merges the view file's viewport into the returned meta
+//   - GET strips a stale inline viewport from a legacy meta
+//   - PATCH `layout` writes meta AND bumps `last_modified` (a real shared change)
+//   - PATCH layout persists position-only entries (DDR-027)
+//   - Paths that escape repoRoot are 404
 
 import { describe, expect, test } from 'bun:test';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { bootServer, killProc, makeSandbox, nextPort } from './_helpers.ts';
@@ -29,8 +35,13 @@ function repoRel(designRoot: string, abs: string): string {
   return abs.startsWith(`${repoRoot}/`) ? abs.slice(repoRoot.length + 1) : abs;
 }
 
-describe('/_api/canvas-meta — GET/PATCH', () => {
-  test('PATCH merges viewport onto existing meta and preserves other keys', async () => {
+/** `_canvas-state/<slug>.view.json` for a `<designRoot>/ui/<Name>.tsx` canvas. */
+function viewPath(designRoot: string, slug: string): string {
+  return join(designRoot, '_canvas-state', `${slug}.view.json`);
+}
+
+describe('/_api/canvas-meta — GET/PATCH (DDR-115 camera split)', () => {
+  test('PATCH viewport leaves meta byte-unchanged + writes the view file (churn killer)', async () => {
     const { root, designRoot } = makeSandbox();
     const port = nextPort();
     const proc = await bootServer(root, port);
@@ -47,6 +58,7 @@ describe('/_api/canvas-meta — GET/PATCH', () => {
           ai_context: { pinned_decisions: ['keep dc-* classes'] },
         })
       );
+      const before = readFileSync(metaAbs, 'utf8');
       const file = repoRel(designRoot, tsxAbs);
 
       const r = await fetch(`http://localhost:${port}/_api/canvas-meta`, {
@@ -56,16 +68,48 @@ describe('/_api/canvas-meta — GET/PATCH', () => {
       });
       expect(r.status).toBe(200);
       const merged = (await r.json()) as MetaShape;
+      // The returned object is GET-shaped: shared keys + the camera merged in.
       expect(merged.title).toBe('Phase 4');
       expect(merged.sections).toBeDefined();
       expect(merged.ai_context).toBeDefined();
       expect(merged.viewport).toEqual({ x: 12, y: 34, zoom: 1.5 });
-      expect(typeof merged.last_modified).toBe('string');
 
-      // On-disk reflects the merge.
-      const onDisk = JSON.parse(readFileSync(metaAbs, 'utf8')) as MetaShape;
-      expect(onDisk.viewport?.zoom).toBe(1.5);
-      expect(onDisk.title).toBe('Phase 4');
+      // KEYSTONE — the versioned meta is byte-identical; no viewport, no
+      // last_modified bump on a viewport-only patch.
+      expect(readFileSync(metaAbs, 'utf8')).toBe(before);
+
+      // The camera landed in the gitignored per-machine view file.
+      const vAbs = viewPath(designRoot, 'ui-phase4');
+      expect(existsSync(vAbs)).toBe(true);
+      const view = JSON.parse(readFileSync(vAbs, 'utf8'));
+      expect(view.viewport).toEqual({ x: 12, y: 34, zoom: 1.5 });
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  test('PATCH viewport succeeds on a canvas with no meta yet (writes only the view file)', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      mkdirSync(join(designRoot, 'ui'), { recursive: true });
+      const tsxAbs = join(designRoot, 'ui', 'NoMeta.tsx');
+      writeFileSync(tsxAbs, 'export default function N(){return <main/>}\n');
+      const metaAbs = tsxAbs.replace(/\.tsx$/, '.meta.json');
+      const file = repoRel(designRoot, tsxAbs);
+
+      const r = await fetch(`http://localhost:${port}/_api/canvas-meta`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ file, patch: { viewport: { x: 1, y: 2, zoom: 2 } } }),
+      });
+      expect(r.status).toBe(200);
+      const merged = (await r.json()) as MetaShape;
+      expect(merged.viewport).toEqual({ x: 1, y: 2, zoom: 2 });
+      // No meta was conjured into existence.
+      expect(existsSync(metaAbs)).toBe(false);
+      expect(existsSync(viewPath(designRoot, 'ui-nometa'))).toBe(true);
     } finally {
       await killProc(proc);
     }
@@ -102,7 +146,7 @@ describe('/_api/canvas-meta — GET/PATCH', () => {
     }
   });
 
-  test('PATCH ignores non-finite viewport (NaN/Infinity)', async () => {
+  test('PATCH ignores non-finite viewport (NaN/Infinity) — keeps the prior camera', async () => {
     const { root, designRoot } = makeSandbox();
     const port = nextPort();
     const proc = await bootServer(root, port);
@@ -110,11 +154,15 @@ describe('/_api/canvas-meta — GET/PATCH', () => {
       mkdirSync(join(designRoot, 'ui'), { recursive: true });
       const tsxAbs = join(designRoot, 'ui', 'Bad.tsx');
       writeFileSync(tsxAbs, 'export default function B(){return <main/>}\n');
-      writeFileSync(
-        tsxAbs.replace(/\.tsx$/, '.meta.json'),
-        '{"title":"Bad","viewport":{"x":1,"y":2,"zoom":1}}'
-      );
+      writeFileSync(tsxAbs.replace(/\.tsx$/, '.meta.json'), '{"title":"Bad"}');
       const file = repoRel(designRoot, tsxAbs);
+
+      // Seed a valid camera (writes the view file).
+      await fetch(`http://localhost:${port}/_api/canvas-meta`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ file, patch: { viewport: { x: 1, y: 2, zoom: 1 } } }),
+      });
 
       const r = await fetch(`http://localhost:${port}/_api/canvas-meta`, {
         method: 'PATCH',
@@ -122,24 +170,28 @@ describe('/_api/canvas-meta — GET/PATCH', () => {
         body: JSON.stringify({ file, patch: { viewport: { x: 'nope', y: null, zoom: 1 } } }),
       });
       const m = (await r.json()) as MetaShape;
-      // Prior value preserved.
+      // Prior valid camera preserved (the bad patch was a no-op for the view file).
       expect(m.viewport).toEqual({ x: 1, y: 2, zoom: 1 });
+      const view = JSON.parse(readFileSync(viewPath(designRoot, 'ui-bad'), 'utf8'));
+      expect(view.viewport).toEqual({ x: 1, y: 2, zoom: 1 });
     } finally {
       await killProc(proc);
     }
   });
 
-  test('GET returns the meta document', async () => {
+  test('GET merges the view file viewport into the returned meta', async () => {
     const { root, designRoot } = makeSandbox();
     const port = nextPort();
     const proc = await bootServer(root, port);
     try {
       mkdirSync(join(designRoot, 'ui'), { recursive: true });
-      const tsxAbs = join(designRoot, 'ui', 'Read.tsx');
-      writeFileSync(tsxAbs, 'export default function R(){return <main/>}\n');
+      const tsxAbs = join(designRoot, 'ui', 'Merge.tsx');
+      writeFileSync(tsxAbs, 'export default function M(){return <main/>}\n');
+      writeFileSync(tsxAbs.replace(/\.tsx$/, '.meta.json'), JSON.stringify({ title: 'Merge' }));
+      mkdirSync(join(designRoot, '_canvas-state'), { recursive: true });
       writeFileSync(
-        tsxAbs.replace(/\.tsx$/, '.meta.json'),
-        JSON.stringify({ title: 'Read', viewport: { x: 5, y: 6, zoom: 0.5 } })
+        viewPath(designRoot, 'ui-merge'),
+        JSON.stringify({ viewport: { x: 7, y: 8, zoom: 0.5 } })
       );
       const file = repoRel(designRoot, tsxAbs);
 
@@ -148,8 +200,69 @@ describe('/_api/canvas-meta — GET/PATCH', () => {
       );
       expect(r.status).toBe(200);
       const m = (await r.json()) as MetaShape;
-      expect(m.title).toBe('Read');
-      expect(m.viewport?.zoom).toBe(0.5);
+      expect(m.title).toBe('Merge');
+      expect(m.viewport).toEqual({ x: 7, y: 8, zoom: 0.5 });
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  test('GET strips a stale inline viewport from a legacy meta (no view file)', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      mkdirSync(join(designRoot, 'ui'), { recursive: true });
+      const tsxAbs = join(designRoot, 'ui', 'Legacy.tsx');
+      writeFileSync(tsxAbs, 'export default function L(){return <main/>}\n');
+      // A pre-DDR-115 meta with the camera baked inline + a stale last_modified.
+      writeFileSync(
+        tsxAbs.replace(/\.tsx$/, '.meta.json'),
+        JSON.stringify({
+          title: 'Legacy',
+          viewport: { x: 5, y: 6, zoom: 0.5 },
+          last_modified: '2020-01-01T00:00:00.000Z',
+        })
+      );
+      const file = repoRel(designRoot, tsxAbs);
+
+      const r = await fetch(
+        `http://localhost:${port}/_api/canvas-meta?file=${encodeURIComponent(file)}`
+      );
+      const m = (await r.json()) as MetaShape;
+      expect(m.title).toBe('Legacy');
+      // The stale inline camera + timestamp are NOT surfaced (no view file → none).
+      expect(m.viewport).toBeUndefined();
+      expect(m.last_modified).toBeUndefined();
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  test('PATCH layout writes meta AND bumps last_modified (a real shared change)', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      mkdirSync(join(designRoot, 'ui'), { recursive: true });
+      const tsxAbs = join(designRoot, 'ui', 'Layout.tsx');
+      writeFileSync(tsxAbs, 'export default function L(){return <main/>}\n');
+      const metaAbs = tsxAbs.replace(/\.tsx$/, '.meta.json');
+      writeFileSync(metaAbs, JSON.stringify({ title: 'L', sections: [] }));
+      const file = repoRel(designRoot, tsxAbs);
+
+      const r = await fetch(`http://localhost:${port}/_api/canvas-meta`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ file, patch: { layout: { artboards: [{ id: 'a', x: 0, y: 0 }] } } }),
+      });
+      expect(r.status).toBe(200);
+      const onDisk = JSON.parse(readFileSync(metaAbs, 'utf8')) as MetaShape;
+      expect(onDisk.layout?.artboards).toBeDefined();
+      expect(typeof onDisk.last_modified).toBe('string');
+      expect(onDisk.title).toBe('L');
+      // The camera never leaks into the versioned meta.
+      expect(onDisk.viewport).toBeUndefined();
     } finally {
       await killProc(proc);
     }
@@ -199,6 +312,27 @@ describe('/_api/canvas-meta — GET/PATCH', () => {
       const diskArts = onDisk.layout?.artboards as Array<Record<string, unknown>> | undefined;
       expect(diskArts?.[0]).not.toHaveProperty('w');
       expect(diskArts?.[0]).not.toHaveProperty('h');
+    } finally {
+      await killProc(proc);
+    }
+  });
+
+  test('PATCH viewport on a non-existent canvas is refused (404) and mints no file (DDR-115 F-A2)', async () => {
+    const { root, designRoot } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    try {
+      mkdirSync(join(designRoot, 'ui'), { recursive: true });
+      // No .tsx written — the canvas does not exist.
+      const file = '.design/ui/Ghost.tsx';
+      const r = await fetch(`http://localhost:${port}/_api/canvas-meta`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ file, patch: { viewport: { x: 1, y: 2, zoom: 1 } } }),
+      });
+      expect(r.status).toBe(404);
+      // The untrusted-origin write was refused — no per-machine file minted.
+      expect(existsSync(viewPath(designRoot, 'ui-ghost'))).toBe(false);
     } finally {
       await killProc(proc);
     }

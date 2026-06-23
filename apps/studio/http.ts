@@ -6,8 +6,10 @@
 
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, watch } from 'node:fs';
-import { dirname, join, posix, resolve, sep } from 'node:path';
+import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 
+import { probeAcpAvailability } from './acp/probe.ts';
+import { deleteChat, listChats, readChatMessages } from './acp/transcript.ts';
 import type { Api } from './api.ts';
 import { buildCanvasModule } from './canvas-build.ts';
 import { canvasLibPath } from './canvas-lib-resolver.ts';
@@ -16,11 +18,16 @@ import type { AiActivity } from './collab/ai-activity.ts';
 import type { Context } from './context.ts';
 import { isFormat, isScope, runExport } from './exporters/index.ts';
 import type { ActiveJsonShape } from './exporters/scope.ts';
+import { createGitEndpoints } from './git/endpoints.ts';
+import { gitShowFile } from './git/service.ts';
+import { createGitHubEndpoints } from './github/endpoints.ts';
 import type { Inspect } from './inspect.ts';
 import { canvasSlug, writeLocator } from './locator.ts';
 import { DEV_SERVER_ROOT } from './paths.ts';
 import { getRuntimeBundle, packageForSlug } from './runtime-bundle.ts';
+import { linkHub } from './sync/hub-link.ts';
 import { loadWhatsNew } from './whats-new.ts';
+import { isLoopbackHost } from './ws.ts';
 
 // Real disk install root — never the virtual `/$bunfs/root` of compiled bins.
 // See paths.ts for the resolution logic + Phase 19.1 / v0.18.1 rationale.
@@ -246,6 +253,15 @@ async function serveCanvasTsx(
   ctx: Context,
   locatorAbsPath: string
 ): Promise<Response> {
+  // Phase 27 (E2) — DiffView "before" pane. `?sha=<ref>` builds the canvas from
+  // its source AT a past version (git show) instead of the working-tree file, so
+  // the rendered before/after is real. Isolated additive branch — the normal
+  // (no-sha) serve below is byte-identical to before. The historical build still
+  // resolves sibling imports against the CURRENT on-disk files (an accepted
+  // approximation: the canvas code at the sha, with today's DS/lib).
+  const shaParam = new URL(req.url).searchParams.get('sha');
+  if (shaParam) return serveHistoricalCanvas(absPath, shaParam, req, ctx);
+
   const file = Bun.file(absPath);
   if (!(await file.exists())) return new Response('Not found', { status: 404 });
 
@@ -298,6 +314,101 @@ async function serveCanvasTsx(
 
   const ifNoneMatch = req.headers.get('if-none-match');
   if (ifNoneMatch === cached.etag) {
+    return new Response(null, {
+      status: 304,
+      headers: { ETag: cached.etag, 'Cache-Control': 'no-cache' },
+    });
+  }
+  return new Response(cached.js, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/javascript; charset=utf-8',
+      ETag: cached.etag,
+      'Cache-Control': 'no-cache',
+    },
+  });
+}
+
+// Phase 27 (E2) — build + serve a canvas at a past git ref. Immutable per
+// (path, sha) — historical content never changes, so the cache lives for the
+// process (folding the boot id + chrome epoch into the etag so a chrome change
+// still busts the browser copy, since the build inlines today's chrome).
+// LRU-capped so a flood of distinct ?sha values (each minting a permanent entry)
+// can't grow the heap unbounded — the route is reachable from the UNTRUSTED
+// canvas origin (it's on the canvas-serve path), so a hub-pushed canvas could
+// otherwise OOM the sidecar (security review — ethical-hacker, Finding 1).
+const historicalCanvasCache = new Map<string, { js: string; etag: string }>();
+const HIST_MAX_CACHE = 96;
+// Rate-limit the EXPENSIVE miss path (git show + Bun.build, or a non-resolving
+// git lookup) so a distinct-sha spray from the canvas origin can't starve the
+// event loop. Cache HITS are free; only a NEW (path,sha) build consumes budget.
+// Legit use (DiffView opens ~1–2 historical iframes per compare) is far under.
+//
+// TWO LOAD-BEARING INVARIANTS (security re-review — do not "optimize" away):
+//   1. The limiter is DELIBERATELY GLOBAL, not per-origin/per-key — the attacker
+//      controls the canvas (hence any origin/key), so a keyed limiter is
+//      trivially defeated. The cost (a legit user 429s during an active flood) is
+//      accepted; it only bites under attack.
+//   2. `historicalBuildAllowed()` MUST stay ABOVE `gitShowFile` so the
+//      non-resolving-sha spray (cheap git lookup, no build) is capped too —
+//      moving it below would re-open the CPU vector. Guarded by the
+//      "rate-limited — DoS guard" test in test/git-api.test.ts.
+const HIST_WINDOW_MS = 10_000;
+const HIST_MAX_BUILDS = 24;
+let histWindowStart = Date.now();
+let histBuilds = 0;
+function historicalBuildAllowed(): boolean {
+  const now = Date.now();
+  if (now - histWindowStart >= HIST_WINDOW_MS) {
+    histWindowStart = now;
+    histBuilds = 0;
+  }
+  if (histBuilds >= HIST_MAX_BUILDS) return false;
+  histBuilds++;
+  return true;
+}
+async function serveHistoricalCanvas(
+  absPath: string,
+  sha: string,
+  req: Request,
+  ctx: Context
+): Promise<Response> {
+  const repoRel = relative(ctx.paths.repoRoot, absPath).replace(/\\/g, '/');
+  const key = `${absPath}\0${sha}\0${RUNTIME_BOOT_ID}\0${CHROME_EPOCH}`;
+  let cached = historicalCanvasCache.get(key);
+  if (cached) {
+    // LRU touch — re-insert so the hot entry isn't the next eviction victim.
+    historicalCanvasCache.delete(key);
+    historicalCanvasCache.set(key, cached);
+  } else {
+    if (!historicalBuildAllowed()) {
+      return new Response('Too many version previews — try again in a moment.', {
+        status: 429,
+        headers: { 'Retry-After': '10', 'Cache-Control': 'no-store' },
+      });
+    }
+    const source = await gitShowFile(ctx.paths.repoRoot, sha, repoRel);
+    if (source == null) return new Response('No saved version of this canvas', { status: 404 });
+    try {
+      const result = await buildCanvasModule(absPath, source, { designRoot: ctx.paths.designRoot });
+      cached = {
+        js: result.js,
+        etag: `${result.etag}-${sha}-${RUNTIME_BOOT_ID}-${CHROME_EPOCH}`,
+      };
+      historicalCanvasCache.set(key, cached);
+      if (historicalCanvasCache.size > HIST_MAX_CACHE) {
+        const oldest = historicalCanvasCache.keys().next().value;
+        if (oldest !== undefined) historicalCanvasCache.delete(oldest);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return new Response(`Canvas build error: ${msg}`, {
+        status: 500,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      });
+    }
+  }
+  if (req.headers.get('if-none-match') === cached.etag) {
     return new Response(null, {
       status: 304,
       headers: { ETag: cached.etag, 'Cache-Control': 'no-cache' },
@@ -427,6 +538,19 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
     }
   }
 
+  // Phase 27 (E2) — `/_api/git/*` orchestration. MAIN-ORIGIN ONLY: every git
+  // route is intentionally absent from CANVAS_SAFE_API + startCanvasServer's
+  // `routes` map (the dual-allowlist rule), so the untrusted canvas iframe origin
+  // can never reach status/commit/publish/get-latest. http.ts owns the gating;
+  // git/endpoints.ts owns the orchestration.
+  const gitApi = createGitEndpoints(ctx);
+  // Phase 28 (E3) — `/_api/github/*`. Same dual-allowlist rule: main-origin only,
+  // and every route is token-bearing (server-held keychain token via the loopback
+  // bridge), so all four also carry a loopback-Host check.
+  const githubApi = createGitHubEndpoints(ctx);
+  const gitJson = (r: { status: number; json: unknown }) =>
+    Response.json(r.json, { status: r.status, headers: { 'Cache-Control': 'no-store' } });
+
   const routes = {
     '/_health': () =>
       Response.json({
@@ -437,6 +561,47 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       }),
 
     '/_active': () => Response.json(inspect.state),
+
+    // Phase 31 (DDR-123) — ACP chat readiness. Cheap, side-effect-free probe
+    // (is the adapter present + is `claude` on PATH); no subprocess spawned.
+    // MAIN-ORIGIN ONLY — absent from CANVAS_SAFE_API + startCanvasServer routes,
+    // so the untrusted canvas iframe is 403'd. The native shell reads this to
+    // decide between the enabled panel and the not-connected explainer.
+    '/_api/acp/status': () =>
+      Response.json(probeAcpAvailability(), { headers: { 'Cache-Control': 'no-store' } }),
+
+    // Phase 31 (DDR-123) — `/design:chat` focus hook. `maude design chat-open`
+    // POSTs here; we emit a bus event the shell turns into "open the Assistant
+    // panel" (app.jsx, native-only). MAIN-ORIGIN ONLY (off the canvas allowlist).
+    '/_api/acp/focus': (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      // CSRF parity with the other POST routes — the loopback `maude design
+      // chat-open` driver omits Origin (allowed); a browser drive-by can't forge it.
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      ctx.bus.emit('acp-focus', {});
+      return Response.json({ ok: true }, { headers: { 'Cache-Control': 'no-store' } });
+    },
+
+    // Phase 31 — repo-level chat list + history (for the chat switcher +
+    // hydration). MAIN-ORIGIN ONLY. Read-only; ids are sanitized before disk.
+    '/_api/acp/chats': () =>
+      Response.json(listChats(ctx.paths.designRoot), {
+        headers: { 'Cache-Control': 'no-store' },
+      }),
+    '/_api/acp/chat': (req: Request) => {
+      const id = (new URL(req.url).searchParams.get('id') ?? '')
+        .replace(/[^a-z0-9_-]/gi, '')
+        .slice(0, 64);
+      if (req.method === 'DELETE') {
+        const removed = id ? deleteChat(ctx.paths.designRoot, id) : false;
+        return Response.json({ ok: removed }, { headers: { 'Cache-Control': 'no-store' } });
+      }
+      if (!id) return Response.json([], { headers: { 'Cache-Control': 'no-store' } });
+      return Response.json(readChatMessages(ctx.paths.designRoot, id), {
+        headers: { 'Cache-Control': 'no-store' },
+      });
+    },
 
     // Phase 9 Task 8 — offline-mode banner poll fallback. The linked-mode sync
     // runtime writes `_sync.json`; browser tabs also get live pushes over the
@@ -550,6 +715,12 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       // Claude work) POSTs here when work begins. body = { file, author }.
       // Replaces any prior entry for the file.
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      // CSRF guard: phase-30 bridges ai-activity onto room awareness, which
+      // crosses the hub — a forged cross-origin POST would inject a fake
+      // "<x> is editing <file>" presence to every connected peer. The loopback
+      // slash-command driver omits Origin (→ allowed); a browser drive-by can't.
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
       const body = await readJson<{ file?: string; author?: string }>(req);
       if (!body || typeof body.file !== 'string' || !body.file.trim()) {
         return new Response('body.file required', { status: 400 });
@@ -566,6 +737,8 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       // Refresh the lastHeartbeat. Returns 404 if no entry — slash command
       // can treat that as "the server bounced; re-issue /start".
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
       const body = await readJson<{ file?: string }>(req);
       if (!body || typeof body.file !== 'string' || !body.file.trim()) {
         return new Response('body.file required', { status: 400 });
@@ -578,6 +751,8 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
     '/_api/ai/end': async (req: Request) => {
       // Explicit completion (normal or error). Banner clears immediately.
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
       const body = await readJson<{ file?: string }>(req);
       if (!body || typeof body.file !== 'string' || !body.file.trim()) {
         return new Response('body.file required', { status: 400 });
@@ -666,6 +841,214 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
         { ok: true, file: result.file, rel: result.rel, slug: result.slug },
         { status: 201, headers: { 'Cache-Control': 'no-store' } }
       );
+    },
+
+    // ── Phase 27 (E2) — in-UI git layer. Save version / Publish / Get latest /
+    // History / visual diff. All MAIN-ORIGIN ONLY (see gitApi comment above).
+    // POST routes add the sameOriginWrite CSRF guard (cross-site forged POST);
+    // the token-bearing publish/get-latest routes add a loopback Host check so a
+    // request carrying a GitHub token can only originate on this machine.
+    '/_api/git/status': async (req: Request) => {
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      // Local status only — fast, no network, no credentials. The remote
+      // ahead/behind probe (the "Get latest" nudge) needs a token, which a GET
+      // query string must NOT carry (it leaks via logs / Referer / history —
+      // security review A3). That probe lands in phase-28 over the server-held
+      // keychain token (server-side, never client-supplied), not here.
+      const checkRemote = new URL(req.url).searchParams.get('remote') === '1';
+      return gitJson(await gitApi.status({ checkRemote }));
+    },
+
+    '/_api/git/log': async (req: Request) => {
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      // Optional `?path=` scopes History to one canvas (phase-27.1). MAIN-ORIGIN
+      // ONLY (this route is absent from CANVAS_SAFE_API) — the path is
+      // containment-validated in the endpoint before it reaches git.
+      const u = new URL(req.url).searchParams;
+      return gitJson(await gitApi.log(u.get('limit'), u.get('path')));
+    },
+
+    '/_api/git/diff': async (req: Request) => {
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      return gitJson(await gitApi.diff(new URL(req.url).searchParams.get('sha')));
+    },
+
+    // ── Phase 29 (E4) — drafts (branches). MAIN-ORIGIN ONLY (absent from
+    // CANVAS_SAFE_API + startCanvasServer routes); branch + checkout are POST/CSRF-
+    // gated source mutations. Switching a draft moves HEAD, which the git-lifecycle
+    // watcher turns into a Yjs flush + reload (DDR-051) — no logic duplicated here.
+    '/_api/git/branches': async (req: Request) => {
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      return gitJson(await gitApi.branches());
+    },
+
+    '/_api/git/branch': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      const body = await readJson<unknown>(req, 8 * 1024);
+      return gitJson(await gitApi.createBranch(body));
+    },
+
+    '/_api/git/checkout': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      const body = await readJson<unknown>(req, 8 * 1024);
+      return gitJson(await gitApi.checkout(body));
+    },
+
+    // "Add this draft to the Shared version" — merges + PUBLISHES, so it is token-
+    // bearing: same main-origin + loopback gate as /_api/git/push.
+    '/_api/git/fold': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('adding a draft requires a local request', { status: 403 });
+      const body = await readJson<unknown>(req, 8 * 1024);
+      return gitJson(await gitApi.fold(body));
+    },
+
+    '/_api/git/commit': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      const body = await readJson<unknown>(req, 256 * 1024);
+      return gitJson(await gitApi.commit(body));
+    },
+
+    '/_api/git/discard': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      const body = await readJson<unknown>(req, 256 * 1024);
+      return gitJson(await gitApi.discard(body));
+    },
+
+    '/_api/git/push': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      // Token-bearing: refuse anything not from a loopback Host (the server binds
+      // 127.0.0.1, so this is belt-and-suspenders against a forwarded/rebound Host).
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('publish requires a local request', { status: 403 });
+      const body = await readJson<unknown>(req, 8 * 1024);
+      return gitJson(await gitApi.push(body));
+    },
+
+    '/_api/git/pull': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('get latest requires a local request', { status: 403 });
+      const body = await readJson<unknown>(req, 8 * 1024);
+      return gitJson(await gitApi.pull(body));
+    },
+
+    // Finish a Get-latest merge that hit a conflict (DiffView "Keep mine/theirs/
+    // both"). Token-bearing (server-held; resolve completes the two-parent merge
+    // commit) → same main-origin + loopback gate as pull. MAIN-ORIGIN ONLY:
+    // absent from CANVAS_SAFE_API + startCanvasServer routes (dual-allowlist).
+    '/_api/git/resolve': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('resolve requires a local request', { status: 403 });
+      const body = await readJson<unknown>(req, 8 * 1024);
+      return gitJson(await gitApi.resolve(body));
+    },
+
+    // ── Phase 28 (E3) — GitHub identity & remote. Sign-in/out + keychain live in
+    // the Tauri shell (oauth.rs/keychain.rs commands); these endpoints use the
+    // server-held token (loopback bridge → token.ts) for the REST calls. MAIN-ORIGIN
+    // ONLY (absent from CANVAS_SAFE_API + startCanvasServer) and loopback-Host gated
+    // since every one is token-bearing. (Sign-out is the `github_sign_out` Tauri
+    // command — the dev-server can't touch the OS keychain — so there is no
+    // DELETE /_api/github/identity here; see DDR-114.)
+    '/_api/github/identity': async (req: Request) => {
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      return gitJson(await githubApi.identity());
+    },
+
+    '/_api/github/repos': async (req: Request) => {
+      if (req.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      return gitJson(await githubApi.repos());
+    },
+
+    '/_api/github/create-repo': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      const body = await readJson<unknown>(req, 8 * 1024);
+      return gitJson(await githubApi.createRepo(body));
+    },
+
+    '/_api/github/invite': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      const body = await readJson<unknown>(req, 8 * 1024);
+      return gitJson(await githubApi.invite(body));
+    },
+
+    '/_api/github/clone': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      const body = await readJson<unknown>(req, 8 * 1024);
+      return gitJson(await githubApi.clone(body));
+    },
+
+    '/_api/github/create-project': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      const body = await readJson<unknown>(req, 8 * 1024);
+      return gitJson(await githubApi.createProject(body));
+    },
+
+    // Scaffold a bootable .design/ into an existing folder (the "open a non-Maude
+    // repo → set it up?" fallback). No token / no GitHub — local FS only, but still
+    // main-origin + loopback gated (it writes to disk).
+    '/_api/design/init': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      const body = await readJson<unknown>(req, 8 * 1024);
+      return gitJson(await githubApi.initDesign(body));
+    },
+
+    // Phase 29 (E4) Door C — connect to a team hub: validate + probe + save the hub
+    // credential to the global ~/.config/maude/hubs.json (sync/hub-link.ts). MAIN
+    // ORIGIN ONLY (omitted from CANVAS_SAFE_API + startCanvasServer routes) + loopback
+    // + POST CSRF, mirroring /_api/github/*. The lean in-app counterpart to the CLI
+    // `maude design link`; the in-UI Connect is the explicit trust grant (DDR-054 F2).
+    '/_api/hub/link': async (req: Request) => {
+      if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
+      if (!isLoopbackHost(req.headers.get('host')))
+        return new Response('local request required', { status: 403 });
+      const body = await readJson<unknown>(req, 8 * 1024);
+      return gitJson(await linkHub(body));
     },
 
     '/_api/edit-css': async (req: Request) => {

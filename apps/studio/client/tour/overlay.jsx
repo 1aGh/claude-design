@@ -225,6 +225,11 @@ export function TourOverlay({ steps, open, onClose, onComplete, bus, hasSelectio
   const needSelHint = !!step.requireSelection && !hasSelection;
   const needCanvasHint = (!!step.canvas || !!step.requireSelection) && hasCanvas === false;
 
+  // Optional per-step graphic (Phase 29 / E4): a component drawn above the copy —
+  // the collab tour uses it for the centered two-layer infographic step. Widens the
+  // card so the diagram has room.
+  const Graphic = step.render || null;
+
   return (
     <div className="mdcc-tour" role="presentation">
       {spot ? (
@@ -233,7 +238,7 @@ export function TourOverlay({ steps, open, onClose, onComplete, bus, hasSelectio
         <div className="mdcc-tour__scrim" aria-hidden="true" />
       )}
       <div
-        className="mdcc-tour__card"
+        className={'mdcc-tour__card' + (Graphic ? ' mdcc-tour__card--graphic' : '')}
         ref={cardRef}
         role="dialog"
         aria-modal="true"
@@ -244,6 +249,11 @@ export function TourOverlay({ steps, open, onClose, onComplete, bus, hasSelectio
         <div className="mdcc-tour__step">
           {i + 1} / {steps.length}
         </div>
+        {Graphic && (
+          <div className="mdcc-tour__graphic">
+            <Graphic />
+          </div>
+        )}
         <div className="mdcc-tour__title" id="mdcc-tour-title">
           {step.title}
         </div>

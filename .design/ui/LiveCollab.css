@@ -1,0 +1,207 @@
+/* LiveCollab.css — canvas-specific chrome for the phase-30 live-collaboration
+ * mockup. Every value is a maude DS token (DDR-043); the only literals are the
+ * dotted-grid geometry + the prefers-reduced-motion collapse (a11y invariant).
+ * Scoped under `.lc` so it can't bleed into sibling canvases. */
+
+.lc {
+  background: var(--bg-0);
+  color: var(--fg-1);
+  font-family: var(--font-body);
+  padding: var(--space-5);
+  min-height: 100%;
+  box-sizing: border-box;
+}
+.lc * { box-sizing: border-box; }
+
+/* artboard caption */
+.lc-cap {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+.lc-cap b { color: var(--fg-0); font-size: var(--type-sm); letter-spacing: 0.02em; }
+.lc-cap span { color: var(--fg-2); font-size: var(--type-xs); }
+
+/* ── room bar — "you're both in this draft" presence header ─────────────── */
+.lc-room {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+}
+.lc-room-draft {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+  color: var(--fg-0);
+  font-size: var(--type-sm);
+}
+.lc-room-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--presence-online); }
+.lc-room-here { color: var(--fg-2); font-size: var(--type-xs); }
+.lc-room-spacer { flex: 1; }
+
+/* ── participants chrome (avatar stack) ──────────────────────────────────── */
+.lc-avatars { display: inline-flex; align-items: center; }
+.lc-avatar {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-weight: 600; font-size: var(--type-xs);
+  color: var(--accent-fg);
+  border: 2px solid var(--bg-2);
+  margin-left: -7px;
+  position: relative;
+}
+.lc-avatar:first-child { margin-left: 0; }
+.lc-avatar--editing { box-shadow: 0 0 0 2px var(--lc-ring, var(--accent)); animation: lc-ring 1.8s ease-in-out infinite; }
+.lc-avatar-mark {
+  position: absolute; top: -4px; right: -4px;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--bg-2); color: var(--lc-ring, var(--accent));
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 9px; line-height: 1;
+  box-shadow: 0 0 0 1px var(--border-subtle);
+}
+@keyframes lc-ring {
+  0%, 100% { box-shadow: 0 0 0 2px var(--lc-ring, var(--accent)); }
+  50% { box-shadow: 0 0 0 4px color-mix(in oklab, var(--lc-ring, var(--accent)) 45%, transparent); }
+}
+
+/* ── stage — the canvas viewport with peer cursors ───────────────────────── */
+.lc-stage {
+  position: relative;
+  height: 360px;
+  background:
+    radial-gradient(circle, color-mix(in oklab, var(--fg-3) 26%, transparent) 1px, transparent 1px)
+    0 0 / 22px 22px,
+    var(--bg-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.lc-stage-cap {
+  position: absolute; top: var(--space-3); left: var(--space-3);
+  font-family: var(--font-mono); font-size: var(--type-xs);
+  color: var(--fg-2);
+  display: inline-flex; align-items: center; gap: var(--space-2);
+}
+
+/* a canvas "frame" sitting in the viewport */
+.lc-frame-node {
+  position: absolute;
+  width: 230px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  box-shadow: var(--shadow-md);
+}
+.lc-frame-node[data-editing="true"] { border-color: var(--accent); }
+.lc-frame-node-hd {
+  font-size: var(--type-xs); color: var(--fg-1);
+  display: flex; align-items: center; gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.lc-frame-thumb {
+  height: 84px; border-radius: var(--radius-sm);
+  background: var(--bg-4);
+  display: flex; flex-direction: column; gap: 6px; padding: var(--space-3);
+}
+.lc-frame-bar { height: 8px; border-radius: 999px; background: color-mix(in oklab, var(--fg-3) 40%, transparent); }
+.lc-frame-bar.w70 { width: 70%; }
+.lc-frame-bar.w45 { width: 45%; background: color-mix(in oklab, var(--accent) 55%, transparent); }
+
+/* the soft "X is editing" badge anchored to a frame */
+.lc-editing-badge {
+  position: absolute;
+  top: calc(-1 * var(--space-3));
+  left: var(--space-4);
+  transform: translateY(-100%);
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: var(--type-xs); font-weight: 600;
+  white-space: nowrap;
+  background: var(--bg-4);
+  border: 1px solid var(--border-default);
+  color: var(--fg-0);
+  box-shadow: var(--shadow-sm);
+}
+.lc-editing-badge .lc-pip { width: 8px; height: 8px; border-radius: 50%; }
+.lc-editing-badge--agent .lc-pip { background: var(--presence-agent); }
+.lc-editing-badge--agent { border-color: color-mix(in oklab, var(--presence-agent) 50%, var(--border-default)); }
+.lc-editing-soft { color: var(--fg-2); font-weight: 500; }
+
+/* peer cursors (lifted from the colors-presence Pointer specimen) */
+.lc-cursor { position: absolute; pointer-events: none; }
+.lc-cursor-arrow { display: block; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.4)); }
+.lc-cursor-tag {
+  position: absolute; top: 14px; left: 10px;
+  padding: 1px 8px; border-radius: 999px;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 500;
+  color: var(--accent-fg); white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.lc-cursor--editing .lc-cursor-arrow { animation: lc-pulse 1.6s ease-in-out infinite; }
+@keyframes lc-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+/* ── branch-scoped tree ──────────────────────────────────────────────────── */
+.lc-cols { display: grid; grid-template-columns: 280px 1fr; gap: var(--space-4); align-items: start; }
+.lc-tree { padding: var(--space-2); }
+.lc-tree-sect {
+  font-size: var(--type-xs); text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--fg-2); padding: var(--space-2) var(--space-3) var(--space-1);
+}
+.lc-row {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--type-sm); color: var(--fg-1);
+}
+.lc-row[aria-current="true"] { background: color-mix(in oklab, var(--accent) 16%, transparent); color: var(--fg-0); }
+.lc-row-ic { color: var(--fg-2); display: inline-flex; }
+.lc-row-spacer { flex: 1; }
+.lc-row-here { width: 7px; height: 7px; border-radius: 50%; background: var(--presence-online); }
+
+/* the cross-branch coordinate cue — NOT a tree item, a presence note */
+.lc-coord {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-2);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-md);
+  font-size: var(--type-xs); color: var(--fg-2);
+}
+.lc-coord b { color: var(--fg-0); font-weight: 600; }
+.lc-coord .lc-coord-row { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
+
+/* ── get-latest nudge ────────────────────────────────────────────────────── */
+.lc-nudge {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: color-mix(in oklab, var(--accent) 12%, var(--bg-2));
+  border: 1px solid color-mix(in oklab, var(--accent) 40%, var(--border-subtle));
+  border-radius: var(--radius-md);
+}
+.lc-nudge-spark { color: var(--accent); display: inline-flex; }
+.lc-nudge-tx { font-size: var(--type-sm); color: var(--fg-0); }
+.lc-nudge-tx b { font-weight: 600; }
+.lc-nudge-spacer { flex: 1; }
+
+.lc-note {
+  margin-top: var(--space-4);
+  font-size: var(--type-xs); color: var(--fg-2);
+  line-height: 1.5;
+}
+.lc-note code { font-family: var(--font-mono); color: var(--fg-1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-avatar--editing, .lc-cursor--editing .lc-cursor-arrow { animation: none; }
+  .lc-avatar--editing { box-shadow: 0 0 0 2px var(--lc-ring, var(--accent)); }
+}

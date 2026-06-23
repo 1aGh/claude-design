@@ -13,11 +13,21 @@ import { createRoot } from 'react-dom/client';
 // bundle — no React, no input-router. See the tool-cursor handler below.
 import { resolveToolCursor } from '../canvas-cursors.ts';
 import { canvasUrl } from './canvas-url.js';
+import ChatPanel from './panels/ChatPanel.jsx';
+import DiffView from './panels/DiffView.jsx';
+import GitPanel from './panels/GitPanel.jsx';
+import IdentityBar from './panels/IdentityBar.jsx';
+import OnboardingWizard from './panels/OnboardingWizard.jsx';
+import RepoBranchSwitcher from './panels/RepoBranchSwitcher.jsx';
+import { appIsFirstRun, isNativeApp, onUpdateReady, restartToUpdate } from './github.js';
+import { COLLAB_TOUR } from './tour/collab-tour.js';
 import { TourOverlay } from './tour/overlay.jsx';
 import { USAGE_TOUR } from './tour/usage-tour.js';
 import { useWhatsNew, WhatsNewPanel, WhatsNewToast } from './whats-new.jsx';
 
 const USAGE_TOUR_STORE = 'mdcc-usage-tour-seen';
+// Phase 29 (E4) — the collab "rychlý kurz" is offered once after onboarding.
+const COLLAB_TOUR_STORE = 'mdcc-collab-tour-seen';
 
 const SYSTEM_TAB = '__system__';
 const THEME_STORE = 'mdcc-theme';
@@ -295,6 +305,13 @@ const STICONS = {
   moon: <path d="M12.5 9.6A5 5 0 1 1 7 3a4 4 0 0 0 5.5 6.6z" />,
   sparkle: (
     <path d="M8 1.8l1.4 4.8L14 8l-4.6 1.4L8 14.2l-1.4-4.8L2 8l4.6-1.4z" fill="currentColor" stroke="none" />
+  ),
+  megaphone: (
+    <>
+      <path d="M2 6.7 11 4v8L2 9.3z" />
+      <path d="M11 5.2a2.4 2.4 0 0 1 0 5.6" />
+      <path d="M4.3 9.5v2.3a1.2 1.2 0 0 0 2.4 0v-1.7" />
+    </>
   ),
   'panel-left': (
     <>
@@ -1063,7 +1080,7 @@ function DsFolderRow({ name, dsName, depth, defaultOpen, active, onOpenSystem, c
   );
 }
 
-function FileRow({ file, activePath, onOpen, onDelete, openCount: oc, depth, kind, sidecar }) {
+function FileRow({ file, activePath, onOpen, onDelete, openCount: oc, depth, kind, sidecar, dirty }) {
   const isSel = file.path === activePath;
   const isCanvas = CANVAS_EXT_RE.test(file.name);
   // Non-canvas rows (PROJECT *.md, RUNTIME _active.json, ...) are display-only —
@@ -1094,6 +1111,11 @@ function FileRow({ file, activePath, onOpen, onDelete, openCount: oc, depth, kin
         <StIcon name="file" size={13} />
       </span>
       <span className="st-row-name">{label}</span>
+      {dirty && (
+        <span className="st-git-badge" data-kind={dirty} title={`Unsaved (${dirty})`} aria-label={`Unsaved, ${dirty}`}>
+          {dirty}
+        </span>
+      )}
       {oc > 0 && <span className="st-row-badge">{oc}</span>}
     </button>
   );
@@ -1130,7 +1152,9 @@ function CanvasRow({
   openCount: oc,
   showHidden,
   forceOpen,
+  dirtyByPath,
 }) {
+  const dirty = dirtyByPath?.get(primary.path);
   const hasSidecars = sidecars.length > 0;
   const [openState, setOpenState] = useState(false);
   // Sidecars are only revealed when the user opts in via `showHidden` — the
@@ -1149,6 +1173,7 @@ function CanvasRow({
         openCount={oc}
         depth={depth}
         kind={kind}
+        dirty={dirty}
       />
     );
   }
@@ -1182,6 +1207,11 @@ function CanvasRow({
           <StIcon name="chevron-right" className={'st-chev' + (open ? ' is-open' : '')} size={13} />
         </span>
         <span className="st-row-name">{displayName(primary.name)}</span>
+        {dirty && (
+          <span className="st-git-badge" data-kind={dirty} title={`Unsaved (${dirty})`} aria-label={`Unsaved, ${dirty}`}>
+            {dirty}
+          </span>
+        )}
         {oc > 0 && <span className="st-row-badge">{oc}</span>}
       </button>
       {open &&
@@ -1214,6 +1244,7 @@ function Tree({
   activeDsName,
   onOpenSystem,
   onDelete,
+  dirtyByPath,
 }) {
   const dirs = Object.keys(node)
     .filter((k) => k !== '_files')
@@ -1255,6 +1286,7 @@ function Tree({
             kind={kind}
             showHidden={showHidden}
             forceOpen={forceOpen}
+            dirtyByPath={dirtyByPath}
           />
         );
       })}
@@ -1286,6 +1318,7 @@ function Tree({
             activeDsName={activeDsName}
             onOpenSystem={onOpenSystem}
             onDelete={onDelete}
+            dirtyByPath={dirtyByPath}
           />
         );
         if (dsMatch && onOpenSystem) {
@@ -1353,6 +1386,9 @@ function Sidebar({
   onCollapse,
   width,
   resizing,
+  dirtyByPath,
+  project,
+  gitBranch,
 }) {
   const filteredGroups = useMemo(() => {
     if (!search) return groups;
@@ -1569,6 +1605,7 @@ function Sidebar({
                     activeDsName={activeDsName}
                     onOpenSystem={isDs ? onOpenSystem : undefined}
                     onDelete={isDs ? undefined : onDeleteBoard}
+                    dirtyByPath={dirtyByPath}
                   />
                 ) : (
                   <div className="st-tree-empty">{search ? 'No matches.' : 'Empty.'}</div>
@@ -1577,6 +1614,14 @@ function Sidebar({
           );
         })}
       </div>
+      {/* Phase 29 (E4) — the project + draft switcher: a compact one-line dock that
+          opens UPWARD, sitting directly above the GitHub identity avatar so the two
+          form one bottom dock. Renders nothing until the project is a git repo. */}
+      <RepoBranchSwitcher project={project} liveBranch={gitBranch} />
+      {/* Phase 28 (E3) — GitHub identity as a compact avatar docked at the BOTTOM:
+          sign in, connected account + New/Pull/Share, sign out. Self-contained
+          (owns its device-code + CreateProject dialogs). Renders nothing in browser. */}
+      <IdentityBar />
     </nav>
   );
 }
@@ -2200,6 +2245,10 @@ function HelpDropdown({ onAction, onClose }) {
         { id: 'help', label: 'Help · commands & flows', shortcut: 'F1' },
         { sep: true },
         { id: 'tour', label: 'Take the tour' },
+        // The collab "how sharing works" course teaches the plain-words Save →
+        // Publish → Pull cycle — a non-technical, native-app concern. A web-studio
+        // dev already knows git, so it's hidden there (DDR-119).
+        ...(isNativeApp() ? [{ id: 'collab-tour', label: 'How sharing works' }] : []),
         { id: 'whatsnew', label: "What's new" },
       ]}
     />
@@ -2296,6 +2345,9 @@ function Menubar({
   setOpenMenu,
   commentsPanelOpen,
   onToggleComments,
+  changesOpen,
+  changesCount,
+  onToggleChanges,
   onOpenSystem,
   sidebarOpen,
   onToggleSidebar,
@@ -2304,8 +2356,15 @@ function Menubar({
   onOpenHelp,
   onOpenShortcuts,
   onStartTour,
+  onStartCollabTour,
   annotationsVisible,
   onToggleAnnotations,
+  minimapVisible,
+  onToggleMinimap,
+  zoomCtlVisible,
+  onToggleZoomCtl,
+  presentMode,
+  onTogglePresent,
   postToActiveCanvas,
   onOpenWhatsNew,
   whatsNewCount,
@@ -2315,6 +2374,10 @@ function Menubar({
   inspectorTab,
   onToggleInspector,
   onOpenLayers,
+  assistantOpen,
+  onToggleAssistant,
+  assistantBusy,
+  assistantUnseen,
   onNewCanvas,
   onOpenExport,
   onReload,
@@ -2334,6 +2397,13 @@ function Menubar({
 
   const panels = [
     { id: 'tree', label: 'Project Tree', shortcut: 'T', checked: sidebarOpen, disabled: false },
+    {
+      id: 'changes',
+      label: changesCount > 0 ? `Changes · ${changesCount} unsaved` : 'Changes',
+      shortcut: '⌘ ⇧ G',
+      checked: changesOpen,
+      disabled: false,
+    },
     {
       id: 'comments',
       label: 'Comments Sidebar',
@@ -2362,6 +2432,18 @@ function Menubar({
       checked: inspectorOpen,
       disabled: false,
     },
+    // Phase 31 (DDR-123) — native-only ACP chat sidepanel.
+    ...(isNativeApp()
+      ? [
+          {
+            id: 'assistant',
+            label: 'Assistant',
+            shortcut: '⌘ ⇧ A',
+            checked: assistantOpen,
+            disabled: false,
+          },
+        ]
+      : []),
     {
       id: 'annotate',
       label: 'Annotations',
@@ -2369,7 +2451,27 @@ function Menubar({
       checked: annotationsVisible,
       disabled: false,
     },
-    { id: 'present', label: 'Presentation Mode', phase: 'Phase 6', disabled: true },
+    {
+      id: 'minimap',
+      label: 'Minimap',
+      shortcut: '',
+      checked: minimapVisible,
+      disabled: !activePath || isSystem,
+    },
+    {
+      id: 'zoomctl',
+      label: 'Zoom controls',
+      shortcut: '',
+      checked: zoomCtlVisible,
+      disabled: !activePath || isSystem,
+    },
+    {
+      id: 'present',
+      label: 'Presentation Mode',
+      shortcut: '',
+      checked: presentMode,
+      disabled: !activePath || isSystem,
+    },
   ];
 
   const DROPDOWN_MENUS = ['file', 'edit', 'view', 'selection', 'tools', 'help'];
@@ -2489,11 +2591,16 @@ function Menubar({
           panels={panels}
           onToggle={(id) => {
             if (id === 'tree') onToggleSidebar();
+            else if (id === 'changes') onToggleChanges();
             else if (id === 'comments') onToggleComments();
             else if (id === 'hidden') onToggleShowHidden();
             else if (id === 'annotate') onToggleAnnotations();
             else if (id === 'inspector') onToggleInspector();
+            else if (id === 'assistant') onToggleAssistant?.();
             else if (id === 'layers') onOpenLayers?.();
+            else if (id === 'minimap') onToggleMinimap?.();
+            else if (id === 'zoomctl') onToggleZoomCtl?.();
+            else if (id === 'present') onTogglePresent?.();
           }}
           onZoom={(op) => postToActiveCanvas({ dgn: 'zoom', op })}
           hasCanvas={!!activePath && !isSystem}
@@ -2522,6 +2629,7 @@ function Menubar({
             if (id === 'shortcuts') onOpenShortcuts?.();
             else if (id === 'help') onOpenHelp?.();
             else if (id === 'tour') onStartTour?.();
+            else if (id === 'collab-tour') onStartCollabTour?.();
             else if (id === 'whatsnew') onOpenWhatsNew?.();
           }}
           onClose={() => setOpenMenu(null)}
@@ -2529,6 +2637,20 @@ function Menubar({
       )}
       <div className="st-mb-right" data-tour="status">
         {presence ? <div className="st-presence">{presence}</div> : null}
+        {isNativeApp() && (
+          <button
+            type="button"
+            className="st-assistant"
+            data-active={assistantOpen ? 'true' : 'false'}
+            data-busy={assistantBusy ? 'true' : 'false'}
+            data-unseen={assistantUnseen ? 'true' : 'false'}
+            aria-label={`Assistant${assistantBusy ? ' — working' : assistantUnseen ? ' — new reply' : ''}`}
+            data-tip="Assistant  ⌘⇧A"
+            onClick={onToggleAssistant}
+          >
+            <StIcon name="sparkle" size={15} />
+          </button>
+        )}
         <button
           type="button"
           className="st-whatsnew"
@@ -2538,7 +2660,7 @@ function Menubar({
           data-tip="What's new"
           onClick={onOpenWhatsNew}
         >
-          <StIcon name="sparkle" size={15} />
+          <StIcon name="megaphone" size={15} />
         </button>
         <span className="st-stamp">{stamp}</span>
         <span className="st-mb-file" title={activePath || ''}>
@@ -2913,6 +3035,10 @@ function StatusBar({
   onToggleTheme,
   onClearSelected,
   syncStatus,
+  changesCount = 0,
+  unpushed = 0,
+  changesOpen = false,
+  onOpenChanges,
 }) {
   const isSystem = activePath === SYSTEM_TAB;
   const text =
@@ -2995,6 +3121,33 @@ function StatusBar({
         <span className="lbl">comments</span>
         <span className="val">{openCount} open</span>
       </span>
+
+      {/* Phase 28 — changes count, click to open the Changes panel (⌘⇧G). */}
+      {onOpenChanges && (
+        <button
+          type="button"
+          className={
+            'st-sb-slot st-sb-changes' +
+            (changesOpen ? ' is-open' : '') +
+            (changesCount > 0 ? ' has-changes' : unpushed > 0 ? ' has-unpushed' : '')
+          }
+          onClick={onOpenChanges}
+          data-tip="Open Changes · ⌘⇧G"
+          data-tip-pos="top"
+          aria-label="Open Changes panel"
+          aria-pressed={changesOpen}
+        >
+          <span className="st-sb-changes-dot" aria-hidden="true" />
+          <span className="lbl">changes</span>
+          <span className="val">
+            {changesCount > 0
+              ? `${changesCount} unsaved`
+              : unpushed > 0
+                ? `${unpushed} to publish`
+                : 'all saved'}
+          </span>
+        </button>
+      )}
 
       <span className="st-sb-spacer" />
 
@@ -3204,6 +3357,35 @@ function CommentsPanel({
 // while offline (with queued-edit count), red when offline > 24h, green flash
 // for 3s right after a reconnect. Driven entirely by the 'sync:status' payload
 // the dev-server's linked-mode sync runtime broadcasts.
+// Phase 32 (Task 1) — auto-update notice. Shown after the shell has downloaded +
+// staged a newer build in the background. Non-blocking: "Restart now" applies it,
+// "Later" dismisses (the next focus/4h check re-stages and re-surfaces it).
+function UpdateBanner({ update, onDismiss }) {
+  const [restarting, setRestarting] = useState(false);
+  if (!update) return null;
+  const ver = update.version ? ` (v${update.version})` : '';
+  return (
+    <div role="status" aria-live="polite" className="st-banner st-banner--info">
+      <span className="st-banner-dot" aria-hidden="true" />
+      <span>Maude updated{ver} · restart to apply</span>
+      <button
+        type="button"
+        className="btn btn--primary btn--sm"
+        disabled={restarting}
+        onClick={() => {
+          setRestarting(true);
+          restartToUpdate().catch(() => setRestarting(false));
+        }}
+      >
+        {restarting ? 'Restarting…' : 'Restart now'}
+      </button>
+      <button type="button" className="btn btn--ghost btn--sm" onClick={onDismiss}>
+        Later
+      </button>
+    </div>
+  );
+}
+
 function SyncBanner({ status }) {
   // Plan C follow-up — the banner overlapped the menubar and wasn't dismissable.
   // Dismissal is keyed on the connection state, so a transition (reconnect flash,
@@ -5260,6 +5442,20 @@ function App() {
   // Phase 9 Task 8 — hub-down offline mode banner. Driven by the 'sync:status'
   // WS message the linked-mode sync runtime emits. null in solo mode.
   const [syncStatus, setSyncStatus] = useState(null);
+  // Phase 27 (E2) — in-UI git layer. `gitStatus` is the live dirty-state the
+  // server broadcasts on `git-status`; `changesOpen` toggles the Changes panel;
+  // `diffTarget` opens the before/after DiffView ({ file, conflict }).
+  const [gitStatus, setGitStatus] = useState(null);
+  // Phase 28 (E3) — remote ahead/behind ("Get latest" nudge). Kept in its OWN
+  // slice, NOT folded into `gitStatus`, because the `git-status` WS broadcast
+  // (line ~5791) replaces `gitStatus` on every dirty-state change and carries
+  // only LOCAL status — merging remote-ahead into it would be clobbered on the
+  // next keystroke. The probe is a real network `git fetch` (server-side, token
+  // from the keychain bridge), so it runs on a slow cadence — mount, a periodic
+  // tick, and after each git action — never on the per-edit WS path.
+  const [remoteSync, setRemoteSync] = useState(null); // { remoteAhead, behind } | null
+  const [changesOpen, setChangesOpen] = useState(false);
+  const [diffTarget, setDiffTarget] = useState(null);
   const [search, setSearch] = useState('');
   const [systemData, setSystemData] = useState(null);
   // Canvas-compile skeleton (single-canvas model → one path at a time).
@@ -5356,6 +5552,20 @@ function App() {
       cancelled = true;
     };
   }, []);
+  // Phase 27 (E2) — seed the git dirty-state on mount; live updates arrive over
+  // the `git-status` WS broadcast (Task 5). Solo/non-git projects → repo:false.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/_api/git/status')
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled && data) setGitStatus(data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [commentsByFile, setCommentsByFile] = useState({}); // { file: [Comment] }
   // Phase 6 — the in-iframe composer owns drafting; the shell no longer holds
   // a `draft` state. Mutations route through postMessage → WS instead.
@@ -5376,10 +5586,144 @@ function App() {
   // The palette (T4) drives them; the dialog (T5) + panel (T6) consume them.
   const [exportDialog, setExportDialog] = useState(null); // null | { mode: 'export'|'handoff', scope? }
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  // Phase 31 (DDR-123) — the native ACP chat sidepanel (right dock, native-only).
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [assistantBusy, setAssistantBusy] = useState(false);
+  const [assistantUnseen, setAssistantUnseen] = useState(false);
+  const assistantOpenRef = useRef(assistantOpen);
+  useEffect(() => {
+    assistantOpenRef.current = assistantOpen;
+    if (assistantOpen) {
+      setAssistantUnseen(false); // opening clears the unseen badge
+      // Ask for notification permission on a real user gesture (panel open).
+      try {
+        if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+          Notification.requestPermission();
+        }
+      } catch {
+        /* notifications unavailable */
+      }
+    }
+  }, [assistantOpen]);
+  // ChatPanel owns one connection PER CHAT (so chats run in parallel in the
+  // background) and reports up here: `onBusyChange` for the menubar pulse, and
+  // `onFinished` when any chat's turn ends — badge + notify if you weren't looking.
+  const handleAssistantFinished = useCallback(() => {
+    if (!assistantOpenRef.current || document.hidden) {
+      setAssistantUnseen(true);
+      try {
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          new Notification('Claude finished', { body: 'Your assistant turn is ready in Maude.' });
+        }
+      } catch {
+        /* best-effort — the in-app badge is the reliable signal */
+      }
+    }
+  }, []);
   // Inspector tab is lifted so View ▸ Layers can open the panel ON the Layers
   // tab (the menu item sat disabled as "Phase 12" long after the tab shipped).
   const [inspectorTab, setInspectorTab] = useState('inspect');
+  // The right dock holds exactly ONE panel (Changes / Inspector / Comments) at
+  // a time — opening any panel REPLACES whatever was there. These two helpers
+  // are the single source of that invariant; every open/toggle path routes
+  // through them. (Before, the three booleans were flipped independently across
+  // ~13 call sites and only some closed their siblings, so a panel opened via a
+  // path that left a sibling `true` rendered *behind* it under the fixed
+  // precedence — looking like the new panel "overlapped" the old one.)
+  const openRightPanel = useCallback((which) => {
+    setChangesOpen(which === 'changes');
+    setInspectorOpen(which === 'inspector');
+    setCommentsPanelOpen(which === 'comments');
+    setAssistantOpen(which === 'assistant');
+  }, []);
+  // Functional updates so this is stale-closure-safe inside the keydown /
+  // postMessage listeners; opening always clears the sibling panels.
+  const toggleRightPanel = useCallback((which) => {
+    if (which === 'inspector') {
+      setInspectorOpen((v) => {
+        if (!v) {
+          setChangesOpen(false);
+          setCommentsPanelOpen(false);
+          setAssistantOpen(false);
+        }
+        return !v;
+      });
+    } else if (which === 'comments') {
+      setCommentsPanelOpen((v) => {
+        if (!v) {
+          setChangesOpen(false);
+          setInspectorOpen(false);
+          setAssistantOpen(false);
+        }
+        return !v;
+      });
+    } else if (which === 'changes') {
+      setChangesOpen((v) => {
+        if (!v) {
+          setInspectorOpen(false);
+          setCommentsPanelOpen(false);
+          setAssistantOpen(false);
+        }
+        return !v;
+      });
+    } else if (which === 'assistant') {
+      setAssistantOpen((v) => {
+        if (!v) {
+          setChangesOpen(false);
+          setInspectorOpen(false);
+          setCommentsPanelOpen(false);
+        }
+        return !v;
+      });
+    }
+  }, []);
   const whatsNew = useWhatsNew(MDCC_VERSION);
+  // Phase 29 (E4) — first-run onboarding wizard. The native shell boots a minimal
+  // "welcome" project on first launch; we ask it whether this is a first run and, if
+  // so, show the wizard OVER the (empty) canvas browser. Completing any door switches
+  // the sidecar to a real project (the webview reloads → first-run is then false).
+  const [firstRun, setFirstRun] = useState(false);
+  // Offer the collab "rychlý kurz" once, AFTER onboarding (native app, not first run,
+  // not yet seen). A returning user who already took it isn't re-nudged.
+  const [collabNudge, setCollabNudge] = useState(false);
+  useEffect(() => {
+    if (!isNativeApp()) return undefined;
+    let alive = true;
+    appIsFirstRun()
+      .then((v) => {
+        if (!alive) return;
+        setFirstRun(!!v);
+        if (!v && !readBoolStore(COLLAB_TOUR_STORE, false)) setCollabNudge(true);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const markCollabSeen = useCallback(() => {
+    setCollabNudge(false);
+    try {
+      localStorage.setItem(COLLAB_TOUR_STORE, '1');
+    } catch {}
+  }, []);
+  // Phase 32 (Task 1) — auto-update. The native shell downloads + stages a newer
+  // build in the background and emits `update-ready`; we surface a non-blocking
+  // banner. Native-only (the web studio is updated by its own deploy).
+  const [updateReady, setUpdateReady] = useState(null);
+  useEffect(() => {
+    if (!isNativeApp()) return undefined;
+    let un;
+    onUpdateReady((p) => setUpdateReady(p && typeof p === 'object' ? p : {}))
+      .then((fn) => {
+        un = fn;
+      })
+      .catch(() => {});
+    return () => {
+      try {
+        un?.();
+      } catch {}
+    };
+  }, []);
   const [tourSteps, setTourSteps] = useState(null);
   const [usageNudge, setUsageNudge] = useState(() => !readBoolStore(USAGE_TOUR_STORE, false));
   const startTour = useCallback((steps) => {
@@ -5401,8 +5745,11 @@ function App() {
           } catch {}
         }, 80);
       }
-      if (step.inspector || step.tab || step.requireSelection) setInspectorOpen(true);
+      if (step.inspector || step.tab || step.requireSelection) openRightPanel('inspector');
       if (step.tab) setInspectorTab(step.tab);
+      // Phase 29 (E4) collab tour — open the Changes panel so the Save / Publish /
+      // Get-latest controls the action steps spotlight actually exist to anchor on.
+      if (step.changes) openRightPanel('changes');
     },
   };
   const markUsageSeen = useCallback(() => {
@@ -5412,6 +5759,13 @@ function App() {
     } catch {}
   }, []);
   const [annotationsVisible, setAnnotationsVisible] = useState(true);
+  // Canvas-chrome visibility (View menu). minimap + zoom-controls are
+  // persistent prefs broadcast to every open canvas iframe; presentMode is a
+  // non-destructive "hide ALL chrome + shell, artboards only" overlay with an
+  // Esc / floating-pill escape hatch back to the chrome.
+  const [minimapVisible, setMinimapVisible] = useState(true);
+  const [zoomCtlVisible, setZoomCtlVisible] = useState(true);
+  const [presentMode, setPresentMode] = useState(false);
   // P2/P3 (Plan C) — top-bar live state. (Zoom lives in the canvas toolbar pill,
   // so the top bar no longer mirrors it.)
   //   activeArtboards — real artboard count of the open canvas, read from its
@@ -5453,6 +5807,42 @@ function App() {
       return next;
     });
   }, [activePath]);
+
+  // Chrome visibility (minimap / zoom-controls / Presentation Mode) applies to
+  // EVERY open canvas iframe, not just the active one — broadcast to all. A
+  // freshly-loaded iframe is seeded from the dgn:'loaded' handler below.
+  const broadcastChrome = useCallback((patch) => {
+    for (const el of iframesRef.current.values()) {
+      try {
+        el.contentWindow.postMessage({ dgn: 'view-chrome', ...patch }, '*');
+      } catch {}
+    }
+  }, []);
+  const toggleMinimap = useCallback(() => {
+    setMinimapVisible((v) => {
+      const next = !v;
+      broadcastChrome({ minimap: next });
+      return next;
+    });
+  }, [broadcastChrome]);
+  const toggleZoomCtl = useCallback(() => {
+    setZoomCtlVisible((v) => {
+      const next = !v;
+      broadcastChrome({ zoom: next });
+      return next;
+    });
+  }, [broadcastChrome]);
+  const togglePresent = useCallback(() => {
+    setPresentMode((v) => {
+      const next = !v;
+      broadcastChrome({ present: next });
+      return next;
+    });
+  }, [broadcastChrome]);
+  const exitPresent = useCallback(() => {
+    setPresentMode(false);
+    broadcastChrome({ present: false });
+  }, [broadcastChrome]);
 
   // P3 (Plan C) — local git user for the menubar presence avatar. One-shot.
   useEffect(() => {
@@ -5657,6 +6047,20 @@ function App() {
           } else if (m.type === 'sync:status' && m.payload) {
             // Phase 9 Task 8 — hub connection state for the offline banner.
             setSyncStatus(m.payload);
+          } else if (m.type === 'canvas-list-update') {
+            // Phase 30 — a canvas was created/deleted on THIS dev-server; re-read
+            // the branch-scoped tree so other open tabs reflect it without a
+            // reload. Cross-machine peers get a new canvas via git "Get latest".
+            loadTree();
+          } else if (m.type === 'acp-focus') {
+            // Phase 31 (DDR-123) — `/design:chat` from the terminal asked us to
+            // surface the native ACP chat sidepanel. Native-only (the panel
+            // doesn't exist on the web surface).
+            if (isNativeApp()) openRightPanel('assistant');
+          } else if (m.type === 'git-status' && m.payload) {
+            // Phase 27 (E2) Task 5 — live dirty-state. Updates the Changes-panel
+            // count + tree M/A/D badges reactively, no polling.
+            setGitStatus(m.payload);
           } else if (m.type === 'git-lifecycle' && m.payload) {
             // Phase 8 Task 7 — branch switch / pull mid-session. Server has
             // already flushed every dirty Y.Doc to JSON; just prompt the user.
@@ -5675,7 +6079,9 @@ function App() {
     }
     connect();
     return () => wsRef.current && wsRef.current.close();
-  }, []);
+    // loadTree is a stable useCallback([]); listed so the canvas-list-update
+    // handler always calls the live reference.
+  }, [loadTree]);
 
   function wsSend(obj) {
     const ws = wsRef.current;
@@ -5683,6 +6089,144 @@ function App() {
       if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
     } catch {}
   }
+
+  // ----- Phase 27 (E2) — git actions -----
+  // All write actions POST same-origin (the dev-server's sameOriginWrite + the
+  // dual-allowlist gate them main-origin only). After a mutation we refresh
+  // status optimistically; the `git-status` WS broadcast also lands shortly.
+  const refreshGitStatus = useCallback(async () => {
+    try {
+      const r = await fetch('/_api/git/status');
+      if (r.ok) setGitStatus(await r.json());
+    } catch {}
+  }, []);
+
+  // Phase 28 (E3) — probe the tracking remote so the Changes panel can surface
+  // the "Get latest" nudge (GitPanel reads `status.remoteAhead` / `status.behind`).
+  // `?remote=1` is what makes the server do the `git fetch` + ahead/behind count;
+  // without it the status is local-only and the nudge never fires. Network call —
+  // call sparingly (mount / interval / post-action), never on the WS hot path.
+  const refreshRemoteSync = useCallback(async () => {
+    try {
+      const r = await fetch('/_api/git/status?remote=1');
+      if (!r.ok) return;
+      const data = await r.json();
+      if (data && data.repo !== false)
+        setRemoteSync({ remoteAhead: !!data.remoteAhead, behind: data.behind || 0 });
+    } catch {}
+  }, []);
+
+  const gitPostJson = useCallback(async (path, body) => {
+    try {
+      const r = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}),
+      });
+      const data = await r.json().catch(() => ({}));
+      return { ok: r.ok, ...data };
+    } catch (e) {
+      return { ok: false, error: 'Network error — is the project still open?' };
+    }
+  }, []);
+
+  const gitCommit = useCallback(
+    async (message, files) => {
+      const res = await gitPostJson('/_api/git/commit', { message, files });
+      if (res.ok) await refreshGitStatus();
+      return res;
+    },
+    [gitPostJson, refreshGitStatus]
+  );
+
+  const gitDiscard = useCallback(
+    async (files) => {
+      const res = await gitPostJson('/_api/git/discard', { files });
+      if (res.ok) await refreshGitStatus();
+      return res;
+    },
+    [gitPostJson, refreshGitStatus]
+  );
+
+  const gitPublish = useCallback(async () => {
+    const res = await gitPostJson('/_api/git/push', {});
+    // Refresh so the "N versions ready to publish" count clears to 0 after a
+    // successful push (the server advanced the local remote-tracking ref), and
+    // re-probe the remote so a stale "Get latest" nudge clears.
+    if (res.ok) {
+      await refreshGitStatus();
+      refreshRemoteSync();
+    }
+    return res;
+  }, [gitPostJson, refreshGitStatus, refreshRemoteSync]);
+
+  const gitGetLatest = useCallback(async () => {
+    const res = await gitPostJson('/_api/git/pull', {});
+    // On success the remote is merged in — clear the nudge by re-probing.
+    if (res.ok) {
+      await refreshGitStatus();
+      refreshRemoteSync();
+    }
+    // A true content conflict → open the visual resolver on the first file.
+    if (res.conflict && Array.isArray(res.files) && res.files.length) {
+      setDiffTarget({ file: res.files[0], conflict: true });
+    }
+    return res;
+  }, [gitPostJson, refreshGitStatus, refreshRemoteSync]);
+
+  // Phase 28 (E3) — finish a Get-latest conflict from the DiffView resolver.
+  // `choice` is 'mine' | 'theirs' | 'both'; the server completes the two-parent
+  // merge commit (and, for 'both', writes our version as a "(mine)" copy).
+  const gitResolveConflict = useCallback(
+    async (choice) => {
+      const res = await gitPostJson('/_api/git/resolve', { choice });
+      if (res.ok) {
+        await refreshGitStatus();
+        refreshRemoteSync();
+      }
+      return res;
+    },
+    [gitPostJson, refreshGitStatus, refreshRemoteSync]
+  );
+
+  // `path` (optional) scopes History to one canvas — the per-file version list
+  // behind the History click-to-preview + DiffView "Saved version" picker
+  // (phase-27.1). Omit for the repo-wide log.
+  const gitLoadLog = useCallback(async (path) => {
+    try {
+      const qs = '/_api/git/log?limit=40' + (path ? `&path=${encodeURIComponent(path)}` : '');
+      const r = await fetch(qs);
+      if (!r.ok) return [];
+      const data = await r.json();
+      return data.entries || [];
+    } catch {
+      return [];
+    }
+  }, []);
+
+  // Repo-relative path → M/A/D/U badge for the tree (paths match: both the tree
+  // and gitStatus use `.design/ui/Foo.tsx`). Keyed off gitStatus so it updates
+  // live with the WS broadcast.
+  const dirtyByPath = useMemo(() => {
+    const KIND = { modified: 'M', added: 'A', deleted: 'D', untracked: 'U' };
+    const m = new Map();
+    for (const f of gitStatus?.files || []) m.set(f.path, KIND[f.status]);
+    return m;
+  }, [gitStatus]);
+  const unsavedCount = gitStatus?.files?.length || 0;
+
+  // Phase 28 (E3) — keep remote ahead/behind fresh so the "Get latest" nudge
+  // surfaces on its own: probe once a repo is known, again whenever the Changes
+  // panel opens, and on a slow 60 s tick WHILE the panel is open (a teammate's
+  // publish then shows up without the user first attempting their own publish).
+  // Declared after `refreshRemoteSync` to avoid a temporal-dead-zone on the dep.
+  useEffect(() => {
+    if (gitStatus?.repo === false) return; // solo / non-git project — no remote
+    refreshRemoteSync();
+    if (!changesOpen) return; // only keep polling while the panel is visible
+    const id = setInterval(refreshRemoteSync, 60000);
+    return () => clearInterval(id);
+  }, [gitStatus?.repo, changesOpen, refreshRemoteSync]);
 
   // ----- Tab management (single-canvas) -----
   // Single-canvas model: opening a file REPLACES the active one (no tab strip).
@@ -5825,15 +6369,17 @@ function App() {
   }, [activePath]);
 
   // ----- Push comments to iframe whenever they change for active file -----
+  // Presentation Mode hides comment pins: post an empty list while present
+  // (re-posting the real list on exit, since this effect re-runs on the flag).
   useEffect(() => {
     if (!activePath || activePath === SYSTEM_TAB) return;
     const el = iframesRef.current.get(activePath);
     if (!el || !el.contentWindow) return;
-    const list = commentsByFile[activePath] || [];
+    const list = presentMode ? [] : commentsByFile[activePath] || [];
     try {
       el.contentWindow.postMessage({ dgn: 'comments-set', comments: list }, '*');
     } catch {}
-  }, [activePath, commentsByFile]);
+  }, [activePath, commentsByFile, presentMode]);
 
   // ----- Inbound messages from iframes -----
   useEffect(() => {
@@ -5917,7 +6463,25 @@ function App() {
         setLayersTree({ artboardId: m.artboardId, nodes: Array.isArray(m.tree) ? m.tree : [] });
       } else if (m.dgn === 'open-inspector') {
         // Phase 12 — context-menu "Inspect" / tool-palette Inspect opens the right panel.
-        setInspectorOpen(true);
+        openRightPanel('inspector');
+      } else if (m.dgn === 'present-enter') {
+        // Canvas tool-palette "Presentation mode" button — Present Mode is a
+        // shell-level state (hides the menubar / sidebar / panels), so the
+        // canvas requests it here and the shell flips it on + broadcasts
+        // dgn:'view-chrome' back to every iframe. Enter-only (the palette is
+        // hidden while presenting); exit is Esc or the floating pill. The
+        // inbound origin gate above (DDR-054) already authenticates the canvas.
+        // Hardening (phase-28 audit F-2): honor it ONLY from the ACTIVE canvas
+        // (a background tab's untrusted canvas must not flip the foreground),
+        // and NEVER while a modal dialog is open — present mode hides Sidebar-
+        // descendant modals (OAuth device-code / Share-invite), so an untrusted
+        // canvas could otherwise blank an in-flight confirmation.
+        const activeWin = activePath ? iframesRef.current.get(activePath)?.contentWindow : null;
+        const modalOpen = !!document.querySelector('[role="dialog"][aria-modal="true"]');
+        if (e.source === activeWin && !modalOpen && !presentMode) {
+          setPresentMode(true);
+          broadcastChrome({ present: true });
+        }
       } else if (m.dgn === 'comment-compose' && m.selection) {
         // Phase 6 — the iframe overlay owns the composer surface now. The
         // shell just mirrors `selected` so the StatusBar / sidebar still
@@ -5970,8 +6534,9 @@ function App() {
         // Same forwarding lane for the other shell chords (inspect.ts) — so
         // ⌘R / ⌘⇧I / ⌘⇧M / ⌘⇧E / ⌘⇧H behave identically wherever focus is.
         if (m.id === 'reload') reloadActive();
-        else if (m.id === 'inspector') setInspectorOpen((v) => !v);
-        else if (m.id === 'comments') setCommentsPanelOpen((v) => !v);
+        else if (m.id === 'inspector') toggleRightPanel('inspector');
+        else if (m.id === 'assistant' && isNativeApp()) toggleRightPanel('assistant');
+        else if (m.id === 'comments') toggleRightPanel('comments');
         else if (m.id === 'export') setExportDialog({ mode: 'export' });
         else if (m.id === 'handoff') setExportDialog({ mode: 'handoff' });
       } else if (m.dgn === 'open-export') {
@@ -5986,7 +6551,9 @@ function App() {
         // iframe finished loading — drop the compile skeleton, push current
         // comments + carry over focused pin if any
         setLoadingPath((p) => (p === m.file ? null : p));
-        const list = commentsByFile[m.file] || [];
+        // Presentation Mode suppresses comment pins (same gate as the push
+        // effect above), so a canvas opened while presenting starts pin-free.
+        const list = presentMode ? [] : commentsByFile[m.file] || [];
         const el = [...iframesRef.current.entries()].find(([k]) => k === m.file)?.[1];
         if (el && el.contentWindow) {
           try {
@@ -5997,6 +6564,15 @@ function App() {
           // correct (no flash from the dark default).
           try {
             el.contentWindow.postMessage({ dgn: 'theme', theme }, '*');
+          } catch {}
+          // Seed the just-loaded canvas with the current chrome-visibility
+          // state (minimap / zoom-controls toggles + Presentation Mode) so a
+          // canvas opened after a toggle starts in the right state.
+          try {
+            el.contentWindow.postMessage(
+              { dgn: 'view-chrome', minimap: minimapVisible, zoom: zoomCtlVisible, present: presentMode },
+              '*'
+            );
           } catch {}
           if (focusedCommentId && list.some((c) => c.id === focusedCommentId)) {
             try {
@@ -6092,7 +6668,18 @@ function App() {
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [commentsByFile, focusedCommentId, cfg, theme, reloadActive]);
+  }, [
+    commentsByFile,
+    focusedCommentId,
+    cfg,
+    theme,
+    reloadActive,
+    presentMode,
+    minimapVisible,
+    zoomCtlVisible,
+    broadcastChrome,
+    activePath,
+  ]);
 
   // Tell the active canvas iframe to drop any persistent selection (canvas
   // SelectionSet) — used when the comment composer closes via submit /
@@ -6176,6 +6763,16 @@ function App() {
       // ⌘F) still fire regardless of focus, mirroring browser convention.
       const inCanvasIframe = document.activeElement?.tagName === 'IFRAME';
 
+      // Esc exits Presentation Mode first — it's the primary way back to the
+      // chrome (the menubar is hidden while presenting). Highest priority so it
+      // wins over the focused-pin / deselect Esc handlers below, and fires even
+      // when focus is inside the canvas iframe.
+      if (presentMode && e.key === 'Escape') {
+        e.preventDefault();
+        exitPresent();
+        return;
+      }
+
       // Cmd+K / Ctrl+K — toggle the command palette (works even in inputs).
       if (meta && (e.key === 'k' || e.key === 'K')) {
         e.preventDefault();
@@ -6191,14 +6788,27 @@ function App() {
       // Cmd+Shift+M / Ctrl+Shift+M — toggle right "Comments" panel
       if (meta && e.shiftKey && (e.key === 'm' || e.key === 'M')) {
         e.preventDefault();
-        setCommentsPanelOpen((v) => !v);
+        toggleRightPanel('comments');
+        return;
+      }
+      // Cmd+Shift+G — toggle the Changes (git) panel. Opening it closes the
+      // other right-dock panels (one panel at a time).
+      if (meta && e.shiftKey && (e.key === 'g' || e.key === 'G')) {
+        e.preventDefault();
+        toggleRightPanel('changes');
         return;
       }
       // Cmd+Shift+I — toggle Inspector. Was bare "I", which collided with the
       // canvas highlighter tool (same letter, different action by focus).
       if (meta && e.shiftKey && (e.key === 'i' || e.key === 'I')) {
         e.preventDefault();
-        setInspectorOpen((v) => !v);
+        toggleRightPanel('inspector');
+        return;
+      }
+      // Phase 31 (DDR-123) — Cmd+Shift+A opens the native ACP chat sidepanel.
+      if (meta && e.shiftKey && (e.key === 'a' || e.key === 'A') && isNativeApp()) {
+        e.preventDefault();
+        toggleRightPanel('assistant');
         return;
       }
       // Cmd+Shift+E / Cmd+Shift+H — the File-menu chords, previously
@@ -6325,6 +6935,8 @@ function App() {
     openSystem,
     closeTab,
     clearActiveCanvasSelection,
+    presentMode,
+    exitPresent,
   ]);
 
   const registerIframe = useCallback((path, el) => {
@@ -6399,7 +7011,7 @@ function App() {
         label: 'Toggle comments panel',
         icon: 'resolve',
         kbd: '⌘⇧M',
-        run: () => setCommentsPanelOpen((v) => !v),
+        run: () => toggleRightPanel('comments'),
       },
       {
         id: 'inspector',
@@ -6407,7 +7019,7 @@ function App() {
         label: 'Open inspector',
         icon: 'sliders',
         kbd: '⌘⇧I',
-        run: () => setInspectorOpen(true),
+        run: () => openRightPanel('inspector'),
       },
       {
         id: 'reload',
@@ -6467,7 +7079,13 @@ function App() {
   );
 
   return (
-    <div className="maude" data-theme={theme} onContextMenu={onShellContextMenu}>
+    <div
+      className={'maude' + (presentMode ? ' is-present' : '')}
+      data-theme={theme}
+      onContextMenu={onShellContextMenu}
+    >
+      {firstRun && <OnboardingWizard />}
+      <UpdateBanner update={updateReady} onDismiss={() => setUpdateReady(null)} />
       <SyncBanner status={syncStatus} />
       {!usageNudge && !tourSteps && <WhatsNewToast wn={whatsNew} />}
       {gitLifecycle && (
@@ -6498,7 +7116,10 @@ function App() {
           openMenu={openMenu}
           setOpenMenu={setOpenMenu}
           commentsPanelOpen={commentsPanelOpen}
-          onToggleComments={() => setCommentsPanelOpen((v) => !v)}
+          onToggleComments={() => toggleRightPanel('comments')}
+          changesOpen={changesOpen}
+          changesCount={unsavedCount}
+          onToggleChanges={() => toggleRightPanel('changes')}
           onOpenSystem={openSystem}
           sidebarOpen={sidebarOpen}
           onToggleSidebar={() => setSidebarOpen((v) => !v)}
@@ -6507,22 +7128,34 @@ function App() {
           onOpenHelp={() => setHelpOpen(true)}
           onOpenShortcuts={() => setShortcutsOpen(true)}
           onStartTour={() => startTour(USAGE_TOUR)}
+          onStartCollabTour={() => startTour(COLLAB_TOUR)}
           annotationsVisible={annotationsVisible}
           onToggleAnnotations={toggleAnnotations}
+          minimapVisible={minimapVisible}
+          onToggleMinimap={toggleMinimap}
+          zoomCtlVisible={zoomCtlVisible}
+          onToggleZoomCtl={toggleZoomCtl}
+          presentMode={presentMode}
+          onTogglePresent={togglePresent}
           postToActiveCanvas={postToActiveCanvas}
           onOpenWhatsNew={whatsNew.openPanel}
           whatsNewCount={whatsNew.unseen.length}
           artboardCount={activeArtboards}
           inspectorOpen={inspectorOpen}
           inspectorTab={inspectorTab}
-          onToggleInspector={() => setInspectorOpen((v) => !v)}
+          onToggleInspector={() => toggleRightPanel('inspector')}
+          assistantOpen={assistantOpen}
+          onToggleAssistant={() => toggleRightPanel('assistant')}
+          assistantBusy={assistantBusy}
+          assistantUnseen={assistantUnseen}
           onOpenLayers={() => {
-            // Toggle: already open on Layers → close; otherwise open on Layers.
+            // Toggle: already open on Layers → close; otherwise open on Layers
+            // (clearing the sibling panels — one dock slot).
             if (inspectorOpen && inspectorTab === 'layers') {
               setInspectorOpen(false);
             } else {
               setInspectorTab('layers');
-              setInspectorOpen(true);
+              openRightPanel('inspector');
             }
           }}
           onNewCanvas={() => {
@@ -6581,6 +7214,9 @@ function App() {
             onCollapse={() => setSidebarOpen(false)}
             width={sbSize.w}
             resizing={dragSide === 'sb'}
+            dirtyByPath={dirtyByPath}
+            project={project}
+            gitBranch={gitStatus?.branch}
           />
           {sidebarOpen && (
             <PanelGrip
@@ -6608,7 +7244,7 @@ function App() {
               onIframeLoad={onIframeLoad}
             />
           </div>
-          {(inspectorOpen || commentsPanelOpen) && (
+          {(inspectorOpen || commentsPanelOpen || changesOpen || assistantOpen) && (
             <PanelGrip
               label="Resize side panel"
               dir="rtl"
@@ -6621,9 +7257,36 @@ function App() {
               }}
             />
           )}
-          {/* Right dock — one panel at a time. Inspector takes precedence when
-              open (T6); else the comments panel. */}
-          {inspectorOpen ? (
+          {/* Right dock — one panel at a time. Changes (E2) takes precedence,
+              then Inspector (T6), then the comments panel. */}
+          {changesOpen ? (
+            <GitPanel
+              status={
+                gitStatus && remoteSync ? { ...gitStatus, ...remoteSync } : gitStatus
+              }
+              project={project}
+              readOnly={!isNativeApp()}
+              width={rpSize.w}
+              resizing={dragSide === 'rp'}
+              onClose={() => setChangesOpen(false)}
+              onCommit={gitCommit}
+              onDiscard={gitDiscard}
+              onPublish={gitPublish}
+              onGetLatest={gitGetLatest}
+              loadLog={gitLoadLog}
+              onOpenCanvas={(p) => openTab(p)}
+              onOpenDiff={(file) => setDiffTarget({ file, beforeSha: 'HEAD', conflict: false })}
+              activeCanvas={
+                activePath && activePath !== SYSTEM_TAB && /\.(tsx|html)$/i.test(activePath)
+                  ? activePath
+                  : null
+              }
+              onPreviewVersion={(sha) =>
+                setDiffTarget({ file: activePath, beforeSha: sha, conflict: false })
+              }
+              designRel={(cfg?.designRel || cfg?.designRoot || '.design').replace(/^\/+|\/+$/g, '')}
+            />
+          ) : inspectorOpen ? (
             <InspectorPanel
               selected={selected}
               cfg={cfg}
@@ -6666,6 +7329,24 @@ function App() {
               resizing={dragSide === 'rp'}
             />
           ) : null}
+          {/* Phase 31 (DDR-123) — the ACP chat panel stays MOUNTED (display:none
+              when inactive) so the chat keeps streaming + its history survives a
+              switch to Changes/Inspector/Comments. Native-only. */}
+          {isNativeApp() && (
+            <ChatPanel
+              hidden={!assistantOpen}
+              activeCanvas={
+                activePath && activePath !== SYSTEM_TAB && /\.(tsx|html)$/i.test(activePath)
+                  ? activePath
+                  : null
+              }
+              width={rpSize.w}
+              resizing={dragSide === 'rp'}
+              onClose={() => setAssistantOpen(false)}
+              onBusyChange={setAssistantBusy}
+              onFinished={handleAssistantFinished}
+            />
+          )}
         </div>
         <StatusBar
           activePath={activePath}
@@ -6676,8 +7357,32 @@ function App() {
           onToggleTheme={toggleTheme}
           onClearSelected={clearSelected}
           syncStatus={syncStatus}
+          changesCount={unsavedCount}
+          unpushed={gitStatus?.unpushed || 0}
+          changesOpen={changesOpen}
+          onOpenChanges={gitStatus?.repo ? () => setChangesOpen(true) : undefined}
         />
       </div>
+      {presentMode && (
+        <button
+          type="button"
+          className="st-present-exit"
+          onClick={exitPresent}
+          aria-label="Exit presentation mode"
+          title="Exit presentation mode (Esc)"
+        >
+          <svg viewBox="0 0 16 16" width="13" height="13" fill="none" aria-hidden="true">
+            <path
+              d="M4 4l8 8M12 4l-8 8"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+            />
+          </svg>
+          <span>Exit presentation</span>
+          <kbd className="st-present-exit-kbd">Esc</kbd>
+        </button>
+      )}
       <CommandPalette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
@@ -6691,6 +7396,30 @@ function App() {
           onClose={() => setExportDialog(null)}
         />
       )}
+      {diffTarget && (
+        <DiffView
+          target={diffTarget}
+          cfg={cfg}
+          loadLog={gitLoadLog}
+          onClose={() => setDiffTarget(null)}
+          onRestore={async (file) => {
+            await gitDiscard([file]);
+            setDiffTarget(null);
+          }}
+          onResolve={async (choice) => {
+            // phase-28 (E3): apply the chosen side via /_api/git/resolve, which
+            // completes the two-parent merge commit (and for "both" saves our
+            // version as a "(mine)" copy — zero loss). Close on success; keep the
+            // resolver open with the error otherwise.
+            const res = await gitResolveConflict(choice);
+            if (res.ok) {
+              setDiffTarget(null);
+            } else {
+              window.alert(res.error || 'Could not finish the merge. Get the latest again, then retry.');
+            }
+          }}
+        />
+      )}
       <ShortcutsOverlay open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <HelpModal
         open={helpOpen}
@@ -6701,7 +7430,7 @@ function App() {
         }}
       />
       <WhatsNewPanel wn={whatsNew} onStartTour={startTour} />
-      {usageNudge && !tourSteps && (
+      {usageNudge && !tourSteps && !collabNudge && (
         <div className="mdcc-tour-nudge" role="status" aria-live="polite">
           <div className="mdcc-tour-nudge__body">
             New here? Take a 60-second tour of the canvas browser.
@@ -6721,6 +7450,32 @@ function App() {
             className="mdcc-tour-nudge__skip"
             aria-label="Dismiss"
             onClick={markUsageSeen}
+          >
+            ×
+          </button>
+        </div>
+      )}
+      {/* Phase 29 (E4) — the collab "rychlý kurz", offered once after onboarding. */}
+      {collabNudge && !tourSteps && (
+        <div className="mdcc-tour-nudge" role="status" aria-live="polite">
+          <div className="mdcc-tour-nudge__body">
+            New to working with a team? See how saving &amp; sharing works — 60 seconds.
+          </div>
+          <button
+            type="button"
+            className="mdcc-tour-nudge__cta"
+            onClick={() => {
+              markCollabSeen();
+              startTour(COLLAB_TOUR);
+            }}
+          >
+            Start
+          </button>
+          <button
+            type="button"
+            className="mdcc-tour-nudge__skip"
+            aria-label="Dismiss"
+            onClick={markCollabSeen}
           >
             ×
           </button>

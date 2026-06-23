@@ -8,7 +8,7 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { type ColdStartInput, decideColdStart } from '../sync/cold-start.ts';
+import { type ColdStartInput, decideColdStart, isExactRepeat } from '../sync/cold-start.ts';
 import { hashBytes } from '../sync/echo-guard.ts';
 
 const BODY_LOCAL = '<div>local work — a day of mascot edits</div>';
@@ -79,6 +79,66 @@ describe('decideColdStart — identical sides', () => {
       input({ localBody: BODY_HUB, docBody: BODY_HUB, journalHash: 'stale' })
     );
     expect(d.action).toBe('noop');
+  });
+});
+
+describe('decideColdStart — concurrent cold-seed duplication (F1)', () => {
+  const BODY = '<div>export default fn — one copy</div>';
+
+  test('doc == local repeated twice → recover-seed-dup (collapse, not conflict)', () => {
+    const d = decideColdStart(input({ localBody: BODY, docBody: BODY + BODY }));
+    expect(d.action).toBe('recover-seed-dup');
+  });
+
+  test('doc == local repeated three times (3-way seed) → recover-seed-dup', () => {
+    const d = decideColdStart(input({ localBody: BODY, docBody: BODY.repeat(3) }));
+    expect(d.action).toBe('recover-seed-dup');
+  });
+
+  test('duplication recovery beats the conflict path even with divergent timestamps', () => {
+    // A doubled body is NOT new content — newest-wins must not get to pick it.
+    const d = decideColdStart(
+      input({
+        localBody: BODY,
+        docBody: BODY + BODY,
+        localMtimeMs: 1_000,
+        docBodyEditAtMs: 9_999,
+      })
+    );
+    expect(d.action).toBe('recover-seed-dup');
+  });
+
+  test('duplication recovery fires even with a stale journal', () => {
+    const d = decideColdStart(
+      input({ localBody: BODY, docBody: BODY + BODY, journalHash: 'stale' })
+    );
+    expect(d.action).toBe('recover-seed-dup');
+  });
+
+  test('doc = local + genuinely different bytes is NOT a repeat → conflict (snapshots both)', () => {
+    const d = decideColdStart(
+      input({
+        localBody: BODY,
+        docBody: `${BODY}<div>a real concurrent edit</div>`,
+        localMtimeMs: 2_000,
+        docBodyEditAtMs: 1_000,
+      })
+    );
+    expect(d.action).toBe('conflict');
+  });
+
+  test('exact equality (×1) stays a noop, never recover-seed-dup', () => {
+    expect(decideColdStart(input({ localBody: BODY, docBody: BODY })).action).toBe('noop');
+  });
+
+  test('isExactRepeat — exact multiples only', () => {
+    expect(isExactRepeat(BODY + BODY, BODY)).toBe(true);
+    expect(isExactRepeat(BODY.repeat(4), BODY)).toBe(true);
+    expect(isExactRepeat(BODY, BODY)).toBe(false); // ×1 is equality, not duplication
+    expect(isExactRepeat(`${BODY}x`, BODY)).toBe(false); // not a clean multiple
+    expect(isExactRepeat(`${BODY}${BODY}x`, BODY)).toBe(false);
+    expect(isExactRepeat('', BODY)).toBe(false);
+    expect(isExactRepeat(BODY, '')).toBe(false);
   });
 });
 

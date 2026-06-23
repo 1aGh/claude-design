@@ -3,6 +3,7 @@
 
 import type { ServerWebSocket, WebSocketHandler } from 'bun';
 
+import type { Acp } from './acp/index.ts';
 import type { Activity } from './activity.ts';
 import type { Api } from './api.ts';
 import type { Collab, RoomConn } from './collab/index.ts';
@@ -36,6 +37,15 @@ export type WsData =
       id: string;
       remote: string;
       kind: 'canvas-hmr';
+    }
+  | {
+      // Phase 31 (DDR-123) — ACP chat bridge socket. Main origin ONLY,
+      // loopback-guarded at upgrade (server.ts); NEVER opened from the canvas
+      // origin. Carries the JSON chat protocol (prompt / cancel ↔ update /
+      // turn-end), bridged to the user's own `claude` via createAcp.
+      id: string;
+      remote: string;
+      kind: 'acp';
     };
 
 /**
@@ -82,7 +92,8 @@ export function createWs(
   api: Api,
   inspect: Inspect,
   collab: Collab,
-  activity: Activity
+  activity: Activity,
+  acp: Acp
 ): Ws {
   const clients = new Set<ServerWebSocket<WsData>>();
 
@@ -143,6 +154,26 @@ export function createWs(
   // emits, so this is a no-op for unlinked projects.
   ctx.bus.on('sync:status', (payload: unknown) => broadcast({ type: 'sync:status', payload }));
 
+  // Phase 27 Task 5 (E2) — live dirty-state. git/watch.ts recomputes gitStatus on
+  // a versionable file change (trailing-debounced) and emits 'git-status'. Only
+  // the same-origin inspector clients (the shell) get it — it carries the changed-
+  // file list, so it stays off the untrusted canvas-origin feed like the other
+  // privileged broadcasts. Drives the Changes-panel count + tree M/A/D badges.
+  ctx.bus.on('git-status', (payload: unknown) => broadcast({ type: 'git-status', payload }));
+
+  // Phase 30 — live canvas-list refresh. api.createCanvas / deleteCanvas emit
+  // this; inspector clients (the shell) re-read the branch-scoped tree via
+  // /_index-data. Loopback-only (same dev-server) — cross-machine peers get a
+  // new canvas through git "Get latest", not this event.
+  ctx.bus.on('canvas-list-update', (payload: unknown) =>
+    broadcast({ type: 'canvas-list-update', payload })
+  );
+
+  // Phase 31 (DDR-123) — `/design:chat` → `maude design chat-open` → POST
+  // /_api/acp/focus emits this; the shell (app.jsx, native-only) opens the
+  // Assistant panel. Inspector clients only — same-origin shell, like the rest.
+  ctx.bus.on('acp-focus', () => broadcast({ type: 'acp-focus' }));
+
   // HMR broadcaster — turns fs:any change events into `canvas-hmr` messages.
   // The iframe-side client (in _shell.html) decides reload strategy from `mode`.
   // Uses broadcastHmr so the segregated canvas origin's HMR-only sockets get it.
@@ -189,6 +220,10 @@ export function createWs(
         clients.add(ws);
         return;
       }
+      if (ws.data.kind === 'acp') {
+        acp.onOpen(ws);
+        return;
+      }
       clients.add(ws);
       // Snapshot carries the inspector state AND the activity map so a client
       // opening mid-edit seeds its overlay state (Phase 13). Inspector-origin
@@ -197,6 +232,10 @@ export function createWs(
       send(ws, { type: 'snapshot', state: inspect.state, activity: activity.state });
     },
     async close(ws) {
+      if (ws.data.kind === 'acp') {
+        acp.onClose(ws);
+        return;
+      }
       if (ws.data.kind === 'collab') {
         const binding = collabConns.get(ws.data.id);
         if (binding) {
@@ -217,6 +256,10 @@ export function createWs(
       // HMR-only canvas-origin socket: never accepts inbound messages (the
       // canvas iframe only listens for canvas-hmr; it never sends).
       if (ws.data.kind === 'canvas-hmr') return;
+      if (ws.data.kind === 'acp') {
+        acp.onMessage(ws, raw);
+        return;
+      }
       if (ws.data.kind === 'collab') {
         const binding = collabConns.get(ws.data.id);
         if (!binding) return;

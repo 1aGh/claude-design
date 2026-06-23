@@ -1,0 +1,47 @@
+{
+  "title": "ChatPanel",
+  "subtitle": "Native ACP chat sidepanel (maude DS) — runs on your own Claude CLI subscription · idle/ready · streaming /design:edit · agent editing the canvas · not-connected explainer",
+  "brief": "The phase-31 native ACP chat sidepanel (DDR-123): a right-docked chat panel where a developer drives Claude (/design:edit, /design:new, /design:critic, /design:screenshot) while watching the same canvas. Runs on the user's own installed claude CLI on their Pro/Max subscription — zero login in Maude, never API billing. Streaming + cancel + quick actions. An agent edit shows on the canvas like a live collaborator (LiveCollab --presence-agent treatment). Not-connected = a plain explainer, never an error.",
+  "platform": "desktop",
+  "designSystem": "maude",
+  "opt_out_scope": "palette",
+  "kind": "canvas",
+  "status": "handed-off",
+  "handoff": null,
+  "brief_sha": "6eebca47",
+  "sections": [
+    {
+      "id": "chatpanel",
+      "title": "ChatPanel · maude",
+      "subtitle": "Native ACP chat sidepanel — runs on your own Claude CLI subscription · 4 artboards (phase-31 · DDR-123)"
+    }
+  ],
+  "artboards": [
+    {
+      "id": "idle-ready",
+      "label": "A · idle — ready to edit",
+      "note": "Docked-right panel over a dotted workspace. Ready dot; empty-state (spark + 'Edit this canvas with Claude' + 3 real suggestion prompts incl. /design:critic & /design:new); the 4 persistent quick-actions; composer with an 'Editing: Login · Redesign' context chip, ⌘↵ hint, and 'your Claude subscription' footer."
+    },
+    {
+      "id": "streaming-edit",
+      "label": "B · streaming /design:edit + stop",
+      "note": "A live edit streaming: user bubble (/design:edit …), assistant tool-call card (Edit Login.tsx, running dot, +/- diff lines) + streaming text with a violet caret. Composer swaps to a Stop bar (btn--danger + esc). Canvas frame shows the violet 'Claude is editing' badge."
+    },
+    {
+      "id": "agent-editing",
+      "label": "C · the edit lands on the canvas",
+      "note": "The agent-editing indicator (mirrors LiveCollab): the Login frame pulses in --presence-agent violet with a 'Claude is editing' badge + a violet 'Claude' cursor, while the chat shows the Edited tool-card (done, green) + 'a teammate in this draft saw it change live'. The signature moment: chat command → live canvas edit."
+    },
+    {
+      "id": "not-connected",
+      "label": "D · not connected — how to connect",
+      "note": "Plain explainer (never an error): 'Claude Code isn't connected · run `claude` in a terminal'. A trust box encodes DDR-123 — runs on your Pro/Max subscription · no login inside Maude · never metered API billing. Composer disabled ('Connect Claude Code to start'); quick-actions disabled."
+    }
+  ],
+  "last_modified": "2026-06-22T16:10:36.870Z",
+  "viewport": {
+    "x": -2199.3709159865257,
+    "y": 175.87901873254395,
+    "zoom": 1.0891970620419178
+  }
+}

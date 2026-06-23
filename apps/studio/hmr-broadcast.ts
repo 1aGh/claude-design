@@ -6,8 +6,15 @@
 //
 //   - `mode: "css"`    → swap <link> href with a cache-bust query (no module
 //                        reload, no React state loss). Sub-150ms latency.
-//   - `mode: "module"` → location.reload() of the canvas iframe. State is lost
-//                        but the change always picks up. <250ms latency.
+//   - `mode: "module"` → in-place hot-swap of the canvas module when the canvas
+//                        runtime is mounted (re-import + remount only the canvas
+//                        content; the iframe — and the live CollabProvider +
+//                        presence — stay mounted, so a cross-peer synced edit
+//                        updates seamlessly without a presence blink — Phase 30
+//                        / F4). Falls back to location.reload() with no runtime
+//                        (gallery thumbnails) or on a re-import with no usable
+//                        default export. State (scroll / tool / undo) survives
+//                        the hot-swap path.
 //   - `mode: "hard"`   → location.reload() (used when canvas-lib.tsx or any
 //                        `_lib/**` file changes — every open canvas needs to
 //                        re-bundle).

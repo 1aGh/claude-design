@@ -1,0 +1,55 @@
+{
+  "title": "DiffView",
+  "subtitle": "Visual before/after comparison + Keep mine/theirs/both conflict picker — see the change, never a code diff",
+  "brief": "Phase 27 (native collab app, epic E2). When a non-technical collaborator looks at 'what changed' in a canvas, they see a RENDERED before/after — two thumbnails of the actual canvas, not a code diff. Opens from GitPanel's History / Get-latest. The conflict path offers a plain-language 'Keep mine / Keep theirs / Keep both' picker; Keep both is the default (zero data loss). Vocabulary: Last published / Your version / Get latest — never HEAD/working-tree/merge.",
+  "platform": "desktop",
+  "designSystem": "maude",
+  "opt_out_scope": "palette",
+  "kind": "canvas",
+  "brief_sha": "phase27dv",
+  "status": "handed-off",
+  "sections": [
+    {
+      "id": "diff",
+      "title": "DiffView — see the change, resolve a conflict",
+      "subtitle": "MAUDE/DIFF · 3 artboards · rendered before/after (never a text diff) · Keep both = zero data loss"
+    }
+  ],
+  "artboards": [
+    {
+      "id": "compare",
+      "label": "A · Before / after, side by side",
+      "note": "Two rendered canvas thumbnails (Last published vs Your version) with changed/added regions ringed in status hues · side-by-side|overlay segmented control · 3 changes summary"
+    },
+    {
+      "id": "overlay",
+      "label": "B · Overlay / slider compare",
+      "note": "Onion-skin wipe — draggable split handle between published & your version (the visual-diff differentiator)"
+    },
+    {
+      "id": "conflict",
+      "label": "C · Keep mine / theirs / both",
+      "note": "You both changed this canvas → mine vs Anna's thumbnails + Keep mine / Keep Anna's / Keep both radio picker, Keep both = default (zero data loss)"
+    }
+  ],
+  "layout": {
+    "artboards": [
+      {
+        "id": "compare",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "overlay",
+        "x": 1160,
+        "y": 0
+      },
+      {
+        "id": "conflict",
+        "x": 2320,
+        "y": 0
+      }
+    ]
+  },
+  "handoffCommit": "97859dce114ceee81f7e94c9d047a40c535fd337"
+}

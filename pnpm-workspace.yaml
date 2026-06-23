@@ -5,6 +5,7 @@ packages:
   - site
   - apps/studio
   - apps/hub
+  - apps/desktop
 # pnpm 9+ requires explicit opt-in for postinstall scripts.
 # Biome ships native binaries via @biomejs/cli-* optional deps; the postinstall
 # is the official install path. Enable.

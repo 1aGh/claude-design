@@ -122,6 +122,71 @@ describe('/_api/canvas — POST round-trip', () => {
     }
   });
 
+  test('create + delete emit canvas-list-update over the inspector WS (Phase 30)', async () => {
+    const { root } = makeSandbox();
+    const port = nextPort();
+    const proc = await bootServer(root, port);
+    let socket: WebSocket | null = null;
+    try {
+      const messages: Array<{ type: string; payload?: { action?: string; slug?: string } }> = [];
+      const sock = new WebSocket(`ws://localhost:${port}/_ws`);
+      socket = sock;
+      await new Promise<void>((res, rej) => {
+        sock.addEventListener('open', () => res());
+        sock.addEventListener('error', () => rej(new Error('ws error')));
+        setTimeout(() => rej(new Error('ws open timeout')), 2000);
+      });
+      sock.addEventListener('message', (ev) => {
+        try {
+          messages.push(JSON.parse(String(ev.data)));
+        } catch {
+          /* ignore non-JSON */
+        }
+      });
+
+      const waitFor = async (pred: (m: (typeof messages)[number]) => boolean) => {
+        const deadline = Date.now() + 2000;
+        while (Date.now() < deadline) {
+          const hit = messages.find(pred);
+          if (hit) return hit;
+          await Bun.sleep(25);
+        }
+        return undefined;
+      };
+
+      const created = await fetch(`http://localhost:${port}/_api/canvas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Live Add', kind: 'brief-board' }),
+      });
+      expect(created.status).toBe(201);
+      const cj = (await created.json()) as { rel: string };
+
+      const added = await waitFor(
+        (m) => m.type === 'canvas-list-update' && m.payload?.action === 'added'
+      );
+      expect(added?.payload?.slug).toBe('ui-live_add');
+
+      const del = await fetch(
+        `http://localhost:${port}/_api/canvas?file=${encodeURIComponent(cj.rel)}`,
+        { method: 'DELETE' }
+      );
+      expect(del.status).toBe(200);
+
+      const removed = await waitFor(
+        (m) => m.type === 'canvas-list-update' && m.payload?.action === 'removed'
+      );
+      expect(removed?.payload?.slug).toBe('ui-live_add');
+    } finally {
+      try {
+        socket?.close();
+      } catch {
+        /* ignore */
+      }
+      await killProc(proc);
+    }
+  }, 10_000);
+
   test('defaults kind to brief-board when omitted', async () => {
     const { root } = makeSandbox();
     const port = nextPort();
@@ -284,6 +349,10 @@ describe('/_api/canvas — DELETE (soft-delete)', () => {
         join(designRoot, `${created.slug}.annotations.svg`),
         '<svg xmlns="http://www.w3.org/2000/svg" data-mdcc-annotations="1"></svg>'
       );
+      // Seed the per-machine camera view file (DDR-115) to prove it's swept too.
+      mkdirSync(join(designRoot, '_canvas-state'), { recursive: true });
+      const viewAbs = join(designRoot, '_canvas-state', `${created.slug}.view.json`);
+      writeFileSync(viewAbs, JSON.stringify({ viewport: { x: 1, y: 2, zoom: 1 } }));
       const tsx = join(designRoot, 'ui', 'Trash Me.tsx');
       expect(existsSync(tsx)).toBe(true);
 
@@ -293,14 +362,17 @@ describe('/_api/canvas — DELETE (soft-delete)', () => {
       expect(j.ok).toBe(true);
       expect(j.trashed.some((t) => t.endsWith('Trash Me.tsx'))).toBe(true);
       expect(j.trashed.some((t) => t.endsWith('.annotations.svg'))).toBe(true);
+      expect(j.trashed.some((t) => t.endsWith('.view.json'))).toBe(true);
 
       // Gone from the group; present (recoverable) under _trash/ with a manifest.
       expect(existsSync(tsx)).toBe(false);
       expect(existsSync(join(designRoot, `${created.slug}.annotations.svg`))).toBe(false);
+      expect(existsSync(viewAbs)).toBe(false);
       const trashDirs = readdirSync(join(designRoot, '_trash'));
       expect(trashDirs.length).toBe(1);
       const td = join(designRoot, '_trash', trashDirs[0] as string);
       expect(existsSync(join(td, 'Trash Me.tsx'))).toBe(true);
+      expect(existsSync(join(td, `_canvas-state__${created.slug}.view.json`))).toBe(true);
       expect(existsSync(join(td, '_trash-manifest.json'))).toBe(true);
     } finally {
       await killProc(proc);

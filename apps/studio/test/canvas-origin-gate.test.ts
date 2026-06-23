@@ -67,6 +67,41 @@ describe('canvas-origin gate — A1/A2 traversal + privilege containment', () =>
         '/_api/edit-css',
         '/_api/edit-text',
         '/_api/edit-attr',
+        // Phase 27 (E2) — every /_api/git/* route is MAIN-ORIGIN ONLY: absent from
+        // CANVAS_SAFE_API + startCanvasServer's `routes` map. A GET from the
+        // canvas origin must 403 at the gate (not 405 from a reached handler),
+        // proving the route is unreachable on this origin. Guards the dual-
+        // allowlist invariant for the token-bearing publish/get-latest endpoints.
+        '/_api/git/status',
+        '/_api/git/log',
+        '/_api/git/diff',
+        '/_api/git/commit',
+        '/_api/git/discard',
+        '/_api/git/push',
+        '/_api/git/pull',
+        '/_api/git/resolve',
+        // Phase 29 (E4) — drafts: list + create + switch + fold are MAIN-ORIGIN ONLY.
+        '/_api/git/branches',
+        '/_api/git/branch',
+        '/_api/git/checkout',
+        '/_api/git/fold',
+        // Phase 28 (E3) — every /_api/github/* route is MAIN-ORIGIN ONLY (absent
+        // from CANVAS_SAFE_API + startCanvasServer's `routes` map) and token-bearing.
+        // The untrusted canvas iframe origin must never reach identity/create-repo/
+        // invite/repos — a request from this origin 403s at the gate. This is also
+        // the guard that the GitHub token (server-held, keychain) can never be
+        // exfiltrated to the canvas realm.
+        '/_api/github/identity',
+        '/_api/github/repos',
+        '/_api/github/create-repo',
+        '/_api/github/invite',
+        '/_api/github/clone',
+        '/_api/github/create-project',
+        '/_api/design/init',
+        // Phase 29 (E4) Door C — the hub-link credential write is MAIN-ORIGIN ONLY;
+        // the untrusted canvas origin must never reach it (it writes the global
+        // ~/.config/maude/hubs.json token store).
+        '/_api/hub/link',
         '/package.json',
       ]) {
         expect(await code(p)).toBe(403);

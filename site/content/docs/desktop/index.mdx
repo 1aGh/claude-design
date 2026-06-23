@@ -1,0 +1,55 @@
+---
+title: Desktop app
+description: Install the Maude desktop app for macOS and Windows — canvas browser, git versioning, GitHub sign-in, and live collaboration, no terminal. Auto-updates in the background.
+---
+
+The **desktop app** is Maude with no terminal. Download it, sign in with GitHub, and start designing — everything the CLI does (canvas browser, git versioning, collaboration, AI editing) lives in the UI. It keeps itself up to date in the background.
+
+<Cards>
+  <Card title="Download Maude" href="/desktop" description="Platform-detected download for macOS and Windows." />
+</Cards>
+
+## Install
+
+1. **[Download](/desktop)** the installer for your platform — `.dmg` (macOS) or `.msi` (Windows).
+2. Open it. On macOS, drag Maude to Applications; on Windows, run the installer.
+3. Launch Maude and **sign in with GitHub** (or open a local folder, or connect a team hub) in the onboarding wizard.
+4. You land in a working project. No terminal at any step.
+
+### System requirements
+
+| Platform | Minimum | Installer |
+| -------- | ------- | --------- |
+| macOS    | 13 Ventura (Apple Silicon) | `.dmg` |
+| Windows  | 10 (64-bit) | `.msi` |
+
+Disk: ~250 MB. The optional AI editing pairs with a [Claude Code](/docs/design) you already have installed and runs on your own Pro/Max subscription — never API billing.
+
+## Auto-update
+
+Maude polls a signed release feed, downloads new versions in the background, and shows a non-blocking banner:
+
+> **Maude updated · restart to apply** — *Restart now*
+
+Click **Restart now** and you're on the latest build. There's no `npm install`, no terminal. Updates are signed with an ed25519 key; the app refuses any update whose signature doesn't verify, so a tampered feed can't push a rogue build.
+
+## Unsigned builds (early releases)
+
+Until platform code-signing certificates are wired, installers may be **unsigned**:
+
+- **macOS** — Gatekeeper blocks the first launch. Right-click the app → **Open**, then confirm. You only do this once.
+- **Windows** — SmartScreen shows a warning. Click **More info → Run anyway**.
+
+Signed builds remove these prompts; auto-update artifacts are always signed regardless.
+
+## Teams
+
+The desktop app connects to a self-hosted [hub](/docs/hub) from the onboarding wizard's **Advanced** door — no `maude design link` in a terminal. Once linked, cursors, comments, and edits sync in real time with anyone on the same branch.
+
+## What's included
+
+- **Canvas browser** — every screen as a live, multi-artboard canvas; Cmd+Click to edit CSS against your tokens.
+- **Git versioning, no git** — See changes, Save a version, Publish, Get latest, browse History, compare visual before/after.
+- **Sign in with GitHub** — device flow → OS keychain; start private projects, share by username.
+- **Live collaboration** — branch-scoped multiplayer over your own hub.
+- **AI editing** — a chat panel that drives your paired Claude Code.

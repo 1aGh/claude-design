@@ -31,17 +31,29 @@ test('buildBlock includes the runtime paths and is marker-wrapped', () => {
   for (const p of [
     '.design/_state/',
     '.design/_server.json',
+    '.design/_server.log',
+    '.design/_server.lock',
     '.design/_active.json',
     '.design/_sync.json',
+    '.design/_preflight.json',
+    '.design/_locator.json',
+    '.design/_export-history.json',
     '.design/_history/',
+    '.design/_trash/',
     '.design/_draw/',
+    '.design/_smoke/',
+    '.design/_canvas-state/', // covers the DDR-115 `<slug>.view.json` camera
     '.design/_chat/',
+    '.design/_untrusted/',
+    '.design/_comments/', // hub-sync-only (DDR-115)
   ]) {
     assert.ok(block.includes(p), `missing ${p}`);
   }
-  // Committed artifacts must NOT be ignored.
+  // VERSIONED content must NOT be ignored (DDR-115 taxonomy).
   assert.ok(!block.includes('.design/config.json'));
   assert.ok(!/\.design\/\*\.html/.test(block));
+  // Annotations are versioned — never in the ignore block.
+  assert.ok(!/annotations\.svg/.test(block), 'annotations must stay versioned');
 });
 
 test('buildBlock honors a custom design root', () => {

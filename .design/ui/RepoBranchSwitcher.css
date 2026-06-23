@@ -1,0 +1,260 @@
+/*
+ * RepoBranchSwitcher.css — project + version switching for the native Maude app
+ * (Phase 29, epic E4). REDESIGNED: not a top header — a compact one-line dock at
+ * the BOTTOM of the sidebar (above the identity avatar) that opens ONE popup menu
+ * UPWARD. Every value is a var(--*) token from system/maude/colors_and_type.css.
+ * Local classes are prefixed `rb-`; .panel / .btn / .input / .tree-row are LIFTED
+ * from the maude DS. The bottom-dock + upward-popup anatomy mirrors IdentityBar's
+ * `gi-rail` / `gi-menu` (apps/studio/client/styles/3-shell-maude.css) so the two
+ * sibling surfaces read as one dock.
+ */
+
+/* ── artboard frame: the studio shell backdrop ──────────────────────────────── */
+.rb-shell {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  background: var(--bg-0); color: var(--fg-0);
+  font-family: var(--font-body); font-size: var(--type-base); line-height: var(--lh-base);
+  overflow: hidden;
+}
+.rb-canvas-bleed {
+  background-color: var(--canvas-bg);
+  background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+  background-size: var(--canvas-grid) var(--canvas-grid);
+}
+
+/* ── menubar ─────────────────────────────────────────────────────────────────── */
+.rb-menubar {
+  display: flex; align-items: center; gap: var(--space-4);
+  height: 44px; flex: 0 0 44px; padding: 0 var(--space-4);
+  background: var(--bg-1); border-bottom: 1px solid var(--border-default);
+}
+.rb-mark { display: inline-flex; align-items: center; gap: var(--space-2); font-family: var(--font-display); }
+.rb-mark b { font-weight: 600; letter-spacing: var(--tracking-tight); }
+.rb-mark-spark { color: var(--accent); }
+.rb-spacer { flex: 1; }
+.rb-avatars { display: inline-flex; }
+.rb-avatar {
+  width: 22px; height: 22px;
+  border-radius: var(--radius-pill); border: 1.5px solid var(--bg-1);
+  display: grid; place-items: center;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600; color: var(--accent-fg);
+}
+/* Overlap only the menubar presence cluster — the identity avatar stands alone. */
+.rb-avatars .rb-avatar { margin-left: -6px; }
+.rb-avatars .rb-avatar:first-child { margin-left: 0; }
+
+.rb-main { flex: 1; display: flex; min-height: 0; position: relative; }
+
+/* ── sidebar: label · file tree (fills) · bottom dock ───────────────────────── */
+.rb-side {
+  width: 276px; flex: 0 0 276px;
+  background: var(--bg-1); border-right: 1px solid var(--border-default);
+  display: flex; flex-direction: column; min-height: 0;
+}
+.rb-side-label {
+  font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-wide);
+  text-transform: uppercase; color: var(--fg-2);
+  padding: var(--space-4) var(--space-4) var(--space-2);
+}
+
+/* ── file tree ──────────────────────────────────────────────────────────────── */
+.rb-tree-body { padding: 0 var(--space-2) var(--space-3); overflow: auto; flex: 1; min-height: 0; }
+.rb-row { gap: var(--space-2); cursor: pointer; }
+.rb-row[data-depth="1"] { padding-left: var(--space-5); }
+.rb-row-icon { color: var(--fg-2); flex: 0 0 auto; }
+.rb-row-name { color: var(--fg-1); font-size: var(--type-sm); }
+.rb-row[aria-selected="true"] .rb-row-name { color: var(--fg-0); font-weight: 600; }
+.rb-sk-row { padding: var(--space-2) var(--space-3); }
+.rb-sk { display: block; height: 9px; border-radius: var(--radius-pill); background: var(--bg-3); }
+
+/* ── the bottom dock (switcher trigger + identity), gi-rail anatomy ──────────── */
+.rb-dock-wrap {
+  margin-top: auto; flex: 0 0 auto;
+  display: flex; flex-direction: column; gap: var(--space-1);
+  padding: var(--space-3);
+  /* Flat bg-1 + a hairline (the real gi-rail material) — a soft upward shadow
+   * lifts the dock off the tree so it reads as a deliberate zone without an
+   * accent wash that sat below the perceptual threshold anyway. */
+  border-top: 1px solid var(--border-default);
+  background: var(--bg-1);
+  box-shadow: 0 -10px 18px -12px color-mix(in oklab, var(--bg-0) 80%, transparent);
+}
+.rb-dock { position: relative; }
+
+/* The compact one-line switcher trigger — "📁 Acme Rebrand · ◐ Shared version ⌃" */
+.rb-trigger {
+  display: flex; align-items: center; gap: var(--space-2);
+  width: 100%; text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-default); border-radius: var(--radius-md);
+  background: var(--bg-2); color: var(--fg-1); cursor: pointer;
+  font-size: var(--type-sm);
+  transition: border-color var(--dur-soft) var(--ease-out), background var(--dur-soft) var(--ease-out);
+}
+.rb-trigger:hover, .rb-trigger.is-open { border-color: var(--border-strong); background: var(--bg-3); }
+.rb-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.rb-trigger-icon { color: var(--accent); flex: 0 0 auto; display: grid; place-items: center; }
+.rb-trigger-proj {
+  font-weight: 600; color: var(--fg-0); flex: 0 1 auto;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* A mid-dot, not a vertical rule — it groups project/version without competing
+ * with the chevron's verticality, and gives the crowded line some slack. */
+.rb-trigger-sep { color: var(--fg-3); flex: 0 0 auto; }
+/* The version chip — icon carries the hue (green shared / amber draft), name stays
+ * neutral so the line doesn't read as all-colored. */
+.rb-trigger-ver { display: inline-flex; align-items: center; gap: var(--space-1); min-width: 0; flex: 1 1 auto; color: var(--presence-online); }
+.rb-trigger-ver.is-draft { color: var(--status-warn); }
+.rb-trigger-ver-name { color: var(--fg-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rb-trigger-caret { color: var(--fg-2); flex: 0 0 auto; }
+
+/* The identity avatar row (lifted gi-rail-account). */
+.rb-identity { }
+.rb-identity-account {
+  display: flex; align-items: center; gap: var(--space-2);
+  width: 100%; text-align: left;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid transparent; border-radius: var(--radius-md);
+  background: transparent; color: var(--fg-0); cursor: pointer;
+  transition: background var(--dur-soft) var(--ease-out);
+}
+.rb-identity-account:hover { background: var(--bg-2); }
+.rb-identity-account:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.rb-identity-login { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: var(--type-sm); color: var(--fg-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rb-identity-caret { color: var(--fg-2); flex: 0 0 auto; display: inline-flex; }
+
+/* ── the popup (opens UPWARD from the dock — gi-menu anatomy) ────────────────── */
+.rb-pop {
+  padding: var(--space-2);
+  display: flex; flex-direction: column; gap: 1px;
+  box-shadow: var(--shadow-lg);
+}
+.rb-pop--up {
+  position: absolute; left: 0; right: 0; bottom: calc(100% + var(--space-1)); z-index: 30;
+  max-height: 600px; overflow-y: auto;
+}
+.rb-pop-hd {
+  font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-wide); text-transform: uppercase;
+  color: var(--fg-2); padding: var(--space-2) var(--space-3) var(--space-1);
+}
+.rb-pop-grouplabel {
+  font-family: var(--font-mono); font-size: var(--type-xs); letter-spacing: var(--tracking-wide); text-transform: uppercase;
+  color: var(--fg-2); padding: var(--space-3) var(--space-3) var(--space-1);
+}
+.rb-pop-item {
+  display: flex; align-items: center; gap: var(--space-3);
+  width: 100%; text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border: 0; border-radius: var(--radius-sm);
+  background: transparent; color: var(--fg-1); cursor: pointer;
+  transition: background var(--dur-soft) var(--ease-out);
+}
+.rb-pop-item:hover { background: var(--bg-2); }
+.rb-pop-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.rb-pop-item.is-current { background: var(--accent-tint); }
+.rb-pop-item--action { color: var(--accent); }
+.rb-pop-icon { flex: 0 0 auto; color: var(--fg-2); display: grid; place-items: center; }
+.rb-pop-item--action .rb-pop-icon { color: var(--accent); }
+.rb-pop-icon--shared { color: var(--presence-online); }
+.rb-pop-icon--draft { color: var(--status-warn); }
+.rb-pop-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0; }
+.rb-pop-name { font-weight: 600; color: var(--fg-0); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rb-pop-item--action .rb-pop-name { color: var(--accent); }
+.rb-pop-sub { font-family: var(--font-mono); font-size: var(--type-xs); color: var(--fg-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The current row sits on accent-tint — bump its subtitle one tier so it clears AA. */
+.rb-pop-item.is-current .rb-pop-sub { color: var(--fg-1); }
+.rb-pop-check { color: var(--accent); flex: 0 0 auto; }
+.rb-pop-sep { height: 1px; background: var(--border-default); margin: var(--space-2); }
+
+/* ── fold-back CTA (Task 7) — "Add this draft to the Shared version" ─────────────
+ * The one filled action in the Version section. Filled accent (not a ghost row)
+ * so it reads as consequential and never as just another switch target. ──────── */
+.rb-fold {
+  display: flex; align-items: center; gap: var(--space-3);
+  width: 100%; text-align: left;
+  /* A touch more air above so the filled CTA reads as an action band, not the
+   * next list row under the current draft. */
+  margin: var(--space-3) 0 var(--space-2);
+  padding: var(--space-3);
+  border: 0; border-radius: var(--radius-sm);
+  background: var(--accent); color: var(--accent-fg); cursor: pointer;
+  transition: background var(--dur-soft) var(--ease-out);
+}
+.rb-fold:hover { background: var(--accent-hover); }
+.rb-fold:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.rb-fold-icon { flex: 0 0 auto; display: grid; place-items: center; color: var(--accent-fg); }
+.rb-fold-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.rb-fold-title { font-weight: 600; color: var(--accent-fg); }
+/* Full accent-fg (no transparency) — at 11px the translucent mix grazed the AA
+ * floor; the size + the bold title above already carry the hierarchy. */
+.rb-fold-sub { font-size: var(--type-xs); color: var(--accent-fg); }
+
+/* ── new-draft inline form (anchored upward above the dock) ──────────────────── */
+.rb-newdraft { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); }
+.rb-newdraft--up {
+  position: absolute; left: 0; right: 0; bottom: calc(100% + var(--space-1)); z-index: 30;
+  box-shadow: var(--shadow-lg);
+}
+.rb-newdraft-field { display: flex; flex-direction: column; gap: var(--space-2); }
+.rb-newdraft-label { font-size: var(--type-sm); font-weight: 600; color: var(--fg-1); }
+.rb-newdraft-input { width: 100%; }
+.rb-newdraft-actions { display: flex; gap: var(--space-2); justify-content: flex-end; }
+.rb-newdraft-hint { margin: 0; color: var(--fg-2); font-size: var(--type-xs); line-height: var(--lh-md); }
+
+/* ── switching state (compact, in the dock) ─────────────────────────────────── */
+.rb-switching {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-default); border-radius: var(--radius-md);
+  background: var(--bg-2); color: var(--fg-1); font-size: var(--type-sm);
+}
+.rb-switching b { color: var(--fg-0); }
+.rb-spin { color: var(--accent); animation: rb-spin 0.8s linear infinite; flex: 0 0 auto; }
+@keyframes rb-spin { to { transform: rotate(360deg); } }
+
+/* ── fold-back confirm sheet (modal) ────────────────────────────────────────── */
+.rb-scrim {
+  position: absolute; inset: 0; z-index: 40;
+  display: grid; place-items: center; padding: var(--space-6);
+  background: color-mix(in oklab, var(--bg-0) 64%, transparent);
+  backdrop-filter: blur(2px);
+}
+.rb-sheet {
+  width: min(440px, 100%);
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-lg);
+  text-align: left;
+}
+.rb-sheet-icon {
+  width: 38px; height: 38px; border-radius: var(--radius-md);
+  display: grid; place-items: center;
+  color: var(--accent); background: var(--accent-tint);
+  /* A hair more air below the chip so it reads as a header zone, not the first
+   * list item in the stack. */
+  margin-bottom: var(--space-1);
+}
+.rb-sheet-title {
+  margin: 0; font-family: var(--font-display);
+  font-size: var(--type-lg); font-weight: 600; color: var(--fg-0);
+  letter-spacing: var(--tracking-tight);
+}
+.rb-sheet-body { margin: 0; color: var(--fg-1); font-size: var(--type-md); line-height: var(--lh-md); }
+.rb-sheet-body b { color: var(--fg-0); font-weight: 600; }
+.rb-sheet-meta { margin: 0; color: var(--fg-2); font-size: var(--type-sm); line-height: var(--lh-md); }
+.rb-sheet-actions { display: flex; gap: var(--space-2); justify-content: flex-end; margin-top: var(--space-2); }
+
+/* ── canvas peek ────────────────────────────────────────────────────────────── */
+.rb-stage { flex: 1; position: relative; display: grid; place-items: center; padding: var(--space-7); min-width: 0; }
+.rb-mini { width: min(440px, 70%); overflow: hidden; box-shadow: var(--shadow-lg); }
+.rb-mini-bar { display: flex; gap: 6px; padding: var(--space-3); border-bottom: 1px solid var(--border-default); background: var(--bg-2); }
+.rb-mini-dot { width: 8px; height: 8px; border-radius: var(--radius-pill); background: var(--bg-4); }
+.rb-mini-body { padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-3); }
+.rb-msk { height: 10px; border-radius: var(--radius-pill); background: var(--bg-3); }
+.rb-msk.is-accent { width: 40%; height: 28px; border-radius: var(--radius-sm); background: var(--accent-muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  .rb-spin { animation-duration: 1ms; }
+  .rb-trigger, .rb-pop-item, .rb-fold, .rb-identity-account { transition-duration: 1ms; }
+}

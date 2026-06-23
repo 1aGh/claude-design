@@ -15,7 +15,7 @@ This project was renamed from `md-claude` to **Maude** in v0.15.0. The codebase,
 | CLI legacy bin | — | `mdcc` (prints deprecation warning; removed in v0.17.x) |
 | Safe-mode bin | `mdcc-safe` | `maude-safe` (`mdcc-safe` still exported) |
 | Postinstall skip env var | `MD_CLAUDE_SKIP_POSTINSTALL` | `MAUDE_SKIP_POSTINSTALL` (old name accepted one cycle) |
-| Docs canonical host | `md-claude.dev` (planned) | `maude.iagh.cz` |
+| Docs canonical host | `md-claude.dev` (planned) | `maude.sh` |
 
 ## How to migrate
 

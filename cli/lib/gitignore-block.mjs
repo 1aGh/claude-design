@@ -22,19 +22,32 @@ export const END_MARKER = '# maude:end';
  */
 export function buildBlock(designRel = '.design') {
   const root = designRel.replace(/\/+$/, '');
+  // The canonical IGNORED set is the DDR-115 runtime-state taxonomy — kept in
+  // lockstep with `apps/studio/git/service.ts` (isMaudeRuntimeState backstop)
+  // and the repo's own `.gitignore`. VERSIONED content (canvases, `.meta.json`,
+  // `*.annotations.svg`, `system/**`, `config.json`) is deliberately absent.
   const lines = [
     BEGIN_MARKER,
-    '# Maude design plugin runtime — gitignored even in linked mode (DDR-056).',
-    `${root}/_state/`, // binary CRDT logs (regenerable from hub)
+    '# Maude design plugin runtime — gitignored even in linked mode (DDR-056/DDR-115).',
+    // Per-machine runtime JSON.
     `${root}/_server.json`,
     `${root}/_server.log`,
+    `${root}/_server.lock`,
     `${root}/_active.json`,
     `${root}/_sync.json`, // linked-mode offline/sync status (Task 8)
+    `${root}/_preflight.json`,
+    `${root}/_locator.json`, // regenerable slug→path index
+    `${root}/_export-history.json`,
+    // Per-machine / per-user dirs.
+    `${root}/_state/`, // binary CRDT logs (regenerable from hub)
     `${root}/_history/`,
     `${root}/_trash/`, // soft-deleted canvases (recoverable locally — Phase 22 delete)
     `${root}/_draw/`, // draw-agent proof canvases (regenerable — Phase 25)
-    `${root}/_canvas-state/`, // per-machine canvas undo/redo + scratch state
+    `${root}/_smoke/`, // batch-screenshot output (regenerable — DDR-021)
+    `${root}/_canvas-state/`, // per-machine canvas scratch + camera (`*.view.json`, DDR-115)
     `${root}/_chat/`, // ACP transcripts (per-machine)
+    `${root}/_untrusted/`, // hub-synced untrusted file mirror (DDR-054)
+    `${root}/_comments/`, // hub-sync-only collab comments (DDR-102/DDR-115 — never git)
     END_MARKER,
   ];
   return `${lines.join('\n')}\n`;
