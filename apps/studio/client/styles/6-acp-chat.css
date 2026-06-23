@@ -68,6 +68,45 @@
     }
   }
 
+  /* Live background-activity strip — what the agent is running right now. */
+  .chat-activity {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    border-bottom: 1px solid var(--border-subtle);
+    background: color-mix(in srgb, var(--presence-agent) 9%, var(--bg-2));
+    font-family: var(--font-mono);
+    font-size: var(--type-xs);
+    color: var(--fg-1);
+  }
+  .chat-activity-spin {
+    width: 10px;
+    height: 10px;
+    flex-shrink: 0;
+    border: 1.5px solid var(--presence-agent);
+    border-top-color: transparent;
+    border-radius: var(--radius-pill);
+    animation: chat-spin 0.7s linear infinite;
+  }
+  @keyframes chat-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  .chat-activity-text {
+    font-weight: 600;
+    color: var(--presence-agent);
+  }
+  .chat-activity-names {
+    margin-left: auto;
+    color: var(--fg-2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 55%;
+  }
+
   /* Feed (scrolls live) */
   .chat-feed {
     flex: 1;
@@ -484,6 +523,7 @@
   @media (prefers-reduced-motion: reduce) {
     .chat-status-dot--working,
     .chat-tool-dot--run,
+    .chat-activity-spin,
     .chat-msg {
       animation: none;
     }

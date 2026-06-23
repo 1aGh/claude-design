@@ -177,6 +177,23 @@ function StatusRow() {
   );
 }
 
+// Live "what's running now" strip — shows in-flight tool calls (edits, reads,
+// shell, sub-agents) so background work is visible, not only in the text.
+function ActivityBar({ tools }) {
+  if (!tools.length) return null;
+  return (
+    <div className="chat-activity" role="status" aria-live="polite">
+      <span className="chat-activity-spin" aria-hidden="true" />
+      <span className="chat-activity-text">
+        {tools.length === 1 ? tools[0].title : `${tools.length} tasks running`}
+      </span>
+      {tools.length > 1 ? (
+        <span className="chat-activity-names">{tools.map((t) => t.title).join(' · ')}</span>
+      ) : null}
+    </div>
+  );
+}
+
 function ChatEmpty() {
   return (
     <div className="chat-empty">
@@ -389,6 +406,10 @@ export default function ChatPanel({ activeCanvas, width, resizing, onClose, hidd
     };
   }, [conn]);
 
+  // Live background activity — the in-flight tool calls, for the activity bar.
+  const [activeTools, setActiveTools] = useState([]);
+  useEffect(() => conn.onActivity(setActiveTools), [conn]);
+
   return (
     <aside
       className={`st-rpanel${resizing ? ' is-resizing' : ''}`}
@@ -423,6 +444,7 @@ export default function ChatPanel({ activeCanvas, width, resizing, onClose, hidd
           <AssistantRuntimeProvider runtime={runtime}>
             <div className="chat-panel">
               <StatusRow />
+              <ActivityBar tools={activeTools} />
               <ThreadPrimitive.Root className="chat-thread">
                 <ThreadPrimitive.Viewport className="chat-feed" autoScroll>
                   <ThreadPrimitive.Empty>

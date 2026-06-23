@@ -14,8 +14,39 @@ export function createAcpConnection() {
   const statusListeners = new Set();
   const status = { available: null, reason: undefined, ready: false };
 
+  // Live "what's running now" — in-flight tool calls (a tool_call with no
+  // completed/failed tool_call_update yet). Surfaced as the activity bar so
+  // background work is visible at a glance, not only buried in the text.
+  const activityListeners = new Set();
+  const activeTools = new Map(); // toolCallId → { title, kind }
+
   function emitStatus() {
     for (const fn of statusListeners) fn({ ...status });
+  }
+
+  function emitActivity() {
+    const snapshot = [...activeTools.values()];
+    for (const fn of activityListeners) fn(snapshot);
+  }
+
+  function trackActivity(frame) {
+    if (frame.t === 'update') {
+      const u = frame.update;
+      if (u.sessionUpdate === 'tool_call') {
+        activeTools.set(u.toolCallId, { title: u.title || u.kind || 'tool', kind: u.kind });
+        emitActivity();
+      } else if (
+        u.sessionUpdate === 'tool_call_update' &&
+        (u.status === 'completed' || u.status === 'failed')
+      ) {
+        if (activeTools.delete(u.toolCallId)) emitActivity();
+      }
+    } else if (frame.t === 'turn-end' || frame.t === 'error') {
+      if (activeTools.size) {
+        activeTools.clear();
+        emitActivity();
+      }
+    }
   }
 
   function onFrame(frame) {
@@ -27,6 +58,7 @@ export function createAcpConnection() {
       return;
     }
     // Everything else belongs to the active prompt turn.
+    trackActivity(frame);
     if (turnHandler) turnHandler(frame);
   }
 
@@ -61,6 +93,12 @@ export function createAcpConnection() {
       statusListeners.add(fn);
       fn({ ...status });
       return () => statusListeners.delete(fn);
+    },
+
+    onActivity(fn) {
+      activityListeners.add(fn);
+      fn([...activeTools.values()]);
+      return () => activityListeners.delete(fn);
     },
 
     /**
