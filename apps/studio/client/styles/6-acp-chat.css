@@ -664,17 +664,28 @@
   }
   .chat-send {
     position: absolute;
-    right: var(--space-3);
-    bottom: var(--space-3);
-    width: 32px;
-    height: 32px;
+    right: var(--space-2);
+    bottom: var(--space-2);
+    width: 30px;
+    height: 30px;
     padding: 0;
-    border: none; /* accent-filled — no outline */
-    border-radius: var(--radius-md);
+    /* Explicit accent fill + contrast icon — don't rely on .btn--primary
+       resolving here, so the arrow is always clearly visible. */
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: var(--accent-fg);
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 0;
+  }
+  .chat-send:hover {
+    background: var(--accent-hover);
+  }
+  .chat-send:disabled {
+    opacity: 0.45;
+    cursor: default;
   }
   .chat-foot {
     display: flex;

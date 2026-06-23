@@ -54,12 +54,12 @@ const Close = ({ size = 14 }) => (
     />
   </svg>
 );
-const SendArrow = ({ size = 17 }) => (
+const SendArrow = ({ size = 16 }) => (
   <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
     <path
-      d="M8 13V3.4M4 7.4 8 3.2l4 4.2"
+      d="M8 12.5V4.2M4.4 7.6 8 4l3.6 3.6"
       stroke="currentColor"
-      strokeWidth="1.85"
+      strokeWidth="2.1"
       strokeLinecap="round"
       strokeLinejoin="round"
     />
