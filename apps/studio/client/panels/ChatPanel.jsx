@@ -399,15 +399,17 @@ function toThreadMessages(msgs) {
   });
 }
 
-// One thread = one chat. Keyed by chatId in ChatPanel so switching chats
-// remounts this with that chat's history as the runtime's initial messages.
+// One thread = one chat, with its OWN connection (own WS / bridge / claude) so
+// chats run in parallel. ChatPanel keeps every open thread MOUNTED and just
+// toggles `hidden`, so switching never interrupts a running chat — it keeps
+// streaming in the background.
 function ChatThread({
   conn,
   chatId,
   initialMessages,
+  hidden,
   modelRef,
   effortRef,
-  activeTools,
   activeCanvas,
   model,
   setModel,
@@ -425,10 +427,12 @@ function ChatThread({
     [conn, chatId, modelRef, effortRef]
   );
   const runtime = useLocalRuntime(adapter, { initialMessages });
+  const [activeTools, setActiveTools] = useState([]);
+  useEffect(() => conn.onActivity(setActiveTools), [conn]);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <div className="chat-panel">
+      <div className="chat-panel" style={hidden ? { display: 'none' } : undefined}>
         <StatusRow />
         <ThreadPrimitive.Root className="chat-thread">
           <ThreadPrimitive.Viewport className="chat-feed" autoScroll>
@@ -460,15 +464,10 @@ export default function ChatPanel({
   resizing,
   onClose,
   hidden = false,
-  conn: providedConn,
+  onBusyChange,
+  onFinished,
 }) {
-  // The connection is usually owned by app.jsx (so the menubar can show the
-  // running/finished badge); fall back to our own if rendered standalone.
-  const ownConn = useMemo(() => (providedConn ? null : createAcpConnection()), []);
-  const conn = providedConn || ownConn;
-
-  // Model + effort — persisted across sessions; read live by the adapter (refs)
-  // so changing them mid-session re-spawns on next send.
+  // Model + effort — persisted across sessions; read live by each chat's adapter.
   const [model, setModel] = useState(() => safeStorageGet('maude-acp-model', ''));
   const [effort, setEffort] = useState(() => safeStorageGet('maude-acp-effort', 'balanced'));
   const modelRef = useRef(model);
@@ -482,6 +481,7 @@ export default function ChatPanel({
     safeStorageSet('maude-acp-effort', effort);
   }, [effort]);
 
+  // Availability is global (is claude installed) — a single probe, no connection.
   const [status, setStatus] = useState({ available: null, reason: undefined, claudeMissing: false });
   useEffect(() => {
     let alive = true;
@@ -503,73 +503,116 @@ export default function ChatPanel({
             claudeMissing: false,
           });
       });
-    const off = conn.onStatus((s) => {
-      if (alive && s.available !== null) {
-        setStatus((prev) => ({ ...prev, available: s.available, reason: s.reason ?? prev.reason }));
-      }
-    });
     return () => {
       alive = false;
-      off();
-      ownConn?.close(); // only close a connection we own; app.jsx owns the shared one
     };
-  }, [conn, ownConn]);
+  }, []);
 
-  // Live background activity — the in-flight tool calls, for the activity bar.
-  const [activeTools, setActiveTools] = useState([]);
-  useEffect(() => conn.onActivity(setActiveTools), [conn]);
-
-  // Repo-level chats: a fresh chat on mount, with recents in the switcher.
-  const [chatId, setChatId] = useState(() => newChatId());
+  // Recents (for the switcher).
   const [chats, setChats] = useState([]);
-  const [hydrated, setHydrated] = useState([]); // initial messages for the open chat
   const refreshChats = useCallback(() => {
     fetch('/_api/acp/chats')
       .then((r) => r.json())
-      .then((d) => {
-        if (Array.isArray(d)) setChats(d);
-      })
+      .then((d) => Array.isArray(d) && setChats(d))
       .catch(() => {});
   }, []);
   useEffect(() => {
     refreshChats();
   }, [refreshChats]);
-  // Refresh the list after each turn so a new chat appears + titles update.
-  useEffect(() => conn.onBusy((busy) => !busy && refreshChats()), [conn, refreshChats]);
 
-  const newChat = useCallback(() => {
-    setHydrated([]);
-    setChatId(newChatId());
-  }, []);
-  const switchChat = useCallback(
-    (id) => {
-      if (!id || id === chatId) return;
-      fetch(`/_api/acp/chat?id=${encodeURIComponent(id)}`)
-        .then((r) => r.json())
-        .then((msgs) => {
-          setHydrated(toThreadMessages(msgs));
-          setChatId(id);
-        })
-        .catch(() => {});
+  // PARALLEL chats — one connection (own WS / bridge / claude) per open chat.
+  // Every open chat stays mounted; switching just changes which is visible, so
+  // a running chat keeps going in the background.
+  const connsRef = useRef(new Map()); // chatId → connection
+  const busyRef = useRef(new Map()); // chatId → busy (aggregated for the menubar)
+  const hydratedRef = useRef(new Map()); // chatId → initial messages
+  const [openChatIds, setOpenChatIds] = useState([]);
+  const [activeChatId, setActiveChatId] = useState(null);
+  const cbRef = useRef({ onBusyChange, onFinished });
+  useEffect(() => {
+    cbRef.current = { onBusyChange, onFinished };
+  }, [onBusyChange, onFinished]);
+
+  const ensureConn = useCallback(
+    (chatId) => {
+      const existing = connsRef.current.get(chatId);
+      if (existing) return existing;
+      const conn = createAcpConnection();
+      connsRef.current.set(chatId, conn);
+      conn.onBusy((busy) => {
+        const wasAny = [...busyRef.current.values()].some(Boolean);
+        busyRef.current.set(chatId, busy);
+        const nowAny = [...busyRef.current.values()].some(Boolean);
+        if (wasAny !== nowAny) cbRef.current.onBusyChange?.(nowAny);
+        if (!busy) {
+          cbRef.current.onFinished?.();
+          refreshChats();
+        }
+      });
+      return conn;
     },
-    [chatId]
+    [refreshChats]
   );
 
-  // Switcher options — recents + the current (not-yet-on-disk) chat.
+  const openChat = useCallback(
+    (chatId, initialMessages) => {
+      hydratedRef.current.set(chatId, initialMessages || []);
+      ensureConn(chatId);
+      setOpenChatIds((ids) => (ids.includes(chatId) ? ids : [...ids, chatId]));
+      setActiveChatId(chatId);
+    },
+    [ensureConn]
+  );
+
+  const newChat = useCallback(() => openChat(newChatId(), []), [openChat]);
+
+  const switchTo = useCallback(
+    (id) => {
+      if (!id || id === activeChatId) return;
+      if (connsRef.current.has(id)) {
+        setActiveChatId(id); // already open in the background → just show it
+        return;
+      }
+      fetch(`/_api/acp/chat?id=${encodeURIComponent(id)}`)
+        .then((r) => r.json())
+        .then((msgs) => openChat(id, toThreadMessages(msgs)))
+        .catch(() => {});
+    },
+    [activeChatId, openChat]
+  );
+
+  // Open a fresh chat on mount; close every connection on unmount.
+  useEffect(() => {
+    newChat();
+    const conns = connsRef.current;
+    return () => {
+      for (const c of conns.values()) c.close();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Switcher options — open chats first (parallel), then the rest of the recents.
   const chatOptions = useMemo(() => {
-    const list = chats.slice();
-    if (!list.some((c) => c.id === chatId)) list.unshift({ id: chatId, title: 'New chat' });
+    const seen = new Set();
+    const list = [];
+    for (const id of openChatIds) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      list.push({ id, title: chats.find((c) => c.id === id)?.title || 'New chat', open: true });
+    }
+    for (const c of chats) {
+      if (seen.has(c.id)) continue;
+      seen.add(c.id);
+      list.push(c);
+    }
     return list;
-  }, [chats, chatId]);
+  }, [chats, openChatIds]);
 
   const connected = status.available !== false;
 
   return (
     <aside
       className={`st-rpanel${resizing ? ' is-resizing' : ''}`}
-      // Stays MOUNTED while another right-dock panel is showing (display:none) so
-      // the chat keeps streaming in the background and its history survives a
-      // panel switch — fixed the "reopen loses the running chat" bug.
       style={{
         ...(width ? { width, flexBasis: width } : {}),
         ...(hidden ? { display: 'none' } : {}),
@@ -595,12 +638,13 @@ export default function ChatPanel({
         <div className="chat-bar">
           <select
             className="chat-select chat-bar-sel"
-            value={chatId}
-            onChange={(e) => switchChat(e.target.value)}
+            value={activeChatId || ''}
+            onChange={(e) => switchTo(e.target.value)}
             aria-label="Open chat"
           >
             {chatOptions.map((c) => (
               <option key={c.id} value={c.id}>
+                {c.open ? '● ' : ''}
                 {c.title}
               </option>
             ))}
@@ -614,20 +658,26 @@ export default function ChatPanel({
         {status.available === false ? (
           <NotConnected reason={status.reason} claudeMissing={status.claudeMissing} />
         ) : (
-          <ChatThread
-            key={chatId}
-            conn={conn}
-            chatId={chatId}
-            initialMessages={hydrated}
-            modelRef={modelRef}
-            effortRef={effortRef}
-            activeTools={activeTools}
-            activeCanvas={activeCanvas}
-            model={model}
-            setModel={setModel}
-            effort={effort}
-            setEffort={setEffort}
-          />
+          openChatIds.map((id) => {
+            const conn = connsRef.current.get(id);
+            if (!conn) return null;
+            return (
+              <ChatThread
+                key={id}
+                conn={conn}
+                chatId={id}
+                initialMessages={hydratedRef.current.get(id) || []}
+                hidden={id !== activeChatId}
+                modelRef={modelRef}
+                effortRef={effortRef}
+                activeCanvas={activeCanvas}
+                model={model}
+                setModel={setModel}
+                effort={effort}
+                setEffort={setEffort}
+              />
+            );
+          })
         )}
       </div>
     </aside>

@@ -14,7 +14,6 @@ import { createRoot } from 'react-dom/client';
 import { resolveToolCursor } from '../canvas-cursors.ts';
 import { canvasUrl } from './canvas-url.js';
 import ChatPanel from './panels/ChatPanel.jsx';
-import { createAcpConnection } from './panels/acp-runtime.js';
 import DiffView from './panels/DiffView.jsx';
 import GitPanel from './panels/GitPanel.jsx';
 import IdentityBar from './panels/IdentityBar.jsx';
@@ -5560,9 +5559,6 @@ function App() {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   // Phase 31 (DDR-123) — the native ACP chat sidepanel (right dock, native-only).
   const [assistantOpen, setAssistantOpen] = useState(false);
-  // Shared ACP connection — owned here (not in ChatPanel) so the menubar can show
-  // a running/finished badge even while the panel is hidden in the background.
-  const acpConn = useMemo(() => (isNativeApp() ? createAcpConnection() : null), []);
   const [assistantBusy, setAssistantBusy] = useState(false);
   const [assistantUnseen, setAssistantUnseen] = useState(false);
   const assistantOpenRef = useRef(assistantOpen);
@@ -5580,27 +5576,21 @@ function App() {
       }
     }
   }, [assistantOpen]);
-  useEffect(() => {
-    if (!acpConn) return undefined;
-    let wasBusy = false;
-    return acpConn.onBusy((busy) => {
-      setAssistantBusy(busy);
-      // Turn just finished while the user wasn't looking → badge + notify.
-      if (wasBusy && !busy && (!assistantOpenRef.current || document.hidden)) {
-        setAssistantUnseen(true);
-        try {
-          if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-            new Notification('Claude finished', {
-              body: 'Your assistant turn is ready in Maude.',
-            });
-          }
-        } catch {
-          /* best-effort — the in-app badge is the reliable signal */
+  // ChatPanel owns one connection PER CHAT (so chats run in parallel in the
+  // background) and reports up here: `onBusyChange` for the menubar pulse, and
+  // `onFinished` when any chat's turn ends — badge + notify if you weren't looking.
+  const handleAssistantFinished = useCallback(() => {
+    if (!assistantOpenRef.current || document.hidden) {
+      setAssistantUnseen(true);
+      try {
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          new Notification('Claude finished', { body: 'Your assistant turn is ready in Maude.' });
         }
+      } catch {
+        /* best-effort — the in-app badge is the reliable signal */
       }
-      wasBusy = busy;
-    });
-  }, [acpConn]);
+    }
+  }, []);
   // Inspector tab is lifted so View ▸ Layers can open the panel ON the Layers
   // tab (the menu item sat disabled as "Phase 12" long after the tab shipped).
   const [inspectorTab, setInspectorTab] = useState('inspect');
@@ -7296,7 +7286,6 @@ function App() {
               switch to Changes/Inspector/Comments. Native-only. */}
           {isNativeApp() && (
             <ChatPanel
-              conn={acpConn}
               hidden={!assistantOpen}
               activeCanvas={
                 activePath && activePath !== SYSTEM_TAB && /\.(tsx|html)$/i.test(activePath)
@@ -7306,6 +7295,8 @@ function App() {
               width={rpSize.w}
               resizing={dragSide === 'rp'}
               onClose={() => setAssistantOpen(false)}
+              onBusyChange={setAssistantBusy}
+              onFinished={handleAssistantFinished}
             />
           )}
         </div>
