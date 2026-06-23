@@ -242,6 +242,18 @@ export function makeAcpAdapter(conn, getCanvas, getModel, getEffort) {
             }
             break;
           }
+          case 'agent_thought_chunk': {
+            // Extended-thinking — rendered as a collapsed "Thinking" disclosure
+            // (assistant-ui reasoning part) so it's available but not in the way.
+            if (u.content?.type !== 'text') break;
+            const last = parts[parts.length - 1];
+            if (last && last.type === 'reasoning') {
+              parts[parts.length - 1] = { ...last, text: last.text + u.content.text };
+            } else {
+              parts.push({ type: 'reasoning', text: u.content.text });
+            }
+            break;
+          }
           case 'tool_call': {
             toolIndex.set(u.toolCallId, parts.length);
             parts.push({

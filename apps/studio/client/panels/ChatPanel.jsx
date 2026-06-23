@@ -54,6 +54,17 @@ const Close = ({ size = 14 }) => (
     />
   </svg>
 );
+const SendArrow = ({ size = 15 }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <path
+      d="M8 13V3.6M4.2 7.2 8 3.4l3.8 3.8"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
 
 // Persistent quick-action verbs (prefill the composer; never fire blind). The
 // one-time `/design:setup-ds` is offered contextually in the empty state, not here.
@@ -114,6 +125,22 @@ function ChatText({ text }) {
   );
 }
 
+function ChatReasoning({ text }) {
+  return (
+    <details className="chat-think">
+      <summary className="chat-think-sum">
+        <span className="chat-think-spark">
+          <Spark size={11} />
+        </span>
+        Thinking
+      </summary>
+      <div className="chat-think-body">
+        <Markdown text={text} />
+      </div>
+    </details>
+  );
+}
+
 function ChatToolCard({ toolName, args, result, isError }) {
   const running = result === undefined;
   const path =
@@ -157,7 +184,9 @@ function AssistantMessage() {
         </span>
         Claude
       </div>
-      <MessagePrimitive.Parts components={{ Text: ChatText, ToolCall: ChatToolCard }} />
+      <MessagePrimitive.Parts
+        components={{ Text: ChatText, ToolCall: ChatToolCard, Reasoning: ChatReasoning }}
+      />
     </div>
   );
 }
@@ -236,8 +265,11 @@ function Composer({ activeCanvas, model, setModel, effort, setEffort }) {
   const canvasName = prettyCanvas(activeCanvas);
   return (
     <div className="chat-composer">
-      <div className="chat-controls">
-        {canvasName ? (
+      {/* Controls (canvas chip + model/effort) only matter while you can type —
+          hide them mid-turn so the Stop bar stands alone. */}
+      <ThreadPrimitive.If running={false}>
+        <div className="chat-controls">
+          {canvasName ? (
           <div className="chat-ctx">
             Editing: <b>{canvasName}</b>
           </div>
@@ -266,7 +298,8 @@ function Composer({ activeCanvas, model, setModel, effort, setEffort }) {
             ))}
           </select>
         </label>
-      </div>
+        </div>
+      </ThreadPrimitive.If>
       <ThreadPrimitive.If running={false}>
         <ComposerPrimitive.Root className="chat-input-wrap">
           <ComposerPrimitive.Input
@@ -275,7 +308,7 @@ function Composer({ activeCanvas, model, setModel, effort, setEffort }) {
             placeholder="Ask Claude to change this canvas…"
           />
           <ComposerPrimitive.Send className="btn btn--primary chat-send" aria-label="Send">
-            ↑
+            <SendArrow />
           </ComposerPrimitive.Send>
         </ComposerPrimitive.Root>
         <div className="chat-foot">
