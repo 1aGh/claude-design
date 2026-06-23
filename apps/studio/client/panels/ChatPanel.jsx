@@ -528,6 +528,8 @@ export default function ChatPanel({
   const hydratedRef = useRef(new Map()); // chatId → initial messages
   const [openChatIds, setOpenChatIds] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
+  const [busyChats, setBusyChats] = useState({}); // reactive: chatId → busy (for the dot)
+  const [menuOpen, setMenuOpen] = useState(false);
   const cbRef = useRef({ onBusyChange, onFinished });
   useEffect(() => {
     cbRef.current = { onBusyChange, onFinished };
@@ -544,6 +546,7 @@ export default function ChatPanel({
         busyRef.current.set(chatId, busy);
         const nowAny = [...busyRef.current.values()].some(Boolean);
         if (wasAny !== nowAny) cbRef.current.onBusyChange?.(nowAny);
+        setBusyChats((prev) => ({ ...prev, [chatId]: busy })); // reactive dot
         if (!busy) {
           cbRef.current.onFinished?.();
           refreshChats();
@@ -579,6 +582,41 @@ export default function ChatPanel({
         .catch(() => {});
     },
     [activeChatId, openChat]
+  );
+
+  // Delete a chat — kill its claude (close the conn), drop the transcript, and
+  // fall back to another open chat (or a fresh one) if it was active.
+  const deleteChat = useCallback(
+    (id) => {
+      const conn = connsRef.current.get(id);
+      if (conn) conn.close();
+      connsRef.current.delete(id);
+      busyRef.current.delete(id);
+      hydratedRef.current.delete(id);
+      setBusyChats((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      fetch(`/_api/acp/chat?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+        .catch(() => {})
+        .finally(refreshChats);
+      setOpenChatIds((ids) => {
+        const remaining = ids.filter((x) => x !== id);
+        if (id === activeChatId) {
+          if (remaining.length) setActiveChatId(remaining[remaining.length - 1]);
+          else {
+            const fresh = newChatId();
+            hydratedRef.current.set(fresh, []);
+            ensureConn(fresh);
+            setActiveChatId(fresh);
+            return [fresh];
+          }
+        }
+        return remaining;
+      });
+    },
+    [activeChatId, ensureConn, refreshChats]
   );
 
   // Open a fresh chat on mount; close every connection on unmount.
@@ -636,20 +674,69 @@ export default function ChatPanel({
       </div>
       {connected ? (
         <div className="chat-bar">
-          <select
-            className="chat-select chat-bar-sel"
-            value={activeChatId || ''}
-            onChange={(e) => switchTo(e.target.value)}
-            aria-label="Open chat"
+          <div className="chat-switch">
+            <button
+              type="button"
+              className="chat-switch-trigger"
+              onClick={() => setMenuOpen((v) => !v)}
+              aria-haspopup="listbox"
+              aria-expanded={menuOpen}
+            >
+              <span
+                className={`chat-dot ${busyChats[activeChatId] ? 'chat-dot--busy' : 'chat-dot--idle'}`}
+              />
+              <span className="chat-switch-title">
+                {chatOptions.find((c) => c.id === activeChatId)?.title || 'New chat'}
+              </span>
+              <span className="chat-switch-caret">▾</span>
+            </button>
+            {menuOpen ? (
+              <>
+                <div className="chat-menu-backdrop" onClick={() => setMenuOpen(false)} />
+                <div className="chat-menu" role="listbox">
+                  {chatOptions.map((c) => (
+                    <div
+                      key={c.id}
+                      className={`chat-menu-row${c.id === activeChatId ? ' is-active' : ''}`}
+                    >
+                      <button
+                        type="button"
+                        className="chat-menu-open"
+                        onClick={() => {
+                          switchTo(c.id);
+                          setMenuOpen(false);
+                        }}
+                      >
+                        <span
+                          className={`chat-dot ${busyChats[c.id] ? 'chat-dot--busy' : c.open ? 'chat-dot--idle' : 'chat-dot--off'}`}
+                          title={busyChats[c.id] ? 'Running' : c.open ? 'Open' : 'Saved'}
+                        />
+                        <span className="chat-menu-title">{c.title}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="chat-menu-del"
+                        onClick={() => deleteChat(c.id)}
+                        aria-label="Delete chat"
+                        title="Delete chat"
+                      >
+                        <Close size={11} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            className="chat-newbtn"
+            onClick={() => {
+              newChat();
+              setMenuOpen(false);
+            }}
+            title="Start a new chat"
           >
-            {chatOptions.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.open ? '● ' : ''}
-                {c.title}
-              </option>
-            ))}
-          </select>
-          <button type="button" className="chat-newbtn" onClick={newChat} title="Start a new chat">
             ＋ New
           </button>
         </div>

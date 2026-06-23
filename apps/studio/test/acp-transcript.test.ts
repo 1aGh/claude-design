@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { listChats, readChatMessages } from '../acp/transcript.ts';
+import { deleteChat, listChats, readChatMessages } from '../acp/transcript.ts';
 
 let root: string;
 afterEach(() => {
@@ -69,5 +69,15 @@ describe('listChats', () => {
   test('no _chat dir → empty', () => {
     root = mkdtempSync(join(tmpdir(), 'acp-tx-'));
     expect(listChats(root)).toEqual([]);
+  });
+});
+
+describe('deleteChat', () => {
+  test('removes the transcript; missing → false', () => {
+    const designRoot = seed('gone', [{ ts: 1, role: 'user', text: 'bye' }]);
+    expect(listChats(designRoot).length).toBe(1);
+    expect(deleteChat(designRoot, 'gone')).toBe(true);
+    expect(listChats(designRoot).length).toBe(0);
+    expect(deleteChat(designRoot, 'gone')).toBe(false);
   });
 });

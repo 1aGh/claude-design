@@ -2,7 +2,7 @@
 // appends raw per-update lines; these readers turn them into the chat list (for
 // the switcher) and clean per-turn messages (for hydrating the thread on open).
 
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 export interface ChatSummary {
@@ -71,6 +71,18 @@ export function listChats(designRoot: string): ChatSummary[] {
     out.push({ id: name.replace(/\.jsonl$/, ''), title: deriveTitle(lines), updated });
   }
   return out.sort((a, b) => b.updated - a.updated);
+}
+
+/** Delete a chat's transcript. Returns true if a file was removed. */
+export function deleteChat(designRoot: string, chatId: string): boolean {
+  const file = join(chatDir(designRoot), `${chatId}.jsonl`);
+  if (!existsSync(file)) return false;
+  try {
+    rmSync(file);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
