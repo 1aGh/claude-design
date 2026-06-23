@@ -26,6 +26,9 @@ existing_canvases          # JSON array of absolute paths to all .tsx canvases i
                            #   (orchestrator filters by .meta.json.designSystem == <ds_name>; in single-DS
                            #   layouts this is every .tsx in <designRoot>/<newCanvasDir>/ except canvas_path)
 preview_components_root    # absolute path to <ds_root>/preview/  (the components-*.tsx etc.)
+platform_showcase_path     # OPTIONAL — absolute path to the platform's ui_kits-<platform>-showcase.tsx
+                           #   (the DS's canonical product shell). Empty/absent when the DS ships no
+                           #   showcase for this platform; Pass A.6 is then a no-op.
 token_guide_path           # absolute path to <ds_root>/README.md  (you grep its `## Token usage guide` section)
 output_path                # where to write the report (typically <designRoot>/_history/<slug>/NNN-ds-keeper.md)
 iter_n                     # iteration number (1 if first run on this canvas)
@@ -139,6 +142,51 @@ Match heuristic:
 
 The motion specimen itself (`<ds_root>/preview/motion.tsx`) is **exempt** — that file's job is to be the playground that exercises the vocabulary; it doesn't need to lift from itself. Skip Pass A.5 when `CANVAS_PATH` ends with `/preview/motion.tsx`.
 
+## Pass A.6 — Product-shell reuse (DDR-106)
+
+**Goal:** when the candidate canvas builds a full **product shell** (the chrome arrangement of nav / sidebar / toolbar / main / status) AND the DS ships a platform showcase, surface whether the candidate **reused the showcase's shell** or re-derived a parallel one. This is the layout-level analog of Pass A's per-class scan — Pass A catches a reinvented `.card`, Pass A.6 catches a reinvented *whole shell*.
+
+**Skip entirely (no-op) when:**
+- `platform_showcase_path` is empty/absent (DS ships no showcase for this platform), OR
+- the candidate is itself a `preview/ui_kits-*-showcase.tsx` (it IS the showcase — exempt, like the motion specimen), OR
+- the candidate declares **fewer than 2** shell regions (it's not a full-screen surface — a component canvas or single-panel surface has no shell to reuse; do not flag it).
+
+**Step 1 — Detect a product shell in the candidate.** Count distinct shell regions present. A region counts if EITHER a `data-dc-element="<id>"` whose id matches the role, OR a class root whose head-word matches:
+
+| Shell region | id / class head-word cues |
+| --- | --- |
+| nav / toolbar | `nav`, `toolbar`, `topbar`, `menubar`, `appbar` |
+| sidebar / tree | `sidebar`, `side`, `rail`, `layers`, `tree`, `panel-left` |
+| main / content | `main`, `content`, `canvas`, `workspace`, `stage`, `viewport` |
+| inspector / aside | `inspector`, `aside`, `properties`, `panel-right`, `detail` |
+| status bar | `status`, `statusbar`, `footer-bar`, `bottombar` |
+
+```bash
+SHELL_REGIONS=$(grep -oiE '(data-dc-element|className|class)="[^"]*(nav|toolbar|topbar|menubar|appbar|sidebar|rail|layers|tree|main|content|workspace|stage|viewport|inspector|aside|properties|status(bar)?|footer-bar|bottombar)[^"]*"' "$CANVAS_PATH" | wc -l)
+```
+If `< 2` distinct region families fire → not a shell → skip (no finding).
+
+**Step 2 — Extract the showcase's shell class roots / region ids:**
+```bash
+SHOWCASE_SHELL=$(grep -oE '(data-dc-element|className|class)="[^"]+"' "$PLATFORM_SHOWCASE_PATH" \
+  | sed -E 's/^(data-dc-element|className|class)="//; s/"$//' | tr ' ' '\n' \
+  | grep -iE 'nav|toolbar|sidebar|rail|layers|tree|main|content|workspace|inspector|aside|status|footer-bar' \
+  | sort -u)
+```
+
+**Step 3 — Compare.** Intersect the candidate's shell roots with the showcase's. If the candidate declares ≥ 2 shell regions but shares **zero** shell class roots / region ids with the showcase, it re-invented the shell → surface ONE finding (the divergence is the signal; do not enumerate per-region).
+
+**Step 4 — Surface (info by default, warning when a full shell is reinvented):**
+
+```
+- shell-reinvention | candidate builds a <N>-region product shell sharing 0 shell roots with `ui_kits-<platform>-showcase.tsx`
+  The DS ships a canonical <platform> shell. Adopt its chrome arrangement (nav/sidebar/main/status) + class roots
+  instead of a parallel shell — see <PLATFORM_SHOWCASE_PATH>. If the divergence is intentional (this surface needs a
+  shell the showcase can't express), leave a one-line JSX comment saying so.
+```
+
+**Severity:** **info** when the candidate shares ≥ 1 shell root (partial reuse — a nudge, not a finding); **warning** when it shares **zero** roots across a ≥ 2-region shell (full reinvention). This pass is deliberately conservative — shell detection is fuzzier than per-class matching, so a single false-positive "you reinvented the shell" is worse than a missed nudge. Never self-promote Pass A.6 to blocker on its own; it only contributes to the existing `pattern-mass-reinvention` stack count when a full-shell reinvention coincides with ≥ 3 Pass-A reinventions.
+
 ## Pass B — Token-usage audit
 
 **Goal:** for every `var(--TOKEN)` usage in the candidate canvas, check that the property it sits on matches the role the DS Token usage guide assigns to that token. Surface mismatches as warnings.
@@ -204,7 +252,11 @@ _<ISO ts> · canvas: `{canvas_path}` · ds: `{ds_name}`_
 
 ## Pass A — Pattern-reinvention scan
 
-{Per-finding entries in the format from Step 5 of Pass A. If no findings: "No reinventions detected — candidate lifts or extends existing class shapes."}
+{Per-finding entries in the format from Step 5 of Pass A (incl. any Pass A.5 motion-reinventions). If no findings: "No reinventions detected — candidate lifts or extends existing class shapes."}
+
+## Pass A.6 — Product-shell reuse
+
+{The single shell-reinvention finding if it fired, in the Step 4 format. If skipped: "Pass A.6 skipped (no platform showcase | candidate is not a full-screen shell | candidate IS the showcase)." If reused: "Candidate reuses the `ui_kits-<platform>-showcase` shell roots — no reinvention."}
 
 ## Pass B — Token-usage audit
 

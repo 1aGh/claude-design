@@ -136,9 +136,43 @@ fi
 if [ "${ACTIVE##*.}" = "tsx" ] && [ -z "$DCTX" ] && [ -f "$CANVAS_LIB" ]; then
   echo "→ pre-loading canvas-lib: $CANVAS_LIB"
 fi
+
+# ── Add-surface edits: pre-load the platform SHOWCASE shell (placement reference) ──
+# When the edit PLACES A NEW SURFACE (a new screen/section/panel/artboard) rather than
+# tweaking an existing element, the orchestrator needs the DS's canonical product shell so
+# the new surface reuses "kde to bude" instead of inventing a parallel shell. Gate it tight
+# — a class tweak / copy / colour edit must NOT trigger this (the showcase TSX is large).
+ADD_SURFACE=0
+case "$ARGUMENTS" in
+  *add*|*Add*|*ADD*|*new\ *|*New\ *|\
+  *přidej*|*Přidej*|*nová*|*nový*|*nové*|\
+  *screen*|*section*|*panel*|*page*|*view*|*layout*|*sidebar*|*obrazovk*|*sekc*|*stránk*|*artboard*)
+    ADD_SURFACE=1 ;;
+esac
+# A structural edit (AST fast-path did NOT fire) that adds a region is also add-surface.
+# Never for surgical single-attribute edits (step 3a handles those).
+if [ "$ADD_SURFACE" = "1" ] && [ "${ACTIVE##*.}" = "tsx" ]; then
+  # Resolve platform + DS preview dir independently of the LOAD_CSS branch (which may
+  # not have run for a non-style add-surface edit).
+  SC_DS=$(jq -r '.designSystem // "project"' "$META_PATH" 2>/dev/null || echo "project")
+  SC_PLATFORM=$(jq -r '.platform // "desktop"' "$META_PATH" 2>/dev/null || echo "desktop")
+  [ "$SC_PLATFORM" = "tablet" ] && SC_PLATFORM="mobile"   # tablet rides mobile showcase family
+  SC_PREVIEW=$(jq -r ".designSystems[] | select(.name==\"$SC_DS\") | .path" "$CFG" 2>/dev/null || echo "system/$SC_DS")
+  SC_DIR="$REPO_ROOT/$DESIGN_ROOT/$SC_PREVIEW/preview"
+  SHOWCASE=$(ls "$SC_DIR/ui_kits-${SC_PLATFORM}-showcase.tsx" 2>/dev/null | head -1)
+  # Fallback: any showcase the DS ships (shell reference only). Never fatal.
+  [ -z "$SHOWCASE" ] && SHOWCASE=$(ls "$SC_DIR/ui_kits-"*-showcase.tsx 2>/dev/null | head -1)
+  if [ -n "$SHOWCASE" ]; then
+    echo "→ pre-loading platform showcase: $SHOWCASE"
+  else
+    echo "→ add-surface edit but DS ships no showcase — placing surface from component priors + DS readme"
+  fi
+fi
 ```
 
 **What the orchestrator does with those paths:**
+
+- **Add-surface pre-load:** when `→ pre-loading platform showcase: …` printed, `Read` that showcase TSX and pass it to `frontend-design` as the **placement reference** — the new surface must adopt the showcase's shell arrangement (nav / sidebar / toolbar / main / status), same chrome material, instead of inventing a new shell. It is reference, not a wireframe — the new surface still owns its own content. Skip the load (and this read) for surgical / cosmetic edits.
 
 - **Cache HIT (`$DCTX` non-empty):** seed the `frontend-design` prompt directly from the cached pack — `classNames` (what `_components.css` offers: `.btn`, `.tile`, `.sku`, `.seg`, …), `tokenNames` (the `colors_and_type.css` namespace), and `libExports` (the canvas-lib authoring vocabulary). **Skip the CSS + canvas-lib Reads entirely.** This is the C5 win — repeat edits on an unchanged DS pay zero read cost.
 - **Cache MISS:** if `LOAD_CSS=1`, `Read` `_components.css` + `colors_and_type.css`, and (for any `.tsx`) the canvas-lib, **in parallel — one assistant message, multiple Read tool calls** (independent files; serialising just adds round-trips). Then extract the vocabulary and write the pack so the next edit hits:
@@ -451,6 +485,18 @@ fi
 ```
 
 When `RUN_KEEPER=1`, spawn ds-keeper in parallel with the critic panel (step 8), same envelope shape as `/design:new` step 9.5. Output → `$HIST/$N_KEEPER-ds-keeper.md`. Findings merge into the iter-1 panel summary; self-promoted blockers (mass drift) get priority in the auto-fix loop. Same failure handling as `/design:new` step 9.5 — agent failure does not block the panel.
+
+**Pass `platform_showcase_path` to the keeper** so its Pass A.6 (product-shell reuse, DDR-106) can check whether a substantial edit reinvented the shell. Resolve it cheaply here even when the step-1.5 add-surface pre-load didn't run (a non-add-surface edit can still cross the diff threshold):
+
+```bash
+SC_DS=$(jq -r '.designSystem // "project"' "$META_PATH" 2>/dev/null || echo "project")
+SC_PLATFORM=$(jq -r '.platform // "desktop"' "$META_PATH" 2>/dev/null || echo "desktop")
+[ "$SC_PLATFORM" = "tablet" ] && SC_PLATFORM="mobile"
+SC_PREVIEW=$(jq -r ".designSystems[] | select(.name==\"$SC_DS\") | .path" "$CFG" 2>/dev/null || echo "system/$SC_DS")
+KEEPER_SHOWCASE=$(ls "$REPO_ROOT/$DESIGN_ROOT/$SC_PREVIEW/preview/ui_kits-${SC_PLATFORM}-showcase.tsx" 2>/dev/null | head -1)
+[ -z "$KEEPER_SHOWCASE" ] && KEEPER_SHOWCASE=$(ls "$REPO_ROOT/$DESIGN_ROOT/$SC_PREVIEW/preview/ui_kits-"*-showcase.tsx 2>/dev/null | head -1)
+# Add to the keeper-spawn prompt:  platform_showcase_path: "$KEEPER_SHOWCASE"  (empty → Pass A.6 no-ops)
+```
 
 ### 8. Auto-critic + auto-fix loop (default — opt out with `--no-critic`)
 
