@@ -575,6 +575,10 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
     // panel" (app.jsx, native-only). MAIN-ORIGIN ONLY (off the canvas allowlist).
     '/_api/acp/focus': (req: Request) => {
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+      // CSRF parity with the other POST routes — the loopback `maude design
+      // chat-open` driver omits Origin (allowed); a browser drive-by can't forge it.
+      if (!sameOriginWrite(req))
+        return new Response('cross-origin write rejected', { status: 403 });
       ctx.bus.emit('acp-focus', {});
       return Response.json({ ok: true }, { headers: { 'Cache-Control': 'no-store' } });
     },

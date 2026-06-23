@@ -8,14 +8,15 @@ import { join } from 'node:path';
 
 import type { ServerWebSocket } from 'bun';
 
-import type { Api } from '../api.ts';
 import type { Context } from '../context.ts';
-import type { Inspect } from '../inspect.ts';
 import type { WsData } from '../ws.ts';
-import { type AcpEffort, AcpBridge } from './bridge.ts';
+import { AcpBridge, type AcpEffort } from './bridge.ts';
 import { probeAcpAvailability } from './probe.ts';
 
 const VALID_EFFORT = new Set(['fast', 'balanced', 'thorough']);
+// Model is set as ANTHROPIC_MODEL on the spawned child — allowlist it server-side
+// (security review F1) so the loopback WS frame can't pin an arbitrary value.
+const VALID_MODELS = new Set(['opus', 'sonnet', 'haiku']);
 
 /**
  * Browser → server frames: `{ t: 'prompt', text, canvas? }`, `{ t: 'cancel' }`.
@@ -31,7 +32,7 @@ export interface Acp {
   size(): number;
 }
 
-export function createAcp(ctx: Context, api: Api, inspect: Inspect): Acp {
+export function createAcp(ctx: Context): Acp {
   const bridges = new Map<string, AcpBridge>();
 
   function send(ws: ServerWebSocket<WsData>, payload: unknown): void {
@@ -104,7 +105,8 @@ export function createAcp(ctx: Context, api: Api, inspect: Inspect): Acp {
 
       if (frame.t === 'prompt' && typeof frame.text === 'string') {
         const chatId = typeof frame.chat === 'string' && frame.chat ? frame.chat : 'default';
-        const model = typeof frame.model === 'string' && frame.model ? frame.model : null;
+        const model =
+          typeof frame.model === 'string' && VALID_MODELS.has(frame.model) ? frame.model : null;
         const effort: AcpEffort =
           typeof frame.effort === 'string' && VALID_EFFORT.has(frame.effort)
             ? (frame.effort as AcpEffort)

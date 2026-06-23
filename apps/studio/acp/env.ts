@@ -11,7 +11,7 @@
 
 /**
  * Env var names that flip Claude Code off the subscription and onto metered API
- * billing (or a non-subscription auth token). Both are stripped from the child.
+ * billing (or a non-subscription auth token). The two precedence-relevant keys.
  */
 export const SUBSCRIPTION_SCRUBBED_ENV_KEYS = [
   'ANTHROPIC_API_KEY',
@@ -19,18 +19,29 @@ export const SUBSCRIPTION_SCRUBBED_ENV_KEYS = [
 ] as const;
 
 /**
- * Return a copy of `source` with the billing-switching keys removed and any
- * `undefined` values dropped (Bun.spawn's `env` wants a `Record<string,string>`).
+ * Scrub the WHOLE provider/billing namespace, not just the two known keys —
+ * any `ANTHROPIC_*` (API key, auth token, custom `ANTHROPIC_BASE_URL`, Bedrock/
+ * Vertex base URLs, future billing vars) plus the cloud-provider toggles. This
+ * closes the denylist gap (security review F1): a stray base-URL or a NEW billing
+ * env var can't silently redirect the spawned `claude` off the user's
+ * subscription or exfiltrate prompts to an attacker endpoint. `ANTHROPIC_MODEL`
+ * is in this set too — the bridge re-adds it AFTER the scrub, from a validated
+ * allowlist value, so the parent's value never leaks through.
+ */
+const PROVIDER_REDIRECT_RE = /^(ANTHROPIC_|CLAUDE_CODE_USE_|AWS_BEARER_TOKEN_BEDROCK)/i;
+
+/**
+ * Return a copy of `source` with the billing/provider-redirect keys removed and
+ * any `undefined` values dropped (Bun.spawn's `env` wants Record<string,string>).
  * Pure — never mutates the input, so `process.env` stays intact for the parent.
  */
 export function scrubAgentEnv(
   source: Record<string, string | undefined> = process.env
 ): Record<string, string> {
-  const scrubbed = new Set<string>(SUBSCRIPTION_SCRUBBED_ENV_KEYS);
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(source)) {
     if (value === undefined) continue;
-    if (scrubbed.has(key)) continue;
+    if (PROVIDER_REDIRECT_RE.test(key)) continue;
     out[key] = value;
   }
   return out;

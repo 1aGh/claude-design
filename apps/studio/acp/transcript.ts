@@ -100,7 +100,7 @@ export function readChatMessages(designRoot: string, chatId: string): ChatMessag
   const toolIndex = new Map<string, number>();
 
   const flush = () => {
-    if (assistant && assistant.parts.length) messages.push(assistant);
+    if (assistant?.parts.length) messages.push(assistant);
     assistant = null;
     toolIndex.clear();
   };

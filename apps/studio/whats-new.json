@@ -2,6 +2,15 @@
   "$schema": "./whats-new.schema.json",
   "entries": [
     {
+      "id": "native-acp-chat-sidepanel",
+      "version": null,
+      "date": null,
+      "kind": "feature",
+      "title": "Chat with Claude inside Maude",
+      "summary": "Open the Assistant panel (the ✦ in the menubar, or ⌘⇧A) and ask Claude for an edit, a critique, or a new screen — it changes the canvas while you watch, no terminal needed. It runs on your own installed Claude on your Pro/Max subscription: no login inside Maude, never metered API billing. Open several chats and work on different things at once — each runs in the background, so switching never interrupts a running one, and a switcher shows which chats are running, open, or saved (start a new one or delete an old one). Chats are saved per project and reopen with their history. Pick the model and effort, watch what Claude is doing live, and get a notification when a turn finishes while you're looking elsewhere. Native app only.",
+      "surface": "design-ui"
+    },
+    {
       "id": "branch-scoped-live-multiplayer",
       "version": null,
       "date": null,

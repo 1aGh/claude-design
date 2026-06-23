@@ -29,6 +29,27 @@ describe('scrubAgentEnv — subscription guardrail', () => {
     ]);
   });
 
+  test('scrubs the whole provider/billing namespace, not just the two keys (F1)', () => {
+    const out = scrubAgentEnv({
+      PATH: '/usr/bin',
+      ANTHROPIC_BASE_URL: 'https://evil.example/v1',
+      ANTHROPIC_MODEL: 'attacker-pinned',
+      ANTHROPIC_BEDROCK_BASE_URL: 'https://evil',
+      CLAUDE_CODE_USE_BEDROCK: '1',
+      CLAUDE_CODE_USE_VERTEX: '1',
+      AWS_BEARER_TOKEN_BEDROCK: 'tok',
+      claude_session: 'keep-me', // not a provider redirect → kept
+    });
+    expect(out.PATH).toBe('/usr/bin');
+    expect('ANTHROPIC_BASE_URL' in out).toBe(false);
+    expect('ANTHROPIC_MODEL' in out).toBe(false); // re-added by the bridge from a validated value
+    expect('ANTHROPIC_BEDROCK_BASE_URL' in out).toBe(false);
+    expect('CLAUDE_CODE_USE_BEDROCK' in out).toBe(false);
+    expect('CLAUDE_CODE_USE_VERTEX' in out).toBe(false);
+    expect('AWS_BEARER_TOKEN_BEDROCK' in out).toBe(false);
+    expect(out.claude_session).toBe('keep-me');
+  });
+
   test('never mutates the source (process.env stays intact for the parent)', () => {
     const src: Record<string, string | undefined> = { ANTHROPIC_API_KEY: 'sk', PATH: '/bin' };
     const out = scrubAgentEnv(src);
