@@ -31,7 +31,7 @@ describe('AcpBridge — round-trip + subscription guardrail', () => {
     const updates: unknown[] = [];
     const bridge = new AcpBridge({ repoRoot: process.cwd(), onUpdate: (u) => updates.push(u) });
     try {
-      const result = await bridge.prompt('hello');
+      const result = await bridge.prompt('hello', 'c1');
       expect(bridge.connected).toBe(true);
       expect(bridge.sessionId).toBe('mock-session-1');
       expect(result.stopReason).toBe('end_turn');
@@ -55,7 +55,7 @@ describe('AcpBridge — round-trip + subscription guardrail', () => {
     const bridge = new AcpBridge({ repoRoot: process.cwd(), onUpdate: (u) => updates.push(u) });
     try {
       bridge.setConfig('opus', 'thorough');
-      await bridge.prompt('hi');
+      await bridge.prompt('hi', 'c1');
       const first = JSON.stringify(updates);
       expect(first).toContain('model=opus');
       expect(first).toContain('thinking=31999');
@@ -63,7 +63,7 @@ describe('AcpBridge — round-trip + subscription guardrail', () => {
       // Changing the config re-spawns with the new env on the next prompt.
       updates.length = 0;
       bridge.setConfig(null, 'fast');
-      await bridge.prompt('again');
+      await bridge.prompt('again', 'c1');
       const second = JSON.stringify(updates);
       expect(second).toContain('model=<unset>'); // null model → ANTHROPIC_MODEL not set
       expect(second).toContain('thinking=0'); // fast → thinking disabled
@@ -79,10 +79,29 @@ describe('AcpBridge — round-trip + subscription guardrail', () => {
 
     const bridge = new AcpBridge({ repoRoot: process.cwd(), onUpdate: () => {} });
     try {
-      await bridge.prompt('first');
+      await bridge.prompt('first', 'c1');
       const sid = bridge.sessionId;
-      await bridge.prompt('second');
+      await bridge.prompt('second', 'c1');
       expect(bridge.sessionId).toBe(sid);
+    } finally {
+      await bridge.stop();
+    }
+  }, 15000);
+
+  test('different chat ids get separate claude sessions; same id reuses its own', async () => {
+    process.env.MAUDE_ACP_ADAPTER_ENTRY = FIXTURE;
+    process.env.MAUDE_ACP_RUNTIME = process.execPath;
+    process.env.MAUDE_CLAUDE_BIN = process.execPath;
+
+    const bridge = new AcpBridge({ repoRoot: process.cwd(), onUpdate: () => {} });
+    try {
+      await bridge.prompt('a', 'chatA');
+      const sa = bridge.sessionId;
+      await bridge.prompt('b', 'chatB');
+      const sb = bridge.sessionId;
+      expect(sa).not.toBe(sb); // separate per-chat contexts
+      await bridge.prompt('a again', 'chatA');
+      expect(bridge.sessionId).toBe(sa); // chatA reuses its own session
     } finally {
       await bridge.stop();
     }

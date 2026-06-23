@@ -9,6 +9,7 @@ import { existsSync, readFileSync, watch } from 'node:fs';
 import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 
 import { probeAcpAvailability } from './acp/probe.ts';
+import { listChats, readChatMessages } from './acp/transcript.ts';
 import type { Api } from './api.ts';
 import { buildCanvasModule } from './canvas-build.ts';
 import { canvasLibPath } from './canvas-lib-resolver.ts';
@@ -576,6 +577,22 @@ export function createHttp(ctx: Context, api: Api, inspect: Inspect, ai: AiActiv
       if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
       ctx.bus.emit('acp-focus', {});
       return Response.json({ ok: true }, { headers: { 'Cache-Control': 'no-store' } });
+    },
+
+    // Phase 31 — repo-level chat list + history (for the chat switcher +
+    // hydration). MAIN-ORIGIN ONLY. Read-only; ids are sanitized before disk.
+    '/_api/acp/chats': () =>
+      Response.json(listChats(ctx.paths.designRoot), {
+        headers: { 'Cache-Control': 'no-store' },
+      }),
+    '/_api/acp/chat': (req: Request) => {
+      const id = (new URL(req.url).searchParams.get('id') ?? '')
+        .replace(/[^a-z0-9_-]/gi, '')
+        .slice(0, 64);
+      if (!id) return Response.json([], { headers: { 'Cache-Control': 'no-store' } });
+      return Response.json(readChatMessages(ctx.paths.designRoot, id), {
+        headers: { 'Cache-Control': 'no-store' },
+      });
     },
 
     // Phase 9 Task 8 — offline-mode banner poll fallback. The linked-mode sync

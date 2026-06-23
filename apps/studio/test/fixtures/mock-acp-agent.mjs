@@ -18,7 +18,10 @@ acp
     protocolVersion: acp.PROTOCOL_VERSION,
     agentCapabilities: { loadSession: false },
   }))
-  .onRequest('session/new', () => ({ sessionId: 'mock-session-1' }))
+  .onRequest('session/new', (() => {
+    let n = 0;
+    return () => ({ sessionId: `mock-session-${++n}` });
+  })())
   .onRequest('session/prompt', async (ctx) => {
     // The per-request handler context exposes the client connection at `.client`.
     await ctx.client.notify('session/update', {

@@ -64,9 +64,13 @@ function pickAllowOption(params: RequestPermissionRequest) {
 export class AcpBridge {
   private proc: Spawned | null = null;
   private conn: ClientSideConnection | null = null;
-  private session: string | null = null;
+  // One ACP session per chat id (repo-level), so each chat keeps its own claude
+  // context. The adapter (one subprocess) holds them all; switching chats reuses
+  // the session, so claude remembers that chat while the app is open.
+  private sessions = new Map<string, string>(); // chatId → sessionId
+  private currentSession: string | null = null; // the in-flight prompt's session
   private starting: Promise<void> | null = null;
-  /** Per-canvas transcript file; mutable because the active canvas can change. */
+  /** Per-chat transcript file (`_chat/<id>.jsonl`); set per prompt. */
   private transcriptPath: string | null = null;
   // Model + effort are env-at-spawn (ANTHROPIC_MODEL / MAX_THINKING_TOKENS), so a
   // change re-spawns the adapter. `desired*` is what the UI asked for; `active*`
@@ -78,13 +82,13 @@ export class AcpBridge {
 
   constructor(private readonly opts: AcpBridgeOptions) {}
 
-  /** ACP session id once `newSession` has resolved, else null. */
+  /** The session id of the most recent prompt (for the `connected` frame). */
   get sessionId(): string | null {
-    return this.session;
+    return this.currentSession;
   }
 
   get connected(): boolean {
-    return this.session !== null;
+    return this.conn !== null && this.proc !== null;
   }
 
   setTranscriptPath(path: string | null): void {
@@ -104,13 +108,23 @@ export class AcpBridge {
 
   /** Spawn + handshake exactly once; concurrent callers share the same promise. */
   async ensureStarted(): Promise<void> {
-    if (this.session) return;
+    if (this.conn) return;
     if (!this.starting) {
       this.starting = this.start().finally(() => {
         this.starting = null;
       });
     }
     return this.starting;
+  }
+
+  /** Get-or-create the ACP session for a chat id (one claude context per chat). */
+  private async sessionFor(chatId: string): Promise<string> {
+    const existing = this.sessions.get(chatId);
+    if (existing) return existing;
+    if (!this.conn) throw new Error('ACP adapter not started');
+    const created = await this.conn.newSession({ cwd: this.opts.repoRoot, mcpServers: [] });
+    this.sessions.set(chatId, created.sessionId);
+    return created.sessionId;
   }
 
   private async start(): Promise<void> {
@@ -193,21 +207,24 @@ export class AcpBridge {
       // fs capabilities here would only duplicate (and widen) that surface.
       clientCapabilities: { fs: { readTextFile: false, writeTextFile: false } },
     });
-    const created = await conn.newSession({ cwd: this.opts.repoRoot, mcpServers: [] });
-    this.session = created.sessionId;
+    // Sessions are created lazily per chat (sessionFor) — not here.
   }
 
-  /** Send a user turn and resolve when it completes. Spawns the agent on first call. */
-  async prompt(text: string): Promise<{ stopReason: PromptResponse['stopReason'] }> {
-    // Model/effort are env-at-spawn — if the user changed them since the live
-    // session started, tear it down so ensureStarted re-spawns with the new env.
-    if (this.session && this.configChanged()) {
+  /** Send a user turn for `chatId` and resolve when it completes. */
+  async prompt(
+    text: string,
+    chatId: string
+  ): Promise<{ stopReason: PromptResponse['stopReason'] }> {
+    // Model/effort are env-at-spawn — if the user changed them, tear the adapter
+    // down so ensureStarted re-spawns with the new env (sessions re-create lazily).
+    if (this.conn && this.configChanged()) {
       await this.stop();
     }
     await this.ensureStarted();
     const conn = this.conn;
-    const sessionId = this.session;
-    if (!conn || !sessionId) throw new Error('ACP session not ready');
+    if (!conn) throw new Error('ACP adapter not ready');
+    const sessionId = await this.sessionFor(chatId);
+    this.currentSession = sessionId;
 
     await this.appendTranscript({ role: 'user', text });
     const response = await conn.prompt({
@@ -220,16 +237,16 @@ export class AcpBridge {
 
   /** Cancel the in-flight turn (no-op if nothing is running). */
   async cancel(): Promise<void> {
-    if (this.conn && this.session) {
+    if (this.conn && this.currentSession) {
       try {
-        await this.conn.cancel({ sessionId: this.session });
+        await this.conn.cancel({ sessionId: this.currentSession });
       } catch {
         /* turn may already have finished */
       }
     }
   }
 
-  /** Tear down: cancel, kill the subprocess, drop all handles. */
+  /** Tear down: cancel, kill the subprocess, drop all handles + sessions. */
   async stop(): Promise<void> {
     await this.cancel();
     try {
@@ -239,7 +256,8 @@ export class AcpBridge {
     }
     this.proc = null;
     this.conn = null;
-    this.session = null;
+    this.sessions.clear();
+    this.currentSession = null;
   }
 
   private async drainStderr(stderr: ReadableStream<Uint8Array>): Promise<void> {

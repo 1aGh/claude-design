@@ -42,15 +42,20 @@ export function createAcp(ctx: Context, api: Api, inspect: Inspect): Acp {
     }
   }
 
-  function transcriptPathFor(canvas: string | null): string | null {
-    if (!canvas) return null;
-    return join(ctx.paths.designRoot, '_chat', `${api.fileSlug(canvas)}.jsonl`);
+  // Chats are repo-level (NOT per-canvas) — `_chat/<chatId>.jsonl`. The id is
+  // client-generated; sanitize it to a safe filename.
+  function sanitizeChatId(id: string): string {
+    const safe = id.replace(/[^a-z0-9_-]/gi, '').slice(0, 64);
+    return safe || 'default';
+  }
+  function transcriptPathFor(chatId: string): string {
+    return join(ctx.paths.designRoot, '_chat', `${sanitizeChatId(chatId)}.jsonl`);
   }
 
   async function handlePrompt(
     ws: ServerWebSocket<WsData>,
     text: string,
-    canvas: string | null,
+    chatId: string,
     model: string | null,
     effort: AcpEffort
   ): Promise<void> {
@@ -63,12 +68,12 @@ export function createAcp(ctx: Context, api: Api, inspect: Inspect): Acp {
       });
       bridges.set(ws.data.id, bridge);
     }
-    bridge.setTranscriptPath(transcriptPathFor(canvas));
+    bridge.setTranscriptPath(transcriptPathFor(chatId));
     bridge.setConfig(model, effort);
     try {
       await bridge.ensureStarted();
+      const { stopReason } = await bridge.prompt(text, sanitizeChatId(chatId));
       send(ws, { t: 'connected', sessionId: bridge.sessionId });
-      const { stopReason } = await bridge.prompt(text);
       send(ws, { t: 'turn-end', stopReason });
     } catch (err) {
       send(ws, { t: 'error', message: err instanceof Error ? err.message : String(err) });
@@ -92,20 +97,19 @@ export function createAcp(ctx: Context, api: Api, inspect: Inspect): Acp {
       const frame = msg as {
         t?: unknown;
         text?: unknown;
-        canvas?: unknown;
+        chat?: unknown;
         model?: unknown;
         effort?: unknown;
       };
 
       if (frame.t === 'prompt' && typeof frame.text === 'string') {
-        const canvas =
-          typeof frame.canvas === 'string' && frame.canvas ? frame.canvas : inspect.state.active;
+        const chatId = typeof frame.chat === 'string' && frame.chat ? frame.chat : 'default';
         const model = typeof frame.model === 'string' && frame.model ? frame.model : null;
         const effort: AcpEffort =
           typeof frame.effort === 'string' && VALID_EFFORT.has(frame.effort)
             ? (frame.effort as AcpEffort)
             : 'balanced';
-        void handlePrompt(ws, frame.text, canvas, model, effort);
+        void handlePrompt(ws, frame.text, chatId, model, effort);
       } else if (frame.t === 'cancel') {
         void bridges.get(ws.data.id)?.cancel();
       }
