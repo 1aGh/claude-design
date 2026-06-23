@@ -71,6 +71,43 @@
     min-height: 0;
   }
 
+  /* Chat switcher bar — recents dropdown + New chat (repo-level history). */
+  .chat-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .chat-bar-sel {
+    flex: 1;
+    min-width: 0;
+  }
+  .chat-newbtn {
+    appearance: none;
+    border: 1px solid var(--border-default);
+    background: var(--bg-2);
+    color: var(--fg-1);
+    font-family: var(--font-mono);
+    font-size: var(--type-xs);
+    border-radius: var(--radius-sm);
+    padding: 3px var(--space-3);
+    cursor: pointer;
+    white-space: nowrap;
+    transition:
+      border-color var(--dur-soft) var(--ease-out),
+      background var(--dur-soft) var(--ease-out);
+  }
+  .chat-newbtn:hover {
+    border-color: var(--border-strong);
+    background: var(--bg-3);
+  }
+  .chat-newbtn:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-tint);
+  }
+
   /* Connection status strip */
   .chat-statusrow {
     display: flex;
@@ -495,9 +532,9 @@
     border: 1px solid var(--border-default);
     border-radius: var(--radius-sm);
     padding: var(--space-3) var(--space-4);
-    padding-right: 42px;
+    padding-right: 48px;
     width: 100%;
-    min-height: 60px;
+    min-height: 68px;
     resize: none;
     transition:
       border-color var(--dur-soft) var(--ease-out),
@@ -513,12 +550,13 @@
   }
   .chat-send {
     position: absolute;
-    right: var(--space-2);
-    bottom: var(--space-2);
-    width: 30px;
-    height: 30px;
+    right: var(--space-3);
+    bottom: var(--space-3);
+    width: 32px;
+    height: 32px;
     padding: 0;
     border: none; /* accent-filled — no outline */
+    border-radius: var(--radius-md);
     display: inline-flex;
     align-items: center;
     justify-content: center;

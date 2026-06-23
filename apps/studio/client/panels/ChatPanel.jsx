@@ -10,7 +10,7 @@
 //
 // Native-app only — app.jsx mounts this gated on isNativeApp().
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   AssistantRuntimeProvider,
@@ -54,12 +54,12 @@ const Close = ({ size = 14 }) => (
     />
   </svg>
 );
-const SendArrow = ({ size = 15 }) => (
+const SendArrow = ({ size = 17 }) => (
   <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
     <path
-      d="M8 13V3.6M4.2 7.2 8 3.4l3.8 3.8"
+      d="M8 13V3.4M4 7.4 8 3.2l4 4.2"
       stroke="currentColor"
-      strokeWidth="1.6"
+      strokeWidth="1.85"
       strokeLinecap="round"
       strokeLinejoin="round"
     />
@@ -367,6 +367,92 @@ function NotConnected({ reason, claudeMissing }) {
   );
 }
 
+// Repo-level chat id — generated for each new chat.
+function newChatId() {
+  return `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+// Disk transcript (clean ChatMessage[]) → assistant-ui initial messages.
+function toThreadMessages(msgs) {
+  return (msgs || []).map((m) => {
+    if (m.role === 'user') {
+      return {
+        role: 'user',
+        content: [{ type: 'text', text: (m.parts || []).map((p) => p.text || '').join('') }],
+      };
+    }
+    return {
+      role: 'assistant',
+      content: (m.parts || []).map((p, i) =>
+        p.type === 'text'
+          ? { type: 'text', text: p.text || '' }
+          : {
+              type: 'tool-call',
+              toolCallId: `h-${i}`,
+              toolName: p.toolName || 'tool',
+              args: {},
+              argsText: '{}',
+              result: p.done ? {} : undefined,
+            }
+      ),
+    };
+  });
+}
+
+// One thread = one chat. Keyed by chatId in ChatPanel so switching chats
+// remounts this with that chat's history as the runtime's initial messages.
+function ChatThread({
+  conn,
+  chatId,
+  initialMessages,
+  modelRef,
+  effortRef,
+  activeTools,
+  activeCanvas,
+  model,
+  setModel,
+  effort,
+  setEffort,
+}) {
+  const adapter = useMemo(
+    () =>
+      makeAcpAdapter(
+        conn,
+        () => chatId,
+        () => modelRef.current || null,
+        () => effortRef.current
+      ),
+    [conn, chatId, modelRef, effortRef]
+  );
+  const runtime = useLocalRuntime(adapter, { initialMessages });
+
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <div className="chat-panel">
+        <StatusRow />
+        <ThreadPrimitive.Root className="chat-thread">
+          <ThreadPrimitive.Viewport className="chat-feed" autoScroll>
+            <ThreadPrimitive.Empty>
+              <ChatEmpty />
+            </ThreadPrimitive.Empty>
+            <ThreadPrimitive.Messages components={{ UserMessage, AssistantMessage }} />
+            {/* "still working" indicator under the latest message */}
+            <ActivityBar tools={activeTools} />
+          </ThreadPrimitive.Viewport>
+          <QuickActions />
+          <Composer
+            activeCanvas={activeCanvas}
+            model={model}
+            setModel={setModel}
+            effort={effort}
+            setEffort={setEffort}
+          />
+        </ThreadPrimitive.Root>
+      </div>
+    </AssistantRuntimeProvider>
+  );
+}
+
 // ── panel root ──
 export default function ChatPanel({
   activeCanvas,
@@ -380,13 +466,9 @@ export default function ChatPanel({
   // running/finished badge); fall back to our own if rendered standalone.
   const ownConn = useMemo(() => (providedConn ? null : createAcpConnection()), []);
   const conn = providedConn || ownConn;
-  const canvasRef = useRef(activeCanvas);
-  useEffect(() => {
-    canvasRef.current = activeCanvas;
-  }, [activeCanvas]);
 
-  // Model + effort — persisted across sessions; read live by the adapter (refs,
-  // like the active canvas) so changing them mid-session re-spawns on next send.
+  // Model + effort — persisted across sessions; read live by the adapter (refs)
+  // so changing them mid-session re-spawns on next send.
   const [model, setModel] = useState(() => safeStorageGet('maude-acp-model', ''));
   const [effort, setEffort] = useState(() => safeStorageGet('maude-acp-effort', 'balanced'));
   const modelRef = useRef(model);
@@ -400,20 +482,7 @@ export default function ChatPanel({
     safeStorageSet('maude-acp-effort', effort);
   }, [effort]);
 
-  const adapter = useMemo(
-    () =>
-      makeAcpAdapter(
-        conn,
-        () => canvasRef.current,
-        () => modelRef.current || null,
-        () => effortRef.current
-      ),
-    [conn]
-  );
-  const runtime = useLocalRuntime(adapter);
-
   const [status, setStatus] = useState({ available: null, reason: undefined, claudeMissing: false });
-
   useEffect(() => {
     let alive = true;
     fetch('/_api/acp/status')
@@ -423,7 +492,6 @@ export default function ChatPanel({
           setStatus({
             available: d.available,
             reason: d.reason,
-            // adapter present but no claude on PATH → offer the install hint
             claudeMissing: !!d.adapterEntry && !d.claudePath,
           });
       })
@@ -440,7 +508,6 @@ export default function ChatPanel({
         setStatus((prev) => ({ ...prev, available: s.available, reason: s.reason ?? prev.reason }));
       }
     });
-    // Closing the panel tears down the socket → the bridge kills the claude child.
     return () => {
       alive = false;
       off();
@@ -451,6 +518,51 @@ export default function ChatPanel({
   // Live background activity — the in-flight tool calls, for the activity bar.
   const [activeTools, setActiveTools] = useState([]);
   useEffect(() => conn.onActivity(setActiveTools), [conn]);
+
+  // Repo-level chats: a fresh chat on mount, with recents in the switcher.
+  const [chatId, setChatId] = useState(() => newChatId());
+  const [chats, setChats] = useState([]);
+  const [hydrated, setHydrated] = useState([]); // initial messages for the open chat
+  const refreshChats = useCallback(() => {
+    fetch('/_api/acp/chats')
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d)) setChats(d);
+      })
+      .catch(() => {});
+  }, []);
+  useEffect(() => {
+    refreshChats();
+  }, [refreshChats]);
+  // Refresh the list after each turn so a new chat appears + titles update.
+  useEffect(() => conn.onBusy((busy) => !busy && refreshChats()), [conn, refreshChats]);
+
+  const newChat = useCallback(() => {
+    setHydrated([]);
+    setChatId(newChatId());
+  }, []);
+  const switchChat = useCallback(
+    (id) => {
+      if (!id || id === chatId) return;
+      fetch(`/_api/acp/chat?id=${encodeURIComponent(id)}`)
+        .then((r) => r.json())
+        .then((msgs) => {
+          setHydrated(toThreadMessages(msgs));
+          setChatId(id);
+        })
+        .catch(() => {});
+    },
+    [chatId]
+  );
+
+  // Switcher options — recents + the current (not-yet-on-disk) chat.
+  const chatOptions = useMemo(() => {
+    const list = chats.slice();
+    if (!list.some((c) => c.id === chatId)) list.unshift({ id: chatId, title: 'New chat' });
+    return list;
+  }, [chats, chatId]);
+
+  const connected = status.available !== false;
 
   return (
     <aside
@@ -479,33 +591,43 @@ export default function ChatPanel({
           <Close />
         </button>
       </div>
+      {connected ? (
+        <div className="chat-bar">
+          <select
+            className="chat-select chat-bar-sel"
+            value={chatId}
+            onChange={(e) => switchChat(e.target.value)}
+            aria-label="Open chat"
+          >
+            {chatOptions.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.title}
+              </option>
+            ))}
+          </select>
+          <button type="button" className="chat-newbtn" onClick={newChat} title="Start a new chat">
+            ＋ New
+          </button>
+        </div>
+      ) : null}
       <div className="st-rp-body st-rp-body--chat">
         {status.available === false ? (
           <NotConnected reason={status.reason} claudeMissing={status.claudeMissing} />
         ) : (
-          <AssistantRuntimeProvider runtime={runtime}>
-            <div className="chat-panel">
-              <StatusRow />
-              <ThreadPrimitive.Root className="chat-thread">
-                <ThreadPrimitive.Viewport className="chat-feed" autoScroll>
-                  <ThreadPrimitive.Empty>
-                    <ChatEmpty />
-                  </ThreadPrimitive.Empty>
-                  <ThreadPrimitive.Messages components={{ UserMessage, AssistantMessage }} />
-                  {/* "still working" indicator under the latest message */}
-                  <ActivityBar tools={activeTools} />
-                </ThreadPrimitive.Viewport>
-                <QuickActions />
-                <Composer
-                  activeCanvas={activeCanvas}
-                  model={model}
-                  setModel={setModel}
-                  effort={effort}
-                  setEffort={setEffort}
-                />
-              </ThreadPrimitive.Root>
-            </div>
-          </AssistantRuntimeProvider>
+          <ChatThread
+            key={chatId}
+            conn={conn}
+            chatId={chatId}
+            initialMessages={hydrated}
+            modelRef={modelRef}
+            effortRef={effortRef}
+            activeTools={activeTools}
+            activeCanvas={activeCanvas}
+            model={model}
+            setModel={setModel}
+            effort={effort}
+            setEffort={setEffort}
+          />
         )}
       </div>
     </aside>
