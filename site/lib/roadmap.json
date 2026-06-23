@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-23T15:53:53.626Z",
+  "generated": "2026-06-23T16:31:13.713Z",
   "currentPhase": null,
   "phases": [
     {
@@ -498,6 +498,17 @@
       "phaseKey": "6.5"
     },
     {
+      "id": "phase-7-acp-chat-sidebar",
+      "title": "Phase 7: ACP local chat sidebar — DELIVERED (de-iceboxed → shipped as phase-31)",
+      "status": "done",
+      "shipTarget": "ICEBOX",
+      "date": null,
+      "summary": "Embed a chat sidebar directly in the canvas chrome that speaks the Agent Client Protocol (ACP). The sidebar can connect to a locally-running Claude Code session (or any ACP-compatible agent) so the...",
+      "planPath": ".ai/plans/archive/phase-7-acp-chat-sidebar.md",
+      "archived": true,
+      "phaseKey": "7"
+    },
+    {
       "id": "phase-8-live-collaboration-yjs-lan",
       "title": "Phase 8: Live collaboration foundation (multi-tab + hub-ready)",
       "status": "done",
@@ -925,17 +936,6 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
-    },
-    {
-      "id": "phase-7-acp-chat-sidebar",
-      "title": "Phase 7: ACP local chat sidebar — ICEBOX (deferred, v1.1+ if validated)",
-      "status": "icebox",
-      "shipTarget": "ICEBOX",
-      "date": null,
-      "summary": "Embed a chat sidebar directly in the canvas chrome that speaks the Agent Client Protocol (ACP). The sidebar can connect to a locally-running Claude Code session (or any ACP-compatible agent) so the...",
-      "planPath": ".ai/plans/phase-7-acp-chat-sidebar.md",
-      "archived": false,
-      "phaseKey": "7"
     }
   ]
 }

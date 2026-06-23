@@ -1,4 +1,6 @@
-# Phase 7: ACP local chat sidebar — ICEBOX (deferred, v1.1+ if validated)
+# Phase 7: ACP local chat sidebar — DELIVERED (de-iceboxed → shipped as phase-31)
+
+> **CLOSED 2026-06-23 — delivered via phase-31.** This iceboxed plan was de-iceboxed and shipped as the native ACP chat sidepanel in **phase-31** (`.ai/plans/archive/phase-31-native-collab-acp-sidepanel.md`). The connection model evolved past this plan's premise (drive the user's OWN installed `claude` CLI on their Pro/Max subscription, never API billing — **DDR-123**; repo-level parallel multi-chat — **DDR-125**; the "every create/remove emits canvas-list-update" invariant — **DDR-124**). Native-app only, as anticipated here. Archived; preserved below for provenance.
 
 > **TODO when de-iceboxed (added 2026-05-13):** the bare `/design "<feedback>"` quick-action reference around line ~32 needs to become `/design:edit "<feedback>"`. The command `/design` was renamed to `/design:edit` in `.ai/plans/design-system-init.md` Phase 0; compat stub may or may not still exist depending on minor-version ladder at revive-time.
 
