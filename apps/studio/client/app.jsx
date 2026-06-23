@@ -14,6 +14,7 @@ import { createRoot } from 'react-dom/client';
 import { resolveToolCursor } from '../canvas-cursors.ts';
 import { canvasUrl } from './canvas-url.js';
 import ChatPanel from './panels/ChatPanel.jsx';
+import { createAcpConnection } from './panels/acp-runtime.js';
 import DiffView from './panels/DiffView.jsx';
 import GitPanel from './panels/GitPanel.jsx';
 import IdentityBar from './panels/IdentityBar.jsx';
@@ -305,6 +306,13 @@ const STICONS = {
   moon: <path d="M12.5 9.6A5 5 0 1 1 7 3a4 4 0 0 0 5.5 6.6z" />,
   sparkle: (
     <path d="M8 1.8l1.4 4.8L14 8l-4.6 1.4L8 14.2l-1.4-4.8L2 8l4.6-1.4z" fill="currentColor" stroke="none" />
+  ),
+  megaphone: (
+    <>
+      <path d="M2 6.7 11 4v8L2 9.3z" />
+      <path d="M11 5.2a2.4 2.4 0 0 1 0 5.6" />
+      <path d="M4.3 9.5v2.3a1.2 1.2 0 0 0 2.4 0v-1.7" />
+    </>
   ),
   'panel-left': (
     <>
@@ -2369,6 +2377,8 @@ function Menubar({
   onOpenLayers,
   assistantOpen,
   onToggleAssistant,
+  assistantBusy,
+  assistantUnseen,
   onNewCanvas,
   onOpenExport,
   onReload,
@@ -2628,6 +2638,20 @@ function Menubar({
       )}
       <div className="st-mb-right" data-tour="status">
         {presence ? <div className="st-presence">{presence}</div> : null}
+        {isNativeApp() && (
+          <button
+            type="button"
+            className="st-assistant"
+            data-active={assistantOpen ? 'true' : 'false'}
+            data-busy={assistantBusy ? 'true' : 'false'}
+            data-unseen={assistantUnseen ? 'true' : 'false'}
+            aria-label={`Assistant${assistantBusy ? ' — working' : assistantUnseen ? ' — new reply' : ''}`}
+            data-tip="Assistant  ⌘⇧A"
+            onClick={onToggleAssistant}
+          >
+            <StIcon name="sparkle" size={15} />
+          </button>
+        )}
         <button
           type="button"
           className="st-whatsnew"
@@ -2637,7 +2661,7 @@ function Menubar({
           data-tip="What's new"
           onClick={onOpenWhatsNew}
         >
-          <StIcon name="sparkle" size={15} />
+          <StIcon name="megaphone" size={15} />
         </button>
         <span className="st-stamp">{stamp}</span>
         <span className="st-mb-file" title={activePath || ''}>
@@ -5536,6 +5560,47 @@ function App() {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   // Phase 31 (DDR-123) — the native ACP chat sidepanel (right dock, native-only).
   const [assistantOpen, setAssistantOpen] = useState(false);
+  // Shared ACP connection — owned here (not in ChatPanel) so the menubar can show
+  // a running/finished badge even while the panel is hidden in the background.
+  const acpConn = useMemo(() => (isNativeApp() ? createAcpConnection() : null), []);
+  const [assistantBusy, setAssistantBusy] = useState(false);
+  const [assistantUnseen, setAssistantUnseen] = useState(false);
+  const assistantOpenRef = useRef(assistantOpen);
+  useEffect(() => {
+    assistantOpenRef.current = assistantOpen;
+    if (assistantOpen) {
+      setAssistantUnseen(false); // opening clears the unseen badge
+      // Ask for notification permission on a real user gesture (panel open).
+      try {
+        if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+          Notification.requestPermission();
+        }
+      } catch {
+        /* notifications unavailable */
+      }
+    }
+  }, [assistantOpen]);
+  useEffect(() => {
+    if (!acpConn) return undefined;
+    let wasBusy = false;
+    return acpConn.onBusy((busy) => {
+      setAssistantBusy(busy);
+      // Turn just finished while the user wasn't looking → badge + notify.
+      if (wasBusy && !busy && (!assistantOpenRef.current || document.hidden)) {
+        setAssistantUnseen(true);
+        try {
+          if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            new Notification('Claude finished', {
+              body: 'Your assistant turn is ready in Maude.',
+            });
+          }
+        } catch {
+          /* best-effort — the in-app badge is the reliable signal */
+        }
+      }
+      wasBusy = busy;
+    });
+  }, [acpConn]);
   // Inspector tab is lifted so View ▸ Layers can open the panel ON the Layers
   // tab (the menu item sat disabled as "Phase 12" long after the tab shipped).
   const [inspectorTab, setInspectorTab] = useState('inspect');
@@ -7043,6 +7108,8 @@ function App() {
           onToggleInspector={() => toggleRightPanel('inspector')}
           assistantOpen={assistantOpen}
           onToggleAssistant={() => toggleRightPanel('assistant')}
+          assistantBusy={assistantBusy}
+          assistantUnseen={assistantUnseen}
           onOpenLayers={() => {
             // Toggle: already open on Layers → close; otherwise open on Layers
             // (clearing the sibling panels — one dock slot).
@@ -7229,6 +7296,7 @@ function App() {
               switch to Changes/Inspector/Comments. Native-only. */}
           {isNativeApp() && (
             <ChatPanel
+              conn={acpConn}
               hidden={!assistantOpen}
               activeCanvas={
                 activePath && activePath !== SYSTEM_TAB && /\.(tsx|html)$/i.test(activePath)

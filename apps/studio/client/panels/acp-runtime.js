@@ -20,8 +20,19 @@ export function createAcpConnection() {
   const activityListeners = new Set();
   const activeTools = new Map(); // toolCallId → { title, kind }
 
+  // Turn-busy signal — true while a prompt turn is in flight. Drives the
+  // menubar Assistant badge + the "finished" notification.
+  const busyListeners = new Set();
+  let busy = false;
+
   function emitStatus() {
     for (const fn of statusListeners) fn({ ...status });
+  }
+
+  function setBusy(next) {
+    if (busy === next) return;
+    busy = next;
+    for (const fn of busyListeners) fn(busy);
   }
 
   function emitActivity() {
@@ -129,6 +140,7 @@ export function createAcpConnection() {
         }
       };
       abortSignal?.addEventListener('abort', cancel, { once: true });
+      setBusy(true);
       try {
         ws.send(
           JSON.stringify({
@@ -149,8 +161,19 @@ export function createAcpConnection() {
         }
       } finally {
         turnHandler = null;
+        setBusy(false);
         abortSignal?.removeEventListener('abort', cancel);
       }
+    },
+
+    onBusy(fn) {
+      busyListeners.add(fn);
+      fn(busy);
+      return () => busyListeners.delete(fn);
+    },
+
+    get busy() {
+      return busy;
     },
 
     close() {

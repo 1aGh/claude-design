@@ -336,8 +336,18 @@ function NotConnected({ reason, claudeMissing }) {
 }
 
 // ── panel root ──
-export default function ChatPanel({ activeCanvas, width, resizing, onClose, hidden = false }) {
-  const conn = useMemo(() => createAcpConnection(), []);
+export default function ChatPanel({
+  activeCanvas,
+  width,
+  resizing,
+  onClose,
+  hidden = false,
+  conn: providedConn,
+}) {
+  // The connection is usually owned by app.jsx (so the menubar can show the
+  // running/finished badge); fall back to our own if rendered standalone.
+  const ownConn = useMemo(() => (providedConn ? null : createAcpConnection()), []);
+  const conn = providedConn || ownConn;
   const canvasRef = useRef(activeCanvas);
   useEffect(() => {
     canvasRef.current = activeCanvas;
@@ -402,9 +412,9 @@ export default function ChatPanel({ activeCanvas, width, resizing, onClose, hidd
     return () => {
       alive = false;
       off();
-      conn.close();
+      ownConn?.close(); // only close a connection we own; app.jsx owns the shared one
     };
-  }, [conn]);
+  }, [conn, ownConn]);
 
   // Live background activity — the in-flight tool calls, for the activity bar.
   const [activeTools, setActiveTools] = useState([]);
