@@ -23,6 +23,10 @@ PLUGIN_PATHS=(
   "$ROOT/plugins/design/.claude-plugin/plugin.json"
   "$ROOT/plugins/flow/.claude-plugin/plugin.json"
 )
+# The native desktop shell (Phase 32) ships under the same release line — its
+# tauri.conf.json `version` drives the auto-updater's `{{current_version}}`, so it
+# MUST move in lockstep with package.json + the plugin manifests.
+TAURI_CONF_PATH="$ROOT/apps/desktop/src-tauri/tauri.conf.json"
 # Per-platform sub-packages (Phase 3.4 / DDR-015) — versioned in lockstep with
 # the main tarball because the main package's optionalDependencies pin them.
 SUBPACKAGE_PATHS=(
@@ -63,7 +67,7 @@ esac
 
 echo "$CURRENT → $NEW"
 
-PATHS_JOINED=$(printf "'%s'," "$PKG_PATH" "${PLUGIN_PATHS[@]}" "${SUBPACKAGE_PATHS[@]}")
+PATHS_JOINED=$(printf "'%s'," "$PKG_PATH" "${PLUGIN_PATHS[@]}" "${SUBPACKAGE_PATHS[@]}" "$TAURI_CONF_PATH")
 PATHS_JOINED="${PATHS_JOINED%,}"
 
 node -e "
@@ -82,6 +86,20 @@ node -e "
     fs.writeFileSync(p, JSON.stringify(j, null, 2) + '\n');
   }
 "
+
+# The desktop crate's Cargo.toml is TOML, not JSON — bump its [package] version
+# (drives env!("CARGO_PKG_VERSION") in the native About box) so it never drifts
+# from tauri.conf.json. Only the first `version = "…"` (the [package] one) is touched.
+CARGO_TOML_PATH="$ROOT/apps/desktop/src-tauri/Cargo.toml"
+if [ -f "$CARGO_TOML_PATH" ]; then
+  NEW="$NEW" node -e "
+    const fs = require('fs');
+    const p = '$CARGO_TOML_PATH';
+    const s = fs.readFileSync(p, 'utf8');
+    const out = s.replace(/^version = \"[0-9]+\.[0-9]+\.[0-9]+\"/m, 'version = \"' + process.env.NEW + '\"');
+    fs.writeFileSync(p, out);
+  "
+fi
 
 # Stamp any pending What's New entries (version:null) with the new version + date.
 node "$ROOT/scripts/stamp-whats-new.mjs" "$NEW"

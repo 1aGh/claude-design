@@ -17,6 +17,9 @@
     "allow-app-is-first-run",
     "allow-app-get-last-project",
     "allow-app-set-last-project",
-    "allow-app-recent-projects"
+    "allow-app-recent-projects",
+    "allow-restart-to-update",
+    "allow-prefs-get-crash-reporting",
+    "allow-prefs-set-crash-reporting"
   ]
 }

@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# CI-generated Windows code-signing config override (public thumbprint only, no secret).
+sign.conf.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

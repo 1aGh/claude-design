@@ -17,6 +17,9 @@ fn main() {
                 "app_get_last_project",
                 "app_set_last_project",
                 "app_recent_projects",
+                "restart_to_update",
+                "prefs_get_crash_reporting",
+                "prefs_set_crash_reporting",
             ]),
         ),
     )

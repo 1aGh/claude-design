@@ -19,7 +19,7 @@ import GitPanel from './panels/GitPanel.jsx';
 import IdentityBar from './panels/IdentityBar.jsx';
 import OnboardingWizard from './panels/OnboardingWizard.jsx';
 import RepoBranchSwitcher from './panels/RepoBranchSwitcher.jsx';
-import { appIsFirstRun, isNativeApp } from './github.js';
+import { appIsFirstRun, isNativeApp, onUpdateReady, restartToUpdate } from './github.js';
 import { COLLAB_TOUR } from './tour/collab-tour.js';
 import { TourOverlay } from './tour/overlay.jsx';
 import { USAGE_TOUR } from './tour/usage-tour.js';
@@ -3357,6 +3357,35 @@ function CommentsPanel({
 // while offline (with queued-edit count), red when offline > 24h, green flash
 // for 3s right after a reconnect. Driven entirely by the 'sync:status' payload
 // the dev-server's linked-mode sync runtime broadcasts.
+// Phase 32 (Task 1) — auto-update notice. Shown after the shell has downloaded +
+// staged a newer build in the background. Non-blocking: "Restart now" applies it,
+// "Later" dismisses (the next focus/4h check re-stages and re-surfaces it).
+function UpdateBanner({ update, onDismiss }) {
+  const [restarting, setRestarting] = useState(false);
+  if (!update) return null;
+  const ver = update.version ? ` (v${update.version})` : '';
+  return (
+    <div role="status" aria-live="polite" className="st-banner st-banner--info">
+      <span className="st-banner-dot" aria-hidden="true" />
+      <span>Maude updated{ver} · restart to apply</span>
+      <button
+        type="button"
+        className="btn btn--primary btn--sm"
+        disabled={restarting}
+        onClick={() => {
+          setRestarting(true);
+          restartToUpdate().catch(() => setRestarting(false));
+        }}
+      >
+        {restarting ? 'Restarting…' : 'Restart now'}
+      </button>
+      <button type="button" className="btn btn--ghost btn--sm" onClick={onDismiss}>
+        Later
+      </button>
+    </div>
+  );
+}
+
 function SyncBanner({ status }) {
   // Plan C follow-up — the banner overlapped the menubar and wasn't dismissable.
   // Dismissal is keyed on the connection state, so a transition (reconnect flash,
@@ -5677,6 +5706,24 @@ function App() {
       localStorage.setItem(COLLAB_TOUR_STORE, '1');
     } catch {}
   }, []);
+  // Phase 32 (Task 1) — auto-update. The native shell downloads + stages a newer
+  // build in the background and emits `update-ready`; we surface a non-blocking
+  // banner. Native-only (the web studio is updated by its own deploy).
+  const [updateReady, setUpdateReady] = useState(null);
+  useEffect(() => {
+    if (!isNativeApp()) return undefined;
+    let un;
+    onUpdateReady((p) => setUpdateReady(p && typeof p === 'object' ? p : {}))
+      .then((fn) => {
+        un = fn;
+      })
+      .catch(() => {});
+    return () => {
+      try {
+        un?.();
+      } catch {}
+    };
+  }, []);
   const [tourSteps, setTourSteps] = useState(null);
   const [usageNudge, setUsageNudge] = useState(() => !readBoolStore(USAGE_TOUR_STORE, false));
   const startTour = useCallback((steps) => {
@@ -7038,6 +7085,7 @@ function App() {
       onContextMenu={onShellContextMenu}
     >
       {firstRun && <OnboardingWizard />}
+      <UpdateBanner update={updateReady} onDismiss={() => setUpdateReady(null)} />
       <SyncBanner status={syncStatus} />
       {!usageNudge && !tourSteps && <WhatsNewToast wn={whatsNew} />}
       {gitLifecycle && (

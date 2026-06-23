@@ -5,7 +5,7 @@
   "contributors": 1,
   "plugins": {
     "design": {
-      "commands": 16,
+      "commands": 17,
       "skills": 3,
       "agents": 17
     },

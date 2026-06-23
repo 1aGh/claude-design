@@ -81,3 +81,19 @@ export const appRecentProjects = () => invoke('app_recent_projects');
 export const pickDirectory = () => invoke('pick_directory');
 /** Switch the app to a local project folder (the freshly cloned copy). */
 export const openLocalProject = (path) => invoke('open_local_project', { path });
+
+// ── Tauri shell: auto-update (Phase 32 / Task 1) ────────────────────────────────
+// The shell downloads + stages a newer build in the background and emits
+// `update-ready` with { version, notes }. The client shows a banner; clicking
+// "Restart now" applies the staged update.
+/** Subscribe to the staged-update notice. Returns an unlisten promise. cb({version,notes}). */
+export const onUpdateReady = (cb) => listen('update-ready', cb);
+/** Apply the staged update by relaunching the app (kills the sidecar first). */
+export const restartToUpdate = () => invoke('restart_to_update');
+
+// ── Tauri shell: opt-in crash reporting (Phase 32 / Task 4) ─────────────────────
+// Local-file-only, default OFF. The first-run wizard's opt-in checkbox flips it.
+/** Current opt-in state (boolean). */
+export const getCrashReporting = () => invoke('prefs_get_crash_reporting');
+/** Set the opt-in state. */
+export const setCrashReporting = (enabled) => invoke('prefs_set_crash_reporting', { enabled });

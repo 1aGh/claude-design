@@ -1,17 +1,27 @@
-name: Build desktop app (macOS .dmg)
+name: Build desktop app (macOS .dmg + Windows .msi)
 
-# Phase 26 / DDR-106 — build the Maude native shell (Tauri v2) into a macOS .dmg.
-# The shell bundles the compiled dev-server binary as a Tauri sidecar.
+# Phase 26 / DDR-106 — build the Maude native shell (Tauri v2) into installers.
+# Phase 32 / Task 2 — extended to a macOS + Windows matrix with auto-update
+# artifacts.
 #
-# Build order is load-bearing: the dev-server binary must exist at
-# apps/studio/dist/maude-<slug> BEFORE `tauri build` runs, because the desktop
-# app's `beforeBuildCommand` (scripts/sync-sidecar.mjs) copies it into
-# src-tauri/binaries/maude-server-<target-triple> for Tauri's `externalBin`.
+# Each leg bundles the compiled dev-server binary as a Tauri sidecar. Build order
+# is load-bearing: the dev-server binary must exist at apps/studio/dist/maude-<slug>
+# BEFORE `tauri build` runs, because the desktop app's `beforeBuildCommand`
+# (scripts/sync-sidecar.mjs) copies it into src-tauri/binaries/maude-server-<triple>
+# for Tauri's `externalBin`.
 #
-# Signing + notarization are driven by the APPLE_* secrets. When they are absent
-# the build still succeeds and produces an UNSIGNED .dmg (dev distribution) — per
-# DDR-106 / the phase plan, signing is the last thing to wire. Windows/Linux
-# desktop builds are deferred to phase-32.
+# Two signing keys are in play (Phase 32):
+#   • TAURI_SIGNING_PRIVATE_KEY (+ _PASSWORD) — ed25519 key that signs the UPDATER
+#     artifacts (createUpdaterArtifacts:true). The matching public key is pinned in
+#     tauri.conf.json → plugins.updater.pubkey; the client refuses an update whose
+#     signature doesn't verify. Required on BOTH legs for auto-update to work.
+#   • Platform code-signing — APPLE_* (macOS notarization) / WINDOWS_CERTIFICATE
+#     (Authenticode). When absent the build still succeeds and produces an UNSIGNED
+#     installer (dev distribution); SmartScreen/Gatekeeper will warn. This mirrors
+#     the phase-26 graceful-degradation contract.
+#
+# MAUDE_SKIP_RUNTIME_BUILD=1 is mandatory (per CLAUDE.md): embed the git-committed
+# dist/runtime/*.js verbatim instead of regenerating them.
 
 on:
   push:
@@ -19,10 +29,29 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-macos:
-    runs-on: macos-14 # arm64; matches build-binaries.yml's darwin-arm64 host
+  build-desktop:
+    name: Build ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
     permissions:
-      contents: write # attach the .dmg to the GitHub Release on tag builds
+      contents: write # attach installers + updater artifacts to the GitHub Release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14 # arm64; matches build-binaries.yml's darwin-arm64 host
+            label: macos-arm64
+            target: bun-darwin-arm64
+            sidecar_slug: darwin-arm64
+            sidecar_dist: dist/maude-darwin-arm64
+            artifact_name: maude-desktop-macos-arm64
+            bundle_glob: apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg
+          - os: windows-2022
+            label: windows-x64
+            target: bun-windows-x64
+            sidecar_slug: win32-x64
+            sidecar_dist: dist/maude-win32-x64.exe
+            artifact_name: maude-desktop-windows-x64
+            bundle_glob: apps/desktop/src-tauri/target/release/bundle/msi/*.msi
     steps:
       - uses: actions/checkout@v6
         with:
@@ -54,21 +83,25 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build dev-server sidecar binary
-        # MAUDE_SKIP_RUNTIME_BUILD=1 is mandatory (per CLAUDE.md): embed the
-        # git-committed dist/runtime/*.js verbatim instead of regenerating them.
+        # Embed the committed dist/runtime/*.js verbatim (MAUDE_SKIP_RUNTIME_BUILD=1).
+        shell: bash
         env:
           MAUDE_SKIP_RUNTIME_BUILD: '1'
         run: |
           cd apps/studio
           bun install
-          bun run build.ts --release --target=bun-darwin-arm64
-          test -f dist/maude-darwin-arm64 || { echo "::error::dev-server binary not produced"; exit 1; }
+          bun run build.ts --release --target=${{ matrix.target }}
+          test -f "${{ matrix.sidecar_dist }}" || { echo "::error::dev-server binary not produced at apps/studio/${{ matrix.sidecar_dist }}"; ls -la dist; exit 1; }
 
+      # ── macOS: build + notarize (when APPLE_* present) ──────────────────────────
       - name: Build Tauri app (.dmg)
-        # `tauri build` runs beforeBuildCommand (sync-sidecar.mjs) to stage the
-        # sidecar, then bundles the .dmg. Signing/notarization activate only when
-        # the APPLE_* secrets are present; otherwise an unsigned .dmg is produced.
+        if: matrix.os == 'macos-14'
         env:
+          MAUDE_SIDECAR_SLUG: ${{ matrix.sidecar_slug }}
+          # Updater signing (ed25519) — produces the .app.tar.gz.sig the feed serves.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Apple code-signing + notarization (absent → unsigned .dmg).
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -77,23 +110,65 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: pnpm --filter @maude/desktop tauri build
 
-      - name: Locate .dmg
-        id: dmg
+      # ── Windows: build + Authenticode sign (when WINDOWS_CERTIFICATE present) ────
+      - name: Build Tauri app (.msi)
+        if: matrix.os == 'windows-2022'
+        shell: pwsh
+        env:
+          MAUDE_SIDECAR_SLUG: ${{ matrix.sidecar_slug }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
-          DMG="$(ls apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg 2>/dev/null | head -1)"
-          test -n "$DMG" || { echo "::error::no .dmg produced"; exit 1; }
-          echo "path=$DMG" >> "$GITHUB_OUTPUT"
-          echo "built: $DMG ($(du -h "$DMG" | cut -f1))"
+          if ($env:WINDOWS_CERTIFICATE) {
+            Write-Host "Importing Authenticode certificate from WINDOWS_CERTIFICATE"
+            $bytes = [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE)
+            [IO.File]::WriteAllBytes("$PWD\cert.pfx", $bytes)
+            $securePwd = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText
+            $cert = Import-PfxCertificate -FilePath "$PWD\cert.pfx" -CertStoreLocation Cert:\CurrentUser\My -Password $securePwd
+            Remove-Item "$PWD\cert.pfx"
+            # Inject the thumbprint via a --config override (avoids committing it).
+            $signConf = @{ bundle = @{ windows = @{
+              certificateThumbprint = $cert.Thumbprint
+              digestAlgorithm = 'sha256'
+              timestampUrl = 'http://timestamp.digicert.com'
+            } } } | ConvertTo-Json -Depth 6
+            Set-Content -Path "apps/desktop/sign.conf.json" -Value $signConf
+            pnpm --filter @maude/desktop tauri build --config sign.conf.json
+          } else {
+            Write-Host "WINDOWS_CERTIFICATE not set — producing an UNSIGNED .msi"
+            pnpm --filter @maude/desktop tauri build
+          }
 
-      - name: Upload .dmg artifact
+      - name: Locate primary installer
+        id: installer
+        shell: bash
+        run: |
+          FILE="$(ls ${{ matrix.bundle_glob }} 2>/dev/null | head -1)"
+          test -n "$FILE" || { echo "::error::no installer matched ${{ matrix.bundle_glob }}"; exit 1; }
+          echo "path=$FILE" >> "$GITHUB_OUTPUT"
+          echo "built: $FILE"
+
+      - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: maude-desktop-macos-arm64
-          path: ${{ steps.dmg.outputs.path }}
+          name: ${{ matrix.artifact_name }}
+          path: ${{ steps.installer.outputs.path }}
           if-no-files-found: error
 
-      - name: Attach .dmg to GitHub Release
+      - name: Attach installers + updater artifacts to GitHub Release
+        # Attach the user-facing installer AND the updater artifacts (.sig + the
+        # .app.tar.gz / signed installer the feed serves). The /releases edge
+        # function (site/app/releases/...) reads these off the release.
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.dmg.outputs.path }}
+          files: |
+            apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg
+            apps/desktop/src-tauri/target/release/bundle/macos/*.app.tar.gz
+            apps/desktop/src-tauri/target/release/bundle/macos/*.app.tar.gz.sig
+            apps/desktop/src-tauri/target/release/bundle/msi/*.msi
+            apps/desktop/src-tauri/target/release/bundle/msi/*.msi.sig
+            apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
+            apps/desktop/src-tauri/target/release/bundle/nsis/*.sig

@@ -5,6 +5,10 @@ description: maude design link / unlink / status / adopt — pair a local repo w
 
 Once a hub is deployed ([Deploy a hub](/docs/hub/deploy)), each collaborator pairs their local repo with it. After linking, the existing `maude design serve` does double duty: it serves your browser canvas AND mirrors your `.design/` canvases against the hub's Yjs state. Claude Code never sees Yjs — it reads and writes plain files exactly as in solo mode.
 
+<Callout title="Using the desktop app? No terminal needed.">
+  The [desktop app](/desktop) links to a hub from the onboarding wizard's **Advanced** door — paste the hub address and access token in the UI. There's no `maude design link` to run. The CLI flow below is for terminal-driven setups; the wizard writes the same per-machine credential and trust record under the hood.
+</Callout>
+
 ## Link
 
 ```bash

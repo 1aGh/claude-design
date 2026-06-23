@@ -12,11 +12,14 @@
 // detects the stale `_server.json` server.)
 
 mod app_state;
+mod crash_reporter;
 mod keychain;
 mod menu;
 mod oauth;
+mod prefs;
 mod server_json;
 mod sidecar;
+mod updater;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32};
@@ -147,6 +150,9 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        // Auto-update (Phase 32 / Task 1) — config (endpoints + pubkey) is in
+        // tauri.conf.json; the check/download/install loop lives in updater.rs.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             oauth::github_sign_in,
             oauth::github_open_verification,
@@ -158,6 +164,9 @@ pub fn run() {
             app_state::app_get_last_project,
             app_state::app_set_last_project,
             app_state::app_recent_projects,
+            updater::restart_to_update,
+            prefs::prefs_get_crash_reporting,
+            prefs::prefs_set_crash_reporting,
         ])
         .menu(menu::build_menu)
         .on_menu_event(|app, event| {
@@ -200,6 +209,13 @@ pub fn run() {
         })
         .setup(|app| {
             let handle = app.handle().clone();
+
+            // Crash reporting (Phase 32 / Task 4) — prime the opt-in toggle from
+            // prefs.json and install the panic hook FIRST, so a panic anywhere in
+            // setup is caught (and, only if opted in, written to a local file).
+            prefs::init(&handle);
+            crash_reporter::install(&handle);
+
             let project_root = resolve_project_root(&handle);
             eprintln!("[maude] project root: {}", project_root.display());
 
@@ -256,6 +272,11 @@ pub fn run() {
             #[cfg(unix)]
             install_signal_handler(handle.clone());
 
+            // 4. Background auto-update (Phase 32 / Task 1): initial check after a
+            // short delay, then every 4 h. On-focus checks are wired in
+            // `on_window_event` below. No-op on a dev / unbundled build.
+            updater::spawn_update_loop(handle.clone());
+
             // NOTE: `maude://` deep-link handling is deferred to phase-29. It needs a
             // bundled .app + the `open?path=` route; the dev-mode deep-link plugin
             // aborted in `did_finish_launching` (Apple-Event open handler) on a
@@ -263,11 +284,16 @@ pub fn run() {
 
             Ok(())
         })
-        // Kill the sidecar when the main window is closed (X button).
-        .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { .. } = event {
+        // Kill the sidecar when the main window is closed (X button); check for
+        // updates whenever the window regains focus (Phase 32 / Task 1).
+        .on_window_event(|window, event| match event {
+            WindowEvent::CloseRequested { .. } => {
                 sidecar::kill_server(window.app_handle());
             }
+            WindowEvent::Focused(true) => {
+                updater::check_now(window.app_handle().clone());
+            }
+            _ => {}
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

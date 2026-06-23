@@ -24,18 +24,47 @@ describe('readChatMessages — raw → clean turns', () => {
   test('aggregates agent updates into one assistant message; drops noise', () => {
     const designRoot = seed('c1', [
       { ts: 1, role: 'user', text: 'make the button red' },
-      { ts: 2, role: 'agent', update: { sessionUpdate: 'available_commands_update', availableCommands: [] } },
-      { ts: 3, role: 'agent', update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Sure, ' } } },
-      { ts: 4, role: 'agent', update: { sessionUpdate: 'tool_call', toolCallId: 't1', title: 'Edit Button.tsx', kind: 'edit', status: 'pending' } },
-      { ts: 5, role: 'agent', update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'done.' } } },
-      { ts: 6, role: 'agent', update: { sessionUpdate: 'tool_call_update', toolCallId: 't1', status: 'completed' } },
+      {
+        ts: 2,
+        role: 'agent',
+        update: { sessionUpdate: 'available_commands_update', availableCommands: [] },
+      },
+      {
+        ts: 3,
+        role: 'agent',
+        update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Sure, ' } },
+      },
+      {
+        ts: 4,
+        role: 'agent',
+        update: {
+          sessionUpdate: 'tool_call',
+          toolCallId: 't1',
+          title: 'Edit Button.tsx',
+          kind: 'edit',
+          status: 'pending',
+        },
+      },
+      {
+        ts: 5,
+        role: 'agent',
+        update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'done.' } },
+      },
+      {
+        ts: 6,
+        role: 'agent',
+        update: { sessionUpdate: 'tool_call_update', toolCallId: 't1', status: 'completed' },
+      },
       { ts: 7, role: 'agent', update: { sessionUpdate: 'usage_update', used: 10 } },
       { ts: 8, role: 'stop', stopReason: 'end_turn' },
     ]);
 
     const msgs = readChatMessages(designRoot, 'c1');
     expect(msgs.length).toBe(2);
-    expect(msgs[0]).toEqual({ role: 'user', parts: [{ type: 'text', text: 'make the button red' }] });
+    expect(msgs[0]).toEqual({
+      role: 'user',
+      parts: [{ type: 'text', text: 'make the button red' }],
+    });
     expect(msgs[1].role).toBe('assistant');
     // text parts merged across the tool call boundary order-preserving
     const texts = msgs[1].parts.filter((p) => p.type === 'text').map((p) => p.text);

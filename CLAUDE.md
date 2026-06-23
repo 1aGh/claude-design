@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **`plugins/flow`** — generic agentic workflow loop with a second-brain `.ai/` workspace. Project-agnostic via `<project>` placeholders + per-repo `.ai/workflows.config.json` (schema at `plugins/flow/.claude-plugin/config.schema.json`).
 - **`cli/`** — `maude` CLI (entry `cli/bin/maude.mjs`, subcommands in `cli/commands/`). Published as `@1agh/maude` on npm. Bins: `maude` (primary), `mdcc` (legacy alias — prints deprecation warning, drop in v0.17.x), `maude-safe`/`mdcc-safe` (per-call platform-detection fallback), `claude-design-server` (direct dev-server alias).
 
-The npm package, the design plugin, and the flow plugin all share a single version — `package.json`, `plugins/design/.claude-plugin/plugin.json`, and `plugins/flow/.claude-plugin/plugin.json` must move together. CI enforces parity (`.github/workflows/version-parity.yml`).
+The npm package, the design plugin, the flow plugin, and (since phase-32) the native desktop shell all share a single version — `package.json`, `plugins/design/.claude-plugin/plugin.json`, `plugins/flow/.claude-plugin/plugin.json`, **`apps/desktop/src-tauri/tauri.conf.json`** (drives the auto-updater's `{{current_version}}`), and **`apps/desktop/src-tauri/Cargo.toml`** `[package].version` (the native About box) must move together. `scripts/bump-version.sh` bumps all of them; `scripts/check-version-parity.sh` asserts them; CI enforces parity (`.github/workflows/version-parity.yml`). See [DDR-126](.ai/decisions/DDR-126-native-distribution-auto-update-and-security-posture.md) for the desktop distribution + auto-update + signing-key model.
 
 ## Common commands
 

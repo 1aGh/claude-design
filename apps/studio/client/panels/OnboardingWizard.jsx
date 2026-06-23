@@ -16,6 +16,7 @@ import {
   cloneRepo,
   createProject,
   fetchIdentity,
+  getCrashReporting,
   hubLink,
   initDesign,
   isNativeApp,
@@ -25,6 +26,7 @@ import {
   openLocalProject,
   openVerification,
   pickDirectory,
+  setCrashReporting,
   signIn,
 } from '../github.js';
 
@@ -106,6 +108,41 @@ function Rail({ signedInAs }) {
   );
 }
 
+// Opt-in crash reporting (Phase 32 / Task 4). Default OFF — the box starts
+// unchecked and only writes a local crash log when the user explicitly ticks it.
+// Nothing leaves the machine (local-file backend; no third party, no network).
+function CrashOptIn() {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    getCrashReporting()
+      .then((v) => {
+        if (alive) setOn(!!v);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return (
+    <label className="ob-crash-optin">
+      <input
+        type="checkbox"
+        checked={on}
+        onChange={(e) => {
+          const next = e.target.checked;
+          setOn(next);
+          setCrashReporting(next).catch(() => setOn(!next));
+        }}
+      />
+      <span>
+        Send crash reports to help improve Maude. Optional — a crash writes a local log
+        (stack trace + OS + version, no file contents) you can attach to an issue.
+      </span>
+    </label>
+  );
+}
+
 // ── A · Welcome (door picker) ────────────────────────────────────────────────
 function Welcome({ onGithub, onLocal, onHub, signing }) {
   return (
@@ -144,6 +181,7 @@ function Welcome({ onGithub, onLocal, onHub, signing }) {
         </button>
       </div>
       <p className="ob-foot-note">Maude never touches the terminal. Everything here happens in the app.</p>
+      <CrashOptIn />
     </main>
   );
 }

@@ -63,6 +63,31 @@ for sub in "${SUBPACKAGE_PATHS[@]}"; do
   fi
 done
 
+# Native desktop shell (Phase 32) — tauri.conf.json drives the auto-updater's
+# {{current_version}}; Cargo.toml drives the native About box. Both ship under the
+# same release line and must equal package.json. May be absent on older branches.
+TAURI_CONF_PATH="$ROOT/apps/desktop/src-tauri/tauri.conf.json"
+if [ -f "$TAURI_CONF_PATH" ]; then
+  TAURI_VER=$(node -p "require('$TAURI_CONF_PATH').version")
+  if [ "$PKG_VER" != "$TAURI_VER" ]; then
+    echo "error: version mismatch" >&2
+    printf "  %-50s %s\n" "package.json:" "$PKG_VER" >&2
+    printf "  %-50s %s\n" "apps/desktop/src-tauri/tauri.conf.json:" "$TAURI_VER" >&2
+    mismatches=$((mismatches + 1))
+  fi
+fi
+
+CARGO_TOML_PATH="$ROOT/apps/desktop/src-tauri/Cargo.toml"
+if [ -f "$CARGO_TOML_PATH" ]; then
+  CARGO_VER=$(grep -m1 '^version = ' "$CARGO_TOML_PATH" | sed -E 's/version = "(.*)"/\1/')
+  if [ "$PKG_VER" != "$CARGO_VER" ]; then
+    echo "error: version mismatch" >&2
+    printf "  %-50s %s\n" "package.json:" "$PKG_VER" >&2
+    printf "  %-50s %s\n" "apps/desktop/src-tauri/Cargo.toml:" "$CARGO_VER" >&2
+    mismatches=$((mismatches + 1))
+  fi
+fi
+
 # optionalDependencies pin parity — every @1agh/maude-* entry must equal PKG_VER.
 mismatches=$((mismatches + $(node -e "
   const j = require('$PKG_PATH');
@@ -97,3 +122,5 @@ done
 for sub in "${SUBPACKAGE_PATHS[@]}"; do
   [ -f "$sub" ] && echo "  ${sub#$ROOT/}"
 done
+[ -f "$TAURI_CONF_PATH" ] && echo "  apps/desktop/src-tauri/tauri.conf.json"
+[ -f "$CARGO_TOML_PATH" ] && echo "  apps/desktop/src-tauri/Cargo.toml"

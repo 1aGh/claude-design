@@ -48,20 +48,35 @@ export function useWhatsNew(currentVersion) {
   const [toastDismissed, setToastDismissed] = useState(() => readToastDismissed());
   const [panelOpen, setPanelOpen] = useState(false);
 
+  // Fetch the feed on mount AND whenever the window regains focus (Phase 32 /
+  // Task 5). The native shell can sit backgrounded for a long time; an auto-update
+  // (or a deploy of the web studio) bumps the feed while we're not looking, so we
+  // re-evaluate on focus to surface the ✦ badge without a full reload.
   useEffect(() => {
     let cancelled = false;
-    fetch('/_api/whats-new')
-      .then((r) => r.json())
-      .then((j) => {
-        if (cancelled) return;
-        setEntries(Array.isArray(j?.entries) ? j.entries : []);
-        if (typeof j?.version === 'string') setFeedVersion(j.version);
-      })
-      .catch(() => {
-        /* offline / restart — no banner */
-      });
+    const refresh = () => {
+      fetch('/_api/whats-new')
+        .then((r) => r.json())
+        .then((j) => {
+          if (cancelled) return;
+          setEntries(Array.isArray(j?.entries) ? j.entries : []);
+          if (typeof j?.version === 'string') setFeedVersion(j.version);
+        })
+        .catch(() => {
+          /* offline / restart — no banner */
+        });
+    };
+    refresh();
+    const onFocus = () => refresh();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       cancelled = true;
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, []);
 

@@ -24,9 +24,16 @@
       "csp": "default-src 'self' http://localhost:* ws://localhost:*; frame-src http://localhost:*; script-src 'self' 'unsafe-inline' http://localhost:*; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http://localhost:* asset:; connect-src http://localhost:* ws://localhost:*"
     }
   },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://maude.iagh.cz/releases/{{target}}/{{arch}}/{{current_version}}"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhCRDc0NTEzMjg2OEY1OEQKUldTTjlXZ29FMFhYaTdLRDVML21INzM2NWI5cXBveUp5MFVOcjJ1Rzc0clhKbTdDYkFsZjlZZ0gK"
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "externalBin": ["binaries/maude-server"],
     "resources": {
       "resources/apps/studio": "apps/studio",
