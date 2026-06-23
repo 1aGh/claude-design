@@ -342,30 +342,56 @@
   }
   .chat-select {
     appearance: none;
-    font-family: var(--font-mono);
+    font-family: var(--font-body);
     font-size: var(--type-xs);
     color: var(--fg-1);
-    background: var(--bg-2);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-xs);
-    padding: 2px var(--space-2);
+    background: var(--bg-3);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    padding: 3px var(--space-3);
     cursor: pointer;
-    transition: border-color var(--dur-soft) var(--ease-out);
+    transition:
+      border-color var(--dur-soft) var(--ease-out),
+      box-shadow var(--dur-soft) var(--ease-out);
   }
   .chat-select:hover {
     border-color: var(--border-strong);
   }
   .chat-select:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-tint);
   }
   .chat-input-wrap {
     position: relative;
   }
+  /* The maude DS .input/.textarea recipe (lifted from system/maude/preview/
+     _components.css). The shell only scopes that recipe to the .gi-dialog/
+     .cp-dialog surfaces, so the chat composer applies it itself here — scoped to
+     .chat-input-wrap so it can't touch other panels' inputs. */
   .chat-input-wrap .textarea {
-    min-height: 60px;
+    font-family: var(--font-body);
+    font-size: var(--type-sm);
+    color: var(--fg-0);
+    background: var(--bg-3);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    padding: var(--space-3) var(--space-4);
     padding-right: 42px;
     width: 100%;
+    min-height: 60px;
+    resize: none;
+    transition:
+      border-color var(--dur-soft) var(--ease-out),
+      box-shadow var(--dur-soft) var(--ease-out);
+  }
+  .chat-input-wrap .textarea::placeholder {
+    color: var(--fg-3);
+  }
+  .chat-input-wrap .textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-tint);
   }
   .chat-send {
     position: absolute;
