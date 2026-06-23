@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-22T11:39:40.348Z",
+  "generated": "2026-06-23T13:00:13.109Z",
   "currentPhase": null,
   "phases": [
     {
@@ -903,6 +903,17 @@
       "planPath": ".ai/plans/phase-32-native-collab-distribution.md",
       "archived": false,
       "phaseKey": "32"
+    },
+    {
+      "id": "feature-orchestration-layer",
+      "title": "Feature: Multi-agent orchestration layer — Pilot (`/flow:plan --deep`)",
+      "status": "planned",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Pay attention to existing naming, utils, and imports. This is plugin-internals work (markdown commands/agents + JSON schema + a dynamic-work...",
+      "planPath": ".ai/plans/feature-orchestration-layer.md",
+      "archived": false,
+      "phaseKey": null
     },
     {
       "id": "phase-7-acp-chat-sidebar",
