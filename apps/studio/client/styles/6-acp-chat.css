@@ -590,87 +590,77 @@
     font-weight: 600;
   }
 
-  /* Model + effort controls row (above the input) */
-  .chat-controls {
+  /* Composer box — textarea on top, a bottom toolbar (model · effort · send),
+     Zed-style. One border + focus ring around the whole box. */
+  .chat-box {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    background: var(--bg-3);
+    overflow: hidden;
+    transition:
+      border-color var(--dur-soft) var(--ease-out),
+      box-shadow var(--dur-soft) var(--ease-out);
+  }
+  .chat-box:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-tint);
+  }
+  .chat-input {
+    appearance: none;
+    border: none;
+    background: transparent;
+    resize: none;
+    width: 100%;
+    min-height: 54px;
+    padding: var(--space-3) var(--space-4);
+    font-family: var(--font-body);
+    font-size: var(--type-sm);
+    color: var(--fg-0);
+    outline: none;
+  }
+  .chat-input::placeholder {
+    color: var(--fg-3);
+  }
+  .chat-toolbar {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
-    margin-bottom: var(--space-3);
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2);
   }
-  .chat-controls .chat-ctx {
-    margin-bottom: 0;
-  }
-  .chat-ctx-spacer {
+  .chat-toolbar-spacer {
     flex: 1;
   }
-  .chat-controls .chat-ctx + .chat-select-wrap {
-    margin-left: auto;
-  }
-  .chat-select-wrap {
-    display: inline-flex;
-  }
+  /* Compact toolbar dropdowns — borderless, hover-revealed (Zed-style). */
   .chat-select {
     appearance: none;
     font-family: var(--font-body);
     font-size: var(--type-xs);
-    color: var(--fg-1);
-    background: var(--bg-3);
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-sm);
-    padding: 3px var(--space-3);
+    color: var(--fg-2);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-xs);
+    padding: 2px var(--space-2);
     cursor: pointer;
     transition:
       border-color var(--dur-soft) var(--ease-out),
-      box-shadow var(--dur-soft) var(--ease-out);
+      background var(--dur-soft) var(--ease-out),
+      color var(--dur-soft) var(--ease-out);
   }
   .chat-select:hover {
-    border-color: var(--border-strong);
+    border-color: var(--border-default);
+    background: var(--bg-2);
+    color: var(--fg-1);
   }
   .chat-select:focus-visible {
     outline: none;
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-tint);
-  }
-  .chat-input-wrap {
-    position: relative;
-  }
-  /* The maude DS .input/.textarea recipe (lifted from system/maude/preview/
-     _components.css). The shell only scopes that recipe to the .gi-dialog/
-     .cp-dialog surfaces, so the chat composer applies it itself here — scoped to
-     .chat-input-wrap so it can't touch other panels' inputs. */
-  .chat-input-wrap .textarea {
-    font-family: var(--font-body);
-    font-size: var(--type-sm);
-    color: var(--fg-0);
-    background: var(--bg-3);
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-sm);
-    padding: var(--space-3) var(--space-4);
-    padding-right: 48px;
-    width: 100%;
-    min-height: 68px;
-    resize: none;
-    transition:
-      border-color var(--dur-soft) var(--ease-out),
-      box-shadow var(--dur-soft) var(--ease-out);
-  }
-  .chat-input-wrap .textarea::placeholder {
-    color: var(--fg-3);
-  }
-  .chat-input-wrap .textarea:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-tint);
   }
   .chat-send {
-    position: absolute;
-    right: var(--space-2);
-    bottom: var(--space-2);
-    width: 30px;
-    height: 30px;
+    width: 28px;
+    height: 28px;
     padding: 0;
-    /* Explicit accent fill + contrast icon — don't rely on .btn--primary
-       resolving here, so the arrow is always clearly visible. */
     border: none;
     border-radius: var(--radius-sm);
     background: var(--accent);
@@ -678,7 +668,9 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: background var(--dur-soft) var(--ease-out);
   }
   .chat-send:hover {
     background: var(--accent-hover);

@@ -264,51 +264,49 @@ function Composer({ activeCanvas, model, setModel, effort, setEffort }) {
   const canvasName = prettyCanvas(activeCanvas);
   return (
     <div className="chat-composer">
-      {/* Controls (canvas chip + model/effort) only matter while you can type —
-          hide them mid-turn so the Stop bar stands alone. */}
       <ThreadPrimitive.If running={false}>
-        <div className="chat-controls">
-          {canvasName ? (
+        {canvasName ? (
           <div className="chat-ctx">
             Editing: <b>{canvasName}</b>
           </div>
-        ) : (
-          <span className="chat-ctx-spacer" />
-        )}
-        <label className="chat-select-wrap" aria-label="Model">
-          <select className="chat-select" value={model} onChange={(e) => setModel(e.target.value)}>
-            {MODELS.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="chat-select-wrap" aria-label="Effort">
-          <select
-            className="chat-select"
-            value={effort}
-            onChange={(e) => setEffort(e.target.value)}
-          >
-            {EFFORTS.map((x) => (
-              <option key={x.value} value={x.value}>
-                {x.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        </div>
-      </ThreadPrimitive.If>
-      <ThreadPrimitive.If running={false}>
-        <ComposerPrimitive.Root className="chat-input-wrap">
+        ) : null}
+        {/* One box: textarea on top, a bottom toolbar (model · effort · send). */}
+        <ComposerPrimitive.Root className="chat-box">
           <ComposerPrimitive.Input
-            className="textarea"
+            className="chat-input"
             submitMode="ctrlEnter"
             placeholder="Ask Claude to change this canvas…"
           />
-          <ComposerPrimitive.Send className="btn btn--primary chat-send" aria-label="Send">
-            <SendArrow />
-          </ComposerPrimitive.Send>
+          <div className="chat-toolbar">
+            <select
+              className="chat-select"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              aria-label="Model"
+            >
+              {MODELS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+            <select
+              className="chat-select"
+              value={effort}
+              onChange={(e) => setEffort(e.target.value)}
+              aria-label="Effort"
+            >
+              {EFFORTS.map((x) => (
+                <option key={x.value} value={x.value}>
+                  {x.label}
+                </option>
+              ))}
+            </select>
+            <span className="chat-toolbar-spacer" />
+            <ComposerPrimitive.Send className="chat-send" aria-label="Send message">
+              <SendArrow />
+            </ComposerPrimitive.Send>
+          </div>
         </ComposerPrimitive.Root>
         <div className="chat-foot">
           <span>⌘↵ to send</span>
