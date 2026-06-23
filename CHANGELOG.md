@@ -1,5 +1,96 @@
 # @1agh/maude
 
+## 0.31.0
+
+### Minor Changes
+
+- 188efc5: In-UI git layer (Phase 27, epic E2) — see, save, publish your design work without a terminal.
+
+  - **Changes panel** (`View ▸ Changes` / `⌘⇧G`): every changed canvas grouped Modified / Added / Deleted / Untracked, with live M/A/D/U dirty badges in the file tree (updated reactively as you edit). Two-line rows (name + path), per-file select + discard.
+  - **Save version** (commit) with a message + per-file selection or "Save all"; metadata sidecars auto-save with their canvas.
+  - **Publish changes** (push) + **Get latest** (pull) — token-optional in this release: a system-git credential helper publishes today, GitHub sign-in lands in a later phase. Clean-but-unpublished work surfaces a "ready to publish" state.
+  - **History** timeline of saved versions.
+  - **Visual diff** (the Maude differentiator): a _rendered_ before/after of the actual canvas — both panes live, with locked synced zoom/pan, side-by-side or an overlay/slider wipe — plus a plain-language Keep mine / Keep theirs / Keep both conflict picker (Keep both is the default, zero data loss). The "before" pane renders the canvas at its past version.
+  - Vocabulary is non-technical throughout (Save version / Publish / Get latest / History / Unsaved) — never commit/push/pull.
+
+  Server: `isomorphic-git`-backed `/_api/git/*` endpoints (main-origin only, mirroring the canvas-create security pattern) + a rate-limited historical-canvas render path.
+
+- 188efc5: Sign in with GitHub (Phase 28, epic E3) — start, share, and sync design projects without a terminal (native app).
+
+  - **Sign in with GitHub** from the account bar — a plain device-code flow ("enter this code"), token stored in the OS keychain, never on disk and never exposed to the canvas.
+  - **New project** creates a private GitHub repo, scaffolds `.design/`, and opens it; **Pull a local copy** clones one of your repos (or a pasted link) to a folder you pick. A non-Maude folder offers a one-click "Set up Maude here".
+  - **Share** invites a collaborator by GitHub username.
+  - **Publish / Get latest** now use your GitHub sign-in (no system-git helper needed). A "Get latest" nudge surfaces when a teammate has published changes.
+  - **Merge-conflict resolution in the UI**: when you both changed the same canvas, "Get latest" opens the visual resolver — Keep mine / Keep theirs / Keep both (Keep both saves your version as a copy, zero data loss) — and completes the merge with no terminal.
+
+  Security: GitHub access stays confined to the keychain via a loopback token bridge (never reaches the webview/canvas); the clone-URL host is anchored to `github.com` so a crafted link can't redirect the token elsewhere; every `/_api/github/*` + `/_api/git/*` route is main-origin-only (dual-allowlist) + CSRF + loopback gated. See DDR-114 (OAuth-App boundary) and DDR-116 (in-UI conflict resolution).
+
+- 188efc5: Native onboarding, project/draft switcher & the "how sharing works" tour (Phase 29, epic E4) — a non-technical collaborator installs Maude, signs in, and lands in a working project with zero terminal.
+
+  - **First-run onboarding wizard** with three doors — **Sign in with GitHub** (open or create a shared project), **Open a local folder** (with a one-click "Set up Maude here" for a non-Maude folder), and an advanced **Connect to a team hub** door.
+  - **Project & draft switcher** — a compact bottom dock to switch projects (recent list + open another) and switch between the **Shared version** and your **drafts**, all in plain words (no `branch`/`checkout`/`main` jargon). Includes **"Add this draft to the Shared version"** — the one-button fold-back that merges, publishes, and tidies the draft; a moved-remote reuses the plain "Get latest first" prompt, never a merge dialog.
+  - **"How sharing works" tour** — a re-openable walkthrough (offered after onboarding, in Help) that teaches the **Save changes locally → Publish for everyone → Pull changes** cycle, with a two-layer infographic showing that being together live is automatic.
+  - **Native app vs. web studio split** — the standalone app owns the workspace (onboarding, sign-in, the full switcher, plain-words cycle); the terminal-launched web studio shows a read-only branch badge (git vocab) and Changes/Diff/History for awareness, deferring actions to your terminal.
+
+- 188efc5: Branch-scoped live multiplayer & soft editing-presence (Phase 30) — two people on the same shared version now collaborate live, Figma-style, and can tell when someone (or the AI) is editing.
+
+  - **You see only your version.** The canvas tree shows the canvases on the version you're in — switch to a teammate's draft to work with them. No confusing cross-version clutter.
+  - **Same version = same room.** On the same shared version you see each other's cursors, annotations, comments — and now each other's **canvas edits** as they happen.
+  - **Soft "is editing this" cue.** When a teammate or the **AI agent** is editing a canvas, you get a gentle badge with their colour — a heads-up so you don't step on each other. No locks, no "take over" walls; you can always still look around and edit.
+  - **The agent's edits now reach everyone.** The "AI is editing" signal crosses the team hub (previously it only showed on the editing machine).
+  - **New canvases arrive cleanly** — instantly for a second tab on your machine, and via **Get latest** for teammates.
+  - **Seamless live updates** — a teammate's synced edit now hot-swaps in place instead of reloading the canvas, so presence avatars and cursors no longer blink. Two people cold-starting the same new canvas at once no longer duplicates its contents.
+  - **Hub admin** realigned to show the one connected project and its synced canvases.
+
+- 188efc5: Native AI chat sidepanel (Phase 31) — drive Claude from inside Maude, on your own Claude subscription, without opening a terminal.
+
+  - **Chat with Claude in the app.** Open the **Assistant** panel (the ✦ in the menubar, or ⌘⇧A) and ask for an edit, a critique, or a new screen — Claude changes the canvas while you watch. Native app only.
+  - **Your own Claude, your own subscription.** It drives your installed `claude` CLI on your Pro/Max plan — no login inside Maude, never metered API billing. Not connected yet? A plain explainer tells you to run `claude` in a terminal.
+  - **Multiple chats, in parallel.** Open several chats and work on different things at once — each runs independently in the background, so switching never interrupts a running one. A switcher shows which chats are **running** (live dot), open, or saved; start a new chat or delete an old one.
+  - **History that sticks.** Chats are saved per project and reopen with their past messages.
+  - **Pick the model + effort**, see what Claude is doing live (a "working" indicator + the running tool), and get an OS notification when a turn finishes while you're looking elsewhere.
+  - **`/design:chat`** from your terminal opens (focuses) the panel in the Maude window.
+
+- 188efc5: Native app distribution & auto-update (Phase 32) — Maude is now a real desktop app for macOS and Windows that keeps itself current with no terminal.
+
+  - **Maude is a desktop app.** Download an installer for **macOS** (`.dmg`) or **Windows** (`.msi`), open it, sign in with GitHub, and start designing — no terminal at any step. New `/desktop` download page on the site with platform detection, system requirements, and an FAQ.
+  - **Auto-update.** The app polls a signed release feed, downloads new versions in the background, and shows a non-blocking **"Maude updated · restart to apply"** banner — one click puts you on the latest. Updates are ed25519-signed and verified before install, so a tampered feed can't push a rogue build. No `npm`, no command line.
+  - **Windows installer in CI.** The desktop build pipeline now produces a (optionally code-signed) Windows `.msi` alongside the macOS `.dmg`, with the auto-update artifacts signed on both.
+  - **Opt-in crash reporting (local-only).** A first-run checkbox (default **off**) lets you write a scrubbed local crash log — stack trace + OS + version, never canvas content, file paths, or tokens — that you can attach to an issue. Nothing leaves your machine.
+  - **What's New, kept current.** The in-app "What's New" badge now re-checks on window focus, so a background update surfaces it without a reload.
+
+- 188efc5: Presentation Mode + Minimap/Zoom View toggles for the studio canvas browser.
+
+  - **View ▸ Minimap** and **View ▸ Zoom controls** now hide/show the floating mini-map and the zoom pill independently, across every open canvas.
+  - **View ▸ Presentation Mode** (previously a stub) is now a real "artboards only" view — it hides the entire UI at once: the menubar, sidebar, and side panels, plus the in-canvas mini-map, zoom pill, tool palette, annotations, and comment pins. Get back to the chrome with **Esc** or the floating **Exit** pill. The canvas tool-palette's presentation button enters the same mode.
+
+  Presentation Mode is non-destructive — it overlays-hides chrome without touching your individual Minimap/Zoom/Annotations toggles, so exiting restores exactly what you had. Fail-closed sync/divergence warnings stay visible even while presenting, and an untrusted canvas can't blank an in-flight dialog. See DDR-117.
+
+- 826e947: design: showcase-grounded canvas generation — `/design:new` and `/design:edit` now reuse the design system's platform showcase layout (`ui_kits-<platform>-showcase`) as the canonical product shell, so a new feature canvas slots into the established nav/sidebar/main/status arrangement instead of re-deriving "where things go". The showcase is collected as a Tier-0 pattern prior (above existing canvases + component specimens) and fed to generation as a reference (not a wireframe); `/design:edit` pre-loads it on add-surface edits; `design-system-keeper` gains a conservative product-shell-reuse audit (Pass A.6). Graceful fallback when a platform ships no showcase — never fatal. See DDR-127.
+
+### Patch Changes
+
+- 188efc5: Fix: the file tree now refreshes when a canvas is created on disk from outside the browser.
+
+  When the Assistant panel (or the terminal) ran `/design:new`, the new canvas landed on disk but never appeared in the FILES tree until you reloaded the window — because the tree only refreshed for canvases created through the in-app **+** button. Now any canvas written straight to disk (the AI agent's `/design:new`, an agent edit, or a `git checkout` that brings in new canvases) shows up in the tree right away, and removed canvases drop out the same way.
+
+- 188efc5: Changes panel: panning/zooming a canvas no longer creates a change, and changes are now grouped by canvas (DDR-115).
+
+  - **Pan/zoom is no longer a "change."** A canvas's camera (pan/zoom) was stored in its versioned `.meta.json` and rewritten on every mouse move, so it churned the Changes panel and would commit on every pan. The camera now lives in a per-machine, gitignored file — the Changes panel reflects your actual work (artboard moves, layout, annotations, specimens, design-system edits), not your mouse.
+  - **Changes are grouped by canvas.** Instead of a flat M/A/D/U list, each canvas shows as one entry with its supporting files (Layout & settings, Annotations) collapsed underneath, under a Canvases / Other files split. One checkbox saves a canvas and its supporting files as a unit.
+  - **Annotations are now versioned** (they travel with the project and show in the Changes panel); comments stay live-synced over the hub.
+  - One canonical runtime-state taxonomy: what's hidden from the Changes panel, what git ignores, and what `maude init` scaffolds now agree.
+
+  Security (`/flow:done` review): the untrusted-origin canvas-meta write lanes are now gated on the canvas existing (no arbitrary-slug file minting).
+
+- 188efc5: History view — click a saved version to preview it (Phase 27.1, epic E2 follow-up).
+
+  - The **History** tab is now interactive: with a canvas (or specimen) open, it lists that file's saved versions and each one is click/keyboard-activatable → opens the visual before/after at that version. With nothing open, it stays a read-only repo-wide list.
+  - The **visual diff** gains a **"Saved version" picker** — compare your current canvas against any earlier saved version, not just the last one; the "before" pane re-renders as you pick.
+  - Fix: the diff sheet is now vertically centered (a tall comparison no longer clipped its footer on shorter windows).
+
+  Server: the existing `GET /_api/git/log` takes an optional `?path=` to scope History to one canvas — design-tree-scoped, main-origin-only, `GIT_LITERAL_PATHSPECS` + `--`-terminated (no argument injection / pathspec magic).
+
 ## 0.30.0
 
 ### Minor Changes
