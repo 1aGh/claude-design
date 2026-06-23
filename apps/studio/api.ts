@@ -15,7 +15,10 @@ import {
 } from './canvas-edit.ts';
 import type { Context } from './context.ts';
 
-const SKIP_DIRS = new Set([
+// Directories that never hold user-facing canvases. Exported so the
+// external-canvas watcher (`canvas-list-watch.ts`) shares one source instead of
+// a hand-synced copy. (activity.ts still carries its own historical mirror.)
+export const SKIP_DIRS = new Set([
   'node_modules',
   '.git',
   '.next',
@@ -60,6 +63,31 @@ export async function findHtmlFiles(absRoot: string, prefixUnderRepo: string): P
     }
   }
   return out;
+}
+
+/**
+ * Canonical canvas slug from a (repo- or design-root-relative) canvas path.
+ * Pure — the `fileSlug` closure inside `createApi` delegates here, and the
+ * external-canvas watcher (`canvas-list-watch.ts`) imports it so both creation
+ * paths derive identical `canvas-list-update` slugs. Strips an optional
+ * `<designRel>/` prefix, then `/`→`-`, whitespace→`_`, drops the `.tsx`/`.html`
+ * extension, and lowercases.
+ */
+export function canvasSlugFromRel(file: string, designRel: string): string {
+  let p = String(file).replace(/^\/+|\/+$/g, '');
+  try {
+    p = decodeURIComponent(p);
+  } catch {
+    /* ignore */
+  }
+  const prefix = `${designRel.replace(/^\/+|\/+$/g, '')}/`;
+  if (p.startsWith(prefix)) p = p.slice(prefix.length);
+  return p
+    .replace(/\//g, '-')
+    .replace(/\s+/g, '_')
+    .replace(/\.(tsx|html)$/i, '')
+    .replace(/^\.+/, '')
+    .toLowerCase();
 }
 
 async function findFiles(absRoot: string, prefix: string, exts: string[]): Promise<string[]> {
@@ -328,20 +356,7 @@ export function createApi(ctx: Context, hooks: ApiHooks): Api {
   const { paths, cfg } = ctx;
 
   function fileSlug(file: string): string {
-    let p = String(file).replace(/^\/+|\/+$/g, '');
-    try {
-      p = decodeURIComponent(p);
-    } catch {
-      /* ignore */
-    }
-    const prefix = `${paths.designRel.replace(/^\/+|\/+$/g, '')}/`;
-    if (p.startsWith(prefix)) p = p.slice(prefix.length);
-    return p
-      .replace(/\//g, '-')
-      .replace(/\s+/g, '_')
-      .replace(/\.(tsx|html)$/i, '')
-      .replace(/^\.+/, '')
-      .toLowerCase();
+    return canvasSlugFromRel(file, paths.designRel);
   }
 
   async function fileForSlug(slug: string): Promise<string | null> {

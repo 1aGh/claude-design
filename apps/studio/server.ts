@@ -20,6 +20,7 @@ import { createAcp } from './acp/index.ts';
 import { createActivity } from './activity.ts';
 import { createApi } from './api.ts';
 import { bootSelfHeal } from './boot-self-heal.ts';
+import { createCanvasListWatch } from './canvas-list-watch.ts';
 import { type AiActivityEntry, createAiActivity } from './collab/ai-activity.ts';
 import { createGitLifecycle } from './collab/git-lifecycle.ts';
 import { createCollab } from './collab/index.ts';
@@ -383,6 +384,14 @@ startHeapWatch();
 // on each versionable change. No-op for a non-git project (gitStatus → repo:false).
 const gitWatch = createGitWatch(ctx);
 
+// Phase 31 follow-up — external-canvas list watcher. Subscribes to `fs:any` and
+// emits `canvas-list-update` when a canvas file appears/disappears on disk from
+// OUTSIDE the dev-server (ACP agent `/design:new`, agent Write, git checkout),
+// so the browser file tree refreshes without a reload — the symmetric
+// counterpart to api.ts's create/delete emit. RCA:
+// `.ai/logs/rca/issue-acp-new-canvas-not-in-filetree.md`.
+const canvasListWatch = createCanvasListWatch(ctx);
+
 // Phase 9 Task 4 — bidirectional sync agent. No-op when the project isn't
 // linked to a hub (`.design/config.json` has no `linkedHub` field). Kicked
 // off after fsWatch so the agent's bus subscription receives every fs event.
@@ -417,6 +426,11 @@ async function shutdown() {
   fsWatch.stop();
   try {
     gitWatch.stop();
+  } catch {
+    /* timer cleanup is best-effort */
+  }
+  try {
+    canvasListWatch.stop();
   } catch {
     /* timer cleanup is best-effort */
   }
