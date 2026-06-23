@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-23T14:02:55.232Z",
+  "generated": "2026-06-23T15:53:53.626Z",
   "currentPhase": null,
   "phases": [
     {
@@ -476,6 +476,17 @@
       "phaseKey": "31"
     },
     {
+      "id": "phase-32-native-collab-distribution",
+      "title": "Phase 32 — Native Maude: Distribution, auto-update & maintenance",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. MAUDE_SKIP_RUNTIME_BUILD=1 discipline is load-bearing throughout this phase — never let a CI step regenerate the committed runtime bundles.",
+      "planPath": ".ai/plans/archive/phase-32-native-collab-distribution.md",
+      "archived": true,
+      "phaseKey": "32"
+    },
+    {
       "id": "phase-6.5-export",
       "title": "Phase 6.5: Canvas export (UI-first, multi-format, scope-aware)",
       "status": "done",
@@ -914,17 +925,6 @@
       "planPath": ".ai/plans/archive/phase-19-dev-server-bootstrap-fixes.md",
       "archived": true,
       "phaseKey": "19"
-    },
-    {
-      "id": "phase-32-native-collab-distribution",
-      "title": "Phase 32 — Native Maude: Distribution, auto-update & maintenance",
-      "status": "planned",
-      "shipTarget": null,
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. MAUDE_SKIP_RUNTIME_BUILD=1 discipline is load-bearing throughout this phase — never let a CI step regenerate the committed runtime bundles.",
-      "planPath": ".ai/plans/phase-32-native-collab-distribution.md",
-      "archived": false,
-      "phaseKey": "32"
     },
     {
       "id": "phase-7-acp-chat-sidebar",

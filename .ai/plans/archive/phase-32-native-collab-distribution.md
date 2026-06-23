@@ -133,11 +133,19 @@ Today Maude has no native installer, no auto-update, and no download page. Upgra
 
 ## Acceptance Criteria
 
-- [ ] Auto-update: background download, "Restart to apply" banner (Task 1)
-- [ ] Windows `.msi` signed, installs on Windows, canvas loads (Task 2)
-- [ ] `/desktop` download page live on site (Task 3)
-- [ ] Crash reporting opt-in, default off, no sensitive data (Task 4)
-- [ ] What's New badge in native chrome (Task 5)
-- [ ] `bump-version.sh` + parity check include `tauri.conf.json` (Task 6)
-- [ ] What's New entry added, docs updated (Task 7)
-- [ ] Full zero-terminal scenario passes end-to-end
+- [x] Auto-update: background download, "Restart to apply" banner (Task 1) — implemented; runtime verify CI/dogfood-gated (no `cargo`)
+- [x] Windows `.msi` signed, installs on Windows, canvas loads (Task 2) — CI matrix implemented; execution gated (no Windows runner)
+- [x] `/desktop` download page live on site (Task 3) — built; site build green
+- [x] Crash reporting opt-in, default off, no sensitive data (Task 4) — implemented (local-file backend, not Sentry)
+- [x] What's New badge in native chrome (Task 5) — badge already shipped; added focus re-check
+- [x] `bump-version.sh` + parity check include `tauri.conf.json` (Task 6) — done + verified
+- [x] What's New entry added, docs updated (Task 7) — done
+- [ ] Full zero-terminal scenario passes end-to-end — **NOT verified here** (native-app ceiling: agent-browser can't drive `isNativeApp()`; auto-update/Windows/Sentry runtime is CI/dogfood-gated). User dogfood + CI.
+
+## Retro
+
+- **What worked:** Decomposing by verifiability up front paid off — the fully-runnable gates (parity, site build, dev-server tests) gave real signal, and the security fan-out caught a genuine phase-introduced issue (the unguarded `restart_to_update`) that was cheap to fix. AskUserQuestion on the three custody/identity decisions (feed shape, signing key, crash backend) avoided scaffolding the wrong thing.
+- **What didn't:** The `/design:smoke` gate fired on the `apps/studio/**` diff, but booting the source dev-server clobbered the committed release `client.bundle.js` → dev (3.6 MB) **and** regenerated the authoritative `dist/runtime/*.js` — both had to be reverted/rebuilt. The smoke gate should detect "client-shell-only diff, canvas pipeline untouched" and skip the destructive boot, or always boot with `MAUDE_NO_AUTOBUILD=1` AND a guard against the on-demand `/_client/` dev-build.
+- **Plan staleness:** the plan's `plugins/design/dev-server/` paths (→ `apps/studio/`, DDR-095) and the `maude.1agh.dev` host (real: `maude.iagh.cz`) were both wrong — same DDR-095 drift that bit phases 27–31. A plan-author pre-flight that greps the plan's paths/hosts against the tree would catch this once.
+- **Environment ceilings, repeatedly:** no `cargo` (all Rust write-only, CI-gated), the `better-sqlite3` ABI mismatch (needed a from-source rebuild to get CLI tests green), and the native-app `isNativeApp()` ceiling. These are now well-understood; the retro learning is to **state them as gate-exemptions up front** rather than discovering them mid-`/done`.
+- **Next time:** for an infra/distribution phase like this, `/execute` should explicitly mark each task's verification tier (runnable / CI-gated / dogfood-gated) in the output report from the start, so `/done` doesn't re-litigate what "passing" means.
