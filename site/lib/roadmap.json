@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-22T11:53:45.530Z",
+  "generated": "2026-06-23T11:42:31.444Z",
   "currentPhase": null,
   "phases": [
     {
@@ -465,6 +465,17 @@
       "phaseKey": "30"
     },
     {
+      "id": "phase-31-native-collab-acp-sidepanel",
+      "title": "Phase 31 — Native Maude: ACP sidepanel (de-icebox phase-7)",
+      "status": "done",
+      "shipTarget": null,
+      "date": null,
+      "summary": "Validate docs and codebase patterns before implementing. Read the existing phase-7 plan (.ai/plans/phase-7-acp-chat-sidebar.md) in full — this phase executes it largely as-written with the native-s...",
+      "planPath": ".ai/plans/archive/phase-31-native-collab-acp-sidepanel.md",
+      "archived": true,
+      "phaseKey": "31"
+    },
+    {
       "id": "phase-6.5-export",
       "title": "Phase 6.5: Canvas export (UI-first, multi-format, scope-aware)",
       "status": "done",
@@ -925,17 +936,6 @@
       "planPath": ".ai/plans/phase-7-acp-chat-sidebar.md",
       "archived": false,
       "phaseKey": "7"
-    },
-    {
-      "id": "phase-31-native-collab-acp-sidepanel",
-      "title": "Phase 31 — Native Maude: ACP sidepanel (de-icebox phase-7)",
-      "status": "icebox",
-      "shipTarget": "ICEBOX",
-      "date": null,
-      "summary": "Validate docs and codebase patterns before implementing. Read the existing phase-7 plan (.ai/plans/phase-7-acp-chat-sidebar.md) in full — this phase executes it largely as-written with the native-s...",
-      "planPath": ".ai/plans/phase-31-native-collab-acp-sidepanel.md",
-      "archived": false,
-      "phaseKey": "31"
     }
   ]
 }

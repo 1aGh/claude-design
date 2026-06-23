@@ -118,3 +118,28 @@ De-icebox phase-7 largely as-written:
 - [x] Non-technical peer sees disabled explainer, not an error — `ChatPanel` not-connected state with the subscription trust box + reason/install hint
 - [x] `/design:chat` slash command opens the panel — `maude design chat-open` → `/_api/acp/focus` → broadcast → native-only panel open (live-verified)
 - [x] Security: loopback-only asserted in test; transcripts gitignored — `acp-origin-gate.test.ts` + `_chat/` in the DDR-115 three-list. _Heavier security fan-out (defender + ethical-hacker on the new spawn-subprocess + WS + auto-approve surface) → `/flow:done`._
+
+---
+
+## Retro (2026-06-23)
+
+**Shipped:** the native ACP chat sidepanel — Claude in-app on the user's own subscription, multiple parallel background chats with a status switcher + delete, per-project history, model/effort, live activity, finish notification, `/design:chat`. Closed via `/flow:done`.
+
+**What worked**
+- **Primary-source research de-risked the whole phase.** The connection model (drive the user's own `claude` CLI, scrub the API key) vs the ToS-trap SDK-embed path was the load-bearing decision — DDR-123 locked it before any code. A first research pass over-claimed a "categorical ban"; the auth-precedence + Zed docs corrected it.
+- **The dev-server already supported parallelism.** One bridge per WS meant true parallel chats needed only a *client* rearchitecture (per-chat connections), not a server change — caught by re-reading the manager before designing.
+- **Reuse over reinvent held.** assistant-ui headless + a tiny WS `ChatModelAdapter` gave streaming/tool-cards/a11y for a +300 KB bundle, styled entirely in Maude CSS. The hand-rolled markdown renderer (XSS-safe, no new dep) was the one exception, and the right call.
+
+**What didn't / cost time**
+- **The dep names were stale within a day.** DDR-123 named two Zed packages that were deprecated→renamed to `@agentclientprotocol/*` between the DDR (06-21) and the build (06-22). Lesson: verify deps at install time, never trust a day-old DDR's package names.
+- **The native-app verification ceiling made the loop very long.** Every visual/interactive detail (composer layout, send-button visibility, "still working" placement, parallel-switch, delete, status dots) only surfaced in the user's live dogfood — agent-browser can't flip `isNativeApp()` (eval is isolated-world, `--init-script` broken in 0.27.1). ~10 dogfood round-trips. A mockup-first pass helped but couldn't pre-empt the live-UX feel.
+- **"Multiple chats" should have been scoped as *parallel* from the start.** It arrived as "per-canvas history" → "repo-level multi-chat" → "must run in parallel in the background", forcing a mid-flight rearchitecture (single-runtime-remount → per-chat connections, all mounted). Scoping the end-state up front would have saved one rebuild.
+- **Stash near-miss.** Diagnosing the (pre-existing, date-sensitive) sync-agent failure via `git stash` while the user was committing in parallel temporarily reverted in-progress work; recovered via `stash pop`. Lesson: don't stash a shared/actively-edited tree mid-flight; reason about isolation instead.
+
+**Security**
+- The fan-out earned its keep: the "single load-bearing guardrail" (`scrubAgentEnv`) was a 2-key **denylist** — a latent HIGH (a sibling `ANTHROPIC_BASE_URL` / future billing var bypasses it). Fixed to a namespace scrub. **Guardrails should be allowlists/namespace-scrubs, not key lists.**
+- The **auto-approve** is the one accepted bounded risk (DDR-125): fine for loopback/native/own-project v1 (= `bypassPermissions`), but the manual approve/deny UI is a *required security follow-up*, not polish — don't widen the panel's reach without it.
+
+**For next /plan or /execute**
+- When a phase drives a native-only surface, budget for a long user-dogfood loop and a mockup that nails layout *structure* (the Zed-style composer box was the fix once referenced) — don't expect agent-browser to verify the native render.
+- Track the open follow-ups as their own slice: **cross-restart `session/load` resume**, the **approve/deny permission UI** (security control for F2), **spawn cap** (F3), **WS/transcript caps** (F4), and the **date-sensitive sync-agent test** (use fake timers).
